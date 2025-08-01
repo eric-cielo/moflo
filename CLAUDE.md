@@ -940,13 +940,13 @@ STEP 1: IMMEDIATE PARALLEL SPAWN (Single Message!)
 
   // Spawn agents based on maxAgents count and task requirements
   // If CLI specifies 3 agents, spawn 3. If no args, auto-decide optimal count (3-12)
-  - mcp__claude-flow__agent_spawn { type: "architect", name: "System Designer" }
+  - mcp__claude-flow__agent_spawn { type: "system-architect", name: "System Designer" }
   - mcp__claude-flow__agent_spawn { type: "coder", name: "API Developer" }
   - mcp__claude-flow__agent_spawn { type: "coder", name: "Frontend Dev" }
-  - mcp__claude-flow__agent_spawn { type: "analyst", name: "DB Designer" }
+  - mcp__claude-flow__agent_spawn { type: "code-analyzer", name: "DB Designer" }
   - mcp__claude-flow__agent_spawn { type: "tester", name: "QA Engineer" }
   - mcp__claude-flow__agent_spawn { type: "researcher", name: "Tech Lead" }
-  - mcp__claude-flow__agent_spawn { type: "coordinator", name: "PM" }
+  - mcp__claude-flow__agent_spawn { type: "task-orchestrator", name: "PM" }
   - TodoWrite { todos: [multiple todos at once] }
 
 STEP 2: PARALLEL TASK EXECUTION (Single Message!)
@@ -998,12 +998,12 @@ Dependencies: ↳ X deps | Actionable: ▶
 [BatchTool - Message 1]:
   // Initialize and spawn ALL agents at once
   mcp__claude-flow__swarm_init { topology: "hierarchical", maxAgents: 8, strategy: "parallel" }
-  mcp__claude-flow__agent_spawn { type: "architect", name: "System Designer" }
+  mcp__claude-flow__agent_spawn { type: "system-architect", name: "System Designer" }
   mcp__claude-flow__agent_spawn { type: "coder", name: "API Developer" }
   mcp__claude-flow__agent_spawn { type: "coder", name: "Auth Expert" }
-  mcp__claude-flow__agent_spawn { type: "analyst", name: "DB Designer" }
+  mcp__claude-flow__agent_spawn { type: "code-analyzer", name: "DB Designer" }
   mcp__claude-flow__agent_spawn { type: "tester", name: "Test Engineer" }
-  mcp__claude-flow__agent_spawn { type: "coordinator", name: "Lead" }
+  mcp__claude-flow__agent_spawn { type: "task-orchestrator", name: "Lead" }
 
   // Update ALL todos at once - NEVER split todos!
   TodoWrite { todos: [
