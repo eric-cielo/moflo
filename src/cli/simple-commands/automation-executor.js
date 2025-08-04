@@ -537,25 +537,25 @@ Execute your role in the MLE-STAR workflow with full coordination and hook integ
     console.log(`📋 Executing ${totalTasks} tasks in ${executionPlan.length} phases...`);
     console.log();
     
-    // Initialize concurrent display if in non-interactive mode with stream-json
+    // Note: Concurrent display disabled in favor of interactive-style stream processing
     let concurrentDisplay = null;
-    if (this.options.nonInteractive && this.options.outputFormat === 'stream-json') {
-      const { createConcurrentDisplay } = await import('./concurrent-display.js');
-      
-      // Get all agents and their tasks
-      const agentTasks = workflow.agents?.map(agent => ({
-        id: agent.id,
-        name: agent.name,
-        type: agent.type,
-        tasks: tasks.filter(t => t.assignTo === agent.id).map(t => t.name)
-      })) || [];
-      
-      concurrentDisplay = createConcurrentDisplay(agentTasks);
-      concurrentDisplay.start();
-      
-      // Store reference for stream processors
-      this.concurrentDisplay = concurrentDisplay;
-    }
+    // if (this.options.nonInteractive && this.options.outputFormat === 'stream-json') {
+    //   const { createConcurrentDisplay } = await import('./concurrent-display.js');
+    //   
+    //   // Get all agents and their tasks
+    //   const agentTasks = workflow.agents?.map(agent => ({
+    //     id: agent.id,
+    //     name: agent.name,
+    //     type: agent.type,
+    //     tasks: tasks.filter(t => t.assignTo === agent.id).map(t => t.name)
+    //   })) || [];
+    //   
+    //   concurrentDisplay = createConcurrentDisplay(agentTasks);
+    //   concurrentDisplay.start();
+    //   
+    //   // Store reference for stream processors
+    //   this.concurrentDisplay = concurrentDisplay;
+    // }
     
     // Execute tasks phase by phase
     for (const [phaseIndex, phaseTasks] of executionPlan.entries()) {
