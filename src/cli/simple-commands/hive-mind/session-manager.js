@@ -42,7 +42,11 @@ export class HiveMindSessionManager {
       }
 
       this.db = await createDatabase(this.dbPath);
-      this.initializeSchema();
+      if (this.db) {
+        this.initializeSchema();
+      } else {
+        throw new Error('Failed to create database instance');
+      }
     } catch (error) {
       console.error('Failed to create SQLite database:', error.message);
       console.warn('Falling back to in-memory session storage');
@@ -94,6 +98,10 @@ To enable persistence, see: https://github.com/ruvnet/claude-code-flow/docs/wind
    * Initialize database schema for sessions
    */
   initializeSchema() {
+    if (!this.db) {
+      console.error('Database not initialized');
+      return;
+    }
     // Create the base schema
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
@@ -141,6 +149,10 @@ To enable persistence, see: https://github.com/ruvnet/claude-code-flow/docs/wind
    * Run database migrations
    */
   runMigrations() {
+    if (!this.db) {
+      console.error('Database not initialized for migrations');
+      return;
+    }
     try {
       // Check if parent_pid column exists
       const columns = this.db.prepare('PRAGMA table_info(sessions)').all();
@@ -651,7 +663,18 @@ To enable persistence, see: https://github.com/ruvnet/claude-code-flow/docs/wind
   /**
    * Get session logs
    */
-  getSessionLogs(sessionId, limit = 100, offset = 0) {
+  async getSessionLogs(sessionId, limit = 100, offset = 0) {
+    await this.ensureInitialized();
+    
+    if (this.isInMemory) {
+      // Use in-memory storage
+      const logs = this.memoryStore.logs.get(sessionId) || [];
+      return logs.slice(offset, offset + limit).map((log) => ({
+        ...log,
+        data: log.data ? sessionSerializer.deserializeLogData(log.data) : null,
+      }));
+    }
+    
     const stmt = this.db.prepare(`
       SELECT * FROM session_logs 
       WHERE session_id = ? 
