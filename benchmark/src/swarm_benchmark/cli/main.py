@@ -380,9 +380,20 @@ def hive_mind(ctx, task, queen_type, max_workers, consensus, timeout, monitor, o
             click.echo(f"📊 Results saved to: {output_dir}")
             if ctx.obj.get('verbose'):
                 click.echo(f"Execution time: {result.duration:.2f}s")
-                click.echo(f"Workers spawned: {result.metrics.get('workers_spawned', 'N/A')}")
+                click.echo(f"Workers spawned: {result.agents_spawned}")
         else:
-            click.echo(f"❌ Hive-mind benchmark failed: {result.error}")
+            error_msg = ""
+            if result.errors:
+                error_msg = "; ".join(result.errors)
+            elif result.exit_code == -9:
+                error_msg = f"Command timed out or was killed (exit code: {result.exit_code})"
+            elif result.exit_code != 0:
+                error_msg = f"Command failed with exit code: {result.exit_code}"
+            else:
+                error_msg = "Unknown error"
+            click.echo(f"❌ Hive-mind benchmark failed: {error_msg}")
+            if ctx.obj.get('verbose') and result.stderr_lines:
+                click.echo(f"Stderr: {' '.join(result.stderr_lines[:5])}")
             return 1
             
     except Exception as e:
