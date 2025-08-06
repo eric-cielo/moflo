@@ -286,18 +286,25 @@ class RealClaudeFlowExecutor:
     
     def execute_swarm(self, config: SwarmCommand) -> RealExecutionResult:
         """Execute a real swarm command."""
-        # For benchmarking, simulate swarm execution by creating actual output
-        # Real swarm requires interactive Claude Code which can't be automated
+        # Build real swarm command with --executor flag for non-interactive execution
+        command = [
+            self.claude_flow_path,
+            "swarm",
+            config.objective,
+            "--executor",  # Use built-in executor for non-interactive mode
+            "--strategy", config.strategy,
+            "--mode", config.mode,
+            "--max-agents", str(config.max_agents)
+        ]
         
-        start_time = time.time()
+        # Add additional flags
+        if config.additional_flags:
+            command.extend(config.additional_flags)
         
-        # Extract directory from objective if present
-        if " in " in config.objective:
-            output_dir = Path(config.objective.split(" in ")[-1].strip('"').strip("'").rstrip("/"))
-        else:
-            output_dir = Path("./swarm-output")
+        # Set a reasonable timeout (5 minutes)
+        timeout = min(config.timeout * 60, 300)
         
-        output_dir.mkdir(parents=True, exist_ok=True)
+        return self._execute_streaming_command(command, timeout)
         
         # Simulate task based on strategy
         if config.strategy == "development":
