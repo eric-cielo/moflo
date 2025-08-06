@@ -376,7 +376,9 @@ class RealClaudeFlowExecutor:
     
     def _execute_streaming_command(self, command: List[str], timeout_seconds: int) -> RealExecutionResult:
         """Execute command and parse streaming output."""
-        logger.info(f"Executing command: {' '.join(command)}")
+        # Log command with proper shell quoting for clarity
+        import shlex
+        logger.info(f"Executing command: {' '.join(shlex.quote(arg) for arg in command)}")
         
         # Check if this is a swarm/hive-mind command that might fail without Claude CLI
         is_ai_command = any(cmd in command for cmd in ["swarm", "hive-mind"])
