@@ -394,7 +394,6 @@ async function executeStreamStep(prompt, inputStream, isLast, flags = {}) {
     // Pipe input if available
     if (inputStream) {
       // Convert string stream to actual stream
-      const { Readable } = await import('stream');
       const readable = new Readable();
       readable.push(inputStream);
       readable.push(null);
