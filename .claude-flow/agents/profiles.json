@@ -1,9 +1,9 @@
 {
   "conservative": {
-    "successRate": 0.34852055331777676,
-    "avgScore": 38.70687453524321,
-    "avgExecutionTime": 1481.74557510873,
-    "uses": 15,
+    "successRate": 0.48036826370998387,
+    "avgScore": 41.91682693976752,
+    "avgExecutionTime": 1846.9302265340914,
+    "uses": 19,
     "trend": [
       {
         "score": 79.88688888888889,
@@ -67,17 +67,37 @@
         "score": 42.664,
         "timestamp": "2025-08-12T16:55:46.661Z",
         "real": true
+      },
+      {
+        "score": 42.56,
+        "timestamp": "2025-08-12T17:04:28.281Z",
+        "real": true
+      },
+      {
+        "score": 42.108,
+        "timestamp": "2025-08-12T17:05:25.402Z",
+        "real": true
+      },
+      {
+        "score": 42.232,
+        "timestamp": "2025-08-12T17:05:35.029Z",
+        "real": true
+      },
+      {
+        "score": 42.56,
+        "timestamp": "2025-08-12T17:05:44.152Z",
+        "real": true
       }
     ],
-    "realExecutions": 3,
+    "realExecutions": 7,
     "improving": false,
-    "improvementRate": "-42.2"
+    "improvementRate": "-38.0"
   },
   "balanced": {
-    "successRate": 0.384653688389642,
-    "avgScore": 41.380930392293024,
-    "avgExecutionTime": 1416.4491373777594,
-    "uses": 15,
+    "successRate": 0.4850511180152976,
+    "avgScore": 42.29466777884117,
+    "avgExecutionTime": 1830.6470082041576,
+    "uses": 19,
     "trend": [
       {
         "score": 77.72222222222221,
@@ -141,17 +161,37 @@
         "score": 42.672,
         "timestamp": "2025-08-12T16:55:46.661Z",
         "real": true
+      },
+      {
+        "score": 42.568,
+        "timestamp": "2025-08-12T17:04:28.281Z",
+        "real": true
+      },
+      {
+        "score": 42.356,
+        "timestamp": "2025-08-12T17:05:25.402Z",
+        "real": true
+      },
+      {
+        "score": 42.664,
+        "timestamp": "2025-08-12T17:05:35.029Z",
+        "real": true
+      },
+      {
+        "score": 42.288,
+        "timestamp": "2025-08-12T17:05:44.152Z",
+        "real": true
       }
     ],
-    "realExecutions": 3,
+    "realExecutions": 7,
     "improving": false,
-    "improvementRate": "-42.3"
+    "improvementRate": "-44.7"
   },
   "aggressive": {
-    "successRate": 0.37193073560017753,
-    "avgScore": 39.535362575460255,
-    "avgExecutionTime": 1345.2333254683926,
-    "uses": 15,
+    "successRate": 0.483402223333783,
+    "avgScore": 42.77653178977965,
+    "avgExecutionTime": 1641.1550389807035,
+    "uses": 19,
     "trend": [
       {
         "score": 83.55455555555555,
@@ -215,10 +255,30 @@
         "score": 43.368,
         "timestamp": "2025-08-12T16:55:46.661Z",
         "real": true
+      },
+      {
+        "score": 43.332,
+        "timestamp": "2025-08-12T17:04:28.281Z",
+        "real": true
+      },
+      {
+        "score": 43.036,
+        "timestamp": "2025-08-12T17:05:25.402Z",
+        "real": true
+      },
+      {
+        "score": 43.332,
+        "timestamp": "2025-08-12T17:05:35.029Z",
+        "real": true
+      },
+      {
+        "score": 43.28,
+        "timestamp": "2025-08-12T17:05:44.152Z",
+        "real": true
       }
     ],
-    "realExecutions": 3,
+    "realExecutions": 7,
     "improving": false,
-    "improvementRate": "-38.8"
+    "improvementRate": "-36.6"
   }
 }
