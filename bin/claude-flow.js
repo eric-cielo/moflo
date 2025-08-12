@@ -30,6 +30,14 @@ if (args.length === 0) {
 for (const arg of args) {
   if (arg === '--version' || arg === '-v') {
     console.log(`v${VERSION}`);
+    console.log('');
+    console.log('⚡ Alpha 89 - Major Quality & Verification Update');
+    console.log('  • Truth Verification System (0.95 threshold)');
+    console.log('  • Pair Programming Mode');
+    console.log('  • Non-interactive prompt injection fixes');
+    console.log('  • Enhanced init commands (--verify, --pair)');
+    console.log('');
+    console.log('📚 Docs: https://github.com/ruvnet/claude-flow');
     process.exit(0);
   }
 }
