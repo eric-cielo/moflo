@@ -24,7 +24,7 @@ try {
 } catch (error) {
   // Fallback version if package.json can't be read
   console.warn('Warning: Could not read version from package.json, using fallback');
-  VERSION = '2.0.0-alpha.95';
+  VERSION = '2.0.0-alpha.96';
   BUILD_DATE = new Date().toISOString().split('T')[0];
 }
 
