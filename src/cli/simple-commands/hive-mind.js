@@ -57,7 +57,7 @@ ${chalk.bold('SUBCOMMANDS:')}
   ${chalk.green('consensus')}    View consensus decisions
   ${chalk.green('memory')}       Manage collective memory
   ${chalk.green('metrics')}      View performance metrics
-  ${chalk.green('wizard')}       Interactive hive mind wizard
+  ${chalk.green('wizard')}       Interactive hive mind wizard with Claude Code spawning
 
 ${chalk.bold('EXAMPLES:')}
   ${chalk.gray('# Initialize hive mind')}
@@ -72,7 +72,7 @@ ${chalk.bold('EXAMPLES:')}
   ${chalk.gray('# View current status')}
   claude-flow hive-mind status
 
-  ${chalk.gray('# Interactive wizard')}
+  ${chalk.gray('# Interactive wizard with Claude Code spawning')}
   claude-flow hive-mind wizard
 
   ${chalk.gray('# Spawn with Claude Code coordination')}
@@ -402,10 +402,16 @@ async function spawnSwarmWizard() {
       message: 'Launch monitoring dashboard?',
       default: true,
     },
+    {
+      type: 'confirm',
+      name: 'spawnClaude',
+      message: 'Spawn Claude Code instance with hive-mind coordination?',
+      default: true,
+    },
   ]);
 
   // Spawn the swarm with collected parameters
-  await spawnSwarm([answers.objective], {
+  const swarmResult = await spawnSwarm([answers.objective], {
     name: answers.name,
     queenType: answers.queenType,
     'queen-type': answers.queenType,
@@ -418,7 +424,42 @@ async function spawnSwarmWizard() {
     monitor: answers.monitor,
     namespace: answers.namespace || 'default',
     verbose: answers.verbose || false,
+    spawnClaude: answers.spawnClaude, // Pass the Claude spawning preference
   });
+
+  // If Claude Code spawning was requested, launch it using the same function as --claude flag
+  if (answers.spawnClaude && swarmResult && swarmResult.swarmId) {
+    // Create workers array in the same format expected by spawnClaudeCodeInstances
+    const workers = answers.workerTypes.map((type, index) => ({
+      id: `worker-${index + 1}`,
+      type,
+      role: 'worker',
+      status: 'active',
+      capabilities: getAgentCapabilities(type)
+    }));
+    
+    // Create flags object with the wizard settings
+    const claudeFlags = {
+      queenType: answers.queenType,
+      consensus: answers.consensusAlgorithm,
+      autoScale: answers.autoScale,
+      monitor: answers.monitor,
+      namespace: answers.namespace || 'default',
+      verbose: answers.verbose || false
+    };
+    
+    // Use the same Claude spawning function as the --claude flag
+    console.log(chalk.cyan(`\n🎯 Objective from wizard: "${answers.objective}"`));
+    await spawnClaudeCodeInstances(
+      swarmResult.swarmId,
+      answers.name,
+      answers.objective,
+      workers,
+      claudeFlags
+    );
+  }
+  
+  return swarmResult;
 }
 
 /**
@@ -875,6 +916,9 @@ async function spawnSwarm(args, flags) {
       );
       console.log(chalk.gray('   claude-flow hive-mind spawn "objective" --claude'));
     }
+
+    // Return swarm info for wizard use
+    return { swarmId, hiveMind };
   } catch (error) {
     spinner.fail('Failed to spawn Hive Mind swarm');
     console.error(chalk.red('Error:'), error.message);
@@ -2177,6 +2221,7 @@ async function spawnClaudeCodeInstances(swarmId, swarmName, objective, workers, 
  * Generate comprehensive Hive Mind prompt for Claude Code
  */
 function generateHiveMindPrompt(swarmId, swarmName, objective, workers, workerGroups, flags) {
+  console.log(chalk.cyan(`\n🔍 generateHiveMindPrompt received objective: "${objective}"`));
   const currentTime = new Date().toISOString();
   const workerTypes = Object.keys(workerGroups);
   const queenType = flags.queenType || 'strategic';
