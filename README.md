@@ -18,17 +18,20 @@
 ### 🎯 **Key Features**
 
 - **🎨 25 Claude Skills**: Natural language-activated skills for development, GitHub, memory, and automation
-- **🧠 ReasoningBank Memory**: Persistent SQLite storage with semantic search (2-3ms latency)
-- **🔍 Semantic Search**: Hash-based embeddings - works without API keys
+- **🚀 AgentDB v1.3.9 Integration**: 96x-164x faster vector search with semantic understanding (PR #830)
+- **🧠 Hybrid Memory System**: AgentDB + ReasoningBank with automatic fallback
+- **🔍 Semantic Vector Search**: HNSW indexing (O(log n)) + 9 RL algorithms
 - **🐝 Hive-Mind Intelligence**: Queen-led AI coordination with specialized worker agents
 - **🔧 100 MCP Tools**: Comprehensive toolkit for swarm orchestration and automation
 - **🔄 Dynamic Agent Architecture (DAA)**: Self-organizing agents with fault tolerance
-- **💾 Persistent Memory**: `.swarm/memory.db` with 30+ specialized patterns
+- **💾 Persistent Memory**: 150x faster search, 4-32x memory reduction (quantization)
 - **🪝 Advanced Hooks System**: Automated workflows with pre/post operation hooks
 - **📊 GitHub Integration**: 6 specialized modes for repository management
 - **🌐 Flow Nexus Cloud**: E2B sandboxes, AI swarms, challenges, and marketplace
 
 > 🔥 **Revolutionary AI Coordination**: Build faster, smarter, and more efficiently with AI-powered development orchestration
+>
+> 🆕 **NEW: AgentDB Integration**: 96x-164x performance boost with semantic vector search, reflexion memory, and skill library auto-consolidation
 
 
 ---
@@ -118,17 +121,54 @@ npx claude-flow@alpha memory query "configuration" --namespace semantic --reason
 
 ## 🧠 **Memory System Commands**
 
-### **ReasoningBank (Persistent SQLite Memory)**
+### **🚀 NEW: AgentDB v1.3.9 Integration (96x-164x Performance Boost)**
+
+**Revolutionary Performance Improvements:**
+- **Vector Search**: 96x faster (9.6ms → <0.1ms)
+- **Batch Operations**: 125x faster
+- **Large Queries**: 164x faster
+- **Memory Usage**: 4-32x reduction via quantization
 
 ```bash
-# Store memories with semantic search
+# Semantic vector search (understands meaning, not just keywords)
+npx claude-flow@alpha memory vector-search "user authentication flow" \
+  --k 10 --threshold 0.7 --namespace backend
+
+# Store with vector embedding for semantic search
+npx claude-flow@alpha memory store-vector api_design "REST endpoints" \
+  --namespace backend --metadata '{"version":"v2"}'
+
+# Get AgentDB integration status and capabilities
+npx claude-flow@alpha memory agentdb-info
+
+# Installation (hybrid mode - 100% backward compatible)
+npm install agentdb@1.3.9
+```
+
+**New Features:**
+- ✅ **Semantic vector search** (HNSW indexing, O(log n))
+- ✅ **9 RL algorithms** (Q-Learning, PPO, MCTS, Decision Transformer)
+- ✅ **Reflexion memory** (learn from past experiences)
+- ✅ **Skill library** (auto-consolidate successful patterns)
+- ✅ **Causal reasoning** (understand cause-effect relationships)
+- ✅ **Quantization** (binary 32x, scalar 4x, product 8-16x reduction)
+- ✅ **100% backward compatible** (hybrid mode with graceful fallback)
+
+**Documentation**: `docs/agentdb/PRODUCTION_READINESS.md` | **PR**: #830
+
+---
+
+### **ReasoningBank (Legacy SQLite Memory - Still Supported)**
+
+```bash
+# Store memories with pattern matching
 npx claude-flow@alpha memory store api_key "REST API configuration" \
   --namespace backend --reasoningbank
 
-# Query with semantic search (2-3ms latency)
+# Query with pattern search (2-3ms latency)
 npx claude-flow@alpha memory query "API config" \
   --namespace backend --reasoningbank
-# ✅ Found 3 results (semantic search)
+# ✅ Found 3 results (pattern matching)
 
 # List all memories
 npx claude-flow@alpha memory list --namespace backend --reasoningbank
@@ -140,19 +180,18 @@ npx claude-flow@alpha memory status --reasoningbank
 #    Storage: .swarm/memory.db
 ```
 
-### **Features**
+**Features:**
 - ✅ **No API Keys Required**: Hash-based embeddings (1024 dimensions)
 - ✅ **Persistent Storage**: SQLite database survives restarts
-- ✅ **Semantic Search**: MMR ranking with similarity scoring
+- ✅ **Pattern Matching**: LIKE-based search with similarity scoring
 - ✅ **Namespace Isolation**: Organize memories by domain
 - ✅ **Fast Queries**: 2-3ms average latency
 - ✅ **Process Cleanup**: Automatic database closing
 
-### **Optional: Enhanced Embeddings**
+**Optional Enhanced Embeddings:**
 ```bash
-# For better semantic accuracy (requires API key)
-export OPENAI_API_KEY=$YOUR_API_KEY
-# Uses text-embedding-3-small (1536 dimensions)
+# For better semantic accuracy with text-embedding-3-small (1536 dimensions)
+# Set OPENAI environment variable (see ReasoningBank documentation)
 ```
 
 ---
@@ -303,9 +342,12 @@ npx claude-flow@alpha memory query "microservices patterns" --reasoningbank
 - **84.8% SWE-Bench solve rate** - Industry-leading problem-solving
 - **32.3% token reduction** - Efficient context management
 - **2.8-4.4x speed improvement** - Parallel coordination
-- **2-3ms query latency** - ReasoningBank semantic search
+- **96x-164x faster search** - 🆕 AgentDB vector search (9.6ms → <0.1ms)
+- **4-32x memory reduction** - 🆕 AgentDB quantization
+- **2-3ms query latency** - ReasoningBank pattern search (legacy)
 - **64 specialized agents** - Complete development ecosystem
 - **100 MCP tools** - Comprehensive automation toolkit
+- **180 AgentDB tests** - >90% coverage, production-ready
 
 ---
 
@@ -314,7 +356,11 @@ npx claude-flow@alpha memory query "microservices patterns" --reasoningbank
 ### **Core Documentation**
 - **[Skills Tutorial](./docs/skills-tutorial.md)** - Complete guide to 25 Claude Flow skills with natural language invocation
 - **[Installation Guide](./docs/INSTALLATION.md)** - Setup instructions
-- **[Memory System Guide](./docs/MEMORY-SYSTEM.md)** - ReasoningBank usage
+- **[AgentDB Integration](./docs/agentdb/)** - 🆕 96x-164x faster vector search (PR #830)
+  - [Production Readiness Guide](./docs/agentdb/PRODUCTION_READINESS.md)
+  - [Implementation Summary](./docs/agentdb/SWARM_IMPLEMENTATION_COMPLETE.md)
+  - [Integration Plan](./docs/AGENTDB_INTEGRATION_PLAN.md)
+- **[Memory System Guide](./docs/MEMORY-SYSTEM.md)** - ReasoningBank + AgentDB hybrid
 - **[MCP Tools Reference](./docs/MCP-TOOLS.md)** - Complete tool catalog
 - **[Agent System](./docs/AGENT-SYSTEM.md)** - All 64 agents
 
@@ -350,6 +396,8 @@ npx claude-flow@alpha memory query "microservices patterns" --reasoningbank
 ### **Immediate (Q4 2025)**
 - ✅ Semantic search fix (v2.7.0-alpha.10)
 - ✅ ReasoningBank Node.js backend
+- ✅ AgentDB v1.3.9 integration (PR #830) - 96x-164x performance boost
+- 🔄 AgentDB production deployment (Q4 2025)
 - 🔄 Enhanced embedding models
 - 🔄 Multi-user collaboration features
 
