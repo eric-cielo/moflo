@@ -443,9 +443,9 @@ export function runAndDisplaySuite(): SuiteResult {
 /**
  * Run and display memory profile
  */
-export async function runAndDisplayMemoryProfile(): Promise<MemoryProfile[]> {
+export function runAndDisplayMemoryProfile(): MemoryProfile[] {
   const runner = new AttentionBenchmarkRunner();
-  const profiles = await runner.runMemoryProfile();
+  const profiles = runner.runMemoryProfile();
 
   console.log(formatMemoryProfile(profiles));
 
