@@ -113,7 +113,7 @@ describe('FlashAttentionOptimizer', () => {
     });
 
     it('should handle multiple keys and values', () => {
-      const dim = 256;
+      const dim = 512; // Match optimizer dimension
       const numKeys = 10;
       const input: AttentionInput = {
         query: new Float32Array(dim).fill(0.5),
@@ -123,6 +123,7 @@ describe('FlashAttentionOptimizer', () => {
 
       const output = optimizer.optimize(input);
 
+      expect(output).toBeDefined();
       expect(output).toBeDefined();
       expect(output.result).toBeInstanceOf(Float32Array);
       expect(output.result.length).toBe(dim);
