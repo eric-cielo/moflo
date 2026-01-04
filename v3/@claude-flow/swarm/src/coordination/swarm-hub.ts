@@ -1,6 +1,21 @@
 /**
- * V3 Swarm Hub
- * Central coordination hub for the 15-agent hierarchical mesh swarm
+ * V3 Swarm Hub - COMPATIBILITY LAYER (ADR-003)
+ *
+ * DEPRECATION NOTICE:
+ * This is a THIN FACADE over UnifiedSwarmCoordinator for backward compatibility.
+ * All operations are delegated to the canonical UnifiedSwarmCoordinator.
+ *
+ * For new code, use UnifiedSwarmCoordinator directly:
+ * ```typescript
+ * import { createUnifiedSwarmCoordinator } from '@claude-flow/swarm';
+ * const coordinator = createUnifiedSwarmCoordinator(config);
+ * await coordinator.initialize();
+ * ```
+ *
+ * ADR-003 Decision:
+ * - ONE canonical coordination engine: UnifiedSwarmCoordinator
+ * - SwarmHub maintained ONLY for compatibility with existing code
+ * - All core logic delegated to UnifiedSwarmCoordinator
  *
  * Based on ADR-001 (agentic-flow integration), ADR-003 (Single Coordination Engine),
  * and the 15-Agent Swarm Architecture
@@ -37,6 +52,7 @@ import {
 } from '../shared/events';
 import { IAgentRegistry, AgentRegistry, createAgentRegistry } from './agent-registry';
 import { ITaskOrchestrator, TaskOrchestrator, TaskSpec, createTaskOrchestrator } from './task-orchestrator';
+import { UnifiedSwarmCoordinator, createUnifiedSwarmCoordinator } from '../unified-coordinator';
 
 // =============================================================================
 // Swarm Hub Interface
