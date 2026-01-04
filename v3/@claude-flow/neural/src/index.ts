@@ -351,10 +351,12 @@ export default {
   createReasoningBank,
   createPatternLearner,
   createNeuralLearningSystem,
+  createSONALearningEngine,
 
   // Classes
   SONAManager,
   ReasoningBank,
   PatternLearner,
   NeuralLearningSystem,
+  SONALearningEngine,
 };
