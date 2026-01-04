@@ -26,7 +26,7 @@ export {
   type IMemoryService,
   type ISecurityService,
   type ISwarmCoordinator,
-} from './test-application';
+} from './test-application.js';
 
 // Swarm test instance
 export {
