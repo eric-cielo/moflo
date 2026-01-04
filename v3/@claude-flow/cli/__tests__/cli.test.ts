@@ -165,120 +165,144 @@ describe('CLI', () => {
 
   describe('Argument Parsing', () => {
     it('should parse long flags', async () => {
+      let flagsPassed = false;
       const mockCommand: Command = {
-        name: 'test',
+        name: 'testparse',
         description: 'Test command',
         action: async (ctx) => {
           expect(ctx.flags.verbose).toBe(true);
+          flagsPassed = true;
           return { success: true };
         }
       };
 
       cli['parser'].registerCommand(mockCommand);
-      await cli.run(['test', '--verbose']);
+      await cli.run(['testparse', '--verbose']);
+      expect(flagsPassed).toBe(true);
     });
 
     it('should parse short flags', async () => {
+      let flagsPassed = false;
       const mockCommand: Command = {
-        name: 'test',
+        name: 'testshort',
         description: 'Test command',
         action: async (ctx) => {
           expect(ctx.flags.v).toBe(true);
+          flagsPassed = true;
           return { success: true };
         }
       };
 
       cli['parser'].registerCommand(mockCommand);
-      await cli.run(['test', '-v']);
+      await cli.run(['testshort', '-v']);
+      expect(flagsPassed).toBe(true);
     });
 
     it('should parse flags with values', async () => {
+      let flagsPassed = false;
       const mockCommand: Command = {
-        name: 'test',
+        name: 'testvalue',
         description: 'Test command',
         action: async (ctx) => {
           expect(ctx.flags.format).toBe('json');
+          flagsPassed = true;
           return { success: true };
         }
       };
 
       cli['parser'].registerCommand(mockCommand);
-      await cli.run(['test', '--format', 'json']);
+      await cli.run(['testvalue', '--format', 'json']);
+      expect(flagsPassed).toBe(true);
     });
 
     it('should parse flags with equals syntax', async () => {
+      let flagsPassed = false;
       const mockCommand: Command = {
-        name: 'test',
+        name: 'testequals',
         description: 'Test command',
         action: async (ctx) => {
           expect(ctx.flags.output).toBe('file.txt');
+          flagsPassed = true;
           return { success: true };
         }
       };
 
       cli['parser'].registerCommand(mockCommand);
-      await cli.run(['test', '--output=file.txt']);
+      await cli.run(['testequals', '--output=file.txt']);
+      expect(flagsPassed).toBe(true);
     });
 
     it('should parse multiple flags', async () => {
+      let flagsPassed = false;
       const mockCommand: Command = {
-        name: 'test',
+        name: 'testmulti',
         description: 'Test command',
         action: async (ctx) => {
           expect(ctx.flags.verbose).toBe(true);
           expect(ctx.flags.format).toBe('json');
           expect(ctx.flags.quiet).toBe(true);
+          flagsPassed = true;
           return { success: true };
         }
       };
 
       cli['parser'].registerCommand(mockCommand);
-      await cli.run(['test', '--verbose', '--format', 'json', '-q']);
+      await cli.run(['testmulti', '--verbose', '--format', 'json', '-q']);
+      expect(flagsPassed).toBe(true);
     });
 
     it('should parse positional arguments', async () => {
+      let flagsPassed = false;
       const mockCommand: Command = {
-        name: 'test',
+        name: 'testpos',
         description: 'Test command',
         action: async (ctx) => {
           expect(ctx.args).toEqual(['arg1', 'arg2', 'arg3']);
+          flagsPassed = true;
           return { success: true };
         }
       };
 
       cli['parser'].registerCommand(mockCommand);
-      await cli.run(['test', 'arg1', 'arg2', 'arg3']);
+      await cli.run(['testpos', 'arg1', 'arg2', 'arg3']);
+      expect(flagsPassed).toBe(true);
     });
 
     it('should handle boolean flags correctly', async () => {
+      let flagsPassed = false;
       const mockCommand: Command = {
-        name: 'test',
+        name: 'testbool',
         description: 'Test command',
         options: [
           { name: 'force', type: 'boolean', description: 'Force operation' }
         ],
         action: async (ctx) => {
           expect(ctx.flags.force).toBe(true);
+          flagsPassed = true;
           return { success: true };
         }
       };
 
       cli['parser'].registerCommand(mockCommand);
-      await cli.run(['test', '--force']);
+      await cli.run(['testbool', '--force']);
+      expect(flagsPassed).toBe(true);
     });
 
     it('should handle negated boolean flags', async () => {
+      let flagsPassed = false;
       const mockCommand: Command = {
-        name: 'test',
+        name: 'testnegate',
         description: 'Test command',
         action: async (ctx) => {
           expect(ctx.flags.color).toBe(false);
+          flagsPassed = true;
           return { success: true };
         }
       };
 
       cli['parser'].registerCommand(mockCommand);
-      await cli.run(['test', '--no-color']);
+      await cli.run(['testnegate', '--no-color']);
+      expect(flagsPassed).toBe(true);
     });
   });
 
