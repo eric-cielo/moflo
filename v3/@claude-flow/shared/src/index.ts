@@ -18,6 +18,7 @@ export * from './events/index.js';
 export * from './plugin-interface.js';
 export * from './plugin-loader.js';
 export * from './plugin-registry.js';
+export * from './plugins/index.js';
 
 // Re-export from submodules for convenience
 export * from './types/index.js';
