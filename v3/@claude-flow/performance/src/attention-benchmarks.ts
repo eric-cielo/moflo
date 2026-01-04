@@ -105,30 +105,47 @@ export class AttentionBenchmarkRunner {
     numKeys: number = 100,
     iterations: number = 1000
   ): Promise<ComparisonBenchmark> {
-    // Run native benchmark
-    const results = benchmarkAttention(dimension, numKeys, iterations);
+    // Create Flash and baseline attention mechanisms
+    const flash = new FlashAttention(dimension, 64);
+    const baseline = new DotProductAttention(dimension);
 
-    // Extract Flash Attention results
-    const flashResult = results.find(r =>
-      r.name.toLowerCase().includes('flash')
-    );
+    // Create test data
+    const query = new Float32Array(dimension);
+    const keys = Array.from({ length: numKeys }, () => new Float32Array(dimension));
+    const values = Array.from({ length: numKeys }, () => new Float32Array(dimension));
 
-    // Extract baseline (DotProduct) results
-    const baselineResult = results.find(r =>
-      r.name.toLowerCase().includes('dot') ||
-      r.name.toLowerCase().includes('product')
-    );
-
-    if (!flashResult || !baselineResult) {
-      throw new Error(`Benchmark failed for dimension ${dimension}: Missing results`);
+    // Fill with random data
+    for (let i = 0; i < dimension; i++) {
+      query[i] = Math.random();
+    }
+    for (let i = 0; i < numKeys; i++) {
+      for (let j = 0; j < dimension; j++) {
+        keys[i][j] = Math.random();
+        values[i][j] = Math.random();
+      }
     }
 
-    const speedup = baselineResult.averageTimeMs / flashResult.averageTimeMs;
-    const memoryReduction = this.calculateMemoryReduction(
-      baselineResult.memoryUsageBytes,
-      flashResult.memoryUsageBytes
-    );
+    // Benchmark Flash Attention
+    const flashStart = performance.now();
+    for (let i = 0; i < iterations; i++) {
+      flash.computeRaw(query, keys, values);
+    }
+    const flashEnd = performance.now();
+    const flashTimeMs = flashEnd - flashStart;
+    const flashAvgMs = flashTimeMs / iterations;
+    const flashOps = 1000 / flashAvgMs;
 
+    // Benchmark baseline
+    const baselineStart = performance.now();
+    for (let i = 0; i < iterations; i++) {
+      baseline.computeRaw(query, keys, values);
+    }
+    const baselineEnd = performance.now();
+    const baselineTimeMs = baselineEnd - baselineStart;
+    const baselineAvgMs = baselineTimeMs / iterations;
+    const baselineOps = 1000 / baselineAvgMs;
+
+    const speedup = baselineAvgMs / flashAvgMs;
     const meetsTarget = speedup >= 2.49; // Minimum V3 target
 
     return {
@@ -138,17 +155,17 @@ export class AttentionBenchmarkRunner {
       iterations,
       results: {
         flash: {
-          averageTimeMs: flashResult.averageTimeMs,
-          opsPerSecond: flashResult.opsPerSecond,
-          memoryUsageBytes: flashResult.memoryUsageBytes,
+          averageTimeMs: flashAvgMs,
+          opsPerSecond: flashOps,
+          memoryUsageBytes: undefined,
         },
         baseline: {
-          averageTimeMs: baselineResult.averageTimeMs,
-          opsPerSecond: baselineResult.opsPerSecond,
-          memoryUsageBytes: baselineResult.memoryUsageBytes,
+          averageTimeMs: baselineAvgMs,
+          opsPerSecond: baselineOps,
+          memoryUsageBytes: undefined,
         },
         speedup,
-        memoryReduction,
+        memoryReduction: undefined,
       },
       meetsTarget,
       timestamp: new Date(),
