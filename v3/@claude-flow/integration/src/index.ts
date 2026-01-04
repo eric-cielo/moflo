@@ -124,6 +124,20 @@ export type {
   SDKBridgeConfig,
 } from './types.js';
 
+// ===== Agent Integration Types =====
+export type {
+  Task,
+  TaskResult,
+  Message,
+  AgentHealth,
+  AgentConfig,
+} from './agentic-flow-agent.js';
+
+export type {
+  AgentAdapterConfig,
+  AgentConversionResult,
+} from './agent-adapter.js';
+
 // ===== Default Configurations =====
 export {
   DEFAULT_SONA_CONFIG,
