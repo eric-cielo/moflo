@@ -359,7 +359,7 @@ const restartCommand: Command = {
     const stopCtx = { ...ctx, flags: { ...ctx.flags } };
     const stopResult = await stopCommand.action!(stopCtx);
 
-    if (!stopResult.success) {
+    if (stopResult && !stopResult.success) {
       output.printWarning('Stop failed, attempting to start anyway...');
     }
 
