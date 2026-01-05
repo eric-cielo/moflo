@@ -339,30 +339,34 @@ export class MessageBus extends EventEmitter implements IMessageBus {
   }
 
   private startStatsCollection(): void {
-    setInterval(() => {
+    this.statsInterval = setInterval(() => {
       this.calculateMessagesPerSecond();
     }, 1000);
   }
 
   private calculateMessagesPerSecond(): void {
     const now = Date.now();
+    const entry = { timestamp: now, count: this.stats.totalMessages };
 
-    // Track message count per second
-    this.messageHistory.push({
-      timestamp: now,
-      count: this.stats.totalMessages,
-    });
+    // Use circular buffer pattern - O(1) instead of O(n) filter
+    if (this.messageHistory.length < MessageBus.MAX_HISTORY_SIZE) {
+      this.messageHistory.push(entry);
+    } else {
+      this.messageHistory[this.messageHistoryIndex] = entry;
+      this.messageHistoryIndex = (this.messageHistoryIndex + 1) % MessageBus.MAX_HISTORY_SIZE;
+    }
 
-    // Keep only last 60 seconds
-    this.messageHistory = this.messageHistory.filter(
-      h => now - h.timestamp < 60000
-    );
-
+    // Calculate messages per second from history
     if (this.messageHistory.length >= 2) {
-      const oldest = this.messageHistory[0];
-      const newest = this.messageHistory[this.messageHistory.length - 1];
-      const seconds = (newest.timestamp - oldest.timestamp) / 1000;
-      const messages = newest.count - oldest.count;
+      // Find oldest valid entry (within last 60 seconds)
+      let oldest = entry;
+      for (const h of this.messageHistory) {
+        if (h.timestamp < oldest.timestamp && now - h.timestamp < 60000) {
+          oldest = h;
+        }
+      }
+      const seconds = (now - oldest.timestamp) / 1000;
+      const messages = entry.count - oldest.count;
       this.stats.messagesPerSecond = seconds > 0 ? messages / seconds : 0;
     }
 
