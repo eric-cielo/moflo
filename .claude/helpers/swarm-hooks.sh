@@ -424,7 +424,8 @@ get_consensus_status() {
 initiate_handoff() {
   local to_agent="$1"
   local description="${2:-}"
-  local context_json="${3:-{}}"
+  local context_json="$3"
+  [ -z "$context_json" ] && context_json='{}'
 
   local ho_id="ho_$(date +%s)_$(head -c 4 /dev/urandom | xxd -p)"
   local timestamp=$(date +%s)
