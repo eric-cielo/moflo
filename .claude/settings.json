@@ -93,7 +93,7 @@
           {
             "type": "command",
             "timeout": 2000,
-            "command": ".claude/helpers/guidance-hooks.sh route \"$TOOL_INPUT_prompt\""
+            "command": ".claude/helpers/guidance-hooks.sh route \"$TOOL_INPUT_prompt\" 2>/dev/null || true"
           },
           {
             "type": "command",
