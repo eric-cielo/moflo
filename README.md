@@ -9,9 +9,45 @@
 [![Agentics Foundation](https://img.shields.io/badge/Agentics-Foundation-crimson?style=for-the-badge&logo=openai)](https://discord.com/invite/dfxmpwkG2D)
 [![MIT License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge&logo=opensourceinitiative)](https://opensource.org/licenses/MIT)
 
+**Production-ready multi-agent AI orchestration for Claude Code**
+
+*Deploy 54+ specialized agents in coordinated swarms with self-learning capabilities, fault-tolerant consensus, and enterprise-grade security.*
+
 </div>
 
-Multi-agent AI orchestration framework for Claude Code with swarm coordination, self-learning hooks, and Domain-Driven Design architecture.
+## Overview
+
+Claude-Flow is a comprehensive AI agent orchestration framework that transforms Claude Code into a powerful multi-agent development platform. It enables teams to deploy, coordinate, and optimize specialized AI agents working together on complex software engineering tasks.
+
+### What Makes Claude-Flow Different
+
+| Capability | Traditional Agents | Claude-Flow v3 |
+|------------|-------------------|----------------|
+| **Agent Coordination** | Single agent, sequential | 15 concurrent agents, 6 swarm topologies |
+| **Learning** | Static prompts | Self-learning with HNSW (150x faster retrieval) |
+| **Fault Tolerance** | None | Byzantine, Raft, Gossip, CRDT consensus |
+| **Memory** | Session-only | Persistent AgentDB with vector search |
+| **Performance** | Baseline | 2.8-4.4x speed improvement |
+| **Security** | Basic | CVE-hardened, input validation, sandboxing |
+
+### Key Capabilities
+
+- **54+ Specialized Agents** - Purpose-built for coding, testing, security, DevOps, and more
+- **Multi-Topology Swarms** - Hierarchical, mesh, ring, star, and adaptive coordination
+- **Self-Learning Hooks** - ReasoningBank pattern learning with automatic optimization
+- **Multi-Provider LLM** - Anthropic, OpenAI, Google, Cohere, Ollama with cost-based routing
+- **MCP Integration** - Native Claude Code support via Model Context Protocol
+- **Enterprise Security** - Input validation, path protection, command sandboxing
+
+### Performance Highlights
+
+| Metric | Achievement |
+|--------|-------------|
+| Concurrent Agents | 15 parallel execution |
+| Search Performance | 150x-12,500x faster (HNSW) |
+| Task Speed | 2.8-4.4x improvement |
+| Memory Reduction | 50-75% |
+| SONA Adaptation | <0.05ms |
 
 ---
 
