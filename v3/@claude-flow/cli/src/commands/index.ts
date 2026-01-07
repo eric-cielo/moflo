@@ -33,6 +33,10 @@ import { embeddingsCommand } from './embeddings.js';
 // P0 Commands
 import { completionsCommand } from './completions.js';
 import { doctorCommand } from './doctor.js';
+// Analysis Commands
+import { analyzeCommand } from './analyze.js';
+// Q-Learning Routing Commands
+import { routeCommand } from './route.js';
 
 // Export all commands
 export { agentCommand } from './agent.js';
@@ -64,6 +68,10 @@ export { embeddingsCommand } from './embeddings.js';
 // P0 Commands
 export { completionsCommand } from './completions.js';
 export { doctorCommand } from './doctor.js';
+// Analysis Commands
+export { analyzeCommand } from './analyze.js';
+// Q-Learning Routing Commands
+export { routeCommand } from './route.js';
 
 /**
  * All available commands
@@ -99,6 +107,8 @@ export const commands: Command[] = [
   // P0 Commands
   completionsCommand,
   doctorCommand,
+  // Analysis Commands
+  analyzeCommand,
 ];
 
 /**

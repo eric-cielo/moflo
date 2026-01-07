@@ -2472,6 +2472,418 @@ function formatWorkerStatus(status: string): string {
   }
 }
 
+// ============================================================================
+// Coverage-Aware Routing Commands
+// ============================================================================
+
+// Coverage route subcommand
+const coverageRouteCommand: Command = {
+  name: 'coverage-route',
+  description: 'Route task to agents based on test coverage gaps (ruvector integration)',
+  options: [
+    {
+      name: 'task',
+      short: 't',
+      description: 'Task description to route',
+      type: 'string',
+      required: true
+    },
+    {
+      name: 'threshold',
+      description: 'Coverage threshold percentage (default: 80)',
+      type: 'number',
+      default: 80
+    },
+    {
+      name: 'no-ruvector',
+      description: 'Disable ruvector integration',
+      type: 'boolean',
+      default: false
+    }
+  ],
+  examples: [
+    { command: 'claude-flow hooks coverage-route -t "fix bug in auth"', description: 'Route with coverage awareness' },
+    { command: 'claude-flow hooks coverage-route -t "add tests" --threshold 90', description: 'Route with custom threshold' }
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const task = ctx.args[0] || ctx.flags.task as string;
+    const threshold = ctx.flags.threshold as number || 80;
+    const useRuvector = !ctx.flags['no-ruvector'];
+
+    if (!task) {
+      output.printError('Task description is required. Use --task or -t flag.');
+      return { success: false, exitCode: 1 };
+    }
+
+    const spinner = output.createSpinner('Analyzing coverage and routing task...');
+    spinner.start();
+
+    try {
+      const result = await callMCPTool<{
+        success: boolean;
+        task: string;
+        coverageAware: boolean;
+        gaps: Array<{
+          filePath: string;
+          coveragePercent: number;
+          gapType: string;
+          priority: number;
+          suggestedAgents: string[];
+          reason: string;
+        }>;
+        routing: {
+          primaryAgent: string;
+          confidence: number;
+          reason: string;
+          coverageImpact: string;
+        };
+        suggestions: string[];
+        metrics: {
+          filesAnalyzed: number;
+          totalGaps: number;
+          criticalGaps: number;
+          avgCoverage: number;
+        };
+      }>('hooks/coverage-route', {
+        task,
+        threshold,
+        useRuvector,
+      });
+
+      spinner.stop();
+
+      if (ctx.flags.format === 'json') {
+        output.printJson(result);
+        return { success: true, data: result };
+      }
+
+      output.writeln();
+      output.printBox(
+        [
+          `Agent: ${output.highlight(result.routing.primaryAgent)}`,
+          `Confidence: ${(result.routing.confidence * 100).toFixed(1)}%`,
+          `Coverage-Aware: ${result.coverageAware ? output.success('Yes') : output.dim('No coverage data')}`,
+          `Reason: ${result.routing.reason}`
+        ].join('\n'),
+        'Coverage-Aware Routing'
+      );
+
+      if (result.gaps.length > 0) {
+        output.writeln();
+        output.writeln(output.bold('Priority Coverage Gaps'));
+        output.printTable({
+          columns: [
+            { key: 'filePath', header: 'File', width: 35, format: (v) => {
+              const s = String(v);
+              return s.length > 32 ? '...' + s.slice(-32) : s;
+            }},
+            { key: 'coveragePercent', header: 'Coverage', width: 10, align: 'right', format: (v) => `${Number(v).toFixed(1)}%` },
+            { key: 'gapType', header: 'Type', width: 10 },
+            { key: 'suggestedAgents', header: 'Agent', width: 15, format: (v) => Array.isArray(v) ? v[0] || '' : String(v) }
+          ],
+          data: result.gaps.slice(0, 8)
+        });
+      }
+
+      if (result.metrics.filesAnalyzed > 0) {
+        output.writeln();
+        output.writeln(output.bold('Coverage Metrics'));
+        output.printList([
+          `Files Analyzed: ${result.metrics.filesAnalyzed}`,
+          `Total Gaps: ${result.metrics.totalGaps}`,
+          `Critical Gaps: ${result.metrics.criticalGaps}`,
+          `Average Coverage: ${result.metrics.avgCoverage.toFixed(1)}%`
+        ]);
+      }
+
+      if (result.suggestions.length > 0) {
+        output.writeln();
+        output.writeln(output.bold('Suggestions'));
+        output.printList(result.suggestions.map(s => output.dim(s)));
+      }
+
+      return { success: true, data: result };
+    } catch (error) {
+      spinner.fail('Coverage routing failed');
+      if (error instanceof MCPClientError) {
+        output.printError(`Error: ${error.message}`);
+      } else {
+        output.printError(`Unexpected error: ${String(error)}`);
+      }
+      return { success: false, exitCode: 1 };
+    }
+  }
+};
+
+// Coverage suggest subcommand
+const coverageSuggestCommand: Command = {
+  name: 'coverage-suggest',
+  description: 'Suggest coverage improvements for a path (ruvector integration)',
+  options: [
+    {
+      name: 'path',
+      short: 'p',
+      description: 'Path to analyze for coverage suggestions',
+      type: 'string',
+      required: true
+    },
+    {
+      name: 'threshold',
+      description: 'Coverage threshold percentage (default: 80)',
+      type: 'number',
+      default: 80
+    },
+    {
+      name: 'limit',
+      short: 'l',
+      description: 'Maximum number of suggestions (default: 20)',
+      type: 'number',
+      default: 20
+    }
+  ],
+  examples: [
+    { command: 'claude-flow hooks coverage-suggest -p src/', description: 'Suggest improvements for src/' },
+    { command: 'claude-flow hooks coverage-suggest -p src/services --threshold 90', description: 'Stricter threshold' }
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const path = ctx.args[0] || ctx.flags.path as string;
+    const threshold = ctx.flags.threshold as number || 80;
+    const limit = ctx.flags.limit as number || 20;
+
+    if (!path) {
+      output.printError('Path is required. Use --path or -p flag.');
+      return { success: false, exitCode: 1 };
+    }
+
+    const spinner = output.createSpinner(`Analyzing coverage for ${path}...`);
+    spinner.start();
+
+    try {
+      const result = await callMCPTool<{
+        success: boolean;
+        path: string;
+        suggestions: Array<{
+          filePath: string;
+          coveragePercent: number;
+          gapType: string;
+          priority: number;
+          suggestedAgents: string[];
+          reason: string;
+        }>;
+        summary: {
+          totalFiles: number;
+          overallLineCoverage: number;
+          overallBranchCoverage: number;
+          filesBelowThreshold: number;
+        };
+        prioritizedFiles: string[];
+        ruvectorAvailable: boolean;
+      }>('hooks/coverage-suggest', {
+        path,
+        threshold,
+        limit,
+      });
+
+      spinner.stop();
+
+      if (ctx.flags.format === 'json') {
+        output.printJson(result);
+        return { success: true, data: result };
+      }
+
+      output.writeln();
+      output.printBox(
+        [
+          `Path: ${output.highlight(result.path)}`,
+          `Files Analyzed: ${result.summary.totalFiles}`,
+          `Line Coverage: ${result.summary.overallLineCoverage.toFixed(1)}%`,
+          `Branch Coverage: ${result.summary.overallBranchCoverage.toFixed(1)}%`,
+          `Below Threshold: ${result.summary.filesBelowThreshold} files`,
+          `RuVector: ${result.ruvectorAvailable ? output.success('Available') : output.dim('Not installed')}`
+        ].join('\n'),
+        'Coverage Summary'
+      );
+
+      if (result.suggestions.length > 0) {
+        output.writeln();
+        output.writeln(output.bold('Coverage Improvement Suggestions'));
+        output.printTable({
+          columns: [
+            { key: 'filePath', header: 'File', width: 40, format: (v) => {
+              const s = String(v);
+              return s.length > 37 ? '...' + s.slice(-37) : s;
+            }},
+            { key: 'coveragePercent', header: 'Coverage', width: 10, align: 'right', format: (v) => `${Number(v).toFixed(1)}%` },
+            { key: 'gapType', header: 'Priority', width: 10 },
+            { key: 'reason', header: 'Reason', width: 25 }
+          ],
+          data: result.suggestions.slice(0, 15)
+        });
+      } else {
+        output.writeln();
+        output.printSuccess('All files meet coverage threshold!');
+      }
+
+      if (result.prioritizedFiles.length > 0) {
+        output.writeln();
+        output.writeln(output.bold('Priority Files (Top 5)'));
+        output.printList(result.prioritizedFiles.slice(0, 5).map(f => output.highlight(f)));
+      }
+
+      return { success: true, data: result };
+    } catch (error) {
+      spinner.fail('Coverage analysis failed');
+      if (error instanceof MCPClientError) {
+        output.printError(`Error: ${error.message}`);
+      } else {
+        output.printError(`Unexpected error: ${String(error)}`);
+      }
+      return { success: false, exitCode: 1 };
+    }
+  }
+};
+
+// Coverage gaps subcommand
+const coverageGapsCommand: Command = {
+  name: 'coverage-gaps',
+  description: 'List all coverage gaps with priority scoring and agent assignments',
+  options: [
+    {
+      name: 'threshold',
+      description: 'Coverage threshold percentage (default: 80)',
+      type: 'number',
+      default: 80
+    },
+    {
+      name: 'group-by-agent',
+      description: 'Group gaps by suggested agent (default: true)',
+      type: 'boolean',
+      default: true
+    },
+    {
+      name: 'critical-only',
+      description: 'Show only critical gaps',
+      type: 'boolean',
+      default: false
+    }
+  ],
+  examples: [
+    { command: 'claude-flow hooks coverage-gaps', description: 'List all coverage gaps' },
+    { command: 'claude-flow hooks coverage-gaps --critical-only', description: 'Only critical gaps' },
+    { command: 'claude-flow hooks coverage-gaps --threshold 90', description: 'Stricter threshold' }
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const threshold = ctx.flags.threshold as number || 80;
+    const groupByAgent = ctx.flags['group-by-agent'] !== false;
+    const criticalOnly = ctx.flags['critical-only'] as boolean || false;
+
+    const spinner = output.createSpinner('Analyzing project coverage gaps...');
+    spinner.start();
+
+    try {
+      const result = await callMCPTool<{
+        success: boolean;
+        gaps: Array<{
+          filePath: string;
+          coveragePercent: number;
+          gapType: string;
+          complexity: number;
+          priority: number;
+          suggestedAgents: string[];
+          reason: string;
+        }>;
+        summary: {
+          totalFiles: number;
+          overallLineCoverage: number;
+          overallBranchCoverage: number;
+          filesBelowThreshold: number;
+          coverageThreshold: number;
+        };
+        agentAssignments: Record<string, string[]>;
+        ruvectorAvailable: boolean;
+      }>('hooks/coverage-gaps', {
+        threshold,
+        groupByAgent,
+      });
+
+      spinner.stop();
+
+      // Filter if critical-only
+      const gaps = criticalOnly
+        ? result.gaps.filter(g => g.gapType === 'critical')
+        : result.gaps;
+
+      if (ctx.flags.format === 'json') {
+        output.printJson({ ...result, gaps });
+        return { success: true, data: result };
+      }
+
+      output.writeln();
+      output.printBox(
+        [
+          `Total Files: ${result.summary.totalFiles}`,
+          `Line Coverage: ${result.summary.overallLineCoverage.toFixed(1)}%`,
+          `Branch Coverage: ${result.summary.overallBranchCoverage.toFixed(1)}%`,
+          `Below ${result.summary.coverageThreshold}%: ${result.summary.filesBelowThreshold} files`,
+          `RuVector: ${result.ruvectorAvailable ? output.success('Available') : output.dim('Not installed')}`
+        ].join('\n'),
+        'Coverage Gap Analysis'
+      );
+
+      if (gaps.length > 0) {
+        output.writeln();
+        output.writeln(output.bold(`Coverage Gaps (${gaps.length} files)`));
+        output.printTable({
+          columns: [
+            { key: 'filePath', header: 'File', width: 35, format: (v) => {
+              const s = String(v);
+              return s.length > 32 ? '...' + s.slice(-32) : s;
+            }},
+            { key: 'coveragePercent', header: 'Coverage', width: 10, align: 'right', format: (v) => `${Number(v).toFixed(1)}%` },
+            { key: 'gapType', header: 'Type', width: 10, format: (v) => {
+              const t = String(v);
+              if (t === 'critical') return output.error(t);
+              if (t === 'high') return output.warning(t);
+              return t;
+            }},
+            { key: 'priority', header: 'Priority', width: 8, align: 'right' },
+            { key: 'suggestedAgents', header: 'Agent', width: 12, format: (v) => Array.isArray(v) ? v[0] || '' : String(v) }
+          ],
+          data: gaps.slice(0, 20)
+        });
+      } else {
+        output.writeln();
+        output.printSuccess('No coverage gaps found! All files meet threshold.');
+      }
+
+      if (groupByAgent && Object.keys(result.agentAssignments).length > 0) {
+        output.writeln();
+        output.writeln(output.bold('Agent Assignments'));
+        for (const [agent, files] of Object.entries(result.agentAssignments)) {
+          output.writeln();
+          output.writeln(`  ${output.highlight(agent)} (${files.length} files)`);
+          files.slice(0, 3).forEach(f => {
+            output.writeln(`    - ${output.dim(f)}`);
+          });
+          if (files.length > 3) {
+            output.writeln(`    ... and ${files.length - 3} more`);
+          }
+        }
+      }
+
+      return { success: true, data: result };
+    } catch (error) {
+      spinner.fail('Coverage gap analysis failed');
+      if (error instanceof MCPClientError) {
+        output.printError(`Error: ${error.message}`);
+      } else {
+        output.printError(`Unexpected error: ${String(error)}`);
+      }
+      return { success: false, exitCode: 1 };
+    }
+  }
+};
+
 // Worker parent command
 const workerCommand: Command = {
   name: 'worker',
@@ -2548,6 +2960,10 @@ export const hooksCommand: Command = {
     listCommand,
     intelligenceCommand,
     workerCommand,
+    // Coverage-aware routing commands
+    coverageRouteCommand,
+    coverageSuggestCommand,
+    coverageGapsCommand,
   ],
   options: [],
   examples: [
@@ -2581,7 +2997,10 @@ export const hooksCommand: Command = {
       `${output.highlight('metrics')}         - View learning metrics dashboard`,
       `${output.highlight('transfer')}        - Transfer patterns from another project`,
       `${output.highlight('list')}            - List all registered hooks`,
-      `${output.highlight('worker')}          - Background worker management (12 workers)`
+      `${output.highlight('worker')}          - Background worker management (12 workers)`,
+      `${output.highlight('coverage-route')}  - Route tasks based on coverage gaps (ruvector)`,
+      `${output.highlight('coverage-suggest')}- Suggest coverage improvements`,
+      `${output.highlight('coverage-gaps')}   - List all coverage gaps with agents`
     ]);
     output.writeln();
     output.writeln('Run "claude-flow hooks <subcommand> --help" for subcommand help');

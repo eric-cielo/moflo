@@ -20,6 +20,7 @@ import { taskTools } from './mcp-tools/task-tools.js';
 import { sessionTools } from './mcp-tools/session-tools.js';
 import { hiveMindTools } from './mcp-tools/hive-mind-tools.js';
 import { workflowTools } from './mcp-tools/workflow-tools.js';
+import { analyzeTools } from './mcp-tools/analyze-tools.js';
 
 /**
  * MCP Tool Registry
@@ -45,6 +46,7 @@ registerTools([
   ...sessionTools,
   ...hiveMindTools,
   ...workflowTools,
+  ...analyzeTools,
 ]);
 
 /**

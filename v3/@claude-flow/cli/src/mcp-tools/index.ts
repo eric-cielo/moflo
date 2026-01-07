@@ -14,3 +14,5 @@ export { taskTools } from './task-tools.js';
 export { sessionTools } from './session-tools.js';
 export { hiveMindTools } from './hive-mind-tools.js';
 export { workflowTools } from './workflow-tools.js';
+export { coverageRouterTools } from '../ruvector/coverage-tools.js';
+export { analyzeTools } from './analyze-tools.js';
