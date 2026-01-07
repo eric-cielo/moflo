@@ -681,6 +681,9 @@ export class QLearningRouter {
 
   // Private methods
 
+  /**
+   * Legacy hash function (kept for backward compatibility)
+   */
   private hashState(context: string): string {
     // Simple hash for context string
     let hash = 0;
@@ -690,6 +693,134 @@ export class QLearningRouter {
       hash = hash & hash; // Convert to 32-bit integer
     }
     return `state_${hash}`;
+  }
+
+  /**
+   * Optimized state hashing using feature extraction
+   * Creates a more semantic representation of the task context
+   */
+  private hashStateOptimized(context: string): string {
+    // Check feature hash cache first
+    if (this.featureHashCache.has(context)) {
+      const cached = this.featureHashCache.get(context)!;
+      return this.featureVectorToKey(cached);
+    }
+
+    // Extract features from context
+    const features = this.extractFeatures(context);
+
+    // Cache the feature vector
+    if (this.featureHashCache.size < 1000) { // Limit cache size
+      this.featureHashCache.set(context, features);
+    }
+
+    return this.featureVectorToKey(features);
+  }
+
+  /**
+   * Extract feature vector from task context
+   * Uses keyword matching and n-gram hashing
+   */
+  private extractFeatures(context: string): Float32Array {
+    const features = new Float32Array(this.config.stateSpaceDim);
+    const lowerContext = context.toLowerCase();
+    const words = lowerContext.split(/\s+/);
+
+    // Feature 1-32: Keyword presence (binary features)
+    for (let i = 0; i < FEATURE_KEYWORDS.length && i < 32; i++) {
+      if (lowerContext.includes(FEATURE_KEYWORDS[i])) {
+        features[i] = 1.0;
+      }
+    }
+
+    // Feature 33-40: Context length buckets
+    const lengthBucket = Math.min(Math.floor(context.length / 50), 7);
+    features[32 + lengthBucket] = 1.0;
+
+    // Feature 41-48: Word count buckets
+    const wordBucket = Math.min(Math.floor(words.length / 5), 7);
+    features[40 + wordBucket] = 1.0;
+
+    // Feature 49-56: File extension hints
+    const extPatterns = ['.ts', '.js', '.py', '.go', '.rs', '.java', '.md', '.json'];
+    for (let i = 0; i < extPatterns.length; i++) {
+      if (lowerContext.includes(extPatterns[i])) {
+        features[48 + i] = 1.0;
+      }
+    }
+
+    // Feature 57-64: N-gram hash features (for capturing unique patterns)
+    for (let i = 0; i < words.length - 1 && i < 8; i++) {
+      const bigram = `${words[i]}_${words[i + 1]}`;
+      const hash = this.murmurhash3(bigram) % 8;
+      features[56 + hash] += 0.25;
+    }
+
+    // Normalize features
+    let norm = 0;
+    for (let i = 0; i < features.length; i++) {
+      norm += features[i] * features[i];
+    }
+    norm = Math.sqrt(norm) || 1;
+    for (let i = 0; i < features.length; i++) {
+      features[i] /= norm;
+    }
+
+    return features;
+  }
+
+  /**
+   * Convert feature vector to state key
+   * Uses locality-sensitive hashing for similar contexts
+   */
+  private featureVectorToKey(features: Float32Array): string {
+    // Quantize features to create discrete state
+    const quantized: number[] = [];
+    for (let i = 0; i < features.length; i += 4) {
+      let bucket = 0;
+      for (let j = 0; j < 4 && i + j < features.length; j++) {
+        if (features[i + j] > 0.25) {
+          bucket |= (1 << j);
+        }
+      }
+      quantized.push(bucket);
+    }
+
+    // Create hash from quantized values
+    let hash = 0;
+    for (let i = 0; i < quantized.length; i++) {
+      hash = ((hash << 4) ^ quantized[i]) & 0x7fffffff;
+    }
+
+    return `fstate_${hash.toString(36)}`;
+  }
+
+  /**
+   * MurmurHash3 32-bit implementation for n-gram hashing
+   */
+  private murmurhash3(str: string): number {
+    let h1 = 0xdeadbeef;
+    const c1 = 0xcc9e2d51;
+    const c2 = 0x1b873593;
+
+    for (let i = 0; i < str.length; i++) {
+      let k1 = str.charCodeAt(i);
+      k1 = Math.imul(k1, c1);
+      k1 = (k1 << 15) | (k1 >>> 17);
+      k1 = Math.imul(k1, c2);
+      h1 ^= k1;
+      h1 = (h1 << 13) | (h1 >>> 19);
+      h1 = Math.imul(h1, 5) + 0xe6546b64;
+    }
+
+    h1 ^= str.length;
+    h1 ^= h1 >>> 16;
+    h1 = Math.imul(h1, 0x85ebca6b);
+    h1 ^= h1 >>> 13;
+    h1 = Math.imul(h1, 0xc2b2ae35);
+    h1 ^= h1 >>> 16;
+
+    return h1 >>> 0;
   }
 
   private getQValues(stateKey: string): number[] {
