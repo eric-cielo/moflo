@@ -223,14 +223,14 @@ const diffCommand: Command = {
             { key: 'value', header: 'Value', width: 40 },
           ],
           data: [
-            { field: 'Category', value: result.classification.category },
-            { field: 'Subcategory', value: result.classification.subcategory || '-' },
-            { field: 'Confidence', value: `${(result.classification.confidence * 100).toFixed(0)}%` },
+            { field: 'Category', value: classification.category },
+            { field: 'Subcategory', value: classification.subcategory || '-' },
+            { field: 'Confidence', value: `${(classification.confidence * 100).toFixed(0)}%` },
           ],
         });
 
         output.writeln();
-        output.writeln(output.dim(`Reasoning: ${result.classification.reasoning}`));
+        output.writeln(output.dim(`Reasoning: ${classification.reasoning}`));
       }
 
       // Reviewers
