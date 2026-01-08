@@ -130,7 +130,8 @@ async function main() {
   console.log('▶ Test 8: Get Category Statistics');
   try {
     const stats = getCategoryStats(registry);
-    console.log(`  ✅ Found ${stats.length} categories with stats`);
+    const count = Array.isArray(stats) ? stats.length : Object.keys(stats).length;
+    console.log(`  ✅ Found ${count} categories with stats`);
     passed++;
   } catch (e) {
     console.log(`  ❌ Failed: ${(e as Error).message}`);
