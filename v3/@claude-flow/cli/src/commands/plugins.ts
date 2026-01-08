@@ -563,39 +563,156 @@ const createCommand: Command = {
   },
 };
 
-// Main plugins command
+// Search subcommand - Search IPFS registry
+const searchCommand: Command = {
+  name: 'search',
+  description: 'Search plugins in the IPFS registry',
+  options: [
+    { name: 'query', short: 'q', type: 'string', description: 'Search query', required: true },
+    { name: 'category', short: 'c', type: 'string', description: 'Filter by category' },
+    { name: 'type', short: 't', type: 'string', description: 'Filter by plugin type' },
+    { name: 'verified', short: 'v', type: 'boolean', description: 'Show only verified plugins' },
+    { name: 'limit', short: 'l', type: 'number', description: 'Maximum results', default: 20 },
+    { name: 'registry', short: 'r', type: 'string', description: 'Registry to use' },
+  ],
+  examples: [
+    { command: 'claude-flow plugins search -q neural', description: 'Search for neural plugins' },
+    { command: 'claude-flow plugins search -q security --verified', description: 'Search verified security plugins' },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const query = ctx.flags.query as string;
+    const category = ctx.flags.category as string;
+    const type = ctx.flags.type as string;
+    const verified = ctx.flags.verified as boolean;
+    const limit = (ctx.flags.limit as number) || 20;
+    const registryName = ctx.flags.registry as string;
+
+    if (!query) {
+      output.printError('Search query is required');
+      return { success: false, exitCode: 1 };
+    }
+
+    const spinner = output.createSpinner({ text: 'Searching plugin registry...', spinner: 'dots' });
+    spinner.start();
+
+    try {
+      const discovery = createPluginDiscoveryService();
+      const result = await discovery.discoverRegistry(registryName);
+
+      if (!result.success || !result.registry) {
+        spinner.fail('Failed to discover registry');
+        return { success: false, exitCode: 1 };
+      }
+
+      const searchOptions: PluginSearchOptions = {
+        query,
+        category,
+        type: type as any,
+        verified,
+        limit,
+        sortBy: 'downloads',
+        sortOrder: 'desc',
+      };
+
+      const searchResult = searchPlugins(result.registry, searchOptions);
+      spinner.succeed(`Found ${searchResult.total} plugins matching "${query}"`);
+
+      output.writeln();
+      output.writeln(output.bold(`Search Results: "${query}"`));
+      output.writeln(output.dim('─'.repeat(70)));
+
+      if (searchResult.plugins.length === 0) {
+        output.writeln(output.dim('No plugins found matching your query'));
+        output.writeln();
+        output.writeln('Suggestions:');
+        const suggestions = getPluginSearchSuggestions(result.registry, query.slice(0, 3));
+        if (suggestions.length > 0) {
+          output.printList(suggestions.slice(0, 5));
+        } else {
+          output.writeln(output.dim('  Try a different search term'));
+        }
+        return { success: true, data: searchResult };
+      }
+
+      if (ctx.flags.format === 'json') {
+        output.printJson(searchResult);
+        return { success: true, data: searchResult };
+      }
+
+      output.printTable({
+        columns: [
+          { key: 'name', header: 'Plugin', width: 26 },
+          { key: 'description', header: 'Description', width: 35 },
+          { key: 'downloads', header: 'Downloads', width: 10, align: 'right' },
+        ],
+        data: searchResult.plugins.map(p => ({
+          name: p.verified ? `✓ ${p.name}` : p.name,
+          description: p.description.slice(0, 33) + (p.description.length > 33 ? '...' : ''),
+          downloads: p.downloads.toLocaleString(),
+        })),
+      });
+
+      output.writeln();
+      output.writeln(output.dim(`Showing ${searchResult.plugins.length} of ${searchResult.total} results`));
+      if (searchResult.hasMore) {
+        output.writeln(output.dim(`Use --limit to see more results`));
+      }
+
+      return { success: true, data: searchResult };
+    } catch (error) {
+      spinner.fail('Search failed');
+      output.printError(`Error: ${String(error)}`);
+      return { success: false, exitCode: 1 };
+    }
+  },
+};
+
+// Main plugins command - Now with IPFS-based registry
 export const pluginsCommand: Command = {
   name: 'plugins',
-  description: 'Plugin management, installation, and lifecycle',
-  subcommands: [listCommand, installCommand, uninstallCommand, toggleCommand, infoCommand, createCommand],
+  description: 'Plugin management with IPFS-based decentralized registry',
+  subcommands: [listCommand, searchCommand, installCommand, uninstallCommand, toggleCommand, infoCommand, createCommand],
   examples: [
-    { command: 'claude-flow plugins list', description: 'List all plugins' },
-    { command: 'claude-flow plugins install -n my-plugin', description: 'Install a plugin' },
+    { command: 'claude-flow plugins list', description: 'List plugins from IPFS registry' },
+    { command: 'claude-flow plugins search -q neural', description: 'Search for plugins' },
+    { command: 'claude-flow plugins install -n community-analytics', description: 'Install from IPFS' },
     { command: 'claude-flow plugins create -n my-plugin', description: 'Create new plugin' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
     output.writeln(output.bold('Claude Flow Plugin System'));
-    output.writeln(output.dim('Extensible plugin architecture'));
+    output.writeln(output.dim('Decentralized plugin marketplace via IPFS'));
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([
-      'list      - List installed and available plugins',
-      'install   - Install a plugin from registry or local path',
-      'uninstall - Remove an installed plugin',
-      'toggle    - Enable or disable a plugin',
-      'info      - Show detailed plugin information',
-      'create    - Scaffold a new plugin project',
+      `${output.highlight('list')}      - List plugins from IPFS registry`,
+      `${output.highlight('search')}    - Search plugins by query`,
+      `${output.highlight('install')}   - Install a plugin from IPFS or local path`,
+      `${output.highlight('uninstall')} - Remove an installed plugin`,
+      `${output.highlight('toggle')}    - Enable or disable a plugin`,
+      `${output.highlight('info')}      - Show detailed plugin information`,
+      `${output.highlight('create')}    - Scaffold a new plugin project`,
     ]);
     output.writeln();
-    output.writeln('Core Plugins:');
+    output.writeln(output.bold('IPFS-Based Features:'));
     output.printList([
-      '@claude-flow/neural     - Neural patterns and inference',
-      '@claude-flow/security   - Security scanning and CVE detection',
-      '@claude-flow/embeddings - Vector embeddings service',
-      '@claude-flow/claims     - Claims-based authorization',
+      'Decentralized registry via IPNS for discoverability',
+      'Content-addressed storage for integrity verification',
+      'Ed25519 signatures for plugin verification',
+      'Trust levels: unverified, community, verified, official',
+      'Security audit tracking and vulnerability reporting',
     ]);
     output.writeln();
+    output.writeln(output.bold('Official Plugins:'));
+    output.printList([
+      '@claude-flow/neural     - Neural patterns and inference (WASM SIMD)',
+      '@claude-flow/security   - Security scanning and CVE detection',
+      '@claude-flow/embeddings - Vector embeddings with hyperbolic support',
+      '@claude-flow/claims     - Claims-based authorization',
+      '@claude-flow/performance- Performance profiling and benchmarks',
+    ]);
+    output.writeln();
+    output.writeln(output.dim('Run "claude-flow plugins list --official" to see all official plugins'));
     output.writeln(output.dim('Created with ❤️ by ruv.io'));
     return { success: true };
   },
