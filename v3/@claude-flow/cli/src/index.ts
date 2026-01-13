@@ -475,6 +475,11 @@ export {
   dequantizeInt8,
   quantizedCosineSim,
   getQuantizationStats,
+  // Flash Attention-style batch operations
+  batchCosineSim,
+  softmaxAttention,
+  topKIndices,
+  flashAttentionSearch,
   type MemoryInitResult,
 } from './memory/memory-initializer.js';
 
