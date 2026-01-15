@@ -250,14 +250,17 @@ Smart routing skips expensive LLM calls when possible. Simple edits use WASM (fr
 |------------|-------------------|---------------------------|
 | **Agent Collaboration** | Agents work in isolation, no shared context | Agents collaborate via swarms with shared memory and consensus |
 | **Coordination** | Manual orchestration between tasks | Queen-led hierarchy with 5 consensus algorithms (Raft, Byzantine, Gossip) |
+| **Hive Mind** | ⛔ Not available | 🐝 Queen-led swarms with collective intelligence, 3 queen types, 8 worker types |
+| **Consensus** | ⛔ No multi-agent decisions | Byzantine fault-tolerant voting (f < n/3), weighted, majority |
 | **Memory** | Session-only, no persistence | HNSW vector memory with 150x-12,500x faster retrieval |
+| **Collective Memory** | ⛔ No shared knowledge | Shared knowledge base with LRU cache, SQLite persistence, 8 memory types |
 | **Learning** | Static behavior, no adaptation | SONA self-learning with <0.05ms adaptation, improves over time |
 | **Task Routing** | You decide which agent to use | Intelligent routing based on learned patterns (89% accuracy) |
 | **Complex Tasks** | Manual breakdown required | Automatic decomposition across 5 domains (Security, Core, Integration, Support) |
 | **Background Workers** | Nothing runs automatically | 12 context-triggered workers auto-dispatch on file changes, patterns, sessions |
 | **LLM Provider** | Anthropic only | 6 providers with automatic failover and cost-based routing (85% savings) |
 | **Security** | Standard protections | CVE-hardened with bcrypt, input validation, path traversal prevention |
-| **Performance** | Baseline | 2.8-4.4x faster tasks, 4-32x memory reduction via quantization |
+| **Performance** | Baseline | 2.8-4.4x faster tasks, 10-20x faster swarm spawning, 84.8% SWE-Bench |
 
 ## Quick Start
 
