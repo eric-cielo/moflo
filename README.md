@@ -43,7 +43,7 @@ npx claude-flow@v3alpha init
 
 🧠 **Learns From Your Workflow** - The system remembers what works. Successful patterns are stored and reused, routing similar tasks to the best-performing agents. Gets smarter over time.
 
-🔌 **Works With Any LLM** - Switch between Claude, GPT-4, Gemini, Cohere, or local models like Llama. Automatic failover if one provider is unavailable. Smart routing picks the cheapest option that meets quality requirements.
+🔌 **Works With Any LLM** - Switch between Claude, GPT, Gemini, Cohere, or local models like Llama. Automatic failover if one provider is unavailable. Smart routing picks the cheapest option that meets quality requirements.
 
 ⚡ **Plugs Into Claude Code** - Native integration via MCP (Model Context Protocol). Use claude-flow commands directly in your Claude Code sessions with full tool access.
 
@@ -504,6 +504,262 @@ flowchart TB
         Block --> Log
         Log --> Update[Update Model]
     end
+```
+
+</details>
+
+---
+
+<details>
+<summary><h2>🔌 MCP Setup — Connect Claude-Flow to Any AI Environment</h2></summary>
+
+Claude-Flow runs as an MCP (Model Context Protocol) server, allowing you to connect it to any MCP-compatible AI client. This means you can use Claude-Flow's 54+ agents, swarm coordination, and self-learning capabilities from Claude Desktop, VS Code, Cursor, Windsurf, ChatGPT, and more.
+
+### Quick Add Command
+
+```bash
+# Add Claude-Flow MCP server to any environment
+npx claude-flow@v3alpha mcp add
+```
+
+---
+
+<details open>
+<summary>🖥️ <strong>Claude Desktop</strong></summary>
+
+**Config Location:**
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+**Access:** Claude → Settings → Developers → Edit Config
+
+```json
+{
+  "mcpServers": {
+    "claude-flow": {
+      "command": "npx",
+      "args": ["claude-flow@v3alpha", "mcp", "start"],
+      "env": {
+        "ANTHROPIC_API_KEY": "sk-ant-..."
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving. Look for the MCP indicator (hammer icon) in the input box.
+
+*Sources: [Claude Help Center](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop), [Anthropic Desktop Extensions](https://www.anthropic.com/engineering/desktop-extensions)*
+
+</details>
+
+<details>
+<summary>⌨️ <strong>Claude Code (CLI)</strong></summary>
+
+```bash
+# Add via CLI (recommended)
+claude mcp add claude-flow -- npx claude-flow@v3alpha mcp start
+
+# Or add with environment variables
+claude mcp add claude-flow \
+  --env ANTHROPIC_API_KEY=sk-ant-... \
+  -- npx claude-flow@v3alpha mcp start
+
+# Verify installation
+claude mcp list
+```
+
+*Sources: [Claude Code MCP Docs](https://code.claude.com/docs/en/mcp)*
+
+</details>
+
+<details>
+<summary>💻 <strong>VS Code</strong></summary>
+
+**Requires:** VS Code 1.102+ (MCP support is GA)
+
+**Method 1: Command Palette**
+1. Press `Cmd+Shift+P` (Mac) / `Ctrl+Shift+P` (Windows)
+2. Run `MCP: Add Server`
+3. Enter server details
+
+**Method 2: Workspace Config**
+
+Create `.vscode/mcp.json` in your project:
+
+```json
+{
+  "mcpServers": {
+    "claude-flow": {
+      "command": "npx",
+      "args": ["claude-flow@v3alpha", "mcp", "start"],
+      "env": {
+        "ANTHROPIC_API_KEY": "sk-ant-..."
+      }
+    }
+  }
+}
+```
+
+*Sources: [VS Code MCP Docs](https://code.visualstudio.com/docs/copilot/customization/mcp-servers), [MCP Integration Guides](https://mcpez.com/integrations)*
+
+</details>
+
+<details>
+<summary>🎯 <strong>Cursor IDE</strong></summary>
+
+**Method 1: One-Click** (if available in Cursor MCP marketplace)
+
+**Method 2: Manual Config**
+
+Create `.cursor/mcp.json` in your project (or global config):
+
+```json
+{
+  "mcpServers": {
+    "claude-flow": {
+      "command": "npx",
+      "args": ["claude-flow@v3alpha", "mcp", "start"],
+      "env": {
+        "ANTHROPIC_API_KEY": "sk-ant-..."
+      }
+    }
+  }
+}
+```
+
+**Important:** Cursor must be in **Agent Mode** (not Ask Mode) to access MCP tools. Cursor supports up to 40 MCP tools.
+
+*Sources: [Cursor MCP Docs](https://docs.cursor.com/context/model-context-protocol), [Cursor Directory](https://cursor.directory/mcp)*
+
+</details>
+
+<details>
+<summary>🏄 <strong>Windsurf IDE</strong></summary>
+
+**Config Location:** `~/.codeium/windsurf/mcp_config.json`
+
+**Access:** Windsurf Settings → Cascade → MCP Servers, or click the hammer icon in Cascade panel
+
+```json
+{
+  "mcpServers": {
+    "claude-flow": {
+      "command": "npx",
+      "args": ["claude-flow@v3alpha", "mcp", "start"],
+      "env": {
+        "ANTHROPIC_API_KEY": "sk-ant-..."
+      }
+    }
+  }
+}
+```
+
+Click **Refresh** in the MCP settings to connect. Windsurf supports up to 100 MCP tools.
+
+*Sources: [Windsurf MCP Tutorial](https://windsurf.com/university/tutorials/configuring-first-mcp-server), [Windsurf Cascade Docs](https://docs.windsurf.com/windsurf/cascade/mcp)*
+
+</details>
+
+<details>
+<summary>🤖 <strong>ChatGPT</strong></summary>
+
+**Requires:** ChatGPT Pro or Plus subscription with Developer Mode enabled
+
+**Setup:**
+1. Go to **Settings → Connectors → Advanced**
+2. Enable **Developer Mode** (beta)
+3. Add your MCP Server in the **Connectors** tab
+
+**Remote Server Setup:**
+
+For ChatGPT, you need a remote MCP server (not local stdio). Deploy claude-flow to a server with HTTP transport:
+
+```bash
+# Start with HTTP transport
+npx claude-flow@v3alpha mcp start --transport http --port 3000
+```
+
+Then add the server URL in ChatGPT Connectors settings.
+
+*Sources: [OpenAI MCP Docs](https://platform.openai.com/docs/mcp), [Docker MCP for ChatGPT](https://www.docker.com/blog/add-mcp-server-to-chatgpt/)*
+
+</details>
+
+<details>
+<summary>🧪 <strong>Google AI Studio</strong></summary>
+
+Google AI Studio supports MCP natively since May 2025, with managed MCP servers for Google services (Maps, BigQuery, etc.) launched December 2025.
+
+**Using MCP SuperAssistant Extension:**
+1. Install [MCP SuperAssistant](https://chrome.google.com/webstore) Chrome extension
+2. Configure your claude-flow MCP server
+3. Use with Google AI Studio, Gemini, and other AI platforms
+
+**Native SDK Integration:**
+
+```javascript
+import { GoogleGenAI } from '@google/genai';
+
+const ai = new GoogleGenAI({ apiKey: 'YOUR_API_KEY' });
+
+// MCP definitions are natively supported in the Gen AI SDK
+const mcpConfig = {
+  servers: [{
+    name: 'claude-flow',
+    command: 'npx',
+    args: ['claude-flow@v3alpha', 'mcp', 'start']
+  }]
+};
+```
+
+*Sources: [Google AI Studio MCP](https://developers.googleblog.com/en/google-ai-studio-native-code-generation-agentic-tools-upgrade/), [Google Cloud MCP Announcement](https://cloud.google.com/blog/products/ai-machine-learning/announcing-official-mcp-support-for-google-services)*
+
+</details>
+
+<details>
+<summary>🧠 <strong>JetBrains IDEs</strong></summary>
+
+JetBrains AI Assistant supports MCP for IntelliJ IDEA, PyCharm, WebStorm, and other JetBrains IDEs.
+
+**Setup:**
+1. Open **Settings → Tools → AI Assistant → MCP**
+2. Click **Add Server**
+3. Configure:
+
+```json
+{
+  "name": "claude-flow",
+  "command": "npx",
+  "args": ["claude-flow@v3alpha", "mcp", "start"]
+}
+```
+
+*Sources: [JetBrains AI Assistant MCP](https://www.jetbrains.com/help/ai-assistant/mcp.html)*
+
+</details>
+
+### Environment Variables
+
+All configurations support these environment variables:
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `ANTHROPIC_API_KEY` | Your Anthropic API key | Yes (for Claude models) |
+| `OPENAI_API_KEY` | OpenAI API key | Optional (for GPT models) |
+| `GOOGLE_API_KEY` | Google AI API key | Optional (for Gemini) |
+| `CLAUDE_FLOW_LOG_LEVEL` | Logging level (debug, info, warn, error) | Optional |
+
+### Security Best Practices
+
+⚠️ **Never hardcode API keys in config files checked into version control.**
+
+```bash
+# Use environment variables instead
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Or use a .env file (add to .gitignore)
+echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
 ```
 
 </details>
