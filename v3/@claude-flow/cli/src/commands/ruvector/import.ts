@@ -183,12 +183,12 @@ export const importCommand: Command = {
     { command: 'claude-flow ruvector import --input data.json --container my-postgres', description: 'Import using custom container' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const inputFile = ctx.options.input as string | undefined;
-    const fromMemory = ctx.options['from-memory'] as boolean;
-    const outputFile = ctx.options.output as string | undefined;
-    const batchSize = ctx.options['batch-size'] as number;
-    const containerName = ctx.options.container as string;
-    const verbose = ctx.options.verbose as boolean;
+    const inputFile = ctx.flags.input as string | undefined;
+    const fromMemory = ctx.flags['from-memory'] as boolean;
+    const outputFile = ctx.flags.output as string | undefined;
+    const batchSize = (ctx.flags['batch-size'] as number) || 100;
+    const containerName = (ctx.flags.container as string) || 'ruvector-postgres';
+    const verbose = ctx.flags.verbose as boolean;
 
     output.writeln();
     output.writeln(output.bold('RuVector PostgreSQL Import'));
