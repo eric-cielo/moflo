@@ -993,7 +993,7 @@ Comprehensive capabilities for enterprise-grade AI agent orchestration.
 Comprehensive feature set for enterprise-grade AI agent orchestration.
 
 <details open>
-<summary>🤖 <strong>Agent Ecosystem</strong> — 54+ specialized agents across 8 categories</summary>
+<summary>🤖 <strong>Agent Ecosystem</strong> — 60+ specialized agents across 8 categories</summary>
 
 Pre-built agents for every development task, from coding to security audits.
 
