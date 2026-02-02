@@ -68,7 +68,7 @@ const compileCommand: Command = {
         output.writeln(output.dim('Rule summary:'));
         for (const rule of bundle.manifest.rules.slice(0, 10)) {
           const risk = rule.riskClass === 'critical' ? output.error(rule.riskClass) :
-            rule.riskClass === 'high' ? output.yellow(rule.riskClass) :
+            rule.riskClass === 'high' ? output.warning(rule.riskClass) :
               output.dim(rule.riskClass);
           output.writeln(`  ${output.bold(rule.id)} [${risk}] ${rule.text.slice(0, 60)}${rule.text.length > 60 ? '...' : ''}`);
         }
@@ -230,7 +230,7 @@ const gatesCommand: Command = {
       }
 
       if (results.length === 0) {
-        output.writeln(output.yellow('No input provided. Use -c, --content, or -t to evaluate.'));
+        output.writeln(output.warning('No input provided. Use -c, --content, or -t to evaluate.'));
         return { success: false, message: 'No input' };
       }
 
@@ -305,7 +305,7 @@ const statusCommand: Command = {
       if (jsonOutput) {
         output.writeln(JSON.stringify(statusData, null, 2));
       } else {
-        output.writeln(`  Root guidance:  ${rootExists ? output.success('CLAUDE.md found') : output.yellow('CLAUDE.md not found')}`);
+        output.writeln(`  Root guidance:  ${rootExists ? output.success('CLAUDE.md found') : output.warning('CLAUDE.md not found')}`);
         output.writeln(`  Local overlay:  ${localExists ? output.success('CLAUDE.local.md found') : output.dim('not configured')}`);
         output.writeln(`  Data directory: ${statusData.dataDir === 'exists' ? output.success('exists') : output.dim('not created')}`);
 
@@ -440,7 +440,7 @@ const optimizeCommand: Command = {
         output.writeln(`  After:  ${result.benchmark.after.compositeScore}/100 (${result.benchmark.after.grade})`);
         output.writeln(`  Delta:  ${result.benchmark.delta >= 0 ? '+' : ''}${result.benchmark.delta}`);
       } else {
-        output.writeln(output.yellow('Dry run - use --apply to write changes.'));
+        output.writeln(output.warning('Dry run - use --apply to write changes.'));
         output.writeln(`  Projected: ${analysis.compositeScore} → ${result.benchmark.after.compositeScore}/100`);
       }
 
@@ -559,7 +559,7 @@ const abTestCommand: Command = {
       } else if (delta < -0.05) {
         output.writeln(output.error(`Config B is worse (${delta} composite delta)`));
       } else {
-        output.writeln(output.yellow(`No significant difference (${delta} composite delta)`));
+        output.writeln(output.warning(`No significant difference (${delta} composite delta)`));
       }
 
       if (report.categoryShift) {
