@@ -176,7 +176,12 @@ export interface RuntimeConfig {
   enableHNSW: boolean;
   /** Enable neural learning */
   enableNeural: boolean;
+  /** CLAUDE.md template variant */
+  claudeMdTemplate?: ClaudeMdTemplate;
 }
+
+/** Template variants for generated CLAUDE.md files */
+export type ClaudeMdTemplate = 'minimal' | 'standard' | 'full' | 'security' | 'performance' | 'solo';
 
 /**
  * Embeddings configuration
