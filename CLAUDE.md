@@ -21,6 +21,25 @@
 - Use `/scripts` for utility scripts
 - Use `/examples` for example code
 
+## Project Architecture
+
+- Follow Domain-Driven Design with bounded contexts
+- Keep files under 500 lines
+- Use typed interfaces for all public APIs
+- Prefer TDD London School (mock-first) for new code
+- Use event sourcing for state changes
+- Ensure input validation at system boundaries
+
+### Key Packages
+
+| Package | Path | Purpose |
+|---------|------|---------|
+| `@claude-flow/cli` | `v3/@claude-flow/cli/` | CLI entry point (26 commands) |
+| `@claude-flow/guidance` | `v3/@claude-flow/guidance/` | Governance control plane |
+| `@claude-flow/hooks` | `v3/@claude-flow/hooks/` | 17 hooks + 12 workers |
+| `@claude-flow/memory` | `v3/@claude-flow/memory/` | AgentDB + HNSW search |
+| `@claude-flow/security` | `v3/@claude-flow/security/` | Input validation, CVE remediation |
+
 ## Concurrency: 1 MESSAGE = ALL RELATED OPERATIONS
 
 - All operations MUST be concurrent/parallel in a single message
