@@ -691,10 +691,10 @@ export const LIVE_REGISTRY_CID = 'NEW_CID_FROM_PINATA';
 6. **Also update demo registry** in discovery.ts `demoPluginRegistry` for offline fallback
 
 ### Security Rules
-- **NEVER hardcode API keys** in scripts or source files
-- **NEVER commit .env** (already in .gitignore)
-- **Always source credentials** from environment at runtime
-- **Delete temporary scripts** after one-time uploads
+- NEVER hardcode API keys in scripts or source files
+- NEVER commit .env (already in .gitignore)
+- Always source credentials from environment at runtime
+- Always delete temporary scripts after one-time uploads
 
 ### Verification
 ```bash
