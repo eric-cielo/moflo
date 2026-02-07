@@ -18,11 +18,11 @@
 ╚═══════════════════════════════════════════════════════════════════════════╝
 ```
 
-**Workflow:**
-1. `npx claude-flow memory search --query "task keywords"` → LEARN from past patterns
-2. `npx claude-flow swarm init` → coordination record created (instant)
+**Workflow (Use MCP Tools):**
+1. `memory_search(query="task keywords")` → LEARN from past patterns (score > 0.7 = use it)
+2. `swarm_init(topology="hierarchical")` → coordination record (instant)
 3. **YOU write the code / run the commands** ← THIS IS WHERE WORK HAPPENS
-4. `npx claude-flow memory store --key "pattern-x" --value "what worked" --namespace patterns` → REMEMBER for next time
+4. `memory_store(key="pattern-x", value="what worked", namespace="patterns")` → REMEMBER for next time
 
 ---
 
