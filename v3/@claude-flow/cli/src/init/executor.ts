@@ -1096,6 +1096,21 @@ memory:
   enableHNSW: ${options.runtime.enableHNSW}
   persistPath: .claude-flow/data
   cacheSize: 100
+  # ADR-049: Self-Learning Memory
+  learningBridge:
+    enabled: ${options.runtime.enableLearningBridge ?? options.runtime.enableNeural}
+    sonaMode: balanced
+    confidenceDecayRate: 0.005
+    accessBoostAmount: 0.03
+    consolidationThreshold: 10
+  memoryGraph:
+    enabled: ${options.runtime.enableMemoryGraph ?? true}
+    pageRankDamping: 0.85
+    maxNodes: 5000
+    similarityThreshold: 0.8
+  agentScopes:
+    enabled: ${options.runtime.enableAgentScopes ?? true}
+    defaultScope: project
 
 neural:
   enabled: ${options.runtime.enableNeural}
