@@ -59,6 +59,14 @@ This directory contains all Architecture Decision Records for Claude-Flow v3.
 | ADR-030 | Agentic QE Integration | ✅ Implemented | [ADR-030-agentic-qe-integration.md](./ADR-030-agentic-qe-integration.md) |
 | ADR-031 | Prime Radiant Integration | ✅ Implemented | [ADR-031-prime-radiant-integration.md](./ADR-031-prime-radiant-integration.md) |
 
+### Packaging & Branding (ADR-042 to ADR-048)
+
+| ADR | Title | Status | File |
+|-----|-------|--------|------|
+| ADR-046 | Dual Umbrella: claude-flow + ruvflow | Accepted | [ADR-046-ruvflow-rebrand.md](./ADR-046-ruvflow-rebrand.md) |
+| ADR-047 | Fast Mode Integration | Proposed | [ADR-047-fast-mode-integration.md](./ADR-047-fast-mode-integration.md) |
+| ADR-048 | Auto Memory Integration | Accepted | [ADR-048-auto-memory-integration.md](./ADR-048-auto-memory-integration.md) |
+
 ### RuVector WASM Plugin Architecture (ADR-032 to ADR-041)
 
 | ADR | Title | Category | Status | File |
