@@ -212,6 +212,10 @@ export class AutoMemoryBridge extends EventEmitter {
   private syncedInsightKeys = new Set<string>();
   /** Monotonic counter to prevent key collisions within the same ms */
   private insightCounter = 0;
+  /** Optional learning bridge (ADR-049) */
+  private learningBridge?: LearningBridge;
+  /** Optional knowledge graph (ADR-049) */
+  private memoryGraph?: MemoryGraph;
 
   constructor(backend: IMemoryBackend, config: AutoMemoryBridgeConfig = {}) {
     super();
