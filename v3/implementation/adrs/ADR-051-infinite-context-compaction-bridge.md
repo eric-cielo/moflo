@@ -361,11 +361,14 @@ function createHashEmbedding(text, dimensions = 768) {
 
 ## Migration Path
 
-### Phase 1: SQLite + Proactive Archiving (Current - Implemented)
+### Phase 1: SQLite + Proactive Archiving (COMPLETE - Running in Production)
 - better-sqlite3 with WAL mode, indexed queries, ACID transactions
 - Proactive archiving on every user prompt via UserPromptSubmit hook
 - PreCompact as safety net, SessionStart for restoration
 - Dedup via SHA-256 content hash + indexed lookup
+- Importance-ranked smart retrieval with access tracking
+- Auto-pruning of never-accessed entries after configurable retention period
+- Custom compact instructions guiding Claude's compaction summary
 
 ### Phase 2: RuVector PostgreSQL (When configured)
 - Set `RUVECTOR_HOST`, `RUVECTOR_DATABASE`, `RUVECTOR_USER`, `RUVECTOR_PASSWORD`
