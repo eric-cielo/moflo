@@ -1454,9 +1454,18 @@ async function doPreCompact() {
   const instructions = buildCompactInstructions(chunks, sessionId, archiveResult);
   process.stdout.write(instructions);
 
-  // Exit code 2 blocks compaction entirely (opt-in via env var)
-  // Use case: when proactive archiving has already captured everything
-  // and the user prefers to manually trigger compaction
+  // Context Autopilot: ALWAYS block compaction — we manage context ourselves
+  if (AUTOPILOT_ENABLED) {
+    const state = loadAutopilotState();
+    const pct = state.lastPercentage || 0;
+    const bar = buildProgressBar(pct);
+    process.stderr.write(
+      `[ContextAutopilot] ${bar} ${(pct * 100).toFixed(1)}% | BLOCKING compaction — all ${chunks.length} turns archived safely. Context managed by autopilot.\n`
+    );
+    process.exit(2);
+  }
+
+  // Legacy: exit code 2 blocks compaction (opt-in via env var)
   if (BLOCK_COMPACTION && trigger === 'auto') {
     process.stderr.write(
       `[ContextPersistence] BLOCKING auto-compaction (CLAUDE_FLOW_BLOCK_COMPACTION=true). All ${chunks.length} turns archived.\n`
