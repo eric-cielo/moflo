@@ -24,10 +24,14 @@ const {
   extractSummary,
   buildEntry,
   buildCompactInstructions,
+  computeImportance,
+  retrieveContextSmart,
+  autoOptimize,
   storeChunks,
   retrieveContext,
   NAMESPACE,
   COMPACT_INSTRUCTION_BUDGET,
+  RETENTION_DAYS,
 } = mod;
 
 // Test fixtures
