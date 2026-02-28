@@ -143,7 +143,7 @@ flowchart TB
 
 ```bash
 # Use RuVector via Ruflo
-npx ruflo@alpha hooks intelligence --status
+npx ruflo@latest hooks intelligence --status
 ```
 
 </details>
@@ -158,7 +158,7 @@ curl -fsSL https://cdn.jsdelivr.net/gh/ruvnet/claude-flow@main/scripts/install.s
 curl -fsSL https://cdn.jsdelivr.net/gh/ruvnet/claude-flow@main/scripts/install.sh | bash -s -- --full
 
 # Or via npx
-npx ruflo@alpha init --wizard
+npx ruflo@latest init --wizard
 ```
 
 ---
@@ -481,14 +481,14 @@ curl ... | bash -s -- --full
 
 ```bash
 # Quick start (no install needed)
-npx ruflo@alpha init
+npx ruflo@latest init
 
 # Or install globally
-npm install -g ruflo@alpha
+npm install -g ruflo@latest
 ruflo init
 
 # With Bun (faster)
-bunx ruflo@alpha init
+bunx ruflo@latest init
 ```
 
 #### Install Profiles
@@ -500,7 +500,7 @@ bunx ruflo@alpha init
 
 ```bash
 # Minimal install (skip ML/embeddings)
-npm install -g ruflo@alpha --omit=optional
+npm install -g ruflo@latest --omit=optional
 ```
 
 <details>
@@ -512,13 +512,13 @@ Ruflo supports both **Claude Code** and **OpenAI Codex CLI** via the [@claude-fl
 
 ```bash
 # Initialize for Codex CLI (creates AGENTS.md instead of CLAUDE.md)
-npx ruflo@alpha init --codex
+npx ruflo@latest init --codex
 
 # Full Codex setup with all 137+ skills
-npx ruflo@alpha init --codex --full
+npx ruflo@latest init --codex --full
 
 # Initialize for both platforms (dual mode)
-npx ruflo@alpha init --dual
+npx ruflo@latest init --dual
 ```
 
 ### Platform Comparison
@@ -661,16 +661,16 @@ The **Intelligence Loop** (ADR-050) automates this cycle through hooks. Each ses
 
 ```bash
 # Initialize project
-npx ruflo@alpha init
+npx ruflo@latest init
 
 # Start MCP server for Claude Code integration
-npx ruflo@alpha mcp start
+npx ruflo@latest mcp start
 
 # Run a task with agents
-npx ruflo@alpha --agent coder --task "Implement user authentication"
+npx ruflo@latest --agent coder --task "Implement user authentication"
 
 # List available agents
-npx ruflo@alpha --list
+npx ruflo@latest --list
 ```
 
 ### Upgrading
@@ -2510,7 +2510,7 @@ Claude Code pipes JSON session data via **stdin** to the statusline script after
 
 **Setup (Automatic):**
 
-Run `npx ruflo@alpha init` — this generates `.claude/settings.json` with the correct statusline config and creates the helper script at `.claude/helpers/statusline.cjs`.
+Run `npx ruflo@latest init` — this generates `.claude/settings.json` with the correct statusline config and creates the helper script at `.claude/helpers/statusline.cjs`.
 
 The generated config uses a **fast local script** (no `npx` cold-start):
 ```json
@@ -2528,7 +2528,7 @@ The generated config uses a **fast local script** (no `npx` cold-start):
 
 If your statusline is not updating, run the upgrade command to regenerate helpers and fix the config:
 ```bash
-npx ruflo@alpha init --update --settings
+npx ruflo@latest init --update --settings
 ```
 
 This removes invalid config fields and regenerates the statusline helper with stdin support.
@@ -4409,21 +4409,21 @@ console.log(results);
 **CLI Commands:**
 ```bash
 # Initialize memory database
-npx ruflo@alpha memory init --force
+npx ruflo@latest memory init --force
 
 # Store patterns
-npx ruflo@alpha memory store --key "pattern-auth" --value "JWT authentication with refresh tokens"
-npx ruflo@alpha memory store --key "pattern-cache" --value "Redis caching for API responses"
+npx ruflo@latest memory store --key "pattern-auth" --value "JWT authentication with refresh tokens"
+npx ruflo@latest memory store --key "pattern-cache" --value "Redis caching for API responses"
 
 # Build HNSW index for 150x-12,500x faster search
-npx ruflo@alpha memory search --query "authentication" --build-hnsw
+npx ruflo@latest memory search --query "authentication" --build-hnsw
 
 # Semantic search (uses HNSW if built)
-npx ruflo@alpha memory search --query "how to cache data" --limit 5
+npx ruflo@latest memory search --query "how to cache data" --limit 5
 
 # List and manage entries
-npx ruflo@alpha memory list --namespace patterns
-npx ruflo@alpha memory stats
+npx ruflo@latest memory list --namespace patterns
+npx ruflo@latest memory stats
 ```
 
 </details>
