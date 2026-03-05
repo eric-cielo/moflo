@@ -88,6 +88,7 @@ async function getRegistry(dbPath?: string): Promise<any | null> {
               tieredCache: true,
               hierarchicalMemory: true,
               memoryConsolidation: true,
+              memoryGraph: true, // issue #1214: enable MemoryGraph for graph-aware ranking
             },
           });
         } finally {

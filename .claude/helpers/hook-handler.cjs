@@ -36,7 +36,30 @@ const memory = safeRequire(path.join(helpersDir, 'memory.cjs'));
 const intelligence = safeRequire(path.join(helpersDir, 'intelligence.cjs'));
 
 const [,, command, ...args] = process.argv;
-const prompt = process.env.PROMPT || process.env.TOOL_INPUT_command || args.join(' ') || '';
+
+// Read stdin — Claude Code sends hook data as JSON via stdin
+async function readStdin() {
+  if (process.stdin.isTTY) return '';
+  let data = '';
+  process.stdin.setEncoding('utf8');
+  for await (const chunk of process.stdin) {
+    data += chunk;
+  }
+  return data;
+}
+
+async function main() {
+  let stdinData = '';
+  try { stdinData = await readStdin(); } catch (e) { /* ignore stdin errors */ }
+
+  let hookInput = {};
+  if (stdinData.trim()) {
+    try { hookInput = JSON.parse(stdinData); } catch (e) { /* ignore parse errors */ }
+  }
+
+  // Merge stdin data into prompt resolution: prefer stdin fields, then env, then argv
+  const prompt = hookInput.prompt || hookInput.command || hookInput.toolInput
+    || process.env.PROMPT || process.env.TOOL_INPUT_command || args.join(' ') || '';
 
 const handlers = {
   'route': () => {
@@ -63,7 +86,7 @@ const handlers = {
   },
 
   'pre-bash': () => {
-    var cmd = prompt.toLowerCase();
+    var cmd = (hookInput.command || prompt).toLowerCase();
     var dangerous = ['rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:'];
     for (var i = 0; i < dangerous.length; i++) {
       if (cmd.includes(dangerous[i])) {
@@ -80,7 +103,8 @@ const handlers = {
     }
     if (intelligence && intelligence.recordEdit) {
       try {
-        var file = process.env.TOOL_INPUT_file_path || args[0] || '';
+        var file = hookInput.file_path || (hookInput.toolInput && hookInput.toolInput.file_path)
+          || process.env.TOOL_INPUT_file_path || args[0] || '';
         intelligence.recordEdit(file);
       } catch (e) { /* non-fatal */ }
     }
@@ -179,13 +203,18 @@ const handlers = {
 };
 
 if (command && handlers[command]) {
-  try {
-    handlers[command]();
-  } catch (e) {
-    console.log('[WARN] Hook ' + command + ' encountered an error: ' + e.message);
+    try {
+      handlers[command]();
+    } catch (e) {
+      console.log('[WARN] Hook ' + command + ' encountered an error: ' + e.message);
+    }
+  } else if (command) {
+    console.log('[OK] Hook: ' + command);
+  } else {
+    console.log('Usage: hook-handler.cjs <route|pre-bash|post-edit|session-restore|session-end|pre-task|post-task|compact-manual|compact-auto|status|stats>');
   }
-} else if (command) {
-  console.log('[OK] Hook: ' + command);
-} else {
-  console.log('Usage: hook-handler.cjs <route|pre-bash|post-edit|session-restore|session-end|pre-task|post-task|compact-manual|compact-auto|status|stats>');
 }
+
+main().catch(function(e) {
+  console.log('[WARN] Hook handler error: ' + e.message);
+});

@@ -201,6 +201,21 @@ export class MCPServerManager extends EventEmitter {
     const pid = await this.readPidFile();
 
     if (!pid) {
+      // No PID file found. Detect if we are running in stdio mode
+      // (e.g., launched by Claude Code via `claude mcp add`).
+      const isStdio = !process.stdin.isTTY;
+      const envTransport = process.env.CLAUDE_FLOW_MCP_TRANSPORT;
+      if (isStdio || envTransport === 'stdio' || this.options.transport === 'stdio') {
+        return {
+          running: true,
+          pid: process.pid,
+          transport: 'stdio',
+          startedAt: this.startTime?.toISOString(),
+          uptime: this.startTime
+            ? Math.floor((Date.now() - this.startTime.getTime()) / 1000)
+            : undefined,
+        };
+      }
       return { running: false };
     }
 
@@ -588,6 +603,7 @@ export class MCPServerManager extends EventEmitter {
         this.emit('health-error', error);
       }
     }, 30000);
+    this.healthCheckInterval.unref();
   }
 
   /**

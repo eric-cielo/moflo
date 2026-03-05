@@ -633,6 +633,21 @@ export const hooksPostEdit: MCPTool = {
   handler: async (params: Record<string, unknown>) => {
     const filePath = params.filePath as string;
     const success = params.success !== false;
+    const agent = params.agent as string | undefined;
+
+    // Wire recordFeedback through bridge (issue #1209)
+    let feedbackResult: { success: boolean; controller: string; updated: number } | null = null;
+    try {
+      const bridge = await import('../memory/memory-bridge.js');
+      feedbackResult = await bridge.bridgeRecordFeedback({
+        taskId: `edit-${filePath}-${Date.now()}`,
+        success,
+        quality: success ? 0.85 : 0.3,
+        agent,
+      });
+    } catch {
+      // Bridge not available — continue with basic response
+    }
 
     return {
       recorded: true,
@@ -640,6 +655,11 @@ export const hooksPostEdit: MCPTool = {
       success,
       timestamp: new Date().toISOString(),
       learningUpdate: success ? 'pattern_reinforced' : 'pattern_adjusted',
+      feedback: feedbackResult ? {
+        recorded: feedbackResult.success,
+        controller: feedbackResult.controller,
+        updates: feedbackResult.updated,
+      } : { recorded: false, controller: 'unavailable', updates: 0 },
     };
   },
 };

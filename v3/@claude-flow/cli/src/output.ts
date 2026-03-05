@@ -599,6 +599,7 @@ export class Spinner {
       this.render();
       this.frameIndex = (this.frameIndex + 1) % this.frames.length;
     }, 100);
+    this.interval.unref();
 
     this.render();
   }

@@ -208,10 +208,15 @@ async function checkDiskSpace(): Promise<HealthCheck> {
     if (process.platform === 'win32') {
       return { name: 'Disk Space', status: 'pass', message: 'Check skipped on Windows' };
     }
-    const output_str = await runCommand('df -h . | tail -1');
+    // Use df -Ph for POSIX mode (guarantees single-line output even with long device names)
+    const output_str = await runCommand('df -Ph . | tail -1');
     const parts = output_str.split(/\s+/);
+    // POSIX format: Filesystem Size Used Avail Capacity Mounted
     const available = parts[3];
     const usePercent = parseInt(parts[4]?.replace('%', '') || '0', 10);
+    if (isNaN(usePercent)) {
+      return { name: 'Disk Space', status: 'warn', message: `${available || 'unknown'} available (unable to parse usage)` };
+    }
 
     if (usePercent > 90) {
       return { name: 'Disk Space', status: 'fail', message: `${available} available (${usePercent}% used)`, fix: 'Free up disk space' };

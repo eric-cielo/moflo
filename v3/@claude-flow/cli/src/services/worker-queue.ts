@@ -156,6 +156,7 @@ class InMemoryStore {
   startCleanup(): void {
     if (this.cleanupTimer) return;
     this.cleanupTimer = setInterval(() => this.cleanupExpired(), 60000);
+    this.cleanupTimer.unref();
   }
 
   /**
@@ -683,6 +684,7 @@ export class WorkerQueue extends EventEmitter {
         this.store.setWorker(this.workerId, registration);
       }
     }, this.config.heartbeatIntervalMs);
+    this.heartbeatTimer.unref();
   }
 
   /**

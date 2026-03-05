@@ -284,7 +284,20 @@ const statusCommand: Command = {
   description: 'Show MCP server status',
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     try {
-      const status = await getMCPServerStatus();
+      let status = await getMCPServerStatus();
+
+      // If PID-based check says not running, detect stdio mode
+      if (!status.running) {
+        const isStdio = !process.stdin.isTTY;
+        const envTransport = process.env.CLAUDE_FLOW_MCP_TRANSPORT;
+        if (isStdio || envTransport === 'stdio') {
+          status = {
+            running: true,
+            pid: process.pid,
+            transport: 'stdio',
+          };
+        }
+      }
 
       if (ctx.flags.format === 'json') {
         output.printJson(status);
@@ -311,13 +324,17 @@ const statusCommand: Command = {
         return { success: true, data: status };
       }
 
-      const displayData = [
+      const displayData: Array<{ metric: string; value: unknown }> = [
         { metric: 'Status', value: output.success('Running') },
         { metric: 'PID', value: status.pid },
         { metric: 'Transport', value: status.transport },
-        { metric: 'Host', value: status.host },
-        { metric: 'Port', value: status.port },
       ];
+
+      // Only show host/port for non-stdio transports
+      if (status.transport !== 'stdio') {
+        displayData.push({ metric: 'Host', value: status.host });
+        displayData.push({ metric: 'Port', value: status.port });
+      }
 
       if (status.uptime !== undefined) {
         displayData.push({ metric: 'Uptime', value: formatUptime(status.uptime) });

@@ -307,6 +307,46 @@ export const taskTools: MCPTool[] = [
     },
   },
   {
+    name: 'task_assign',
+    description: 'Assign a task to one or more agents',
+    category: 'task',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'Task ID to assign' },
+        agentIds: { type: 'array', items: { type: 'string' }, description: 'Agent IDs to assign' },
+        unassign: { type: 'boolean', description: 'Unassign all agents from task' },
+      },
+      required: ['taskId'],
+    },
+    handler: async (input) => {
+      const store = loadTaskStore();
+      const taskId = input.taskId as string;
+      const task = store.tasks[taskId];
+
+      if (!task) {
+        return { taskId, error: 'Task not found' };
+      }
+
+      const previouslyAssigned = [...task.assignedTo];
+
+      if (input.unassign) {
+        task.assignedTo = [];
+      } else {
+        const agentIds = (input.agentIds as string[]) || [];
+        task.assignedTo = agentIds;
+      }
+
+      saveTaskStore(store);
+
+      return {
+        taskId: task.taskId,
+        assignedTo: task.assignedTo,
+        previouslyAssigned,
+      };
+    },
+  },
+  {
     name: 'task_cancel',
     description: 'Cancel a task',
     category: 'task',

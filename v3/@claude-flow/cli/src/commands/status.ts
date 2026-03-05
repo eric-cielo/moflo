@@ -297,7 +297,11 @@ function displayStatus(status: Awaited<ReturnType<typeof getSystemStatus>>): voi
   // MCP section
   output.writeln(output.bold('MCP Server'));
   if (status.mcp.running) {
-    output.printInfo(`  Running on port ${status.mcp.port} (${status.mcp.transport})`);
+    if (status.mcp.transport === 'stdio') {
+      output.printInfo('  Running (stdio mode)');
+    } else {
+      output.printInfo(`  Running on port ${status.mcp.port} (${status.mcp.transport})`);
+    }
   } else {
     output.printInfo('  Not running');
   }
@@ -407,7 +411,9 @@ async function performHealthCheck(
     checks.push({
       name: 'MCP Server',
       status: status.mcp.running ? 'pass' : 'warn',
-      message: status.mcp.running ? `Running on port ${status.mcp.port}` : 'Not running'
+      message: status.mcp.running
+        ? (status.mcp.transport === 'stdio' ? 'Running (stdio mode)' : `Running on port ${status.mcp.port}`)
+        : 'Not running'
     });
 
     // Check memory backend

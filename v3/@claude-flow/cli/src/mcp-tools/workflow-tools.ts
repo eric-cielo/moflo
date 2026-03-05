@@ -79,6 +79,104 @@ function saveWorkflowStore(store: WorkflowStore): void {
 
 export const workflowTools: MCPTool[] = [
   {
+    name: 'workflow_run',
+    description: 'Run a workflow from a template or file',
+    category: 'workflow',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        template: { type: 'string', description: 'Template name to run' },
+        file: { type: 'string', description: 'Workflow file path' },
+        task: { type: 'string', description: 'Task description' },
+        options: {
+          type: 'object',
+          description: 'Workflow options',
+          properties: {
+            parallel: { type: 'boolean', description: 'Run stages in parallel' },
+            maxAgents: { type: 'number', description: 'Maximum agents to use' },
+            timeout: { type: 'number', description: 'Timeout in seconds' },
+            dryRun: { type: 'boolean', description: 'Validate without executing' },
+          },
+        },
+      },
+    },
+    handler: async (input) => {
+      const store = loadWorkflowStore();
+      const template = input.template as string | undefined;
+      const task = input.task as string | undefined;
+      const options = (input.options as Record<string, unknown>) || {};
+      const dryRun = options.dryRun as boolean | undefined;
+
+      // Build workflow from template or inline
+      const workflowId = `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const stages: Array<{ name: string; status: string; agents: string[]; duration?: number }> = [];
+
+      // Generate stages based on template
+      const templateName = template || 'custom';
+      const stageNames: string[] = (() => {
+        switch (templateName) {
+          case 'feature':
+            return ['Research', 'Design', 'Implement', 'Test', 'Review'];
+          case 'bugfix':
+            return ['Investigate', 'Fix', 'Test', 'Review'];
+          case 'refactor':
+            return ['Analyze', 'Refactor', 'Test', 'Review'];
+          case 'security':
+            return ['Scan', 'Analyze', 'Report'];
+          default:
+            return ['Execute'];
+        }
+      })();
+
+      for (const name of stageNames) {
+        stages.push({
+          name,
+          status: dryRun ? 'validated' : 'pending',
+          agents: [],
+        });
+      }
+
+      if (!dryRun) {
+        // Create and save the workflow
+        const steps: WorkflowStep[] = stageNames.map((name, i) => ({
+          stepId: `step-${i + 1}`,
+          name,
+          type: 'task' as const,
+          config: { task: task || name },
+          status: 'pending' as const,
+        }));
+
+        const workflow: WorkflowRecord = {
+          workflowId,
+          name: task || `${templateName} workflow`,
+          description: task,
+          steps,
+          status: 'running',
+          currentStep: 0,
+          variables: { template: templateName, ...options },
+          createdAt: new Date().toISOString(),
+          startedAt: new Date().toISOString(),
+        };
+
+        store.workflows[workflowId] = workflow;
+        saveWorkflowStore(store);
+      }
+
+      return {
+        workflowId,
+        template: templateName,
+        status: dryRun ? 'validated' : 'running',
+        stages,
+        metrics: {
+          totalStages: stages.length,
+          completedStages: 0,
+          agentsSpawned: 0,
+          estimatedDuration: `${stages.length * 30}s`,
+        },
+      };
+    },
+  },
+  {
     name: 'workflow_create',
     description: 'Create a new workflow',
     category: 'workflow',

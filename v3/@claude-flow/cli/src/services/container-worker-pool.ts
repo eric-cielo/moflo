@@ -671,6 +671,7 @@ export class ContainerWorkerPool extends EventEmitter {
     this.healthCheckTimer = setInterval(async () => {
       await this.runHealthChecks();
     }, this.config.healthCheckIntervalMs);
+    this.healthCheckTimer.unref();
   }
 
   /**
@@ -718,6 +719,7 @@ export class ContainerWorkerPool extends EventEmitter {
     this.idleCheckTimer = setInterval(async () => {
       await this.runIdleChecks();
     }, 60000); // Check every minute
+    this.idleCheckTimer.unref();
   }
 
   /**
