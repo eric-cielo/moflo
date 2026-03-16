@@ -55,7 +55,7 @@ async function initCodexAction(
       // Strategy 3: Global node_modules
       async () => {
         const { execSync } = await import('child_process');
-        const globalPath = execSync('npm root -g', { encoding: 'utf-8' }).trim();
+        const globalPath = execSync('npm root -g', { encoding: 'utf-8', windowsHide: true }).trim();
         const codexPath = path.join(globalPath, '@claude-flow', 'codex', 'dist', 'index.js');
         if (fs.existsSync(codexPath)) {
           const mod = await import(`file://${codexPath}`);
@@ -332,7 +332,8 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
           execSync('npx @claude-flow/cli@latest memory init 2>/dev/null', {
             stdio: 'pipe',
             cwd: ctx.cwd,
-            timeout: 30000
+            timeout: 30000,
+            windowsHide: true
           });
           output.writeln(output.success('  ✓ Memory initialized'));
         } catch {
@@ -347,7 +348,8 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
           execSync('npx @claude-flow/cli@latest daemon start 2>/dev/null &', {
             stdio: 'pipe',
             cwd: ctx.cwd,
-            timeout: 10000
+            timeout: 10000,
+            windowsHide: true
           });
           output.writeln(output.success('  ✓ Daemon started'));
         } catch {
@@ -362,7 +364,8 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
           execSync('npx @claude-flow/cli@latest swarm init --topology hierarchical 2>/dev/null', {
             stdio: 'pipe',
             cwd: ctx.cwd,
-            timeout: 30000
+            timeout: 30000,
+            windowsHide: true
           });
           output.writeln(output.success('  ✓ Swarm initialized'));
         } catch {
@@ -390,7 +393,8 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
         execSync(`npx @claude-flow/cli@latest embeddings init --model ${embeddingModel} --no-download --force 2>/dev/null`, {
           stdio: 'pipe',
           cwd: ctx.cwd,
-          timeout: 30000
+          timeout: 30000,
+          windowsHide: true
         });
         output.writeln(output.success('  ✓ Embeddings initialized'));
         output.writeln(output.dim('    Run "embeddings init --download" to download model'));
@@ -635,7 +639,8 @@ const wizardCommand: Command = {
           execSync(`npx @claude-flow/cli@latest embeddings init --model ${embeddingModel} --no-download --force 2>/dev/null`, {
             stdio: 'pipe',
             cwd: ctx.cwd,
-            timeout: 30000
+            timeout: 30000,
+            windowsHide: true
           });
           output.writeln(output.success('  ✓ Embeddings configured'));
           embeddingsInitialized = true;

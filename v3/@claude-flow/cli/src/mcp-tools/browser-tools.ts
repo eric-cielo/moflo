@@ -25,6 +25,7 @@ async function execBrowserCommand(args: string[], session = 'default'): Promise<
     const result = execSync(`agent-browser ${fullArgs.join(' ')}`, {
       encoding: 'utf-8',
       timeout: 30000,
+      windowsHide: true,
     });
 
     let data;

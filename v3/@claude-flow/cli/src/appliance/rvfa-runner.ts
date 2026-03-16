@@ -45,6 +45,7 @@ function spawnAsync(
     const err: Buffer[] = [];
     const child = spawn(cmd, args, {
       cwd: opts.cwd, env: { ...process.env, ...opts.env }, stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     });
     child.stdout.on('data', (c: Buffer) => { out.push(c); if (opts.verbose) process.stdout.write(c); });
     child.stderr.on('data', (c: Buffer) => { err.push(c); if (opts.verbose) process.stderr.write(c); });

@@ -815,7 +815,7 @@ export class GitHubSync {
    */
   isGhAvailable(): boolean {
     try {
-      execFileSync('gh', ['--version'], { stdio: 'ignore' });
+      execFileSync('gh', ['--version'], { stdio: 'ignore', windowsHide: true });
       return true;
     } catch {
       return false;
@@ -830,7 +830,7 @@ export class GitHubSync {
       return isValidRepo(this.config.repo) ? this.config.repo : null;
     }
     try {
-      const remote = execFileSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf-8' }).trim();
+      const remote = execFileSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf-8', windowsHide: true }).trim();
       const match = remote.match(/github\.com[/:]([\w.-]+\/[\w.-]+)/);
       const repo = match ? match[1].replace('.git', '') : null;
       return repo && isValidRepo(repo) ? repo : null;
@@ -868,7 +868,7 @@ export class GitHubSync {
         '--state', state,
         '--json', 'number,title,body,state,labels,assignees,url,createdAt,updatedAt',
         '--limit', '100'
-      ], { encoding: 'utf-8' });
+      ], { encoding: 'utf-8', windowsHide: true });
       const rawIssues = JSON.parse(issuesJson);
 
       for (const raw of rawIssues) {
@@ -929,7 +929,7 @@ export class GitHubSync {
             'issue', 'edit', String(issueNumber),
             '--repo', repo,
             '--add-label', this.config.claimLabel
-          ], { stdio: 'ignore' });
+          ], { stdio: 'ignore', windowsHide: true });
         } catch {
           errors.push('Failed to add claim label (label may not exist)');
         }
@@ -945,7 +945,7 @@ export class GitHubSync {
               'issue', 'edit', String(issueNumber),
               '--repo', repo,
               '--add-assignee', claimant.name
-            ], { stdio: 'ignore' });
+            ], { stdio: 'ignore', windowsHide: true });
           } catch {
             errors.push('Failed to assign issue');
           }
@@ -963,7 +963,7 @@ export class GitHubSync {
             'issue', 'comment', String(issueNumber),
             '--repo', repo,
             '--body', comment
-          ], { stdio: 'ignore' });
+          ], { stdio: 'ignore', windowsHide: true });
         } catch {
           errors.push('Failed to add comment');
         }
@@ -1013,7 +1013,7 @@ export class GitHubSync {
             'issue', 'edit', String(issueNumber),
             '--repo', repo,
             '--remove-label', this.config.claimLabel
-          ], { stdio: 'ignore' });
+          ], { stdio: 'ignore', windowsHide: true });
         } catch {
           // Label might not exist
         }
@@ -1027,7 +1027,7 @@ export class GitHubSync {
               'issue', 'edit', String(issueNumber),
               '--repo', repo,
               '--remove-assignee', claimant.name
-            ], { stdio: 'ignore' });
+            ], { stdio: 'ignore', windowsHide: true });
           } catch {
             errors.push('Failed to remove assignee');
           }
@@ -1045,7 +1045,7 @@ export class GitHubSync {
             'issue', 'comment', String(issueNumber),
             '--repo', repo,
             '--body', comment
-          ], { stdio: 'ignore' });
+          ], { stdio: 'ignore', windowsHide: true });
         } catch {
           errors.push('Failed to add release comment');
         }

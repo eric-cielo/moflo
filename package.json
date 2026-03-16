@@ -1,20 +1,16 @@
 {
-  "name": "claude-flow",
-  "version": "3.5.7",
-  "description": "Ruflo - Enterprise AI agent orchestration for Claude Code. Deploy 60+ specialized agents in coordinated swarms with self-learning, fault-tolerant consensus, vector memory, and MCP integration",
+  "name": "moflo",
+  "version": "4.0.0",
+  "description": "MoFlo — AI agent orchestration for Claude Code. Forked from ruflo/claude-flow with patches applied to source, plus feature-level orchestration.",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
+    "moflo": "./bin/cli.js",
     "claude-flow": "./bin/cli.js"
   },
-  "homepage": "https://github.com/ruvnet/claude-flow#readme",
+  "homepage": "https://github.com/eric-cielo/moflo#readme",
   "bugs": {
-    "url": "https://github.com/ruvnet/claude-flow/issues",
-    "email": "support@ruv.io"
-  },
-  "funding": {
-    "type": "github",
-    "url": "https://github.com/sponsors/ruvnet"
+    "url": "https://github.com/eric-cielo/moflo/issues"
   },
   "files": [
     "bin/**",

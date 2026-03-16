@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Claude Flow CLI - Umbrella entry point
+ * MoFlo CLI - Entry point
  * Proxies to @claude-flow/cli bin for cross-platform compatibility.
+ * Forked from ruflo/claude-flow with Motailz patches applied to source.
  */
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';

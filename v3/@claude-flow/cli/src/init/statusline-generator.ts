@@ -80,6 +80,7 @@ function safeExec(cmd, timeoutMs = 2000) {
       encoding: 'utf-8',
       timeout: timeoutMs,
       stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     }).trim();
   } catch {
     return '';

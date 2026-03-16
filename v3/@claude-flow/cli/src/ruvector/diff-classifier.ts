@@ -402,11 +402,11 @@ export function getGitDiffNumstat(ref: string = 'HEAD'): DiffFile[] {
     // This prevents command injection via the ref parameter
     const numstatOutput = execFileSync('git', [
       'diff', '--numstat', '--diff-filter=ACDMRTUXB', ref
-    ], { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+    ], { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, windowsHide: true });
 
     const statusOutput = execFileSync('git', [
       'diff', '--name-status', ref
-    ], { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+    ], { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, windowsHide: true });
 
     const output = numstatOutput + '---STATUS---' + statusOutput;
 

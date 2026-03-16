@@ -343,6 +343,7 @@ export const importCommand: Command = {
           const result = execSync(`docker exec -i ${containerName} psql -U claude -d claude_flow < ${tempFile}`, {
             encoding: 'utf-8',
             timeout: 60000,
+            windowsHide: true,
           });
 
           if (verbose) {

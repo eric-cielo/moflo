@@ -53,7 +53,7 @@ export function getGCSConfig(): GCSConfig | null {
  */
 export function isGCloudAvailable(): boolean {
   try {
-    execSync('gcloud --version', { stdio: 'pipe' });
+    execSync('gcloud --version', { stdio: 'pipe', windowsHide: true });
     return true;
   } catch {
     return false;
@@ -65,7 +65,7 @@ export function isGCloudAvailable(): boolean {
  */
 export async function isGCloudAuthenticated(): Promise<boolean> {
   try {
-    execSync('gcloud auth print-access-token', { stdio: 'pipe' });
+    execSync('gcloud auth print-access-token', { stdio: 'pipe', windowsHide: true });
     return true;
   } catch {
     return false;
@@ -125,7 +125,7 @@ export async function uploadToGCS(
     // Upload using gcloud storage cp
     const cmd = `gcloud storage cp "${tempFile}" "gs://${config.bucket}/${objectPath}" ${projectArg} --content-type="${options.contentType || 'application/json'}" 2>&1`;
 
-    execSync(cmd, { encoding: 'utf-8' });
+    execSync(cmd, { encoding: 'utf-8', windowsHide: true });
 
     // Set metadata if provided
     if (options.metadata && Object.keys(options.metadata).length > 0) {
@@ -133,7 +133,7 @@ export async function uploadToGCS(
       try {
         execSync(
           `gcloud storage objects update "gs://${config.bucket}/${objectPath}" --custom-metadata='${metadataJson}' ${projectArg} 2>&1`,
-          { encoding: 'utf-8' }
+          { encoding: 'utf-8', windowsHide: true }
         );
       } catch {
         // Metadata update failed, but upload succeeded
@@ -186,7 +186,7 @@ export async function downloadFromGCS(
     // Download using gcloud storage cp
     execSync(
       `gcloud storage cp "${uri}" "${tempFile}" ${projectArg} 2>&1`,
-      { encoding: 'utf-8' }
+      { encoding: 'utf-8', windowsHide: true }
     );
 
     const content = fs.readFileSync(tempFile);
@@ -217,7 +217,7 @@ export async function existsInGCS(
   try {
     execSync(
       `gcloud storage ls "${uri}" ${projectArg} 2>&1`,
-      { encoding: 'utf-8', stdio: 'pipe' }
+      { encoding: 'utf-8', stdio: 'pipe', windowsHide: true }
     );
     return true;
   } catch {
@@ -242,7 +242,7 @@ export async function listGCSObjects(
   try {
     const result = execSync(
       `gcloud storage ls -l "${uri}" ${projectArg} --format=json 2>&1`,
-      { encoding: 'utf-8' }
+      { encoding: 'utf-8', windowsHide: true }
     );
 
     const objects = JSON.parse(result);
@@ -269,7 +269,7 @@ export async function deleteFromGCS(
   try {
     execSync(
       `gcloud storage rm "${uri}" ${projectArg} 2>&1`,
-      { encoding: 'utf-8' }
+      { encoding: 'utf-8', windowsHide: true }
     );
     return true;
   } catch {

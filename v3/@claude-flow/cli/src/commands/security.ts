@@ -54,6 +54,7 @@ const scanCommand: Command = {
               cwd: path.resolve(target),
               encoding: 'utf-8',
               maxBuffer: 10 * 1024 * 1024,
+              windowsHide: true,
             });
 
             try {
@@ -217,7 +218,7 @@ const scanCommand: Command = {
         const fixSpinner = output.createSpinner({ text: 'Attempting to fix vulnerabilities...', spinner: 'dots' });
         fixSpinner.start();
         try {
-          execSync('npm audit fix 2>/dev/null || true', { cwd: path.resolve(target), encoding: 'utf-8' });
+          execSync('npm audit fix 2>/dev/null || true', { cwd: path.resolve(target), encoding: 'utf-8', windowsHide: true });
           fixSpinner.succeed('Applied available fixes (run scan again to verify)');
         } catch {
           fixSpinner.fail('Some fixes could not be applied automatically');

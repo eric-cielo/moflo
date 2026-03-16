@@ -3384,7 +3384,7 @@ const statuslineCommand: Command = {
         const psCmd = isWindows
           ? 'tasklist /FI "IMAGENAME eq node.exe" 2>NUL | findstr /I /C:"node" >NUL && echo 1 || echo 0'
           : 'ps aux 2>/dev/null | grep -c agentic-flow || echo "0"';
-        const ps = execSync(psCmd, { encoding: 'utf-8' });
+        const ps = execSync(psCmd, { encoding: 'utf-8', windowsHide: true });
         activeAgents = Math.max(0, parseInt(ps.trim()) - 1);
         coordinationActive = activeAgents > 0;
       } catch {
@@ -3475,8 +3475,8 @@ const statuslineCommand: Command = {
         const branchCmd = isWindows
           ? 'git branch --show-current 2>NUL || echo.'
           : 'git branch --show-current 2>/dev/null || echo ""';
-        name = execSync(nameCmd, { encoding: 'utf-8' }).trim();
-        gitBranch = execSync(branchCmd, { encoding: 'utf-8' }).trim();
+        name = execSync(nameCmd, { encoding: 'utf-8', windowsHide: true }).trim();
+        gitBranch = execSync(branchCmd, { encoding: 'utf-8', windowsHide: true }).trim();
         if (gitBranch === '.') gitBranch = '';
       } catch {
         // Ignore

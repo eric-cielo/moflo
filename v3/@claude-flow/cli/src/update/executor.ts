@@ -103,6 +103,7 @@ export async function executeUpdate(
       encoding: 'utf-8',
       stdio: 'pipe',
       timeout: 60000, // 1 minute timeout
+      windowsHide: true,
     });
 
     // Record successful update
@@ -204,6 +205,7 @@ export async function rollbackUpdate(
       encoding: 'utf-8',
       stdio: 'pipe',
       timeout: 60000,
+      windowsHide: true,
     });
 
     // Record the rollback

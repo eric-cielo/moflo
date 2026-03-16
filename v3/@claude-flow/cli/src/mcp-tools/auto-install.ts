@@ -67,6 +67,7 @@ export async function autoInstallPackage(
       stdio: silent ? 'pipe' : ['pipe', 'pipe', 'pipe'],
       timeout,
       shell: false, // Explicitly disable shell
+      windowsHide: true,
     });
 
     if (result.status !== 0) {

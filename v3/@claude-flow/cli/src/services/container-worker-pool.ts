@@ -583,6 +583,7 @@ export class ContainerWorkerPool extends EventEmitter {
 
       const child = spawn('docker', args, {
         stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
       });
 
       let stdout = '';

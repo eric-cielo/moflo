@@ -580,6 +580,7 @@ export class EnhancedModelRouter {
         maxBuffer: 10 * 1024 * 1024,
         timeout: 5000,
         stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
       });
 
       const parsed = JSON.parse(result);

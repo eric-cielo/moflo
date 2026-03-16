@@ -211,6 +211,49 @@ const TASK_PATTERNS: Record<string, { keywords: string[]; agents: string[] }> = 
 };
 
 /**
+ * Load learned routing patterns from persisted file.
+ * These are outcomes from previous task executions stored by hooksPostTask.
+ */
+const ROUTING_OUTCOMES_PATH = '.claude-flow/routing-outcomes.json';
+
+function loadRoutingOutcomes(): Array<{ pattern: string; agentType: string; confidence: number }> {
+  try {
+    const fullPath = join(process.cwd(), ROUTING_OUTCOMES_PATH);
+    if (!existsSync(fullPath)) return [];
+    const data = JSON.parse(readFileSync(fullPath, 'utf-8'));
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRoutingOutcome(task: string, agentType: string, confidence: number): void {
+  try {
+    const fullPath = join(process.cwd(), ROUTING_OUTCOMES_PATH);
+    const dir = resolve(fullPath, '..');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+    const existing = loadRoutingOutcomes();
+    // Extract keywords for pattern matching
+    const keywords = task.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 3)
+      .slice(0, 5)
+      .join('|');
+
+    if (keywords) {
+      existing.push({ pattern: `learned-${agentType}`, agentType, confidence });
+      // Keep last 100 outcomes
+      const trimmed = existing.slice(-100);
+      writeFileSync(fullPath, JSON.stringify(trimmed, null, 2));
+    }
+  } catch {
+    // Silently fail — routing outcome persistence is best-effort
+  }
+}
+
+/**
  * Get the semantic router with environment detection.
  * Tries native VectorDb first (HNSW, 16k routes/s), falls back to pure JS (47k routes/s cosine).
  */
@@ -248,6 +291,14 @@ async function getSemanticRouter() {
         }
       }
 
+      // Also load learned patterns from previous task executions
+      const learnedPatterns = loadRoutingOutcomes();
+      for (const lp of learnedPatterns) {
+        const embedding = generateSimpleEmbedding(lp.pattern);
+        db.insert(`learned:${lp.pattern}:${lp.agentType}`, embedding);
+        TASK_PATTERN_EMBEDDINGS.set(`learned:${lp.pattern}:${lp.agentType}`, embedding);
+      }
+
       nativeVectorDb = db;
       routerBackend = 'native';
       return { router: null, backend: routerBackend, native: nativeVectorDb };
@@ -271,6 +322,18 @@ async function getSemanticRouter() {
       keywords.forEach((kw, i) => {
         TASK_PATTERN_EMBEDDINGS.set(kw, embeddings[i]);
       });
+    }
+
+    // Also load learned patterns from previous task executions
+    const learnedPatterns = loadRoutingOutcomes();
+    for (const lp of learnedPatterns) {
+      const embedding = generateSimpleEmbedding(lp.pattern);
+      semanticRouter.addIntentWithEmbeddings(
+        `learned-${lp.agentType}`,
+        [embedding],
+        { agents: [lp.agentType], keywords: [lp.pattern], confidence: lp.confidence }
+      );
+      TASK_PATTERN_EMBEDDINGS.set(`learned:${lp.pattern}`, embedding);
     }
 
     routerBackend = 'pure-js';
@@ -1084,6 +1147,8 @@ export const hooksPostTask: MCPTool = {
       success: { type: 'boolean', description: 'Whether task was successful' },
       agent: { type: 'string', description: 'Agent that completed the task' },
       quality: { type: 'number', description: 'Quality score (0-1)' },
+      task: { type: 'string', description: 'Task description for routing pattern learning' },
+      storeDecisions: { type: 'boolean', description: 'Whether to persist routing decisions for future learning' },
     },
     required: ['taskId'],
   },
@@ -1092,6 +1157,8 @@ export const hooksPostTask: MCPTool = {
     const success = params.success !== false;
     const agent = params.agent as string | undefined;
     const quality = (params.quality as number) || (success ? 0.85 : 0.3);
+    const task = params.task as string | undefined;
+    const storeDecisions = params.storeDecisions !== false;
     const startTime = Date.now();
 
     // Phase 3: Wire recordFeedback through bridge → LearningSystem + ReasoningBank
@@ -1123,6 +1190,17 @@ export const hooksPostTask: MCPTool = {
       // Non-fatal
     }
 
+    // Persist routing outcome for future learned pattern matching
+    let routingOutcomeSaved = false;
+    if (storeDecisions && agent && task) {
+      try {
+        saveRoutingOutcome(task, agent, quality);
+        routingOutcomeSaved = true;
+      } catch {
+        // Best-effort persistence
+      }
+    }
+
     const duration = Date.now() - startTime;
 
     return {
@@ -1141,6 +1219,11 @@ export const hooksPostTask: MCPTool = {
         controller: feedbackResult.controller,
         updates: feedbackResult.updated,
       } : { recorded: false, controller: 'unavailable', updates: 0 },
+      routingOutcome: {
+        saved: routingOutcomeSaved,
+        agent: agent || null,
+        task: task || null,
+      },
       timestamp: new Date().toISOString(),
     };
   },

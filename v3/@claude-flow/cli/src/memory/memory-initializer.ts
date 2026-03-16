@@ -1601,15 +1601,15 @@ export async function loadEmbeddingModel(options?: {
     // No ONNX model available - use fallback
     embeddingModelState = {
       loaded: true,
-      model: null, // Will use simple hash-based fallback
+      model: null, // Will use domain-aware hash fallback
       tokenizer: null,
-      dimensions: 128 // Smaller fallback dimensions
+      dimensions: 384 // Domain-aware hash embedding dimensions
     };
 
     return {
       success: true,
-      dimensions: 128,
-      modelName: 'hash-fallback',
+      dimensions: 384,
+      modelName: 'domain-aware-hash-384',
       loadTime: Date.now() - startTime
     };
   } catch (error) {
@@ -1660,12 +1660,12 @@ export async function generateEmbedding(text: string): Promise<{
     }
   }
 
-  // Deterministic hash-based fallback (for testing/demo without ONNX)
-  const embedding = generateHashEmbedding(text, state.dimensions);
+  // Domain-aware hash fallback (for testing/demo without ONNX)
+  const embedding = generateDomainAwareEmbedding(text);
   return {
     embedding,
-    dimensions: state.dimensions,
-    model: 'hash-fallback'
+    dimensions: 384,
+    model: 'domain-aware-hash-384'
   };
 }
 
@@ -1742,27 +1742,136 @@ export async function generateBatchEmbeddings(
 }
 
 /**
- * Generate deterministic hash-based embedding
- * Not semantic, but deterministic and useful for testing
+ * Domain-aware semantic hash embeddings (384-dim)
+ * Provides consistent embedding dimensions between CLI and MCP tools.
+ * Uses domain cluster awareness for better semantic similarity.
  */
-function generateHashEmbedding(text: string, dimensions: number): number[] {
-  const embedding: number[] = new Array(dimensions).fill(0);
+const DOMAIN_CLUSTERS: Record<string, string[]> = {
+  database: ['typeorm', 'mongodb', 'database', 'entity', 'schema', 'table', 'collection',
+             'query', 'sql', 'nosql', 'orm', 'model', 'migration', 'repository', 'column',
+             'relation', 'foreign', 'primary', 'index', 'constraint', 'transaction'],
+  frontend: ['react', 'component', 'ui', 'styling', 'css', 'html', 'jsx', 'tsx', 'frontend',
+             'material', 'mui', 'tailwind', 'dom', 'render', 'hook', 'state', 'props',
+             'redux', 'context', 'styled', 'emotion', 'theme', 'layout', 'responsive'],
+  backend: ['fastify', 'api', 'route', 'handler', 'rest', 'endpoint', 'server', 'controller',
+            'middleware', 'request', 'response', 'http', 'express', 'nest', 'graphql',
+            'websocket', 'socket', 'cors', 'auth', 'jwt', 'session', 'cookie'],
+  testing: ['test', 'testing', 'vitest', 'jest', 'mock', 'spy', 'assert', 'expect', 'describe',
+            'it', 'spec', 'unit', 'integration', 'e2e', 'playwright', 'cypress', 'coverage',
+            'fixture', 'stub', 'fake', 'snapshot', 'beforeeach', 'aftereach'],
+  tenancy: ['tenant', 'tenancy', 'companyid', 'company', 'isolation', 'multi', 'multitenant',
+            'organization', 'workspace', 'account', 'customer', 'client'],
+  security: ['security', 'auth', 'authentication', 'authorization', 'permission', 'role',
+             'access', 'token', 'jwt', 'oauth', 'password', 'encrypt', 'hash', 'salt',
+             'csrf', 'xss', 'injection', 'sanitize', 'validate'],
+  patterns: ['pattern', 'service', 'factory', 'singleton', 'decorator', 'adapter', 'facade',
+             'observer', 'strategy', 'command', 'repository', 'usecase', 'domain', 'ddd',
+             'clean', 'architecture', 'solid', 'dry', 'kiss'],
+  workflow: ['workflow', 'pipeline', 'ci', 'cd', 'deploy', 'build', 'actions',
+             'hook', 'trigger', 'job', 'step', 'artifact', 'release', 'version', 'tag'],
+  memory: ['memory', 'cache', 'store', 'persist', 'storage', 'redis', 'session', 'state',
+           'buffer', 'queue', 'stack', 'heap', 'gc', 'leak', 'embedding', 'vector', 'hnsw',
+           'semantic', 'search', 'index', 'retrieval'],
+  agent: ['agent', 'swarm', 'coordinator', 'orchestrator', 'task', 'worker', 'spawn',
+          'parallel', 'concurrent', 'async', 'promise', 'queue', 'priority', 'schedule'],
+  github: ['github', 'issue', 'branch', 'pr', 'pull', 'request', 'merge', 'commit', 'push',
+           'clone', 'fork', 'remote', 'origin', 'main', 'master', 'checkout', 'rebase',
+           'squash', 'repository', 'repo', 'gh', 'git', 'assignee', 'label'],
+  documentation: ['guidance', 'documentation', 'docs', 'readme', 'guide', 'tutorial',
+                  'reference', 'standard', 'convention', 'rule', 'policy', 'template',
+                  'example', 'usage', 'instruction', 'markdown']
+};
 
-  // Simple hash-based approach for reproducibility
-  const words = text.toLowerCase().split(/\s+/);
+const COMMON_WORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
+  'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall',
+  'can', 'need', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into',
+  'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'and', 'but',
+  'or', 'nor', 'so', 'yet', 'both', 'either', 'neither', 'not', 'only', 'own', 'same', 'than',
+  'too', 'very', 'just', 'also', 'this', 'that', 'these', 'those', 'it', 'its', 'if', 'then',
+  'else', 'when', 'where', 'why', 'how', 'all', 'each', 'every', 'any', 'some', 'no', 'yes',
+  'use', 'using', 'used', 'uses', 'get', 'set', 'new', 'see', 'like', 'make', 'made'
+]);
 
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    for (let j = 0; j < word.length; j++) {
-      const charCode = word.charCodeAt(j);
-      const idx = (charCode * (i + 1) * (j + 1)) % dimensions;
-      embedding[idx] += Math.sin(charCode * 0.1) * 0.1;
+function hashWord(str: string, seed = 0): number {
+  let h = seed ^ str.length;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x5bd1e995);
+    h ^= h >>> 15;
+  }
+  return h >>> 0;
+}
+
+// Pre-compute domain signatures
+const domainSignatures: Record<string, Float32Array> = {};
+for (const [domain, keywords] of Object.entries(DOMAIN_CLUSTERS)) {
+  const sig = new Float32Array(384);
+  for (const kw of keywords) {
+    for (let h = 0; h < 2; h++) {
+      const idx = hashWord(kw + '_dom_' + domain, h) % 384;
+      sig[idx] = 1;
+    }
+  }
+  domainSignatures[domain] = sig;
+}
+
+function generateDomainAwareEmbedding(text: string): number[] {
+  const dims = 384;
+  const vec = new Float32Array(dims);
+  const lowerText = text.toLowerCase();
+  const words = lowerText.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 1);
+
+  if (words.length === 0) return Array.from(vec);
+
+  // Domain cluster weights
+  for (const [domain, keywords] of Object.entries(DOMAIN_CLUSTERS)) {
+    let matchCount = 0;
+    for (const kw of keywords) {
+      if (lowerText.includes(kw)) matchCount++;
+    }
+    if (matchCount > 0) {
+      const weight = Math.min(2.0, 0.5 + matchCount * 0.3);
+      const sig = domainSignatures[domain];
+      for (let i = 0; i < dims; i++) vec[i] += sig[i] * weight;
     }
   }
 
-  // Normalize to unit vector
-  const magnitude = Math.sqrt(embedding.reduce((sum, v) => sum + v * v, 0)) || 1;
-  return embedding.map(v => v / magnitude);
+  // Word hashes
+  for (const word of words) {
+    const isCommon = COMMON_WORDS.has(word);
+    const weight = isCommon ? 0.2 : (word.length > 6 ? 0.8 : 0.5);
+    for (let h = 0; h < 3; h++) {
+      const idx = hashWord(word, h * 17) % dims;
+      const sign = (hashWord(word, h * 31 + 1) % 2 === 0) ? 1 : -1;
+      vec[idx] += sign * weight;
+    }
+  }
+
+  // Bigrams
+  for (let i = 0; i < words.length - 1; i++) {
+    if (COMMON_WORDS.has(words[i]) && COMMON_WORDS.has(words[i + 1])) continue;
+    const bigram = words[i] + '_' + words[i + 1];
+    const idx = hashWord(bigram, 42) % dims;
+    const sign = (hashWord(bigram, 43) % 2 === 0) ? 1 : -1;
+    vec[idx] += sign * 0.4;
+  }
+
+  // Trigrams
+  for (let i = 0; i < words.length - 2; i++) {
+    const trigram = words[i] + '_' + words[i + 1] + '_' + words[i + 2];
+    const idx = hashWord(trigram, 99) % dims;
+    const sign = (hashWord(trigram, 100) % 2 === 0) ? 1 : -1;
+    vec[idx] += sign * 0.3;
+  }
+
+  // Normalize
+  let norm = 0;
+  for (let i = 0; i < dims; i++) norm += vec[i] * vec[i];
+  norm = Math.sqrt(norm);
+  if (norm > 0) for (let i = 0; i < dims; i++) vec[i] /= norm;
+
+  return Array.from(vec);
 }
 
 /**

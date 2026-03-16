@@ -227,7 +227,7 @@ async function spawnClaudeCodeInstance(
     // Check if claude command exists
     let claudeAvailable = false;
     try {
-      execSync('which claude', { stdio: 'ignore' });
+      execSync('which claude', { stdio: 'ignore', windowsHide: true });
       claudeAvailable = true;
     } catch {
       output.writeln();

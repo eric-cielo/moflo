@@ -185,7 +185,7 @@ export class RvfaBuilder {
 
   private buildRuntimeSection(): Buffer {
     let nodeVersion = 'v22.0.0';
-    try { nodeVersion = execSync('node --version', { encoding: 'utf-8' }).trim(); } catch { /* keep default */ }
+    try { nodeVersion = execSync('node --version', { encoding: 'utf-8', windowsHide: true }).trim(); } catch { /* keep default */ }
 
     return jsonBuf({
       type: 'runtime',
@@ -198,7 +198,7 @@ export class RvfaBuilder {
   private buildRufloSection(): Buffer {
     let packageMeta: Record<string, unknown> | null = null;
     try {
-      const raw = execSync('npm pack ruflo@latest --dry-run --json 2>/dev/null', { encoding: 'utf-8', timeout: 15_000 });
+      const raw = execSync('npm pack ruflo@latest --dry-run --json 2>/dev/null', { encoding: 'utf-8', timeout: 15_000, windowsHide: true });
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) packageMeta = parsed[0];
     } catch { /* manifest-only fallback */ }
