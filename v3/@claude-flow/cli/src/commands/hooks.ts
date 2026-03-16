@@ -4418,6 +4418,201 @@ const taskCompletedCommand: Command = {
   }
 };
 
+// Learn subcommand — store a learning pattern
+const learnCommand: Command = {
+  name: 'learn',
+  description: 'Store a learning pattern for future routing and retrieval',
+  options: [
+    {
+      name: 'pattern',
+      short: 'p',
+      description: 'The pattern text to store',
+      type: 'string',
+      required: true
+    },
+    {
+      name: 'domain',
+      short: 'd',
+      description: 'Domain for the pattern (e.g. "code", "testing", "security")',
+      type: 'string',
+      default: 'general'
+    },
+    {
+      name: 'quality',
+      short: 'q',
+      description: 'Quality score (0.0 - 1.0)',
+      type: 'number',
+      default: 0.8
+    }
+  ],
+  examples: [
+    { command: 'claude-flow hooks learn -p "JWT auth requires refresh token rotation" -d security', description: 'Store a security pattern' },
+    { command: 'claude-flow hooks learn -p "Use em.flush() after batch inserts" -d database -q 0.9', description: 'Store high-quality DB pattern' }
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const pattern = ctx.args[0] || ctx.flags.pattern as string;
+    const domain = (ctx.flags.domain as string) || 'general';
+    const quality = (ctx.flags.quality as number) || 0.8;
+
+    if (!pattern) {
+      output.printError('Pattern text is required. Use --pattern or -p flag.');
+      return { success: false, exitCode: 1 };
+    }
+
+    try {
+      const { LearningService } = await import('../services/learning-service.js');
+      const service = new LearningService();
+      await service.initialize();
+
+      const result = await service.storePattern(pattern, domain, quality);
+      service.close();
+
+      if (ctx.flags.format === 'json') {
+        output.printJson(result);
+        return { success: true, data: result };
+      }
+
+      if (result.action === 'updated') {
+        output.printSuccess(`Pattern already exists (${(result.similarity! * 100).toFixed(0)}% similar) — usage count incremented [${result.id}]`);
+      } else {
+        output.printSuccess(`Pattern stored [${result.id}] domain=${domain} quality=${quality}`);
+      }
+
+      return { success: true, data: result };
+    } catch (error) {
+      output.printError(`Failed to store pattern: ${String(error)}`);
+      return { success: false, exitCode: 1 };
+    }
+  }
+};
+
+// Patterns subcommand — list learned patterns
+const patternsCommand: Command = {
+  name: 'patterns',
+  description: 'List learned patterns',
+  options: [
+    {
+      name: 'domain',
+      short: 'd',
+      description: 'Filter by domain',
+      type: 'string'
+    },
+    {
+      name: 'limit',
+      short: 'l',
+      description: 'Maximum number of patterns to show',
+      type: 'number',
+      default: 20
+    }
+  ],
+  examples: [
+    { command: 'claude-flow hooks patterns', description: 'List all patterns' },
+    { command: 'claude-flow hooks patterns -d security', description: 'List security patterns' }
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const domain = ctx.flags.domain as string | undefined;
+    const limit = (ctx.flags.limit as number) || 20;
+
+    try {
+      const { LearningService } = await import('../services/learning-service.js');
+      const service = new LearningService();
+      await service.initialize();
+
+      const patterns = service.listPatterns(domain, limit);
+      const stats = service.getStats();
+      service.close();
+
+      if (ctx.flags.format === 'json') {
+        output.printJson({ patterns, stats });
+        return { success: true, data: { patterns, stats } };
+      }
+
+      output.writeln();
+      output.writeln(output.bold('Learned Patterns'));
+      output.writeln();
+
+      if (patterns.length === 0) {
+        output.printInfo(domain ? `No patterns found for domain "${domain}"` : 'No patterns stored yet');
+        return { success: true, data: { patterns: [], stats } };
+      }
+
+      output.printTable({
+        columns: [
+          { key: 'id', header: 'ID', width: 24 },
+          { key: 'pattern', header: 'Pattern', width: 45, format: (v: unknown) => {
+            const s = String(v);
+            return s.length > 42 ? s.slice(0, 42) + '...' : s;
+          }},
+          { key: 'domain', header: 'Domain', width: 12 },
+          { key: 'tier', header: 'Tier', width: 12, format: (v: unknown) => v === 'long-term' ? output.success(String(v)) : output.dim(String(v)) },
+          { key: 'quality', header: 'Quality', width: 9, align: 'right' as const, format: (v: unknown) => `${((v as number) * 100).toFixed(0)}%` },
+          { key: 'uses', header: 'Uses', width: 6, align: 'right' as const },
+        ],
+        data: patterns as unknown as Record<string, unknown>[]
+      });
+
+      output.writeln();
+      output.printInfo(`Total: ${stats.totalPatterns} patterns (${stats.shortTermPatterns} short-term, ${stats.longTermPatterns} long-term)`);
+      if (stats.avgQuality > 0) {
+        output.printInfo(`Average quality: ${(stats.avgQuality * 100).toFixed(0)}%`);
+      }
+      if (stats.domains.length > 0) {
+        output.printInfo(`Domains: ${stats.domains.join(', ')}`);
+      }
+
+      return { success: true, data: { patterns, stats } };
+    } catch (error) {
+      output.printError(`Failed to list patterns: ${String(error)}`);
+      return { success: false, exitCode: 1 };
+    }
+  }
+};
+
+// Consolidate subcommand — promote, prune, and deduplicate patterns
+const consolidateCommand: Command = {
+  name: 'consolidate',
+  description: 'Run pattern consolidation (promote short-term, prune old, deduplicate)',
+  options: [],
+  examples: [
+    { command: 'claude-flow hooks consolidate', description: 'Run consolidation' }
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    output.printInfo('Running pattern consolidation...');
+
+    try {
+      const { LearningService } = await import('../services/learning-service.js');
+      const service = new LearningService();
+      await service.initialize();
+
+      const result = await service.consolidate();
+      const stats = service.getStats();
+      service.close();
+
+      if (ctx.flags.format === 'json') {
+        output.printJson({ ...result, stats });
+        return { success: true, data: { ...result, stats } };
+      }
+
+      output.writeln();
+      output.writeln(output.bold('Consolidation Results'));
+      output.writeln();
+      output.printList([
+        `Promoted to long-term: ${result.promoted}`,
+        `Pruned old patterns:   ${result.pruned}`,
+        `Deduplicated:          ${result.deduplicated}`,
+        `Duration:              ${result.durationMs}ms`,
+      ]);
+      output.writeln();
+      output.printInfo(`Remaining: ${stats.shortTermPatterns} short-term, ${stats.longTermPatterns} long-term`);
+
+      return { success: true, data: { ...result, stats } };
+    } catch (error) {
+      output.printError(`Failed to consolidate: ${String(error)}`);
+      return { success: false, exitCode: 1 };
+    }
+  }
+};
+
 // Main hooks command
 export const hooksCommand: Command = {
   name: 'hooks',
@@ -4460,6 +4655,10 @@ export const hooksCommand: Command = {
     // Agent Teams integration
     teammateIdleCommand,
     taskCompletedCommand,
+    // Learning service commands
+    learnCommand,
+    patternsCommand,
+    consolidateCommand,
   ],
   options: [],
   examples: [
@@ -4503,6 +4702,11 @@ export const hooksCommand: Command = {
       `${output.highlight('model-route')}    - Route to optimal model (haiku/sonnet/opus)`,
       `${output.highlight('model-outcome')}  - Record model routing outcome`,
       `${output.highlight('model-stats')}    - View model routing statistics`,
+      '',
+      output.bold('Learning:'),
+      `${output.highlight('learn')}          - Store a learning pattern`,
+      `${output.highlight('patterns')}       - List learned patterns`,
+      `${output.highlight('consolidate')}    - Promote, prune, and deduplicate patterns`,
       '',
       output.bold('Agent Teams:'),
       `${output.highlight('teammate-idle')}  - Handle idle teammate (auto-assign tasks)`,

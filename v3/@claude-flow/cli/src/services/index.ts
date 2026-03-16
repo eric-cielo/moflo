@@ -57,6 +57,31 @@ export {
   type TaskStatus,
 } from './worker-queue.js';
 
+// Learning Service
+export {
+  LearningService,
+  getLearningService,
+  HNSWIndex,
+  hashEmbed,
+  cosineSimilarity,
+  LEARNING_CONFIG,
+  type PatternSearchResult,
+  type StoreResult,
+  type ConsolidateResult,
+  type LearningStats,
+  type PatternRow,
+} from './learning-service.js';
+
+// Agent Router
+export {
+  AgentRouter,
+  getAgentRouter,
+  routeTask,
+  AGENT_CAPABILITIES,
+  type RouteResult,
+  type AgentType,
+} from './agent-router.js';
+
 // Re-export types
 export type { default as WorkerDaemonType } from './worker-daemon.js';
 export type { default as HeadlessWorkerExecutorType } from './headless-worker-executor.js';
