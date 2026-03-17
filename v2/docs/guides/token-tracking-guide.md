@@ -277,8 +277,8 @@ export CLAUDE_CODE_ENABLE_TELEMETRY=1
 ## Support
 
 For issues or questions:
-- GitHub Issues: https://github.com/ruvnet/claude-flow/issues
-- Documentation: https://github.com/ruvnet/claude-flow/docs
+- GitHub Issues: https://github.com/eric-cielo/moflo/issues
+- Documentation: https://github.com/eric-cielo/moflo/docs
 
 ## Conclusion
 

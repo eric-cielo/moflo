@@ -85,7 +85,7 @@ mcp__flow-nexus__swarm_init { topology: "mesh", maxAgents: 5 }
 mcp__flow-nexus__sandbox_create { template: "node", name: "api-dev" }
 \`\`\`
 
-Learn more: https://github.com/ruvnet/claude-flow@alpha#flow-nexus
+Learn more: https://github.com/eric-cielo/moflo@alpha#flow-nexus
 
 ## Project Info
 This is a Claude-Flow AI agent orchestration system.
@@ -242,7 +242,7 @@ mcp__flow-nexus__swarm_init { topology: "mesh", maxAgents: 5 }
 mcp__flow-nexus__sandbox_create { template: "node", name: "api-dev" }
 \`\`\`
 
-Learn more: https://github.com/ruvnet/claude-flow@alpha#flow-nexus
+Learn more: https://github.com/eric-cielo/moflo@alpha#flow-nexus
 `;
 }
 
@@ -618,7 +618,7 @@ mcp__flow-nexus__swarm_init { topology: "mesh", maxAgents: 5 }
 mcp__flow-nexus__sandbox_create { template: "node", name: "api-dev" }
 \`\`\`
 
-Learn more: https://github.com/ruvnet/claude-flow@alpha#flow-nexus
+Learn more: https://github.com/eric-cielo/moflo@alpha#flow-nexus
 `;
 }
 
@@ -1006,8 +1006,8 @@ Message 4: Write "file.js"
 
 ## Support
 
-- Documentation: https://github.com/ruvnet/claude-flow@alpha
-- Issues: https://github.com/ruvnet/claude-flow@alpha/issues
+- Documentation: https://github.com/eric-cielo/moflo@alpha
+- Issues: https://github.com/eric-cielo/moflo@alpha/issues
 - Flow-Nexus Platform: https://flow-nexus.ruv.io (registration required for cloud features)
 
 ---
@@ -1133,7 +1133,7 @@ Flow Nexus seamlessly integrates with Claude Code through MCP (Model Context Pro
 
 ### 📚 Learn More
 
-- Documentation: https://github.com/ruvnet/claude-flow@alpha#flow-nexus
+- Documentation: https://github.com/eric-cielo/moflo@alpha#flow-nexus
 - MCP Integration: Use \`mcp__flow-nexus__*\` tools in Claude Code
 - Agent Usage: Type \`/\` in Claude Code to see Flow Nexus commands
 - Community: Join discussions and share templates

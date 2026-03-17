@@ -257,7 +257,7 @@ export function displayVersion(version: string, buildDate: string): void {
     chalk.white('  • MCP Server'),
     chalk.white('  • Task Coordination'),
     '',
-    chalk.blue('Homepage: ') + chalk.underline('https://github.com/ruvnet/claude-flow'),
+    chalk.blue('Homepage: ') + chalk.underline('https://github.com/eric-cielo/moflo'),
   ];
 
   console.log(info.join('\n'));

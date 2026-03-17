@@ -677,8 +677,8 @@ npx @claude-flow/cli@latest memory init --force --verbose
 
 ## Support
 
-- Documentation: https://github.com/ruvnet/claude-flow
-- Issues: https://github.com/ruvnet/claude-flow/issues
+- Documentation: https://github.com/eric-cielo/moflo
+- Issues: https://github.com/eric-cielo/moflo/issues
 
 ---
 

@@ -10,7 +10,7 @@
  * - Performance benchmarking
  * - Migration management
  *
- * Created with care by ruv.io
+ * Created with care by motailz.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../../types.js';

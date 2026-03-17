@@ -4,15 +4,15 @@
   "description": "Enterprise AI agent orchestration plugin with 150+ commands, 74+ specialized agents, SPARC methodology, swarm coordination, GitHub integration, and neural training capabilities",
   "author": {
     "name": "rUv",
-    "email": "ruv@ruv.net"
+    "email": "eric@motailz.com"
   },
-  "homepage": "https://github.com/ruvnet/claude-flow",
+  "homepage": "https://github.com/eric-cielo/moflo",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ruvnet/claude-flow.git"
+    "url": "https://github.com/eric-cielo/moflo.git"
   },
   "bugs": {
-    "url": "https://github.com/ruvnet/claude-flow/issues"
+    "url": "https://github.com/eric-cielo/moflo/issues"
   },
   "license": "MIT",
   "keywords": [

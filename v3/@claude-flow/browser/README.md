@@ -714,16 +714,16 @@ MIT License - see [LICENSE](../../LICENSE) for details.
 
 ## Links
 
-- [GitHub Repository](https://github.com/ruvnet/claude-flow)
+- [GitHub Repository](https://github.com/eric-cielo/moflo)
 - [agent-browser](https://github.com/AugmentCode/agent-browser)
-- [Claude-Flow Documentation](https://github.com/ruvnet/claude-flow#readme)
+- [Claude-Flow Documentation](https://github.com/eric-cielo/moflo#readme)
 - [MCP Protocol](https://modelcontextprotocol.io)
 
 ---
 
 <div align="center">
 
-**Part of the [Claude-Flow](https://github.com/ruvnet/claude-flow) ecosystem**
+**Part of the [Claude-Flow](https://github.com/eric-cielo/moflo) ecosystem**
 
 Made with ❤️ by [ruvnet](https://github.com/ruvnet)
 

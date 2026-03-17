@@ -11,13 +11,13 @@
     "claude-flow": "./bin/cli.js",
     "claude-flow-mcp": "./bin/mcp-server.js"
   },
-  "homepage": "https://github.com/ruvnet/claude-flow#readme",
+  "homepage": "https://github.com/eric-cielo/moflo#readme",
   "bugs": {
-    "url": "https://github.com/ruvnet/claude-flow/issues"
+    "url": "https://github.com/eric-cielo/moflo/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ruvnet/claude-flow.git",
+    "url": "https://github.com/eric-cielo/moflo.git",
     "directory": "v3/@claude-flow/cli"
   },
   "keywords": [
@@ -41,9 +41,9 @@
     "enterprise"
   ],
   "author": {
-    "name": "RuvNet",
-    "email": "ruv@ruv.io",
-    "url": "https://ruv.io"
+    "name": "Eric Cielo",
+    "email": "eric@motailz.com",
+    "url": "https://github.com/eric-cielo"
   },
   "license": "MIT",
   "exports": {

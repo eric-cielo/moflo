@@ -292,8 +292,8 @@ npx claude-flow@alpha hive-mind spawn \
 - Hive Mind Advanced: `.claude/skills/hive-mind-advanced/SKILL.md`
 
 **Official Guides:**
-- GitHub: https://github.com/ruvnet/claude-flow
-- Hive Mind: https://github.com/ruvnet/claude-flow/tree/main/docs/hive-mind
+- GitHub: https://github.com/eric-cielo/moflo
+- Hive Mind: https://github.com/eric-cielo/moflo/tree/main/docs/hive-mind
 
 ---
 

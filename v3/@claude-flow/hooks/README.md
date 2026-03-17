@@ -437,4 +437,4 @@ Add to your Claude settings (`~/.claude/settings.json`):
 
 ## License
 
-MIT © [Claude Flow Team](https://github.com/ruvnet/claude-flow)
+MIT © [Claude Flow Team](https://github.com/eric-cielo/moflo)

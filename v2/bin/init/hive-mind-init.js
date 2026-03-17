@@ -644,7 +644,7 @@ Edit \`.hive-mind/config.json\` to customize:
 - Memory settings
 - Integration options
 
-For more information, see the [Hive Mind Documentation](https://github.com/ruvnet/claude-flow/docs/hive-mind.md).
+For more information, see the [Hive Mind Documentation](https://github.com/eric-cielo/moflo/docs/hive-mind.md).
 `;
 
   await fs.writeFile(

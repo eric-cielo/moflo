@@ -632,7 +632,7 @@ SAFE ALTERNATIVES:
 • Use 'claude --skip-hooks' for manual updates
 • Create conditional execution scripts
 
-For more information: https://github.com/ruvnet/claude-flow/issues/166
+For more information: https://github.com/eric-cielo/moflo/issues/166
 `);
 }
 

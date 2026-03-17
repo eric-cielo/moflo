@@ -1032,8 +1032,8 @@ npx claude-flow@alpha github version-sync \
 - **deployment-orchestration**: Advanced deployment strategies
 
 ### Support & Community
-- Issues: https://github.com/ruvnet/claude-flow/issues
-- Discussions: https://github.com/ruvnet/claude-flow/discussions
+- Issues: https://github.com/eric-cielo/moflo/issues
+- Discussions: https://github.com/eric-cielo/moflo/discussions
 - Documentation: https://claude-flow.dev/docs
 
 ---

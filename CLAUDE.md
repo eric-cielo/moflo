@@ -1042,8 +1042,8 @@ Registry source: IPFS via Pinata (`QmXbfEAaR7D2Ujm4GAkbwcGZQMHqAMpwDoje4583uNP83
 
 ## Support
 
-- Documentation: https://github.com/ruvnet/claude-flow
-- Issues: https://github.com/ruvnet/claude-flow/issues
+- Documentation: https://github.com/eric-cielo/moflo
+- Issues: https://github.com/eric-cielo/moflo/issues
 
 ---
 

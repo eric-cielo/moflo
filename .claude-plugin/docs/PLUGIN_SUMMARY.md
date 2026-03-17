@@ -5,7 +5,7 @@
 **Version**: 2.5.0
 **License**: MIT
 **Author**: rUv
-**Repository**: https://github.com/ruvnet/claude-flow
+**Repository**: https://github.com/eric-cielo/moflo
 
 ---
 
@@ -292,9 +292,9 @@ Should show `claude-flow` as active.
 
 ## 🤝 Support & Community
 
-- **Repository**: https://github.com/ruvnet/claude-flow
-- **Issues**: https://github.com/ruvnet/claude-flow/issues
-- **Discussions**: https://github.com/ruvnet/claude-flow/discussions
+- **Repository**: https://github.com/eric-cielo/moflo
+- **Issues**: https://github.com/eric-cielo/moflo/issues
+- **Discussions**: https://github.com/eric-cielo/moflo/discussions
 - **Website**: https://flow-nexus.ruv.io
 
 ---
@@ -335,7 +335,7 @@ The plugin is configured via `.claude-plugin/plugin.json`:
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ruvnet/claude-flow.git"
+    "url": "https://github.com/eric-cielo/moflo.git"
   },
   "mcpServers": {
     "claude-flow": {

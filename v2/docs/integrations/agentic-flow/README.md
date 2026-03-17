@@ -191,7 +191,7 @@ All improvements automatically benefit claude-flow users:
 ### Issues and Questions
 
 - **Agentic-flow issues**: [ruvnet/agentic-flow/issues](https://github.com/ruvnet/agentic-flow/issues)
-- **Claude-flow integration**: [ruvnet/claude-flow/issues](https://github.com/ruvnet/claude-flow/issues)
+- **Claude-flow integration**: [ruvnet/claude-flow/issues](https://github.com/eric-cielo/moflo/issues)
 - **Tag releases**: Use appropriate version tags (e.g., `v1.7.0`)
 
 ### Documentation

@@ -396,9 +396,9 @@ claude-flow agent booster benchmark --iterations 100
 
 ## 🆘 Support
 
-- GitHub Issues: https://github.com/ruvnet/claude-flow/issues
+- GitHub Issues: https://github.com/eric-cielo/moflo/issues
 - Agentic-Flow: https://github.com/ruvnet/agentic-flow
-- Documentation: https://github.com/ruvnet/claude-flow
+- Documentation: https://github.com/eric-cielo/moflo
 
 ---
 

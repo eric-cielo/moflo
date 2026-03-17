@@ -7,7 +7,7 @@
  *   npx claude-flow ruvector import --from-memory
  *   npx claude-flow ruvector import --input data.json --batch-size 100
  *
- * Created with care by ruv.io
+ * Created with care by motailz.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../../types.js';

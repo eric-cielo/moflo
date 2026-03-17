@@ -211,7 +211,7 @@ wsl --list --verbose  # Run from Windows PowerShell
 npx claude-flow@alpha init --force --verbose 2>&1 | tee error-log.txt
 ```
 
-Then report at: https://github.com/ruvnet/claude-flow/issues
+Then report at: https://github.com/eric-cielo/moflo/issues
 
 ### Alternative: Use Docker
 If WSL issues persist, consider using Docker:

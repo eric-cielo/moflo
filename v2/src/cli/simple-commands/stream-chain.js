@@ -373,7 +373,7 @@ function showHelp() {
 📖 DOCUMENTATION
     Full docs: ./claude-flow-wiki/Stream-Chain-Command.md
     Stream spec: ./docs/stream-chaining.md
-    GitHub: https://github.com/ruvnet/claude-flow
+    GitHub: https://github.com/eric-cielo/moflo
 
 🏷️ VERSION
     Claude Flow Alpha 89 - Stream Chain v2.0.0

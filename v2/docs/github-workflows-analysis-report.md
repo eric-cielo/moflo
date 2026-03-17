@@ -792,9 +792,9 @@ const success = Math.random() > 0.05; // 95% success rate
 ## Appendix A: Quick Reference
 
 ### Failed Workflow Runs
-- CI/CD Pipeline: https://github.com/ruvnet/claude-flow/actions/runs/19621632521
-- Rollback Manager: https://github.com/ruvnet/claude-flow/actions/runs/19622456012
-- Integration Tests: https://github.com/ruvnet/claude-flow/actions/runs/19622447176
+- CI/CD Pipeline: https://github.com/eric-cielo/moflo/actions/runs/19621632521
+- Rollback Manager: https://github.com/eric-cielo/moflo/actions/runs/19622456012
+- Integration Tests: https://github.com/eric-cielo/moflo/actions/runs/19622447176
 
 ### Key Files to Edit
 1. `/workspaces/claude-code-flow/package.json` - Remove duplicate test key

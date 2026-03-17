@@ -7,10 +7,10 @@
   "bin": {
     "ruflo": "./bin/ruflo.js"
   },
-  "homepage": "https://github.com/ruvnet/claude-flow#readme",
+  "homepage": "https://github.com/eric-cielo/moflo#readme",
   "bugs": {
-    "url": "https://github.com/ruvnet/claude-flow/issues",
-    "email": "support@ruv.io"
+    "url": "https://github.com/eric-cielo/moflo/issues",
+    "email": "eric@motailz.com"
   },
   "funding": {
     "type": "github",
@@ -46,7 +46,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ruvnet/claude-flow.git",
+    "url": "https://github.com/eric-cielo/moflo.git",
     "directory": "ruflo"
   },
   "keywords": [
@@ -69,9 +69,9 @@
     "self-learning"
   ],
   "author": {
-    "name": "RuvNet",
-    "email": "ruv@ruv.io",
-    "url": "https://ruv.io"
+    "name": "Eric Cielo",
+    "email": "eric@motailz.com",
+    "url": "https://github.com/eric-cielo"
   },
   "license": "MIT",
   "publishConfig": {

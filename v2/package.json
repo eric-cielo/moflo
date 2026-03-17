@@ -2,7 +2,7 @@
   "name": "claude-flow",
   "version": "2.7.47",
   "description": "Enterprise-grade AI agent orchestration with WASM-powered ReasoningBank memory and AgentDB vector database (always uses latest agentic-flow)",
-  "mcpName": "io.github.ruvnet/claude-flow",
+  "mcpName": "io.github.eric-cielo/moflo",
   "main": "cli.mjs",
   "bin": {
     "claude-flow": "bin/claude-flow.js"
@@ -80,7 +80,7 @@
     "tools",
     "alpha"
   ],
-  "author": "rUv",
+  "author": "Eric Cielo",
   "license": "MIT",
   "repository": {
     "type": "git",

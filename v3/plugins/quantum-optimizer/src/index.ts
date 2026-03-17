@@ -94,7 +94,7 @@ export const pluginMetadata = {
   category: 'exotic',
   author: 'rUv',
   license: 'MIT',
-  repository: 'https://github.com/ruvnet/claude-flow',
+  repository: 'https://github.com/eric-cielo/moflo',
   tools: [
     'quantum_annealing_solve',
     'quantum_qaoa_optimize',

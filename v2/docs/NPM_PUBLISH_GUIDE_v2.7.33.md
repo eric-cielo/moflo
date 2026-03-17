@@ -205,7 +205,7 @@ git push origin claude/align-flow-with-mcp-011CV45c34eF2MawJHUpj9XD
 git push origin v2.7.33
 
 # Verify tag on GitHub
-# Visit: https://github.com/ruvnet/claude-flow/releases/tag/v2.7.33
+# Visit: https://github.com/eric-cielo/moflo/releases/tag/v2.7.33
 ```
 
 ### Step 8: Merge to Main (If Applicable)
@@ -307,7 +307,7 @@ gh release create v2.7.33 \
   --verify-tag
 
 # Or manually via GitHub web interface:
-# 1. Go to https://github.com/ruvnet/claude-flow/releases/new
+# 1. Go to https://github.com/eric-cielo/moflo/releases/new
 # 2. Select tag: v2.7.33
 # 3. Release title: "v2.7.33: MCP 2025-11 Compliance & Progressive Disclosure"
 # 4. Copy-paste from docs/RELEASE_NOTES_v2.7.33.md
@@ -610,7 +610,7 @@ If issues arise during publishing:
 - Registry status: https://status.npmjs.org/
 
 **GitHub Issues:**
-- Create issue: https://github.com/ruvnet/claude-flow/issues/new
+- Create issue: https://github.com/eric-cielo/moflo/issues/new
 - Emergency contact: @ruvnet
 
 **Rollback Decision:**

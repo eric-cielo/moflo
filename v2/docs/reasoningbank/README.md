@@ -1115,7 +1115,7 @@ npx claude-flow@alpha memory query "learning" --reasoningbank
 **Next Steps**:
 - 📖 [Basic Tutorial](./tutorial-basic.md) - Learn the fundamentals
 - 🚀 [Advanced Tutorial](./tutorial-advanced.md) - Build self-learning agents
-- 💬 [GitHub Issues](https://github.com/ruvnet/claude-flow/issues) - Get help or contribute
+- 💬 [GitHub Issues](https://github.com/eric-cielo/moflo/issues) - Get help or contribute
 
 ---
 

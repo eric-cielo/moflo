@@ -2,7 +2,7 @@
  * V3 CLI Main Entry Point
  * Modernized CLI for RuFlo V3
  *
- * Created with ❤️ by ruv.io
+ * Created with ❤️ by motailz.com
  */
 
 import { readFileSync } from 'fs';
@@ -340,7 +340,7 @@ export class CLI {
 
     this.output.writeln(this.output.dim(`Run "${this.name} <command> --help" for command help`));
     this.output.writeln();
-    this.output.writeln(this.output.dim('Created with ❤️ by ruv.io'));
+    this.output.writeln(this.output.dim('Created with ❤️ by motailz.com'));
     this.output.writeln();
   }
 

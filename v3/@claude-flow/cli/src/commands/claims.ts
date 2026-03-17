@@ -2,7 +2,7 @@
  * V3 CLI Claims Command
  * Claims-based authorization, permissions, and access control
  *
- * Created with ❤️ by ruv.io
+ * Created with ❤️ by motailz.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
@@ -401,7 +401,7 @@ export const claimsCommand: Command = {
       'admin:*   - Administrative operations',
     ]);
     output.writeln();
-    output.writeln(output.dim('Created with ❤️ by ruv.io'));
+    output.writeln(output.dim('Created with ❤️ by motailz.com'));
     return { success: true };
   },
 };

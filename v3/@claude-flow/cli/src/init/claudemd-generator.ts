@@ -378,8 +378,8 @@ npx @claude-flow/cli@latest doctor --fix
 
 ## Support
 
-- Documentation: https://github.com/ruvnet/claude-flow
-- Issues: https://github.com/ruvnet/claude-flow/issues`;
+- Documentation: https://github.com/eric-cielo/moflo
+- Issues: https://github.com/eric-cielo/moflo/issues`;
 }
 
 // --- Template Composers ---

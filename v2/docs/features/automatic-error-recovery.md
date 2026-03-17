@@ -330,4 +330,4 @@ Error recovery adds minimal overhead:
 
 ---
 
-**Need Help?** Report issues at https://github.com/ruvnet/claude-flow/issues
+**Need Help?** Report issues at https://github.com/eric-cielo/moflo/issues

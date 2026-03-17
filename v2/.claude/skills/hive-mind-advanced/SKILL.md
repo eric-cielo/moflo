@@ -699,10 +699,10 @@ npx claude-flow hive-mind spawn "Review PR #456" \
 
 ## References
 
-- [Hive Mind Documentation](https://github.com/ruvnet/claude-flow/docs/hive-mind)
-- [Collective Intelligence Patterns](https://github.com/ruvnet/claude-flow/docs/patterns)
-- [Byzantine Consensus](https://github.com/ruvnet/claude-flow/docs/consensus)
-- [Memory Optimization](https://github.com/ruvnet/claude-flow/docs/memory)
+- [Hive Mind Documentation](https://github.com/eric-cielo/moflo/docs/hive-mind)
+- [Collective Intelligence Patterns](https://github.com/eric-cielo/moflo/docs/patterns)
+- [Byzantine Consensus](https://github.com/eric-cielo/moflo/docs/consensus)
+- [Memory Optimization](https://github.com/eric-cielo/moflo/docs/memory)
 
 ---
 

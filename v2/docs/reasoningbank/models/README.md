@@ -335,7 +335,7 @@ Want to contribute a model? See [HOW-TO-TRAIN.md](./HOW-TO-TRAIN.md) and submit 
 ## 💡 Support
 
 - **Documentation**: See HOW-TO-USE.md and HOW-TO-TRAIN.md
-- **Issues**: [GitHub Issues](https://github.com/ruvnet/claude-flow/issues)
+- **Issues**: [GitHub Issues](https://github.com/eric-cielo/moflo/issues)
 - **Examples**: Check each model's README.md
 
 ---

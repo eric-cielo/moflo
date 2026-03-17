@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@claude-flow/neural.svg)](https://www.npmjs.com/package/@claude-flow/neural)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
-[![AI Learning](https://img.shields.io/badge/AI-Self--Learning-purple.svg)](https://github.com/ruvnet/claude-flow)
+[![AI Learning](https://img.shields.io/badge/AI-Self--Learning-purple.svg)](https://github.com/eric-cielo/moflo)
 
 > Self-Optimizing Neural Architecture (SONA) module for Claude Flow V3 - adaptive learning, trajectory tracking, and pattern-based optimization.
 

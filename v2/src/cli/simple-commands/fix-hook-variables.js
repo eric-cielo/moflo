@@ -285,7 +285,7 @@ export async function fixHookVariablesCommand(args = [], flags = {}) {
     console.log(chalk.yellow('\n⚠️  Important:'));
     console.log('  1. Restart Claude Code for changes to take effect');
     console.log('  2. Test your hooks to ensure they work correctly');
-    console.log('  3. Report any issues to: https://github.com/ruvnet/claude-flow/issues');
+    console.log('  3. Report any issues to: https://github.com/eric-cielo/moflo/issues');
   }
 
   // Test mode
@@ -359,5 +359,5 @@ Available syntaxes:
 Note: The 'jq' syntax is based on official Claude Code documentation and is likely
 the most reliable approach for Claude Code 1.0.51+.
 
-For more information: https://github.com/ruvnet/claude-flow/issues/249`,
+For more information: https://github.com/eric-cielo/moflo/issues/249`,
 };

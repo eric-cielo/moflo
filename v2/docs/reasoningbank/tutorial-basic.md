@@ -615,8 +615,8 @@ You learned:
 ---
 
 **Need Help?**
-- GitHub Issues: https://github.com/ruvnet/claude-flow/issues
-- Documentation: https://github.com/ruvnet/claude-flow/tree/main/docs/reasoningbank
+- GitHub Issues: https://github.com/eric-cielo/moflo/issues
+- Documentation: https://github.com/eric-cielo/moflo/tree/main/docs/reasoningbank
 
 **Happy Learning! 🚀**
 

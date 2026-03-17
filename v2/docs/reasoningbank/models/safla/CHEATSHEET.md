@@ -264,7 +264,7 @@ LIMIT 10;
 npx claude-flow@alpha memory --help
 
 # GitHub Issues
-https://github.com/ruvnet/claude-flow/issues
+https://github.com/eric-cielo/moflo/issues
 
 # Model location
 ~/.swarm/memory.db

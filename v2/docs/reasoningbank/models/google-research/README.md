@@ -437,8 +437,8 @@ This model is provided for research and educational purposes. Please refer to th
 
 ## Support & Questions
 
-- **Issues:** https://github.com/ruvnet/claude-flow/issues
-- **Documentation:** https://github.com/ruvnet/claude-flow/wiki
+- **Issues:** https://github.com/eric-cielo/moflo/issues
+- **Documentation:** https://github.com/eric-cielo/moflo/wiki
 - **Paper:** https://arxiv.org/abs/2509.25140
 
 ## Related Models

@@ -742,9 +742,9 @@ claude-flow agent run coder "Build API" \
 
 ## 🆘 Support
 
-- GitHub Issues: https://github.com/ruvnet/claude-flow/issues
+- GitHub Issues: https://github.com/eric-cielo/moflo/issues
 - Agentic-Flow Issues: https://github.com/ruvnet/agentic-flow/issues
-- Documentation: https://github.com/ruvnet/claude-flow
+- Documentation: https://github.com/eric-cielo/moflo
 
 ---
 

@@ -58,8 +58,8 @@ export const pluginMetadata = {
   author: 'Claude Flow Team',
   category: 'code-intelligence',
   keywords: ['code', 'intelligence', 'semantic-search', 'architecture', 'refactoring'],
-  homepage: 'https://github.com/ruvnet/claude-flow',
-  repository: 'https://github.com/ruvnet/claude-flow.git',
+  homepage: 'https://github.com/eric-cielo/moflo',
+  repository: 'https://github.com/eric-cielo/moflo.git',
 };
 
 /**

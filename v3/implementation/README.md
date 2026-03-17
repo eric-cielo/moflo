@@ -83,7 +83,7 @@ implementation/
 
 ## Quick Links
 
-- **Master Issue:** [GitHub Issue #927](https://github.com/ruvnet/claude-flow/issues/927)
+- **Master Issue:** [GitHub Issue #927](https://github.com/eric-cielo/moflo/issues/927)
 - **ADR Documentation:** [/v3/docs/adrs/](../docs/adrs/)
 - **Module Source:** [/v3/@claude-flow/](../@claude-flow/)
 

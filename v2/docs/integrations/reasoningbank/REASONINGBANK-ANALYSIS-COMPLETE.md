@@ -439,7 +439,7 @@ claude-flow agent run coder "Build feature C" --enable-memory --memory-k 10
 ### Official Documentation
 - ReasoningBank Paper: https://arxiv.org/html/2509.25140v1
 - Agentic-Flow: https://github.com/ruvnet/agentic-flow
-- Claude-Flow: https://github.com/ruvnet/claude-flow
+- Claude-Flow: https://github.com/eric-cielo/moflo
 
 ### Created Documentation
 - Agent Creation Guide: `docs/REASONINGBANK-AGENT-CREATION-GUIDE.md`

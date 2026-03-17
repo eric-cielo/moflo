@@ -1176,9 +1176,9 @@ Claude Flow extends the base coordination with:
 
 ## Support
 
-- Documentation: https://github.com/ruvnet/claude-flow@alpha
-- Issues: https://github.com/ruvnet/claude-flow@alpha/issues
-- Examples: https://github.com/ruvnet/claude-flow@alpha/tree/main/examples
+- Documentation: https://github.com/eric-cielo/moflo@alpha
+- Issues: https://github.com/eric-cielo/moflo@alpha/issues
+- Examples: https://github.com/eric-cielo/moflo@alpha/tree/main/examples
 
 ---
 

@@ -273,7 +273,7 @@ Optimizes action sequences for cost, time, and resource efficiency.
     console.log(chalk.gray('  npx claude-flow goal execute --plan plan-id'));
     console.log(chalk.gray('  @agent-goal-planner "Create deployment plan"'));
     console.log('\n' + chalk.magenta('🔗 Documentation:'));
-    console.log(chalk.gray('  https://github.com/ruvnet/claude-flow'));
+    console.log(chalk.gray('  https://github.com/eric-cielo/moflo'));
   }
 }
 

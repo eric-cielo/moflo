@@ -1242,8 +1242,8 @@ Skills activate automatically when:
 
 ## 🔗 Resources
 
-- **Documentation**: https://github.com/ruvnet/claude-flow
-- **Issues**: https://github.com/ruvnet/claude-flow/issues
+- **Documentation**: https://github.com/eric-cielo/moflo
+- **Issues**: https://github.com/eric-cielo/moflo/issues
 - **Flow Nexus**: https://flow-nexus.ruv.io
 
 ---

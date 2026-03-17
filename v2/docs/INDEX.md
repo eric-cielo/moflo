@@ -212,7 +212,7 @@ npx claude-flow@alpha --agents 3 swarm "task description"
 ```
 
 ### Getting Help
-- **GitHub Issues**: [Report bugs and feature requests](https://github.com/ruvnet/claude-flow/issues)
+- **GitHub Issues**: [Report bugs and feature requests](https://github.com/eric-cielo/moflo/issues)
 - **Documentation**: Check specific documentation files for detailed guidance
 - **Community**: Join our Discord community for real-time support
 - **Performance**: SWE-Bench Score: 84.8%, Task Completion: 96.3%
@@ -576,8 +576,8 @@ npx claude-flow@alpha --agents 10 swarm "full enterprise application"
 ## 📞 **Getting Support**
 
 ### 🆘 **Immediate Help**
-- **Emergency Issues**: [GitHub Issues](https://github.com/ruvnet/claude-flow/issues/new?template=bug_report.md)
-- **Feature Requests**: [Enhancement Template](https://github.com/ruvnet/claude-flow/issues/new?template=feature_request.md)
+- **Emergency Issues**: [GitHub Issues](https://github.com/eric-cielo/moflo/issues/new?template=bug_report.md)
+- **Feature Requests**: [Enhancement Template](https://github.com/eric-cielo/moflo/issues/new?template=feature_request.md)
 - **Documentation**: Browse this comprehensive guide
 - **Community**: Discord community for real-time support
 
@@ -588,7 +588,7 @@ npx claude-flow@alpha --agents 10 swarm "full enterprise application"
 - **General Inquiries**: info@claude-flow.ai
 
 ### 🔗 **Community Links**
-- **GitHub**: [ruvnet/claude-flow](https://github.com/ruvnet/claude-flow)
+- **GitHub**: [ruvnet/claude-flow](https://github.com/eric-cielo/moflo)
 - **Discord**: [Join Community](https://discord.gg/claude-flow)
 - **Stack Overflow**: [claude-flow tag](https://stackoverflow.com/questions/tagged/claude-flow)
 - **Reddit**: [r/claudeflow](https://reddit.com/r/claudeflow)
@@ -613,7 +613,7 @@ npx claude-flow@alpha init --force
 
 ### **🌟 Join Thousands of Developers Building with Claude Flow**
 
-[**🚀 Quick Start**](../README.md#-quick-start) • [**📚 Documentation**](../README.md) • [**💬 Community**](https://discord.gg/claude-flow) • [**🐛 Issues**](https://github.com/ruvnet/claude-flow/issues)
+[**🚀 Quick Start**](../README.md#-quick-start) • [**📚 Documentation**](../README.md) • [**💬 Community**](https://discord.gg/claude-flow) • [**🐛 Issues**](https://github.com/eric-cielo/moflo/issues)
 
 ---
 

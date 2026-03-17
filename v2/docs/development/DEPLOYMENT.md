@@ -2308,8 +2308,8 @@ Level 3: Leadership
 - **API Documentation**: [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)  
 - **Development Workflow**: [DEVELOPMENT_WORKFLOW.md](./DEVELOPMENT_WORKFLOW.md)
 - **Main Documentation**: [INDEX.md](./INDEX.md)
-- **Repository**: https://github.com/ruvnet/claude-flow
-- **Issues**: https://github.com/ruvnet/claude-flow/issues
+- **Repository**: https://github.com/eric-cielo/moflo
+- **Issues**: https://github.com/eric-cielo/moflo/issues
 
 ### Quick Commands Reference
 
@@ -2343,6 +2343,6 @@ kubectl get events --sort-by='.metadata.creationTimestamp' -n claude-flow  # Rec
 
 [📚 Documentation Home](./INDEX.md) | [🏗️ Architecture](./ARCHITECTURE.md) | [📖 API Reference](./API_DOCUMENTATION.md) | [⚡ Development](./DEVELOPMENT_WORKFLOW.md)
 
-[🐙 GitHub Repository](https://github.com/ruvnet/claude-flow) | [🐛 Report Issues](https://github.com/ruvnet/claude-flow/issues) | [💬 Community Support](https://discord.gg/claude-flow)
+[🐙 GitHub Repository](https://github.com/eric-cielo/moflo) | [🐛 Report Issues](https://github.com/eric-cielo/moflo/issues) | [💬 Community Support](https://discord.gg/claude-flow)
 
 </div>

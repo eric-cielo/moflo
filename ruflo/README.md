@@ -38,7 +38,7 @@ Both packages use `@claude-flow/cli` under the hood. Choose whichever you prefer
 
 ## Documentation
 
-Full documentation: [github.com/ruvnet/claude-flow](https://github.com/ruvnet/claude-flow)
+Full documentation: [github.com/ruvnet/claude-flow](https://github.com/eric-cielo/moflo)
 
 ## License
 

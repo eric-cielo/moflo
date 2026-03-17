@@ -294,8 +294,8 @@ mcp__ruv-swarm__swarm_status()
 
 ## 📞 Support
 
-**Documentation:** https://github.com/ruvnet/claude-flow
-**Issues:** https://github.com/ruvnet/claude-flow/issues
+**Documentation:** https://github.com/eric-cielo/moflo
+**Issues:** https://github.com/eric-cielo/moflo/issues
 **Discord:** https://discord.agentics.org
 
 ---

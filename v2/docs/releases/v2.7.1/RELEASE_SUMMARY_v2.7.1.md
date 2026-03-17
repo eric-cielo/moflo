@@ -5,7 +5,7 @@
 **Release Date**: 2025-10-22
 **Package**: claude-flow@2.7.1
 **Status**: ✅ Published to npm & Verified
-**GitHub Issue**: [#827](https://github.com/ruvnet/claude-flow/issues/827)
+**GitHub Issue**: [#827](https://github.com/eric-cielo/moflo/issues/827)
 
 ---
 
@@ -280,8 +280,8 @@ claude-flow hooks neural-patterns --action stats --pattern-type coordination
 ### Resources
 - **npm**: https://www.npmjs.com/package/claude-flow
 - **GitHub**: https://github.com/ruvnet/claude-code-flow
-- **Issue #827**: https://github.com/ruvnet/claude-flow/issues/827
-- **Documentation**: https://github.com/ruvnet/claude-flow/tree/main/docs
+- **Issue #827**: https://github.com/eric-cielo/moflo/issues/827
+- **Documentation**: https://github.com/eric-cielo/moflo/tree/main/docs
 
 ---
 

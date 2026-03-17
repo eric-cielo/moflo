@@ -444,8 +444,8 @@ This model is part of the Claude Flow project and follows the same license terms
 
 ## Support
 
-- **Documentation**: https://github.com/ruvnet/claude-flow
-- **Issues**: https://github.com/ruvnet/claude-flow/issues
+- **Documentation**: https://github.com/eric-cielo/moflo
+- **Issues**: https://github.com/eric-cielo/moflo/issues
 - **ReasoningBank CLI**: `npx claude-flow@alpha memory --help`
 
 ---

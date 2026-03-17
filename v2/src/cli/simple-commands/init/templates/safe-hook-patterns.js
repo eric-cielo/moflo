@@ -413,7 +413,7 @@ claude-flow hook-safety reset
 
 ## 📚 Additional Resources
 
-- Issue #166: https://github.com/ruvnet/claude-flow/issues/166
+- Issue #166: https://github.com/eric-cielo/moflo/issues/166
 - Claude Code Hooks Documentation: https://docs.anthropic.com/en/docs/claude-code/hooks
 - Reddit Discussion: https://www.reddit.com/r/ClaudeAI/comments/1ltvi6x/anyone_else_accidentally_create_an_infinite_loop/
 

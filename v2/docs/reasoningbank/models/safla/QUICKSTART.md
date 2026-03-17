@@ -339,7 +339,7 @@ sqlite3 ~/.swarm/memory.db "PRAGMA journal_mode;"
 ## 🔗 Resources
 
 - **ReasoningBank CLI**: `npx claude-flow@alpha memory --help`
-- **GitHub**: https://github.com/ruvnet/claude-flow
+- **GitHub**: https://github.com/eric-cielo/moflo
 - **Full README**: `/workspaces/claude-code-flow/docs/reasoningbank/models/safla/README.md`
 
 ---

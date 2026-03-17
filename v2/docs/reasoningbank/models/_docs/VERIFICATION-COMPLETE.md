@@ -336,7 +336,7 @@ cp models/safla/memory.db.backup models/safla/memory.db
 
 ### Feedback
 
-Open an issue: [GitHub Issues](https://github.com/ruvnet/claude-flow/issues)
+Open an issue: [GitHub Issues](https://github.com/eric-cielo/moflo/issues)
 
 ---
 

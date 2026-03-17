@@ -952,8 +952,8 @@ async function main() {
     version,
     description: 'Advanced MCP server with swarm coordination, async operations, and neural capabilities',
     author: 'ruvnet',
-    homepage: 'https://github.com/ruvnet/claude-flow',
-    repository: 'https://github.com/ruvnet/claude-flow',
+    homepage: 'https://github.com/eric-cielo/moflo',
+    repository: 'https://github.com/eric-cielo/moflo',
     capabilities: {
       tools: true,
       resources: true,

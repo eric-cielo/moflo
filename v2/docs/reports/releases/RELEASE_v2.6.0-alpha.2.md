@@ -562,9 +562,9 @@ claude-flow memory store config "..." --redact
 ## 📞 Support & Feedback
 
 ### Documentation
-- GitHub: https://github.com/ruvnet/claude-flow
-- Issues: https://github.com/ruvnet/claude-flow/issues
-- Wiki: https://github.com/ruvnet/claude-flow/wiki
+- GitHub: https://github.com/eric-cielo/moflo
+- Issues: https://github.com/eric-cielo/moflo/issues
+- Wiki: https://github.com/eric-cielo/moflo/wiki
 
 ### Community
 - Report bugs via GitHub Issues

@@ -254,7 +254,7 @@ For more detailed help on specific commands, use:
 Documentation: https://github.com/ruvnet/claude-code-flow
 Issues: https://github.com/ruvnet/claude-code-flow/issues
 
-Created by rUv - Built with ❤️ for the Claude community
+Created by MoFlo - Built with ❤️ for the Claude community
 `);
   }
 

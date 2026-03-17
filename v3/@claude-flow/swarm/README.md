@@ -4,8 +4,8 @@
 [![npm downloads](https://img.shields.io/npm/dm/@claude-flow/swarm.svg)](https://www.npmjs.com/package/@claude-flow/swarm)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
-[![ADR-003](https://img.shields.io/badge/ADR--003-Compliant-green.svg)](https://github.com/ruvnet/claude-flow)
-[![Agents](https://img.shields.io/badge/Agents-Up%20to%20100+-orange.svg)](https://github.com/ruvnet/claude-flow)
+[![ADR-003](https://img.shields.io/badge/ADR--003-Compliant-green.svg)](https://github.com/eric-cielo/moflo)
+[![Agents](https://img.shields.io/badge/Agents-Up%20to%20100+-orange.svg)](https://github.com/eric-cielo/moflo)
 
 > V3 Unified Swarm Coordination Module implementing ADR-003: Single Coordination Engine with Hive-Mind Intelligence
 

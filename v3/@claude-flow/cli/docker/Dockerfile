@@ -2,16 +2,16 @@
 # Multi-stage Alpine build with --omit=optional for <100MB image
 #
 # Build:
-#   docker build -t ruflo:lite -f v3/@claude-flow/cli/docker/Dockerfile .
+#   docker build -t moflo:lite -f v3/@claude-flow/cli/docker/Dockerfile .
 #
 # Run:
-#   docker run --rm ruflo:lite ruflo --version
-#   docker run --rm ruflo:lite ruflo doctor
-#   echo '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | docker run --rm -i ruflo:lite
+#   docker run --rm moflo:lite moflo --version
+#   docker run --rm moflo:lite moflo doctor
+#   echo '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | docker run --rm -i moflo:lite
 #
 # Size comparison:
-#   npx ruflo@latest (cold): ~1.3GB, 914 packages, 35s startup
-#   ruflo:lite image:        <100MB, ~60 packages, <5s startup
+#   npx moflo@latest (cold): ~1.3GB, 914 packages, 35s startup
+#   moflo:lite image:        <100MB, ~60 packages, <5s startup
 
 # ── Stage 1: Install ─────────────────────────────────────────────
 FROM node:22-alpine AS build
@@ -20,9 +20,9 @@ RUN apk add --no-cache git
 
 WORKDIR /install
 
-# Install ruflo globally with --omit=optional to skip heavy deps.
+# Install moflo globally with --omit=optional to skip heavy deps.
 # --ignore-scripts skips preinstall cache scanning (no-op in CI)
-RUN npm install -g ruflo@latest \
+RUN npm install -g moflo@latest \
       --omit=optional \
       --ignore-scripts \
       --no-audit \
@@ -45,7 +45,7 @@ RUN npm install -g ruflo@latest \
 #   @img: 16MB (image processing, not needed)
 #   better-sqlite3: 10MB (native, optional — sql.js used instead)
 RUN GLOBAL_PREFIX=$(npm config get prefix) \
-    && CLI_NM="${GLOBAL_PREFIX}/lib/node_modules/ruflo/node_modules" \
+    && CLI_NM="${GLOBAL_PREFIX}/lib/node_modules/moflo/node_modules" \
     && rm -rf \
       "${CLI_NM}/agentic-flow" \
       "${CLI_NM}/@opentelemetry" \
@@ -85,7 +85,7 @@ RUN GLOBAL_PREFIX=$(npm config get prefix) \
 RUN GLOBAL_PREFIX=$(npm config get prefix) \
     && mkdir -p /staged/lib /staged/bin \
     && cp -a "${GLOBAL_PREFIX}/lib/node_modules" /staged/lib/ \
-    && cp -a "${GLOBAL_PREFIX}/bin/ruflo" /staged/bin/ 2>/dev/null || true \
+    && cp -a "${GLOBAL_PREFIX}/bin/moflo" /staged/bin/ 2>/dev/null || true \
     && cp -a "${GLOBAL_PREFIX}/bin/claude-flow" /staged/bin/ 2>/dev/null || true \
     && cp -a "${GLOBAL_PREFIX}/bin/cli" /staged/bin/ 2>/dev/null || true
 
@@ -96,33 +96,33 @@ FROM node:22-alpine AS production
 RUN apk add --no-cache dumb-init git bash ca-certificates curl
 
 # Non-root user
-RUN addgroup -g 1001 -S ruflo \
-    && adduser -S -D -H -u 1001 -h /home/ruflo -s /bin/bash -G ruflo ruflo \
-    && mkdir -p /home/ruflo/.claude-flow /workspace \
-    && chown -R ruflo:ruflo /home/ruflo /workspace
+RUN addgroup -g 1001 -S moflo \
+    && adduser -S -D -H -u 1001 -h /home/moflo -s /bin/bash -G moflo moflo \
+    && mkdir -p /home/moflo/.claude-flow /workspace \
+    && chown -R moflo:moflo /home/moflo /workspace
 
 # Copy only the global node_modules and bin links from build stage
 COPY --from=build /staged/lib/node_modules /usr/local/lib/node_modules
 COPY --from=build /staged/bin/ /usr/local/bin/
 
 # Ensure bin symlinks point to the right place
-RUN ln -sf /usr/local/lib/node_modules/ruflo/bin/ruflo.js /usr/local/bin/ruflo 2>/dev/null || true \
+RUN ln -sf /usr/local/lib/node_modules/moflo/bin/moflo.js /usr/local/bin/moflo 2>/dev/null || true \
     && ln -sf /usr/local/lib/node_modules/@claude-flow/cli/bin/cli.js /usr/local/bin/claude-flow 2>/dev/null || true \
-    && chmod +x /usr/local/bin/ruflo 2>/dev/null || true \
+    && chmod +x /usr/local/bin/moflo 2>/dev/null || true \
     && chmod +x /usr/local/bin/claude-flow 2>/dev/null || true
 
 ENV NODE_ENV=production \
     CLAUDE_FLOW_LOG_LEVEL=info \
-    HOME=/home/ruflo
+    HOME=/home/moflo
 
 # Healthcheck via CLI doctor (timeout after 10s)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD ruflo doctor --quiet || exit 1
+    CMD moflo doctor --quiet || exit 1
 
-USER ruflo
+USER moflo
 WORKDIR /workspace
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Default: start MCP server on stdio (most common Docker use case)
-CMD ["ruflo", "mcp", "start"]
+CMD ["moflo", "mcp", "start"]

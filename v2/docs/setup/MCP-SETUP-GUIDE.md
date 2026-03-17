@@ -151,4 +151,4 @@ claude
 
 ---
 
-**Questions?** See [GitHub Issues](https://github.com/ruvnet/claude-flow/issues) or join our [Discord](https://discord.com/invite/dfxmpwkG2D)
+**Questions?** See [GitHub Issues](https://github.com/eric-cielo/moflo/issues) or join our [Discord](https://discord.com/invite/dfxmpwkG2D)

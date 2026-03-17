@@ -202,8 +202,8 @@ This model represents aggregated industry best practices and patterns from:
 ## Support
 
 For issues or questions about this model:
-- GitHub Issues: https://github.com/ruvnet/claude-flow/issues
-- Documentation: https://github.com/ruvnet/claude-flow
+- GitHub Issues: https://github.com/eric-cielo/moflo/issues
+- Documentation: https://github.com/eric-cielo/moflo
 - Community: Claude Flow Discord
 
 ---

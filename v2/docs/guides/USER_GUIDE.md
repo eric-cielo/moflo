@@ -1097,9 +1097,9 @@ A: Claude-Flow includes enterprise-grade security features including input valid
 
 ### Getting Help
 
-- **📖 Documentation**: [Complete Documentation](https://github.com/ruvnet/claude-flow/docs)
+- **📖 Documentation**: [Complete Documentation](https://github.com/eric-cielo/moflo/docs)
 - **💬 Discord Community**: [Join Discord](https://discord.gg/claude-flow)
-- **🐛 Issue Tracker**: [GitHub Issues](https://github.com/ruvnet/claude-flow/issues)
+- **🐛 Issue Tracker**: [GitHub Issues](https://github.com/eric-cielo/moflo/issues)
 - **📧 Email Support**: support@claude-flow.ai
 
 ### Contributing
@@ -1117,7 +1117,7 @@ We welcome contributions! Please see our [Contributing Guide](../CONTRIBUTING.md
 - 🐦 **Twitter/X**: [@claudeflow](https://twitter.com/claudeflow)
 - 📰 **Blog**: [blog.claude-flow.ai](https://blog.claude-flow.ai)
 - 📺 **YouTube**: [Claude-Flow Channel](https://youtube.com/@claudeflow)
-- 🌟 **GitHub**: [Star the Repository](https://github.com/ruvnet/claude-flow)
+- 🌟 **GitHub**: [Star the Repository](https://github.com/eric-cielo/moflo)
 
 ---
 

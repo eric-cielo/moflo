@@ -163,8 +163,8 @@ The following reasoning agents are planned for future releases:
 ## Support
 
 For issues or questions:
-- GitHub: https://github.com/ruvnet/claude-flow/issues
-- Documentation: https://github.com/ruvnet/claude-flow
+- GitHub: https://github.com/eric-cielo/moflo/issues
+- Documentation: https://github.com/eric-cielo/moflo
 
 ---
 

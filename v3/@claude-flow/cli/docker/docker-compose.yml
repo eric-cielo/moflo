@@ -20,7 +20,7 @@ services:
     build:
       context: ../../../..
       dockerfile: v3/@claude-flow/cli/docker/Dockerfile
-    image: ruflo:lite
+    image: moflo:lite
     stdin_open: true
     environment:
       - NODE_ENV=production
@@ -34,27 +34,27 @@ services:
           cpus: "0.25"
           memory: 128M
     healthcheck:
-      test: ["CMD", "ruflo", "doctor", "--quiet"]
+      test: ["CMD", "moflo", "doctor", "--quiet"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
 
   # ── full: CLI + daemon + optional deps (~800MB) ────────────────
-  ruflo-full:
+  moflo-full:
     profiles: ["full"]
     build:
       context: ../../../..
       dockerfile: v3/@claude-flow/cli/docker/Dockerfile.full
-    image: ruflo:full
+    image: moflo:full
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - NODE_ENV=production
       - CLAUDE_FLOW_LOG_LEVEL=${CLAUDE_FLOW_LOG_LEVEL:-info}
       - CLAUDE_FLOW_MEMORY_BACKEND=hybrid
     volumes:
-      - ruflo-state:/home/ruflo/.claude-flow
-      - ruflo-logs:/var/log/ruflo
+      - moflo-state:/home/moflo/.claude-flow
+      - moflo-logs:/var/log/moflo
     ports:
       - "${RUFLO_MCP_PORT:-3000}:3000"
     deploy:
@@ -65,9 +65,9 @@ services:
         reservations:
           cpus: "1"
           memory: 2G
-    command: ["ruflo", "daemon", "start", "--foreground"]
+    command: ["moflo", "daemon", "start", "--foreground"]
     healthcheck:
-      test: ["CMD", "ruflo", "doctor", "--quiet"]
+      test: ["CMD", "moflo", "doctor", "--quiet"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -79,7 +79,7 @@ services:
     build:
       context: ../../../..
       dockerfile: v3/@claude-flow/cli/docker/Dockerfile
-    image: ruflo:lite
+    image: moflo:lite
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - CLAUDE_CODE_HEADLESS=true
@@ -87,8 +87,8 @@ services:
       - CLAUDE_FLOW_WORKERS=${CLAUDE_FLOW_WORKERS:-audit,optimize,testgaps}
       - NODE_ENV=production
     volumes:
-      - worker-state:/home/ruflo/.claude-flow
-      - worker-logs:/var/log/ruflo
+      - worker-state:/home/moflo/.claude-flow
+      - worker-logs:/var/log/moflo
     deploy:
       replicas: ${RUFLO_WORKER_REPLICAS:-3}
       resources:
@@ -102,16 +102,16 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
-    command: ["ruflo", "daemon", "start", "--foreground", "--headless"]
+    command: ["moflo", "daemon", "start", "--foreground", "--headless"]
     healthcheck:
-      test: ["CMD", "ruflo", "doctor", "--quiet"]
+      test: ["CMD", "moflo", "doctor", "--quiet"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
 
 volumes:
-  ruflo-state:
-  ruflo-logs:
+  moflo-state:
+  moflo-logs:
   worker-state:
   worker-logs:

@@ -1268,7 +1268,7 @@ npx ruv-swarm github board-kpis
 - [GitHub CLI Documentation](https://cli.github.com/manual/)
 - [GitHub Projects Documentation](https://docs.github.com/en/issues/planning-and-tracking-with-projects)
 - [Swarm Coordination Guide](https://github.com/ruvnet/ruv-swarm)
-- [Claude Flow Documentation](https://github.com/ruvnet/claude-flow)
+- [Claude Flow Documentation](https://github.com/eric-cielo/moflo)
 
 ---
 

@@ -2,7 +2,7 @@
  * V3 CLI Completions Command
  * Shell completions for bash, zsh, fish, powershell
  *
- * Created with ruv.io
+ * Created with motailz.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

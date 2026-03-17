@@ -633,7 +633,7 @@ claude-flow --version  # Should show v2.7.28
 
 ### 🔗 Related Documentation
 
-- **Issue**: [#857 - Remove automatic agentic-payments installation](https://github.com/ruvnet/claude-flow/issues/857)
+- **Issue**: [#857 - Remove automatic agentic-payments installation](https://github.com/eric-cielo/moflo/issues/857)
 - **Previous Version**: v2.7.27 (NPX ENOTEMPTY fix)
 - **Docker Tests**: `tests/docker/Dockerfile.init-test`
 
@@ -754,7 +754,7 @@ npx claude-flow@latest init
 
 ### 🔗 Related Documentation
 
-- **Issue**: [#856 - NPX ENOTEMPTY error after v2.7.26 updates](https://github.com/ruvnet/claude-flow/issues/856)
+- **Issue**: [#856 - NPX ENOTEMPTY error after v2.7.26 updates](https://github.com/eric-cielo/moflo/issues/856)
 - **Previous Version**: v2.7.26
 - **Docker Tests**: `tests/docker/Dockerfile.npx-test`
 
@@ -1321,7 +1321,7 @@ All existing commands continue to work as before, but now return correct results
 
 - **npm Package**: [claude-flow@2.7.0-alpha.10](https://www.npmjs.com/package/claude-flow/v/2.7.0-alpha.10)
 - **Release Notes**: [docs/RELEASE-NOTES-v2.7.0-alpha.10.md](./docs/RELEASE-NOTES-v2.7.0-alpha.10.md)
-- **GitHub Issues**: [Report bugs](https://github.com/ruvnet/claude-flow/issues)
+- **GitHub Issues**: [Report bugs](https://github.com/eric-cielo/moflo/issues)
 
 ---
 
@@ -1600,8 +1600,8 @@ npm install -g claude-flow@alpha
 
 ### 🔗 Links
 - [npm Package](https://www.npmjs.com/package/claude-flow/v/2.0.0-alpha.90)
-- [Pull Request #661](https://github.com/ruvnet/claude-flow/pull/661)
-- [Issue #660](https://github.com/ruvnet/claude-flow/issues/660)
+- [Pull Request #661](https://github.com/eric-cielo/moflo/pull/661)
+- [Issue #660](https://github.com/eric-cielo/moflo/issues/660)
 
 ---
 

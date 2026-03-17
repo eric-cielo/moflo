@@ -432,14 +432,14 @@ npx claude-flow --version  # Should show v2.7.33
 ## 📞 Support & Resources
 
 ### Documentation
-- **Main Repository**: https://github.com/ruvnet/claude-flow
+- **Main Repository**: https://github.com/eric-cielo/moflo
 - **Release Notes**: `docs/RELEASE_NOTES_v2.7.33.md`
 - **Publishing Guide**: `docs/NPM_PUBLISH_GUIDE_v2.7.33.md`
 - **Deep Code Review**: `docs/DEEP_CODE_REVIEW_v2.7.33.md`
 
 ### Community
-- **GitHub Issues**: https://github.com/ruvnet/claude-flow/issues
-- **GitHub Discussions**: https://github.com/ruvnet/claude-flow/discussions
+- **GitHub Issues**: https://github.com/eric-cielo/moflo/issues
+- **GitHub Discussions**: https://github.com/eric-cielo/moflo/discussions
 - **Discord**: https://discord.agentics.org
 
 ### Enterprise

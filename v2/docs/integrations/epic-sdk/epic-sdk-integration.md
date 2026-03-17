@@ -1036,7 +1036,7 @@ The following features are deprecated and will be removed in v4.0.0:
 ## Support
 
 For migration assistance:
-- GitHub Issues: https://github.com/ruvnet/claude-flow/issues
+- GitHub Issues: https://github.com/eric-cielo/moflo/issues
 - Migration Guide: https://docs.claude-flow.dev/migration/v3
 - Discord: https://discord.gg/claude-flow
 ```

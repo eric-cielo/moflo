@@ -285,7 +285,7 @@ For security issues or questions:
 - **Security Team**: security@claude-flow.ai
 - **Emergency**: security-emergency@claude-flow.ai
 - **Documentation**: https://docs.claude-flow.ai/security
-- **GitHub Issues**: https://github.com/ruvnet/claude-flow/issues
+- **GitHub Issues**: https://github.com/eric-cielo/moflo/issues
 
 ## 📄 License
 

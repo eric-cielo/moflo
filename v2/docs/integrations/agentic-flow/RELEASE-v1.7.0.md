@@ -345,4 +345,4 @@ See [GitHub Issue #34](https://github.com/ruvnet/agentic-flow/issues/34) for imp
 ---
 
 *This release documentation is part of the claude-flow project's integration tracking.*
-*See [claude-flow issue #829](https://github.com/ruvnet/claude-flow/issues/829) for integration details.*
+*See [claude-flow issue #829](https://github.com/eric-cielo/moflo/issues/829) for integration details.*

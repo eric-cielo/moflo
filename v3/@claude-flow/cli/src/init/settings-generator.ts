@@ -38,8 +38,8 @@ export function generateSettings(options: InitOptions): object {
 
   // Add claude-flow attribution for git commits and PRs
   settings.attribution = {
-    commit: 'Co-Authored-By: claude-flow <ruv@ruv.net>',
-    pr: '🤖 Generated with [claude-flow](https://github.com/ruvnet/claude-flow)',
+    commit: 'Co-Authored-By: moflo <noreply@motailz.com>',
+    pr: '🤖 Generated with [moflo](https://github.com/eric-cielo/moflo)',
   };
 
   // Note: Claude Code expects 'model' to be a string, not an object

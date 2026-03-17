@@ -23,7 +23,7 @@ If you've cloned the repository:
 
 ```bash
 # Clone the repository
-git clone https://github.com/ruvnet/claude-flow.git
+git clone https://github.com/eric-cielo/moflo.git
 cd claude-flow
 
 # In Claude Code, install the plugin
@@ -199,7 +199,7 @@ ls -la agents/
 
 ```
 # Try local installation
-git clone https://github.com/ruvnet/claude-flow.git
+git clone https://github.com/eric-cielo/moflo.git
 cd claude-flow
 /plugin add .
 ```
@@ -210,8 +210,8 @@ cd claude-flow
 
 - **Documentation**: See README.md for complete documentation
 - **Quick Start**: See docs/QUICKSTART.md for 5-minute guide
-- **GitHub Issues**: https://github.com/ruvnet/claude-flow/issues
-- **Discussions**: https://github.com/ruvnet/claude-flow/discussions
+- **GitHub Issues**: https://github.com/eric-cielo/moflo/issues
+- **Discussions**: https://github.com/eric-cielo/moflo/discussions
 
 ---
 

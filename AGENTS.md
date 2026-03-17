@@ -628,7 +628,7 @@ enabled = true
 
 ## 📚 SUPPORT
 
-- Docs: https://github.com/ruvnet/claude-flow
-- Issues: https://github.com/ruvnet/claude-flow/issues
+- Docs: https://github.com/eric-cielo/moflo
+- Issues: https://github.com/eric-cielo/moflo/issues
 
 **Remember: Codex executes, claude-flow orchestrates!**

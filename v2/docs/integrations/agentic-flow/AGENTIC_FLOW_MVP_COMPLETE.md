@@ -333,7 +333,7 @@ claude-flow agent run debugger "Fix bug" \
 
 ## 🔗 Related Documentation
 
-- [GitHub EPIC #794](https://github.com/ruvnet/claude-flow/issues/794)
+- [GitHub EPIC #794](https://github.com/eric-cielo/moflo/issues/794)
 - [Integration Status](./AGENTIC_FLOW_INTEGRATION_STATUS.md)
 - [Package Documentation](../README.md)
 

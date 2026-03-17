@@ -359,12 +359,12 @@ npx claude-flow mcp start --mcp2025
 
 ### Publishing Issues
 - **NPM**: https://npmjs.com/support
-- **GitHub**: https://github.com/ruvnet/claude-flow/issues
+- **GitHub**: https://github.com/eric-cielo/moflo/issues
 - **Emergency**: @ruvnet
 
 ### Post-Release Support
-- **Issues**: https://github.com/ruvnet/claude-flow/issues
-- **Discussions**: https://github.com/ruvnet/claude-flow/discussions
+- **Issues**: https://github.com/eric-cielo/moflo/issues
+- **Discussions**: https://github.com/eric-cielo/moflo/discussions
 - **Enterprise**: Flow-Nexus Platform
 
 ---

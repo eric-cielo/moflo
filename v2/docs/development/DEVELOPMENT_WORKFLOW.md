@@ -37,7 +37,7 @@ code --version  # VS Code for development
 
 ```bash
 # Clone the repository
-git clone https://github.com/ruvnet/claude-flow.git
+git clone https://github.com/eric-cielo/moflo.git
 cd claude-flow
 
 # Install dependencies (use pnpm on Windows)
@@ -901,7 +901,7 @@ git clone https://github.com/YOUR_USERNAME/claude-flow.git
 cd claude-flow
 
 # Add upstream remote
-git remote add upstream https://github.com/ruvnet/claude-flow.git
+git remote add upstream https://github.com/eric-cielo/moflo.git
 
 # Keep your fork updated
 git fetch upstream
@@ -1319,7 +1319,7 @@ npm update
 ### Community
 
 - [Discord Server](https://discord.gg/claude-flow)
-- [GitHub Discussions](https://github.com/ruvnet/claude-flow/discussions)
+- [GitHub Discussions](https://github.com/eric-cielo/moflo/discussions)
 - [Stack Overflow](https://stackoverflow.com/questions/tagged/claude-flow)
 
 ---

@@ -3,7 +3,7 @@
 **Release Date**: 2025-10-22
 **Type**: Point Release (Bug Fix)
 **Priority**: High
-**GitHub Issue**: [#827](https://github.com/ruvnet/claude-flow/issues/827)
+**GitHub Issue**: [#827](https://github.com/eric-cielo/moflo/issues/827)
 
 ## 🎯 Overview
 
@@ -199,7 +199,7 @@ npm install github:ruvnet/claude-code-flow#v2.7.1
 
 ## 🔗 Related Resources
 
-- **GitHub Issue**: https://github.com/ruvnet/claude-flow/issues/827
+- **GitHub Issue**: https://github.com/eric-cielo/moflo/issues/827
 - **Full Documentation**: `docs/PATTERN_PERSISTENCE_FIX.md`
 - **Integration Tests**: `tests/integration/mcp-pattern-persistence.test.js`
 - **Manual Tests**: `tests/manual/test-pattern-persistence.js`

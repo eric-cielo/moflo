@@ -1205,7 +1205,7 @@ For programmatic control, use Claude Code's tool system:
 
 ## Examples Repository
 
-Find more examples at: [claude-flow-examples/background-tasks](https://github.com/ruvnet/claude-flow-examples/tree/main/background-tasks)
+Find more examples at: [claude-flow-examples/background-tasks](https://github.com/eric-cielo/moflo-examples/tree/main/background-tasks)
 
 ---
 

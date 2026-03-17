@@ -7,7 +7,7 @@
  *   npx claude-flow ruvector setup --output /path/to/dir
  *   npx claude-flow ruvector setup --print      # Print to stdout only
  *
- * Created with care by ruv.io
+ * Created with care by motailz.com
  */
 
 import type { Command, CommandContext, CommandResult } from '../../types.js';
@@ -651,7 +651,7 @@ docker-compose up -d
 
 ## Learn More
 - [RuVector Docker Hub](https://hub.docker.com/r/ruvnet/ruvector-postgres)
-- [Claude-Flow Documentation](https://github.com/ruvnet/claude-flow)
+- [Claude-Flow Documentation](https://github.com/eric-cielo/moflo)
 `;
 
 /**

@@ -1,7 +1,7 @@
 /**
  * Tests for statusline collision zone avoidance
  *
- * @see https://github.com/ruvnet/claude-flow/issues/985
+ * @see https://github.com/eric-cielo/moflo/issues/985
  *
  * The collision zone is columns 15-25 on the second-to-last line of output.
  * Claude Code writes its internal status (e.g., "7s • 1p") at these absolute

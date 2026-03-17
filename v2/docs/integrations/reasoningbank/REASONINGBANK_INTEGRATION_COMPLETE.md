@@ -527,7 +527,7 @@ claude-flow agent run coder "Critical bug" --enable-memory --provider anthropic 
 
 - **ReasoningBank Paper**: https://arxiv.org/html/2509.25140v1
 - **Agentic-Flow Docs**: https://github.com/ruvnet/agentic-flow
-- **Claude-Flow Docs**: https://github.com/ruvnet/claude-flow
+- **Claude-Flow Docs**: https://github.com/eric-cielo/moflo
 - **Integration Plan**: docs/REASONINGBANK_INTEGRATION_PLAN.md
 - **Architecture**: docs/REASONINGBANK_ARCHITECTURE.md
 - **Test Suite**: tests/integration/reasoningbank-integration.test.js

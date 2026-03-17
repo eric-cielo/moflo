@@ -371,7 +371,7 @@ npx claude-flow@alpha hooks post-task --task-id "task-id"
 For questions or issues with the SAFLA model:
 
 - **Documentation**: See `/workspaces/claude-code-flow/docs/reasoningbank/models/safla/README.md`
-- **GitHub**: https://github.com/ruvnet/claude-flow/issues
+- **GitHub**: https://github.com/eric-cielo/moflo/issues
 - **ReasoningBank CLI**: `npx claude-flow@alpha memory --help`
 
 ---

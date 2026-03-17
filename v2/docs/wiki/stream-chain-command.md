@@ -527,9 +527,9 @@ To contribute to the stream-chain command:
 ## Support
 
 For issues or questions:
-- GitHub Issues: [claude-flow/issues](https://github.com/ruvnet/claude-flow/issues)
-- Documentation: [Stream Chaining Docs](https://github.com/ruvnet/claude-flow/docs/stream-chaining.md)
-- Wiki: [Claude Flow Wiki](https://github.com/ruvnet/claude-flow/wiki)
+- GitHub Issues: [claude-flow/issues](https://github.com/eric-cielo/moflo/issues)
+- Documentation: [Stream Chaining Docs](https://github.com/eric-cielo/moflo/docs/stream-chaining.md)
+- Wiki: [Claude Flow Wiki](https://github.com/eric-cielo/moflo/wiki)
 
 ---
 

@@ -352,9 +352,9 @@ Manual resolution needed:
 
 ## Support
 
-- Documentation: https://github.com/ruvnet/claude-flow/docs/v3
-- Issues: https://github.com/ruvnet/claude-flow/issues
-- Discussions: https://github.com/ruvnet/claude-flow/discussions
+- Documentation: https://github.com/eric-cielo/moflo/docs/v3
+- Issues: https://github.com/eric-cielo/moflo/issues
+- Discussions: https://github.com/eric-cielo/moflo/discussions
 
 ---
 

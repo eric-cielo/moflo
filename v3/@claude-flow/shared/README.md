@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@claude-flow/shared.svg)](https://www.npmjs.com/package/@claude-flow/shared)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
-[![Core](https://img.shields.io/badge/Module-Core-blue.svg)](https://github.com/ruvnet/claude-flow)
+[![Core](https://img.shields.io/badge/Module-Core-blue.svg)](https://github.com/eric-cielo/moflo)
 
 > Shared utilities, types, and core infrastructure for Claude Flow V3 - the foundation module used by all other @claude-flow packages.
 

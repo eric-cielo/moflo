@@ -115,8 +115,8 @@
     ]
   },
   "attribution": {
-    "commit": "Co-Authored-By: claude-flow <ruv@ruv.net>",
-    "pr": "Generated with [claude-flow](https://github.com/ruvnet/claude-flow)"
+    "commit": "Co-Authored-By: moflo <noreply@motailz.com>",
+    "pr": "Generated with [claude-flow](https://github.com/eric-cielo/moflo)"
   },
   "claudeFlow": {
     "version": "3.1.0",

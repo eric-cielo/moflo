@@ -991,9 +991,9 @@ npx claude-flow@alpha dashboard --agents --performance
 - [Architecture Overview](/docs/ARCHITECTURE.md)
 
 ### Community
-- [GitHub Repository](https://github.com/ruvnet/claude-flow)
+- [GitHub Repository](https://github.com/eric-cielo/moflo)
 - [Discord Community](https://discord.gg/claude-flow)
-- [Issue Tracker](https://github.com/ruvnet/claude-flow/issues)
+- [Issue Tracker](https://github.com/eric-cielo/moflo/issues)
 
 ### Contact
 - **Email**: support@claude-flow.ai

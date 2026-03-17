@@ -311,8 +311,8 @@ gh release create v2.8.0 \
 
 ## 🔗 Important Links
 
-- **Pull Request**: https://github.com/ruvnet/claude-flow/pull/830
-- **GitHub Issue**: https://github.com/ruvnet/claude-flow/issues/829
+- **Pull Request**: https://github.com/eric-cielo/moflo/pull/830
+- **GitHub Issue**: https://github.com/eric-cielo/moflo/issues/829
 - **Branch**: `feature/agentdb-integration`
 - **AgentDB Package**: https://www.npmjs.com/package/agentdb
 - **Documentation**: `/docs/agentdb/`

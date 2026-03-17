@@ -2,11 +2,11 @@
 
 [![npm version](https://img.shields.io/npm/v/@claude-flow/guidance.svg?style=flat-square&label=npm)](https://www.npmjs.com/package/@claude-flow/guidance)
 [![npm downloads](https://img.shields.io/npm/dm/@claude-flow/guidance.svg?style=flat-square&label=downloads)](https://www.npmjs.com/package/@claude-flow/guidance)
-[![license](https://img.shields.io/npm/l/@claude-flow/guidance.svg?style=flat-square)](https://github.com/ruvnet/claude-flow/blob/main/LICENSE)
-[![tests](https://img.shields.io/badge/tests-1%2C328%20passing-brightgreen?style=flat-square)](https://github.com/ruvnet/claude-flow)
+[![license](https://img.shields.io/npm/l/@claude-flow/guidance.svg?style=flat-square)](https://github.com/eric-cielo/moflo/blob/main/LICENSE)
+[![tests](https://img.shields.io/badge/tests-1%2C328%20passing-brightgreen?style=flat-square)](https://github.com/eric-cielo/moflo)
 [![node](https://img.shields.io/badge/node-%3E%3D20-blue?style=flat-square)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3+-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![GitHub stars](https://img.shields.io/github/stars/ruvnet/claude-flow?style=flat-square&logo=github)](https://github.com/ruvnet/claude-flow)
+[![GitHub stars](https://img.shields.io/github/stars/ruvnet/claude-flow?style=flat-square&logo=github)](https://github.com/eric-cielo/moflo)
 [![claude-flow](https://img.shields.io/npm/v/claude-flow.svg?style=flat-square&label=claude-flow&color=blueviolet)](https://www.npmjs.com/package/claude-flow)
 [![ruvbot](https://img.shields.io/npm/v/ruvbot.svg?style=flat-square&label=ruvbot&color=orange)](https://www.npmjs.com/package/ruvbot)
 
@@ -1181,15 +1181,15 @@ Take 20 real Claude Flow tasks from repo history. Run A without control plane, r
 
 | Resource | URL |
 |----------|-----|
-| **GitHub** | [github.com/ruvnet/claude-flow](https://github.com/ruvnet/claude-flow) |
+| **GitHub** | [github.com/ruvnet/claude-flow](https://github.com/eric-cielo/moflo) |
 | **npm: @claude-flow/guidance** | [npmjs.com/package/@claude-flow/guidance](https://www.npmjs.com/package/@claude-flow/guidance) |
 | **npm: claude-flow** | [npmjs.com/package/claude-flow](https://www.npmjs.com/package/claude-flow) |
 | **npm: ruvbot** | [npmjs.com/package/ruvbot](https://www.npmjs.com/package/ruvbot) |
 | **ruv.io** | [ruv.io](https://ruv.io) |
-| **Issues** | [github.com/ruvnet/claude-flow/issues](https://github.com/ruvnet/claude-flow/issues) |
+| **Issues** | [github.com/ruvnet/claude-flow/issues](https://github.com/eric-cielo/moflo/issues) |
 | **API Reference** | [docs/reference/api-quick-reference.md](docs/reference/api-quick-reference.md) |
 | **ADR Index** | [docs/adrs/](docs/adrs/) |
 
 ## License
 
-MIT — see [LICENSE](https://github.com/ruvnet/claude-flow/blob/main/LICENSE) for details.
+MIT — see [LICENSE](https://github.com/eric-cielo/moflo/blob/main/LICENSE) for details.

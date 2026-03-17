@@ -459,7 +459,7 @@ Every model achieved:
 - Training Guide: [models/HOW-TO-TRAIN.md](./HOW-TO-TRAIN.md)
 - Navigation Index: [models/INDEX.md](./INDEX.md)
 
-**Issues**: [GitHub Issues](https://github.com/ruvnet/claude-flow/issues)
+**Issues**: [GitHub Issues](https://github.com/eric-cielo/moflo/issues)
 
 ---
 

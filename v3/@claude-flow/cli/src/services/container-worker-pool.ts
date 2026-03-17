@@ -123,7 +123,7 @@ export interface ContainerPoolStatus {
 const DEFAULT_CONFIG: ContainerPoolConfig = {
   maxContainers: 3,
   minContainers: 1,
-  image: 'ghcr.io/ruvnet/claude-flow-headless:latest',
+  image: 'ghcr.io/eric-cielo/moflo-headless:latest',
   resources: {
     cpus: '2',
     memory: '4g',

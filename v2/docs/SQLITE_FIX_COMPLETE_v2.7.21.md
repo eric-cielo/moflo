@@ -293,7 +293,7 @@ But if it does:
 
 ## GitHub Issue
 
-Full details: https://github.com/ruvnet/claude-flow/issues/840
+Full details: https://github.com/eric-cielo/moflo/issues/840
 
 ---
 

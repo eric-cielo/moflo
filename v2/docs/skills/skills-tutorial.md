@@ -2842,8 +2842,8 @@ User: "Build REST API with tests and deploy"
 ## 🌐 Resources
 
 ### claude-flow
-- **Repository**: [https://github.com/ruvnet/claude-flow](https://github.com/ruvnet/claude-flow)
-- **Wiki**: [claude-flow wiki](https://github.com/ruvnet/claude-flow/wiki)
+- **Repository**: [https://github.com/eric-cielo/moflo](https://github.com/eric-cielo/moflo)
+- **Wiki**: [claude-flow wiki](https://github.com/eric-cielo/moflo/wiki)
 - **21 Built-In Skills**: Available via MCP server
 - **213+ MCP Tools**: Coordination, memory, GitHub, neural patterns
 - **54 Agents**: Core dev to advanced distributed systems

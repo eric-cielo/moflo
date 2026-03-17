@@ -1,6 +1,6 @@
 # 🚀 Claude Flow Plugin - Complete Enterprise AI Agent Orchestration
 
-[![Version](https://img.shields.io/badge/version-2.5.0-blue.svg)](https://github.com/ruvnet/claude-flow)
+[![Version](https://img.shields.io/badge/version-2.5.0-blue.svg)](https://github.com/eric-cielo/moflo)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-%3E%3D2.0.0-purple.svg)](https://claude.com/code)
 
@@ -288,7 +288,7 @@ In Claude Code:
 Or from local directory:
 
 ```bash
-git clone https://github.com/ruvnet/claude-flow.git
+git clone https://github.com/eric-cielo/moflo.git
 cd claude-flow
 ```
 
@@ -346,7 +346,7 @@ In Claude Code:
 
 ```bash
 # Clone the repository
-git clone https://github.com/ruvnet/claude-flow.git
+git clone https://github.com/eric-cielo/moflo.git
 cd claude-flow/claude-plugin
 
 # Run installation script
@@ -645,9 +645,9 @@ Claude Flow integrates with 3 MCP servers providing 110+ tools:
 
 ## 🤝 Support
 
-- **Documentation**: [GitHub Wiki](https://github.com/ruvnet/claude-flow/wiki)
-- **Issues**: [GitHub Issues](https://github.com/ruvnet/claude-flow/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/ruvnet/claude-flow/discussions)
+- **Documentation**: [GitHub Wiki](https://github.com/eric-cielo/moflo/wiki)
+- **Issues**: [GitHub Issues](https://github.com/eric-cielo/moflo/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/eric-cielo/moflo/discussions)
 - **Website**: [Flow Nexus](https://flow-nexus.ruv.io)
 
 ---

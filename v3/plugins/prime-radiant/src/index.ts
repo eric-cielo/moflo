@@ -259,7 +259,7 @@ export const pluginMetadata = {
     'Mathematical AI interpretability with sheaf cohomology, spectral analysis, and causal inference',
   author: 'rUv',
   license: 'MIT',
-  repository: 'https://github.com/ruvnet/claude-flow',
+  repository: 'https://github.com/eric-cielo/moflo',
   wasmSize: '92KB',
   dependencies: {
     required: [

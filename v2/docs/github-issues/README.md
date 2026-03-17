@@ -16,7 +16,7 @@ This directory contains ready-to-use GitHub issue templates for documenting fixe
 bash scripts/create-github-issue.sh
 
 # Manual
-1. Go to https://github.com/ruvnet/claude-flow/issues/new
+1. Go to https://github.com/eric-cielo/moflo/issues/new
 2. Copy content from: docs/github-issues/wsl-enotempty-automatic-recovery.md
 3. Paste into issue body
 4. Add labels: enhancement, bug-fix, wsl, user-experience, v2.7.35

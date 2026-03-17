@@ -531,8 +531,8 @@ export async function runTask(taskId: string, query: string) {
 ---
 
 [1]: https://arxiv.org/html/2509.25140v1 "ReasoningBank: Scaling Agent Self-Evolving with Reasoning Memory"
-[2]: https://github.com/ruvnet/claude-flow/wiki/Memory-System "Memory System · ruvnet/claude-flow Wiki · GitHub"
-[3]: https://github.com/ruvnet/claude-flow "GitHub - ruvnet/claude-flow:  The leading agent orchestration platform for Claude. Deploy intelligent multi-agent swarms, coordinate autonomous workflows, and build conversational AI systems. Features    enterprise-grade architecture, distributed swarm intelligence, RAG integration, and native Claude Code support via MCP protocol. Ranked #1 in agent-based frameworks."
+[2]: https://github.com/eric-cielo/moflo/wiki/Memory-System "Memory System · ruvnet/claude-flow Wiki · GitHub"
+[3]: https://github.com/eric-cielo/moflo "GitHub - ruvnet/claude-flow:  The leading agent orchestration platform for Claude. Deploy intelligent multi-agent swarms, coordinate autonomous workflows, and build conversational AI systems. Features    enterprise-grade architecture, distributed swarm intelligence, RAG integration, and native Claude Code support via MCP protocol. Ranked #1 in agent-based frameworks."
 [4]: https://www.anthropic.com/news/memory?utm_source=chatgpt.com "Claude introduces memory for teams at work"
 ---
 
@@ -1012,6 +1012,6 @@ Assuming a typical agent task with ReasoningBank enabled:
 ## References
 
 [1]: https://arxiv.org/html/2509.25140v1 "ReasoningBank: Scaling Agent Self-Evolving with Reasoning Memory"  
-[2]: https://github.com/ruvnet/claude-flow/wiki/Memory-System "Memory System · ruvnet/claude-flow Wiki · GitHub"  
-[3]: https://github.com/ruvnet/claude-flow "GitHub - ruvnet/claude-flow"  
+[2]: https://github.com/eric-cielo/moflo/wiki/Memory-System "Memory System · ruvnet/claude-flow Wiki · GitHub"  
+[3]: https://github.com/eric-cielo/moflo "GitHub - ruvnet/claude-flow"  
 [4]: https://www.anthropic.com/news/memory "Claude introduces memory for teams at work"

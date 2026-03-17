@@ -265,6 +265,6 @@ Total template size: ~150 lines with extensive documentation
 ## Support
 
 For issues or questions:
-- GitHub Issues: https://github.com/ruvnet/claude-flow/issues
-- Documentation: https://github.com/ruvnet/claude-flow
+- GitHub Issues: https://github.com/eric-cielo/moflo/issues
+- Documentation: https://github.com/eric-cielo/moflo
 - Agentic-Flow: https://github.com/ruvnet/agentic-flow

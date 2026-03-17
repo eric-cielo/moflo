@@ -1448,7 +1448,7 @@ async function modifyGitCommitCommand(subArgs, flags) {
 
   // Add co-author
   if (!/Co-Authored-By/.test(command)) {
-    formattedMsg += `\n\n🤖 Generated with Claude Flow\nCo-Authored-By: claude-flow <noreply@ruv.io>`;
+    formattedMsg += `\n\n🤖 Generated with Claude Flow\nCo-Authored-By: moflo <noreply@motailz.com>`;
   }
 
   // Replace message in command

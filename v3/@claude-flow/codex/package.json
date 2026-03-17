@@ -57,16 +57,16 @@
     "AGENTS.md",
     "agentic-ai"
   ],
-  "author": "rUv",
+  "author": "Eric Cielo",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ruvnet/claude-flow.git",
+    "url": "https://github.com/eric-cielo/moflo.git",
     "directory": "v3/@claude-flow/codex"
   },
-  "homepage": "https://github.com/ruvnet/claude-flow#readme",
+  "homepage": "https://github.com/eric-cielo/moflo#readme",
   "bugs": {
-    "url": "https://github.com/ruvnet/claude-flow/issues"
+    "url": "https://github.com/eric-cielo/moflo/issues"
   },
   "engines": {
     "node": ">=18"

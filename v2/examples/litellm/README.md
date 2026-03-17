@@ -15,7 +15,7 @@ A production-ready, multi-tenant LiteLLM proxy that enables Claude Code to seaml
 
 ```bash
 # Clone the repository
-git clone https://github.com/ruvnet/claude-flow.git
+git clone https://github.com/eric-cielo/moflo.git
 cd claude-flow/examples/litellm
 
 # Copy environment template
@@ -338,9 +338,9 @@ MIT License - see [LICENSE](../../LICENSE) for details.
 
 ## 💬 Support
 
-- GitHub Issues: [Report bugs](https://github.com/ruvnet/claude-flow/issues)
-- Discussions: [Ask questions](https://github.com/ruvnet/claude-flow/discussions)
-- Wiki: [Documentation](https://github.com/ruvnet/claude-flow/wiki)
+- GitHub Issues: [Report bugs](https://github.com/eric-cielo/moflo/issues)
+- Discussions: [Ask questions](https://github.com/eric-cielo/moflo/discussions)
+- Wiki: [Documentation](https://github.com/eric-cielo/moflo/wiki)
 
 ---
 

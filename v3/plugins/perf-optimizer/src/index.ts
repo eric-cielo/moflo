@@ -42,7 +42,7 @@ export const pluginMetadata = {
   tags: ['performance', 'optimization', 'tracing', 'memory', 'database', 'bundle'],
   author: 'Claude Flow Team',
   license: 'MIT',
-  repository: 'https://github.com/ruvnet/claude-flow',
+  repository: 'https://github.com/eric-cielo/moflo',
   engines: {
     'claude-flow': '>=3.0.0-alpha.1',
     node: '>=18.0.0',

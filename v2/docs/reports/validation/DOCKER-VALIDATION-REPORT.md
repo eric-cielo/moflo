@@ -268,8 +268,8 @@ The following environments are validated and ready:
 ## 📞 Support & Issues
 
 If you encounter any issues not covered in this validation:
-- GitHub Issues: https://github.com/ruvnet/claude-flow/issues
-- Documentation: https://github.com/ruvnet/claude-flow
+- GitHub Issues: https://github.com/eric-cielo/moflo/issues
+- Documentation: https://github.com/eric-cielo/moflo
 - Test Suite: `./tests/docker/quick-validation.sh`
 
 ---

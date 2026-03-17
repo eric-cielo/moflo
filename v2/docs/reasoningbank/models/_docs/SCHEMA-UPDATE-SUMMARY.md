@@ -353,7 +353,7 @@ ls -lh models/*/memory.db.backup
 
 ### Feedback
 
-Open an issue: [GitHub Issues](https://github.com/ruvnet/claude-flow/issues)
+Open an issue: [GitHub Issues](https://github.com/eric-cielo/moflo/issues)
 
 ---
 

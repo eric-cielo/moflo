@@ -1993,8 +1993,8 @@ Success with swarm systems requires careful consideration of:
 Start with simpler topologies and gradually increase complexity as you gain experience with swarm patterns and behaviors. The emergent intelligence that arises from well-coordinated swarms can often exceed the sum of individual agent capabilities, creating powerful problem-solving networks.
 
 For additional support, examples, and community resources, visit:
-- Documentation: https://github.com/ruvnet/claude-flow/docs
-- Issues: https://github.com/ruvnet/claude-flow/issues
-- Community: https://github.com/ruvnet/claude-flow/discussions
+- Documentation: https://github.com/eric-cielo/moflo/docs
+- Issues: https://github.com/eric-cielo/moflo/issues
+- Community: https://github.com/eric-cielo/moflo/discussions
 
 Remember: Effective swarm intelligence emerges not from individual agent intelligence alone, but from the quality of coordination, communication, and collaboration patterns between agents.

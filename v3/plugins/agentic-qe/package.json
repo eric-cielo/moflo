@@ -39,16 +39,16 @@
     "accessibility",
     "ai-agents"
   ],
-  "author": "rUv",
+  "author": "Eric Cielo",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ruvnet/claude-flow.git",
+    "url": "https://github.com/eric-cielo/moflo.git",
     "directory": "v3/plugins/agentic-qe"
   },
-  "homepage": "https://github.com/ruvnet/claude-flow/tree/main/v3/plugins/agentic-qe",
+  "homepage": "https://github.com/eric-cielo/moflo/tree/main/v3/plugins/agentic-qe",
   "bugs": {
-    "url": "https://github.com/ruvnet/claude-flow/issues"
+    "url": "https://github.com/eric-cielo/moflo/issues"
   },
   "dependencies": {
     "zod": "^3.23.0"

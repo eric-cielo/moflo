@@ -322,10 +322,10 @@ fi
 
 ## 📚 DOCUMENTATION
 
-- [Truth Verification System](https://github.com/ruvnet/claude-flow/wiki/Truth-Verification-System)
-- [Pair Programming Guide](https://github.com/ruvnet/claude-flow/wiki/Pair-Programming-System)
-- [Background Commands](https://github.com/ruvnet/claude-flow/wiki/background-commands)
-- [Agent Verification](https://github.com/ruvnet/claude-flow/wiki/Agent-Verification)
+- [Truth Verification System](https://github.com/eric-cielo/moflo/wiki/Truth-Verification-System)
+- [Pair Programming Guide](https://github.com/eric-cielo/moflo/wiki/Pair-Programming-System)
+- [Background Commands](https://github.com/eric-cielo/moflo/wiki/background-commands)
+- [Agent Verification](https://github.com/eric-cielo/moflo/wiki/Agent-Verification)
 
 ## 🚨 IMPORTANT REMINDERS
 

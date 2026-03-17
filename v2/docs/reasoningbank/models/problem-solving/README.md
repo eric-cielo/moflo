@@ -616,8 +616,8 @@ Part of the claude-flow ReasoningBank system. Pre-trained model available for us
 
 ## Support
 
-- **Documentation**: https://github.com/ruvnet/claude-flow
-- **Issues**: https://github.com/ruvnet/claude-flow/issues
+- **Documentation**: https://github.com/eric-cielo/moflo
+- **Issues**: https://github.com/eric-cielo/moflo/issues
 - **Model Training**: `/docs/reasoningbank/models/problem-solving/train-problem.js`
 - **Validation**: `/docs/reasoningbank/models/validation-suite.js`
 

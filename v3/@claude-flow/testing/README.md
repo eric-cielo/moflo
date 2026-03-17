@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@claude-flow/testing.svg)](https://www.npmjs.com/package/@claude-flow/testing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
-[![TDD](https://img.shields.io/badge/TDD-London%20School-purple.svg)](https://github.com/ruvnet/claude-flow)
+[![TDD](https://img.shields.io/badge/TDD-London%20School-purple.svg)](https://github.com/eric-cielo/moflo)
 [![ADR-008](https://img.shields.io/badge/ADR--008-Vitest-green.svg)](https://vitest.dev/)
 
 > Comprehensive testing framework for V3 Claude-Flow modules. Implements London School TDD patterns with behavior verification, shared fixtures, and mock services.

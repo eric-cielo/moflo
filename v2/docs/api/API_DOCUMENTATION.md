@@ -687,7 +687,7 @@ npx claude-flow@alpha log-analysis \
 ## Support & Resources
 
 ### Documentation Links
-- [GitHub Repository](https://github.com/ruvnet/claude-flow)
+- [GitHub Repository](https://github.com/eric-cielo/moflo)
 - [Integration Guide](./INTEGRATION_GUIDE.md)
 - [Agent System Documentation](./agent-system-documentation.md)
 - [MCP Tools Reference](./mcp-tools-reference.md)
@@ -705,8 +705,8 @@ npx claude-flow@alpha --version
 
 ### Community
 - **Discord**: [Join our community](https://discord.gg/claude-flow)
-- **GitHub Issues**: [Report bugs](https://github.com/ruvnet/claude-flow/issues)
-- **Discussions**: [Feature requests](https://github.com/ruvnet/claude-flow/discussions)
+- **GitHub Issues**: [Report bugs](https://github.com/eric-cielo/moflo/issues)
+- **Discussions**: [Feature requests](https://github.com/eric-cielo/moflo/discussions)
 
 ---
 

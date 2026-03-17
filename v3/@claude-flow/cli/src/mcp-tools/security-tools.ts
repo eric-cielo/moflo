@@ -7,7 +7,7 @@
  * - aidefence_stats: Get detection statistics
  * - aidefence_learn: Learn from detection feedback
  *
- * Created with ❤️ by ruv.io
+ * Created with ❤️ by motailz.com
  */
 
 import type { MCPTool, MCPToolResult } from './types.js';

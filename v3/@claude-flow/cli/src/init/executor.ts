@@ -1362,7 +1362,7 @@ async function writeCapabilitiesDoc(
 
   const capabilities = `# RuFlo V3 - Complete Capabilities Reference
 > Generated: ${new Date().toISOString()}
-> Full documentation: https://github.com/ruvnet/claude-flow
+> Full documentation: https://github.com/eric-cielo/moflo
 
 ## 📋 Table of Contents
 
@@ -1761,8 +1761,8 @@ npx @claude-flow/cli@latest hooks worker dispatch --trigger optimize
 
 ---
 
-**Full Documentation**: https://github.com/ruvnet/claude-flow
-**Issues**: https://github.com/ruvnet/claude-flow/issues
+**Full Documentation**: https://github.com/eric-cielo/moflo
+**Issues**: https://github.com/eric-cielo/moflo/issues
 `;
 
   fs.writeFileSync(capabilitiesPath, capabilities, 'utf-8');

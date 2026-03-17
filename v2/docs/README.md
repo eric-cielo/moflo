@@ -114,7 +114,7 @@ Third-party platform integrations
 
 ## 📞 Support
 
-- **GitHub Issues**: https://github.com/ruvnet/claude-flow/issues
+- **GitHub Issues**: https://github.com/eric-cielo/moflo/issues
 - **Discord**: Join our community for real-time help
 - **Documentation Updates**: PRs welcome!
 

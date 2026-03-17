@@ -156,7 +156,7 @@ export const defaultSwarmConfig: V3SwarmConfig = {
   // GitHub Integration
   github: {
     enabled: true,
-    repository: 'ruvnet/claude-flow',
+    repository: 'eric-cielo/moflo',
     issueLabels: {
       'agent-1': 'swarm:agent-1',
       'agent-2-4': 'swarm:agent-2-4',
