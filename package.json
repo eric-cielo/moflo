@@ -1,6 +1,6 @@
 {
   "name": "moflo",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "MoFlo — AI agent orchestration for Claude Code. Forked from ruflo/claude-flow with patches applied to source, plus feature-level orchestration.",
   "main": "dist/index.js",
   "type": "module",
@@ -81,47 +81,25 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ruvnet/claude-flow.git"
+    "url": "https://github.com/eric-cielo/moflo.git"
   },
   "keywords": [
-    "ruvflow",
+    "moflo",
     "claude",
     "claude-code",
     "anthropic",
-    "ai",
     "ai-agents",
-    "multi-agent",
     "agent-orchestration",
-    "swarm-intelligence",
-    "swarm",
     "mcp",
     "model-context-protocol",
-    "llm",
-    "large-language-model",
-    "gpt",
-    "chatgpt",
-    "automation",
-    "workflow",
-    "orchestration",
     "cli",
     "developer-tools",
-    "devtools",
-    "coding-assistant",
-    "code-generation",
-    "enterprise",
-    "vector-database",
-    "embeddings",
-    "machine-learning",
-    "neural-network",
-    "hive-mind",
-    "distributed-systems",
-    "consensus",
-    "self-learning"
+    "workflow",
+    "orchestration"
   ],
   "author": {
-    "name": "RuvNet",
-    "email": "ruv@ruv.io",
-    "url": "https://ruv.io"
+    "name": "Eric Cielo",
+    "url": "https://github.com/eric-cielo"
   },
   "license": "MIT",
   "publishConfig": {
