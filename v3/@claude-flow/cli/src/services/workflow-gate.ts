@@ -18,6 +18,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { loadMofloConfig } from '../config/moflo-config.js';
 
 // ============================================================================
 // Types
@@ -74,9 +75,12 @@ const EXEMPT_PATTERNS = [
 
 export class WorkflowGateService {
   private stateFilePath: string;
+  private config: { memory_first: boolean; task_create_first: boolean; context_tracking: boolean };
 
   constructor(projectRoot: string = process.cwd()) {
     this.stateFilePath = path.resolve(projectRoot, '.claude/workflow-state.json');
+    const mofloConfig = loadMofloConfig(projectRoot);
+    this.config = mofloConfig.gates;
   }
 
   // --------------------------------------------------------------------------
@@ -124,16 +128,20 @@ export class WorkflowGateService {
    * Requires both TaskCreate and memory search.
    */
   checkBeforeAgent(): GateResult {
+    if (!this.config.task_create_first && !this.config.memory_first) {
+      return { allowed: true };
+    }
+
     const state = this.readState();
 
-    if (!state.tasksCreated) {
+    if (this.config.task_create_first && !state.tasksCreated) {
       return {
         allowed: false,
         message: 'BLOCKED: Call TaskCreate before spawning agents.',
       };
     }
 
-    if (!state.memorySearched) {
+    if (this.config.memory_first && !state.memorySearched) {
       return {
         allowed: false,
         message: 'BLOCKED: Search memory (mcp__claude-flow__memory_search) before spawning agents.',
@@ -148,6 +156,10 @@ export class WorkflowGateService {
    * Requires memory search (with exemptions for system paths).
    */
   checkBeforeScan(pattern?: string, searchPath?: string): GateResult {
+    if (!this.config.memory_first) {
+      return { allowed: true };
+    }
+
     const state = this.readState();
 
     if (state.memorySearched) {
@@ -179,6 +191,10 @@ export class WorkflowGateService {
    * Only gates reads targeting .claude/guidance/ files.
    */
   checkBeforeRead(filePath?: string): GateResult {
+    if (!this.config.memory_first) {
+      return { allowed: true };
+    }
+
     const state = this.readState();
 
     if (state.memorySearched) {
@@ -251,9 +267,11 @@ export class WorkflowGateService {
       result.reminder = 'REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.';
     }
 
-    const bracket = this.getContextBracket(state.interactionCount);
-    if (bracket !== 'FRESH') {
-      result.bracket = BRACKET_MESSAGES[bracket];
+    if (this.config.context_tracking) {
+      const bracket = this.getContextBracket(state.interactionCount);
+      if (bracket !== 'FRESH') {
+        result.bracket = BRACKET_MESSAGES[bracket];
+      }
     }
 
     return result;
