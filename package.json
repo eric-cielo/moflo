@@ -1,6 +1,6 @@
 {
   "name": "moflo",
-  "version": "4.0.2",
+  "version": "4.0.3",
   "description": "MoFlo — AI agent orchestration for Claude Code. Forked from ruflo/claude-flow with patches applied to source, plus feature-level orchestration.",
   "main": "dist/index.js",
   "type": "module",
@@ -28,6 +28,10 @@
     "v3/@claude-flow/guidance/dist/**/*.d.ts",
     "!v3/@claude-flow/guidance/dist/**/*.map",
     "v3/@claude-flow/guidance/package.json",
+    "v3/@claude-flow/memory/dist/**/*.js",
+    "v3/@claude-flow/memory/dist/**/*.d.ts",
+    "!v3/@claude-flow/memory/dist/**/*.map",
+    "v3/@claude-flow/memory/package.json",
     ".claude-plugin/**",
     ".claude/**",
     "!.claude/**/*.db",

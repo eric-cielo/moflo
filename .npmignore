@@ -48,6 +48,9 @@ docs/
 .gitignore
 .github/
 
+# Swarm state (user-specific)
+.swarm/
+
 # Temporary
 tmp/
 temp/
