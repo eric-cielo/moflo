@@ -66,7 +66,8 @@ const preEditCommand: Command = {
 
     try {
       // Call MCP tool for pre-edit hook
-      const result = await callMCPTool<{
+      // Wrap MCP call in timeout to prevent indefinite hang (#13)
+      const mcpPromise = callMCPTool<{
         filePath: string;
         operation: string;
         context: {
@@ -225,6 +226,12 @@ const postEditCommand: Command = {
         metrics,
         timestamp: Date.now(),
       });
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('session-end timed out after 3s')), 3000)
+      );
+
+      const result = await Promise.race([mcpPromise, timeoutPromise]);
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
