@@ -6,8 +6,8 @@
  * over static patterns (0.9 vs 0.8 confidence).
  */
 
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
 
 // ============================================================================
 // Types
@@ -97,11 +97,28 @@ function loadLearnedPatterns(projectRoot: string): Map<string, string> {
   try {
     if (existsSync(filePath)) {
       const data = JSON.parse(readFileSync(filePath, 'utf-8'));
-      if (data.patterns && Array.isArray(data.patterns)) {
-        for (const p of data.patterns as LearnedPattern[]) {
-          if (p.pattern && p.agent && p.confidence > 0.6) {
-            patterns.set(p.pattern, p.agent);
-          }
+      // Support both formats:
+      // - Flat array (written by hooks-tools saveRoutingOutcome): [{ pattern, agentType, confidence, keywords }]
+      // - Wrapped format: { patterns: [{ pattern, agent, confidence }] }
+      const outcomes: Array<Record<string, unknown>> = Array.isArray(data)
+        ? data
+        : Array.isArray(data.patterns)
+          ? data.patterns
+          : [];
+
+      for (const p of outcomes) {
+        const agent = (p.agentType || p.agent) as string | undefined;
+        const confidence = (p.confidence as number) || 0;
+        const keywords = p.keywords as string[] | undefined;
+
+        if (!agent || confidence <= 0.6) continue;
+
+        // Use stored keywords for matching if available
+        if (keywords && keywords.length > 0) {
+          const keywordPattern = keywords.join('|');
+          patterns.set(keywordPattern, agent);
+        } else if (p.pattern) {
+          patterns.set(p.pattern as string, agent);
         }
       }
     }
@@ -197,6 +214,80 @@ export class AgentRouter {
    */
   getLearnedPatternCount(): number {
     return this.learnedPatterns.size;
+  }
+
+  /**
+   * Get routing statistics from persisted outcomes.
+   */
+  getStats(projectRoot?: string): {
+    totalOutcomes: number;
+    successRate: number;
+    avgQuality: number;
+    agentDistribution: Record<string, number>;
+    learnedPatterns: number;
+  } {
+    const root = projectRoot || process.cwd();
+    const filePath = join(root, '.claude-flow', 'routing-outcomes.json');
+
+    const stats = {
+      totalOutcomes: 0,
+      successRate: 0,
+      avgQuality: 0,
+      agentDistribution: {} as Record<string, number>,
+      learnedPatterns: this.learnedPatterns.size,
+    };
+
+    try {
+      if (!existsSync(filePath)) return stats;
+      const data = JSON.parse(readFileSync(filePath, 'utf-8'));
+      const outcomes: Array<Record<string, unknown>> = Array.isArray(data) ? data : [];
+
+      stats.totalOutcomes = outcomes.length;
+      if (outcomes.length === 0) return stats;
+
+      let successCount = 0;
+      let totalQuality = 0;
+
+      for (const o of outcomes) {
+        const agent = (o.agentType || o.agent || 'unknown') as string;
+        const quality = (o.confidence as number) || 0;
+        stats.agentDistribution[agent] = (stats.agentDistribution[agent] || 0) + 1;
+        totalQuality += quality;
+        if (quality >= 0.6) successCount++;
+      }
+
+      stats.successRate = Math.round((successCount / outcomes.length) * 100) / 100;
+      stats.avgQuality = Math.round((totalQuality / outcomes.length) * 100) / 100;
+    } catch {
+      // Non-fatal
+    }
+
+    return stats;
+  }
+
+  /**
+   * Write routing accuracy stats to learning.json for dashboard consumption.
+   */
+  syncLearningMetrics(projectRoot?: string): void {
+    const root = projectRoot || process.cwd();
+    const stats = this.getStats(root);
+    const metricsPath = join(root, '.claude-flow', 'metrics', 'learning.json');
+
+    try {
+      const dir = dirname(metricsPath);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+      writeFileSync(metricsPath, JSON.stringify({
+        routingAccuracy: stats.successRate,
+        totalOutcomes: stats.totalOutcomes,
+        avgQuality: stats.avgQuality,
+        learnedPatterns: stats.learnedPatterns,
+        agentDistribution: stats.agentDistribution,
+        lastUpdated: new Date().toISOString(),
+      }, null, 2));
+    } catch {
+      // Non-fatal
+    }
   }
 }
 

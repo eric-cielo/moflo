@@ -1210,6 +1210,10 @@ export const hooksPostTask: MCPTool = {
       try {
         saveRoutingOutcome(task, agent, quality);
         routingOutcomeSaved = true;
+
+        // Sync learning metrics for dashboard
+        const { getAgentRouter } = await import('../services/agent-router.js');
+        getAgentRouter().syncLearningMetrics();
       } catch {
         // Best-effort persistence
       }
