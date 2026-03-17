@@ -41,11 +41,7 @@ export {
 export {
   ContainerWorkerPool,
   type ContainerInfo,
-  type ContainerPoolConfig,
-  type ContainerExecutionOptions,
-  type ContainerPoolStatus,
-  type ContainerState,
-} from './container-worker-pool.js';
+// Container Worker Pool removed — Docker infra not used by moflo
 
 // Worker Queue (Phase 4)
 export {
@@ -85,5 +81,5 @@ export {
 // Re-export types
 export type { default as WorkerDaemonType } from './worker-daemon.js';
 export type { default as HeadlessWorkerExecutorType } from './headless-worker-executor.js';
-export type { default as ContainerWorkerPoolType } from './container-worker-pool.js';
+// ContainerWorkerPool removed — Docker infra not used by moflo
 export type { default as WorkerQueueType } from './worker-queue.js';
