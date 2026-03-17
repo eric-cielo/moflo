@@ -196,7 +196,12 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln(output.bold('MoFlo Project Setup'));
     output.writeln();
 
-    const mofloResult = await initMoflo({ projectRoot: cwd, force });
+    const mofloResult = await initMoflo({
+      projectRoot: cwd,
+      force,
+      interactive: ctx.interactive && !minimal && !ctx.flags.yes,
+      minimal,
+    });
 
     for (const step of mofloResult.steps) {
       const icon = step.status === 'created' ? '✓' : step.status === 'updated' ? '↻' : step.status === 'skipped' ? '○' : '✗';

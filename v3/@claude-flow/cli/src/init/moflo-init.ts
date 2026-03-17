@@ -20,6 +20,17 @@ export interface MofloInitOptions {
   projectRoot: string;
   force?: boolean;
   skipIndex?: boolean;
+  interactive?: boolean;
+  minimal?: boolean;
+}
+
+export interface MofloInitAnswers {
+  guidance: boolean;
+  guidanceDirs: string[];
+  codeMap: boolean;
+  srcDirs: string[];
+  gates: boolean;
+  stopHook: boolean;
 }
 
 export interface MofloInitResult {
@@ -30,15 +41,103 @@ export interface MofloInitResult {
 // Init
 // ============================================================================
 
+/**
+ * Run interactive wizard to collect user preferences.
+ */
+async function runWizard(root: string): Promise<MofloInitAnswers> {
+  const { confirm, input } = await import('../prompt.js');
+
+  // Detect project structure
+  const guidanceCandidates = ['.claude/guidance', 'docs/guides', 'docs'];
+  const detectedGuidance = guidanceCandidates.filter(d => fs.existsSync(path.join(root, d)));
+
+  const srcCandidates = ['src', 'packages', 'lib', 'app', 'apps', 'services'];
+  const detectedSrc = srcCandidates.filter(d => fs.existsSync(path.join(root, d)));
+
+  // Ask questions
+  const guidance = await confirm({
+    message: detectedGuidance.length > 0
+      ? `Found guidance docs in ${detectedGuidance.join(', ')}. Enable guidance indexing?`
+      : 'Do you have project guidance/documentation to index?',
+    default: true,
+  });
+
+  let guidanceDirs = detectedGuidance.length > 0 ? detectedGuidance : ['.claude/guidance'];
+  if (guidance) {
+    const answer = await input({
+      message: 'Guidance directories (comma-separated):',
+      default: guidanceDirs.join(', '),
+    });
+    guidanceDirs = answer.split(',').map((d: string) => d.trim()).filter(Boolean);
+  }
+
+  const codeMap = await confirm({
+    message: detectedSrc.length > 0
+      ? `Found source in ${detectedSrc.join(', ')}. Enable code map for navigation?`
+      : 'Enable code map for codebase navigation?',
+    default: true,
+  });
+
+  let srcDirs = detectedSrc.length > 0 ? detectedSrc : ['src'];
+  if (codeMap) {
+    const answer = await input({
+      message: 'Source directories (comma-separated):',
+      default: srcDirs.join(', '),
+    });
+    srcDirs = answer.split(',').map((d: string) => d.trim()).filter(Boolean);
+  }
+
+  const gates = await confirm({
+    message: 'Enable workflow gates (memory-first, task-create-before-agents)?',
+    default: true,
+  });
+
+  const stopHook = await confirm({
+    message: 'Enable session-end hook (saves session state)?',
+    default: true,
+  });
+
+  return { guidance, guidanceDirs, codeMap, srcDirs, gates, stopHook };
+}
+
+/**
+ * Get default answers (--yes mode).
+ */
+function defaultAnswers(root: string): MofloInitAnswers {
+  const guidanceCandidates = ['.claude/guidance', 'docs/guides', 'docs'];
+  const guidanceDirs = guidanceCandidates.filter(d => fs.existsSync(path.join(root, d)));
+  if (guidanceDirs.length === 0) guidanceDirs.push('.claude/guidance');
+
+  const srcCandidates = ['src', 'packages', 'lib', 'app', 'apps', 'services'];
+  const srcDirs = srcCandidates.filter(d => fs.existsSync(path.join(root, d)));
+  if (srcDirs.length === 0) srcDirs.push('src');
+
+  return { guidance: true, guidanceDirs, codeMap: true, srcDirs, gates: true, stopHook: true };
+}
+
+/**
+ * Get minimal answers (--minimal mode).
+ */
+function minimalAnswers(): MofloInitAnswers {
+  return { guidance: false, guidanceDirs: [], codeMap: false, srcDirs: [], gates: false, stopHook: false };
+}
+
 export async function initMoflo(options: MofloInitOptions): Promise<MofloInitResult> {
-  const { projectRoot, force, skipIndex } = options;
+  const { projectRoot, force, interactive, minimal } = options;
   const steps: MofloInitResult['steps'] = [];
 
+  // Collect answers based on mode
+  const answers = minimal
+    ? minimalAnswers()
+    : interactive
+      ? await runWizard(projectRoot)
+      : defaultAnswers(projectRoot);
+
   // Step 1: moflo.yaml
-  steps.push(generateConfig(projectRoot, force));
+  steps.push(generateConfig(projectRoot, force, answers));
 
   // Step 2: .claude/settings.json hooks
-  steps.push(generateHooks(projectRoot, force));
+  steps.push(generateHooks(projectRoot, force, answers));
 
   // Step 3: .claude/skills/mf/
   steps.push(generateSkill(projectRoot, force));
@@ -56,7 +155,7 @@ export async function initMoflo(options: MofloInitOptions): Promise<MofloInitRes
 // Step 1: moflo.yaml
 // ============================================================================
 
-function generateConfig(root: string, force?: boolean): MofloInitResult['steps'][0] {
+function generateConfig(root: string, force?: boolean, answers?: MofloInitAnswers): MofloInitResult['steps'][0] {
   const configPath = path.join(root, 'moflo.yaml');
 
   if (fs.existsSync(configPath) && !force) {
@@ -64,16 +163,9 @@ function generateConfig(root: string, force?: boolean): MofloInitResult['steps']
   }
 
   const projectName = path.basename(root);
-
-  // Detect guidance directories
-  const guidanceCandidates = ['.claude/guidance', 'docs/guides', 'docs'];
-  const guidanceDirs = guidanceCandidates.filter(d => fs.existsSync(path.join(root, d)));
-  if (guidanceDirs.length === 0) guidanceDirs.push('.claude/guidance');
-
-  // Detect source directories
-  const srcCandidates = ['src', 'packages', 'lib', 'app', 'apps', 'services'];
-  const srcDirs = srcCandidates.filter(d => fs.existsSync(path.join(root, d)));
-  if (srcDirs.length === 0) srcDirs.push('src');
+  const guidanceDirs = answers?.guidanceDirs ?? ['.claude/guidance'];
+  const srcDirs = answers?.srcDirs ?? ['src'];
+  const gatesEnabled = answers?.gates ?? true;
 
   // Detect languages
   const extensions = new Set<string>();
@@ -112,14 +204,27 @@ ${srcDirs.map(d => `    - ${d}`).join('\n')}
 
 # Workflow gates (enforced via Claude Code hooks)
 gates:
-  memory_first: true
-  task_create_first: true
-  context_tracking: true
+  memory_first: ${gatesEnabled}
+  task_create_first: ${gatesEnabled}
+  context_tracking: ${gatesEnabled}
 
 # Auto-index on session start
 auto_index:
-  guidance: true
-  code_map: true
+  guidance: ${answers?.guidance ?? true}
+  code_map: ${answers?.codeMap ?? true}
+
+# Memory backend
+memory:
+  backend: sql.js
+  embedding_model: Xenova/all-MiniLM-L6-v2
+  namespace: default
+
+# Hook toggles
+hooks:
+  pre_edit: true
+  gate: ${gatesEnabled}
+  stop_hook: ${answers?.stopHook ?? true}
+  session_restore: true
 
 # Model preferences
 models:
@@ -150,7 +255,7 @@ function scanExtensions(dir: string, extensions: Set<string>, depth: number, max
 // Step 2: .claude/settings.json hooks
 // ============================================================================
 
-function generateHooks(root: string, force?: boolean): MofloInitResult['steps'][0] {
+function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers): MofloInitResult['steps'][0] {
   const settingsPath = path.join(root, '.claude', 'settings.json');
   const settingsDir = path.dirname(settingsPath);
 
