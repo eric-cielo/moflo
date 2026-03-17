@@ -75,6 +75,7 @@ export class AgentBrowserAdapter {
           encoding: 'utf-8',
           timeout: this.timeout + 5000,
           stdio: ['pipe', 'pipe', 'pipe'],
+          windowsHide: true,
         });
 
         const duration = Date.now() - startTime;
@@ -641,6 +642,7 @@ export class AgentBrowserAdapter {
         const result = execSync(`agent-browser ${args.join(' ')}`, {
           encoding: 'utf-8',
           timeout: 300000, // 5 minutes for download
+          windowsHide: true,
         });
         resolve({ success: true, data: result });
       } catch (error) {

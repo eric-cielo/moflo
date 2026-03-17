@@ -40,7 +40,7 @@ export async function launchUI(args = []) {
                 : 'xdg-open';
 
           const { exec } = await import('child_process');
-          exec(`${openCommand} http://localhost:${port}/console`);
+          exec(`${openCommand} http://localhost:${port}/console`, { windowsHide: true });
         } catch {
           // Browser opening failed, that's okay
         }

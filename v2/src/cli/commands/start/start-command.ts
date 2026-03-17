@@ -121,7 +121,7 @@ export const startCommand = new Command()
 
           try {
             const { exec } = await import('child_process');
-            exec(`${openCommand} http://localhost:${options.port}/console`);
+            exec(`${openCommand} http://localhost:${options.port}/console`, { windowsHide: true });
           } catch {
             // Browser opening failed, that's okay
           }

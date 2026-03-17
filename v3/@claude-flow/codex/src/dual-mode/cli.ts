@@ -172,7 +172,7 @@ function createStatusCommand(): Command {
       const proc = spawn('npx', [
         'claude-flow@alpha', 'memory', 'list',
         '--namespace', options.namespace
-      ], { stdio: 'inherit' });
+      ], { stdio: 'inherit', windowsHide: true });
 
       proc.on('close', () => {
         console.log();

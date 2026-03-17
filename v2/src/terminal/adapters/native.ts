@@ -386,7 +386,7 @@ export class NativeAdapter implements ITerminalAdapter {
     try {
       const testConfig = this.getTestCommand();
       const { spawnSync } = require('child_process');
-      const result = spawnSync(testConfig.cmd, testConfig.args, { stdio: 'ignore' });
+      const result = spawnSync(testConfig.cmd, testConfig.args, { stdio: 'ignore', windowsHide: true });
 
       if (result.status !== 0) {
         throw new Error('Shell test failed');
@@ -434,7 +434,7 @@ export class NativeAdapter implements ITerminalAdapter {
       // Check if PowerShell is available
       try {
         const { spawnSync } = require('child_process');
-        const result = spawnSync('powershell', ['-Version'], { stdio: 'ignore' });
+        const result = spawnSync('powershell', ['-Version'], { stdio: 'ignore', windowsHide: true });
         if (result.status === 0) {
           return 'powershell';
         }
@@ -458,7 +458,7 @@ export class NativeAdapter implements ITerminalAdapter {
       for (const shell of shells) {
         try {
           const { spawnSync } = require('child_process');
-          const result = spawnSync('which', [shell], { stdio: 'ignore' });
+          const result = spawnSync('which', [shell], { stdio: 'ignore', windowsHide: true });
           if (result.status === 0) {
             return shell;
           }

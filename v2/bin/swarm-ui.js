@@ -613,6 +613,7 @@ class SwarmUI {
       // Windows: Use wmic to find and kill processes
       exec(
         'wmic process where "commandline like \'%claude-flow swarm%\'" get processid',
+        { windowsHide: true },
         (error, stdout) => {
           if (!error && stdout) {
             const pids = stdout
@@ -621,7 +622,7 @@ class SwarmUI {
               .filter((line) => /^\d+$/.test(line));
 
             pids.forEach((pid) => {
-              exec(`taskkill /F /PID ${pid}`, (killError) => {
+              exec(`taskkill /F /PID ${pid}`, { windowsHide: true }, (killError) => {
                 if (!killError) {
                   this.log(`Stopped orphaned process PID: ${pid}`);
                 }
@@ -632,7 +633,7 @@ class SwarmUI {
       );
     } else {
       // Unix-like systems: Use ps and grep
-      exec('ps aux | grep "claude-flow swarm" | grep -v grep', (error, stdout) => {
+      exec('ps aux | grep "claude-flow swarm" | grep -v grep', { windowsHide: true }, (error, stdout) => {
         if (!error && stdout) {
           const lines = stdout.split('\n').filter((line) => line.trim());
           lines.forEach((line) => {
@@ -657,7 +658,7 @@ class SwarmUI {
 
     try {
       const { exec } = require('child_process');
-      exec(command, (error, stdout, stderr) => {
+      exec(command, { windowsHide: true }, (error, stdout, stderr) => {
         if (error) {
           this.log(`Command error: ${error.message}`, 'error');
         } else {

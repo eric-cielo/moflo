@@ -29,7 +29,7 @@ class BuildMonitor {
   async runBuild() {
     return new Promise((resolve, reject) => {
       console.log('🔨 Running build verification...');
-      exec('npm run build', (error, stdout, stderr) => {
+      exec('npm run build', { windowsHide: true }, (error, stdout, stderr) => {
         const buildOutput = stderr || stdout;
         const errors = this.parseErrors(buildOutput);
         
@@ -70,7 +70,8 @@ class BuildMonitor {
     try {
       // Check for swarm agent updates
       const result = await new Promise((resolve) => {
-        exec('npx ruv-swarm hook pre-search --query "agent-progress" --cache-results true', 
+        exec('npx ruv-swarm hook pre-search --query "agent-progress" --cache-results true',
+          { windowsHide: true },
           (error, stdout) => {
             resolve(stdout || '');
           }

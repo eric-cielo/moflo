@@ -363,6 +363,7 @@ function runClaudeSession(
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env },
       shell: true,
+      windowsHide: true,
     });
 
     let stdout = '';

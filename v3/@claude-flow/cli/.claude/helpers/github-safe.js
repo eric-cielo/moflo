@@ -80,9 +80,10 @@ if ((command === 'issue' || command === 'pr') &&
       const ghCommand = `gh ${command} ${subcommand} ${newArgs.join(' ')}`;
       console.log(`Executing: ${ghCommand}`);
       
-      const result = execSync(ghCommand, { 
+      const result = execSync(ghCommand, {
         stdio: 'inherit',
-        timeout: 30000 // 30 second timeout
+        timeout: 30000, // 30 second timeout
+        windowsHide: true,
       });
       
     } catch (error) {
@@ -98,9 +99,9 @@ if ((command === 'issue' || command === 'pr') &&
     }
   } else {
     // No body content, execute normally
-    execSync(`gh ${args.join(' ')}`, { stdio: 'inherit' });
+    execSync(`gh ${args.join(' ')}`, { stdio: 'inherit', windowsHide: true });
   }
 } else {
   // Other commands, execute normally
-  execSync(`gh ${args.join(' ')}`, { stdio: 'inherit' });
+  execSync(`gh ${args.join(' ')}`, { stdio: 'inherit', windowsHide: true });
 }

@@ -163,6 +163,7 @@ export class DualModeOrchestrator extends EventEmitter {
         cwd: projectPath,
         env: { ...process.env, FORCE_COLOR: '0' },
         stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
       });
 
       this.processes.set(config.id, proc);
@@ -344,7 +345,7 @@ Remember: Other agents depend on your results in shared memory. Be concise and s
    */
   private runCommand(command: string, args: string[], cwd: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      const proc = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+      const proc = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
       let output = '';
       let error = '';
 

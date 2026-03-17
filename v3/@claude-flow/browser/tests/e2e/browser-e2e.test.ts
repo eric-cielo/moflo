@@ -19,6 +19,7 @@ function browser(command: string): string {
     const result = execSync(`agent-browser --session ${SESSION} --json ${command}`, {
       encoding: 'utf-8',
       timeout: 30000,
+      windowsHide: true,
     });
     return result;
   } catch (error) {

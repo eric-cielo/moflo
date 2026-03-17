@@ -2431,7 +2431,7 @@ const codeMapCommand: Command = {
     try {
       raw = execSync(
         `git ls-files -- "*.ts" "*.tsx" "*.js" "*.mjs" "*.jsx"`,
-        { cwd, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
+        { cwd, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, windowsHide: true }
       ).trim();
     } catch {
       output.printError('Failed to list source files via git. Is this a git repository?');
