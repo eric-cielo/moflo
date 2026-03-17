@@ -38,6 +38,19 @@ export interface MofloConfig {
     code_map: boolean;
   };
 
+  memory: {
+    backend: 'sql.js' | 'agentdb' | 'json';
+    embedding_model: string;
+    namespace: string;
+  };
+
+  hooks: {
+    pre_edit: boolean;
+    gate: boolean;
+    stop_hook: boolean;
+    session_restore: boolean;
+  };
+
   models: {
     default: string;
     review: string;
@@ -71,6 +84,17 @@ const DEFAULT_CONFIG: MofloConfig = {
     guidance: true,
     code_map: true,
   },
+  memory: {
+    backend: 'sql.js',
+    embedding_model: 'Xenova/all-MiniLM-L6-v2',
+    namespace: 'default',
+  },
+  hooks: {
+    pre_edit: true,
+    gate: true,
+    stop_hook: true,
+    session_restore: true,
+  },
   models: {
     default: 'opus',
     review: 'opus',
@@ -81,61 +105,91 @@ const DEFAULT_CONFIG: MofloConfig = {
 // Loader
 // ============================================================================
 
-const CONFIG_FILENAME = 'moflo.yaml';
+const CONFIG_FILES = ['moflo.yaml', 'moflo.config.json'] as const;
 
 /**
- * Load moflo.yaml from the given directory (or cwd).
+ * Find and load config file from project root.
+ * Tries moflo.yaml first, then moflo.config.json.
+ */
+function findConfigFile(root: string): { path: string; format: 'yaml' | 'json' } | null {
+  for (const filename of CONFIG_FILES) {
+    const configPath = path.join(root, filename);
+    if (fs.existsSync(configPath)) {
+      return { path: configPath, format: filename.endsWith('.json') ? 'json' : 'yaml' };
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse raw config object into typed config, merging with defaults.
+ */
+function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
+  return {
+    project: {
+      name: raw.project?.name || path.basename(root),
+    },
+    guidance: {
+      directories: raw.guidance?.directories || DEFAULT_CONFIG.guidance.directories,
+      namespace: raw.guidance?.namespace || DEFAULT_CONFIG.guidance.namespace,
+    },
+    code_map: {
+      directories: raw.code_map?.directories || raw.codeMap?.directories || DEFAULT_CONFIG.code_map.directories,
+      extensions: raw.code_map?.extensions || raw.codeMap?.extensions || DEFAULT_CONFIG.code_map.extensions,
+      exclude: raw.code_map?.exclude || raw.codeMap?.exclude || DEFAULT_CONFIG.code_map.exclude,
+      namespace: raw.code_map?.namespace || raw.codeMap?.namespace || DEFAULT_CONFIG.code_map.namespace,
+    },
+    gates: {
+      memory_first: raw.gates?.memory_first ?? DEFAULT_CONFIG.gates.memory_first,
+      task_create_first: raw.gates?.task_create_first ?? DEFAULT_CONFIG.gates.task_create_first,
+      context_tracking: raw.gates?.context_tracking ?? DEFAULT_CONFIG.gates.context_tracking,
+    },
+    auto_index: {
+      guidance: raw.auto_index?.guidance ?? raw.autoIndex?.guidance ?? DEFAULT_CONFIG.auto_index.guidance,
+      code_map: raw.auto_index?.code_map ?? raw.autoIndex?.code_map ?? DEFAULT_CONFIG.auto_index.code_map,
+    },
+    memory: {
+      backend: raw.memory?.backend || DEFAULT_CONFIG.memory.backend,
+      embedding_model: raw.memory?.embedding_model || raw.memory?.embeddingModel || DEFAULT_CONFIG.memory.embedding_model,
+      namespace: raw.memory?.namespace || DEFAULT_CONFIG.memory.namespace,
+    },
+    hooks: {
+      pre_edit: raw.hooks?.pre_edit ?? raw.hooks?.preEdit ?? DEFAULT_CONFIG.hooks.pre_edit,
+      gate: raw.hooks?.gate ?? DEFAULT_CONFIG.hooks.gate,
+      stop_hook: raw.hooks?.stop_hook ?? raw.hooks?.stopHook ?? DEFAULT_CONFIG.hooks.stop_hook,
+      session_restore: raw.hooks?.session_restore ?? raw.hooks?.sessionRestore ?? DEFAULT_CONFIG.hooks.session_restore,
+    },
+    models: {
+      default: raw.models?.default || DEFAULT_CONFIG.models.default,
+      review: raw.models?.review || DEFAULT_CONFIG.models.review,
+    },
+  };
+}
+
+/**
+ * Load moflo config from the given directory (or cwd).
+ * Tries moflo.yaml first, then moflo.config.json.
  * Returns defaults merged with file contents.
  */
 export function loadMofloConfig(projectRoot?: string): MofloConfig {
   const root = projectRoot || process.cwd();
-  const configPath = path.join(root, CONFIG_FILENAME);
+  const configFile = findConfigFile(root);
 
-  if (!fs.existsSync(configPath)) {
-    // No config file — use defaults with project name from directory
-    return {
-      ...DEFAULT_CONFIG,
-      project: { name: path.basename(root) },
-    };
+  if (!configFile) {
+    return { ...DEFAULT_CONFIG, project: { name: path.basename(root) } };
   }
 
   try {
-    const content = fs.readFileSync(configPath, 'utf-8');
-    const raw = yaml.load(content) as Record<string, any> | null;
+    const content = fs.readFileSync(configFile.path, 'utf-8');
+    const raw = configFile.format === 'json'
+      ? JSON.parse(content)
+      : yaml.load(content) as Record<string, any>;
 
     if (!raw || typeof raw !== 'object') {
       return { ...DEFAULT_CONFIG, project: { name: path.basename(root) } };
     }
 
-    // Deep merge with defaults
-    return {
-      project: {
-        name: raw.project?.name || path.basename(root),
-      },
-      guidance: {
-        directories: raw.guidance?.directories || DEFAULT_CONFIG.guidance.directories,
-        namespace: raw.guidance?.namespace || DEFAULT_CONFIG.guidance.namespace,
-      },
-      code_map: {
-        directories: raw.code_map?.directories || DEFAULT_CONFIG.code_map.directories,
-        extensions: raw.code_map?.extensions || DEFAULT_CONFIG.code_map.extensions,
-        exclude: raw.code_map?.exclude || DEFAULT_CONFIG.code_map.exclude,
-        namespace: raw.code_map?.namespace || DEFAULT_CONFIG.code_map.namespace,
-      },
-      gates: {
-        memory_first: raw.gates?.memory_first ?? DEFAULT_CONFIG.gates.memory_first,
-        task_create_first: raw.gates?.task_create_first ?? DEFAULT_CONFIG.gates.task_create_first,
-        context_tracking: raw.gates?.context_tracking ?? DEFAULT_CONFIG.gates.context_tracking,
-      },
-      auto_index: {
-        guidance: raw.auto_index?.guidance ?? DEFAULT_CONFIG.auto_index.guidance,
-        code_map: raw.auto_index?.code_map ?? DEFAULT_CONFIG.auto_index.code_map,
-      },
-      models: {
-        default: raw.models?.default || DEFAULT_CONFIG.models.default,
-        review: raw.models?.review || DEFAULT_CONFIG.models.review,
-      },
-    };
+    return mergeConfig(raw, root);
   } catch {
     return { ...DEFAULT_CONFIG, project: { name: path.basename(root) } };
   }
@@ -208,6 +262,19 @@ gates:
 auto_index:
   guidance: true
   code_map: true
+
+# Memory backend
+memory:
+  backend: sql.js              # sql.js (WASM, no native deps) | agentdb | json
+  embedding_model: Xenova/all-MiniLM-L6-v2
+  namespace: default
+
+# Hook toggles
+hooks:
+  pre_edit: true               # Track file edits
+  gate: true                   # Workflow gate enforcement
+  stop_hook: true              # Session-end persistence
+  session_restore: true        # Restore session state on start
 
 # Model preferences
 models:

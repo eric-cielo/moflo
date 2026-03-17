@@ -417,11 +417,45 @@ const importCommand: Command = {
   }
 };
 
+// Show moflo project config (merged with defaults)
+const showCommand: Command = {
+  name: 'show',
+  description: 'Show current moflo project configuration',
+  options: [
+    { name: 'format', short: 'f', description: 'Output format (json or yaml)', type: 'string', default: 'json' },
+  ],
+  examples: [
+    { command: 'moflo config show', description: 'Show merged config as JSON' },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const { loadMofloConfig } = await import('../config/moflo-config.js');
+    const config = loadMofloConfig();
+    output.writeln(JSON.stringify(config, null, 2));
+    return { success: true, data: config };
+  },
+};
+
+// Generate moflo.yaml in project root
+const generateCommand: Command = {
+  name: 'generate',
+  description: 'Generate moflo.yaml config file',
+  options: [],
+  examples: [
+    { command: 'moflo config generate', description: 'Auto-detect and write moflo.yaml' },
+  ],
+  action: async (_ctx: CommandContext): Promise<CommandResult> => {
+    const { writeMofloConfig } = await import('../config/moflo-config.js');
+    const configPath = writeMofloConfig();
+    output.printSuccess(`Config written to: ${configPath}`);
+    return { success: true };
+  },
+};
+
 // Main config command
 export const configCommand: Command = {
   name: 'config',
   description: 'Configuration management',
-  subcommands: [initCommand, getCommand, setCommand, providersCommand, resetCommand, exportCommand, importCommand],
+  subcommands: [initCommand, getCommand, setCommand, providersCommand, resetCommand, exportCommand, importCommand, showCommand, generateCommand],
   options: [],
   examples: [
     { command: 'claude-flow config init --v3', description: 'Initialize V3 config' },
@@ -442,7 +476,9 @@ export const configCommand: Command = {
       `${output.highlight('providers')}  - Manage AI providers`,
       `${output.highlight('reset')}      - Reset to defaults`,
       `${output.highlight('export')}     - Export configuration`,
-      `${output.highlight('import')}     - Import configuration`
+      `${output.highlight('import')}     - Import configuration`,
+      `${output.highlight('show')}       - Show moflo project config (merged with defaults)`,
+      `${output.highlight('generate')}   - Generate moflo.yaml for current project`
     ]);
 
     return { success: true };
