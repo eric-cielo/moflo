@@ -216,7 +216,7 @@ const TASK_PATTERNS: Record<string, { keywords: string[]; agents: string[] }> = 
  */
 const ROUTING_OUTCOMES_PATH = '.claude-flow/routing-outcomes.json';
 
-function loadRoutingOutcomes(): Array<{ pattern: string; agentType: string; confidence: number }> {
+function loadRoutingOutcomes(): Array<{ pattern: string; agentType: string; confidence: number; keywords?: string[]; task?: string; timestamp?: string }> {
   try {
     const fullPath = join(process.cwd(), ROUTING_OUTCOMES_PATH);
     if (!existsSync(fullPath)) return [];
@@ -239,13 +239,19 @@ function saveRoutingOutcome(task: string, agentType: string, confidence: number)
       .replace(/[^a-z0-9\s]/g, ' ')
       .split(/\s+/)
       .filter(w => w.length > 3)
-      .slice(0, 5)
-      .join('|');
+      .slice(0, 5);
 
-    if (keywords) {
-      existing.push({ pattern: `learned-${agentType}`, agentType, confidence });
-      // Keep last 100 outcomes
-      const trimmed = existing.slice(-100);
+    if (keywords.length > 0) {
+      existing.push({
+        pattern: `learned-${agentType}`,
+        agentType,
+        confidence,
+        keywords,
+        task: task.slice(0, 200),
+        timestamp: new Date().toISOString(),
+      });
+      // Keep last 500 outcomes
+      const trimmed = existing.slice(-500);
       writeFileSync(fullPath, JSON.stringify(trimmed, null, 2));
     }
   } catch {
@@ -294,9 +300,14 @@ async function getSemanticRouter() {
       // Also load learned patterns from previous task executions
       const learnedPatterns = loadRoutingOutcomes();
       for (const lp of learnedPatterns) {
-        const embedding = generateSimpleEmbedding(lp.pattern);
-        db.insert(`learned:${lp.pattern}:${lp.agentType}`, embedding);
-        TASK_PATTERN_EMBEDDINGS.set(`learned:${lp.pattern}:${lp.agentType}`, embedding);
+        // Index per-keyword embeddings for finer-grained matching
+        const kws = lp.keywords || [lp.pattern];
+        for (const kw of kws) {
+          const embedding = generateSimpleEmbedding(kw);
+          const entryKey = `learned-${lp.agentType}:${kw}`;
+          db.insert(entryKey, embedding);
+          TASK_PATTERN_EMBEDDINGS.set(entryKey, embedding);
+        }
       }
 
       nativeVectorDb = db;
@@ -327,13 +338,16 @@ async function getSemanticRouter() {
     // Also load learned patterns from previous task executions
     const learnedPatterns = loadRoutingOutcomes();
     for (const lp of learnedPatterns) {
-      const embedding = generateSimpleEmbedding(lp.pattern);
+      const kws = lp.keywords || [lp.pattern];
+      const embeddings = kws.map(kw => generateSimpleEmbedding(kw));
       semanticRouter.addIntentWithEmbeddings(
         `learned-${lp.agentType}`,
-        [embedding],
-        { agents: [lp.agentType], keywords: [lp.pattern], confidence: lp.confidence }
+        embeddings,
+        { agents: [lp.agentType], keywords: kws, confidence: lp.confidence }
       );
-      TASK_PATTERN_EMBEDDINGS.set(`learned:${lp.pattern}`, embedding);
+      kws.forEach((kw, i) => {
+        TASK_PATTERN_EMBEDDINGS.set(`learned-${lp.agentType}:${kw}`, embeddings[i]);
+      });
     }
 
     routerBackend = 'pure-js';
@@ -876,7 +890,7 @@ export const hooksRoute: MCPTool = {
           return {
             intent: patternName,
             score: 1 - r.score, // Native uses distance (lower is better), convert to similarity
-            metadata: { agents: pattern?.agents || ['coder'] },
+            metadata: { agents: pattern?.agents || (patternName.startsWith('learned-') ? [patternName.slice(8)] : ['coder']) },
           };
         });
       } catch {
