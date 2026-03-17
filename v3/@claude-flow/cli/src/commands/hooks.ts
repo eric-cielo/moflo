@@ -1621,12 +1621,20 @@ const sessionEndCommand: Command = {
 
       return { success: true, data: result };
     } catch (error) {
-      if (error instanceof MCPClientError) {
-        output.printError(`Session-end hook failed: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      const isTimeout = msg.includes('timed out');
+
+      if (isTimeout) {
+        // Timeout is expected when MCP server is slow — exit cleanly
+        output.writeln(output.dim('Session-end timed out — exiting cleanly.'));
+      } else if (error instanceof MCPClientError) {
+        output.printError(`Session-end hook failed: ${msg}`);
       } else {
-        output.printError(`Unexpected error: ${String(error)}`);
+        output.printError(`Unexpected error: ${msg}`);
       }
-      return { success: false, exitCode: 1 };
+
+      // Force exit to prevent hanging when MCP call is stuck
+      process.exit(0);
     }
   }
 };
