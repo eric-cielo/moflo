@@ -5,7 +5,7 @@
  * Connects ReasoningBank to AgentDB with HNSW indexing and ONNX embeddings.
  *
  * Features:
- * - Persistent pattern storage via AgentDB
+ * - Persistent pattern storage via sql.js (WASM SQLite)
  * - HNSW indexing for 150x-12,500x faster search
  * - ONNX embeddings via agentic-flow@alpha
  * - Session-level pattern loading and consolidation
@@ -22,7 +22,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync, spawn } from 'child_process';
-import Database from 'better-sqlite3';
+import initSqlJs from 'sql.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -75,11 +75,69 @@ const CONFIG = {
 };
 
 // =============================================================================
+// sql.js Database Helpers
+// =============================================================================
+
+let _sqlJs = null;
+
+async function getSqlJs() {
+  if (!_sqlJs) {
+    _sqlJs = await initSqlJs();
+  }
+  return _sqlJs;
+}
+
+async function openDb() {
+  const SQL = await getSqlJs();
+  if (existsSync(DB_PATH)) {
+    const buffer = readFileSync(DB_PATH);
+    return new SQL.Database(buffer);
+  }
+  return new SQL.Database();
+}
+
+function saveDb(db) {
+  const data = db.export();
+  writeFileSync(DB_PATH, Buffer.from(data));
+}
+
+// Helper: run a SELECT that returns multiple rows
+function dbAll(db, sql, params = []) {
+  const stmt = db.prepare(sql);
+  if (params.length) stmt.bind(params);
+  const rows = [];
+  while (stmt.step()) {
+    rows.push(stmt.getAsObject());
+  }
+  stmt.free();
+  return rows;
+}
+
+// Helper: run a SELECT that returns one row
+function dbGet(db, sql, params = []) {
+  const stmt = db.prepare(sql);
+  if (params.length) stmt.bind(params);
+  let row = null;
+  if (stmt.step()) {
+    row = stmt.getAsObject();
+  }
+  stmt.free();
+  return row;
+}
+
+// Helper: run INSERT/UPDATE/DELETE, returns { changes }
+function dbRun(db, sql, params = []) {
+  db.run(sql, params);
+  const changes = db.getRowsModified();
+  return { changes };
+}
+
+// =============================================================================
 // Database Schema
 // =============================================================================
 
 function initializeDatabase(db) {
-  db.exec(`
+  db.run(`
     -- Short-term patterns (session-level)
     CREATE TABLE IF NOT EXISTS short_term_patterns (
       id TEXT PRIMARY KEY,
@@ -116,7 +174,7 @@ function initializeDatabase(db) {
     -- HNSW index metadata
     CREATE TABLE IF NOT EXISTS hnsw_index (
       id INTEGER PRIMARY KEY,
-      pattern_type TEXT NOT NULL,  -- 'short_term' or 'long_term'
+      pattern_type TEXT NOT NULL,
       pattern_id TEXT NOT NULL,
       vector_id INTEGER NOT NULL,
       created_at INTEGER NOT NULL,
@@ -152,16 +210,16 @@ function initializeDatabase(db) {
       value TEXT NOT NULL,
       updated_at INTEGER NOT NULL
     );
-
-    -- Create indexes
-    CREATE INDEX IF NOT EXISTS idx_short_term_domain ON short_term_patterns(domain);
-    CREATE INDEX IF NOT EXISTS idx_short_term_quality ON short_term_patterns(quality DESC);
-    CREATE INDEX IF NOT EXISTS idx_short_term_usage ON short_term_patterns(usage_count DESC);
-    CREATE INDEX IF NOT EXISTS idx_long_term_domain ON long_term_patterns(domain);
-    CREATE INDEX IF NOT EXISTS idx_long_term_quality ON long_term_patterns(quality DESC);
-    CREATE INDEX IF NOT EXISTS idx_trajectories_session ON trajectories(session_id);
-    CREATE INDEX IF NOT EXISTS idx_metrics_type ON learning_metrics(metric_type, timestamp);
   `);
+
+  // Create indexes separately (sql.js handles multi-statement DDL in run())
+  db.run(`CREATE INDEX IF NOT EXISTS idx_short_term_domain ON short_term_patterns(domain)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_short_term_quality ON short_term_patterns(quality DESC)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_short_term_usage ON short_term_patterns(usage_count DESC)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_long_term_domain ON long_term_patterns(domain)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_long_term_quality ON long_term_patterns(quality DESC)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_trajectories_session ON trajectories(session_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_metrics_type ON learning_metrics(metric_type, timestamp)`);
 }
 
 // =============================================================================
@@ -574,6 +632,7 @@ class LearningService {
     this.longTermIndex = null;
     this.embeddingService = null;
     this.sessionId = null;
+    this.dirty = false;  // Track if DB needs saving
     this.metrics = {
       patternsStored: 0,
       patternsRetrieved: 0,
@@ -587,9 +646,10 @@ class LearningService {
   async initialize(sessionId = null) {
     this.sessionId = sessionId || `session_${Date.now()}`;
 
-    // Initialize database
-    this.db = new Database(DB_PATH);
+    // Initialize database (sql.js — async)
+    this.db = await openDb();
     initializeDatabase(this.db);
+    this.dirty = true; // schema init may create tables
 
     // Initialize embedding service
     this.embeddingService = new EmbeddingService(CONFIG);
@@ -635,20 +695,19 @@ class LearningService {
     }
 
     // Store in database
-    const stmt = this.db.prepare(`
+    dbRun(this.db, `
       INSERT INTO short_term_patterns
       (id, strategy, domain, embedding, quality, usage_count, created_at, updated_at, session_id, metadata)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
+    `, [
       id, strategy, domain,
-      Buffer.from(embedding.buffer),
+      new Uint8Array(embedding.buffer),
       metadata.quality || 0.5,
       1, now, now,
       this.sessionId,
       JSON.stringify(metadata)
-    );
+    ]);
+    this.dirty = true;
 
     // Add to HNSW index
     this.shortTermIndex.add(id, embedding);
@@ -691,7 +750,7 @@ class LearningService {
     // Get full pattern data
     const patterns = deduped.map(r => {
       const table = r.type === 'long_term' ? 'long_term_patterns' : 'short_term_patterns';
-      const row = this.db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(r.patternId);
+      const row = dbGet(this.db, `SELECT * FROM ${table} WHERE id = ?`, [r.patternId]);
       return {
         ...r,
         strategy: row?.strategy,
@@ -731,9 +790,7 @@ class LearningService {
 
   // Promote patterns from short-term to long-term
   _checkPromotion(patternId) {
-    const row = this.db.prepare(`
-      SELECT * FROM short_term_patterns WHERE id = ?
-    `).get(patternId);
+    const row = dbGet(this.db, `SELECT * FROM short_term_patterns WHERE id = ?`, [patternId]);
 
     if (!row) return false;
 
@@ -747,12 +804,12 @@ class LearningService {
     const now = Date.now();
 
     // Insert into long-term
-    this.db.prepare(`
+    dbRun(this.db, `
       INSERT INTO long_term_patterns
       (id, strategy, domain, embedding, quality, usage_count, success_count,
        created_at, updated_at, promoted_at, source_pattern_id, quality_history, metadata)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `, [
       `lt_${patternId}`,
       row.strategy,
       row.domain,
@@ -766,15 +823,16 @@ class LearningService {
       patternId,
       JSON.stringify([row.quality]),
       row.metadata
-    );
+    ]);
 
     // Add to long-term index
     this.longTermIndex.add(`lt_${patternId}`, this._bufferToFloat32Array(row.embedding));
 
     // Remove from short-term
-    this.db.prepare('DELETE FROM short_term_patterns WHERE id = ?').run(patternId);
+    dbRun(this.db, 'DELETE FROM short_term_patterns WHERE id = ?', [patternId]);
     this.shortTermIndex.remove(patternId);
 
+    this.dirty = true;
     this.metrics.promotions++;
     console.log(`[Learning] Promoted pattern ${patternId} to long-term`);
 
@@ -785,15 +843,16 @@ class LearningService {
   _updatePatternUsage(patternId, table, success = true) {
     const tableName = table === 'long_term' ? 'long_term_patterns' : 'short_term_patterns';
 
-    const result = this.db.prepare(`
+    const result = dbRun(this.db, `
       UPDATE ${tableName}
       SET usage_count = usage_count + 1,
           success_count = success_count + ?,
           quality = (quality * usage_count + ?) / (usage_count + 1),
           updated_at = ?
       WHERE id = ?
-    `).run(success ? 1 : 0, success ? 1.0 : 0.0, Date.now(), patternId);
+    `, [success ? 1 : 0, success ? 1.0 : 0.0, Date.now(), patternId]);
 
+    if (result.changes > 0) this.dirty = true;
     return result.changes > 0;
   }
 
@@ -808,17 +867,17 @@ class LearningService {
 
     // 1. Remove old short-term patterns
     const oldThreshold = Date.now() - CONFIG.patterns.shortTermMaxAge;
-    const pruned = this.db.prepare(`
+    const pruned = dbRun(this.db, `
       DELETE FROM short_term_patterns
       WHERE created_at < ? AND usage_count < ?
-    `).run(oldThreshold, CONFIG.patterns.promotionThreshold);
+    `, [oldThreshold, CONFIG.patterns.promotionThreshold]);
     stats.patternsProned = pruned.changes;
 
     // 2. Rebuild indexes
     await this._loadIndexes();
 
     // 3. Remove duplicates in long-term
-    const longTermPatterns = this.db.prepare('SELECT * FROM long_term_patterns').all();
+    const longTermPatterns = dbAll(this.db, 'SELECT * FROM long_term_patterns');
     for (let i = 0; i < longTermPatterns.length; i++) {
       for (let j = i + 1; j < longTermPatterns.length; j++) {
         const sim = this._cosineSimilarity(
@@ -832,7 +891,7 @@ class LearningService {
             ? longTermPatterns[j].id
             : longTermPatterns[i].id;
 
-          this.db.prepare('DELETE FROM long_term_patterns WHERE id = ?').run(toRemove);
+          dbRun(this.db, 'DELETE FROM long_term_patterns WHERE id = ?', [toRemove]);
           stats.duplicatesRemoved++;
         }
       }
@@ -840,15 +899,16 @@ class LearningService {
 
     // 4. Prune old long-term patterns
     const pruneAge = Date.now() - CONFIG.consolidation.pruneAge;
-    const oldPruned = this.db.prepare(`
+    const oldPruned = dbRun(this.db, `
       DELETE FROM long_term_patterns
       WHERE updated_at < ? AND usage_count < ?
-    `).run(pruneAge, CONFIG.consolidation.minUsageForKeep);
+    `, [pruneAge, CONFIG.consolidation.minUsageForKeep]);
     stats.patternsProned += oldPruned.changes;
 
     // Rebuild indexes after changes
     await this._loadIndexes();
 
+    this.dirty = true;
     this.metrics.consolidations++;
 
     const duration = Date.now() - startTime;
@@ -859,13 +919,13 @@ class LearningService {
 
   // Export learning data for session end
   async exportSession() {
-    const sessionPatterns = this.db.prepare(`
+    const sessionPatterns = dbAll(this.db, `
       SELECT * FROM short_term_patterns WHERE session_id = ?
-    `).all(this.sessionId);
+    `, [this.sessionId]);
 
-    const trajectories = this.db.prepare(`
+    const trajectories = dbAll(this.db, `
       SELECT * FROM trajectories WHERE session_id = ?
-    `).all(this.sessionId);
+    `, [this.sessionId]);
 
     return {
       sessionId: this.sessionId,
@@ -879,17 +939,18 @@ class LearningService {
 
   // Get learning statistics
   getStats() {
-    const shortTermCount = this.db.prepare('SELECT COUNT(*) as count FROM short_term_patterns').get().count;
-    const longTermCount = this.db.prepare('SELECT COUNT(*) as count FROM long_term_patterns').get().count;
-    const trajectoryCount = this.db.prepare('SELECT COUNT(*) as count FROM trajectories').get().count;
+    const shortTermCount = dbGet(this.db, 'SELECT COUNT(*) as count FROM short_term_patterns').count;
+    const longTermCount = dbGet(this.db, 'SELECT COUNT(*) as count FROM long_term_patterns').count;
+    const trajectoryCount = dbGet(this.db, 'SELECT COUNT(*) as count FROM trajectories').count;
 
-    const avgQuality = this.db.prepare(`
+    const avgRow = dbGet(this.db, `
       SELECT AVG(quality) as avg FROM (
         SELECT quality FROM short_term_patterns
         UNION ALL
         SELECT quality FROM long_term_patterns
       )
-    `).get().avg || 0;
+    `);
+    const avgQuality = avgRow?.avg || 0;
 
     return {
       shortTermPatterns: shortTermCount,
@@ -907,7 +968,7 @@ class LearningService {
   async _loadIndexes() {
     // Load short-term patterns
     this.shortTermIndex = new HNSWIndex(CONFIG);
-    const shortTermPatterns = this.db.prepare('SELECT id, embedding FROM short_term_patterns').all();
+    const shortTermPatterns = dbAll(this.db, 'SELECT id, embedding FROM short_term_patterns');
     for (const row of shortTermPatterns) {
       const embedding = this._bufferToFloat32Array(row.embedding);
       if (embedding) {
@@ -917,7 +978,7 @@ class LearningService {
 
     // Load long-term patterns
     this.longTermIndex = new HNSWIndex(CONFIG);
-    const longTermPatterns = this.db.prepare('SELECT id, embedding FROM long_term_patterns').all();
+    const longTermPatterns = dbAll(this.db, 'SELECT id, embedding FROM long_term_patterns');
     for (const row of longTermPatterns) {
       const embedding = this._bufferToFloat32Array(row.embedding);
       if (embedding) {
@@ -928,35 +989,38 @@ class LearningService {
 
   // Prune short-term patterns if over limit
   _pruneShortTerm() {
-    const count = this.db.prepare('SELECT COUNT(*) as count FROM short_term_patterns').get().count;
+    const countRow = dbGet(this.db, 'SELECT COUNT(*) as count FROM short_term_patterns');
+    const count = countRow.count;
 
     if (count <= CONFIG.patterns.maxShortTerm) return;
 
     // Remove lowest quality patterns
     const toRemove = count - CONFIG.patterns.maxShortTerm;
-    const ids = this.db.prepare(`
+    const ids = dbAll(this.db, `
       SELECT id FROM short_term_patterns
       ORDER BY quality ASC, usage_count ASC
       LIMIT ?
-    `).all(toRemove).map(r => r.id);
+    `, [toRemove]).map(r => r.id);
 
     for (const id of ids) {
-      this.db.prepare('DELETE FROM short_term_patterns WHERE id = ?').run(id);
+      dbRun(this.db, 'DELETE FROM short_term_patterns WHERE id = ?', [id]);
       this.shortTermIndex.remove(id);
     }
+    this.dirty = true;
   }
 
   // Get/set state
   _getState(key) {
-    const row = this.db.prepare('SELECT value FROM session_state WHERE key = ?').get(key);
+    const row = dbGet(this.db, 'SELECT value FROM session_state WHERE key = ?', [key]);
     return row?.value;
   }
 
   _setState(key, value) {
-    this.db.prepare(`
+    dbRun(this.db, `
       INSERT OR REPLACE INTO session_state (key, value, updated_at)
       VALUES (?, ?, ?)
-    `).run(key, value, Date.now());
+    `, [key, value, Date.now()]);
+    this.dirty = true;
   }
 
   // Cosine similarity helper
@@ -971,16 +1035,19 @@ class LearningService {
     return denom > 0 ? dot / denom : 0;
   }
 
-  // Close database
+  // Close database — saves to disk first if dirty
   close() {
     if (this.db) {
+      if (this.dirty) {
+        saveDb(this.db);
+      }
       this.db.close();
       this.db = null;
     }
   }
 
-  // Helper: Safely convert SQLite Buffer to Float32Array
-  // Handles byte alignment issues that cause "byte length should be multiple of 4"
+  // Helper: Safely convert sql.js BLOB to Float32Array
+  // sql.js returns BLOBs as Uint8Array, not Node Buffer
   _bufferToFloat32Array(buffer) {
     if (!buffer) return null;
 
@@ -993,9 +1060,9 @@ class LearningService {
 
     // Create a properly aligned Uint8Array copy
     const uint8 = new Uint8Array(expectedBytes);
-    const sourceLength = Math.min(buffer.length, expectedBytes);
+    const sourceLength = Math.min(buffer.length || buffer.byteLength || 0, expectedBytes);
 
-    // Copy bytes from Buffer to Uint8Array
+    // Copy bytes — works for both Node Buffer and Uint8Array (sql.js)
     for (let i = 0; i < sourceLength; i++) {
       uint8[i] = buffer[i];
     }

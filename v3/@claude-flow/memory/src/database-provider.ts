@@ -2,7 +2,7 @@
  * DatabaseProvider - Platform-aware database selection
  *
  * Automatically selects best backend:
- * - Linux/macOS: better-sqlite3 (native, fast)
+ * - All platforms: sql.js (WASM, no native deps)
  * - Windows: sql.js (WASM, universal) when native fails
  * - Fallback: JSON file storage
  *
@@ -40,7 +40,7 @@ export interface DatabaseOptions {
   /** Enable verbose logging */
   verbose?: boolean;
 
-  /** Enable WAL mode (better-sqlite3 only) */
+  /** Enable WAL mode (not applicable for sql.js) */
   walMode?: boolean;
 
   /** Enable query optimization */
@@ -98,10 +98,7 @@ async function testRvf(): Promise<boolean> {
   return true;
 }
 
-/** better-sqlite3 removed — always returns false */
-async function testBetterSqlite3(): Promise<boolean> {
-  return false;
-}
+/** better-sqlite3 removed — sql.js is the only SQLite backend */
 
 /**
  * Test if sql.js is available and working
@@ -277,7 +274,7 @@ export async function getAvailableProviders(): Promise<{
 }> {
   return {
     rvf: true,
-    betterSqlite3: await testBetterSqlite3(),
+    betterSqlite3: false, // Removed — sql.js is the only SQLite backend
     sqlJs: await testSqlJs(),
     json: true,
   };
