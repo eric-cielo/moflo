@@ -108,8 +108,41 @@ auto_index:
   code_map: true                     # Auto-index code on session start
 
 models:
-  default: opus
-  review: opus
+  default: opus        # General tasks
+  research: sonnet     # Research/exploration agents
+  review: opus         # Code review agents
+  test: sonnet         # Test-writing agents
+
+# Optional: intelligent model routing (off by default)
+model_routing:
+  enabled: false                   # Set to true to enable
+  confidence_threshold: 0.85
+  cost_optimization: true
+  circuit_breaker: true
+```
+
+### Model Routing
+
+By default, MoFlo uses **static model preferences** — each agent role uses the model specified in `models:`. This is predictable and gives you full control.
+
+Set `model_routing.enabled: true` to enable **intelligent routing**, which analyzes each task's complexity and auto-selects the cheapest capable model:
+
+| Complexity | Model | Example Tasks |
+|-----------|-------|---------------|
+| Low | Haiku | Typos, renames, config changes, formatting |
+| Medium | Sonnet | Implement features, write tests, fix bugs |
+| High | Opus | Architecture, security audits, complex debugging |
+
+The router learns from outcomes — if a model fails a task, the circuit breaker penalizes it and escalates to a more capable model.
+
+You can pin specific agents even when routing is enabled:
+
+```yaml
+model_routing:
+  enabled: true
+  agent_overrides:
+    security-architect: opus     # Never downgrade security work
+    researcher: sonnet           # Pin research to sonnet
 ```
 
 ## How It Works
@@ -137,7 +170,7 @@ MoFlo is a maintained fork of [ruflo v3.5.7](https://github.com/ruvnet/ruflo) wi
   - 384-dim domain-aware embeddings for consistent CLI ↔ MCP search
   - `windowsHide: true` on all spawn/exec calls (Windows UX)
   - Routing learned patterns (task outcomes feed back into routing)
-- **6 wrapper scripts merged into CLI**: semantic-search, build-embeddings, index-guidance, code-map, workflow-gate, learning-service
+- **7 standalone bin scripts** shipped with npm: `moflo-search`, `moflo-embeddings`, `moflo-index`, `moflo-codemap`, `moflo-learn`, `moflo-setup`, plus the main `moflo` CLI
 - **Project config system**: `moflo.yaml` for per-project settings
 - **One-stop init**: `moflo init` generates everything needed for OOTB operation
 
