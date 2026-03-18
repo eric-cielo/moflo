@@ -28,6 +28,7 @@ export interface WorkflowState {
   tasksCreated: boolean;
   taskCount: number;
   memorySearched: boolean;
+  memoryRequired: boolean;
   interactionCount: number;
   sessionStart: string | null;
   lastBlockedAt: string | null;
@@ -48,10 +49,43 @@ const DEFAULT_STATE: WorkflowState = {
   tasksCreated: false,
   taskCount: 0,
   memorySearched: false,
+  memoryRequired: true,
   interactionCount: 0,
   sessionStart: null,
   lastBlockedAt: null,
 };
+
+/**
+ * Patterns that indicate the prompt is a task requiring memory context.
+ * These are checked case-insensitively against the user's prompt.
+ */
+const TASK_PATTERNS = [
+  /\bfix\b/, /\bbug\b/, /\berror\b/, /\bfailing\b/, /\bbroken\b/, /\bcrash/,
+  /\bimplement\b/, /\badd\b/, /\bcreate\b/, /\bbuild\b/, /\bwrite\b/,
+  /\brefactor\b/, /\bmigrat/, /\bupgrade\b/, /\bupdate\b/,
+  /\bdebug\b/, /\binvestigat/, /\bdiagnos/, /\btroubleshoot/,
+  /\bwhy\s+(is|does|did|are|was|isn't|doesn't|won't)/, /\bhow\s+(do|does|did|can|should)/,
+  /\btest\b/, /\bspec\b/,
+  /\bfeature\b/, /\bstory\b/, /\bticket\b/, /\bissue\b/,
+  /\bintegrat/, /\bconnect\b/, /\bsetup\b/, /\bconfigur/,
+  /\boptimiz/, /\bperformance\b/, /\bslow\b/,
+  /\bsecurity\b/, /\bvulnerab/, /\bauth\b/,
+  /^\/flo\b/, /^\/fl\b/, /^\/cl\b/,  // Skill invocations always require memory
+];
+
+/**
+ * Patterns that indicate the prompt is a simple directive (no memory needed).
+ * Checked first — if matched, memory gate is skipped regardless of task patterns.
+ */
+const DIRECTIVE_PATTERNS = [
+  /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\b/i,
+  /\b(commit|push|pull|merge|rebase|cherry-pick)\b/,
+  /\b(rename|move|delete|remove)\b/,
+  /^(show|read|open|cat|look at|check)\s/,
+  /^(run|execute|start|stop|kill|restart)\s/,
+  /\bpublish\b/, /\bversion\b/, /\bnpm\b/,
+  /^let'?s\s+(commit|push|publish|deploy|ship|merge)/i,
+];
 
 const BRACKET_MESSAGES: Record<Exclude<ContextBracket, 'FRESH'>, string> = {
   MODERATE: 'Context: MODERATE. Re-state goal before architectural decisions. Use agents for >300 LOC.',
@@ -153,7 +187,8 @@ export class WorkflowGateService {
 
   /**
    * Check if Glob/Grep is allowed.
-   * Requires memory search (with exemptions for system paths).
+   * Blocks if memory is required AND not yet searched.
+   * Warns (but allows) if memory is not required.
    */
   checkBeforeScan(pattern?: string, searchPath?: string): GateResult {
     if (!this.config.memory_first) {
@@ -172,7 +207,12 @@ export class WorkflowGateService {
       return { allowed: true };
     }
 
-    // Deduplicate: only emit message once per 2s window
+    // If memory is not required for this prompt, warn but allow
+    if (!state.memoryRequired) {
+      return { allowed: true };
+    }
+
+    // Memory IS required — block with deduplicated message
     const now = Date.now();
     const lastBlocked = state.lastBlockedAt ? new Date(state.lastBlockedAt).getTime() : 0;
     let message: string | undefined;
@@ -203,6 +243,11 @@ export class WorkflowGateService {
 
     // Only gate guidance file reads
     if (!filePath?.includes('.claude/guidance/') && !filePath?.includes('.claude\\guidance\\')) {
+      return { allowed: true };
+    }
+
+    // If memory is not required for this prompt, allow guidance reads
+    if (!state.memoryRequired) {
       return { allowed: true };
     }
 
@@ -252,12 +297,41 @@ export class WorkflowGateService {
   // --------------------------------------------------------------------------
 
   /**
-   * Called on each new user prompt.
-   * Resets memory gate, increments interaction count, returns context bracket.
+   * Classify whether a user prompt requires memory search.
+   * Directives (commit, rename, yes/no) don't need memory.
+   * Tasks (fix, implement, debug, /flo) do.
+   * Ambiguous prompts default to requiring memory.
    */
-  promptReminder(): { reminder?: string; bracket?: string } {
+  classifyPrompt(prompt: string): boolean {
+    const trimmed = prompt.trim();
+
+    // Empty or very short prompts (single word confirmations) — no memory needed
+    if (trimmed.length < 4) return false;
+
+    // Check directive patterns first — these never need memory
+    for (const pattern of DIRECTIVE_PATTERNS) {
+      if (pattern.test(trimmed)) return false;
+    }
+
+    // Check task patterns — these always need memory
+    for (const pattern of TASK_PATTERNS) {
+      if (pattern.test(trimmed)) return true;
+    }
+
+    // Ambiguous: if the prompt is long (likely a task description), require memory
+    // Short ambiguous prompts (follow-ups) don't need it
+    return trimmed.length > 80;
+  }
+
+  /**
+   * Called on each new user prompt.
+   * Classifies prompt, resets memory gate, increments interaction count,
+   * returns context bracket.
+   */
+  promptReminder(userPrompt?: string): { reminder?: string; bracket?: string } {
     const state = this.readState();
     state.memorySearched = false;
+    state.memoryRequired = userPrompt ? this.classifyPrompt(userPrompt) : true;
     state.interactionCount = (state.interactionCount || 0) + 1;
     this.writeState(state);
 
@@ -340,7 +414,8 @@ export function processGateCommand(command: string, env: Record<string, string |
       process.exit(0);
 
     case 'prompt-reminder': {
-      const { reminder, bracket } = gate.promptReminder();
+      const userPrompt = env.CLAUDE_USER_PROMPT || '';
+      const { reminder, bracket } = gate.promptReminder(userPrompt);
       if (reminder) console.log(reminder);
       if (bracket) console.log(bracket);
       process.exit(0);
