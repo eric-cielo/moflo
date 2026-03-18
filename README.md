@@ -13,7 +13,7 @@ Forked from [ruflo/claude-flow](https://github.com/ruvnet/ruflo) with all patche
 | **Guidance Indexing** | Chunks your project docs (`.claude/guidance/`, `docs/`) and makes them searchable. |
 | **Workflow Gates** | Enforces memory-first and task-creation patterns via Claude Code hooks. Prevents Claude from skipping steps. |
 | **Learned Routing** | Routes tasks to the right agent type. Learns from outcomes — gets better over time. |
-| **`/mf` Skill** | Execute GitHub issues through a full workflow: research → enhance → implement → test → simplify → PR. |
+| **`/flo` Skill** | Execute GitHub issues through a full workflow: research → enhance → implement → test → simplify → PR. (Also available as `/fl`.) |
 | **Context Tracking** | Monitors context window usage (FRESH → MODERATE → DEPLETED → CRITICAL) and advises accordingly. |
 | **Cross-Platform** | Works on macOS, Linux, and Windows. |
 
@@ -37,7 +37,7 @@ npx moflo doctor
 That's it. `moflo init` sets up everything:
 - `moflo.yaml` — project config (auto-detects source dirs, languages, guidance paths)
 - `.claude/settings.json` — workflow gate hooks
-- `.claude/skills/mf/` — the `/mf` issue execution skill
+- `.claude/skills/flo/` — the `/flo` issue execution skill (with `/fl` alias)
 - `CLAUDE.md` — appends a MoFlo workflow section so Claude knows how to use it
 - `.gitignore` — adds state directories
 
@@ -118,14 +118,14 @@ models:
 
 MoFlo sits between Claude Code and your project. When Claude starts a session, MoFlo's hooks enforce good habits: search memory before exploring files, create tasks before spawning agents, and track how depleted the context window is. Over time, MoFlo learns which agent types work best for which tasks and routes accordingly.
 
-The `/mf <issue>` skill gives Claude a full automated workflow for executing GitHub issues — from research through PR creation — with mandatory testing and code review gates.
+The `/flo <issue>` skill (or `/fl`) gives Claude a full automated workflow for executing GitHub issues — from research through PR creation — with mandatory testing and code review gates.
 
 ### For Claude
 
 When `moflo init` runs, it appends a workflow section to your CLAUDE.md that teaches Claude:
 - Always search memory before Glob/Grep/Read (enforced by gates)
 - Use `mcp__claude-flow__memory_search` for knowledge retrieval
-- Use `/mf <issue>` for issue execution
+- Use `/flo <issue>` (or `/fl`) for issue execution
 - Follow the agent icon convention for task visibility
 - Store learnings after task completion
 

@@ -4,7 +4,7 @@
  * One-stop setup that makes MoFlo work out of the box:
  * 1. Generate moflo.yaml (project config)
  * 2. Set up .claude/settings.json hooks
- * 3. Create .claude/skills/mf/ skill
+ * 3. Create .claude/skills/flo/ skill (with /fl alias)
  * 4. Append MoFlo section to CLAUDE.md
  * 5. Initialize memory DB
  * 6. Auto-index guidance + code map
@@ -139,7 +139,7 @@ export async function initMoflo(options: MofloInitOptions): Promise<MofloInitRes
   // Step 2: .claude/settings.json hooks
   steps.push(generateHooks(projectRoot, force, answers));
 
-  // Step 3: .claude/skills/mf/
+  // Step 3: .claude/skills/flo/ (with /fl alias)
   steps.push(generateSkill(projectRoot, force));
 
   // Step 4: CLAUDE.md MoFlo section
@@ -342,15 +342,17 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
 }
 
 // ============================================================================
-// Step 3: .claude/skills/mf/ skill
+// Step 3: .claude/skills/flo/ skill (with /fl alias)
 // ============================================================================
 
 function generateSkill(root: string, force?: boolean): MofloInitResult['steps'][0] {
-  const skillDir = path.join(root, '.claude', 'skills', 'mf');
+  const skillDir = path.join(root, '.claude', 'skills', 'flo');
   const skillFile = path.join(skillDir, 'SKILL.md');
+  const aliasDir = path.join(root, '.claude', 'skills', 'fl');
+  const aliasFile = path.join(aliasDir, 'SKILL.md');
 
   if (fs.existsSync(skillFile) && !force) {
-    return { name: '.claude/skills/mf/', status: 'skipped', detail: 'Already exists' };
+    return { name: '.claude/skills/flo/', status: 'skipped', detail: 'Already exists' };
   }
 
   if (!fs.existsSync(skillDir)) {
@@ -358,12 +360,12 @@ function generateSkill(root: string, force?: boolean): MofloInitResult['steps'][
   }
 
   const skillContent = `---
-name: mf
+name: flo
 description: MoFlo ticket workflow - analyze and execute GitHub issues
 arguments: "[options] <issue-number>"
 ---
 
-# /mf - MoFlo Ticket Workflow
+# /flo - MoFlo Ticket Workflow
 
 Execute GitHub issues through a full automated workflow.
 
@@ -372,12 +374,14 @@ Execute GitHub issues through a full automated workflow.
 ## Usage
 
 \`\`\`
-/mf <issue-number>                    # Full workflow (default: swarm mode)
-/mf -e <issue-number>                 # Enhance only: research and update ticket
-/mf -r <issue-number>                 # Research only: analyze issue
-/mf -n <issue-number>                 # Naked mode: single Claude, no agents
-/mf -sw <issue-number>                # Swarm mode (explicit, default)
+/flo <issue-number>                    # Full workflow (default: swarm mode)
+/flo -e <issue-number>                 # Enhance only: research and update ticket
+/flo -r <issue-number>                 # Research only: analyze issue
+/flo -n <issue-number>                 # Naked mode: single Claude, no agents
+/flo -sw <issue-number>                # Swarm mode (explicit, default)
 \`\`\`
+
+Also available as \`/fl\` (shorthand alias).
 
 ## Workflow
 
@@ -405,7 +409,7 @@ for (let i = 0; i < args.length; i++) {
   else if (/^\\d+$/.test(arg)) issueNumber = arg;
 }
 
-if (!issueNumber) throw new Error("Issue number required. Usage: /mf <issue-number>");
+if (!issueNumber) throw new Error("Issue number required. Usage: /flo <issue-number>");
 \`\`\`
 
 ## Execution
@@ -424,7 +428,20 @@ All testing, linting, and quality gates are mandatory. PR cannot be created unti
 `;
 
   fs.writeFileSync(skillFile, skillContent, 'utf-8');
-  return { name: '.claude/skills/mf/', status: 'created', detail: '/mf skill ready' };
+
+  // Create /fl alias (same content)
+  if (!fs.existsSync(aliasDir)) {
+    fs.mkdirSync(aliasDir, { recursive: true });
+  }
+  fs.writeFileSync(aliasFile, skillContent.replace('name: flo', 'name: fl'), 'utf-8');
+
+  // Clean up old /mf skill directory if it exists
+  const oldSkillDir = path.join(root, '.claude', 'skills', 'mf');
+  if (fs.existsSync(oldSkillDir)) {
+    fs.rmSync(oldSkillDir, { recursive: true });
+  }
+
+  return { name: '.claude/skills/flo/', status: 'created', detail: '/flo skill ready (alias: /fl)' };
 }
 
 // ============================================================================
@@ -478,9 +495,9 @@ These are enforced by hooks — you cannot bypass them:
 - **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
 - **Context tracking**: Session tracked as FRESH → MODERATE → DEPLETED → CRITICAL
 
-### /mf Skill — Issue Execution
+### /flo Skill — Issue Execution
 
-Use \`/mf <issue-number>\` to execute GitHub issues through the full workflow:
+Use \`/flo <issue-number>\` (or \`/fl\`) to execute GitHub issues through the full workflow:
 Research → Enhance → Implement → Test → Simplify → PR
 
 ### MCP Tools Reference

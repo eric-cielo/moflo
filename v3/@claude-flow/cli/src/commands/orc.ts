@@ -1,9 +1,9 @@
 /**
  * MoFlo Orc Command
- * Feature orchestrator that sequences GitHub issues through /mf workflows.
+ * Feature orchestrator that sequences GitHub issues through /flo workflows.
  *
  * Loads a feature YAML definition, resolves story dependencies via topological
- * sort, then executes each story sequentially by spawning `claude -p "/mf ..."`.
+ * sort, then executes each story sequentially by spawning `claude -p "/flo ..."`.
  *
  * Usage:
  *   moflo orc run <feature.yaml>              Execute a feature
@@ -29,7 +29,7 @@ interface StoryDefinition {
   name: string;
   issue: number;
   depends_on?: string[];
-  cl_flags?: string;
+  flo_flags?: string;
 }
 
 interface ReviewDefinition {
@@ -442,12 +442,12 @@ async function runFeature(yamlPath: string, dryRun: boolean, verbose: boolean): 
     console.log(`| Base: ${pad(feature.base_branch, 53)}|`);
     console.log(`| Auto-merge: ${pad(autoMerge ? 'yes' : 'no', 47)}|`);
     console.log('+-------------------------------------------------------------+');
-    console.log('| Stories (via /mf):                                          |');
+    console.log('| Stories (via /flo):                                         |');
     for (let i = 0; i < plan.order.length; i++) {
       const story = feature.stories.find((s) => s.id === plan.order[i])!;
       const deps = story.depends_on?.length ? ` -> after ${story.depends_on.join(', ')}` : '';
-      const flags = story.cl_flags || '-sw';
-      const line = `${i + 1}. /mf ${story.issue} ${flags}${deps}`;
+      const flags = story.flo_flags || '-sw';
+      const line = `${i + 1}. /flo ${story.issue} ${flags}${deps}`;
       console.log(`|  ${pad(line, 57)}|`);
       console.log(`|     ${pad(story.name.substring(0, 55), 55)}|`);
     }
@@ -533,12 +533,12 @@ async function runFeature(yamlPath: string, dryRun: boolean, verbose: boolean): 
 
     // ── Run the story ─────────────────────────────────────────────────
     const startedAt = new Date().toISOString();
-    const flags = storyDef.cl_flags || '-sw';
+    const flags = storyDef.flo_flags || '-sw';
 
     console.log('');
     console.log(`=== Starting story: ${storyId} (#${storyDef.issue}) ===`);
     console.log(`    ${storyDef.name}`);
-    console.log(`    Command: /mf ${storyDef.issue} ${flags}`);
+    console.log(`    Command: /flo ${storyDef.issue} ${flags}`);
     console.log('');
 
     // Update state to running
@@ -557,7 +557,7 @@ async function runFeature(yamlPath: string, dryRun: boolean, verbose: boolean): 
     }
 
     // Spawn claude
-    const command = `/mf ${storyDef.issue} ${flags}`.trim();
+    const command = `/flo ${storyDef.issue} ${flags}`.trim();
     const runResult = await runClaudeSession(
       command,
       feature.repository,
@@ -587,18 +587,18 @@ async function runFeature(yamlPath: string, dryRun: boolean, verbose: boolean): 
     const prInfo = findPrForIssue(storyDef.issue, feature.repository);
 
     if (!prInfo) {
-      console.log(`[FAIL] ${storyId}: No PR found after /mf completed`);
+      console.log(`[FAIL] ${storyId}: No PR found after /flo completed`);
       state.features[feature.id].stories[storyId].status = 'failed';
       state.features[feature.id].stories[storyId].completed_at = new Date().toISOString();
       state.features[feature.id].stories[storyId].duration_ms = runResult.durationMs;
-      state.features[feature.id].stories[storyId].error = 'No PR created by /mf';
+      state.features[feature.id].stories[storyId].error = 'No PR created by /flo';
       saveState(feature.repository, state);
 
       results.push({
         story_id: storyId, issue: storyDef.issue, status: 'failed',
         started_at: startedAt, completed_at: new Date().toISOString(),
         duration_ms: runResult.durationMs, pr_url: null, pr_number: null,
-        merged: false, error: 'No PR created by /mf',
+        merged: false, error: 'No PR created by /flo',
       });
       failed = true;
       break;
@@ -758,7 +758,7 @@ function printSummary(
 
 const orcCommand: Command = {
   name: 'orc',
-  description: 'Feature orchestrator — sequences GitHub issues through /mf workflows',
+  description: 'Feature orchestrator — sequences GitHub issues through /flo workflows',
   options: [],
   examples: [
     { command: 'moflo orc run feature.yaml', description: 'Execute a feature definition' },
