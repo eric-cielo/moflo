@@ -55,6 +55,35 @@ HOW: Use ToolSearch to load \`mcp__claude-flow__memory_search\`, then call it wi
 
 For **codebase navigation** (finding where a type/service/component lives), also search the \`code-map\` namespace.
 
+## Memory System Access (MoFlo)
+
+### Primary: MCP Tools (preferred)
+\`\`\`
+mcp__claude-flow__memory_search   — query, namespace
+mcp__claude-flow__memory_store    — key, value, namespace
+mcp__claude-flow__memory_retrieve — key, namespace
+mcp__claude-flow__memory_list     — namespace, limit
+\`\`\`
+Load via ToolSearch first: \`+claude-flow memory\`
+
+### Fallback: CLI Scripts
+\`\`\`bash
+npx moflo-search "[query]" --namespace guidance   # Semantic search
+npx moflo-embeddings                               # Rebuild embeddings
+npx moflo-index                                    # Re-index guidance docs
+npx moflo-codemap --force                          # Regenerate code-map
+\`\`\`
+
+### Where Content Goes
+
+| Content Type | Destination | How to Write |
+|-------------|-------------|--------------|
+| Debugging lessons (bug found, root cause, fix) | Memory DB — \`patterns\` namespace | \`mcp__claude-flow__memory_store\` |
+| Architectural decisions (chose X over Y, why) | Memory DB — \`decisions\` namespace | \`mcp__claude-flow__memory_store\` |
+| Learned patterns (task succeeded/failed, what worked) | Memory DB — \`patterns\` namespace | \`mcp__claude-flow__memory_store\` |
+| Coding rules (always/never do X in code) | \`.claude/guidance/\` files | Edit directly |
+| Process/workflow rules (CI, PR, gates) | \`CLAUDE.md\` | Edit directly |
+
 ## Subagent Protocol (MoFlo)
 
 All subagents MUST read \`.claude/guidance/moflo-bootstrap.md\` before starting any work.
