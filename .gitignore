@@ -67,6 +67,7 @@
 .mcp.json
 .nyc_output/
 .pnpm-debug.log*
+.pnpm-store/
 .research/
 .roo/
 .roomodes

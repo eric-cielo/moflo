@@ -5,7 +5,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
-import { WorkerDaemon, getDaemon, startDaemon, stopDaemon, type WorkerType } from '../services/worker-daemon.js';
+import { WorkerDaemon, getDaemon, startDaemon, stopDaemon, type WorkerType, type DaemonConfig } from '../services/worker-daemon.js';
 import { spawn, execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve, isAbsolute } from 'path';
@@ -22,6 +22,8 @@ const startCommand: Command = {
     { name: 'foreground', short: 'f', type: 'boolean', description: 'Run daemon in foreground (blocks terminal)' },
     { name: 'headless', type: 'boolean', description: 'Enable headless worker execution (E2B sandbox)' },
     { name: 'sandbox', type: 'string', description: 'Default sandbox mode for headless workers', choices: ['strict', 'permissive', 'disabled'] },
+    { name: 'max-cpu-load', type: 'string', description: 'Override maxCpuLoad resource threshold (e.g. 4.0)' },
+    { name: 'min-free-memory', type: 'string', description: 'Override minFreeMemoryPercent resource threshold (e.g. 15)' },
   ],
   examples: [
     { command: 'claude-flow daemon start', description: 'Start daemon in background (default)' },
@@ -34,6 +36,38 @@ const startCommand: Command = {
     const foreground = ctx.flags.foreground as boolean;
     const projectRoot = process.cwd();
     const isDaemonProcess = process.env.CLAUDE_FLOW_DAEMON === '1';
+
+    // Parse resource threshold overrides from CLI flags
+    const config: Partial<DaemonConfig> = {};
+    const rawMaxCpu = ctx.flags['max-cpu-load'] as string | undefined;
+    const rawMinMem = ctx.flags['min-free-memory'] as string | undefined;
+
+    // Strict numeric pattern to prevent command injection when forwarding to subprocess (S1)
+    const NUMERIC_RE = /^\d+(\.\d+)?$/;
+    const sanitize = (s: string) => s.replace(/[\x00-\x1f\x7f-\x9f]/g, '');
+
+    if (rawMaxCpu || rawMinMem) {
+      const thresholds: { maxCpuLoad?: number; minFreeMemoryPercent?: number } = {};
+      if (rawMaxCpu) {
+        const val = parseFloat(rawMaxCpu);
+        if (NUMERIC_RE.test(rawMaxCpu) && isFinite(val) && val > 0 && val <= 1000) {
+          thresholds.maxCpuLoad = val;
+        } else if (!quiet) {
+          output.printWarning(`Ignoring invalid --max-cpu-load value: ${sanitize(rawMaxCpu)}`);
+        }
+      }
+      if (rawMinMem) {
+        const val = parseFloat(rawMinMem);
+        if (NUMERIC_RE.test(rawMinMem) && isFinite(val) && val >= 0 && val <= 100) {
+          thresholds.minFreeMemoryPercent = val;
+        } else if (!quiet) {
+          output.printWarning(`Ignoring invalid --min-free-memory value: ${sanitize(rawMinMem)}`);
+        }
+      }
+      if (thresholds.maxCpuLoad !== undefined || thresholds.minFreeMemoryPercent !== undefined) {
+        config.resourceThresholds = thresholds as any;
+      }
+    }
 
     // Check if background daemon already running (skip if we ARE the daemon process)
     if (!isDaemonProcess) {
@@ -48,7 +82,7 @@ const startCommand: Command = {
 
     // Background mode (default): fork a detached process
     if (!foreground) {
-      return startBackgroundDaemon(projectRoot, quiet);
+      return startBackgroundDaemon(projectRoot, quiet, rawMaxCpu, rawMinMem);
     }
 
     // Foreground mode: run in current process (blocks terminal)
@@ -84,7 +118,7 @@ const startCommand: Command = {
         const spinner = output.createSpinner({ text: 'Starting worker daemon...', spinner: 'dots' });
         spinner.start();
 
-        const daemon = await startDaemon(projectRoot);
+        const daemon = await startDaemon(projectRoot, config);
         const status = daemon.getStatus();
 
         spinner.succeed('Worker daemon started (foreground mode)');
@@ -96,6 +130,8 @@ const startCommand: Command = {
             `Started: ${status.startedAt?.toISOString()}`,
             `Workers: ${status.config.workers.filter(w => w.enabled).length} enabled`,
             `Max Concurrent: ${status.config.maxConcurrent}`,
+            `Max CPU Load: ${status.config.resourceThresholds.maxCpuLoad}`,
+            `Min Free Memory: ${status.config.resourceThresholds.minFreeMemoryPercent}%`,
           ].join('\n'),
           'Daemon Status'
         );
@@ -140,7 +176,7 @@ const startCommand: Command = {
         // Keep process alive
         await new Promise(() => {}); // Never resolves - daemon runs until killed
       } else {
-        await startDaemon(projectRoot);
+        await startDaemon(projectRoot, config);
         await new Promise(() => {}); // Keep alive
       }
 
@@ -182,7 +218,7 @@ function validatePath(path: string, label: string): void {
 /**
  * Start daemon as a detached background process
  */
-async function startBackgroundDaemon(projectRoot: string, quiet: boolean): Promise<CommandResult> {
+async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpuLoad?: string, minFreeMemory?: string): Promise<CommandResult> {
   // Validate and resolve project root
   const resolvedRoot = resolve(projectRoot);
   validatePath(resolvedRoot, 'Project root');
@@ -231,10 +267,20 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean): Promi
 
   // Use spawn with explicit arguments instead of shell string interpolation
   // This prevents command injection via paths
-  const child = spawn(process.execPath, [
+  const spawnArgs = [
     cliPath,
-    'daemon', 'start', '--foreground', '--quiet'
-  ], spawnOpts);
+    'daemon', 'start', '--foreground', '--quiet',
+  ];
+  // Forward resource threshold flags to the foreground child process
+  // Validate with strict numeric pattern to prevent shell injection on Windows (S1)
+  const SPAWN_NUMERIC_RE = /^\d+(\.\d+)?$/;
+  if (maxCpuLoad && SPAWN_NUMERIC_RE.test(maxCpuLoad)) {
+    spawnArgs.push('--max-cpu-load', maxCpuLoad);
+  }
+  if (minFreeMemory && SPAWN_NUMERIC_RE.test(minFreeMemory)) {
+    spawnArgs.push('--min-free-memory', minFreeMemory);
+  }
+  const child = spawn(process.execPath, spawnArgs, spawnOpts);
 
   // Get PID from spawned process directly (no shell echo needed)
   const pid = child.pid;
@@ -431,6 +477,8 @@ const statusCommand: Command = {
           status.startedAt ? `Started: ${status.startedAt.toISOString()}` : '',
           `Workers Enabled: ${status.config.workers.filter(w => w.enabled).length}`,
           `Max Concurrent: ${status.config.maxConcurrent}`,
+          `Max CPU Load: ${status.config.resourceThresholds.maxCpuLoad}`,
+          `Min Free Memory: ${status.config.resourceThresholds.minFreeMemoryPercent}%`,
         ].filter(Boolean).join('\n'),
         'RuFlo Daemon'
       );

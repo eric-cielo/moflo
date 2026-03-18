@@ -11,7 +11,8 @@
  */
 
 import { EventEmitter } from 'events';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from 'fs';
+import { cpus } from 'os';
 import { join } from 'path';
 import {
   HeadlessWorkerExecutor,
@@ -73,7 +74,7 @@ interface DaemonStatus {
   config: DaemonConfig;
 }
 
-interface DaemonConfig {
+export interface DaemonConfig {
   autoStart: boolean;
   logDir: string;
   stateFile: string;
@@ -122,21 +123,41 @@ export class WorkerDaemon extends EventEmitter {
   private headlessExecutor: HeadlessWorkerExecutor | null = null;
   private headlessAvailable: boolean = false;
 
+  // Preserve the original constructor config so we can detect explicit overrides
+  // during state restoration (R1: constructor config takes priority over stale state)
+  private originalConfig?: Partial<DaemonConfig>;
+
   constructor(projectRoot: string, config?: Partial<DaemonConfig>) {
     super();
     this.projectRoot = projectRoot;
+    this.originalConfig = config;
 
     const claudeFlowDir = join(projectRoot, '.claude-flow');
 
+    // Read daemon config from .claude-flow/config.json (Layer B)
+    const fileConfig = this.readDaemonConfigFromFile(claudeFlowDir);
+
+    // CPU-proportional smart default instead of hardcoded 2.0
+    const cpuCount = WorkerDaemon.getEffectiveCpuCount();
+    const smartMaxCpuLoad = Math.max(cpuCount * 0.8, 2.0); // Floor of 2.0 for single-CPU machines
+
+    // Platform-aware default: macOS os.freemem() excludes reclaimable file cache,
+    // so reported "free" is much lower than actually available memory.
+    // Linux reports available memory (including reclaimable cache) more accurately.
+    const defaultMinFreeMemory = process.platform === 'darwin' ? 5 : 10;
+
+    // Priority: constructor arg > config.json > smart default
+    // For resourceThresholds, merge field-by-field so partial overrides
+    // (e.g. only --max-cpu-load) still pick up defaults for other fields.
     this.config = {
-      autoStart: config?.autoStart ?? false, // P1 fix: Default to false for explicit consent
+      autoStart: config?.autoStart ?? fileConfig.autoStart ?? false,
       logDir: config?.logDir ?? join(claudeFlowDir, 'logs'),
       stateFile: config?.stateFile ?? join(claudeFlowDir, 'daemon-state.json'),
-      maxConcurrent: config?.maxConcurrent ?? 2, // P0 fix: Limit concurrent workers
-      workerTimeoutMs: config?.workerTimeoutMs ?? DEFAULT_WORKER_TIMEOUT_MS,
-      resourceThresholds: config?.resourceThresholds ?? {
-        maxCpuLoad: 2.0,
-        minFreeMemoryPercent: 20,
+      maxConcurrent: config?.maxConcurrent ?? fileConfig.maxConcurrent ?? 2,
+      workerTimeoutMs: config?.workerTimeoutMs ?? fileConfig.workerTimeoutMs ?? DEFAULT_WORKER_TIMEOUT_MS,
+      resourceThresholds: {
+        maxCpuLoad: config?.resourceThresholds?.maxCpuLoad ?? fileConfig.maxCpuLoad ?? smartMaxCpuLoad,
+        minFreeMemoryPercent: config?.resourceThresholds?.minFreeMemoryPercent ?? fileConfig.minFreeMemoryPercent ?? defaultMinFreeMemory,
       },
       workers: config?.workers ?? DEFAULT_WORKERS,
     };
@@ -215,6 +236,70 @@ export class WorkerDaemon extends EventEmitter {
   }
 
   /**
+   * Detect effective CPU count for the current environment.
+   *
+   * Inside Docker / K8s containers, os.cpus().length reports the HOST cpu
+   * count, not the container limit (Node.js #28762 — wontfix).  We read
+   * cgroup v2 / v1 quota files first so the maxCpuLoad threshold stays
+   * meaningful under resource-limited containers.
+   */
+  static getEffectiveCpuCount(): number {
+    // 1. Try cgroup v2: /sys/fs/cgroup/cpu.max
+    try {
+      const cpuMax = readFileSync('/sys/fs/cgroup/cpu.max', 'utf8').trim();
+      const [quotaStr, periodStr] = cpuMax.split(' ');
+      if (quotaStr !== 'max') {
+        const quota = parseInt(quotaStr, 10);
+        const period = parseInt(periodStr, 10);
+        if (quota > 0 && period > 0) return Math.ceil(quota / period);
+      }
+    } catch { /* not in cgroup v2 */ }
+
+    // 2. Try cgroup v1: /sys/fs/cgroup/cpu/cpu.cfs_quota_us
+    try {
+      const quota = parseInt(readFileSync('/sys/fs/cgroup/cpu/cpu.cfs_quota_us', 'utf8').trim(), 10);
+      const period = parseInt(readFileSync('/sys/fs/cgroup/cpu/cpu.cfs_period_us', 'utf8').trim(), 10);
+      if (quota > 0 && period > 0) return Math.ceil(quota / period);
+    } catch { /* not in cgroup v1 */ }
+
+    // 3. Fallback to os.cpus().length
+    return cpus().length || 1;
+  }
+
+  /**
+   * Read daemon-specific config from .claude-flow/config.json
+   * Supports dot-notation keys like 'daemon.resourceThresholds.maxCpuLoad'
+   */
+  private readDaemonConfigFromFile(claudeFlowDir: string): {
+    autoStart?: boolean;
+    maxConcurrent?: number;
+    workerTimeoutMs?: number;
+    maxCpuLoad?: number;
+    minFreeMemoryPercent?: number;
+  } {
+    const configPath = join(claudeFlowDir, 'config.json');
+    if (!existsSync(configPath)) return {};
+    try {
+      const raw = JSON.parse(readFileSync(configPath, 'utf-8'));
+      // Support both flat keys at root and nested under scopes.project
+      const cfg = raw?.scopes?.project ?? raw;
+      const rawCpuLoad = cfg['daemon.resourceThresholds.maxCpuLoad'] ?? raw['daemon.resourceThresholds.maxCpuLoad'];
+      const rawMinMem = cfg['daemon.resourceThresholds.minFreeMemoryPercent'] ?? raw['daemon.resourceThresholds.minFreeMemoryPercent'];
+      const rawMaxConcurrent = cfg['daemon.maxConcurrent'] ?? raw['daemon.maxConcurrent'];
+      const rawTimeout = cfg['daemon.workerTimeoutMs'] ?? raw['daemon.workerTimeoutMs'];
+      return {
+        autoStart: typeof raw['daemon.autoStart'] === 'boolean' ? raw['daemon.autoStart'] : undefined,
+        maxConcurrent: (typeof rawMaxConcurrent === 'number' && rawMaxConcurrent > 0) ? rawMaxConcurrent : undefined,
+        workerTimeoutMs: (typeof rawTimeout === 'number' && rawTimeout > 0) ? rawTimeout : undefined,
+        maxCpuLoad: (typeof rawCpuLoad === 'number' && rawCpuLoad > 0 && rawCpuLoad < 1000) ? rawCpuLoad : undefined,
+        minFreeMemoryPercent: (typeof rawMinMem === 'number' && rawMinMem >= 0 && rawMinMem <= 100) ? rawMinMem : undefined,
+      };
+    } catch {
+      return {};
+    }
+  }
+
+  /**
    * Setup graceful shutdown handlers
    */
   private setupShutdownHandlers(): void {
@@ -250,13 +335,30 @@ export class WorkerDaemon extends EventEmitter {
 
   /**
    * Process pending workers queue
+   *
+   * When executeWorkerWithConcurrencyControl defers a worker (returns null),
+   * we break immediately to avoid a busy-wait loop — the deferred worker is
+   * already back on the pendingWorkers queue by that point. If no workers are
+   * currently running when we break, we schedule a backoff retry so the queue
+   * does not get permanently stuck.
    */
   private async processPendingWorkers(): Promise<void> {
     while (this.pendingWorkers.length > 0 && this.runningWorkers.size < this.config.maxConcurrent) {
       const workerType = this.pendingWorkers.shift()!;
       const workerConfig = this.config.workers.find(w => w.type === workerType);
       if (workerConfig) {
-        await this.executeWorkerWithConcurrencyControl(workerConfig);
+        const result = await this.executeWorkerWithConcurrencyControl(workerConfig);
+        if (result === null) {
+          // Worker was deferred (resource pressure or concurrency limit).
+          // Break to avoid tight-looping — the next executeWorker() completion
+          // will call processPendingWorkers() again via the finally block.
+          if (this.runningWorkers.size === 0) {
+            // No workers running means nobody will trigger the finally-block
+            // callback, so schedule a backoff retry to avoid a stuck queue.
+            setTimeout(() => this.processPendingWorkers(), 30_000).unref();
+          }
+          break;
+        }
       }
     }
   }
@@ -276,6 +378,24 @@ export class WorkerDaemon extends EventEmitter {
               workerConfig.enabled = savedWorker.enabled;
             }
           }
+        }
+
+        // Restore resourceThresholds, maxConcurrent, workerTimeoutMs from saved state
+        // Only restore if valid numeric values within sane ranges
+        if (saved.config?.resourceThresholds && !this.originalConfig?.resourceThresholds) {
+          const rt = saved.config.resourceThresholds;
+          if (typeof rt.maxCpuLoad === 'number' && rt.maxCpuLoad > 0 && rt.maxCpuLoad < 1000) {
+            this.config.resourceThresholds.maxCpuLoad = rt.maxCpuLoad;
+          }
+          if (typeof rt.minFreeMemoryPercent === 'number' && rt.minFreeMemoryPercent >= 0 && rt.minFreeMemoryPercent <= 100) {
+            this.config.resourceThresholds.minFreeMemoryPercent = rt.minFreeMemoryPercent;
+          }
+        }
+        if (typeof saved.config?.maxConcurrent === 'number' && saved.config.maxConcurrent > 0) {
+          this.config.maxConcurrent = saved.config.maxConcurrent;
+        }
+        if (typeof saved.config?.workerTimeoutMs === 'number' && saved.config.workerTimeoutMs > 0) {
+          this.config.workerTimeoutMs = saved.config.workerTimeoutMs;
         }
 
         // Restore worker runtime states (runCount, successCount, etc.)
@@ -336,7 +456,7 @@ export class WorkerDaemon extends EventEmitter {
     // Save state
     this.saveState();
 
-    this.log('info', `Daemon started with ${this.config.workers.filter(w => w.enabled).length} workers`);
+    this.log('info', `Daemon started (PID: ${process.pid}, CPUs: ${cpus().length}, workers: ${this.config.workers.filter(w => w.enabled).length}, maxCpuLoad: ${this.config.resourceThresholds.maxCpuLoad}, minFreeMemoryPercent: ${this.config.resourceThresholds.minFreeMemoryPercent}%)`);
   }
 
   /**
@@ -910,9 +1030,9 @@ let daemonInstance: WorkerDaemon | null = null;
 /**
  * Get or create daemon instance
  */
-export function getDaemon(projectRoot?: string): WorkerDaemon {
+export function getDaemon(projectRoot?: string, config?: Partial<DaemonConfig>): WorkerDaemon {
   if (!daemonInstance && projectRoot) {
-    daemonInstance = new WorkerDaemon(projectRoot);
+    daemonInstance = new WorkerDaemon(projectRoot, config);
   }
   if (!daemonInstance) {
     throw new Error('Daemon not initialized. Provide projectRoot on first call.');
@@ -923,8 +1043,8 @@ export function getDaemon(projectRoot?: string): WorkerDaemon {
 /**
  * Start daemon (for use in session-start hook)
  */
-export async function startDaemon(projectRoot: string): Promise<WorkerDaemon> {
-  const daemon = getDaemon(projectRoot);
+export async function startDaemon(projectRoot: string, config?: Partial<DaemonConfig>): Promise<WorkerDaemon> {
+  const daemon = getDaemon(projectRoot, config);
   await daemon.start();
   return daemon;
 }
