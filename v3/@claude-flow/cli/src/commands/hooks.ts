@@ -122,6 +122,61 @@ const preEditCommand: Command = {
   }
 };
 
+// Post-edit subcommand
+const postEditCommand: Command = {
+  name: 'post-edit',
+  description: 'Record edit outcome for learning',
+  options: [
+    {
+      name: 'file',
+      short: 'f',
+      description: 'File path that was edited',
+      type: 'string',
+      required: false
+    },
+    {
+      name: 'operation',
+      short: 'o',
+      description: 'Type of edit operation (create, update, delete, refactor)',
+      type: 'string',
+      default: 'update'
+    }
+  ],
+  examples: [
+    { command: 'claude-flow hooks post-edit -f src/utils.ts', description: 'Record edit outcome' },
+    { command: 'claude-flow hooks post-edit --file src/api.ts -o refactor', description: 'Record refactor outcome' }
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const filePath = ctx.args[0] || ctx.flags.file as string || process.env.TOOL_INPUT_file_path || 'unknown';
+    const operation = ctx.flags.operation as string || 'update';
+
+    try {
+      const result = await callMCPTool<{
+        filePath: string;
+        operation: string;
+        learningUpdates?: {
+          patternsUpdated: number;
+          confidenceAdjusted: number;
+          newPatterns: number;
+        };
+      }>('hooks_post-edit', {
+        filePath,
+        operation,
+        timestamp: Date.now(),
+      });
+
+      if (ctx.flags.format === 'json') {
+        output.printJson(result);
+      }
+
+      return { success: true, data: result };
+    } catch {
+      // Non-fatal — post-edit tracking is best-effort
+      return { success: true };
+    }
+  }
+};
+
 // Pre-command subcommand
 const preCommandCommand: Command = {
   name: 'pre-command',
