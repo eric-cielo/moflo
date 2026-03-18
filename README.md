@@ -1,6 +1,6 @@
 # MoFlo
 
-**AI agent orchestration for Claude Code.** MoFlo gives your project semantic memory, workflow enforcement, learned routing, and automated issue execution — install it as a dev dependency and run `moflo init`.
+**AI agent orchestration for Claude Code.** MoFlo gives your project semantic memory, workflow enforcement, learned routing, and automated issue execution — install it as a dev dependency and run `flo init`.
 
 Forked from [ruflo/claude-flow](https://github.com/ruvnet/ruflo) with all patches applied to source and wrapper scripts merged into the CLI.
 
@@ -21,20 +21,20 @@ Forked from [ruflo/claude-flow](https://github.com/ruvnet/ruflo) with all patche
 
 ```bash
 # Install as a dev dependency
-npm install --save-dev github:eric-cielo/moflo
+npm install --save-dev moflo
 
 # Initialize your project (generates config, hooks, skill, CLAUDE.md section)
-npx moflo init
+npx flo init
 
 # Index your project's knowledge base
-npx moflo memory index-guidance
-npx moflo memory code-map
+npx flo memory index-guidance
+npx flo memory code-map
 
 # Verify everything works
-npx moflo doctor
+npx flo doctor
 ```
 
-That's it. `moflo init` sets up everything:
+That's it. `flo init` sets up everything:
 - `moflo.yaml` — project config (auto-detects source dirs, languages, guidance paths)
 - `.claude/settings.json` — workflow gate hooks
 - `.claude/skills/flo/` — the `/flo` issue execution skill (with `/fl` alias)
@@ -46,43 +46,43 @@ That's it. `moflo init` sets up everything:
 ### Memory
 
 ```bash
-moflo memory store -k "key" --value "data"    # Store with 384-dim embedding
-moflo memory search -q "auth patterns"         # Semantic search
-moflo memory index-guidance                    # Index guidance docs
-moflo memory code-map                          # Index code structure
-moflo memory rebuild-index                     # Regenerate all embeddings
-moflo memory stats                             # Show statistics
+flo memory store -k "key" --value "data"    # Store with 384-dim embedding
+flo memory search -q "auth patterns"         # Semantic search
+flo memory index-guidance                    # Index guidance docs
+flo memory code-map                          # Index code structure
+flo memory rebuild-index                     # Regenerate all embeddings
+flo memory stats                             # Show statistics
 ```
 
 ### Routing & Learning
 
 ```bash
-moflo hooks route --task "description"          # Route task to optimal agent
-moflo hooks learn --pattern "..." --domain "."  # Store a pattern
-moflo hooks patterns                            # List learned patterns
-moflo hooks consolidate                         # Promote/prune patterns
+flo hooks route --task "description"          # Route task to optimal agent
+flo hooks learn --pattern "..." --domain "."  # Store a pattern
+flo hooks patterns                            # List learned patterns
+flo hooks consolidate                         # Promote/prune patterns
 ```
 
 ### Workflow Gates
 
 ```bash
-moflo gate check-before-scan       # Blocks Glob/Grep if memory not searched
-moflo gate check-before-agent      # Blocks Agent tool if no TaskCreate
-moflo gate prompt-reminder         # Context bracket tracking
-moflo gate session-reset           # Reset workflow state
+flo gate check-before-scan       # Blocks Glob/Grep if memory not searched
+flo gate check-before-agent      # Blocks Agent tool if no TaskCreate
+flo gate prompt-reminder         # Context bracket tracking
+flo gate session-reset           # Reset workflow state
 ```
 
 ### System
 
 ```bash
-moflo init                          # Initialize project (one-time setup)
-moflo doctor                       # Health check
-moflo --version                    # Show version
+flo init                          # Initialize project (one-time setup)
+flo doctor                       # Health check
+flo --version                    # Show version
 ```
 
 ## Configuration
 
-`moflo init` generates a `moflo.yaml` at your project root:
+`flo init` generates a `moflo.yaml` at your project root:
 
 ```yaml
 project:
@@ -155,7 +155,7 @@ The `/flo <issue>` skill (or `/fl`) gives Claude a full automated workflow for e
 
 ### For Claude
 
-When `moflo init` runs, it appends a workflow section to your CLAUDE.md that teaches Claude:
+When `flo init` runs, it appends a workflow section to your CLAUDE.md that teaches Claude:
 - Always search memory before Glob/Grep/Read (enforced by gates)
 - Use `mcp__claude-flow__memory_search` for knowledge retrieval
 - Use `/flo <issue>` (or `/fl`) for issue execution
@@ -164,15 +164,15 @@ When `moflo init` runs, it appends a workflow section to your CLAUDE.md that tea
 
 ## Architecture
 
-MoFlo is a maintained fork of [ruflo v3.5.7](https://github.com/ruvnet/ruflo) with:
+MoFlo is a maintained fork of [ruflo 3.x](https://github.com/ruvnet/ruflo) with:
 
 - **3 patches applied to TypeScript source** (no more monkey-patching node_modules):
   - 384-dim domain-aware embeddings for consistent CLI ↔ MCP search
   - `windowsHide: true` on all spawn/exec calls (Windows UX)
   - Routing learned patterns (task outcomes feed back into routing)
-- **7 standalone bin scripts** shipped with npm: `moflo-search`, `moflo-embeddings`, `moflo-index`, `moflo-codemap`, `moflo-learn`, `moflo-setup`, plus the main `moflo` CLI
+- **7 standalone bin scripts** shipped with npm: `flo-search`, `flo-embeddings`, `flo-index`, `flo-codemap`, `flo-learn`, `flo-setup`, plus the main `flo` CLI
 - **Project config system**: `moflo.yaml` for per-project settings
-- **One-stop init**: `moflo init` generates everything needed for OOTB operation
+- **One-stop init**: `flo init` generates everything needed for OOTB operation
 
 Upstream remote preserved for cherry-picking future ruflo fixes.
 

@@ -285,7 +285,8 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
     } catch { /* start fresh */ }
 
     // Check if MoFlo hooks already set up
-    const hasGateHooks = JSON.stringify(existing).includes('moflo gate');
+    const settingsStr = JSON.stringify(existing);
+    const hasGateHooks = settingsStr.includes('flo gate') || settingsStr.includes('moflo gate');
     if (hasGateHooks && !force) {
       return { name: '.claude/settings.json', status: 'skipped', detail: 'MoFlo hooks already configured' };
     }
@@ -298,21 +299,21 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
         "matcher": "Glob|Grep",
         "hooks": [{
           "type": "command",
-          "command": "npx moflo gate check-before-scan"
+          "command": "npx flo gate check-before-scan"
         }]
       },
       {
         "matcher": "Read",
         "hooks": [{
           "type": "command",
-          "command": "npx moflo gate check-before-read"
+          "command": "npx flo gate check-before-read"
         }]
       },
       {
         "matcher": "Agent",
         "hooks": [{
           "type": "command",
-          "command": "npx moflo gate check-before-agent"
+          "command": "npx flo gate check-before-agent"
         }]
       }
     ],
@@ -321,21 +322,21 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
         "matcher": "TaskCreate",
         "hooks": [{
           "type": "command",
-          "command": "npx moflo gate record-task-created"
+          "command": "npx flo gate record-task-created"
         }]
       },
       {
         "matcher": "Bash",
         "hooks": [{
           "type": "command",
-          "command": "npx moflo gate check-bash-memory"
+          "command": "npx flo gate check-bash-memory"
         }]
       },
       {
         "matcher": "mcp__claude-flow__memory_search",
         "hooks": [{
           "type": "command",
-          "command": "npx moflo gate record-memory-searched"
+          "command": "npx flo gate record-memory-searched"
         }]
       }
     ],
@@ -343,7 +344,7 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
       {
         "hooks": [{
           "type": "command",
-          "command": "npx moflo gate prompt-reminder"
+          "command": "npx flo gate prompt-reminder"
         }]
       }
     ]
@@ -499,8 +500,8 @@ Memory has file paths, context, and patterns - often all you need.
 Only read guidance files if memory search returns zero relevant results.
 
 \`\`\`bash
-npx moflo memory search --query "<issue title keywords>" --namespace patterns
-npx moflo memory search --query "<domain keywords>" --namespace guidance
+npx flo memory search --query "<issue title keywords>" --namespace patterns
+npx flo memory search --query "<domain keywords>" --namespace guidance
 \`\`\`
 
 Or via MCP: \`mcp__claude-flow__memory_search\`
@@ -753,7 +754,7 @@ TaskCreate({ subject: "Run /simplify on changed files", ... })
 TaskCreate({ subject: "Review and PR", ... })
 
 // 2. Init swarm
-Bash("npx moflo swarm init --topology hierarchical --max-agents 8 --strategy specialized")
+Bash("npx flo swarm init --topology hierarchical --max-agents 8 --strategy specialized")
 
 // 3. Spawn agents with Task tool (run_in_background: true)
 Task({ prompt: "...", subagent_type: "researcher", run_in_background: true })

@@ -16,10 +16,10 @@
  *
  * Usage:
  *   node node_modules/moflo/bin/index-guidance.mjs                 # Index all + generate embeddings
- *   npx moflo-index --force                                        # Force reindex all
- *   npx moflo-index --file X                                       # Index specific file
- *   npx moflo-index --no-embeddings                                # Skip embedding generation
- *   npx moflo-index --overlap 20                                   # Set context overlap % (default: 15)
+ *   npx flo-index --force                                        # Force reindex all
+ *   npx flo-index --file X                                       # Index specific file
+ *   npx flo-index --no-embeddings                                # Skip embedding generation
+ *   npx flo-index --overlap 20                                   # Set context overlap % (default: 15)
  */
 
 import { existsSync, readdirSync, readFileSync, statSync, mkdirSync, writeFileSync } from 'fs';

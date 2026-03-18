@@ -6,10 +6,10 @@
  * sort, then executes each story sequentially by spawning `claude -p "/flo ..."`.
  *
  * Usage:
- *   moflo orc run <feature.yaml>              Execute a feature
- *   moflo orc run <feature.yaml> --dry-run    Show execution plan
- *   moflo orc status <feature-id>             Check progress
- *   moflo orc reset <feature-id>              Reset for re-run
+ *   flo orc run <feature.yaml>              Execute a feature
+ *   flo orc run <feature.yaml> --dry-run    Show execution plan
+ *   flo orc status <feature-id>             Check progress
+ *   flo orc reset <feature-id>              Reset for re-run
  */
 
 import { spawn, execSync } from 'child_process';
@@ -761,17 +761,17 @@ const orcCommand: Command = {
   description: 'Feature orchestrator — sequences GitHub issues through /flo workflows',
   options: [],
   examples: [
-    { command: 'moflo orc run feature.yaml', description: 'Execute a feature definition' },
-    { command: 'moflo orc run feature.yaml --dry-run', description: 'Show execution plan without running' },
-    { command: 'moflo orc run feature.yaml --verbose', description: 'Execute with Claude output streaming' },
-    { command: 'moflo orc status my-feature', description: 'Check progress of a feature' },
-    { command: 'moflo orc reset my-feature', description: 'Reset feature state for re-run' },
+    { command: 'flo orc run feature.yaml', description: 'Execute a feature definition' },
+    { command: 'flo orc run feature.yaml --dry-run', description: 'Show execution plan without running' },
+    { command: 'flo orc run feature.yaml --verbose', description: 'Execute with Claude output streaming' },
+    { command: 'flo orc status my-feature', description: 'Check progress of a feature' },
+    { command: 'flo orc reset my-feature', description: 'Reset feature state for re-run' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const subcommand = ctx.args?.[0];
 
     if (!subcommand) {
-      console.log('Usage: moflo orc <command> [args] [flags]');
+      console.log('Usage: flo orc <command> [args] [flags]');
       console.log('');
       console.log('Commands:');
       console.log('  run <feature.yaml>       Execute a feature definition');
@@ -788,7 +788,7 @@ const orcCommand: Command = {
       case 'run': {
         const yamlPath = ctx.args[1];
         if (!yamlPath) {
-          console.log('Usage: moflo orc run <feature.yaml> [--dry-run] [--verbose]');
+          console.log('Usage: flo orc run <feature.yaml> [--dry-run] [--verbose]');
           return { success: false, message: 'Missing feature YAML path' };
         }
         const dryRun = ctx.flags['dry-run'] === true || ctx.flags['dryRun'] === true;
@@ -799,7 +799,7 @@ const orcCommand: Command = {
       case 'status': {
         const featureId = ctx.args[1];
         if (!featureId) {
-          console.log('Usage: moflo orc status <feature-id>');
+          console.log('Usage: flo orc status <feature-id>');
           return { success: false, message: 'Missing feature ID' };
         }
         return showStatus(featureId);
@@ -808,7 +808,7 @@ const orcCommand: Command = {
       case 'reset': {
         const featureId = ctx.args[1];
         if (!featureId) {
-          console.log('Usage: moflo orc reset <feature-id>');
+          console.log('Usage: flo orc reset <feature-id>');
           return { success: false, message: 'Missing feature ID' };
         }
         return resetFeature(featureId);

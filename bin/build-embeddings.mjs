@@ -14,8 +14,8 @@
  *
  * Usage:
  *   node node_modules/moflo/bin/build-embeddings.mjs           # Embed entries without embeddings
- *   npx moflo-embeddings --force                               # Re-embed all entries
- *   npx moflo-embeddings --namespace guidance                   # Only specific namespace
+ *   npx flo-embeddings --force                               # Re-embed all entries
+ *   npx flo-embeddings --namespace guidance                   # Only specific namespace
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';

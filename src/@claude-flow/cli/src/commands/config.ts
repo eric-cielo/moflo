@@ -425,7 +425,7 @@ const showCommand: Command = {
     { name: 'format', short: 'f', description: 'Output format (json or yaml)', type: 'string', default: 'json' },
   ],
   examples: [
-    { command: 'moflo config show', description: 'Show merged config as JSON' },
+    { command: 'flo config show', description: 'Show merged config as JSON' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const { loadMofloConfig } = await import('../config/moflo-config.js');
@@ -441,7 +441,7 @@ const generateCommand: Command = {
   description: 'Generate moflo.yaml config file',
   options: [],
   examples: [
-    { command: 'moflo config generate', description: 'Auto-detect and write moflo.yaml' },
+    { command: 'flo config generate', description: 'Auto-detect and write moflo.yaml' },
   ],
   action: async (_ctx: CommandContext): Promise<CommandResult> => {
     const { writeMofloConfig } = await import('../config/moflo-config.js');

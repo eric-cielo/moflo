@@ -33,7 +33,7 @@ If you have MCP tools available (check for `mcp__claude-flow__*`), use them dire
 ### Option B: CLI via Bash
 
 ```bash
-npx moflo memory search --query "[describe your task]" --namespace guidance --limit 5
+npx flo memory search --query "[describe your task]" --namespace guidance --limit 5
 ```
 
 | Your task involves... | Search namespace | Example query |
@@ -111,7 +111,7 @@ mcp__claude-flow__memory_store
 
 ### CLI Fallback:
 ```bash
-npx moflo memory store --namespace patterns --key "brief-descriptive-key" --value "1-2 sentence insight"
+npx flo memory store --namespace patterns --key "brief-descriptive-key" --value "1-2 sentence insight"
 ```
 
 **Store:** Solutions to tricky bugs, patterns that worked, gotchas, workarounds

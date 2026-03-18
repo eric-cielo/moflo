@@ -8,14 +8,14 @@
  * - Context bracket tracking (FRESH/MODERATE/DEPLETED/CRITICAL)
  *
  * Usage from hooks:
- *   npx moflo gate check-before-scan
- *   npx moflo gate check-before-read
- *   npx moflo gate check-before-agent
- *   npx moflo gate record-task-created
- *   npx moflo gate record-memory-searched
- *   npx moflo gate check-bash-memory
- *   npx moflo gate prompt-reminder
- *   npx moflo gate session-reset
+ *   npx flo gate check-before-scan
+ *   npx flo gate check-before-read
+ *   npx flo gate check-before-agent
+ *   npx flo gate record-task-created
+ *   npx flo gate record-memory-searched
+ *   npx flo gate check-bash-memory
+ *   npx flo gate prompt-reminder
+ *   npx flo gate session-reset
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
@@ -26,16 +26,16 @@ const gateCommand: Command = {
   description: 'Workflow gate enforcement for Claude Code hooks',
   options: [],
   examples: [
-    { command: 'moflo gate check-before-scan', description: 'Check memory-first before Glob/Grep' },
-    { command: 'moflo gate check-before-agent', description: 'Check TaskCreate before Agent tool' },
-    { command: 'moflo gate prompt-reminder', description: 'Reset per-prompt state, show context bracket' },
-    { command: 'moflo gate session-reset', description: 'Reset all workflow state' },
+    { command: 'flo gate check-before-scan', description: 'Check memory-first before Glob/Grep' },
+    { command: 'flo gate check-before-agent', description: 'Check TaskCreate before Agent tool' },
+    { command: 'flo gate prompt-reminder', description: 'Reset per-prompt state, show context bracket' },
+    { command: 'flo gate session-reset', description: 'Reset all workflow state' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const subcommand = ctx.args?.[0];
 
     if (!subcommand) {
-      console.log('Usage: moflo gate <command>');
+      console.log('Usage: flo gate <command>');
       console.log('');
       console.log('Commands:');
       console.log('  check-before-scan      Check memory searched before Glob/Grep');

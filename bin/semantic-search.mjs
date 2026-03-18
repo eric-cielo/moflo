@@ -8,10 +8,10 @@
  *
  * Usage:
  *   node node_modules/moflo/bin/semantic-search.mjs "your search query"
- *   npx moflo-search "your search query"
- *   npx moflo-search "query" --limit 10
- *   npx moflo-search "query" --namespace guidance
- *   npx moflo-search "query" --threshold 0.3
+ *   npx flo-search "your search query"
+ *   npx flo-search "query" --limit 10
+ *   npx flo-search "query" --namespace guidance
+ *   npx flo-search "query" --threshold 0.3
  */
 
 import { existsSync, readFileSync } from 'fs';
@@ -45,7 +45,7 @@ const json = args.includes('--json');
 const debug = args.includes('--debug');
 
 if (!query) {
-  console.error('Usage: npx moflo-search "your query" [--limit N] [--namespace X] [--threshold N]');
+  console.error('Usage: npx flo-search "your query" [--limit N] [--namespace X] [--threshold N]');
   process.exit(1);
 }
 
@@ -262,7 +262,7 @@ async function generateQueryEmbedding(queryText, db) {
     // Neural failed — warn about model mismatch
     if (!json) {
       console.error('[semantic-search] WARNING: Stored embeddings use neural model but Transformers.js unavailable.');
-      console.error('[semantic-search] Results may be poor. Run: npx moflo-embeddings --force');
+      console.error('[semantic-search] Results may be poor. Run: npx flo-embeddings --force');
     }
   }
 
