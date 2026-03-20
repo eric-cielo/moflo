@@ -98,6 +98,13 @@ function loadGuidanceDirs() {
     dirs.push({ path: bundledGuidanceDir, prefix: 'moflo-bundled', absolute: true });
   }
 
+  // 3. Include CLAUDE.md from project root if it exists
+  //    This is the primary project instruction file for Claude-enabled projects
+  const claudeMdPath = resolve(projectRoot, 'CLAUDE.md');
+  if (existsSync(claudeMdPath)) {
+    dirs.push({ path: projectRoot, prefix: 'project-root', absolute: true, fileFilter: ['CLAUDE.md'] });
+  }
+
   return dirs;
 }
 
@@ -635,7 +642,10 @@ function indexDirectory(db, dirConfig) {
     return results;
   }
 
-  const files = readdirSync(dirPath).filter(f => f.endsWith('.md'));
+  const allMdFiles = readdirSync(dirPath).filter(f => f.endsWith('.md'));
+  const files = dirConfig.fileFilter
+    ? allMdFiles.filter(f => dirConfig.fileFilter.includes(f))
+    : allMdFiles;
 
   for (const file of files) {
     const filePath = resolve(dirPath, file);
