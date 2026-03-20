@@ -276,20 +276,34 @@ MoFlo installs Claude Code hooks that run on every tool call. Together, these ga
 
 All gates are configurable via `moflo.yaml` — you can disable any individual hook if it doesn't suit your workflow.
 
-### How MoFlo and Claude Code Work Together
+### The Two-Layer Task System
 
-Claude Code has its own task system — the Agent/Task tools that spawn sub-agents, track their progress, and return results. MoFlo doesn't replace this. Instead, it wraps Claude Code's native task system with a coordination layer that adds memory, routing, and learning.
+MoFlo doesn't replace your AI client's task system — it wraps it. Your client (Claude Code, Cursor, or any MCP-capable tool) handles spawning agents and running code. MoFlo adds a coordination layer on top that handles memory, routing, and learning.
 
-Here's how a typical task flows through both systems:
+```
+┌──────────────────────────────────────────────────┐
+│  YOUR AI CLIENT (Execution Layer)                │
+│  Spawns agents, runs code, streams output        │
+│  TaskCreate → Agent → TaskUpdate → results       │
+├──────────────────────────────────────────────────┤
+│  MOFLO (Knowledge Layer)                         │
+│  Routes tasks, gates agent spawns, stores        │
+│  patterns, learns from outcomes                  │
+└──────────────────────────────────────────────────┘
+```
 
-1. **MoFlo routes the task** — Before any work starts, MoFlo's route hook analyzes the prompt and recommends an agent type and model tier. This happens via a Claude Code hook that fires on every prompt.
-2. **MoFlo gates the spawn** — Before Claude Code's Agent tool can spawn a sub-agent, MoFlo's gate verifies that memory was searched and a task was registered. This prevents blind exploration.
-3. **Claude Code spawns the agent** — The actual sub-agent runs through Claude Code's native Task tool. MoFlo doesn't manage the agent itself — Claude Code handles execution, output streaming, and completion.
-4. **MoFlo records the outcome** — After the agent finishes, MoFlo's post-task hook stores what worked (or didn't) in the memory database. Successful patterns feed into future routing decisions.
+Here's how a typical task flows through both layers:
 
-The key insight: **Claude Code handles execution, MoFlo handles knowledge.** Claude Code is good at spawning agents and running code. MoFlo is good at remembering what happened, routing to the right agent, and making sure Claude checks what it knows before exploring from scratch.
+1. **MoFlo routes** — Before work starts, MoFlo analyzes the prompt and recommends an agent type and model tier via hook or MCP tool.
+2. **MoFlo gates** — Before an agent can spawn, MoFlo verifies that memory was searched and a task was registered. This prevents blind exploration.
+3. **Your client executes** — The actual agent runs through your client's native task system. MoFlo doesn't manage the agent — your client handles execution, output, and completion.
+4. **MoFlo learns** — After the agent finishes, MoFlo records what worked (or didn't) in its memory database. Successful patterns feed into future routing.
 
-The `/flo` skill ties both systems together for GitHub issues — it drives a full workflow (research → enhance → implement → test → simplify → PR) using Claude Code's agents for execution and MoFlo's memory for continuity.
+The key insight: **your client handles execution, MoFlo handles knowledge.** Your client is good at spawning agents and running code. MoFlo is good at remembering what happened, routing to the right agent, and ensuring prior knowledge is checked before exploring from scratch.
+
+For complex work, MoFlo structures tasks into waves — a research wave discovers context, then an implementation wave acts on it — with dependencies tracked through both the client's task system and MoFlo's coordination layer. The full integration pattern is documented in `.claude/guidance/task-swarm-integration.md`.
+
+The `/flo` skill ties both systems together for GitHub issues — driving a full workflow (research → enhance → implement → test → simplify → PR) with your client's agents for execution and MoFlo's memory for continuity.
 
 ### Memory & Knowledge Storage
 
