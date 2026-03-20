@@ -10,6 +10,20 @@ MoFlo adds automatic code and guidance cataloging along with memory gating on to
 
 Install it as a dev dependency and run `flo init`.
 
+## Opinionated Defaults
+
+MoFlo makes deliberate choices so you don't have to:
+
+- **Fully self-contained** — No external services, no cloud dependencies, no API keys. Everything runs locally on your machine.
+- **Node.js runtime** — Targets Node.js specifically. All scripts, hooks, and tooling are JavaScript/TypeScript. No Python, no Rust binaries, no native compilation.
+- **sql.js (WASM)** — The memory database uses sql.js, a pure WebAssembly build of SQLite. No native `better-sqlite3` bindings to compile, no platform-specific build steps. Works identically on Windows, macOS, and Linux.
+- **MiniLM-L6-v2 embeddings** — 384-dimensional neural embeddings via Transformers.js (also WASM). Runs locally, no API calls for vector generation.
+- **Memory-first workflow** — Claude must search what it already knows before exploring files. Enforced by hooks, not just instructions.
+- **Task registration before agents** — Sub-agents can't spawn until work is tracked. Prevents runaway agent proliferation.
+- **Learned routing** — Task outcomes feed back into the routing system automatically. No manual configuration needed — it gets smarter with use.
+- **Incremental indexing** — Guidance and code map indexes run on every session start but skip unchanged files. Fast after the first run.
+- **Cross-platform** — Forward-slash path normalization, no `sh -c` shell commands, `windowsHide` on all spawn calls. Tested on Windows, macOS, and Linux.
+
 ## Features
 
 | Feature | What It Does |
