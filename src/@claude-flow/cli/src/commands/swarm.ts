@@ -480,8 +480,8 @@ const statusCommand: Command = {
       output.writeln(output.warning('No active swarm'));
       output.writeln();
       output.writeln(output.dim('Start a swarm with:'));
-      output.writeln(output.dim('  npx @claude-flow/cli@latest swarm init'));
-      output.writeln(output.dim('  npx @claude-flow/cli@latest swarm start'));
+      output.writeln(output.dim('  npx moflo swarm init'));
+      output.writeln(output.dim('  npx moflo swarm start'));
       output.writeln();
       return { success: true, data: status };
     }

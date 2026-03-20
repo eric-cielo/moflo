@@ -185,10 +185,10 @@ async function main() {
     console.log('  🎉 All tests passed! Plugin Store is working correctly.');
     console.log('');
     console.log('  Available CLI Commands:');
-    console.log('    npx @claude-flow/cli plugins list');
-    console.log('    npx @claude-flow/cli plugins list --official');
-    console.log('    npx @claude-flow/cli plugins search -q "plugin creator"');
-    console.log('    npx @claude-flow/cli plugins info -n plugin-creator');
+    console.log('    npx moflo plugins list');
+    console.log('    npx moflo plugins list --official');
+    console.log('    npx moflo plugins search -q "plugin creator"');
+    console.log('    npx moflo plugins info -n plugin-creator');
     console.log('');
   }
 

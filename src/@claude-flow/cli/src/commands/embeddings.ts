@@ -16,7 +16,7 @@
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 
-// Dynamic imports for embeddings package
+// Dynamic imports for embeddings package (optional — may not be installed)
 async function getEmbeddings() {
   try {
     return await import('@claude-flow/embeddings');
@@ -1010,13 +1010,13 @@ const hyperbolicCommand: Command = {
         case 'convert': {
           const vec = Array.isArray(input[0]) ? input[0] as number[] : input as number[];
           const rawResult = hyperbolic.euclideanToPoincare(vec, { curvature });
-          const result = Array.from(rawResult);
+          const result: number[] = Array.from(rawResult);
           output.writeln(output.success('Euclidean → Poincaré conversion:'));
           output.writeln();
-          output.writeln(`Input (Euclidean):  [${vec.slice(0, 6).map(v => v.toFixed(4)).join(', ')}${vec.length > 6 ? ', ...' : ''}]`);
-          output.writeln(`Output (Poincaré):  [${result.slice(0, 6).map(v => v.toFixed(4)).join(', ')}${result.length > 6 ? ', ...' : ''}]`);
+          output.writeln(`Input (Euclidean):  [${vec.slice(0, 6).map((v: number) => v.toFixed(4)).join(', ')}${vec.length > 6 ? ', ...' : ''}]`);
+          output.writeln(`Output (Poincaré):  [${result.slice(0, 6).map((v: number) => v.toFixed(4)).join(', ')}${result.length > 6 ? ', ...' : ''}]`);
           output.writeln(`Curvature: ${curvature}`);
-          output.writeln(`Norm: ${Math.sqrt(result.reduce((s, v) => s + v * v, 0)).toFixed(6)} (must be < 1)`);
+          output.writeln(`Norm: ${Math.sqrt(result.reduce((s: number, v: number) => s + v * v, 0)).toFixed(6)} (must be < 1)`);
           return { success: true, data: { result } };
         }
 
@@ -1042,11 +1042,11 @@ const hyperbolicCommand: Command = {
           }
           const vectors = input as number[][];
           const rawCentroid = hyperbolic.hyperbolicCentroid(vectors, { curvature });
-          const centroid = Array.from(rawCentroid);
+          const centroid: number[] = Array.from(rawCentroid);
           output.writeln(output.success('Hyperbolic centroid (Fréchet mean):'));
           output.writeln();
           output.writeln(`Input vectors: ${vectors.length}`);
-          output.writeln(`Centroid: [${centroid.slice(0, 6).map(v => v.toFixed(4)).join(', ')}${centroid.length > 6 ? ', ...' : ''}]`);
+          output.writeln(`Centroid: [${centroid.slice(0, 6).map((v: number) => v.toFixed(4)).join(', ')}${centroid.length > 6 ? ', ...' : ''}]`);
           return { success: true, data: { centroid } };
         }
 

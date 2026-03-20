@@ -358,7 +358,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
       if (startAll) {
         try {
           output.writeln(output.dim('  Initializing memory database...'));
-          execSync('npx @claude-flow/cli@latest memory init 2>/dev/null', {
+          execSync('npx moflo memory init 2>/dev/null', {
             stdio: 'pipe',
             cwd: ctx.cwd,
             timeout: 30000,
@@ -374,7 +374,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
       if (startDaemon) {
         try {
           output.writeln(output.dim('  Starting daemon...'));
-          execSync('npx @claude-flow/cli@latest daemon start 2>/dev/null &', {
+          execSync('npx moflo daemon start 2>/dev/null &', {
             stdio: 'pipe',
             cwd: ctx.cwd,
             timeout: 10000,
@@ -390,7 +390,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
       if (startAll) {
         try {
           output.writeln(output.dim('  Initializing swarm...'));
-          execSync('npx @claude-flow/cli@latest swarm init --topology hierarchical 2>/dev/null', {
+          execSync('npx moflo swarm init --topology hierarchical 2>/dev/null', {
             stdio: 'pipe',
             cwd: ctx.cwd,
             timeout: 30000,
@@ -447,7 +447,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
       try {
         output.writeln(output.dim(`  Model: ${embeddingModel}`));
         output.writeln(output.dim('  Hyperbolic: Enabled (Poincaré ball)'));
-        execSync(`npx @claude-flow/cli@latest embeddings init --model ${embeddingModel} --no-download --force 2>/dev/null`, {
+        execSync(`npx moflo embeddings init --model ${embeddingModel} --no-download --force 2>/dev/null`, {
           stdio: 'pipe',
           cwd: ctx.cwd,
           timeout: 30000,
@@ -692,7 +692,7 @@ const wizardCommand: Command = {
         output.printInfo('Initializing ONNX embedding subsystem...');
         const { execSync } = await import('child_process');
         try {
-          execSync(`npx @claude-flow/cli@latest embeddings init --model ${embeddingModel} --no-download --force 2>/dev/null`, {
+          execSync(`npx moflo embeddings init --model ${embeddingModel} --no-download --force 2>/dev/null`, {
             stdio: 'pipe',
             cwd: ctx.cwd,
             timeout: 30000,

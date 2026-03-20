@@ -507,7 +507,7 @@ function generateSkill(root: string, force?: boolean): MofloInitResult['steps'][
   }
 
   if (!skillContent) {
-    return { name: '.claude/skills/flo/', status: 'failed', detail: 'Could not find SKILL.md in moflo package' };
+    return { name: '.claude/skills/flo/', status: 'error', detail: 'Could not find SKILL.md in moflo package' };
   }
 
   fs.writeFileSync(skillFile, skillContent, 'utf-8');
