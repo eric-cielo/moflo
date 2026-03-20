@@ -147,31 +147,6 @@ async function checkMemoryDatabase(): Promise<HealthCheck> {
   return { name: 'Memory Database', status: 'warn', message: 'Not initialized', fix: 'claude-flow memory configure --backend hybrid' };
 }
 
-// Check API keys
-async function checkApiKeys(): Promise<HealthCheck> {
-  const keys = ['ANTHROPIC_API_KEY', 'CLAUDE_API_KEY', 'OPENAI_API_KEY'];
-  const found: string[] = [];
-
-  for (const key of keys) {
-    if (process.env[key]) {
-      found.push(key);
-    }
-  }
-
-  // Detect Claude Code environment — API keys are managed internally
-  const inClaudeCode = !!(process.env.CLAUDE_CODE || process.env.CLAUDE_PROJECT_DIR || process.env.MCP_SESSION_ID);
-
-  if (found.includes('ANTHROPIC_API_KEY') || found.includes('CLAUDE_API_KEY')) {
-    return { name: 'API Keys', status: 'pass', message: `Found: ${found.join(', ')}` };
-  } else if (inClaudeCode) {
-    return { name: 'API Keys', status: 'pass', message: 'Claude Code (managed internally)' };
-  } else if (found.length > 0) {
-    return { name: 'API Keys', status: 'warn', message: `Found: ${found.join(', ')} (no Claude key)`, fix: 'export ANTHROPIC_API_KEY=your_key' };
-  } else {
-    return { name: 'API Keys', status: 'warn', message: 'No API keys found', fix: 'export ANTHROPIC_API_KEY=your_key' };
-  }
-}
-
 // Check git (async with proper env inheritance)
 async function checkGit(): Promise<HealthCheck> {
   try {
@@ -517,7 +492,6 @@ export const doctorCommand: Command = {
       checkConfigFile,
       checkDaemonStatus,
       checkMemoryDatabase,
-      checkApiKeys,
       checkMcpServers,
       checkDiskSpace,
       checkBuildTools,
@@ -533,7 +507,6 @@ export const doctorCommand: Command = {
       'config': checkConfigFile,
       'daemon': checkDaemonStatus,
       'memory': checkMemoryDatabase,
-      'api': checkApiKeys,
       'git': checkGit,
       'mcp': checkMcpServers,
       'disk': checkDiskSpace,
