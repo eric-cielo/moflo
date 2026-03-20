@@ -230,35 +230,57 @@ function learningProtocol(): string {
 ### Before Starting Any Task
 \`\`\`bash
 npx @claude-flow/cli@latest memory search --query "[task keywords]" --namespace patterns
+npx @claude-flow/cli@latest memory search --query "[task keywords]" --namespace knowledge
 npx @claude-flow/cli@latest hooks route --task "[task description]"
 \`\`\`
 
 ### After Completing Any Task Successfully
 \`\`\`bash
 npx @claude-flow/cli@latest memory store --namespace patterns --key "[pattern-name]" --value "[what worked]"
-npx @claude-flow/cli@latest hooks post-task --task-id "[id]" --success true --store-results true
+npx @claude-flow/cli@latest hooks post-task --task-id "[id]" --success true
 \`\`\`
 
+### When the User Asks You to Remember Something
+\`\`\`bash
+npx @claude-flow/cli@latest memory store --namespace knowledge --key "[topic]" --value "[what to remember]"
+\`\`\`
+
+The \`knowledge\` namespace is for user-directed project knowledge — things like "always use soft delete",
+"don't use MUI DataGrid, use TableComponent", or "the billing service uses Stripe". These are searchable
+during the memory-first gate and persist across sessions.
+
 - ALWAYS check memory before starting new features, debugging, or refactoring
-- ALWAYS store patterns in memory after solving bugs, completing features, or finding optimizations`;
+- ALWAYS store user-directed knowledge in the \`knowledge\` namespace when asked to remember something
+- ALWAYS store code patterns in the \`patterns\` namespace after solving bugs or finding optimizations`;
 }
 
 function memoryCommands(): string {
   return `## Memory Commands Reference
 
 \`\`\`bash
-# Store (REQUIRED: --key, --value; OPTIONAL: --namespace, --ttl, --tags)
+# Store a code pattern
 npx @claude-flow/cli@latest memory store --key "pattern-auth" --value "JWT with refresh" --namespace patterns
 
-# Search (REQUIRED: --query; OPTIONAL: --namespace, --limit, --threshold)
+# Store user-directed knowledge (remember for next time)
+npx @claude-flow/cli@latest memory store --key "soft-delete" --value "Always use soft delete on entities" --namespace knowledge
+
+# Search (searches across all namespaces if --namespace omitted)
 npx @claude-flow/cli@latest memory search --query "authentication patterns"
 
-# List (OPTIONAL: --namespace, --limit)
-npx @claude-flow/cli@latest memory list --namespace patterns --limit 10
+# List entries in a namespace
+npx @claude-flow/cli@latest memory list --namespace knowledge --limit 10
 
-# Retrieve (REQUIRED: --key; OPTIONAL: --namespace)
+# Retrieve a specific key
 npx @claude-flow/cli@latest memory retrieve --key "pattern-auth" --namespace patterns
-\`\`\``;
+\`\`\`
+
+### Namespaces
+| Namespace | Purpose | Populated by |
+|-----------|---------|-------------|
+| \`guidance\` | Doc chunks from .claude/guidance + docs/ | \`flo-index\` (session start) |
+| \`code-map\` | File/dir structure for navigation | \`flo-codemap\` (session start) |
+| \`patterns\` | Code patterns from repo analysis | \`hooks pretrain\` (session start) |
+| \`knowledge\` | User-directed project knowledge | User ("remember X for next time") |`;
 }
 
 function securityRulesLight(): string {

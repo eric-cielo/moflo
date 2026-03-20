@@ -1266,20 +1266,9 @@ export const hooksPostTask: MCPTool = {
       } catch { /* non-critical */ }
     }
 
-    // Always store routing learnings in memory DB for cross-session vector retrieval
-    if (taskText && agent) {
-      try {
-        const storeFn = await getRealStoreFunction();
-        if (storeFn) {
-          await storeFn({
-            key: `learning:routing:${taskId}`,
-            namespace: 'learnings',
-            value: JSON.stringify({ task: taskText, agent, success, quality, keywords: outcomeKeywords }),
-            tags: ['routing-learning', agent, success ? 'success' : 'failure'],
-          });
-        }
-      } catch { /* non-critical */ }
-    }
+    // Routing learnings are persisted via the file-based routing-outcomes.json above.
+    // No redundant write to the memory DB — the JSON file is the authoritative source
+    // for the routing loop (loadRoutingOutcomes → learnedPatternsFromOutcomes → route).
 
     const duration = Date.now() - startTime;
 

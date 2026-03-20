@@ -549,10 +549,11 @@ This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted d
 Your first tool call for every new user prompt MUST be a memory search. Do this BEFORE Glob, Grep, Read, or any file exploration.
 
 \`\`\`
-mcp__claude-flow__memory_search  — query: "<task description>", namespace: "guidance" or "patterns" or "code-map"
+mcp__claude-flow__memory_search  — query: "<task description>", namespace: "guidance" or "patterns" or "knowledge" or "code-map"
 \`\`\`
 
-For codebase navigation, search the \`code-map\` namespace first. For patterns and domain knowledge, search \`patterns\` and \`guidance\`.
+For codebase navigation, search the \`code-map\` namespace first. For patterns and domain knowledge, search \`patterns\`, \`knowledge\`, and \`guidance\`.
+When the user asks you to remember something, store it: \`memory store --namespace knowledge --key "[topic]" --value "[what to remember]"\`
 
 ### Workflow Gates (enforced automatically)
 
