@@ -402,6 +402,34 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
         }
       }
 
+      // Run guidance + code-map indexing so memory is populated immediately
+      try {
+        output.writeln(output.dim('  Indexing guidance & code map...'));
+        execSync('flo-index 2>/dev/null', {
+          stdio: 'pipe',
+          cwd: ctx.cwd,
+          timeout: 60000,
+          windowsHide: true
+        });
+        output.writeln(output.success('  ✓ Guidance & code map indexed'));
+      } catch {
+        output.writeln(output.dim('  Indexing skipped (run flo-index manually)'));
+      }
+
+      // Generate embeddings for indexed entries
+      try {
+        output.writeln(output.dim('  Building embeddings...'));
+        execSync('flo-embeddings 2>/dev/null', {
+          stdio: 'pipe',
+          cwd: ctx.cwd,
+          timeout: 120000,
+          windowsHide: true
+        });
+        output.writeln(output.success('  ✓ Embeddings built'));
+      } catch {
+        output.writeln(output.dim('  Embedding generation skipped (run flo-embeddings manually)'));
+      }
+
       output.writeln();
       output.printSuccess('All services started');
     }
@@ -436,10 +464,9 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
       // Next steps (only if not auto-starting)
       output.writeln(output.bold('Next steps:'));
       output.printList([
+        `Restart Claude Code to activate hooks and index guidance/code (recommended)`,
+        `Or run ${output.highlight('claude-flow init --start-all')} to start services and index now`,
         `Run ${output.highlight('claude-flow daemon start')} to start background workers`,
-        `Run ${output.highlight('claude-flow memory init')} to initialize memory database`,
-        `Run ${output.highlight('claude-flow swarm init')} to initialize a swarm`,
-        `Or use ${output.highlight('claude-flow init --start-all')} to do all of the above`,
         options.components.settings ? `Review ${output.highlight('.claude/settings.json')} for hook configurations` : '',
       ].filter(Boolean));
     }
