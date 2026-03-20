@@ -65,7 +65,8 @@ function bootstrapFromMemoryFiles() {
         var items = fs.readdirSync(candidates[i], { withFileTypes: true, recursive: true });
         for (var j = 0; j < items.length; j++) {
           if (items[j].name === "MEMORY.md") {
-            var fp = items[j].path ? path.join(items[j].path, items[j].name) : path.join(candidates[i], items[j].name);
+            var parentDir = items[j].parentPath || items[j].path || candidates[i];
+            var fp = path.join(parentDir, items[j].name);
             files.push(fp);
           }
         }
@@ -96,15 +97,24 @@ function bootstrapFromMemoryFiles() {
 
 function loadEntries() {
   var store = readJSON(STORE_PATH);
-  if (store && store.entries && store.entries.length > 0) {
-    return store.entries.map(function(e, i) {
+  // Support both formats: flat array or { entries: [...] }
+  var entries = null;
+  if (store) {
+    if (Array.isArray(store) && store.length > 0) {
+      entries = store;
+    } else if (store.entries && store.entries.length > 0) {
+      entries = store.entries;
+    }
+  }
+  if (entries) {
+    return entries.map(function(e, i) {
       return {
         id: e.id || ("entry-" + i),
         content: e.content || e.value || "",
         summary: e.summary || e.key || "",
         category: e.category || e.namespace || "default",
         confidence: e.confidence || 0.5,
-        sourceFile: e.sourceFile || "",
+        sourceFile: e.sourceFile || (e.metadata && e.metadata.sourceFile) || "",
         words: tokenize((e.content || e.value || "") + " " + (e.summary || e.key || "")),
       };
     });

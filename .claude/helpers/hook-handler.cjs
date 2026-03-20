@@ -66,9 +66,11 @@ async function main() {
     try { hookInput = JSON.parse(stdinData); } catch (e) { /* ignore parse errors */ }
   }
 
-  // Merge stdin data into prompt resolution: prefer stdin fields, then env, then argv
+  // Merge stdin data into prompt resolution: prefer stdin fields, then env vars.
+  // NEVER fall back to argv args — shell glob expansion of braces in bash output
+  // creates junk files (#1342). Use env vars or stdin only.
   const prompt = hookInput.prompt || hookInput.command || hookInput.toolInput
-    || process.env.PROMPT || process.env.TOOL_INPUT_command || args.join(' ') || '';
+    || process.env.PROMPT || process.env.TOOL_INPUT_command || '';
 
 const handlers = {
   'route': () => {
@@ -308,4 +310,7 @@ if (command && handlers[command]) {
 
 main().catch(function(e) {
   console.log('[WARN] Hook handler error: ' + e.message);
+}).finally(function() {
+  // Ensure clean exit for Claude Code hooks
+  process.exit(0);
 });

@@ -348,6 +348,10 @@ async function doStatus() {
 
 const command = process.argv[2] || 'status';
 
+// Suppress unhandled rejection warnings from dynamic import() failures
+// which can cause non-zero exit codes even when caught
+process.on('unhandledRejection', () => {});
+
 try {
   switch (command) {
     case 'import': await doImport(); break;
@@ -361,3 +365,5 @@ try {
   // Hooks must never crash Claude Code - fail silently
   dim(`Error (non-critical): ${err.message}`);
 }
+// Ensure clean exit for Claude Code hooks
+process.exit(0);

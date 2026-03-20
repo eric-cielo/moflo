@@ -1040,6 +1040,10 @@ npx claude-flow@v3alpha plugins publish
 
 Registry source: IPFS via Pinata (`QmXbfEAaR7D2Ujm4GAkbwcGZQMHqAMpwDoje4583uNP834`)
 
+## Upstream Sync
+
+MoFlo tracks cherry-picks from the upstream Ruflo/Claude Flow repository. The sync log lives in `UPSTREAM_SYNC.md` at the project root. Check it before merging upstream changes to see what's already been reviewed, applied, or intentionally skipped.
+
 ## Support
 
 - Documentation: https://github.com/eric-cielo/moflo
