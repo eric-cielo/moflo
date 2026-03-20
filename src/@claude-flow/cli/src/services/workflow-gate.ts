@@ -421,6 +421,28 @@ export function processGateCommand(command: string, env: Record<string, string |
       process.exit(0);
     }
 
+    case 'compact-guidance': {
+      console.log('Pre-Compact Guidance:');
+      console.log('IMPORTANT: Before compacting, preserve key context:');
+      console.log('   - Check CLAUDE.md for project rules and architecture');
+      console.log('   - Memory namespaces: guidance, code-map, patterns, knowledge');
+      console.log('   - Use memory search to recover context after compact');
+      console.log('   - Batch all operations in single messages (GOLDEN RULE)');
+      process.exit(0);
+    }
+
+    case 'check-dangerous-command': {
+      const cmd = (env.TOOL_INPUT_command || '').toLowerCase();
+      const dangerous = ['rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
+      for (const pattern of dangerous) {
+        if (cmd.includes(pattern)) {
+          console.log(`[BLOCKED] Dangerous command detected: ${pattern}`);
+          process.exit(2);
+        }
+      }
+      process.exit(0);
+    }
+
     case 'session-reset':
       gate.sessionReset();
       process.exit(0);

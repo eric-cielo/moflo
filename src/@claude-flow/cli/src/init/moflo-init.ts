@@ -358,6 +358,14 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
             "timeout": 5000
           }
         ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [{
+          "type": "command",
+          "command": "npx flo gate check-dangerous-command",
+          "timeout": 2000
+        }]
       }
     ],
     "PostToolUse": [
@@ -435,6 +443,15 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
           "type": "command",
           "command": "npx flo hooks session-end",
           "timeout": 5000
+        }]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "npx flo gate compact-guidance",
+          "timeout": 3000
         }]
       }
     ],
