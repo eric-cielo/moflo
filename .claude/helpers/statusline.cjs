@@ -126,6 +126,7 @@ function abbreviatePath(fullPath) {
 function safeExec(cmd, timeoutMs = 2000) {
   try {
     return execSync(cmd, {
+      cwd: CWD,
       encoding: 'utf-8',
       timeout: timeoutMs,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -206,7 +207,9 @@ function getModelName() {
     const claudeConfig = readJSON(path.join(os.homedir(), '.claude.json'));
     if (claudeConfig?.projects) {
       for (const [projectPath, projectConfig] of Object.entries(claudeConfig.projects)) {
-        if (CWD === projectPath || CWD.startsWith(projectPath + '/')) {
+        const normCwd = CWD.replace(/\\/g, '/');
+        const normProject = projectPath.replace(/\\/g, '/');
+        if (normCwd === normProject || normCwd.startsWith(normProject + '/')) {
           const usage = projectConfig.lastModelUsage;
           if (usage) {
             const ids = Object.keys(usage);
