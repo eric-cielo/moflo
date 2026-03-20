@@ -727,6 +727,66 @@ function generateDashboard() {
   return lines.join('\n');
 }
 
+// Compact dashboard: header + single combined line
+function generateCompactDashboard() {
+  const git = getGitInfo();
+  const session = getSessionStats();
+  const lines = [];
+
+  // Header: branding + git + session
+  let header = `${c.bold}${c.brightPurple}\u258A ${SL_CONFIG.branding}${c.reset}`;
+  if (SL_CONFIG.show_git && git.gitBranch) {
+    header += `  ${c.brightBlue}\u23C7 ${git.gitBranch}${c.reset}`;
+    const changes = git.modified + git.staged + git.untracked;
+    if (changes > 0) {
+      let ind = '';
+      if (git.staged > 0) ind += `${c.brightGreen}+${git.staged}${c.reset}`;
+      if (git.modified > 0) ind += `${c.brightYellow}~${git.modified}${c.reset}`;
+      if (git.untracked > 0) ind += `${c.dim}?${git.untracked}${c.reset}`;
+      header += ` ${ind}`;
+    }
+    if (git.ahead > 0) header += ` ${c.brightGreen}\u2191${git.ahead}${c.reset}`;
+    if (git.behind > 0) header += ` ${c.brightRed}\u2193${git.behind}${c.reset}`;
+  }
+  if (SL_CONFIG.show_session && session.duration) {
+    header += `  ${c.dim}\u2502${c.reset}  ${c.cyan}\u23F1 ${session.duration}${c.reset}`;
+  }
+  lines.push(header);
+
+  // Combined swarm + agentdb + mcp line
+  const segments = [];
+  if (SL_CONFIG.show_swarm) {
+    const swarm = getSwarmStatus();
+    const swarmInd = swarm.coordinationActive ? `${c.brightGreen}\u25C9${c.reset}` : `${c.dim}\u25CB${c.reset}`;
+    const agentsColor = swarm.activeAgents > 0 ? c.brightGreen : c.red;
+    segments.push(
+      `${c.brightYellow}\uD83E\uDD16${c.reset} ${swarmInd}[${agentsColor}${swarm.activeAgents}${c.reset}/${c.brightWhite}${swarm.maxAgents}${c.reset}]`
+    );
+  }
+  if (SL_CONFIG.show_agentdb) {
+    const agentdb = getAgentDBStats();
+    const hnswInd = agentdb.hasHnsw ? `\u26A1` : '';
+    const sizeDisp = agentdb.dbSizeKB >= 1024 ? `${(agentdb.dbSizeKB / 1024).toFixed(1)}MB` : `${agentdb.dbSizeKB}KB`;
+    const vectorColor = agentdb.vectorCount > 0 ? c.brightGreen : c.dim;
+    segments.push(
+      `${c.brightCyan}\uD83D\uDCCA${c.reset} ${vectorColor}${agentdb.vectorCount}${hnswInd}${c.reset} ${c.dim}(${sizeDisp})${c.reset}`
+    );
+  }
+  if (SL_CONFIG.show_mcp) {
+    const integration = getIntegrationStatus();
+    if (integration.mcpServers.total > 0) {
+      const mcpCol = integration.mcpServers.enabled === integration.mcpServers.total ? c.brightGreen :
+                     integration.mcpServers.enabled > 0 ? c.brightYellow : c.red;
+      segments.push(`${c.cyan}MCP${c.reset} ${mcpCol}\u25CF${integration.mcpServers.enabled}/${integration.mcpServers.total}${c.reset}`);
+    }
+  }
+  if (segments.length > 0) {
+    lines.push(segments.join(`  ${c.dim}\u2502${c.reset}  `));
+  }
+
+  return lines.join('\n');
+}
+
 // JSON output
 function generateJSON() {
   const git = getGitInfo();
@@ -748,8 +808,10 @@ function generateJSON() {
 // ─── Main ───────────────────────────────────────────────────────
 if (process.argv.includes('--json')) {
   console.log(JSON.stringify(generateJSON(), null, 2));
-} else if (process.argv.includes('--compact')) {
+} else if (process.argv.includes('--json-compact')) {
   console.log(JSON.stringify(generateJSON()));
+} else if (process.argv.includes('--compact') || SL_CONFIG.mode === 'compact') {
+  console.log(generateCompactDashboard());
 } else if (process.argv.includes('--dashboard') || SL_CONFIG.mode === 'dashboard') {
   console.log(generateDashboard());
 } else {
