@@ -145,7 +145,10 @@ export async function initMoflo(options: MofloInitOptions): Promise<MofloInitRes
   // Step 4: CLAUDE.md MoFlo section
   steps.push(generateClaudeMd(projectRoot, force));
 
-  // Step 5: .gitignore entries
+  // Step 5: .claude/scripts/ from moflo bin/
+  steps.push(syncScripts(projectRoot, force));
+
+  // Step 6: .gitignore entries
   steps.push(updateGitignore(projectRoot));
 
   return { steps };
@@ -606,7 +609,66 @@ ${MOFLO_MARKER_END}
 }
 
 // ============================================================================
-// Step 5: .gitignore
+// Step 5: .claude/scripts/ — sync from moflo bin/
+// These scripts are used by session-start hooks for indexing, code map, etc.
+// Always overwrite to keep them in sync with the installed moflo version.
+// ============================================================================
+
+const SCRIPT_MAP: Record<string, string> = {
+  'index-guidance.mjs': 'index-guidance.mjs',
+  'build-embeddings.mjs': 'build-embeddings.mjs',
+  'generate-code-map.mjs': 'generate-code-map.mjs',
+  'semantic-search.mjs': 'semantic-search.mjs',
+};
+
+function syncScripts(root: string, force?: boolean): MofloInitResult['steps'][0] {
+  const scriptsDir = path.join(root, '.claude', 'scripts');
+  if (!fs.existsSync(scriptsDir)) {
+    fs.mkdirSync(scriptsDir, { recursive: true });
+  }
+
+  // Find moflo bin/ directory
+  const candidates = [
+    path.join(root, 'node_modules', 'moflo', 'bin'),
+    // When running from moflo repo itself
+    path.join(path.dirname(path.dirname(path.dirname(path.dirname(path.dirname(__dirname))))), 'bin'),
+  ];
+  const binDir = candidates.find(d => fs.existsSync(d));
+
+  if (!binDir) {
+    return { name: '.claude/scripts/', status: 'skipped', detail: 'moflo bin/ not found' };
+  }
+
+  let copied = 0;
+  for (const [dest, src] of Object.entries(SCRIPT_MAP)) {
+    const srcPath = path.join(binDir, src);
+    const destPath = path.join(scriptsDir, dest);
+
+    if (!fs.existsSync(srcPath)) continue;
+
+    // Always overwrite scripts to keep in sync (they're derived, not user-edited)
+    if (!fs.existsSync(destPath) || force || isStale(srcPath, destPath)) {
+      fs.copyFileSync(srcPath, destPath);
+      copied++;
+    }
+  }
+
+  if (copied === 0) {
+    return { name: '.claude/scripts/', status: 'skipped', detail: 'Scripts already up to date' };
+  }
+  return { name: '.claude/scripts/', status: 'updated', detail: `${copied} scripts synced from moflo` };
+}
+
+function isStale(srcPath: string, destPath: string): boolean {
+  try {
+    return fs.statSync(srcPath).mtimeMs > fs.statSync(destPath).mtimeMs;
+  } catch {
+    return true;
+  }
+}
+
+// ============================================================================
+// Step 6: .gitignore
 // ============================================================================
 
 function updateGitignore(root: string): MofloInitResult['steps'][0] {
