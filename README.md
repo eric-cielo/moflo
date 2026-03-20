@@ -356,6 +356,10 @@ When `flo init` runs, it appends a workflow section to your CLAUDE.md that teach
 - **Project config system**: `moflo.yaml` for per-project settings
 - **One-stop init**: `flo init` generates everything needed for OOTB operation
 
+## Ruflo / Claude Flow
+
+MoFlo builds on top of the full [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) engine. For detailed documentation on the underlying capabilities — swarm topologies, hive-mind consensus, HNSW vector search, neural routing, MCP server internals, and more — check out the [Ruflo repository](https://github.com/ruvnet/ruflo).
+
 ## License
 
-MIT (inherited from [upstream](https://github.com/ruvnet/ruflo))
+MIT (inherited from [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo))
