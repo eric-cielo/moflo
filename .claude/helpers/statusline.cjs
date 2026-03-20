@@ -159,38 +159,26 @@ function getGitInfo() {
     staged: 0, ahead: 0, behind: 0,
   };
 
-  // Single shell: get user.name, branch, porcelain status, and upstream diff
-  const script = [
-    'git config user.name 2>/dev/null || echo user',
-    'echo "---SEP---"',
-    'git branch --show-current 2>/dev/null',
-    'echo "---SEP---"',
-    'git status --porcelain 2>/dev/null',
-    'echo "---SEP---"',
-    'git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null || echo "0 0"',
-  ].join('; ');
+  // Individual git calls (cross-platform — sh -c fails on Windows)
+  result.name = safeExec('git config user.name', 2000) || 'user';
+  result.gitBranch = safeExec('git branch --show-current', 2000) || '';
 
-  const raw = safeExec(`sh -c '${script}'`, 3000);
-  if (!raw) return result;
-
-  const parts = raw.split('---SEP---').map(s => s.trim());
-  if (parts.length >= 4) {
-    result.name = parts[0] || 'user';
-    result.gitBranch = parts[1] || '';
-
-    // Parse porcelain status
-    if (parts[2]) {
-      for (const line of parts[2].split('\n')) {
-        if (!line || line.length < 2) continue;
-        const x = line[0], y = line[1];
-        if (x === '?' && y === '?') { result.untracked++; continue; }
-        if (x !== ' ' && x !== '?') result.staged++;
-        if (y !== ' ' && y !== '?') result.modified++;
-      }
+  // Parse porcelain status
+  const statusRaw = safeExec('git status --porcelain', 2000);
+  if (statusRaw) {
+    for (const line of statusRaw.split('\n')) {
+      if (!line || line.length < 2) continue;
+      const x = line[0], y = line[1];
+      if (x === '?' && y === '?') { result.untracked++; continue; }
+      if (x !== ' ' && x !== '?') result.staged++;
+      if (y !== ' ' && y !== '?') result.modified++;
     }
+  }
+
+  {
 
     // Parse ahead/behind
-    const ab = (parts[3] || '0 0').split(/\s+/);
+    const ab = (safeExec('git rev-list --left-right --count HEAD...@{upstream}', 2000) || '0 0').split(/\s+/);
     result.ahead = parseInt(ab[0]) || 0;
     result.behind = parseInt(ab[1]) || 0;
   }
@@ -669,26 +657,16 @@ function generateStatusline() {
 }
 
 // Multi-line dashboard (for --dashboard flag)
+// Respects show_* toggles from moflo.yaml status_line config
 function generateDashboard() {
   const git = getGitInfo();
-  const modelName = getModelName();
-  const progress = getV3Progress();
-  const security = getSecurityStatus();
-  const swarm = getSwarmStatus();
-  const system = getSystemMetrics();
-  const adrs = getADRStatus();
-  const hooks = getHooksStatus();
-  const agentdb = getAgentDBStats();
-  const tests = getTestStats();
   const session = getSessionStats();
-  const integration = getIntegrationStatus();
   const lines = [];
 
-  // Header
+  // Header: branding + git
   let header = `${c.bold}${c.brightPurple}\u258A ${SL_CONFIG.branding}${c.reset}`;
-  header += `${swarm.coordinationActive ? c.brightCyan : c.dim}\u25CF ${c.brightCyan}${git.name}${c.reset}`;
-  if (git.gitBranch) {
-    header += `  ${c.dim}\u2502${c.reset}  ${c.brightBlue}\u23C7 ${git.gitBranch}${c.reset}`;
+  if (SL_CONFIG.show_git && git.gitBranch) {
+    header += `  ${c.brightBlue}\u23C7 ${git.gitBranch}${c.reset}`;
     const changes = git.modified + git.staged + git.untracked;
     if (changes > 0) {
       let ind = '';
@@ -700,82 +678,51 @@ function generateDashboard() {
     if (git.ahead > 0) header += ` ${c.brightGreen}\u2191${git.ahead}${c.reset}`;
     if (git.behind > 0) header += ` ${c.brightRed}\u2193${git.behind}${c.reset}`;
   }
-  header += `  ${c.dim}\u2502${c.reset}  ${c.purple}${modelName}${c.reset}`;
-  if (session.duration) header += `  ${c.dim}\u2502${c.reset}  ${c.cyan}\u23F1 ${session.duration}${c.reset}`;
+  if (SL_CONFIG.show_session && session.duration) {
+    header += `  ${c.dim}\u2502${c.reset}  ${c.cyan}\u23F1 ${session.duration}${c.reset}`;
+  }
   lines.push(header);
 
   // Separator
-  lines.push(`${c.dim}\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500${c.reset}`);
+  lines.push(`${c.dim}${'─'.repeat(53)}${c.reset}`);
 
-  // Line 1: DDD Domains + perf
-  const domainsColor = progress.domainsCompleted >= 3 ? c.brightGreen : progress.domainsCompleted > 0 ? c.yellow : c.red;
-  let perfIndicator;
-  if (agentdb.hasHnsw && agentdb.vectorCount > 0) {
-    const speedup = agentdb.vectorCount > 10000 ? '12500x' : agentdb.vectorCount > 1000 ? '150x' : '10x';
-    perfIndicator = `${c.brightGreen}\u26A1 HNSW ${speedup}${c.reset}`;
-  } else if (progress.patternsLearned > 0) {
-    const pk = progress.patternsLearned >= 1000 ? `${(progress.patternsLearned / 1000).toFixed(1)}k` : String(progress.patternsLearned);
-    perfIndicator = `${c.brightYellow}\uD83D\uDCDA ${pk} patterns${c.reset}`;
-  } else {
-    perfIndicator = `${c.dim}\u26A1 target: 150x-12500x${c.reset}`;
+  // Swarm line (if enabled)
+  if (SL_CONFIG.show_swarm) {
+    const swarm = getSwarmStatus();
+    const system = getSystemMetrics();
+    const swarmInd = swarm.coordinationActive ? `${c.brightGreen}\u25C9${c.reset}` : `${c.dim}\u25CB${c.reset}`;
+    const agentsColor = swarm.activeAgents > 0 ? c.brightGreen : c.red;
+    lines.push(
+      `${c.brightYellow}\uD83E\uDD16 Swarm${c.reset}  ${swarmInd} [${agentsColor}${String(swarm.activeAgents).padStart(2)}${c.reset}/${c.brightWhite}${swarm.maxAgents}${c.reset}]  ` +
+      `${c.brightPurple}\uD83D\uDC65 ${system.subAgents}${c.reset}    ` +
+      `${c.brightCyan}\uD83D\uDCBE ${system.memoryMB}MB${c.reset}`
+    );
   }
-  lines.push(
-    `${c.brightCyan}\uD83C\uDFD7\uFE0F  DDD Domains${c.reset}    ${progressBar(progress.domainsCompleted, progress.totalDomains)}  ` +
-    `${domainsColor}${progress.domainsCompleted}${c.reset}/${c.brightWhite}${progress.totalDomains}${c.reset}    ${perfIndicator}`
-  );
 
-  // Line 2: Swarm + Hooks + CVE + Memory + Intelligence
-  const swarmInd = swarm.coordinationActive ? `${c.brightGreen}\u25C9${c.reset}` : `${c.dim}\u25CB${c.reset}`;
-  const agentsColor = swarm.activeAgents > 0 ? c.brightGreen : c.red;
-  const secIcon = security.status === 'CLEAN' ? '\uD83D\uDFE2' : security.status === 'IN_PROGRESS' ? '\uD83D\uDFE1' : '\uD83D\uDD34';
-  const secColor = security.status === 'CLEAN' ? c.brightGreen : security.status === 'IN_PROGRESS' ? c.brightYellow : c.brightRed;
-  const hooksColor = hooks.enabled > 0 ? c.brightGreen : c.dim;
-  const intellColor = system.intelligencePct >= 80 ? c.brightGreen : system.intelligencePct >= 40 ? c.brightYellow : c.dim;
-
-  lines.push(
-    `${c.brightYellow}\uD83E\uDD16 Swarm${c.reset}  ${swarmInd} [${agentsColor}${String(swarm.activeAgents).padStart(2)}${c.reset}/${c.brightWhite}${swarm.maxAgents}${c.reset}]  ` +
-    `${c.brightPurple}\uD83D\uDC65 ${system.subAgents}${c.reset}    ` +
-    `${c.brightBlue}\uD83E\uDE9D ${hooksColor}${hooks.enabled}${c.reset}/${c.brightWhite}${hooks.total}${c.reset}    ` +
-    `${secIcon} ${secColor}CVE ${security.cvesFixed}${c.reset}/${c.brightWhite}${security.totalCves}${c.reset}    ` +
-    `${c.brightCyan}\uD83D\uDCBE ${system.memoryMB}MB${c.reset}    ` +
-    `${intellColor}\uD83E\uDDE0 ${String(system.intelligencePct).padStart(3)}%${c.reset}`
-  );
-
-  // Line 3: Architecture
-  const dddColor = progress.dddProgress >= 50 ? c.brightGreen : progress.dddProgress > 0 ? c.yellow : c.red;
-  const adrColor = adrs.count > 0 ? (adrs.implemented === adrs.count ? c.brightGreen : c.yellow) : c.dim;
-  const adrDisplay = adrs.compliance > 0 ? `${adrColor}\u25CF${adrs.compliance}%${c.reset}` : `${adrColor}\u25CF${adrs.implemented}/${adrs.count}${c.reset}`;
-
-  lines.push(
-    `${c.brightPurple}\uD83D\uDD27 Architecture${c.reset}    ` +
-    `${c.cyan}ADRs${c.reset} ${adrDisplay}  ${c.dim}\u2502${c.reset}  ` +
-    `${c.cyan}DDD${c.reset} ${dddColor}\u25CF${String(progress.dddProgress).padStart(3)}%${c.reset}  ${c.dim}\u2502${c.reset}  ` +
-    `${c.cyan}Security${c.reset} ${secColor}\u25CF${security.status}${c.reset}`
-  );
-
-  // Line 4: AgentDB, Tests, Integration
-  const hnswInd = agentdb.hasHnsw ? `${c.brightGreen}\u26A1${c.reset}` : '';
-  const sizeDisp = agentdb.dbSizeKB >= 1024 ? `${(agentdb.dbSizeKB / 1024).toFixed(1)}MB` : `${agentdb.dbSizeKB}KB`;
-  const vectorColor = agentdb.vectorCount > 0 ? c.brightGreen : c.dim;
-  const testColor = tests.testFiles > 0 ? c.brightGreen : c.dim;
-
-  let integStr = '';
-  if (integration.mcpServers.total > 0) {
-    const mcpCol = integration.mcpServers.enabled === integration.mcpServers.total ? c.brightGreen :
-                   integration.mcpServers.enabled > 0 ? c.brightYellow : c.red;
-    integStr += `${c.cyan}MCP${c.reset} ${mcpCol}\u25CF${integration.mcpServers.enabled}/${integration.mcpServers.total}${c.reset}`;
+  // AgentDB + MCP line (if either enabled)
+  if (SL_CONFIG.show_agentdb || SL_CONFIG.show_mcp) {
+    const parts = [];
+    if (SL_CONFIG.show_agentdb) {
+      const agentdb = getAgentDBStats();
+      const hnswInd = agentdb.hasHnsw ? `${c.brightGreen}\u26A1${c.reset}` : '';
+      const sizeDisp = agentdb.dbSizeKB >= 1024 ? `${(agentdb.dbSizeKB / 1024).toFixed(1)}MB` : `${agentdb.dbSizeKB}KB`;
+      const vectorColor = agentdb.vectorCount > 0 ? c.brightGreen : c.dim;
+      parts.push(`${c.cyan}Vectors${c.reset} ${vectorColor}\u25CF${agentdb.vectorCount}${hnswInd}${c.reset}`);
+      parts.push(`${c.cyan}Size${c.reset} ${c.brightWhite}${sizeDisp}${c.reset}`);
+    }
+    if (SL_CONFIG.show_mcp) {
+      const integration = getIntegrationStatus();
+      if (integration.mcpServers.total > 0) {
+        const mcpCol = integration.mcpServers.enabled === integration.mcpServers.total ? c.brightGreen :
+                       integration.mcpServers.enabled > 0 ? c.brightYellow : c.red;
+        parts.push(`${c.cyan}MCP${c.reset} ${mcpCol}\u25CF${integration.mcpServers.enabled}/${integration.mcpServers.total}${c.reset}`);
+      }
+      if (integration.hasDatabase) parts.push(`${c.brightGreen}\u25C6${c.reset}DB`);
+    }
+    if (parts.length > 0) {
+      lines.push(`${c.brightCyan}\uD83D\uDCCA AgentDB${c.reset}    ${parts.join(`  ${c.dim}\u2502${c.reset}  `)}`);
+    }
   }
-  if (integration.hasDatabase) integStr += (integStr ? '  ' : '') + `${c.brightGreen}\u25C6${c.reset}DB`;
-  if (integration.hasApi) integStr += (integStr ? '  ' : '') + `${c.brightGreen}\u25C6${c.reset}API`;
-  if (!integStr) integStr = `${c.dim}\u25CF none${c.reset}`;
-
-  lines.push(
-    `${c.brightCyan}\uD83D\uDCCA AgentDB${c.reset}    ` +
-    `${c.cyan}Vectors${c.reset} ${vectorColor}\u25CF${agentdb.vectorCount}${hnswInd}${c.reset}  ${c.dim}\u2502${c.reset}  ` +
-    `${c.cyan}Size${c.reset} ${c.brightWhite}${sizeDisp}${c.reset}  ${c.dim}\u2502${c.reset}  ` +
-    `${c.cyan}Tests${c.reset} ${testColor}\u25CF${tests.testFiles}${c.reset} ${c.dim}(~${tests.testCases} cases)${c.reset}  ${c.dim}\u2502${c.reset}  ` +
-    integStr
-  );
 
   return lines.join('\n');
 }
