@@ -31,7 +31,7 @@ async function getBridge(): Promise<typeof import('./memory-bridge.js') | null> 
  * Vector embeddings enabled for semantic search
  */
 export const MEMORY_SCHEMA_V3 = `
--- RuFlo V3 Memory Database
+-- MoFlo Memory Database
 -- Version: 3.0.0
 -- Features: Pattern learning, vector embeddings, temporal decay, migration tracking
 

@@ -98,7 +98,7 @@ function parseArgs(): HeadlessConfig {
  */
 function showHelp(): void {
   console.log(`
-Headless Runtime for RuFlo V3
+Headless Runtime for MoFlo V4
 
 Usage:
   headless --worker <type>    Run a specific worker
@@ -194,7 +194,7 @@ async function runDaemon(): Promise<void> {
  * Run benchmarks
  */
 async function runBenchmarks(): Promise<BenchmarkResults> {
-  console.log('=== RuFlo V3 Performance Benchmarks ===\n');
+  console.log('=== MoFlo V4 Performance Benchmarks ===\n');
 
   // Initialize intelligence
   await initializeIntelligence();
@@ -274,7 +274,7 @@ async function runBenchmarks(): Promise<BenchmarkResults> {
  * Show system status
  */
 async function showStatus(): Promise<void> {
-  console.log('=== RuFlo V3 System Status ===\n');
+  console.log('=== MoFlo V4 System Status ===\n');
 
   // Check daemon
   const daemon = getDaemon();

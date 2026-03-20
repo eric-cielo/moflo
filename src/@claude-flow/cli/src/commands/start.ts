@@ -96,8 +96,8 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
 
   // Check initialization
   if (!isInitialized(cwd)) {
-    output.printError('RuFlo is not initialized in this directory');
-    output.printInfo('Run "ruflo init" first to initialize');
+    output.printError('MoFlo is not initialized in this directory');
+    output.printInfo('Run "flo init" first to initialize');
     return { success: false, exitCode: 1 };
   }
 
@@ -112,7 +112,7 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
   const mcpPort = port || (mcpConfig.serverPort as number) || DEFAULT_PORT;
 
   output.writeln();
-  output.writeln(output.bold('Starting RuFlo V3'));
+  output.writeln(output.bold('Starting MoFlo V4'));
   output.writeln();
 
   const spinner = output.createSpinner({ text: 'Initializing system...' });
@@ -185,7 +185,7 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
 
     // Success output
     output.writeln();
-    output.printSuccess('RuFlo V3 is running!');
+    output.printSuccess('MoFlo V4 is running!');
     output.writeln();
 
     // Status display
@@ -274,7 +274,7 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
 // Stop subcommand
 const stopCommand: Command = {
   name: 'stop',
-  description: 'Stop the RuFlo system',
+  description: 'Stop the MoFlo system',
   options: [
     {
       name: 'force',
@@ -295,12 +295,12 @@ const stopCommand: Command = {
     const timeout = ctx.flags.timeout as number;
 
     output.writeln();
-    output.writeln(output.bold('Stopping RuFlo'));
+    output.writeln(output.bold('Stopping MoFlo'));
     output.writeln();
 
     if (!force && ctx.interactive) {
       const confirmed = await confirm({
-        message: 'Are you sure you want to stop RuFlo?',
+        message: 'Are you sure you want to stop MoFlo?',
         default: false
       });
 
@@ -344,7 +344,7 @@ const stopCommand: Command = {
       }
 
       output.writeln();
-      output.printSuccess('RuFlo stopped successfully');
+      output.printSuccess('MoFlo stopped successfully');
 
       return {
         success: true,
@@ -361,7 +361,7 @@ const stopCommand: Command = {
 // Restart subcommand
 const restartCommand: Command = {
   name: 'restart',
-  description: 'Restart the RuFlo system',
+  description: 'Restart the MoFlo system',
   options: [
     {
       name: 'force',
@@ -373,7 +373,7 @@ const restartCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     output.writeln();
-    output.writeln(output.bold('Restarting RuFlo'));
+    output.writeln(output.bold('Restarting MoFlo'));
     output.writeln();
 
     // Stop first
@@ -432,7 +432,7 @@ const quickCommand: Command = {
 // Main start command
 export const startCommand: Command = {
   name: 'start',
-  description: 'Start the RuFlo orchestration system',
+  description: 'Start the MoFlo orchestration system',
   subcommands: [stopCommand, restartCommand, quickCommand],
   options: [
     {

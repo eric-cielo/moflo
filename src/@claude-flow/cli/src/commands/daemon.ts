@@ -480,7 +480,7 @@ const statusCommand: Command = {
           `Max CPU Load: ${status.config.resourceThresholds.maxCpuLoad}`,
           `Min Free Memory: ${status.config.resourceThresholds.minFreeMemoryPercent}%`,
         ].filter(Boolean).join('\n'),
-        'RuFlo Daemon'
+        'MoFlo Daemon'
       );
 
       output.writeln();
@@ -560,7 +560,7 @@ const statusCommand: Command = {
           '',
           'Run "claude-flow daemon start" to start the daemon',
         ].join('\n'),
-        'RuFlo Daemon'
+        'MoFlo Daemon'
       );
 
       return { success: true };
@@ -695,7 +695,7 @@ export const daemonCommand: Command = {
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
-    output.writeln(output.bold('RuFlo Daemon - Background Task Management'));
+    output.writeln(output.bold('MoFlo Daemon - Background Task Management'));
     output.writeln();
     output.writeln('Node.js-based background worker system that auto-runs like shell daemons.');
     output.writeln('Manages 12 specialized workers for continuous optimization and monitoring.');

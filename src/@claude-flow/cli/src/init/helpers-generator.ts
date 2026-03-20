@@ -919,7 +919,7 @@ try {
  * Generate Windows PowerShell daemon manager
  */
 export function generateWindowsDaemonManager(): string {
-  return `# RuFlo V3 Daemon Manager for Windows
+  return `# MoFlo V4 Daemon Manager for Windows
 # PowerShell script for managing background processes
 
 param(
@@ -985,7 +985,7 @@ function Stop-SwarmMonitor {
 
 function Show-Status {
     Write-Host ""
-    Write-Host "RuFlo V3 Daemon Status" -ForegroundColor Cyan
+    Write-Host "MoFlo V4 Daemon Status" -ForegroundColor Cyan
     Write-Host "=============================" -ForegroundColor Cyan
 
     $swarmPid = Join-Path $PidDir 'swarm-monitor.pid'
@@ -1026,7 +1026,7 @@ switch ($Action) {
  */
 export function generateWindowsBatchWrapper(): string {
   return `@echo off
-REM RuFlo V3 - Windows Batch Wrapper
+REM MoFlo V4 - Windows Batch Wrapper
 REM Routes to PowerShell daemon manager
 
 PowerShell -ExecutionPolicy Bypass -File "%~dp0daemon-manager.ps1" %*

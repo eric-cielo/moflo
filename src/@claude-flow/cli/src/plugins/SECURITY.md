@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document reviews the security mechanisms implemented in the IPFS-based Plugin Store for RuFlo V3.
+This document reviews the security mechanisms implemented in the IPFS-based Plugin Store for MoFlo V4.
 
 ## Security Mechanisms Implemented
 

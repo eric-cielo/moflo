@@ -491,7 +491,7 @@ export function generateClaudeMd(options: InitOptions, template?: ClaudeMdTempla
   const tmpl = template ?? options.runtime.claudeMdTemplate ?? 'standard';
   const sections = TEMPLATE_SECTIONS[tmpl] ?? TEMPLATE_SECTIONS.standard;
 
-  const header = `# Claude Code Configuration - RuFlo V3\n`;
+  const header = `# Claude Code Configuration - MoFlo V4\n`;
   const body = sections.map(fn => fn(options)).join('\n\n');
 
   return `${header}\n${body}\n`;

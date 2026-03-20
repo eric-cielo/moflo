@@ -110,7 +110,7 @@ const buildCommand: Command = {
 
     const steps = [
       'Collecting kernel artifacts', 'Bundling runtime environment',
-      'Packaging ruflo CLI + MCP tools', 'Compressing sections',
+      'Packaging flo CLI + MCP tools', 'Compressing sections',
       'Computing SHA-256 checksums', 'Writing RVFA container',
     ];
     if (profile !== 'cloud' && models.length > 0) steps.splice(3, 0, 'Embedding model weights');
@@ -405,19 +405,19 @@ export const applianceCommand: Command = {
   aliases: ['rvfa'],
   subcommands: [buildCommand, inspectCommand, verifyCommand, extractCommand, runCommand, signCommand, publishCommand, updateAppCommand],
   examples: [
-    { command: 'ruflo appliance build -p cloud', description: 'Build a cloud appliance' },
-    { command: 'ruflo appliance inspect -f ruflo.rvf', description: 'Inspect appliance contents' },
-    { command: 'ruflo appliance verify -f ruflo.rvf', description: 'Verify integrity' },
-    { command: 'ruflo appliance extract -f ruflo.rvf', description: 'Extract sections' },
-    { command: 'ruflo appliance run -f ruflo.rvf', description: 'Boot and run appliance' },
-    { command: 'ruflo appliance sign -f ruflo.rvf --generate-keys', description: 'Generate keys and sign' },
-    { command: 'ruflo appliance publish -f ruflo.rvf', description: 'Publish to IPFS via Pinata' },
-    { command: 'ruflo appliance update -f ruflo.rvf -s ruflo -d ./new-ruflo.bin', description: 'Hot-patch a section' },
+    { command: 'flo appliance build -p cloud', description: 'Build a cloud appliance' },
+    { command: 'flo appliance inspect -f ruflo.rvf', description: 'Inspect appliance contents' },
+    { command: 'flo appliance verify -f ruflo.rvf', description: 'Verify integrity' },
+    { command: 'flo appliance extract -f ruflo.rvf', description: 'Extract sections' },
+    { command: 'flo appliance run -f ruflo.rvf', description: 'Boot and run appliance' },
+    { command: 'flo appliance sign -f ruflo.rvf --generate-keys', description: 'Generate keys and sign' },
+    { command: 'flo appliance publish -f ruflo.rvf', description: 'Publish to IPFS via Pinata' },
+    { command: 'flo appliance update -f ruflo.rvf -s ruflo -d ./new-ruflo.bin', description: 'Hot-patch a section' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
-    output.writeln(output.bold('Ruflo Appliance (RVFA)'));
-    output.writeln(output.dim('Self-contained deployment format for the full Ruflo platform.'));
+    output.writeln(output.bold('MoFlo Appliance (RVFA)'));
+    output.writeln(output.dim('Self-contained deployment format for the full MoFlo platform.'));
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([
@@ -438,7 +438,7 @@ export const applianceCommand: Command = {
       `${output.bold('offline')}  - Fully air-gapped with bundled models (~4 GB)`,
     ]);
     output.writeln();
-    output.writeln(output.dim('Use "ruflo appliance <subcommand> --help" for details.'));
+    output.writeln(output.dim('Use "flo appliance <subcommand> --help" for details.'));
     return { success: true };
   },
 };

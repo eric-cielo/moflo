@@ -231,7 +231,7 @@ export const providersCommand: Command = {
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
-    output.writeln(output.bold('RuFlo Provider Management'));
+    output.writeln(output.bold('MoFlo Provider Management'));
     output.writeln(output.dim('Multi-provider AI orchestration'));
     output.writeln();
     output.writeln('Subcommands:');

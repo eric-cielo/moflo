@@ -208,9 +208,9 @@ async function checkMcpServers(): Promise<HealthCheck> {
         const count = Object.keys(servers).length;
         const hasClaudeFlow = 'claude-flow' in servers || 'claude-flow_alpha' in servers || 'ruflo' in servers || 'ruflo_alpha' in servers;
         if (hasClaudeFlow) {
-          return { name: 'MCP Servers', status: 'pass', message: `${count} servers (ruflo configured)` };
+          return { name: 'MCP Servers', status: 'pass', message: `${count} servers (flo configured)` };
         } else {
-          return { name: 'MCP Servers', status: 'warn', message: `${count} servers (ruflo not found)`, fix: 'claude mcp add ruflo -- npx -y ruflo@latest mcp start' };
+          return { name: 'MCP Servers', status: 'warn', message: `${count} servers (flo not found)`, fix: 'claude mcp add ruflo -- npx -y ruflo@latest mcp start' };
         }
       } catch {
         // continue to next path
@@ -502,7 +502,7 @@ export const doctorCommand: Command = {
     const verbose = ctx.flags.verbose as boolean;
 
     output.writeln();
-    output.writeln(output.bold('RuFlo Doctor'));
+    output.writeln(output.bold('MoFlo Doctor'));
     output.writeln(output.dim('System diagnostics and health check'));
     output.writeln(output.dim('─'.repeat(50)));
     output.writeln();

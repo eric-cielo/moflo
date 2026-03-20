@@ -38,7 +38,7 @@ const initCommand: Command = {
     const v3 = ctx.flags.v3 as boolean;
 
     output.writeln();
-    output.printInfo('Initializing RuFlo configuration...');
+    output.printInfo('Initializing MoFlo configuration...');
     output.writeln();
 
     // Create default configuration

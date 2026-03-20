@@ -1,6 +1,6 @@
 /**
  * V3 CLI Type Definitions
- * Modernized type system for the RuFlo V3 CLI
+ * Type system for the MoFlo CLI
  */
 
 // ============================================
