@@ -4,7 +4,7 @@
 
 # MoFlo
 
-**An opinionated fork of [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo), optimized for local development with Claude Code.**
+**An opinionated fork of [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo), optimized for local development.**
 
 MoFlo adds automatic code and guidance cataloging along with memory gating on top of the original Ruflo/Claude Flow orchestration engine. Where the upstream project provides raw building blocks, MoFlo ships opinionated defaults — workflow gates that enforce memory-first patterns, semantic indexing that runs at session start, and learned routing that improves over time — so you get a productive setup from `flo init` without manual tuning.
 
