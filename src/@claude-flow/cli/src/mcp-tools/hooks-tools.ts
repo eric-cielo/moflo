@@ -3,8 +3,8 @@
  * Provides intelligent hooks functionality via MCP protocol
  */
 
-import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync } from 'fs';
-import { dirname, join, resolve } from 'path';
+import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync, readdirSync } from 'fs';
+import { dirname, join, resolve, extname } from 'path';
 import type { MCPTool } from './types.js';
 
 // Real vector search functions - lazy loaded to avoid circular imports
@@ -1266,16 +1266,16 @@ export const hooksPostTask: MCPTool = {
       } catch { /* non-critical */ }
     }
 
-    // Optionally store in memory DB for cross-session vector retrieval
-    if (params.storeDecisions && taskText && agent) {
+    // Always store routing learnings in memory DB for cross-session vector retrieval
+    if (taskText && agent) {
       try {
         const storeFn = await getRealStoreFunction();
         if (storeFn) {
           await storeFn({
-            key: `routing-decision:${taskId}`,
-            namespace: 'patterns',
+            key: `learning:routing:${taskId}`,
+            namespace: 'learnings',
             value: JSON.stringify({ task: taskText, agent, success, quality, keywords: outcomeKeywords }),
-            tags: ['routing-decision'],
+            tags: ['routing-learning', agent, success ? 'success' : 'failure'],
           });
         }
       } catch { /* non-critical */ }
@@ -1368,6 +1368,223 @@ export const hooksExplain: MCPTool = {
 };
 
 // Pretrain hook - repository analysis for intelligence bootstrap
+
+/** Recursively collect files matching given extensions up to a limit */
+function collectFiles(dir: string, extensions: Set<string>, limit: number, collected: string[] = []): string[] {
+  if (collected.length >= limit) return collected;
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return collected;
+  }
+  for (const entry of entries) {
+    if (collected.length >= limit) break;
+    const fullPath = join(dir, entry);
+    // Skip common non-source directories
+    if (entry === 'node_modules' || entry === '.git' || entry === 'dist' || entry === 'build' || entry === '.next' || entry === 'coverage') continue;
+    try {
+      const stat = statSync(fullPath);
+      if (stat.isDirectory()) {
+        collectFiles(fullPath, extensions, limit, collected);
+      } else if (stat.isFile() && extensions.has(extname(entry).slice(1))) {
+        collected.push(fullPath);
+      }
+    } catch {
+      // skip unreadable
+    }
+  }
+  return collected;
+}
+
+/** Simple hash for dedup */
+function simpleHash(str: string): string {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h).toString(36);
+}
+
+interface ExtractedPattern {
+  type: string;
+  value: string;
+  count: number;
+  examples: string[];
+}
+
+/** Extract code patterns from file contents */
+function extractPatterns(files: string[]): ExtractedPattern[] {
+  const importCounts = new Map<string, number>();
+  const exportPatterns = { default: 0, named: 0 };
+  const errorPatterns = new Map<string, number>();
+  const namingStyles = { camelCase: 0, snake_case: 0, PascalCase: 0 };
+  const structurePatterns = new Map<string, number>();
+  const apiPatterns = new Map<string, number>();
+  const functionSigs: string[] = [];
+
+  for (const file of files) {
+    let content: string;
+    try {
+      content = readFileSync(file, 'utf-8');
+    } catch {
+      continue;
+    }
+    const lines = content.split('\n');
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      // Import patterns
+      const importMatch = trimmed.match(/^import\s+.*?from\s+['"]([^'"]+)['"]/);
+      if (importMatch) {
+        const mod = importMatch[1].startsWith('.') ? '<relative>' : importMatch[1].split('/')[0];
+        importCounts.set(mod, (importCounts.get(mod) || 0) + 1);
+      }
+      const requireMatch = trimmed.match(/require\(['"]([^'"]+)['"]\)/);
+      if (requireMatch) {
+        const mod = requireMatch[1].startsWith('.') ? '<relative>' : requireMatch[1].split('/')[0];
+        importCounts.set(mod, (importCounts.get(mod) || 0) + 1);
+      }
+      // Python imports
+      const pyImport = trimmed.match(/^(?:from\s+(\S+)\s+import|import\s+(\S+))/);
+      if (pyImport) {
+        const mod = (pyImport[1] || pyImport[2]).split('.')[0];
+        importCounts.set(mod, (importCounts.get(mod) || 0) + 1);
+      }
+
+      // Export patterns
+      if (/^export\s+default\b/.test(trimmed)) exportPatterns.default++;
+      else if (/^export\s+(?:const|function|class|interface|type|enum)\b/.test(trimmed)) exportPatterns.named++;
+
+      // Error handling patterns
+      if (/\bcatch\s*\(/.test(trimmed)) {
+        const errType = trimmed.match(/catch\s*\(\s*(\w+)/)?.[1] || 'generic';
+        errorPatterns.set(errType, (errorPatterns.get(errType) || 0) + 1);
+      }
+      if (/throw\s+new\s+(\w+)/.test(trimmed)) {
+        const errClass = trimmed.match(/throw\s+new\s+(\w+)/)?.[1] || 'Error';
+        errorPatterns.set(`throw:${errClass}`, (errorPatterns.get(`throw:${errClass}`) || 0) + 1);
+      }
+
+      // Function signatures (collect first 50)
+      if (functionSigs.length < 50) {
+        const fnMatch = trimmed.match(/^(?:export\s+)?(?:async\s+)?function\s+(\w+)/);
+        if (fnMatch) functionSigs.push(fnMatch[1]);
+        const arrowMatch = trimmed.match(/^(?:export\s+)?const\s+(\w+)\s*=\s*(?:async\s+)?\(/);
+        if (arrowMatch) functionSigs.push(arrowMatch[1]);
+      }
+
+      // Naming conventions from identifiers
+      const identifiers = trimmed.match(/\b[a-zA-Z_]\w{2,}\b/g) || [];
+      for (const id of identifiers.slice(0, 5)) {
+        if (/^[a-z][a-zA-Z0-9]*$/.test(id) && /[A-Z]/.test(id)) namingStyles.camelCase++;
+        else if (/_/.test(id) && id === id.toLowerCase()) namingStyles.snake_case++;
+        else if (/^[A-Z][a-zA-Z0-9]*$/.test(id) && /[a-z]/.test(id)) namingStyles.PascalCase++;
+      }
+
+      // API/Route patterns
+      const routeMatch = trimmed.match(/\.(get|post|put|patch|delete|use)\s*\(\s*['"\/]/i);
+      if (routeMatch) {
+        const method = routeMatch[1].toUpperCase();
+        apiPatterns.set(method, (apiPatterns.get(method) || 0) + 1);
+      }
+      if (/router\.|app\.|@(Get|Post|Put|Delete|Patch)\b/.test(trimmed)) {
+        apiPatterns.set('route-definition', (apiPatterns.get('route-definition') || 0) + 1);
+      }
+      if (/middleware|\.use\(/.test(trimmed)) {
+        apiPatterns.set('middleware', (apiPatterns.get('middleware') || 0) + 1);
+      }
+
+      // Structure patterns
+      if (/return\s*\{\s*success/.test(trimmed)) {
+        structurePatterns.set('return-success-object', (structurePatterns.get('return-success-object') || 0) + 1);
+      }
+      if (/class\s+\w+Service\b/.test(trimmed)) {
+        structurePatterns.set('service-class', (structurePatterns.get('service-class') || 0) + 1);
+      }
+      if (/class\s+\w+Controller\b/.test(trimmed)) {
+        structurePatterns.set('controller-class', (structurePatterns.get('controller-class') || 0) + 1);
+      }
+      if (/class\s+\w+Repository\b/.test(trimmed)) {
+        structurePatterns.set('repository-class', (structurePatterns.get('repository-class') || 0) + 1);
+      }
+      if (/interface\s+\w+/.test(trimmed)) {
+        structurePatterns.set('typed-interface', (structurePatterns.get('typed-interface') || 0) + 1);
+      }
+    }
+  }
+
+  const patterns: ExtractedPattern[] = [];
+
+  // Top imports by frequency
+  const sortedImports = [...importCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15);
+  if (sortedImports.length > 0) {
+    patterns.push({
+      type: 'import',
+      value: `Top modules: ${sortedImports.map(([m, c]) => `${m}(${c})`).join(', ')}`,
+      count: sortedImports.reduce((s, [, c]) => s + c, 0),
+      examples: sortedImports.slice(0, 5).map(([m]) => m),
+    });
+  }
+
+  // Export patterns
+  if (exportPatterns.default + exportPatterns.named > 0) {
+    patterns.push({
+      type: 'export',
+      value: `default:${exportPatterns.default} named:${exportPatterns.named}`,
+      count: exportPatterns.default + exportPatterns.named,
+      examples: exportPatterns.named > exportPatterns.default
+        ? ['Named exports preferred']
+        : ['Default exports preferred'],
+    });
+  }
+
+  // Error handling
+  const sortedErrors = [...errorPatterns.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+  if (sortedErrors.length > 0) {
+    patterns.push({
+      type: 'error-handling',
+      value: sortedErrors.map(([t, c]) => `${t}(${c})`).join(', '),
+      count: sortedErrors.reduce((s, [, c]) => s + c, 0),
+      examples: sortedErrors.slice(0, 3).map(([t]) => t),
+    });
+  }
+
+  // Naming conventions
+  const dominant = namingStyles.camelCase >= namingStyles.snake_case ? 'camelCase' : 'snake_case';
+  patterns.push({
+    type: 'naming',
+    value: `camelCase:${namingStyles.camelCase} snake_case:${namingStyles.snake_case} PascalCase:${namingStyles.PascalCase} dominant:${dominant}`,
+    count: namingStyles.camelCase + namingStyles.snake_case + namingStyles.PascalCase,
+    examples: functionSigs.slice(0, 5),
+  });
+
+  // Structure patterns
+  const sortedStructures = [...structurePatterns.entries()].sort((a, b) => b[1] - a[1]);
+  if (sortedStructures.length > 0) {
+    patterns.push({
+      type: 'structure',
+      value: sortedStructures.map(([t, c]) => `${t}(${c})`).join(', '),
+      count: sortedStructures.reduce((s, [, c]) => s + c, 0),
+      examples: sortedStructures.slice(0, 3).map(([t]) => t),
+    });
+  }
+
+  // API patterns
+  const sortedApi = [...apiPatterns.entries()].sort((a, b) => b[1] - a[1]);
+  if (sortedApi.length > 0) {
+    patterns.push({
+      type: 'api-pattern',
+      value: sortedApi.map(([t, c]) => `${t}(${c})`).join(', '),
+      count: sortedApi.reduce((s, [, c]) => s + c, 0),
+      examples: sortedApi.slice(0, 3).map(([t]) => t),
+    });
+  }
+
+  return patterns;
+}
+
 export const hooksPretrain: MCPTool = {
   name: 'hooks_pretrain',
   description: 'Analyze repository to bootstrap intelligence (4-step pipeline)',
@@ -1376,34 +1593,89 @@ export const hooksPretrain: MCPTool = {
     properties: {
       path: { type: 'string', description: 'Repository path' },
       depth: { type: 'string', description: 'Analysis depth (shallow, medium, deep)' },
+      fileTypes: { type: 'string', description: 'Comma-separated file extensions to scan (default: ts,js,py,md)' },
       skipCache: { type: 'boolean', description: 'Skip cached analysis' },
     },
   },
   handler: async (params: Record<string, unknown>) => {
-    const path = (params.path as string) || '.';
+    const repoPath = resolve((params.path as string) || '.');
     const depth = (params.depth as string) || 'medium';
+    const fileTypesStr = (params.fileTypes as string) || 'ts,js,py,md';
     const startTime = Date.now();
 
-    // Scale analysis results by depth level
-    const multiplier = depth === 'deep' ? 3 : depth === 'shallow' ? 1 : 2;
+    // Determine file limit by depth
+    const fileLimit = depth === 'deep' ? 100 : depth === 'shallow' ? 30 : 60;
+    const extensions = new Set(fileTypesStr.split(',').map(e => e.trim()));
+
+    // Phase 1: Retrieve - collect source files
+    const retrieveStart = Date.now();
+    const files = collectFiles(repoPath, extensions, fileLimit);
+    const retrieveDuration = Date.now() - retrieveStart;
+
+    // Phase 2: Judge - extract patterns from files
+    const judgeStart = Date.now();
+    const patterns = extractPatterns(files);
+    const judgeDuration = Date.now() - judgeStart;
+
+    // Phase 3: Distill - store patterns in memory DB
+    const distillStart = Date.now();
+    let patternsStored = 0;
+    let storageErrors = 0;
+    const storeFn = await getRealStoreFunction();
+    if (storeFn) {
+      for (const pattern of patterns) {
+        const hash = simpleHash(`${pattern.type}:${pattern.value}`);
+        try {
+          await storeFn({
+            key: `pattern-${pattern.type}-${hash}`,
+            value: JSON.stringify({
+              type: pattern.type,
+              value: pattern.value,
+              count: pattern.count,
+              examples: pattern.examples,
+              filesAnalyzed: files.length,
+              extractedAt: new Date().toISOString(),
+            }),
+            namespace: 'patterns',
+            generateEmbeddingFlag: true,
+            tags: [pattern.type, 'pretrain', `depth-${depth}`],
+          });
+          patternsStored++;
+        } catch {
+          storageErrors++;
+        }
+      }
+    }
+    const distillDuration = Date.now() - distillStart;
+
+    // Phase 4: Consolidate - summary
+    const consolidateStart = Date.now();
+    const consolidateDuration = Date.now() - consolidateStart;
 
     return {
-      path,
+      path: repoPath,
       depth,
+      fileTypes: fileTypesStr,
       stats: {
-        filesAnalyzed: 42 * multiplier,
-        patternsExtracted: 15 * multiplier,
-        strategiesLearned: 8 * multiplier,
-        trajectoriesEvaluated: 23 * multiplier,
-        contradictionsResolved: 3,
+        filesAnalyzed: files.length,
+        patternsExtracted: patterns.length,
+        patternsStored,
+        storageErrors,
+        patternTypes: patterns.map(p => p.type),
       },
+      patterns: patterns.map(p => ({
+        type: p.type,
+        summary: p.value,
+        count: p.count,
+        examples: p.examples,
+      })),
       pipeline: {
-        retrieve: { status: 'completed', duration: 120 * multiplier },
-        judge: { status: 'completed', duration: 180 * multiplier },
-        distill: { status: 'completed', duration: 90 * multiplier },
-        consolidate: { status: 'completed', duration: 60 * multiplier },
+        retrieve: { status: 'completed', filesFound: files.length, duration: retrieveDuration },
+        judge: { status: 'completed', patternsFound: patterns.length, duration: judgeDuration },
+        distill: { status: storeFn ? 'completed' : 'skipped', stored: patternsStored, errors: storageErrors, duration: distillDuration },
+        consolidate: { status: 'completed', duration: consolidateDuration },
       },
-      duration: Date.now() - startTime + (500 * multiplier),
+      duration: Date.now() - startTime,
     };
   },
 };
@@ -2212,7 +2484,7 @@ export const hooksPatternStore: MCPTool = {
           storeResult = await storeFn({
             key: patternId,
             value: JSON.stringify({ pattern, type, confidence, metadata, timestamp }),
-            namespace: 'pattern',
+            namespace: 'patterns',
             generateEmbeddingFlag: true,
             tags: [type, `confidence-${Math.round(confidence * 100)}`, 'reasoning-pattern'],
           });
