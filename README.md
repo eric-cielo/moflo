@@ -189,6 +189,21 @@ feature:
 
 Stories are resolved via topological sort (respecting `depends_on`), then executed sequentially by spawning `claude -p "/flo <issue>"`.
 
+### The `/flo` Skill
+
+Inside your AI client, the `/flo` (or `/fl`) slash command drives GitHub issue workflows. Quick reference:
+
+```
+/flo <issue>                  # Full workflow (research → implement → test → PR)
+/flo -e <issue>               # Enhance only (research and update ticket, then stop)
+/flo -r <issue>               # Research only (analyze issue, output findings)
+/flo -n <issue>               # Naked mode (single agent, no swarm)
+/flo -hv <issue>              # Hive-mind mode (consensus-based coordination)
+/flo <epic-issue>             # Detects epics, processes stories sequentially
+```
+
+For full options and details, type `/flo` with no arguments — your AI client will display the complete skill documentation. Also available as `/fl`.
+
 ### System
 
 ```bash
