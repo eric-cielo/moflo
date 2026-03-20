@@ -1031,15 +1031,13 @@ async function writeHelpers(
     }
   }
 
-  // Fall back to generating helpers if source not available
+  // Fall back to generating helpers if source not available.
+  // Only generate actively used helpers — hooks now go through npx flo CLI,
+  // so hook-handler.cjs, router.js, session.js, memory.js, intelligence.cjs
+  // are no longer needed.
   const helpers: Record<string, string> = {
     'pre-commit': generatePreCommitHook(),
     'post-commit': generatePostCommitHook(),
-    'session.js': generateSessionManager(),
-    'router.js': generateAgentRouter(),
-    'memory.js': generateMemoryHelper(),
-    'hook-handler.cjs': generateHookHandler(),
-    'intelligence.cjs': generateIntelligenceStub(),
     'auto-memory-hook.mjs': generateAutoMemoryHook(),
   };
 

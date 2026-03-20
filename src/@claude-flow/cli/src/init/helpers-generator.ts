@@ -1161,23 +1161,14 @@ export function generateHelpers(options: InitOptions): Record<string, string> {
   const helpers: Record<string, string> = {};
 
   if (options.components.helpers) {
-    // Unix/macOS shell scripts
     helpers['pre-commit'] = generatePreCommitHook();
     helpers['post-commit'] = generatePostCommitHook();
-
-    // Cross-platform Node.js scripts
-    helpers['session.js'] = generateCrossPlatformSessionManager();
-    helpers['router.js'] = generateAgentRouter();
-    helpers['memory.js'] = generateMemoryHelper();
-
-    // Windows-specific scripts
-    helpers['daemon-manager.ps1'] = generateWindowsDaemonManager();
-    helpers['daemon-manager.cmd'] = generateWindowsBatchWrapper();
+    // Hook dispatch now goes through npx flo CLI — no more hook-handler.cjs,
+    // router.js, session.js, memory.js, or intelligence.cjs stubs needed.
   }
 
   if (options.components.statusline) {
-    helpers['statusline.cjs'] = generateStatuslineScript(options);  // .cjs for ES module compatibility
-    helpers['statusline-hook.sh'] = generateStatuslineHook(options);
+    helpers['statusline.cjs'] = generateStatuslineScript(options);
   }
 
   return helpers;

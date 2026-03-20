@@ -207,92 +207,88 @@ function generateStatusLineConfig(_options: InitOptions): object {
 
 /**
  * Generate hooks configuration
- * Uses local hook-handler.cjs for cross-platform compatibility.
- * All hooks invoke scripts directly via `node <script> <subcommand>`,
- * working identically on Windows, macOS, and Linux.
+ * All hooks route through the npx flo CLI for consistent behavior.
+ * The CLI handles routing, gates, learning, and session management.
  */
 function generateHooksConfig(config: HooksConfig): object {
   const hooks: Record<string, unknown[]> = {};
 
-  // Node.js scripts handle errors internally via try/catch.
-  // No shell-level error suppression needed (2>/dev/null || true breaks Windows).
-
-  // PreToolUse — validate commands and edits before execution
+  // PreToolUse — gates and validation before tool execution
   if (config.preToolUse) {
     hooks.PreToolUse = [
       {
-        matcher: 'Bash',
+        matcher: '^(Write|Edit|MultiEdit)$',
+        hooks: [{ type: 'command', command: 'npx flo hooks pre-edit', timeout: 5000 }],
+      },
+      {
+        matcher: '^(Glob|Grep)$',
+        hooks: [{ type: 'command', command: 'npx flo gate check-before-scan', timeout: 3000 }],
+      },
+      {
+        matcher: '^Read$',
+        hooks: [{ type: 'command', command: 'npx flo gate check-before-read', timeout: 3000 }],
+      },
+      {
+        matcher: '^Task$',
         hooks: [
-          {
-            type: 'command',
-            command: hookHandlerCmd('pre-bash'),
-            timeout: config.timeout,
-          },
+          { type: 'command', command: 'npx flo gate check-before-agent', timeout: 3000 },
+          { type: 'command', command: 'npx flo hooks pre-task', timeout: 5000 },
         ],
       },
       {
-        matcher: 'Write|Edit|MultiEdit',
-        hooks: [
-          {
-            type: 'command',
-            command: hookHandlerCmd('pre-edit'),
-            timeout: config.timeout,
-          },
-        ],
+        matcher: '^Bash$',
+        hooks: [{ type: 'command', command: 'npx flo gate check-dangerous-command', timeout: 2000 }],
       },
     ];
   }
 
-  // PostToolUse — record edits and commands for session metrics / learning
+  // PostToolUse — record outcomes for learning
   if (config.postToolUse) {
     hooks.PostToolUse = [
       {
-        matcher: 'Write|Edit|MultiEdit',
-        hooks: [
-          {
-            type: 'command',
-            command: hookHandlerCmd('post-edit'),
-            timeout: 10000,
-          },
-        ],
+        matcher: '^(Write|Edit|MultiEdit)$',
+        hooks: [{ type: 'command', command: 'npx flo hooks post-edit', timeout: 5000 }],
       },
       {
-        matcher: 'Bash',
-        hooks: [
-          {
-            type: 'command',
-            command: hookHandlerCmd('post-bash'),
-            timeout: config.timeout,
-          },
-        ],
+        matcher: '^Task$',
+        hooks: [{ type: 'command', command: 'npx flo hooks post-task', timeout: 5000 }],
+      },
+      {
+        matcher: '^TaskCreate$',
+        hooks: [{ type: 'command', command: 'npx flo gate record-task-created', timeout: 2000 }],
+      },
+      {
+        matcher: '^Bash$',
+        hooks: [{ type: 'command', command: 'npx flo gate check-bash-memory', timeout: 2000 }],
+      },
+      {
+        matcher: '^mcp__claude-flow__memory_(search|retrieve)$',
+        hooks: [{ type: 'command', command: 'npx flo gate record-memory-searched', timeout: 2000 }],
       },
     ];
   }
 
-  // UserPromptSubmit — intelligent task routing
+  // UserPromptSubmit — gate reminders + intelligent task routing
   if (config.userPromptSubmit) {
     hooks.UserPromptSubmit = [
       {
         hooks: [
-          {
-            type: 'command',
-            command: hookHandlerCmd('route'),
-            timeout: 10000,
-          },
+          { type: 'command', command: 'npx flo gate prompt-reminder', timeout: 2000 },
+          { type: 'command', command: 'npx flo hooks route', timeout: 5000 },
         ],
       },
     ];
   }
 
-  // SessionStart — restore session state + import auto memory
+  // SessionStart — launch daemon, indexers, pretrain via session-start-launcher
   if (config.sessionStart) {
     hooks.SessionStart = [
       {
         hooks: [
           {
             type: 'command',
-            command: hookHandlerCmd('session-restore'),
-            timeout: 15000,
+            command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/session-start-launcher.mjs"',
+            timeout: 3000,
           },
           {
             type: 'command',
@@ -304,105 +300,35 @@ function generateHooksConfig(config: HooksConfig): object {
     ];
   }
 
-  // SessionEnd — persist session state
-  if (config.sessionStart) {
-    hooks.SessionEnd = [
-      {
-        hooks: [
-          {
-            type: 'command',
-            command: hookHandlerCmd('session-end'),
-            timeout: 10000,
-          },
-        ],
-      },
-    ];
-  }
-
-  // Stop — sync auto memory on exit
+  // Stop — persist session + sync auto memory
   if (config.stop) {
     hooks.Stop = [
       {
         hooks: [
-          {
-            type: 'command',
-            command: autoMemoryCmd('sync'),
-            timeout: 10000,
-          },
+          { type: 'command', command: 'npx flo hooks session-end', timeout: 5000 },
+          { type: 'command', command: autoMemoryCmd('sync'), timeout: 10000 },
         ],
       },
     ];
   }
 
-  // PreCompact — preserve context before compaction
+  // PreCompact — guidance before context window compaction
   if (config.preCompact) {
     hooks.PreCompact = [
       {
-        matcher: 'manual',
-        hooks: [
-          {
-            type: 'command',
-            command: hookHandlerCmd('compact-manual'),
-          },
-          {
-            type: 'command',
-            command: hookHandlerCmd('session-end'),
-            timeout: 5000,
-          },
-        ],
-      },
-      {
-        matcher: 'auto',
-        hooks: [
-          {
-            type: 'command',
-            command: hookHandlerCmd('compact-auto'),
-          },
-          {
-            type: 'command',
-            command: hookHandlerCmd('session-end'),
-            timeout: 6000,
-          },
-        ],
+        hooks: [{ type: 'command', command: 'npx flo gate compact-guidance', timeout: 3000 }],
       },
     ];
   }
 
-  // SubagentStart — status update when a sub-agent is spawned
-  hooks.SubagentStart = [
-    {
-      hooks: [
-        {
-          type: 'command',
-          command: hookHandlerCmd('status'),
-          timeout: 3000,
-        },
-      ],
-    },
-  ];
-
-  // SubagentStop — track agent completion for metrics
-  // NOTE: The valid event is "SubagentStop" (not "SubagentEnd")
-  hooks.SubagentStop = [
-    {
-      hooks: [
-        {
-          type: 'command',
-          command: hookHandlerCmd('post-task'),
-          timeout: 5000,
-        },
-      ],
-    },
-  ];
-
-  // Notification — capture Claude Code notifications for logging
+  // Notification — capture notifications for logging
   if (config.notification) {
     hooks.Notification = [
       {
         hooks: [
           {
             type: 'command',
-            command: hookHandlerCmd('notify'),
+            command: 'npx flo hooks notification',
             timeout: 3000,
           },
         ],
