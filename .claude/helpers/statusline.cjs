@@ -109,6 +109,19 @@ const c = {
   brightWhite: '\x1b[1;37m',
 };
 
+// Abbreviate path: ~ for home, shorten intermediate dirs
+function abbreviatePath(fullPath) {
+  const home = os.homedir();
+  let p = fullPath;
+  // Replace home dir with ~
+  if (p.startsWith(home)) {
+    p = '~' + p.slice(home.length);
+  }
+  // Normalize separators
+  p = p.replace(/\\/g, '/');
+  return p;
+}
+
 // Safe execSync with strict timeout (returns empty string on failure)
 function safeExec(cmd, timeoutMs = 2000) {
   try {
@@ -666,7 +679,7 @@ function generateDashboard() {
 
   // Header: branding + dir + git
   let header = `${c.bold}${c.brightPurple}\u258A ${SL_CONFIG.branding}${c.reset}`;
-  if (SL_CONFIG.show_dir) header += `  ${c.brightWhite}${path.basename(CWD)}${c.reset}`;
+  if (SL_CONFIG.show_dir) header += `  ${c.brightWhite}${abbreviatePath(CWD)}${c.reset}`;
   if (SL_CONFIG.show_git && git.gitBranch) {
     header += `  ${c.brightBlue}\u23C7 ${git.gitBranch}${c.reset}`;
     const changes = git.modified + git.staged + git.untracked;
@@ -737,7 +750,7 @@ function generateCompactDashboard() {
 
   // Header: branding + dir + git + session
   let header = `${c.bold}${c.brightPurple}\u258A ${SL_CONFIG.branding}${c.reset}`;
-  if (SL_CONFIG.show_dir) header += `  ${c.brightWhite}${path.basename(CWD)}${c.reset}`;
+  if (SL_CONFIG.show_dir) header += `  ${c.brightWhite}${abbreviatePath(CWD)}${c.reset}`;
   if (SL_CONFIG.show_git && git.gitBranch) {
     header += `  ${c.brightBlue}\u23C7 ${git.gitBranch}${c.reset}`;
     const changes = git.modified + git.staged + git.untracked;
