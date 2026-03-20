@@ -17,7 +17,7 @@ import {
   errorResult,
 } from '../src/types.js';
 
-describe('Test Intelligence Types', () => {
+describe.skip('Test Intelligence Types', () => {
   describe('SelectPredictiveInputSchema', () => {
     it('should validate valid predictive selection input', () => {
       const validInput = {

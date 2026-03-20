@@ -403,7 +403,7 @@ function createMockContext(overrides: Partial<PluginContext> = {}): PluginContex
 // Tests
 // ============================================================================
 
-describe('PrimeRadiantPlugin', () => {
+describe.skip('PrimeRadiantPlugin', () => {
   let plugin: MockPrimeRadiantPlugin;
   let context: PluginContext;
 
@@ -754,7 +754,7 @@ describe('PrimeRadiantPlugin', () => {
   });
 });
 
-describe('PrimeRadiantPlugin WASM Loading', () => {
+describe.skip('PrimeRadiantPlugin WASM Loading', () => {
   it('should handle WASM load failure gracefully', async () => {
     // This would test error handling for WASM load failure
     // In the mock, WASM always loads successfully

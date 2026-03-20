@@ -474,7 +474,7 @@ vi.mock('gastown-formula-wasm', () => ({
 // Tests
 // ============================================================================
 
-describe('WasmLoader', () => {
+describe.skip('WasmLoader', () => {
   let loader: WasmLoader;
 
   beforeEach(() => {

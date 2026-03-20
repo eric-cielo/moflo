@@ -1536,9 +1536,9 @@ describe('Init System', () => {
       expect(md.length).toBeGreaterThan(100);
     });
 
-    it('should contain header with RuFlo V3', () => {
+    it('should contain header with MoFlo', () => {
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
-      expect(md).toContain('RuFlo V3');
+      expect(md).toContain('MoFlo');
     });
 
     it('should contain behavioral rules', () => {

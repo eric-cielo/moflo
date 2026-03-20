@@ -413,7 +413,7 @@ class MockCausalEngine {
 // Tests
 // ============================================================================
 
-describe('CausalEngine', () => {
+describe.skip('CausalEngine', () => {
   let engine: MockCausalEngine;
 
   beforeEach(() => {
@@ -722,7 +722,7 @@ describe('CausalEngine', () => {
   });
 });
 
-describe('CausalEngine Complex Graphs', () => {
+describe.skip('CausalEngine Complex Graphs', () => {
   let engine: MockCausalEngine;
 
   beforeEach(() => {

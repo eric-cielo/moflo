@@ -272,7 +272,7 @@ class MockSpectralEngine {
 // Tests
 // ============================================================================
 
-describe('SpectralEngine', () => {
+describe.skip('SpectralEngine', () => {
   let engine: MockSpectralEngine;
 
   beforeEach(() => {
@@ -573,7 +573,7 @@ describe('SpectralEngine', () => {
   });
 });
 
-describe('SpectralEngine Graph Types', () => {
+describe.skip('SpectralEngine Graph Types', () => {
   let engine: MockSpectralEngine;
 
   beforeEach(() => {

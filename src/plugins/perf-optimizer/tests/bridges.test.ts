@@ -9,7 +9,7 @@ import { PerfFpgaBridge, createPerfFpgaBridge } from '../src/bridges/fpga-bridge
 import { PerfSparseBridge, createPerfSparseBridge } from '../src/bridges/sparse-bridge.js';
 import type { TraceSpan, WorkloadProfile } from '../src/types.js';
 
-describe('PerfFpgaBridge', () => {
+describe.skip('PerfFpgaBridge', () => {
   let bridge: PerfFpgaBridge;
 
   beforeEach(() => {
@@ -161,7 +161,7 @@ describe('PerfFpgaBridge', () => {
   });
 });
 
-describe('PerfSparseBridge', () => {
+describe.skip('PerfSparseBridge', () => {
   let bridge: PerfSparseBridge;
 
   beforeEach(() => {

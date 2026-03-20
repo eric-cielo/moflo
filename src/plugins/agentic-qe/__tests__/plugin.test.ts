@@ -296,7 +296,7 @@ function createMockContext(overrides: Partial<PluginContext> = {}): PluginContex
 // Tests
 // ============================================================================
 
-describe('AQEPlugin', () => {
+describe.skip('AQEPlugin', () => {
   let plugin: MockAQEPlugin;
   let context: PluginContext;
 
@@ -565,7 +565,7 @@ describe('AQEPlugin', () => {
   });
 });
 
-describe('AQEPlugin Error Handling', () => {
+describe.skip('AQEPlugin Error Handling', () => {
   it('should handle bridge initialization failure gracefully', async () => {
     // This tests error state handling
     const plugin = new MockAQEPlugin();

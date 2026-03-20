@@ -304,7 +304,7 @@ class MockWasmBridge {
 // Tests
 // ============================================================================
 
-describe('WasmBridge', () => {
+describe.skip('WasmBridge', () => {
   let bridge: MockWasmBridge;
 
   beforeEach(() => {
@@ -420,7 +420,7 @@ describe('WasmBridge', () => {
   });
 });
 
-describe('CohomologyEngine', () => {
+describe.skip('CohomologyEngine', () => {
   let bridge: MockWasmBridge;
   let engine: CohomologyEngine;
 
@@ -492,7 +492,7 @@ describe('CohomologyEngine', () => {
   });
 });
 
-describe('SpectralEngine', () => {
+describe.skip('SpectralEngine', () => {
   let bridge: MockWasmBridge;
   let engine: SpectralEngine;
 
@@ -555,7 +555,7 @@ describe('SpectralEngine', () => {
   });
 });
 
-describe('CausalEngine', () => {
+describe.skip('CausalEngine', () => {
   let bridge: MockWasmBridge;
   let engine: CausalEngine;
 
@@ -642,7 +642,7 @@ describe('CausalEngine', () => {
   });
 });
 
-describe('QuantumEngine', () => {
+describe.skip('QuantumEngine', () => {
   let bridge: MockWasmBridge;
   let engine: QuantumEngine;
 

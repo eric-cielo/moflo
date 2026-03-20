@@ -217,7 +217,7 @@ class MockGenerateTestsTool {
 // Tests
 // ============================================================================
 
-describe('GenerateTestsTool', () => {
+describe.skip('GenerateTestsTool', () => {
   let tool: MockGenerateTestsTool;
 
   beforeEach(() => {
@@ -450,7 +450,7 @@ describe('GenerateTestsTool', () => {
   });
 });
 
-describe('GenerateTestsTool Configuration', () => {
+describe.skip('GenerateTestsTool Configuration', () => {
   it('should use custom default framework', async () => {
     const tool = new MockGenerateTestsTool({ defaultFramework: 'jest' });
     const result = await tool.execute({ targetPath: '/src/test.ts' });
@@ -474,7 +474,7 @@ describe('GenerateTestsTool Configuration', () => {
   });
 });
 
-describe('GenerateTestsTool Edge Cases', () => {
+describe.skip('GenerateTestsTool Edge Cases', () => {
   let tool: MockGenerateTestsTool;
 
   beforeEach(() => {

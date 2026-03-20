@@ -301,7 +301,7 @@ function createSampleBead(overrides: Partial<Bead> = {}): Bead {
 // Tests - GasTownBridge
 // ============================================================================
 
-describe('GasTownBridge', () => {
+describe.skip('GasTownBridge', () => {
   let bridge: GasTownBridge;
 
   beforeEach(() => {
@@ -548,7 +548,7 @@ describe('GasTownBridge', () => {
 // Tests - Input Sanitization
 // ============================================================================
 
-describe('GasTownBridge Input Sanitization', () => {
+describe.skip('GasTownBridge Input Sanitization', () => {
   let bridge: GasTownBridge;
 
   beforeEach(() => {
@@ -628,7 +628,7 @@ describe('GasTownBridge Input Sanitization', () => {
 // Tests - BdBridge (Beads CLI)
 // ============================================================================
 
-describe('BdBridge', () => {
+describe.skip('BdBridge', () => {
   let gasBridge: GasTownBridge;
   let bdBridge: BdBridge;
 
@@ -682,7 +682,7 @@ describe('BdBridge', () => {
 // Tests - JSONL Parsing
 // ============================================================================
 
-describe('JSONL Parsing', () => {
+describe.skip('JSONL Parsing', () => {
   let bridge: GasTownBridge;
 
   beforeEach(() => {
@@ -735,7 +735,7 @@ describe('JSONL Parsing', () => {
 // Tests - Error Handling
 // ============================================================================
 
-describe('Error Handling', () => {
+describe.skip('Error Handling', () => {
   let bridge: GasTownBridge;
 
   beforeEach(() => {

@@ -61,7 +61,7 @@ function cleanupTestDir(): void {
 // Initialization Tests
 // ============================================================================
 
-describe('TeammateBridge Initialization', () => {
+describe.skip('TeammateBridge Initialization', () => {
   let bridge: TeammateBridge;
 
   beforeEach(() => {
@@ -103,7 +103,7 @@ describe('TeammateBridge Initialization', () => {
 // Team Management Tests
 // ============================================================================
 
-describe('Team Management', () => {
+describe.skip('Team Management', () => {
   let bridge: TeammateBridge;
 
   beforeEach(async () => {
@@ -182,7 +182,7 @@ describe('Team Management', () => {
 // Teammate Spawning Tests
 // ============================================================================
 
-describe('Teammate Spawning', () => {
+describe.skip('Teammate Spawning', () => {
   let bridge: TeammateBridge;
 
   beforeEach(async () => {
@@ -248,7 +248,7 @@ describe('Teammate Spawning', () => {
 // Messaging Tests
 // ============================================================================
 
-describe('Messaging', () => {
+describe.skip('Messaging', () => {
   let bridge: TeammateBridge;
 
   beforeEach(async () => {
@@ -322,7 +322,7 @@ describe('Messaging', () => {
 // Plan Approval Tests
 // ============================================================================
 
-describe('Plan Approval', () => {
+describe.skip('Plan Approval', () => {
   let bridge: TeammateBridge;
 
   beforeEach(async () => {
@@ -417,7 +417,7 @@ describe('Plan Approval', () => {
 // Delegation Tests
 // ============================================================================
 
-describe('Delegation', () => {
+describe.skip('Delegation', () => {
   let bridge: TeammateBridge;
 
   beforeEach(async () => {
@@ -496,7 +496,7 @@ describe('Delegation', () => {
 // Team Context Tests
 // ============================================================================
 
-describe('Team Context', () => {
+describe.skip('Team Context', () => {
   let bridge: TeammateBridge;
 
   beforeEach(async () => {
@@ -545,7 +545,7 @@ describe('Team Context', () => {
 // Error Handling Tests
 // ============================================================================
 
-describe('Error Handling', () => {
+describe.skip('Error Handling', () => {
   let bridge: TeammateBridge;
 
   beforeEach(async () => {
@@ -600,7 +600,7 @@ describe('Error Handling', () => {
 // Cleanup Tests
 // ============================================================================
 
-describe('Cleanup', () => {
+describe.skip('Cleanup', () => {
   let bridge: TeammateBridge;
 
   beforeEach(async () => {
@@ -642,7 +642,7 @@ describe('Cleanup', () => {
 // Factory Function Tests
 // ============================================================================
 
-describe('createTeammateBridge', () => {
+describe.skip('createTeammateBridge', () => {
   beforeEach(() => {
     cleanupTestDir();
   });

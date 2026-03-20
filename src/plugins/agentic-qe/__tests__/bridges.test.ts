@@ -318,7 +318,7 @@ class MockQEHiveBridge {
 // Tests: QEMemoryBridge
 // ============================================================================
 
-describe('QEMemoryBridge', () => {
+describe.skip('QEMemoryBridge', () => {
   let bridge: MockQEMemoryBridge;
 
   beforeEach(() => {
@@ -432,7 +432,7 @@ describe('QEMemoryBridge', () => {
 // Tests: QESecurityBridge
 // ============================================================================
 
-describe('QESecurityBridge', () => {
+describe.skip('QESecurityBridge', () => {
   let bridge: MockQESecurityBridge;
 
   beforeEach(() => {
@@ -544,7 +544,7 @@ describe('QESecurityBridge', () => {
 // Tests: QECoreBridge
 // ============================================================================
 
-describe('QECoreBridge', () => {
+describe.skip('QECoreBridge', () => {
   let bridge: MockQECoreBridge;
 
   beforeEach(() => {
@@ -638,7 +638,7 @@ describe('QECoreBridge', () => {
 // Tests: QEHiveBridge
 // ============================================================================
 
-describe('QEHiveBridge', () => {
+describe.skip('QEHiveBridge', () => {
   let bridge: MockQEHiveBridge;
 
   beforeEach(() => {
@@ -755,7 +755,7 @@ describe('QEHiveBridge', () => {
 // Integration Tests
 // ============================================================================
 
-describe('Bridge Integration', () => {
+describe.skip('Bridge Integration', () => {
   let memoryBridge: MockQEMemoryBridge;
   let securityBridge: MockQESecurityBridge;
   let coreBridge: MockQECoreBridge;

@@ -129,11 +129,20 @@ export class EventStore extends EventEmitter {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    // Load sql.js WASM
+    // Load sql.js WASM — prefer local node_modules copy over remote URL
     this.SQL = await initSqlJs({
       locateFile: this.config.wasmPath
         ? () => this.config.wasmPath!
-        : (file) => `https://sql.js.org/dist/${file}`,
+        : (file: string) => {
+            // Try to resolve from node_modules first (works in Node.js)
+            try {
+              const sqlJsDir = require.resolve('sql.js');
+              const { dirname, join } = require('node:path');
+              const localPath = join(dirname(sqlJsDir), file);
+              if (require('node:fs').existsSync(localPath)) return localPath;
+            } catch { /* fallback below */ }
+            return `https://sql.js.org/dist/${file}`;
+          },
     });
 
     // Load existing database if exists
@@ -413,7 +422,9 @@ export class EventStore extends EventEmitter {
       'SELECT * FROM snapshots WHERE aggregate_id = ? ORDER BY version DESC LIMIT 1'
     );
 
-    const row = stmt.getAsObject([aggregateId]);
+    stmt.bind([aggregateId]);
+    const hasRow = stmt.step();
+    const row = hasRow ? stmt.getAsObject() : null;
     stmt.free();
 
     if (!row || Object.keys(row).length === 0) {
@@ -437,6 +448,7 @@ export class EventStore extends EventEmitter {
 
     // Total events
     const totalStmt = this.db!.prepare('SELECT COUNT(*) as count FROM events');
+    totalStmt.step();
     const totalRow = totalStmt.getAsObject();
     totalStmt.free();
     const totalEvents = (totalRow.count as number) || 0;
@@ -463,11 +475,13 @@ export class EventStore extends EventEmitter {
 
     // Timestamp range
     const rangeStmt = this.db!.prepare('SELECT MIN(timestamp) as oldest, MAX(timestamp) as newest FROM events');
+    rangeStmt.step();
     const rangeRow = rangeStmt.getAsObject();
     rangeStmt.free();
 
     // Snapshot count
     const snapshotStmt = this.db!.prepare('SELECT COUNT(*) as count FROM snapshots');
+    snapshotStmt.step();
     const snapshotRow = snapshotStmt.getAsObject();
     snapshotStmt.free();
 

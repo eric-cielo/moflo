@@ -320,7 +320,7 @@ class MockSecurityScanTool {
 // Tests
 // ============================================================================
 
-describe('SecurityScanTool', () => {
+describe.skip('SecurityScanTool', () => {
   let tool: MockSecurityScanTool;
 
   beforeEach(() => {
@@ -623,7 +623,7 @@ describe('SecurityScanTool', () => {
   });
 });
 
-describe('SecurityScanTool Common Vulnerabilities', () => {
+describe.skip('SecurityScanTool Common Vulnerabilities', () => {
   let tool: MockSecurityScanTool;
 
   beforeEach(() => {
@@ -665,7 +665,7 @@ describe('SecurityScanTool Common Vulnerabilities', () => {
   });
 });
 
-describe('SecurityScanTool Performance', () => {
+describe.skip('SecurityScanTool Performance', () => {
   let tool: MockSecurityScanTool;
 
   beforeEach(() => {

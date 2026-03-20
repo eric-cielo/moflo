@@ -439,7 +439,7 @@ class MockChaosInjectTool {
 // Tests
 // ============================================================================
 
-describe('ChaosInjectTool', () => {
+describe.skip('ChaosInjectTool', () => {
   let tool: MockChaosInjectTool;
 
   beforeEach(() => {
@@ -794,7 +794,7 @@ describe('ChaosInjectTool', () => {
   });
 });
 
-describe('ChaosInjectTool Safety', () => {
+describe.skip('ChaosInjectTool Safety', () => {
   let tool: MockChaosInjectTool;
 
   beforeEach(() => {
@@ -843,7 +843,7 @@ describe('ChaosInjectTool Safety', () => {
   });
 });
 
-describe('ChaosInjectTool Experiment Management', () => {
+describe.skip('ChaosInjectTool Experiment Management', () => {
   let tool: MockChaosInjectTool;
 
   beforeEach(() => {

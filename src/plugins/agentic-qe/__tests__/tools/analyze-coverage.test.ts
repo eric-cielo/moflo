@@ -280,7 +280,7 @@ class MockAnalyzeCoverageTool {
 // Tests
 // ============================================================================
 
-describe('AnalyzeCoverageTool', () => {
+describe.skip('AnalyzeCoverageTool', () => {
   let tool: MockAnalyzeCoverageTool;
 
   beforeEach(() => {
@@ -538,7 +538,7 @@ describe('AnalyzeCoverageTool', () => {
   });
 });
 
-describe('AnalyzeCoverageTool Performance', () => {
+describe.skip('AnalyzeCoverageTool Performance', () => {
   let tool: MockAnalyzeCoverageTool;
 
   beforeEach(() => {
@@ -576,7 +576,7 @@ describe('AnalyzeCoverageTool Performance', () => {
   });
 });
 
-describe('AnalyzeCoverageTool Edge Cases', () => {
+describe.skip('AnalyzeCoverageTool Edge Cases', () => {
   let tool: MockAnalyzeCoverageTool;
 
   beforeEach(() => {

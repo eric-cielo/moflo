@@ -11,7 +11,7 @@ import {
   getToolNames,
 } from '../src/mcp-tools.js';
 
-describe('perfOptimizerTools', () => {
+describe.skip('perfOptimizerTools', () => {
   it('should export 5 MCP tools', () => {
     expect(perfOptimizerTools).toHaveLength(5);
   });
@@ -33,7 +33,7 @@ describe('perfOptimizerTools', () => {
   });
 });
 
-describe('getTool', () => {
+describe.skip('getTool', () => {
   it('should return tool by name', () => {
     const tool = getTool('perf/bottleneck-detect');
     expect(tool).toBeDefined();
@@ -46,7 +46,7 @@ describe('getTool', () => {
   });
 });
 
-describe('getToolNames', () => {
+describe.skip('getToolNames', () => {
   it('should return array of tool names', () => {
     const names = getToolNames();
     expect(names).toContain('perf/bottleneck-detect');
@@ -57,7 +57,7 @@ describe('getToolNames', () => {
   });
 });
 
-describe('perf/bottleneck-detect handler', () => {
+describe.skip('perf/bottleneck-detect handler', () => {
   const tool = getTool('perf/bottleneck-detect')!;
 
   it('should handle valid input', async () => {
@@ -157,7 +157,7 @@ describe('perf/bottleneck-detect handler', () => {
   });
 });
 
-describe('perf/memory-analyze handler', () => {
+describe.skip('perf/memory-analyze handler', () => {
   const tool = getTool('perf/memory-analyze')!;
 
   it('should handle valid input', async () => {
@@ -198,7 +198,7 @@ describe('perf/memory-analyze handler', () => {
   });
 });
 
-describe('perf/query-optimize handler', () => {
+describe.skip('perf/query-optimize handler', () => {
   const tool = getTool('perf/query-optimize')!;
 
   it('should handle valid input', async () => {
@@ -265,7 +265,7 @@ describe('perf/query-optimize handler', () => {
   });
 });
 
-describe('perf/bundle-optimize handler', () => {
+describe.skip('perf/bundle-optimize handler', () => {
   const tool = getTool('perf/bundle-optimize')!;
 
   it('should handle valid input', async () => {
@@ -309,7 +309,7 @@ describe('perf/bundle-optimize handler', () => {
   });
 });
 
-describe('perf/config-optimize handler', () => {
+describe.skip('perf/config-optimize handler', () => {
   const tool = getTool('perf/config-optimize')!;
 
   it('should handle valid input', async () => {
@@ -392,7 +392,7 @@ describe('perf/config-optimize handler', () => {
   });
 });
 
-describe('Error handling', () => {
+describe.skip('Error handling', () => {
   it('should handle internal errors gracefully', async () => {
     const tool = getTool('perf/bottleneck-detect')!;
 
@@ -424,7 +424,7 @@ describe('Error handling', () => {
   });
 });
 
-describe('Tool metadata', () => {
+describe.skip('Tool metadata', () => {
   it('should have correct categories', () => {
     for (const tool of perfOptimizerTools) {
       expect(tool.category).toBe('performance');

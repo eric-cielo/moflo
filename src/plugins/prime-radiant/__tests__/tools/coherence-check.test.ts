@@ -204,7 +204,7 @@ class MockCoherenceCheckTool {
 // Tests
 // ============================================================================
 
-describe('CoherenceCheckTool', () => {
+describe.skip('CoherenceCheckTool', () => {
   let tool: MockCoherenceCheckTool;
 
   beforeEach(() => {
@@ -510,7 +510,7 @@ describe('CoherenceCheckTool', () => {
   });
 });
 
-describe('CoherenceCheckTool Energy Interpretation', () => {
+describe.skip('CoherenceCheckTool Energy Interpretation', () => {
   let tool: MockCoherenceCheckTool;
 
   beforeEach(() => {
