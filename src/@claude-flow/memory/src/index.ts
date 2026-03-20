@@ -182,18 +182,8 @@ export { AgentDBAdapter } from './agentdb-adapter.js';
 export type { AgentDBAdapterConfig } from './agentdb-adapter.js';
 export { AgentDBBackend } from './agentdb-backend.js';
 export type { AgentDBBackendConfig } from './agentdb-backend.js';
-// SQLiteBackend removed from barrel export — requires better-sqlite3 native dep
-// Import directly from './sqlite-backend.js' if needed
-export type { SQLiteBackendConfig } from './sqlite-backend.js';
 export { SqlJsBackend } from './sqljs-backend.js';
 export type { SqlJsBackendConfig } from './sqljs-backend.js';
-export { HybridBackend } from './hybrid-backend.js';
-export type {
-  HybridBackendConfig,
-  StructuredQuery,
-  SemanticQuery,
-  HybridQuery,
-} from './hybrid-backend.js';
 export { RvfBackend } from './rvf-backend.js';
 export type { RvfBackendConfig } from './rvf-backend.js';
 export { HnswLite, cosineSimilarity } from './hnsw-lite.js';
@@ -584,8 +574,6 @@ export function createHybridService(
     dimensions,
     autoEmbed: true,
     cacheEnabled: true,
-    // Note: This would require extending UnifiedMemoryService to support HybridBackend
-    // For now, this creates an AgentDB service with persistence
     persistenceEnabled: true,
     persistencePath: databasePath,
   });
