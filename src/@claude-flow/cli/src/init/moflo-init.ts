@@ -48,10 +48,10 @@ async function runWizard(root: string): Promise<MofloInitAnswers> {
   const { confirm, input } = await import('../prompt.js');
 
   // Detect project structure
-  const guidanceCandidates = ['.claude/guidance', 'docs/guides', 'docs'];
+  const guidanceCandidates = ['.claude/guidance', 'docs/guides', 'docs', 'architecture', 'adr', '.cursor/rules'];
   const detectedGuidance = guidanceCandidates.filter(d => fs.existsSync(path.join(root, d)));
 
-  const srcCandidates = ['src', 'packages', 'lib', 'app', 'apps', 'services'];
+  const srcCandidates = ['src', 'packages', 'lib', 'app', 'apps', 'services', 'server', 'client'];
   const detectedSrc = srcCandidates.filter(d => fs.existsSync(path.join(root, d)));
 
   // Ask questions
@@ -104,11 +104,11 @@ async function runWizard(root: string): Promise<MofloInitAnswers> {
  * Get default answers (--yes mode).
  */
 function defaultAnswers(root: string): MofloInitAnswers {
-  const guidanceCandidates = ['.claude/guidance', 'docs/guides', 'docs'];
+  const guidanceCandidates = ['.claude/guidance', 'docs/guides', 'docs', 'architecture', 'adr', '.cursor/rules'];
   const guidanceDirs = guidanceCandidates.filter(d => fs.existsSync(path.join(root, d)));
   if (guidanceDirs.length === 0) guidanceDirs.push('.claude/guidance');
 
-  const srcCandidates = ['src', 'packages', 'lib', 'app', 'apps', 'services'];
+  const srcCandidates = ['src', 'packages', 'lib', 'app', 'apps', 'services', 'server', 'client'];
   const srcDirs = srcCandidates.filter(d => fs.existsSync(path.join(root, d)));
   if (srcDirs.length === 0) srcDirs.push('src');
 
@@ -230,6 +230,16 @@ hooks:
   stop_hook: ${answers?.stopHook ?? true}              # Session-end persistence and metric export
   session_restore: true        # Restore session state on start
   notification: true           # Hook into Claude Code notifications
+
+# Status line display (shown at bottom of Claude Code)
+# mode: "single-line" (concise, default) or "dashboard" (full multi-line)
+status_line:
+  enabled: true
+  mode: single-line
+  branding: "MoFlo V4"
+  show_git: true
+  show_model: true
+  show_session: true
 
 # Model preferences (haiku, sonnet, opus)
 models:
