@@ -306,7 +306,11 @@ async function main() {
       }
 
       case 'daemon-start': {
-        await runClaudeFlow('daemon', ['start', '--quiet']);
+        if (!isDaemonRunning()) {
+          await runClaudeFlow('daemon', ['start', '--quiet']);
+        } else {
+          log('info', 'Daemon already running, skipping start');
+        }
         break;
       }
 
@@ -475,6 +479,24 @@ function runBackgroundTraining() {
   spawnWindowless('node', [localCli, 'neural', 'optimize'], 'neural optimize');
 }
 
+// Check if daemon is already running via PID file.
+// Returns true if a live daemon process exists, false otherwise.
+function isDaemonRunning() {
+  const pidFile = resolve(projectRoot, '.claude-flow', 'daemon.pid');
+  if (existsSync(pidFile)) {
+    try {
+      const pid = parseInt(readFileSync(pidFile, 'utf-8').trim(), 10);
+      if (pid && !isNaN(pid)) {
+        process.kill(pid, 0); // signal 0 = check if process exists, doesn't kill
+        return true;
+      }
+    } catch {
+      // Process doesn't exist — stale PID file
+    }
+  }
+  return false;
+}
+
 // Run daemon start in background (non-blocking) — skip if already running
 function runDaemonStartBackground() {
   const localCli = getLocalCliPath();
@@ -483,21 +505,9 @@ function runDaemonStartBackground() {
     return;
   }
 
-  // Check if daemon is already running via PID file to prevent duplicate spawns
-  // (subagents also fire SessionStart, which would otherwise start extra daemons)
-  const pidFile = resolve(projectRoot, '.claude-flow', 'daemon.pid');
-  if (existsSync(pidFile)) {
-    try {
-      const pid = parseInt(readFileSync(pidFile, 'utf-8').trim(), 10);
-      if (pid && !isNaN(pid)) {
-        process.kill(pid, 0); // signal 0 = check if process exists, doesn't kill
-        log('info', `Daemon already running (PID: ${pid}), skipping start`);
-        return;
-      }
-    } catch {
-      // Process doesn't exist — stale PID file, fall through to start fresh
-      log('info', 'Stale daemon PID file, starting fresh');
-    }
+  if (isDaemonRunning()) {
+    log('info', 'Daemon already running, skipping start');
+    return;
   }
 
   spawnWindowless('node', [localCli, 'daemon', 'start', '--quiet'], 'daemon');

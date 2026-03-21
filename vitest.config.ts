@@ -4,13 +4,9 @@ export default defineConfig({
   test: {
     // Use forks to prevent segfaults from native modules (agentdb/sql.js)
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        // Limit concurrency to reduce memory pressure on Windows
-        maxForks: 4,
-        minForks: 1,
-      },
-    },
+    // Limit concurrency to reduce memory pressure on Windows
+    maxForks: 4,
+    minForks: 1,
     // Only include our own test files — prevents picking up tests from
     // node_modules (agentdb, pnpm, etc.) that cause segfaults.
     include: [

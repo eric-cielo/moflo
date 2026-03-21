@@ -2,20 +2,19 @@
  * MCP Configuration Generator
  * Creates .mcp.json for Claude Code MCP server integration
  *
- * Note: Claude Code spawns MCP servers as child processes using the
- * command/args from .mcp.json. On all platforms (including Windows),
- * using `npx` directly works correctly. The previous `cmd /c` wrapper
- * on Windows caused MCP servers to fail to start.
+ * Uses direct `node` invocation when moflo is locally installed to avoid
+ * npx overhead (package resolution, registry checks). Falls back to `npx`
+ * for external packages (ruv-swarm, flow-nexus) that may not be installed.
  */
 
+import { existsSync } from 'fs';
+import { resolve, join } from 'path';
 import type { InitOptions, MCPConfig } from './types.js';
 
 /**
- * Generate MCP server entry
- * Uses `npx` directly on all platforms — Claude Code handles process
- * spawning correctly without needing a cmd.exe wrapper.
+ * Generate MCP server entry using npx (for external packages)
  */
-function createMCPServerEntry(
+function createNpxServerEntry(
   npxArgs: string[],
   env: Record<string, string>,
   additionalProps: Record<string, unknown> = {}
@@ -26,6 +25,41 @@ function createMCPServerEntry(
     env,
     ...additionalProps,
   };
+}
+
+/**
+ * Generate MCP server entry using direct node invocation (for local moflo).
+ * Avoids npx overhead — faster startup, fewer intermediate processes.
+ */
+function createDirectServerEntry(
+  cliPath: string,
+  cliArgs: string[],
+  env: Record<string, string>,
+  additionalProps: Record<string, unknown> = {}
+): object {
+  return {
+    command: 'node',
+    args: [cliPath, ...cliArgs],
+    env,
+    ...additionalProps,
+  };
+}
+
+/**
+ * Find the moflo CLI entry point relative to the project root.
+ * Returns the path if found, null otherwise.
+ */
+function findMofloCli(projectRoot: string): string | null {
+  const candidates = [
+    // Installed as dependency
+    join(projectRoot, 'node_modules', 'moflo', 'bin', 'cli.js'),
+    // Running from moflo repo itself
+    join(projectRoot, 'bin', 'cli.js'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
 }
 
 /**
@@ -43,34 +77,48 @@ export function generateMCPConfig(options: InitOptions): object {
   // demand via ToolSearch instead of putting 150+ schemas into context at startup.
   const deferProps = config.toolDefer ? { toolDefer: 'deferred' } : {};
 
-  // Claude Flow MCP server (core)
+  const mcpEnv = {
+    ...npmEnv,
+    CLAUDE_FLOW_MODE: 'v3',
+    CLAUDE_FLOW_HOOKS_ENABLED: 'true',
+    CLAUDE_FLOW_TOPOLOGY: options.runtime.topology,
+    CLAUDE_FLOW_MAX_AGENTS: String(options.runtime.maxAgents),
+    CLAUDE_FLOW_MEMORY_BACKEND: options.runtime.memoryBackend,
+  };
+
+  // Claude Flow MCP server (core) — use direct node when locally installed
   if (config.claudeFlow) {
-    mcpServers['claude-flow'] = createMCPServerEntry(
-      ['moflo', 'mcp', 'start'],
-      {
-        ...npmEnv,
-        CLAUDE_FLOW_MODE: 'v3',
-        CLAUDE_FLOW_HOOKS_ENABLED: 'true',
-        CLAUDE_FLOW_TOPOLOGY: options.runtime.topology,
-        CLAUDE_FLOW_MAX_AGENTS: String(options.runtime.maxAgents),
-        CLAUDE_FLOW_MEMORY_BACKEND: options.runtime.memoryBackend,
-      },
-      { autoStart: config.autoStart, ...deferProps }
-    );
+    const projectRoot = options.targetDir ?? process.cwd();
+    const localCli = findMofloCli(projectRoot);
+
+    if (localCli) {
+      mcpServers['claude-flow'] = createDirectServerEntry(
+        localCli,
+        ['mcp', 'start'],
+        mcpEnv,
+        { autoStart: config.autoStart, ...deferProps }
+      );
+    } else {
+      mcpServers['claude-flow'] = createNpxServerEntry(
+        ['moflo', 'mcp', 'start'],
+        mcpEnv,
+        { autoStart: config.autoStart, ...deferProps }
+      );
+    }
   }
 
-  // Ruv-Swarm MCP server (enhanced coordination)
+  // Ruv-Swarm MCP server (enhanced coordination) — always npx (external package)
   if (config.ruvSwarm) {
-    mcpServers['ruv-swarm'] = createMCPServerEntry(
+    mcpServers['ruv-swarm'] = createNpxServerEntry(
       ['ruv-swarm', 'mcp', 'start'],
       { ...npmEnv },
       { optional: true, ...deferProps }
     );
   }
 
-  // Flow Nexus MCP server (cloud features)
+  // Flow Nexus MCP server (cloud features) — always npx (external package)
   if (config.flowNexus) {
-    mcpServers['flow-nexus'] = createMCPServerEntry(
+    mcpServers['flow-nexus'] = createNpxServerEntry(
       ['flow-nexus@latest', 'mcp', 'start'],
       { ...npmEnv },
       { optional: true, requiresAuth: true, ...deferProps }
@@ -96,7 +144,13 @@ export function generateMCPCommands(options: InitOptions): string[] {
   const config = options.mcp;
 
   if (config.claudeFlow) {
-    commands.push('claude mcp add claude-flow -- npx -y moflo mcp start');
+    const projectRoot = options.targetDir ?? process.cwd();
+    const localCli = findMofloCli(projectRoot);
+    if (localCli) {
+      commands.push(`claude mcp add claude-flow -- node ${localCli} mcp start`);
+    } else {
+      commands.push('claude mcp add claude-flow -- npx -y moflo mcp start');
+    }
   }
   if (config.ruvSwarm) {
     commands.push('claude mcp add ruv-swarm -- npx -y ruv-swarm mcp start');

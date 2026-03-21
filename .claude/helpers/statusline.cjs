@@ -330,25 +330,33 @@ function getSecurityStatus() {
 }
 
 // Swarm status (pure file reads, NO ps aux)
+// Metrics files older than 5 minutes are considered stale (swarm no longer running)
 function getSwarmStatus() {
+  const STALE_MS = 5 * 60_000;
+  const now = Date.now();
+
   const activityData = readJSON(path.join(CWD, '.claude-flow', 'metrics', 'swarm-activity.json'));
   if (activityData?.swarm) {
-    const count = activityData.swarm.agent_count || 0;
+    const ts = activityData.timestamp ? new Date(activityData.timestamp).getTime() : 0;
+    const stale = (now - ts) > STALE_MS;
+    const count = stale ? 0 : (activityData.swarm.agent_count || 0);
     return {
       activeAgents: Math.min(count, CONFIG.maxAgents),
       maxAgents: CONFIG.maxAgents,
-      coordinationActive: activityData.swarm.coordination_active || activityData.swarm.active || false,
+      coordinationActive: stale ? false : (activityData.swarm.coordination_active || activityData.swarm.active || false),
     };
   }
 
   const progressData = readJSON(path.join(CWD, '.claude-flow', 'metrics', 'v3-progress.json'));
   if (progressData?.swarm) {
-    const count = progressData.swarm.activeAgents || progressData.swarm.agent_count || 0;
+    const ts = progressData.timestamp ? new Date(progressData.timestamp).getTime() : 0;
+    const stale = (now - ts) > STALE_MS;
+    const count = stale ? 0 : (progressData.swarm.activeAgents || progressData.swarm.agent_count || 0);
     const max = progressData.swarm.totalAgents || CONFIG.maxAgents;
     return {
       activeAgents: Math.min(count, max),
       maxAgents: max,
-      coordinationActive: progressData.swarm.active || (count > 0),
+      coordinationActive: stale ? false : (progressData.swarm.active || (count > 0)),
     };
   }
 
@@ -461,44 +469,44 @@ function getHooksStatus() {
   return { enabled, total };
 }
 
-// AgentDB stats — queries real count from sqlite when possible, falls back to file size estimate
+// AgentDB stats — reads from cache file written by embedding/memory operations.
+// No subprocess spawning. Falls back to DB file size estimate if cache is missing.
 function getAgentDBStats() {
   let vectorCount = 0;
   let dbSizeKB = 0;
   let namespaces = 0;
   let hasHnsw = false;
-  let dbPath = null;
 
+  // Read cached stats (written by memory store/embed/rebuild commands)
+  const cachePaths = [
+    path.join(CWD, '.claude-flow', 'vector-stats.json'),
+    path.join(CWD, '.swarm', 'vector-stats.json'),
+  ];
+  for (const cp of cachePaths) {
+    const cached = readJSON(cp);
+    if (cached && typeof cached.vectorCount === 'number') {
+      vectorCount = cached.vectorCount;
+      dbSizeKB = cached.dbSizeKB || 0;
+      namespaces = cached.namespaces || 0;
+      hasHnsw = cached.hasHnsw || false;
+      return { vectorCount, dbSizeKB, namespaces, hasHnsw };
+    }
+  }
+
+  // Fallback: estimate from DB file size (no subprocess)
   const dbFiles = [
     path.join(CWD, '.swarm', 'memory.db'),
     path.join(CWD, '.claude-flow', 'memory.db'),
     path.join(CWD, '.claude', 'memory.db'),
     path.join(CWD, 'data', 'memory.db'),
   ];
-
   for (const f of dbFiles) {
     const stat = safeStat(f);
     if (stat) {
-      dbSizeKB = stat.size / 1024;
-      dbPath = f;
-      break;
-    }
-  }
-
-  // Try to get real count from sqlite (fast — single COUNT query)
-  if (dbPath) {
-    const countOutput = safeExec(`node -e "const S=require('sql.js');const f=require('fs');S().then(Q=>{const d=new Q.Database(f.readFileSync('${dbPath.replace(/\\/g, '/')}'));const s=d.prepare('SELECT COUNT(*) as c FROM memory_entries WHERE status=\\"active\\" AND embedding IS NOT NULL');s.step();console.log(JSON.stringify(s.getAsObject()));s.free();const n=d.prepare('SELECT COUNT(DISTINCT namespace) as n FROM memory_entries WHERE status=\\"active\\"');n.step();console.log(JSON.stringify(n.getAsObject()));n.free();d.close();})"`, 3000);
-    if (countOutput) {
-      try {
-        const lines = countOutput.trim().split('\n');
-        vectorCount = JSON.parse(lines[0]).c || 0;
-        namespaces = lines[1] ? JSON.parse(lines[1]).n || 0 : 0;
-      } catch { /* fall back to estimate */ }
-    }
-    // Fallback to file size estimate if query failed
-    if (vectorCount === 0) {
+      dbSizeKB = Math.floor(stat.size / 1024);
       vectorCount = Math.floor(dbSizeKB / 2);
       namespaces = 1;
+      break;
     }
   }
 
@@ -513,7 +521,7 @@ function getAgentDBStats() {
     }
   }
 
-  return { vectorCount, dbSizeKB: Math.floor(dbSizeKB), namespaces, hasHnsw };
+  return { vectorCount, dbSizeKB, namespaces, hasHnsw };
 }
 
 // Test stats (count files only — NO reading file contents)

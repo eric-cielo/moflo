@@ -407,11 +407,54 @@ export class MCPServerManager extends EventEmitter {
       process.exit(0);
     });
 
+    process.stdin.on('error', () => {
+      // stdin pipe broken — parent disconnected
+      process.exit(0);
+    });
+
+    // Orphan watchdog: on Windows, stdin 'end' doesn't always fire when the
+    // parent process disconnects. Poll the parent PID to detect orphaning and
+    // self-terminate. Also tracks stdin inactivity as a secondary signal.
+    const parentPid = process.ppid;
+    let lastStdinActivity = Date.now();
+    const WATCHDOG_INTERVAL_MS = 10_000; // Check every 10s
+    const STDIN_IDLE_TIMEOUT_MS = 5 * 60_000; // 5 min with no stdin = likely orphaned
+
+    // Track stdin activity
+    process.stdin.on('data', () => { lastStdinActivity = Date.now(); });
+
+    const watchdog = setInterval(() => {
+      // Check 1: Is parent process still alive?
+      if (parentPid) {
+        try {
+          process.kill(parentPid, 0); // signal 0 = existence check
+        } catch {
+          // Parent is gone — we're orphaned
+          console.error(
+            `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${sessionId}) Parent (PID ${parentPid}) gone, shutting down...`
+          );
+          clearInterval(watchdog);
+          process.exit(0);
+        }
+      }
+
+      // Check 2: Has stdin been idle too long?
+      if (Date.now() - lastStdinActivity > STDIN_IDLE_TIMEOUT_MS) {
+        console.error(
+          `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${sessionId}) No stdin activity for ${STDIN_IDLE_TIMEOUT_MS / 1000}s, shutting down...`
+        );
+        clearInterval(watchdog);
+        process.exit(0);
+      }
+    }, WATCHDOG_INTERVAL_MS);
+    watchdog.unref(); // Don't keep process alive just for watchdog
+
     // Handle process termination
     process.on('SIGINT', () => {
       console.error(
         `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${sessionId}) Received SIGINT, shutting down...`
       );
+      clearInterval(watchdog);
       process.exit(0);
     });
 
@@ -419,6 +462,7 @@ export class MCPServerManager extends EventEmitter {
       console.error(
         `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${sessionId}) Received SIGTERM, shutting down...`
       );
+      clearInterval(watchdog);
       process.exit(0);
     });
 

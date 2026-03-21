@@ -275,9 +275,9 @@
   },
   "mcpServers": {
     "claude-flow": {
-      "command": "npx",
+      "command": "node",
       "args": [
-        "moflo",
+        "bin/cli.js",
         "mcp",
         "start"
       ]

@@ -456,6 +456,9 @@ export async function bridgeStoreEntry(options: {
     // Phase 4: AttestationLog write audit
     await logAttestation(registry, 'store', id, { key, namespace, hasEmbedding: !!embeddingJson });
 
+    // Update statusline vector stats cache (debounced)
+    if (embeddingJson) refreshVectorStatsCache();
+
     return {
       success: true,
       id,
@@ -850,6 +853,9 @@ export async function bridgeDeleteEntry(options: {
     } catch {
       // Non-fatal
     }
+
+    // Update statusline vector stats cache (debounced)
+    if (changes > 0) refreshVectorStatsCache();
 
     return {
       success: true,
@@ -1827,4 +1833,69 @@ function cosineSim(a: number[], b: number[]): number {
   }
   const mag = Math.sqrt(normA * normB);
   return mag === 0 ? 0 : dot / mag;
+}
+
+// ===== Vector stats cache for statusline =====
+// Written after memory mutations so the statusline can read stats without
+// spawning a subprocess. Debounced to avoid thrashing during batch operations.
+
+/**
+ * Write vector-stats.json cache file used by the statusline.
+ * Synchronous — safe to call from short-lived CLI commands.
+ * Uses the already-initialized registry; no-ops if registry isn't loaded.
+ */
+export function refreshVectorStatsCache(dbPathOverride?: string): void {
+  try {
+    const registry = registryInstance; // Use existing instance only, don't init
+    if (!registry) return;
+
+    const ctx = getDb(registry);
+    if (!ctx?.db) return;
+
+    let vectorCount = 0;
+    let namespaces = 0;
+    let dbSizeKB = 0;
+    let hasHnsw = false;
+
+    try {
+      const countRow = ctx.db.prepare(
+        'SELECT COUNT(*) as c FROM memory_entries WHERE status = ? AND embedding IS NOT NULL'
+      ).get('active') as { c: number } | undefined;
+      vectorCount = countRow?.c ?? 0;
+
+      const nsRow = ctx.db.prepare(
+        'SELECT COUNT(DISTINCT namespace) as n FROM memory_entries WHERE status = ?'
+      ).get('active') as { n: number } | undefined;
+      namespaces = nsRow?.n ?? 0;
+    } catch {
+      // Table may not exist yet
+    }
+
+    // DB file size
+    const dbFile = dbPathOverride || getDbPath();
+    try {
+      const stat = fs.statSync(dbFile);
+      dbSizeKB = Math.floor(stat.size / 1024);
+    } catch { /* file may not exist */ }
+
+    // HNSW index presence
+    const root = getProjectRoot();
+    const hnswPaths = [
+      path.join(root, '.swarm', 'hnsw.index'),
+      path.join(root, '.claude-flow', 'hnsw.index'),
+    ];
+    for (const p of hnswPaths) {
+      try { fs.statSync(p); hasHnsw = true; break; } catch { /* nope */ }
+    }
+
+    // Write cache file
+    const cacheDir = path.join(root, '.claude-flow');
+    if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cacheDir, 'vector-stats.json'),
+      JSON.stringify({ vectorCount, dbSizeKB, namespaces, hasHnsw, updatedAt: Date.now() })
+    );
+  } catch {
+    // Non-fatal — statusline falls back to file size estimate
+  }
 }

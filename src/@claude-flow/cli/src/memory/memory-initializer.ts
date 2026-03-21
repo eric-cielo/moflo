@@ -12,6 +12,40 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+/**
+ * Write vector-stats.json cache for the statusline (no subprocess needed).
+ * Called after memory store/delete to keep the cache fresh.
+ * @param dbPath - path to the SQLite database file
+ * @param stats  - optional exact counts from a db query already in progress
+ */
+function writeVectorStatsCache(dbPath: string, stats?: { vectorCount: number; namespaces: number }): void {
+  try {
+    const fileStat = fs.statSync(dbPath);
+    const dbSizeKB = Math.floor(fileStat.size / 1024);
+    const vectorCount = stats?.vectorCount ?? 0;
+    const namespaces = stats?.namespaces ?? 0;
+
+    // Check HNSW index presence
+    const dbDir = path.dirname(dbPath);
+    const projectDir = path.dirname(dbDir); // .swarm -> project root
+    let hasHnsw = false;
+    for (const p of [
+      path.join(dbDir, 'hnsw.index'),
+      path.join(projectDir, '.claude-flow', 'hnsw.index'),
+    ]) {
+      try { fs.statSync(p); hasHnsw = true; break; } catch { /* nope */ }
+    }
+
+    // Write to .claude-flow dir next to the .swarm dir
+    const cacheDir = path.join(projectDir, '.claude-flow');
+    if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cacheDir, 'vector-stats.json'),
+      JSON.stringify({ vectorCount, dbSizeKB, namespaces, hasHnsw, updatedAt: Date.now() })
+    );
+  } catch { /* Non-fatal */ }
+}
+
 // ADR-053: Lazy import of AgentDB v3 bridge
 let _bridge: typeof import('./memory-bridge.js') | null | undefined;
 async function getBridge(): Promise<typeof import('./memory-bridge.js') | null> {
@@ -2099,7 +2133,13 @@ export async function storeEntry(options: {
   const bridge = await getBridge();
   if (bridge) {
     const bridgeResult = await bridge.bridgeStoreEntry(options);
-    if (bridgeResult) return bridgeResult;
+    if (bridgeResult) {
+      // Update statusline cache after successful bridge store
+      const swarmDir = path.join(process.cwd(), '.swarm');
+      const dbFile = options.dbPath || path.join(swarmDir, 'memory.db');
+      writeVectorStatsCache(dbFile);
+      return bridgeResult;
+    }
   }
 
   // Fallback: raw sql.js
@@ -2177,6 +2217,16 @@ export async function storeEntry(options: {
     // Save
     const data = db.export();
     fs.writeFileSync(dbPath, Buffer.from(data));
+
+    // Query exact stats while DB is still open
+    let vecCount = 0, nsCount = 0;
+    try {
+      const vc = db.exec("SELECT COUNT(*) FROM memory_entries WHERE status='active' AND embedding IS NOT NULL");
+      vecCount = vc[0]?.values?.[0]?.[0] as number ?? 0;
+      const nc = db.exec("SELECT COUNT(DISTINCT namespace) FROM memory_entries WHERE status='active'");
+      nsCount = nc[0]?.values?.[0]?.[0] as number ?? 0;
+    } catch { /* table may not have status column in older DBs */ }
+
     db.close();
 
     // Add to HNSW index for faster future searches
@@ -2189,6 +2239,9 @@ export async function storeEntry(options: {
         content: value
       });
     }
+
+    // Update statusline cache with exact counts
+    writeVectorStatsCache(dbPath, { vectorCount: vecCount, namespaces: nsCount });
 
     return {
       success: true,

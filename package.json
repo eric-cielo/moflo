@@ -49,7 +49,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "build:ts": "cd src/@claude-flow/cli && npm run build || true",
-    "test": "vitest",
+    "test": "vitest run",
     "test:ui": "vitest --ui",
     "test:security": "vitest run src/__tests__/security/",
     "lint": "cd src/@claude-flow/cli && npm run lint || true",
@@ -67,7 +67,6 @@
     "zod": "^3.22.4"
   },
   "optionalDependencies": {
-    "@claude-flow/codex": "^3.0.0-alpha.8",
     "@claude-flow/plugin-gastown-bridge": "^0.1.3",
     "@ruvector/attention": "^0.1.3",
     "@ruvector/core": "^0.1.30",
@@ -81,14 +80,13 @@
     "hono": ">=4.11.4"
   },
   "devDependencies": {
-    "@openai/codex": "^0.98.0",
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^20.0.0",
     "eslint": "^8.0.0",
     "moflo": "^4.7.4",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
-    "vitest": "^1.0.0"
+    "vitest": "^4.0.0"
   },
   "engines": {
     "node": ">=20.0.0"

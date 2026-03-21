@@ -94,12 +94,6 @@ export * as performance from './@claude-flow/performance/src/index.js';
  */
 export * as testing from './@claude-flow/testing/src/index.js';
 
-/**
- * Deployment module - Release management, CI/CD
- * @see {@link @claude-flow/deployment}
- */
-export * as deployment from './@claude-flow/deployment/src/index.js';
-
 // =============================================================================
 // Module List for Dynamic Loading
 // =============================================================================
@@ -114,7 +108,6 @@ export const MODULES = [
   '@claude-flow/neural',
   '@claude-flow/performance',
   '@claude-flow/testing',
-  '@claude-flow/deployment',
 ] as const;
 
 export type ModuleName = (typeof MODULES)[number];
