@@ -2725,11 +2725,181 @@ const codeMapCommand: Command = {
   }
 };
 
+// refresh subcommand — reindex everything + vacuum
+const refreshCommand: Command = {
+  name: 'refresh',
+  description: 'Reindex all guidance and code, rebuild embeddings, clean up expired entries, and vacuum the database',
+  options: [
+    {
+      name: 'skip-guidance',
+      description: 'Skip guidance reindexing',
+      type: 'boolean',
+      default: false,
+    },
+    {
+      name: 'skip-code-map',
+      description: 'Skip code map regeneration',
+      type: 'boolean',
+      default: false,
+    },
+    {
+      name: 'skip-cleanup',
+      description: 'Skip expired entry cleanup',
+      type: 'boolean',
+      default: false,
+    },
+    {
+      name: 'verbose',
+      short: 'v',
+      description: 'Verbose output',
+      type: 'boolean',
+      default: false,
+    },
+  ],
+  examples: [
+    { command: 'flo memory refresh', description: 'Full reindex + vacuum' },
+    { command: 'flo memory refresh --skip-code-map', description: 'Reindex guidance only + vacuum' },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const skipGuidance = ctx.flags['skip-guidance'] as boolean;
+    const skipCodeMap = ctx.flags['skip-code-map'] as boolean;
+    const skipCleanup = ctx.flags['skip-cleanup'] as boolean;
+
+    output.writeln();
+    output.writeln(output.bold('MoFlo Memory Refresh'));
+    output.writeln(output.dim('Reindex all content, rebuild embeddings, clean up, and vacuum'));
+    output.writeln(output.dim('─'.repeat(60)));
+    output.writeln();
+
+    const t0 = performance.now();
+    const steps: { name: string; status: 'pass' | 'fail' | 'skip'; message: string; duration: number }[] = [];
+
+    // Helper to run a subcommand action
+    const runStep = async (name: string, skip: boolean, action: () => Promise<CommandResult | void>): Promise<void> => {
+      if (skip) {
+        steps.push({ name, status: 'skip', message: 'Skipped', duration: 0 });
+        output.writeln(`${output.dim('○')} ${name}: ${output.dim('Skipped')}`);
+        return;
+      }
+      const stepStart = performance.now();
+      try {
+        const result = await action();
+        const dur = performance.now() - stepStart;
+        const success = result === undefined || result.success;
+        steps.push({ name, status: success ? 'pass' : 'fail', message: success ? 'Done' : (result?.message || 'Failed'), duration: dur });
+        const icon = success ? output.success('✓') : output.error('✗');
+        const durStr = dur < 1000 ? `${dur.toFixed(0)}ms` : `${(dur / 1000).toFixed(1)}s`;
+        output.writeln(`${icon} ${name} ${output.dim(`(${durStr})`)}`);
+      } catch (err) {
+        const dur = performance.now() - stepStart;
+        const msg = err instanceof Error ? err.message : String(err);
+        steps.push({ name, status: 'fail', message: msg, duration: dur });
+        output.writeln(`${output.error('✗')} ${name}: ${msg}`);
+      }
+    };
+
+    // Build a fake context with force flag for subcommand calls
+    const forceCtx: CommandContext = {
+      args: [],
+      flags: { force: true, _: [], 'no-embeddings': false, overlap: 20 },
+      cwd: ctx.cwd,
+      interactive: false,
+    };
+
+    // Step 1: Index guidance
+    await runStep('Index Guidance', skipGuidance, async () => {
+      return indexGuidanceCommand.action!(forceCtx) as Promise<CommandResult>;
+    });
+
+    // Step 2: Code map
+    await runStep('Code Map', skipCodeMap, async () => {
+      const codeMapCtx: CommandContext = {
+        args: [],
+        flags: { force: true, _: [], stats: false },
+        cwd: ctx.cwd,
+        interactive: false,
+      };
+      return codeMapCommand.action!(codeMapCtx) as Promise<CommandResult>;
+    });
+
+    // Step 3: Rebuild embeddings
+    await runStep('Rebuild Embeddings', false, async () => {
+      const rebuildCtx: CommandContext = {
+        args: [],
+        flags: { force: true, _: [] },
+        cwd: ctx.cwd,
+        interactive: false,
+      };
+      return rebuildIndexCommand.action!(rebuildCtx) as Promise<CommandResult>;
+    });
+
+    // Step 4: Cleanup expired entries (direct SQL — avoids MCP dependency)
+    await runStep('Cleanup Expired', skipCleanup, async () => {
+      const { db, dbPath } = await openDb(ctx.cwd);
+      try {
+        const now = Date.now();
+        const result = db.run(
+          `DELETE FROM memory_entries WHERE expires_at IS NOT NULL AND expires_at > 0 AND expires_at < ?`,
+          [now]
+        );
+        const deleted = db.getRowsModified();
+        if (deleted > 0) {
+          saveAndCloseDb(db, dbPath);
+          output.writeln(output.dim(`  Removed ${deleted} expired entries`));
+        } else {
+          db.close();
+          output.writeln(output.dim('  No expired entries found'));
+        }
+        return { success: true };
+      } catch (err) {
+        try { db.close(); } catch { /* ignore */ }
+        throw err;
+      }
+    });
+
+    // Step 5: VACUUM the database
+    await runStep('Vacuum Database', false, async () => {
+      const { db, dbPath } = await openDb(ctx.cwd);
+      try {
+        db.run('VACUUM');
+        saveAndCloseDb(db, dbPath);
+        return { success: true };
+      } catch (err) {
+        try { db.close(); } catch { /* ignore */ }
+        throw err;
+      }
+    });
+
+    // Summary
+    const totalTime = performance.now() - t0;
+    const passed = steps.filter(s => s.status === 'pass').length;
+    const failed = steps.filter(s => s.status === 'fail').length;
+    const skipped = steps.filter(s => s.status === 'skip').length;
+
+    output.writeln();
+    output.writeln(output.dim('─'.repeat(60)));
+
+    const parts = [
+      output.success(`${passed} done`),
+      failed > 0 ? output.error(`${failed} failed`) : null,
+      skipped > 0 ? output.dim(`${skipped} skipped`) : null,
+    ].filter(Boolean);
+
+    const durStr = totalTime < 1000 ? `${totalTime.toFixed(0)}ms` : `${(totalTime / 1000).toFixed(1)}s`;
+    output.writeln(`${output.bold('Refresh complete:')} ${parts.join(', ')} ${output.dim(`(${durStr})`)}`);
+
+    if (failed > 0) {
+      return { success: false, exitCode: 1 };
+    }
+    return { success: true };
+  },
+};
+
 // Main memory command
 export const memoryCommand: Command = {
   name: 'memory',
   description: 'Memory management commands',
-  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand],
+  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand],
   options: [],
   examples: [
     { command: 'claude-flow memory store -k "key" -v "value"', description: 'Store data' },
@@ -2758,7 +2928,8 @@ export const memoryCommand: Command = {
       `${output.highlight('import')}          - Import from file`,
       `${output.highlight('index-guidance')}  - Index .claude/guidance/ files with RAG segments`,
       `${output.highlight('rebuild-index')}   - Regenerate embeddings for memory entries`,
-      `${output.highlight('code-map')}        - Generate structural code map`
+      `${output.highlight('code-map')}        - Generate structural code map`,
+      `${output.highlight('refresh')}         - Reindex all content, rebuild embeddings, cleanup, and vacuum`
     ]);
 
     return { success: true };

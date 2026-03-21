@@ -64,6 +64,8 @@ const commandLoaders: Record<string, CommandLoader> = {
   update: () => import('./update.js'),
   // RuVector PostgreSQL Bridge
   ruvector: () => import('./ruvector/index.js'),
+  // Full integration diagnostics
+  diagnose: () => import('./diagnose.js'),
   // Benchmark Suite (Pre-training, Neural, Memory)
   benchmark: () => import('./benchmark.js'),
   // Guidance Control Plane
@@ -150,6 +152,7 @@ import updateCommand from './update.js';
 import { processCommand } from './process.js';
 import { guidanceCommand } from './guidance.js';
 import { applianceCommand } from './appliance.js';
+import { diagnoseCommand } from './diagnose.js';
 
 // Pre-populate cache with core commands
 loadedCommands.set('init', initCommand);
@@ -171,6 +174,7 @@ loadedCommands.set('security', securityCommand);
 loadedCommands.set('ruvector', ruvectorCommand);
 loadedCommands.set('hive-mind', hiveMindCommand);
 loadedCommands.set('guidance', guidanceCommand);
+loadedCommands.set('diagnose', diagnoseCommand);
 
 // =============================================================================
 // Exports (maintain backwards compatibility)
@@ -197,6 +201,7 @@ export { ruvectorCommand } from './ruvector/index.js';
 export { hiveMindCommand } from './hive-mind.js';
 export { guidanceCommand } from './guidance.js';
 export { applianceCommand } from './appliance.js';
+export { diagnoseCommand } from './diagnose.js';
 
 // Lazy-loaded command re-exports (for backwards compatibility, but async-only)
 export async function getConfigCommand() { return loadCommand('config'); }
@@ -248,6 +253,7 @@ export const commands: Command[] = [
   ruvectorCommand,
   hiveMindCommand,
   guidanceCommand,
+  diagnoseCommand,
 ];
 
 /**
@@ -278,6 +284,7 @@ export const commandsByCategory = {
   utility: [
     configCommand,
     doctorCommand,
+    diagnoseCommand,
     daemonCommand,
     completionsCommand,
     migrateCommand,

@@ -1,6 +1,6 @@
 # MoFlo Init Integration Test Plan
 
-> Full end-to-end test of `npx moflo init` in a fresh Node.js project.
+> Full end-to-end test of `npx flo init` in a fresh Node.js project.
 > Last validated: 2026-03-20 against moflo@4.7.3
 
 ## Prerequisites
@@ -32,7 +32,7 @@ npm install moflo@latest
 ### 1a. First Run (no --force)
 
 ```bash
-npx moflo init --yes
+npx flo init --yes
 ```
 
 **Expected**: Creates all files and directories listed below. No errors.
@@ -41,7 +41,7 @@ npx moflo init --yes
 ### 1b. Re-run (idempotency)
 
 ```bash
-npx moflo init --yes
+npx flo init --yes
 ```
 
 **Expected**: Detects existing setup, skips existing files, updates gracefully.
@@ -50,7 +50,7 @@ npx moflo init --yes
 ### 1c. Force Re-init
 
 ```bash
-npx moflo init --yes --force
+npx flo init --yes --force
 ```
 
 **Expected**: Recreates all files.
@@ -122,7 +122,7 @@ npx moflo init --yes --force
 ## Test 3: Doctor Diagnostics
 
 ```bash
-npx moflo doctor
+npx flo doctor
 ```
 
 **Expected**: All checks pass (warnings OK for daemon/memory/TypeScript).
@@ -152,7 +152,7 @@ npx moflo doctor
 ### 4a. Store
 
 ```bash
-npx moflo memory store --key "auth-pattern" --value "Use JWT with refresh tokens" --namespace patterns --tags "auth,security"
+npx flo memory store --key "auth-pattern" --value "Use JWT with refresh tokens" --namespace patterns --tags "auth,security"
 ```
 
 **Expected**: Success, 384-dim vector generated.
@@ -161,7 +161,7 @@ npx moflo memory store --key "auth-pattern" --value "Use JWT with refresh tokens
 ### 4b. Retrieve
 
 ```bash
-npx moflo memory retrieve --key "auth-pattern" --namespace patterns
+npx flo memory retrieve --key "auth-pattern" --namespace patterns
 ```
 
 **Expected**: Returns stored value, increments access count.
@@ -170,7 +170,7 @@ npx moflo memory retrieve --key "auth-pattern" --namespace patterns
 ### 4c. Semantic Search
 
 ```bash
-npx moflo memory search --query "authentication security tokens" --limit 5
+npx flo memory search --query "authentication security tokens" --limit 5
 ```
 
 **Expected**: Returns results ranked by semantic similarity.
@@ -179,7 +179,7 @@ npx moflo memory search --query "authentication security tokens" --limit 5
 ### 4d. List
 
 ```bash
-npx moflo memory list --namespace patterns
+npx flo memory list --namespace patterns
 ```
 
 **Expected**: Shows all entries with metadata.
@@ -188,7 +188,7 @@ npx moflo memory list --namespace patterns
 ### 4e. Delete
 
 ```bash
-npx moflo memory delete --key "auth-pattern" --namespace patterns
+npx flo memory delete --key "auth-pattern" --namespace patterns
 ```
 
 **Expected**: Deletes entry, confirms remaining count.
@@ -197,7 +197,7 @@ npx moflo memory delete --key "auth-pattern" --namespace patterns
 ### 4f. Stats
 
 ```bash
-npx moflo memory stats
+npx flo memory stats
 ```
 
 **Expected**: Shows backend type, version, entry count.
@@ -210,7 +210,7 @@ npx moflo memory stats
 ### 5a. Swarm Init
 
 ```bash
-npx moflo swarm init --topology hierarchical --max-agents 6 --strategy specialized
+npx flo swarm init --topology hierarchical --max-agents 6 --strategy specialized
 ```
 
 **Expected**: Returns swarm ID, topology, agent count.
@@ -219,7 +219,7 @@ npx moflo swarm init --topology hierarchical --max-agents 6 --strategy specializ
 ### 5b. Swarm Status
 
 ```bash
-npx moflo swarm status
+npx flo swarm status
 ```
 
 **Expected**: Shows agents, tasks, performance metrics.
@@ -228,7 +228,7 @@ npx moflo swarm status
 ### 5c. Agent Spawn
 
 ```bash
-npx moflo agent spawn --type coder --name test-coder
+npx flo agent spawn --type coder --name test-coder
 ```
 
 **Expected**: Agent spawned with capabilities listed.
@@ -237,7 +237,7 @@ npx moflo agent spawn --type coder --name test-coder
 ### 5d. Agent List
 
 ```bash
-npx moflo agent list
+npx flo agent list
 ```
 
 **Expected**: Shows spawned agent with full ID (35-char column).
@@ -246,7 +246,7 @@ npx moflo agent list
 ### 5e. Swarm Stop
 
 ```bash
-npx moflo swarm stop <swarm-id>
+npx flo swarm stop <swarm-id>
 ```
 
 **Expected**: Graceful shutdown with usage hint on error.
@@ -255,7 +255,7 @@ npx moflo swarm stop <swarm-id>
 ### 5f. Agent Stop
 
 ```bash
-npx moflo agent stop <agent-id>
+npx flo agent stop <agent-id>
 ```
 
 **Status**: PASS — Agent ID column widened to 35 chars so full IDs are visible in `agent list`.
@@ -267,7 +267,7 @@ npx moflo agent stop <agent-id>
 ### 6a. Hive-Mind Init
 
 ```bash
-npx moflo hive-mind init --topology hierarchical-mesh --consensus raft --max-agents 10
+npx flo hive-mind init --topology hierarchical-mesh --consensus raft --max-agents 10
 ```
 
 **Expected**: Queen agent created, hive ready.
@@ -278,7 +278,7 @@ npx moflo hive-mind init --topology hierarchical-mesh --consensus raft --max-age
 ### 6b. Hive-Mind Status
 
 ```bash
-npx moflo hive-mind status
+npx flo hive-mind status
 ```
 
 **Expected**: Shows queen status, worker count, load.
@@ -287,7 +287,7 @@ npx moflo hive-mind status
 ### 6c. Hive-Mind Spawn
 
 ```bash
-npx moflo hive-mind spawn --type worker --name test-worker
+npx flo hive-mind spawn --type worker --name test-worker
 ```
 
 **Expected**: Worker agent spawned and joins hive.
@@ -296,7 +296,7 @@ npx moflo hive-mind spawn --type worker --name test-worker
 ### 6d. Hive-Mind Shutdown
 
 ```bash
-npx moflo hive-mind shutdown
+npx flo hive-mind shutdown
 ```
 
 **Expected**: Graceful shutdown with agent count and state saved.
@@ -309,7 +309,7 @@ npx moflo hive-mind shutdown
 ### 7a. Task Create
 
 ```bash
-npx moflo task create --type implementation --description "Add input validation"
+npx flo task create --type implementation --description "Add input validation"
 ```
 
 **Expected**: Task created with ID.
@@ -320,7 +320,7 @@ npx moflo task create --type implementation --description "Add input validation"
 ### 7b. Task List
 
 ```bash
-npx moflo task list
+npx flo task list
 ```
 
 **Expected**: Shows tasks with status.
@@ -333,7 +333,7 @@ npx moflo task list
 ### 8a. Hooks List
 
 ```bash
-npx moflo hooks list
+npx flo hooks list
 ```
 
 **Expected**: Shows all 26 registered hooks.
@@ -342,7 +342,7 @@ npx moflo hooks list
 ### 8b. Hooks Route
 
 ```bash
-npx moflo hooks route --task "add user authentication"
+npx flo hooks route --task "add user authentication"
 ```
 
 **Expected**: Returns agent recommendation with confidence score.
@@ -351,7 +351,7 @@ npx moflo hooks route --task "add user authentication"
 ### 8c. Neural Status
 
 ```bash
-npx moflo neural status
+npx flo neural status
 ```
 
 **Expected**: Shows neural subsystem status.
@@ -364,7 +364,7 @@ npx moflo neural status
 ### 9a. Config List
 
 ```bash
-npx moflo config list
+npx flo config list
 ```
 
 **Expected**: Shows available subcommands.
@@ -373,7 +373,7 @@ npx moflo config list
 ### 9b. Config Show
 
 ```bash
-npx moflo config show
+npx flo config show
 ```
 
 **Expected**: Shows current configuration from moflo.yaml.
@@ -386,7 +386,7 @@ npx moflo config show
 ### 10a. Session List
 
 ```bash
-npx moflo session list
+npx flo session list
 ```
 
 **Expected**: Shows "No sessions found" for fresh project.
@@ -488,40 +488,46 @@ The Skill tool's `$ARGUMENTS` placeholder substitution was observed to fail inte
 
 ## Running This Test Plan
 
+### Automated (recommended)
+
 ```bash
 # From a clean directory:
 mkdir moflo-test-project && cd moflo-test-project
 git init && git config user.email "test@test.com" && git config user.name "Test"
 npm init -y
 mkdir -p src tests docs
-
-# Add sample code
-cat > src/app.js << 'EOF'
-function greet(name) { return `Hello, ${name}!`; }
-module.exports = { greet };
-EOF
-cat > tests/app.test.js << 'EOF'
-const { greet } = require('../src/app');
-test('greet returns greeting', () => { expect(greet('World')).toBe('Hello, World!'); });
-EOF
-
+# Add sample code files...
 git add -A && git commit -m "Initial setup"
 npm install moflo@latest
 
 # Run init
-npx moflo init --yes
+npx flo init --yes
 
-# Verify
-npx moflo doctor
-npx moflo memory store --key "test" --value "hello" --namespace test
-npx moflo memory search --query "hello" --limit 5
-npx moflo config show
-npx moflo swarm init --topology hierarchical --max-agents 6 --strategy specialized
-npx moflo swarm status
-npx moflo hive-mind init --topology hierarchical-mesh --consensus raft
-npx moflo hive-mind shutdown
+# Run full integration diagnostics (14 tests, non-destructive)
+npx flo memory init --force
+npx flo diagnose
+
+# Or test a specific subsystem
+npx flo diagnose --suite memory
+npx flo diagnose --suite swarm
+
+# JSON output for CI
+npx flo diagnose --json
+```
+
+### Manual (step-by-step)
+
+```bash
+npx flo doctor
+npx flo memory store --key "test" --value "hello" --namespace test
+npx flo memory search --query "hello" --limit 5
+npx flo config show
+npx flo swarm init --topology hierarchical --max-agents 6 --strategy specialized
+npx flo swarm status
+npx flo hive-mind init --topology hierarchical-mesh --consensus raft
+npx flo hive-mind shutdown
 
 # Re-run init (idempotency)
-npx moflo init --yes
+npx flo init --yes
 # Should show ○ for all skipped items, no errors
 ```

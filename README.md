@@ -124,7 +124,11 @@ npx flo memory code-map          # Index your code structure
 npx flo doctor                   # Verify everything works
 ```
 
-Both indexes run automatically at session start after this, so you only need to run them manually on first setup or after major structural changes.
+Both indexes run automatically at session start after this, so you only need to run them manually on first setup or after major structural changes. To reindex everything at once:
+
+```bash
+npx flo memory refresh           # Reindex all content, rebuild embeddings, cleanup, vacuum
+```
 
 ## The `/flo` Skill
 
@@ -217,6 +221,7 @@ flo memory search -q "auth patterns"         # Semantic search
 flo memory index-guidance                    # Index guidance docs
 flo memory code-map                          # Index code structure
 flo memory rebuild-index                     # Regenerate all embeddings
+flo memory refresh                           # Reindex all + rebuild + cleanup + vacuum
 flo memory stats                             # Show statistics
 ```
 
@@ -238,11 +243,19 @@ flo gate prompt-reminder         # Context bracket tracking
 flo gate session-reset           # Reset workflow state
 ```
 
+### Diagnostics
+
+```bash
+flo doctor                       # Quick health check (environment, deps, config)
+flo diagnose                     # Full integration test (memory, swarm, hive, hooks, neural)
+flo diagnose --suite memory      # Run only memory tests
+flo diagnose --json              # JSON output for CI/automation
+```
+
 ### System
 
 ```bash
 flo init                          # Initialize project (one-time setup)
-flo doctor                       # Health check
 flo --version                    # Show version
 ```
 
