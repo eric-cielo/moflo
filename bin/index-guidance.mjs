@@ -84,9 +84,18 @@ function loadGuidanceDirs() {
   }
 
   // Use config dirs or fall back to defaults
+  // Each directory gets a unique prefix derived from its path to avoid key collisions
+  // when multiple directories contain files with the same name.
   const userDirs = configDirs || ['.claude/guidance', 'docs/guides'];
   for (const d of userDirs) {
-    dirs.push({ path: d, prefix: 'guidance' });
+    const prefix = d.replace(/\\/g, '/')
+      .replace(/^\.claude\//, '')
+      .replace(/^back-office\/api\/\.claude\//, 'bo-api-')
+      .replace(/^back-office\/ui\/\.claude\//, 'bo-ui-')
+      .replace(/[^a-zA-Z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'guidance';
+    dirs.push({ path: d, prefix });
   }
 
   // 2. Include moflo's own bundled guidance (ships with the package)
@@ -100,12 +109,8 @@ function loadGuidanceDirs() {
     dirs.push({ path: bundledGuidanceDir, prefix: 'moflo-bundled', absolute: true });
   }
 
-  // 3. Include CLAUDE.md from project root if it exists
-  //    This is the primary project instruction file for Claude-enabled projects
-  const claudeMdPath = resolve(projectRoot, 'CLAUDE.md');
-  if (existsSync(claudeMdPath)) {
-    dirs.push({ path: projectRoot, prefix: 'project-root', absolute: true, fileFilter: ['CLAUDE.md'] });
-  }
+  // 3. CLAUDE.md files are NOT indexed — Claude loads them into context automatically.
+  //    Indexing them wastes vectors and creates duplicate keys across subprojects.
 
   return dirs;
 }
@@ -640,7 +645,9 @@ function indexFile(db, filePath, keyPrefix) {
  * Skips node_modules, .git, and other non-content directories.
  */
 function walkMdFiles(dir) {
-  const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next']);
+  const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.reports']);
+  // CLAUDE.md is loaded into context by Claude automatically — skip to avoid duplicate vectors
+  const SKIP_FILES = new Set(['CLAUDE.md']);
   const files = [];
 
   function walk(current) {
@@ -648,7 +655,7 @@ function walkMdFiles(dir) {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       if (entry.isDirectory()) {
         if (!SKIP_DIRS.has(entry.name)) walk(resolve(current, entry.name));
-      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      } else if (entry.isFile() && entry.name.endsWith('.md') && !SKIP_FILES.has(entry.name)) {
         files.push(resolve(current, entry.name));
       }
     }
