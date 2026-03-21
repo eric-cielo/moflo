@@ -20,7 +20,7 @@
  */
 
 import { spawn } from 'child_process';
-import { existsSync, appendFileSync } from 'fs';
+import { existsSync, appendFileSync, readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -475,12 +475,29 @@ function runBackgroundTraining() {
   spawnWindowless('node', [localCli, 'neural', 'optimize'], 'neural optimize');
 }
 
-// Run daemon start in background (non-blocking)
+// Run daemon start in background (non-blocking) — skip if already running
 function runDaemonStartBackground() {
   const localCli = getLocalCliPath();
   if (!localCli) {
     log('warn', 'Local CLI not found, skipping daemon start');
     return;
+  }
+
+  // Check if daemon is already running via PID file to prevent duplicate spawns
+  // (subagents also fire SessionStart, which would otherwise start extra daemons)
+  const pidFile = resolve(projectRoot, '.claude-flow', 'daemon.pid');
+  if (existsSync(pidFile)) {
+    try {
+      const pid = parseInt(readFileSync(pidFile, 'utf-8').trim(), 10);
+      if (pid && !isNaN(pid)) {
+        process.kill(pid, 0); // signal 0 = check if process exists, doesn't kill
+        log('info', `Daemon already running (PID: ${pid}), skipping start`);
+        return;
+      }
+    } catch {
+      // Process doesn't exist — stale PID file, fall through to start fresh
+      log('info', 'Stale daemon PID file, starting fresh');
+    }
   }
 
   spawnWindowless('node', [localCli, 'daemon', 'start', '--quiet'], 'daemon');
