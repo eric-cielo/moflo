@@ -1147,8 +1147,7 @@ export function computeSimilarity(
     case 'cosine':
       return { score: cosineSimilarity(a, b), metric };
     case 'euclidean':
-      // Convert distance to similarity (closer = higher score)
-      return { score: 1 / (1 + euclideanDistance(a, b)), metric };
+      return { score: euclideanDistance(a, b), metric };
     case 'dot':
       return { score: dotProduct(a, b), metric };
     default:

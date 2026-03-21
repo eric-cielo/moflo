@@ -259,7 +259,7 @@ export class FileOrganizationHook {
       blocked = true;
       blockReason = `Source files should not be written to root folder. Suggested: ${fileTypeInfo.directories[0]}`;
       suggestedDirectory = fileTypeInfo.directories[0];
-      suggestedPath = path.join(suggestedDirectory, fileName);
+      suggestedPath = path.join(suggestedDirectory, fileName).replace(/\\/g, '/');
 
       issues.push({
         type: 'root-write',

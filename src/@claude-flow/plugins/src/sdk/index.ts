@@ -401,6 +401,8 @@ export class HookBuilder {
   private priority: HookPriority = HookPriority.Normal;
   private async: boolean = true;
   private handler?: HookHandler;
+  private condition?: (ctx: HookContext) => boolean;
+  private transformer?: (data: unknown) => unknown;
 
   constructor(event: HookEvent) {
     this.event = event;
@@ -426,6 +428,21 @@ export class HookBuilder {
     return this;
   }
 
+  when(condition: (ctx: HookContext) => boolean): this {
+    this.condition = condition;
+    return this;
+  }
+
+  transform(transformer: (data: unknown) => unknown): this {
+    this.transformer = transformer;
+    return this;
+  }
+
+  handle(handler: HookHandler): this {
+    this.handler = handler;
+    return this;
+  }
+
   withHandler(handler: HookHandler): this {
     this.handler = handler;
     return this;
@@ -436,9 +453,23 @@ export class HookBuilder {
       throw new Error(`Hook for event ${this.event} requires a handler`);
     }
 
+    const innerHandler = this.handler;
+    const condition = this.condition;
+    const transformer = this.transformer;
+
+    const wrappedHandler: HookHandler = (ctx: HookContext) => {
+      if (condition && !condition(ctx)) {
+        return { success: true };
+      }
+      const effectiveCtx = transformer
+        ? { ...ctx, data: transformer(ctx.data) }
+        : ctx;
+      return innerHandler(effectiveCtx);
+    };
+
     return {
       event: this.event,
-      handler: this.handler,
+      handler: wrappedHandler,
       priority: this.priority,
       name: this.name,
       description: this.description,

@@ -202,7 +202,17 @@ export class SwarmCoordinator {
     }
 
     const startTime = Date.now();
-    const result = await agent.executeTask(task);
+    let result: TaskResult;
+    try {
+      result = await agent.executeTask(task);
+    } catch (error) {
+      result = {
+        taskId: task.id,
+        status: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+        agentId
+      };
+    }
     const duration = Date.now() - startTime;
 
     // Update metrics

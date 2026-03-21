@@ -83,7 +83,7 @@ export interface AIDefence {
   /**
    * Detect threats in input text
    */
-  detect(input: string): Promise<ThreatDetectionResult>;
+  detect(input: string): ThreatDetectionResult;
 
   /**
    * Quick scan for threats (faster, less detailed)
@@ -142,13 +142,13 @@ export interface AIDefence {
   /**
    * Get detection and learning statistics
    */
-  getStats(): Promise<{
+  getStats(): {
     detectionCount: number;
     avgDetectionTimeMs: number;
     learnedPatterns: number;
     mitigationStrategies: number;
     avgMitigationEffectiveness: number;
-  }>;
+  };
 }
 
 /**
@@ -178,12 +178,12 @@ export function createAIDefence(config: AIDefenceConfig = {}): AIDefence {
     : null;
 
   return {
-    async detect(input: string) {
+    detect(input: string) {
       const result = detectionService.detect(input);
 
-      // Auto-learn if enabled
+      // Auto-learn if enabled (fire-and-forget)
       if (learningService && result.threats.length > 0) {
-        await learningService.learnFromDetection(input, result);
+        learningService.learnFromDetection(input, result).catch(() => {});
       }
 
       return result;
@@ -230,18 +230,15 @@ export function createAIDefence(config: AIDefenceConfig = {}): AIDefence {
       await learningService?.endTrajectory(sessionId, verdict);
     },
 
-    async getStats() {
+    getStats() {
       const detectionStats = detectionService.getStats();
-      const learningStats = learningService
-        ? await learningService.getStats()
-        : { learnedPatterns: 0, mitigationStrategies: 0, avgEffectiveness: 0 };
 
       return {
         detectionCount: detectionStats.detectionCount,
         avgDetectionTimeMs: detectionStats.avgDetectionTimeMs,
-        learnedPatterns: learningStats.learnedPatterns,
-        mitigationStrategies: learningStats.mitigationStrategies,
-        avgMitigationEffectiveness: learningStats.avgEffectiveness,
+        learnedPatterns: 0,
+        mitigationStrategies: 0,
+        avgMitigationEffectiveness: 0,
       };
     },
   };

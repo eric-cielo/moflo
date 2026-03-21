@@ -606,9 +606,6 @@ describe('TopologyManager', () => {
         await topology.addNode(`agent-${i}`, 'peer');
       }
 
-      // Wait for auto-rebalance
-      await new Promise(resolve => setTimeout(resolve, 6000));
-
       await topology.rebalance();
 
       // Allow time for event

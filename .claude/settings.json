@@ -168,7 +168,7 @@
     "pr": "\ud83e\udd16 Generated with [moflo](https://github.com/eric-cielo/moflo)"
   },
   "claudeFlow": {
-    "version": "4.6.12",
+    "version": "4.7.0",
     "enabled": true,
     "modelPreferences": {
       "default": "claude-opus-4-6",
