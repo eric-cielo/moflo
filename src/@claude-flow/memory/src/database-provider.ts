@@ -22,7 +22,6 @@ import {
   HealthCheckResult,
   MemoryEntryUpdate,
 } from './types.js';
-import { SQLiteBackend, SQLiteBackendConfig } from './sqlite-backend.js';
 import { SqlJsBackend, SqlJsBackendConfig } from './sqljs-backend.js';
 
 /**

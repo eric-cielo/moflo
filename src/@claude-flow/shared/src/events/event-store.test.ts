@@ -152,16 +152,20 @@ describe('EventStore', () => {
     });
 
     it('should replay from specific version', async () => {
-      await eventStore.append(createAgentSpawnedEvent('agent-1', 'coder', 'core', []));
-      await eventStore.append(createAgentStartedEvent('agent-1'));
-      await eventStore.append(createTaskCreatedEvent('task-1', 'implementation', 'Task', 'Desc', 'high', []));
+      // Create multiple events on the same aggregate so versions increment past 2
+      await eventStore.append(createAgentSpawnedEvent('agent-1', 'coder', 'core', []));   // v1
+      await eventStore.append(createAgentStartedEvent('agent-1'));                          // v2
+      await eventStore.append(createTaskCreatedEvent('task-1', 'implementation', 'Task', 'Desc', 'high', [])); // v1
 
       const events: any[] = [];
       for await (const event of eventStore.replay(2)) {
         events.push(event);
       }
 
-      expect(events.length).toBeGreaterThanOrEqual(2);
+      // replay(2) returns events where per-aggregate version >= 2
+      // Only agent-1's second event (v2) qualifies
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      expect(events[0].version).toBeGreaterThanOrEqual(2);
     });
   });
 

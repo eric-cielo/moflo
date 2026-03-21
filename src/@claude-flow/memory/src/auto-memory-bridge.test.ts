@@ -86,7 +86,8 @@ function createTestInsight(overrides: Partial<MemoryInsight> = {}): MemoryInsigh
 describe('resolveAutoMemoryDir', () => {
   it('should derive path from working directory', () => {
     const result = resolveAutoMemoryDir('/workspaces/my-project');
-    expect(result).toContain('.claude/projects/');
+    // Use path.sep-aware check for cross-platform compatibility
+    expect(result).toMatch(/\.claude[/\\]projects[/\\]/);
     expect(result).toContain('memory');
     expect(result).not.toContain('//');
   });
@@ -104,20 +105,23 @@ describe('resolveAutoMemoryDir', () => {
 });
 
 describe('findGitRoot', () => {
+  // Use the actual repo root (works on any platform)
+  const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+
   it('should find git root for a directory inside a repo', () => {
-    // We know /workspaces/claude-flow is a git repo
-    const root = findGitRoot('/workspaces/claude-flow/v3/@claude-flow/memory');
-    expect(root).toBe('/workspaces/claude-flow');
+    const root = findGitRoot(path.join(repoRoot, 'src', '@claude-flow', 'memory'));
+    expect(root).toBe(repoRoot);
   });
 
   it('should return the directory itself if it is the git root', () => {
-    const root = findGitRoot('/workspaces/claude-flow');
-    expect(root).toBe('/workspaces/claude-flow');
+    const root = findGitRoot(repoRoot);
+    expect(root).toBe(repoRoot);
   });
 
-  it('should return null for root filesystem', () => {
-    // /proc is almost certainly not in a git repo
-    const result = findGitRoot('/proc');
+  it('should return null for non-git directory', () => {
+    // A temp or system dir unlikely to be in a git repo
+    const testDir = process.platform === 'win32' ? 'C:\\Windows\\Temp' : '/proc';
+    const result = findGitRoot(testDir);
     expect(result).toBeNull();
   });
 });

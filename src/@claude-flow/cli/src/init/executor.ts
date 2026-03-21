@@ -539,7 +539,7 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
         cvesFixed: 0,
         totalCves: 3,
         lastScan: null,
-        _note: 'Run: npx @claude-flow/cli@latest security scan'
+        _note: 'Run: npx moflo security scan'
       };
       fs.writeFileSync(auditPath, JSON.stringify(audit, null, 2), 'utf-8');
       result.created.push('.claude-flow/security/audit-status.json');
@@ -1280,7 +1280,7 @@ async function writeInitialMetrics(
         patternsLearned: 0,
         sessionsCompleted: 0
       },
-      _note: 'Metrics will update as you use Claude Flow. Run: npx @claude-flow/cli@latest daemon start'
+      _note: 'Metrics will update as you use Claude Flow. Run: npx moflo daemon start'
     };
     fs.writeFileSync(progressPath, JSON.stringify(progress, null, 2), 'utf-8');
     result.created.files.push('.claude-flow/metrics/v3-progress.json');
@@ -1344,7 +1344,7 @@ async function writeInitialMetrics(
       cvesFixed: 0,
       totalCves: 3,
       lastScan: null,
-      _note: 'Run: npx @claude-flow/cli@latest security scan'
+      _note: 'Run: npx moflo security scan'
     };
     fs.writeFileSync(auditPath, JSON.stringify(audit, null, 2), 'utf-8');
     result.created.files.push('.claude-flow/security/audit-status.json');
@@ -1428,13 +1428,13 @@ MoFlo V4 is a domain-driven design architecture for multi-agent AI coordination 
 ### Quick Commands
 \`\`\`bash
 # Initialize swarm
-npx @claude-flow/cli@latest swarm init --topology hierarchical --max-agents 8 --strategy specialized
+npx moflo swarm init --topology hierarchical --max-agents 8 --strategy specialized
 
 # Check status
-npx @claude-flow/cli@latest swarm status
+npx moflo swarm status
 
 # Monitor activity
-npx @claude-flow/cli@latest swarm monitor
+npx moflo swarm monitor
 \`\`\`
 
 ---
@@ -1518,17 +1518,17 @@ npx @claude-flow/cli@latest swarm monitor
 ### Example Commands
 \`\`\`bash
 # Initialize
-npx @claude-flow/cli@latest init --wizard
+npx moflo init --wizard
 
 # Spawn agent
-npx @claude-flow/cli@latest agent spawn -t coder --name my-coder
+npx moflo agent spawn -t coder --name my-coder
 
 # Memory operations
-npx @claude-flow/cli@latest memory store --key "pattern" --value "data" --namespace patterns
-npx @claude-flow/cli@latest memory search --query "authentication"
+npx moflo memory store --key "pattern" --value "data" --namespace patterns
+npx moflo memory search --query "authentication"
 
 # Diagnostics
-npx @claude-flow/cli@latest doctor --fix
+npx moflo doctor --fix
 \`\`\`
 
 ---
@@ -1627,16 +1627,16 @@ High-confidence insights (>0.8) can transfer between agents.
 ### Memory Commands
 \`\`\`bash
 # Store pattern
-npx @claude-flow/cli@latest memory store --key "name" --value "data" --namespace patterns
+npx moflo memory store --key "name" --value "data" --namespace patterns
 
 # Semantic search
-npx @claude-flow/cli@latest memory search --query "authentication"
+npx moflo memory search --query "authentication"
 
 # List entries
-npx @claude-flow/cli@latest memory list --namespace patterns
+npx moflo memory list --namespace patterns
 
 # Initialize database
-npx @claude-flow/cli@latest memory init --force
+npx moflo memory init --force
 \`\`\`
 
 ---
@@ -1665,16 +1665,16 @@ npx @claude-flow/cli@latest memory init --force
 ### Hive-Mind Commands
 \`\`\`bash
 # Initialize
-npx @claude-flow/cli@latest hive-mind init --queen-type strategic
+npx moflo hive-mind init --queen-type strategic
 
 # Status
-npx @claude-flow/cli@latest hive-mind status
+npx moflo hive-mind status
 
 # Spawn workers
-npx @claude-flow/cli@latest hive-mind spawn --count 5 --type worker
+npx moflo hive-mind spawn --count 5 --type worker
 
 # Consensus
-npx @claude-flow/cli@latest hive-mind consensus --propose "task"
+npx moflo hive-mind consensus --propose "task"
 \`\`\`
 
 ---
@@ -1732,24 +1732,24 @@ claude mcp add flow-nexus -- npx -y flow-nexus@latest mcp start
 ### Essential Commands
 \`\`\`bash
 # Setup
-npx @claude-flow/cli@latest init --wizard
-npx @claude-flow/cli@latest daemon start
-npx @claude-flow/cli@latest doctor --fix
+npx moflo init --wizard
+npx moflo daemon start
+npx moflo doctor --fix
 
 # Swarm
-npx @claude-flow/cli@latest swarm init --topology hierarchical --max-agents 8
-npx @claude-flow/cli@latest swarm status
+npx moflo swarm init --topology hierarchical --max-agents 8
+npx moflo swarm status
 
 # Agents
-npx @claude-flow/cli@latest agent spawn -t coder
-npx @claude-flow/cli@latest agent list
+npx moflo agent spawn -t coder
+npx moflo agent list
 
 # Memory
-npx @claude-flow/cli@latest memory search --query "patterns"
+npx moflo memory search --query "patterns"
 
 # Hooks
-npx @claude-flow/cli@latest hooks pre-task --description "task"
-npx @claude-flow/cli@latest hooks worker dispatch --trigger optimize
+npx moflo hooks pre-task --description "task"
+npx moflo hooks worker dispatch --trigger optimize
 \`\`\`
 
 ### File Structure

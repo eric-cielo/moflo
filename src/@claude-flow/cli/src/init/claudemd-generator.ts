@@ -97,7 +97,7 @@ function antiDriftConfig(): string {
 - Keep shared memory namespace for all agents
 
 \`\`\`bash
-npx @claude-flow/cli@latest swarm init --topology hierarchical --max-agents 8 --strategy specialized
+npx moflo swarm init --topology hierarchical --max-agents 8 --strategy specialized
 \`\`\``;
 }
 
@@ -110,7 +110,7 @@ When the user requests a complex task, spawn agents in background and WAIT:
 
 \`\`\`javascript
 // STEP 1: Initialize swarm coordination
-Bash("npx @claude-flow/cli@latest swarm init --topology hierarchical --max-agents 8 --strategy specialized")
+Bash("npx moflo swarm init --topology hierarchical --max-agents 8 --strategy specialized")
 
 // STEP 2: Spawn ALL agents IN BACKGROUND in a SINGLE message
 Task({prompt: "Research requirements...", subagent_type: "researcher", run_in_background: true})
@@ -165,11 +165,11 @@ function cliCommandsTable(): string {
 ### Quick CLI Examples
 
 \`\`\`bash
-npx @claude-flow/cli@latest init --wizard
-npx @claude-flow/cli@latest agent spawn -t coder --name my-coder
-npx @claude-flow/cli@latest swarm init --v3-mode
-npx @claude-flow/cli@latest memory search --query "authentication patterns"
-npx @claude-flow/cli@latest doctor --fix
+npx moflo init --wizard
+npx moflo agent spawn -t coder --name my-coder
+npx moflo swarm init --v3-mode
+npx moflo memory search --query "authentication patterns"
+npx moflo doctor --fix
 \`\`\``;
 }
 
@@ -218,9 +218,9 @@ function hooksSystem(): string {
 | \`document\` | normal | Auto-documentation |
 
 \`\`\`bash
-npx @claude-flow/cli@latest hooks pre-task --description "[task]"
-npx @claude-flow/cli@latest hooks post-task --task-id "[id]" --success true
-npx @claude-flow/cli@latest hooks worker dispatch --trigger audit
+npx moflo hooks pre-task --description "[task]"
+npx moflo hooks post-task --task-id "[id]" --success true
+npx moflo hooks worker dispatch --trigger audit
 \`\`\``;
 }
 
@@ -229,20 +229,20 @@ function learningProtocol(): string {
 
 ### Before Starting Any Task
 \`\`\`bash
-npx @claude-flow/cli@latest memory search --query "[task keywords]" --namespace patterns
-npx @claude-flow/cli@latest memory search --query "[task keywords]" --namespace knowledge
-npx @claude-flow/cli@latest hooks route --task "[task description]"
+npx moflo memory search --query "[task keywords]" --namespace patterns
+npx moflo memory search --query "[task keywords]" --namespace knowledge
+npx moflo hooks route --task "[task description]"
 \`\`\`
 
 ### After Completing Any Task Successfully
 \`\`\`bash
-npx @claude-flow/cli@latest memory store --namespace patterns --key "[pattern-name]" --value "[what worked]"
-npx @claude-flow/cli@latest hooks post-task --task-id "[id]" --success true
+npx moflo memory store --namespace patterns --key "[pattern-name]" --value "[what worked]"
+npx moflo hooks post-task --task-id "[id]" --success true
 \`\`\`
 
 ### When the User Asks You to Remember Something
 \`\`\`bash
-npx @claude-flow/cli@latest memory store --namespace knowledge --key "[topic]" --value "[what to remember]"
+npx moflo memory store --namespace knowledge --key "[topic]" --value "[what to remember]"
 \`\`\`
 
 The \`knowledge\` namespace is for user-directed project knowledge — things like "always use soft delete",
@@ -259,19 +259,19 @@ function memoryCommands(): string {
 
 \`\`\`bash
 # Store a code pattern
-npx @claude-flow/cli@latest memory store --key "pattern-auth" --value "JWT with refresh" --namespace patterns
+npx moflo memory store --key "pattern-auth" --value "JWT with refresh" --namespace patterns
 
 # Store user-directed knowledge (remember for next time)
-npx @claude-flow/cli@latest memory store --key "soft-delete" --value "Always use soft delete on entities" --namespace knowledge
+npx moflo memory store --key "soft-delete" --value "Always use soft delete on entities" --namespace knowledge
 
 # Search (searches across all namespaces if --namespace omitted)
-npx @claude-flow/cli@latest memory search --query "authentication patterns"
+npx moflo memory search --query "authentication patterns"
 
 # List entries in a namespace
-npx @claude-flow/cli@latest memory list --namespace knowledge --limit 10
+npx moflo memory list --namespace knowledge --limit 10
 
 # Retrieve a specific key
-npx @claude-flow/cli@latest memory retrieve --key "pattern-auth" --namespace patterns
+npx moflo memory retrieve --key "pattern-auth" --namespace patterns
 \`\`\`
 
 ### Namespaces
@@ -290,7 +290,7 @@ function securityRulesLight(): string {
 - NEVER commit .env files or any file containing secrets
 - Always validate user input at system boundaries
 - Always sanitize file paths to prevent directory traversal
-- Run \`npx @claude-flow/cli@latest security scan\` after security-related changes`;
+- Run \`npx moflo security scan\` after security-related changes`;
 }
 
 function buildAndTest(): string {
@@ -323,9 +323,9 @@ function securitySection(): string {
 
 ### Security Scanning
 \`\`\`bash
-npx @claude-flow/cli@latest security scan --depth full
-npx @claude-flow/cli@latest security audit --report
-npx @claude-flow/cli@latest security cve --check
+npx moflo security scan --depth full
+npx moflo security audit --report
+npx moflo security cve --check
 \`\`\`
 
 ### Security Agents
@@ -345,9 +345,9 @@ function performanceSection(): string {
 
 ### Performance Tooling
 \`\`\`bash
-npx @claude-flow/cli@latest performance benchmark --suite all
-npx @claude-flow/cli@latest performance profile --target "[component]"
-npx @claude-flow/cli@latest performance metrics --format table
+npx moflo performance benchmark --suite all
+npx moflo performance profile --target "[component]"
+npx moflo performance metrics --format table
 \`\`\`
 
 ### Performance Agents
@@ -388,8 +388,8 @@ function setupAndBoundary(): string {
 
 \`\`\`bash
 claude mcp add claude-flow -- npx -y @claude-flow/cli@latest
-npx @claude-flow/cli@latest daemon start
-npx @claude-flow/cli@latest doctor --fix
+npx moflo daemon start
+npx moflo doctor --fix
 \`\`\`
 
 ## Claude Code vs CLI Tools

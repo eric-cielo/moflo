@@ -165,10 +165,10 @@
   },
   "attribution": {
     "commit": "Co-Authored-By: moflo <noreply@motailz.com>",
-    "pr": "\ud83e\udd16 Generated with [claude-flow](https://github.com/eric-cielo/moflo)"
+    "pr": "\ud83e\udd16 Generated with [moflo](https://github.com/eric-cielo/moflo)"
   },
   "claudeFlow": {
-    "version": "3.5.2",
+    "version": "4.7.1",
     "enabled": true,
     "modelPreferences": {
       "default": "claude-opus-4-6",
@@ -275,9 +275,9 @@
   },
   "mcpServers": {
     "claude-flow": {
-      "command": "node",
+      "command": "npx",
       "args": [
-        "/workspaces/claude-flow/v3/@claude-flow/cli/bin/cli.js",
+        "moflo",
         "mcp",
         "start"
       ]

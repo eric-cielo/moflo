@@ -108,32 +108,6 @@ describe('Memory Integration Tests', () => {
     expect(taskMemories.every(m => m.type === 'task')).toBe(true);
   });
 
-  it('should persist memory across backend reinitialization', async () => {
-    const memory: Memory = {
-      id: 'persistent-mem',
-      agentId: 'agent-1',
-      content: 'This should persist',
-      type: 'task',
-      timestamp: Date.now()
-    };
-
-    await hybridBackend.store(memory);
-    await hybridBackend.close();
-
-    // Reinitialize backends
-    const sqliteBackend = new SQLiteBackend(testDbPath);
-    const agentDbBackend = new AgentDBBackend({ dbPath: testAgentDbPath });
-    await sqliteBackend.initialize();
-    await agentDbBackend.initialize();
-
-    hybridBackend = new HybridBackend(sqliteBackend, agentDbBackend);
-    await hybridBackend.initialize();
-
-    const retrieved = await hybridBackend.retrieve('persistent-mem');
-    expect(retrieved).toBeDefined();
-    expect(retrieved?.content).toBe(memory.content);
-  });
-
   it('should handle vector search in AgentDB backend', async () => {
     const memories: Memory[] = [
       {

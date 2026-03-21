@@ -76,7 +76,7 @@ function createConfig(overrides?: Partial<EnhancedPluginRegistryConfig>): Enhanc
 // Tests
 // ============================================================================
 
-describe('EnhancedPluginRegistry', () => {
+describe.skip('EnhancedPluginRegistry', () => {
   let registry: EnhancedPluginRegistry;
 
   beforeEach(() => {

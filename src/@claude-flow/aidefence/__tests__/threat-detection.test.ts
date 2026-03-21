@@ -79,7 +79,7 @@ describe('ThreatDetectionService', () => {
     it('should detect API keys', () => {
       const service = createThreatDetectionService();
 
-      const result = service.detect('key: sk-ant-api03-fake1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwx');
+      const result = service.detect('key: sk-ant-api03-fake1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz0123456789abcdef');
 
       expect(result.piiFound).toBe(true);
     });

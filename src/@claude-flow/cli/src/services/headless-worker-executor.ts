@@ -614,6 +614,20 @@ export class HeadlessWorkerExecutor extends EventEmitter {
 
     // Ensure log directory exists
     this.ensureLogDir();
+
+    // Kill child processes on parent exit to prevent orphaned node processes.
+    // Uses 'exit' (not 'beforeExit') so it fires even on explicit process.exit().
+    // The handler must be synchronous — no async work allowed in 'exit' handlers.
+    process.on('exit', () => {
+      for (const [, entry] of this.processPool) {
+        try {
+          clearTimeout(entry.timeout);
+          entry.process.kill('SIGTERM');
+        } catch {
+          // Process already gone — ignore
+        }
+      }
+    });
   }
 
   // ============================================

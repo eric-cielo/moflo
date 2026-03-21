@@ -1,8 +1,8 @@
 /**
  * SqlJsBackend - Pure JavaScript SQLite for Windows compatibility
  *
- * When better-sqlite3 native compilation fails on Windows,
- * sql.js provides a WASM-based fallback that works everywhere.
+ * Pure JavaScript/WASM SQLite backend that works everywhere
+ * without native compilation.
  *
  * @module v3/memory/sqljs-backend
  */
@@ -74,9 +74,8 @@ const DEFAULT_CONFIG: SqlJsBackendConfig = {
  * Provides:
  * - Pure JavaScript/WASM implementation (no native compilation)
  * - Windows, macOS, Linux compatibility
- * - Same SQL interface as better-sqlite3
+ * - Same SQL interface as native SQLite
  * - In-memory with periodic disk persistence
- * - Fallback when native SQLite fails
  */
 export class SqlJsBackend extends EventEmitter implements IMemoryBackend {
   private config: SqlJsBackendConfig;
@@ -652,7 +651,7 @@ export class SqlJsBackend extends EventEmitter implements IMemoryBackend {
       message: 'No vector index (brute-force search)',
     };
 
-    recommendations.push('Consider using better-sqlite3 with HNSW for faster vector search');
+    recommendations.push('Consider using AgentDB with HNSW for faster vector search');
 
     // Cache health (not applicable for sql.js)
     const cacheHealth: ComponentHealth = {

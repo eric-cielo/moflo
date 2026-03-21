@@ -145,6 +145,19 @@ const handlers = {
     try {
       var projectDir = path.resolve(path.dirname(helpersDir), '..');
       var cp = require('child_process');
+      var pidFile = path.join(projectDir, '.claude-flow', 'background-pids.json');
+
+      // Kill stale background processes from previous sessions
+      try {
+        if (fs.existsSync(pidFile)) {
+          var stalePids = JSON.parse(fs.readFileSync(pidFile, 'utf-8'));
+          for (var i = 0; i < stalePids.length; i++) {
+            try { process.kill(stalePids[i].pid, 0); /* test if alive */ } catch (e) { continue; }
+            try { process.kill(stalePids[i].pid, 'SIGTERM'); } catch (e) { /* already gone */ }
+          }
+          fs.unlinkSync(pidFile);
+        }
+      } catch (e) { /* non-fatal: best-effort cleanup */ }
 
       // Read moflo.yaml auto_index flags (default: both true)
       var autoGuidance = true;
@@ -183,26 +196,33 @@ const handlers = {
         return null;
       }
 
-      function spawnBackground(script, extraArgs) {
+      // Track PIDs of background processes so next session can clean them up
+      var trackedPids = [];
+
+      function spawnBackground(script, label, extraArgs) {
         var args = [script].concat(extraArgs || []);
-        cp.spawn('node', args, {
+        var child = cp.spawn('node', args, {
           stdio: 'ignore',
           cwd: projectDir,
           detached: true,
           windowsHide: true
-        }).unref();
+        });
+        if (child.pid) {
+          trackedPids.push({ pid: child.pid, script: label, startedAt: new Date().toISOString() });
+        }
+        child.unref();
       }
 
       // 1. Index guidance docs (with embeddings for semantic search)
       if (autoGuidance) {
         var guidanceScript = findMofloScript('index-guidance.mjs');
-        if (guidanceScript) spawnBackground(guidanceScript);
+        if (guidanceScript) spawnBackground(guidanceScript, 'index-guidance');
       }
 
       // 2. Generate code map (structural index of source files)
       if (autoCodeMap) {
         var codeMapScript = findMofloScript('generate-code-map.mjs');
-        if (codeMapScript) spawnBackground(codeMapScript);
+        if (codeMapScript) spawnBackground(codeMapScript, 'generate-code-map');
       }
 
       // 3. Start learning service (pattern research on codebase)
@@ -218,7 +238,16 @@ const handlers = {
         var nmLearn = path.join(projectDir, 'node_modules', 'moflo', '.claude', 'helpers', 'learning-service.mjs');
         if (fs.existsSync(nmLearn)) learnScript = nmLearn;
       }
-      if (learnScript) spawnBackground(learnScript);
+      if (learnScript) spawnBackground(learnScript, 'learning-service');
+
+      // Persist tracked PIDs for cleanup on next session start
+      if (trackedPids.length > 0) {
+        try {
+          var pidDir = path.dirname(pidFile);
+          if (!fs.existsSync(pidDir)) fs.mkdirSync(pidDir, { recursive: true });
+          fs.writeFileSync(pidFile, JSON.stringify(trackedPids));
+        } catch (e) { /* non-fatal */ }
+      }
 
     } catch (e) { /* non-fatal: session-start indexing is best-effort */ }
   },

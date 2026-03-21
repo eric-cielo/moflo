@@ -142,13 +142,13 @@ describe('Path Security', () => {
 
   describe('safePath', () => {
     it('should create safe paths within base', () => {
-      const base = '/project';
+      const base = path.resolve(process.cwd(), 'project');
       const result = safePath(base, 'src', 'index.ts');
       expect(result).toBe(path.resolve(base, 'src', 'index.ts'));
     });
 
     it('should block path traversal attempts', () => {
-      const base = '/project';
+      const base = path.resolve(process.cwd(), 'project');
       expect(() => safePath(base, '..', 'etc', 'passwd')).toThrow('Path traversal blocked');
       expect(() => safePath(base, 'src', '..', '..', 'etc')).toThrow('Path traversal blocked');
     });

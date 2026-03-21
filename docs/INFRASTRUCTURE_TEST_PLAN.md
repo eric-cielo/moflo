@@ -17,9 +17,9 @@ npx moflo doctor
 # Store a test value
 npx moflo memory store --key "infra-test-$(date +%s)" --value "test value" --namespace patterns
 # Search across all 3 namespaces
-node .claude/scripts/semantic-search.mjs "testing memory" --namespace guidance
-node .claude/scripts/semantic-search.mjs "testing memory" --namespace patterns
-node .claude/scripts/semantic-search.mjs "testing memory" --namespace code-map
+node bin/semantic-search.mjs "testing memory" --namespace guidance
+node bin/semantic-search.mjs "testing memory" --namespace patterns
+node bin/semantic-search.mjs "testing memory" --namespace code-map
 # Retrieve specific key
 npx moflo memory retrieve --key "infra-test-*" --namespace patterns
 ```
@@ -45,25 +45,25 @@ Run domain-specific queries against each namespace and verify scores meet minimu
 - If top-N results all share the same score, the search is degraded (hash/fallback mode)
 - Valid semantic search always produces varied scores across results
 
-### Guidance queries (Xenova model — expect 0.40–0.58)
+### Guidance queries (Xenova model — expect 0.40–0.60)
 
 ```bash
-node .claude/scripts/semantic-search.mjs "soft delete entity pattern" --namespace guidance --limit 5
-node .claude/scripts/semantic-search.mjs "MikroORM migration database relations" --namespace guidance --limit 5
-node .claude/scripts/semantic-search.mjs "authentication JWT token refresh" --namespace guidance --limit 5
+node bin/semantic-search.mjs "swarm coordination agent spawning" --namespace guidance --limit 5
+node bin/semantic-search.mjs "memory store search vector embeddings" --namespace guidance --limit 5
+node bin/semantic-search.mjs "security input validation CVE scanning" --namespace guidance --limit 5
 ```
 
 ### Code-map queries (Xenova model — expect 0.40–0.55)
 
 ```bash
-node .claude/scripts/semantic-search.mjs "entity service route file location" --namespace code-map --limit 5
+node bin/semantic-search.mjs "entity service route file location" --namespace code-map --limit 5
 ```
 
 ### Relevance spot-checks
-- "soft delete entity pattern" → top result should reference soft delete or entity lifecycle
-- "MikroORM migration database relations" → top result should reference Data Models or migrations
-- "authentication JWT token refresh" → top result should reference tokens or auth
-- "entity service route file location" → top result should be a file path (e.g., `file:...route.ts`)
+- "swarm coordination agent spawning" → top result should reference Swarm Coordination or agent spawning
+- "memory store search vector embeddings" → top result should reference Embeddings Package or memory
+- "security input validation CVE scanning" → top result should reference security agents or @claude-flow/security
+- "entity service route file location" → top result should be a file path (e.g., `file:...`)
 
 **Pass criteria:**
 - `[Xenova/all-MiniLM-L6-v2]` appears in output per namespace

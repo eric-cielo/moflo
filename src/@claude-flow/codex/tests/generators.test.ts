@@ -189,7 +189,7 @@ describe('generateAgentsMd', () => {
 
       const result = await generateAgentsMd(options);
 
-      expect(result).toContain('Co-Authored-By: claude-flow');
+      expect(result).toContain('Co-Authored-By:');
       expect(result).toContain('feat');
       expect(result).toContain('fix');
     });

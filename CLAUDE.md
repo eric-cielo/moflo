@@ -1,8 +1,8 @@
-# Claude Code Configuration - Ruflo v3.5
+# Claude Code Configuration - MoFlo
 
-> **Ruflo v3.5** (2026-02-27) — First major stable release. Formerly "Claude Flow".
-> 5,800+ commits, 55 alpha iterations, 215 MCP tools, 60+ agents, 8 AgentDB controllers.
-> Packages: `@claude-flow/cli@3.5.0`, `claude-flow@3.5.0`, `ruflo@3.5.0`
+> **MoFlo** — AI agent orchestration for Claude Code. Diverged fork of Ruflo/Claude Flow.
+> Published as: `moflo` on npm. Internal CLI workspace: `@moflo/cli`.
+> Upstream (read-only reference): `ruflo`, `claude-flow`, `@claude-flow/cli` — do NOT publish to those.
 
 ## Behavioral Rules (Always Enforced)
 
@@ -36,14 +36,16 @@
 
 ### Key Packages
 
+> These use the upstream `@claude-flow/` namespace internally. MoFlo publishes as a single `moflo` package on npm.
+
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@claude-flow/cli` | `v3/@claude-flow/cli/` | CLI entry point (26 commands) |
-| `@claude-flow/codex` | `v3/@claude-flow/codex/` | Dual-mode Claude + Codex collaboration |
-| `@claude-flow/guidance` | `v3/@claude-flow/guidance/` | Governance control plane |
-| `@claude-flow/hooks` | `v3/@claude-flow/hooks/` | 17 hooks + 12 workers |
-| `@claude-flow/memory` | `v3/@claude-flow/memory/` | AgentDB + HNSW search |
-| `@claude-flow/security` | `v3/@claude-flow/security/` | Input validation, CVE remediation |
+| `@moflo/cli` | `src/@claude-flow/cli/` | CLI entry point (26 commands) |
+| `@claude-flow/codex` | `src/@claude-flow/codex/` | Dual-mode Claude + Codex collaboration |
+| `@claude-flow/guidance` | `src/@claude-flow/guidance/` | Governance control plane |
+| `@claude-flow/hooks` | `src/@claude-flow/hooks/` | 17 hooks + 12 workers |
+| `@claude-flow/memory` | `src/@claude-flow/memory/` | AgentDB + HNSW search |
+| `@claude-flow/security` | `src/@claude-flow/security/` | Input validation, CVE remediation |
 
 ## Concurrency: 1 MESSAGE = ALL RELATED OPERATIONS
 
@@ -138,7 +140,7 @@ Bash("npx claude-flow-codex dual run --worker 'codex:coder:Implement the solutio
 Bash("npx claude-flow-codex dual run --worker 'codex:optimizer:Optimize performance based on implementation' --namespace collaboration")
 
 // STEP 3: Coordinate via shared memory
-Bash("npx claude-flow@v3alpha memory store --namespace collaboration --key 'task-context' --value '[task description]'")
+Bash("npx moflo memory store --namespace collaboration --key 'task-context' --value '[task description]'")
 ```
 
 ### Collaboration Templates (Pre-Built Pipelines)
@@ -179,13 +181,13 @@ All workers share state via the `collaboration` namespace:
 
 ```bash
 # Store context for cross-platform sharing
-npx claude-flow@v3alpha memory store --namespace collaboration --key "design-decisions" --value "..."
+npx moflo memory store --namespace collaboration --key "design-decisions" --value "..."
 
 # Search for patterns across all workers
-npx claude-flow@v3alpha memory search --namespace collaboration --query "authentication patterns"
+npx moflo memory search --namespace collaboration --query "authentication patterns"
 
 # Retrieve specific findings
-npx claude-flow@v3alpha memory retrieve --namespace collaboration --key "security-findings"
+npx moflo memory retrieve --namespace collaboration --key "security-findings"
 ```
 
 ### Cross-Platform Learning
@@ -194,13 +196,13 @@ Both platforms learn from each other's outputs:
 
 ```bash
 # After successful collaboration, train patterns
-npx claude-flow@v3alpha hooks post-task --task-id "dual-[id]" --success true --train-neural true
+npx moflo hooks post-task --task-id "dual-[id]" --success true --train-neural true
 
 # Store successful collaboration patterns
-npx claude-flow@v3alpha memory store --namespace patterns --key "dual-mode-[pattern]" --value "[what worked]"
+npx moflo memory store --namespace patterns --key "dual-mode-[pattern]" --value "[what worked]"
 
 # Transfer learnings to both platforms
-npx claude-flow@v3alpha hooks transfer store --pattern "dual-collab-success"
+npx moflo hooks transfer store --pattern "dual-collab-success"
 ```
 
 ### Worker Dependency Levels
@@ -263,7 +265,7 @@ mcp__ruv-swarm__swarm_init({
 
 // STEP 2: Spawn agents concurrently using Claude Code's Task tool
 // ALL Task calls MUST be in the SAME message for parallel execution
-Task("Coordinator", "You are the swarm coordinator. Initialize session, coordinate other agents via memory. Run: npx claude-flow@v3alpha hooks session-start", "hierarchical-coordinator")
+Task("Coordinator", "You are the swarm coordinator. Initialize session, coordinate other agents via memory. Run: npx moflo hooks session-start", "hierarchical-coordinator")
 Task("Researcher", "Analyze requirements and existing code patterns. Store findings in memory via hooks.", "researcher")
 Task("Architect", "Design implementation approach based on research. Document decisions in memory.", "system-architect")
 Task("Coder", "Implement the solution following architect's design. Coordinate via hooks.", "coder")
@@ -374,28 +376,28 @@ This project is configured with Claude Flow V3 (Anti-Drift Defaults):
 
 ```bash
 # Initialize project
-npx claude-flow@v3alpha init --wizard
+npx moflo init --wizard
 
 # Start daemon with background workers
-npx claude-flow@v3alpha daemon start
+npx moflo daemon start
 
 # Spawn an agent
-npx claude-flow@v3alpha agent spawn -t coder --name my-coder
+npx moflo agent spawn -t coder --name my-coder
 
 # Initialize swarm
-npx claude-flow@v3alpha swarm init --v3-mode
+npx moflo swarm init --v3-mode
 
 # Search memory (HNSW-indexed)
-npx claude-flow@v3alpha memory search -q "authentication patterns"
+npx moflo memory search -q "authentication patterns"
 
 # System diagnostics
-npx claude-flow@v3alpha doctor --fix
+npx moflo doctor --fix
 
 # Security scan
-npx claude-flow@v3alpha security scan --depth full
+npx moflo security scan --depth full
 
 # Performance benchmark
-npx claude-flow@v3alpha performance benchmark --suite all
+npx moflo performance benchmark --suite all
 ```
 
 ## Headless Background Instances (claude -p)
@@ -536,7 +538,7 @@ Claude Code's experimental Agent Teams feature is fully integrated with Claude F
 
 ### Enabling Agent Teams
 
-Agent Teams is automatically enabled when you run `npx claude-flow@v3alpha init`. The following is added to `.claude/settings.json`:
+Agent Teams is automatically enabled when you run `npx moflo init`. The following is added to `.claude/settings.json`:
 
 ```json
 {
@@ -606,10 +608,10 @@ Task({
 
 ```bash
 # Handle idle teammate (auto-assigns available tasks)
-npx claude-flow@v3alpha hooks teammate-idle --auto-assign true
+npx moflo hooks teammate-idle --auto-assign true
 
 # Handle task completion (trains patterns, notifies lead)
-npx claude-flow@v3alpha hooks task-completed -i task-123 --train-patterns true
+npx moflo hooks task-completed -i task-123 --train-patterns true
 
 # Check on team progress
 TaskList
@@ -680,27 +682,27 @@ SendMessage({
 
 ```bash
 # Core hooks
-npx claude-flow@v3alpha hooks pre-task --description "[task]"
-npx claude-flow@v3alpha hooks post-task --task-id "[id]" --success true
-npx claude-flow@v3alpha hooks post-edit --file "[file]" --train-patterns
+npx moflo hooks pre-task --description "[task]"
+npx moflo hooks post-task --task-id "[id]" --success true
+npx moflo hooks post-edit --file "[file]" --train-patterns
 
 # Session management
-npx claude-flow@v3alpha hooks session-start --session-id "[id]"
-npx claude-flow@v3alpha hooks session-end --export-metrics true
-npx claude-flow@v3alpha hooks session-restore --session-id "[id]"
+npx moflo hooks session-start --session-id "[id]"
+npx moflo hooks session-end --export-metrics true
+npx moflo hooks session-restore --session-id "[id]"
 
 # Intelligence routing
-npx claude-flow@v3alpha hooks route --task "[task]"
-npx claude-flow@v3alpha hooks explain --topic "[topic]"
+npx moflo hooks route --task "[task]"
+npx moflo hooks explain --topic "[topic]"
 
 # Neural learning
-npx claude-flow@v3alpha hooks pretrain --model-type moe --epochs 10
-npx claude-flow@v3alpha hooks build-agents --agent-types coder,tester
+npx moflo hooks pretrain --model-type moe --epochs 10
+npx moflo hooks build-agents --agent-types coder,tester
 
 # Background workers
-npx claude-flow@v3alpha hooks worker list
-npx claude-flow@v3alpha hooks worker dispatch --trigger audit
-npx claude-flow@v3alpha hooks worker status
+npx moflo hooks worker list
+npx moflo hooks worker dispatch --trigger audit
+npx moflo hooks worker status
 ```
 
 ## Intelligence System (RuVector)
@@ -779,7 +781,7 @@ CLAUDE_FLOW_MEMORY_PATH=./data/memory
 
 ## Doctor Health Checks
 
-Run `npx claude-flow@v3alpha doctor` to check:
+Run `npx moflo doctor` to check:
 - Node.js version (20+)
 - npm version (9+)
 - Git installation
@@ -795,15 +797,15 @@ Run `npx claude-flow@v3alpha doctor` to check:
 
 ```bash
 # Add MCP servers
-claude mcp add claude-flow npx claude-flow@v3alpha mcp start
+claude mcp add claude-flow npx moflo mcp start
 claude mcp add ruv-swarm npx ruv-swarm mcp start  # Optional
 claude mcp add flow-nexus npx flow-nexus@latest mcp start  # Optional
 
 # Start daemon
-npx claude-flow@v3alpha daemon start
+npx moflo daemon start
 
 # Run doctor
-npx claude-flow@v3alpha doctor --fix
+npx moflo doctor --fix
 ```
 
 ## Claude Code vs MCP Tools
@@ -828,60 +830,46 @@ npx claude-flow@v3alpha doctor --fix
 
 ## Publishing to npm
 
-### Publishing Rules
+### Identity
 
-- MUST publish ALL THREE packages when publishing CLI changes: `@claude-flow/cli`, `claude-flow`, AND `ruflo`
-- MUST update ALL dist-tags for ALL THREE packages after publishing
-- Publish order: `@claude-flow/cli` first, then `claude-flow` (umbrella), then `ruflo` (alias umbrella)
-- MUST run verification for ALL THREE before telling user publishing is complete
+MoFlo is a **diverged fork** of the upstream Ruflo/Claude Flow project.
+- We publish **one package**: `moflo`
+- Internal CLI workspace: `@moflo/cli` (in `src/@claude-flow/cli/`) — bundled into `moflo`, NOT published separately
+- Upstream packages (`@claude-flow/cli`, `claude-flow`, `ruflo`) are **not ours** — never publish to them
+
+### Version Alignment
+
+All version numbers must stay in sync. The source of truth is `package.json` in the project root.
+When bumping, update both files together:
+
+| File | Package Name | Must Match |
+|------|-------------|------------|
+| `package.json` (root) | `moflo` | Source of truth |
+| `src/@claude-flow/cli/package.json` | `@moflo/cli` | Must match root |
+
+### Publishing Steps
 
 ```bash
-# STEP 1: Build and publish CLI
-cd v3/@claude-flow/cli
-npm version 3.0.0-alpha.XXX --no-git-tag-version
-npm run build
-npm publish --tag alpha
-npm dist-tag add @claude-flow/cli@3.0.0-alpha.XXX latest
+# STEP 1: Bump version in both package.json files (keep in sync)
+# Use the root version as source of truth
+npm version <new-version> --no-git-tag-version
+cd src/@claude-flow/cli && npm version <new-version> --no-git-tag-version && cd -
 
-# STEP 2: Publish claude-flow umbrella
-cd /workspaces/claude-flow
-npm version 3.0.0-alpha.XXX --no-git-tag-version
-npm publish --tag v3alpha
+# STEP 2: Build the CLI
+cd src/@claude-flow/cli && npm run build && cd -
 
-# STEP 3: Update ALL claude-flow umbrella tags (CRITICAL - DON'T SKIP!)
-npm dist-tag add claude-flow@3.0.0-alpha.XXX latest
-npm dist-tag add claude-flow@3.0.0-alpha.XXX alpha
+# STEP 3: Publish from root
+npm publish
 
-# STEP 4: Publish ruflo umbrella (CRITICAL - DON'T FORGET!)
-cd /workspaces/claude-flow/ruflo
-npm version 3.0.0-alpha.XXX --no-git-tag-version
-npm publish --tag alpha
-npm dist-tag add ruflo@3.0.0-alpha.XXX latest
+# STEP 4: Verify
+npm view moflo dist-tags --json
 ```
 
-**Verification (run before telling user):**
+### Verification (run before telling user)
 ```bash
-npm view @claude-flow/cli dist-tags --json
-npm view claude-flow dist-tags --json
-npm view ruflo dist-tags --json
-# ALL THREE packages need: alpha AND latest pointing to newest version
+npm view moflo dist-tags --json
+# latest should point to the newly published version
 ```
-
-### All Tags That Must Be Updated
-| Package | Tag | Command Users Run |
-|---------|-----|-------------------|
-| `@claude-flow/cli` | `alpha` | `npx @claude-flow/cli@alpha` |
-| `@claude-flow/cli` | `latest` | `npx @claude-flow/cli@latest` |
-| `@claude-flow/cli` | `v3alpha` | `npx @claude-flow/cli@v3alpha` |
-| `claude-flow` | `alpha` | `npx claude-flow@alpha` — EASY TO FORGET |
-| `claude-flow` | `latest` | `npx claude-flow@latest` |
-| `claude-flow` | `v3alpha` | `npx claude-flow@v3alpha` |
-| `ruflo` | `alpha` | `npx ruflo@alpha` — EASY TO FORGET |
-| `ruflo` | `latest` | `npx ruflo@latest` |
-
-- Never forget the `ruflo` package — it's a thin wrapper users run via `npx ruflo@alpha`
-- Never forget the umbrella `alpha` tag — users run `npx claude-flow@alpha`
-- `ruflo` source is in `/ruflo/` — it depends on `@claude-flow/cli`
 
 ## Plugin Registry Maintenance (IPFS/Pinata)
 
@@ -980,14 +968,14 @@ Plugins are distributed via IPFS and can be installed with the CLI. Browse and i
 
 ```bash
 # List all available plugins
-npx claude-flow@v3alpha plugins list
+npx moflo plugins list
 
 # Install a plugin
-npx claude-flow@v3alpha plugins install @claude-flow/plugin-name
+npx moflo plugins install @claude-flow/plugin-name
 
 # Enable/disable
-npx claude-flow@v3alpha plugins enable @claude-flow/plugin-name
-npx claude-flow@v3alpha plugins disable @claude-flow/plugin-name
+npx moflo plugins enable @claude-flow/plugin-name
+npx moflo plugins disable @claude-flow/plugin-name
 ```
 
 ### Core Plugins
@@ -1029,13 +1017,13 @@ npx claude-flow@v3alpha plugins disable @claude-flow/plugin-name
 
 ```bash
 # Create a new plugin from template
-npx claude-flow@v3alpha plugins create my-plugin
+npx moflo plugins create my-plugin
 
 # Test locally
-npx claude-flow@v3alpha plugins install ./path/to/my-plugin
+npx moflo plugins install ./path/to/my-plugin
 
 # Publish to registry (requires Pinata credentials)
-npx claude-flow@v3alpha plugins publish
+npx moflo plugins publish
 ```
 
 Registry source: IPFS via Pinata (`QmXbfEAaR7D2Ujm4GAkbwcGZQMHqAMpwDoje4583uNP834`)

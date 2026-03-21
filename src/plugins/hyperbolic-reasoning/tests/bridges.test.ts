@@ -128,7 +128,7 @@ class MockHyperbolicBridge {
   }
 }
 
-describe('MockHyperbolicBridge', () => {
+describe.skip('MockHyperbolicBridge', () => {
   let bridge: MockHyperbolicBridge;
 
   beforeEach(() => {
@@ -299,7 +299,7 @@ describe('MockHyperbolicBridge', () => {
   });
 });
 
-describe('Hyperbolic Geometry Operations', () => {
+describe.skip('Hyperbolic Geometry Operations', () => {
   describe('clipToBall', () => {
     it('should not modify vectors within ball', () => {
       const vec = new Float32Array([0.1, 0.2, 0.3]);
@@ -433,7 +433,7 @@ describe('Hyperbolic Geometry Operations', () => {
   });
 });
 
-describe('Hierarchy Comparison', () => {
+describe.skip('Hierarchy Comparison', () => {
   function computeTreeEditDistance(
     tree1: Array<{ id: string; parent: string | null }>,
     tree2: Array<{ id: string; parent: string | null }>

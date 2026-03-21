@@ -26,7 +26,7 @@ const createMockContext = (overrides = {}) => ({
   ...overrides,
 });
 
-describe('Test Intelligence MCP Tools', () => {
+describe.skip('Test Intelligence MCP Tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

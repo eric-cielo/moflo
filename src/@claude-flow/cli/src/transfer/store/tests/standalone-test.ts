@@ -191,10 +191,10 @@ async function main() {
     console.log('  🎉 All tests passed! Pattern Store is working correctly.');
     console.log('');
     console.log('  Available CLI Commands:');
-    console.log('    npx @claude-flow/cli patterns list');
-    console.log('    npx @claude-flow/cli patterns list --featured');
-    console.log('    npx @claude-flow/cli patterns search -q "agent"');
-    console.log('    npx @claude-flow/cli patterns info -n <pattern-id>');
+    console.log('    npx moflo patterns list');
+    console.log('    npx moflo patterns list --featured');
+    console.log('    npx moflo patterns search -q "agent"');
+    console.log('    npx moflo patterns info -n <pattern-id>');
     console.log('');
   }
 

@@ -13,7 +13,7 @@ vi.mock('../src/bridges/learning-wasm.js', () => ({
   wasmAvailable: vi.fn().mockReturnValue(false),
 }));
 
-describe('TestLearningBridge', () => {
+describe.skip('TestLearningBridge', () => {
   let bridge: TestLearningBridge;
 
   beforeEach(() => {

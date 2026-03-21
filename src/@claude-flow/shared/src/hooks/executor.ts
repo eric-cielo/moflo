@@ -302,6 +302,8 @@ export class HookExecutor {
     const results: HookResult[] = [];
     let currentContext = { ...initialContext };
     let totalExecutionTime = 0;
+    let totalHooksExecuted = 0;
+    let totalHooksFailed = 0;
     let aborted = false;
 
     for (const event of events) {
@@ -313,6 +315,8 @@ export class HookExecutor {
 
       results.push(...result.results);
       totalExecutionTime += result.totalExecutionTime;
+      totalHooksExecuted += result.hooksExecuted;
+      totalHooksFailed += result.hooksFailed;
 
       // Merge context for next event
       if (result.finalContext) {
@@ -325,14 +329,12 @@ export class HookExecutor {
       }
     }
 
-    const hooksFailed = results.filter(r => !r.success).length;
-
     return {
-      success: hooksFailed === 0 && !aborted,
+      success: totalHooksFailed === 0 && !aborted,
       results: options.collectResults ? results : [],
       totalExecutionTime,
-      hooksExecuted: results.length,
-      hooksFailed,
+      hooksExecuted: totalHooksExecuted,
+      hooksFailed: totalHooksFailed,
       aborted,
       finalContext: currentContext,
     };

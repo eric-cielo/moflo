@@ -25,7 +25,7 @@ STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
 for FILE in $STAGED_FILES; do
   if [[ "$FILE" =~ \\.(ts|js|tsx|jsx)$ ]]; then
     echo "  Validating: $FILE"
-    npx @claude-flow/cli hooks pre-edit --file "$FILE" --validate-syntax 2>/dev/null || true
+    npx moflo hooks pre-edit --file "$FILE" --validate-syntax 2>/dev/null || true
   fi
 done
 
@@ -53,7 +53,7 @@ COMMIT_MSG=$(git log -1 --pretty=%B)
 echo "📊 Recording commit metrics..."
 
 # Notify claude-flow of commit
-npx @claude-flow/cli hooks notify \\
+npx moflo hooks notify \\
   --message "Commit: $COMMIT_MSG" \\
   --level info \\
   --metadata '{"hash": "'$COMMIT_HASH'"}' 2>/dev/null || true

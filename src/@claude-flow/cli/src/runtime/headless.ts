@@ -4,9 +4,9 @@
  * Runs without TTY for daemon processes and scheduled tasks
  *
  * Usage:
- *   npx @claude-flow/cli headless --worker <type>
- *   npx @claude-flow/cli headless --daemon
- *   npx @claude-flow/cli headless --benchmark
+ *   npx moflo headless --worker <type>
+ *   npx moflo headless --daemon
+ *   npx moflo headless --benchmark
  *
  * Environment:
  *   CLAUDE_FLOW_HEADLESS=true
