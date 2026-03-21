@@ -41,7 +41,7 @@ Your first tool call for every new user prompt MUST be a memory search. Do this 
 WHY: Memory contains curated solutions, patterns, and architectural context from previous work. Without it, you will miss existing solutions, repeat mistakes that were already solved, and waste time re-discovering what is already known. Memory search is faster than file scanning.
 
 HOW: Use ToolSearch to load \`mcp__claude-flow__memory_search\`, then call it with a query describing your task. If MCP is unavailable, use:
-\`node .claude/scripts/semantic-search.mjs "[task description]" --namespace guidance\`
+\`node bin/semantic-search.mjs "[task description]" --namespace guidance\`
 
 ### Namespaces to search:
 

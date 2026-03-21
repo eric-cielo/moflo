@@ -328,7 +328,7 @@ async function main() {
         const query = getArg('query') || args[1];
         const searchLimit = getArg('limit') || '5';
         const threshold = getArg('threshold') || '0.3';
-        const searchScript = resolve(projectRoot, '.claude/scripts/semantic-search.mjs');
+        const searchScript = resolve(projectRoot, 'bin/semantic-search.mjs');
 
         if (query && existsSync(searchScript)) {
           const searchArgs = [searchScript, query, '--limit', searchLimit, '--threshold', threshold];
@@ -369,9 +369,13 @@ async function main() {
 
 // Run the guidance indexer (blocking - used for specific file updates)
 async function runIndexGuidance(specificFile = null) {
-  const indexScript = resolve(projectRoot, '.claude/scripts/index-guidance.mjs');
+  const indexCandidates = [
+    resolve(dirname(fileURLToPath(import.meta.url)), 'index-guidance.mjs'),
+    resolve(projectRoot, '.claude/scripts/index-guidance.mjs'),
+  ];
+  const indexScript = indexCandidates.find(p => existsSync(p));
 
-  if (existsSync(indexScript)) {
+  if (indexScript) {
     const indexArgs = specificFile ? ['--file', specificFile] : [];
     if (hasArg('force')) indexArgs.push('--force');
     // index-guidance.mjs uses better-sqlite3
