@@ -83,7 +83,7 @@
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^20.19.37",
     "eslint": "^8.0.0",
-    "moflo": "^4.8.4",
+    "moflo": "^4.8.6",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
