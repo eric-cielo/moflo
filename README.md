@@ -4,8 +4,6 @@
 
 # MoFlo
 
-**⚠️ MoFlo is experimental software. APIs, commands, and behavior may change without notice.**
-
 **An opinionated fork of [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo), optimized for local development.**
 
 MoFlo adds automatic code and guidance cataloging along with memory gating on top of the original Ruflo/Claude Flow orchestration engine. Where the upstream project provides raw building blocks, MoFlo ships opinionated defaults — workflow gates that enforce memory-first patterns, semantic indexing that runs at session start, and learned routing that improves over time — so you get a productive setup from `flo init` without manual tuning.
@@ -476,6 +474,16 @@ When `flo init` runs, it appends a workflow section to your CLAUDE.md that teach
 ## Ruflo / Claude Flow
 
 MoFlo builds on top of the full [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) engine. For detailed documentation on the underlying capabilities — swarm topologies, hive-mind consensus, HNSW vector search, neural routing, MCP server internals, and more — check out the [Ruflo repository](https://github.com/ruvnet/ruflo).
+
+## Why I Made This
+
+[Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) is an incredible piece of work. The engineering that [rUv](https://github.com/ruvnet) and the contributors have put into it — swarm topologies, hive-mind consensus, HNSW vector search, neural routing, and so much more — makes it one of the most comprehensive agent orchestration frameworks available. It's a massive, versatile toolbox built to support a wide range of scenarios: distributed systems, multi-agent swarms, enterprise orchestration, research workflows, and beyond.
+
+My use case was just one of those many scenarios: day-to-day local coding, enhancing my normal Claude Code experience on a single project. Claude Flow absolutely supports this — it's all in there — but because the project serves so many different needs, I found myself spending time configuring and tailoring things for my specific workflow each time I pulled in updates. That's not a shortcoming of the project; it's the natural trade-off of a tool designed to be that flexible and powerful.
+
+So I forked the excellent foundation and narrowed the focus to my particular corner of it. I baked in the defaults I kept setting manually, added automatic indexing and memory gating at session start, and tuned the out-of-box experience so that `npm install` and `flo init` gets you straight to coding.
+
+If you're exploring the full breadth of what agent orchestration can do, go use [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) directly — it's the real deal. But if your needs are similar to mine — a focused, opinionated local dev setup that just works — then hopefully MoFlo saves you the same configuration time it saves me.
 
 ## License
 
