@@ -337,14 +337,13 @@ function mergeSettingsForUpgrade(existing: Record<string, unknown>): Record<stri
 
   // 3. Fix statusLine config (remove invalid fields, ensure correct format)
   // Claude Code only supports: type, command, padding
+  // Always ensure statusLine is present — add it if missing (e.g. from older inits)
   const existingStatusLine = existing.statusLine as Record<string, unknown> | undefined;
-  if (existingStatusLine) {
-    merged.statusLine = {
-      type: 'command',
-      command: existingStatusLine.command || `node -e "var c=require('child_process'),p=require('path'),r;try{r=c.execSync('git rev-parse --show-toplevel',{encoding:'utf8'}).trim()}catch(e){r=process.cwd()}var s=p.join(r,'.claude/helpers/statusline.cjs');process.argv.splice(1,0,s);require(s)"`,
-      // Remove invalid fields: refreshMs, enabled (not supported by Claude Code)
-    };
-  }
+  merged.statusLine = {
+    type: 'command',
+    command: existingStatusLine?.command || `node "$CLAUDE_PROJECT_DIR/.claude/helpers/statusline.cjs"`,
+    // Remove invalid fields: refreshMs, enabled (not supported by Claude Code)
+  };
 
   // 4. Merge claudeFlow settings (preserve existing, add agentTeams + memory)
   const existingClaudeFlow = (existing.claudeFlow as Record<string, unknown>) || {};
@@ -547,7 +546,22 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
       result.preserved.push('.claude-flow/security/audit-status.json');
     }
 
-    // 3. Merge settings if requested
+    // 3. Fix .mcp.json — replace stale @claude-flow/cli references with moflo
+    const mcpPath = path.join(targetDir, '.mcp.json');
+    if (fs.existsSync(mcpPath)) {
+      try {
+        const mcpRaw = fs.readFileSync(mcpPath, 'utf-8');
+        if (mcpRaw.includes('@claude-flow/cli')) {
+          const mcpFixed = mcpRaw.replace(/@claude-flow\/cli(@latest)?/g, 'moflo');
+          fs.writeFileSync(mcpPath, mcpFixed, 'utf-8');
+          result.updated.push('.mcp.json (replaced @claude-flow/cli with moflo)');
+        }
+      } catch {
+        // Non-fatal — .mcp.json may be malformed
+      }
+    }
+
+    // 4. Merge settings if requested
     if (upgradeSettings) {
       const settingsPath = path.join(targetDir, '.claude', 'settings.json');
       if (fs.existsSync(settingsPath)) {
@@ -939,7 +953,7 @@ function findSourceHelpersDir(sourceBaseDir?: string): string | null {
   // Strategy 1: require.resolve to find package root (most reliable for npx)
   try {
     const esmRequire = createRequire(import.meta.url);
-    const pkgJsonPath = esmRequire.resolve('@claude-flow/cli/package.json');
+    const pkgJsonPath = esmRequire.resolve('moflo/package.json');
     const pkgRoot = path.dirname(pkgJsonPath);
     possiblePaths.push(path.join(pkgRoot, '.claude', 'helpers'));
   } catch {
@@ -1718,7 +1732,7 @@ npx moflo hive-mind consensus --propose "task"
 ### MCP Server Setup
 \`\`\`bash
 # Add Claude Flow MCP
-claude mcp add claude-flow -- npx -y @claude-flow/cli@latest
+claude mcp add claude-flow -- npx -y moflo
 
 # Optional servers
 claude mcp add ruv-swarm -- npx -y ruv-swarm mcp start
@@ -1812,7 +1826,7 @@ function findSourceDir(type: 'skills' | 'commands' | 'agents', sourceBaseDir?: s
 
   // IMPORTANT: Check the package's own .claude directory first
   // This is the primary path when running as an npm package
-  // __dirname is typically /path/to/node_modules/@claude-flow/cli/dist/src/init
+  // __dirname is typically /path/to/node_modules/moflo/dist/src/init
   // We need to go up 3 levels to reach the package root (dist/src/init -> dist/src -> dist -> root)
   const packageRoot = path.resolve(__dirname, '..', '..', '..');
   const packageDotClaude = path.join(packageRoot, '.claude', type);

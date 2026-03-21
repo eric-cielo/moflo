@@ -25,8 +25,8 @@ export function generateSettings(options: InitOptions): object {
   // Add permissions
   settings.permissions = {
     allow: [
-      'Bash(npx @claude-flow*)',
-      'Bash(npx claude-flow*)',
+      'Bash(npx moflo*)',
+      'Bash(npx flo*)',
       'Bash(node .claude/*)',
       'mcp__claude-flow__:*',
     ],

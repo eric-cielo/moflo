@@ -128,7 +128,7 @@ _claude_flow_completions() {
 }
 
 complete -F _claude_flow_completions claude-flow
-complete -F _claude_flow_completions npx\\ @claude-flow/cli@v3alpha
+complete -F _claude_flow_completions npx\\ moflo
 `;
 }
 

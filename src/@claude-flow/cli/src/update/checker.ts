@@ -1,5 +1,5 @@
 /**
- * Update checker for @claude-flow packages
+ * Update checker for moflo packages
  * Queries npm registry and compares versions
  */
 
@@ -37,22 +37,22 @@ const DEFAULT_CONFIG: UpdateConfig = {
     major: false,
   },
   priority: {
-    '@claude-flow/security': 'critical',
-    '@claude-flow/cli': 'high',
-    '@claude-flow/embeddings': 'normal',
-    '@claude-flow/integration': 'normal',
-    '@claude-flow/testing': 'low',
+    'moflo': 'high',
+    '@moflo/security': 'critical',
+    '@moflo/embeddings': 'normal',
+    '@moflo/integration': 'normal',
+    '@moflo/testing': 'low',
   },
   exclude: [],
 };
 
 // Packages to check for updates
 const CLAUDE_FLOW_PACKAGES = [
-  '@claude-flow/cli',
-  '@claude-flow/embeddings',
-  '@claude-flow/security',
-  '@claude-flow/integration',
-  '@claude-flow/testing',
+  'moflo',
+  '@moflo/embeddings',
+  '@moflo/security',
+  '@moflo/integration',
+  '@moflo/testing',
 ];
 
 interface NpmPackageInfo {
