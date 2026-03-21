@@ -407,46 +407,68 @@ async function checkAgenticFlow() {
         return { name: 'agentic-flow', status: 'warn', message: 'Check failed' };
     }
 }
-// Find and optionally kill orphaned moflo/claude-flow node processes
+// Check whether a given PID is still running.
+// Uses signal 0 which works cross-platform (Windows, Linux, macOS) without
+// needing PowerShell or /proc — Node handles the platform abstraction.
+function isProcessAlive(pid) {
+    try {
+        process.kill(pid, 0);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+// Find and optionally kill orphaned moflo/claude-flow node processes.
+// A process is only "orphaned" if its parent is no longer alive — meaning
+// nothing will clean it up. MCP servers spawned by a live Claude Code session
+// have a live parent (claude.exe) and must not be flagged.
 async function findZombieProcesses(kill = false) {
     const legitimatePid = getDaemonLockHolder(process.cwd());
     const currentPid = process.pid;
     const parentPid = process.ppid;
     const found = [];
     let killed = 0;
+    // Collect candidates as { pid, ppid } so we can check parent liveness
+    const candidates = [];
     try {
         if (process.platform === 'win32') {
-            // Windows: use WMIC to find node processes with moflo/claude-flow in command line
-            const result = execSync('powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name=\'node.exe\'\\" | Select-Object ProcessId,CommandLine | Format-Table -AutoSize -Wrap"', { encoding: 'utf-8', timeout: 10000, windowsHide: true });
+            // Windows: include ParentProcessId so we can verify orphan status
+            const result = execSync('powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name=\'node.exe\'\\" | Select-Object ProcessId,ParentProcessId,CommandLine | Format-Table -AutoSize -Wrap"', { encoding: 'utf-8', timeout: 10000, windowsHide: true });
             const lines = result.split('\n');
             for (const line of lines) {
                 if (/moflo|claude-flow|flo\s+(hooks|gate|mcp|daemon)/i.test(line)) {
-                    const pidMatch = line.match(/^\s*(\d+)/);
-                    if (pidMatch) {
-                        const pid = parseInt(pidMatch[1], 10);
-                        // Skip our own process, parent, and the legitimate daemon
-                        if (pid === currentPid || pid === parentPid || pid === legitimatePid)
-                            continue;
-                        found.push(pid);
+                    // Format-Table columns: ProcessId  ParentProcessId  CommandLine...
+                    const match = line.match(/^\s*(\d+)\s+(\d+)/);
+                    if (match) {
+                        candidates.push({ pid: parseInt(match[1], 10), ppid: parseInt(match[2], 10) });
                     }
                 }
             }
         }
         else {
-            // Unix/macOS: use ps to find node processes
-            const result = execSync('ps aux | grep -E "node.*(moflo|claude-flow)" | grep -v grep', { encoding: 'utf-8', timeout: 5000 });
+            // Unix/macOS: use ps with explicit PID+PPID columns for reliable parsing
+            const result = execSync('ps -eo pid,ppid,command | grep -E "node.*(moflo|claude-flow)" | grep -v grep', { encoding: 'utf-8', timeout: 5000 });
             const lines = result.trim().split('\n');
             for (const line of lines) {
-                const parts = line.trim().split(/\s+/);
-                const pid = parseInt(parts[1], 10);
-                if (pid === currentPid || pid === parentPid || pid === legitimatePid)
-                    continue;
-                found.push(pid);
+                const match = line.trim().match(/^(\d+)\s+(\d+)/);
+                if (match) {
+                    candidates.push({ pid: parseInt(match[1], 10), ppid: parseInt(match[2], 10) });
+                }
             }
         }
     }
     catch {
         // No matches found (grep exits non-zero) or command failed
+    }
+    // Filter: skip known-good PIDs and processes whose parent is still alive.
+    // A live parent (e.g. claude.exe for MCP servers) means the process is managed, not orphaned.
+    for (const { pid, ppid } of candidates) {
+        if (pid === currentPid || pid === parentPid || pid === legitimatePid)
+            continue;
+        if (isProcessAlive(ppid))
+            continue;
+        found.push(pid);
     }
     if (kill && found.length > 0) {
         for (const pid of found) {

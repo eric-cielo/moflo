@@ -39,21 +39,119 @@ function loadGateConfig() {
 var config = loadGateConfig();
 var command = process.argv[2];
 
-var EXEMPT = ['.claude/', '.claude\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state', 'node_modules'];
 var DANGEROUS = ['rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
 var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\b/i;
 var TASK_RE = /\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\b/i;
+
+// Deny a tool call cleanly via structured JSON (no "hook error" noise).
+// Exit 0 + permissionDecision:"deny" is the Claude Code way to block a tool.
+function blockTool(reason) {
+  console.log(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: reason
+    }
+  }));
+  process.exit(0);
+}
+
+// Determine if a Grep/Glob target is a mechanical/administrative search
+// that should bypass the memory-first gate. The idea: if memory/guidance
+// wouldn't improve the search outcome, don't block it.
+//
+// Strategy: path is the strongest signal. When a path clearly points to
+// tooling/deps/tests, allow it. When it points to source/docs/scripts,
+// block it (require memory). Pattern-based rules only kick in when there's
+// no path or when the path is neutral.
+function isMechanicalSearch() {
+  var searchPath = (process.env.TOOL_INPUT_path || '').replace(/\\/g, '/').toLowerCase();
+  var pattern = (process.env.TOOL_INPUT_pattern || '').toLowerCase();
+  var filePath = (process.env.TOOL_INPUT_file_path || '').replace(/\\/g, '/').toLowerCase();
+  var anyPath = searchPath || filePath;
+
+  // --- PATH-BASED RULES (strongest signal, checked first) ---
+
+  if (anyPath) {
+    // Always mechanical: dependencies, tooling internals, CI, test dirs
+    var mechanicalPaths = [
+      'node_modules/', '.claude/', '.claude-flow/', '.swarm/', '.github/',
+      'tests/', 'test/', 'config/', 'examples/',
+    ];
+    for (var i = 0; i < mechanicalPaths.length; i++) {
+      if (anyPath.indexOf(mechanicalPaths[i]) >= 0) return true;
+    }
+
+    // Targeting a specific config/meta file by path extension
+    if (/\.(json|yaml|yml|toml|lock|env|cjs|mjs)$/i.test(anyPath)) return true;
+
+    // If path points to source, docs, or scripts — these are knowledge-rich.
+    // Do NOT fall through to pattern-based exemptions; the path is authoritative.
+    // (Still allow test-file glob patterns even within source dirs.)
+    var knowledgePaths = [
+      'src/', 'back-office/', 'front-office/', 'docs/', 'scripts/', 'lib/',
+    ];
+    var inKnowledgePath = false;
+    for (var k = 0; k < knowledgePaths.length; k++) {
+      if (anyPath.indexOf(knowledgePaths[k]) >= 0) { inKnowledgePath = true; break; }
+    }
+    if (inKnowledgePath) {
+      // Exception: searching for test/spec files within source is structural
+      if (/\*\*?[/\\]?\*?\.(test|spec)\.(ts|js|tsx|jsx)\b/i.test(pattern)) return true;
+      // Everything else in a knowledge path requires memory
+      return false;
+    }
+  }
+
+  // --- PATTERN-BASED RULES (no path, or path is neutral) ---
+
+  // Glob patterns looking for config/build/tooling files by extension
+  if (/\*\*?[/\\]?\*?\.(json|yaml|yml|toml|lock|env|config|cjs|mjs)\b/i.test(pattern)) return true;
+
+  // Glob patterns for specific config filenames (eslintrc, Dockerfile, etc.)
+  if (/\*\*?[/\\]?\*?\.?(eslint|prettier|babel|stylelint|editor|git|docker|nginx|jest|vitest|vite|webpack|rollup|esbuild|tsconfig|browserslist)/i.test(pattern)) return true;
+
+  // Glob patterns for lock files and test files (structural lookups)
+  if (/\*\*?[/\\]?\*?[\w-]*[-.]lock\b/i.test(pattern)) return true;
+  if (/\*\*?[/\\]?\*?\.(test|spec)\.(ts|js|tsx|jsx)\b/i.test(pattern)) return true;
+
+  // Config/tooling name searches (bare names without a path).
+  // Only exempt if ALL tokens in a pipe-separated pattern are config names.
+  // "webpack|vite" = exempt. "webpack|merchant" = NOT exempt.
+  var CONFIG_NAME = /^\.?(eslint|prettier|babel|stylelint|editor|gitignore|gitattributes|dockerignore|dockerfile|docker-compose|nginx|jest|vitest|vite|webpack|rollup|esbuild|tsconfig|changelog|license|makefile|procfile|browserslist|commitlint|husky|lint-staged)\b/i;
+  var tokens = pattern.split(/[|,\s]+/).filter(function(t) { return t.length > 0; });
+  if (tokens.length > 0 && tokens.every(function(t) { return CONFIG_NAME.test(t.trim()); })) return true;
+
+  // Known tooling/meta file names as substrings (but avoid false matches like "process.env")
+  var toolingNames = [
+    'claude.md', 'memory.md', 'workflow-state', '.mcp.json',
+    'package.json', 'package-lock', 'daemon.lock', 'moflo.yaml',
+  ];
+  var target = pattern + ' ' + anyPath;
+  for (var j = 0; j < toolingNames.length; j++) {
+    if (target.indexOf(toolingNames[j]) >= 0) return true;
+  }
+
+  // Env file lookups (but NOT "process.env" which is source code searching)
+  if (/^\.env\b/.test(pattern) || /\*\*?[/\\]?\.env/.test(pattern)) return true;
+
+  // Git/process/system-level pattern searches
+  if (/^(git\b|pid|daemon|lock|wmic|tasklist|powershell|ps\s)/i.test(pattern)) return true;
+
+  // CI/CD folder exploration
+  if (/\.github/i.test(pattern)) return true;
+
+  return false;
+}
 
 switch (command) {
   case 'check-before-agent': {
     var s = readState();
     if (config.task_create_first && !s.tasksCreated) {
-      console.log('BLOCKED: Call TaskCreate before spawning agents.');
-      process.exit(1);
+      blockTool('Call TaskCreate before spawning agents. Task tool is blocked until then.');
     }
     if (config.memory_first && !s.memorySearched) {
-      console.log('BLOCKED: Search memory before spawning agents.');
-      process.exit(1);
+      blockTool('Search memory before spawning agents. Use mcp__claude-flow__memory_search first.');
     }
     break;
   }
@@ -61,31 +159,21 @@ switch (command) {
     if (!config.memory_first) break;
     var s = readState();
     if (s.memorySearched || !s.memoryRequired) break;
-    var target = (process.env.TOOL_INPUT_pattern || '') + ' ' + (process.env.TOOL_INPUT_path || '');
-    if (EXEMPT.some(function(p) { return target.indexOf(p) >= 0; })) break;
-    var now = Date.now();
-    var last = s.lastBlockedAt ? new Date(s.lastBlockedAt).getTime() : 0;
-    if (now - last > 2000) {
-      s.lastBlockedAt = new Date(now).toISOString();
-      writeState(s);
-      console.log('BLOCKED: Search memory before exploring files.');
-    }
-    process.exit(1);
+    if (isMechanicalSearch()) break;
+    s.lastBlockedAt = new Date().toISOString();
+    writeState(s);
+    blockTool('Search memory before exploring files. Use mcp__claude-flow__memory_search with namespace "code-map", "patterns", "knowledge", or "guidance".');
   }
   case 'check-before-read': {
     if (!config.memory_first) break;
     var s = readState();
     if (s.memorySearched || !s.memoryRequired) break;
-    var fp = process.env.TOOL_INPUT_file_path || '';
-    if (fp.indexOf('.claude/guidance/') < 0 && fp.indexOf('.claude\\guidance\\') < 0) break;
-    var now = Date.now();
-    var last = s.lastBlockedAt ? new Date(s.lastBlockedAt).getTime() : 0;
-    if (now - last > 2000) {
-      s.lastBlockedAt = new Date(now).toISOString();
-      writeState(s);
-      console.log('BLOCKED: Search memory before reading guidance files.');
-    }
-    process.exit(1);
+    var fp = (process.env.TOOL_INPUT_file_path || '').replace(/\\/g, '/');
+    // Block reads of guidance files (that's exactly what memory indexes)
+    if (fp.indexOf('.claude/guidance/') < 0) break;
+    s.lastBlockedAt = new Date().toISOString();
+    writeState(s);
+    blockTool('Search memory before reading guidance files. Use mcp__claude-flow__memory_search with namespace "guidance".');
   }
   case 'record-task-created': {
     var s = readState();
