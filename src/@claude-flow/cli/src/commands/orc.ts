@@ -2,12 +2,16 @@
  * MoFlo Orc Command
  * Feature orchestrator that sequences GitHub issues through /flo workflows.
  *
- * Loads a feature YAML definition, resolves story dependencies via topological
- * sort, then executes each story sequentially by spawning `claude -p "/flo ..."`.
+ * Accepts either a GitHub epic issue number or a YAML feature definition.
+ * When given an issue number, fetches the epic from GitHub and extracts
+ * child stories automatically. When given a YAML file, uses the explicit
+ * story definitions with dependency ordering.
  *
  * Usage:
- *   flo orc run <feature.yaml>              Execute a feature
- *   flo orc run <feature.yaml> --dry-run    Show execution plan
+ *   flo orc run 42                          Execute an epic from GitHub
+ *   flo orc run 42 --dry-run                Show execution plan from GitHub epic
+ *   flo orc run feature.yaml                Execute a YAML feature definition
+ *   flo orc run feature.yaml --dry-run      Show execution plan
  *   flo orc status <feature-id>             Check progress
  *   flo orc reset <feature-id>              Reset for re-run
  */
@@ -295,7 +299,129 @@ function saveState(repoPath: string, state: OrcState): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Feature Loading
+// GitHub Epic Fetching
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface GitHubIssue {
+  number: number;
+  title: string;
+  body: string;
+  labels: Array<{ name: string }>;
+  state: string;
+}
+
+function detectRepoFromGit(): string | null {
+  try {
+    const url = execSync('gh repo view --json nameWithOwner -q .nameWithOwner', {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).toString().trim();
+    return url || null;
+  } catch {
+    return null;
+  }
+}
+
+function fetchGitHubIssue(issueNumber: number): GitHubIssue {
+  const output = execSync(
+    `gh issue view ${issueNumber} --json number,title,body,labels,state`,
+    { stdio: ['pipe', 'pipe', 'pipe'] },
+  ).toString().trim();
+  return JSON.parse(output);
+}
+
+function extractStoriesFromEpic(issue: GitHubIssue): StoryDefinition[] {
+  const stories: StoryDefinition[] = [];
+  const body = issue.body || '';
+
+  // Pattern 1: Checklist-linked issues — - [ ] #123 or - [x] #123
+  const checklistPattern = /^[\s]*-\s*\[[ x]\]\s*#(\d+)/gm;
+  let match;
+  while ((match = checklistPattern.exec(body)) !== null) {
+    const num = parseInt(match[1], 10);
+    if (!stories.some((s) => s.issue === num)) {
+      stories.push({ id: `story-${num}`, name: `Issue #${num}`, issue: num });
+    }
+  }
+
+  // Pattern 2: Numbered issue references — 1. #123 or 1. Title (#123)
+  const numberedPattern = /^\s*\d+\.\s*(?:.*?)#(\d+)/gm;
+  while ((match = numberedPattern.exec(body)) !== null) {
+    const num = parseInt(match[1], 10);
+    if (!stories.some((s) => s.issue === num)) {
+      stories.push({ id: `story-${num}`, name: `Issue #${num}`, issue: num });
+    }
+  }
+
+  // Pattern 3: Bare issue references in Stories/Tasks sections
+  const sectionPattern = /##\s*(?:Stories|Tasks)\s*\n([\s\S]*?)(?=\n##\s|\n*$)/i;
+  const sectionMatch = sectionPattern.exec(body);
+  if (sectionMatch) {
+    const sectionBody = sectionMatch[1];
+    const refPattern = /#(\d+)/g;
+    while ((match = refPattern.exec(sectionBody)) !== null) {
+      const num = parseInt(match[1], 10);
+      if (!stories.some((s) => s.issue === num)) {
+        stories.push({ id: `story-${num}`, name: `Issue #${num}`, issue: num });
+      }
+    }
+  }
+
+  // Enrich story names from GitHub if we have stories
+  for (const story of stories) {
+    try {
+      const storyIssue = fetchGitHubIssue(story.issue);
+      story.name = storyIssue.title;
+    } catch {
+      // Keep the default name if fetch fails
+    }
+  }
+
+  return stories;
+}
+
+function isEpicIssue(issue: GitHubIssue): boolean {
+  const epicLabels = ['epic', 'tracking', 'parent', 'umbrella'];
+  if (issue.labels.some((l) => epicLabels.includes(l.name.toLowerCase()))) return true;
+
+  const body = issue.body || '';
+  if (/##\s*(?:Stories|Tasks)/i.test(body)) return true;
+  if (/^[\s]*-\s*\[[ x]\]\s*#\d+/m.test(body)) return true;
+  if (/^\s*\d+\.\s*(?:.*?)#\d+/m.test(body)) return true;
+
+  return false;
+}
+
+function buildFeatureFromEpic(issue: GitHubIssue, repoPath: string, baseBranch: string): FeatureDefinition {
+  const stories = extractStoriesFromEpic(issue);
+
+  if (stories.length === 0) {
+    throw new Error(
+      `Issue #${issue.number} doesn't appear to be an epic (no linked stories found).\n` +
+      `Expected: checklist items (- [ ] #123), numbered references (1. #123), or a ## Stories section.`,
+    );
+  }
+
+  return {
+    feature: {
+      id: `epic-${issue.number}`,
+      name: issue.title,
+      description: `Auto-generated from GitHub epic #${issue.number}`,
+      repository: repoPath,
+      base_branch: baseBranch,
+      auto_merge: true,
+      stories,
+      review: {
+        enabled: false,
+        focus_areas: [],
+        output: '',
+        fail_on_critical: false,
+      },
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Feature Loading (YAML or GitHub)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function loadFeatureDefinition(yamlPath: string): Promise<FeatureDefinition> {
@@ -306,6 +432,38 @@ async function loadFeatureDefinition(yamlPath: string): Promise<FeatureDefinitio
   const content = readFileSync(absPath, 'utf-8');
   const raw = await parseYaml(content);
   return validateFeatureDefinition(raw);
+}
+
+async function loadFeatureFromIssue(issueNumber: number): Promise<FeatureDefinition> {
+  console.log(`[orc] Fetching issue #${issueNumber} from GitHub...`);
+  const issue = fetchGitHubIssue(issueNumber);
+
+  if (!isEpicIssue(issue)) {
+    throw new Error(
+      `Issue #${issueNumber} ("${issue.title}") is not an epic.\n` +
+      `To orchestrate it, add child stories as checklist items (- [ ] #123) or a ## Stories section.\n` +
+      `For a single issue, use /flo ${issueNumber} instead.`,
+    );
+  }
+
+  const repoPath = process.cwd();
+  let baseBranch = 'main';
+  try {
+    baseBranch = execSync('gh repo view --json defaultBranchRef -q .defaultBranchRef.name', {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).toString().trim() || 'main';
+  } catch { /* use default */ }
+
+  const featureDef = buildFeatureFromEpic(issue, repoPath, baseBranch);
+
+  console.log(`[orc] Epic: ${issue.title}`);
+  console.log(`[orc] Stories found: ${featureDef.feature.stories.length}`);
+  for (const s of featureDef.feature.stories) {
+    console.log(`  - #${s.issue}: ${s.name}`);
+  }
+  console.log('');
+
+  return featureDef;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -428,8 +586,12 @@ function pad(str: string, len: number): string {
 // Subcommand: run
 // ═══════════════════════════════════════════════════════════════════════════════
 
-async function runFeature(yamlPath: string, dryRun: boolean, verbose: boolean): Promise<CommandResult> {
-  const featureDef = await loadFeatureDefinition(yamlPath);
+async function runFeature(source: string, dryRun: boolean, verbose: boolean): Promise<CommandResult> {
+  // Detect whether source is a GitHub issue number or a YAML file path
+  const isIssueNumber = /^\d+$/.test(source.trim());
+  const featureDef = isIssueNumber
+    ? await loadFeatureFromIssue(parseInt(source, 10))
+    : await loadFeatureDefinition(source);
   const feature = featureDef.feature;
   const autoMerge = feature.auto_merge !== false;
   const plan = resolveExecutionOrder(feature.stories);
@@ -758,10 +920,12 @@ function printSummary(
 
 const orcCommand: Command = {
   name: 'orc',
-  description: 'Feature orchestrator — sequences GitHub issues through /flo workflows',
+  description: 'Feature orchestrator — sequences GitHub epics or YAML features through /flo workflows',
   options: [],
   examples: [
-    { command: 'flo orc run feature.yaml', description: 'Execute a feature definition' },
+    { command: 'flo orc run 42', description: 'Execute a GitHub epic (auto-detects stories)' },
+    { command: 'flo orc run 42 --dry-run', description: 'Show execution plan from GitHub epic' },
+    { command: 'flo orc run feature.yaml', description: 'Execute a YAML feature definition' },
     { command: 'flo orc run feature.yaml --dry-run', description: 'Show execution plan without running' },
     { command: 'flo orc run feature.yaml --verbose', description: 'Execute with Claude output streaming' },
     { command: 'flo orc status my-feature', description: 'Check progress of a feature' },
@@ -774,26 +938,31 @@ const orcCommand: Command = {
       console.log('Usage: flo orc <command> [args] [flags]');
       console.log('');
       console.log('Commands:');
-      console.log('  run <feature.yaml>       Execute a feature definition');
+      console.log('  run <issue | yaml>       Execute a GitHub epic or YAML feature');
       console.log('  status <feature-id>      Check feature progress');
       console.log('  reset <feature-id>       Reset feature state for re-run');
+      console.log('');
+      console.log('Examples:');
+      console.log('  flo orc run 42           Fetch epic #42 from GitHub, run stories');
+      console.log('  flo orc run feature.yaml Execute from YAML with dependencies');
       console.log('');
       console.log('Flags:');
       console.log('  --dry-run                Show execution plan without running');
       console.log('  --verbose                Stream Claude output to terminal');
+      console.log('  --no-merge               Skip auto-merge after each story');
       return { success: true };
     }
 
     switch (subcommand) {
       case 'run': {
-        const yamlPath = ctx.args[1];
-        if (!yamlPath) {
-          console.log('Usage: flo orc run <feature.yaml> [--dry-run] [--verbose]');
-          return { success: false, message: 'Missing feature YAML path' };
+        const source = ctx.args[1];
+        if (!source) {
+          console.log('Usage: flo orc run <issue-number | feature.yaml> [--dry-run] [--verbose]');
+          return { success: false, message: 'Missing issue number or feature YAML path' };
         }
         const dryRun = ctx.flags['dry-run'] === true || ctx.flags['dryRun'] === true;
         const verbose = ctx.flags['verbose'] === true;
-        return runFeature(yamlPath, dryRun, verbose);
+        return runFeature(source, dryRun, verbose);
       }
 
       case 'status': {

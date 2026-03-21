@@ -124,6 +124,85 @@ npx flo doctor                   # Verify everything works
 
 Both indexes run automatically at session start after this, so you only need to run them manually on first setup or after major structural changes.
 
+## The `/flo` Skill
+
+Inside your AI client, the `/flo` (or `/fl`) slash command drives GitHub issue workflows:
+
+```
+/flo <issue>                  # Full workflow (research → implement → test → PR)
+/flo -e <issue>               # Enhance only (research and update ticket, then stop)
+/flo -r <issue>               # Research only (analyze issue, output findings)
+/flo -s <issue>               # Swarm mode (default, multi-agent coordination)
+/flo -h <issue>               # Hive-mind mode (consensus-based coordination)
+/flo -n <issue>               # Normal mode (single agent, no swarm)
+```
+
+For full options and details, type `/flo` with no arguments — your AI client will display the complete skill documentation. Also available as `/fl`.
+
+### Epic handling
+
+When you pass an issue number, `/flo` automatically checks if it's an epic — no extra flag needed. An issue is treated as an epic if any of these are true:
+
+- It has a label matching `epic`, `tracking`, `parent`, or `umbrella` (case-insensitive)
+- Its body contains a `## Stories` or `## Tasks` section
+- Its body has checklist-linked issues: `- [ ] #101`
+- Its body has numbered issue references: `1. #101`
+- The issue has GitHub sub-issues (via the API)
+
+When an epic is detected, `/flo` processes each child story sequentially — full workflow per story (research → implement → test → PR), one at a time, in the order listed.
+
+For simple epics with independent stories, `/flo <epic>` is all you need. For complex features where you want state tracking, resume capability, and auto-merge between stories, use `flo orc` instead.
+
+### Feature Orchestration (`flo orc`)
+
+`flo orc` is the robust epic runner — it adds persistent state, resume from failure, and auto-merge between stories on top of `/flo`. It accepts either a GitHub issue number or a YAML file:
+
+```bash
+# From a GitHub epic (auto-detects stories)
+flo orc run 42                        # Fetch epic #42, run all stories sequentially
+flo orc run 42 --dry-run              # Preview execution plan without running
+flo orc run 42 --no-merge             # Skip auto-merge between stories
+
+# From a YAML definition (explicit dependencies)
+flo orc run feature.yaml              # Execute stories in dependency order
+flo orc run feature.yaml --dry-run    # Show execution plan
+flo orc run feature.yaml --verbose    # Stream Claude output to terminal
+
+# State management
+flo orc status epic-42                # Check progress (which stories passed/failed)
+flo orc reset epic-42                 # Reset state for re-run
+```
+
+When given an issue number, `flo orc` fetches the epic from GitHub, extracts child stories from checklists and numbered references, then runs each through `/flo` with state tracking. If a story fails, you can fix the issue and `flo orc run 42` again — it resumes from where it left off, skipping already-passed stories.
+
+For features with inter-story dependencies (story B requires story A to be merged first), use a YAML definition:
+
+```yaml
+feature:
+  id: my-feature
+  name: "My Feature"
+  repository: /path/to/project
+  base_branch: main
+
+  stories:
+    - id: story-1
+      name: "Entity and service"
+      issue: 101
+
+    - id: story-2
+      name: "Routes and tests"
+      issue: 102
+      depends_on: [story-1]
+```
+
+| | `/flo <epic>` | `flo orc run <epic>` |
+|---|---|---|
+| **State tracking** | No | Yes (`.claude-orc/state.json`) |
+| **Resume from failure** | No | Yes (skips passed stories) |
+| **Auto-merge PRs** | No | Yes (between stories) |
+| **Dry-run preview** | No | Yes |
+| **Dependency ordering** | No (top-to-bottom) | Yes (YAML only, topological sort) |
+
 ## Commands
 
 You don't need to run these for normal use — `flo init` sets everything up, and the hooks handle memory, routing, and learning automatically. These commands are here for manual setup, debugging, and tweaking.
@@ -156,70 +235,6 @@ flo gate check-before-agent      # Blocks Agent tool if no TaskCreate
 flo gate prompt-reminder         # Context bracket tracking
 flo gate session-reset           # Reset workflow state
 ```
-
-### Feature Orchestration
-
-Sequence multiple GitHub issues through `/flo` workflows using a YAML definition:
-
-```bash
-flo orc run feature.yaml              # Execute a feature (stories in dependency order)
-flo orc run feature.yaml --dry-run    # Show execution plan without running
-flo orc run feature.yaml --verbose    # Execute with Claude output streaming
-flo orc status my-feature             # Check progress of a feature
-flo orc reset my-feature              # Reset feature state for re-run
-```
-
-Feature YAML example:
-
-```yaml
-feature:
-  id: my-feature
-  name: "My Feature"
-  repository: /path/to/project
-  base_branch: main
-
-  stories:
-    - id: story-1
-      name: "Entity and service"
-      issue: 101
-
-    - id: story-2
-      name: "Routes and tests"
-      issue: 102
-      depends_on: [story-1]
-```
-
-Stories are resolved via topological sort (respecting `depends_on`), then executed sequentially by spawning `claude -p "/flo <issue>"`.
-
-### The `/flo` Skill
-
-Inside your AI client, the `/flo` (or `/fl`) slash command drives GitHub issue workflows. Quick reference:
-
-```
-/flo <issue>                  # Full workflow (research → implement → test → PR)
-/flo -e <issue>               # Enhance only (research and update ticket, then stop)
-/flo -r <issue>               # Research only (analyze issue, output findings)
-/flo -sw <issue>              # Swarm mode (default, multi-agent coordination)
-/flo -hv <issue>              # Hive-mind mode (consensus-based coordination)
-/flo -n <issue>               # Naked mode (single agent, no swarm)
-/flo <epic-issue>             # Detects epics, processes stories sequentially
-```
-
-For full options and details, type `/flo` with no arguments — your AI client will display the complete skill documentation. Also available as `/fl`.
-
-#### Epic handling
-
-When you pass an issue number, `/flo` automatically checks if it's an epic — no extra flag needed. An issue is treated as an epic if any of these are true:
-
-- It has a label matching `epic`, `tracking`, `parent`, or `umbrella` (case-insensitive)
-- Its body contains a `## Stories` or `## Tasks` section
-- Its body has checklist-linked issues: `- [ ] #101`
-- Its body has numbered issue references: `1. #101`
-- The issue has GitHub sub-issues (via the API)
-
-When an epic is detected, `/flo` processes each child story sequentially — full workflow per story (research → implement → test → PR), one at a time, in the order listed. The `-e`, `-r`, `-n`, `-sw`, and `-hv` flags still apply and get passed through to each story.
-
-Stories are extracted from markdown checklists (`- [ ] #101`) or numbered lists (`1. #101`), processed top-to-bottom.
 
 ### System
 

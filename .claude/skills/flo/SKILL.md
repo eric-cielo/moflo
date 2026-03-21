@@ -26,12 +26,12 @@ Also available as `/fl` (shorthand alias).
 
 ```
 /flo 123                              # SWARM mode (default) - multi-agent coordination
-/flo -sw 123                          # SWARM mode (explicit)
-/flo --swarm 123                      # Same as -sw
-/flo -hv 123                          # HIVE-MIND mode - consensus-based coordination
-/flo --hive 123                       # Same as -hv
-/flo -n 123                           # NAKED mode - single Claude, no agents
-/flo --naked 123                      # Same as -n
+/flo -s 123                           # SWARM mode (explicit)
+/flo --swarm 123                      # Same as -s
+/flo -h 123                           # HIVE-MIND mode - consensus-based coordination
+/flo --hive 123                       # Same as -h
+/flo -n 123                           # NORMAL mode - single Claude, no agents
+/flo --normal 123                     # Same as -n
 ```
 
 ### Epic Handling
@@ -60,19 +60,19 @@ Also available as `/fl` (shorthand alias).
 /flo 123                              # Swarm + full workflow (default) - includes ALL tests
 /flo 42                               # If #42 is epic, processes stories sequentially
 /flo -e 123                           # Swarm + enhance only (no implementation)
-/flo -hv -e 123                       # Hive-mind + enhance only
-/flo -n -r 123                        # Naked + research only
+/flo -h -e 123                        # Hive-mind + enhance only
+/flo -n -r 123                        # Normal + research only
 /flo --swarm --enhance 123            # Explicit swarm + enhance only
-/flo -n 123                           # Naked + full workflow (still runs all tests)
+/flo -n 123                           # Normal + full workflow (still runs all tests)
 ```
 
 ## SWARM IS MANDATORY BY DEFAULT
 
 Even if a task "looks simple", you MUST use swarm coordination unless
-the user explicitly passes -n/--naked. "Simple" is a trap. Tasks have
+the user explicitly passes -n/--normal. "Simple" is a trap. Tasks have
 hidden complexity. Swarm catches it.
 
-THE ONLY WAY TO SKIP SWARM: User passes -n or --naked explicitly.
+THE ONLY WAY TO SKIP SWARM: User passes -n or --normal explicitly.
 
 ## COMPREHENSIVE TESTING REQUIREMENT
 
@@ -107,8 +107,8 @@ PR+Done:     Create PR, update issue status, store learnings
 | Mode | Description |
 |------|-------------|
 | **SWARM** (default) | Multi-agent via Task tool: researcher, coder, tester, reviewer |
-| **HIVE-MIND** (-hv) | Consensus-based coordination for architecture decisions |
-| **NAKED** (-n) | Single Claude, no agent spawning. Only when user explicitly requests. |
+| **HIVE-MIND** (-h) | Consensus-based coordination for architecture decisions |
+| **NORMAL** (-n) | Single Claude, no agent spawning. Only when user explicitly requests. |
 
 ## Phase 1: Research (-r or default first step)
 
@@ -314,7 +314,7 @@ function extractStories(epicBody) {
 ```javascript
 const args = "$ARGUMENTS".trim().split(/\s+/);
 let workflowMode = "full";    // full, enhance, research
-let execMode = "swarm";       // swarm (default), hive, naked
+let execMode = "swarm";       // swarm (default), hive, normal
 let issueNumber = null;
 
 for (let i = 0; i < args.length; i++) {
@@ -328,12 +328,12 @@ for (let i = 0; i < args.length; i++) {
   }
 
   // Execution mode (how to do it)
-  else if (arg === "-sw" || arg === "--swarm") {
+  else if (arg === "-s" || arg === "--swarm") {
     execMode = "swarm";
-  } else if (arg === "-hv" || arg === "--hive") {
+  } else if (arg === "-h" || arg === "--hive") {
     execMode = "hive";
-  } else if (arg === "-n" || arg === "--naked") {
-    execMode = "naked";
+  } else if (arg === "-n" || arg === "--normal") {
+    execMode = "normal";
   }
 
   // Issue number
@@ -370,9 +370,9 @@ console.log("SIMPLIFY: /simplify command runs on changed code before PR.");
 
 | Mode | Flag | Description | When to Use |
 |------|------|-------------|-------------|
-| **Swarm** (DEFAULT) | `-sw`, `--swarm` | Multi-agent via Task tool | Always, unless explicitly overridden |
-| **Hive-Mind** | `-hv`, `--hive` | Consensus-based coordination | Architecture decisions, tradeoffs |
-| **Naked** | `-n`, `--naked` | Single Claude, no agents | User explicitly wants simple mode |
+| **Swarm** (DEFAULT) | `-s`, `--swarm` | Multi-agent via Task tool | Always, unless explicitly overridden |
+| **Hive-Mind** | `-h`, `--hive` | Consensus-based coordination | Architecture decisions, tradeoffs |
+| **Normal** | `-n`, `--normal` | Single Claude, no agents | User explicitly wants simple mode |
 
 ## Execution Mode Details
 
@@ -406,14 +406,14 @@ Task({ prompt: "...", subagent_type: "coder", run_in_background: true })
 // 4. Wait for results, synthesize, continue
 ```
 
-### HIVE-MIND Mode (-hv, --hive)
+### HIVE-MIND Mode (-h, --hive)
 
 Use for consensus-based decisions:
 - Architecture choices
 - Approach tradeoffs
 - Design decisions with multiple valid options
 
-### NAKED Mode (-n, --naked)
+### NORMAL Mode (-n, --normal)
 
 **Only when user explicitly requests.** Single Claude execution without agents.
 - Still uses Task tool for tracking
