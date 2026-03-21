@@ -4,7 +4,14 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import yaml from 'js-yaml';
+let yaml: any;
+try {
+  yaml = await import('js-yaml');
+  if (yaml.default) yaml = yaml.default;
+} catch {
+  // js-yaml not installed — YAML config files will fall back to JSON parsing
+  yaml = null;
+}
 
 // ============================================================================
 // Types
@@ -273,9 +280,15 @@ export function loadMofloConfig(projectRoot?: string): MofloConfig {
 
   try {
     const content = fs.readFileSync(configFile.path, 'utf-8');
-    const raw = configFile.format === 'json'
-      ? JSON.parse(content)
-      : yaml.load(content) as Record<string, any>;
+    let raw: Record<string, any>;
+    if (configFile.format === 'json') {
+      raw = JSON.parse(content);
+    } else if (yaml) {
+      raw = yaml.load(content) as Record<string, any>;
+    } else {
+      // js-yaml not available — cannot parse YAML config
+      throw new Error('js-yaml is required to parse moflo.yaml. Install it: npm install js-yaml');
+    }
 
     if (!raw || typeof raw !== 'object') {
       return { ...DEFAULT_CONFIG, project: { name: path.basename(root) } };

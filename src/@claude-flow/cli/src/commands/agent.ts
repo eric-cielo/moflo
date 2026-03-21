@@ -275,7 +275,7 @@ const listCommand: Command = {
 
       output.printTable({
         columns: [
-          { key: 'id', header: 'ID', width: 20 },
+          { key: 'id', header: 'ID', width: 35 },
           { key: 'type', header: 'Type', width: 15 },
           { key: 'status', header: 'Status', width: 12, format: formatStatus },
           { key: 'created', header: 'Created', width: 12 },
@@ -642,7 +642,7 @@ const poolCommand: Command = {
         output.writeln(output.bold('Pool Agents'));
         output.printTable({
           columns: [
-            { key: 'id', header: 'ID', width: 20 },
+            { key: 'id', header: 'ID', width: 35 },
             { key: 'type', header: 'Type', width: 15 },
             { key: 'status', header: 'Status', width: 12, format: formatStatus }
           ],

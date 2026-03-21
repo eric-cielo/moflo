@@ -216,28 +216,14 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
   }
   // ── End MoFlo Setup ────────────────────────────────────────────────
 
-  // Check if already initialized
+  // Check if already initialized — allow re-running to update/merge
   const initialized = isInitialized(cwd);
   const hasExisting = initialized.claude || initialized.claudeFlow;
 
   if (hasExisting && !force) {
-    output.printWarning('MoFlo appears to be already initialized');
+    output.printInfo('MoFlo is already initialized — updating configuration');
     if (initialized.claude) output.printInfo('  Found: .claude/settings.json');
     if (initialized.claudeFlow) output.printInfo('  Found: .claude-flow/config.yaml');
-    output.printInfo('Use --force to reinitialize');
-
-    if (ctx.interactive) {
-      const proceed = await confirm({
-        message: 'Do you want to reinitialize? This will overwrite existing configuration.',
-        default: false,
-      });
-
-      if (!proceed) {
-        return { success: true, message: 'Initialization cancelled' };
-      }
-    } else {
-      return { success: false, exitCode: 1, message: 'Already initialized' };
-    }
   }
 
   output.writeln();

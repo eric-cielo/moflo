@@ -293,8 +293,9 @@ function getSecurityStatus() {
 function getSwarmStatus() {
   const activityData = readJSON(path.join(CWD, '.claude-flow', 'metrics', 'swarm-activity.json'));
   if (activityData && activityData.swarm) {
+    const count = activityData.swarm.agent_count || 0;
     return {
-      activeAgents: activityData.swarm.agent_count || 0,
+      activeAgents: Math.min(count, CONFIG.maxAgents),
       maxAgents: CONFIG.maxAgents,
       coordinationActive: activityData.swarm.coordination_active || activityData.swarm.active || false,
     };
@@ -302,10 +303,12 @@ function getSwarmStatus() {
 
   const progressData = readJSON(path.join(CWD, '.claude-flow', 'metrics', 'v3-progress.json'));
   if (progressData && progressData.swarm) {
+    const count = progressData.swarm.activeAgents || progressData.swarm.agent_count || 0;
+    const max = progressData.swarm.totalAgents || CONFIG.maxAgents;
     return {
-      activeAgents: progressData.swarm.activeAgents || progressData.swarm.agent_count || 0,
-      maxAgents: progressData.swarm.totalAgents || CONFIG.maxAgents,
-      coordinationActive: progressData.swarm.active || (progressData.swarm.activeAgents > 0),
+      activeAgents: Math.min(count, max),
+      maxAgents: max,
+      coordinationActive: progressData.swarm.active || (count > 0),
     };
   }
 

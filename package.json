@@ -61,6 +61,7 @@
   },
   "dependencies": {
     "@ruvector/learning-wasm": "^0.1.29",
+    "js-yaml": "^4.1.1",
     "semver": "^7.6.0",
     "sql.js": "^1.12.0",
     "zod": "^3.22.4"

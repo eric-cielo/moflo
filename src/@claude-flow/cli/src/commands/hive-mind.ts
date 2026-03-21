@@ -434,9 +434,9 @@ const initCommand: Command = {
     const config = {
       topology: topology || 'hierarchical-mesh',
       consensus: consensus || 'byzantine',
-      maxAgents: ctx.flags.maxAgents as number || 15,
+      maxAgents: (ctx.flags.maxAgents ?? ctx.flags['max-agents']) as number || 15,
       persist: ctx.flags.persist as boolean,
-      memoryBackend: ctx.flags.memoryBackend as string || 'hybrid'
+      memoryBackend: (ctx.flags.memoryBackend ?? ctx.flags['memory-backend']) as string || 'hybrid'
     };
 
     output.writeln();
@@ -1250,9 +1250,9 @@ const shutdownCommand: Command = {
 
       output.writeln();
       output.printList([
-        `Agents terminated: ${result.agentsTerminated}`,
+        `Agents terminated: ${result.agentsTerminated ?? 0}`,
         `State saved: ${result.stateSaved ? 'Yes' : 'No'}`,
-        `Shutdown time: ${result.shutdownTime}`
+        `Shutdown time: ${result.shutdownTime ?? 'N/A'}`
       ]);
 
       return { success: true, data: result };

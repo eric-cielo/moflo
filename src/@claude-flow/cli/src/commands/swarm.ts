@@ -574,7 +574,8 @@ const stopCommand: Command = {
     const force = ctx.flags.force as boolean;
 
     if (!swarmId) {
-      output.printError('Swarm ID is required');
+      output.printError('Swarm ID is required. Usage: moflo swarm stop <swarm-id>');
+      output.printInfo('Run "moflo swarm status" to find the active swarm ID');
       return { success: false, exitCode: 1 };
     }
 
@@ -630,7 +631,8 @@ const scaleCommand: Command = {
     const agentType = ctx.flags.type as string;
 
     if (!swarmId) {
-      output.printError('Swarm ID is required');
+      output.printError('Swarm ID is required. Usage: moflo swarm scale <swarm-id>');
+      output.printInfo('Run "moflo swarm status" to find the active swarm ID');
       return { success: false, exitCode: 1 };
     }
 

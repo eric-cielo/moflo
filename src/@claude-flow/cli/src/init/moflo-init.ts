@@ -11,6 +11,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 // ============================================================================
 // Types
@@ -493,17 +494,29 @@ function generateSkill(root: string, force?: boolean): MofloInitResult['steps'][
 
   // Copy static SKILL.md from moflo package instead of generating it
   let skillContent = '';
+
+  // Resolve this file's directory in ESM-safe way
+  let thisDir: string;
+  try {
+    thisDir = path.dirname(fileURLToPath(import.meta.url));
+  } catch {
+    // Fallback for CJS or environments where import.meta.url is unavailable
+    thisDir = typeof __dirname !== 'undefined' ? __dirname : '';
+  }
+
   const staticSkillCandidates = [
-    // Installed via npm
+    // Installed via npm (most common)
     path.join(root, 'node_modules', 'moflo', '.claude', 'skills', 'flo', 'SKILL.md'),
-    // Running from moflo repo itself
-    path.join(path.dirname(path.dirname(path.dirname(path.dirname(path.dirname(__dirname))))), '.claude', 'skills', 'flo', 'SKILL.md'),
+    // Running from moflo repo itself (dev)
+    ...(thisDir ? [path.join(thisDir, '..', '..', '..', '..', '.claude', 'skills', 'flo', 'SKILL.md')] : []),
   ];
   for (const candidate of staticSkillCandidates) {
-    if (fs.existsSync(candidate)) {
-      skillContent = fs.readFileSync(candidate, 'utf-8');
-      break;
-    }
+    try {
+      if (fs.existsSync(candidate)) {
+        skillContent = fs.readFileSync(candidate, 'utf-8');
+        break;
+      }
+    } catch { /* skip inaccessible paths */ }
   }
 
   if (!skillContent) {
@@ -648,12 +661,19 @@ function syncScripts(root: string, force?: boolean): MofloInitResult['steps'][0]
   }
 
   // Find moflo bin/ directory
+  let syncThisDir: string;
+  try {
+    syncThisDir = path.dirname(fileURLToPath(import.meta.url));
+  } catch {
+    syncThisDir = typeof __dirname !== 'undefined' ? __dirname : '';
+  }
+
   const candidates = [
     path.join(root, 'node_modules', 'moflo', 'bin'),
     // When running from moflo repo itself
-    path.join(path.dirname(path.dirname(path.dirname(path.dirname(path.dirname(__dirname))))), 'bin'),
+    ...(syncThisDir ? [path.join(syncThisDir, '..', '..', '..', '..', 'bin')] : []),
   ];
-  const binDir = candidates.find(d => fs.existsSync(d));
+  const binDir = candidates.find(d => { try { return fs.existsSync(d); } catch { return false; } });
 
   if (!binDir) {
     return { name: '.claude/scripts/', status: 'skipped', detail: 'moflo bin/ not found' };
@@ -696,8 +716,11 @@ function updateGitignore(root: string): MofloInitResult['steps'][0] {
   const entries = ['.claude-orc/', '.swarm/', '.moflo/'];
 
   if (!fs.existsSync(gitignorePath)) {
-    fs.writeFileSync(gitignorePath, entries.join('\n') + '\n', 'utf-8');
-    return { name: '.gitignore', status: 'created', detail: entries.join(', ') };
+    // Create .gitignore with common defaults + MoFlo entries
+    const defaultEntries = ['node_modules/', 'dist/', '.env', '.env.*', ''];
+    const content = '# Dependencies\n' + defaultEntries.join('\n') + '\n# MoFlo state\n' + entries.join('\n') + '\n';
+    fs.writeFileSync(gitignorePath, content, 'utf-8');
+    return { name: '.gitignore', status: 'created', detail: 'Created with node_modules, .env, and MoFlo entries' };
   }
 
   const existing = fs.readFileSync(gitignorePath, 'utf-8');
