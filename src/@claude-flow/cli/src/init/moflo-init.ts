@@ -43,6 +43,42 @@ export interface MofloInitResult {
 // ============================================================================
 
 /**
+ * Discover guidance directories by checking top-level candidates AND walking
+ * the project tree for subproject .claude/guidance dirs (monorepo support).
+ */
+function discoverGuidanceDirs(root: string): string[] {
+  const TOP_LEVEL = ['.claude/guidance', 'docs/guides', 'docs', 'architecture', 'adr', '.cursor/rules'];
+  const found = TOP_LEVEL.filter(d => fs.existsSync(path.join(root, d)));
+
+  // Walk up to 3 levels deep looking for .claude/guidance in subprojects
+  const SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.reports', '.swarm', '.claude-flow', 'packages']);
+
+  function walk(dir: string, depth: number) {
+    if (depth > 3) return;
+    try {
+      const entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || SKIP.has(entry.name)) continue;
+        const rel = dir ? `${dir}/${entry.name}` : entry.name;
+        const guidancePath = `${rel}/.claude/guidance`;
+        if (fs.existsSync(path.join(root, guidancePath))) {
+          // Verify it has .md files
+          try {
+            const files = fs.readdirSync(path.join(root, guidancePath));
+            if (files.some(f => f.endsWith('.md'))) found.push(guidancePath);
+          } catch { /* skip unreadable */ }
+        } else {
+          walk(rel, depth + 1);
+        }
+      }
+    } catch { /* skip unreadable directories */ }
+  }
+
+  walk('', 0);
+  return found;
+}
+
+/**
  * Discover source directories by walking the project tree.
  * Finds directories named 'src' (or top-level 'packages', 'lib', etc.)
  * that contain .ts/.tsx/.js/.jsx files. Skips node_modules, dist, etc.
@@ -97,8 +133,7 @@ async function runWizard(root: string): Promise<MofloInitAnswers> {
   const { confirm, input } = await import('../prompt.js');
 
   // Detect project structure
-  const guidanceCandidates = ['.claude/guidance', 'docs/guides', 'docs', 'architecture', 'adr', '.cursor/rules'];
-  const detectedGuidance = guidanceCandidates.filter(d => fs.existsSync(path.join(root, d)));
+  const detectedGuidance = discoverGuidanceDirs(root);
 
   const detectedSrc = discoverSrcDirs(root);
 
@@ -152,8 +187,7 @@ async function runWizard(root: string): Promise<MofloInitAnswers> {
  * Get default answers (--yes mode).
  */
 function defaultAnswers(root: string): MofloInitAnswers {
-  const guidanceCandidates = ['.claude/guidance', 'docs/guides', 'docs', 'architecture', 'adr', '.cursor/rules'];
-  const guidanceDirs = guidanceCandidates.filter(d => fs.existsSync(path.join(root, d)));
+  const guidanceDirs = discoverGuidanceDirs(root);
   if (guidanceDirs.length === 0) guidanceDirs.push('.claude/guidance');
 
   const srcDirs = discoverSrcDirs(root);
