@@ -371,6 +371,26 @@ async function main() {
     log('All entries already have embeddings');
     const stats = getEmbeddingStats(db);
     log(`Total: ${stats.withEmbeddings}/${stats.total} entries embedded`);
+
+    // Update vector-stats cache even on early exit
+    try {
+      const nsStats = getNamespaceStats(db);
+      const dbSizeKB = Math.floor(readFileSync(DB_PATH).length / 1024);
+      const hnswExists = existsSync(resolve(projectRoot, '.swarm', 'hnsw.index'))
+        || existsSync(resolve(projectRoot, '.claude-flow', 'hnsw.index'));
+      const cacheData = {
+        vectorCount: stats.withEmbeddings,
+        dbSizeKB,
+        namespaces: nsStats.length,
+        hasHnsw: hnswExists,
+        updatedAt: Date.now(),
+      };
+      for (const cacheDir of [resolve(projectRoot, '.claude-flow'), resolve(projectRoot, '.swarm')]) {
+        if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
+        writeFileSync(resolve(cacheDir, 'vector-stats.json'), JSON.stringify(cacheData));
+      }
+    } catch { /* non-fatal */ }
+
     db.close();
     return;
   }
