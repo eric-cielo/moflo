@@ -1,12 +1,12 @@
 ---
 name: flo
 description: MoFlo ticket workflow - analyze and execute GitHub issues
-arguments: "[options] <issue-number>"
+arguments: "[options] <issue-number | title>"
 ---
 
 # /flo - MoFlo Ticket Workflow
 
-Research, enhance, and execute GitHub issues automatically.
+Research, create tickets for, and execute GitHub issues automatically.
 
 **Arguments:** $ARGUMENTS
 
@@ -14,8 +14,9 @@ Research, enhance, and execute GitHub issues automatically.
 
 ```
 /flo <issue-number>                   # Full workflow with SWARM (default)
-/flo -e <issue-number>                # Enhance only: research and update ticket, then STOP
-/flo --enhance <issue-number>         # Same as -e
+/flo -t <issue-number>                # Ticket only: research and update ticket, then STOP
+/flo -t <title>                       # Create a NEW ticket with description, acceptance criteria, test cases
+/flo --ticket <issue-number|title>    # Same as -t
 /flo -r <issue-number>                # Research only: analyze issue, output findings
 /flo --research <issue-number>        # Same as -r
 ```
@@ -50,7 +51,7 @@ Also available as `/fl` (shorthand alias).
 **Sequential Processing:** When an epic is selected:
 1. List all child stories/tasks (from checklist or linked issues)
 2. Process each story **one at a time** in order
-3. Each story goes through the full workflow (research -> enhance -> implement -> test -> PR)
+3. Each story goes through the full workflow (research -> ticket -> implement -> test -> PR)
 4. After each story's PR is created, move to the next story
 5. Continue until all stories are complete
 
@@ -59,10 +60,10 @@ Also available as `/fl` (shorthand alias).
 ```
 /flo 123                              # Swarm + full workflow (default) - includes ALL tests
 /flo 42                               # If #42 is epic, processes stories sequentially
-/flo -e 123                           # Swarm + enhance only (no implementation)
-/flo -h -e 123                        # Hive-mind + enhance only
+/flo -t 123                           # Swarm + ticket only (no implementation)
+/flo -h -t 123                        # Hive-mind + ticket only
 /flo -n -r 123                        # Normal + research only
-/flo --swarm --enhance 123            # Explicit swarm + enhance only
+/flo --swarm --ticket 123             # Explicit swarm + ticket only
 /flo -n 123                           # Normal + full workflow (still runs all tests)
 ```
 
@@ -85,10 +86,10 @@ PR CANNOT BE CREATED until all relevant tests pass.
 ## Workflow Overview
 
 ```
-Research -> Enhance -> Execute -> Testing -> Simplify -> PR+Done
+Research -> Ticket -> Execute -> Testing -> Simplify -> PR+Done
 
 Research:    Fetch issue, search memory, read guidance, find files
-Enhance:     Update GitHub issue with tech analysis, affected files, impl plan
+Ticket:      Create or update GitHub issue with description, acceptance criteria, test cases
 Execute:     Assign self, create branch, implement changes
 Testing:     Unit + Integration + E2E tests (ALL MUST PASS - gate)
 Simplify:    Run /simplify on changed code (gate - must run before PR)
@@ -117,10 +118,10 @@ PR+Done:     Create PR, update issue status, store learnings
 gh issue view <issue-number> --json number,title,body,labels,state,assignees,comments,milestone
 ```
 
-### 1.2 Check Enhancement Status
-Look for `## Implementation Plan` marker in issue body.
-- **If present**: Issue already enhanced, skip to execute or confirm
-- **If absent**: Proceed with research and enhancement
+### 1.2 Check Ticket Status
+Look for `## Acceptance Criteria` marker in issue body.
+- **If present**: Ticket already enhanced, skip to execute or confirm
+- **If absent**: Proceed with research and ticket update
 
 ### 1.3 Search Memory FIRST
 ALWAYS search memory BEFORE reading guidance or docs files.
@@ -147,32 +148,44 @@ Use Task tool with Explore agent to find:
 - Existing patterns to follow
 - Test coverage gaps
 
-## Phase 2: Enhance (-e includes research + enhancement)
+## Phase 2: Ticket (-t creates or updates a ticket)
 
-### 2.1 Build Enhancement
-Compile research into structured enhancement:
+When given an issue number, `-t` enhances the existing ticket. When given a title (non-numeric argument), `-t` creates a new GitHub issue. Either way, the ticket MUST include all three of the following sections:
 
-**Technical Analysis** - Root cause (bugs) or approach (features), impact, risk factors
+### 2.1 Build Ticket Content
+Compile research into a well-structured ticket. The issue MUST include all three of the following sections:
 
-**Affected Files** - Files to modify (with line numbers), new files, deletions
+**Detailed Description** — Clear, thorough explanation of what needs to be done and why. Include:
+- Root cause analysis (bugs) or approach rationale (features)
+- Impact and risk factors
+- Affected files (with line numbers), new files, deletions
+- Implementation plan: numbered steps with clear actions, dependencies, decision points
 
-**Implementation Plan** - Numbered steps with clear actions, dependencies, decision points
+**Acceptance Criteria** — Specific, testable conditions that must be true for this issue to be considered complete. Write as a checklist:
+- [ ] Criterion 1 (e.g., "API returns 200 with valid token")
+- [ ] Criterion 2 (e.g., "Error message shown when input exceeds 255 chars")
+- [ ] ...each criterion must be independently verifiable
 
-**Test Plan** - Unit tests to add/update, integration tests needed, manual testing checklist
+**Suggested Test Cases** — Concrete test scenarios covering happy path, edge cases, and error conditions:
+- Test case 1: description, input, expected output
+- Test case 2: description, input, expected output
+- Include unit, integration, and E2E test suggestions as appropriate
 
-**Estimates** - Complexity (Low/Medium/High), scope (# files, # new tests)
+### 2.2 Create or Update GitHub Issue
 
-### 2.2 Update GitHub Issue
+**If issue number was given** (update existing):
 ```bash
-gh issue edit <issue-number> --body "<original body + Technical Analysis + Affected Files + Implementation Plan + Test Plan + Estimates>"
+gh issue edit <issue-number> --body "<original body + ## Description + ## Acceptance Criteria + ## Suggested Test Cases>"
+gh issue comment <issue-number> --body "Ticket enhanced with description, acceptance criteria, and test cases. Ready for execution."
 ```
 
-### 2.3 Add Enhancement Comment
+**If title was given** (create new):
 ```bash
-gh issue comment <issue-number> --body "Issue enhanced with implementation plan. Ready for execution."
+gh issue create --title "<title>" --body "<## Description + ## Acceptance Criteria + ## Suggested Test Cases>"
 ```
+Print the new issue URL so the user can see it.
 
-## Phase 3: Execute (default, runs automatically after enhance)
+## Phase 3: Execute (default, runs automatically after ticket)
 
 ### 3.1 Assign Issue and Update Status
 ```bash
@@ -188,7 +201,7 @@ git checkout -b <type>/<issue-number>-<short-desc>
 Types: `feature/`, `fix/`, `refactor/`, `docs/`
 
 ### 3.3 Implement
-Follow the implementation plan from the enhanced issue. No prompts - execute all steps.
+Follow the implementation plan from the ticket. No prompts - execute all steps.
 
 ## Phase 4: Testing (MANDATORY GATE)
 
@@ -313,16 +326,17 @@ function extractStories(epicBody) {
 
 ```javascript
 const args = "$ARGUMENTS".trim().split(/\s+/);
-let workflowMode = "full";    // full, enhance, research
+let workflowMode = "full";    // full, ticket, research
 let execMode = "swarm";       // swarm (default), hive, normal
 let issueNumber = null;
+let titleWords = [];
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
 
   // Workflow mode (what to do)
-  if (arg === "-e" || arg === "--enhance") {
-    workflowMode = "enhance";
+  if (arg === "-t" || arg === "--ticket") {
+    workflowMode = "ticket";
   } else if (arg === "-r" || arg === "--research") {
     workflowMode = "research";
   }
@@ -336,14 +350,22 @@ for (let i = 0; i < args.length; i++) {
     execMode = "normal";
   }
 
-  // Issue number
+  // Issue number or title text
   else if (/^\d+$/.test(arg)) {
     issueNumber = arg;
+  } else {
+    // Non-flag, non-numeric argument — collect as title words
+    titleWords.push(arg);
   }
 }
 
-if (!issueNumber) {
-  throw new Error("Issue number required. Usage: /flo <issue-number>");
+// In ticket mode, a title can be given instead of an issue number
+let ticketTitle = titleWords.join(" ");
+if (!issueNumber && !ticketTitle) {
+  throw new Error("Issue number or title required. Usage: /flo <issue-number | title>");
+}
+if (!issueNumber && workflowMode !== "ticket") {
+  throw new Error("Issue number required for full/research mode. Use -t for new tickets.");
 }
 
 // Log execution mode to prevent silent skipping
@@ -361,9 +383,9 @@ console.log("SIMPLIFY: /simplify command runs on changed code before PR.");
 
 | Mode | Command | Steps | Stops After |
 |------|---------|-------|-------------|
-| **Full** (default) | `/flo 123` | Research -> Enhance -> Implement -> Test -> Simplify -> PR | PR created |
+| **Full** (default) | `/flo 123` | Research -> Ticket -> Implement -> Test -> Simplify -> PR | PR created |
 | **Epic** | `/flo 42` (epic) | For each story: Full workflow sequentially | All story PRs created |
-| **Enhance** | `/flo -e 123` | Research -> Enhance | Issue updated |
+| **Ticket** | `/flo -t 123` | Research -> Ticket | Issue updated |
 | **Research** | `/flo -r 123` | Research | Findings output |
 
 ### Execution Modes (how to do it)
