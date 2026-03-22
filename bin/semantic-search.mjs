@@ -42,10 +42,14 @@ const NEURAL_ALIASES = new Set([EMBEDDING_MODEL_NEURAL, 'onnx']);
 const args = process.argv.slice(2);
 const query = args.find(a => !a.startsWith('--'));
 const limit = args.includes('--limit') ? parseInt(args[args.indexOf('--limit') + 1]) : 5;
-const namespace = args.includes('--namespace') ? args[args.indexOf('--namespace') + 1] : null;
+let namespace = args.includes('--namespace') ? args[args.indexOf('--namespace') + 1] : null;
+const withTests = args.includes('--with-tests');
 const threshold = args.includes('--threshold') ? parseFloat(args[args.indexOf('--threshold') + 1]) : 0.3;
 const json = args.includes('--json');
 const debug = args.includes('--debug');
+
+// Auto-routing: when query mentions test-related terms, also search tests namespace
+const TEST_KEYWORDS = /\b(test|spec|coverage|assert|mock|stub|fixture|describe|jest|vitest|mocha|e2e|integration test)\b/i;
 
 if (!query) {
   console.error('Usage: npx flo-search "your query" [--limit N] [--namespace X] [--threshold N]');
@@ -389,7 +393,35 @@ async function main() {
   }
 
   try {
-    const results = await semanticSearch(query, { limit, namespace, threshold });
+    // --with-tests: search both the specified namespace (or code-map) and tests
+    // Auto-route: if query contains test keywords and no namespace specified, also search tests
+    const autoRouteTests = !namespace && TEST_KEYWORDS.test(query);
+    let results;
+
+    if (withTests || autoRouteTests) {
+      const primaryNs = namespace || 'code-map';
+      const primaryResults = await semanticSearch(query, { limit, namespace: primaryNs, threshold });
+      const testResults = await semanticSearch(query, { limit, namespace: 'tests', threshold });
+
+      // Merge and re-sort by score
+      const merged = [...primaryResults.results, ...testResults.results]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit);
+
+      results = {
+        ...primaryResults,
+        results: merged,
+        totalMatches: primaryResults.totalMatches + testResults.totalMatches,
+        searchTime: `${parseInt(primaryResults.searchTime) + parseInt(testResults.searchTime)}ms`,
+        namespaces: [primaryNs, 'tests'],
+      };
+
+      if (!json && autoRouteTests) {
+        console.log(`[semantic-search] Auto-routed to tests namespace (query contains test keywords)`);
+      }
+    } else {
+      results = await semanticSearch(query, { limit, namespace, threshold });
+    }
 
     if (json) {
       console.log(JSON.stringify(results, null, 2));

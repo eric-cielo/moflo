@@ -30,6 +30,8 @@ export interface MofloInitAnswers {
   guidanceDirs: string[];
   codeMap: boolean;
   srcDirs: string[];
+  tests: boolean;
+  testDirs: string[];
   gates: boolean;
   stopHook: boolean;
 }
@@ -67,6 +69,37 @@ function discoverGuidanceDirs(root: string): string[] {
             const files = fs.readdirSync(path.join(root, guidancePath));
             if (files.some(f => f.endsWith('.md'))) found.push(guidancePath);
           } catch { /* skip unreadable */ }
+        } else {
+          walk(rel, depth + 1);
+        }
+      }
+    } catch { /* skip unreadable directories */ }
+  }
+
+  walk('', 0);
+  return found;
+}
+
+/**
+ * Discover test directories by checking common locations and walking for
+ * colocated __tests__ dirs. Returns relative paths.
+ */
+export function discoverTestDirs(root: string): string[] {
+  const TOP_LEVEL = ['tests', 'test', '__tests__', 'spec', 'e2e'];
+  const found = TOP_LEVEL.filter(d => fs.existsSync(path.join(root, d)));
+
+  // Walk up to 3 levels deep looking for __tests__ dirs inside src
+  const SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.reports', '.swarm', '.claude-flow']);
+
+  function walk(dir: string, depth: number) {
+    if (depth > 3) return;
+    try {
+      const entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || SKIP.has(entry.name)) continue;
+        const rel = dir ? `${dir}/${entry.name}` : entry.name;
+        if (entry.name === '__tests__') {
+          found.push(rel);
         } else {
           walk(rel, depth + 1);
         }
@@ -170,6 +203,25 @@ async function runWizard(root: string): Promise<MofloInitAnswers> {
     srcDirs = answer.split(',').map((d: string) => d.trim()).filter(Boolean);
   }
 
+  // Detect test directories
+  const detectedTests = discoverTestDirs(root);
+
+  const tests = await confirm({
+    message: detectedTests.length > 0
+      ? `Found tests in ${detectedTests.join(', ')}. Enable test file indexing?`
+      : 'Enable test file indexing?',
+    default: true,
+  });
+
+  let testDirs = detectedTests.length > 0 ? detectedTests : ['tests'];
+  if (tests) {
+    const answer = await input({
+      message: 'Test directories (comma-separated):',
+      default: testDirs.join(', '),
+    });
+    testDirs = answer.split(',').map((d: string) => d.trim()).filter(Boolean);
+  }
+
   const gates = await confirm({
     message: 'Enable workflow gates (memory-first, task-create-before-agents)?',
     default: true,
@@ -180,7 +232,7 @@ async function runWizard(root: string): Promise<MofloInitAnswers> {
     default: true,
   });
 
-  return { guidance, guidanceDirs, codeMap, srcDirs, gates, stopHook };
+  return { guidance, guidanceDirs, codeMap, srcDirs, tests, testDirs, gates, stopHook };
 }
 
 /**
@@ -193,14 +245,17 @@ function defaultAnswers(root: string): MofloInitAnswers {
   const srcDirs = discoverSrcDirs(root);
   if (srcDirs.length === 0) srcDirs.push('src');
 
-  return { guidance: true, guidanceDirs, codeMap: true, srcDirs, gates: true, stopHook: true };
+  const testDirs = discoverTestDirs(root);
+  if (testDirs.length === 0) testDirs.push('tests');
+
+  return { guidance: true, guidanceDirs, codeMap: true, srcDirs, tests: true, testDirs, gates: true, stopHook: true };
 }
 
 /**
  * Get minimal answers (--minimal mode).
  */
 function minimalAnswers(): MofloInitAnswers {
-  return { guidance: false, guidanceDirs: [], codeMap: false, srcDirs: [], gates: false, stopHook: false };
+  return { guidance: false, guidanceDirs: [], codeMap: false, srcDirs: [], tests: false, testDirs: [], gates: false, stopHook: false };
 }
 
 export async function initMoflo(options: MofloInitOptions): Promise<MofloInitResult> {
@@ -252,6 +307,7 @@ function generateConfig(root: string, force?: boolean, answers?: MofloInitAnswer
   const projectName = path.basename(root);
   const guidanceDirs = answers?.guidanceDirs ?? ['.claude/guidance'];
   const srcDirs = answers?.srcDirs ?? ['src'];
+  const testDirs = answers?.testDirs ?? ['tests'];
   const gatesEnabled = answers?.gates ?? true;
 
   // Detect languages
@@ -289,6 +345,15 @@ ${srcDirs.map(d => `    - ${d}`).join('\n')}
   exclude: [node_modules, dist, .next, coverage, build, __pycache__, target, .git]
   namespace: code-map
 
+# Test file discovery and indexing
+tests:
+  directories:
+${testDirs.map(d => `    - ${d}`).join('\n')}
+  patterns: ["*.test.*", "*.spec.*", "*.test-*"]
+  extensions: [".ts", ".tsx", ".js", ".jsx"]
+  exclude: [node_modules, coverage, dist]
+  namespace: tests
+
 # Workflow gates (enforced via Claude Code hooks)
 gates:
   memory_first: ${gatesEnabled}
@@ -299,6 +364,7 @@ gates:
 auto_index:
   guidance: ${answers?.guidance ?? true}
   code_map: ${answers?.codeMap ?? true}
+  tests: ${answers?.tests ?? true}
 
 # Memory backend
 memory:
@@ -735,6 +801,7 @@ const SCRIPT_MAP: Record<string, string> = {
   'build-embeddings.mjs': 'build-embeddings.mjs',
   'generate-code-map.mjs': 'generate-code-map.mjs',
   'semantic-search.mjs': 'semantic-search.mjs',
+  'index-tests.mjs': 'index-tests.mjs',
 };
 
 function syncScripts(root: string, force?: boolean): MofloInitResult['steps'][0] {

@@ -265,6 +265,8 @@ async function main() {
         runIndexGuidanceBackground();
         // Generate structural code map in background
         runCodeMapBackground();
+        // Index test files in background
+        runTestIndexBackground();
         // Run pretrain in background to extract patterns from repository
         runBackgroundPretrain();
         // Force HNSW rebuild to ensure all processes use identical fresh index
@@ -459,6 +461,31 @@ function runCodeMapBackground() {
   }
 
   spawnWindowless('node', [codeMapScript], 'background code map generation');
+}
+
+// Run test file indexer in background (non-blocking)
+function runTestIndexBackground() {
+  // Check auto_index.tests flag in moflo.yaml (default: true)
+  const yamlPath = resolve(projectRoot, 'moflo.yaml');
+  if (existsSync(yamlPath)) {
+    try {
+      const content = readFileSync(yamlPath, 'utf-8');
+      const match = content.match(/auto_index:\s*\n(?:.*\n)*?\s+tests:\s*(true|false)/);
+      if (match && match[1] === 'false') {
+        log('info', 'Test indexing disabled (auto_index.tests: false)');
+        return;
+      }
+    } catch { /* ignore, proceed with indexing */ }
+  }
+
+  const testIndexScript = resolveBinOrLocal('flo-testmap', 'index-tests.mjs');
+
+  if (!testIndexScript) {
+    log('info', 'Test indexer not found (checked npm bin + .claude/scripts/)');
+    return;
+  }
+
+  spawnWindowless('node', [testIndexScript], 'background test indexing');
 }
 
 // Run ReasoningBank + MicroLoRA training + EWC++ consolidation in background (non-blocking)
