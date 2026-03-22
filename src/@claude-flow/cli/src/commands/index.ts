@@ -76,6 +76,8 @@ const commandLoaders: Record<string, CommandLoader> = {
   gate: () => import('./gate.js'),
   // Feature Orchestrator
   orc: () => import('./orc.js'),
+  // GitHub Repository Setup
+  github: () => import('./github.js'),
 };
 
 // Cache for loaded commands
@@ -153,6 +155,7 @@ import { processCommand } from './process.js';
 import { guidanceCommand } from './guidance.js';
 import { applianceCommand } from './appliance.js';
 import { diagnoseCommand } from './diagnose.js';
+import { githubCommand } from './github.js';
 
 // Pre-populate cache with core commands
 loadedCommands.set('init', initCommand);
@@ -175,6 +178,7 @@ loadedCommands.set('ruvector', ruvectorCommand);
 loadedCommands.set('hive-mind', hiveMindCommand);
 loadedCommands.set('guidance', guidanceCommand);
 loadedCommands.set('diagnose', diagnoseCommand);
+loadedCommands.set('github', githubCommand);
 
 // =============================================================================
 // Exports (maintain backwards compatibility)
@@ -202,6 +206,7 @@ export { hiveMindCommand } from './hive-mind.js';
 export { guidanceCommand } from './guidance.js';
 export { applianceCommand } from './appliance.js';
 export { diagnoseCommand } from './diagnose.js';
+export { githubCommand } from './github.js';
 
 // Lazy-loaded command re-exports (for backwards compatibility, but async-only)
 export async function getConfigCommand() { return loadCommand('config'); }
@@ -254,6 +259,7 @@ export const commands: Command[] = [
   hiveMindCommand,
   guidanceCommand,
   diagnoseCommand,
+  githubCommand,
 ];
 
 /**
@@ -304,6 +310,7 @@ export const commandsByCategory = {
     updateCommand,
     processCommand,
     applianceCommand,
+    githubCommand,
   ],
 };
 
