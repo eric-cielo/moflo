@@ -7,18 +7,14 @@
  *
  * Principle: we are guests in the user's CLAUDE.md. Keep it small.
  */
-
-import type { InitOptions, ClaudeMdTemplate } from './types.js';
-
 const MARKER_START = '<!-- MOFLO:INJECTED:START -->';
 const MARKER_END = '<!-- MOFLO:INJECTED:END -->';
-
 /**
  * The single moflo section injected into CLAUDE.md.
  * ~40 lines. Points to moflo.md for everything else.
  */
-function mofloSection(): string {
-  return `${MARKER_START}
+function mofloSection() {
+    return `${MARKER_START}
 ## MoFlo — AI Agent Orchestration
 
 This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted development workflows.
@@ -62,35 +58,30 @@ For CLI commands, hooks, agents, swarm config, memory commands, and moflo.yaml o
 \`.claude/guidance/shipped/moflo.md\`
 ${MARKER_END}`;
 }
-
 // --- Public API ---
-
 export { MARKER_START, MARKER_END };
-
 /**
  * Generate the MoFlo section to inject into CLAUDE.md.
  * Template parameter is accepted for backward compatibility but ignored —
  * all templates now produce the same minimal injection.
  */
-export function generateClaudeMd(_options: InitOptions, _template?: ClaudeMdTemplate): string {
-  return mofloSection() + '\n';
+export function generateClaudeMd(_options, _template) {
+    return mofloSection() + '\n';
 }
-
 /**
  * Generate minimal CLAUDE.md content (backward-compatible alias).
  */
-export function generateMinimalClaudeMd(options: InitOptions): string {
-  return generateClaudeMd(options, 'minimal');
+export function generateMinimalClaudeMd(options) {
+    return generateClaudeMd(options, 'minimal');
 }
-
 /** Available template names for CLI wizard (kept for backward compat, all produce same output) */
-export const CLAUDE_MD_TEMPLATES: Array<{ name: ClaudeMdTemplate; description: string }> = [
-  { name: 'minimal', description: 'Recommended — memory search, workflow gates, MCP tools (~40 lines injected)' },
-  { name: 'standard', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
-  { name: 'full', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
-  { name: 'security', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
-  { name: 'performance', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
-  { name: 'solo', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
+export const CLAUDE_MD_TEMPLATES = [
+    { name: 'minimal', description: 'Recommended — memory search, workflow gates, MCP tools (~40 lines injected)' },
+    { name: 'standard', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
+    { name: 'full', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
+    { name: 'security', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
+    { name: 'performance', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
+    { name: 'solo', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
 ];
-
 export default generateClaudeMd;
+//# sourceMappingURL=claudemd-generator.js.map

@@ -5,7 +5,7 @@
  * Created with motailz.com
  */
 import { output } from '../output.js';
-import { existsSync, readFileSync, statSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, statSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync, exec } from 'child_process';
@@ -171,7 +171,7 @@ async function checkMcpServers() {
                 const content = JSON.parse(readFileSync(configPath, 'utf8'));
                 const servers = content.mcpServers || content.servers || {};
                 const count = Object.keys(servers).length;
-                const hasClaudeFlow = 'claude-flow' in servers || 'claude-flow_alpha' in servers || 'ruflo' in servers || 'ruflo_alpha' in servers;
+                const hasClaudeFlow = 'moflo' in servers || 'claude-flow' in servers || 'claude-flow_alpha' in servers || 'ruflo' in servers || 'ruflo_alpha' in servers;
                 if (hasClaudeFlow) {
                     return { name: 'MCP Servers', status: 'pass', message: `${count} servers (flo configured)` };
                 }
@@ -184,7 +184,7 @@ async function checkMcpServers() {
             }
         }
     }
-    return { name: 'MCP Servers', status: 'warn', message: 'No MCP config found', fix: 'claude mcp add claude-flow npx moflo mcp start' };
+    return { name: 'MCP Servers', status: 'warn', message: 'No MCP config found', fix: 'claude mcp add moflo npx moflo mcp start' };
 }
 // Check disk space (async with proper env inheritance)
 async function checkDiskSpace() {
@@ -530,7 +530,7 @@ async function autoFixCheck(check) {
             return runFixCommand('npx moflo daemon start');
         },
         'MCP Servers': async () => {
-            return runFixCommand('claude mcp add claude-flow -- npx -y moflo mcp start');
+            return runFixCommand('claude mcp add moflo -- npx -y moflo mcp start');
         },
         'Claude Code CLI': async () => {
             return installClaudeCode();
@@ -580,6 +580,51 @@ async function runFixCommand(cmd) {
     }
     catch {
         return false;
+    }
+}
+// Check test directories configured in moflo.yaml
+async function checkTestDirs() {
+    const yamlPath = join(process.cwd(), 'moflo.yaml');
+    if (!existsSync(yamlPath)) {
+        return { name: 'Test Directories', status: 'warn', message: 'No moflo.yaml — test indexing unconfigured', fix: 'npx moflo init' };
+    }
+    try {
+        const content = readFileSync(yamlPath, 'utf-8');
+        // Check if tests section exists
+        const testsBlock = content.match(/tests:\s*\n\s+directories:\s*\n((?:\s+-\s+.+\n?)+)/);
+        if (!testsBlock) {
+            return { name: 'Test Directories', status: 'warn', message: 'No tests section in moflo.yaml', fix: 'npx moflo init --force' };
+        }
+        // Extract configured directories
+        const items = testsBlock[1].match(/-\s+(.+)/g);
+        if (!items || items.length === 0) {
+            return { name: 'Test Directories', status: 'warn', message: 'Empty test directories list' };
+        }
+        const dirs = items.map(item => item.replace(/^-\s+/, '').trim());
+        const existing = dirs.filter(d => existsSync(join(process.cwd(), d)));
+        const missing = dirs.filter(d => !existsSync(join(process.cwd(), d)));
+        // Check auto_index.tests flag
+        const autoIndexMatch = content.match(/auto_index:\s*\n(?:.*\n)*?\s+tests:\s*(true|false)/);
+        const autoIndexEnabled = !autoIndexMatch || autoIndexMatch[1] !== 'false';
+        const indexLabel = autoIndexEnabled ? 'auto-index: on' : 'auto-index: off';
+        if (missing.length > 0 && existing.length === 0) {
+            return {
+                name: 'Test Directories',
+                status: 'warn',
+                message: `No configured test dirs exist: ${missing.join(', ')} (${indexLabel})`,
+            };
+        }
+        if (missing.length > 0) {
+            return {
+                name: 'Test Directories',
+                status: 'warn',
+                message: `${existing.length} OK, ${missing.length} missing: ${missing.join(', ')} (${indexLabel})`,
+            };
+        }
+        return { name: 'Test Directories', status: 'pass', message: `${existing.length} directories: ${existing.join(', ')} (${indexLabel})` };
+    }
+    catch {
+        return { name: 'Test Directories', status: 'warn', message: 'Unable to parse moflo.yaml' };
     }
 }
 // Check agentic-flow v3 integration (filesystem-based to avoid slow WASM/DB init)
@@ -634,6 +679,42 @@ function isProcessAlive(pid) {
     catch {
         return false;
     }
+}
+// Fast path: kill processes tracked in the shared ProcessManager registry.
+// This avoids the expensive OS-level process scan for known background tasks.
+function killTrackedProcesses() {
+    const registryFile = join(process.cwd(), '.claude-flow', 'background-pids.json');
+    const lockFile = join(process.cwd(), '.claude-flow', 'spawn.lock');
+    let killed = 0;
+    try {
+        if (existsSync(registryFile)) {
+            const entries = JSON.parse(readFileSync(registryFile, 'utf-8'));
+            for (const entry of entries) {
+                if (!isProcessAlive(entry.pid))
+                    continue;
+                try {
+                    if (process.platform === 'win32') {
+                        execSync(`taskkill /F /PID ${entry.pid}`, { timeout: 5000, windowsHide: true });
+                    }
+                    else {
+                        process.kill(entry.pid, 'SIGKILL');
+                    }
+                    killed++;
+                }
+                catch { /* already gone */ }
+            }
+            // Clear registry
+            writeFileSync(registryFile, '[]');
+        }
+    }
+    catch { /* non-fatal */ }
+    // Remove spawn lock
+    try {
+        if (existsSync(lockFile))
+            unlinkSync(lockFile);
+    }
+    catch { /* ok */ }
+    return killed;
 }
 // Find and optionally kill orphaned moflo/claude-flow node processes.
 // A process is only "orphaned" if its parent is no longer alive — meaning
@@ -778,13 +859,20 @@ export const doctorCommand = {
         if (killZombies) {
             output.writeln(output.bold('Zombie Process Scan'));
             output.writeln();
-            // First scan without killing to show what would be killed
+            // Fast path: kill tracked processes from the shared registry first
+            const registryKilled = killTrackedProcesses();
+            if (registryKilled > 0) {
+                output.writeln(output.success(`  Killed ${registryKilled} tracked background process(es) from registry`));
+            }
+            // Slow path: OS-level scan for any remaining orphans
             const scan = await findZombieProcesses(false);
             if (scan.found === 0) {
-                output.writeln(output.success('  No orphaned moflo processes found'));
+                if (registryKilled === 0) {
+                    output.writeln(output.success('  No orphaned moflo processes found'));
+                }
             }
             else {
-                output.writeln(output.warning(`  Found ${scan.found} orphaned process(es): PIDs ${scan.pids.join(', ')}`));
+                output.writeln(output.warning(`  Found ${scan.found} additional orphaned process(es): PIDs ${scan.pids.join(', ')}`));
                 // Kill them
                 const result = await findZombieProcesses(true);
                 if (result.killed > 0) {
@@ -826,6 +914,7 @@ export const doctorCommand = {
             checkDaemonStatus,
             checkMemoryDatabase,
             checkEmbeddings,
+            checkTestDirs,
             checkMcpServers,
             checkDiskSpace,
             checkBuildTools,
@@ -846,6 +935,7 @@ export const doctorCommand = {
             'mcp': checkMcpServers,
             'disk': checkDiskSpace,
             'typescript': checkBuildTools,
+            'tests': checkTestDirs,
             'agentic-flow': checkAgenticFlow
         };
         let checksToRun = allChecks;

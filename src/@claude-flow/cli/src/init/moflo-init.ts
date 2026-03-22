@@ -693,8 +693,12 @@ function generateSkill(root: string, force?: boolean): MofloInitResult['steps'][
 // Step 4: CLAUDE.md MoFlo section
 // ============================================================================
 
-const MOFLO_MARKER = '<!-- MOFLO:START -->';
-const MOFLO_MARKER_END = '<!-- MOFLO:END -->';
+// Markers for idempotent CLAUDE.md injection — keep in sync with claudemd-generator.ts
+const MOFLO_MARKER = '<!-- MOFLO:INJECTED:START -->';
+const MOFLO_MARKER_END = '<!-- MOFLO:INJECTED:END -->';
+// Also detect legacy markers so we can replace them
+const LEGACY_MARKERS = ['<!-- MOFLO:START -->', '<!-- MOFLO:SUBAGENT-PROTOCOL:START -->'];
+const LEGACY_MARKERS_END = ['<!-- MOFLO:END -->', '<!-- MOFLO:SUBAGENT-PROTOCOL:END -->'];
 
 function generateClaudeMd(root: string, force?: boolean): MofloInitResult['steps'][0] {
   const claudeMdPath = path.join(root, 'CLAUDE.md');
@@ -703,20 +707,27 @@ function generateClaudeMd(root: string, force?: boolean): MofloInitResult['steps
   if (fs.existsSync(claudeMdPath)) {
     existing = fs.readFileSync(claudeMdPath, 'utf-8');
 
-    // Check if MoFlo section already exists
-    if (existing.includes(MOFLO_MARKER)) {
-      if (!force) {
-        return { name: 'CLAUDE.md', status: 'skipped', detail: 'MoFlo section already present' };
-      }
-      // Remove existing MoFlo section for replacement
-      const startIdx = existing.indexOf(MOFLO_MARKER);
-      const endIdx = existing.indexOf(MOFLO_MARKER_END);
-      if (endIdx > startIdx) {
-        existing = existing.substring(0, startIdx) + existing.substring(endIdx + MOFLO_MARKER_END.length);
+    // Check for current or legacy markers
+    const allStartMarkers = [MOFLO_MARKER, ...LEGACY_MARKERS];
+    const allEndMarkers = [MOFLO_MARKER_END, ...LEGACY_MARKERS_END];
+
+    for (let i = 0; i < allStartMarkers.length; i++) {
+      if (existing.includes(allStartMarkers[i])) {
+        if (!force && allStartMarkers[i] === MOFLO_MARKER) {
+          return { name: 'CLAUDE.md', status: 'skipped', detail: 'MoFlo section already present' };
+        }
+        // Remove existing section for replacement
+        const startIdx = existing.indexOf(allStartMarkers[i]);
+        const endIdx = existing.indexOf(allEndMarkers[i]);
+        if (endIdx > startIdx) {
+          existing = existing.substring(0, startIdx) + existing.substring(endIdx + allEndMarkers[i].length);
+        }
       }
     }
   }
 
+  // Minimal injection — just enough for Claude to work with moflo.
+  // All detailed docs live in .claude/guidance/shipped/moflo.md.
   const mofloSection = `
 ${MOFLO_MARKER}
 ## MoFlo — AI Agent Orchestration
@@ -728,25 +739,18 @@ This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted d
 Your first tool call for every new user prompt MUST be a memory search. Do this BEFORE Glob, Grep, Read, or any file exploration.
 
 \`\`\`
-mcp__moflo__memory_search  — query: "<task description>", namespace: "guidance" or "patterns" or "knowledge" or "code-map"
+mcp__moflo__memory_search — query: "<task description>", namespace: "guidance" or "patterns" or "code-map"
 \`\`\`
 
-For codebase navigation, search the \`code-map\` namespace first. For patterns and domain knowledge, search \`patterns\`, \`knowledge\`, and \`guidance\`.
-When the user asks you to remember something, store it: \`memory store --namespace knowledge --key "[topic]" --value "[what to remember]"\`
+Search \`guidance\` and \`patterns\` namespaces on every prompt. Search \`code-map\` when navigating the codebase.
+When the user asks you to remember something: \`mcp__moflo__memory_store\` with namespace \`knowledge\`.
 
 ### Workflow Gates (enforced automatically)
 
-These are enforced by hooks — you cannot bypass them:
-- **Memory-first**: Must search memory before Glob/Grep/Read on guidance files
+- **Memory-first**: Must search memory before Glob/Grep/Read
 - **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
-- **Context tracking**: Session tracked as FRESH → MODERATE → DEPLETED → CRITICAL
 
-### /flo Skill — Issue Execution
-
-Use \`/flo <issue-number>\` (or \`/fl\`) to execute GitHub issues through the full workflow:
-Research → Enhance → Implement → Test → Simplify → PR
-
-### MCP Tools Reference
+### MCP Tools (preferred over CLI)
 
 | Tool | Purpose |
 |------|---------|
@@ -756,25 +760,17 @@ Research → Enhance → Implement → Test → Simplify → PR
 | \`mcp__moflo__hooks_pre-task\` | Record task start |
 | \`mcp__moflo__hooks_post-task\` | Record task completion for learning |
 
-### Agent Icon Mapping
+### CLI Fallback
 
-| Icon | Agent Type | Use For |
-|------|------------|---------|
-| 🔍 | Explore | Research, codebase exploration |
-| 📐 | Plan | Architecture, design |
-| ⚙️ | General | General coding tasks |
-| 🧪 | Test | Writing tests |
-| 🔬 | Analyzer | Code review, analysis |
-| 🔧 | Backend | API implementation |
+\`\`\`bash
+npx flo-search "[query]" --namespace guidance   # Semantic search
+npx flo doctor --fix                             # Health check
+\`\`\`
 
-### Non-Trivial Task Workflow
+### Full Reference
 
-For any task beyond a single-line fix:
-1. Search memory first (mandatory gate)
-2. Create tasks with TaskCreate (mandatory gate)
-3. Spawn agents in waves (Explore first, then Implement + Test)
-4. Update task status as you go
-5. Store learnings after completion
+For CLI commands, hooks, agents, swarm config, memory commands, and moflo.yaml options, see:
+\`.claude/guidance/shipped/moflo.md\`
 ${MOFLO_MARKER_END}
 `;
 
@@ -784,7 +780,7 @@ ${MOFLO_MARKER_END}
   return {
     name: 'CLAUDE.md',
     status: existing ? 'updated' : 'created',
-    detail: 'MoFlo workflow section appended',
+    detail: 'MoFlo section injected (~35 lines)',
   };
 }
 
