@@ -149,6 +149,8 @@ export function createProcessManager(root) {
           windowsHide: true,
         });
 
+        // Swallow async spawn errors (e.g. ENOENT for bad command)
+        proc.on('error', () => {});
         proc.unref();
 
         if (proc.pid) {

@@ -519,6 +519,21 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
       }
     }
 
+    // 1c. Build manifest of files we're installing, clean up stale ones
+    const manifestPath = path.join(targetDir, '.claude-flow', 'installed-files.json');
+    let previousManifest: string[] = [];
+    try { previousManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')); } catch { /* ok */ }
+    const currentManifest: string[] = [];
+
+    // Collect everything we just synced into the manifest
+    for (const entry of [...result.created, ...result.updated]) {
+      // Strip annotations like " (removed, obsolete)" — keep only clean paths
+      const clean = entry.replace(/\s*\(.*\)$/, '');
+      if (clean.startsWith('.claude/') || clean.startsWith('.claude-flow/')) {
+        currentManifest.push(clean);
+      }
+    }
+
     // 2. Create MISSING metrics files only (preserve existing data)
     const metricsDir = path.join(targetDir, '.claude-flow', 'metrics');
     const securityDir = path.join(targetDir, '.claude-flow', 'security');
@@ -634,6 +649,39 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
         result.settingsUpdated = ['Created new settings.json with Agent Teams'];
       }
     }
+
+    // ── Final: collect any additional generated files into manifest, then clean up stale ──
+    // Re-scan result arrays since metrics/security files were added after initial collection
+    for (const entry of [...result.created, ...result.updated]) {
+      const clean = entry.replace(/\s*\(.*\)$/, '');
+      if ((clean.startsWith('.claude/') || clean.startsWith('.claude-flow/')) && !currentManifest.includes(clean)) {
+        currentManifest.push(clean);
+      }
+    }
+
+    // Remove files that were in the OLD manifest but NOT in the new one.
+    // This only deletes files moflo previously installed — never user or runtime files.
+    if (previousManifest.length > 0) {
+      const currentSet = new Set(currentManifest);
+      for (const rel of previousManifest) {
+        if (!currentSet.has(rel)) {
+          const abs = path.join(targetDir, rel);
+          try {
+            if (fs.existsSync(abs)) {
+              fs.unlinkSync(abs);
+              result.updated.push(`${rel} (removed, no longer shipped)`);
+            }
+          } catch { /* non-fatal */ }
+        }
+      }
+    }
+
+    // Write manifest for next upgrade
+    try {
+      const cfDir = path.join(targetDir, '.claude-flow');
+      if (!fs.existsSync(cfDir)) fs.mkdirSync(cfDir, { recursive: true });
+      fs.writeFileSync(manifestPath, JSON.stringify(currentManifest, null, 2), 'utf-8');
+    } catch { /* non-fatal */ }
 
   } catch (error) {
     result.success = false;

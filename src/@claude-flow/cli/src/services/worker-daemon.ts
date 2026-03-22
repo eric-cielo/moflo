@@ -127,6 +127,9 @@ export class WorkerDaemon extends EventEmitter {
   // during state restoration (R1: constructor config takes priority over stale state)
   private originalConfig?: Partial<DaemonConfig>;
 
+  // Injectable OS provider for testing (avoids ESM module namespace issues)
+  private _osProvider?: { loadavg: () => number[]; totalmem: () => number; freemem: () => number };
+
   constructor(projectRoot: string, config?: Partial<DaemonConfig>) {
     super();
     this.projectRoot = projectRoot;
@@ -318,7 +321,7 @@ export class WorkerDaemon extends EventEmitter {
    * Check if system resources allow worker execution
    */
   private async canRunWorker(): Promise<{ allowed: boolean; reason?: string }> {
-    const os = await import('os');
+    const os = this._osProvider ?? await import('os');
     const cpuLoad = os.loadavg()[0];
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
