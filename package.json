@@ -11,6 +11,7 @@
     "flo-search": "bin/semantic-search.mjs",
     "flo-embeddings": "bin/build-embeddings.mjs",
     "flo-index": "bin/index-guidance.mjs",
+    "flo-testmap": "bin/index-tests.mjs",
     "flo-learn": ".claude/helpers/learning-service.mjs",
     "moflo": "bin/cli.js",
     "claude-flow": "bin/cli.js"

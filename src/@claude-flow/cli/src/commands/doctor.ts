@@ -605,6 +605,55 @@ async function runFixCommand(cmd: string): Promise<boolean> {
   }
 }
 
+// Check test directories configured in moflo.yaml
+async function checkTestDirs(): Promise<HealthCheck> {
+  const yamlPath = join(process.cwd(), 'moflo.yaml');
+
+  if (!existsSync(yamlPath)) {
+    return { name: 'Test Directories', status: 'warn', message: 'No moflo.yaml — test indexing unconfigured', fix: 'npx moflo init' };
+  }
+
+  try {
+    const content = readFileSync(yamlPath, 'utf-8');
+
+    // Check if tests section exists
+    const testsBlock = content.match(/tests:\s*\n\s+directories:\s*\n((?:\s+-\s+.+\n?)+)/);
+    if (!testsBlock) {
+      return { name: 'Test Directories', status: 'warn', message: 'No tests section in moflo.yaml', fix: 'npx moflo init --force' };
+    }
+
+    // Extract configured directories
+    const items = testsBlock[1].match(/-\s+(.+)/g);
+    if (!items || items.length === 0) {
+      return { name: 'Test Directories', status: 'warn', message: 'Empty test directories list' };
+    }
+
+    const dirs = items.map(item => item.replace(/^-\s+/, '').trim());
+    const existing = dirs.filter(d => existsSync(join(process.cwd(), d)));
+    const missing = dirs.filter(d => !existsSync(join(process.cwd(), d)));
+
+    if (missing.length > 0 && existing.length === 0) {
+      return {
+        name: 'Test Directories',
+        status: 'warn',
+        message: `No configured test dirs exist: ${missing.join(', ')}`,
+      };
+    }
+
+    if (missing.length > 0) {
+      return {
+        name: 'Test Directories',
+        status: 'warn',
+        message: `${existing.length} OK, ${missing.length} missing: ${missing.join(', ')}`,
+      };
+    }
+
+    return { name: 'Test Directories', status: 'pass', message: `${existing.length} directories: ${existing.join(', ')}` };
+  } catch {
+    return { name: 'Test Directories', status: 'warn', message: 'Unable to parse moflo.yaml' };
+  }
+}
+
 // Check agentic-flow v3 integration (filesystem-based to avoid slow WASM/DB init)
 async function checkAgenticFlow(): Promise<HealthCheck> {
   try {
@@ -899,6 +948,7 @@ export const doctorCommand: Command = {
       checkDaemonStatus,
       checkMemoryDatabase,
       checkEmbeddings,
+      checkTestDirs,
       checkMcpServers,
       checkDiskSpace,
       checkBuildTools,
@@ -920,6 +970,7 @@ export const doctorCommand: Command = {
       'mcp': checkMcpServers,
       'disk': checkDiskSpace,
       'typescript': checkBuildTools,
+      'tests': checkTestDirs,
       'agentic-flow': checkAgenticFlow
     };
 
