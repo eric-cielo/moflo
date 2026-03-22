@@ -29,67 +29,57 @@ const args = process.argv.slice(2);
 const updateOnly = args.includes('--update');
 const checkOnly = args.includes('--check');
 
-// Markers for idempotent CLAUDE.md updates
-const MARKER_START = '<!-- MOFLO:SUBAGENT-PROTOCOL:START -->';
-const MARKER_END = '<!-- MOFLO:SUBAGENT-PROTOCOL:END -->';
+// Markers for idempotent CLAUDE.md updates — keep in sync with claudemd-generator.ts
+const MARKER_START = '<!-- MOFLO:INJECTED:START -->';
+const MARKER_END = '<!-- MOFLO:INJECTED:END -->';
+// Legacy markers to detect and replace
+const LEGACY_STARTS = ['<!-- MOFLO:SUBAGENT-PROTOCOL:START -->', '<!-- MOFLO:START -->'];
+const LEGACY_ENDS = ['<!-- MOFLO:SUBAGENT-PROTOCOL:END -->', '<!-- MOFLO:END -->'];
 
+// Minimal injection — just enough for Claude to work with moflo.
+// All detailed docs live in .claude/guidance/shipped/moflo.md.
 const CLAUDE_MD_SECTION = `${MARKER_START}
-## FIRST ACTION ON EVERY PROMPT: Search Memory
+## MoFlo — AI Agent Orchestration
 
-Your first tool call for every new user prompt MUST be a memory search. Do this BEFORE Glob, Grep, Read, or any file exploration. No exceptions.
+This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted development workflows.
 
-WHY: Memory contains curated solutions, patterns, and architectural context from previous work. Without it, you will miss existing solutions, repeat mistakes that were already solved, and waste time re-discovering what is already known. Memory search is faster than file scanning.
+### FIRST ACTION ON EVERY PROMPT: Search Memory
 
-HOW: Use ToolSearch to load \`mcp__moflo__memory_search\`, then call it with a query describing your task. If MCP is unavailable, use:
-\`node bin/semantic-search.mjs "[task description]" --namespace guidance\`
+Your first tool call for every new user prompt MUST be a memory search. Do this BEFORE Glob, Grep, Read, or any file exploration.
 
-### Namespaces to search:
-
-| Namespace | When to search | What it returns |
-|-----------|---------------|-----------------|
-| \`guidance\` | Always — understanding patterns, rules, conventions | Guidance docs, coding rules, domain context |
-| \`patterns\` | Always — prior solutions and implementation patterns | Learned patterns from previous task execution |
-| \`code-map\` | Finding where code lives (files, types, services) | Type-to-file mappings, directory contents, project overviews |
-
-**Always search both \`guidance\` and \`patterns\` namespaces.** The \`patterns\` namespace contains solutions to problems already solved — skipping it means repeating past mistakes.
-
-For **codebase navigation** (finding where a type/service/component lives), also search the \`code-map\` namespace.
-
-## Memory System Access (MoFlo)
-
-### Primary: MCP Tools (preferred)
 \`\`\`
-mcp__moflo__memory_search   — query, namespace
-mcp__moflo__memory_store    — key, value, namespace
-mcp__moflo__memory_retrieve — key, namespace
-mcp__moflo__memory_list     — namespace, limit
+mcp__moflo__memory_search — query: "<task description>", namespace: "guidance" or "patterns" or "code-map"
 \`\`\`
-Load via ToolSearch first: \`+claude-flow memory\`
 
-### Fallback: CLI Scripts
+Search \`guidance\` and \`patterns\` namespaces on every prompt. Search \`code-map\` when navigating the codebase.
+When the user asks you to remember something: \`mcp__moflo__memory_store\` with namespace \`knowledge\`.
+
+### Workflow Gates (enforced automatically)
+
+- **Memory-first**: Must search memory before Glob/Grep/Read
+- **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
+
+### MCP Tools (preferred over CLI)
+
+| Tool | Purpose |
+|------|---------|
+| \`mcp__moflo__memory_search\` | Semantic search across indexed knowledge |
+| \`mcp__moflo__memory_store\` | Store patterns and decisions |
+| \`mcp__moflo__hooks_route\` | Route task to optimal agent type |
+| \`mcp__moflo__hooks_pre-task\` | Record task start |
+| \`mcp__moflo__hooks_post-task\` | Record task completion for learning |
+
+### CLI Fallback
+
 \`\`\`bash
 npx flo-search "[query]" --namespace guidance   # Semantic search
-npx flo-embeddings                               # Rebuild embeddings
-npx flo-index                                    # Re-index guidance docs
-npx flo-codemap --force                          # Regenerate code-map
+npx flo doctor --fix                             # Health check
 \`\`\`
 
-### Where Content Goes
+### Full Reference
 
-| Content Type | Destination | How to Write |
-|-------------|-------------|--------------|
-| Debugging lessons (bug found, root cause, fix) | Memory DB — \`patterns\` namespace | \`mcp__moflo__memory_store\` |
-| Architectural decisions (chose X over Y, why) | Memory DB — \`decisions\` namespace | \`mcp__moflo__memory_store\` |
-| Learned patterns (task succeeded/failed, what worked) | Memory DB — \`patterns\` namespace | \`mcp__moflo__memory_store\` |
-| Coding rules (always/never do X in code) | \`.claude/guidance/\` files | Edit directly |
-| Process/workflow rules (CI, PR, gates) | \`CLAUDE.md\` | Edit directly |
-
-## Subagent Protocol (MoFlo)
-
-All subagents MUST read \`.claude/guidance/moflo-bootstrap.md\` before starting any work.
-It contains the memory-first protocol, discovery storage rules, and universal conventions.
-
-If \`.claude/guidance/agent-bootstrap.md\` also exists, read it next for project-specific rules.
+For CLI commands, hooks, agents, swarm config, memory commands, and moflo.yaml options, see:
+\`.claude/guidance/shipped/moflo.md\`
 ${MARKER_END}`;
 
 function log(msg) {
@@ -180,28 +170,35 @@ function updateClaudeMd(projectRoot) {
 
   const content = readFileSync(claudeMdPath, 'utf-8');
 
-  // Check if markers already exist
-  if (content.includes(MARKER_START)) {
-    // Extract existing section and compare
-    const startIdx = content.indexOf(MARKER_START);
-    const endIdx = content.indexOf(MARKER_END);
+  // Check for current or legacy markers and replace
+  const allStarts = [MARKER_START, ...LEGACY_STARTS];
+  const allEnds = [MARKER_END, ...LEGACY_ENDS];
 
-    if (endIdx > startIdx) {
-      const existingSection = content.substring(startIdx, endIdx + MARKER_END.length);
-      if (existingSection === CLAUDE_MD_SECTION) {
-        log('✅ CLAUDE.md subagent section is current');
+  for (let i = 0; i < allStarts.length; i++) {
+    if (content.includes(allStarts[i])) {
+      const startIdx = content.indexOf(allStarts[i]);
+      const endIdx = content.indexOf(allEnds[i]);
+
+      if (endIdx > startIdx) {
+        // If current markers and content matches, we're up to date
+        if (i === 0) {
+          const existingSection = content.substring(startIdx, endIdx + allEnds[i].length);
+          if (existingSection === CLAUDE_MD_SECTION) {
+            log('✅ CLAUDE.md moflo section is current');
+            return true;
+          }
+        }
+
+        // Replace (current or legacy) with new section
+        if (!checkOnly) {
+          const updated = content.substring(0, startIdx) + CLAUDE_MD_SECTION + content.substring(endIdx + allEnds[i].length);
+          writeFileSync(claudeMdPath, updated, 'utf-8');
+          log(i === 0 ? '📝 Updated CLAUDE.md moflo section' : '📝 Replaced legacy CLAUDE.md section with minimal moflo injection');
+        } else {
+          log('⚠️  CLAUDE.md moflo section needs update');
+        }
         return true;
       }
-
-      // Update existing section
-      if (!checkOnly) {
-        const updated = content.substring(0, startIdx) + CLAUDE_MD_SECTION + content.substring(endIdx + MARKER_END.length);
-        writeFileSync(claudeMdPath, updated, 'utf-8');
-        log('📝 Updated CLAUDE.md subagent protocol section');
-      } else {
-        log('⚠️  CLAUDE.md subagent section needs update');
-      }
-      return true;
     }
   }
 

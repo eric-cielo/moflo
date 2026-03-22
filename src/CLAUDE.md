@@ -1,11 +1,11 @@
-# V3 Module Development
+# src/ — MoFlo Monorepo Packages
 
-This directory contains the V3 monorepo packages. Root CLAUDE.md rules apply here.
+Root CLAUDE.md rules apply here.
 
 ## Build & Test
 
 ```bash
-# From v3/@claude-flow/<package>
+# From src/@claude-flow/<package>
 npm install && npm run build && npm test
 ```
 
@@ -13,12 +13,15 @@ npm install && npm run build && npm test
 
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@claude-flow/cli` | `@claude-flow/cli/` | CLI entry point (26 commands, 140+ subcommands) |
-| `@claude-flow/guidance` | `@claude-flow/guidance/` | Governance control plane (compile, enforce, prove, evolve) |
-| `@claude-flow/hooks` | `@claude-flow/hooks/` | 17 hooks + 12 background workers |
+| `@moflo/cli` | `@claude-flow/cli/` | CLI entry point (40+ commands) |
+| `@claude-flow/guidance` | `@claude-flow/guidance/` | Governance control plane |
+| `@claude-flow/hooks` | `@claude-flow/hooks/` | Hooks + workers |
 | `@claude-flow/memory` | `@claude-flow/memory/` | AgentDB + HNSW vector search |
 | `@claude-flow/shared` | `@claude-flow/shared/` | Shared types and utilities |
-| `@claude-flow/security` | `@claude-flow/security/` | Input validation, path security, CVE remediation |
+| `@claude-flow/security` | `@claude-flow/security/` | Input validation, CVE remediation |
+| `@claude-flow/embeddings` | `@claude-flow/embeddings/` | Vector embeddings (sql.js, HNSW) |
+| `@claude-flow/neural` | `@claude-flow/neural/` | Neural patterns (SONA) |
+| `@claude-flow/plugins` | `@claude-flow/plugins/` | Plugin system + RuVector integration |
 
 ## Code Quality
 
@@ -26,15 +29,3 @@ npm install && npm run build && npm test
 - No hardcoded secrets
 - Input validation at system boundaries
 - Typed interfaces for all public APIs
-- TDD London School (mock-first) preferred
-- Event sourcing for state changes
-
-## Performance Targets
-
-| Metric | Target | Status |
-|--------|--------|--------|
-| HNSW Search | 150x-12,500x faster | Implemented |
-| Memory Reduction | 50-75% (Int8 quantization) | Implemented |
-| MCP Response | <100ms | Achieved |
-| CLI Startup | <500ms | Achieved |
-| Flash Attention | 2.49x-7.47x speedup | In progress |
