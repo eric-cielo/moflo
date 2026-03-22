@@ -146,18 +146,34 @@ const handlers = {
       var projectDir = path.resolve(path.dirname(helpersDir), '..');
       var cp = require('child_process');
       var pidFile = path.join(projectDir, '.claude-flow', 'background-pids.json');
+      var lockFile = path.join(projectDir, '.claude-flow', 'session-restore.lock');
 
-      // Kill stale background processes from previous sessions
+      // ── Kill stale background processes tracked from previous session-restore ──
       try {
         if (fs.existsSync(pidFile)) {
           var stalePids = JSON.parse(fs.readFileSync(pidFile, 'utf-8'));
           for (var i = 0; i < stalePids.length; i++) {
-            try { process.kill(stalePids[i].pid, 0); /* test if alive */ } catch (e) { continue; }
+            try { process.kill(stalePids[i].pid, 0); } catch (e) { continue; }
             try { process.kill(stalePids[i].pid, 'SIGTERM'); } catch (e) { /* already gone */ }
           }
           fs.unlinkSync(pidFile);
         }
       } catch (e) { /* non-fatal: best-effort cleanup */ }
+
+      // ── Guard: prevent concurrent/rapid session-restore from spawning duplicate processes ──
+      // Uses a lock file with a timestamp. If the lock is < 30s old, skip spawning entirely.
+      // This is the primary zombie prevention: only one session-restore per 30s window can spawn.
+      try {
+        if (fs.existsSync(lockFile)) {
+          var lockAge = Date.now() - parseInt(fs.readFileSync(lockFile, 'utf-8'), 10);
+          if (lockAge < 30000) {
+            return; // Another session-restore already spawned background tasks recently
+          }
+        }
+        var lockDir = path.dirname(lockFile);
+        if (!fs.existsSync(lockDir)) fs.mkdirSync(lockDir, { recursive: true });
+        fs.writeFileSync(lockFile, String(Date.now()));
+      } catch (e) { /* non-fatal: proceed without lock */ }
 
       // Read moflo.yaml auto_index flags (default: both true)
       var autoGuidance = true;
@@ -228,24 +244,31 @@ const handlers = {
       // 3. Start learning service (pattern research on codebase)
       var learnScript = findMofloScript('../.claude/helpers/learning-service.mjs');
       if (!learnScript) learnScript = findMofloScript('learning-service.mjs');
-      // Also check the .claude/helpers location directly
       if (!learnScript) {
         var localLearn = path.join(projectDir, '.claude', 'helpers', 'learning-service.mjs');
         if (fs.existsSync(localLearn)) learnScript = localLearn;
       }
-      // Check inside node_modules/moflo/.claude/helpers
       if (!learnScript) {
         var nmLearn = path.join(projectDir, 'node_modules', 'moflo', '.claude', 'helpers', 'learning-service.mjs');
         if (fs.existsSync(nmLearn)) learnScript = nmLearn;
       }
       if (learnScript) spawnBackground(learnScript, 'learning-service');
 
-      // Persist tracked PIDs for cleanup on next session start
+      // Persist tracked PIDs — APPEND to existing file to avoid losing concurrent PIDs
       if (trackedPids.length > 0) {
         try {
           var pidDir = path.dirname(pidFile);
           if (!fs.existsSync(pidDir)) fs.mkdirSync(pidDir, { recursive: true });
-          fs.writeFileSync(pidFile, JSON.stringify(trackedPids));
+          var existing = [];
+          if (fs.existsSync(pidFile)) {
+            try { existing = JSON.parse(fs.readFileSync(pidFile, 'utf-8')); } catch (e) { existing = []; }
+          }
+          // Prune dead PIDs from existing list before appending
+          var alive = [];
+          for (var ep = 0; ep < existing.length; ep++) {
+            try { process.kill(existing[ep].pid, 0); alive.push(existing[ep]); } catch (e) { /* dead, skip */ }
+          }
+          fs.writeFileSync(pidFile, JSON.stringify(alive.concat(trackedPids)));
         } catch (e) { /* non-fatal */ }
       }
 
@@ -253,6 +276,25 @@ const handlers = {
   },
 
   'session-end': () => {
+    // Kill all tracked background processes on session end
+    var projectDir = path.resolve(path.dirname(helpersDir), '..');
+    var pidFile = path.join(projectDir, '.claude-flow', 'background-pids.json');
+    var lockFile = path.join(projectDir, '.claude-flow', 'session-restore.lock');
+    try {
+      if (fs.existsSync(pidFile)) {
+        var pids = JSON.parse(fs.readFileSync(pidFile, 'utf-8'));
+        var killed = 0;
+        for (var i = 0; i < pids.length; i++) {
+          try { process.kill(pids[i].pid, 0); } catch (e) { continue; }
+          try { process.kill(pids[i].pid, 'SIGTERM'); killed++; } catch (e) { /* ok */ }
+        }
+        fs.unlinkSync(pidFile);
+        if (killed > 0) console.log('[CLEANUP] Killed ' + killed + ' background process(es)');
+      }
+    } catch (e) { /* non-fatal */ }
+    // Remove session-restore lock
+    try { if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile); } catch (e) { /* ok */ }
+
     if (intelligence && intelligence.consolidate) {
       try {
         var result = intelligence.consolidate();
