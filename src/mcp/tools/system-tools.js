@@ -495,7 +495,7 @@ async function handleSystemHealth(input, context) {
  */
 async function handleSystemInfo(input, context) {
     const result = {
-        name: 'claude-flow',
+        name: 'moflo',
         version: '3.0.0',
         nodeVersion: process.version,
         platform: process.platform,

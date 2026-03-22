@@ -694,9 +694,11 @@ function indexDirectory(db, dirConfig) {
 
 /**
  * Remove stale entries for files that no longer exist on disk.
- * Runs after indexing to keep the memory DB clean.
+ * Uses the set of docKeys seen during the current indexing run to determine
+ * which entries are stale, rather than reconstructing file paths from keys
+ * (which breaks for files in subdirectories).
  */
-function cleanStaleEntries(db) {
+function cleanStaleEntries(db, currentDocKeys) {
   const docsStmt = db.prepare(
     `SELECT DISTINCT key FROM memory_entries WHERE namespace = ? AND key LIKE 'doc-%'`
   );
@@ -707,36 +709,19 @@ function cleanStaleEntries(db) {
 
   let staleCount = 0;
 
-  // Build a lookup of all indexed directory configs for stale detection
-  const prefixToDirMap = {};
-  for (const dirConfig of GUIDANCE_DIRS) {
-    const dirPath = dirConfig.absolute ? dirConfig.path : resolve(projectRoot, dirConfig.path);
-    prefixToDirMap[dirConfig.prefix] = dirPath;
-  }
-
   for (const { key } of docs) {
-    // Convert key back to file path by matching doc-{prefix}-{filename}
-    let filePath;
-    for (const [prefix, dirPath] of Object.entries(prefixToDirMap)) {
-      const docPrefix = `doc-${prefix}-`;
-      if (key.startsWith(docPrefix)) {
-        filePath = resolve(dirPath, key.replace(docPrefix, '') + '.md');
-        break;
-      }
-    }
-    if (!filePath) continue; // Unknown prefix, skip
+    // If this doc key was seen during the current indexing run, it's not stale
+    if (currentDocKeys.has(key)) continue;
 
-    if (!existsSync(filePath)) {
-      const chunkPrefix = key.replace('doc-', 'chunk-');
-      const countBefore = db.exec(`SELECT COUNT(*) as cnt FROM memory_entries WHERE namespace = '${NAMESPACE}'`)[0]?.values[0][0] || 0;
-      db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key LIKE ?`, [NAMESPACE, `${chunkPrefix}%`]);
-      db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key = ?`, [NAMESPACE, key]);
-      const countAfter = db.exec(`SELECT COUNT(*) as cnt FROM memory_entries WHERE namespace = '${NAMESPACE}'`)[0]?.values[0][0] || 0;
-      const removed = countBefore - countAfter;
-      if (removed > 0) {
-        log(`  Removed ${removed} stale entries for deleted file: ${key}`);
-        staleCount += removed;
-      }
+    const chunkPrefix = key.replace('doc-', 'chunk-');
+    const countBefore = db.exec(`SELECT COUNT(*) as cnt FROM memory_entries WHERE namespace = '${NAMESPACE}'`)[0]?.values[0][0] || 0;
+    db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key LIKE ?`, [NAMESPACE, `${chunkPrefix}%`]);
+    db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key = ?`, [NAMESPACE, key]);
+    const countAfter = db.exec(`SELECT COUNT(*) as cnt FROM memory_entries WHERE namespace = '${NAMESPACE}'`)[0]?.values[0][0] || 0;
+    const removed = countBefore - countAfter;
+    if (removed > 0) {
+      log(`  Removed ${removed} stale entries for deleted file: ${key}`);
+      staleCount += removed;
     }
   }
 
@@ -774,6 +759,7 @@ let docsIndexed = 0;
 let chunksIndexed = 0;
 let unchanged = 0;
 let errors = 0;
+const currentDocKeys = new Set();
 
 if (specificFile) {
   // Index single file
@@ -806,6 +792,9 @@ if (specificFile) {
     const results = indexDirectory(db, dir);
 
     for (const result of results) {
+      if (result.status === 'indexed' || result.status === 'unchanged') {
+        currentDocKeys.add(result.docKey);
+      }
       if (result.status === 'indexed') {
         log(`  ✅ ${result.docKey} (${result.chunks} chunks)`);
         docsIndexed++;
@@ -824,7 +813,7 @@ if (specificFile) {
 let staleRemoved = 0;
 if (!specificFile) {
   log('Cleaning stale entries for deleted files...');
-  staleRemoved = cleanStaleEntries(db);
+  staleRemoved = cleanStaleEntries(db, currentDocKeys);
   if (staleRemoved === 0) {
     log('  No stale entries found');
   }
