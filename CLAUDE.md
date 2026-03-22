@@ -794,6 +794,7 @@ Run `npx moflo doctor` to check:
 - MCP servers
 - Disk space
 - TypeScript installation
+- Test directories (validates dirs from moflo.yaml, reports auto_index status)
 
 ## Quick Setup
 

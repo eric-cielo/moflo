@@ -56,12 +56,13 @@ npm install --save-dev moflo
 npx flo init
 ```
 
-`flo init` automatically scans your project to find where your guidance and code live, then writes the results into `moflo.yaml`. It looks for:
+`flo init` automatically scans your project to find where your guidance, code, and tests live, then writes the results into `moflo.yaml`. It looks for:
 
 | What | Directories it checks | Default if none found |
 |------|----------------------|----------------------|
 | **Guidance** | `.claude/guidance`, `docs/guides`, `docs`, `architecture`, `adr`, `.cursor/rules` | `.claude/guidance` |
 | **Source code** | `src`, `packages`, `lib`, `app`, `apps`, `services`, `server`, `client` | `src` |
+| **Tests** | `tests`, `test`, `__tests__`, `spec`, `e2e`, plus `__tests__` dirs inside `src/` | `tests` |
 | **Languages** | Scans detected source dirs for file extensions | `.ts`, `.tsx`, `.js`, `.jsx` |
 
 It also generates:
@@ -100,7 +101,20 @@ code_map:
   exclude: [node_modules, dist, .next, coverage]
 ```
 
-MoFlo chunks your guidance files into semantic embeddings and indexes your code structure, so Claude searches your knowledge base before touching any files. Adjust these directories to match your project:
+**Tests** — test files to index for "what tests cover X?" reverse mapping:
+
+```yaml
+tests:
+  directories:
+    - tests               # your test files
+    - __tests__            # jest-style test dirs
+  patterns: ["*.test.*", "*.spec.*", "*.test-*"]
+  extensions: [".ts", ".tsx", ".js", ".jsx"]
+  exclude: [node_modules, coverage, dist]
+  namespace: tests
+```
+
+MoFlo chunks your guidance files into semantic embeddings, indexes your code structure, and maps test files back to their source targets — so Claude searches your knowledge base before touching any files. Adjust these directories to match your project:
 
 ```yaml
 # Monorepo with shared docs
@@ -276,6 +290,13 @@ code_map:
   exclude: [node_modules, dist]
   namespace: code-map
 
+tests:
+  directories: [tests, __tests__]
+  patterns: ["*.test.*", "*.spec.*", "*.test-*"]
+  extensions: [".ts", ".tsx", ".js", ".jsx"]
+  exclude: [node_modules, coverage, dist]
+  namespace: tests
+
 gates:
   memory_first: true                 # Must search memory before file exploration
   task_create_first: true            # Must TaskCreate before Agent tool
@@ -284,6 +305,7 @@ gates:
 auto_index:
   guidance: true                     # Auto-index docs on session start
   code_map: true                     # Auto-index code on session start
+  tests: true                        # Auto-index test files on session start
 
 mcp:
   tool_defer: true                   # Defer 150+ tool schemas; loaded on demand via ToolSearch

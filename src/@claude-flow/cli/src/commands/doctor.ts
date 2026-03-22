@@ -632,11 +632,16 @@ async function checkTestDirs(): Promise<HealthCheck> {
     const existing = dirs.filter(d => existsSync(join(process.cwd(), d)));
     const missing = dirs.filter(d => !existsSync(join(process.cwd(), d)));
 
+    // Check auto_index.tests flag
+    const autoIndexMatch = content.match(/auto_index:\s*\n(?:.*\n)*?\s+tests:\s*(true|false)/);
+    const autoIndexEnabled = !autoIndexMatch || autoIndexMatch[1] !== 'false';
+    const indexLabel = autoIndexEnabled ? 'auto-index: on' : 'auto-index: off';
+
     if (missing.length > 0 && existing.length === 0) {
       return {
         name: 'Test Directories',
         status: 'warn',
-        message: `No configured test dirs exist: ${missing.join(', ')}`,
+        message: `No configured test dirs exist: ${missing.join(', ')} (${indexLabel})`,
       };
     }
 
@@ -644,11 +649,11 @@ async function checkTestDirs(): Promise<HealthCheck> {
       return {
         name: 'Test Directories',
         status: 'warn',
-        message: `${existing.length} OK, ${missing.length} missing: ${missing.join(', ')}`,
+        message: `${existing.length} OK, ${missing.length} missing: ${missing.join(', ')} (${indexLabel})`,
       };
     }
 
-    return { name: 'Test Directories', status: 'pass', message: `${existing.length} directories: ${existing.join(', ')}` };
+    return { name: 'Test Directories', status: 'pass', message: `${existing.length} directories: ${existing.join(', ')} (${indexLabel})` };
   } catch {
     return { name: 'Test Directories', status: 'warn', message: 'Unable to parse moflo.yaml' };
   }
