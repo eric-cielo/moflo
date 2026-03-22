@@ -314,7 +314,7 @@ describe('InputValidator', () => {
       });
 
       it('should remove traversal patterns', () => {
-        expect(sanitizePath('../etc/passwd')).toBe('/etc/passwd');
+        expect(sanitizePath('../etc/passwd')).toBe('etc/passwd');
       });
 
       it('should normalize slashes', () => {
@@ -323,6 +323,17 @@ describe('InputValidator', () => {
 
       it('should remove leading slash', () => {
         expect(sanitizePath('/absolute/path')).toBe('absolute/path');
+      });
+
+      it('should prevent ....// bypass (nested traversal)', () => {
+        expect(sanitizePath('....//etc/passwd')).toBe('/etc/passwd');
+        expect(sanitizePath('....//')).toBe('/');
+        expect(sanitizePath('....//....//etc')).toBe('/etc');
+      });
+
+      it('should handle deeply nested traversal attempts', () => {
+        expect(sanitizePath('......///etc')).toBe('/etc');
+        expect(sanitizePath('.a]../b')).toBe('.a]/b');
       });
     });
   });

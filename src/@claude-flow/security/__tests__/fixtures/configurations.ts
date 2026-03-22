@@ -53,7 +53,7 @@ const strictConfig: SecurityConfig = {
   execution: {
     shell: false,
     timeout: 30000,
-    allowedCommands: ['npm', 'npx', 'node', 'git'],
+    allowedCommands: ['npm', 'node', 'git'],
     blockedCommands: [
       'rm',
       'rmdir',
@@ -119,7 +119,7 @@ const developmentConfig: SecurityConfig = {
   execution: {
     shell: false,
     timeout: 60000,
-    allowedCommands: ['npm', 'npx', 'node', 'git', 'ls', 'cat', 'grep', 'find', 'echo'],
+    allowedCommands: ['npm', 'node', 'git', 'ls', 'cat', 'grep', 'find', 'echo'],
     blockedCommands: ['rm', 'rmdir', 'del', 'format', 'mkfs', 'dd'],
   },
   paths: {
@@ -181,7 +181,7 @@ const cicdConfig: SecurityConfig = {
   execution: {
     shell: false,
     timeout: 10000,
-    allowedCommands: ['npm', 'npx', 'node', 'git', 'echo'],
+    allowedCommands: ['npm', 'node', 'git', 'echo'],
     blockedCommands: ['rm', 'rmdir', 'del', 'format', 'mkfs', 'dd', 'chmod', 'chown'],
   },
   paths: {

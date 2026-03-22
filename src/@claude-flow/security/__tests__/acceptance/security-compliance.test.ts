@@ -668,7 +668,7 @@ describe('Security Compliance Acceptance', () => {
 
     it('should have limited allowed commands', () => {
       // Then
-      expect(securityConfigs.strict.execution.allowedCommands).toEqual(['npm', 'npx', 'node', 'git']);
+      expect(securityConfigs.strict.execution.allowedCommands).toEqual(['npm', 'node', 'git']);
     });
   });
 });
