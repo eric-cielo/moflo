@@ -23,11 +23,13 @@ import { spawn } from 'child_process';
 import { existsSync, appendFileSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { createProcessManager } from './lib/process-manager.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = resolve(__dirname, '../..');
 const logFile = resolve(projectRoot, '.swarm/hooks.log');
+const pm = createProcessManager(projectRoot);
 
 // Parse command line args
 const args = process.argv.slice(2);
@@ -318,6 +320,12 @@ async function main() {
       }
 
       case 'session-end': {
+        // Kill all tracked background processes before ending session
+        const killResult = pm.killAll();
+        if (killResult.killed > 0) {
+          log('info', `Killed ${killResult.killed} background process(es) on session end`);
+        }
+
         // Run ReasoningBank and MicroLoRA training in background on session end
         log('info', 'Session ending - starting background learning...');
 
@@ -397,19 +405,15 @@ async function runIndexGuidance(specificFile = null) {
   return 0;
 }
 
-// Spawn a background process that's truly windowless on Windows
+// Spawn a background process via the shared ProcessManager (dedup + PID tracking).
 function spawnWindowless(cmd, args, description) {
-  const proc = spawn(cmd, args, {
-    cwd: projectRoot,
-    stdio: 'ignore',
-    detached: true,
-    shell: false,
-    windowsHide: true
-  });
-
-  proc.unref();
-  log('info', `Started ${description} (PID: ${proc.pid})`);
-  return proc;
+  const result = pm.spawn(cmd, args, description);
+  if (result.skipped) {
+    log('info', `Skipped ${description} (already running, PID: ${result.pid})`);
+  } else if (result.pid) {
+    log('info', `Started ${description} (PID: ${result.pid})`);
+  }
+  return result;
 }
 
 // Resolve a moflo npm bin script, falling back to local .claude/scripts/ copy
