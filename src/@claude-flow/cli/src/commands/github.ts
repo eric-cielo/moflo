@@ -17,13 +17,14 @@ import { execSync } from 'child_process';
 // Helpers
 // ============================================================================
 
-function runGh(args: string, cwd: string, timeout = 15000): string {
+function runGh(args: string, cwd: string, timeout = 15000, stdin?: string): string {
   return execSync(`gh ${args}`, {
     encoding: 'utf8',
     cwd,
     timeout,
     windowsHide: true,
-    stdio: ['pipe', 'pipe', 'pipe'],
+    input: stdin,
+    stdio: stdin ? ['pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
   }).trim();
 }
 
@@ -337,33 +338,52 @@ const settingsCommand: Command = {
 
     // ── Repo-level settings ──────────────────────────────────────────
     if (!skipRepo) {
-      const repoSettings = [
-        { field: 'delete_branch_on_merge', value: true, label: 'Delete branch on merge' },
-        { field: 'allow_squash_merge', value: true, label: 'Allow squash merge' },
-        { field: 'allow_merge_commit', value: true, label: 'Allow merge commits' },
-        { field: 'allow_rebase_merge', value: true, label: 'Allow rebase merge' },
-        { field: 'squash_merge_commit_title', value: 'PR_TITLE', label: 'Squash commit title: PR title' },
-        { field: 'squash_merge_commit_message', value: 'PR_BODY', label: 'Squash commit message: PR body' },
-        { field: 'allow_auto_merge', value: true, label: 'Allow auto-merge' },
-        { field: 'allow_update_branch', value: true, label: 'Allow update branch button' },
+      // Group settings into batches — some fields must be set together
+      const settingsBatches: { payload: Record<string, unknown>; labels: string[] }[] = [
+        {
+          payload: {
+            delete_branch_on_merge: true,
+            allow_squash_merge: true,
+            allow_merge_commit: true,
+            allow_rebase_merge: true,
+            allow_auto_merge: true,
+            allow_update_branch: true,
+            // Title + message must be set together or message fails
+            squash_merge_commit_title: 'PR_TITLE',
+            squash_merge_commit_message: 'PR_BODY',
+          },
+          labels: [
+            'Delete branch on merge',
+            'Allow squash merge',
+            'Allow merge commits',
+            'Allow rebase merge',
+            'Squash defaults: PR title + body',
+            'Allow auto-merge',
+            'Allow update branch button',
+          ],
+        },
       ];
 
-      for (const setting of repoSettings) {
+      for (const batch of settingsBatches) {
         if (dryRun) {
-          output.writeln(`  ${output.dim('○')} ${setting.label}`);
-          applied.push(setting.label);
+          for (const label of batch.labels) {
+            output.writeln(`  ${output.dim('○')} ${label}`);
+          }
+          applied.push(...batch.labels);
           continue;
         }
         try {
-          const payload = JSON.stringify({ [setting.field]: setting.value });
-          runGh(`api repos/${slug} -X PATCH --input - <<< '${payload}'`, cwd);
-          output.writeln(`  ${output.success('✓')} ${setting.label}`);
-          applied.push(setting.label);
+          runGh(`api repos/${slug} -X PATCH --input -`, cwd, 15000, JSON.stringify(batch.payload));
+          for (const label of batch.labels) {
+            output.writeln(`  ${output.success('✓')} ${label}`);
+          }
+          applied.push(...batch.labels);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          // Non-fatal: some settings may not be available on all plans
-          output.writeln(`  ${output.warning('⚠')} ${setting.label} — ${msg.split('\n')[0]}`);
-          errors.push(setting.label);
+          for (const label of batch.labels) {
+            output.writeln(`  ${output.warning('⚠')} ${label} — ${msg.split('\n')[0]}`);
+          }
+          errors.push(...batch.labels);
         }
       }
 
@@ -411,14 +431,7 @@ const settingsCommand: Command = {
       } else {
         try {
           const payload = JSON.stringify(protection);
-          // Use stdin piping via echo for cross-platform compatibility
-          execSync(`echo '${payload}' | gh api repos/${slug}/branches/${branch}/protection -X PUT --input -`, {
-            encoding: 'utf8',
-            cwd,
-            timeout: 15000,
-            windowsHide: true,
-            stdio: ['pipe', 'pipe', 'pipe'],
-          });
+          runGh(`api repos/${slug}/branches/${branch}/protection -X PUT --input -`, cwd, 15000, payload);
 
           for (const item of protectionItems) {
             output.writeln(`  ${output.success('✓')} ${item}`);

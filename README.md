@@ -406,6 +406,21 @@ flo doctor --verbose             # Verbose output
 
 While `doctor` checks your environment, `diagnose` exercises every subsystem end-to-end: memory CRUD, embedding generation, semantic search, swarm lifecycle, hive-mind consensus, task management, hooks, config, neural patterns, and init idempotency. All test data is cleaned up after each test — nothing is left behind.
 
+### GitHub Repository Setup
+
+```bash
+flo github setup                  # One-shot: generate CI + apply repo settings + branch protection
+flo github setup --dry-run        # Preview everything without making changes
+flo github ci                     # Generate .github/workflows/ci.yml from project config
+flo github ci --dry-run           # Print workflow to stdout
+flo github settings               # Apply repo settings + branch protection via gh CLI
+flo github settings --dry-run     # Preview settings changes
+```
+
+`flo github ci` auto-detects your package manager (npm/pnpm/yarn/bun), TypeScript, and test directories from `moflo.yaml` and `package.json`, then generates a CI workflow with install, build, lint, type-check, and test steps.
+
+`flo github settings` applies recommended defaults via `gh` CLI: delete-branch-on-merge, squash merge with PR title/body, auto-merge, linear history, and configurable branch protection (required reviews, dismiss stale reviews, block force pushes). Requires `gh auth login`.
+
 ### System
 
 ```bash
