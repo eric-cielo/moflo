@@ -437,6 +437,22 @@ function resolveBinOrLocal(binName, localScript) {
 
 // Run the guidance indexer in background (non-blocking - used for session start and file changes)
 function runIndexGuidanceBackground(specificFile = null) {
+  // Check auto_index.guidance flag in moflo.yaml (default: true)
+  // Only gate full indexing on session-start; per-file calls from post-edit always run
+  if (!specificFile) {
+    const yamlPath = resolve(projectRoot, 'moflo.yaml');
+    if (existsSync(yamlPath)) {
+      try {
+        const content = readFileSync(yamlPath, 'utf-8');
+        const match = content.match(/auto_index:\s*\n(?:.*\n)*?\s+guidance:\s*(true|false)/);
+        if (match && match[1] === 'false') {
+          log('info', 'Guidance indexing disabled (auto_index.guidance: false)');
+          return;
+        }
+      } catch { /* ignore, proceed with indexing */ }
+    }
+  }
+
   const indexScript = resolveBinOrLocal('flo-index', 'index-guidance.mjs');
 
   if (!indexScript) {
@@ -453,6 +469,19 @@ function runIndexGuidanceBackground(specificFile = null) {
 
 // Run structural code map generator in background (non-blocking)
 function runCodeMapBackground() {
+  // Check auto_index.code_map flag in moflo.yaml (default: true)
+  const yamlPath = resolve(projectRoot, 'moflo.yaml');
+  if (existsSync(yamlPath)) {
+    try {
+      const content = readFileSync(yamlPath, 'utf-8');
+      const match = content.match(/auto_index:\s*\n(?:.*\n)*?\s+code_map:\s*(true|false)/);
+      if (match && match[1] === 'false') {
+        log('info', 'Code map generation disabled (auto_index.code_map: false)');
+        return;
+      }
+    } catch { /* ignore, proceed with indexing */ }
+  }
+
   const codeMapScript = resolveBinOrLocal('flo-codemap', 'generate-code-map.mjs');
 
   if (!codeMapScript) {
