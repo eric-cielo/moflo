@@ -6,9 +6,9 @@
 
 **An opinionated fork of [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo), optimized for local development.**
 
-MoFlo adds automatic code and guidance cataloging along with memory gating on top of the original Ruflo/Claude Flow orchestration engine. Where the upstream project provides raw building blocks, MoFlo ships opinionated defaults — workflow gates that enforce memory-first patterns, semantic indexing that runs at session start, and learned routing that improves over time — so you get a productive setup from `flo init` without manual tuning.
+## TL;DR
 
-Install it as a dev dependency and run `flo init`.
+MoFlo makes your AI coding assistant remember what it learns, check what it knows before exploring files, and get smarter over time — all automatically. Install it, run `flo init`, restart your AI client, and everything just works: your docs and code are indexed on session start so the AI can search them instantly, workflow gates prevent the AI from wasting tokens on blind exploration, task outcomes feed back into routing so it picks the right agent type next time, and context depletion warnings tell you when to start a fresh session. No configuration, no API keys, no cloud services — it all runs locally on your machine.
 
 ## Opinionated Defaults
 
@@ -77,6 +77,20 @@ It also generates:
 
 In interactive mode (`flo init` without `--yes`), it shows what it found and lets you confirm or adjust before writing.
 
+#### Migrating from Claude Flow / Ruflo
+
+If `flo init` detects an existing `.claude/settings.json` or `.claude-flow/` directory (from a prior Claude Flow or Ruflo installation), it treats the project as already initialized and runs in **update mode** — merging MoFlo's hooks and configuration into your existing setup without overwriting your data. Specifically:
+
+- **Hooks** — If your `.claude/settings.json` already has MoFlo-style gate hooks (`flo gate`), the hooks step is skipped. Otherwise, MoFlo's hooks are written into the file (existing non-MoFlo hooks are not removed).
+- **MCP servers** — MoFlo registers itself as the `moflo` server in `.mcp.json`. If you had `claude-flow` or `ruflo` MCP servers configured previously, those entries remain untouched — you can remove them manually once you've verified MoFlo is working. The `flo doctor` command checks for the `moflo` server specifically.
+- **Config files** — `moflo.yaml`, `CLAUDE.md`, and `.claude/skills/flo/` follow the same skip-if-exists logic. Use `--force` to regenerate them.
+
+To force a clean re-initialization over an existing setup:
+
+```bash
+npx flo init --force
+```
+
 ### 2. Review your guidance and code settings
 
 Open `moflo.yaml` to see what init detected. The two key sections:
@@ -141,6 +155,83 @@ Both indexes run automatically at session start after this, so you only need to 
 ```bash
 npx flo memory refresh           # Reindex all content, rebuild embeddings, cleanup, vacuum
 ```
+
+## Auto-Indexing
+
+MoFlo automatically indexes three types of content on every session start, so your AI assistant always has up-to-date knowledge without manual intervention.
+
+### What gets indexed
+
+| Index | Content | What it produces | Namespace |
+|-------|---------|------------------|-----------|
+| **Guidance** | Markdown files in your guidance directories (`.claude/guidance/`, `docs/`, etc.) | Chunked text with 384-dim semantic embeddings — enables natural-language search across your project documentation | `guidance` |
+| **Code map** | Source files in your code directories (`src/`, `packages/`, etc.) | Structural index of exports, classes, functions, and types — enables "where does X live?" navigation without Glob/Grep | `code-map` |
+| **Tests** | Test files matching configured patterns (`*.test.*`, `*.spec.*`) | Reverse mapping from test files to their source targets — enables "what tests cover X?" lookups | `tests` |
+
+### How it works
+
+1. **Session start hook** — When your AI client starts a new session, MoFlo's `SessionStart` hook launches three indexers in parallel as background processes.
+2. **Incremental** — Each indexer tracks file modification times. Only files that changed since the last index run are re-processed. The first run takes longer; subsequent runs typically finish in under a second.
+3. **Embedding generation** — Guidance chunks are embedded using MiniLM-L6-v2 (384 dimensions, WASM). These vectors are stored in the SQLite memory database and used for semantic search.
+4. **No blocking** — The indexers run in the background and don't block your session from starting. You can begin working immediately.
+
+### Configuration
+
+Each indexer can be toggled independently in `moflo.yaml`:
+
+```yaml
+auto_index:
+  guidance: true     # Index docs on session start
+  code_map: true     # Index code structure on session start
+  tests: true        # Index test files on session start
+```
+
+Set any to `false` to disable that indexer. The underlying data remains in memory — you just stop refreshing it automatically. You can still run indexers manually:
+
+```bash
+npx flo memory index-guidance    # Manual guidance reindex
+npx flo memory code-map          # Manual code map reindex
+npx flo memory refresh           # Reindex everything + rebuild embeddings + vacuum
+```
+
+### Why this matters
+
+Without auto-indexing, your AI assistant starts every session with a blank slate — it doesn't know what documentation exists, where code lives, or what tests cover which files. It resorts to Glob/Grep exploration, which burns tokens and context window on rediscovery.
+
+With auto-indexing, the AI can search semantically ("how does auth work?") and get relevant documentation chunks ranked by similarity, or ask "where is the user model defined?" and get a direct answer from the code map — all without touching the filesystem.
+
+## The Gate System
+
+MoFlo installs Claude Code hooks that run on every tool call. Together, these gates create a **feedback loop** that prevents Claude from wasting tokens on blind exploration and ensures it builds on prior knowledge.
+
+### Gates explained
+
+| Gate | What it enforces | When it triggers | Why it matters |
+|------|-----------------|------------------|----------------|
+| **Memory-first** | Claude must search the memory database before using Glob, Grep, or Read on guidance files | Before every Glob/Grep call, and before Read calls targeting `.claude/guidance/` | Prevents the AI from re-exploring files it (or a previous session) already indexed. Forces it to check what it knows first, saving tokens and context window. |
+| **TaskCreate-first** | Claude must call TaskCreate before spawning sub-agents via the Task tool | Before every Task (agent spawn) call | Ensures every piece of delegated work is tracked. Prevents runaway agent proliferation where Claude spawns agents without a clear plan. |
+| **Context tracking** | Tracks conversation length and warns about context depletion | On every user prompt (UserPromptSubmit hook) | As conversations grow, AI quality degrades. MoFlo tracks interaction count and assigns a bracket (FRESH → MODERATE → DEPLETED → CRITICAL), advising Claude to checkpoint progress or start a fresh session before quality drops. |
+| **Routing** | Analyzes each prompt and recommends the optimal agent type and model tier | On every user prompt (UserPromptSubmit hook) | Saves cost by suggesting haiku for simple tasks, sonnet for moderate ones, opus for complex reasoning — without you having to think about model selection. |
+
+### Smart classification
+
+The memory-first gate doesn't blindly block every request. It classifies each prompt:
+
+- **Simple directives** (e.g., "commit", "yes", "continue", "looks good") — skip the gate entirely, no memory search required
+- **Task-oriented prompts** (e.g., "fix the auth bug", "add pagination to the API") — gate enforced, must search memory first
+
+### Disabling gates
+
+All gates are configurable in `moflo.yaml`:
+
+```yaml
+gates:
+  memory_first: true          # Set to false to disable memory-first enforcement
+  task_create_first: true     # Set to false to disable TaskCreate enforcement
+  context_tracking: true      # Set to false to disable context bracket warnings
+```
+
+You can also disable individual hooks in `.claude/settings.json` by removing the corresponding hook entries.
 
 ## The `/flo` Skill
 
@@ -259,10 +350,61 @@ flo gate session-reset           # Reset workflow state
 
 ```bash
 flo doctor                       # Quick health check (environment, deps, config)
+flo doctor --fix                 # Auto-fix issues (memory DB, daemon, config, MCP, zombies)
 flo diagnose                     # Full integration test (memory, swarm, hive, hooks, neural)
 flo diagnose --suite memory      # Run only memory tests
 flo diagnose --json              # JSON output for CI/automation
 ```
+
+#### `flo doctor` — Health Check
+
+`flo doctor` runs 16 parallel health checks against your environment and reports pass/warn/fail for each:
+
+| Check | What it verifies |
+|-------|-----------------|
+| **Version Freshness** | Whether your installed MoFlo version matches the latest on npm (detects stale npx cache) |
+| **Node.js Version** | Node.js >= 20 installed |
+| **npm Version** | npm >= 9 installed |
+| **Claude Code CLI** | `claude` command available |
+| **Git** | Git installed and project is a git repository |
+| **Config File** | Valid `moflo.yaml` or `.claude-flow/config.yaml` exists |
+| **Daemon Status** | Background daemon running (checks PID, cleans stale locks) |
+| **Memory Database** | SQLite memory DB exists and is accessible |
+| **Embeddings** | Vectors indexed in memory DB, HNSW index present |
+| **Test Directories** | Test dirs from `moflo.yaml` exist on disk, reports auto-index status |
+| **MCP Servers** | `moflo` MCP server configured in `.mcp.json` |
+| **Disk Space** | Sufficient free disk space (warns at 80%, fails at 90%) |
+| **TypeScript** | TypeScript compiler available |
+| **agentic-flow** | Optional agentic-flow package installed (for enhanced embeddings/routing) |
+| **Zombie Processes** | No orphaned MoFlo node processes running |
+
+**Auto-fix mode** (`flo doctor --fix`) attempts to repair each failing check automatically:
+
+| Issue | What `--fix` does |
+|-------|------------------|
+| Missing memory database | Creates `.swarm/` directory and initializes the SQLite DB |
+| Embeddings not initialized | Initializes memory DB and runs `embeddings init` |
+| Missing config file | Runs `config init` to generate defaults |
+| Stale daemon lock | Removes stale `.claude-flow/daemon.lock` and restarts daemon |
+| MCP server not configured | Runs `claude mcp add moflo` to register the server |
+| Claude Code CLI missing | Installs `@anthropic-ai/claude-code` globally |
+| Zombie processes | Kills orphaned MoFlo processes (tracked + OS-level scan) |
+
+After auto-fixing, doctor re-runs all checks and shows the updated results. Issues that can't be fixed automatically are listed with manual fix commands.
+
+Additional flags:
+
+```bash
+flo doctor --install             # Auto-install missing Claude Code CLI
+flo doctor --kill-zombies        # Find and kill orphaned MoFlo processes
+flo doctor -c memory             # Check only a specific component
+flo doctor -c embeddings         # Check only embeddings health
+flo doctor --verbose             # Verbose output
+```
+
+#### `flo diagnose` — Integration Tests
+
+While `doctor` checks your environment, `diagnose` exercises every subsystem end-to-end: memory CRUD, embedding generation, semantic search, swarm lifecycle, hive-mind consensus, task management, hooks, config, neural patterns, and init idempotency. All test data is cleaned up after each test — nothing is left behind.
 
 ### System
 
@@ -271,6 +413,134 @@ flo init                          # Initialize project (one-time setup)
 flo --version                    # Show version
 ```
 
+## What Ships Out of the Box
+
+`flo init` wires up the following systems automatically. Here's what each one does, why it matters, and whether it's enabled by default.
+
+### Hooks (enabled OOTB)
+
+Hooks are shell commands that Claude Code runs automatically at specific points in its workflow. MoFlo installs 14 hooks across 7 lifecycle events. You don't invoke these — they fire automatically.
+
+| Hook Event | What fires | What it does | Enabled OOTB |
+|------------|-----------|-------------|:---:|
+| **PreToolUse: Write/Edit** | `flo hooks pre-edit` | Records which file is about to be edited, captures before-state for learning | Yes |
+| **PreToolUse: Glob/Grep** | `flo gate check-before-scan` | Memory-first gate — blocks file exploration until memory is searched | Yes |
+| **PreToolUse: Read** | `flo gate check-before-read` | Blocks reading guidance files directly until memory is searched | Yes |
+| **PreToolUse: Task** | `flo gate check-before-agent` + `flo hooks pre-task` | TaskCreate gate + routing recommendation before agent spawn | Yes |
+| **PreToolUse: Bash** | `flo gate check-dangerous-command` | Safety check on shell commands | Yes |
+| **PostToolUse: Write/Edit** | `flo hooks post-edit` | Records edit outcome, optionally trains neural patterns | Yes |
+| **PostToolUse: Task** | `flo hooks post-task` | Records task completion, feeds outcome into routing learner | Yes |
+| **PostToolUse: TaskCreate** | `flo gate record-task-created` | Records that a task was registered (clears TaskCreate gate) | Yes |
+| **PostToolUse: Bash** | `flo gate check-bash-memory` | Detects memory search commands in Bash (clears memory gate) | Yes |
+| **PostToolUse: memory_search** | `flo gate record-memory-searched` | Records that memory was searched (clears memory-first gate) | Yes |
+| **UserPromptSubmit** | `flo gate prompt-reminder` + `flo hooks route` | Resets per-prompt gate state, tracks context bracket, routes task to agent | Yes |
+| **SessionStart** | `session-start-launcher.mjs` | Launches auto-indexers (guidance, code map, tests), restores session state | Yes |
+| **Stop** | `flo hooks session-end` | Persists session metrics, exports learning data | Yes |
+| **PreCompact** | `flo gate compact-guidance` | Injects guidance summary before context compaction | Yes |
+| **Notification** | `flo hooks notification` | Routes Claude Code notifications through MoFlo | Yes |
+
+### Systems (enabled OOTB)
+
+These are the backend systems that hooks and commands interact with.
+
+| System | What It Does | Why It Matters | Enabled OOTB |
+|--------|-------------|----------------|:---:|
+| **Semantic Memory** | SQLite database (sql.js/WASM) storing knowledge entries with 384-dim vector embeddings | Your AI assistant accumulates project knowledge across sessions instead of starting from scratch each time | Yes |
+| **HNSW Vector Search** | Hierarchical Navigable Small World index for fast nearest-neighbor search | Searches across thousands of stored entries return in milliseconds instead of scanning linearly | Yes |
+| **Guidance Indexing** | Chunks markdown docs into overlapping segments, embeds each with MiniLM-L6-v2 | Your project documentation becomes searchable by meaning ("how does auth work?") not just keywords | Yes |
+| **Code Map** | Parses source files for exports, classes, functions, types | The AI can answer "where is X defined?" from the index instead of running Glob/Grep | Yes |
+| **Test Indexing** | Maps test files to their source targets based on naming patterns | The AI can answer "what tests cover X?" and identify untested code | Yes |
+| **Workflow Gates** | Hook-based enforcement of memory-first and task-registration patterns | Prevents the AI from wasting tokens on blind exploration and untracked agent spawns | Yes |
+| **Context Tracking** | Interaction counter with bracket classification (FRESH/MODERATE/DEPLETED/CRITICAL) | Warns before context quality degrades, suggests when to checkpoint or start fresh | Yes |
+| **Semantic Routing** | Matches task descriptions to agent types using vector similarity against 12 built-in patterns | Routes work to the right specialist (security-architect, tester, coder, etc.) automatically | Yes |
+| **Learned Routing** | Records task outcomes (agent type + success/failure) and feeds them back into routing | Routing gets smarter over time — successful patterns are weighted higher in future recommendations | Yes |
+| **SONA Learning** | Self-Optimizing Neural Architecture that learns from task trajectories | Adapts routing weights based on actual outcomes, not just keyword matching | Yes |
+| **MicroLoRA Adaptation** | Rank-2 LoRA weight updates from successful patterns (~1µs per adapt) | Fine-grained model adaptation without full retraining | Yes |
+| **EWC++ Consolidation** | Elastic Weight Consolidation that prevents catastrophic forgetting | New learning doesn't overwrite patterns from earlier sessions | Yes |
+| **Session Persistence** | Stop hook exports session metrics; SessionStart hook restores prior state | Patterns learned on Monday are available on Friday | Yes |
+| **Status Line** | Live dashboard showing git branch, session state, memory stats, MCP status | At-a-glance visibility into what MoFlo is doing | Yes |
+| **MCP Tool Server** | 150+ MCP tools for memory, hooks, coordination, etc. (schemas deferred by default) | Enables AI clients to interact with MoFlo programmatically | Yes (deferred) |
+
+### Systems (available but off by default)
+
+| System | What It Does | How to Enable |
+|--------|-------------|---------------|
+| **Model Routing** | Auto-selects haiku/sonnet/opus per task based on complexity analysis | `model_routing.enabled: true` in `moflo.yaml` |
+| **MCP Auto-Start** | Starts MCP server automatically on session begin | `mcp.auto_start: true` in `moflo.yaml` |
+| **Tool Schema Eager Loading** | Loads all 150+ MCP tool schemas at startup (instead of on-demand) | `mcp.tool_defer: false` in `moflo.yaml` |
+
+## The Two-Layer Task System
+
+MoFlo doesn't replace your AI client's task system — it wraps it. Your client (Claude Code, Cursor, or any MCP-capable tool) handles spawning agents and running code. MoFlo adds a coordination layer on top that handles memory, routing, and learning.
+
+```
+┌──────────────────────────────────────────────────┐
+│  YOUR AI CLIENT (Execution Layer)                │
+│  Spawns agents, runs code, streams output        │
+│  TaskCreate → Agent → TaskUpdate → results       │
+├──────────────────────────────────────────────────┤
+│  MOFLO (Knowledge Layer)                         │
+│  Routes tasks, gates agent spawns, stores        │
+│  patterns, learns from outcomes                  │
+└──────────────────────────────────────────────────┘
+```
+
+Here's how a typical task flows through both layers:
+
+1. **MoFlo routes** — Before work starts, MoFlo analyzes the prompt and recommends an agent type and model tier via hook or MCP tool.
+2. **MoFlo gates** — Before an agent can spawn, MoFlo verifies that memory was searched and a task was registered. This prevents blind exploration.
+3. **Your client executes** — The actual agent runs through your client's native task system. MoFlo doesn't manage the agent — your client handles execution, output, and completion.
+4. **MoFlo learns** — After the agent finishes, MoFlo records what worked (or didn't) in its memory database. Successful patterns feed into future routing.
+
+The key insight: **your client handles execution, MoFlo handles knowledge.** Your client is good at spawning agents and running code. MoFlo is good at remembering what happened, routing to the right agent, and ensuring prior knowledge is checked before exploring from scratch.
+
+For complex work, MoFlo structures tasks into waves — a research wave discovers context, then an implementation wave acts on it — with dependencies tracked through both the client's task system and MoFlo's coordination layer. The full integration pattern is documented in `.claude/guidance/task-swarm-integration.md`.
+
+The `/flo` skill ties both systems together for GitHub issues — driving a full workflow (research → enhance → implement → test → simplify → PR) with your client's agents for execution and MoFlo's memory for continuity.
+
+### Intelligent Agent Routing
+
+MoFlo ships with 12 built-in task patterns that map common work to the right agent type:
+
+| Pattern | Keywords | Primary Agent |
+|---------|----------|---------------|
+| security-task | auth, password, encryption, CVE | security-architect |
+| testing-task | test, spec, coverage, e2e | tester |
+| database-task | schema, migration, SQL, ORM | architect |
+| feature-task | implement, add, create, build | architect → coder |
+| bugfix-task | bug, fix, error, crash, debug | coder |
+| api-task | endpoint, REST, route, handler | architect → coder |
+| ... | | *(12 patterns total)* |
+
+When you route a task (`flo hooks route --task "..."` or via MCP), MoFlo runs semantic similarity against these patterns using HNSW vector search and returns a ranked recommendation with confidence scores.
+
+**The routing gets smarter over time.** Every time a task completes successfully, MoFlo's post-task hook records the outcome — the full task description, which agent handled it, and whether it succeeded. These learned patterns are combined with the built-in seeds on every future route call. Because learned patterns contain rich task descriptions (not just short keywords), they discriminate better as they accumulate.
+
+Routing outcomes are stored in `.claude-flow/routing-outcomes.json` and persist across sessions. You can inspect them with `flo hooks patterns` or transfer them between projects with `flo hooks transfer`.
+
+### Memory & Knowledge Storage
+
+MoFlo uses a SQLite database (via sql.js/WASM — no native deps) to store three types of knowledge:
+
+| Namespace | What's Stored | How It Gets There |
+|-----------|---------------|-------------------|
+| `guidance` | Chunked project docs (`.claude/guidance/`, `docs/`) with 384-dim embeddings | `flo-index` on session start |
+| `code-map` | Structural index of source files (exports, classes, functions) | `flo-codemap` on session start |
+| `patterns` | Learned patterns from successful task outcomes | Post-task hooks after agent work |
+
+**Semantic search** uses cosine similarity on neural embeddings (MiniLM-L6-v2, 384 dimensions). When Claude searches memory, it gets the most relevant chunks ranked by semantic similarity — not keyword matching.
+
+**Session start indexing** — Three background processes run on every session start: the guidance indexer, the code map generator, and the learning service. All three are incremental (unchanged files are skipped) and run in parallel so they don't block the session.
+
+**Cross-session persistence** — Everything stored in the database survives across sessions. Patterns learned on Monday are available on Friday. The stop hook exports session metrics, and the session-restore hook loads prior state.
+
+### For Claude
+
+When `flo init` runs, it appends a workflow section to your CLAUDE.md that teaches Claude:
+- Always search memory before Glob/Grep/Read (enforced by gates)
+- Use `mcp__moflo__memory_search` for knowledge retrieval
+- Use `/flo <issue>` (or `/fl`) for issue execution
+- Store learnings after task completion
 
 ## Full Configuration Reference
 
@@ -374,118 +644,6 @@ model_routing:
     security-architect: opus     # Never downgrade security work
     researcher: sonnet           # Pin research to sonnet
 ```
-
-## How It Works
-
-MoFlo sits between Claude Code and your project. It uses Claude Code's native hook system to enforce good habits, store knowledge, and learn from outcomes — so Claude gets better at working in your codebase over time.
-
-### The Gate System
-
-MoFlo installs Claude Code hooks that run on every tool call. Together, these gates create a **feedback loop** that prevents Claude from wasting tokens on blind exploration and ensures it builds on prior knowledge.
-
-**Memory-first gate** — Before Claude can use Glob, Grep, or Read on guidance files, it must first search the memory database. This forces Claude to check what it already knows (or what was learned in prior sessions) before re-exploring from scratch. The gate automatically classifies each prompt — simple directives like "commit" or "yes" skip the gate, while task-oriented prompts like "fix the auth bug" enforce it.
-
-**Task-create gate** — Before Claude can spawn sub-agents via the Task tool, it must call TaskCreate first. This ensures every agent spawn is tracked, preventing runaway agent proliferation and making it possible to review what work was delegated.
-
-**Context tracking** — Each interaction increments a counter. As the conversation grows, MoFlo warns Claude about context depletion (FRESH → MODERATE → DEPLETED → CRITICAL) and advises it to checkpoint progress, compact, or start a fresh session before quality degrades.
-
-**Routing** — On each prompt, MoFlo's route hook analyzes the task and recommends the optimal agent type and model tier (haiku for simple tasks, sonnet for moderate, opus for complex). This saves cost without sacrificing quality.
-
-All gates are configurable via `moflo.yaml` — you can disable any individual hook if it doesn't suit your workflow.
-
-### Intelligent Agent Routing
-
-MoFlo ships with 12 built-in task patterns that map common work to the right agent type:
-
-| Pattern | Keywords | Primary Agent |
-|---------|----------|---------------|
-| security-task | auth, password, encryption, CVE | security-architect |
-| testing-task | test, spec, coverage, e2e | tester |
-| database-task | schema, migration, SQL, ORM | architect |
-| feature-task | implement, add, create, build | architect → coder |
-| bugfix-task | bug, fix, error, crash, debug | coder |
-| api-task | endpoint, REST, route, handler | architect → coder |
-| ... | | *(12 patterns total)* |
-
-When you route a task (`flo hooks route --task "..."` or via MCP), MoFlo runs semantic similarity against these patterns using HNSW vector search and returns a ranked recommendation with confidence scores.
-
-**The routing gets smarter over time.** Every time a task completes successfully, MoFlo's post-task hook records the outcome — the full task description, which agent handled it, and whether it succeeded. These learned patterns are combined with the built-in seeds on every future route call. Because learned patterns contain rich task descriptions (not just short keywords), they discriminate better as they accumulate.
-
-Routing outcomes are stored in `.claude-flow/routing-outcomes.json` and persist across sessions. You can inspect them with `flo hooks patterns` or transfer them between projects with `flo hooks transfer`.
-
-### What Ships Out of the Box
-
-`flo init` wires up the following systems automatically — no configuration needed:
-
-| System | What It Does | Technology |
-|--------|-------------|------------|
-| **Semantic Memory** | Store and search knowledge with 384-dim embeddings | sql.js (WASM SQLite) + Transformers.js (MiniLM-L6-v2) |
-| **HNSW Vector Search** | Fast nearest-neighbor search across all stored knowledge | `@ruvector/core` VectorDb |
-| **Semantic Routing** | Match tasks to agent types using vector similarity | `@ruvector/router` SemanticRouter |
-| **SONA Learning** | Learn from task trajectories — what agent handled what, and whether it succeeded | `@ruvector/sona` SonaEngine (Rust/NAPI) |
-| **MicroLoRA Adaptation** | Rank-2 LoRA weight updates from successful patterns (~1µs per adapt) | `@ruvector/learning-wasm` |
-| **EWC++ Consolidation** | Prevent catastrophic forgetting — new learning doesn't overwrite old patterns | Built into hooks-tools |
-| **Workflow Gates** | Memory-first and task-registration enforcement via Claude Code hooks | `.claude/settings.json` hooks |
-| **Context Tracking** | Monitor context window depletion (FRESH → CRITICAL) | Session interaction counter |
-| **Guidance Indexing** | Chunk and embed your project docs on session start | `flo-index` bin script |
-| **Code Map** | Index source file structure (types, exports, functions) on session start | `flo-codemap` bin script |
-| **Learned Routing** | Task outcomes feed back into routing — gets smarter over time | `routing-outcomes.json` persistence |
-| **Status Line** | Live dashboard showing git, swarm, memory, and MCP status | `statusline.cjs` hook |
-
-All of these run locally with zero external dependencies. The SONA, MicroLoRA, and HNSW components are WASM/NAPI binaries that ship with the npm package — no compilation, no GPU, no API keys.
-
-### The Two-Layer Task System
-
-MoFlo doesn't replace your AI client's task system — it wraps it. Your client (Claude Code, Cursor, or any MCP-capable tool) handles spawning agents and running code. MoFlo adds a coordination layer on top that handles memory, routing, and learning.
-
-```
-┌──────────────────────────────────────────────────┐
-│  YOUR AI CLIENT (Execution Layer)                │
-│  Spawns agents, runs code, streams output        │
-│  TaskCreate → Agent → TaskUpdate → results       │
-├──────────────────────────────────────────────────┤
-│  MOFLO (Knowledge Layer)                         │
-│  Routes tasks, gates agent spawns, stores        │
-│  patterns, learns from outcomes                  │
-└──────────────────────────────────────────────────┘
-```
-
-Here's how a typical task flows through both layers:
-
-1. **MoFlo routes** — Before work starts, MoFlo analyzes the prompt and recommends an agent type and model tier via hook or MCP tool.
-2. **MoFlo gates** — Before an agent can spawn, MoFlo verifies that memory was searched and a task was registered. This prevents blind exploration.
-3. **Your client executes** — The actual agent runs through your client's native task system. MoFlo doesn't manage the agent — your client handles execution, output, and completion.
-4. **MoFlo learns** — After the agent finishes, MoFlo records what worked (or didn't) in its memory database. Successful patterns feed into future routing.
-
-The key insight: **your client handles execution, MoFlo handles knowledge.** Your client is good at spawning agents and running code. MoFlo is good at remembering what happened, routing to the right agent, and ensuring prior knowledge is checked before exploring from scratch.
-
-For complex work, MoFlo structures tasks into waves — a research wave discovers context, then an implementation wave acts on it — with dependencies tracked through both the client's task system and MoFlo's coordination layer. The full integration pattern is documented in `.claude/guidance/task-swarm-integration.md`.
-
-The `/flo` skill ties both systems together for GitHub issues — driving a full workflow (research → enhance → implement → test → simplify → PR) with your client's agents for execution and MoFlo's memory for continuity.
-
-### Memory & Knowledge Storage
-
-MoFlo uses a SQLite database (via sql.js/WASM — no native deps) to store three types of knowledge:
-
-| Namespace | What's Stored | How It Gets There |
-|-----------|---------------|-------------------|
-| `guidance` | Chunked project docs (`.claude/guidance/`, `docs/`) with 384-dim embeddings | `flo-index` on session start |
-| `code-map` | Structural index of source files (exports, classes, functions) | `flo-codemap` on session start |
-| `patterns` | Learned patterns from successful task outcomes | Post-task hooks after agent work |
-
-**Semantic search** uses cosine similarity on neural embeddings (MiniLM-L6-v2, 384 dimensions). When Claude searches memory, it gets the most relevant chunks ranked by semantic similarity — not keyword matching.
-
-**Session start indexing** — Three background processes run on every session start: the guidance indexer, the code map generator, and the learning service. All three are incremental (unchanged files are skipped) and run in parallel so they don't block the session.
-
-**Cross-session persistence** — Everything stored in the database survives across sessions. Patterns learned on Monday are available on Friday. The stop hook exports session metrics, and the session-restore hook loads prior state.
-
-### For Claude
-
-When `flo init` runs, it appends a workflow section to your CLAUDE.md that teaches Claude:
-- Always search memory before Glob/Grep/Read (enforced by gates)
-- Use `mcp__moflo__memory_search` for knowledge retrieval
-- Use `/flo <issue>` (or `/fl`) for issue execution
-- Store learnings after task completion
 
 ## Architecture
 
