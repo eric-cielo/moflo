@@ -90,7 +90,7 @@ const DEPS = Bash(`gh repo list my-organization --json name | \
   done | jq -s '.'`)
 
 // Initialize swarm with discovered repositories
-mcp__claude-flow__swarm_init({
+mcp__moflo__swarm_init({
   topology: "hierarchical",
   maxAgents: 8,
   metadata: { repos: REPOS, dependencies: DEPS }
@@ -145,7 +145,7 @@ mcp__claude-flow__swarm_init({
 // Synchronize package dependencies and versions
 [Complete Package Sync]:
   // Initialize sync swarm
-  mcp__claude-flow__swarm_init({ topology: "mesh", maxAgents: 5 })
+  mcp__moflo__swarm_init({ topology: "mesh", maxAgents: 5 })
 
   // Spawn sync agents
   Task("Sync Coordinator", "Coordinate version alignment", "coordinator")
@@ -169,7 +169,7 @@ mcp__claude-flow__swarm_init({
     -f content="$(cat aligned-package.json | base64)"`)
 
   // Store sync state
-  mcp__claude-flow__memory_usage({
+  mcp__moflo__memory_usage({
     action: "store",
     key: "sync/packages/status",
     value: {
@@ -196,7 +196,7 @@ mcp__claude-flow__swarm_init({
     -f content="$(cat /tmp/claude-source.md | base64)"`)
 
   // Track sync status
-  mcp__claude-flow__memory_usage({
+  mcp__moflo__memory_usage({
     action: "store",
     key: "sync/documentation/status",
     value: { status: "synchronized", files: ["CLAUDE.md"] }
@@ -246,7 +246,7 @@ mcp__claude-flow__swarm_init({
 // Analyze and optimize repository structure
 [Architecture Analysis]:
   // Initialize architecture swarm
-  mcp__claude-flow__swarm_init({ topology: "hierarchical", maxAgents: 6 })
+  mcp__moflo__swarm_init({ topology: "hierarchical", maxAgents: 6 })
 
   // Spawn architecture agents
   Task("Senior Architect", "Analyze repository structure", "architect")
@@ -266,7 +266,7 @@ mcp__claude-flow__swarm_init({
     --order desc`)
 
   // Store analysis results
-  mcp__claude-flow__memory_usage({
+  mcp__moflo__memory_usage({
     action: "store",
     key: "architecture/analysis/results",
     value: {
@@ -406,7 +406,7 @@ Part of #$TRACKING_ISSUE"
 // Coordinate large-scale refactoring
 [Cross-Repo Refactoring]:
   // Initialize refactoring swarm
-  mcp__claude-flow__swarm_init({ topology: "mesh", maxAgents: 8 })
+  mcp__moflo__swarm_init({ topology: "mesh", maxAgents: 8 })
 
   // Spawn specialized agents
   Task("Refactoring Coordinator", "Coordinate refactoring across repos", "coordinator")
@@ -416,7 +416,7 @@ Part of #$TRACKING_ISSUE"
   Task("Integration Tester", "Validate refactored code", "tester")
 
   // Execute refactoring
-  mcp__claude-flow__task_orchestrate({
+  mcp__moflo__task_orchestrate({
     task: "Rename OldAPI to NewAPI across all repositories",
     strategy: "sequential",
     priority: "high"

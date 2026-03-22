@@ -8,14 +8,14 @@ Deep research through parallel information gathering.
 ### Using MCP Tools
 ```javascript
 // Initialize research swarm
-mcp__claude-flow__swarm_init({
+mcp__moflo__swarm_init({
   "topology": "mesh",
   "maxAgents": 6,
   "strategy": "adaptive"
 })
 
 // Orchestrate research task
-mcp__claude-flow__task_orchestrate({
+mcp__moflo__task_orchestrate({
   "task": "research topic X",
   "strategy": "parallel",
   "priority": "medium"
@@ -30,25 +30,25 @@ mcp__claude-flow__task_orchestrate({
 ### Agent Spawning with MCP
 ```javascript
 // Spawn research agents
-mcp__claude-flow__agent_spawn({
+mcp__moflo__agent_spawn({
   "type": "researcher",
   "name": "Web Researcher",
   "capabilities": ["web-search", "content-extraction", "source-validation"]
 })
 
-mcp__claude-flow__agent_spawn({
+mcp__moflo__agent_spawn({
   "type": "researcher",
   "name": "Academic Researcher",
   "capabilities": ["paper-analysis", "citation-tracking", "literature-review"]
 })
 
-mcp__claude-flow__agent_spawn({
+mcp__moflo__agent_spawn({
   "type": "analyst",
   "name": "Data Analyst",
   "capabilities": ["data-processing", "statistical-analysis", "visualization"]
 })
 
-mcp__claude-flow__agent_spawn({
+mcp__moflo__agent_spawn({
   "type": "documenter",
   "name": "Report Writer",
   "capabilities": ["synthesis", "technical-writing", "formatting"]
@@ -60,7 +60,7 @@ mcp__claude-flow__agent_spawn({
 ### Information Gathering
 ```javascript
 // Parallel information collection
-mcp__claude-flow__parallel_execute({
+mcp__moflo__parallel_execute({
   "tasks": [
     { "id": "web-search", "command": "search recent publications" },
     { "id": "academic-search", "command": "search academic databases" },
@@ -69,7 +69,7 @@ mcp__claude-flow__parallel_execute({
 })
 
 // Store research findings
-mcp__claude-flow__memory_usage({
+mcp__moflo__memory_usage({
   "action": "store",
   "key": "research-findings-" + Date.now(),
   "value": JSON.stringify(findings),
@@ -81,18 +81,18 @@ mcp__claude-flow__memory_usage({
 ### Analysis and Validation
 ```javascript
 // Pattern recognition in findings
-mcp__claude-flow__pattern_recognize({
+mcp__moflo__pattern_recognize({
   "data": researchData,
   "patterns": ["trend", "correlation", "outlier"]
 })
 
 // Cognitive analysis
-mcp__claude-flow__cognitive_analyze({
+mcp__moflo__cognitive_analyze({
   "behavior": "research-synthesis"
 })
 
 // Cross-reference validation
-mcp__claude-flow__quality_assess({
+mcp__moflo__quality_assess({
   "target": "research-sources",
   "criteria": ["credibility", "relevance", "recency"]
 })
@@ -101,14 +101,14 @@ mcp__claude-flow__quality_assess({
 ### Knowledge Management
 ```javascript
 // Search existing knowledge
-mcp__claude-flow__memory_search({
+mcp__moflo__memory_search({
   "pattern": "topic X",
   "namespace": "research",
   "limit": 20
 })
 
 // Create knowledge connections
-mcp__claude-flow__neural_patterns({
+mcp__moflo__neural_patterns({
   "action": "learn",
   "operation": "knowledge-graph",
   "metadata": {
@@ -121,7 +121,7 @@ mcp__claude-flow__neural_patterns({
 ### Reporting
 ```javascript
 // Generate research report
-mcp__claude-flow__workflow_execute({
+mcp__moflo__workflow_execute({
   "workflowId": "research-report-generation",
   "params": {
     "findings": findings,
@@ -130,7 +130,7 @@ mcp__claude-flow__workflow_execute({
 })
 
 // Monitor progress
-mcp__claude-flow__swarm_status({
+mcp__moflo__swarm_status({
   "swarmId": "research-swarm"
 })
 ```

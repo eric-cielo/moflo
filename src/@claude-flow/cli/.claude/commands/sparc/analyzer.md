@@ -7,7 +7,7 @@ Deep code and data analysis with batch processing capabilities.
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "analyzer",
   task_description: "analyze codebase performance",
   options: {

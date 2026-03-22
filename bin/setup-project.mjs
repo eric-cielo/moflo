@@ -40,7 +40,7 @@ Your first tool call for every new user prompt MUST be a memory search. Do this 
 
 WHY: Memory contains curated solutions, patterns, and architectural context from previous work. Without it, you will miss existing solutions, repeat mistakes that were already solved, and waste time re-discovering what is already known. Memory search is faster than file scanning.
 
-HOW: Use ToolSearch to load \`mcp__claude-flow__memory_search\`, then call it with a query describing your task. If MCP is unavailable, use:
+HOW: Use ToolSearch to load \`mcp__moflo__memory_search\`, then call it with a query describing your task. If MCP is unavailable, use:
 \`node bin/semantic-search.mjs "[task description]" --namespace guidance\`
 
 ### Namespaces to search:
@@ -59,10 +59,10 @@ For **codebase navigation** (finding where a type/service/component lives), also
 
 ### Primary: MCP Tools (preferred)
 \`\`\`
-mcp__claude-flow__memory_search   — query, namespace
-mcp__claude-flow__memory_store    — key, value, namespace
-mcp__claude-flow__memory_retrieve — key, namespace
-mcp__claude-flow__memory_list     — namespace, limit
+mcp__moflo__memory_search   — query, namespace
+mcp__moflo__memory_store    — key, value, namespace
+mcp__moflo__memory_retrieve — key, namespace
+mcp__moflo__memory_list     — namespace, limit
 \`\`\`
 Load via ToolSearch first: \`+claude-flow memory\`
 
@@ -78,9 +78,9 @@ npx flo-codemap --force                          # Regenerate code-map
 
 | Content Type | Destination | How to Write |
 |-------------|-------------|--------------|
-| Debugging lessons (bug found, root cause, fix) | Memory DB — \`patterns\` namespace | \`mcp__claude-flow__memory_store\` |
-| Architectural decisions (chose X over Y, why) | Memory DB — \`decisions\` namespace | \`mcp__claude-flow__memory_store\` |
-| Learned patterns (task succeeded/failed, what worked) | Memory DB — \`patterns\` namespace | \`mcp__claude-flow__memory_store\` |
+| Debugging lessons (bug found, root cause, fix) | Memory DB — \`patterns\` namespace | \`mcp__moflo__memory_store\` |
+| Architectural decisions (chose X over Y, why) | Memory DB — \`decisions\` namespace | \`mcp__moflo__memory_store\` |
+| Learned patterns (task succeeded/failed, what worked) | Memory DB — \`patterns\` namespace | \`mcp__moflo__memory_store\` |
 | Coding rules (always/never do X in code) | \`.claude/guidance/\` files | Edit directly |
 | Process/workflow rules (CI, PR, gates) | \`CLAUDE.md\` | Edit directly |
 

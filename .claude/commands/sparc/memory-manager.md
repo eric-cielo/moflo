@@ -7,7 +7,7 @@ Knowledge management with Memory tools for persistent insights.
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "memory-manager",
   task_description: "organize project knowledge",
   options: {

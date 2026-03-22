@@ -175,10 +175,11 @@ export class PluginManager {
         const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
         installedVersion = pkg.version;
 
-        // Check for claude-flow plugin metadata
-        if (pkg['claude-flow']) {
-          commands = pkg['claude-flow'].commands || [];
-          hooks = pkg['claude-flow'].hooks || [];
+        // Check for moflo/claude-flow plugin metadata (backward compat)
+        const pluginMeta = pkg['moflo'] || pkg['claude-flow'];
+        if (pluginMeta) {
+          commands = pluginMeta.commands || [];
+          hooks = pluginMeta.hooks || [];
         }
       }
 
@@ -250,8 +251,8 @@ export class PluginManager {
         enabled: true,
         source: 'local',
         path: absolutePath,
-        commands: pkg['claude-flow']?.commands || [],
-        hooks: pkg['claude-flow']?.hooks || [],
+        commands: (pkg['moflo'] || pkg['claude-flow'])?.commands || [],
+        hooks: (pkg['moflo'] || pkg['claude-flow'])?.hooks || [],
       };
 
       // Save to manifest
@@ -460,8 +461,8 @@ export class PluginManager {
       if (fs.existsSync(packageJsonPath)) {
         const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
         existing.version = pkg.version;
-        existing.commands = pkg['claude-flow']?.commands || existing.commands;
-        existing.hooks = pkg['claude-flow']?.hooks || existing.hooks;
+        existing.commands = (pkg['moflo'] || pkg['claude-flow'])?.commands || existing.commands;
+        existing.hooks = (pkg['moflo'] || pkg['claude-flow'])?.hooks || existing.hooks;
       }
 
       await this.saveManifest();

@@ -221,7 +221,7 @@ You are agent BETA in a memory sharing test. Do the following:
 2. Search for it semantically:
    npx moflo memory search --query "cross-agent-test-alpha" --namespace patterns --limit 3
 3. Also try via MCP if available:
-   Use mcp__claude-flow__memory_retrieve with key "cross-agent-test-alpha", namespace "patterns"
+   Use mcp__moflo__memory_retrieve with key "cross-agent-test-alpha", namespace "patterns"
 4. Report: Did retrieve return the value? Did search find it? What was the search score?
 This is a READ test — do not modify any files.
 """)
@@ -253,7 +253,7 @@ npx moflo doctor
 ```
 Also verify via ToolSearch:
 ```
-ToolSearch("select:mcp__claude-flow__memory_search,mcp__claude-flow__memory_store,mcp__claude-flow__memory_retrieve")
+ToolSearch("select:mcp__moflo__memory_search,mcp__moflo__memory_store,mcp__moflo__memory_retrieve")
 ```
 **Pass criteria:** Either MCP tools load via ToolSearch, or CLI fallback produces equivalent results.
 

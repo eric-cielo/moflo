@@ -793,7 +793,7 @@ const mergedFindings = securityConsensus.attentionWeights.map((weight, i) => ({
 
 ```javascript
 // Store security findings in coordinated memory
-mcp__claude-flow__memory_usage({
+mcp__moflo__memory_usage({
   action: "store",
   key: "swarm/security-architect/assessment",
   namespace: "coordination",
@@ -816,7 +816,7 @@ mcp__claude-flow__memory_usage({
 })
 
 // Share with other security agents
-mcp__claude-flow__memory_usage({
+mcp__moflo__memory_usage({
   action: "store",
   key: "swarm/shared/security-findings",
   namespace: "coordination",

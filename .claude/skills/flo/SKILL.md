@@ -133,7 +133,7 @@ npx flo memory search --query "<issue title keywords>" --namespace patterns
 npx flo memory search --query "<domain keywords>" --namespace guidance
 ```
 
-Or via MCP: `mcp__claude-flow__memory_search`
+Or via MCP: `mcp__moflo__memory_search`
 
 ### 1.4 Read Guidance Docs (ONLY if memory insufficient)
 **Only if memory search returned < 3 relevant results**, read guidance files:

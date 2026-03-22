@@ -151,7 +151,7 @@ switch (command) {
       blockTool('Call TaskCreate before spawning agents. Task tool is blocked until then.');
     }
     if (config.memory_first && !s.memorySearched) {
-      blockTool('Search memory before spawning agents. Use mcp__claude-flow__memory_search first.');
+      blockTool('Search memory before spawning agents. Use mcp__moflo__memory_search first.');
     }
     break;
   }
@@ -162,7 +162,7 @@ switch (command) {
     if (isMechanicalSearch()) break;
     s.lastBlockedAt = new Date().toISOString();
     writeState(s);
-    blockTool('Search memory before exploring files. Use mcp__claude-flow__memory_search with namespace "code-map", "patterns", "knowledge", or "guidance".');
+    blockTool('Search memory before exploring files. Use mcp__moflo__memory_search with namespace "code-map", "patterns", "knowledge", or "guidance".');
   }
   case 'check-before-read': {
     if (!config.memory_first) break;
@@ -173,7 +173,7 @@ switch (command) {
     if (fp.indexOf('.claude/guidance/') < 0) break;
     s.lastBlockedAt = new Date().toISOString();
     writeState(s);
-    blockTool('Search memory before reading guidance files. Use mcp__claude-flow__memory_search with namespace "guidance".');
+    blockTool('Search memory before reading guidance files. Use mcp__moflo__memory_search with namespace "guidance".');
   }
   case 'record-task-created': {
     var s = readState();

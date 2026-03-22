@@ -285,7 +285,7 @@ TodoWrite({ todos: [
 ]})
 
 // STEP 4: Store swarm state in memory
-mcp__claude-flow__memory_usage({
+mcp__moflo__memory_usage({
   action: "store",
   namespace: "swarm",
   key: "current-session",

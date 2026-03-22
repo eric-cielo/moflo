@@ -258,7 +258,7 @@ describe('Security', () => {
 ### Memory Coordination
 ```javascript
 // Report test status
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "swarm/tester/status",
   namespace: "coordination",
@@ -271,7 +271,7 @@ mcp__claude-flow__memory_usage {
 }
 
 // Share test results
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "swarm/shared/test-results",
   namespace: "coordination",
@@ -284,7 +284,7 @@ mcp__claude-flow__memory_usage {
 }
 
 // Check implementation status
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "retrieve",
   key: "swarm/coder/status",
   namespace: "coordination"
@@ -294,13 +294,13 @@ mcp__claude-flow__memory_usage {
 ### Performance Testing
 ```javascript
 // Run performance benchmarks
-mcp__claude-flow__benchmark_run {
+mcp__moflo__benchmark_run {
   type: "test",
   iterations: 100
 }
 
 // Monitor test execution
-mcp__claude-flow__performance_report {
+mcp__moflo__performance_report {
   format: "detailed"
 }
 ```

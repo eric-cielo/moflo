@@ -1026,12 +1026,12 @@ class V3BenchmarkSuite {
 const performanceMCP = {
   // Run benchmark suite
   async runBenchmarks(suite = 'all') {
-    return await mcp__claude-flow__benchmark_run({ suite });
+    return await mcp__moflo__benchmark_run({ suite });
   },
 
   // Analyze bottlenecks
   async analyzeBottlenecks(component) {
-    return await mcp__claude-flow__bottleneck_analyze({
+    return await mcp__moflo__bottleneck_analyze({
       component: component,
       metrics: ['latency', 'throughput', 'memory', 'cpu']
     });
@@ -1039,7 +1039,7 @@ const performanceMCP = {
 
   // Get performance report
   async getPerformanceReport(timeframe = '24h') {
-    return await mcp__claude-flow__performance_report({
+    return await mcp__moflo__performance_report({
       format: 'detailed',
       timeframe: timeframe
     });
@@ -1047,7 +1047,7 @@ const performanceMCP = {
 
   // Token usage analysis
   async analyzeTokenUsage(operation) {
-    return await mcp__claude-flow__token_usage({
+    return await mcp__moflo__token_usage({
       operation: operation,
       timeframe: '24h'
     });
@@ -1055,14 +1055,14 @@ const performanceMCP = {
 
   // WASM optimization
   async optimizeWASM(operation) {
-    return await mcp__claude-flow__wasm_optimize({
+    return await mcp__moflo__wasm_optimize({
       operation: operation
     });
   },
 
   // Neural pattern optimization
   async optimizeNeuralPatterns() {
-    return await mcp__claude-flow__neural_patterns({
+    return await mcp__moflo__neural_patterns({
       action: 'analyze',
       metadata: { focus: 'performance' }
     });
@@ -1070,7 +1070,7 @@ const performanceMCP = {
 
   // Store performance metrics
   async storeMetrics(key, value) {
-    return await mcp__claude-flow__memory_usage({
+    return await mcp__moflo__memory_usage({
       action: 'store',
       key: `performance/${key}`,
       value: JSON.stringify(value),
@@ -1144,14 +1144,14 @@ class SONAPerformanceOptimizer {
 
   async triggerSONALearning() {
     // Use SONA to learn optimization patterns
-    await mcp__claude-flow__neural_train({
+    await mcp__moflo__neural_train({
       pattern_type: 'optimization',
       training_data: JSON.stringify(this.trajectories),
       epochs: 10
     });
 
     // Extract learned patterns
-    const patterns = await mcp__claude-flow__neural_patterns({
+    const patterns = await mcp__moflo__neural_patterns({
       action: 'analyze',
       metadata: { domain: 'performance' }
     });
@@ -1167,7 +1167,7 @@ class SONAPerformanceOptimizer {
 
   async predictOptimalSettings(context) {
     // Use SONA to predict optimal configuration
-    const prediction = await mcp__claude-flow__neural_predict({
+    const prediction = await mcp__moflo__neural_predict({
       modelId: 'performance-optimizer',
       input: JSON.stringify(context)
     });

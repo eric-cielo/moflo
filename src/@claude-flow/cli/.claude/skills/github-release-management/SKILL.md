@@ -150,19 +150,19 @@ gh release create $(npm pkg get version) \
 ```javascript
 // Set up coordinated release team
 [Single Message - Swarm Initialization]:
-  mcp__claude-flow__swarm_init {
+  mcp__moflo__swarm_init {
     topology: "hierarchical",
     maxAgents: 6,
     strategy: "balanced"
   }
 
   // Spawn specialized agents
-  mcp__claude-flow__agent_spawn { type: "coordinator", name: "Release Director" }
-  mcp__claude-flow__agent_spawn { type: "coder", name: "Version Manager" }
-  mcp__claude-flow__agent_spawn { type: "tester", name: "QA Engineer" }
-  mcp__claude-flow__agent_spawn { type: "reviewer", name: "Release Reviewer" }
-  mcp__claude-flow__agent_spawn { type: "analyst", name: "Deployment Analyst" }
-  mcp__claude-flow__agent_spawn { type: "researcher", name: "Compatibility Checker" }
+  mcp__moflo__agent_spawn { type: "coordinator", name: "Release Director" }
+  mcp__moflo__agent_spawn { type: "coder", name: "Version Manager" }
+  mcp__moflo__agent_spawn { type: "tester", name: "QA Engineer" }
+  mcp__moflo__agent_spawn { type: "reviewer", name: "Release Reviewer" }
+  mcp__moflo__agent_spawn { type: "analyst", name: "Deployment Analyst" }
+  mcp__moflo__agent_spawn { type: "researcher", name: "Compatibility Checker" }
 ```
 
 #### Coordinated Release Workflow
@@ -172,7 +172,7 @@ gh release create $(npm pkg get version) \
   Bash("gh api repos/:owner/:repo/git/refs --method POST -f ref='refs/heads/release/v2.0.0' -f sha=$(gh api repos/:owner/:repo/git/refs/heads/main --jq '.object.sha')")
 
   // Orchestrate release preparation
-  mcp__claude-flow__task_orchestrate {
+  mcp__moflo__task_orchestrate {
     task: "Prepare release v2.0.0 with comprehensive testing and validation",
     strategy: "sequential",
     priority: "critical",
@@ -204,7 +204,7 @@ gh release create $(npm pkg get version) \
   ]}
 
   // Store release state
-  mcp__claude-flow__memory_usage {
+  mcp__moflo__memory_usage {
     action: "store",
     key: "release/v2.0.0/status",
     value: JSON.stringify({
@@ -309,7 +309,7 @@ npx claude-flow github release-deploy \
 ```javascript
 [Single Message - Multi-Package Release]:
   // Initialize mesh topology for cross-package coordination
-  mcp__claude-flow__swarm_init { topology: "mesh", maxAgents: 8 }
+  mcp__moflo__swarm_init { topology: "mesh", maxAgents: 8 }
 
   // Spawn package-specific agents
   Task("Package A Manager", "Coordinate claude-flow package release v1.0.72", "coder")
@@ -394,7 +394,7 @@ npx claude-flow github multi-release \
 ```javascript
 [Single Message - Cross-Repo Release]:
   // Initialize star topology for centralized coordination
-  mcp__claude-flow__swarm_init { topology: "star", maxAgents: 6 }
+  mcp__moflo__swarm_init { topology: "star", maxAgents: 6 }
 
   // Spawn repo-specific coordinators
   Task("Frontend Release", "Release frontend v2.0.0 with API compatibility", "coordinator")
@@ -408,7 +408,7 @@ npx claude-flow github multi-release \
   Bash("gh api repos/org/cli/dispatches --method POST -f event_type='release' -F client_payload[version]=v1.5.0")
 
   // Monitor all releases
-  mcp__claude-flow__swarm_monitor { interval: 5, duration: 300 }
+  mcp__moflo__swarm_monitor { interval: 5, duration: 300 }
 ```
 
 ### Hotfix Emergency Procedures

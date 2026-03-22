@@ -127,8 +127,8 @@ TaskUpdate({ taskId: "0", addBlockedBy: ["4", "5"] })  // Coordinator blocked by
 ### Step 3: Initialize Moflo Coordination
 
 **MCP (Preferred):**
-- Swarm: `mcp__claude-flow__swarm_init` (`topology: "hierarchical", maxAgents: 8, strategy: "specialized"`)
-- Hive-mind: `mcp__claude-flow__hive-mind_init` (`topology: "hierarchical-mesh", consensus: "byzantine"`)
+- Swarm: `mcp__moflo__swarm_init` (`topology: "hierarchical", maxAgents: 8, strategy: "specialized"`)
+- Hive-mind: `mcp__moflo__hive-mind_init` (`topology: "hierarchical-mesh", consensus: "byzantine"`)
 
 **CLI Fallback:**
 ```bash
@@ -241,7 +241,7 @@ TaskUpdate({ taskId: "4", addBlockedBy: ["2"] })
 TaskUpdate({ taskId: "0", addBlockedBy: ["3", "4"] })
 
 // STEP 3: Initialize swarm (MCP preferred, CLI fallback)
-// MCP: mcp__claude-flow__swarm_init (topology: "hierarchical", maxAgents: 8, strategy: "specialized")
+// MCP: mcp__moflo__swarm_init (topology: "hierarchical", maxAgents: 8, strategy: "specialized")
 Bash("npx flo swarm init --topology hierarchical --max-agents 8 --strategy specialized")
 
 // STEP 4: Spawn agents (mark tasks in_progress as spawned)
@@ -357,7 +357,7 @@ Task({
 
 **Use these settings to prevent agent drift:**
 
-**MCP (Preferred):** `mcp__claude-flow__swarm_init`
+**MCP (Preferred):** `mcp__moflo__swarm_init`
 - Small teams: `topology: "hierarchical", maxAgents: 8, strategy: "specialized"`
 - Large teams: `topology: "hierarchical-mesh", maxAgents: 15, strategy: "specialized"`
 
@@ -387,7 +387,7 @@ npx flo swarm init --topology hierarchical-mesh --max-agents 15 --strategy speci
 
 **Subagents DO inherit CLAUDE.md context** when spawned via Task tool. They automatically receive:
 - Memory-first protocol instructions
-- MCP tool access (`mcp__claude-flow__*`) when configured
+- MCP tool access (`mcp__moflo__*`) when configured
 - Project guidance and coding rules
 
 **Best practices for subagent prompts:**
@@ -396,9 +396,9 @@ npx flo swarm init --topology hierarchical-mesh --max-agents 15 --strategy speci
 - Trust that they know the memory-first protocol
 
 **MCP Tools Available to Subagents:**
-- `mcp__claude-flow__memory_search` - Semantic search
-- `mcp__claude-flow__memory_store` - Pattern storage
-- `mcp__claude-flow__hooks_route` - Task routing
+- `mcp__moflo__memory_search` - Semantic search
+- `mcp__moflo__memory_store` - Pattern storage
+- `mcp__moflo__hooks_route` - Task routing
 
 ---
 

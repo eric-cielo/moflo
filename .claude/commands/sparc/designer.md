@@ -7,7 +7,7 @@ UI/UX design with Memory coordination for consistent experiences.
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "designer",
   task_description: "create dashboard UI",
   options: {

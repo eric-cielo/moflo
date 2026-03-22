@@ -486,7 +486,7 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
         }]
       },
       {
-        "matcher": "^mcp__claude-flow__memory_(search|retrieve)$",
+        "matcher": "^mcp__moflo__memory_(search|retrieve)$",
         "hooks": [{
           "type": "command",
           "command": "npx flo gate record-memory-searched",
@@ -662,7 +662,7 @@ This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted d
 Your first tool call for every new user prompt MUST be a memory search. Do this BEFORE Glob, Grep, Read, or any file exploration.
 
 \`\`\`
-mcp__claude-flow__memory_search  — query: "<task description>", namespace: "guidance" or "patterns" or "knowledge" or "code-map"
+mcp__moflo__memory_search  — query: "<task description>", namespace: "guidance" or "patterns" or "knowledge" or "code-map"
 \`\`\`
 
 For codebase navigation, search the \`code-map\` namespace first. For patterns and domain knowledge, search \`patterns\`, \`knowledge\`, and \`guidance\`.
@@ -684,11 +684,11 @@ Research → Enhance → Implement → Test → Simplify → PR
 
 | Tool | Purpose |
 |------|---------|
-| \`mcp__claude-flow__memory_search\` | Semantic search across indexed knowledge |
-| \`mcp__claude-flow__memory_store\` | Store patterns and decisions |
-| \`mcp__claude-flow__hooks_route\` | Route task to optimal agent type |
-| \`mcp__claude-flow__hooks_pre-task\` | Record task start |
-| \`mcp__claude-flow__hooks_post-task\` | Record task completion for learning |
+| \`mcp__moflo__memory_search\` | Semantic search across indexed knowledge |
+| \`mcp__moflo__memory_store\` | Store patterns and decisions |
+| \`mcp__moflo__hooks_route\` | Route task to optimal agent type |
+| \`mcp__moflo__hooks_pre-task\` | Record task start |
+| \`mcp__moflo__hooks_post-task\` | Record task completion for learning |
 
 ### Agent Icon Mapping
 

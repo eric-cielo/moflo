@@ -16,7 +16,7 @@ Automated release coordination and deployment with ruv-swarm orchestration for s
 - `mcp__github__create_branch`
 - `mcp__github__push_files`
 - `mcp__github__create_issue`
-- `mcp__claude-flow__*` (all swarm coordination tools)
+- `mcp__moflo__*` (all swarm coordination tools)
 - `TodoWrite`, `TodoRead`, `Task`, `Bash`, `Read`, `Write`, `Edit`
 
 ## Usage Patterns
@@ -24,12 +24,12 @@ Automated release coordination and deployment with ruv-swarm orchestration for s
 ### 1. Coordinated Release Preparation
 ```javascript
 // Initialize release management swarm
-mcp__claude-flow__swarm_init { topology: "hierarchical", maxAgents: 6 }
-mcp__claude-flow__agent_spawn { type: "coordinator", name: "Release Coordinator" }
-mcp__claude-flow__agent_spawn { type: "tester", name: "QA Engineer" }
-mcp__claude-flow__agent_spawn { type: "reviewer", name: "Release Reviewer" }
-mcp__claude-flow__agent_spawn { type: "coder", name: "Version Manager" }
-mcp__claude-flow__agent_spawn { type: "analyst", name: "Deployment Analyst" }
+mcp__moflo__swarm_init { topology: "hierarchical", maxAgents: 6 }
+mcp__moflo__agent_spawn { type: "coordinator", name: "Release Coordinator" }
+mcp__moflo__agent_spawn { type: "tester", name: "QA Engineer" }
+mcp__moflo__agent_spawn { type: "reviewer", name: "Release Reviewer" }
+mcp__moflo__agent_spawn { type: "coder", name: "Version Manager" }
+mcp__moflo__agent_spawn { type: "analyst", name: "Deployment Analyst" }
 
 // Create release preparation branch
 mcp__github__create_branch {
@@ -40,7 +40,7 @@ mcp__github__create_branch {
 }
 
 // Orchestrate release preparation
-mcp__claude-flow__task_orchestrate {
+mcp__moflo__task_orchestrate {
   task: "Prepare release v1.0.72 with comprehensive testing and validation",
   strategy: "sequential",
   priority: "critical"
@@ -177,13 +177,13 @@ This release is production-ready with comprehensive validation and testing.
 ```javascript
 [Single Message - Complete Release Management]:
   // Initialize comprehensive release swarm
-  mcp__claude-flow__swarm_init { topology: "star", maxAgents: 8 }
-  mcp__claude-flow__agent_spawn { type: "coordinator", name: "Release Director" }
-  mcp__claude-flow__agent_spawn { type: "tester", name: "QA Lead" }
-  mcp__claude-flow__agent_spawn { type: "reviewer", name: "Senior Reviewer" }
-  mcp__claude-flow__agent_spawn { type: "coder", name: "Version Controller" }
-  mcp__claude-flow__agent_spawn { type: "analyst", name: "Performance Analyst" }
-  mcp__claude-flow__agent_spawn { type: "researcher", name: "Compatibility Checker" }
+  mcp__moflo__swarm_init { topology: "star", maxAgents: 8 }
+  mcp__moflo__agent_spawn { type: "coordinator", name: "Release Director" }
+  mcp__moflo__agent_spawn { type: "tester", name: "QA Lead" }
+  mcp__moflo__agent_spawn { type: "reviewer", name: "Senior Reviewer" }
+  mcp__moflo__agent_spawn { type: "coder", name: "Version Controller" }
+  mcp__moflo__agent_spawn { type: "analyst", name: "Performance Analyst" }
+  mcp__moflo__agent_spawn { type: "researcher", name: "Compatibility Checker" }
   
   // Create release branch and prepare files using gh CLI
   Bash("gh api repos/:owner/:repo/git/refs --method POST -f ref='refs/heads/release/v1.0.72' -f sha=$(gh api repos/:owner/:repo/git/refs/heads/main --jq '.object.sha')")
@@ -222,7 +222,7 @@ This release is production-ready with comprehensive validation and testing.
   ]}
   
   // Store release state
-  mcp__claude-flow__memory_usage {
+  mcp__moflo__memory_usage {
     action: "store", 
     key: "release/v1.0.72/status",
     value: {

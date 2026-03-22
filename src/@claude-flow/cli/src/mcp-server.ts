@@ -349,7 +349,7 @@ export class MCPServerManager extends EventEmitter {
       method: 'server.initialized',
       params: {
         serverInfo: {
-          name: 'claude-flow',
+          name: 'moflo',
           version: VERSION,
           capabilities: {
             tools: { listChanged: true },
@@ -497,7 +497,7 @@ export class MCPServerManager extends EventEmitter {
             id: message.id,
             result: {
               protocolVersion: '2024-11-05',
-              serverInfo: { name: 'claude-flow', version: '3.0.0' },
+              serverInfo: { name: 'moflo', version: '3.0.0' },
               capabilities: {
                 tools: { listChanged: true },
                 resources: { subscribe: true, listChanged: true },
@@ -603,7 +603,7 @@ export class MCPServerManager extends EventEmitter {
 
     const mcpServer = createMCPServer(
       {
-        name: 'Claude-Flow MCP Server V3',
+        name: 'MoFlo MCP Server V3',
         version: '3.0.0',
         transport: this.options.transport as 'http' | 'websocket',
         host: this.options.host,

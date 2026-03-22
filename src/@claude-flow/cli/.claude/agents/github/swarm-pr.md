@@ -11,11 +11,11 @@ tools:
   - mcp__github__create_pr_comment
   - mcp__github__get_pr_diff
   - mcp__github__merge_pull_request
-  - mcp__claude-flow__swarm_init
-  - mcp__claude-flow__agent_spawn
-  - mcp__claude-flow__task_orchestrate
-  - mcp__claude-flow__memory_usage
-  - mcp__claude-flow__coordination_sync
+  - mcp__moflo__swarm_init
+  - mcp__moflo__agent_spawn
+  - mcp__moflo__task_orchestrate
+  - mcp__moflo__memory_usage
+  - mcp__moflo__coordination_sync
   - TodoWrite
   - TodoRead
   - Bash
@@ -323,15 +323,15 @@ When using with Claude Code:
 ### Multi-Agent PR Analysis
 ```bash
 # Initialize PR-specific swarm with intelligent topology selection
-mcp__claude-flow__swarm_init { topology: "mesh", maxAgents: 8 }
-mcp__claude-flow__agent_spawn { type: "coordinator", name: "PR Coordinator" }
-mcp__claude-flow__agent_spawn { type: "reviewer", name: "Code Reviewer" }
-mcp__claude-flow__agent_spawn { type: "tester", name: "Test Engineer" }
-mcp__claude-flow__agent_spawn { type: "analyst", name: "Impact Analyzer" }
-mcp__claude-flow__agent_spawn { type: "optimizer", name: "Performance Optimizer" }
+mcp__moflo__swarm_init { topology: "mesh", maxAgents: 8 }
+mcp__moflo__agent_spawn { type: "coordinator", name: "PR Coordinator" }
+mcp__moflo__agent_spawn { type: "reviewer", name: "Code Reviewer" }
+mcp__moflo__agent_spawn { type: "tester", name: "Test Engineer" }
+mcp__moflo__agent_spawn { type: "analyst", name: "Impact Analyzer" }
+mcp__moflo__agent_spawn { type: "optimizer", name: "Performance Optimizer" }
 
 # Store PR context for swarm coordination
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "pr/#{pr_number}/analysis",
   value: { 
@@ -343,7 +343,7 @@ mcp__claude-flow__memory_usage {
 }
 
 # Orchestrate comprehensive PR workflow
-mcp__claude-flow__task_orchestrate {
+mcp__moflo__task_orchestrate {
   task: "Execute multi-agent PR review and validation workflow",
   strategy: "parallel",
   priority: "high",
@@ -403,17 +403,17 @@ const prPostHook = async (results) => {
 ### Intelligent PR Merge Coordination
 ```bash
 # Coordinate merge decision with swarm consensus
-mcp__claude-flow__coordination_sync { swarmId: "pr-review-swarm" }
+mcp__moflo__coordination_sync { swarmId: "pr-review-swarm" }
 
 # Analyze merge readiness with multiple agents
-mcp__claude-flow__task_orchestrate {
+mcp__moflo__task_orchestrate {
   task: "Evaluate PR merge readiness with comprehensive validation",
   strategy: "sequential",
   priority: "critical"
 }
 
 # Store merge decision context
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "pr/merge_decisions/#{pr_number}",
   value: {

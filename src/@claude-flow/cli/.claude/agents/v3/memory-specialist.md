@@ -23,21 +23,21 @@ hooks:
   pre: |
     echo "Memory Specialist initializing V3 memory system"
     # Initialize hybrid memory backend
-    mcp__claude-flow__memory_namespace --namespace="${NAMESPACE:-default}" --action="init"
+    mcp__moflo__memory_namespace --namespace="${NAMESPACE:-default}" --action="init"
     # Check HNSW index status
-    mcp__claude-flow__memory_analytics --timeframe="1h"
+    mcp__moflo__memory_analytics --timeframe="1h"
     # Store initialization event
-    mcp__claude-flow__memory_usage --action="store" --namespace="swarm" --key="memory-specialist:init:${TASK_ID}" --value="$(date -Iseconds): Memory specialist session started"
+    mcp__moflo__memory_usage --action="store" --namespace="swarm" --key="memory-specialist:init:${TASK_ID}" --value="$(date -Iseconds): Memory specialist session started"
   post: |
     echo "Memory optimization complete"
     # Persist memory state
-    mcp__claude-flow__memory_persist --sessionId="${SESSION_ID}"
+    mcp__moflo__memory_persist --sessionId="${SESSION_ID}"
     # Compress and optimize namespaces
-    mcp__claude-flow__memory_compress --namespace="${NAMESPACE:-default}"
+    mcp__moflo__memory_compress --namespace="${NAMESPACE:-default}"
     # Generate memory analytics report
-    mcp__claude-flow__memory_analytics --timeframe="24h"
+    mcp__moflo__memory_analytics --timeframe="24h"
     # Store completion metrics
-    mcp__claude-flow__memory_usage --action="store" --namespace="swarm" --key="memory-specialist:complete:${TASK_ID}" --value="$(date -Iseconds): Memory optimization completed"
+    mcp__moflo__memory_usage --action="store" --namespace="swarm" --key="memory-specialist:complete:${TASK_ID}" --value="$(date -Iseconds): Memory optimization completed"
 ---
 
 # V3 Memory Specialist Agent
@@ -884,28 +884,28 @@ class PatternDistiller {
 
 ```bash
 # Store with HNSW indexing
-mcp__claude-flow__memory_usage --action="store" --namespace="patterns" --key="auth:jwt-strategy" --value='{"pattern": "jwt-auth", "embedding": [...]}' --ttl=604800000
+mcp__moflo__memory_usage --action="store" --namespace="patterns" --key="auth:jwt-strategy" --value='{"pattern": "jwt-auth", "embedding": [...]}' --ttl=604800000
 
 # Semantic search with HNSW
-mcp__claude-flow__memory_search --pattern="authentication strategies" --namespace="patterns" --limit=10
+mcp__moflo__memory_search --pattern="authentication strategies" --namespace="patterns" --limit=10
 
 # Namespace management
-mcp__claude-flow__memory_namespace --namespace="project:myapp" --action="create"
+mcp__moflo__memory_namespace --namespace="project:myapp" --action="create"
 
 # Memory analytics
-mcp__claude-flow__memory_analytics --timeframe="7d"
+mcp__moflo__memory_analytics --timeframe="7d"
 
 # Memory compression
-mcp__claude-flow__memory_compress --namespace="default"
+mcp__moflo__memory_compress --namespace="default"
 
 # Cross-session persistence
-mcp__claude-flow__memory_persist --sessionId="session-12345"
+mcp__moflo__memory_persist --sessionId="session-12345"
 
 # Memory backup
-mcp__claude-flow__memory_backup --path="./backups/memory-$(date +%Y%m%d).bak"
+mcp__moflo__memory_backup --path="./backups/memory-$(date +%Y%m%d).bak"
 
 # Distributed sync
-mcp__claude-flow__memory_sync --target="peer-agent-1"
+mcp__moflo__memory_sync --target="peer-agent-1"
 ```
 
 ### CLI Commands

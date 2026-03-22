@@ -126,7 +126,7 @@ When PII is detected, suggest:
 
 ```javascript
 // Report PII findings to swarm
-mcp__claude-flow__memory_usage({
+mcp__moflo__memory_usage({
   action: "store",
   namespace: "pii_findings",
   key: `pii-${Date.now()}`,

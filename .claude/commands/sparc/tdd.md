@@ -7,7 +7,7 @@ Test-driven development with TodoWrite planning and comprehensive testing.
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "tdd",
   task_description: "shopping cart feature",
   options: {

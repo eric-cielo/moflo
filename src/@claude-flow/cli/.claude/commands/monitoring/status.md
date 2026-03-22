@@ -5,7 +5,7 @@
 
 ## MCP Tool Usage in Claude Code
 
-**Tool:** `mcp__claude-flow__swarm_status`
+**Tool:** `mcp__moflo__swarm_status`
 
 ## Parameters
 ```json
@@ -28,10 +28,10 @@ Shows:
 ## Example Usage
 
 **In Claude Code:**
-1. Check swarm status: Use tool `mcp__claude-flow__swarm_status`
-2. Monitor in real-time: Use tool `mcp__claude-flow__swarm_monitor` with parameters `{"interval": 1000}`
-3. Get agent metrics: Use tool `mcp__claude-flow__agent_metrics` with parameters `{"agentId": "agent-123"}`
-4. Health check: Use tool `mcp__claude-flow__health_check` with parameters `{"components": ["swarm", "memory", "neural"]}`
+1. Check swarm status: Use tool `mcp__moflo__swarm_status`
+2. Monitor in real-time: Use tool `mcp__moflo__swarm_monitor` with parameters `{"interval": 1000}`
+3. Get agent metrics: Use tool `mcp__moflo__agent_metrics` with parameters `{"agentId": "agent-123"}`
+4. Health check: Use tool `mcp__moflo__health_check` with parameters `{"components": ["swarm", "memory", "neural"]}`
 
 ## Important Reminders
 - ✅ This tool provides coordination and structure

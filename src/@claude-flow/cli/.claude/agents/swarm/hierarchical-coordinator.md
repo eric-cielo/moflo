@@ -15,19 +15,19 @@ hooks:
   pre: |
     echo "👑 Hierarchical Coordinator initializing swarm: $TASK"
     # Initialize swarm topology
-    mcp__claude-flow__swarm_init hierarchical --maxAgents=10 --strategy=adaptive
+    mcp__moflo__swarm_init hierarchical --maxAgents=10 --strategy=adaptive
     # Store coordination state
-    mcp__claude-flow__memory_usage store "swarm:hierarchy:${TASK_ID}" "$(date): Hierarchical coordination started" --namespace=swarm
+    mcp__moflo__memory_usage store "swarm:hierarchy:${TASK_ID}" "$(date): Hierarchical coordination started" --namespace=swarm
     # Set up monitoring
-    mcp__claude-flow__swarm_monitor --interval=5000 --swarmId="${SWARM_ID}"
+    mcp__moflo__swarm_monitor --interval=5000 --swarmId="${SWARM_ID}"
   post: |
     echo "✨ Hierarchical coordination complete"
     # Generate performance report
-    mcp__claude-flow__performance_report --format=detailed --timeframe=24h
+    mcp__moflo__performance_report --format=detailed --timeframe=24h
     # Store completion metrics
-    mcp__claude-flow__memory_usage store "swarm:hierarchy:${TASK_ID}:complete" "$(date): Task completed with $(mcp__claude-flow__swarm_status | jq '.agents.total') agents"
+    mcp__moflo__memory_usage store "swarm:hierarchy:${TASK_ID}:complete" "$(date): Task completed with $(mcp__moflo__swarm_status | jq '.agents.total') agents"
     # Cleanup resources
-    mcp__claude-flow__coordination_sync --swarmId="${SWARM_ID}"
+    mcp__moflo__coordination_sync --swarmId="${SWARM_ID}"
 ---
 
 # Hierarchical Swarm Coordinator
@@ -69,22 +69,22 @@ WORKERS WORKERS WORKERS WORKERS
 ### Research Workers 🔬
 - **Capabilities**: Information gathering, market research, competitive analysis
 - **Use Cases**: Requirements analysis, technology research, feasibility studies
-- **Spawn Command**: `mcp__claude-flow__agent_spawn researcher --capabilities="research,analysis,information_gathering"`
+- **Spawn Command**: `mcp__moflo__agent_spawn researcher --capabilities="research,analysis,information_gathering"`
 
 ### Code Workers 💻  
 - **Capabilities**: Implementation, code review, testing, documentation
 - **Use Cases**: Feature development, bug fixes, code optimization
-- **Spawn Command**: `mcp__claude-flow__agent_spawn coder --capabilities="code_generation,testing,optimization"`
+- **Spawn Command**: `mcp__moflo__agent_spawn coder --capabilities="code_generation,testing,optimization"`
 
 ### Analyst Workers 📊
 - **Capabilities**: Data analysis, performance monitoring, reporting
 - **Use Cases**: Metrics analysis, performance optimization, reporting
-- **Spawn Command**: `mcp__claude-flow__agent_spawn analyst --capabilities="data_analysis,performance_monitoring,reporting"`
+- **Spawn Command**: `mcp__moflo__agent_spawn analyst --capabilities="data_analysis,performance_monitoring,reporting"`
 
 ### Test Workers 🧪
 - **Capabilities**: Quality assurance, validation, compliance checking
 - **Use Cases**: Testing, validation, quality gates
-- **Spawn Command**: `mcp__claude-flow__agent_spawn tester --capabilities="testing,validation,quality_assurance"`
+- **Spawn Command**: `mcp__moflo__agent_spawn tester --capabilities="testing,validation,quality_assurance"`
 
 ## Coordination Workflow
 
@@ -601,39 +601,39 @@ class LearningHierarchicalCoordinator extends HierarchicalCoordinator {
 ### Swarm Management
 ```bash
 # Initialize hierarchical swarm
-mcp__claude-flow__swarm_init hierarchical --maxAgents=10 --strategy=centralized
+mcp__moflo__swarm_init hierarchical --maxAgents=10 --strategy=centralized
 
 # Spawn specialized workers
-mcp__claude-flow__agent_spawn researcher --capabilities="research,analysis"
-mcp__claude-flow__agent_spawn coder --capabilities="implementation,testing"
-mcp__claude-flow__agent_spawn analyst --capabilities="data_analysis,reporting"
+mcp__moflo__agent_spawn researcher --capabilities="research,analysis"
+mcp__moflo__agent_spawn coder --capabilities="implementation,testing"
+mcp__moflo__agent_spawn analyst --capabilities="data_analysis,reporting"
 
 # Monitor swarm health
-mcp__claude-flow__swarm_monitor --interval=5000
+mcp__moflo__swarm_monitor --interval=5000
 ```
 
 ### Task Orchestration
 ```bash
 # Coordinate complex workflows
-mcp__claude-flow__task_orchestrate "Build authentication service" --strategy=sequential --priority=high
+mcp__moflo__task_orchestrate "Build authentication service" --strategy=sequential --priority=high
 
 # Load balance across workers
-mcp__claude-flow__load_balance --tasks="auth_api,auth_tests,auth_docs" --strategy=capability_based
+mcp__moflo__load_balance --tasks="auth_api,auth_tests,auth_docs" --strategy=capability_based
 
 # Sync coordination state
-mcp__claude-flow__coordination_sync --namespace=hierarchy
+mcp__moflo__coordination_sync --namespace=hierarchy
 ```
 
 ### Performance & Analytics
 ```bash
 # Generate performance reports
-mcp__claude-flow__performance_report --format=detailed --timeframe=24h
+mcp__moflo__performance_report --format=detailed --timeframe=24h
 
 # Analyze bottlenecks
-mcp__claude-flow__bottleneck_analyze --component=coordination --metrics="throughput,latency,success_rate"
+mcp__moflo__bottleneck_analyze --component=coordination --metrics="throughput,latency,success_rate"
 
 # Monitor resource usage
-mcp__claude-flow__metrics_collect --components="agents,tasks,coordination"
+mcp__moflo__metrics_collect --components="agents,tasks,coordination"
 ```
 
 ## Decision Making Framework

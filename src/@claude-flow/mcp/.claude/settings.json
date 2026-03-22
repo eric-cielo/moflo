@@ -134,7 +134,7 @@
     "allow": [
       "Bash(npx claude-flow:*)",
       "Bash(npx @claude-flow/cli:*)",
-      "mcp__claude-flow__:*"
+      "mcp__moflo__:*"
     ],
     "deny": []
   },

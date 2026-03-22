@@ -845,6 +845,9 @@ async function writeSettings(
 
 /**
  * Write .mcp.json
+ *
+ * If an existing config contains the legacy 'claude-flow' server key, prompt
+ * the user to migrate it to 'moflo', keep both side-by-side, or leave as-is.
  */
 async function writeMCPConfig(
   targetDir: string,
@@ -853,9 +856,63 @@ async function writeMCPConfig(
 ): Promise<void> {
   const mcpPath = path.join(targetDir, '.mcp.json');
 
-  if (fs.existsSync(mcpPath) && !options.force) {
-    result.skipped.push('.mcp.json');
-    return;
+  if (fs.existsSync(mcpPath)) {
+    const existing = JSON.parse(fs.readFileSync(mcpPath, 'utf-8'));
+    const servers = existing?.mcpServers ?? {};
+    const hasLegacy = 'claude-flow' in servers;
+    const hasMoflo = 'moflo' in servers;
+
+    if (hasLegacy && !hasMoflo) {
+      // Interactive mode: prompt the user
+      if (process.stdin.isTTY && !options.force) {
+        const { select } = await import('../prompt.js');
+        const action = await select<'migrate' | 'side-by-side' | 'skip'>({
+          message: "Found existing 'claude-flow' MCP server. How should we handle it?",
+          options: [
+            { value: 'migrate', label: 'Migrate to moflo', hint: 'Rename claude-flow → moflo (recommended)' },
+            { value: 'side-by-side', label: 'Keep both', hint: 'Add moflo alongside existing claude-flow' },
+            { value: 'skip', label: 'Skip', hint: 'Leave .mcp.json unchanged' },
+          ],
+          default: 'migrate',
+        });
+
+        if (action === 'skip') {
+          result.skipped.push('.mcp.json');
+          return;
+        }
+
+        if (action === 'migrate') {
+          servers['moflo'] = servers['claude-flow'];
+          delete servers['claude-flow'];
+          existing.mcpServers = servers;
+          fs.writeFileSync(mcpPath, JSON.stringify(existing, null, 2), 'utf-8');
+          result.created.files.push('.mcp.json (migrated claude-flow → moflo)');
+          return;
+        }
+
+        // side-by-side: fall through to generate new config and merge
+        const newConfig = JSON.parse(generateMCPJson(options));
+        Object.assign(servers, newConfig.mcpServers ?? {});
+        existing.mcpServers = servers;
+        fs.writeFileSync(mcpPath, JSON.stringify(existing, null, 2), 'utf-8');
+        result.created.files.push('.mcp.json (added moflo alongside claude-flow)');
+        return;
+      }
+
+      // Non-interactive (CI/pipe): auto-migrate silently
+      servers['moflo'] = servers['claude-flow'];
+      delete servers['claude-flow'];
+      existing.mcpServers = servers;
+      fs.writeFileSync(mcpPath, JSON.stringify(existing, null, 2), 'utf-8');
+      result.created.files.push('.mcp.json (auto-migrated claude-flow → moflo)');
+      return;
+    }
+
+    // Already has moflo or no legacy key — skip unless forced
+    if (!options.force) {
+      result.skipped.push('.mcp.json');
+      return;
+    }
   }
 
   const content = generateMCPJson(options);
@@ -1860,7 +1917,7 @@ npx moflo hive-mind consensus --propose "task"
 ### MCP Server Setup
 \`\`\`bash
 # Add Claude Flow MCP
-claude mcp add claude-flow -- npx -y moflo
+claude mcp add moflo -- npx -y moflo
 
 # Optional servers
 claude mcp add ruv-swarm -- npx -y ruv-swarm mcp start

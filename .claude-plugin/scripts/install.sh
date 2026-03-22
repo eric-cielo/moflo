@@ -135,15 +135,15 @@ if [ "$INSTALL_TYPE" = "1" ] || [ "$INSTALL_TYPE" = "4" ]; then
         cat > "$SETTINGS_FILE" << 'SETTINGS_EOF'
 {
   "mcpServers": {
-    "claude-flow": {
+    "moflo": {
       "command": "npx",
-      "args": ["claude-flow@alpha", "mcp", "start"],
-      "description": "Core Claude Flow MCP server with 40+ orchestration tools"
+      "args": ["moflo", "mcp", "start"],
+      "description": "Core MoFlo MCP server with 40+ orchestration tools"
     }
   }
 }
 SETTINGS_EOF
-        success "Created settings.json with Claude Flow MCP server"
+        success "Created settings.json with MoFlo MCP server"
     else
         info "Settings file exists. Please manually add MCP servers:"
         echo ""
@@ -152,9 +152,9 @@ Add to ~/.claude/settings.json:
 
 {
   "mcpServers": {
-    "claude-flow": {
+    "moflo": {
       "command": "npx",
-      "args": ["claude-flow@alpha", "mcp", "start"]
+      "args": ["moflo", "mcp", "start"]
     },
     "ruv-swarm": {
       "command": "npx",
@@ -175,9 +175,9 @@ MCP_INSTRUCTIONS
     INSTALL_MCP=${INSTALL_MCP:-y}
 
     if [ "$INSTALL_MCP" = "y" ]; then
-        info "Installing claude-flow MCP server..."
-        npx claude-flow@alpha --version 2>/dev/null || npm install -g claude-flow@alpha
-        success "Claude Flow MCP server installed"
+        info "Installing moflo MCP server..."
+        npx moflo --version 2>/dev/null || npm install -g moflo
+        success "MoFlo MCP server installed"
 
         read -p "Install optional ruv-swarm MCP? (y/n) [n]: " INSTALL_RUV
         if [ "$INSTALL_RUV" = "y" ]; then

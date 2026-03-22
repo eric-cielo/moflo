@@ -190,7 +190,7 @@ async function checkMcpServers(): Promise<HealthCheck> {
         const content = JSON.parse(readFileSync(configPath, 'utf8'));
         const servers = content.mcpServers || content.servers || {};
         const count = Object.keys(servers).length;
-        const hasClaudeFlow = 'claude-flow' in servers || 'claude-flow_alpha' in servers || 'ruflo' in servers || 'ruflo_alpha' in servers;
+        const hasClaudeFlow = 'moflo' in servers || 'claude-flow' in servers || 'claude-flow_alpha' in servers || 'ruflo' in servers || 'ruflo_alpha' in servers;
         if (hasClaudeFlow) {
           return { name: 'MCP Servers', status: 'pass', message: `${count} servers (flo configured)` };
         } else {
@@ -202,7 +202,7 @@ async function checkMcpServers(): Promise<HealthCheck> {
     }
   }
 
-  return { name: 'MCP Servers', status: 'warn', message: 'No MCP config found', fix: 'claude mcp add claude-flow npx moflo mcp start' };
+  return { name: 'MCP Servers', status: 'warn', message: 'No MCP config found', fix: 'claude mcp add moflo npx moflo mcp start' };
 }
 
 // Check disk space (async with proper env inheritance)
@@ -551,7 +551,7 @@ async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       return runFixCommand('npx moflo daemon start');
     },
     'MCP Servers': async () => {
-      return runFixCommand('claude mcp add claude-flow -- npx -y moflo mcp start');
+      return runFixCommand('claude mcp add moflo -- npx -y moflo mcp start');
     },
     'Claude Code CLI': async () => {
       return installClaudeCode();

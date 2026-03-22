@@ -274,7 +274,7 @@
     "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/statusline.cjs\""
   },
   "mcpServers": {
-    "claude-flow": {
+    "moflo": {
       "command": "node",
       "args": [
         "bin/cli.js",
@@ -284,7 +284,7 @@
     }
   },
   "enabledMcpjsonServers": [
-    "claude-flow",
+    "moflo",
     "ruv-swarm"
   ]
 }

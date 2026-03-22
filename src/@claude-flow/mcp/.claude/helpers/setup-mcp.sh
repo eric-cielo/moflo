@@ -12,7 +12,7 @@ fi
 
 # Add MCP server
 echo "📦 Adding Claude Flow MCP server..."
-claude mcp add claude-flow npx claude-flow mcp start
+claude mcp add moflo npx moflo mcp start
 
 echo "✅ MCP server setup complete!"
-echo "🎯 You can now use mcp__claude-flow__ tools in Claude Code"
+echo "🎯 You can now use mcp__moflo__ tools in Claude Code"

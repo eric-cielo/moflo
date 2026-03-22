@@ -16,7 +16,7 @@ Multi-package synchronization and version alignment with ruv-swarm coordination 
 - `mcp__github__get_file_contents`
 - `mcp__github__create_pull_request`
 - `mcp__github__search_repositories`
-- `mcp__claude-flow__*` (all swarm coordination tools)
+- `mcp__moflo__*` (all swarm coordination tools)
 - `TodoWrite`, `TodoRead`, `Task`, `Bash`, `Read`, `Write`, `Edit`, `MultiEdit`
 
 ## Usage Patterns
@@ -24,11 +24,11 @@ Multi-package synchronization and version alignment with ruv-swarm coordination 
 ### 1. Synchronize Package Dependencies
 ```javascript
 // Initialize sync coordination swarm
-mcp__claude-flow__swarm_init { topology: "hierarchical", maxAgents: 5 }
-mcp__claude-flow__agent_spawn { type: "coordinator", name: "Sync Coordinator" }
-mcp__claude-flow__agent_spawn { type: "analyst", name: "Dependency Analyzer" }
-mcp__claude-flow__agent_spawn { type: "coder", name: "Integration Developer" }
-mcp__claude-flow__agent_spawn { type: "tester", name: "Validation Engineer" }
+mcp__moflo__swarm_init { topology: "hierarchical", maxAgents: 5 }
+mcp__moflo__agent_spawn { type: "coordinator", name: "Sync Coordinator" }
+mcp__moflo__agent_spawn { type: "analyst", name: "Dependency Analyzer" }
+mcp__moflo__agent_spawn { type: "coder", name: "Integration Developer" }
+mcp__moflo__agent_spawn { type: "tester", name: "Validation Engineer" }
 
 // Analyze current package states
 Read("/workspaces/ruv-FANN/claude-code-flow/claude-code-flow/package.json")
@@ -47,7 +47,7 @@ Bash(`gh api repos/:owner/:repo/contents/claude-code-flow/claude-code-flow/packa
   -f sha="$(gh api repos/:owner/:repo/contents/claude-code-flow/claude-code-flow/package.json?ref=sync/package-alignment --jq '.sha')")`)
 
 // Orchestrate validation
-mcp__claude-flow__task_orchestrate {
+mcp__moflo__task_orchestrate {
   task: "Validate package synchronization and run integration tests",
   strategy: "parallel",
   priority: "high"
@@ -73,7 +73,7 @@ Bash(`gh api repos/:owner/:repo/contents/claude-code-flow/claude-code-flow/CLAUD
   -f sha="$(gh api repos/:owner/:repo/contents/claude-code-flow/claude-code-flow/CLAUDE.md?ref=sync/documentation --jq '.sha' 2>/dev/null || echo '')")`)
 
 // Store sync state in memory
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "sync/documentation/status",
   value: { timestamp: Date.now(), status: "synchronized", files: ["CLAUDE.md"] }
@@ -147,12 +147,12 @@ This integration uses ruv-swarm agents for:
 ```javascript
 [Single Message - Complete Synchronization]:
   // Initialize comprehensive sync swarm
-  mcp__claude-flow__swarm_init { topology: "mesh", maxAgents: 6 }
-  mcp__claude-flow__agent_spawn { type: "coordinator", name: "Master Sync Coordinator" }
-  mcp__claude-flow__agent_spawn { type: "analyst", name: "Package Analyzer" }
-  mcp__claude-flow__agent_spawn { type: "coder", name: "Integration Coder" }
-  mcp__claude-flow__agent_spawn { type: "tester", name: "Validation Tester" }
-  mcp__claude-flow__agent_spawn { type: "reviewer", name: "Quality Reviewer" }
+  mcp__moflo__swarm_init { topology: "mesh", maxAgents: 6 }
+  mcp__moflo__agent_spawn { type: "coordinator", name: "Master Sync Coordinator" }
+  mcp__moflo__agent_spawn { type: "analyst", name: "Package Analyzer" }
+  mcp__moflo__agent_spawn { type: "coder", name: "Integration Coder" }
+  mcp__moflo__agent_spawn { type: "tester", name: "Validation Tester" }
+  mcp__moflo__agent_spawn { type: "reviewer", name: "Quality Reviewer" }
   
   // Read current state of both packages
   Read("/workspaces/ruv-FANN/claude-code-flow/claude-code-flow/package.json")
@@ -186,7 +186,7 @@ This integration uses ruv-swarm agents for:
   ]}
   
   // Store comprehensive sync state
-  mcp__claude-flow__memory_usage {
+  mcp__moflo__memory_usage {
     action: "store",
     key: "sync/complete/status",
     value: {

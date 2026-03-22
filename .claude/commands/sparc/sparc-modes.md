@@ -34,7 +34,7 @@ SPARC (Specification, Planning, Architecture, Review, Code) is a comprehensive d
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
 // Execute SPARC mode directly
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "<mode>",
   task_description: "<task>",
   options: {
@@ -43,20 +43,20 @@ mcp__claude-flow__sparc_mode {
 }
 
 // Initialize swarm for advanced coordination
-mcp__claude-flow__swarm_init {
+mcp__moflo__swarm_init {
   topology: "hierarchical",
   strategy: "auto",
   maxAgents: 8
 }
 
 // Spawn specialized agents
-mcp__claude-flow__agent_spawn {
+mcp__moflo__agent_spawn {
   type: "<agent-type>",
   capabilities: ["<capability1>", "<capability2>"]
 }
 
 // Monitor execution
-mcp__claude-flow__swarm_monitor {
+mcp__moflo__swarm_monitor {
   swarmId: "current",
   interval: 5000
 }
@@ -93,31 +93,31 @@ npx claude-flow sparc run <mode> "task" --parallel --monitor
 #### Using MCP Tools (Preferred)
 ```javascript
 // 1. Initialize development swarm
-mcp__claude-flow__swarm_init {
+mcp__moflo__swarm_init {
   topology: "hierarchical",
   maxAgents: 12
 }
 
 // 2. Architecture design
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "architect",
   task_description: "design microservices"
 }
 
 // 3. Implementation
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "coder",
   task_description: "implement services"
 }
 
 // 4. Testing
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "tdd",
   task_description: "test all services"
 }
 
 // 5. Review
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "reviewer",
   task_description: "review implementation"
 }
@@ -143,19 +143,19 @@ npx claude-flow sparc run reviewer "review implementation"
 #### Using MCP Tools (Preferred)
 ```javascript
 // 1. Research phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "researcher",
   task_description: "research best practices"
 }
 
 // 2. Innovation
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "innovator",
   task_description: "propose novel solutions"
 }
 
 // 3. Documentation
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "documenter",
   task_description: "document findings"
 }

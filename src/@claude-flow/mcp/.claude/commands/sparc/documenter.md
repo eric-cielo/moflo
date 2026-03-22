@@ -7,7 +7,7 @@ Documentation with batch file operations for comprehensive docs.
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "documenter",
   task_description: "create API documentation",
   options: {
