@@ -96,7 +96,7 @@ if (isMCPMode) {
           id: message.id,
           result: {
             protocolVersion: '2024-11-05',
-            serverInfo: { name: 'claude-flow', version: VERSION },
+            serverInfo: { name: 'moflo', version: VERSION },
             capabilities: {
               tools: { listChanged: true },
               resources: { subscribe: true, listChanged: true },
