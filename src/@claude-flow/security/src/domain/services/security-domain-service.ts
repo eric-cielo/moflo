@@ -234,8 +234,14 @@ export class SecurityDomainService {
    * Sanitize path
    */
   private sanitizePath(path: string): string {
-    return path
-      .replace(/\.\./g, '')
+    // Loop until no traversal patterns remain (prevents ....// → ../ bypass)
+    let result = path;
+    let prev = '';
+    while (result !== prev) {
+      prev = result;
+      result = result.replace(/\.\./g, '');
+    }
+    return result
       .replace(/\/\//g, '/')
       .replace(/^~\//, '')
       .trim();
@@ -289,7 +295,7 @@ export class SecurityDomainService {
       permissions,
       allowedPaths: customPaths ?? ['./src', './tests', './docs'],
       blockedPaths: ['/etc', '/var', '~/', '../'],
-      allowedCommands: ['npm', 'npx', 'node', 'git', 'vitest'],
+      allowedCommands: ['npm', 'node', 'git', 'vitest'],
       blockedCommands: ['rm -rf /', 'dd', 'mkfs', 'format'],
     });
   }

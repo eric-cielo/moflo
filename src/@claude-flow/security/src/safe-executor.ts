@@ -491,7 +491,6 @@ export function createDevelopmentExecutor(): SafeExecutor {
     allowedCommands: [
       'git',
       'npm',
-      'npx',
       'node',
       'tsc',
       'vitest',

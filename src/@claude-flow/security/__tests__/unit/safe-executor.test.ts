@@ -320,7 +320,7 @@ describe('SafeExecutor', () => {
       expect(result).toBe(true);
     });
 
-    it('should allow npx command', () => {
+    it('should block npx command (arbitrary package execution)', () => {
       // Given
       mockValidator.extractCommand.mockReturnValue('npx');
 
@@ -328,7 +328,7 @@ describe('SafeExecutor', () => {
       const result = safeExecutor.isCommandAllowed('npx');
 
       // Then
-      expect(result).toBe(true);
+      expect(result).toBe(false);
     });
 
     it('should allow node command', () => {
