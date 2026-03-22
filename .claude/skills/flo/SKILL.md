@@ -305,7 +305,7 @@ WORKFLOW STOPS HERE until tests pass. No shortcuts. No exceptions.
 
 ### 4.1 Write and Run Tests
 Write unit, integration, and E2E tests as appropriate for the change type.
-Use the project's existing test runner and patterns.
+Follow the project's established test style, runner, and patterns. If no existing tests or test guidance is present, choose the best options for the project's language and stack, taking compatibility with existing dependencies into account.
 
 ### 4.2 Test Auto-Fix Loop
 If any tests fail, enter the auto-fix loop (max 3 retries OR 10 minutes):
