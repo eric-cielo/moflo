@@ -122,7 +122,7 @@ const handlers = {
     console.log('[OK] Edit recorded');
   },
 
-  'session-restore': () => {
+  'session-restore': async () => {
     if (session) {
       var existing = session.restore && session.restore();
       if (!existing) {
@@ -142,38 +142,30 @@ const handlers = {
     }
 
     // Auto-index guidance, code map, and patterns on session start
+    // Delegates to shared ProcessManager for dedup + PID tracking + cleanup.
     try {
       var projectDir = path.resolve(path.dirname(helpersDir), '..');
-      var cp = require('child_process');
-      var pidFile = path.join(projectDir, '.claude-flow', 'background-pids.json');
-      var lockFile = path.join(projectDir, '.claude-flow', 'session-restore.lock');
 
-      // ── Kill stale background processes tracked from previous session-restore ──
-      try {
-        if (fs.existsSync(pidFile)) {
-          var stalePids = JSON.parse(fs.readFileSync(pidFile, 'utf-8'));
-          for (var i = 0; i < stalePids.length; i++) {
-            try { process.kill(stalePids[i].pid, 0); } catch (e) { continue; }
-            try { process.kill(stalePids[i].pid, 'SIGTERM'); } catch (e) { /* already gone */ }
-          }
-          fs.unlinkSync(pidFile);
-        }
-      } catch (e) { /* non-fatal: best-effort cleanup */ }
+      // Dynamic import of ESM process-manager from CJS context
+      var pmMod = await import(
+        'file:///' + path.join(projectDir, 'node_modules', 'moflo', 'bin', 'lib', 'process-manager.mjs').replace(/\\/g, '/')
+      ).catch(function() {
+        // Fallback: try local bin/ (for moflo repo itself)
+        return import(
+          'file:///' + path.join(projectDir, 'bin', 'lib', 'process-manager.mjs').replace(/\\/g, '/')
+        );
+      }).catch(function() { return null; });
 
-      // ── Guard: prevent concurrent/rapid session-restore from spawning duplicate processes ──
-      // Uses a lock file with a timestamp. If the lock is < 30s old, skip spawning entirely.
-      // This is the primary zombie prevention: only one session-restore per 30s window can spawn.
-      try {
-        if (fs.existsSync(lockFile)) {
-          var lockAge = Date.now() - parseInt(fs.readFileSync(lockFile, 'utf-8'), 10);
-          if (lockAge < 30000) {
-            return; // Another session-restore already spawned background tasks recently
-          }
-        }
-        var lockDir = path.dirname(lockFile);
-        if (!fs.existsSync(lockDir)) fs.mkdirSync(lockDir, { recursive: true });
-        fs.writeFileSync(lockFile, String(Date.now()));
-      } catch (e) { /* non-fatal: proceed without lock */ }
+      if (!pmMod) return; // No process manager available
+
+      var pm = pmMod.createProcessManager(projectDir);
+
+      // Kill stale background processes from previous session
+      pm.killAll();
+
+      // Guard: prevent concurrent session-restores from spawning duplicates
+      if (pm.isLocked()) return;
+      pm.acquireLock();
 
       // Read moflo.yaml auto_index flags (default: both true)
       var autoGuidance = true;
@@ -212,33 +204,16 @@ const handlers = {
         return null;
       }
 
-      // Track PIDs of background processes so next session can clean them up
-      var trackedPids = [];
-
-      function spawnBackground(script, label, extraArgs) {
-        var args = [script].concat(extraArgs || []);
-        var child = cp.spawn('node', args, {
-          stdio: 'ignore',
-          cwd: projectDir,
-          detached: true,
-          windowsHide: true
-        });
-        if (child.pid) {
-          trackedPids.push({ pid: child.pid, script: label, startedAt: new Date().toISOString() });
-        }
-        child.unref();
-      }
-
       // 1. Index guidance docs (with embeddings for semantic search)
       if (autoGuidance) {
         var guidanceScript = findMofloScript('index-guidance.mjs');
-        if (guidanceScript) spawnBackground(guidanceScript, 'index-guidance');
+        if (guidanceScript) pm.spawn('node', [guidanceScript], 'index-guidance');
       }
 
       // 2. Generate code map (structural index of source files)
       if (autoCodeMap) {
         var codeMapScript = findMofloScript('generate-code-map.mjs');
-        if (codeMapScript) spawnBackground(codeMapScript, 'generate-code-map');
+        if (codeMapScript) pm.spawn('node', [codeMapScript], 'generate-code-map');
       }
 
       // 3. Start learning service (pattern research on codebase)
@@ -252,48 +227,27 @@ const handlers = {
         var nmLearn = path.join(projectDir, 'node_modules', 'moflo', '.claude', 'helpers', 'learning-service.mjs');
         if (fs.existsSync(nmLearn)) learnScript = nmLearn;
       }
-      if (learnScript) spawnBackground(learnScript, 'learning-service');
-
-      // Persist tracked PIDs — APPEND to existing file to avoid losing concurrent PIDs
-      if (trackedPids.length > 0) {
-        try {
-          var pidDir = path.dirname(pidFile);
-          if (!fs.existsSync(pidDir)) fs.mkdirSync(pidDir, { recursive: true });
-          var existing = [];
-          if (fs.existsSync(pidFile)) {
-            try { existing = JSON.parse(fs.readFileSync(pidFile, 'utf-8')); } catch (e) { existing = []; }
-          }
-          // Prune dead PIDs from existing list before appending
-          var alive = [];
-          for (var ep = 0; ep < existing.length; ep++) {
-            try { process.kill(existing[ep].pid, 0); alive.push(existing[ep]); } catch (e) { /* dead, skip */ }
-          }
-          fs.writeFileSync(pidFile, JSON.stringify(alive.concat(trackedPids)));
-        } catch (e) { /* non-fatal */ }
-      }
+      if (learnScript) pm.spawn('node', [learnScript], 'learning-service');
 
     } catch (e) { /* non-fatal: session-start indexing is best-effort */ }
   },
 
   'session-end': () => {
-    // Kill all tracked background processes on session end
+    // Kill all tracked background processes using shared sync helper.
+    // Must be SYNCHRONOUS — process.exit(0) fires in finally{} so async would never resolve.
     var projectDir = path.resolve(path.dirname(helpersDir), '..');
-    var pidFile = path.join(projectDir, '.claude-flow', 'background-pids.json');
-    var lockFile = path.join(projectDir, '.claude-flow', 'session-restore.lock');
     try {
-      if (fs.existsSync(pidFile)) {
-        var pids = JSON.parse(fs.readFileSync(pidFile, 'utf-8'));
-        var killed = 0;
-        for (var i = 0; i < pids.length; i++) {
-          try { process.kill(pids[i].pid, 0); } catch (e) { continue; }
-          try { process.kill(pids[i].pid, 'SIGTERM'); killed++; } catch (e) { /* ok */ }
-        }
-        fs.unlinkSync(pidFile);
-        if (killed > 0) console.log('[CLEANUP] Killed ' + killed + ' background process(es)');
-      }
-    } catch (e) { /* non-fatal */ }
-    // Remove session-restore lock
-    try { if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile); } catch (e) { /* ok */ }
+      var cleanup = require(path.join(projectDir, 'node_modules', 'moflo', 'bin', 'lib', 'registry-cleanup.cjs'));
+      var killed = cleanup.killTrackedSync(projectDir);
+      if (killed > 0) console.log('[CLEANUP] Killed ' + killed + ' background process(es)');
+    } catch (e) {
+      // Fallback: try local bin/ (for moflo repo itself)
+      try {
+        var cleanup2 = require(path.join(projectDir, 'bin', 'lib', 'registry-cleanup.cjs'));
+        var killed2 = cleanup2.killTrackedSync(projectDir);
+        if (killed2 > 0) console.log('[CLEANUP] Killed ' + killed2 + ' background process(es)');
+      } catch (e2) { /* non-fatal */ }
+    }
 
     if (intelligence && intelligence.consolidate) {
       try {
@@ -368,7 +322,7 @@ const handlers = {
 
 if (command && handlers[command]) {
     try {
-      handlers[command]();
+      await handlers[command]();
     } catch (e) {
       console.log('[WARN] Hook ' + command + ' encountered an error: ' + e.message);
     }

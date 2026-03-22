@@ -7,7 +7,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
-import { existsSync, readFileSync, statSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, statSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync, exec } from 'child_process';
@@ -655,6 +655,37 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+// Fast path: kill processes tracked in the shared ProcessManager registry.
+// This avoids the expensive OS-level process scan for known background tasks.
+function killTrackedProcesses(): number {
+  const registryFile = join(process.cwd(), '.claude-flow', 'background-pids.json');
+  const lockFile = join(process.cwd(), '.claude-flow', 'spawn.lock');
+  let killed = 0;
+  try {
+    if (existsSync(registryFile)) {
+      const entries = JSON.parse(readFileSync(registryFile, 'utf-8'));
+      for (const entry of entries) {
+        if (!isProcessAlive(entry.pid)) continue;
+        try {
+          if (process.platform === 'win32') {
+            execSync(`taskkill /F /PID ${entry.pid}`, { timeout: 5000, windowsHide: true });
+          } else {
+            process.kill(entry.pid, 'SIGKILL');
+          }
+          killed++;
+        } catch { /* already gone */ }
+      }
+      // Clear registry
+      writeFileSync(registryFile, '[]');
+    }
+  } catch { /* non-fatal */ }
+  // Remove spawn lock
+  try {
+    if (existsSync(lockFile)) unlinkSync(lockFile);
+  } catch { /* ok */ }
+  return killed;
+}
+
 // Find and optionally kill orphaned moflo/claude-flow node processes.
 // A process is only "orphaned" if its parent is no longer alive — meaning
 // nothing will clean it up. MCP servers spawned by a live Claude Code session
@@ -809,13 +840,21 @@ export const doctorCommand: Command = {
       output.writeln(output.bold('Zombie Process Scan'));
       output.writeln();
 
-      // First scan without killing to show what would be killed
+      // Fast path: kill tracked processes from the shared registry first
+      const registryKilled = killTrackedProcesses();
+      if (registryKilled > 0) {
+        output.writeln(output.success(`  Killed ${registryKilled} tracked background process(es) from registry`));
+      }
+
+      // Slow path: OS-level scan for any remaining orphans
       const scan = await findZombieProcesses(false);
 
       if (scan.found === 0) {
-        output.writeln(output.success('  No orphaned moflo processes found'));
+        if (registryKilled === 0) {
+          output.writeln(output.success('  No orphaned moflo processes found'));
+        }
       } else {
-        output.writeln(output.warning(`  Found ${scan.found} orphaned process(es): PIDs ${scan.pids.join(', ')}`));
+        output.writeln(output.warning(`  Found ${scan.found} additional orphaned process(es): PIDs ${scan.pids.join(', ')}`));
 
         // Kill them
         const result = await findZombieProcesses(true);
