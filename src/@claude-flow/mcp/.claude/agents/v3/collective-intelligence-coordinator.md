@@ -19,29 +19,29 @@ hooks:
   pre: |
     echo "🧠 Collective Intelligence Coordinator initializing hive-mind: $TASK"
     # Initialize hierarchical-mesh topology for collective intelligence
-    mcp__claude-flow__swarm_init hierarchical-mesh --maxAgents=15 --strategy=adaptive
+    mcp__moflo__swarm_init hierarchical-mesh --maxAgents=15 --strategy=adaptive
     # Set up CRDT synchronization layer
-    mcp__claude-flow__memory_usage store "collective:crdt:${TASK_ID}" "$(date): CRDT sync initialized" --namespace=collective
+    mcp__moflo__memory_usage store "collective:crdt:${TASK_ID}" "$(date): CRDT sync initialized" --namespace=collective
     # Initialize Byzantine consensus protocol
-    mcp__claude-flow__daa_consensus --agents="all" --proposal="{\"protocol\":\"byzantine\",\"threshold\":0.67,\"fault_tolerance\":0.33}"
+    mcp__moflo__daa_consensus --agents="all" --proposal="{\"protocol\":\"byzantine\",\"threshold\":0.67,\"fault_tolerance\":0.33}"
     # Begin neural pattern analysis for collective cognition
-    mcp__claude-flow__neural_patterns analyze --operation="collective_init" --metadata="{\"task\":\"$TASK\",\"topology\":\"hierarchical-mesh\"}"
+    mcp__moflo__neural_patterns analyze --operation="collective_init" --metadata="{\"task\":\"$TASK\",\"topology\":\"hierarchical-mesh\"}"
     # Train attention mechanisms for coordination
-    mcp__claude-flow__neural_train coordination --training_data="collective_intelligence_patterns" --epochs=30
+    mcp__moflo__neural_train coordination --training_data="collective_intelligence_patterns" --epochs=30
     # Set up real-time monitoring
-    mcp__claude-flow__swarm_monitor --interval=3000 --swarmId="${SWARM_ID}"
+    mcp__moflo__swarm_monitor --interval=3000 --swarmId="${SWARM_ID}"
   post: |
     echo "✨ Collective intelligence coordination complete - consensus achieved"
     # Store collective decision metrics
-    mcp__claude-flow__memory_usage store "collective:decision:${TASK_ID}" "$(date): Consensus decision: $(mcp__claude-flow__swarm_status | jq -r '.consensus')" --namespace=collective
+    mcp__moflo__memory_usage store "collective:decision:${TASK_ID}" "$(date): Consensus decision: $(mcp__moflo__swarm_status | jq -r '.consensus')" --namespace=collective
     # Generate performance report
-    mcp__claude-flow__performance_report --format=detailed --timeframe=24h
+    mcp__moflo__performance_report --format=detailed --timeframe=24h
     # Learn from collective patterns
-    mcp__claude-flow__neural_patterns learn --operation="collective_coordination" --outcome="consensus_achieved" --metadata="{\"agents\":\"$(mcp__claude-flow__swarm_status | jq '.agents.total')\",\"consensus_strength\":\"$(mcp__claude-flow__swarm_status | jq '.consensus.strength')\"}"
+    mcp__moflo__neural_patterns learn --operation="collective_coordination" --outcome="consensus_achieved" --metadata="{\"agents\":\"$(mcp__moflo__swarm_status | jq '.agents.total')\",\"consensus_strength\":\"$(mcp__moflo__swarm_status | jq '.consensus.strength')\"}"
     # Save learned model
-    mcp__claude-flow__model_save "collective-intelligence-${TASK_ID}" "/tmp/collective-model-$(date +%s).json"
+    mcp__moflo__model_save "collective-intelligence-${TASK_ID}" "/tmp/collective-model-$(date +%s).json"
     # Synchronize final CRDT state
-    mcp__claude-flow__coordination_sync --swarmId="${SWARM_ID}"
+    mcp__moflo__coordination_sync --swarmId="${SWARM_ID}"
 ---
 
 # Collective Intelligence Coordinator
@@ -800,54 +800,54 @@ class LearningCollectiveCoordinator extends CollectiveIntelligenceCoordinator {
 
 ```bash
 # Initialize hive-mind topology
-mcp__claude-flow__swarm_init hierarchical-mesh --maxAgents=15 --strategy=adaptive
+mcp__moflo__swarm_init hierarchical-mesh --maxAgents=15 --strategy=adaptive
 
 # Byzantine consensus protocol
-mcp__claude-flow__daa_consensus --agents="all" --proposal="{\"task\":\"auth_design\",\"type\":\"collective_vote\"}"
+mcp__moflo__daa_consensus --agents="all" --proposal="{\"task\":\"auth_design\",\"type\":\"collective_vote\"}"
 
 # CRDT synchronization
-mcp__claude-flow__memory_sync --target="all_agents" --crdt_type="OR_SET"
+mcp__moflo__memory_sync --target="all_agents" --crdt_type="OR_SET"
 
 # Attention-based coordination
-mcp__claude-flow__neural_patterns analyze --operation="collective_attention" --metadata="{\"mechanism\":\"multi-head\",\"heads\":8}"
+mcp__moflo__neural_patterns analyze --operation="collective_attention" --metadata="{\"mechanism\":\"multi-head\",\"heads\":8}"
 
 # Knowledge aggregation
-mcp__claude-flow__memory_usage store "collective:knowledge:${TASK_ID}" "$(date): Knowledge synthesis complete" --namespace=collective
+mcp__moflo__memory_usage store "collective:knowledge:${TASK_ID}" "$(date): Knowledge synthesis complete" --namespace=collective
 
 # Monitor collective health
-mcp__claude-flow__swarm_monitor --interval=3000 --metrics="consensus,byzantine,attention"
+mcp__moflo__swarm_monitor --interval=3000 --metrics="consensus,byzantine,attention"
 ```
 
 ### Memory Synchronization Commands
 
 ```bash
 # Initialize CRDT layer
-mcp__claude-flow__memory_usage store "crdt:state:init" "{\"type\":\"OR_SET\",\"nodes\":[]}" --namespace=crdt
+mcp__moflo__memory_usage store "crdt:state:init" "{\"type\":\"OR_SET\",\"nodes\":[]}" --namespace=crdt
 
 # Propagate deltas
-mcp__claude-flow__coordination_sync --swarmId="${SWARM_ID}"
+mcp__moflo__coordination_sync --swarmId="${SWARM_ID}"
 
 # Verify convergence
-mcp__claude-flow__health_check --components="crdt,consensus,memory"
+mcp__moflo__health_check --components="crdt,consensus,memory"
 
 # Backup collective state
-mcp__claude-flow__memory_backup --path="/tmp/collective-backup-$(date +%s).json"
+mcp__moflo__memory_backup --path="/tmp/collective-backup-$(date +%s).json"
 ```
 
 ### Neural Learning Commands
 
 ```bash
 # Train collective patterns
-mcp__claude-flow__neural_train coordination --training_data="collective_intelligence_history" --epochs=50
+mcp__moflo__neural_train coordination --training_data="collective_intelligence_history" --epochs=50
 
 # Pattern recognition
-mcp__claude-flow__neural_patterns analyze --operation="emergent_behavior" --metadata="{\"agents\":10,\"iterations\":5}"
+mcp__moflo__neural_patterns analyze --operation="emergent_behavior" --metadata="{\"agents\":10,\"iterations\":5}"
 
 # Predictive consensus
-mcp__claude-flow__neural_predict --modelId="collective-coordinator" --input="{\"task\":\"complex_decision\",\"agents\":8}"
+mcp__moflo__neural_predict --modelId="collective-coordinator" --input="{\"task\":\"complex_decision\",\"agents\":8}"
 
 # Learn from outcomes
-mcp__claude-flow__neural_patterns learn --operation="consensus_achieved" --outcome="success" --metadata="{\"confidence\":0.92}"
+mcp__moflo__neural_patterns learn --operation="consensus_achieved" --outcome="success" --metadata="{\"confidence\":0.92}"
 ```
 
 ## Consensus Mechanisms
@@ -959,13 +959,13 @@ def select_topology(task_characteristics):
 
 ```bash
 # Collective health check
-mcp__claude-flow__health_check --components="collective,consensus,crdt,attention"
+mcp__moflo__health_check --components="collective,consensus,crdt,attention"
 
 # Performance report
-mcp__claude-flow__performance_report --format=detailed --timeframe=24h
+mcp__moflo__performance_report --format=detailed --timeframe=24h
 
 # Bottleneck analysis
-mcp__claude-flow__bottleneck_analyze --component="collective" --metrics="latency,throughput,accuracy"
+mcp__moflo__bottleneck_analyze --component="collective" --metrics="latency,throughput,accuracy"
 ```
 
 ## Best Practices

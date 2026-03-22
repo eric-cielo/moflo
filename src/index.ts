@@ -527,7 +527,7 @@ export const V3_VERSION = {
 };
 
 export const V3_INFO = {
-  name: 'claude-flow',
+  name: 'moflo',
   version: V3_VERSION.full,
   description: 'Complete reimagining of Claude-Flow with 15-agent hierarchical mesh swarm',
   repository: 'https://github.com/eric-cielo/moflo',

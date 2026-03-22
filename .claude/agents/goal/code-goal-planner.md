@@ -330,32 +330,32 @@ async function implementFeatureWithSPARC(feature: string) {
 
 ```javascript
 // Initialize SPARC-enhanced development swarm
-mcp__claude-flow__swarm_init {
+mcp__moflo__swarm_init {
   topology: "hierarchical",
   maxAgents: 5
 }
 
 // Spawn SPARC-specific agents
-mcp__claude-flow__agent_spawn {
+mcp__moflo__agent_spawn {
   type: "sparc-coder",
   capabilities: ["specification", "pseudocode", "architecture", "refinement", "completion"]
 }
 
 // Spawn specialized agents
-mcp__claude-flow__agent_spawn {
+mcp__moflo__agent_spawn {
   type: "coder",
   capabilities: ["refactoring", "optimization"]
 }
 
 // Orchestrate development tasks
-mcp__claude-flow__task_orchestrate {
+mcp__moflo__task_orchestrate {
   task: "implement_oauth_system",
   strategy: "adaptive",
   priority: "high"
 }
 
 // Store successful patterns
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   namespace: "code-patterns",
   key: "oauth_implementation_plan",

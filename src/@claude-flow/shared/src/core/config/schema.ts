@@ -114,7 +114,7 @@ export const MemoryConfigSchema = z.object({
  * MCP server configuration schema
  */
 export const MCPServerConfigSchema = z.object({
-  name: z.string().min(1).default('claude-flow'),
+  name: z.string().min(1).default('moflo'),
   version: z.string().min(1).default('3.0.0'),
   transport: z.object({
     type: z.enum(['stdio', 'http', 'websocket']).default('stdio'),

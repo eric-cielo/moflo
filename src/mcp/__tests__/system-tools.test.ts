@@ -352,7 +352,7 @@ describe('System Tools', () => {
       const result = await systemInfoTool.handler({}, mockContext);
 
       expect(result).toBeDefined();
-      expect(result.name).toBe('claude-flow');
+      expect(result.name).toBe('moflo');
       expect(result.version).toBe('3.0.0');
       expect(result.nodeVersion).toBeDefined();
       expect(result.platform).toBeDefined();

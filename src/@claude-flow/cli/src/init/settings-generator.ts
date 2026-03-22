@@ -28,7 +28,7 @@ export function generateSettings(options: InitOptions): object {
       'Bash(npx moflo*)',
       'Bash(npx flo*)',
       'Bash(node .claude/*)',
-      'mcp__claude-flow__:*',
+      'mcp__moflo__:*',
     ],
     deny: [
       'Read(./.env)',
@@ -280,7 +280,7 @@ function generateHooksConfig(config: HooksConfig): object {
       },
       {
         // Simplified matcher — anchored regex with parens doesn't match MCP tool names reliably
-        matcher: 'mcp__claude-flow__memory_',
+        matcher: 'mcp__moflo__memory_',
         hooks: [{ type: 'command', command: gateCmd('record-memory-searched'), timeout: 3000 }],
       },
     ];

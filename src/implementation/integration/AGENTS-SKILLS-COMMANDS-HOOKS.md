@@ -352,9 +352,9 @@ tools:
   - Task
   - TodoWrite
   - Bash
-  - mcp__claude-flow__swarm_init
-  - mcp__claude-flow__agent_spawn
-  - mcp__claude-flow__task_orchestrate
+  - mcp__moflo__swarm_init
+  - mcp__moflo__agent_spawn
+  - mcp__moflo__task_orchestrate
 ---
 
 # Swarm Orchestration Skill

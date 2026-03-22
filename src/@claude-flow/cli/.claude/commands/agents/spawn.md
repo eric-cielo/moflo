@@ -116,8 +116,8 @@ Task("Reviewer", "Review auth implementation", "reviewer")
 Use MCP tools only for swarm coordination setup:
 
 ```javascript
-mcp__claude-flow__swarm_init({ topology: "hierarchical", maxAgents: 15 })
-mcp__claude-flow__agent_spawn({ type: "coordinator", name: "queen" })
+mcp__moflo__swarm_init({ topology: "hierarchical", maxAgents: 15 })
+mcp__moflo__agent_spawn({ type: "coordinator", name: "queen" })
 ```
 
 ## Output

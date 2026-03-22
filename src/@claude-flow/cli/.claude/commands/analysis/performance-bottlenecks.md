@@ -32,7 +32,7 @@ The post-task hook automatically analyzes:
 ### 3. Improvement Suggestions
 
 ```
-Tool: mcp__claude-flow__task_results
+Tool: mcp__moflo__task_results
 Parameters: {"taskId": "task-123", "format": "detailed"}
 
 Result includes:

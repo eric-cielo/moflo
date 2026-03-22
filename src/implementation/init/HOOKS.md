@@ -175,7 +175,7 @@ Executes on permission requests. Used for auto-allowing claude-flow tools.
 {
   "PermissionRequest": [
     {
-      "matcher": "^mcp__claude-flow__.*$",
+      "matcher": "^mcp__moflo__.*$",
       "hooks": [{
         "type": "command",
         "command": "echo '{\"decision\": \"allow\", \"reason\": \"claude-flow MCP tool auto-approved\"}'",

@@ -97,36 +97,36 @@ ${workerTypes.map(type => `• ${type}: ${workerGroups[type].length} agents`).jo
 🔧 AVAILABLE MCP TOOLS FOR HIVE MIND COORDINATION:
 
 1️⃣ **COLLECTIVE INTELLIGENCE**
-   mcp__claude-flow__hive-mind_consensus    - Democratic decision making
-   mcp__claude-flow__hive-mind_memory       - Share knowledge across the hive
-   mcp__claude-flow__hive-mind_broadcast    - Broadcast to all workers
-   mcp__claude-flow__neural_patterns        - Neural pattern recognition
+   mcp__moflo__hive-mind_consensus    - Democratic decision making
+   mcp__moflo__hive-mind_memory       - Share knowledge across the hive
+   mcp__moflo__hive-mind_broadcast    - Broadcast to all workers
+   mcp__moflo__neural_patterns        - Neural pattern recognition
 
 2️⃣ **QUEEN COORDINATION**
-   mcp__claude-flow__hive-mind_status       - Monitor swarm health
-   mcp__claude-flow__task_create            - Create and delegate tasks
-   mcp__claude-flow__task_orchestrate       - Orchestrate task distribution
-   mcp__claude-flow__agent_spawn            - Spawn additional workers
+   mcp__moflo__hive-mind_status       - Monitor swarm health
+   mcp__moflo__task_create            - Create and delegate tasks
+   mcp__moflo__task_orchestrate       - Orchestrate task distribution
+   mcp__moflo__agent_spawn            - Spawn additional workers
 
 3️⃣ **WORKER MANAGEMENT**
-   mcp__claude-flow__agent_list             - List all active agents
-   mcp__claude-flow__agent_status           - Check agent status
-   mcp__claude-flow__agent_metrics          - Track worker performance
-   mcp__claude-flow__hive-mind_join         - Add agent to hive
-   mcp__claude-flow__hive-mind_leave        - Remove agent from hive
+   mcp__moflo__agent_list             - List all active agents
+   mcp__moflo__agent_status           - Check agent status
+   mcp__moflo__agent_metrics          - Track worker performance
+   mcp__moflo__hive-mind_join         - Add agent to hive
+   mcp__moflo__hive-mind_leave        - Remove agent from hive
 
 4️⃣ **TASK ORCHESTRATION**
-   mcp__claude-flow__task_create            - Create hierarchical tasks
-   mcp__claude-flow__task_status            - Track task progress
-   mcp__claude-flow__task_complete          - Mark tasks complete
-   mcp__claude-flow__workflow_create        - Create workflows
+   mcp__moflo__task_create            - Create hierarchical tasks
+   mcp__moflo__task_status            - Track task progress
+   mcp__moflo__task_complete          - Mark tasks complete
+   mcp__moflo__workflow_create        - Create workflows
 
 5️⃣ **MEMORY & LEARNING**
-   mcp__claude-flow__memory_store           - Store collective knowledge
-   mcp__claude-flow__memory_retrieve        - Access shared memory
-   mcp__claude-flow__memory_search          - Search memory patterns
-   mcp__claude-flow__neural_train           - Learn from experiences
-   mcp__claude-flow__hooks_intelligence_pattern-store - Store patterns
+   mcp__moflo__memory_store           - Store collective knowledge
+   mcp__moflo__memory_retrieve        - Access shared memory
+   mcp__moflo__memory_search          - Search memory patterns
+   mcp__moflo__neural_train           - Learn from experiences
+   mcp__moflo__hooks_intelligence_pattern-store - Store patterns
 
 📋 HIVE MIND EXECUTION PROTOCOL:
 
@@ -158,8 +158,8 @@ ${workerTypes.map(type => `• ${type}: ${workerGroups[type].length} agents`).jo
 ${objective}
 
 💡 COORDINATION TIPS:
-• Use mcp__claude-flow__hive-mind_broadcast for swarm-wide announcements
-• Check worker status regularly with mcp__claude-flow__hive-mind_status
+• Use mcp__moflo__hive-mind_broadcast for swarm-wide announcements
+• Check worker status regularly with mcp__moflo__hive-mind_status
 • Store important decisions in shared memory for persistence
 • Use consensus for any decisions affecting multiple workers
 • Monitor task progress and reassign if workers are blocked

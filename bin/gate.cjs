@@ -49,7 +49,7 @@ switch (command) {
     var s = readState();
     // Hard gate: memory must be searched
     if (config.memory_first && s.memoryRequired && !s.memorySearched) {
-      process.stderr.write('BLOCKED: Search memory (mcp__claude-flow__memory_search) before spawning agents.\n');
+      process.stderr.write('BLOCKED: Search memory (mcp__moflo__memory_search) before spawning agents.\n');
       process.exit(2);
     }
     // Soft gate: TaskCreate recommended but not blocking
@@ -65,7 +65,7 @@ switch (command) {
     if (s.memorySearched || !s.memoryRequired) break;
     var target = (process.env.TOOL_INPUT_pattern || '') + ' ' + (process.env.TOOL_INPUT_path || '');
     if (EXEMPT.some(function(p) { return target.indexOf(p) >= 0; })) break;
-    process.stderr.write('BLOCKED: Search memory before exploring files. Use mcp__claude-flow__memory_search.\n');
+    process.stderr.write('BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search.\n');
     process.exit(2);
   }
   case 'check-before-read': {
@@ -74,7 +74,7 @@ switch (command) {
     if (s.memorySearched || !s.memoryRequired) break;
     var fp = process.env.TOOL_INPUT_file_path || '';
     if (fp.indexOf('.claude/guidance/') < 0 && fp.indexOf('.claude\\guidance\\') < 0) break;
-    process.stderr.write('BLOCKED: Search memory before reading guidance files. Use mcp__claude-flow__memory_search.\n');
+    process.stderr.write('BLOCKED: Search memory before reading guidance files. Use mcp__moflo__memory_search.\n');
     process.exit(2);
   }
   case 'record-task-created': {

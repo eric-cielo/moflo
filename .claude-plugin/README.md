@@ -307,7 +307,7 @@ Then in Claude Code:
 
 ```bash
 # Add MCP servers to Claude Code
-claude mcp add claude-flow npx claude-flow@alpha mcp start
+claude mcp add moflo npx moflo mcp start
 claude mcp add ruv-swarm npx ruv-swarm mcp start  # Optional
 claude mcp add flow-nexus npx flow-nexus@latest mcp start  # Optional
 ```
@@ -509,9 +509,9 @@ Claude Flow integrates with 3 MCP servers providing 110+ tools:
 ```json
 {
   "mcpServers": {
-    "claude-flow": {
+    "moflo": {
       "command": "npx",
-      "args": ["claude-flow@alpha", "mcp", "start"]
+      "args": ["moflo", "mcp", "start"]
     }
   }
 }

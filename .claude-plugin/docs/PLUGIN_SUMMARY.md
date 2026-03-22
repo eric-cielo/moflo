@@ -104,7 +104,7 @@ cd claude-flow
 
 ### MCP Integration: 110+ Tools
 
-1. **claude-flow** (Required)
+1. **moflo** (Required)
    - 40+ orchestration tools
    - Swarm coordination
    - Agent management
@@ -338,9 +338,9 @@ The plugin is configured via `.claude-plugin/plugin.json`:
     "url": "https://github.com/eric-cielo/moflo.git"
   },
   "mcpServers": {
-    "claude-flow": {
+    "moflo": {
       "command": "npx",
-      "args": ["claude-flow@alpha", "mcp", "start"]
+      "args": ["moflo", "mcp", "start"]
     }
   }
 }

@@ -11,25 +11,26 @@ import { existsSync } from 'fs';
 import { resolve, join } from 'path';
 import type { InitOptions, MCPConfig } from './types.js';
 
+const isWindows = process.platform === 'win32';
+
 /**
- * Generate MCP server entry using npx (for external packages)
+ * Generate MCP server entry using npx (for external packages).
+ * On Windows, wraps with `cmd /c` so Claude Code can spawn the process.
  */
 function createNpxServerEntry(
   npxArgs: string[],
   env: Record<string, string>,
   additionalProps: Record<string, unknown> = {}
 ): object {
-  return {
-    command: 'npx',
-    args: ['-y', ...npxArgs],
-    env,
-    ...additionalProps,
-  };
+  return isWindows
+    ? { command: 'cmd', args: ['/c', 'npx', '-y', ...npxArgs], env, ...additionalProps }
+    : { command: 'npx', args: ['-y', ...npxArgs], env, ...additionalProps };
 }
 
 /**
  * Generate MCP server entry using direct node invocation (for local moflo).
  * Avoids npx overhead — faster startup, fewer intermediate processes.
+ * On Windows, wraps with `cmd /c` so Claude Code can spawn the process.
  */
 function createDirectServerEntry(
   cliPath: string,
@@ -37,12 +38,9 @@ function createDirectServerEntry(
   env: Record<string, string>,
   additionalProps: Record<string, unknown> = {}
 ): object {
-  return {
-    command: 'node',
-    args: [cliPath, ...cliArgs],
-    env,
-    ...additionalProps,
-  };
+  return isWindows
+    ? { command: 'cmd', args: ['/c', 'node', cliPath, ...cliArgs], env, ...additionalProps }
+    : { command: 'node', args: [cliPath, ...cliArgs], env, ...additionalProps };
 }
 
 /**
@@ -92,14 +90,14 @@ export function generateMCPConfig(options: InitOptions): object {
     const localCli = findMofloCli(projectRoot);
 
     if (localCli) {
-      mcpServers['claude-flow'] = createDirectServerEntry(
+      mcpServers['moflo'] = createDirectServerEntry(
         localCli,
         ['mcp', 'start'],
         mcpEnv,
         { autoStart: config.autoStart, ...deferProps }
       );
     } else {
-      mcpServers['claude-flow'] = createNpxServerEntry(
+      mcpServers['moflo'] = createNpxServerEntry(
         ['moflo', 'mcp', 'start'],
         mcpEnv,
         { autoStart: config.autoStart, ...deferProps }
@@ -143,20 +141,22 @@ export function generateMCPCommands(options: InitOptions): string[] {
   const commands: string[] = [];
   const config = options.mcp;
 
+  const cmdPrefix = isWindows ? 'cmd /c ' : '';
+
   if (config.claudeFlow) {
     const projectRoot = options.targetDir ?? process.cwd();
     const localCli = findMofloCli(projectRoot);
     if (localCli) {
-      commands.push(`claude mcp add claude-flow -- node ${localCli} mcp start`);
+      commands.push(`claude mcp add moflo -- ${cmdPrefix}node ${localCli} mcp start`);
     } else {
-      commands.push('claude mcp add claude-flow -- npx -y moflo mcp start');
+      commands.push(`claude mcp add moflo -- ${cmdPrefix}npx -y moflo mcp start`);
     }
   }
   if (config.ruvSwarm) {
-    commands.push('claude mcp add ruv-swarm -- npx -y ruv-swarm mcp start');
+    commands.push(`claude mcp add ruv-swarm -- ${cmdPrefix}npx -y ruv-swarm mcp start`);
   }
   if (config.flowNexus) {
-    commands.push('claude mcp add flow-nexus -- npx -y flow-nexus@latest mcp start');
+    commands.push(`claude mcp add flow-nexus -- ${cmdPrefix}npx -y flow-nexus@latest mcp start`);
   }
 
   return commands;
@@ -171,6 +171,8 @@ export function getPlatformInstructions(): { platform: string; note: string } {
     : process.platform === 'darwin' ? 'macOS' : 'Linux';
   return {
     platform,
-    note: 'MCP configuration uses npx directly.',
+    note: isWindows
+      ? 'MCP configuration uses cmd /c wrapper for Windows compatibility.'
+      : 'MCP configuration uses npx directly.',
   };
 }

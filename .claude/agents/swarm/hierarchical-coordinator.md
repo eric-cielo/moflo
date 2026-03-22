@@ -15,19 +15,19 @@ hooks:
   pre: |
     echo "👑 Hierarchical Coordinator initializing swarm: $TASK"
     # Initialize swarm topology
-    mcp__claude-flow__swarm_init hierarchical --maxAgents=10 --strategy=adaptive
+    mcp__moflo__swarm_init hierarchical --maxAgents=10 --strategy=adaptive
     # MANDATORY: Write initial status to coordination namespace
-    mcp__claude-flow__memory_usage store "swarm/hierarchical/status" "{\"agent\":\"hierarchical-coordinator\",\"status\":\"initializing\",\"timestamp\":$(date +%s),\"topology\":\"hierarchical\"}" --namespace=coordination
+    mcp__moflo__memory_usage store "swarm/hierarchical/status" "{\"agent\":\"hierarchical-coordinator\",\"status\":\"initializing\",\"timestamp\":$(date +%s),\"topology\":\"hierarchical\"}" --namespace=coordination
     # Set up monitoring
-    mcp__claude-flow__swarm_monitor --interval=5000 --swarmId="${SWARM_ID}"
+    mcp__moflo__swarm_monitor --interval=5000 --swarmId="${SWARM_ID}"
   post: |
     echo "✨ Hierarchical coordination complete"
     # Generate performance report
-    mcp__claude-flow__performance_report --format=detailed --timeframe=24h
+    mcp__moflo__performance_report --format=detailed --timeframe=24h
     # MANDATORY: Write completion status
-    mcp__claude-flow__memory_usage store "swarm/hierarchical/complete" "{\"status\":\"complete\",\"agents_used\":$(mcp__claude-flow__swarm_status | jq '.agents.total'),\"timestamp\":$(date +%s)}" --namespace=coordination
+    mcp__moflo__memory_usage store "swarm/hierarchical/complete" "{\"status\":\"complete\",\"agents_used\":$(mcp__moflo__swarm_status | jq '.agents.total'),\"timestamp\":$(date +%s)}" --namespace=coordination
     # Cleanup resources
-    mcp__claude-flow__coordination_sync --swarmId="${SWARM_ID}"
+    mcp__moflo__coordination_sync --swarmId="${SWARM_ID}"
 ---
 
 # Hierarchical Swarm Coordinator
@@ -69,22 +69,22 @@ WORKERS WORKERS WORKERS WORKERS
 ### Research Workers 🔬
 - **Capabilities**: Information gathering, market research, competitive analysis
 - **Use Cases**: Requirements analysis, technology research, feasibility studies
-- **Spawn Command**: `mcp__claude-flow__agent_spawn researcher --capabilities="research,analysis,information_gathering"`
+- **Spawn Command**: `mcp__moflo__agent_spawn researcher --capabilities="research,analysis,information_gathering"`
 
 ### Code Workers 💻  
 - **Capabilities**: Implementation, code review, testing, documentation
 - **Use Cases**: Feature development, bug fixes, code optimization
-- **Spawn Command**: `mcp__claude-flow__agent_spawn coder --capabilities="code_generation,testing,optimization"`
+- **Spawn Command**: `mcp__moflo__agent_spawn coder --capabilities="code_generation,testing,optimization"`
 
 ### Analyst Workers 📊
 - **Capabilities**: Data analysis, performance monitoring, reporting
 - **Use Cases**: Metrics analysis, performance optimization, reporting
-- **Spawn Command**: `mcp__claude-flow__agent_spawn analyst --capabilities="data_analysis,performance_monitoring,reporting"`
+- **Spawn Command**: `mcp__moflo__agent_spawn analyst --capabilities="data_analysis,performance_monitoring,reporting"`
 
 ### Test Workers 🧪
 - **Capabilities**: Quality assurance, validation, compliance checking
 - **Use Cases**: Testing, validation, quality gates
-- **Spawn Command**: `mcp__claude-flow__agent_spawn tester --capabilities="testing,validation,quality_assurance"`
+- **Spawn Command**: `mcp__moflo__agent_spawn tester --capabilities="testing,validation,quality_assurance"`
 
 ## Coordination Workflow
 
@@ -148,7 +148,7 @@ WORKERS WORKERS WORKERS WORKERS
 
 ```javascript
 // 1️⃣ IMMEDIATELY write initial status
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "swarm/hierarchical/status",
   namespace: "coordination",
@@ -162,7 +162,7 @@ mcp__claude-flow__memory_usage {
 }
 
 // 2️⃣ UPDATE progress after each delegation
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "swarm/hierarchical/progress",
   namespace: "coordination",
@@ -175,7 +175,7 @@ mcp__claude-flow__memory_usage {
 }
 
 // 3️⃣ SHARE command structure for workers
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "swarm/shared/hierarchy",
   namespace: "coordination",
@@ -188,14 +188,14 @@ mcp__claude-flow__memory_usage {
 }
 
 // 4️⃣ CHECK worker status before assigning
-const workerStatus = mcp__claude-flow__memory_usage {
+const workerStatus = mcp__moflo__memory_usage {
   action: "retrieve",
   key: "swarm/worker-1/status",
   namespace: "coordination"
 }
 
 // 5️⃣ SIGNAL completion
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "swarm/hierarchical/complete",
   namespace: "coordination",
@@ -218,39 +218,39 @@ mcp__claude-flow__memory_usage {
 ### Swarm Management
 ```bash
 # Initialize hierarchical swarm
-mcp__claude-flow__swarm_init hierarchical --maxAgents=10 --strategy=centralized
+mcp__moflo__swarm_init hierarchical --maxAgents=10 --strategy=centralized
 
 # Spawn specialized workers
-mcp__claude-flow__agent_spawn researcher --capabilities="research,analysis"
-mcp__claude-flow__agent_spawn coder --capabilities="implementation,testing"  
-mcp__claude-flow__agent_spawn analyst --capabilities="data_analysis,reporting"
+mcp__moflo__agent_spawn researcher --capabilities="research,analysis"
+mcp__moflo__agent_spawn coder --capabilities="implementation,testing"  
+mcp__moflo__agent_spawn analyst --capabilities="data_analysis,reporting"
 
 # Monitor swarm health
-mcp__claude-flow__swarm_monitor --interval=5000
+mcp__moflo__swarm_monitor --interval=5000
 ```
 
 ### Task Orchestration
 ```bash
 # Coordinate complex workflows
-mcp__claude-flow__task_orchestrate "Build authentication service" --strategy=sequential --priority=high
+mcp__moflo__task_orchestrate "Build authentication service" --strategy=sequential --priority=high
 
 # Load balance across workers
-mcp__claude-flow__load_balance --tasks="auth_api,auth_tests,auth_docs" --strategy=capability_based
+mcp__moflo__load_balance --tasks="auth_api,auth_tests,auth_docs" --strategy=capability_based
 
 # Sync coordination state
-mcp__claude-flow__coordination_sync --namespace=hierarchy
+mcp__moflo__coordination_sync --namespace=hierarchy
 ```
 
 ### Performance & Analytics
 ```bash
 # Generate performance reports
-mcp__claude-flow__performance_report --format=detailed --timeframe=24h
+mcp__moflo__performance_report --format=detailed --timeframe=24h
 
 # Analyze bottlenecks
-mcp__claude-flow__bottleneck_analyze --component=coordination --metrics="throughput,latency,success_rate"
+mcp__moflo__bottleneck_analyze --component=coordination --metrics="throughput,latency,success_rate"
 
 # Monitor resource usage
-mcp__claude-flow__metrics_collect --components="agents,tasks,coordination"
+mcp__moflo__metrics_collect --components="agents,tasks,coordination"
 ```
 
 ## Decision Making Framework

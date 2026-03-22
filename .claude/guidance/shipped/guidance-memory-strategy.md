@@ -36,7 +36,7 @@ build-embeddings.mjs - Generate 384-dim vectors per entry
 RuVector (@ruvector/core) -- HNSW index infrastructure
          v
 Search layer ---------- Three access paths:
-                          1. MCP tools (mcp__claude-flow__memory_search) -- preferred
+                          1. MCP tools (mcp__moflo__memory_search) -- preferred
                           2. CLI (npx flo memory search) -- fallback
                           3. Script (semantic-search.mjs) -- detailed output
 ```
@@ -250,7 +250,7 @@ npx flo-index --force
 npx flo memory search --query "your domain query" --namespace guidance
 
 # Verify from Claude Code via MCP
-# mcp__claude-flow__memory_search query="your domain query" namespace="guidance"
+# mcp__moflo__memory_search query="your domain query" namespace="guidance"
 ```
 
 ---

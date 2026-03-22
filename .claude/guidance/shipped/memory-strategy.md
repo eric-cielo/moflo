@@ -63,7 +63,7 @@ See `guidance-memory-strategy.md` for full embedding pipeline details.
 
 All methods auto-detect the stored embedding model and generate matching query vectors:
 
-**MCP (Preferred):** `mcp__claude-flow__memory_search` — `query: "your query", namespace: "guidance"`
+**MCP (Preferred):** `mcp__moflo__memory_search` — `query: "your query", namespace: "guidance"`
 
 **CLI (Fallback):**
 ```bash
@@ -83,7 +83,7 @@ npx flo memory search --query "your query" --namespace guidance
 
 When you need to find where a type, service, entity, or component lives — search `code-map` BEFORE using Glob/Grep:
 
-**MCP:** `mcp__claude-flow__memory_search` — `query: "payment service", namespace: "code-map"`
+**MCP:** `mcp__moflo__memory_search` — `query: "payment service", namespace: "code-map"`
 
 **What code-map contains:**
 

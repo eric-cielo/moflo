@@ -30,13 +30,13 @@ hooks:
   pre: |
     echo "🏛️ DDD Domain Expert analyzing domain model"
     # Search for existing domain patterns
-    mcp__claude-flow__memory_search --pattern="ddd:*" --namespace="architecture" --limit=10
+    mcp__moflo__memory_search --pattern="ddd:*" --namespace="architecture" --limit=10
     # Load domain context
-    mcp__claude-flow__memory_usage --action="retrieve" --namespace="architecture" --key="domain:model"
+    mcp__moflo__memory_usage --action="retrieve" --namespace="architecture" --key="domain:model"
   post: |
     echo "✅ Domain model analysis complete"
     # Store domain patterns
-    mcp__claude-flow__memory_usage --action="store" --namespace="architecture" --key="ddd:analysis:$(date +%s)" --value="$DOMAIN_SUMMARY"
+    mcp__moflo__memory_usage --action="store" --namespace="architecture" --key="ddd:analysis:$(date +%s)" --value="$DOMAIN_SUMMARY"
 ---
 
 # V3 DDD Domain Expert Agent
@@ -210,11 +210,11 @@ npx claude-flow@v3alpha ddd language-check
 
 ```bash
 # Store domain model
-mcp__claude-flow__memory_usage --action="store" \
+mcp__moflo__memory_usage --action="store" \
   --namespace="architecture" \
   --key="domain:model" \
   --value='{"contexts":["swarm","agent","task","memory"]}'
 
 # Search domain patterns
-mcp__claude-flow__memory_search --pattern="ddd:aggregate:*" --namespace="architecture"
+mcp__moflo__memory_search --pattern="ddd:aggregate:*" --namespace="architecture"
 ```

@@ -7,7 +7,7 @@ Multi-agent task orchestration with TodoWrite/TodoRead/Task/Memory using MCP too
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "orchestrator",
   task_description: "coordinate feature development"
 }
@@ -40,20 +40,20 @@ npx claude-flow@alpha sparc run orchestrator "coordinate feature development"
 ### Using MCP Tools (Preferred)
 ```javascript
 // Initialize orchestration swarm
-mcp__claude-flow__swarm_init {
+mcp__moflo__swarm_init {
   topology: "hierarchical",
   strategy: "auto",
   maxAgents: 8
 }
 
 // Spawn coordinator agent
-mcp__claude-flow__agent_spawn {
+mcp__moflo__agent_spawn {
   type: "coordinator",
   capabilities: ["task-planning", "resource-management"]
 }
 
 // Orchestrate tasks
-mcp__claude-flow__task_orchestrate {
+mcp__moflo__task_orchestrate {
   task: "feature development",
   strategy: "parallel",
   dependencies: ["auth", "ui", "api"]
@@ -91,26 +91,26 @@ npx claude-flow task orchestrate --task "feature development" --strategy paralle
 ### Using MCP Tools (Preferred)
 ```javascript
 // 1. Initialize orchestration swarm
-mcp__claude-flow__swarm_init {
+mcp__moflo__swarm_init {
   topology: "hierarchical",
   maxAgents: 10
 }
 
 // 2. Create workflow
-mcp__claude-flow__workflow_create {
+mcp__moflo__workflow_create {
   name: "feature-development",
   steps: ["design", "implement", "test", "deploy"]
 }
 
 // 3. Execute orchestration
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "orchestrator",
   options: {parallel: true, monitor: true},
   task_description: "develop user management system"
 }
 
 // 4. Monitor progress
-mcp__claude-flow__swarm_monitor {
+mcp__moflo__swarm_monitor {
   swarmId: "current",
   interval: 5000
 }

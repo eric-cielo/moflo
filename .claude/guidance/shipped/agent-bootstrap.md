@@ -22,13 +22,13 @@
 
 ### Option A: MCP Tools (Preferred)
 
-If you have MCP tools available (check for `mcp__claude-flow__*`), use them directly:
+If you have MCP tools available (check for `mcp__moflo__*`), use them directly:
 
 | Tool | Purpose |
 |------|---------|
-| `mcp__claude-flow__memory_search` | Semantic search with domain-aware embeddings |
-| `mcp__claude-flow__memory_store` | Store patterns with auto-vectorization |
-| `mcp__claude-flow__hooks_route` | Get agent routing suggestions |
+| `mcp__moflo__memory_search` | Semantic search with domain-aware embeddings |
+| `mcp__moflo__memory_store` | Store patterns with auto-vectorization |
+| `mcp__moflo__hooks_route` | Get agent routing suggestions |
 
 ### Option B: CLI via Bash
 
@@ -103,7 +103,7 @@ If you discover something new (pattern, solution, gotcha), store it:
 
 ### MCP (Preferred):
 ```
-mcp__claude-flow__memory_store
+mcp__moflo__memory_store
   namespace: "patterns"
   key: "brief-descriptive-key"
   value: "1-2 sentence insight"

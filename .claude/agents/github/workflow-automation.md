@@ -9,14 +9,14 @@ tools:
   - mcp__github__list_workflows
   - mcp__github__get_workflow_runs
   - mcp__github__create_workflow_dispatch
-  - mcp__claude-flow__swarm_init
-  - mcp__claude-flow__agent_spawn
-  - mcp__claude-flow__task_orchestrate
-  - mcp__claude-flow__memory_usage
-  - mcp__claude-flow__performance_report
-  - mcp__claude-flow__bottleneck_analyze
-  - mcp__claude-flow__workflow_create
-  - mcp__claude-flow__automation_setup
+  - mcp__moflo__swarm_init
+  - mcp__moflo__agent_spawn
+  - mcp__moflo__task_orchestrate
+  - mcp__moflo__memory_usage
+  - mcp__moflo__performance_report
+  - mcp__moflo__bottleneck_analyze
+  - mcp__moflo__workflow_create
+  - mcp__moflo__automation_setup
   - TodoWrite
   - TodoRead
   - Bash
@@ -481,17 +481,17 @@ npx ruv-swarm actions profile \
 ### Multi-Agent Pipeline Orchestration
 ```bash
 # Initialize comprehensive workflow automation swarm
-mcp__claude-flow__swarm_init { topology: "mesh", maxAgents: 12 }
-mcp__claude-flow__agent_spawn { type: "coordinator", name: "Workflow Coordinator" }
-mcp__claude-flow__agent_spawn { type: "architect", name: "Pipeline Architect" }
-mcp__claude-flow__agent_spawn { type: "coder", name: "Workflow Developer" }
-mcp__claude-flow__agent_spawn { type: "tester", name: "CI/CD Tester" }
-mcp__claude-flow__agent_spawn { type: "optimizer", name: "Performance Optimizer" }
-mcp__claude-flow__agent_spawn { type: "monitor", name: "Automation Monitor" }
-mcp__claude-flow__agent_spawn { type: "analyst", name: "Workflow Analyzer" }
+mcp__moflo__swarm_init { topology: "mesh", maxAgents: 12 }
+mcp__moflo__agent_spawn { type: "coordinator", name: "Workflow Coordinator" }
+mcp__moflo__agent_spawn { type: "architect", name: "Pipeline Architect" }
+mcp__moflo__agent_spawn { type: "coder", name: "Workflow Developer" }
+mcp__moflo__agent_spawn { type: "tester", name: "CI/CD Tester" }
+mcp__moflo__agent_spawn { type: "optimizer", name: "Performance Optimizer" }
+mcp__moflo__agent_spawn { type: "monitor", name: "Automation Monitor" }
+mcp__moflo__agent_spawn { type: "analyst", name: "Workflow Analyzer" }
 
 # Create intelligent workflow automation rules
-mcp__claude-flow__automation_setup {
+mcp__moflo__automation_setup {
   rules: [
     {
       trigger: "pull_request",
@@ -507,7 +507,7 @@ mcp__claude-flow__automation_setup {
 }
 
 # Orchestrate adaptive workflow management
-mcp__claude-flow__task_orchestrate {
+mcp__moflo__task_orchestrate {
   task: "Manage intelligent CI/CD pipeline with continuous optimization",
   strategy: "adaptive",
   priority: "high",
@@ -518,19 +518,19 @@ mcp__claude-flow__task_orchestrate {
 ### Intelligent Performance Monitoring
 ```bash
 # Generate comprehensive workflow performance reports
-mcp__claude-flow__performance_report {
+mcp__moflo__performance_report {
   format: "detailed",
   timeframe: "30d"
 }
 
 # Analyze workflow bottlenecks with swarm intelligence
-mcp__claude-flow__bottleneck_analyze {
+mcp__moflo__bottleneck_analyze {
   component: "github_actions_workflow",
   metrics: ["build_time", "test_duration", "deployment_latency", "resource_utilization"]
 }
 
 # Store performance insights in swarm memory
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "workflow/performance/analysis",
   value: {
@@ -602,7 +602,7 @@ const createIntelligentWorkflow = async (repoContext) => {
 ### Continuous Learning and Optimization
 ```bash
 # Implement continuous workflow learning
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "workflow/learning/patterns",
   value: {
@@ -625,7 +625,7 @@ mcp__claude-flow__memory_usage {
 }
 
 # Generate workflow optimization recommendations
-mcp__claude-flow__task_orchestrate {
+mcp__moflo__task_orchestrate {
   task: "Analyze workflow performance and generate optimization recommendations",
   strategy: "parallel",
   priority: "medium"

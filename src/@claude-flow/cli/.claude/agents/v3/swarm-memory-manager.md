@@ -23,20 +23,20 @@ hooks:
   pre: |
     echo "🧠 Swarm Memory Manager initializing distributed memory"
     # Initialize all memory namespaces for swarm
-    mcp__claude-flow__memory_namespace --namespace="swarm" --action="init"
-    mcp__claude-flow__memory_namespace --namespace="agents" --action="init"
-    mcp__claude-flow__memory_namespace --namespace="tasks" --action="init"
-    mcp__claude-flow__memory_namespace --namespace="patterns" --action="init"
+    mcp__moflo__memory_namespace --namespace="swarm" --action="init"
+    mcp__moflo__memory_namespace --namespace="agents" --action="init"
+    mcp__moflo__memory_namespace --namespace="tasks" --action="init"
+    mcp__moflo__memory_namespace --namespace="patterns" --action="init"
     # Store initialization event
-    mcp__claude-flow__memory_usage --action="store" --namespace="swarm" --key="memory-manager:init:$(date +%s)" --value="Distributed memory initialized"
+    mcp__moflo__memory_usage --action="store" --namespace="swarm" --key="memory-manager:init:$(date +%s)" --value="Distributed memory initialized"
   post: |
     echo "🔄 Synchronizing swarm memory state"
     # Sync memory across instances
-    mcp__claude-flow__memory_sync --target="all"
+    mcp__moflo__memory_sync --target="all"
     # Compress stale data
-    mcp__claude-flow__memory_compress --namespace="swarm"
+    mcp__moflo__memory_compress --namespace="swarm"
     # Persist session state
-    mcp__claude-flow__memory_persist --sessionId="${SESSION_ID}"
+    mcp__moflo__memory_persist --sessionId="${SESSION_ID}"
 ---
 
 # V3 Swarm Memory Manager Agent
@@ -98,13 +98,13 @@ You are a **Swarm Memory Manager** responsible for coordinating distributed memo
 
 ```bash
 # Memory operations
-mcp__claude-flow__memory_usage --action="store|retrieve|list|delete|search"
-mcp__claude-flow__memory_search --pattern="*" --namespace="swarm"
-mcp__claude-flow__memory_sync --target="all"
-mcp__claude-flow__memory_compress --namespace="default"
-mcp__claude-flow__memory_persist --sessionId="$SESSION_ID"
-mcp__claude-flow__memory_namespace --namespace="name" --action="init|delete|stats"
-mcp__claude-flow__memory_analytics --timeframe="24h"
+mcp__moflo__memory_usage --action="store|retrieve|list|delete|search"
+mcp__moflo__memory_search --pattern="*" --namespace="swarm"
+mcp__moflo__memory_sync --target="all"
+mcp__moflo__memory_compress --namespace="default"
+mcp__moflo__memory_persist --sessionId="$SESSION_ID"
+mcp__moflo__memory_namespace --namespace="name" --action="init|delete|stats"
+mcp__moflo__memory_analytics --timeframe="24h"
 ```
 
 ## Coordination Protocol
@@ -130,15 +130,15 @@ mcp__claude-flow__memory_analytics --timeframe="24h"
 
 ```javascript
 // 1. Initialize distributed memory for new swarm
-mcp__claude-flow__swarm_init({ topology: "mesh", maxAgents: 10 })
+mcp__moflo__swarm_init({ topology: "mesh", maxAgents: 10 })
 
 // 2. Create namespaces
 for (const ns of ["swarm", "agents", "tasks", "patterns"]) {
-  mcp__claude-flow__memory_namespace({ namespace: ns, action: "init" })
+  mcp__moflo__memory_namespace({ namespace: ns, action: "init" })
 }
 
 // 3. Store swarm state
-mcp__claude-flow__memory_usage({
+mcp__moflo__memory_usage({
   action: "store",
   namespace: "swarm",
   key: "topology",
@@ -146,12 +146,12 @@ mcp__claude-flow__memory_usage({
 })
 
 // 4. Agents read shared state
-mcp__claude-flow__memory_usage({
+mcp__moflo__memory_usage({
   action: "retrieve",
   namespace: "swarm",
   key: "topology"
 })
 
 // 5. Sync periodically
-mcp__claude-flow__memory_sync({ target: "all" })
+mcp__moflo__memory_sync({ target: "all" })
 ```

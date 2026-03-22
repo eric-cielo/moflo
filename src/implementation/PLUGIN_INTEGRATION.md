@@ -167,12 +167,12 @@ Enable only specific hooks by choosing matchers:
 
 After installation, MCP tools are available:
 
-- `mcp__claude-flow__swarm_init`
-- `mcp__claude-flow__agent_spawn`
-- `mcp__claude-flow__task_orchestrate`
-- `mcp__claude-flow__memory_usage`
-- `mcp__claude-flow__hooks_route`
-- `mcp__claude-flow__hooks_metrics`
+- `mcp__moflo__swarm_init`
+- `mcp__moflo__agent_spawn`
+- `mcp__moflo__task_orchestrate`
+- `mcp__moflo__memory_usage`
+- `mcp__moflo__hooks_route`
+- `mcp__moflo__hooks_metrics`
 
 ## Marketplace Publishing
 

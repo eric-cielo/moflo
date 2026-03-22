@@ -166,14 +166,14 @@ Automatic analysis during task execution:
 #### MCP Integration
 ```javascript
 // Check for bottlenecks in Claude Code
-mcp__claude-flow__bottleneck_detect({
+mcp__moflo__bottleneck_detect({
   timeRange: "1h",
   threshold: 20,
   autoFix: false
 })
 
 // Get detailed task results with bottleneck analysis
-mcp__claude-flow__task_results({
+mcp__moflo__task_results({
   taskId: "task-123",
   format: "detailed"
 })

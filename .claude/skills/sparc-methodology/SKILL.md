@@ -129,7 +129,7 @@ Multi-agent task orchestration with TodoWrite/Task/Memory coordination.
 
 **Usage**:
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "orchestrator",
   task_description: "coordinate feature development",
   options: { parallel: true, monitor: true }
@@ -189,7 +189,7 @@ Autonomous code generation with batch file operations.
 
 **Usage**:
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "coder",
   task_description: "implement user authentication with JWT",
   options: {
@@ -225,7 +225,7 @@ System design with Memory-based coordination.
 
 **Usage**:
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "architect",
   task_description: "design scalable e-commerce platform",
   options: {
@@ -262,7 +262,7 @@ Test-driven development with comprehensive testing.
 
 **Usage**:
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "tdd",
   task_description: "shopping cart feature with payment integration",
   options: {
@@ -301,7 +301,7 @@ Code review using batch file analysis.
 
 **Usage**:
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "reviewer",
   task_description: "review authentication module PR #123",
   options: {
@@ -342,7 +342,7 @@ Deep research with parallel WebSearch/WebFetch and Memory coordination.
 
 **Usage**:
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "researcher",
   task_description: "research microservices best practices 2024",
   options: {
@@ -447,7 +447,7 @@ Knowledge management and context preservation.
 
 ```javascript
 // Basic mode execution
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "<mode-name>",
   task_description: "<task description>",
   options: {
@@ -456,20 +456,20 @@ mcp__claude-flow__sparc_mode {
 }
 
 // Initialize swarm for complex tasks
-mcp__claude-flow__swarm_init {
+mcp__moflo__swarm_init {
   topology: "hierarchical",  // or "mesh", "ring", "star"
   strategy: "auto",           // or "balanced", "specialized", "adaptive"
   maxAgents: 8
 }
 
 // Spawn specialized agents
-mcp__claude-flow__agent_spawn {
+mcp__moflo__agent_spawn {
   type: "<agent-type>",
   capabilities: ["<capability1>", "<capability2>"]
 }
 
 // Monitor execution
-mcp__claude-flow__swarm_monitor {
+mcp__moflo__swarm_monitor {
   swarmId: "current",
   interval: 5000
 }
@@ -524,22 +524,22 @@ npx claude-flow sparc pipeline "task description"
 
 ```javascript
 // Initialize hierarchical swarm
-mcp__claude-flow__swarm_init {
+mcp__moflo__swarm_init {
   topology: "hierarchical",
   maxAgents: 12
 }
 
 // Spawn coordinator
-mcp__claude-flow__agent_spawn {
+mcp__moflo__agent_spawn {
   type: "coordinator",
   capabilities: ["planning", "delegation", "monitoring"]
 }
 
 // Spawn specialized workers
-mcp__claude-flow__agent_spawn { type: "architect" }
-mcp__claude-flow__agent_spawn { type: "coder" }
-mcp__claude-flow__agent_spawn { type: "tester" }
-mcp__claude-flow__agent_spawn { type: "reviewer" }
+mcp__moflo__agent_spawn { type: "architect" }
+mcp__moflo__agent_spawn { type: "coder" }
+mcp__moflo__agent_spawn { type: "tester" }
+mcp__moflo__agent_spawn { type: "reviewer" }
 ```
 
 ### Pattern 2: Mesh Coordination
@@ -547,7 +547,7 @@ mcp__claude-flow__agent_spawn { type: "reviewer" }
 **Best for**: Collaborative tasks requiring peer-to-peer communication
 
 ```javascript
-mcp__claude-flow__swarm_init {
+mcp__moflo__swarm_init {
   topology: "mesh",
   strategy: "balanced",
   maxAgents: 6
@@ -559,7 +559,7 @@ mcp__claude-flow__swarm_init {
 **Best for**: Ordered workflow execution (spec → design → code → test → review)
 
 ```javascript
-mcp__claude-flow__workflow_create {
+mcp__moflo__workflow_create {
   name: "development-pipeline",
   steps: [
     { mode: "researcher", task: "gather requirements" },
@@ -577,7 +577,7 @@ mcp__claude-flow__workflow_create {
 **Best for**: Independent tasks that can run concurrently
 
 ```javascript
-mcp__claude-flow__task_orchestrate {
+mcp__moflo__task_orchestrate {
   task: "build full-stack application",
   strategy: "parallel",
   dependencies: {
@@ -594,7 +594,7 @@ mcp__claude-flow__task_orchestrate {
 **Best for**: Dynamic workloads with changing requirements
 
 ```javascript
-mcp__claude-flow__swarm_init {
+mcp__moflo__swarm_init {
   topology: "hierarchical",
   strategy: "adaptive",  // Auto-adjusts based on workload
   maxAgents: 20
@@ -609,25 +609,25 @@ mcp__claude-flow__swarm_init {
 
 ```javascript
 // Step 1: Initialize TDD swarm
-mcp__claude-flow__swarm_init {
+mcp__moflo__swarm_init {
   topology: "hierarchical",
   maxAgents: 8
 }
 
 // Step 2: Research and planning
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "researcher",
   task_description: "research testing best practices for feature X"
 }
 
 // Step 3: Architecture design
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "architect",
   task_description: "design testable architecture for feature X"
 }
 
 // Step 4: TDD implementation
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "tdd",
   task_description: "implement feature X with 90% coverage",
   options: {
@@ -638,7 +638,7 @@ mcp__claude-flow__sparc_mode {
 }
 
 // Step 5: Code review
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "reviewer",
   task_description: "review feature X implementation",
   options: {
@@ -648,7 +648,7 @@ mcp__claude-flow__sparc_mode {
 }
 
 // Step 6: Optimization
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "optimizer",
   task_description: "optimize feature X performance"
 }
@@ -658,21 +658,21 @@ mcp__claude-flow__sparc_mode {
 
 ```javascript
 // RED: Write failing test
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "tester",
   task_description: "create failing test for shopping cart add item",
   options: { expect_failure: true }
 }
 
 // GREEN: Minimal implementation
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "coder",
   task_description: "implement minimal code to pass test",
   options: { minimal: true }
 }
 
 // REFACTOR: Improve code quality
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "coder",
   task_description: "refactor shopping cart implementation",
   options: { maintain_tests: true }
@@ -689,7 +689,7 @@ mcp__claude-flow__sparc_mode {
 
 ```javascript
 // Store architectural decisions
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   namespace: "architecture",
   key: "api-design-v1",
@@ -698,7 +698,7 @@ mcp__claude-flow__memory_usage {
 }
 
 // Retrieve in subsequent agents
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "retrieve",
   namespace: "architecture",
   key: "api-design-v1"
@@ -712,14 +712,14 @@ mcp__claude-flow__memory_usage {
 ```javascript
 // ✅ CORRECT: All operations together
 [Single Message]:
-  mcp__claude-flow__agent_spawn { type: "researcher" }
-  mcp__claude-flow__agent_spawn { type: "coder" }
-  mcp__claude-flow__agent_spawn { type: "tester" }
+  mcp__moflo__agent_spawn { type: "researcher" }
+  mcp__moflo__agent_spawn { type: "coder" }
+  mcp__moflo__agent_spawn { type: "tester" }
   TodoWrite { todos: [8-10 todos] }
 
 // ❌ WRONG: Multiple messages
-Message 1: mcp__claude-flow__agent_spawn { type: "researcher" }
-Message 2: mcp__claude-flow__agent_spawn { type: "coder" }
+Message 1: mcp__moflo__agent_spawn { type: "researcher" }
+Message 2: mcp__moflo__agent_spawn { type: "coder" }
 Message 3: TodoWrite { todos: [...] }
 ```
 
@@ -782,40 +782,40 @@ project/
 [Single Message - Parallel Agent Execution]:
 
 // Initialize swarm
-mcp__claude-flow__swarm_init {
+mcp__moflo__swarm_init {
   topology: "hierarchical",
   maxAgents: 10
 }
 
 // Architecture phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "architect",
   task_description: "design REST API with authentication",
   options: { memory_enabled: true }
 }
 
 // Research phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "researcher",
   task_description: "research authentication best practices"
 }
 
 // Implementation phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "coder",
   task_description: "implement Express API with JWT auth",
   options: { test_driven: true }
 }
 
 // Testing phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "tdd",
   task_description: "comprehensive API tests",
   options: { coverage_target: 90 }
 }
 
 // Review phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "reviewer",
   task_description: "security and performance review",
   options: { security_check: true }
@@ -840,7 +840,7 @@ TodoWrite {
 
 ```javascript
 // Research phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "researcher",
   task_description: "research AI-powered search implementations",
   options: {
@@ -850,27 +850,27 @@ mcp__claude-flow__sparc_mode {
 }
 
 // Innovation phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "innovator",
   task_description: "propose novel search algorithm",
   options: { memory_enabled: true }
 }
 
 // Architecture phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "architect",
   task_description: "design scalable search system"
 }
 
 // Implementation phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "coder",
   task_description: "implement search algorithm",
   options: { test_driven: true }
 }
 
 // Documentation phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "documenter",
   task_description: "document search system architecture and API"
 }
@@ -880,33 +880,33 @@ mcp__claude-flow__sparc_mode {
 
 ```javascript
 // Analysis phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "analyzer",
   task_description: "analyze legacy codebase dependencies"
 }
 
 // Planning phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "orchestrator",
   task_description: "plan incremental refactoring strategy"
 }
 
 // Testing phase (create safety net)
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "tester",
   task_description: "create comprehensive test suite for legacy code",
   options: { coverage_target: 80 }
 }
 
 // Refactoring phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "coder",
   task_description: "refactor module X with modern patterns",
   options: { maintain_tests: true }
 }
 
 // Review phase
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "reviewer",
   task_description: "validate refactoring maintains functionality"
 }
@@ -991,7 +991,7 @@ npx claude-flow sparc pipeline "e-commerce checkout feature"
 
 ```javascript
 // Train patterns from successful workflows
-mcp__claude-flow__neural_train {
+mcp__moflo__neural_train {
   pattern_type: "coordination",
   training_data: "successful_tdd_workflow.json",
   epochs: 50
@@ -1002,12 +1002,12 @@ mcp__claude-flow__neural_train {
 
 ```javascript
 // Save session state
-mcp__claude-flow__memory_persist {
+mcp__moflo__memory_persist {
   sessionId: "feature-auth-v1"
 }
 
 // Restore in new session
-mcp__claude-flow__context_restore {
+mcp__moflo__context_restore {
   snapshotId: "feature-auth-v1"
 }
 ```
@@ -1016,13 +1016,13 @@ mcp__claude-flow__context_restore {
 
 ```javascript
 // Analyze repository
-mcp__claude-flow__github_repo_analyze {
+mcp__moflo__github_repo_analyze {
   repo: "owner/repo",
   analysis_type: "code_quality"
 }
 
 // Manage pull requests
-mcp__claude-flow__github_pr_manage {
+mcp__moflo__github_pr_manage {
   repo: "owner/repo",
   pr_number: 123,
   action: "review"
@@ -1033,19 +1033,19 @@ mcp__claude-flow__github_pr_manage {
 
 ```javascript
 // Real-time swarm monitoring
-mcp__claude-flow__swarm_monitor {
+mcp__moflo__swarm_monitor {
   swarmId: "current",
   interval: 5000
 }
 
 // Bottleneck analysis
-mcp__claude-flow__bottleneck_analyze {
+mcp__moflo__bottleneck_analyze {
   component: "api-layer",
   metrics: ["latency", "throughput", "errors"]
 }
 
 // Token usage tracking
-mcp__claude-flow__token_usage {
+mcp__moflo__token_usage {
   operation: "feature-development",
   timeframe: "24h"
 }
@@ -1098,16 +1098,16 @@ npx claude-flow sparc batch <modes> "task"
 
 ```javascript
 // Initialize swarm
-mcp__claude-flow__swarm_init { topology: "hierarchical" }
+mcp__moflo__swarm_init { topology: "hierarchical" }
 
 // Execute mode
-mcp__claude-flow__sparc_mode { mode: "coder", task_description: "..." }
+mcp__moflo__sparc_mode { mode: "coder", task_description: "..." }
 
 // Monitor progress
-mcp__claude-flow__swarm_monitor { interval: 5000 }
+mcp__moflo__swarm_monitor { interval: 5000 }
 
 // Store in memory
-mcp__claude-flow__memory_usage { action: "store", key: "...", value: "..." }
+mcp__moflo__memory_usage { action: "store", key: "...", value: "..." }
 ```
 
 ---

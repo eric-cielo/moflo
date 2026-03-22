@@ -7,7 +7,7 @@ Code review using batch file analysis for comprehensive reviews.
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "reviewer",
   task_description: "review pull request #123",
   options: {

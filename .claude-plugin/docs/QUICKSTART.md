@@ -202,7 +202,7 @@ The swarm automatically:
 
 ```bash
 # Core MCP (required)
-claude mcp add claude-flow npx claude-flow@alpha mcp start
+claude mcp add moflo npx moflo mcp start
 
 # Enhanced coordination (optional)
 claude mcp add ruv-swarm npx ruv-swarm mcp start
@@ -216,7 +216,7 @@ claude mcp add flow-nexus npx flow-nexus@latest mcp start
 In Claude Code:
 
 ```
-List available MCP tools for claude-flow
+List available MCP tools for moflo
 ```
 
 Expected: 40+ tools including:
@@ -297,10 +297,10 @@ ls ~/.claude/commands/
 cat ~/.claude/settings.json
 
 # Verify MCP package
-npx claude-flow@alpha --version
+npx moflo --version
 
 # Reinstall if needed
-npm install -g claude-flow@alpha
+npm install -g moflo
 ```
 
 ### Agents Not Spawning

@@ -49,10 +49,10 @@
     "node": ">=20.0.0"
   },
   "mcpServers": {
-    "claude-flow": {
+    "moflo": {
       "command": "npx",
-      "args": ["claude-flow@alpha", "mcp", "start"],
-      "description": "Core Claude Flow MCP server for swarm coordination, agent management, and task orchestration (40+ tools)",
+      "args": ["moflo", "mcp", "start"],
+      "description": "Core MoFlo MCP server for swarm coordination, agent management, and task orchestration (40+ tools)",
       "optional": false
     },
     "ruv-swarm": {

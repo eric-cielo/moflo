@@ -7,7 +7,7 @@ Creative problem solving with WebSearch and Memory integration.
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "innovator",
   task_description: "innovative solutions for scaling",
   options: {

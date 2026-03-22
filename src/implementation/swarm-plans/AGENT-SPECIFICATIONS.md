@@ -41,10 +41,10 @@ modules:
 dependencies: []
 
 tools:
-  - mcp__claude-flow__swarm_init
-  - mcp__claude-flow__agent_spawn
-  - mcp__claude-flow__task_orchestrate
-  - mcp__claude-flow__memory_usage
+  - mcp__moflo__swarm_init
+  - mcp__moflo__agent_spawn
+  - mcp__moflo__task_orchestrate
+  - mcp__moflo__memory_usage
   - gh (GitHub CLI)
   - TodoWrite
 
@@ -451,7 +451,7 @@ tools:
   - Write
   - Edit
   - Bash
-  - mcp__claude-flow__swarm_*
+  - mcp__moflo__swarm_*
 
 concurrency_limit: 2
 priority: high

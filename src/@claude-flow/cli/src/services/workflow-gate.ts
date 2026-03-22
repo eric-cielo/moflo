@@ -178,7 +178,7 @@ export class WorkflowGateService {
     if (this.config.memory_first && !state.memorySearched) {
       return {
         allowed: false,
-        message: 'BLOCKED: Search memory (mcp__claude-flow__memory_search) before spawning agents.',
+        message: 'BLOCKED: Search memory (mcp__moflo__memory_search) before spawning agents.',
       };
     }
 
@@ -220,7 +220,7 @@ export class WorkflowGateService {
     if (now - lastBlocked > 2000) {
       state.lastBlockedAt = new Date(now).toISOString();
       this.writeState(state);
-      message = 'BLOCKED: Search memory before exploring files. Use mcp__claude-flow__memory_search with namespace "code-map", "patterns", "knowledge", or "guidance".';
+      message = 'BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search with namespace "code-map", "patterns", "knowledge", or "guidance".';
     }
 
     return { allowed: false, message };
@@ -259,7 +259,7 @@ export class WorkflowGateService {
     if (now - lastBlocked > 2000) {
       state.lastBlockedAt = new Date(now).toISOString();
       this.writeState(state);
-      message = 'BLOCKED: Search memory before reading guidance files. Use mcp__claude-flow__memory_search with namespace "guidance".';
+      message = 'BLOCKED: Search memory before reading guidance files. Use mcp__moflo__memory_search with namespace "guidance".';
     }
 
     return { allowed: false, message };

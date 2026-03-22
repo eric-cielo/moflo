@@ -537,19 +537,19 @@ run().catch(error => core.setFailed(error.message));
 #### Initialize GitHub Swarm
 ```javascript
 // Step 1: Initialize swarm coordination
-mcp__claude-flow__swarm_init {
+mcp__moflo__swarm_init {
   topology: "hierarchical",
   maxAgents: 8
 }
 
 // Step 2: Spawn specialized agents
-mcp__claude-flow__agent_spawn { type: "coordinator", name: "GitHub Coordinator" }
-mcp__claude-flow__agent_spawn { type: "reviewer", name: "Code Reviewer" }
-mcp__claude-flow__agent_spawn { type: "tester", name: "QA Agent" }
-mcp__claude-flow__agent_spawn { type: "analyst", name: "Security Analyst" }
+mcp__moflo__agent_spawn { type: "coordinator", name: "GitHub Coordinator" }
+mcp__moflo__agent_spawn { type: "reviewer", name: "Code Reviewer" }
+mcp__moflo__agent_spawn { type: "tester", name: "QA Agent" }
+mcp__moflo__agent_spawn { type: "analyst", name: "Security Analyst" }
 
 // Step 3: Orchestrate GitHub workflow
-mcp__claude-flow__task_orchestrate {
+mcp__moflo__task_orchestrate {
   task: "Complete PR review and merge workflow",
   strategy: "parallel",
   priority: "high"

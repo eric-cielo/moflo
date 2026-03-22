@@ -22,7 +22,7 @@ Use logs, traces, and stack analysis to isolate bugs. Avoid changing env configu
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "debug",
   task_description: "fix memory leak in service",
   options: {
@@ -58,7 +58,7 @@ npx claude-flow sparc run debug "your task" --non-interactive
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "debug_context",
   value: "important decisions",
@@ -66,7 +66,7 @@ mcp__claude-flow__memory_usage {
 }
 
 // Query previous work
-mcp__claude-flow__memory_search {
+mcp__moflo__memory_search {
   pattern: "debug",
   namespace: "debug",
   limit: 5

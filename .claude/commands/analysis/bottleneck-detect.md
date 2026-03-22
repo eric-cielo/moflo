@@ -147,7 +147,7 @@ Typical improvements after bottleneck resolution:
 
 ```javascript
 // Check for bottlenecks in Claude Code
-mcp__claude-flow__bottleneck_detect {
+mcp__moflo__bottleneck_detect {
   timeRange: "1h",
   threshold: 20,
   autoFix: false

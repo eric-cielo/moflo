@@ -433,7 +433,7 @@ MoFlo uses a SQLite database (via sql.js/WASM — no native deps) to store three
 
 When `flo init` runs, it appends a workflow section to your CLAUDE.md that teaches Claude:
 - Always search memory before Glob/Grep/Read (enforced by gates)
-- Use `mcp__claude-flow__memory_search` for knowledge retrieval
+- Use `mcp__moflo__memory_search` for knowledge retrieval
 - Use `/flo <issue>` (or `/fl`) for issue execution
 - Store learnings after task completion
 

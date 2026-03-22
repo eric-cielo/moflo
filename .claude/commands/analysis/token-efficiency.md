@@ -19,7 +19,7 @@ Reduce token consumption while maintaining quality through intelligent coordinat
 
 ```bash
 # Check token savings after session
-Tool: mcp__claude-flow__token_usage
+Tool: mcp__moflo__token_usage
 Parameters: {"operation": "session", "timeframe": "24h"}
 
 # Result shows:

@@ -20,7 +20,7 @@ prerequisites:
   - Repository access permissions
 tools_required:
   - mcp__github__*
-  - mcp__claude-flow__*
+  - mcp__moflo__*
   - Bash
   - Read
   - Write
@@ -79,10 +79,10 @@ npx ruv-swarm github board-init \
 
 ```javascript
 // Initialize issue management swarm
-mcp__claude-flow__swarm_init { topology: "star", maxAgents: 3 }
-mcp__claude-flow__agent_spawn { type: "coordinator", name: "Issue Coordinator" }
-mcp__claude-flow__agent_spawn { type: "researcher", name: "Requirements Analyst" }
-mcp__claude-flow__agent_spawn { type: "coder", name: "Implementation Planner" }
+mcp__moflo__swarm_init { topology: "star", maxAgents: 3 }
+mcp__moflo__agent_spawn { type: "coordinator", name: "Issue Coordinator" }
+mcp__moflo__agent_spawn { type: "researcher", name: "Requirements Analyst" }
+mcp__moflo__agent_spawn { type: "coder", name: "Implementation Planner" }
 
 // Create comprehensive issue
 mcp__github__create_issue {
@@ -107,7 +107,7 @@ mcp__github__create_issue {
 }
 
 // Set up automated tracking
-mcp__claude-flow__task_orchestrate {
+mcp__moflo__task_orchestrate {
   task: "Monitor and coordinate issue progress with automated updates",
   strategy: "adaptive",
   priority: "medium"

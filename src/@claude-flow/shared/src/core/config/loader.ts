@@ -97,7 +97,7 @@ function loadEnvConfig(): Partial<SystemConfig> {
   }
 
   // MCP transport
-  const defaultMcp = defaultSystemConfig.mcp ?? { name: 'claude-flow', version: '3.0.0', transport: { type: 'stdio' as const } };
+  const defaultMcp = defaultSystemConfig.mcp ?? { name: 'moflo', version: '3.0.0', transport: { type: 'stdio' as const } };
   if (process.env.CLAUDE_FLOW_MCP_TRANSPORT) {
     const transport = process.env.CLAUDE_FLOW_MCP_TRANSPORT as 'stdio' | 'http' | 'websocket';
     if (['stdio', 'http', 'websocket'].includes(transport)) {

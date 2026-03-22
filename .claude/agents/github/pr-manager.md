@@ -12,14 +12,14 @@ tools:
   - Grep
   - LS
   - TodoWrite
-  - mcp__claude-flow__swarm_init
-  - mcp__claude-flow__agent_spawn
-  - mcp__claude-flow__task_orchestrate
-  - mcp__claude-flow__swarm_status
-  - mcp__claude-flow__memory_usage
-  - mcp__claude-flow__github_pr_manage
-  - mcp__claude-flow__github_code_review
-  - mcp__claude-flow__github_metrics
+  - mcp__moflo__swarm_init
+  - mcp__moflo__agent_spawn
+  - mcp__moflo__task_orchestrate
+  - mcp__moflo__swarm_status
+  - mcp__moflo__memory_usage
+  - mcp__moflo__github_pr_manage
+  - mcp__moflo__github_code_review
+  - mcp__moflo__github_metrics
 hooks:
   pre:
     - "gh auth status || (echo 'GitHub CLI not authenticated' && exit 1)"
@@ -50,10 +50,10 @@ Comprehensive pull request management with swarm coordination for automated revi
 ### 1. Create and Manage PR with Swarm Coordination
 ```javascript
 // Initialize review swarm
-mcp__claude-flow__swarm_init { topology: "mesh", maxAgents: 4 }
-mcp__claude-flow__agent_spawn { type: "reviewer", name: "Code Quality Reviewer" }
-mcp__claude-flow__agent_spawn { type: "tester", name: "Testing Agent" }
-mcp__claude-flow__agent_spawn { type: "coordinator", name: "PR Coordinator" }
+mcp__moflo__swarm_init { topology: "mesh", maxAgents: 4 }
+mcp__moflo__agent_spawn { type: "reviewer", name: "Code Quality Reviewer" }
+mcp__moflo__agent_spawn { type: "tester", name: "Testing Agent" }
+mcp__moflo__agent_spawn { type: "coordinator", name: "PR Coordinator" }
 
 // Create PR and orchestrate review
 mcp__github__create_pull_request {
@@ -66,7 +66,7 @@ mcp__github__create_pull_request {
 }
 
 // Orchestrate review process
-mcp__claude-flow__task_orchestrate {
+mcp__moflo__task_orchestrate {
   task: "Complete PR review with testing and validation",
   strategy: "parallel",
   priority: "high"
@@ -108,7 +108,7 @@ mcp__github__merge_pull_request {
 }
 
 // Post-merge coordination
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "pr/54/merged",
   value: { timestamp: Date.now(), status: "success" }
@@ -121,10 +121,10 @@ mcp__claude-flow__memory_usage {
 ```javascript
 [Single Message - Complete PR Management]:
   // Initialize coordination
-  mcp__claude-flow__swarm_init { topology: "hierarchical", maxAgents: 5 }
-  mcp__claude-flow__agent_spawn { type: "reviewer", name: "Senior Reviewer" }
-  mcp__claude-flow__agent_spawn { type: "tester", name: "QA Engineer" }
-  mcp__claude-flow__agent_spawn { type: "coordinator", name: "Merge Coordinator" }
+  mcp__moflo__swarm_init { topology: "hierarchical", maxAgents: 5 }
+  mcp__moflo__agent_spawn { type: "reviewer", name: "Senior Reviewer" }
+  mcp__moflo__agent_spawn { type: "tester", name: "QA Engineer" }
+  mcp__moflo__agent_spawn { type: "coordinator", name: "Merge Coordinator" }
   
   // Create and manage PR using gh CLI
   Bash("gh pr create --repo :owner/:repo --title '...' --head '...' --base 'main'")

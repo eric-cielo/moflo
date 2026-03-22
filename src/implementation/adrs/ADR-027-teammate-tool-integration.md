@@ -1173,7 +1173,7 @@ const result = await handleMCPTool(bridge, 'teammate_spawn_team', {
 // In Claude Code conversation:
 
 // 1. Initialize team via MCP
-mcp__claude-flow__teammate_spawn_team({
+mcp__moflo__teammate_spawn_team({
   name: "feature-dev-team",
   topology: "hierarchical",
   maxTeammates: 6,
@@ -1304,7 +1304,7 @@ const teammateConfig: TeammateSpawnConfig = {
 
 ```typescript
 // Before: Pure MCP coordination
-mcp__claude-flow__swarm_init({ topology: 'hierarchical' })
+mcp__moflo__swarm_init({ topology: 'hierarchical' })
 
 // After: Native when available, MCP fallback
 const integration = new ClaudeFlowTeammateIntegration();
@@ -1316,7 +1316,7 @@ if (mode === 'native') {
   // Pass agentInputs to Task tool
 } else {
   // Fallback to MCP
-  mcp__claude-flow__swarm_init({ topology: 'hierarchical' })
+  mcp__moflo__swarm_init({ topology: 'hierarchical' })
 }
 ```
 

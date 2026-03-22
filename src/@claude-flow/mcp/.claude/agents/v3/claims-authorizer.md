@@ -23,7 +23,7 @@ hooks:
   post: |
     echo "✅ Authorization complete"
     # Log authorization decision
-    mcp__claude-flow__memory_usage --action="store" --namespace="audit" --key="auth:$(date +%s)" --value="$AUTH_DECISION"
+    mcp__moflo__memory_usage --action="store" --namespace="audit" --key="auth:$(date +%s)" --value="$AUTH_DECISION"
 ---
 
 # V3 Claims Authorizer Agent
@@ -152,7 +152,7 @@ Claims are checked automatically via hooks:
 ```json
 {
   "PreToolUse": [{
-    "matcher": "^mcp__claude-flow__.*$",
+    "matcher": "^mcp__moflo__.*$",
     "hooks": [{
       "type": "command",
       "command": "npx claude-flow@v3alpha claims check --agent $AGENT_ID --tool $TOOL_NAME --auto-deny"
@@ -174,13 +174,13 @@ All authorization decisions are logged:
 
 ```bash
 # Store authorization decision
-mcp__claude-flow__memory_usage --action="store" \
+mcp__moflo__memory_usage --action="store" \
   --namespace="audit" \
   --key="auth:$(date +%s)" \
   --value='{"agent":"agent-123","resource":"memory:patterns","action":"write","decision":"allow","reason":"has scope:write claim"}'
 
 # Query audit log
-mcp__claude-flow__memory_search --pattern="auth:*" --namespace="audit" --limit=100
+mcp__moflo__memory_search --pattern="auth:*" --namespace="audit" --limit=100
 ```
 
 ## Default Policies

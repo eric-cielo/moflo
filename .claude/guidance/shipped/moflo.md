@@ -2,7 +2,7 @@
 
 **Purpose:** Complete CLI and MCP reference for moflo — hooks, memory, agents, swarm, neural, and doctor commands. Read when using moflo features or debugging agent coordination.
 
-**MCP-First Policy:** Always prefer MCP tools (`mcp__claude-flow__*`) over CLI commands. Use `ToolSearch` to load them, then call directly. CLI is fallback only.
+**MCP-First Policy:** Always prefer MCP tools (`mcp__moflo__*`) over CLI commands. Use `ToolSearch` to load them, then call directly. CLI is fallback only.
 
 ---
 
@@ -93,7 +93,7 @@ MCP tools are the preferred way for Claude to interact with moflo. `flo init` cr
 ```json
 {
   "mcpServers": {
-    "claude-flow": {
+    "moflo": {
       "command": "node",
       "args": ["node_modules/moflo/src/@claude-flow/cli/bin/cli.js", "mcp", "start"]
     }
@@ -101,7 +101,7 @@ MCP tools are the preferred way for Claude to interact with moflo. `flo init` cr
 }
 ```
 
-This gives Claude access to 200+ MCP tools (`mcp__claude-flow__memory_*`, `mcp__claude-flow__hooks_*`, `mcp__claude-flow__swarm_*`, etc.) without any global installation.
+This gives Claude access to 200+ MCP tools (`mcp__moflo__memory_*`, `mcp__moflo__hooks_*`, `mcp__moflo__swarm_*`, etc.) without any global installation.
 
 ---
 
@@ -157,11 +157,11 @@ This gives Claude access to 200+ MCP tools (`mcp__claude-flow__memory_*`, `mcp__
 
 | Task | MCP Tool | CLI Fallback |
 |------|----------|-------------|
-| Search memory | `mcp__claude-flow__memory_search` | `memory search --query "..."` |
-| Spawn agent | `mcp__claude-flow__agent_spawn` | `agent spawn -t coder --name my-coder` |
-| Init swarm | `mcp__claude-flow__swarm_init` | `swarm init --v3-mode` |
-| System health | `mcp__claude-flow__system_health` | `doctor --fix` |
-| Benchmark | `mcp__claude-flow__performance_benchmark` | `performance benchmark --suite all` |
+| Search memory | `mcp__moflo__memory_search` | `memory search --query "..."` |
+| Spawn agent | `mcp__moflo__agent_spawn` | `agent spawn -t coder --name my-coder` |
+| Init swarm | `mcp__moflo__swarm_init` | `swarm init --v3-mode` |
+| System health | `mcp__moflo__system_health` | `doctor --fix` |
+| Benchmark | `mcp__moflo__performance_benchmark` | `performance benchmark --suite all` |
 
 **CLI-only (no MCP equivalent — setup tasks):**
 ```bash
@@ -263,13 +263,13 @@ npx flo daemon start
 
 | Hook | MCP Tool | Key Params |
 |------|----------|------------|
-| Pre-task | `mcp__claude-flow__hooks_pre-task` | `description` |
-| Post-task | `mcp__claude-flow__hooks_post-task` | `taskId`, `success` |
-| Post-edit | `mcp__claude-flow__hooks_post-edit` | `file`, `trainNeural` |
-| Session-start | `mcp__claude-flow__hooks_session-start` | `sessionId` |
-| Session-end | `mcp__claude-flow__hooks_session-end` | `exportMetrics` |
-| Route | `mcp__claude-flow__hooks_route` | `task` |
-| Worker-dispatch | `mcp__claude-flow__hooks_worker-dispatch` | `trigger` |
+| Pre-task | `mcp__moflo__hooks_pre-task` | `description` |
+| Post-task | `mcp__moflo__hooks_post-task` | `taskId`, `success` |
+| Post-edit | `mcp__moflo__hooks_post-edit` | `file`, `trainNeural` |
+| Session-start | `mcp__moflo__hooks_session-start` | `sessionId` |
+| Session-end | `mcp__moflo__hooks_session-end` | `exportMetrics` |
+| Route | `mcp__moflo__hooks_route` | `task` |
+| Worker-dispatch | `mcp__moflo__hooks_worker-dispatch` | `trigger` |
 
 ---
 
@@ -305,7 +305,7 @@ npx flo daemon start
 
 ### Before Starting Coding Tasks
 
-**MCP (Preferred):** `mcp__claude-flow__memory_search` — `query: "[task keywords]", namespace: "patterns"`
+**MCP (Preferred):** `mcp__moflo__memory_search` — `query: "[task keywords]", namespace: "patterns"`
 
 **CLI Fallback:**
 ```bash
@@ -316,9 +316,9 @@ npx flo memory search --query '[task keywords]' --namespace patterns
 
 | Step | MCP Tool | Key Params |
 |------|----------|------------|
-| 1. Store pattern | `mcp__claude-flow__memory_store` | `namespace: "patterns", key: "[name]", value: "[what worked]"` |
-| 2. Train neural | `mcp__claude-flow__hooks_post-edit` | `file: "[main-file]", trainNeural: true` |
-| 3. Record completion | `mcp__claude-flow__hooks_post-task` | `taskId: "[id]", success: true, storeResults: true` |
+| 1. Store pattern | `mcp__moflo__memory_store` | `namespace: "patterns", key: "[name]", value: "[what worked]"` |
+| 2. Train neural | `mcp__moflo__hooks_post-edit` | `file: "[main-file]", trainNeural: true` |
+| 3. Record completion | `mcp__moflo__hooks_post-task` | `taskId: "[id]", success: true, storeResults: true` |
 
 ### Continuous Improvement Triggers
 
@@ -351,7 +351,7 @@ npx flo memory search --query '[task keywords]' --namespace patterns
 
 ### Store Data
 
-**MCP:** `mcp__claude-flow__memory_store`
+**MCP:** `mcp__moflo__memory_store`
 - Required: `key`, `value`
 - Optional: `namespace` (default: "default"), `ttl`, `tags`
 
@@ -362,7 +362,7 @@ npx flo memory store --key "pattern-auth" --value "JWT with refresh tokens" --na
 
 ### Search Data (semantic vector search)
 
-**MCP:** `mcp__claude-flow__memory_search`
+**MCP:** `mcp__moflo__memory_search`
 - Required: `query`
 - Optional: `namespace`, `limit`, `threshold`
 
@@ -373,12 +373,12 @@ npx flo memory search --query "authentication patterns" --namespace patterns --l
 
 ### List Entries
 
-**MCP:** `mcp__claude-flow__memory_list`
+**MCP:** `mcp__moflo__memory_list`
 - Optional: `namespace`, `limit`
 
 ### Retrieve Specific Entry
 
-**MCP:** `mcp__claude-flow__memory_retrieve`
+**MCP:** `mcp__moflo__memory_retrieve`
 - Required: `key`
 - Optional: `namespace` (default: "default")
 
@@ -397,11 +397,11 @@ npx flo memory search --query "authentication patterns" --namespace patterns --l
 
 | Operation | MCP Tool |
 |-----------|----------|
-| Swarm init | `mcp__claude-flow__swarm_init` |
-| Agent spawn | `mcp__claude-flow__agent_spawn` |
-| Memory store | `mcp__claude-flow__memory_store` |
-| Memory search | `mcp__claude-flow__memory_search` |
-| Hooks (all) | `mcp__claude-flow__hooks_<hook-name>` |
+| Swarm init | `mcp__moflo__swarm_init` |
+| Agent spawn | `mcp__moflo__agent_spawn` |
+| Memory store | `mcp__moflo__memory_store` |
+| Memory search | `mcp__moflo__memory_search` |
+| Hooks (all) | `mcp__moflo__hooks_<hook-name>` |
 
 ### CLI Commands (Fallback Only):
 
@@ -416,7 +416,7 @@ npx flo <command> [options]
 
 ## Doctor Health Checks
 
-**MCP:** `mcp__claude-flow__system_health` | **CLI:** `npx flo doctor`
+**MCP:** `mcp__moflo__system_health` | **CLI:** `npx flo doctor`
 
 Checks: Node version (20+), Git, config validity, daemon status, memory database, API keys, MCP servers, disk space, TypeScript.
 
@@ -450,7 +450,7 @@ Configure `.mcp.json` in the project root:
 ```json
 {
   "mcpServers": {
-    "claude-flow": {
+    "moflo": {
       "command": "node",
       "args": ["node_modules/moflo/src/@claude-flow/cli/bin/cli.js", "mcp", "start"]
     }
@@ -461,7 +461,7 @@ Configure `.mcp.json` in the project root:
 ### Alternative: Global MCP Registration
 
 ```bash
-claude mcp add claude-flow -- npx @claude-flow/cli@alpha
+claude mcp add moflo -- npx @claude-flow/cli@alpha
 npx flo daemon start
 npx flo doctor --fix
 ```

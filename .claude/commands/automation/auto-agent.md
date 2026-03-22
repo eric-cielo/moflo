@@ -107,7 +107,7 @@ npx claude-flow auto agent -t "Fix bug in login" -s minimal
 
 ```javascript
 // In Claude Code after auto-spawning
-mcp__claude-flow__auto_agent {
+mcp__moflo__auto_agent {
   task: "Build authentication system",
   strategy: "balanced",
   maxAgents: 6

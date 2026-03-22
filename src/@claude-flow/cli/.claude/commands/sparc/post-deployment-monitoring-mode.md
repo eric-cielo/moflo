@@ -22,7 +22,7 @@ Configure metrics, logs, uptime checks, and alerts. Recommend improvements if th
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
-mcp__claude-flow__sparc_mode {
+mcp__moflo__sparc_mode {
   mode: "post-deployment-monitoring-mode",
   task_description: "monitor production metrics",
   options: {
@@ -58,7 +58,7 @@ npx claude-flow sparc run post-deployment-monitoring-mode "your task" --non-inte
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__claude-flow__memory_usage {
+mcp__moflo__memory_usage {
   action: "store",
   key: "post-deployment-monitoring-mode_context",
   value: "important decisions",
@@ -66,7 +66,7 @@ mcp__claude-flow__memory_usage {
 }
 
 // Query previous work
-mcp__claude-flow__memory_search {
+mcp__moflo__memory_search {
   pattern: "post-deployment-monitoring-mode",
   namespace: "post-deployment-monitoring-mode",
   limit: 5
