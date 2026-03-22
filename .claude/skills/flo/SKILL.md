@@ -13,7 +13,7 @@ Research, create tickets for, and execute GitHub issues automatically.
 ## Usage
 
 ```
-/flo <issue-number>                   # Full workflow with SWARM (default)
+/flo <issue-number>                   # Full workflow in NORMAL mode (default)
 /flo -t <issue-number>                # Ticket only: research and update ticket, then STOP
 /flo -t <title>                       # Create a NEW ticket with description, acceptance criteria, test cases
 /flo --ticket <issue-number|title>    # Same as -t
@@ -26,8 +26,8 @@ Also available as `/fl` (shorthand alias).
 ### Execution Mode (how work is done)
 
 ```
-/flo 123                              # SWARM mode (default) - multi-agent coordination
-/flo -s 123                           # SWARM mode (explicit)
+/flo 123                              # NORMAL mode (default) - single-agent execution
+/flo -s 123                           # SWARM mode - multi-agent coordination
 /flo --swarm 123                      # Same as -s
 /flo -h 123                           # HIVE-MIND mode - consensus-based coordination
 /flo --hive 123                       # Same as -h
@@ -58,22 +58,27 @@ Also available as `/fl` (shorthand alias).
 ### Combined Examples
 
 ```
-/flo 123                              # Swarm + full workflow (default) - includes ALL tests
+/flo 123                              # Normal + full workflow (default) - includes ALL tests
 /flo 42                               # If #42 is epic, processes stories sequentially
-/flo -t 123                           # Swarm + ticket only (no implementation)
+/flo -s 123                           # Swarm + full workflow (multi-agent coordination)
+/flo -t 123                           # Normal + ticket only (no implementation)
 /flo -h -t 123                        # Hive-mind + ticket only
-/flo -n -r 123                        # Normal + research only
+/flo -s -r 123                        # Swarm + research only
 /flo --swarm --ticket 123             # Explicit swarm + ticket only
-/flo -n 123                           # Normal + full workflow (still runs all tests)
+/flo -n 123                           # Normal (explicit, same as default)
 ```
 
-## SWARM IS MANDATORY BY DEFAULT
+## NORMAL MODE IS THE DEFAULT
 
-Even if a task "looks simple", you MUST use swarm coordination unless
-the user explicitly passes -n/--normal. "Simple" is a trap. Tasks have
-hidden complexity. Swarm catches it.
+By default, /flo runs in NORMAL mode — single-agent execution without
+spawning sub-agents. This is efficient for most tasks.
 
-THE ONLY WAY TO SKIP SWARM: User passes -n or --normal explicitly.
+Use `-s`/`--swarm` for multi-agent coordination when the task warrants it.
+Use `-h`/`--hive` for consensus-based coordination on architecture decisions.
+
+POST-TASK NEURAL LEARNING ALWAYS RUNS regardless of execution mode.
+The hooks system collects learnings after every task completion — normal,
+swarm, or hive-mind.
 
 ## COMPREHENSIVE TESTING REQUIREMENT
 
@@ -107,9 +112,9 @@ PR+Done:     Create PR, update issue status, store learnings
 
 | Mode | Description |
 |------|-------------|
-| **SWARM** (default) | Multi-agent via Task tool: researcher, coder, tester, reviewer |
+| **NORMAL** (default) | Single Claude execution. Efficient for most tasks. |
+| **SWARM** (-s) | Multi-agent via Task tool: researcher, coder, tester, reviewer |
 | **HIVE-MIND** (-h) | Consensus-based coordination for architecture decisions |
-| **NORMAL** (-n) | Single Claude, no agent spawning. Only when user explicitly requests. |
 
 ## Phase 1: Research (-r or default first step)
 
@@ -450,7 +455,7 @@ function extractStories(epicBody) {
 ```javascript
 const args = "$ARGUMENTS".trim().split(/\s+/);
 let workflowMode = "full";    // full, ticket, research
-let execMode = "swarm";       // swarm (default), hive, normal
+let execMode = "normal";      // normal (default), swarm, hive
 let issueNumber = null;
 let titleWords = [];
 
@@ -515,15 +520,15 @@ console.log("SIMPLIFY: /simplify command runs on changed code before PR.");
 
 | Mode | Flag | Description | When to Use |
 |------|------|-------------|-------------|
-| **Swarm** (DEFAULT) | `-s`, `--swarm` | Multi-agent via Task tool | Always, unless explicitly overridden |
+| **Normal** (DEFAULT) | `-n`, `--normal` | Single Claude, no agents | Default for most tasks |
+| **Swarm** | `-s`, `--swarm` | Multi-agent via Task tool | Complex multi-file changes |
 | **Hive-Mind** | `-h`, `--hive` | Consensus-based coordination | Architecture decisions, tradeoffs |
-| **Normal** | `-n`, `--normal` | Single Claude, no agents | User explicitly wants simple mode |
 
 ## Execution Mode Details
 
-### SWARM Mode (Default) - ALWAYS USE UNLESS TOLD OTHERWISE
+### SWARM Mode (-s, --swarm)
 
-You MUST use the Task tool to spawn agents. No exceptions.
+When swarm is requested, you MUST use the Task tool to spawn agents. No exceptions.
 
 **Swarm spawns these agents via Task tool:**
 - `researcher` - Analyzes issue, searches memory, finds patterns
@@ -558,11 +563,12 @@ Use for consensus-based decisions:
 - Approach tradeoffs
 - Design decisions with multiple valid options
 
-### NORMAL Mode (-n, --normal)
+### NORMAL Mode (Default)
 
-**Only when user explicitly requests.** Single Claude execution without agents.
+Single Claude execution without spawning sub-agents.
 - Still uses Task tool for tracking
 - Still creates tasks for visibility
+- Post-task neural learning hooks still fire
 - Just doesn't spawn multiple agents
 
 ---
