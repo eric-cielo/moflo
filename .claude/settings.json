@@ -28,24 +28,109 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "^(Write|Edit|MultiEdit)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" pre-bash",
+            "command": "npx flo hooks pre-edit",
             "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "^(Glob|Grep)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx flo gate check-before-scan",
+            "timeout": 3000
+          }
+        ]
+      },
+      {
+        "matcher": "^Read$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx flo gate check-before-read",
+            "timeout": 3000
+          }
+        ]
+      },
+      {
+        "matcher": "^Task$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx flo gate check-before-agent",
+            "timeout": 3000
+          },
+          {
+            "type": "command",
+            "command": "npx flo hooks pre-task",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx flo gate check-dangerous-command",
+            "timeout": 2000
           }
         ]
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "Write|Edit|MultiEdit",
+        "matcher": "^(Write|Edit|MultiEdit)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" post-edit",
-            "timeout": 10000
+            "command": "npx flo hooks post-edit",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "^Task$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx flo hooks post-task",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "^TaskCreate$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx flo gate record-task-created",
+            "timeout": 2000
+          }
+        ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx flo gate check-bash-memory",
+            "timeout": 2000
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__moflo__memory_(search|retrieve)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx flo gate record-memory-searched",
+            "timeout": 2000
           }
         ]
       }
@@ -55,8 +140,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" route",
-            "timeout": 10000
+            "command": "npx flo gate prompt-reminder",
+            "timeout": 2000
+          },
+          {
+            "type": "command",
+            "command": "npx flo hooks route",
+            "timeout": 5000
           }
         ]
       }
@@ -66,24 +156,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" session-restore",
-            "timeout": 15000
-          },
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/auto-memory-hook.mjs\" import",
-            "timeout": 8000
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" session-end",
-            "timeout": 10000
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/scripts/session-start-launcher.mjs\"",
+            "timeout": 3000
           }
         ]
       }
@@ -93,71 +167,30 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/auto-memory-hook.mjs\" sync",
-            "timeout": 10000
+            "command": "npx flo hooks session-end",
+            "timeout": 5000
           }
         ]
       }
     ],
     "PreCompact": [
       {
-        "matcher": "manual",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" compact-manual"
-          },
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" session-end",
-            "timeout": 5000
-          }
-        ]
-      },
-      {
-        "matcher": "auto",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" compact-auto"
-          },
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" session-end",
-            "timeout": 6000
-          }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" status",
+            "command": "npx flo gate compact-guidance",
             "timeout": 3000
           }
         ]
       }
     ],
-    "TeammateIdle": [
+    "Notification": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" post-task",
-            "timeout": 5000
-          }
-        ]
-      }
-    ],
-    "TaskCompleted": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" post-task",
-            "timeout": 5000
+            "command": "npx flo hooks notification",
+            "timeout": 3000
           }
         ]
       }
@@ -165,7 +198,7 @@
   },
   "attribution": {
     "commit": "Co-Authored-By: moflo <noreply@motailz.com>",
-    "pr": "\ud83e\udd16 Generated with [moflo](https://github.com/eric-cielo/moflo)"
+    "pr": "🤖 Generated with [moflo](https://github.com/eric-cielo/moflo)"
   },
   "claudeFlow": {
     "version": "4.7.2",
@@ -205,9 +238,15 @@
     "memory": {
       "backend": "hybrid",
       "enableHNSW": true,
-      "learningBridge": { "enabled": true },
-      "memoryGraph": { "enabled": true },
-      "agentScopes": { "enabled": true }
+      "learningBridge": {
+        "enabled": true
+      },
+      "memoryGraph": {
+        "enabled": true
+      },
+      "agentScopes": {
+        "enabled": true
+      }
     },
     "neural": {
       "enabled": true
@@ -227,18 +266,40 @@
         "benchmark"
       ],
       "schedules": {
-        "audit": { "interval": "1h", "priority": "critical" },
-        "optimize": { "interval": "30m", "priority": "high" },
-        "consolidate": { "interval": "2h", "priority": "low" },
-        "document": { "interval": "1h", "priority": "normal" },
-        "deepdive": { "interval": "4h", "priority": "normal" },
-        "ultralearn": { "interval": "1h", "priority": "normal" }
+        "audit": {
+          "interval": "1h",
+          "priority": "critical"
+        },
+        "optimize": {
+          "interval": "30m",
+          "priority": "high"
+        },
+        "consolidate": {
+          "interval": "2h",
+          "priority": "low"
+        },
+        "document": {
+          "interval": "1h",
+          "priority": "normal"
+        },
+        "deepdive": {
+          "interval": "4h",
+          "priority": "normal"
+        },
+        "ultralearn": {
+          "interval": "1h",
+          "priority": "normal"
+        }
       }
     },
     "learning": {
       "enabled": true,
       "autoTrain": true,
-      "patterns": ["coordination", "optimization", "prediction"],
+      "patterns": [
+        "coordination",
+        "optimization",
+        "prediction"
+      ],
       "retention": {
         "shortTerm": "24h",
         "longTerm": "30d"

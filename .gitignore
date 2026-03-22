@@ -161,3 +161,11 @@ hive-mind-prompt-*.txt
 .env
 .env.local
 .env.*.local
+
+# MoFlo state (gitignored)
+.claude-orc/
+.moflo/
+
+# Ephemeral / test artifacts
+.claude/workflow-state.json
+test-database-provider.rvf

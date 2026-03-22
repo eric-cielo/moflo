@@ -1049,3 +1049,62 @@ MoFlo tracks cherry-picks from the upstream Ruflo/Claude Flow repository. The sy
 ---
 
 Remember: **Claude Flow coordinates, Claude Code creates!**
+
+<!-- MOFLO:START -->
+## MoFlo — AI Agent Orchestration
+
+This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted development workflows.
+
+### FIRST ACTION ON EVERY PROMPT: Search Memory
+
+Your first tool call for every new user prompt MUST be a memory search. Do this BEFORE Glob, Grep, Read, or any file exploration.
+
+```
+mcp__moflo__memory_search  — query: "<task description>", namespace: "guidance" or "patterns" or "knowledge" or "code-map"
+```
+
+For codebase navigation, search the `code-map` namespace first. For patterns and domain knowledge, search `patterns`, `knowledge`, and `guidance`.
+When the user asks you to remember something, store it: `memory store --namespace knowledge --key "[topic]" --value "[what to remember]"`
+
+### Workflow Gates (enforced automatically)
+
+These are enforced by hooks — you cannot bypass them:
+- **Memory-first**: Must search memory before Glob/Grep/Read on guidance files
+- **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
+- **Context tracking**: Session tracked as FRESH → MODERATE → DEPLETED → CRITICAL
+
+### /flo Skill — Issue Execution
+
+Use `/flo <issue-number>` (or `/fl`) to execute GitHub issues through the full workflow:
+Research → Enhance → Implement → Test → Simplify → PR
+
+### MCP Tools Reference
+
+| Tool | Purpose |
+|------|---------|
+| `mcp__moflo__memory_search` | Semantic search across indexed knowledge |
+| `mcp__moflo__memory_store` | Store patterns and decisions |
+| `mcp__moflo__hooks_route` | Route task to optimal agent type |
+| `mcp__moflo__hooks_pre-task` | Record task start |
+| `mcp__moflo__hooks_post-task` | Record task completion for learning |
+
+### Agent Icon Mapping
+
+| Icon | Agent Type | Use For |
+|------|------------|---------|
+| 🔍 | Explore | Research, codebase exploration |
+| 📐 | Plan | Architecture, design |
+| ⚙️ | General | General coding tasks |
+| 🧪 | Test | Writing tests |
+| 🔬 | Analyzer | Code review, analysis |
+| 🔧 | Backend | API implementation |
+
+### Non-Trivial Task Workflow
+
+For any task beyond a single-line fix:
+1. Search memory first (mandatory gate)
+2. Create tasks with TaskCreate (mandatory gate)
+3. Spawn agents in waves (Explore first, then Implement + Test)
+4. Update task status as you go
+5. Store learnings after completion
+<!-- MOFLO:END -->
