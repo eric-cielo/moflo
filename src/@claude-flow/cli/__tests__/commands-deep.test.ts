@@ -1537,55 +1537,42 @@ describe('Init System', () => {
       expect(md).toContain('MoFlo');
     });
 
-    it('should contain behavioral rules', () => {
+    it('should contain memory search instruction', () => {
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
-      expect(md).toContain('Behavioral Rules');
+      expect(md).toContain('mcp__moflo__memory_search');
     });
 
-    it('should contain file organization', () => {
+    it('should contain workflow gates', () => {
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
-      expect(md).toContain('File Organization');
+      expect(md).toContain('Workflow Gates');
     });
 
-    it('should contain project architecture', () => {
+    it('should contain MCP tools table', () => {
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
-      expect(md).toContain('Project Architecture');
+      expect(md).toContain('MCP Tools');
     });
 
-    it('should contain anti-drift configuration', () => {
-      const md = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'standard');
-      expect(md).toContain('Anti-Drift');
+    it('should contain injection markers', () => {
+      const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
+      expect(md).toContain('MOFLO:INJECTED:START');
+      expect(md).toContain('MOFLO:INJECTED:END');
     });
 
-    it('standard template should include swarm orchestration', () => {
-      const md = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'standard');
-      expect(md).toContain('Swarm Orchestration');
+    it('should reference full docs in guidance', () => {
+      const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
+      expect(md).toContain('.claude/guidance/shipped/moflo.md');
     });
 
-    it('full template should include hooks system', () => {
-      const md = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'full');
-      expect(md).toContain('Hooks System');
-    });
-
-    it('full template should include intelligence system', () => {
-      const md = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'full');
-      expect(md).toContain('Intelligence System');
-    });
-
-    it('security template should include security rules', () => {
-      const md = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'security');
-      expect(md).toContain('Security');
-    });
-
-    it('performance template should include performance section', () => {
-      const md = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'performance');
-      expect(md).toContain('Performance');
-    });
-
-    it('minimal template should be shorter than full template', () => {
+    it('all templates should produce identical output', () => {
       const minimal = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'minimal');
+      const standard = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'standard');
       const full = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'full');
-      expect(minimal.length).toBeLessThan(full.length);
+      const security = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'security');
+      const performance = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'performance');
+      expect(minimal).toBe(standard);
+      expect(standard).toBe(full);
+      expect(full).toBe(security);
+      expect(security).toBe(performance);
     });
   });
 

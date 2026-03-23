@@ -379,9 +379,10 @@ describe('Guidance Compliance Linter', () => {
   });
 
   describe('Structural requirements', () => {
-    it('CLAUDE.md exists and has agent routing section', () => {
+    it('CLAUDE.md exists and has MoFlo section', () => {
       const content = readFile('CLAUDE.md');
-      expect(content).toContain('Agent Routing');
+      expect(content).toContain('MoFlo');
+      expect(content).toContain('mcp__moflo__memory_search');
     });
 
     it('task-swarm-integration.md has TaskCreate decision checklist', () => {
@@ -396,34 +397,9 @@ describe('Guidance Compliance Linter', () => {
       expect(content).toContain('Single Background Agent');
     });
 
-    it('agent routing table entries include role icons', () => {
+    it('CLAUDE.md references full docs in guidance', () => {
       const content = readFile('CLAUDE.md');
-      // Extract agent routing table rows (heading: "Agent Routing (Anti-Drift)")
-      // Handle both LF and CRLF line endings
-      const normalizedContent = content.replace(/\r\n/g, '\n');
-      const routingSection = normalizedContent.match(
-        /Agent Routing[^\n]*\n([\s\S]*?\n)\n/
-      );
-      if (!routingSection) {
-        expect.fail('Agent Routing section not found in CLAUDE.md');
-        return;
-      }
-      const section = routingSection[0];
-      // Table rows with agent types should have icons
-      const tableRows = section.split('\n').filter(l => l.startsWith('|') && !l.includes('---'));
-      const agentRows = tableRows.filter(r =>
-        /coordinator|researcher|coder|tester|reviewer|architect|engineer|auditor|docs/.test(r)
-      );
-      for (const row of agentRows) {
-        const hasIcon = new RegExp(ICON_PATTERN).test(row);
-        if (!hasIcon) {
-          // Only flag if the row contains known agent types
-          const hasKnownAgent = ICONABLE_AGENT_TYPES.some(t => row.includes(t));
-          if (hasKnownAgent) {
-            expect.fail(`Agent routing row missing icon: ${row.trim()}`);
-          }
-        }
-      }
+      expect(content).toContain('.claude/guidance/shipped/moflo.md');
     });
   });
 });
