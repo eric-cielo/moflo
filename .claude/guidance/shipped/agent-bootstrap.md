@@ -79,7 +79,7 @@ Project guidance always takes precedence over generic patterns.
 - Search memory before exploring files
 - Store discoveries back to memory when done
 - Use `patterns` namespace for solutions and gotchas
-- Use `decisions` namespace for architectural choices
+- Use `knowledge` namespace for architectural choices and user-requested knowledge
 
 ### Git/Branches
 - Use conventional commit prefixes: `feat:`, `fix:`, `refactor:`, `test:`, `chore:`
