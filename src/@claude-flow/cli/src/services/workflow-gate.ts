@@ -78,13 +78,21 @@ const TASK_PATTERNS = [
  * Checked first — if matched, memory gate is skipped regardless of task patterns.
  */
 const DIRECTIVE_PATTERNS = [
-  /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\b/i,
+  // Confirmations and short answers
+  /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect|thanks|thank you|got it|sounds good|go ahead|do it|lgtm)\b/i,
+  // Git and package management
   /\b(commit|push|pull|merge|rebase|cherry-pick)\b/,
+  /\bpublish\b/, /\bversion\b/, /\bnpm\b/, /\byarn\b/, /\bpnpm\b/,
+  // File management directives
   /\b(rename|move|delete|remove)\b/,
   /^(show|read|open|cat|look at|check)\s/,
   /^(run|execute|start|stop|kill|restart)\s/,
-  /\bpublish\b/, /\bversion\b/, /\bnpm\b/,
   /^let'?s\s+(commit|push|publish|deploy|ship|merge)/i,
+  // Short follow-ups that reference the current conversation (not new tasks)
+  // These are anchored to start-of-string to avoid matching mid-sentence task words
+  /^(do the same|same for|same thing)\b/i,
+  /^(also|too|and also)\s+(for|with|on)\b/i,
+  /^(what about|how about)\s+(the\s+)?(other|rest|same)\b/i,
 ];
 
 const BRACKET_MESSAGES: Record<Exclude<ContextBracket, 'FRESH'>, string> = {
@@ -371,83 +379,105 @@ export class WorkflowGateService {
  * Used by hooks.mjs dispatcher.
  */
 export function processGateCommand(command: string, env: Record<string, string | undefined> = process.env): void {
-  const gate = new WorkflowGateService();
+  // Gate commands (check-before-*) are STRICT — errors propagate, exit 2 blocks.
+  // Non-gate commands (record-*, prompt-reminder, etc.) are FAULT-TOLERANT —
+  // they catch errors and exit 0 so classification failures never surface as
+  // "hook error" to the user while gates remain fully enforced.
 
-  switch (command) {
-    case 'check-before-agent': {
-      const result = gate.checkBeforeAgent();
-      if (!result.allowed) {
-        if (result.message) process.stderr.write(result.message + '\n');
-        process.exit(2);  // Exit 2 = block tool call in Claude Code
+  // --- STRICT GATE COMMANDS (must block on failure) ---
+  if (command.startsWith('check-before-') || command === 'check-dangerous-command') {
+    const gate = new WorkflowGateService();
+
+    switch (command) {
+      case 'check-before-agent': {
+        const result = gate.checkBeforeAgent();
+        if (!result.allowed) {
+          if (result.message) process.stderr.write(result.message + '\n');
+          process.exit(2);  // Exit 2 = block tool call in Claude Code
+        }
+        process.exit(0);
       }
-      process.exit(0);
-    }
 
-    case 'check-before-scan': {
-      const result = gate.checkBeforeScan(env.TOOL_INPUT_pattern, env.TOOL_INPUT_path);
-      if (!result.allowed) {
-        if (result.message) process.stderr.write(result.message + '\n');
-        process.exit(2);
-      }
-      process.exit(0);
-    }
-
-    case 'check-before-read': {
-      const result = gate.checkBeforeRead(env.TOOL_INPUT_file_path);
-      if (!result.allowed) {
-        if (result.message) process.stderr.write(result.message + '\n');
-        process.exit(2);
-      }
-      process.exit(0);
-    }
-
-    case 'record-task-created':
-      gate.recordTaskCreated();
-      process.exit(0);
-
-    case 'check-bash-memory':
-      gate.checkBashMemory(env.TOOL_INPUT_command || '');
-      process.exit(0);
-
-    case 'record-memory-searched':
-      gate.recordMemorySearched();
-      process.exit(0);
-
-    case 'prompt-reminder': {
-      const userPrompt = env.CLAUDE_USER_PROMPT || '';
-      const { reminder, bracket } = gate.promptReminder(userPrompt);
-      if (reminder) console.log(reminder);
-      if (bracket) console.log(bracket);
-      process.exit(0);
-    }
-
-    case 'compact-guidance': {
-      console.log('Pre-Compact Guidance:');
-      console.log('IMPORTANT: Before compacting, preserve key context:');
-      console.log('   - Check CLAUDE.md for project rules and architecture');
-      console.log('   - Memory namespaces: guidance, code-map, patterns, knowledge');
-      console.log('   - Use memory search to recover context after compact');
-      console.log('   - Batch all operations in single messages (GOLDEN RULE)');
-      process.exit(0);
-    }
-
-    case 'check-dangerous-command': {
-      const cmd = (env.TOOL_INPUT_command || '').toLowerCase();
-      const dangerous = ['rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
-      for (const pattern of dangerous) {
-        if (cmd.includes(pattern)) {
-          process.stderr.write(`[BLOCKED] Dangerous command detected: ${pattern}\n`);
+      case 'check-before-scan': {
+        const result = gate.checkBeforeScan(env.TOOL_INPUT_pattern, env.TOOL_INPUT_path);
+        if (!result.allowed) {
+          if (result.message) process.stderr.write(result.message + '\n');
           process.exit(2);
         }
+        process.exit(0);
       }
-      process.exit(0);
+
+      case 'check-before-read': {
+        const result = gate.checkBeforeRead(env.TOOL_INPUT_file_path);
+        if (!result.allowed) {
+          if (result.message) process.stderr.write(result.message + '\n');
+          process.exit(2);
+        }
+        process.exit(0);
+      }
+
+      case 'check-dangerous-command': {
+        const cmd = (env.TOOL_INPUT_command || '').toLowerCase();
+        const dangerous = ['rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
+        for (const pattern of dangerous) {
+          if (cmd.includes(pattern)) {
+            process.stderr.write(`[BLOCKED] Dangerous command detected: ${pattern}\n`);
+            process.exit(2);
+          }
+        }
+        process.exit(0);
+      }
+
+      default:
+        process.exit(0);
     }
+  }
 
-    case 'session-reset':
-      gate.sessionReset();
-      process.exit(0);
+  // --- FAULT-TOLERANT COMMANDS (never surface errors to user) ---
+  try {
+    const gate = new WorkflowGateService();
 
-    default:
-      process.exit(0);
+    switch (command) {
+      case 'record-task-created':
+        gate.recordTaskCreated();
+        process.exit(0);
+
+      case 'check-bash-memory':
+        gate.checkBashMemory(env.TOOL_INPUT_command || '');
+        process.exit(0);
+
+      case 'record-memory-searched':
+        gate.recordMemorySearched();
+        process.exit(0);
+
+      case 'prompt-reminder': {
+        const userPrompt = env.CLAUDE_USER_PROMPT || '';
+        const { reminder, bracket } = gate.promptReminder(userPrompt);
+        if (reminder) console.log(reminder);
+        if (bracket) console.log(bracket);
+        process.exit(0);
+      }
+
+      case 'compact-guidance': {
+        console.log('Pre-Compact Guidance:');
+        console.log('IMPORTANT: Before compacting, preserve key context:');
+        console.log('   - Check CLAUDE.md for project rules and architecture');
+        console.log('   - Memory namespaces: guidance, code-map, patterns, knowledge');
+        console.log('   - Use memory search to recover context after compact');
+        console.log('   - Batch all operations in single messages (GOLDEN RULE)');
+        process.exit(0);
+      }
+
+      case 'session-reset':
+        gate.sessionReset();
+        process.exit(0);
+
+      default:
+        process.exit(0);
+    }
+  } catch (err) {
+    // Non-gate commands must never crash — log for debugging but exit clean
+    process.stderr.write(`[gate:${command}] ${(err as Error).message ?? err}\n`);
+    process.exit(0);
   }
 }

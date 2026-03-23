@@ -401,12 +401,12 @@ const routeCommand: Command = {
     { command: 'claude-flow hooks route -t "Optimize database queries" -K 5', description: 'Get top 5 suggestions' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const task = ctx.args[0] || ctx.flags.task as string;
+    const task = ctx.args[0] || ctx.flags.task as string || process.env.CLAUDE_USER_PROMPT || '';
     const topK = ctx.flags.topK as number || 3;
 
     if (!task) {
-      output.printError('Task description is required. Use --task or -t flag.');
-      return { success: false, exitCode: 1 };
+      // No task available (e.g. called from UserPromptSubmit hook with no prompt) — exit cleanly
+      return { success: true };
     }
 
     output.printInfo(`Routing task: ${output.highlight(task)}`);
