@@ -378,9 +378,9 @@ const routeCommand: Command = {
     {
       name: 'task',
       short: 't',
-      description: 'Task description',
+      description: 'Task description (falls back to CLAUDE_USER_PROMPT env var)',
       type: 'string',
-      required: true
+      required: false
     },
     {
       name: 'context',
