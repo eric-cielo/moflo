@@ -54,8 +54,9 @@ npx flo doctor --fix                             # Health check
 
 ### Full Reference
 
-For CLI commands, hooks, agents, swarm config, memory commands, and moflo.yaml options, see:
-\`.claude/guidance/shipped/moflo.md\`
+- **Agent bootstrap protocol:** \`.claude/guidance/shipped/agent-bootstrap.md\`
+- **Task + swarm coordination:** \`.claude/guidance/shipped/task-swarm-integration.md\`
+- **CLI, hooks, swarm, memory, moflo.yaml:** \`.claude/guidance/shipped/moflo.md\`
 ${MARKER_END}`;
 }
 // --- Public API ---
