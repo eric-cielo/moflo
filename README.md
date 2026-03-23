@@ -241,9 +241,9 @@ Inside your AI client, the `/flo` (or `/fl`) slash command drives GitHub issue w
 /flo <issue>                  # Full workflow (research → implement → test → PR)
 /flo -t <issue>               # Ticket only (research and update ticket, then stop)
 /flo -r <issue>               # Research only (analyze issue, output findings)
-/flo -s <issue>               # Swarm mode (default, multi-agent coordination)
+/flo -s <issue>               # Swarm mode (multi-agent coordination)
 /flo -h <issue>               # Hive-mind mode (consensus-based coordination)
-/flo -n <issue>               # Normal mode (single agent, no swarm)
+/flo -n <issue>               # Normal mode (default, single agent, no swarm)
 ```
 
 For full options and details, type `/flo` with no arguments — your AI client will display the complete skill documentation. Also available as `/fl`.
