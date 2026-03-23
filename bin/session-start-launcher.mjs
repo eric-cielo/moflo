@@ -117,6 +117,18 @@ try {
         for (const file of scriptFiles) {
           syncFile(resolve(binDir, file), resolve(scriptsDir, file), `.claude/scripts/${file}`);
         }
+
+        // Sync lib/ subdirectory (process-manager.mjs, registry-cleanup.cjs, etc.)
+        // hooks.mjs imports ./lib/process-manager.mjs — without this, session-start
+        // silently fails and the daemon, indexer, and pretrain never run.
+        const libSrcDir = resolve(binDir, 'lib');
+        const libDestDir = resolve(scriptsDir, 'lib');
+        if (existsSync(libSrcDir)) {
+          if (!existsSync(libDestDir)) mkdirSync(libDestDir, { recursive: true });
+          for (const file of readdirSync(libSrcDir)) {
+            syncFile(resolve(libSrcDir, file), resolve(libDestDir, file), `.claude/scripts/lib/${file}`);
+          }
+        }
       }
 
       // Sync helpers from bin/ and source .claude/helpers/

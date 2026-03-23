@@ -49,6 +49,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "build:ts": "cd src/@claude-flow/cli && npm run build || true",
+    "build:guidance": "cd src/@claude-flow/guidance && npx tsc -p tsconfig.json || true",
+    "prepublishOnly": "npm run build:ts && npm run build:guidance",
     "test": "vitest run",
     "test:ui": "vitest --ui",
     "test:security": "vitest run src/__tests__/security/",

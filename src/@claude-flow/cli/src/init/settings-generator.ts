@@ -17,8 +17,12 @@ export function generateSettings(options: InitOptions): object {
     settings.hooks = generateHooksConfig(options.hooks);
   }
 
-  // Add statusLine configuration if enabled
-  if (options.statusline.enabled) {
+  // Add statusLine configuration when the statusline component is enabled.
+  // Previously only checked options.statusline.enabled, which could be unset
+  // even when options.components.statusline was true (the guard used by
+  // executor.ts to generate the statusline script). This left settings.json
+  // without a statusLine entry, so the dashboard never appeared.
+  if (options.components.statusline || options.statusline?.enabled) {
     settings.statusLine = generateStatusLineConfig(options);
   }
 

@@ -517,6 +517,36 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
           // Non-fatal — skip individual script on error
         }
       }
+
+      // Sync lib/ subdirectory (process-manager.mjs, registry-cleanup.cjs, etc.)
+      // hooks.mjs imports ./lib/process-manager.mjs — without this, session-start
+      // silently fails and the daemon, indexer, and pretrain never run.
+      const libSrcDir = path.join(binDir, 'lib');
+      const libDestDir = path.join(scriptsDir, 'lib');
+      if (fs.existsSync(libSrcDir)) {
+        if (!fs.existsSync(libDestDir)) {
+          fs.mkdirSync(libDestDir, { recursive: true });
+        }
+        for (const file of fs.readdirSync(libSrcDir)) {
+          const srcPath = path.join(libSrcDir, file);
+          const destPath = path.join(libDestDir, file);
+          try {
+            const srcStat = fs.statSync(srcPath);
+            if (!srcStat.isFile()) continue;
+            const destExists = fs.existsSync(destPath);
+            if (!destExists || srcStat.mtimeMs > fs.statSync(destPath).mtimeMs) {
+              fs.copyFileSync(srcPath, destPath);
+              if (destExists) {
+                result.updated.push(`.claude/scripts/lib/${file}`);
+              } else {
+                result.created.push(`.claude/scripts/lib/${file}`);
+              }
+            }
+          } catch {
+            // Non-fatal
+          }
+        }
+      }
     }
 
     // 1c. Build manifest of files we're installing, clean up stale ones
