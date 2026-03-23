@@ -156,7 +156,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/scripts/session-start-launcher.mjs\"",
+            "command": "node \"$CLAUDE_PROJECT_DIR/bin/session-start-launcher.mjs\"",
             "timeout": 3000
           }
         ]
