@@ -567,6 +567,85 @@ function progressBar(current, total) {
   return '[' + '\\u25CF'.repeat(filled) + '\\u25CB'.repeat(width - filled) + ']';
 }
 
+function generateCompactStatusline() {
+  const git = getGitInfo();
+  const modelName = getModelFromStdin() || getModelName();
+  const ctxInfo = getContextFromStdin();
+  const costInfo = getCostFromStdin();
+  const session = getSessionStats();
+  const swarm = getSwarmStatus();
+  const hooks = getHooksStatus();
+  const agentdb = getAgentDBStats();
+  const tests = getTestStats();
+  const integration = getIntegrationStatus();
+  const parts = [];
+
+  // Branding + user
+  parts.push(c.bold + c.brightPurple + '\\u258A ' + SL_CONFIG.branding + ' ' + c.reset);
+
+  // Git
+  if (SL_CONFIG.show_git && git.gitBranch) {
+    let gitPart = c.brightBlue + '\\u23C7 ' + git.gitBranch + c.reset;
+    const changes = git.modified + git.staged + git.untracked;
+    if (changes > 0) {
+      let ind = '';
+      if (git.staged > 0) ind += c.brightGreen + '+' + git.staged + c.reset;
+      if (git.modified > 0) ind += c.brightYellow + '~' + git.modified + c.reset;
+      if (git.untracked > 0) ind += c.dim + '?' + git.untracked + c.reset;
+      gitPart += ' ' + ind;
+    }
+    parts.push(gitPart);
+  }
+
+  // Model
+  parts.push(c.purple + modelName + c.reset);
+
+  // Session duration
+  if (SL_CONFIG.show_session) {
+    const duration = costInfo ? costInfo.duration : session.duration;
+    if (duration) parts.push(c.cyan + '\\u23F1 ' + duration + c.reset);
+  }
+
+  // Context usage
+  if (ctxInfo && ctxInfo.usedPct > 0) {
+    const ctxColor = ctxInfo.usedPct >= 90 ? c.brightRed : ctxInfo.usedPct >= 70 ? c.brightYellow : c.brightGreen;
+    parts.push(ctxColor + ctxInfo.usedPct + '% ctx' + c.reset);
+  }
+
+  // Cost
+  if (costInfo && costInfo.costUsd > 0) {
+    parts.push(c.brightYellow + '$' + costInfo.costUsd.toFixed(2) + c.reset);
+  }
+
+  // Swarm agents (if active)
+  if (SL_CONFIG.show_swarm && swarm.activeAgents > 0) {
+    parts.push(c.brightYellow + '\\uD83E\\uDD16' + swarm.activeAgents + c.reset);
+  }
+
+  // Hooks
+  if (SL_CONFIG.show_mcp && hooks.enabled > 0) {
+    parts.push(c.brightBlue + '\\uD83E\\uDE9D' + hooks.enabled + c.reset);
+  }
+
+  // AgentDB vectors
+  if (SL_CONFIG.show_agentdb && agentdb.vectorCount > 0) {
+    parts.push(c.brightCyan + '\\u25C6' + agentdb.vectorCount + 'v' + c.reset);
+  }
+
+  // Tests
+  if (tests.testFiles > 0) {
+    parts.push(c.brightGreen + '\\u2713' + tests.testFiles + 't' + c.reset);
+  }
+
+  // MCP
+  if (SL_CONFIG.show_mcp && integration.mcpServers.total > 0) {
+    const mcpCol = integration.mcpServers.enabled === integration.mcpServers.total ? c.brightGreen : c.brightYellow;
+    parts.push(mcpCol + 'MCP' + integration.mcpServers.enabled + '/' + integration.mcpServers.total + c.reset);
+  }
+
+  return parts.join(c.dim + ' \\u2502 ' + c.reset);
+}
+
 function generateStatusline() {
   const git = getGitInfo();
   // Prefer model name from Claude Code stdin data, fallback to file-based detection
@@ -780,12 +859,23 @@ function getCostFromStdin() {
 }
 
 // ─── Main ───────────────────────────────────────────────────────
-if (process.argv.includes('--json')) {
+// CLI flags take precedence over moflo.yaml mode
+const cliMode = process.argv.includes('--json') ? 'json'
+  : process.argv.includes('--json-compact') ? 'json-compact'
+  : process.argv.includes('--dashboard') ? 'dashboard'
+  : process.argv.includes('--compact') ? 'compact'
+  : null;
+const mode = cliMode || SL_CONFIG.mode || 'compact';
+
+if (mode === 'json') {
   console.log(JSON.stringify(generateJSON(), null, 2));
-} else if (process.argv.includes('--compact')) {
+} else if (mode === 'json-compact') {
   console.log(JSON.stringify(generateJSON()));
-} else {
+} else if (mode === 'dashboard') {
   console.log(generateStatusline());
+} else {
+  // compact (default) and single-line both use the compact renderer
+  console.log(generateCompactStatusline());
 }
 `;
 }
