@@ -299,8 +299,6 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
       output.writeln(output.bold('Next steps:'));
       output.printList([
         `Restart Claude Code to activate hooks and index guidance/code (recommended)`,
-        `Or run ${output.highlight('claude-flow init --start-all')} to start services and index now`,
-        `Run ${output.highlight('claude-flow daemon start')} to start background workers`,
         options.components.settings ? `Review ${output.highlight('.claude/settings.json')} for hook configurations` : '',
       ].filter(Boolean));
     }
