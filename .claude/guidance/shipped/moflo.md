@@ -628,26 +628,20 @@ status_line:
 
 ---
 
-## Error Logging
+## Cross-Platform Compatibility
 
-Background processes (indexers, pretrain, daemon) write to **`.swarm/background.log`**. Hook orchestration logs to **`.swarm/hooks.log`**. Both files are append-only and safe to tail or truncate.
+All code changes MUST work on Windows, macOS, and Linux. Follow these rules:
 
-**When contributing to moflo:**
-- **Never use empty `catch {}`** for operations that could affect data storage. Always log the error:
-  ```ts
-  catch (err) {
-    console.error('[component] Operation failed:', err instanceof Error ? err.message : String(err));
-  }
-  ```
-- Background processes spawned by `process-manager.mjs` redirect stdout/stderr to `.swarm/background.log` — use `console.error()` for errors that need diagnosis.
-- The MCP tool layer (`hooks-tools.ts`) logs import failures for `memory-initializer` and `searchEntries` to stderr. These appear in `.swarm/background.log` when run from background processes.
-- Interactive CLI commands log to the terminal directly.
-
-**Checking logs:**
-```bash
-tail -50 .swarm/background.log    # Background process output (indexers, pretrain, daemon)
-tail -50 .swarm/hooks.log         # Hook orchestration events
-```
+- **Paths**: Use `path.join()` / `path.resolve()`, never hardcoded `/` or `\\` separators
+- **Process spawning**: Use `detached: !isWin` for background processes; on Windows use `shell: true, windowsHide: true` instead
+- **Process killing**: Use `taskkill /F /PID` on Windows, `process.kill(pid, signal)` on POSIX
+- **Process inspection**: Use PowerShell `Get-CimInstance` on Windows, `/proc/<pid>/cmdline` on Linux, `ps -p <pid>` on macOS
+- **Shell commands**: Never assume bash — use `child_process.spawn` with explicit args instead of shell string interpolation
+- **File locking**: Use `fs.writeFileSync(path, data, { flag: 'wx' })` for atomic locks (works cross-platform)
+- **Signals**: SIGHUP/SIGTERM are POSIX-only; on Windows use `taskkill` or process exit events
+- **Line endings**: Use `\n` in code; let git handle CRLF conversion
+- **Temp dirs**: Use `os.tmpdir()`, not `/tmp`
+- **PID recycling**: Windows recycles PIDs aggressively — always verify process command line, not just PID liveness
 
 ## Troubleshooting Common Issues
 
@@ -655,7 +649,6 @@ tail -50 .swarm/hooks.log         # Hook orchestration events
 |---------|-------|-----|
 | No MCP tools available | `.mcp.json` missing or moflo not installed | Run `npx flo init` or manually create `.mcp.json` |
 | Memory search returns nothing | Indexer hasn't run yet | Run `npx flo-index --force` to index guidance |
-| Patterns namespace empty | Pretrain failed silently | Check `.swarm/background.log` for errors, run `claude-flow hooks pretrain` manually |
 | Low search quality | Guidance docs missing `**Purpose:**` lines or generic headings | Follow guidance optimization rules in `guidance-memory-strategy.md` |
 | Session start slow | All three indexers running | Set `auto_index.code_map: false` in `moflo.yaml` if code map not needed |
 | Status line not showing | `statusline.cjs` error or `status_line.enabled: false` | Run `node .claude/helpers/statusline.cjs` to test, check `moflo.yaml` |

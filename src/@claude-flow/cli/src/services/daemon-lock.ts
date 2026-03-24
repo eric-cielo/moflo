@@ -216,7 +216,7 @@ function isProcessAlive(pid: number): boolean {
  * Falls back to `true` (trust process.kill) if the platform check fails,
  * to avoid accidentally allowing duplicates on exotic platforms.
  */
-function isDaemonProcess(pid: number): boolean {
+export function isDaemonProcess(pid: number): boolean {
   try {
     if (process.platform === 'win32') {
       return isDaemonProcessWindows(pid);

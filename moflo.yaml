@@ -73,6 +73,10 @@ hooks:
   session_restore: true        # Restore session state on start
   notification: true           # Hook into Claude Code notifications
 
+# Worker daemon (background indexing, optimization, test gap detection)
+daemon:
+  auto_start: true              # Start daemon automatically on CLI/MCP init (set false to disable)
+
 # MCP server options
 mcp:
   tool_defer: deferred           # Defer 150+ tool schemas; loaded on demand via ToolSearch
