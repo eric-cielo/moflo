@@ -261,12 +261,16 @@ async function main() {
         // All startup tasks run in background (non-blocking)
         // Start daemon quietly in background
         runDaemonStartBackground();
+        // Initialize embeddings engine (must run before indexers that generate embeddings)
+        runEmbeddingsInitBackground();
         // Index guidance files in background
         runIndexGuidanceBackground();
         // Generate structural code map in background
         runCodeMapBackground();
         // Index test files in background
         runTestIndexBackground();
+        // Index code patterns into patterns namespace
+        runPatternsIndexBackground();
         // Run pretrain in background to extract patterns from repository
         runBackgroundPretrain();
         // Force HNSW rebuild to ensure all processes use identical fresh index
@@ -644,6 +648,42 @@ function runHNSWRebuildBackground() {
   }
 
   spawnWindowless('node', [localCli, 'memory', 'rebuild', '--force'], 'HNSW rebuild');
+}
+
+// Initialize embeddings ONNX engine on session start (non-blocking)
+function runEmbeddingsInitBackground() {
+  const localCli = getLocalCliPath();
+  if (!localCli) {
+    log('warn', 'Local CLI not found, skipping embeddings init');
+    return;
+  }
+
+  spawnWindowless('node', [localCli, 'embeddings', 'init'], 'embeddings init');
+}
+
+// Index code patterns into the patterns namespace (non-blocking)
+// Extracts architectural patterns, idioms, and recurring structures from source
+function runPatternsIndexBackground() {
+  // Check auto_index.patterns flag in moflo.yaml (default: true)
+  const yamlPath = resolve(projectRoot, 'moflo.yaml');
+  if (existsSync(yamlPath)) {
+    try {
+      const content = readFileSync(yamlPath, 'utf-8');
+      const match = content.match(/auto_index:\s*\n(?:.*\n)*?\s+patterns:\s*(true|false)/);
+      if (match && match[1] === 'false') {
+        log('info', 'Patterns indexing disabled (auto_index.patterns: false)');
+        return;
+      }
+    } catch { /* ignore, proceed with indexing */ }
+  }
+
+  const patternsScript = resolveBinOrLocal('flo-patterns', 'index-patterns.mjs');
+  if (!patternsScript) {
+    log('warn', 'Patterns indexer not found (checked npm bin + .claude/scripts/)');
+    return;
+  }
+
+  spawnWindowless('node', [patternsScript], 'background patterns indexing');
 }
 
 // Neural pattern application — now handled by moflo core routing (learned patterns

@@ -86,6 +86,23 @@ Project guidance always takes precedence over generic patterns.
 - Use branch prefixes: `feature/`, `fix/`, `refactor/`
 - Use kebab-case for branch names
 
+### Pull Requests — CRITICAL: Always target the correct repo
+**NEVER run bare `gh pr create` in a forked repository.** The `gh` CLI defaults to the upstream parent repo, not the fork's origin. This has caused PRs to be accidentally opened against upstream.
+
+**Required workflow:**
+```bash
+# 1. Determine the correct repo from the origin remote
+REPO=$(git remote get-url origin | sed 's|.*github.com[:/]||;s|\.git$||')
+
+# 2. ALWAYS pass --repo to gh pr create
+gh pr create --repo "$REPO" --title "..." --body "..."
+
+# 3. For merge: also pass --repo
+gh pr merge <number> --repo "$REPO" --squash
+```
+
+This applies to ALL `gh` commands that target a repo: `pr create`, `pr merge`, `pr list`, `issue create`, etc.
+
 ### File Organization
 - Never save working files to repository root
 - Keep changes focused (3-10 files)
