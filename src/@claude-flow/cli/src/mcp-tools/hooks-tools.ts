@@ -1877,6 +1877,22 @@ export const hooksSessionStart: MCPTool = {
       // Bridge not available
     }
 
+    // Auto-pretrain when intelligence is cold (no patterns restored)
+    let pretrainResult: { ran: boolean; patternsStored?: number } = { ran: false };
+    const restoredCount = sessionMemory?.restoredPatterns ?? 0;
+    if (restoredCount === 0) {
+      try {
+        const result = await hooksPretrain.handler({
+          path: process.cwd(),
+          depth: 'shallow',
+        });
+        const stats = (result as Record<string, unknown>)?.stats as { patternsStored?: number } | undefined;
+        pretrainResult = { ran: true, patternsStored: stats?.patternsStored ?? 0 };
+      } catch {
+        pretrainResult = { ran: true, patternsStored: 0 };
+      }
+    }
+
     return {
       sessionId,
       started: new Date().toISOString(),
@@ -1889,6 +1905,7 @@ export const hooksSessionStart: MCPTool = {
       },
       daemon: daemonStatus,
       sessionMemory: sessionMemory || { controller: 'none', restoredPatterns: 0 },
+      pretrain: pretrainResult,
       previousSession: restoreLatest ? {
         id: `session-${Date.now() - 86400000}`,
         tasksRestored: sessionMemory?.restoredPatterns || 3,

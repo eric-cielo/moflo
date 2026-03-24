@@ -5,9 +5,6 @@
  * Created with ❤️ by motailz.com
  */
 
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
 import type { Command, CommandContext, CommandResult, V3Config, CLIError } from './types.js';
 import { CommandParser, commandParser } from './parser.js';
 import { OutputFormatter, output } from './output.js';
@@ -16,22 +13,9 @@ import { suggestCommand } from './suggest.js';
 import { runStartupUpdateCheck } from './update/index.js';
 import { loadMofloConfig } from './config/moflo-config.js';
 import { getDaemonLockHolder } from './services/daemon-lock.js';
+import { VERSION } from './version.js';
 
-// Read version from package.json at runtime
-function getPackageVersion(): string {
-  try {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-    // Navigate from dist/src to package root
-    const pkgPath = join(__dirname, '..', '..', 'package.json');
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-    return pkg.version || '3.0.0';
-  } catch {
-    return '3.0.0';
-  }
-}
-
-export const VERSION = getPackageVersion();
+export { VERSION };
 
 const LONG_RUNNING_COMMANDS = ['mcp', 'daemon'];
 
