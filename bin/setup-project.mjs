@@ -59,7 +59,7 @@ When the user asks you to remember something: \`mcp__moflo__memory_store\` with 
 - **Memory-first**: Must search memory before Glob/Grep/Read
 - **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
 
-- **Task Icons**: \`TaskCreate\` MUST use ICON+[Role] format — see \`.claude/guidance/shipped/task-icons.md\`
+- **Task Icons**: \`TaskCreate\` MUST use ICON+[Role] format — see \`.claude/guidance/task-icons.md\`
 
 ### MCP Tools (preferred over CLI)
 
