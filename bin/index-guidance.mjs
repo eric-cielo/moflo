@@ -819,8 +819,17 @@ if (!specificFile) {
   }
 }
 
-// Write changes back to disk and close
+// Write changes back to disk
 if (docsIndexed > 0 || chunksIndexed > 0 || staleRemoved > 0) saveDb(db);
+
+// Check for entries missing embeddings (e.g. prior background run failed)
+let missingEmbeddings = 0;
+{
+  const stmt = db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE namespace = ? AND (embedding IS NULL OR embedding = '')`);
+  stmt.bind([NAMESPACE]);
+  if (stmt.step()) missingEmbeddings = stmt.getAsObject().cnt;
+  stmt.free();
+}
 db.close();
 
 console.log('');
@@ -840,9 +849,13 @@ log(`    • Hierarchical links (h2 -> h3 parent/children)`);
 log(`    • Context overlap: ${overlapPercent}% (contextBefore/contextAfter)`);
 log('═══════════════════════════════════════════════════════════');
 
-// Generate embeddings for new entries (unless skipped or nothing changed)
+// Generate embeddings for new entries or backfill missing ones
 // Runs in BACKGROUND to avoid blocking startup
-if (!skipEmbeddings && (docsIndexed > 0 || chunksIndexed > 0)) {
+const needsEmbeddings = (docsIndexed > 0 || chunksIndexed > 0 || missingEmbeddings > 0);
+if (!skipEmbeddings && needsEmbeddings) {
+  if (missingEmbeddings > 0 && docsIndexed === 0 && chunksIndexed === 0) {
+    log(`${missingEmbeddings} entries missing embeddings — backfilling...`);
+  }
   console.log('');
   log('Spawning embedding generation in background...');
 
