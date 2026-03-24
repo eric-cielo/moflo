@@ -129,3 +129,60 @@ moflo/
 `tsc -b` follows the project reference chain from root → src → individual packages.
 Compiled `.js` + `.d.ts` output goes to each package's `dist/` directory.
 The `dist/` directories are committed and published — npm consumers get pre-compiled JS.
+
+## Package Contents (`files` field)
+
+The `files` array in root `package.json` controls what ships to npm. This is carefully curated — do not add broad globs like `.claude/**` or `**/*.d.ts`.
+
+### What's included and why
+
+| Pattern | Purpose |
+|---------|---------|
+| `bin/**` | CLI entry points (`flo`, `flo-search`, etc.) |
+| `src/@claude-flow/*/dist/**/*.js` | Compiled runtime code |
+| `src/@claude-flow/*/package.json` | Workspace resolution for internal imports |
+| `.claude/commands/**/*.md` | Slash commands — copied to user projects by `flo init` |
+| `.claude/agents/**/*.md` | Agent definitions — copied to user projects by `flo init` |
+| `.claude/helpers/**` | Hook scripts (statusline, gate, auto-memory) — copied by `flo init` |
+| `.claude/scripts/**` | Utility scripts (session-start, etc.) — synced by `flo init` |
+| `.claude/guidance/shipped/**` | Shipped guidance docs — synced by `flo init` |
+| `README.md`, `LICENSE` | Standard package metadata |
+
+### What's excluded and why
+
+| Excluded | Why |
+|----------|-----|
+| `**/*.d.ts` | moflo is a CLI tool, not a library — no one imports its types |
+| `**/*.map` | Source maps are dev-only |
+| `.claude/checkpoints/` | Dev-only state |
+| `.claude/config/` | Dev-only configuration |
+| `.claude/mcp.json` | Dev-only MCP server config |
+| `.claude/guidance/internal/` | Internal guidance not shipped to users |
+| `.claude/**/*.db` | Database files are dev-only |
+
+### Pre-publish verification
+
+Always verify package contents before publishing:
+
+```bash
+# 1. Check file count and size
+npm pack --dry-run 2>&1 | tail -10
+
+# 2. Build tarball and test-install
+npm pack
+mkdir -p /tmp/moflo-test && cd /tmp/moflo-test && npm init -y && npm install /path/to/moflo-x.y.z.tgz
+
+# 3. Verify CLI works
+npx flo --version
+npx flo doctor
+
+# 4. Verify init assets shipped
+ls node_modules/moflo/.claude/guidance/shipped/
+ls node_modules/moflo/.claude/commands/
+ls node_modules/moflo/.claude/agents/
+
+# 5. Clean up
+cd - && rm -rf /tmp/moflo-test && rm moflo-*.tgz
+```
+
+**Baseline (v4.8.31):** ~624 files, ~1.6 MB packed, ~7.4 MB unpacked.
