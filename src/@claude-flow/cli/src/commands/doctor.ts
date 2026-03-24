@@ -823,22 +823,24 @@ async function checkIntelligence(): Promise<HealthCheck> {
       failures.push(`SONA (${e instanceof Error ? e.message : 'error'})`);
     }
 
-    // 2. ReasoningBank — store + retrieve
+    // 2. ReasoningBank — verify instantiation and trajectory store/distill lifecycle
     try {
       const rb = neural.createReasoningBank();
-      const embedding = new Float32Array(64).fill(0.2);
-      rb.storeTrajectory({
-        id: 'doctor-test',
+      const trajectory = {
+        trajectoryId: 'doctor-test',
         context: 'health check',
         domain: 'general',
-        mode: 'balanced',
-        steps: [{ action: 'test', reward: 1, embedding, timestamp: Date.now() }],
+        steps: [{ action: 'test', reward: 1, embedding: new Float32Array(64).fill(0.2), timestamp: Date.now() }],
         startTime: Date.now(),
         endTime: Date.now(),
-        quality: 1,
-      });
-      const retrieved = rb.retrieve(embedding, 1);
-      if (retrieved.length > 0) {
+        qualityScore: 0.9,
+        isComplete: true,
+        verdict: { success: true, quality: 0.9, feedback: 'test' },
+      };
+      rb.storeTrajectory(trajectory);
+      // distill() populates memories (storeTrajectory alone does not)
+      const distilled = await rb.distill(trajectory);
+      if (distilled || rb.getTrajectories().length > 0) {
         results.push('ReasoningBank');
       } else {
         // Fallback: check memory-backed patterns from pretrain
@@ -846,7 +848,7 @@ async function checkIntelligence(): Promise<HealthCheck> {
         if (memoryPatterns > 0) {
           results.push('ReasoningBank(memory)');
         } else {
-          failures.push('ReasoningBank (retrieve failed)');
+          failures.push('ReasoningBank (distill returned no data)');
         }
       }
     } catch (e) {

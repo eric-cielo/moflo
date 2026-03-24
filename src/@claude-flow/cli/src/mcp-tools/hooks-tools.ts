@@ -1413,6 +1413,13 @@ function extractPatterns(files: string[]): ExtractedPattern[] {
   const structurePatterns = new Map<string, number>();
   const apiPatterns = new Map<string, number>();
   const functionSigs: string[] = [];
+  // Extended counters (collected in single pass)
+  let asyncCount = 0, syncCount = 0, promiseCatchCount = 0, awaitCount = 0;
+  const decoratorCounts = new Map<string, number>();
+  let interfaceCount = 0, typeAliasCount = 0, enumCount = 0, genericCount = 0;
+  let describeCount = 0, itCount = 0, testCount = 0, expectCount = 0, mockCount = 0;
+  let envAccessCount = 0, configImportCount = 0;
+  const logPatterns = new Map<string, number>();
 
   for (const file of files) {
     let content: string;
@@ -1458,8 +1465,8 @@ function extractPatterns(files: string[]): ExtractedPattern[] {
         errorPatterns.set(`throw:${errClass}`, (errorPatterns.get(`throw:${errClass}`) || 0) + 1);
       }
 
-      // Function signatures (collect first 50)
-      if (functionSigs.length < 50) {
+      // Function signatures (collect first 200)
+      if (functionSigs.length < 200) {
         const fnMatch = trimmed.match(/^(?:export\s+)?(?:async\s+)?function\s+(\w+)/);
         if (fnMatch) functionSigs.push(fnMatch[1]);
         const arrowMatch = trimmed.match(/^(?:export\s+)?const\s+(\w+)\s*=\s*(?:async\s+)?\(/);
@@ -1503,26 +1510,80 @@ function extractPatterns(files: string[]): ExtractedPattern[] {
       if (/interface\s+\w+/.test(trimmed)) {
         structurePatterns.set('typed-interface', (structurePatterns.get('typed-interface') || 0) + 1);
       }
+
+      // Extended: async patterns
+      if (/^(?:export\s+)?async\s+function\b/.test(trimmed) || /=\s*async\s*\(/.test(trimmed)) asyncCount++;
+      else if (/^(?:export\s+)?function\b/.test(trimmed) || /=\s*\([^)]*\)\s*=>/.test(trimmed)) syncCount++;
+      if (/\.catch\(/.test(trimmed)) promiseCatchCount++;
+      if (/\bawait\b/.test(trimmed)) awaitCount++;
+
+      // Extended: decorators
+      const dec = trimmed.match(/^@(\w+)/);
+      if (dec) decoratorCounts.set(dec[1], (decoratorCounts.get(dec[1]) || 0) + 1);
+
+      // Extended: type system
+      if (/^(?:export\s+)?interface\s+\w+/.test(trimmed)) interfaceCount++;
+      if (/^(?:export\s+)?type\s+\w+\s*=/.test(trimmed)) typeAliasCount++;
+      if (/^(?:export\s+)?enum\s+\w+/.test(trimmed)) enumCount++;
+      if (/<\w+(?:\s+extends\s+\w+)?>/.test(trimmed) && /(?:function|class|interface|type)\s/.test(trimmed)) genericCount++;
+
+      // Extended: testing
+      if (/^describe\s*\(/.test(trimmed)) describeCount++;
+      if (/^\s*it\s*\(/.test(trimmed)) itCount++;
+      if (/^\s*test\s*\(/.test(trimmed)) testCount++;
+      if (/expect\s*\(/.test(trimmed)) expectCount++;
+      if (/\b(?:vi\.mock|jest\.mock|sinon\.stub|\.mockImplementation|\.mockReturnValue)\b/.test(trimmed)) mockCount++;
+
+      // Extended: config/env
+      if (/process\.env\b/.test(trimmed)) envAccessCount++;
+      if (/config|\.env|dotenv|convict/i.test(trimmed) && /import|require/.test(trimmed)) configImportCount++;
+
+      // Extended: logging
+      if (/console\.log\b/.test(trimmed)) logPatterns.set('console.log', (logPatterns.get('console.log') || 0) + 1);
+      if (/console\.error\b/.test(trimmed)) logPatterns.set('console.error', (logPatterns.get('console.error') || 0) + 1);
+      if (/console\.warn\b/.test(trimmed)) logPatterns.set('console.warn', (logPatterns.get('console.warn') || 0) + 1);
+      if (/\blogger\.\w+/.test(trimmed)) logPatterns.set('logger.*', (logPatterns.get('logger.*') || 0) + 1);
     }
   }
 
   const patterns: ExtractedPattern[] = [];
 
-  // Top imports by frequency
-  const sortedImports = [...importCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15);
+  // --- Import patterns: one entry per top module (not just a single aggregate) ---
+  const sortedImports = [...importCounts.entries()].sort((a, b) => b[1] - a[1]);
+  // Summary entry
   if (sortedImports.length > 0) {
     patterns.push({
-      type: 'import',
-      value: `Top modules: ${sortedImports.map(([m, c]) => `${m}(${c})`).join(', ')}`,
+      type: 'import-summary',
+      value: `Top modules: ${sortedImports.slice(0, 15).map(([m, c]) => `${m}(${c})`).join(', ')}`,
       count: sortedImports.reduce((s, [, c]) => s + c, 0),
       examples: sortedImports.slice(0, 5).map(([m]) => m),
     });
   }
+  // Individual module entries (top 20 non-relative)
+  for (const [mod, count] of sortedImports.filter(([m]) => m !== '<relative>').slice(0, 20)) {
+    patterns.push({
+      type: 'import-module',
+      value: `Module "${mod}" imported ${count} times across codebase`,
+      count,
+      examples: [mod],
+    });
+  }
+  // Relative vs external ratio
+  const relativeCount = importCounts.get('<relative>') || 0;
+  const externalCount = sortedImports.filter(([m]) => m !== '<relative>').reduce((s, [, c]) => s + c, 0);
+  if (relativeCount + externalCount > 0) {
+    patterns.push({
+      type: 'import-ratio',
+      value: `relative:${relativeCount} external:${externalCount} ratio:${(relativeCount / Math.max(1, relativeCount + externalCount) * 100).toFixed(0)}%`,
+      count: relativeCount + externalCount,
+      examples: relativeCount > externalCount ? ['Mostly internal imports'] : ['Mostly external deps'],
+    });
+  }
 
-  // Export patterns
+  // --- Export patterns ---
   if (exportPatterns.default + exportPatterns.named > 0) {
     patterns.push({
-      type: 'export',
+      type: 'export-style',
       value: `default:${exportPatterns.default} named:${exportPatterns.named}`,
       count: exportPatterns.default + exportPatterns.named,
       examples: exportPatterns.named > exportPatterns.default
@@ -1531,46 +1592,155 @@ function extractPatterns(files: string[]): ExtractedPattern[] {
     });
   }
 
-  // Error handling
-  const sortedErrors = [...errorPatterns.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+  // --- Error handling: one entry per strategy ---
+  const sortedErrors = [...errorPatterns.entries()].sort((a, b) => b[1] - a[1]);
+  // Summary
   if (sortedErrors.length > 0) {
     patterns.push({
-      type: 'error-handling',
+      type: 'error-summary',
       value: sortedErrors.map(([t, c]) => `${t}(${c})`).join(', '),
       count: sortedErrors.reduce((s, [, c]) => s + c, 0),
       examples: sortedErrors.slice(0, 3).map(([t]) => t),
     });
   }
+  // Individual error strategies
+  for (const [errType, count] of sortedErrors.slice(0, 15)) {
+    patterns.push({
+      type: 'error-strategy',
+      value: `${errType}: ${count} occurrences`,
+      count,
+      examples: [errType],
+    });
+  }
 
-  // Naming conventions
+  // --- Naming conventions ---
   const dominant = namingStyles.camelCase >= namingStyles.snake_case ? 'camelCase' : 'snake_case';
   patterns.push({
-    type: 'naming',
+    type: 'naming-convention',
     value: `camelCase:${namingStyles.camelCase} snake_case:${namingStyles.snake_case} PascalCase:${namingStyles.PascalCase} dominant:${dominant}`,
     count: namingStyles.camelCase + namingStyles.snake_case + namingStyles.PascalCase,
     examples: functionSigs.slice(0, 5),
   });
+  // Individual naming entries
+  if (namingStyles.camelCase > 0) {
+    patterns.push({ type: 'naming-camelCase', value: `camelCase identifiers: ${namingStyles.camelCase}`, count: namingStyles.camelCase, examples: functionSigs.filter(f => /^[a-z]/.test(f)).slice(0, 5) });
+  }
+  if (namingStyles.PascalCase > 0) {
+    patterns.push({ type: 'naming-PascalCase', value: `PascalCase identifiers: ${namingStyles.PascalCase}`, count: namingStyles.PascalCase, examples: functionSigs.filter(f => /^[A-Z]/.test(f)).slice(0, 5) });
+  }
+  if (namingStyles.snake_case > 0) {
+    patterns.push({ type: 'naming-snake_case', value: `snake_case identifiers: ${namingStyles.snake_case}`, count: namingStyles.snake_case, examples: [] });
+  }
 
-  // Structure patterns
+  // --- Structure patterns: one entry per pattern type ---
   const sortedStructures = [...structurePatterns.entries()].sort((a, b) => b[1] - a[1]);
   if (sortedStructures.length > 0) {
     patterns.push({
-      type: 'structure',
+      type: 'structure-summary',
       value: sortedStructures.map(([t, c]) => `${t}(${c})`).join(', '),
       count: sortedStructures.reduce((s, [, c]) => s + c, 0),
       examples: sortedStructures.slice(0, 3).map(([t]) => t),
     });
   }
+  for (const [structType, count] of sortedStructures) {
+    patterns.push({
+      type: `structure-${structType}`,
+      value: `${structType}: ${count} occurrences`,
+      count,
+      examples: [structType],
+    });
+  }
 
-  // API patterns
+  // --- API patterns: one entry per method/type ---
   const sortedApi = [...apiPatterns.entries()].sort((a, b) => b[1] - a[1]);
   if (sortedApi.length > 0) {
     patterns.push({
-      type: 'api-pattern',
+      type: 'api-summary',
       value: sortedApi.map(([t, c]) => `${t}(${c})`).join(', '),
       count: sortedApi.reduce((s, [, c]) => s + c, 0),
       examples: sortedApi.slice(0, 3).map(([t]) => t),
     });
+  }
+  for (const [apiType, count] of sortedApi) {
+    patterns.push({
+      type: `api-${apiType.toLowerCase()}`,
+      value: `${apiType}: ${count} occurrences`,
+      count,
+      examples: [apiType],
+    });
+  }
+
+  // --- Function signature patterns ---
+  if (functionSigs.length > 0) {
+    // Prefix grouping: group functions by common prefixes (get*, set*, handle*, on*, is*, etc.)
+    const prefixGroups = new Map<string, string[]>();
+    const prefixRegex = /^(get|set|handle|on|is|has|create|update|delete|find|fetch|load|save|init|check|validate|parse|format|build|render|compute|process|resolve|transform|convert|ensure|generate|register|dispatch|emit|notify|apply|reset|clear|remove|add|with|to|from)/i;
+    for (const fn of functionSigs) {
+      const match = fn.match(prefixRegex);
+      const prefix = match ? match[1].toLowerCase() : '_other';
+      if (!prefixGroups.has(prefix)) prefixGroups.set(prefix, []);
+      prefixGroups.get(prefix)!.push(fn);
+    }
+    for (const [prefix, fns] of [...prefixGroups.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 15)) {
+      if (fns.length >= 2) {
+        patterns.push({
+          type: `function-prefix-${prefix}`,
+          value: `${prefix}* functions: ${fns.length} (${fns.slice(0, 5).join(', ')}${fns.length > 5 ? ` +${fns.length - 5} more` : ''})`,
+          count: fns.length,
+          examples: fns.slice(0, 5),
+        });
+      }
+    }
+  }
+
+  // --- Async patterns (collected in single pass above) ---
+  if (asyncCount + syncCount > 0) {
+    patterns.push({
+      type: 'async-style',
+      value: `async:${asyncCount} sync:${syncCount} await-usage:${awaitCount} promise-catch:${promiseCatchCount}`,
+      count: asyncCount + syncCount,
+      examples: asyncCount > syncCount ? ['Async-first codebase'] : ['Sync-first codebase'],
+    });
+  }
+
+  // --- Decorator/annotation patterns (collected in single pass above) ---
+  for (const [decName, count] of [...decoratorCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)) {
+    if (count >= 2) {
+      patterns.push({
+        type: 'decorator',
+        value: `@${decName}: ${count} usages`,
+        count,
+        examples: [`@${decName}`],
+      });
+    }
+  }
+
+  // --- Type system patterns (collected in single pass above) ---
+  if (interfaceCount > 0) patterns.push({ type: 'type-interface', value: `${interfaceCount} interfaces defined`, count: interfaceCount, examples: [] });
+  if (typeAliasCount > 0) patterns.push({ type: 'type-alias', value: `${typeAliasCount} type aliases`, count: typeAliasCount, examples: [] });
+  if (enumCount > 0) patterns.push({ type: 'type-enum', value: `${enumCount} enums`, count: enumCount, examples: [] });
+  if (genericCount > 0) patterns.push({ type: 'type-generics', value: `${genericCount} generic declarations`, count: genericCount, examples: [] });
+
+  // --- Testing patterns (collected in single pass above) ---
+  if (describeCount + itCount + testCount > 0) {
+    patterns.push({
+      type: 'test-framework',
+      value: `describe:${describeCount} it:${itCount} test:${testCount} expect:${expectCount} mocks:${mockCount}`,
+      count: describeCount + itCount + testCount,
+      examples: itCount > testCount ? ['it() style (BDD)'] : ['test() style'],
+    });
+  }
+  if (mockCount > 0) {
+    patterns.push({ type: 'test-mocking', value: `${mockCount} mock/stub usages`, count: mockCount, examples: [] });
+  }
+
+  // --- Config/env patterns (collected in single pass above) ---
+  if (envAccessCount > 0) patterns.push({ type: 'config-env', value: `process.env accessed ${envAccessCount} times`, count: envAccessCount, examples: [] });
+  if (configImportCount > 0) patterns.push({ type: 'config-import', value: `${configImportCount} config-related imports`, count: configImportCount, examples: [] });
+
+  // --- Logging patterns (collected in single pass above) ---
+  for (const [logType, count] of [...logPatterns.entries()].sort((a, b) => b[1] - a[1])) {
+    patterns.push({ type: `logging-${logType.replace(/\./g, '-')}`, value: `${logType}: ${count} usages`, count, examples: [logType] });
   }
 
   return patterns;
@@ -1599,7 +1769,7 @@ export const hooksPretrain: MCPTool = {
     const startTime = Date.now();
 
     // Determine file limit by depth
-    const fileLimit = depth === 'deep' ? 100 : depth === 'shallow' ? 30 : 60;
+    const fileLimit = depth === 'deep' ? 500 : depth === 'shallow' ? 80 : 200;
     const extensions = new Set(fileTypesArr);
 
     // Phase 1: Retrieve - collect source files
