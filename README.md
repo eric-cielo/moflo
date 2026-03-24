@@ -163,7 +163,7 @@ npx flo memory code-map          # Index your code structure
 npx flo doctor                   # Verify everything works
 ```
 
-Both indexes run automatically at session start after this, so you only need to run them manually on first setup or after major structural changes. To reindex everything at once:
+Both indexes run automatically at session start after this, so you only need to run them manually on first setup or after major structural changes. The first index may take a minute or two on large codebases (1,000+ files) but runs in the background — you can start working immediately. Subsequent indexes are incremental and typically finish in under a second. To reindex everything at once:
 
 ```bash
 npx flo memory refresh           # Reindex all content, rebuild embeddings, cleanup, vacuum
@@ -183,8 +183,8 @@ MoFlo automatically indexes three types of content on every session start, so yo
 
 ### How it works
 
-1. **Session start hook** — When your AI client starts a new session, MoFlo's `SessionStart` hook launches three indexers in parallel as background processes.
-2. **Incremental** — Each indexer tracks file modification times. Only files that changed since the last index run are re-processed. The first run takes longer; subsequent runs typically finish in under a second.
+1. **Session start hook** — When your AI client starts a new session, MoFlo's `SessionStart` hook launches the indexers sequentially in a single background process. This runs silently — you can start working immediately.
+2. **Incremental** — Each indexer tracks file modification times. Only files that changed since the last index run are re-processed. The first run on a large codebase may take a minute or two; subsequent runs typically finish in under a second.
 3. **Embedding generation** — Guidance chunks are embedded using MiniLM-L6-v2 (384 dimensions, WASM). These vectors are stored in the SQLite memory database and used for semantic search.
 4. **No blocking** — The indexers run in the background and don't block your session from starting. You can begin working immediately.
 

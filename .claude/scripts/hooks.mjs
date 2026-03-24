@@ -258,21 +258,23 @@ async function main() {
       }
 
       case 'session-start': {
-        // All startup tasks run in background (non-blocking)
-        // Start daemon quietly in background
+        // Start daemon quietly in background (no DB writes)
         runDaemonStartBackground();
-        // Index guidance files in background
-        runIndexGuidanceBackground();
-        // Generate structural code map in background
-        runCodeMapBackground();
-        // Index test files in background
-        runTestIndexBackground();
-        // Run pretrain in background to extract patterns from repository
+        // Run pretrain in background (writes to patterns namespace, fast)
         runBackgroundPretrain();
-        // Force HNSW rebuild to ensure all processes use identical fresh index
-        // This fixes agent search result mismatches (0.61 vs 0.81 similarity)
-        runHNSWRebuildBackground();
-        // Neural patterns now loaded by moflo core routing — no external patching.
+        // Run all DB-writing indexers SEQUENTIALLY in a single background process.
+        // This avoids sql.js last-write-wins concurrency (issue #78).
+        // Chain: guidance → code-map → tests → HNSW rebuild (must be last).
+        const indexAllScript = resolve(__dirname, 'index-all.mjs');
+        if (existsSync(indexAllScript)) {
+          spawnWindowless('node', [indexAllScript], 'sequential indexing chain');
+        } else {
+          // Fallback to parallel if index-all.mjs not available
+          runIndexGuidanceBackground();
+          runCodeMapBackground();
+          runTestIndexBackground();
+          runHNSWRebuildBackground();
+        }
         break;
       }
 
