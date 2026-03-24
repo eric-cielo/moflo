@@ -26,6 +26,7 @@ import {
   type MemoryBackendFactory,
   type HookDefinition,
   type HookHandler,
+  type HookContext,
   type WorkerDefinition,
   type WorkerType,
   type LLMProviderDefinition,

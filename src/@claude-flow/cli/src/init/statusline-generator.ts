@@ -51,7 +51,7 @@ const CONFIG = {
   maxAgents: ${maxAgents},
 };
 
-const CWD = process.cwd();
+const CWD = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
 // ANSI colors
 const c = {

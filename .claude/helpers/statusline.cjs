@@ -24,7 +24,7 @@ const CONFIG = {
   maxAgents: 15,
 };
 
-const CWD = process.cwd();
+const CWD = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
 // Load status_line config from moflo.yaml (show/hide individual items)
 function loadStatusLineConfig() {

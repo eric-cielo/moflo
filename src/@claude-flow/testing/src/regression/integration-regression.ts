@@ -128,17 +128,10 @@ export class IntegrationRegressionSuite {
       critical: true,
       timeout: 5000,
       run: async () => {
-        const { UnifiedMemoryService, HybridBackend } = await import('@claude-flow/memory');
+        const { createInMemoryService } = await import('@claude-flow/memory');
 
-        // Create in-memory backend
-        const backend = new HybridBackend({
-          sqlite: { databasePath: ':memory:', walMode: false, optimize: true, defaultNamespace: 'test', maxEntries: 1000 },
-          agentdb: { dbPath: ':memory:' },
-        });
-
-        await backend.initialize();
-
-        const memory = new UnifiedMemoryService(backend as any);
+        // Create in-memory service
+        const memory = createInMemoryService();
         await memory.initialize();
 
         // Store entry
@@ -165,16 +158,9 @@ export class IntegrationRegressionSuite {
       critical: true,
       timeout: 10000,
       run: async () => {
-        const { HybridBackend, UnifiedMemoryService } = await import('@claude-flow/memory');
+        const { createInMemoryService } = await import('@claude-flow/memory');
 
-        const backend = new HybridBackend({
-          sqlite: { databasePath: ':memory:', walMode: false, optimize: true, defaultNamespace: 'test', maxEntries: 1000 },
-          agentdb: { dbPath: ':memory:' },
-        });
-
-        await backend.initialize();
-
-        const memory = new UnifiedMemoryService(backend as any);
+        const memory = createInMemoryService();
         await memory.initialize();
 
         // Store entries
@@ -375,7 +361,7 @@ export class IntegrationRegressionSuite {
           const memory = await import('@claude-flow/memory');
           return (
             typeof memory.UnifiedMemoryService === 'function' ||
-            typeof memory.HybridBackend === 'function'
+            typeof memory.createInMemoryService === 'function'
           );
         } catch {
           return false;

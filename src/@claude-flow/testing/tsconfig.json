@@ -5,7 +5,12 @@
     "rootDir": "./src",
     "composite": true,
     "declaration": true,
-    "declarationMap": true
+    "declarationMap": true,
+    "paths": {
+      "@claude-flow/shared": ["../shared/src"],
+      "@claude-flow/memory": ["../memory/src"],
+      "@claude-flow/swarm": ["../swarm/src"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": [

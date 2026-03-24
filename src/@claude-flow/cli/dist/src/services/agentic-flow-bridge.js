@@ -7,9 +7,11 @@
  *
  * @module agentic-flow-bridge
  */
-// Suppress agentic-flow's agentdb-runtime-patch warning. The patch targets
-// agentdb v1.x (dist/controllers/) but v3+ uses dist/src/controllers/ and
-// already ships with correct .js extensions — the patch is unnecessary.
+// Suppress the agentic-flow agentdb-runtime-patch warning.
+// The patch targets agentdb v1.3.9 (dist/controllers/index.js) but
+// agentdb v3+ moved to dist/src/controllers/ and already ships with
+// correct .js extensions. The patch is unnecessary and prints a
+// confusing "[AgentDB Patch] Controller index not found" warning.
 if (typeof process !== 'undefined' && !process.env.SKIP_AGENTDB_PATCH) {
     process.env.SKIP_AGENTDB_PATCH = '1';
 }

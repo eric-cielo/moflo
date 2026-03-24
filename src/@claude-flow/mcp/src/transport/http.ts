@@ -178,7 +178,7 @@ export class HttpTransport extends EventEmitter implements ITransport {
       }
 
       this.app.use(cors({
-        origin: (origin, callback) => {
+        origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
           if (!origin) {
             callback(null, true);
             return;
