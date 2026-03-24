@@ -10,6 +10,14 @@
  * @module sona-integration
  */
 import { SonaEngine } from '@ruvector/sona';
+// Default configs for when getModeConfig is unavailable (e.g., cold start, test environments)
+const DEFAULT_MODE_CONFIGS = {
+    'balanced': { mode: 'balanced', loraRank: 4, learningRate: 0.002, batchSize: 32, trajectoryCapacity: 3000, patternClusters: 50, qualityThreshold: 0.5, maxLatencyMs: 18, memoryBudgetMb: 50, ewcLambda: 2000 },
+    'real-time': { mode: 'real-time', loraRank: 2, learningRate: 0.001, batchSize: 32, trajectoryCapacity: 1000, patternClusters: 25, qualityThreshold: 0.7, maxLatencyMs: 0.5, memoryBudgetMb: 25, ewcLambda: 2000 },
+    'research': { mode: 'research', loraRank: 16, learningRate: 0.002, batchSize: 64, trajectoryCapacity: 10000, patternClusters: 100, qualityThreshold: 0.2, maxLatencyMs: 100, memoryBudgetMb: 100, ewcLambda: 2500 },
+    'edge': { mode: 'edge', loraRank: 1, learningRate: 0.001, batchSize: 16, trajectoryCapacity: 200, patternClusters: 15, qualityThreshold: 0.8, maxLatencyMs: 1, memoryBudgetMb: 5, ewcLambda: 1500 },
+    'batch': { mode: 'batch', loraRank: 8, learningRate: 0.002, batchSize: 128, trajectoryCapacity: 5000, patternClusters: 75, qualityThreshold: 0.4, maxLatencyMs: 50, memoryBudgetMb: 75, ewcLambda: 2000 },
+};
 // =============================================================================
 // Mode Configuration Mapping
 // =============================================================================
@@ -311,6 +319,8 @@ export class SONALearningEngine {
  * @returns SONA learning engine instance
  */
 export function createSONALearningEngine(mode, modeConfig) {
-    return new SONALearningEngine(mode, modeConfig);
+    const resolvedMode = mode ?? 'balanced';
+    const resolvedConfig = modeConfig ?? DEFAULT_MODE_CONFIGS[resolvedMode] ?? DEFAULT_MODE_CONFIGS['balanced'];
+    return new SONALearningEngine(resolvedMode, resolvedConfig);
 }
 //# sourceMappingURL=sona-integration.js.map

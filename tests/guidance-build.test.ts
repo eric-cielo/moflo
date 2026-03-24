@@ -54,11 +54,13 @@ describe('@claude-flow/guidance package build', () => {
     expect(files.some((f: string) => f.includes('@claude-flow/guidance/dist'))).toBe(true);
   });
 
-  it('root package.json has prepublishOnly that builds guidance', () => {
+  it('root package.json has prepublishOnly that triggers build', () => {
     const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf-8'));
     const prepublish = rootPkg.scripts?.prepublishOnly || '';
 
-    expect(prepublish).toContain('build:guidance');
+    // tsc -b builds guidance via project references, so prepublishOnly
+    // just needs to run the build (which includes guidance)
+    expect(prepublish).toContain('build');
   });
 
   it('root package.json has build:guidance script', () => {

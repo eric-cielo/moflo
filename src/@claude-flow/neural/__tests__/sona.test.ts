@@ -148,6 +148,18 @@ describe('SONALearningEngine', () => {
       });
       expect(batchEngine).toBeDefined();
     });
+
+    it('should initialize with no arguments (issue #77)', () => {
+      const defaultEngine = createSONALearningEngine();
+      expect(defaultEngine).toBeDefined();
+      expect(defaultEngine.isEnabled()).toBe(true);
+    });
+
+    it('should initialize with mode only, no config (issue #77)', () => {
+      const modeOnlyEngine = createSONALearningEngine('balanced');
+      expect(modeOnlyEngine).toBeDefined();
+      expect(modeOnlyEngine.isEnabled()).toBe(true);
+    });
   });
 
   describe('Learning from Trajectories', () => {
