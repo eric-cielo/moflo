@@ -33,46 +33,24 @@ npx flo doctor --fix  # Verify everything is working
 
 ## Building from Source
 
-Moflo is a TypeScript monorepo using **project references** (`tsc -b`). The root `tsconfig.json` is a solution-style config that delegates to `src/tsconfig.json`, which references all 17 `@claude-flow/*` sub-packages.
+**Full instructions: [`docs/BUILD.md`](../../../docs/BUILD.md)** — the canonical, step-by-step build/test/publish process. Always follow it.
 
-### Build Commands
-
-```bash
-npm run build          # Runs tsc -b (project references build)
-npm run build:ts       # Build @claude-flow/cli only (legacy shortcut)
-npm run build:guidance # Build @claude-flow/guidance only (legacy shortcut)
-```
-
-### Architecture
-
-```
-tsconfig.json              → Solution root (references src/)
-  src/tsconfig.json        → References all @claude-flow/* packages
-    src/tsconfig.base.json → Shared compilerOptions (ES2022, bundler, composite)
-    src/@claude-flow/shared/    → Base types (no deps)
-    src/@claude-flow/cli/       → CLI + MCP server (depends on shared, swarm)
-    src/@claude-flow/hooks/     → Hook system (depends on shared, neural, memory)
-    src/@claude-flow/memory/    → Memory backends (no deps)
-    src/@claude-flow/guidance/  → Guidance indexing (depends on hooks)
-    src/@claude-flow/testing/   → Regression tests (depends on shared, memory, swarm)
-    ... (17 packages total)
-```
-
-### Important Rules
-
-1. **Always build from root** — `npm run build` (which runs `tsc -b`) builds all packages in dependency order. Do NOT build individual packages in isolation unless you know what you're doing.
-2. **Never bypass the build** — The `dist/` directories contain compiled JS that ships with `npm publish`. If you edit `.ts` source, you MUST rebuild before publishing.
-3. **Do not work around build errors** — If `tsc -b` fails, fix the type errors. Do not manually compile individual packages to skip errors, as this leads to drift between source and compiled output.
-4. **Sub-packages need `composite: true`** — Every sub-package tsconfig must have `"composite": true` in compilerOptions for project references to work.
-5. **Cross-package imports need `paths`** — If package A imports from `@claude-flow/B`, package A's tsconfig needs both a `"references"` entry and a `"paths"` mapping pointing to B's source.
-
-### Publishing
+Quick reference (from project root only):
 
 ```bash
-npm version patch      # Bump version (auto-syncs cli sub-package version)
-npm run build          # MUST succeed with zero errors
-npm publish --otp=XXX  # Requires 2FA OTP
+git pull origin main                   # ALWAYS pull first
+npm run build                          # tsc -b (project references)
+npm test                               # 0 failures required
+npm version patch --no-git-tag-version # Bump + sync cli version
+npm run build                          # Rebuild with new version
+npm publish --otp=XXX                  # Requires 2FA OTP
 ```
+
+**Critical rules:**
+- npm only — no pnpm, yarn, or bun
+- Always build from root (`npm run build`) — never cd into subdirectories
+- Never publish without a successful build — `prepublishOnly` masks failures
+- Never publish without tests passing
 
 ---
 

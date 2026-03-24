@@ -53,16 +53,18 @@
 - Internal CLI workspace: `@moflo/cli` (bundled, NOT published separately)
 - Upstream packages (`@claude-flow/cli`, `claude-flow`, `ruflo`) are **not ours** — never publish to them
 
-### Version Alignment
+### Build, Test & Publish
 
-Both files must match. Root `package.json` is source of truth.
+See `docs/BUILD.md` for the complete, canonical process. Quick reference:
 
 ```bash
-npm version <new-version> --no-git-tag-version
-cd src/@claude-flow/cli && npm version <new-version> --no-git-tag-version && cd -
-cd src/@claude-flow/cli && npm run build && cd -
-npm publish
-npm view moflo dist-tags --json  # Verify
+git pull origin main                        # ALWAYS pull first
+npm run build                               # tsc -b from root (NOT from src/)
+npm test                                    # Must pass — 0 failures
+npm version patch --no-git-tag-version      # Bumps root + cli package.json
+npm run build                               # Rebuild with new version
+npm publish --otp=<code>                    # Requires OTP
+npm view moflo version                      # Verify
 ```
 
 ## Upstream Sync
