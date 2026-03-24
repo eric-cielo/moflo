@@ -765,23 +765,32 @@ async function checkSemanticQuality(): Promise<HealthCheck> {
   }
 }
 
-// Check memory-backed patterns (populated by pretrain) as a fallback for neural checks
-async function checkMemoryPatterns(namespace: string): Promise<number> {
+// Check memory-backed patterns (populated by pretrain) as a fallback for neural checks.
+// Uses the same pattern-search handler that pretrain writes to.
+async function checkMemoryPatterns(_namespace: string): Promise<number> {
   try {
-    // @ts-ignore — memory is not in tsconfig project references but is available at runtime
-    const memoryMod = await import('../../../../memory/dist/index.js');
-    if (memoryMod.search) {
-      const results = await memoryMod.search({ query: 'pattern', namespace, limit: 1 });
-      return results?.length ?? 0;
-    }
-    // Fallback: try AgentDB route
-    if (memoryMod.getStore) {
-      const store = memoryMod.getStore();
-      const entries = store?.list?.(namespace) ?? [];
-      return entries.length;
+    // Use the pattern-search handler (same store pretrain writes to)
+    const hooksMod = await import('../mcp-tools/hooks-tools.js');
+    if (hooksMod.hooksPatternSearch) {
+      const result = await hooksMod.hooksPatternSearch.handler({
+        query: 'pretrain',
+        topK: 1,
+        minConfidence: 0.1,
+      });
+      const matches = (result as Record<string, unknown>)?.results;
+      if (Array.isArray(matches)) return matches.length;
     }
   } catch {
-    // Memory module not available
+    // hooks module not available
+  }
+  // Secondary fallback: check the memory DB file exists
+  try {
+    const { existsSync } = await import('fs');
+    const { join } = await import('path');
+    const dbPath = join(process.cwd(), '.claude', 'memory.db');
+    if (existsSync(dbPath)) return 1;
+  } catch {
+    // fs not available
   }
   return 0;
 }
