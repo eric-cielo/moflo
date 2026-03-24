@@ -110,7 +110,20 @@ async function checkConfigFile(): Promise<HealthCheck> {
 // PID + command-line verification (avoids Windows PID-recycling false positives).
 async function checkDaemonStatus(): Promise<HealthCheck> {
   try {
-    const holderPid = getDaemonLockHolder(process.cwd());
+    // Retry up to 5 times with 1s delay — the daemon starts in the background
+    // during session-start and may not have acquired its lock file yet.
+    const MAX_RETRIES = 5;
+    const RETRY_DELAY_MS = 1000;
+    let holderPid: number | null = null;
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      holderPid = getDaemonLockHolder(process.cwd());
+      if (holderPid) break;
+      if (attempt < MAX_RETRIES - 1) {
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+      }
+    }
+
     if (holderPid) {
       return { name: 'Daemon Status', status: 'pass', message: `Running (PID: ${holderPid})` };
     }

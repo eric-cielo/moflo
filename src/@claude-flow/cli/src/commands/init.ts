@@ -295,12 +295,9 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
     }
 
     if (!startDaemon && !startAll) {
-      // Next steps (only if not auto-starting)
-      output.writeln(output.bold('Next steps:'));
-      output.printList([
-        `Restart Claude Code to activate hooks and index guidance/code (recommended)`,
-        options.components.settings ? `Review ${output.highlight('.claude/settings.json')} for hook configurations` : '',
-      ].filter(Boolean));
+      output.writeln();
+      output.writeln(output.bold('Restart Claude Code to activate MoFlo.'));
+      output.writeln(output.dim(`Edit ${output.highlight('moflo.yaml')} to tweak settings.`));
     }
 
     if (ctx.flags.format === 'json') {
