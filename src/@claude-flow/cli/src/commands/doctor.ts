@@ -710,6 +710,136 @@ async function checkAgenticFlow(): Promise<HealthCheck> {
   }
 }
 
+// Check intelligence layer: SONA, EWC++, LoRA, Flash Attention, ReasoningBank
+// Exercises each component with a lightweight functional test rather than just checking "loaded".
+async function checkIntelligence(): Promise<HealthCheck> {
+  try {
+    const neural = await import('../../neural/src/index.js');
+    const results: string[] = [];
+    const failures: string[] = [];
+
+    // 1. SONA — create manager, run trajectory lifecycle
+    try {
+      const sona = neural.createSONAManager('balanced');
+      await sona.initialize();
+      const tid = sona.beginTrajectory('doctor-check', 'general');
+      const embedding = new Float32Array(64).fill(0.1);
+      sona.recordStep(tid, 'test-action', 0.8, embedding);
+      const traj = sona.completeTrajectory(tid, 0.9);
+      if (traj && traj.steps.length > 0) {
+        results.push('SONA');
+      } else {
+        failures.push('SONA (no trajectory output)');
+      }
+      await sona.cleanup();
+    } catch (e) {
+      failures.push(`SONA (${e instanceof Error ? e.message : 'error'})`);
+    }
+
+    // 2. ReasoningBank — store + retrieve
+    try {
+      const rb = neural.createReasoningBank();
+      const embedding = new Float32Array(64).fill(0.2);
+      rb.storeTrajectory({
+        id: 'doctor-test',
+        context: 'health check',
+        domain: 'general',
+        mode: 'balanced',
+        steps: [{ action: 'test', reward: 1, embedding, timestamp: Date.now() }],
+        startTime: Date.now(),
+        endTime: Date.now(),
+        quality: 1,
+      });
+      const retrieved = rb.retrieve(embedding, 1);
+      if (retrieved.length > 0) {
+        results.push('ReasoningBank');
+      } else {
+        failures.push('ReasoningBank (retrieve failed)');
+      }
+    } catch (e) {
+      failures.push(`ReasoningBank (${e instanceof Error ? e.message : 'error'})`);
+    }
+
+    // 3. PatternLearner — extract + match
+    try {
+      const pl = neural.createPatternLearner();
+      const embedding = new Float32Array(64).fill(0.3);
+      pl.extractPattern(
+        {
+          id: 'doctor-pl', context: 'test', domain: 'general', mode: 'balanced',
+          steps: [{ action: 'test', reward: 1, embedding, timestamp: Date.now() }],
+          startTime: Date.now(), endTime: Date.now(), quality: 1,
+        },
+        { trajectoryId: 'doctor-pl', keyInsights: ['test'], compressedEmbedding: embedding, timestamp: Date.now() }
+      );
+      const matches = pl.findMatches(embedding, 1);
+      if (matches.length > 0) {
+        results.push('PatternLearner');
+      } else {
+        failures.push('PatternLearner (no matches)');
+      }
+    } catch (e) {
+      failures.push(`PatternLearner (${e instanceof Error ? e.message : 'error'})`);
+    }
+
+    // 4. SONALearningEngine (MicroLoRA + EWC++)
+    try {
+      const engine = neural.createSONALearningEngine();
+      const ctx = { task: 'doctor', complexity: 0.5, domain: 'general', agentCount: 1, recentPerformance: 0.8 };
+      const adapted = engine.adapt(ctx);
+      const stats = engine.getStats();
+      const components: string[] = [];
+      if (adapted && adapted.learningRate !== undefined) components.push('LoRA');
+      if (stats.ewcConsolidations !== undefined) components.push('EWC++');
+      if (components.length > 0) {
+        results.push(...components);
+      } else {
+        failures.push('LoRA/EWC++ (adapt returned no data)');
+      }
+    } catch (e) {
+      failures.push(`LoRA/EWC++ (${e instanceof Error ? e.message : 'error'})`);
+    }
+
+    // 5. RL Algorithms — quick instantiation check
+    try {
+      const algNames: string[] = [];
+      const ppo = neural.createPPO();
+      if (ppo) algNames.push('PPO');
+      const dqn = neural.createDQN();
+      if (dqn) algNames.push('DQN');
+      const ql = neural.createQLearning();
+      if (ql) algNames.push('Q-Learn');
+      if (algNames.length > 0) {
+        results.push(`RL(${algNames.join('+')})`);
+      }
+    } catch (e) {
+      failures.push(`RL (${e instanceof Error ? e.message : 'error'})`);
+    }
+
+    if (failures.length > 0) {
+      return {
+        name: 'Intelligence',
+        status: results.length > 0 ? 'warn' : 'fail',
+        message: `${results.join(', ')} OK; FAILED: ${failures.join(', ')}`,
+        fix: 'Check neural module imports and dependencies',
+      };
+    }
+
+    return {
+      name: 'Intelligence',
+      status: 'pass',
+      message: results.join(', '),
+    };
+  } catch (e) {
+    return {
+      name: 'Intelligence',
+      status: 'warn',
+      message: `Module unavailable: ${e instanceof Error ? e.message.split('\n')[0] : 'import failed'}`,
+      fix: 'Ensure @claude-flow/neural is built (npm run build)',
+    };
+  }
+}
+
 // Check whether a given PID is still running.
 // Uses signal 0 which works cross-platform (Windows, Linux, macOS) without
 // needing PowerShell or /proc — Node handles the platform abstraction.
@@ -974,6 +1104,7 @@ export const doctorCommand: Command = {
       checkDiskSpace,
       checkBuildTools,
       checkAgenticFlow,
+      checkIntelligence,
       checkZombieProcesses
     ];
 
@@ -992,7 +1123,8 @@ export const doctorCommand: Command = {
       'disk': checkDiskSpace,
       'typescript': checkBuildTools,
       'tests': checkTestDirs,
-      'agentic-flow': checkAgenticFlow
+      'agentic-flow': checkAgenticFlow,
+      'intelligence': checkIntelligence
     };
 
     let checksToRun = allChecks;

@@ -2519,7 +2519,7 @@ export const hooksPatternSearch: MCPTool = {
       query: { type: 'string', description: 'Search query' },
       topK: { type: 'number', description: 'Number of results' },
       minConfidence: { type: 'number', description: 'Minimum similarity threshold (0-1)' },
-      namespace: { type: 'string', description: 'Namespace to search (default: pattern)' },
+      namespace: { type: 'string', description: 'Namespace to search (default: patterns)' },
     },
     required: ['query'],
   },
@@ -2527,7 +2527,7 @@ export const hooksPatternSearch: MCPTool = {
     const query = params.query as string;
     const topK = (params.topK as number) || 5;
     const minConfidence = (params.minConfidence as number) || 0.3;
-    const namespace = (params.namespace as string) || 'pattern';
+    const namespace = (params.namespace as string) || 'patterns';
 
     // Phase 3: Try ReasoningBank search via bridge first
     try {
@@ -2587,7 +2587,7 @@ export const hooksPatternSearch: MCPTool = {
           results: [],
           searchTimeMs: searchResult.searchTime,
           backend: 'real-vector-search',
-          note: searchResult.error || 'No matching patterns found. Store patterns first using memory/store with namespace "pattern".',
+          note: searchResult.error || 'No matching patterns found. Store patterns first using memory/store with namespace "patterns".',
         };
       } catch (error) {
         // Fall through to empty response with error
