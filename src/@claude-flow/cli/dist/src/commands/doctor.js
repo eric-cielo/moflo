@@ -10,7 +10,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync, exec } from 'child_process';
 import { promisify } from 'util';
-import { getDaemonLockHolder, releaseDaemonLock } from '../services/daemon-lock.js';
+import { getDaemonLockHolder, releaseDaemonLock, isDaemonProcess } from '../services/daemon-lock.js';
 // Promisified exec with proper shell and env inheritance for cross-platform support
 const execAsync = promisify(exec);
 /**
@@ -764,6 +764,10 @@ async function findZombieProcesses(kill = false) {
         if (pid === currentPid || pid === parentPid || pid === legitimatePid)
             continue;
         if (isProcessAlive(ppid))
+            continue;
+        // Defense-in-depth: detached daemons have dead parents by design.
+        // Even if the lock file is missing/corrupted, don't kill a running daemon.
+        if (isDaemonProcess(pid))
             continue;
         found.push(pid);
     }

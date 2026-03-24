@@ -628,6 +628,21 @@ status_line:
 
 ---
 
+## Cross-Platform Compatibility
+
+All code changes MUST work on Windows, macOS, and Linux. Follow these rules:
+
+- **Paths**: Use `path.join()` / `path.resolve()`, never hardcoded `/` or `\\` separators
+- **Process spawning**: Use `detached: !isWin` for background processes; on Windows use `shell: true, windowsHide: true` instead
+- **Process killing**: Use `taskkill /F /PID` on Windows, `process.kill(pid, signal)` on POSIX
+- **Process inspection**: Use PowerShell `Get-CimInstance` on Windows, `/proc/<pid>/cmdline` on Linux, `ps -p <pid>` on macOS
+- **Shell commands**: Never assume bash — use `child_process.spawn` with explicit args instead of shell string interpolation
+- **File locking**: Use `fs.writeFileSync(path, data, { flag: 'wx' })` for atomic locks (works cross-platform)
+- **Signals**: SIGHUP/SIGTERM are POSIX-only; on Windows use `taskkill` or process exit events
+- **Line endings**: Use `\n` in code; let git handle CRLF conversion
+- **Temp dirs**: Use `os.tmpdir()`, not `/tmp`
+- **PID recycling**: Windows recycles PIDs aggressively — always verify process command line, not just PID liveness
+
 ## Troubleshooting Common Issues
 
 | Symptom | Cause | Fix |

@@ -14,6 +14,8 @@ import { OutputFormatter, output } from './output.js';
 import { commands, commandsByCategory, commandRegistry, getCommand, getCommandAsync, getCommandNames, hasCommand } from './commands/index.js';
 import { suggestCommand } from './suggest.js';
 import { runStartupUpdateCheck } from './update/index.js';
+import { loadMofloConfig } from './config/moflo-config.js';
+import { getDaemonLockHolder } from './services/daemon-lock.js';
 
 // Read version from package.json at runtime
 function getPackageVersion(): string {
@@ -102,6 +104,12 @@ export class CLI {
       // Run startup update check (non-blocking, silent on skip)
       if (!flags.noUpdate && commandPath[0] !== 'update') {
         this.checkForUpdatesOnStartup().catch(() => {/* silent */});
+      }
+
+      // Auto-start daemon if configured and not already running (non-blocking).
+      // Skip if user is explicitly running a daemon command to avoid interference.
+      if (commandPath[0] !== 'daemon') {
+        this.maybeAutoStartDaemon().catch(() => {/* silent */});
       }
 
       // Handle lazy-loaded commands that weren't recognized by the parser
@@ -450,6 +458,46 @@ export class CLI {
     } catch {
       // Silently fail - don't interrupt CLI usage
     }
+  }
+
+  /**
+   * Auto-start daemon if moflo.yaml enables it and no daemon is running.
+   * Non-blocking — fires and forgets. Errors are silently swallowed.
+   */
+  private async maybeAutoStartDaemon(): Promise<void> {
+    const config = loadMofloConfig(process.cwd());
+    if (!config.daemon.auto_start) return;
+
+    // Already running?
+    const holder = getDaemonLockHolder(process.cwd());
+    if (holder) return;
+
+    // Dynamically import to avoid circular deps and keep CLI startup fast
+    const { spawn } = await import('child_process');
+    const { fileURLToPath } = await import('url');
+    const { dirname, join, resolve } = await import('path');
+    const { existsSync, openSync, mkdirSync } = await import('fs');
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const cliPath = resolve(join(__dirname, '..', '..', 'bin', 'cli.js'));
+    if (!existsSync(cliPath)) return;
+
+    const projectRoot = process.cwd();
+    const stateDir = join(projectRoot, '.claude-flow');
+    if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
+    const logFile = join(stateDir, 'daemon.log');
+
+    const isWin = process.platform === 'win32';
+    const child = spawn(process.execPath, [cliPath, 'daemon', 'start', '--foreground', '--quiet'], {
+      cwd: projectRoot,
+      detached: !isWin,
+      stdio: ['ignore', openSync(logFile, 'a'), openSync(logFile, 'a')],
+      env: { ...process.env, CLAUDE_FLOW_DAEMON: '1' },
+      ...(isWin ? { shell: true, windowsHide: true } : {}),
+    });
+
+    child.unref();
   }
 
   /**

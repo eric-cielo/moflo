@@ -78,6 +78,10 @@ export interface MofloConfig {
     agent_overrides: Record<string, string>;
   };
 
+  daemon: {
+    auto_start: boolean;
+  };
+
   auto_update: {
     enabled: boolean;
     scripts: boolean;
@@ -157,6 +161,9 @@ const DEFAULT_CONFIG: MofloConfig = {
     cost_optimization: true,
     circuit_breaker: true,
     agent_overrides: {},
+  },
+  daemon: {
+    auto_start: true,
   },
   auto_update: {
     enabled: true,
@@ -256,6 +263,9 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
       cost_optimization: raw.model_routing?.cost_optimization ?? raw.modelRouting?.costOptimization ?? DEFAULT_CONFIG.model_routing.cost_optimization,
       circuit_breaker: raw.model_routing?.circuit_breaker ?? raw.modelRouting?.circuitBreaker ?? DEFAULT_CONFIG.model_routing.circuit_breaker,
       agent_overrides: raw.model_routing?.agent_overrides ?? raw.modelRouting?.agentOverrides ?? DEFAULT_CONFIG.model_routing.agent_overrides,
+    },
+    daemon: {
+      auto_start: raw.daemon?.auto_start ?? raw.daemon?.autoStart ?? DEFAULT_CONFIG.daemon.auto_start,
     },
     auto_update: {
       enabled: raw.auto_update?.enabled ?? raw.autoUpdate?.enabled ?? DEFAULT_CONFIG.auto_update.enabled,
@@ -401,6 +411,10 @@ hooks:
   stop_hook: true              # Session-end persistence and metric export
   session_restore: true        # Restore session state on start
   notification: true           # Hook into Claude Code notifications
+
+# Worker daemon (background indexing, optimization, test gap detection)
+daemon:
+  auto_start: true              # Start daemon automatically on CLI/MCP init (set false to disable)
 
 # Model preferences (haiku, sonnet, opus)
 models:
