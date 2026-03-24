@@ -99,7 +99,7 @@ npm view moflo version          # Should match what you just published
 | Wrong | Why | Correct |
 |-------|-----|---------|
 | `cd src/@claude-flow/cli && npm run build` | tsc not in src/node_modules | `npm run build` from root |
-| Publish without building | Ships stale .js artifacts | Always `npm run build` then verify exit 0 |
+| Publish without building | Ships stale .js artifacts — `prepublishOnly` now runs `npm run build` which will fail-fast on errors | Always `npm run build` then verify exit 0 |
 | Publish without testing | May ship broken code | Always `npm test` with 0 failures |
 | Publish without pulling | Version conflicts, rebase hell | Always `git pull origin main` first |
 | `npm run build:ts` | Uses broken workspace cd | `npm run build` (tsc -b) |
@@ -185,4 +185,4 @@ ls node_modules/moflo/.claude/agents/
 cd - && rm -rf /tmp/moflo-test && rm moflo-*.tgz
 ```
 
-**Baseline (v4.8.31):** ~624 files, ~1.6 MB packed, ~7.4 MB unpacked.
+**Baseline (v4.8.33):** ~653 files, ~1.7 MB packed, ~7.6 MB unpacked (includes neural dist).

@@ -680,6 +680,192 @@ async function checkAgenticFlow() {
         return { name: 'agentic-flow', status: 'warn', message: 'Check failed' };
     }
 }
+// Check semantic search quality — verify no 0.500 keyword fallback scores
+async function checkSemanticQuality() {
+    try {
+        const { searchEntries } = await import('../memory/memory-initializer.js');
+        const result = await searchEntries({
+            query: 'test infrastructure health check',
+            namespace: 'patterns',
+            limit: 5,
+            threshold: 0.1
+        });
+        if (!result.success || result.results.length === 0) {
+            return {
+                name: 'Semantic Quality',
+                status: 'warn',
+                message: 'No search results (empty database or no patterns namespace)',
+            };
+        }
+        const scores = result.results.map((r) => r.score);
+        const allSame = scores.every((s) => s === scores[0]);
+        const hasFallback = scores.some((s) => s === 0.5);
+        if (hasFallback) {
+            return {
+                name: 'Semantic Quality',
+                status: 'fail',
+                message: `${scores.length} results, scores include 0.500 fallback (keyword-only, no embeddings)`,
+                fix: 'Re-index with: npx moflo embeddings build --force'
+            };
+        }
+        if (allSame && scores.length > 1) {
+            return {
+                name: 'Semantic Quality',
+                status: 'warn',
+                message: `${scores.length} results, all scores identical (${scores[0].toFixed(3)}) — degraded search`,
+            };
+        }
+        const topScore = Math.max(...scores);
+        return {
+            name: 'Semantic Quality',
+            status: topScore >= 0.3 ? 'pass' : 'warn',
+            message: `${scores.length} results, top ${topScore.toFixed(3)}, varied (semantic search active)`,
+        };
+    }
+    catch (e) {
+        return {
+            name: 'Semantic Quality',
+            status: 'warn',
+            message: `Check failed: ${e instanceof Error ? e.message.split('\n')[0] : 'error'}`,
+        };
+    }
+}
+// Check intelligence layer: SONA, EWC++, LoRA, Flash Attention, ReasoningBank
+// Exercises each component with a lightweight functional test rather than just checking "loaded".
+async function checkIntelligence() {
+    try {
+        // @ts-ignore — neural is not in tsconfig project references but is available at runtime
+        // Import neural module — path is relative to compiled output at dist/src/commands/
+        const neural = await import('../../../../neural/dist/index.js');
+        const results = [];
+        const failures = [];
+        // 1. SONA — create manager, run trajectory lifecycle
+        try {
+            const sona = neural.createSONAManager('balanced');
+            await sona.initialize();
+            const tid = sona.beginTrajectory('doctor-check', 'general');
+            const embedding = new Float32Array(64).fill(0.1);
+            sona.recordStep(tid, 'test-action', 0.8, embedding);
+            const traj = sona.completeTrajectory(tid, 0.9);
+            if (traj && traj.steps.length > 0) {
+                results.push('SONA');
+            }
+            else {
+                failures.push('SONA (no trajectory output)');
+            }
+            await sona.cleanup();
+        }
+        catch (e) {
+            failures.push(`SONA (${e instanceof Error ? e.message : 'error'})`);
+        }
+        // 2. ReasoningBank — store + retrieve
+        try {
+            const rb = neural.createReasoningBank();
+            const embedding = new Float32Array(64).fill(0.2);
+            rb.storeTrajectory({
+                id: 'doctor-test',
+                context: 'health check',
+                domain: 'general',
+                mode: 'balanced',
+                steps: [{ action: 'test', reward: 1, embedding, timestamp: Date.now() }],
+                startTime: Date.now(),
+                endTime: Date.now(),
+                quality: 1,
+            });
+            const retrieved = rb.retrieve(embedding, 1);
+            if (retrieved.length > 0) {
+                results.push('ReasoningBank');
+            }
+            else {
+                failures.push('ReasoningBank (retrieve failed)');
+            }
+        }
+        catch (e) {
+            failures.push(`ReasoningBank (${e instanceof Error ? e.message : 'error'})`);
+        }
+        // 3. PatternLearner — extract + match
+        try {
+            const pl = neural.createPatternLearner();
+            const embedding = new Float32Array(64).fill(0.3);
+            pl.extractPattern({
+                id: 'doctor-pl', context: 'test', domain: 'general', mode: 'balanced',
+                steps: [{ action: 'test', reward: 1, embedding, timestamp: Date.now() }],
+                startTime: Date.now(), endTime: Date.now(), quality: 1,
+            }, { trajectoryId: 'doctor-pl', keyInsights: ['test'], compressedEmbedding: embedding, timestamp: Date.now() });
+            const matches = pl.findMatches(embedding, 1);
+            if (matches.length > 0) {
+                results.push('PatternLearner');
+            }
+            else {
+                failures.push('PatternLearner (no matches)');
+            }
+        }
+        catch (e) {
+            failures.push(`PatternLearner (${e instanceof Error ? e.message : 'error'})`);
+        }
+        // 4. SONALearningEngine (MicroLoRA + EWC++)
+        try {
+            const engine = neural.createSONALearningEngine();
+            const ctx = { task: 'doctor', complexity: 0.5, domain: 'general', agentCount: 1, recentPerformance: 0.8 };
+            const adapted = engine.adapt(ctx);
+            const stats = engine.getStats();
+            const components = [];
+            if (adapted && adapted.learningRate !== undefined)
+                components.push('LoRA');
+            if (stats.ewcConsolidations !== undefined)
+                components.push('EWC++');
+            if (components.length > 0) {
+                results.push(...components);
+            }
+            else {
+                failures.push('LoRA/EWC++ (adapt returned no data)');
+            }
+        }
+        catch (e) {
+            failures.push(`LoRA/EWC++ (${e instanceof Error ? e.message : 'error'})`);
+        }
+        // 5. RL Algorithms — quick instantiation check
+        try {
+            const algNames = [];
+            const ppo = neural.createPPO();
+            if (ppo)
+                algNames.push('PPO');
+            const dqn = neural.createDQN();
+            if (dqn)
+                algNames.push('DQN');
+            const ql = neural.createQLearning();
+            if (ql)
+                algNames.push('Q-Learn');
+            if (algNames.length > 0) {
+                results.push(`RL(${algNames.join('+')})`);
+            }
+        }
+        catch (e) {
+            failures.push(`RL (${e instanceof Error ? e.message : 'error'})`);
+        }
+        if (failures.length > 0) {
+            return {
+                name: 'Intelligence',
+                status: results.length > 0 ? 'warn' : 'fail',
+                message: `${results.join(', ')} OK; FAILED: ${failures.join(', ')}`,
+                fix: 'Check neural module imports and dependencies',
+            };
+        }
+        return {
+            name: 'Intelligence',
+            status: 'pass',
+            message: results.join(', '),
+        };
+    }
+    catch (e) {
+        return {
+            name: 'Intelligence',
+            status: 'warn',
+            message: `Module unavailable: ${e instanceof Error ? e.message.split('\n')[0] : 'import failed'}`,
+            fix: 'Ensure @claude-flow/neural is built (npm run build)',
+        };
+    }
+}
 // Check whether a given PID is still running.
 // Uses signal 0 which works cross-platform (Windows, Linux, macOS) without
 // needing PowerShell or /proc — Node handles the platform abstraction.
@@ -834,7 +1020,7 @@ export const doctorCommand = {
         {
             name: 'component',
             short: 'c',
-            description: 'Check specific component (version, node, npm, config, daemon, memory, embeddings, git, mcp, claude, disk, typescript)',
+            description: 'Check specific component (version, node, npm, config, daemon, memory, embeddings, git, mcp, claude, disk, typescript, semantic, intelligence)',
             type: 'string'
         },
         {
@@ -935,6 +1121,8 @@ export const doctorCommand = {
             checkDiskSpace,
             checkBuildTools,
             checkAgenticFlow,
+            checkSemanticQuality,
+            checkIntelligence,
             checkZombieProcesses
         ];
         const componentMap = {
@@ -952,7 +1140,10 @@ export const doctorCommand = {
             'disk': checkDiskSpace,
             'typescript': checkBuildTools,
             'tests': checkTestDirs,
-            'agentic-flow': checkAgenticFlow
+            'agentic-flow': checkAgenticFlow,
+            'semantic': checkSemanticQuality,
+            'quality': checkSemanticQuality,
+            'intelligence': checkIntelligence
         };
         let checksToRun = allChecks;
         if (component && componentMap[component]) {

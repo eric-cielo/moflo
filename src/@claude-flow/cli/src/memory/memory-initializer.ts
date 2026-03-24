@@ -2362,14 +2362,11 @@ export async function searchEntries(options: {
           }
         }
 
-        // Fallback to keyword matching
+        // Skip entries without valid semantic embeddings — keyword fallback
+        // produces misleading 0.500 scores that degrade search quality.
+        // Entries must have real vector embeddings to participate in semantic search.
         if (score < threshold) {
-          const lowerContent = (content || '').toLowerCase();
-          const lowerQuery = query.toLowerCase();
-          const words = lowerQuery.split(/\s+/);
-          const matchCount = words.filter(w => lowerContent.includes(w)).length;
-          const keywordScore = matchCount / words.length * 0.5;
-          score = Math.max(score, keywordScore);
+          continue;
         }
 
         if (score >= threshold) {

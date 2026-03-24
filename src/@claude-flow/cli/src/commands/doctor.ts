@@ -710,12 +710,68 @@ async function checkAgenticFlow(): Promise<HealthCheck> {
   }
 }
 
+// Check semantic search quality — verify no 0.500 keyword fallback scores
+async function checkSemanticQuality(): Promise<HealthCheck> {
+  try {
+    const { searchEntries } = await import('../memory/memory-initializer.js');
+    const result = await searchEntries({
+      query: 'test infrastructure health check',
+      namespace: 'patterns',
+      limit: 5,
+      threshold: 0.1
+    });
+
+    if (!result.success || result.results.length === 0) {
+      return {
+        name: 'Semantic Quality',
+        status: 'warn',
+        message: 'No search results (empty database or no patterns namespace)',
+      };
+    }
+
+    const scores = result.results.map((r: { score: number }) => r.score);
+    const allSame = scores.every((s: number) => s === scores[0]);
+    const hasFallback = scores.some((s: number) => s === 0.5);
+
+    if (hasFallback) {
+      return {
+        name: 'Semantic Quality',
+        status: 'fail',
+        message: `${scores.length} results, scores include 0.500 fallback (keyword-only, no embeddings)`,
+        fix: 'Re-index with: npx moflo embeddings build --force'
+      };
+    }
+
+    if (allSame && scores.length > 1) {
+      return {
+        name: 'Semantic Quality',
+        status: 'warn',
+        message: `${scores.length} results, all scores identical (${scores[0].toFixed(3)}) — degraded search`,
+      };
+    }
+
+    const topScore = Math.max(...scores);
+    return {
+      name: 'Semantic Quality',
+      status: topScore >= 0.3 ? 'pass' : 'warn',
+      message: `${scores.length} results, top ${topScore.toFixed(3)}, varied (semantic search active)`,
+    };
+  } catch (e) {
+    return {
+      name: 'Semantic Quality',
+      status: 'warn',
+      message: `Check failed: ${e instanceof Error ? e.message.split('\n')[0] : 'error'}`,
+    };
+  }
+}
+
 // Check intelligence layer: SONA, EWC++, LoRA, Flash Attention, ReasoningBank
 // Exercises each component with a lightweight functional test rather than just checking "loaded".
 async function checkIntelligence(): Promise<HealthCheck> {
   try {
     // @ts-ignore — neural is not in tsconfig project references but is available at runtime
-    const neural = await import('../../neural/src/index.js');
+    // Import neural module — path is relative to compiled output at dist/src/commands/
+    const neural = await import('../../../../neural/dist/index.js');
     const results: string[] = [];
     const failures: string[] = [];
 
@@ -997,7 +1053,7 @@ export const doctorCommand: Command = {
     {
       name: 'component',
       short: 'c',
-      description: 'Check specific component (version, node, npm, config, daemon, memory, embeddings, git, mcp, claude, disk, typescript)',
+      description: 'Check specific component (version, node, npm, config, daemon, memory, embeddings, git, mcp, claude, disk, typescript, semantic, intelligence)',
       type: 'string'
     },
     {
@@ -1105,6 +1161,7 @@ export const doctorCommand: Command = {
       checkDiskSpace,
       checkBuildTools,
       checkAgenticFlow,
+      checkSemanticQuality,
       checkIntelligence,
       checkZombieProcesses
     ];
@@ -1125,6 +1182,8 @@ export const doctorCommand: Command = {
       'typescript': checkBuildTools,
       'tests': checkTestDirs,
       'agentic-flow': checkAgenticFlow,
+      'semantic': checkSemanticQuality,
+      'quality': checkSemanticQuality,
       'intelligence': checkIntelligence
     };
 
