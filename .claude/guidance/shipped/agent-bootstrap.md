@@ -95,6 +95,11 @@ Project guidance always takes precedence over generic patterns.
 - Build and test after code changes
 - Never leave failing tests
 
+### Task Icons (MANDATORY)
+- `TaskCreate` MUST use **ICON + [Role]** in `subject` and `activeForm`
+- Full icon map: `.claude/guidance/shipped/task-icons.md`
+- Example: `🧪 [Tester] Run unit tests` / activeForm: `🧪 Running unit tests`
+
 ---
 
 ## 4. Store Discoveries

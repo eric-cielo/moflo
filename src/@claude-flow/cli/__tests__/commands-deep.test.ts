@@ -4,6 +4,9 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // ============================================================================
 // SECTION 1: Command Definitions (38+ commands)
@@ -1605,6 +1608,57 @@ describe('Init System', () => {
         expect(tmpl.description.length).toBeGreaterThan(10);
       }
     });
+  });
+
+  describe('Task Icons reference in generated CLAUDE.md', () => {
+    it('should reference task-icons.md in workflow gates section', () => {
+      const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
+      expect(md).toContain('Task Icons');
+      expect(md).toContain('task-icons.md');
+    });
+
+    it('should reference ICON+[Role] format', () => {
+      const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
+      expect(md).toContain('ICON+[Role]');
+    });
+  });
+});
+
+describe('Shipped Guidance Files', () => {
+  const shippedDir = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..', '..', '..', '..', '.claude', 'guidance', 'shipped'
+  );
+
+  it('shipped directory should exist', () => {
+    expect(fs.existsSync(shippedDir)).toBe(true);
+  });
+
+  it('should contain task-icons.md', () => {
+    expect(fs.existsSync(path.join(shippedDir, 'task-icons.md'))).toBe(true);
+  });
+
+  it('task-icons.md should contain icon map table', () => {
+    const content = fs.readFileSync(path.join(shippedDir, 'task-icons.md'), 'utf-8');
+    expect(content).toContain('Agent Type');
+    expect(content).toContain('Icon');
+    expect(content).toContain('Explore');
+    expect(content).toContain('🔍');
+    expect(content).toContain('💻');
+    expect(content).toContain('🧪');
+  });
+
+  it('agent-bootstrap.md should reference task-icons.md', () => {
+    const content = fs.readFileSync(path.join(shippedDir, 'agent-bootstrap.md'), 'utf-8');
+    expect(content).toContain('task-icons.md');
+    expect(content).toContain('ICON + [Role]');
+  });
+
+  it('all shipped files should be .md format', () => {
+    const files = fs.readdirSync(shippedDir);
+    for (const file of files) {
+      expect(file).toMatch(/\.md$/);
+    }
   });
 });
 

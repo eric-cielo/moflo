@@ -10,6 +10,19 @@
 
 MoFlo makes your AI coding assistant remember what it learns, check what it knows before exploring files, and get smarter over time — all automatically. Install it, run `flo init`, restart your AI client, and everything just works: your docs and code are indexed on session start so the AI can search them instantly, workflow gates prevent the AI from wasting tokens on blind exploration, task outcomes feed back into routing so it picks the right agent type next time, and context depletion warnings tell you when to start a fresh session. No configuration, no API keys, no cloud services — it all runs locally on your machine.
 
+## Quickstart
+
+```bash
+npm install --save-dev moflo
+npx flo init
+```
+
+Restart Claude Code (or your MCP client). That's it — memory, indexing, gates, and routing are all active.
+
+Or — just ask Claude to install MoFlo into your project and initialize it!
+
+To verify everything is running, ask Claude to run `flo doctor` with full diagnostics after restarting. If anything fails, ask Claude to fix it with `flo doctor --fix`.
+
 ## Opinionated Defaults
 
 MoFlo makes deliberate choices so you don't have to:
