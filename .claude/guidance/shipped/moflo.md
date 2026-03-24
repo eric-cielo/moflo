@@ -628,12 +628,34 @@ status_line:
 
 ---
 
+## Error Logging
+
+Background processes (indexers, pretrain, daemon) write to **`.swarm/background.log`**. Hook orchestration logs to **`.swarm/hooks.log`**. Both files are append-only and safe to tail or truncate.
+
+**When contributing to moflo:**
+- **Never use empty `catch {}`** for operations that could affect data storage. Always log the error:
+  ```ts
+  catch (err) {
+    console.error('[component] Operation failed:', err instanceof Error ? err.message : String(err));
+  }
+  ```
+- Background processes spawned by `process-manager.mjs` redirect stdout/stderr to `.swarm/background.log` — use `console.error()` for errors that need diagnosis.
+- The MCP tool layer (`hooks-tools.ts`) logs import failures for `memory-initializer` and `searchEntries` to stderr. These appear in `.swarm/background.log` when run from background processes.
+- Interactive CLI commands log to the terminal directly.
+
+**Checking logs:**
+```bash
+tail -50 .swarm/background.log    # Background process output (indexers, pretrain, daemon)
+tail -50 .swarm/hooks.log         # Hook orchestration events
+```
+
 ## Troubleshooting Common Issues
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | No MCP tools available | `.mcp.json` missing or moflo not installed | Run `npx flo init` or manually create `.mcp.json` |
 | Memory search returns nothing | Indexer hasn't run yet | Run `npx flo-index --force` to index guidance |
+| Patterns namespace empty | Pretrain failed silently | Check `.swarm/background.log` for errors, run `claude-flow hooks pretrain` manually |
 | Low search quality | Guidance docs missing `**Purpose:**` lines or generic headings | Follow guidance optimization rules in `guidance-memory-strategy.md` |
 | Session start slow | All three indexers running | Set `auto_index.code_map: false` in `moflo.yaml` if code map not needed |
 | Status line not showing | `statusline.cjs` error or `status_line.enabled: false` | Run `node .claude/helpers/statusline.cjs` to test, check `moflo.yaml` |

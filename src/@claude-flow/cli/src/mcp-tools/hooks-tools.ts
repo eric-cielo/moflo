@@ -25,7 +25,8 @@ async function getRealSearchFunction() {
     try {
       const { searchEntries } = await import('../memory/memory-initializer.js');
       searchEntriesFn = searchEntries;
-    } catch {
+    } catch (err) {
+      console.error('[hooks-tools] Failed to load memory-initializer searchEntries:', err instanceof Error ? err.message : String(err));
       searchEntriesFn = null;
     }
   }
@@ -52,7 +53,8 @@ async function getRealStoreFunction() {
     try {
       const { storeEntry } = await import('../memory/memory-initializer.js');
       storeEntryFn = storeEntry;
-    } catch {
+    } catch (err) {
+      console.error('[hooks-tools] Failed to load memory-initializer storeEntry:', err instanceof Error ? err.message : String(err));
       storeEntryFn = null;
     }
   }
@@ -1589,12 +1591,16 @@ export const hooksPretrain: MCPTool = {
   handler: async (params: Record<string, unknown>) => {
     const repoPath = resolve((params.path as string) || '.');
     const depth = (params.depth as string) || 'medium';
-    const fileTypesStr = (params.fileTypes as string) || 'ts,js,py,md';
+    // Handle fileTypes as either string ("ts,js,py") or array (["ts","js","py"])
+    const rawFileTypes = params.fileTypes;
+    const fileTypesArr = Array.isArray(rawFileTypes)
+      ? rawFileTypes.map((t: unknown) => String(t).trim())
+      : (typeof rawFileTypes === 'string' ? rawFileTypes : 'ts,js,py,md').split(',').map(e => e.trim());
     const startTime = Date.now();
 
     // Determine file limit by depth
     const fileLimit = depth === 'deep' ? 100 : depth === 'shallow' ? 30 : 60;
-    const extensions = new Set(fileTypesStr.split(',').map(e => e.trim()));
+    const extensions = new Set(fileTypesArr);
 
     // Phase 1: Retrieve - collect source files
     const retrieveStart = Date.now();
@@ -1644,7 +1650,7 @@ export const hooksPretrain: MCPTool = {
     return {
       path: repoPath,
       depth,
-      fileTypes: fileTypesStr,
+      fileTypes: fileTypesArr.join(','),
       stats: {
         filesAnalyzed: files.length,
         patternsExtracted: patterns.length,

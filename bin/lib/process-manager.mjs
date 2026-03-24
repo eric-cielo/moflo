@@ -15,7 +15,7 @@
  */
 
 import { spawn } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync, statSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync, statSync, openSync, closeSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -141,9 +141,22 @@ export function createProcessManager(root) {
       }
 
       try {
+        // Redirect background process output to log file instead of /dev/null
+        // This ensures errors from background indexers/pretrain are captured
+        let stdio = 'ignore';
+        try {
+          const swarmDir = resolve(projectRoot, '.swarm');
+          ensureDir(swarmDir);
+          const logPath = resolve(swarmDir, 'background.log');
+          const fd = openSync(logPath, 'a');
+          stdio = ['ignore', fd, fd];
+        } catch {
+          // Fall back to ignore if log file can't be opened
+        }
+
         const proc = spawn(cmd, args, {
           cwd: projectRoot,
-          stdio: 'ignore',
+          stdio,
           detached: true,
           shell: false,
           windowsHide: true,
