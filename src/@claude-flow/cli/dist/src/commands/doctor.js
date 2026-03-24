@@ -798,12 +798,19 @@ async function checkIntelligence() {
                 trajectoryId: 'doctor-test',
                 context: 'health check',
                 domain: 'general',
-                steps: [{ action: 'test', reward: 1, embedding: new Float32Array(64).fill(0.2), timestamp: Date.now() }],
+                steps: [{ action: 'test', reward: 1, stateAfter: new Float32Array(64).fill(0.2), timestamp: Date.now() }],
                 startTime: Date.now(),
                 endTime: Date.now(),
                 qualityScore: 0.9,
                 isComplete: true,
-                verdict: { success: true, quality: 0.9, feedback: 'test' },
+                verdict: {
+                    success: true,
+                    confidence: 0.9,
+                    strengths: ['health check passed'],
+                    weaknesses: [],
+                    improvements: [],
+                    relevanceScore: 0.9,
+                },
             };
             rb.storeTrajectory(trajectory);
             // distill() populates memories (storeTrajectory alone does not)

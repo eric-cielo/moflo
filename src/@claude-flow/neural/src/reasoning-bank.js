@@ -806,16 +806,16 @@ export class ReasoningBank {
     extractKeyLearnings(trajectory) {
         const learnings = [];
         const verdict = trajectory.verdict;
-        // Add key success factors
+        // Add key success factors (defensive: handle partial verdict shapes)
         if (verdict.success) {
             learnings.push(`Successful approach for ${trajectory.domain} domain`);
-            for (const strength of verdict.strengths.slice(0, 2)) {
+            for (const strength of (verdict.strengths || []).slice(0, 2)) {
                 learnings.push(`Strength: ${strength}`);
             }
         }
         else {
             learnings.push(`Approach needs refinement`);
-            for (const improvement of verdict.improvements.slice(0, 2)) {
+            for (const improvement of (verdict.improvements || []).slice(0, 2)) {
                 learnings.push(`Improvement: ${improvement}`);
             }
         }
@@ -825,7 +825,13 @@ export class ReasoningBank {
         if (trajectory.steps.length === 0) {
             return new Float32Array(this.config.vectorDimension);
         }
-        const dim = trajectory.steps[0].stateAfter.length;
+        // Support both stateAfter (standard) and embedding (doctor/simplified) field names
+        const firstStep = trajectory.steps[0];
+        const stepVector = firstStep.stateAfter || firstStep.embedding;
+        if (!stepVector) {
+            return new Float32Array(this.config.vectorDimension);
+        }
+        const dim = stepVector.length;
         const aggregate = new Float32Array(dim);
         // Weighted average of step embeddings (higher weight for later steps)
         let totalWeight = 0;
@@ -833,8 +839,10 @@ export class ReasoningBank {
             const weight = (i + 1) / trajectory.steps.length;
             totalWeight += weight;
             const step = trajectory.steps[i];
+            const vec = step.stateAfter || step.embedding;
+            if (!vec) continue;
             for (let j = 0; j < dim; j++) {
-                aggregate[j] += step.stateAfter[j] * weight;
+                aggregate[j] += vec[j] * weight;
             }
         }
         // Normalize
