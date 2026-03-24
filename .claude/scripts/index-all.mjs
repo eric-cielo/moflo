@@ -123,5 +123,5 @@ async function main() {
 
 main().catch(err => {
   log(`FATAL: ${err.message}`);
-  process.exit(0);
+  process.exit(1);
 });

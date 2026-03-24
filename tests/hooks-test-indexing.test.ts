@@ -1,10 +1,11 @@
 /**
- * Tests for hooks.mjs indexing integration (guidance, code-map, tests)
+ * Tests for session-start indexing integration.
  *
  * Verifies:
- * - All three background indexer functions exist
- * - All are spawned during session-start
- * - All respect their auto_index flags from moflo.yaml
+ * - session-start delegates to index-all.mjs (sequential chain)
+ * - index-all.mjs runs all indexers + HNSW rebuild in correct order
+ * - index-all.mjs respects auto_index flags from moflo.yaml
+ * - runIndexGuidanceBackground still exists for post-edit per-file use
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -12,72 +13,87 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 const HOOKS_FILE = resolve(__dirname, '../bin/hooks.mjs');
+const INDEX_ALL_FILE = resolve(__dirname, '../bin/index-all.mjs');
 
 describe('hooks.mjs indexing integration', () => {
-  let content: string;
+  let hooksContent: string;
+  let indexAllContent: string;
 
   beforeAll(() => {
-    content = readFileSync(HOOKS_FILE, 'utf-8');
+    hooksContent = readFileSync(HOOKS_FILE, 'utf-8');
+    indexAllContent = readFileSync(INDEX_ALL_FILE, 'utf-8');
   });
 
-  // ── Test indexer ──────────────────────────────────────────────────
+  // ── Session-start delegates to index-all.mjs ─────────────────────
 
-  it('defines runTestIndexBackground function', () => {
-    expect(content).toContain('function runTestIndexBackground()');
-  });
-
-  it('calls runTestIndexBackground in session-start', () => {
-    const sessionStart = content.substring(
-      content.indexOf("case 'session-start':"),
-      content.indexOf("case 'session-restore':")
+  it('session-start spawns index-all.mjs as sequential indexing chain', () => {
+    const sessionStart = hooksContent.substring(
+      hooksContent.indexOf("case 'session-start':"),
+      hooksContent.indexOf("case 'session-restore':")
     );
-    expect(sessionStart).toContain('runTestIndexBackground()');
+    expect(sessionStart).toContain('index-all.mjs');
+    expect(sessionStart).toContain('sequential indexing chain');
   });
 
-  it('checks auto_index.tests flag in moflo.yaml', () => {
-    expect(content).toContain('auto_index.tests');
+  // ── index-all.mjs runs all indexers sequentially ──────────────────
+
+  it('index-all.mjs runs guidance indexer', () => {
+    expect(indexAllContent).toContain("resolveBin('flo-index', 'index-guidance.mjs')");
+    expect(indexAllContent).toContain("runStep('guidance-index'");
   });
 
-  it('resolves index-tests.mjs via resolveBinOrLocal', () => {
-    expect(content).toContain("resolveBinOrLocal('flo-testmap', 'index-tests.mjs')");
+  it('index-all.mjs runs code map generator', () => {
+    expect(indexAllContent).toContain("resolveBin('flo-codemap', 'generate-code-map.mjs')");
+    expect(indexAllContent).toContain("runStep('code-map'");
   });
 
-  it('uses spawnWindowless for background test execution', () => {
-    const fn = content.substring(
-      content.indexOf('function runTestIndexBackground'),
-      content.indexOf('function runBackgroundTraining')
+  it('index-all.mjs runs test indexer', () => {
+    expect(indexAllContent).toContain("resolveBin('flo-testmap', 'index-tests.mjs')");
+    expect(indexAllContent).toContain("runStep('test-index'");
+  });
+
+  it('index-all.mjs runs patterns indexer', () => {
+    expect(indexAllContent).toContain("resolveBin('flo-patterns', 'index-patterns.mjs')");
+    expect(indexAllContent).toContain("runStep('patterns-index'");
+  });
+
+  it('index-all.mjs runs pretrain', () => {
+    expect(indexAllContent).toContain("runStep('pretrain'");
+  });
+
+  it('index-all.mjs runs HNSW rebuild as final step', () => {
+    expect(indexAllContent).toContain("runStep('hnsw-rebuild'");
+    // HNSW rebuild must appear after all other runStep calls
+    const lastIndexer = indexAllContent.lastIndexOf("runStep('pretrain'");
+    const hnswRebuild = indexAllContent.indexOf("runStep('hnsw-rebuild'");
+    expect(hnswRebuild).toBeGreaterThan(lastIndexer);
+  });
+
+  // ── auto_index flag support ───────────────────────────────────────
+
+  it('index-all.mjs checks auto_index flags via isIndexEnabled', () => {
+    expect(indexAllContent).toContain("isIndexEnabled('guidance')");
+    expect(indexAllContent).toContain("isIndexEnabled('code_map')");
+    expect(indexAllContent).toContain("isIndexEnabled('tests')");
+    expect(indexAllContent).toContain("isIndexEnabled('patterns')");
+  });
+
+  it('isIndexEnabled reads moflo.yaml and respects false flag', () => {
+    expect(indexAllContent).toContain('moflo.yaml');
+    expect(indexAllContent).toContain("'false'");
+  });
+
+  // ── Guidance indexer still available for post-edit ─────────────────
+
+  it('runIndexGuidanceBackground still exists for per-file indexing', () => {
+    expect(hooksContent).toContain('function runIndexGuidanceBackground');
+  });
+
+  it('guidance indexer gates full indexing but not per-file calls', () => {
+    const fn = hooksContent.substring(
+      hooksContent.indexOf('function runIndexGuidanceBackground'),
+      hooksContent.indexOf('function runIndexGuidanceBackground') + 1000
     );
-    expect(fn).toContain('spawnWindowless');
-  });
-
-  // ── Guidance indexer ──────────────────────────────────────────────
-
-  it('checks auto_index.guidance flag in runIndexGuidanceBackground', () => {
-    const fn = content.substring(
-      content.indexOf('function runIndexGuidanceBackground'),
-      content.indexOf('function runCodeMapBackground')
-    );
-    expect(fn).toContain('auto_index.guidance');
-    expect(fn).toContain("match[1] === 'false'");
-  });
-
-  it('only gates full guidance indexing, not per-file calls', () => {
-    const fn = content.substring(
-      content.indexOf('function runIndexGuidanceBackground'),
-      content.indexOf('function runCodeMapBackground')
-    );
-    // The flag check should be inside an if (!specificFile) block
     expect(fn).toContain('if (!specificFile)');
-  });
-
-  // ── Code map indexer ──────────────────────────────────────────────
-
-  it('checks auto_index.code_map flag in runCodeMapBackground', () => {
-    const fn = content.substring(
-      content.indexOf('function runCodeMapBackground'),
-      content.indexOf('function runTestIndexBackground')
-    );
-    expect(fn).toContain('auto_index.code_map');
-    expect(fn).toContain("match[1] === 'false'");
   });
 });

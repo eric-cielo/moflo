@@ -51,17 +51,24 @@ function getLocalCliPath() {
   return null;
 }
 
-/** Check moflo.yaml auto_index flag for a given key. Returns false if disabled. */
+/** Read moflo.yaml once and cache auto_index flags. */
+let _autoIndexFlags = null;
 function isIndexEnabled(key) {
-  const yamlPath = resolve(projectRoot, 'moflo.yaml');
-  if (!existsSync(yamlPath)) return true;
-  try {
-    const content = readFileSync(yamlPath, 'utf-8');
-    const re = new RegExp(`auto_index:\\s*\\n(?:.*\\n)*?\\s+${key}:\\s*(true|false)`);
-    const match = content.match(re);
-    if (match && match[1] === 'false') return false;
-  } catch { /* ignore, proceed */ }
-  return true;
+  if (_autoIndexFlags === null) {
+    _autoIndexFlags = {};
+    const yamlPath = resolve(projectRoot, 'moflo.yaml');
+    if (existsSync(yamlPath)) {
+      try {
+        const content = readFileSync(yamlPath, 'utf-8');
+        for (const k of ['guidance', 'code_map', 'tests', 'patterns']) {
+          const re = new RegExp(`auto_index:\\s*\\n(?:.*\\n)*?\\s+${k}:\\s*(true|false)`);
+          const match = content.match(re);
+          _autoIndexFlags[k] = match ? match[1] !== 'false' : true;
+        }
+      } catch { /* ignore, all default to true */ }
+    }
+  }
+  return _autoIndexFlags[key] !== false;
 }
 
 function runStep(label, cmd, args, timeoutMs = 120_000) {
@@ -157,5 +164,5 @@ async function main() {
 
 main().catch(err => {
   log(`FATAL: ${err.message}`);
-  process.exit(0);
+  process.exit(1);
 });

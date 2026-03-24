@@ -49,7 +49,7 @@ describe('#74 — CLI version sync', () => {
 
 describe('#75 — session-start auto-pretrain', () => {
   it('session-start handler calls pretrain when restoredPatterns is 0', async () => {
-    // Import the handler
+    // Import the handler (heavy import tree — needs extended timeout under full suite)
     const { hooksSessionStart } = await import(
       '../src/@claude-flow/cli/src/mcp-tools/hooks-tools.js'
     );
@@ -68,7 +68,7 @@ describe('#75 — session-start auto-pretrain', () => {
     if (result.sessionMemory.restoredPatterns === 0) {
       expect(result.pretrain.ran).toBe(true);
     }
-  });
+  }, 30_000);
 });
 
 describe('#77 — createSONALearningEngine default args', () => {

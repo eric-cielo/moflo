@@ -265,19 +265,8 @@ async function main() {
         // Run all DB-writing indexers SEQUENTIALLY in a single background process.
         // This avoids sql.js last-write-wins concurrency (#78) and ensures
         // HNSW rebuild runs after all indexers finish (#81).
-        // Chain: embeddings-init → guidance → code-map → tests → patterns → pretrain → HNSW rebuild.
-        const indexAllScript = resolve(__dirname, 'index-all.mjs');
-        if (existsSync(indexAllScript)) {
-          spawnWindowless('node', [indexAllScript], 'sequential indexing chain');
-        } else {
-          // Fallback: parallel indexers + deferred HNSW rebuild
-          runIndexGuidanceBackground();
-          runCodeMapBackground();
-          runTestIndexBackground();
-          runPatternsIndexBackground();
-          runBackgroundPretrain();
-          runHNSWRebuildAfterIndexers();
-        }
+        // Chain: guidance → code-map → tests → patterns → pretrain → HNSW rebuild.
+        spawnWindowless('node', [resolve(__dirname, 'index-all.mjs')], 'sequential indexing chain');
         // Neural patterns now loaded by moflo core routing — no external patching.
         break;
       }
@@ -473,55 +462,6 @@ function runIndexGuidanceBackground(specificFile = null) {
   spawnWindowless('node', indexArgs, desc);
 }
 
-// Run structural code map generator in background (non-blocking)
-function runCodeMapBackground() {
-  // Check auto_index.code_map flag in moflo.yaml (default: true)
-  const yamlPath = resolve(projectRoot, 'moflo.yaml');
-  if (existsSync(yamlPath)) {
-    try {
-      const content = readFileSync(yamlPath, 'utf-8');
-      const match = content.match(/auto_index:\s*\n(?:.*\n)*?\s+code_map:\s*(true|false)/);
-      if (match && match[1] === 'false') {
-        log('info', 'Code map generation disabled (auto_index.code_map: false)');
-        return;
-      }
-    } catch { /* ignore, proceed with indexing */ }
-  }
-
-  const codeMapScript = resolveBinOrLocal('flo-codemap', 'generate-code-map.mjs');
-
-  if (!codeMapScript) {
-    log('warn', 'Code map generator not found (checked npm bin + .claude/scripts/)');
-    return;
-  }
-
-  spawnWindowless('node', [codeMapScript], 'background code map generation');
-}
-
-// Run test file indexer in background (non-blocking)
-function runTestIndexBackground() {
-  // Check auto_index.tests flag in moflo.yaml (default: true)
-  const yamlPath = resolve(projectRoot, 'moflo.yaml');
-  if (existsSync(yamlPath)) {
-    try {
-      const content = readFileSync(yamlPath, 'utf-8');
-      const match = content.match(/auto_index:\s*\n(?:.*\n)*?\s+tests:\s*(true|false)/);
-      if (match && match[1] === 'false') {
-        log('info', 'Test indexing disabled (auto_index.tests: false)');
-        return;
-      }
-    } catch { /* ignore, proceed with indexing */ }
-  }
-
-  const testIndexScript = resolveBinOrLocal('flo-testmap', 'index-tests.mjs');
-
-  if (!testIndexScript) {
-    log('info', 'Test indexer not found (checked npm bin + .claude/scripts/)');
-    return;
-  }
-
-  spawnWindowless('node', [testIndexScript], 'background test indexing');
-}
 
 // Run ReasoningBank + MicroLoRA training + EWC++ consolidation in background (non-blocking)
 function runBackgroundTraining() {
@@ -629,87 +569,6 @@ function runDaemonStartBackground() {
   spawnWindowless('node', [localCli, 'daemon', 'start', '--quiet'], 'daemon');
 }
 
-// Run pretrain in background on session start (non-blocking)
-function runBackgroundPretrain() {
-  const localCli = getLocalCliPath();
-  if (!localCli) {
-    log('warn', 'Local CLI not found, skipping background pretrain');
-    return;
-  }
-
-  spawnWindowless('node', [localCli, 'hooks', 'pretrain'], 'background pretrain');
-}
-
-// Force HNSW rebuild in background to ensure all processes use identical fresh index
-// This fixes the issue where spawned agents return different search results than CLI/MCP
-function runHNSWRebuildBackground() {
-  const localCli = getLocalCliPath();
-  if (!localCli) {
-    log('warn', 'Local CLI not found, skipping HNSW rebuild');
-    return;
-  }
-
-  spawnWindowless('node', [localCli, 'memory', 'rebuild', '--force'], 'HNSW rebuild');
-}
-
-/**
- * Spawn a background process that waits for all indexer processes to finish,
- * then triggers an HNSW rebuild. Fixes #81 — HNSW rebuild racing indexers.
- */
-function runHNSWRebuildAfterIndexers() {
-  const localCli = getLocalCliPath();
-  if (!localCli) {
-    log('warn', 'Local CLI not found, skipping deferred HNSW rebuild');
-    return;
-  }
-
-  const indexerLabels = [
-    'background indexing (full)',
-    'background code map generation',
-    'background test indexing',
-    'background patterns indexing',
-    'background pretrain',
-  ];
-
-  // Inline script that polls the PID registry until all indexers exit, then rebuilds
-  const deferredScript = `
-    const { readFileSync, existsSync } = require('fs');
-    const { resolve } = require('path');
-    const root = ${JSON.stringify(projectRoot)};
-    const registryFile = resolve(root, '.claude-flow', 'background-pids.json');
-    const cli = ${JSON.stringify(localCli)};
-    const labels = ${JSON.stringify(indexerLabels)};
-
-    function isAlive(pid) {
-      try { process.kill(pid, 0); return true; } catch { return false; }
-    }
-
-    function indexersRunning() {
-      if (!existsSync(registryFile)) return false;
-      try {
-        const entries = JSON.parse(readFileSync(registryFile, 'utf-8'));
-        return entries.some(e => labels.includes(e.label) && isAlive(e.pid));
-      } catch { return false; }
-    }
-
-    let elapsed = 0;
-    const interval = setInterval(() => {
-      elapsed += 2000;
-      if (!indexersRunning() || elapsed > 300000) {
-        clearInterval(interval);
-        const { execSync } = require('child_process');
-        try {
-          execSync('node ' + JSON.stringify(cli) + ' memory rebuild --force', {
-            cwd: root, stdio: 'ignore', timeout: 120000
-          });
-        } catch {}
-        process.exit(0);
-      }
-    }, 2000);
-  `;
-
-  spawnWindowless('node', ['-e', deferredScript], 'HNSW rebuild (deferred)');
-}
 
 // Initialize embeddings ONNX engine on session start (non-blocking)
 function runEmbeddingsInitBackground() {
@@ -722,30 +581,6 @@ function runEmbeddingsInitBackground() {
   spawnWindowless('node', [localCli, 'embeddings', 'init'], 'embeddings init');
 }
 
-// Index code patterns into the patterns namespace (non-blocking)
-// Extracts architectural patterns, idioms, and recurring structures from source
-function runPatternsIndexBackground() {
-  // Check auto_index.patterns flag in moflo.yaml (default: true)
-  const yamlPath = resolve(projectRoot, 'moflo.yaml');
-  if (existsSync(yamlPath)) {
-    try {
-      const content = readFileSync(yamlPath, 'utf-8');
-      const match = content.match(/auto_index:\s*\n(?:.*\n)*?\s+patterns:\s*(true|false)/);
-      if (match && match[1] === 'false') {
-        log('info', 'Patterns indexing disabled (auto_index.patterns: false)');
-        return;
-      }
-    } catch { /* ignore, proceed with indexing */ }
-  }
-
-  const patternsScript = resolveBinOrLocal('flo-patterns', 'index-patterns.mjs');
-  if (!patternsScript) {
-    log('warn', 'Patterns indexer not found (checked npm bin + .claude/scripts/)');
-    return;
-  }
-
-  spawnWindowless('node', [patternsScript], 'background patterns indexing');
-}
 
 // Neural pattern application — now handled by moflo core routing (learned patterns
 // loaded from routing-outcomes.json by hooks-tools.ts getSemanticRouter).
