@@ -258,24 +258,26 @@ async function main() {
       }
 
       case 'session-start': {
-        // All startup tasks run in background (non-blocking)
-        // Start daemon quietly in background
+        // Start daemon quietly in background (no DB writes)
         runDaemonStartBackground();
         // Initialize embeddings engine (must run before indexers that generate embeddings)
         runEmbeddingsInitBackground();
-        // Index guidance files in background
-        runIndexGuidanceBackground();
-        // Generate structural code map in background
-        runCodeMapBackground();
-        // Index test files in background
-        runTestIndexBackground();
-        // Index code patterns into patterns namespace
-        runPatternsIndexBackground();
-        // Run pretrain in background to extract patterns from repository
-        runBackgroundPretrain();
-        // Force HNSW rebuild to ensure all processes use identical fresh index
-        // This fixes agent search result mismatches (0.61 vs 0.81 similarity)
-        runHNSWRebuildBackground();
+        // Run all DB-writing indexers SEQUENTIALLY in a single background process.
+        // This avoids sql.js last-write-wins concurrency (#78) and ensures
+        // HNSW rebuild runs after all indexers finish (#81).
+        // Chain: embeddings-init → guidance → code-map → tests → patterns → pretrain → HNSW rebuild.
+        const indexAllScript = resolve(__dirname, 'index-all.mjs');
+        if (existsSync(indexAllScript)) {
+          spawnWindowless('node', [indexAllScript], 'sequential indexing chain');
+        } else {
+          // Fallback: parallel indexers + deferred HNSW rebuild
+          runIndexGuidanceBackground();
+          runCodeMapBackground();
+          runTestIndexBackground();
+          runPatternsIndexBackground();
+          runBackgroundPretrain();
+          runHNSWRebuildAfterIndexers();
+        }
         // Neural patterns now loaded by moflo core routing — no external patching.
         break;
       }
@@ -648,6 +650,65 @@ function runHNSWRebuildBackground() {
   }
 
   spawnWindowless('node', [localCli, 'memory', 'rebuild', '--force'], 'HNSW rebuild');
+}
+
+/**
+ * Spawn a background process that waits for all indexer processes to finish,
+ * then triggers an HNSW rebuild. Fixes #81 — HNSW rebuild racing indexers.
+ */
+function runHNSWRebuildAfterIndexers() {
+  const localCli = getLocalCliPath();
+  if (!localCli) {
+    log('warn', 'Local CLI not found, skipping deferred HNSW rebuild');
+    return;
+  }
+
+  const indexerLabels = [
+    'background indexing (full)',
+    'background code map generation',
+    'background test indexing',
+    'background patterns indexing',
+    'background pretrain',
+  ];
+
+  // Inline script that polls the PID registry until all indexers exit, then rebuilds
+  const deferredScript = `
+    const { readFileSync, existsSync } = require('fs');
+    const { resolve } = require('path');
+    const root = ${JSON.stringify(projectRoot)};
+    const registryFile = resolve(root, '.claude-flow', 'background-pids.json');
+    const cli = ${JSON.stringify(localCli)};
+    const labels = ${JSON.stringify(indexerLabels)};
+
+    function isAlive(pid) {
+      try { process.kill(pid, 0); return true; } catch { return false; }
+    }
+
+    function indexersRunning() {
+      if (!existsSync(registryFile)) return false;
+      try {
+        const entries = JSON.parse(readFileSync(registryFile, 'utf-8'));
+        return entries.some(e => labels.includes(e.label) && isAlive(e.pid));
+      } catch { return false; }
+    }
+
+    let elapsed = 0;
+    const interval = setInterval(() => {
+      elapsed += 2000;
+      if (!indexersRunning() || elapsed > 300000) {
+        clearInterval(interval);
+        const { execSync } = require('child_process');
+        try {
+          execSync('node ' + JSON.stringify(cli) + ' memory rebuild --force', {
+            cwd: root, stdio: 'ignore', timeout: 120000
+          });
+        } catch {}
+        process.exit(0);
+      }
+    }, 2000);
+  `;
+
+  spawnWindowless('node', ['-e', deferredScript], 'HNSW rebuild (deferred)');
 }
 
 // Initialize embeddings ONNX engine on session start (non-blocking)
