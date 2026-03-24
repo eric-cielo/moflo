@@ -25,7 +25,7 @@
  *   npx flo-codemap                                              # Via npx
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
 import { resolve, dirname, relative, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
@@ -177,23 +177,102 @@ function countNamespace(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Source file enumeration via git ls-files
+// Source file enumeration — git ls-files with filesystem fallback
 // ---------------------------------------------------------------------------
 
-function getSourceFiles() {
-  const raw = execSync(
-    `git ls-files -- "*.ts" "*.tsx" "*.js" "*.mjs" "*.jsx"`,
-    { cwd: projectRoot, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
-  ).trim();
-
-  if (!raw) return [];
-
-  return raw.split('\n').filter(f => {
-    for (const ex of EXCLUDE_DIRS) {
-      if (f.startsWith(ex + '/') || f.startsWith(ex + '\\')) return false;
+/** Read code_map config from moflo.yaml (directories, extensions, exclude). */
+function readCodeMapConfig() {
+  const defaults = {
+    directories: ['src'],
+    extensions: ['.ts', '.tsx', '.js', '.mjs', '.jsx'],
+    exclude: [...EXCLUDE_DIRS],
+  };
+  try {
+    const yamlPath = resolve(projectRoot, 'moflo.yaml');
+    if (!existsSync(yamlPath)) return defaults;
+    const content = readFileSync(yamlPath, 'utf-8');
+    // Simple YAML parsing for code_map block
+    const block = content.match(/code_map:\s*\n((?:\s+\w+:.*\n?|\s+- .*\n?)+)/);
+    if (!block) return defaults;
+    const lines = block[1].split('\n');
+    let currentKey = null;
+    const result = { ...defaults };
+    for (const line of lines) {
+      const keyMatch = line.match(/^\s+(\w+):/);
+      const itemMatch = line.match(/^\s+- (.+)/);
+      if (keyMatch) {
+        currentKey = keyMatch[1];
+        // Inline array: extensions: [".ts", ".tsx"]
+        const inlineArray = line.match(/\[([^\]]+)\]/);
+        if (inlineArray && (currentKey === 'extensions' || currentKey === 'exclude' || currentKey === 'directories')) {
+          result[currentKey] = inlineArray[1].split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+        }
+      } else if (itemMatch && currentKey) {
+        if (!Array.isArray(result[currentKey])) result[currentKey] = [];
+        result[currentKey].push(itemMatch[1].trim().replace(/^["']|["']$/g, ''));
+      }
     }
-    return true;
-  });
+    return result;
+  } catch { return defaults; }
+}
+
+/** Walk a directory tree collecting source files (filesystem fallback). */
+function walkDir(dir, extensions, excludeSet, maxDepth = 8, depth = 0) {
+  if (depth > maxDepth) return [];
+  const results = [];
+  let entries;
+  try {
+    entries = readdirSync(resolve(projectRoot, dir), { withFileTypes: true });
+  } catch { return []; }
+  for (const entry of entries) {
+    if (excludeSet.has(entry.name)) continue;
+    // Use forward slashes for consistent cross-platform paths
+    const rel = dir ? `${dir}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      results.push(...walkDir(rel, extensions, excludeSet, maxDepth, depth + 1));
+    } else if (entry.isFile()) {
+      const ext = extname(entry.name);
+      if (extensions.has(ext)) results.push(rel);
+    }
+  }
+  return results;
+}
+
+function getSourceFiles() {
+  // Try git ls-files first (fast, respects .gitignore)
+  try {
+    const raw = execSync(
+      `git ls-files -- "*.ts" "*.tsx" "*.js" "*.mjs" "*.jsx"`,
+      { cwd: projectRoot, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
+    ).trim();
+
+    if (raw) {
+      const files = raw.split('\n').filter(f => {
+        for (const ex of EXCLUDE_DIRS) {
+          if (f.startsWith(ex + '/') || f.startsWith(ex + '\\')) return false;
+        }
+        return true;
+      });
+      if (files.length > 0) return files;
+    }
+  } catch {
+    // git not available or not a git repo — fall through
+  }
+
+  // Fallback: walk configured directories from moflo.yaml
+  log('git ls-files returned no files — falling back to filesystem walk');
+  const config = readCodeMapConfig();
+  const extSet = new Set(config.extensions);
+  const excludeSet = new Set(config.exclude);
+  const files = [];
+
+  for (const dir of config.directories) {
+    if (existsSync(resolve(projectRoot, dir))) {
+      files.push(...walkDir(dir, extSet, excludeSet));
+    }
+  }
+
+  return files;
 }
 
 function computeFileListHash(files) {
