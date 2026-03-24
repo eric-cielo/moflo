@@ -714,6 +714,7 @@ async function checkAgenticFlow(): Promise<HealthCheck> {
 // Exercises each component with a lightweight functional test rather than just checking "loaded".
 async function checkIntelligence(): Promise<HealthCheck> {
   try {
+    // @ts-ignore — neural is not in tsconfig project references but is available at runtime
     const neural = await import('../../neural/src/index.js');
     const results: string[] = [];
     const failures: string[] = [];
