@@ -1,6 +1,6 @@
 /**
- * MoFlo Orc Command
- * Feature orchestrator that sequences GitHub issues through /flo workflows.
+ * MoFlo Epic Command
+ * Epic orchestrator that sequences GitHub issues through /flo workflows.
  *
  * Accepts either a GitHub epic issue number or a YAML feature definition.
  * When given an issue number, fetches the epic from GitHub and extracts
@@ -8,12 +8,12 @@
  * story definitions with dependency ordering.
  *
  * Usage:
- *   flo orc run 42                          Execute an epic from GitHub
- *   flo orc run 42 --dry-run                Show execution plan from GitHub epic
- *   flo orc run feature.yaml                Execute a YAML feature definition
- *   flo orc run feature.yaml --dry-run      Show execution plan
- *   flo orc status <feature-id>             Check progress
- *   flo orc reset <feature-id>              Reset for re-run
+ *   flo epic run 42                          Execute an epic from GitHub
+ *   flo epic run 42 --dry-run                Show execution plan from GitHub epic
+ *   flo epic run feature.yaml                Execute a YAML feature definition
+ *   flo epic run feature.yaml --dry-run      Show execution plan
+ *   flo epic status <feature-id>             Check progress
+ *   flo epic reset <feature-id>              Reset for re-run
  */
 
 import { spawn, execSync } from 'child_process';
@@ -278,7 +278,7 @@ function resolveExecutionOrder(stories: StoryDefinition[]): ExecutionPlan {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function getStatePath(repoPath: string): string {
-  return join(repoPath, '.claude-orc', 'state.json');
+  return join(repoPath, '.claude-epic', 'state.json');
 }
 
 function loadState(repoPath: string): OrcState {
@@ -435,7 +435,7 @@ async function loadFeatureDefinition(yamlPath: string): Promise<FeatureDefinitio
 }
 
 async function loadFeatureFromIssue(issueNumber: number): Promise<FeatureDefinition> {
-  console.log(`[orc] Fetching issue #${issueNumber} from GitHub...`);
+  console.log(`[epic] Fetching issue #${issueNumber} from GitHub...`);
   const issue = fetchGitHubIssue(issueNumber);
 
   if (!isEpicIssue(issue)) {
@@ -456,8 +456,8 @@ async function loadFeatureFromIssue(issueNumber: number): Promise<FeatureDefinit
 
   const featureDef = buildFeatureFromEpic(issue, repoPath, baseBranch);
 
-  console.log(`[orc] Epic: ${issue.title}`);
-  console.log(`[orc] Stories found: ${featureDef.feature.stories.length}`);
+  console.log(`[epic] Epic: ${issue.title}`);
+  console.log(`[epic] Stories found: ${featureDef.feature.stories.length}`);
   for (const s of featureDef.feature.stories) {
     console.log(`  - #${s.issue}: ${s.name}`);
   }
@@ -918,24 +918,24 @@ function printSummary(
 // Command Definition
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const orcCommand: Command = {
-  name: 'orc',
-  description: 'Feature orchestrator — sequences GitHub epics or YAML features through /flo workflows',
+const epicCommand: Command = {
+  name: 'epic',
+  description: 'Epic orchestrator — sequences GitHub epics or YAML features through /flo workflows',
   options: [],
   examples: [
-    { command: 'flo orc run 42', description: 'Execute a GitHub epic (auto-detects stories)' },
-    { command: 'flo orc run 42 --dry-run', description: 'Show execution plan from GitHub epic' },
-    { command: 'flo orc run feature.yaml', description: 'Execute a YAML feature definition' },
-    { command: 'flo orc run feature.yaml --dry-run', description: 'Show execution plan without running' },
-    { command: 'flo orc run feature.yaml --verbose', description: 'Execute with Claude output streaming' },
-    { command: 'flo orc status my-feature', description: 'Check progress of a feature' },
-    { command: 'flo orc reset my-feature', description: 'Reset feature state for re-run' },
+    { command: 'flo epic run 42', description: 'Execute a GitHub epic (auto-detects stories)' },
+    { command: 'flo epic run 42 --dry-run', description: 'Show execution plan from GitHub epic' },
+    { command: 'flo epic run feature.yaml', description: 'Execute a YAML feature definition' },
+    { command: 'flo epic run feature.yaml --dry-run', description: 'Show execution plan without running' },
+    { command: 'flo epic run feature.yaml --verbose', description: 'Execute with Claude output streaming' },
+    { command: 'flo epic status my-feature', description: 'Check progress of a feature' },
+    { command: 'flo epic reset my-feature', description: 'Reset feature state for re-run' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const subcommand = ctx.args?.[0];
 
     if (!subcommand) {
-      console.log('Usage: flo orc <command> [args] [flags]');
+      console.log('Usage: flo epic <command> [args] [flags]');
       console.log('');
       console.log('Commands:');
       console.log('  run <issue | yaml>       Execute a GitHub epic or YAML feature');
@@ -943,8 +943,8 @@ const orcCommand: Command = {
       console.log('  reset <feature-id>       Reset feature state for re-run');
       console.log('');
       console.log('Examples:');
-      console.log('  flo orc run 42           Fetch epic #42 from GitHub, run stories');
-      console.log('  flo orc run feature.yaml Execute from YAML with dependencies');
+      console.log('  flo epic run 42           Fetch epic #42 from GitHub, run stories');
+      console.log('  flo epic run feature.yaml Execute from YAML with dependencies');
       console.log('');
       console.log('Flags:');
       console.log('  --dry-run                Show execution plan without running');
@@ -957,7 +957,7 @@ const orcCommand: Command = {
       case 'run': {
         const source = ctx.args[1];
         if (!source) {
-          console.log('Usage: flo orc run <issue-number | feature.yaml> [--dry-run] [--verbose]');
+          console.log('Usage: flo epic run <issue-number | feature.yaml> [--dry-run] [--verbose]');
           return { success: false, message: 'Missing issue number or feature YAML path' };
         }
         const dryRun = ctx.flags['dry-run'] === true || ctx.flags['dryRun'] === true;
@@ -968,7 +968,7 @@ const orcCommand: Command = {
       case 'status': {
         const featureId = ctx.args[1];
         if (!featureId) {
-          console.log('Usage: flo orc status <feature-id>');
+          console.log('Usage: flo epic status <feature-id>');
           return { success: false, message: 'Missing feature ID' };
         }
         return showStatus(featureId);
@@ -977,7 +977,7 @@ const orcCommand: Command = {
       case 'reset': {
         const featureId = ctx.args[1];
         if (!featureId) {
-          console.log('Usage: flo orc reset <feature-id>');
+          console.log('Usage: flo epic reset <feature-id>');
           return { success: false, message: 'Missing feature ID' };
         }
         return resetFeature(featureId);
@@ -991,4 +991,4 @@ const orcCommand: Command = {
   },
 };
 
-export default orcCommand;
+export default epicCommand;

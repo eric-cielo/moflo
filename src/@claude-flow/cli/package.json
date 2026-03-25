@@ -1,6 +1,6 @@
 {
   "name": "@moflo/cli",
-  "version": "4.8.43",
+  "version": "4.8.44",
   "type": "module",
   "description": "MoFlo CLI — AI agent orchestration with specialized agents, swarm coordination, MCP server, self-learning hooks, and vector memory for Claude Code",
   "main": "dist/src/index.js",

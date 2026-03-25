@@ -640,7 +640,7 @@ See `memory-strategy.md` for memory-specific troubleshooting.
 
 ## See Also
 
-- `.claude/guidance/agent-bootstrap.md` - Subagent memory-first protocol and store patterns
-- `.claude/guidance/task-swarm-integration.md` - Task & swarm coordination with TaskCreate/TaskUpdate
+- `.claude/guidance/subagents.md` - Subagents memory-first protocol and store patterns
+- `.claude/guidance/moflo-claude-swarm-cohesion.md` - Task & swarm coordination with TaskCreate/TaskUpdate
 - `.claude/guidance/memory-strategy.md` - Database schema, namespaces, search commands, RAG linking
 - `.claude/guidance/guidance-memory-strategy.md` - How to write guidance docs that index well for RAG

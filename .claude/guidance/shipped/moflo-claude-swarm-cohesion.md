@@ -1,6 +1,6 @@
-# Task & Swarm Integration Pattern
+# MoFlo–Claude Swarm Cohesion
 
-**Purpose:** Integrate native Claude Code tasks with moflo swarm coordination for visible progress tracking and structured agent orchestration.
+**Purpose:** Integrate native Claude Code tasks with MoFlo swarm coordination for visible progress tracking and structured agent orchestration.
 
 ---
 
@@ -144,7 +144,7 @@ TaskCreate was already called in Step 1 — tasks are visible before agents spaw
 ```javascript
 // TaskCreate already done in Step 1 above
 Task({
-  prompt: `FIRST: Search memory, then read .claude/guidance/agent-bootstrap.md
+  prompt: `FIRST: Search memory, then read .claude/guidance/subagents.md
 
 YOUR TASK (ID: 1): Research requirements and codebase patterns
 - Analyze feature requirements
@@ -436,6 +436,6 @@ npx flo swarm init --topology hierarchical-mesh --max-agents 15 --strategy speci
 
 ## See Also
 
-- `.claude/guidance/agent-bootstrap.md` - Subagent bootstrap guide
+- `.claude/guidance/subagents.md` - Subagents guide
 - `.claude/guidance/memory-strategy.md` - Memory architecture and search
 - `.claude/guidance/moflo.md` - Full CLI/MCP reference

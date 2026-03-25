@@ -273,29 +273,29 @@ When you pass an issue number, `/flo` automatically checks if it's an epic — n
 
 When an epic is detected, `/flo` processes each child story sequentially — full workflow per story (research → implement → test → PR), one at a time, in the order listed.
 
-For simple epics with independent stories, `/flo <epic>` is all you need. For complex features where you want state tracking, resume capability, and auto-merge between stories, use `flo orc` instead.
+For simple epics with independent stories, `/flo <epic>` is all you need. For complex features where you want state tracking, resume capability, and auto-merge between stories, use `flo epic` instead.
 
-### Feature Orchestration (`flo orc`)
+### Feature Orchestration (`flo epic`)
 
-`flo orc` is the robust epic runner — it adds persistent state, resume from failure, and auto-merge between stories on top of `/flo`. It accepts either a GitHub issue number or a YAML file:
+`flo epic` is the robust epic runner — it adds persistent state, resume from failure, and auto-merge between stories on top of `/flo`. It accepts either a GitHub issue number or a YAML file:
 
 ```bash
 # From a GitHub epic (auto-detects stories)
-flo orc run 42                        # Fetch epic #42, run all stories sequentially
-flo orc run 42 --dry-run              # Preview execution plan without running
-flo orc run 42 --no-merge             # Skip auto-merge between stories
+flo epic run 42                        # Fetch epic #42, run all stories sequentially
+flo epic run 42 --dry-run              # Preview execution plan without running
+flo epic run 42 --no-merge             # Skip auto-merge between stories
 
 # From a YAML definition (explicit dependencies)
-flo orc run feature.yaml              # Execute stories in dependency order
-flo orc run feature.yaml --dry-run    # Show execution plan
-flo orc run feature.yaml --verbose    # Stream Claude output to terminal
+flo epic run feature.yaml              # Execute stories in dependency order
+flo epic run feature.yaml --dry-run    # Show execution plan
+flo epic run feature.yaml --verbose    # Stream Claude output to terminal
 
 # State management
-flo orc status epic-42                # Check progress (which stories passed/failed)
-flo orc reset epic-42                 # Reset state for re-run
+flo epic status epic-42                # Check progress (which stories passed/failed)
+flo epic reset epic-42                 # Reset state for re-run
 ```
 
-When given an issue number, `flo orc` fetches the epic from GitHub, extracts child stories from checklists and numbered references, then runs each through `/flo` with state tracking. If a story fails, you can fix the issue and `flo orc run 42` again — it resumes from where it left off, skipping already-passed stories.
+When given an issue number, `flo epic` fetches the epic from GitHub, extracts child stories from checklists and numbered references, then runs each through `/flo` with state tracking. If a story fails, you can fix the issue and `flo epic run 42` again — it resumes from where it left off, skipping already-passed stories.
 
 For features with inter-story dependencies (story B requires story A to be merged first), use a YAML definition:
 
@@ -317,9 +317,9 @@ feature:
       depends_on: [story-1]
 ```
 
-| | `/flo <epic>` | `flo orc run <epic>` |
+| | `/flo <epic>` | `flo epic run <epic>` |
 |---|---|---|
-| **State tracking** | No | Yes (`.claude-orc/state.json`) |
+| **State tracking** | No | Yes (`.claude-epic/state.json`) |
 | **Resume from failure** | No | Yes (skips passed stories) |
 | **Auto-merge PRs** | No | Yes (between stories) |
 | **Dry-run preview** | No | Yes |
@@ -522,7 +522,7 @@ Here's how a typical task flows through both layers:
 
 The key insight: **your client handles execution, MoFlo handles knowledge.** Your client is good at spawning agents and running code. MoFlo is good at remembering what happened, routing to the right agent, and ensuring prior knowledge is checked before exploring from scratch.
 
-For complex work, MoFlo structures tasks into waves — a research wave discovers context, then an implementation wave acts on it — with dependencies tracked through both the client's task system and MoFlo's coordination layer. The full integration pattern is documented in `.claude/guidance/task-swarm-integration.md`.
+For complex work, MoFlo structures tasks into waves — a research wave discovers context, then an implementation wave acts on it — with dependencies tracked through both the client's task system and MoFlo's coordination layer. The full integration pattern is documented in `.claude/guidance/moflo-claude-swarm-cohesion.md`.
 
 The `/flo` skill ties both systems together for GitHub issues — driving a full workflow (research → enhance → implement → test → simplify → PR) with your client's agents for execution and MoFlo's memory for continuity.
 

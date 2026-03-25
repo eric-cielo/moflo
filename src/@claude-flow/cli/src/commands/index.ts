@@ -75,7 +75,7 @@ const commandLoaders: Record<string, CommandLoader> = {
   // MoFlo Workflow Gates
   gate: () => import('./gate.js'),
   // Feature Orchestrator
-  orc: () => import('./orc.js'),
+  epic: () => import('./epic.js'),
   // GitHub Repository Setup
   github: () => import('./github.js'),
 };
