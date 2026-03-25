@@ -15,7 +15,22 @@ import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = resolve(__dirname, '..');
+
+// Detect project root by walking up from cwd to find package.json.
+// IMPORTANT: Do NOT use resolve(__dirname, '..') — this script lives in bin/
+// during development but gets synced to .claude/scripts/ in consumer projects,
+// so __dirname-relative paths break. findProjectRoot() works in both locations.
+function findProjectRoot() {
+  let dir = process.cwd();
+  const root = resolve(dir, '/');
+  while (dir !== root) {
+    if (existsSync(resolve(dir, 'package.json'))) return dir;
+    dir = dirname(dir);
+  }
+  return process.cwd();
+}
+
+const projectRoot = findProjectRoot();
 const LOG_PATH = resolve(projectRoot, '.swarm/hooks.log');
 
 function log(msg) {

@@ -353,8 +353,15 @@ async function main() {
 
   // Trigger embedding generation in background
   try {
-    const embeddingScript = resolve(projectRoot, 'node_modules/moflo/bin/build-embeddings.mjs');
-    if (existsSync(embeddingScript)) {
+    // Check __dirname first (works in both dev bin/ and consumer .claude/scripts/),
+    // then fall back to node_modules/moflo/bin/ for consumer projects
+    const candidates = [
+      resolve(__dirname, 'build-embeddings.mjs'),
+      resolve(projectRoot, 'node_modules/moflo/bin/build-embeddings.mjs'),
+      resolve(projectRoot, '.claude/scripts/build-embeddings.mjs'),
+    ];
+    const embeddingScript = candidates.find(p => existsSync(p));
+    if (embeddingScript) {
       const child = spawn('node', [embeddingScript, '--namespace', NAMESPACE], {
         cwd: projectRoot,
         detached: true,

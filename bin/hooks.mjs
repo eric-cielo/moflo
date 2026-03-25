@@ -27,7 +27,22 @@ import { createProcessManager } from './lib/process-manager.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const projectRoot = resolve(__dirname, '../..');
+
+// Detect project root by walking up from cwd to find package.json.
+// IMPORTANT: Do NOT use resolve(__dirname, '..') or '../..' — this script lives
+// in bin/ during development but gets synced to .claude/scripts/ in consumer
+// projects, so __dirname-relative paths break. findProjectRoot() works everywhere.
+function findProjectRoot() {
+  let dir = process.cwd();
+  const root = resolve(dir, '/');
+  while (dir !== root) {
+    if (existsSync(resolve(dir, 'package.json'))) return dir;
+    dir = dirname(dir);
+  }
+  return process.cwd();
+}
+
+const projectRoot = findProjectRoot();
 const logFile = resolve(projectRoot, '.swarm/hooks.log');
 const pm = createProcessManager(projectRoot);
 

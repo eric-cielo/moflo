@@ -13,7 +13,22 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = resolve(__dirname, '../..');
+
+// Detect project root by walking up from cwd to find package.json.
+// IMPORTANT: Do NOT use resolve(__dirname, '..') or '../..' — this script lives
+// in bin/ during development but gets synced to .claude/scripts/ in consumer
+// projects, so __dirname-relative paths break. findProjectRoot() works everywhere.
+function findProjectRoot() {
+  let dir = process.cwd();
+  const root = resolve(dir, '/');
+  while (dir !== root) {
+    if (existsSync(resolve(dir, 'package.json'))) return dir;
+    dir = dirname(dir);
+  }
+  return process.cwd();
+}
+
+const projectRoot = findProjectRoot();
 
 // ── 1. Helper: fire-and-forget a background process ─────────────────────────
 function fireAndForget(cmd, args, label) {
