@@ -114,7 +114,7 @@ async function main() {
   if (isIndexEnabled('guidance')) {
     const guidanceScript = resolveBin('flo-index', 'index-guidance.mjs');
     if (guidanceScript) {
-      runStep('guidance-index', 'node', [guidanceScript]);
+      runStep('guidance-index', 'node', [guidanceScript, '--no-embeddings']);
     } else {
       log('SKIP  guidance-index (script not found)');
     }
@@ -126,7 +126,7 @@ async function main() {
   if (isIndexEnabled('code_map')) {
     const codeMapScript = resolveBin('flo-codemap', 'generate-code-map.mjs');
     if (codeMapScript) {
-      runStep('code-map', 'node', [codeMapScript], 180_000);
+      runStep('code-map', 'node', [codeMapScript, '--no-embeddings'], 180_000);
     } else {
       log('SKIP  code-map (script not found)');
     }
@@ -138,7 +138,7 @@ async function main() {
   if (isIndexEnabled('tests')) {
     const testScript = resolveBin('flo-testmap', 'index-tests.mjs');
     if (testScript) {
-      runStep('test-index', 'node', [testScript]);
+      runStep('test-index', 'node', [testScript, '--no-embeddings']);
     } else {
       log('SKIP  test-index (script not found)');
     }
@@ -166,7 +166,17 @@ async function main() {
     log('SKIP  pretrain (CLI not found)');
   }
 
-  // 6. HNSW rebuild — MUST run last, after all writes are committed (#81)
+  // 6. Build embeddings — single pass for ALL namespaces, after all indexers finish.
+  //    Individual indexers are called with --no-embeddings to prevent background
+  //    embedding spawns that race with this chain (sql.js last-write-wins).
+  const embeddingsScript = resolveBin('flo-embeddings', 'build-embeddings.mjs');
+  if (embeddingsScript) {
+    runStep('build-embeddings', 'node', [embeddingsScript], 300_000);
+  } else {
+    log('SKIP  build-embeddings (script not found)');
+  }
+
+  // 7. HNSW rebuild — MUST run last, after all writes are committed (#81)
   if (localCli) {
     runStep('hnsw-rebuild', 'node', [localCli, 'memory', 'rebuild', '--force']);
   } else {

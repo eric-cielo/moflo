@@ -106,7 +106,18 @@ function loadGuidanceDirs() {
     ? bundledShippedDir
     : resolve(mofloRoot, '.claude/guidance');
   const projectGuidanceDir = resolve(projectRoot, '.claude/guidance');
+
+  // Detect self-reference: if the project IS the moflo package, skip bundled scan
+  // to avoid double-indexing the same files under two prefixes.
+  let isSelfRef = false;
+  try {
+    const projPkg = JSON.parse(readFileSync(resolve(projectRoot, 'package.json'), 'utf-8'));
+    const mofloPkg = JSON.parse(readFileSync(resolve(mofloRoot, 'package.json'), 'utf-8'));
+    isSelfRef = projPkg.name === mofloPkg.name;
+  } catch { /* ignore — defaults to false */ }
+
   if (
+    !isSelfRef &&
     existsSync(bundledGuidanceDir) &&
     resolve(bundledGuidanceDir) !== resolve(projectGuidanceDir) &&
     resolve(bundledGuidanceDir) !== resolve(projectGuidanceDir, 'shipped')

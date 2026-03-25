@@ -289,7 +289,7 @@ function findTodoWriteMissingIcons(content: string, filePath: string): string[] 
 }
 
 /**
- * Verify that the role icon reference table exists in task-swarm-integration.md.
+ * Verify that the role icon reference table exists in moflo-claude-swarm-cohesion.md.
  */
 function hasIconReferenceTable(content: string): boolean {
   return content.includes('Agent Role Icons') &&
@@ -302,8 +302,8 @@ describe('Guidance Compliance Linter', () => {
   const guidanceFiles = getGuidanceFiles();
 
   describe('Role icon reference table', () => {
-    it('task-swarm-integration.md has complete icon reference table', () => {
-      const content = readFile('.claude/guidance/shipped/task-swarm-integration.md');
+    it('moflo-claude-swarm-cohesion.md has complete icon reference table', () => {
+      const content = readFile('.claude/guidance/shipped/moflo-claude-swarm-cohesion.md');
       expect(content).toBeTruthy();
       expect(hasIconReferenceTable(content)).toBe(true);
     });
@@ -385,14 +385,14 @@ describe('Guidance Compliance Linter', () => {
       expect(content).toContain('mcp__moflo__memory_search');
     });
 
-    it('task-swarm-integration.md has TaskCreate decision checklist', () => {
-      const content = readFile('.claude/guidance/shipped/task-swarm-integration.md');
+    it('moflo-claude-swarm-cohesion.md has TaskCreate decision checklist', () => {
+      const content = readFile('.claude/guidance/shipped/moflo-claude-swarm-cohesion.md');
       expect(content).toContain('When to Use TaskCreate');
       expect(content).toContain('Decision Checklist');
     });
 
-    it('task-swarm-integration.md has non-swarm TaskCreate examples', () => {
-      const content = readFile('.claude/guidance/shipped/task-swarm-integration.md');
+    it('moflo-claude-swarm-cohesion.md has non-swarm TaskCreate examples', () => {
+      const content = readFile('.claude/guidance/shipped/moflo-claude-swarm-cohesion.md');
       expect(content).toContain('Non-Swarm Example');
       expect(content).toContain('Single Background Agent');
     });

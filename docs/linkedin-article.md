@@ -2,6 +2,12 @@
 
 ---
 
+MoFlo grew out of months of using [Claude Flow / Ruflo](https://github.com/ruvnet/ruflo) on my own projects — both professional work and side projects. Over that time I accumulated a long list of patterns that worked, patterns that didn't, and things I wished the tooling did differently. Which hooks actually prevent Claude from wasting tokens. How to structure memory so it's useful across sessions instead of just accumulating noise. What kind of gates keep Claude focused versus what just annoys you. Where the upstream project's ambition created complexity that got in the way of actually shipping code.
+
+At some point I realized I wasn't tweaking settings anymore — I was redesigning how the whole system fit together. So rather than maintain an increasingly divergent config on top of someone else's project, I started from scratch. MoFlo recomposes those lessons into a new core: same foundation, different priorities, built around what I'd actually learned works in daily use.
+
+---
+
 If you use Claude Code regularly, you've probably noticed a pattern. You start a session, Claude explores your codebase, reads your docs, figures out where things live — then the session ends and all of that knowledge evaporates. Next session, it does the same exploration from scratch. Tokens burned, context window eaten, and you're sitting there watching it rediscover what it already knew yesterday.
 
 That's the problem MoFlo solves.
@@ -10,7 +16,7 @@ That's the problem MoFlo solves.
 
 [MoFlo](https://github.com/eric-cielo/moflo) is an open-source npm package that gives Claude Code persistent memory, automatic knowledge indexing, and a feedback loop that makes it get better at your project over time. It's a local-first tool — no cloud services, no API keys, no external dependencies. Everything runs on your machine.
 
-It started as an opinionated fork of [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo), streamlined for local development. The upstream project has a lot of ambition and a lot of moving parts. MoFlo took the pieces that matter most for day-to-day coding and made them work out of the box with zero configuration.
+It builds on the foundation of [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo), but recomposed from scratch around what actually matters for day-to-day coding. The upstream project has a lot of ambition and a lot of moving parts. MoFlo took the lessons learned from using it in real projects and distilled them into opinionated defaults that work out of the box with zero configuration.
 
 ## The Core Idea: Memory-First Development
 
@@ -22,7 +28,7 @@ MoFlo indexes three things at the start of every session:
 - **Your code structure** — exports, classes, functions, types. Claude can answer "where is X defined?" from the index instead of running Glob/Grep across your codebase.
 - **Your test files** — mapped back to their source targets. Claude can answer "what tests cover this module?" without scanning directories.
 
-All of this happens in the background when a session starts. Incremental, so after the first run it typically finishes in under a second. You don't wait for it and you don't think about it.
+All of this happens in the background when a session starts. Indexing is incremental — unchanged files are skipped via hash checks — so after the first run subsequent sessions index quickly. You don't wait for it and you don't think about it.
 
 ## Workflow Gates: Guardrails That Actually Work
 
@@ -37,7 +43,7 @@ The result is a tighter feedback loop:
 3. It fills in gaps from the actual codebase (now with context from step 2)
 4. The outcome feeds back into routing for next time
 
-This sounds small, but in practice it's the difference between Claude burning 30% of your context window on rediscovery versus jumping straight to the work.
+This sounds small, but in practice it means Claude spends far less of your context window on rediscovery and gets to the actual work faster.
 
 ## Learned Routing: It Gets Smarter Over Time
 
@@ -45,7 +51,9 @@ When Claude takes on a task, MoFlo analyzes the description and recommends an ag
 
 But here's the thing: MoFlo records what actually happens. If a task routed to `coder` succeeds, that outcome is stored. If a task routed to `researcher` fails and then succeeds when re-routed to `architect`, that gets recorded too. Over time, the routing adapts to *your project's* patterns, not just generic heuristics.
 
-Under the hood this is built on a stack of lightweight ML components — SONA for trajectory learning, MicroLoRA for weight adaptation, EWC++ to prevent new learning from overwriting old patterns. All running locally via WASM and Rust/NAPI bindings. No GPU, no API calls.
+That same learning system also handles model selection. MoFlo can optionally choose between Opus, Sonnet, and Haiku for each task based on actual outcomes — not just a static config. A config change, a rename, a formatting fix? Haiku handles that fine and costs a fraction of what Opus does. A security audit or a complex architectural refactor? That gets routed to Opus. The model router learns from what succeeds and what doesn't, with a circuit breaker that escalates to a more capable model when a cheaper one fails. It's off by default — you can pin models manually if you prefer predictability — but when enabled, it can substantially reduce token usage by routing routine work to lighter models, saving the heavy lifting for tasks that actually need it.
+
+Under the hood this is all built on a stack of lightweight ML components — SONA for trajectory learning, MicroLoRA for weight adaptation, EWC++ to prevent new learning from overwriting old patterns. All running locally via WASM and Rust/NAPI bindings. No GPU, no API calls.
 
 ## The `/flo` Workflow: Issues to PRs
 
@@ -57,11 +65,25 @@ One of the more practical features is the `/flo` skill. Inside Claude Code, you 
 
 ...where 42 is a GitHub issue number. MoFlo then drives Claude through a full workflow: research the issue, enhance the ticket with findings, implement the fix, run tests, simplify the code, and open a PR. Each step feeds back into memory so the next issue benefits from what was learned.
 
-It handles epics too — if the issue has child stories, it processes them sequentially, each getting the full workflow treatment. For more complex features with inter-story dependencies, `flo orc` adds persistent state tracking, resume-from-failure, and auto-merge between stories.
+It handles epics too — if the issue has child stories, it processes them sequentially, each getting the full workflow treatment. For more complex features with inter-story dependencies, `flo epic` adds persistent state tracking, resume-from-failure, and auto-merge between stories.
+
+Out of the box, `/flo` and `flo epic` are wired up for GitHub — issues, PRs, labels, the `gh` CLI. But the workflow logic is just structured prompts and shell commands, not a deep integration that's hard to swap out. If you use Jira, Linear, GitLab, or something else, a quick conversation with Claude is genuinely all it takes to adapt the skill and epic runner to your stack. The patterns are the same; only the API calls change.
 
 ## Context Tracking: Know When to Stop
 
 This is a small feature that saves a lot of frustration. MoFlo tracks your conversation length and classifies it: FRESH, MODERATE, DEPLETED, CRITICAL. As conversations grow, AI output quality degrades — that's just how context windows work. MoFlo warns you when it's time to commit your progress and start a fresh session, before the quality cliff hits.
+
+## Task System Integration: Keeping Claude on Task
+
+If you've used Claude Code's sub-agent system, you know it can get enthusiastic. Ask it to fix a bug and it might spawn five agents — three of which are redundant — before you realize what happened. Tokens gone, context polluted, and you're untangling parallel work that didn't need to be parallel.
+
+MoFlo addresses this with a simple gate: before Claude can spawn any sub-agent, it must first register the work via TaskCreate. No task registration, no agent. The hook literally blocks the tool call.
+
+This does two things. First, it forces Claude to *think before acting*. The act of writing a task description — what needs to happen, why, and what the acceptance criteria are — naturally prevents the "let me just spin up a quick agent" impulse. Second, it gives you visibility. Every piece of delegated work shows up in a task list with status tracking, so you can see what Claude is doing, what's pending, and what finished.
+
+The task system also structures how complex work gets decomposed. Rather than one sprawling agent that tries to do everything, MoFlo's patterns encourage breaking work into tracked units: a research task that feeds into an implementation task, which feeds into a test task. Each one registered, each one visible, each one with a clear outcome that feeds back into routing.
+
+The practical effect is that Claude stays focused. It doesn't wander off on tangents, it doesn't spawn redundant agents, and when something goes wrong you can see exactly where and why — because every step was tracked.
 
 ## What It Looks Like in Practice
 
@@ -72,7 +94,7 @@ npm install --save-dev moflo
 npx flo init
 ```
 
-`flo init` scans your project, finds your docs and source directories, writes the config, installs the hooks, and sets up the MCP server. Then you restart Claude Code and everything is live. There's a `flo doctor` command that verifies the setup and can auto-fix common issues.
+`flo init` scans your project, finds your docs and source directories, writes the config, and installs the Claude Code hooks. Then you restart Claude Code and everything is live. There's a `flo doctor` command that verifies the setup and can auto-fix common issues.
 
 After that, you just use Claude Code normally. The memory, gates, routing, and learning all happen behind the scenes. You'll notice Claude is faster at finding things, wastes less of the context window on exploration, and starts making better routing decisions as you use it.
 
@@ -89,6 +111,12 @@ I want to be straightforward about scope:
 I spend most of my working hours inside Claude Code. It's remarkably capable, but the session-to-session amnesia is a real productivity drain. Every conversation starts cold. Claude re-reads files it read yesterday, re-discovers patterns it already identified, re-explores directory structures it mapped out last week.
 
 MoFlo is the tool I wanted to exist: something that makes Claude Code accumulate knowledge over time instead of discarding it, that enforces the good habits (check what you know first) and eliminates the bad ones (explore everything from scratch), and that does all of this without requiring me to configure anything or depend on external services.
+
+A big part of the work was cutting things out. Ruflo is an ambitious project with a lot of surface area, and in practice I found that significant chunks of it were unused in real coding scenarios, abandoned mid-implementation, or outdated. At the same time, there were areas I found myself manually patching with every upstream update — the same fixes, the same workarounds, every time. MoFlo strips out the dead weight and solidifies the parts that actually matter for day-to-day development.
+
+Why not just patch upstream? I have, actually — I've submitted several fixes, and so have plenty of others. But what I wanted wasn't a patched version of someone else's vision. I wanted a more refined and curated experience, one that baked in all the practices I'd been layering on top across my own projects via patch scripts and a fair amount of hackery. At some point, wrapping duct tape around something is less productive than building the thing you actually want.
+
+Will I keep pulling from Ruflo? Yes — it's an active project and good work continues to land there. But MoFlo has diverged significantly in many places, so upstream changes get analyzed and integrated individually, not wholesale merged. Cherry-picks, not rebases. And MoFlo has its own roadmap — I plan to keep adding features that reflect what I need in my own workflows, whether or not they align with upstream direction.
 
 It's open source, it's free, and it runs entirely on your machine. If you use Claude Code and the cold-start problem bugs you as much as it bugged me, give it a try.
 

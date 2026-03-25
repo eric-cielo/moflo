@@ -920,7 +920,7 @@ TaskCreate({ subject: "Review changes", activeForm: "Reviewing" })
   describe('Smoke tests against real guidance files', () => {
     const realFiles = [
       'CLAUDE.md',
-      '.claude/guidance/shipped/task-swarm-integration.md',
+      '.claude/guidance/shipped/moflo-claude-swarm-cohesion.md',
       'src/@claude-flow/cli/CLAUDE.md',
     ];
 

@@ -89,7 +89,7 @@ npx flo init --yes --force
 
 ### .gitignore Behavior
 
-- Creates `.gitignore` if none exists, with `node_modules/`, `dist/`, `.env`, `.env.*` plus MoFlo entries (`.claude-orc/`, `.swarm/`, `.moflo/`)
+- Creates `.gitignore` if none exists, with `node_modules/`, `dist/`, `.env`, `.env.*` plus MoFlo entries (`.claude-epic/`, `.swarm/`, `.moflo/`)
 - Appends MoFlo entries to existing `.gitignore`
 - **Status**: PASS
 

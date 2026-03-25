@@ -162,11 +162,11 @@ flo gate session-reset           # Reset workflow state
 Sequence multiple GitHub issues through `/flo` workflows using a YAML definition:
 
 ```bash
-flo orc run feature.yaml              # Execute a feature (stories in dependency order)
-flo orc run feature.yaml --dry-run    # Show execution plan without running
-flo orc run feature.yaml --verbose    # Execute with Claude output streaming
-flo orc status my-feature             # Check progress of a feature
-flo orc reset my-feature              # Reset feature state for re-run
+flo epic run feature.yaml              # Execute a feature (stories in dependency order)
+flo epic run feature.yaml --dry-run    # Show execution plan without running
+flo epic run feature.yaml --verbose    # Execute with Claude output streaming
+flo epic status my-feature             # Check progress of a feature
+flo epic reset my-feature              # Reset feature state for re-run
 ```
 
 Feature YAML example:
@@ -409,7 +409,7 @@ Here's how a typical task flows through both layers:
 
 The key insight: **your client handles execution, MoFlo handles knowledge.** Your client is good at spawning agents and running code. MoFlo is good at remembering what happened, routing to the right agent, and ensuring prior knowledge is checked before exploring from scratch.
 
-For complex work, MoFlo structures tasks into waves — a research wave discovers context, then an implementation wave acts on it — with dependencies tracked through both the client's task system and MoFlo's coordination layer. The full integration pattern is documented in `.claude/guidance/task-swarm-integration.md`.
+For complex work, MoFlo structures tasks into waves — a research wave discovers context, then an implementation wave acts on it — with dependencies tracked through both the client's task system and MoFlo's coordination layer. The full integration pattern is documented in `.claude/guidance/moflo-claude-swarm-cohesion.md`.
 
 The `/flo` skill ties both systems together for GitHub issues — driving a full workflow (research → enhance → implement → test → simplify → PR) with your client's agents for execution and MoFlo's memory for continuity.
 

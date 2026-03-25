@@ -1648,8 +1648,8 @@ describe('Shipped Guidance Files', () => {
     expect(content).toContain('🧪');
   });
 
-  it('agent-bootstrap.md should reference task-icons.md', () => {
-    const content = fs.readFileSync(path.join(shippedDir, 'agent-bootstrap.md'), 'utf-8');
+  it('subagents.md should reference task-icons.md', () => {
+    const content = fs.readFileSync(path.join(shippedDir, 'subagents.md'), 'utf-8');
     expect(content).toContain('task-icons.md');
     expect(content).toContain('ICON + [Role]');
   });

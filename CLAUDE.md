@@ -6,6 +6,7 @@
 
 ## Behavioral Rules (Always Enforced)
 
+- When writing or revising `.claude/guidance/` documents, ALWAYS read `.claude/guidance/internal/guidance-rules.md` first
 - Do what has been asked; nothing more, nothing less
 - NEVER create files unless they're absolutely necessary for achieving your goal
 - ALWAYS prefer editing an existing file to creating a new one
@@ -116,7 +117,7 @@ npx flo doctor --fix                             # Health check
 
 ### Full Reference
 
-- **Agent bootstrap protocol:** `.claude/guidance/shipped/agent-bootstrap.md`
-- **Task + swarm coordination:** `.claude/guidance/shipped/task-swarm-integration.md`
+- **Subagents protocol:** `.claude/guidance/shipped/subagents.md`
+- **Task + swarm coordination:** `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md`
 - **CLI, hooks, swarm, memory, moflo.yaml:** `.claude/guidance/shipped/moflo.md`
 <!-- MOFLO:INJECTED:END -->

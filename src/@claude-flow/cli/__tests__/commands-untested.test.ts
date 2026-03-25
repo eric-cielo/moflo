@@ -1,6 +1,6 @@
 /**
  * Tests for CLI commands with zero prior coverage:
- *   appliance-advanced, benchmark, diagnose, gate, orc, transfer-store
+ *   appliance-advanced, benchmark, diagnose, gate, epic, transfer-store
  *
  * Structural + basic smoke tests following the commands-deep.test.ts pattern.
  */
@@ -133,7 +133,7 @@ import { signCommand, publishCommand, updateAppCommand } from '../src/commands/a
 import { benchmarkCommand } from '../src/commands/benchmark.js';
 import { diagnoseCommand } from '../src/commands/diagnose.js';
 import gateCommand from '../src/commands/gate.js';
-import orcCommand from '../src/commands/orc.js';
+import epicCommand from '../src/commands/epic.js';
 import {
   storeCommand,
   storeListCommand,
@@ -363,49 +363,49 @@ describe('gate command', () => {
 });
 
 // ============================================================================
-// 5. orc
+// 5. epic
 // ============================================================================
 
-describe('orc command', () => {
+describe('epic command', () => {
   it('should have correct name and description', () => {
-    expectValidCommand(orcCommand, 'orc');
+    expectValidCommand(epicCommand, 'epic');
   });
 
   it('should have examples', () => {
-    expect(orcCommand.examples).toBeDefined();
-    expect(orcCommand.examples!.length).toBeGreaterThan(0);
+    expect(epicCommand.examples).toBeDefined();
+    expect(epicCommand.examples!.length).toBeGreaterThan(0);
   });
 
   it('should have an action function', () => {
-    expect(typeof orcCommand.action).toBe('function');
+    expect(typeof epicCommand.action).toBe('function');
   });
 
   it('action returns success when called with no subcommand (shows usage)', async () => {
-    const result = await orcCommand.action!(makeCtx({ args: [] }));
+    const result = await epicCommand.action!(makeCtx({ args: [] }));
     expect(result).toBeDefined();
     expect(result!.success).toBe(true);
   });
 
   it('action returns failure for "run" without a source argument', async () => {
-    const result = await orcCommand.action!(makeCtx({ args: ['run'], flags: { _: [] } }));
+    const result = await epicCommand.action!(makeCtx({ args: ['run'], flags: { _: [] } }));
     expect(result).toBeDefined();
     expect(result!.success).toBe(false);
   });
 
   it('action returns failure for "status" without a feature-id', async () => {
-    const result = await orcCommand.action!(makeCtx({ args: ['status'], flags: { _: [] } }));
+    const result = await epicCommand.action!(makeCtx({ args: ['status'], flags: { _: [] } }));
     expect(result).toBeDefined();
     expect(result!.success).toBe(false);
   });
 
   it('action returns failure for "reset" without a feature-id', async () => {
-    const result = await orcCommand.action!(makeCtx({ args: ['reset'], flags: { _: [] } }));
+    const result = await epicCommand.action!(makeCtx({ args: ['reset'], flags: { _: [] } }));
     expect(result).toBeDefined();
     expect(result!.success).toBe(false);
   });
 
   it('action returns failure for unknown subcommand', async () => {
-    const result = await orcCommand.action!(makeCtx({ args: ['bogus'], flags: { _: [] } }));
+    const result = await epicCommand.action!(makeCtx({ args: ['bogus'], flags: { _: [] } }));
     expect(result).toBeDefined();
     expect(result!.success).toBe(false);
   });
