@@ -3,19 +3,35 @@
  * Sequential indexer chain for session-start.
  *
  * Runs all DB-writing indexers one at a time to avoid sql.js last-write-wins
- * concurrency issues, then triggers HNSW rebuild once everything is committed.
+ * concurrency issues (#78), then triggers HNSW rebuild once everything is
+ * committed (#81).
  *
  * Spawned as a single detached background process by hooks.mjs session-start.
  */
 
-import { existsSync, appendFileSync } from 'fs';
+import { existsSync, appendFileSync, readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = resolve(__dirname, '../..');
-const LOG_PATH = resolve(projectRoot, '.claude/hooks.log');
+
+// Detect project root by walking up from cwd to find package.json.
+// IMPORTANT: Do NOT use resolve(__dirname, '..') — this script lives in bin/
+// during development but gets synced to .claude/scripts/ in consumer projects,
+// so __dirname-relative paths break. findProjectRoot() works in both locations.
+function findProjectRoot() {
+  let dir = process.cwd();
+  const root = resolve(dir, '/');
+  while (dir !== root) {
+    if (existsSync(resolve(dir, 'package.json'))) return dir;
+    dir = dirname(dir);
+  }
+  return process.cwd();
+}
+
+const projectRoot = findProjectRoot();
+const LOG_PATH = resolve(projectRoot, '.swarm/hooks.log');
 
 function log(msg) {
   const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -30,6 +46,9 @@ function resolveBin(binName, localScript) {
   if (existsSync(npmBin)) return npmBin;
   const localPath = resolve(projectRoot, '.claude/scripts', localScript);
   if (existsSync(localPath)) return localPath;
+  // Also check bin/ directory (for development use)
+  const binPath = resolve(projectRoot, 'bin', localScript);
+  if (existsSync(binPath)) return binPath;
   return null;
 }
 
@@ -38,12 +57,33 @@ function getLocalCliPath() {
     resolve(projectRoot, 'node_modules/moflo/src/@claude-flow/cli/bin/cli.js'),
     resolve(projectRoot, 'node_modules/moflo/bin/cli.js'),
     resolve(projectRoot, 'node_modules/.bin/flo'),
+    // Development: local CLI
     resolve(projectRoot, 'src/@claude-flow/cli/bin/cli.js'),
   ];
   for (const p of paths) {
     if (existsSync(p)) return p;
   }
   return null;
+}
+
+/** Read moflo.yaml once and cache auto_index flags. */
+let _autoIndexFlags = null;
+function isIndexEnabled(key) {
+  if (_autoIndexFlags === null) {
+    _autoIndexFlags = {};
+    const yamlPath = resolve(projectRoot, 'moflo.yaml');
+    if (existsSync(yamlPath)) {
+      try {
+        const content = readFileSync(yamlPath, 'utf-8');
+        for (const k of ['guidance', 'code_map', 'tests', 'patterns']) {
+          const re = new RegExp(`auto_index:\\s*\\n(?:.*\\n)*?\\s+${k}:\\s*(true|false)`);
+          const match = content.match(re);
+          _autoIndexFlags[k] = match ? match[1] !== 'false' : true;
+        }
+      } catch { /* ignore, all default to true */ }
+    }
+  }
+  return _autoIndexFlags[key] !== false;
 }
 
 function runStep(label, cmd, args, timeoutMs = 120_000) {
@@ -71,35 +111,51 @@ async function main() {
   log('Sequential indexing chain started');
 
   // 1. Guidance indexer
-  const guidanceScript = resolveBin('flo-index', 'index-guidance.mjs');
-  if (guidanceScript) {
-    runStep('guidance-index', 'node', [guidanceScript]);
+  if (isIndexEnabled('guidance')) {
+    const guidanceScript = resolveBin('flo-index', 'index-guidance.mjs');
+    if (guidanceScript) {
+      runStep('guidance-index', 'node', [guidanceScript]);
+    } else {
+      log('SKIP  guidance-index (script not found)');
+    }
   } else {
-    log('SKIP  guidance-index (script not found)');
+    log('SKIP  guidance-index (disabled in moflo.yaml)');
   }
 
   // 2. Code map generator (the big one — ~22s)
-  const codeMapScript = resolveBin('flo-codemap', 'generate-code-map.mjs');
-  if (codeMapScript) {
-    runStep('code-map', 'node', [codeMapScript], 180_000);
+  if (isIndexEnabled('code_map')) {
+    const codeMapScript = resolveBin('flo-codemap', 'generate-code-map.mjs');
+    if (codeMapScript) {
+      runStep('code-map', 'node', [codeMapScript], 180_000);
+    } else {
+      log('SKIP  code-map (script not found)');
+    }
   } else {
-    log('SKIP  code-map (script not found)');
+    log('SKIP  code-map (disabled in moflo.yaml)');
   }
 
   // 3. Test indexer
-  const testScript = resolveBin('flo-testmap', 'index-tests.mjs');
-  if (testScript) {
-    runStep('test-index', 'node', [testScript]);
+  if (isIndexEnabled('tests')) {
+    const testScript = resolveBin('flo-testmap', 'index-tests.mjs');
+    if (testScript) {
+      runStep('test-index', 'node', [testScript]);
+    } else {
+      log('SKIP  test-index (script not found)');
+    }
   } else {
-    log('SKIP  test-index (script not found)');
+    log('SKIP  test-index (disabled in moflo.yaml)');
   }
 
   // 4. Patterns indexer
-  const patternsScript = resolveBin('flo-patterns', 'index-patterns.mjs');
-  if (patternsScript) {
-    runStep('patterns-index', 'node', [patternsScript]);
+  if (isIndexEnabled('patterns')) {
+    const patternsScript = resolveBin('flo-patterns', 'index-patterns.mjs');
+    if (patternsScript) {
+      runStep('patterns-index', 'node', [patternsScript]);
+    } else {
+      log('SKIP  patterns-index (script not found)');
+    }
   } else {
-    log('SKIP  patterns-index (script not found)');
+    log('SKIP  patterns-index (disabled in moflo.yaml)');
   }
 
   // 5. Pretrain (extracts patterns from repository)

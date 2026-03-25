@@ -153,6 +153,15 @@ function countNamespace(db) {
   return count;
 }
 
+function countMissingEmbeddings(db) {
+  const stmt = db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE namespace = ? AND (embedding IS NULL OR embedding = '')`);
+  stmt.bind([NAMESPACE]);
+  let count = 0;
+  if (stmt.step()) count = stmt.getAsObject().cnt;
+  stmt.free();
+  return count;
+}
+
 // ---------------------------------------------------------------------------
 // Test directory discovery
 // ---------------------------------------------------------------------------
@@ -618,9 +627,15 @@ async function main() {
   if (isUnchanged(currentHash)) {
     const db = await getDb();
     const count = countNamespace(db);
+    const missing = countMissingEmbeddings(db);
     db.close();
     if (count > 0) {
-      log(`Skipping — file list unchanged (${count} chunks in DB, hash ${currentHash.slice(0, 12)}...)`);
+      if (missing > 0 && !skipEmbeddings) {
+        log(`File list unchanged but ${missing}/${count} entries missing embeddings — generating...`);
+        await runEmbeddings();
+      } else {
+        log(`Skipping — file list unchanged (${count} chunks in DB, hash ${currentHash.slice(0, 12)}...)`);
+      }
       return;
     }
     log('File list unchanged but no chunks in DB — forcing regeneration');
@@ -683,24 +698,28 @@ async function main() {
 
   // 7. Generate embeddings (inline, like code-map)
   if (!skipEmbeddings && allChunks.length > 0) {
-    const embedCandidates = [
-      resolve(dirname(fileURLToPath(import.meta.url)), 'build-embeddings.mjs'),
-      resolve(projectRoot, '.claude/scripts/build-embeddings.mjs'),
-    ];
-    const embedScript = embedCandidates.find(p => existsSync(p));
-    if (embedScript) {
-      log('Generating embeddings for tests...');
-      try {
-        execSync(`node "${embedScript}" --namespace tests`, {
-          cwd: projectRoot,
-          stdio: 'inherit',
-          timeout: 120000,
-          windowsHide: true,
-        });
-      } catch (err) {
-        log(`Warning: embedding generation failed: ${err.message?.split('\n')[0]}`);
-      }
-    }
+    await runEmbeddings();
+  }
+}
+
+async function runEmbeddings() {
+  const embedCandidates = [
+    resolve(dirname(fileURLToPath(import.meta.url)), 'build-embeddings.mjs'),
+    resolve(projectRoot, '.claude/scripts/build-embeddings.mjs'),
+  ];
+  const embedScript = embedCandidates.find(p => existsSync(p));
+  if (!embedScript) return;
+
+  log('Generating embeddings for tests...');
+  try {
+    execSync(`node "${embedScript}" --namespace tests`, {
+      cwd: projectRoot,
+      stdio: 'inherit',
+      timeout: 120000,
+      windowsHide: true,
+    });
+  } catch (err) {
+    log(`Warning: embedding generation failed: ${err.message?.split('\n')[0]}`);
   }
 }
 
