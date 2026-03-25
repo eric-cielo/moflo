@@ -1563,7 +1563,7 @@ describe('Init System', () => {
 
     it('should reference full docs in guidance', () => {
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
-      expect(md).toContain('.claude/guidance/shipped/moflo.md');
+      expect(md).toContain('.claude/guidance/shipped/moflo-core-guidance.md');
     });
 
     it('all templates should produce identical output', () => {

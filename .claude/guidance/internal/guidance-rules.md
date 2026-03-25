@@ -128,7 +128,7 @@ End every guidance file with a `## See Also` section linking related docs. This 
 
 - `.claude/guidance/moflo-subagents.md` — Subagents protocol
 - `.claude/guidance/moflo-claude-swarm-cohesion.md` — Task & swarm coordination
-- `.claude/guidance/moflo.md` — Full CLI/MCP reference
+- `.claude/guidance/moflo-core-guidance.md` — Full CLI/MCP reference
 ```
 
 Use relative names (not absolute paths) so the links work across project contexts.

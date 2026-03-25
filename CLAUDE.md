@@ -119,5 +119,5 @@ npx flo doctor --fix                             # Health check
 
 - **Subagents protocol:** `.claude/guidance/shipped/moflo-subagents.md`
 - **Task + swarm coordination:** `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md`
-- **CLI, hooks, swarm, memory, moflo.yaml:** `.claude/guidance/shipped/moflo.md`
+- **CLI, hooks, swarm, memory, moflo.yaml:** `.claude/guidance/shipped/moflo-core-guidance.md`
 <!-- MOFLO:INJECTED:END -->

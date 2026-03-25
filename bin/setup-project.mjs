@@ -37,7 +37,7 @@ const LEGACY_STARTS = ['<!-- MOFLO:SUBAGENT-PROTOCOL:START -->', '<!-- MOFLO:STA
 const LEGACY_ENDS = ['<!-- MOFLO:SUBAGENT-PROTOCOL:END -->', '<!-- MOFLO:END -->'];
 
 // Minimal injection — just enough for Claude to work with moflo.
-// All detailed docs live in .claude/guidance/shipped/moflo.md.
+// All detailed docs live in .claude/guidance/shipped/moflo-core-guidance.md.
 const CLAUDE_MD_SECTION = `${MARKER_START}
 ## MoFlo — AI Agent Orchestration
 
@@ -81,7 +81,7 @@ npx flo doctor --fix                             # Health check
 ### Full Reference
 
 For CLI commands, hooks, agents, swarm config, memory commands, and moflo.yaml options, see:
-\`.claude/guidance/shipped/moflo.md\`
+\`.claude/guidance/shipped/moflo-core-guidance.md\`
 ${MARKER_END}`;
 
 function log(msg) {

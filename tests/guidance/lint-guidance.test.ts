@@ -399,7 +399,7 @@ describe('Guidance Compliance Linter', () => {
 
     it('CLAUDE.md references full docs in guidance', () => {
       const content = readFile('CLAUDE.md');
-      expect(content).toContain('.claude/guidance/shipped/moflo.md');
+      expect(content).toContain('.claude/guidance/shipped/moflo-core-guidance.md');
     });
   });
 });

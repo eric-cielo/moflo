@@ -274,4 +274,4 @@ npx flo memory search --query "your domain query" --namespace guidance  # Verify
 - `moflo-memorydb-maintenance.md` — Database location, schema, purge/reindex procedures
 - `moflo-subagents.md` — Subagents guide
 - `moflo-claude-swarm-cohesion.md` — Task & swarm coordination
-- `moflo.md` — Full CLI/MCP reference
+- `moflo-core-guidance.md` — Full CLI/MCP reference

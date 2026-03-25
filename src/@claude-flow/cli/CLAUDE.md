@@ -20,4 +20,4 @@ npm run build   # Compiles TypeScript to dist/
 
 - This package is bundled into `moflo` on npm — it is NOT published separately
 - The `claudemd-generator.ts` must produce minimal output (~40 lines injected into user's CLAUDE.md)
-- All detailed docs belong in `.claude/guidance/shipped/moflo.md`, not in CLAUDE.md injection
+- All detailed docs belong in `.claude/guidance/shipped/moflo-core-guidance.md`, not in CLAUDE.md injection

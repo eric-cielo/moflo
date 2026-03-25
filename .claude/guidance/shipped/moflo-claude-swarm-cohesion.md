@@ -438,4 +438,4 @@ npx flo swarm init --topology hierarchical-mesh --max-agents 15 --strategy speci
 
 - `.claude/guidance/moflo-subagents.md` - Subagents guide
 - `.claude/guidance/moflo-memory-strategy.md` - Memory architecture and search
-- `.claude/guidance/moflo.md` - Full CLI/MCP reference
+- `.claude/guidance/moflo-core-guidance.md` - Full CLI/MCP reference

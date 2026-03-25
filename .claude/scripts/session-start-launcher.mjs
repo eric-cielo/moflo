@@ -241,6 +241,21 @@ try {
   }
 } catch { /* non-fatal */ }
 
+// ── 3c. Clean up double-prefixed guidance files from pre-4.8.45 upgrade ─────
+// Before 4.8.45, session-start dynamically prepended "moflo-" to shipped filenames.
+// When upgrading to 4.8.45+ (where files already have the prefix), the old in-memory
+// code runs once and produces "moflo-moflo-*" duplicates. Remove them here.
+try {
+  const guidanceDir = resolve(projectRoot, '.claude/guidance');
+  if (existsSync(guidanceDir)) {
+    for (const file of readdirSync(guidanceDir)) {
+      if ((file.startsWith('moflo-moflo-') || file === 'moflo-moflo.md' || file === 'moflo.md') && file.endsWith('.md')) {
+        try { unlinkSync(resolve(guidanceDir, file)); } catch { /* non-fatal */ }
+      }
+    }
+  }
+} catch { /* non-fatal */ }
+
 // ── 4. Spawn background tasks ───────────────────────────────────────────────
 const localCli = resolve(projectRoot, 'node_modules/moflo/src/@claude-flow/cli/bin/cli.js');
 const hasLocalCli = existsSync(localCli);
