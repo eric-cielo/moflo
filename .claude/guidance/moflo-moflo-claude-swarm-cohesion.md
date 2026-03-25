@@ -3,7 +3,7 @@
 
 # MoFlo–Claude Swarm Cohesion
 
-**Purpose:** Integrate native Claude Code tasks with moflo swarm coordination for visible progress tracking and structured agent orchestration.
+**Purpose:** Integrate native Claude Code tasks with MoFlo swarm coordination for visible progress tracking and structured agent orchestration.
 
 ---
 
