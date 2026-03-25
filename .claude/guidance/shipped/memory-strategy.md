@@ -1,30 +1,45 @@
 # Memory & Semantic Search Strategy
 
-**Purpose:** How memory, embeddings, and semantic search work in moflo. Reference when debugging memory issues, understanding the search pipeline, or configuring memory for a consumer project.
+**Purpose:** How memory, embeddings, and semantic search work in moflo. Reference when writing guidance documents, debugging search quality, configuring memory for a consumer project, or extending the system.
+
+---
+
+## Problem Statement
+
+Claude Code agents need project-specific knowledge — coding rules, architecture patterns, entity templates, testing conventions — delivered at the right moment. Without a retrieval system, agents either miss critical rules or require massive CLAUDE.md files that waste context window tokens.
+
+**Goals:**
+- Agents find relevant guidance automatically via semantic search
+- Subagents spawned by the coordinator inherit memory access
+- Search quality is high enough that agents don't need to read whole files
+- The system survives `npm install` (indexing runs on session start)
 
 ---
 
 ## Architecture Overview
 
 ```
-Source Files (.claude/guidance/, docs/)
+Source Files (.claude/guidance/*.md, docs/*.md)
          |
          v
-index-guidance.mjs (chunking, RAG linking)
+index-guidance.mjs --- Chunk on ## headers, build RAG links
+         |                (prev/next, siblings, parent/child, context overlap)
+         v
+.swarm/memory.db ----- SQLite (entries + metadata + embedding vectors)
          |
          v
-.swarm/memory.db (SQLite - entries + metadata)
-         |
+build-embeddings.mjs - Generate 384-dim vectors per entry
+         |                (Xenova/all-MiniLM-L6-v2 neural, or domain-aware hash fallback)
          v
-build-embeddings.mjs (384-dim neural or hash vectors)
-         |
+HNSW index ----------- Approximate nearest-neighbor search
          v
-Search layer (cosine similarity - MCP, CLI, or script)
+Search layer ---------- Three access paths:
+                          1. MCP tools (mcp__moflo__memory_search) -- preferred
+                          2. CLI (npx flo memory search) -- fallback
+                          3. Script (semantic-search.mjs) -- detailed output
 ```
 
----
-
-## Key Files
+**Key files:**
 
 | File | Purpose |
 |------|---------|
@@ -34,28 +49,139 @@ Search layer (cosine similarity - MCP, CLI, or script)
 | `bin/build-embeddings.mjs` | Generates 384-dim embeddings |
 | `bin/index-guidance.mjs` | Indexes guidance files with RAG linking |
 | `bin/generate-code-map.mjs` | Generates structural code map (projects, dirs, types, interfaces) |
+| `bin/index-patterns.mjs` | Extracts per-file code patterns |
+| `bin/index-tests.mjs` | Indexes test structure and patterns |
+| `bin/index-all.mjs` | Runs the full indexing chain sequentially |
+
+---
+
+## Namespaces
+
+| Namespace | Content | Indexed By |
+|-----------|---------|------------|
+| `guidance` | Indexed guidance and docs | `index-guidance.mjs` |
+| `code-map` | Structural codebase index (projects, directories, types, interfaces) | `generate-code-map.mjs` |
+| `patterns` | Per-file code patterns (services, routes, error handling, exports) | `index-patterns.mjs` |
+| `tests` | Test structure and patterns | `index-tests.mjs` |
+
+---
+
+## Guidance Document Optimization Rules
+
+These rules determine how well your guidance documents retrieve via semantic search:
+
+### 1. Every file needs a Purpose line
+
+Add `**Purpose:**` as the first meaningful line after the title. Claude checks this first for relevance scoring. Without it, the chunk has no summary signal.
+
+### 2. H2 headings are the primary retrieval signal
+
+The indexer splits on `##`. Each heading becomes the chunk title, prepended to searchable content. Domain-specific keywords in headings dramatically improve recall.
+
+**Bad:** `## Overview`, `## Rules`, `## Pattern`
+**Good:** `## Soft Delete Rules`, `## JWT Authentication Pattern`, `## Database Entity Migration`
+
+### 3. Ideal chunk size: 1000-4000 characters
+
+Below 50 chars the chunk is dropped. Above 6000 the indexer force-splits on paragraphs, which breaks mid-thought. The sweet spot produces focused embeddings.
+
+### 4. Self-contained chunks
+
+Each H2 section must answer a question without needing the rest of the document. Include: the rule, a code example, and a cross-reference.
+
+### 5. Tables over prose
+
+Claude parses structured data more accurately than paragraphs. DO/DON'T tables, field reference tables, and command tables all retrieve better.
+
+### 6. Cross-references create a navigation graph
+
+The RAG indexer stores `prevChunk`/`nextChunk`/`siblings` metadata. Cross-references between documents let Claude follow chains: `core.md -> coding-rules.md -> database.md`.
+
+### 7. No decorative formatting
+
+ASCII boxes, excessive emoji, rhetorical questions, and motivational text all waste tokens without improving retrieval or comprehension.
 
 ---
 
 ## Embedding Strategy
 
-**Primary model:** `Xenova/all-MiniLM-L6-v2` (384-dim, neural — used by `build-embeddings.mjs`)
-**Fallback model:** `domain-aware-hash-v1` (384-dim, hash — used when Transformers.js unavailable)
+### Embedding Models
 
-**Critical rule:** Query embeddings MUST match stored embeddings. Both the search scripts and MCP tools auto-detect the stored model and generate matching query vectors. Cross-model cosine similarity is meaningless.
+| Model | Quality | Speed | When Used |
+|-------|---------|-------|-----------|
+| `Xenova/all-MiniLM-L6-v2` | High (true semantic) | ~3s for 1000 entries | Primary — `build-embeddings.mjs` uses this |
+| `domain-aware-hash-v1` | Good (domain clustering) | <1s for 1000 entries | Fallback when Transformers.js unavailable |
 
-**Neural embeddings (primary):**
+**Neural embeddings (Xenova/all-MiniLM-L6-v2):**
 - Uses `@xenova/transformers` with ONNX WASM runtime
+- 384-dimensional vectors, L2-normalized
 - True semantic understanding — "soft delete" matches "mark as deleted" without keyword overlap
-- ~3s for 1000 entries, loaded lazily and cached
+- Loaded lazily on first use, cached for subsequent queries
 
-**Domain-aware hash (fallback):**
-- 12 domain clusters with project-specific terms
-- SimHash-style word encoding + bigram/trigram features
-- Good keyword-level matching, misses semantic paraphrases
-- No external dependencies — always available, <1s for 1000 entries
+**Domain-aware hash embeddings (fallback):**
+- Custom SimHash-style algorithm with 12 domain clusters
+- Multi-position hashing with bigram/trigram features
+- Good at keyword-level matching but misses semantic paraphrases
+- No external dependencies — always available
 
-See `guidance-memory-strategy.md` for full embedding pipeline details.
+### The Embedding Alignment Problem
+
+**Critical rule:** Query embeddings MUST match stored embeddings. Computing cosine similarity between vectors from different models produces meaningless scores.
+
+Both the search scripts and the MCP memory tools auto-detect the stored embedding model and generate matching query vectors. Search also filters out entries with mismatched `embedding_model`.
+
+### Domain Cluster Tuning
+
+The hash fallback's domain clusters can be extended with project-specific terms:
+
+| Cluster | Example Terms |
+|---------|--------------|
+| `database` | your ORM, database engine, schema terms |
+| `frontend` | UI framework, component library terms |
+| `backend` | DI container, API framework terms |
+| `testing` | test framework, assertion library terms |
+| `security` | auth system, permission model terms |
+
+---
+
+## RAG Indexing Pipeline
+
+### How `index-guidance.mjs` Works
+
+1. **Scan** configured directories for `.md` files
+2. **Hash check** — Skip files whose content hash hasn't changed (unless `--force`)
+3. **Store full document** as `doc-{prefix}-{name}` (for complete retrieval)
+4. **Chunk on `##` headers** — Each H2 section becomes a separate entry
+5. **H3 subsections** become child chunks with parent H2 as context prefix
+6. **Force-split** sections over 4000 chars on paragraph boundaries
+7. **Build RAG metadata** for every chunk:
+
+| Metadata Field | Purpose |
+|---------------|---------|
+| `parentDoc` | Link back to full document |
+| `prevChunk` / `nextChunk` | Sequential navigation |
+| `siblings` | All chunk keys from same document |
+| `hierarchicalParent` / `hierarchicalChildren` | H2->H3 relationships |
+| `contextBefore` / `contextAfter` | 20% overlapping text from adjacent chunks |
+
+8. **Prepend context** — Each chunk's searchable content includes overlap from neighbors
+9. **Stale cleanup** — After indexing, remove entries for files that no longer exist on disk
+10. **Background embedding** — Spawn `build-embeddings.mjs` to generate vectors
+
+### Configuring Indexed Directories
+
+In `moflo.yaml`:
+
+```yaml
+guidance:
+  directories:
+    - .claude/guidance
+    - docs/guides
+```
+
+Default directories (when no config): `.claude/guidance`, `docs/guides`
+
+Moflo also automatically indexes its own bundled guidance from `node_modules/moflo/.claude/guidance/` when installed as a dependency.
 
 ---
 
@@ -94,76 +220,39 @@ When you need to find where a type, service, entity, or component lives — sear
 | `iface-map:` | "What implements IPaymentService?" |
 | `type-index:` | "Where is Service defined?" |
 
-**Regenerate:**
-```bash
-npx flo-codemap          # Incremental (skips if unchanged)
-npx flo-codemap --force  # Full rebuild
-```
-
----
-
-## Database Schema
-
-```sql
-memory_entries (
-  id TEXT PRIMARY KEY,
-  key TEXT NOT NULL,           -- e.g., "chunk-guidance-core-0"
-  namespace TEXT,              -- "guidance", "patterns", "default"
-  content TEXT,                -- Full text content
-  embedding TEXT,              -- JSON array of 384 floats
-  embedding_model TEXT,        -- "Xenova/all-MiniLM-L6-v2" or "domain-aware-hash-v1"
-  embedding_dimensions INTEGER,-- 384
-  metadata TEXT,               -- JSON: parentDoc, chunkTitle, prevChunk, nextChunk, siblings
-  tags TEXT,                   -- JSON array
-  status TEXT,                 -- "active"
-  created_at INTEGER,
-  updated_at INTEGER
-)
-```
-
----
-
-## RAG Linking (metadata fields)
-
-Each chunk includes navigation metadata:
-
-| Field | Purpose |
-|-------|---------|
-| `parentDoc` | Key of full document (e.g., `doc-guidance-core`) |
-| `prevChunk` | Previous chunk key for sequential reading |
-| `nextChunk` | Next chunk key |
-| `siblings` | All chunk keys from same document |
-| `hierarchicalParent` | H2 parent for H3 chunks |
-| `hierarchicalChildren` | H3 children for H2 chunks |
-| `contextBefore` | Overlapping text from previous chunk (20%) |
-| `contextAfter` | Overlapping text from next chunk (20%) |
-
----
-
-## Namespaces
-
-| Namespace | Content | Notes |
-|-----------|---------|-------|
-| `guidance` | Indexed guidance and docs | Largest — includes bundled moflo guidance |
-| `code-map` | Structural codebase index (projects, directories, types, interfaces) | Search BEFORE Glob/Grep for navigation |
-| `patterns` | Learned patterns from sessions | Grows over time |
-| `default` | Misc stored data | Small |
-
 ---
 
 ## Session Start Indexing
 
-On every session start, moflo automatically runs three background indexers:
+On every session start, `hooks.mjs` spawns `index-all.mjs` which runs the full chain:
 
-| Indexer | Command | Namespace | What it does |
-|---------|---------|-----------|--------------|
-| Guidance | `npx flo-index` | `guidance` | Chunks markdown, builds RAG links, generates embeddings |
-| Code Map | `npx flo-codemap` | `code-map` | Scans source for types, interfaces, directories |
-| Learning | `npx flo-learn` | `patterns` | Pattern research on codebase |
-
-These are configured in the `SessionStart` hook in `.claude/settings.json` (set up by `npx flo init`).
+| Indexer | Namespace | What it does |
+|---------|-----------|--------------|
+| `index-guidance.mjs` | `guidance` | Chunks markdown, builds RAG links |
+| `generate-code-map.mjs` | `code-map` | Scans source for types, interfaces, directories |
+| `index-tests.mjs` | `tests` | Indexes test structure |
+| `index-patterns.mjs` | `patterns` | Extracts per-file code patterns |
+| `build-embeddings.mjs` | all | Generates vectors for any unembedded entries |
 
 Indexing is incremental by default — files whose content hash hasn't changed are skipped. Use `--force` to reindex everything.
+
+---
+
+## Replication Guide
+
+To set up this system in a new project:
+
+```bash
+npm install moflo
+npx flo init
+```
+
+Create `.claude/guidance/` with markdown files following the optimization rules above, then:
+
+```bash
+npx flo-index --force                                              # Index documents
+npx flo memory search --query "your domain query" --namespace guidance  # Verify
+```
 
 ---
 
@@ -173,32 +262,15 @@ Indexing is incremental by default — files whose content hash hasn't changed a
 |---------|-------|-----|
 | Search returns irrelevant results | Query/stored embedding model mismatch | Auto-detected now; verify with `--verbose` flag |
 | Low similarity scores | Query doesn't match domain terms | Include domain keywords in query |
-| "Vector: No" in list | Entry lacks embedding | Run `npx flo-index --force` |
-| Entries not found after adding file | Indexer hasn't run yet | Run `npx flo-index` or restart session |
+| "Vector: No" in list | Entry lacks embedding | Run `node bin/build-embeddings.mjs` |
+| Entries not found after adding file | Indexer hasn't run yet | Run `node bin/index-all.mjs` or restart session |
 | Bundled moflo guidance not indexed | Not installed as dependency | Only indexes when `node_modules/moflo/.claude/guidance/` exists |
-
----
-
-## Verification Commands
-
-```bash
-# Test semantic search
-npx flo memory search --query "database entity pattern" --namespace guidance
-
-# Force reindex all guidance
-npx flo-index --force
-
-# Force rebuild embeddings
-npx flo-index --force
-
-# Check entry count (requires better-sqlite3 or sql.js)
-npx flo memory list --namespace guidance --limit 0
-```
+| Empty namespace | Indexer never ran or DB was purged | See `memorydb-maintenance.md` for reindex/purge procedures |
 
 ---
 
 ## See Also
 
-- `.claude/guidance/guidance-memory-strategy.md` - RAG system tuning guide
-- `.claude/guidance/agent-bootstrap.md` - Subagent bootstrap guide
-- `.claude/guidance/moflo.md` - Full CLI/MCP reference
+- `memorydb-maintenance.md` — Database location, schema, purge/reindex procedures
+- `agent-bootstrap.md` — Subagent bootstrap guide
+- `moflo.md` — Full CLI/MCP reference
