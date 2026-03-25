@@ -634,13 +634,13 @@ All code changes MUST work on Windows, macOS, and Linux. Follow these rules:
 | `flo` command not found | Not in PATH | Use `npx flo` or `node node_modules/moflo/bin/index-guidance.mjs` |
 | Bundled guidance not indexed | Running inside moflo repo (same dir) | Bundled guidance only indexes when installed as a dependency in a different project |
 
-See `memory-strategy.md` for memory-specific troubleshooting.
+See `moflo-memory-strategy.md` for memory-specific troubleshooting.
 
 ---
 
 ## See Also
 
-- `.claude/guidance/subagents.md` - Subagents memory-first protocol and store patterns
+- `.claude/guidance/moflo-subagents.md` - Subagents memory-first protocol and store patterns
 - `.claude/guidance/moflo-claude-swarm-cohesion.md` - Task & swarm coordination with TaskCreate/TaskUpdate
-- `.claude/guidance/memory-strategy.md` - Database schema, namespaces, search commands, RAG linking
+- `.claude/guidance/moflo-memory-strategy.md` - Database schema, namespaces, search commands, RAG linking
 - `.claude/guidance/guidance-memory-strategy.md` - How to write guidance docs that index well for RAG

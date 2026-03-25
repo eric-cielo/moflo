@@ -126,9 +126,17 @@ End every guidance file with a `## See Also` section linking related docs. This 
 ```markdown
 ## See Also
 
-- `.claude/guidance/subagents.md` — Subagents protocol
+- `.claude/guidance/moflo-subagents.md` — Subagents protocol
 - `.claude/guidance/moflo-claude-swarm-cohesion.md` — Task & swarm coordination
 - `.claude/guidance/moflo.md` — Full CLI/MCP reference
 ```
 
 Use relative names (not absolute paths) so the links work across project contexts.
+
+---
+
+## 10. Shipped Guidance File Naming
+
+**All shipped guidance files in `.claude/guidance/shipped/` MUST begin with the `moflo-` prefix** (e.g., `moflo-subagents.md`, `moflo-memory-strategy.md`). This prevents name collisions when these files are synced into a consumer project's `.claude/guidance/` directory, where the project may have its own guidance files with generic names like `subagents.md` or `memory-strategy.md`.
+
+The prefix is applied statically at the source — the sync process copies files as-is without modifying names.

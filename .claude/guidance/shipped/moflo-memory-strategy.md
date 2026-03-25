@@ -265,13 +265,13 @@ npx flo memory search --query "your domain query" --namespace guidance  # Verify
 | "Vector: No" in list | Entry lacks embedding | Run `node bin/build-embeddings.mjs` |
 | Entries not found after adding file | Indexer hasn't run yet | Run `node bin/index-all.mjs` or restart session |
 | Bundled moflo guidance not indexed | Not installed as dependency | Only indexes when `node_modules/moflo/.claude/guidance/` exists |
-| Empty namespace | Indexer never ran or DB was purged | See `memorydb-maintenance.md` for reindex/purge procedures |
+| Empty namespace | Indexer never ran or DB was purged | See `moflo-memorydb-maintenance.md` for reindex/purge procedures |
 
 ---
 
 ## See Also
 
-- `memorydb-maintenance.md` — Database location, schema, purge/reindex procedures
-- `subagents.md` — Subagents guide
+- `moflo-memorydb-maintenance.md` — Database location, schema, purge/reindex procedures
+- `moflo-subagents.md` — Subagents guide
 - `moflo-claude-swarm-cohesion.md` — Task & swarm coordination
 - `moflo.md` — Full CLI/MCP reference

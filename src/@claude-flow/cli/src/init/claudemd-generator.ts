@@ -39,7 +39,7 @@ When the user asks you to remember something: \`mcp__moflo__memory_store\` with 
 - **Memory-first**: Must search memory before Glob/Grep/Read
 - **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
 
-- **Task Icons**: \`TaskCreate\` MUST use ICON+[Role] format — see \`.claude/guidance/task-icons.md\`
+- **Task Icons**: \`TaskCreate\` MUST use ICON+[Role] format — see \`.claude/guidance/moflo-task-icons.md\`
 
 ### MCP Tools (preferred over CLI)
 
@@ -60,7 +60,7 @@ npx flo doctor --fix                             # Health check
 
 ### Full Reference
 
-- **Subagents protocol:** \`.claude/guidance/shipped/subagents.md\`
+- **Subagents protocol:** \`.claude/guidance/shipped/moflo-subagents.md\`
 - **Task + swarm coordination:** \`.claude/guidance/shipped/moflo-claude-swarm-cohesion.md\`
 - **CLI, hooks, swarm, memory, moflo.yaml:** \`.claude/guidance/shipped/moflo.md\`
 ${MARKER_END}`;

@@ -100,7 +100,7 @@ This applies to ALL `gh` commands that target a repo: `pr create`, `pr merge`, `
 
 ### Task Icons (MANDATORY)
 - `TaskCreate` MUST use **ICON + [Role]** in `subject` and `activeForm`
-- Full icon map: `.claude/guidance/shipped/task-icons.md`
+- Full icon map: `.claude/guidance/shipped/moflo-task-icons.md`
 - Example: `🧪 [Tester] Run unit tests` / activeForm: `🧪 Running unit tests`
 
 ---

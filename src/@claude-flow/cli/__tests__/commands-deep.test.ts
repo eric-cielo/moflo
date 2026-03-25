@@ -1614,7 +1614,7 @@ describe('Init System', () => {
     it('should reference task-icons.md in workflow gates section', () => {
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
       expect(md).toContain('Task Icons');
-      expect(md).toContain('task-icons.md');
+      expect(md).toContain('moflo-task-icons.md');
     });
 
     it('should reference ICON+[Role] format', () => {
@@ -1634,12 +1634,12 @@ describe('Shipped Guidance Files', () => {
     expect(fs.existsSync(shippedDir)).toBe(true);
   });
 
-  it('should contain task-icons.md', () => {
-    expect(fs.existsSync(path.join(shippedDir, 'task-icons.md'))).toBe(true);
+  it('should contain moflo-task-icons.md', () => {
+    expect(fs.existsSync(path.join(shippedDir, 'moflo-task-icons.md'))).toBe(true);
   });
 
-  it('task-icons.md should contain icon map table', () => {
-    const content = fs.readFileSync(path.join(shippedDir, 'task-icons.md'), 'utf-8');
+  it('moflo-task-icons.md should contain icon map table', () => {
+    const content = fs.readFileSync(path.join(shippedDir, 'moflo-task-icons.md'), 'utf-8');
     expect(content).toContain('Agent Type');
     expect(content).toContain('Icon');
     expect(content).toContain('Explore');
@@ -1648,9 +1648,9 @@ describe('Shipped Guidance Files', () => {
     expect(content).toContain('🧪');
   });
 
-  it('subagents.md should reference task-icons.md', () => {
-    const content = fs.readFileSync(path.join(shippedDir, 'subagents.md'), 'utf-8');
-    expect(content).toContain('task-icons.md');
+  it('moflo-subagents.md should reference moflo-task-icons.md', () => {
+    const content = fs.readFileSync(path.join(shippedDir, 'moflo-subagents.md'), 'utf-8');
+    expect(content).toContain('moflo-task-icons.md');
     expect(content).toContain('ICON + [Role]');
   });
 
