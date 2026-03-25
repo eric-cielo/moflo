@@ -3,7 +3,7 @@
 
 # MoFlo Subagents Guide
 
-**Purpose:** Quick-start reference for subagents spawned by coordinators. Every subagent should follow this protocol before doing any work.
+**Purpose:** Protocol for subagents spawned by coordinators. Follow these steps before doing any work.
 
 ---
 
