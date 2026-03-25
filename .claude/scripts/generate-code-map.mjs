@@ -176,6 +176,15 @@ function countNamespace(db) {
   return count;
 }
 
+function countMissingEmbeddings(db) {
+  const stmt = db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE namespace = ? AND (embedding IS NULL OR embedding = '')`);
+  stmt.bind([NAMESPACE]);
+  let count = 0;
+  if (stmt.step()) count = stmt.getAsObject().cnt;
+  stmt.free();
+  return count;
+}
+
 // ---------------------------------------------------------------------------
 // Source file enumeration — git ls-files with filesystem fallback
 // ---------------------------------------------------------------------------
@@ -184,7 +193,18 @@ function countNamespace(db) {
 function readCodeMapConfig() {
   const defaults = {
     directories: ['src'],
-    extensions: ['.ts', '.tsx', '.js', '.mjs', '.jsx'],
+    extensions: [
+      '.ts', '.tsx', '.js', '.mjs', '.jsx',         // JS/TS
+      '.py', '.pyi',                                  // Python
+      '.go',                                           // Go
+      '.java', '.kt', '.kts',                         // JVM
+      '.cs',                                           // C#
+      '.rs',                                           // Rust
+      '.rb',                                           // Ruby
+      '.swift',                                        // Swift
+      '.php',                                          // PHP
+      '.c', '.h', '.cpp', '.hpp', '.cc',              // C/C++
+    ],
     exclude: [...EXCLUDE_DIRS],
   };
   try {
@@ -239,10 +259,17 @@ function walkDir(dir, extensions, excludeSet, maxDepth = 8, depth = 0) {
 }
 
 function getSourceFiles() {
+  const config = readCodeMapConfig();
+  const extSet = new Set(config.extensions);
+  const excludeSet = new Set(config.exclude);
+
+  // Build git glob patterns from configured extensions
+  const gitGlobs = config.extensions.map(ext => `"*${ext}"`).join(' ');
+
   // Try git ls-files first (fast, respects .gitignore)
   try {
     const raw = execSync(
-      `git ls-files -- "*.ts" "*.tsx" "*.js" "*.mjs" "*.jsx"`,
+      `git ls-files -- ${gitGlobs}`,
       { cwd: projectRoot, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
     ).trim();
 
@@ -261,9 +288,6 @@ function getSourceFiles() {
 
   // Fallback: walk configured directories from moflo.yaml
   log('git ls-files returned no files — falling back to filesystem walk');
-  const config = readCodeMapConfig();
-  const extSet = new Set(config.extensions);
-  const excludeSet = new Set(config.exclude);
   const files = [];
 
   for (const dir of config.directories) {
@@ -288,17 +312,135 @@ function isUnchanged(currentHash) {
 }
 
 // ---------------------------------------------------------------------------
-// Type extraction (regex-based, no AST)
+// Type extraction (regex-based, no AST) — multi-language
 // ---------------------------------------------------------------------------
 
-const TS_PATTERNS = [
-  /^export\s+(?:default\s+)?(?:abstract\s+)?class\s+(\w+)(?:\s+extends\s+([\w.]+))?(?:\s+implements\s+([\w,\s.]+))?/,
-  /^export\s+(?:default\s+)?interface\s+(\w+)(?:\s+extends\s+([\w,\s.]+))?/,
-  /^export\s+(?:default\s+)?type\s+(\w+)\s*[=<]/,
-  /^export\s+(?:const\s+)?enum\s+(\w+)/,
-  /^export\s+(?:default\s+)?(?:async\s+)?function\s+(\w+)/,
-  /^export\s+(?:default\s+)?const\s+(\w+)\s*[=:]/,
-];
+// Per-language extraction patterns: each entry is [regex, kindOverride?]
+// Group 1 = name, Group 2 = base/extends (optional), Group 3 = implements (optional)
+const LANG_PATTERNS = {
+  // JS/TS — require `export` keyword
+  ts: [
+    [/^export\s+(?:default\s+)?(?:abstract\s+)?class\s+(\w+)(?:\s+extends\s+([\w.]+))?(?:\s+implements\s+([\w,\s.]+))?/],
+    [/^export\s+(?:default\s+)?interface\s+(\w+)(?:\s+extends\s+([\w,\s.]+))?/],
+    [/^export\s+(?:default\s+)?type\s+(\w+)\s*[=<]/],
+    [/^export\s+(?:const\s+)?enum\s+(\w+)/],
+    [/^export\s+(?:default\s+)?(?:async\s+)?function\s+(\w+)/],
+    [/^export\s+(?:default\s+)?const\s+(\w+)\s*[=:]/],
+    // CommonJS / plain JS (no export keyword)
+    [/^(?:module\.exports\s*=\s*)?class\s+(\w+)(?:\s+extends\s+([\w.]+))?/],
+    [/^(?:async\s+)?function\s+(\w+)\s*\(/],
+    [/^const\s+(\w+)\s*=\s*(?:async\s+)?\(?.*\)?\s*=>/],
+    [/^(?:var|let|const)\s+(\w+)\s*=\s*require\s*\(/],
+  ],
+
+  // Python — class/def at module level
+  py: [
+    [/^class\s+(\w+)(?:\(([^)]+)\))?:/],
+    [/^(?:async\s+)?def\s+(\w+)\s*\(/],
+    [/^(\w+)\s*:\s*TypeAlias\s*=/, 'type'],
+    [/^(\w+)\s*=\s*(?:TypeVar|NewType|NamedTuple|dataclass)\s*\(/, 'type'],
+  ],
+
+  // Go — top-level type/func/var declarations
+  go: [
+    [/^type\s+(\w+)\s+struct\b/, 'struct'],
+    [/^type\s+(\w+)\s+interface\b/, 'interface'],
+    [/^type\s+(\w+)\s+/, 'type'],
+    [/^func\s+(\w+)\s*\(/],
+    [/^func\s+\([^)]+\)\s+(\w+)\s*\(/, 'method'],
+    [/^var\s+(\w+)\s+/, 'var'],
+    [/^const\s+(\w+)\s+/, 'const'],
+  ],
+
+  // Java/Kotlin
+  java: [
+    [/^(?:public|protected|private|abstract|static|final|sealed|open|\s)*class\s+(\w+)(?:\s+extends\s+([\w.]+))?(?:\s+implements\s+([\w,\s.]+))?/],
+    [/^(?:public|protected|private|abstract|static|sealed|\s)*interface\s+(\w+)(?:\s+extends\s+([\w,\s.]+))?/],
+    [/^(?:public|protected|private|abstract|static|\s)*enum\s+(\w+)/],
+    [/^(?:public|protected|private|abstract|static|\s)*@?interface\s+(\w+)/, 'annotation'],
+    [/^(?:public|protected|private|abstract|static|final|synchronized|\s)*(?:[\w<>\[\],\s]+)\s+(\w+)\s*\(/, 'method'],
+    [/^(?:data\s+)?class\s+(\w+)(?:\s*:\s*([\w.]+))?/, 'class'],  // Kotlin
+    [/^(?:fun|suspend\s+fun)\s+(\w+)\s*\(/],  // Kotlin
+    [/^object\s+(\w+)/, 'object'],  // Kotlin
+  ],
+
+  // C#
+  cs: [
+    [/^(?:public|protected|private|internal|abstract|static|sealed|partial|\s)*class\s+(\w+)(?:\s*:\s*([\w.,\s<>]+))?/],
+    [/^(?:public|protected|private|internal|abstract|static|\s)*interface\s+(\w+)(?:\s*:\s*([\w.,\s<>]+))?/],
+    [/^(?:public|protected|private|internal|abstract|static|\s)*enum\s+(\w+)/],
+    [/^(?:public|protected|private|internal|abstract|static|\s)*struct\s+(\w+)/],
+    [/^(?:public|protected|private|internal|abstract|static|\s)*record\s+(\w+)/],
+    [/^(?:public|protected|private|internal|abstract|static|\s)*delegate\s+\S+\s+(\w+)\s*\(/, 'delegate'],
+    [/^namespace\s+([\w.]+)/, 'namespace'],
+  ],
+
+  // Rust
+  rs: [
+    [/^pub(?:\([\w]+\))?\s+struct\s+(\w+)/, 'struct'],
+    [/^pub(?:\([\w]+\))?\s+enum\s+(\w+)/],
+    [/^pub(?:\([\w]+\))?\s+trait\s+(\w+)(?:\s*:\s*([\w\s+]+))?/, 'trait'],
+    [/^pub(?:\([\w]+\))?\s+(?:async\s+)?fn\s+(\w+)/],
+    [/^pub(?:\([\w]+\))?\s+type\s+(\w+)\s*=/, 'type'],
+    [/^pub(?:\([\w]+\))?\s+mod\s+(\w+)/, 'module'],
+    [/^impl(?:<[^>]+>)?\s+(\w+)/, 'impl'],
+    [/^struct\s+(\w+)/, 'struct'],
+    [/^enum\s+(\w+)/],
+    [/^trait\s+(\w+)/, 'trait'],
+    [/^(?:async\s+)?fn\s+(\w+)/],
+  ],
+
+  // Ruby
+  rb: [
+    [/^class\s+(\w+)(?:\s*<\s*([\w:]+))?/],
+    [/^module\s+(\w+)/, 'module'],
+    [/^def\s+(self\.)?(\w+)/, 'method'],
+  ],
+
+  // Swift
+  swift: [
+    [/^(?:public|open|internal|fileprivate|private|\s)*(?:final\s+)?class\s+(\w+)(?:\s*:\s*([\w,\s]+))?/],
+    [/^(?:public|open|internal|fileprivate|private|\s)*protocol\s+(\w+)(?:\s*:\s*([\w,\s]+))?/, 'protocol'],
+    [/^(?:public|open|internal|fileprivate|private|\s)*struct\s+(\w+)/, 'struct'],
+    [/^(?:public|open|internal|fileprivate|private|\s)*enum\s+(\w+)/],
+    [/^(?:public|open|internal|fileprivate|private|\s)*func\s+(\w+)\s*\(/],
+    [/^(?:public|open|internal|fileprivate|private|\s)*typealias\s+(\w+)/, 'type'],
+  ],
+
+  // PHP
+  php: [
+    [/^(?:abstract\s+|final\s+)?class\s+(\w+)(?:\s+extends\s+([\w\\]+))?(?:\s+implements\s+([\w\\,\s]+))?/],
+    [/^interface\s+(\w+)(?:\s+extends\s+([\w\\,\s]+))?/],
+    [/^trait\s+(\w+)/, 'trait'],
+    [/^enum\s+(\w+)/],
+    [/^(?:public|protected|private|static|\s)*function\s+(\w+)\s*\(/],
+  ],
+
+  // C/C++
+  c: [
+    [/^(?:typedef\s+)?struct\s+(\w+)/, 'struct'],
+    [/^(?:typedef\s+)?enum\s+(\w+)/],
+    [/^(?:typedef\s+)?union\s+(\w+)/, 'union'],
+    [/^class\s+(\w+)(?:\s*:\s*(?:public|protected|private)\s+([\w:]+))?/],
+    [/^namespace\s+(\w+)/, 'namespace'],
+    [/^template\s*<[^>]*>\s*class\s+(\w+)/, 'template-class'],
+    [/^(?:static\s+|inline\s+|extern\s+)*(?:[\w*&:<>,\s]+)\s+(\w+)\s*\(/, 'function'],
+  ],
+};
+
+// Map file extensions to language keys
+const EXT_TO_LANG = {
+  '.ts': 'ts', '.tsx': 'ts', '.js': 'ts', '.mjs': 'ts', '.jsx': 'ts', '.cjs': 'ts',
+  '.py': 'py', '.pyi': 'py',
+  '.go': 'go',
+  '.java': 'java', '.kt': 'java', '.kts': 'java',
+  '.cs': 'cs',
+  '.rs': 'rs',
+  '.rb': 'rb',
+  '.swift': 'swift',
+  '.php': 'php',
+  '.c': 'c', '.h': 'c', '.cpp': 'c', '.hpp': 'c', '.cc': 'c',
+};
 
 const ENTITY_DECORATOR = /@Entity\s*\(/;
 
@@ -313,6 +455,10 @@ function extractTypes(filePath) {
     return [];
   }
 
+  const ext = extname(filePath);
+  const lang = EXT_TO_LANG[ext] || 'ts';
+  const patterns = LANG_PATTERNS[lang] || LANG_PATTERNS.ts;
+
   const lines = content.split('\n');
   const types = [];
   const seen = new Set();
@@ -326,15 +472,18 @@ function extractTypes(filePath) {
       continue;
     }
 
-    for (const pattern of TS_PATTERNS) {
+    for (const [pattern, kindOverride] of patterns) {
       const m = line.match(pattern);
-      if (m && m[1] && !seen.has(m[1])) {
-        seen.add(m[1]);
-        const kind = detectKind(line, m[1]);
+      if (m) {
+        // Ruby's def self.name captures differently — normalize
+        const name = m[1] === 'self.' ? m[2] : m[1];
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        const kind = kindOverride || detectKind(line, name, lang);
         const bases = (m[2] || '').trim();
         const implements_ = (m[3] || '').trim();
         types.push({
-          name: m[1],
+          name,
           kind,
           bases: bases || null,
           implements: implements_ || null,
@@ -354,12 +503,16 @@ function extractTypes(filePath) {
   return types;
 }
 
-function detectKind(line, name) {
+function detectKind(line, name, lang) {
   if (/\bclass\b/.test(line)) return 'class';
   if (/\binterface\b/.test(line)) return 'interface';
   if (/\btype\b/.test(line)) return 'type';
   if (/\benum\b/.test(line)) return 'enum';
-  if (/\bfunction\b/.test(line)) return 'function';
+  if (/\bstruct\b/.test(line)) return 'struct';
+  if (/\btrait\b/.test(line)) return 'trait';
+  if (/\bprotocol\b/.test(line)) return 'protocol';
+  if (/\bmodule\b/.test(line)) return 'module';
+  if (/\bfunction\b/.test(line) || /\bfunc\b/.test(line) || /\bdef\b/.test(line) || /\bfn\b/.test(line)) return 'function';
   if (/\bconst\b/.test(line)) return 'const';
   return 'export';
 }
@@ -393,10 +546,20 @@ function getDirDescription(dirName) {
 
 function detectLanguage(filePath) {
   const ext = extname(filePath);
-  if (ext === '.tsx' || ext === '.jsx') return 'tsx';
-  if (ext === '.ts') return 'ts';
-  if (ext === '.mjs') return 'esm';
-  return 'js';
+  const langMap = {
+    '.tsx': 'React/TypeScript', '.jsx': 'React/JavaScript',
+    '.ts': 'TypeScript', '.mjs': 'ESM', '.cjs': 'CommonJS', '.js': 'JavaScript',
+    '.py': 'Python', '.pyi': 'Python',
+    '.go': 'Go',
+    '.java': 'Java', '.kt': 'Kotlin', '.kts': 'Kotlin',
+    '.cs': 'C#',
+    '.rs': 'Rust',
+    '.rb': 'Ruby',
+    '.swift': 'Swift',
+    '.php': 'PHP',
+    '.c': 'C', '.h': 'C/C++ Header', '.cpp': 'C++', '.hpp': 'C++ Header', '.cc': 'C++',
+  };
+  return langMap[ext] || 'Unknown';
 }
 
 // ---------------------------------------------------------------------------
@@ -441,16 +604,16 @@ function generateProjectOverviews(filesByProject, typesByProject) {
 }
 
 function detectProjectLang(files) {
-  let tsx = 0, ts = 0, js = 0;
+  const counts = {};
   for (const f of files) {
-    const ext = extname(f);
-    if (ext === '.tsx' || ext === '.jsx') tsx++;
-    else if (ext === '.ts') ts++;
-    else js++;
+    const lang = detectLanguage(f);
+    counts[lang] = (counts[lang] || 0) + 1;
   }
-  if (tsx > ts && tsx > js) return 'React/TypeScript';
-  if (ts >= js) return 'TypeScript';
-  return 'JavaScript';
+  // Return the dominant language, or list top 2 if mixed
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (sorted.length === 0) return 'Unknown';
+  if (sorted.length === 1 || sorted[0][1] > sorted[1][1] * 2) return sorted[0][0];
+  return `${sorted[0][0]}/${sorted[1][0]}`;
 }
 
 function generateDirectoryDetails(typesByDir) {
@@ -584,8 +747,6 @@ function generateFileEntries(typesByFile) {
   const chunks = [];
 
   for (const [filePath, types] of Object.entries(typesByFile)) {
-    if (types.length === 0) continue;
-
     const project = getProjectName(filePath);
     const dir = getDirectory(filePath);
     const dirDesc = getDirDescription(dir);
@@ -596,23 +757,34 @@ function generateFileEntries(typesByFile) {
     let content = `# ${fileName} (${filePath})\n`;
     content += `Project: ${project} | Language: ${lang}\n`;
     if (dirDesc) content += `Directory: ${dirDesc}\n`;
-    content += '\nExported types:\n';
 
-    for (const t of types) {
-      let line = `  ${t.kind} ${t.name}`;
-      if (t.isEntity) line += ' [MikroORM entity]';
-      if (t.bases) line += ` extends ${t.bases}`;
-      if (t.implements) line += ` implements ${t.implements}`;
-      content += line + '\n';
+    if (types.length > 0) {
+      content += '\nExported types:\n';
+      for (const t of types) {
+        let line = `  ${t.kind} ${t.name}`;
+        if (t.isEntity) line += ' [MikroORM entity]';
+        if (t.bases) line += ` extends ${t.bases}`;
+        if (t.implements) line += ` implements ${t.implements}`;
+        content += line + '\n';
+      }
+    } else {
+      // For files without detected exports, include a summary line
+      // so the file is still discoverable via semantic search
+      content += '\nSource file (no detected exports)\n';
     }
 
     // Build tags for filtering
     const tags = ['file', project];
     if (types.some(t => t.isEntity)) tags.push('entity');
     if (types.some(t => t.kind === 'interface')) tags.push('interface');
-    if (filePath.includes('/services/')) tags.push('service');
-    if (filePath.includes('/routes/')) tags.push('route');
-    if (filePath.includes('/middleware/')) tags.push('middleware');
+    // Use path separator pattern that works cross-platform
+    if (filePath.includes('/services/') || filePath.includes('\\services\\')) tags.push('service');
+    if (filePath.includes('/routes/') || filePath.includes('\\routes\\')) tags.push('route');
+    if (filePath.includes('/middleware/') || filePath.includes('\\middleware\\')) tags.push('middleware');
+    if (filePath.includes('/components/') || filePath.includes('\\components\\')) tags.push('component');
+    if (filePath.includes('/hooks/') || filePath.includes('\\hooks\\')) tags.push('hook');
+    if (filePath.includes('/api/') || filePath.includes('\\api\\')) tags.push('api');
+    if (filePath.includes('/utils/') || filePath.includes('\\utils\\')) tags.push('util');
 
     chunks.push({
       key: `file:${filePath}`,
@@ -668,9 +840,15 @@ async function main() {
   if (isUnchanged(currentHash)) {
     const db = await getDb();
     const count = countNamespace(db);
+    const missing = countMissingEmbeddings(db);
     db.close();
     if (count > 0) {
-      log(`Skipping — file list unchanged (${count} chunks in DB, hash ${currentHash.slice(0, 12)}...)`);
+      if (missing > 0 && !skipEmbeddings) {
+        log(`File list unchanged but ${missing}/${count} entries missing embeddings — generating...`);
+        await runEmbeddings();
+      } else {
+        log(`Skipping — file list unchanged (${count} chunks in DB, hash ${currentHash.slice(0, 12)}...)`);
+      }
       return;
     }
     log('File list unchanged but no chunks in DB — forcing regeneration');
@@ -691,10 +869,9 @@ async function main() {
 
     const types = extractTypes(file);
 
-    // Track types per file for file-level entries
-    if (types.length > 0) {
-      typesByFile[file] = types;
-    }
+    // Track ALL files for file-level entries (not just those with types)
+    // This ensures plain JS projects without explicit exports still get indexed
+    typesByFile[file] = types;
 
     for (const t of types) {
       allTypes.push(t);
@@ -748,25 +925,28 @@ async function main() {
 
   // 7. Generate embeddings inline (not detached — ensures Xenova runs reliably)
   if (!skipEmbeddings) {
-    // Prefer moflo's own bin script, fall back to project's .claude/scripts/
-    const embedCandidates = [
-      resolve(dirname(fileURLToPath(import.meta.url)), 'build-embeddings.mjs'),
-      resolve(projectRoot, '.claude/scripts/build-embeddings.mjs'),
-    ];
-    const embedScript = embedCandidates.find(p => existsSync(p));
-    if (embedScript) {
-      log('Generating embeddings for code-map...');
-      try {
-        execSync(`node "${embedScript}" --namespace code-map`, {
-          cwd: projectRoot,
-          stdio: 'inherit',
-          timeout: 120000,
-          windowsHide: true,
-        });
-      } catch (err) {
-        log(`Warning: embedding generation failed: ${err.message?.split('\n')[0]}`);
-      }
-    }
+    await runEmbeddings();
+  }
+}
+
+async function runEmbeddings() {
+  const embedCandidates = [
+    resolve(dirname(fileURLToPath(import.meta.url)), 'build-embeddings.mjs'),
+    resolve(projectRoot, '.claude/scripts/build-embeddings.mjs'),
+  ];
+  const embedScript = embedCandidates.find(p => existsSync(p));
+  if (!embedScript) return;
+
+  log('Generating embeddings for code-map...');
+  try {
+    execSync(`node "${embedScript}" --namespace code-map`, {
+      cwd: projectRoot,
+      stdio: 'inherit',
+      timeout: 120000,
+      windowsHide: true,
+    });
+  } catch (err) {
+    log(`Warning: embedding generation failed: ${err.message?.split('\n')[0]}`);
   }
 }
 
