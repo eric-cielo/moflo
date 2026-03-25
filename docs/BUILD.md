@@ -105,6 +105,17 @@ npm view moflo version          # Should match what you just published
 | `npm run build:ts` | Uses broken workspace cd | `npm run build` (tsc -b) |
 | Using pnpm/yarn/bun | Not configured, will create orphaned artifacts | npm only |
 
+## Adding New Scripts to `bin/`
+
+When you add a new `.mjs` script to `bin/`, you **must** also add it to the `scriptFiles` array in `bin/session-start-launcher.mjs` (~line 112). This array controls which scripts get synced from `node_modules/moflo/bin/` to `.claude/scripts/` in consumer projects on version change. If a script is missing from this list, it will never be copied and any hook that references it will silently fail.
+
+**Checklist for new scripts:**
+
+1. Add the script to `bin/`
+2. Add its filename to `scriptFiles` in `bin/session-start-launcher.mjs`
+3. Mirror the same change in `.claude/scripts/session-start-launcher.mjs` (the dev copy)
+4. Update the test list in `src/@claude-flow/cli/__tests__/services/auto-update.test.ts`
+
 ## Build Architecture
 
 ```

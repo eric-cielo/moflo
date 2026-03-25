@@ -112,7 +112,7 @@ try {
         const scriptFiles = [
           'hooks.mjs', 'session-start-launcher.mjs', 'index-guidance.mjs',
           'build-embeddings.mjs', 'generate-code-map.mjs', 'semantic-search.mjs',
-          'index-tests.mjs',
+          'index-tests.mjs', 'index-all.mjs',
         ];
         for (const file of scriptFiles) {
           syncFile(resolve(binDir, file), resolve(scriptsDir, file), `.claude/scripts/${file}`);
