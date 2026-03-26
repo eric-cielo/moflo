@@ -233,6 +233,17 @@ The memory-first gate doesn't blindly block every request. It classifies each pr
 - **Simple directives** (e.g., "commit", "yes", "continue", "looks good") — skip the gate entirely, no memory search required
 - **Task-oriented prompts** (e.g., "fix the auth bug", "add pagination to the API") — gate enforced, must search memory first
 
+### Escape hatch
+
+Prefix any prompt with `@@` to bypass the memory-first gate for that turn. Useful for conversational questions, thinking out loud, or discussions that don't need prior context:
+
+```
+@@ what do you think about this approach?
+@@ question — is there a better way to handle auth tokens?
+```
+
+The `@@` prefix is stripped before Claude sees the prompt, so it won't affect the response.
+
 ### Disabling gates
 
 All gates are configurable in `moflo.yaml`:

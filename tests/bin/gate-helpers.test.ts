@@ -337,18 +337,75 @@ describe('gate.cjs: check-before-read', () => {
     expect(r.stderr).toContain('BLOCKED');
   });
 
-  it('allows reading non-guidance files without memory search', () => {
+  it('blocks reading non-exempt files when memory not searched', () => {
     writeState(tmpDir, { memoryRequired: true, memorySearched: false });
     const env = baseEnv(tmpDir);
     env.TOOL_INPUT_file_path = '/project/src/index.ts';
     const r = runGate('check-before-read', env);
-    expect(r.exitCode).toBe(0);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('BLOCKED');
   });
 
-  it('allows reading guidance files when memory searched', () => {
+  it('allows reading any file when memory searched', () => {
     writeState(tmpDir, { memoryRequired: true, memorySearched: true });
     const env = baseEnv(tmpDir);
     env.TOOL_INPUT_file_path = '/project/.claude/guidance/rules.md';
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('exempts .claude/ config paths (non-guidance) from read gate', () => {
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = '/project/.claude/settings.json';
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('does NOT exempt .claude/guidance/ from read gate', () => {
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = '/project/.claude/guidance/shipped/moflo-core.md';
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(2);
+  });
+
+  it('exempts CLAUDE.md from read gate', () => {
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = '/project/CLAUDE.md';
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('exempts MEMORY.md from read gate', () => {
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = '/project/MEMORY.md';
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('exempts node_modules from read gate', () => {
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = '/project/node_modules/moflo/index.js';
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('exempts workflow-state from read gate', () => {
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = '/project/.claude/workflow-state.json';
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('allows when memoryRequired is false', () => {
+    writeState(tmpDir, { memoryRequired: false, memorySearched: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_file_path = '/project/src/index.ts';
     const r = runGate('check-before-read', env);
     expect(r.exitCode).toBe(0);
   });
@@ -473,6 +530,27 @@ describe('gate.cjs: prompt-reminder', () => {
     expect(readState(tmpDir).memoryRequired).toBe(false);
   });
 
+  it('@@ escape hatch bypasses memory requirement', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = '@@ how does the login flow work and what are the edge cases we should worry about';
+    runGate('prompt-reminder', env);
+    expect(readState(tmpDir).memoryRequired).toBe(false);
+  });
+
+  it('@@ escape hatch works even with task keywords', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = '@@ fix the auth bug — just thinking out loud';
+    runGate('prompt-reminder', env);
+    expect(readState(tmpDir).memoryRequired).toBe(false);
+  });
+
+  it('@@ escape hatch with extra whitespace after prefix', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = '@@   what do you think about this approach';
+    runGate('prompt-reminder', env);
+    expect(readState(tmpDir).memoryRequired).toBe(false);
+  });
+
   it('increments interaction count', () => {
     writeState(tmpDir, { interactionCount: 5 });
     const env = baseEnv(tmpDir);
@@ -505,9 +583,45 @@ describe('gate.cjs: prompt-reminder', () => {
     expect(r.stdout).toContain('CRITICAL');
   });
 
-  it('long non-task prompts require memory (>80 chars)', () => {
+  it('long non-task prompts require memory (>20 chars)', () => {
     const env = baseEnv(tmpDir);
     env.CLAUDE_USER_PROMPT = 'I was thinking about how the application handles the various edge cases in the rendering pipeline when multiple users connect';
+    runGate('prompt-reminder', env);
+    expect(readState(tmpDir).memoryRequired).toBe(true);
+  });
+
+  it('medium non-task prompts (>20 chars) require memory', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'how does the login flow work exactly';
+    runGate('prompt-reminder', env);
+    expect(readState(tmpDir).memoryRequired).toBe(true);
+  });
+
+  it('long directive-prefixed prompts still require memory', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'yes but also fix the authentication bug while you are at it';
+    runGate('prompt-reminder', env);
+    expect(readState(tmpDir).memoryRequired).toBe(true);
+  });
+
+  it('short directive-prefixed prompts bypass memory', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'ok sure';
+    runGate('prompt-reminder', env);
+    expect(readState(tmpDir).memoryRequired).toBe(false);
+  });
+
+  it('directive at exactly DIRECTIVE_MAX_LEN (20) bypasses memory', () => {
+    // 20 chars: "exactly twenty chars" — under the limit
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'yes do that please';  // 18 chars, directive, under 20
+    runGate('prompt-reminder', env);
+    expect(readState(tmpDir).memoryRequired).toBe(false);
+  });
+
+  it('directive just over DIRECTIVE_MAX_LEN requires memory', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'ok let me think about this for a moment';  // 39 chars, starts with "ok"
     runGate('prompt-reminder', env);
     expect(readState(tmpDir).memoryRequired).toBe(true);
   });
