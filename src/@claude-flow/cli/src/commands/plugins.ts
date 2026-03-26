@@ -922,7 +922,6 @@ export const pluginsCommand: Command = {
       '@claude-flow/security            - Security scanning and CVE detection',
       '@claude-flow/embeddings          - Vector embeddings with hyperbolic support',
       '@claude-flow/claims              - Claims-based authorization',
-      '@claude-flow/performance         - Performance profiling and benchmarks',
       '@claude-flow/plugin-gastown-bridge - Gas Town orchestrator integration (WASM-accelerated)',
     ]);
     output.writeln();

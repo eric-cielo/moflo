@@ -17,7 +17,7 @@ const PM_PATH = resolve(BIN_LIB, 'process-manager.mjs');
 
 /** Create an isolated temp project root for each test. */
 function makeTempRoot(): string {
-  const root = resolve(__dirname, '../../.test-pm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+  const root = resolve(__dirname, '../../.testoutput/.test-pm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
   mkdirSync(resolve(root, '.claude-flow'), { recursive: true });
   return root;
 }

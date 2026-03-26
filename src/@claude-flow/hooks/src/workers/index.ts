@@ -1388,7 +1388,6 @@ export function createDDDWorker(projectRoot: string): WorkerHandler {
     const modules = [
       '@claude-flow/hooks',
       '@claude-flow/mcp',
-      '@claude-flow/integration',
       '@claude-flow/memory',
       '@claude-flow/security',
     ];
