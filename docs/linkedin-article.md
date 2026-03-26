@@ -1,22 +1,22 @@
-# <img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/Moflo_md.png?v=6" alt="MoFlo" width="80" align="left" style="margin-right: 12px;" /> MoFlo: Teaching Claude Code to Remember What It Learns
+# <img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/Moflo_md.png?v=6" alt="MoFlo" width="80" align="left" style="margin-right: 12px;" /> Level Up Claude Code for Free with MoFlo
 
 ---
 
 MoFlo grew out of months of using [Claude Flow / Ruflo](https://github.com/ruvnet/ruflo) on my own projects — both professional work and side projects. Over that time I accumulated a long list of patterns that worked, patterns that didn't, and things I wished the tooling did differently. Which hooks actually prevent Claude from wasting tokens. How to structure memory so it's useful across sessions instead of just accumulating noise. What kind of gates keep Claude focused versus what just annoys you. Where the upstream project's ambition created complexity that got in the way of actually shipping code.
 
-At some point I realized I wasn't tweaking settings anymore — I was redesigning how the whole system fit together. So rather than maintain an increasingly divergent config on top of someone else's project, I started from scratch. MoFlo recomposes those lessons into a new core: same foundation, different priorities, built around what I'd actually learned works in daily use.
+At some point I realized I wasn't tweaking settings anymore — I was redesigning how the whole system fit together. So rather than maintain an increasingly divergent config on top of someone else's project, I made a fork and got busy. MoFlo recomposes those lessons into a new core: same foundation, different priorities, built around what I learned works in daily use.
 
 ---
 
 If you use Claude Code regularly, you've probably noticed a pattern. You start a session, Claude explores your codebase, reads your docs, figures out where things live — then the session ends and all of that knowledge evaporates. Next session, it does the same exploration from scratch. Tokens burned, context window eaten, and you're sitting there watching it rediscover what it already knew yesterday.
 
-That's the problem MoFlo solves.
+That's one of many problem MoFlo solves, but that's really only the start of what it does for your project.
 
 ## What is MoFlo?
 
-[MoFlo](https://github.com/eric-cielo/moflo) is an open-source npm package that gives Claude Code persistent memory, automatic knowledge indexing, and a feedback loop that makes it get better at your project over time. It's a local-first tool — no cloud services, no API keys, no external dependencies. Everything runs on your machine.
+[MoFlo](https://github.com/eric-cielo/moflo) is an open-source npm package that gives Claude Code persistent memory, automatic knowledge indexing, and a feedback loop that further optimizes both learning and tokens over time. It's a local-first tool — Everything runs on your machine other than Claude itself.
 
-It builds on the foundation of [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo), but recomposed from scratch around what actually matters for day-to-day coding. The upstream project has a lot of ambition and a lot of moving parts. MoFlo took the lessons learned from using it in real projects and distilled them into opinionated defaults that work out of the box with zero configuration.
+It builds on the foundation of [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo), but recomposed around what actually matters for day-to-day coding. The upstream project has a lot of ambition and a lot of moving parts. MoFlo took the lessons learned from using it in real projects and distilled them into opinionated defaults that work out of the box with zero or minimal configuration.
 
 ## The Core Idea: Memory-First Development
 
@@ -24,7 +24,7 @@ The central insight is simple: **an AI assistant that checks what it already kno
 
 MoFlo indexes three things at the start of every session:
 
-- **Your documentation** — markdown files, architecture docs, conventions. Chunked into semantic embeddings so Claude can search by meaning, not just keywords.
+- **Your documentation** — markdown files, architecture docs, conventions. Chunked into linked semantic embeddings so Claude can search by meaning, not just keywords.
 - **Your code structure** — exports, classes, functions, types. Claude can answer "where is X defined?" from the index instead of running Glob/Grep across your codebase.
 - **Your test files** — mapped back to their source targets. Claude can answer "what tests cover this module?" without scanning directories.
 
@@ -63,9 +63,9 @@ One of the more practical features is the `/flo` skill. Inside Claude Code, you 
 /flo 42
 ```
 
-...where 42 is a GitHub issue number. MoFlo then drives Claude through a full workflow: research the issue, enhance the ticket with findings, implement the fix, run tests, simplify the code, and open a PR. Each step feeds back into memory so the next issue benefits from what was learned.
+...where 42 is a GitHub issue number. MoFlo then drives Claude through a full workflow: research the issue, enhance the ticket with findings, implement the fix, create and run tests, simplify the code, and open a PR. Each step feeds back into memory so the next issue benefits from what was learned.
 
-It handles epics too — if the issue has child stories, it processes them sequentially, each getting the full workflow treatment. For more complex features with inter-story dependencies, `flo epic` adds persistent state tracking, resume-from-failure, and auto-merge between stories.
+**It handles epics too** — if the issue has child stories, it processes them sequentially, each getting the full workflow treatment. For more complex features with inter-story dependencies, `flo epic` adds persistent state tracking, resume-from-failure, and auto-merge between stories.
 
 Out of the box, `/flo` and `flo epic` are wired up for GitHub — issues, PRs, labels, the `gh` CLI. But the workflow logic is just structured prompts and shell commands, not a deep integration that's hard to swap out. If you use Jira, Linear, GitLab, or something else, a quick conversation with Claude is genuinely all it takes to adapt the skill and epic runner to your stack. The patterns are the same; only the API calls change.
 
@@ -102,8 +102,8 @@ After that, you just use Claude Code normally. The memory, gates, routing, and l
 
 I want to be straightforward about scope:
 
-- **It's tested with Claude Code.** The MCP tools and hooks are client-independent in principle and should work with any MCP-capable client, but Claude Code is the only one I've actually tested. If you try it with Cursor or another tool, your mileage may vary.
-- **It's not magic.** Claude still makes mistakes, still sometimes ignores context, still runs into the limitations of LLMs. MoFlo makes those problems less frequent by giving Claude better starting information and enforcing better habits, but it doesn't eliminate them.
+- **It's tested with Claude Code.** The MCP tools and hooks are client-independent in principle and should work with any MCP-capable client, but Claude Code is the only one I've actually tested. If you try it with Codex or another tool, your mileage may vary.
+- **It's not magic.** Claude still makes mistakes, still sometimes ignores context, still runs into the limitations of LLMs. MoFlo makes those problems less frequent by giving Claude better starting information and enforcing better habits, but it doesn't eliminate them, and the qualify of the guidance you feed in is key.
 - **It's Node.js only.** The entire stack — hooks, embeddings, memory database — is JavaScript/TypeScript with WASM bindings. No Python, no native compilation. This is a deliberate choice for portability and simplicity, but it means you need Node.js 20+.
 
 ## Why I Built This
