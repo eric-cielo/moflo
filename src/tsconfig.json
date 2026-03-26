@@ -4,7 +4,6 @@
     "baseUrl": ".",
     "paths": {
       "@claude-flow/aidefence": ["./@claude-flow/aidefence/src"],
-      "@claude-flow/browser": ["./@claude-flow/browser/src"],
       "@claude-flow/claims": ["./@claude-flow/claims/src"],
       "@claude-flow/cli": ["./@claude-flow/cli/src"],
       "@claude-flow/embeddings": ["./@claude-flow/embeddings/src"],
@@ -22,7 +21,6 @@
   "references": [
     { "path": "./@claude-flow/shared" },
     { "path": "./@claude-flow/aidefence" },
-    { "path": "./@claude-flow/browser" },
     { "path": "./@claude-flow/claims" },
     { "path": "./@claude-flow/cli" },
     { "path": "./@claude-flow/embeddings" },
