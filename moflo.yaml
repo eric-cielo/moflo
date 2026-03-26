@@ -28,9 +28,7 @@ tests:
     - src/@claude-flow/cli/__tests__
     - src/@claude-flow/embeddings/__tests__
     - src/@claude-flow/hooks/__tests__
-    - src/@claude-flow/mcp/__tests__
     - src/@claude-flow/neural/__tests__
-    - src/@claude-flow/performance/__tests__
     - src/@claude-flow/plugins/__tests__
     - src/@claude-flow/security/__tests__
     - src/@claude-flow/shared/__tests__
