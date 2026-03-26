@@ -166,6 +166,9 @@ hive-mind-prompt-*.txt
 .claude-orc/
 .moflo/
 
+# Test temp directories
+.testoutput/
+
 # Ephemeral / test artifacts
 .claude/workflow-state.json
 test-database-provider.rvf

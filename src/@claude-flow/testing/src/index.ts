@@ -225,8 +225,5 @@ export {
 // Regression Testing - Prevent capability degradation
 export * from './regression/index.js';
 
-// V2 Compatibility Testing - Validate backward compatibility
-export * from './v2-compat/index.js';
-
 // Re-export commonly used Vitest utilities
 export { vi, expect, describe, it, test, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';

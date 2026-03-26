@@ -59,12 +59,6 @@ export * as memory from './@claude-flow/memory/src/index.js';
 export * as swarm from './@claude-flow/swarm/src/index.js';
 
 /**
- * Integration module - agentic-flow@alpha integration, ADR-001 compliance
- * @see {@link @claude-flow/integration}
- */
-export * as integration from './@claude-flow/integration/src/index.js';
-
-/**
  * Shared module - common types, events, utilities, core interfaces
  * @see {@link @claude-flow/shared}
  */
@@ -83,12 +77,6 @@ export * as cli from './@claude-flow/cli/src/index.js';
 export * as neural from './@claude-flow/neural/src/index.js';
 
 /**
- * Performance module - Benchmarking, Flash Attention validation
- * @see {@link @claude-flow/performance}
- */
-export * as performance from './@claude-flow/performance/src/index.js';
-
-/**
  * Testing module - TDD London School framework, test utilities
  * @see {@link @claude-flow/testing}
  */
@@ -103,10 +91,8 @@ export const MODULES = [
   '@claude-flow/security',
   '@claude-flow/memory',
   '@claude-flow/swarm',
-  '@claude-flow/integration',
   '@claude-flow/cli',
   '@claude-flow/neural',
-  '@claude-flow/performance',
   '@claude-flow/testing',
 ] as const;
 

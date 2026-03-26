@@ -194,7 +194,6 @@ async function generateRegistry(): Promise<PluginRegistry> {
     '@claude-flow/claims',
     '@claude-flow/embeddings',
     '@claude-flow/neural',
-    '@claude-flow/performance',
     '@claude-flow/plugins',
   ];
 

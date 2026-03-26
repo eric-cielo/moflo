@@ -12,7 +12,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync
 import { resolve, join } from 'path';
 
 function makeTempRoot(): string {
-  const root = resolve(__dirname, '../../.test-lib-sync-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+  const root = resolve(__dirname, '../../.testoutput/.test-lib-sync-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
   mkdirSync(resolve(root, '.claude-flow'), { recursive: true });
   mkdirSync(resolve(root, '.claude/scripts'), { recursive: true });
   return root;

@@ -33,7 +33,7 @@ const CLEANUP_PATH = resolve(BIN_LIB, 'registry-cleanup.cjs');
 function makeTempRoot(): string {
   const root = resolve(
     __dirname,
-    '../../.test-pm-stress-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    '../../.testoutput/.test-pm-stress-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
   );
   mkdirSync(resolve(root, '.claude-flow'), { recursive: true });
   return root;
@@ -301,7 +301,7 @@ describe('registry corruption resilience', () => {
   it('handles missing .claude-flow directory', () => {
     const bareRoot = resolve(
       __dirname,
-      '../../.test-pm-bare-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      '../../.testoutput/.test-pm-bare-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
     );
     mkdirSync(bareRoot, { recursive: true });
 
