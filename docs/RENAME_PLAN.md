@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-26
 **Branch:** working directly on main (pre-PR)
-**Status:** In progress — build + tests passing, remaining doc updates needed
+**Status:** Stage 2 complete — all filesystem paths fixed, docs verified, CI updated
 
 ## Context
 
@@ -34,22 +34,22 @@ resolved via tsconfig paths, not filesystem conventions).
 - [x] Tests: 131 passed, 4935 tests, 3 pre-existing worker OOM errors (unchanged)
 - [x] CLI: `flo --version` → 4.8.50, `flo doctor` → 17 passed + 1 warning (stale test-dir cache)
 
-## Remaining TODO
+## Stage 2 — Completed (2026-03-26)
 
-### Code/Config (must do before publish)
+### Code/Config
 
-- [ ] `src/mcp/tools/*.js` — these are standalone JS files (not tsc output), still have old
-      `../../@claude-flow/` paths. The `.ts` sources are fixed but these `.js` siblings need
-      manual update or deletion if they're generated artifacts.
-- [ ] Verify `src/mcp/tools/sona-tools.js` and `sona-tools.d.ts` — may have old paths
+- [x] `src/mcp/tools/*.js` — verified: only `@claude-flow/*` tsconfig aliases remain
+      (intentionally kept per Tier 3 scope). No filesystem `../../@claude-flow/` paths found.
+- [x] `src/mcp/tools/sona-tools.js` and `sona-tools.d.ts` — verified clean, no old paths
+- [x] `.github/workflows/ci.yml` — fixed stale `src/@claude-flow/cli/` → `src/packages/cli/`
 
-### Docs (should do before publish)
+### Docs
 
-- [ ] `docs/BUILD.md` — references `src/@claude-flow/` paths
-- [ ] `.claude/guidance/moflo-core-guidance.md` — references old paths
-- [ ] `.claude/guidance/shipped/moflo-core-guidance.md` — same
-- [ ] `.claude/guidance/internal/dogfooding.md` — references old paths
-- [ ] `.claude/guidance/internal/consumer-project-paths.md` — references old paths
+- [x] `docs/BUILD.md` — already uses correct paths (no changes needed)
+- [x] `.claude/guidance/moflo-core-guidance.md` — already uses correct paths
+- [x] `.claude/guidance/shipped/moflo-core-guidance.md` — already uses correct paths
+- [x] `.claude/guidance/internal/dogfooding.md` — already uses correct paths
+- [x] `.claude/guidance/internal/consumer-project-paths.md` — already uses correct paths
 
 ### Post-publish
 
