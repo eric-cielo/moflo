@@ -12,7 +12,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 describe('settings-generator statusLine config', () => {
-  const generatorPath = resolve(__dirname, '../src/@claude-flow/cli/src/init/settings-generator.ts');
+  const generatorPath = resolve(__dirname, '../src/packages/cli/src/init/settings-generator.ts');
 
   it('checks both components.statusline and statusline.enabled', () => {
     const content = readFileSync(generatorPath, 'utf-8');

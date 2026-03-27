@@ -37,7 +37,7 @@ This runs `tsc -b` which builds all packages via TypeScript project references.
 
 **Do NOT use:**
 - `npm run build:ts` — broken, tries to find tsc in `src/node_modules/` which doesn't exist
-- `cd src/@claude-flow/cli && npm run build` — same problem
+- `cd src/packages/cli && npm run build` — same problem
 - `npx tsc` from subdirectories — wrong resolution
 
 ### 3. Test
@@ -57,7 +57,7 @@ Current baseline: ~148 files passed, ~26 skipped, ~5500 tests.
 npm version patch --no-git-tag-version
 ```
 
-This bumps `package.json` AND syncs `src/@claude-flow/cli/package.json` via the `version` lifecycle script.
+This bumps `package.json` AND syncs `src/packages/cli/package.json` via the `version` lifecycle script.
 
 For minor/major: replace `patch` with `minor` or `major`.
 
@@ -73,7 +73,7 @@ The version change updates `package.json` files which may affect compiled output
 
 ```bash
 git checkout -b <branch-name>
-git add <changed files> package.json package-lock.json src/@claude-flow/cli/package.json
+git add <changed files> package.json package-lock.json src/packages/cli/package.json
 git commit -m "description"
 git push -u origin <branch-name>
 gh pr create --title "..." --body "..."
@@ -98,7 +98,7 @@ npm view moflo version          # Should match what you just published
 
 | Wrong | Why | Correct |
 |-------|-----|---------|
-| `cd src/@claude-flow/cli && npm run build` | tsc not in src/node_modules | `npm run build` from root |
+| `cd src/packages/cli && npm run build` | tsc not in src/node_modules | `npm run build` from root |
 | Publish without building | Ships stale .js artifacts — `prepublishOnly` now runs `npm run build` which will fail-fast on errors | Always `npm run build` then verify exit 0 |
 | Publish without testing | May ship broken code | Always `npm test` with 0 failures |
 | Publish without pulling | Version conflicts, rebase hell | Always `git pull origin main` first |
@@ -114,7 +114,7 @@ When you add a new `.mjs` script to `bin/`, you **must** also add it to the `scr
 1. Add the script to `bin/`
 2. Add its filename to `scriptFiles` in `bin/session-start-launcher.mjs`
 3. Mirror the same change in `.claude/scripts/session-start-launcher.mjs` (the dev copy)
-4. Update the test list in `src/@claude-flow/cli/__tests__/services/auto-update.test.ts`
+4. Update the test list in `src/packages/cli/__tests__/services/auto-update.test.ts`
 
 ## Build Architecture
 
@@ -150,8 +150,8 @@ The `files` array in root `package.json` controls what ships to npm. This is car
 | Pattern | Purpose |
 |---------|---------|
 | `bin/**` | CLI entry points (`flo`, `flo-search`, etc.) |
-| `src/@claude-flow/*/dist/**/*.js` | Compiled runtime code |
-| `src/@claude-flow/*/package.json` | Workspace resolution for internal imports |
+| `src/packages/*/dist/**/*.js` | Compiled runtime code |
+| `src/packages/*/package.json` | Workspace resolution for internal imports |
 | `.claude/commands/**/*.md` | Slash commands — copied to user projects by `flo init` |
 | `.claude/agents/**/*.md` | Agent definitions — copied to user projects by `flo init` |
 | `.claude/helpers/**` | Hook scripts (statusline, gate, auto-memory) — copied by `flo init` |

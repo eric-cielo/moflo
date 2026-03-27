@@ -79,7 +79,7 @@ On version change, `session-start-launcher.mjs` copies helper scripts from the i
 |--------|--------|-------|
 | `bin/` | `.claude/scripts/` | `hooks.mjs`, `session-start-launcher.mjs`, `index-guidance.mjs`, `build-embeddings.mjs`, `generate-code-map.mjs`, `semantic-search.mjs` |
 | `bin/` | `.claude/helpers/` | `gate.cjs`, `gate-hook.mjs`, `prompt-hook.mjs`, `hook-handler.cjs` |
-| `src/@claude-flow/cli/.claude/helpers/` | `.claude/helpers/` | `auto-memory-hook.mjs`, `statusline.cjs`, `pre-commit`, `post-commit` |
+| `src/packages/cli/.claude/helpers/` | `.claude/helpers/` | `auto-memory-hook.mjs`, `statusline.cjs`, `pre-commit`, `post-commit` |
 
 When adding a new helper script: generate it once, save it to `bin/`, and add it to the appropriate list in `session-start-launcher.mjs`.
 
@@ -121,7 +121,7 @@ MCP tools are the preferred way for Claude to interact with moflo. `flo init` cr
   "mcpServers": {
     "moflo": {
       "command": "node",
-      "args": ["node_modules/moflo/src/@claude-flow/cli/bin/cli.js", "mcp", "start"]
+      "args": ["node_modules/moflo/src/packages/cli/bin/cli.js", "mcp", "start"]
     }
   }
 }
@@ -478,7 +478,7 @@ Configure `.mcp.json` in the project root:
   "mcpServers": {
     "moflo": {
       "command": "node",
-      "args": ["node_modules/moflo/src/@claude-flow/cli/bin/cli.js", "mcp", "start"]
+      "args": ["node_modules/moflo/src/packages/cli/bin/cli.js", "mcp", "start"]
     }
   }
 }

@@ -23,7 +23,7 @@ import {
   WorkerInstance,
   TriggerDetectionResult,
   getWorkerDispatchService,
-} from '../../@claude-flow/swarm/src/workers/worker-dispatch.js';
+} from '../../packages/swarm/src/workers/worker-dispatch.js';
 
 // ============================================================================
 // Input Schemas

@@ -15,7 +15,7 @@
  * Implements ADR-001: agentic-flow@alpha compatibility
  */
 import { z } from 'zod';
-import { getWorkerDispatchService, } from '../../@claude-flow/swarm/src/workers/worker-dispatch.js';
+import { getWorkerDispatchService, } from '../../packages/swarm/src/workers/worker-dispatch.js';
 // ============================================================================
 // Input Schemas
 // ============================================================================

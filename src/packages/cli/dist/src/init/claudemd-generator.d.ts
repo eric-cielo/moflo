@@ -3,7 +3,7 @@
  *
  * Generates ONLY the MoFlo section to inject into a project's CLAUDE.md.
  * This must be minimal — just enough for Claude to work with moflo.
- * All detailed docs live in .claude/guidance/shipped/moflo.md (copied at install).
+ * All detailed docs live in .claude/guidance/shipped/moflo-core-guidance.md (copied at install).
  *
  * Principle: we are guests in the user's CLAUDE.md. Keep it small.
  */

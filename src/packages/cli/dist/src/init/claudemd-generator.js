@@ -3,7 +3,7 @@
  *
  * Generates ONLY the MoFlo section to inject into a project's CLAUDE.md.
  * This must be minimal — just enough for Claude to work with moflo.
- * All detailed docs live in .claude/guidance/shipped/moflo.md (copied at install).
+ * All detailed docs live in .claude/guidance/shipped/moflo-core-guidance.md (copied at install).
  *
  * Principle: we are guests in the user's CLAUDE.md. Keep it small.
  */
@@ -11,7 +11,7 @@ const MARKER_START = '<!-- MOFLO:INJECTED:START -->';
 const MARKER_END = '<!-- MOFLO:INJECTED:END -->';
 /**
  * The single moflo section injected into CLAUDE.md.
- * ~40 lines. Points to moflo.md for everything else.
+ * ~40 lines. Points to moflo-core-guidance.md for everything else.
  */
 function mofloSection() {
     return `${MARKER_START}
@@ -58,7 +58,7 @@ npx flo doctor --fix                             # Health check
 
 - **Subagents protocol:** \`.claude/guidance/shipped/moflo-subagents.md\`
 - **Task + swarm coordination:** \`.claude/guidance/shipped/moflo-claude-swarm-cohesion.md\`
-- **CLI, hooks, swarm, memory, moflo.yaml:** \`.claude/guidance/shipped/moflo.md\`
+- **CLI, hooks, swarm, memory, moflo.yaml:** \`.claude/guidance/shipped/moflo-core-guidance.md\`
 ${MARKER_END}`;
 }
 // --- Public API ---
@@ -80,11 +80,11 @@ export function generateMinimalClaudeMd(options) {
 /** Available template names for CLI wizard (kept for backward compat, all produce same output) */
 export const CLAUDE_MD_TEMPLATES = [
     { name: 'minimal', description: 'Recommended — memory search, workflow gates, MCP tools (~40 lines injected)' },
-    { name: 'standard', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
-    { name: 'full', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
-    { name: 'security', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
-    { name: 'performance', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
-    { name: 'solo', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo.md)' },
+    { name: 'standard', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },
+    { name: 'full', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },
+    { name: 'security', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },
+    { name: 'performance', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },
+    { name: 'solo', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },
 ];
 export default generateClaudeMd;
 //# sourceMappingURL=claudemd-generator.js.map

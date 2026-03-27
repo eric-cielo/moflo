@@ -20,10 +20,10 @@ const versionTs = `/**
  */
 export const VERSION = '${version}';
 `;
-writeFileSync(join(root, 'src/@claude-flow/cli/src/version.ts'), versionTs);
+writeFileSync(join(root, 'src/packages/cli/src/version.ts'), versionTs);
 
 // 2. Update CLI sub-package.json (for consistency)
-const cliPkgPath = join(root, 'src/@claude-flow/cli/package.json');
+const cliPkgPath = join(root, 'src/packages/cli/package.json');
 const cliPkg = JSON.parse(readFileSync(cliPkgPath, 'utf-8'));
 if (cliPkg.version !== version) {
   cliPkg.version = version;

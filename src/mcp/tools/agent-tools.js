@@ -11,7 +11,7 @@
  */
 import { z } from 'zod';
 import { randomBytes } from 'crypto';
-import { sanitizeErrorForLogging } from '../../@claude-flow/shared/src/utils/secure-logger.js';
+import { sanitizeErrorForLogging } from '../../packages/shared/src/utils/secure-logger.js';
 // Secure ID generation helper
 function generateSecureAgentId() {
     const timestamp = Date.now().toString(36);

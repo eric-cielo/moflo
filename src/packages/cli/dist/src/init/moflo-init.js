@@ -658,7 +658,7 @@ function generateClaudeMd(root, force) {
         }
     }
     // Minimal injection — just enough for Claude to work with moflo.
-    // All detailed docs live in .claude/guidance/shipped/moflo.md.
+    // All detailed docs live in .claude/guidance/shipped/moflo-core-guidance.md.
     const mofloSection = `
 ${MOFLO_MARKER}
 ## MoFlo — AI Agent Orchestration
@@ -702,7 +702,7 @@ npx flo doctor --fix                             # Health check
 ### Full Reference
 
 For CLI commands, hooks, agents, swarm config, memory commands, and moflo.yaml options, see:
-\`.claude/guidance/shipped/moflo.md\`
+\`.claude/guidance/shipped/moflo-core-guidance.md\`
 ${MOFLO_MARKER_END}
 `;
     const finalContent = existing.trimEnd() + '\n' + mofloSection;
