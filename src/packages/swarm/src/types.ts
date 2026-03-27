@@ -236,7 +236,10 @@ export interface ConsensusResult {
 
 // ===== MESSAGE BUS TYPES =====
 
-export type MessageType =
+/**
+ * Transport message types (from swarm MessageBus)
+ */
+export type TransportMessageType =
   | 'task_assign'
   | 'task_complete'
   | 'task_fail'
@@ -251,6 +254,59 @@ export type MessageType =
   | 'broadcast'
   | 'direct';
 
+/**
+ * Semantic message types (from SwarmCommunication hooks)
+ */
+export type SemanticMessageType =
+  | 'context'
+  | 'pattern'
+  | 'handoff'
+  | 'consensus'
+  | 'result'
+  | 'query';
+
+/**
+ * Unified message type — union of transport and semantic types
+ */
+export type MessageType = TransportMessageType | SemanticMessageType;
+
+/**
+ * Unified message priority — 5 levels covering both systems
+ */
+export type MessagePriority = 'critical' | 'urgent' | 'high' | 'normal' | 'low';
+
+/**
+ * Unified Message type — consolidates swarm Message and hooks SwarmMessage.
+ *
+ * Design decisions:
+ * - `timestamp` is epoch ms (number) — aligns with Memory DB and SwarmCommunication
+ * - `to: '*'` for broadcast — normalized from 'broadcast' literal
+ * - `payload` is the canonical data carrier; `content` is sugar for string payloads
+ * - `requiresAck` defaults false (opt-in)
+ * - `namespace` enables channel isolation for hive-mind and domain-scoped messaging
+ */
+export interface UnifiedMessage {
+  id: string;
+  type: MessageType;
+  from: string;
+  to: string | '*';
+  payload: unknown;
+  /** String content — sugar for string payloads. If both set, payload wins. */
+  content?: string;
+  metadata?: Record<string, unknown>;
+  /** Epoch ms */
+  timestamp: number;
+  priority: MessagePriority;
+  requiresAck: boolean;
+  ttlMs: number;
+  correlationId?: string;
+  /** Channel namespace for isolation (e.g. 'hive-mind', 'swarm', 'domain:security') */
+  namespace?: string;
+}
+
+/**
+ * @deprecated Use UnifiedMessage. Kept as alias for backwards compatibility.
+ */
 export interface Message {
   id: string;
   type: MessageType;
@@ -272,6 +328,22 @@ export interface MessageAck {
   error?: string;
 }
 
+/**
+ * Filter for pull-mode message retrieval
+ */
+export interface MessageFilter {
+  /** Filter by sender */
+  from?: string;
+  /** Filter by message type */
+  type?: MessageType;
+  /** Filter by namespace */
+  namespace?: string;
+  /** Only messages after this epoch ms */
+  since?: number;
+  /** Maximum messages to return */
+  limit?: number;
+}
+
 export interface MessageBusConfig {
   maxQueueSize: number;
   processingIntervalMs: number;
@@ -279,6 +351,8 @@ export interface MessageBusConfig {
   retryAttempts: number;
   enablePersistence: boolean;
   compressionEnabled: boolean;
+  /** TTL reaper sweep interval in ms (default: 60000) */
+  reaperIntervalMs: number;
 }
 
 export interface MessageBusStats {
@@ -288,6 +362,10 @@ export interface MessageBusStats {
   queueDepth: number;
   ackRate: number;
   errorRate: number;
+  /** Number of messages reaped by TTL reaper */
+  totalReaped: number;
+  /** Number of active namespaces */
+  activeNamespaces: number;
 }
 
 // ===== COORDINATOR TYPES =====
@@ -470,6 +548,13 @@ export function isMessage(obj: unknown): obj is Message {
   );
 }
 
+export function isUnifiedMessage(obj: unknown): obj is UnifiedMessage {
+  return (
+    isMessage(obj) &&
+    typeof (obj as unknown as Record<string, unknown>).timestamp === 'number'
+  );
+}
+
 // ===== INTERFACES FOR COMPONENTS =====
 
 export interface ITopologyManager {
@@ -495,12 +580,19 @@ export interface IConsensusEngine {
 }
 
 export interface IMessageBus {
-  initialize(config: MessageBusConfig): Promise<void>;
+  initialize(config?: MessageBusConfig): Promise<void>;
+  shutdown(): Promise<void>;
   send(message: Omit<Message, 'id' | 'timestamp'>): Promise<string>;
   broadcast(message: Omit<Message, 'id' | 'timestamp' | 'to'>): Promise<string>;
-  subscribe(agentId: string, callback: (message: Message) => void): void;
+  /** Send a UnifiedMessage (preferred over legacy send) */
+  sendUnified(message: Omit<UnifiedMessage, 'id' | 'timestamp'>): Promise<string>;
+  /** Broadcast a UnifiedMessage (preferred over legacy broadcast) */
+  broadcastUnified(message: Omit<UnifiedMessage, 'id' | 'timestamp' | 'to'>): Promise<string>;
+  subscribe(agentId: string, callback: (message: Message) => void, options?: { filter?: MessageType[]; namespace?: string }): void;
   unsubscribe(agentId: string): void;
   acknowledge(ack: MessageAck): Promise<void>;
+  /** Pull-mode: retrieve messages for an agent with optional filtering */
+  getMessages(agentId: string, filter?: MessageFilter): Message[];
   getStats(): MessageBusStats;
   getQueueDepth(): number;
 }

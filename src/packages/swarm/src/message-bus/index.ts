@@ -1,0 +1,19 @@
+/**
+ * Message Bus Module
+ *
+ * Decomposed into:
+ * - deque.ts: High-performance circular buffer deque
+ * - priority-queue.ts: 5-level priority message queue
+ * - message-bus.ts: Unified message broker (push + pull delivery)
+ */
+
+export { Deque } from './deque.js';
+export { PriorityMessageQueue, type MessageQueueEntry } from './priority-queue.js';
+export { MessageBus } from './message-bus.js';
+
+import type { MessageBusConfig } from '../types.js';
+import { MessageBus } from './message-bus.js';
+
+export function createMessageBus(config?: Partial<MessageBusConfig>): MessageBus {
+  return new MessageBus(config);
+}

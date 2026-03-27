@@ -576,6 +576,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
         retryAttempts: config.messageBus?.retryAttempts ?? SWARM_CONSTANTS.MAX_RETRIES,
         enablePersistence: config.messageBus?.enablePersistence ?? false,
         compressionEnabled: config.messageBus?.compressionEnabled ?? false,
+        reaperIntervalMs: config.messageBus?.reaperIntervalMs ?? 60000,
       },
       maxAgents: config.maxAgents ?? SWARM_CONSTANTS.DEFAULT_MAX_AGENTS,
       maxTasks: config.maxTasks ?? SWARM_CONSTANTS.DEFAULT_MAX_TASKS,
