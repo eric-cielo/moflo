@@ -41,7 +41,14 @@ var command = process.argv[2];
 
 var EXEMPT = ['.claude/', '.claude\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state', 'node_modules'];
 var DANGEROUS = ['rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
+// Short replies starting with directive words ("ok", "yes", etc.) bypass the
+// memory gate — but only if the prompt is under 20 chars. Longer prompts that
+// start with a directive but contain a real question/task still get gated.
 var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\b/i;
+var DIRECTIVE_MAX_LEN = 20;
+// @@ prefix = explicit escape hatch. User signals "this is conversational,
+// skip the memory gate." Strips the prefix before Claude sees the prompt.
+var ESCAPE_PREFIX = '@@';
 var TASK_RE = /\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\b/i;
 
 switch (command) {
@@ -65,17 +72,22 @@ switch (command) {
     if (s.memorySearched || !s.memoryRequired) break;
     var target = (process.env.TOOL_INPUT_pattern || '') + ' ' + (process.env.TOOL_INPUT_path || '');
     if (EXEMPT.some(function(p) { return target.indexOf(p) >= 0; })) break;
-    process.stderr.write('BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search.\n');
+    process.stderr.write('BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search with namespace "code-map", "patterns", "knowledge", or "guidance".\n');
     process.exit(2);
+    break; // unreachable but prevents fall-through lint warnings
   }
   case 'check-before-read': {
     if (!config.memory_first) break;
     var s = readState();
     if (s.memorySearched || !s.memoryRequired) break;
     var fp = process.env.TOOL_INPUT_file_path || '';
-    if (fp.indexOf('.claude/guidance/') < 0 && fp.indexOf('.claude\\guidance\\') < 0) break;
-    process.stderr.write('BLOCKED: Search memory before reading guidance files. Use mcp__moflo__memory_search.\n');
+    // Exempt: node_modules, CLAUDE.md, MEMORY.md, workflow-state
+    // NOT exempt: .claude/guidance/ (guidance files must require memory search)
+    var isGuidance = fp.indexOf('.claude/guidance/') >= 0 || fp.indexOf('.claude\\guidance\\') >= 0;
+    if (!isGuidance && EXEMPT.some(function(p) { return fp.indexOf(p) >= 0; })) break;
+    process.stderr.write('BLOCKED: Search memory before reading files. Use mcp__moflo__memory_search with namespace "code-map", "patterns", "knowledge", or "guidance".\n');
     process.exit(2);
+    break; // unreachable but prevents fall-through lint warnings
   }
   case 'record-task-created': {
     var s = readState();
@@ -113,7 +125,10 @@ switch (command) {
     var s = readState();
     s.memorySearched = false;
     var prompt = process.env.CLAUDE_USER_PROMPT || '';
-    s.memoryRequired = prompt.length >= 4 && !DIRECTIVE_RE.test(prompt) && (TASK_RE.test(prompt) || prompt.length > 80);
+    var isEscaped = prompt.indexOf(ESCAPE_PREFIX) === 0;
+    if (isEscaped) prompt = prompt.slice(ESCAPE_PREFIX.length).trimStart();
+    var isShortDirective = DIRECTIVE_RE.test(prompt) && prompt.length < DIRECTIVE_MAX_LEN;
+    s.memoryRequired = !isEscaped && prompt.length >= 4 && !isShortDirective && (TASK_RE.test(prompt) || prompt.length > DIRECTIVE_MAX_LEN);
     s.interactionCount = (s.interactionCount || 0) + 1;
     writeState(s);
     if (!s.tasksCreated) console.log('REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.');
