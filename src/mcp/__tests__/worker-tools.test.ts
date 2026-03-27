@@ -46,7 +46,7 @@ const mockDispatcher = {
   getContextForInjection: vi.fn().mockReturnValue(''),
 };
 
-vi.mock('../../@claude-flow/swarm/src/workers/worker-dispatch.js', () => ({
+vi.mock('../../packages/swarm/src/workers/worker-dispatch.js', () => ({
   WorkerDispatchService: vi.fn(() => mockDispatcher),
   getWorkerDispatchService: vi.fn(() => mockDispatcher),
 }));

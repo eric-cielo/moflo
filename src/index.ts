@@ -44,43 +44,43 @@
  * Security module - CVE fixes, input validation, credential management
  * @see {@link @claude-flow/security}
  */
-export * as security from './@claude-flow/security/src/index.js';
+export * as security from './packages/security/src/index.js';
 
 /**
  * Memory module - AgentDB, HNSW indexing, vector search
  * @see {@link @claude-flow/memory}
  */
-export * as memory from './@claude-flow/memory/src/index.js';
+export * as memory from './packages/memory/src/index.js';
 
 /**
  * Swarm module - 15-agent coordination, hierarchical mesh, consensus
  * @see {@link @claude-flow/swarm}
  */
-export * as swarm from './@claude-flow/swarm/src/index.js';
+export * as swarm from './packages/swarm/src/index.js';
 
 /**
  * Shared module - common types, events, utilities, core interfaces
  * @see {@link @claude-flow/shared}
  */
-export * as shared from './@claude-flow/shared/src/index.js';
+export * as shared from './packages/shared/src/index.js';
 
 /**
  * CLI module - Command parsing, prompts, output formatting
  * @see {@link @claude-flow/cli}
  */
-export * as cli from './@claude-flow/cli/src/index.js';
+export * as cli from './packages/cli/src/index.js';
 
 /**
  * Neural module - SONA learning, neural modes
  * @see {@link @claude-flow/neural}
  */
-export * as neural from './@claude-flow/neural/src/index.js';
+export * as neural from './packages/neural/src/index.js';
 
 /**
  * Testing module - TDD London School framework, test utilities
  * @see {@link @claude-flow/testing}
  */
-export * as testing from './@claude-flow/testing/src/index.js';
+export * as testing from './packages/testing/src/index.js';
 
 // =============================================================================
 // Module List for Dynamic Loading

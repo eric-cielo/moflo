@@ -29,8 +29,8 @@ Both directories are indexed locally during moflo development because the indexe
 
 ## Publishing Checklist
 
-1. Bump version in both `package.json` (root) and `src/@claude-flow/cli/package.json`
-2. Build: `cd src/@claude-flow/cli && npm run build && cd -`
+1. Bump version in both `package.json` (root) and `src/packages/cli/package.json`
+2. Build: `cd src/packages/cli && npm run build && cd -`
 3. Verify shipped guidance will be included: `npm pack --dry-run | grep guidance`
 4. Publish: `npm publish`
 5. Verify: `npm view moflo dist-tags --json`

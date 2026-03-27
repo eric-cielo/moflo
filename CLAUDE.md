@@ -39,14 +39,14 @@
 
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@moflo/cli` | `src/@claude-flow/cli/` | CLI entry point (40+ commands) |
-| `@claude-flow/guidance` | `src/@claude-flow/guidance/` | Governance control plane |
-| `@claude-flow/hooks` | `src/@claude-flow/hooks/` | Hooks + workers |
-| `@claude-flow/memory` | `src/@claude-flow/memory/` | AgentDB + HNSW search |
-| `@claude-flow/security` | `src/@claude-flow/security/` | Input validation, CVE remediation |
-| `@claude-flow/embeddings` | `src/@claude-flow/embeddings/` | Vector embeddings (sql.js, HNSW) |
-| `@claude-flow/neural` | `src/@claude-flow/neural/` | Neural patterns (SONA) |
-| `@claude-flow/plugins` | `src/@claude-flow/plugins/` | Plugin system + RuVector integration |
+| `@moflo/cli` | `src/packages/cli/` | CLI entry point (40+ commands) |
+| `@claude-flow/guidance` | `src/packages/guidance/` | Governance control plane |
+| `@claude-flow/hooks` | `src/packages/hooks/` | Hooks + workers |
+| `@claude-flow/memory` | `src/packages/memory/` | AgentDB + HNSW search |
+| `@claude-flow/security` | `src/packages/security/` | Input validation, CVE remediation |
+| `@claude-flow/embeddings` | `src/packages/embeddings/` | Vector embeddings (sql.js, HNSW) |
+| `@claude-flow/neural` | `src/packages/neural/` | Neural patterns (SONA) |
+| `@claude-flow/plugins` | `src/packages/plugins/` | Plugin system + RuVector integration |
 
 ## Publishing to npm
 

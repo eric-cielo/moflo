@@ -16,7 +16,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock the neural module before importing hooks-tools
-vi.mock('../../@claude-flow/neural/src/index.js', () => {
+vi.mock('../../packages/neural/src/index.js', () => {
   const mockReasoningBank = {
     initialize: vi.fn().mockResolvedValue(undefined),
     retrieve: vi.fn().mockResolvedValue([]),

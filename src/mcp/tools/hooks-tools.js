@@ -16,7 +16,7 @@
  * Integrates with ReasoningBank for self-learning capabilities
  */
 import { z } from 'zod';
-import { createReasoningBank, } from '../../@claude-flow/neural/src/index.js';
+import { createReasoningBank, } from '../../packages/neural/src/index.js';
 // ============================================================================
 // Singleton ReasoningBank Instance
 // ============================================================================

@@ -24,16 +24,16 @@ code_map:
 tests:
   directories:
     - tests
-    - src/@claude-flow/aidefence/__tests__
-    - src/@claude-flow/cli/__tests__
-    - src/@claude-flow/embeddings/__tests__
-    - src/@claude-flow/hooks/__tests__
-    - src/@claude-flow/neural/__tests__
-    - src/@claude-flow/plugins/__tests__
-    - src/@claude-flow/security/__tests__
-    - src/@claude-flow/shared/__tests__
-    - src/@claude-flow/swarm/__tests__
-    - src/@claude-flow/testing/__tests__
+    - src/packages/aidefence/__tests__
+    - src/packages/cli/__tests__
+    - src/packages/embeddings/__tests__
+    - src/packages/hooks/__tests__
+    - src/packages/neural/__tests__
+    - src/packages/plugins/__tests__
+    - src/packages/security/__tests__
+    - src/packages/shared/__tests__
+    - src/packages/swarm/__tests__
+    - src/packages/testing/__tests__
     - src/mcp/__tests__
     - src/__tests__
   patterns: ["*.test.*", "*.spec.*", "*.test-*"]

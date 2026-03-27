@@ -17,12 +17,12 @@ import {
   RvfaSigner,
   RvfaVerifier,
   type RvfaKeyPair,
-} from '../../@claude-flow/cli/src/appliance/rvfa-signing.js';
+} from '../../packages/cli/src/appliance/rvfa-signing.js';
 import {
   RvfaWriter,
   RvfaReader,
   createDefaultHeader,
-} from '../../@claude-flow/cli/src/appliance/rvfa-format.js';
+} from '../../packages/cli/src/appliance/rvfa-format.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
