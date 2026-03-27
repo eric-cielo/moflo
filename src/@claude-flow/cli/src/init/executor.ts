@@ -82,12 +82,8 @@ const SKILLS_MAP: Record<string, string[]> = {
  */
 const COMMANDS_MAP: Record<string, string[]> = {
   core: ['claude-flow-help.md', 'claude-flow-swarm.md', 'claude-flow-memory.md'],
-  analysis: ['analysis'],
-  automation: ['automation'],
   github: ['github'],
   hooks: ['hooks'],
-  monitoring: ['monitoring'],
-  optimization: ['optimization'],
   sparc: ['sparc'],
 };
 
