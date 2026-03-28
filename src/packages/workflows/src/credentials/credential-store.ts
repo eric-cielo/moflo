@@ -115,6 +115,9 @@ export class CredentialStore implements CredentialAccessor {
    * Derives the encryption key and loads existing data.
    */
   unlock(passphrase: string): void {
+    if (passphrase.length < 8) {
+      throw new CredentialStoreError('Passphrase must be at least 8 characters', 'WEAK_PASSPHRASE');
+    }
     this.data = this.readFile();
     const salt = Buffer.from(this.data.salt, 'hex');
     this.derivedKey = deriveKey(passphrase, salt);
@@ -252,7 +255,7 @@ export class CredentialStore implements CredentialAccessor {
 
   private writeFile(data: StoreData): void {
     mkdirSync(dirname(this.filePath), { recursive: true });
-    writeFileSync(this.filePath, JSON.stringify(data, null, 2), 'utf-8');
+    writeFileSync(this.filePath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 });
   }
 }
 
@@ -260,7 +263,7 @@ export class CredentialStore implements CredentialAccessor {
 // Error
 // ============================================================================
 
-export type CredentialStoreErrorCode = 'DECRYPTION_FAILED' | 'STORE_LOCKED' | 'READ_FAILED';
+export type CredentialStoreErrorCode = 'DECRYPTION_FAILED' | 'STORE_LOCKED' | 'READ_FAILED' | 'WEAK_PASSPHRASE';
 
 export class CredentialStoreError extends Error {
   constructor(

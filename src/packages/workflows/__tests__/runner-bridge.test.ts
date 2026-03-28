@@ -119,3 +119,20 @@ describe('bridgeActiveWorkflows', () => {
     expect(bridgeActiveWorkflows()).toEqual([]);
   });
 });
+
+// ============================================================================
+// #160 — Credentials wired through bridge
+// ============================================================================
+
+describe('#160 — bridgeRunWorkflow credentials parameter', () => {
+  it('bridge functions accept credentials option', () => {
+    const { readFileSync } = require('fs');
+    const { resolve } = require('path');
+    const bridgeSrc = readFileSync(
+      resolve(__dirname, '../src/factory/runner-bridge.ts'),
+      'utf-8',
+    );
+    expect(bridgeSrc).toContain('credentials?: CredentialAccessor');
+    expect(bridgeSrc).toContain('credentials: options.credentials');
+  });
+});

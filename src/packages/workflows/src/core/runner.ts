@@ -7,6 +7,7 @@
 import type {
   WorkflowContext,
   StepOutput,
+  StepCommand,
   CredentialAccessor,
   MemoryAccessor,
   ValidationError,
@@ -42,6 +43,8 @@ interface ExecutionState {
   readonly workflowId: string;
   readonly options: RunnerOptions;
   readonly credentialPatterns: RegExp[];
+  /** All resolved credentials (for per-step scoping, NOT shared in variables) */
+  readonly resolvedCredentials: Record<string, unknown>;
 }
 
 export class WorkflowRunner {
@@ -168,6 +171,21 @@ export class WorkflowRunner {
           validationResult = { valid: vr.valid, errors: [...vr.errors] };
         }
 
+        // Check capability declarations in dry-run (#161)
+        const capCheck = checkCapabilities(step, command);
+        if (!capCheck.allowed) {
+          validationResult = {
+            valid: false,
+            errors: [
+              ...validationResult.errors,
+              ...capCheck.violations.map(v => ({
+                path: `steps[${i}].capabilities.${v.capability}`,
+                message: v.reason,
+              })),
+            ],
+          };
+        }
+
         if (step.output) {
           variables[step.output] = { _dryRun: true };
         }
@@ -219,26 +237,30 @@ export class WorkflowRunner {
     const completedSteps: Array<{ step: StepDefinition; config: Record<string, unknown> }> = [];
     let cancelled = false;
 
-    // Pre-compile credential patterns once for the entire run
-    const credentialPatterns = (options.credentialValues ?? []).map(
-      v => new RegExp(escapeRegExp(v), 'g'),
-    );
+    // Pre-compile credential patterns once for the entire run.
+    // Skip values shorter than 4 chars to avoid false-positive redaction (#164)
+    const MIN_REDACT_LENGTH = 4;
+    const credentialPatterns = (options.credentialValues ?? [])
+      .filter(v => v.length >= MIN_REDACT_LENGTH)
+      .map(v => new RegExp(escapeRegExp(v), 'g'));
 
-    // Pre-resolve {credentials.NAME} references so synchronous interpolation works
+    // Pre-resolve {credentials.NAME} references for redaction patterns,
+    // but do NOT inject into shared variables — scoped per-step instead (#159)
     const credentialNames = this.collectCredentialNames(definition.steps);
+    const resolvedCredentials: Record<string, unknown> = {};
     if (credentialNames.size > 0) {
-      const resolved: Record<string, unknown> = {};
       await Promise.all([...credentialNames].map(async (name) => {
         const value = await this.credentials.get(name);
         if (value !== undefined) {
-          resolved[name] = value;
-          credentialPatterns.push(new RegExp(escapeRegExp(value), 'g'));
+          resolvedCredentials[name] = value;
+          if (value.length >= MIN_REDACT_LENGTH) {
+            credentialPatterns.push(new RegExp(escapeRegExp(value), 'g'));
+          }
         }
       }));
-      variables.credentials = resolved;
     }
 
-    const state: ExecutionState = { variables, resolvedArgs, workflowId, options, credentialPatterns };
+    const state: ExecutionState = { variables, resolvedArgs, workflowId, options, credentialPatterns, resolvedCredentials };
 
     await this.storeProgress(workflowId, 'running', 0, definition.steps.length);
 
@@ -388,8 +410,33 @@ export class WorkflowRunner {
       };
     }
 
+    // Block credential interpolation for steps without the 'credentials' capability
+    if (this.stepReferencesCredentials(step) && !this.stepHasCredentialCapability(step, command)) {
+      return {
+        stepId: step.id,
+        stepType: step.type,
+        status: 'failed',
+        error: 'Step references {credentials.*} but does not declare the "credentials" capability',
+        errorCode: 'CAPABILITY_DENIED',
+        duration: Date.now() - stepStart,
+      };
+    }
+
+    // Scope credentials per-step: only inject credentials this step actually references (#159)
+    const stepCredNames = this.collectCredentialNames([step]);
+    const stepVariables = { ...state.variables };
+    if (stepCredNames.size > 0 && this.stepHasCredentialCapability(step, command)) {
+      const scopedCreds: Record<string, unknown> = {};
+      for (const name of stepCredNames) {
+        if (name in state.resolvedCredentials) {
+          scopedCreds[name] = state.resolvedCredentials[name];
+        }
+      }
+      stepVariables.credentials = scopedCreds;
+    }
+
     const context = this.buildContext(
-      state.variables, state.resolvedArgs, state.workflowId, index, state.options.signal,
+      stepVariables, state.resolvedArgs, state.workflowId, index, state.options.signal,
     );
 
     let interpolatedConfig: Record<string, unknown>;
@@ -434,12 +481,15 @@ export class WorkflowRunner {
       };
     }
 
+    // Inject effective capabilities into context for scope enforcement
+    const scopedContext = { ...context, effectiveCaps: capCheck.effectiveCaps };
+
     const timeout = state.options.defaultStepTimeout ?? DEFAULT_STEP_TIMEOUT;
     let output: StepOutput;
 
     try {
       output = await this.executeWithTimeout(
-        () => command.execute(interpolatedConfig, context),
+        () => command.execute(interpolatedConfig, scopedContext),
         timeout,
         state.options.signal,
       );
@@ -708,10 +758,18 @@ export class WorkflowRunner {
 
     if (masked === serialized) return output;
 
-    return {
-      ...output,
-      data: JSON.parse(masked) as Record<string, unknown>,
-    };
+    // Guard against JSON corruption from partial substring replacement (#164)
+    try {
+      return {
+        ...output,
+        data: JSON.parse(masked) as Record<string, unknown>,
+      };
+    } catch {
+      return {
+        ...output,
+        data: { _redacted: true, _note: 'Output contained credentials and was fully redacted' },
+      };
+    }
   }
 
   private async storeProgress(
@@ -759,6 +817,22 @@ export class WorkflowRunner {
 
     scanSteps(steps);
     return names;
+  }
+
+  /**
+   * Check if a step's raw config contains {credentials.*} references.
+   * Reuses collectCredentialNames to avoid double-traversal of config.
+   */
+  private stepReferencesCredentials(step: StepDefinition): boolean {
+    return this.collectCredentialNames([step]).size > 0;
+  }
+
+  /**
+   * Check if a step has the 'credentials' capability via the command's
+   * defaults. Step YAML can narrow but never grant new capabilities.
+   */
+  private stepHasCredentialCapability(_step: StepDefinition, command: StepCommand): boolean {
+    return command.capabilities?.some(c => c.type === 'credentials') ?? false;
   }
 
   private failureResult(workflowId: string, startTime: number, errors: WorkflowError[]): WorkflowResult {

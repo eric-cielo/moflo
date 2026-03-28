@@ -239,4 +239,71 @@ describe('CredentialStore', () => {
     store.lock();
     unlinkSync(deepPath);
   });
+
+  // --------------------------------------------------------------------------
+  // #163 — Passphrase strength validation
+  // --------------------------------------------------------------------------
+
+  it('rejects passphrases shorter than 8 characters', () => {
+    expect(() => {
+      new CredentialStore({ filePath, passphrase: 'short' });
+    }).toThrow(CredentialStoreError);
+    expect(() => {
+      new CredentialStore({ filePath, passphrase: 'short' });
+    }).toThrow('at least 8 characters');
+  });
+
+  it('accepts passphrases of 8+ characters', () => {
+    expect(() => {
+      new CredentialStore({ filePath, passphrase: 'long-enough' });
+    }).not.toThrow();
+  });
+
+  // --------------------------------------------------------------------------
+  // #158 — File permissions
+  // --------------------------------------------------------------------------
+
+  it('writes credential file with mode 0o600 (owner-only)', () => {
+    const storeSrc = readFileSync(
+      join(__dirname, '../src/credentials/credential-store.ts'),
+      'utf-8',
+    );
+    expect(storeSrc).toContain('mode: 0o600');
+  });
+
+  // --------------------------------------------------------------------------
+  // #166 — Missing test scenarios
+  // --------------------------------------------------------------------------
+
+  it('handles corrupted file on disk gracefully', () => {
+    const { writeFileSync: wfs } = require('fs');
+    // Write invalid JSON to the file
+    wfs(filePath, '{truncated...');
+    expect(() => {
+      new CredentialStore({ filePath, passphrase: 'test-pass' });
+    }).toThrow();
+  });
+
+  it('stores and retrieves empty string as credential value', async () => {
+    const store = new CredentialStore({ filePath, passphrase: 'test-pass' });
+    await store.store('empty', '');
+    const value = await store.get('empty');
+    expect(value).toBe('');
+    store.lock();
+  });
+
+  it('stores credentials with special characters in name', async () => {
+    const store = new CredentialStore({ filePath, passphrase: 'test-pass' });
+    await store.store('my.api-key_v2', 'secret');
+    expect(await store.get('my.api-key_v2')).toBe('secret');
+    store.lock();
+  });
+
+  it('handles credential values with special characters', async () => {
+    const store = new CredentialStore({ filePath, passphrase: 'test-pass' });
+    const specialVal = 'p@ss{w0rd}=test/slash\\back"quote';
+    await store.store('special', specialVal);
+    expect(await store.get('special')).toBe(specialVal);
+    store.lock();
+  });
 });

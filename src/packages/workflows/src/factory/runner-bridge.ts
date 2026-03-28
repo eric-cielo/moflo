@@ -10,7 +10,7 @@
  */
 
 import type { WorkflowResult } from '../types/runner.types.js';
-import type { MemoryAccessor } from '../types/step-command.types.js';
+import type { CredentialAccessor, MemoryAccessor } from '../types/step-command.types.js';
 import { createRunner, runWorkflowFromContent } from './runner-factory.js';
 
 // Track active workflows for cancellation
@@ -27,7 +27,7 @@ export async function bridgeRunWorkflow(
   content: string,
   sourceFile: string | undefined,
   args: Record<string, unknown>,
-  options: { dryRun?: boolean; memory?: MemoryAccessor } = {},
+  options: { dryRun?: boolean; memory?: MemoryAccessor; credentials?: CredentialAccessor } = {},
 ): Promise<WorkflowResult> {
   const workflowId = `wf-${Date.now()}`;
   const controller = new AbortController();
@@ -40,6 +40,7 @@ export async function bridgeRunWorkflow(
       dryRun: options.dryRun,
       signal: controller.signal,
       memory: options.memory,
+      credentials: options.credentials,
     });
     return result;
   } finally {
@@ -53,14 +54,14 @@ export async function bridgeRunWorkflow(
 export async function bridgeExecuteWorkflow(
   definition: import('../types/workflow-definition.types.js').WorkflowDefinition,
   args: Record<string, unknown>,
-  options: { workflowId?: string; memory?: MemoryAccessor } = {},
+  options: { workflowId?: string; memory?: MemoryAccessor; credentials?: CredentialAccessor } = {},
 ): Promise<WorkflowResult> {
   const workflowId = options.workflowId ?? `wf-${Date.now()}`;
   const controller = new AbortController();
   activeWorkflows.set(workflowId, controller);
 
   try {
-    const runner = createRunner({ memory: options.memory });
+    const runner = createRunner({ memory: options.memory, credentials: options.credentials });
     return await runner.run(definition, args, {
       workflowId,
       signal: controller.signal,

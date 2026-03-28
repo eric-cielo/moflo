@@ -95,6 +95,8 @@ export interface WorkflowContext {
   readonly workflowId: string;
   readonly stepIndex: number;
   readonly abortSignal?: AbortSignal;
+  /** Effective capabilities after merging command defaults with step restrictions. */
+  readonly effectiveCaps?: readonly StepCapability[];
 }
 
 // ============================================================================

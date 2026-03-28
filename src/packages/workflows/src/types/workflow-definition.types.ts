@@ -4,6 +4,8 @@
  * TypeScript types for YAML/JSON workflow definition files.
  */
 
+import type { CapabilityType } from './step-command.types.js';
+
 // ============================================================================
 // Argument Definitions
 // ============================================================================
@@ -31,7 +33,7 @@ export interface StepDefinition {
   /** Nested steps for condition/loop commands. */
   readonly steps?: readonly StepDefinition[];
   /** Capability restrictions for this step (narrows the command's defaults). */
-  readonly capabilities?: Record<string, readonly string[]>;
+  readonly capabilities?: Partial<Record<CapabilityType, readonly string[]>>;
 }
 
 // ============================================================================
