@@ -20,6 +20,7 @@ import type {
 import { validateStepCapabilities, isValidMofloLevel, compareMofloLevels } from '../core/capability-validator.js';
 import { MOFLO_LEVEL_ORDER } from '../types/step-command.types.js';
 import type { MofloLevel } from '../types/step-command.types.js';
+import { validateSchedule } from '../scheduler/cron-parser.js';
 
 const VALID_ARG_TYPES: readonly ArgumentType[] = ['string', 'number', 'boolean', 'string[]'];
 
@@ -47,6 +48,9 @@ export function validateWorkflowDefinition(
     });
   }
 
+  if (def.schedule) {
+    errors.push(...validateSchedule(def.schedule, 'schedule'));
+  }
   if (def.arguments) {
     validateArguments(def.arguments, errors);
   }
