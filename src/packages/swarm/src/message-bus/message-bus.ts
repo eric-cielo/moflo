@@ -24,6 +24,14 @@ interface Subscription {
   namespace?: string;
 }
 
+/**
+ * @deprecated Use MessageStore for persistent cross-process messaging.
+ * MessageBus remains available as an in-process optimization for high-throughput
+ * scenarios (1000+ msg/s) where persistence is not needed.
+ *
+ * Migration: Replace `createMessageBus()` with `new MessageStore(config)`.
+ * See Story #111 for MessageStore API.
+ */
 export class MessageBus extends EventEmitter implements IMessageBus {
   private config: MessageBusConfig;
   private queues: Map<string, PriorityMessageQueue> = new Map();
