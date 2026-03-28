@@ -39,6 +39,8 @@ export class MessageBus extends EventEmitter implements IMessageBus {
   private static readonly MAX_HISTORY_SIZE = 60;
   private namespaceMessages: Map<string, Set<string>> = new Map();
   private messageMetadata: Map<string, { namespace?: string; content?: string; metadata?: Record<string, unknown> }> = new Map();
+  /** Reference count for broadcast messages: how many queues still hold this message */
+  private messageRefCount: Map<string, number> = new Map();
 
   constructor(config: Partial<MessageBusConfig> = {}) {
     super();
@@ -96,6 +98,7 @@ export class MessageBus extends EventEmitter implements IMessageBus {
     this.messageHistory = [];
     this.namespaceMessages.clear();
     this.messageMetadata.clear();
+    this.messageRefCount.clear();
     this.emit('shutdown');
   }
 
@@ -127,10 +130,15 @@ export class MessageBus extends EventEmitter implements IMessageBus {
     const startTime = performance.now();
 
     if (message.to === 'broadcast') {
+      let recipientCount = 0;
       for (const [agentId] of this.subscriptions) {
         if (agentId !== message.from) {
           this.addToQueue(agentId, message);
+          recipientCount++;
         }
+      }
+      if (recipientCount > 1) {
+        this.messageRefCount.set(message.id, recipientCount);
       }
     } else {
       this.addToQueue(message.to, message);
@@ -379,7 +387,7 @@ export class MessageBus extends EventEmitter implements IMessageBus {
       setImmediate(() => {
         try {
           subscription.callback(message);
-          this.cleanupMessageMetadata(message.id);
+          this.decrementAndCleanup(message.id);
           this.emit('message.delivered', { messageId: message.id, to: subscription.agentId });
         } catch (error) {
           this.handleDeliveryError(message, entry, error as Error);
@@ -463,6 +471,7 @@ export class MessageBus extends EventEmitter implements IMessageBus {
 
         if (now - entry.message.timestamp.getTime() > entry.message.ttlMs) {
           reaped++;
+          this.messageRefCount.delete(entry.message.id);
           this.cleanupMessageMetadata(entry.message.id);
         } else {
           surviving.push(entry);
@@ -477,6 +486,24 @@ export class MessageBus extends EventEmitter implements IMessageBus {
     if (reaped > 0) {
       this.stats.totalReaped += reaped;
       this.emit('message.reaped', { count: reaped });
+    }
+  }
+
+  /**
+   * Decrement broadcast ref count; only clean metadata when all recipients have received.
+   * For non-broadcast (ref count absent), cleans immediately.
+   */
+  private decrementAndCleanup(messageId: string): void {
+    const refs = this.messageRefCount.get(messageId);
+    if (refs !== undefined) {
+      if (refs <= 1) {
+        this.messageRefCount.delete(messageId);
+        this.cleanupMessageMetadata(messageId);
+      } else {
+        this.messageRefCount.set(messageId, refs - 1);
+      }
+    } else {
+      this.cleanupMessageMetadata(messageId);
     }
   }
 

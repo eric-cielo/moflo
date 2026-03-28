@@ -1,14 +1,27 @@
-# Task Icon Convention
+# Task & Agent Icon Convention
 
-**Purpose:** Every `TaskCreate` call MUST use **ICON + [Role]** format in `subject` and `activeForm`. This displays agent identity in the spinner — a key UX signal for end users watching task progress.
+**Purpose:** Every user-visible spinner text MUST use **ICON + [Role]** format. This applies to `TaskCreate` fields AND `Agent` tool `description`. Icons are a core MoFlo UX feature — they let users instantly identify which specialist is working.
 
 ---
 
-## Format
+## Where Icons Are Required
+
+| Tool | Field(s) | Format |
+|------|----------|--------|
+| `TaskCreate` | `subject`, `activeForm` | `ICON [Role] Brief description` |
+| `Agent` | `description` | `ICON [Role] Brief description` |
+
+## TaskCreate Format
 
 ```
 subject:    "ICON [Role] Brief description"
 activeForm: "ICON Verb-ing description"
+```
+
+## Agent Tool Format
+
+```
+description: "ICON [Role] Brief description"
 ```
 
 ## Icon Map
@@ -30,9 +43,17 @@ activeForm: "ICON Verb-ing description"
 
 ## Examples
 
-**Wrong:** `subject: "Run infrastructure tests"` (no icon, no role)
+### TaskCreate
 
-**Right:** `subject: "🧪 [Tester] Run infrastructure tests"` (icon + role prefix)
+**Wrong:** `Run infrastructure tests` ← no icon, no role
+
+**Right:** `🧪 [Tester] Run infrastructure tests` ← icon + role prefix
+
+### Agent Tool
+
+**Wrong:** `description: "Find entity files"` (no icon, no role)
+
+**Right:** `description: "🔍 [Explorer] Find entity files"` (icon + role prefix)
 
 ## Why This Matters
 

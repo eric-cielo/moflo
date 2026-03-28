@@ -442,19 +442,25 @@ export class SwarmCommunication extends EventEmitter {
       agentState.patternsShared++;
     }
 
-    // Send as message via MessageBus
-    await this.sendMessage(targetAgents ? targetAgents.join(',') : '*',
-      JSON.stringify({
-        broadcastId: broadcast.id,
-        strategy: pattern.strategy,
-        domain: pattern.domain,
-        quality: pattern.quality,
-      }), {
-        type: 'pattern',
-        priority: 'normal',
-        metadata: { broadcastId: broadcast.id },
+    // Send as message via MessageBus — broadcast to all or send individually to targets
+    const content = JSON.stringify({
+      broadcastId: broadcast.id,
+      strategy: pattern.strategy,
+      domain: pattern.domain,
+      quality: pattern.quality,
+    });
+    const msgOpts = {
+      type: 'pattern' as const,
+      priority: 'normal' as const,
+      metadata: { broadcastId: broadcast.id },
+    };
+    if (targetAgents) {
+      for (const agentId of targetAgents) {
+        await this.sendMessage(agentId, content, msgOpts);
       }
-    );
+    } else {
+      await this.sendMessage('*', content, msgOpts);
+    }
 
     this.emit('pattern:broadcast', broadcast);
 
@@ -988,7 +994,9 @@ export function createSwarmCommunication(
 }
 
 /** @deprecated Use createSwarmCommunication() with an injected IMessageBus. */
-export const swarmComm = new SwarmCommunication(new MessageBus());
+const _lazyBus = new MessageBus();
+_lazyBus.initialize().catch(() => { /* best-effort init for deprecated singleton */ });
+export const swarmComm = new SwarmCommunication(_lazyBus);
 
 export {
   SwarmCommunication as default,
