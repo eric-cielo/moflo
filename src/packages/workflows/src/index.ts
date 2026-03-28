@@ -49,6 +49,7 @@ export { interpolateString, interpolateConfig } from './core/interpolation.js';
 export { WorkflowRunner } from './core/runner.js';
 export {
   checkCapabilities,
+  enforceScope,
   isValidCapabilityType,
   validateStepCapabilities,
   formatViolations,

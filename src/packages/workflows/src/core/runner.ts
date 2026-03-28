@@ -434,12 +434,15 @@ export class WorkflowRunner {
       };
     }
 
+    // Inject effective capabilities into context for scope enforcement
+    const scopedContext = { ...context, effectiveCaps: capCheck.effectiveCaps };
+
     const timeout = state.options.defaultStepTimeout ?? DEFAULT_STEP_TIMEOUT;
     let output: StepOutput;
 
     try {
       output = await this.executeWithTimeout(
-        () => command.execute(interpolatedConfig, context),
+        () => command.execute(interpolatedConfig, scopedContext),
         timeout,
         state.options.signal,
       );

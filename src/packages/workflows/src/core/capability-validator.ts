@@ -144,6 +144,58 @@ export function validateStepCapabilities(
 }
 
 /**
+ * Enforce scope restrictions at runtime.
+ *
+ * Call this from command.execute() to verify that a requested resource
+ * falls within the effective scope. Returns null if allowed, or a
+ * violation object if the resource is outside the permitted scope.
+ *
+ * If no scope is defined for the capability type, access is unrestricted.
+ */
+export function enforceScope(
+  effectiveCaps: readonly StepCapability[],
+  capabilityType: CapabilityType,
+  resource: string,
+  stepId: string,
+  stepType: string,
+): CapabilityViolation | null {
+  const cap = effectiveCaps.find(c => c.type === capabilityType);
+  if (!cap) {
+    return {
+      capability: capabilityType,
+      reason: `capability "${capabilityType}" not granted`,
+      stepId,
+      stepType,
+    };
+  }
+
+  // No scope defined = unrestricted access within this capability
+  if (!cap.scope || cap.scope.length === 0) {
+    return null;
+  }
+
+  // Check if the resource matches any of the allowed scope patterns
+  const normalizedResource = resource.replace(/\\/g, '/');
+  const allowed = cap.scope.some(pattern => {
+    const normalizedPattern = pattern.replace(/\\/g, '/');
+    // Exact match or prefix match (directory scope)
+    return normalizedResource === normalizedPattern
+      || normalizedResource.startsWith(normalizedPattern);
+  });
+
+  if (!allowed) {
+    return {
+      capability: capabilityType,
+      reason: `resource "${resource}" is outside allowed scope: [${cap.scope.join(', ')}]`,
+      stepId,
+      stepType,
+    };
+  }
+
+  return null;
+}
+
+/**
  * Format capability violations into a human-readable error message.
  */
 export function formatViolations(violations: readonly CapabilityViolation[]): string {
