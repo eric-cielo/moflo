@@ -207,7 +207,7 @@ export class WorkflowRunner {
     options: RunnerOptions,
     startTime: number,
   ): Promise<WorkflowResult> {
-    const variables: Record<string, unknown> = {};
+    const variables: Record<string, unknown> = { ...options.initialVariables };
     const stepResults: StepResult[] = [];
     const errors: WorkflowError[] = [];
     const completedSteps: Array<{ step: StepDefinition; config: Record<string, unknown> }> = [];

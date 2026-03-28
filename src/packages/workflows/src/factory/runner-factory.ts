@@ -100,7 +100,7 @@ const noopCredentials: CredentialAccessor = {
   async has() { return false; },
 };
 
-const noopMemory: MemoryAccessor = {
+export const noopMemory: MemoryAccessor = {
   async read() { return null; },
   async write() { /* noop */ },
   async search() { return []; },
