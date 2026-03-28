@@ -23,6 +23,15 @@ Research, create tickets for, and execute GitHub issues automatically.
 
 Also available as `/fl` (shorthand alias).
 
+### Workflow Engine Mode (-wf)
+
+```
+/flo -wf sa ./src            # Run security-audit workflow with target=./src
+/flo -wf security-audit ./src  # Same, using full name
+/flo -wf list                # List available workflows
+/flo -wf info sa             # Show workflow details, arguments, steps
+```
+
 ### Execution Mode (how work is done)
 
 ```
@@ -58,6 +67,10 @@ Also available as `/fl` (shorthand alias).
 ### Combined Examples
 
 ```
+/flo -wf sa ./src                     # Run security-audit workflow (abbreviation)
+/flo -wf security-audit ./src         # Run security-audit workflow (full name)
+/flo -wf list                         # List available workflows
+/flo -wf info sa                      # Show workflow details + arguments
 /flo 123                              # Normal + full workflow (default) - includes ALL tests
 /flo 42                               # If #42 is epic, processes stories sequentially
 /flo -s 123                           # Swarm + full workflow (multi-agent coordination)
@@ -454,16 +467,59 @@ function extractStories(epicBody) {
 
 ```javascript
 const args = "$ARGUMENTS".trim().split(/\s+/);
-let workflowMode = "full";    // full, ticket, research
+let workflowMode = "full";    // full, ticket, research, workflow
 let execMode = "normal";      // normal (default), swarm, hive
 let issueNumber = null;
 let titleWords = [];
 
+// Workflow engine (-wf) state
+let wfName = null;             // workflow name or abbreviation
+let wfSubcommand = null;       // "list" or "info"
+let wfArgs = [];               // positional args after workflow name
+let wfNamedArgs = {};          // --key=value or --key value args
+
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
 
+  // Workflow engine mode
+  if (arg === "-wf" || arg === "--workflow") {
+    workflowMode = "workflow";
+    // Next arg is the workflow name or subcommand
+    if (i + 1 < args.length) {
+      const next = args[++i];
+      if (next === "list") {
+        wfSubcommand = "list";
+      } else if (next === "info") {
+        wfSubcommand = "info";
+        // Next arg after "info" is the query
+        if (i + 1 < args.length) {
+          wfName = args[++i];
+        }
+      } else {
+        wfName = next;
+      }
+    }
+    // Collect remaining args as workflow arguments
+    for (let j = i + 1; j < args.length; j++) {
+      const wa = args[j];
+      if (wa.startsWith("--")) {
+        const eqIdx = wa.indexOf("=");
+        if (eqIdx !== -1) {
+          wfNamedArgs[wa.slice(2, eqIdx)] = wa.slice(eqIdx + 1);
+        } else if (j + 1 < args.length && !args[j + 1].startsWith("-")) {
+          wfNamedArgs[wa.slice(2)] = args[++j];
+        } else {
+          wfNamedArgs[wa.slice(2)] = "true";
+        }
+      } else {
+        wfArgs.push(wa);
+      }
+    }
+    break; // -wf consumes all remaining args
+  }
+
   // Workflow mode (what to do)
-  if (arg === "-t" || arg === "--ticket") {
+  else if (arg === "-t" || arg === "--ticket") {
     workflowMode = "ticket";
   } else if (arg === "-r" || arg === "--research") {
     workflowMode = "research";
@@ -487,22 +543,30 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-// In ticket mode, a title can be given instead of an issue number
-let ticketTitle = titleWords.join(" ");
-if (!issueNumber && !ticketTitle) {
-  throw new Error("Issue number or title required. Usage: /flo <issue-number | title>");
-}
-if (!issueNumber && workflowMode !== "ticket") {
-  throw new Error("Issue number required for full/research mode. Use -t for new tickets.");
-}
+// Validation
+if (workflowMode === "workflow") {
+  if (!wfName && !wfSubcommand) {
+    throw new Error("Workflow name or subcommand required. Usage: /flo -wf <name|list|info> [args]");
+  }
+  console.log("WORKFLOW ENGINE MODE: " + (wfSubcommand || wfName));
+} else {
+  // In ticket mode, a title can be given instead of an issue number
+  let ticketTitle = titleWords.join(" ");
+  if (!issueNumber && !ticketTitle) {
+    throw new Error("Issue number or title required. Usage: /flo <issue-number | title>");
+  }
+  if (!issueNumber && workflowMode !== "ticket") {
+    throw new Error("Issue number required for full/research mode. Use -t for new tickets.");
+  }
 
-// Log execution mode to prevent silent skipping
-console.log("Execution mode: " + execMode.toUpperCase());
-if (execMode === "swarm") {
-  console.log("SWARM MODE: Will spawn agents via Task tool. Do NOT skip this.");
+  // Log execution mode to prevent silent skipping
+  console.log("Execution mode: " + execMode.toUpperCase());
+  if (execMode === "swarm") {
+    console.log("SWARM MODE: Will spawn agents via Task tool. Do NOT skip this.");
+  }
+  console.log("TESTING: Unit + Integration + E2E tests REQUIRED before PR.");
+  console.log("SIMPLIFY: /simplify command runs on changed code before PR.");
 }
-console.log("TESTING: Unit + Integration + E2E tests REQUIRED before PR.");
-console.log("SIMPLIFY: /simplify command runs on changed code before PR.");
 ```
 
 ## Execution Flow
@@ -515,6 +579,9 @@ console.log("SIMPLIFY: /simplify command runs on changed code before PR.");
 | **Epic** | `/flo 42` (epic) | For each story: Full workflow sequentially | All story PRs created |
 | **Ticket** | `/flo -t 123` | Research -> Ticket | Issue updated |
 | **Research** | `/flo -r 123` | Research | Findings output |
+| **Workflow** | `/flo -wf sa ./src` | Load registry -> Resolve workflow -> Execute with args | Workflow complete |
+| **WF List** | `/flo -wf list` | Load registry -> Print all workflows | List printed |
+| **WF Info** | `/flo -wf info sa` | Load registry -> Print workflow details | Info printed |
 
 ### Execution Modes (how to do it)
 
@@ -570,6 +637,52 @@ Single Claude execution without spawning sub-agents.
 - Still creates tasks for visibility
 - Post-task neural learning hooks still fire
 - Just doesn't spawn multiple agents
+
+### WORKFLOW ENGINE Mode (-wf, --workflow)
+
+When `-wf` is used, the /flo skill switches to the generalized workflow engine
+instead of the hardcoded coding workflow. This uses the `WorkflowRegistry` from
+`@claude-flow/workflows` to resolve and run YAML/JSON workflow definitions.
+
+**Scan directories** (in priority order):
+1. Shipped: `src/packages/workflows/definitions/` (bundled with moflo)
+2. User: `workflows/` and `.claude/workflows/` (project-level overrides)
+
+**Registry behavior:**
+- Each workflow file defines `name` and optional `abbreviation` in frontmatter
+- Registry builds lookup map: abbreviation -> file path, full name -> file path
+- Duplicate abbreviations produce a collision error on load
+- User definitions override shipped ones by name match
+
+**Subcommands:**
+
+`/flo -wf list` — List all available workflows:
+```
+Use WorkflowRegistry.list() to get all registered workflows.
+Print a table: name | abbreviation | description | tier (shipped/user)
+```
+
+`/flo -wf info <name|abbreviation>` — Show workflow details:
+```
+Use WorkflowRegistry.info(query) to get detailed info.
+Print: name, abbreviation, description, version, source file, arguments, step count, step types
+```
+
+`/flo -wf <name|abbreviation> [positional-args] [--named-args]` — Execute a workflow:
+```
+1. Use WorkflowRegistry.resolve(wfName) to find the workflow
+2. Map positional args to required arguments in order
+3. Parse named args: --key=value or --key value
+4. Use runWorkflowFromContent() or createRunner().run() to execute
+5. Print step-by-step progress and final result
+```
+
+**Argument mapping:**
+- Positional args mapped to required arguments in definition order
+- Named args: `--severity=critical` or `--severity critical`
+- Boolean flags: `--autofix` (true if present)
+- Example: `/flo -wf sa ./src --severity critical --autofix`
+  Maps to: `{ target: "./src", severity: "critical", autofix: "true" }`
 
 ---
 

@@ -121,3 +121,16 @@ export {
   type PausedState,
   type ResumeOptions,
 } from './factory/pause-resume.js';
+
+// ============================================================================
+// Workflow Registry (abbreviation lookup + list/info)
+// ============================================================================
+
+export {
+  WorkflowRegistry,
+  type RegistryOptions,
+  type RegistryResult,
+  type AbbreviationCollision,
+  type WorkflowInfo,
+  type WorkflowListEntry,
+} from './registry/workflow-registry.js';
