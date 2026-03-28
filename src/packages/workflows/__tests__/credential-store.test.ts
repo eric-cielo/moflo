@@ -241,6 +241,25 @@ describe('CredentialStore', () => {
   });
 
   // --------------------------------------------------------------------------
+  // #163 — Passphrase strength validation
+  // --------------------------------------------------------------------------
+
+  it('rejects passphrases shorter than 8 characters', () => {
+    expect(() => {
+      new CredentialStore({ filePath, passphrase: 'short' });
+    }).toThrow(CredentialStoreError);
+    expect(() => {
+      new CredentialStore({ filePath, passphrase: 'short' });
+    }).toThrow('at least 8 characters');
+  });
+
+  it('accepts passphrases of 8+ characters', () => {
+    expect(() => {
+      new CredentialStore({ filePath, passphrase: 'long-enough' });
+    }).not.toThrow();
+  });
+
+  // --------------------------------------------------------------------------
   // #158 — File permissions
   // --------------------------------------------------------------------------
 

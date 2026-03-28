@@ -115,6 +115,9 @@ export class CredentialStore implements CredentialAccessor {
    * Derives the encryption key and loads existing data.
    */
   unlock(passphrase: string): void {
+    if (passphrase.length < 8) {
+      throw new CredentialStoreError('Passphrase must be at least 8 characters');
+    }
     this.data = this.readFile();
     const salt = Buffer.from(this.data.salt, 'hex');
     this.derivedKey = deriveKey(passphrase, salt);
