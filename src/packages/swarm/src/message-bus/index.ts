@@ -16,6 +16,16 @@ export { MessageStore, type MessageStoreConfig, type MemoryListWithValueFunction
 import type { MessageBusConfig } from '../types.js';
 import { MessageBus } from './message-bus.js';
 
+/**
+ * @deprecated Use MessageStore for persistent cross-process messaging.
+ * MessageBus is kept as an in-process fallback for high-throughput scenarios.
+ */
 export function createMessageBus(config?: Partial<MessageBusConfig>): MessageBus {
+  if (typeof process !== 'undefined' && process.emitWarning) {
+    process.emitWarning(
+      'createMessageBus() is deprecated. Use MessageStore for persistent cross-process messaging.',
+      'DeprecationWarning',
+    );
+  }
   return new MessageBus(config);
 }
