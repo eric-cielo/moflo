@@ -237,10 +237,12 @@ export class WorkflowRunner {
     const completedSteps: Array<{ step: StepDefinition; config: Record<string, unknown> }> = [];
     let cancelled = false;
 
-    // Pre-compile credential patterns once for the entire run
-    const credentialPatterns = (options.credentialValues ?? []).map(
-      v => new RegExp(escapeRegExp(v), 'g'),
-    );
+    // Pre-compile credential patterns once for the entire run.
+    // Skip values shorter than 4 chars to avoid false-positive redaction (#164)
+    const MIN_REDACT_LENGTH = 4;
+    const credentialPatterns = (options.credentialValues ?? [])
+      .filter(v => v.length >= MIN_REDACT_LENGTH)
+      .map(v => new RegExp(escapeRegExp(v), 'g'));
 
     // Pre-resolve {credentials.NAME} references for redaction patterns,
     // but do NOT inject into shared variables — scoped per-step instead (#159)
@@ -251,7 +253,9 @@ export class WorkflowRunner {
         const value = await this.credentials.get(name);
         if (value !== undefined) {
           resolvedCredentials[name] = value;
-          credentialPatterns.push(new RegExp(escapeRegExp(value), 'g'));
+          if (value.length >= MIN_REDACT_LENGTH) {
+            credentialPatterns.push(new RegExp(escapeRegExp(value), 'g'));
+          }
         }
       }));
     }
@@ -754,10 +758,18 @@ export class WorkflowRunner {
 
     if (masked === serialized) return output;
 
-    return {
-      ...output,
-      data: JSON.parse(masked) as Record<string, unknown>,
-    };
+    // Guard against JSON corruption from partial substring replacement (#164)
+    try {
+      return {
+        ...output,
+        data: JSON.parse(masked) as Record<string, unknown>,
+      };
+    } catch {
+      return {
+        ...output,
+        data: { _redacted: true, _note: 'Output contained credentials and was fully redacted' },
+      };
+    }
   }
 
   private async storeProgress(

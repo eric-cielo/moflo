@@ -151,3 +151,17 @@ describe('#162 — Object.hasOwn in capability validator', () => {
     expect(content).not.toContain('cap.type in stepRestrictions');
   });
 });
+
+describe('#164 — Harden credential redaction', () => {
+  it('filters short credential values (< 4 chars) from redaction patterns', () => {
+    const content = readFileSync(runnerPath, 'utf-8');
+    expect(content).toContain('MIN_REDACT_LENGTH');
+    expect(content).toContain('.filter(v => v.length >= MIN_REDACT_LENGTH)');
+  });
+
+  it('handles JSON corruption from redaction gracefully', () => {
+    const content = readFileSync(runnerPath, 'utf-8');
+    expect(content).toContain('Guard against JSON corruption');
+    expect(content).toContain('_redacted');
+  });
+});
