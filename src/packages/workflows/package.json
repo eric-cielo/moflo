@@ -1,0 +1,52 @@
+{
+  "name": "@claude-flow/workflows",
+  "version": "3.0.0-alpha.1",
+  "description": "Generalized Workflow Engine for Claude Flow V3 - Step Commands, Registry, and YAML/JSON Definitions",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@claude-flow/plugins": "^3.0.0-alpha.1",
+    "@claude-flow/memory": "^3.0.0-alpha.2"
+  },
+  "peerDependenciesMeta": {
+    "@claude-flow/plugins": {
+      "optional": true
+    },
+    "@claude-flow/memory": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "vitest": "^4.0.16"
+  },
+  "keywords": [
+    "claude-flow",
+    "workflow-engine",
+    "step-commands",
+    "orchestration"
+  ],
+  "author": "MoFlo Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
