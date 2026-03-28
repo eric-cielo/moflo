@@ -12,6 +12,7 @@ import type { StepOutput, ValidationError } from './step-command.types.js';
 
 export type WorkflowErrorCode =
   | 'ARGUMENT_VALIDATION_FAILED'
+  | 'CONDITION_TARGET_NOT_FOUND'
   | 'DEFINITION_VALIDATION_FAILED'
   | 'STEP_VALIDATION_FAILED'
   | 'STEP_EXECUTION_FAILED'
@@ -19,6 +20,8 @@ export type WorkflowErrorCode =
   | 'STEP_CANCELLED'
   | 'UNKNOWN_STEP_TYPE'
   | 'ROLLBACK_FAILED'
+  | 'PAUSED_STATE_NOT_FOUND'
+  | 'PAUSED_STATE_EXPIRED'
   | 'WORKFLOW_CANCELLED';
 
 // ============================================================================
@@ -105,4 +108,7 @@ export interface RunnerOptions {
 
   /** Literal credential values to redact from step output (matched as exact strings). */
   readonly credentialValues?: readonly string[];
+
+  /** Pre-seeded variables for resuming from a paused workflow. */
+  readonly initialVariables?: Record<string, unknown>;
 }

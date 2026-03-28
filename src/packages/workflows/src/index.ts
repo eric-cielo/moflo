@@ -76,3 +76,48 @@ export type {
 
 export { parseYaml, parseJson, parseWorkflow } from './schema/parser.js';
 export { validateWorkflowDefinition, resolveArguments, type ValidatorOptions } from './schema/validator.js';
+
+// ============================================================================
+// Definition Loader (shipped + user override)
+// ============================================================================
+
+export {
+  loadWorkflowDefinitions,
+  loadWorkflowByName,
+  type LoaderOptions,
+  type LoadedWorkflow,
+  type LoadResult,
+  type LoadError,
+} from './loaders/definition-loader.js';
+
+// ============================================================================
+// Runner Factory (MCP + CLI integration)
+// ============================================================================
+
+export {
+  createRunner,
+  runWorkflowFromContent,
+  type RunnerFactoryOptions,
+  type RunWorkflowOptions,
+} from './factory/runner-factory.js';
+
+export {
+  bridgeRunWorkflow,
+  bridgeExecuteWorkflow,
+  bridgeCancelWorkflow,
+  bridgeIsRunning,
+  bridgeActiveWorkflows,
+} from './factory/runner-bridge.js';
+
+// ============================================================================
+// Pause/Resume
+// ============================================================================
+
+export {
+  buildPausedState,
+  persistPausedState,
+  resumeWorkflow,
+  cleanupStalePaused,
+  type PausedState,
+  type ResumeOptions,
+} from './factory/pause-resume.js';

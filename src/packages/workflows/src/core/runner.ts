@@ -207,7 +207,7 @@ export class WorkflowRunner {
     options: RunnerOptions,
     startTime: number,
   ): Promise<WorkflowResult> {
-    const variables: Record<string, unknown> = {};
+    const variables: Record<string, unknown> = { ...options.initialVariables };
     const stepResults: StepResult[] = [];
     const errors: WorkflowError[] = [];
     const completedSteps: Array<{ step: StepDefinition; config: Record<string, unknown> }> = [];
@@ -222,7 +222,26 @@ export class WorkflowRunner {
 
     await this.storeProgress(workflowId, 'running', 0, definition.steps.length);
 
+    // Build step-ID → index map for O(1) condition branching lookups
+    const stepIndex = new Map<string, number>();
+    for (let idx = 0; idx < definition.steps.length; idx++) {
+      stepIndex.set(definition.steps[idx].id, idx);
+    }
+
+    // Guard against infinite loops from backward condition jumps
+    const maxIterations = definition.steps.length * 10;
+    let iterations = 0;
+
     for (let i = 0; i < definition.steps.length; i++) {
+      if (++iterations > maxIterations) {
+        errors.push({
+          code: 'STEP_EXECUTION_FAILED',
+          message: `Workflow exceeded maximum iterations (${maxIterations}); possible infinite condition loop`,
+        });
+        this.markRemainingSteps(definition, i, 'skipped', stepResults);
+        break;
+      }
+
       if (options.signal?.aborted) {
         cancelled = true;
         this.markRemainingSteps(definition, i, 'cancelled', stepResults);
@@ -230,8 +249,6 @@ export class WorkflowRunner {
       }
 
       const step = definition.steps[i];
-      // TODO(#136): condition branching — inspect result.output.data.nextStep to jump
-      // TODO(#137): loop iteration — execute step.steps for each item in loop output
       const result = await this.executeStep(step, state, i);
 
       stepResults.push(result);
@@ -241,8 +258,42 @@ export class WorkflowRunner {
           variables[step.output] = result.output.data;
         }
         variables[step.id] = result.output.data;
-        // Stash the config that was actually executed (returned from executeStep)
         completedSteps.push({ step, config: result.interpolatedConfig ?? {} });
+
+        // Loop iteration: execute nested steps for each item
+        if (step.type === 'loop' && step.steps && step.steps.length > 0) {
+          const loopResult = await this.executeLoopIterations(step, result.output, state, errors);
+          // Store accumulated iteration outputs under the loop step
+          const loopData = { ...result.output.data, iterationOutputs: loopResult.outputs };
+          if (step.output) {
+            variables[step.output] = loopData;
+          }
+          variables[step.id] = loopData;
+
+          if (!loopResult.success && !step.continueOnError) {
+            await this.rollbackSteps(completedSteps, state, stepResults);
+            this.markRemainingSteps(definition, i + 1, 'skipped', stepResults);
+            break;
+          }
+        }
+
+        // Condition branching: jump to the target step if nextStep is set
+        const nextStep = result.output.data?.nextStep;
+        if (typeof nextStep === 'string' && nextStep.length > 0) {
+          const targetIdx = stepIndex.get(nextStep);
+          if (targetIdx === undefined) {
+            errors.push({
+              stepId: step.id,
+              code: 'CONDITION_TARGET_NOT_FOUND',
+              message: `Condition step "${step.id}" targets step "${nextStep}" which does not exist`,
+            });
+            await this.rollbackSteps(completedSteps, state, stepResults);
+            this.markRemainingSteps(definition, i + 1, 'skipped', stepResults);
+            break;
+          }
+          // Jump: set i so the next loop increment lands on targetIdx
+          i = targetIdx - 1;
+        }
       }
 
       if (result.status === 'cancelled') {
@@ -265,7 +316,7 @@ export class WorkflowRunner {
         }
       }
 
-      await this.storeProgress(workflowId, 'running', i + 1, definition.steps.length);
+      await this.storeProgress(workflowId, 'running', stepResults.length, definition.steps.length);
       try { options.onStepComplete?.(result, i, definition.steps.length); } catch { /* callback errors must not crash the workflow */ }
     }
 
@@ -282,7 +333,8 @@ export class WorkflowRunner {
     const outputs: Record<string, unknown> = {};
     for (const sr of stepResults) {
       if (sr.status === 'succeeded' && sr.output) {
-        outputs[sr.stepId] = sr.output.data;
+        // Prefer enriched variable data (e.g. loop steps add iterationOutputs)
+        outputs[sr.stepId] = variables[sr.stepId] ?? sr.output.data;
       }
     }
 
@@ -408,6 +460,81 @@ export class WorkflowRunner {
       duration: Date.now() - stepStart,
       interpolatedConfig,
     };
+  }
+
+  // --------------------------------------------------------------------------
+  // Private — Loop Iteration
+  // --------------------------------------------------------------------------
+
+  private async executeLoopIterations(
+    loopStep: StepDefinition,
+    loopOutput: StepOutput,
+    state: ExecutionState,
+    errors: WorkflowError[],
+  ): Promise<{ success: boolean; outputs: Array<Record<string, unknown>> }> {
+    const data = loopOutput.data as Record<string, unknown>;
+    const items = data.items as unknown[];
+    const itemVar = (data.itemVar as string) || 'item';
+    const indexVar = (data.indexVar as string) || 'index';
+    const nestedSteps = loopStep.steps!;
+    const iterationOutputs: Array<Record<string, unknown>> = [];
+    let allSucceeded = true;
+
+    // Save pre-existing variables that loop vars might shadow
+    const hadItem = itemVar in state.variables;
+    const prevItem = state.variables[itemVar];
+    const hadIndex = indexVar in state.variables;
+    const prevIndex = state.variables[indexVar];
+
+    for (let idx = 0; idx < items.length; idx++) {
+      if (state.options.signal?.aborted) break;
+
+      state.variables[itemVar] = items[idx];
+      state.variables[indexVar] = idx;
+
+      const iterOutput: Record<string, unknown> = {};
+      let iterFailed = false;
+
+      for (let s = 0; s < nestedSteps.length; s++) {
+        if (state.options.signal?.aborted) break;
+
+        const nested = nestedSteps[s];
+        const result = await this.executeStep(nested, state, s);
+
+        if (result.status === 'succeeded' && result.output) {
+          if (nested.output) {
+            state.variables[nested.output] = result.output.data;
+          }
+          state.variables[nested.id] = result.output.data;
+          iterOutput[nested.id] = result.output.data;
+        }
+
+        if (result.status === 'failed') {
+          errors.push({
+            stepId: nested.id,
+            code: result.errorCode ?? 'STEP_EXECUTION_FAILED',
+            message: `Loop "${loopStep.id}" iteration ${idx}, step "${nested.id}": ${result.error ?? 'failed'}`,
+          });
+          iterFailed = true;
+          allSucceeded = false;
+          break;
+        }
+      }
+
+      iterationOutputs.push(iterOutput);
+
+      if (iterFailed && !loopStep.continueOnError) {
+        break;
+      }
+    }
+
+    // Restore previous values or clean up loop variables
+    if (hadItem) state.variables[itemVar] = prevItem;
+    else delete state.variables[itemVar];
+    if (hadIndex) state.variables[indexVar] = prevIndex;
+    else delete state.variables[indexVar];
+
+    return { success: allSucceeded, outputs: iterationOutputs };
   }
 
   // --------------------------------------------------------------------------
