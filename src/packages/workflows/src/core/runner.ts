@@ -828,13 +828,11 @@ export class WorkflowRunner {
   }
 
   /**
-   * Check if a step has the 'credentials' capability — either from the
-   * command's defaults or from step-level capability declarations.
+   * Check if a step has the 'credentials' capability via the command's
+   * defaults. Step YAML can narrow but never grant new capabilities.
    */
-  private stepHasCredentialCapability(step: StepDefinition, command: StepCommand): boolean {
-    const commandHas = command.capabilities?.some(c => c.type === 'credentials') ?? false;
-    const stepDeclares = step.capabilities ? Object.hasOwn(step.capabilities, 'credentials') : false;
-    return commandHas || stepDeclares;
+  private stepHasCredentialCapability(_step: StepDefinition, command: StepCommand): boolean {
+    return command.capabilities?.some(c => c.type === 'credentials') ?? false;
   }
 
   private failureResult(workflowId: string, startTime: number, errors: WorkflowError[]): WorkflowResult {
