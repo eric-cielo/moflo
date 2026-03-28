@@ -88,6 +88,11 @@ export interface MofloConfig {
     helpers: boolean;
   };
 
+  epic: {
+    admin_merge: boolean;
+    default_strategy: 'single-branch' | 'auto-merge';
+  };
+
   status_line: {
     enabled: boolean;
     branding: string;
@@ -169,6 +174,10 @@ const DEFAULT_CONFIG: MofloConfig = {
     enabled: true,
     scripts: true,
     helpers: true,
+  },
+  epic: {
+    admin_merge: true,
+    default_strategy: 'single-branch',
   },
   status_line: {
     enabled: true,
@@ -271,6 +280,10 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
       enabled: raw.auto_update?.enabled ?? raw.autoUpdate?.enabled ?? DEFAULT_CONFIG.auto_update.enabled,
       scripts: raw.auto_update?.scripts ?? raw.autoUpdate?.scripts ?? DEFAULT_CONFIG.auto_update.scripts,
       helpers: raw.auto_update?.helpers ?? raw.autoUpdate?.helpers ?? DEFAULT_CONFIG.auto_update.helpers,
+    },
+    epic: {
+      admin_merge: raw.epic?.admin_merge ?? raw.epic?.adminMerge ?? DEFAULT_CONFIG.epic.admin_merge,
+      default_strategy: raw.epic?.default_strategy ?? raw.epic?.defaultStrategy ?? DEFAULT_CONFIG.epic.default_strategy,
     },
     status_line: {
       enabled: raw.status_line?.enabled ?? raw.statusLine?.enabled ?? DEFAULT_CONFIG.status_line.enabled,
@@ -440,6 +453,11 @@ auto_update:
   enabled: true                  # Master toggle for version-change auto-sync
   scripts: true                  # Sync .claude/scripts/ from moflo bin/
   helpers: true                  # Sync .claude/helpers/ from moflo source
+
+# Epic processing (flo epic run)
+epic:
+  admin_merge: true              # Use --admin flag on gh pr merge (bypasses branch protection)
+  default_strategy: single-branch  # single-branch (one PR) or auto-merge (per-story PRs)
 
 # Status line items (show/hide individual sections)
 status_line:

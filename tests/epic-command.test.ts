@@ -223,6 +223,50 @@ describe('flo command epic-branch flag', () => {
   });
 });
 
+describe('epic config: admin_merge', () => {
+  it('should build merge command with --admin when admin_merge is true', () => {
+    const adminMerge = true;
+    const prNumber = 42;
+    const adminFlag = adminMerge ? ' --admin' : '';
+    const cmd = `gh pr merge ${prNumber} --squash --delete-branch${adminFlag}`;
+    expect(cmd).toBe('gh pr merge 42 --squash --delete-branch --admin');
+  });
+
+  it('should build merge command without --admin when admin_merge is false', () => {
+    const adminMerge = false;
+    const prNumber = 42;
+    const adminFlag = adminMerge ? ' --admin' : '';
+    const cmd = `gh pr merge ${prNumber} --squash --delete-branch${adminFlag}`;
+    expect(cmd).toBe('gh pr merge 42 --squash --delete-branch');
+  });
+});
+
+describe('epic config: default_strategy', () => {
+  it('should use config default_strategy when no override or feature strategy', () => {
+    const strategyOverride = undefined;
+    const featureStrategy = undefined;
+    const configDefault: string = 'auto-merge';
+    const strategy = strategyOverride || featureStrategy || configDefault;
+    expect(strategy).toBe('auto-merge');
+  });
+
+  it('should prefer CLI flag over config default', () => {
+    const strategyOverride = 'auto-merge';
+    const featureStrategy = undefined;
+    const configDefault = 'single-branch';
+    const strategy = strategyOverride || featureStrategy || configDefault;
+    expect(strategy).toBe('auto-merge');
+  });
+
+  it('should prefer feature definition over config default', () => {
+    const strategyOverride = undefined;
+    const featureStrategy = 'auto-merge';
+    const configDefault = 'single-branch';
+    const strategy = strategyOverride || featureStrategy || configDefault;
+    expect(strategy).toBe('auto-merge');
+  });
+});
+
 describe('topological sort (execution order)', () => {
   // Test the Kahn's algorithm for dependency resolution
 

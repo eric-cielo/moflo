@@ -443,7 +443,7 @@ Each story gets its own branch and PR. After each story's PR is created, it is s
 3. SEQUENTIAL PROCESSING - For each story:
    a. Checkout and pull latest base branch
    b. Run `/flo <issue> <flags>` (normal mode — creates branch + PR)
-   c. Auto-merge the PR (`--squash --delete-branch`)
+   c. Auto-merge the PR (`--squash --delete-branch --admin` by default; controlled by `epic.admin_merge` in moflo.yaml)
    d. Pull merged changes, check off the story in the epic body
    e. Move to the next unchecked story
 4. COMPLETION - All stories checked off, epic marked as ready-for-review
