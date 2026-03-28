@@ -56,6 +56,7 @@ MoFlo makes deliberate choices so you don't have to:
 | **Guidance Indexing** | Chunks your project docs (`.claude/guidance/`, `docs/`) and makes them searchable. |
 | **Workflow Gates** | Enforces memory-first and task-creation patterns via Claude Code hooks. Prevents Claude from skipping steps. |
 | **Learned Routing** | Routes tasks to the right agent type. Learns from outcomes — gets better over time. |
+| **Workflow Engine** | Define multi-step automations as YAML — shell commands, agent spawns, conditionals, loops, memory ops. [Full documentation →](docs/WORKFLOWS.md) |
 | **`/flo` Skill** | Execute GitHub issues through a full workflow: research → enhance → implement → test → simplify → PR. (Also available as `/fl`.) |
 | **Context Tracking** | Monitors context window usage (FRESH → MODERATE → DEPLETED → CRITICAL) and advises accordingly. |
 | **Cross-Platform** | Works on macOS, Linux, and Windows. |
