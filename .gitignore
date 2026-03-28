@@ -172,3 +172,6 @@ hive-mind-prompt-*.txt
 # Ephemeral / test artifacts
 .claude/workflow-state.json
 test-database-provider.rvf
+
+# Local guidance docs (generated, not tracked)
+.claude/guidance/

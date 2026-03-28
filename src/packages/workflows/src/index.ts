@@ -123,6 +123,18 @@ export {
 } from './factory/pause-resume.js';
 
 // ============================================================================
+// Credential Store
+// ============================================================================
+
+export {
+  CredentialStore,
+  CredentialStoreError,
+  type CredentialMeta,
+  type CredentialStoreOptions,
+  type CredentialStoreErrorCode,
+} from './credentials/credential-store.js';
+
+// ============================================================================
 // Workflow Registry (abbreviation lookup + list/info)
 // ============================================================================
 

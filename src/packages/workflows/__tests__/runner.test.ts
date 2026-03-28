@@ -431,6 +431,63 @@ describe('WorkflowRunner — credential masking', () => {
 });
 
 // ============================================================================
+// Credential Interpolation ({credentials.NAME})
+// ============================================================================
+
+describe('WorkflowRunner — credential interpolation', () => {
+  it('resolves {credentials.NAME} in step config', async () => {
+    let capturedConfig: Record<string, unknown> = {};
+    registry.register(createMockCommand({
+      execute: async (config) => {
+        capturedConfig = config;
+        return { success: true, data: { result: 'ok' }, duration: 1 };
+      },
+    }));
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: { token: '{credentials.secret}' } },
+    ]);
+
+    const result = await runner.run(definition, {});
+    expect(result.success).toBe(true);
+    expect(capturedConfig.token).toBe('s3cr3t');
+  });
+
+  it('redacts credential values resolved from {credentials.NAME}', async () => {
+    registry.register(createMockCommand({
+      execute: async () => ({
+        success: true,
+        data: { message: 'the secret is s3cr3t' },
+        duration: 1,
+      }),
+    }));
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: { token: '{credentials.secret}' } },
+    ]);
+
+    const result = await runner.run(definition, {});
+    expect(result.success).toBe(true);
+    const output = result.outputs['s1'] as Record<string, unknown>;
+    expect(output.message).not.toContain('s3cr3t');
+    expect(output.message).toContain('***REDACTED***');
+  });
+
+  it('leaves {credentials.NAME} unresolved when credential is missing', async () => {
+    registry.register(createMockCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: { token: '{credentials.nonexistent}' } },
+    ]);
+
+    // Should fail interpolation since credentials.nonexistent is not in variables
+    const result = await runner.run(definition, {});
+    expect(result.success).toBe(false);
+    expect(result.errors[0].message).toContain('Variable not found');
+  });
+});
+
+// ============================================================================
 // Dry Run
 // ============================================================================
 
