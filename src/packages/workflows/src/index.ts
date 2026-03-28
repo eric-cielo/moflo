@@ -89,3 +89,22 @@ export {
   type LoadResult,
   type LoadError,
 } from './loaders/definition-loader.js';
+
+// ============================================================================
+// Runner Factory (MCP + CLI integration)
+// ============================================================================
+
+export {
+  createRunner,
+  runWorkflowFromContent,
+  type RunnerFactoryOptions,
+  type RunWorkflowOptions,
+} from './factory/runner-factory.js';
+
+export {
+  bridgeRunWorkflow,
+  bridgeExecuteWorkflow,
+  bridgeCancelWorkflow,
+  bridgeIsRunning,
+  bridgeActiveWorkflows,
+} from './factory/runner-bridge.js';
