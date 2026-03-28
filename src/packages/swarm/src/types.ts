@@ -344,11 +344,16 @@ export interface MessageFilter {
   limit?: number;
 }
 
+/**
+ * @deprecated Configuration for the in-memory MessageBus.
+ * For persistent messaging, use MessageStore with MessageStoreConfig instead.
+ */
 export interface MessageBusConfig {
   maxQueueSize: number;
   processingIntervalMs: number;
   ackTimeoutMs: number;
   retryAttempts: number;
+  /** @deprecated Use MessageStore for persistence instead of this flag */
   enablePersistence: boolean;
   compressionEnabled: boolean;
   /** TTL reaper sweep interval in ms (default: 60000) */
@@ -628,6 +633,8 @@ export interface AgentMessage {
   status: AgentMessageStatus;
   /** Session scoping — messages are invisible across sessions */
   sessionId: string;
+  /** Embedding vector for semantic search (Story #115, stored as number[]) */
+  embedding?: number[];
 }
 
 /**
@@ -657,6 +664,47 @@ export interface IMessageStore {
   endSession(sessionId: string): Promise<number>;
   /** Remove old session messages (default maxAge: 24h), return count */
   gc(maxAge?: number): Promise<number>;
+
+  // === Semantic search (Story #115) ===
+
+  /** Semantic search over message history */
+  search(query: string, opts?: MessageSearchOptions): Promise<ScoredMessage[]>;
+  /** Aggregate message counts by type or sender */
+  summarize(channel: string, opts?: MessageSummarizeOptions): Promise<MessageSummary>;
+}
+
+/** Options for semantic message search */
+export interface MessageSearchOptions {
+  channel?: string;
+  type?: MessageType;
+  from?: string;
+  since?: number;
+  limit?: number;
+  /** Minimum similarity threshold 0-1 (default: 0.3) */
+  threshold?: number;
+}
+
+/** Message with similarity score */
+export interface ScoredMessage {
+  message: AgentMessage;
+  score: number;
+}
+
+/** Options for message summarization */
+export interface MessageSummarizeOptions {
+  since?: number;
+  groupBy?: 'type' | 'from';
+}
+
+/** Aggregated message summary */
+export interface MessageSummary {
+  channel: string;
+  totalMessages: number;
+  groups: Record<string, number>;
+  /** Epoch ms of earliest message in summary */
+  earliest?: number;
+  /** Epoch ms of latest message in summary */
+  latest?: number;
 }
 
 export interface IAgentPool {
