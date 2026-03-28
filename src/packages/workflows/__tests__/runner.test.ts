@@ -886,3 +886,195 @@ describe('WorkflowRunner — condition branching', () => {
     expect(result.steps[1].stepId).toBe('next');
   });
 });
+
+// ============================================================================
+// Loop Iteration (Story #137)
+// ============================================================================
+
+describe('WorkflowRunner — loop iteration', () => {
+  function createLoopCommand(items: unknown[], opts?: { maxIterations?: number; itemVar?: string; indexVar?: string }): StepCommand {
+    return createMockCommand({
+      type: 'loop',
+      execute: async () => {
+        const max = opts?.maxIterations ?? 100;
+        const actual = Math.min(items.length, max);
+        return {
+          success: true,
+          data: {
+            totalItems: items.length,
+            iterations: actual,
+            truncated: items.length > max,
+            itemVar: opts?.itemVar ?? 'item',
+            indexVar: opts?.indexVar ?? 'index',
+            items: items.slice(0, actual),
+          },
+          duration: 1,
+        };
+      },
+    });
+  }
+
+  it('should iterate over 3 items executing 2 nested steps each', async () => {
+    const execLog: string[] = [];
+
+    registry.register(createLoopCommand(['a', 'b', 'c']));
+    registry.register(createMockCommand({
+      type: 'nested',
+      execute: async (_config, ctx) => {
+        execLog.push(`${ctx.variables['item']}-${ctx.variables['index']}`);
+        return { success: true, data: { processed: ctx.variables['item'] }, duration: 1 };
+      },
+    }));
+
+    const definition = simpleWorkflow([
+      {
+        id: 'loop1', type: 'loop', config: {}, output: 'loop1',
+        steps: [
+          { id: 'nested-a', type: 'nested', config: {}, output: 'nested-a' },
+          { id: 'nested-b', type: 'nested', config: {}, output: 'nested-b' },
+        ],
+      },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    expect(execLog).toEqual(['a-0', 'a-0', 'b-1', 'b-1', 'c-2', 'c-2']);
+    const loopData = result.outputs['loop1'] as Record<string, unknown>;
+    expect(loopData.iterationOutputs).toBeDefined();
+    const iterOutputs = loopData.iterationOutputs as Array<Record<string, unknown>>;
+    expect(iterOutputs).toHaveLength(3);
+  });
+
+  it('should respect maxIterations and stop early', async () => {
+    const execLog: string[] = [];
+
+    registry.register(createLoopCommand(['a', 'b', 'c', 'd', 'e'], { maxIterations: 2 }));
+    registry.register(createMockCommand({
+      type: 'nested',
+      execute: async (_config, ctx) => {
+        execLog.push(String(ctx.variables['item']));
+        return { success: true, data: {}, duration: 1 };
+      },
+    }));
+
+    const definition = simpleWorkflow([
+      {
+        id: 'loop1', type: 'loop', config: {}, output: 'loop1',
+        steps: [{ id: 'nested', type: 'nested', config: {} }],
+      },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    expect(execLog).toEqual(['a', 'b']);
+  });
+
+  it('should continue to next iteration with continueOnError', async () => {
+    const execLog: string[] = [];
+
+    registry.register(createLoopCommand(['a', 'b', 'c']));
+    registry.register(createMockCommand({
+      type: 'nested',
+      execute: async (_config, ctx) => {
+        const item = ctx.variables['item'] as string;
+        execLog.push(item);
+        if (item === 'b') {
+          return { success: false, data: {}, error: 'b failed', duration: 1 };
+        }
+        return { success: true, data: { processed: item }, duration: 1 };
+      },
+    }));
+
+    const definition = simpleWorkflow([
+      {
+        id: 'loop1', type: 'loop', config: {}, output: 'loop1',
+        continueOnError: true,
+        steps: [{ id: 'nested', type: 'nested', config: {} }],
+      },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    // continueOnError on loop step means failed iterations are skipped
+    expect(result.success).toBe(false); // errors were recorded
+    expect(execLog).toEqual(['a', 'b', 'c']);
+    expect(result.errors.some(e => e.message.includes('iteration 1'))).toBe(true);
+  });
+
+  it('should stop loop on nested failure without continueOnError', async () => {
+    const execLog: string[] = [];
+
+    registry.register(createLoopCommand(['a', 'b', 'c']));
+    registry.register(createMockCommand({
+      type: 'nested',
+      execute: async (_config, ctx) => {
+        const item = ctx.variables['item'] as string;
+        execLog.push(item);
+        if (item === 'b') {
+          return { success: false, data: {}, error: 'b failed', duration: 1 };
+        }
+        return { success: true, data: {}, duration: 1 };
+      },
+    }));
+
+    const definition = simpleWorkflow([
+      {
+        id: 'loop1', type: 'loop', config: {},
+        steps: [{ id: 'nested', type: 'nested', config: {} }],
+      },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(false);
+    expect(execLog).toEqual(['a', 'b']); // stopped at 'b'
+  });
+
+  it('should make loop variables accessible in nested step configs via interpolation', async () => {
+    let capturedVars: Record<string, unknown> = {};
+
+    registry.register(createLoopCommand(['hello', 'world']));
+    registry.register(createMockCommand({
+      type: 'nested',
+      execute: async (_config, ctx) => {
+        capturedVars = { item: ctx.variables['item'], index: ctx.variables['index'] };
+        return { success: true, data: {}, duration: 1 };
+      },
+    }));
+
+    const definition = simpleWorkflow([
+      {
+        id: 'loop1', type: 'loop', config: {}, output: 'loop1',
+        steps: [{ id: 'nested', type: 'nested', config: {} }],
+      },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    // Last iteration should have these values
+    expect(capturedVars.item).toBe('world');
+    expect(capturedVars.index).toBe(1);
+  });
+
+  it('should complete with no iterations for empty items array', async () => {
+    registry.register(createLoopCommand([]));
+    registry.register(createMockCommand({ type: 'nested' }));
+
+    const definition = simpleWorkflow([
+      {
+        id: 'loop1', type: 'loop', config: {}, output: 'loop1',
+        steps: [{ id: 'nested', type: 'nested', config: {} }],
+      },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    const loopData = result.outputs['loop1'] as Record<string, unknown>;
+    const iterOutputs = loopData.iterationOutputs as unknown[];
+    expect(iterOutputs).toHaveLength(0);
+  });
+});

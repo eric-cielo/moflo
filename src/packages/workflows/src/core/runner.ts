@@ -249,7 +249,6 @@ export class WorkflowRunner {
       }
 
       const step = definition.steps[i];
-      // TODO(#137): loop iteration — execute step.steps for each item in loop output
       const result = await this.executeStep(step, state, i);
 
       stepResults.push(result);
@@ -260,6 +259,23 @@ export class WorkflowRunner {
         }
         variables[step.id] = result.output.data;
         completedSteps.push({ step, config: result.interpolatedConfig ?? {} });
+
+        // Loop iteration: execute nested steps for each item
+        if (step.type === 'loop' && step.steps && step.steps.length > 0) {
+          const loopResult = await this.executeLoopIterations(step, result.output, state, errors);
+          // Store accumulated iteration outputs under the loop step
+          const loopData = { ...result.output.data, iterationOutputs: loopResult.outputs };
+          if (step.output) {
+            variables[step.output] = loopData;
+          }
+          variables[step.id] = loopData;
+
+          if (!loopResult.success && !step.continueOnError) {
+            await this.rollbackSteps(completedSteps, state, stepResults);
+            this.markRemainingSteps(definition, i + 1, 'skipped', stepResults);
+            break;
+          }
+        }
 
         // Condition branching: jump to the target step if nextStep is set
         const nextStep = result.output.data?.nextStep;
@@ -317,7 +333,8 @@ export class WorkflowRunner {
     const outputs: Record<string, unknown> = {};
     for (const sr of stepResults) {
       if (sr.status === 'succeeded' && sr.output) {
-        outputs[sr.stepId] = sr.output.data;
+        // Prefer enriched variable data (e.g. loop steps add iterationOutputs)
+        outputs[sr.stepId] = variables[sr.stepId] ?? sr.output.data;
       }
     }
 
@@ -443,6 +460,81 @@ export class WorkflowRunner {
       duration: Date.now() - stepStart,
       interpolatedConfig,
     };
+  }
+
+  // --------------------------------------------------------------------------
+  // Private — Loop Iteration
+  // --------------------------------------------------------------------------
+
+  private async executeLoopIterations(
+    loopStep: StepDefinition,
+    loopOutput: StepOutput,
+    state: ExecutionState,
+    errors: WorkflowError[],
+  ): Promise<{ success: boolean; outputs: Array<Record<string, unknown>> }> {
+    const data = loopOutput.data as Record<string, unknown>;
+    const items = data.items as unknown[];
+    const itemVar = (data.itemVar as string) || 'item';
+    const indexVar = (data.indexVar as string) || 'index';
+    const nestedSteps = loopStep.steps!;
+    const iterationOutputs: Array<Record<string, unknown>> = [];
+    let allSucceeded = true;
+
+    // Save pre-existing variables that loop vars might shadow
+    const hadItem = itemVar in state.variables;
+    const prevItem = state.variables[itemVar];
+    const hadIndex = indexVar in state.variables;
+    const prevIndex = state.variables[indexVar];
+
+    for (let idx = 0; idx < items.length; idx++) {
+      if (state.options.signal?.aborted) break;
+
+      state.variables[itemVar] = items[idx];
+      state.variables[indexVar] = idx;
+
+      const iterOutput: Record<string, unknown> = {};
+      let iterFailed = false;
+
+      for (let s = 0; s < nestedSteps.length; s++) {
+        if (state.options.signal?.aborted) break;
+
+        const nested = nestedSteps[s];
+        const result = await this.executeStep(nested, state, s);
+
+        if (result.status === 'succeeded' && result.output) {
+          if (nested.output) {
+            state.variables[nested.output] = result.output.data;
+          }
+          state.variables[nested.id] = result.output.data;
+          iterOutput[nested.id] = result.output.data;
+        }
+
+        if (result.status === 'failed') {
+          errors.push({
+            stepId: nested.id,
+            code: result.errorCode ?? 'STEP_EXECUTION_FAILED',
+            message: `Loop "${loopStep.id}" iteration ${idx}, step "${nested.id}": ${result.error ?? 'failed'}`,
+          });
+          iterFailed = true;
+          allSucceeded = false;
+          break;
+        }
+      }
+
+      iterationOutputs.push(iterOutput);
+
+      if (iterFailed && !loopStep.continueOnError) {
+        break;
+      }
+    }
+
+    // Restore previous values or clean up loop variables
+    if (hadItem) state.variables[itemVar] = prevItem;
+    else delete state.variables[itemVar];
+    if (hadIndex) state.variables[indexVar] = prevIndex;
+    else delete state.variables[indexVar];
+
+    return { success: allSucceeded, outputs: iterationOutputs };
   }
 
   // --------------------------------------------------------------------------
