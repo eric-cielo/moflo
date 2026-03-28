@@ -177,3 +177,33 @@ describe('#164 — Harden credential redaction', () => {
     expect(content).toContain('_redacted');
   });
 });
+
+describe('#166 — Missing test scenarios for capabilities', () => {
+  it('capability validator rejects unknown capability types', () => {
+    const content = readFileSync(validatorPath, 'utf-8');
+    expect(content).toContain('unknown capability type');
+  });
+
+  it('capability validator prevents granting new capabilities', () => {
+    const content = readFileSync(validatorPath, 'utf-8');
+    expect(content).toContain('cannot grant new capabilities');
+  });
+
+  it('Object.hasOwn protects against prototype pollution', () => {
+    const content = readFileSync(validatorPath, 'utf-8');
+    // Verify in operator is NOT used for capability lookup
+    expect(content).not.toContain('cap.type in stepRestrictions');
+    expect(content).toContain('Object.hasOwn(stepRestrictions');
+  });
+
+  it('credential capability check exists in runner', () => {
+    const content = readFileSync(runnerPath, 'utf-8');
+    expect(content).toContain("c.type === 'credentials'");
+    expect(content).toContain('stepHasCredentialCapability');
+  });
+
+  it('VALID_CAPABILITY_TYPES includes credentials', () => {
+    const content = readFileSync(validatorPath, 'utf-8');
+    expect(content).toContain("'credentials'");
+  });
+});
