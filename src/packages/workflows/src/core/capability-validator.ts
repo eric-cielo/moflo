@@ -25,9 +25,9 @@ export interface CapabilityCheckResult {
   readonly effectiveCaps: readonly StepCapability[];
 }
 
-const VALID_CAPABILITY_TYPES: readonly CapabilityType[] = [
+const VALID_CAPABILITY_TYPES: ReadonlySet<string> = new Set<CapabilityType>([
   'fs:read', 'fs:write', 'net', 'shell', 'memory', 'credentials', 'browser', 'agent',
-];
+]);
 
 // ── Core validation ───────────────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ export function checkCapabilities(
  * Validate that a capability type string is a known type.
  */
 export function isValidCapabilityType(type: string): type is CapabilityType {
-  return VALID_CAPABILITY_TYPES.includes(type as CapabilityType);
+  return VALID_CAPABILITY_TYPES.has(type);
 }
 
 /**
@@ -124,7 +124,7 @@ export function validateStepCapabilities(
     if (!isValidCapabilityType(capType)) {
       errors.push({
         path: `${path}.capabilities.${capType}`,
-        message: `unknown capability type: "${capType}". Valid types: ${VALID_CAPABILITY_TYPES.join(', ')}`,
+        message: `unknown capability type: "${capType}". Valid types: ${[...VALID_CAPABILITY_TYPES].join(', ')}`,
       });
     }
     if (!Array.isArray(scope)) {

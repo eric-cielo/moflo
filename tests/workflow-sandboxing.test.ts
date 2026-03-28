@@ -99,10 +99,10 @@ describe('#157 — Credential interpolation bypass closed', () => {
     );
   });
 
-  it('stepReferencesCredentials checks raw config for {credentials.*}', () => {
+  it('stepReferencesCredentials reuses collectCredentialNames', () => {
     const content = readFileSync(runnerPath, 'utf-8');
     expect(content).toContain('private stepReferencesCredentials');
-    expect(content).toContain('{credentials\\.');
+    expect(content).toContain('collectCredentialNames');
   });
 
   it('stepHasCredentialCapability checks both command and step declarations', () => {

@@ -821,10 +821,10 @@ export class WorkflowRunner {
 
   /**
    * Check if a step's raw config contains {credentials.*} references.
+   * Reuses collectCredentialNames to avoid double-traversal of config.
    */
   private stepReferencesCredentials(step: StepDefinition): boolean {
-    const json = JSON.stringify(step.config ?? {});
-    return /\{credentials\.[^}]+\}/.test(json);
+    return this.collectCredentialNames([step]).size > 0;
   }
 
   /**
