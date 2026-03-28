@@ -32,3 +32,20 @@ export type {
 // ============================================================================
 
 export { StepCommandRegistry } from './core/step-command-registry.js';
+export { interpolateString, interpolateConfig } from './core/interpolation.js';
+
+// ============================================================================
+// Built-in Commands
+// ============================================================================
+
+export {
+  agentCommand,
+  bashCommand,
+  conditionCommand,
+  promptCommand,
+  memoryCommand,
+  waitCommand,
+  loopCommand,
+  browserCommand,
+  builtinCommands,
+} from './commands/index.js';
