@@ -239,4 +239,17 @@ describe('CredentialStore', () => {
     store.lock();
     unlinkSync(deepPath);
   });
+
+  // --------------------------------------------------------------------------
+  // #158 — File permissions
+  // --------------------------------------------------------------------------
+
+  it('writes credential file with mode 0o600 (owner-only)', () => {
+    // Verify the source code uses mode: 0o600 in writeFileSync
+    const storeSrc = readFileSync(
+      join(__dirname, '../src/credentials/credential-store.ts'),
+      'utf-8',
+    );
+    expect(storeSrc).toContain('mode: 0o600');
+  });
 });

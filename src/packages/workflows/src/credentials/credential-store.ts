@@ -252,7 +252,7 @@ export class CredentialStore implements CredentialAccessor {
 
   private writeFile(data: StoreData): void {
     mkdirSync(dirname(this.filePath), { recursive: true });
-    writeFileSync(this.filePath, JSON.stringify(data, null, 2), 'utf-8');
+    writeFileSync(this.filePath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 });
   }
 }
 
