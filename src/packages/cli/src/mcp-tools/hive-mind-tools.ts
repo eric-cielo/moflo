@@ -11,6 +11,12 @@
 
 import type { MCPTool } from './types.js';
 
+// Namespace constants — avoids hardcoded strings scattered across handlers
+const HIVE_NS = 'hive-mind' as const;
+const HIVE_MEMORY_NS = 'hive-mind-memory' as const;
+const HIVE_TTL_MS = 300_000;
+const CONSENSUS_TTL_MS = 600_000;
+
 // ===== Lazy-loaded dependencies (avoid eager import of heavy modules) =====
 
 // Use `any` for lazy-loaded singletons to avoid cross-package import type issues
@@ -57,7 +63,7 @@ async function getWriteThroughAdapter() {
 
   const adapter = new WriteThroughAdapter(
     bus,
-    { enabled: !!memStore, namespaces: ['hive-mind', 'hive-mind-memory'] },
+    { enabled: !!memStore, namespaces: [HIVE_NS, HIVE_MEMORY_NS] },
     memStore ?? (async () => ({ success: false, id: '', error: 'Memory DB unavailable' })),
     { deleteEntry: memDelete ?? undefined, listEntries: memList ?? undefined },
   );
@@ -99,6 +105,11 @@ interface ConsensusResult {
   decidedAt: string;
 }
 
+function countVotes(votes: Record<string, boolean>) {
+  const forCount = Object.values(votes).filter(v => v).length;
+  return { for: forCount, against: Object.keys(votes).length - forCount };
+}
+
 // Singleton in-memory state (no file backing)
 let hiveState: HiveState = createDefaultState();
 
@@ -127,7 +138,7 @@ async function getMemoryModule() {
 async function memoryGet(key: string): Promise<unknown | undefined> {
   try {
     const mem = await getMemoryModule();
-    const result = await mem.getEntry({ key: `hive:${key}`, namespace: 'hive-mind-memory' });
+    const result = await mem.getEntry({ key: `hive:${key}`, namespace: HIVE_MEMORY_NS });
     if (result?.entry?.content) {
       try { return JSON.parse(result.entry.content); } catch { return result.entry.content; }
     }
@@ -143,7 +154,7 @@ async function memorySet(key: string, value: unknown): Promise<boolean> {
     const result = await mem.storeEntry({
       key: `hive:${key}`,
       value: typeof value === 'string' ? value : JSON.stringify(value),
-      namespace: 'hive-mind-memory',
+      namespace: HIVE_MEMORY_NS,
       upsert: true,
       tags: ['hive-mind', 'shared-memory'],
     });
@@ -156,7 +167,7 @@ async function memorySet(key: string, value: unknown): Promise<boolean> {
 async function memoryDelete(key: string): Promise<boolean> {
   try {
     const mem = await getMemoryModule();
-    const result = await mem.deleteEntry({ key: `hive:${key}`, namespace: 'hive-mind-memory' });
+    const result = await mem.deleteEntry({ key: `hive:${key}`, namespace: HIVE_MEMORY_NS });
     return result.success;
   } catch {
     return false;
@@ -166,7 +177,7 @@ async function memoryDelete(key: string): Promise<boolean> {
 async function memoryList(): Promise<string[]> {
   try {
     const mem = await getMemoryModule();
-    const result = await mem.listEntries({ namespace: 'hive-mind-memory', limit: 500 });
+    const result = await mem.listEntries({ namespace: HIVE_MEMORY_NS, limit: 500 });
     return (result.entries ?? [])
       .map((e: Record<string, unknown>) => (e.key as string))
       .filter((k: string) => k.startsWith('hive:'))
@@ -250,10 +261,10 @@ export const hiveMindTools: MCPTool[] = [
           from: agentId,
           to: '*',
           payload: { agentId, role, agentType },
-          namespace: 'hive-mind',
+          namespace: HIVE_NS,
           priority: 'normal',
           requiresAck: false,
-          ttlMs: 300_000,
+          ttlMs: HIVE_TTL_MS,
         });
 
         spawnedWorkers.push({ agentId, role, joinedAt });
@@ -301,7 +312,7 @@ export const hiveMindTools: MCPTool[] = [
       };
 
       // Subscribe the hive-mind system agent to its namespace
-      bus.subscribe('hive-mind-system', () => {}, { namespace: 'hive-mind' });
+      bus.subscribe('hive-mind-system', () => {}, { namespace: HIVE_NS });
 
       return {
         success: true,
@@ -435,7 +446,7 @@ export const hiveMindTools: MCPTool[] = [
         from: agentId,
         to: '*',
         payload: { agentId, role },
-        namespace: 'hive-mind',
+        namespace: HIVE_NS,
         priority: 'normal',
         requiresAck: false,
         ttlMs: 300_000,
@@ -475,10 +486,10 @@ export const hiveMindTools: MCPTool[] = [
           from: agentId,
           to: '*',
           payload: { agentId },
-          namespace: 'hive-mind',
+          namespace: HIVE_NS,
           priority: 'normal',
           requiresAck: false,
-          ttlMs: 300_000,
+          ttlMs: HIVE_TTL_MS,
         });
 
         return {
@@ -532,10 +543,10 @@ export const hiveMindTools: MCPTool[] = [
           from: proposal.proposedBy,
           to: '*',
           payload: { proposalId, type: proposal.type, value: proposal.value },
-          namespace: 'hive-mind',
+          namespace: HIVE_NS,
           priority: 'high',
           requiresAck: false,
-          ttlMs: 600_000,
+          ttlMs: CONSENSUS_TTL_MS,
         });
 
         return {
@@ -562,33 +573,32 @@ export const hiveMindTools: MCPTool[] = [
           from: voterId,
           to: '*',
           payload: { proposalId: proposal.proposalId, vote: input.vote },
-          namespace: 'hive-mind',
+          namespace: HIVE_NS,
           priority: 'high',
           requiresAck: false,
-          ttlMs: 600_000,
+          ttlMs: CONSENSUS_TTL_MS,
         });
 
-        const votesFor = Object.values(proposal.votes).filter(v => v).length;
-        const votesAgainst = Object.values(proposal.votes).filter(v => !v).length;
+        const tally = countVotes(proposal.votes);
         const majority = Math.ceil(hiveState.workers.length / 2) + 1;
 
-        if (votesFor >= majority) {
+        if (tally.for >= majority) {
           proposal.status = 'approved';
           hiveState.consensus.history.push({
             proposalId: proposal.proposalId,
             type: proposal.type,
             result: 'approved',
-            votes: { for: votesFor, against: votesAgainst },
+            votes: tally,
             decidedAt: new Date().toISOString(),
           });
           hiveState.consensus.pending = hiveState.consensus.pending.filter(p => p.proposalId !== proposal.proposalId);
-        } else if (votesAgainst >= majority) {
+        } else if (tally.against >= majority) {
           proposal.status = 'rejected';
           hiveState.consensus.history.push({
             proposalId: proposal.proposalId,
             type: proposal.type,
             result: 'rejected',
-            votes: { for: votesFor, against: votesAgainst },
+            votes: tally,
             decidedAt: new Date().toISOString(),
           });
           hiveState.consensus.pending = hiveState.consensus.pending.filter(p => p.proposalId !== proposal.proposalId);
@@ -599,8 +609,8 @@ export const hiveMindTools: MCPTool[] = [
           proposalId: proposal.proposalId,
           voterId,
           vote: input.vote,
-          votesFor,
-          votesAgainst,
+          votesFor: tally.for,
+          votesAgainst: tally.against,
           status: proposal.status,
         };
       }
@@ -615,16 +625,15 @@ export const hiveMindTools: MCPTool[] = [
           return { action, error: 'Proposal not found' };
         }
 
-        const votesFor = Object.values(proposal.votes).filter(v => v).length;
-        const votesAgainst = Object.values(proposal.votes).filter(v => !v).length;
+        const tally = countVotes(proposal.votes);
 
         return {
           action,
           proposalId: proposal.proposalId,
           type: proposal.type,
           status: proposal.status,
-          votesFor,
-          votesAgainst,
+          votesFor: tally.for,
+          votesAgainst: tally.against,
           totalVotes: Object.keys(proposal.votes).length,
           requiredMajority: Math.ceil(hiveState.workers.length / 2) + 1,
         };
@@ -673,7 +682,7 @@ export const hiveMindTools: MCPTool[] = [
         from: (input.fromId as string) || 'system',
         payload: { message: input.message },
         content: input.message as string,
-        namespace: 'hive-mind',
+        namespace: HIVE_NS,
         priority: priority as 'low' | 'normal' | 'high' | 'critical',
         requiresAck: false,
         ttlMs: 300_000,
@@ -730,7 +739,7 @@ export const hiveMindTools: MCPTool[] = [
       // Clear write-through namespaces in Memory DB
       try {
         const adapter = await getWriteThroughAdapter();
-        await adapter.clearNamespace('hive-mind');
+        await adapter.clearNamespace(HIVE_NS);
         await adapter.clearNamespace('hive-mind-memory');
       } catch {
         // Best-effort cleanup
