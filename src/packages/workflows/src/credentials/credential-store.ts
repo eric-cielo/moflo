@@ -116,7 +116,7 @@ export class CredentialStore implements CredentialAccessor {
    */
   unlock(passphrase: string): void {
     if (passphrase.length < 8) {
-      throw new CredentialStoreError('Passphrase must be at least 8 characters');
+      throw new CredentialStoreError('Passphrase must be at least 8 characters', 'WEAK_PASSPHRASE');
     }
     this.data = this.readFile();
     const salt = Buffer.from(this.data.salt, 'hex');
@@ -263,7 +263,7 @@ export class CredentialStore implements CredentialAccessor {
 // Error
 // ============================================================================
 
-export type CredentialStoreErrorCode = 'DECRYPTION_FAILED' | 'STORE_LOCKED' | 'READ_FAILED';
+export type CredentialStoreErrorCode = 'DECRYPTION_FAILED' | 'STORE_LOCKED' | 'READ_FAILED' | 'WEAK_PASSPHRASE';
 
 export class CredentialStoreError extends Error {
   constructor(

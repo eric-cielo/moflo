@@ -152,6 +152,18 @@ describe('#162 — Object.hasOwn in capability validator', () => {
   });
 });
 
+describe('#165 — Tighten StepDefinition.capabilities key type', () => {
+  it('capabilities uses CapabilityType keys, not plain string', () => {
+    const typesPath = resolve(
+      __dirname,
+      '../src/packages/workflows/src/types/workflow-definition.types.ts',
+    );
+    const content = readFileSync(typesPath, 'utf-8');
+    expect(content).toContain('Partial<Record<CapabilityType, readonly string[]>>');
+    expect(content).not.toContain("Record<string, readonly string[]>");
+  });
+});
+
 describe('#164 — Harden credential redaction', () => {
   it('filters short credential values (< 4 chars) from redaction patterns', () => {
     const content = readFileSync(runnerPath, 'utf-8');
