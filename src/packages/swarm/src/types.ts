@@ -597,6 +597,68 @@ export interface IMessageBus {
   getQueueDepth(): number;
 }
 
+// ===== MESSAGE STORE TYPES (Story #111) =====
+
+/** Message status in the persistent store */
+export type AgentMessageStatus = 'pending' | 'delivered' | 'read' | 'expired';
+
+/**
+ * Persistent agent message — stored in memory DB `messages` namespace.
+ * Extends UnifiedMessage with persistence fields: sessionId, readBy, status, replyTo.
+ */
+export interface AgentMessage {
+  id: string;
+  /** Channel for routing, e.g. "swarm:abc123", "hive:consensus", "workflow:step3" */
+  channel: string;
+  from: string;
+  to: string | '*';
+  type: MessageType;
+  priority: MessagePriority;
+  payload: Record<string, unknown>;
+  /** Optional text content (sugar for string payloads) */
+  content?: string;
+  /** ID of message this replies to (threading) */
+  replyTo?: string;
+  /** Time-to-live in ms (auto-expire) */
+  ttlMs?: number;
+  /** Epoch ms */
+  createdAt: number;
+  /** Agent IDs that have read this message */
+  readBy: string[];
+  status: AgentMessageStatus;
+  /** Session scoping — messages are invisible across sessions */
+  sessionId: string;
+}
+
+/**
+ * Persistent message store backed by memory DB.
+ * Cross-process, session-scoped, queryable message persistence.
+ */
+export interface IMessageStore {
+  /** Send a message, returns message ID */
+  send(msg: Omit<AgentMessage, 'id' | 'createdAt' | 'readBy' | 'status'>): Promise<string>;
+  /** Retrieve messages for an agent on a channel */
+  receive(agentId: string, channel: string, opts?: {
+    since?: number;
+    unreadOnly?: boolean;
+    limit?: number;
+  }): Promise<AgentMessage[]>;
+  /** Mark messages as read by an agent */
+  markRead(agentId: string, messageIds: string[]): Promise<void>;
+  /** Broadcast to all agents on a channel */
+  broadcast(channel: string, msg: Omit<AgentMessage, 'id' | 'createdAt' | 'readBy' | 'status' | 'to'>): Promise<string>;
+  /** Get a conversation thread by replyTo chain */
+  getThread(replyTo: string): Promise<AgentMessage[]>;
+  /** Clean up TTL-expired and session-expired messages, return count */
+  expire(): Promise<number>;
+  /** Get message history for a channel */
+  channelHistory(channel: string, limit?: number): Promise<AgentMessage[]>;
+  /** Expire all unhandled messages for a session, return count */
+  endSession(sessionId: string): Promise<number>;
+  /** Remove old session messages (default maxAge: 24h), return count */
+  gc(maxAge?: number): Promise<number>;
+}
+
 export interface IAgentPool {
   initialize(config: AgentPoolConfig): Promise<void>;
   acquire(): Promise<AgentState | undefined>;
