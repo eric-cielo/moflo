@@ -20,6 +20,7 @@ const VALID_ACTIONS: readonly MemoryAction[] = ['read', 'write', 'search'];
 export const memoryCommand: StepCommand = {
   type: 'memory',
   description: 'Read, write, or search shared workflow state',
+  capabilities: [{ type: 'memory' }],
   configSchema: {
     type: 'object',
     properties: {

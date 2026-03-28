@@ -27,6 +27,7 @@ import type {
 import { StepCommandRegistry } from './step-command-registry.js';
 import { interpolateConfig } from './interpolation.js';
 import { validateWorkflowDefinition, resolveArguments } from '../schema/validator.js';
+import { checkCapabilities, formatViolations } from './capability-validator.js';
 
 const DEFAULT_STEP_TIMEOUT = 300_000; // 5 minutes
 
@@ -416,6 +417,19 @@ export class WorkflowRunner {
         status: 'failed',
         error: `Step validation failed: ${validation.errors.map(e => e.message).join('; ')}`,
         errorCode: 'STEP_VALIDATION_FAILED',
+        duration: Date.now() - stepStart,
+      };
+    }
+
+    // Capability enforcement (Tier 1)
+    const capCheck = checkCapabilities(step, command);
+    if (!capCheck.allowed) {
+      return {
+        stepId: step.id,
+        stepType: step.type,
+        status: 'failed',
+        error: `Capability violation: ${formatViolations(capCheck.violations)}`,
+        errorCode: 'CAPABILITY_DENIED',
         duration: Date.now() - stepStart,
       };
     }

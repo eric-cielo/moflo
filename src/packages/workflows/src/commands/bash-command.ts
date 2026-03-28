@@ -17,6 +17,11 @@ import { interpolateString } from '../core/interpolation.js';
 export const bashCommand: StepCommand = {
   type: 'bash',
   description: 'Run a shell command and capture output',
+  capabilities: [
+    { type: 'shell' },
+    { type: 'fs:read' },
+    { type: 'fs:write' },
+  ],
   configSchema: {
     type: 'object',
     properties: {

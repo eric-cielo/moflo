@@ -16,6 +16,7 @@ import { interpolateString } from '../core/interpolation.js';
 export const agentCommand: StepCommand = {
   type: 'agent',
   description: 'Spawn a Claude subagent to perform a task',
+  capabilities: [{ type: 'agent' }],
   configSchema: {
     type: 'object',
     properties: {
