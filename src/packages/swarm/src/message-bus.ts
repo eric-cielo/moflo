@@ -3,5 +3,5 @@
  * @see ./message-bus/ for implementation
  */
 
-export { MessageBus, createMessageBus, Deque, PriorityMessageQueue } from './message-bus/index.js';
-export type { MessageQueueEntry } from './message-bus/index.js';
+export { MessageBus, createMessageBus, Deque, PriorityMessageQueue, WriteThroughAdapter } from './message-bus/index.js';
+export type { MessageQueueEntry, WriteThroughConfig, MemoryStoreFunction, MemoryDeleteFunction, MemoryListFunction } from './message-bus/index.js';

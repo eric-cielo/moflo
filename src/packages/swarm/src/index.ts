@@ -173,7 +173,9 @@ export {
 export {
   MessageBus,
   createMessageBus,
+  WriteThroughAdapter,
 } from './message-bus.js';
+export type { WriteThroughConfig, MemoryStoreFunction, MemoryDeleteFunction, MemoryListFunction } from './message-bus.js';
 
 // =============================================================================
 // Agent Pool

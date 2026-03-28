@@ -182,6 +182,20 @@ export class MessageBus extends EventEmitter implements IMessageBus {
       this.namespaceMessages.get(namespace)!.add(id);
     }
 
+    // Emit after metadata is set so write-through adapters have full context
+    this.emit('message.unified', {
+      messageId: id,
+      namespace,
+      type: message.type,
+      from: message.from,
+      to: message.to,
+      payload: message.payload ?? message.content,
+      content: message.content,
+      priority: message.priority,
+      ttlMs: message.ttlMs,
+      metadata: message.metadata,
+    });
+
     return id;
   }
 
