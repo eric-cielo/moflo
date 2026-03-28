@@ -4,11 +4,21 @@
  * Enables agent-to-agent communication, pattern broadcasting,
  * consensus building, and task handoff coordination.
  *
+ * Transport: delegates to IMessageBus (Story #120).
+ * Domain state (patterns, consensus, handoffs) remains local.
+ *
  * @module @claude-flow/hooks/swarm
  */
 
 import { EventEmitter } from 'node:events';
 import { reasoningBank, type GuidancePattern } from '../reasoningbank/index.js';
+import type {
+  IMessageBus,
+  Message,
+  MessageType,
+  MessageFilter,
+} from '../../../../packages/swarm/src/types.js';
+import { MessageBus } from '../../../../packages/swarm/src/message-bus/message-bus.js';
 
 // ============================================================================
 // Types
@@ -103,7 +113,7 @@ export interface SwarmConfig {
   agentId: string;
   /** Agent name/role */
   agentName: string;
-  /** Message retention time (ms) */
+  /** Message retention time (ms) — used as default TTL for messages */
   messageRetention: number;
   /** Consensus timeout (ms) */
   consensusTimeout: number;
@@ -125,6 +135,27 @@ const DEFAULT_CONFIG: SwarmConfig = {
   patternBroadcastThreshold: 0.7,
 };
 
+/** Namespace used for all SwarmCommunication messages on the MessageBus */
+const SWARM_NAMESPACE = 'swarm-hooks';
+
+/** Parse a MessageBus payload that may be a JSON string or already an object */
+function parsePayload(payload: unknown): Record<string, unknown> | null {
+  try {
+    if (typeof payload === 'string') return JSON.parse(payload);
+    if (payload && typeof payload === 'object') return payload as Record<string, unknown>;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Domain message types → event name + ID field for routing */
+const DOMAIN_EVENT_MAP: Record<string, { idField: string; event: string }> = {
+  consensus: { idField: 'consensusId', event: 'consensus:received' },
+  handoff:   { idField: 'handoffId',   event: 'handoff:received' },
+  pattern:   { idField: 'broadcastId', event: 'pattern:received' },
+};
+
 // ============================================================================
 // SwarmCommunication Class
 // ============================================================================
@@ -133,16 +164,19 @@ const DEFAULT_CONFIG: SwarmConfig = {
  * Swarm Communication Hub
  *
  * Manages agent-to-agent communication within the swarm.
+ * Delegates message transport to an injected IMessageBus instance.
+ * Domain state (patterns, consensus, handoffs) remains local.
  */
 export class SwarmCommunication extends EventEmitter {
   private config: SwarmConfig;
-  private messages: Map<string, SwarmMessage> = new Map();
+  private messageBus: IMessageBus;
   private broadcasts: Map<string, PatternBroadcast> = new Map();
   private consensusRequests: Map<string, ConsensusRequest> = new Map();
   private handoffs: Map<string, TaskHandoff> = new Map();
   private agents: Map<string, SwarmAgentState> = new Map();
   private initialized = false;
   private cleanupTimer?: NodeJS.Timeout;
+  private patternListener?: (...args: unknown[]) => void;
 
   // Metrics
   private metrics = {
@@ -155,8 +189,9 @@ export class SwarmCommunication extends EventEmitter {
     handoffsCompleted: 0,
   };
 
-  constructor(config: Partial<SwarmConfig> = {}) {
+  constructor(messageBus: IMessageBus, config: Partial<SwarmConfig> = {}) {
     super();
+    this.messageBus = messageBus;
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
@@ -178,17 +213,26 @@ export class SwarmCommunication extends EventEmitter {
       handoffsCompleted: 0,
     });
 
-    // Start cleanup interval (store reference to clear on shutdown)
+    // Subscribe to MessageBus for incoming domain messages
+    this.messageBus.subscribe(
+      this.config.agentId,
+      (message: Message) => this.handleIncomingMessage(message),
+      { namespace: SWARM_NAMESPACE },
+    );
+
+    // Start cleanup interval for domain objects only (not messages — MessageBus reaper handles those)
     this.cleanupTimer = setInterval(() => this.cleanup(), 60000);
 
     // Listen for pattern storage to auto-broadcast
     if (this.config.autoBroadcastPatterns) {
-      reasoningBank.on('pattern:stored', async (data) => {
-        const patterns = await reasoningBank.searchPatterns(data.id, 1);
+      this.patternListener = async (data: unknown) => {
+        const { id } = data as { id: string };
+        const patterns = await reasoningBank.searchPatterns(id, 1);
         if (patterns.length > 0 && patterns[0].pattern.quality >= this.config.patternBroadcastThreshold) {
           await this.broadcastPattern(patterns[0].pattern);
         }
-      });
+      };
+      reasoningBank.on('pattern:stored', this.patternListener);
     }
 
     this.initialized = true;
@@ -207,8 +251,16 @@ export class SwarmCommunication extends EventEmitter {
       this.cleanupTimer = undefined;
     }
 
-    // Clear all maps
-    this.messages.clear();
+    // Unsubscribe from MessageBus
+    this.messageBus.unsubscribe(this.config.agentId);
+
+    // Remove reasoningBank listener to prevent leak
+    if (this.patternListener) {
+      reasoningBank.off('pattern:stored', this.patternListener);
+      this.patternListener = undefined;
+    }
+
+    // Clear domain state maps
     this.broadcasts.clear();
     this.consensusRequests.clear();
     this.handoffs.clear();
@@ -218,12 +270,29 @@ export class SwarmCommunication extends EventEmitter {
     this.emit('shutdown', { agentId: this.config.agentId });
   }
 
+  /**
+   * Handle incoming messages from the MessageBus and route to domain handlers
+   */
+  private handleIncomingMessage(message: Message): void {
+    const type = message.type as SwarmMessage['type'];
+    const mapping = DOMAIN_EVENT_MAP[type];
+
+    if (mapping) {
+      const data = parsePayload(message.payload);
+      if (data?.[mapping.idField]) {
+        this.emit(mapping.event, { [mapping.idField]: data[mapping.idField], from: message.from });
+      }
+    } else {
+      this.emit('message:received', { type, from: message.from, payload: message.payload });
+    }
+  }
+
   // ============================================================================
   // Agent-to-Agent Messaging
   // ============================================================================
 
   /**
-   * Send a message to another agent
+   * Send a message to another agent via MessageBus
    */
   async sendMessage(
     to: string,
@@ -237,21 +306,36 @@ export class SwarmCommunication extends EventEmitter {
   ): Promise<SwarmMessage> {
     await this.ensureInitialized();
 
+    const type = options.type || 'context';
+    const priority = options.priority || 'normal';
+    const ttl = options.ttl || this.config.messageRetention;
+
+    const id = await this.messageBus.sendUnified({
+      type: type as MessageType,
+      from: this.config.agentId,
+      to: to === '*' ? '*' : to,
+      payload: content,
+      content,
+      metadata: options.metadata,
+      priority,
+      requiresAck: false,
+      ttlMs: ttl,
+      namespace: SWARM_NAMESPACE,
+    });
+
     const message: SwarmMessage = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id,
       from: this.config.agentId,
       to,
-      type: options.type || 'context',
+      type,
       content,
       metadata: options.metadata || {},
       timestamp: Date.now(),
-      ttl: options.ttl,
-      priority: options.priority || 'normal',
+      ttl,
+      priority,
     };
 
-    this.messages.set(message.id, message);
     this.metrics.messagesSent++;
-
     this.emit('message:sent', message);
 
     // If target agent exists, trigger delivery event
@@ -263,7 +347,7 @@ export class SwarmCommunication extends EventEmitter {
   }
 
   /**
-   * Get messages for this agent
+   * Get messages for this agent from the MessageBus
    */
   getMessages(options: {
     from?: string;
@@ -271,40 +355,43 @@ export class SwarmCommunication extends EventEmitter {
     since?: number;
     limit?: number;
   } = {}): SwarmMessage[] {
-    const now = Date.now();
-    let messages = Array.from(this.messages.values())
-      .filter(m =>
-        (m.to === this.config.agentId || m.to === '*') &&
-        (!m.ttl || m.timestamp + m.ttl > now)
-      );
+    const filter: MessageFilter = {
+      namespace: SWARM_NAMESPACE,
+    };
 
     if (options.from) {
-      messages = messages.filter(m => m.from === options.from);
+      filter.from = options.from;
     }
     if (options.type) {
-      messages = messages.filter(m => m.type === options.type);
+      filter.type = options.type as MessageType;
     }
     if (options.since !== undefined) {
-      const sinceTime = options.since;
-      messages = messages.filter(m => m.timestamp > sinceTime);
+      filter.since = options.since;
     }
-
-    messages.sort((a, b) => {
-      const priorityOrder = { critical: 0, high: 1, normal: 2, low: 3 };
-      const pDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
-      return pDiff !== 0 ? pDiff : b.timestamp - a.timestamp;
-    });
-
     if (options.limit) {
-      messages = messages.slice(0, options.limit);
+      filter.limit = options.limit;
     }
 
-    this.metrics.messagesReceived += messages.length;
-    return messages;
+    const busMessages = this.messageBus.getMessages(this.config.agentId, filter);
+
+    const swarmMessages: SwarmMessage[] = busMessages.map(m => ({
+      id: m.id,
+      from: m.from,
+      to: m.to === 'broadcast' ? '*' : m.to,
+      type: m.type as SwarmMessage['type'],
+      content: typeof m.payload === 'string' ? m.payload : JSON.stringify(m.payload),
+      metadata: {}, // Message type doesn't carry metadata; UnifiedMessage metadata lives in bus-internal store
+      timestamp: m.timestamp instanceof Date ? m.timestamp.getTime() : m.timestamp as unknown as number,
+      ttl: m.ttlMs,
+      priority: m.priority === 'urgent' ? 'critical' : m.priority as SwarmMessage['priority'],
+    }));
+
+    this.metrics.messagesReceived += swarmMessages.length;
+    return swarmMessages;
   }
 
   /**
-   * Broadcast context to all agents
+   * Broadcast context to all agents via MessageBus
    */
   async broadcastContext(content: string, metadata: Record<string, unknown> = {}): Promise<SwarmMessage> {
     return this.sendMessage('*', content, {
@@ -315,7 +402,7 @@ export class SwarmCommunication extends EventEmitter {
   }
 
   /**
-   * Query other agents
+   * Query other agents via MessageBus
    */
   async queryAgents(query: string): Promise<SwarmMessage> {
     return this.sendMessage('*', query, {
@@ -355,7 +442,7 @@ export class SwarmCommunication extends EventEmitter {
       agentState.patternsShared++;
     }
 
-    // Send as message
+    // Send as message via MessageBus
     await this.sendMessage(targetAgents ? targetAgents.join(',') : '*',
       JSON.stringify({
         broadcastId: broadcast.id,
@@ -462,7 +549,7 @@ export class SwarmCommunication extends EventEmitter {
     this.consensusRequests.set(request.id, request);
     this.metrics.consensusInitiated++;
 
-    // Broadcast the consensus request
+    // Broadcast the consensus request via MessageBus
     await this.sendMessage('*', JSON.stringify({
       consensusId: request.id,
       question,
@@ -618,7 +705,7 @@ export class SwarmCommunication extends EventEmitter {
     this.handoffs.set(handoff.id, handoff);
     this.metrics.handoffsInitiated++;
 
-    // Send handoff message
+    // Send handoff message via MessageBus
     await this.sendMessage(toAgent, JSON.stringify({
       handoffId: handoff.id,
       description: taskDescription,
@@ -841,25 +928,18 @@ export class SwarmCommunication extends EventEmitter {
       agentId: this.config.agentId,
       agentCount: this.agents.size,
       metrics: { ...this.metrics },
-      pendingMessages: this.getMessages({ limit: 1000 }).length,
+      pendingMessages: this.messageBus.getQueueDepth(),
       pendingHandoffs: this.getPendingHandoffs().length,
       pendingConsensus: this.getPendingConsensus().length,
     };
   }
 
   /**
-   * Cleanup old messages and data
+   * Cleanup domain objects only — message cleanup is handled by MessageBus reaper
    */
   private cleanup(): void {
     const now = Date.now();
     const retention = this.config.messageRetention;
-
-    // Cleanup old messages
-    for (const [id, message] of this.messages) {
-      if (now - message.timestamp > retention) {
-        this.messages.delete(id);
-      }
-    }
 
     // Cleanup old broadcasts
     for (const [id, broadcast] of this.broadcasts) {
@@ -894,7 +974,21 @@ export class SwarmCommunication extends EventEmitter {
 // Exports
 // ============================================================================
 
-export const swarmComm = new SwarmCommunication();
+/**
+ * Create a SwarmCommunication instance with an IMessageBus.
+ *
+ * The singleton `swarmComm` is created with a lazy-initialized MessageBus.
+ * For production use, inject a shared MessageBus instance.
+ */
+export function createSwarmCommunication(
+  messageBus: IMessageBus,
+  config?: Partial<SwarmConfig>,
+): SwarmCommunication {
+  return new SwarmCommunication(messageBus, config);
+}
+
+/** @deprecated Use createSwarmCommunication() with an injected IMessageBus. */
+export const swarmComm = new SwarmCommunication(new MessageBus());
 
 export {
   SwarmCommunication as default,
