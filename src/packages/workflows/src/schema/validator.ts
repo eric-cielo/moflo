@@ -232,6 +232,11 @@ function checkStringReferences(
       continue;
     }
 
+    // {credentials.NAME} — resolved at runtime by the runner
+    if (segments[0] === 'credentials' && segments.length === 2) {
+      continue;
+    }
+
     // {stepId.outputKey} — check step has been declared before this point
     if (segments.length >= 2) {
       const stepId = segments[0];

@@ -30,6 +30,11 @@ import { validateWorkflowDefinition, resolveArguments } from '../schema/validato
 
 const DEFAULT_STEP_TIMEOUT = 300_000; // 5 minutes
 
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+
 interface ExecutionState {
   readonly variables: Record<string, unknown>;
   readonly resolvedArgs: Record<string, unknown>;
@@ -215,8 +220,22 @@ export class WorkflowRunner {
 
     // Pre-compile credential patterns once for the entire run
     const credentialPatterns = (options.credentialValues ?? []).map(
-      v => new RegExp(v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+      v => new RegExp(escapeRegExp(v), 'g'),
     );
+
+    // Pre-resolve {credentials.NAME} references so synchronous interpolation works
+    const credentialNames = this.collectCredentialNames(definition.steps);
+    if (credentialNames.size > 0) {
+      const resolved: Record<string, unknown> = {};
+      await Promise.all([...credentialNames].map(async (name) => {
+        const value = await this.credentials.get(name);
+        if (value !== undefined) {
+          resolved[name] = value;
+          credentialPatterns.push(new RegExp(escapeRegExp(value), 'g'));
+        }
+      }));
+      variables.credentials = resolved;
+    }
 
     const state: ExecutionState = { variables, resolvedArgs, workflowId, options, credentialPatterns };
 
@@ -697,6 +716,35 @@ export class WorkflowRunner {
     } catch {
       // Best-effort — don't fail the workflow for progress tracking
     }
+  }
+
+  /**
+   * Scan all step configs (including nested loop steps) for {credentials.NAME} references.
+   */
+  private collectCredentialNames(steps: readonly StepDefinition[]): Set<string> {
+    const names = new Set<string>();
+
+    const scan = (value: unknown): void => {
+      if (typeof value === 'string') {
+        for (const match of value.matchAll(/\{credentials\.([^}]+)\}/g)) {
+          names.add(match[1]);
+        }
+      } else if (Array.isArray(value)) {
+        for (const item of value) scan(item);
+      } else if (value !== null && typeof value === 'object') {
+        for (const v of Object.values(value as Record<string, unknown>)) scan(v);
+      }
+    };
+
+    const scanSteps = (stepsToScan: readonly StepDefinition[]): void => {
+      for (const step of stepsToScan) {
+        scan(step.config);
+        if (step.steps) scanSteps(step.steps);
+      }
+    };
+
+    scanSteps(steps);
+    return names;
   }
 
   private failureResult(workflowId: string, startTime: number, errors: WorkflowError[]): WorkflowResult {
