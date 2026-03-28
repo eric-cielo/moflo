@@ -83,6 +83,9 @@ export type {
   PerformanceReport,
   AgentPoolConfig,
   AgentPoolState,
+  AgentMessage,
+  AgentMessageStatus,
+  IMessageStore,
 } from './types.js';
 
 // =============================================================================
@@ -174,8 +177,17 @@ export {
   MessageBus,
   createMessageBus,
   WriteThroughAdapter,
+  MessageStore,
 } from './message-bus.js';
-export type { WriteThroughConfig, MemoryStoreFunction, MemoryDeleteFunction, MemoryListFunction } from './message-bus.js';
+export type {
+  WriteThroughConfig,
+  MemoryStoreFunction,
+  MemoryDeleteFunction,
+  MemoryListFunction,
+  MessageStoreConfig,
+  MemoryListWithValueFunction,
+  MemoryRetrieveFunction,
+} from './message-bus.js';
 
 // =============================================================================
 // Agent Pool
