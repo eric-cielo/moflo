@@ -76,3 +76,16 @@ export type {
 
 export { parseYaml, parseJson, parseWorkflow } from './schema/parser.js';
 export { validateWorkflowDefinition, resolveArguments, type ValidatorOptions } from './schema/validator.js';
+
+// ============================================================================
+// Definition Loader (shipped + user override)
+// ============================================================================
+
+export {
+  loadWorkflowDefinitions,
+  loadWorkflowByName,
+  type LoaderOptions,
+  type LoadedWorkflow,
+  type LoadResult,
+  type LoadError,
+} from './loaders/definition-loader.js';
