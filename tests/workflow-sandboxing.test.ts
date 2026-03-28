@@ -139,8 +139,15 @@ describe('#159 — Scope credential access per-step', () => {
 describe('#161 — checkCapabilities in dry-run validation', () => {
   it('dry-run calls checkCapabilities for each step', () => {
     const content = readFileSync(runnerPath, 'utf-8');
-    // Should appear in dryRunValidated method, not just executeStep
     expect(content).toContain('Check capability declarations in dry-run');
     expect(content).toContain('capCheck.violations.map');
+  });
+});
+
+describe('#162 — Object.hasOwn in capability validator', () => {
+  it('uses Object.hasOwn instead of in operator', () => {
+    const content = readFileSync(validatorPath, 'utf-8');
+    expect(content).toContain('Object.hasOwn(stepRestrictions, cap.type)');
+    expect(content).not.toContain('cap.type in stepRestrictions');
   });
 });

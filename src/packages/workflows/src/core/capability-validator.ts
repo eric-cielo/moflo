@@ -82,7 +82,7 @@ export function checkCapabilities(
 
   // Add command capabilities that weren't overridden by step restrictions
   for (const cap of commandCaps) {
-    if (!(cap.type in stepRestrictions)) {
+    if (!Object.hasOwn(stepRestrictions, cap.type)) {
       effectiveCaps.push(cap);
     }
   }
