@@ -222,7 +222,26 @@ export class WorkflowRunner {
 
     await this.storeProgress(workflowId, 'running', 0, definition.steps.length);
 
+    // Build step-ID → index map for O(1) condition branching lookups
+    const stepIndex = new Map<string, number>();
+    for (let idx = 0; idx < definition.steps.length; idx++) {
+      stepIndex.set(definition.steps[idx].id, idx);
+    }
+
+    // Guard against infinite loops from backward condition jumps
+    const maxIterations = definition.steps.length * 10;
+    let iterations = 0;
+
     for (let i = 0; i < definition.steps.length; i++) {
+      if (++iterations > maxIterations) {
+        errors.push({
+          code: 'STEP_EXECUTION_FAILED',
+          message: `Workflow exceeded maximum iterations (${maxIterations}); possible infinite condition loop`,
+        });
+        this.markRemainingSteps(definition, i, 'skipped', stepResults);
+        break;
+      }
+
       if (options.signal?.aborted) {
         cancelled = true;
         this.markRemainingSteps(definition, i, 'cancelled', stepResults);
@@ -230,7 +249,6 @@ export class WorkflowRunner {
       }
 
       const step = definition.steps[i];
-      // TODO(#136): condition branching — inspect result.output.data.nextStep to jump
       // TODO(#137): loop iteration — execute step.steps for each item in loop output
       const result = await this.executeStep(step, state, i);
 
@@ -241,8 +259,25 @@ export class WorkflowRunner {
           variables[step.output] = result.output.data;
         }
         variables[step.id] = result.output.data;
-        // Stash the config that was actually executed (returned from executeStep)
         completedSteps.push({ step, config: result.interpolatedConfig ?? {} });
+
+        // Condition branching: jump to the target step if nextStep is set
+        const nextStep = result.output.data?.nextStep;
+        if (typeof nextStep === 'string' && nextStep.length > 0) {
+          const targetIdx = stepIndex.get(nextStep);
+          if (targetIdx === undefined) {
+            errors.push({
+              stepId: step.id,
+              code: 'CONDITION_TARGET_NOT_FOUND',
+              message: `Condition step "${step.id}" targets step "${nextStep}" which does not exist`,
+            });
+            await this.rollbackSteps(completedSteps, state, stepResults);
+            this.markRemainingSteps(definition, i + 1, 'skipped', stepResults);
+            break;
+          }
+          // Jump: set i so the next loop increment lands on targetIdx
+          i = targetIdx - 1;
+        }
       }
 
       if (result.status === 'cancelled') {
@@ -265,7 +300,7 @@ export class WorkflowRunner {
         }
       }
 
-      await this.storeProgress(workflowId, 'running', i + 1, definition.steps.length);
+      await this.storeProgress(workflowId, 'running', stepResults.length, definition.steps.length);
       try { options.onStepComplete?.(result, i, definition.steps.length); } catch { /* callback errors must not crash the workflow */ }
     }
 

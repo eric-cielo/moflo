@@ -12,6 +12,7 @@ import type { StepOutput, ValidationError } from './step-command.types.js';
 
 export type WorkflowErrorCode =
   | 'ARGUMENT_VALIDATION_FAILED'
+  | 'CONDITION_TARGET_NOT_FOUND'
   | 'DEFINITION_VALIDATION_FAILED'
   | 'STEP_VALIDATION_FAILED'
   | 'STEP_EXECUTION_FAILED'
