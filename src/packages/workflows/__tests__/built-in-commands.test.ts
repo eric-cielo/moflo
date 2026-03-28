@@ -427,21 +427,116 @@ describe('loopCommand', () => {
 });
 
 // ============================================================================
-// Browser Command (Stub)
+// Browser Command
 // ============================================================================
 
 describe('browserCommand', () => {
-  it('should validate with valid config', () => {
-    const result = browserCommand.validate({ action: 'navigate' }, createContext());
+  // --- Validation ---
+
+  it('should validate with valid actions array', () => {
+    const result = browserCommand.validate({
+      actions: [{ action: 'open', url: 'https://example.com' }],
+    }, createContext());
     expect(result.valid).toBe(true);
   });
 
-  it('should fail execution with Playwright required error', async () => {
+  it('should validate multiple actions', () => {
+    const result = browserCommand.validate({
+      actions: [
+        { action: 'open', url: 'https://example.com' },
+        { action: 'click', selector: '#btn' },
+        { action: 'fill', selector: '#input', value: 'hello' },
+        { action: 'screenshot', outputVar: 'img' },
+      ],
+    }, createContext());
+    expect(result.valid).toBe(true);
+  });
+
+  it('should reject missing actions array', () => {
+    const result = browserCommand.validate({}, createContext());
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].path).toBe('actions');
+  });
+
+  it('should reject non-array actions', () => {
+    const result = browserCommand.validate({ actions: 'open' }, createContext());
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].path).toBe('actions');
+  });
+
+  it('should reject action with missing action name', () => {
+    const result = browserCommand.validate({
+      actions: [{ url: 'https://example.com' }],
+    }, createContext());
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].path).toBe('actions[0].action');
+  });
+
+  it('should reject unsupported action name', () => {
+    const result = browserCommand.validate({
+      actions: [{ action: 'teleport' }],
+    }, createContext());
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toContain('unsupported action: teleport');
+  });
+
+  it('should reject invalid timeout', () => {
+    const result = browserCommand.validate({
+      actions: [{ action: 'open', url: 'https://example.com' }],
+      timeout: -1,
+    }, createContext());
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].path).toBe('timeout');
+  });
+
+  it('should validate all supported action names', () => {
+    const supported = [
+      'open', 'click', 'fill', 'type', 'select',
+      'get-text', 'get-value', 'screenshot', 'wait',
+      'evaluate', 'scroll', 'hover', 'press',
+    ];
+    for (const action of supported) {
+      const result = browserCommand.validate({
+        actions: [{ action }],
+      }, createContext());
+      expect(result.valid).toBe(true);
+    }
+  });
+
+  // --- Execution (Playwright not installed) ---
+
+  it('should fail execution with Playwright install instructions', async () => {
     const output = await browserCommand.execute(
-      { action: 'navigate', url: 'https://example.com' },
+      { actions: [{ action: 'open', url: 'https://example.com' }] },
       createContext(),
     );
     expect(output.success).toBe(false);
     expect(output.error).toContain('Playwright');
+    expect(output.error).toContain('npm install playwright');
+  });
+
+  // --- Output descriptors ---
+
+  it('should describe outputs', () => {
+    const outputs = browserCommand.describeOutputs();
+    expect(outputs).toHaveLength(2);
+    expect(outputs[0].name).toBe('actionsExecuted');
+    expect(outputs[1].name).toBe('screenshot_path');
+  });
+
+  // --- Rollback ---
+
+  it('should have rollback method', () => {
+    expect(browserCommand.rollback).toBeDefined();
+  });
+
+  // --- Config schema ---
+
+  it('should have actions as required in schema', () => {
+    expect(browserCommand.configSchema.required).toContain('actions');
+  });
+
+  it('should define headless option in schema', () => {
+    expect(browserCommand.configSchema.properties?.headless).toBeDefined();
   });
 });
