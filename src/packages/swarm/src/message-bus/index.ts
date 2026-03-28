@@ -10,6 +10,7 @@
 export { Deque } from './deque.js';
 export { PriorityMessageQueue, type MessageQueueEntry } from './priority-queue.js';
 export { MessageBus } from './message-bus.js';
+export { WriteThroughAdapter, type WriteThroughConfig, type MemoryStoreFunction, type MemoryDeleteFunction, type MemoryListFunction } from './write-through-adapter.js';
 
 import type { MessageBusConfig } from '../types.js';
 import { MessageBus } from './message-bus.js';
