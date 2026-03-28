@@ -344,11 +344,16 @@ export interface MessageFilter {
   limit?: number;
 }
 
+/**
+ * @deprecated Configuration for the in-memory MessageBus.
+ * For persistent messaging, use MessageStore with MessageStoreConfig instead.
+ */
 export interface MessageBusConfig {
   maxQueueSize: number;
   processingIntervalMs: number;
   ackTimeoutMs: number;
   retryAttempts: number;
+  /** @deprecated Use MessageStore for persistence instead of this flag */
   enablePersistence: boolean;
   compressionEnabled: boolean;
   /** TTL reaper sweep interval in ms (default: 60000) */

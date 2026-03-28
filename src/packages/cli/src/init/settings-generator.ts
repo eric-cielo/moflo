@@ -79,7 +79,7 @@ export function generateSettings(options: InitOptions): object {
       enabled: true,
       teammateMode: 'auto', // 'auto' | 'in-process' | 'tmux'
       taskListEnabled: true,
-      mailboxEnabled: true,
+      mailboxEnabled: true, // Uses MessageStore for persistent cross-process messaging
       coordination: {
         autoAssignOnIdle: true,       // Auto-assign pending tasks when teammate is idle
         trainPatternsOnComplete: true, // Train neural patterns when tasks complete
