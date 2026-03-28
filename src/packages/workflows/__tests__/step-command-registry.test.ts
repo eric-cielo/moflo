@@ -15,8 +15,8 @@ import type {
   OutputDescriptor,
   WorkflowContext,
   CredentialAccessor,
-  MemoryAccessor,
 } from '../src/types/step-command.types.js';
+import { createMockContext } from './helpers.js';
 
 // ============================================================================
 // Test Helpers
@@ -36,30 +36,6 @@ function createMockCommand(type: string, outputs?: OutputDescriptor[]): StepComm
     describeOutputs(): OutputDescriptor[] {
       return outputs ?? [{ name: 'result', type: 'string' }];
     },
-  };
-}
-
-function createMockContext(overrides?: Partial<WorkflowContext>): WorkflowContext {
-  const credentials: CredentialAccessor = {
-    async get() { return undefined; },
-    async has() { return false; },
-  };
-
-  const memory: MemoryAccessor = {
-    async read() { return null; },
-    async write() {},
-    async search() { return []; },
-  };
-
-  return {
-    variables: {},
-    args: {},
-    credentials,
-    memory,
-    taskId: 'test-task-1',
-    workflowId: 'test-workflow-1',
-    stepIndex: 0,
-    ...overrides,
   };
 }
 

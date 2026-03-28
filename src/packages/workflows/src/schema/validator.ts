@@ -79,9 +79,28 @@ function validateArguments(
       });
     }
 
+    if (argDef.default !== undefined && argDef.type) {
+      if (!matchesArgumentType(argDef.default, argDef.type)) {
+        errors.push({
+          path: `${path}.default`,
+          message: `default value ${JSON.stringify(argDef.default)} does not match declared type "${argDef.type}"`,
+        });
+      }
+    }
+
     if (argDef.enum !== undefined) {
       if (!Array.isArray(argDef.enum) || argDef.enum.length === 0) {
         errors.push({ path: `${path}.enum`, message: 'enum must be a non-empty array' });
+      } else if (argDef.type) {
+        for (const enumVal of argDef.enum) {
+          if (!matchesArgumentType(enumVal, argDef.type)) {
+            errors.push({
+              path: `${path}.enum`,
+              message: `enum value ${JSON.stringify(enumVal)} does not match declared type "${argDef.type}"`,
+            });
+            break; // one error per enum is sufficient
+          }
+        }
       }
     }
 
@@ -256,6 +275,14 @@ export function resolveArguments(
       }
     }
 
+    if (value !== undefined && def.type && !matchesArgumentType(value, def.type)) {
+      errors.push({
+        path: `arguments.${name}`,
+        message: `value ${JSON.stringify(value)} does not match declared type "${def.type}"`,
+      });
+      continue;
+    }
+
     if (value !== undefined && def.enum) {
       if (!def.enum.includes(value)) {
         errors.push({
@@ -287,6 +314,17 @@ export function resolveArguments(
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/** Check whether a value matches a declared ArgumentType. */
+function matchesArgumentType(value: unknown, type: ArgumentType): boolean {
+  switch (type) {
+    case 'string': return typeof value === 'string';
+    case 'number': return typeof value === 'number';
+    case 'boolean': return typeof value === 'boolean';
+    case 'string[]': return Array.isArray(value) && value.every(v => typeof v === 'string');
+    default: return true;
+  }
+}
 
 function findSimilar(target: string, candidates: readonly string[]): string[] {
   return candidates

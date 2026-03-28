@@ -115,6 +115,17 @@ describe('parseWorkflow', () => {
     const result = parseWorkflow(VALID_YAML);
     expect(result.format).toBe('yaml');
   });
+
+  it('should fall through to auto-detect on unknown extension', () => {
+    // .txt is not a known extension, should auto-detect as YAML from content
+    const result = parseWorkflow(VALID_YAML, 'workflow.txt');
+    expect(result.format).toBe('yaml');
+  });
+
+  it('should auto-detect JSON for unknown extension with JSON content', () => {
+    const result = parseWorkflow(VALID_JSON, 'workflow.toml');
+    expect(result.format).toBe('json');
+  });
 });
 
 // ============================================================================
@@ -188,6 +199,32 @@ describe('validateWorkflowDefinition', () => {
     const result = validateWorkflowDefinition(def);
     expect(result.valid).toBe(false);
     expect(result.errors[0].path).toContain('arguments.x.type');
+  });
+
+  it('should reject default value that mismatches argument type', () => {
+    const def: WorkflowDefinition = {
+      name: 'test',
+      arguments: {
+        count: { type: 'number', default: 'not-a-number' },
+      },
+      steps: [{ id: 'a', type: 'bash', config: {} }],
+    };
+    const result = validateWorkflowDefinition(def);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toContain('does not match declared type');
+  });
+
+  it('should reject enum values that mismatch argument type', () => {
+    const def: WorkflowDefinition = {
+      name: 'test',
+      arguments: {
+        level: { type: 'number', enum: ['low', 'high'] },
+      },
+      steps: [{ id: 'a', type: 'bash', config: {} }],
+    };
+    const result = validateWorkflowDefinition(def);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.message.includes('does not match declared type'))).toBe(true);
   });
 
   it('should validate enum default', () => {
@@ -297,6 +334,33 @@ describe('resolveArguments', () => {
     };
     const { errors } = resolveArguments(defs, { target: 'src/', targat: 'oops' });
     expect(errors.some(e => e.message.includes('unknown argument "targat"'))).toBe(true);
+  });
+
+  it('should omit optional args with no default when not provided', () => {
+    const defs = {
+      optional: { type: 'string' as const },
+    };
+    const { resolved, errors } = resolveArguments(defs, {});
+    expect(errors).toEqual([]);
+    expect(resolved).not.toHaveProperty('optional');
+  });
+
+  it('should reject value that does not match declared type', () => {
+    const defs = {
+      count: { type: 'number' as const, required: true },
+    };
+    const { errors } = resolveArguments(defs, { count: 'not-a-number' });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('does not match declared type');
+  });
+
+  it('should reject boolean value for string type', () => {
+    const defs = {
+      name: { type: 'string' as const },
+    };
+    const { errors } = resolveArguments(defs, { name: true });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('"string"');
   });
 });
 

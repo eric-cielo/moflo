@@ -48,6 +48,12 @@ describe('interpolateString', () => {
     expect(() => interpolateString('{missing.var}', ctx)).toThrow('Variable not found: missing.var');
   });
 
+  it('should pass through empty braces (no match for regex)', () => {
+    const ctx = createContext();
+    // {} has no content inside braces, so the regex {([^}]+)} won't match
+    expect(interpolateString('empty {} braces', ctx)).toBe('empty {} braces');
+  });
+
   it('should coerce non-string values to string', () => {
     const ctx = createContext({ variables: { step1: { count: 42, ok: true } } });
     expect(interpolateString('{step1.count}', ctx)).toBe('42');
@@ -69,11 +75,38 @@ describe('interpolateConfig', () => {
     expect(result.tags).toEqual(['deploy-prod', 'latest']);
   });
 
-  it('should pass non-string non-array values unchanged', () => {
+  it('should pass non-string primitives unchanged', () => {
     const ctx = createContext();
-    const result = interpolateConfig({ flag: true, count: 3, obj: { nested: true } }, ctx);
+    const result = interpolateConfig({ flag: true, count: 3, nothing: null }, ctx);
     expect(result.flag).toBe(true);
     expect(result.count).toBe(3);
-    expect(result.obj).toEqual({ nested: true });
+    expect(result.nothing).toBeNull();
+  });
+
+  it('should recursively interpolate nested objects', () => {
+    const ctx = createContext({ args: { token: 'abc123', host: 'api.example.com' } });
+    const result = interpolateConfig({
+      headers: { Authorization: 'Bearer {args.token}', Host: '{args.host}' },
+    }, ctx);
+    expect(result.headers).toEqual({
+      Authorization: 'Bearer abc123',
+      Host: 'api.example.com',
+    });
+  });
+
+  it('should recursively interpolate deeply nested structures', () => {
+    const ctx = createContext({ args: { val: 'deep' } });
+    const result = interpolateConfig({
+      level1: { level2: { level3: 'value is {args.val}' } },
+    }, ctx);
+    expect(result.level1).toEqual({ level2: { level3: 'value is deep' } });
+  });
+
+  it('should interpolate strings inside nested arrays', () => {
+    const ctx = createContext({ args: { env: 'prod' } });
+    const result = interpolateConfig({
+      nested: { tags: ['deploy-{args.env}', 'latest'] },
+    }, ctx);
+    expect(result.nested).toEqual({ tags: ['deploy-prod', 'latest'] });
   });
 });

@@ -62,8 +62,29 @@ export function interpolateString(template: string, context: WorkflowContext): s
 }
 
 /**
- * Interpolate string values in a config object (shallow — top-level keys only).
- * Non-string values and nested objects are passed through unchanged.
+ * Recursively interpolate string values in a value tree.
+ * Handles strings, arrays, and plain objects at any depth.
+ */
+function interpolateValue(value: unknown, context: WorkflowContext): unknown {
+  if (typeof value === 'string') {
+    return interpolateString(value, context);
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => interpolateValue(item, context));
+  }
+  if (value !== null && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      result[k] = interpolateValue(v, context);
+    }
+    return result;
+  }
+  return value;
+}
+
+/**
+ * Interpolate string values in a config object (deep — recursively walks nested objects and arrays).
+ * Non-string primitives (numbers, booleans, null) are passed through unchanged.
  */
 export function interpolateConfig(
   config: Record<string, unknown>,
@@ -71,15 +92,7 @@ export function interpolateConfig(
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(config)) {
-    if (typeof value === 'string') {
-      result[key] = interpolateString(value, context);
-    } else if (Array.isArray(value)) {
-      result[key] = value.map(item =>
-        typeof item === 'string' ? interpolateString(item, context) : item
-      );
-    } else {
-      result[key] = value;
-    }
+    result[key] = interpolateValue(value, context);
   }
   return result;
 }

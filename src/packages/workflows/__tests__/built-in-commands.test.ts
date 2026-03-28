@@ -126,6 +126,26 @@ describe('bashCommand', () => {
     const output = await bashCommand.execute({ command: 'echo {s1.msg}' }, ctx);
     expect(output.data.stdout).toBe('world');
   });
+
+  it('should respect abort signal', async () => {
+    const controller = new AbortController();
+    const ctx = createContext({ abortSignal: controller.signal });
+    // Start a long-running command and abort immediately
+    const promise = bashCommand.execute({ command: 'sleep 10' }, ctx);
+    controller.abort();
+    const output = await promise;
+    // Command should complete (killed), not hang
+    expect(output.duration).toBeDefined();
+  });
+
+  it('should timeout long commands', async () => {
+    const ctx = createContext();
+    const output = await bashCommand.execute(
+      { command: 'sleep 10', timeout: 100, failOnError: true },
+      ctx,
+    );
+    expect(output.success).toBe(false);
+  }, 5000);
 });
 
 // ============================================================================
@@ -282,6 +302,25 @@ describe('memoryCommand', () => {
     expect(readResult.data.found).toBe(true);
   });
 
+  it('should interpolate string values on write', async () => {
+    const store = new Map<string, unknown>();
+    const memory: MemoryAccessor = {
+      async read(_ns, key) { return store.get(key) ?? null; },
+      async write(_ns, key, value) { store.set(key, value); },
+      async search() { return []; },
+    };
+    const ctx = createContext({
+      memory,
+      args: { env: 'production' },
+    });
+
+    await memoryCommand.execute(
+      { action: 'write', namespace: 'config', key: 'env', value: 'deploying to {args.env}' },
+      ctx,
+    );
+    expect(store.get('env')).toBe('deploying to production');
+  });
+
   it('should search memory', async () => {
     const memory: MemoryAccessor = {
       async read() { return null; },
@@ -321,6 +360,14 @@ describe('waitCommand', () => {
     expect(output.success).toBe(true);
     expect(output.data.waited).toBe(10);
     expect(output.duration).toBeGreaterThanOrEqual(10);
+  });
+
+  it('should reject on abort signal', async () => {
+    const controller = new AbortController();
+    const ctx = createContext({ abortSignal: controller.signal });
+    const promise = waitCommand.execute({ duration: 10000 }, ctx);
+    controller.abort();
+    await expect(promise).rejects.toThrow('Wait aborted');
   });
 });
 

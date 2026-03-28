@@ -30,6 +30,19 @@ export interface JSONSchema {
   description?: string;
   default?: unknown;
   additionalProperties?: boolean | JSONSchema;
+  // Numeric constraints
+  minimum?: number;
+  maximum?: number;
+  // String constraints
+  pattern?: string;
+  minLength?: number;
+  maxLength?: number;
+  // Array constraints
+  minItems?: number;
+  maxItems?: number;
+  // Composition
+  oneOf?: JSONSchema[];
+  anyOf?: JSONSchema[];
 }
 
 // ============================================================================
@@ -91,17 +104,20 @@ export interface WorkflowContext {
 /**
  * Foundational abstraction for workflow steps.
  * Commands are stateless — all state flows through WorkflowContext.
+ *
+ * The generic parameter lets commands narrow their config type at compile time
+ * while remaining registerable via the base `StepCommand` interface.
  */
-export interface StepCommand {
+export interface StepCommand<TConfig extends StepConfig = StepConfig> {
   readonly type: string;
   readonly description: string;
   readonly configSchema: JSONSchema;
 
   /** Validate may be async (e.g. checking credentials or remote state). */
-  validate(config: StepConfig, context: WorkflowContext): ValidationResult | Promise<ValidationResult>;
-  execute(config: StepConfig, context: WorkflowContext): Promise<StepOutput>;
+  validate(config: TConfig, context: WorkflowContext): ValidationResult | Promise<ValidationResult>;
+  execute(config: TConfig, context: WorkflowContext): Promise<StepOutput>;
   describeOutputs(): OutputDescriptor[];
-  rollback?(config: StepConfig, context: WorkflowContext): Promise<void>;
+  rollback?(config: TConfig, context: WorkflowContext): Promise<void>;
 }
 
 // ============================================================================
