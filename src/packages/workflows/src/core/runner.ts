@@ -7,6 +7,7 @@
 import type {
   WorkflowContext,
   StepOutput,
+  StepCommand,
   CredentialAccessor,
   MemoryAccessor,
   ValidationError,
@@ -388,6 +389,18 @@ export class WorkflowRunner {
       };
     }
 
+    // Block credential interpolation for steps without the 'credentials' capability
+    if (this.stepReferencesCredentials(step) && !this.stepHasCredentialCapability(step, command)) {
+      return {
+        stepId: step.id,
+        stepType: step.type,
+        status: 'failed',
+        error: 'Step references {credentials.*} but does not declare the "credentials" capability',
+        errorCode: 'CAPABILITY_DENIED',
+        duration: Date.now() - stepStart,
+      };
+    }
+
     const context = this.buildContext(
       state.variables, state.resolvedArgs, state.workflowId, index, state.options.signal,
     );
@@ -762,6 +775,24 @@ export class WorkflowRunner {
 
     scanSteps(steps);
     return names;
+  }
+
+  /**
+   * Check if a step's raw config contains {credentials.*} references.
+   */
+  private stepReferencesCredentials(step: StepDefinition): boolean {
+    const json = JSON.stringify(step.config ?? {});
+    return /\{credentials\.[^}]+\}/.test(json);
+  }
+
+  /**
+   * Check if a step has the 'credentials' capability — either from the
+   * command's defaults or from step-level capability declarations.
+   */
+  private stepHasCredentialCapability(step: StepDefinition, command: StepCommand): boolean {
+    const commandHas = command.capabilities?.some(c => c.type === 'credentials') ?? false;
+    const stepDeclares = step.capabilities ? Object.hasOwn(step.capabilities, 'credentials') : false;
+    return commandHas || stepDeclares;
   }
 
   private failureResult(workflowId: string, startTime: number, errors: WorkflowError[]): WorkflowResult {

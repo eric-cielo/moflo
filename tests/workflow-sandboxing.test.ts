@@ -3,6 +3,7 @@
  *
  * #155: CAPABILITY_DENIED is a valid WorkflowErrorCode
  * #156: Scope enforcement at runtime via enforceScope()
+ * #157: Credential interpolation bypass is closed
  */
 
 import { describe, it, expect } from 'vitest';
@@ -13,6 +14,14 @@ const runnerTypesPath = resolve(
   __dirname,
   '../src/packages/workflows/src/types/runner.types.ts',
 );
+const runnerPath = resolve(
+  __dirname,
+  '../src/packages/workflows/src/core/runner.ts',
+);
+const validatorPath = resolve(
+  __dirname,
+  '../src/packages/workflows/src/core/capability-validator.ts',
+);
 
 describe('#155 — CAPABILITY_DENIED in WorkflowErrorCode', () => {
   it('runner.types.ts includes CAPABILITY_DENIED in WorkflowErrorCode union', () => {
@@ -21,32 +30,18 @@ describe('#155 — CAPABILITY_DENIED in WorkflowErrorCode', () => {
   });
 
   it('runner.ts uses CAPABILITY_DENIED errorCode for capability violations', () => {
-    const runnerPath = resolve(
-      __dirname,
-      '../src/packages/workflows/src/core/runner.ts',
-    );
     const content = readFileSync(runnerPath, 'utf-8');
     expect(content).toContain("errorCode: 'CAPABILITY_DENIED'");
   });
 });
 
 describe('#156 — Enforce capability scope restrictions at runtime', () => {
-  // We import from source directly for unit-level testing
-  const validatorPath = resolve(
-    __dirname,
-    '../src/packages/workflows/src/core/capability-validator.ts',
-  );
-
   it('capability-validator exports enforceScope function', () => {
     const content = readFileSync(validatorPath, 'utf-8');
     expect(content).toContain('export function enforceScope(');
   });
 
   it('runner.ts passes effectiveCaps into context via scopedContext', () => {
-    const runnerPath = resolve(
-      __dirname,
-      '../src/packages/workflows/src/core/runner.ts',
-    );
     const content = readFileSync(runnerPath, 'utf-8');
     expect(content).toContain('effectiveCaps: capCheck.effectiveCaps');
   });
@@ -62,13 +57,11 @@ describe('#156 — Enforce capability scope restrictions at runtime', () => {
 
   it('enforceScope returns null for resources within scope', () => {
     const content = readFileSync(validatorPath, 'utf-8');
-    // Verify the function handles prefix-based scope matching
     expect(content).toContain('normalizedResource.startsWith(normalizedPattern)');
   });
 
   it('enforceScope returns violation for resources outside scope', () => {
     const content = readFileSync(validatorPath, 'utf-8');
-    // Verify it produces a violation with the resource and scope info
     expect(content).toContain('is outside allowed scope');
   });
 
@@ -79,7 +72,6 @@ describe('#156 — Enforce capability scope restrictions at runtime', () => {
 
   it('enforceScope allows unrestricted access when no scope defined', () => {
     const content = readFileSync(validatorPath, 'utf-8');
-    // No scope = unrestricted
     expect(content).toContain('No scope defined = unrestricted');
   });
 
@@ -90,5 +82,32 @@ describe('#156 — Enforce capability scope restrictions at runtime', () => {
     );
     const content = readFileSync(indexPath, 'utf-8');
     expect(content).toContain('enforceScope');
+  });
+});
+
+describe('#157 — Credential interpolation bypass closed', () => {
+  it('runner checks credential references before interpolation', () => {
+    const content = readFileSync(runnerPath, 'utf-8');
+    expect(content).toContain('stepReferencesCredentials');
+    expect(content).toContain('stepHasCredentialCapability');
+  });
+
+  it('runner blocks credential access without credentials capability', () => {
+    const content = readFileSync(runnerPath, 'utf-8');
+    expect(content).toContain(
+      'does not declare the "credentials" capability',
+    );
+  });
+
+  it('stepReferencesCredentials checks raw config for {credentials.*}', () => {
+    const content = readFileSync(runnerPath, 'utf-8');
+    expect(content).toContain('private stepReferencesCredentials');
+    expect(content).toContain('{credentials\\.');
+  });
+
+  it('stepHasCredentialCapability checks both command and step declarations', () => {
+    const content = readFileSync(runnerPath, 'utf-8');
+    expect(content).toContain('private stepHasCredentialCapability');
+    expect(content).toContain("c.type === 'credentials'");
   });
 });
