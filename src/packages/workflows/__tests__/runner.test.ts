@@ -712,3 +712,177 @@ describe('WorkflowRunner — callback safety', () => {
     expect(result.steps).toHaveLength(2);
   });
 });
+
+// ============================================================================
+// Condition Branching (Story #136)
+// ============================================================================
+
+describe('WorkflowRunner — condition branching', () => {
+  function createConditionCommand(result: boolean, nextStep: string | null): StepCommand {
+    return createMockCommand({
+      type: 'condition',
+      execute: async () => ({
+        success: true,
+        data: { result, branch: result ? 'then' : 'else', nextStep },
+        duration: 1,
+      }),
+    });
+  }
+
+  it('should jump to "then" step when condition is true', async () => {
+    registry.register(createConditionCommand(true, 'then-step'));
+    registry.register(createMockCommand({ type: 'action' }));
+
+    const definition = simpleWorkflow([
+      { id: 'check', type: 'condition', config: {}, output: 'check' },
+      { id: 'skipped-step', type: 'action', config: {} },
+      { id: 'then-step', type: 'action', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    // Should have executed: check, then-step (skipped-step was jumped over)
+    expect(result.steps).toHaveLength(2);
+    expect(result.steps[0].stepId).toBe('check');
+    expect(result.steps[1].stepId).toBe('then-step');
+  });
+
+  it('should jump to "else" step when condition is false', async () => {
+    registry.register(createConditionCommand(false, 'else-step'));
+    registry.register(createMockCommand({ type: 'action' }));
+
+    const definition = simpleWorkflow([
+      { id: 'check', type: 'condition', config: {}, output: 'check' },
+      { id: 'then-step', type: 'action', config: {} },
+      { id: 'else-step', type: 'action', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    expect(result.steps).toHaveLength(2);
+    expect(result.steps[0].stepId).toBe('check');
+    expect(result.steps[1].stepId).toBe('else-step');
+  });
+
+  it('should fail with CONDITION_TARGET_NOT_FOUND for nonexistent target', async () => {
+    registry.register(createConditionCommand(true, 'nonexistent'));
+    registry.register(createMockCommand({ type: 'action' }));
+
+    const definition = simpleWorkflow([
+      { id: 'check', type: 'condition', config: {} },
+      { id: 'action', type: 'action', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(false);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].code).toBe('CONDITION_TARGET_NOT_FOUND');
+    expect(result.errors[0].message).toContain('nonexistent');
+    // Remaining steps should be skipped
+    expect(result.steps[1].status).toBe('skipped');
+  });
+
+  it('should handle chained conditions (condition → condition → action)', async () => {
+    // First condition jumps to second condition, second jumps to final action
+    const condA = createMockCommand({
+      type: 'cond-a',
+      execute: async () => ({
+        success: true,
+        data: { result: true, branch: 'then', nextStep: 'cond-b' },
+        duration: 1,
+      }),
+    });
+    const condB = createMockCommand({
+      type: 'cond-b',
+      execute: async () => ({
+        success: true,
+        data: { result: false, branch: 'else', nextStep: 'final' },
+        duration: 1,
+      }),
+    });
+    const action = createMockCommand({
+      type: 'action',
+      execute: async () => ({
+        success: true,
+        data: { done: true },
+        duration: 1,
+      }),
+    });
+
+    registry.register(condA);
+    registry.register(condB);
+    registry.register(action);
+
+    const definition = simpleWorkflow([
+      { id: 'cond-a', type: 'cond-a', config: {}, output: 'cond-a' },
+      { id: 'skipped-1', type: 'action', config: {} },
+      { id: 'cond-b', type: 'cond-b', config: {}, output: 'cond-b' },
+      { id: 'skipped-2', type: 'action', config: {} },
+      { id: 'final', type: 'action', config: {}, output: 'final' },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    expect(result.steps).toHaveLength(3);
+    expect(result.steps[0].stepId).toBe('cond-a');
+    expect(result.steps[1].stepId).toBe('cond-b');
+    expect(result.steps[2].stepId).toBe('final');
+  });
+
+  it('should preserve variable context across jumps', async () => {
+    let capturedVars: Record<string, unknown> = {};
+
+    registry.register(createMockCommand({
+      type: 'setup',
+      execute: async () => ({
+        success: true,
+        data: { value: 'preserved' },
+        duration: 1,
+      }),
+    }));
+    registry.register(createConditionCommand(true, 'consumer'));
+    registry.register(createMockCommand({
+      type: 'consumer',
+      execute: async (_config, ctx) => {
+        capturedVars = { ...ctx.variables };
+        return { success: true, data: {}, duration: 1 };
+      },
+    }));
+
+    const definition = simpleWorkflow([
+      { id: 'setup', type: 'setup', config: {}, output: 'setup' },
+      { id: 'check', type: 'condition', config: {}, output: 'check' },
+      { id: 'skipped', type: 'consumer', config: {} },
+      { id: 'consumer', type: 'consumer', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    // Variables from setup step should be available in the jumped-to consumer step
+    const setupData = capturedVars['setup'] as Record<string, unknown>;
+    expect(setupData?.value).toBe('preserved');
+  });
+
+  it('should continue sequentially when nextStep is null', async () => {
+    // Condition returns null nextStep — should proceed to next step normally
+    registry.register(createConditionCommand(true, null));
+    registry.register(createMockCommand({ type: 'action' }));
+
+    const definition = simpleWorkflow([
+      { id: 'check', type: 'condition', config: {}, output: 'check' },
+      { id: 'next', type: 'action', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    expect(result.steps).toHaveLength(2);
+    expect(result.steps[0].stepId).toBe('check');
+    expect(result.steps[1].stepId).toBe('next');
+  });
+});
