@@ -11,7 +11,7 @@ export { Deque } from './deque.js';
 export { PriorityMessageQueue, type MessageQueueEntry } from './priority-queue.js';
 export { MessageBus } from './message-bus.js';
 export { WriteThroughAdapter, type WriteThroughConfig, type MemoryStoreFunction, type MemoryDeleteFunction, type MemoryListFunction } from './write-through-adapter.js';
-export { MessageStore, type MessageStoreConfig, type MemoryListWithValueFunction, type MemoryRetrieveFunction } from './message-store.js';
+export { MessageStore, type MessageStoreConfig, type MemoryListWithValueFunction, type MemoryRetrieveFunction, type EmbeddingFunction } from './message-store.js';
 
 import type { MessageBusConfig } from '../types.js';
 import { MessageBus } from './message-bus.js';

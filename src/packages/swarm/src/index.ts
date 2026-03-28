@@ -86,6 +86,10 @@ export type {
   AgentMessage,
   AgentMessageStatus,
   IMessageStore,
+  MessageSearchOptions,
+  ScoredMessage,
+  MessageSummarizeOptions,
+  MessageSummary,
 } from './types.js';
 
 // =============================================================================
@@ -187,6 +191,7 @@ export type {
   MessageStoreConfig,
   MemoryListWithValueFunction,
   MemoryRetrieveFunction,
+  EmbeddingFunction,
 } from './message-bus.js';
 
 // =============================================================================
