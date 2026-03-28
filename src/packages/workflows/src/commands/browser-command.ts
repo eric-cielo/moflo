@@ -17,6 +17,11 @@ import type {
 export const browserCommand: StepCommand = {
   type: 'browser',
   description: 'Web automation via Playwright (requires playwright peer dependency)',
+  capabilities: [
+    { type: 'browser' },
+    { type: 'net' },
+    { type: 'fs:write' },
+  ],
   configSchema: {
     type: 'object',
     properties: {

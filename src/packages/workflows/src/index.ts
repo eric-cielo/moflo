@@ -25,6 +25,8 @@ export type {
   WorkflowContext,
   CredentialAccessor,
   MemoryAccessor,
+  StepCapability,
+  CapabilityType,
 } from './types/step-command.types.js';
 
 export type {
@@ -45,6 +47,14 @@ export type {
 export { StepCommandRegistry } from './core/step-command-registry.js';
 export { interpolateString, interpolateConfig } from './core/interpolation.js';
 export { WorkflowRunner } from './core/runner.js';
+export {
+  checkCapabilities,
+  isValidCapabilityType,
+  validateStepCapabilities,
+  formatViolations,
+  type CapabilityViolation,
+  type CapabilityCheckResult,
+} from './core/capability-validator.js';
 
 // ============================================================================
 // Built-in Commands

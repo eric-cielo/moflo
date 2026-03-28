@@ -505,3 +505,7 @@ console.log(result.duration);    // Total execution time in ms
 ```
 
 `createRunner()` registers all eight built-in step commands automatically. The runner accepts optional `memory` and `credentials` accessors — if you don't provide them, it uses no-op defaults (memory reads return null, credential lookups return undefined).
+
+## Further Reading
+
+- [Workflow Sandboxing](WORKFLOW-SANDBOXING.md) — Capability-based security for workflow steps

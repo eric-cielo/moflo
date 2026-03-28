@@ -30,6 +30,8 @@ export interface StepDefinition {
   readonly continueOnError?: boolean;
   /** Nested steps for condition/loop commands. */
   readonly steps?: readonly StepDefinition[];
+  /** Capability restrictions for this step (narrows the command's defaults). */
+  readonly capabilities?: Record<string, readonly string[]>;
 }
 
 // ============================================================================

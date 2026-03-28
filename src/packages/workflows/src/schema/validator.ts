@@ -17,6 +17,7 @@ import type {
   ArgumentDefinition,
   ArgumentType,
 } from '../types/workflow-definition.types.js';
+import { validateStepCapabilities } from '../core/capability-validator.js';
 
 const VALID_ARG_TYPES: readonly ArgumentType[] = ['string', 'number', 'boolean', 'string[]'];
 
@@ -153,6 +154,10 @@ function validateSteps(
     if (step.output) {
       outputVars.add(step.output);
     }
+
+    // Validate capabilities if declared
+    const capErrors = validateStepCapabilities(step, path);
+    errors.push(...capErrors);
 
     // Recurse into nested steps (condition/loop)
     if (step.steps && Array.isArray(step.steps)) {

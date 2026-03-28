@@ -98,6 +98,30 @@ export interface WorkflowContext {
 }
 
 // ============================================================================
+// Step Capabilities
+// ============================================================================
+
+/** Capability types that a step command may require. */
+export type CapabilityType =
+  | 'fs:read'
+  | 'fs:write'
+  | 'net'
+  | 'shell'
+  | 'memory'
+  | 'credentials'
+  | 'browser'
+  | 'agent';
+
+/**
+ * A capability declaration with optional scope restrictions.
+ * E.g., `{ type: 'fs:read', scope: ['./config/'] }` limits reads to ./config/.
+ */
+export interface StepCapability {
+  readonly type: CapabilityType;
+  readonly scope?: readonly string[];
+}
+
+// ============================================================================
 // Step Command Interface
 // ============================================================================
 
@@ -112,6 +136,8 @@ export interface StepCommand<TConfig extends StepConfig = StepConfig> {
   readonly type: string;
   readonly description: string;
   readonly configSchema: JSONSchema;
+  /** Capabilities this command requires by default. */
+  readonly capabilities?: readonly StepCapability[];
 
   /** Validate may be async (e.g. checking credentials or remote state). */
   validate(config: TConfig, context: WorkflowContext): ValidationResult | Promise<ValidationResult>;
