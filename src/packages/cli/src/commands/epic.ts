@@ -20,6 +20,7 @@ import { spawn, execSync } from 'child_process';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import type { Command, CommandContext, CommandResult } from '../types.js';
+import { loadMofloConfig } from '../config/moflo-config.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -610,7 +611,8 @@ async function runFeature(
     ? await loadFeatureFromIssue(parseInt(source, 10))
     : await loadFeatureDefinition(source);
   const feature = featureDef.feature;
-  const strategy: EpicStrategy = strategyOverride || feature.strategy || 'single-branch';
+  const mofloConfig = loadMofloConfig(feature.repository);
+  const strategy: EpicStrategy = strategyOverride || feature.strategy || mofloConfig.epic.default_strategy;
   const plan = resolveExecutionOrder(feature.stories);
 
   // ── Dry run ───────────────────────────────────────────────────────────
@@ -833,7 +835,8 @@ async function runFeature(
       prNumber = prInfo.number;
 
       try {
-        execSync(`gh pr merge ${prInfo.number} --squash --delete-branch`, {
+        const adminFlag = mofloConfig.epic.admin_merge ? ' --admin' : '';
+        execSync(`gh pr merge ${prInfo.number} --squash --delete-branch${adminFlag}`, {
           cwd: feature.repository,
           stdio: 'pipe',
         });
