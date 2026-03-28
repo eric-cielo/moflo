@@ -68,6 +68,7 @@ export class WriteThroughAdapter {
   private enabledNamespaces: Set<string>;
   private reaperInterval?: ReturnType<typeof setInterval>;
   private attached = false;
+  private boundHandler?: (event: UnifiedMessageEvent) => void;
   private stats = { written: 0, errors: 0, reaped: 0 };
 
   constructor(
@@ -92,9 +93,8 @@ export class WriteThroughAdapter {
     if (!this.config.enabled || this.attached) return;
     this.attached = true;
 
-    this.bus.on('message.unified', (event: UnifiedMessageEvent) => {
-      this.onUnifiedMessage(event);
-    });
+    this.boundHandler = (event: UnifiedMessageEvent) => this.onUnifiedMessage(event);
+    this.bus.on('message.unified', this.boundHandler);
 
     this.startDbReaper();
   }
@@ -102,7 +102,10 @@ export class WriteThroughAdapter {
   /** Stop listening and clean up */
   detach(): void {
     this.attached = false;
-    this.bus.removeAllListeners('message.unified');
+    if (this.boundHandler) {
+      this.bus.removeListener('message.unified', this.boundHandler);
+      this.boundHandler = undefined;
+    }
     if (this.reaperInterval) {
       clearInterval(this.reaperInterval);
       this.reaperInterval = undefined;

@@ -401,28 +401,22 @@ describe('Hive-Mind Tools — MessageBus Backend (Story #121)', () => {
       voterId: 'worker-1',
     }) as Record<string, unknown>;
 
-    // Vote for: worker-1, worker-2 (majority of 3 workers = 2+1=3... but with 2 for votes)
+    // Majority of 3 workers = floor(3/2)+1 = 2 votes needed
     await tools['hive-mind_consensus']({
       action: 'vote',
       proposalId: proposal.proposalId,
       vote: true,
       voterId: 'worker-1',
     });
-    await tools['hive-mind_consensus']({
-      action: 'vote',
-      proposalId: proposal.proposalId,
-      vote: true,
-      voterId: 'worker-2',
-    });
     const voteResult = await tools['hive-mind_consensus']({
       action: 'vote',
       proposalId: proposal.proposalId,
       vote: true,
-      voterId: 'worker-3',
+      voterId: 'worker-2',
     }) as Record<string, unknown>;
 
     expect(voteResult.status).toBe('approved');
-    expect(voteResult.votesFor).toBe(3);
+    expect(voteResult.votesFor).toBe(2);
   });
 
   it('consensus list shows pending and history', async () => {

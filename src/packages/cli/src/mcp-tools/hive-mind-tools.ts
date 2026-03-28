@@ -554,7 +554,7 @@ export const hiveMindTools: MCPTool[] = [
           proposalId,
           type: proposal.type,
           status: 'pending',
-          requiredVotes: Math.ceil(hiveState.workers.length / 2) + 1,
+          requiredVotes: Math.floor(hiveState.workers.length / 2) + 1,
         };
       }
 
@@ -580,7 +580,7 @@ export const hiveMindTools: MCPTool[] = [
         });
 
         const tally = countVotes(proposal.votes);
-        const majority = Math.ceil(hiveState.workers.length / 2) + 1;
+        const majority = Math.floor(hiveState.workers.length / 2) + 1;
 
         if (tally.for >= majority) {
           proposal.status = 'approved';
@@ -635,7 +635,7 @@ export const hiveMindTools: MCPTool[] = [
           votesFor: tally.for,
           votesAgainst: tally.against,
           totalVotes: Object.keys(proposal.votes).length,
-          requiredMajority: Math.ceil(hiveState.workers.length / 2) + 1,
+          requiredMajority: Math.floor(hiveState.workers.length / 2) + 1,
         };
       }
 
@@ -740,7 +740,7 @@ export const hiveMindTools: MCPTool[] = [
       try {
         const adapter = await getWriteThroughAdapter();
         await adapter.clearNamespace(HIVE_NS);
-        await adapter.clearNamespace('hive-mind-memory');
+        await adapter.clearNamespace(HIVE_MEMORY_NS);
       } catch {
         // Best-effort cleanup
       }
