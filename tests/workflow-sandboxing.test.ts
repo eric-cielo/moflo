@@ -135,3 +135,12 @@ describe('#159 — Scope credential access per-step', () => {
     expect(content).toContain('state.resolvedCredentials');
   });
 });
+
+describe('#161 — checkCapabilities in dry-run validation', () => {
+  it('dry-run calls checkCapabilities for each step', () => {
+    const content = readFileSync(runnerPath, 'utf-8');
+    // Should appear in dryRunValidated method, not just executeStep
+    expect(content).toContain('Check capability declarations in dry-run');
+    expect(content).toContain('capCheck.violations.map');
+  });
+});

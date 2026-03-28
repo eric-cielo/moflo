@@ -171,6 +171,21 @@ export class WorkflowRunner {
           validationResult = { valid: vr.valid, errors: [...vr.errors] };
         }
 
+        // Check capability declarations in dry-run (#161)
+        const capCheck = checkCapabilities(step, command);
+        if (!capCheck.allowed) {
+          validationResult = {
+            valid: false,
+            errors: [
+              ...validationResult.errors,
+              ...capCheck.violations.map(v => ({
+                path: `steps[${i}].capabilities.${v.capability}`,
+                message: v.reason,
+              })),
+            ],
+          };
+        }
+
         if (step.output) {
           variables[step.output] = { _dryRun: true };
         }
