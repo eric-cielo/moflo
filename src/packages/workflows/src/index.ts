@@ -108,3 +108,16 @@ export {
   bridgeIsRunning,
   bridgeActiveWorkflows,
 } from './factory/runner-bridge.js';
+
+// ============================================================================
+// Pause/Resume
+// ============================================================================
+
+export {
+  buildPausedState,
+  persistPausedState,
+  resumeWorkflow,
+  cleanupStalePaused,
+  type PausedState,
+  type ResumeOptions,
+} from './factory/pause-resume.js';
