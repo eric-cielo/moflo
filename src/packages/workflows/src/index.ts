@@ -49,3 +49,18 @@ export {
   browserCommand,
   builtinCommands,
 } from './commands/index.js';
+
+// ============================================================================
+// Schema (Workflow Definition)
+// ============================================================================
+
+export type {
+  WorkflowDefinition,
+  StepDefinition,
+  ArgumentDefinition,
+  ArgumentType,
+  ParsedWorkflow,
+} from './types/workflow-definition.types.js';
+
+export { parseYaml, parseJson, parseWorkflow } from './schema/parser.js';
+export { validateWorkflowDefinition, resolveArguments, type ValidatorOptions } from './schema/validator.js';

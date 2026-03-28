@@ -1,0 +1,323 @@
+/**
+ * Workflow Definition Schema Tests
+ *
+ * Story #103: YAML/JSON parsing, validation, and argument resolution.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { parseYaml, parseJson, parseWorkflow } from '../src/schema/parser.js';
+import { validateWorkflowDefinition, resolveArguments } from '../src/schema/validator.js';
+import type { WorkflowDefinition } from '../src/types/workflow-definition.types.js';
+
+// ============================================================================
+// Fixtures
+// ============================================================================
+
+const VALID_YAML = `
+name: security-audit
+abbreviation: sa
+description: "Run a security audit"
+version: "1.0"
+
+arguments:
+  target:
+    type: string
+    required: true
+    description: "Target to audit"
+  severity:
+    type: string
+    default: "high"
+    enum: ["low", "medium", "high", "critical"]
+
+steps:
+  - id: scan
+    type: agent
+    config:
+      agentType: security-auditor
+      prompt: "Scan {args.target} at {args.severity}+ severity"
+    output: vulnerabilities
+  - id: report
+    type: bash
+    config:
+      command: "echo {scan.vulnerabilities}"
+`;
+
+const VALID_JSON = JSON.stringify({
+  name: 'doc-generation',
+  steps: [
+    { id: 'analyze', type: 'agent', config: { prompt: 'Analyze code' }, output: 'analysis' },
+    { id: 'write', type: 'bash', config: { command: 'echo done' } },
+  ],
+});
+
+const KNOWN_TYPES = ['agent', 'bash', 'condition', 'prompt', 'memory', 'wait', 'loop', 'browser'];
+
+// ============================================================================
+// Parser Tests
+// ============================================================================
+
+describe('parseYaml', () => {
+  it('should parse valid YAML', () => {
+    const result = parseYaml(VALID_YAML, 'security-audit.yaml');
+    expect(result.format).toBe('yaml');
+    expect(result.definition.name).toBe('security-audit');
+    expect(result.definition.steps).toHaveLength(2);
+    expect(result.sourceFile).toBe('security-audit.yaml');
+  });
+
+  it('should reject invalid YAML', () => {
+    expect(() => parseYaml(':', 'bad.yaml')).toThrow();
+  });
+
+  it('should reject non-object YAML', () => {
+    expect(() => parseYaml('"just a string"')).toThrow('expected an object');
+  });
+});
+
+describe('parseJson', () => {
+  it('should parse valid JSON', () => {
+    const result = parseJson(VALID_JSON, 'workflow.json');
+    expect(result.format).toBe('json');
+    expect(result.definition.name).toBe('doc-generation');
+  });
+
+  it('should reject malformed JSON', () => {
+    expect(() => parseJson('not json', 'bad.json')).toThrow('Invalid workflow JSON');
+  });
+
+  it('should reject non-object JSON', () => {
+    expect(() => parseJson('"string"')).toThrow('expected an object');
+  });
+});
+
+describe('parseWorkflow', () => {
+  it('should detect format from .yaml extension', () => {
+    const result = parseWorkflow(VALID_YAML, 'test.yaml');
+    expect(result.format).toBe('yaml');
+  });
+
+  it('should detect format from .yml extension', () => {
+    const result = parseWorkflow(VALID_YAML, 'test.yml');
+    expect(result.format).toBe('yaml');
+  });
+
+  it('should detect format from .json extension', () => {
+    const result = parseWorkflow(VALID_JSON, 'test.json');
+    expect(result.format).toBe('json');
+  });
+
+  it('should auto-detect JSON from content', () => {
+    const result = parseWorkflow(VALID_JSON);
+    expect(result.format).toBe('json');
+  });
+
+  it('should auto-detect YAML from content', () => {
+    const result = parseWorkflow(VALID_YAML);
+    expect(result.format).toBe('yaml');
+  });
+});
+
+// ============================================================================
+// Validator Tests
+// ============================================================================
+
+describe('validateWorkflowDefinition', () => {
+  it('should accept a valid workflow', () => {
+    const result = parseYaml(VALID_YAML);
+    const validation = validateWorkflowDefinition(result.definition, { knownStepTypes: KNOWN_TYPES });
+    expect(validation.valid).toBe(true);
+    expect(validation.errors).toEqual([]);
+  });
+
+  it('should reject missing name', () => {
+    const def: WorkflowDefinition = {
+      name: '',
+      steps: [{ id: 'a', type: 'bash', config: {} }],
+    };
+    const result = validateWorkflowDefinition(def);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.path === 'name')).toBe(true);
+  });
+
+  it('should reject missing steps', () => {
+    const def = { name: 'test', steps: [] } as unknown as WorkflowDefinition;
+    const result = validateWorkflowDefinition(def);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.path === 'steps')).toBe(true);
+  });
+
+  it('should reject duplicate step IDs', () => {
+    const def: WorkflowDefinition = {
+      name: 'test',
+      steps: [
+        { id: 'dup', type: 'bash', config: {} },
+        { id: 'dup', type: 'bash', config: {} },
+      ],
+    };
+    const result = validateWorkflowDefinition(def);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.message.includes('duplicate step id'))).toBe(true);
+  });
+
+  it('should reject unknown step types with suggestions', () => {
+    const def: WorkflowDefinition = {
+      name: 'test',
+      steps: [{ id: 'a', type: 'bask', config: {} }],
+    };
+    const result = validateWorkflowDefinition(def, { knownStepTypes: KNOWN_TYPES });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toContain('unknown step type');
+    expect(result.errors[0].message).toContain('bash');
+  });
+
+  it('should accept unknown types when no registry provided', () => {
+    const def: WorkflowDefinition = {
+      name: 'test',
+      steps: [{ id: 'a', type: 'custom-step', config: {} }],
+    };
+    const result = validateWorkflowDefinition(def);
+    expect(result.valid).toBe(true);
+  });
+
+  it('should validate argument type', () => {
+    const def: WorkflowDefinition = {
+      name: 'test',
+      arguments: { x: { type: 'invalid' as 'string' } },
+      steps: [{ id: 'a', type: 'bash', config: {} }],
+    };
+    const result = validateWorkflowDefinition(def);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].path).toContain('arguments.x.type');
+  });
+
+  it('should validate enum default', () => {
+    const def: WorkflowDefinition = {
+      name: 'test',
+      arguments: {
+        level: { type: 'string', default: 'ultra', enum: ['low', 'high'] },
+      },
+      steps: [{ id: 'a', type: 'bash', config: {} }],
+    };
+    const result = validateWorkflowDefinition(def);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toContain('not in enum');
+  });
+
+  it('should detect forward variable references', () => {
+    const def: WorkflowDefinition = {
+      name: 'test',
+      steps: [
+        { id: 'a', type: 'bash', config: { command: 'echo {b.output}' } },
+        { id: 'b', type: 'bash', config: { command: 'echo hello' }, output: 'output' },
+      ],
+    };
+    const result = validateWorkflowDefinition(def);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toContain('forward reference');
+  });
+
+  it('should detect undefined argument references', () => {
+    const def: WorkflowDefinition = {
+      name: 'test',
+      arguments: { target: { type: 'string' } },
+      steps: [
+        { id: 'a', type: 'bash', config: { command: 'echo {args.nonexistent}' } },
+      ],
+    };
+    const result = validateWorkflowDefinition(def);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toContain('undefined argument');
+  });
+
+  it('should validate nested steps in condition/loop', () => {
+    const def: WorkflowDefinition = {
+      name: 'test',
+      steps: [
+        {
+          id: 'loop1',
+          type: 'loop',
+          config: {},
+          steps: [
+            { id: 'inner1', type: 'bash', config: {} },
+            { id: 'inner1', type: 'bash', config: {} }, // duplicate
+          ],
+        },
+      ],
+    };
+    const result = validateWorkflowDefinition(def);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.message.includes('duplicate step id'))).toBe(true);
+  });
+});
+
+// ============================================================================
+// Argument Resolution Tests
+// ============================================================================
+
+describe('resolveArguments', () => {
+  it('should resolve provided arguments', () => {
+    const defs = {
+      target: { type: 'string' as const, required: true },
+    };
+    const { resolved, errors } = resolveArguments(defs, { target: 'src/' });
+    expect(errors).toEqual([]);
+    expect(resolved.target).toBe('src/');
+  });
+
+  it('should apply defaults for missing optional args', () => {
+    const defs = {
+      severity: { type: 'string' as const, default: 'high', enum: ['low', 'medium', 'high'] },
+    };
+    const { resolved, errors } = resolveArguments(defs, {});
+    expect(errors).toEqual([]);
+    expect(resolved.severity).toBe('high');
+  });
+
+  it('should error on missing required args', () => {
+    const defs = {
+      target: { type: 'string' as const, required: true },
+    };
+    const { errors } = resolveArguments(defs, {});
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('required argument');
+  });
+
+  it('should reject values not in enum', () => {
+    const defs = {
+      level: { type: 'string' as const, enum: ['low', 'high'] },
+    };
+    const { errors } = resolveArguments(defs, { level: 'ultra' });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('not in enum');
+  });
+
+  it('should flag unknown argument keys (typos)', () => {
+    const defs = {
+      target: { type: 'string' as const, required: true },
+    };
+    const { errors } = resolveArguments(defs, { target: 'src/', targat: 'oops' });
+    expect(errors.some(e => e.message.includes('unknown argument "targat"'))).toBe(true);
+  });
+});
+
+describe('nested step variable validation', () => {
+  it('should detect undefined arg refs inside nested steps', () => {
+    const def: WorkflowDefinition = {
+      name: 'test',
+      arguments: { target: { type: 'string' } },
+      steps: [
+        {
+          id: 'loop1',
+          type: 'loop',
+          config: {},
+          steps: [
+            { id: 'inner', type: 'bash', config: { command: 'echo {args.missing}' } },
+          ],
+        },
+      ],
+    };
+    const result = validateWorkflowDefinition(def);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.message.includes('undefined argument'))).toBe(true);
+  });
+});
