@@ -111,3 +111,27 @@ describe('#157 — Credential interpolation bypass closed', () => {
     expect(content).toContain("c.type === 'credentials'");
   });
 });
+
+describe('#159 — Scope credential access per-step', () => {
+  it('ExecutionState has resolvedCredentials field', () => {
+    const content = readFileSync(runnerPath, 'utf-8');
+    expect(content).toContain('readonly resolvedCredentials: Record<string, unknown>');
+  });
+
+  it('credentials are NOT placed in shared variables', () => {
+    const content = readFileSync(runnerPath, 'utf-8');
+    // Old pattern was: variables.credentials = resolved;
+    expect(content).not.toContain('variables.credentials = resolved');
+  });
+
+  it('credentials are scoped per-step using collectCredentialNames', () => {
+    const content = readFileSync(runnerPath, 'utf-8');
+    expect(content).toContain('Scope credentials per-step');
+    expect(content).toContain('stepVariables.credentials = scopedCreds');
+  });
+
+  it('only referenced credentials are injected into step variables', () => {
+    const content = readFileSync(runnerPath, 'utf-8');
+    expect(content).toContain('state.resolvedCredentials');
+  });
+});

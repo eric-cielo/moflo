@@ -43,6 +43,8 @@ interface ExecutionState {
   readonly workflowId: string;
   readonly options: RunnerOptions;
   readonly credentialPatterns: RegExp[];
+  /** All resolved credentials (for per-step scoping, NOT shared in variables) */
+  readonly resolvedCredentials: Record<string, unknown>;
 }
 
 export class WorkflowRunner {
@@ -225,21 +227,21 @@ export class WorkflowRunner {
       v => new RegExp(escapeRegExp(v), 'g'),
     );
 
-    // Pre-resolve {credentials.NAME} references so synchronous interpolation works
+    // Pre-resolve {credentials.NAME} references for redaction patterns,
+    // but do NOT inject into shared variables — scoped per-step instead (#159)
     const credentialNames = this.collectCredentialNames(definition.steps);
+    const resolvedCredentials: Record<string, unknown> = {};
     if (credentialNames.size > 0) {
-      const resolved: Record<string, unknown> = {};
       await Promise.all([...credentialNames].map(async (name) => {
         const value = await this.credentials.get(name);
         if (value !== undefined) {
-          resolved[name] = value;
+          resolvedCredentials[name] = value;
           credentialPatterns.push(new RegExp(escapeRegExp(value), 'g'));
         }
       }));
-      variables.credentials = resolved;
     }
 
-    const state: ExecutionState = { variables, resolvedArgs, workflowId, options, credentialPatterns };
+    const state: ExecutionState = { variables, resolvedArgs, workflowId, options, credentialPatterns, resolvedCredentials };
 
     await this.storeProgress(workflowId, 'running', 0, definition.steps.length);
 
@@ -401,8 +403,21 @@ export class WorkflowRunner {
       };
     }
 
+    // Scope credentials per-step: only inject credentials this step actually references (#159)
+    const stepCredNames = this.collectCredentialNames([step]);
+    const stepVariables = { ...state.variables };
+    if (stepCredNames.size > 0 && this.stepHasCredentialCapability(step, command)) {
+      const scopedCreds: Record<string, unknown> = {};
+      for (const name of stepCredNames) {
+        if (name in state.resolvedCredentials) {
+          scopedCreds[name] = state.resolvedCredentials[name];
+        }
+      }
+      stepVariables.credentials = scopedCreds;
+    }
+
     const context = this.buildContext(
-      state.variables, state.resolvedArgs, state.workflowId, index, state.options.signal,
+      stepVariables, state.resolvedArgs, state.workflowId, index, state.options.signal,
     );
 
     let interpolatedConfig: Record<string, unknown>;
