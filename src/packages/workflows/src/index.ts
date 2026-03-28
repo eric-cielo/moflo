@@ -27,12 +27,24 @@ export type {
   MemoryAccessor,
 } from './types/step-command.types.js';
 
+export type {
+  RunnerOptions,
+  WorkflowResult,
+  WorkflowError,
+  WorkflowErrorCode,
+  StepResult,
+  StepStatus,
+  DryRunResult,
+  DryRunStepReport,
+} from './types/runner.types.js';
+
 // ============================================================================
 // Core
 // ============================================================================
 
 export { StepCommandRegistry } from './core/step-command-registry.js';
 export { interpolateString, interpolateConfig } from './core/interpolation.js';
+export { WorkflowRunner } from './core/runner.js';
 
 // ============================================================================
 // Built-in Commands

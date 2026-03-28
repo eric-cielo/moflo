@@ -1,0 +1,714 @@
+/**
+ * Workflow Runner Tests
+ *
+ * Story #104: Tests for sequential workflow executor.
+ */
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { WorkflowRunner } from '../src/core/runner.js';
+import { StepCommandRegistry } from '../src/core/step-command-registry.js';
+import type {
+  StepCommand,
+  CredentialAccessor,
+  MemoryAccessor,
+} from '../src/types/step-command.types.js';
+import type { WorkflowDefinition } from '../src/types/workflow-definition.types.js';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function createMockCommand(overrides?: Partial<StepCommand>): StepCommand {
+  return {
+    type: 'mock',
+    description: 'Mock command',
+    configSchema: { type: 'object' },
+    validate: () => ({ valid: true, errors: [] }),
+    execute: async () => ({ success: true, data: { result: 'ok' }, duration: 10 }),
+    describeOutputs: () => [{ name: 'result', type: 'string' }],
+    ...overrides,
+  };
+}
+
+function createFailingCommand(error = 'Step failed'): StepCommand {
+  return createMockCommand({
+    type: 'failing',
+    execute: async () => ({ success: false, data: {}, error, duration: 5 }),
+  });
+}
+
+function createMockCredentials(): CredentialAccessor {
+  return {
+    async get(name: string) { return name === 'secret' ? 's3cr3t' : undefined; },
+    async has(name: string) { return name === 'secret'; },
+  };
+}
+
+function createMockMemory(): MemoryAccessor {
+  const store = new Map<string, unknown>();
+  return {
+    async read(ns: string, key: string) { return store.get(`${ns}:${key}`) ?? null; },
+    async write(ns: string, key: string, value: unknown) { store.set(`${ns}:${key}`, value); },
+    async search() { return []; },
+  };
+}
+
+function simpleWorkflow(steps: WorkflowDefinition['steps']): WorkflowDefinition {
+  return { name: 'test-workflow', steps };
+}
+
+// ============================================================================
+// Setup
+// ============================================================================
+
+let registry: StepCommandRegistry;
+let runner: WorkflowRunner;
+let memory: MemoryAccessor;
+
+beforeEach(() => {
+  registry = new StepCommandRegistry();
+  memory = createMockMemory();
+  runner = new WorkflowRunner(registry, createMockCredentials(), memory);
+});
+
+// ============================================================================
+// Sequential Execution
+// ============================================================================
+
+describe('WorkflowRunner — sequential execution', () => {
+  it('should execute a 3-step workflow passing outputs forward', async () => {
+    let callOrder = 0;
+
+    const step1 = createMockCommand({
+      type: 'step1',
+      execute: async () => {
+        callOrder++;
+        return { success: true, data: { value: 'from-step-1', order: callOrder }, duration: 1 };
+      },
+    });
+    const step2 = createMockCommand({
+      type: 'step2',
+      execute: async (_config, ctx) => {
+        callOrder++;
+        const prev = ctx.variables['s1'] as Record<string, unknown>;
+        return {
+          success: true,
+          data: { combined: `${prev?.value}-and-step-2`, order: callOrder },
+          duration: 1,
+        };
+      },
+    });
+    const step3 = createMockCommand({
+      type: 'step3',
+      execute: async (_config, ctx) => {
+        callOrder++;
+        const prev = ctx.variables['s2'] as Record<string, unknown>;
+        return {
+          success: true,
+          data: { final: `${prev?.combined}-and-step-3`, order: callOrder },
+          duration: 1,
+        };
+      },
+    });
+
+    registry.register(step1);
+    registry.register(step2);
+    registry.register(step3);
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'step1', config: {}, output: 's1' },
+      { id: 's2', type: 'step2', config: {}, output: 's2' },
+      { id: 's3', type: 'step3', config: {}, output: 's3' },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    expect(result.steps).toHaveLength(3);
+    expect(result.steps.every(s => s.status === 'succeeded')).toBe(true);
+    expect(result.outputs['s3']).toEqual({
+      final: 'from-step-1-and-step-2-and-step-3',
+      order: 3,
+    });
+  });
+
+  it('should execute steps in order', async () => {
+    const order: string[] = [];
+
+    const cmd = createMockCommand({
+      execute: async (_config, ctx) => {
+        order.push(`step-${ctx.stepIndex}`);
+        return { success: true, data: {}, duration: 1 };
+      },
+    });
+    registry.register(cmd);
+
+    const definition = simpleWorkflow([
+      { id: 'a', type: 'mock', config: {} },
+      { id: 'b', type: 'mock', config: {} },
+      { id: 'c', type: 'mock', config: {} },
+    ]);
+
+    await runner.run(definition, {});
+    expect(order).toEqual(['step-0', 'step-1', 'step-2']);
+  });
+});
+
+// ============================================================================
+// Error Handling & Rollback
+// ============================================================================
+
+describe('WorkflowRunner — error handling', () => {
+  it('should stop on step failure (default behavior)', async () => {
+    const rollbackFn = vi.fn();
+
+    registry.register(createMockCommand({ type: 'good', rollback: rollbackFn }));
+    registry.register(createFailingCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'good', config: {}, output: 's1' },
+      { id: 's2', type: 'failing', config: {} },
+      { id: 's3', type: 'good', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(false);
+    expect(result.steps).toHaveLength(3);
+    expect(result.steps[0].status).toBe('rolled_back');
+    expect(result.steps[1].status).toBe('failed');
+    expect(result.steps[2].status).toBe('skipped');
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].stepId).toBe('s2');
+    expect(rollbackFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('should continue when continueOnError is true', async () => {
+    registry.register(createMockCommand());
+    registry.register(createFailingCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {} },
+      { id: 's2', type: 'failing', config: {}, continueOnError: true },
+      { id: 's3', type: 'mock', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(false);
+    expect(result.steps[0].status).toBe('succeeded');
+    expect(result.steps[1].status).toBe('failed');
+    expect(result.steps[2].status).toBe('succeeded');
+    expect(result.errors).toHaveLength(1);
+  });
+
+  it('should aggregate errors with multiple failures under continueOnError', async () => {
+    registry.register(createMockCommand());
+    registry.register(createFailingCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'failing', config: {}, continueOnError: true },
+      { id: 's2', type: 'failing', config: {}, continueOnError: true },
+      { id: 's3', type: 'mock', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(false);
+    expect(result.errors).toHaveLength(2);
+    expect(result.errors[0].stepId).toBe('s1');
+    expect(result.errors[1].stepId).toBe('s2');
+    expect(result.steps[2].status).toBe('succeeded');
+  });
+
+  it('should rollback completed steps in reverse order on failure', async () => {
+    const rollbackOrder: string[] = [];
+
+    const makeCmd = (type: string): StepCommand => createMockCommand({
+      type,
+      rollback: async () => { rollbackOrder.push(type); },
+    });
+
+    registry.register(makeCmd('a'));
+    registry.register(makeCmd('b'));
+    registry.register(createFailingCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'a', config: {}, output: 's1' },
+      { id: 's2', type: 'b', config: {}, output: 's2' },
+      { id: 's3', type: 'failing', config: {} },
+    ]);
+
+    await runner.run(definition, {});
+    expect(rollbackOrder).toEqual(['b', 'a']);
+  });
+
+  it('should continue rollback if one rollback fails', async () => {
+    const rollbackOrder: string[] = [];
+
+    const cmdA = createMockCommand({
+      type: 'a',
+      rollback: async () => { rollbackOrder.push('a'); },
+    });
+    const cmdB = createMockCommand({
+      type: 'b',
+      rollback: async () => { throw new Error('rollback-b failed'); },
+    });
+
+    registry.register(cmdA);
+    registry.register(cmdB);
+    registry.register(createFailingCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'a', config: {}, output: 's1' },
+      { id: 's2', type: 'b', config: {}, output: 's2' },
+      { id: 's3', type: 'failing', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    // Both rollbacks attempted: b first (reverse order), then a
+    expect(rollbackOrder).toEqual(['a']); // a succeeded
+    const s2Result = result.steps.find(s => s.stepId === 's2');
+    expect(s2Result?.rollbackAttempted).toBe(true);
+    expect(s2Result?.rollbackError).toContain('rollback-b failed');
+  });
+
+  it('should report partial completion', async () => {
+    registry.register(createMockCommand());
+    registry.register(createFailingCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {} },
+      { id: 's2', type: 'mock', config: {} },
+      { id: 's3', type: 'failing', config: {} },
+      { id: 's4', type: 'mock', config: {} },
+      { id: 's5', type: 'mock', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    const succeeded = result.steps.filter(s => s.status === 'succeeded').length;
+    const failed = result.steps.filter(s => s.status === 'failed').length;
+    const skipped = result.steps.filter(s => s.status === 'skipped').length;
+
+    expect(succeeded).toBe(2);
+    expect(failed).toBe(1);
+    expect(skipped).toBe(2);
+  });
+});
+
+// ============================================================================
+// Argument Validation
+// ============================================================================
+
+describe('WorkflowRunner — argument validation', () => {
+  it('should fail before step 1 if required arg is missing', async () => {
+    registry.register(createMockCommand());
+
+    const definition: WorkflowDefinition = {
+      name: 'test',
+      arguments: {
+        name: { type: 'string', required: true },
+      },
+      steps: [{ id: 's1', type: 'mock', config: {} }],
+    };
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(false);
+    expect(result.steps).toHaveLength(0);
+    expect(result.errors[0].code).toBe('ARGUMENT_VALIDATION_FAILED');
+  });
+
+  it('should resolve default argument values', async () => {
+    let receivedArgs: Record<string, unknown> = {};
+
+    registry.register(createMockCommand({
+      execute: async (_config, ctx) => {
+        receivedArgs = { ...ctx.args };
+        return { success: true, data: {}, duration: 1 };
+      },
+    }));
+
+    const definition: WorkflowDefinition = {
+      name: 'test',
+      arguments: {
+        greeting: { type: 'string', default: 'hello' },
+      },
+      steps: [{ id: 's1', type: 'mock', config: {} }],
+    };
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    expect(receivedArgs.greeting).toBe('hello');
+  });
+});
+
+// ============================================================================
+// Timeout
+// ============================================================================
+
+describe('WorkflowRunner — timeout', () => {
+  it('should kill step that exceeds timeout', async () => {
+    registry.register(createMockCommand({
+      execute: () => new Promise((resolve) => {
+        setTimeout(() => resolve({ success: true, data: {}, duration: 1000 }), 5000);
+      }),
+    }));
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {}, { defaultStepTimeout: 50 });
+
+    expect(result.success).toBe(false);
+    expect(result.steps[0].status).toBe('failed');
+    expect(result.steps[0].errorCode).toBe('STEP_TIMEOUT');
+  });
+});
+
+// ============================================================================
+// Cancellation
+// ============================================================================
+
+describe('WorkflowRunner — cancellation', () => {
+  it('should cancel workflow and mark remaining steps as cancelled', async () => {
+    const controller = new AbortController();
+
+    registry.register(createMockCommand({
+      execute: async () => {
+        // Cancel after first step completes
+        controller.abort();
+        return { success: true, data: {}, duration: 1 };
+      },
+    }));
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {}, output: 's1' },
+      { id: 's2', type: 'mock', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {}, { signal: controller.signal });
+
+    expect(result.cancelled).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.steps.some(s => s.status === 'cancelled')).toBe(true);
+    expect(result.errors.some(e => e.code === 'WORKFLOW_CANCELLED')).toBe(true);
+  });
+});
+
+// ============================================================================
+// Credential Masking
+// ============================================================================
+
+describe('WorkflowRunner — credential masking', () => {
+  it('should mask credential values in step output', async () => {
+    registry.register(createMockCommand({
+      execute: async () => ({
+        success: true,
+        data: { message: 'token is s3cr3t and password is p@ssw0rd' },
+        duration: 1,
+      }),
+    }));
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {}, {
+      credentialValues: ['s3cr3t', 'p@ssw0rd'],
+    });
+
+    expect(result.success).toBe(true);
+    const output = result.outputs['s1'] as Record<string, unknown>;
+    expect(output.message).not.toContain('s3cr3t');
+    expect(output.message).not.toContain('p@ssw0rd');
+    expect(output.message).toContain('***REDACTED***');
+  });
+});
+
+// ============================================================================
+// Dry Run
+// ============================================================================
+
+describe('WorkflowRunner — dry run', () => {
+  it('should validate without executing', async () => {
+    const executeFn = vi.fn().mockResolvedValue({ success: true, data: {}, duration: 1 });
+
+    registry.register(createMockCommand({ execute: executeFn }));
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {} },
+      { id: 's2', type: 'mock', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {}, { dryRun: true });
+
+    expect(result.success).toBe(true);
+    expect(result.steps).toHaveLength(0); // No actual step results
+    expect(executeFn).not.toHaveBeenCalled();
+  });
+
+  it('should report step details in dry run', async () => {
+    registry.register(createMockCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: { key: 'value' } },
+    ]);
+
+    const dryResult = await runner.dryRun(definition, {});
+
+    expect(dryResult.valid).toBe(true);
+    expect(dryResult.steps).toHaveLength(1);
+    expect(dryResult.steps[0].stepId).toBe('s1');
+    expect(dryResult.steps[0].stepType).toBe('mock');
+    expect(dryResult.steps[0].interpolatedConfig).toEqual({ key: 'value' });
+    expect(dryResult.steps[0].hasRollback).toBe(false);
+  });
+
+  it('should detect unknown step types in dry run', async () => {
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'nonexistent', config: {} },
+    ]);
+
+    const dryResult = await runner.dryRun(definition, {});
+
+    expect(dryResult.valid).toBe(false);
+    expect(dryResult.steps[0].validationResult.valid).toBe(false);
+  });
+});
+
+// ============================================================================
+// Definition Validation
+// ============================================================================
+
+describe('WorkflowRunner — definition validation', () => {
+  it('should reject invalid definition', async () => {
+    const result = await runner.run(
+      { name: '', steps: [] } as unknown as WorkflowDefinition,
+      {},
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.errors[0].code).toBe('DEFINITION_VALIDATION_FAILED');
+  });
+
+  it('should reject unknown step types', async () => {
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'nonexistent', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(false);
+    expect(result.errors[0].code).toBe('DEFINITION_VALIDATION_FAILED');
+  });
+});
+
+// ============================================================================
+// Progress Tracking
+// ============================================================================
+
+describe('WorkflowRunner — progress tracking', () => {
+  it('should store progress in memory namespace', async () => {
+    registry.register(createMockCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {} },
+    ]);
+
+    const writeSpy = vi.spyOn(memory, 'write');
+
+    await runner.run(definition, {});
+
+    // Should have been called for initial + after step + completion
+    const tasklistWrites = writeSpy.mock.calls.filter(c => c[0] === 'tasklist');
+    expect(tasklistWrites.length).toBeGreaterThanOrEqual(2);
+
+    // Final write should show completed
+    const lastWrite = tasklistWrites[tasklistWrites.length - 1];
+    expect((lastWrite[2] as Record<string, unknown>).status).toBe('completed');
+  });
+
+  it('should invoke onStepComplete callback', async () => {
+    registry.register(createMockCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {} },
+      { id: 's2', type: 'mock', config: {} },
+    ]);
+
+    const callback = vi.fn();
+
+    await runner.run(definition, {}, { onStepComplete: callback });
+
+    expect(callback).toHaveBeenCalledTimes(2);
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({ stepId: 's1', status: 'succeeded' }),
+      0,
+      2,
+    );
+  });
+});
+
+// ============================================================================
+// Async Validation
+// ============================================================================
+
+describe('WorkflowRunner — async validation', () => {
+  it('should handle async validate that returns a promise', async () => {
+    registry.register(createMockCommand({
+      validate: async () => {
+        await new Promise(r => setTimeout(r, 5));
+        return { valid: true, errors: [] };
+      },
+    }));
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+    expect(result.success).toBe(true);
+  });
+});
+
+// ============================================================================
+// Step Validation Failure
+// ============================================================================
+
+describe('WorkflowRunner — step validation failure', () => {
+  it('should fail step when validation rejects config', async () => {
+    registry.register(createMockCommand({
+      validate: () => ({
+        valid: false,
+        errors: [{ path: 'config.key', message: 'required field missing' }],
+      }),
+    }));
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(false);
+    expect(result.steps[0].status).toBe('failed');
+    expect(result.steps[0].errorCode).toBe('STEP_VALIDATION_FAILED');
+  });
+});
+
+// ============================================================================
+// Variable Interpolation in Runner
+// ============================================================================
+
+describe('WorkflowRunner — variable interpolation', () => {
+  it('should interpolate step output references in config', async () => {
+    let capturedConfig: Record<string, unknown> = {};
+
+    registry.register(createMockCommand({
+      type: 'producer',
+      execute: async () => ({
+        success: true,
+        data: { greeting: 'hello world' },
+        duration: 1,
+      }),
+    }));
+    registry.register(createMockCommand({
+      type: 'consumer',
+      execute: async (config) => {
+        capturedConfig = config as Record<string, unknown>;
+        return { success: true, data: {}, duration: 1 };
+      },
+    }));
+
+    const definition = simpleWorkflow([
+      { id: 'produce', type: 'producer', config: {}, output: 'produce' },
+      { id: 'consume', type: 'consumer', config: { message: '{produce.greeting}' } },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    expect(capturedConfig.message).toBe('hello world');
+  });
+
+  it('should fail step when interpolation references missing variable', async () => {
+    registry.register(createMockCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: { ref: '{nonexistent.value}' } },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    // Definition validation will catch this as a forward reference
+    expect(result.success).toBe(false);
+  });
+});
+
+// ============================================================================
+// Workflow ID
+// ============================================================================
+
+describe('WorkflowRunner — workflowId', () => {
+  it('should expose auto-generated workflowId on result', async () => {
+    registry.register(createMockCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.workflowId).toBeDefined();
+    expect(result.workflowId).toMatch(/^wf-\d+$/);
+  });
+
+  it('should use caller-specified workflowId', async () => {
+    registry.register(createMockCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {}, { workflowId: 'my-custom-id' });
+
+    expect(result.workflowId).toBe('my-custom-id');
+  });
+
+  it('should expose workflowId on failure results', async () => {
+    const result = await runner.run(
+      { name: '', steps: [] } as unknown as WorkflowDefinition,
+      {},
+      { workflowId: 'fail-id' },
+    );
+
+    expect(result.workflowId).toBe('fail-id');
+  });
+});
+
+// ============================================================================
+// Callback Safety
+// ============================================================================
+
+describe('WorkflowRunner — callback safety', () => {
+  it('should not crash if onStepComplete throws', async () => {
+    registry.register(createMockCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: {} },
+      { id: 's2', type: 'mock', config: {} },
+    ]);
+
+    const result = await runner.run(definition, {}, {
+      onStepComplete: () => { throw new Error('callback exploded'); },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.steps).toHaveLength(2);
+  });
+});
