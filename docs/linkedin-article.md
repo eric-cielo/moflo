@@ -65,7 +65,7 @@ One of the more practical features is the `/flo` skill. Inside Claude Code, you 
 
 ...where 42 is a GitHub issue number. MoFlo then drives Claude through a full workflow: research the issue, enhance the ticket with findings, implement the fix, create and run tests, simplify the code, and open a PR. Each step feeds back into memory so the next issue benefits from what was learned.
 
-**It handles epics too** — if the issue has child stories, it processes them sequentially, each getting the full workflow treatment. For more complex features with inter-story dependencies, `flo epic` adds persistent state tracking, resume-from-failure, and auto-merge between stories.
+**It handles epics too** — if the issue has child stories, it processes them sequentially, each getting the full workflow treatment. For more complex features with inter-story dependencies, `flo epic` adds persistent state tracking, resume-from-failure, and two configurable branching strategies: **single-branch** (default) commits all stories to one shared branch with a single PR at the end, while **auto-merge** creates per-story branches and PRs that are squash-merged sequentially.
 
 Out of the box, `/flo` and `flo epic` are wired up for GitHub — issues, PRs, labels, the `gh` CLI. But the workflow logic is just structured prompts and shell commands, not a deep integration that's hard to swap out. If you use Jira, Linear, GitLab, or something else, a quick conversation with Claude is genuinely all it takes to adapt the skill and epic runner to your stack. The patterns are the same; only the API calls change.
 

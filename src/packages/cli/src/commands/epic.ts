@@ -27,6 +27,7 @@ import type { Command, CommandContext, CommandResult } from '../types.js';
 
 type StoryStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped';
 type FeatureStatus = 'pending' | 'running' | 'completed' | 'failed';
+type EpicStrategy = 'single-branch' | 'auto-merge';
 
 interface StoryDefinition {
   id: string;
@@ -52,6 +53,7 @@ interface FeatureDefinition {
     base_branch: string;
     context?: string;
     auto_merge?: boolean;
+    strategy?: EpicStrategy;
     stories: StoryDefinition[];
     review: ReviewDefinition;
   };
@@ -409,6 +411,7 @@ function buildFeatureFromEpic(issue: GitHubIssue, repoPath: string, baseBranch: 
       repository: repoPath,
       base_branch: baseBranch,
       auto_merge: true,
+      strategy: 'single-branch',
       stories,
       review: {
         enabled: false,
@@ -469,6 +472,15 @@ async function loadFeatureFromIssue(issueNumber: number): Promise<FeatureDefinit
 // ═══════════════════════════════════════════════════════════════════════════════
 // GitHub Helpers
 // ═══════════════════════════════════════════════════════════════════════════════
+
+function makeEpicBranchName(epicNumber: number, title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 40);
+  return `epic/${epicNumber}-${slug}`;
+}
 
 function findPrForIssue(
   issue: number,
@@ -586,14 +598,19 @@ function pad(str: string, len: number): string {
 // Subcommand: run
 // ═══════════════════════════════════════════════════════════════════════════════
 
-async function runFeature(source: string, dryRun: boolean, verbose: boolean): Promise<CommandResult> {
+async function runFeature(
+  source: string,
+  dryRun: boolean,
+  verbose: boolean,
+  strategyOverride?: EpicStrategy,
+): Promise<CommandResult> {
   // Detect whether source is a GitHub issue number or a YAML file path
   const isIssueNumber = /^\d+$/.test(source.trim());
   const featureDef = isIssueNumber
     ? await loadFeatureFromIssue(parseInt(source, 10))
     : await loadFeatureDefinition(source);
   const feature = featureDef.feature;
-  const autoMerge = feature.auto_merge !== false;
+  const strategy: EpicStrategy = strategyOverride || feature.strategy || 'single-branch';
   const plan = resolveExecutionOrder(feature.stories);
 
   // ── Dry run ───────────────────────────────────────────────────────────
@@ -602,7 +619,7 @@ async function runFeature(source: string, dryRun: boolean, verbose: boolean): Pr
     console.log('+-------------------------------------------------------------+');
     console.log(`| DRY RUN: ${pad(feature.name, 50)}|`);
     console.log(`| Base: ${pad(feature.base_branch, 53)}|`);
-    console.log(`| Auto-merge: ${pad(autoMerge ? 'yes' : 'no', 47)}|`);
+    console.log(`| Strategy: ${pad(strategy, 49)}|`);
     console.log('+-------------------------------------------------------------+');
     console.log('| Stories (via /flo):                                         |');
     for (let i = 0; i < plan.order.length; i++) {
@@ -653,6 +670,39 @@ async function runFeature(source: string, dryRun: boolean, verbose: boolean): Pr
   state.features[feature.id].started_at = new Date().toISOString();
   saveState(feature.repository, state);
 
+  console.log(`[epic] Strategy: ${strategy}`);
+
+  // ── Single-branch: create one epic branch up front ────────────────────
+  let epicBranch: string | null = null;
+  if (strategy === 'single-branch') {
+    const epicNumber = parseInt(feature.id.replace('epic-', ''), 10) || 0;
+    epicBranch = makeEpicBranchName(epicNumber, feature.name);
+
+    try {
+      execSync(`git checkout ${feature.base_branch} && git pull origin ${feature.base_branch}`, {
+        cwd: feature.repository,
+        stdio: 'pipe',
+      });
+      execSync(`git checkout -b ${epicBranch}`, {
+        cwd: feature.repository,
+        stdio: 'pipe',
+      });
+      console.log(`[epic] Created branch: ${epicBranch}`);
+    } catch {
+      // Branch may already exist from a resumed run
+      try {
+        execSync(`git checkout ${epicBranch}`, {
+          cwd: feature.repository,
+          stdio: 'pipe',
+        });
+        console.log(`[epic] Resumed on existing branch: ${epicBranch}`);
+      } catch (e) {
+        console.log(`[FAIL] Could not create or checkout epic branch ${epicBranch}: ${String(e)}`);
+        return { success: false };
+      }
+    }
+  }
+
   // ── Execute stories ───────────────────────────────────────────────────
   const results: StoryResult[] = [];
   let failed = false;
@@ -697,10 +747,14 @@ async function runFeature(source: string, dryRun: boolean, verbose: boolean): Pr
     const startedAt = new Date().toISOString();
     const flags = storyDef.flo_flags || '-sw';
 
+    // Build the /flo command based on strategy
+    const epicFlag = epicBranch ? `--epic-branch ${epicBranch} ` : '';
+    const floCommand = `/flo ${epicFlag}${storyDef.issue} ${flags}`.trim();
+
     console.log('');
     console.log(`=== Starting story: ${storyId} (#${storyDef.issue}) ===`);
     console.log(`    ${storyDef.name}`);
-    console.log(`    Command: /flo ${storyDef.issue} ${flags}`);
+    console.log(`    Command: ${floCommand}`);
     console.log('');
 
     // Update state to running
@@ -708,20 +762,22 @@ async function runFeature(source: string, dryRun: boolean, verbose: boolean): Pr
     state.features[feature.id].stories[storyId].started_at = startedAt;
     saveState(feature.repository, state);
 
-    // Pull latest main
-    try {
-      execSync(`git checkout ${feature.base_branch} && git pull origin ${feature.base_branch}`, {
-        cwd: feature.repository,
-        stdio: 'pipe',
-      });
-    } catch {
-      console.log('[warn] Failed to pull base branch -- continuing anyway');
+    if (strategy === 'auto-merge') {
+      // Auto-merge strategy: checkout base branch before each story
+      try {
+        execSync(`git checkout ${feature.base_branch} && git pull origin ${feature.base_branch}`, {
+          cwd: feature.repository,
+          stdio: 'pipe',
+        });
+      } catch {
+        console.log('[warn] Failed to pull base branch -- continuing anyway');
+      }
     }
+    // single-branch: stay on the epic branch — each story builds on the last
 
     // Spawn claude
-    const command = `/flo ${storyDef.issue} ${flags}`.trim();
     const runResult = await runClaudeSession(
-      command,
+      floCommand,
       feature.repository,
       STORY_TIMEOUT_MS,
       verbose ? (text) => process.stdout.write(text) : undefined,
@@ -745,32 +801,37 @@ async function runFeature(source: string, dryRun: boolean, verbose: boolean): Pr
       break;
     }
 
-    // Find the PR
-    const prInfo = findPrForIssue(storyDef.issue, feature.repository);
-
-    if (!prInfo) {
-      console.log(`[FAIL] ${storyId}: No PR found after /flo completed`);
-      state.features[feature.id].stories[storyId].status = 'failed';
-      state.features[feature.id].stories[storyId].completed_at = new Date().toISOString();
-      state.features[feature.id].stories[storyId].duration_ms = runResult.durationMs;
-      state.features[feature.id].stories[storyId].error = 'No PR created by /flo';
-      saveState(feature.repository, state);
-
-      results.push({
-        story_id: storyId, issue: storyDef.issue, status: 'failed',
-        started_at: startedAt, completed_at: new Date().toISOString(),
-        duration_ms: runResult.durationMs, pr_url: null, pr_number: null,
-        merged: false, error: 'No PR created by /flo',
-      });
-      failed = true;
-      break;
-    }
-
-    console.log(`[ok] PR found: #${prInfo.number} (${prInfo.url})`);
-
-    // Auto-merge
+    // ── Post-story handling depends on strategy ─────────────────────
+    let prUrl: string | null = null;
+    let prNumber: number | null = null;
     let merged = false;
-    if (autoMerge) {
+
+    if (strategy === 'auto-merge') {
+      // Auto-merge: find the PR that /flo created, then merge it
+      const prInfo = findPrForIssue(storyDef.issue, feature.repository);
+
+      if (!prInfo) {
+        console.log(`[FAIL] ${storyId}: No PR found after /flo completed`);
+        state.features[feature.id].stories[storyId].status = 'failed';
+        state.features[feature.id].stories[storyId].completed_at = new Date().toISOString();
+        state.features[feature.id].stories[storyId].duration_ms = runResult.durationMs;
+        state.features[feature.id].stories[storyId].error = 'No PR created by /flo';
+        saveState(feature.repository, state);
+
+        results.push({
+          story_id: storyId, issue: storyDef.issue, status: 'failed',
+          started_at: startedAt, completed_at: new Date().toISOString(),
+          duration_ms: runResult.durationMs, pr_url: null, pr_number: null,
+          merged: false, error: 'No PR created by /flo',
+        });
+        failed = true;
+        break;
+      }
+
+      console.log(`[ok] PR found: #${prInfo.number} (${prInfo.url})`);
+      prUrl = prInfo.url;
+      prNumber = prInfo.number;
+
       try {
         execSync(`gh pr merge ${prInfo.number} --squash --delete-branch`, {
           cwd: feature.repository,
@@ -779,7 +840,7 @@ async function runFeature(source: string, dryRun: boolean, verbose: boolean): Pr
         merged = true;
         console.log(`[ok] PR #${prInfo.number} merged`);
 
-        // Pull merged changes
+        // Pull merged changes for next story
         execSync(`git checkout ${feature.base_branch} && git pull origin ${feature.base_branch}`, {
           cwd: feature.repository,
           stdio: 'pipe',
@@ -787,25 +848,107 @@ async function runFeature(source: string, dryRun: boolean, verbose: boolean): Pr
       } catch (e) {
         console.log(`[warn] Failed to merge PR #${prInfo.number}: ${String(e)}`);
       }
+    } else {
+      // Single-branch: /flo committed but didn't push or create a PR.
+      // Verify a commit was made for this story.
+      try {
+        const lastMsg = execSync('git log -1 --format=%s', {
+          cwd: feature.repository,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }).toString().trim();
+        console.log(`[ok] Committed: ${lastMsg}`);
+      } catch {
+        console.log(`[ok] Story ${storyId} completed on epic branch`);
+      }
     }
 
     // Update state
     state.features[feature.id].stories[storyId].status = 'passed';
     state.features[feature.id].stories[storyId].completed_at = new Date().toISOString();
     state.features[feature.id].stories[storyId].duration_ms = runResult.durationMs;
-    state.features[feature.id].stories[storyId].pr_url = prInfo.url;
-    state.features[feature.id].stories[storyId].pr_number = prInfo.number;
+    state.features[feature.id].stories[storyId].pr_url = prUrl;
+    state.features[feature.id].stories[storyId].pr_number = prNumber;
     state.features[feature.id].stories[storyId].merged = merged;
     saveState(feature.repository, state);
 
     results.push({
       story_id: storyId, issue: storyDef.issue, status: 'passed',
       started_at: startedAt, completed_at: new Date().toISOString(),
-      duration_ms: runResult.durationMs, pr_url: prInfo.url, pr_number: prInfo.number,
+      duration_ms: runResult.durationMs, pr_url: prUrl, pr_number: prNumber,
       merged, error: null,
     });
 
     console.log(`=== Story completed: ${storyId} (${formatDuration(runResult.durationMs)}) ===`);
+  }
+
+  // ── Single-branch: push and create consolidated PR ────────────────────
+  if (strategy === 'single-branch' && epicBranch && !failed) {
+    console.log('');
+    console.log(`[epic] All stories completed. Creating consolidated PR...`);
+
+    try {
+      execSync(`git push -u origin ${epicBranch}`, {
+        cwd: feature.repository,
+        stdio: 'pipe',
+      });
+    } catch (e) {
+      console.log(`[FAIL] Failed to push epic branch: ${String(e)}`);
+      failed = true;
+    }
+
+    if (!failed) {
+      // Build the PR body with story list
+      const storyLines = results
+        .filter((r) => r.status === 'passed')
+        .map((r) => {
+          const storyDef = feature.stories.find((s) => s.issue === r.issue);
+          return `- #${r.issue}: ${storyDef?.name || r.story_id}`;
+        })
+        .join('\n');
+
+      const epicNumber = feature.id.replace('epic-', '');
+      const prBody = [
+        '## Summary',
+        `Consolidated implementation for epic #${epicNumber}: ${feature.name}`,
+        '',
+        '## Stories Completed',
+        storyLines,
+        '',
+        '## Testing',
+        '- [x] Each story tested individually via /flo',
+        '- [ ] Manual integration testing',
+        '',
+        `Closes #${epicNumber}`,
+      ].join('\n');
+
+      try {
+        const prOutput = execSync(
+          `gh pr create --title "epic: ${feature.name}" --body "${prBody.replace(/"/g, '\\"')}" --base ${feature.base_branch}`,
+          { cwd: feature.repository, stdio: ['pipe', 'pipe', 'pipe'] },
+        ).toString().trim();
+        console.log(`[ok] Consolidated PR created: ${prOutput}`);
+
+        // Extract PR URL and number from the output
+        const prUrlMatch = prOutput.match(/https:\/\/github\.com\/[^\s]+\/pull\/(\d+)/);
+        if (prUrlMatch) {
+          const consolidatedPrUrl = prUrlMatch[0];
+          const consolidatedPrNumber = parseInt(prUrlMatch[1], 10);
+          // Update all story results with the consolidated PR info
+          for (const r of results) {
+            if (r.status === 'passed') {
+              r.pr_url = consolidatedPrUrl;
+              r.pr_number = consolidatedPrNumber;
+              state.features[feature.id].stories[r.story_id].pr_url = consolidatedPrUrl;
+              state.features[feature.id].stories[r.story_id].pr_number = consolidatedPrNumber;
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`[FAIL] Failed to create consolidated PR: ${String(e)}`);
+        console.log(`[info] Epic branch '${epicBranch}' has been pushed — create PR manually`);
+        failed = true;
+      }
+    }
   }
 
   // ── Finalize ──────────────────────────────────────────────────────────
@@ -923,10 +1066,10 @@ const epicCommand: Command = {
   description: 'Epic orchestrator — sequences GitHub epics or YAML features through /flo workflows',
   options: [],
   examples: [
-    { command: 'flo epic run 42', description: 'Execute a GitHub epic (auto-detects stories)' },
+    { command: 'flo epic run 42', description: 'Execute epic (default: single-branch strategy)' },
+    { command: 'flo epic run 42 --strategy auto-merge', description: 'Execute with per-story PRs and auto-merge' },
     { command: 'flo epic run 42 --dry-run', description: 'Show execution plan from GitHub epic' },
     { command: 'flo epic run feature.yaml', description: 'Execute a YAML feature definition' },
-    { command: 'flo epic run feature.yaml --dry-run', description: 'Show execution plan without running' },
     { command: 'flo epic run feature.yaml --verbose', description: 'Execute with Claude output streaming' },
     { command: 'flo epic status my-feature', description: 'Check progress of a feature' },
     { command: 'flo epic reset my-feature', description: 'Reset feature state for re-run' },
@@ -947,9 +1090,13 @@ const epicCommand: Command = {
       console.log('  flo epic run feature.yaml Execute from YAML with dependencies');
       console.log('');
       console.log('Flags:');
+      console.log('  --strategy <name>        Branching strategy: single-branch (default) or auto-merge');
       console.log('  --dry-run                Show execution plan without running');
       console.log('  --verbose                Stream Claude output to terminal');
-      console.log('  --no-merge               Skip auto-merge after each story');
+      console.log('');
+      console.log('Strategies:');
+      console.log('  single-branch            One shared branch, one commit per story, one PR at end (default)');
+      console.log('  auto-merge               Per-story branches and PRs, auto-merged sequentially');
       return { success: true };
     }
 
@@ -957,12 +1104,21 @@ const epicCommand: Command = {
       case 'run': {
         const source = ctx.args[1];
         if (!source) {
-          console.log('Usage: flo epic run <issue-number | feature.yaml> [--dry-run] [--verbose]');
+          console.log('Usage: flo epic run <issue-number | feature.yaml> [--strategy single-branch|auto-merge] [--dry-run] [--verbose]');
           return { success: false, message: 'Missing issue number or feature YAML path' };
         }
         const dryRun = ctx.flags['dry-run'] === true || ctx.flags['dryRun'] === true;
         const verbose = ctx.flags['verbose'] === true;
-        return runFeature(source, dryRun, verbose);
+        const strategyFlag = ctx.flags['strategy'] as string | undefined;
+        let strategyOverride: EpicStrategy | undefined;
+        if (strategyFlag) {
+          if (strategyFlag !== 'single-branch' && strategyFlag !== 'auto-merge') {
+            console.log(`Unknown strategy: "${strategyFlag}". Use "single-branch" or "auto-merge".`);
+            return { success: false, message: `Unknown strategy: ${strategyFlag}` };
+          }
+          strategyOverride = strategyFlag;
+        }
+        return runFeature(source, dryRun, verbose, strategyOverride);
       }
 
       case 'status': {

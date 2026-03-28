@@ -19,6 +19,7 @@ Research, create tickets for, and execute GitHub issues automatically.
 /flo --ticket <issue-number|title>    # Same as -t
 /flo -r <issue-number>                # Research only: analyze issue, output findings
 /flo --research <issue-number>        # Same as -r
+/flo --epic-branch <branch> <issue>   # Epic mode: commit to existing branch, skip branch creation and PR
 ```
 
 Also available as `/fl` (shorthand alias).
@@ -307,6 +308,14 @@ gh issue edit <issue-number> --add-label "in-progress"
 ```
 
 ### 3.2 Create Branch
+
+**If `--epic-branch <branch>` was passed** (epic mode):
+Skip branch creation entirely. The epic orchestrator has already created and checked out the shared epic branch. Just verify you're on it:
+```bash
+git branch --show-current  # Should match the epic branch name
+```
+
+**Otherwise** (normal mode):
 ```bash
 git checkout main && git pull origin main
 git checkout -b <type>/<issue-number>-<short-desc>
@@ -356,6 +365,15 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
 ### 5.2 Create PR
+
+**If `--epic-branch` was passed** (epic mode):
+**SKIP PR creation entirely.** The commit from 5.1 (with `Closes #<issue-number>`) is sufficient.
+The epic orchestrator will create a single consolidated PR after all stories complete.
+Also skip pushing — the epic orchestrator handles the final push.
+
+Proceed directly to 5.3 (update issue status only).
+
+**Otherwise** (normal mode):
 ```bash
 git push -u origin <branch-name>
 gh pr create --title "type(scope): description" --body "## Summary
@@ -388,22 +406,54 @@ An issue is an **epic** if:
 2. Its body contains `## Stories` or `## Tasks` sections, OR
 3. It has linked child issues (via `- [ ] #123` checklist format)
 
-### Epic Processing Flow
+### Epic Strategies
+
+Epics support two branching strategies, configurable via `flo epic run <issue> --strategy <name>`:
+
+| Strategy | Default | Description |
+|----------|---------|-------------|
+| `single-branch` | **Yes** | One shared branch, one commit per story, one PR at the end |
+| `auto-merge` | No | Per-story branches and PRs, each auto-merged before the next story |
+
+### Strategy: single-branch (default)
+
+All stories commit to one shared `epic/<number>-<slug>` branch. Only one consolidated PR is created after all stories complete.
 
 1. DETECT EPIC - Check labels, parse body for ## Stories / ## Tasks, extract issue references
 2. LIST ALL STORIES - Extract from checklist, order top-to-bottom as listed
+3. CREATE EPIC BRANCH - `epic/<epic-number>-<slug>` from base branch
+4. SEQUENTIAL PROCESSING - For each story:
+   a. Run `/flo --epic-branch <branch> <issue> <flags>` (commit-only mode)
+   b. /flo implements, tests, and **commits** (no branch creation, no PR)
+   c. The commit message includes `Closes #<story-number>` so the sub-issue auto-closes on merge
+   d. After commit, **check off the story** in the epic body
+   e. Move to the next unchecked story
+5. CONSOLIDATED PR - After all stories complete, push the epic branch and create one PR
+   - PR title references the epic
+   - PR body lists all completed stories with their commits
+   - `Closes #<epic-number>` in the PR body
+6. COMPLETION - Epic marked as ready-for-review
+
+### Strategy: auto-merge
+
+Each story gets its own branch and PR. After each story's PR is created, it is squash-merged back to the base branch before the next story starts. This gives per-story review granularity but creates more PRs to manage.
+
+1. DETECT EPIC
+2. LIST ALL STORIES
 3. SEQUENTIAL PROCESSING - For each story:
-   a. Run full /flo workflow (research -> ticket -> implement -> test -> PR)
-   b. After PR is created, **check off the story** in the epic body
-   c. Move to the next unchecked story
+   a. Checkout and pull latest base branch
+   b. Run `/flo <issue> <flags>` (normal mode — creates branch + PR)
+   c. Auto-merge the PR (`--squash --delete-branch`)
+   d. Pull merged changes, check off the story in the epic body
+   e. Move to the next unchecked story
 4. COMPLETION - All stories checked off, epic marked as ready-for-review
 
 ONE STORY AT A TIME - NO PARALLEL STORY EXECUTION.
-Each story must complete (PR created) before starting next.
+Each story must complete before starting next.
 
 ### Epic Checklist Tracking (MANDATORY)
 
-After each story's PR is created, update the epic body to check off that story:
+After each story's commit is made, update the epic body to check off that story:
 
 ```bash
 # 1. Fetch current epic body
@@ -416,7 +466,7 @@ UPDATED_BODY=$(echo "$EPIC_BODY" | sed 's/- \[ \] #<story-number>/- [x] #<story-
 gh issue edit <epic-number> --body "$UPDATED_BODY"
 
 # 4. Comment on the epic with progress
-gh issue comment <epic-number> --body "✅ Story #<story-number> completed — PR: <pr-url>"
+gh issue comment <epic-number> --body "✅ Story #<story-number> committed to epic branch"
 ```
 
 This applies to ALL epics, regardless of how they were created:
@@ -469,6 +519,7 @@ function extractStories(epicBody) {
 const args = "$ARGUMENTS".trim().split(/\s+/);
 let workflowMode = "full";    // full, ticket, research, workflow
 let execMode = "normal";      // normal (default), swarm, hive
+let epicBranch = null;        // when set, skip branch creation and PR (epic mode)
 let issueNumber = null;
 let titleWords = [];
 
@@ -523,6 +574,11 @@ for (let i = 0; i < args.length; i++) {
     workflowMode = "ticket";
   } else if (arg === "-r" || arg === "--research") {
     workflowMode = "research";
+  }
+
+  // Epic mode (used by epic orchestrator — skip branch creation and PR)
+  else if (arg === "--epic-branch") {
+    epicBranch = args[++i]; // next arg is the branch name
   }
 
   // Execution mode (how to do it)

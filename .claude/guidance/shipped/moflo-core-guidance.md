@@ -173,6 +173,7 @@ This gives Claude access to 200+ MCP tools (`mcp__moflo__memory_*`, `mcp__moflo_
 | `embeddings`  | 4           | Vector embeddings (embed, batch, search, init) - 75x faster with agentic-flow |
 | `claims`      | 4           | Claims-based authorization (check, grant, revoke, list)                       |
 | `migrate`     | 5           | V2 to V3 migration with rollback support                                      |
+| `epic`        | 3           | Epic orchestrator — run/status/reset with single-branch or auto-merge strategy |
 | `doctor`      | 1           | System diagnostics with health checks                                         |
 | `completions` | 4           | Shell completions (bash, zsh, fish, powershell)                               |
 
