@@ -18,6 +18,7 @@ import type {
 export const loopCommand: StepCommand = {
   type: 'loop',
   description: 'Iterate over an array, running sub-steps for each item',
+  defaultMofloLevel: 'none',
   configSchema: {
     type: 'object',
     properties: {

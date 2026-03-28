@@ -215,6 +215,7 @@ async function executeAction(
 export const browserCommand: StepCommand = {
   type: 'browser',
   description: 'Web automation via Playwright (requires playwright peer dependency)',
+  defaultMofloLevel: 'memory',
 
   configSchema: {
     type: 'object',

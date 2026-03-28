@@ -28,7 +28,13 @@ import type {
 import { StepCommandRegistry } from './step-command-registry.js';
 import { interpolateConfig } from './interpolation.js';
 import { validateWorkflowDefinition, resolveArguments } from '../schema/validator.js';
-import { checkCapabilities, formatViolations } from './capability-validator.js';
+import {
+  checkCapabilities,
+  formatViolations,
+  resolveMofloLevel,
+  compareMofloLevels,
+} from './capability-validator.js';
+import { DEFAULT_MAX_NESTING_DEPTH } from '../types/step-command.types.js';
 
 const DEFAULT_STEP_TIMEOUT = 300_000; // 5 minutes
 
@@ -45,6 +51,14 @@ interface ExecutionState {
   readonly credentialPatterns: RegExp[];
   /** All resolved credentials (for per-step scoping, NOT shared in variables) */
   readonly resolvedCredentials: Record<string, unknown>;
+  /** Workflow-level MoFlo integration level. */
+  readonly workflowMofloLevel: MofloLevel | undefined;
+  /** Parent workflow's MoFlo level (for recursive nesting constraint). */
+  readonly parentMofloLevel: MofloLevel | undefined;
+  /** Current nesting depth (0 = top-level). */
+  readonly nestingDepth: number;
+  /** Maximum allowed nesting depth. */
+  readonly maxNestingDepth: number;
 }
 
 export class WorkflowRunner {
@@ -75,6 +89,16 @@ export class WorkflowRunner {
         message: 'Workflow definition is invalid',
         details: defValidation.errors,
       }]);
+    }
+
+    // Enforce parent-level constraint for recursive workflows
+    if (options.parentMofloLevel && definition.mofloLevel) {
+      if (compareMofloLevels(definition.mofloLevel, options.parentMofloLevel) > 0) {
+        return this.failureResult(workflowId, startTime, [{
+          code: 'MOFLO_LEVEL_DENIED',
+          message: `Nested workflow mofloLevel "${definition.mofloLevel}" exceeds parent level "${options.parentMofloLevel}"`,
+        }]);
+      }
     }
 
     const { resolved: resolvedArgs, errors: argErrors } = resolveArguments(
@@ -196,6 +220,11 @@ export class WorkflowRunner {
         };
       }
 
+      // Resolve moflo level for dry-run report
+      const stepMofloLevel = command
+        ? resolveMofloLevel(step, command, definition.mofloLevel, options.parentMofloLevel)
+        : undefined;
+
       stepReports.push({
         stepId: step.id,
         stepType: step.type,
@@ -204,6 +233,7 @@ export class WorkflowRunner {
         validationResult,
         continueOnError: step.continueOnError ?? false,
         hasRollback: command?.rollback !== undefined,
+        mofloLevel: stepMofloLevel,
       });
     }
 
@@ -260,7 +290,18 @@ export class WorkflowRunner {
       }));
     }
 
-    const state: ExecutionState = { variables, resolvedArgs, workflowId, options, credentialPatterns, resolvedCredentials };
+    const state: ExecutionState = {
+      variables,
+      resolvedArgs,
+      workflowId,
+      options,
+      credentialPatterns,
+      resolvedCredentials,
+      workflowMofloLevel: definition.mofloLevel,
+      parentMofloLevel: options.parentMofloLevel,
+      nestingDepth: options.nestingDepth ?? 0,
+      maxNestingDepth: options.maxNestingDepth ?? DEFAULT_MAX_NESTING_DEPTH,
+    };
 
     await this.storeProgress(workflowId, 'running', 0, definition.steps.length);
 
@@ -481,8 +522,34 @@ export class WorkflowRunner {
       };
     }
 
-    // Inject effective capabilities into context for scope enforcement
-    const scopedContext = { ...context, effectiveCaps: capCheck.effectiveCaps };
+    // Resolve MoFlo integration level for this step
+    const resolvedLevel = resolveMofloLevel(
+      step,
+      command,
+      state.workflowMofloLevel,
+      state.parentMofloLevel,
+    );
+
+    // Enforce nesting depth for recursive level
+    if (resolvedLevel === 'recursive' && state.nestingDepth >= state.maxNestingDepth) {
+      return {
+        stepId: step.id,
+        stepType: step.type,
+        status: 'failed',
+        error: `Recursive workflow nesting depth ${state.nestingDepth} exceeds maximum ${state.maxNestingDepth}`,
+        errorCode: 'MOFLO_LEVEL_DENIED',
+        duration: Date.now() - stepStart,
+      };
+    }
+
+    // Inject effective capabilities and moflo level into context for scope enforcement
+    const scopedContext = {
+      ...context,
+      effectiveCaps: capCheck.effectiveCaps,
+      mofloLevel: resolvedLevel,
+      nestingDepth: state.nestingDepth,
+      maxNestingDepth: state.maxNestingDepth,
+    };
 
     const timeout = state.options.defaultStepTimeout ?? DEFAULT_STEP_TIMEOUT;
     let output: StepOutput;

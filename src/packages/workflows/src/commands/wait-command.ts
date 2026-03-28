@@ -15,6 +15,7 @@ import type {
 export const waitCommand: StepCommand = {
   type: 'wait',
   description: 'Pause workflow for a duration',
+  defaultMofloLevel: 'none',
   configSchema: {
     type: 'object',
     properties: {

@@ -7,7 +7,8 @@
  * before execution and blocks undeclared access.
  */
 
-import type { StepCapability, CapabilityType, StepCommand } from '../types/step-command.types.js';
+import type { StepCapability, CapabilityType, StepCommand, MofloLevel } from '../types/step-command.types.js';
+import { MOFLO_LEVEL_ORDER } from '../types/step-command.types.js';
 import type { StepDefinition } from '../types/workflow-definition.types.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -201,3 +202,74 @@ export function enforceScope(
 export function formatViolations(violations: readonly CapabilityViolation[]): string {
   return violations.map(v => `[${v.capability}] ${v.reason}`).join('; ');
 }
+
+// ── MoFlo Integration Levels ─────────────────────────────────────────────
+
+const VALID_MOFLO_LEVELS: ReadonlySet<string> = new Set<MofloLevel>(MOFLO_LEVEL_ORDER);
+
+/**
+ * Check if a string is a valid MofloLevel.
+ */
+export function isValidMofloLevel(level: string): level is MofloLevel {
+  return VALID_MOFLO_LEVELS.has(level);
+}
+
+/**
+ * Compare two MoFlo levels. Returns:
+ *  - negative if a < b (a is less permissive)
+ *  - 0 if equal
+ *  - positive if a > b (a is more permissive)
+ */
+export function compareMofloLevels(a: MofloLevel, b: MofloLevel): number {
+  return MOFLO_LEVEL_ORDER.indexOf(a) - MOFLO_LEVEL_ORDER.indexOf(b);
+}
+
+/**
+ * Get the default MoFlo integration level for a step type.
+ * The command's `defaultMofloLevel` is the authoritative source;
+ * falls back to 'none' when no command is available.
+ */
+export function getDefaultMofloLevel(_stepType: string, command?: StepCommand): MofloLevel {
+  return command?.defaultMofloLevel ?? 'none';
+}
+
+/**
+ * Resolve the effective MoFlo level for a step given workflow defaults,
+ * step overrides, command defaults, and parent constraints.
+ *
+ * Resolution order (most specific wins, but can only narrow):
+ * 1. Command declares its default level
+ * 2. Workflow definition may set a workflow-wide level
+ * 3. Step may override with its own level (must not exceed workflow level)
+ * 4. Parent workflow constrains the maximum level (for recursive invocation)
+ */
+export function resolveMofloLevel(
+  step: StepDefinition,
+  command: StepCommand | undefined,
+  workflowLevel: MofloLevel | undefined,
+  parentLevel: MofloLevel | undefined,
+): MofloLevel {
+  const commandDefault = getDefaultMofloLevel(step.type, command);
+  const wfLevel = workflowLevel ?? commandDefault;
+
+  // Step can narrow but not exceed the workflow-level default
+  let effective: MofloLevel;
+  if (step.mofloLevel) {
+    effective = compareMofloLevels(step.mofloLevel, wfLevel) <= 0
+      ? step.mofloLevel
+      : wfLevel; // Capped at workflow level
+  } else {
+    // Use the more restrictive of workflow level and command default
+    effective = compareMofloLevels(commandDefault, wfLevel) <= 0
+      ? commandDefault
+      : wfLevel;
+  }
+
+  // Parent constraint: child cannot exceed parent's level
+  if (parentLevel && compareMofloLevels(effective, parentLevel) > 0) {
+    effective = parentLevel;
+  }
+
+  return effective;
+}
+

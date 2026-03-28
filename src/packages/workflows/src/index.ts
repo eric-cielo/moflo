@@ -27,6 +27,12 @@ export type {
   MemoryAccessor,
   StepCapability,
   CapabilityType,
+  MofloLevel,
+} from './types/step-command.types.js';
+
+export {
+  MOFLO_LEVEL_ORDER,
+  DEFAULT_MAX_NESTING_DEPTH,
 } from './types/step-command.types.js';
 
 export type {
@@ -53,6 +59,10 @@ export {
   isValidCapabilityType,
   validateStepCapabilities,
   formatViolations,
+  isValidMofloLevel,
+  compareMofloLevels,
+  getDefaultMofloLevel,
+  resolveMofloLevel,
   type CapabilityViolation,
   type CapabilityCheckResult,
 } from './core/capability-validator.js';
