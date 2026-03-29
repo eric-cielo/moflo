@@ -342,3 +342,36 @@ describe('topological sort (execution order)', () => {
     expect(order.length).toBeLessThan(stories.length);
   });
 });
+
+describe('epic resume support', () => {
+  it('should filter out completed stories', () => {
+    const allStories = [10, 11, 12, 13];
+    const completedStories = new Set([10, 12]);
+    const remaining = allStories.filter(n => !completedStories.has(n));
+    expect(remaining).toEqual([11, 13]);
+  });
+
+  it('should detect all-completed state', () => {
+    const allStories = [10, 11, 12];
+    const completedStories = new Set([10, 11, 12]);
+    const remaining = allStories.filter(n => !completedStories.has(n));
+    expect(remaining).toHaveLength(0);
+  });
+
+  it('should parse story keys from memory results', () => {
+    const results = [
+      { key: 'story-10', value: { status: 'completed' } },
+      { key: 'story-11', value: { status: 'merged' } },
+      { key: 'story-12', value: { status: 'in-progress' } },
+      { key: 'epic-42', value: { status: 'in-progress' } },
+    ];
+    const completed = new Set<number>();
+    for (const entry of results) {
+      const match = entry.key.match(/story-(\d+)/);
+      if (match && (entry.value?.status === 'completed' || entry.value?.status === 'merged')) {
+        completed.add(parseInt(match[1], 10));
+      }
+    }
+    expect(completed).toEqual(new Set([10, 11]));
+  });
+});

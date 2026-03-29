@@ -82,19 +82,53 @@ async function runEpic(
   }
   console.log('');
 
-  // 3. Build slug for branch name
+  // 3. Check for prior state (resume support)
+  let completedStories = new Set<number>();
+  try {
+    const stateResult = await runEpicWorkflow(
+      `name: epic-resume-check\nsteps:\n  - id: check-state\n    type: memory\n    config:\n      action: search\n      namespace: epic-state\n      query: "epic ${issueNumber} story completed"`,
+      undefined,
+      { args: {} },
+    );
+    if (stateResult.success && stateResult.outputs['check-state']) {
+      const stateData = stateResult.outputs['check-state'] as Record<string, unknown>;
+      const results = (stateData as { results?: Array<{ key: string; value: { status: string } }> }).results;
+      if (results) {
+        for (const entry of results) {
+          const match = entry.key.match(/story-(\d+)/);
+          if (match && (entry.value?.status === 'completed' || entry.value?.status === 'merged')) {
+            completedStories.add(parseInt(match[1], 10));
+          }
+        }
+      }
+    }
+  } catch {
+    // No prior state — fresh run
+  }
+
+  if (completedStories.size > 0) {
+    console.log(`[epic] Resuming: ${completedStories.size} stories already completed`);
+  }
+
+  // 4. Build slug for branch name
   const slug = issue.title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .substring(0, 40);
 
-  // 4. Load workflow template and execute
+  // 5. Load workflow template and execute
   const yaml = loadWorkflowTemplate(strategy);
-  const storyNumbers = plan.order.map(id => {
+  const allStoryNumbers = plan.order.map(id => {
     const s = stories.find(st => st.id === id)!;
     return s.issue;
   });
+  const storyNumbers = allStoryNumbers.filter(n => !completedStories.has(n));
+
+  if (storyNumbers.length === 0) {
+    console.log(`[epic] All ${allStoryNumbers.length} stories already completed`);
+    return { success: true, message: 'Epic already completed' };
+  }
 
   const args = {
     epic_number: issueNumber,
@@ -135,7 +169,7 @@ async function runEpic(
     return { success: true, message: 'Dry-run complete' };
   }
 
-  // 5. Execute workflow
+  // 6. Execute workflow
   console.log(`[epic] Executing ${strategy} workflow...`);
   let stepCount = 0;
 

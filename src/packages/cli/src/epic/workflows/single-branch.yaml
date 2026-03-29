@@ -33,6 +33,20 @@ arguments:
 mofloLevel: hooks
 
 steps:
+  # Step 0: Initialize epic state in memory (enables resume)
+  - id: init-state
+    type: memory
+    config:
+      action: "write"
+      namespace: "epic-state"
+      key: "epic-${args.epic_number}"
+      value:
+        status: "in-progress"
+        strategy: "single-branch"
+        stories: "${args.stories}"
+        branch: "epic/${args.epic_number}-${args.epic_slug}"
+        startedAt: "${new Date().toISOString()}"
+
   # Step 1: Create epic branch from base
   - id: create-branch
     type: bash
@@ -92,3 +106,17 @@ steps:
       body: "## Epic #${args.epic_number}\n\nConsolidated PR for all stories.\n\nCloses #${args.epic_number}"
       base: "${args.base_branch}"
       head: "epic/${args.epic_number}-${args.epic_slug}"
+
+  # Step 5: Mark epic as completed in memory
+  - id: finalize-state
+    type: memory
+    config:
+      action: "write"
+      namespace: "epic-state"
+      key: "epic-${args.epic_number}"
+      value:
+        status: "completed"
+        strategy: "single-branch"
+        stories: "${args.stories}"
+        branch: "epic/${args.epic_number}-${args.epic_slug}"
+        completedAt: "${new Date().toISOString()}"
