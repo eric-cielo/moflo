@@ -58,7 +58,7 @@
     "build:neural": "cd src/packages/neural && npx tsc -p tsconfig.json",
     "build:guidance": "cd src/packages/guidance && npx tsc -p tsconfig.json",
     "prepublishOnly": "npm run build",
-    "test": "vitest run",
+    "test": "node scripts/test-runner.mjs",
     "test:ui": "vitest --ui",
     "test:security": "vitest run src/__tests__/security/",
     "lint": "cd src/packages/cli && npm run lint || true",

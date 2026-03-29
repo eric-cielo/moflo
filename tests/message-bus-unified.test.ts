@@ -14,7 +14,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   MessageBus,
-  createMessageBus,
   type Message,
   type UnifiedMessage,
   type MessageFilter,
@@ -26,7 +25,7 @@ describe('MessageBus — Unified Interface (Story #119)', () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    bus = createMessageBus({
+    bus = new MessageBus({
       processingIntervalMs: 10,
       reaperIntervalMs: 60000,
     });
@@ -435,9 +434,9 @@ describe('MessageBus — Unified Interface (Story #119)', () => {
   // Factory
   // =========================================================================
 
-  describe('createMessageBus factory', () => {
+  describe('MessageBus constructor', () => {
     it('returns bus implementing full IMessageBus interface', () => {
-      const b = createMessageBus();
+      const b = new MessageBus();
       expect(typeof b.send).toBe('function');
       expect(typeof b.broadcast).toBe('function');
       expect(typeof b.sendUnified).toBe('function');
@@ -650,7 +649,7 @@ describe('MessageBus — Unified Interface (Story #119)', () => {
 
   describe('regression: removeLowestPriority removes from lowest first', () => {
     it('removes low priority before high when overflow', async () => {
-      const smallBus = createMessageBus({ maxQueueSize: 2 });
+      const smallBus = new MessageBus({ maxQueueSize: 2 });
       await smallBus.initialize();
 
       smallBus.subscribe('agent-1', () => {});

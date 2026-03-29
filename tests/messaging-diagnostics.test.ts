@@ -19,7 +19,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   MessageBus,
-  createMessageBus,
   WriteThroughAdapter,
   type Message,
 } from '../src/packages/swarm/src/index.js';
@@ -229,7 +228,7 @@ describe('MessageBus — message.unified event', () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    bus = createMessageBus({ processingIntervalMs: 10, reaperIntervalMs: 60000 });
+    bus = new MessageBus({ processingIntervalMs: 10, reaperIntervalMs: 60000 });
     await bus.initialize();
   });
 
@@ -319,7 +318,7 @@ describe('MessageBus — namespace-scoped broadcast (Bug #2 regression)', () => 
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    bus = createMessageBus({ processingIntervalMs: 10, reaperIntervalMs: 60000 });
+    bus = new MessageBus({ processingIntervalMs: 10, reaperIntervalMs: 60000 });
     await bus.initialize();
   });
 
@@ -399,7 +398,7 @@ describe('MessageBus → WriteThroughAdapter (end-to-end)', () => {
     storedEntries = new Map();
     mockStore.mockClear();
 
-    bus = createMessageBus({ processingIntervalMs: 10, reaperIntervalMs: 60000 });
+    bus = new MessageBus({ processingIntervalMs: 10, reaperIntervalMs: 60000 });
     await bus.initialize();
 
     adapter = new WriteThroughAdapter(
@@ -493,7 +492,7 @@ describe('WriteThroughAdapter — detach() isolation (Bug #4 regression)', () =>
     vi.useFakeTimers();
     storedA = [];
     storedB = [];
-    bus = createMessageBus({ processingIntervalMs: 10, reaperIntervalMs: 60000 });
+    bus = new MessageBus({ processingIntervalMs: 10, reaperIntervalMs: 60000 });
     await bus.initialize();
   });
 
@@ -550,7 +549,7 @@ describe('MessageBus — delivery retry on callback failure', () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    bus = createMessageBus({
+    bus = new MessageBus({
       processingIntervalMs: 10,
       reaperIntervalMs: 60000,
       retryAttempts: 3,

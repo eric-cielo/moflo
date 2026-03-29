@@ -4,8 +4,13 @@ export default defineConfig({
   test: {
     // Use forks to prevent segfaults from native modules (agentdb/sql.js)
     pool: 'forks',
+    // Increase heap limit for worker forks — prevents OOM crashes on
+    // heavy test suites (ruvector-bridge, analyzer, etc.) that otherwise
+    // kill workers and cause vitest to exit 1 even when all tests pass.
+    // Vitest 4 moved pool options to top-level (poolOptions is removed).
+    execArgv: ['--max-old-space-size=8192'],
     // Limit concurrency to reduce memory pressure on Windows
-    maxForks: 4,
+    maxForks: 2,
     minForks: 1,
     // Only include our own test files — prevents picking up tests from
     // node_modules (agentdb, pnpm, etc.) that cause segfaults.

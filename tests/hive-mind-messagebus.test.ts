@@ -12,7 +12,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   MessageBus,
-  createMessageBus,
   WriteThroughAdapter,
   type WriteThroughConfig,
 } from '../src/packages/swarm/src/index.js';
@@ -51,7 +50,7 @@ describe('WriteThroughAdapter (Story #121)', () => {
     mockDelete.mockClear();
     mockList.mockClear();
 
-    bus = createMessageBus({ processingIntervalMs: 10, reaperIntervalMs: 60000 });
+    bus = new MessageBus({ processingIntervalMs: 10, reaperIntervalMs: 60000 });
     await bus.initialize();
   });
 
