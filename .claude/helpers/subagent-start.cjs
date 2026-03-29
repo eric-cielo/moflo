@@ -12,8 +12,9 @@ const output = {
   hookSpecificOutput: {
     hookEventName: 'SubagentStart',
     additionalContext:
-      'IMPORTANT: Before doing any work, read `.claude/guidance/shipped/moflo-subagents.md` and follow its protocol. ' +
-      'You MUST search memory (mcp__moflo__memory_search) before using Glob, Grep, or Read tools.',
+      'MANDATORY FIRST ACTION: Your very first tool call MUST be mcp__moflo__memory_search (any query, any namespace). ' +
+      'The memory-first gate WILL BLOCK all Glob, Grep, and Read calls until you do this. ' +
+      'After memory search, follow `.claude/guidance/shipped/moflo-subagents.md` protocol.',
   },
 };
 
