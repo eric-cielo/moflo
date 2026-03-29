@@ -15,7 +15,16 @@ import type {
   JSONSchema,
 } from '../types/step-command.types.js';
 
-export const loopCommand: StepCommand = {
+/** Typed config for the loop step command. */
+export interface LoopStepConfig extends StepConfig {
+  readonly over: unknown[];
+  readonly steps?: string[];
+  readonly maxIterations?: number;
+  readonly itemVar?: string;
+  readonly indexVar?: string;
+}
+
+export const loopCommand: StepCommand<LoopStepConfig> = {
   type: 'loop',
   description: 'Iterate over an array, running sub-steps for each item',
   defaultMofloLevel: 'none',
@@ -31,7 +40,7 @@ export const loopCommand: StepCommand = {
     required: ['over'],
   } satisfies JSONSchema,
 
-  validate(config: StepConfig): ValidationResult {
+  validate(config: LoopStepConfig): ValidationResult {
     const errors = [];
     if (config.over === undefined) {
       errors.push({ path: 'over', message: 'over is required (array to iterate)' });
@@ -44,10 +53,10 @@ export const loopCommand: StepCommand = {
     return { valid: errors.length === 0, errors };
   },
 
-  async execute(config: StepConfig): Promise<StepOutput> {
+  async execute(config: LoopStepConfig): Promise<StepOutput> {
     const start = Date.now();
-    const items = config.over as unknown[];
-    const maxIterations = (config.maxIterations as number) ?? 100;
+    const items = config.over;
+    const maxIterations = config.maxIterations ?? 100;
     const actualCount = Math.min(items.length, maxIterations);
     const truncated = items.length > maxIterations;
 
@@ -59,8 +68,8 @@ export const loopCommand: StepCommand = {
         totalItems: items.length,
         iterations: actualCount,
         truncated,
-        itemVar: (config.itemVar as string) ?? 'item',
-        indexVar: (config.indexVar as string) ?? 'index',
+        itemVar: config.itemVar ?? 'item',
+        indexVar: config.indexVar ?? 'index',
         items: items.slice(0, actualCount),
       },
       duration: Date.now() - start,

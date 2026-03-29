@@ -8,12 +8,14 @@
 import type { MemoryAccessor } from '../types/step-command.types.js';
 import type { WorkflowDefinition } from '../types/workflow-definition.types.js';
 import type { WorkflowResult } from '../types/runner.types.js';
+import type { MofloLevel } from '../types/step-command.types.js';
 import type {
   WorkflowSchedule,
   ScheduleExecution,
   SchedulerOptions,
 } from './schedule.types.js';
 import { computeNextRun } from './cron-parser.js';
+import { compareMofloLevels } from '../core/capability-validator.js';
 
 // ============================================================================
 // Constants
@@ -31,7 +33,7 @@ const NAMESPACE_EXECUTIONS = 'schedule-executions';
 
 export interface WorkflowExecutor {
   /** Execute a workflow by name with given args. Returns the result. */
-  execute(workflowName: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<WorkflowResult>;
+  execute(workflowName: string, args: Record<string, unknown>, signal?: AbortSignal, mofloLevel?: MofloLevel): Promise<WorkflowResult>;
   /** Check if a workflow definition exists. */
   exists(workflowName: string): boolean;
 }
@@ -69,6 +71,7 @@ export class WorkflowScheduler {
   private readonly pollIntervalMs: number;
   private readonly maxConcurrent: number;
   private readonly catchUpWindowMs: number;
+  private readonly maxMofloLevel: MofloLevel | undefined;
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private readonly runningWorkflows = new Map<string, AbortController>();
@@ -85,6 +88,7 @@ export class WorkflowScheduler {
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.maxConcurrent = options.maxConcurrent ?? DEFAULT_MAX_CONCURRENT;
     this.catchUpWindowMs = options.catchUpWindowMs ?? DEFAULT_CATCH_UP_WINDOW_MS;
+    this.maxMofloLevel = options.maxMofloLevel;
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -357,10 +361,14 @@ export class WorkflowScheduler {
     });
 
     try {
+      // Compute effective MoFlo level: min(scheduler-level cap, per-schedule cap)
+      const effectiveLevel = this.resolveEffectiveMofloLevel(schedule.mofloLevel);
+
       const result = await this.executor.execute(
         schedule.workflowName,
         schedule.args ?? {},
         controller.signal,
+        effectiveLevel,
       );
 
       const completedAt = Date.now();
@@ -405,6 +413,21 @@ export class WorkflowScheduler {
       this.inflightPromises.delete(schedule.id);
       await this.advanceNextRun(schedule, Date.now());
     }
+  }
+
+  /**
+   * Compute the effective MoFlo level for a scheduled execution.
+   * Returns the more restrictive of the scheduler-level and per-schedule caps,
+   * or undefined if neither is set (preserving default behavior).
+   */
+  private resolveEffectiveMofloLevel(scheduleLevel?: MofloLevel): MofloLevel | undefined {
+    if (!this.maxMofloLevel && !scheduleLevel) return undefined;
+    if (!this.maxMofloLevel) return scheduleLevel;
+    if (!scheduleLevel) return this.maxMofloLevel;
+    // Return the more restrictive (lower ordinal) of the two
+    return compareMofloLevels(scheduleLevel, this.maxMofloLevel) <= 0
+      ? scheduleLevel
+      : this.maxMofloLevel;
   }
 
   /**

@@ -8,6 +8,10 @@
  * Config supports a sequential list of actions: open, click, fill, type,
  * select, get-text, get-value, screenshot, wait, evaluate, scroll, hover, press.
  *
+ * Security hardening (Issues #176, #177):
+ * - SSRF: URL validation blocks dangerous schemes and private/internal IPs.
+ * - Evaluate: gated behind explicit 'browser:evaluate' capability.
+ *
  * Credential interpolation ({credentials.X}) is handled by the runner's
  * pre-resolution pass before this command executes.
  */
@@ -24,6 +28,15 @@ import type {
   OutputDescriptor,
   JSONSchema,
 } from '../types/step-command.types.js';
+import { validateBrowserUrl } from './browser-url-validator.js';
+import { enforceScope, formatViolations } from '../core/capability-validator.js';
+
+/** Typed config for the browser step command. */
+export interface BrowserStepConfig extends StepConfig {
+  readonly actions: BrowserAction[];
+  readonly headless?: boolean;
+  readonly timeout?: number;
+}
 
 // ── Action types ──────────────────────────────────────────────────────────
 
@@ -35,7 +48,7 @@ const SUPPORTED_ACTIONS = [
 
 type ActionName = (typeof SUPPORTED_ACTIONS)[number];
 
-interface BrowserAction {
+export interface BrowserAction {
   action: ActionName;
   url?: string;
   selector?: string;
@@ -105,6 +118,13 @@ async function loadPlaywright(): Promise<PlaywrightModule> {
   }
 }
 
+// ── Evaluate capability check ────────────────────────────────────────────
+
+/** Check whether the context grants the browser:evaluate capability. */
+function hasEvaluateCapability(context: WorkflowContext): boolean {
+  return context.effectiveCaps?.some(c => c.type === 'browser:evaluate') === true;
+}
+
 // ── Action executor ───────────────────────────────────────────────────────
 
 async function executeAction(
@@ -112,14 +132,22 @@ async function executeAction(
   action: BrowserAction,
   outputs: Record<string, unknown>,
   defaultTimeout: number,
+  context: WorkflowContext,
 ): Promise<void> {
   const timeout = action.timeout ?? defaultTimeout;
 
   switch (action.action) {
-    case 'open':
+    case 'open': {
       if (!action.url) throw new Error('open action requires url');
+      validateBrowserUrl(action.url);
+      // Enforce net capability scope (Issue #178)
+      if (context.effectiveCaps) {
+        const violation = enforceScope(context.effectiveCaps, 'net', action.url, context.taskId, 'browser');
+        if (violation) throw new Error(formatViolations([violation]));
+      }
       await page.goto(action.url, { timeout });
       break;
+    }
 
     case 'click':
       if (!action.selector) throw new Error('click action requires selector');
@@ -170,6 +198,10 @@ async function executeAction(
       if (action.selector) {
         await page.waitForSelector(action.selector, { timeout });
       } else if (action.urlPattern) {
+        // Validate plain-string URL patterns against SSRF rules
+        if (!action.urlPattern.startsWith('/') && !action.urlPattern.includes('*')) {
+          validateBrowserUrl(action.urlPattern);
+        }
         await page.waitForURL(action.urlPattern, { timeout });
       } else if (action.text) {
         await page.waitForSelector(`text=${action.text}`, { timeout });
@@ -179,6 +211,10 @@ async function executeAction(
       break;
 
     case 'evaluate': {
+      // Gate behind explicit capability — fixes GitHub Issue #176
+      if (!hasEvaluateCapability(context)) {
+        throw new Error("evaluate action requires explicit 'browser:evaluate' capability");
+      }
       const expression = action.expression ?? action.value;
       if (!expression) throw new Error('evaluate action requires expression or value');
       const evalResult = await page.evaluate(expression);
@@ -212,7 +248,7 @@ async function executeAction(
 
 // ── Browser Step Command ──────────────────────────────────────────────────
 
-export const browserCommand: StepCommand = {
+export const browserCommand: StepCommand<BrowserStepConfig> = {
   type: 'browser',
   description: 'Web automation via Playwright (requires playwright peer dependency)',
   defaultMofloLevel: 'memory',
@@ -254,16 +290,17 @@ export const browserCommand: StepCommand = {
     { type: 'browser' },
     { type: 'net' },
     { type: 'fs:write' },
+    { type: 'browser:evaluate' },
   ],
 
-  validate(config: StepConfig): ValidationResult {
+  validate(config: BrowserStepConfig): ValidationResult {
     const errors = [];
     if (!Array.isArray(config.actions)) {
       errors.push({ path: 'actions', message: 'actions must be an array' });
       return { valid: false, errors };
     }
-    for (let i = 0; i < (config.actions as BrowserAction[]).length; i++) {
-      const act = (config.actions as BrowserAction[])[i];
+    for (let i = 0; i < config.actions.length; i++) {
+      const act = config.actions[i];
       if (!act.action || typeof act.action !== 'string') {
         errors.push({ path: `actions[${i}].action`, message: 'action is required' });
       } else if (!SUPPORTED_ACTIONS.includes(act.action as ActionName)) {
@@ -279,12 +316,37 @@ export const browserCommand: StepCommand = {
     return { valid: errors.length === 0, errors };
   },
 
-  async execute(config: StepConfig, context: WorkflowContext): Promise<StepOutput> {
+  async execute(config: BrowserStepConfig, context: WorkflowContext): Promise<StepOutput> {
     const start = Date.now();
-    const actions = config.actions as BrowserAction[];
-    const headless = (config.headless as boolean | undefined) ?? true;
-    const defaultTimeout = (config.timeout as number | undefined) ?? 30_000;
+    const actions = config.actions;
+    const headless = config.headless ?? true;
+    const defaultTimeout = config.timeout ?? 30_000;
     const outputs: Record<string, unknown> = {};
+
+    // Pre-flight: check capabilities and URL validity before loading Playwright
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
+      try {
+        if (action.action === 'evaluate' && !hasEvaluateCapability(context)) {
+          throw new Error("evaluate action requires explicit 'browser:evaluate' capability");
+        }
+        if (action.action === 'open' && action.url) {
+          validateBrowserUrl(action.url);
+          // Enforce net capability scope at pre-flight (Issue #178)
+          if (context.effectiveCaps) {
+            const violation = enforceScope(context.effectiveCaps, 'net', action.url, context.taskId, 'browser');
+            if (violation) throw new Error(formatViolations([violation]));
+          }
+        }
+      } catch (err) {
+        return {
+          success: false,
+          data: { failedAction: i, failedActionName: action.action },
+          error: `Action ${i} (${action.action}) failed: ${(err as Error).message}`,
+          duration: Date.now() - start,
+        };
+      }
+    }
 
     let playwright: PlaywrightModule;
     try {
@@ -306,7 +368,7 @@ export const browserCommand: StepCommand = {
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i];
         try {
-          await executeAction(page, action, outputs, defaultTimeout);
+          await executeAction(page, action, outputs, defaultTimeout, context);
         } catch (err) {
           return {
             success: false,
@@ -340,6 +402,7 @@ export const browserCommand: StepCommand = {
     return [
       { name: 'actionsExecuted', type: 'number', required: true, description: 'Number of actions executed' },
       { name: 'screenshot_path', type: 'string', description: 'Path to screenshot file (if screenshot action used)' },
+      { name: 'evaluate_note', type: 'string', description: "The evaluate action requires explicit 'browser:evaluate' capability declared in the step's capabilities" },
     ];
   },
 

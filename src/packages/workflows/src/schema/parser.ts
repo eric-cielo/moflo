@@ -5,20 +5,22 @@
  * NOTE: Parsed output is UNVALIDATED — always call validateWorkflowDefinition() after parsing.
  */
 
-import { load as yamlLoad } from 'js-yaml';
+import { load as yamlLoad, JSON_SCHEMA } from 'js-yaml';
 import type { ParsedWorkflow, WorkflowDefinition } from '../types/workflow-definition.types.js';
+import { sanitizeObjectKeys } from '../core/interpolation.js';
 
 /**
  * Parse a YAML string into a WorkflowDefinition.
  * @throws if YAML is malformed.
  */
 export function parseYaml(content: string, sourceFile?: string): ParsedWorkflow {
-  const raw = yamlLoad(content);
+  const raw = yamlLoad(content, { schema: JSON_SCHEMA });
   if (!raw || typeof raw !== 'object') {
     throw new Error(`Invalid workflow YAML${sourceFile ? ` in ${sourceFile}` : ''}: expected an object`);
   }
+  const sanitized = sanitizeObjectKeys(raw) as Record<string, unknown>;
   return {
-    definition: raw as WorkflowDefinition,
+    definition: sanitized as WorkflowDefinition,
     sourceFile,
     format: 'yaml',
   };
@@ -40,8 +42,9 @@ export function parseJson(content: string, sourceFile?: string): ParsedWorkflow 
   if (!raw || typeof raw !== 'object') {
     throw new Error(`Invalid workflow JSON${sourceFile ? ` in ${sourceFile}` : ''}: expected an object`);
   }
+  const sanitized = sanitizeObjectKeys(raw) as Record<string, unknown>;
   return {
-    definition: raw as WorkflowDefinition,
+    definition: sanitized as WorkflowDefinition,
     sourceFile,
     format: 'json',
   };

@@ -13,6 +13,7 @@ import { memoryCommand } from '../src/commands/memory-command.js';
 import { waitCommand } from '../src/commands/wait-command.js';
 import { loopCommand } from '../src/commands/loop-command.js';
 import { browserCommand } from '../src/commands/browser-command.js';
+import { validateBrowserUrl } from '../src/commands/browser-url-validator.js';
 import { builtinCommands } from '../src/commands/index.js';
 import type { MemoryAccessor } from '../src/types/step-command.types.js';
 import { createMockContext as createContext } from './helpers.js';
@@ -124,7 +125,49 @@ describe('bashCommand', () => {
   it('should interpolate variables in command', async () => {
     const ctx = createContext({ variables: { s1: { msg: 'world' } } });
     const output = await bashCommand.execute({ command: 'echo {s1.msg}' }, ctx);
-    expect(output.data.stdout).toBe('world');
+    // shellInterpolateString wraps values in single quotes for safety
+    expect(output.data.stdout).toContain('world');
+  });
+
+  // ---- Shell injection prevention (Issue #175) ----
+
+  it('should escape semicolon injection in interpolated values', async () => {
+    const ctx = createContext({ variables: { s1: { val: '; echo injected' } } });
+    const output = await bashCommand.execute({ command: 'echo {s1.val}' }, ctx);
+    // The value should be treated as a literal string, not executed
+    expect(output.data.stdout).toContain('; echo injected');
+    expect(output.data.stdout).not.toBe('injected');
+  });
+
+  it('should escape backtick injection in interpolated values', async () => {
+    const ctx = createContext({ variables: { s1: { val: '`echo injected`' } } });
+    const output = await bashCommand.execute({ command: 'echo {s1.val}' }, ctx);
+    expect(output.data.stdout).toContain('`echo injected`');
+  });
+
+  it('should escape $() injection in interpolated values', async () => {
+    const ctx = createContext({ variables: { s1: { val: '$(echo injected)' } } });
+    const output = await bashCommand.execute({ command: 'echo {s1.val}' }, ctx);
+    expect(output.data.stdout).toContain('$(echo injected)');
+  });
+
+  it('should escape pipe injection in interpolated values', async () => {
+    const ctx = createContext({ variables: { s1: { val: '| echo injected' } } });
+    const output = await bashCommand.execute({ command: 'echo {s1.val}' }, ctx);
+    expect(output.data.stdout).toContain('| echo injected');
+  });
+
+  it('should escape && injection in interpolated values', async () => {
+    const ctx = createContext({ variables: { s1: { val: '&& echo injected' } } });
+    const output = await bashCommand.execute({ command: 'echo {s1.val}' }, ctx);
+    expect(output.data.stdout).toContain('&& echo injected');
+  });
+
+  it('should still work with normal values after escaping', async () => {
+    const ctx = createContext({ variables: { s1: { name: 'hello world' } } });
+    const output = await bashCommand.execute({ command: 'echo {s1.name}' }, ctx);
+    expect(output.success).toBe(true);
+    expect(output.data.stdout).toBe('hello world');
   });
 
   it('should respect abort signal', async () => {
@@ -210,6 +253,62 @@ describe('conditionCommand', () => {
 
     const lt = await conditionCommand.execute({ if: '{s1.count}<5' }, ctx);
     expect(lt.data.result).toBe(false);
+  });
+
+  // ---- Structured condition format (Issue #190) ----
+
+  it('should evaluate structured format: greater-than', async () => {
+    const ctx = createContext();
+    const output = await conditionCommand.execute(
+      { left: '5', op: '>', right: '3', then: 'step-a', else: 'step-b' },
+      ctx,
+    );
+    expect(output.data.result).toBe(true);
+    expect(output.data.branch).toBe('then');
+    expect(output.data.nextStep).toBe('step-a');
+  });
+
+  it('should evaluate structured format with values containing operators', async () => {
+    const ctx = createContext();
+    const output = await conditionCommand.execute(
+      { left: '>=1', op: '==', right: '>=1' },
+      ctx,
+    );
+    expect(output.data.result).toBe(true);
+  });
+
+  it('should validate structured format with invalid operator', () => {
+    const result = conditionCommand.validate(
+      { left: '5', op: '~~' as never, right: '3' },
+      createContext(),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].path).toBe('op');
+  });
+
+  it('should validate that either string or structured format is required', () => {
+    const result = conditionCommand.validate({ then: 'step-a' }, createContext());
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toContain('Either');
+  });
+
+  it('should interpolate variables in structured format', async () => {
+    const ctx = createContext({ variables: { s1: { count: '10' } } });
+    const output = await conditionCommand.execute(
+      { left: '{s1.count}', op: '>=', right: '5' },
+      ctx,
+    );
+    expect(output.data.result).toBe(true);
+  });
+
+  it('should prefer structured format over string format when both present', async () => {
+    const ctx = createContext();
+    // String format would evaluate "1==2" as false, but structured says 1==1
+    const output = await conditionCommand.execute(
+      { if: '1==2', left: '1', op: '==', right: '1' },
+      ctx,
+    );
+    expect(output.data.result).toBe(true);
   });
 });
 
@@ -319,6 +418,40 @@ describe('memoryCommand', () => {
       ctx,
     );
     expect(store.get('env')).toBe('deploying to production');
+  });
+
+  // --- Scope enforcement (Issue #178) ---
+
+  it('should block write to namespace outside memory scope', async () => {
+    const ctx = createContext({
+      effectiveCaps: [{ type: 'memory', scope: ['allowed-ns'] }],
+    });
+    const output = await memoryCommand.execute(
+      { action: 'write', namespace: 'forbidden-ns', key: 'k1', value: 'data' },
+      ctx,
+    );
+    expect(output.success).toBe(false);
+    expect(output.error).toContain('outside allowed scope');
+    expect(output.error).toContain('memory');
+  });
+
+  it('should allow write to namespace within memory scope', async () => {
+    const store = new Map<string, unknown>();
+    const memory: MemoryAccessor = {
+      async read(_ns, key) { return store.get(key) ?? null; },
+      async write(_ns, key, value) { store.set(key, value); },
+      async search() { return []; },
+    };
+    const ctx = createContext({
+      memory,
+      effectiveCaps: [{ type: 'memory', scope: ['allowed-ns'] }],
+    });
+    const output = await memoryCommand.execute(
+      { action: 'write', namespace: 'allowed-ns', key: 'k1', value: 'data' },
+      ctx,
+    );
+    expect(output.success).toBe(true);
+    expect(output.data.written).toBe(true);
   });
 
   it('should search memory', async () => {
@@ -517,11 +650,47 @@ describe('browserCommand', () => {
 
   // --- Output descriptors ---
 
-  it('should describe outputs', () => {
+  it('should describe outputs including evaluate note', () => {
     const outputs = browserCommand.describeOutputs();
-    expect(outputs).toHaveLength(2);
+    expect(outputs).toHaveLength(3);
     expect(outputs[0].name).toBe('actionsExecuted');
     expect(outputs[1].name).toBe('screenshot_path');
+    expect(outputs[2].name).toBe('evaluate_note');
+  });
+
+  // --- Scope enforcement (Issue #178) ---
+
+  it('should block open to URL outside net scope', async () => {
+    const ctx = createContext({
+      effectiveCaps: [
+        { type: 'browser' },
+        { type: 'net', scope: ['https://allowed.com'] },
+      ],
+    });
+    const output = await browserCommand.execute(
+      { actions: [{ action: 'open', url: 'https://blocked.com/page' }] },
+      ctx,
+    );
+    expect(output.success).toBe(false);
+    expect(output.error).toContain('outside allowed scope');
+    expect(output.error).toContain('net');
+  });
+
+  it('should allow open to URL within net scope', async () => {
+    const ctx = createContext({
+      effectiveCaps: [
+        { type: 'browser' },
+        { type: 'net', scope: ['https://allowed.com'] },
+      ],
+    });
+    const output = await browserCommand.execute(
+      { actions: [{ action: 'open', url: 'https://allowed.com/page' }] },
+      ctx,
+    );
+    // Should pass scope check but fail due to Playwright not installed
+    expect(output.success).toBe(false);
+    expect(output.error).toContain('Playwright');
+    expect(output.error).not.toContain('scope');
   });
 
   // --- Config schema ---
@@ -532,5 +701,57 @@ describe('browserCommand', () => {
 
   it('should define headless option in schema', () => {
     expect(browserCommand.configSchema.properties?.headless).toBeDefined();
+  });
+
+  // --- SSRF protection (Issue #177) ---
+
+  it('should block file:// URLs', () => {
+    expect(() => validateBrowserUrl('file:///etc/passwd')).toThrow('Blocked URL scheme');
+  });
+
+  it('should block javascript: URLs', () => {
+    expect(() => validateBrowserUrl('javascript:alert(1)')).toThrow('Blocked URL scheme');
+  });
+
+  it('should block http://169.254.169.254/ (metadata endpoint)', () => {
+    expect(() => validateBrowserUrl('http://169.254.169.254/')).toThrow('private/internal IP');
+  });
+
+  it('should block http://localhost:8080/', () => {
+    expect(() => validateBrowserUrl('http://localhost:8080/')).toThrow('localhost is not allowed');
+  });
+
+  it('should block http://127.0.0.1/', () => {
+    expect(() => validateBrowserUrl('http://127.0.0.1/')).toThrow('private/internal IP');
+  });
+
+  it('should allow https://example.com/', () => {
+    expect(() => validateBrowserUrl('https://example.com/')).not.toThrow();
+  });
+
+  // --- Evaluate capability gate (Issue #176) ---
+
+  it('should reject evaluate without browser:evaluate capability', async () => {
+    const ctx = createContext({ effectiveCaps: [{ type: 'browser' }, { type: 'net' }] });
+    const output = await browserCommand.execute(
+      { actions: [{ action: 'evaluate', expression: 'document.title' }] },
+      ctx,
+    );
+    expect(output.success).toBe(false);
+    expect(output.error).toContain("'browser:evaluate' capability");
+  });
+
+  it('should allow evaluate with browser:evaluate capability', async () => {
+    const ctx = createContext({
+      effectiveCaps: [{ type: 'browser' }, { type: 'net' }, { type: 'browser:evaluate' }],
+    });
+    const output = await browserCommand.execute(
+      { actions: [{ action: 'evaluate', expression: 'document.title' }] },
+      ctx,
+    );
+    expect(output.success).toBe(false);
+    // Should fail due to Playwright not being installed, NOT capability check
+    expect(output.error).toContain('Playwright');
+    expect(output.error).not.toContain('capability');
   });
 });

@@ -518,7 +518,7 @@ describe('WorkflowScheduler', () => {
 
     await scheduler.poll();
 
-    expect(executor.execute).toHaveBeenCalledWith('test-wf', {}, expect.any(AbortSignal));
+    expect(executor.execute).toHaveBeenCalledWith('test-wf', {}, expect.any(AbortSignal), undefined);
   });
 
   it('skips disabled schedules', async () => {
@@ -783,6 +783,140 @@ describe('WorkflowScheduler', () => {
     expect(history[0].success).toBe(true);
   });
 
+  // ── MoFlo Level Caps (Issue #185) ──────────────────────────────────────
+
+  it('passes maxMofloLevel to executor when set on scheduler', async () => {
+    const cappedScheduler = new WorkflowScheduler(memory, executor, {
+      pollIntervalMs: 100,
+      maxConcurrent: 2,
+      maxMofloLevel: 'hooks',
+    });
+
+    const now = Date.now();
+    await memory.write('scheduled-workflows', 'sched-capped', {
+      id: 'sched-capped',
+      workflowName: 'test-wf',
+      workflowPath: '/path',
+      interval: '1h',
+      nextRunAt: now - 1000,
+      enabled: true,
+      createdAt: now,
+      source: 'adhoc',
+    });
+
+    await cappedScheduler.poll();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(executor.execute).toHaveBeenCalledWith(
+      'test-wf', {}, expect.any(AbortSignal), 'hooks',
+    );
+
+    await cappedScheduler.stop();
+  });
+
+  it('per-schedule mofloLevel narrows scheduler-level cap', async () => {
+    const cappedScheduler = new WorkflowScheduler(memory, executor, {
+      pollIntervalMs: 100,
+      maxConcurrent: 2,
+      maxMofloLevel: 'full',
+    });
+
+    const now = Date.now();
+    await memory.write('scheduled-workflows', 'sched-narrow', {
+      id: 'sched-narrow',
+      workflowName: 'test-wf',
+      workflowPath: '/path',
+      interval: '1h',
+      mofloLevel: 'memory',
+      nextRunAt: now - 1000,
+      enabled: true,
+      createdAt: now,
+      source: 'adhoc',
+    });
+
+    await cappedScheduler.poll();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(executor.execute).toHaveBeenCalledWith(
+      'test-wf', {}, expect.any(AbortSignal), 'memory',
+    );
+
+    await cappedScheduler.stop();
+  });
+
+  it('per-schedule mofloLevel cannot widen scheduler-level cap', async () => {
+    const cappedScheduler = new WorkflowScheduler(memory, executor, {
+      pollIntervalMs: 100,
+      maxConcurrent: 2,
+      maxMofloLevel: 'memory',
+    });
+
+    const now = Date.now();
+    await memory.write('scheduled-workflows', 'sched-widen', {
+      id: 'sched-widen',
+      workflowName: 'test-wf',
+      workflowPath: '/path',
+      interval: '1h',
+      mofloLevel: 'full',
+      nextRunAt: now - 1000,
+      enabled: true,
+      createdAt: now,
+      source: 'adhoc',
+    });
+
+    await cappedScheduler.poll();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(executor.execute).toHaveBeenCalledWith(
+      'test-wf', {}, expect.any(AbortSignal), 'memory',
+    );
+
+    await cappedScheduler.stop();
+  });
+
+  it('passes undefined mofloLevel when no caps are set (default behavior)', async () => {
+    const now = Date.now();
+    await memory.write('scheduled-workflows', 'sched-nocp', {
+      id: 'sched-nocp',
+      workflowName: 'test-wf',
+      workflowPath: '/path',
+      interval: '1h',
+      nextRunAt: now - 1000,
+      enabled: true,
+      createdAt: now,
+      source: 'adhoc',
+    });
+
+    await scheduler.poll();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(executor.execute).toHaveBeenCalledWith(
+      'test-wf', {}, expect.any(AbortSignal), undefined,
+    );
+  });
+
+  it('uses only per-schedule cap when no scheduler-level cap exists', async () => {
+    const now = Date.now();
+    await memory.write('scheduled-workflows', 'sched-only', {
+      id: 'sched-only',
+      workflowName: 'test-wf',
+      workflowPath: '/path',
+      interval: '1h',
+      mofloLevel: 'hooks',
+      nextRunAt: now - 1000,
+      enabled: true,
+      createdAt: now,
+      source: 'adhoc',
+    });
+
+    await scheduler.poll();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(executor.execute).toHaveBeenCalledWith(
+      'test-wf', {}, expect.any(AbortSignal), 'hooks',
+    );
+  });
+
   // ── Args passing ─────────────────���─────────────────────────────────────
 
   it('passes args to workflow executor', async () => {
@@ -801,6 +935,6 @@ describe('WorkflowScheduler', () => {
 
     await scheduler.poll();
 
-    expect(executor.execute).toHaveBeenCalledWith('args-wf', { target: './src' }, expect.any(AbortSignal));
+    expect(executor.execute).toHaveBeenCalledWith('args-wf', { target: './src' }, expect.any(AbortSignal), undefined);
   });
 });

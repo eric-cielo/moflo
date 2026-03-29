@@ -9,6 +9,8 @@ import type { MemoryAccessor } from '../types/step-command.types.js';
 import type { WorkflowDefinition } from '../types/workflow-definition.types.js';
 import type { WorkflowResult, StepResult } from '../types/runner.types.js';
 import { createRunner, noopMemory } from './runner-factory.js';
+import { validateWorkflowDefinition } from '../schema/validator.js';
+import { sanitizeObjectKeys } from '../core/interpolation.js';
 
 // ============================================================================
 // Types
@@ -125,8 +127,22 @@ export async function resumeWorkflow(
     };
   }
 
-  // Reconstruct definition
-  const definition: WorkflowDefinition = JSON.parse(state.definition);
+  // Reconstruct and re-validate definition (defense against tampered paused state)
+  const rawDefinition = sanitizeObjectKeys(JSON.parse(state.definition)) as WorkflowDefinition;
+  const validation = validateWorkflowDefinition(rawDefinition);
+  if (!validation.valid) {
+    await memory.write(PAUSE_NAMESPACE, workflowId, null);
+    return {
+      workflowId,
+      success: false,
+      steps: [],
+      outputs: {},
+      errors: [{ code: 'INVALID_PAUSED_DEFINITION', message: `Paused workflow definition failed validation: ${validation.errors.map(e => e.message).join('; ')}` }],
+      duration: 0,
+      cancelled: false,
+    };
+  }
+  const definition = rawDefinition;
 
   // Merge user-provided variable overrides
   const variables = { ...state.variables, ...options.variables };

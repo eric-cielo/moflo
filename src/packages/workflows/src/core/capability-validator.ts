@@ -27,7 +27,7 @@ export interface CapabilityCheckResult {
 }
 
 const VALID_CAPABILITY_TYPES: ReadonlySet<string> = new Set<CapabilityType>([
-  'fs:read', 'fs:write', 'net', 'shell', 'memory', 'credentials', 'browser', 'agent',
+  'fs:read', 'fs:write', 'net', 'shell', 'memory', 'credentials', 'browser', 'browser:evaluate', 'agent',
 ]);
 
 // ── Core validation ───────────────────────────────────────────────────────
@@ -272,4 +272,3 @@ export function resolveMofloLevel(
 
   return effective;
 }
-

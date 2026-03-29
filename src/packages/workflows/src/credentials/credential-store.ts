@@ -48,6 +48,7 @@ interface EncryptedEntry {
 interface StoreData {
   salt: string;
   credentials: Record<string, EncryptedEntry>;
+  lastKeyRotation?: string;
 }
 
 // ============================================================================
@@ -222,6 +223,82 @@ export class CredentialStore implements CredentialAccessor {
     return values;
   }
 
+  /**
+   * Rotate the store passphrase/key.
+   *
+   * Verifies the old passphrase, decrypts all entries, generates a new salt
+   * and derived key, re-encrypts everything, and writes atomically.
+   */
+  async rotate(oldPassphrase: string, newPassphrase: string): Promise<void> {
+    if (newPassphrase.length < 8) {
+      throw new CredentialStoreError('Passphrase must be at least 8 characters', 'WEAK_PASSPHRASE');
+    }
+
+    // Verify old passphrase by unlocking with it
+    const fileData = this.readFile();
+    const oldSalt = Buffer.from(fileData.salt, 'hex');
+    const oldKey = deriveKey(oldPassphrase, oldSalt);
+
+    // Decrypt all entries under the old key to verify it works
+    const decryptedEntries: Array<{
+      name: string;
+      value: string;
+      entry: EncryptedEntry;
+    }> = [];
+
+    for (const [name, entry] of Object.entries(fileData.credentials)) {
+      try {
+        const value = decrypt(entry, oldKey);
+        decryptedEntries.push({ name, value, entry });
+      } catch {
+        throw new CredentialStoreError(
+          'Old passphrase is incorrect — cannot decrypt existing credentials',
+          'ROTATION_FAILED',
+        );
+      }
+    }
+
+    // Generate new salt and derive new key
+    const newSalt = randomBytes(SALT_BYTES);
+    const newKey = deriveKey(newPassphrase, newSalt);
+
+    // Re-encrypt all entries under the new key
+    const newCredentials: Record<string, EncryptedEntry> = {};
+    for (const { name, value, entry } of decryptedEntries) {
+      const encrypted = encrypt(value, newKey);
+      newCredentials[name] = {
+        ...encrypted,
+        description: entry.description,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+      };
+    }
+
+    // Write atomically
+    const newData: StoreData = {
+      salt: newSalt.toString('hex'),
+      credentials: newCredentials,
+      lastKeyRotation: new Date().toISOString(),
+    };
+    this.writeFile(newData);
+
+    // Update active state
+    oldKey.fill(0);
+    if (this.derivedKey) {
+      this.derivedKey.fill(0);
+    }
+    this.derivedKey = newKey;
+    this.data = newData;
+  }
+
+  /**
+   * Return the last key rotation timestamp, if available.
+   */
+  get lastKeyRotation(): string | undefined {
+    this.ensureUnlocked();
+    return this.data!.lastKeyRotation;
+  }
+
   // --------------------------------------------------------------------------
   // Private
   // --------------------------------------------------------------------------
@@ -244,6 +321,7 @@ export class CredentialStore implements CredentialAccessor {
         return {
           salt: randomBytes(SALT_BYTES).toString('hex'),
           credentials: {},
+          lastKeyRotation: new Date().toISOString(),
         };
       }
       throw new CredentialStoreError(
@@ -263,7 +341,7 @@ export class CredentialStore implements CredentialAccessor {
 // Error
 // ============================================================================
 
-export type CredentialStoreErrorCode = 'DECRYPTION_FAILED' | 'STORE_LOCKED' | 'READ_FAILED' | 'WEAK_PASSPHRASE';
+export type CredentialStoreErrorCode = 'DECRYPTION_FAILED' | 'STORE_LOCKED' | 'READ_FAILED' | 'WEAK_PASSPHRASE' | 'ROTATION_FAILED';
 
 export class CredentialStoreError extends Error {
   constructor(

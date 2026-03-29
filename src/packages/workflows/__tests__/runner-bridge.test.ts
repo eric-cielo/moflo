@@ -125,14 +125,23 @@ describe('bridgeActiveWorkflows', () => {
 // ============================================================================
 
 describe('#160 — bridgeRunWorkflow credentials parameter', () => {
-  it('bridge functions accept credentials option', () => {
-    const { readFileSync } = require('fs');
-    const { resolve } = require('path');
-    const bridgeSrc = readFileSync(
-      resolve(__dirname, '../src/factory/runner-bridge.ts'),
-      'utf-8',
-    );
-    expect(bridgeSrc).toContain('credentials?: CredentialAccessor');
-    expect(bridgeSrc).toContain('credentials: options.credentials');
+  it('bridgeRunWorkflow accepts and passes through credentials option', async () => {
+    const credentials = {
+      async get(name: string) { return name === 'TOKEN' ? 'secret-val' : undefined; },
+      async has(name: string) { return name === 'TOKEN'; },
+    };
+
+    const yaml = [
+      'name: cred-test',
+      'steps:',
+      '  - id: s1',
+      '    type: bash',
+      '    config:',
+      '      command: echo ok',
+    ].join('\n');
+
+    const result = await bridgeRunWorkflow(yaml, undefined, {}, { credentials });
+    expect(result.workflowId).toBeDefined();
+    expect(result.success).toBe(true);
   });
 });

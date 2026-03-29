@@ -12,12 +12,22 @@ import type {
   JSONSchema,
 } from '../types/step-command.types.js';
 import { interpolateString } from '../core/interpolation.js';
+import { enforceScope, formatViolations } from '../core/capability-validator.js';
 
 type MemoryAction = 'read' | 'write' | 'search';
 
 const VALID_ACTIONS: readonly MemoryAction[] = ['read', 'write', 'search'];
 
-export const memoryCommand: StepCommand = {
+/** Typed config for the memory step command. */
+export interface MemoryStepConfig extends StepConfig {
+  readonly action: MemoryAction;
+  readonly namespace: string;
+  readonly key?: string;
+  readonly value?: unknown;
+  readonly query?: string;
+}
+
+export const memoryCommand: StepCommand<MemoryStepConfig> = {
   type: 'memory',
   description: 'Read, write, or search shared workflow state',
   capabilities: [{ type: 'memory' }],
@@ -34,9 +44,9 @@ export const memoryCommand: StepCommand = {
     required: ['action', 'namespace'],
   } satisfies JSONSchema,
 
-  validate(config: StepConfig): ValidationResult {
+  validate(config: MemoryStepConfig): ValidationResult {
     const errors = [];
-    const action = config.action as string;
+    const action = config.action;
 
     if (!action || !VALID_ACTIONS.includes(action as MemoryAction)) {
       errors.push({ path: 'action', message: `action must be one of: ${VALID_ACTIONS.join(', ')}` });
@@ -57,14 +67,27 @@ export const memoryCommand: StepCommand = {
     return { valid: errors.length === 0, errors };
   },
 
-  async execute(config: StepConfig, context: WorkflowContext): Promise<StepOutput> {
+  async execute(config: MemoryStepConfig, context: WorkflowContext): Promise<StepOutput> {
     const start = Date.now();
-    const action = config.action as MemoryAction;
-    const namespace = interpolateString(config.namespace as string, context);
+    const action = config.action;
+    const namespace = interpolateString(config.namespace, context);
+
+    // Enforce memory capability scope on namespace (Issue #178)
+    if (context.effectiveCaps) {
+      const violation = enforceScope(context.effectiveCaps, 'memory', namespace, context.taskId, 'memory');
+      if (violation) {
+        return {
+          success: false,
+          data: {},
+          error: formatViolations([violation]),
+          duration: Date.now() - start,
+        };
+      }
+    }
 
     switch (action) {
       case 'read': {
-        const key = interpolateString(config.key as string, context);
+        const key = interpolateString(config.key!, context);
         const value = await context.memory.read(namespace, key);
         return {
           success: true,
@@ -73,7 +96,7 @@ export const memoryCommand: StepCommand = {
         };
       }
       case 'write': {
-        const key = interpolateString(config.key as string, context);
+        const key = interpolateString(config.key!, context);
         const value = typeof config.value === 'string'
           ? interpolateString(config.value, context)
           : config.value;
@@ -85,7 +108,7 @@ export const memoryCommand: StepCommand = {
         };
       }
       case 'search': {
-        const query = interpolateString(config.query as string, context);
+        const query = interpolateString(config.query!, context);
         const results = await context.memory.search(namespace, query);
         return {
           success: true,

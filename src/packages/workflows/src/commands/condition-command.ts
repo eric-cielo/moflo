@@ -3,6 +3,10 @@
  *
  * Evaluates a simple expression string against context variables.
  * Returns which branch (then/else) should execute next.
+ *
+ * Supports two formats:
+ * - String format: `{ if: "{step.value} == expected" }` (backward compat)
+ * - Structured format: `{ left: "{step.value}", op: "==", right: "expected" }`
  */
 
 import type {
@@ -22,6 +26,39 @@ import { interpolateString } from '../core/interpolation.js';
  */
 const OPERATORS = ['!=', '==', '>=', '<=', '>', '<'] as const;
 type Operator = (typeof OPERATORS)[number];
+
+// ── Typed config ─────────────────────────────────────────────────────────
+
+/** String-based condition format (backward compatible). */
+interface ConditionStringFormat {
+  readonly if: string;
+}
+
+/** Structured condition format (Issue #190). */
+interface ConditionStructuredFormat {
+  readonly left: string;
+  readonly op: Operator;
+  readonly right: string;
+}
+
+/**
+ * Typed config for the condition step command.
+ * Accepts either a string expression (`if`) or structured operands (`left`, `op`, `right`).
+ * Both formats can include `then` / `else` branch targets.
+ */
+export type ConditionStepConfig = StepConfig & (ConditionStringFormat | ConditionStructuredFormat) & {
+  readonly then?: string;
+  readonly else?: string;
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+/** Check whether the config uses the structured format. */
+function isStructured(config: ConditionStepConfig): config is StepConfig & ConditionStructuredFormat & { then?: string; else?: string } {
+  return typeof (config as Record<string, unknown>).left === 'string'
+    && typeof (config as Record<string, unknown>).op === 'string'
+    && typeof (config as Record<string, unknown>).right === 'string';
+}
 
 /**
  * Find the best operator split point in the resolved expression.
@@ -49,10 +86,29 @@ function findOperator(resolved: string): { op: Operator; idx: number } | null {
 }
 
 /**
- * Evaluate a simple condition expression.
+ * Compare two resolved values using the given operator.
+ * Numeric comparison is used when both sides parse as numbers.
+ */
+function compareValues(left: string, op: Operator, right: string): boolean {
+  const leftNum = Number(left);
+  const rightNum = Number(right);
+  const useNum = !isNaN(leftNum) && !isNaN(rightNum);
+
+  switch (op) {
+    case '==': return useNum ? leftNum === rightNum : left === right;
+    case '!=': return useNum ? leftNum !== rightNum : left !== right;
+    case '>':  return useNum ? leftNum > rightNum : left > right;
+    case '<':  return useNum ? leftNum < rightNum : left < right;
+    case '>=': return useNum ? leftNum >= rightNum : left >= right;
+    case '<=': return useNum ? leftNum <= rightNum : left <= right;
+  }
+}
+
+/**
+ * Evaluate a simple condition expression (string format).
  * Supports: truthy checks, equality (==, !=), comparison (>, <, >=, <=).
  */
-function evaluateCondition(expression: string, context: WorkflowContext): boolean {
+function evaluateStringCondition(expression: string, context: WorkflowContext): boolean {
   const resolved = interpolateString(expression, context);
 
   const match = findOperator(resolved);
@@ -60,60 +116,87 @@ function evaluateCondition(expression: string, context: WorkflowContext): boolea
     const { op, idx } = match;
     const left = resolved.slice(0, idx).trim();
     const right = resolved.slice(idx + op.length).trim();
-    const leftNum = Number(left);
-    const rightNum = Number(right);
-    const useNum = !isNaN(leftNum) && !isNaN(rightNum);
-
-    switch (op) {
-      case '==': return useNum ? leftNum === rightNum : left === right;
-      case '!=': return useNum ? leftNum !== rightNum : left !== right;
-      case '>':  return useNum ? leftNum > rightNum : left > right;
-      case '<':  return useNum ? leftNum < rightNum : left < right;
-      case '>=': return useNum ? leftNum >= rightNum : left >= right;
-      case '<=': return useNum ? leftNum <= rightNum : left <= right;
-    }
+    return compareValues(left, op, right);
   }
 
   // Truthy check
   return resolved !== '' && resolved !== '0' && resolved !== 'false' && resolved !== 'null' && resolved !== 'undefined';
 }
 
-export const conditionCommand: StepCommand = {
+/**
+ * Evaluate a structured condition (Issue #190).
+ * Interpolates left/right independently, then compares with the given operator.
+ * This avoids the string-parsing ambiguity of `findOperator()`.
+ */
+function evaluateStructuredCondition(
+  left: string,
+  op: Operator,
+  right: string,
+  context: WorkflowContext,
+): boolean {
+  const resolvedLeft = interpolateString(left, context).trim();
+  const resolvedRight = interpolateString(right, context).trim();
+  return compareValues(resolvedLeft, op, resolvedRight);
+}
+
+// ── Command ──────────────────────────────────────────────────────────────
+
+export const conditionCommand: StepCommand<ConditionStepConfig> = {
   type: 'condition',
   description: 'Branch workflow based on expression evaluation',
   defaultMofloLevel: 'none',
   configSchema: {
     type: 'object',
     properties: {
-      if: { type: 'string', description: 'Expression to evaluate' },
+      if: { type: 'string', description: 'Expression to evaluate (string format)' },
+      left: { type: 'string', description: 'Left operand (structured format)' },
+      op: { type: 'string', enum: [...OPERATORS], description: 'Comparison operator (structured format)' },
+      right: { type: 'string', description: 'Right operand (structured format)' },
       then: { type: 'string', description: 'Step ID to run if true' },
       else: { type: 'string', description: 'Step ID to run if false' },
     },
-    required: ['if'],
   } satisfies JSONSchema,
 
-  validate(config: StepConfig): ValidationResult {
+  validate(config: ConditionStepConfig): ValidationResult {
     const errors = [];
-    if (!config.if || typeof config.if !== 'string') {
-      errors.push({ path: 'if', message: 'if expression is required' });
+    const hasStringFormat = typeof (config as Record<string, unknown>).if === 'string';
+    const hasStructuredFormat = isStructured(config);
+
+    if (!hasStringFormat && !hasStructuredFormat) {
+      errors.push({
+        path: 'if',
+        message: 'Either "if" (string expression) or "left" + "op" + "right" (structured) is required',
+      });
     }
+
+    if (hasStructuredFormat) {
+      const op = (config as Record<string, unknown>).op as string;
+      if (!OPERATORS.includes(op as Operator)) {
+        errors.push({ path: 'op', message: `op must be one of: ${OPERATORS.join(', ')}` });
+      }
+    }
+
     return { valid: errors.length === 0, errors };
   },
 
-  async execute(config: StepConfig, context: WorkflowContext): Promise<StepOutput> {
+  async execute(config: ConditionStepConfig, context: WorkflowContext): Promise<StepOutput> {
     const start = Date.now();
-    const expression = config.if as string;
-    const result = evaluateCondition(expression, context);
+
+    // Prefer structured format when present (avoids string-parsing ambiguity)
+    const result = isStructured(config)
+      ? evaluateStructuredCondition(config.left, config.op, config.right, context)
+      : evaluateStringCondition((config as ConditionStringFormat & StepConfig).if, context);
+
     const nextStep = result
-      ? (config.then as string | undefined)
-      : (config.else as string | undefined);
+      ? (config.then ?? null)
+      : (config.else ?? null);
 
     return {
       success: true,
       data: {
         result,
         branch: result ? 'then' : 'else',
-        nextStep: nextStep ?? null,
+        nextStep,
       },
       duration: Date.now() - start,
     };

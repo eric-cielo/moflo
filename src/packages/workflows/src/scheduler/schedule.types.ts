@@ -4,6 +4,8 @@
  * Types for scheduled workflow execution — cron, interval, and one-time scheduling.
  */
 
+import type { MofloLevel } from '../types/step-command.types.js';
+
 // ============================================================================
 // Schedule Definition (in workflow YAML/JSON)
 // ============================================================================
@@ -21,6 +23,8 @@ export interface ScheduleDefinition {
   readonly at?: string;
   /** Whether the schedule is enabled (default: true). */
   readonly enabled?: boolean;
+  /** MoFlo integration level cap for this schedule (narrows scheduler-level cap). */
+  readonly mofloLevel?: MofloLevel;
 }
 
 // ============================================================================
@@ -35,6 +39,8 @@ export interface WorkflowSchedule {
   readonly interval?: string;
   readonly at?: string;
   readonly args?: Record<string, unknown>;
+  /** MoFlo integration level cap for this schedule. */
+  readonly mofloLevel?: MofloLevel;
   readonly lastRunAt?: number;
   readonly nextRunAt: number;
   readonly enabled: boolean;
@@ -70,5 +76,7 @@ export interface SchedulerOptions {
   readonly maxConcurrent?: number;
   /** Catch-up window: max age in ms for missed runs to still execute (default: 3600000 — 1 hour). */
   readonly catchUpWindowMs?: number;
+  /** Global MoFlo level cap for all scheduler-initiated workflows. Per-schedule caps can only narrow, not widen. */
+  readonly maxMofloLevel?: MofloLevel;
 }
 
