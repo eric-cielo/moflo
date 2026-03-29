@@ -97,7 +97,31 @@ export interface WorkflowContext {
   readonly abortSignal?: AbortSignal;
   /** Effective capabilities after merging command defaults with step restrictions. */
   readonly effectiveCaps?: readonly StepCapability[];
+  /** Resolved MoFlo integration level for this step. */
+  readonly mofloLevel?: MofloLevel;
+  /** Nesting depth for recursive workflow invocations (0 = top-level). */
+  readonly nestingDepth?: number;
+  /** Maximum allowed nesting depth for recursive workflows. */
+  readonly maxNestingDepth?: number;
 }
+
+// ============================================================================
+// MoFlo Integration Levels
+// ============================================================================
+
+/**
+ * Integration levels controlling access to MoFlo capabilities.
+ * Ordered from least to most permissive (ordinal comparison).
+ */
+export type MofloLevel = 'none' | 'memory' | 'hooks' | 'full' | 'recursive';
+
+/** Ordered list for ordinal comparison. */
+export const MOFLO_LEVEL_ORDER: readonly MofloLevel[] = [
+  'none', 'memory', 'hooks', 'full', 'recursive',
+];
+
+/** Default max nesting depth for recursive workflows. */
+export const DEFAULT_MAX_NESTING_DEPTH = 3;
 
 // ============================================================================
 // Step Capabilities
@@ -140,6 +164,8 @@ export interface StepCommand<TConfig extends StepConfig = StepConfig> {
   readonly configSchema: JSONSchema;
   /** Capabilities this command requires by default. */
   readonly capabilities?: readonly StepCapability[];
+  /** Default MoFlo integration level for this command type. */
+  readonly defaultMofloLevel?: MofloLevel;
 
   /** Validate may be async (e.g. checking credentials or remote state). */
   validate(config: TConfig, context: WorkflowContext): ValidationResult | Promise<ValidationResult>;

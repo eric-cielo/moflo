@@ -81,6 +81,7 @@ function evaluateCondition(expression: string, context: WorkflowContext): boolea
 export const conditionCommand: StepCommand = {
   type: 'condition',
   description: 'Branch workflow based on expression evaluation',
+  defaultMofloLevel: 'none',
   configSchema: {
     type: 'object',
     properties: {

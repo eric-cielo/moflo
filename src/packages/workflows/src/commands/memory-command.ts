@@ -21,6 +21,7 @@ export const memoryCommand: StepCommand = {
   type: 'memory',
   description: 'Read, write, or search shared workflow state',
   capabilities: [{ type: 'memory' }],
+  defaultMofloLevel: 'memory',
   configSchema: {
     type: 'object',
     properties: {

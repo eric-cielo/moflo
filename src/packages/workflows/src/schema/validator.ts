@@ -17,7 +17,9 @@ import type {
   ArgumentDefinition,
   ArgumentType,
 } from '../types/workflow-definition.types.js';
-import { validateStepCapabilities } from '../core/capability-validator.js';
+import { validateStepCapabilities, isValidMofloLevel, compareMofloLevels } from '../core/capability-validator.js';
+import { MOFLO_LEVEL_ORDER } from '../types/step-command.types.js';
+import type { MofloLevel } from '../types/step-command.types.js';
 
 const VALID_ARG_TYPES: readonly ArgumentType[] = ['string', 'number', 'boolean', 'string[]'];
 
@@ -36,13 +38,22 @@ export function validateWorkflowDefinition(
   const errors: ValidationError[] = [];
 
   validateTopLevel(def, errors);
+
+  // Validate workflow-level mofloLevel
+  if (def.mofloLevel !== undefined && !isValidMofloLevel(def.mofloLevel)) {
+    errors.push({
+      path: 'mofloLevel',
+      message: `invalid mofloLevel: "${def.mofloLevel}". Valid levels: ${MOFLO_LEVEL_ORDER.join(', ')}`,
+    });
+  }
+
   if (def.arguments) {
     validateArguments(def.arguments, errors);
   }
   if (def.steps) {
     const stepIds = new Set<string>();
     const outputVars = new Set<string>();
-    validateSteps(def.steps, errors, stepIds, outputVars, options);
+    validateSteps(def.steps, errors, stepIds, outputVars, options, 'steps', def.mofloLevel);
     validateVariableReferences(def.steps, outputVars, def.arguments, errors);
   }
 
@@ -127,6 +138,7 @@ function validateSteps(
   outputVars: Set<string>,
   options?: ValidatorOptions,
   prefix = 'steps',
+  workflowLevel?: MofloLevel,
 ): void {
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
@@ -159,9 +171,24 @@ function validateSteps(
     const capErrors = validateStepCapabilities(step, path);
     errors.push(...capErrors);
 
+    // Validate mofloLevel if declared
+    if (step.mofloLevel !== undefined) {
+      if (!isValidMofloLevel(step.mofloLevel)) {
+        errors.push({
+          path: `${path}.mofloLevel`,
+          message: `invalid mofloLevel: "${step.mofloLevel}". Valid levels: ${MOFLO_LEVEL_ORDER.join(', ')}`,
+        });
+      } else if (workflowLevel && compareMofloLevels(step.mofloLevel, workflowLevel) > 0) {
+        errors.push({
+          path: `${path}.mofloLevel`,
+          message: `step mofloLevel "${step.mofloLevel}" exceeds workflow-level "${workflowLevel}" — steps can only narrow, not escalate`,
+        });
+      }
+    }
+
     // Recurse into nested steps (condition/loop)
     if (step.steps && Array.isArray(step.steps)) {
-      validateSteps(step.steps, errors, stepIds, outputVars, options, `${path}.steps`);
+      validateSteps(step.steps, errors, stepIds, outputVars, options, `${path}.steps`, workflowLevel);
     }
   }
 }

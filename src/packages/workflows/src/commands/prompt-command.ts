@@ -19,6 +19,7 @@ import { interpolateString } from '../core/interpolation.js';
 export const promptCommand: StepCommand = {
   type: 'prompt',
   description: 'Ask the user a question and capture the response',
+  defaultMofloLevel: 'none',
   configSchema: {
     type: 'object',
     properties: {

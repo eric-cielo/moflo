@@ -4,7 +4,7 @@
  * TypeScript types for YAML/JSON workflow definition files.
  */
 
-import type { CapabilityType } from './step-command.types.js';
+import type { CapabilityType, MofloLevel } from './step-command.types.js';
 
 // ============================================================================
 // Argument Definitions
@@ -34,6 +34,8 @@ export interface StepDefinition {
   readonly steps?: readonly StepDefinition[];
   /** Capability restrictions for this step (narrows the command's defaults). */
   readonly capabilities?: Partial<Record<CapabilityType, readonly string[]>>;
+  /** MoFlo integration level — controls access to memory, hooks, swarms, nested workflows. */
+  readonly mofloLevel?: MofloLevel;
 }
 
 // ============================================================================
@@ -47,6 +49,8 @@ export interface WorkflowDefinition {
   readonly version?: string;
   readonly arguments?: Record<string, ArgumentDefinition>;
   readonly steps: readonly StepDefinition[];
+  /** Default MoFlo integration level for all steps (can be narrowed per-step). */
+  readonly mofloLevel?: MofloLevel;
 }
 
 // ============================================================================

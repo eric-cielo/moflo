@@ -4,7 +4,7 @@
  * Types for the sequential workflow executor.
  */
 
-import type { StepOutput, ValidationError } from './step-command.types.js';
+import type { StepOutput, ValidationError, MofloLevel } from './step-command.types.js';
 
 // ============================================================================
 // Error Codes
@@ -20,6 +20,7 @@ export type WorkflowErrorCode =
   | 'STEP_CANCELLED'
   | 'UNKNOWN_STEP_TYPE'
   | 'CAPABILITY_DENIED'
+  | 'MOFLO_LEVEL_DENIED'
   | 'ROLLBACK_FAILED'
   | 'PAUSED_STATE_NOT_FOUND'
   | 'PAUSED_STATE_EXPIRED'
@@ -78,6 +79,8 @@ export interface DryRunStepReport {
   readonly validationResult: { valid: boolean; errors: ValidationError[] };
   readonly continueOnError: boolean;
   readonly hasRollback: boolean;
+  /** Resolved MoFlo integration level for this step. */
+  readonly mofloLevel?: MofloLevel;
 }
 
 export interface DryRunResult {
@@ -112,4 +115,13 @@ export interface RunnerOptions {
 
   /** Pre-seeded variables for resuming from a paused workflow. */
   readonly initialVariables?: Record<string, unknown>;
+
+  /** Current nesting depth for recursive workflow invocation (0 = top-level). */
+  readonly nestingDepth?: number;
+
+  /** Maximum nesting depth for recursive workflows (default: 3). */
+  readonly maxNestingDepth?: number;
+
+  /** Parent workflow's MoFlo level — child workflows cannot exceed this. */
+  readonly parentMofloLevel?: MofloLevel;
 }

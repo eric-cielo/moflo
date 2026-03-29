@@ -22,6 +22,7 @@ export const bashCommand: StepCommand = {
     { type: 'fs:read' },
     { type: 'fs:write' },
   ],
+  defaultMofloLevel: 'none',
   configSchema: {
     type: 'object',
     properties: {
