@@ -12,6 +12,7 @@ import type {
   JSONSchema,
 } from '../types/step-command.types.js';
 import { interpolateString } from '../core/interpolation.js';
+import { enforceScope, formatViolations } from '../core/capability-validator.js';
 
 type MemoryAction = 'read' | 'write' | 'search';
 
@@ -61,6 +62,19 @@ export const memoryCommand: StepCommand = {
     const start = Date.now();
     const action = config.action as MemoryAction;
     const namespace = interpolateString(config.namespace as string, context);
+
+    // Enforce memory capability scope on namespace (Issue #178)
+    if (context.effectiveCaps) {
+      const violation = enforceScope(context.effectiveCaps, 'memory', namespace, context.taskId, 'memory');
+      if (violation) {
+        return {
+          success: false,
+          data: {},
+          error: formatViolations([violation]),
+          duration: Date.now() - start,
+        };
+      }
+    }
 
     switch (action) {
       case 'read': {

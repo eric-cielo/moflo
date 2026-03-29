@@ -364,6 +364,40 @@ describe('memoryCommand', () => {
     expect(store.get('env')).toBe('deploying to production');
   });
 
+  // --- Scope enforcement (Issue #178) ---
+
+  it('should block write to namespace outside memory scope', async () => {
+    const ctx = createContext({
+      effectiveCaps: [{ type: 'memory', scope: ['allowed-ns'] }],
+    });
+    const output = await memoryCommand.execute(
+      { action: 'write', namespace: 'forbidden-ns', key: 'k1', value: 'data' },
+      ctx,
+    );
+    expect(output.success).toBe(false);
+    expect(output.error).toContain('outside allowed scope');
+    expect(output.error).toContain('memory');
+  });
+
+  it('should allow write to namespace within memory scope', async () => {
+    const store = new Map<string, unknown>();
+    const memory: MemoryAccessor = {
+      async read(_ns, key) { return store.get(key) ?? null; },
+      async write(_ns, key, value) { store.set(key, value); },
+      async search() { return []; },
+    };
+    const ctx = createContext({
+      memory,
+      effectiveCaps: [{ type: 'memory', scope: ['allowed-ns'] }],
+    });
+    const output = await memoryCommand.execute(
+      { action: 'write', namespace: 'allowed-ns', key: 'k1', value: 'data' },
+      ctx,
+    );
+    expect(output.success).toBe(true);
+    expect(output.data.written).toBe(true);
+  });
+
   it('should search memory', async () => {
     const memory: MemoryAccessor = {
       async read() { return null; },
@@ -566,6 +600,41 @@ describe('browserCommand', () => {
     expect(outputs[0].name).toBe('actionsExecuted');
     expect(outputs[1].name).toBe('screenshot_path');
     expect(outputs[2].name).toBe('evaluate_note');
+  });
+
+  // --- Scope enforcement (Issue #178) ---
+
+  it('should block open to URL outside net scope', async () => {
+    const ctx = createContext({
+      effectiveCaps: [
+        { type: 'browser' },
+        { type: 'net', scope: ['https://allowed.com'] },
+      ],
+    });
+    const output = await browserCommand.execute(
+      { actions: [{ action: 'open', url: 'https://blocked.com/page' }] },
+      ctx,
+    );
+    expect(output.success).toBe(false);
+    expect(output.error).toContain('outside allowed scope');
+    expect(output.error).toContain('net');
+  });
+
+  it('should allow open to URL within net scope', async () => {
+    const ctx = createContext({
+      effectiveCaps: [
+        { type: 'browser' },
+        { type: 'net', scope: ['https://allowed.com'] },
+      ],
+    });
+    const output = await browserCommand.execute(
+      { actions: [{ action: 'open', url: 'https://allowed.com/page' }] },
+      ctx,
+    );
+    // Should pass scope check but fail due to Playwright not installed
+    expect(output.success).toBe(false);
+    expect(output.error).toContain('Playwright');
+    expect(output.error).not.toContain('scope');
   });
 
   // --- Config schema ---

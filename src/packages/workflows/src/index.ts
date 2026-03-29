@@ -51,18 +51,9 @@ export type {
 // ============================================================================
 
 export { StepCommandRegistry } from './core/step-command-registry.js';
-export { interpolateString, interpolateConfig } from './core/interpolation.js';
 export { WorkflowRunner } from './core/runner.js';
 export {
   checkCapabilities,
-  enforceScope,
-  isValidCapabilityType,
-  validateStepCapabilities,
-  formatViolations,
-  isValidMofloLevel,
-  compareMofloLevels,
-  getDefaultMofloLevel,
-  resolveMofloLevel,
   type CapabilityViolation,
   type CapabilityCheckResult,
 } from './core/capability-validator.js';

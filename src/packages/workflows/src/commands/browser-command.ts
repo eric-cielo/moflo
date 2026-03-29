@@ -29,6 +29,7 @@ import type {
   JSONSchema,
 } from '../types/step-command.types.js';
 import { validateBrowserUrl } from './browser-url-validator.js';
+import { enforceScope, formatViolations } from '../core/capability-validator.js';
 
 // ── Action types ──────────────────────────────────────────────────────────
 
@@ -129,11 +130,17 @@ async function executeAction(
   const timeout = action.timeout ?? defaultTimeout;
 
   switch (action.action) {
-    case 'open':
+    case 'open': {
       if (!action.url) throw new Error('open action requires url');
       validateBrowserUrl(action.url);
+      // Enforce net capability scope (Issue #178)
+      if (context.effectiveCaps) {
+        const violation = enforceScope(context.effectiveCaps, 'net', action.url, context.taskId, 'browser');
+        if (violation) throw new Error(formatViolations([violation]));
+      }
       await page.goto(action.url, { timeout });
       break;
+    }
 
     case 'click':
       if (!action.selector) throw new Error('click action requires selector');
@@ -318,6 +325,11 @@ export const browserCommand: StepCommand = {
         }
         if (action.action === 'open' && action.url) {
           validateBrowserUrl(action.url);
+          // Enforce net capability scope at pre-flight (Issue #178)
+          if (context.effectiveCaps) {
+            const violation = enforceScope(context.effectiveCaps, 'net', action.url, context.taskId, 'browser');
+            if (violation) throw new Error(formatViolations([violation]));
+          }
         }
       } catch (err) {
         return {
