@@ -54,7 +54,7 @@ describe('epic command structure', () => {
       flags: {},
     });
     expect(result.success).toBe(false);
-    expect(result.message).toContain('Missing');
+    expect(result.message).toContain('Usage');
     logSpy.mockRestore();
   });
 });
