@@ -3,26 +3,58 @@
  */
 
 import type {
+  StepCommand,
+  StepConfig,
   WorkflowContext,
   CredentialAccessor,
   MemoryAccessor,
 } from '../src/types/step-command.types.js';
+import type { StepDefinition } from '../src/types/workflow-definition.types.js';
+import type { WorkflowResult } from '../src/types/runner.types.js';
 
-export function createMockContext(overrides?: Partial<WorkflowContext>): WorkflowContext {
-  const credentials: CredentialAccessor = {
-    async get() { return undefined; },
-    async has() { return false; },
+export function makeStep(overrides: Partial<StepDefinition> = {}): StepDefinition {
+  return { id: 'test-step', type: 'bash', config: { command: 'echo hello' }, ...overrides };
+}
+
+export function makeCommand(overrides: Partial<StepCommand> = {}): StepCommand {
+  return {
+    type: 'test',
+    description: 'test command',
+    configSchema: { type: 'object' },
+    validate: () => ({ valid: true, errors: [] }),
+    execute: async () => ({ success: true, data: {} }),
+    describeOutputs: () => [],
+    ...overrides,
   };
-  const memory: MemoryAccessor = {
-    async read() { return null; },
-    async write() {},
+}
+
+export function makeCredentials(store: Record<string, string> = {}): CredentialAccessor {
+  return {
+    async get(name: string) { return store[name]; },
+    async has(name: string) { return name in store; },
+  };
+}
+
+export function makeMemory(): MemoryAccessor {
+  const data = new Map<string, unknown>();
+  return {
+    async read(ns: string, key: string) { return data.get(`${ns}:${key}`) ?? null; },
+    async write(ns: string, key: string, value: unknown) { data.set(`${ns}:${key}`, value); },
     async search() { return []; },
   };
+}
+
+export function getStdout(result: WorkflowResult, stepId: string): string {
+  const output = result.outputs[stepId] as Record<string, unknown> | undefined;
+  return ((output?.stdout as string) ?? '').trim();
+}
+
+export function createMockContext(overrides?: Partial<WorkflowContext>): WorkflowContext {
   return {
     variables: {},
     args: {},
-    credentials,
-    memory,
+    credentials: makeCredentials(),
+    memory: makeMemory(),
     taskId: 'test',
     workflowId: 'wf-1',
     stepIndex: 0,
