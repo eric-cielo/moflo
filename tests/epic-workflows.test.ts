@@ -1,0 +1,149 @@
+/**
+ * Epic Workflow YAML Template Tests
+ *
+ * Story #196: Verify both epic workflow YAML templates parse, validate,
+ * and produce expected structure.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { parseYaml } from '../src/packages/workflows/src/schema/parser.js';
+import type { WorkflowDefinition } from '../src/packages/workflows/src/types/workflow-definition.types.js';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+const WORKFLOWS_DIR = join(__dirname, '..', 'src', 'packages', 'cli', 'src', 'epic', 'workflows');
+
+function loadYaml(filename: string): WorkflowDefinition {
+  const content = readFileSync(join(WORKFLOWS_DIR, filename), 'utf-8');
+  const parsed = parseYaml(content, filename);
+  return parsed.definition;
+}
+
+// ============================================================================
+// Single-Branch Template
+// ============================================================================
+
+describe('single-branch.yaml', () => {
+  let def: WorkflowDefinition;
+
+  it('parses without error', () => {
+    def = loadYaml('single-branch.yaml');
+    expect(def).toBeDefined();
+  });
+
+  it('has correct name and abbreviation', () => {
+    def = loadYaml('single-branch.yaml');
+    expect(def.name).toBe('epic-single-branch');
+    expect(def.abbreviation).toBe('esb');
+  });
+
+  it('declares required arguments', () => {
+    def = loadYaml('single-branch.yaml');
+    expect(def.arguments).toBeDefined();
+    expect(def.arguments!.epic_number).toBeDefined();
+    expect(def.arguments!.epic_number.required).toBe(true);
+    expect(def.arguments!.stories).toBeDefined();
+    expect(def.arguments!.stories.required).toBe(true);
+  });
+
+  it('has optional arguments with defaults', () => {
+    def = loadYaml('single-branch.yaml');
+    expect(def.arguments!.base_branch.default).toBe('main');
+  });
+
+  it('has expected step sequence', () => {
+    def = loadYaml('single-branch.yaml');
+    const stepIds = def.steps.map(s => s.id);
+    expect(stepIds).toEqual(['create-branch', 'process-stories', 'push-branch', 'create-pr']);
+  });
+
+  it('uses correct step types', () => {
+    def = loadYaml('single-branch.yaml');
+    const stepTypes = def.steps.map(s => s.type);
+    expect(stepTypes).toEqual(['bash', 'loop', 'bash', 'github']);
+  });
+
+  it('has loop with nested steps', () => {
+    def = loadYaml('single-branch.yaml');
+    const loopStep = def.steps.find(s => s.id === 'process-stories');
+    expect(loopStep?.steps).toBeDefined();
+    expect(loopStep!.steps!.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('creates consolidated PR at the end', () => {
+    def = loadYaml('single-branch.yaml');
+    const prStep = def.steps.find(s => s.id === 'create-pr');
+    expect(prStep?.type).toBe('github');
+    expect((prStep?.config as Record<string, unknown>).action).toBe('pr-create');
+  });
+
+  it('sets mofloLevel to hooks', () => {
+    def = loadYaml('single-branch.yaml');
+    expect(def.mofloLevel).toBe('hooks');
+  });
+});
+
+// ============================================================================
+// Auto-Merge Template
+// ============================================================================
+
+describe('auto-merge.yaml', () => {
+  let def: WorkflowDefinition;
+
+  it('parses without error', () => {
+    def = loadYaml('auto-merge.yaml');
+    expect(def).toBeDefined();
+  });
+
+  it('has correct name and abbreviation', () => {
+    def = loadYaml('auto-merge.yaml');
+    expect(def.name).toBe('epic-auto-merge');
+    expect(def.abbreviation).toBe('eam');
+  });
+
+  it('declares required arguments', () => {
+    def = loadYaml('auto-merge.yaml');
+    expect(def.arguments!.epic_number.required).toBe(true);
+    expect(def.arguments!.stories.required).toBe(true);
+  });
+
+  it('has merge method argument', () => {
+    def = loadYaml('auto-merge.yaml');
+    expect(def.arguments!.merge_method).toBeDefined();
+    expect(def.arguments!.merge_method.default).toBe('squash');
+  });
+
+  it('has loop as top-level step', () => {
+    def = loadYaml('auto-merge.yaml');
+    expect(def.steps).toHaveLength(1);
+    expect(def.steps[0].type).toBe('loop');
+    expect(def.steps[0].id).toBe('process-stories');
+  });
+
+  it('loop contains checkout, implement, find, merge, pull, comment, record', () => {
+    def = loadYaml('auto-merge.yaml');
+    const loopSteps = def.steps[0].steps!;
+    expect(loopSteps.length).toBeGreaterThanOrEqual(5);
+    const types = loopSteps.map(s => s.type);
+    expect(types).toContain('bash');
+    expect(types).toContain('agent');
+    expect(types).toContain('github');
+    expect(types).toContain('memory');
+  });
+
+  it('includes pr-merge step with admin option', () => {
+    def = loadYaml('auto-merge.yaml');
+    const mergeStep = def.steps[0].steps!.find(s => s.id === 'merge-story-pr');
+    expect(mergeStep).toBeDefined();
+    expect((mergeStep!.config as Record<string, unknown>).action).toBe('pr-merge');
+  });
+
+  it('sets mofloLevel to hooks', () => {
+    def = loadYaml('auto-merge.yaml');
+    expect(def.mofloLevel).toBe('hooks');
+  });
+});
