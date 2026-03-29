@@ -15,7 +15,8 @@
       "@claude-flow/security": ["./packages/security/src"],
       "@claude-flow/shared": ["./packages/shared/src"],
       "@claude-flow/swarm": ["./packages/swarm/src"],
-      "@claude-flow/testing": ["./packages/testing/src"]
+      "@claude-flow/testing": ["./packages/testing/src"],
+      "@claude-flow/workflows": ["./packages/workflows/src"]
     }
   },
   "references": [
@@ -31,7 +32,8 @@
     { "path": "./packages/plugins" },
     { "path": "./packages/security" },
     { "path": "./packages/swarm" },
-    { "path": "./packages/testing" }
+    { "path": "./packages/testing" },
+    { "path": "./packages/workflows" }
   ],
   "include": [],
   "exclude": ["node_modules", "dist"]
