@@ -14,6 +14,7 @@ import { WorkflowRunner } from '../core/runner.js';
 import { builtinCommands } from '../commands/index.js';
 import { parseWorkflow } from '../schema/parser.js';
 import { validateWorkflowDefinition } from '../schema/validator.js';
+import type { WorkflowToolRegistry } from '../registry/tool-registry.js';
 
 // ============================================================================
 // Types
@@ -22,6 +23,7 @@ import { validateWorkflowDefinition } from '../schema/validator.js';
 export interface RunnerFactoryOptions {
   readonly credentials?: CredentialAccessor;
   readonly memory?: MemoryAccessor;
+  readonly toolRegistry?: WorkflowToolRegistry;
 }
 
 export interface RunWorkflowOptions extends RunnerOptions {
@@ -45,7 +47,7 @@ export function createRunner(options: RunnerFactoryOptions = {}): WorkflowRunner
   const credentials = options.credentials ?? noopCredentials;
   const memory = options.memory ?? noopMemory;
 
-  return new WorkflowRunner(registry, credentials, memory);
+  return new WorkflowRunner(registry, credentials, memory, options.toolRegistry);
 }
 
 /**

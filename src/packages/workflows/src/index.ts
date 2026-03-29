@@ -54,6 +54,7 @@ export type {
 
 export { StepCommandRegistry } from './core/step-command-registry.js';
 export { WorkflowRunner } from './core/runner.js';
+export { ToolAccessorImpl } from './core/tool-accessor.js';
 export {
   checkCapabilities,
   type CapabilityViolation,
