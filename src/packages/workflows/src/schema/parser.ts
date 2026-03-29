@@ -20,7 +20,7 @@ export function parseYaml(content: string, sourceFile?: string): ParsedWorkflow 
   }
   const sanitized = sanitizeObjectKeys(raw) as Record<string, unknown>;
   return {
-    definition: sanitized as WorkflowDefinition,
+    definition: sanitized as unknown as WorkflowDefinition,
     sourceFile,
     format: 'yaml',
   };
@@ -44,7 +44,7 @@ export function parseJson(content: string, sourceFile?: string): ParsedWorkflow 
   }
   const sanitized = sanitizeObjectKeys(raw) as Record<string, unknown>;
   return {
-    definition: sanitized as WorkflowDefinition,
+    definition: sanitized as unknown as WorkflowDefinition,
     sourceFile,
     format: 'json',
   };

@@ -18,8 +18,8 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@claude-flow/plugins": "^3.0.0-alpha.1",
-    "@claude-flow/memory": "^3.0.0-alpha.2"
+    "@claude-flow/memory": "^3.0.0-alpha.2",
+    "@claude-flow/plugins": "^3.0.0-alpha.1"
   },
   "peerDependenciesMeta": {
     "@claude-flow/plugins": {

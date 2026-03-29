@@ -47,6 +47,16 @@
 | `@claude-flow/embeddings` | `src/packages/embeddings/` | Vector embeddings (sql.js, HNSW) |
 | `@claude-flow/neural` | `src/packages/neural/` | Neural patterns (SONA) |
 | `@claude-flow/plugins` | `src/packages/plugins/` | Plugin system + RuVector integration |
+| `@claude-flow/workflows` | `src/packages/workflows/` | Workflow engine, step commands, YAML/JSON definitions |
+
+## MoFlo is a Library
+
+MoFlo is installed as a `devDependency` in **other projects**. Every new package, script, or asset must be reachable from `node_modules/moflo/` in a consumer project. When adding new assets:
+
+1. **`src/tsconfig.json` references** — add the package so `tsc -b` builds it
+2. **Root `package.json` `files` array** — add `dist/**/*.js`, `dist/**/*.d.ts`, and `package.json` entries (exclude `.map` files)
+3. **Never compile in-place** — always use `outDir: "./dist"` via `tsc -p tsconfig.json`; never run bare `tsc` from within `src/`
+4. **Path resolution** — bin scripts and loaders must use `findProjectRoot()`, not `__dirname`
 
 ## Publishing to npm
 
