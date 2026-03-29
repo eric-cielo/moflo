@@ -202,8 +202,11 @@ function buildHeaders(
   hasBody?: boolean,
 ): Record<string, string> {
   const result: Record<string, string> = { ...headers };
-  if (hasBody && !result['content-type'] && !result['Content-Type']) {
-    result['Content-Type'] = 'application/json';
+  if (hasBody) {
+    const hasContentType = Object.keys(result).some(k => k.toLowerCase() === 'content-type');
+    if (!hasContentType) {
+      result['Content-Type'] = 'application/json';
+    }
   }
   return result;
 }

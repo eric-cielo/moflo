@@ -210,6 +210,7 @@ export type {
 
 export type {
   WorkflowTool,
+  ToolView,
   ToolOutput,
   ToolAction,
   ToolCapability,

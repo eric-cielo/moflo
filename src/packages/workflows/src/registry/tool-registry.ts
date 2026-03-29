@@ -148,17 +148,17 @@ export class WorkflowToolRegistry {
     // Scan npm packages (lowest priority)
     if (this.options.projectRoot) {
       for (const entry of discoverNpmTools(this.options.projectRoot)) {
-        if (entry.error) {
-          errors.push(entry.error);
+        if (entry.ok) {
+          candidates.push({ file: entry.file, source: 'npm' });
         } else {
-          candidates.push({ file: entry.file!, source: 'npm' });
+          errors.push(entry.error);
         }
       }
     }
 
-    // Build name -> candidate map (later entries override earlier by name)
-    // Priority: user > shipped > npm (user added last so it wins)
-    const byName = new Map<string, { file: string; source: ToolSource }>();
+    // Import, validate, and resolve priority in a single pass
+    const byName = new Map<string, { tool: WorkflowTool; source: ToolSource }>();
+    const SOURCE_PRIORITY: Record<string, number> = { npm: 0, shipped: 1, user: 2 };
 
     for (const candidate of candidates) {
       try {
@@ -170,15 +170,11 @@ export class WorkflowToolRegistry {
           continue;
         }
 
-        // Higher-priority sources override lower-priority ones
         const existing = byName.get(tool.name);
-        if (existing) {
-          const priority: Record<string, number> = { npm: 0, shipped: 1, user: 2 };
-          if ((priority[candidate.source] ?? 0) <= (priority[existing.source] ?? 0)) {
-            continue; // Don't let lower-priority override higher
-          }
+        if (existing && (SOURCE_PRIORITY[candidate.source] ?? 0) <= (SOURCE_PRIORITY[existing.source] ?? 0)) {
+          continue;
         }
-        byName.set(tool.name, candidate);
+        byName.set(tool.name, { tool, source: candidate.source });
       } catch (err) {
         errors.push({
           file: candidate.file,
@@ -187,29 +183,11 @@ export class WorkflowToolRegistry {
       }
     }
 
-    // Register all resolved tools
-    for (const [, candidate] of byName) {
-      try {
-        const mod = await import(candidate.file);
-        const tool = mod.default ?? mod;
-
-        if (this.tools.has(tool.name)) {
-          // Already registered (e.g., programmatic registration) — skip
-          continue;
-        }
-
-        this.tools.set(tool.name, {
-          tool,
-          source: candidate.source,
-          registeredAt: new Date(),
-        });
-        registered++;
-      } catch (err) {
-        errors.push({
-          file: candidate.file,
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }
+    // Register resolved tools (skip any already registered programmatically)
+    for (const [, { tool, source }] of byName) {
+      if (this.tools.has(tool.name)) continue;
+      this.tools.set(tool.name, { tool, source, registeredAt: new Date() });
+      registered++;
     }
 
     return { registered, errors };
@@ -232,10 +210,9 @@ function listToolFiles(dir: string): string[] {
   }
 }
 
-interface NpmToolDiscovery {
-  file?: string;
-  error?: ToolScanError;
-}
+type NpmToolDiscovery =
+  | { ok: true; file: string }
+  | { ok: false; error: ToolScanError };
 
 /**
  * Scan node_modules for moflo-tool-* packages.
@@ -255,7 +232,7 @@ function discoverNpmTools(projectRoot: string): NpmToolDiscovery[] {
 
       const pkgJsonPath = path.join(nodeModules, dir, 'package.json');
       if (!fs.existsSync(pkgJsonPath)) {
-        results.push({ error: { file: pkgJsonPath, message: 'Missing package.json' } });
+        results.push({ ok: false, error: { file: pkgJsonPath, message: 'Missing package.json' } });
         continue;
       }
 
@@ -266,13 +243,14 @@ function discoverNpmTools(projectRoot: string): NpmToolDiscovery[] {
         const entryFile = path.resolve(nodeModules, dir, entryPoint);
 
         if (!fs.existsSync(entryFile)) {
-          results.push({ error: { file: entryFile, message: `Entry point not found: ${entryPoint}` } });
+          results.push({ ok: false, error: { file: entryFile, message: `Entry point not found: ${entryPoint}` } });
           continue;
         }
 
-        results.push({ file: entryFile });
+        results.push({ ok: true, file: entryFile });
       } catch (err) {
         results.push({
+          ok: false,
           error: {
             file: pkgJsonPath,
             message: err instanceof Error ? err.message : String(err),

@@ -39,12 +39,15 @@ export type ToolCapability = 'read' | 'write' | 'search' | 'subscribe' | 'authen
 // Tool Accessor (DI interface for step commands)
 // ============================================================================
 
+/** Read-only view of a tool, excluding lifecycle methods (initialize/dispose). */
+export type ToolView = Pick<WorkflowTool, 'name' | 'description' | 'version' | 'capabilities' | 'listActions'>;
+
 /**
  * Read-only accessor passed to step commands via WorkflowContext.
  * Provides tool discovery and execution without exposing lifecycle methods.
  */
 export interface ToolAccessor {
-  get(name: string): WorkflowTool | undefined;
+  get(name: string): ToolView | undefined;
   has(name: string): boolean;
   list(): ReadonlyArray<{ name: string; description: string; capabilities: readonly ToolCapability[] }>;
   execute(toolName: string, action: string, params: Record<string, unknown>): Promise<ToolOutput>;
