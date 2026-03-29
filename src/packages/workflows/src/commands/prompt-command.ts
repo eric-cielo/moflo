@@ -16,7 +16,15 @@ import type {
 } from '../types/step-command.types.js';
 import { interpolateString } from '../core/interpolation.js';
 
-export const promptCommand: StepCommand = {
+/** Typed config for the prompt step command. */
+export interface PromptStepConfig extends StepConfig {
+  readonly message: string;
+  readonly options?: string[];
+  readonly outputVar?: string;
+  readonly default?: string;
+}
+
+export const promptCommand: StepCommand<PromptStepConfig> = {
   type: 'prompt',
   description: 'Ask the user a question and capture the response',
   defaultMofloLevel: 'none',
@@ -31,7 +39,7 @@ export const promptCommand: StepCommand = {
     required: ['message'],
   } satisfies JSONSchema,
 
-  validate(config: StepConfig): ValidationResult {
+  validate(config: PromptStepConfig): ValidationResult {
     const errors = [];
     if (!config.message || typeof config.message !== 'string') {
       errors.push({ path: 'message', message: 'message is required' });
@@ -42,11 +50,11 @@ export const promptCommand: StepCommand = {
     return { valid: errors.length === 0, errors };
   },
 
-  async execute(config: StepConfig, context: WorkflowContext): Promise<StepOutput> {
+  async execute(config: PromptStepConfig, context: WorkflowContext): Promise<StepOutput> {
     const start = Date.now();
-    const message = interpolateString(config.message as string, context);
+    const message = interpolateString(config.message, context);
     const defaultValue = config.default
-      ? interpolateString(config.default as string, context)
+      ? interpolateString(config.default, context)
       : undefined;
 
     // Prompt execution is delegated to the workflow runner's I/O handler.

@@ -364,6 +364,74 @@ describe('resolveArguments', () => {
   });
 });
 
+// ============================================================================
+// YAML Hardening Tests (Issue #184)
+// ============================================================================
+
+describe('parseYaml hardening', () => {
+  it('rejects !!js/function type (JSON_SCHEMA does not support it)', () => {
+    const malicious = `
+name: exploit
+steps:
+  - id: s1
+    type: bash
+    config:
+      command: !!js/function 'function() { return "pwned"; }'
+`;
+    // JSON_SCHEMA rejects !!js/function with a parse error
+    expect(() => parseYaml(malicious)).toThrow();
+  });
+
+  it('sanitizes __proto__ key from parsed YAML', () => {
+    const poisoned = `
+name: test
+__proto__:
+  isAdmin: true
+steps:
+  - id: s1
+    type: bash
+    config:
+      command: echo hello
+`;
+    const result = parseYaml(poisoned);
+    expect(result.definition).not.toHaveProperty('__proto__');
+    // Verify the rest is intact
+    expect(result.definition.name).toBe('test');
+    expect(result.definition.steps).toHaveLength(1);
+  });
+
+  it('sanitizes nested __proto__, constructor, and prototype keys', () => {
+    const poisoned = `
+name: test
+steps:
+  - id: s1
+    type: bash
+    config:
+      command: echo hello
+      constructor: evil
+      prototype: also-evil
+`;
+    const result = parseYaml(poisoned);
+    const config = result.definition.steps[0].config as Record<string, unknown>;
+    expect(config).not.toHaveProperty('constructor');
+    expect(config).not.toHaveProperty('prototype');
+    expect(config.command).toBe('echo hello');
+  });
+
+  it('rejects non-JSON YAML types like !!binary', () => {
+    const yaml = `
+name: test
+steps:
+  - id: s1
+    type: bash
+    config:
+      data: !!binary "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+`;
+    // JSON_SCHEMA rejects !!binary
+    expect(() => parseYaml(yaml)).toThrow();
+  });
+});
+
 describe('nested step variable validation', () => {
   it('should detect undefined arg refs inside nested steps', () => {
     const def: WorkflowDefinition = {

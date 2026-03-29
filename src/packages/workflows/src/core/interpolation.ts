@@ -122,3 +122,30 @@ export function interpolateConfig(
   }
   return result;
 }
+
+// ============================================================================
+// Object sanitization (prototype pollution prevention)
+// ============================================================================
+
+/** Keys that must never appear in parsed workflow objects. */
+const POISONED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
+ * Recursively strip `__proto__`, `constructor`, and `prototype` keys from a
+ * parsed object tree. Returns a sanitized deep copy — the original is not
+ * mutated.
+ */
+export function sanitizeObjectKeys(value: unknown): unknown {
+  if (value === null || value === undefined || typeof value !== 'object') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeObjectKeys);
+  }
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (POISONED_KEYS.has(k)) continue;
+    result[k] = sanitizeObjectKeys(v);
+  }
+  return result;
+}

@@ -13,7 +13,14 @@ import type {
 } from '../types/step-command.types.js';
 import { interpolateString } from '../core/interpolation.js';
 
-export const agentCommand: StepCommand = {
+/** Typed config for the agent step command. */
+export interface AgentStepConfig extends StepConfig {
+  readonly prompt: string;
+  readonly agentType?: string;
+  readonly background?: boolean;
+}
+
+export const agentCommand: StepCommand<AgentStepConfig> = {
   type: 'agent',
   description: 'Spawn a Claude subagent to perform a task',
   capabilities: [{ type: 'agent' }],
@@ -28,7 +35,7 @@ export const agentCommand: StepCommand = {
     required: ['prompt'],
   } satisfies JSONSchema,
 
-  validate(config: StepConfig): ValidationResult {
+  validate(config: AgentStepConfig): ValidationResult {
     const errors = [];
     if (!config.prompt || typeof config.prompt !== 'string') {
       errors.push({ path: 'prompt', message: 'prompt is required and must be a string' });
@@ -39,11 +46,11 @@ export const agentCommand: StepCommand = {
     return { valid: errors.length === 0, errors };
   },
 
-  async execute(config: StepConfig, context: WorkflowContext): Promise<StepOutput> {
+  async execute(config: AgentStepConfig, context: WorkflowContext): Promise<StepOutput> {
     const start = Date.now();
-    const prompt = interpolateString(config.prompt as string, context);
+    const prompt = interpolateString(config.prompt, context);
     const agentType = config.agentType
-      ? interpolateString(config.agentType as string, context)
+      ? interpolateString(config.agentType, context)
       : 'general-purpose';
 
     // Agent execution is delegated to the workflow runner's agent spawner.

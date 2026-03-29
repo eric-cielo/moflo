@@ -31,6 +31,13 @@ import type {
 import { validateBrowserUrl } from './browser-url-validator.js';
 import { enforceScope, formatViolations } from '../core/capability-validator.js';
 
+/** Typed config for the browser step command. */
+export interface BrowserStepConfig extends StepConfig {
+  readonly actions: BrowserAction[];
+  readonly headless?: boolean;
+  readonly timeout?: number;
+}
+
 // ── Action types ──────────────────────────────────────────────────────────
 
 const SUPPORTED_ACTIONS = [
@@ -41,7 +48,7 @@ const SUPPORTED_ACTIONS = [
 
 type ActionName = (typeof SUPPORTED_ACTIONS)[number];
 
-interface BrowserAction {
+export interface BrowserAction {
   action: ActionName;
   url?: string;
   selector?: string;
@@ -241,7 +248,7 @@ async function executeAction(
 
 // ── Browser Step Command ──────────────────────────────────────────────────
 
-export const browserCommand: StepCommand = {
+export const browserCommand: StepCommand<BrowserStepConfig> = {
   type: 'browser',
   description: 'Web automation via Playwright (requires playwright peer dependency)',
   defaultMofloLevel: 'memory',
@@ -286,14 +293,14 @@ export const browserCommand: StepCommand = {
     { type: 'browser:evaluate' },
   ],
 
-  validate(config: StepConfig): ValidationResult {
+  validate(config: BrowserStepConfig): ValidationResult {
     const errors = [];
     if (!Array.isArray(config.actions)) {
       errors.push({ path: 'actions', message: 'actions must be an array' });
       return { valid: false, errors };
     }
-    for (let i = 0; i < (config.actions as BrowserAction[]).length; i++) {
-      const act = (config.actions as BrowserAction[])[i];
+    for (let i = 0; i < config.actions.length; i++) {
+      const act = config.actions[i];
       if (!act.action || typeof act.action !== 'string') {
         errors.push({ path: `actions[${i}].action`, message: 'action is required' });
       } else if (!SUPPORTED_ACTIONS.includes(act.action as ActionName)) {
@@ -309,11 +316,11 @@ export const browserCommand: StepCommand = {
     return { valid: errors.length === 0, errors };
   },
 
-  async execute(config: StepConfig, context: WorkflowContext): Promise<StepOutput> {
+  async execute(config: BrowserStepConfig, context: WorkflowContext): Promise<StepOutput> {
     const start = Date.now();
-    const actions = config.actions as BrowserAction[];
-    const headless = (config.headless as boolean | undefined) ?? true;
-    const defaultTimeout = (config.timeout as number | undefined) ?? 30_000;
+    const actions = config.actions;
+    const headless = config.headless ?? true;
+    const defaultTimeout = config.timeout ?? 30_000;
     const outputs: Record<string, unknown> = {};
 
     // Pre-flight: check capabilities and URL validity before loading Playwright

@@ -11,12 +11,19 @@ import type {
   ValidationResult,
   OutputDescriptor,
   JSONSchema,
+  StepCapability,
 } from '../types/step-command.types.js';
 import { shellInterpolateString } from '../core/interpolation.js';
 import { enforceScope, formatViolations } from '../core/capability-validator.js';
-import type { StepCapability } from '../types/step-command.types.js';
 
-export const bashCommand: StepCommand = {
+/** Typed config for the bash step command. */
+export interface BashStepConfig extends StepConfig {
+  readonly command: string;
+  readonly timeout?: number;
+  readonly failOnError?: boolean;
+}
+
+export const bashCommand: StepCommand<BashStepConfig> = {
   type: 'bash',
   description: 'Run a shell command and capture output',
   capabilities: [
@@ -35,7 +42,7 @@ export const bashCommand: StepCommand = {
     required: ['command'],
   } satisfies JSONSchema,
 
-  validate(config: StepConfig): ValidationResult {
+  validate(config: BashStepConfig): ValidationResult {
     const errors = [];
     if (!config.command || typeof config.command !== 'string') {
       errors.push({ path: 'command', message: 'command is required and must be a string' });
@@ -46,10 +53,10 @@ export const bashCommand: StepCommand = {
     return { valid: errors.length === 0, errors };
   },
 
-  async execute(config: StepConfig, context: WorkflowContext): Promise<StepOutput> {
+  async execute(config: BashStepConfig, context: WorkflowContext): Promise<StepOutput> {
     const start = Date.now();
-    const command = shellInterpolateString(config.command as string, context);
-    const timeout = (config.timeout as number) ?? 30000;
+    const command = shellInterpolateString(config.command, context);
+    const timeout = config.timeout ?? 30000;
     const failOnError = config.failOnError !== false;
 
     // ── Scope enforcement for fs:read / fs:write (Issue #178) ──────────

@@ -254,6 +254,62 @@ describe('conditionCommand', () => {
     const lt = await conditionCommand.execute({ if: '{s1.count}<5' }, ctx);
     expect(lt.data.result).toBe(false);
   });
+
+  // ---- Structured condition format (Issue #190) ----
+
+  it('should evaluate structured format: greater-than', async () => {
+    const ctx = createContext();
+    const output = await conditionCommand.execute(
+      { left: '5', op: '>', right: '3', then: 'step-a', else: 'step-b' },
+      ctx,
+    );
+    expect(output.data.result).toBe(true);
+    expect(output.data.branch).toBe('then');
+    expect(output.data.nextStep).toBe('step-a');
+  });
+
+  it('should evaluate structured format with values containing operators', async () => {
+    const ctx = createContext();
+    const output = await conditionCommand.execute(
+      { left: '>=1', op: '==', right: '>=1' },
+      ctx,
+    );
+    expect(output.data.result).toBe(true);
+  });
+
+  it('should validate structured format with invalid operator', () => {
+    const result = conditionCommand.validate(
+      { left: '5', op: '~~' as never, right: '3' },
+      createContext(),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].path).toBe('op');
+  });
+
+  it('should validate that either string or structured format is required', () => {
+    const result = conditionCommand.validate({ then: 'step-a' }, createContext());
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toContain('Either');
+  });
+
+  it('should interpolate variables in structured format', async () => {
+    const ctx = createContext({ variables: { s1: { count: '10' } } });
+    const output = await conditionCommand.execute(
+      { left: '{s1.count}', op: '>=', right: '5' },
+      ctx,
+    );
+    expect(output.data.result).toBe(true);
+  });
+
+  it('should prefer structured format over string format when both present', async () => {
+    const ctx = createContext();
+    // String format would evaluate "1==2" as false, but structured says 1==1
+    const output = await conditionCommand.execute(
+      { if: '1==2', left: '1', op: '==', right: '1' },
+      ctx,
+    );
+    expect(output.data.result).toBe(true);
+  });
 });
 
 // ============================================================================

@@ -12,7 +12,12 @@ import type {
   JSONSchema,
 } from '../types/step-command.types.js';
 
-export const waitCommand: StepCommand = {
+/** Typed config for the wait step command. */
+export interface WaitStepConfig extends StepConfig {
+  readonly duration: number;
+}
+
+export const waitCommand: StepCommand<WaitStepConfig> = {
   type: 'wait',
   description: 'Pause workflow for a duration',
   defaultMofloLevel: 'none',
@@ -24,7 +29,7 @@ export const waitCommand: StepCommand = {
     required: ['duration'],
   } satisfies JSONSchema,
 
-  validate(config: StepConfig): ValidationResult {
+  validate(config: WaitStepConfig): ValidationResult {
     const errors = [];
     if (config.duration === undefined || typeof config.duration !== 'number' || config.duration < 0) {
       errors.push({ path: 'duration', message: 'duration must be a non-negative number (milliseconds)' });
@@ -32,9 +37,9 @@ export const waitCommand: StepCommand = {
     return { valid: errors.length === 0, errors };
   },
 
-  async execute(config: StepConfig, context: WorkflowContext): Promise<StepOutput> {
+  async execute(config: WaitStepConfig, context: WorkflowContext): Promise<StepOutput> {
     const start = Date.now();
-    const duration = config.duration as number;
+    const duration = config.duration;
 
     await new Promise<void>((resolve, reject) => {
       const onAbort = () => {

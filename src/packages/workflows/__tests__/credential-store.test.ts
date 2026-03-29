@@ -306,4 +306,108 @@ describe('CredentialStore', () => {
     expect(await store.get('special')).toBe(specialVal);
     store.lock();
   });
+
+  // --------------------------------------------------------------------------
+  // #186 — Key rotation
+  // --------------------------------------------------------------------------
+
+  it('rotate: store creds, rotate, verify retrieval with new passphrase', async () => {
+    const store = new CredentialStore({ filePath, passphrase: 'old-pass-phrase' });
+    await store.store('api-key', 'sk-secret123');
+    await store.store('db-pass', 'pg-password');
+
+    await store.rotate('old-pass-phrase', 'new-pass-phrase');
+    // Retrieval still works through the active instance
+    expect(await store.get('api-key')).toBe('sk-secret123');
+    expect(await store.get('db-pass')).toBe('pg-password');
+    store.lock();
+
+    // New instance with new passphrase can also read
+    const store2 = new CredentialStore({ filePath, passphrase: 'new-pass-phrase' });
+    expect(await store2.get('api-key')).toBe('sk-secret123');
+    expect(await store2.get('db-pass')).toBe('pg-password');
+    store2.lock();
+  });
+
+  it('rotate: old passphrase fails after rotation', async () => {
+    const store = new CredentialStore({ filePath, passphrase: 'old-pass-phrase' });
+    await store.store('secret', 'value');
+    await store.rotate('old-pass-phrase', 'new-pass-phrase');
+    store.lock();
+
+    const store2 = new CredentialStore({ filePath, passphrase: 'old-pass-phrase' });
+    await expect(store2.get('secret')).rejects.toThrow(CredentialStoreError);
+    await expect(store2.get('secret')).rejects.toThrow('Failed to decrypt');
+    store2.lock();
+  });
+
+  it('rotate: wrong old passphrase rejects rotation', async () => {
+    const store = new CredentialStore({ filePath, passphrase: 'correct-pass' });
+    await store.store('key', 'value');
+
+    await expect(store.rotate('wrong-old-pass', 'new-pass-phrase')).rejects.toThrow(
+      CredentialStoreError,
+    );
+    await expect(store.rotate('wrong-old-pass', 'new-pass-phrase')).rejects.toThrow(
+      'Old passphrase is incorrect',
+    );
+
+    // Original passphrase still works
+    expect(await store.get('key')).toBe('value');
+    store.lock();
+  });
+
+  it('rotate: preserves all credential values', async () => {
+    const store = new CredentialStore({ filePath, passphrase: 'old-pass-phrase' });
+    const creds: Record<string, string> = {
+      'api-key': 'sk-abc123',
+      'db-password': 'pg-secret',
+      'token': 'jwt-value-here',
+      'empty-val': '',
+      'special': 'p@ss{w0rd}=test/slash\\back"quote',
+    };
+    for (const [name, value] of Object.entries(creds)) {
+      await store.store(name, value);
+    }
+
+    await store.rotate('old-pass-phrase', 'new-pass-phrase');
+
+    for (const [name, expected] of Object.entries(creds)) {
+      expect(await store.get(name)).toBe(expected);
+    }
+    store.lock();
+  });
+
+  it('rotate: lastKeyRotation timestamp is updated', async () => {
+    const store = new CredentialStore({ filePath, passphrase: 'old-pass-phrase' });
+    await store.store('key', 'value');
+    const beforeRotation = store.lastKeyRotation;
+    expect(beforeRotation).toBeDefined();
+
+    // Small delay to ensure timestamp difference
+    await new Promise(r => setTimeout(r, 10));
+    await store.rotate('old-pass-phrase', 'new-pass-phrase');
+
+    const afterRotation = store.lastKeyRotation;
+    expect(afterRotation).toBeDefined();
+    // Verify it's a valid ISO date
+    expect(new Date(afterRotation!).toISOString()).toBe(afterRotation);
+    // Verify it changed
+    expect(afterRotation).not.toBe(beforeRotation);
+    // Verify it's more recent
+    expect(new Date(afterRotation!).getTime()).toBeGreaterThan(
+      new Date(beforeRotation!).getTime(),
+    );
+    store.lock();
+  });
+
+  it('rotate: rejects new passphrase shorter than 8 characters', async () => {
+    const store = new CredentialStore({ filePath, passphrase: 'old-pass-phrase' });
+    await store.store('key', 'value');
+
+    await expect(store.rotate('old-pass-phrase', 'short')).rejects.toThrow(
+      'at least 8 characters',
+    );
+    store.lock();
+  });
 });
