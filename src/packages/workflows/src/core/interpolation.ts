@@ -62,6 +62,32 @@ export function interpolateString(template: string, context: WorkflowContext): s
 }
 
 /**
+ * Shell-escape a value by wrapping it in single quotes.
+ * Internal single quotes are escaped as `'\''` (end quote, escaped quote, restart quote).
+ * This prevents shell metacharacter injection (`;`, `|`, `` ` ``, `$()`, `&&`, `||`).
+ */
+export function shellEscapeValue(value: string): string {
+  return "'" + value.replace(/'/g, "'\\''") + "'";
+}
+
+/**
+ * Interpolate `{path}` placeholders with shell-escaped values.
+ * The static command template is kept intact — only interpolated variable values
+ * are escaped (wrapped in single quotes with internal quotes handled).
+ * Use this for strings that will be passed to a POSIX shell (`/bin/sh` or `bash`).
+ * @throws if a referenced variable is not found.
+ */
+export function shellInterpolateString(template: string, context: WorkflowContext): string {
+  return template.replace(INTERPOLATION_PATTERN, (match, path: string) => {
+    const value = resolveVariable(path, context);
+    if (value === undefined) {
+      throw new Error(`Variable not found: ${path}`);
+    }
+    return shellEscapeValue(String(value));
+  });
+}
+
+/**
  * Recursively interpolate string values in a value tree.
  * Handles strings, arrays, and plain objects at any depth.
  */

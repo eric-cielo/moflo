@@ -136,6 +136,7 @@ export type CapabilityType =
   | 'memory'
   | 'credentials'
   | 'browser'
+  | 'browser:evaluate'
   | 'agent';
 
 /**

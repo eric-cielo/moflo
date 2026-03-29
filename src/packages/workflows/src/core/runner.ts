@@ -11,6 +11,7 @@ import type {
   CredentialAccessor,
   MemoryAccessor,
   ValidationError,
+  MofloLevel,
 } from '../types/step-command.types.js';
 import type {
   WorkflowDefinition,

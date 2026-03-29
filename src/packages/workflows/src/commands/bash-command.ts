@@ -12,7 +12,7 @@ import type {
   OutputDescriptor,
   JSONSchema,
 } from '../types/step-command.types.js';
-import { interpolateString } from '../core/interpolation.js';
+import { shellInterpolateString } from '../core/interpolation.js';
 
 export const bashCommand: StepCommand = {
   type: 'bash',
@@ -46,7 +46,7 @@ export const bashCommand: StepCommand = {
 
   async execute(config: StepConfig, context: WorkflowContext): Promise<StepOutput> {
     const start = Date.now();
-    const command = interpolateString(config.command as string, context);
+    const command = shellInterpolateString(config.command as string, context);
     const timeout = (config.timeout as number) ?? 30000;
     const failOnError = config.failOnError !== false;
 
@@ -54,7 +54,7 @@ export const bashCommand: StepCommand = {
       const onAbort = () => child.kill();
       context.abortSignal?.addEventListener('abort', onAbort, { once: true });
 
-      const child = exec(command, { timeout }, (error, stdout, stderr) => {
+      const child = exec(command, { timeout, shell: 'bash' }, (error, stdout, stderr) => {
         context.abortSignal?.removeEventListener('abort', onAbort);
         // child.exitCode is the numeric exit code; error.code can be a string like 'ETIMEDOUT'
         const exitCode = child.exitCode ?? (error ? 1 : 0);

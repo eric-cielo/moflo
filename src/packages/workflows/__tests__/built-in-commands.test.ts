@@ -13,6 +13,7 @@ import { memoryCommand } from '../src/commands/memory-command.js';
 import { waitCommand } from '../src/commands/wait-command.js';
 import { loopCommand } from '../src/commands/loop-command.js';
 import { browserCommand } from '../src/commands/browser-command.js';
+import { validateBrowserUrl } from '../src/commands/browser-url-validator.js';
 import { builtinCommands } from '../src/commands/index.js';
 import type { MemoryAccessor } from '../src/types/step-command.types.js';
 import { createMockContext as createContext } from './helpers.js';
@@ -124,7 +125,49 @@ describe('bashCommand', () => {
   it('should interpolate variables in command', async () => {
     const ctx = createContext({ variables: { s1: { msg: 'world' } } });
     const output = await bashCommand.execute({ command: 'echo {s1.msg}' }, ctx);
-    expect(output.data.stdout).toBe('world');
+    // shellInterpolateString wraps values in single quotes for safety
+    expect(output.data.stdout).toContain('world');
+  });
+
+  // ---- Shell injection prevention (Issue #175) ----
+
+  it('should escape semicolon injection in interpolated values', async () => {
+    const ctx = createContext({ variables: { s1: { val: '; echo injected' } } });
+    const output = await bashCommand.execute({ command: 'echo {s1.val}' }, ctx);
+    // The value should be treated as a literal string, not executed
+    expect(output.data.stdout).toContain('; echo injected');
+    expect(output.data.stdout).not.toBe('injected');
+  });
+
+  it('should escape backtick injection in interpolated values', async () => {
+    const ctx = createContext({ variables: { s1: { val: '`echo injected`' } } });
+    const output = await bashCommand.execute({ command: 'echo {s1.val}' }, ctx);
+    expect(output.data.stdout).toContain('`echo injected`');
+  });
+
+  it('should escape $() injection in interpolated values', async () => {
+    const ctx = createContext({ variables: { s1: { val: '$(echo injected)' } } });
+    const output = await bashCommand.execute({ command: 'echo {s1.val}' }, ctx);
+    expect(output.data.stdout).toContain('$(echo injected)');
+  });
+
+  it('should escape pipe injection in interpolated values', async () => {
+    const ctx = createContext({ variables: { s1: { val: '| echo injected' } } });
+    const output = await bashCommand.execute({ command: 'echo {s1.val}' }, ctx);
+    expect(output.data.stdout).toContain('| echo injected');
+  });
+
+  it('should escape && injection in interpolated values', async () => {
+    const ctx = createContext({ variables: { s1: { val: '&& echo injected' } } });
+    const output = await bashCommand.execute({ command: 'echo {s1.val}' }, ctx);
+    expect(output.data.stdout).toContain('&& echo injected');
+  });
+
+  it('should still work with normal values after escaping', async () => {
+    const ctx = createContext({ variables: { s1: { name: 'hello world' } } });
+    const output = await bashCommand.execute({ command: 'echo {s1.name}' }, ctx);
+    expect(output.success).toBe(true);
+    expect(output.data.stdout).toBe('hello world');
   });
 
   it('should respect abort signal', async () => {
@@ -517,11 +560,12 @@ describe('browserCommand', () => {
 
   // --- Output descriptors ---
 
-  it('should describe outputs', () => {
+  it('should describe outputs including evaluate note', () => {
     const outputs = browserCommand.describeOutputs();
-    expect(outputs).toHaveLength(2);
+    expect(outputs).toHaveLength(3);
     expect(outputs[0].name).toBe('actionsExecuted');
     expect(outputs[1].name).toBe('screenshot_path');
+    expect(outputs[2].name).toBe('evaluate_note');
   });
 
   // --- Config schema ---
@@ -532,5 +576,57 @@ describe('browserCommand', () => {
 
   it('should define headless option in schema', () => {
     expect(browserCommand.configSchema.properties?.headless).toBeDefined();
+  });
+
+  // --- SSRF protection (Issue #177) ---
+
+  it('should block file:// URLs', () => {
+    expect(() => validateBrowserUrl('file:///etc/passwd')).toThrow('Blocked URL scheme');
+  });
+
+  it('should block javascript: URLs', () => {
+    expect(() => validateBrowserUrl('javascript:alert(1)')).toThrow('Blocked URL scheme');
+  });
+
+  it('should block http://169.254.169.254/ (metadata endpoint)', () => {
+    expect(() => validateBrowserUrl('http://169.254.169.254/')).toThrow('private/internal IP');
+  });
+
+  it('should block http://localhost:8080/', () => {
+    expect(() => validateBrowserUrl('http://localhost:8080/')).toThrow('localhost is not allowed');
+  });
+
+  it('should block http://127.0.0.1/', () => {
+    expect(() => validateBrowserUrl('http://127.0.0.1/')).toThrow('private/internal IP');
+  });
+
+  it('should allow https://example.com/', () => {
+    expect(() => validateBrowserUrl('https://example.com/')).not.toThrow();
+  });
+
+  // --- Evaluate capability gate (Issue #176) ---
+
+  it('should reject evaluate without browser:evaluate capability', async () => {
+    const ctx = createContext({ effectiveCaps: [{ type: 'browser' }, { type: 'net' }] });
+    const output = await browserCommand.execute(
+      { actions: [{ action: 'evaluate', expression: 'document.title' }] },
+      ctx,
+    );
+    expect(output.success).toBe(false);
+    expect(output.error).toContain("'browser:evaluate' capability");
+  });
+
+  it('should allow evaluate with browser:evaluate capability', async () => {
+    const ctx = createContext({
+      effectiveCaps: [{ type: 'browser' }, { type: 'net' }, { type: 'browser:evaluate' }],
+    });
+    const output = await browserCommand.execute(
+      { actions: [{ action: 'evaluate', expression: 'document.title' }] },
+      ctx,
+    );
+    expect(output.success).toBe(false);
+    // Should fail due to Playwright not being installed, NOT capability check
+    expect(output.error).toContain('Playwright');
+    expect(output.error).not.toContain('capability');
   });
 });
