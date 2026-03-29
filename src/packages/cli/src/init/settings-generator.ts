@@ -249,12 +249,6 @@ function generateHooksConfig(config: HooksConfig): object {
         hooks: [{ type: 'command', command: gateHookCmd('check-before-read'), timeout: 3000 }],
       },
       {
-        matcher: '^Agent$',
-        hooks: [
-          { type: 'command', command: hookHandlerCmd('pre-task'), timeout: 5000 },
-        ],
-      },
-      {
         matcher: '^Bash$',
         hooks: [{ type: 'command', command: gateHookCmd('check-dangerous-command'), timeout: 2000 }],
       },

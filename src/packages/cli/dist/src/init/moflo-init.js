@@ -442,11 +442,6 @@ function generateHooks(root, force, answers) {
                 "hooks": [
                     {
                         "type": "command",
-                        "command": "npx flo gate check-before-agent",
-                        "timeout": 3000
-                    },
-                    {
-                        "type": "command",
                         "command": "npx flo hooks pre-task",
                         "timeout": 5000
                     }
@@ -517,6 +512,15 @@ function generateHooks(root, force, answers) {
                         "timeout": 5000
                     }
                 ]
+            }
+        ],
+        "SubagentStart": [
+            {
+                "hooks": [{
+                        "type": "command",
+                        "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/subagent-start.cjs\"",
+                        "timeout": 2000
+                    }]
             }
         ],
         "SessionStart": [
