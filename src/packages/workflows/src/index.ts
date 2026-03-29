@@ -95,6 +95,10 @@ export type {
   ParsedWorkflow,
 } from './types/workflow-definition.types.js';
 
+export type {
+  ScheduleDefinition,
+} from './scheduler/schedule.types.js';
+
 export { parseYaml, parseJson, parseWorkflow } from './schema/parser.js';
 export { validateWorkflowDefinition, resolveArguments, type ValidatorOptions } from './schema/validator.js';
 
@@ -167,3 +171,34 @@ export {
   type WorkflowInfo,
   type WorkflowListEntry,
 } from './registry/workflow-registry.js';
+
+// ============================================================================
+// Scheduler (cron, interval, one-time scheduling)
+// ============================================================================
+
+export {
+  parseCron,
+  parseInterval,
+  parseAt,
+  computeNextRun,
+  nextRunFromCron,
+  nextRunFromInterval,
+  nextRunFromAt,
+  validateSchedule,
+  type ParsedCron,
+  type NextRunInput,
+} from './scheduler/cron-parser.js';
+
+export {
+  WorkflowScheduler,
+  type WorkflowExecutor,
+  type SchedulerEvent,
+  type SchedulerEventType,
+  type SchedulerListener,
+} from './scheduler/scheduler.js';
+
+export type {
+  WorkflowSchedule,
+  ScheduleExecution,
+  SchedulerOptions,
+} from './scheduler/schedule.types.js';

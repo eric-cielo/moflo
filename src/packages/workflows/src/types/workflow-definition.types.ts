@@ -5,6 +5,7 @@
  */
 
 import type { CapabilityType, MofloLevel } from './step-command.types.js';
+import type { ScheduleDefinition } from '../scheduler/schedule.types.js';
 
 // ============================================================================
 // Argument Definitions
@@ -51,6 +52,8 @@ export interface WorkflowDefinition {
   readonly steps: readonly StepDefinition[];
   /** Default MoFlo integration level for all steps (can be narrowed per-step). */
   readonly mofloLevel?: MofloLevel;
+  /** Schedule for automatic execution (cron, interval, or one-time). */
+  readonly schedule?: ScheduleDefinition;
 }
 
 // ============================================================================
