@@ -170,8 +170,11 @@ hive-mind-prompt-*.txt
 .testoutput/
 
 # Ephemeral / test artifacts
-.claude/workflow-state.json
+.claude/projects/
+**/workflow-state.json
+src/packages/*/package-lock.json
 test-database-provider.rvf
+.vitest-results.json
 
 # Local guidance docs (generated, not tracked)
 .claude/guidance/
