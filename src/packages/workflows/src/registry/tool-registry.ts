@@ -27,6 +27,8 @@ export interface ToolRegistryOptions {
   readonly shippedDir?: string;
   /** User tool directories (project-level overrides). */
   readonly userDirs?: readonly string[];
+  /** Project root for npm package scanning (looks for node_modules/moflo-tool-*). */
+  readonly projectRoot?: string;
 }
 
 export interface ToolScanResult {
@@ -143,7 +145,19 @@ export class WorkflowToolRegistry {
       }
     }
 
+    // Scan npm packages (lowest priority)
+    if (this.options.projectRoot) {
+      for (const entry of discoverNpmTools(this.options.projectRoot)) {
+        if (entry.error) {
+          errors.push(entry.error);
+        } else {
+          candidates.push({ file: entry.file!, source: 'npm' });
+        }
+      }
+    }
+
     // Build name -> candidate map (later entries override earlier by name)
+    // Priority: user > shipped > npm (user added last so it wins)
     const byName = new Map<string, { file: string; source: ToolSource }>();
 
     for (const candidate of candidates) {
@@ -156,10 +170,13 @@ export class WorkflowToolRegistry {
           continue;
         }
 
-        // User tools override shipped tools with the same name
+        // Higher-priority sources override lower-priority ones
         const existing = byName.get(tool.name);
-        if (existing && existing.source === 'user' && candidate.source === 'shipped') {
-          continue; // Don't let shipped override user
+        if (existing) {
+          const priority: Record<string, number> = { npm: 0, shipped: 1, user: 2 };
+          if ((priority[candidate.source] ?? 0) <= (priority[existing.source] ?? 0)) {
+            continue; // Don't let lower-priority override higher
+          }
         }
         byName.set(tool.name, candidate);
       } catch (err) {
@@ -213,4 +230,59 @@ function listToolFiles(dir: string): string[] {
   } catch {
     return [];
   }
+}
+
+interface NpmToolDiscovery {
+  file?: string;
+  error?: ToolScanError;
+}
+
+/**
+ * Scan node_modules for moflo-tool-* packages.
+ * Each package can declare a `moflo-tool` field in package.json
+ * pointing to the tool entry file, or fall back to `main`/`exports`.
+ */
+function discoverNpmTools(projectRoot: string): NpmToolDiscovery[] {
+  const nodeModules = path.join(projectRoot, 'node_modules');
+  if (!fs.existsSync(nodeModules)) return [];
+
+  const results: NpmToolDiscovery[] = [];
+
+  try {
+    const dirs = fs.readdirSync(nodeModules);
+    for (const dir of dirs) {
+      if (!dir.startsWith('moflo-tool-')) continue;
+
+      const pkgJsonPath = path.join(nodeModules, dir, 'package.json');
+      if (!fs.existsSync(pkgJsonPath)) {
+        results.push({ error: { file: pkgJsonPath, message: 'Missing package.json' } });
+        continue;
+      }
+
+      try {
+        const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
+        // Prefer moflo-tool field, fall back to main/exports
+        const entryPoint = pkgJson['moflo-tool'] ?? pkgJson.main ?? 'index.js';
+        const entryFile = path.resolve(nodeModules, dir, entryPoint);
+
+        if (!fs.existsSync(entryFile)) {
+          results.push({ error: { file: entryFile, message: `Entry point not found: ${entryPoint}` } });
+          continue;
+        }
+
+        results.push({ file: entryFile });
+      } catch (err) {
+        results.push({
+          error: {
+            file: pkgJsonPath,
+            message: err instanceof Error ? err.message : String(err),
+          },
+        });
+      }
+    }
+  } catch {
+    // node_modules unreadable — silently skip
+  }
+
+  return results;
 }

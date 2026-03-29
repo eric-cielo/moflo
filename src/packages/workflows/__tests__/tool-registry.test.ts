@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import { WorkflowToolRegistry } from '../src/registry/tool-registry.js';
 import type { WorkflowTool } from '../src/types/workflow-tool.types.js';
 
@@ -129,5 +132,123 @@ describe('WorkflowToolRegistry', () => {
     const entry = registry.list()[0];
     expect(entry.registeredAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
     expect(entry.registeredAt.getTime()).toBeLessThanOrEqual(after.getTime());
+  });
+});
+
+describe('WorkflowToolRegistry npm discovery', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tool-registry-npm-'));
+  });
+
+  function createNpmTool(
+    pkgName: string,
+    toolDef: string,
+    pkgJsonExtra: Record<string, unknown> = {},
+  ) {
+    const pkgDir = path.join(tmpDir, 'node_modules', pkgName);
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.writeFileSync(path.join(pkgDir, 'index.js'), toolDef);
+    fs.writeFileSync(
+      path.join(pkgDir, 'package.json'),
+      JSON.stringify({ name: pkgName, version: '1.0.0', main: 'index.js', ...pkgJsonExtra }),
+    );
+  }
+
+  const validToolJs = `
+    module.exports = {
+      name: 'npm-test',
+      description: 'npm test tool',
+      version: '1.0.0',
+      capabilities: ['read'],
+      initialize: async () => {},
+      dispose: async () => {},
+      execute: async () => ({ success: true, data: {} }),
+      listActions: () => [],
+    };
+  `;
+
+  it('discovers moflo-tool-* packages from node_modules', async () => {
+    createNpmTool('moflo-tool-test', validToolJs);
+
+    const reg = new WorkflowToolRegistry({ projectRoot: tmpDir });
+    const result = await reg.scan();
+
+    expect(result.registered).toBe(1);
+    expect(reg.has('npm-test')).toBe(true);
+    expect(reg.list()[0].source).toBe('npm');
+  });
+
+  it('skips non-moflo-tool packages', async () => {
+    createNpmTool('other-package', validToolJs);
+
+    const reg = new WorkflowToolRegistry({ projectRoot: tmpDir });
+    const result = await reg.scan();
+
+    expect(result.registered).toBe(0);
+  });
+
+  it('uses moflo-tool field from package.json when present', async () => {
+    const pkgDir = path.join(tmpDir, 'node_modules', 'moflo-tool-custom');
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.writeFileSync(path.join(pkgDir, 'custom-entry.js'), validToolJs);
+    fs.writeFileSync(
+      path.join(pkgDir, 'package.json'),
+      JSON.stringify({ name: 'moflo-tool-custom', version: '1.0.0', 'moflo-tool': 'custom-entry.js' }),
+    );
+
+    const reg = new WorkflowToolRegistry({ projectRoot: tmpDir });
+    const result = await reg.scan();
+
+    expect(result.registered).toBe(1);
+  });
+
+  it('reports error for missing entry point', async () => {
+    const pkgDir = path.join(tmpDir, 'node_modules', 'moflo-tool-broken');
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pkgDir, 'package.json'),
+      JSON.stringify({ name: 'moflo-tool-broken', version: '1.0.0', main: 'nonexistent.js' }),
+    );
+
+    const reg = new WorkflowToolRegistry({ projectRoot: tmpDir });
+    const result = await reg.scan();
+
+    expect(result.registered).toBe(0);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('not found');
+  });
+
+  it('no node_modules directory does not crash', async () => {
+    const reg = new WorkflowToolRegistry({ projectRoot: path.join(tmpDir, 'empty-project') });
+    const result = await reg.scan();
+
+    expect(result.registered).toBe(0);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('user tool overrides npm tool with same name', async () => {
+    // Create npm tool
+    createNpmTool('moflo-tool-http', `
+      module.exports = {
+        name: 'http',
+        description: 'npm http',
+        version: '0.1.0',
+        capabilities: ['read'],
+        initialize: async () => {},
+        dispose: async () => {},
+        execute: async () => ({ success: true, data: { source: 'npm' } }),
+        listActions: () => [],
+      };
+    `);
+
+    const reg = new WorkflowToolRegistry({ projectRoot: tmpDir });
+    // Pre-register a user tool with the same name
+    reg.register(makeTool('http'), 'user');
+
+    const result = await reg.scan();
+    // npm tool should NOT override the user tool
+    expect(reg.list().find(e => e.tool.name === 'http')?.source).toBe('user');
   });
 });
