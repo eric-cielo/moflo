@@ -1201,6 +1201,70 @@ export const doctorCommand: Command = {
       }
     };
 
+    // Check Workflow Engine health — validates core modules, built output, and step commands
+    async function checkWorkflowEngine(): Promise<HealthCheck> {
+      try {
+        // Find the workflows package relative to this file or cwd
+        const candidates = [
+          join(process.cwd(), 'src', 'packages', 'workflows', 'src'),
+          join(process.cwd(), 'node_modules', 'moflo', 'src', 'packages', 'workflows', 'src'),
+        ];
+        const srcDir = candidates.find(d => existsSync(d));
+        if (!srcDir) {
+          return { name: 'Workflow Engine', status: 'warn', message: 'Workflow engine source not found' };
+        }
+
+        // Core modules that must exist
+        const coreModules = [
+          'core/runner.ts',
+          'core/step-executor.ts',
+          'core/step-command-registry.ts',
+          'core/interpolation.ts',
+          'core/credential-masker.ts',
+          'registry/workflow-registry.ts',
+          'schema',
+          'types',
+          'credentials',
+          'scheduler',
+        ];
+
+        const missing = coreModules.filter(m => !existsSync(join(srcDir, m)));
+        if (missing.length > 0) {
+          return {
+            name: 'Workflow Engine',
+            status: 'warn',
+            message: `Missing core modules: ${missing.join(', ')}`,
+            fix: 'npm run build',
+          };
+        }
+
+        // Check for step commands directory
+        const commandsDir = join(srcDir, 'commands');
+        const hasCommands = existsSync(commandsDir);
+
+        // Check for workflow definition loaders
+        const loadersDir = join(srcDir, 'loaders');
+        const hasLoaders = existsSync(loadersDir);
+
+        // Check for index.ts entry point
+        const hasIndex = existsSync(join(srcDir, 'index.ts'));
+
+        const parts: string[] = [];
+        parts.push(`${coreModules.length} core modules`);
+        if (hasCommands) parts.push('step commands');
+        if (hasLoaders) parts.push('loaders');
+        if (hasIndex) parts.push('index');
+
+        return {
+          name: 'Workflow Engine',
+          status: 'pass',
+          message: parts.join(', '),
+        };
+      } catch {
+        return { name: 'Workflow Engine', status: 'warn', message: 'Unable to check workflow engine' };
+      }
+    }
+
     const allChecks: (() => Promise<HealthCheck>)[] = [
       checkVersionFreshness,
       checkNodeVersion,
@@ -1219,6 +1283,7 @@ export const doctorCommand: Command = {
       checkAgenticFlow,
       checkSemanticQuality,
       checkIntelligence,
+      checkWorkflowEngine,
       checkZombieProcesses
     ];
 
@@ -1240,7 +1305,9 @@ export const doctorCommand: Command = {
       'agentic-flow': checkAgenticFlow,
       'semantic': checkSemanticQuality,
       'quality': checkSemanticQuality,
-      'intelligence': checkIntelligence
+      'intelligence': checkIntelligence,
+      'workflows': checkWorkflowEngine,
+      'workflow': checkWorkflowEngine
     };
 
     let checksToRun = allChecks;

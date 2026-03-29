@@ -438,6 +438,7 @@ describe('WorkflowRunner — credential interpolation', () => {
   it('resolves {credentials.NAME} in step config', async () => {
     let capturedConfig: Record<string, unknown> = {};
     registry.register(createMockCommand({
+      capabilities: [{ type: 'credentials' }],
       execute: async (config) => {
         capturedConfig = config;
         return { success: true, data: { result: 'ok' }, duration: 1 };
@@ -455,6 +456,7 @@ describe('WorkflowRunner — credential interpolation', () => {
 
   it('redacts credential values resolved from {credentials.NAME}', async () => {
     registry.register(createMockCommand({
+      capabilities: [{ type: 'credentials' }],
       execute: async () => ({
         success: true,
         data: { message: 'the secret is s3cr3t' },
@@ -474,7 +476,9 @@ describe('WorkflowRunner — credential interpolation', () => {
   });
 
   it('leaves {credentials.NAME} unresolved when credential is missing', async () => {
-    registry.register(createMockCommand());
+    registry.register(createMockCommand({
+      capabilities: [{ type: 'credentials' }],
+    }));
 
     const definition = simpleWorkflow([
       { id: 's1', type: 'mock', config: { token: '{credentials.nonexistent}' } },
@@ -484,6 +488,18 @@ describe('WorkflowRunner — credential interpolation', () => {
     const result = await runner.run(definition, {});
     expect(result.success).toBe(false);
     expect(result.errors[0].message).toContain('Variable not found');
+  });
+
+  it('rejects {credentials.*} when command lacks credentials capability', async () => {
+    registry.register(createMockCommand());
+
+    const definition = simpleWorkflow([
+      { id: 's1', type: 'mock', config: { token: '{credentials.secret}' } },
+    ]);
+
+    const result = await runner.run(definition, {});
+    expect(result.success).toBe(false);
+    expect(result.errors[0].message).toContain('does not declare the "credentials" capability');
   });
 });
 
