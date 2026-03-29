@@ -26,6 +26,7 @@ import {
   checkCapabilities,
   resolveMofloLevel,
 } from './capability-validator.js';
+import { collectPrerequisites, checkPrerequisites } from './prerequisite-checker.js';
 
 /**
  * Validate a workflow without executing — reports what WOULD happen at each step.
@@ -43,6 +44,14 @@ export async function dryRunValidate(
     const { errors } = resolveArguments(definition.arguments, resolvedArgs);
     argErrors.push(...errors);
   }
+
+  // Check all prerequisites upfront (Story #193)
+  const allPrereqs = collectPrerequisites(definition, registry);
+  const prereqResults = allPrereqs.length > 0
+    ? await checkPrerequisites(allPrereqs)
+    : [];
+  // Build a map: prerequisite name → result
+  const prereqByName = new Map(prereqResults.map(r => [r.name, r]));
 
   const workflowId = `dryrun-${Date.now()}`;
   const variables: Record<string, unknown> = {};
@@ -105,6 +114,13 @@ export async function dryRunValidate(
       ? resolveMofloLevel(step, command, definition.mofloLevel, options.parentMofloLevel)
       : undefined;
 
+    // Collect prerequisite results for this step's command (Story #193)
+    const stepPrereqResults = command?.prerequisites
+      ? command.prerequisites
+          .map(p => prereqByName.get(p.name))
+          .filter((r): r is NonNullable<typeof r> => r !== undefined)
+      : undefined;
+
     stepReports.push({
       stepId: step.id,
       stepType: step.type,
@@ -114,6 +130,7 @@ export async function dryRunValidate(
       continueOnError: step.continueOnError ?? false,
       hasRollback: command?.rollback !== undefined,
       mofloLevel: stepMofloLevel,
+      prerequisiteResults: stepPrereqResults,
     });
   }
 

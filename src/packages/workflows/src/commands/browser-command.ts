@@ -27,6 +27,7 @@ import type {
   ValidationResult,
   OutputDescriptor,
   JSONSchema,
+  Prerequisite,
 } from '../types/step-command.types.js';
 import { validateBrowserUrl } from './browser-url-validator.js';
 import { enforceScope, formatViolations } from '../core/capability-validator.js';
@@ -246,12 +247,31 @@ async function executeAction(
   }
 }
 
+// ── Prerequisites ────────────────────────────────────────────────────────
+
+const browserPrerequisites: readonly Prerequisite[] = [
+  {
+    name: 'playwright',
+    check: async () => {
+      try {
+        await import('playwright');
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    installHint: 'Install Playwright: npm install playwright && npx playwright install chromium',
+    url: 'https://playwright.dev/docs/intro',
+  },
+];
+
 // ── Browser Step Command ──────────────────────────────────────────────────
 
 export const browserCommand: StepCommand<BrowserStepConfig> = {
   type: 'browser',
   description: 'Web automation via Playwright (requires playwright peer dependency)',
   defaultMofloLevel: 'memory',
+  prerequisites: browserPrerequisites,
 
   configSchema: {
     type: 'object',

@@ -10,8 +10,19 @@ import type {
   ValidationResult,
   OutputDescriptor,
   JSONSchema,
+  Prerequisite,
 } from '../types/step-command.types.js';
 import { interpolateString } from '../core/interpolation.js';
+import { commandExists } from '../core/prerequisite-checker.js';
+
+const agentPrerequisites: readonly Prerequisite[] = [
+  {
+    name: 'claude',
+    check: () => commandExists('claude'),
+    installHint: 'Install Claude CLI: npm install -g @anthropic-ai/claude-code',
+    url: 'https://docs.anthropic.com/en/docs/claude-code',
+  },
+];
 
 /** Typed config for the agent step command. */
 export interface AgentStepConfig extends StepConfig {
@@ -25,6 +36,7 @@ export const agentCommand: StepCommand<AgentStepConfig> = {
   description: 'Spawn a Claude subagent to perform a task',
   capabilities: [{ type: 'agent' }],
   defaultMofloLevel: 'memory',
+  prerequisites: agentPrerequisites,
   configSchema: {
     type: 'object',
     properties: {
