@@ -53,16 +53,15 @@ var TASK_RE = /\b(fix|bug|error|implement|add|create|build|write|refactor|debug|
 
 switch (command) {
   case 'check-before-agent': {
+    // Advisory only — agent spawning is never blocked.
+    // Memory-first enforcement happens at the scan/read gate layer.
+    // SubagentStart hook injects guidance directive into subagent context.
     var s = readState();
-    // Hard gate: memory must be searched
-    if (config.memory_first && s.memoryRequired && !s.memorySearched) {
-      process.stderr.write('BLOCKED: Search memory (mcp__moflo__memory_search) before spawning agents.\n');
-      process.exit(2);
-    }
-    // Soft gate: TaskCreate recommended but not blocking
-    // (TaskCreate PostToolUse doesn't fire in Claude Code, so we can't track it reliably)
     if (config.task_create_first && !s.tasksCreated) {
       process.stdout.write('REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.\n');
+    }
+    if (config.memory_first && s.memoryRequired && !s.memorySearched) {
+      process.stdout.write('REMINDER: Search memory (mcp__moflo__memory_search) before spawning agents.\n');
     }
     break;
   }

@@ -140,13 +140,12 @@ npx flo hive-mind init --topology hierarchical-mesh --consensus byzantine
 
 Include task IDs in agent prompts so they update status.
 TaskCreate was already called in Step 1 — tasks are visible before agents spawn.
+The `SubagentStart` hook automatically injects the subagent protocol directive — no need to include it in prompts.
 
 ```javascript
 // TaskCreate already done in Step 1 above
 Task({
-  prompt: `FIRST: Search memory, then read .claude/guidance/moflo-subagents.md
-
-YOUR TASK (ID: 1): Research requirements and codebase patterns
+  prompt: `YOUR TASK (ID: 1): Research requirements and codebase patterns
 - Analyze feature requirements
 - Search codebase for relevant patterns
 - Document findings in memory
@@ -385,15 +384,23 @@ npx flo swarm init --topology hierarchical-mesh --max-agents 15 --strategy speci
 
 ## Subagent Context Rules
 
-**Subagents DO inherit CLAUDE.md context** when spawned via Task tool. They automatically receive:
-- Memory-first protocol instructions
+**Subagents automatically receive guidance via the `SubagentStart` hook.** When any subagent spawns, the hook injects a directive telling it to read `.claude/guidance/shipped/moflo-subagents.md` before doing any work. This is centralized — no per-agent configuration needed.
+
+**What subagents receive automatically:**
+- `SubagentStart` hook directive to read subagent protocol guidance
+- CLAUDE.md context (inherited from project)
 - MCP tool access (`mcp__moflo__*`) when configured
-- Project guidance and coding rules
+- Project `.claude/guidance/*.md` files
+
+**Memory-first enforcement for subagents:**
+- Agent spawning is never blocked — the `SubagentStart` hook is advisory
+- When a subagent tries to use Glob, Grep, or Read, the scan/read gates enforce memory-first at the work layer
+- This prevents cascading failures from nested agent spawns
 
 **Best practices for subagent prompts:**
 - Include relevant context (file paths, error messages, specific requirements)
 - Provide specific paths if known, don't let agents guess with broad globs
-- Trust that they know the memory-first protocol
+- Don't repeat the subagent protocol — the `SubagentStart` hook handles it
 
 **MCP Tools Available to Subagents:**
 - `mcp__moflo__memory_search` - Semantic search

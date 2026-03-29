@@ -76,7 +76,7 @@ On version change, `session-start-launcher.mjs` copies helper scripts from the i
 |--------|--------|-------|
 | `bin/` | `.claude/scripts/` | `hooks.mjs`, `session-start-launcher.mjs`, `index-guidance.mjs`, `build-embeddings.mjs`, `generate-code-map.mjs`, `semantic-search.mjs` |
 | `bin/` | `.claude/helpers/` | `gate.cjs`, `gate-hook.mjs`, `prompt-hook.mjs`, `hook-handler.cjs` |
-| `src/packages/cli/.claude/helpers/` | `.claude/helpers/` | `auto-memory-hook.mjs`, `statusline.cjs`, `pre-commit`, `post-commit` |
+| `src/packages/cli/.claude/helpers/` | `.claude/helpers/` | `auto-memory-hook.mjs`, `statusline.cjs`, `subagent-start.cjs`, `pre-commit`, `post-commit` |
 
 When adding a new helper script: generate it once, save it to `bin/`, and add it to the appropriate list in `session-start-launcher.mjs`.
 
@@ -521,9 +521,11 @@ code_map:
   namespace: code-map
 
 # Workflow gates (enforced via Claude Code hooks)
+# Memory-first is enforced at the scan/read layer (Glob, Grep, Read gates).
+# Agent spawning is never blocked — SubagentStart hook injects guidance directive.
 gates:
-  memory_first: true              # Search memory before Glob/Grep
-  task_create_first: true         # TaskCreate before Agent tool
+  memory_first: true              # Block Glob/Grep/Read until memory is searched
+  task_create_first: true         # Advisory reminder before Agent tool (not blocking)
   context_tracking: true          # Track context bracket (FRESH/MODERATE/DEPLETED/CRITICAL)
 
 # Auto-index on session start
@@ -543,7 +545,7 @@ hooks:
   post_edit: true                 # Record edit outcomes, train neural patterns
   pre_task: true                  # Get agent routing before task spawn
   post_task: true                 # Record task results for learning
-  gate: true                      # Workflow gate enforcement (memory-first, task-create-first)
+  gate: true                      # Workflow gate enforcement (memory-first at scan/read layer)
   route: true                     # Intelligent task routing on each prompt
   stop_hook: true                 # Session-end persistence and metric export
   session_restore: true           # Restore session state on start
@@ -591,7 +593,7 @@ status_line:
 | `auto_index.guidance: false` | Skip guidance indexing on session start |
 | `auto_index.code_map: false` | Skip code map generation on session start |
 | `gates.memory_first: true` | Block Glob/Grep/Read until memory is searched first |
-| `gates.task_create_first: true` | Block Agent/Task tool until TaskCreate is called |
+| `gates.task_create_first: true` | Advisory reminder before Agent tool (not blocking) |
 | `gates.context_tracking: true` | Show FRESH/MODERATE/DEPLETED/CRITICAL context bracket |
 | `hooks.pre_edit: false` | Disable file-edit tracking (skips pre-edit hook) |
 | `hooks.post_edit: false` | Disable edit outcome recording and neural training |

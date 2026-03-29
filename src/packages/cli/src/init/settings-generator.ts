@@ -251,7 +251,7 @@ function generateHooksConfig(config: HooksConfig): object {
       {
         matcher: '^Agent$',
         hooks: [
-          { type: 'command', command: gateHookCmd('check-before-agent'), timeout: 3000 },
+          { type: 'command', command: hookHandlerCmd('pre-task'), timeout: 5000 },
         ],
       },
       {
@@ -274,7 +274,7 @@ function generateHooksConfig(config: HooksConfig): object {
       },
       {
         // TaskCreate PostToolUse only fires in some Claude Code versions.
-        // The prompt-reminder and soft gate in check-before-agent handle the common case.
+        // The prompt-reminder handles the common case.
         matcher: '^TaskCreate$',
         hooks: [{ type: 'command', command: gateCmd('record-task-created'), timeout: 2000 }],
       },
@@ -300,6 +300,19 @@ function generateHooksConfig(config: HooksConfig): object {
       },
     ];
   }
+
+  // SubagentStart — inject directive for subagents to read guidance protocol
+  hooks.SubagentStart = [
+    {
+      hooks: [
+        {
+          type: 'command',
+          command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/subagent-start.cjs"',
+          timeout: 2000,
+        },
+      ],
+    },
+  ];
 
   // SessionStart — launch daemon, indexers, pretrain via session-start-launcher
   if (config.sessionStart) {

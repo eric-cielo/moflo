@@ -167,7 +167,10 @@ export class WorkflowGateService {
 
   /**
    * Check if Agent tool spawn is allowed.
-   * Requires both TaskCreate and memory search.
+   * Always advisory (never blocks). Memory-first enforcement happens at the
+   * work layer — check-before-scan and check-before-read gates block the
+   * agent's actual file access if memory hasn't been searched yet.
+   * Blocking spawning itself causes cascading failures in nested agents.
    */
   checkBeforeAgent(): GateResult {
     if (!this.config.task_create_first && !this.config.memory_first) {
@@ -178,15 +181,15 @@ export class WorkflowGateService {
 
     if (this.config.task_create_first && !state.tasksCreated) {
       return {
-        allowed: false,
-        message: 'BLOCKED: Call TaskCreate before spawning agents.',
+        allowed: true,
+        message: 'REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.',
       };
     }
 
-    if (this.config.memory_first && !state.memorySearched) {
+    if (this.config.memory_first && !state.memorySearched && state.memoryRequired) {
       return {
-        allowed: false,
-        message: 'BLOCKED: Search memory (mcp__moflo__memory_search) before spawning agents.',
+        allowed: true,
+        message: 'REMINDER: Search memory (mcp__moflo__memory_search) before spawning agents.',
       };
     }
 
@@ -391,10 +394,11 @@ export function processGateCommand(command: string, env: Record<string, string |
     switch (command) {
       case 'check-before-agent': {
         const result = gate.checkBeforeAgent();
-        if (!result.allowed) {
-          if (result.message) process.stderr.write(result.message + '\n');
-          process.exit(2);  // Exit 2 = block tool call in Claude Code
-        }
+        // Advisory only — never exit 2 (block). Agent spawning should not be
+        // gated because subagents share workflow state and cascade failures.
+        // Memory-first is enforced at the scan/read layer instead.
+        // Write to stdout (not stderr) — stderr triggers "hook error" display in Claude Code UI.
+        if (result.message) process.stdout.write(result.message + '\n');
         process.exit(0);
       }
 

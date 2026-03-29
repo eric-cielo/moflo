@@ -165,7 +165,7 @@ try {
           resolve(projectRoot, 'node_modules/moflo/src/packages/cli/.claude/helpers'),
         ];
         const sourceHelperFiles = [
-          'auto-memory-hook.mjs', 'statusline.cjs', 'intelligence.cjs', 'pre-commit', 'post-commit',
+          'auto-memory-hook.mjs', 'statusline.cjs', 'intelligence.cjs', 'subagent-start.cjs', 'pre-commit', 'post-commit',
         ];
         for (const file of sourceHelperFiles) {
           const dest = resolve(helpersDir, file);

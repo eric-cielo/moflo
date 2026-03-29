@@ -212,16 +212,18 @@ describe('gate.cjs: check-dangerous-command', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// gate.cjs — check-before-agent (memory-first gate)
+// gate.cjs — check-before-agent (advisory only, never blocks)
+// Agent spawning is never blocked — memory-first is enforced at scan/read layer.
+// SubagentStart hook injects guidance directive into subagent context.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('gate.cjs: check-before-agent', () => {
-  it('blocks when memory not searched (exit 2)', () => {
+  it('shows reminder when memory not searched (never blocks)', () => {
     writeState(tmpDir, { memoryRequired: true, memorySearched: false });
     const r = runGate('check-before-agent', baseEnv(tmpDir));
-    expect(r.exitCode).toBe(2);
-    expect(r.stderr).toContain('BLOCKED');
-    expect(r.stderr).toContain('memory');
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain('REMINDER');
+    expect(r.stdout).toContain('memory');
   });
 
   it('allows when memory already searched', () => {
@@ -251,10 +253,10 @@ describe('gate.cjs: check-before-agent', () => {
     expect(r.stdout).not.toContain('REMINDER');
   });
 
-  it('uses defaults when no state file exists', () => {
-    // Default: memoryRequired=true, memorySearched=false → should block
+  it('uses defaults when no state file — shows reminder, never blocks', () => {
+    // Default: memoryRequired=true, memorySearched=false → advisory reminder
     const r = runGate('check-before-agent', baseEnv(tmpDir));
-    expect(r.exitCode).toBe(2);
+    expect(r.exitCode).toBe(0);
   });
 });
 
@@ -770,15 +772,15 @@ describe('gate-hook.mjs: stdin integration', () => {
     expect(r.exitCode).toBe(0);
   });
 
-  it('forwards memory-first block from gate.cjs (exit 2)', async () => {
+  it('forwards advisory reminder from gate.cjs (exit 0, not blocked)', async () => {
     writeState(tmpDir, { memoryRequired: true, memorySearched: false });
     const r = await runEsmWithStdin(GATE_HOOK, ['check-before-agent'], {
       tool_name: 'Agent',
       tool_input: { prompt: 'do stuff' },
       hook_event_name: 'PreToolUse',
     }, baseEnv(tmpDir));
-    expect(r.exitCode).toBe(2);
-    expect(r.stderr).toContain('BLOCKED');
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain('REMINDER');
   });
 });
 
@@ -945,9 +947,10 @@ describe('end-to-end: workflow lifecycle', () => {
     s = readState(tmpDir);
     expect(s.memoryRequired).toBe(true);
 
-    // 3. Agent spawn should be blocked (no memory search yet)
+    // 3. Agent spawn shows reminder but is never blocked (advisory only)
     let r = runGate('check-before-agent', env);
-    expect(r.exitCode).toBe(2);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain('REMINDER');
 
     // 4. Memory search via bash
     env.TOOL_INPUT_command = 'npx moflo memory search --query "auth"';
@@ -955,9 +958,10 @@ describe('end-to-end: workflow lifecycle', () => {
     s = readState(tmpDir);
     expect(s.memorySearched).toBe(true);
 
-    // 5. Agent spawn should now be allowed
+    // 5. Agent spawn allowed after memory search (TaskCreate reminder is advisory)
     r = runGate('check-before-agent', env);
     expect(r.exitCode).toBe(0);
+    // Memory reminder gone, but TaskCreate reminder may still show (tasks not created yet)
 
     // 6. Record task created
     runGate('record-task-created', env);
