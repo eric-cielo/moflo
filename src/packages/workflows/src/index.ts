@@ -216,3 +216,10 @@ export type {
   ToolRegistryEntry,
   ToolSource,
 } from './types/workflow-tool.types.js';
+
+export {
+  WorkflowToolRegistry,
+  type ToolRegistryOptions,
+  type ToolScanResult,
+  type ToolScanError,
+} from './registry/tool-registry.js';
