@@ -498,16 +498,6 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
         }]
       },
       {
-        "matcher": "^Task$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "npx flo hooks pre-task",
-            "timeout": 5000
-          }
-        ]
-      },
-      {
         "matcher": "^Bash$",
         "hooks": [{
           "type": "command",

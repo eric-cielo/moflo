@@ -438,16 +438,6 @@ function generateHooks(root, force, answers) {
                     }]
             },
             {
-                "matcher": "^Task$",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "npx flo hooks pre-task",
-                        "timeout": 5000
-                    }
-                ]
-            },
-            {
                 "matcher": "^Bash$",
                 "hooks": [{
                         "type": "command",
