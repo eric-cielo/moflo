@@ -38,14 +38,20 @@ export interface EpicRunOptions {
  */
 export async function runEpicWorkflow(
   yamlContent: string,
-  _sourceFile: string | undefined,
   options: EpicRunOptions = {},
 ): Promise<EpicWorkflowResult> {
-  // Dynamic import of the workflow engine
-  const { runWorkflowFromContent } = await import(
-    /* webpackIgnore: true */
-    '../../../../packages/workflows/dist/index.js'
-  );
+  let runWorkflowFromContent: Function;
+  try {
+    const mod = await import(
+      /* webpackIgnore: true */
+      '../../../../packages/workflows/dist/index.js'
+    );
+    runWorkflowFromContent = mod.runWorkflowFromContent;
+  } catch {
+    throw new Error(
+      'Workflow engine not available. Run `npm run build` to compile the workflows package.',
+    );
+  }
 
-  return runWorkflowFromContent(yamlContent, _sourceFile, options);
+  return runWorkflowFromContent(yamlContent, undefined, options);
 }

@@ -72,13 +72,14 @@ async function runEpic(
 
   await enrichStoryNames(stories);
   const plan = resolveExecutionOrder(stories);
+  const storyById = new Map(stories.map(s => [s.id, s]));
 
   console.log(`[epic] ${issue.title}`);
   console.log(`[epic] Strategy: ${strategy}`);
   console.log(`[epic] Stories (${stories.length}):`);
   for (const id of plan.order) {
-    const s = stories.find(st => st.id === id)!;
-    console.log(`  ${s.issue}: ${s.name}`);
+    const s = storyById.get(id);
+    if (s) console.log(`  ${s.issue}: ${s.name}`);
   }
   console.log('');
 
@@ -87,7 +88,6 @@ async function runEpic(
   try {
     const stateResult = await runEpicWorkflow(
       `name: epic-resume-check\nsteps:\n  - id: check-state\n    type: memory\n    config:\n      action: search\n      namespace: epic-state\n      query: "epic ${issueNumber} story completed"`,
-      undefined,
       { args: {} },
     );
     if (stateResult.success && stateResult.outputs['check-state']) {
@@ -119,10 +119,9 @@ async function runEpic(
 
   // 5. Load workflow template and execute
   const yaml = loadWorkflowTemplate(strategy);
-  const allStoryNumbers = plan.order.map(id => {
-    const s = stories.find(st => st.id === id)!;
-    return s.issue;
-  });
+  const allStoryNumbers = plan.order
+    .map(id => storyById.get(id)?.issue)
+    .filter((n): n is number => n != null);
   const storyNumbers = allStoryNumbers.filter(n => !completedStories.has(n));
 
   if (storyNumbers.length === 0) {
@@ -145,12 +144,12 @@ async function runEpic(
     console.log(`[epic] Args: ${JSON.stringify(args, null, 2)}`);
     console.log('[epic] Stories would be processed in order:');
     for (const num of storyNumbers) {
-      const s = stories.find(st => st.issue === num)!;
-      console.log(`  #${num}: ${s.name}`);
+      const s = stories.find(st => st.issue === num);
+      console.log(`  #${num}: ${s?.name ?? '(unknown)'}`);
     }
 
     try {
-      const result = await runEpicWorkflow(yaml, undefined, {
+      const result = await runEpicWorkflow(yaml, {
         args, dryRun: true,
       });
 
@@ -174,7 +173,7 @@ async function runEpic(
   let stepCount = 0;
 
   try {
-    const result = await runEpicWorkflow(yaml, undefined, {
+    const result = await runEpicWorkflow(yaml, {
       args,
       onStepComplete: (stepResult, index, total) => {
         stepCount++;
@@ -218,7 +217,6 @@ async function showStatus(epicNumber: string): Promise<CommandResult> {
   try {
     const result = await runEpicWorkflow(
       `name: epic-status-check\nsteps:\n  - id: read-state\n    type: memory\n    config:\n      action: search\n      namespace: epic-state\n      query: "epic ${epicNumber}"`,
-      undefined,
       { args: {} },
     );
 
@@ -248,7 +246,6 @@ async function resetEpic(epicNumber: string): Promise<CommandResult> {
   try {
     await runEpicWorkflow(
       `name: epic-reset\nsteps:\n  - id: clear-state\n    type: memory\n    config:\n      action: write\n      namespace: epic-state\n      key: "epic-${epicNumber}"\n      value: null`,
-      undefined,
       { args: {} },
     );
     console.log(`[epic] State cleared for epic #${epicNumber}`);
