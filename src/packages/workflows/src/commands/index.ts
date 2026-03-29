@@ -11,6 +11,7 @@ import { memoryCommand } from './memory-command.js';
 import { waitCommand } from './wait-command.js';
 import { loopCommand } from './loop-command.js';
 import { browserCommand } from './browser-command.js';
+import { githubCommand } from './github-command.js';
 
 export {
   agentCommand,
@@ -21,6 +22,7 @@ export {
   waitCommand,
   loopCommand,
   browserCommand,
+  githubCommand,
 };
 
 // Typed config interfaces (Issue #189)
@@ -32,6 +34,7 @@ export type { MemoryStepConfig } from './memory-command.js';
 export type { WaitStepConfig } from './wait-command.js';
 export type { LoopStepConfig } from './loop-command.js';
 export type { BrowserStepConfig, BrowserAction } from './browser-command.js';
+export type { GitHubStepConfig, GitHubAction } from './github-command.js';
 
 /** All built-in step commands. */
 export const builtinCommands: readonly StepCommand[] = [
@@ -43,4 +46,5 @@ export const builtinCommands: readonly StepCommand[] = [
   waitCommand,
   loopCommand,
   browserCommand,
+  githubCommand,
 ];

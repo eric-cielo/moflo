@@ -79,6 +79,7 @@ export {
   waitCommand,
   loopCommand,
   browserCommand,
+  githubCommand,
   builtinCommands,
 } from './commands/index.js';
 
