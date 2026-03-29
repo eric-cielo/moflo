@@ -27,8 +27,8 @@ let _writeThroughAdapter: any = null;
 
 async function getMessageBus() {
   if (_messageBus) return _messageBus;
-  const { createMessageBus } = await import('../../../../packages/swarm/src/message-bus/index.js');
-  _messageBus = createMessageBus({
+  const { MessageBus } = await import('../../../../packages/swarm/src/message-bus/index.js');
+  _messageBus = new MessageBus({
     processingIntervalMs: 50,
     reaperIntervalMs: 60_000,
   });

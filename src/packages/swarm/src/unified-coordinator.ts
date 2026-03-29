@@ -47,7 +47,7 @@ import {
   SWARM_CONSTANTS,
 } from './types.js';
 import { TopologyManager, createTopologyManager } from './topology-manager.js';
-import { MessageBus, createMessageBus } from './message-bus.js';
+import { MessageBus } from './message-bus.js';
 import { AgentPool, createAgentPool } from './agent-pool.js';
 import { ConsensusEngine, createConsensusEngine } from './consensus/index.js';
 
@@ -168,7 +168,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
 
     // Initialize components
     this.topologyManager = createTopologyManager(this.config.topology);
-    this.messageBus = createMessageBus(this.config.messageBus);
+    this.messageBus = new MessageBus(this.config.messageBus);
     this.consensusEngine = createConsensusEngine(
       this.state.id.id,
       this.config.consensus.algorithm,
