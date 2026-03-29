@@ -224,3 +224,12 @@ export {
   type ToolScanResult,
   type ToolScanError,
 } from './registry/tool-registry.js';
+
+// ============================================================================
+// Built-in Tools
+// ============================================================================
+
+export {
+  httpTool,
+  builtinTools,
+} from './tools/index.js';
