@@ -64,7 +64,8 @@ function simulateAutoUpdate(projectRoot: string) {
     const scriptFiles = [
       'hooks.mjs', 'session-start-launcher.mjs', 'index-guidance.mjs',
       'build-embeddings.mjs', 'generate-code-map.mjs', 'semantic-search.mjs',
-      'index-tests.mjs', 'index-all.mjs',
+      'index-tests.mjs', 'index-patterns.mjs', 'index-all.mjs',
+      'setup-project.mjs',
     ];
     for (const file of scriptFiles) {
       const src = join(binDir, file);
