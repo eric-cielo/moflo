@@ -149,6 +149,29 @@ export interface StepCapability {
 }
 
 // ============================================================================
+// Prerequisites
+// ============================================================================
+
+/**
+ * A prerequisite that must be satisfied before a step command can execute.
+ * E.g., `gh` CLI installed and authenticated, Playwright browsers available.
+ */
+export interface Prerequisite {
+  readonly name: string;
+  readonly check: () => Promise<boolean>;
+  readonly installHint: string;
+  readonly url?: string;
+}
+
+/** Result of checking a single prerequisite. */
+export interface PrerequisiteResult {
+  readonly name: string;
+  readonly satisfied: boolean;
+  readonly installHint: string;
+  readonly url?: string;
+}
+
+// ============================================================================
 // Step Command Interface
 // ============================================================================
 
@@ -167,6 +190,8 @@ export interface StepCommand<TConfig extends StepConfig = StepConfig> {
   readonly capabilities?: readonly StepCapability[];
   /** Default MoFlo integration level for this command type. */
   readonly defaultMofloLevel?: MofloLevel;
+  /** External tool prerequisites required before this command can execute. */
+  readonly prerequisites?: readonly Prerequisite[];
 
   /** Validate may be async (e.g. checking credentials or remote state). */
   validate(config: TConfig, context: WorkflowContext): ValidationResult | Promise<ValidationResult>;

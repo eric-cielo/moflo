@@ -26,6 +26,7 @@ import { executeLoopIterations } from './loop-executor.js';
 import { rollbackSteps, type CompletedStep } from './rollback-orchestrator.js';
 import { buildCredentialPatterns, addCredentialPattern, collectCredentialNames } from './credential-masker.js';
 import { executeSingleStep, type StepExecutionState } from './step-executor.js';
+import { collectPrerequisites, checkPrerequisites, formatPrerequisiteErrors } from './prerequisite-checker.js';
 
 export class WorkflowRunner {
   constructor(
@@ -71,6 +72,20 @@ export class WorkflowRunner {
         message: 'Argument validation failed',
         details: argErrors,
       }]);
+    }
+
+    // Pre-flight prerequisite checks (Story #193)
+    if (!options.dryRun) {
+      const prerequisites = collectPrerequisites(definition, this.registry);
+      if (prerequisites.length > 0) {
+        const prereqResults = await checkPrerequisites(prerequisites);
+        if (prereqResults.some(r => !r.satisfied)) {
+          return this.failureResult(workflowId, startTime, [{
+            code: 'PREREQUISITES_FAILED',
+            message: formatPrerequisiteErrors(prereqResults),
+          }]);
+        }
+      }
     }
 
     if (options.dryRun) {

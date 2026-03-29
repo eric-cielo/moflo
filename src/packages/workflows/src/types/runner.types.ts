@@ -4,7 +4,7 @@
  * Types for the sequential workflow executor.
  */
 
-import type { StepOutput, ValidationError, MofloLevel } from './step-command.types.js';
+import type { StepOutput, ValidationError, MofloLevel, PrerequisiteResult } from './step-command.types.js';
 
 // ============================================================================
 // Error Codes
@@ -24,6 +24,7 @@ export type WorkflowErrorCode =
   | 'ROLLBACK_FAILED'
   | 'PAUSED_STATE_NOT_FOUND'
   | 'PAUSED_STATE_EXPIRED'
+  | 'PREREQUISITES_FAILED'
   | 'WORKFLOW_CANCELLED';
 
 // ============================================================================
@@ -81,6 +82,8 @@ export interface DryRunStepReport {
   readonly hasRollback: boolean;
   /** Resolved MoFlo integration level for this step. */
   readonly mofloLevel?: MofloLevel;
+  /** Prerequisite check results (populated during dry-run). */
+  readonly prerequisiteResults?: readonly PrerequisiteResult[];
 }
 
 export interface DryRunResult {

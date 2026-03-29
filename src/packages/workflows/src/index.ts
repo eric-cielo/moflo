@@ -28,6 +28,8 @@ export type {
   StepCapability,
   CapabilityType,
   MofloLevel,
+  Prerequisite,
+  PrerequisiteResult,
 } from './types/step-command.types.js';
 
 export {
@@ -57,6 +59,12 @@ export {
   type CapabilityViolation,
   type CapabilityCheckResult,
 } from './core/capability-validator.js';
+export {
+  collectPrerequisites,
+  checkPrerequisites,
+  formatPrerequisiteErrors,
+  commandExists,
+} from './core/prerequisite-checker.js';
 
 // ============================================================================
 // Built-in Commands
@@ -71,6 +79,7 @@ export {
   waitCommand,
   loopCommand,
   browserCommand,
+  githubCommand,
   builtinCommands,
 } from './commands/index.js';
 
