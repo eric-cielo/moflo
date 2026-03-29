@@ -58,12 +58,13 @@ Also available as `/fl` (shorthand alias).
 - Body has numbered issue references: `1. #123`
 - The issue has GitHub sub-issues (via `subIssues` API field)
 
-**Sequential Processing:** When an epic is selected:
-1. List all child stories/tasks (from checklist or linked issues)
-2. Process each story **one at a time** in order
-3. Each story goes through the full workflow (research -> ticket -> implement -> test -> PR)
-4. After each story's PR is created, move to the next story
-5. Continue until all stories are complete
+**Epic processing:** When an epic is detected, use the same logic as `flo epic run`:
+1. Extract stories using detection from `src/packages/cli/src/epic/detection.ts`
+2. Determine strategy from `moflo.yaml` config (`epic.default_strategy`), defaulting to `single-branch`
+3. For **single-branch**: create shared `epic/<number>-<slug>` branch, process each story via `/flo --epic-branch <branch> <issue>`, then create one consolidated PR
+4. For **auto-merge**: process each story via `/flo <issue>`, merge its PR, then proceed to next
+
+Individual stories within an epic are still processed via `/flo --epic-branch <branch> <issue>` (for single-branch) or `/flo <issue>` (for auto-merge).
 
 ### Combined Examples
 
@@ -399,119 +400,54 @@ gh issue comment <issue-number> --body "PR created: <pr-url>"
 
 ## Epic Handling
 
+### Unified Epic Processing
+
+When `/flo <issue>` detects an epic, it follows the same orchestration logic as `flo epic run`.
+The `/flo` skill does NOT shell out — it processes the epic inline within the current Claude session,
+following the strategy steps described below. This keeps the full context (memory, guidance, session state)
+available throughout story processing.
+
 ### Detecting Epics
 
 An issue is an **epic** if:
-1. It has the `epic` label, OR
+1. It has the `epic` label (or `tracking`, `parent`, `umbrella`), OR
 2. Its body contains `## Stories` or `## Tasks` sections, OR
-3. It has linked child issues (via `- [ ] #123` checklist format)
+3. It has linked child issues (via `- [ ] #123` checklist format), OR
+4. It has numbered issue references (e.g., `1. #123`), OR
+5. It has GitHub sub-issues (via `subIssues` API field)
+
+Detection uses `isEpicIssue()` from `src/packages/cli/src/epic/detection.ts`.
 
 ### Epic Strategies
-
-Epics support two branching strategies, configurable via `flo epic run <issue> --strategy <name>`:
 
 | Strategy | Default | Description |
 |----------|---------|-------------|
 | `single-branch` | **Yes** | One shared branch, one commit per story, one PR at the end |
 | `auto-merge` | No | Per-story branches and PRs, each auto-merged before the next story |
 
-### Strategy: single-branch (default)
+Strategy is determined by (in priority order):
+1. CLI flag: `--strategy auto-merge`
+2. Feature definition: `strategy` field in YAML
+3. Config: `epic.default_strategy` in `moflo.yaml`
+4. Default: `single-branch`
 
-All stories commit to one shared `epic/<number>-<slug>` branch. Only one consolidated PR is created after all stories complete.
+### How It Works
 
-1. DETECT EPIC - Check labels, parse body for ## Stories / ## Tasks, extract issue references
-2. LIST ALL STORIES - Extract from checklist, order top-to-bottom as listed
-3. CREATE EPIC BRANCH - `epic/<epic-number>-<slug>` from base branch
-4. SEQUENTIAL PROCESSING - For each story:
-   a. Run `/flo --epic-branch <branch> <issue> <flags>` (commit-only mode)
-   b. /flo implements, tests, and **commits** (no branch creation, no PR)
-   c. The commit message includes `Closes #<story-number>` so the sub-issue auto-closes on merge
-   d. After commit, **check off the story** in the epic body
-   e. Move to the next unchecked story
-5. CONSOLIDATED PR - After all stories complete, push the epic branch and create one PR
-   - PR title references the epic
-   - PR body lists all completed stories with their commits
-   - `Closes #<epic-number>` in the PR body
-6. COMPLETION - Epic marked as ready-for-review
+The `flo epic run` command:
+1. Fetches the epic issue and validates it
+2. Extracts and orders stories (topological sort for dependencies)
+3. Loads the appropriate workflow YAML template
+4. Runs via the workflow engine (WorkflowRunner)
+5. The workflow template handles branch creation, story iteration, PR creation, and checklist tracking
 
-### Strategy: auto-merge
+Individual stories within an epic are processed via `/flo --epic-branch <branch> <issue>`,
+which the workflow engine invokes automatically. The `--epic-branch` flag tells `/flo` to
+commit to the existing branch and skip branch creation and PR creation.
 
-Each story gets its own branch and PR. After each story's PR is created, it is squash-merged back to the base branch before the next story starts. This gives per-story review granularity but creates more PRs to manage.
+### Epic Checklist Tracking
 
-1. DETECT EPIC
-2. LIST ALL STORIES
-3. SEQUENTIAL PROCESSING - For each story:
-   a. Checkout and pull latest base branch
-   b. Run `/flo <issue> <flags>` (normal mode — creates branch + PR)
-   c. Auto-merge the PR (`--squash --delete-branch --admin` by default; controlled by `epic.admin_merge` in moflo.yaml)
-   d. Pull merged changes, check off the story in the epic body
-   e. Move to the next unchecked story
-4. COMPLETION - All stories checked off, epic marked as ready-for-review
-
-ONE STORY AT A TIME - NO PARALLEL STORY EXECUTION.
-Each story must complete before starting next.
-
-### Epic Checklist Tracking (MANDATORY)
-
-After each story's commit is made, update the epic body to check off that story:
-
-```bash
-# 1. Fetch current epic body
-EPIC_BODY=$(gh issue view <epic-number> --json body -q '.body')
-
-# 2. Replace "- [ ] #<story-number>" with "- [x] #<story-number>"
-UPDATED_BODY=$(echo "$EPIC_BODY" | sed 's/- \[ \] #<story-number>/- [x] #<story-number>/')
-
-# 3. Update the epic
-gh issue edit <epic-number> --body "$UPDATED_BODY"
-
-# 4. Comment on the epic with progress
-gh issue comment <epic-number> --body "✅ Story #<story-number> committed to epic branch"
-```
-
-This applies to ALL epics, regardless of how they were created:
-- Epics created by `/flo -t` complexity promotion
-- Epics created manually by users
-- Epics detected from existing issues
-
+The workflow templates automatically check off stories in the epic body after each commit.
 The checklist state (`[ ]` vs `[x]`) is the **single source of truth** for epic progress.
-
-### Epic Detection Code
-
-```javascript
-function isEpic(issue) {
-  // Label-based detection (case-insensitive)
-  const epicLabels = ['epic', 'tracking', 'parent', 'umbrella'];
-  if (issue.labels?.some(l => epicLabels.includes(l.name.toLowerCase()))) return true;
-  // Section-based detection
-  if (issue.body?.includes('## Stories') || issue.body?.includes('## Tasks')) return true;
-  // Checklist-linked issues: - [ ] #123 or - [x] #123
-  if (/- \[[ x]\] #\d+/.test(issue.body)) return true;
-  // Numbered issue references: 1. #123
-  if (/\d+\.\s+#\d+/.test(issue.body)) return true;
-  // GitHub sub-issues API
-  if (issue.subIssues?.length > 0) return true;
-  return false;
-}
-
-function extractStories(epicBody) {
-  const stories = [];
-  // Checklist format: - [ ] #123
-  const checklistPattern = /- \[[ ]\] #(\d+)/g;
-  let match;
-  while ((match = checklistPattern.exec(epicBody)) !== null) {
-    stories.push(parseInt(match[1]));
-  }
-  // Numbered format: 1. #123
-  if (stories.length === 0) {
-    const numberedPattern = /\d+\.\s+#(\d+)/g;
-    while ((match = numberedPattern.exec(epicBody)) !== null) {
-      stories.push(parseInt(match[1]));
-    }
-  }
-  return stories;
-}
-```
 
 ## Parse Arguments
 
@@ -632,7 +568,7 @@ if (workflowMode === "workflow") {
 | Mode | Command | Steps | Stops After |
 |------|---------|-------|-------------|
 | **Full** (default) | `/flo 123` | Research -> Ticket -> Implement -> Test -> Simplify -> PR | PR created |
-| **Epic** | `/flo 42` (epic) | For each story: Full workflow sequentially | All story PRs created |
+| **Epic** | `/flo 42` (epic) | Inline epic processing: extract stories, run each via /flo | All stories complete |
 | **Ticket** | `/flo -t 123` | Research -> Ticket | Issue updated |
 | **Research** | `/flo -r 123` | Research | Findings output |
 | **Workflow** | `/flo -wf sa ./src` | Load registry -> Resolve workflow -> Execute with args | Workflow complete |
