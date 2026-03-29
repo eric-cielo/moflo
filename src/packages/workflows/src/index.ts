@@ -54,6 +54,7 @@ export type {
 
 export { StepCommandRegistry } from './core/step-command-registry.js';
 export { WorkflowRunner } from './core/runner.js';
+export { ToolAccessorImpl } from './core/tool-accessor.js';
 export {
   checkCapabilities,
   type CapabilityViolation,
@@ -202,3 +203,34 @@ export type {
   ScheduleExecution,
   SchedulerOptions,
 } from './scheduler/schedule.types.js';
+
+// ============================================================================
+// Workflow Tools (external resource connectors)
+// ============================================================================
+
+export type {
+  WorkflowTool,
+  ToolView,
+  ToolOutput,
+  ToolAction,
+  ToolCapability,
+  ToolAccessor,
+  ToolRegistryEntry,
+  ToolSource,
+} from './types/workflow-tool.types.js';
+
+export {
+  WorkflowToolRegistry,
+  type ToolRegistryOptions,
+  type ToolScanResult,
+  type ToolScanError,
+} from './registry/tool-registry.js';
+
+// ============================================================================
+// Built-in Tools
+// ============================================================================
+
+export {
+  httpTool,
+  builtinTools,
+} from './tools/index.js';

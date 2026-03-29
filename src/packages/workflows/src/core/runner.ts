@@ -18,6 +18,8 @@ import type {
   StepResult, StepStatus, DryRunResult,
 } from '../types/runner.types.js';
 import { StepCommandRegistry } from './step-command-registry.js';
+import type { WorkflowToolRegistry } from '../registry/tool-registry.js';
+import { ToolAccessorImpl } from './tool-accessor.js';
 import { validateWorkflowDefinition, resolveArguments } from '../schema/validator.js';
 import { compareMofloLevels } from './capability-validator.js';
 import { DEFAULT_MAX_NESTING_DEPTH } from '../types/step-command.types.js';
@@ -29,11 +31,18 @@ import { executeSingleStep, type StepExecutionState } from './step-executor.js';
 import { collectPrerequisites, checkPrerequisites, formatPrerequisiteErrors } from './prerequisite-checker.js';
 
 export class WorkflowRunner {
+  private readonly toolAccessor?: ToolAccessorImpl;
+
   constructor(
     private readonly registry: StepCommandRegistry,
     private readonly credentials: CredentialAccessor,
     private readonly memory: MemoryAccessor,
-  ) {}
+    private readonly toolRegistry?: WorkflowToolRegistry,
+  ) {
+    if (toolRegistry) {
+      this.toolAccessor = new ToolAccessorImpl(toolRegistry);
+    }
+  }
 
   async run(
     definition: WorkflowDefinition,
@@ -292,7 +301,8 @@ export class WorkflowRunner {
     workflowId: string, stepIndex: number, signal?: AbortSignal,
   ): WorkflowContext {
     return { variables, args, credentials: this.credentials, memory: this.memory,
-      taskId: `${workflowId}-step-${stepIndex}`, workflowId, stepIndex, abortSignal: signal };
+      taskId: `${workflowId}-step-${stepIndex}`, workflowId, stepIndex, abortSignal: signal,
+      ...(this.toolAccessor ? { tools: this.toolAccessor } : {}) };
   }
 
   private async storeProgress(wfId: string, status: string, done: number, total: number) {
