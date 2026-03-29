@@ -216,43 +216,49 @@ describe('gate.cjs: check-dangerous-command', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('gate.cjs: check-before-agent', () => {
-  it('blocks when memory not searched (exit 2)', () => {
-    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+  it('blocks when tasks not created (exit 2)', () => {
+    writeState(tmpDir, { memoryRequired: true, memorySearched: true, tasksCreated: false });
     const r = runGate('check-before-agent', baseEnv(tmpDir));
     expect(r.exitCode).toBe(2);
-    expect(r.stderr).toContain('BLOCKED');
+    expect(r.stderr).toContain('Gate policy');
+    expect(r.stderr).toContain('TaskCreate');
+  });
+
+  it('blocks when memory not searched (exit 2)', () => {
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false, tasksCreated: true });
+    const r = runGate('check-before-agent', baseEnv(tmpDir));
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('Gate policy');
     expect(r.stderr).toContain('memory');
   });
 
-  it('allows when memory already searched', () => {
-    writeState(tmpDir, { memoryRequired: true, memorySearched: true });
+  it('blocks when both gates fail — TaskCreate checked first', () => {
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false, tasksCreated: false });
     const r = runGate('check-before-agent', baseEnv(tmpDir));
-    expect(r.exitCode).toBe(0);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('TaskCreate');
   });
 
-  it('allows when memory not required', () => {
-    writeState(tmpDir, { memoryRequired: false, memorySearched: false });
-    const r = runGate('check-before-agent', baseEnv(tmpDir));
-    expect(r.exitCode).toBe(0);
-  });
-
-  it('shows TaskCreate reminder when tasks not created', () => {
-    writeState(tmpDir, { memoryRequired: true, memorySearched: true, tasksCreated: false });
-    const r = runGate('check-before-agent', baseEnv(tmpDir));
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('REMINDER');
-    expect(r.stdout).toContain('TaskCreate');
-  });
-
-  it('no reminder when tasks already created', () => {
+  it('allows when both gates pass', () => {
     writeState(tmpDir, { memoryRequired: true, memorySearched: true, tasksCreated: true });
     const r = runGate('check-before-agent', baseEnv(tmpDir));
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).not.toContain('REMINDER');
+  });
+
+  it('allows when memory not required (tasks still required)', () => {
+    writeState(tmpDir, { memoryRequired: false, memorySearched: false, tasksCreated: true });
+    const r = runGate('check-before-agent', baseEnv(tmpDir));
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('blocks when memory not required but tasks not created', () => {
+    writeState(tmpDir, { memoryRequired: false, memorySearched: false, tasksCreated: false });
+    const r = runGate('check-before-agent', baseEnv(tmpDir));
+    expect(r.exitCode).toBe(2);
   });
 
   it('uses defaults when no state file exists', () => {
-    // Default: memoryRequired=true, memorySearched=false → should block
+    // Default: tasksCreated=false → should block on TaskCreate first
     const r = runGate('check-before-agent', baseEnv(tmpDir));
     expect(r.exitCode).toBe(2);
   });
@@ -270,7 +276,7 @@ describe('gate.cjs: check-before-scan', () => {
     env.TOOL_INPUT_path = 'src/';
     const r = runGate('check-before-scan', env);
     expect(r.exitCode).toBe(2);
-    expect(r.stderr).toContain('BLOCKED');
+    expect(r.stderr).toContain('Gate policy');
   });
 
   it('allows scan when memory searched', () => {
@@ -334,7 +340,7 @@ describe('gate.cjs: check-before-read', () => {
     env.TOOL_INPUT_file_path = '/project/.claude/guidance/rules.md';
     const r = runGate('check-before-read', env);
     expect(r.exitCode).toBe(2);
-    expect(r.stderr).toContain('BLOCKED');
+    expect(r.stderr).toContain('Gate policy');
   });
 
   it('blocks reading non-exempt files when memory not searched', () => {
@@ -343,7 +349,7 @@ describe('gate.cjs: check-before-read', () => {
     env.TOOL_INPUT_file_path = '/project/src/index.ts';
     const r = runGate('check-before-read', env);
     expect(r.exitCode).toBe(2);
-    expect(r.stderr).toContain('BLOCKED');
+    expect(r.stderr).toContain('Gate policy');
   });
 
   it('allows reading any file when memory searched', () => {
@@ -691,16 +697,16 @@ describe('gate.cjs: unknown commands', () => {
 describe('gate.cjs: moflo.yaml config', () => {
   it('disables memory_first gate when config says false', () => {
     writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  memory_first: false\n');
-    writeState(tmpDir, { memoryRequired: true, memorySearched: false });
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false, tasksCreated: true });
     const r = runGate('check-before-agent', baseEnv(tmpDir));
-    expect(r.exitCode).toBe(0); // Not blocked
+    expect(r.exitCode).toBe(0); // Not blocked — memory gate disabled
   });
 
-  it('disables task_create_first reminder when config says false', () => {
+  it('disables task_create_first gate when config says false', () => {
     writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  task_create_first: false\n');
     writeState(tmpDir, { memoryRequired: true, memorySearched: true, tasksCreated: false });
     const r = runGate('check-before-agent', baseEnv(tmpDir));
-    expect(r.stdout).not.toContain('REMINDER');
+    expect(r.exitCode).toBe(0); // Not blocked — task gate disabled
   });
 
   it('disables context tracking when config says false', () => {
@@ -737,7 +743,7 @@ describe('gate-hook.mjs: stdin integration', () => {
       hook_event_name: 'PreToolUse',
     }, baseEnv(tmpDir));
     expect(r.exitCode).toBe(2);
-    expect(r.stderr).toContain('BLOCKED');
+    expect(r.stderr).toContain('Dangerous command');
   });
 
   it('allows safe commands via stdin JSON', async () => {
@@ -778,7 +784,7 @@ describe('gate-hook.mjs: stdin integration', () => {
       hook_event_name: 'PreToolUse',
     }, baseEnv(tmpDir));
     expect(r.exitCode).toBe(2);
-    expect(r.stderr).toContain('BLOCKED');
+    expect(r.stderr).toContain('Gate policy');
   });
 });
 
@@ -945,9 +951,10 @@ describe('end-to-end: workflow lifecycle', () => {
     s = readState(tmpDir);
     expect(s.memoryRequired).toBe(true);
 
-    // 3. Agent spawn should be blocked (no memory search yet)
+    // 3. Agent spawn should be blocked (no TaskCreate yet)
     let r = runGate('check-before-agent', env);
     expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('TaskCreate');
 
     // 4. Memory search via bash
     env.TOOL_INPUT_command = 'npx moflo memory search --query "auth"';
@@ -955,22 +962,27 @@ describe('end-to-end: workflow lifecycle', () => {
     s = readState(tmpDir);
     expect(s.memorySearched).toBe(true);
 
-    // 5. Agent spawn should now be allowed
+    // 5. Agent spawn still blocked (TaskCreate not done yet)
     r = runGate('check-before-agent', env);
-    expect(r.exitCode).toBe(0);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('TaskCreate');
 
     // 6. Record task created
     runGate('record-task-created', env);
     s = readState(tmpDir);
     expect(s.tasksCreated).toBe(true);
 
-    // 7. Next prompt resets memorySearched
+    // 7. Agent spawn should now be allowed (both gates pass)
+    r = runGate('check-before-agent', env);
+    expect(r.exitCode).toBe(0);
+
+    // 8. Next prompt resets memorySearched
     env.CLAUDE_USER_PROMPT = 'now add tests for it';
     runGate('prompt-reminder', env);
     s = readState(tmpDir);
     expect(s.memorySearched).toBe(false);
 
-    // 8. Direct memory search via MCP (record-memory-searched)
+    // 9. Direct memory search via MCP (record-memory-searched)
     runGate('record-memory-searched', env);
     s = readState(tmpDir);
     expect(s.memorySearched).toBe(true);

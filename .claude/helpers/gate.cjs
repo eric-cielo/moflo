@@ -54,15 +54,15 @@ var TASK_RE = /\b(fix|bug|error|implement|add|create|build|write|refactor|debug|
 switch (command) {
   case 'check-before-agent': {
     var s = readState();
-    // Hard gate: memory must be searched
-    if (config.memory_first && s.memoryRequired && !s.memorySearched) {
-      process.stderr.write('BLOCKED: Search memory (mcp__moflo__memory_search) before spawning agents.\n');
+    // Hard gate: TaskCreate must be called before agent spawn
+    if (config.task_create_first && !s.tasksCreated) {
+      process.stderr.write('Gate policy: TaskCreate required before agent spawn.\n');
       process.exit(2);
     }
-    // Soft gate: TaskCreate recommended but not blocking
-    // (TaskCreate PostToolUse doesn't fire in Claude Code, so we can't track it reliably)
-    if (config.task_create_first && !s.tasksCreated) {
-      process.stdout.write('REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.\n');
+    // Hard gate: memory must be searched before agent spawn
+    if (config.memory_first && s.memoryRequired && !s.memorySearched) {
+      process.stderr.write('Gate policy: memory search required before agent spawn.\n');
+      process.exit(2);
     }
     break;
   }
@@ -72,7 +72,7 @@ switch (command) {
     if (s.memorySearched || !s.memoryRequired) break;
     var target = (process.env.TOOL_INPUT_pattern || '') + ' ' + (process.env.TOOL_INPUT_path || '');
     if (EXEMPT.some(function(p) { return target.indexOf(p) >= 0; })) break;
-    process.stderr.write('BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search with namespace "code-map", "patterns", "knowledge", or "guidance".\n');
+    process.stderr.write('Gate policy: memory search required before file exploration.\n');
     process.exit(2);
     break; // unreachable but prevents fall-through lint warnings
   }
@@ -85,7 +85,7 @@ switch (command) {
     // NOT exempt: .claude/guidance/ (guidance files must require memory search)
     var isGuidance = fp.indexOf('.claude/guidance/') >= 0 || fp.indexOf('.claude\\guidance\\') >= 0;
     if (!isGuidance && EXEMPT.some(function(p) { return fp.indexOf(p) >= 0; })) break;
-    process.stderr.write('BLOCKED: Search memory before reading files. Use mcp__moflo__memory_search with namespace "code-map", "patterns", "knowledge", or "guidance".\n');
+    process.stderr.write('Gate policy: memory search required before reading files.\n');
     process.exit(2);
     break; // unreachable but prevents fall-through lint warnings
   }

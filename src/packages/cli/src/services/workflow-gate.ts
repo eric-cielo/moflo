@@ -176,17 +176,19 @@ export class WorkflowGateService {
 
     const state = this.readState();
 
+    // Hard gate: TaskCreate must be called before agent spawn
     if (this.config.task_create_first && !state.tasksCreated) {
       return {
         allowed: false,
-        message: 'BLOCKED: Call TaskCreate before spawning agents.',
+        message: 'Gate policy: TaskCreate required before agent spawn.',
       };
     }
 
-    if (this.config.memory_first && !state.memorySearched) {
+    // Hard gate: memory must be searched before agent spawn
+    if (this.config.memory_first && state.memoryRequired && !state.memorySearched) {
       return {
         allowed: false,
-        message: 'BLOCKED: Search memory (mcp__moflo__memory_search) before spawning agents.',
+        message: 'Gate policy: memory search required before agent spawn.',
       };
     }
 
@@ -228,7 +230,7 @@ export class WorkflowGateService {
     if (now - lastBlocked > 2000) {
       state.lastBlockedAt = new Date(now).toISOString();
       this.writeState(state);
-      message = 'BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search with namespace "code-map", "patterns", "knowledge", or "guidance".';
+      message = 'Gate policy: memory search required before file exploration.';
     }
 
     return { allowed: false, message };
@@ -267,7 +269,7 @@ export class WorkflowGateService {
     if (now - lastBlocked > 2000) {
       state.lastBlockedAt = new Date(now).toISOString();
       this.writeState(state);
-      message = 'BLOCKED: Search memory before reading guidance files. Use mcp__moflo__memory_search with namespace "guidance".';
+      message = 'Gate policy: memory search required before reading guidance files.';
     }
 
     return { allowed: false, message };
