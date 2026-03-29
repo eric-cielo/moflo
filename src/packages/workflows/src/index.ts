@@ -202,3 +202,17 @@ export type {
   ScheduleExecution,
   SchedulerOptions,
 } from './scheduler/schedule.types.js';
+
+// ============================================================================
+// Workflow Tools (external resource connectors)
+// ============================================================================
+
+export type {
+  WorkflowTool,
+  ToolOutput,
+  ToolAction,
+  ToolCapability,
+  ToolAccessor,
+  ToolRegistryEntry,
+  ToolSource,
+} from './types/workflow-tool.types.js';
