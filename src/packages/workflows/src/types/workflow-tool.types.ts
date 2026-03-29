@@ -5,18 +5,13 @@
  * that step commands can consume via WorkflowContext dependency injection.
  */
 
-import type { JSONSchema } from './step-command.types.js';
+import type { JSONSchema, StepOutput } from './step-command.types.js';
 
 // ============================================================================
-// Tool Output
+// Tool Output (structurally identical to StepOutput)
 // ============================================================================
 
-export interface ToolOutput {
-  readonly success: boolean;
-  readonly data: Record<string, unknown>;
-  readonly error?: string;
-  readonly duration?: number;
-}
+export type ToolOutput = StepOutput;
 
 // ============================================================================
 // Tool Actions
