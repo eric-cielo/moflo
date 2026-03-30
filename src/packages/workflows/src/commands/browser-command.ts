@@ -2,11 +2,11 @@
  * Browser Step Command — Playwright web automation.
  *
  * Story #107: Implements the `browser` step command backed by Playwright.
+ * Issue #219: Refactored to delegate action execution to the `playwright`
+ * workflow tool. Security policy (SSRF, evaluate gating) remains here.
+ *
  * Playwright is an optional peer dependency. If not installed, the step
  * throws a clear error with install instructions.
- *
- * Config supports a sequential list of actions: open, click, fill, type,
- * select, get-text, get-value, screenshot, wait, evaluate, scroll, hover, press.
  *
  * Security hardening (Issues #176, #177):
  * - SSRF: URL validation blocks dangerous schemes and private/internal IPs.
@@ -16,9 +16,6 @@
  * pre-resolution pass before this command executes.
  */
 
-import { randomUUID } from 'node:crypto';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type {
   StepCommand,
   StepConfig,
@@ -31,6 +28,13 @@ import type {
 } from '../types/step-command.types.js';
 import { validateBrowserUrl } from './browser-url-validator.js';
 import { enforceScope, formatViolations } from '../core/capability-validator.js';
+import {
+  loadPlaywright,
+  executeBrowserAction,
+  SUPPORTED_ACTIONS,
+  type PlaywrightBrowser,
+  type BrowserActionParams,
+} from '../tools/playwright.js';
 
 /** Typed config for the browser step command. */
 export interface BrowserStepConfig extends StepConfig {
@@ -41,12 +45,6 @@ export interface BrowserStepConfig extends StepConfig {
 
 // ── Action types ──────────────────────────────────────────────────────────
 
-const SUPPORTED_ACTIONS = [
-  'open', 'click', 'fill', 'type', 'select',
-  'get-text', 'get-value', 'screenshot', 'wait',
-  'evaluate', 'scroll', 'hover', 'press',
-] as const;
-
 type ActionName = (typeof SUPPORTED_ACTIONS)[number];
 
 export interface BrowserAction {
@@ -55,196 +53,21 @@ export interface BrowserAction {
   selector?: string;
   value?: string;
   outputVar?: string;
-  // click options
   button?: 'left' | 'right' | 'middle';
   count?: number;
-  // scroll options
   direction?: 'up' | 'down' | 'left' | 'right';
   amount?: number;
-  // press options
   key?: string;
-  // evaluate options
   expression?: string;
-  // wait options
   text?: string;
   urlPattern?: string;
   timeout?: number;
 }
 
-// ── Playwright dynamic import ─────────────────────────────────────────────
-
-interface PlaywrightModule {
-  chromium: {
-    launch(opts?: { headless?: boolean }): Promise<PlaywrightBrowser>;
-  };
-}
-
-interface PlaywrightBrowser {
-  newPage(): Promise<PlaywrightPage>;
-  close(): Promise<void>;
-}
-
-interface PlaywrightPage {
-  goto(url: string, opts?: { timeout?: number }): Promise<unknown>;
-  click(selector: string, opts?: { button?: string; clickCount?: number }): Promise<void>;
-  fill(selector: string, value: string): Promise<void>;
-  type(selector: string, text: string): Promise<void>;
-  selectOption(selector: string, value: string): Promise<string[]>;
-  textContent(selector: string): Promise<string | null>;
-  inputValue(selector: string): Promise<string>;
-  screenshot(opts?: { path?: string; fullPage?: boolean }): Promise<Buffer>;
-  waitForSelector(selector: string, opts?: { timeout?: number }): Promise<unknown>;
-  waitForURL(url: string | RegExp, opts?: { timeout?: number }): Promise<void>;
-  evaluate<T>(fn: string | (() => T)): Promise<T>;
-  hover(selector: string): Promise<void>;
-  keyboard: { press(key: string): Promise<void> };
-  mouse: { wheel(deltaX: number, deltaY: number): Promise<void> };
-  close(): Promise<void>;
-}
-
-let cachedPlaywright: PlaywrightModule | null = null;
-
-async function loadPlaywright(): Promise<PlaywrightModule> {
-  if (cachedPlaywright) return cachedPlaywright;
-  try {
-    cachedPlaywright = await import('playwright') as unknown as PlaywrightModule;
-    return cachedPlaywright;
-  } catch {
-    throw new Error(
-      'Browser step requires Playwright. Install with:\n' +
-      '  npm install playwright\n' +
-      '  npx playwright install chromium\n' +
-      'Playwright is an optional peer dependency of moflo.',
-    );
-  }
-}
-
 // ── Evaluate capability check ────────────────────────────────────────────
 
-/** Check whether the context grants the browser:evaluate capability. */
 function hasEvaluateCapability(context: WorkflowContext): boolean {
   return context.effectiveCaps?.some(c => c.type === 'browser:evaluate') === true;
-}
-
-// ── Action executor ───────────────────────────────────────────────────────
-
-async function executeAction(
-  page: PlaywrightPage,
-  action: BrowserAction,
-  outputs: Record<string, unknown>,
-  defaultTimeout: number,
-  context: WorkflowContext,
-): Promise<void> {
-  const timeout = action.timeout ?? defaultTimeout;
-
-  switch (action.action) {
-    case 'open': {
-      if (!action.url) throw new Error('open action requires url');
-      validateBrowserUrl(action.url);
-      // Enforce net capability scope (Issue #178)
-      if (context.effectiveCaps) {
-        const violation = enforceScope(context.effectiveCaps, 'net', action.url, context.taskId, 'browser');
-        if (violation) throw new Error(formatViolations([violation]));
-      }
-      await page.goto(action.url, { timeout });
-      break;
-    }
-
-    case 'click':
-      if (!action.selector) throw new Error('click action requires selector');
-      await page.click(action.selector, {
-        button: action.button ?? 'left',
-        clickCount: action.count ?? 1,
-      });
-      break;
-
-    case 'fill':
-      if (!action.selector) throw new Error('fill action requires selector');
-      await page.fill(action.selector, action.value ?? '');
-      break;
-
-    case 'type':
-      if (!action.selector) throw new Error('type action requires selector');
-      await page.type(action.selector, action.value ?? '');
-      break;
-
-    case 'select':
-      if (!action.selector) throw new Error('select action requires selector');
-      await page.selectOption(action.selector, action.value ?? '');
-      break;
-
-    case 'get-text': {
-      if (!action.selector) throw new Error('get-text action requires selector');
-      const text = await page.textContent(action.selector);
-      if (action.outputVar) outputs[action.outputVar] = text ?? '';
-      break;
-    }
-
-    case 'get-value': {
-      if (!action.selector) throw new Error('get-value action requires selector');
-      const value = await page.inputValue(action.selector);
-      if (action.outputVar) outputs[action.outputVar] = value;
-      break;
-    }
-
-    case 'screenshot': {
-      const screenshotPath = join(tmpdir(), `moflo-screenshot-${randomUUID()}.png`);
-      await page.screenshot({ path: screenshotPath, fullPage: true });
-      if (action.outputVar) outputs[action.outputVar] = screenshotPath;
-      else outputs.screenshot_path = screenshotPath;
-      break;
-    }
-
-    case 'wait':
-      if (action.selector) {
-        await page.waitForSelector(action.selector, { timeout });
-      } else if (action.urlPattern) {
-        // Validate plain-string URL patterns against SSRF rules
-        if (!action.urlPattern.startsWith('/') && !action.urlPattern.includes('*')) {
-          validateBrowserUrl(action.urlPattern);
-        }
-        await page.waitForURL(action.urlPattern, { timeout });
-      } else if (action.text) {
-        await page.waitForSelector(`text=${action.text}`, { timeout });
-      } else {
-        throw new Error('wait action requires selector, text, or urlPattern');
-      }
-      break;
-
-    case 'evaluate': {
-      // Gate behind explicit capability — fixes GitHub Issue #176
-      if (!hasEvaluateCapability(context)) {
-        throw new Error("evaluate action requires explicit 'browser:evaluate' capability");
-      }
-      const expression = action.expression ?? action.value;
-      if (!expression) throw new Error('evaluate action requires expression or value');
-      const evalResult = await page.evaluate(expression);
-      if (action.outputVar) outputs[action.outputVar] = evalResult;
-      break;
-    }
-
-    case 'scroll': {
-      const dir = action.direction ?? 'down';
-      const amt = action.amount ?? 500;
-      const deltaX = dir === 'left' ? -amt : dir === 'right' ? amt : 0;
-      const deltaY = dir === 'up' ? -amt : dir === 'down' ? amt : 0;
-      await page.mouse.wheel(deltaX, deltaY);
-      break;
-    }
-
-    case 'hover':
-      if (!action.selector) throw new Error('hover action requires selector');
-      await page.hover(action.selector);
-      break;
-
-    case 'press':
-      if (!action.key) throw new Error('press action requires key');
-      await page.keyboard.press(action.key);
-      break;
-
-    default:
-      throw new Error(`Unknown browser action: ${(action as BrowserAction).action}`);
-  }
 }
 
 // ── Prerequisites ────────────────────────────────────────────────────────
@@ -343,7 +166,8 @@ export const browserCommand: StepCommand<BrowserStepConfig> = {
     const defaultTimeout = config.timeout ?? 30_000;
     const outputs: Record<string, unknown> = {};
 
-    // Pre-flight: check capabilities and URL validity before loading Playwright
+    // Pre-flight: check all security constraints before loading Playwright.
+    // This catches policy violations early without paying browser launch cost.
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
       try {
@@ -352,10 +176,14 @@ export const browserCommand: StepCommand<BrowserStepConfig> = {
         }
         if (action.action === 'open' && action.url) {
           validateBrowserUrl(action.url);
-          // Enforce net capability scope at pre-flight (Issue #178)
           if (context.effectiveCaps) {
             const violation = enforceScope(context.effectiveCaps, 'net', action.url, context.taskId, 'browser');
             if (violation) throw new Error(formatViolations([violation]));
+          }
+        }
+        if (action.action === 'wait' && action.urlPattern) {
+          if (!action.urlPattern.startsWith('/') && !action.urlPattern.includes('*')) {
+            validateBrowserUrl(action.urlPattern);
           }
         }
       } catch (err) {
@@ -368,7 +196,7 @@ export const browserCommand: StepCommand<BrowserStepConfig> = {
       }
     }
 
-    let playwright: PlaywrightModule;
+    let playwright: Awaited<ReturnType<typeof loadPlaywright>>;
     try {
       playwright = await loadPlaywright();
     } catch (err) {
@@ -388,7 +216,13 @@ export const browserCommand: StepCommand<BrowserStepConfig> = {
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i];
         try {
-          await executeAction(page, action, outputs, defaultTimeout, context);
+          // Security already validated in pre-flight above; delegate to tool
+          await executeBrowserAction(
+            page,
+            action as BrowserActionParams,
+            outputs,
+            defaultTimeout,
+          );
         } catch (err) {
           return {
             success: false,
