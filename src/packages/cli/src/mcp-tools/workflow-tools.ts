@@ -1,184 +1,324 @@
 /**
  * Workflow MCP Tools for CLI
  *
- * Tool definitions for workflow automation and orchestration.
+ * Wired to the real workflow engine via runner-bridge.ts.
+ * Story #225: Replace mock file-based store with engine integration.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { MCPTool } from './types.js';
 
-// Storage paths
-const STORAGE_DIR = '.claude-flow';
-const WORKFLOW_DIR = 'workflows';
-const WORKFLOW_FILE = 'store.json';
-
-interface WorkflowStep {
-  stepId: string;
-  name: string;
-  type: 'task' | 'condition' | 'parallel' | 'loop' | 'wait';
-  config: Record<string, unknown>;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
-  result?: unknown;
-  startedAt?: string;
-  completedAt?: string;
+/** Walk up from cwd to find the nearest directory containing package.json or .git. */
+function findProjectRoot(): string {
+  let dir = process.cwd();
+  while (true) {
+    if (existsSync(resolve(dir, 'package.json')) || existsSync(resolve(dir, '.git'))) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return process.cwd(); // reached filesystem root
+    dir = parent;
+  }
 }
 
-interface WorkflowRecord {
+// ============================================================================
+// Engine Bridge (dynamic import to avoid cross-package static deps)
+// ============================================================================
+
+/** Resolved engine module — cached after first successful import. */
+let engineModule: EngineModule | null = null;
+
+interface EngineModule {
+  bridgeRunWorkflow: (
+    content: string,
+    sourceFile: string | undefined,
+    args: Record<string, unknown>,
+    options?: { dryRun?: boolean },
+  ) => Promise<WorkflowResultLike>;
+  bridgeExecuteWorkflow: (
+    definition: WorkflowDefinitionLike,
+    args: Record<string, unknown>,
+    options?: { workflowId?: string },
+  ) => Promise<WorkflowResultLike>;
+  bridgeCancelWorkflow: (workflowId: string) => boolean;
+  bridgeIsRunning: (workflowId: string) => boolean;
+  bridgeActiveWorkflows: () => string[];
+  WorkflowRegistry: new (options?: Record<string, unknown>) => WorkflowRegistryLike;
+  runWorkflowFromContent: (
+    content: string,
+    sourceFile: string | undefined,
+    options?: Record<string, unknown>,
+  ) => Promise<WorkflowResultLike>;
+}
+
+/** Minimal WorkflowResult shape to avoid direct type import. */
+interface WorkflowResultLike {
+  workflowId: string;
+  success: boolean;
+  steps: Array<{
+    stepId: string;
+    stepType: string;
+    status: string;
+    output?: { success: boolean; data?: unknown; error?: string };
+    error?: string;
+    errorCode?: string;
+    duration: number;
+  }>;
+  outputs: Record<string, unknown>;
+  errors: Array<{ stepId?: string; code: string; message: string; details?: unknown[] }>;
+  duration: number;
+  cancelled: boolean;
+}
+
+interface WorkflowDefinitionLike {
+  name: string;
+  abbreviation?: string;
+  description?: string;
+  version?: string;
+  arguments?: Record<string, unknown>;
+  steps: readonly Record<string, unknown>[];
+  mofloLevel?: string;
+}
+
+interface WorkflowRegistryLike {
+  load(): { workflows: ReadonlyMap<string, { definition: WorkflowDefinitionLike; sourceFile: string; tier: string }>; errors: readonly { file: string; message: string }[] };
+  resolve(query: string): { definition: WorkflowDefinitionLike; sourceFile: string; tier: string } | undefined;
+  list(): readonly { name: string; abbreviation?: string; description?: string; tier: string }[];
+  info(query: string): {
+    name: string; abbreviation?: string; description?: string; version?: string;
+    sourceFile: string; tier: string; arguments: Record<string, unknown>;
+    stepCount: number; stepTypes: readonly string[];
+  } | undefined;
+}
+
+async function getEngine(): Promise<EngineModule> {
+  if (engineModule) return engineModule;
+
+  try {
+    // Resolve relative to this file's compiled location (same pattern as epic/runner-adapter.ts)
+    const mod = await import(
+      /* webpackIgnore: true */
+      '../../../../packages/workflows/dist/index.js'
+    );
+    engineModule = mod as unknown as EngineModule;
+    return engineModule;
+  } catch {
+    throw new Error(
+      'Workflow engine not available. Run `npm run build` to compile the workflows package.',
+    );
+  }
+}
+
+// ============================================================================
+// In-memory result tracking (for status queries between runs)
+// ============================================================================
+
+interface TrackedWorkflow {
   workflowId: string;
   name: string;
   description?: string;
-  steps: WorkflowStep[];
-  status: 'draft' | 'ready' | 'running' | 'paused' | 'completed' | 'failed';
-  currentStep: number;
-  variables: Record<string, unknown>;
-  createdAt: string;
-  startedAt?: string;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  result?: WorkflowResultLike;
+  startedAt: string;
   completedAt?: string;
-  error?: string;
 }
 
-interface WorkflowStore {
-  workflows: Record<string, WorkflowRecord>;
-  templates: Record<string, WorkflowRecord>;
-  version: string;
+const MAX_TRACKED = 100;
+const trackedWorkflows = new Map<string, TrackedWorkflow>();
+
+function evictOldest(): void {
+  if (trackedWorkflows.size <= MAX_TRACKED) return;
+  // Map iteration order is insertion order — delete the oldest
+  const first = trackedWorkflows.keys().next().value;
+  if (first) trackedWorkflows.delete(first);
 }
 
-function getWorkflowDir(): string {
-  return join(process.cwd(), STORAGE_DIR, WORKFLOW_DIR);
+function trackStart(workflowId: string, name: string, description?: string): TrackedWorkflow {
+  const tracked: TrackedWorkflow = {
+    workflowId,
+    name,
+    description,
+    status: 'running',
+    startedAt: new Date().toISOString(),
+  };
+  trackedWorkflows.set(workflowId, tracked);
+  evictOldest();
+  return tracked;
 }
 
-function getWorkflowPath(): string {
-  return join(getWorkflowDir(), WORKFLOW_FILE);
+function trackResult(tracked: TrackedWorkflow, result: WorkflowResultLike): void {
+  tracked.status = result.cancelled ? 'cancelled' : result.success ? 'completed' : 'failed';
+  tracked.result = result;
+  tracked.completedAt = new Date().toISOString();
 }
 
-function ensureWorkflowDir(): void {
-  const dir = getWorkflowDir();
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-}
+/** Execute a definition via the engine with tracking and error handling. */
+async function executeAndTrack(
+  engine: EngineModule,
+  definition: WorkflowDefinitionLike,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const workflowId = `wf-${Date.now()}`;
+  const tracked = trackStart(workflowId, definition.name, definition.description);
 
-function loadWorkflowStore(): WorkflowStore {
   try {
-    const path = getWorkflowPath();
-    if (existsSync(path)) {
-      const data = readFileSync(path, 'utf-8');
-      return JSON.parse(data);
-    }
-  } catch {
-    // Return default store on error
+    const result = await engine.bridgeExecuteWorkflow(definition, args, { workflowId });
+    trackResult(tracked, result);
+    return serializeResult(result);
+  } catch (err) {
+    tracked.status = 'failed';
+    tracked.completedAt = new Date().toISOString();
+    return { workflowId, error: errorMsg(err) };
   }
-  return { workflows: {}, templates: {}, version: '3.0.0' };
 }
 
-function saveWorkflowStore(store: WorkflowStore): void {
-  ensureWorkflowDir();
-  writeFileSync(getWorkflowPath(), JSON.stringify(store, null, 2), 'utf-8');
+// ============================================================================
+// Registry singleton (created once per session)
+// ============================================================================
+
+let registryInstance: WorkflowRegistryLike | null = null;
+
+async function getRegistry(): Promise<WorkflowRegistryLike> {
+  if (registryInstance) return registryInstance;
+
+  const engine = await getEngine();
+  const shippedDir = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    '../../../../packages/workflows/definitions',
+  );
+
+  const projectRoot = findProjectRoot();
+  registryInstance = new engine.WorkflowRegistry({
+    shippedDir,
+    userDirs: [
+      resolve(projectRoot, 'workflows'),
+      resolve(projectRoot, '.claude/workflows'),
+    ],
+  });
+
+  return registryInstance;
 }
+
+// ============================================================================
+// Serialization helpers
+// ============================================================================
+
+/** Extract error message from an unknown catch value. */
+function errorMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Serialize a single step for MCP responses. */
+function serializeStep(s: WorkflowResultLike['steps'][number]) {
+  return {
+    stepId: s.stepId,
+    stepType: s.stepType,
+    status: s.status,
+    duration: s.duration,
+    error: s.error,
+    errorCode: s.errorCode,
+    outputData: s.output?.data,
+  };
+}
+
+/** Count succeeded steps in a result. */
+function countCompleted(result: WorkflowResultLike): number {
+  return result.steps.filter(s => s.status === 'succeeded').length;
+}
+
+/** Serialize a WorkflowResult for MCP response (typed errors, step details). */
+function serializeResult(result: WorkflowResultLike): Record<string, unknown> {
+  return {
+    workflowId: result.workflowId,
+    success: result.success,
+    cancelled: result.cancelled,
+    duration: result.duration,
+    stepCount: result.steps.length,
+    steps: result.steps.map(serializeStep),
+    outputs: result.outputs,
+    errors: result.errors.map(e => ({
+      stepId: e.stepId,
+      code: e.code,
+      message: e.message,
+    })),
+  };
+}
+
+// ============================================================================
+// MCP Tool Definitions
+// ============================================================================
 
 export const workflowTools: MCPTool[] = [
+  // --------------------------------------------------------------------------
+  // workflow_run — Run a workflow from a file, registry name, or template
+  // --------------------------------------------------------------------------
   {
     name: 'workflow_run',
-    description: 'Run a workflow from a template or file',
+    description: 'Run a workflow from a YAML/JSON file, registry name/abbreviation, or inline content',
     category: 'workflow',
     inputSchema: {
       type: 'object',
       properties: {
-        template: { type: 'string', description: 'Template name to run' },
-        file: { type: 'string', description: 'Workflow file path' },
-        task: { type: 'string', description: 'Task description' },
-        options: {
-          type: 'object',
-          description: 'Workflow options',
-          properties: {
-            parallel: { type: 'boolean', description: 'Run stages in parallel' },
-            maxAgents: { type: 'number', description: 'Maximum agents to use' },
-            timeout: { type: 'number', description: 'Timeout in seconds' },
-            dryRun: { type: 'boolean', description: 'Validate without executing' },
-          },
-        },
+        name: { type: 'string', description: 'Workflow name or abbreviation (resolved via registry)' },
+        file: { type: 'string', description: 'Path to a YAML/JSON workflow definition file' },
+        content: { type: 'string', description: 'Inline YAML/JSON workflow content' },
+        args: { type: 'object', description: 'Arguments to pass to the workflow' },
+        dryRun: { type: 'boolean', description: 'Validate without executing' },
       },
     },
     handler: async (input) => {
-      const store = loadWorkflowStore();
-      const template = input.template as string | undefined;
-      const task = input.task as string | undefined;
-      const options = (input.options as Record<string, unknown>) || {};
-      const dryRun = options.dryRun as boolean | undefined;
+      const args = (input.args as Record<string, unknown>) ?? {};
+      const dryRun = input.dryRun as boolean | undefined;
 
-      // Build workflow from template or inline
-      const workflowId = `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const stages: Array<{ name: string; status: string; agents: string[]; duration?: number }> = [];
-
-      // Generate stages based on template
-      const templateName = template || 'custom';
-      const stageNames: string[] = (() => {
-        switch (templateName) {
-          case 'feature':
-            return ['Research', 'Design', 'Implement', 'Test', 'Review'];
-          case 'bugfix':
-            return ['Investigate', 'Fix', 'Test', 'Review'];
-          case 'refactor':
-            return ['Analyze', 'Refactor', 'Test', 'Review'];
-          case 'security':
-            return ['Scan', 'Analyze', 'Report'];
-          default:
-            return ['Execute'];
+      if (input.name) {
+        // Resolve via registry and execute the parsed definition directly
+        const registry = await getRegistry();
+        const loaded = registry.resolve(input.name as string);
+        if (!loaded) {
+          return { error: `Workflow not found in registry: ${input.name}` };
         }
-      })();
-
-      for (const name of stageNames) {
-        stages.push({
-          name,
-          status: dryRun ? 'validated' : 'pending',
-          agents: [],
-        });
+        const engine = await getEngine();
+        return executeAndTrack(engine, loaded.definition, args);
       }
 
-      if (!dryRun) {
-        // Create and save the workflow
-        const steps: WorkflowStep[] = stageNames.map((name, i) => ({
-          stepId: `step-${i + 1}`,
-          name,
-          type: 'task' as const,
-          config: { task: task || name },
-          status: 'pending' as const,
-        }));
+      // Determine raw content source
+      let content: string;
+      let sourceFile: string | undefined;
+      let workflowName: string;
 
-        const workflow: WorkflowRecord = {
-          workflowId,
-          name: task || `${templateName} workflow`,
-          description: task,
-          steps,
-          status: 'running',
-          currentStep: 0,
-          variables: { template: templateName, ...options },
-          createdAt: new Date().toISOString(),
-          startedAt: new Date().toISOString(),
-        };
-
-        store.workflows[workflowId] = workflow;
-        saveWorkflowStore(store);
+      if (input.content) {
+        content = input.content as string;
+        workflowName = 'inline';
+      } else if (input.file) {
+        const filePath = resolve(findProjectRoot(), input.file as string);
+        try {
+          content = readFileSync(filePath, 'utf-8');
+        } catch {
+          return { error: `Workflow file not found or unreadable: ${filePath}` };
+        }
+        sourceFile = filePath;
+        workflowName = String(input.file);
+      } else {
+        return { error: 'One of name, file, or content is required' };
       }
 
-      return {
-        workflowId,
-        template: templateName,
-        status: dryRun ? 'validated' : 'running',
-        stages,
-        metrics: {
-          totalStages: stages.length,
-          completedStages: 0,
-          agentsSpawned: 0,
-          estimatedDuration: `${stages.length * 30}s`,
-        },
-      };
+      // Run from raw content via bridge
+      const engine = await getEngine();
+      const result = await engine.bridgeRunWorkflow(content, sourceFile, args, { dryRun });
+      const tracked = trackStart(result.workflowId, workflowName);
+      trackResult(tracked, result);
+      return serializeResult(result);
     },
   },
+
+  // --------------------------------------------------------------------------
+  // workflow_create — Create a workflow definition (returns parseable YAML)
+  // --------------------------------------------------------------------------
   {
     name: 'workflow_create',
-    description: 'Create a new workflow',
+    description: 'Create a workflow definition from steps (returns YAML content)',
     category: 'workflow',
     inputSchema: {
       type: 'object',
@@ -191,121 +331,89 @@ export const workflowTools: MCPTool[] = [
           items: {
             type: 'object',
             properties: {
-              name: { type: 'string' },
-              type: { type: 'string', enum: ['task', 'condition', 'parallel', 'loop', 'wait'] },
+              id: { type: 'string' },
+              type: { type: 'string' },
               config: { type: 'object' },
             },
           },
         },
-        variables: { type: 'object', description: 'Initial variables' },
+        arguments: { type: 'object', description: 'Workflow argument definitions' },
       },
       required: ['name'],
     },
     handler: async (input) => {
-      const store = loadWorkflowStore();
-      const workflowId = `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const name = input.name as string;
+      const description = input.description as string | undefined;
+      const steps = (input.steps as Array<{ id?: string; type?: string; config?: Record<string, unknown> }>) ?? [];
+      const args = input.arguments as Record<string, unknown> | undefined;
 
-      const steps: WorkflowStep[] = ((input.steps as Array<{name?: string; type?: string; config?: Record<string, unknown>}>) || []).map((s, i) => ({
-        stepId: `step-${i + 1}`,
-        name: s.name || `Step ${i + 1}`,
-        type: (s.type as WorkflowStep['type']) || 'task',
-        config: s.config || {} as Record<string, unknown>,
-        status: 'pending' as const,
-      }));
-
-      const workflow: WorkflowRecord = {
-        workflowId,
-        name: input.name as string,
-        description: input.description as string,
-        steps,
-        status: steps.length > 0 ? 'ready' : 'draft',
-        currentStep: 0,
-        variables: (input.variables as Record<string, unknown>) || {},
-        createdAt: new Date().toISOString(),
+      // Build a WorkflowDefinition-compatible object
+      const definition: WorkflowDefinitionLike = {
+        name,
+        description,
+        arguments: args,
+        steps: steps.map((s, i) => ({
+          id: s.id ?? `step-${i + 1}`,
+          type: s.type ?? 'bash',
+          config: s.config ?? {},
+        })),
       };
 
-      store.workflows[workflowId] = workflow;
-      saveWorkflowStore(store);
-
       return {
-        workflowId,
-        name: workflow.name,
-        status: workflow.status,
-        stepCount: steps.length,
-        createdAt: workflow.createdAt,
+        name,
+        description,
+        stepCount: definition.steps.length,
+        definition,
+        message: 'Workflow definition created. Pass it to workflow_execute or workflow_run to run it.',
       };
     },
   },
+
+  // --------------------------------------------------------------------------
+  // workflow_execute — Execute a workflow definition directly
+  // --------------------------------------------------------------------------
   {
     name: 'workflow_execute',
-    description: 'Execute a workflow',
+    description: 'Execute a workflow from a definition object',
     category: 'workflow',
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Workflow ID to execute' },
-        variables: { type: 'object', description: 'Runtime variables to inject' },
-        startFromStep: { type: 'number', description: 'Step to start from (0-indexed)' },
+        definition: { type: 'object', description: 'WorkflowDefinition object (from workflow_create or parsed YAML)' },
+        args: { type: 'object', description: 'Runtime arguments' },
+        dryRun: { type: 'boolean', description: 'Validate without executing' },
       },
-      required: ['workflowId'],
+      required: ['definition'],
     },
     handler: async (input) => {
-      const store = loadWorkflowStore();
-      const workflowId = input.workflowId as string;
-      const workflow = store.workflows[workflowId];
+      const definition = input.definition as WorkflowDefinitionLike;
+      const args = (input.args as Record<string, unknown>) ?? {};
 
-      if (!workflow) {
-        return { workflowId, error: 'Workflow not found' };
+      if (!definition || !definition.name || !definition.steps) {
+        return { error: 'Invalid definition: must have name and steps' };
       }
 
-      if (workflow.status === 'running') {
-        return { workflowId, error: 'Workflow already running' };
+      if (input.dryRun) {
+        const engine = await getEngine();
+        const content = JSON.stringify(definition);
+        const result = await engine.runWorkflowFromContent(content, undefined, {
+          dryRun: true,
+          args,
+        });
+        return serializeResult(result);
       }
 
-      // Inject runtime variables
-      if (input.variables) {
-        workflow.variables = { ...workflow.variables, ...(input.variables as Record<string, unknown>) };
-      }
-
-      workflow.status = 'running';
-      workflow.startedAt = new Date().toISOString();
-      workflow.currentStep = (input.startFromStep as number) || 0;
-
-      // Execute steps (in real implementation, this would be async/event-driven)
-      const results: Array<{ stepId: string; status: string }> = [];
-      for (let i = workflow.currentStep; i < workflow.steps.length; i++) {
-        const step = workflow.steps[i];
-        step.status = 'running';
-        step.startedAt = new Date().toISOString();
-
-        // For now, mark as completed (real implementation would execute actual tasks)
-        step.status = 'completed';
-        step.completedAt = new Date().toISOString();
-        step.result = { executed: true, stepType: step.type };
-
-        results.push({ stepId: step.stepId, status: step.status });
-        workflow.currentStep = i + 1;
-      }
-
-      workflow.status = 'completed';
-      workflow.completedAt = new Date().toISOString();
-
-      saveWorkflowStore(store);
-
-      return {
-        workflowId,
-        status: workflow.status,
-        stepsExecuted: results.length,
-        results,
-        startedAt: workflow.startedAt,
-        completedAt: workflow.completedAt,
-        duration: new Date(workflow.completedAt).getTime() - new Date(workflow.startedAt!).getTime(),
-      };
+      const engine = await getEngine();
+      return executeAndTrack(engine, definition, args);
     },
   },
+
+  // --------------------------------------------------------------------------
+  // workflow_status — Get status of a tracked workflow
+  // --------------------------------------------------------------------------
   {
     name: 'workflow_status',
-    description: 'Get workflow status',
+    description: 'Get workflow execution status',
     category: 'workflow',
     inputSchema: {
       type: 'object',
@@ -316,94 +424,120 @@ export const workflowTools: MCPTool[] = [
       required: ['workflowId'],
     },
     handler: async (input) => {
-      const store = loadWorkflowStore();
       const workflowId = input.workflowId as string;
-      const workflow = store.workflows[workflowId];
+      const tracked = trackedWorkflows.get(workflowId);
 
-      if (!workflow) {
+      // Only check engine if it's already loaded (avoid unnecessary dynamic import)
+      const isRunning = engineModule?.bridgeIsRunning(workflowId) ?? false;
+
+      if (!tracked && !isRunning) {
         return { workflowId, error: 'Workflow not found' };
       }
 
-      const completedSteps = workflow.steps.filter(s => s.status === 'completed').length;
-      const progress = workflow.steps.length > 0 ? (completedSteps / workflow.steps.length) * 100 : 0;
-
-      const status = {
-        workflowId: workflow.workflowId,
-        name: workflow.name,
-        status: workflow.status,
-        progress,
-        currentStep: workflow.currentStep,
-        totalSteps: workflow.steps.length,
-        completedSteps,
-        createdAt: workflow.createdAt,
-        startedAt: workflow.startedAt,
-        completedAt: workflow.completedAt,
-      };
-
-      if (input.verbose) {
+      if (isRunning) {
         return {
-          ...status,
-          description: workflow.description,
-          variables: workflow.variables,
-          steps: workflow.steps.map(s => ({
-            stepId: s.stepId,
-            name: s.name,
-            type: s.type,
-            status: s.status,
-            startedAt: s.startedAt,
-            completedAt: s.completedAt,
-          })),
-          error: workflow.error,
+          workflowId,
+          status: 'running',
+          name: tracked?.name,
+          startedAt: tracked?.startedAt,
         };
       }
 
-      return status;
+      if (!tracked) {
+        return { workflowId, status: 'unknown' };
+      }
+
+      const response: Record<string, unknown> = {
+        workflowId: tracked.workflowId,
+        name: tracked.name,
+        status: tracked.status,
+        startedAt: tracked.startedAt,
+        completedAt: tracked.completedAt,
+      };
+
+      if (tracked.result) {
+        const completed = countCompleted(tracked.result);
+        const total = tracked.result.steps.length;
+        response.success = tracked.result.success;
+        response.duration = tracked.result.duration;
+        response.stepCount = total;
+        response.completedSteps = completed;
+        response.progress = total > 0 ? (completed / total) * 100 : 0;
+
+        if (input.verbose) {
+          response.steps = tracked.result.steps.map(serializeStep);
+          response.errors = tracked.result.errors;
+          response.outputs = tracked.result.outputs;
+        }
+      }
+
+      return response;
     },
   },
+
+  // --------------------------------------------------------------------------
+  // workflow_list — List workflows from registry and tracked runs
+  // --------------------------------------------------------------------------
   {
     name: 'workflow_list',
-    description: 'List all workflows',
+    description: 'List available workflows from registry and recent runs',
     category: 'workflow',
     inputSchema: {
       type: 'object',
       properties: {
-        status: { type: 'string', description: 'Filter by status' },
-        limit: { type: 'number', description: 'Max workflows to return' },
+        source: { type: 'string', enum: ['registry', 'runs', 'all'], description: 'What to list (default: all)' },
+        status: { type: 'string', description: 'Filter runs by status' },
+        limit: { type: 'number', description: 'Max items to return' },
       },
     },
     handler: async (input) => {
-      const store = loadWorkflowStore();
-      let workflows = Object.values(store.workflows);
+      const source = (input.source as string) ?? 'all';
+      const limit = (input.limit as number) ?? 20;
+      const result: Record<string, unknown> = {};
 
-      // Apply filters
-      if (input.status) {
-        workflows = workflows.filter(w => w.status === input.status);
+      if (source === 'registry' || source === 'all') {
+        try {
+          const registry = await getRegistry();
+          result.definitions = registry.list();
+        } catch {
+          result.definitions = [];
+          result.registryError = 'Workflow engine not available';
+        }
       }
 
-      // Sort by creation date (newest first)
-      workflows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      if (source === 'runs' || source === 'all') {
+        let runs = [...trackedWorkflows.values()];
+        if (input.status) {
+          runs = runs.filter(r => r.status === input.status);
+        }
+        runs.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+        result.runs = runs.slice(0, limit).map(r => ({
+          workflowId: r.workflowId,
+          name: r.name,
+          status: r.status,
+          startedAt: r.startedAt,
+          completedAt: r.completedAt,
+        }));
+      }
 
-      // Apply limit
-      const limit = (input.limit as number) || 20;
-      workflows = workflows.slice(0, limit);
+      // Also include currently running workflows from the engine
+      try {
+        const engine = await getEngine();
+        result.activeWorkflows = engine.bridgeActiveWorkflows();
+      } catch {
+        result.activeWorkflows = [];
+      }
 
-      return {
-        workflows: workflows.map(w => ({
-          workflowId: w.workflowId,
-          name: w.name,
-          status: w.status,
-          stepCount: w.steps.length,
-          createdAt: w.createdAt,
-          completedAt: w.completedAt,
-        })),
-        total: workflows.length,
-        filters: { status: input.status },
-      };
+      return result;
     },
   },
+
+  // --------------------------------------------------------------------------
+  // workflow_pause — Pause is not supported by the engine (workflows run to completion)
+  // --------------------------------------------------------------------------
   {
     name: 'workflow_pause',
-    description: 'Pause a running workflow',
+    description: 'Pause a running workflow (converts to cancel — engine workflows run to completion)',
     category: 'workflow',
     inputSchema: {
       type: 'object',
@@ -413,85 +547,80 @@ export const workflowTools: MCPTool[] = [
       required: ['workflowId'],
     },
     handler: async (input) => {
-      const store = loadWorkflowStore();
       const workflowId = input.workflowId as string;
-      const workflow = store.workflows[workflowId];
+      const engine = await getEngine();
 
-      if (!workflow) {
-        return { workflowId, error: 'Workflow not found' };
-      }
-
-      if (workflow.status !== 'running') {
+      if (!engine.bridgeIsRunning(workflowId)) {
         return { workflowId, error: 'Workflow not running' };
       }
 
-      workflow.status = 'paused';
-      saveWorkflowStore(store);
+      // Engine doesn't support pause — cancel via AbortController
+      const cancelled = engine.bridgeCancelWorkflow(workflowId);
+      if (cancelled) {
+        const tracked = trackedWorkflows.get(workflowId);
+        if (tracked) {
+          tracked.status = 'cancelled';
+          tracked.completedAt = new Date().toISOString();
+        }
+      }
 
       return {
         workflowId,
-        status: workflow.status,
-        pausedAt: new Date().toISOString(),
-        currentStep: workflow.currentStep,
+        status: cancelled ? 'cancelled' : 'not_found',
+        note: 'Engine workflows cannot be paused — cancelled instead. Use workflow_run to restart.',
       };
     },
   },
+
+  // --------------------------------------------------------------------------
+  // workflow_resume — Resume is not supported (re-run instead)
+  // --------------------------------------------------------------------------
   {
     name: 'workflow_resume',
-    description: 'Resume a paused workflow',
+    description: 'Resume a workflow (re-runs from beginning — engine does not support mid-workflow resume)',
     category: 'workflow',
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Workflow ID' },
+        workflowId: { type: 'string', description: 'Workflow ID of a previously tracked workflow' },
+        args: { type: 'object', description: 'Override arguments for the re-run' },
       },
       required: ['workflowId'],
     },
     handler: async (input) => {
-      const store = loadWorkflowStore();
       const workflowId = input.workflowId as string;
-      const workflow = store.workflows[workflowId];
+      const tracked = trackedWorkflows.get(workflowId);
 
-      if (!workflow) {
-        return { workflowId, error: 'Workflow not found' };
+      if (!tracked) {
+        return { workflowId, error: 'Workflow not found in tracked runs' };
       }
 
-      if (workflow.status !== 'paused') {
-        return { workflowId, error: 'Workflow not paused' };
+      if (!tracked.result) {
+        return { workflowId, error: 'No previous result to resume from' };
       }
 
-      workflow.status = 'running';
-      saveWorkflowStore(store);
-
-      // Continue execution from current step
-      const results: Array<{ stepId: string; status: string }> = [];
-      for (let i = workflow.currentStep; i < workflow.steps.length; i++) {
-        const step = workflow.steps[i];
-        step.status = 'running';
-        step.startedAt = new Date().toISOString();
-        step.status = 'completed';
-        step.completedAt = new Date().toISOString();
-        step.result = { executed: true };
-        results.push({ stepId: step.stepId, status: step.status });
-        workflow.currentStep = i + 1;
-      }
-
-      workflow.status = 'completed';
-      workflow.completedAt = new Date().toISOString();
-      saveWorkflowStore(store);
-
+      // Re-run the workflow from scratch
+      // Note: The engine's runner supports initialVariables for paused-state resume,
+      // but MCP tools don't currently persist paused definitions. This re-runs from start.
       return {
         workflowId,
-        status: workflow.status,
-        resumed: true,
-        stepsExecuted: results.length,
-        completedAt: workflow.completedAt,
+        note: 'Mid-workflow resume is not yet supported via MCP tools. Use workflow_run to re-execute the workflow.',
+        previousStatus: tracked.status,
+        previousResult: {
+          success: tracked.result.success,
+          stepCount: tracked.result.steps.length,
+          completedSteps: countCompleted(tracked.result),
+        },
       };
     },
   },
+
+  // --------------------------------------------------------------------------
+  // workflow_cancel — Cancel a running workflow
+  // --------------------------------------------------------------------------
   {
     name: 'workflow_cancel',
-    description: 'Cancel a workflow',
+    description: 'Cancel a running workflow',
     category: 'workflow',
     inputSchema: {
       type: 'object',
@@ -502,41 +631,41 @@ export const workflowTools: MCPTool[] = [
       required: ['workflowId'],
     },
     handler: async (input) => {
-      const store = loadWorkflowStore();
       const workflowId = input.workflowId as string;
-      const workflow = store.workflows[workflowId];
+      const engine = await getEngine();
 
-      if (!workflow) {
-        return { workflowId, error: 'Workflow not found' };
+      const cancelled = engine.bridgeCancelWorkflow(workflowId);
+
+      if (cancelled) {
+        const tracked = trackedWorkflows.get(workflowId);
+        if (tracked) {
+          tracked.status = 'cancelled';
+          tracked.completedAt = new Date().toISOString();
+        }
+        return {
+          workflowId,
+          status: 'cancelled',
+          cancelledAt: new Date().toISOString(),
+          reason: (input.reason as string) ?? 'Cancelled by user',
+        };
       }
 
-      if (workflow.status === 'completed' || workflow.status === 'failed') {
-        return { workflowId, error: 'Workflow already finished' };
+      // Check if it's a tracked but already finished workflow
+      const tracked = trackedWorkflows.get(workflowId);
+      if (tracked) {
+        return { workflowId, error: `Workflow already ${tracked.status}` };
       }
 
-      workflow.status = 'failed';
-      workflow.error = (input.reason as string) || 'Cancelled by user';
-      workflow.completedAt = new Date().toISOString();
-
-      // Mark remaining steps as skipped
-      for (let i = workflow.currentStep; i < workflow.steps.length; i++) {
-        workflow.steps[i].status = 'skipped';
-      }
-
-      saveWorkflowStore(store);
-
-      return {
-        workflowId,
-        status: workflow.status,
-        cancelledAt: workflow.completedAt,
-        reason: workflow.error,
-        skippedSteps: workflow.steps.length - workflow.currentStep,
-      };
+      return { workflowId, error: 'Workflow not found' };
     },
   },
+
+  // --------------------------------------------------------------------------
+  // workflow_delete — Remove a tracked workflow from memory
+  // --------------------------------------------------------------------------
   {
     name: 'workflow_delete',
-    description: 'Delete a workflow',
+    description: 'Delete a tracked workflow record',
     category: 'workflow',
     inputSchema: {
       type: 'object',
@@ -546,126 +675,72 @@ export const workflowTools: MCPTool[] = [
       required: ['workflowId'],
     },
     handler: async (input) => {
-      const store = loadWorkflowStore();
       const workflowId = input.workflowId as string;
 
-      if (!store.workflows[workflowId]) {
-        return { workflowId, error: 'Workflow not found' };
+      // Only check engine if already loaded (avoid unnecessary dynamic import)
+      if (engineModule?.bridgeIsRunning(workflowId)) {
+        return { workflowId, error: 'Cannot delete a running workflow — cancel it first' };
       }
 
-      const workflow = store.workflows[workflowId];
-      if (workflow.status === 'running') {
-        return { workflowId, error: 'Cannot delete running workflow' };
-      }
-
-      delete store.workflows[workflowId];
-      saveWorkflowStore(store);
-
+      const existed = trackedWorkflows.delete(workflowId);
       return {
         workflowId,
-        deleted: true,
-        deletedAt: new Date().toISOString(),
+        deleted: existed,
+        deletedAt: existed ? new Date().toISOString() : undefined,
       };
     },
   },
+
+  // --------------------------------------------------------------------------
+  // workflow_template — List/info from the workflow registry
+  // --------------------------------------------------------------------------
   {
     name: 'workflow_template',
-    description: 'Save workflow as template or create from template',
+    description: 'Browse workflow templates from the registry',
     category: 'workflow',
     inputSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['save', 'create', 'list'], description: 'Template action' },
-        workflowId: { type: 'string', description: 'Workflow ID (for save)' },
-        templateId: { type: 'string', description: 'Template ID (for create)' },
-        templateName: { type: 'string', description: 'Template name (for save)' },
-        newName: { type: 'string', description: 'New workflow name (for create)' },
+        action: { type: 'string', enum: ['list', 'info'], description: 'Template action' },
+        query: { type: 'string', description: 'Workflow name or abbreviation (for info)' },
       },
       required: ['action'],
     },
     handler: async (input) => {
-      const store = loadWorkflowStore();
       const action = input.action as string;
 
-      if (action === 'save') {
-        const workflow = store.workflows[input.workflowId as string];
-        if (!workflow) {
-          return { action, error: 'Workflow not found' };
-        }
-
-        const templateId = `template-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const template: WorkflowRecord = {
-          ...workflow,
-          workflowId: templateId,
-          name: (input.templateName as string) || `${workflow.name} Template`,
-          status: 'draft',
-          currentStep: 0,
-          createdAt: new Date().toISOString(),
-          startedAt: undefined,
-          completedAt: undefined,
-        };
-
-        // Reset step statuses
-        template.steps = template.steps.map(s => ({
-          ...s,
-          status: 'pending',
-          result: undefined,
-          startedAt: undefined,
-          completedAt: undefined,
-        }));
-
-        store.templates[templateId] = template;
-        saveWorkflowStore(store);
-
-        return {
-          action,
-          templateId,
-          name: template.name,
-          savedAt: new Date().toISOString(),
-        };
-      }
-
-      if (action === 'create') {
-        const template = store.templates[input.templateId as string];
-        if (!template) {
-          return { action, error: 'Template not found' };
-        }
-
-        const workflowId = `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const workflow: WorkflowRecord = {
-          ...template,
-          workflowId,
-          name: (input.newName as string) || template.name.replace(' Template', ''),
-          status: 'ready',
-          createdAt: new Date().toISOString(),
-        };
-
-        store.workflows[workflowId] = workflow;
-        saveWorkflowStore(store);
-
-        return {
-          action,
-          workflowId,
-          name: workflow.name,
-          fromTemplate: input.templateId,
-          createdAt: workflow.createdAt,
-        };
-      }
-
       if (action === 'list') {
-        return {
-          action,
-          templates: Object.values(store.templates).map(t => ({
-            templateId: t.workflowId,
-            name: t.name,
-            stepCount: t.steps.length,
-            createdAt: t.createdAt,
-          })),
-          total: Object.keys(store.templates).length,
-        };
+        try {
+          const registry = await getRegistry();
+          const entries = registry.list();
+          return {
+            action,
+            templates: entries,
+            total: entries.length,
+          };
+        } catch (err) {
+          return { action, error: errorMsg(err) };
+        }
       }
 
-      return { action, error: 'Unknown action' };
+      if (action === 'info') {
+        const query = input.query as string;
+        if (!query) {
+          return { action, error: 'Query required for info action' };
+        }
+        try {
+          const registry = await getRegistry();
+          const info = registry.info(query);
+          if (!info) {
+            return { action, error: `Workflow not found: ${query}` };
+          }
+          return { action, ...info };
+        } catch (err) {
+          return { action, error: errorMsg(err) };
+        }
+      }
+
+      return { action, error: `Unknown action: ${action}. Use 'list' or 'info'.` };
     },
   },
 ];

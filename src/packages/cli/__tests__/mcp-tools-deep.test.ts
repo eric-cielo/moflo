@@ -671,16 +671,17 @@ describe('MCP Tools Deep Test Suite', () => {
   // 12. Handler Invocation - Workflow Tools
   // --------------------------------------------------------------------------
   describe('Workflow Tools - Handler Invocation', () => {
-    it('workflow_list returns workflows', async () => {
+    it('workflow_list returns workflow data', async () => {
       const tool = workflowTools.find(t => t.name === 'workflow_list')!;
       const result: any = await tool.handler({});
-      expect(result.workflows).toBeDefined();
+      // Engine-backed: returns runs and/or definitions
+      expect(result.runs).toBeDefined();
     });
 
-    it('workflow_create creates a workflow', async () => {
+    it('workflow_create creates a workflow definition', async () => {
       const tool = workflowTools.find(t => t.name === 'workflow_create')!;
       const result: any = await tool.handler({ name: 'test-wf', description: 'Test workflow' });
-      expect(result.workflowId).toBeDefined();
+      expect(result.definition).toBeDefined();
       expect(result.name).toBe('test-wf');
     });
   });
