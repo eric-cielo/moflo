@@ -30,6 +30,8 @@ const SOURCE_PRIORITY: Record<StepCommandSource, number> = {
 
 export class StepCommandRegistry {
   private readonly commands = new Map<string, StepCommandEntry>();
+  /** Optional debug logger. Set to receive override notifications. */
+  debugLog?: (message: string) => void;
 
   private static assertValidType(command: StepCommand): void {
     if (!command.type || typeof command.type !== 'string') {
@@ -95,9 +97,15 @@ export class StepCommandRegistry {
     StepCommandRegistry.assertValidType(command);
 
     const existing = this.commands.get(command.type);
-    if (existing && SOURCE_PRIORITY[source] < SOURCE_PRIORITY[existing.source]) {
-      // Lower priority source cannot override — skip silently
-      return;
+    if (existing) {
+      if (SOURCE_PRIORITY[source] < SOURCE_PRIORITY[existing.source]) {
+        return;
+      }
+      if (this.debugLog) {
+        this.debugLog(
+          `Step "${command.type}" overridden: ${existing.source} → ${source}`,
+        );
+      }
     }
 
     this.commands.set(command.type, {

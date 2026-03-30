@@ -85,6 +85,11 @@ export {
   builtinCommands,
 } from './commands/index.js';
 
+export {
+  createStepCommand,
+  type StepCommandDefinition,
+} from './commands/create-step-command.js';
+
 // ============================================================================
 // Schema (Workflow Definition)
 // ============================================================================
