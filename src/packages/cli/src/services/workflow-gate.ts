@@ -131,19 +131,16 @@ export class WorkflowGateService {
 
   readState(): WorkflowState {
     try {
-      if (fs.existsSync(this.stateFilePath)) {
-        return JSON.parse(fs.readFileSync(this.stateFilePath, 'utf-8'));
-      }
+      return JSON.parse(fs.readFileSync(this.stateFilePath, 'utf-8'));
     } catch {
-      // Reset on corruption
+      // ENOENT or JSON corruption — return defaults
+      return { ...DEFAULT_STATE };
     }
-    return { ...DEFAULT_STATE };
   }
 
   writeState(state: WorkflowState): void {
     try {
-      const dir = path.dirname(this.stateFilePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.mkdirSync(path.dirname(this.stateFilePath), { recursive: true });
       fs.writeFileSync(this.stateFilePath, JSON.stringify(state, null, 2));
     } catch {
       // Non-fatal

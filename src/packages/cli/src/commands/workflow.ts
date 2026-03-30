@@ -1,24 +1,41 @@
 /**
  * V3 CLI Workflow Command
  * Workflow execution, validation, and template management
+ *
+ * Story #225: Replaced hardcoded WORKFLOW_TEMPLATES with engine registry.
+ * The MCP workflow tools now call the real engine, so the CLI just
+ * passes parameters through via callMCPTool().
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
-import { select, confirm, input } from '../prompt.js';
+import { confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 
-// Workflow templates
-const WORKFLOW_TEMPLATES = [
-  { value: 'development', label: 'Development', hint: 'Standard development workflow' },
-  { value: 'research', label: 'Research', hint: 'Research and analysis workflow' },
-  { value: 'testing', label: 'Testing', hint: 'Comprehensive testing workflow' },
-  { value: 'security-audit', label: 'Security Audit', hint: 'Security review workflow' },
-  { value: 'code-review', label: 'Code Review', hint: 'Multi-agent code review' },
-  { value: 'refactoring', label: 'Refactoring', hint: 'Code refactoring workflow' },
-  { value: 'sparc', label: 'SPARC', hint: 'SPARC methodology workflow' },
-  { value: 'custom', label: 'Custom', hint: 'Define custom workflow' }
+// Shared table column definitions
+const REGISTRY_COLUMNS = [
+  { key: 'name', header: 'Name', width: 25 },
+  { key: 'abbreviation', header: 'Abbrev', width: 10, format: (v: unknown) => v ? String(v) : '-' },
+  { key: 'description', header: 'Description', width: 35, format: (v: unknown) => v ? String(v) : '' },
+  { key: 'tier', header: 'Source', width: 10 },
 ];
+
+const STEP_COLUMNS = [
+  { key: 'stepId', header: 'Step', width: 15 },
+  { key: 'stepType', header: 'Type', width: 12 },
+  { key: 'status', header: 'Status', width: 12, format: formatStageStatus },
+  { key: 'duration', header: 'Duration', width: 10, align: 'right' as const, format: (v: unknown) => v ? `${v}ms` : '-' },
+  { key: 'error', header: 'Error', width: 30, format: (v: unknown) => v ? String(v) : '' },
+];
+
+function printWorkflowErrors(errors: Array<{ code: string; message: string }>): void {
+  if (errors.length === 0) return;
+  output.writeln();
+  output.writeln(output.bold(output.error('Errors')));
+  for (const e of errors) {
+    output.writeln(output.error(`  [${e.code}] ${e.message}`));
+  }
+}
 
 // Run subcommand
 const runCommand: Command = {
@@ -26,74 +43,72 @@ const runCommand: Command = {
   description: 'Execute a workflow',
   options: [
     {
-      name: 'template',
-      short: 't',
-      description: 'Workflow template',
+      name: 'name',
+      short: 'n',
+      description: 'Workflow name or abbreviation (resolved via registry)',
       type: 'string',
-      choices: WORKFLOW_TEMPLATES.map(t => t.value)
     },
     {
       name: 'file',
       short: 'f',
       description: 'Workflow definition file (YAML/JSON)',
-      type: 'string'
-    },
-    {
-      name: 'task',
-      description: 'Task description',
-      type: 'string'
-    },
-    {
-      name: 'parallel',
-      short: 'p',
-      description: 'Enable parallel execution',
-      type: 'boolean',
-      default: true
-    },
-    {
-      name: 'max-agents',
-      short: 'm',
-      description: 'Maximum agents to spawn',
-      type: 'number',
-      default: 5
-    },
-    {
-      name: 'timeout',
-      description: 'Workflow timeout in minutes',
-      type: 'number',
-      default: 30
+      type: 'string',
     },
     {
       name: 'dry-run',
       short: 'd',
       description: 'Validate without executing',
       type: 'boolean',
-      default: false
-    }
+      default: false,
+    },
   ],
   examples: [
-    { command: 'claude-flow workflow run -t development --task "Build auth system"', description: 'Run development workflow' },
-    { command: 'claude-flow workflow run -f ./workflow.yaml', description: 'Run from file' },
-    { command: 'claude-flow workflow run -t sparc --dry-run', description: 'Validate SPARC workflow' }
+    { command: 'moflo workflow run -n development', description: 'Run workflow by name' },
+    { command: 'moflo workflow run -f ./workflow.yaml', description: 'Run from file' },
+    { command: 'moflo workflow run -n sa --dry-run', description: 'Validate via abbreviation' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    let template = ctx.flags.template as string;
+    const name = (ctx.flags.name as string) || ctx.args[0];
     const file = ctx.flags.file as string;
-    const task = ctx.flags.task as string || ctx.args[0];
-    const parallel = ctx.flags.parallel as boolean;
-    const maxAgents = ctx.flags.maxAgents as number;
-    const timeout = ctx.flags.timeout as number;
     const dryRun = ctx.flags.dryRun as boolean;
+    const args = (ctx.flags.args as unknown as Record<string, unknown>) ?? {};
 
-    if (!template && !file && ctx.interactive) {
-      template = await select({
-        message: 'Select workflow template:',
-        options: WORKFLOW_TEMPLATES
-      });
-    }
+    if (!name && !file) {
+      // Interactive: list available workflows and let user pick
+      if (ctx.interactive) {
+        try {
+          const listResult = await callMCPTool<{
+            definitions?: Array<{ name: string; abbreviation?: string; description?: string; tier: string }>;
+          }>('workflow_list', { source: 'registry' });
 
-    if (!template && !file) {
-      output.printError('Workflow template or file is required. Use --template or --file');
+          const defs = listResult.definitions ?? [];
+          if (defs.length === 0) {
+            output.printInfo('No workflow definitions found in the registry.');
+            output.printInfo('Add YAML/JSON files to workflows/ or .claude/workflows/ in your project.');
+            return { success: false, exitCode: 1 };
+          }
+
+          output.writeln();
+          output.writeln(output.bold('Available Workflows'));
+          output.writeln();
+          output.printTable({ columns: REGISTRY_COLUMNS, data: defs });
+
+          output.writeln();
+          const chosen = await input({ message: 'Enter workflow name or abbreviation:' });
+          if (!chosen) {
+            return { success: false, exitCode: 1 };
+          }
+
+          // Re-run with chosen name
+          const result = await runCommand.action!({ ...ctx, flags: { ...ctx.flags, name: chosen } });
+          return result ?? { success: false, exitCode: 1 };
+        } catch {
+          output.printError('Workflow name or file is required. Use --name or --file');
+          return { success: false, exitCode: 1 };
+        }
+      }
+
+      output.printError('Workflow name or file is required. Use --name or --file');
       return { success: false, exitCode: 1 };
     }
 
@@ -101,85 +116,73 @@ const runCommand: Command = {
     if (dryRun) {
       output.writeln(output.warning('DRY RUN MODE - No changes will be made'));
     }
-    output.writeln(output.bold(`Workflow: ${template || file}`));
+    output.writeln(output.bold(`Workflow: ${name || file}`));
     output.writeln();
 
-    const spinner = output.createSpinner({ text: 'Initializing workflow...', spinner: 'dots' });
+    const spinner = output.createSpinner({ text: 'Running workflow...', spinner: 'dots' });
 
     try {
       spinner.start();
 
-      // Call MCP tool to run workflow
       const result = await callMCPTool<{
         workflowId: string;
-        template: string;
-        status: 'running' | 'completed' | 'failed' | 'validated';
-        stages: Array<{
-          name: string;
+        success: boolean;
+        cancelled: boolean;
+        duration: number;
+        stepCount: number;
+        steps: Array<{
+          stepId: string;
+          stepType: string;
           status: string;
-          agents: string[];
-          duration?: number;
+          duration: number;
+          error?: string;
         }>;
-        metrics: {
-          totalStages: number;
-          completedStages: number;
-          agentsSpawned: number;
-          estimatedDuration: string;
-        };
+        outputs: Record<string, unknown>;
+        errors: Array<{ code: string; message: string }>;
+        error?: string;
       }>('workflow_run', {
-        template: template || undefined,
+        name: name || undefined,
         file: file || undefined,
-        task,
-        options: {
-          parallel,
-          maxAgents,
-          timeout,
-          dryRun,
-        },
+        args,
+        dryRun,
       });
+
+      if (result.error) {
+        spinner.fail(`Workflow failed: ${result.error}`);
+        return { success: false, exitCode: 1 };
+      }
 
       if (dryRun) {
         spinner.succeed('Workflow validated successfully');
       } else {
-        spinner.succeed('Workflow started');
+        spinner.succeed(result.success ? 'Workflow completed' : 'Workflow finished with errors');
       }
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
-        return { success: true, data: result };
+        return { success: result.success, data: result };
       }
 
       output.writeln();
       output.printBox(
         [
           `ID: ${result.workflowId}`,
-          `Template: ${result.template}`,
-          `Status: ${result.status}`,
-          `Stages: ${result.metrics.totalStages}`,
-          `Agents: ${result.metrics.agentsSpawned}`,
-          `Est. Duration: ${result.metrics.estimatedDuration}`
+          `Status: ${result.success ? 'succeeded' : 'failed'}`,
+          `Steps: ${result.stepCount}`,
+          `Duration: ${(result.duration / 1000).toFixed(1)}s`,
         ].join('\n'),
-        'Workflow Details'
+        'Workflow Result',
       );
 
-      output.writeln();
-      output.writeln(output.bold('Stages'));
-      output.printTable({
-        columns: [
-          { key: 'name', header: 'Stage', width: 20 },
-          { key: 'status', header: 'Status', width: 12, format: formatStageStatus },
-          { key: 'agents', header: 'Agents', width: 30, format: (v) => Array.isArray(v) ? v.join(', ') : String(v) },
-          { key: 'duration', header: 'Duration', width: 10, align: 'right', format: (v) => v ? `${v}ms` : '-' }
-        ],
-        data: result.stages
-      });
-
-      if (!dryRun) {
+      if (result.steps.length > 0) {
         output.writeln();
-        output.printInfo(`Track progress: claude-flow workflow status ${result.workflowId}`);
+        output.writeln(output.bold('Steps'));
+        output.printTable({ columns: STEP_COLUMNS, data: result.steps });
       }
 
-      return { success: true, data: result };
+      printWorkflowErrors(result.errors);
+
+      return { success: result.success, data: result };
     } catch (error) {
       spinner.fail('Workflow failed');
       if (error instanceof MCPClientError) {
@@ -189,7 +192,7 @@ const runCommand: Command = {
       }
       return { success: false, exitCode: 1 };
     }
-  }
+  },
 };
 
 // Validate subcommand
@@ -202,23 +205,14 @@ const validateCommand: Command = {
       short: 'f',
       description: 'Workflow definition file',
       type: 'string',
-      required: true
+      required: true,
     },
-    {
-      name: 'strict',
-      short: 's',
-      description: 'Strict validation mode',
-      type: 'boolean',
-      default: false
-    }
   ],
   examples: [
-    { command: 'claude-flow workflow validate -f ./workflow.yaml', description: 'Validate workflow file' },
-    { command: 'claude-flow workflow validate -f ./workflow.json --strict', description: 'Strict validation' }
+    { command: 'moflo workflow validate -f ./workflow.yaml', description: 'Validate workflow file' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const file = ctx.flags.file as string || ctx.args[0];
-    const strict = ctx.flags.strict as boolean;
+    const file = (ctx.flags.file as string) || ctx.args[0];
 
     if (!file) {
       output.printError('Workflow file is required. Use --file or -f');
@@ -229,65 +223,28 @@ const validateCommand: Command = {
 
     try {
       const result = await callMCPTool<{
-        valid: boolean;
-        file: string;
-        errors: Array<{ line: number; message: string; severity: string }>;
-        warnings: Array<{ line: number; message: string }>;
-        stats: {
-          stages: number;
-          agents: number;
-          estimatedDuration: string;
-        };
-      }>('workflow_validate', {
+        workflowId: string;
+        success: boolean;
+        errors: Array<{ code: string; message: string }>;
+        steps: Array<{ stepId: string; stepType: string; status: string }>;
+      }>('workflow_run', {
         file,
-        strict,
+        dryRun: true,
       });
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
-        return { success: result.valid, data: result };
+        return { success: result.success, data: result };
       }
 
-      output.writeln();
-
-      if (result.valid) {
-        output.printSuccess('Workflow is valid');
+      if (result.success) {
+        output.printSuccess(`Workflow is valid (${result.steps.length} steps)`);
       } else {
         output.printError('Workflow validation failed');
+        printWorkflowErrors(result.errors);
       }
 
-      if (result.errors.length > 0) {
-        output.writeln();
-        output.writeln(output.bold(output.error('Errors')));
-        output.printTable({
-          columns: [
-            { key: 'line', header: 'Line', width: 8, align: 'right' },
-            { key: 'severity', header: 'Severity', width: 10 },
-            { key: 'message', header: 'Message', width: 50 }
-          ],
-          data: result.errors
-        });
-      }
-
-      if (result.warnings.length > 0) {
-        output.writeln();
-        output.writeln(output.bold(output.warning('Warnings')));
-        result.warnings.forEach(w => {
-          output.writeln(output.warning(`  Line ${w.line}: ${w.message}`));
-        });
-      }
-
-      if (result.valid) {
-        output.writeln();
-        output.writeln(output.bold('Workflow Stats'));
-        output.printList([
-          `Stages: ${result.stats.stages}`,
-          `Agents Required: ${result.stats.agents}`,
-          `Est. Duration: ${result.stats.estimatedDuration}`
-        ]);
-      }
-
-      return { success: result.valid, data: result };
+      return { success: result.success, data: result };
     } catch (error) {
       if (error instanceof MCPClientError) {
         output.printError(`Validation error: ${error.message}`);
@@ -296,77 +253,83 @@ const validateCommand: Command = {
       }
       return { success: false, exitCode: 1 };
     }
-  }
+  },
 };
 
 // List subcommand
 const listCommand: Command = {
   name: 'list',
   aliases: ['ls'],
-  description: 'List workflows',
+  description: 'List workflows (registry definitions and recent runs)',
   options: [
     {
-      name: 'status',
+      name: 'source',
       short: 's',
-      description: 'Filter by status',
+      description: 'What to list: registry, runs, or all',
       type: 'string',
-      choices: ['running', 'completed', 'failed', 'all']
+      choices: ['registry', 'runs', 'all'],
     },
     {
       name: 'limit',
       short: 'l',
       description: 'Maximum results',
       type: 'number',
-      default: 10
-    }
+      default: 20,
+    },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const status = ctx.flags.status as string;
+    const source = (ctx.flags.source as string) ?? 'all';
     const limit = ctx.flags.limit as number;
 
     try {
       const result = await callMCPTool<{
-        workflows: Array<{
-          id: string;
-          template: string;
-          status: string;
-          startedAt: string;
-          completedAt?: string;
-          progress: number;
-        }>;
-        total: number;
-      }>('workflow_list', {
-        status: status || 'all',
-        limit,
-      });
+        definitions?: Array<{ name: string; abbreviation?: string; description?: string; tier: string }>;
+        runs?: Array<{ workflowId: string; name: string; status: string; startedAt: string; completedAt?: string }>;
+        activeWorkflows?: string[];
+        registryError?: string;
+      }>('workflow_list', { source, limit });
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
         return { success: true, data: result };
       }
 
-      output.writeln();
-      output.writeln(output.bold('Workflows'));
-      output.writeln();
-
-      if (result.workflows.length === 0) {
-        output.printInfo('No workflows found');
-        return { success: true, data: result };
+      if (result.definitions && result.definitions.length > 0) {
+        output.writeln();
+        output.writeln(output.bold('Registry Definitions'));
+        output.writeln();
+        output.printTable({ columns: REGISTRY_COLUMNS, data: result.definitions });
+      } else if (source === 'registry' || source === 'all') {
+        output.writeln();
+        if (result.registryError) {
+          output.printError(`Registry: ${result.registryError}`);
+        } else {
+          output.printInfo('No workflow definitions found. Add YAML/JSON files to workflows/ or .claude/workflows/');
+        }
       }
 
-      output.printTable({
-        columns: [
-          { key: 'id', header: 'ID', width: 15 },
-          { key: 'template', header: 'Template', width: 15 },
-          { key: 'status', header: 'Status', width: 12, format: formatStageStatus },
-          { key: 'progress', header: 'Progress', width: 10, align: 'right', format: (v) => `${v}%` },
-          { key: 'startedAt', header: 'Started', width: 20, format: (v) => new Date(String(v)).toLocaleString() }
-        ],
-        data: result.workflows
-      });
+      if (result.runs && result.runs.length > 0) {
+        output.writeln();
+        output.writeln(output.bold('Recent Runs'));
+        output.writeln();
+        output.printTable({
+          columns: [
+            { key: 'workflowId', header: 'ID', width: 20 },
+            { key: 'name', header: 'Name', width: 20 },
+            { key: 'status', header: 'Status', width: 12, format: formatStageStatus },
+            { key: 'startedAt', header: 'Started', width: 22, format: (v) => v ? new Date(String(v)).toLocaleString() : '-' },
+          ],
+          data: result.runs,
+        });
+      } else if (source === 'runs' || source === 'all') {
+        output.writeln();
+        output.printInfo('No recent workflow runs');
+      }
 
-      output.writeln();
-      output.printInfo(`Total: ${result.total} workflows`);
+      if (result.activeWorkflows && result.activeWorkflows.length > 0) {
+        output.writeln();
+        output.printInfo(`Currently running: ${result.activeWorkflows.join(', ')}`);
+      }
 
       return { success: true, data: result };
     } catch (error) {
@@ -377,22 +340,13 @@ const listCommand: Command = {
       }
       return { success: false, exitCode: 1 };
     }
-  }
+  },
 };
 
 // Status subcommand
 const statusCommand: Command = {
   name: 'status',
   description: 'Show workflow status',
-  options: [
-    {
-      name: 'watch',
-      short: 'w',
-      description: 'Watch for changes',
-      type: 'boolean',
-      default: false
-    }
-  ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const workflowId = ctx.args[0];
 
@@ -403,26 +357,28 @@ const statusCommand: Command = {
 
     try {
       const result = await callMCPTool<{
-        id: string;
-        template: string;
+        workflowId: string;
+        name?: string;
         status: string;
-        progress: number;
-        stages: Array<{
-          name: string;
-          status: string;
-          startedAt?: string;
-          completedAt?: string;
-          agents: string[];
-          output?: string;
-        }>;
-        metrics: {
-          duration: number;
-          tokensUsed: number;
-          agentsSpawned: number;
-        };
+        success?: boolean;
+        duration?: number;
+        stepCount?: number;
+        completedSteps?: number;
+        progress?: number;
+        startedAt?: string;
+        completedAt?: string;
+        steps?: Array<{ stepId: string; stepType: string; status: string; duration: number; error?: string }>;
+        errors?: Array<{ code: string; message: string }>;
+        error?: string;
       }>('workflow_status', {
         workflowId,
+        verbose: true,
       });
+
+      if (result.error) {
+        output.printError(result.error);
+        return { success: false, exitCode: 1 };
+      }
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
@@ -432,27 +388,20 @@ const statusCommand: Command = {
       output.writeln();
       output.printBox(
         [
-          `ID: ${result.id}`,
-          `Template: ${result.template}`,
+          `ID: ${result.workflowId}`,
+          result.name ? `Name: ${result.name}` : null,
           `Status: ${formatStageStatus(result.status)}`,
-          `Progress: ${result.progress}%`,
-          `Duration: ${(result.metrics.duration / 1000).toFixed(1)}s`,
-          `Tokens: ${result.metrics.tokensUsed.toLocaleString()}`,
-          `Agents: ${result.metrics.agentsSpawned}`
-        ].join('\n'),
-        'Workflow Status'
+          result.progress != null ? `Progress: ${result.progress.toFixed(0)}%` : null,
+          result.duration != null ? `Duration: ${(result.duration / 1000).toFixed(1)}s` : null,
+        ].filter(Boolean).join('\n'),
+        'Workflow Status',
       );
 
-      output.writeln();
-      output.writeln(output.bold('Stage Progress'));
-      output.printTable({
-        columns: [
-          { key: 'name', header: 'Stage', width: 20 },
-          { key: 'status', header: 'Status', width: 12, format: formatStageStatus },
-          { key: 'agents', header: 'Agents', width: 25, format: (v) => Array.isArray(v) ? v.length.toString() : '0' }
-        ],
-        data: result.stages
-      });
+      if (result.steps && result.steps.length > 0) {
+        output.writeln();
+        output.writeln(output.bold('Steps'));
+        output.printTable({ columns: STEP_COLUMNS, data: result.steps });
+      }
 
       return { success: true, data: result };
     } catch (error) {
@@ -463,7 +412,7 @@ const statusCommand: Command = {
       }
       return { success: false, exitCode: 1 };
     }
-  }
+  },
 };
 
 // Stop subcommand
@@ -474,10 +423,10 @@ const stopCommand: Command = {
     {
       name: 'force',
       short: 'f',
-      description: 'Force stop without graceful shutdown',
+      description: 'Force stop without confirmation',
       type: 'boolean',
-      default: false
-    }
+      default: false,
+    },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const workflowId = ctx.args[0];
@@ -490,10 +439,9 @@ const stopCommand: Command = {
 
     if (!force && ctx.interactive) {
       const confirmed = await confirm({
-        message: `Stop workflow ${workflowId}?`,
-        default: false
+        message: `Cancel workflow ${workflowId}?`,
+        default: false,
       });
-
       if (!confirmed) {
         output.printInfo('Operation cancelled');
         return { success: true };
@@ -503,15 +451,21 @@ const stopCommand: Command = {
     try {
       const result = await callMCPTool<{
         workflowId: string;
-        stopped: boolean;
-        stoppedAt: string;
-      }>('workflow_stop', {
+        status: string;
+        cancelledAt?: string;
+        reason?: string;
+        error?: string;
+      }>('workflow_cancel', {
         workflowId,
-        graceful: !force,
+        reason: 'Stopped via CLI',
       });
 
-      output.printSuccess(`Workflow ${workflowId} stopped`);
+      if (result.error) {
+        output.printError(result.error);
+        return { success: false, exitCode: 1 };
+      }
 
+      output.printSuccess(`Workflow ${workflowId} cancelled`);
       return { success: true, data: result };
     } catch (error) {
       if (error instanceof MCPClientError) {
@@ -521,127 +475,156 @@ const stopCommand: Command = {
       }
       return { success: false, exitCode: 1 };
     }
-  }
+  },
 };
 
 // Template subcommand
 const templateCommand: Command = {
   name: 'template',
-  description: 'Manage workflow templates',
+  description: 'Browse workflow templates from the registry',
   subcommands: [
     {
       name: 'list',
-      description: 'List available templates',
+      description: 'List available workflow templates',
       action: async (ctx: CommandContext): Promise<CommandResult> => {
-        if (ctx.flags.format === 'json') {
-          output.printJson(WORKFLOW_TEMPLATES);
-          return { success: true, data: WORKFLOW_TEMPLATES };
+        try {
+          const result = await callMCPTool<{
+            action: string;
+            templates: Array<{ name: string; abbreviation?: string; description?: string; tier: string }>;
+            total: number;
+            error?: string;
+          }>('workflow_template', { action: 'list' });
+
+          if (result.error) {
+            output.printError(result.error);
+            return { success: false, exitCode: 1 };
+          }
+
+          if (ctx.flags.format === 'json') {
+            output.printJson(result);
+            return { success: true, data: result };
+          }
+
+          output.writeln();
+          output.writeln(output.bold('Available Workflow Templates'));
+          output.writeln();
+
+          if (result.templates.length === 0) {
+            output.printInfo('No workflow definitions found.');
+            output.printInfo('Add YAML/JSON files to workflows/ or .claude/workflows/ in your project.');
+            return { success: true, data: result };
+          }
+
+          output.printTable({ columns: REGISTRY_COLUMNS, data: result.templates });
+
+          output.writeln();
+          output.printInfo(`Total: ${result.total} templates`);
+
+          return { success: true, data: result };
+        } catch (error) {
+          if (error instanceof MCPClientError) {
+            output.printError(`Failed to list templates: ${error.message}`);
+          } else {
+            output.printError(`Unexpected error: ${String(error)}`);
+          }
+          return { success: false, exitCode: 1 };
         }
-
-        output.writeln();
-        output.writeln(output.bold('Available Workflow Templates'));
-        output.writeln();
-
-        output.printTable({
-          columns: [
-            { key: 'value', header: 'Template', width: 20 },
-            { key: 'label', header: 'Name', width: 20 },
-            { key: 'hint', header: 'Description', width: 35 }
-          ],
-          data: WORKFLOW_TEMPLATES
-        });
-
-        return { success: true, data: WORKFLOW_TEMPLATES };
-      }
+      },
     },
     {
       name: 'show',
+      aliases: ['info'],
       description: 'Show template details',
       action: async (ctx: CommandContext): Promise<CommandResult> => {
-        const templateName = ctx.args[0];
+        const query = ctx.args[0];
 
-        if (!templateName) {
-          output.printError('Template name is required');
+        if (!query) {
+          output.printError('Template name or abbreviation is required');
           return { success: false, exitCode: 1 };
         }
 
-        const template = WORKFLOW_TEMPLATES.find(t => t.value === templateName);
-        if (!template) {
-          output.printError(`Template "${templateName}" not found`);
+        try {
+          const result = await callMCPTool<{
+            action: string;
+            name?: string;
+            abbreviation?: string;
+            description?: string;
+            version?: string;
+            sourceFile?: string;
+            tier?: string;
+            arguments?: Record<string, unknown>;
+            stepCount?: number;
+            stepTypes?: string[];
+            error?: string;
+          }>('workflow_template', { action: 'info', query });
+
+          if (result.error) {
+            output.printError(result.error);
+            return { success: false, exitCode: 1 };
+          }
+
+          if (ctx.flags.format === 'json') {
+            output.printJson(result);
+            return { success: true, data: result };
+          }
+
+          output.writeln();
+          output.printBox(
+            [
+              `Name: ${result.name}`,
+              result.abbreviation ? `Abbreviation: ${result.abbreviation}` : null,
+              result.description ? `Description: ${result.description}` : null,
+              result.version ? `Version: ${result.version}` : null,
+              `Source: ${result.tier} (${result.sourceFile})`,
+              `Steps: ${result.stepCount}`,
+              `Step Types: ${result.stepTypes?.join(', ') ?? 'none'}`,
+            ].filter(Boolean).join('\n'),
+            'Template Details',
+          );
+
+          if (result.arguments && Object.keys(result.arguments).length > 0) {
+            output.writeln();
+            output.writeln(output.bold('Arguments'));
+            output.printTable({
+              columns: [
+                { key: 'name', header: 'Name', width: 20 },
+                { key: 'type', header: 'Type', width: 10 },
+                { key: 'required', header: 'Required', width: 10 },
+                { key: 'description', header: 'Description', width: 30 },
+              ],
+              data: Object.entries(result.arguments).map(([name, def]) => {
+                const d = def as Record<string, unknown>;
+                return { name, type: d.type ?? '-', required: d.required ? 'yes' : 'no', description: d.description ?? '' };
+              }),
+            });
+          }
+
+          return { success: true, data: result };
+        } catch (error) {
+          if (error instanceof MCPClientError) {
+            output.printError(`Failed to get template info: ${error.message}`);
+          } else {
+            output.printError(`Unexpected error: ${String(error)}`);
+          }
           return { success: false, exitCode: 1 };
         }
-
-        // Show template details
-        const details = {
-          name: template.value,
-          description: template.hint,
-          stages: getTemplateStages(template.value),
-          agents: getTemplateAgents(template.value),
-          estimatedDuration: getTemplateDuration(template.value)
-        };
-
-        if (ctx.flags.format === 'json') {
-          output.printJson(details);
-          return { success: true, data: details };
-        }
-
-        output.writeln();
-        output.printBox(
-          [
-            `Name: ${details.name}`,
-            `Description: ${details.description}`,
-            `Stages: ${details.stages.length}`,
-            `Agents: ${details.agents.join(', ')}`,
-            `Est. Duration: ${details.estimatedDuration}`
-          ].join('\n'),
-          'Template Details'
-        );
-
-        output.writeln();
-        output.writeln(output.bold('Stages'));
-        output.printList(details.stages.map((s, i) => `${i + 1}. ${s}`));
-
-        return { success: true, data: details };
-      }
+      },
     },
-    {
-      name: 'create',
-      description: 'Create a new template from workflow',
-      options: [
-        { name: 'name', short: 'n', description: 'Template name', type: 'string', required: true },
-        { name: 'workflow', short: 'w', description: 'Workflow ID to save as template', type: 'string' },
-        { name: 'file', short: 'f', description: 'Workflow file to save as template', type: 'string' }
-      ],
-      action: async (ctx: CommandContext): Promise<CommandResult> => {
-        const name = ctx.flags.name as string;
-
-        if (!name) {
-          output.printError('Template name is required');
-          return { success: false, exitCode: 1 };
-        }
-
-        output.printSuccess(`Template "${name}" created`);
-        output.writeln(output.dim('  Use with: claude-flow workflow run -t ' + name));
-
-        return { success: true, data: { name, created: true } };
-      }
-    }
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
     output.writeln(output.bold('Template Management'));
     output.writeln();
-    output.writeln('Usage: claude-flow workflow template <subcommand>');
+    output.writeln('Usage: moflo workflow template <subcommand>');
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([
-      `${output.highlight('list')}   - List available templates`,
-      `${output.highlight('show')}   - Show template details`,
-      `${output.highlight('create')} - Create new template`
+      `${output.highlight('list')}  - List available workflow templates`,
+      `${output.highlight('show')}  - Show template details`,
     ]);
 
     return { success: true };
-  }
+  },
 };
 
 // Main workflow command
@@ -651,30 +634,32 @@ export const workflowCommand: Command = {
   subcommands: [runCommand, validateCommand, listCommand, statusCommand, stopCommand, templateCommand],
   options: [],
   examples: [
-    { command: 'claude-flow workflow run -t development --task "Build feature"', description: 'Run workflow' },
-    { command: 'claude-flow workflow validate -f ./workflow.yaml', description: 'Validate workflow' },
-    { command: 'claude-flow workflow list', description: 'List workflows' }
+    { command: 'moflo workflow run -n development', description: 'Run workflow by name' },
+    { command: 'moflo workflow run -f ./workflow.yaml', description: 'Run from file' },
+    { command: 'moflo workflow list', description: 'List workflows' },
+    { command: 'moflo workflow template list', description: 'List registry templates' },
+    { command: 'moflo workflow template show sa', description: 'Show workflow details' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
     output.writeln(output.bold('Workflow Commands'));
     output.writeln();
-    output.writeln('Usage: claude-flow workflow <subcommand> [options]');
+    output.writeln('Usage: moflo workflow <subcommand> [options]');
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([
       `${output.highlight('run')}       - Execute a workflow`,
       `${output.highlight('validate')}  - Validate workflow definition`,
-      `${output.highlight('list')}      - List workflows`,
+      `${output.highlight('list')}      - List workflows (registry + runs)`,
       `${output.highlight('status')}    - Show workflow status`,
-      `${output.highlight('stop')}      - Stop running workflow`,
-      `${output.highlight('template')}  - Manage templates`
+      `${output.highlight('stop')}      - Cancel running workflow`,
+      `${output.highlight('template')}  - Browse registry templates`,
     ]);
     output.writeln();
-    output.writeln('Run "claude-flow workflow <subcommand> --help" for more info');
+    output.writeln('Run "moflo workflow <subcommand> --help" for more info');
 
     return { success: true };
-  }
+  },
 };
 
 // Helper functions
@@ -682,6 +667,7 @@ function formatStageStatus(status: unknown): string {
   const statusStr = String(status);
   switch (statusStr) {
     case 'completed':
+    case 'succeeded':
     case 'success':
       return output.success(statusStr);
     case 'running':
@@ -689,54 +675,17 @@ function formatStageStatus(status: unknown): string {
       return output.highlight(statusStr);
     case 'pending':
     case 'waiting':
+    case 'skipped':
       return output.dim(statusStr);
     case 'failed':
     case 'error':
+    case 'cancelled':
       return output.error(statusStr);
     case 'validated':
       return output.success(statusStr);
     default:
       return statusStr;
   }
-}
-
-function getTemplateStages(template: string): string[] {
-  const stages: Record<string, string[]> = {
-    development: ['Planning', 'Implementation', 'Testing', 'Review', 'Integration'],
-    research: ['Discovery', 'Analysis', 'Synthesis', 'Documentation'],
-    testing: ['Unit Tests', 'Integration Tests', 'E2E Tests', 'Performance Tests'],
-    'security-audit': ['Threat Model', 'Static Analysis', 'Dynamic Analysis', 'Report'],
-    'code-review': ['Initial Review', 'Security Check', 'Quality Analysis', 'Feedback'],
-    refactoring: ['Analysis', 'Planning', 'Refactor', 'Validation'],
-    sparc: ['Specification', 'Pseudocode', 'Architecture', 'Refinement', 'Completion']
-  };
-  return stages[template] || ['Initialize', 'Execute', 'Complete'];
-}
-
-function getTemplateAgents(template: string): string[] {
-  const agents: Record<string, string[]> = {
-    development: ['coder', 'tester', 'reviewer'],
-    research: ['researcher', 'analyst'],
-    testing: ['tester', 'coder'],
-    'security-audit': ['security-architect', 'security-auditor'],
-    'code-review': ['reviewer', 'security-auditor', 'analyst'],
-    refactoring: ['architect', 'coder', 'reviewer'],
-    sparc: ['architect', 'coder', 'tester', 'reviewer']
-  };
-  return agents[template] || ['coder'];
-}
-
-function getTemplateDuration(template: string): string {
-  const durations: Record<string, string> = {
-    development: '15-30 min',
-    research: '10-20 min',
-    testing: '5-15 min',
-    'security-audit': '20-40 min',
-    'code-review': '10-25 min',
-    refactoring: '15-35 min',
-    sparc: '25-45 min'
-  };
-  return durations[template] || '10-20 min';
 }
 
 export default workflowCommand;
