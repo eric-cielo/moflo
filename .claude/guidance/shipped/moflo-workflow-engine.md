@@ -107,7 +107,7 @@ steps:
 
 ## Step Command Types
 
-**Eight built-in step types are registered automatically.** Each implements `execute()`, `validate()`, `describeOutputs()`, and optional `rollback()`.
+**Nine built-in step types are registered automatically.** Each implements `execute()`, `validate()`, `describeOutputs()`, and optional `rollback()`. Additional step types can be added via [pluggable step discovery](#pluggable-step-commands).
 
 ### bash — Run a Shell Command
 
@@ -243,6 +243,128 @@ Requires `playwright` as a peer dependency. The command checks for Playwright av
 
 ---
 
+### github — GitHub CLI Operations
+
+```yaml
+- id: create-issue
+  type: github
+  config:
+    action: "create-issue"      # Required. create-issue, create-pr, add-label, comment, etc.
+    title: "Bug: {args.title}"  # Required for create-issue/create-pr.
+    body: "Details here"        # Optional. Issue/PR body.
+    repo: "owner/repo"          # Optional. Defaults to current repo.
+```
+
+**Outputs:** `url` (string), `number` (number), `action` (string).
+
+Supports 8 actions: `create-issue`, `create-pr`, `add-label`, `remove-label`, `comment`, `close-issue`, `close-pr`, `merge-pr`. Requires `gh` CLI installed and authenticated.
+
+---
+
+## Pluggable Step Commands
+
+**Drop JS/TS or YAML files into a step directory to extend the workflow engine with custom step types.** User-defined steps are auto-discovered and registered alongside built-in commands.
+
+### Discovery Sources (Priority Order)
+
+| Priority | Source | Path |
+|----------|--------|------|
+| Lowest | npm packages | `node_modules/moflo-step-*` |
+| Medium | Built-in | Registered by `createRunner()` |
+| Highest | User directories | `workflows/steps/` or `.claude/workflows/steps/` |
+
+**Later sources override earlier ones by step type name.** A user step named `bash` replaces the built-in `bash` command.
+
+### JS/TS Step Files
+
+**Export a `StepCommand` object as the default export, or as `stepCommand` or `command` named export.**
+
+```javascript
+// workflows/steps/file-stats.js
+module.exports = {
+  type: 'file-stats',
+  description: 'Report file statistics',
+  configSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+  capabilities: [{ type: 'fs:read' }],
+  validate(config) {
+    const errors = [];
+    if (!config.path) errors.push({ path: 'path', message: 'path is required' });
+    return { valid: errors.length === 0, errors };
+  },
+  async execute(config) {
+    const { readFileSync, statSync } = require('node:fs');
+    const content = readFileSync(config.path, 'utf-8');
+    return { success: true, data: { lines: content.split('\n').length, bytes: statSync(config.path).size } };
+  },
+  describeOutputs() { return [{ name: 'lines', type: 'number' }, { name: 'bytes', type: 'number' }]; },
+};
+```
+
+See `examples/workflow-steps/file-stats.js` for a complete, well-commented example.
+
+### YAML Composite Steps
+
+**YAML files define reusable composite steps with declared inputs, tool dependencies, and sequential actions.**
+
+```yaml
+# workflows/steps/notify.yaml
+name: notify
+description: Log a formatted notification message
+inputs:
+  level:
+    type: string
+    required: false
+    default: "info"
+  message:
+    type: string
+    required: true
+actions:
+  - command: "echo [${inputs.level}] ${inputs.message}"
+```
+
+| YAML Field | Required | Description |
+|------------|----------|-------------|
+| `name` | Yes | Step type name (used as `type` in workflow definitions) |
+| `description` | No | Human-readable description |
+| `tool` | No | Declares tool dependency (maps to `net` capability and prerequisites) |
+| `inputs` | No | Input schema with `type`, `required`, `default`, `description` per field |
+| `actions` | Yes | Sequential actions to execute; each has `tool`/`action`/`command` + `params` |
+
+**Use `${inputs.X}` in action params for input interpolation.** Required inputs are validated before execution.
+
+### npm Package Discovery
+
+**Install a package named `moflo-step-*` and its exported StepCommand is auto-discovered.**
+
+The loader reads `package.json` for a `moflo.stepCommand` field pointing to the entry file. Falls back to the package's `main` field if absent.
+
+```json
+{
+  "name": "moflo-step-slack-notify",
+  "main": "index.js",
+  "moflo": { "stepCommand": "lib/step.js" }
+}
+```
+
+### Configuring Step Discovery in createRunner
+
+**Pass `stepDirs` and `projectRoot` to `createRunner()` to enable pluggable step discovery.**
+
+```typescript
+import { createRunner } from '@claude-flow/workflows';
+
+const runner = createRunner({
+  stepDirs: ['workflows/steps/', '.claude/workflows/steps/'],
+  projectRoot: process.cwd(),  // Enables npm moflo-step-* discovery
+});
+```
+
+### Invalid Files Are Warnings, Not Errors
+
+**Files that don't export a valid StepCommand are skipped with a warning.** This prevents one bad file from breaking all step discovery. Invalid conditions: missing exports, wrong interface shape, syntax errors, malformed YAML.
+
+---
+
 ## Shipped vs User Definition Layering
 
 **Shipped definitions are bundled defaults. User definitions override shipped ones by name match.**
@@ -264,17 +386,11 @@ Requires `playwright` as a peer dependency. The command checks for Playwright av
 ```typescript
 import { loadWorkflowDefinitions, loadWorkflowByName } from '@claude-flow/workflows';
 
-// Load all definitions with layering
 const { workflows, errors } = loadWorkflowDefinitions({
   shippedDir: 'node_modules/moflo/workflows/shipped',
   userDirs: ['.claude/workflows', 'workflows/'],
 });
-
-// Load a specific workflow by name (user override wins)
-const result = loadWorkflowByName('deploy-staging', {
-  shippedDir: 'node_modules/moflo/workflows/shipped',
-  userDirs: ['.claude/workflows'],
-});
+const result = loadWorkflowByName('deploy-staging', { /* same options */ });
 ```
 
 ---
