@@ -103,8 +103,8 @@ export interface WorkflowContext {
   readonly nestingDepth?: number;
   /** Maximum allowed nesting depth for recursive workflows. */
   readonly maxNestingDepth?: number;
-  /** Workflow tools accessor — available when a tool registry is configured. */
-  readonly tools?: import('./workflow-tool.types.js').ToolAccessor;
+  /** Workflow connectors accessor — available when a connector registry is configured. */
+  readonly tools?: import('./workflow-connector.types.js').ConnectorAccessor;
 }
 
 // ============================================================================

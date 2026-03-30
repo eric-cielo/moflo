@@ -3,7 +3,7 @@
  *
  * Story #107: Implements the `browser` step command backed by Playwright.
  * Issue #219: Refactored to delegate action execution to the `playwright`
- * workflow tool. Security policy (SSRF, evaluate gating) remains here.
+ * workflow connector. Security policy (SSRF, evaluate gating) remains here.
  *
  * Playwright is an optional peer dependency. If not installed, the step
  * throws a clear error with install instructions.
@@ -34,7 +34,7 @@ import {
   SUPPORTED_ACTIONS,
   type PlaywrightBrowser,
   type BrowserActionParams,
-} from '../tools/playwright.js';
+} from '../connectors/playwright.js';
 
 /** Re-export the canonical action type from the tool for consumer use. */
 export type BrowserAction = BrowserActionParams;

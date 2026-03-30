@@ -1,11 +1,11 @@
 /**
- * HTTP Workflow Tool
+ * HTTP Workflow Connector
  *
- * Built-in tool for generic REST/GraphQL API calls.
+ * Built-in connector for generic REST/GraphQL API calls.
  * Uses Node.js built-in fetch — no external dependencies.
  */
 
-import type { WorkflowTool, ToolAction, ToolOutput } from '../types/workflow-tool.types.js';
+import type { WorkflowConnector, ConnectorAction, ConnectorOutput } from '../types/workflow-connector.types.js';
 
 // ============================================================================
 // Types
@@ -31,7 +31,7 @@ interface GraphqlParams {
 // Actions
 // ============================================================================
 
-const ACTIONS: ToolAction[] = [
+const ACTIONS: ConnectorAction[] = [
   {
     name: 'get',
     description: 'HTTP GET request',
@@ -129,12 +129,12 @@ const ACTIONS: ToolAction[] = [
 ];
 
 // ============================================================================
-// HTTP Tool
+// HTTP Connector
 // ============================================================================
 
-export const httpTool: WorkflowTool = {
+export const httpConnector: WorkflowConnector = {
   name: 'http',
-  description: 'Generic HTTP/REST/GraphQL API tool using Node.js built-in fetch',
+  description: 'Generic HTTP/REST/GraphQL API connector using Node.js built-in fetch',
   version: '1.0.0',
   capabilities: ['read', 'write'],
 
@@ -146,7 +146,7 @@ export const httpTool: WorkflowTool = {
     // No cleanup needed
   },
 
-  async execute(action: string, params: Record<string, unknown>): Promise<ToolOutput> {
+  async execute(action: string, params: Record<string, unknown>): Promise<ConnectorOutput> {
     const start = Date.now();
 
     try {
@@ -179,7 +179,7 @@ export const httpTool: WorkflowTool = {
     }
   },
 
-  listActions(): ToolAction[] {
+  listActions(): ConnectorAction[] {
     return ACTIONS;
   },
 };
@@ -215,7 +215,7 @@ async function doRequest(
   method: string,
   params: HttpRequestParams,
   start: number,
-): Promise<ToolOutput> {
+): Promise<ConnectorOutput> {
   if (!params.url) {
     return { success: false, data: {}, error: 'Missing required parameter: url', duration: Date.now() - start };
   }
@@ -250,7 +250,7 @@ async function doRequest(
   };
 }
 
-async function doGraphql(params: GraphqlParams, start: number): Promise<ToolOutput> {
+async function doGraphql(params: GraphqlParams, start: number): Promise<ConnectorOutput> {
   if (!params.url || !params.query) {
     return {
       success: false,

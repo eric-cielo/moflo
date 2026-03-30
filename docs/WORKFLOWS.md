@@ -551,25 +551,25 @@ Common warning conditions:
 - YAML file is missing the required `name` field
 - YAML file has no `actions` array
 
-## Custom Workflow Tools
+## Custom Workflow Connectors
 
-Tools and steps are different concepts:
+Connectors and steps are different concepts:
 
-- A **tool** is an adapter that wraps an external resource — a CLI, an API, a database. It provides general capabilities: "I can talk to GitHub," "I can drive a browser," "I can send Slack messages."
-- A **step** is a specific operation in a workflow. It may use a tool to do its work: "Create a PR using the GitHub tool," "Take a screenshot using the browser tool," or it may work standalone: "Read a file and count lines."
+- A **connector** is an adapter that bridges an external resource — a CLI, an API, a database. It provides general capabilities: "I can talk to GitHub," "I can drive a browser," "I can send Slack messages."
+- A **step** is a specific operation in a workflow. It may use a connector to do its work: "Create a PR using the GitHub connector," "Take a screenshot using the browser connector," or it may work standalone: "Read a file and count lines."
 
-The built-in `github` and `browser` step types are monolithic — they bundle the tool adapter and step logic together. For your own extensions, you can separate them: create a tool once, then build multiple steps that use it.
+The built-in `github` and `browser` step types are monolithic — they bundle the connector adapter and step logic together. For your own extensions, you can separate them: create a connector once, then build multiple steps that use it.
 
-### The WorkflowTool Interface
+### The WorkflowConnector Interface
 
-Tools implement a lifecycle-aware interface with named actions:
+Connectors implement a lifecycle-aware interface with named actions:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | Yes | Tool identifier |
+| `name` | string | Yes | Connector identifier |
 | `description` | string | Yes | Human-readable description |
 | `version` | string | Yes | Semver version |
-| `capabilities` | array | Yes | What the tool can do: `read`, `write`, `search`, `subscribe`, `authenticate` |
+| `capabilities` | array | Yes | What the connector can do: `read`, `write`, `search`, `subscribe`, `authenticate` |
 | `initialize(config)` | function | Yes | Set up connections, verify dependencies |
 | `dispose()` | function | Yes | Clean up resources |
 | `execute(action, params)` | function | Yes | Run a named action with parameters |
@@ -618,28 +618,28 @@ module.exports = {
 };
 ```
 
-### Where to Put Custom Tools
+### Where to Put Custom Connectors
 
 ```
 your-project/
-  workflows/tools/          # Project-level custom tools
-  .claude/workflows/tools/  # Alternative location
+  workflows/connectors/          # Project-level custom connectors
+  .claude/workflows/connectors/  # Alternative location
 ```
 
-The tool registry scans for `.js`, `.ts`, `.mjs`, and `.mts` files. Tools can also be installed via npm as `moflo-tool-*` packages (declare the entry point in `package.json` under the `moflo-tool` field).
+The connector registry scans for `.js`, `.ts`, `.mjs`, and `.mts` files. Connectors can also be installed via npm as `moflo-connector-*` packages (declare the entry point in `package.json` under the `moflo-connector` field).
 
-### Tools vs Steps: When to Use Which
+### Connectors vs Steps: When to Use Which
 
 | You want to... | Create a... |
 |----------------|-------------|
-| Wrap a CLI or API for general use | **Tool** (`workflows/tools/`) |
+| Wrap a CLI or API for general use | **Connector** (`workflows/connectors/`) |
 | Define a specific workflow operation | **Step** (`workflows/steps/`) |
 | Combine shell commands into a reusable action | **YAML step** |
-| Add a connector that multiple steps can share | **Tool** |
+| Add a bridge that multiple steps can share | **Connector** |
 
-A step can use a tool through the workflow context's tool accessor — the engine injects registered tools so steps can call `context.tools.execute('github-cli', 'create-issue', { title: '...' })`.
+A step can use a connector through the workflow context's connector accessor — the engine injects registered connectors so steps can call `context.tools.execute('github-cli', 'create-issue', { title: '...' })`.
 
-See `examples/workflow-tools/github-cli.js` for a complete tool example and `examples/workflow-steps/` for step examples.
+See `examples/workflow-connectors/github-cli.js` for a complete connector example and `examples/workflow-steps/` for step examples.
 
 ## Error Handling
 

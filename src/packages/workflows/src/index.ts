@@ -55,7 +55,7 @@ export type {
 
 export { StepCommandRegistry } from './core/step-command-registry.js';
 export { WorkflowRunner } from './core/runner.js';
-export { ToolAccessorImpl } from './core/tool-accessor.js';
+export { ConnectorAccessorImpl, ToolAccessorImpl } from './core/connector-accessor.js';
 export {
   checkCapabilities,
   type CapabilityViolation,
@@ -211,10 +211,19 @@ export type {
 } from './scheduler/schedule.types.js';
 
 // ============================================================================
-// Workflow Tools (external resource connectors)
+// Workflow Connectors (external resource bridges)
 // ============================================================================
 
 export type {
+  WorkflowConnector,
+  ConnectorView,
+  ConnectorOutput,
+  ConnectorAction,
+  ConnectorCapability,
+  ConnectorAccessor,
+  ConnectorRegistryEntry,
+  ConnectorSource,
+  // Backwards-compatibility aliases
   WorkflowTool,
   ToolView,
   ToolOutput,
@@ -223,20 +232,31 @@ export type {
   ToolAccessor,
   ToolRegistryEntry,
   ToolSource,
-} from './types/workflow-tool.types.js';
+} from './types/workflow-connector.types.js';
 
 export {
+  WorkflowConnectorRegistry,
   WorkflowToolRegistry,
+  type ConnectorRegistryOptions,
+  type ConnectorScanResult,
+  type ConnectorScanError,
   type ToolRegistryOptions,
   type ToolScanResult,
   type ToolScanError,
-} from './registry/tool-registry.js';
+} from './registry/connector-registry.js';
 
 // ============================================================================
-// Built-in Tools
+// Built-in Connectors
 // ============================================================================
 
 export {
+  httpConnector,
+  githubCliConnector,
+  playwrightConnector,
+  builtinConnectors,
+  // Backwards-compatibility aliases
   httpTool,
+  githubCliTool,
+  playwrightTool,
   builtinTools,
-} from './tools/index.js';
+} from './connectors/index.js';

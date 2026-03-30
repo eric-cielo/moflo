@@ -144,10 +144,10 @@ Once MCP tools call the real engine, forward `WorkflowResult` (or a serialized f
 
 ---
 
-## Issue 4: Tool Registry SOURCE_PRIORITY Default for Unknown Sources
+## Issue 4: Connector Registry SOURCE_PRIORITY Default for Unknown Sources
 
 **Severity:** MEDIUM
-**Files:** `src/packages/workflows/src/registry/tool-registry.ts` lines 161-176
+**Files:** `src/packages/workflows/src/registry/connector-registry.ts` (formerly `tool-registry.ts`)
 
 ### Analysis
 
@@ -264,7 +264,7 @@ Part of Issue 1 fix — once MCP tools use the engine, templates should be engin
 ## Issue 8: Duck-Typing Validation Doesn't Check Function Signatures
 
 **Severity:** LOW
-**Files:** `src/packages/workflows/src/loaders/directory-step-loader.ts`, `src/packages/workflows/src/registry/tool-registry.ts`
+**Files:** `src/packages/workflows/src/loaders/directory-step-loader.ts`, `src/packages/workflows/src/registry/connector-registry.ts`
 
 ### Analysis
 
@@ -272,11 +272,11 @@ Both registries validate plugins via duck-typing (checking property names and `t
 
 For steps (`directory-step-loader.ts`), the check verifies: `type`, `description`, `validate`, `execute`, `describeOutputs`, `configSchema` exist and have correct `typeof`.
 
-For tools (`tool-registry.ts` lines 48-61), the check verifies: `name`, `description`, `version`, `capabilities`, `initialize`, `dispose`, `execute`, `listActions`.
+For connectors (`connector-registry.ts`), the check verifies: `name`, `description`, `version`, `capabilities`, `initialize`, `dispose`, `execute`, `listActions`.
 
 ### Verification Instructions
 
-1. **Read the validation functions:** Check both `isStepCommand()` in directory-step-loader.ts and `isValidTool()` in tool-registry.ts
+1. **Read the validation functions:** Check both `isStepCommand()` in directory-step-loader.ts and `isValidConnector()` in connector-registry.ts
 2. **Check if TypeScript helps:** When loading from directories, files are `import()`ed — if they're compiled `.js`, there's no type checking. If `.ts`, does the build catch mismatches?
 3. **Write a test:** Create a file exporting `{ type: 'bad', description: 'x', validate: () => 'wrong return', execute: () => 'not a promise', describeOutputs: () => 42, configSchema: {} }` — does it register successfully?
 4. **Assess real-world risk:** How often do third-party step authors get the interface wrong? Are there better alternatives (like a `createStepCommand()` factory function that enforces types)?

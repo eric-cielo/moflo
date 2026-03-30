@@ -1,18 +1,18 @@
 /**
  * Story #226: Step command execution and registry priority logic
  *
- * Tests composite command execution, tool registry source handling,
+ * Tests composite command execution, connector registry source handling,
  * and step command registry priority enforcement.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createCompositeCommand } from '../src/commands/composite-command.js';
 import { StepCommandRegistry } from '../src/core/step-command-registry.js';
-import { WorkflowToolRegistry } from '../src/registry/tool-registry.js';
+import { WorkflowConnectorRegistry } from '../src/registry/connector-registry.js';
 import { createMockContext, makeCommand } from './helpers.js';
 import type { YamlStepDefinition } from '../src/loaders/yaml-step-loader.js';
 import type { WorkflowContext } from '../src/types/step-command.types.js';
-import type { ToolAccessor, ToolOutput } from '../src/types/workflow-tool.types.js';
+import type { ConnectorAccessor, ConnectorOutput } from '../src/types/workflow-connector.types.js';
 
 // ============================================================================
 // Composite Command Execution
@@ -28,14 +28,14 @@ describe('Composite Command Execution (Issue #2)', () => {
     };
   }
 
-  function mockToolAccessor(results: Map<string, ToolOutput>): ToolAccessor {
+  function mockConnectorAccessor(results: Map<string, ConnectorOutput>): ConnectorAccessor {
     return {
       get: (name: string) => results.has(name) ? { name, description: '', version: '1', capabilities: [], listActions: () => [] } : undefined,
       has: (name: string) => results.has(name),
       list: () => [],
-      execute: vi.fn(async (toolName: string, _action: string, _params: Record<string, unknown>) => {
-        const result = results.get(toolName);
-        if (!result) return { success: false, data: {}, error: `Tool ${toolName} not found` };
+      execute: vi.fn(async (connectorName: string, _action: string, _params: Record<string, unknown>) => {
+        const result = results.get(connectorName);
+        if (!result) return { success: false, data: {}, error: `Connector ${connectorName} not found` };
         return result;
       }),
     };
@@ -47,10 +47,10 @@ describe('Composite Command Execution (Issue #2)', () => {
     ]);
     const command = createCompositeCommand(def);
 
-    const toolResults = new Map<string, ToolOutput>([
+    const toolResults = new Map<string, ConnectorOutput>([
       ['http', { success: true, data: { status: 200, body: 'OK' } }],
     ]);
-    const context = createMockContext({ tools: mockToolAccessor(toolResults) });
+    const context = createMockContext({ tools: mockConnectorAccessor(toolResults) });
 
     const output = await command.execute({}, context);
     expect(output.success).toBe(true);
@@ -76,8 +76,8 @@ describe('Composite Command Execution (Issue #2)', () => {
       { tool: 'nonexistent', action: 'do-thing', params: {} },
     ]);
     const command = createCompositeCommand(def);
-    const toolResults = new Map<string, ToolOutput>();
-    const context = createMockContext({ tools: mockToolAccessor(toolResults) });
+    const toolResults = new Map<string, ConnectorOutput>();
+    const context = createMockContext({ tools: mockConnectorAccessor(toolResults) });
 
     const output = await command.execute({}, context);
     expect(output.success).toBe(false);
@@ -121,10 +121,10 @@ describe('Composite Command Execution (Issue #2)', () => {
       { command: 'echo done', params: {} },
     ]);
     const command = createCompositeCommand(def);
-    const toolResults = new Map<string, ToolOutput>([
+    const toolResults = new Map<string, ConnectorOutput>([
       ['http', { success: true, data: { status: 200 } }],
     ]);
-    const context = createMockContext({ tools: mockToolAccessor(toolResults) });
+    const context = createMockContext({ tools: mockConnectorAccessor(toolResults) });
 
     const output = await command.execute({}, context);
     expect(output.success).toBe(true);
@@ -236,16 +236,16 @@ describe('StepCommandRegistry Priority (Issue #6)', () => {
 });
 
 // ============================================================================
-// Tool Registry Source Handling (Issue #4)
+// Connector Registry Source Handling (Issue #4)
 // ============================================================================
 
-describe('WorkflowToolRegistry Source Priority (Issue #4)', () => {
-  it('should use typed ToolSource record (no fallback to 0)', () => {
+describe('WorkflowConnectorRegistry Source Priority (Issue #4)', () => {
+  it('should use typed ConnectorSource record (no fallback to 0)', () => {
     // This is a compile-time check — the SOURCE_PRIORITY record is now
-    // typed as Record<ToolSource, number> instead of Record<string, number>.
+    // typed as Record<ConnectorSource, number> instead of Record<string, number>.
     // We verify it at runtime by checking the registry handles all known sources.
-    const registry = new WorkflowToolRegistry();
-    // If we got here without type errors, the Record<ToolSource, number> is correct.
+    const registry = new WorkflowConnectorRegistry();
+    // If we got here without type errors, the Record<ConnectorSource, number> is correct.
     expect(registry).toBeDefined();
   });
 });

@@ -1,7 +1,7 @@
 /**
- * GitHub CLI Workflow Tool
+ * GitHub CLI Workflow Connector
  *
- * Reusable `gh` CLI adapter implementing WorkflowTool interface.
+ * Reusable `gh` CLI adapter implementing WorkflowConnector interface.
  * Extracted from the monolithic github step command (Issue #219)
  * so custom workflow steps can use GitHub operations via context.tools.
  *
@@ -9,7 +9,7 @@
  *          label, comment, repo-info
  */
 
-import type { WorkflowTool, ToolAction, ToolOutput } from '../types/workflow-tool.types.js';
+import type { WorkflowConnector, ConnectorAction, ConnectorOutput } from '../types/workflow-connector.types.js';
 import { commandExists } from '../core/prerequisite-checker.js';
 import { execAsync, escapeShellArg } from '../core/shell.js';
 
@@ -41,7 +41,7 @@ const VALID_MERGE_METHODS = ['squash', 'merge', 'rebase'] as const;
 // Action executors
 // ============================================================================
 
-async function executeIssueFetch(params: Record<string, unknown>, start: number): Promise<ToolOutput> {
+async function executeIssueFetch(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
   const issue = params.issue as number;
   const fields = (params.fields as string[])?.join(',') || 'number,title,body,labels,state,assignees';
   const result = await execAsync(`gh issue view ${issue} --json ${fields}`);
@@ -60,7 +60,7 @@ function appendLabelArgs(args: string[], labels: { add?: string[]; remove?: stri
   }
 }
 
-async function executeIssueEdit(params: Record<string, unknown>, start: number): Promise<ToolOutput> {
+async function executeIssueEdit(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
   const issue = params.issue as number;
   const args: string[] = [`gh issue edit ${issue}`];
   if (params.title) args.push(`--title ${escapeShellArg(params.title as string)}`);
@@ -74,7 +74,7 @@ async function executeIssueEdit(params: Record<string, unknown>, start: number):
   return { success: true, data: { issue, updated: true }, duration: Date.now() - start };
 }
 
-async function executePrCreate(params: Record<string, unknown>, start: number): Promise<ToolOutput> {
+async function executePrCreate(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
   const args: string[] = ['gh pr create'];
   args.push(`--title ${escapeShellArg(params.title as string)}`);
   if (params.body) args.push(`--body ${escapeShellArg(params.body as string)}`);
@@ -95,7 +95,7 @@ async function executePrCreate(params: Record<string, unknown>, start: number): 
   return { success: true, data: { prUrl, prNumber }, duration: Date.now() - start };
 }
 
-async function executePrMerge(params: Record<string, unknown>, start: number): Promise<ToolOutput> {
+async function executePrMerge(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
   const prRef = (params.pr ?? params.issue) as number;
   const mergeMethod = (params.mergeMethod as string) ?? 'squash';
   const args: string[] = [`gh pr merge ${prRef}`];
@@ -110,7 +110,7 @@ async function executePrMerge(params: Record<string, unknown>, start: number): P
   return { success: true, data: { pr: prRef, merged: true, method: mergeMethod }, duration: Date.now() - start };
 }
 
-async function executePrFind(params: Record<string, unknown>, start: number): Promise<ToolOutput> {
+async function executePrFind(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
   let cmd: string;
   if (params.head) {
     cmd = `gh pr list --head ${escapeShellArg(params.head as string)} --json number,title,state,url --limit 1`;
@@ -127,7 +127,7 @@ async function executePrFind(params: Record<string, unknown>, start: number): Pr
   return { success: true, data: { prs, count: prs.length }, duration: Date.now() - start };
 }
 
-async function executeLabel(params: Record<string, unknown>, start: number): Promise<ToolOutput> {
+async function executeLabel(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
   const ref = (params.issue ?? params.pr) as number;
   const args: string[] = [`gh issue edit ${ref}`];
   appendLabelArgs(args, params.labels as { add?: string[]; remove?: string[] } | undefined);
@@ -140,7 +140,7 @@ async function executeLabel(params: Record<string, unknown>, start: number): Pro
   return { success: true, data: { ref, labelsAdded: labels?.add, labelsRemoved: labels?.remove }, duration: Date.now() - start };
 }
 
-async function executeComment(params: Record<string, unknown>, start: number): Promise<ToolOutput> {
+async function executeComment(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
   const ref = (params.issue ?? params.pr) as number;
   const body = params.body as string;
   const result = await execAsync(`gh issue comment ${ref} --body ${escapeShellArg(body)}`);
@@ -150,7 +150,7 @@ async function executeComment(params: Record<string, unknown>, start: number): P
   return { success: true, data: { ref, commented: true }, duration: Date.now() - start };
 }
 
-async function executeRepoInfo(start: number): Promise<ToolOutput> {
+async function executeRepoInfo(start: number): Promise<ConnectorOutput> {
   const result = await execAsync('gh repo view --json name,owner,url,defaultBranchRef,description');
   if (result.exitCode !== 0) {
     return { success: false, data: {}, error: result.stderr || 'Failed to get repo info', duration: Date.now() - start };
@@ -208,7 +208,7 @@ export function validateGitHubAction(action: string, params: Record<string, unkn
 // Action schemas
 // ============================================================================
 
-const ACTIONS: ToolAction[] = [
+const ACTIONS: ConnectorAction[] = [
   {
     name: 'issue-fetch',
     description: 'Fetch issue details as JSON',
@@ -315,10 +315,10 @@ const ACTIONS: ToolAction[] = [
 ];
 
 // ============================================================================
-// GitHub CLI Tool
+// GitHub CLI Connector
 // ============================================================================
 
-export const githubCliTool: WorkflowTool = {
+export const githubCliConnector: WorkflowConnector = {
   name: 'github-cli',
   description: 'GitHub operations via gh CLI (issues, PRs, labels, comments)',
   version: '1.0.0',
@@ -339,7 +339,7 @@ export const githubCliTool: WorkflowTool = {
     // No cleanup needed
   },
 
-  async execute(action: string, params: Record<string, unknown>): Promise<ToolOutput> {
+  async execute(action: string, params: Record<string, unknown>): Promise<ConnectorOutput> {
     const start = Date.now();
     const errors = validateGitHubAction(action, params);
     if (errors.length > 0) {
@@ -368,7 +368,7 @@ export const githubCliTool: WorkflowTool = {
     }
   },
 
-  listActions(): ToolAction[] {
+  listActions(): ConnectorAction[] {
     return ACTIONS;
   },
 };

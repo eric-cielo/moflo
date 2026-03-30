@@ -1,28 +1,28 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { httpTool } from '../src/tools/http-tool.js';
+import { httpConnector } from '../src/connectors/http-tool.js';
 
-describe('httpTool', () => {
+describe('httpConnector (workflow connector)', () => {
   describe('interface compliance', () => {
     it('has correct name and version', () => {
-      expect(httpTool.name).toBe('http');
-      expect(httpTool.version).toBe('1.0.0');
-      expect(httpTool.description).toBeTruthy();
+      expect(httpConnector.name).toBe('http');
+      expect(httpConnector.version).toBe('1.0.0');
+      expect(httpConnector.description).toBeTruthy();
     });
 
     it('declares read and write capabilities', () => {
-      expect(httpTool.capabilities).toContain('read');
-      expect(httpTool.capabilities).toContain('write');
+      expect(httpConnector.capabilities).toContain('read');
+      expect(httpConnector.capabilities).toContain('write');
     });
 
     it('listActions returns 5 actions', () => {
-      const actions = httpTool.listActions();
+      const actions = httpConnector.listActions();
       expect(actions).toHaveLength(5);
       const names = actions.map(a => a.name);
       expect(names).toEqual(['get', 'post', 'put', 'delete', 'graphql']);
     });
 
     it('each action has input and output schemas', () => {
-      for (const action of httpTool.listActions()) {
+      for (const action of httpConnector.listActions()) {
         expect(action.inputSchema).toBeDefined();
         expect(action.inputSchema.type).toBe('object');
         expect(action.outputSchema).toBeDefined();
@@ -31,8 +31,8 @@ describe('httpTool', () => {
     });
 
     it('initialize and dispose are no-ops', async () => {
-      await expect(httpTool.initialize({})).resolves.toBeUndefined();
-      await expect(httpTool.dispose()).resolves.toBeUndefined();
+      await expect(httpConnector.initialize({})).resolves.toBeUndefined();
+      await expect(httpConnector.dispose()).resolves.toBeUndefined();
     });
   });
 
@@ -61,7 +61,7 @@ describe('httpTool', () => {
     it('GET returns response body and status', async () => {
       mockFetch(200, { message: 'hello' });
 
-      const result = await httpTool.execute('get', { url: 'https://api.example.com/data' });
+      const result = await httpConnector.execute('get', { url: 'https://api.example.com/data' });
 
       expect(result.success).toBe(true);
       expect(result.data.status).toBe(200);
@@ -77,7 +77,7 @@ describe('httpTool', () => {
     it('POST with JSON body sends correct content-type', async () => {
       mockFetch(201, { id: 1 });
 
-      const result = await httpTool.execute('post', {
+      const result = await httpConnector.execute('post', {
         url: 'https://api.example.com/items',
         body: { name: 'test' },
       });
@@ -93,7 +93,7 @@ describe('httpTool', () => {
     it('GraphQL action sends query in body', async () => {
       mockFetch(200, { data: { user: { name: 'Alice' } } });
 
-      const result = await httpTool.execute('graphql', {
+      const result = await httpConnector.execute('graphql', {
         url: 'https://api.example.com/graphql',
         query: '{ user { name } }',
         variables: { id: '1' },
@@ -109,7 +109,7 @@ describe('httpTool', () => {
     it('returns error output for HTTP errors (not exception)', async () => {
       mockFetch(404, { error: 'Not found' });
 
-      const result = await httpTool.execute('get', { url: 'https://api.example.com/missing' });
+      const result = await httpConnector.execute('get', { url: 'https://api.example.com/missing' });
 
       expect(result.success).toBe(false);
       expect(result.data.status).toBe(404);
@@ -119,21 +119,21 @@ describe('httpTool', () => {
     it('returns error output on fetch failure', async () => {
       fetchSpy.mockRejectedValue(new Error('Network error'));
 
-      const result = await httpTool.execute('get', { url: 'https://unreachable.example.com' });
+      const result = await httpConnector.execute('get', { url: 'https://unreachable.example.com' });
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Network error');
     });
 
     it('returns error for missing url parameter', async () => {
-      const result = await httpTool.execute('get', {});
+      const result = await httpConnector.execute('get', {});
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('url');
     });
 
     it('returns error for unknown action', async () => {
-      const result = await httpTool.execute('patch', {});
+      const result = await httpConnector.execute('patch', {});
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Unknown action');
@@ -143,7 +143,7 @@ describe('httpTool', () => {
     it('handles text response', async () => {
       mockFetch(200, 'plain text response', 'text/plain');
 
-      const result = await httpTool.execute('get', { url: 'https://example.com' });
+      const result = await httpConnector.execute('get', { url: 'https://example.com' });
 
       expect(result.success).toBe(true);
       expect(result.data.body).toBe('plain text response');
@@ -152,7 +152,7 @@ describe('httpTool', () => {
     it('GET with query params appends to URL', async () => {
       mockFetch(200, {});
 
-      await httpTool.execute('get', {
+      await httpConnector.execute('get', {
         url: 'https://api.example.com/search',
         query: { q: 'test', page: '1' },
       });
@@ -165,7 +165,7 @@ describe('httpTool', () => {
     it('DELETE sends correct method', async () => {
       mockFetch(200, '');
 
-      await httpTool.execute('delete', { url: 'https://api.example.com/item/1' });
+      await httpConnector.execute('delete', { url: 'https://api.example.com/item/1' });
 
       const [, init] = fetchSpy.mock.calls[0];
       expect((init as RequestInit).method).toBe('DELETE');
@@ -174,7 +174,7 @@ describe('httpTool', () => {
     it('PUT sends body', async () => {
       mockFetch(200, { updated: true });
 
-      await httpTool.execute('put', {
+      await httpConnector.execute('put', {
         url: 'https://api.example.com/item/1',
         body: { name: 'updated' },
       });
@@ -185,7 +185,7 @@ describe('httpTool', () => {
     });
 
     it('GraphQL missing query returns error', async () => {
-      const result = await httpTool.execute('graphql', { url: 'https://api.example.com/graphql' });
+      const result = await httpConnector.execute('graphql', { url: 'https://api.example.com/graphql' });
       expect(result.success).toBe(false);
       expect(result.error).toContain('query');
     });

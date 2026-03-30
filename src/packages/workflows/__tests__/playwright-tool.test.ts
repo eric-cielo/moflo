@@ -1,20 +1,20 @@
 /**
- * Playwright Workflow Tool Tests
+ * Playwright Workflow Connector Tests
  *
- * Issue #219: Tests for the extracted playwright shipped tool.
+ * Issue #219: Tests for the extracted playwright shipped connector.
  * Playwright is mocked to avoid real browser launches.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  playwrightTool,
+  playwrightConnector,
   SUPPORTED_ACTIONS,
   resetPlaywrightCache,
   resetSessionState,
   getSessionState,
   executeBrowserAction,
   type PlaywrightPage,
-} from '../src/tools/playwright.js';
+} from '../src/connectors/playwright.js';
 
 // ============================================================================
 // Mock Playwright
@@ -63,27 +63,27 @@ afterEach(() => {
 // Interface compliance
 // ============================================================================
 
-describe('playwrightTool — interface', () => {
+describe('playwrightConnector — interface', () => {
   it('has correct name and version', () => {
-    expect(playwrightTool.name).toBe('playwright');
-    expect(playwrightTool.version).toBe('1.0.0');
-    expect(playwrightTool.description).toBeTruthy();
+    expect(playwrightConnector.name).toBe('playwright');
+    expect(playwrightConnector.version).toBe('1.0.0');
+    expect(playwrightConnector.description).toBeTruthy();
   });
 
   it('declares read and write capabilities', () => {
-    expect(playwrightTool.capabilities).toContain('read');
-    expect(playwrightTool.capabilities).toContain('write');
+    expect(playwrightConnector.capabilities).toContain('read');
+    expect(playwrightConnector.capabilities).toContain('write');
   });
 
   it('listActions returns 13 actions', () => {
-    const actions = playwrightTool.listActions();
+    const actions = playwrightConnector.listActions();
     expect(actions).toHaveLength(13);
     const names = actions.map(a => a.name);
     expect(names).toEqual([...SUPPORTED_ACTIONS]);
   });
 
   it('each action has input and output schemas', () => {
-    for (const action of playwrightTool.listActions()) {
+    for (const action of playwrightConnector.listActions()) {
       expect(action.inputSchema).toBeDefined();
       expect(action.inputSchema.type).toBe('object');
       expect(action.outputSchema).toBeDefined();
@@ -92,7 +92,7 @@ describe('playwrightTool — interface', () => {
   });
 
   it('initialize launches browser and creates session', async () => {
-    await playwrightTool.initialize({});
+    await playwrightConnector.initialize({});
     const state = getSessionState();
     expect(state.hasBrowser).toBe(true);
     expect(state.hasPage).toBe(true);
@@ -101,15 +101,15 @@ describe('playwrightTool — interface', () => {
   });
 
   it('dispose closes browser and resets state', async () => {
-    await playwrightTool.initialize({});
-    await playwrightTool.dispose();
+    await playwrightConnector.initialize({});
+    await playwrightConnector.dispose();
     const state = getSessionState();
     expect(state.hasBrowser).toBe(false);
     expect(state.hasPage).toBe(false);
   });
 
   it('per-action schemas have correct required fields', () => {
-    const actions = playwrightTool.listActions();
+    const actions = playwrightConnector.listActions();
     const openAction = actions.find(a => a.name === 'open')!;
     expect(openAction.inputSchema.required).toContain('url');
 
@@ -260,34 +260,34 @@ describe('executeBrowserAction', () => {
 // Tool execute (full integration with browser launch)
 // ============================================================================
 
-describe('playwrightTool — execute', () => {
+describe('playwrightConnector — execute', () => {
   it('executes open action successfully', async () => {
-    const result = await playwrightTool.execute('open', { url: 'https://example.com' });
+    const result = await playwrightConnector.execute('open', { url: 'https://example.com' });
     expect(result.success).toBe(true);
     expect(result.data.actionsExecuted).toBe(1);
     expect(mockPage.goto).toHaveBeenCalled();
   });
 
   it('executes click action', async () => {
-    const result = await playwrightTool.execute('click', { selector: '#btn' });
+    const result = await playwrightConnector.execute('click', { selector: '#btn' });
     expect(result.success).toBe(true);
     expect(mockPage.click).toHaveBeenCalled();
   });
 
   it('returns error for unknown action', async () => {
-    const result = await playwrightTool.execute('destroy', {});
+    const result = await playwrightConnector.execute('destroy', {});
     expect(result.success).toBe(false);
     expect(result.error).toContain('Unknown action');
   });
 
   it('returns error when action fails', async () => {
-    const result = await playwrightTool.execute('open', {});
+    const result = await playwrightConnector.execute('open', {});
     expect(result.success).toBe(false);
     expect(result.error).toContain('open action requires url');
   });
 
   it('closes browser after execution (no session)', async () => {
-    await playwrightTool.execute('open', { url: 'https://example.com' });
+    await playwrightConnector.execute('open', { url: 'https://example.com' });
     expect(mockBrowser.close).toHaveBeenCalled();
   });
 });
@@ -296,18 +296,18 @@ describe('playwrightTool — execute', () => {
 // Session-based browser reuse
 // ============================================================================
 
-describe('playwrightTool — session reuse', () => {
+describe('playwrightConnector — session reuse', () => {
   afterEach(async () => {
     // Ensure session is cleaned up after each test
     resetSessionState();
   });
 
   it('reuses session browser across multiple execute calls', async () => {
-    await playwrightTool.initialize({});
+    await playwrightConnector.initialize({});
     vi.clearAllMocks(); // Clear launch call from initialize
 
-    await playwrightTool.execute('open', { url: 'https://a.com' });
-    await playwrightTool.execute('click', { selector: '#btn' });
+    await playwrightConnector.execute('open', { url: 'https://a.com' });
+    await playwrightConnector.execute('click', { selector: '#btn' });
 
     // Should NOT launch a new browser — session reuse
     const pw = await import('playwright') as any;
@@ -319,27 +319,27 @@ describe('playwrightTool — session reuse', () => {
   });
 
   it('does not close browser between session execute calls', async () => {
-    await playwrightTool.initialize({});
+    await playwrightConnector.initialize({});
     vi.clearAllMocks();
 
-    await playwrightTool.execute('open', { url: 'https://a.com' });
+    await playwrightConnector.execute('open', { url: 'https://a.com' });
     expect(mockBrowser.close).not.toHaveBeenCalled();
 
     resetSessionState();
   });
 
   it('dispose closes session browser', async () => {
-    await playwrightTool.initialize({});
+    await playwrightConnector.initialize({});
     vi.clearAllMocks();
 
-    await playwrightTool.dispose();
+    await playwrightConnector.dispose();
     expect(mockBrowser.close).toHaveBeenCalled();
     expect(getSessionState().hasBrowser).toBe(false);
   });
 
   it('session execute returns error for failed action', async () => {
-    await playwrightTool.initialize({});
-    const result = await playwrightTool.execute('open', {});
+    await playwrightConnector.initialize({});
+    const result = await playwrightConnector.execute('open', {});
     expect(result.success).toBe(false);
     expect(result.error).toContain('open action requires url');
 
@@ -347,7 +347,7 @@ describe('playwrightTool — session reuse', () => {
   });
 
   it('initialize accepts headless config', async () => {
-    await playwrightTool.initialize({ headless: false });
+    await playwrightConnector.initialize({ headless: false });
     const pw = await import('playwright') as any;
     expect(pw.chromium.launch).toHaveBeenCalledWith({ headless: false });
 
@@ -359,7 +359,7 @@ describe('playwrightTool — session reuse', () => {
 // Screenshot file tracking
 // ============================================================================
 
-describe('playwrightTool — screenshot tracking', () => {
+describe('playwrightConnector — screenshot tracking', () => {
   it('tracks screenshot files via screenshotFiles param', async () => {
     const files: string[] = [];
     const outputs: Record<string, unknown> = {};
@@ -370,13 +370,13 @@ describe('playwrightTool — screenshot tracking', () => {
   });
 
   it('tracks screenshots in session mode', async () => {
-    await playwrightTool.initialize({});
+    await playwrightConnector.initialize({});
 
-    await playwrightTool.execute('screenshot', {});
+    await playwrightConnector.execute('screenshot', {});
     const state = getSessionState();
     expect(state.screenshotCount).toBe(1);
 
-    await playwrightTool.execute('screenshot', {});
+    await playwrightConnector.execute('screenshot', {});
     expect(getSessionState().screenshotCount).toBe(2);
 
     resetSessionState();
@@ -404,7 +404,7 @@ describe('getSessionState / resetSessionState', () => {
   });
 
   it('resetSessionState clears state without cleanup', async () => {
-    await playwrightTool.initialize({});
+    await playwrightConnector.initialize({});
     expect(getSessionState().hasBrowser).toBe(true);
 
     resetSessionState();
