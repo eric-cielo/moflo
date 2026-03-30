@@ -18,6 +18,7 @@ export type {
   StepConfig,
   StepOutput,
   StepCommandEntry,
+  StepCommandSource,
   OutputDescriptor,
   ValidationResult,
   ValidationError,

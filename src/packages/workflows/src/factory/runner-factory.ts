@@ -46,7 +46,7 @@ export interface RunWorkflowOptions extends RunnerOptions {
 export function createRunner(options: RunnerFactoryOptions = {}): WorkflowRunner {
   const registry = new StepCommandRegistry();
   for (const cmd of builtinCommands) {
-    registry.register(cmd);
+    registry.register(cmd, 'built-in');
   }
 
   // npm packages have lowest priority (overridden by built-in and user steps)

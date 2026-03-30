@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { loadYamlStep, isYamlStepFile } from '../src/loaders/yaml-step-loader.js';
 import { loadStepsFromDirectories } from '../src/loaders/directory-step-loader.js';
 import { createMockContext } from './helpers.js';
+import type { ToolAccessor, ToolOutput } from '../src/types/workflow-tool.types.js';
 
 // ============================================================================
 // Fixtures
@@ -199,7 +200,15 @@ describe('YamlStepLoader', () => {
       writeFileSync(filePath, VALID_YAML_STEP);
 
       const command = loadYamlStep(filePath);
-      const context = createMockContext();
+      const mockTools: ToolAccessor = {
+        get: (name: string) => name === 'gmail' ? { name, description: '', version: '1', capabilities: [], listActions: () => [] } : undefined,
+        has: (name: string) => name === 'gmail',
+        list: () => [],
+        execute: async (_toolName: string, _action: string, params: Record<string, unknown>): Promise<ToolOutput> => {
+          return { success: true, data: { sent: true, ...params } };
+        },
+      };
+      const context = createMockContext({ tools: mockTools });
 
       const output = await command.execute(
         { to: 'user@test.com', subject: 'Test', body: 'Body text' },
@@ -211,10 +220,11 @@ describe('YamlStepLoader', () => {
       const results = output.data.results as Array<Record<string, unknown>>;
       expect(results[0].tool).toBe('gmail');
       expect(results[0].action).toBe('send');
-      const params = results[0].params as Record<string, unknown>;
-      expect(params.to).toBe('user@test.com');
-      expect(params.subject).toBe('Test');
-      expect(params.body).toBe('Body text');
+      expect(results[0].params).toEqual({
+        to: 'user@test.com',
+        subject: 'Test',
+        body: 'Body text',
+      });
     });
 
     it('should execute minimal step with no inputs', async () => {

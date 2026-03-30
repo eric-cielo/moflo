@@ -158,10 +158,15 @@ export class WorkflowToolRegistry {
 
     // Import, validate, and resolve priority in a single pass
     const byName = new Map<string, { tool: WorkflowTool; source: ToolSource }>();
-    const SOURCE_PRIORITY: Record<string, number> = { npm: 0, shipped: 1, user: 2 };
+    const SOURCE_PRIORITY: Record<ToolSource, number> = { npm: 0, shipped: 1, user: 2 };
 
     for (const candidate of candidates) {
       try {
+        if (!(candidate.source in SOURCE_PRIORITY)) {
+          errors.push({ file: candidate.file, message: `Unknown ToolSource: "${candidate.source}"` });
+          continue;
+        }
+
         const mod = await import(candidate.file);
         const tool = mod.default ?? mod;
 
@@ -171,7 +176,7 @@ export class WorkflowToolRegistry {
         }
 
         const existing = byName.get(tool.name);
-        if (existing && (SOURCE_PRIORITY[candidate.source] ?? 0) <= (SOURCE_PRIORITY[existing.source] ?? 0)) {
+        if (existing && SOURCE_PRIORITY[candidate.source] <= SOURCE_PRIORITY[existing.source]) {
           continue;
         }
         byName.set(tool.name, { tool, source: candidate.source });

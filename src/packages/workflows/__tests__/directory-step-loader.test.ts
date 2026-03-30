@@ -256,7 +256,7 @@ describe('DirectoryStepLoader', () => {
   });
 
   describe('StepCommandRegistry.registerOrReplace', () => {
-    it('should replace existing command without throwing', () => {
+    it('should replace existing command when source has equal or higher priority', () => {
       const registry = new StepCommandRegistry();
       const cmd1 = {
         type: 'test', description: 'first', configSchema: { type: 'object' as const },
@@ -266,11 +266,27 @@ describe('DirectoryStepLoader', () => {
       };
       const cmd2 = { ...cmd1, description: 'second' };
 
-      registry.register(cmd1);
-      registry.registerOrReplace(cmd2);
+      registry.register(cmd1, 'built-in');
+      registry.registerOrReplace(cmd2, 'user');
 
       expect(registry.get('test')!.description).toBe('second');
       expect(registry.size).toBe(1);
+    });
+
+    it('should not replace existing command when source has lower priority', () => {
+      const registry = new StepCommandRegistry();
+      const cmd1 = {
+        type: 'test', description: 'built-in', configSchema: { type: 'object' as const },
+        validate: () => ({ valid: true as const, errors: [] }),
+        execute: async () => ({ success: true, data: {} }),
+        describeOutputs: () => [],
+      };
+      const cmd2 = { ...cmd1, description: 'npm-override' };
+
+      registry.register(cmd1, 'built-in');
+      registry.registerOrReplace(cmd2, 'npm');
+
+      expect(registry.get('test')!.description).toBe('built-in');
     });
 
     it('should reject empty type', () => {
