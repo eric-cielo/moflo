@@ -18,8 +18,8 @@ import type {
   StepResult, StepStatus, DryRunResult,
 } from '../types/runner.types.js';
 import { StepCommandRegistry } from './step-command-registry.js';
-import type { WorkflowToolRegistry } from '../registry/tool-registry.js';
-import { ToolAccessorImpl } from './tool-accessor.js';
+import type { WorkflowConnectorRegistry } from '../registry/connector-registry.js';
+import { ConnectorAccessorImpl } from './connector-accessor.js';
 import { validateWorkflowDefinition, resolveArguments } from '../schema/validator.js';
 import { compareMofloLevels } from './capability-validator.js';
 import { DEFAULT_MAX_NESTING_DEPTH } from '../types/step-command.types.js';
@@ -31,16 +31,16 @@ import { executeSingleStep, type StepExecutionState } from './step-executor.js';
 import { collectPrerequisites, checkPrerequisites, formatPrerequisiteErrors } from './prerequisite-checker.js';
 
 export class WorkflowRunner {
-  private readonly toolAccessor?: ToolAccessorImpl;
+  private readonly connectorAccessor?: ConnectorAccessorImpl;
 
   constructor(
     private readonly registry: StepCommandRegistry,
     private readonly credentials: CredentialAccessor,
     private readonly memory: MemoryAccessor,
-    private readonly toolRegistry?: WorkflowToolRegistry,
+    private readonly connectorRegistry?: WorkflowConnectorRegistry,
   ) {
-    if (toolRegistry) {
-      this.toolAccessor = new ToolAccessorImpl(toolRegistry);
+    if (connectorRegistry) {
+      this.connectorAccessor = new ConnectorAccessorImpl(connectorRegistry);
     }
   }
 
@@ -302,7 +302,7 @@ export class WorkflowRunner {
   ): WorkflowContext {
     return { variables, args, credentials: this.credentials, memory: this.memory,
       taskId: `${workflowId}-step-${stepIndex}`, workflowId, stepIndex, abortSignal: signal,
-      ...(this.toolAccessor ? { tools: this.toolAccessor } : {}) };
+      ...(this.connectorAccessor ? { tools: this.connectorAccessor } : {}) };
   }
 
   private async storeProgress(wfId: string, status: string, done: number, total: number) {

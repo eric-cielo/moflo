@@ -1,7 +1,7 @@
 /**
- * Playwright Workflow Tool
+ * Playwright Workflow Connector
  *
- * Reusable Playwright adapter implementing WorkflowTool interface.
+ * Reusable Playwright adapter implementing WorkflowConnector interface.
  * Extracted from the monolithic browser step command (Issue #219)
  * so custom workflow steps can use browser automation via context.tools.
  *
@@ -11,7 +11,7 @@
  * falls back to launching a single-shot browser per action.
  *
  * Security: URL validation (SSRF protection) and evaluate capability
- * gating are enforced at the step command level, not here. The tool
+ * gating are enforced at the step command level, not here. The connector
  * provides raw browser automation; the step command applies policy.
  */
 
@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { unlink } from 'node:fs/promises';
-import type { WorkflowTool, ToolAction, ToolOutput } from '../types/workflow-tool.types.js';
+import type { WorkflowConnector, ConnectorAction, ConnectorOutput } from '../types/workflow-connector.types.js';
 
 // ============================================================================
 // Playwright types (dynamic import — optional peer dependency)
@@ -223,7 +223,7 @@ export async function executeBrowserAction(
 // Per-action input schemas
 // ============================================================================
 
-const ACTION_SCHEMAS: Record<string, { description: string; inputSchema: ToolAction['inputSchema'] }> = {
+const ACTION_SCHEMAS: Record<string, { description: string; inputSchema: ConnectorAction['inputSchema'] }> = {
   open: {
     description: 'Navigate to a URL',
     inputSchema: {
@@ -374,7 +374,7 @@ const outputSchema = {
   },
 };
 
-const ACTIONS: ToolAction[] = SUPPORTED_ACTIONS.map(name => ({
+const ACTIONS: ConnectorAction[] = SUPPORTED_ACTIONS.map(name => ({
   name,
   description: ACTION_SCHEMAS[name].description,
   inputSchema: ACTION_SCHEMAS[name].inputSchema,
@@ -382,10 +382,10 @@ const ACTIONS: ToolAction[] = SUPPORTED_ACTIONS.map(name => ({
 }));
 
 // ============================================================================
-// Playwright Tool (with session-based browser reuse)
+// Playwright Connector (with session-based browser reuse)
 // ============================================================================
 
-export const playwrightTool: WorkflowTool = {
+export const playwrightConnector: WorkflowConnector = {
   name: 'playwright',
   description: 'Web automation via Playwright (open, click, fill, screenshot, evaluate, etc.)',
   version: '1.0.0',
@@ -417,7 +417,7 @@ export const playwrightTool: WorkflowTool = {
     resetPlaywrightCache();
   },
 
-  async execute(action: string, params: Record<string, unknown>): Promise<ToolOutput> {
+  async execute(action: string, params: Record<string, unknown>): Promise<ConnectorOutput> {
     const start = Date.now();
 
     if (!SUPPORTED_ACTIONS.includes(action as BrowserActionName)) {
@@ -498,7 +498,7 @@ export const playwrightTool: WorkflowTool = {
     }
   },
 
-  listActions(): ToolAction[] {
+  listActions(): ConnectorAction[] {
     return ACTIONS;
   },
 };

@@ -1,12 +1,12 @@
 /**
- * GitHub CLI Workflow Tool Tests
+ * GitHub CLI Workflow Connector Tests
  *
- * Issue #219: Tests for the extracted github-cli shipped tool.
+ * Issue #219: Tests for the extracted github-cli shipped connector.
  * Uses mocked `exec` to avoid real GitHub CLI calls.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { githubCliTool, validateGitHubAction, VALID_ACTIONS } from '../src/tools/github-cli.js';
+import { githubCliConnector, validateGitHubAction, VALID_ACTIONS } from '../src/connectors/github-cli.js';
 
 // ============================================================================
 // Mock child_process (exec + execFile for prerequisite-checker)
@@ -47,27 +47,27 @@ function setMockResult(stdout: string, exitCode = 0, stderr = '') {
 // Interface compliance
 // ============================================================================
 
-describe('githubCliTool — interface', () => {
+describe('githubCliConnector — interface', () => {
   it('has correct name and version', () => {
-    expect(githubCliTool.name).toBe('github-cli');
-    expect(githubCliTool.version).toBe('1.0.0');
-    expect(githubCliTool.description).toBeTruthy();
+    expect(githubCliConnector.name).toBe('github-cli');
+    expect(githubCliConnector.version).toBe('1.0.0');
+    expect(githubCliConnector.description).toBeTruthy();
   });
 
   it('declares read and write capabilities', () => {
-    expect(githubCliTool.capabilities).toContain('read');
-    expect(githubCliTool.capabilities).toContain('write');
+    expect(githubCliConnector.capabilities).toContain('read');
+    expect(githubCliConnector.capabilities).toContain('write');
   });
 
   it('listActions returns 8 actions', () => {
-    const actions = githubCliTool.listActions();
+    const actions = githubCliConnector.listActions();
     expect(actions).toHaveLength(8);
     const names = actions.map(a => a.name);
     expect(names).toEqual([...VALID_ACTIONS]);
   });
 
   it('each action has input and output schemas', () => {
-    for (const action of githubCliTool.listActions()) {
+    for (const action of githubCliConnector.listActions()) {
       expect(action.inputSchema).toBeDefined();
       expect(action.inputSchema.type).toBe('object');
       expect(action.outputSchema).toBeDefined();
@@ -78,11 +78,11 @@ describe('githubCliTool — interface', () => {
   it('initialize checks for gh CLI', async () => {
     setMockResult('', 0);
     // With mock returning success, initialize should pass
-    await expect(githubCliTool.initialize({})).resolves.toBeUndefined();
+    await expect(githubCliConnector.initialize({})).resolves.toBeUndefined();
   });
 
   it('dispose is a no-op', async () => {
-    await expect(githubCliTool.dispose()).resolves.toBeUndefined();
+    await expect(githubCliConnector.dispose()).resolves.toBeUndefined();
   });
 });
 
@@ -90,7 +90,7 @@ describe('githubCliTool — interface', () => {
 // Validation
 // ============================================================================
 
-describe('githubCliTool — validateGitHubAction', () => {
+describe('githubCliConnector — validateGitHubAction', () => {
   it('rejects missing action', () => {
     const errors = validateGitHubAction('', {});
     expect(errors.length).toBeGreaterThan(0);
@@ -148,7 +148,7 @@ describe('githubCliTool — validateGitHubAction', () => {
 // Execution
 // ============================================================================
 
-describe('githubCliTool — execute', () => {
+describe('githubCliConnector — execute', () => {
   beforeEach(() => {
     setMockResult('', 0);
   });
@@ -159,7 +159,7 @@ describe('githubCliTool — execute', () => {
 
   it('issue-fetch returns parsed JSON', async () => {
     setMockResult(JSON.stringify({ number: 42, title: 'Test', state: 'OPEN' }));
-    const output = await githubCliTool.execute('issue-fetch', { issue: 42 });
+    const output = await githubCliConnector.execute('issue-fetch', { issue: 42 });
     expect(output.success).toBe(true);
     expect(output.data.number).toBe(42);
     expect(output.data.title).toBe('Test');
@@ -168,14 +168,14 @@ describe('githubCliTool — execute', () => {
 
   it('issue-edit returns success', async () => {
     setMockResult('');
-    const output = await githubCliTool.execute('issue-edit', { issue: 42, title: 'Updated' });
+    const output = await githubCliConnector.execute('issue-edit', { issue: 42, title: 'Updated' });
     expect(output.success).toBe(true);
     expect(output.data.updated).toBe(true);
   });
 
   it('pr-create returns prUrl and prNumber', async () => {
     setMockResult('https://github.com/org/repo/pull/99');
-    const output = await githubCliTool.execute('pr-create', { title: 'feat: new', body: 'desc' });
+    const output = await githubCliConnector.execute('pr-create', { title: 'feat: new', body: 'desc' });
     expect(output.success).toBe(true);
     expect(output.data.prUrl).toBe('https://github.com/org/repo/pull/99');
     expect(output.data.prNumber).toBe(99);
@@ -183,7 +183,7 @@ describe('githubCliTool — execute', () => {
 
   it('pr-merge returns merge result', async () => {
     setMockResult('');
-    const output = await githubCliTool.execute('pr-merge', { pr: 99, mergeMethod: 'squash' });
+    const output = await githubCliConnector.execute('pr-merge', { pr: 99, mergeMethod: 'squash' });
     expect(output.success).toBe(true);
     expect(output.data.merged).toBe(true);
     expect(output.data.method).toBe('squash');
@@ -191,7 +191,7 @@ describe('githubCliTool — execute', () => {
 
   it('pr-find returns matching PRs', async () => {
     setMockResult(JSON.stringify([{ number: 5, title: 'fix' }]));
-    const output = await githubCliTool.execute('pr-find', { head: 'feature/test' });
+    const output = await githubCliConnector.execute('pr-find', { head: 'feature/test' });
     expect(output.success).toBe(true);
     expect(output.data.prs).toHaveLength(1);
     expect(output.data.count).toBe(1);
@@ -199,7 +199,7 @@ describe('githubCliTool — execute', () => {
 
   it('label adds and removes labels', async () => {
     setMockResult('');
-    const output = await githubCliTool.execute('label', {
+    const output = await githubCliConnector.execute('label', {
       issue: 42,
       labels: { add: ['bug'], remove: ['wontfix'] },
     });
@@ -210,33 +210,33 @@ describe('githubCliTool — execute', () => {
 
   it('comment posts body', async () => {
     setMockResult('');
-    const output = await githubCliTool.execute('comment', { issue: 42, body: 'LGTM' });
+    const output = await githubCliConnector.execute('comment', { issue: 42, body: 'LGTM' });
     expect(output.success).toBe(true);
     expect(output.data.commented).toBe(true);
   });
 
   it('repo-info returns parsed JSON', async () => {
     setMockResult(JSON.stringify({ name: 'moflo', owner: { login: 'eric-cielo' } }));
-    const output = await githubCliTool.execute('repo-info', {});
+    const output = await githubCliConnector.execute('repo-info', {});
     expect(output.success).toBe(true);
     expect(output.data.name).toBe('moflo');
   });
 
   it('returns error on CLI failure', async () => {
     setMockResult('', 1, 'GraphQL error');
-    const output = await githubCliTool.execute('issue-fetch', { issue: 999 });
+    const output = await githubCliConnector.execute('issue-fetch', { issue: 999 });
     expect(output.success).toBe(false);
     expect(output.error).toContain('GraphQL error');
   });
 
   it('returns error for unknown action', async () => {
-    const output = await githubCliTool.execute('destroy-repo', {});
+    const output = await githubCliConnector.execute('destroy-repo', {});
     expect(output.success).toBe(false);
     expect(output.error).toContain('action must be one of');
   });
 
   it('returns validation error for missing required params', async () => {
-    const output = await githubCliTool.execute('issue-fetch', {});
+    const output = await githubCliConnector.execute('issue-fetch', {});
     expect(output.success).toBe(false);
     expect(output.error).toContain('issue number');
   });

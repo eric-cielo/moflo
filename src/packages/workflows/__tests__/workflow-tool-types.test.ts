@@ -1,25 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import type {
-  WorkflowTool,
-  ToolOutput,
-  ToolAction,
-  ToolCapability,
-  ToolAccessor,
-  ToolRegistryEntry,
-  ToolSource,
-} from '../src/types/workflow-tool.types.js';
+  WorkflowConnector,
+  ConnectorOutput,
+  ConnectorAction,
+  ConnectorCapability,
+  ConnectorAccessor,
+  ConnectorRegistryEntry,
+  ConnectorSource,
+} from '../src/types/workflow-connector.types.js';
 
-describe('WorkflowTool types', () => {
-  it('ToolOutput has required shape', () => {
-    const output: ToolOutput = { success: true, data: { body: 'hello' } };
+describe('WorkflowConnector types', () => {
+  it('ConnectorOutput has required shape', () => {
+    const output: ConnectorOutput = { success: true, data: { body: 'hello' } };
     expect(output.success).toBe(true);
     expect(output.data).toEqual({ body: 'hello' });
     expect(output.error).toBeUndefined();
     expect(output.duration).toBeUndefined();
   });
 
-  it('ToolOutput with error fields', () => {
-    const output: ToolOutput = {
+  it('ConnectorOutput with error fields', () => {
+    const output: ConnectorOutput = {
       success: false,
       data: {},
       error: 'connection refused',
@@ -30,8 +30,8 @@ describe('WorkflowTool types', () => {
     expect(output.duration).toBe(150);
   });
 
-  it('ToolAction has input/output schemas', () => {
-    const action: ToolAction = {
+  it('ConnectorAction has input/output schemas', () => {
+    const action: ConnectorAction = {
       name: 'get',
       description: 'HTTP GET request',
       inputSchema: {
@@ -51,20 +51,20 @@ describe('WorkflowTool types', () => {
     expect(action.inputSchema.required).toContain('url');
   });
 
-  it('ToolCapability covers expected values', () => {
-    const caps: ToolCapability[] = ['read', 'write', 'search', 'subscribe', 'authenticate'];
+  it('ConnectorCapability covers expected values', () => {
+    const caps: ConnectorCapability[] = ['read', 'write', 'search', 'subscribe', 'authenticate'];
     expect(caps).toHaveLength(5);
   });
 
-  it('ToolSource covers expected values', () => {
-    const sources: ToolSource[] = ['shipped', 'user', 'npm'];
+  it('ConnectorSource covers expected values', () => {
+    const sources: ConnectorSource[] = ['shipped', 'user', 'npm'];
     expect(sources).toHaveLength(3);
   });
 
-  it('WorkflowTool can be structurally implemented', () => {
-    const tool: WorkflowTool = {
-      name: 'test-tool',
-      description: 'A test tool',
+  it('WorkflowConnector can be structurally implemented', () => {
+    const connector: WorkflowConnector = {
+      name: 'test-connector',
+      description: 'A test connector',
       version: '1.0.0',
       capabilities: ['read'] as const,
       initialize: async () => {},
@@ -72,12 +72,12 @@ describe('WorkflowTool types', () => {
       execute: async (_action, _params) => ({ success: true, data: {} }),
       listActions: () => [],
     };
-    expect(tool.name).toBe('test-tool');
-    expect(tool.capabilities).toContain('read');
+    expect(connector.name).toBe('test-connector');
+    expect(connector.capabilities).toContain('read');
   });
 
-  it('ToolRegistryEntry has expected structure', () => {
-    const mockTool: WorkflowTool = {
+  it('ConnectorRegistryEntry has expected structure', () => {
+    const mockConnector: WorkflowConnector = {
       name: 'mock',
       description: 'mock',
       version: '0.0.1',
@@ -87,19 +87,19 @@ describe('WorkflowTool types', () => {
       execute: async () => ({ success: true, data: {} }),
       listActions: () => [],
     };
-    const entry: ToolRegistryEntry = {
-      tool: mockTool,
+    const entry: ConnectorRegistryEntry = {
+      connector: mockConnector,
       source: 'shipped',
       registeredAt: new Date(),
     };
     expect(entry.source).toBe('shipped');
-    expect(entry.tool.name).toBe('mock');
+    expect(entry.connector.name).toBe('mock');
   });
 
-  it('ToolAccessor interface is structurally valid', () => {
-    const mockTool: WorkflowTool = {
+  it('ConnectorAccessor interface is structurally valid', () => {
+    const mockConnector: WorkflowConnector = {
       name: 'http',
-      description: 'HTTP tool',
+      description: 'HTTP connector',
       version: '1.0.0',
       capabilities: ['read', 'write'],
       initialize: async () => {},
@@ -107,11 +107,11 @@ describe('WorkflowTool types', () => {
       execute: async () => ({ success: true, data: {} }),
       listActions: () => [],
     };
-    const accessor: ToolAccessor = {
-      get: (name: string) => name === 'http' ? mockTool : undefined,
+    const accessor: ConnectorAccessor = {
+      get: (name: string) => name === 'http' ? mockConnector : undefined,
       has: (name: string) => name === 'http',
-      list: () => [{ name: 'http', description: 'HTTP tool', capabilities: ['read', 'write'] }],
-      execute: async (_toolName, _action, _params) => ({ success: true, data: {} }),
+      list: () => [{ name: 'http', description: 'HTTP connector', capabilities: ['read', 'write'] }],
+      execute: async (_connectorName, _action, _params) => ({ success: true, data: {} }),
     };
     expect(accessor.has('http')).toBe(true);
     expect(accessor.get('http')?.name).toBe('http');

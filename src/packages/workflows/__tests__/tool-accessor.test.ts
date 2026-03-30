@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ToolAccessorImpl } from '../src/core/tool-accessor.js';
-import { WorkflowToolRegistry } from '../src/registry/tool-registry.js';
-import type { WorkflowTool } from '../src/types/workflow-tool.types.js';
+import { ConnectorAccessorImpl } from '../src/core/connector-accessor.js';
+import { WorkflowConnectorRegistry } from '../src/registry/connector-registry.js';
+import type { WorkflowConnector } from '../src/types/workflow-connector.types.js';
 
-function makeTool(name: string): WorkflowTool {
+function makeConnector(name: string): WorkflowConnector {
   return {
     name,
-    description: `${name} tool`,
+    description: `${name} connector`,
     version: '1.0.0',
     capabilities: ['read', 'write'],
     initialize: async () => {},
@@ -24,44 +24,44 @@ function makeTool(name: string): WorkflowTool {
   };
 }
 
-describe('ToolAccessorImpl', () => {
-  let registry: WorkflowToolRegistry;
-  let accessor: ToolAccessorImpl;
+describe('ConnectorAccessorImpl', () => {
+  let registry: WorkflowConnectorRegistry;
+  let accessor: ConnectorAccessorImpl;
 
   beforeEach(() => {
-    registry = new WorkflowToolRegistry();
-    registry.register(makeTool('http'), 'shipped');
-    registry.register(makeTool('slack'), 'user');
-    accessor = new ToolAccessorImpl(registry);
+    registry = new WorkflowConnectorRegistry();
+    registry.register(makeConnector('http'), 'shipped');
+    registry.register(makeConnector('slack'), 'user');
+    accessor = new ConnectorAccessorImpl(registry);
   });
 
-  it('has returns true for registered tool', () => {
+  it('has returns true for registered connector', () => {
     expect(accessor.has('http')).toBe(true);
     expect(accessor.has('slack')).toBe(true);
   });
 
-  it('has returns false for unregistered tool', () => {
+  it('has returns false for unregistered connector', () => {
     expect(accessor.has('nonexistent')).toBe(false);
   });
 
-  it('get returns tool by name', () => {
-    const tool = accessor.get('http');
-    expect(tool).toBeDefined();
-    expect(tool!.name).toBe('http');
+  it('get returns connector by name', () => {
+    const connector = accessor.get('http');
+    expect(connector).toBeDefined();
+    expect(connector!.name).toBe('http');
   });
 
-  it('get returns undefined for unknown tool', () => {
+  it('get returns undefined for unknown connector', () => {
     expect(accessor.get('nonexistent')).toBeUndefined();
   });
 
-  it('list returns all tools with metadata', () => {
-    const tools = accessor.list();
-    expect(tools).toHaveLength(2);
-    expect(tools[0].name).toBe('http');
-    expect(tools[0].capabilities).toEqual(['read', 'write']);
+  it('list returns all connectors with metadata', () => {
+    const connectors = accessor.list();
+    expect(connectors).toHaveLength(2);
+    expect(connectors[0].name).toBe('http');
+    expect(connectors[0].capabilities).toEqual(['read', 'write']);
   });
 
-  it('execute delegates to tool', async () => {
+  it('execute delegates to connector', async () => {
     const result = await accessor.execute('http', 'get', { url: 'https://example.com' });
     expect(result.success).toBe(true);
     expect(result.data).toEqual({
@@ -70,15 +70,15 @@ describe('ToolAccessorImpl', () => {
     });
   });
 
-  it('execute returns error for unknown tool', async () => {
+  it('execute returns error for unknown connector', async () => {
     const result = await accessor.execute('nonexistent', 'get', {});
     expect(result.success).toBe(false);
     expect(result.error).toContain('not found');
   });
 });
 
-describe('WorkflowRunner tool integration', () => {
-  it('runner works without tool registry (backward compat)', async () => {
+describe('WorkflowRunner connector integration', () => {
+  it('runner works without connector registry (backward compat)', async () => {
     // Import dynamically to avoid circular issues
     const { createRunner } = await import('../src/factory/runner-factory.js');
     const runner = createRunner();
@@ -86,7 +86,7 @@ describe('WorkflowRunner tool integration', () => {
     // A simple workflow with a wait step
     const result = await runner.run(
       {
-        name: 'test-no-tools',
+        name: 'test-no-connectors',
         version: '1.0.0',
         steps: [{
           id: 'step1',
@@ -99,19 +99,19 @@ describe('WorkflowRunner tool integration', () => {
     expect(result.success).toBe(true);
   });
 
-  it('runner with tool registry populates context.tools', async () => {
+  it('runner with connector registry populates context.tools', async () => {
     const { WorkflowRunner } = await import('../src/core/runner.js');
     const { StepCommandRegistry } = await import('../src/core/step-command-registry.js');
 
-    const toolRegistry = new WorkflowToolRegistry();
-    toolRegistry.register(makeTool('http'), 'shipped');
+    const connectorRegistry = new WorkflowConnectorRegistry();
+    connectorRegistry.register(makeConnector('http'), 'shipped');
 
     const stepRegistry = new StepCommandRegistry();
-    // Register a custom step that checks for tools in context
+    // Register a custom step that checks for connectors in context
     let contextTools: unknown = undefined;
     stepRegistry.register({
-      type: 'check-tools',
-      description: 'Check if tools are in context',
+      type: 'check-connectors',
+      description: 'Check if connectors are in context',
       configSchema: { type: 'object' },
       validate: () => ({ valid: true, errors: [] }),
       execute: async (_config, context) => {
@@ -128,16 +128,16 @@ describe('WorkflowRunner tool integration', () => {
       stepRegistry,
       { async get() { return undefined; }, async has() { return false; } },
       { async read() { return null; }, async write() {}, async search() { return []; } },
-      toolRegistry,
+      connectorRegistry,
     );
 
     const result = await runner.run(
       {
-        name: 'test-with-tools',
+        name: 'test-with-connectors',
         version: '1.0.0',
         steps: [{
           id: 'step1',
-          type: 'check-tools',
+          type: 'check-connectors',
           config: {},
         }],
       },

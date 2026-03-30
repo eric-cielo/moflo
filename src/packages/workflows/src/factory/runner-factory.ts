@@ -12,10 +12,10 @@ import type { RunnerOptions, WorkflowResult } from '../types/runner.types.js';
 import { StepCommandRegistry } from '../core/step-command-registry.js';
 import { WorkflowRunner } from '../core/runner.js';
 import { builtinCommands } from '../commands/index.js';
-import { builtinTools } from '../tools/index.js';
+import { builtinConnectors } from '../connectors/index.js';
 import { parseWorkflow } from '../schema/parser.js';
 import { validateWorkflowDefinition } from '../schema/validator.js';
-import { WorkflowToolRegistry } from '../registry/tool-registry.js';
+import { WorkflowConnectorRegistry } from '../registry/connector-registry.js';
 
 // ============================================================================
 // Types
@@ -24,7 +24,7 @@ import { WorkflowToolRegistry } from '../registry/tool-registry.js';
 export interface RunnerFactoryOptions {
   readonly credentials?: CredentialAccessor;
   readonly memory?: MemoryAccessor;
-  readonly toolRegistry?: WorkflowToolRegistry;
+  readonly connectorRegistry?: WorkflowConnectorRegistry;
   /** User directories to scan for pluggable step commands (JS/TS files). */
   readonly stepDirs?: readonly string[];
   /** Project root for npm package discovery (scans node_modules/moflo-step-*). */
@@ -62,15 +62,15 @@ export function createRunner(options: RunnerFactoryOptions = {}): WorkflowRunner
   const credentials = options.credentials ?? noopCredentials;
   const memory = options.memory ?? noopMemory;
 
-  // Auto-register shipped tools into the tool registry
-  const toolRegistry = options.toolRegistry ?? new WorkflowToolRegistry();
-  for (const tool of builtinTools) {
-    if (!toolRegistry.has(tool.name)) {
-      toolRegistry.register(tool, 'shipped');
+  // Auto-register shipped connectors into the connector registry
+  const connectorRegistry = options.connectorRegistry ?? new WorkflowConnectorRegistry();
+  for (const connector of builtinConnectors) {
+    if (!connectorRegistry.has(connector.name)) {
+      connectorRegistry.register(connector, 'shipped');
     }
   }
 
-  return new WorkflowRunner(registry, credentials, memory, toolRegistry);
+  return new WorkflowRunner(registry, credentials, memory, connectorRegistry);
 }
 
 /**

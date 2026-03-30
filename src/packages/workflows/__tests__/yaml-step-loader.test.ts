@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { loadYamlStep, isYamlStepFile } from '../src/loaders/yaml-step-loader.js';
 import { loadStepsFromDirectories } from '../src/loaders/directory-step-loader.js';
 import { createMockContext } from './helpers.js';
-import type { ToolAccessor, ToolOutput } from '../src/types/workflow-tool.types.js';
+import type { ConnectorAccessor, ConnectorOutput } from '../src/types/workflow-connector.types.js';
 
 // ============================================================================
 // Fixtures
@@ -200,15 +200,15 @@ describe('YamlStepLoader', () => {
       writeFileSync(filePath, VALID_YAML_STEP);
 
       const command = loadYamlStep(filePath);
-      const mockTools: ToolAccessor = {
+      const mockConnectors: ConnectorAccessor = {
         get: (name: string) => name === 'gmail' ? { name, description: '', version: '1', capabilities: [], listActions: () => [] } : undefined,
         has: (name: string) => name === 'gmail',
         list: () => [],
-        execute: async (_toolName: string, _action: string, params: Record<string, unknown>): Promise<ToolOutput> => {
+        execute: async (_connectorName: string, _action: string, params: Record<string, unknown>): Promise<ConnectorOutput> => {
           return { success: true, data: { sent: true, ...params } };
         },
       };
-      const context = createMockContext({ tools: mockTools });
+      const context = createMockContext({ tools: mockConnectors });
 
       const output = await command.execute(
         { to: 'user@test.com', subject: 'Test', body: 'Body text' },

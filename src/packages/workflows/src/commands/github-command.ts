@@ -2,10 +2,10 @@
  * GitHub Step Command — typed GitHub operations via `gh` CLI.
  *
  * Story #194: First-class `github` step type for workflow engine.
- * Issue #219: Refactored to delegate to the `github-cli` workflow tool.
+ * Issue #219: Refactored to delegate to the `github-cli` workflow connector.
  *
  * This is now a thin step wrapper. The reusable gh CLI adapter logic
- * lives in `../tools/github-cli.ts` so custom steps can also use it
+ * lives in `../connectors/github-cli.ts` so custom steps can also use it
  * via `context.tools.execute('github-cli', action, params)`.
  */
 
@@ -25,10 +25,10 @@ import {
   execAsync,
   escapeShellArg,
   validateGitHubAction,
-  githubCliTool,
+  githubCliConnector,
   VALID_ACTIONS,
   type GitHubCliAction,
-} from '../tools/github-cli.js';
+} from '../connectors/github-cli.js';
 
 // ============================================================================
 // Config
@@ -147,7 +147,7 @@ export const githubCommand: StepCommand<GitHubStepConfig> = {
       return context.tools.execute('github-cli', config.action, params);
     }
 
-    return githubCliTool.execute(config.action, params);
+    return githubCliConnector.execute(config.action, params);
   },
 
   describeOutputs(): OutputDescriptor[] {
