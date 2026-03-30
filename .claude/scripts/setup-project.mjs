@@ -1,0 +1,253 @@
+#!/usr/bin/env node
+/**
+ * MoFlo Project Setup
+ *
+ * Copies the subagents guidance into the consuming project and
+ * adds a CLAUDE.md section so subagents automatically follow the protocol.
+ *
+ * Usage:
+ *   npx flo-setup            # First-time setup
+ *   npx flo-setup --update   # Refresh bootstrap file after moflo upgrade
+ *   npx flo-setup --check    # Check if setup is current
+ *
+ * What it does:
+ *   1. Copies .claude/guidance/shipped/moflo-subagents.md → project's .claude/guidance/moflo-bootstrap.md
+ *   2. Appends a subagent protocol section to CLAUDE.md (idempotent, with markers)
+ *
+ * The project can layer its own guidance files on top for
+ * project-specific rules (companyId, entity templates, etc.).
+ */
+
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
+import { dirname, resolve, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const mofloRoot = resolve(__dirname, '..');
+
+const args = process.argv.slice(2);
+const updateOnly = args.includes('--update');
+const checkOnly = args.includes('--check');
+
+// Markers for idempotent CLAUDE.md updates — keep in sync with claudemd-generator.ts
+const MARKER_START = '<!-- MOFLO:INJECTED:START -->';
+const MARKER_END = '<!-- MOFLO:INJECTED:END -->';
+// Legacy markers to detect and replace
+const LEGACY_STARTS = ['<!-- MOFLO:SUBAGENT-PROTOCOL:START -->', '<!-- MOFLO:START -->'];
+const LEGACY_ENDS = ['<!-- MOFLO:SUBAGENT-PROTOCOL:END -->', '<!-- MOFLO:END -->'];
+
+// Minimal injection — just enough for Claude to work with moflo.
+// All detailed docs live in .claude/guidance/shipped/moflo-core-guidance.md.
+const CLAUDE_MD_SECTION = `${MARKER_START}
+## MoFlo — AI Agent Orchestration
+
+This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted development workflows.
+
+### FIRST ACTION ON EVERY PROMPT: Search Memory
+
+Your first tool call for every new user prompt MUST be a memory search. Do this BEFORE Glob, Grep, Read, or any file exploration.
+
+\`\`\`
+mcp__moflo__memory_search — query: "<task description>", namespace: "guidance" or "patterns" or "code-map"
+\`\`\`
+
+Search \`guidance\` and \`patterns\` namespaces on every prompt. Search \`code-map\` when navigating the codebase.
+When the user asks you to remember something: \`mcp__moflo__memory_store\` with namespace \`knowledge\`.
+
+### Workflow Gates (enforced automatically)
+
+- **Memory-first**: Must search memory before Glob/Grep/Read
+- **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
+
+- **Task Icons**: \`TaskCreate\` MUST use ICON+[Role] format — see \`.claude/guidance/moflo-task-icons.md\`
+
+### MCP Tools (preferred over CLI)
+
+| Tool | Purpose |
+|------|---------|
+| \`mcp__moflo__memory_search\` | Semantic search across indexed knowledge |
+| \`mcp__moflo__memory_store\` | Store patterns and decisions |
+| \`mcp__moflo__hooks_route\` | Route task to optimal agent type |
+| \`mcp__moflo__hooks_pre-task\` | Record task start |
+| \`mcp__moflo__hooks_post-task\` | Record task completion for learning |
+
+### CLI Fallback
+
+\`\`\`bash
+npx flo-search "[query]" --namespace guidance   # Semantic search
+npx flo doctor --fix                             # Health check
+\`\`\`
+
+### Full Reference
+
+For CLI commands, hooks, agents, swarm config, memory commands, and moflo.yaml options, see:
+\`.claude/guidance/shipped/moflo-core-guidance.md\`
+${MARKER_END}`;
+
+function log(msg) {
+  console.log(`[flo-setup] ${msg}`);
+}
+
+function findProjectRoot() {
+  // Walk up from cwd looking for package.json that depends on moflo
+  let dir = process.cwd();
+  const root = resolve(dir, '/');
+
+  while (dir !== root) {
+    const pkgPath = join(dir, 'package.json');
+    if (existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+        const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+        if (deps && deps.moflo) {
+          return dir;
+        }
+      } catch { /* ignore parse errors */ }
+    }
+    dir = dirname(dir);
+  }
+
+  // Fallback: use cwd if it has a package.json
+  if (existsSync(join(process.cwd(), 'package.json'))) {
+    return process.cwd();
+  }
+
+  return null;
+}
+
+function copyBootstrap(projectRoot) {
+  const shippedSource = join(mofloRoot, '.claude', 'guidance', 'shipped', 'moflo-subagents.md');
+  const source = existsSync(shippedSource)
+    ? shippedSource
+    : join(mofloRoot, '.claude', 'guidance', 'moflo-subagents.md');
+  const targetDir = join(projectRoot, '.claude', 'guidance');
+  const target = join(targetDir, 'moflo-bootstrap.md');
+
+  if (!existsSync(source)) {
+    log('❌ Source bootstrap not found in moflo package');
+    return false;
+  }
+
+  // Read source content and prepend auto-generated notice
+  const content = readFileSync(source, 'utf-8');
+  const header = `<!-- AUTO-GENERATED by flo-setup. Do not edit — changes will be overwritten. -->
+<!-- Source: node_modules/moflo/.claude/guidance/shipped/moflo-subagents.md -->
+<!-- To customize, add project-specific guidance in .claude/guidance/. -->
+
+`;
+
+  mkdirSync(targetDir, { recursive: true });
+
+  // Check if file exists and is current
+  if (existsSync(target)) {
+    const existing = readFileSync(target, 'utf-8');
+    const newContent = header + content;
+    if (existing === newContent) {
+      log('✅ moflo-bootstrap.md is current');
+      return true;
+    }
+    log('📝 Updating moflo-bootstrap.md');
+  } else {
+    log('📝 Creating .claude/guidance/moflo-bootstrap.md');
+  }
+
+  if (!checkOnly) {
+    writeFileSync(target, header + content, 'utf-8');
+  }
+  return true;
+}
+
+function updateClaudeMd(projectRoot) {
+  const claudeMdPath = join(projectRoot, 'CLAUDE.md');
+
+  if (!existsSync(claudeMdPath)) {
+    if (checkOnly) {
+      log('⚠️  No CLAUDE.md found');
+      return false;
+    }
+    log('📝 Creating CLAUDE.md with subagent protocol section');
+    writeFileSync(claudeMdPath, `# Project Configuration\n\n${CLAUDE_MD_SECTION}\n`, 'utf-8');
+    return true;
+  }
+
+  const content = readFileSync(claudeMdPath, 'utf-8');
+
+  // Check for current or legacy markers and replace
+  const allStarts = [MARKER_START, ...LEGACY_STARTS];
+  const allEnds = [MARKER_END, ...LEGACY_ENDS];
+
+  for (let i = 0; i < allStarts.length; i++) {
+    if (content.includes(allStarts[i])) {
+      const startIdx = content.indexOf(allStarts[i]);
+      const endIdx = content.indexOf(allEnds[i]);
+
+      if (endIdx > startIdx) {
+        // If current markers and content matches, we're up to date
+        if (i === 0) {
+          const existingSection = content.substring(startIdx, endIdx + allEnds[i].length);
+          if (existingSection === CLAUDE_MD_SECTION) {
+            log('✅ CLAUDE.md moflo section is current');
+            return true;
+          }
+        }
+
+        // Replace (current or legacy) with new section
+        if (!checkOnly) {
+          const updated = content.substring(0, startIdx) + CLAUDE_MD_SECTION + content.substring(endIdx + allEnds[i].length);
+          writeFileSync(claudeMdPath, updated, 'utf-8');
+          log(i === 0 ? '📝 Updated CLAUDE.md moflo section' : '📝 Replaced legacy CLAUDE.md section with minimal moflo injection');
+        } else {
+          log('⚠️  CLAUDE.md moflo section needs update');
+        }
+        return true;
+      }
+    }
+  }
+
+  if (updateOnly) {
+    log('⚠️  CLAUDE.md has no moflo section (run without --update to add)');
+    return false;
+  }
+
+  if (checkOnly) {
+    log('⚠️  CLAUDE.md missing subagent protocol section');
+    return false;
+  }
+
+  // Append section to end of CLAUDE.md
+  const separator = content.endsWith('\n') ? '\n' : '\n\n';
+  writeFileSync(claudeMdPath, content + separator + CLAUDE_MD_SECTION + '\n', 'utf-8');
+  log('📝 Added subagent protocol section to CLAUDE.md');
+  return true;
+}
+
+function main() {
+  console.log('');
+  console.log('MoFlo Project Setup');
+  console.log('───────────────────');
+
+  const projectRoot = findProjectRoot();
+  if (!projectRoot) {
+    log('❌ Could not find project root (no package.json with moflo dependency)');
+    process.exit(1);
+  }
+
+  log(`Project: ${projectRoot}`);
+  console.log('');
+
+  // Step 1: Copy bootstrap file
+  const bootstrapOk = copyBootstrap(projectRoot);
+
+  // Step 2: Update CLAUDE.md (skip on --update, only refresh the file)
+  const claudeOk = updateOnly ? true : updateClaudeMd(projectRoot);
+
+  console.log('');
+  if (checkOnly) {
+    log(bootstrapOk && claudeOk ? '✅ Setup is current' : '⚠️  Setup needs attention');
+  } else {
+    log('✅ Done. Subagents will now follow the MoFlo bootstrap protocol.');
+  }
+  console.log('');
+}
+
+main();
