@@ -24,6 +24,8 @@ export interface RunnerFactoryOptions {
   readonly credentials?: CredentialAccessor;
   readonly memory?: MemoryAccessor;
   readonly toolRegistry?: WorkflowToolRegistry;
+  /** User directories to scan for pluggable step commands (JS/TS files). */
+  readonly stepDirs?: readonly string[];
 }
 
 export interface RunWorkflowOptions extends RunnerOptions {
@@ -42,6 +44,11 @@ export function createRunner(options: RunnerFactoryOptions = {}): WorkflowRunner
   const registry = new StepCommandRegistry();
   for (const cmd of builtinCommands) {
     registry.register(cmd);
+  }
+
+  // Scan user directories for pluggable step commands (override built-ins by name)
+  if (options.stepDirs?.length) {
+    registry.loadFromDirectories(options.stepDirs);
   }
 
   const credentials = options.credentials ?? noopCredentials;
