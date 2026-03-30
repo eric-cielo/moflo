@@ -10,6 +10,8 @@ import {
   playwrightTool,
   SUPPORTED_ACTIONS,
   resetPlaywrightCache,
+  resetSessionState,
+  getSessionState,
   executeBrowserAction,
   type PlaywrightPage,
 } from '../src/tools/playwright.js';
@@ -49,6 +51,7 @@ vi.mock('playwright', () => ({
 
 beforeEach(() => {
   resetPlaywrightCache();
+  resetSessionState();
   vi.clearAllMocks();
 });
 
@@ -88,12 +91,33 @@ describe('playwrightTool — interface', () => {
     }
   });
 
-  it('initialize checks for Playwright', async () => {
-    await expect(playwrightTool.initialize({})).resolves.toBeUndefined();
+  it('initialize launches browser and creates session', async () => {
+    await playwrightTool.initialize({});
+    const state = getSessionState();
+    expect(state.hasBrowser).toBe(true);
+    expect(state.hasPage).toBe(true);
+    // Clean up
+    resetSessionState();
   });
 
-  it('dispose resets cache', async () => {
-    await expect(playwrightTool.dispose()).resolves.toBeUndefined();
+  it('dispose closes browser and resets state', async () => {
+    await playwrightTool.initialize({});
+    await playwrightTool.dispose();
+    const state = getSessionState();
+    expect(state.hasBrowser).toBe(false);
+    expect(state.hasPage).toBe(false);
+  });
+
+  it('per-action schemas have correct required fields', () => {
+    const actions = playwrightTool.listActions();
+    const openAction = actions.find(a => a.name === 'open')!;
+    expect(openAction.inputSchema.required).toContain('url');
+
+    const clickAction = actions.find(a => a.name === 'click')!;
+    expect(clickAction.inputSchema.required).toContain('selector');
+
+    const screenshotAction = actions.find(a => a.name === 'screenshot')!;
+    expect(screenshotAction.inputSchema.required).toBeUndefined();
   });
 });
 
@@ -262,8 +286,131 @@ describe('playwrightTool — execute', () => {
     expect(result.error).toContain('open action requires url');
   });
 
-  it('closes browser after execution', async () => {
+  it('closes browser after execution (no session)', async () => {
     await playwrightTool.execute('open', { url: 'https://example.com' });
     expect(mockBrowser.close).toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// Session-based browser reuse
+// ============================================================================
+
+describe('playwrightTool — session reuse', () => {
+  afterEach(async () => {
+    // Ensure session is cleaned up after each test
+    resetSessionState();
+  });
+
+  it('reuses session browser across multiple execute calls', async () => {
+    await playwrightTool.initialize({});
+    vi.clearAllMocks(); // Clear launch call from initialize
+
+    await playwrightTool.execute('open', { url: 'https://a.com' });
+    await playwrightTool.execute('click', { selector: '#btn' });
+
+    // Should NOT launch a new browser — session reuse
+    const pw = await import('playwright') as any;
+    expect(pw.chromium.launch).not.toHaveBeenCalled();
+    expect(mockPage.goto).toHaveBeenCalledWith('https://a.com', { timeout: 30000 });
+    expect(mockPage.click).toHaveBeenCalledWith('#btn', { button: 'left', clickCount: 1 });
+
+    resetSessionState();
+  });
+
+  it('does not close browser between session execute calls', async () => {
+    await playwrightTool.initialize({});
+    vi.clearAllMocks();
+
+    await playwrightTool.execute('open', { url: 'https://a.com' });
+    expect(mockBrowser.close).not.toHaveBeenCalled();
+
+    resetSessionState();
+  });
+
+  it('dispose closes session browser', async () => {
+    await playwrightTool.initialize({});
+    vi.clearAllMocks();
+
+    await playwrightTool.dispose();
+    expect(mockBrowser.close).toHaveBeenCalled();
+    expect(getSessionState().hasBrowser).toBe(false);
+  });
+
+  it('session execute returns error for failed action', async () => {
+    await playwrightTool.initialize({});
+    const result = await playwrightTool.execute('open', {});
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('open action requires url');
+
+    resetSessionState();
+  });
+
+  it('initialize accepts headless config', async () => {
+    await playwrightTool.initialize({ headless: false });
+    const pw = await import('playwright') as any;
+    expect(pw.chromium.launch).toHaveBeenCalledWith({ headless: false });
+
+    resetSessionState();
+  });
+});
+
+// ============================================================================
+// Screenshot file tracking
+// ============================================================================
+
+describe('playwrightTool — screenshot tracking', () => {
+  it('tracks screenshot files via screenshotFiles param', async () => {
+    const files: string[] = [];
+    const outputs: Record<string, unknown> = {};
+    await executeBrowserAction(mockPage, { action: 'screenshot' }, outputs, 30000, files);
+    expect(files).toHaveLength(1);
+    expect(files[0]).toContain('moflo-screenshot-');
+    expect(outputs.screenshot_path).toBe(files[0]);
+  });
+
+  it('tracks screenshots in session mode', async () => {
+    await playwrightTool.initialize({});
+
+    await playwrightTool.execute('screenshot', {});
+    const state = getSessionState();
+    expect(state.screenshotCount).toBe(1);
+
+    await playwrightTool.execute('screenshot', {});
+    expect(getSessionState().screenshotCount).toBe(2);
+
+    resetSessionState();
+  });
+
+  it('screenshot uses custom outputVar', async () => {
+    const files: string[] = [];
+    const outputs: Record<string, unknown> = {};
+    await executeBrowserAction(mockPage, { action: 'screenshot', outputVar: 'snap' }, outputs, 30000, files);
+    expect(outputs.snap).toBeTruthy();
+    expect(outputs.screenshot_path).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Session state helpers
+// ============================================================================
+
+describe('getSessionState / resetSessionState', () => {
+  it('reports no session by default', () => {
+    const state = getSessionState();
+    expect(state.hasBrowser).toBe(false);
+    expect(state.hasPage).toBe(false);
+    expect(state.screenshotCount).toBe(0);
+  });
+
+  it('resetSessionState clears state without cleanup', async () => {
+    await playwrightTool.initialize({});
+    expect(getSessionState().hasBrowser).toBe(true);
+
+    resetSessionState();
+    expect(getSessionState().hasBrowser).toBe(false);
+    // Browser.close should NOT have been called by resetSessionState
+    vi.clearAllMocks();
+    expect(mockBrowser.close).not.toHaveBeenCalled();
   });
 });

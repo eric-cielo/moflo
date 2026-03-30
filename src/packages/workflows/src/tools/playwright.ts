@@ -5,8 +5,10 @@
  * Extracted from the monolithic browser step command (Issue #219)
  * so custom workflow steps can use browser automation via context.tools.
  *
- * Actions: open, click, fill, type, select, get-text, get-value,
- *          screenshot, wait, evaluate, scroll, hover, press
+ * Session management: initialize() pre-launches a browser that is reused
+ * across execute() calls. dispose() closes the browser and cleans up
+ * temporary screenshot files. If initialize() was not called, execute()
+ * falls back to launching a single-shot browser per action.
  *
  * Security: URL validation (SSRF protection) and evaluate capability
  * gating are enforced at the step command level, not here. The tool
@@ -16,6 +18,7 @@
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { unlink } from 'node:fs/promises';
 import type { WorkflowTool, ToolAction, ToolOutput } from '../types/workflow-tool.types.js';
 
 // ============================================================================
@@ -115,6 +118,7 @@ export async function executeBrowserAction(
   action: BrowserActionParams,
   outputs: Record<string, unknown>,
   defaultTimeout: number,
+  screenshotFiles?: string[],
 ): Promise<void> {
   const timeout = action.timeout ?? defaultTimeout;
 
@@ -165,6 +169,7 @@ export async function executeBrowserAction(
     case 'screenshot': {
       const screenshotPath = join(tmpdir(), `moflo-screenshot-${randomUUID()}.png`);
       await page.screenshot({ path: screenshotPath, fullPage: true });
+      screenshotFiles?.push(screenshotPath);
       if (action.outputVar) outputs[action.outputVar] = screenshotPath;
       else outputs.screenshot_path = screenshotPath;
       break;
@@ -215,44 +220,169 @@ export async function executeBrowserAction(
 }
 
 // ============================================================================
-// Action schemas
+// Per-action input schemas
 // ============================================================================
 
-const actionSchema = {
+const ACTION_SCHEMAS: Record<string, { description: string; inputSchema: ToolAction['inputSchema'] }> = {
+  open: {
+    description: 'Navigate to a URL',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL to navigate to' },
+        timeout: { type: 'number', description: 'Navigation timeout in ms' },
+      },
+      required: ['url'],
+    },
+  },
+  click: {
+    description: 'Click an element',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector' },
+        button: { type: 'string', enum: ['left', 'right', 'middle'], description: 'Mouse button' },
+        count: { type: 'number', description: 'Click count' },
+      },
+      required: ['selector'],
+    },
+  },
+  fill: {
+    description: 'Clear and fill an input field',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector' },
+        value: { type: 'string', description: 'Value to fill' },
+      },
+      required: ['selector'],
+    },
+  },
+  type: {
+    description: 'Type text into an element (keystroke by keystroke)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector' },
+        value: { type: 'string', description: 'Text to type' },
+      },
+      required: ['selector'],
+    },
+  },
+  select: {
+    description: 'Select an option from a dropdown',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector' },
+        value: { type: 'string', description: 'Option value to select' },
+      },
+      required: ['selector'],
+    },
+  },
+  'get-text': {
+    description: 'Get text content of an element',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector' },
+        outputVar: { type: 'string', description: 'Variable name to store result' },
+      },
+      required: ['selector'],
+    },
+  },
+  'get-value': {
+    description: 'Get input value of a form element',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector' },
+        outputVar: { type: 'string', description: 'Variable name to store result' },
+      },
+      required: ['selector'],
+    },
+  },
+  screenshot: {
+    description: 'Take a full-page screenshot',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        outputVar: { type: 'string', description: 'Variable name to store file path' },
+      },
+    },
+  },
+  wait: {
+    description: 'Wait for a selector, text, or URL pattern',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector to wait for' },
+        text: { type: 'string', description: 'Text to wait for' },
+        urlPattern: { type: 'string', description: 'URL pattern to wait for' },
+        timeout: { type: 'number', description: 'Wait timeout in ms' },
+      },
+    },
+  },
+  evaluate: {
+    description: 'Execute JavaScript in the browser context',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        expression: { type: 'string', description: 'JavaScript expression to evaluate' },
+        value: { type: 'string', description: 'Alternative to expression' },
+        outputVar: { type: 'string', description: 'Variable name to store result' },
+      },
+    },
+  },
+  scroll: {
+    description: 'Scroll the page',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        direction: { type: 'string', enum: ['up', 'down', 'left', 'right'], description: 'Scroll direction' },
+        amount: { type: 'number', description: 'Scroll amount in pixels (default: 500)' },
+      },
+    },
+  },
+  hover: {
+    description: 'Hover over an element',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector' },
+      },
+      required: ['selector'],
+    },
+  },
+  press: {
+    description: 'Press a keyboard key',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: 'Key name (e.g. Enter, Tab, ArrowDown)' },
+      },
+      required: ['key'],
+    },
+  },
+};
+
+const outputSchema = {
   type: 'object',
   properties: {
-    url: { type: 'string', description: 'URL for open action' },
-    selector: { type: 'string', description: 'CSS selector for element actions' },
-    value: { type: 'string', description: 'Value for fill/type/select/evaluate' },
-    outputVar: { type: 'string', description: 'Variable to store action output' },
-    button: { type: 'string', description: 'Mouse button (left, right, middle)' },
-    count: { type: 'number', description: 'Click count' },
-    direction: { type: 'string', description: 'Scroll direction (up, down, left, right)' },
-    amount: { type: 'number', description: 'Scroll amount in pixels' },
-    key: { type: 'string', description: 'Key name for press action' },
-    expression: { type: 'string', description: 'JS expression for evaluate' },
-    text: { type: 'string', description: 'Text to wait for' },
-    urlPattern: { type: 'string', description: 'URL pattern to wait for' },
-    timeout: { type: 'number', description: 'Action timeout in ms' },
-    headless: { type: 'boolean', description: 'Run browser in headless mode', default: true },
+    actionsExecuted: { type: 'number' },
+    screenshot_path: { type: 'string' },
   },
 };
 
 const ACTIONS: ToolAction[] = SUPPORTED_ACTIONS.map(name => ({
   name,
-  description: `Browser ${name} action`,
-  inputSchema: actionSchema,
-  outputSchema: {
-    type: 'object',
-    properties: {
-      actionsExecuted: { type: 'number' },
-      screenshot_path: { type: 'string' },
-    },
-  },
+  description: ACTION_SCHEMAS[name].description,
+  inputSchema: ACTION_SCHEMAS[name].inputSchema,
+  outputSchema,
 }));
 
 // ============================================================================
-// Playwright Tool
+// Playwright Tool (with session-based browser reuse)
 // ============================================================================
 
 export const playwrightTool: WorkflowTool = {
@@ -261,12 +391,29 @@ export const playwrightTool: WorkflowTool = {
   version: '1.0.0',
   capabilities: ['read', 'write'],
 
-  async initialize(): Promise<void> {
-    await loadPlaywright();
+  // Session state — managed browser and page reused across execute() calls.
+  // Populated by initialize(), cleaned up by dispose().
+
+  async initialize(config: Record<string, unknown>): Promise<void> {
+    const pw = await loadPlaywright();
+    const headless = (config.headless as boolean) ?? true;
+    sessionBrowser = await pw.chromium.launch({ headless });
+    sessionPage = await sessionBrowser.newPage();
   },
 
   async dispose(): Promise<void> {
-    // Browser instances are managed per-execution, not at tool level
+    // Close session browser if open
+    if (sessionBrowser) {
+      try { await sessionBrowser.close(); } catch { /* ignore */ }
+      sessionBrowser = null;
+      sessionPage = null;
+    }
+
+    // Clean up tracked screenshot files
+    const files = [...screenshotFiles];
+    screenshotFiles.length = 0;
+    await Promise.allSettled(files.map(f => unlink(f)));
+
     resetPlaywrightCache();
   },
 
@@ -282,6 +429,35 @@ export const playwrightTool: WorkflowTool = {
       };
     }
 
+    const defaultTimeout = (params.timeout as number) ?? 30_000;
+    const outputs: Record<string, unknown> = {};
+
+    // If we have a session browser (from initialize), reuse it
+    if (sessionPage) {
+      try {
+        await executeBrowserAction(
+          sessionPage,
+          { action, ...params } as BrowserActionParams,
+          outputs,
+          defaultTimeout,
+          screenshotFiles,
+        );
+        return {
+          success: true,
+          data: { ...outputs, actionsExecuted: 1 },
+          duration: Date.now() - start,
+        };
+      } catch (err) {
+        return {
+          success: false,
+          data: outputs,
+          error: `Action ${action} failed: ${(err as Error).message}`,
+          duration: Date.now() - start,
+        };
+      }
+    }
+
+    // No session — fall back to single-shot browser per action
     let playwright: PlaywrightModule;
     try {
       playwright = await loadPlaywright();
@@ -290,9 +466,6 @@ export const playwrightTool: WorkflowTool = {
     }
 
     const headless = (params.headless as boolean) ?? true;
-    const defaultTimeout = (params.timeout as number) ?? 30_000;
-    const outputs: Record<string, unknown> = {};
-
     let browser: PlaywrightBrowser | null = null;
     try {
       browser = await playwright.chromium.launch({ headless });
@@ -303,6 +476,7 @@ export const playwrightTool: WorkflowTool = {
         { action, ...params } as BrowserActionParams,
         outputs,
         defaultTimeout,
+        screenshotFiles,
       );
 
       return {
@@ -328,3 +502,27 @@ export const playwrightTool: WorkflowTool = {
     return ACTIONS;
   },
 };
+
+// ============================================================================
+// Session state (module-level, managed by initialize/dispose lifecycle)
+// ============================================================================
+
+let sessionBrowser: PlaywrightBrowser | null = null;
+let sessionPage: PlaywrightPage | null = null;
+const screenshotFiles: string[] = [];
+
+/** Exposed for testing — get current session state. */
+export function getSessionState(): { hasBrowser: boolean; hasPage: boolean; screenshotCount: number } {
+  return {
+    hasBrowser: sessionBrowser !== null,
+    hasPage: sessionPage !== null,
+    screenshotCount: screenshotFiles.length,
+  };
+}
+
+/** Exposed for testing — reset session state without cleanup. */
+export function resetSessionState(): void {
+  sessionBrowser = null;
+  sessionPage = null;
+  screenshotFiles.length = 0;
+}

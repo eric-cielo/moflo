@@ -9,9 +9,12 @@
  *          label, comment, repo-info
  */
 
-import { exec } from 'node:child_process';
 import type { WorkflowTool, ToolAction, ToolOutput } from '../types/workflow-tool.types.js';
 import { commandExists } from '../core/prerequisite-checker.js';
+import { execAsync, escapeShellArg } from '../core/shell.js';
+
+// Re-export shell utilities for consumers that imported from here
+export { execAsync, escapeShellArg, type ExecResult } from '../core/shell.js';
 
 // ============================================================================
 // Types
@@ -33,32 +36,6 @@ export const VALID_ACTIONS: readonly GitHubCliAction[] = [
 ];
 
 const VALID_MERGE_METHODS = ['squash', 'merge', 'rebase'] as const;
-
-// ============================================================================
-// Shell helpers (exported for step command reuse)
-// ============================================================================
-
-export interface ExecResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
-
-export function execAsync(command: string, timeout = 30000): Promise<ExecResult> {
-  return new Promise((resolve) => {
-    const child = exec(command, { timeout, shell: 'bash' }, (error, stdout, stderr) => {
-      resolve({
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-        exitCode: child.exitCode ?? (error ? 1 : 0),
-      });
-    });
-  });
-}
-
-export function escapeShellArg(arg: string): string {
-  return `'${arg.replace(/'/g, "'\\''")}'`;
-}
 
 // ============================================================================
 // Action executors
