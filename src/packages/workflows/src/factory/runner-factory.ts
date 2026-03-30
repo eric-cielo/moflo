@@ -12,9 +12,10 @@ import type { RunnerOptions, WorkflowResult } from '../types/runner.types.js';
 import { StepCommandRegistry } from '../core/step-command-registry.js';
 import { WorkflowRunner } from '../core/runner.js';
 import { builtinCommands } from '../commands/index.js';
+import { builtinTools } from '../tools/index.js';
 import { parseWorkflow } from '../schema/parser.js';
 import { validateWorkflowDefinition } from '../schema/validator.js';
-import type { WorkflowToolRegistry } from '../registry/tool-registry.js';
+import { WorkflowToolRegistry } from '../registry/tool-registry.js';
 
 // ============================================================================
 // Types
@@ -61,7 +62,15 @@ export function createRunner(options: RunnerFactoryOptions = {}): WorkflowRunner
   const credentials = options.credentials ?? noopCredentials;
   const memory = options.memory ?? noopMemory;
 
-  return new WorkflowRunner(registry, credentials, memory, options.toolRegistry);
+  // Auto-register shipped tools into the tool registry
+  const toolRegistry = options.toolRegistry ?? new WorkflowToolRegistry();
+  for (const tool of builtinTools) {
+    if (!toolRegistry.has(tool.name)) {
+      toolRegistry.register(tool, 'shipped');
+    }
+  }
+
+  return new WorkflowRunner(registry, credentials, memory, toolRegistry);
 }
 
 /**

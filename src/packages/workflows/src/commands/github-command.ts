@@ -2,11 +2,13 @@
  * GitHub Step Command — typed GitHub operations via `gh` CLI.
  *
  * Story #194: First-class `github` step type for workflow engine.
- * Wraps the `gh` CLI to avoid new HTTP dependencies while providing
- * structured validation, JSON output parsing, and rollback for PR creation.
+ * Issue #219: Refactored to delegate to the `github-cli` workflow tool.
+ *
+ * This is now a thin step wrapper. The reusable gh CLI adapter logic
+ * lives in `../tools/github-cli.ts` so custom steps can also use it
+ * via `context.tools.execute('github-cli', action, params)`.
  */
 
-import { exec } from 'node:child_process';
 import type {
   StepCommand,
   StepConfig,
@@ -19,20 +21,20 @@ import type {
 } from '../types/step-command.types.js';
 import { interpolateString } from '../core/interpolation.js';
 import { commandExists } from '../core/prerequisite-checker.js';
+import {
+  execAsync,
+  escapeShellArg,
+  validateGitHubAction,
+  githubCliTool,
+  VALID_ACTIONS,
+  type GitHubCliAction,
+} from '../tools/github-cli.js';
 
 // ============================================================================
 // Config
 // ============================================================================
 
-export type GitHubAction =
-  | 'issue-fetch'
-  | 'issue-edit'
-  | 'pr-create'
-  | 'pr-merge'
-  | 'pr-find'
-  | 'label'
-  | 'comment'
-  | 'repo-info';
+export type GitHubAction = GitHubCliAction;
 
 export interface GitHubStepConfig extends StepConfig {
   readonly action: GitHubAction;
@@ -77,231 +79,7 @@ const githubPrerequisites: readonly Prerequisite[] = [
 ];
 
 // ============================================================================
-// Shell helper
-// ============================================================================
-
-interface ExecResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
-
-function execAsync(command: string, timeout = 30000): Promise<ExecResult> {
-  return new Promise((resolve) => {
-    const child = exec(command, { timeout, shell: 'bash' }, (error, stdout, stderr) => {
-      resolve({
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-        exitCode: child.exitCode ?? (error ? 1 : 0),
-      });
-    });
-  });
-}
-
-// ============================================================================
-// Action validators
-// ============================================================================
-
-const VALID_ACTIONS: readonly GitHubAction[] = [
-  'issue-fetch', 'issue-edit', 'pr-create', 'pr-merge',
-  'pr-find', 'label', 'comment', 'repo-info',
-];
-
-const VALID_MERGE_METHODS = ['squash', 'merge', 'rebase'] as const;
-
-function validateAction(config: GitHubStepConfig): string[] {
-  const errors: string[] = [];
-
-  if (!config.action || !VALID_ACTIONS.includes(config.action)) {
-    errors.push(`action must be one of: ${VALID_ACTIONS.join(', ')}`);
-    return errors;
-  }
-
-  switch (config.action) {
-    case 'issue-fetch':
-      if (!config.issue) errors.push('issue-fetch requires issue number');
-      break;
-    case 'issue-edit':
-      if (!config.issue) errors.push('issue-edit requires issue number');
-      break;
-    case 'pr-create':
-      if (!config.title) errors.push('pr-create requires title');
-      break;
-    case 'pr-merge':
-      if (!config.pr && !config.issue) errors.push('pr-merge requires pr or issue number');
-      if (config.mergeMethod && !VALID_MERGE_METHODS.includes(config.mergeMethod as typeof VALID_MERGE_METHODS[number])) {
-        errors.push(`mergeMethod must be one of: ${VALID_MERGE_METHODS.join(', ')}`);
-      }
-      break;
-    case 'pr-find':
-      if (!config.head && !config.search) errors.push('pr-find requires head branch or search query');
-      break;
-    case 'label':
-      if (!config.issue && !config.pr) errors.push('label requires issue or pr number');
-      if (!config.labels) errors.push('label requires labels config');
-      break;
-    case 'comment':
-      if (!config.issue && !config.pr) errors.push('comment requires issue or pr number');
-      if (!config.body) errors.push('comment requires body');
-      break;
-    case 'repo-info':
-      break;
-  }
-
-  return errors;
-}
-
-// ============================================================================
-// Action executors
-// ============================================================================
-
-function escapeShellArg(arg: string): string {
-  return `'${arg.replace(/'/g, "'\\''")}'`;
-}
-
-async function executeAction(config: GitHubStepConfig, context: WorkflowContext): Promise<StepOutput> {
-  const start = Date.now();
-  const interp = (s: string | undefined) => s ? interpolateString(s, context) : s;
-
-  switch (config.action) {
-    case 'issue-fetch':
-      return executeIssueFetch(config, start);
-    case 'issue-edit':
-      return executeIssueEdit(config, interp, start);
-    case 'pr-create':
-      return executePrCreate(config, interp, start);
-    case 'pr-merge':
-      return executePrMerge(config, start);
-    case 'pr-find':
-      return executePrFind(config, interp, start);
-    case 'label':
-      return executeLabel(config, start);
-    case 'comment':
-      return executeComment(config, interp, start);
-    case 'repo-info':
-      return executeRepoInfo(start);
-    default:
-      return { success: false, data: {}, error: `Unknown action: ${config.action}`, duration: Date.now() - start };
-  }
-}
-
-async function executeIssueFetch(config: GitHubStepConfig, start: number): Promise<StepOutput> {
-  const fields = config.fields?.join(',') || 'number,title,body,labels,state,assignees';
-  const result = await execAsync(`gh issue view ${config.issue} --json ${fields}`);
-  if (result.exitCode !== 0) {
-    return { success: false, data: {}, error: result.stderr || `Failed to fetch issue #${config.issue}`, duration: Date.now() - start };
-  }
-  return { success: true, data: JSON.parse(result.stdout), duration: Date.now() - start };
-}
-
-async function executeIssueEdit(config: GitHubStepConfig, interp: (s: string | undefined) => string | undefined, start: number): Promise<StepOutput> {
-  const args: string[] = [`gh issue edit ${config.issue}`];
-  if (config.title) args.push(`--title ${escapeShellArg(interp(config.title)!)}`);
-  if (config.body) args.push(`--body ${escapeShellArg(interp(config.body)!)}`);
-  if (config.labels?.add) {
-    for (const l of config.labels.add) args.push(`--add-label ${escapeShellArg(l)}`);
-  }
-  if (config.labels?.remove) {
-    for (const l of config.labels.remove) args.push(`--remove-label ${escapeShellArg(l)}`);
-  }
-
-  const result = await execAsync(args.join(' '));
-  if (result.exitCode !== 0) {
-    return { success: false, data: {}, error: result.stderr || `Failed to edit issue #${config.issue}`, duration: Date.now() - start };
-  }
-  return { success: true, data: { issue: config.issue, updated: true }, duration: Date.now() - start };
-}
-
-async function executePrCreate(config: GitHubStepConfig, interp: (s: string | undefined) => string | undefined, start: number): Promise<StepOutput> {
-  const args: string[] = ['gh pr create'];
-  args.push(`--title ${escapeShellArg(interp(config.title)!)}`);
-  if (config.body) args.push(`--body ${escapeShellArg(interp(config.body)!)}`);
-  if (config.base) args.push(`--base ${escapeShellArg(interp(config.base)!)}`);
-  if (config.head) args.push(`--head ${escapeShellArg(interp(config.head)!)}`);
-  if (config.labels?.add) {
-    for (const l of config.labels.add) args.push(`--label ${escapeShellArg(l)}`);
-  }
-
-  const result = await execAsync(args.join(' '), 60000);
-  if (result.exitCode !== 0) {
-    return { success: false, data: {}, error: result.stderr || 'Failed to create PR', duration: Date.now() - start };
-  }
-
-  // gh pr create outputs the PR URL
-  const prUrl = result.stdout.trim();
-  const prNumber = parseInt(prUrl.match(/\/pull\/(\d+)/)?.[1] ?? '0', 10);
-
-  return { success: true, data: { prUrl, prNumber }, duration: Date.now() - start };
-}
-
-async function executePrMerge(config: GitHubStepConfig, start: number): Promise<StepOutput> {
-  const prRef = config.pr ?? config.issue;
-  const args: string[] = [`gh pr merge ${prRef}`];
-  args.push(`--${config.mergeMethod ?? 'squash'}`);
-  if (config.deleteBranch !== false) args.push('--delete-branch');
-  if (config.admin) args.push('--admin');
-
-  const result = await execAsync(args.join(' '), 60000);
-  if (result.exitCode !== 0) {
-    return { success: false, data: {}, error: result.stderr || `Failed to merge PR #${prRef}`, duration: Date.now() - start };
-  }
-  return { success: true, data: { pr: prRef, merged: true, method: config.mergeMethod ?? 'squash' }, duration: Date.now() - start };
-}
-
-async function executePrFind(config: GitHubStepConfig, interp: (s: string | undefined) => string | undefined, start: number): Promise<StepOutput> {
-  let cmd: string;
-  if (config.head) {
-    cmd = `gh pr list --head ${escapeShellArg(interp(config.head)!)} --json number,title,state,url --limit 1`;
-  } else {
-    cmd = `gh pr list --search ${escapeShellArg(interp(config.search)!)} --json number,title,state,url --limit 10`;
-  }
-
-  const result = await execAsync(cmd);
-  if (result.exitCode !== 0) {
-    return { success: false, data: {}, error: result.stderr || 'Failed to find PR', duration: Date.now() - start };
-  }
-
-  const prs = JSON.parse(result.stdout);
-  return { success: true, data: { prs, count: prs.length }, duration: Date.now() - start };
-}
-
-async function executeLabel(config: GitHubStepConfig, start: number): Promise<StepOutput> {
-  const ref = config.issue ?? config.pr;
-  const args: string[] = [`gh issue edit ${ref}`];
-  if (config.labels?.add) {
-    for (const l of config.labels.add) args.push(`--add-label ${escapeShellArg(l)}`);
-  }
-  if (config.labels?.remove) {
-    for (const l of config.labels.remove) args.push(`--remove-label ${escapeShellArg(l)}`);
-  }
-
-  const result = await execAsync(args.join(' '));
-  if (result.exitCode !== 0) {
-    return { success: false, data: {}, error: result.stderr || `Failed to update labels for #${ref}`, duration: Date.now() - start };
-  }
-  return { success: true, data: { ref, labelsAdded: config.labels?.add, labelsRemoved: config.labels?.remove }, duration: Date.now() - start };
-}
-
-async function executeComment(config: GitHubStepConfig, interp: (s: string | undefined) => string | undefined, start: number): Promise<StepOutput> {
-  const ref = config.issue ?? config.pr;
-  const body = interp(config.body)!;
-  const result = await execAsync(`gh issue comment ${ref} --body ${escapeShellArg(body)}`);
-  if (result.exitCode !== 0) {
-    return { success: false, data: {}, error: result.stderr || `Failed to comment on #${ref}`, duration: Date.now() - start };
-  }
-  return { success: true, data: { ref, commented: true }, duration: Date.now() - start };
-}
-
-async function executeRepoInfo(start: number): Promise<StepOutput> {
-  const result = await execAsync('gh repo view --json name,owner,url,defaultBranchRef,description');
-  if (result.exitCode !== 0) {
-    return { success: false, data: {}, error: result.stderr || 'Failed to get repo info', duration: Date.now() - start };
-  }
-  return { success: true, data: JSON.parse(result.stdout), duration: Date.now() - start };
-}
-
-// ============================================================================
-// GitHub Step Command
+// GitHub Step Command (thin wrapper delegating to github-cli tool)
 // ============================================================================
 
 export const githubCommand: StepCommand<GitHubStepConfig> = {
@@ -343,15 +121,33 @@ export const githubCommand: StepCommand<GitHubStepConfig> = {
   } satisfies JSONSchema,
 
   validate(config: GitHubStepConfig): ValidationResult {
-    const actionErrors = validateAction(config);
+    const errors = validateGitHubAction(config.action, config as unknown as Record<string, unknown>);
     return {
-      valid: actionErrors.length === 0,
-      errors: actionErrors.map(msg => ({ path: 'config', message: msg })),
+      valid: errors.length === 0,
+      errors: errors.map(msg => ({ path: 'config', message: msg })),
     };
   },
 
   async execute(config: GitHubStepConfig, context: WorkflowContext): Promise<StepOutput> {
-    return executeAction(config, context);
+    // Interpolate string values before passing to tool
+    const interp = (s: string | undefined) => s ? interpolateString(s, context) : s;
+
+    // Build params with interpolated values
+    const params: Record<string, unknown> = {
+      ...config,
+      title: interp(config.title),
+      body: interp(config.body),
+      base: interp(config.base),
+      head: interp(config.head),
+      search: interp(config.search),
+    };
+
+    // Prefer tool via context if available, otherwise use direct import
+    if (context.tools?.has('github-cli')) {
+      return context.tools.execute('github-cli', config.action, params);
+    }
+
+    return githubCliTool.execute(config.action, params);
   },
 
   describeOutputs(): OutputDescriptor[] {
@@ -366,10 +162,7 @@ export const githubCommand: StepCommand<GitHubStepConfig> = {
   },
 
   async rollback(config: GitHubStepConfig): Promise<void> {
-    // Only pr-create is rollback-able (close the PR)
     if (config.action !== 'pr-create') return;
-    // The PR URL/number would be in the step output, but rollback receives config.
-    // We find the most recent PR by head branch and close it.
     if (config.head) {
       await execAsync(`gh pr close ${escapeShellArg(config.head)}`);
     }
