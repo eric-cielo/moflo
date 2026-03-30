@@ -169,7 +169,7 @@ If a referenced variable doesn't exist, interpolation throws — catching typos 
 
 ## Step Types
 
-The engine ships with eight built-in step commands. Each one handles a specific kind of work.
+The engine ships with nine built-in step commands. Each one handles a specific kind of work.
 
 ### `bash` — Run a Shell Command
 
@@ -336,6 +336,310 @@ Drives a browser via Playwright for scraping, testing, or interaction.
 **Outputs:** `html`, `screenshot` (base64), `text`
 
 Requires `playwright` as a peer dependency — the step checks for it at runtime and returns a clear error if it's not installed.
+
+### `github` — GitHub CLI Operations
+
+Runs GitHub CLI (`gh`) commands for issue and pull request management.
+
+```yaml
+- id: create-issue
+  type: github
+  config:
+    action: create-issue           # Required. See actions below.
+    title: "Bug: {args.title}"     # Required for create-issue/create-pr
+    body: "Details here"           # Optional body text
+    repo: "owner/repo"            # Optional — defaults to current repo
+```
+
+**Outputs:** `url`, `number`, `action`
+
+**Supported actions:** `create-issue`, `create-pr`, `add-label`, `remove-label`, `comment`, `close-issue`, `close-pr`, `merge-pr`
+
+Requires the `gh` CLI to be installed and authenticated.
+
+## Custom Step Commands
+
+Beyond the nine built-in types, you can create your own step commands and drop them into your project. The workflow engine auto-discovers them at startup — no code changes or configuration files needed beyond placing the file in the right directory.
+
+Custom steps are full participants in the workflow engine: they receive interpolated config, their outputs are available to later steps via `{stepId.field}` references, they can declare capabilities and prerequisites, and they can implement `rollback()` for failure recovery.
+
+### Where to Put Custom Steps
+
+Place your step files in one of these directories:
+
+```
+your-project/
+  workflows/steps/          # Project-level custom steps
+  .claude/workflows/steps/  # Alternative location
+```
+
+The engine scans these directories for `.js`, `.ts`, `.mjs`, `.mts`, `.yaml`, and `.yml` files. Each valid file becomes a new step type you can use in any workflow.
+
+### Creating a JavaScript Step
+
+Export an object that implements the `StepCommand` interface. The object must have these fields:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | Yes | Step type name (used as `type:` in workflow definitions) |
+| `description` | string | Yes | Human-readable description |
+| `configSchema` | object | Yes | JSON Schema describing the step's config |
+| `validate(config, context)` | function | Yes | Returns `{ valid, errors }` |
+| `execute(config, context)` | function | Yes | Returns `{ success, data }` |
+| `describeOutputs()` | function | Yes | Returns array of `{ name, type }` |
+| `capabilities` | array | No | Capability declarations (e.g., `[{ type: 'fs:read' }]`) |
+| `rollback(config, context)` | function | No | Undo logic called on workflow failure |
+
+**Example — `file-stats.js`:**
+
+```javascript
+const { readFileSync, statSync } = require('node:fs');
+const { extname } = require('node:path');
+
+module.exports = {
+  type: 'file-stats',
+  description: 'Report file statistics',
+  configSchema: {
+    type: 'object',
+    properties: { path: { type: 'string' } },
+    required: ['path'],
+  },
+  capabilities: [{ type: 'fs:read' }],
+
+  validate(config) {
+    if (!config.path) {
+      return { valid: false, errors: [{ path: 'path', message: 'path is required' }] };
+    }
+    return { valid: true, errors: [] };
+  },
+
+  async execute(config) {
+    const content = readFileSync(config.path, 'utf-8');
+    const stat = statSync(config.path);
+    return {
+      success: true,
+      data: {
+        lines: content.split('\n').length,
+        bytes: stat.size,
+        extension: extname(config.path),
+      },
+    };
+  },
+
+  describeOutputs() {
+    return [
+      { name: 'lines', type: 'number' },
+      { name: 'bytes', type: 'number' },
+      { name: 'extension', type: 'string' },
+    ];
+  },
+};
+```
+
+**Use it in a workflow:**
+
+```yaml
+steps:
+  - id: analyze
+    type: file-stats
+    config:
+      path: "{args.target_file}"
+  - id: report
+    type: bash
+    config:
+      command: "echo 'File has {analyze.lines} lines and {analyze.bytes} bytes'"
+```
+
+The module can export the `StepCommand` object as `module.exports` (CommonJS default), or as a named export called `stepCommand` or `command`. The loader tries all three.
+
+### Creating a YAML Composite Step
+
+For simpler steps that combine shell commands or tool calls, use YAML instead of JavaScript:
+
+```yaml
+name: notify
+description: Log a formatted notification message
+inputs:
+  level:
+    type: string
+    required: false
+    default: "info"
+    description: "Notification level: info, warning, error"
+  message:
+    type: string
+    required: true
+    description: "The notification message"
+actions:
+  - command: "echo [${inputs.level}] ${inputs.message}"
+```
+
+**YAML step fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Step type name (used as `type:` in workflows) |
+| `description` | No | Human-readable description |
+| `inputs` | No | Input schema — each field has `type`, `required`, `default`, `description` |
+| `actions` | Yes | Sequential list of actions to execute |
+| `tool` | No | Declares a tool dependency (adds `net` capability and prerequisites) |
+
+**Actions** can be either command-based or tool-based:
+
+```yaml
+actions:
+  - command: "echo ${inputs.message}"      # Shell command
+  - tool: slack                            # Tool-based action
+    action: post-message
+    params:
+      channel: "${inputs.channel}"
+      text: "${inputs.message}"
+```
+
+Use `${inputs.X}` to reference input values in action params and commands. Required inputs are validated before execution — if a required input is missing, the step fails with a validation error.
+
+### Installing Steps via npm
+
+Publish a package named `moflo-step-*` and it will be auto-discovered from `node_modules/`:
+
+```json
+{
+  "name": "moflo-step-slack-notify",
+  "version": "1.0.0",
+  "main": "index.js",
+  "moflo": {
+    "stepCommand": "lib/step.js"
+  }
+}
+```
+
+The loader reads `package.json` for a `moflo.stepCommand` field pointing to the entry file. If absent, it falls back to the `main` field. The exported module must implement the same `StepCommand` interface as a JS step file.
+
+### Discovery Priority
+
+When multiple sources define a step with the same type name, the last one loaded wins:
+
+| Priority | Source | Loaded |
+|----------|--------|--------|
+| Lowest | npm `moflo-step-*` packages | First |
+| Medium | Built-in commands | Second |
+| **Highest** | User directory steps | Last |
+
+This means a user step named `bash` will override the built-in `bash` command. This is intentional — it lets you customize any step's behavior for your project without forking the engine.
+
+### Configuring Step Discovery
+
+Pass `stepDirs` and `projectRoot` to `createRunner()` to enable custom step discovery:
+
+```typescript
+import { createRunner } from '@claude-flow/workflows';
+
+const runner = createRunner({
+  stepDirs: ['workflows/steps/', '.claude/workflows/steps/'],
+  projectRoot: process.cwd(),  // Enables npm moflo-step-* discovery
+});
+```
+
+Without `stepDirs`, only built-in commands are available. Without `projectRoot`, npm package discovery is skipped.
+
+### Error Resilience
+
+Invalid step files don't break discovery. If a file has a syntax error, wrong exports, or malformed YAML, it's skipped with a warning — other valid files in the same directory still load normally. This prevents one bad file from blocking your entire step library.
+
+Common warning conditions:
+- JS file doesn't export an object with the required `StepCommand` fields
+- JS file has a syntax error
+- YAML file is missing the required `name` field
+- YAML file has no `actions` array
+
+## Custom Workflow Tools
+
+Tools and steps are different concepts:
+
+- A **tool** is an adapter that wraps an external resource — a CLI, an API, a database. It provides general capabilities: "I can talk to GitHub," "I can drive a browser," "I can send Slack messages."
+- A **step** is a specific operation in a workflow. It may use a tool to do its work: "Create a PR using the GitHub tool," "Take a screenshot using the browser tool," or it may work standalone: "Read a file and count lines."
+
+The built-in `github` and `browser` step types are monolithic — they bundle the tool adapter and step logic together. For your own extensions, you can separate them: create a tool once, then build multiple steps that use it.
+
+### The WorkflowTool Interface
+
+Tools implement a lifecycle-aware interface with named actions:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Tool identifier |
+| `description` | string | Yes | Human-readable description |
+| `version` | string | Yes | Semver version |
+| `capabilities` | array | Yes | What the tool can do: `read`, `write`, `search`, `subscribe`, `authenticate` |
+| `initialize(config)` | function | Yes | Set up connections, verify dependencies |
+| `dispose()` | function | Yes | Clean up resources |
+| `execute(action, params)` | function | Yes | Run a named action with parameters |
+| `listActions()` | function | Yes | Describe available actions with input/output schemas |
+
+**Example — `github-cli.js`:**
+
+```javascript
+const { execSync } = require('node:child_process');
+
+module.exports = {
+  name: 'github-cli',
+  description: 'GitHub CLI (gh) wrapper for issue and PR operations',
+  version: '1.0.0',
+  capabilities: ['read', 'write'],
+
+  async initialize() {
+    // Verify gh is available
+    try {
+      execSync('gh --version', { stdio: 'pipe' });
+    } catch {
+      throw new Error('GitHub CLI (gh) is not installed');
+    }
+  },
+
+  async dispose() {},
+
+  async execute(action, params) {
+    if (action === 'create-issue') {
+      const args = ['gh', 'issue', 'create', '--title', params.title];
+      if (params.body) args.push('--body', params.body);
+      const stdout = execSync(args.join(' '), { encoding: 'utf-8' }).trim();
+      return { success: true, data: { url: stdout } };
+    }
+    return { success: false, data: { error: `Unknown action: ${action}` } };
+  },
+
+  listActions() {
+    return [{
+      name: 'create-issue',
+      description: 'Create a new GitHub issue',
+      inputSchema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
+      outputSchema: { type: 'object', properties: { url: { type: 'string' } } },
+    }];
+  },
+};
+```
+
+### Where to Put Custom Tools
+
+```
+your-project/
+  workflows/tools/          # Project-level custom tools
+  .claude/workflows/tools/  # Alternative location
+```
+
+The tool registry scans for `.js`, `.ts`, `.mjs`, and `.mts` files. Tools can also be installed via npm as `moflo-tool-*` packages (declare the entry point in `package.json` under the `moflo-tool` field).
+
+### Tools vs Steps: When to Use Which
+
+| You want to... | Create a... |
+|----------------|-------------|
+| Wrap a CLI or API for general use | **Tool** (`workflows/tools/`) |
+| Define a specific workflow operation | **Step** (`workflows/steps/`) |
+| Combine shell commands into a reusable action | **YAML step** |
+| Add a connector that multiple steps can share | **Tool** |
+
+A step can use a tool through the workflow context's tool accessor — the engine injects registered tools so steps can call `context.tools.execute('github-cli', 'create-issue', { title: '...' })`.
+
+See `examples/workflow-tools/github-cli.js` for a complete tool example and `examples/workflow-steps/` for step examples.
 
 ## Error Handling
 
@@ -504,7 +808,7 @@ console.log(result.errors);      // Structured errors (if any)
 console.log(result.duration);    // Total execution time in ms
 ```
 
-`createRunner()` registers all eight built-in step commands automatically. The runner accepts optional `memory` and `credentials` accessors — if you don't provide them, it uses no-op defaults (memory reads return null, credential lookups return undefined).
+`createRunner()` registers all nine built-in step commands automatically. To enable custom step discovery, pass `stepDirs` and/or `projectRoot` (see [Custom Step Commands](#custom-step-commands)). The runner accepts optional `memory` and `credentials` accessors — if you don't provide them, it uses no-op defaults (memory reads return null, credential lookups return undefined).
 
 ## Further Reading
 
