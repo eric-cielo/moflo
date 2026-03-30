@@ -28,7 +28,10 @@ export interface ExecResult {
  */
 export function execAsync(command: string, timeout = 30000): Promise<ExecResult> {
   return new Promise((resolve) => {
-    const child = exec(command, { timeout, shell: 'bash' }, (error, stdout, stderr) => {
+    const shell = process.platform === 'win32'
+      ? (process.env.SHELL || process.env.ComSpec || 'cmd.exe')
+      : (process.env.SHELL || 'bash');
+    const child = exec(command, { timeout, shell }, (error, stdout, stderr) => {
       resolve({
         stdout: stdout.trim(),
         stderr: stderr.trim(),

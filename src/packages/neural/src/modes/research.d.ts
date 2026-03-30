@@ -9,7 +9,7 @@
  * - Full learning pipeline
  */
 import type { SONAModeConfig, Trajectory, Pattern, PatternMatch, LoRAWeights, EWCState } from '../types.js';
-import { BaseModeImplementation } from './index.js';
+import { BaseModeImplementation } from './base.js';
 /**
  * Research mode for maximum quality learning
  */

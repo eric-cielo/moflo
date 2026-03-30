@@ -8,7 +8,7 @@
  * - Async batch processing
  * - 50ms latency budget
  */
-import { BaseModeImplementation } from './index.js';
+import { BaseModeImplementation } from './base.js';
 /**
  * Batch mode for high-throughput processing
  */

@@ -8,7 +8,7 @@
  * - SIMD vectorization
  * - Aggressive caching
  */
-import { BaseModeImplementation } from './index.js';
+import { BaseModeImplementation } from './base.js';
 /**
  * Real-Time mode for sub-millisecond adaptation
  */

@@ -8,7 +8,7 @@
  * - Aggressive pruning
  * - Async updates
  */
-import { BaseModeImplementation } from './index.js';
+import { BaseModeImplementation } from './base.js';
 /**
  * Edge mode for resource-constrained devices
  */

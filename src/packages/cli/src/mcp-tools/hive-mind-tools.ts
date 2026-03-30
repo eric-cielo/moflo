@@ -27,7 +27,7 @@ let _writeThroughAdapter: any = null;
 
 async function getMessageBus() {
   if (_messageBus) return _messageBus;
-  const { MessageBus } = await import('../../../../packages/swarm/src/message-bus/index.js');
+  const { MessageBus } = await import('../../../../packages/swarm/dist/message-bus/index.js');
   _messageBus = new MessageBus({
     processingIntervalMs: 50,
     reaperIntervalMs: 60_000,
@@ -40,7 +40,7 @@ async function getWriteThroughAdapter() {
   if (_writeThroughAdapter) return _writeThroughAdapter;
 
   const bus = await getMessageBus();
-  const { WriteThroughAdapter } = await import('../../../../packages/swarm/src/message-bus/write-through-adapter.js');
+  const { WriteThroughAdapter } = await import('../../../../packages/swarm/dist/message-bus/write-through-adapter.js');
 
   // Lazy-load memory functions
   let memStore: ((opts: Record<string, unknown>) => Promise<{ success: boolean; id: string; error?: string }>) | null = null;

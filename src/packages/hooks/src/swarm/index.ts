@@ -18,7 +18,33 @@ import type {
   MessageType,
   MessageFilter,
 } from '../../../../packages/swarm/src/types.js';
-import { MessageBus } from '../../../../packages/swarm/src/message-bus/message-bus.js';
+
+// Lazy-load MessageBus to avoid hard dependency on swarm package at import time.
+// The swarm package compiles to dist/ but hooks references src/ paths — lazy
+// import avoids the broken path at module evaluation time.
+async function loadMessageBus(): Promise<new () => IMessageBus> {
+  try {
+    // Try dist first (correct compiled output)
+    const mod = await import('../../../../packages/swarm/dist/message-bus/message-bus.js');
+    return mod.MessageBus;
+  } catch {
+    try {
+      // Fallback: src path (may have pre-compiled .js)
+      const mod = await import('../../../../packages/swarm/src/message-bus/message-bus.js');
+      return mod.MessageBus;
+    } catch {
+      // Final fallback: no-op message bus
+      const NoopMessageBus = class {
+        async initialize() {}
+        async shutdown() {}
+        async publish() {}
+        subscribe() { return () => {}; }
+        getMessages() { return []; }
+      };
+      return NoopMessageBus as unknown as new () => IMessageBus;
+    }
+  }
+}
 
 // ============================================================================
 // Types
@@ -994,9 +1020,27 @@ export function createSwarmCommunication(
 }
 
 /** @deprecated Use createSwarmCommunication() with an injected IMessageBus. */
-const _lazyBus = new MessageBus();
-_lazyBus.initialize().catch(() => { /* best-effort init for deprecated singleton */ });
-export const swarmComm = new SwarmCommunication(_lazyBus);
+let _swarmCommSingleton: SwarmCommunication | null = null;
+const _swarmCommProxy = new Proxy({} as SwarmCommunication, {
+  get(_target, prop) {
+    if (!_swarmCommSingleton) {
+      // Not yet initialized — return no-op for common methods
+      if (prop === 'sendMessage') return async () => {};
+      if (prop === 'getMessages') return async () => [];
+      if (prop === 'broadcastContext') return async () => {};
+    }
+    return _swarmCommSingleton?.[prop as keyof SwarmCommunication];
+  },
+});
+// Async init — non-blocking
+loadMessageBus().then(MessageBusCtor => {
+  const bus = new MessageBusCtor();
+  if ('initialize' in bus && typeof bus.initialize === 'function') {
+    (bus.initialize() as Promise<void>).catch(() => {});
+  }
+  _swarmCommSingleton = new SwarmCommunication(bus);
+}).catch(() => { /* swarm unavailable — singleton remains proxy */ });
+export const swarmComm: SwarmCommunication = _swarmCommProxy;
 
 export {
   SwarmCommunication as default,
