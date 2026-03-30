@@ -404,3 +404,74 @@ export async function checkHookExecution(): Promise<HealthCheck> {
     return { name: 'Hook Execution', status: 'fail', message: `Hook executor error: ${msg}`, fix: 'npm run build' };
   }
 }
+
+// ============================================================================
+// 5. MCP Workflow Integration Check
+// ============================================================================
+
+/**
+ * Verifies that the MCP workflow tools invoke the real engine via runner-bridge.
+ * Calls bridgeExecuteWorkflow() with a minimal definition and checks for real
+ * bash step stdout, not mock/simulated output.
+ */
+export async function checkMcpWorkflowIntegration(): Promise<HealthCheck> {
+  try {
+    const bridgePath = findModule(
+      'src/packages/workflows/dist/factory/runner-bridge.js',
+    );
+    if (!bridgePath) {
+      return { name: 'MCP Workflow Integration', status: 'warn', message: 'runner-bridge not found', fix: 'npm run build' };
+    }
+
+    const bridge = await import(toImportUrl(bridgePath));
+    if (typeof bridge.bridgeExecuteWorkflow !== 'function') {
+      return { name: 'MCP Workflow Integration', status: 'fail', message: 'bridgeExecuteWorkflow is not a function', fix: 'npm run build' };
+    }
+
+    const definition = {
+      name: 'doctor-mcp-probe',
+      description: 'Doctor MCP integration probe',
+      steps: [
+        {
+          id: 'echo-check',
+          type: 'bash',
+          config: { command: 'echo mcp-bridge-ok' },
+          output: 'result',
+        },
+      ],
+    };
+
+    const result = await bridge.bridgeExecuteWorkflow(definition, {});
+
+    if (!result) {
+      return { name: 'MCP Workflow Integration', status: 'fail', message: 'Bridge returned no result' };
+    }
+
+    if (!result.success) {
+      const errMsg = result.errors?.map((e: { message: string }) => e.message).join('; ') || 'unknown';
+      return { name: 'MCP Workflow Integration', status: 'fail', message: `Bridge execution failed: ${errMsg}`, fix: 'npm run build' };
+    }
+
+    // Verify real step output — if MCP tools were still using mocks, there
+    // would be no stdout from a bash step
+    const stepOutput = result.outputs?.['echo-check'] ?? result.outputs?.result;
+    const stdout = typeof stepOutput === 'object' && stepOutput !== null
+      ? (stepOutput as Record<string, unknown>).stdout
+      : undefined;
+
+    if (typeof stdout === 'string' && stdout.includes('mcp-bridge-ok')) {
+      const duration = result.duration != null ? `${result.duration}ms` : 'unknown';
+      return { name: 'MCP Workflow Integration', status: 'pass', message: `Bridge → engine OK, real stdout captured (${duration})` };
+    }
+
+    return {
+      name: 'MCP Workflow Integration',
+      status: 'fail',
+      message: 'Bridge returned success but no real stdout — MCP tools may not invoke the engine',
+      fix: 'Ensure workflow-tools.ts imports from runner-bridge.ts',
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { name: 'MCP Workflow Integration', status: 'fail', message: `MCP workflow bridge error: ${msg}`, fix: 'npm run build' };
+  }
+}

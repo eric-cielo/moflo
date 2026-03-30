@@ -13,6 +13,7 @@ import {
   checkSubagentHealth,
   checkWorkflowExecution,
   checkMcpToolInvocation,
+  checkMcpWorkflowIntegration,
   checkHookExecution,
 } from '../src/commands/doctor-checks-deep.js';
 
@@ -82,6 +83,24 @@ describe('doctor-checks-deep', () => {
     });
   });
 
+  describe('checkMcpWorkflowIntegration', () => {
+    it('should return a HealthCheck object', async () => {
+      const result = await checkMcpWorkflowIntegration();
+      expect(result).toHaveProperty('name', 'MCP Workflow Integration');
+      expect(result).toHaveProperty('status');
+      expect(result).toHaveProperty('message');
+      expect(['pass', 'warn', 'fail']).toContain(result.status);
+    });
+
+    it('should verify real stdout from bash step via bridge', async () => {
+      const result = await checkMcpWorkflowIntegration();
+      if (result.status === 'pass') {
+        expect(result.message).toContain('Bridge → engine OK');
+        expect(result.message).toContain('real stdout captured');
+      }
+    });
+  });
+
   describe('consumer project compatibility', () => {
     it('all checks use import.meta.url, not process.cwd(), for path resolution', async () => {
       // This is a structural assertion — read the source and verify no process.cwd() usage
@@ -106,6 +125,7 @@ describe('doctor-checks-deep', () => {
         checkSubagentHealth,
         checkWorkflowExecution,
         checkMcpToolInvocation,
+        checkMcpWorkflowIntegration,
         checkHookExecution,
       ];
 
