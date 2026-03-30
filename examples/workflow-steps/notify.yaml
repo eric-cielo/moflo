@@ -1,0 +1,30 @@
+# Example: notify composite step (YAML)
+#
+# Logs a formatted notification message. Demonstrates how to create
+# a custom step command as a YAML composite definition.
+#
+# Usage in a workflow definition:
+#   steps:
+#     - id: alert
+#       type: notify
+#       config:
+#         level: warning
+#         message: "Build completed with warnings"
+#
+# Discovery: Drop this file into `workflows/steps/` or `.claude/workflows/steps/`
+# in your project, and it will be auto-discovered by moflo's step registry.
+
+name: notify
+description: Log a formatted notification message
+inputs:
+  level:
+    type: string
+    required: false
+    default: "info"
+    description: "Notification level: info, warning, error"
+  message:
+    type: string
+    required: true
+    description: "The notification message"
+actions:
+  - command: "echo [${inputs.level}] ${inputs.message}"

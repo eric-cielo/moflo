@@ -9,6 +9,9 @@ import type {
   StepCommand,
   StepCommandEntry,
 } from '../types/step-command.types.js';
+import type { DirectoryLoadWarning } from '../loaders/directory-step-loader.js';
+import { loadStepsFromDirectories } from '../loaders/directory-step-loader.js';
+import { loadStepsFromNpm } from '../loaders/npm-step-loader.js';
 
 // ============================================================================
 // Step Command Registry
@@ -19,20 +22,12 @@ export class StepCommandRegistry {
 
   /** @throws if a command with the same type is already registered. */
   register(command: StepCommand): void {
-    if (!command.type || typeof command.type !== 'string') {
-      throw new Error('StepCommand must have a non-empty string type');
-    }
-
     if (this.commands.has(command.type)) {
       throw new Error(
         `Step command type "${command.type}" is already registered`
       );
     }
-
-    this.commands.set(command.type, {
-      command,
-      registeredAt: new Date(),
-    });
+    this.registerOrReplace(command);
   }
 
   /** @returns true if removed, false if not found. */
@@ -62,5 +57,49 @@ export class StepCommandRegistry {
 
   clear(): void {
     this.commands.clear();
+  }
+
+  /**
+   * Register or replace a command. Unlike `register()`, this does NOT throw
+   * on duplicates — the new command silently replaces the existing one.
+   * Used for directory/npm discovery where later sources override earlier ones.
+   */
+  registerOrReplace(command: StepCommand): void {
+    if (!command.type || typeof command.type !== 'string') {
+      throw new Error('StepCommand must have a non-empty string type');
+    }
+    this.commands.set(command.type, {
+      command,
+      registeredAt: new Date(),
+    });
+  }
+
+  /**
+   * Scan directories for JS/TS files exporting StepCommand implementations
+   * and register them. Later directories override earlier ones by type name.
+   * User steps also override previously registered built-in commands.
+   *
+   * @returns warnings from files that could not be loaded.
+   */
+  loadFromDirectories(dirs: readonly string[]): DirectoryLoadWarning[] {
+    const result = loadStepsFromDirectories({ dirs });
+    for (const [, discovered] of result.steps) {
+      this.registerOrReplace(discovered.command);
+    }
+    return result.warnings as DirectoryLoadWarning[];
+  }
+
+  /**
+   * Scan node_modules for `moflo-step-*` packages and register their exports.
+   * npm steps have lowest priority — they are overridden by built-in and user steps.
+   *
+   * @returns warnings from packages that could not be loaded.
+   */
+  loadFromNpm(projectRoot: string): DirectoryLoadWarning[] {
+    const result = loadStepsFromNpm(projectRoot);
+    for (const [, discovered] of result.steps) {
+      this.registerOrReplace(discovered.command);
+    }
+    return result.warnings as DirectoryLoadWarning[];
   }
 }
