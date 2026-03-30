@@ -11,6 +11,7 @@ import type {
 } from '../types/step-command.types.js';
 import type { DirectoryLoadWarning } from '../loaders/directory-step-loader.js';
 import { loadStepsFromDirectories } from '../loaders/directory-step-loader.js';
+import { loadStepsFromNpm } from '../loaders/npm-step-loader.js';
 
 // ============================================================================
 // Step Command Registry
@@ -82,6 +83,20 @@ export class StepCommandRegistry {
    */
   loadFromDirectories(dirs: readonly string[]): DirectoryLoadWarning[] {
     const result = loadStepsFromDirectories({ dirs });
+    for (const [, discovered] of result.steps) {
+      this.registerOrReplace(discovered.command);
+    }
+    return result.warnings as DirectoryLoadWarning[];
+  }
+
+  /**
+   * Scan node_modules for `moflo-step-*` packages and register their exports.
+   * npm steps have lowest priority — they are overridden by built-in and user steps.
+   *
+   * @returns warnings from packages that could not be loaded.
+   */
+  loadFromNpm(projectRoot: string): DirectoryLoadWarning[] {
+    const result = loadStepsFromNpm(projectRoot);
     for (const [, discovered] of result.steps) {
       this.registerOrReplace(discovered.command);
     }

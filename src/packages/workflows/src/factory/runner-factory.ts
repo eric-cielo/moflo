@@ -26,6 +26,8 @@ export interface RunnerFactoryOptions {
   readonly toolRegistry?: WorkflowToolRegistry;
   /** User directories to scan for pluggable step commands (JS/TS files). */
   readonly stepDirs?: readonly string[];
+  /** Project root for npm package discovery (scans node_modules/moflo-step-*). */
+  readonly projectRoot?: string;
 }
 
 export interface RunWorkflowOptions extends RunnerOptions {
@@ -46,7 +48,12 @@ export function createRunner(options: RunnerFactoryOptions = {}): WorkflowRunner
     registry.register(cmd);
   }
 
-  // Scan user directories for pluggable step commands (override built-ins by name)
+  // npm packages have lowest priority (overridden by built-in and user steps)
+  if (options.projectRoot) {
+    registry.loadFromNpm(options.projectRoot);
+  }
+
+  // User directories override npm and built-in steps by name
   if (options.stepDirs?.length) {
     registry.loadFromDirectories(options.stepDirs);
   }
