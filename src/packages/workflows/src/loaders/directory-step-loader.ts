@@ -13,6 +13,7 @@
 import { readdirSync } from 'node:fs';
 import { join, extname, resolve } from 'node:path';
 import type { StepCommand } from '../types/step-command.types.js';
+import { isYamlStepFile, loadYamlStep } from './yaml-step-loader.js';
 
 export interface DirectoryStepLoaderOptions {
   /** Directories to scan, in ascending priority order (last wins). */
@@ -34,7 +35,9 @@ export interface DirectoryLoadWarning {
   readonly message: string;
 }
 
-const STEP_EXTENSIONS = new Set(['.js', '.ts', '.mjs', '.mts']);
+const JS_EXTENSIONS = new Set(['.js', '.ts', '.mjs', '.mts']);
+const YAML_EXTENSIONS = new Set(['.yaml', '.yml']);
+const ALL_STEP_EXTENSIONS = new Set([...JS_EXTENSIONS, ...YAML_EXTENSIONS]);
 
 /** Known export names to check for a StepCommand. */
 const STEP_EXPORT_NAMES = ['default', 'stepCommand', 'command'] as const;
@@ -75,13 +78,15 @@ function scanDirectory(
   }
 
   const files = entries.filter((f) =>
-    STEP_EXTENSIONS.has(extname(f).toLowerCase()),
+    ALL_STEP_EXTENSIONS.has(extname(f).toLowerCase()),
   );
 
   for (const file of files) {
     const filePath = join(absDir, file);
     try {
-      const command = loadStepFromFile(filePath);
+      const command = isYamlStepFile(filePath)
+        ? loadYamlStep(filePath)
+        : loadStepFromFile(filePath);
       if (command) {
         steps.set(command.type, { command, sourceFile: filePath });
       } else {
