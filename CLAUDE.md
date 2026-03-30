@@ -49,14 +49,20 @@
 | `@claude-flow/plugins` | `src/packages/plugins/` | Plugin system + RuVector integration |
 | `@claude-flow/workflows` | `src/packages/workflows/` | Workflow engine, step commands, YAML/JSON definitions |
 
-## MoFlo is a Library
+## MoFlo is a Library (CRITICAL)
 
-MoFlo is installed as a `devDependency` in **other projects**. Every new package, script, or asset must be reachable from `node_modules/moflo/` in a consumer project. When adding new assets:
+MoFlo is installed as a `devDependency` in **other projects**. Every feature, command, and check MUST work when running from `node_modules/moflo/` in a consumer project — not just in the moflo dev repo. This is the single most common source of bugs.
+
+### Consumer-Project Checklist (apply to ALL new code)
 
 1. **`src/tsconfig.json` references** — add the package so `tsc -b` builds it
-2. **Root `package.json` `files` array** — add `dist/**/*.js`, `dist/**/*.d.ts`, and `package.json` entries (exclude `.map` files)
+2. **Root `package.json` `files` array** — add `dist/**/*.js`, `dist/**/*.d.ts`, and `package.json` entries (exclude `.map` files). If a module is not in `files`, it does not ship to consumers.
 3. **Never compile in-place** — always use `outDir: "./dist"` via `tsc -p tsconfig.json`; never run bare `tsc` from within `src/`
-4. **Path resolution** — bin scripts and loaders must use `findProjectRoot()`, not `__dirname`
+4. **Path resolution for consumer project root** — bin scripts and loaders must use `findProjectRoot()`, not `__dirname`, to find the consumer's project root
+5. **Path resolution for moflo internals** — code that loads moflo's own modules at runtime (dynamic `import()`, `require()`) MUST resolve from `import.meta.url` (walking up to the moflo `package.json`), NEVER from `process.cwd()`. `process.cwd()` points to the consumer's project, not to moflo's install location.
+6. **Dynamic imports need file:// URLs on Windows** — always wrap absolute paths with `pathToFileURL(path).href` before passing to `import()`
+7. **Only `.js` files can be dynamically imported** — never import `.ts` source files at runtime; always target compiled `dist/**/*.js`
+8. **Verify with installed copy** — after adding new runtime-loaded modules, check they exist under `node_modules/moflo/` (run `npm pack --dry-run | grep <file>` to verify they're in the published package)
 
 ## Publishing to npm
 

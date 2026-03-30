@@ -12,7 +12,10 @@
 
 import { readdirSync } from 'node:fs';
 import { join, extname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import type { StepCommand } from '../types/step-command.types.js';
+
+const require = createRequire(import.meta.url);
 import { isYamlStepFile, loadYamlStep } from './yaml-step-loader.js';
 
 export interface DirectoryStepLoaderOptions {
@@ -109,8 +112,7 @@ function scanDirectory(
  * Checks known export names: default, stepCommand, command.
  */
 function loadStepFromFile(filePath: string): StepCommand | null {
-  // require() is sync; for .ts files this relies on a loader (tsx, ts-node).
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // createRequire() enables sync loading in ESM; .ts files need a loader (tsx, ts-node).
   const mod = require(filePath);
 
   for (const name of STEP_EXPORT_NAMES) {

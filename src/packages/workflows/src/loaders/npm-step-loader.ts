@@ -13,6 +13,9 @@
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 import { join, resolve } from 'node:path';
 import type { StepCommand } from '../types/step-command.types.js';
 import type { DiscoveredStep, DirectoryLoadWarning } from './directory-step-loader.js';
@@ -82,7 +85,7 @@ function loadStepFromPackage(pkgDir: string, pkgName: string): StepCommand | nul
   const mainEntry = (entryPoint ?? pkgJson.main ?? 'index.js') as string;
   const entryFile = join(pkgDir, mainEntry);
 
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // createRequire() enables sync loading in ESM
   const mod = require(entryFile);
 
   // Check default export, then named exports

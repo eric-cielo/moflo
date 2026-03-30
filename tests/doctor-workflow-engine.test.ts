@@ -28,12 +28,12 @@ describe('doctor.ts workflow engine check', () => {
   });
 
   it('checks for core workflow modules', () => {
-    expect(content).toContain('core/runner.ts');
-    expect(content).toContain('core/step-executor.ts');
-    expect(content).toContain('core/step-command-registry.ts');
-    expect(content).toContain('core/interpolation.ts');
-    expect(content).toContain('core/credential-masker.ts');
-    expect(content).toContain('registry/workflow-registry.ts');
+    expect(content).toContain("'core/runner'");
+    expect(content).toContain("'core/step-executor'");
+    expect(content).toContain("'core/step-command-registry'");
+    expect(content).toContain("'core/interpolation'");
+    expect(content).toContain("'core/credential-masker'");
+    expect(content).toContain("'registry/workflow-registry'");
   });
 
   it('checks for schema, types, credentials, and scheduler directories', () => {
@@ -45,12 +45,12 @@ describe('doctor.ts workflow engine check', () => {
 
   it('checks step commands directory', () => {
     expect(content).toContain('hasCommands');
-    expect(content).toContain("join(srcDir, 'commands')");
+    expect(content).toContain("join(baseDir, 'commands')");
   });
 
   it('checks loaders directory', () => {
     expect(content).toContain('hasLoaders');
-    expect(content).toContain("join(srcDir, 'loaders')");
+    expect(content).toContain("join(baseDir, 'loaders')");
   });
 
   it('is included in allChecks array', () => {
@@ -66,7 +66,7 @@ describe('doctor.ts workflow engine check', () => {
   });
 
   it('reports missing modules with fix suggestion', () => {
-    expect(content).toContain('Missing core modules');
+    expect(content).toContain('Missing modules');
   });
 });
 

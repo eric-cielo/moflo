@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { execSync, exec } from 'child_process';
 import { promisify } from 'util';
 import { getDaemonLockHolder, releaseDaemonLock, isDaemonProcess } from '../services/daemon-lock.js';
+import { checkSubagentHealth, checkWorkflowExecution, checkMcpToolInvocation, checkHookExecution, getMofloRoot, } from './doctor-checks-deep.js';
 // Promisified exec with proper shell and env inheritance for cross-platform support
 const execAsync = promisify(exec);
 /**
@@ -1167,6 +1168,77 @@ export const doctorCommand = {
                 return { name: 'Zombie Processes', status: 'pass', message: 'Check skipped' };
             }
         };
+        // Check Workflow Engine health — validates core modules, built output, and step commands
+        async function checkWorkflowEngine() {
+            try {
+                // Resolve relative to the moflo package root (works in both dev and consumer)
+                const mofloRoot = getMofloRoot();
+                if (!mofloRoot) {
+                    return { name: 'Workflow Engine', status: 'warn', message: 'Could not locate moflo package root', fix: 'npm run build' };
+                }
+                // Prefer compiled dist/, fall back to src/ in dev repo
+                const distDir = join(mofloRoot, 'src', 'packages', 'workflows', 'dist');
+                const srcDir = join(mofloRoot, 'src', 'packages', 'workflows', 'src');
+                const hasDistDir = existsSync(distDir);
+                const hasSrcDir = existsSync(srcDir);
+                if (!hasDistDir && !hasSrcDir) {
+                    return { name: 'Workflow Engine', status: 'warn', message: 'Workflow engine not found', fix: 'npm run build' };
+                }
+                // Core compiled modules that must exist
+                const coreModules = [
+                    'core/runner',
+                    'core/step-executor',
+                    'core/step-command-registry',
+                    'core/interpolation',
+                    'core/credential-masker',
+                    'registry/workflow-registry',
+                    'factory/runner-factory',
+                    'schema',
+                    'types',
+                    'credentials',
+                    'scheduler',
+                ];
+                const baseDir = hasDistDir ? distDir : srcDir;
+                const ext = hasDistDir ? '.js' : '.ts';
+                // Directories don't need an extension check
+                const dirModules = ['schema', 'types', 'credentials', 'scheduler'];
+                const missing = coreModules.filter(m => dirModules.includes(m)
+                    ? !existsSync(join(baseDir, m))
+                    : !existsSync(join(baseDir, m + ext)));
+                if (missing.length > 0) {
+                    return {
+                        name: 'Workflow Engine',
+                        status: 'warn',
+                        message: `Missing modules: ${missing.join(', ')}`,
+                        fix: 'npm run build',
+                    };
+                }
+                // Check for step commands directory
+                const commandsDir = join(baseDir, 'commands');
+                const hasCommands = existsSync(commandsDir);
+                // Check for workflow definition loaders
+                const loadersDir = join(baseDir, 'loaders');
+                const hasLoaders = existsSync(loadersDir);
+                // Check for index entry point
+                const hasIndex = existsSync(join(baseDir, 'index' + ext));
+                const parts = [];
+                parts.push(`${coreModules.length} core modules`);
+                if (hasCommands)
+                    parts.push('step commands');
+                if (hasLoaders)
+                    parts.push('loaders');
+                if (hasIndex)
+                    parts.push('index');
+                return {
+                    name: 'Workflow Engine',
+                    status: 'pass',
+                    message: parts.join(', '),
+                };
+            }
+            catch {
+                return { name: 'Workflow Engine', status: 'warn', message: 'Unable to check workflow engine' };
+            }
+        }
         const allChecks = [
             checkVersionFreshness,
             checkNodeVersion,
@@ -1185,7 +1257,12 @@ export const doctorCommand = {
             checkAgenticFlow,
             checkSemanticQuality,
             checkIntelligence,
-            checkZombieProcesses
+            checkWorkflowEngine,
+            checkZombieProcesses,
+            checkSubagentHealth,
+            checkWorkflowExecution,
+            checkMcpToolInvocation,
+            checkHookExecution,
         ];
         const componentMap = {
             'version': checkVersionFreshness,
@@ -1205,7 +1282,15 @@ export const doctorCommand = {
             'agentic-flow': checkAgenticFlow,
             'semantic': checkSemanticQuality,
             'quality': checkSemanticQuality,
-            'intelligence': checkIntelligence
+            'intelligence': checkIntelligence,
+            'workflows': checkWorkflowEngine,
+            'workflow': checkWorkflowEngine,
+            'subagent': checkSubagentHealth,
+            'subagents': checkSubagentHealth,
+            'agents': checkSubagentHealth,
+            'workflow-exec': checkWorkflowExecution,
+            'mcp-tools': checkMcpToolInvocation,
+            'hooks': checkHookExecution,
         };
         let checksToRun = allChecks;
         if (component && componentMap[component]) {

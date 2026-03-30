@@ -8,7 +8,7 @@
  * - Pattern caching
  * - Standard learning pipeline
  */
-import { BaseModeImplementation } from './index.js';
+import { BaseModeImplementation } from './base.js';
 /**
  * Balanced mode for general-purpose learning
  */

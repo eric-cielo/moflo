@@ -9,7 +9,7 @@
  * - Aggressive caching
  */
 import type { SONAModeConfig, Trajectory, Pattern, PatternMatch, LoRAWeights, EWCState } from '../types.js';
-import { BaseModeImplementation } from './index.js';
+import { BaseModeImplementation } from './base.js';
 /**
  * Real-Time mode for sub-millisecond adaptation
  */

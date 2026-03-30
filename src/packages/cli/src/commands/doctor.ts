@@ -13,6 +13,13 @@ import { fileURLToPath } from 'url';
 import { execSync, exec } from 'child_process';
 import { promisify } from 'util';
 import { getDaemonLockHolder, releaseDaemonLock, isDaemonProcess } from '../services/daemon-lock.js';
+import {
+  checkSubagentHealth,
+  checkWorkflowExecution,
+  checkMcpToolInvocation,
+  checkHookExecution,
+  getMofloRoot,
+} from './doctor-checks-deep.js';
 
 // Promisified exec with proper shell and env inheritance for cross-platform support
 const execAsync = promisify(exec);
@@ -1204,50 +1211,67 @@ export const doctorCommand: Command = {
     // Check Workflow Engine health — validates core modules, built output, and step commands
     async function checkWorkflowEngine(): Promise<HealthCheck> {
       try {
-        // Find the workflows package relative to this file or cwd
-        const candidates = [
-          join(process.cwd(), 'src', 'packages', 'workflows', 'src'),
-          join(process.cwd(), 'node_modules', 'moflo', 'src', 'packages', 'workflows', 'src'),
-        ];
-        const srcDir = candidates.find(d => existsSync(d));
-        if (!srcDir) {
-          return { name: 'Workflow Engine', status: 'warn', message: 'Workflow engine source not found' };
+        // Resolve relative to the moflo package root (works in both dev and consumer)
+        const mofloRoot = getMofloRoot();
+        if (!mofloRoot) {
+          return { name: 'Workflow Engine', status: 'warn', message: 'Could not locate moflo package root', fix: 'npm run build' };
         }
 
-        // Core modules that must exist
+        // Prefer compiled dist/, fall back to src/ in dev repo
+        const distDir = join(mofloRoot, 'src', 'packages', 'workflows', 'dist');
+        const srcDir = join(mofloRoot, 'src', 'packages', 'workflows', 'src');
+        const hasDistDir = existsSync(distDir);
+        const hasSrcDir = existsSync(srcDir);
+
+        if (!hasDistDir && !hasSrcDir) {
+          return { name: 'Workflow Engine', status: 'warn', message: 'Workflow engine not found', fix: 'npm run build' };
+        }
+
+        // Core compiled modules that must exist
         const coreModules = [
-          'core/runner.ts',
-          'core/step-executor.ts',
-          'core/step-command-registry.ts',
-          'core/interpolation.ts',
-          'core/credential-masker.ts',
-          'registry/workflow-registry.ts',
+          'core/runner',
+          'core/step-executor',
+          'core/step-command-registry',
+          'core/interpolation',
+          'core/credential-masker',
+          'registry/workflow-registry',
+          'factory/runner-factory',
           'schema',
           'types',
           'credentials',
           'scheduler',
         ];
 
-        const missing = coreModules.filter(m => !existsSync(join(srcDir, m)));
+        const baseDir = hasDistDir ? distDir : srcDir;
+        const ext = hasDistDir ? '.js' : '.ts';
+
+        // Directories don't need an extension check
+        const dirModules = ['schema', 'types', 'credentials', 'scheduler'];
+        const missing = coreModules.filter(m =>
+          dirModules.includes(m)
+            ? !existsSync(join(baseDir, m))
+            : !existsSync(join(baseDir, m + ext))
+        );
+
         if (missing.length > 0) {
           return {
             name: 'Workflow Engine',
             status: 'warn',
-            message: `Missing core modules: ${missing.join(', ')}`,
+            message: `Missing modules: ${missing.join(', ')}`,
             fix: 'npm run build',
           };
         }
 
         // Check for step commands directory
-        const commandsDir = join(srcDir, 'commands');
+        const commandsDir = join(baseDir, 'commands');
         const hasCommands = existsSync(commandsDir);
 
         // Check for workflow definition loaders
-        const loadersDir = join(srcDir, 'loaders');
+        const loadersDir = join(baseDir, 'loaders');
         const hasLoaders = existsSync(loadersDir);
 
-        // Check for index.ts entry point
-        const hasIndex = existsSync(join(srcDir, 'index.ts'));
+        // Check for index entry point
+        const hasIndex = existsSync(join(baseDir, 'index' + ext));
 
         const parts: string[] = [];
         parts.push(`${coreModules.length} core modules`);
@@ -1284,7 +1308,11 @@ export const doctorCommand: Command = {
       checkSemanticQuality,
       checkIntelligence,
       checkWorkflowEngine,
-      checkZombieProcesses
+      checkZombieProcesses,
+      checkSubagentHealth,
+      checkWorkflowExecution,
+      checkMcpToolInvocation,
+      checkHookExecution,
     ];
 
     const componentMap: Record<string, () => Promise<HealthCheck>> = {
@@ -1307,7 +1335,13 @@ export const doctorCommand: Command = {
       'quality': checkSemanticQuality,
       'intelligence': checkIntelligence,
       'workflows': checkWorkflowEngine,
-      'workflow': checkWorkflowEngine
+      'workflow': checkWorkflowEngine,
+      'subagent': checkSubagentHealth,
+      'subagents': checkSubagentHealth,
+      'agents': checkSubagentHealth,
+      'workflow-exec': checkWorkflowExecution,
+      'mcp-tools': checkMcpToolInvocation,
+      'hooks': checkHookExecution,
     };
 
     let checksToRun = allChecks;
