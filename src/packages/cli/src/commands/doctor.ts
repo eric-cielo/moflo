@@ -18,6 +18,7 @@ import {
   checkWorkflowExecution,
   checkMcpToolInvocation,
   checkHookExecution,
+  checkMcpWorkflowIntegration,
   getMofloRoot,
 } from './doctor-checks-deep.js';
 
@@ -1312,6 +1313,7 @@ export const doctorCommand: Command = {
       checkSubagentHealth,
       checkWorkflowExecution,
       checkMcpToolInvocation,
+      checkMcpWorkflowIntegration,
       checkHookExecution,
     ];
 
@@ -1341,6 +1343,7 @@ export const doctorCommand: Command = {
       'agents': checkSubagentHealth,
       'workflow-exec': checkWorkflowExecution,
       'mcp-tools': checkMcpToolInvocation,
+      'mcp-workflow': checkMcpWorkflowIntegration,
       'hooks': checkHookExecution,
     };
 

@@ -206,7 +206,11 @@ export interface StepCommand<TConfig extends StepConfig = StepConfig> {
 // Registry Types
 // ============================================================================
 
+/** Source priority: npm (lowest) < built-in < user (highest). */
+export type StepCommandSource = 'npm' | 'built-in' | 'user';
+
 export interface StepCommandEntry {
   readonly command: StepCommand;
+  readonly source: StepCommandSource;
   readonly registeredAt: Date;
 }

@@ -6,6 +6,7 @@
  * a shell command.
  */
 
+import { exec } from 'node:child_process';
 import type {
   StepCommand,
   StepConfig,
@@ -18,6 +19,7 @@ import type {
   Prerequisite,
 } from '../types/step-command.types.js';
 import type { YamlStepDefinition, YamlInputDef, YamlAction } from '../loaders/yaml-step-loader.js';
+import { shellEscapeValue } from '../core/interpolation.js';
 
 export interface CompositeStepConfig extends StepConfig {
   readonly [key: string]: unknown;
@@ -44,19 +46,50 @@ export function createCompositeCommand(def: YamlStepDefinition): StepCommand<Com
     },
 
     async execute(config: CompositeStepConfig, context: WorkflowContext): Promise<StepOutput> {
+      const start = Date.now();
       const results: Record<string, unknown>[] = [];
 
       for (let i = 0; i < def.actions.length; i++) {
         const action = def.actions[i];
         const resolvedParams = interpolateParams(action.params ?? {}, config);
 
-        results.push({
-          index: i,
-          tool: action.tool,
-          action: action.action,
-          command: action.command,
-          params: resolvedParams,
-        });
+        try {
+          const actionResult = await executeAction(action, resolvedParams, context, config);
+          results.push({
+            index: i,
+            tool: action.tool,
+            action: action.action,
+            command: action.command,
+            params: resolvedParams,
+            ...actionResult,
+          });
+
+          if (!actionResult.success) {
+            return {
+              success: false,
+              data: { actionCount: def.actions.length, results, inputs: config },
+              error: `Action ${i} failed: ${actionResult.error ?? 'unknown error'}`,
+              duration: Date.now() - start,
+            };
+          }
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          results.push({
+            index: i,
+            tool: action.tool,
+            action: action.action,
+            command: action.command,
+            params: resolvedParams,
+            success: false,
+            error: errorMsg,
+          });
+          return {
+            success: false,
+            data: { actionCount: def.actions.length, results, inputs: config },
+            error: `Action ${i} threw: ${errorMsg}`,
+            duration: Date.now() - start,
+          };
+        }
       }
 
       return {
@@ -66,6 +99,7 @@ export function createCompositeCommand(def: YamlStepDefinition): StepCommand<Com
           results,
           inputs: config,
         },
+        duration: Date.now() - start,
       };
     },
 
@@ -184,4 +218,87 @@ function interpolateParams(
   }
 
   return result;
+}
+
+/**
+ * Execute a single composite action: tool invocation or shell command.
+ */
+async function executeAction(
+  action: YamlAction,
+  resolvedParams: Record<string, unknown>,
+  context: WorkflowContext,
+  config: CompositeStepConfig,
+): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }> {
+  // Tool action: delegate to context.tools.execute()
+  if (action.tool && action.action) {
+    if (!context.tools) {
+      return {
+        success: false,
+        error: `Tool "${action.tool}" required but no tool registry available in context`,
+      };
+    }
+    if (!context.tools.has(action.tool)) {
+      return {
+        success: false,
+        error: `Tool "${action.tool}" not found in registry`,
+      };
+    }
+    const result = await context.tools.execute(action.tool, action.action, resolvedParams);
+    return { success: result.success, data: result.data, error: result.error };
+  }
+
+  // Shell command action: interpolate ${inputs.X} with shell-escaped values
+  if (action.command) {
+    const interpolatedCmd = interpolateCommandString(action.command, config);
+    return runShellCommand(interpolatedCmd, context);
+  }
+
+  // No tool or command — return spec as data (declarative-only action)
+  return { success: true, data: { declarative: true, params: resolvedParams } };
+}
+
+/**
+ * Interpolate `${inputs.X}` references in a command string.
+ * Values are shell-escaped to prevent command injection.
+ */
+function interpolateCommandString(
+  command: string,
+  config: CompositeStepConfig,
+): string {
+  return command.replace(/\$\{inputs\.(\w+)\}/g, (_match, inputName: string) => {
+    const value = config[inputName];
+    if (value === undefined) return '';
+    return shellEscapeValue(String(value));
+  });
+}
+
+/**
+ * Run a shell command and capture output.
+ * Uses platform-aware shell selection.
+ */
+function runShellCommand(
+  command: string,
+  context: WorkflowContext,
+): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }> {
+  const timeout = 30000;
+  const shell = process.platform === 'win32'
+    ? (process.env.SHELL || process.env.ComSpec || 'cmd.exe')
+    : (process.env.SHELL || 'bash');
+
+  return new Promise((resolve) => {
+    const child = exec(command, { timeout, shell }, (error, stdout, stderr) => {
+      context.abortSignal?.removeEventListener('abort', onAbort);
+      const exitCode = child.exitCode ?? (error ? 1 : 0);
+      const success = exitCode === 0;
+
+      resolve({
+        success,
+        data: { stdout: stdout.trim(), stderr: stderr.trim(), exitCode },
+        error: success ? undefined : `Command exited with code ${exitCode}`,
+      });
+    });
+
+    const onAbort = () => child.kill();
+    context.abortSignal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
