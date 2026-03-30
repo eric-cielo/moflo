@@ -36,6 +36,9 @@ import {
   type BrowserActionParams,
 } from '../tools/playwright.js';
 
+/** Re-export the canonical action type from the tool for consumer use. */
+export type BrowserAction = BrowserActionParams;
+
 /** Typed config for the browser step command. */
 export interface BrowserStepConfig extends StepConfig {
   readonly actions: BrowserAction[];
@@ -46,23 +49,6 @@ export interface BrowserStepConfig extends StepConfig {
 // ── Action types ──────────────────────────────────────────────────────────
 
 type ActionName = (typeof SUPPORTED_ACTIONS)[number];
-
-export interface BrowserAction {
-  action: ActionName;
-  url?: string;
-  selector?: string;
-  value?: string;
-  outputVar?: string;
-  button?: 'left' | 'right' | 'middle';
-  count?: number;
-  direction?: 'up' | 'down' | 'left' | 'right';
-  amount?: number;
-  key?: string;
-  expression?: string;
-  text?: string;
-  urlPattern?: string;
-  timeout?: number;
-}
 
 // ── Evaluate capability check ────────────────────────────────────────────
 
@@ -217,12 +203,7 @@ export const browserCommand: StepCommand<BrowserStepConfig> = {
         const action = actions[i];
         try {
           // Security already validated in pre-flight above; delegate to tool
-          await executeBrowserAction(
-            page,
-            action as BrowserActionParams,
-            outputs,
-            defaultTimeout,
-          );
+          await executeBrowserAction(page, action, outputs, defaultTimeout);
         } catch (err) {
           return {
             success: false,

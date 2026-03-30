@@ -74,18 +74,21 @@ async function executeIssueFetch(params: Record<string, unknown>, start: number)
   return { success: true, data: JSON.parse(result.stdout), duration: Date.now() - start };
 }
 
-async function executeIssueEdit(params: Record<string, unknown>, start: number): Promise<ToolOutput> {
-  const issue = params.issue as number;
-  const args: string[] = [`gh issue edit ${issue}`];
-  if (params.title) args.push(`--title ${escapeShellArg(params.title as string)}`);
-  if (params.body) args.push(`--body ${escapeShellArg(params.body as string)}`);
-  const labels = params.labels as { add?: string[]; remove?: string[] } | undefined;
+function appendLabelArgs(args: string[], labels: { add?: string[]; remove?: string[] } | undefined): void {
   if (labels?.add) {
     for (const l of labels.add) args.push(`--add-label ${escapeShellArg(l)}`);
   }
   if (labels?.remove) {
     for (const l of labels.remove) args.push(`--remove-label ${escapeShellArg(l)}`);
   }
+}
+
+async function executeIssueEdit(params: Record<string, unknown>, start: number): Promise<ToolOutput> {
+  const issue = params.issue as number;
+  const args: string[] = [`gh issue edit ${issue}`];
+  if (params.title) args.push(`--title ${escapeShellArg(params.title as string)}`);
+  if (params.body) args.push(`--body ${escapeShellArg(params.body as string)}`);
+  appendLabelArgs(args, params.labels as { add?: string[]; remove?: string[] } | undefined);
 
   const result = await execAsync(args.join(' '));
   if (result.exitCode !== 0) {
@@ -149,19 +152,14 @@ async function executePrFind(params: Record<string, unknown>, start: number): Pr
 
 async function executeLabel(params: Record<string, unknown>, start: number): Promise<ToolOutput> {
   const ref = (params.issue ?? params.pr) as number;
-  const labels = params.labels as { add?: string[]; remove?: string[] } | undefined;
   const args: string[] = [`gh issue edit ${ref}`];
-  if (labels?.add) {
-    for (const l of labels.add) args.push(`--add-label ${escapeShellArg(l)}`);
-  }
-  if (labels?.remove) {
-    for (const l of labels.remove) args.push(`--remove-label ${escapeShellArg(l)}`);
-  }
+  appendLabelArgs(args, params.labels as { add?: string[]; remove?: string[] } | undefined);
 
   const result = await execAsync(args.join(' '));
   if (result.exitCode !== 0) {
     return { success: false, data: {}, error: result.stderr || `Failed to update labels for #${ref}`, duration: Date.now() - start };
   }
+  const labels = params.labels as { add?: string[]; remove?: string[] } | undefined;
   return { success: true, data: { ref, labelsAdded: labels?.add, labelsRemoved: labels?.remove }, duration: Date.now() - start };
 }
 
