@@ -132,6 +132,68 @@ export async function dryRunValidate(
       mofloLevel: stepMofloLevel,
       prerequisiteResults: stepPrereqResults,
     });
+
+    // Report nested parallel steps in dry-run (#247)
+    if (step.type === 'parallel' && step.steps && step.steps.length > 0) {
+      for (let j = 0; j < step.steps.length; j++) {
+        const nested = step.steps[j];
+        const nestedCommand = registry.get(nested.type);
+        let nestedValidation = { valid: true, errors: [] as ValidationError[] };
+        let nestedInterpolated: Record<string, unknown> | null = null;
+
+        if (nestedCommand) {
+          const nestedContext = buildContext(variables, workflowId, i);
+          try {
+            nestedInterpolated = interpolateConfig(nested.config as Record<string, unknown>, nestedContext);
+            const vr = await nestedCommand.validate(nestedInterpolated, nestedContext);
+            nestedValidation = { valid: vr.valid, errors: [...vr.errors] };
+          } catch {
+            nestedInterpolated = null;
+            nestedValidation = {
+              valid: false,
+              errors: [{ path: `steps[${i}].steps[${j}].config`, message: 'Variable interpolation failed' }],
+            };
+          }
+
+          const capCheck = checkCapabilities(nested, nestedCommand);
+          if (!capCheck.allowed) {
+            nestedValidation = {
+              valid: false,
+              errors: [
+                ...nestedValidation.errors,
+                ...capCheck.violations.map(v => ({
+                  path: `steps[${i}].steps[${j}].capabilities.${v.capability}`,
+                  message: v.reason,
+                })),
+              ],
+            };
+          }
+        } else {
+          nestedValidation = {
+            valid: false,
+            errors: [{ path: `steps[${i}].steps[${j}].type`, message: `Unknown step type: "${nested.type}"` }],
+          };
+        }
+
+        const nestedLevel = nestedCommand
+          ? resolveMofloLevel(nested, nestedCommand, definition.mofloLevel, options.parentMofloLevel)
+          : undefined;
+
+        stepReports.push({
+          stepId: nested.id,
+          stepType: nested.type,
+          description: nestedCommand?.description ?? 'unknown command',
+          interpolatedConfig: nestedInterpolated,
+          validationResult: nestedValidation,
+          continueOnError: nested.continueOnError ?? false,
+          hasRollback: nestedCommand?.rollback !== undefined,
+          mofloLevel: nestedLevel,
+        });
+
+        if (nested.output) variables[nested.output] = { _dryRun: true };
+        variables[nested.id] = { _dryRun: true };
+      }
+    }
   }
 
   const allValid =

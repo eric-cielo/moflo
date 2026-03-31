@@ -82,6 +82,7 @@ export {
   loopCommand,
   browserCommand,
   githubCommand,
+  parallelCommand,
   builtinCommands,
 } from './commands/index.js';
 

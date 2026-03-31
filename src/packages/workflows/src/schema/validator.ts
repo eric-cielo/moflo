@@ -191,9 +191,14 @@ function validateSteps(
       }
     }
 
-    // Recurse into nested steps (condition/loop)
+    // Recurse into nested steps (condition/loop/parallel)
     if (step.steps && Array.isArray(step.steps)) {
       validateSteps(step.steps, errors, stepIds, outputVars, options, `${path}.steps`, workflowLevel);
+
+      // Parallel blocks: reject cross-references between sibling steps (#247)
+      if (step.type === 'parallel') {
+        validateParallelCrossReferences(step.steps, errors, `${path}.steps`);
+      }
     }
   }
 }
@@ -237,6 +242,11 @@ function validateVariableReferences(
     // Recurse into nested steps (condition/loop bodies)
     if (step.steps && Array.isArray(step.steps)) {
       validateVariableReferences(step.steps, outputVars, args, errors, `${path}.steps`);
+
+      // Parallel/loop nested step IDs are available to subsequent top-level steps (#247)
+      for (const nested of step.steps) {
+        if (nested.id) declaredStepIds.push(nested.id);
+      }
     }
   }
 }
@@ -283,6 +293,50 @@ function checkStringReferences(
           path,
           message: `references step "${stepId}" which has not been declared yet (forward reference)`,
         });
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Parallel cross-reference validation (#247)
+// ============================================================================
+
+/**
+ * Reject variable references between sibling steps within a parallel block.
+ * Steps in a parallel block execute concurrently, so they cannot depend on
+ * each other's outputs (execution order is undefined).
+ */
+function validateParallelCrossReferences(
+  steps: readonly StepDefinition[],
+  errors: ValidationError[],
+  prefix: string,
+): void {
+  const siblingIds = new Set<string>();
+  for (const step of steps) {
+    if (step.id) siblingIds.add(step.id);
+  }
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    const path = `${prefix}[${i}]`;
+    if (!step.config) continue;
+
+    for (const [key, value] of Object.entries(step.config)) {
+      if (typeof value !== 'string') continue;
+      VAR_REF_PATTERN.lastIndex = 0;
+      let match;
+      while ((match = VAR_REF_PATTERN.exec(value)) !== null) {
+        const ref = match[1];
+        const segments = ref.split('.');
+        if (segments.length >= 2 && segments[0] !== 'args' && segments[0] !== 'credentials') {
+          if (siblingIds.has(segments[0]) && segments[0] !== step.id) {
+            errors.push({
+              path: `${path}.config.${key}`,
+              message: `parallel step "${step.id}" references sibling step "${segments[0]}" — steps within a parallel block cannot reference each other's outputs`,
+            });
+          }
+        }
       }
     }
   }

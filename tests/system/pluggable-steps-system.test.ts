@@ -162,8 +162,8 @@ describe('Pluggable Steps — System Test', () => {
       expect(registry.has('format-message')).toBe(true); // user YAML
       expect(registry.has('npm-greet')).toBe(true);      // npm
 
-      // 9 built-in + 1 npm + 2 user = 12
-      expect(registry.size).toBe(12);
+      // 10 built-in + 1 npm + 2 user = 13
+      expect(registry.size).toBe(13);
     });
   });
 
