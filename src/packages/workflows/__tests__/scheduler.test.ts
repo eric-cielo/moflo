@@ -165,8 +165,10 @@ describe('nextRunFromCron', () => {
     const nextDate = new Date(next!);
     expect(nextDate.getHours()).toBe(2);
     expect(nextDate.getMinutes()).toBe(0);
-    // Should be next day since 2 AM already passed
-    expect(nextDate.getDate()).toBe(now.getDate() + 1);
+    // Should be next day since 2 AM already passed (use time delta to handle month boundaries)
+    const expectedTomorrow = new Date(now);
+    expectedTomorrow.setDate(expectedTomorrow.getDate() + 1);
+    expect(nextDate.getDate()).toBe(expectedTomorrow.getDate());
   });
 
   it('finds next matching day of week', () => {

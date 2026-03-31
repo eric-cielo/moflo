@@ -25,6 +25,7 @@ import { compareMofloLevels } from './capability-validator.js';
 import { DEFAULT_MAX_NESTING_DEPTH } from '../types/step-command.types.js';
 import { dryRunValidate } from './dry-run-validator.js';
 import { executeLoopIterations } from './loop-executor.js';
+import { executeParallelSteps } from './parallel-executor.js';
 import { rollbackSteps, type CompletedStep } from './rollback-orchestrator.js';
 import { buildCredentialPatterns, addCredentialPattern, collectCredentialNames } from './credential-masker.js';
 import { executeSingleStep, type StepExecutionState } from './step-executor.js';
@@ -215,6 +216,22 @@ export class WorkflowRunner {
           variables[step.id] = loopData;
 
           if (!loopResult.success && !step.continueOnError) {
+            await this.doRollback(completedSteps, state, stepResults);
+            this.markRemaining(definition, i + 1, 'skipped', stepResults);
+            break;
+          }
+        }
+
+        if (step.type === 'parallel' && step.steps && step.steps.length > 0) {
+          const parallelResult = await executeParallelSteps(
+            step, result.output, state.variables, errors, state.options.signal,
+            (nested, s) => this.runStep(nested, state, s),
+          );
+          const parallelData = { ...result.output.data, stepOutputs: parallelResult.outputs };
+          if (step.output) variables[step.output] = parallelData;
+          variables[step.id] = parallelData;
+
+          if (!parallelResult.success && !step.continueOnError) {
             await this.doRollback(completedSteps, state, stepResults);
             this.markRemaining(definition, i + 1, 'skipped', stepResults);
             break;

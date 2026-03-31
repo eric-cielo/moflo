@@ -190,8 +190,8 @@ describe('Pluggable Steps Integration', () => {
       expect(registry.has('file-stats')).toBe(true);
       expect(registry.has('notify')).toBe(true);
 
-      // Total: 9 built-in + 2 user
-      expect(registry.size).toBe(11);
+      // Total: 10 built-in + 2 user
+      expect(registry.size).toBe(12);
     });
 
     it('should allow user JS step to override a built-in', () => {
