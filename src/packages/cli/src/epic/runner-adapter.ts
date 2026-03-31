@@ -45,6 +45,6 @@ export async function runEpicWorkflow(
   return engine.runWorkflowFromContent(
     yamlContent,
     undefined,
-    options as unknown as Record<string, unknown>,
+    { ...options },
   ) as Promise<EpicWorkflowResult>;
 }
