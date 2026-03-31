@@ -146,13 +146,47 @@ The schema validator checks `capabilities` syntax when a workflow definition is 
 
 Validation errors are caught before the workflow starts — no steps execute if the definition is invalid.
 
+## Runtime Enforcement via CapabilityGateway
+
+Declaration-time checks validate that YAML restrictions don't exceed command defaults. But the actual security boundary is **runtime enforcement** — blocking unauthorized I/O at the point of execution.
+
+The `CapabilityGateway` is a shared enforcement layer injected into every step's `WorkflowContext`. Step commands call the gateway before performing any I/O operation:
+
+```typescript
+// Gateway methods — each throws CapabilityDeniedError if the resource is outside scope
+context.gateway.checkShell(command, context);    // Before spawning a process
+context.gateway.checkNet(url, context);           // Before making HTTP/WebSocket requests
+context.gateway.checkFs(path, 'read', context);   // Before reading a file
+context.gateway.checkFs(path, 'write', context);  // Before writing a file
+context.gateway.checkAgent(config, context);      // Before spawning a subagent
+context.gateway.checkMemory(namespace, context);  // Before accessing memory store
+```
+
+This makes enforcement structural — commands cannot bypass it because all I/O goes through the gateway. Without the gateway, a step with `shell` scoped to `["cat", "jq"]` could still execute arbitrary commands if the command implementation forgot to check.
+
+### Enforcement Status by Command
+
+| Command | Gateway Enforcement | Status |
+|---------|-------------------|--------|
+| `bash` | `checkShell()`, `checkFs()` | **Enforced** |
+| `browser` | `checkNet()` | **Enforced** |
+| `memory` | `checkMemory()` | **Enforced** |
+| `agent` | `checkAgent()` | **Planned** (#258) |
+| `github` | `checkShell()` | **Planned** (#258) |
+| `condition`, `loop`, `parallel`, `composite` | N/A | No I/O — child steps are individually checked |
+| `wait`, `prompt` | N/A | No dangerous capabilities |
+
+### Why This Matters
+
+Without runtime enforcement, capabilities are advisory — a step declares what it *should* do, but nothing prevents it from doing more. The gateway closes this gap by ensuring every I/O operation is checked against the step's effective scope at the moment it happens.
+
 ## Sandboxing Tiers
 
-MoFlo's sandboxing is graduated. The current implementation covers Tiers 1-2:
+MoFlo's sandboxing is graduated. The current implementation covers Tier 1:
 
 | Tier | Mechanism | Status | Scope |
 |------|-----------|--------|-------|
-| 1 | Capability declaration + enforcement | **Shipped** | All step commands |
+| 1 | Capability declaration + gateway enforcement | **Shipped** (partial — see above) | All step commands |
 | 2 | Node `--experimental-permission` for bash | Planned | `bash` steps with path restrictions |
 | 3 | V8 isolates (`isolated-vm`) for expressions | Planned | `condition`, `evaluate` |
 | 4 | Linux namespaces (`unshare`) | Future | Untrusted steps on Linux |
@@ -160,5 +194,5 @@ MoFlo's sandboxing is graduated. The current implementation covers Tiers 1-2:
 
 ## See Also
 
-- [Workflow Engine](WORKFLOWS.md) — Full workflow engine documentation
+- [Workflow Engine](WORKFLOWS.md) — Full workflow engine documentation, including the CapabilityGateway section
 - [Build & Publish](BUILD.md) — Building and publishing MoFlo

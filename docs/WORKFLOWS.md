@@ -551,14 +551,49 @@ Common warning conditions:
 - YAML file is missing the required `name` field
 - YAML file has no `actions` array
 
+## Capability Gateway — Runtime Enforcement
+
+The capability system has two layers: **declaration** (what a step says it needs) and **enforcement** (actually blocking unauthorized operations at runtime). Declaration without enforcement is just documentation.
+
+### The Problem
+
+Each step command declares capabilities (e.g., `bash` declares `shell`, `fs:read`, `fs:write`). The runner checks that YAML restrictions don't exceed these declarations. But the actual I/O operations — spawning a shell process, making an HTTP request, reading a file — also need enforcement at the point of execution, not just at the point of declaration.
+
+Without this, a step with `shell` scoped to `["cat", "jq"]` could still run `rm -rf /` if the command implementation doesn't check the scope before executing.
+
+### How It Works
+
+The `CapabilityGateway` is a shared enforcement layer injected into every step's `WorkflowContext`. All step commands call the gateway before performing I/O:
+
+```typescript
+// The gateway checks scope before the operation happens
+context.gateway.checkShell(command, context);   // throws CapabilityDeniedError if blocked
+context.gateway.checkNet(url, context);          // throws if URL outside scope
+context.gateway.checkFs(path, 'read', context);  // throws if path outside scope
+context.gateway.checkAgent(config, context);     // throws if agent type outside scope
+context.gateway.checkMemory(namespace, context); // throws if namespace outside scope
+```
+
+Each method calls `enforceScope()` internally. If the resource is outside the step's effective scope, execution is blocked with a `CapabilityDeniedError` — the step never reaches the actual I/O.
+
+### Current Enforcement Status
+
+| Command | Runtime Enforcement | Mechanism |
+|---------|-------------------|-----------|
+| `bash` | **Yes** | Checks `shell` scope before execution |
+| `browser` | **Yes** | Checks `net` scope on URLs |
+| `memory` | **Yes** | Checks `memory` scope on namespaces |
+| `agent` | **Planned** | Will check `agent` scope before spawning |
+| `github` | **Planned** | Will check `shell` scope before `gh` commands |
+| `condition`, `loop`, `wait`, `prompt` | N/A | No I/O capabilities |
+
+See [Workflow Sandboxing](WORKFLOW-SANDBOXING.md) for full capability types and restriction rules.
+
 ## Custom Workflow Connectors
 
-Connectors and steps are different concepts:
+Connectors are optional resource adapters that bridge external systems (APIs, CLIs, databases). They provide a reusable interface that multiple step commands can share.
 
-- A **connector** is an adapter that bridges an external resource — a CLI, an API, a database. It provides general capabilities: "I can talk to GitHub," "I can drive a browser," "I can send Slack messages."
-- A **step** is a specific operation in a workflow. It may use a connector to do its work: "Create a PR using the GitHub connector," "Take a screenshot using the browser connector," or it may work standalone: "Read a file and count lines."
-
-The built-in `github` and `browser` step types are monolithic — they bundle the connector adapter and step logic together. For your own extensions, you can separate them: create a connector once, then build multiple steps that use it.
+**Important:** Connectors are not required for capability enforcement — the `CapabilityGateway` handles that structurally. Connectors are useful when multiple steps need to share the same service adapter logic (e.g., authentication, connection pooling).
 
 ### The WorkflowConnector Interface
 
@@ -575,49 +610,6 @@ Connectors implement a lifecycle-aware interface with named actions:
 | `execute(action, params)` | function | Yes | Run a named action with parameters |
 | `listActions()` | function | Yes | Describe available actions with input/output schemas |
 
-**Example — `github-cli.js`:**
-
-```javascript
-const { execSync } = require('node:child_process');
-
-module.exports = {
-  name: 'github-cli',
-  description: 'GitHub CLI (gh) wrapper for issue and PR operations',
-  version: '1.0.0',
-  capabilities: ['read', 'write'],
-
-  async initialize() {
-    // Verify gh is available
-    try {
-      execSync('gh --version', { stdio: 'pipe' });
-    } catch {
-      throw new Error('GitHub CLI (gh) is not installed');
-    }
-  },
-
-  async dispose() {},
-
-  async execute(action, params) {
-    if (action === 'create-issue') {
-      const args = ['gh', 'issue', 'create', '--title', params.title];
-      if (params.body) args.push('--body', params.body);
-      const stdout = execSync(args.join(' '), { encoding: 'utf-8' }).trim();
-      return { success: true, data: { url: stdout } };
-    }
-    return { success: false, data: { error: `Unknown action: ${action}` } };
-  },
-
-  listActions() {
-    return [{
-      name: 'create-issue',
-      description: 'Create a new GitHub issue',
-      inputSchema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
-      outputSchema: { type: 'object', properties: { url: { type: 'string' } } },
-    }];
-  },
-};
-```
-
 ### Where to Put Custom Connectors
 
 ```
@@ -626,20 +618,17 @@ your-project/
   .claude/workflows/connectors/  # Alternative location
 ```
 
-The connector registry scans for `.js`, `.ts`, `.mjs`, and `.mts` files. Connectors can also be installed via npm as `moflo-connector-*` packages (declare the entry point in `package.json` under the `moflo-connector` field).
+The connector registry scans for `.js`, `.ts`, `.mjs`, and `.mts` files.
 
-### Connectors vs Steps: When to Use Which
+### When to Create a Connector vs a Step
 
 | You want to... | Create a... |
 |----------------|-------------|
-| Wrap a CLI or API for general use | **Connector** (`workflows/connectors/`) |
+| Wrap a CLI or API that multiple steps will share | **Connector** (`workflows/connectors/`) |
 | Define a specific workflow operation | **Step** (`workflows/steps/`) |
 | Combine shell commands into a reusable action | **YAML step** |
-| Add a bridge that multiple steps can share | **Connector** |
 
 A step can use a connector through the workflow context's connector accessor — the engine injects registered connectors so steps can call `context.tools.execute('github-cli', 'create-issue', { title: '...' })`.
-
-See `examples/workflow-connectors/github-cli.js` for a complete connector example and `examples/workflow-steps/` for step examples.
 
 ## Error Handling
 
@@ -696,6 +685,10 @@ Workflows run with **least-privilege enforcement**. Every step command declares 
 ### How it works
 
 Each built-in step command has a fixed set of capabilities baked into its code. For example, `bash` declares `shell`, `fs:read`, and `fs:write`. The `condition` and `wait` commands declare nothing — they're pure computation.
+
+Enforcement happens at two levels:
+1. **Declaration check** — Before a step runs, the runner validates that YAML-declared capabilities don't exceed the command's defaults. This catches configuration errors.
+2. **Runtime enforcement** — When a step performs I/O, the `CapabilityGateway` checks that the specific resource (file path, URL, command) falls within the step's effective scope. This is the actual security boundary. See [Capability Gateway](#capability-gateway--runtime-enforcement) for details.
 
 When you write a workflow, you can **restrict** a step's capabilities further, but you can never **expand** them:
 
