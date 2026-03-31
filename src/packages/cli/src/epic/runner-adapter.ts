@@ -8,11 +8,11 @@
  * Story #229: Uses shared engine loader instead of inline dynamic import.
  */
 
-import { loadWorkflowEngine, type WorkflowResultLike } from '../services/engine-loader.js';
+import { loadWorkflowEngine, type WorkflowResult } from '../services/engine-loader.js';
 
 /** Minimal workflow result shape matching WorkflowResult from @claude-flow/workflows. */
 export type EpicWorkflowResult = Pick<
-  WorkflowResultLike,
+  WorkflowResult,
   'workflowId' | 'success' | 'outputs' | 'duration' | 'cancelled'
 > & {
   steps: Array<{

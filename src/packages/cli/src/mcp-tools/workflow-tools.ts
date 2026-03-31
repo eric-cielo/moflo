@@ -13,9 +13,9 @@ import {
   loadWorkflowEngine,
   getCachedEngine,
   type EngineModule,
-  type WorkflowResultLike,
-  type WorkflowDefinitionLike,
-  type WorkflowRegistryLike,
+  type WorkflowResult,
+  type WorkflowDefinition,
+  type WorkflowRegistry,
 } from '../services/engine-loader.js';
 import { findProjectRoot } from '../services/project-root.js';
 
@@ -52,7 +52,7 @@ interface TrackedWorkflow {
   name: string;
   description?: string;
   status: WfStatus;
-  result?: WorkflowResultLike;
+  result?: WorkflowResult;
   startedAt: string;
   completedAt?: string;
 }
@@ -80,7 +80,7 @@ function trackStart(workflowId: string, name: string, description?: string): Tra
   return tracked;
 }
 
-function trackResult(tracked: TrackedWorkflow, result: WorkflowResultLike): void {
+function trackResult(tracked: TrackedWorkflow, result: WorkflowResult): void {
   tracked.status = result.cancelled ? WF_STATUS.CANCELLED : result.success ? WF_STATUS.COMPLETED : WF_STATUS.FAILED;
   tracked.result = result;
   tracked.completedAt = new Date().toISOString();
@@ -89,7 +89,7 @@ function trackResult(tracked: TrackedWorkflow, result: WorkflowResultLike): void
 /** Execute a definition via the engine with tracking and error handling. */
 async function executeAndTrack(
   engine: EngineModule,
-  definition: WorkflowDefinitionLike,
+  definition: WorkflowDefinition,
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const workflowId = `wf-${Date.now()}`;
@@ -110,10 +110,10 @@ async function executeAndTrack(
 // Registry singleton (created once per session)
 // ============================================================================
 
-let registryInstance: WorkflowRegistryLike | null = null;
-let pendingRegistry: Promise<WorkflowRegistryLike> | null = null;
+let registryInstance: WorkflowRegistry | null = null;
+let pendingRegistry: Promise<WorkflowRegistry> | null = null;
 
-async function getRegistry(): Promise<WorkflowRegistryLike> {
+async function getRegistry(): Promise<WorkflowRegistry> {
   if (registryInstance) return registryInstance;
   if (pendingRegistry) return pendingRegistry;
 
@@ -153,7 +153,7 @@ function errorMsg(err: unknown): string {
 }
 
 /** Serialize a single step for MCP responses. */
-function serializeStep(s: WorkflowResultLike['steps'][number]) {
+function serializeStep(s: WorkflowResult['steps'][number]) {
   return {
     stepId: s.stepId,
     stepType: s.stepType,
@@ -166,12 +166,12 @@ function serializeStep(s: WorkflowResultLike['steps'][number]) {
 }
 
 /** Count succeeded steps in a result. */
-function countCompleted(result: WorkflowResultLike): number {
+function countCompleted(result: WorkflowResult): number {
   return result.steps.filter(s => s.status === 'succeeded').length;
 }
 
 /** Serialize a WorkflowResult for MCP response (typed errors, step details). */
-function serializeResult(result: WorkflowResultLike): Record<string, unknown> {
+function serializeResult(result: WorkflowResult): Record<string, unknown> {
   return {
     workflowId: result.workflowId,
     success: result.success,
@@ -289,8 +289,8 @@ export const workflowTools: MCPTool[] = [
       const steps = (input.steps as Array<{ id?: string; type?: string; config?: Record<string, unknown> }>) ?? [];
       const args = input.arguments as Record<string, unknown> | undefined;
 
-      // Build a WorkflowDefinition-compatible object
-      const definition: WorkflowDefinitionLike = {
+      // Build a WorkflowDefinition-compatible object from untyped MCP input
+      const definition = {
         name,
         description,
         arguments: args,
@@ -299,7 +299,7 @@ export const workflowTools: MCPTool[] = [
           type: s.type ?? 'bash',
           config: s.config ?? {},
         })),
-      };
+      } as WorkflowDefinition;
 
       return {
         name,
@@ -328,7 +328,7 @@ export const workflowTools: MCPTool[] = [
       required: ['definition'],
     },
     handler: async (input) => {
-      const definition = input.definition as WorkflowDefinitionLike;
+      const definition = input.definition as WorkflowDefinition;
       const args = (input.args as Record<string, unknown>) ?? {};
 
       if (!definition || !definition.name || !definition.steps) {
