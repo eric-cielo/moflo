@@ -11,6 +11,15 @@ import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
+import type {
+  WorkflowRunResponse,
+  WorkflowStatusResponse,
+  WorkflowListResponse,
+  WorkflowCancelResponse,
+  WorkflowTemplateListResponse,
+  WorkflowTemplateInfoResponse,
+  WorkflowErrorResponse,
+} from '../mcp-tools/workflow-response.types.js';
 
 // Shared table column definitions
 const REGISTRY_COLUMNS = [
@@ -28,7 +37,7 @@ const STEP_COLUMNS = [
   { key: 'error', header: 'Error', width: 30, format: (v: unknown) => v ? String(v) : '' },
 ];
 
-function printWorkflowErrors(errors: Array<{ code: string; message: string }>): void {
+function printWorkflowErrors(errors: WorkflowErrorResponse[]): void {
   if (errors.length === 0) return;
   output.writeln();
   output.writeln(output.bold(output.error('Errors')));
@@ -77,9 +86,7 @@ const runCommand: Command = {
       // Interactive: list available workflows and let user pick
       if (ctx.interactive) {
         try {
-          const listResult = await callMCPTool<{
-            definitions?: Array<{ name: string; abbreviation?: string; description?: string; tier: string }>;
-          }>('workflow_list', { source: 'registry' });
+          const listResult = await callMCPTool<WorkflowListResponse>('workflow_list', { source: 'registry' });
 
           const defs = listResult.definitions ?? [];
           if (defs.length === 0) {
@@ -124,23 +131,7 @@ const runCommand: Command = {
     try {
       spinner.start();
 
-      const result = await callMCPTool<{
-        workflowId: string;
-        success: boolean;
-        cancelled: boolean;
-        duration: number;
-        stepCount: number;
-        steps: Array<{
-          stepId: string;
-          stepType: string;
-          status: string;
-          duration: number;
-          error?: string;
-        }>;
-        outputs: Record<string, unknown>;
-        errors: Array<{ code: string; message: string }>;
-        error?: string;
-      }>('workflow_run', {
+      const result = await callMCPTool<WorkflowRunResponse>('workflow_run', {
         name: name || undefined,
         file: file || undefined,
         args,
@@ -222,12 +213,7 @@ const validateCommand: Command = {
     output.printInfo(`Validating: ${file}`);
 
     try {
-      const result = await callMCPTool<{
-        workflowId: string;
-        success: boolean;
-        errors: Array<{ code: string; message: string }>;
-        steps: Array<{ stepId: string; stepType: string; status: string }>;
-      }>('workflow_run', {
+      const result = await callMCPTool<WorkflowRunResponse>('workflow_run', {
         file,
         dryRun: true,
       });
@@ -282,12 +268,7 @@ const listCommand: Command = {
     const limit = ctx.flags.limit as number;
 
     try {
-      const result = await callMCPTool<{
-        definitions?: Array<{ name: string; abbreviation?: string; description?: string; tier: string }>;
-        runs?: Array<{ workflowId: string; name: string; status: string; startedAt: string; completedAt?: string }>;
-        activeWorkflows?: string[];
-        registryError?: string;
-      }>('workflow_list', { source, limit });
+      const result = await callMCPTool<WorkflowListResponse>('workflow_list', { source, limit });
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
@@ -356,21 +337,7 @@ const statusCommand: Command = {
     }
 
     try {
-      const result = await callMCPTool<{
-        workflowId: string;
-        name?: string;
-        status: string;
-        success?: boolean;
-        duration?: number;
-        stepCount?: number;
-        completedSteps?: number;
-        progress?: number;
-        startedAt?: string;
-        completedAt?: string;
-        steps?: Array<{ stepId: string; stepType: string; status: string; duration: number; error?: string }>;
-        errors?: Array<{ code: string; message: string }>;
-        error?: string;
-      }>('workflow_status', {
+      const result = await callMCPTool<WorkflowStatusResponse>('workflow_status', {
         workflowId,
         verbose: true,
       });
@@ -449,13 +416,7 @@ const stopCommand: Command = {
     }
 
     try {
-      const result = await callMCPTool<{
-        workflowId: string;
-        status: string;
-        cancelledAt?: string;
-        reason?: string;
-        error?: string;
-      }>('workflow_cancel', {
+      const result = await callMCPTool<WorkflowCancelResponse>('workflow_cancel', {
         workflowId,
         reason: 'Stopped via CLI',
       });
@@ -488,12 +449,7 @@ const templateCommand: Command = {
       description: 'List available workflow templates',
       action: async (ctx: CommandContext): Promise<CommandResult> => {
         try {
-          const result = await callMCPTool<{
-            action: string;
-            templates: Array<{ name: string; abbreviation?: string; description?: string; tier: string }>;
-            total: number;
-            error?: string;
-          }>('workflow_template', { action: 'list' });
+          const result = await callMCPTool<WorkflowTemplateListResponse>('workflow_template', { action: 'list' });
 
           if (result.error) {
             output.printError(result.error);
@@ -544,19 +500,7 @@ const templateCommand: Command = {
         }
 
         try {
-          const result = await callMCPTool<{
-            action: string;
-            name?: string;
-            abbreviation?: string;
-            description?: string;
-            version?: string;
-            sourceFile?: string;
-            tier?: string;
-            arguments?: Record<string, unknown>;
-            stepCount?: number;
-            stepTypes?: string[];
-            error?: string;
-          }>('workflow_template', { action: 'info', query });
+          const result = await callMCPTool<WorkflowTemplateInfoResponse>('workflow_template', { action: 'info', query });
 
           if (result.error) {
             output.printError(result.error);

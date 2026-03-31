@@ -6,73 +6,52 @@
  * this instead of maintaining their own import/cache logic.
  *
  * Story #229: Extract shared engine loader.
+ * Story #230: Replaced *Like interfaces with import type from @claude-flow/workflows.
  */
 
-// Minimal type shapes to avoid static cross-package dependency on @claude-flow/workflows.
+import type {
+  WorkflowResult,
+} from '../../../../packages/workflows/src/types/runner.types.js';
+import type {
+  WorkflowDefinition,
+} from '../../../../packages/workflows/src/types/workflow-definition.types.js';
+import type {
+  WorkflowRegistry,
+  RegistryOptions,
+} from '../../../../packages/workflows/src/registry/workflow-registry.js';
 
-export interface WorkflowResultLike {
-  workflowId: string;
-  success: boolean;
-  steps: Array<{
-    stepId: string;
-    stepType: string;
-    status: string;
-    output?: { success: boolean; data?: unknown; error?: string };
-    error?: string;
-    errorCode?: string;
-    duration: number;
-  }>;
-  outputs: Record<string, unknown>;
-  errors: Array<{ stepId?: string; code: string; message: string; details?: unknown[] }>;
-  duration: number;
-  cancelled: boolean;
-}
+// Re-export workflow types so consumers import from engine-loader (single boundary).
+export type { WorkflowResult };
+export type { WorkflowDefinition };
+export type { WorkflowRegistry };
 
-export interface WorkflowDefinitionLike {
-  name: string;
-  abbreviation?: string;
-  description?: string;
-  version?: string;
-  arguments?: Record<string, unknown>;
-  steps: readonly Record<string, unknown>[];
-  mofloLevel?: string;
-}
-
-export interface WorkflowRegistryLike {
-  load(): {
-    workflows: ReadonlyMap<string, { definition: WorkflowDefinitionLike; sourceFile: string; tier: string }>;
-    errors: readonly { file: string; message: string }[];
-  };
-  resolve(query: string): { definition: WorkflowDefinitionLike; sourceFile: string; tier: string } | undefined;
-  list(): readonly { name: string; abbreviation?: string; description?: string; tier: string }[];
-  info(query: string): {
-    name: string; abbreviation?: string; description?: string; version?: string;
-    sourceFile: string; tier: string; arguments: Record<string, unknown>;
-    stepCount: number; stepTypes: readonly string[];
-  } | undefined;
-}
-
+/**
+ * Shape of the dynamically imported workflow engine module.
+ *
+ * Uses the canonical types from @claude-flow/workflows (type-only, no runtime dep).
+ * The actual module is loaded via dynamic import() at runtime.
+ */
 export interface EngineModule {
   bridgeRunWorkflow: (
     content: string,
     sourceFile: string | undefined,
     args: Record<string, unknown>,
     options?: { dryRun?: boolean },
-  ) => Promise<WorkflowResultLike>;
+  ) => Promise<WorkflowResult>;
   bridgeExecuteWorkflow: (
-    definition: WorkflowDefinitionLike,
+    definition: WorkflowDefinition,
     args: Record<string, unknown>,
     options?: { workflowId?: string },
-  ) => Promise<WorkflowResultLike>;
+  ) => Promise<WorkflowResult>;
   bridgeCancelWorkflow: (workflowId: string) => boolean;
   bridgeIsRunning: (workflowId: string) => boolean;
   bridgeActiveWorkflows: () => string[];
-  WorkflowRegistry: new (options?: Record<string, unknown>) => WorkflowRegistryLike;
+  WorkflowRegistry: new (options?: RegistryOptions) => WorkflowRegistry;
   runWorkflowFromContent: (
     content: string,
     sourceFile: string | undefined,
     options?: Record<string, unknown>,
-  ) => Promise<WorkflowResultLike>;
+  ) => Promise<WorkflowResult>;
 }
 
 let cachedEngine: EngineModule | null = null;
