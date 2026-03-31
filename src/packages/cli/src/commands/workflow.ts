@@ -262,13 +262,21 @@ const listCommand: Command = {
       type: 'number',
       default: 20,
     },
+    {
+      name: 'refresh',
+      short: 'r',
+      description: 'Re-scan definition files before listing (invalidate cache)',
+      type: 'boolean',
+      default: false,
+    },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const source = (ctx.flags.source as string) ?? 'all';
     const limit = ctx.flags.limit as number;
+    const refresh = ctx.flags.refresh as boolean;
 
     try {
-      const result = await callMCPTool<WorkflowListResponse>('workflow_list', { source, limit });
+      const result = await callMCPTool<WorkflowListResponse>('workflow_list', { source, limit, refresh: refresh || undefined });
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
