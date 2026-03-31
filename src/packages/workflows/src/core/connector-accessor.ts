@@ -50,6 +50,3 @@ export class ConnectorAccessorImpl implements ConnectorAccessor {
     return connector.execute(action, params);
   }
 }
-
-/** @deprecated Use `ConnectorAccessorImpl` instead. */
-export const ToolAccessorImpl = ConnectorAccessorImpl;

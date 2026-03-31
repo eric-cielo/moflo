@@ -490,6 +490,8 @@ Credential values listed in `RunnerOptions.credentialValues` are automatically r
 
 ## See Also
 
+- `.claude/guidance/shipped/moflo-workflow-connectors.md` — Connectors: resource adapters, registry, step-vs-connector decision
+- `.claude/guidance/shipped/moflo-workflow-sandboxing.md` — Capability-based security for steps
 - `.claude/guidance/shipped/moflo-workflow-engine-architecture.md` — Architecture decisions for Epic #100
 - `.claude/guidance/shipped/moflo-core-guidance.md` — CLI, hooks, swarm, memory reference
 - `.claude/guidance/shipped/moflo-subagents.md` — Subagents protocol
