@@ -689,6 +689,64 @@ Each error in the result carries a code that tells you what went wrong:
 | `ROLLBACK_FAILED` | Rollback of a completed step failed |
 | `WORKFLOW_CANCELLED` | The entire workflow was cancelled via AbortSignal |
 
+## Security and Sandboxing
+
+Workflows run with **least-privilege enforcement**. Every step command declares the capabilities it needs (file access, shell execution, network, etc.), and the runner blocks anything undeclared. This means a workflow can only do what its definition explicitly authorizes — nothing more.
+
+### How it works
+
+Each built-in step command has a fixed set of capabilities baked into its code. For example, `bash` declares `shell`, `fs:read`, and `fs:write`. The `condition` and `wait` commands declare nothing — they're pure computation.
+
+When you write a workflow, you can **restrict** a step's capabilities further, but you can never **expand** them:
+
+```yaml
+steps:
+  # This bash step can only read from ./config/ and only run cat and jq
+  - id: read-config
+    type: bash
+    capabilities:
+      fs:read: ["./config/"]
+      shell: ["cat", "jq"]
+    config:
+      command: "cat config/settings.json | jq '.database'"
+
+  # This bash step uses all default capabilities (unrestricted)
+  - id: build
+    type: bash
+    config:
+      command: "npm run build"
+```
+
+If a step's YAML tries to grant a capability the command doesn't have, execution is blocked:
+
+```
+Capability violation: step type "bash" does not declare capability "browser"
+— cannot grant new capabilities
+```
+
+### Capability types
+
+| Capability | What it grants | Step types that use it |
+|-----------|----------------|----------------------|
+| `fs:read` | Read files from disk | `bash`, `browser` |
+| `fs:write` | Write files to disk | `bash`, `browser` |
+| `net` | Network access (HTTP, WebSocket) | `browser` |
+| `shell` | Execute shell commands | `bash` |
+| `memory` | Read/write/search the workflow memory store | `memory` |
+| `credentials` | Access the encrypted credential store | Any step using `{credentials.X}` |
+| `browser` | Launch and control browser sessions | `browser` |
+| `agent` | Spawn Claude subagents | `agent` |
+
+Control-flow commands (`condition`, `loop`, `wait`, `prompt`) perform no I/O and require no capabilities.
+
+### The execution constraint
+
+The capability system enforces limits in code, but the principle goes deeper: **when Claude executes a workflow, it treats the definition as a strict contract.** It performs only the actions the steps specify, using only the capabilities they declare. It does not infer additional actions, add helpful extras, or work around denied capabilities. If the workflow definition doesn't instruct something, that something doesn't happen.
+
+This is what makes workflows safe for unattended and scheduled execution. You can read a workflow YAML file and know exactly what it will do — the definition is the complete specification.
+
+For full details on the sandboxing tiers, restriction rules, and how to declare capabilities on custom step commands, see [Workflow Sandboxing](WORKFLOW-SANDBOXING.md).
+
 ## Dry Run
 
 Dry-run mode validates everything without executing anything. It checks:
@@ -812,4 +870,5 @@ console.log(result.duration);    // Total execution time in ms
 
 ## Further Reading
 
-- [Workflow Sandboxing](WORKFLOW-SANDBOXING.md) — Capability-based security for workflow steps
+- [Workflow Sandboxing](WORKFLOW-SANDBOXING.md) — Full sandboxing reference: capability types, restriction rules, enforcement tiers, and the Execution Constraint Principle
+- [Build & Publish](BUILD.md) — Building and publishing MoFlo

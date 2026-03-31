@@ -4,6 +4,21 @@
 
 ---
 
+## Claude's Role During Workflow Execution
+
+**Claude MUST treat the workflow definition as a strict contract — execute only what it specifies, using only the capabilities it declares.** This applies equally whether the workflow is run manually, via MCP, or on a schedule by the daemon.
+
+| Constraint | Detail |
+|-----------|--------|
+| Step config is the complete instruction | Do not add commands, flags, arguments, or actions beyond what `config` contains |
+| Capability restrictions are absolute | If a step restricts `fs:read` to `["./src/"]`, do not read files outside `./src/` even if helpful |
+| `CAPABILITY_DENIED` means stop | Do not attempt workarounds — report the denial and halt the step |
+| No improvisation between steps | Do not perform actions outside of step boundaries, even if "obvious" (e.g., do not auto-fix a failing step's output before passing it to the next step unless the workflow defines a step for that) |
+
+See `.claude/guidance/shipped/moflo-workflow-sandboxing.md` for the full Execution Constraint Principle and capability type reference.
+
+---
+
 ## Running a Workflow via MCP Tools
 
 **Use `mcp__moflo__workflow_run` to execute a workflow from a YAML/JSON file.** The bridge layer handles parsing, validation, and runner lifecycle automatically.
