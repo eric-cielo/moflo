@@ -154,15 +154,22 @@ export const browserCommand: StepCommand<BrowserStepConfig> = {
 
     // Pre-flight: check all security constraints before loading Playwright.
     // This catches policy violations early without paying browser launch cost.
+    // Prefers the gateway (Issue #258) with inline enforceScope() as fallback.
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
       try {
-        if (action.action === 'evaluate' && !hasEvaluateCapability(context)) {
-          throw new Error("evaluate action requires explicit 'browser:evaluate' capability");
+        if (action.action === 'evaluate') {
+          if (context.gateway) {
+            context.gateway.checkBrowserEvaluate();
+          } else if (!hasEvaluateCapability(context)) {
+            throw new Error("evaluate action requires explicit 'browser:evaluate' capability");
+          }
         }
         if (action.action === 'open' && action.url) {
           validateBrowserUrl(action.url);
-          if (context.effectiveCaps) {
+          if (context.gateway) {
+            context.gateway.checkNet(action.url);
+          } else if (context.effectiveCaps) {
             const violation = enforceScope(context.effectiveCaps, 'net', action.url, context.taskId, 'browser');
             if (violation) throw new Error(formatViolations([violation]));
           }

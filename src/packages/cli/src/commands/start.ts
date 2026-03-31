@@ -236,7 +236,9 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
         // Heartbeat - check if we should still be running
         if (!fs.existsSync(daemonPidPath)) {
           clearInterval(keepAlive);
-          process.exit(0);
+          // Don't call process.exit() — clearing the unref'd interval is enough
+          // to let the process exit naturally. Calling process.exit() here
+          // conflicts with test runners that intercept it (e.g. Vitest).
         }
       }, 5000);
       keepAlive.unref(); // Don't prevent process from exiting if no other work

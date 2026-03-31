@@ -62,6 +62,17 @@ export {
   type CapabilityCheckResult,
 } from './core/capability-validator.js';
 export {
+  CapabilityGateway,
+  CapabilityDeniedError,
+  discloseStep,
+  discloseWorkflow,
+  formatStepDisclosure,
+  formatWorkflowDisclosure,
+  type ICapabilityGateway,
+  type StepDisclosureSummary,
+  type WorkflowDisclosureSummary,
+} from './core/capability-gateway.js';
+export {
   collectPrerequisites,
   checkPrerequisites,
   formatPrerequisiteErrors,

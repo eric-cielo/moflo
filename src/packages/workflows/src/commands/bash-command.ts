@@ -59,18 +59,26 @@ export const bashCommand: StepCommand<BashStepConfig> = {
     const timeout = config.timeout ?? 30000;
     const failOnError = config.failOnError !== false;
 
-    // ── Scope enforcement for fs:read / fs:write (Issue #178) ──────────
+    // ── Scope enforcement (Issue #178, #258 — gateway migration) ───────
     //
-    // Reliably extracting file paths from arbitrary shell commands is
-    // inherently fragile — commands use flags, pipes, subshells, and
-    // variable expansion that defeat static parsing. We apply a best-effort
-    // check: if the capability has a scope AND the interpolated command
-    // string contains a recognisable absolute path, we validate it.
-    //
-    // This does NOT catch every case (e.g. relative paths, paths built at
-    // runtime). True confinement requires OS-level sandboxing (namespaces,
-    // seccomp, etc.). This check is a defence-in-depth layer, not a
-    // guarantee.
+    // Prefer the gateway for shell capability checks. Fall back to inline
+    // enforceScope() for fs:read / fs:write path extraction (best-effort).
+    if (context.gateway) {
+      try {
+        context.gateway.checkShell(command);
+      } catch (err) {
+        return {
+          success: false,
+          data: { stdout: '', stderr: '', exitCode: -1 },
+          error: (err as Error).message,
+          duration: Date.now() - start,
+        };
+      }
+    }
+
+    // Best-effort fs path scope check — extracts absolute paths from the
+    // command string. This does NOT catch relative paths or paths built at
+    // runtime. True confinement requires OS-level sandboxing.
     if (context.effectiveCaps) {
       const scopeViolation = checkBashPathScopes(command, context.effectiveCaps, context.taskId);
       if (scopeViolation) {

@@ -32,6 +32,7 @@ import {
   stepHasCredentialCapability,
 } from './credential-masker.js';
 import { executeWithTimeout } from './timeout-executor.js';
+import { CapabilityGateway } from './capability-gateway.js';
 
 const DEFAULT_STEP_TIMEOUT = 300_000; // 5 minutes
 
@@ -123,8 +124,10 @@ export async function executeSingleStep(
       errorCode: 'MOFLO_LEVEL_DENIED', duration: Date.now() - stepStart };
   }
 
+  const gateway = new CapabilityGateway(capCheck.effectiveCaps, `${state.workflowId}-step-${index}`, step.type);
+
   const scopedContext = {
-    ...context, effectiveCaps: capCheck.effectiveCaps,
+    ...context, effectiveCaps: capCheck.effectiveCaps, gateway,
     mofloLevel: resolvedLevel, nestingDepth: state.nestingDepth, maxNestingDepth: state.maxNestingDepth,
   };
 

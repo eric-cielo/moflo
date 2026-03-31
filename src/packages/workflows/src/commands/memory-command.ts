@@ -72,8 +72,19 @@ export const memoryCommand: StepCommand<MemoryStepConfig> = {
     const action = config.action;
     const namespace = interpolateString(config.namespace, context);
 
-    // Enforce memory capability scope on namespace (Issue #178)
-    if (context.effectiveCaps) {
+    // Enforce memory capability scope on namespace (Issue #178, #258 — gateway migration)
+    if (context.gateway) {
+      try {
+        context.gateway.checkMemory(namespace);
+      } catch (err) {
+        return {
+          success: false,
+          data: {},
+          error: (err as Error).message,
+          duration: Date.now() - start,
+        };
+      }
+    } else if (context.effectiveCaps) {
       const violation = enforceScope(context.effectiveCaps, 'memory', namespace, context.taskId, 'memory');
       if (violation) {
         return {

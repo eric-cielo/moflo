@@ -105,6 +105,8 @@ export interface WorkflowContext {
   readonly maxNestingDepth?: number;
   /** Workflow connectors accessor — available when a connector registry is configured. */
   readonly tools?: import('./workflow-connector.types.js').ConnectorAccessor;
+  /** Capability gateway for structural enforcement (Issue #258). */
+  readonly gateway?: import('../core/capability-gateway.js').ICapabilityGateway;
 }
 
 // ============================================================================

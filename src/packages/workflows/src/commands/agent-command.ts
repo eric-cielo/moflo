@@ -65,6 +65,20 @@ export const agentCommand: StepCommand<AgentStepConfig> = {
       ? interpolateString(config.agentType, context)
       : 'general-purpose';
 
+    // Enforce agent capability scope (Issue #258 — gateway enforcement)
+    if (context.gateway) {
+      try {
+        context.gateway.checkAgent(agentType);
+      } catch (err) {
+        return {
+          success: false,
+          data: { agentType, prompt },
+          error: (err as Error).message,
+          duration: Date.now() - start,
+        };
+      }
+    }
+
     // Agent execution is delegated to the workflow runner's agent spawner.
     // This command prepares the invocation; actual spawning is handled externally.
     return {

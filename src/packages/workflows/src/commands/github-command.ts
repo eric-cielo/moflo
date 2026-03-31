@@ -129,6 +129,19 @@ export const githubCommand: StepCommand<GitHubStepConfig> = {
   },
 
   async execute(config: GitHubStepConfig, context: WorkflowContext): Promise<StepOutput> {
+    // Enforce shell capability scope on the gh action (Issue #258 — gateway enforcement)
+    if (context.gateway) {
+      try {
+        context.gateway.checkShell(`gh ${config.action}`);
+      } catch (err) {
+        return {
+          success: false,
+          data: { action: config.action },
+          error: (err as Error).message,
+        };
+      }
+    }
+
     // Interpolate string values before passing to tool
     const interp = (s: string | undefined) => s ? interpolateString(s, context) : s;
 
