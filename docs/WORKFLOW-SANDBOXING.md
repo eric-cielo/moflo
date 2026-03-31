@@ -4,6 +4,19 @@ MoFlo enforces **least-privilege access** for workflow steps. Every step command
 
 This is defense-in-depth without containers — using capability declarations and runtime enforcement.
 
+## Execution Constraint Principle
+
+When executing within a workflow, Claude **only performs actions explicitly authorized by the workflow definition, step configuration, and declared capabilities**. This is the foundational security contract:
+
+- **Only do what the step says.** A step's `config` defines the complete scope of work. A `bash` step with `command: "npm test"` runs `npm test` — nothing else.
+- **Respect all capability restrictions.** If a step restricts `fs:read` to `["./config/"]`, files outside that path are off-limits.
+- **Never escalate privileges.** A `CAPABILITY_DENIED` error is intentional — not a problem to work around.
+- **No implicit side effects.** No creating files, making network requests, spawning agents, or modifying state unless a step explicitly authorizes it.
+- **Scheduled workflows have the same restrictions as manual ones.** Automation does not grant additional permissions.
+- **The workflow definition is the complete specification.** If it doesn't instruct an action, that action is not authorized.
+
+This predictability is what makes automated and scheduled workflows safe to deploy.
+
 ## Capability Types
 
 | Capability | What It Grants | Commands That Use It |
