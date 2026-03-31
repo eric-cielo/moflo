@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { workflowTools } from '../src/mcp-tools/workflow-tools.js';
+import { workflowTools, invalidateRegistry } from '../src/mcp-tools/workflow-tools.js';
 
 function findTool(name: string) {
   const tool = workflowTools.find(t => t.name === name);
@@ -257,6 +257,44 @@ steps:
     const tool = findTool('workflow_template');
     const result: any = await tool.handler({ action: 'unknown' });
     expect(result.error).toMatch(/unknown action/i);
+  });
+
+  // -------------------------------------------------------------------------
+  // Registry invalidation (Story #231)
+  // -------------------------------------------------------------------------
+
+  it('workflow_list with refresh=true returns refreshed=true', async () => {
+    const tool = findTool('workflow_list');
+    const result: any = await tool.handler({ source: 'registry', refresh: true });
+    expect(result.refreshed).toBe(true);
+    expect(result.definitions).toBeDefined();
+  });
+
+  it('workflow_list without refresh does not include refreshed flag', async () => {
+    const tool = findTool('workflow_list');
+    const result: any = await tool.handler({ source: 'registry' });
+    expect(result.refreshed).toBeUndefined();
+  });
+
+  it('invalidateRegistry can be called without error when no instance exists', () => {
+    // Clear any existing instance first, then call again — should not throw
+    invalidateRegistry();
+    invalidateRegistry();
+  });
+
+  it('registry returns fresh data after invalidation', async () => {
+    const tool = findTool('workflow_list');
+
+    // First call loads and caches the registry
+    const first: any = await tool.handler({ source: 'registry' });
+    expect(first.definitions).toBeDefined();
+
+    // Refresh forces a re-scan — should still return valid data
+    const second: any = await tool.handler({ source: 'registry', refresh: true });
+    expect(second.refreshed).toBe(true);
+    expect(second.definitions).toBeDefined();
+    // Same shipped definitions should be present
+    expect(second.definitions.length).toBe(first.definitions.length);
   });
 
   // -------------------------------------------------------------------------

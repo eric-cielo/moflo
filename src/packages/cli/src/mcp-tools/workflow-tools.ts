@@ -107,7 +107,7 @@ async function executeAndTrack(
 }
 
 // ============================================================================
-// Registry singleton (created once per session)
+// Registry singleton (created once per session, refreshable on demand)
 // ============================================================================
 
 let registryInstance: WorkflowRegistry | null = null;
@@ -141,6 +141,11 @@ async function getRegistry(): Promise<WorkflowRegistry> {
   })();
 
   return pendingRegistry;
+}
+
+/** Drop the cached registry singleton, forcing a fresh re-scan on next access. */
+export function invalidateRegistry(): void {
+  registryInstance = null;
 }
 
 // ============================================================================
@@ -430,12 +435,18 @@ export const workflowTools: MCPTool[] = [
         source: { type: 'string', enum: ['registry', 'runs', 'all'], description: 'What to list (default: all)' },
         status: { type: 'string', description: 'Filter runs by status' },
         limit: { type: 'number', description: 'Max items to return' },
+        refresh: { type: 'boolean', description: 'Invalidate cached registry and re-scan definition files before listing' },
       },
     },
     handler: async (input) => {
       const source = (input.source as string) ?? LIST_SOURCE.ALL;
       const limit = (input.limit as number) ?? 20;
       const result: Record<string, unknown> = {};
+
+      if (input.refresh) {
+        invalidateRegistry();
+        result.refreshed = true;
+      }
 
       if (source === LIST_SOURCE.REGISTRY || source === LIST_SOURCE.ALL) {
         try {

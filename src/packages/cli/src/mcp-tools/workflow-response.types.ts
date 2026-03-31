@@ -74,6 +74,7 @@ export interface WorkflowListResponse {
   runs?: WorkflowRunEntry[];
   activeWorkflows?: string[];
   registryError?: string;
+  refreshed?: boolean;
 }
 
 /** A tracked workflow run entry. */
