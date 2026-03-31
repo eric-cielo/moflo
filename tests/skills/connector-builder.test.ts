@@ -21,7 +21,7 @@ describe('connector-builder skill', () => {
   beforeAll(() => {
     content = fs.readFileSync(SKILL_PATH, 'utf-8');
 
-    const fm = content.match(/^---\n([\s\S]*?)---/);
+    const fm = content.match(/^---\r?\n([\s\S]*?)---/);
     expect(fm).not.toBeNull();
     const nameMatch = fm![1].match(/name:\s*"([^"]+)"/);
     const descMatch = fm![1].match(/description:\s*"([^"]+)"/);
@@ -43,7 +43,7 @@ describe('connector-builder skill', () => {
 
   describe('YAML frontmatter', () => {
     it('starts with YAML frontmatter delimiters', () => {
-      expect(content.startsWith('---\n')).toBe(true);
+      expect(content.startsWith('---\r\n') || content.startsWith('---\n')).toBe(true);
     });
 
     it('has a name field under 64 characters', () => {

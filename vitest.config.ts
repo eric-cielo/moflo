@@ -8,7 +8,7 @@ export default defineConfig({
     // heavy test suites (ruvector-bridge, analyzer, etc.) that otherwise
     // kill workers and cause vitest to exit 1 even when all tests pass.
     // Vitest 4 moved pool options to top-level (poolOptions is removed).
-    execArgv: ['--max-old-space-size=8192'],
+    execArgv: ['--max-old-space-size=12288'],
     // Limit concurrency to reduce memory pressure on Windows
     maxForks: 2,
     minForks: 1,

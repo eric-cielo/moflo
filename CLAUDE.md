@@ -16,6 +16,7 @@
 - ALWAYS read a file before editing it
 - NEVER commit secrets, credentials, or .env files
 - ALWAYS write or update tests when changing testable code — no testable change ships without a corresponding test change
+- ZERO TOLERANCE for failing tests — if any test fails, fix it before proceeding, whether we caused the failure or not. Pre-existing failures are not acceptable; they must be fixed on sight.
 
 ## File Organization
 

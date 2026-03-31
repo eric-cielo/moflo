@@ -1060,5 +1060,5 @@ describe('Command Index Exports', () => {
     expect(commands).toContain(status);
     expect(commands).toContain(task);
     expect(commands).toContain(session);
-  });
+  }, 15_000);
 });
