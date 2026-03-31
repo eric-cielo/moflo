@@ -20,6 +20,7 @@ import type {
   WorkflowTemplateInfoResponse,
   WorkflowErrorResponse,
 } from '../mcp-tools/workflow-response.types.js';
+import { scheduleCommand } from './workflow-schedule.js';
 
 // Shared table column definitions
 const REGISTRY_COLUMNS = [
@@ -583,7 +584,7 @@ const templateCommand: Command = {
 export const workflowCommand: Command = {
   name: 'workflow',
   description: 'Workflow execution and management',
-  subcommands: [runCommand, validateCommand, listCommand, statusCommand, stopCommand, templateCommand],
+  subcommands: [runCommand, validateCommand, listCommand, statusCommand, stopCommand, templateCommand, scheduleCommand],
   options: [],
   examples: [
     { command: 'moflo workflow run -n development', description: 'Run workflow by name' },
@@ -606,6 +607,7 @@ export const workflowCommand: Command = {
       `${output.highlight('status')}    - Show workflow status`,
       `${output.highlight('stop')}      - Cancel running workflow`,
       `${output.highlight('template')}  - Browse registry templates`,
+      `${output.highlight('schedule')}  - Manage scheduled workflows`,
     ]);
     output.writeln();
     output.writeln('Run "moflo workflow <subcommand> --help" for more info');
