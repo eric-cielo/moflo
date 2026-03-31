@@ -116,6 +116,7 @@
     "hono": ">=4.11.4"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.37",
     "eslint": "^8.0.0",
     "moflo": "^4.8.52-rc.0",

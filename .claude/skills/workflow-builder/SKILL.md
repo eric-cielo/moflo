@@ -204,9 +204,9 @@ These step command types are available for use in workflow `steps[].type`:
 
 **Source:** `src/packages/workflows/src/commands/index.ts`
 
-### Built-in Connectors
+### Built-in Connectors (Generalized I/O Wrappers)
 
-Connectors bridge external services and are accessible via `context.tools.execute()` in agent steps:
+Connectors are generalized I/O wrappers — not per-service adapters. Three ship with moflo, covering HTTP APIs, CLI tools, and browser automation. Service-specific integrations (Slack, Jira, S3, etc.) are composed in workflow YAML using these connectors.
 
 | Connector | Description | Capabilities | Key Actions |
 |-----------|-------------|--------------|-------------|
@@ -227,9 +227,11 @@ steps:
         Access via context.tools.execute('http', 'request', { method: 'GET', url: '...' })
 ```
 
-### Need a Connector That Doesn't Exist?
+### Need a Service Integration?
 
-Use the **`/connector-builder`** skill to scaffold a new connector or step command. The connector builder creates the building blocks; this workflow builder composes them.
+**Compose existing connectors in workflow YAML** — do not create a per-service connector. For example, Slack integration uses the `http` connector with Slack's API URL, not a dedicated `slack` connector.
+
+Use **`/connector-builder`** only when you need a new **step command** or a new **generalized I/O connector** for a transport type not covered by the built-ins (e.g., WebSocket, gRPC).
 
 ---
 

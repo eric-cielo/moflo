@@ -26,7 +26,7 @@ export interface CapabilityCheckResult {
   readonly effectiveCaps: readonly StepCapability[];
 }
 
-const VALID_CAPABILITY_TYPES: ReadonlySet<string> = new Set<CapabilityType>([
+export const VALID_CAPABILITY_TYPES: ReadonlySet<string> = new Set<CapabilityType>([
   'fs:read', 'fs:write', 'net', 'shell', 'memory', 'credentials', 'browser', 'browser:evaluate', 'agent',
 ]);
 

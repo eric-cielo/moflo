@@ -26,8 +26,8 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Build CLI
-        run: npm run build:ts
+      - name: Build all packages
+        run: npm run build
 
       - name: Type check
         run: npx tsc --noEmit --project src/packages/cli/tsconfig.json
@@ -53,8 +53,8 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Build CLI (tests import compiled output)
-        run: npm run build:ts
+      - name: Build all packages (tests import compiled output)
+        run: npm run build
 
       - name: Run tests
         run: npx vitest run --reporter=verbose

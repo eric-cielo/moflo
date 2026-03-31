@@ -1,11 +1,11 @@
 ---
 name: "Connector Builder"
-description: "Scaffold new workflow connectors and step commands with type-safe TypeScript code. Use when creating custom connectors for external services, building new step commands for workflows, or extending the workflow engine with new capabilities."
+description: "Scaffold new workflow step commands and (rarely) generalized I/O connectors. Use when building new step commands for workflows or extending the workflow engine with new capabilities. Connectors are only for new I/O transport types — NOT for per-service wrappers."
 ---
 
 # Connector Builder
 
-Scaffold production-ready workflow connectors (`WorkflowConnector`) and step commands (`StepCommand`) with proper types, tests, and registration.
+Scaffold production-ready step commands (`StepCommand`) and, when truly needed, generalized I/O connectors (`WorkflowConnector`) with proper types, tests, and registration.
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ Scaffold production-ready workflow connectors (`WorkflowConnector`) and step com
 
 ## What This Skill Does
 
-1. Guides you through building a **connector** (external service bridge) or **step command** (workflow step logic)
+1. Guides you through building a **step command** (workflow step logic) or, rarely, a **generalized connector** (new I/O transport)
 2. Generates type-safe TypeScript implementing the correct interface
 3. Creates a test file with vitest mocks
 4. Shows how to register the component and use it in workflow YAML
@@ -27,14 +27,18 @@ Scaffold production-ready workflow connectors (`WorkflowConnector`) and step com
 Ask the user:
 
 > **What do you want to build?**
-> 1. **Connector** — bridges an external service (HTTP API, CLI tool, database, etc.)
-> 2. **Step command** — executes logic within a workflow step (transform data, control flow, etc.)
+> 1. **Step command** — executes logic within a workflow step (transform data, control flow, etc.)
+> 2. **Generalized connector** — wraps a new I/O transport type (e.g., WebSocket, gRPC, MQTT)
+
+**Important:** If the user asks for a service-specific connector (Slack, Jira, S3, etc.), guide them to compose existing connectors (`http`, `github-cli`, `playwright`) in workflow YAML instead. Per-service connectors are not the right pattern — see `.claude/guidance/shipped/moflo-workflow-connectors.md` for the architectural rationale (issues #233–#259).
 
 Then follow the appropriate section below.
 
 ---
 
-## Building a Connector
+## Building a Generalized Connector (Rare — New I/O Transports Only)
+
+**You almost certainly want a step command, not a connector.** The three built-in connectors (`http`, `github-cli`, `playwright`) cover web APIs, CLI tools, and browser automation. Only create a new connector for a fundamentally new I/O transport (WebSocket, gRPC, MQTT, etc.) that no existing connector supports.
 
 ### Step 1: Gather Requirements
 
@@ -42,17 +46,19 @@ Ask the user for:
 
 | Field | Required | Example |
 |-------|----------|---------|
-| **Name** | Yes | `slack`, `jira`, `s3` |
-| **Description** | Yes | `Slack messaging via API` |
+| **Name** | Yes | `websocket`, `grpc`, `mqtt` |
+| **Description** | Yes | `WebSocket bidirectional messaging` |
 | **Version** | Yes (default `1.0.0`) | `1.0.0` |
 | **Capabilities** | Yes | `read`, `write`, `search`, `subscribe`, `authenticate` |
-| **Actions** | Yes (at least 1) | `send-message`, `list-channels`, `upload-file` |
+| **Actions** | Yes (at least 1) | `connect`, `send`, `receive`, `close` |
 
 For each action, ask:
 - Action name (kebab-case)
 - Description
 - Input parameters (name, type, required?)
 - Output fields (name, type)
+
+**Verify the connector is generalized:** The name should describe an I/O transport, not a service. `websocket` is correct; `slack` is not.
 
 ### Step 2: Generate Connector Source
 
