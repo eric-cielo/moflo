@@ -10,6 +10,8 @@ import type { ConnectorAccessor, ConnectorView, ConnectorOutput, ConnectorCapabi
 import type { WorkflowConnectorRegistry } from '../registry/connector-registry.js';
 
 export class ConnectorAccessorImpl implements ConnectorAccessor {
+  private readonly initialized = new Set<string>();
+
   constructor(private readonly registry: WorkflowConnectorRegistry) {}
 
   get(name: string): ConnectorView | undefined {
@@ -47,6 +49,32 @@ export class ConnectorAccessorImpl implements ConnectorAccessor {
       };
     }
 
+    // Lazy initialization: initialize on first execute() call per connector
+    if (!this.initialized.has(connectorName)) {
+      try {
+        await connector.initialize({});
+        this.initialized.add(connectorName);
+      } catch (err) {
+        return {
+          success: false,
+          data: {},
+          error: `Connector "${connectorName}" failed to initialize: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+    }
+
     return connector.execute(action, params);
+  }
+
+  /** Dispose all initialized connectors in parallel. Errors are swallowed (best-effort). */
+  async disposeAll(): Promise<void> {
+    if (this.initialized.size === 0) return;
+    await Promise.allSettled(
+      [...this.initialized].map(async (name) => {
+        const connector = this.registry.get(name);
+        if (connector) await connector.dispose();
+      }),
+    );
+    this.initialized.clear();
   }
 }

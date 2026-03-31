@@ -171,6 +171,7 @@ export class WorkflowRunner {
       maxNestingDepth: options.maxNestingDepth ?? DEFAULT_MAX_NESTING_DEPTH,
     };
 
+    try {
     await this.storeProgress(workflowId, 'running', 0, definition.steps.length);
 
     const stepIndex = new Map<string, number>();
@@ -271,6 +272,12 @@ export class WorkflowRunner {
 
     return { workflowId, success: errors.length === 0 && !cancelled,
       steps: stepResults, outputs, errors, duration: Date.now() - startTime, cancelled };
+    } finally {
+      // Dispose any connectors that were lazily initialized during step execution
+      if (this.connectorAccessor) {
+        await this.connectorAccessor.disposeAll();
+      }
+    }
   }
 
   // --------------------------------------------------------------------------
