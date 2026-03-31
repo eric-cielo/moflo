@@ -25,7 +25,7 @@
     "./providers": {
       "types": "./dist/providers/index.d.ts",
       "import": "./dist/providers/index.js"
-    },
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

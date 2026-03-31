@@ -114,7 +114,10 @@ function chunkByCharacter(
   config: Required<ChunkingConfig>
 ): Chunk[] {
   const chunks: Chunk[] = [];
-  const { maxChunkSize, overlap } = config;
+  const { maxChunkSize } = config;
+  // Clamp overlap to prevent infinite loops when overlap >= maxChunkSize
+  const overlap = Math.min(config.overlap, maxChunkSize - 1);
+  const step = maxChunkSize - overlap;
 
   let pos = 0;
   let index = 0;
@@ -132,11 +135,8 @@ function chunkByCharacter(
       tokenCount: Math.ceil(chunkText.length / 4),
     });
 
-    // Move position with overlap
-    pos = endPos - overlap;
-    if (pos >= text.length - overlap) {
-      break;
-    }
+    pos += step;
+    if (endPos >= text.length) break;
     index++;
   }
 
