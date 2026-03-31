@@ -5,111 +5,43 @@
  * Story #225: Replace mock file-based store with engine integration.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MCPTool } from './types.js';
+import {
+  loadWorkflowEngine,
+  getCachedEngine,
+  type EngineModule,
+  type WorkflowResultLike,
+  type WorkflowDefinitionLike,
+  type WorkflowRegistryLike,
+} from '../services/engine-loader.js';
+import { findProjectRoot } from '../services/project-root.js';
 
-/** Walk up from cwd to find the nearest directory containing package.json or .git. */
-function findProjectRoot(): string {
-  let dir = process.cwd();
-  while (true) {
-    if (existsSync(resolve(dir, 'package.json')) || existsSync(resolve(dir, '.git'))) {
-      return dir;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) return process.cwd(); // reached filesystem root
-    dir = parent;
-  }
-}
 
 // ============================================================================
-// Engine Bridge (dynamic import to avoid cross-package static deps)
+// Constants
 // ============================================================================
 
-/** Resolved engine module — cached after first successful import. */
-let engineModule: EngineModule | null = null;
+const WF_STATUS = {
+  RUNNING: 'running',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+  CANCELLED: 'cancelled',
+} as const;
+type WfStatus = typeof WF_STATUS[keyof typeof WF_STATUS];
 
-interface EngineModule {
-  bridgeRunWorkflow: (
-    content: string,
-    sourceFile: string | undefined,
-    args: Record<string, unknown>,
-    options?: { dryRun?: boolean },
-  ) => Promise<WorkflowResultLike>;
-  bridgeExecuteWorkflow: (
-    definition: WorkflowDefinitionLike,
-    args: Record<string, unknown>,
-    options?: { workflowId?: string },
-  ) => Promise<WorkflowResultLike>;
-  bridgeCancelWorkflow: (workflowId: string) => boolean;
-  bridgeIsRunning: (workflowId: string) => boolean;
-  bridgeActiveWorkflows: () => string[];
-  WorkflowRegistry: new (options?: Record<string, unknown>) => WorkflowRegistryLike;
-  runWorkflowFromContent: (
-    content: string,
-    sourceFile: string | undefined,
-    options?: Record<string, unknown>,
-  ) => Promise<WorkflowResultLike>;
-}
+const LIST_SOURCE = {
+  REGISTRY: 'registry',
+  RUNS: 'runs',
+  ALL: 'all',
+} as const;
 
-/** Minimal WorkflowResult shape to avoid direct type import. */
-interface WorkflowResultLike {
-  workflowId: string;
-  success: boolean;
-  steps: Array<{
-    stepId: string;
-    stepType: string;
-    status: string;
-    output?: { success: boolean; data?: unknown; error?: string };
-    error?: string;
-    errorCode?: string;
-    duration: number;
-  }>;
-  outputs: Record<string, unknown>;
-  errors: Array<{ stepId?: string; code: string; message: string; details?: unknown[] }>;
-  duration: number;
-  cancelled: boolean;
-}
-
-interface WorkflowDefinitionLike {
-  name: string;
-  abbreviation?: string;
-  description?: string;
-  version?: string;
-  arguments?: Record<string, unknown>;
-  steps: readonly Record<string, unknown>[];
-  mofloLevel?: string;
-}
-
-interface WorkflowRegistryLike {
-  load(): { workflows: ReadonlyMap<string, { definition: WorkflowDefinitionLike; sourceFile: string; tier: string }>; errors: readonly { file: string; message: string }[] };
-  resolve(query: string): { definition: WorkflowDefinitionLike; sourceFile: string; tier: string } | undefined;
-  list(): readonly { name: string; abbreviation?: string; description?: string; tier: string }[];
-  info(query: string): {
-    name: string; abbreviation?: string; description?: string; version?: string;
-    sourceFile: string; tier: string; arguments: Record<string, unknown>;
-    stepCount: number; stepTypes: readonly string[];
-  } | undefined;
-}
-
-async function getEngine(): Promise<EngineModule> {
-  if (engineModule) return engineModule;
-
-  try {
-    // Resolve relative to this file's compiled location (same pattern as epic/runner-adapter.ts)
-    const mod = await import(
-      /* webpackIgnore: true */
-      '../../../../packages/workflows/dist/index.js'
-    );
-    engineModule = mod as unknown as EngineModule;
-    return engineModule;
-  } catch {
-    throw new Error(
-      'Workflow engine not available. Run `npm run build` to compile the workflows package.',
-    );
-  }
-}
+const TEMPLATE_ACTION = {
+  LIST: 'list',
+  INFO: 'info',
+} as const;
 
 // ============================================================================
 // In-memory result tracking (for status queries between runs)
@@ -119,7 +51,7 @@ interface TrackedWorkflow {
   workflowId: string;
   name: string;
   description?: string;
-  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  status: WfStatus;
   result?: WorkflowResultLike;
   startedAt: string;
   completedAt?: string;
@@ -140,7 +72,7 @@ function trackStart(workflowId: string, name: string, description?: string): Tra
     workflowId,
     name,
     description,
-    status: 'running',
+    status: WF_STATUS.RUNNING,
     startedAt: new Date().toISOString(),
   };
   trackedWorkflows.set(workflowId, tracked);
@@ -149,7 +81,7 @@ function trackStart(workflowId: string, name: string, description?: string): Tra
 }
 
 function trackResult(tracked: TrackedWorkflow, result: WorkflowResultLike): void {
-  tracked.status = result.cancelled ? 'cancelled' : result.success ? 'completed' : 'failed';
+  tracked.status = result.cancelled ? WF_STATUS.CANCELLED : result.success ? WF_STATUS.COMPLETED : WF_STATUS.FAILED;
   tracked.result = result;
   tracked.completedAt = new Date().toISOString();
 }
@@ -168,7 +100,7 @@ async function executeAndTrack(
     trackResult(tracked, result);
     return serializeResult(result);
   } catch (err) {
-    tracked.status = 'failed';
+    tracked.status = WF_STATUS.FAILED;
     tracked.completedAt = new Date().toISOString();
     return { workflowId, error: errorMsg(err) };
   }
@@ -179,26 +111,36 @@ async function executeAndTrack(
 // ============================================================================
 
 let registryInstance: WorkflowRegistryLike | null = null;
+let pendingRegistry: Promise<WorkflowRegistryLike> | null = null;
 
 async function getRegistry(): Promise<WorkflowRegistryLike> {
   if (registryInstance) return registryInstance;
+  if (pendingRegistry) return pendingRegistry;
 
-  const engine = await getEngine();
-  const shippedDir = resolve(
-    dirname(fileURLToPath(import.meta.url)),
-    '../../../../packages/workflows/definitions',
-  );
+  pendingRegistry = (async () => {
+    try {
+      const engine = await loadWorkflowEngine();
+      const shippedDir = resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        '../../../../packages/workflows/definitions',
+      );
 
-  const projectRoot = findProjectRoot();
-  registryInstance = new engine.WorkflowRegistry({
-    shippedDir,
-    userDirs: [
-      resolve(projectRoot, 'workflows'),
-      resolve(projectRoot, '.claude/workflows'),
-    ],
-  });
+      const projectRoot = findProjectRoot();
+      registryInstance = new engine.WorkflowRegistry({
+        shippedDir,
+        userDirs: [
+          resolve(projectRoot, 'workflows'),
+          resolve(projectRoot, '.claude/workflows'),
+        ],
+      });
 
-  return registryInstance;
+      return registryInstance;
+    } finally {
+      pendingRegistry = null;
+    }
+  })();
+
+  return pendingRegistry;
 }
 
 // ============================================================================
@@ -279,7 +221,7 @@ export const workflowTools: MCPTool[] = [
         if (!loaded) {
           return { error: `Workflow not found in registry: ${input.name}` };
         }
-        const engine = await getEngine();
+        const engine = await loadWorkflowEngine();
         return executeAndTrack(engine, loaded.definition, args);
       }
 
@@ -305,7 +247,7 @@ export const workflowTools: MCPTool[] = [
       }
 
       // Run from raw content via bridge
-      const engine = await getEngine();
+      const engine = await loadWorkflowEngine();
       const result = await engine.bridgeRunWorkflow(content, sourceFile, args, { dryRun });
       const tracked = trackStart(result.workflowId, workflowName);
       trackResult(tracked, result);
@@ -394,7 +336,7 @@ export const workflowTools: MCPTool[] = [
       }
 
       if (input.dryRun) {
-        const engine = await getEngine();
+        const engine = await loadWorkflowEngine();
         const content = JSON.stringify(definition);
         const result = await engine.runWorkflowFromContent(content, undefined, {
           dryRun: true,
@@ -403,7 +345,7 @@ export const workflowTools: MCPTool[] = [
         return serializeResult(result);
       }
 
-      const engine = await getEngine();
+      const engine = await loadWorkflowEngine();
       return executeAndTrack(engine, definition, args);
     },
   },
@@ -428,7 +370,7 @@ export const workflowTools: MCPTool[] = [
       const tracked = trackedWorkflows.get(workflowId);
 
       // Only check engine if it's already loaded (avoid unnecessary dynamic import)
-      const isRunning = engineModule?.bridgeIsRunning(workflowId) ?? false;
+      const isRunning = getCachedEngine()?.bridgeIsRunning(workflowId) ?? false;
 
       if (!tracked && !isRunning) {
         return { workflowId, error: 'Workflow not found' };
@@ -437,14 +379,14 @@ export const workflowTools: MCPTool[] = [
       if (isRunning) {
         return {
           workflowId,
-          status: 'running',
+          status: WF_STATUS.RUNNING,
           name: tracked?.name,
           startedAt: tracked?.startedAt,
         };
       }
 
       if (!tracked) {
-        return { workflowId, status: 'unknown' };
+        return { workflowId, status: 'unknown' as const };
       }
 
       const response: Record<string, unknown> = {
@@ -491,11 +433,11 @@ export const workflowTools: MCPTool[] = [
       },
     },
     handler: async (input) => {
-      const source = (input.source as string) ?? 'all';
+      const source = (input.source as string) ?? LIST_SOURCE.ALL;
       const limit = (input.limit as number) ?? 20;
       const result: Record<string, unknown> = {};
 
-      if (source === 'registry' || source === 'all') {
+      if (source === LIST_SOURCE.REGISTRY || source === LIST_SOURCE.ALL) {
         try {
           const registry = await getRegistry();
           result.definitions = registry.list();
@@ -505,7 +447,7 @@ export const workflowTools: MCPTool[] = [
         }
       }
 
-      if (source === 'runs' || source === 'all') {
+      if (source === LIST_SOURCE.RUNS || source === LIST_SOURCE.ALL) {
         let runs = [...trackedWorkflows.values()];
         if (input.status) {
           runs = runs.filter(r => r.status === input.status);
@@ -522,7 +464,7 @@ export const workflowTools: MCPTool[] = [
 
       // Also include currently running workflows from the engine
       try {
-        const engine = await getEngine();
+        const engine = await loadWorkflowEngine();
         result.activeWorkflows = engine.bridgeActiveWorkflows();
       } catch {
         result.activeWorkflows = [];
@@ -548,7 +490,7 @@ export const workflowTools: MCPTool[] = [
     },
     handler: async (input) => {
       const workflowId = input.workflowId as string;
-      const engine = await getEngine();
+      const engine = await loadWorkflowEngine();
 
       if (!engine.bridgeIsRunning(workflowId)) {
         return { workflowId, error: 'Workflow not running' };
@@ -559,14 +501,14 @@ export const workflowTools: MCPTool[] = [
       if (cancelled) {
         const tracked = trackedWorkflows.get(workflowId);
         if (tracked) {
-          tracked.status = 'cancelled';
+          tracked.status = WF_STATUS.CANCELLED;
           tracked.completedAt = new Date().toISOString();
         }
       }
 
       return {
         workflowId,
-        status: cancelled ? 'cancelled' : 'not_found',
+        status: cancelled ? WF_STATUS.CANCELLED : 'not_found',
         note: 'Engine workflows cannot be paused — cancelled instead. Use workflow_run to restart.',
       };
     },
@@ -632,19 +574,19 @@ export const workflowTools: MCPTool[] = [
     },
     handler: async (input) => {
       const workflowId = input.workflowId as string;
-      const engine = await getEngine();
+      const engine = await loadWorkflowEngine();
 
       const cancelled = engine.bridgeCancelWorkflow(workflowId);
 
       if (cancelled) {
         const tracked = trackedWorkflows.get(workflowId);
         if (tracked) {
-          tracked.status = 'cancelled';
+          tracked.status = WF_STATUS.CANCELLED;
           tracked.completedAt = new Date().toISOString();
         }
         return {
           workflowId,
-          status: 'cancelled',
+          status: WF_STATUS.CANCELLED,
           cancelledAt: new Date().toISOString(),
           reason: (input.reason as string) ?? 'Cancelled by user',
         };
@@ -678,7 +620,7 @@ export const workflowTools: MCPTool[] = [
       const workflowId = input.workflowId as string;
 
       // Only check engine if already loaded (avoid unnecessary dynamic import)
-      if (engineModule?.bridgeIsRunning(workflowId)) {
+      if (getCachedEngine()?.bridgeIsRunning(workflowId)) {
         return { workflowId, error: 'Cannot delete a running workflow — cancel it first' };
       }
 
@@ -709,7 +651,7 @@ export const workflowTools: MCPTool[] = [
     handler: async (input) => {
       const action = input.action as string;
 
-      if (action === 'list') {
+      if (action === TEMPLATE_ACTION.LIST) {
         try {
           const registry = await getRegistry();
           const entries = registry.list();
@@ -723,7 +665,7 @@ export const workflowTools: MCPTool[] = [
         }
       }
 
-      if (action === 'info') {
+      if (action === TEMPLATE_ACTION.INFO) {
         const query = input.query as string;
         if (!query) {
           return { action, error: 'Query required for info action' };

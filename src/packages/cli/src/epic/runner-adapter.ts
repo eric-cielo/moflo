@@ -5,12 +5,16 @@
  * cross-package imports (avoids tsconfig rootDir issues).
  *
  * Story #197: Thin adapter for running workflow YAML from epic command.
+ * Story #229: Uses shared engine loader instead of inline dynamic import.
  */
 
+import { loadWorkflowEngine, type WorkflowResultLike } from '../services/engine-loader.js';
+
 /** Minimal workflow result shape matching WorkflowResult from @claude-flow/workflows. */
-export interface EpicWorkflowResult {
-  workflowId: string;
-  success: boolean;
+export type EpicWorkflowResult = Pick<
+  WorkflowResultLike,
+  'workflowId' | 'success' | 'outputs' | 'duration' | 'cancelled'
+> & {
   steps: Array<{
     stepId: string;
     stepType: string;
@@ -18,11 +22,8 @@ export interface EpicWorkflowResult {
     duration: number;
     error?: string;
   }>;
-  outputs: Record<string, unknown>;
   errors: Array<{ code: string; message: string }>;
-  duration: number;
-  cancelled: boolean;
-}
+};
 
 export interface EpicRunOptions {
   args?: Record<string, unknown>;
@@ -33,25 +34,17 @@ export interface EpicRunOptions {
 /**
  * Run a workflow YAML string via the workflow engine.
  *
- * Dynamically imports the workflows package to avoid static cross-package
- * dependency issues. The workflows package must be built first.
+ * Uses the shared engine loader (services/engine-loader.ts) which caches the
+ * dynamically imported module. The workflows package must be built first.
  */
 export async function runEpicWorkflow(
   yamlContent: string,
   options: EpicRunOptions = {},
 ): Promise<EpicWorkflowResult> {
-  let runWorkflowFromContent: Function;
-  try {
-    const mod = await import(
-      /* webpackIgnore: true */
-      '../../../../packages/workflows/dist/index.js'
-    );
-    runWorkflowFromContent = mod.runWorkflowFromContent;
-  } catch {
-    throw new Error(
-      'Workflow engine not available. Run `npm run build` to compile the workflows package.',
-    );
-  }
-
-  return runWorkflowFromContent(yamlContent, undefined, options);
+  const engine = await loadWorkflowEngine();
+  return engine.runWorkflowFromContent(
+    yamlContent,
+    undefined,
+    { ...options },
+  ) as Promise<EpicWorkflowResult>;
 }
