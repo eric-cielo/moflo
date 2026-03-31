@@ -21,6 +21,7 @@ import { validateStepCapabilities, isValidMofloLevel, compareMofloLevels } from 
 import { MOFLO_LEVEL_ORDER } from '../types/step-command.types.js';
 import type { MofloLevel } from '../types/step-command.types.js';
 import { validateSchedule } from '../scheduler/cron-parser.js';
+import { VAR_REF_PATTERN } from '../core/interpolation.js';
 
 const VALID_ARG_TYPES: readonly ArgumentType[] = ['string', 'number', 'boolean', 'string[]'];
 
@@ -251,7 +252,6 @@ function validateVariableReferences(
   }
 }
 
-const VAR_REF_PATTERN = /\{([^}]+)\}/g;
 
 function checkStringReferences(
   value: string,

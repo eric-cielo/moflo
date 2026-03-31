@@ -7,7 +7,8 @@
 
 import type { WorkflowContext } from '../types/step-command.types.js';
 
-const INTERPOLATION_PATTERN = /\{([^}]+)\}/g;
+/** Matches `{path}` variable references in workflow step configs. */
+export const VAR_REF_PATTERN = /\{([^}]+)\}/g;
 
 /**
  * Resolve a dot-separated path against the context variables.
@@ -52,7 +53,7 @@ function resolveVariable(path: string, context: WorkflowContext): unknown {
  * @throws if a referenced variable is not found.
  */
 export function interpolateString(template: string, context: WorkflowContext): string {
-  return template.replace(INTERPOLATION_PATTERN, (match, path: string) => {
+  return template.replace(VAR_REF_PATTERN, (match, path: string) => {
     const value = resolveVariable(path, context);
     if (value === undefined) {
       throw new Error(`Variable not found: ${path}`);
@@ -78,7 +79,7 @@ export function shellEscapeValue(value: string): string {
  * @throws if a referenced variable is not found.
  */
 export function shellInterpolateString(template: string, context: WorkflowContext): string {
-  return template.replace(INTERPOLATION_PATTERN, (match, path: string) => {
+  return template.replace(VAR_REF_PATTERN, (match, path: string) => {
     const value = resolveVariable(path, context);
     if (value === undefined) {
       throw new Error(`Variable not found: ${path}`);
