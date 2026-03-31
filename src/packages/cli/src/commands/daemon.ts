@@ -7,6 +7,7 @@ import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { WorkerDaemon, getDaemon, startDaemon, stopDaemon, type WorkerType, type DaemonConfig } from '../services/worker-daemon.js';
 import { acquireDaemonLock, releaseDaemonLock, getDaemonLockHolder, transferDaemonLock, lockPath } from '../services/daemon-lock.js';
+import { installDaemonService, uninstallDaemonService, isDaemonInstalled } from '../services/daemon-service.js';
 import { spawn, execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve, isAbsolute } from 'path';
@@ -627,6 +628,77 @@ const enableCommand: Command = {
   },
 };
 
+// Install subcommand - register as OS-native login service
+const installCommand: Command = {
+  name: 'install',
+  description: 'Register the daemon as an OS-native login service (survives reboots)',
+  options: [
+    { name: 'quiet', short: 'Q', type: 'boolean', description: 'Suppress output' },
+  ],
+  examples: [
+    { command: 'claude-flow daemon install', description: 'Register daemon as login service' },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const quiet = ctx.flags.quiet as boolean;
+    const projectRoot = process.cwd();
+
+    try {
+      const result = installDaemonService(projectRoot);
+
+      if (!quiet) {
+        if (result.success) {
+          output.printSuccess(result.message);
+          output.printInfo('Remove anytime with: moflo daemon uninstall');
+        } else {
+          output.printError(result.message);
+        }
+      }
+
+      return { success: result.success, exitCode: result.success ? 0 : 1 };
+    } catch (error) {
+      if (!quiet) {
+        output.printError(`Failed to install daemon service: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return { success: false, exitCode: 1 };
+    }
+  },
+};
+
+// Uninstall subcommand - remove OS-native login service
+const uninstallCommand: Command = {
+  name: 'uninstall',
+  description: 'Remove the daemon OS-native login service',
+  options: [
+    { name: 'quiet', short: 'Q', type: 'boolean', description: 'Suppress output' },
+  ],
+  examples: [
+    { command: 'claude-flow daemon uninstall', description: 'Remove daemon login service' },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const quiet = ctx.flags.quiet as boolean;
+    const projectRoot = process.cwd();
+
+    try {
+      const result = uninstallDaemonService(projectRoot);
+
+      if (!quiet) {
+        if (result.success) {
+          output.printSuccess(result.message);
+        } else {
+          output.printError(result.message);
+        }
+      }
+
+      return { success: result.success, exitCode: result.success ? 0 : 1 };
+    } catch (error) {
+      if (!quiet) {
+        output.printError(`Failed to uninstall daemon service: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return { success: false, exitCode: 1 };
+    }
+  },
+};
+
 // Helper functions for time formatting
 function formatTimeAgo(date: Date): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -657,6 +729,8 @@ export const daemonCommand: Command = {
     statusCommand,
     triggerCommand,
     enableCommand,
+    installCommand,
+    uninstallCommand,
   ],
   options: [],
   examples: [
@@ -665,6 +739,8 @@ export const daemonCommand: Command = {
     { command: 'claude-flow daemon status', description: 'Check daemon status' },
     { command: 'claude-flow daemon stop', description: 'Stop the daemon' },
     { command: 'claude-flow daemon trigger -w audit', description: 'Run security audit' },
+    { command: 'claude-flow daemon install', description: 'Register as OS login service' },
+    { command: 'claude-flow daemon uninstall', description: 'Remove OS login service' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
@@ -697,11 +773,13 @@ export const daemonCommand: Command = {
     output.writeln();
     output.writeln(output.bold('Subcommands'));
     output.printList([
-      `${output.highlight('start')}   - Start the daemon`,
-      `${output.highlight('stop')}    - Stop the daemon`,
-      `${output.highlight('status')}  - Show daemon status`,
-      `${output.highlight('trigger')} - Manually run a worker`,
-      `${output.highlight('enable')}  - Enable/disable a worker`,
+      `${output.highlight('start')}     - Start the daemon`,
+      `${output.highlight('stop')}      - Stop the daemon`,
+      `${output.highlight('status')}    - Show daemon status`,
+      `${output.highlight('trigger')}   - Manually run a worker`,
+      `${output.highlight('enable')}    - Enable/disable a worker`,
+      `${output.highlight('install')}   - Register as OS login service`,
+      `${output.highlight('uninstall')} - Remove OS login service`,
     ]);
 
     output.writeln();
