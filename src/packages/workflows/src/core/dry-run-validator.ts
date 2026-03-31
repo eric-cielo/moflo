@@ -10,9 +10,11 @@ import type {
   WorkflowContext,
   ValidationError,
   MofloLevel,
+  PrerequisiteResult,
 } from '../types/step-command.types.js';
 import type {
   WorkflowDefinition,
+  StepDefinition,
 } from '../types/workflow-definition.types.js';
 import type {
   DryRunResult,
@@ -27,6 +29,92 @@ import {
   resolveMofloLevel,
 } from './capability-validator.js';
 import { collectPrerequisites, checkPrerequisites } from './prerequisite-checker.js';
+
+/** Invariant context shared across all `dryRunValidateStep` calls within a single dry-run. */
+interface DryRunEnv {
+  readonly registry: StepCommandRegistry;
+  readonly definition: WorkflowDefinition;
+  readonly options: RunnerOptions;
+  readonly prereqByName: Map<string, PrerequisiteResult>;
+}
+
+/**
+ * Validate a single step for dry-run, returning a report of what WOULD happen.
+ *
+ * Shared by the main loop, parallel nested steps, and loop nested steps (#252).
+ */
+async function dryRunValidateStep(
+  step: StepDefinition,
+  stepPath: string,
+  context: WorkflowContext,
+  env: DryRunEnv,
+): Promise<DryRunStepReport> {
+  const command = env.registry.get(step.type);
+
+  let interpolatedConfig: Record<string, unknown> | null = null;
+  let validationResult = { valid: true, errors: [] as ValidationError[] };
+
+  if (command) {
+    try {
+      interpolatedConfig = interpolateConfig(
+        step.config as Record<string, unknown>,
+        context,
+      );
+    } catch {
+      interpolatedConfig = null;
+      validationResult = {
+        valid: false,
+        errors: [{ path: `${stepPath}.config`, message: 'Variable interpolation failed' }],
+      };
+    }
+
+    if (interpolatedConfig) {
+      const vr = await command.validate(interpolatedConfig, context);
+      validationResult = { valid: vr.valid, errors: [...vr.errors] };
+    }
+
+    const capCheck = checkCapabilities(step, command);
+    if (!capCheck.allowed) {
+      validationResult = {
+        valid: false,
+        errors: [
+          ...validationResult.errors,
+          ...capCheck.violations.map(v => ({
+            path: `${stepPath}.capabilities.${v.capability}`,
+            message: v.reason,
+          })),
+        ],
+      };
+    }
+  } else {
+    validationResult = {
+      valid: false,
+      errors: [{ path: `${stepPath}.type`, message: `Unknown step type: "${step.type}"` }],
+    };
+  }
+
+  const mofloLevel = command
+    ? resolveMofloLevel(step, command, env.definition.mofloLevel, env.options.parentMofloLevel)
+    : undefined;
+
+  const prerequisiteResults = command?.prerequisites
+    ? command.prerequisites
+        .map(p => env.prereqByName.get(p.name))
+        .filter((r): r is NonNullable<typeof r> => r !== undefined)
+    : undefined;
+
+  return {
+    stepId: step.id,
+    stepType: step.type,
+    description: command?.description ?? 'unknown command',
+    interpolatedConfig,
+    validationResult,
+    continueOnError: step.continueOnError ?? false,
+    hasRollback: command?.rollback !== undefined,
+    mofloLevel,
+    prerequisiteResults,
+  };
+}
 
 /**
  * Validate a workflow without executing — reports what WOULD happen at each step.
@@ -50,148 +138,39 @@ export async function dryRunValidate(
   const prereqResults = allPrereqs.length > 0
     ? await checkPrerequisites(allPrereqs)
     : [];
-  // Build a map: prerequisite name → result
   const prereqByName = new Map(prereqResults.map(r => [r.name, r]));
 
   const workflowId = `dryrun-${Date.now()}`;
   const variables: Record<string, unknown> = {};
   const stepReports: DryRunStepReport[] = [];
+  const env: DryRunEnv = { registry, definition, options, prereqByName };
 
   for (let i = 0; i < definition.steps.length; i++) {
     const step = definition.steps[i];
-    const command = registry.get(step.type);
+    const context = buildContext(variables, workflowId, i);
 
-    let interpolatedConfig: Record<string, unknown> | null = null;
-    let validationResult = { valid: true, errors: [] as ValidationError[] };
+    const report = await dryRunValidateStep(step, `steps[${i}]`, context, env);
+    stepReports.push(report);
 
-    if (command) {
-      const context = buildContext(variables, workflowId, i);
-      try {
-        interpolatedConfig = interpolateConfig(
-          step.config as Record<string, unknown>,
-          context,
-        );
-      } catch {
-        interpolatedConfig = null;
-        validationResult = {
-          valid: false,
-          errors: [{ path: `steps[${i}].config`, message: 'Variable interpolation failed' }],
-        };
-      }
-
-      if (interpolatedConfig) {
-        const vr = await command.validate(interpolatedConfig, context);
-        validationResult = { valid: vr.valid, errors: [...vr.errors] };
-      }
-
-      // Check capability declarations in dry-run (#161)
-      const capCheck = checkCapabilities(step, command);
-      if (!capCheck.allowed) {
-        validationResult = {
-          valid: false,
-          errors: [
-            ...validationResult.errors,
-            ...capCheck.violations.map(v => ({
-              path: `steps[${i}].capabilities.${v.capability}`,
-              message: v.reason,
-            })),
-          ],
-        };
-      }
-
-      if (step.output) {
-        variables[step.output] = { _dryRun: true };
-      }
-    } else {
-      validationResult = {
-        valid: false,
-        errors: [{ path: `steps[${i}].type`, message: `Unknown step type: "${step.type}"` }],
-      };
+    if (step.output && report.validationResult.valid) {
+      variables[step.output] = { _dryRun: true };
     }
 
-    // Resolve moflo level for dry-run report
-    const stepMofloLevel = command
-      ? resolveMofloLevel(step, command, definition.mofloLevel, options.parentMofloLevel)
-      : undefined;
-
-    // Collect prerequisite results for this step's command (Story #193)
-    const stepPrereqResults = command?.prerequisites
-      ? command.prerequisites
-          .map(p => prereqByName.get(p.name))
-          .filter((r): r is NonNullable<typeof r> => r !== undefined)
-      : undefined;
-
-    stepReports.push({
-      stepId: step.id,
-      stepType: step.type,
-      description: command?.description ?? 'unknown command',
-      interpolatedConfig,
-      validationResult,
-      continueOnError: step.continueOnError ?? false,
-      hasRollback: command?.rollback !== undefined,
-      mofloLevel: stepMofloLevel,
-      prerequisiteResults: stepPrereqResults,
-    });
-
-    // Report nested parallel steps in dry-run (#247)
-    if (step.type === 'parallel' && step.steps && step.steps.length > 0) {
+    // Validate nested steps for parallel and loop blocks (#247, #252)
+    if ((step.type === 'parallel' || step.type === 'loop') && step.steps && step.steps.length > 0) {
       for (let j = 0; j < step.steps.length; j++) {
         const nested = step.steps[j];
-        const nestedCommand = registry.get(nested.type);
-        let nestedValidation = { valid: true, errors: [] as ValidationError[] };
-        let nestedInterpolated: Record<string, unknown> | null = null;
+        const nestedContext = buildContext(variables, workflowId, i);
 
-        if (nestedCommand) {
-          const nestedContext = buildContext(variables, workflowId, i);
-          try {
-            nestedInterpolated = interpolateConfig(nested.config as Record<string, unknown>, nestedContext);
-            const vr = await nestedCommand.validate(nestedInterpolated, nestedContext);
-            nestedValidation = { valid: vr.valid, errors: [...vr.errors] };
-          } catch {
-            nestedInterpolated = null;
-            nestedValidation = {
-              valid: false,
-              errors: [{ path: `steps[${i}].steps[${j}].config`, message: 'Variable interpolation failed' }],
-            };
-          }
+        const nestedReport = await dryRunValidateStep(nested, `steps[${i}].steps[${j}]`, nestedContext, env);
+        stepReports.push(nestedReport);
 
-          const capCheck = checkCapabilities(nested, nestedCommand);
-          if (!capCheck.allowed) {
-            nestedValidation = {
-              valid: false,
-              errors: [
-                ...nestedValidation.errors,
-                ...capCheck.violations.map(v => ({
-                  path: `steps[${i}].steps[${j}].capabilities.${v.capability}`,
-                  message: v.reason,
-                })),
-              ],
-            };
-          }
-        } else {
-          nestedValidation = {
-            valid: false,
-            errors: [{ path: `steps[${i}].steps[${j}].type`, message: `Unknown step type: "${nested.type}"` }],
-          };
+        if (nested.output && nestedReport.validationResult.valid) {
+          variables[nested.output] = { _dryRun: true };
         }
-
-        const nestedLevel = nestedCommand
-          ? resolveMofloLevel(nested, nestedCommand, definition.mofloLevel, options.parentMofloLevel)
-          : undefined;
-
-        stepReports.push({
-          stepId: nested.id,
-          stepType: nested.type,
-          description: nestedCommand?.description ?? 'unknown command',
-          interpolatedConfig: nestedInterpolated,
-          validationResult: nestedValidation,
-          continueOnError: nested.continueOnError ?? false,
-          hasRollback: nestedCommand?.rollback !== undefined,
-          mofloLevel: nestedLevel,
-        });
-
-        if (nested.output) variables[nested.output] = { _dryRun: true };
-        variables[nested.id] = { _dryRun: true };
+        if (nestedReport.validationResult.valid) {
+          variables[nested.id] = { _dryRun: true };
+        }
       }
     }
   }

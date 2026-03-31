@@ -246,4 +246,97 @@ describe('dryRunValidate', () => {
     expect(capturedVars[1]).toHaveProperty('stepAOutput', { _dryRun: true });
     expect(result.valid).toBe(true);
   });
+
+  it.each(['parallel', 'loop'] as const)(
+    'should validate nested %s steps (#252)',
+    async (blockType) => {
+      const command = makeCommand();
+      const registry = new StepCommandRegistry();
+      registry.register(command);
+
+      const definition = makeDefinition([
+        makeStep({
+          id: `${blockType}-1`,
+          type: blockType,
+          config: {},
+          steps: [
+            makeStep({ id: 'nested-a', config: { key: 'a' } }),
+            makeStep({ id: 'nested-b', config: { key: 'b' } }),
+          ],
+        }),
+      ]);
+
+      const result = await dryRunValidate(
+        definition, {}, validDefResult, defaultOptions, registry, buildContextFactory(),
+      );
+
+      expect(result.steps).toHaveLength(3);
+      expect(result.steps[0].stepId).toBe(`${blockType}-1`);
+      expect(result.steps[1].stepId).toBe('nested-a');
+      expect(result.steps[2].stepId).toBe('nested-b');
+      expect(result.steps[1].interpolatedConfig).toEqual({ key: 'a' });
+      expect(result.steps[2].interpolatedConfig).toEqual({ key: 'b' });
+    },
+  );
+
+  it('should report unknown command in nested steps', async () => {
+    const registry = new StepCommandRegistry();
+    // No commands registered
+
+    const definition = makeDefinition([
+      makeStep({
+        id: 'par',
+        type: 'parallel',
+        config: {},
+        steps: [
+          makeStep({ id: 'nested-unknown', type: 'nonexistent', config: {} }),
+        ],
+      }),
+    ]);
+
+    const result = await dryRunValidate(
+      definition, {}, validDefResult, defaultOptions, registry, buildContextFactory(),
+    );
+
+    expect(result.valid).toBe(false);
+    // Both parent and nested should be invalid
+    expect(result.steps[0].validationResult.valid).toBe(false);
+    const nestedReport = result.steps[1];
+    expect(nestedReport.stepId).toBe('nested-unknown');
+    expect(nestedReport.validationResult.valid).toBe(false);
+    expect(nestedReport.validationResult.errors[0].message).toContain('Unknown step type');
+    expect(nestedReport.description).toBe('unknown command');
+  });
+
+  it('should set output variables from nested steps', async () => {
+    const registry = new StepCommandRegistry();
+    registry.register(makeCommand());
+
+    const definition = makeDefinition([
+      makeStep({
+        id: 'par',
+        type: 'parallel',
+        config: {},
+        steps: [
+          makeStep({ id: 'nested-out', output: 'nestedOutput', config: {} }),
+        ],
+      }),
+      makeStep({ id: 'after' }),
+    ]);
+
+    const capturedVars: Record<string, unknown>[] = [];
+    const contextFactory = (variables: Record<string, unknown>, workflowId: string, stepIndex: number) => {
+      capturedVars.push({ ...variables });
+      return createMockContext({ variables, workflowId, stepIndex });
+    };
+
+    await dryRunValidate(
+      definition, {}, validDefResult, defaultOptions, registry, contextFactory,
+    );
+
+    // The 'after' step context should see the nested output variable
+    const afterStepVars = capturedVars[capturedVars.length - 1];
+    expect(afterStepVars).toHaveProperty('nestedOutput', { _dryRun: true });
+    expect(afterStepVars).toHaveProperty('nested-out', { _dryRun: true });
+  });
 });
