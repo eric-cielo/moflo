@@ -30,7 +30,7 @@ describe('connector-builder skill', () => {
     fmName = nameMatch![1];
     fmDescription = descMatch![1];
 
-    const sections = content.split('## Building a Step Command');
+    const sections = content.split(/## Building a Step Command/i);
     connectorSection = sections[0];
     stepSection = sections[1];
   });
@@ -69,7 +69,7 @@ describe('connector-builder skill', () => {
 
   describe('connector scaffolding', () => {
     it('contains a connector building section', () => {
-      expect(content).toMatch(/## Building a Connector/i);
+      expect(content).toMatch(/## Building a (?:Generalized )?Connector/i);
     });
 
     it('references WorkflowConnector interface', () => {
