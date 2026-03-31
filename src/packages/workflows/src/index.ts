@@ -55,7 +55,7 @@ export type {
 
 export { StepCommandRegistry } from './core/step-command-registry.js';
 export { WorkflowRunner } from './core/runner.js';
-export { ConnectorAccessorImpl, ToolAccessorImpl } from './core/connector-accessor.js';
+export { ConnectorAccessorImpl } from './core/connector-accessor.js';
 export {
   checkCapabilities,
   type CapabilityViolation,
@@ -223,26 +223,13 @@ export type {
   ConnectorAccessor,
   ConnectorRegistryEntry,
   ConnectorSource,
-  // Backwards-compatibility aliases
-  WorkflowTool,
-  ToolView,
-  ToolOutput,
-  ToolAction,
-  ToolCapability,
-  ToolAccessor,
-  ToolRegistryEntry,
-  ToolSource,
 } from './types/workflow-connector.types.js';
 
 export {
   WorkflowConnectorRegistry,
-  WorkflowToolRegistry,
   type ConnectorRegistryOptions,
   type ConnectorScanResult,
   type ConnectorScanError,
-  type ToolRegistryOptions,
-  type ToolScanResult,
-  type ToolScanError,
 } from './registry/connector-registry.js';
 
 // ============================================================================
@@ -254,9 +241,4 @@ export {
   githubCliConnector,
   playwrightConnector,
   builtinConnectors,
-  // Backwards-compatibility aliases
-  httpTool,
-  githubCliTool,
-  playwrightTool,
-  builtinTools,
 } from './connectors/index.js';

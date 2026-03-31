@@ -269,16 +269,3 @@ function discoverNpmConnectors(projectRoot: string): NpmConnectorDiscovery[] {
 
   return results;
 }
-
-// ============================================================================
-// Backwards-Compatibility Aliases (one release cycle)
-// ============================================================================
-
-/** @deprecated Use `WorkflowConnectorRegistry` instead. */
-export const WorkflowToolRegistry = WorkflowConnectorRegistry;
-/** @deprecated Use `ConnectorRegistryOptions` instead. */
-export type ToolRegistryOptions = ConnectorRegistryOptions;
-/** @deprecated Use `ConnectorScanResult` instead. */
-export type ToolScanResult = ConnectorScanResult;
-/** @deprecated Use `ConnectorScanError` instead. */
-export type ToolScanError = ConnectorScanError;

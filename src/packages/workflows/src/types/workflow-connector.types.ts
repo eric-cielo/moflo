@@ -92,22 +92,3 @@ export interface ConnectorRegistryEntry {
 export type ConnectorSource = 'shipped' | 'user' | 'npm';
 
 // ============================================================================
-// Backwards-Compatibility Aliases (one release cycle)
-// ============================================================================
-
-/** @deprecated Use `ConnectorOutput` instead. */
-export type ToolOutput = ConnectorOutput;
-/** @deprecated Use `ConnectorAction` instead. */
-export type ToolAction = ConnectorAction;
-/** @deprecated Use `ConnectorCapability` instead. */
-export type ToolCapability = ConnectorCapability;
-/** @deprecated Use `ConnectorView` instead. */
-export type ToolView = ConnectorView;
-/** @deprecated Use `ConnectorAccessor` instead. */
-export type ToolAccessor = ConnectorAccessor;
-/** @deprecated Use `WorkflowConnector` instead. */
-export type WorkflowTool = WorkflowConnector;
-/** @deprecated Use `ConnectorRegistryEntry` instead. */
-export type ToolRegistryEntry = ConnectorRegistryEntry;
-/** @deprecated Use `ConnectorSource` instead. */
-export type ToolSource = ConnectorSource;
