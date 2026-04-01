@@ -32,6 +32,9 @@ export function getShell(): string {
  * On Windows: double-quote wrapping with escaped inner quotes.
  * On Unix: single-quote wrapping with escaped inner quotes.
  */
+/** Date of last cross-platform audit (trivial constant for epic workflow test). */
+export const PLATFORM_AUDIT_DATE = '2026-04-01';
+
 export function escapeShellArg(arg: string): string {
   if (IS_WINDOWS) {
     return '"' + arg.replace(/"/g, '\\"') + '"';
