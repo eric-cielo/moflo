@@ -260,10 +260,11 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 20px; }
-    h1 { color: #58a6ff; margin-bottom: 8px; font-size: 1.5rem; }
-    h2 { color: #8b949e; font-size: 1.1rem; margin: 24px 0 12px; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
-    .subtitle { color: #8b949e; font-size: 0.85rem; margin-bottom: 20px; }
-    .status-bar { display: flex; gap: 24px; padding: 12px 16px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 16px; }
+    h1 { color: #58a6ff; margin-bottom: 4px; font-size: 1.5rem; }
+    h2 { color: #8b949e; font-size: 1.1rem; margin: 16px 0 12px; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    .header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+    .subtitle { color: #8b949e; font-size: 0.85rem; }
+    .status-bar { display: flex; gap: 24px; padding: 12px 16px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 16px; flex-wrap: wrap; }
     .status-bar .item { display: flex; flex-direction: column; }
     .status-bar .label { color: #8b949e; font-size: 0.75rem; text-transform: uppercase; }
     .status-bar .value { font-size: 1rem; font-weight: 600; }
@@ -271,6 +272,10 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     .dot-green { background: #3fb950; }
     .dot-red { background: #f85149; }
     .dot-yellow { background: #d29922; }
+    .nav { display: flex; gap: 0; border-bottom: 1px solid #30363d; margin-bottom: 16px; }
+    .nav-tab { padding: 8px 16px; font-size: 0.9rem; color: #8b949e; cursor: pointer; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; user-select: none; }
+    .nav-tab:hover { color: #c9d1d9; }
+    .nav-tab.active { color: #58a6ff; border-bottom-color: #58a6ff; font-weight: 600; }
     table { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; margin-bottom: 16px; }
     th { text-align: left; padding: 8px 12px; background: #21262d; color: #8b949e; font-size: 0.75rem; text-transform: uppercase; font-weight: 600; }
     td { padding: 8px 12px; border-top: 1px solid #21262d; font-size: 0.85rem; }
@@ -286,6 +291,9 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     .stat-card .label { color: #8b949e; font-size: 0.75rem; }
     .stat-card .value { font-size: 1.25rem; font-weight: 700; color: #58a6ff; }
     .poll-indicator { position: fixed; top: 8px; right: 12px; font-size: 0.7rem; color: #484f58; }
+    .api-links { margin-top: 12px; padding: 12px 16px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; }
+    .api-links a { color: #58a6ff; text-decoration: none; font-size: 0.85rem; margin-right: 16px; }
+    .api-links a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -295,7 +303,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     var van=((e)=>{let t=e.document,s=t.createElement.bind(t),n=e=>e==null,r=(e,t)=>{for(let s in t)e[s]=t[s];return e},l=Object,o=l.getPrototypeOf,a=e=>o(o(e))===null||o(e)===null,i=e=>e instanceof Function,c=e=>e._val!==void 0,u=(e,...t)=>{let n=s(e);for(let e of t.flat(1/0)){let t=c(e)?()=>e.rawVal:e;n.append(i(t)?van.bind(t):t)}return n},d=(e,t,s)=>{let r=t[s];r!==void 0&&(i(r)?van.bind(()=>{e[s]=r();return e[s]}):n(r)||(e[s]=r))},f=(e,t)=>{for(let s in t)d(e,t,s);return e},p=e=>{let t;for(;(t=e._listeners.pop())&&!t._dom?.isConnected;);return t},h=(e,t)=>{let s=e.rawVal;e._val=t;for(let n of e._listeners){n._dom?.isConnected?n(t,s):e._listeners.delete(n)}},g=e=>{let t;return{get val(){return c(e)?e.rawVal:e},get oldVal(){return c(e)?e._oldVal:e},set val(s){if(c(e)){let n=e.rawVal;s!==n&&(e._val=s,h(e,s))}}}},v=class{_val;_oldVal;_listeners=new Set;constructor(e){this._val=e}get val(){return this._val}set val(e){let t=this._val;e!==t&&(this._val=e,this._oldVal=t,h(this,e))}get rawVal(){return this._val}},m=(e,...t)=>{let n=s(e);for(let e of t){if(a(e)){f(n,e);continue}let t=e;n.append(i(t)?van.bind(t):c(t)?van.bind(()=>t.val):t)}return n};return{tags:new Proxy((e,t)=>{let s=m.bind(void 0,e);return t.set(e,s),s},{get:(e,t)=>e[t]??(e[t]=m.bind(void 0,t))}),state:e=>new v(e),val:e=>c(e)?e.rawVal:e,oldVal:e=>c(e)?e._oldVal:e,derive:e=>{let t=van.state();van.bind(()=>{t.val=e()});return t},bind:(...e)=>{let s=e.pop(),r=()=>s(...e.map(e=>i(e)?e():van.val(e))),l=van.state(r()),o=()=>{let e=r();e!==l.rawVal&&(l.val=e);return l.rawVal};for(let t of e)if(c(t))t._listeners.add(o);else if(i(t)){let e=van.state(t());van.bind(()=>{e.val=t()});e._listeners.add(o)}let a=van.derive(()=>l.val);return n(a.val)?t.createTextNode(""):a.val instanceof Node?a.val:t.createTextNode(a.val)},add:(e,...t)=>{for(let s of t.flat(1/0))e.append(i(s)?van.bind(s):c(s)?van.bind(()=>s.val):s);return e},hydrate:(e,t)=>t(e),_:e=>e,}})(window);
   </script>
   <script>
-    const {div, h1, h2, p, span, table, thead, tbody, tr, th, td, br, small} = van.tags;
+    const {div, h1, h2, a, nav, span, table, thead, tbody, tr, th, td} = van.tags;
 
     // Reactive state
     const status = van.state(null);
@@ -303,6 +311,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     const workflows = van.state(null);
     const memoryStats = van.state(null);
     const lastPoll = van.state(null);
+    const activeTab = van.state('workers');
 
     // Polling
     const poll = async () => {
@@ -366,7 +375,27 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 
     const badge = (text, type) => span({class: 'badge badge-' + type}, text);
 
-    // Status bar panel
+    // Tab navigation
+    const tabs = [
+      { id: 'workers', label: 'Workers' },
+      { id: 'schedules', label: 'Schedules' },
+      { id: 'executions', label: 'Executions' },
+      { id: 'memory', label: 'Memory' },
+      { id: 'api', label: 'API' },
+    ];
+
+    const NavBar = () => div({class: 'nav'},
+      ...tabs.map(t =>
+        van.bind(activeTab, at =>
+          div({
+            class: 'nav-tab' + (at === t.id ? ' active' : ''),
+            onclick: () => { activeTab.val = t.id; },
+          }, t.label)
+        )
+      ),
+    );
+
+    // Status bar (always visible)
     const StatusBar = () => van.bind(status, s => {
       if (!s) return div({class: 'empty'}, 'Loading...');
       return div({class: 'status-bar'},
@@ -381,68 +410,78 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       );
     });
 
-    // Workers table
-    const WorkersTable = () => van.bind(status, s => {
+    // Workers panel
+    const WorkersPanel = () => van.bind(status, s => {
       if (!s) return div();
-      return table(
-        thead(tr(th('Worker'), th('Status'), th('Runs'), th('Success'), th('Avg'), th('Last Run'), th('Next Run'))),
-        tbody(...s.workers.map(w =>
-          tr(
-            td(w.type),
-            td(w.isRunning ? badge('running', 'yellow') : badge('idle', 'gray')),
-            td(w.runCount),
-            td(successRate(w.successCount, w.failureCount)),
-            td(fmtDuration(w.averageDurationMs)),
-            td(fmtTimeAgo(w.lastRun)),
-            td(w.nextRun ? fmtTime(w.nextRun) : '-'),
-          )
-        )),
+      return div(
+        h2('Worker Status'),
+        table(
+          thead(tr(th('Worker'), th('Status'), th('Runs'), th('Success'), th('Avg'), th('Last Run'), th('Next Run'))),
+          tbody(...s.workers.map(w =>
+            tr(
+              td(w.type),
+              td(w.isRunning ? badge('running', 'yellow') : badge('idle', 'gray')),
+              td(w.runCount),
+              td(successRate(w.successCount, w.failureCount)),
+              td(fmtDuration(w.averageDurationMs)),
+              td(fmtTimeAgo(w.lastRun)),
+              td(w.nextRun ? fmtTime(w.nextRun) : '-'),
+            )
+          )),
+        ),
       );
     });
 
-    // Schedules table
-    const SchedulesTable = () => van.bind(schedules, sc => {
+    // Schedules panel
+    const SchedulesPanel = () => van.bind(schedules, sc => {
       if (!sc || !sc.available) return div({class: 'empty'}, 'Scheduler not connected');
       if (sc.schedules.length === 0) return div({class: 'empty'}, 'No active schedules');
-      return table(
-        thead(tr(th('Workflow'), th('Schedule'), th('Enabled'), th('Last Run'), th('Next Run'), th('Source'))),
-        tbody(...sc.schedules.map(s =>
-          tr(
-            td(s.workflowName),
-            td(s.cron || s.interval || s.at || '-'),
-            td(s.enabled ? badge('on', 'green') : badge('off', 'gray')),
-            td(s.lastRunAt ? fmtTime(s.lastRunAt) : '-'),
-            td(fmtTime(s.nextRunAt)),
-            td(badge(s.source, 'gray')),
-          )
-        )),
+      return div(
+        h2('Scheduled Workflows'),
+        table(
+          thead(tr(th('Workflow'), th('Schedule'), th('Enabled'), th('Last Run'), th('Next Run'), th('Source'))),
+          tbody(...sc.schedules.map(s =>
+            tr(
+              td(s.workflowName),
+              td(s.cron || s.interval || s.at || '-'),
+              td(s.enabled ? badge('on', 'green') : badge('off', 'gray')),
+              td(s.lastRunAt ? fmtTime(s.lastRunAt) : '-'),
+              td(fmtTime(s.nextRunAt)),
+              td(badge(s.source, 'gray')),
+            )
+          )),
+        ),
       );
     });
 
-    // Workflow executions table
-    const WorkflowsTable = () => van.bind(workflows, w => {
+    // Executions panel
+    const ExecutionsPanel = () => van.bind(workflows, w => {
       if (!w || !w.available) return div({class: 'empty'}, 'Scheduler not connected');
       if (w.executions.length === 0) return div({class: 'empty'}, 'No recent executions');
-      return table(
-        thead(tr(th('Workflow'), th('Status'), th('Started'), th('Duration'), th('Error'))),
-        tbody(...w.executions.map(e =>
-          tr(
-            td(e.workflowName),
-            td(e.success === true ? badge('pass', 'green') : e.success === false ? badge('fail', 'red') : badge('running', 'yellow')),
-            td(fmtTime(e.startedAt)),
-            td(fmtDuration(e.duration)),
-            td(e.error ? span({style: 'color: #f85149; font-size: 0.8rem'}, e.error.substring(0, 80)) : '-'),
-          )
-        )),
+      return div(
+        h2('Recent Executions'),
+        table(
+          thead(tr(th('Workflow'), th('Status'), th('Started'), th('Duration'), th('Error'))),
+          tbody(...w.executions.map(e =>
+            tr(
+              td(e.workflowName),
+              td(e.success === true ? badge('pass', 'green') : e.success === false ? badge('fail', 'red') : badge('running', 'yellow')),
+              td(fmtTime(e.startedAt)),
+              td(fmtDuration(e.duration)),
+              td(e.error ? span({style: 'color: #f85149; font-size: 0.8rem'}, e.error.substring(0, 80)) : '-'),
+            )
+          )),
+        ),
       );
     });
 
-    // Memory stats grid
-    const MemoryStatsGrid = () => van.bind(memoryStats, m => {
+    // Memory panel
+    const MemoryPanel = () => van.bind(memoryStats, m => {
       if (!m || !m.available) return div({class: 'empty'}, 'Memory not connected');
       const entries = Object.entries(m.namespaces);
       if (entries.length === 0) return div({class: 'empty'}, 'No namespaces');
       return div(
+        h2('Memory Stats'),
         div({class: 'grid'},
           div({class: 'stat-card'}, div({class: 'label'}, 'Total Entries'), div({class: 'value'}, m.totalEntries)),
           div({class: 'stat-card'}, div({class: 'label'}, 'Namespaces'), div({class: 'value'}, entries.length)),
@@ -456,19 +495,38 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       );
     });
 
+    // API reference panel
+    const ApiPanel = () => div(
+      h2('API Endpoints'),
+      div({class: 'api-links'},
+        a({href: '/api/status', target: '_blank'}, '/api/status'), ' \u2014 Daemon + worker status', div({style: 'height: 8px'}),
+        a({href: '/api/schedules', target: '_blank'}, '/api/schedules'), ' \u2014 Active schedules + next run times', div({style: 'height: 8px'}),
+        a({href: '/api/workflows', target: '_blank'}, '/api/workflows'), ' \u2014 Recent workflow executions', div({style: 'height: 8px'}),
+        a({href: '/api/memory/stats', target: '_blank'}, '/api/memory/stats'), ' \u2014 Namespace counts + total entries',
+      ),
+    );
+
+    // Tab content router
+    const TabContent = () => van.bind(activeTab, tab => {
+      switch (tab) {
+        case 'workers': return WorkersPanel();
+        case 'schedules': return SchedulesPanel();
+        case 'executions': return ExecutionsPanel();
+        case 'memory': return MemoryPanel();
+        case 'api': return ApiPanel();
+        default: return WorkersPanel();
+      }
+    });
+
     // Render
     van.add(document.getElementById('app'),
-      h1('MoFlo Dashboard'),
-      div({class: 'subtitle'}, 'Daemon monitoring \u2014 read-only, localhost'),
+      div({class: 'header'},
+        h1('MoFlo Dashboard'),
+        span({class: 'subtitle'}, 'read-only \u2022 localhost'),
+      ),
       StatusBar(),
-      h2('Workers'),
-      WorkersTable(),
-      h2('Scheduled Workflows'),
-      SchedulesTable(),
-      h2('Recent Executions'),
-      WorkflowsTable(),
-      h2('Memory Stats'),
-      MemoryStatsGrid(),
+      NavBar(),
+      TabContent(),
       van.bind(lastPoll, t => div({class: 'poll-indicator'}, t ? 'Last poll: ' + t : '')),
     );
   </script>
