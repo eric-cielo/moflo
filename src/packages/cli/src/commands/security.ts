@@ -50,7 +50,7 @@ const scanCommand: Command = {
         try {
           const packageJsonPath = path.resolve(target, 'package.json');
           if (fs.existsSync(packageJsonPath)) {
-            const auditResult = execSync('npm audit --json 2>/dev/null || true', {
+            const auditResult = execSync('npm audit --json 2>${process.platform === 'win32' ? 'NUL' : '/dev/null'} || true', {
               cwd: path.resolve(target),
               encoding: 'utf-8',
               maxBuffer: 10 * 1024 * 1024,
@@ -218,7 +218,7 @@ const scanCommand: Command = {
         const fixSpinner = output.createSpinner({ text: 'Attempting to fix vulnerabilities...', spinner: 'dots' });
         fixSpinner.start();
         try {
-          execSync('npm audit fix 2>/dev/null || true', { cwd: path.resolve(target), encoding: 'utf-8', windowsHide: true });
+          execSync('npm audit fix 2>${process.platform === 'win32' ? 'NUL' : '/dev/null'} || true', { cwd: path.resolve(target), encoding: 'utf-8', windowsHide: true });
           fixSpinner.succeed('Applied available fixes (run scan again to verify)');
         } catch {
           fixSpinner.fail('Some fixes could not be applied automatically');

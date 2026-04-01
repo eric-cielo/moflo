@@ -193,3 +193,8 @@ export * from './resilience/index.js';
 // Services
 // =============================================================================
 export * from './services/index.js';
+
+// =============================================================================
+// Platform Utilities
+// =============================================================================
+export { IS_WINDOWS, NULL_DEVICE, silenceStderr, getShell, escapeShellArg } from './utils/platform.js';
