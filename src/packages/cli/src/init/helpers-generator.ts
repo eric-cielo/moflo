@@ -216,7 +216,7 @@ function readState() {
   try {
     if (fs.existsSync(STATE_FILE)) return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
   } catch (e) { /* reset on corruption */ }
-  return { tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, interactionCount: 0, sessionStart: null, lastBlockedAt: null };
+  return { tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, learningsStored: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null };
 }
 
 function writeState(s) {
@@ -304,6 +304,35 @@ switch (command) {
     }
     break;
   }
+  case 'check-task-transition': {
+    var status = process.env.TOOL_INPUT_status || '';
+    if (status === 'in_progress') {
+      var s = readState();
+      if (s.memorySearched && s.memoryRequired) {
+        s.memorySearched = false;
+        s.learningsStored = false;
+        writeState(s);
+      }
+    }
+    break;
+  }
+  case 'record-learnings-stored': {
+    var s = readState();
+    s.learningsStored = true;
+    writeState(s);
+    break;
+  }
+  case 'check-before-pr': {
+    var cmd = process.env.TOOL_INPUT_command || '';
+    if (/gh\\s+pr\\s+create/.test(cmd)) {
+      var s = readState();
+      if (!s.learningsStored) {
+        process.stderr.write('BLOCKED: Store learnings before creating a PR. Use mcp__moflo__memory_store to record what was learned.\\n');
+        process.exit(2);
+      }
+    }
+    break;
+  }
   case 'check-dangerous-command': {
     var cmd = (process.env.TOOL_INPUT_command || '').toLowerCase();
     for (var i = 0; i < DANGEROUS.length; i++) {
@@ -317,6 +346,7 @@ switch (command) {
   case 'prompt-reminder': {
     var s = readState();
     s.memorySearched = false;
+    s.learningsStored = false;
     var prompt = process.env.CLAUDE_USER_PROMPT || '';
     s.memoryRequired = prompt.length >= 4 && !DIRECTIVE_RE.test(prompt) && (TASK_RE.test(prompt) || prompt.length > 80);
     s.interactionCount = (s.interactionCount || 0) + 1;

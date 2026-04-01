@@ -250,7 +250,10 @@ function generateHooksConfig(config: HooksConfig): object {
       },
       {
         matcher: '^Bash$',
-        hooks: [{ type: 'command', command: gateHookCmd('check-dangerous-command'), timeout: 2000 }],
+        hooks: [
+          { type: 'command', command: gateHookCmd('check-dangerous-command'), timeout: 2000 },
+          { type: 'command', command: gateHookCmd('check-before-pr'), timeout: 2000 },
+        ],
       },
     ];
   }
@@ -280,6 +283,14 @@ function generateHooksConfig(config: HooksConfig): object {
         // Simplified matcher — anchored regex with parens doesn't match MCP tool names reliably
         matcher: 'mcp__moflo__memory_',
         hooks: [{ type: 'command', command: gateCmd('record-memory-searched'), timeout: 3000 }],
+      },
+      {
+        matcher: '^TaskUpdate$',
+        hooks: [{ type: 'command', command: gateCmd('check-task-transition'), timeout: 2000 }],
+      },
+      {
+        matcher: '^mcp__moflo__memory_store$',
+        hooks: [{ type: 'command', command: gateCmd('record-learnings-stored'), timeout: 2000 }],
       },
     ];
   }

@@ -64,6 +64,11 @@
             "type": "command",
             "command": "npx flo gate check-dangerous-command",
             "timeout": 2000
+          },
+          {
+            "type": "command",
+            "command": "npx flo gate check-before-pr",
+            "timeout": 2000
           }
         ]
       }
@@ -115,6 +120,26 @@
           {
             "type": "command",
             "command": "npx flo gate record-memory-searched",
+            "timeout": 2000
+          }
+        ]
+      },
+      {
+        "matcher": "^TaskUpdate$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx flo gate check-task-transition",
+            "timeout": 2000
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__moflo__memory_store$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx flo gate record-learnings-stored",
             "timeout": 2000
           }
         ]
