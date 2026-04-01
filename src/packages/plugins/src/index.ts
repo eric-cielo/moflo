@@ -37,6 +37,9 @@
  * @packageDocumentation
  */
 
+/** Package identifier (trivial constant for epic workflow test). */
+export const MODULE_ID = '@claude-flow/plugins';
+
 // ============================================================================
 // Core Types
 // ============================================================================
