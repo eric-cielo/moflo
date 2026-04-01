@@ -65,6 +65,7 @@ function createConnectorCallingCommand(connectorName: string): StepCommand {
     type: 'connector-call',
     description: 'Calls a connector',
     configSchema: { type: 'object' },
+    capabilities: [{ type: 'net' }],
     validate: () => ({ valid: true, errors: [] }),
     execute: async (_config: unknown, context: WorkflowContext) => {
       const tools = context.tools;
@@ -259,6 +260,7 @@ describe('WorkflowRunner — connector lifecycle', () => {
       type: 'use-and-cancel',
       description: 'Uses connector then cancels',
       configSchema: { type: 'object' },
+      capabilities: [{ type: 'net' }],
       validate: () => ({ valid: true, errors: [] }),
       execute: async (_config: unknown, context: WorkflowContext) => {
         const tools = context.tools;

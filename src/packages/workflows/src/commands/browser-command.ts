@@ -27,7 +27,6 @@ import type {
   Prerequisite,
 } from '../types/step-command.types.js';
 import { validateBrowserUrl } from './browser-url-validator.js';
-import { enforceScope, formatViolations } from '../core/capability-validator.js';
 import {
   loadPlaywright,
   executeBrowserAction,
@@ -50,11 +49,6 @@ export interface BrowserStepConfig extends StepConfig {
 
 type ActionName = (typeof SUPPORTED_ACTIONS)[number];
 
-// ── Evaluate capability check ────────────────────────────────────────────
-
-function hasEvaluateCapability(context: WorkflowContext): boolean {
-  return context.effectiveCaps?.some(c => c.type === 'browser:evaluate') === true;
-}
 
 // ── Prerequisites ────────────────────────────────────────────────────────
 
@@ -154,25 +148,15 @@ export const browserCommand: StepCommand<BrowserStepConfig> = {
 
     // Pre-flight: check all security constraints before loading Playwright.
     // This catches policy violations early without paying browser launch cost.
-    // Prefers the gateway (Issue #258) with inline enforceScope() as fallback.
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
       try {
         if (action.action === 'evaluate') {
-          if (context.gateway) {
-            context.gateway.checkBrowserEvaluate();
-          } else if (!hasEvaluateCapability(context)) {
-            throw new Error("evaluate action requires explicit 'browser:evaluate' capability");
-          }
+          context.gateway.checkBrowserEvaluate();
         }
         if (action.action === 'open' && action.url) {
           validateBrowserUrl(action.url);
-          if (context.gateway) {
-            context.gateway.checkNet(action.url);
-          } else if (context.effectiveCaps) {
-            const violation = enforceScope(context.effectiveCaps, 'net', action.url, context.taskId, 'browser');
-            if (violation) throw new Error(formatViolations([violation]));
-          }
+          context.gateway.checkNet(action.url);
         }
         if (action.action === 'wait' && action.urlPattern) {
           if (!action.urlPattern.startsWith('/') && !action.urlPattern.includes('*')) {

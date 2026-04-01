@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { githubCommand } from '../src/commands/github-command.js';
 import type { GitHubStepConfig } from '../src/commands/github-command.js';
 import type { WorkflowContext, MemoryAccessor, CredentialAccessor } from '../src/types/step-command.types.js';
+import { ALLOW_ALL_GATEWAY } from './helpers.js';
 
 // ============================================================================
 // Mock child_process (exec + execFile for prerequisite-checker)
@@ -58,6 +59,7 @@ function makeContext(overrides?: Partial<WorkflowContext>): WorkflowContext {
     taskId: 'test-task',
     workflowId: 'test-wf',
     stepIndex: 0,
+    gateway: ALLOW_ALL_GATEWAY,
     ...overrides,
   };
 }
