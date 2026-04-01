@@ -1,0 +1,5 @@
+# Compiled output (should only exist in dist/)
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts
+src/**/*.d.ts.map
