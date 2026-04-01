@@ -87,8 +87,9 @@ export async function saveKeyPair(
 ): Promise<{ publicKeyPath: string; privateKeyPath: string }> {
   await mkdir(dir, { recursive: true });
 
-  const pubPath = `${dir}/${name}.pub`;
-  const privPath = `${dir}/${name}.key`;
+  const { join } = await import('path');
+  const pubPath = join(dir, `${name}.pub`);
+  const privPath = join(dir, `${name}.key`);
 
   await writeFile(pubPath, keyPair.publicKey);
   await writeFile(privPath, keyPair.privateKey, { mode: KEY_FILE_MODE });
@@ -109,20 +110,23 @@ export async function loadKeyPair(
   dir: string,
   name = 'rvfa-signing',
 ): Promise<RvfaKeyPair> {
-  const pubPath = `${dir}/${name}.pub`;
-  const privPath = `${dir}/${name}.key`;
+  const { join } = await import('path');
+  const pubPath = join(dir, `${name}.pub`);
+  const privPath = join(dir, `${name}.key`);
 
   const publicKey = await readFile(pubPath);
   const privateKey = await readFile(privPath);
 
-  // Warn if private key permissions are too open
-  const privStat = await stat(privPath);
-  const mode = privStat.mode & 0o777;
-  if (mode & 0o077) {
-    console.warn(
-      `[rvfa-signing] WARNING: Private key ${privPath} has open permissions ` +
-      `(${mode.toString(8)}). Consider running: chmod 600 ${privPath}`,
-    );
+  // Warn if private key permissions are too open (Unix only — Windows does not report Unix permissions)
+  if (process.platform !== 'win32') {
+    const privStat = await stat(privPath);
+    const mode = privStat.mode & 0o777;
+    if (mode & 0o077) {
+      console.warn(
+        `[rvfa-signing] WARNING: Private key ${privPath} has open permissions ` +
+        `(${mode.toString(8)}). Consider running: chmod 600 ${privPath}`,
+      );
+    }
   }
 
   const fingerprint = computeFingerprint(publicKey.toString('utf-8'));

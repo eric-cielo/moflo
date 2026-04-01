@@ -13,6 +13,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs/promises';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -754,11 +755,15 @@ export function resolveAutoMemoryDir(workingDir: string): string {
 
   // Claude Code normalizes to forward slashes then replaces with dashes
   // The leading dash IS preserved (e.g. /workspaces/foo -> -workspaces-foo)
-  const normalized = basePath.split(path.sep).join('/');
+  // On Windows, strip drive letter prefix (C:) for cleaner keys
+  let normalized = basePath.split(path.sep).join('/');
+  if (process.platform === 'win32') {
+    normalized = normalized.replace(/^[A-Za-z]:/, '');
+  }
   const projectKey = normalized.replace(/\//g, '-');
 
   return path.join(
-    process.env.HOME || process.env.USERPROFILE || '~',
+    homedir(),
     '.claude',
     'projects',
     projectKey,

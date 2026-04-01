@@ -220,15 +220,12 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
       fs.writeFileSync(daemonPidPath, String(process.pid));
 
       // Detach from parent process for true daemon behavior
-      if (process.platform !== 'win32') {
-        // Unix-like systems: create new session
-        try {
-          process.stdin.unref?.();
-          process.stdout.unref?.();
-          process.stderr.unref?.();
-        } catch {
-          // Ignore errors if streams can't be unref'd
-        }
+      try {
+        process.stdin.unref?.();
+        process.stdout.unref?.();
+        process.stderr.unref?.();
+      } catch {
+        // Ignore errors if streams can't be unref'd
       }
 
       // Keep process alive in daemon mode

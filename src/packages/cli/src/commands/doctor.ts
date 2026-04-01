@@ -231,7 +231,24 @@ async function checkMcpServers(): Promise<HealthCheck> {
 async function checkDiskSpace(): Promise<HealthCheck> {
   try {
     if (process.platform === 'win32') {
-      return { name: 'Disk Space', status: 'pass', message: 'Check skipped on Windows' };
+      try {
+        const wmicOutput = await runCommand('wmic logicaldisk where "DeviceID=\'C:\'" get FreeSpace,Size /format:csv');
+        const lines = wmicOutput.split(/\r?\n/).filter(l => l.trim());
+        const dataLine = lines[lines.length - 1];
+        const fields = dataLine.split(',');
+        const freeBytes = parseInt(fields[1] || '0', 10);
+        const totalBytes = parseInt(fields[2] || '1', 10);
+        const freeGB = (freeBytes / (1024 ** 3)).toFixed(1);
+        const usePercent = Math.round(((totalBytes - freeBytes) / totalBytes) * 100);
+        if (usePercent > 90) {
+          return { name: 'Disk Space', status: 'fail', message: `${freeGB}G available (${usePercent}% used)`, fix: 'Free up disk space' };
+        } else if (usePercent > 80) {
+          return { name: 'Disk Space', status: 'warn', message: `${freeGB}G available (${usePercent}% used)` };
+        }
+        return { name: 'Disk Space', status: 'pass', message: `${freeGB}G available` };
+      } catch {
+        return { name: 'Disk Space', status: 'pass', message: 'Check skipped (wmic unavailable)' };
+      }
     }
     // Use df -Ph for POSIX mode (guarantees single-line output even with long device names)
     const output_str = await runCommand('df -Ph . | tail -1');

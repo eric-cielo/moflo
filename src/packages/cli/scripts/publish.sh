@@ -31,7 +31,7 @@ cp -r dist bin src package.json README.md "$TEMP_DIR/"
 
 # Change package name to unscoped
 cd "$TEMP_DIR"
-sed -i 's/"name": "@claude-flow\/cli"/"name": "claude-flow"/' package.json
+sed -i.bak 's/"name": "@claude-flow\/cli"/"name": "claude-flow"/' package.json && rm -f package.json.bak
 
 # Publish with v3alpha tag
 npm publish --tag v3alpha
