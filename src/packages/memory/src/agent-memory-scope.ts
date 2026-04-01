@@ -252,7 +252,7 @@ export async function transferKnowledge(
     const insight: MemoryInsight = {
       category: entryCategory || 'project-patterns',
       summary:
-        (entry.metadata?.summary as string) || entry.content.split('\n')[0],
+        (entry.metadata?.summary as string) || entry.content.split(/\r?\n/)[0],
       detail: entry.content,
       source: `transfer:${sourceNamespace}`,
       confidence,

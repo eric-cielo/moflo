@@ -463,7 +463,7 @@ export function optimizeForSize(
   }
 
   // ── Step 7: Trim to max lines if over budget ──────────────────────────
-  const lines = current.split('\n');
+  const lines = current.split(/\r?\n/);
   if (lines.length > budget.maxLines) {
     const beforeTrim = current;
     current = trimToLineCount(current, budget.maxLines);
@@ -798,7 +798,7 @@ export function formatBenchmark(result: BenchmarkResult): string {
 // ============================================================================
 
 function extractMetrics(content: string): AnalysisMetrics {
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   const totalLines = lines.length;
   const contentLines = lines.filter(l => l.trim().length > 0).length;
 
@@ -1037,7 +1037,7 @@ function scoreClarity(metrics: AnalysisMetrics, content: string): DimensionScore
   else { findings.push('Consider using tables for structured data'); }
 
   // Average line length is reasonable (20 pts)
-  const lines = content.split('\n').filter(l => l.trim().length > 0);
+  const lines = content.split(/\r?\n/).filter(l => l.trim().length > 0);
   const avgLen = lines.reduce((s, l) => s + l.length, 0) / (lines.length || 1);
   if (avgLen >= 20 && avgLen <= 100) { score += 20; }
   else if (avgLen > 100) { score += 10; findings.push('Lines are very long — break into shorter statements'); }
@@ -1218,7 +1218,7 @@ function generateSuggestions(
  *   "- NEVER rely on MCP alone — always use Task tool for execution"
  */
 function extractRulesFromProse(content: string): string {
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   const result: string[] = [];
   const extractedRules: string[] = [];
 
@@ -1268,7 +1268,7 @@ function extractRulesFromProse(content: string): string {
  * Split sections that exceed the line budget into subsections.
  */
 function splitOversizedSections(content: string, maxSectionLines: number): string {
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   const result: string[] = [];
 
   let currentSection: string[] = [];
@@ -1328,7 +1328,7 @@ function splitOversizedSections(content: string, maxSectionLines: number): strin
  * Moves trimmed content to a new section.
  */
 function trimConstitution(content: string, maxConstitutionLines: number): string {
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   let h2Count = 0;
   let secondH2Index = -1;
 
@@ -1375,7 +1375,7 @@ function trimConstitution(content: string, maxConstitutionLines: number): string
 function trimCodeBlocks(content: string, maxBlocks: number): string {
   let blockCount = 0;
   let insideBlock = false;
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   const result: string[] = [];
   let skipBlock = false;
 
@@ -1408,7 +1408,7 @@ function trimCodeBlocks(content: string, maxBlocks: number): string {
  * Remove duplicate rule statements.
  */
 function removeDuplicateRules(content: string): string {
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   const seen = new Set<string>();
   const result: string[] = [];
 
@@ -1430,7 +1430,7 @@ function removeDuplicateRules(content: string): string {
  * Removes the longest non-essential sections first.
  */
 function trimToLineCount(content: string, maxLines: number): string {
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   if (lines.length <= maxLines) return content;
 
   // Parse into sections

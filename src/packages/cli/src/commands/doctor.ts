@@ -768,7 +768,7 @@ async function checkSemanticQuality(): Promise<HealthCheck> {
     return {
       name: 'Semantic Quality',
       status: 'warn',
-      message: `Check failed: ${e instanceof Error ? e.message.split('\n')[0] : 'error'}`,
+      message: `Check failed: ${e instanceof Error ? e.message.split(/\r?\n/)[0] : 'error'}`,
     };
   }
 }
@@ -955,7 +955,7 @@ async function checkIntelligence(): Promise<HealthCheck> {
     return {
       name: 'Intelligence',
       status: 'warn',
-      message: `Module unavailable: ${e instanceof Error ? e.message.split('\n')[0] : 'import failed'}`,
+      message: `Module unavailable: ${e instanceof Error ? e.message.split(/\r?\n/)[0] : 'import failed'}`,
       fix: 'Ensure @claude-flow/neural is built (npm run build)',
     };
   }
@@ -1025,7 +1025,7 @@ async function findZombieProcesses(kill = false): Promise<{ found: number; kille
         'powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name=\'node.exe\'\\" | Select-Object ProcessId,ParentProcessId,CommandLine | Format-Table -AutoSize -Wrap"',
         { encoding: 'utf-8', timeout: 10000, windowsHide: true },
       );
-      const lines = result.split('\n');
+      const lines = result.split(/\r?\n/);
       for (const line of lines) {
         if (/moflo|claude-flow|flo\s+(hooks|gate|mcp|daemon)/i.test(line)) {
           // Format-Table columns: ProcessId  ParentProcessId  CommandLine...
@@ -1041,7 +1041,7 @@ async function findZombieProcesses(kill = false): Promise<{ found: number; kille
         'ps -eo pid,ppid,command | grep -E "node.*(moflo|claude-flow)" | grep -v grep',
         { encoding: 'utf-8', timeout: 5000 },
       );
-      const lines = result.trim().split('\n');
+      const lines = result.trim().split(/\r?\n/);
       for (const line of lines) {
         const match = line.trim().match(/^(\d+)\s+(\d+)/);
         if (match) {

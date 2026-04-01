@@ -270,7 +270,7 @@ export class SecurityRegressionChecker {
 
     try {
       const content = await readFile(filePath, 'utf-8');
-      const lines = content.split('\n');
+      const lines = content.split(/\r?\n/);
 
       for (const pattern of SECURITY_PATTERNS) {
         // Skip weak-random checks in test files

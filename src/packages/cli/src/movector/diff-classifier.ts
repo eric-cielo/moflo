@@ -153,7 +153,7 @@ export class DiffClassifier {
 
   private parseChanges(content: string, startLine: number): DiffChange[] {
     const changes: DiffChange[] = [];
-    const lines = content.split('\n');
+    const lines = content.split(/\r?\n/);
     let lineNumber = startLine;
     for (const line of lines) {
       if (line.startsWith('+')) { changes.push({ type: 'add', lineNumber, content: line.substring(1) }); lineNumber++; }
@@ -411,7 +411,7 @@ export function getGitDiffNumstat(ref: string = 'HEAD'): DiffFile[] {
     // Parse status (usually smaller, parse first)
     const statusMap = new Map<string, string>();
     if (statusPart) {
-      for (const line of statusPart.trim().split('\n')) {
+      for (const line of statusPart.trim().split(/\r?\n/)) {
         if (!line) continue;
         const [status, ...pathParts] = line.split('\t');
         const path = pathParts[pathParts.length - 1] || pathParts[0];
@@ -422,7 +422,7 @@ export function getGitDiffNumstat(ref: string = 'HEAD'): DiffFile[] {
     // Parse numstat
     const files: DiffFile[] = [];
     if (numstatPart) {
-      for (const line of numstatPart.trim().split('\n')) {
+      for (const line of numstatPart.trim().split(/\r?\n/)) {
         if (!line) continue;
         const [addStr, delStr, path] = line.split('\t');
         if (!path) continue;
@@ -487,7 +487,7 @@ export async function getGitDiffNumstatAsync(ref: string = 'HEAD'): Promise<Diff
 
     const statusMap = new Map<string, string>();
     if (statusPart) {
-      for (const line of statusPart.trim().split('\n')) {
+      for (const line of statusPart.trim().split(/\r?\n/)) {
         if (!line) continue;
         const [status, ...pathParts] = line.split('\t');
         const path = pathParts[pathParts.length - 1] || pathParts[0];
@@ -497,7 +497,7 @@ export async function getGitDiffNumstatAsync(ref: string = 'HEAD'): Promise<Diff
 
     const files: DiffFile[] = [];
     if (numstatPart) {
-      for (const line of numstatPart.trim().split('\n')) {
+      for (const line of numstatPart.trim().split(/\r?\n/)) {
         if (!line) continue;
         const [addStr, delStr, path] = line.split('\t');
         if (!path) continue;

@@ -147,7 +147,7 @@ export class ASTAnalyzer {
   }
 
   private parseAST(code: string, language: string): ASTNode {
-    const lines = code.split('\n');
+    const lines = code.split(/\r?\n/);
     const root: ASTNode = { type: 'program', name: 'root', startLine: 1, endLine: lines.length, children: [] };
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -247,7 +247,7 @@ export class ASTAnalyzer {
 
   private extractImports(code: string, language: string): string[] {
     const imports: string[] = [];
-    const lines = code.split('\n');
+    const lines = code.split(/\r?\n/);
     const patterns: Record<string, RegExp> = {
       typescript: /import\s+(?:.*\s+from\s+)?['"]([^'"]+)['"]/,
       javascript: /(?:import\s+.*from\s+|require\s*\(\s*)['"]([^'"]+)['"]/,
@@ -266,7 +266,7 @@ export class ASTAnalyzer {
 
   private extractExports(code: string, language: string): string[] {
     const exports: string[] = [];
-    const lines = code.split('\n');
+    const lines = code.split(/\r?\n/);
     for (const line of lines) {
       const exportMatch = line.match(/export\s+(?:default\s+)?(?:const|let|var|function|class|interface|type|enum)\s+(\w+)/);
       if (exportMatch) exports.push(exportMatch[1]);
@@ -280,7 +280,7 @@ export class ASTAnalyzer {
   }
 
   private calculateComplexity(code: string, root: ASTNode): ASTAnalysis['complexity'] {
-    const lines = code.split('\n');
+    const lines = code.split(/\r?\n/);
     const nonEmptyLines = lines.filter(l => l.trim().length > 0);
     const commentLines = lines.filter(l => /^\s*(\/\/|\/\*|\*|#)/.test(l));
     const decisionPoints = (code.match(/\b(if|else|for|while|switch|case|catch|&&|\|\||\?)\b/g) || []).length;

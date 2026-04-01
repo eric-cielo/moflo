@@ -130,7 +130,7 @@ export class GuidanceCompiler {
    */
   parseGuidanceFile(content: string, source: 'root' | 'local'): GuidanceRule[] {
     const rules: GuidanceRule[] = [];
-    const lines = content.split('\n');
+    const lines = content.split(/\r?\n/);
 
     let currentSection = '';
     let currentBlock: string[] = [];
@@ -187,7 +187,7 @@ export class GuidanceCompiler {
     section: string
   ): GuidanceRule[] {
     const rules: GuidanceRule[] = [];
-    const lines = block.split('\n');
+    const lines = block.split(/\r?\n/);
 
     // Try to extract explicit rules (with IDs)
     let ruleBuffer: string[] = [];
@@ -233,7 +233,7 @@ export class GuidanceCompiler {
     section: string
   ): GuidanceRule[] {
     const rules: GuidanceRule[] = [];
-    const lines = block.split('\n');
+    const lines = block.split(/\r?\n/);
 
     for (const line of lines) {
       const trimmed = line.trim();

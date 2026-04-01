@@ -1285,7 +1285,7 @@ Analyze the above codebase context and provide your response following the forma
     }
 
     // Parse sections
-    const lines = output.split('\n');
+    const lines = output.split(/\r?\n/);
     let currentSection: { title: string; content: string; level: number } | null = null;
 
     for (const line of lines) {

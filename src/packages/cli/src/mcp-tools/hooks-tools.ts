@@ -1350,7 +1350,7 @@ function extractPatterns(files: string[]): ExtractedPattern[] {
     } catch {
       continue;
     }
-    const lines = content.split('\n');
+    const lines = content.split(/\r?\n/);
 
     for (const line of lines) {
       const trimmed = line.trim();

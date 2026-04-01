@@ -460,7 +460,7 @@ export class EnhancedModelRouter {
   private async analyzeASTComplexity(filePath: string): Promise<number> {
     try {
       const content = readFileSync(filePath, 'utf-8');
-      const lines = content.split('\n');
+      const lines = content.split(/\r?\n/);
 
       // Simple heuristics for complexity
       let complexity = 0;

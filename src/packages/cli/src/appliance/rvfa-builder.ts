@@ -350,7 +350,7 @@ function jsonBuf(obj: unknown): Buffer {
 
 function parseEnvFile(content: string): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const line of content.split('\n')) {
+  for (const line of content.split(/\r?\n/)) {
     const t = line.trim();
     if (!t || t.startsWith('#')) continue;
     const eq = t.indexOf('=');

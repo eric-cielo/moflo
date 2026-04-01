@@ -106,7 +106,7 @@ const scanCommand: Command = {
               } else if (entry.isFile() && /\.(ts|js|json|env|yml|yaml)$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
                 try {
                   const content = fs.readFileSync(fullPath, 'utf-8');
-                  const lines = content.split('\n');
+                  const lines = content.split(/\r?\n/);
                   for (let i = 0; i < lines.length; i++) {
                     for (const { pattern, type } of secretPatterns) {
                       if (pattern.test(lines[i])) {
@@ -154,7 +154,7 @@ const scanCommand: Command = {
               } else if (entry.isFile() && /\.(ts|js|tsx|jsx)$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
                 try {
                   const content = fs.readFileSync(fullPath, 'utf-8');
-                  const lines = content.split('\n');
+                  const lines = content.split(/\r?\n/);
                   for (let i = 0; i < lines.length; i++) {
                     for (const { pattern, type, severity, desc } of codePatterns) {
                       if (pattern.test(lines[i])) {

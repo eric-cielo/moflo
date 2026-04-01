@@ -560,7 +560,7 @@ export class StatuslineGenerator {
               if (item.isDirectory()) {
                 total += countLines(fullPath);
               } else if (item.name.endsWith('.ts')) {
-                total += readFileSync(fullPath, 'utf-8').split('\n').length;
+                total += readFileSync(fullPath, 'utf-8').split(/\r?\n/).length;
               }
             }
             return total;

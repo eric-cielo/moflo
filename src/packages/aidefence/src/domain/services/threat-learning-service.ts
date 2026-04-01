@@ -393,7 +393,7 @@ export class ThreatLearningService {
     if (/\[.*\]/.test(input)) patterns.push('bracket_notation');
     if (/<.*>/.test(input)) patterns.push('xml_like');
     if (input.length > 500) patterns.push('long_input');
-    if (input.split('\n').length > 5) patterns.push('multiline');
+    if (input.split(/\r?\n/).length > 5) patterns.push('multiline');
 
     return patterns;
   }

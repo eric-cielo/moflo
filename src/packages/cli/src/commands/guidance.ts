@@ -166,11 +166,11 @@ const retrieveCommand: Command = {
 
         output.writeln();
         output.writeln(output.dim('Policy text preview:'));
-        const lines = result.policyText.split('\n').slice(0, 15);
+        const lines = result.policyText.split(/\r?\n/).slice(0, 15);
         for (const line of lines) {
           output.writeln(`  ${line}`);
         }
-        if (result.policyText.split('\n').length > 15) {
+        if (result.policyText.split(/\r?\n/).length > 15) {
           output.writeln(output.dim('  ...'));
         }
       }
