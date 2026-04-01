@@ -148,7 +148,7 @@ export async function checkSubagentHealth(): Promise<HealthCheck> {
       metadata: { purpose: 'doctor-health-check' },
     }, {});
 
-    if (!spawnResult?.agentId || spawnResult.status !== 'active') {
+    if (!spawnResult?.agentId || !['active', 'spawned'].includes(spawnResult.status)) {
       return { name: 'Subagent Health', status: 'fail', message: `Spawn returned unexpected result: ${JSON.stringify(spawnResult)}` };
     }
 

@@ -232,12 +232,11 @@ async function checkDiskSpace(): Promise<HealthCheck> {
   try {
     if (process.platform === 'win32') {
       try {
-        const wmicOutput = await runCommand('wmic logicaldisk where "DeviceID=\'C:\'" get FreeSpace,Size /format:csv');
-        const lines = wmicOutput.split(/\r?\n/).filter(l => l.trim());
-        const dataLine = lines[lines.length - 1];
-        const fields = dataLine.split(',');
-        const freeBytes = parseInt(fields[1] || '0', 10);
-        const totalBytes = parseInt(fields[2] || '1', 10);
+        const psOutput = await runCommand('powershell -NoProfile -Command "Get-PSDrive C | Select-Object -ExpandProperty Free; Get-PSDrive C | Select-Object -ExpandProperty Used"');
+        const vals = psOutput.split(/\r?\n/).filter(l => l.trim());
+        const freeBytes = parseInt(vals[0] || '0', 10);
+        const usedBytes = parseInt(vals[1] || '0', 10);
+        const totalBytes = freeBytes + usedBytes || 1;
         const freeGB = (freeBytes / (1024 ** 3)).toFixed(1);
         const usePercent = Math.round(((totalBytes - freeBytes) / totalBytes) * 100);
         if (usePercent > 90) {
@@ -247,7 +246,7 @@ async function checkDiskSpace(): Promise<HealthCheck> {
         }
         return { name: 'Disk Space', status: 'pass', message: `${freeGB}G available` };
       } catch {
-        return { name: 'Disk Space', status: 'pass', message: 'Check skipped (wmic unavailable)' };
+        return { name: 'Disk Space', status: 'pass', message: 'Check skipped (PowerShell unavailable)' };
       }
     }
     // Use df -Ph for POSIX mode (guarantees single-line output even with long device names)

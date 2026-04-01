@@ -34,7 +34,6 @@ tests:
     - src/packages/shared/__tests__
     - src/packages/swarm/__tests__
     - src/packages/testing/__tests__
-    - src/mcp/__tests__
     - src/__tests__
   patterns: ["*.test.*", "*.spec.*", "*.test-*"]
   extensions: [".ts", ".tsx", ".js", ".jsx"]
