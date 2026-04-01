@@ -24,7 +24,7 @@ function isInitialized(cwd: string): boolean {
 // Simple YAML parser for config (basic implementation)
 function parseSimpleYaml(content: string): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   const stack: Array<{ indent: number; obj: Record<string, unknown>; key?: string }> = [
     { indent: -1, obj: result }
   ];
@@ -220,15 +220,12 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
       fs.writeFileSync(daemonPidPath, String(process.pid));
 
       // Detach from parent process for true daemon behavior
-      if (process.platform !== 'win32') {
-        // Unix-like systems: create new session
-        try {
-          process.stdin.unref?.();
-          process.stdout.unref?.();
-          process.stderr.unref?.();
-        } catch {
-          // Ignore errors if streams can't be unref'd
-        }
+      try {
+        process.stdin.unref?.();
+        process.stdout.unref?.();
+        process.stderr.unref?.();
+      } catch {
+        // Ignore errors if streams can't be unref'd
       }
 
       // Keep process alive in daemon mode

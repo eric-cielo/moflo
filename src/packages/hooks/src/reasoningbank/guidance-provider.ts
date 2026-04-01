@@ -242,7 +242,7 @@ export class GuidanceProvider {
       }
 
       // Check file size
-      const lines = fileContent.split('\n').length;
+      const lines = fileContent.split(/\r?\n/).length;
       if (lines > 500) {
         issues.push(`File exceeds 500 lines (${lines}). Consider splitting.`);
       }

@@ -125,17 +125,20 @@ function getGitInfo() {
   };
 
   // Single shell: get user.name, branch, porcelain status, and upstream diff
+  var nd = process.platform === 'win32' ? 'NUL' : '/dev/null';
   const script = [
-    'git config user.name 2>/dev/null || echo user',
+    'git config user.name 2>' + nd + ' || echo user',
     'echo "---SEP---"',
-    'git branch --show-current 2>/dev/null',
+    'git branch --show-current 2>' + nd,
     'echo "---SEP---"',
-    'git status --porcelain 2>/dev/null',
+    'git status --porcelain 2>' + nd,
     'echo "---SEP---"',
-    'git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null || echo "0 0"',
+    'git rev-list --left-right --count HEAD...@{upstream} 2>' + nd + ' || echo "0 0"',
   ].join('; ');
 
-  const raw = safeExec("sh -c '" + script + "'", 3000);
+  var shellCmd = process.platform === 'win32' ? 'cmd.exe /c' : "sh -c";
+  var shellQuote = process.platform === 'win32' ? '"' : "'";
+  const raw = safeExec(shellCmd + ' ' + shellQuote + script + shellQuote, 3000);
   if (!raw) return result;
 
   const parts = raw.split('---SEP---').map(s => s.trim());

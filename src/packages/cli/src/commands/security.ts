@@ -50,7 +50,8 @@ const scanCommand: Command = {
         try {
           const packageJsonPath = path.resolve(target, 'package.json');
           if (fs.existsSync(packageJsonPath)) {
-            const auditResult = execSync('npm audit --json 2>/dev/null || true', {
+            const nd = process.platform === 'win32' ? 'NUL' : '/dev/null';
+            const auditResult = execSync(`npm audit --json 2>${nd} || true`, {
               cwd: path.resolve(target),
               encoding: 'utf-8',
               maxBuffer: 10 * 1024 * 1024,
@@ -106,7 +107,7 @@ const scanCommand: Command = {
               } else if (entry.isFile() && /\.(ts|js|json|env|yml|yaml)$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
                 try {
                   const content = fs.readFileSync(fullPath, 'utf-8');
-                  const lines = content.split('\n');
+                  const lines = content.split(/\r?\n/);
                   for (let i = 0; i < lines.length; i++) {
                     for (const { pattern, type } of secretPatterns) {
                       if (pattern.test(lines[i])) {
@@ -154,7 +155,7 @@ const scanCommand: Command = {
               } else if (entry.isFile() && /\.(ts|js|tsx|jsx)$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
                 try {
                   const content = fs.readFileSync(fullPath, 'utf-8');
-                  const lines = content.split('\n');
+                  const lines = content.split(/\r?\n/);
                   for (let i = 0; i < lines.length; i++) {
                     for (const { pattern, type, severity, desc } of codePatterns) {
                       if (pattern.test(lines[i])) {
@@ -218,7 +219,8 @@ const scanCommand: Command = {
         const fixSpinner = output.createSpinner({ text: 'Attempting to fix vulnerabilities...', spinner: 'dots' });
         fixSpinner.start();
         try {
-          execSync('npm audit fix 2>/dev/null || true', { cwd: path.resolve(target), encoding: 'utf-8', windowsHide: true });
+          const nd2 = process.platform === 'win32' ? 'NUL' : '/dev/null';
+          execSync(`npm audit fix 2>${nd2} || true`, { cwd: path.resolve(target), encoding: 'utf-8', windowsHide: true });
           fixSpinner.succeed('Applied available fixes (run scan again to verify)');
         } catch {
           fixSpinner.fail('Some fixes could not be applied automatically');

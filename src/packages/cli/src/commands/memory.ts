@@ -1589,7 +1589,7 @@ interface MarkdownChunk {
 }
 
 function chunkMarkdown(content: string, fileName: string): MarkdownChunk[] {
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   const chunks: MarkdownChunk[] = [];
   let currentChunk: { title: string; content: string[]; level: number; headerLine: number } = {
     title: fileName, content: [], level: 0, headerLine: 0
@@ -1691,7 +1691,7 @@ function chunkMarkdown(content: string, fileName: string): MarkdownChunk[] {
         const headerSplit = raw.split(/\n(?=## )/);
         for (const hSect of headerSplit) {
           if (hSect.length > TARGET_CHUNK_SIZE) {
-            const sLines = hSect.split('\n');
+            const sLines = hSect.split(/\r?\n/);
             let chunk = '';
             for (const line of sLines) {
               if (chunk.length + line.length > TARGET_CHUNK_SIZE && chunk.length > 100) {
@@ -1718,7 +1718,7 @@ function chunkMarkdown(content: string, fileName: string): MarkdownChunk[] {
 
     const flushGroup = () => {
       if (currentGroup.length === 0) return;
-      const firstLine = currentGroup[0].split('\n')[0].trim();
+      const firstLine = currentGroup[0].split(/\r?\n/)[0].trim();
       const title = firstLine.startsWith('#')
         ? firstLine.replace(/^#+\s*/, '').slice(0, 60)
         : `${fileName} Section ${groupNum}`;
@@ -2319,7 +2319,7 @@ function extractTypesFromFile(filePath: string, projectRoot: string): ExtractedT
     return [];
   }
 
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   const types: ExtractedType[] = [];
   const seen = new Set<string>();
   let isEntityNext = false;
@@ -2439,7 +2439,7 @@ const codeMapCommand: Command = {
       return { success: false, exitCode: 1 };
     }
 
-    const files = raw ? raw.split('\n').filter((f: string) => {
+    const files = raw ? raw.split(/\r?\n/).filter((f: string) => {
       for (const ex of EXCLUDE_DIRS) {
         if (f.startsWith(ex + '/') || f.startsWith(ex + '\\')) return false;
       }

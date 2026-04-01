@@ -381,7 +381,7 @@ const settingsCommand: Command = {
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           for (const label of batch.labels) {
-            output.writeln(`  ${output.warning('⚠')} ${label} — ${msg.split('\n')[0]}`);
+            output.writeln(`  ${output.warning('⚠')} ${label} — ${msg.split(/\r?\n/)[0]}`);
           }
           errors.push(...batch.labels);
         }
@@ -444,7 +444,7 @@ const settingsCommand: Command = {
           } else if (msg.includes('403')) {
             output.writeln(`  ${output.warning('⚠')} Insufficient permissions — need admin access to set branch protection`);
           } else {
-            output.writeln(`  ${output.error('✗')} Failed to set branch protection: ${msg.split('\n')[0]}`);
+            output.writeln(`  ${output.error('✗')} Failed to set branch protection: ${msg.split(/\r?\n/)[0]}`);
           }
           errors.push('Branch protection');
         }

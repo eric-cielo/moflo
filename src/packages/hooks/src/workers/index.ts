@@ -1185,7 +1185,7 @@ export function createGitWorker(projectRoot: string): WorkerHandler {
         execAsync('git log -1 --format=%H', { cwd: projectRoot }),
       ]);
 
-      const changes = status.stdout.trim().split('\n').filter(Boolean);
+      const changes = status.stdout.trim().split(/\r?\n/).filter(Boolean);
 
       gitData = {
         available: true,
@@ -1697,7 +1697,7 @@ async function countLines(dir: string, ext: string): Promise<number> {
         total += await countLines(fullPath, ext);
       } else if (entry.isFile() && entry.name.endsWith(ext)) {
         const content = await fs.readFile(fullPath, 'utf-8');
-        total += content.split('\n').length;
+        total += content.split(/\r?\n/).length;
       }
     }
   } catch {

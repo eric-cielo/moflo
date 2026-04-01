@@ -434,7 +434,7 @@ export class OutputFormatter {
   // ============================================
 
   box(content: string, title?: string): string {
-    const lines = content.split('\n');
+    const lines = content.split(/\r?\n/);
     const maxLen = Math.max(...lines.map(l => this.stripAnsi(l).length), title?.length ?? 0);
     const width = maxLen + 4;
 

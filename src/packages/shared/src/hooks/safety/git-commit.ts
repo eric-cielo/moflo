@@ -336,7 +336,7 @@ export class GitCommitHook {
 
       // Only add if not already present
       for (const addition of additions) {
-        const searchStr = addition.trim().split('\n')[0];
+        const searchStr = addition.trim().split(/\r?\n/)[0];
         if (!modifiedMessage.includes(searchStr)) {
           modifiedMessage += addition;
         }
@@ -494,7 +494,7 @@ export class GitCommitHook {
    */
   private validateConventional(message: string): CommitValidationIssue[] {
     const issues: CommitValidationIssue[] = [];
-    const lines = message.split('\n');
+    const lines = message.split(/\r?\n/);
     const subject = lines[0] || '';
 
     // Check for conventional prefix

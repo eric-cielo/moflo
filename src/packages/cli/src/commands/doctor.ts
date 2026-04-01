@@ -12,6 +12,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync, exec } from 'child_process';
 import { promisify } from 'util';
+import os from 'os';
 import { getDaemonLockHolder, releaseDaemonLock, isDaemonProcess } from '../services/daemon-lock.js';
 import {
   checkSubagentHealth,
@@ -200,8 +201,8 @@ async function checkGitRepo(): Promise<HealthCheck> {
 // Check MCP servers
 async function checkMcpServers(): Promise<HealthCheck> {
   const mcpConfigPaths = [
-    join(process.env.HOME || '', '.claude/claude_desktop_config.json'),
-    join(process.env.HOME || '', '.config/claude/mcp.json'),
+    join(os.homedir(), '.claude/claude_desktop_config.json'),
+    join(os.homedir(), '.config/claude/mcp.json'),
     '.mcp.json'
   ];
 
@@ -230,7 +231,23 @@ async function checkMcpServers(): Promise<HealthCheck> {
 async function checkDiskSpace(): Promise<HealthCheck> {
   try {
     if (process.platform === 'win32') {
-      return { name: 'Disk Space', status: 'pass', message: 'Check skipped on Windows' };
+      try {
+        const psOutput = await runCommand('powershell -NoProfile -Command "Get-PSDrive C | Select-Object -ExpandProperty Free; Get-PSDrive C | Select-Object -ExpandProperty Used"');
+        const vals = psOutput.split(/\r?\n/).filter(l => l.trim());
+        const freeBytes = parseInt(vals[0] || '0', 10);
+        const usedBytes = parseInt(vals[1] || '0', 10);
+        const totalBytes = freeBytes + usedBytes || 1;
+        const freeGB = (freeBytes / (1024 ** 3)).toFixed(1);
+        const usePercent = Math.round(((totalBytes - freeBytes) / totalBytes) * 100);
+        if (usePercent > 90) {
+          return { name: 'Disk Space', status: 'fail', message: `${freeGB}G available (${usePercent}% used)`, fix: 'Free up disk space' };
+        } else if (usePercent > 80) {
+          return { name: 'Disk Space', status: 'warn', message: `${freeGB}G available (${usePercent}% used)` };
+        }
+        return { name: 'Disk Space', status: 'pass', message: `${freeGB}G available` };
+      } catch {
+        return { name: 'Disk Space', status: 'pass', message: 'Check skipped (PowerShell unavailable)' };
+      }
     }
     // Use df -Ph for POSIX mode (guarantees single-line output even with long device names)
     const output_str = await runCommand('df -Ph . | tail -1');
@@ -768,7 +785,7 @@ async function checkSemanticQuality(): Promise<HealthCheck> {
     return {
       name: 'Semantic Quality',
       status: 'warn',
-      message: `Check failed: ${e instanceof Error ? e.message.split('\n')[0] : 'error'}`,
+      message: `Check failed: ${e instanceof Error ? e.message.split(/\r?\n/)[0] : 'error'}`,
     };
   }
 }
@@ -955,7 +972,7 @@ async function checkIntelligence(): Promise<HealthCheck> {
     return {
       name: 'Intelligence',
       status: 'warn',
-      message: `Module unavailable: ${e instanceof Error ? e.message.split('\n')[0] : 'import failed'}`,
+      message: `Module unavailable: ${e instanceof Error ? e.message.split(/\r?\n/)[0] : 'import failed'}`,
       fix: 'Ensure @claude-flow/neural is built (npm run build)',
     };
   }
@@ -1025,7 +1042,7 @@ async function findZombieProcesses(kill = false): Promise<{ found: number; kille
         'powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name=\'node.exe\'\\" | Select-Object ProcessId,ParentProcessId,CommandLine | Format-Table -AutoSize -Wrap"',
         { encoding: 'utf-8', timeout: 10000, windowsHide: true },
       );
-      const lines = result.split('\n');
+      const lines = result.split(/\r?\n/);
       for (const line of lines) {
         if (/moflo|claude-flow|flo\s+(hooks|gate|mcp|daemon)/i.test(line)) {
           // Format-Table columns: ProcessId  ParentProcessId  CommandLine...
@@ -1041,7 +1058,7 @@ async function findZombieProcesses(kill = false): Promise<{ found: number; kille
         'ps -eo pid,ppid,command | grep -E "node.*(moflo|claude-flow)" | grep -v grep',
         { encoding: 'utf-8', timeout: 5000 },
       );
-      const lines = result.trim().split('\n');
+      const lines = result.trim().split(/\r?\n/);
       for (const line of lines) {
         const match = line.trim().match(/^(\d+)\s+(\d+)/);
         if (match) {

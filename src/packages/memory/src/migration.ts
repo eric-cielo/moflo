@@ -575,7 +575,7 @@ export class MemoryMigrator extends EventEmitter {
       try {
         // Simple YAML-like parsing
         const frontmatter = frontmatterMatch[1];
-        for (const line of frontmatter.split('\n')) {
+        for (const line of frontmatter.split(/\r?\n/)) {
           const colonIndex = line.indexOf(':');
           if (colonIndex > 0) {
             const key = line.substring(0, colonIndex).trim();

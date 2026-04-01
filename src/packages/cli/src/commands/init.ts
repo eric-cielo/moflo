@@ -192,7 +192,8 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
       if (startAll) {
         try {
           output.writeln(output.dim('  Initializing memory database...'));
-          execSync('npx moflo memory init 2>/dev/null', {
+          const nd = process.platform === 'win32' ? 'NUL' : '/dev/null';
+          execSync(`npx moflo memory init 2>${nd}`, {
             stdio: 'pipe',
             cwd: ctx.cwd,
             timeout: 30000,
@@ -208,12 +209,17 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
       if (startDaemon) {
         try {
           output.writeln(output.dim('  Starting daemon...'));
-          execSync('npx moflo daemon start 2>/dev/null &', {
-            stdio: 'pipe',
-            cwd: ctx.cwd,
-            timeout: 10000,
-            windowsHide: true
-          });
+          if (process.platform === 'win32') {
+            const { spawn } = await import('child_process');
+            spawn('npx', ['moflo', 'daemon', 'start'], { detached: true, stdio: 'ignore', cwd: ctx.cwd, windowsHide: true }).unref();
+          } else {
+            execSync('npx moflo daemon start 2>/dev/null &', {
+              stdio: 'pipe',
+              cwd: ctx.cwd,
+              timeout: 10000,
+              windowsHide: true
+            });
+          }
           output.writeln(output.success('  ✓ Daemon started'));
         } catch {
           output.writeln(output.warning('  Daemon may already be running'));
@@ -224,7 +230,8 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
       if (startAll) {
         try {
           output.writeln(output.dim('  Initializing swarm...'));
-          execSync('npx moflo swarm init --topology hierarchical 2>/dev/null', {
+          const nd2 = process.platform === 'win32' ? 'NUL' : '/dev/null';
+          execSync(`npx moflo swarm init --topology hierarchical 2>${nd2}`, {
             stdio: 'pipe',
             cwd: ctx.cwd,
             timeout: 30000,
@@ -239,7 +246,8 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
       // Run guidance + code-map indexing so memory is populated immediately
       try {
         output.writeln(output.dim('  Indexing guidance & code map...'));
-        execSync('flo-index 2>/dev/null', {
+        const nd4 = process.platform === 'win32' ? 'NUL' : '/dev/null';
+        execSync(`flo-index 2>${nd4}`, {
           stdio: 'pipe',
           cwd: ctx.cwd,
           timeout: 60000,
@@ -253,7 +261,8 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
       // Generate embeddings for indexed entries
       try {
         output.writeln(output.dim('  Building embeddings...'));
-        execSync('flo-embeddings 2>/dev/null', {
+        const nd5 = process.platform === 'win32' ? 'NUL' : '/dev/null';
+        execSync(`flo-embeddings 2>${nd5}`, {
           stdio: 'pipe',
           cwd: ctx.cwd,
           timeout: 120000,
@@ -281,7 +290,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
       try {
         output.writeln(output.dim(`  Model: ${embeddingModel}`));
         output.writeln(output.dim('  Hyperbolic: Enabled (Poincaré ball)'));
-        execSync(`npx moflo embeddings init --model ${embeddingModel} --no-download --force 2>/dev/null`, {
+        execSync(`npx moflo embeddings init --model ${embeddingModel} --no-download --force 2>${process.platform === 'win32' ? 'NUL' : '/dev/null'}`, {
           stdio: 'pipe',
           cwd: ctx.cwd,
           timeout: 30000,
@@ -521,7 +530,7 @@ const wizardCommand: Command = {
         output.printInfo('Initializing ONNX embedding subsystem...');
         const { execSync } = await import('child_process');
         try {
-          execSync(`npx moflo embeddings init --model ${embeddingModel} --no-download --force 2>/dev/null`, {
+          execSync(`npx moflo embeddings init --model ${embeddingModel} --no-download --force 2>${process.platform === 'win32' ? 'NUL' : '/dev/null'}`, {
             stdio: 'pipe',
             cwd: ctx.cwd,
             timeout: 30000,

@@ -463,7 +463,12 @@ export class StatuslineGenerator {
     let coordinationActive = false;
 
     try {
-      const ps = execSync('ps aux 2>/dev/null || echo ""', { encoding: 'utf-8' });
+      let ps = '';
+      if (process.platform === 'win32') {
+        ps = execSync('tasklist /FO CSV /NH 2>NUL || echo ""', { encoding: 'utf-8' });
+      } else {
+        ps = execSync('ps aux 2>/dev/null || echo ""', { encoding: 'utf-8' });
+      }
       const agenticCount = (ps.match(/agentic-flow/g) || []).length;
       const mcpCount = (ps.match(/mcp.*start/g) || []).length;
 
@@ -540,12 +545,18 @@ export class StatuslineGenerator {
 
     try {
       // Get Node.js memory usage
-      const ps = execSync('ps aux 2>/dev/null | grep -E "(node|agentic|claude)" | grep -v grep | awk \'{sum += $6} END {print int(sum/1024)}\'', { encoding: 'utf-8' });
-      memoryMB = parseInt(ps.trim()) || 0;
+      if (process.platform === 'win32') {
+        // Windows: use tasklist + powershell for memory
+        const ps = execSync('powershell -NoProfile -Command "Get-Process node -ErrorAction SilentlyContinue | Measure-Object WorkingSet64 -Sum | Select-Object -ExpandProperty Sum"', { encoding: 'utf-8' });
+        memoryMB = Math.floor((parseInt(ps.trim()) || 0) / (1024 * 1024));
+      } else {
+        const ps = execSync('ps aux 2>/dev/null | grep -E "(node|agentic|claude)" | grep -v grep | awk \'{sum += $6} END {print int(sum/1024)}\'', { encoding: 'utf-8' });
+        memoryMB = parseInt(ps.trim()) || 0;
 
-      // Count sub-agents
-      const agents = execSync('ps aux 2>/dev/null | grep -E "Task|subagent|agent_spawn" | grep -v grep | wc -l', { encoding: 'utf-8' });
-      subAgents = parseInt(agents.trim()) || 0;
+        // Count sub-agents
+        const agents = execSync('ps aux 2>/dev/null | grep -E "Task|subagent|agent_spawn" | grep -v grep | wc -l', { encoding: 'utf-8' });
+        subAgents = parseInt(agents.trim()) || 0;
+      }
     } catch {
       // Use fallback: count v3 lines as proxy for progress
       try {
@@ -560,7 +571,7 @@ export class StatuslineGenerator {
               if (item.isDirectory()) {
                 total += countLines(fullPath);
               } else if (item.name.endsWith('.ts')) {
-                total += readFileSync(fullPath, 'utf-8').split('\n').length;
+                total += readFileSync(fullPath, 'utf-8').split(/\r?\n/).length;
               }
             }
             return total;
@@ -607,17 +618,20 @@ export class StatuslineGenerator {
 
     try {
       // Try gh CLI first
-      name = execSync('gh api user --jq \'.login\' 2>/dev/null || git config user.name 2>/dev/null || echo "user"', { encoding: 'utf-8' }).trim();
+      const nd = process.platform === 'win32' ? 'NUL' : '/dev/null';
+      name = execSync(`gh api user --jq '.login' 2>${nd} || git config user.name 2>${nd} || echo "user"`, { encoding: 'utf-8', shell: process.platform === 'win32' ? 'cmd.exe' : undefined }).trim();
     } catch {
       try {
-        name = execSync('git config user.name 2>/dev/null || echo "user"', { encoding: 'utf-8' }).trim();
+        const nd = process.platform === 'win32' ? 'NUL' : '/dev/null';
+        name = execSync(`git config user.name 2>${nd} || echo "user"`, { encoding: 'utf-8', shell: process.platform === 'win32' ? 'cmd.exe' : undefined }).trim();
       } catch {
         name = 'user';
       }
     }
 
     try {
-      gitBranch = execSync('git branch --show-current 2>/dev/null || echo ""', { encoding: 'utf-8' }).trim();
+      const nd2 = process.platform === 'win32' ? 'NUL' : '/dev/null';
+      gitBranch = execSync(`git branch --show-current 2>${nd2}`, { encoding: 'utf-8', shell: process.platform === 'win32' ? 'cmd.exe' : undefined }).trim();
     } catch {
       gitBranch = '';
     }

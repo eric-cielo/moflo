@@ -133,7 +133,7 @@ export class CoverageRouter {
   private parseLcov(data: string): CoverageReport {
     const files: FileCoverage[] = [];
     let currentFile: Partial<FileCoverage> | null = null;
-    const lines = data.split('\n');
+    const lines = data.split(/\r?\n/);
     for (const line of lines) {
       if (line.startsWith('SF:')) {
         if (currentFile?.path) files.push(this.finalizeFileCoverage(currentFile));

@@ -335,7 +335,10 @@ export async function loadPlugin(
   modulePath: string,
   config?: Partial<PluginConfig>
 ): Promise<IPlugin> {
-  const module = await import(modulePath);
+  const { pathToFileURL } = await import('url');
+  const { isAbsolute } = await import('path');
+  const importUrl = isAbsolute(modulePath) ? pathToFileURL(modulePath).href : modulePath;
+  const module = await import(importUrl);
   const pluginOrFactory: IPlugin | PluginFactory = module.default ?? module.plugin;
 
   if (!pluginOrFactory) {

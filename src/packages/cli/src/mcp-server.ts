@@ -379,7 +379,7 @@ export class MCPServerManager extends EventEmitter {
       }
 
       // Process complete JSON messages
-      let lines = buffer.split('\n');
+      let lines = buffer.split(/\r?\n/);
       buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
       for (const line of lines) {

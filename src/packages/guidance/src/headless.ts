@@ -321,8 +321,13 @@ export class HeadlessRunner {
    */
   private buildCommand(task: TestTask): string {
     // Escape the prompt for shell safety
+    const nd = process.platform === 'win32' ? 'NUL' : '/dev/null';
+    if (process.platform === 'win32') {
+      const escapedPrompt = task.prompt.replace(/"/g, '\\"');
+      return `claude -p "${escapedPrompt}" --output-format json 2>${nd}`;
+    }
     const escapedPrompt = task.prompt.replace(/'/g, "'\\''");
-    return `claude -p '${escapedPrompt}' --output-format json 2>/dev/null`;
+    return `claude -p '${escapedPrompt}' --output-format json 2>${nd}`;
   }
 
   /**

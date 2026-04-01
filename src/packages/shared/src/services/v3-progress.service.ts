@@ -352,7 +352,7 @@ export class V3ProgressService extends EventEmitter {
       const content = await fs.readFile(hooksPath, 'utf-8');
 
       // Count subcommand definitions
-      const lines = content.split('\n');
+      const lines = content.split(/\r?\n/);
       let inSubcommands = false;
       let count = 0;
 
@@ -438,7 +438,7 @@ export class V3ProgressService extends EventEmitter {
             totalFiles++;
             try {
               const content = await fs.readFile(fullPath, 'utf-8');
-              totalLines += content.split('\n').length;
+              totalLines += content.split(/\r?\n/).length;
             } catch {}
           }
         }

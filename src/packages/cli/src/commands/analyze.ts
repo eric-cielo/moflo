@@ -1200,7 +1200,7 @@ async function scanSourceFiles(dir: string, maxDepth: number = 10): Promise<stri
  * Fallback analysis when movector is not available
  */
 function fallbackAnalyze(code: string, filePath: string) {
-  const lines = code.split('\n');
+  const lines = code.split(/\r?\n/);
   const functions: Array<{ name: string; startLine: number; endLine: number }> = [];
   const classes: Array<{ name: string; startLine: number; endLine: number }> = [];
   const imports: string[] = [];
@@ -1212,7 +1212,7 @@ function fallbackAnalyze(code: string, filePath: string) {
   while ((match = funcPattern.exec(code)) !== null) {
     const name = match[1] || match[2] || match[3];
     if (name && !['if', 'while', 'for', 'switch'].includes(name)) {
-      const lineNum = code.substring(0, match.index).split('\n').length;
+      const lineNum = code.substring(0, match.index).split(/\r?\n/).length;
       functions.push({ name, startLine: lineNum, endLine: lineNum + 10 });
     }
   }
@@ -1220,7 +1220,7 @@ function fallbackAnalyze(code: string, filePath: string) {
   // Extract classes
   const classPattern = /(?:export\s+)?class\s+(\w+)/gm;
   while ((match = classPattern.exec(code)) !== null) {
-    const lineNum = code.substring(0, match.index).split('\n').length;
+    const lineNum = code.substring(0, match.index).split(/\r?\n/).length;
     classes.push({ name: match[1], startLine: lineNum, endLine: lineNum + 20 });
   }
 

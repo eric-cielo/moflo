@@ -625,8 +625,10 @@ export class AgenticFlowEmbeddingService extends BaseEmbeddingService {
 
     const createEmbedder = async (modulePath: string): Promise<boolean> => {
       try {
-        // Use file:// protocol for absolute paths
-        const importPath = modulePath.startsWith('/') ? `file://${modulePath}` : modulePath;
+        // Use pathToFileURL for absolute paths (cross-platform)
+        const { isAbsolute } = await import('path');
+        const { pathToFileURL } = await import('url');
+        const importPath = isAbsolute(modulePath) ? pathToFileURL(modulePath).href : modulePath;
         const module = await import(/* webpackIgnore: true */ importPath);
         const getOptimizedEmbedder = module.getOptimizedEmbedder || module.default?.getOptimizedEmbedder;
         if (!getOptimizedEmbedder) {

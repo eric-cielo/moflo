@@ -462,7 +462,8 @@ export const memoryWriteOptimizations = {
 };
 
 // Run if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+import { pathToFileURL as _pfu_mw } from 'url';
+if (import.meta.url === _pfu_mw(process.argv[1]).href) {
   runMemoryWriteBenchmarks().catch(console.error);
 }
 

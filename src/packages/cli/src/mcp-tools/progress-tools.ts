@@ -73,7 +73,7 @@ function countFilesAndLines(dir: string, ext = '.ts'): { files: number; lines: n
           files++;
           try {
             const content = readFileSync(fullPath, 'utf-8');
-            lines += content.split('\n').length;
+            lines += content.split(/\r?\n/).length;
           } catch (_e) { /* ignore */ }
         }
       }

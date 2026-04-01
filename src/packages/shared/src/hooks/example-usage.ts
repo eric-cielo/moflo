@@ -494,6 +494,7 @@ export async function runDemo() {
 }
 
 // Run demo if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+import { pathToFileURL as _pfu_eu } from 'url';
+if (import.meta.url === _pfu_eu(process.argv[1]).href) {
   runDemo().catch(console.error);
 }

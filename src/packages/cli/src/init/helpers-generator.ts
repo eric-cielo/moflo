@@ -114,7 +114,7 @@ async function loadMemoryPackage() {
   while (searchDir !== parse(searchDir).root) {
     const candidate = join(searchDir, 'node_modules', '@claude-flow', 'memory', 'dist', 'index.js');
     if (existsSync(candidate)) {
-      try { return await import(\`file://\${candidate}\`); } catch { /* fall through */ }
+      try { const { pathToFileURL } = await import('url'); return await import(pathToFileURL(candidate).href); } catch { /* fall through */ }
     }
     searchDir = dirname(searchDir);
   }

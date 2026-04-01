@@ -6,6 +6,7 @@
 import { readFile } from 'fs/promises';
 import { join, resolve } from 'path';
 import { existsSync } from 'fs';
+import os from 'os';
 import type { SystemConfig } from './schema.js';
 import { validateSystemConfig, type ValidationResult } from './validator.js';
 import { defaultSystemConfig, mergeWithDefaults } from './defaults.js';
@@ -149,7 +150,7 @@ export class ConfigLoader {
     this.searchPaths = [
       process.cwd(),
       resolve(process.cwd(), '..'),
-      resolve(process.env.HOME ?? '', '.claude-flow'),
+      resolve(os.homedir(), '.claude-flow'),
     ];
 
     if (additionalPaths) {

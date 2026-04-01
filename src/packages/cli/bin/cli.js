@@ -57,7 +57,7 @@ if (isMCPMode) {
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', async (chunk) => {
     buffer += chunk;
-    let lines = buffer.split('\n');
+    let lines = buffer.split(/\r?\n/);
     buffer = lines.pop() || '';
 
     for (const line of lines) {

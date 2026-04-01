@@ -288,7 +288,7 @@ export class EventStore {
    */
   private parseNdjson(content: string): RunEvent[] {
     const events: RunEvent[] = [];
-    const lines = content.split('\n');
+    const lines = content.split(/\r?\n/);
 
     for (const line of lines) {
       const trimmed = line.trim();

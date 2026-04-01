@@ -442,7 +442,8 @@ export const vectorSearchOptimizations = {
 };
 
 // Run if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+import { pathToFileURL as _pfu_vs } from 'url';
+if (import.meta.url === _pfu_vs(process.argv[1]).href) {
   runVectorSearchBenchmarks().catch(console.error);
 }
 

@@ -1,0 +1,23 @@
+# Auto-detect text files and ensure LF line endings in the repo
+* text=auto eol=lf
+
+# Force LF for all executable/script file types
+bin/** eol=lf
+*.sh eol=lf
+*.mjs eol=lf
+*.cjs eol=lf
+*.js eol=lf linguist-language=JavaScript
+*.ts eol=lf linguist-language=TypeScript
+
+# Binary files — don't touch
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.db binary
+*.sqlite binary

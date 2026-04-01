@@ -344,7 +344,7 @@ export class RvfLearningStore {
       return;
     }
 
-    const lines = content.split('\n').filter((l) => l.trim().length > 0);
+    const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
     if (lines.length === 0) return;
 
     // Verify magic header

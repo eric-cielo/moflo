@@ -135,7 +135,8 @@ async function loadMemoryPackage() {
   const localDist = join(PROJECT_ROOT, 'v3/@claude-flow/memory/dist/index.js');
   if (existsSync(localDist)) {
     try {
-      return await import(`file://${localDist}`);
+      const { pathToFileURL } = await import('url');
+      return await import(pathToFileURL(localDist).href);
     } catch { /* fall through */ }
   }
 
@@ -159,7 +160,8 @@ async function loadMemoryPackage() {
     const candidate = join(searchDir, 'node_modules', '@claude-flow', 'memory', 'dist', 'index.js');
     if (existsSync(candidate)) {
       try {
-        return await import(`file://${candidate}`);
+        const { pathToFileURL: pfu } = await import('url');
+        return await import(pfu(candidate).href);
       } catch { /* fall through */ }
     }
     searchDir = dirname(searchDir);

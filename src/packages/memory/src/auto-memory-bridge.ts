@@ -13,6 +13,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs/promises';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -549,7 +550,7 @@ export class AutoMemoryBridge extends EventEmitter {
     for (const file of mdFiles) {
       try {
         const content = readFileSync(path.join(memoryDir, file), 'utf-8');
-        const lineCount = content.split('\n').length;
+        const lineCount = content.split(/\r?\n/).length;
         fileStats.push({ name: file, lines: lineCount });
         totalLines += lineCount;
         if (file === 'MEMORY.md') {
@@ -632,7 +633,7 @@ export class AutoMemoryBridge extends EventEmitter {
       // Exact line-based dedup: check if the summary already appears as a bullet
       if (hasSummaryLine(existing, insight.summary)) return;
 
-      const lineCount = existing.split('\n').length;
+      const lineCount = existing.split(/\r?\n/).length;
       if (lineCount >= this.config.maxTopicFileLines) {
         const pruned = pruneTopicFile(existing, this.config.maxTopicFileLines - 10);
         await fs.writeFile(topicPath, pruned + '\n' + line, 'utf-8');
@@ -698,7 +699,7 @@ export class AutoMemoryBridge extends EventEmitter {
   ): Promise<void> {
     const insight: MemoryInsight = {
       category,
-      summary: (entry.metadata?.summary as string) || entry.content.split('\n')[0],
+      summary: (entry.metadata?.summary as string) || entry.content.split(/\r?\n/)[0],
       detail: entry.content,
       source: (entry.metadata?.source as string) || 'agentdb',
       confidence: (entry.metadata?.confidence as number) || 0.5,
@@ -754,11 +755,15 @@ export function resolveAutoMemoryDir(workingDir: string): string {
 
   // Claude Code normalizes to forward slashes then replaces with dashes
   // The leading dash IS preserved (e.g. /workspaces/foo -> -workspaces-foo)
-  const normalized = basePath.split(path.sep).join('/');
+  // On Windows, strip drive letter prefix (C:) for cleaner keys
+  let normalized = basePath.split(path.sep).join('/');
+  if (process.platform === 'win32') {
+    normalized = normalized.replace(/^[A-Za-z]:/, '');
+  }
   const projectKey = normalized.replace(/\//g, '-');
 
   return path.join(
-    process.env.HOME || process.env.USERPROFILE || '~',
+    homedir(),
     '.claude',
     'projects',
     projectKey,
@@ -789,7 +794,7 @@ export function findGitRoot(dir: string): string | null {
  */
 export function parseMarkdownEntries(content: string): ParsedEntry[] {
   const entries: ParsedEntry[] = [];
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   let currentHeading = '';
   let currentLines: string[] = [];
 
@@ -828,7 +833,7 @@ export function parseMarkdownEntries(content: string): ParsedEntry[] {
  */
 export function extractSummaries(content: string): string[] {
   return content
-    .split('\n')
+    .split(/\r?\n/)
     .filter(line => line.startsWith('- '))
     .map(line => line.slice(2).trim())
     .filter(line => !line.startsWith('See `'))
@@ -844,8 +849,8 @@ export function formatInsightLine(insight: MemoryInsight): string {
   const prefix = `- ${insight.summary}`;
   const suffix = ` _(${insight.source}, ${timestamp}, conf: ${insight.confidence.toFixed(2)})_`;
 
-  if (insight.detail && insight.detail.split('\n').length > 2) {
-    return `${prefix}${suffix}\n  ${insight.detail.split('\n').join('\n  ')}`;
+  if (insight.detail && insight.detail.split(/\r?\n/).length > 2) {
+    return `${prefix}${suffix}\n  ${insight.detail.split(/\r?\n/).join('\n  ')}`;
   }
 
   return `${prefix}${suffix}`;
@@ -863,7 +868,7 @@ export function hashContent(content: string): string {
  * Removes oldest entries (those closest to the top after the header).
  */
 export function pruneTopicFile(content: string, maxLines: number): string {
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   if (lines.length <= maxLines) return content;
 
   const header = lines.slice(0, 3);
@@ -878,7 +883,7 @@ export function pruneTopicFile(content: string, maxLines: number): string {
  */
 export function hasSummaryLine(content: string, summary: string): boolean {
   // Match lines that start with "- <summary>" (possibly followed by metadata)
-  return content.split('\n').some(line =>
+  return content.split(/\r?\n/).some(line =>
     line.startsWith(`- ${summary}`)
   );
 }
