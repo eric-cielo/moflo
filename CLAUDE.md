@@ -38,6 +38,18 @@
 - MCP tools live in `src/packages/cli/src/mcp-tools/` — this is the only canonical location
 - Never commit `dist/` build artifacts to git
 
+## Cross-Platform Compatibility
+
+**Read `.claude/guidance/shipped/moflo-cross-platform.md` for full rules.** Key points:
+
+- ALL code changes MUST work on Linux, macOS, and Windows
+- Use `path.join()`/`path.resolve()` — never hardcoded `\` separators or drive letters
+- Use `pathToFileURL()` for dynamic imports — never `file://` string concatenation
+- Use `.split(/\r?\n/)` on file content — never `.split('\n')`
+- Use `os.homedir()` — never raw `process.env.HOME`
+- Use `path.isAbsolute()` — never `startsWith('/')`
+- Bin scripts MUST have LF line endings and `#!/usr/bin/env node` shebangs
+
 ## Project Architecture
 
 - Follow Domain-Driven Design with bounded contexts
