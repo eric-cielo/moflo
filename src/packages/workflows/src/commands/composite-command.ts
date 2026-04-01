@@ -282,7 +282,7 @@ function runShellCommand(
 ): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }> {
   const timeout = 30000;
   const shell = process.platform === 'win32'
-    ? (process.env.SHELL || process.env.ComSpec || 'cmd.exe')
+    ? (process.env.ComSpec || 'cmd.exe')
     : (process.env.SHELL || 'bash');
 
   return new Promise((resolve) => {

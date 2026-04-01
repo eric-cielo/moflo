@@ -12,6 +12,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync, exec } from 'child_process';
 import { promisify } from 'util';
+import os from 'os';
 import { getDaemonLockHolder, releaseDaemonLock, isDaemonProcess } from '../services/daemon-lock.js';
 import {
   checkSubagentHealth,
@@ -200,8 +201,8 @@ async function checkGitRepo(): Promise<HealthCheck> {
 // Check MCP servers
 async function checkMcpServers(): Promise<HealthCheck> {
   const mcpConfigPaths = [
-    join(process.env.HOME || '', '.claude/claude_desktop_config.json'),
-    join(process.env.HOME || '', '.config/claude/mcp.json'),
+    join(os.homedir(), '.claude/claude_desktop_config.json'),
+    join(os.homedir(), '.config/claude/mcp.json'),
     '.mcp.json'
   ];
 

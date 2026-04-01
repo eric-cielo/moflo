@@ -29,7 +29,7 @@ export interface ExecResult {
 export function execAsync(command: string, timeout = 30000): Promise<ExecResult> {
   return new Promise((resolve) => {
     const shell = process.platform === 'win32'
-      ? (process.env.SHELL || process.env.ComSpec || 'cmd.exe')
+      ? (process.env.ComSpec || 'cmd.exe')
       : (process.env.SHELL || 'bash');
     const child = exec(command, { timeout, shell }, (error, stdout, stderr) => {
       resolve({
@@ -46,5 +46,8 @@ export function execAsync(command: string, timeout = 30000): Promise<ExecResult>
  * Wraps in single quotes and escapes embedded single quotes.
  */
 export function escapeShellArg(arg: string): string {
+  if (process.platform === 'win32') {
+    return `"${arg.replace(/"/g, '\\"')}"`;
+  }
   return `'${arg.replace(/'/g, "'\\''")}'`;
 }

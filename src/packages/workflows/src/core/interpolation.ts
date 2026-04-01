@@ -68,6 +68,9 @@ export function interpolateString(template: string, context: WorkflowContext): s
  * This prevents shell metacharacter injection (`;`, `|`, `` ` ``, `$()`, `&&`, `||`).
  */
 export function shellEscapeValue(value: string): string {
+  if (process.platform === 'win32') {
+    return '"' + value.replace(/"/g, '\\"') + '"';
+  }
   return "'" + value.replace(/'/g, "'\\''") + "'";
 }
 

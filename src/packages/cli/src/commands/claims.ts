@@ -7,6 +7,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
+import os from 'os';
 
 // List subcommand
 const listCommand: Command = {
@@ -92,7 +93,7 @@ const checkCommand: Command = {
       const claimsConfigPaths = [
         path.resolve('.claude-flow/claims.json'),
         path.resolve('claude-flow.claims.json'),
-        path.resolve(process.env.HOME || '~', '.config/claude-flow/claims.json'),
+        path.resolve(os.homedir(), '.config/claude-flow/claims.json'),
       ];
 
       let claimsConfig: {

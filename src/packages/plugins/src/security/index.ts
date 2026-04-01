@@ -344,12 +344,16 @@ export function validateCommand(
  */
 export function escapeShellArg(arg: string): string {
   // Empty string
-  if (arg.length === 0) return "''";
+  if (arg.length === 0) return process.platform === 'win32' ? '""' : "''";
 
   // If no special characters, return as-is
   if (!/[^a-zA-Z0-9_\-=./:@]/.test(arg)) return arg;
 
-  // Single-quote the argument and escape any single quotes
+  if (process.platform === 'win32') {
+    // cmd.exe: double-quote wrapping, escape internal double quotes
+    return '"' + arg.replace(/"/g, '\\"') + '"';
+  }
+  // POSIX: single-quote the argument and escape any single quotes
   return "'" + arg.replace(/'/g, "'\"'\"'") + "'";
 }
 
