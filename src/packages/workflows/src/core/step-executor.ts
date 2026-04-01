@@ -33,6 +33,7 @@ import {
 } from './credential-masker.js';
 import { executeWithTimeout } from './timeout-executor.js';
 import { CapabilityGateway } from './capability-gateway.js';
+import { GatedConnectorAccessor } from './gated-connector-accessor.js';
 
 const DEFAULT_STEP_TIMEOUT = 300_000; // 5 minutes
 
@@ -129,6 +130,8 @@ export async function executeSingleStep(
   const scopedContext = {
     ...context, effectiveCaps: capCheck.effectiveCaps, gateway,
     mofloLevel: resolvedLevel, nestingDepth: state.nestingDepth, maxNestingDepth: state.maxNestingDepth,
+    // Wrap connector accessor with gateway enforcement (#265)
+    tools: context.tools ? new GatedConnectorAccessor(context.tools, gateway) : undefined,
   };
 
   const timeout = state.options.defaultStepTimeout ?? DEFAULT_STEP_TIMEOUT;

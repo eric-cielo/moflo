@@ -16,6 +16,7 @@ import { browserCommand } from '../src/commands/browser-command.js';
 import { validateBrowserUrl } from '../src/commands/browser-url-validator.js';
 import { builtinCommands } from '../src/commands/index.js';
 import type { MemoryAccessor } from '../src/types/step-command.types.js';
+import { CapabilityGateway } from '../src/core/capability-gateway.js';
 import { createMockContext as createContext } from './helpers.js';
 
 // ============================================================================
@@ -423,8 +424,10 @@ describe('memoryCommand', () => {
   // --- Scope enforcement (Issue #178) ---
 
   it('should block write to namespace outside memory scope', async () => {
+    const caps = [{ type: 'memory' as const, scope: ['allowed-ns'] }];
     const ctx = createContext({
-      effectiveCaps: [{ type: 'memory', scope: ['allowed-ns'] }],
+      effectiveCaps: caps,
+      gateway: new CapabilityGateway(caps, 'test', 'memory'),
     });
     const output = await memoryCommand.execute(
       { action: 'write', namespace: 'forbidden-ns', key: 'k1', value: 'data' },
@@ -661,11 +664,13 @@ describe('browserCommand', () => {
   // --- Scope enforcement (Issue #178) ---
 
   it('should block open to URL outside net scope', async () => {
+    const caps = [
+      { type: 'browser' as const },
+      { type: 'net' as const, scope: ['https://allowed.com'] },
+    ];
     const ctx = createContext({
-      effectiveCaps: [
-        { type: 'browser' },
-        { type: 'net', scope: ['https://allowed.com'] },
-      ],
+      effectiveCaps: caps,
+      gateway: new CapabilityGateway(caps, 'test', 'browser'),
     });
     const output = await browserCommand.execute(
       { actions: [{ action: 'open', url: 'https://blocked.com/page' }] },
@@ -677,11 +682,13 @@ describe('browserCommand', () => {
   });
 
   it('should allow open to URL within net scope', async () => {
+    const caps = [
+      { type: 'browser' as const },
+      { type: 'net' as const, scope: ['https://allowed.com'] },
+    ];
     const ctx = createContext({
-      effectiveCaps: [
-        { type: 'browser' },
-        { type: 'net', scope: ['https://allowed.com'] },
-      ],
+      effectiveCaps: caps,
+      gateway: new CapabilityGateway(caps, 'test', 'browser'),
     });
     const output = await browserCommand.execute(
       { actions: [{ action: 'open', url: 'https://allowed.com/page' }] },
@@ -732,13 +739,17 @@ describe('browserCommand', () => {
   // --- Evaluate capability gate (Issue #176) ---
 
   it('should reject evaluate without browser:evaluate capability', async () => {
-    const ctx = createContext({ effectiveCaps: [{ type: 'browser' }, { type: 'net' }] });
+    const caps = [{ type: 'browser' as const }, { type: 'net' as const }];
+    const ctx = createContext({
+      effectiveCaps: caps,
+      gateway: new CapabilityGateway(caps, 'test', 'browser'),
+    });
     const output = await browserCommand.execute(
       { actions: [{ action: 'evaluate', expression: 'document.title' }] },
       ctx,
     );
     expect(output.success).toBe(false);
-    expect(output.error).toContain("'browser:evaluate' capability");
+    expect(output.error).toContain('browser:evaluate');
   });
 
   it('should allow evaluate with browser:evaluate capability', async () => {

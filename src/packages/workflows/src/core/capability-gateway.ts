@@ -11,7 +11,7 @@ import type {
   StepCapability,
   CapabilityType,
 } from '../types/step-command.types.js';
-import { enforceScope, formatViolations, VALID_CAPABILITY_TYPES, type CapabilityViolation } from './capability-validator.js';
+import { enforceScope, formatViolations, type CapabilityViolation } from './capability-validator.js';
 
 // ── Error ────────────────────────────────────────────────────────────────
 
@@ -44,6 +44,8 @@ export interface ICapabilityGateway {
   checkBrowser(): void;
   /** Check browser:evaluate capability. */
   checkBrowserEvaluate(): void;
+  /** Check credential access at runtime (#268). */
+  checkCredentials(name: string): void;
 }
 
 // ── Implementation ───────────────────────────────────────────────────────
@@ -95,6 +97,10 @@ export class CapabilityGateway implements ICapabilityGateway {
     this.enforce('browser:evaluate', '');
   }
 
+  checkCredentials(name: string): void {
+    this.enforce('credentials', name);
+  }
+
   private enforce(capabilityType: CapabilityType, resource: string): void {
     const violation = enforceScope(this.caps, capabilityType, resource, this.stepId, this.stepType);
     if (violation) {
@@ -103,124 +109,42 @@ export class CapabilityGateway implements ICapabilityGateway {
   }
 }
 
-/** All known capability types, derived from the canonical set in capability-validator. */
-const ALL_CAPABILITY_TYPES = [...VALID_CAPABILITY_TYPES] as CapabilityType[];
-
-/** Human-readable descriptions for capability types. */
-const CAPABILITY_LABELS: Record<CapabilityType, string> = {
-  'fs:read': 'Read files',
-  'fs:write': 'Write files',
-  'net': 'Access the network',
-  'shell': 'Execute shell commands',
-  'memory': 'Access memory namespaces',
-  'credentials': 'Access credentials',
-  'browser': 'Launch browser sessions',
-  'browser:evaluate': 'Execute JavaScript in browser',
-  'agent': 'Spawn sub-agents',
-};
-
-interface CapabilityDisclosure {
-  readonly name: string;
-  readonly type: CapabilityType;
-  readonly label: string;
-  readonly scope?: readonly string[];
-}
-
-export interface StepDisclosureSummary {
-  readonly stepName: string;
-  readonly granted: readonly CapabilityDisclosure[];
-  readonly denied: readonly CapabilityType[];
-}
-
-export interface WorkflowDisclosureSummary {
-  readonly workflowName: string;
-  readonly stepCount: number;
-  /** Capability type -> list of step names that use it. */
-  readonly aggregate: ReadonlyMap<CapabilityType, readonly string[]>;
-  /** Capability types not used by any step. */
-  readonly unused: readonly CapabilityType[];
-}
-
 /**
- * Generate a disclosure summary for a single step's capabilities.
+ * Deny-all gateway used as the default on WorkflowContext (#266).
+ * Any code path that reaches a gateway check without going through
+ * step-executor (which installs a properly-scoped gateway) will hit
+ * this and fail loud rather than silently skipping enforcement.
  */
-export function discloseStep(stepName: string, caps: readonly StepCapability[]): StepDisclosureSummary {
-  const grantedTypes = new Set(caps.map(c => c.type));
+export class DenyAllGateway implements ICapabilityGateway {
+  private deny(capabilityType: CapabilityType, resource: string): never {
+    throw new CapabilityDeniedError({
+      capability: capabilityType,
+      stepId: 'unknown',
+      stepType: 'unknown',
+      reason: `Capability "${capabilityType}" denied for "${resource}" — no scoped gateway configured for this code path`,
+    });
+  }
 
-  const granted: CapabilityDisclosure[] = caps.map(c => ({
-    name: c.type,
-    type: c.type,
-    label: CAPABILITY_LABELS[c.type],
-    scope: c.scope,
-  }));
-
-  const denied = ALL_CAPABILITY_TYPES.filter(t => !grantedTypes.has(t));
-
-  return { stepName, granted, denied };
+  checkNet(url: string): void { this.deny('net', url); }
+  checkShell(command: string): void { this.deny('shell', command); }
+  checkFsRead(path: string): void { this.deny('fs:read', path); }
+  checkFsWrite(path: string): void { this.deny('fs:write', path); }
+  checkAgent(agentType: string): void { this.deny('agent', agentType); }
+  checkMemory(namespace: string): void { this.deny('memory', namespace); }
+  checkBrowser(): void { this.deny('browser', ''); }
+  checkBrowserEvaluate(): void { this.deny('browser:evaluate', ''); }
+  checkCredentials(name: string): void { this.deny('credentials', name); }
 }
 
-/**
- * Generate an aggregate disclosure summary across all steps in a workflow.
- */
-export function discloseWorkflow(
-  workflowName: string,
-  steps: ReadonlyArray<{ name: string; caps: readonly StepCapability[] }>,
-): WorkflowDisclosureSummary {
-  const aggregate = new Map<CapabilityType, string[]>();
-  const usedTypes = new Set<CapabilityType>();
+/** Shared singleton — immutable, safe to reuse across contexts. */
+export const DENY_ALL_GATEWAY: ICapabilityGateway = new DenyAllGateway();
 
-  for (const step of steps) {
-    for (const cap of step.caps) {
-      usedTypes.add(cap.type);
-      const existing = aggregate.get(cap.type) ?? [];
-      existing.push(step.name);
-      aggregate.set(cap.type, existing);
-    }
-  }
-
-  const unused = ALL_CAPABILITY_TYPES.filter(t => !usedTypes.has(t));
-
-  return { workflowName, stepCount: steps.length, aggregate, unused };
-}
-
-/**
- * Format a step disclosure summary as a human-readable string.
- */
-export function formatStepDisclosure(summary: StepDisclosureSummary): string {
-  const lines: string[] = [];
-
-  lines.push(`  Capabilities:`);
-  for (const cap of summary.granted) {
-    const scopeNote = cap.scope?.length
-      ? ` (scoped to: ${cap.scope.join(', ')})`
-      : '';
-    lines.push(`    \u2726 ${cap.type.padEnd(18)} \u2014 ${cap.label}${scopeNote}`);
-  }
-
-  if (summary.denied.length > 0) {
-    const deniedLabels = summary.denied.map(t => CAPABILITY_LABELS[t].toLowerCase());
-    lines.push('');
-    lines.push(`  This step cannot: ${deniedLabels.join(', ')}`);
-  }
-
-  return lines.join('\n');
-}
-
-/**
- * Format a workflow disclosure summary as a human-readable string.
- */
-export function formatWorkflowDisclosure(summary: WorkflowDisclosureSummary): string {
-  const lines: string[] = [];
-
-  lines.push(`  Aggregate capabilities:`);
-  for (const [capType, stepNames] of summary.aggregate) {
-    lines.push(`    \u2726 ${capType.padEnd(18)} \u2014 Steps: ${stepNames.join(', ')}`);
-  }
-
-  if (summary.unused.length > 0) {
-    lines.push('');
-    lines.push(`  No steps use: ${summary.unused.join(', ')}`);
-  }
-
-  return lines.join('\n');
-}
+// Re-export disclosure functions from their dedicated module (#267)
+export {
+  discloseStep,
+  discloseWorkflow,
+  formatStepDisclosure,
+  formatWorkflowDisclosure,
+  type StepDisclosureSummary,
+  type WorkflowDisclosureSummary,
+} from './capability-disclosure.js';

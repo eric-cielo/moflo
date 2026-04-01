@@ -56,6 +56,7 @@ export type {
 export { StepCommandRegistry } from './core/step-command-registry.js';
 export { WorkflowRunner } from './core/runner.js';
 export { ConnectorAccessorImpl } from './core/connector-accessor.js';
+export { GatedConnectorAccessor } from './core/gated-connector-accessor.js';
 export {
   checkCapabilities,
   type CapabilityViolation,
@@ -64,6 +65,8 @@ export {
 export {
   CapabilityGateway,
   CapabilityDeniedError,
+  DenyAllGateway,
+  DENY_ALL_GATEWAY,
   discloseStep,
   discloseWorkflow,
   formatStepDisclosure,

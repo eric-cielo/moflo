@@ -30,6 +30,7 @@ import { rollbackSteps, type CompletedStep } from './rollback-orchestrator.js';
 import { buildCredentialPatterns, addCredentialPattern, collectCredentialNames } from './credential-masker.js';
 import { executeSingleStep, type StepExecutionState } from './step-executor.js';
 import { collectPrerequisites, checkPrerequisites, formatPrerequisiteErrors } from './prerequisite-checker.js';
+import { DENY_ALL_GATEWAY } from './capability-gateway.js';
 
 export class WorkflowRunner {
   private readonly connectorAccessor?: ConnectorAccessorImpl;
@@ -326,6 +327,7 @@ export class WorkflowRunner {
   ): WorkflowContext {
     return { variables, args, credentials: this.credentials, memory: this.memory,
       taskId: `${workflowId}-step-${stepIndex}`, workflowId, stepIndex, abortSignal: signal,
+      gateway: DENY_ALL_GATEWAY,
       ...(this.connectorAccessor ? { tools: this.connectorAccessor } : {}) };
   }
 

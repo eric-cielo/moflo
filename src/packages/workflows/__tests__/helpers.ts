@@ -9,6 +9,20 @@ import type {
   CredentialAccessor,
   MemoryAccessor,
 } from '../src/types/step-command.types.js';
+import type { ICapabilityGateway } from '../src/core/capability-gateway.js';
+
+/** Allow-all gateway for tests — no capability is denied. */
+export const ALLOW_ALL_GATEWAY: ICapabilityGateway = {
+  checkNet() {},
+  checkShell() {},
+  checkFsRead() {},
+  checkFsWrite() {},
+  checkAgent() {},
+  checkMemory() {},
+  checkBrowser() {},
+  checkBrowserEvaluate() {},
+  checkCredentials() {},
+};
 import type { StepDefinition } from '../src/types/workflow-definition.types.js';
 import type { WorkflowResult } from '../src/types/runner.types.js';
 
@@ -58,6 +72,7 @@ export function createMockContext(overrides?: Partial<WorkflowContext>): Workflo
     taskId: 'test',
     workflowId: 'wf-1',
     stepIndex: 0,
+    gateway: ALLOW_ALL_GATEWAY,
     ...overrides,
   };
 }

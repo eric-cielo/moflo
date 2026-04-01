@@ -59,21 +59,16 @@ export const bashCommand: StepCommand<BashStepConfig> = {
     const timeout = config.timeout ?? 30000;
     const failOnError = config.failOnError !== false;
 
-    // ── Scope enforcement (Issue #178, #258 — gateway migration) ───────
-    //
-    // Prefer the gateway for shell capability checks. Fall back to inline
-    // enforceScope() for fs:read / fs:write path extraction (best-effort).
-    if (context.gateway) {
-      try {
-        context.gateway.checkShell(command);
-      } catch (err) {
-        return {
-          success: false,
-          data: { stdout: '', stderr: '', exitCode: -1 },
-          error: (err as Error).message,
-          duration: Date.now() - start,
-        };
-      }
+    // ── Scope enforcement (#258, #266 — gateway always present) ────────
+    try {
+      context.gateway.checkShell(command);
+    } catch (err) {
+      return {
+        success: false,
+        data: { stdout: '', stderr: '', exitCode: -1 },
+        error: (err as Error).message,
+        duration: Date.now() - start,
+      };
     }
 
     // Best-effort fs path scope check — extracts absolute paths from the

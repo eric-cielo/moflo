@@ -12,7 +12,6 @@ import type {
   JSONSchema,
 } from '../types/step-command.types.js';
 import { interpolateString } from '../core/interpolation.js';
-import { enforceScope, formatViolations } from '../core/capability-validator.js';
 
 type MemoryAction = 'read' | 'write' | 'search';
 
@@ -72,28 +71,16 @@ export const memoryCommand: StepCommand<MemoryStepConfig> = {
     const action = config.action;
     const namespace = interpolateString(config.namespace, context);
 
-    // Enforce memory capability scope on namespace (Issue #178, #258 — gateway migration)
-    if (context.gateway) {
-      try {
-        context.gateway.checkMemory(namespace);
-      } catch (err) {
-        return {
-          success: false,
-          data: {},
-          error: (err as Error).message,
-          duration: Date.now() - start,
-        };
-      }
-    } else if (context.effectiveCaps) {
-      const violation = enforceScope(context.effectiveCaps, 'memory', namespace, context.taskId, 'memory');
-      if (violation) {
-        return {
-          success: false,
-          data: {},
-          error: formatViolations([violation]),
-          duration: Date.now() - start,
-        };
-      }
+    // Enforce memory capability scope on namespace (#266 — gateway always present)
+    try {
+      context.gateway.checkMemory(namespace);
+    } catch (err) {
+      return {
+        success: false,
+        data: {},
+        error: (err as Error).message,
+        duration: Date.now() - start,
+      };
     }
 
     switch (action) {
