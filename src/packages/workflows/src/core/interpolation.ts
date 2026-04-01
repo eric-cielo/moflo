@@ -68,9 +68,8 @@ export function interpolateString(template: string, context: WorkflowContext): s
  * This prevents shell metacharacter injection (`;`, `|`, `` ` ``, `$()`, `&&`, `||`).
  */
 export function shellEscapeValue(value: string): string {
-  if (process.platform === 'win32') {
-    return '"' + value.replace(/"/g, '\\"') + '"';
-  }
+  // Always use POSIX single-quote escaping — this function is specifically
+  // for shell interpolation in bash commands (bashCommand hardcodes shell: 'bash')
   return "'" + value.replace(/'/g, "'\\''") + "'";
 }
 

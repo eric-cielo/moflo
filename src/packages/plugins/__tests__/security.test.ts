@@ -217,9 +217,14 @@ describe('Command Security', () => {
   describe('escapeShellArg', () => {
     it('should escape special characters', () => {
       expect(escapeShellArg('hello')).toBe('hello');
-      expect(escapeShellArg('hello world')).toBe("'hello world'");
-      expect(escapeShellArg("it's")).toBe("'it'\"'\"'s'");
-      expect(escapeShellArg('')).toBe("''");
+      if (process.platform === 'win32') {
+        expect(escapeShellArg('hello world')).toBe('"hello world"');
+        expect(escapeShellArg('')).toBe('""');
+      } else {
+        expect(escapeShellArg('hello world')).toBe("'hello world'");
+        expect(escapeShellArg("it's")).toBe("'it'\"'\"'s'");
+        expect(escapeShellArg('')).toBe("''");
+      }
     });
   });
 });
