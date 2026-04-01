@@ -8,6 +8,7 @@ import { output } from '../output.js';
 import { WorkerDaemon, getDaemon, startDaemon, stopDaemon, type WorkerType, type DaemonConfig } from '../services/worker-daemon.js';
 import { acquireDaemonLock, releaseDaemonLock, getDaemonLockHolder, transferDaemonLock, lockPath } from '../services/daemon-lock.js';
 import { installDaemonService, uninstallDaemonService, isDaemonInstalled } from '../services/daemon-service.js';
+import { startDashboard, createDashboardMemoryAccessor, DEFAULT_DASHBOARD_PORT, type DashboardHandle } from '../services/daemon-dashboard.js';
 import { spawn, execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve, isAbsolute } from 'path';
@@ -26,6 +27,8 @@ const startCommand: Command = {
     { name: 'sandbox', type: 'string', description: 'Default sandbox mode for headless workers', choices: ['strict', 'permissive', 'disabled'] },
     { name: 'max-cpu-load', type: 'string', description: 'Override maxCpuLoad resource threshold (e.g. 4.0)' },
     { name: 'min-free-memory', type: 'string', description: 'Override minFreeMemoryPercent resource threshold (e.g. 15)' },
+    { name: 'dashboard-port', type: 'string', description: `Dashboard HTTP port (default: ${DEFAULT_DASHBOARD_PORT})` },
+    { name: 'no-dashboard', type: 'boolean', description: 'Disable the dashboard HTTP server' },
   ],
   examples: [
     { command: 'claude-flow daemon start', description: 'Start daemon in background (default)' },
@@ -36,8 +39,21 @@ const startCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const quiet = ctx.flags.quiet as boolean;
     const foreground = ctx.flags.foreground as boolean;
+    const noDashboard = ctx.flags['no-dashboard'] as boolean;
+    const rawDashboardPort = ctx.flags['dashboard-port'] as string | undefined;
     const projectRoot = process.cwd();
     const isDaemonProcess = process.env.CLAUDE_FLOW_DAEMON === '1';
+
+    // Parse dashboard port
+    let dashboardPort = DEFAULT_DASHBOARD_PORT;
+    if (rawDashboardPort) {
+      const parsed = parseInt(rawDashboardPort, 10);
+      if (isNaN(parsed) || parsed < 1 || parsed > 65535) {
+        output.printError(`Invalid dashboard port: ${rawDashboardPort} (must be 1-65535)`);
+        return { success: false, exitCode: 1 };
+      }
+      dashboardPort = parsed;
+    }
 
     // Parse resource threshold overrides from CLI flags
     const config: Partial<DaemonConfig> = {};
@@ -73,7 +89,7 @@ const startCommand: Command = {
 
     // Background mode (default): fork a detached process
     if (!foreground) {
-      return startBackgroundDaemon(projectRoot, quiet, rawMaxCpu, rawMinMem);
+      return startBackgroundDaemon(projectRoot, quiet, rawMaxCpu, rawMinMem, dashboardPort, noDashboard);
     }
 
     // Foreground mode: run in current process (blocks terminal)
@@ -111,6 +127,18 @@ const startCommand: Command = {
 
         spinner.succeed('Worker daemon started (foreground mode)');
 
+        // Start dashboard unless disabled
+        let dashboard: DashboardHandle | null = null;
+        if (!noDashboard) {
+          try {
+            const memory = await createDashboardMemoryAccessor();
+            dashboard = startDashboard(daemon, { port: dashboardPort, memory });
+            output.printSuccess(`Dashboard: http://localhost:${dashboardPort}`);
+          } catch (err) {
+            output.printWarning(`Dashboard failed to start: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+
         output.writeln();
         output.printBox(
           [
@@ -120,6 +148,7 @@ const startCommand: Command = {
             `Max Concurrent: ${status.config.maxConcurrent}`,
             `Max CPU Load: ${status.config.resourceThresholds.maxCpuLoad}`,
             `Min Free Memory: ${status.config.resourceThresholds.minFreeMemoryPercent}%`,
+            ...(dashboard ? [`Dashboard: http://localhost:${dashboardPort}`] : []),
           ].join('\n'),
           'Daemon Status'
         );
@@ -164,7 +193,13 @@ const startCommand: Command = {
         // Keep process alive
         await new Promise(() => {}); // Never resolves - daemon runs until killed
       } else {
-        await startDaemon(projectRoot, config);
+        const daemon = await startDaemon(projectRoot, config);
+        if (!noDashboard) {
+          try {
+            const memory = await createDashboardMemoryAccessor();
+            startDashboard(daemon, { port: dashboardPort, memory });
+          } catch { /* dashboard is best-effort in quiet mode */ }
+        }
         await new Promise(() => {}); // Keep alive
       }
 
@@ -206,7 +241,7 @@ function validatePath(path: string, label: string): void {
 /**
  * Start daemon as a detached background process
  */
-async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpuLoad?: string, minFreeMemory?: string): Promise<CommandResult> {
+async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpuLoad?: string, minFreeMemory?: string, dashboardPort?: number, noDashboard?: boolean): Promise<CommandResult> {
   // Validate and resolve project root
   const resolvedRoot = resolve(projectRoot);
   validatePath(resolvedRoot, 'Project root');
@@ -275,6 +310,12 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
   if (minFreeMemory && SPAWN_NUMERIC_RE.test(minFreeMemory)) {
     spawnArgs.push('--min-free-memory', minFreeMemory);
   }
+  // Forward dashboard flags
+  if (noDashboard) {
+    spawnArgs.push('--no-dashboard');
+  } else if (dashboardPort && dashboardPort !== DEFAULT_DASHBOARD_PORT) {
+    spawnArgs.push('--dashboard-port', String(dashboardPort));
+  }
   const child = spawn(process.execPath, spawnArgs, spawnOpts);
 
   // Get PID from spawned process directly (no shell echo needed)
@@ -311,6 +352,9 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
 
   if (!quiet) {
     output.printSuccess(`Daemon started in background (PID: ${pid})`);
+    if (!noDashboard) {
+      output.printInfo(`Dashboard: http://localhost:${dashboardPort ?? DEFAULT_DASHBOARD_PORT}`);
+    }
     output.printInfo(`Logs: ${logFile}`);
     output.printInfo(`Stop with: claude-flow daemon stop`);
   }

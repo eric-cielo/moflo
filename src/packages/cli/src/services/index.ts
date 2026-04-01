@@ -74,6 +74,15 @@ export {
   type AgentType,
 } from './agent-router.js';
 
+// Dashboard
+export {
+  startDashboard,
+  createDashboardMemoryAccessor,
+  DEFAULT_DASHBOARD_PORT,
+  type DashboardOptions,
+  type DashboardHandle,
+} from './daemon-dashboard.js';
+
 // Re-export types
 export type { default as WorkerDaemonType, DaemonConfig } from './worker-daemon.js';
 export type { default as HeadlessWorkerExecutorType } from './headless-worker-executor.js';

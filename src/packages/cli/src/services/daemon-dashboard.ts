@@ -1,0 +1,487 @@
+/**
+ * Daemon Dashboard — Lightweight localhost HTTP server
+ *
+ * Serves a read-only VanJS dashboard for daemon status, workflow logs,
+ * and memory stats. Binds to 127.0.0.1 only (no auth needed).
+ *
+ * @module daemon-dashboard
+ */
+
+import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
+import type { WorkerDaemon } from './worker-daemon.js';
+import type { MemoryAccessor } from '../../../workflows/src/types/step-command.types.js';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface DashboardOptions {
+  /** Port to listen on (default: 3117). */
+  port: number;
+  /** Optional MemoryAccessor for namespace stats. */
+  memory?: MemoryAccessor;
+}
+
+export interface DashboardHandle {
+  /** The underlying HTTP server. */
+  server: Server;
+  /** The port the server is listening on. */
+  port: number;
+  /** Stop the dashboard server. */
+  stop(): Promise<void>;
+}
+
+export const DEFAULT_DASHBOARD_PORT = 3117;
+
+/**
+ * Create a MemoryAccessor backed by the sql.js/HNSW memory database.
+ * Lazy-loads memory-initializer to avoid circular deps.
+ */
+export async function createDashboardMemoryAccessor(): Promise<MemoryAccessor> {
+  const { searchEntries, getEntry, storeEntry } = await import('../memory/memory-initializer.js');
+
+  return {
+    async read(namespace: string, key: string): Promise<unknown | null> {
+      try {
+        const result = await getEntry({ key, namespace });
+        return result?.entry?.content ?? null;
+      } catch {
+        return null;
+      }
+    },
+    async write(namespace: string, key: string, value: unknown): Promise<void> {
+      await storeEntry({ key, value: typeof value === 'string' ? value : JSON.stringify(value), namespace });
+    },
+    async search(namespace: string, query: string): Promise<Array<{ key: string; value: unknown; score: number }>> {
+      try {
+        const result = await searchEntries({ query, namespace, limit: 100 });
+        if (!result.success) return [];
+        return result.results.map(r => ({ key: r.key, value: r.content, score: r.score }));
+      } catch {
+        return [];
+      }
+    },
+  };
+}
+
+function handleStatus(daemon: WorkerDaemon): object {
+  const status = daemon.getStatus();
+  const workers: Record<string, unknown>[] = [];
+  for (const [type, state] of status.workers) {
+    workers.push({
+      type,
+      isRunning: state.isRunning,
+      lastRun: state.lastRun?.toISOString() ?? null,
+      nextRun: state.nextRun?.toISOString() ?? null,
+      runCount: state.runCount,
+      successCount: state.successCount,
+      failureCount: state.failureCount,
+      averageDurationMs: state.averageDurationMs,
+    });
+  }
+
+  const enabledWorkers = status.config.workers.filter(w => w.enabled);
+
+  return {
+    running: status.running,
+    pid: status.pid,
+    startedAt: status.startedAt?.toISOString() ?? null,
+    uptime: status.startedAt
+      ? Math.floor((Date.now() - status.startedAt.getTime()) / 1000)
+      : 0,
+    config: {
+      maxConcurrent: status.config.maxConcurrent,
+      workerTimeoutMs: status.config.workerTimeoutMs,
+      resourceThresholds: status.config.resourceThresholds,
+      enabledWorkerCount: enabledWorkers.length,
+    },
+    workers,
+  };
+}
+
+async function handleSchedules(memory?: MemoryAccessor): Promise<object> {
+  if (!memory) {
+    return { schedules: [], available: false };
+  }
+  try {
+    const results = await memory.search('scheduled-workflows', '*');
+    const schedules = results.map(r => {
+      const data = typeof r.value === 'string' ? tryParse(r.value) : (r.value as Record<string, unknown> ?? {});
+      return { id: r.key, ...(data as Record<string, unknown>) };
+    });
+    return { schedules, available: true };
+  } catch {
+    return { schedules: [], available: true };
+  }
+}
+
+async function handleWorkflows(memory?: MemoryAccessor): Promise<object> {
+  if (!memory) {
+    return { executions: [], available: false };
+  }
+  try {
+    // Collect execution records from schedule-executions and tasklist namespaces
+    const [schedExecs, taskExecs] = await Promise.all([
+      memory.search('schedule-executions', '*').catch(() => []),
+      memory.search('tasklist', '*').catch(() => []),
+    ]);
+    const allExecs: Record<string, unknown>[] = [...schedExecs, ...taskExecs].map(r => {
+      const data = typeof r.value === 'string' ? tryParse(r.value) : (r.value as Record<string, unknown> ?? {});
+      return { id: r.key, ...(data as Record<string, unknown>) };
+    });
+    // Sort by most recent first (try startedAt, updatedAt, or key)
+    allExecs.sort((a, b) => {
+      const ta = Number(a.startedAt ?? a.updatedAt ?? 0);
+      const tb = Number(b.startedAt ?? b.updatedAt ?? 0);
+      return tb - ta;
+    });
+    return { executions: allExecs.slice(0, 50), available: true };
+  } catch {
+    return { executions: [], available: true };
+  }
+}
+
+function tryParse(s: string): Record<string, unknown> {
+  try { return JSON.parse(s); } catch { return { raw: s }; }
+}
+
+async function handleMemoryStats(): Promise<object> {
+  // Single GROUP BY query — no hardcoded namespace list, no row fetching
+  try {
+    const { getNamespaceCounts } = await import('../memory/memory-initializer.js');
+    const { namespaces, total } = await getNamespaceCounts();
+    return { namespaces, totalEntries: total, available: total > 0 || Object.keys(namespaces).length > 0 };
+  } catch {
+    return { namespaces: {}, totalEntries: 0, available: false };
+  }
+}
+
+// ============================================================================
+// JSON response helpers
+// ============================================================================
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  const json = JSON.stringify(body);
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(json),
+    'Cache-Control': 'no-cache',
+  });
+  res.end(json);
+}
+
+function sendHtml(res: ServerResponse, html: string): void {
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Content-Length': Buffer.byteLength(html),
+    'Cache-Control': 'no-cache',
+  });
+  res.end(html);
+}
+
+// ============================================================================
+// Router
+// ============================================================================
+
+async function handleRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  daemon: WorkerDaemon,
+  opts: DashboardOptions,
+): Promise<void> {
+  const url = req.url ?? '/';
+  const method = req.method ?? 'GET';
+
+  // Only allow GET requests — dashboard is read-only
+  if (method !== 'GET') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+
+  try {
+    if (url === '/') {
+      sendHtml(res, DASHBOARD_HTML);
+    } else if (url === '/api/status') {
+      sendJson(res, 200, handleStatus(daemon));
+    } else if (url === '/api/schedules') {
+      sendJson(res, 200, await handleSchedules(opts.memory));
+    } else if (url === '/api/workflows') {
+      sendJson(res, 200, await handleWorkflows(opts.memory));
+    } else if (url === '/api/memory/stats') {
+      sendJson(res, 200, await handleMemoryStats());
+    } else {
+      sendJson(res, 404, { error: 'Not found' });
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    sendJson(res, 500, { error: 'Internal server error', message });
+  }
+}
+
+// ============================================================================
+// Server lifecycle
+// ============================================================================
+
+/**
+ * Start the dashboard HTTP server.
+ *
+ * @param daemon - WorkerDaemon instance for status data
+ * @param opts - Dashboard configuration
+ * @returns A handle to stop the server
+ */
+export function startDashboard(
+  daemon: WorkerDaemon,
+  opts: DashboardOptions,
+): DashboardHandle {
+  const port = opts.port;
+
+  const server = createServer((req, res) => {
+    handleRequest(req, res, daemon, opts).catch(() => {
+      if (!res.headersSent) {
+        sendJson(res, 500, { error: 'Internal server error' });
+      }
+    });
+  });
+
+  // Prevent uncaught EADDRINUSE from crashing the daemon process
+  server.on('error', (err) => {
+    // Re-throw as a catchable error so callers see it
+    throw err;
+  });
+
+  server.listen(port, '127.0.0.1');
+
+  return {
+    server,
+    port,
+    stop(): Promise<void> {
+      return new Promise((resolve, reject) => {
+        server.closeAllConnections?.();
+        server.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    },
+  };
+}
+
+// ============================================================================
+// Inlined VanJS Dashboard HTML
+// ============================================================================
+
+const DASHBOARD_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MoFlo Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 20px; }
+    h1 { color: #58a6ff; margin-bottom: 4px; font-size: 1.5rem; }
+    h2 { color: #8b949e; font-size: 1.1rem; margin: 16px 0 12px; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    .header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+    .subtitle { color: #8b949e; font-size: 0.85rem; }
+    .status-bar { display: flex; gap: 24px; padding: 12px 16px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+    .status-bar .item { display: flex; flex-direction: column; }
+    .status-bar .label { color: #8b949e; font-size: 0.75rem; text-transform: uppercase; }
+    .status-bar .value { font-size: 1rem; font-weight: 600; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .dot-green { background: #3fb950; }
+    .dot-red { background: #f85149; }
+    .dot-yellow { background: #d29922; }
+    .nav { display: flex; gap: 0; border-bottom: 1px solid #30363d; margin-bottom: 16px; }
+    .nav-tab { padding: 8px 16px; font-size: 0.9rem; color: #8b949e; cursor: pointer; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; user-select: none; }
+    .nav-tab:hover { color: #c9d1d9; }
+    .nav-tab.active { color: #58a6ff; border-bottom-color: #58a6ff; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; margin-bottom: 16px; }
+    th { text-align: left; padding: 8px 12px; background: #21262d; color: #8b949e; font-size: 0.75rem; text-transform: uppercase; font-weight: 600; }
+    td { padding: 8px 12px; border-top: 1px solid #21262d; font-size: 0.85rem; }
+    tr:hover td { background: #1c2128; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+    .badge-green { background: #238636; color: #fff; }
+    .badge-red { background: #da3633; color: #fff; }
+    .badge-gray { background: #30363d; color: #8b949e; }
+    .badge-yellow { background: #9e6a03; color: #fff; }
+    .empty { color: #484f58; font-style: italic; padding: 16px; text-align: center; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px; }
+    .stat-card .label { color: #8b949e; font-size: 0.75rem; }
+    .stat-card .value { font-size: 1.25rem; font-weight: 700; color: #58a6ff; }
+    .poll-indicator { position: fixed; top: 8px; right: 12px; font-size: 0.7rem; color: #484f58; }
+    .api-links { margin-top: 12px; padding: 12px 16px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; }
+    .api-links a { color: #58a6ff; text-decoration: none; font-size: 0.85rem; margin-right: 16px; }
+    .api-links a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>MoFlo Dashboard</h1>
+    <span class="subtitle">read-only &bull; localhost</span>
+  </div>
+  <div id="status-bar" class="status-bar"><div class="empty">Loading...</div></div>
+  <div class="nav" id="nav"></div>
+  <div id="panel-workers" class="panel"></div>
+  <div id="panel-schedules" class="panel" style="display:none"></div>
+  <div id="panel-executions" class="panel" style="display:none"></div>
+  <div id="panel-memory" class="panel" style="display:none"></div>
+  <div id="poll-indicator" class="poll-indicator"></div>
+  <script>
+    // Tab navigation — plain DOM, no framework
+    const tabIds = ['workers', 'schedules', 'executions', 'memory'];
+    const tabLabels = ['Workers', 'Schedules', 'Executions', 'Memory'];
+    let activeTab = 'workers';
+
+    function switchTab(id) {
+      activeTab = id;
+      tabIds.forEach(t => {
+        document.getElementById('panel-' + t).style.display = t === id ? '' : 'none';
+      });
+      document.querySelectorAll('.nav-tab').forEach(el => {
+        el.classList.toggle('active', el.dataset.tab === id);
+      });
+    }
+
+    // Build nav tabs
+    const navEl = document.getElementById('nav');
+    tabLabels.forEach((label, i) => {
+      const tab = document.createElement('div');
+      tab.className = 'nav-tab' + (i === 0 ? ' active' : '');
+      tab.textContent = label;
+      tab.dataset.tab = tabIds[i];
+      tab.onclick = () => switchTab(tabIds[i]);
+      navEl.appendChild(tab);
+    });
+
+    // Helpers
+    const fmtDuration = (ms) => {
+      if (ms == null) return '-';
+      if (ms < 1000) return ms + 'ms';
+      if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+      return (ms / 60000).toFixed(1) + 'm';
+    };
+    const fmtTime = (iso) => {
+      if (!iso) return '-';
+      return new Date(typeof iso === 'number' ? iso : iso).toLocaleTimeString();
+    };
+    const fmtTimeAgo = (iso) => {
+      if (!iso) return 'never';
+      const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+      if (s < 60) return s + 's ago';
+      if (s < 3600) return Math.floor(s / 60) + 'm ago';
+      if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+      return Math.floor(s / 86400) + 'd ago';
+    };
+    const fmtUptime = (secs) => {
+      if (!secs) return '-';
+      const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+      if (h > 0) return h + 'h ' + m + 'm';
+      if (m > 0) return m + 'm ' + s + 's';
+      return s + 's';
+    };
+    const pct = (s, f) => { const t = s + f; return t === 0 ? '-' : Math.round((s / t) * 100) + '%'; };
+    const badge = (text, cls) => '<span class="badge badge-' + cls + '">' + text + '</span>';
+    const esc = (s) => s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+    // Render functions — write innerHTML for each panel
+    function renderStatus(s) {
+      if (!s) return;
+      const dot = s.running ? 'dot-green' : 'dot-red';
+      const label = s.running ? 'Running' : 'Stopped';
+      document.getElementById('status-bar').innerHTML =
+        '<div class="item"><span class="label">Status</span><span class="value"><span class="dot ' + dot + '"></span>' + label + '</span></div>' +
+        '<div class="item"><span class="label">PID</span><span class="value">' + s.pid + '</span></div>' +
+        '<div class="item"><span class="label">Uptime</span><span class="value">' + fmtUptime(s.uptime) + '</span></div>' +
+        '<div class="item"><span class="label">Workers</span><span class="value">' + s.config.enabledWorkerCount + ' enabled</span></div>' +
+        '<div class="item"><span class="label">Max Concurrent</span><span class="value">' + s.config.maxConcurrent + '</span></div>';
+    }
+
+    function renderWorkers(s) {
+      if (!s) return;
+      const rows = s.workers.map(w =>
+        '<tr><td>' + esc(w.type) + '</td>' +
+        '<td>' + (w.isRunning ? badge('running','yellow') : badge('idle','gray')) + '</td>' +
+        '<td>' + w.runCount + '</td>' +
+        '<td>' + pct(w.successCount, w.failureCount) + '</td>' +
+        '<td>' + fmtDuration(w.averageDurationMs) + '</td>' +
+        '<td>' + fmtTimeAgo(w.lastRun) + '</td>' +
+        '<td>' + (w.nextRun ? fmtTime(w.nextRun) : '-') + '</td></tr>'
+      ).join('');
+      document.getElementById('panel-workers').innerHTML =
+        '<h2>Worker Status</h2>' +
+        '<table><thead><tr><th>Worker</th><th>Status</th><th>Runs</th><th>Success</th><th>Avg</th><th>Last Run</th><th>Next Run</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>';
+    }
+
+    function renderSchedules(sc) {
+      const el = document.getElementById('panel-schedules');
+      if (!sc || !sc.available) { el.innerHTML = '<div class="empty">Scheduler not connected</div>'; return; }
+      if (sc.schedules.length === 0) { el.innerHTML = '<div class="empty">No active schedules</div>'; return; }
+      const rows = sc.schedules.map(s =>
+        '<tr><td>' + esc(s.workflowName) + '</td>' +
+        '<td>' + esc(s.cron || s.interval || s.at || '-') + '</td>' +
+        '<td>' + (s.enabled ? badge('on','green') : badge('off','gray')) + '</td>' +
+        '<td>' + (s.lastRunAt ? fmtTime(s.lastRunAt) : '-') + '</td>' +
+        '<td>' + fmtTime(s.nextRunAt) + '</td>' +
+        '<td>' + badge(s.source,'gray') + '</td></tr>'
+      ).join('');
+      el.innerHTML = '<h2>Scheduled Workflows</h2>' +
+        '<table><thead><tr><th>Workflow</th><th>Schedule</th><th>Enabled</th><th>Last Run</th><th>Next Run</th><th>Source</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>';
+    }
+
+    function renderExecutions(w) {
+      const el = document.getElementById('panel-executions');
+      if (!w || !w.available) { el.innerHTML = '<div class="empty">Scheduler not connected</div>'; return; }
+      if (w.executions.length === 0) { el.innerHTML = '<div class="empty">No recent executions</div>'; return; }
+      const rows = w.executions.map(e =>
+        '<tr><td>' + esc(e.workflowName) + '</td>' +
+        '<td>' + (e.success === true ? badge('pass','green') : e.success === false ? badge('fail','red') : badge('running','yellow')) + '</td>' +
+        '<td>' + fmtTime(e.startedAt) + '</td>' +
+        '<td>' + fmtDuration(e.duration) + '</td>' +
+        '<td>' + (e.error ? '<span style="color:#f85149;font-size:0.8rem">' + esc(e.error.substring(0,80)) + '</span>' : '-') + '</td></tr>'
+      ).join('');
+      el.innerHTML = '<h2>Recent Executions</h2>' +
+        '<table><thead><tr><th>Workflow</th><th>Status</th><th>Started</th><th>Duration</th><th>Error</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>';
+    }
+
+    function renderMemory(m) {
+      const el = document.getElementById('panel-memory');
+      if (!m || !m.available) { el.innerHTML = '<div class="empty">Memory not connected</div>'; return; }
+      const entries = Object.entries(m.namespaces);
+      if (entries.length === 0) { el.innerHTML = '<div class="empty">No namespaces</div>'; return; }
+      const rows = entries.map(([ns, count]) => '<tr><td>' + esc(ns) + '</td><td>' + count + '</td></tr>').join('');
+      el.innerHTML = '<h2>Memory Stats</h2>' +
+        '<div class="grid">' +
+        '<div class="stat-card"><div class="label">Total Entries</div><div class="value">' + m.totalEntries + '</div></div>' +
+        '<div class="stat-card"><div class="label">Namespaces</div><div class="value">' + entries.length + '</div></div>' +
+        '</div>' +
+        '<table><thead><tr><th>Namespace</th><th>Entries</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    // Polling
+    const poll = async () => {
+      try {
+        const [s, sc, w, m] = await Promise.all([
+          fetch('/api/status').then(r => r.json()),
+          fetch('/api/schedules').then(r => r.json()),
+          fetch('/api/workflows').then(r => r.json()),
+          fetch('/api/memory/stats').then(r => r.json()),
+        ]);
+        renderStatus(s);
+        renderWorkers(s);
+        renderSchedules(sc);
+        renderExecutions(w);
+        renderMemory(m);
+        document.getElementById('poll-indicator').textContent = 'Last poll: ' + new Date().toLocaleTimeString();
+      } catch (e) {
+        console.error('Poll failed:', e);
+      }
+    };
+    setInterval(poll, 5000);
+    poll();
+  </script>
+</body>
+</html>`;
