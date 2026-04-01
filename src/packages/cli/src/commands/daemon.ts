@@ -8,7 +8,7 @@ import { output } from '../output.js';
 import { WorkerDaemon, getDaemon, startDaemon, stopDaemon, type WorkerType, type DaemonConfig } from '../services/worker-daemon.js';
 import { acquireDaemonLock, releaseDaemonLock, getDaemonLockHolder, transferDaemonLock, lockPath } from '../services/daemon-lock.js';
 import { installDaemonService, uninstallDaemonService, isDaemonInstalled } from '../services/daemon-service.js';
-import { startDashboard, DEFAULT_DASHBOARD_PORT, type DashboardHandle } from '../services/daemon-dashboard.js';
+import { startDashboard, createDashboardMemoryAccessor, DEFAULT_DASHBOARD_PORT, type DashboardHandle } from '../services/daemon-dashboard.js';
 import { spawn, execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve, isAbsolute } from 'path';
@@ -131,7 +131,8 @@ const startCommand: Command = {
         let dashboard: DashboardHandle | null = null;
         if (!noDashboard) {
           try {
-            dashboard = startDashboard(daemon, { port: dashboardPort });
+            const memory = await createDashboardMemoryAccessor();
+            dashboard = startDashboard(daemon, { port: dashboardPort, memory });
             output.printSuccess(`Dashboard: http://localhost:${dashboardPort}`);
           } catch (err) {
             output.printWarning(`Dashboard failed to start: ${err instanceof Error ? err.message : String(err)}`);
@@ -195,7 +196,8 @@ const startCommand: Command = {
         const daemon = await startDaemon(projectRoot, config);
         if (!noDashboard) {
           try {
-            startDashboard(daemon, { port: dashboardPort });
+            const memory = await createDashboardMemoryAccessor();
+            startDashboard(daemon, { port: dashboardPort, memory });
           } catch { /* dashboard is best-effort in quiet mode */ }
         }
         await new Promise(() => {}); // Keep alive

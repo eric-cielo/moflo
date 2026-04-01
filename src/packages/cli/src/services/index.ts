@@ -77,6 +77,7 @@ export {
 // Dashboard
 export {
   startDashboard,
+  createDashboardMemoryAccessor,
   DEFAULT_DASHBOARD_PORT,
   type DashboardOptions,
   type DashboardHandle,

@@ -5,8 +5,21 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { startDashboard, DEFAULT_DASHBOARD_PORT, type DashboardOptions, type DashboardHandle } from '../src/services/daemon-dashboard.js';
 import http from 'node:http';
+
+// Mock memory-initializer for handleMemoryStats (GROUP BY query)
+const mockGetNamespaceCounts = vi.fn();
+vi.mock('../src/memory/memory-initializer.js', () => ({
+  getNamespaceCounts: mockGetNamespaceCounts,
+  searchEntries: vi.fn().mockResolvedValue({ success: true, results: [], searchTime: 0 }),
+  getEntry: vi.fn().mockResolvedValue({ success: true, found: false }),
+  storeEntry: vi.fn().mockResolvedValue({ success: true }),
+  listEntries: vi.fn().mockResolvedValue({ success: true, entries: [], total: 0 }),
+  initializeMemoryDatabase: vi.fn(),
+  checkMemoryInitialization: vi.fn(),
+}));
+
+import { startDashboard, DEFAULT_DASHBOARD_PORT, type DashboardOptions, type DashboardHandle } from '../src/services/daemon-dashboard.js';
 
 // ============================================================================
 // Mock helpers
@@ -55,53 +68,21 @@ function makeMockDaemon(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-function makeMockScheduler() {
-  return {
-    listSchedules: vi.fn().mockResolvedValue([
-      {
-        id: 'sched-1',
-        workflowName: 'security-audit',
-        workflowPath: '/workflows/sa.yaml',
-        cron: '0 */6 * * *',
-        interval: null,
-        at: null,
-        enabled: true,
-        lastRunAt: 1711875600000,
-        nextRunAt: 1711897200000,
-        source: 'definition',
-      },
-    ]),
-    getExecutionHistory: vi.fn().mockResolvedValue([
-      {
-        id: 'exec-1',
-        scheduleId: 'sched-1',
-        workflowName: 'security-audit',
-        startedAt: 1711875600000,
-        completedAt: 1711875660000,
-        success: true,
-        error: null,
-        workflowId: 'wf-abc',
-        duration: 60000,
-      },
-    ]),
-  } as any;
-}
-
-function makeMockMemory() {
+function makeMockMemory(overrides: Record<string, Array<{ key: string; value: unknown; score: number }>> = {}) {
+  const defaults: Record<string, Array<{ key: string; value: unknown; score: number }>> = {
+    'guidance': [{ key: 'g1', value: 'v1', score: 1 }, { key: 'g2', value: 'v2', score: 1 }],
+    'patterns': [{ key: 'p1', value: 'v1', score: 1 }],
+    'code-map': [],
+    'knowledge': [{ key: 'k1', value: 'v1', score: 1 }, { key: 'k2', value: 'v2', score: 1 }, { key: 'k3', value: 'v3', score: 1 }],
+    'scheduled-workflows': [],
+    'schedule-executions': [],
+    'tasklist': [],
+    ...overrides,
+  };
   return {
     read: vi.fn().mockResolvedValue(null),
     write: vi.fn().mockResolvedValue(undefined),
-    search: vi.fn().mockImplementation(async (ns: string) => {
-      const data: Record<string, Array<{ key: string; value: unknown; score: number }>> = {
-        'guidance': [{ key: 'g1', value: 'v1', score: 1 }, { key: 'g2', value: 'v2', score: 1 }],
-        'patterns': [{ key: 'p1', value: 'v1', score: 1 }],
-        'code-map': [],
-        'knowledge': [{ key: 'k1', value: 'v1', score: 1 }, { key: 'k2', value: 'v2', score: 1 }, { key: 'k3', value: 'v3', score: 1 }],
-        'scheduled-workflows': [],
-        'schedule-executions': [],
-      };
-      return data[ns] ?? [];
-    }),
+    search: vi.fn().mockImplementation(async (ns: string) => defaults[ns] ?? []),
   } as any;
 }
 
@@ -166,7 +147,7 @@ describe('DaemonDashboard', () => {
     expect(res.headers['content-type']).toContain('text/html');
     expect(res.body).toContain('MoFlo Dashboard');
     expect(res.body).toContain('<!DOCTYPE html>');
-    expect(res.body).toContain('van.tags');
+    expect(res.body).toContain('switchTab');
   });
 
   it('returns daemon status at GET /api/status', async () => {
@@ -195,8 +176,14 @@ describe('DaemonDashboard', () => {
 
   it('returns schedules at GET /api/schedules', async () => {
     const daemon = makeMockDaemon();
-    const scheduler = makeMockScheduler();
-    dashboard = startDashboard(daemon, { port: testPort, scheduler });
+    const memory = makeMockMemory({
+      'scheduled-workflows': [{
+        key: 'sched-1',
+        value: JSON.stringify({ workflowName: 'security-audit', cron: '0 */6 * * *', enabled: true }),
+        score: 1,
+      }],
+    });
+    dashboard = startDashboard(daemon, { port: testPort, memory });
     await new Promise(resolve => dashboard!.server.once('listening', resolve));
 
     const res = await fetchDashboard(testPort, '/api/schedules');
@@ -210,7 +197,7 @@ describe('DaemonDashboard', () => {
     expect(data.schedules[0].enabled).toBe(true);
   });
 
-  it('returns unavailable when scheduler is not provided', async () => {
+  it('returns unavailable when memory is not provided', async () => {
     const daemon = makeMockDaemon();
     dashboard = startDashboard(daemon, { port: testPort });
     await new Promise(resolve => dashboard!.server.once('listening', resolve));
@@ -223,8 +210,14 @@ describe('DaemonDashboard', () => {
 
   it('returns workflow executions at GET /api/workflows', async () => {
     const daemon = makeMockDaemon();
-    const scheduler = makeMockScheduler();
-    dashboard = startDashboard(daemon, { port: testPort, scheduler });
+    const memory = makeMockMemory({
+      'schedule-executions': [{
+        key: 'exec-1',
+        value: JSON.stringify({ workflowName: 'security-audit', startedAt: 1711875600000, success: true, duration: 60000 }),
+        score: 1,
+      }],
+    });
+    dashboard = startDashboard(daemon, { port: testPort, memory });
     await new Promise(resolve => dashboard!.server.once('listening', resolve));
 
     const res = await fetchDashboard(testPort, '/api/workflows');
@@ -238,18 +231,22 @@ describe('DaemonDashboard', () => {
 
   it('returns memory stats at GET /api/memory/stats', async () => {
     const daemon = makeMockDaemon();
-    const memory = makeMockMemory();
-    dashboard = startDashboard(daemon, { port: testPort, memory });
+    mockGetNamespaceCounts.mockResolvedValue({
+      namespaces: { guidance: 34, patterns: 29, 'code-map': 100, knowledge: 3, tests: 10 },
+      total: 176,
+    });
+    dashboard = startDashboard(daemon, { port: testPort });
     await new Promise(resolve => dashboard!.server.once('listening', resolve));
 
     const res = await fetchDashboard(testPort, '/api/memory/stats');
     const data = JSON.parse(res.body);
     expect(data.available).toBe(true);
-    expect(data.totalEntries).toBe(6); // 2 + 1 + 0 + 3 + 0 + 0
-    expect(data.namespaces.guidance).toBe(2);
-    expect(data.namespaces.patterns).toBe(1);
+    expect(data.totalEntries).toBe(176);
+    expect(data.namespaces.guidance).toBe(34);
+    expect(data.namespaces.patterns).toBe(29);
     expect(data.namespaces.knowledge).toBe(3);
-    expect(data.namespaces['code-map']).toBe(0);
+    expect(data.namespaces['code-map']).toBe(100);
+    expect(data.namespaces.tests).toBe(10);
   });
 
   it('returns 404 for unknown routes', async () => {

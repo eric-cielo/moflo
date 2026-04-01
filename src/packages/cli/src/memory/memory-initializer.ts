@@ -2776,6 +2776,47 @@ export async function deleteEntry(options: {
   }
 }
 
+/**
+ * Get per-namespace entry counts via a single GROUP BY query.
+ * Returns { namespaces: Record<string, number>, total: number }.
+ */
+export async function getNamespaceCounts(dbPath?: string): Promise<{
+  namespaces: Record<string, number>;
+  total: number;
+}> {
+  const swarmDir = path.join(process.cwd(), '.swarm');
+  const resolvedPath = dbPath || path.join(swarmDir, 'memory.db');
+
+  try {
+    if (!fs.existsSync(resolvedPath)) {
+      return { namespaces: {}, total: 0 };
+    }
+    const initSqlJs = (await mofloImport('sql.js')).default;
+    const SQL = await initSqlJs();
+    const fileBuffer = fs.readFileSync(resolvedPath);
+    const db = new SQL.Database(fileBuffer);
+
+    const result = db.exec(
+      "SELECT namespace, COUNT(*) as cnt FROM memory_entries WHERE status = 'active' GROUP BY namespace ORDER BY cnt DESC"
+    );
+    db.close();
+
+    const namespaces: Record<string, number> = {};
+    let total = 0;
+    if (result[0]?.values) {
+      for (const row of result[0].values) {
+        const ns = String(row[0]);
+        const count = Number(row[1]);
+        namespaces[ns] = count;
+        total += count;
+      }
+    }
+    return { namespaces, total };
+  } catch {
+    return { namespaces: {}, total: 0 };
+  }
+}
+
 export default {
   initializeMemoryDatabase,
   checkMemoryInitialization,
@@ -2790,6 +2831,7 @@ export default {
   listEntries,
   getEntry,
   deleteEntry,
+  getNamespaceCounts,
   MEMORY_SCHEMA_V3,
   getInitialMetadata
 };

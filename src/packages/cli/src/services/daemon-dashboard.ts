@@ -9,7 +9,6 @@
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { WorkerDaemon } from './worker-daemon.js';
-import type { WorkflowScheduler } from '../../../workflows/src/scheduler/scheduler.js';
 import type { MemoryAccessor } from '../../../workflows/src/types/step-command.types.js';
 
 // ============================================================================
@@ -19,8 +18,6 @@ import type { MemoryAccessor } from '../../../workflows/src/types/step-command.t
 export interface DashboardOptions {
   /** Port to listen on (default: 3117). */
   port: number;
-  /** Optional WorkflowScheduler for schedule/execution data. */
-  scheduler?: WorkflowScheduler;
   /** Optional MemoryAccessor for namespace stats. */
   memory?: MemoryAccessor;
 }
@@ -35,6 +32,37 @@ export interface DashboardHandle {
 }
 
 export const DEFAULT_DASHBOARD_PORT = 3117;
+
+/**
+ * Create a MemoryAccessor backed by the sql.js/HNSW memory database.
+ * Lazy-loads memory-initializer to avoid circular deps.
+ */
+export async function createDashboardMemoryAccessor(): Promise<MemoryAccessor> {
+  const { searchEntries, getEntry, storeEntry } = await import('../memory/memory-initializer.js');
+
+  return {
+    async read(namespace: string, key: string): Promise<unknown | null> {
+      try {
+        const result = await getEntry({ key, namespace });
+        return result?.entry?.content ?? null;
+      } catch {
+        return null;
+      }
+    },
+    async write(namespace: string, key: string, value: unknown): Promise<void> {
+      await storeEntry({ key, value: typeof value === 'string' ? value : JSON.stringify(value), namespace });
+    },
+    async search(namespace: string, query: string): Promise<Array<{ key: string; value: unknown; score: number }>> {
+      try {
+        const result = await searchEntries({ query, namespace, limit: 100 });
+        if (!result.success) return [];
+        return result.results.map(r => ({ key: r.key, value: r.content, score: r.score }));
+      } catch {
+        return [];
+      }
+    },
+  };
+}
 
 function handleStatus(daemon: WorkerDaemon): object {
   const status = daemon.getStatus();
@@ -71,70 +99,61 @@ function handleStatus(daemon: WorkerDaemon): object {
   };
 }
 
-async function handleSchedules(scheduler?: WorkflowScheduler): Promise<object> {
-  if (!scheduler) {
+async function handleSchedules(memory?: MemoryAccessor): Promise<object> {
+  if (!memory) {
     return { schedules: [], available: false };
   }
-  const schedules = await scheduler.listSchedules();
-  return {
-    schedules: schedules.map(s => ({
-      id: s.id,
-      workflowName: s.workflowName,
-      cron: s.cron ?? null,
-      interval: s.interval ?? null,
-      at: s.at ?? null,
-      enabled: s.enabled,
-      lastRunAt: s.lastRunAt ?? null,
-      nextRunAt: s.nextRunAt,
-      source: s.source,
-    })),
-    available: true,
-  };
+  try {
+    const results = await memory.search('scheduled-workflows', '*');
+    const schedules = results.map(r => {
+      const data = typeof r.value === 'string' ? tryParse(r.value) : (r.value as Record<string, unknown> ?? {});
+      return { id: r.key, ...(data as Record<string, unknown>) };
+    });
+    return { schedules, available: true };
+  } catch {
+    return { schedules: [], available: true };
+  }
 }
 
-async function handleWorkflows(scheduler?: WorkflowScheduler): Promise<object> {
-  if (!scheduler) {
+async function handleWorkflows(memory?: MemoryAccessor): Promise<object> {
+  if (!memory) {
     return { executions: [], available: false };
   }
-  const schedules = await scheduler.listSchedules();
-  const allExecs: unknown[] = [];
-  for (const schedule of schedules) {
-    const execs = await scheduler.getExecutionHistory(schedule.id, 20);
-    allExecs.push(...execs);
+  try {
+    // Collect execution records from schedule-executions and tasklist namespaces
+    const [schedExecs, taskExecs] = await Promise.all([
+      memory.search('schedule-executions', '*').catch(() => []),
+      memory.search('tasklist', '*').catch(() => []),
+    ]);
+    const allExecs: Record<string, unknown>[] = [...schedExecs, ...taskExecs].map(r => {
+      const data = typeof r.value === 'string' ? tryParse(r.value) : (r.value as Record<string, unknown> ?? {});
+      return { id: r.key, ...(data as Record<string, unknown>) };
+    });
+    // Sort by most recent first (try startedAt, updatedAt, or key)
+    allExecs.sort((a, b) => {
+      const ta = Number(a.startedAt ?? a.updatedAt ?? 0);
+      const tb = Number(b.startedAt ?? b.updatedAt ?? 0);
+      return tb - ta;
+    });
+    return { executions: allExecs.slice(0, 50), available: true };
+  } catch {
+    return { executions: [], available: true };
   }
-  // Sort by startedAt descending, take top 50
-  const sorted = (allExecs as Array<{ startedAt: number }>)
-    .sort((a, b) => b.startedAt - a.startedAt)
-    .slice(0, 50);
-  return { executions: sorted, available: true };
 }
 
-async function handleMemoryStats(memory?: MemoryAccessor): Promise<object> {
-  if (!memory) {
+function tryParse(s: string): Record<string, unknown> {
+  try { return JSON.parse(s); } catch { return { raw: s }; }
+}
+
+async function handleMemoryStats(): Promise<object> {
+  // Single GROUP BY query — no hardcoded namespace list, no row fetching
+  try {
+    const { getNamespaceCounts } = await import('../memory/memory-initializer.js');
+    const { namespaces, total } = await getNamespaceCounts();
+    return { namespaces, totalEntries: total, available: total > 0 || Object.keys(namespaces).length > 0 };
+  } catch {
     return { namespaces: {}, totalEntries: 0, available: false };
   }
-  // Query well-known namespaces for entry counts
-  const knownNamespaces = [
-    'guidance', 'patterns', 'code-map', 'knowledge',
-    'scheduled-workflows', 'schedule-executions',
-  ];
-  const counts = await Promise.all(
-    knownNamespaces.map(async (ns) => {
-      try {
-        const results = await memory.search(ns, '*');
-        return { ns, count: results.length };
-      } catch {
-        return { ns, count: 0 };
-      }
-    }),
-  );
-  const namespaceCounts: Record<string, number> = {};
-  let totalEntries = 0;
-  for (const { ns, count } of counts) {
-    namespaceCounts[ns] = count;
-    totalEntries += count;
-  }
-  return { namespaces: namespaceCounts, totalEntries, available: true };
 }
 
 // ============================================================================
@@ -185,11 +204,11 @@ async function handleRequest(
     } else if (url === '/api/status') {
       sendJson(res, 200, handleStatus(daemon));
     } else if (url === '/api/schedules') {
-      sendJson(res, 200, await handleSchedules(opts.scheduler));
+      sendJson(res, 200, await handleSchedules(opts.memory));
     } else if (url === '/api/workflows') {
-      sendJson(res, 200, await handleWorkflows(opts.scheduler));
+      sendJson(res, 200, await handleWorkflows(opts.memory));
     } else if (url === '/api/memory/stats') {
-      sendJson(res, 200, await handleMemoryStats(opts.memory));
+      sendJson(res, 200, await handleMemoryStats());
     } else {
       sendJson(res, 404, { error: 'Not found' });
     }
@@ -297,21 +316,150 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div class="header">
+    <h1>MoFlo Dashboard</h1>
+    <span class="subtitle">read-only &bull; localhost</span>
+  </div>
+  <div id="status-bar" class="status-bar"><div class="empty">Loading...</div></div>
+  <div class="nav" id="nav"></div>
+  <div id="panel-workers" class="panel"></div>
+  <div id="panel-schedules" class="panel" style="display:none"></div>
+  <div id="panel-executions" class="panel" style="display:none"></div>
+  <div id="panel-memory" class="panel" style="display:none"></div>
+  <div id="poll-indicator" class="poll-indicator"></div>
   <script>
-    // VanJS 1.5.2 minified (~0.9KB)
-    var van=((e)=>{let t=e.document,s=t.createElement.bind(t),n=e=>e==null,r=(e,t)=>{for(let s in t)e[s]=t[s];return e},l=Object,o=l.getPrototypeOf,a=e=>o(o(e))===null||o(e)===null,i=e=>e instanceof Function,c=e=>e._val!==void 0,u=(e,...t)=>{let n=s(e);for(let e of t.flat(1/0)){let t=c(e)?()=>e.rawVal:e;n.append(i(t)?van.bind(t):t)}return n},d=(e,t,s)=>{let r=t[s];r!==void 0&&(i(r)?van.bind(()=>{e[s]=r();return e[s]}):n(r)||(e[s]=r))},f=(e,t)=>{for(let s in t)d(e,t,s);return e},p=e=>{let t;for(;(t=e._listeners.pop())&&!t._dom?.isConnected;);return t},h=(e,t)=>{let s=e.rawVal;e._val=t;for(let n of e._listeners){n._dom?.isConnected?n(t,s):e._listeners.delete(n)}},g=e=>{let t;return{get val(){return c(e)?e.rawVal:e},get oldVal(){return c(e)?e._oldVal:e},set val(s){if(c(e)){let n=e.rawVal;s!==n&&(e._val=s,h(e,s))}}}},v=class{_val;_oldVal;_listeners=new Set;constructor(e){this._val=e}get val(){return this._val}set val(e){let t=this._val;e!==t&&(this._val=e,this._oldVal=t,h(this,e))}get rawVal(){return this._val}},m=(e,...t)=>{let n=s(e);for(let e of t){if(a(e)){f(n,e);continue}let t=e;n.append(i(t)?van.bind(t):c(t)?van.bind(()=>t.val):t)}return n};return{tags:new Proxy((e,t)=>{let s=m.bind(void 0,e);return t.set(e,s),s},{get:(e,t)=>e[t]??(e[t]=m.bind(void 0,t))}),state:e=>new v(e),val:e=>c(e)?e.rawVal:e,oldVal:e=>c(e)?e._oldVal:e,derive:e=>{let t=van.state();van.bind(()=>{t.val=e()});return t},bind:(...e)=>{let s=e.pop(),r=()=>s(...e.map(e=>i(e)?e():van.val(e))),l=van.state(r()),o=()=>{let e=r();e!==l.rawVal&&(l.val=e);return l.rawVal};for(let t of e)if(c(t))t._listeners.add(o);else if(i(t)){let e=van.state(t());van.bind(()=>{e.val=t()});e._listeners.add(o)}let a=van.derive(()=>l.val);return n(a.val)?t.createTextNode(""):a.val instanceof Node?a.val:t.createTextNode(a.val)},add:(e,...t)=>{for(let s of t.flat(1/0))e.append(i(s)?van.bind(s):c(s)?van.bind(()=>s.val):s);return e},hydrate:(e,t)=>t(e),_:e=>e,}})(window);
-  </script>
-  <script>
-    const {div, h1, h2, a, nav, span, table, thead, tbody, tr, th, td} = van.tags;
+    // Tab navigation — plain DOM, no framework
+    const tabIds = ['workers', 'schedules', 'executions', 'memory'];
+    const tabLabels = ['Workers', 'Schedules', 'Executions', 'Memory'];
+    let activeTab = 'workers';
 
-    // Reactive state
-    const status = van.state(null);
-    const schedules = van.state(null);
-    const workflows = van.state(null);
-    const memoryStats = van.state(null);
-    const lastPoll = van.state(null);
-    const activeTab = van.state('workers');
+    function switchTab(id) {
+      activeTab = id;
+      tabIds.forEach(t => {
+        document.getElementById('panel-' + t).style.display = t === id ? '' : 'none';
+      });
+      document.querySelectorAll('.nav-tab').forEach(el => {
+        el.classList.toggle('active', el.dataset.tab === id);
+      });
+    }
+
+    // Build nav tabs
+    const navEl = document.getElementById('nav');
+    tabLabels.forEach((label, i) => {
+      const tab = document.createElement('div');
+      tab.className = 'nav-tab' + (i === 0 ? ' active' : '');
+      tab.textContent = label;
+      tab.dataset.tab = tabIds[i];
+      tab.onclick = () => switchTab(tabIds[i]);
+      navEl.appendChild(tab);
+    });
+
+    // Helpers
+    const fmtDuration = (ms) => {
+      if (ms == null) return '-';
+      if (ms < 1000) return ms + 'ms';
+      if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+      return (ms / 60000).toFixed(1) + 'm';
+    };
+    const fmtTime = (iso) => {
+      if (!iso) return '-';
+      return new Date(typeof iso === 'number' ? iso : iso).toLocaleTimeString();
+    };
+    const fmtTimeAgo = (iso) => {
+      if (!iso) return 'never';
+      const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+      if (s < 60) return s + 's ago';
+      if (s < 3600) return Math.floor(s / 60) + 'm ago';
+      if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+      return Math.floor(s / 86400) + 'd ago';
+    };
+    const fmtUptime = (secs) => {
+      if (!secs) return '-';
+      const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+      if (h > 0) return h + 'h ' + m + 'm';
+      if (m > 0) return m + 'm ' + s + 's';
+      return s + 's';
+    };
+    const pct = (s, f) => { const t = s + f; return t === 0 ? '-' : Math.round((s / t) * 100) + '%'; };
+    const badge = (text, cls) => '<span class="badge badge-' + cls + '">' + text + '</span>';
+    const esc = (s) => s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+    // Render functions — write innerHTML for each panel
+    function renderStatus(s) {
+      if (!s) return;
+      const dot = s.running ? 'dot-green' : 'dot-red';
+      const label = s.running ? 'Running' : 'Stopped';
+      document.getElementById('status-bar').innerHTML =
+        '<div class="item"><span class="label">Status</span><span class="value"><span class="dot ' + dot + '"></span>' + label + '</span></div>' +
+        '<div class="item"><span class="label">PID</span><span class="value">' + s.pid + '</span></div>' +
+        '<div class="item"><span class="label">Uptime</span><span class="value">' + fmtUptime(s.uptime) + '</span></div>' +
+        '<div class="item"><span class="label">Workers</span><span class="value">' + s.config.enabledWorkerCount + ' enabled</span></div>' +
+        '<div class="item"><span class="label">Max Concurrent</span><span class="value">' + s.config.maxConcurrent + '</span></div>';
+    }
+
+    function renderWorkers(s) {
+      if (!s) return;
+      const rows = s.workers.map(w =>
+        '<tr><td>' + esc(w.type) + '</td>' +
+        '<td>' + (w.isRunning ? badge('running','yellow') : badge('idle','gray')) + '</td>' +
+        '<td>' + w.runCount + '</td>' +
+        '<td>' + pct(w.successCount, w.failureCount) + '</td>' +
+        '<td>' + fmtDuration(w.averageDurationMs) + '</td>' +
+        '<td>' + fmtTimeAgo(w.lastRun) + '</td>' +
+        '<td>' + (w.nextRun ? fmtTime(w.nextRun) : '-') + '</td></tr>'
+      ).join('');
+      document.getElementById('panel-workers').innerHTML =
+        '<h2>Worker Status</h2>' +
+        '<table><thead><tr><th>Worker</th><th>Status</th><th>Runs</th><th>Success</th><th>Avg</th><th>Last Run</th><th>Next Run</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>';
+    }
+
+    function renderSchedules(sc) {
+      const el = document.getElementById('panel-schedules');
+      if (!sc || !sc.available) { el.innerHTML = '<div class="empty">Scheduler not connected</div>'; return; }
+      if (sc.schedules.length === 0) { el.innerHTML = '<div class="empty">No active schedules</div>'; return; }
+      const rows = sc.schedules.map(s =>
+        '<tr><td>' + esc(s.workflowName) + '</td>' +
+        '<td>' + esc(s.cron || s.interval || s.at || '-') + '</td>' +
+        '<td>' + (s.enabled ? badge('on','green') : badge('off','gray')) + '</td>' +
+        '<td>' + (s.lastRunAt ? fmtTime(s.lastRunAt) : '-') + '</td>' +
+        '<td>' + fmtTime(s.nextRunAt) + '</td>' +
+        '<td>' + badge(s.source,'gray') + '</td></tr>'
+      ).join('');
+      el.innerHTML = '<h2>Scheduled Workflows</h2>' +
+        '<table><thead><tr><th>Workflow</th><th>Schedule</th><th>Enabled</th><th>Last Run</th><th>Next Run</th><th>Source</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>';
+    }
+
+    function renderExecutions(w) {
+      const el = document.getElementById('panel-executions');
+      if (!w || !w.available) { el.innerHTML = '<div class="empty">Scheduler not connected</div>'; return; }
+      if (w.executions.length === 0) { el.innerHTML = '<div class="empty">No recent executions</div>'; return; }
+      const rows = w.executions.map(e =>
+        '<tr><td>' + esc(e.workflowName) + '</td>' +
+        '<td>' + (e.success === true ? badge('pass','green') : e.success === false ? badge('fail','red') : badge('running','yellow')) + '</td>' +
+        '<td>' + fmtTime(e.startedAt) + '</td>' +
+        '<td>' + fmtDuration(e.duration) + '</td>' +
+        '<td>' + (e.error ? '<span style="color:#f85149;font-size:0.8rem">' + esc(e.error.substring(0,80)) + '</span>' : '-') + '</td></tr>'
+      ).join('');
+      el.innerHTML = '<h2>Recent Executions</h2>' +
+        '<table><thead><tr><th>Workflow</th><th>Status</th><th>Started</th><th>Duration</th><th>Error</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>';
+    }
+
+    function renderMemory(m) {
+      const el = document.getElementById('panel-memory');
+      if (!m || !m.available) { el.innerHTML = '<div class="empty">Memory not connected</div>'; return; }
+      const entries = Object.entries(m.namespaces);
+      if (entries.length === 0) { el.innerHTML = '<div class="empty">No namespaces</div>'; return; }
+      const rows = entries.map(([ns, count]) => '<tr><td>' + esc(ns) + '</td><td>' + count + '</td></tr>').join('');
+      el.innerHTML = '<h2>Memory Stats</h2>' +
+        '<div class="grid">' +
+        '<div class="stat-card"><div class="label">Total Entries</div><div class="value">' + m.totalEntries + '</div></div>' +
+        '<div class="stat-card"><div class="label">Namespaces</div><div class="value">' + entries.length + '</div></div>' +
+        '</div>' +
+        '<table><thead><tr><th>Namespace</th><th>Entries</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
 
     // Polling
     const poll = async () => {
@@ -322,213 +470,18 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
           fetch('/api/workflows').then(r => r.json()),
           fetch('/api/memory/stats').then(r => r.json()),
         ]);
-        status.val = s;
-        schedules.val = sc;
-        workflows.val = w;
-        memoryStats.val = m;
-        lastPoll.val = new Date().toLocaleTimeString();
+        renderStatus(s);
+        renderWorkers(s);
+        renderSchedules(sc);
+        renderExecutions(w);
+        renderMemory(m);
+        document.getElementById('poll-indicator').textContent = 'Last poll: ' + new Date().toLocaleTimeString();
       } catch (e) {
         console.error('Poll failed:', e);
       }
     };
     setInterval(poll, 5000);
     poll();
-
-    // Helpers
-    const fmtDuration = (ms) => {
-      if (ms == null) return '-';
-      if (ms < 1000) return ms + 'ms';
-      if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
-      return (ms / 60000).toFixed(1) + 'm';
-    };
-
-    const fmtTime = (iso) => {
-      if (!iso) return '-';
-      const d = new Date(typeof iso === 'number' ? iso : iso);
-      return d.toLocaleTimeString();
-    };
-
-    const fmtTimeAgo = (iso) => {
-      if (!iso) return 'never';
-      const ms = Date.now() - new Date(iso).getTime();
-      const s = Math.floor(ms / 1000);
-      if (s < 60) return s + 's ago';
-      if (s < 3600) return Math.floor(s / 60) + 'm ago';
-      if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-      return Math.floor(s / 86400) + 'd ago';
-    };
-
-    const fmtUptime = (secs) => {
-      if (!secs) return '-';
-      const h = Math.floor(secs / 3600);
-      const m = Math.floor((secs % 3600) / 60);
-      const s = secs % 60;
-      if (h > 0) return h + 'h ' + m + 'm';
-      if (m > 0) return m + 'm ' + s + 's';
-      return s + 's';
-    };
-
-    const successRate = (s, f) => {
-      const total = s + f;
-      return total === 0 ? '-' : Math.round((s / total) * 100) + '%';
-    };
-
-    const badge = (text, type) => span({class: 'badge badge-' + type}, text);
-
-    // Tab navigation
-    const tabs = [
-      { id: 'workers', label: 'Workers' },
-      { id: 'schedules', label: 'Schedules' },
-      { id: 'executions', label: 'Executions' },
-      { id: 'memory', label: 'Memory' },
-      { id: 'api', label: 'API' },
-    ];
-
-    const NavBar = () => van.bind(activeTab, at =>
-      div({class: 'nav'},
-        ...tabs.map(t =>
-          div({
-            class: 'nav-tab' + (at === t.id ? ' active' : ''),
-            onclick: () => { activeTab.val = t.id; },
-          }, t.label)
-        ),
-      )
-    );
-
-    // Status bar (always visible)
-    const StatusBar = () => van.bind(status, s => {
-      if (!s) return div({class: 'empty'}, 'Loading...');
-      return div({class: 'status-bar'},
-        div({class: 'item'},
-          span({class: 'label'}, 'Status'),
-          span({class: 'value'}, span({class: 'dot ' + (s.running ? 'dot-green' : 'dot-red')}), s.running ? 'Running' : 'Stopped'),
-        ),
-        div({class: 'item'}, span({class: 'label'}, 'PID'), span({class: 'value'}, s.pid)),
-        div({class: 'item'}, span({class: 'label'}, 'Uptime'), span({class: 'value'}, fmtUptime(s.uptime))),
-        div({class: 'item'}, span({class: 'label'}, 'Workers'), span({class: 'value'}, s.config.enabledWorkerCount + ' enabled')),
-        div({class: 'item'}, span({class: 'label'}, 'Max Concurrent'), span({class: 'value'}, s.config.maxConcurrent)),
-      );
-    });
-
-    // Workers panel
-    const WorkersPanel = () => van.bind(status, s => {
-      if (!s) return div();
-      return div(
-        h2('Worker Status'),
-        table(
-          thead(tr(th('Worker'), th('Status'), th('Runs'), th('Success'), th('Avg'), th('Last Run'), th('Next Run'))),
-          tbody(...s.workers.map(w =>
-            tr(
-              td(w.type),
-              td(w.isRunning ? badge('running', 'yellow') : badge('idle', 'gray')),
-              td(w.runCount),
-              td(successRate(w.successCount, w.failureCount)),
-              td(fmtDuration(w.averageDurationMs)),
-              td(fmtTimeAgo(w.lastRun)),
-              td(w.nextRun ? fmtTime(w.nextRun) : '-'),
-            )
-          )),
-        ),
-      );
-    });
-
-    // Schedules panel
-    const SchedulesPanel = () => van.bind(schedules, sc => {
-      if (!sc || !sc.available) return div({class: 'empty'}, 'Scheduler not connected');
-      if (sc.schedules.length === 0) return div({class: 'empty'}, 'No active schedules');
-      return div(
-        h2('Scheduled Workflows'),
-        table(
-          thead(tr(th('Workflow'), th('Schedule'), th('Enabled'), th('Last Run'), th('Next Run'), th('Source'))),
-          tbody(...sc.schedules.map(s =>
-            tr(
-              td(s.workflowName),
-              td(s.cron || s.interval || s.at || '-'),
-              td(s.enabled ? badge('on', 'green') : badge('off', 'gray')),
-              td(s.lastRunAt ? fmtTime(s.lastRunAt) : '-'),
-              td(fmtTime(s.nextRunAt)),
-              td(badge(s.source, 'gray')),
-            )
-          )),
-        ),
-      );
-    });
-
-    // Executions panel
-    const ExecutionsPanel = () => van.bind(workflows, w => {
-      if (!w || !w.available) return div({class: 'empty'}, 'Scheduler not connected');
-      if (w.executions.length === 0) return div({class: 'empty'}, 'No recent executions');
-      return div(
-        h2('Recent Executions'),
-        table(
-          thead(tr(th('Workflow'), th('Status'), th('Started'), th('Duration'), th('Error'))),
-          tbody(...w.executions.map(e =>
-            tr(
-              td(e.workflowName),
-              td(e.success === true ? badge('pass', 'green') : e.success === false ? badge('fail', 'red') : badge('running', 'yellow')),
-              td(fmtTime(e.startedAt)),
-              td(fmtDuration(e.duration)),
-              td(e.error ? span({style: 'color: #f85149; font-size: 0.8rem'}, e.error.substring(0, 80)) : '-'),
-            )
-          )),
-        ),
-      );
-    });
-
-    // Memory panel
-    const MemoryPanel = () => van.bind(memoryStats, m => {
-      if (!m || !m.available) return div({class: 'empty'}, 'Memory not connected');
-      const entries = Object.entries(m.namespaces);
-      if (entries.length === 0) return div({class: 'empty'}, 'No namespaces');
-      return div(
-        h2('Memory Stats'),
-        div({class: 'grid'},
-          div({class: 'stat-card'}, div({class: 'label'}, 'Total Entries'), div({class: 'value'}, m.totalEntries)),
-          div({class: 'stat-card'}, div({class: 'label'}, 'Namespaces'), div({class: 'value'}, entries.length)),
-        ),
-        table(
-          thead(tr(th('Namespace'), th('Entries'))),
-          tbody(...entries.map(([ns, count]) =>
-            tr(td(ns), td(count))
-          )),
-        ),
-      );
-    });
-
-    // API reference panel
-    const ApiPanel = () => div(
-      h2('API Endpoints'),
-      div({class: 'api-links'},
-        a({href: '/api/status', target: '_blank'}, '/api/status'), ' \u2014 Daemon + worker status', div({style: 'height: 8px'}),
-        a({href: '/api/schedules', target: '_blank'}, '/api/schedules'), ' \u2014 Active schedules + next run times', div({style: 'height: 8px'}),
-        a({href: '/api/workflows', target: '_blank'}, '/api/workflows'), ' \u2014 Recent workflow executions', div({style: 'height: 8px'}),
-        a({href: '/api/memory/stats', target: '_blank'}, '/api/memory/stats'), ' \u2014 Namespace counts + total entries',
-      ),
-    );
-
-    // Tab content router
-    const TabContent = () => van.bind(activeTab, tab => {
-      switch (tab) {
-        case 'workers': return WorkersPanel();
-        case 'schedules': return SchedulesPanel();
-        case 'executions': return ExecutionsPanel();
-        case 'memory': return MemoryPanel();
-        case 'api': return ApiPanel();
-        default: return WorkersPanel();
-      }
-    });
-
-    // Render
-    van.add(document.getElementById('app'),
-      div({class: 'header'},
-        h1('MoFlo Dashboard'),
-        span({class: 'subtitle'}, 'read-only \u2022 localhost'),
-      ),
-      StatusBar(),
-      NavBar(),
-      TabContent(),
-      van.bind(lastPoll, t => div({class: 'poll-indicator'}, t ? 'Last poll: ' + t : '')),
-    );
   </script>
 </body>
 </html>`;
