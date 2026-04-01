@@ -384,15 +384,15 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       { id: 'api', label: 'API' },
     ];
 
-    const NavBar = () => div({class: 'nav'},
-      ...tabs.map(t =>
-        van.bind(activeTab, at =>
+    const NavBar = () => van.bind(activeTab, at =>
+      div({class: 'nav'},
+        ...tabs.map(t =>
           div({
             class: 'nav-tab' + (at === t.id ? ' active' : ''),
             onclick: () => { activeTab.val = t.id; },
           }, t.label)
-        )
-      ),
+        ),
+      )
     );
 
     // Status bar (always visible)
