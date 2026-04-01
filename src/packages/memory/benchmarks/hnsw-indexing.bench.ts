@@ -545,7 +545,8 @@ export const hnswOptimizations = {
 };
 
 // Run if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+import { pathToFileURL as _pfu_hi } from 'url';
+if (import.meta.url === _pfu_hi(process.argv[1]).href) {
   runHNSWIndexingBenchmarks().catch(console.error);
 }
 

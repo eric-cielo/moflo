@@ -528,7 +528,8 @@ export const cacheOptimizations = {
 };
 
 // Run if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+import { pathToFileURL as _pfu_chr } from 'url';
+if (import.meta.url === _pfu_chr(process.argv[1]).href) {
   runCacheHitRateBenchmarks().catch(console.error);
 }
 

@@ -70,9 +70,10 @@ async function getAIDefence(): Promise<AIDefenceInstance> {
 
   // Retry with ESM cache busting via file:// URL + timestamp
   try {
+    const { pathToFileURL } = await import('url');
     const modulePath = require.resolve(packageName);
     const cacheBust = `?t=${Date.now()}`;
-    const aidefence = await import(`file://${modulePath}${cacheBust}`);
+    const aidefence = await import(pathToFileURL(modulePath).href + cacheBust);
     const instance = aidefence.createAIDefence({ enableLearning: true });
     if (!instance) {
       throw new Error('createAIDefence returned null after install');
