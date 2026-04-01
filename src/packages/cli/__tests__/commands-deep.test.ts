@@ -94,7 +94,6 @@ import { issuesCommand } from '../src/commands/issues.js';
 import { guidanceCommand } from '../src/commands/guidance.js';
 import { applianceCommand } from '../src/commands/appliance.js';
 import updateCommand from '../src/commands/update.js';
-import { ruvectorCommand } from '../src/commands/ruvector/index.js';
 
 import type { Command } from '../src/types.js';
 
@@ -448,11 +447,6 @@ describe('Command Definitions', () => {
     });
   });
 
-  describe('ruvector command', () => {
-    it('should have correct name', () => {
-      expectValidCommand(ruvectorCommand, 'ruvector');
-    });
-  });
 });
 
 // All commands array for bulk tests
@@ -490,7 +484,6 @@ const allCommands: { cmd: Command; name: string }[] = [
   { cmd: updateCommand, name: 'update' },
   { cmd: guidanceCommand, name: 'guidance' },
   { cmd: applianceCommand, name: 'appliance' },
-  { cmd: ruvectorCommand, name: 'ruvector' },
 ];
 
 describe('Bulk Command Structure Validation', () => {
@@ -559,7 +552,6 @@ describe('Command Registry (commands/index.ts)', () => {
     expect(indexModule.hiveMindCommand).toBeDefined();
     expect(indexModule.guidanceCommand).toBeDefined();
     expect(indexModule.applianceCommand).toBeDefined();
-    expect(indexModule.ruvectorCommand).toBeDefined();
   });
 
   it('should export commandsByCategory with all categories', async () => {

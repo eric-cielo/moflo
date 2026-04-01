@@ -94,11 +94,11 @@ async function getEWCConsolidator() {
 }
 
 // MoE Router - lazy loaded
-let moeRouter: Awaited<ReturnType<typeof import('../ruvector/moe-router.js').getMoERouter>> | null = null;
+let moeRouter: Awaited<ReturnType<typeof import('../movector/moe-router.js').getMoERouter>> | null = null;
 async function getMoERouter() {
   if (!moeRouter) {
     try {
-      const { getMoERouter: getMoE } = await import('../ruvector/moe-router.js');
+      const { getMoERouter: getMoE } = await import('../movector/moe-router.js');
       moeRouter = await getMoE();
     } catch {
       moeRouter = null;
@@ -107,12 +107,11 @@ async function getMoERouter() {
   return moeRouter;
 }
 
-// Semantic Router - lazy loaded
-// Tries native VectorDb first (16k+ routes/s HNSW), falls back to pure JS (47k routes/s cosine)
-let semanticRouter: import('../ruvector/semantic-router.js').SemanticRouter | null = null;
+// Semantic Router - lazy loaded (pure JS cosine similarity, 47k routes/s)
+let semanticRouter: import('../movector/semantic-router.js').SemanticRouter | null = null;
 let nativeVectorDb: unknown = null;
 let semanticRouterInitialized = false;
-let routerBackend: 'native' | 'pure-js' | 'none' = 'none';
+let routerBackend: 'pure-js' | 'none' = 'none';
 
 // Pre-computed embeddings for common task patterns (cached)
 const TASK_PATTERN_EMBEDDINGS: Map<string, Float32Array> = new Map();
@@ -306,8 +305,7 @@ const TASK_PATTERNS: Record<string, { keywords: string[]; agents: string[] }> = 
 // RoutingOutcome-based persistence at top of file (upstream adcfe6fad).
 
 /**
- * Get the semantic router with environment detection.
- * Tries native VectorDb first (HNSW, 16k routes/s), falls back to pure JS (47k routes/s cosine).
+ * Get the semantic router using pure JS SemanticRouter (cosine similarity, 47k routes/s).
  */
 async function getSemanticRouter() {
   if (semanticRouterInitialized) {
@@ -315,58 +313,9 @@ async function getSemanticRouter() {
   }
   semanticRouterInitialized = true;
 
-  // STEP 1: Try native VectorDb from @ruvector/router (HNSW-backed)
-  // Note: Native VectorDb uses a persistent database file which can have lock issues
-  // in concurrent environments. We try it first but fall back gracefully to pure JS.
+  // Pure JS SemanticRouter (cosine similarity)
   try {
-    // Use createRequire for ESM compatibility with native modules
-    const { createRequire } = await import('module');
-    const require = createRequire(import.meta.url);
-    const router = require('@ruvector/router');
-
-    if (router.VectorDb && router.DistanceMetric) {
-      // Try to create VectorDb - may fail with lock error in concurrent envs
-      const db = new router.VectorDb({
-        dimensions: 384,
-        distanceMetric: router.DistanceMetric.Cosine,
-        hnswM: 16,
-        hnswEfConstruction: 200,
-        hnswEfSearch: 100,
-      });
-
-      // Initialize with task patterns
-      for (const [patternName, { keywords }] of Object.entries(TASK_PATTERNS)) {
-        for (const keyword of keywords) {
-          const embedding = generateSimpleEmbedding(keyword);
-          db.insert(`${patternName}:${keyword}`, embedding);
-          TASK_PATTERN_EMBEDDINGS.set(`${patternName}:${keyword}`, embedding);
-        }
-      }
-
-      // Also load learned patterns from previous task executions
-      const learned = learnedPatternsFromOutcomes();
-      for (const [patternName, { keywords }] of Object.entries(learned)) {
-        for (const kw of keywords) {
-          const embedding = generateSimpleEmbedding(kw);
-          const entryKey = `${patternName}:${kw}`;
-          db.insert(entryKey, embedding);
-          TASK_PATTERN_EMBEDDINGS.set(entryKey, embedding);
-        }
-      }
-
-      nativeVectorDb = db;
-      routerBackend = 'native';
-      return { router: null, backend: routerBackend, native: nativeVectorDb };
-    }
-  } catch (err) {
-    // Native not available or database locked - fall back to pure JS
-    // Common errors: "Database already open. Cannot acquire lock." or "MODULE_NOT_FOUND"
-    // This is expected in concurrent environments or when binary isn't installed
-  }
-
-  // STEP 2: Fall back to pure JS SemanticRouter
-  try {
-    const { SemanticRouter } = await import('../ruvector/semantic-router.js');
+    const { SemanticRouter } = await import('../movector/semantic-router.js');
     semanticRouter = new SemanticRouter({ dimension: 384 });
 
     for (const [patternName, { keywords, agents }] of Object.entries(TASK_PATTERNS)) {
@@ -403,8 +352,6 @@ async function getSemanticRouter() {
  */
 function getRouterBackendInfo(): { backend: string; speed: string } {
   switch (routerBackend) {
-    case 'native':
-      return { backend: 'native VectorDb (HNSW)', speed: '16k+ routes/s' };
     case 'pure-js':
       return { backend: 'pure JS (cosine)', speed: '47k routes/s' };
     default:
@@ -413,11 +360,11 @@ function getRouterBackendInfo(): { backend: string; speed: string } {
 }
 
 // Flash Attention - lazy loaded
-let flashAttention: Awaited<ReturnType<typeof import('../ruvector/flash-attention.js').getFlashAttention>> | null = null;
+let flashAttention: Awaited<ReturnType<typeof import('../movector/flash-attention.js').getFlashAttention>> | null = null;
 async function getFlashAttention() {
   if (!flashAttention) {
     try {
-      const { getFlashAttention: getFlash } = await import('../ruvector/flash-attention.js');
+      const { getFlashAttention: getFlash } = await import('../movector/flash-attention.js');
       flashAttention = await getFlash();
     } catch {
       flashAttention = null;
@@ -427,11 +374,11 @@ async function getFlashAttention() {
 }
 
 // LoRA Adapter - lazy loaded
-let loraAdapter: Awaited<ReturnType<typeof import('../ruvector/lora-adapter.js').getLoRAAdapter>> | null = null;
+let loraAdapter: Awaited<ReturnType<typeof import('../movector/lora-adapter.js').getLoRAAdapter>> | null = null;
 async function getLoRAAdapter() {
   if (!loraAdapter) {
     try {
-      const { getLoRAAdapter: getLora } = await import('../ruvector/lora-adapter.js');
+      const { getLoRAAdapter: getLora } = await import('../movector/lora-adapter.js');
       loraAdapter = await getLora();
     } catch {
       loraAdapter = null;
@@ -912,33 +859,8 @@ export const hooksRoute: MCPTool = {
     const queryText = context ? `${task} ${context}` : task;
     const queryEmbedding = generateSimpleEmbedding(queryText);
 
-    // Try native VectorDb (HNSW-backed)
-    if (native && backend === 'native') {
-      const routeStart = performance.now();
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const results = (native as any).search(queryEmbedding, 5);
-        routingLatencyMs = performance.now() - routeStart;
-        routingMethod = 'semantic-native';
-        backendInfo = 'native VectorDb (HNSW)';
-
-        // Convert results to semantic format
-        semanticResult = results.map((r: { id: string; score: number }) => {
-          const [patternName] = r.id.split(':');
-          const pattern = TASK_PATTERNS[patternName];
-          return {
-            intent: patternName,
-            score: 1 - r.score, // Native uses distance (lower is better), convert to similarity
-            metadata: { agents: pattern?.agents || (patternName.startsWith('learned-') ? [patternName.slice(8)] : ['coder']) },
-          };
-        });
-      } catch {
-        // Native failed, try pure JS fallback
-      }
-    }
-
-    // Try pure JS SemanticRouter fallback
-    if (router && backend === 'pure-js' && semanticResult.length === 0) {
+    // Pure JS SemanticRouter (cosine similarity)
+    if (router && backend === 'pure-js') {
       const routeStart = performance.now();
       semanticResult = router.routeWithEmbedding(queryEmbedding, 3);
       routingLatencyMs = performance.now() - routeStart;
@@ -1133,7 +1055,7 @@ export const hooksPreTask: MCPTool = {
     // Enhanced model routing with Agent Booster AST (ADR-026)
     let modelRouting: Record<string, unknown> | undefined;
     try {
-      const { getEnhancedModelRouter } = await import('../ruvector/enhanced-model-router.js');
+      const { getEnhancedModelRouter } = await import('../movector/enhanced-model-router.js');
       const router = getEnhancedModelRouter();
       const routeResult = await router.route(description, { filePath });
 
@@ -2271,10 +2193,10 @@ export const hooksInit: MCPTool = {
   },
 };
 
-// Intelligence hook - RuVector intelligence system
+// Intelligence hook - MoVector intelligence system
 export const hooksIntelligence: MCPTool = {
   name: 'hooks_intelligence',
-  description: 'RuVector intelligence system status (shows REAL metrics from memory store)',
+  description: 'MoVector intelligence system status (shows REAL metrics from memory store)',
   inputSchema: {
     type: 'object',
     properties: {
@@ -2803,7 +2725,7 @@ export const hooksPatternSearch: MCPTool = {
 // Intelligence stats hook
 export const hooksIntelligenceStats: MCPTool = {
   name: 'hooks_intelligence_stats',
-  description: 'Get RuVector intelligence layer statistics',
+  description: 'Get MoVector intelligence layer statistics',
   inputSchema: {
     type: 'object',
     properties: {
@@ -3697,11 +3619,11 @@ export const hooksWorkerDetect: MCPTool = {
 };
 
 // Model router - lazy loaded
-let modelRouterInstance: Awaited<ReturnType<typeof import('../ruvector/model-router.js').getModelRouter>> | null = null;
+let modelRouterInstance: Awaited<ReturnType<typeof import('../movector/model-router.js').getModelRouter>> | null = null;
 async function getModelRouterInstance() {
   if (!modelRouterInstance) {
     try {
-      const { getModelRouter } = await import('../ruvector/model-router.js');
+      const { getModelRouter } = await import('../movector/model-router.js');
       modelRouterInstance = getModelRouter();
     } catch {
       modelRouterInstance = null;

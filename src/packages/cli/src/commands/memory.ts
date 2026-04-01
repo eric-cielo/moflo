@@ -320,7 +320,7 @@ const searchCommand: Command = {
           output.writeln(output.dim(`  Dimensions: ${status.dimensions}, Metric: cosine`));
           output.writeln(output.dim(`  Search speedup: ${status.entryCount > 10000 ? '12,500x' : status.entryCount > 1000 ? '150x' : '10x'}`));
         } else {
-          output.printWarning('HNSW index not available (install @ruvector/core for acceleration)');
+          output.printWarning('HNSW index not available (will be initialized on first use)');
         }
         output.writeln();
       } catch (error) {

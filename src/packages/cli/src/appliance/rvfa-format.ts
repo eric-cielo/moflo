@@ -1,6 +1,6 @@
 /**
- * RVFA (RuVector Format Appliance) — Binary format reader/writer
- * for self-contained Ruflo appliances.
+ * RVFA (MoVector Format Appliance) — Binary format reader/writer
+ * for self-contained MoFlo appliances.
  *
  * Binary layout:
  *   [4B magic "RVFA"] [4B version u32LE] [4B header_len u32LE]

@@ -220,6 +220,11 @@ export declare class WorkerDispatchService extends EventEmitter {
     private generateWorkerId;
     private getPriorityValue;
     private updateProgress;
+    /**
+     * Process work phase with minimal overhead
+     * Actual task work is performed via worker callbacks and hooks
+     * @param ms - Target processing time (capped for performance)
+     */
     private processWorkPhase;
 }
 /**

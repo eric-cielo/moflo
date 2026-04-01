@@ -134,7 +134,7 @@ async function getRegistry(dbPath?: string): Promise<any | null> {
               
               msg.includes('[AgentDB]') ||
               msg.includes('[HNSWLibBackend]') ||
-              msg.includes('RuVector graph')) return;
+              msg.includes('MoVector graph')) return;
           origLog.apply(console, args);
         };
 
@@ -1540,7 +1540,7 @@ export async function bridgeSessionEnd(options: {
 
 /**
  * Route a task via AgentDB's SemanticRouter.
- * Returns null to fall back to local ruvector router.
+ * Returns null to fall back to local movector router.
  */
 export async function bridgeRouteTask(options: {
   task: string;
@@ -1808,8 +1808,8 @@ export async function bridgeContextSynthesize(params: { query: string; maxEntrie
 
 /**
  * Route via SemanticRouter.
- * Available since agentdb 3.0.0-alpha.10 — uses @ruvector/router for
- * semantic matching with keyword fallback.
+ * Available since agentdb 3.0.0-alpha.10 — uses semantic matching
+ * with keyword fallback.
  */
 export async function bridgeSemanticRoute(params: { input: string }): Promise<any> {
   const registry = await getRegistry();

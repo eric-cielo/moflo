@@ -119,7 +119,6 @@ function findModule(...relativePaths: string[]): string | undefined {
 export async function checkSubagentHealth(): Promise<HealthCheck> {
   try {
     const modulePath = findModule(
-      'src/mcp/tools/agent-tools.js',                          // dev: pre-compiled in src
       'src/packages/cli/dist/src/mcp-tools/agent-tools.js',   // consumer: CLI package dist
     );
     if (!modulePath) {
@@ -257,7 +256,6 @@ steps:
 export async function checkMcpToolInvocation(): Promise<HealthCheck> {
   try {
     const modulePath = findModule(
-      'src/mcp/tools/index.js',                                // dev: pre-compiled in src
       'src/packages/cli/dist/src/mcp-tools/index.js',         // consumer: CLI package dist
     );
     if (!modulePath) {
@@ -275,18 +273,13 @@ export async function checkMcpToolInvocation(): Promise<HealthCheck> {
       return { name: 'MCP Tool Invocation', status: 'warn', message: `Module found but import failed: ${short}`, fix: 'npm run build' };
     }
 
-    const { getAllTools } = toolsModule;
-    if (typeof getAllTools !== 'function') {
-      return { name: 'MCP Tool Invocation', status: 'fail', message: 'getAllTools is not a function', fix: 'npm run build' };
-    }
-
-    // getAllTools() may fail due to circular dependency initialization in some
-    // import contexts — catch and report partial success (module loaded OK).
+    // CLI mcp-tools index exports individual tool arrays (agentTools, memoryTools, etc.)
+    // Collect all exported arrays into a flat tool list.
     let tools: Array<{ name: string; handler?: Function }>;
     try {
-      tools = getAllTools();
+      const toolArrays = Object.values(toolsModule).filter(Array.isArray);
+      tools = toolArrays.flat();
     } catch (initErr) {
-      // Module loaded but tool aggregation failed — partial pass
       const exports = Object.keys(toolsModule).filter(k => k !== 'default');
       return {
         name: 'MCP Tool Invocation',

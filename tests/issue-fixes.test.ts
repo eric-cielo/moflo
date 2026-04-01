@@ -85,9 +85,9 @@ describe('#77 — createSONALearningEngine default args', () => {
     expect(content).toContain("modeConfig?: SONAModeConfig");
   });
 
-  it('JS file also contains DEFAULT_MODE_CONFIGS fallback', () => {
+  it('Compiled JS file also contains DEFAULT_MODE_CONFIGS fallback', () => {
     const content = readFileSync(
-      resolve(__dirname, '../src/packages/neural/src/sona-integration.js'),
+      resolve(__dirname, '../src/packages/neural/dist/sona-integration.js'),
       'utf-8'
     );
     expect(content).toContain('DEFAULT_MODE_CONFIGS');

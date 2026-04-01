@@ -383,7 +383,7 @@ export class AttentionCoordinator extends EventEmitter {
     const blockSize = this.config.flashAttention.blockSize;
 
     // Flash Attention block-wise computation (memory efficient O(N) vs O(N²))
-    // For GPU acceleration, integrate with @ruvector/flash-attention-wasm
+    // For GPU acceleration, integrate with a WASM flash-attention backend
     const attentionWeights = new Array(n).fill(0);
     let memoryUsed = 0;
 

@@ -17,7 +17,7 @@
 export { SONAManager, createSONAManager, getModeConfig, getModeOptimizations, } from './sona-manager.js';
 export { BaseModeImplementation, RealTimeMode, BalancedMode, ResearchMode, EdgeMode, BatchMode, } from './modes/index.js';
 // =============================================================================
-// SONA Integration (@ruvector/sona)
+// SONA Integration
 // =============================================================================
 export { SONALearningEngine, createSONALearningEngine, } from './sona-integration.js';
 // =============================================================================

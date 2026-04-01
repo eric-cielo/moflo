@@ -15,10 +15,10 @@ import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import {
   createQLearningRouter,
-  isRuvectorAvailable,
+  isMovectorAvailable,
   type QLearningRouter,
   type RouteDecision,
-} from '../ruvector/index.js';
+} from '../movector/index.js';
 
 // ============================================================================
 // Agent Type Definitions
@@ -326,16 +326,16 @@ const statsCommand: Command = {
     try {
       const router = await getRouter();
       const stats = router.getStats();
-      const ruvectorAvailable = await isRuvectorAvailable();
+      const movectorAvailable = await isMovectorAvailable();
 
-      const ruvectorStatus = {
-        available: ruvectorAvailable,
+      const backendStatus = {
+        available: movectorAvailable,
         wasmAccelerated: stats.useNative === 1,
-        backend: stats.useNative === 1 ? 'ruvector-native' : 'fallback',
+        backend: stats.useNative === 1 ? 'native' : 'fallback',
       };
 
       if (jsonOutput) {
-        output.printJson({ stats, ruvector: ruvectorStatus });
+        output.printJson({ stats, backend: backendStatus });
       } else {
         output.writeln();
         output.writeln(output.bold('Q-Learning Router Statistics'));
@@ -357,15 +357,15 @@ const statsCommand: Command = {
         });
 
         output.writeln();
-        output.writeln(output.bold('RuVector Status'));
+        output.writeln(output.bold('Backend Status'));
         output.printList([
-          `Available: ${ruvectorStatus.available ? output.success('Yes') : output.warning('No (using fallback)')}`,
-          `WASM Accelerated: ${ruvectorStatus.wasmAccelerated ? output.success('Yes') : 'No'}`,
-          `Backend: ${ruvectorStatus.backend}`,
+          `Available: ${backendStatus.available ? output.success('Yes') : output.warning('No (using fallback)')}`,
+          `WASM Accelerated: ${backendStatus.wasmAccelerated ? output.success('Yes') : 'No'}`,
+          `Backend: ${backendStatus.backend}`,
         ]);
       }
 
-      return { success: true, data: { stats, ruvector: ruvectorStatus } };
+      return { success: true, data: { stats, backend: backendStatus } };
     } catch (error) {
       output.printError(error instanceof Error ? error.message : String(error));
       return { success: false, exitCode: 1 };
@@ -643,7 +643,7 @@ const coverageRouteCommand: Command = {
 
     try {
       // Lazy load coverage router
-      const { coverageRoute, coverageSuggest, coverageGaps } = await import('../ruvector/coverage-router.js');
+      const { coverageRoute, coverageSuggest, coverageGaps } = await import('../movector/coverage-router.js');
 
       if (gapsMode) {
         // List coverage gaps with agent assignments
@@ -887,12 +887,12 @@ export const routeCommand: Command = {
     output.writeln();
 
     // Show quick status
-    const ruvectorAvailable = await isRuvectorAvailable();
+    const movectorAvailable = await isMovectorAvailable();
 
     output.writeln(output.bold('Backend Status:'));
     output.printList([
-      `RuVector: ${ruvectorAvailable ? output.success('Available') : output.warning('Fallback mode')}`,
-      `Backend: ${ruvectorAvailable ? 'ruvector-native' : 'JavaScript fallback'}`,
+      `MoVector: ${movectorAvailable ? output.success('Available') : output.warning('Fallback mode')}`,
+      `Backend: ${movectorAvailable ? 'native' : 'JavaScript fallback'}`,
     ]);
     output.writeln();
 

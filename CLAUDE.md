@@ -28,6 +28,16 @@
 - Use `/scripts` for utility scripts
 - Use `/examples` for example code
 
+## Source Code Hygiene
+
+**Read `.claude/guidance/shipped/moflo-source-hygiene.md` for full rules.** Key points:
+
+- ALL source files under `src/` are TypeScript — no hand-written `.js` files
+- NO cross-package imports between `src/packages/*/src/` directories
+- `src/packages/` are internal modules, NOT independently published npm packages
+- MCP tools live in `src/packages/cli/src/mcp-tools/` — this is the only canonical location
+- Never commit `dist/` build artifacts to git
+
 ## Project Architecture
 
 - Follow Domain-Driven Design with bounded contexts
@@ -47,7 +57,7 @@
 | `@claude-flow/security` | `src/packages/security/` | Input validation, CVE remediation |
 | `@claude-flow/embeddings` | `src/packages/embeddings/` | Vector embeddings (sql.js, HNSW) |
 | `@claude-flow/neural` | `src/packages/neural/` | Neural patterns (SONA) |
-| `@claude-flow/plugins` | `src/packages/plugins/` | Plugin system + RuVector integration |
+| `@claude-flow/plugins` | `src/packages/plugins/` | Plugin system |
 | `@claude-flow/workflows` | `src/packages/workflows/` | Workflow engine, step commands, YAML/JSON definitions |
 
 ## MoFlo is a Library (CRITICAL)

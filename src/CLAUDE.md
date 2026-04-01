@@ -21,7 +21,7 @@ npm install && npm run build && npm test
 | `@claude-flow/security` | `packages/security/` | Input validation, CVE remediation |
 | `@claude-flow/embeddings` | `packages/embeddings/` | Vector embeddings (sql.js, HNSW) |
 | `@claude-flow/neural` | `packages/neural/` | Neural patterns (SONA) |
-| `@claude-flow/plugins` | `packages/plugins/` | Plugin system + RuVector integration |
+| `@claude-flow/plugins` | `packages/plugins/` | Plugin system |
 
 ## Code Quality
 

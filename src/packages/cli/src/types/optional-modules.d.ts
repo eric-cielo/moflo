@@ -129,19 +129,6 @@ declare module 'agentic-flow/transport/quic' {
   export default quic;
 }
 
-declare module 'ruvector' {
-  const ruvector: any;
-  export default ruvector;
-  export const VectorDB: any;
-  export const VectorDb: any;
-  export function isWasm(): boolean;
-}
-
-declare module '@ruvector/core' {
-  const core: any;
-  export default core;
-}
-
 declare module '@xenova/transformers' {
   const transformers: any;
   export default transformers;

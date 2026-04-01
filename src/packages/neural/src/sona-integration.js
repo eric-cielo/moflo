@@ -1,7 +1,7 @@
 /**
  * SONA Integration for V3 Neural Module
  *
- * Wraps @ruvector/sona package for V3 usage with:
+ * Pure TypeScript SONA engine with:
  * - Trajectory tracking and verdict judgment
  * - Pattern extraction and memory distillation
  * - Sub-0.05ms learning performance target
@@ -9,7 +9,7 @@
  *
  * @module sona-integration
  */
-import { SonaEngine } from '@ruvector/sona';
+import { SonaEngine } from './sona-engine.js';
 // Default configs for when getModeConfig is unavailable (e.g., cold start, test environments)
 const DEFAULT_MODE_CONFIGS = {
     'balanced': { mode: 'balanced', loraRank: 4, learningRate: 0.002, batchSize: 32, trajectoryCapacity: 3000, patternClusters: 50, qualityThreshold: 0.5, maxLatencyMs: 18, memoryBudgetMb: 50, ewcLambda: 2000 },
@@ -22,7 +22,7 @@ const DEFAULT_MODE_CONFIGS = {
 // Mode Configuration Mapping
 // =============================================================================
 /**
- * Convert V3 SONA mode to @ruvector/sona config
+ * Convert V3 SONA mode to SonaEngine config
  */
 function modeToConfig(mode, modeConfig) {
     const baseConfig = {
@@ -78,7 +78,7 @@ function modeToConfig(mode, modeConfig) {
 // SONA Learning Engine
 // =============================================================================
 /**
- * SONA Learning Engine - wraps @ruvector/sona for V3 usage
+ * SONA Learning Engine - wraps pure TS SonaEngine for V3 usage
  *
  * Performance targets:
  * - learn(): <0.05ms

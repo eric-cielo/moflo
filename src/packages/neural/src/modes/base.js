@@ -74,3 +74,4 @@ export class BaseModeImplementation {
         return output;
     }
 }
+//# sourceMappingURL=base.js.map

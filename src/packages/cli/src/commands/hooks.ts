@@ -1426,7 +1426,7 @@ const preTaskCommand: Command = {
 
       // Enhanced model routing with Agent Booster AST (ADR-026)
       try {
-        const { getEnhancedModelRouter } = await import('../ruvector/enhanced-model-router.js');
+        const { getEnhancedModelRouter } = await import('../movector/enhanced-model-router.js');
         const router = getEnhancedModelRouter();
         const routeResult = await router.route(description, { filePath: ctx.flags.file as string });
 
@@ -1775,7 +1775,7 @@ const sessionRestoreCommand: Command = {
 // Intelligence subcommand (SONA, MoE, HNSW)
 const intelligenceCommand: Command = {
   name: 'intelligence',
-  description: 'RuVector intelligence system (SONA, MoE, HNSW 150x faster)',
+  description: 'MoVector intelligence system (SONA, MoE, HNSW 150x faster)',
   options: [
     {
       name: 'mode',
@@ -1848,7 +1848,7 @@ const intelligenceCommand: Command = {
     const embeddingProvider = ctx.flags.embeddingProvider as string || 'transformers';
 
     output.writeln();
-    output.writeln(output.bold('RuVector Intelligence System'));
+    output.writeln(output.bold('MoVector Intelligence System'));
     output.writeln();
 
     if (reset) {
@@ -2562,7 +2562,7 @@ function formatWorkerStatus(status: string): string {
 // Coverage route subcommand
 const coverageRouteCommand: Command = {
   name: 'coverage-route',
-  description: 'Route task to agents based on test coverage gaps (ruvector integration)',
+  description: 'Route task to agents based on test coverage gaps (movector integration)',
   options: [
     {
       name: 'task',
@@ -2578,8 +2578,8 @@ const coverageRouteCommand: Command = {
       default: 80
     },
     {
-      name: 'no-ruvector',
-      description: 'Disable ruvector integration',
+      name: 'no-movector',
+      description: 'Disable movector integration',
       type: 'boolean',
       default: false
     }
@@ -2591,7 +2591,7 @@ const coverageRouteCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const task = ctx.args[0] || ctx.flags.task as string;
     const threshold = ctx.flags.threshold as number || 80;
-    const useRuvector = !ctx.flags['no-ruvector'];
+    const useNativeBackend = !ctx.flags['no-movector'];
 
     if (!task) {
       output.printError('Task description is required. Use --task or -t flag.');
@@ -2630,7 +2630,7 @@ const coverageRouteCommand: Command = {
       }>('hooks_coverage-route', {
         task,
         threshold,
-        useRuvector,
+        useNativeBackend,
       });
 
       spinner.stop();
@@ -2701,7 +2701,7 @@ const coverageRouteCommand: Command = {
 // Coverage suggest subcommand
 const coverageSuggestCommand: Command = {
   name: 'coverage-suggest',
-  description: 'Suggest coverage improvements for a path (ruvector integration)',
+  description: 'Suggest coverage improvements for a path (movector integration)',
   options: [
     {
       name: 'path',
@@ -2760,7 +2760,7 @@ const coverageSuggestCommand: Command = {
           filesBelowThreshold: number;
         };
         prioritizedFiles: string[];
-        ruvectorAvailable: boolean;
+        movectorAvailable: boolean;
       }>('hooks_coverage-suggest', {
         path,
         threshold,
@@ -2782,7 +2782,7 @@ const coverageSuggestCommand: Command = {
           `Line Coverage: ${result.summary.overallLineCoverage.toFixed(1)}%`,
           `Branch Coverage: ${result.summary.overallBranchCoverage.toFixed(1)}%`,
           `Below Threshold: ${result.summary.filesBelowThreshold} files`,
-          `RuVector: ${result.ruvectorAvailable ? output.success('Available') : output.dim('Not installed')}`
+          `MoVector: ${result.movectorAvailable ? output.success('Available') : output.dim('Not installed')}`
         ].join('\n'),
         'Coverage Summary'
       );
@@ -2883,7 +2883,7 @@ const coverageGapsCommand: Command = {
           coverageThreshold: number;
         };
         agentAssignments: Record<string, string[]>;
-        ruvectorAvailable: boolean;
+        movectorAvailable: boolean;
       }>('hooks_coverage-gaps', {
         threshold,
         groupByAgent,
@@ -2908,7 +2908,7 @@ const coverageGapsCommand: Command = {
           `Line Coverage: ${result.summary.overallLineCoverage.toFixed(1)}%`,
           `Branch Coverage: ${result.summary.overallBranchCoverage.toFixed(1)}%`,
           `Below ${result.summary.coverageThreshold}%: ${result.summary.filesBelowThreshold} files`,
-          `RuVector: ${result.ruvectorAvailable ? output.success('Available') : output.dim('Not installed')}`
+          `MoVector: ${result.movectorAvailable ? output.success('Available') : output.dim('Not installed')}`
         ].join('\n'),
         'Coverage Gap Analysis'
       );
@@ -4608,7 +4608,7 @@ export const hooksCommand: Command = {
       `${output.highlight('worker')}          - Background worker management (12 workers)`,
       `${output.highlight('progress')}        - Check V3 implementation progress`,
       `${output.highlight('statusline')}      - Generate dynamic statusline display`,
-      `${output.highlight('coverage-route')}  - Route tasks based on coverage gaps (ruvector)`,
+      `${output.highlight('coverage-route')}  - Route tasks based on coverage gaps (movector)`,
       `${output.highlight('coverage-suggest')}- Suggest coverage improvements`,
       `${output.highlight('coverage-gaps')}   - List all coverage gaps with agents`,
       `${output.highlight('token-optimize')} - Token optimization (30-50% savings)`,

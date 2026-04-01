@@ -191,7 +191,7 @@ export function createSecureLogger(prefix, config) {
 /**
  * Default logger instance
  */
-export const logger = createSecureLogger('claude-flow');
+export const logger = createSecureLogger('moflo');
 /**
  * Sanitize an error for safe logging/display
  */

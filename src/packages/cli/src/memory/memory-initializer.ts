@@ -358,7 +358,7 @@ CREATE TABLE IF NOT EXISTS metadata (
 
 // ============================================================================
 // HNSW INDEX SINGLETON (150x faster vector search)
-// Uses @ruvector/core from agentic-flow for WASM-accelerated HNSW
+// Uses HnswLite pure TypeScript implementation from @claude-flow/memory
 // ============================================================================
 
 interface HNSWEntry {
@@ -406,39 +406,28 @@ export async function getHNSWIndex(options?: {
   hnswInitializing = true;
 
   try {
-    // Import @ruvector/core dynamically
-    // Handle both ESM (default export) and CJS patterns
-    const ruvectorModule = await mofloImport('@ruvector/core');
-    if (!ruvectorModule) {
-      hnswInitializing = false;
-      return null; // HNSW not available
-    }
-
-    // ESM returns { default: { VectorDb, ... } }, CJS returns { VectorDb, ... }
-    const ruvectorCore = (ruvectorModule as any).default || ruvectorModule;
-    if (!ruvectorCore?.VectorDb) {
-      hnswInitializing = false;
-      return null; // VectorDb not found
-    }
-
-    const { VectorDb } = ruvectorCore;
+    // Use HnswLite pure TS implementation (no native dependencies)
+    const { HnswLite } = await import('@claude-flow/memory') as any;
 
     // Persistent storage paths
     const swarmDir = path.join(process.cwd(), '.swarm');
     if (!fs.existsSync(swarmDir)) {
       fs.mkdirSync(swarmDir, { recursive: true });
     }
-    const hnswPath = path.join(swarmDir, 'hnsw.index');
     const metadataPath = path.join(swarmDir, 'hnsw.metadata.json');
     const dbPath = options?.dbPath || path.join(swarmDir, 'memory.db');
 
-    // Create HNSW index with persistent storage
-    // @ruvector/core uses string enum for distanceMetric: 'Cosine', 'Euclidean', 'DotProduct', 'Manhattan'
-    const db = new VectorDb({
-      dimensions,
-      distanceMetric: 'Cosine',
-      storagePath: hnswPath  // Persistent storage!
-    } as any);
+    // Create HnswLite index and wrap it with the expected db interface
+    const hnsw = new HnswLite(dimensions, 16, 200, 'cosine');
+    const db = {
+      insert: async (entry: { id: string; vector: Float32Array }) => {
+        hnsw.add(entry.id, entry.vector);
+      },
+      search: async (query: { vector: Float32Array; k: number }) => {
+        return hnsw.search(query.vector, query.k);
+      },
+      len: async () => hnsw.size,
+    };
 
     // Load metadata (entry info) if exists
     const entries = new Map<string, HNSWEntry>();
@@ -460,15 +449,6 @@ export async function getHNSWIndex(options?: {
       dimensions,
       initialized: false
     };
-
-    // Check if index already has data (from persistent storage)
-    const existingLen = await db.len();
-    if (existingLen > 0 && entries.size > 0) {
-      // Index loaded from disk, skip SQLite sync
-      hnswIndex.initialized = true;
-      hnswInitializing = false;
-      return hnswIndex;
-    }
 
     if (fs.existsSync(dbPath)) {
       try {
@@ -616,7 +596,7 @@ export async function searchHNSWIndex(
       }
 
       // Convert cosine distance to similarity score (1 - distance)
-      // Cosine distance from @ruvector/core: 0 = identical, 2 = opposite
+      // Cosine distance: 0 = identical, 2 = opposite
       const score = 1 - (result.score / 2);
 
       filtered.push({
