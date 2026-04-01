@@ -14,7 +14,7 @@
  * Created with motailz.com
  */
 
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { pathToFileURL, fileURLToPath } from 'url';
 
@@ -467,4 +467,149 @@ export async function checkMcpWorkflowIntegration(): Promise<HealthCheck> {
     const msg = err instanceof Error ? err.message : String(err);
     return { name: 'MCP Workflow Integration', status: 'fail', message: `MCP workflow bridge error: ${msg}`, fix: 'npm run build' };
   }
+}
+
+// ============================================================================
+// Gate Health Check
+// ============================================================================
+
+/** Required gate cases that must exist in gate.cjs for full enforcement. */
+const REQUIRED_GATE_CASES = [
+  'check-before-agent',
+  'check-before-scan',
+  'check-before-read',
+  'record-task-created',
+  'record-memory-searched',
+  'check-bash-memory',
+  'check-task-transition',
+  'record-learnings-stored',
+  'check-before-pr',
+  'check-dangerous-command',
+  'prompt-reminder',
+  'session-reset',
+];
+
+/** Required hook matchers that must exist in settings.json for gate enforcement. */
+const REQUIRED_HOOK_WIRING = [
+  { event: 'PreToolUse', pattern: 'check-before-scan' },
+  { event: 'PreToolUse', pattern: 'check-before-read' },
+  { event: 'PreToolUse', pattern: 'check-dangerous-command' },
+  { event: 'PreToolUse', pattern: 'check-before-pr' },
+  { event: 'PostToolUse', pattern: 'record-task-created' },
+  { event: 'PostToolUse', pattern: 'record-memory-searched' },
+  { event: 'PostToolUse', pattern: 'check-task-transition' },
+  { event: 'PostToolUse', pattern: 'record-learnings-stored' },
+  { event: 'PostToolUse', pattern: 'check-bash-memory' },
+  { event: 'UserPromptSubmit', pattern: 'prompt-reminder' },
+];
+
+/**
+ * Verify gate infrastructure health:
+ * 1. gate.cjs exists and contains all required cases
+ * 2. settings.json hooks reference all required gates
+ * 3. bin/gate.cjs and .claude/helpers/gate.cjs are in sync
+ * 4. workflow-state.json is parseable (if it exists)
+ */
+export async function checkGateHealth(): Promise<HealthCheck> {
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const issues: string[] = [];
+  const warnings: string[] = [];
+
+  // 1. Check gate.cjs exists and has all required cases
+  const helperGate = join(projectDir, '.claude', 'helpers', 'gate.cjs');
+  if (!existsSync(helperGate)) {
+    return {
+      name: 'Gate Health',
+      status: 'fail',
+      message: '.claude/helpers/gate.cjs not found',
+      fix: 'npx moflo init --fix',
+    };
+  }
+
+  let gateContent: string;
+  try {
+    gateContent = readFileSync(helperGate, 'utf8');
+  } catch {
+    return { name: 'Gate Health', status: 'fail', message: 'Cannot read .claude/helpers/gate.cjs', fix: 'npx moflo init --fix' };
+  }
+
+  const missingCases = REQUIRED_GATE_CASES.filter(c => !gateContent.includes(`case '${c}'`));
+  if (missingCases.length > 0) {
+    issues.push(`gate.cjs missing cases: ${missingCases.join(', ')}`);
+  }
+
+  // 2. Check bin/gate.cjs sync
+  const binGate = join(projectDir, 'bin', 'gate.cjs');
+  if (existsSync(binGate)) {
+    try {
+      const binContent = readFileSync(binGate, 'utf8');
+      if (binContent !== gateContent) {
+        // Check if it's a size difference (likely out of sync) vs whitespace
+        const sizeDiff = Math.abs(binContent.length - gateContent.length);
+        if (sizeDiff > 10) {
+          issues.push(`bin/gate.cjs out of sync with .claude/helpers/gate.cjs (${sizeDiff} chars differ)`);
+        } else {
+          warnings.push('bin/gate.cjs minor drift from .claude/helpers/gate.cjs');
+        }
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  // 3. Check settings.json hook wiring
+  const settingsPath = join(projectDir, '.claude', 'settings.json');
+  if (existsSync(settingsPath)) {
+    try {
+      const settingsContent = readFileSync(settingsPath, 'utf8');
+      const missingHooks = REQUIRED_HOOK_WIRING.filter(h => !settingsContent.includes(h.pattern));
+      if (missingHooks.length > 0) {
+        issues.push(`settings.json missing hook wiring: ${missingHooks.map(h => h.pattern).join(', ')}`);
+      }
+    } catch {
+      warnings.push('Cannot parse .claude/settings.json');
+    }
+  } else {
+    issues.push('.claude/settings.json not found — no hooks configured');
+  }
+
+  // 4. Check workflow-state.json is valid (if exists)
+  const statePath = join(projectDir, '.claude', 'workflow-state.json');
+  if (existsSync(statePath)) {
+    try {
+      const stateContent = readFileSync(statePath, 'utf8');
+      const state = JSON.parse(stateContent);
+      // Verify expected keys exist
+      const expectedKeys = ['tasksCreated', 'memorySearched', 'memoryRequired', 'learningsStored'];
+      const missingKeys = expectedKeys.filter(k => !(k in state));
+      if (missingKeys.length > 0) {
+        warnings.push(`workflow-state.json missing keys: ${missingKeys.join(', ')} (will auto-fix on next gate call)`);
+      }
+    } catch {
+      warnings.push('workflow-state.json corrupt — will auto-reset on next gate call');
+    }
+  }
+
+  // Build result
+  if (issues.length > 0) {
+    return {
+      name: 'Gate Health',
+      status: 'fail',
+      message: issues.join('; '),
+      fix: 'npx moflo init --fix or manually sync gate files',
+    };
+  }
+  if (warnings.length > 0) {
+    return {
+      name: 'Gate Health',
+      status: 'warn',
+      message: warnings.join('; '),
+    };
+  }
+
+  const caseCount = REQUIRED_GATE_CASES.length;
+  const hookCount = REQUIRED_HOOK_WIRING.length;
+  return {
+    name: 'Gate Health',
+    status: 'pass',
+    message: `${caseCount} gate cases, ${hookCount} hook bindings, state file OK`,
+  };
 }

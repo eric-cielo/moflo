@@ -20,6 +20,7 @@ import {
   checkMcpToolInvocation,
   checkHookExecution,
   checkMcpWorkflowIntegration,
+  checkGateHealth,
   getMofloRoot,
 } from './doctor-checks-deep.js';
 
@@ -1332,6 +1333,7 @@ export const doctorCommand: Command = {
       checkMcpToolInvocation,
       checkMcpWorkflowIntegration,
       checkHookExecution,
+      checkGateHealth,
     ];
 
     const componentMap: Record<string, () => Promise<HealthCheck>> = {
@@ -1362,6 +1364,8 @@ export const doctorCommand: Command = {
       'mcp-tools': checkMcpToolInvocation,
       'mcp-workflow': checkMcpWorkflowIntegration,
       'hooks': checkHookExecution,
+      'gates': checkGateHealth,
+      'gate': checkGateHealth,
     };
 
     let checksToRun = allChecks;

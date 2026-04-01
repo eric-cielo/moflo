@@ -979,4 +979,107 @@ describe('end-to-end: workflow lifecycle', () => {
     s = readState(tmpDir);
     expect(s.memorySearched).toBe(true);
   });
+
+  describe('task transition gate (check-task-transition)', () => {
+    it('resets memorySearched when task moves to in_progress', () => {
+      const env = baseEnv(tmpDir);
+
+      // Set up: memory searched, required
+      env.CLAUDE_USER_PROMPT = 'implement the feature';
+      runGate('prompt-reminder', env);
+      runGate('record-memory-searched', env);
+      let s = readState(tmpDir);
+      expect(s.memorySearched).toBe(true);
+      expect(s.memoryRequired).toBe(true);
+
+      // Transition a task to in_progress — should reset
+      env.TOOL_INPUT_status = 'in_progress';
+      runGate('check-task-transition', env);
+      s = readState(tmpDir);
+      expect(s.memorySearched).toBe(false);
+      expect(s.learningsStored).toBe(false);
+    });
+
+    it('does not reset for non-in_progress transitions', () => {
+      const env = baseEnv(tmpDir);
+
+      env.CLAUDE_USER_PROMPT = 'implement the feature';
+      runGate('prompt-reminder', env);
+      runGate('record-memory-searched', env);
+
+      env.TOOL_INPUT_status = 'completed';
+      runGate('check-task-transition', env);
+      const s = readState(tmpDir);
+      expect(s.memorySearched).toBe(true);
+    });
+
+    it('does not reset when memory was not yet searched', () => {
+      const env = baseEnv(tmpDir);
+
+      env.CLAUDE_USER_PROMPT = 'implement the feature';
+      runGate('prompt-reminder', env);
+      // Don't search memory
+
+      env.TOOL_INPUT_status = 'in_progress';
+      runGate('check-task-transition', env);
+      const s = readState(tmpDir);
+      expect(s.memorySearched).toBe(false); // stays false, no redundant reset
+    });
+  });
+
+  describe('learnings gate (check-before-pr)', () => {
+    it('blocks gh pr create when learnings not stored', () => {
+      const env = baseEnv(tmpDir);
+
+      env.CLAUDE_USER_PROMPT = 'create the pr';
+      runGate('prompt-reminder', env);
+      runGate('record-memory-searched', env);
+
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('BLOCKED');
+      expect(r.stderr).toContain('learnings');
+    });
+
+    it('allows gh pr create after memory_store', () => {
+      const env = baseEnv(tmpDir);
+
+      env.CLAUDE_USER_PROMPT = 'create the pr';
+      runGate('prompt-reminder', env);
+      runGate('record-memory-searched', env);
+      runGate('record-learnings-stored', env);
+
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('does not block non-PR bash commands', () => {
+      const env = baseEnv(tmpDir);
+
+      env.CLAUDE_USER_PROMPT = 'run tests';
+      runGate('prompt-reminder', env);
+
+      env.TOOL_INPUT_command = 'npm test';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('resets learningsStored on new prompt', () => {
+      const env = baseEnv(tmpDir);
+
+      env.CLAUDE_USER_PROMPT = 'first task';
+      runGate('prompt-reminder', env);
+      runGate('record-learnings-stored', env);
+      let s = readState(tmpDir);
+      expect(s.learningsStored).toBe(true);
+
+      // New prompt resets
+      env.CLAUDE_USER_PROMPT = 'second task needs a pr';
+      runGate('prompt-reminder', env);
+      s = readState(tmpDir);
+      expect(s.learningsStored).toBe(false);
+    });
+  });
 });
