@@ -56,6 +56,7 @@ steps:
     type: bash
     config:
       command: "git stash --include-untracked -q 2>/dev/null; git checkout {args.base_branch} && git pull origin {args.base_branch} && (git show-ref --verify --quiet refs/heads/epic/{args.epic_number}-{args.epic_slug} && git checkout epic/{args.epic_number}-{args.epic_slug} || git checkout -b epic/{args.epic_number}-{args.epic_slug}); git stash pop -q 2>/dev/null || true"
+      timeout: 120000
       failOnError: true
 
   # Step 2: Loop over stories sequentially
@@ -98,6 +99,7 @@ steps:
     type: bash
     config:
       command: "git push -u origin epic/{args.epic_number}-{args.epic_slug}"
+      timeout: 120000
       failOnError: true
 
   # Step 4: Create consolidated PR
