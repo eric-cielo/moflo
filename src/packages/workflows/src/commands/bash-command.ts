@@ -90,7 +90,11 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       const onAbort = () => child.kill();
       context.abortSignal?.addEventListener('abort', onAbort, { once: true });
 
-      const child = exec(command, { timeout, shell: 'bash' }, (error, stdout, stderr) => {
+      const child = exec(command, {
+        timeout,
+        shell: 'bash',
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      }, (error, stdout, stderr) => {
         context.abortSignal?.removeEventListener('abort', onAbort);
         const killed = error && 'killed' in error && (error as { killed?: boolean }).killed;
         const exitCode = child.exitCode ?? (error ? 1 : 0);
