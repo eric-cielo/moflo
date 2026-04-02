@@ -74,13 +74,13 @@ steps:
       itemVar: "story_number"
     output: story_results
     steps:
-      # 2a: Run /flo in epic-branch mode (commit-only, no branch/PR)
+      # 2a: Spawn Claude agent to implement the story and commit to epic branch
       - id: implement-story
-        type: agent
+        type: bash
         config:
-          prompt: "/flo --epic-branch epic/{args.epic_number}-{args.epic_slug} {loop.story_number}"
-          agentType: "coder"
-        continueOnError: false
+          command: "claude --dangerously-skip-permissions -p \"Read GitHub issue #{loop.story_number} using gh issue view {loop.story_number}. Implement exactly what the issue asks for — nothing more. Commit your changes with a message referencing the issue number. Do not create a branch or PR.\" --allowedTools Edit,Write,Bash,Read,Glob,Grep"
+          timeout: 300000
+          failOnError: true
 
       # 2b: Check off story in epic body
       - id: check-off-story
