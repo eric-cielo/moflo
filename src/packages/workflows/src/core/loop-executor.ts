@@ -51,12 +51,17 @@ export async function executeLoopIterations(
   const prevItem = variables[itemVar];
   const hadIndex = indexVar in variables;
   const prevIndex = variables[indexVar];
+  const hadLoop = 'loop' in variables;
+  const prevLoop = variables['loop'];
 
   for (let idx = 0; idx < items.length; idx++) {
     if (signal?.aborted) break;
 
     variables[itemVar] = items[idx];
     variables[indexVar] = idx;
+
+    // Inject `loop` namespace so {loop.<itemVar>} references resolve
+    variables['loop'] = { [itemVar]: items[idx], [indexVar]: idx };
 
     const iterOutput: Record<string, unknown> = {};
     let iterFailed = false;
@@ -99,6 +104,8 @@ export async function executeLoopIterations(
   else delete variables[itemVar];
   if (hadIndex) variables[indexVar] = prevIndex;
   else delete variables[indexVar];
+  if (hadLoop) variables['loop'] = prevLoop;
+  else delete variables['loop'];
 
   return { success: allSucceeded, outputs: iterationOutputs };
 }
