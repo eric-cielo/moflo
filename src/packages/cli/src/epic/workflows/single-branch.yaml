@@ -55,7 +55,7 @@ steps:
   - id: create-branch
     type: bash
     config:
-      command: "git checkout {args.base_branch} && git pull origin {args.base_branch} && git checkout -b epic/{args.epic_number}-{args.epic_slug}"
+      command: "git checkout {args.base_branch} && git pull origin {args.base_branch} && (git checkout epic/{args.epic_number}-{args.epic_slug} 2>/dev/null || git checkout -b epic/{args.epic_number}-{args.epic_slug})"
       failOnError: true
 
   # Step 2: Loop over stories sequentially

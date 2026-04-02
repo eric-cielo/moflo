@@ -103,7 +103,7 @@ export const bashCommand: StepCommand<BashStepConfig> = {
             stderr: stderr.trim(),
             exitCode,
           },
-          error: success ? undefined : `Command exited with code ${exitCode}`,
+          error: success ? undefined : `Command exited with code ${exitCode}${stderr.trim() ? ': ' + stderr.trim() : ''}`,
           duration: Date.now() - start,
         });
       });
