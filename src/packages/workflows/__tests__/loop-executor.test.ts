@@ -112,6 +112,49 @@ describe('executeLoopIterations', () => {
     ]);
   });
 
+  it('should inject loop namespace so {loop.<itemVar>} references resolve', async () => {
+    const nested = makeNestedStep('inner');
+    const loopStep = makeLoopStep([nested]);
+    const loopOutput = makeLoopOutput(['x', 'y'], 'story_number', 'idx');
+    const variables: Record<string, unknown> = {};
+    const errors: WorkflowError[] = [];
+
+    const capturedLoop: Array<Record<string, unknown>> = [];
+
+    const executeStep = vi.fn().mockImplementation(async () => {
+      capturedLoop.push({ ...(variables.loop as Record<string, unknown>) });
+      return makeSuccessResult('inner');
+    });
+
+    await executeLoopIterations(
+      loopStep, loopOutput, variables, errors, undefined, executeStep,
+    );
+
+    expect(capturedLoop).toEqual([
+      { story_number: 'x', idx: 0 },
+      { story_number: 'y', idx: 1 },
+    ]);
+
+    // loop namespace should be cleaned up after completion
+    expect('loop' in variables).toBe(false);
+  });
+
+  it('should restore original loop variable if it existed before', async () => {
+    const nested = makeNestedStep('inner');
+    const loopStep = makeLoopStep([nested]);
+    const loopOutput = makeLoopOutput(['a']);
+    const variables: Record<string, unknown> = { loop: { existing: true } };
+    const errors: WorkflowError[] = [];
+
+    const executeStep = vi.fn().mockResolvedValue(makeSuccessResult('inner'));
+
+    await executeLoopIterations(
+      loopStep, loopOutput, variables, errors, undefined, executeStep,
+    );
+
+    expect(variables.loop).toEqual({ existing: true });
+  });
+
   it('should restore original variable value after loop completes', async () => {
     const nested = makeNestedStep('inner');
     const loopStep = makeLoopStep([nested]);

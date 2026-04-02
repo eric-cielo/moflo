@@ -62,7 +62,7 @@ export class WorkflowRunner {
         code: 'DEFINITION_VALIDATION_FAILED',
         message: 'Workflow definition is invalid',
         details: defValidation.errors,
-      }]);
+      }], definition.name);
     }
 
     if (options.parentMofloLevel && definition.mofloLevel) {
@@ -70,7 +70,7 @@ export class WorkflowRunner {
         return this.failureResult(workflowId, startTime, [{
           code: 'MOFLO_LEVEL_DENIED',
           message: `Nested workflow mofloLevel "${definition.mofloLevel}" exceeds parent level "${options.parentMofloLevel}"`,
-        }]);
+        }], definition.name);
       }
     }
 
@@ -82,7 +82,7 @@ export class WorkflowRunner {
         code: 'ARGUMENT_VALIDATION_FAILED',
         message: 'Argument validation failed',
         details: argErrors,
-      }]);
+      }], definition.name);
     }
 
     // Pre-flight prerequisite checks (Story #193)
@@ -94,7 +94,7 @@ export class WorkflowRunner {
           return this.failureResult(workflowId, startTime, [{
             code: 'PREREQUISITES_FAILED',
             message: formatPrerequisiteErrors(prereqResults),
-          }]);
+          }], definition.name);
         }
       }
     }
@@ -174,7 +174,9 @@ export class WorkflowRunner {
     };
 
     try {
-    await this.storeProgress(workflowId, 'running', 0, definition.steps.length);
+    await this.storeProgress(workflowId, 'running', 0, definition.steps.length, {
+      workflowName: definition.name, startedAt: startTime,
+    });
 
     const stepIndex = new Map<string, number>();
     for (let idx = 0; idx < definition.steps.length; idx++) {
@@ -269,7 +271,9 @@ export class WorkflowRunner {
         }
       }
 
-      await this.storeProgress(workflowId, 'running', stepResults.length, definition.steps.length);
+      await this.storeProgress(workflowId, 'running', stepResults.length, definition.steps.length, {
+        workflowName: definition.name, startedAt: startTime,
+      });
       try { options.onStepComplete?.(result, i, definition.steps.length); } catch { /* safe */ }
     }
 
@@ -279,7 +283,9 @@ export class WorkflowRunner {
     }
 
     const finalStatus = cancelled ? 'cancelled' : errors.length > 0 ? 'failed' : 'completed';
-    await this.storeProgress(workflowId, finalStatus, stepResults.length, definition.steps.length);
+    await this.storeProgress(workflowId, finalStatus, stepResults.length, definition.steps.length, {
+      workflowName: definition.name, startedAt: startTime, errors,
+    });
 
     const outputs: Record<string, unknown> = {};
     for (const sr of stepResults) {
@@ -331,15 +337,36 @@ export class WorkflowRunner {
       ...(this.connectorAccessor ? { tools: this.connectorAccessor } : {}) };
   }
 
-  private async storeProgress(wfId: string, status: string, done: number, total: number) {
+  private async storeProgress(
+    wfId: string, status: string, done: number, total: number,
+    extra?: { workflowName?: string; startedAt?: number; errors?: WorkflowError[] },
+  ) {
     try {
-      await this.memory.write('tasklist', wfId, {
+      const now = Date.now();
+      const record: Record<string, unknown> = {
         status, completedSteps: done, totalSteps: total, updatedAt: new Date().toISOString(),
-      });
+      };
+      if (extra?.workflowName) record.workflowName = extra.workflowName;
+      if (extra?.startedAt) {
+        record.startedAt = extra.startedAt;
+        record.duration = now - extra.startedAt;
+      }
+      // Map status to boolean success for dashboard compatibility
+      if (status === 'completed') record.success = true;
+      else if (status === 'failed') record.success = false;
+      else if (status === 'cancelled') record.success = false;
+      // Include error summary on terminal states
+      if (extra?.errors && extra.errors.length > 0 && (status === 'failed' || status === 'cancelled')) {
+        record.error = extra.errors.map(e => e.message).join('; ');
+      }
+      await this.memory.write('tasklist', wfId, record);
     } catch { /* Best-effort */ }
   }
 
-  private failureResult(workflowId: string, startTime: number, errors: WorkflowError[]): WorkflowResult {
+  private async failureResult(workflowId: string, startTime: number, errors: WorkflowError[], workflowName?: string): Promise<WorkflowResult> {
+    await this.storeProgress(workflowId, 'failed', 0, 0, {
+      workflowName, startedAt: startTime, errors,
+    });
     return { workflowId, success: false, steps: [], outputs: {}, errors,
       duration: Date.now() - startTime, cancelled: false };
   }
