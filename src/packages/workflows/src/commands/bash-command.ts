@@ -109,7 +109,6 @@ export const bashCommand: StepCommand<BashStepConfig> = {
             errorMsg = `Command exited with code ${exitCode}`;
           }
           if (stderrText) errorMsg += ': ' + stderrText;
-          // Include truncated stdout if stderr is empty (some tools write errors to stdout)
           else if (stdout.trim()) {
             const outSnippet = stdout.trim().slice(-500);
             errorMsg += ' (stdout tail: ' + outSnippet + ')';
@@ -128,6 +127,10 @@ export const bashCommand: StepCommand<BashStepConfig> = {
           duration: Date.now() - start,
         });
       });
+
+      // Close stdin immediately to prevent git from blocking on inherited
+      // stdin pipe (Windows npx .CMD shim passes a pipe that never closes)
+      child.stdin?.end();
     });
   },
 
