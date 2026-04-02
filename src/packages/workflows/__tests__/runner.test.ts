@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { WorkflowRunner } from '../src/core/runner.js';
+import { WorkflowRunner, ENGINE_VERSION } from '../src/core/runner.js';
 import { StepCommandRegistry } from '../src/core/step-command-registry.js';
 import type {
   StepCommand,
@@ -69,6 +69,16 @@ beforeEach(() => {
   registry = new StepCommandRegistry();
   memory = createMockMemory();
   runner = new WorkflowRunner(registry, createMockCredentials(), memory);
+});
+
+// ============================================================================
+// ENGINE_VERSION constant
+// ============================================================================
+
+describe('ENGINE_VERSION', () => {
+  it('should equal 1.0.0', () => {
+    expect(ENGINE_VERSION).toBe('1.0.0');
+  });
 });
 
 // ============================================================================
