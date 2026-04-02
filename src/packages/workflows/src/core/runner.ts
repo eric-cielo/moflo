@@ -201,7 +201,6 @@ export class WorkflowRunner {
       }
 
       const step = definition.steps[i];
-      console.log(`[workflow] Step ${i + 1}/${definition.steps.length}: starting "${step.id}" [${step.type}]`);
       const result = await this.runStep(step, state, i);
       stepResults.push(result);
 
@@ -257,7 +256,6 @@ export class WorkflowRunner {
       }
 
       // Fire onStepComplete for every step (success, failure, cancelled)
-      console.log(`[workflow] Step ${i + 1}/${definition.steps.length}: ${result.status} "${step.id}" (${result.duration}ms)${result.error ? ' — ' + result.error.slice(0, 200) : ''}`);
       await this.storeProgress(workflowId, 'running', stepResults.length, definition.steps.length, {
         workflowName: definition.name, startedAt: startTime,
       });
@@ -363,9 +361,7 @@ export class WorkflowRunner {
         record.error = extra.errors.map(e => e.message).join('; ');
       }
       await this.memory.write('tasklist', wfId, record);
-    } catch (err) {
-      console.warn(`[workflow] Failed to store progress for ${wfId}: ${(err as Error).message ?? err}`);
-    }
+    } catch { /* Best-effort */ }
   }
 
   private async failureResult(workflowId: string, startTime: number, errors: WorkflowError[], workflowName?: string): Promise<WorkflowResult> {
