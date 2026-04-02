@@ -2,7 +2,8 @@
  * Bash Step Command — runs a shell command.
  */
 
-import { exec } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { platform } from 'node:os';
 import type {
   StepCommand,
   StepConfig,
@@ -87,24 +88,39 @@ export const bashCommand: StepCommand<BashStepConfig> = {
     }
 
     return new Promise<StepOutput>((resolve) => {
-      const onAbort = () => child.kill();
-      context.abortSignal?.addEventListener('abort', onAbort, { once: true });
-
-      const child = exec(command, {
-        timeout,
-        shell: 'bash',
+      // Use spawn with stdin explicitly ignored to prevent child processes
+      // (e.g. git credential helpers) from hanging when invoked through
+      // npx .CMD shims on Windows (#297).
+      const isWin = platform() === 'win32';
+      const child = spawn('bash', ['-c', command], {
+        stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-      }, (error, stdout, stderr) => {
+        // detached on Unix so we can kill the whole process group (-pid)
+        detached: !isWin,
+      });
+
+      console.log(`[bash] pid=${child.pid} timeout=${timeout}ms cmd=${command.slice(0, 120)}`);
+
+      let timedOut = false;
+      let settled = false;
+
+      const finish = (code: number | null, signal: string | null) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         context.abortSignal?.removeEventListener('abort', onAbort);
-        const killed = error && 'killed' in error && (error as { killed?: boolean }).killed;
-        const exitCode = child.exitCode ?? (error ? 1 : 0);
+
+        const killed = timedOut || signal === 'SIGTERM' || signal === 'SIGKILL';
+        const exitCode = code ?? (killed ? -1 : 1);
         const success = !failOnError || exitCode === 0;
         const stderrText = stderr.trim();
 
         let errorMsg: string | undefined;
         if (!success) {
-          if (killed) {
+          if (timedOut) {
             errorMsg = `Command timed out after ${timeout}ms`;
+          } else if (killed) {
+            errorMsg = `Command killed by signal ${signal}`;
           } else {
             errorMsg = `Command exited with code ${exitCode}`;
           }
@@ -115,22 +131,44 @@ export const bashCommand: StepCommand<BashStepConfig> = {
           }
         }
 
+        console.log(`[bash] pid=${child.pid} exit=${exitCode} timedOut=${timedOut} dur=${Date.now() - start}ms`);
+
         resolve({
           success,
           data: {
             stdout: stdout.trim(),
             stderr: stderrText,
             exitCode,
-            timedOut: !!killed,
+            timedOut,
           },
           error: errorMsg,
           duration: Date.now() - start,
         });
-      });
+      };
 
-      // Close stdin immediately to prevent git from blocking on inherited
-      // stdin pipe (Windows npx .CMD shim passes a pipe that never closes)
-      child.stdin?.end();
+      // Manual timeout — spawn's `timeout` option doesn't kill the process
+      // tree on Windows (#297, #298).
+      const timer = setTimeout(() => {
+        timedOut = true;
+        killProcessTree(child);
+      }, timeout);
+
+      const onAbort = () => {
+        timedOut = true;
+        killProcessTree(child);
+      };
+      context.abortSignal?.addEventListener('abort', onAbort, { once: true });
+
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+      child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+
+      child.on('close', (code, signal) => finish(code, signal));
+      child.on('error', (err) => {
+        stderr += err.message;
+        finish(null, null);
+      });
     });
   },
 
@@ -142,6 +180,37 @@ export const bashCommand: StepCommand<BashStepConfig> = {
     ];
   },
 };
+
+// ── Process tree killing ─────────────────────────────────────────────────
+
+/**
+ * Kill a child process and its entire tree.
+ * On Windows, `child.kill()` only kills the immediate process, leaving bash
+ * and its children alive. We use `taskkill /T /F` for a tree kill (#298).
+ */
+function killProcessTree(child: ChildProcess): void {
+  if (!child.pid) {
+    child.kill('SIGKILL');
+    return;
+  }
+  if (platform() === 'win32') {
+    try {
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+        stdio: 'ignore',
+        // detached so taskkill outlives us if needed
+      });
+    } catch {
+      child.kill('SIGKILL');
+    }
+  } else {
+    // On Unix, kill the process group (negative pid)
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      child.kill('SIGKILL');
+    }
+  }
+}
 
 // ── Best-effort path extraction for scope enforcement ────────────────────
 
