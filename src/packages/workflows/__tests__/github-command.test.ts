@@ -77,8 +77,8 @@ describe('githubCommand — registration', () => {
     expect(githubCommand.type).toBe('github');
   });
 
-  it('declares shell capability', () => {
-    expect(githubCommand.capabilities).toEqual([{ type: 'shell' }]);
+  it('declares shell and net capabilities', () => {
+    expect(githubCommand.capabilities).toEqual([{ type: 'shell' }, { type: 'net' }]);
   });
 
   it('has gh and gh-auth prerequisites', () => {
