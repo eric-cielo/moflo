@@ -50,7 +50,7 @@ export async function createDashboardMemoryAccessor(): Promise<MemoryAccessor> {
       }
     },
     async write(namespace: string, key: string, value: unknown): Promise<void> {
-      await storeEntry({ key, value: typeof value === 'string' ? value : JSON.stringify(value), namespace });
+      await storeEntry({ key, value: typeof value === 'string' ? value : JSON.stringify(value), namespace, upsert: true });
     },
     async search(namespace: string, query: string): Promise<Array<{ key: string; value: unknown; score: number }>> {
       try {
