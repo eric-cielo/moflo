@@ -85,7 +85,7 @@ const githubPrerequisites: readonly Prerequisite[] = [
 export const githubCommand: StepCommand<GitHubStepConfig> = {
   type: 'github',
   description: 'GitHub operations via gh CLI (issues, PRs, labels, comments)',
-  capabilities: [{ type: 'shell' }],
+  capabilities: [{ type: 'shell' }, { type: 'net' }],
   defaultMofloLevel: 'none',
   prerequisites: githubPrerequisites,
 

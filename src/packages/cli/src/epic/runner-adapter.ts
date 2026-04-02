@@ -9,6 +9,7 @@
  */
 
 import { loadWorkflowEngine, type WorkflowResult } from '../services/engine-loader.js';
+import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
 
 /** Minimal workflow result shape matching WorkflowResult from @claude-flow/workflows. */
 export type EpicWorkflowResult = Pick<
@@ -31,6 +32,9 @@ export interface EpicRunOptions {
   onStepComplete?: (step: { stepId: string; status: string; duration: number }, index: number, total: number) => void;
 }
 
+/** Cached memory accessor — created once per process. */
+let memoryAccessor: Awaited<ReturnType<typeof createDashboardMemoryAccessor>> | null = null;
+
 /**
  * Run a workflow YAML string via the workflow engine.
  *
@@ -42,9 +46,20 @@ export async function runEpicWorkflow(
   options: EpicRunOptions = {},
 ): Promise<EpicWorkflowResult> {
   const engine = await loadWorkflowEngine();
+
+  // Lazily initialize a real memory accessor so execution records
+  // are persisted and visible in the dashboard.
+  if (!memoryAccessor) {
+    try {
+      memoryAccessor = await createDashboardMemoryAccessor();
+    } catch {
+      // Fall through — runner-factory uses noopMemory as default
+    }
+  }
+
   return engine.runWorkflowFromContent(
     yamlContent,
     undefined,
-    { ...options },
+    { ...options, ...(memoryAccessor ? { memory: memoryAccessor } : {}) },
   ) as Promise<EpicWorkflowResult>;
 }
