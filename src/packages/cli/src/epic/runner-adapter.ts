@@ -52,9 +52,10 @@ export async function runEpicWorkflow(
   if (!memoryAccessor) {
     try {
       memoryAccessor = await createDashboardMemoryAccessor();
+      console.log('[epic] Memory accessor ready — workflow progress will be persisted');
     } catch (err) {
-      console.warn(`[epic] Dashboard memory unavailable: ${(err as Error).message ?? err}`);
-      // Fall through — runner-factory uses noopMemory as default
+      console.warn(`[epic] ⚠ Dashboard memory unavailable: ${(err as Error).message ?? err}`);
+      console.warn('[epic] ⚠ Workflow executions will NOT appear in the dashboard');
     }
   }
 

@@ -33,7 +33,14 @@ arguments:
 mofloLevel: hooks
 
 steps:
-  # Step 0: Initialize epic state in memory (enables resume)
+  # Step 0: Pre-flight — fail fast if worktree is dirty or has unmerged files
+  - id: preflight-check
+    type: bash
+    config:
+      command: "if [ -n \"$(git diff --name-only --diff-filter=U)\" ]; then echo 'ERROR: Unmerged files detected. Resolve conflicts before running epic.' >&2; git diff --name-only --diff-filter=U >&2; exit 1; fi && if [ -n \"$(git status --porcelain)\" ]; then echo 'ERROR: Working tree is dirty. Commit, stash, or discard changes before running epic.' >&2; git status --short >&2; exit 1; fi"
+      failOnError: true
+
+  # Step 1: Initialize epic state in memory (enables resume)
   - id: init-state
     type: memory
     config:

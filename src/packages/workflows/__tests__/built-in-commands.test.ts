@@ -185,11 +185,14 @@ describe('bashCommand', () => {
   it('should timeout long commands', async () => {
     const ctx = createContext();
     const output = await bashCommand.execute(
-      { command: 'sleep 10', timeout: 100, failOnError: true },
+      { command: 'sleep 30', timeout: 500, failOnError: true },
       ctx,
     );
     expect(output.success).toBe(false);
-  }, 5000);
+    expect(output.data.timedOut).toBe(true);
+    expect(output.error).toContain('timed out');
+    expect(output.duration).toBeLessThan(5000);
+  }, 10000);
 });
 
 // ============================================================================

@@ -38,14 +38,16 @@ export const DEFAULT_DASHBOARD_PORT = 3117;
  * Lazy-loads memory-initializer to avoid circular deps.
  */
 export async function createDashboardMemoryAccessor(): Promise<MemoryAccessor> {
-  const { searchEntries, getEntry, storeEntry } = await import('../memory/memory-initializer.js');
+  const { searchEntries, getEntry, storeEntry, listEntries } = await import('../memory/memory-initializer.js');
+  console.log('[dashboard] Memory accessor initialized successfully');
 
   return {
     async read(namespace: string, key: string): Promise<unknown | null> {
       try {
         const result = await getEntry({ key, namespace });
         return result?.entry?.content ?? null;
-      } catch {
+      } catch (err) {
+        console.warn(`[dashboard] memory.read(${namespace}, ${key}) failed: ${(err as Error).message ?? err}`);
         return null;
       }
     },
@@ -54,14 +56,40 @@ export async function createDashboardMemoryAccessor(): Promise<MemoryAccessor> {
     },
     async search(namespace: string, query: string): Promise<Array<{ key: string; value: unknown; score: number }>> {
       try {
-        const result = await searchEntries({ query, namespace, limit: 100 });
-        if (!result.success) return [];
-        return result.results.map(r => ({ key: r.key, value: r.content, score: r.score }));
-      } catch {
+        // HNSW semantic search can't handle wildcard '*' — use listEntries
+        // to enumerate all entries in the namespace, then fetch each one.
+        const listResult = await listEntries({ namespace, limit: 100 });
+        if (!listResult.success || listResult.entries.length === 0) {
+          // Fall back to semantic search with a meaningful query
+          const result = await searchEntries({ query: query === '*' ? 'workflow execution status' : query, namespace, limit: 100 });
+          if (!result.success) return [];
+          return result.results.map(r => ({ key: r.key, value: r.content, score: r.score }));
+        }
+
+        // Fetch full content for each listed entry
+        const entries: Array<{ key: string; value: unknown; score: number }> = [];
+        for (const entry of listResult.entries) {
+          try {
+            const full = await getEntry({ key: entry.key, namespace });
+            if (full?.entry?.content) {
+              const parsed = typeof full.entry.content === 'string' ? tryParseSafe(full.entry.content) : full.entry.content;
+              entries.push({ key: entry.key, value: parsed, score: 1.0 });
+            }
+          } catch {
+            // Skip entries that fail to load
+          }
+        }
+        return entries;
+      } catch (err) {
+        console.warn(`[dashboard] memory.search(${namespace}) failed: ${(err as Error).message ?? err}`);
         return [];
       }
     },
   };
+}
+
+function tryParseSafe(s: string): unknown {
+  try { return JSON.parse(s); } catch { return s; }
 }
 
 function handleStatus(daemon: WorkerDaemon): object {
