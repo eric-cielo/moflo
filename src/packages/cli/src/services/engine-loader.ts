@@ -9,6 +9,8 @@
  * Story #230: Replaced *Like interfaces with import type from @claude-flow/workflows.
  */
 
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type {
   WorkflowResult,
 } from '../../../../packages/workflows/src/types/runner.types.js';
@@ -67,9 +69,12 @@ export async function loadWorkflowEngine(): Promise<EngineModule> {
 
   pendingImport = (async () => {
     try {
+      // Resolve from compiled location (dist/src/services/) up to packages/workflows/dist/
+      const __engineDir = dirname(fileURLToPath(import.meta.url));
+      const workflowsEntry = join(__engineDir, '..', '..', '..', '..', 'workflows', 'dist', 'index.js');
       const mod = await import(
         /* webpackIgnore: true */
-        '../../../../packages/workflows/dist/index.js'
+        pathToFileURL(workflowsEntry).href
       );
       cachedEngine = mod as unknown as EngineModule;
       return cachedEngine;

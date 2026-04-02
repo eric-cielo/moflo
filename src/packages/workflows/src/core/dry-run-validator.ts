@@ -158,6 +158,12 @@ export async function dryRunValidate(
 
     // Validate nested steps for parallel and loop blocks (#247, #252)
     if ((step.type === 'parallel' || step.type === 'loop') && step.steps && step.steps.length > 0) {
+      // For loop steps, inject mock loop context so {loop.*} references resolve
+      if (step.type === 'loop') {
+        const itemVar = (step.config as Record<string, unknown>)?.itemVar as string ?? 'item';
+        variables['loop'] = { [itemVar]: '_dryRun_placeholder', index: 0 };
+      }
+
       for (let j = 0; j < step.steps.length; j++) {
         const nested = step.steps[j];
         const nestedContext = buildContext(variables, workflowId, i);

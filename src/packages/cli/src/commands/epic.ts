@@ -132,7 +132,7 @@ async function runEpic(
   const args = {
     epic_number: issueNumber,
     base_branch: 'main',
-    stories: JSON.stringify(storyNumbers),
+    stories: storyNumbers.map(String),
     epic_slug: slug,
     admin_merge: false,
     merge_method: 'squash',
@@ -159,6 +159,12 @@ async function runEpic(
         console.log('[epic] Dry-run: workflow has validation errors:');
         for (const err of result.errors) {
           console.log(`  - ${err.message}`);
+          const details = (err as Record<string, unknown>).details;
+          if (Array.isArray(details)) {
+            for (const d of details) {
+              console.log(`    ${d.path ?? ''}: ${d.message}`);
+            }
+          }
         }
       }
     } catch (err) {
@@ -265,9 +271,10 @@ const epicCommand: Command = {
   description: 'Epic orchestrator — runs GitHub epics through workflow engine',
   options: [],
   examples: [
-    { command: 'flo epic run 42', description: 'Execute epic (default: single-branch strategy)' },
-    { command: 'flo epic run 42 --strategy auto-merge', description: 'Execute with per-story PRs and auto-merge' },
-    { command: 'flo epic run 42 --dry-run', description: 'Show execution plan' },
+    { command: 'flo epic 42', description: 'Execute epic (default: run with single-branch strategy)' },
+    { command: 'flo epic 42 --strategy auto-merge', description: 'Execute with per-story PRs and auto-merge' },
+    { command: 'flo epic 42 --dry-run', description: 'Show execution plan' },
+    { command: 'flo epic run 42', description: 'Explicit run subcommand (same as above)' },
     { command: 'flo epic status 42', description: 'Check epic progress' },
     { command: 'flo epic reset 42', description: 'Reset epic state for re-run' },
   ],
@@ -275,9 +282,11 @@ const epicCommand: Command = {
     const subcommand = ctx.args?.[0];
 
     if (!subcommand) {
-      console.log('Usage: flo epic <command> [args] [flags]');
+      console.log('Usage: flo epic <issue-number> [flags]');
+      console.log('       flo epic <command> [args] [flags]');
       console.log('');
       console.log('Commands:');
+      console.log('  <issue-number>           Execute epic (shorthand for "run")');
       console.log('  run <issue-number>       Execute a GitHub epic via workflow engine');
       console.log('  status <epic-number>     Check epic progress');
       console.log('  reset <epic-number>      Reset epic state for re-run');
@@ -288,11 +297,16 @@ const epicCommand: Command = {
       return { success: true };
     }
 
-    switch (subcommand) {
+    // If the first arg is a number, default to "run"
+    const isNumeric = /^\d+$/.test(subcommand);
+    const effectiveCommand = isNumeric ? 'run' : subcommand;
+    const commandArgs = isNumeric ? [subcommand, ...ctx.args.slice(1)] : ctx.args.slice(1);
+
+    switch (effectiveCommand) {
       case 'run': {
-        const source = ctx.args[1];
+        const source = commandArgs[0];
         if (!source) {
-          return { success: false, message: 'Usage: flo epic run <issue-number> [--strategy] [--dry-run]' };
+          return { success: false, message: 'Usage: flo epic <issue-number> [--strategy] [--dry-run]' };
         }
         const dryRun = ctx.flags['dry-run'] === true || ctx.flags['dryRun'] === true;
         const strategyFlag = ctx.flags['strategy'] as string | undefined;
@@ -307,10 +321,10 @@ const epicCommand: Command = {
       }
 
       case 'status':
-        return showStatus(ctx.args[1] || '');
+        return showStatus(commandArgs[0] || '');
 
       case 'reset':
-        return resetEpic(ctx.args[1] || '');
+        return resetEpic(commandArgs[0] || '');
 
       default:
         return { success: false, message: `Unknown subcommand: ${subcommand}. Available: run, status, reset` };

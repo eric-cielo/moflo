@@ -233,6 +233,9 @@ export class CLI {
         }
 
         if (result && !result.success) {
+          if (result.message) {
+            this.output.printError(result.message);
+          }
           process.exit(result.exitCode || 1);
         }
 

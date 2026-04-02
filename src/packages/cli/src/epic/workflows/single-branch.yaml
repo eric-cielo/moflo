@@ -16,9 +16,9 @@ arguments:
     default: "main"
     description: "Base branch to create epic branch from"
   stories:
-    type: string
+    type: string[]
     required: true
-    description: "JSON array of story issue numbers"
+    description: "Array of story issue numbers"
   epic_slug:
     type: string
     required: false
@@ -29,6 +29,11 @@ arguments:
     required: false
     default: false
     description: "Use --admin flag for merge operations"
+  merge_method:
+    type: string
+    required: false
+    default: "squash"
+    description: "PR merge method (squash, merge, rebase)"
 
 mofloLevel: hooks
 
@@ -39,26 +44,25 @@ steps:
     config:
       action: "write"
       namespace: "epic-state"
-      key: "epic-${args.epic_number}"
+      key: "epic-{args.epic_number}"
       value:
         status: "in-progress"
         strategy: "single-branch"
-        stories: "${args.stories}"
-        branch: "epic/${args.epic_number}-${args.epic_slug}"
-        startedAt: "${new Date().toISOString()}"
+        stories: "{args.stories}"
+        branch: "epic/{args.epic_number}-{args.epic_slug}"
 
   # Step 1: Create epic branch from base
   - id: create-branch
     type: bash
     config:
-      command: "git checkout ${args.base_branch} && git pull origin ${args.base_branch} && git checkout -b epic/${args.epic_number}-${args.epic_slug}"
+      command: "git checkout {args.base_branch} && git pull origin {args.base_branch} && git checkout -b epic/{args.epic_number}-{args.epic_slug}"
       failOnError: true
 
   # Step 2: Loop over stories sequentially
   - id: process-stories
     type: loop
     config:
-      items: "${args.stories}"
+      over: "{args.stories}"
       itemVar: "story_number"
     output: story_results
     steps:
@@ -66,7 +70,7 @@ steps:
       - id: implement-story
         type: agent
         config:
-          prompt: "/flo --epic-branch epic/${args.epic_number}-${args.epic_slug} ${loop.story_number}"
+          prompt: "/flo --epic-branch epic/{args.epic_number}-{args.epic_slug} {loop.story_number}"
           agentType: "coder"
         continueOnError: false
 
@@ -75,8 +79,8 @@ steps:
         type: github
         config:
           action: "comment"
-          issue: ${args.epic_number}
-          body: "✅ Story #${loop.story_number} committed to epic branch"
+          issue: "{args.epic_number}"
+          body: "Story #{loop.story_number} committed to epic branch"
 
       # 2c: Record completion in memory
       - id: record-completion
@@ -84,17 +88,16 @@ steps:
         config:
           action: "write"
           namespace: "epic-state"
-          key: "story-${loop.story_number}"
+          key: "story-{loop.story_number}"
           value:
             status: "completed"
-            epic: ${args.epic_number}
-            timestamp: "${new Date().toISOString()}"
+            epic: "{args.epic_number}"
 
   # Step 3: Push epic branch
   - id: push-branch
     type: bash
     config:
-      command: "git push -u origin epic/${args.epic_number}-${args.epic_slug}"
+      command: "git push -u origin epic/{args.epic_number}-{args.epic_slug}"
       failOnError: true
 
   # Step 4: Create consolidated PR
@@ -102,10 +105,10 @@ steps:
     type: github
     config:
       action: "pr-create"
-      title: "epic(#${args.epic_number}): consolidated epic PR"
-      body: "## Epic #${args.epic_number}\n\nConsolidated PR for all stories.\n\nCloses #${args.epic_number}"
-      base: "${args.base_branch}"
-      head: "epic/${args.epic_number}-${args.epic_slug}"
+      title: "epic(#{args.epic_number}): consolidated epic PR"
+      body: "## Epic #{args.epic_number}\n\nConsolidated PR for all stories.\n\nCloses #{args.epic_number}"
+      base: "{args.base_branch}"
+      head: "epic/{args.epic_number}-{args.epic_slug}"
 
   # Step 5: Mark epic as completed in memory
   - id: finalize-state
@@ -113,10 +116,9 @@ steps:
     config:
       action: "write"
       namespace: "epic-state"
-      key: "epic-${args.epic_number}"
+      key: "epic-{args.epic_number}"
       value:
         status: "completed"
         strategy: "single-branch"
-        stories: "${args.stories}"
-        branch: "epic/${args.epic_number}-${args.epic_slug}"
-        completedAt: "${new Date().toISOString()}"
+        stories: "{args.stories}"
+        branch: "epic/{args.epic_number}-{args.epic_slug}"

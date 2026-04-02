@@ -16,9 +16,9 @@ arguments:
     default: "main"
     description: "Base branch for story branches"
   stories:
-    type: string
+    type: string[]
     required: true
-    description: "JSON array of story issue numbers"
+    description: "Array of story issue numbers"
   admin_merge:
     type: boolean
     required: false
@@ -39,18 +39,17 @@ steps:
     config:
       action: "write"
       namespace: "epic-state"
-      key: "epic-${args.epic_number}"
+      key: "epic-{args.epic_number}"
       value:
         status: "in-progress"
         strategy: "auto-merge"
-        stories: "${args.stories}"
-        startedAt: "${new Date().toISOString()}"
+        stories: "{args.stories}"
 
   # Loop over stories sequentially
   - id: process-stories
     type: loop
     config:
-      items: "${args.stories}"
+      over: "{args.stories}"
       itemVar: "story_number"
     output: story_results
     steps:
@@ -58,14 +57,14 @@ steps:
       - id: checkout-base
         type: bash
         config:
-          command: "git checkout ${args.base_branch} && git pull origin ${args.base_branch}"
+          command: "git checkout {args.base_branch} && git pull origin {args.base_branch}"
           failOnError: true
 
       # 2: Run /flo in normal mode (creates branch + PR)
       - id: implement-story
         type: agent
         config:
-          prompt: "/flo ${loop.story_number}"
+          prompt: "/flo {loop.story_number}"
           agentType: "coder"
         continueOnError: false
 
@@ -74,7 +73,7 @@ steps:
         type: github
         config:
           action: "pr-find"
-          search: "Closes #${loop.story_number}"
+          search: "Closes #{loop.story_number}"
         output: found_pr
 
       # 4: Merge the PR
@@ -82,16 +81,16 @@ steps:
         type: github
         config:
           action: "pr-merge"
-          pr: ${found_pr.prs[0].number}
-          mergeMethod: "${args.merge_method}"
+          pr: "{found_pr.prs[0].number}"
+          mergeMethod: "{args.merge_method}"
           deleteBranch: true
-          admin: ${args.admin_merge}
+          admin: "{args.admin_merge}"
 
       # 5: Pull merged changes
       - id: pull-merged
         type: bash
         config:
-          command: "git checkout ${args.base_branch} && git pull origin ${args.base_branch}"
+          command: "git checkout {args.base_branch} && git pull origin {args.base_branch}"
           failOnError: true
 
       # 6: Comment on epic with progress
@@ -99,8 +98,8 @@ steps:
         type: github
         config:
           action: "comment"
-          issue: ${args.epic_number}
-          body: "✅ Story #${loop.story_number} merged via auto-merge strategy"
+          issue: "{args.epic_number}"
+          body: "Story #{loop.story_number} merged via auto-merge strategy"
 
       # 7: Record completion in memory
       - id: record-completion
@@ -108,11 +107,10 @@ steps:
         config:
           action: "write"
           namespace: "epic-state"
-          key: "story-${loop.story_number}"
+          key: "story-{loop.story_number}"
           value:
             status: "merged"
-            epic: ${args.epic_number}
-            timestamp: "${new Date().toISOString()}"
+            epic: "{args.epic_number}"
 
   # Mark epic as completed in memory
   - id: finalize-state
@@ -120,9 +118,8 @@ steps:
     config:
       action: "write"
       namespace: "epic-state"
-      key: "epic-${args.epic_number}"
+      key: "epic-{args.epic_number}"
       value:
         status: "completed"
         strategy: "auto-merge"
-        stories: "${args.stories}"
-        completedAt: "${new Date().toISOString()}"
+        stories: "{args.stories}"
