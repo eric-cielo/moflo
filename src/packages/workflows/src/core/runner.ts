@@ -255,6 +255,12 @@ export class WorkflowRunner {
         }
       }
 
+      // Fire onStepComplete for every step (success, failure, cancelled)
+      await this.storeProgress(workflowId, 'running', stepResults.length, definition.steps.length, {
+        workflowName: definition.name, startedAt: startTime,
+      });
+      try { options.onStepComplete?.(result, i, definition.steps.length); } catch { /* safe */ }
+
       if (result.status === 'cancelled') {
         cancelled = true;
         this.markRemaining(definition, i + 1, 'cancelled', stepResults);
@@ -270,11 +276,6 @@ export class WorkflowRunner {
           break;
         }
       }
-
-      await this.storeProgress(workflowId, 'running', stepResults.length, definition.steps.length, {
-        workflowName: definition.name, startedAt: startTime,
-      });
-      try { options.onStepComplete?.(result, i, definition.steps.length); } catch { /* safe */ }
     }
 
     if (cancelled) {

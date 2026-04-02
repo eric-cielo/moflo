@@ -183,8 +183,12 @@ async function runEpic(
       args,
       onStepComplete: (stepResult, index, total) => {
         stepCount++;
-        const status = stepResult.status === 'succeeded' ? '✓' : '✗';
+        const status = stepResult.status === 'succeeded' ? '✓' :
+          stepResult.status === 'skipped' ? '○' : '✗';
         console.log(`[epic] Step ${stepCount}/${total}: ${status} ${stepResult.stepId} (${stepResult.duration}ms)`);
+        if (stepResult.status === 'failed' && stepResult.error) {
+          console.log(`[epic]   └─ ${stepResult.error}`);
+        }
       },
     });
 
@@ -199,13 +203,42 @@ async function runEpic(
       return { success: true, message: 'Epic completed', data: result };
     } else {
       console.log(`\n[epic] Epic #${issueNumber} failed`);
-      for (const err of result.errors) {
-        console.log(`  Error: ${err.message}`);
+
+      // Print step-level results for visibility
+      if (result.steps && result.steps.length > 0) {
+        for (const step of result.steps) {
+          const icon = step.status === 'succeeded' ? '✓' : step.status === 'skipped' ? '○' : '✗';
+          const line = `  ${icon} ${step.stepId} [${step.stepType}]: ${step.status} (${step.duration}ms)`;
+          console.log(line);
+          if (step.error) {
+            console.log(`    Error: ${step.error}`);
+          }
+        }
       }
+
+      // Print workflow-level errors with full detail
+      for (const err of result.errors) {
+        const prefix = (err as Record<string, unknown>).stepId
+          ? `  [${(err as Record<string, unknown>).stepId}]`
+          : '  [workflow]';
+        console.log(`${prefix} ${(err as Record<string, unknown>).code ?? 'ERROR'}: ${err.message}`);
+        const details = (err as Record<string, unknown>).details;
+        if (Array.isArray(details)) {
+          for (const d of details) {
+            console.log(`    ${d.path ?? ''}: ${d.message ?? JSON.stringify(d)}`);
+          }
+        }
+      }
+
       return { success: false, message: 'Epic failed', data: result };
     }
   } catch (err) {
-    return { success: false, message: `Epic execution error: ${(err as Error).message}` };
+    const error = err as Error;
+    console.error(`[epic] Unhandled error: ${error.message}`);
+    if (error.stack) {
+      console.error(error.stack);
+    }
+    return { success: false, message: `Epic execution error: ${error.message}` };
   }
 }
 
