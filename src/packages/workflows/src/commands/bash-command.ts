@@ -92,18 +92,35 @@ export const bashCommand: StepCommand<BashStepConfig> = {
 
       const child = exec(command, { timeout, shell: 'bash' }, (error, stdout, stderr) => {
         context.abortSignal?.removeEventListener('abort', onAbort);
-        // child.exitCode is the numeric exit code; error.code can be a string like 'ETIMEDOUT'
+        const killed = error && 'killed' in error && (error as { killed?: boolean }).killed;
         const exitCode = child.exitCode ?? (error ? 1 : 0);
         const success = !failOnError || exitCode === 0;
+        const stderrText = stderr.trim();
+
+        let errorMsg: string | undefined;
+        if (!success) {
+          if (killed) {
+            errorMsg = `Command timed out after ${timeout}ms`;
+          } else {
+            errorMsg = `Command exited with code ${exitCode}`;
+          }
+          if (stderrText) errorMsg += ': ' + stderrText;
+          // Include truncated stdout if stderr is empty (some tools write errors to stdout)
+          else if (stdout.trim()) {
+            const outSnippet = stdout.trim().slice(-500);
+            errorMsg += ' (stdout tail: ' + outSnippet + ')';
+          }
+        }
 
         resolve({
           success,
           data: {
             stdout: stdout.trim(),
-            stderr: stderr.trim(),
+            stderr: stderrText,
             exitCode,
+            timedOut: !!killed,
           },
-          error: success ? undefined : `Command exited with code ${exitCode}${stderr.trim() ? ': ' + stderr.trim() : ''}`,
+          error: errorMsg,
           duration: Date.now() - start,
         });
       });

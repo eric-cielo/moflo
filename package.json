@@ -1,6 +1,6 @@
 {
   "name": "moflo",
-  "version": "4.8.52-rc.6",
+  "version": "4.8.52-rc.7",
   "description": "MoFlo — AI agent orchestration for Claude Code. Forked from ruflo/claude-flow with patches applied to source, plus feature-level orchestration.",
   "main": "dist/index.js",
   "type": "module",
@@ -78,7 +78,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "prebuild": "node scripts/sync-version.mjs",
-    "build": "tsc -b",
+    "build": "tsc -b && node -e \"const{cpSync}=require('fs');cpSync('src/packages/cli/src/epic/workflows','src/packages/cli/dist/src/epic/workflows',{recursive:true})\"",
     "build:ts": "cd src/packages/cli && npm run build",
     "build:neural": "cd src/packages/neural && npx tsc -p tsconfig.json",
     "build:guidance": "cd src/packages/guidance && npx tsc -p tsconfig.json",

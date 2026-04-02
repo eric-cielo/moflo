@@ -29,7 +29,7 @@ export type EpicWorkflowResult = Pick<
 export interface EpicRunOptions {
   args?: Record<string, unknown>;
   dryRun?: boolean;
-  onStepComplete?: (step: { stepId: string; status: string; duration: number }, index: number, total: number) => void;
+  onStepComplete?: (step: { stepId: string; status: string; duration: number; error?: string }, index: number, total: number) => void;
 }
 
 /** Cached memory accessor — created once per process. */
@@ -52,7 +52,8 @@ export async function runEpicWorkflow(
   if (!memoryAccessor) {
     try {
       memoryAccessor = await createDashboardMemoryAccessor();
-    } catch {
+    } catch (err) {
+      console.warn(`[epic] Dashboard memory unavailable: ${(err as Error).message ?? err}`);
       // Fall through — runner-factory uses noopMemory as default
     }
   }
