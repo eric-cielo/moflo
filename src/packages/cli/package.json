@@ -1,6 +1,6 @@
 {
   "name": "@moflo/cli",
-  "version": "4.8.52-rc.1",
+  "version": "4.8.52",
   "type": "module",
   "description": "MoFlo CLI — AI agent orchestration with specialized agents, swarm coordination, MCP server, self-learning hooks, and vector memory for Claude Code",
   "main": "dist/src/index.js",
@@ -71,7 +71,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"const{cpSync}=require('fs');cpSync('src/epic/workflows','dist/src/epic/workflows',{recursive:true})\"",
     "test": "vitest run",
     "test:plugin-store": "npx tsx src/plugins/tests/standalone-test.ts",
     "test:pattern-store": "npx tsx src/transfer/store/tests/standalone-test.ts",

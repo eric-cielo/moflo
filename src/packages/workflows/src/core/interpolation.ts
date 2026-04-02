@@ -96,6 +96,13 @@ export function shellInterpolateString(template: string, context: WorkflowContex
  */
 function interpolateValue(value: unknown, context: WorkflowContext): unknown {
   if (typeof value === 'string') {
+    // If the entire string is a single variable reference (e.g. "{args.stories}"),
+    // return the resolved value directly to preserve its original type (array, object, etc.).
+    const pureRefMatch = /^\{([^}]+)\}$/.exec(value);
+    if (pureRefMatch) {
+      const resolved = resolveVariable(pureRefMatch[1], context);
+      if (resolved !== undefined) return resolved;
+    }
     return interpolateString(value, context);
   }
   if (Array.isArray(value)) {

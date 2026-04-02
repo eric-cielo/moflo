@@ -284,6 +284,11 @@ function checkStringReferences(
       continue;
     }
 
+    // {loop.varName} — resolved at runtime by the loop executor
+    if (segments[0] === 'loop') {
+      continue;
+    }
+
     // {stepId.outputKey} — check step has been declared before this point
     if (segments.length >= 2) {
       const stepId = segments[0];
