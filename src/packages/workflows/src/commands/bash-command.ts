@@ -87,11 +87,15 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       }
     }
 
+    const diag = (msg: string) => console.log(`[bash-diag] [${Date.now() - start}ms] ${msg}`);
+    diag(`exec start | shell=bash | timeout=${timeout}ms | cmd=${command.slice(0, 120)}`);
+
     return new Promise<StepOutput>((resolve) => {
       let timedOut = false;
       let resolved = false;
 
-      const done = (code: number | null, signal: string | null, stdout: string, stderr: string) => {
+      const done = (source: string, code: number | null, signal: string | null, stdout: string, stderr: string) => {
+        diag(`done(${source}) | resolved=${resolved} | code=${code} | signal=${signal} | timedOut=${timedOut} | stdout=${stdout.length}b | stderr=${stderr.length}b`);
         if (resolved) return;
         resolved = true;
         clearTimeout(timer);
@@ -116,6 +120,7 @@ export const bashCommand: StepCommand<BashStepConfig> = {
           }
         }
 
+        diag(`resolving | success=${success} | error=${errorMsg?.slice(0, 100) ?? 'none'}`);
         resolve({
           success,
           data: { stdout: stdout.trim(), stderr: stderr.trim(), exitCode, timedOut },
@@ -132,20 +137,28 @@ export const bashCommand: StepCommand<BashStepConfig> = {
         timeout: 0,
         maxBuffer: 10 * 1024 * 1024,
       }, (error, cbStdout, cbStderr) => {
+        diag(`exec-callback fired | error=${error ? (error as Error).message?.slice(0, 100) : 'null'}`);
         const code = error ? (error as NodeJS.ErrnoException & { code?: number | string }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 1 : (error as { status?: number }).status ?? 1 : 0;
-        done(typeof code === 'number' ? code : 1, null, cbStdout?.toString() ?? '', cbStderr?.toString() ?? '');
+        done('exec-callback', typeof code === 'number' ? code : 1, null, cbStdout?.toString() ?? '', cbStderr?.toString() ?? '');
       });
+
+      diag(`spawned | pid=${child.pid ?? 'none'} | stdin=${!!child.stdin} | stdout=${!!child.stdout} | stderr=${!!child.stderr}`);
 
       // Close stdin so child processes that read from it don't hang
       child.stdin?.end();
 
       // ── Manual timeout with process tree kill ─────────────────────
       const onAbort = () => {
+        diag(`abort/timeout fired | timedOut=${timedOut}`);
         timedOut = true;
         killProcessTree(child);
       };
       const timer = setTimeout(onAbort, timeout);
       context.abortSignal?.addEventListener('abort', onAbort, { once: true });
+
+      // Track child process events for diagnostics
+      child.on('error', (err) => diag(`child error event: ${err.message}`));
+      child.on('exit', (code, signal) => diag(`child exit event | code=${code} | signal=${signal}`));
 
       // Fallback: if the 'close' event fires before the callback (shouldn't
       // happen, but defensive), resolve from it too.
@@ -154,7 +167,8 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       child.stdout?.on('data', (chunk: Buffer) => { closeStdout += chunk.toString(); });
       child.stderr?.on('data', (chunk: Buffer) => { closeStderr += chunk.toString(); });
       child.on('close', (code, signal) => {
-        done(code, signal, closeStdout, closeStderr);
+        diag(`child close event | code=${code} | signal=${signal}`);
+        done('close-event', code, signal, closeStdout, closeStderr);
       });
     });
   },
