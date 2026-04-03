@@ -109,6 +109,22 @@ export const bashCommand: StepCommand<BashStepConfig> = {
         const exitCode = code ?? (timedOut ? -1 : 1);
         const killed = timedOut || signal === 'SIGTERM' || signal === 'SIGKILL';
         const success = !failOnError || exitCode === 0;
+        const stderrText = stderr.trim();
+
+        let errorMsg: string | undefined;
+        if (!success) {
+          if (killed) {
+            errorMsg = `Command timed out after ${timeout}ms`;
+          } else {
+            errorMsg = `Command exited with code ${exitCode}`;
+          }
+          if (stderrText) errorMsg += ': ' + stderrText;
+          // Include truncated stdout if stderr is empty (some tools write errors to stdout)
+          else if (stdout.trim()) {
+            const outSnippet = stdout.trim().slice(-500);
+            errorMsg += ' (stdout tail: ' + outSnippet + ')';
+          }
+        }
 
         let errorMsg: string | undefined;
         if (!success) {

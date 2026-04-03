@@ -32,6 +32,8 @@ import { executeSingleStep, type StepExecutionState } from './step-executor.js';
 import { collectPrerequisites, checkPrerequisites, formatPrerequisiteErrors } from './prerequisite-checker.js';
 import { DENY_ALL_GATEWAY } from './capability-gateway.js';
 
+export const ENGINE_VERSION = '1.0.0';
+
 export class WorkflowRunner {
   private readonly connectorAccessor?: ConnectorAccessorImpl;
 
