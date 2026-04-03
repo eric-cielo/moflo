@@ -67,13 +67,13 @@ steps:
           command: "git stash --include-untracked -q 2>/dev/null; git checkout {args.base_branch} && git pull origin {args.base_branch}; git stash pop -q 2>/dev/null || true"
           failOnError: true
 
-      # 2: Run /flo in normal mode (creates branch + PR)
+      # 2: Spawn Claude agent to implement the story (creates branch + PR)
       - id: implement-story
-        type: agent
+        type: bash
         config:
-          prompt: "/flo {loop.story_number}"
-          agentType: "coder"
-        continueOnError: false
+          command: "export PATH=\"$HOME/.local/bin:$PATH\" && claude --dangerously-skip-permissions -p \"Read GitHub issue #{loop.story_number} using gh issue view {loop.story_number}. Implement exactly what the issue asks for. Create a branch, commit your changes with a message referencing the issue number, push the branch, and create a PR.\" --allowedTools Edit,Write,Bash,Read,Glob,Grep"
+          timeout: 300000
+          failOnError: true
 
       # 3: Find the story's PR
       - id: find-story-pr
