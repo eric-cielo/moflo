@@ -2,7 +2,7 @@
  * Bash Step Command — runs a shell command.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { exec, spawn, type ChildProcess } from 'node:child_process';
 import { platform } from 'node:os';
 import type {
   StepCommand,
@@ -88,15 +88,16 @@ export const bashCommand: StepCommand<BashStepConfig> = {
     }
 
     return new Promise<StepOutput>((resolve) => {
-      // Use spawn with stdin explicitly ignored to prevent child processes
-      // (e.g. git credential helpers) from hanging when invoked through
-      // npx .CMD shims on Windows (#297).
       const isWin = platform() === 'win32';
-      const child = spawn('bash', ['-c', command], {
-        stdio: ['ignore', 'pipe', 'pipe'],
+      // Use exec with shell:'bash' — this lets Node resolve the correct
+      // bash binary via PATH (Git Bash, not WSL bash).  We pass timeout: 0
+      // to disable exec's built-in timeout since it doesn't kill process
+      // trees on Windows; instead we use a manual setTimeout + killProcessTree.
+      const child = exec(command, {
+        shell: 'bash',
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-        // detached on Unix so we can kill the whole process group (-pid)
-        detached: !isWin,
+        timeout: 0,          // disabled — we handle timeout manually
+        maxBuffer: 10 * 1024 * 1024,
       });
 
       console.log(`[bash] pid=${child.pid} timeout=${timeout}ms cmd=${command.slice(0, 120)}`);
@@ -161,8 +162,8 @@ export const bashCommand: StepCommand<BashStepConfig> = {
 
       let stdout = '';
       let stderr = '';
-      child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-      child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+      child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+      child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
 
       child.on('close', (code, signal) => finish(code, signal));
       child.on('error', (err) => {
