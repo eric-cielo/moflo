@@ -3,6 +3,7 @@
  */
 
 import { exec, spawn, type ChildProcess } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { platform } from 'node:os';
 import type {
   StepCommand,
@@ -131,8 +132,13 @@ export const bashCommand: StepCommand<BashStepConfig> = {
 
       // Use exec callback as primary completion — the 'close' event does
       // not fire reliably on Windows when shell: 'bash' is used (#298).
+      // Resolve shell: prefer Git Bash on Windows to avoid WSL bash hanging.
+      // C:\Windows\System32\bash.exe is WSL — it can hang on Windows filesystems.
+      const resolvedShell = platform() === 'win32' ? resolveGitBash() : 'bash';
+      diag(`resolved shell: ${resolvedShell}`);
+
       const child = exec(command, {
-        shell: 'bash',
+        shell: resolvedShell,
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
         timeout: 0,
         maxBuffer: 10 * 1024 * 1024,
@@ -211,6 +217,40 @@ function killProcessTree(child: ChildProcess): void {
       child.kill('SIGKILL');
     }
   }
+}
+
+// ── Git Bash resolution (Windows) ───────────────────────────────────────
+
+/**
+ * On Windows, multiple `bash.exe` may exist on PATH:
+ *   - C:\Program Files\Git\usr\bin\bash.exe  (Git Bash — works)
+ *   - C:\Windows\System32\bash.exe           (WSL — hangs on Windows FS)
+ *   - C:\Users\...\AppData\Local\Microsoft\WindowsApps\bash.exe (WSL alias)
+ *
+ * We explicitly resolve Git Bash to avoid the WSL variants.
+ */
+let _cachedGitBash: string | undefined;
+function resolveGitBash(): string {
+  if (_cachedGitBash) return _cachedGitBash;
+
+  // Check common Git install locations
+  const candidates = [
+    'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
+    'C:\\Program Files (x86)\\Git\\usr\\bin\\bash.exe',
+    // Git Bash also provides this shorter path
+    'C:\\Program Files\\Git\\bin\\bash.exe',
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      _cachedGitBash = candidate;
+      return candidate;
+    }
+  }
+
+  // Fallback: hope PATH has Git Bash first
+  _cachedGitBash = 'bash';
+  return 'bash';
 }
 
 // ── Best-effort path extraction for scope enforcement ────────────────────
