@@ -6,6 +6,9 @@
  * credential masking, and timeout handling to focused modules.
  */
 
+/** Workflow engine version identifier. */
+export const ENGINE_VERSION = '1.0.0';
+
 import type {
   WorkflowContext,
   CredentialAccessor,
