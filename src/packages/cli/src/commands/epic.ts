@@ -230,7 +230,13 @@ async function runEpic(
         }
       }
 
-      return { success: false, message: 'Epic failed', data: result };
+      // Build actionable error message from first failure
+      const firstError = result.errors[0]?.message ?? 'Unknown error';
+      const remediation = getRemediation(firstError);
+      const summary = remediation
+        ? `Epic failed: ${firstError}\n  → ${remediation}`
+        : `Epic failed: ${firstError}`;
+      return { success: false, message: summary, data: result };
     }
   } catch (err) {
     const error = err as Error;
@@ -238,7 +244,11 @@ async function runEpic(
     if (error.stack) {
       console.error(error.stack);
     }
-    return { success: false, message: `Epic execution error: ${error.message}` };
+    const remediation = getRemediation(error.message);
+    const summary = remediation
+      ? `Epic execution error: ${error.message}\n  → ${remediation}`
+      : `Epic execution error: ${error.message}`;
+    return { success: false, message: summary };
   }
 }
 
@@ -293,6 +303,28 @@ async function resetEpic(epicNumber: string): Promise<CommandResult> {
   }
 
   return { success: true };
+}
+
+// ============================================================================
+// Error remediation hints
+// ============================================================================
+
+const REMEDIATION_PATTERNS: Array<{ pattern: RegExp; hint: string }> = [
+  { pattern: /working tree is dirty/i, hint: 'Commit, stash, or discard your changes first: git stash --include-untracked' },
+  { pattern: /unmerged files/i, hint: 'Resolve merge conflicts first: git status to see which files, then git add after fixing' },
+  { pattern: /not an epic/i, hint: 'Add child stories as checklist items (- [ ] #123) or a ## Stories section to the issue body' },
+  { pattern: /authentication|401|403/i, hint: 'Check your GitHub credentials: gh auth status' },
+  { pattern: /branch.*already exists/i, hint: 'The epic branch already exists. Use: flo epic reset <number> then retry, or delete the branch manually' },
+  { pattern: /conflict/i, hint: 'Merge conflicts detected. Pull latest changes and resolve: git pull origin main' },
+  { pattern: /ENOENT|not found|cannot find/i, hint: 'A required file or command was not found. Check that all dependencies are installed' },
+  { pattern: /timeout/i, hint: 'A step timed out. Retry the epic — it will resume from where it left off' },
+];
+
+function getRemediation(errorMessage: string): string | undefined {
+  for (const { pattern, hint } of REMEDIATION_PATTERNS) {
+    if (pattern.test(errorMessage)) return hint;
+  }
+  return undefined;
 }
 
 // ============================================================================
