@@ -89,37 +89,11 @@ export const bashCommand: StepCommand<BashStepConfig> = {
 
     return new Promise<StepOutput>((resolve) => {
       let timedOut = false;
+      let resolved = false;
 
-      const child = exec(command, {
-        shell: 'bash',
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-        timeout: 0,
-        maxBuffer: 10 * 1024 * 1024,
-      });
-
-      // Close stdin so child processes that read from it don't hang
-      child.stdin?.end();
-
-      // ── Manual timeout with process tree kill ─────────────────────
-      const timer = setTimeout(() => {
-        timedOut = true;
-        killProcessTree(child);
-      }, timeout);
-
-      const onAbort = () => {
-        timedOut = true;
-        killProcessTree(child);
-      };
-      context.abortSignal?.addEventListener('abort', onAbort, { once: true });
-
-      // ── Collect stdout/stderr ─────────────────────────────────────
-      let stdout = '';
-      let stderr = '';
-      child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-      child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-
-      // ── Resolve on close event ────────────────────────────────────
-      child.on('close', (code, signal) => {
+      const done = (code: number | null, signal: string | null, stdout: string, stderr: string) => {
+        if (resolved) return;
+        resolved = true;
         clearTimeout(timer);
         context.abortSignal?.removeEventListener('abort', onAbort);
 
@@ -148,6 +122,39 @@ export const bashCommand: StepCommand<BashStepConfig> = {
           error: errorMsg,
           duration: Date.now() - start,
         });
+      };
+
+      // Use exec callback as primary completion — the 'close' event does
+      // not fire reliably on Windows when shell: 'bash' is used (#298).
+      const child = exec(command, {
+        shell: 'bash',
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+        timeout: 0,
+        maxBuffer: 10 * 1024 * 1024,
+      }, (error, cbStdout, cbStderr) => {
+        const code = error ? (error as NodeJS.ErrnoException & { code?: number | string }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 1 : (error as { status?: number }).status ?? 1 : 0;
+        done(typeof code === 'number' ? code : 1, null, cbStdout?.toString() ?? '', cbStderr?.toString() ?? '');
+      });
+
+      // Close stdin so child processes that read from it don't hang
+      child.stdin?.end();
+
+      // ── Manual timeout with process tree kill ─────────────────────
+      const onAbort = () => {
+        timedOut = true;
+        killProcessTree(child);
+      };
+      const timer = setTimeout(onAbort, timeout);
+      context.abortSignal?.addEventListener('abort', onAbort, { once: true });
+
+      // Fallback: if the 'close' event fires before the callback (shouldn't
+      // happen, but defensive), resolve from it too.
+      let closeStdout = '';
+      let closeStderr = '';
+      child.stdout?.on('data', (chunk: Buffer) => { closeStdout += chunk.toString(); });
+      child.stderr?.on('data', (chunk: Buffer) => { closeStderr += chunk.toString(); });
+      child.on('close', (code, signal) => {
+        done(code, signal, closeStdout, closeStderr);
       });
     });
   },
