@@ -364,7 +364,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   <script>
     // Tab navigation — plain DOM, no framework
     const tabIds = ['workers', 'schedules', 'executions', 'memory'];
-    const tabLabels = ['Workers', 'Schedules', 'Executions', 'Memory'];
+    const tabLabels = ['Workers', 'Schedules', 'Flo Runs', 'Memory'];
     let activeTab = 'workers';
 
     function switchTab(id) {
@@ -468,9 +468,9 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     function renderExecutions(w) {
       const el = document.getElementById('panel-executions');
       if (!w || !w.available) { el.innerHTML = '<div class="empty">Scheduler not connected</div>'; return; }
-      if (w.executions.length === 0) { el.innerHTML = '<div class="empty">No recent executions</div>'; return; }
+      if (w.executions.length === 0) { el.innerHTML = '<div class="empty">No recent flo runs</div>'; return; }
 
-      let html = '<h2>Recent Executions</h2>';
+      let html = '<h2>Recent Flo Runs</h2>';
       w.executions.forEach(e => {
         const name = e.workflowName || 'Unknown Workflow';
         const runId = e.id || '-';

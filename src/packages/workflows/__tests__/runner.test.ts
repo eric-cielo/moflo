@@ -1150,4 +1150,76 @@ describe('WorkflowRunner — loop iteration', () => {
     const iterOutputs = loopData.iterationOutputs as unknown[];
     expect(iterOutputs).toHaveLength(0);
   });
+
+  it('should include iteration time in loop step duration', async () => {
+    const DELAY_MS = 50;
+    registry.register(createLoopCommand(['a', 'b']));
+    registry.register(createMockCommand({
+      type: 'nested',
+      execute: async () => {
+        await new Promise(r => setTimeout(r, DELAY_MS));
+        return { success: true, data: { done: true }, duration: DELAY_MS };
+      },
+    }));
+
+    const definition = simpleWorkflow([
+      {
+        id: 'loop1', type: 'loop', config: {}, output: 'loop1',
+        steps: [{ id: 'nested', type: 'nested', config: {} }],
+      },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    const loopStep = result.steps.find(s => s.stepId === 'loop1')!;
+    // Duration must include iteration time (~100ms for 2 items x 50ms each)
+    expect(loopStep.duration).toBeGreaterThanOrEqual(DELAY_MS * 2 * 0.8);
+  });
+});
+
+// ============================================================================
+// Parallel Step Duration
+// ============================================================================
+
+describe('WorkflowRunner — parallel step duration', () => {
+  function createParallelCommand(): StepCommand {
+    return createMockCommand({
+      type: 'parallel',
+      execute: async () => ({
+        success: true,
+        data: { maxConcurrency: 0, failFast: true },
+        duration: 0,
+      }),
+    });
+  }
+
+  it('should include nested step time in parallel step duration', async () => {
+    const DELAY_MS = 50;
+    registry.register(createParallelCommand());
+    registry.register(createMockCommand({
+      type: 'nested',
+      execute: async () => {
+        await new Promise(r => setTimeout(r, DELAY_MS));
+        return { success: true, data: { done: true }, duration: DELAY_MS };
+      },
+    }));
+
+    const definition = simpleWorkflow([
+      {
+        id: 'par1', type: 'parallel', config: {}, output: 'par1',
+        steps: [
+          { id: 'a', type: 'nested', config: {} },
+          { id: 'b', type: 'nested', config: {} },
+        ],
+      },
+    ]);
+
+    const result = await runner.run(definition, {});
+
+    expect(result.success).toBe(true);
+    const parStep = result.steps.find(s => s.stepId === 'par1')!;
+    // Parallel steps run concurrently, so duration >= one delay, not zero
+    expect(parStep.duration).toBeGreaterThanOrEqual(DELAY_MS * 0.8);
+  });
 });
