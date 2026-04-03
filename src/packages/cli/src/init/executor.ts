@@ -220,6 +220,10 @@ export async function executeInit(options: InitOptions): Promise<InitResult> {
       await writeClaudeMd(targetDir, options, result);
     }
 
+    // Inject "flo" npm script into consumer's package.json
+    // (avoids npx overhead on Windows — npm scripts resolve .bin directly)
+    await injectFloScript(targetDir, result);
+
     // Count enabled hooks
     result.summary.hooksEnabled = countEnabledHooks(options);
 
@@ -2127,6 +2131,25 @@ function countFiles(dir: string, ext: string): number {
   }
 
   return count;
+}
+
+/**
+ * Inject "flo" npm script into the consumer's package.json.
+ * This lets users run `npm run flo -- <args>` without npx overhead.
+ */
+async function injectFloScript(targetDir: string, result: InitResult): Promise<void> {
+  const pkgPath = path.join(targetDir, 'package.json');
+  if (!fs.existsSync(pkgPath)) return;
+
+  const raw = fs.readFileSync(pkgPath, 'utf-8');
+  const pkg = JSON.parse(raw);
+
+  if (!pkg.scripts) pkg.scripts = {};
+  if (pkg.scripts.flo) return; // already present
+
+  pkg.scripts.flo = 'flo';
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
+  result.created.files.push('package.json (flo script)');
 }
 
 /**
