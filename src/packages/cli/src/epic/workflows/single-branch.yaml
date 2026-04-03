@@ -79,7 +79,7 @@ steps:
         type: bash
         config:
           command: "export PATH=\"$HOME/.local/bin:$PATH\" && claude --dangerously-skip-permissions -p \"Read GitHub issue #{loop.story_number} using gh issue view {loop.story_number}. Implement exactly what the issue asks for — nothing more. Commit your changes with a message referencing the issue number. Do not create a branch or PR.\" --allowedTools Edit,Write,Bash,Read,Glob,Grep"
-          timeout: 300000
+          timeout: 600000
           failOnError: true
 
       # 2b: Check off story in epic body

@@ -134,7 +134,9 @@ export async function executeSingleStep(
     tools: context.tools ? new GatedConnectorAccessor(context.tools, gateway) : undefined,
   };
 
-  const timeout = state.options.defaultStepTimeout ?? DEFAULT_STEP_TIMEOUT;
+  // Respect step-level timeout (e.g. bash config.timeout) over global default
+  const stepTimeout = (interpolatedConfig as { timeout?: number }).timeout;
+  const timeout = stepTimeout ?? state.options.defaultStepTimeout ?? DEFAULT_STEP_TIMEOUT;
   let output: StepOutput;
 
   try {
