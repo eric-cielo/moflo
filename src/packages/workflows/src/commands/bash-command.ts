@@ -133,18 +133,15 @@ export const bashCommand: StepCommand<BashStepConfig> = {
         });
       };
 
-      const child = exec(command, {
-        shell: resolvedShell,
+      // Use spawn (not exec) with stdin set to 'ignore' from the start.
+      // exec() creates a pipe for stdin then we close it — but the shell
+      // may read from stdin before we get a chance to close it, causing a
+      // hang on Windows. 'ignore' maps stdin to /dev/null at spawn time.
+      const child = spawn(resolvedShell, ['-c', command], {
+        stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-        timeout: 0,
-        maxBuffer: 10 * 1024 * 1024,
-      }, (error, cbStdout, cbStderr) => {
-        const code = error ? (error as NodeJS.ErrnoException & { code?: number | string }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 1 : (error as { status?: number }).status ?? 1 : 0;
-        finish(typeof code === 'number' ? code : 1, null, cbStdout?.toString() ?? '', cbStderr?.toString() ?? '');
+        windowsHide: true,
       });
-
-      // Close stdin so child processes that read from it don't hang
-      child.stdin?.end();
 
       // ── Heartbeat — show the user the step is alive ──────────────
       const HEARTBEAT_INTERVAL = 15_000; // 15 seconds
@@ -176,7 +173,7 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       });
       child.stderr?.on('data', (chunk: Buffer) => { closeStderr += chunk.toString(); });
 
-      // Fallback: close event as secondary completion mechanism
+      // Resolve when the process exits and all stdio streams close
       child.on('close', (code, signal) => {
         finish(code, signal, closeStdout, closeStderr);
       });
