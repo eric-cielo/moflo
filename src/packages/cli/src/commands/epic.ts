@@ -231,11 +231,12 @@ async function runEpic(
       }
 
       // Build actionable error message from first failure
-      const firstError = result.errors[0]?.message ?? 'Unknown error';
-      const remediation = getRemediation(firstError);
-      const summary = remediation
-        ? `Epic failed: ${firstError}\n  → ${remediation}`
-        : `Epic failed: ${firstError}`;
+      const firstErr = result.errors[0] as Record<string, unknown> | undefined;
+      const rawMsg = firstErr?.message as string ?? 'Unknown error';
+      const summary = buildFailureSummary(rawMsg, {
+        stepId: firstErr?.stepId as string | undefined,
+        stepType: result.steps?.find(s => s.status === 'failed')?.stepType,
+      });
       return { success: false, message: summary, data: result };
     }
   } catch (err) {
@@ -244,11 +245,7 @@ async function runEpic(
     if (error.stack) {
       console.error(error.stack);
     }
-    const remediation = getRemediation(error.message);
-    const summary = remediation
-      ? `Epic execution error: ${error.message}\n  → ${remediation}`
-      : `Epic execution error: ${error.message}`;
-    return { success: false, message: summary };
+    return { success: false, message: buildFailureSummary(error.message) };
   }
 }
 
@@ -319,6 +316,40 @@ const REMEDIATION_PATTERNS: Array<{ pattern: RegExp; hint: string }> = [
   { pattern: /ENOENT|not found|cannot find/i, hint: 'A required file or command was not found. Check that all dependencies are installed' },
   { pattern: /timeout/i, hint: 'A step timed out. Retry the epic — it will resume from where it left off' },
 ];
+
+/** Strip wrapper noise from bash command errors to surface the actual message. */
+function cleanError(raw: string): string {
+  // "Command exited with code 1: ERROR: actual message" → "actual message"
+  let msg = raw.replace(/^Command exited with code \d+:\s*/i, '');
+  msg = msg.replace(/^ERROR:\s*/i, '');
+  return msg.trim() || raw;
+}
+
+/**
+ * Build an actionable failure summary.
+ * Always includes the cleaned error. Adds a remediation hint when a known
+ * pattern matches. When no pattern matches, includes the raw error so
+ * Claude (or any AI assistant in the session) can interpret it for the user.
+ */
+function buildFailureSummary(rawError: string, context?: { stepId?: string; stepType?: string }): string {
+  const cleaned = cleanError(rawError);
+  const hint = getRemediation(rawError);
+
+  const lines: string[] = [];
+  if (context?.stepId) {
+    lines.push(`Epic failed at step "${context.stepId}" [${context.stepType ?? 'unknown'}]`);
+  } else {
+    lines.push('Epic failed');
+  }
+  lines.push(`  Error: ${cleaned}`);
+  if (hint) {
+    lines.push(`  Fix: ${hint}`);
+  }
+  if (rawError !== cleaned) {
+    lines.push(`  Raw: ${rawError}`);
+  }
+  return lines.join('\n');
+}
 
 function getRemediation(errorMessage: string): string | undefined {
   for (const { pattern, hint } of REMEDIATION_PATTERNS) {
