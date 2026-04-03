@@ -88,18 +88,22 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       }
     }
 
-    const diag = (msg: string) => console.log(`[bash-diag] [${Date.now() - start}ms] ${msg}`);
-    diag(`exec start | shell=bash | timeout=${timeout}ms | cmd=${command.slice(0, 120)}`);
+    const elapsed = () => `${((Date.now() - start) / 1000).toFixed(1)}s`;
+    const cmdPreview = command.length > 80 ? command.slice(0, 77) + '...' : command;
+
+    // Resolve shell: prefer Git Bash on Windows to avoid WSL bash hanging.
+    const resolvedShell = platform() === 'win32' ? resolveGitBash() : 'bash';
 
     return new Promise<StepOutput>((resolve) => {
       let timedOut = false;
       let resolved = false;
+      let lastStdoutLine = '';
 
-      const done = (source: string, code: number | null, signal: string | null, stdout: string, stderr: string) => {
-        diag(`done(${source}) | resolved=${resolved} | code=${code} | signal=${signal} | timedOut=${timedOut} | stdout=${stdout.length}b | stderr=${stderr.length}b`);
+      const finish = (code: number | null, signal: string | null, stdout: string, stderr: string) => {
         if (resolved) return;
         resolved = true;
         clearTimeout(timer);
+        clearInterval(heartbeat);
         context.abortSignal?.removeEventListener('abort', onAbort);
 
         const exitCode = code ?? (timedOut ? -1 : 1);
@@ -121,7 +125,6 @@ export const bashCommand: StepCommand<BashStepConfig> = {
           }
         }
 
-        diag(`resolving | success=${success} | error=${errorMsg?.slice(0, 100) ?? 'none'}`);
         resolve({
           success,
           data: { stdout: stdout.trim(), stderr: stderr.trim(), exitCode, timedOut },
@@ -130,51 +133,52 @@ export const bashCommand: StepCommand<BashStepConfig> = {
         });
       };
 
-      // Use exec callback as primary completion — the 'close' event does
-      // not fire reliably on Windows when shell: 'bash' is used (#298).
-      // Resolve shell: prefer Git Bash on Windows to avoid WSL bash hanging.
-      // C:\Windows\System32\bash.exe is WSL — it can hang on Windows filesystems.
-      const resolvedShell = platform() === 'win32' ? resolveGitBash() : 'bash';
-      diag(`resolved shell: ${resolvedShell}`);
-
       const child = exec(command, {
         shell: resolvedShell,
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
         timeout: 0,
         maxBuffer: 10 * 1024 * 1024,
       }, (error, cbStdout, cbStderr) => {
-        diag(`exec-callback fired | error=${error ? (error as Error).message?.slice(0, 100) : 'null'}`);
         const code = error ? (error as NodeJS.ErrnoException & { code?: number | string }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 1 : (error as { status?: number }).status ?? 1 : 0;
-        done('exec-callback', typeof code === 'number' ? code : 1, null, cbStdout?.toString() ?? '', cbStderr?.toString() ?? '');
+        finish(typeof code === 'number' ? code : 1, null, cbStdout?.toString() ?? '', cbStderr?.toString() ?? '');
       });
-
-      diag(`spawned | pid=${child.pid ?? 'none'} | stdin=${!!child.stdin} | stdout=${!!child.stdout} | stderr=${!!child.stderr}`);
 
       // Close stdin so child processes that read from it don't hang
       child.stdin?.end();
 
+      // ── Heartbeat — show the user the step is alive ──────────────
+      const HEARTBEAT_INTERVAL = 15_000; // 15 seconds
+      const heartbeat = setInterval(() => {
+        if (resolved) { clearInterval(heartbeat); return; }
+        const activity = lastStdoutLine
+          ? ` | ${lastStdoutLine.slice(0, 80)}`
+          : '';
+        console.log(`[bash] still running (${elapsed()}) pid=${child.pid ?? '?'} cmd=${cmdPreview}${activity}`);
+      }, HEARTBEAT_INTERVAL);
+
       // ── Manual timeout with process tree kill ─────────────────────
       const onAbort = () => {
-        diag(`abort/timeout fired | timedOut=${timedOut}`);
         timedOut = true;
+        console.log(`[bash] killing step after ${elapsed()} (timeout=${timeout}ms) pid=${child.pid ?? '?'}`);
         killProcessTree(child);
       };
       const timer = setTimeout(onAbort, timeout);
       context.abortSignal?.addEventListener('abort', onAbort, { once: true });
 
-      // Track child process events for diagnostics
-      child.on('error', (err) => diag(`child error event: ${err.message}`));
-      child.on('exit', (code, signal) => diag(`child exit event | code=${code} | signal=${signal}`));
-
-      // Fallback: if the 'close' event fires before the callback (shouldn't
-      // happen, but defensive), resolve from it too.
+      // ── Collect stdout/stderr, track last line for heartbeat ──────
       let closeStdout = '';
       let closeStderr = '';
-      child.stdout?.on('data', (chunk: Buffer) => { closeStdout += chunk.toString(); });
+      child.stdout?.on('data', (chunk: Buffer) => {
+        const text = chunk.toString();
+        closeStdout += text;
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length > 0) lastStdoutLine = lines[lines.length - 1];
+      });
       child.stderr?.on('data', (chunk: Buffer) => { closeStderr += chunk.toString(); });
+
+      // Fallback: close event as secondary completion mechanism
       child.on('close', (code, signal) => {
-        diag(`child close event | code=${code} | signal=${signal}`);
-        done('close-event', code, signal, closeStdout, closeStderr);
+        finish(code, signal, closeStdout, closeStderr);
       });
     });
   },
