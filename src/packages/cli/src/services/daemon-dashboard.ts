@@ -52,7 +52,10 @@ export async function createDashboardMemoryAccessor(): Promise<MemoryAccessor> {
       }
     },
     async write(namespace: string, key: string, value: unknown): Promise<void> {
-      await storeEntry({ key, value: typeof value === 'string' ? value : JSON.stringify(value), namespace, upsert: true });
+      const result = await storeEntry({ key, value: typeof value === 'string' ? value : JSON.stringify(value), namespace, upsert: true });
+      if (!result.success) {
+        console.warn(`[dashboard] memory.write(${namespace}, ${key}) failed: ${result.error ?? 'unknown'}`);
+      }
     },
     async search(namespace: string, query: string): Promise<Array<{ key: string; value: unknown; score: number }>> {
       try {
