@@ -88,7 +88,6 @@ export const bashCommand: StepCommand<BashStepConfig> = {
     }
 
     return new Promise<StepOutput>((resolve) => {
-      const isWin = platform() === 'win32';
       let timedOut = false;
 
       const child = exec(command, {
@@ -98,33 +97,11 @@ export const bashCommand: StepCommand<BashStepConfig> = {
         maxBuffer: 10 * 1024 * 1024,
       });
 
+      // Close stdin so child processes that read from it don't hang
       child.stdin?.end();
-
-      console.log(`[bash] pid=${child.pid} timeout=${timeout}ms cmd=${command.slice(0, 120)}`);
-
-      // ── Diagnostic event logging ──────────────────────────────────
-      const t0 = Date.now();
-      const elapsed = () => `${Date.now() - t0}ms`;
-
-      child.on('exit', (code, signal) => {
-        console.log(`[bash] pid=${child.pid} EVENT:exit code=${code} signal=${signal} at ${elapsed()}`);
-      });
-      child.on('close', (code, signal) => {
-        console.log(`[bash] pid=${child.pid} EVENT:close code=${code} signal=${signal} at ${elapsed()}`);
-      });
-      child.on('error', (err) => {
-        console.log(`[bash] pid=${child.pid} EVENT:error ${err.message} at ${elapsed()}`);
-      });
-      child.stdout?.on('end', () => {
-        console.log(`[bash] pid=${child.pid} EVENT:stdout-end at ${elapsed()}`);
-      });
-      child.stderr?.on('end', () => {
-        console.log(`[bash] pid=${child.pid} EVENT:stderr-end at ${elapsed()}`);
-      });
 
       // ── Manual timeout with process tree kill ─────────────────────
       const timer = setTimeout(() => {
-        console.log(`[bash] pid=${child.pid} TIMEOUT fired at ${elapsed()} — killing process tree`);
         timedOut = true;
         killProcessTree(child);
       }, timeout);
@@ -164,8 +141,6 @@ export const bashCommand: StepCommand<BashStepConfig> = {
             errorMsg += ' (stdout tail: ' + stdout.trim().slice(-500) + ')';
           }
         }
-
-        console.log(`[bash] pid=${child.pid} RESOLVE exit=${exitCode} timedOut=${timedOut} dur=${elapsed()}`);
 
         resolve({
           success,
