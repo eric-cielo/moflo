@@ -93,66 +93,9 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       // bash binary via PATH (Git Bash, not WSL bash).  We pass timeout: 0
       // to disable exec's built-in timeout since it doesn't kill process
       // trees on Windows; instead we use a manual setTimeout + killProcessTree.
-      const child = exec(command, {
-        shell: 'bash',
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-        timeout: 0,          // disabled — we handle timeout manually
-        maxBuffer: 10 * 1024 * 1024,
-      });
-      // Close stdin immediately — prevents hangs when child processes
-      // (git credential helpers, etc.) try to read from inherited stdin
-      // under npx .CMD shims on Windows (#297).
-      child.stdin?.end();
-
-      console.log(`[bash] pid=${child.pid} timeout=${timeout}ms cmd=${command.slice(0, 120)}`);
-
       let timedOut = false;
-      let settled = false;
 
-      const finish = (code: number | null, signal: string | null) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        context.abortSignal?.removeEventListener('abort', onAbort);
-
-        const killed = timedOut || signal === 'SIGTERM' || signal === 'SIGKILL';
-        const exitCode = code ?? (killed ? -1 : 1);
-        const success = !failOnError || exitCode === 0;
-        const stderrText = stderr.trim();
-
-        let errorMsg: string | undefined;
-        if (!success) {
-          if (timedOut) {
-            errorMsg = `Command timed out after ${timeout}ms`;
-          } else if (killed) {
-            errorMsg = `Command killed by signal ${signal}`;
-          } else {
-            errorMsg = `Command exited with code ${exitCode}`;
-          }
-          if (stderrText) errorMsg += ': ' + stderrText;
-          else if (stdout.trim()) {
-            const outSnippet = stdout.trim().slice(-500);
-            errorMsg += ' (stdout tail: ' + outSnippet + ')';
-          }
-        }
-
-        console.log(`[bash] pid=${child.pid} exit=${exitCode} timedOut=${timedOut} dur=${Date.now() - start}ms`);
-
-        resolve({
-          success,
-          data: {
-            stdout: stdout.trim(),
-            stderr: stderrText,
-            exitCode,
-            timedOut,
-          },
-          error: errorMsg,
-          duration: Date.now() - start,
-        });
-      };
-
-      // Manual timeout — spawn's `timeout` option doesn't kill the process
-      // tree on Windows (#297, #298).
+      // Manual timeout with process tree kill (#297, #298).
       const timer = setTimeout(() => {
         timedOut = true;
         killProcessTree(child);
@@ -164,16 +107,53 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       };
       context.abortSignal?.addEventListener('abort', onAbort, { once: true });
 
-      let stdout = '';
-      let stderr = '';
-      child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-      child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+      // Use exec callback as primary completion — more reliable than
+      // 'close' event on Windows under npx process chains.
+      const child = exec(command, {
+        shell: 'bash',
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+        timeout: 0,          // disabled — we handle timeout manually
+        maxBuffer: 10 * 1024 * 1024,
+      }, (error, stdoutBuf, stderrBuf) => {
+        clearTimeout(timer);
+        context.abortSignal?.removeEventListener('abort', onAbort);
 
-      child.on('close', (code, signal) => finish(code, signal));
-      child.on('error', (err) => {
-        stderr += err.message;
-        finish(null, null);
+        const stdout = (stdoutBuf ?? '').trim();
+        const stderr = (stderrBuf ?? '').trim();
+        const exitCode = child.exitCode ?? (error ? 1 : 0);
+        const killed = timedOut || (error && 'killed' in error && (error as { killed?: boolean }).killed);
+        const success = !failOnError || exitCode === 0;
+
+        let errorMsg: string | undefined;
+        if (!success) {
+          if (timedOut) {
+            errorMsg = `Command timed out after ${timeout}ms`;
+          } else if (killed) {
+            errorMsg = `Command killed by signal`;
+          } else {
+            errorMsg = `Command exited with code ${exitCode}`;
+          }
+          if (stderr) errorMsg += ': ' + stderr;
+          else if (stdout) {
+            errorMsg += ' (stdout tail: ' + stdout.slice(-500) + ')';
+          }
+        }
+
+        console.log(`[bash] pid=${child.pid} exit=${exitCode} timedOut=${timedOut} dur=${Date.now() - start}ms`);
+
+        resolve({
+          success,
+          data: { stdout, stderr, exitCode, timedOut: !!timedOut },
+          error: errorMsg,
+          duration: Date.now() - start,
+        });
       });
+
+      // Close stdin immediately — prevents hangs when child processes
+      // try to read from inherited stdin under npx on Windows (#297).
+      child.stdin?.end();
+
+      console.log(`[bash] pid=${child.pid} timeout=${timeout}ms cmd=${command.slice(0, 120)}`);
     });
   },
 
