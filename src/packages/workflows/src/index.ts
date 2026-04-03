@@ -1,7 +1,7 @@
 /**
  * @claude-flow/workflows
  *
- * Generalized Workflow Engine for Claude Flow V3.
+ * Generalized Workflow Engine for MoFlo V4.
  *
  * Provides a pluggable, YAML/JSON-defined workflow system where every step type
  * implements a StepCommand interface — testable, reusable, and extensible.

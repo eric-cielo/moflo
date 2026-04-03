@@ -8,6 +8,7 @@
 
 import type {
   WorkflowContext,
+  StepOutput,
   CredentialAccessor,
   MemoryAccessor,
   MofloLevel,
@@ -202,7 +203,8 @@ export class WorkflowRunner {
 
       const step = definition.steps[i];
       console.log(`[workflow] Step ${i + 1}/${definition.steps.length}: starting "${step.id}" [${step.type}]`);
-      const result = await this.runStep(step, state, i);
+      let result = await this.runStep(step, state, i);
+      const resultIdx = stepResults.length;
       stepResults.push(result);
 
       if (result.status === 'succeeded' && result.output) {
@@ -211,11 +213,14 @@ export class WorkflowRunner {
         completedSteps.push({ step, config: result.interpolatedConfig ?? {} });
 
         if (step.type === 'loop' && step.steps && step.steps.length > 0) {
+          const loopStart = Date.now();
           const loopResult = await executeLoopIterations(
             step, result.output, state.variables, errors, state.options.signal,
             (nested, s) => this.runStep(nested, state, s),
           );
-          const loopData = { ...result.output.data, iterationOutputs: loopResult.outputs };
+          result = { ...result, duration: result.duration + (Date.now() - loopStart) };
+          stepResults[resultIdx] = result;
+          const loopData = { ...(result.output as StepOutput).data, iterationOutputs: loopResult.outputs };
           if (step.output) variables[step.output] = loopData;
           variables[step.id] = loopData;
 
@@ -227,11 +232,14 @@ export class WorkflowRunner {
         }
 
         if (step.type === 'parallel' && step.steps && step.steps.length > 0) {
+          const parallelStart = Date.now();
           const parallelResult = await executeParallelSteps(
-            step, result.output, state.variables, errors, state.options.signal,
+            step, result.output as StepOutput, state.variables, errors, state.options.signal,
             (nested, s) => this.runStep(nested, state, s),
           );
-          const parallelData = { ...result.output.data, stepOutputs: parallelResult.outputs };
+          result = { ...result, duration: result.duration + (Date.now() - parallelStart) };
+          stepResults[resultIdx] = result;
+          const parallelData = { ...(result.output as StepOutput).data, stepOutputs: parallelResult.outputs };
           if (step.output) variables[step.output] = parallelData;
           variables[step.id] = parallelData;
 
@@ -242,7 +250,7 @@ export class WorkflowRunner {
           }
         }
 
-        const nextStep = result.output.data?.nextStep;
+        const nextStep = (result.output as StepOutput).data?.nextStep;
         if (typeof nextStep === 'string' && nextStep.length > 0) {
           const targetIdx = stepIndex.get(nextStep);
           if (targetIdx === undefined) {

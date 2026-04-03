@@ -1,7 +1,7 @@
 {
   "name": "@claude-flow/workflows",
   "version": "3.0.0-alpha.1",
-  "description": "Generalized Workflow Engine for Claude Flow V3 - Step Commands, Registry, and YAML/JSON Definitions",
+  "description": "Generalized Workflow Engine for MoFlo V4 - Step Commands, Registry, and YAML/JSON Definitions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
