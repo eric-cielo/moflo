@@ -99,6 +99,10 @@ export const bashCommand: StepCommand<BashStepConfig> = {
         timeout: 0,          // disabled — we handle timeout manually
         maxBuffer: 10 * 1024 * 1024,
       });
+      // Close stdin immediately — prevents hangs when child processes
+      // (git credential helpers, etc.) try to read from inherited stdin
+      // under npx .CMD shims on Windows (#297).
+      child.stdin?.end();
 
       console.log(`[bash] pid=${child.pid} timeout=${timeout}ms cmd=${command.slice(0, 120)}`);
 

@@ -37,7 +37,7 @@ steps:
   - id: preflight-check
     type: bash
     config:
-      command: "if [ -n \"$(git diff --name-only --diff-filter=U 2>/dev/null)\" ]; then echo 'ERROR: Unmerged files detected. Resolve conflicts before running epic.' >&2; git diff --name-only --diff-filter=U 2>/dev/null >&2; exit 1; fi && if [ -n \"$(git -c core.autocrlf=false -c core.safecrlf=false status --porcelain 2>/dev/null)\" ]; then echo 'ERROR: Working tree is dirty. Commit, stash, or discard changes before running epic.' >&2; git -c core.safecrlf=false status --short 2>/dev/null >&2; exit 1; fi"
+      command: "if [ -n \"$(git diff --name-only --diff-filter=U 2>/dev/null)\" ]; then echo 'ERROR: Unmerged files detected. Resolve conflicts before running epic.' >&2; git diff --name-only --diff-filter=U 2>/dev/null >&2; exit 1; fi && if [ -n \"$(git -c core.autocrlf=false -c core.safecrlf=false status --porcelain 2>/dev/null)\" ]; then echo 'ERROR: Working tree is dirty. Commit, stash, or discard changes before running epic.' >&2; git -c core.autocrlf=false -c core.safecrlf=false status --short 2>/dev/null >&2; exit 1; fi"
       failOnError: true
 
   # Step 1: Initialize epic state in memory (enables resume)

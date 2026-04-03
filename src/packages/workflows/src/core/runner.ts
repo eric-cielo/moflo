@@ -364,7 +364,7 @@ export class WorkflowRunner {
       }
       await this.memory.write('tasklist', wfId, record);
     } catch (err) {
-      console.warn(`[workflow] Failed to store progress for ${wfId}: ${(err as Error).message ?? err}`);
+      console.warn(`[workflow] storeProgress(${wfId}, ${status}) failed: ${(err as Error).message ?? err}`);
     }
   }
 
