@@ -484,7 +484,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         html += '<span style="color:#58a6ff;font-weight:600">' + esc(name) + '</span> ';
         html += statusBadge + ' ';
         html += '<span style="color:#8b949e;font-size:0.8rem">' + progress + ' &middot; ' + fmtDuration(e.duration) + ' &middot; ' + fmtTimeAgo(e.startedAt) + '</span>';
-        if (e.error) html += '<span style="color:#f85149;font-size:0.75rem;margin-left:8px" title="' + esc(e.error) + '">' + esc(e.error.substring(0, 60)) + '</span>';
+        if (e.error) html += '<span style="color:#f85149;font-size:0.75rem;margin-left:8px" title="' + esc(e.error) + '">' + esc(e.error.substring(0, 200)) + '</span>';
         html += '<span style="margin-left:auto;color:#484f58;font-size:0.75rem">' + esc(runId) + '</span>';
         html += '<span style="color:#484f58;font-size:0.75rem;margin-left:8px" class="wf-chevron">&#9660;</span>';
         html += '</div>';
@@ -503,7 +503,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
               '<td>' + badge(s.stepType || '-','gray') + '</td>' +
               '<td>' + sBadge + '</td>' +
               '<td>' + fmtDuration(s.duration) + '</td>' +
-              '<td>' + (s.error ? '<span style="color:#f85149;font-size:0.8rem">' + esc(s.error.substring(0, 80)) + '</span>' : '-') + '</td></tr>';
+              '<td>' + (s.error ? '<span style="color:#f85149;font-size:0.8rem" title="' + esc(s.error) + '">' + esc(s.error.substring(0, 200)) + '</span>' : '-') + '</td></tr>';
           }).join('');
           html += '<table style="border-radius:0 0 6px 6px;border-top:none"><thead><tr><th>#</th><th>Step</th><th>Type</th><th>Status</th><th>Duration</th><th>Error</th></tr></thead>';
           html += '<tbody>' + stepRows + '</tbody></table>';
