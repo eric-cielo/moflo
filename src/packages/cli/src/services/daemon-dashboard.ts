@@ -344,6 +344,9 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     .api-links { margin-top: 12px; padding: 12px 16px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; }
     .api-links a { color: #58a6ff; text-decoration: none; font-size: 0.85rem; margin-right: 16px; }
     .api-links a:hover { text-decoration: underline; }
+    .wf-group.collapsed .wf-group-body { display: none; }
+    .wf-group.collapsed .wf-chevron { transform: rotate(-90deg); }
+    .wf-chevron { transition: transform 0.15s; display: inline-block; }
   </style>
 </head>
 <body>
@@ -466,16 +469,51 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       const el = document.getElementById('panel-executions');
       if (!w || !w.available) { el.innerHTML = '<div class="empty">Scheduler not connected</div>'; return; }
       if (w.executions.length === 0) { el.innerHTML = '<div class="empty">No recent executions</div>'; return; }
-      const rows = w.executions.map(e =>
-        '<tr><td>' + esc(e.workflowName) + '</td>' +
-        '<td>' + (e.success === true ? badge('pass','green') : e.success === false ? badge('fail','red') : badge('running','yellow')) + '</td>' +
-        '<td>' + fmtTime(e.startedAt) + '</td>' +
-        '<td>' + fmtDuration(e.duration) + '</td>' +
-        '<td>' + (e.error ? '<span style="color:#f85149;font-size:0.8rem">' + esc(e.error.substring(0,80)) + '</span>' : '-') + '</td></tr>'
-      ).join('');
-      el.innerHTML = '<h2>Recent Executions</h2>' +
-        '<table><thead><tr><th>Workflow</th><th>Status</th><th>Started</th><th>Duration</th><th>Error</th></tr></thead>' +
-        '<tbody>' + rows + '</tbody></table>';
+
+      let html = '<h2>Recent Executions</h2>';
+      w.executions.forEach(e => {
+        const name = e.workflowName || 'Unknown Workflow';
+        const runId = e.id || '-';
+        const statusBadge = e.success === true ? badge('pass','green') : e.success === false ? badge('fail','red') : badge('running','yellow');
+        const progress = e.totalSteps ? (e.completedSteps || 0) + '/' + e.totalSteps + ' steps' : '';
+        const steps = Array.isArray(e.steps) ? e.steps : [];
+
+        html += '<div class="wf-group" style="margin-bottom:16px">';
+        // Header: workflow name, run ID, status, timing
+        html += '<div class="wf-group-header" style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#161b22;border:1px solid #30363d;border-radius:6px 6px 0 0;cursor:pointer" onclick="this.parentElement.classList.toggle(\\'collapsed\\')">';
+        html += '<span style="color:#58a6ff;font-weight:600">' + esc(name) + '</span> ';
+        html += statusBadge + ' ';
+        html += '<span style="color:#8b949e;font-size:0.8rem">' + progress + ' &middot; ' + fmtDuration(e.duration) + ' &middot; ' + fmtTimeAgo(e.startedAt) + '</span>';
+        if (e.error) html += '<span style="color:#f85149;font-size:0.75rem;margin-left:8px" title="' + esc(e.error) + '">' + esc(e.error.substring(0, 60)) + '</span>';
+        html += '<span style="margin-left:auto;color:#484f58;font-size:0.75rem">' + esc(runId) + '</span>';
+        html += '<span style="color:#484f58;font-size:0.75rem;margin-left:8px" class="wf-chevron">&#9660;</span>';
+        html += '</div>';
+
+        // Body: step-level detail table
+        html += '<div class="wf-group-body">';
+        if (steps.length > 0) {
+          const stepRows = steps.map((s, idx) => {
+            const sBadge = s.status === 'succeeded' ? badge('pass','green')
+              : s.status === 'failed' ? badge('fail','red')
+              : s.status === 'skipped' ? badge('skip','gray')
+              : s.status === 'cancelled' ? badge('cancel','gray')
+              : badge(s.status || '?','yellow');
+            return '<tr><td style="color:#8b949e">' + (idx + 1) + '</td>' +
+              '<td>' + esc(s.stepId) + '</td>' +
+              '<td>' + badge(s.stepType || '-','gray') + '</td>' +
+              '<td>' + sBadge + '</td>' +
+              '<td>' + fmtDuration(s.duration) + '</td>' +
+              '<td>' + (s.error ? '<span style="color:#f85149;font-size:0.8rem">' + esc(s.error.substring(0, 80)) + '</span>' : '-') + '</td></tr>';
+          }).join('');
+          html += '<table style="border-radius:0 0 6px 6px;border-top:none"><thead><tr><th>#</th><th>Step</th><th>Type</th><th>Status</th><th>Duration</th><th>Error</th></tr></thead>';
+          html += '<tbody>' + stepRows + '</tbody></table>';
+        } else {
+          html += '<div class="empty" style="border:1px solid #21262d;border-top:none;border-radius:0 0 6px 6px">No step details available for this run</div>';
+        }
+        html += '</div></div>';
+      });
+
+      el.innerHTML = html;
     }
 
     function renderMemory(m) {

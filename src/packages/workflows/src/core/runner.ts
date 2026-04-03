@@ -259,7 +259,7 @@ export class WorkflowRunner {
       // Fire onStepComplete for every step (success, failure, cancelled)
       console.log(`[workflow] Step ${i + 1}/${definition.steps.length}: ${result.status} "${step.id}" (${result.duration}ms)${result.error ? ' — ' + result.error.slice(0, 200) : ''}`);
       await this.storeProgress(workflowId, 'running', stepResults.length, definition.steps.length, {
-        workflowName: definition.name, startedAt: startTime,
+        workflowName: definition.name, startedAt: startTime, steps: stepResults,
       });
       try { options.onStepComplete?.(result, i, definition.steps.length); } catch { /* safe */ }
 
@@ -287,7 +287,7 @@ export class WorkflowRunner {
 
     const finalStatus = cancelled ? 'cancelled' : errors.length > 0 ? 'failed' : 'completed';
     await this.storeProgress(workflowId, finalStatus, stepResults.length, definition.steps.length, {
-      workflowName: definition.name, startedAt: startTime, errors,
+      workflowName: definition.name, startedAt: startTime, errors, steps: stepResults,
     });
 
     const outputs: Record<string, unknown> = {};
@@ -342,7 +342,7 @@ export class WorkflowRunner {
 
   private async storeProgress(
     wfId: string, status: string, done: number, total: number,
-    extra?: { workflowName?: string; startedAt?: number; errors?: WorkflowError[] },
+    extra?: { workflowName?: string; startedAt?: number; errors?: WorkflowError[]; steps?: StepResult[] },
   ) {
     try {
       const now = Date.now();
@@ -361,6 +361,13 @@ export class WorkflowRunner {
       // Include error summary on terminal states
       if (extra?.errors && extra.errors.length > 0 && (status === 'failed' || status === 'cancelled')) {
         record.error = extra.errors.map(e => e.message).join('; ');
+      }
+      // Include per-step results for dashboard diagnostics
+      if (extra?.steps && extra.steps.length > 0) {
+        record.steps = extra.steps.map(s => ({
+          stepId: s.stepId, stepType: s.stepType, status: s.status,
+          duration: s.duration, error: s.error,
+        }));
       }
       await this.memory.write('tasklist', wfId, record);
     } catch (err) {
