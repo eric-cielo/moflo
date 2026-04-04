@@ -2,7 +2,7 @@
 
 ## Installation
 
-Already installed: `@ruvector/sona@0.1.5`
+Built-in — no separate install needed
 
 ## Basic Usage (30 seconds)
 
@@ -161,8 +161,8 @@ v3/@claude-flow/neural/
 
 ---
 
-**Location**: `/workspaces/claude-flow/v3/@claude-flow/neural/`
+**Location**: `src/packages/neural/`
 
-**Package**: `@ruvector/sona@0.1.5`
+**Package**: `@claude-flow/neural` (built-in SONA engine)
 
 **Performance**: <0.05ms learning target achieved

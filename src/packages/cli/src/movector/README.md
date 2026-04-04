@@ -1,17 +1,17 @@
-# RuVector NPM Package API Documentation
+# MoFlo Movector API Documentation
 
 Version: 0.1.95
-Package: `ruvector`
-Repository: https://github.com/ruvnet/ruvector
+Package: `moflo`
+Repository: https://github.com/eric-cielo/moflo
 
 ## Overview
 
-RuVector is a high-performance vector database for Node.js with automatic native/WASM fallback. It provides self-learning intelligence for Claude Code with Q-learning optimization, vector memory, and automatic agent routing.
+MoFlo's movector module provides a high-performance vector database for Node.js with automatic native/WASM fallback. It provides self-learning intelligence for Claude Code with Q-learning optimization, vector memory, and automatic agent routing.
 
 ## Installation
 
 ```bash
-npm install ruvector
+npm install --save-dev moflo
 ```
 
 ## MCP Server Integration
@@ -19,7 +19,7 @@ npm install ruvector
 Add to Claude Code:
 
 ```bash
-claude mcp add ruvector-mcp -- npx ruvector mcp-server
+claude mcp add moflo-mcp -- npx flo mcp-server
 ```
 
 ---
@@ -64,7 +64,7 @@ const result = await mcp.call('hooks_route', {
 });
 
 // CLI Usage
-npx ruvector hooks route "implement user login"
+npx flo hooks route "implement user login"
 ```
 
 **Error Handling:**
@@ -175,7 +175,7 @@ const analysis = await mcp.call('hooks_ast_analyze', {
 });
 
 // CLI Usage
-npx ruvector hooks ast-analyze src/api/routes.ts --json
+npx flo hooks ast-analyze src/api/routes.ts --json
 ```
 
 **Error Handling:**
@@ -281,8 +281,8 @@ const commit = await mcp.call('hooks_diff_analyze', {
 });
 
 // CLI Usage
-npx ruvector hooks diff-analyze --json
-npx ruvector hooks diff-analyze abc123 --json
+npx flo hooks diff-analyze --json
+npx flo hooks diff-analyze abc123 --json
 ```
 
 **Error Handling:**
@@ -353,7 +353,7 @@ const routing = await mcp.call('hooks_coverage_route', {
 });
 
 // CLI Usage
-npx ruvector hooks coverage-route src/services/auth.ts
+npx flo hooks coverage-route src/services/auth.ts
 ```
 
 **Error Handling:**
@@ -439,7 +439,7 @@ const boundaries = await mcp.call('hooks_graph_mincut', {
 });
 
 // CLI Usage
-npx ruvector hooks graph-mincut src/**/*.ts
+npx flo hooks graph-mincut src/**/*.ts
 ```
 
 **Error Handling:**
@@ -489,8 +489,8 @@ const spectral = await mcp.call('hooks_graph_cluster', {
 });
 
 // CLI Usage
-npx ruvector hooks graph-cluster src/**/*.ts --method louvain
-npx ruvector hooks graph-cluster src/**/*.ts --method spectral --clusters 5
+npx flo hooks graph-cluster src/**/*.ts --method louvain
+npx flo hooks graph-cluster src/**/*.ts --method spectral --clusters 5
 ```
 
 ---
@@ -542,7 +542,7 @@ npx ruvector hooks graph-cluster src/**/*.ts --method spectral --clusters 5
 ### VectorDB
 
 ```typescript
-import { VectorDb } from 'ruvector';
+import { VectorDb } from 'moflo';
 
 const db = new VectorDb({
   dimensions: 384,           // Must match embedding model
@@ -575,23 +575,23 @@ await db.delete('doc1');
 
 ```typescript
 // AST Parser
-import { getCodeParser } from 'ruvector/dist/core/ast-parser';
+import { getCodeParser } from 'moflo/dist/core/ast-parser';
 const parser = getCodeParser();
 await parser.init();
 const analysis = await parser.analyze('file.ts');
 
 // Diff Embeddings
-import diffEmbeddings from 'ruvector/dist/core/diff-embeddings';
+import diffEmbeddings from 'moflo/dist/core/diff-embeddings';
 const commit = await diffEmbeddings.analyzeCommit('HEAD');
 const similar = await diffEmbeddings.findSimilarCommits(diff, 50, 5);
 
 // Coverage Router
-import coverage from 'ruvector/dist/core/coverage-router';
+import coverage from 'moflo/dist/core/coverage-router';
 const data = coverage.getFileCoverage('file.ts');
 const tests = coverage.suggestTests(['file.ts']);
 
 // Graph Algorithms
-import graph from 'ruvector/dist/core/graph-algorithms';
+import graph from 'moflo/dist/core/graph-algorithms';
 const g = graph.buildGraph(nodes, edges);
 const partition = graph.minCut(g);
 const clusters = graph.louvainCommunities(g);
@@ -626,31 +626,31 @@ const clusters = graph.louvainCommunities(g);
 
 ```bash
 # Initialize hooks
-npx ruvector hooks init --pretrain --build-agents quality
+npx flo hooks init --pretrain --build-agents quality
 
 # Verify setup
-npx ruvector hooks verify
-npx ruvector hooks doctor --fix
+npx flo hooks verify
+npx flo hooks doctor --fix
 
 # Analysis
-npx ruvector hooks ast-analyze <file> --json
-npx ruvector hooks ast-complexity <files> --threshold 10
-npx ruvector hooks diff-analyze [commit] --json
-npx ruvector hooks diff-classify [commit]
-npx ruvector hooks coverage-route <file>
-npx ruvector hooks coverage-suggest <files>
-npx ruvector hooks graph-mincut <files>
-npx ruvector hooks graph-cluster <files> --method louvain
+npx flo hooks ast-analyze <file> --json
+npx flo hooks ast-complexity <files> --threshold 10
+npx flo hooks diff-analyze [commit] --json
+npx flo hooks diff-classify [commit]
+npx flo hooks coverage-route <file>
+npx flo hooks coverage-suggest <files>
+npx flo hooks graph-mincut <files>
+npx flo hooks graph-cluster <files> --method louvain
 
 # Memory
-npx ruvector hooks remember "context" -t project
-npx ruvector hooks recall "query"
-npx ruvector hooks route "task description"
+npx flo hooks remember "context" -t project
+npx flo hooks recall "query"
+npx flo hooks route "task description"
 
 # Stats and export
-npx ruvector hooks stats
-npx ruvector hooks export -o backup.json
-npx ruvector hooks import backup.json --merge
+npx flo hooks stats
+npx flo hooks export -o backup.json
+npx flo hooks import backup.json --merge
 ```
 
 ---
@@ -658,16 +658,12 @@ npx ruvector hooks import backup.json --merge
 ## Dependencies
 
 - `@modelcontextprotocol/sdk`: ^1.0.0
-- `@ruvector/attention`: ^0.1.3
-- `@ruvector/core`: ^0.1.25
-- `@ruvector/gnn`: ^0.1.22
-- `@ruvector/sona`: ^0.1.4
 - `@xenova/transformers`: ^2.17.2
 
 ---
 
 ## Links
 
-- [npm Package](https://www.npmjs.com/package/ruvector)
-- [GitHub Repository](https://github.com/ruvnet/ruvector)
-- [Hooks Documentation](https://github.com/ruvnet/ruvector/blob/main/npm/packages/ruvector/HOOKS.md)
+- [npm Package](https://www.npmjs.com/package/moflo)
+- [GitHub Repository](https://github.com/eric-cielo/moflo)
+- [Hooks Documentation](https://github.com/eric-cielo/moflo/blob/main/src/packages/cli/src/movector/HOOKS.md)

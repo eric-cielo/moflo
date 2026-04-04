@@ -1,6 +1,6 @@
 # SONA Integration Guide
 
-Integration of `@ruvector/sona` package (v0.1.5) into the V3 Neural Module.
+Integration of the built-in SONA engine into the V3 Neural Module.
 
 ## Overview
 
@@ -16,7 +16,7 @@ The SONA (Self-Optimizing Neural Architecture) integration provides runtime-adap
 The package is already installed as a dependency:
 
 ```bash
-npm install @ruvector/sona@0.1.5
+# Built-in — no separate install needed
 ```
 
 ## Quick Start
@@ -385,7 +385,7 @@ Runtime selection is automatic based on platform.
 ### Custom Configuration
 
 ```typescript
-import { SonaEngine, type JsSonaConfig } from '@ruvector/sona';
+import { createSONALearningEngine } from '@claude-flow/neural';
 
 const customConfig: JsSonaConfig = {
   hiddenDim: 512,
@@ -450,7 +450,7 @@ console.log(status);
 
 ## References
 
-- [SONA Package](https://www.npmjs.com/package/@ruvector/sona)
+- [`@claude-flow/neural`](../README.md) — built-in SONA engine
 - [LoRA Paper](https://arxiv.org/abs/2106.09685)
 - [EWC Paper](https://arxiv.org/abs/1612.00796)
 - [V3 Neural Module](../README.md)

@@ -820,7 +820,7 @@ describe('resolveBackend priority', () => {
     await backend.shutdown();
   });
 
-  it('should not resolve ruvector when env vars are absent', () => {
+  it('should return null config when env vars are absent', () => {
     const config = getRuVectorConfig();
     assert.equal(config, null);
   });

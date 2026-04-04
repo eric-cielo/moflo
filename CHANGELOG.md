@@ -36,7 +36,7 @@ This release marks the official rebranding from **Claude Flow** to **Ruflo** and
 - TOCTOU race condition in bridge singleton initialization (Promise-based caching)
 - 22 agent/skill files updated from stale v1.5.11/v2.0.0-alpha to v3.0.0-alpha.1
 - ESM compatibility for doctor checks (filesystem-based instead of `require.resolve`)
-- @ruvector/gnn pinned to 0.1.25 to fix fatal process crash (issue #216)
+- (since removed) @ruvector/gnn pinned to 0.1.25 to fix fatal process crash (issue #216)
 
 ### Changed
 
@@ -55,7 +55,7 @@ This release marks the official rebranding from **Claude Flow** to **Ruflo** and
 - Added 6 new MCP tools: `agentdb_hierarchical_*`, `agentdb_consolidation_*`, `agentdb_semantic_*`
 - Fixed controller registry activation bugs (ADR-055)
 - Statusline fixes for real-time controller status
-- Pinned @ruvector/gnn@0.1.25 to fix fatal process crash
+- (since removed) Pinned @ruvector/gnn@0.1.25 to fix fatal process crash
 
 ## [3.1.0-alpha.43] - 2026-02-15
 

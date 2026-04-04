@@ -269,6 +269,8 @@ Store via MCP, retrieve via CLI (and vice versa) to confirm both paths use the s
 
 ## Test 9: SONA Learning Engine
 
+> **OBSOLETE**: This test references `@ruvector/sona` which has been replaced by the in-house pure TypeScript SONA engine in `@claude-flow/neural`. The code below is retained for historical reference only.
+
 Verify SONA initializes and can process trajectory data.
 
 ```bash
@@ -312,6 +314,8 @@ console.log('final stats:', sona.getStats());
 ---
 
 ## Test 10: MicroLoRA (Standalone WASM)
+
+> **OBSOLETE**: This test references `@ruvector/learning-wasm` which has been replaced by the in-house pure TypeScript MicroLoRA in `@claude-flow/neural`. The code below is retained for historical reference only.
 
 Verify the standalone MicroLoRA WASM module initializes and can adapt.
 
@@ -366,6 +370,8 @@ console.log('adapt_count after reset:', Number(lora.adapt_count()));
 ---
 
 ## Test 11: HNSW Vector Search Engine
+
+> **OBSOLETE**: This test references `@ruvector/core` which has been replaced by the in-house HNSW indexing via sql.js (WASM SQLite). The code below is retained for historical reference only.
 
 Verify the HNSW vector database from `@ruvector/core` initializes and performs search.
 
