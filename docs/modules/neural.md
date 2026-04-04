@@ -247,7 +247,7 @@ import type {
 ## Dependencies
 
 - [@claude-flow/memory](../memory) - Memory integration
-- `@ruvector/sona` - SONA learning engine
+- Built-in SONA engine (pure TypeScript)
 
 ## Related Packages
 
