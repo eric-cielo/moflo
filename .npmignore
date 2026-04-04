@@ -37,12 +37,23 @@ Thumbs.db
 # V2 legacy (not needed in npm package)
 v2/
 
+# Type declarations (consumers use moflo as CLI, not as a TS library)
+**/*.d.ts
+
 # Development docs
 docs/
 *.md
 !README.md
 !LICENSE
 !.claude/guidance/shipped/*.md
+!.claude/commands/**/*.md
+!.claude/agents/**/*.md
+
+# Sub-package READMEs — npm force-includes README.md next to any
+# package.json in the files array, so this is a no-op for now.
+# Kept as documentation of intent.
+src/packages/*/README.md
+src/README.md
 
 # Git
 .git/
