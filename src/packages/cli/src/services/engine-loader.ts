@@ -9,7 +9,8 @@
  * Story #230: Replaced *Like interfaces with import type from @claude-flow/workflows.
  */
 
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type {
   WorkflowResult,
@@ -69,9 +70,15 @@ export async function loadWorkflowEngine(): Promise<EngineModule> {
 
   pendingImport = (async () => {
     try {
-      // Resolve from compiled location (dist/src/services/) up to packages/workflows/dist/
+      // Walk up from this file to find the @moflo/cli package root (contains package.json),
+      // then resolve sibling workflows package. Works from both compiled (dist/src/services/)
+      // and source (src/services/) locations.
       const __engineDir = dirname(fileURLToPath(import.meta.url));
-      const workflowsEntry = join(__engineDir, '..', '..', '..', '..', 'workflows', 'dist', 'index.js');
+      let cliRoot = __engineDir;
+      while (cliRoot !== dirname(cliRoot) && !existsSync(join(cliRoot, 'package.json'))) {
+        cliRoot = dirname(cliRoot);
+      }
+      const workflowsEntry = resolve(cliRoot, '..', 'workflows', 'dist', 'index.js');
       const mod = await import(
         /* webpackIgnore: true */
         pathToFileURL(workflowsEntry).href

@@ -892,13 +892,14 @@ async function checkIntelligence(): Promise<HealthCheck> {
     try {
       const pl = neural.createPatternLearner();
       const embedding = new Float32Array(64).fill(0.3);
+      const now = Date.now();
       pl.extractPattern(
         {
-          id: 'doctor-pl', context: 'test', domain: 'general', mode: 'balanced',
-          steps: [{ action: 'test', reward: 1, embedding, timestamp: Date.now() }],
-          startTime: Date.now(), endTime: Date.now(), quality: 1,
+          trajectoryId: 'doctor-pl', context: 'test', domain: 'general',
+          steps: [{ stepId: 's1', action: 'test', reward: 1, stateBefore: embedding, stateAfter: embedding, timestamp: now }],
+          startTime: now, endTime: now, qualityScore: 1, isComplete: true,
         },
-        { trajectoryId: 'doctor-pl', keyInsights: ['test'], compressedEmbedding: embedding, timestamp: Date.now() }
+        { trajectoryId: 'doctor-pl', keyInsights: ['test'], compressedEmbedding: embedding, timestamp: now }
       );
       const matches = pl.findMatches(embedding, 1);
       if (matches.length > 0) {

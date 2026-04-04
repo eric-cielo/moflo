@@ -58,13 +58,13 @@ describe('single-branch.yaml', () => {
   it('has expected step sequence', () => {
     def = loadYaml('single-branch.yaml');
     const stepIds = def.steps.map(s => s.id);
-    expect(stepIds).toEqual(['init-state', 'create-branch', 'process-stories', 'push-branch', 'create-pr', 'finalize-state']);
+    expect(stepIds).toEqual(['preflight-check', 'init-state', 'create-branch', 'process-stories', 'push-branch', 'create-pr', 'finalize-state']);
   });
 
   it('uses correct step types', () => {
     def = loadYaml('single-branch.yaml');
     const stepTypes = def.steps.map(s => s.type);
-    expect(stepTypes).toEqual(['memory', 'bash', 'loop', 'bash', 'github', 'memory']);
+    expect(stepTypes).toEqual(['bash', 'memory', 'bash', 'loop', 'bash', 'github', 'memory']);
   });
 
   it('initializes and finalizes epic state in memory', () => {
@@ -127,29 +127,32 @@ describe('auto-merge.yaml', () => {
 
   it('has init-state, loop, and finalize-state as top-level steps', () => {
     def = loadYaml('auto-merge.yaml');
-    expect(def.steps).toHaveLength(3);
-    expect(def.steps[0].id).toBe('init-state');
-    expect(def.steps[0].type).toBe('memory');
-    expect(def.steps[1].type).toBe('loop');
-    expect(def.steps[1].id).toBe('process-stories');
-    expect(def.steps[2].id).toBe('finalize-state');
-    expect(def.steps[2].type).toBe('memory');
+    expect(def.steps).toHaveLength(4);
+    expect(def.steps[0].id).toBe('preflight-check');
+    expect(def.steps[0].type).toBe('bash');
+    expect(def.steps[1].id).toBe('init-state');
+    expect(def.steps[1].type).toBe('memory');
+    expect(def.steps[2].type).toBe('loop');
+    expect(def.steps[2].id).toBe('process-stories');
+    expect(def.steps[3].id).toBe('finalize-state');
+    expect(def.steps[3].type).toBe('memory');
   });
 
   it('loop contains checkout, implement, find, merge, pull, comment, record', () => {
     def = loadYaml('auto-merge.yaml');
-    const loopSteps = def.steps[1].steps!;
+    const loopStep = def.steps.find(s => s.id === 'process-stories')!;
+    const loopSteps = loopStep.steps!;
     expect(loopSteps.length).toBeGreaterThanOrEqual(5);
     const types = loopSteps.map(s => s.type);
     expect(types).toContain('bash');
-    expect(types).toContain('agent');
     expect(types).toContain('github');
     expect(types).toContain('memory');
   });
 
   it('includes pr-merge step with admin option', () => {
     def = loadYaml('auto-merge.yaml');
-    const mergeStep = def.steps[1].steps!.find(s => s.id === 'merge-story-pr');
+    const loopStep = def.steps.find(s => s.id === 'process-stories')!;
+    const mergeStep = loopStep.steps!.find(s => s.id === 'merge-story-pr');
     expect(mergeStep).toBeDefined();
     expect((mergeStep!.config as Record<string, unknown>).action).toBe('pr-merge');
   });

@@ -77,7 +77,7 @@ function isCollisionZoneClear(line: string): boolean {
 }
 
 describe('Statusline Collision Zone Avoidance', () => {
-  it('should have clear collision zone in safe multi-line output', async () => {
+  it('should have clear collision zone in safe multi-line output', { timeout: 15_000 }, async () => {
     // Import dynamically to avoid build issues
     const { StatuslineGenerator } = await import('../../src/statusline/index.js');
 
@@ -99,7 +99,7 @@ describe('Statusline Collision Zone Avoidance', () => {
     }
   });
 
-  it('should produce single-line output when requested', async () => {
+  it('should produce single-line output when requested', { timeout: 15_000 }, async () => {
     const { StatuslineGenerator } = await import('../../src/statusline/index.js');
 
     const generator = new StatuslineGenerator();

@@ -17,6 +17,7 @@
 import { existsSync, readFileSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { pathToFileURL, fileURLToPath } from 'url';
+import { findProjectRoot as findConsumerProjectDir } from '../services/project-root.js';
 
 export interface HealthCheck {
   name: string;
@@ -161,7 +162,7 @@ export async function checkSubagentHealth(): Promise<HealthCheck> {
       try {
         const statusResult = await statusTool.handler({ agentId, includeMetrics: false, includeHistory: false }, {});
         statusOk = true;
-        if (statusResult?.status && statusResult.status !== 'active' && statusResult.status !== 'not_found') {
+        if (statusResult?.status && !['active', 'idle', 'not_found'].includes(statusResult.status)) {
           return { name: 'Subagent Health', status: 'warn', message: `Agent spawned but status is ${statusResult.status}` };
         }
       } catch {
@@ -511,7 +512,7 @@ const REQUIRED_HOOK_WIRING = [
  * 4. workflow-state.json is parseable (if it exists)
  */
 export async function checkGateHealth(): Promise<HealthCheck> {
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const projectDir = findConsumerProjectDir();
   const issues: string[] = [];
   const warnings: string[] = [];
 
