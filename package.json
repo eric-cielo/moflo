@@ -1,6 +1,6 @@
 {
   "name": "moflo",
-  "version": "4.8.52-rc.10",
+  "version": "4.8.52-rc.12",
   "description": "MoFlo — AI agent orchestration for Claude Code. Forked from ruflo/claude-flow with patches applied to source, plus feature-level orchestration.",
   "main": "dist/index.js",
   "type": "module",
@@ -82,7 +82,7 @@
     "build:ts": "cd src/packages/cli && npm run build",
     "build:neural": "cd src/packages/neural && npx tsc -p tsconfig.json",
     "build:guidance": "cd src/packages/guidance && npx tsc -p tsconfig.json",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "node scripts/check-version-sync.mjs && npm run build",
     "test": "node scripts/test-runner.mjs",
     "test:ui": "vitest --ui",
     "test:security": "vitest run src/__tests__/security/",
@@ -113,7 +113,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.37",
     "eslint": "^8.0.0",
-    "moflo": "file:",
+    "moflo": "^4.8.52-rc.12",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"

@@ -71,6 +71,7 @@
     "README.md"
   ],
   "scripts": {
+    "preversion": "echo 'ERROR: Run npm version from the repo root, not from src/packages/cli/' && exit 1",
     "build": "tsc && node -e \"const{cpSync}=require('fs');cpSync('src/epic/workflows','dist/src/epic/workflows',{recursive:true})\"",
     "test": "vitest run",
     "test:plugin-store": "npx tsx src/plugins/tests/standalone-test.ts",
