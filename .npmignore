@@ -6,7 +6,9 @@
 # Development files
 **/__tests__/**
 **/*.test.ts
+**/*.test.js
 **/*.spec.ts
+**/*.spec.js
 **/vitest.config.*
 **/.eslintrc.*
 **/tsconfig.json
