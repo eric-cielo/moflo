@@ -471,96 +471,56 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
   }
 
   // Build hooks config — all on by default (opinionated pit-of-success)
+  // Uses direct node invocation via helper scripts (gate.cjs, gate-hook.mjs,
+  // hook-handler.cjs) instead of `npx flo` to avoid 2-5s cold-start per hook.
+  const gateHook = (sub: string) => `node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" ${sub}`;
+  const gate = (sub: string) => `node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" ${sub}`;
+  const handler = (sub: string) => `node "$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs" ${sub}`;
   const hooks: Record<string, any[]> = {
     "PreToolUse": [
       {
         "matcher": "^(Write|Edit|MultiEdit)$",
-        "hooks": [{
-          "type": "command",
-          "command": "npx flo hooks pre-edit",
-          "timeout": 5000
-        }]
+        "hooks": [{ "type": "command", "command": handler('post-edit'), "timeout": 5000 }]
       },
       {
         "matcher": "^(Glob|Grep)$",
-        "hooks": [{
-          "type": "command",
-          "command": "npx flo gate check-before-scan",
-          "timeout": 3000
-        }]
+        "hooks": [{ "type": "command", "command": gateHook('check-before-scan'), "timeout": 3000 }]
       },
       {
         "matcher": "^Read$",
-        "hooks": [{
-          "type": "command",
-          "command": "npx flo gate check-before-read",
-          "timeout": 3000
-        }]
+        "hooks": [{ "type": "command", "command": gateHook('check-before-read'), "timeout": 3000 }]
       },
       {
         "matcher": "^Bash$",
-        "hooks": [{
-          "type": "command",
-          "command": "npx flo gate check-dangerous-command",
-          "timeout": 2000
-        }]
+        "hooks": [{ "type": "command", "command": gateHook('check-dangerous-command'), "timeout": 2000 }]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "^(Write|Edit|MultiEdit)$",
-        "hooks": [{
-          "type": "command",
-          "command": "npx flo hooks post-edit",
-          "timeout": 5000
-        }]
+        "hooks": [{ "type": "command", "command": handler('post-edit'), "timeout": 5000 }]
       },
       {
-        "matcher": "^Task$",
-        "hooks": [{
-          "type": "command",
-          "command": "npx flo hooks post-task",
-          "timeout": 5000
-        }]
+        "matcher": "^Agent$",
+        "hooks": [{ "type": "command", "command": handler('post-task'), "timeout": 5000 }]
       },
       {
         "matcher": "^TaskCreate$",
-        "hooks": [{
-          "type": "command",
-          "command": "npx flo gate record-task-created",
-          "timeout": 2000
-        }]
+        "hooks": [{ "type": "command", "command": gate('record-task-created'), "timeout": 2000 }]
       },
       {
         "matcher": "^Bash$",
-        "hooks": [{
-          "type": "command",
-          "command": "npx flo gate check-bash-memory",
-          "timeout": 2000
-        }]
+        "hooks": [{ "type": "command", "command": gateHook('check-bash-memory'), "timeout": 2000 }]
       },
       {
-        "matcher": "^mcp__moflo__memory_(search|retrieve)$",
-        "hooks": [{
-          "type": "command",
-          "command": "npx flo gate record-memory-searched",
-          "timeout": 2000
-        }]
+        "matcher": "mcp__moflo__memory_",
+        "hooks": [{ "type": "command", "command": gate('record-memory-searched'), "timeout": 3000 }]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "npx flo gate prompt-reminder",
-            "timeout": 2000
-          },
-          {
-            "type": "command",
-            "command": "npx flo hooks route",
-            "timeout": 5000
-          }
+          { "type": "command", "command": `node "$CLAUDE_PROJECT_DIR/.claude/helpers/prompt-hook.mjs"`, "timeout": 3000 }
         ]
       }
     ],
@@ -586,29 +546,17 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
     ],
     "Stop": [
       {
-        "hooks": [{
-          "type": "command",
-          "command": "npx flo hooks session-end",
-          "timeout": 5000
-        }]
+        "hooks": [{ "type": "command", "command": handler('session-end'), "timeout": 5000 }]
       }
     ],
     "PreCompact": [
       {
-        "hooks": [{
-          "type": "command",
-          "command": "npx flo gate compact-guidance",
-          "timeout": 3000
-        }]
+        "hooks": [{ "type": "command", "command": gate('compact-guidance'), "timeout": 3000 }]
       }
     ],
     "Notification": [
       {
-        "hooks": [{
-          "type": "command",
-          "command": "npx flo hooks notification",
-          "timeout": 3000
-        }]
+        "hooks": [{ "type": "command", "command": handler('notification'), "timeout": 3000 }]
       }
     ]
   };

@@ -3,7 +3,7 @@
 var fs = require('fs');
 var path = require('path');
 
-var PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var METRICS_FILE = path.join(PROJECT_DIR, '.claude-flow', 'metrics', 'learning.json');
 var command = process.argv[2];
 
