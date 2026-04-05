@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { WorkflowRunner } from '../src/core/runner.js';
+import { WorkflowRunner, ENGINE_VERSION } from '../src/core/runner.js';
 import { StepCommandRegistry } from '../src/core/step-command-registry.js';
 import type {
   StepCommand,
@@ -74,6 +74,12 @@ beforeEach(() => {
 // ============================================================================
 // Sequential Execution
 // ============================================================================
+
+describe('ENGINE_VERSION constant', () => {
+  it('should equal 1.0.0', () => {
+    expect(ENGINE_VERSION).toBe('1.0.0');
+  });
+});
 
 describe('WorkflowRunner — sequential execution', () => {
   it('should execute a 3-step workflow passing outputs forward', async () => {
