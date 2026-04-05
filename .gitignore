@@ -172,7 +172,7 @@ hive-mind-prompt-*.txt
 # Ephemeral / test artifacts
 .claude/projects/
 **/workflow-state.json
-src/packages/*/package-lock.json
+src/modules/*/package-lock.json
 test-database-provider.rvf
 .vitest-results.json
 

@@ -44,43 +44,43 @@
  * Security module - CVE fixes, input validation, credential management
  * @see {@link @moflo/security}
  */
-export * as security from './packages/security/src/index.js';
+export * as security from './modules/security/src/index.js';
 
 /**
  * Memory module - AgentDB, HNSW indexing, vector search
  * @see {@link @moflo/memory}
  */
-export * as memory from './packages/memory/src/index.js';
+export * as memory from './modules/memory/src/index.js';
 
 /**
  * Swarm module - 15-agent coordination, hierarchical mesh, consensus
  * @see {@link @moflo/swarm}
  */
-export * as swarm from './packages/swarm/src/index.js';
+export * as swarm from './modules/swarm/src/index.js';
 
 /**
  * Shared module - common types, events, utilities, core interfaces
  * @see {@link @moflo/shared}
  */
-export * as shared from './packages/shared/src/index.js';
+export * as shared from './modules/shared/src/index.js';
 
 /**
  * CLI module - Command parsing, prompts, output formatting
  * @see {@link @moflo/cli}
  */
-export * as cli from './packages/cli/src/index.js';
+export * as cli from './modules/cli/src/index.js';
 
 /**
  * Neural module - SONA learning, neural modes
  * @see {@link @moflo/neural}
  */
-export * as neural from './packages/neural/src/index.js';
+export * as neural from './modules/neural/src/index.js';
 
 /**
  * Testing module - TDD London School framework, test utilities
  * @see {@link @moflo/testing}
  */
-export * as testing from './packages/testing/src/index.js';
+export * as testing from './modules/testing/src/index.js';
 
 // =============================================================================
 // Module List for Dynamic Loading

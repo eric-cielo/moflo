@@ -16,7 +16,7 @@ import {
   validateHeader,
   RVFA_MAGIC,
   RVFA_VERSION,
-} from '../../packages/cli/src/appliance/rvfa-format.js';
+} from '../../modules/cli/src/appliance/rvfa-format.js';
 
 // -- Helpers ------------------------------------------------------------------
 

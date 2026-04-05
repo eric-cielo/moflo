@@ -59,7 +59,7 @@ Also available as `/fl` (shorthand alias).
 - The issue has GitHub sub-issues (via `subIssues` API field)
 
 **Epic processing:** When an epic is detected, use the same logic as `flo epic run`:
-1. Extract stories using detection from `src/packages/cli/src/epic/detection.ts`
+1. Extract stories using detection from `src/modules/cli/src/epic/detection.ts`
 2. Determine strategy from `moflo.yaml` config (`epic.default_strategy`), defaulting to `single-branch`
 3. For **single-branch**: create shared `epic/<number>-<slug>` branch, process each story via `/flo --epic-branch <branch> <issue>`, then create one consolidated PR
 4. For **auto-merge**: process each story via `/flo <issue>`, merge its PR, then proceed to next
@@ -416,7 +416,7 @@ An issue is an **epic** if:
 4. It has numbered issue references (e.g., `1. #123`), OR
 5. It has GitHub sub-issues (via `subIssues` API field)
 
-Detection uses `isEpicIssue()` from `src/packages/cli/src/epic/detection.ts`.
+Detection uses `isEpicIssue()` from `src/modules/cli/src/epic/detection.ts`.
 
 ### Epic Strategies
 
@@ -637,7 +637,7 @@ instead of the hardcoded coding workflow. This uses the `WorkflowRegistry` from
 `@moflo/workflows` to resolve and run YAML/JSON workflow definitions.
 
 **Scan directories** (in priority order):
-1. Shipped: `src/packages/workflows/definitions/` (bundled with moflo)
+1. Shipped: `src/modules/workflows/definitions/` (bundled with moflo)
 2. User: `workflows/` and `.claude/workflows/` (project-level overrides)
 
 **Registry behavior:**

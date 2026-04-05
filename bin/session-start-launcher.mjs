@@ -162,7 +162,7 @@ try {
         // Other helpers from .claude/helpers/ and CLI .claude/helpers/
         const helperSources = [
           resolve(projectRoot, 'node_modules/moflo/.claude/helpers'),
-          resolve(projectRoot, 'node_modules/moflo/src/packages/cli/.claude/helpers'),
+          resolve(projectRoot, 'node_modules/moflo/src/modules/cli/.claude/helpers'),
         ];
         const sourceHelperFiles = [
           'auto-memory-hook.mjs', 'statusline.cjs', 'intelligence.cjs', 'subagent-start.cjs', 'pre-commit', 'post-commit',
@@ -258,7 +258,7 @@ try {
 } catch { /* non-fatal */ }
 
 // ── 4. Spawn background tasks ───────────────────────────────────────────────
-const localCli = resolve(projectRoot, 'node_modules/moflo/src/packages/cli/bin/cli.js');
+const localCli = resolve(projectRoot, 'node_modules/moflo/src/modules/cli/bin/cli.js');
 const hasLocalCli = existsSync(localCli);
 
 // hooks.mjs session-start (daemon, indexer, pretrain, HNSW, neural patterns)

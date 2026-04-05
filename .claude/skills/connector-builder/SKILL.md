@@ -62,7 +62,7 @@ For each action, ask:
 
 ### Step 2: Generate Connector Source
 
-Create the file at `src/packages/workflows/src/connectors/<name>.ts`.
+Create the file at `src/modules/workflows/src/connectors/<name>.ts`.
 
 Follow this template, using `github-cli.ts` as the reference implementation:
 
@@ -174,7 +174,7 @@ Create at `tests/packages/workflows/connectors/<name>.test.ts`:
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { <name>Connector, validate<Name>Action } from
-  '../../../../src/packages/workflows/src/connectors/<name>.js';
+  '../../../../src/modules/workflows/src/connectors/<name>.js';
 
 describe('<name>Connector', () => {
   describe('metadata', () => {
@@ -239,7 +239,7 @@ describe('<name>Connector', () => {
 
 ### Step 4: Register the Connector
 
-Add to `src/packages/workflows/src/connectors/index.ts`:
+Add to `src/modules/workflows/src/connectors/index.ts`:
 
 ```typescript
 import { <name>Connector } from './<name>.js';
@@ -298,7 +298,7 @@ Ask the user for:
 
 ### Step 2: Generate Step Command Source
 
-Create at `src/packages/workflows/src/commands/<type>-command.ts`.
+Create at `src/modules/workflows/src/commands/<type>-command.ts`.
 
 Follow this template, using `bash-command.ts` as the reference implementation:
 
@@ -380,7 +380,7 @@ export const <type>Command: StepCommand<<Type>StepConfig> = {
 };
 ```
 
-Alternatively, use the `createStepCommand()` factory from `src/packages/workflows/src/commands/create-step-command.ts` for compile-time type safety.
+Alternatively, use the `createStepCommand()` factory from `src/modules/workflows/src/commands/create-step-command.ts` for compile-time type safety.
 
 ### Step 3: Generate Step Command Test
 
@@ -389,9 +389,9 @@ Create at `tests/packages/workflows/commands/<type>-command.test.ts`:
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
 import { <type>Command } from
-  '../../../../src/packages/workflows/src/commands/<type>-command.js';
+  '../../../../src/modules/workflows/src/commands/<type>-command.js';
 import type { WorkflowContext } from
-  '../../../../src/packages/workflows/src/types/step-command.types.js';
+  '../../../../src/modules/workflows/src/types/step-command.types.js';
 
 const mockContext: WorkflowContext = {
   variables: {},
@@ -455,7 +455,7 @@ describe('<type>Command', () => {
 
 ### Step 4: Register the Step Command
 
-Add to `src/packages/workflows/src/commands/index.ts`:
+Add to `src/modules/workflows/src/commands/index.ts`:
 
 ```typescript
 import { <type>Command } from './<type>-command.js';
@@ -493,15 +493,15 @@ steps:
 
 ### Type Definitions
 
-- **Connector interface:** `src/packages/workflows/src/types/workflow-connector.types.ts` — `WorkflowConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorCapability`
-- **Step command interface:** `src/packages/workflows/src/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `WorkflowContext`, `JSONSchema`
-- **Step factory:** `src/packages/workflows/src/commands/create-step-command.ts` — `createStepCommand()`
+- **Connector interface:** `src/modules/workflows/src/types/workflow-connector.types.ts` — `WorkflowConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorCapability`
+- **Step command interface:** `src/modules/workflows/src/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `WorkflowContext`, `JSONSchema`
+- **Step factory:** `src/modules/workflows/src/commands/create-step-command.ts` — `createStepCommand()`
 
 ### Existing Components
 
-**Shipped connectors** (`src/packages/workflows/src/connectors/`): `http` (http-tool.ts), `github-cli` (github-cli.ts), `playwright` (playwright.ts)
+**Shipped connectors** (`src/modules/workflows/src/connectors/`): `http` (http-tool.ts), `github-cli` (github-cli.ts), `playwright` (playwright.ts)
 
-**Built-in step commands** (`src/packages/workflows/src/commands/`): `agent` (agent-command.ts), `bash` (bash-command.ts), `condition` (condition-command.ts), `prompt` (prompt-command.ts), `memory` (memory-command.ts), `wait` (wait-command.ts), `loop` (loop-command.ts), `browser` (browser-command.ts), `github` (github-command.ts)
+**Built-in step commands** (`src/modules/workflows/src/commands/`): `agent` (agent-command.ts), `bash` (bash-command.ts), `condition` (condition-command.ts), `prompt` (prompt-command.ts), `memory` (memory-command.ts), `wait` (wait-command.ts), `loop` (loop-command.ts), `browser` (browser-command.ts), `github` (github-command.ts)
 
 ### Related Skills
 

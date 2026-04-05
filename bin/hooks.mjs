@@ -86,7 +86,7 @@ function hasArg(name) {
 
 // Get the local CLI path (preferred - no network/extraction overhead)
 function getLocalCliPath() {
-  const localCli = resolve(projectRoot, 'node_modules/moflo/src/packages/cli/bin/cli.js');
+  const localCli = resolve(projectRoot, 'node_modules/moflo/src/modules/cli/bin/cli.js');
   return existsSync(localCli) ? localCli : null;
 }
 

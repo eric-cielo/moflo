@@ -33,9 +33,9 @@
 **Read `.claude/guidance/shipped/moflo-source-hygiene.md` for full rules.** Key points:
 
 - ALL source files under `src/` are TypeScript — no hand-written `.js` files
-- NO cross-package imports between `src/packages/*/src/` directories
-- `src/packages/` are internal modules, NOT independently published npm packages
-- MCP tools live in `src/packages/cli/src/mcp-tools/` — this is the only canonical location
+- NO cross-package imports between `src/modules/*/src/` directories
+- `src/modules/` are internal modules, NOT independently published npm packages
+- MCP tools live in `src/modules/cli/src/mcp-tools/` — this is the only canonical location
 - Never commit `dist/` build artifacts to git
 
 ## Cross-Platform Compatibility
@@ -62,15 +62,15 @@
 
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@moflo/cli` | `src/packages/cli/` | CLI entry point (40+ commands) |
-| `@moflo/guidance` | `src/packages/guidance/` | Governance control plane |
-| `@moflo/hooks` | `src/packages/hooks/` | Hooks + workers |
-| `@moflo/memory` | `src/packages/memory/` | AgentDB + HNSW search |
-| `@moflo/security` | `src/packages/security/` | Input validation, CVE remediation |
-| `@moflo/embeddings` | `src/packages/embeddings/` | Vector embeddings (sql.js, HNSW) |
-| `@moflo/neural` | `src/packages/neural/` | Neural patterns (SONA) |
-| `@moflo/plugins` | `src/packages/plugins/` | Plugin system |
-| `@moflo/workflows` | `src/packages/workflows/` | Workflow engine, step commands, YAML/JSON definitions |
+| `@moflo/cli` | `src/modules/cli/` | CLI entry point (40+ commands) |
+| `@moflo/guidance` | `src/modules/guidance/` | Governance control plane |
+| `@moflo/hooks` | `src/modules/hooks/` | Hooks + workers |
+| `@moflo/memory` | `src/modules/memory/` | AgentDB + HNSW search |
+| `@moflo/security` | `src/modules/security/` | Input validation, CVE remediation |
+| `@moflo/embeddings` | `src/modules/embeddings/` | Vector embeddings (sql.js, HNSW) |
+| `@moflo/neural` | `src/modules/neural/` | Neural patterns (SONA) |
+| `@moflo/plugins` | `src/modules/plugins/` | Plugin system |
+| `@moflo/workflows` | `src/modules/workflows/` | Workflow engine, step commands, YAML/JSON definitions |
 
 ## MoFlo is a Library (CRITICAL)
 

@@ -202,7 +202,7 @@ These step command types are available for use in workflow `steps[].type`:
 | `browser` | Browser automation via Playwright | `action`, `url`, `selector`, `value` |
 | `github` | GitHub CLI operations | `action` (create-issue, create-pr, etc.), `repo`, params |
 
-**Source:** `src/packages/workflows/src/commands/index.ts`
+**Source:** `src/modules/workflows/src/commands/index.ts`
 
 ### Built-in Connectors (Generalized I/O Wrappers)
 
@@ -214,7 +214,7 @@ Connectors are generalized I/O wrappers — not per-service adapters. Three ship
 | `github-cli` | GitHub CLI (`gh`) operations | read, write, search | `issue-create`, `issue-list`, `pr-create`, `pr-list`, `repo-view` |
 | `playwright` | Browser automation | read, write | `navigate`, `click`, `fill`, `screenshot`, `evaluate` |
 
-**Source:** `src/packages/workflows/src/connectors/index.ts`
+**Source:** `src/modules/workflows/src/connectors/index.ts`
 
 To use a connector in a workflow, reference it in an `agent` step's prompt:
 ```yaml
@@ -263,16 +263,16 @@ Check against all engine validation rules:
 
 ### Type Definitions
 
-- **Workflow definition:** `src/packages/workflows/src/types/workflow-definition.types.ts` — `WorkflowDefinition`, `StepDefinition`, `ArgumentDefinition`, `ArgumentType`
-- **Step command interface:** `src/packages/workflows/src/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `WorkflowContext`, `MofloLevel`, `CapabilityType`
-- **Connector interface:** `src/packages/workflows/src/types/workflow-connector.types.ts` — `WorkflowConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorAccessor`
+- **Workflow definition:** `src/modules/workflows/src/types/workflow-definition.types.ts` — `WorkflowDefinition`, `StepDefinition`, `ArgumentDefinition`, `ArgumentType`
+- **Step command interface:** `src/modules/workflows/src/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `WorkflowContext`, `MofloLevel`, `CapabilityType`
+- **Connector interface:** `src/modules/workflows/src/types/workflow-connector.types.ts` — `WorkflowConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorAccessor`
 
 ### Engine Components
 
-- **Schema validator:** `src/packages/workflows/src/schema/validator.ts` — `validateWorkflowDefinition()`
-- **YAML/JSON parser:** `src/packages/workflows/src/schema/parser.ts` — `parseWorkflow()`
-- **Workflow registry:** `src/packages/workflows/src/registry/workflow-registry.ts` — `WorkflowRegistry`
-- **Definition loader:** `src/packages/workflows/src/loaders/definition-loader.ts` — two-tier loading (shipped + user)
+- **Schema validator:** `src/modules/workflows/src/schema/validator.ts` — `validateWorkflowDefinition()`
+- **YAML/JSON parser:** `src/modules/workflows/src/schema/parser.ts` — `parseWorkflow()`
+- **Workflow registry:** `src/modules/workflows/src/registry/workflow-registry.ts` — `WorkflowRegistry`
+- **Definition loader:** `src/modules/workflows/src/loaders/definition-loader.ts` — two-tier loading (shipped + user)
 
 ### MCP Tools
 

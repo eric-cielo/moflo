@@ -9,9 +9,9 @@ import {
   isEpicIssue,
   extractStories,
   extractUncheckedStories,
-} from '../src/packages/cli/src/epic/detection.js';
-import { resolveExecutionOrder } from '../src/packages/cli/src/epic/execution-order.js';
-import type { GitHubIssue, StoryDefinition } from '../src/packages/cli/src/epic/types.js';
+} from '../src/modules/cli/src/epic/detection.js';
+import { resolveExecutionOrder } from '../src/modules/cli/src/epic/execution-order.js';
+import type { GitHubIssue, StoryDefinition } from '../src/modules/cli/src/epic/types.js';
 
 // ============================================================================
 // Helpers

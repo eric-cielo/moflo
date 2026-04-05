@@ -13,7 +13,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-const DOCTOR_FILE = resolve(__dirname, '../src/packages/cli/src/commands/doctor.ts');
+const DOCTOR_FILE = resolve(__dirname, '../src/modules/cli/src/commands/doctor.ts');
 
 describe('doctor.ts test directory check', () => {
   let content: string;

@@ -24,16 +24,16 @@ code_map:
 tests:
   directories:
     - tests
-    - src/packages/aidefence/__tests__
-    - src/packages/cli/__tests__
-    - src/packages/embeddings/__tests__
-    - src/packages/hooks/__tests__
-    - src/packages/neural/__tests__
-    - src/packages/plugins/__tests__
-    - src/packages/security/__tests__
-    - src/packages/shared/__tests__
-    - src/packages/swarm/__tests__
-    - src/packages/testing/__tests__
+    - src/modules/aidefence/__tests__
+    - src/modules/cli/__tests__
+    - src/modules/embeddings/__tests__
+    - src/modules/hooks/__tests__
+    - src/modules/neural/__tests__
+    - src/modules/plugins/__tests__
+    - src/modules/security/__tests__
+    - src/modules/shared/__tests__
+    - src/modules/swarm/__tests__
+    - src/modules/testing/__tests__
     - src/__tests__
   patterns: ["*.test.*", "*.spec.*", "*.test-*"]
   extensions: [".ts", ".tsx", ".js", ".jsx"]

@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { MessageBus, createMessageBus } from '../src/packages/swarm/src/message-bus/index.js';
+import { MessageBus, createMessageBus } from '../src/modules/swarm/src/message-bus/index.js';
 
 describe('MessageBus deprecation (Story #116)', () => {
   it('createMessageBus() emits a DeprecationWarning', () => {

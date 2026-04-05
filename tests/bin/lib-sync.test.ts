@@ -52,7 +52,7 @@ describe('bin/lib/ subdirectory sync', () => {
   });
 
   it('executor.ts syncs lib/ subdirectory during upgrade', () => {
-    const executorPath = resolve(__dirname, '../../src/packages/cli/src/init/executor.ts');
+    const executorPath = resolve(__dirname, '../../src/modules/cli/src/init/executor.ts');
     const content = readFileSync(executorPath, 'utf-8');
 
     // Verify the executor has the lib/ sync logic

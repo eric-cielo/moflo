@@ -16,9 +16,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createRunner, runWorkflowFromContent } from '../../src/packages/workflows/src/factory/runner-factory.js';
-import { StepCommandRegistry } from '../../src/packages/workflows/src/core/step-command-registry.js';
-import { builtinCommands } from '../../src/packages/workflows/src/commands/index.js';
+import { createRunner, runWorkflowFromContent } from '../../src/modules/workflows/src/factory/runner-factory.js';
+import { StepCommandRegistry } from '../../src/modules/workflows/src/core/step-command-registry.js';
+import { builtinCommands } from '../../src/modules/workflows/src/commands/index.js';
 
 // ============================================================================
 // Test Environment

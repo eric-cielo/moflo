@@ -14,8 +14,8 @@ import {
   RvfaBuilder,
   encryptApiKeys,
   decryptApiKeys,
-} from '../../packages/cli/src/appliance/rvfa-builder.js';
-import { RvfaReader } from '../../packages/cli/src/appliance/rvfa-format.js';
+} from '../../modules/cli/src/appliance/rvfa-builder.js';
+import { RvfaReader } from '../../modules/cli/src/appliance/rvfa-format.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

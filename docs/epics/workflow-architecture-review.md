@@ -3,7 +3,7 @@
 **Date:** 2026-03-29
 **Status:** Draft
 **Priority:** High
-**Scope:** `src/packages/workflows/`, `src/packages/cli/src/mcp-tools/workflow-tools.ts`, `src/packages/cli/src/commands/workflow.ts`
+**Scope:** `src/modules/workflows/`, `src/modules/cli/src/mcp-tools/workflow-tools.ts`, `src/modules/cli/src/commands/workflow.ts`
 
 ---
 
@@ -19,18 +19,18 @@ The workflow system has three layers:
 
 | Layer | Path | Lines | Role |
 |-------|------|-------|------|
-| **Engine** | `src/packages/workflows/` | ~8,000 | Real execution: WorkflowRunner, step commands, tools, registries |
-| **MCP Tools** | `src/packages/cli/src/mcp-tools/workflow-tools.ts` | 671 | MCP tool handlers exposed to Claude sessions |
-| **CLI** | `src/packages/cli/src/commands/workflow.ts` | 742 | CLI subcommands that call MCP tools via `callMCPTool()` |
+| **Engine** | `src/modules/workflows/` | ~8,000 | Real execution: WorkflowRunner, step commands, tools, registries |
+| **MCP Tools** | `src/modules/cli/src/mcp-tools/workflow-tools.ts` | 671 | MCP tool handlers exposed to Claude sessions |
+| **CLI** | `src/modules/cli/src/commands/workflow.ts` | 742 | CLI subcommands that call MCP tools via `callMCPTool()` |
 
-The engine also exposes a **Runner Bridge** (`src/packages/workflows/src/factory/runner-bridge.ts`) intended as the integration point for MCP tools, but the current MCP layer does not use it.
+The engine also exposes a **Runner Bridge** (`src/modules/workflows/src/factory/runner-bridge.ts`) intended as the integration point for MCP tools, but the current MCP layer does not use it.
 
 ---
 
 ## Issue 1: MCP Workflow Tools Do Not Use the Real Engine
 
 **Severity:** HIGH
-**Files:** `src/packages/cli/src/mcp-tools/workflow-tools.ts`
+**Files:** `src/modules/cli/src/mcp-tools/workflow-tools.ts`
 
 ### Analysis
 
@@ -52,10 +52,10 @@ Meanwhile, `runner-bridge.ts` (97 lines) exists specifically to provide `bridgeR
 
 ### Verification Instructions
 
-1. **Confirm no engine imports:** `grep -n "workflows" src/packages/cli/src/mcp-tools/workflow-tools.ts` — expect zero hits
+1. **Confirm no engine imports:** `grep -n "workflows" src/modules/cli/src/mcp-tools/workflow-tools.ts` — expect zero hits
 2. **Confirm mock execution:** Read `workflow-tools.ts` lines 274-284 — the comment on line 281 explicitly says "real implementation would execute actual tasks"
-3. **Confirm bridge exists unused:** `grep -rn "bridgeRunWorkflow\|bridgeExecuteWorkflow" src/packages/cli/` — expect hits only in epic-related files, not in workflow-tools.ts
-4. **Confirm epic uses real engine:** Check `src/packages/cli/src/commands/epic/runner-adapter.ts` for the dynamic import of `runWorkflowFromContent`
+3. **Confirm bridge exists unused:** `grep -rn "bridgeRunWorkflow\|bridgeExecuteWorkflow" src/modules/cli/` — expect hits only in epic-related files, not in workflow-tools.ts
+4. **Confirm epic uses real engine:** Check `src/modules/cli/src/commands/epic/runner-adapter.ts` for the dynamic import of `runWorkflowFromContent`
 
 ### Recommended Fix
 
@@ -66,7 +66,7 @@ Wire the MCP tool handlers to the real engine via runner-bridge.ts. The bridge a
 ## Issue 2: Composite Step Command Does Not Execute Actions
 
 **Severity:** MEDIUM
-**Files:** `src/packages/workflows/src/commands/composite-command.ts`
+**Files:** `src/modules/workflows/src/commands/composite-command.ts`
 
 ### Analysis
 
@@ -95,7 +95,7 @@ The `context.tools` accessor is available but never called. Actions with `comman
 ### Verification Instructions
 
 1. **Read the execute method:** `composite-command.ts` lines 46-69 — confirm no `context.tools.execute()` or shell execution calls
-2. **Check if any caller processes the results:** Search for consumers that receive composite step output and dispatch it — `grep -rn "composite\|CompositeStep" src/packages/workflows/`
+2. **Check if any caller processes the results:** Search for consumers that receive composite step output and dispatch it — `grep -rn "composite\|CompositeStep" src/modules/workflows/`
 3. **Check test expectations:** Read `tests/` for composite command tests — do they assert actual execution or just data shape?
 4. **Check if this is intentional:** The YAML step loader creates composite commands — is there an outer orchestrator that was planned to dispatch these action specs?
 
@@ -133,9 +133,9 @@ No shared error type flows from engine through MCP to CLI.
 
 ### Verification Instructions
 
-1. **Catalog engine errors:** `grep -n "WorkflowError\|errors:" src/packages/workflows/src/types/runner.types.ts`
-2. **Catalog MCP error returns:** `grep -n "error:" src/packages/cli/src/mcp-tools/workflow-tools.ts` — count inline error returns
-3. **Catalog CLI error handling:** `grep -n "catch\|MCPClientError\|printError" src/packages/cli/src/commands/workflow.ts`
+1. **Catalog engine errors:** `grep -n "WorkflowError\|errors:" src/modules/workflows/src/types/runner.types.ts`
+2. **Catalog MCP error returns:** `grep -n "error:" src/modules/cli/src/mcp-tools/workflow-tools.ts` — count inline error returns
+3. **Catalog CLI error handling:** `grep -n "catch\|MCPClientError\|printError" src/modules/cli/src/commands/workflow.ts`
 4. **Check if engine errors propagate:** If Issue 1 is fixed and MCP tools call the engine, do the `WorkflowResult.errors` get relayed to the CLI or swallowed?
 
 ### Recommended Fix
@@ -147,7 +147,7 @@ Once MCP tools call the real engine, forward `WorkflowResult` (or a serialized f
 ## Issue 4: Connector Registry SOURCE_PRIORITY Default for Unknown Sources
 
 **Severity:** MEDIUM
-**Files:** `src/packages/workflows/src/registry/connector-registry.ts` (formerly `tool-registry.ts`)
+**Files:** `src/modules/workflows/src/registry/connector-registry.ts` (formerly `tool-registry.ts`)
 
 ### Analysis
 
@@ -167,9 +167,9 @@ If a new `ToolSource` type is added (e.g., `'plugin'`) without updating `SOURCE_
 
 ### Verification Instructions
 
-1. **Check the ToolSource type:** `grep -n "ToolSource" src/packages/workflows/src/types/workflow-tool.types.ts` — what values are in the union?
+1. **Check the ToolSource type:** `grep -n "ToolSource" src/modules/workflows/src/types/workflow-tool.types.ts` — what values are in the union?
 2. **Check if only 3 sources exist:** If `ToolSource = 'npm' | 'shipped' | 'user'` is a closed union, this isn't a real bug — TypeScript would catch a new value at compile time
-3. **Check runtime usage:** `grep -rn "source:" src/packages/workflows/src/registry/` — are sources always from the three known values?
+3. **Check runtime usage:** `grep -rn "source:" src/modules/workflows/src/registry/` — are sources always from the three known values?
 4. **Check if priority ever uses `<=` incorrectly:** The `<=` means equal priority keeps the first-seen (earlier candidate). Is that correct for the scan order (shipped first, then user, then npm)?
 
 ### Recommended Fix
@@ -181,7 +181,7 @@ If `ToolSource` is a closed union type, this is low-risk. If it's `string`, eith
 ## Issue 5: StepCommandRegistry.registerOrReplace() Silently Overrides
 
 **Severity:** LOW
-**Files:** `src/packages/workflows/src/core/step-command-registry.ts` lines 67-75
+**Files:** `src/modules/workflows/src/core/step-command-registry.ts` lines 67-75
 
 ### Analysis
 
@@ -192,7 +192,7 @@ The strict `register()` method (line 24-31) throws on duplicates, so this is a d
 ### Verification Instructions
 
 1. **Confirm intent:** Read the JSDoc on `registerOrReplace()` (line 62-66) — it explicitly documents the silent override as intentional
-2. **Check call sites:** `grep -n "registerOrReplace" src/packages/workflows/` — confirm it's only used in discovery paths
+2. **Check call sites:** `grep -n "registerOrReplace" src/modules/workflows/` — confirm it's only used in discovery paths
 3. **Check if there's a logger available:** Does the registry have access to a logger that could emit debug-level messages?
 4. **Test: create a user step with type "bash"** — does it silently override the built-in? What breaks?
 
@@ -205,7 +205,7 @@ Add optional debug logging when an override occurs. Not a correctness issue — 
 ## Issue 6: StepCommandRegistry loadFromNpm Has Wrong Priority
 
 **Severity:** MEDIUM
-**Files:** `src/packages/workflows/src/core/step-command-registry.ts` lines 98-104
+**Files:** `src/modules/workflows/src/core/step-command-registry.ts` lines 98-104
 
 ### Analysis
 
@@ -218,7 +218,7 @@ But the code unconditionally calls `registerOrReplace()`, which overwrites whate
 
 ### Verification Instructions
 
-1. **Check loading order in runner-factory.ts:** Read `src/packages/workflows/src/factory/runner-factory.ts` — what order does it call `register()`, `loadFromDirectories()`, and `loadFromNpm()`?
+1. **Check loading order in runner-factory.ts:** Read `src/modules/workflows/src/factory/runner-factory.ts` — what order does it call `register()`, `loadFromDirectories()`, and `loadFromNpm()`?
 2. **If npm is loaded first:** Then built-in and user steps override npm (correct priority). The method comment would be misleading but the behavior correct.
 3. **If npm is loaded last:** Then npm silently overrides everything (wrong priority).
 4. **Compare with tool registry:** The tool registry handles this correctly with a priority map in `scan()`. The step registry has no equivalent.
@@ -232,7 +232,7 @@ Either enforce loading order (npm first, then built-in, then user) or add priori
 ## Issue 7: CLI Templates vs Engine WorkflowDefinitions are Different Systems
 
 **Severity:** MEDIUM
-**Files:** `src/packages/cli/src/commands/workflow.ts`, `src/packages/workflows/src/types/workflow-definition.types.ts`
+**Files:** `src/modules/cli/src/commands/workflow.ts`, `src/modules/workflows/src/types/workflow-definition.types.ts`
 
 ### Analysis
 
@@ -251,8 +251,8 @@ The engine has its own definition loader (`loaders/definition-loader.ts`) and re
 ### Verification Instructions
 
 1. **Read CLI template handling:** `workflow.ts` lines 12-21 and the `run` handler — how are templates mapped to stages?
-2. **Read engine definition loader:** `src/packages/workflows/src/loaders/definition-loader.ts` — does it discover YAML files that could serve as templates?
-3. **Check if engine has shipped definitions:** `ls src/packages/workflows/definitions/` or similar — are there bundled workflow YAML files?
+2. **Read engine definition loader:** `src/modules/workflows/src/loaders/definition-loader.ts` — does it discover YAML files that could serve as templates?
+3. **Check if engine has shipped definitions:** `ls src/modules/workflows/definitions/` or similar — are there bundled workflow YAML files?
 4. **Check workflow-registry.ts:** Does it provide a `list()` or `get()` method that the CLI could call instead of hardcoded templates?
 
 ### Recommended Fix
@@ -264,7 +264,7 @@ Part of Issue 1 fix — once MCP tools use the engine, templates should be engin
 ## Issue 8: Duck-Typing Validation Doesn't Check Function Signatures
 
 **Severity:** LOW
-**Files:** `src/packages/workflows/src/loaders/directory-step-loader.ts`, `src/packages/workflows/src/registry/connector-registry.ts`
+**Files:** `src/modules/workflows/src/loaders/directory-step-loader.ts`, `src/modules/workflows/src/registry/connector-registry.ts`
 
 ### Analysis
 
@@ -290,7 +290,7 @@ Consider providing a `createStepCommand()` helper that enforces the interface at
 ## Issue 9: No Circular Step Dependency Detection
 
 **Severity:** LOW
-**Files:** `src/packages/workflows/src/core/runner.ts`, `src/packages/workflows/src/schema/validator.ts`
+**Files:** `src/modules/workflows/src/core/runner.ts`, `src/modules/workflows/src/schema/validator.ts`
 
 ### Analysis
 
@@ -298,9 +298,9 @@ Steps can reference other steps via condition `then`/`else` targets. If step A j
 
 ### Verification Instructions
 
-1. **Read the condition command:** `src/packages/workflows/src/commands/condition-command.ts` — how does it signal a jump? (returns `nextStep` in output?)
+1. **Read the condition command:** `src/modules/workflows/src/commands/condition-command.ts` — how does it signal a jump? (returns `nextStep` in output?)
 2. **Read the runner's step loop:** `runner.ts` — how does it handle `nextStep`? Is there a max iteration guard?
-3. **Read the validator:** `src/packages/workflows/src/schema/validator.ts` — search for `nextStep` or `then` or `else` — does it build a graph?
+3. **Read the validator:** `src/modules/workflows/src/schema/validator.ts` — search for `nextStep` or `then` or `else` — does it build a graph?
 4. **Test with circular workflow:** Create a YAML with two conditions pointing at each other — does the runner eventually terminate via the iteration guard?
 5. **Assess risk:** If the iteration guard works, this is a UX issue (confusing error message) not a correctness issue.
 
@@ -313,7 +313,7 @@ Add cycle detection during validation (topological sort of jump targets). Low pr
 ## Issue 10: Plugin Registry Doesn't Topologically Sort Dependencies
 
 **Severity:** LOW
-**Files:** `src/packages/plugins/src/registry/plugin-registry.ts`
+**Files:** `src/modules/plugins/src/registry/plugin-registry.ts`
 
 ### Analysis
 
@@ -324,8 +324,8 @@ Note: This is in the **plugins** package, not the **workflows** package. It affe
 ### Verification Instructions
 
 1. **Read plugin-registry.ts:** Check if there's initialization ordering logic
-2. **Check the dependencies field:** `grep -n "dependencies\|topolog\|sort" src/packages/plugins/src/registry/plugin-registry.ts`
-3. **Check if any plugins declare dependencies:** `grep -rn "dependencies:" src/packages/plugins/` — are there actual consumers?
+2. **Check the dependencies field:** `grep -n "dependencies\|topolog\|sort" src/modules/plugins/src/registry/plugin-registry.ts`
+3. **Check if any plugins declare dependencies:** `grep -rn "dependencies:" src/modules/plugins/` — are there actual consumers?
 4. **Assess scope:** If no plugins currently declare dependencies, this is a latent issue, not an active bug
 
 ### Recommended Fix

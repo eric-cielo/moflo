@@ -8,14 +8,14 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseYaml } from '../src/packages/workflows/src/schema/parser.js';
-import type { WorkflowDefinition } from '../src/packages/workflows/src/types/workflow-definition.types.js';
+import { parseYaml } from '../src/modules/workflows/src/schema/parser.js';
+import type { WorkflowDefinition } from '../src/modules/workflows/src/types/workflow-definition.types.js';
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-const WORKFLOWS_DIR = join(__dirname, '..', 'src', 'packages', 'cli', 'src', 'epic', 'workflows');
+const WORKFLOWS_DIR = join(__dirname, '..', 'src', 'modules', 'cli', 'src', 'epic', 'workflows');
 
 function loadYaml(filename: string): WorkflowDefinition {
   const content = readFileSync(join(WORKFLOWS_DIR, filename), 'utf-8');
