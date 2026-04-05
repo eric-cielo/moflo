@@ -14,7 +14,7 @@
  * Lock:     .claude-flow/spawn.lock  (30 s TTL — prevents thundering-herd)
  */
 
-import { spawn } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync, statSync, openSync, closeSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -195,7 +195,11 @@ export function createProcessManager(root) {
       for (const entry of entries) {
         if (!isAlive(entry.pid)) continue;
         try {
-          process.kill(entry.pid, 'SIGTERM');
+          if (process.platform === 'win32') {
+            execFileSync('taskkill', ['/F', '/PID', String(entry.pid)], { windowsHide: true });
+          } else {
+            process.kill(entry.pid, 'SIGTERM');
+          }
           killed++;
         } catch { /* already gone */ }
       }

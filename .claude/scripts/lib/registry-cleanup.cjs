@@ -10,6 +10,7 @@
 
 var fs = require('fs');
 var path = require('path');
+var childProcess = require('child_process');
 
 /**
  * Kill all tracked background processes and clear the registry.
@@ -27,7 +28,14 @@ function killTrackedSync(projectDir) {
       if (!Array.isArray(entries)) entries = [];
       for (var i = 0; i < entries.length; i++) {
         try { process.kill(entries[i].pid, 0); } catch (e) { continue; }
-        try { process.kill(entries[i].pid, 'SIGTERM'); killed++; } catch (e) { /* ok */ }
+        try {
+          if (process.platform === 'win32') {
+            childProcess.execFileSync('taskkill', ['/F', '/PID', String(entries[i].pid)], { windowsHide: true });
+          } else {
+            process.kill(entries[i].pid, 'SIGTERM');
+          }
+          killed++;
+        } catch (e) { /* ok */ }
       }
       fs.writeFileSync(pidFile, '[]');
     }
