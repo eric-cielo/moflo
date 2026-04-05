@@ -63,16 +63,9 @@ readStdin().then(function(stdinData) {
       bumpMetric('tasksCompleted');
       console.log('[OK] Task completed');
       break;
-    case 'session-end': {
-      // Kill tracked background processes via shared sync helper
-      try {
-        var cleanup = require('./lib/registry-cleanup.cjs');
-        var killed = cleanup.killTrackedSync(PROJECT_DIR);
-        if (killed > 0) console.log('[CLEANUP] Killed ' + killed + ' background process(es)');
-      } catch (e) { /* non-fatal: cleanup module not available */ }
+    case 'session-end':
       console.log('[OK] Session ended');
       break;
-    }
     case 'notification':
       // Silent — just acknowledge
       break;

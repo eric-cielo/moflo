@@ -223,6 +223,79 @@ try {
   // Non-fatal — scripts will still work, just may be stale
 }
 
+// ── 3a. Auto-migrate settings.json (npx flo → node helpers, PATH setup) ────
+// Existing users may have stale settings.json with `npx flo` hooks that break
+// when npx isn't on PATH. Migrate them to direct `node .claude/helpers/...`
+// invocations on every session start so users never get stuck.
+try {
+  const settingsPath = resolve(projectRoot, '.claude', 'settings.json');
+  if (existsSync(settingsPath)) {
+    const raw = readFileSync(settingsPath, 'utf-8');
+    let dirty = false;
+    const settings = JSON.parse(raw);
+
+    // 3a-i. Remove stale PATH override (${PATH} isn't expanded by Claude Code,
+    // which replaces the inherited PATH and breaks node resolution)
+    if (!settings.env) settings.env = {};
+    if (settings.env.PATH) {
+      delete settings.env.PATH;
+      dirty = true;
+    }
+
+    // 3a-ii. Replace npx flo hook commands with direct node helper invocations
+    const hookMigrations = [
+      // PreToolUse
+      { from: 'npx flo hooks pre-edit',             to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs" post-edit' },
+      { from: 'npx flo gate check-before-scan',     to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-scan' },
+      { from: 'npx flo gate check-before-read',     to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-read' },
+      { from: 'npx flo gate check-dangerous-command', to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-dangerous-command' },
+      { from: 'npx flo gate check-before-pr',       to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-pr' },
+      // PostToolUse
+      { from: 'npx flo hooks post-edit',            to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs" post-edit' },
+      { from: 'npx flo hooks post-task',            to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs" post-task' },
+      { from: 'npx flo gate record-task-created',   to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-task-created' },
+      { from: 'npx flo gate check-bash-memory',     to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-bash-memory' },
+      { from: 'npx flo gate record-memory-searched', to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-memory-searched' },
+      { from: 'npx flo gate check-task-transition', to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-task-transition' },
+      { from: 'npx flo gate record-learnings-stored', to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-learnings-stored' },
+      // UserPromptSubmit
+      { from: 'npx flo gate prompt-reminder',       to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/prompt-hook.mjs"' },
+      { from: 'npx flo hooks route',                to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/prompt-hook.mjs"' },
+      // Stop
+      { from: 'npx flo hooks session-end',          to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs" session-end' },
+      // PreCompact
+      { from: 'npx flo gate compact-guidance',      to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" compact-guidance' },
+      // Notification
+      { from: 'npx flo hooks notification',         to: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs" notification' },
+    ];
+
+    const migrationMap = new Map(hookMigrations.map(m => [m.from, m.to]));
+
+    function migrateHooks(hookGroups) {
+      if (!Array.isArray(hookGroups)) return;
+      for (const group of hookGroups) {
+        if (!Array.isArray(group.hooks)) continue;
+        for (const hook of group.hooks) {
+          if (hook.command && migrationMap.has(hook.command)) {
+            hook.command = migrationMap.get(hook.command);
+            dirty = true;
+          }
+        }
+      }
+    }
+
+    if (settings.hooks) {
+      for (const eventName of Object.keys(settings.hooks)) {
+        migrateHooks(settings.hooks[eventName]);
+      }
+    }
+
+    if (dirty) {
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    }
+  }
+} catch { /* non-fatal — stale hooks won't block session, just emit warnings */ }
+
 // ── 3b. Ensure shipped guidance files exist (even without version change) ──
 // Subagents need these files on disk for direct reads without memory search.
 try {
