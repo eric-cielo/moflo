@@ -211,6 +211,8 @@
   },
   "permissions": {
     "allow": [
+      "Bash(git *)",
+      "Bash(gh *)",
       "Bash(npx moflo*)",
       "Bash(npx flo*)",
       "Bash(flo*)",
