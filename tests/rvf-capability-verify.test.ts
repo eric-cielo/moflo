@@ -25,15 +25,15 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 // --- Module Imports ---
-import { RvfBackend } from '../v3/@claude-flow/memory/src/rvf-backend.js';
-import type { RvfBackendConfig } from '../v3/@claude-flow/memory/src/rvf-backend.js';
-import { HnswLite, cosineSimilarity } from '../v3/@claude-flow/memory/src/hnsw-lite.js';
-import { RvfEventLog } from '../v3/@claude-flow/shared/src/events/rvf-event-log.js';
-import { RvfEmbeddingCache } from '../v3/@claude-flow/embeddings/src/rvf-embedding-cache.js';
-import { RvfEmbeddingService } from '../v3/@claude-flow/embeddings/src/rvf-embedding-service.js';
-import { RvfLearningStore } from '../v3/@claude-flow/memory/src/rvf-learning-store.js';
-import { PersistentSonaCoordinator } from '../v3/@claude-flow/memory/src/persistent-sona.js';
-import { RvfMigrator } from '../v3/@claude-flow/memory/src/rvf-migration.js';
+import { RvfBackend } from '../v3/@moflo/memory/src/rvf-backend.js';
+import type { RvfBackendConfig } from '../v3/@moflo/memory/src/rvf-backend.js';
+import { HnswLite, cosineSimilarity } from '../v3/@moflo/memory/src/hnsw-lite.js';
+import { RvfEventLog } from '../v3/@moflo/shared/src/events/rvf-event-log.js';
+import { RvfEmbeddingCache } from '../v3/@moflo/embeddings/src/rvf-embedding-cache.js';
+import { RvfEmbeddingService } from '../v3/@moflo/embeddings/src/rvf-embedding-service.js';
+import { RvfLearningStore } from '../v3/@moflo/memory/src/rvf-learning-store.js';
+import { PersistentSonaCoordinator } from '../v3/@moflo/memory/src/persistent-sona.js';
+import { RvfMigrator } from '../v3/@moflo/memory/src/rvf-migration.js';
 
 // --- Helpers ---
 let tmpDir: string;
@@ -815,7 +815,7 @@ describe('11. DatabaseProvider Integration', () => {
   afterEach(() => { rmSync(tmpDir, { recursive: true, force: true }); });
 
   it('auto-selects RVF when available', async () => {
-    const { createDatabase, getAvailableProviders } = await import('../v3/@claude-flow/memory/src/database-provider.js');
+    const { createDatabase, getAvailableProviders } = await import('../v3/@moflo/memory/src/database-provider.js');
     const providers = await getAvailableProviders();
     assert.equal(providers.rvf, true);
 
@@ -829,7 +829,7 @@ describe('11. DatabaseProvider Integration', () => {
   });
 
   it('converts .db extension to .rvf', async () => {
-    const { createDatabase } = await import('../v3/@claude-flow/memory/src/database-provider.js');
+    const { createDatabase } = await import('../v3/@moflo/memory/src/database-provider.js');
     const db = await createDatabase(tmp('convert.db'), { provider: 'rvf' });
     await db.store(makeEntry('cv1'));
     await db.shutdown();

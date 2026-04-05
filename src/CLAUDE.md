@@ -14,14 +14,14 @@ npm install && npm run build && npm test
 | Package | Path | Purpose |
 |---------|------|---------|
 | `@moflo/cli` | `packages/cli/` | CLI entry point (40+ commands) |
-| `@claude-flow/guidance` | `packages/guidance/` | Governance control plane |
-| `@claude-flow/hooks` | `packages/hooks/` | Hooks + workers |
-| `@claude-flow/memory` | `packages/memory/` | AgentDB + HNSW vector search |
-| `@claude-flow/shared` | `packages/shared/` | Shared types and utilities |
-| `@claude-flow/security` | `packages/security/` | Input validation, CVE remediation |
-| `@claude-flow/embeddings` | `packages/embeddings/` | Vector embeddings (sql.js, HNSW) |
-| `@claude-flow/neural` | `packages/neural/` | Neural patterns (SONA) |
-| `@claude-flow/plugins` | `packages/plugins/` | Plugin system |
+| `@moflo/guidance` | `packages/guidance/` | Governance control plane |
+| `@moflo/hooks` | `packages/hooks/` | Hooks + workers |
+| `@moflo/memory` | `packages/memory/` | AgentDB + HNSW vector search |
+| `@moflo/shared` | `packages/shared/` | Shared types and utilities |
+| `@moflo/security` | `packages/security/` | Input validation, CVE remediation |
+| `@moflo/embeddings` | `packages/embeddings/` | Vector embeddings (sql.js, HNSW) |
+| `@moflo/neural` | `packages/neural/` | Neural patterns (SONA) |
+| `@moflo/plugins` | `packages/plugins/` | Plugin system |
 
 ## Code Quality
 

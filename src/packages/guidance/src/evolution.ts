@@ -12,7 +12,7 @@
  * 5. Advance  - Progress through stages with metric gates
  * 6. Promote / Rollback - Apply permanently or revert
  *
- * @module @claude-flow/guidance/evolution
+ * @module @moflo/guidance/evolution
  */
 
 import { createHash, createHmac, randomUUID } from 'node:crypto';

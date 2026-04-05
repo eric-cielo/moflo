@@ -1,5 +1,5 @@
 {
-  "name": "@claude-flow/guidance",
+  "name": "@moflo/guidance",
   "version": "3.0.0-alpha.1",
   "description": "Guidance Control Plane - Compiles, retrieves, enforces, and evolves guidance rules for Claude Code sessions",
   "type": "module",
@@ -140,9 +140,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@claude-flow/hooks": "^3.0.0-alpha.7",
-    "@claude-flow/memory": "^3.0.0-alpha.2",
-    "@claude-flow/shared": "^3.0.0-alpha.1"
+    "@moflo/hooks": "^3.0.0-alpha.7",
+    "@moflo/memory": "^3.0.0-alpha.2",
+    "@moflo/shared": "^3.0.0-alpha.1"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
@@ -189,7 +189,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/eric-cielo/moflo.git",
-    "directory": "v3/@claude-flow/guidance"
+    "directory": "v3/@moflo/guidance"
   },
   "publishConfig": {
     "access": "public",

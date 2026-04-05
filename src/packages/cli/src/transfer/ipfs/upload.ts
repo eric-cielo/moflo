@@ -2,7 +2,7 @@
  * IPFS Upload Module
  * Real upload support via web3.storage, Pinata, or local IPFS
  *
- * @module @claude-flow/cli/transfer/ipfs/upload
+ * @module @moflo/cli/transfer/ipfs/upload
  * @version 3.0.0
  */
 

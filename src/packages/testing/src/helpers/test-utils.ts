@@ -1,5 +1,5 @@
 /**
- * @claude-flow/testing - Test Utilities
+ * @moflo/testing - Test Utilities
  *
  * Common test utilities for async operations, timing, retries, and more.
  * Designed for robust V3 module testing.

@@ -9,10 +9,10 @@ import { join } from 'node:path';
 const {
   createDatabase,
   getAvailableProviders,
-} = await import('../v3/@claude-flow/memory/src/database-provider.js');
+} = await import('../v3/@moflo/memory/src/database-provider.js');
 
-type MemoryEntry = import('../v3/@claude-flow/memory/src/types.js').MemoryEntry;
-type IMemoryBackend = import('../v3/@claude-flow/memory/src/types.js').IMemoryBackend;
+type MemoryEntry = import('../v3/@moflo/memory/src/types.js').MemoryEntry;
+type IMemoryBackend = import('../v3/@moflo/memory/src/types.js').IMemoryBackend;
 
 // ---------------------------------------------------------------------------
 // Helpers

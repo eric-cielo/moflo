@@ -1,5 +1,5 @@
 /**
- * @claude-flow/plugins
+ * @moflo/plugins
  *
  * Unified Plugin SDK for Claude Flow v3
  *
@@ -20,7 +20,7 @@
  *   WorkerFactory,
  *   ProviderFactory,
  *   Security,
- * } from '@claude-flow/plugins';
+ * } from '@moflo/plugins';
  *
  * // Create a plugin with the builder
  * const myPlugin = new PluginBuilder('my-plugin', '1.0.0')

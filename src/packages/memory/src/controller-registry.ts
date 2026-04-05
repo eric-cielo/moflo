@@ -1,13 +1,13 @@
 /**
  * ControllerRegistry - Central controller lifecycle management for AgentDB v3
  *
- * Wraps the AgentDB class and adds CLI-specific controllers from @claude-flow/memory.
+ * Wraps the AgentDB class and adds CLI-specific controllers from @moflo/memory.
  * Manages initialization (level-based ordering), health checks, and graceful shutdown.
  *
  * Per ADR-053: Replaces memory-initializer.js's raw sql.js usage with a unified
  * controller ecosystem routing all memory operations through AgentDB v3.
  *
- * @module @claude-flow/memory/controller-registry
+ * @module @moflo/memory/controller-registry
  */
 
 import { EventEmitter } from 'node:events';
@@ -48,7 +48,7 @@ export type AgentDBControllerName =
   | 'graphAdapter';
 
 /**
- * CLI-layer controllers (from @claude-flow/memory or new)
+ * CLI-layer controllers (from @moflo/memory or new)
  */
 export type CLIControllerName =
   | 'learningBridge'

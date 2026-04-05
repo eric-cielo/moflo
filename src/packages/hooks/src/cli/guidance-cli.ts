@@ -6,12 +6,12 @@
  * Outputs plain text or JSON that Claude Code hooks can consume.
  *
  * Usage:
- *   npx @claude-flow/hooks session-context
- *   npx @claude-flow/hooks user-prompt "Fix authentication bug"
- *   npx @claude-flow/hooks pre-edit "/path/to/file.ts"
- *   npx @claude-flow/hooks route "Implement caching layer"
+ *   npx @moflo/hooks session-context
+ *   npx @moflo/hooks user-prompt "Fix authentication bug"
+ *   npx @moflo/hooks pre-edit "/path/to/file.ts"
+ *   npx @moflo/hooks route "Implement caching layer"
  *
- * @module @claude-flow/hooks/cli/guidance-cli
+ * @module @moflo/hooks/cli/guidance-cli
  */
 
 import { GuidanceProvider } from '../reasoningbank/guidance-provider.js';
@@ -433,9 +433,9 @@ async function main(): Promise<void> {
 
 function printHelp(): void {
   console.log(`
-@claude-flow/hooks - V3 Guidance System CLI
+@moflo/hooks - V3 Guidance System CLI
 
-Usage: npx @claude-flow/hooks <command> [args]
+Usage: npx @moflo/hooks <command> [args]
 
 Guidance Commands (for Claude hooks):
   session-context           Output project context for SessionStart hook
@@ -496,28 +496,28 @@ Exit Codes:
 
 Examples:
   # Session start guidance
-  npx @claude-flow/hooks session-context
+  npx @moflo/hooks session-context
 
   # User prompt analysis
-  npx @claude-flow/hooks user-prompt "Fix authentication security vulnerability"
+  npx @moflo/hooks user-prompt "Fix authentication security vulnerability"
 
   # Pre-edit security check
-  npx @claude-flow/hooks pre-edit "src/auth/login.ts"
+  npx @moflo/hooks pre-edit "src/auth/login.ts"
 
   # Agent routing
-  npx @claude-flow/hooks route "Implement HNSW vector search"
+  npx @moflo/hooks route "Implement HNSW vector search"
 
   # Store a learned pattern
-  npx @claude-flow/hooks store "Use dependency injection for testability" architecture
+  npx @moflo/hooks store "Use dependency injection for testability" architecture
 
   # Broadcast pattern to swarm
-  npx @claude-flow/hooks swarm-pattern-broadcast "Use HNSW for 150x faster search" memory
+  npx @moflo/hooks swarm-pattern-broadcast "Use HNSW for 150x faster search" memory
 
   # Initiate consensus
-  npx @claude-flow/hooks swarm-consensus "Which auth method?" "JWT,OAuth2,Session"
+  npx @moflo/hooks swarm-consensus "Which auth method?" "JWT,OAuth2,Session"
 
   # Hand off task
-  npx @claude-flow/hooks swarm-handoff security-auditor "Review auth implementation"
+  npx @moflo/hooks swarm-handoff security-auditor "Review auth implementation"
 `);
 }
 

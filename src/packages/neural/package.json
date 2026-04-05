@@ -1,5 +1,5 @@
 {
-  "name": "@claude-flow/neural",
+  "name": "@moflo/neural",
   "version": "3.0.0-alpha.7",
   "type": "module",
   "description": "Neural module - SONA learning integration, neural modes",
@@ -13,7 +13,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@claude-flow/memory": "^3.0.0-alpha.2"
+    "@moflo/memory": "^3.0.0-alpha.2"
   },
   "optionalDependencies": {
     "agentdb": "^2.0.0 || ^3.0.0-alpha.1"

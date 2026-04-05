@@ -8,7 +8,7 @@
  *
  * The bridge degrades gracefully when no local models are available.
  *
- * @module @claude-flow/cli/appliance/ruvllm-bridge
+ * @module @moflo/cli/appliance/ruvllm-bridge
  */
 
 import { readdir, stat } from 'node:fs/promises';

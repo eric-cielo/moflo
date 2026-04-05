@@ -8,7 +8,7 @@
  *   4-byte magic "RVLS" + newline
  *   One JSON record per line: {"type":"pattern"|"lora"|"ewc"|"trajectory","data":{...}}
  *
- * @module @claude-flow/memory/rvf-learning-store
+ * @module @moflo/memory/rvf-learning-store
  */
 
 import * as fs from 'node:fs';

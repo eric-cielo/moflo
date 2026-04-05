@@ -20,7 +20,7 @@
  * - Emergency veto power
  * - Immutability protection
  *
- * @module @claude-flow/guidance/meta-governance
+ * @module @moflo/guidance/meta-governance
  * @author Claude Flow Team
  */
 

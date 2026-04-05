@@ -1,5 +1,5 @@
 /**
- * @claude-flow/claims - Event Store Implementation
+ * @moflo/claims - Event Store Implementation
  * Event sourcing storage for claims (ADR-007, ADR-016)
  *
  * @module v3/claims/infrastructure/event-store

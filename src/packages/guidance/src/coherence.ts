@@ -13,7 +13,7 @@
  * - Checks budgets and emits alerts when thresholds are crossed
  * - Estimates remaining capacity and costs
  *
- * @module @claude-flow/guidance/coherence
+ * @module @moflo/guidance/coherence
  */
 
 import type { RunEvent, OptimizationMetrics } from './types.js';

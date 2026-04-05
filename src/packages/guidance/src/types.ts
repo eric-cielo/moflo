@@ -4,7 +4,7 @@
  * Types for the guidance compiler, shard retriever, enforcement gates,
  * run ledger, evaluators, and optimizer loop.
  *
- * @module @claude-flow/guidance/types
+ * @module @moflo/guidance/types
  */
 
 // ============================================================================

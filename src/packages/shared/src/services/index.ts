@@ -1,7 +1,7 @@
 /**
  * Shared Services
  *
- * @module @claude-flow/shared/services
+ * @module @moflo/shared/services
  */
 
 export {

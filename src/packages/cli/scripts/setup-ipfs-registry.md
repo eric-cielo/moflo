@@ -281,7 +281,7 @@ steps:
   - name: 'node:20'
     entrypoint: 'npx'
     args: ['tsx', 'scripts/publish-registry.ts', '--dry-run']
-    dir: 'v3/@claude-flow/cli'
+    dir: 'v3/@moflo/cli'
 
   # Upload to GCS
   - name: 'gcr.io/cloud-builders/gsutil'

@@ -1,5 +1,5 @@
 {
-  "name": "@claude-flow/memory",
+  "name": "@moflo/memory",
   "version": "3.0.0-alpha.11",
   "type": "module",
   "description": "Memory module - AgentDB unification, HNSW indexing, vector search, hybrid SQLite+AgentDB backend (ADR-009)",

@@ -6,7 +6,7 @@
  * write to specific namespaces, enforces rate limits, and detects
  * contradictions between memory entries.
  *
- * @module @claude-flow/guidance/memory-gate
+ * @module @moflo/guidance/memory-gate
  */
 
 import { createHash } from 'node:crypto';

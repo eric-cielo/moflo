@@ -15,7 +15,7 @@
  * 1. Reviewer rating (pass/fail)
  * 2. Architecture compliance (pass/fail)
  *
- * @module @claude-flow/guidance/ledger
+ * @module @moflo/guidance/ledger
  */
 
 import { randomUUID } from 'node:crypto';

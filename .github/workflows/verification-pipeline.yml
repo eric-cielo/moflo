@@ -260,13 +260,13 @@ jobs:
       - name: Build CLI package
         run: |
           echo "🔨 Building CLI package..."
-          cd v3/@claude-flow/cli && npm run build || echo "✅ CLI build completed (or already built)"
+          cd v3/@moflo/cli && npm run build || echo "✅ CLI build completed (or already built)"
         continue-on-error: true
 
       - name: Verify CLI availability
         run: |
           echo "✅ Verifying CLI..."
-          test -f v3/@claude-flow/cli/bin/cli.js && echo "CLI binary exists" || echo "⚠️ CLI binary not found (non-blocking)"
+          test -f v3/@moflo/cli/bin/cli.js && echo "CLI binary exists" || echo "⚠️ CLI binary not found (non-blocking)"
         continue-on-error: true
 
       - name: Package for distribution

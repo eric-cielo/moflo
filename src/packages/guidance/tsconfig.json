@@ -4,7 +4,7 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "paths": {
-      "@claude-flow/hooks": ["../hooks/src"]
+      "@moflo/hooks": ["../hooks/src"]
     }
   },
   "include": ["src/**/*.ts"],

@@ -4,7 +4,7 @@
  * Implements MCP tools for ADR-016: Collaborative Issue Claims
  * Provides programmatic access to claim operations for MCP clients.
  *
- * @module @claude-flow/cli/mcp-tools/claims
+ * @module @moflo/cli/mcp-tools/claims
  */
 
 import type { MCPTool } from './types.js';

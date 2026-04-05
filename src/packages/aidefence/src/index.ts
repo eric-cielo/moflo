@@ -1,5 +1,5 @@
 /**
- * @claude-flow/aidefence
+ * @moflo/aidefence
  *
  * AI Manipulation Defense System with self-learning capabilities.
  *
@@ -12,7 +12,7 @@
  *
  * @example
  * ```typescript
- * import { createAIDefence } from '@claude-flow/aidefence';
+ * import { createAIDefence } from '@moflo/aidefence';
  *
  * const aidefence = createAIDefence({ enableLearning: true });
  *

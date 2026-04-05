@@ -29,7 +29,7 @@ graph LR
 ## Usage
 
 ```ts
-import { getKernel, isWasmAvailable } from '@claude-flow/guidance/wasm-kernel';
+import { getKernel, isWasmAvailable } from '@moflo/guidance/wasm-kernel';
 
 const k = getKernel();
 console.log(k.available); // true = WASM, false = JS fallback
@@ -215,7 +215,7 @@ The fallback is functionally identical. The acceptance tests verify output parit
 
 ```bash
 # Run all guidance tests (includes WASM acceptance tests)
-cd v3/@claude-flow/guidance
+cd v3/@moflo/guidance
 npx vitest run
 
 # Run only WASM tests

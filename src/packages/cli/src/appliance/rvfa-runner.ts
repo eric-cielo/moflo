@@ -4,7 +4,7 @@
  * Supports three run modes (cli, mcp, verify) and two isolation
  * strategies (native Node.js, container via Docker).
  *
- * @module @claude-flow/cli/appliance/rvfa-runner
+ * @module @moflo/cli/appliance/rvfa-runner
  */
 
 import { writeFile, mkdir, rm } from 'node:fs/promises';

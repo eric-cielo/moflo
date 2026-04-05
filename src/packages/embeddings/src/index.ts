@@ -14,7 +14,7 @@
  * - Hyperbolic embeddings (Poincaré ball)
  * - Neural substrate integration (drift, memory, swarm)
  *
- * @module @claude-flow/embeddings
+ * @module @moflo/embeddings
  */
 
 export * from './types.js';

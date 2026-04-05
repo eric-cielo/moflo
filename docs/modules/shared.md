@@ -1,7 +1,7 @@
-# @claude-flow/shared
+# @moflo/shared
 
-[![npm version](https://img.shields.io/npm/v/@claude-flow/shared.svg)](https://www.npmjs.com/package/@claude-flow/shared)
-[![npm downloads](https://img.shields.io/npm/dm/@claude-flow/shared.svg)](https://www.npmjs.com/package/@claude-flow/shared)
+[![npm version](https://img.shields.io/npm/v/@moflo/shared.svg)](https://www.npmjs.com/package/@moflo/shared)
+[![npm downloads](https://img.shields.io/npm/dm/@moflo/shared.svg)](https://www.npmjs.com/package/@moflo/shared)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![Core](https://img.shields.io/badge/Module-Core-blue.svg)](https://github.com/eric-cielo/moflo)
@@ -21,7 +21,7 @@
 ## Installation
 
 ```bash
-npm install @claude-flow/shared
+npm install @moflo/shared
 ```
 
 ## Quick Start
@@ -33,7 +33,7 @@ import {
   MemoryEntry,
   EventBus,
   ConfigLoader
-} from '@claude-flow/shared';
+} from '@moflo/shared';
 
 // Use shared types
 const agent: AgentState = {
@@ -57,16 +57,16 @@ eventBus.on('task.completed', (event) => {
 
 ```typescript
 // Main entry (recommended - includes all modules)
-import { ... } from '@claude-flow/shared';
+import { ... } from '@moflo/shared';
 
 // Submodule exports (for tree-shaking or specific imports)
-import { ... } from '@claude-flow/shared/types';      // Type definitions
-import { ... } from '@claude-flow/shared/core';       // Config, interfaces, orchestrator
-import { ... } from '@claude-flow/shared/events';     // Event sourcing (ADR-007)
-import { ... } from '@claude-flow/shared/hooks';      // Hooks system
-import { ... } from '@claude-flow/shared/mcp';        // MCP server infrastructure
-import { ... } from '@claude-flow/shared/security';   // Security utilities
-import { ... } from '@claude-flow/shared/resilience'; // Retry, circuit breaker, rate limiter
+import { ... } from '@moflo/shared/types';      // Type definitions
+import { ... } from '@moflo/shared/core';       // Config, interfaces, orchestrator
+import { ... } from '@moflo/shared/events';     // Event sourcing (ADR-007)
+import { ... } from '@moflo/shared/hooks';      // Hooks system
+import { ... } from '@moflo/shared/mcp';        // MCP server infrastructure
+import { ... } from '@moflo/shared/security';   // Security utilities
+import { ... } from '@moflo/shared/resilience'; // Retry, circuit breaker, rate limiter
 ```
 
 ## API Reference
@@ -105,7 +105,7 @@ import type {
   MCPTool,
   MCPRequest,
   MCPResponse
-} from '@claude-flow/shared/types';
+} from '@moflo/shared/types';
 ```
 
 ### Core Interfaces
@@ -117,7 +117,7 @@ import type {
   IMemory,
   ICoordinator,
   IEventHandler
-} from '@claude-flow/shared/core';
+} from '@moflo/shared/core';
 
 // Agent interface
 interface IAgent {
@@ -152,7 +152,7 @@ import {
   ConfigValidator,
   defaultConfig,
   ConfigSchema
-} from '@claude-flow/shared/core';
+} from '@moflo/shared/core';
 
 // Load configuration
 const config = await ConfigLoader.load('./config.json');
@@ -171,7 +171,7 @@ const defaults = defaultConfig();
 ### Event System
 
 ```typescript
-import { EventBus, EventCoordinator } from '@claude-flow/shared/events';
+import { EventBus, EventCoordinator } from '@moflo/shared/events';
 
 const eventBus = new EventBus();
 
@@ -202,7 +202,7 @@ coordinator.orchestrate([
 ### Hooks System
 
 ```typescript
-import { HooksManager, Hook } from '@claude-flow/shared/hooks';
+import { HooksManager, Hook } from '@moflo/shared/hooks';
 
 const hooks = new HooksManager();
 
@@ -234,7 +234,7 @@ import {
   createSessionManager,
   defineTool,
   quickStart,
-} from '@claude-flow/shared/mcp';
+} from '@moflo/shared/mcp';
 
 // Quick start - simplest way to create an MCP server
 const server = await quickStart({
@@ -265,7 +265,7 @@ const session = await sessions.create({ clientInfo: { name: 'client' } });
 ### Health Monitor
 
 ```typescript
-import { HealthMonitor, HealthCheck } from '@claude-flow/shared/core';
+import { HealthMonitor, HealthCheck } from '@moflo/shared/core';
 
 const monitor = new HealthMonitor();
 
@@ -306,17 +306,17 @@ export * from './types/mcp.types';
 
 This package is a dependency of all other @claude-flow modules:
 
-- [@claude-flow/cli](../cli) - CLI module
-- [@claude-flow/security](../security) - Security & validation
-- [@claude-flow/memory](../memory) - AgentDB & HNSW indexing
-- [@claude-flow/neural](../neural) - SONA learning & RL algorithms
-- [@claude-flow/performance](../performance) - Benchmarking & optimization
-- [@claude-flow/swarm](../swarm) - 15-agent coordination
-- [@claude-flow/integration](../integration) - agentic-flow@alpha bridge
-- [@claude-flow/testing](../testing) - TDD framework & fixtures
-- [@claude-flow/deployment](../deployment) - Release management
-- [@claude-flow/embeddings](../embeddings) - Embedding service
-- [@claude-flow/hooks](../hooks) - Hooks system
+- [@moflo/cli](../cli) - CLI module
+- [@moflo/security](../security) - Security & validation
+- [@moflo/memory](../memory) - AgentDB & HNSW indexing
+- [@moflo/neural](../neural) - SONA learning & RL algorithms
+- [@moflo/performance](../performance) - Benchmarking & optimization
+- [@moflo/swarm](../swarm) - 15-agent coordination
+- [@moflo/integration](../integration) - agentic-flow@alpha bridge
+- [@moflo/testing](../testing) - TDD framework & fixtures
+- [@moflo/deployment](../deployment) - Release management
+- [@moflo/embeddings](../embeddings) - Embedding service
+- [@moflo/hooks](../hooks) - Hooks system
 
 ## License
 

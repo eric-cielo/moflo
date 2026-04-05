@@ -9,8 +9,8 @@ You've written 50 rules in `CLAUDE.md`. How do you know agents actually follow t
 ## Step 1: Define Test Tasks
 
 ```ts
-import { createComplianceSuite } from '@claude-flow/guidance/headless';
-import type { TestTask } from '@claude-flow/guidance/headless';
+import { createComplianceSuite } from '@moflo/guidance/headless';
+import type { TestTask } from '@moflo/guidance/headless';
 
 const tasks: TestTask[] = [
   {
@@ -89,8 +89,8 @@ for (const result of summary.results) {
 For more control, use the `HeadlessRunner` class:
 
 ```ts
-import { createHeadlessRunner } from '@claude-flow/guidance/headless';
-import { createLedger } from '@claude-flow/guidance/ledger';
+import { createHeadlessRunner } from '@moflo/guidance/headless';
+import { createLedger } from '@moflo/guidance/ledger';
 
 const ledger = createLedger();
 const runner = createHeadlessRunner(undefined, ledger, 'constitution-hash');
@@ -129,7 +129,7 @@ import {
   TestsPassEvaluator,
   ForbiddenCommandEvaluator,
   ViolationRateEvaluator,
-} from '@claude-flow/guidance/ledger';
+} from '@moflo/guidance/ledger';
 
 const ledger = createLedger();
 
@@ -195,8 +195,8 @@ jobs:
 
 ```ts
 // scripts/run-compliance.ts
-import { createGuidanceControlPlane } from '@claude-flow/guidance';
-import { createComplianceSuite } from '@claude-flow/guidance/headless';
+import { createGuidanceControlPlane } from '@moflo/guidance';
+import { createComplianceSuite } from '@moflo/guidance/headless';
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const plane = createGuidanceControlPlane();
@@ -221,7 +221,7 @@ console.log(`All ${summary.total} compliance tests passed`);
 After accumulating enough ledger data, the optimizer identifies patterns and evolves rules:
 
 ```ts
-import { createOptimizer } from '@claude-flow/guidance/optimizer';
+import { createOptimizer } from '@moflo/guidance/optimizer';
 
 const optimizer = createOptimizer();
 
@@ -243,7 +243,7 @@ if (ledger.eventCount >= 10) {
 For cross-session analysis, use the persistent ledger:
 
 ```ts
-import { createPersistentLedger, createEventStore } from '@claude-flow/guidance/persistence';
+import { createPersistentLedger, createEventStore } from '@moflo/guidance/persistence';
 
 const store = createEventStore({ dataDir: './.claude-flow/guidance/events' });
 const ledger = createPersistentLedger(store);

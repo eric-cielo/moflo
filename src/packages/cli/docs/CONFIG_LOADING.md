@@ -9,7 +9,7 @@ The CLI module now supports loading configuration from multiple sources with pro
 ### Files Added/Modified
 
 1. **`src/config-adapter.ts`** (NEW)
-   - Converts between `SystemConfig` (from `@claude-flow/shared`) and `V3Config` (CLI-specific format)
+   - Converts between `SystemConfig` (from `@moflo/shared`) and `V3Config` (CLI-specific format)
    - Provides bidirectional conversion functions:
      - `systemConfigToV3Config()` - Convert SystemConfig to V3Config
      - `v3ConfigToSystemConfig()` - Convert V3Config to SystemConfig
@@ -223,7 +223,7 @@ npx vitest run __tests__/config-loading.test.ts
 
 1. **Adapter Pattern** - Separates SystemConfig (shared) from V3Config (CLI-specific)
 2. **Optional Loading** - Config files are optional, failures don't crash CLI
-3. **Validation** - Uses existing Zod schemas from `@claude-flow/shared`
+3. **Validation** - Uses existing Zod schemas from `@moflo/shared`
 4. **Merge Strategy** - Merges loaded config with defaults
 5. **Environment Priority** - Environment variables override file config
 

@@ -1,4 +1,4 @@
-// @ts-nocheck - CLI integration requires the full @claude-flow/cli package
+// @ts-nocheck - CLI integration requires the full @moflo/cli package
 /**
  * V3 CLI Claims Command
  * Issue claiming and work distribution management

@@ -20,7 +20,7 @@ import { mofloImport } from '../services/moflo-require.js';
 // Dynamic imports for embeddings package (optional — may not be installed)
 async function getEmbeddings() {
   try {
-    return await import('@claude-flow/embeddings');
+    return await import('@moflo/embeddings');
   } catch {
     return null;
   }
@@ -729,7 +729,7 @@ const initCommand: Command = {
         } else {
           // Simulate download for when embeddings package not available
           await new Promise(r => setTimeout(r, 500));
-          output.writeln(output.dim('  (Simulated - @claude-flow/embeddings not installed)'));
+          output.writeln(output.dim('  (Simulated - @moflo/embeddings not installed)'));
         }
       }
 
@@ -868,7 +868,7 @@ const chunkCommand: Command = {
     output.writeln(output.dim('─'.repeat(50)));
 
     if (!embeddings) {
-      output.printWarning('@claude-flow/embeddings not installed, showing preview');
+      output.printWarning('@moflo/embeddings not installed, showing preview');
       output.writeln();
       output.printBox([
         `Strategy: ${strategy}`,
@@ -973,11 +973,11 @@ const hyperbolicCommand: Command = {
 
     // Try to import hyperbolic functions from embeddings package
     try {
-      const hyperbolic = await import('@claude-flow/embeddings').then(m => m).catch(() => null);
+      const hyperbolic = await import('@moflo/embeddings').then(m => m).catch(() => null);
 
       if (!hyperbolic || !hyperbolic.euclideanToPoincare) {
-        output.printWarning('@claude-flow/embeddings hyperbolic module not available');
-        output.printInfo('Install with: npm install @claude-flow/embeddings');
+        output.printWarning('@moflo/embeddings hyperbolic module not available');
+        output.printInfo('Install with: npm install @moflo/embeddings');
         return { success: false, exitCode: 1 };
       }
 

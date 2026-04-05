@@ -1,5 +1,5 @@
 {
-  "name": "@claude-flow/workflows",
+  "name": "@moflo/workflows",
   "version": "3.0.0-alpha.1",
   "description": "Generalized Workflow Engine for MoFlo V4 - Step Commands, Registry, and YAML/JSON Definitions",
   "main": "dist/index.js",
@@ -18,14 +18,14 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@claude-flow/memory": "^3.0.0-alpha.2",
-    "@claude-flow/plugins": "^3.0.0-alpha.1"
+    "@moflo/memory": "^3.0.0-alpha.2",
+    "@moflo/plugins": "^3.0.0-alpha.1"
   },
   "peerDependenciesMeta": {
-    "@claude-flow/plugins": {
+    "@moflo/plugins": {
       "optional": true
     },
-    "@claude-flow/memory": {
+    "@moflo/memory": {
       "optional": true
     }
   },

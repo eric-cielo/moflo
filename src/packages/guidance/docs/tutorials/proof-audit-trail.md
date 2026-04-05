@@ -11,7 +11,7 @@ The ProofChain solves this by producing hash-chained, HMAC-signed envelopes for 
 ## Step 1: Create a Proof Chain
 
 ```ts
-import { createProofChain } from '@claude-flow/guidance/proof';
+import { createProofChain } from '@moflo/guidance/proof';
 
 // The HMAC key should be a secret known only to the auditing system
 const chain = createProofChain('audit-hmac-secret-key');
@@ -22,7 +22,7 @@ const chain = createProofChain('audit-hmac-secret-key');
 After each run event (a task execution), append it to the chain with its tool calls and memory operations:
 
 ```ts
-import type { RunEvent } from '@claude-flow/guidance';
+import type { RunEvent } from '@moflo/guidance';
 
 // Record tool calls that happened during this event
 const toolCalls = [
@@ -114,7 +114,7 @@ const serialized = chain.serialize();
 // serialized is a JSON-serializable object
 
 // Later, restore it
-import { ProofChain } from '@claude-flow/guidance/proof';
+import { ProofChain } from '@moflo/guidance/proof';
 const restored = ProofChain.deserialize(serialized, 'audit-hmac-secret-key');
 const stillValid = restored.verify(); // true if nothing was modified
 ```
@@ -138,7 +138,7 @@ for (const entry of envelope.memoryLineage) {
 For large chains, use the WASM kernel for faster hash computation:
 
 ```ts
-import { getKernel } from '@claude-flow/guidance/wasm-kernel';
+import { getKernel } from '@moflo/guidance/wasm-kernel';
 
 const k = getKernel();
 
@@ -155,8 +155,8 @@ At 10,000 events, WASM completes chain verification in ~61ms vs ~76ms for JS.
 ## Complete Example
 
 ```ts
-import { createProofChain } from '@claude-flow/guidance/proof';
-import { createGuidanceControlPlane } from '@claude-flow/guidance';
+import { createProofChain } from '@moflo/guidance/proof';
+import { createGuidanceControlPlane } from '@moflo/guidance';
 
 const plane = createGuidanceControlPlane();
 await plane.initialize();
@@ -188,7 +188,7 @@ const serialized = chain.serialize();
 Pin critical audit facts so they can't be overridden:
 
 ```ts
-import { createTruthAnchorStore } from '@claude-flow/guidance/truth-anchors';
+import { createTruthAnchorStore } from '@moflo/guidance/truth-anchors';
 
 const anchors = createTruthAnchorStore('anchor-signing-key');
 

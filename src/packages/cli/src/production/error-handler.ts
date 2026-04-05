@@ -7,7 +7,7 @@
  * - Structured error responses
  * - Error aggregation and reporting
  *
- * @module @claude-flow/cli/production/error-handler
+ * @module @moflo/cli/production/error-handler
  */
 
 // ============================================================================

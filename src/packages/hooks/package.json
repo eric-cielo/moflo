@@ -1,5 +1,5 @@
 {
-  "name": "@claude-flow/hooks",
+  "name": "@moflo/hooks",
   "version": "3.0.0-alpha.7",
   "description": "V3 Hooks System - Event-driven lifecycle hooks with ReasoningBank learning integration",
   "type": "module",
@@ -60,10 +60,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@claude-flow/memory": "^3.0.0-alpha.2",
-    "@claude-flow/neural": "^3.0.0-alpha.2",
-    "@claude-flow/shared": "^3.0.0-alpha.1",
-    "@claude-flow/swarm": "^3.0.0-alpha.1",
+    "@moflo/memory": "^3.0.0-alpha.2",
+    "@moflo/neural": "^3.0.0-alpha.2",
+    "@moflo/shared": "^3.0.0-alpha.1",
+    "@moflo/swarm": "^3.0.0-alpha.1",
     "zod": "^3.23.0"
   },
   "optionalDependencies": {},
@@ -73,7 +73,7 @@
     "vitest": "^4.0.16"
   },
   "peerDependencies": {
-    "@claude-flow/shared": "^3.0.0-alpha.1"
+    "@moflo/shared": "^3.0.0-alpha.1"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -92,7 +92,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/eric-cielo/moflo.git",
-    "directory": "v3/@claude-flow/hooks"
+    "directory": "v3/@moflo/hooks"
   },
   "publishConfig": {
     "access": "public",

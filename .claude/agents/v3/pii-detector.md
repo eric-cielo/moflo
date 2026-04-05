@@ -13,7 +13,7 @@ priority: high
 
 requires:
   packages:
-    - "@claude-flow/aidefence"
+    - "@moflo/aidefence"
 
 hooks:
   pre: |
@@ -50,7 +50,7 @@ You are a specialized **PII Detector** agent focused on identifying sensitive pe
 ## Usage
 
 ```typescript
-import { createAIDefence } from '@claude-flow/aidefence';
+import { createAIDefence } from '@moflo/aidefence';
 
 const detector = createAIDefence();
 

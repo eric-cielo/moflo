@@ -94,8 +94,8 @@ Pre-define shard groups (e.g., "security pack", "testing pack") and load by task
 
 ## References
 
-- `v3/@claude-flow/guidance/src/types.ts` -- `Constitution`, `RuleShard`, `PolicyBundle` type definitions
-- `v3/@claude-flow/guidance/src/compiler.ts` -- `buildConstitution()`, `buildShards()`, `CONSTITUTION_MARKERS`
-- `v3/@claude-flow/guidance/src/retriever.ts` -- `ShardRetriever.retrieve()`, `selectWithContradictionCheck()`
+- `v3/@moflo/guidance/src/types.ts` -- `Constitution`, `RuleShard`, `PolicyBundle` type definitions
+- `v3/@moflo/guidance/src/compiler.ts` -- `buildConstitution()`, `buildShards()`, `CONSTITUTION_MARKERS`
+- `v3/@moflo/guidance/src/retriever.ts` -- `ShardRetriever.retrieve()`, `selectWithContradictionCheck()`
 - ADR-G001 -- Why a separate control plane
 - ADR-G003 -- Intent classification for shard retrieval

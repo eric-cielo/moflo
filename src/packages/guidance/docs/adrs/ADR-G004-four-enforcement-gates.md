@@ -123,7 +123,7 @@ Assign a risk score and let the model decide whether to proceed. Rejected becaus
 
 ## References
 
-- `v3/@claude-flow/guidance/src/gates.ts` -- `EnforcementGates` class, `GateConfig`, default patterns
-- `v3/@claude-flow/guidance/src/types.ts` -- `GateDecision`, `GateResult`, `GateConfig`
-- `v3/@claude-flow/guidance/src/index.ts` -- `GuidanceControlPlane.evaluateCommand()`, `evaluateToolUse()`, `evaluateEdit()`
+- `v3/@moflo/guidance/src/gates.ts` -- `EnforcementGates` class, `GateConfig`, default patterns
+- `v3/@moflo/guidance/src/types.ts` -- `GateDecision`, `GateResult`, `GateConfig`
+- `v3/@moflo/guidance/src/index.ts` -- `GuidanceControlPlane.evaluateCommand()`, `evaluateToolUse()`, `evaluateEdit()`
 - ADR-G001 -- Why enforcement lives outside the model

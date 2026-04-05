@@ -7,9 +7,9 @@
     "declaration": true,
     "declarationMap": true,
     "paths": {
-      "@claude-flow/shared": ["../shared/src"],
-      "@claude-flow/memory": ["../memory/src"],
-      "@claude-flow/swarm": ["../swarm/src"]
+      "@moflo/shared": ["../shared/src"],
+      "@moflo/memory": ["../memory/src"],
+      "@moflo/swarm": ["../swarm/src"]
     }
   },
   "include": ["src/**/*"],

@@ -10,7 +10,7 @@
  *
  * Promotion rule: Local rules that win twice become root rules.
  *
- * @module @claude-flow/guidance/optimizer
+ * @module @moflo/guidance/optimizer
  */
 
 import { randomUUID } from 'node:crypto';

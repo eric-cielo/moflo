@@ -10,7 +10,7 @@
  * - Memory lineage (reads/writes with value hashes)
  * - HMAC-SHA256 signature over the entire envelope body
  *
- * @module @claude-flow/guidance/proof
+ * @module @moflo/guidance/proof
  */
 
 import { createHash, createHmac, randomUUID } from 'node:crypto';

@@ -1,5 +1,5 @@
 /**
- * @claude-flow/testing - Setup & Teardown Helpers
+ * @moflo/testing - Setup & Teardown Helpers
  *
  * Global setup and teardown utilities for V3 module testing.
  * Provides test isolation, resource cleanup, and environment management.

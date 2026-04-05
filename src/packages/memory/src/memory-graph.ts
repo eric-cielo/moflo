@@ -1,5 +1,5 @@
 /**
- * Knowledge Graph Module for @claude-flow/memory
+ * Knowledge Graph Module for @moflo/memory
  *
  * Builds a graph from MemoryEntry.references, computes PageRank,
  * detects communities via label propagation, and provides

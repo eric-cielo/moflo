@@ -65,7 +65,7 @@ echo "✅ Commit recorded"
 /**
  * Generate a minimal auto-memory-hook.mjs fallback for fresh installs.
  * This ESM script handles import/sync/status commands gracefully when
- * @claude-flow/memory is not installed. Gets overwritten when source copy succeeds.
+ * @moflo/memory is not installed. Gets overwritten when source copy succeeds.
  */
 export function generateAutoMemoryHook(): string {
   return `#!/usr/bin/env node
@@ -102,11 +102,11 @@ async function loadMemoryPackage() {
   try {
     const { createRequire } = await import('module');
     const require = createRequire(join(PROJECT_ROOT, 'package.json'));
-    return require('@claude-flow/memory');
+    return require('@moflo/memory');
   } catch { /* fall through */ }
 
-  // Strategy 2: ESM import (works when @claude-flow/memory is a direct dependency)
-  try { return await import('@claude-flow/memory'); } catch { /* fall through */ }
+  // Strategy 2: ESM import (works when @moflo/memory is a direct dependency)
+  try { return await import('@moflo/memory'); } catch { /* fall through */ }
 
   // Strategy 3: Walk up from PROJECT_ROOT looking for the package in any node_modules
   let searchDir = PROJECT_ROOT;

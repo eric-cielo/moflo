@@ -635,15 +635,15 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
       result.preserved.push('.claude-flow/security/audit-status.json');
     }
 
-    // 3. Fix .mcp.json — replace stale @claude-flow/cli references with moflo
+    // 3. Fix .mcp.json — replace stale @moflo/cli references with moflo
     const mcpPath = path.join(targetDir, '.mcp.json');
     if (fs.existsSync(mcpPath)) {
       try {
         const mcpRaw = fs.readFileSync(mcpPath, 'utf-8');
-        if (mcpRaw.includes('@claude-flow/cli')) {
+        if (mcpRaw.includes('@moflo/cli')) {
           const mcpFixed = mcpRaw.replace(/@claude-flow\/cli(@latest)?/g, 'moflo');
           fs.writeFileSync(mcpPath, mcpFixed, 'utf-8');
-          result.updated.push('.mcp.json (replaced @claude-flow/cli with moflo)');
+          result.updated.push('.mcp.json (replaced @moflo/cli with moflo)');
         }
       } catch {
         // Non-fatal — .mcp.json may be malformed

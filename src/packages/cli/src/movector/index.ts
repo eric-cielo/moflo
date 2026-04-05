@@ -10,7 +10,7 @@
  * - Graph boundary analysis
  * - Flash Attention for faster similarity computations
  *
- * @module @claude-flow/cli/movector
+ * @module @moflo/cli/movector
  */
 
 export { QLearningRouter, createQLearningRouter, type QLearningRouterConfig, type RouteDecision } from './q-learning-router.js';

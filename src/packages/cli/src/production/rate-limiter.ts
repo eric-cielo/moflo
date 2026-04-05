@@ -7,7 +7,7 @@
  * - Burst allowance
  * - Sliding window tracking
  *
- * @module @claude-flow/cli/production/rate-limiter
+ * @module @moflo/cli/production/rate-limiter
  */
 
 // ============================================================================

@@ -67,7 +67,7 @@ V3 represents a complete architectural overhaul:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     @claude-flow/v3-monorepo                    │
+│                     @moflo/v3-monorepo                    │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
@@ -100,7 +100,7 @@ V3 represents a complete architectural overhaul:
 
 ```
 v3/
-├── @claude-flow/                    # Modular packages
+├── @moflo/                    # Modular packages
 │   ├── security/                    # Security module
 │   │   └── src/
 │   │       ├── index.ts             # Password hashing, validators
@@ -207,22 +207,22 @@ v3/
 
 ## Modules
 
-### @claude-flow/security
+### @moflo/security
 Security-first implementation with CVE fixes, input validation, and credential management.
 
 ```typescript
-import { PasswordHasher, validateInput, sanitizePath } from '@claude-flow/security';
+import { PasswordHasher, validateInput, sanitizePath } from '@moflo/security';
 
 const hasher = new PasswordHasher();
 const hash = await hasher.hash('password');
 const valid = await hasher.verify('password', hash);
 ```
 
-### @claude-flow/memory
+### @moflo/memory
 Unified memory service with AgentDB, HNSW indexing, and 150x-12,500x faster search.
 
 ```typescript
-import { HybridMemoryRepository, HNSWIndex } from '@claude-flow/memory';
+import { HybridMemoryRepository, HNSWIndex } from '@moflo/memory';
 
 const memory = new HybridMemoryRepository({
   backend: 'agentdb',
@@ -233,11 +233,11 @@ await memory.store({ key: 'knowledge', value: 'context', embedding: [...] });
 const results = await memory.search({ query: 'knowledge', limit: 10 });
 ```
 
-### @claude-flow/swarm
+### @moflo/swarm
 15-agent hierarchical mesh coordination with consensus protocols.
 
 ```typescript
-import { UnifiedSwarmCoordinator } from '@claude-flow/swarm';
+import { UnifiedSwarmCoordinator } from '@moflo/swarm';
 
 const coordinator = new UnifiedSwarmCoordinator({
   topology: 'hierarchical-mesh',
@@ -248,22 +248,22 @@ await coordinator.initialize();
 await coordinator.spawnAgent({ type: 'queen-coordinator' });
 ```
 
-### @claude-flow/integration
+### @moflo/integration
 Deep integration with agentic-flow@alpha per ADR-001.
 
 ```typescript
-import { AgenticFlowBridge } from '@claude-flow/integration';
+import { AgenticFlowBridge } from '@moflo/integration';
 
 const bridge = new AgenticFlowBridge();
 await bridge.initialize();
 const agent = await bridge.createAgent({ type: 'coder' });
 ```
 
-### @claude-flow/performance
+### @moflo/performance
 Benchmarking framework with Flash Attention validation.
 
 ```typescript
-import { BenchmarkRunner, formatTime } from '@claude-flow/performance';
+import { BenchmarkRunner, formatTime } from '@moflo/performance';
 
 const runner = new BenchmarkRunner();
 const result = await runner.run('map-lookup', () => map.get(key), {
@@ -272,49 +272,49 @@ const result = await runner.run('map-lookup', () => map.get(key), {
 });
 ```
 
-### @claude-flow/neural
+### @moflo/neural
 SONA learning integration for self-optimizing agents.
 
 ```typescript
-import { SONAAdapter } from '@claude-flow/neural';
+import { SONAAdapter } from '@moflo/neural';
 
 const sona = new SONAAdapter();
 await sona.train({ patterns: learningData });
 const prediction = await sona.predict(context);
 ```
 
-### @claude-flow/cli
+### @moflo/cli
 Modern CLI with interactive prompts and formatted output.
 
 ```bash
-npx @claude-flow/cli swarm init --topology hierarchical-mesh
-npx @claude-flow/cli agent spawn --type queen-coordinator
-npx @claude-flow/cli memory search "knowledge"
+npx @moflo/cli swarm init --topology hierarchical-mesh
+npx @moflo/cli agent spawn --type queen-coordinator
+npx @moflo/cli memory search "knowledge"
 ```
 
-### @claude-flow/testing
+### @moflo/testing
 TDD London School framework with mocks, fixtures, and regression testing.
 
 ```typescript
-import { createMockAgent, createTestFixture } from '@claude-flow/testing';
+import { createMockAgent, createTestFixture } from '@moflo/testing';
 
 const mockAgent = createMockAgent({ type: 'coder' });
 const fixture = createTestFixture('swarm-coordination');
 ```
 
-### @claude-flow/shared
+### @moflo/shared
 Common types, events, utilities, and core interfaces.
 
 ```typescript
-import { EventBus, Result, success, failure } from '@claude-flow/shared';
-import type { AgentId, TaskStatus } from '@claude-flow/shared/types';
+import { EventBus, Result, success, failure } from '@moflo/shared';
+import type { AgentId, TaskStatus } from '@moflo/shared/types';
 ```
 
-### @claude-flow/deployment
+### @moflo/deployment
 Release management and CI/CD automation.
 
 ```typescript
-import { ReleaseManager } from '@claude-flow/deployment';
+import { ReleaseManager } from '@moflo/deployment';
 
 const release = new ReleaseManager();
 await release.prepare({ version: '3.0.0', changelog: '...' });
@@ -325,7 +325,7 @@ await release.prepare({ version: '3.0.0', changelog: '...' });
 ### Quick Start
 
 ```typescript
-import { initializeV3Swarm } from '@claude-flow/v3';
+import { initializeV3Swarm } from '@moflo/v3';
 
 // Initialize the swarm
 const swarm = await initializeV3Swarm();
@@ -351,18 +351,18 @@ const result = await swarm.waitForTask(task.id);
 
 ```typescript
 // Import everything
-import * as claudeFlow from '@claude-flow/v3';
+import * as claudeFlow from '@moflo/v3';
 
 // Or import specific modules for tree-shaking
-import { UnifiedSwarmCoordinator } from '@claude-flow/swarm';
-import { PasswordHasher } from '@claude-flow/security';
-import { HNSWIndex } from '@claude-flow/memory';
+import { UnifiedSwarmCoordinator } from '@moflo/swarm';
+import { PasswordHasher } from '@moflo/security';
+import { HNSWIndex } from '@moflo/memory';
 ```
 
 ### MCP Server
 
 ```typescript
-import { createMCPServer } from '@claude-flow/v3/mcp';
+import { createMCPServer } from '@moflo/v3/mcp';
 
 const server = createMCPServer({
   transport: 'stdio',
@@ -452,20 +452,20 @@ pnpm test:coverage
 - [Helper System](./helpers/README.md)
 
 ### Modules
-- [@claude-flow/security](./@claude-flow/security/)
-- [@claude-flow/memory](./@claude-flow/memory/)
-- [@claude-flow/swarm](./@claude-flow/swarm/)
-- [@claude-flow/integration](./@claude-flow/integration/)
-- [@claude-flow/performance](./@claude-flow/performance/)
-- [@claude-flow/neural](./@claude-flow/neural/)
-- [@claude-flow/cli](./@claude-flow/cli/)
-- [@claude-flow/testing](./@claude-flow/testing/)
-- [@claude-flow/shared](./@claude-flow/shared/)
-- [@claude-flow/deployment](./@claude-flow/deployment/)
+- [@moflo/security](./@moflo/security/)
+- [@moflo/memory](./@moflo/memory/)
+- [@moflo/swarm](./@moflo/swarm/)
+- [@moflo/integration](./@moflo/integration/)
+- [@moflo/performance](./@moflo/performance/)
+- [@moflo/neural](./@moflo/neural/)
+- [@moflo/cli](./@moflo/cli/)
+- [@moflo/testing](./@moflo/testing/)
+- [@moflo/shared](./@moflo/shared/)
+- [@moflo/deployment](./@moflo/deployment/)
 
 ### Examples
-- [AgentDB Example](./@claude-flow/memory/examples/agentdb-example.ts)
-- [Cross-Platform Usage](./@claude-flow/memory/examples/cross-platform-usage.ts)
+- [AgentDB Example](./@moflo/memory/examples/agentdb-example.ts)
+- [Cross-Platform Usage](./@moflo/memory/examples/cross-platform-usage.ts)
 
 ### MCP Tools
 - [Agent Tools](./mcp/tools/agent-tools.ts)

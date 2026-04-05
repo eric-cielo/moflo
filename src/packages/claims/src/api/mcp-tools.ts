@@ -1880,7 +1880,7 @@ export const claimsTools: MCPTool[] = [
  *
  * @example
  * ```typescript
- * import { registerClaimsTools, claimsTools } from '@claude-flow/claims';
+ * import { registerClaimsTools, claimsTools } from '@moflo/claims';
  *
  * // Register all tools
  * const count = registerClaimsTools(server);

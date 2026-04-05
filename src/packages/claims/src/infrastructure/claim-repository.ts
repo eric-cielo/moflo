@@ -1,5 +1,5 @@
 /**
- * @claude-flow/claims - Claim Repository Implementation
+ * @moflo/claims - Claim Repository Implementation
  * SQLite-based persistence for claims (ADR-016)
  *
  * @module v3/claims/infrastructure/claim-repository

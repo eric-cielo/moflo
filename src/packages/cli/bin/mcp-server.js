@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @claude-flow/cli - MCP Server Entry Point
+ * @moflo/cli - MCP Server Entry Point
  *
  * Direct stdio MCP server for Claude Code integration.
  * This entry point handles stdin/stdout directly for MCP protocol

@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RvfBackend } from '../v3/@claude-flow/memory/src/rvf-backend.js';
+import { RvfBackend } from '../v3/@moflo/memory/src/rvf-backend.js';
 import type {
   MemoryEntry,
   MemoryQuery,
   SearchOptions,
   IMemoryBackend,
-} from '../v3/@claude-flow/memory/src/types.js';
+} from '../v3/@moflo/memory/src/types.js';
 
 // -- Helpers --
 

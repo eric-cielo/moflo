@@ -205,21 +205,21 @@ The 1:1 ratio of source-to-test lines (14,212 vs 13,949 LOC) is not overhead —
 
 ```bash
 # Install
-npm install @claude-flow/guidance@alpha
+npm install @moflo/guidance@alpha
 
 # Run all 1,328 tests
 npm test
 
 # Score your CLAUDE.md
 npx ts-node -e "
-  import { analyze, formatReport } from '@claude-flow/guidance/analyzer';
+  import { analyze, formatReport } from '@moflo/guidance/analyzer';
   import { readFileSync } from 'fs';
   console.log(formatReport(analyze(readFileSync('CLAUDE.md', 'utf-8'))));
 "
 
 # Run the A/B benchmark
 npx ts-node -e "
-  import { abBenchmark } from '@claude-flow/guidance/analyzer';
+  import { abBenchmark } from '@moflo/guidance/analyzer';
   import { readFileSync } from 'fs';
   const report = await abBenchmark(readFileSync('CLAUDE.md', 'utf-8'));
   console.log(report.report);
@@ -231,7 +231,7 @@ npx ts-node -e "
 ## Links
 
 - **GitHub**: [github.com/ruvnet/claude-flow](https://github.com/eric-cielo/moflo)
-- **npm**: [@claude-flow/guidance](https://www.npmjs.com/package/@claude-flow/guidance)
+- **npm**: [@moflo/guidance](https://www.npmjs.com/package/@moflo/guidance)
 - **npm**: [claude-flow](https://www.npmjs.com/package/claude-flow)
 - **npm**: [ruvbot](https://www.npmjs.com/package/ruvbot)
 - **ruv.io**: [ruv.io](https://ruv.io)

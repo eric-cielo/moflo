@@ -88,6 +88,6 @@ Match keywords without weights, count matches. Rejected because it treats ambigu
 
 ## References
 
-- `v3/@claude-flow/guidance/src/retriever.ts` -- `INTENT_PATTERNS` map, `ShardRetriever.classifyIntent()`
-- `v3/@claude-flow/guidance/src/types.ts` -- `TaskIntent` union type
+- `v3/@moflo/guidance/src/retriever.ts` -- `INTENT_PATTERNS` map, `ShardRetriever.classifyIntent()`
+- `v3/@moflo/guidance/src/types.ts` -- `TaskIntent` union type
 - ADR-G002 -- Constitution/shard split that depends on intent classification

@@ -1,4 +1,4 @@
-# @claude-flow/plugins
+# @moflo/plugins
 
 **Unified Plugin SDK for Claude Flow V3**
 
@@ -7,7 +7,7 @@ A comprehensive plugin development framework providing workers, hooks, providers
 ## Installation
 
 ```bash
-npm install @claude-flow/plugins
+npm install @moflo/plugins
 ```
 
 ## Quick Start
@@ -15,7 +15,7 @@ npm install @claude-flow/plugins
 ### Create a Plugin with the Builder
 
 ```typescript
-import { PluginBuilder, HookEvent, HookPriority } from '@claude-flow/plugins';
+import { PluginBuilder, HookEvent, HookPriority } from '@moflo/plugins';
 
 const myPlugin = new PluginBuilder('my-awesome-plugin', '1.0.0')
   .withDescription('My awesome plugin for Claude Flow')
@@ -49,14 +49,14 @@ const myPlugin = new PluginBuilder('my-awesome-plugin', '1.0.0')
   .build();
 
 // Register with the default registry
-import { getDefaultRegistry } from '@claude-flow/plugins';
+import { getDefaultRegistry } from '@moflo/plugins';
 await getDefaultRegistry().register(myPlugin);
 ```
 
 ### Quick Plugin Creators
 
 ```typescript
-import { createToolPlugin, createHooksPlugin, createWorkerPlugin } from '@claude-flow/plugins';
+import { createToolPlugin, createHooksPlugin, createWorkerPlugin } from '@moflo/plugins';
 
 // Tool-only plugin
 const toolPlugin = createToolPlugin('my-tools', '1.0.0', [
@@ -79,7 +79,7 @@ const workerPlugin = createWorkerPlugin('my-workers', '1.0.0', [
 ### 🔧 MCP Tool Builder
 
 ```typescript
-import { MCPToolBuilder } from '@claude-flow/plugins';
+import { MCPToolBuilder } from '@moflo/plugins';
 
 const tool = new MCPToolBuilder('calculate')
   .withDescription('Perform calculations')
@@ -95,7 +95,7 @@ const tool = new MCPToolBuilder('calculate')
 ### 🎣 Hook System
 
 ```typescript
-import { HookBuilder, HookFactory, HookRegistry, HookEvent, HookPriority } from '@claude-flow/plugins';
+import { HookBuilder, HookFactory, HookRegistry, HookEvent, HookPriority } from '@moflo/plugins';
 
 // Create a custom hook with conditions
 const hook = new HookBuilder(HookEvent.PreAgentSpawn)
@@ -118,7 +118,7 @@ const validator = HookFactory.createValidator(HookEvent.PreAgentSpawn, (data) =>
 ### 👷 Worker Pool
 
 ```typescript
-import { WorkerPool, WorkerFactory } from '@claude-flow/plugins';
+import { WorkerPool, WorkerFactory } from '@moflo/plugins';
 
 // Create a worker pool
 const pool = new WorkerPool({
@@ -146,7 +146,7 @@ await pool.shutdown();
 ### 🤖 LLM Provider Integration
 
 ```typescript
-import { ProviderRegistry, ProviderFactory, BaseLLMProvider } from '@claude-flow/plugins';
+import { ProviderRegistry, ProviderFactory, BaseLLMProvider } from '@moflo/plugins';
 
 const registry = new ProviderRegistry({
   fallbackChain: ['anthropic', 'openai'],
@@ -176,7 +176,7 @@ const response = await registry.execute({
 ### 🔗 Agentic Flow Integration
 
 ```typescript
-import { AgenticFlowBridge, AgentDBBridge } from '@claude-flow/plugins';
+import { AgenticFlowBridge, AgentDBBridge } from '@moflo/plugins';
 
 // Swarm coordination
 const agentic = new AgenticFlowBridge({ maxConcurrentAgents: 15 });
@@ -204,7 +204,7 @@ const similar = await agentdb.search(queryVector, { limit: 10 });
 ### 🔒 Security Utilities
 
 ```typescript
-import { Security, createRateLimiter, createResourceLimiter } from '@claude-flow/plugins';
+import { Security, createRateLimiter, createResourceLimiter } from '@moflo/plugins';
 
 // Input validation
 const name = Security.validateString(input, { minLength: 1, maxLength: 100 });

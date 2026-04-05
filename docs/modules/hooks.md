@@ -1,14 +1,14 @@
-# @claude-flow/hooks
+# @moflo/hooks
 
-[![npm version](https://img.shields.io/npm/v/@claude-flow/hooks.svg)](https://www.npmjs.com/package/@claude-flow/hooks)
-[![npm downloads](https://img.shields.io/npm/dm/@claude-flow/hooks.svg)](https://www.npmjs.com/package/@claude-flow/hooks)
+[![npm version](https://img.shields.io/npm/v/@moflo/hooks.svg)](https://www.npmjs.com/package/@moflo/hooks)
+[![npm downloads](https://img.shields.io/npm/dm/@moflo/hooks.svg)](https://www.npmjs.com/package/@moflo/hooks)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3+-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
 
 > Event-driven lifecycle hooks with ReasoningBank learning integration for Claude Flow V3
 
-The `@claude-flow/hooks` package provides a comprehensive hooks system for intercepting and extending Claude Flow operations. It enables intelligent task routing, pattern learning, background metrics collection, and real-time statusline integration.
+The `@moflo/hooks` package provides a comprehensive hooks system for intercepting and extending Claude Flow operations. It enables intelligent task routing, pattern learning, background metrics collection, and real-time statusline integration.
 
 ## Features
 
@@ -25,13 +25,13 @@ The `@claude-flow/hooks` package provides a comprehensive hooks system for inter
 
 ```bash
 # Using npm
-npm install @claude-flow/hooks
+npm install @moflo/hooks
 
 # Using pnpm
-pnpm add @claude-flow/hooks
+pnpm add @moflo/hooks
 
 # Using yarn
-yarn add @claude-flow/hooks
+yarn add @moflo/hooks
 ```
 
 ## Quick Start
@@ -44,7 +44,7 @@ import {
   HookExecutor,
   HookEvent,
   HookPriority,
-} from '@claude-flow/hooks';
+} from '@moflo/hooks';
 
 // Create registry and executor
 const registry = new HookRegistry();
@@ -69,7 +69,7 @@ console.log(`Hooks executed: ${result.hooksExecuted}`);
 ### Initialize with Daemons
 
 ```typescript
-import { initializeHooks } from '@claude-flow/hooks';
+import { initializeHooks } from '@moflo/hooks';
 
 // Initialize full system with background daemons
 const { registry, executor, statusline } = await initializeHooks({
@@ -84,7 +84,7 @@ console.log(statusline.generateStatusline());
 ### Using MCP Tools
 
 ```typescript
-import { hooksMCPTools, getHooksTool } from '@claude-flow/hooks';
+import { hooksMCPTools, getHooksTool } from '@moflo/hooks';
 
 // Get specific tool
 const routeTool = getHooksTool('hooks/route');
@@ -430,10 +430,10 @@ Add to your Claude settings (`~/.claude/settings.json`):
 
 ## Related Packages
 
-- [@claude-flow/shared](../shared) - Shared utilities and types
-- [@claude-flow/neural](../neural) - Neural network and SONA learning
-- [@claude-flow/swarm](../swarm) - Multi-agent coordination
-- [@claude-flow/memory](../memory) - AgentDB memory system
+- [@moflo/shared](../shared) - Shared utilities and types
+- [@moflo/neural](../neural) - Neural network and SONA learning
+- [@moflo/swarm](../swarm) - Multi-agent coordination
+- [@moflo/memory](../memory) - AgentDB memory system
 
 ## License
 

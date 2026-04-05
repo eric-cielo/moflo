@@ -1386,9 +1386,9 @@ export function createDDDWorker(projectRoot: string): WorkerHandler {
     let maxScore = 0;
 
     const modules = [
-      '@claude-flow/hooks',
-      '@claude-flow/memory',
-      '@claude-flow/security',
+      '@moflo/hooks',
+      '@moflo/memory',
+      '@moflo/security',
     ];
 
     // Process all modules in parallel for 70-90% speedup

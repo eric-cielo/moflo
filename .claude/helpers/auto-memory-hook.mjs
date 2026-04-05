@@ -132,7 +132,7 @@ class JsonFileBackend {
 
 async function loadMemoryPackage() {
   // Strategy 1: Local dev (built dist)
-  const localDist = join(PROJECT_ROOT, 'v3/@claude-flow/memory/dist/index.js');
+  const localDist = join(PROJECT_ROOT, 'v3/@moflo/memory/dist/index.js');
   if (existsSync(localDist)) {
     try {
       return await import(`file://${localDist}`);
@@ -144,15 +144,15 @@ async function loadMemoryPackage() {
   try {
     const { createRequire } = await import('module');
     const require = createRequire(join(PROJECT_ROOT, 'package.json'));
-    return require('@claude-flow/memory');
+    return require('@moflo/memory');
   } catch { /* fall through */ }
 
-  // Strategy 3: ESM import (works when @claude-flow/memory is a direct dependency)
+  // Strategy 3: ESM import (works when @moflo/memory is a direct dependency)
   try {
-    return await import('@claude-flow/memory');
+    return await import('@moflo/memory');
   } catch { /* fall through */ }
 
-  // Strategy 4: Walk up from PROJECT_ROOT looking for @claude-flow/memory in any node_modules
+  // Strategy 4: Walk up from PROJECT_ROOT looking for @moflo/memory in any node_modules
   let searchDir = PROJECT_ROOT;
   const { parse } = await import('path');
   while (searchDir !== parse(searchDir).root) {

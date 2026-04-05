@@ -101,9 +101,9 @@ Instruct agents via their prompts to "only write to your assigned namespace." Re
 
 ## References
 
-- `v3/@claude-flow/guidance/src/gates.ts` -- `EnforcementGates.evaluateToolUse()` for MCP tool gating
-- `v3/@claude-flow/guidance/src/retriever.ts` -- `areContradictory()`, `selectWithContradictionCheck()`
-- `v3/@claude-flow/guidance/src/ledger.ts` -- `ViolationRateEvaluator`, `RunLedger.addEvaluator()`, `computeMetrics()`
-- `v3/@claude-flow/guidance/src/types.ts` -- `GuidanceRule.domains`, `GuidanceRule.repoScopes`, `GuidanceRule.toolClasses`
+- `v3/@moflo/guidance/src/gates.ts` -- `EnforcementGates.evaluateToolUse()` for MCP tool gating
+- `v3/@moflo/guidance/src/retriever.ts` -- `areContradictory()`, `selectWithContradictionCheck()`
+- `v3/@moflo/guidance/src/ledger.ts` -- `ViolationRateEvaluator`, `RunLedger.addEvaluator()`, `computeMetrics()`
+- `v3/@moflo/guidance/src/types.ts` -- `GuidanceRule.domains`, `GuidanceRule.repoScopes`, `GuidanceRule.toolClasses`
 - ADR-G004 -- Four enforcement gates that memory gating builds on
 - ADR-G008 -- Optimizer loop that evolves memory governance rules

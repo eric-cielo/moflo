@@ -46,7 +46,7 @@ async function loadModule<T>(path: string, exportName: string, label: string): P
     const mod = await import(path);
     return mod[exportName] as T;
   } catch {
-    output.printError(`RVFA ${label} module not found`, 'Install with: npm install @claude-flow/appliance');
+    output.printError(`RVFA ${label} module not found`, 'Install with: npm install @moflo/appliance');
     return null;
   }
 }

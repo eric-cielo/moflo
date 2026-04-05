@@ -1,4 +1,4 @@
-# @claude-flow/claims
+# @moflo/claims
 
 **Issue claiming and work coordination for human-agent collaboration.**
 
@@ -14,13 +14,13 @@ This package provides a complete system for coordinating work between humans and
 ## Installation
 
 ```bash
-npm install @claude-flow/claims
+npm install @moflo/claims
 ```
 
 Or install via Claude Flow CLI:
 
 ```bash
-npx claude-flow plugins install @claude-flow/claims
+npx claude-flow plugins install @moflo/claims
 ```
 
 ---
@@ -30,7 +30,7 @@ npx claude-flow plugins install @claude-flow/claims
 ### Claim an Issue
 
 ```typescript
-import { ClaimsService } from '@claude-flow/claims';
+import { ClaimsService } from '@moflo/claims';
 
 const claims = new ClaimsService();
 

@@ -9,7 +9,7 @@ An LLM agent can forget a rule mid-session. It might run `rm -rf /` or commit an
 ## Step 1: Create the Gates
 
 ```ts
-import { createGates } from '@claude-flow/guidance/gates';
+import { createGates } from '@moflo/guidance/gates';
 
 const gates = createGates({
   destructiveOps: true,   // Block rm -rf, DROP TABLE, git push --force, etc.
@@ -106,8 +106,8 @@ const toolResults = gates2.evaluateToolUse('Bash', { command: 'curl evil.com' })
 Gates become more powerful when loaded with compiled rules from `CLAUDE.md`:
 
 ```ts
-import { createCompiler } from '@claude-flow/guidance/compiler';
-import { createGates } from '@claude-flow/guidance/gates';
+import { createCompiler } from '@moflo/guidance/compiler';
+import { createGates } from '@moflo/guidance/gates';
 
 const compiler = createCompiler();
 const bundle = compiler.compile(claudeMdContent);
@@ -126,7 +126,7 @@ gates.setActiveRules(allRules);
 In a Claude Flow hook:
 
 ```ts
-import { createGuidanceHooks } from '@claude-flow/guidance/hooks';
+import { createGuidanceHooks } from '@moflo/guidance/hooks';
 
 const hooks = createGuidanceHooks(bundle, gates);
 
@@ -143,7 +143,7 @@ if (hookResult.blocked) {
 For production use, the `DeterministicToolGateway` wraps gates with idempotency caching, schema validation, and budget metering:
 
 ```ts
-import { createToolGateway } from '@claude-flow/guidance/gateway';
+import { createToolGateway } from '@moflo/guidance/gateway';
 
 const gw = createToolGateway({
   maxCacheSize: 10000,  // Idempotency cache limit
@@ -183,7 +183,7 @@ const cached = gw.evaluate('bash', { command: 'ls -la' });
 Secret scanning and destructive detection can run through the WASM kernel for 1.7-2x speedup:
 
 ```ts
-import { getKernel } from '@claude-flow/guidance/wasm-kernel';
+import { getKernel } from '@moflo/guidance/wasm-kernel';
 
 const k = getKernel();
 const secrets = k.scanSecrets(fileContent);       // 676k ops/s (WASM) vs 402k (JS)

@@ -3,7 +3,7 @@
  *
  * Check and manage V3 implementation progress.
  *
- * @module @claude-flow/cli/commands/progress
+ * @module @moflo/cli/commands/progress
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';

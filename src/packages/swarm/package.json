@@ -1,5 +1,5 @@
 {
-  "name": "@claude-flow/swarm",
+  "name": "@moflo/swarm",
   "version": "3.0.0-alpha.6",
   "type": "module",
   "description": "Standalone swarm coordination - up to 100+ agents, 4 topologies, hive-mind, consensus",

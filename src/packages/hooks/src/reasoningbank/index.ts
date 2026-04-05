@@ -6,11 +6,11 @@
  *
  * Features:
  * - Real HNSW indexing (M=16, efConstruction=200) for 150x+ faster search
- * - ONNX embeddings via @claude-flow/embeddings (MiniLM-L6 384-dim)
+ * - ONNX embeddings via @moflo/embeddings (MiniLM-L6 384-dim)
  * - AgentDB backend for persistence
  * - Pattern promotion from short-term to long-term memory
  *
- * @module @claude-flow/hooks/reasoningbank
+ * @module @moflo/hooks/reasoningbank
  */
 
 import { EventEmitter } from 'node:events';
@@ -292,13 +292,13 @@ export class ReasoningBank extends EventEmitter {
       }
     };
 
-    const memoryModule = await dynamicImport('@claude-flow/memory');
+    const memoryModule = await dynamicImport('@moflo/memory');
     if (memoryModule) {
       AgentDBAdapter = memoryModule.AgentDBAdapter;
       HNSWIndex = memoryModule.HNSWIndex;
     }
 
-    const embeddingsModule = await dynamicImport('@claude-flow/embeddings');
+    const embeddingsModule = await dynamicImport('@moflo/embeddings');
     if (embeddingsModule) {
       EmbeddingServiceImpl = embeddingsModule.createEmbeddingService;
     }
@@ -916,7 +916,7 @@ interface IEmbeddingService {
 }
 
 /**
- * Real embedding service using @claude-flow/embeddings
+ * Real embedding service using @moflo/embeddings
  */
 class RealEmbeddingService implements IEmbeddingService {
   private service: any = null;

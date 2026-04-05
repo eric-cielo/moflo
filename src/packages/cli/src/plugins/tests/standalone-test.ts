@@ -162,8 +162,8 @@ async function main() {
   // Test 10: Similar Plugins
   console.log('▶ Test 10: Find Similar Plugins');
   try {
-    const similar = findSimilarPlugins(registry, '@claude-flow/neural', 3);
-    console.log(`  ✅ Found ${similar.length} similar plugins to @claude-flow/neural`);
+    const similar = findSimilarPlugins(registry, '@moflo/neural', 3);
+    console.log(`  ✅ Found ${similar.length} similar plugins to @moflo/neural`);
     passed++;
   } catch (e) {
     console.log(`  ❌ Failed: ${(e as Error).message}`);

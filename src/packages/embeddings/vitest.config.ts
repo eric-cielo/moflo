@@ -1,5 +1,5 @@
 /**
- * @claude-flow/embeddings Vitest Configuration
+ * @moflo/embeddings Vitest Configuration
  */
 import { defineConfig } from 'vitest/config';
 

@@ -11,7 +11,7 @@
  * 3. Add hard filters by risk class and repo scope
  * 4. Contradiction check: prefer higher-priority rule ID
  *
- * @module @claude-flow/guidance/retriever
+ * @module @moflo/guidance/retriever
  */
 
 import type {

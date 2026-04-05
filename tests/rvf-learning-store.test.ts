@@ -18,7 +18,7 @@ import {
   type LoraRecord,
   type EwcRecord,
   type TrajectoryRecord,
-} from '../v3/@claude-flow/memory/src/rvf-learning-store.js';
+} from '../v3/@moflo/memory/src/rvf-learning-store.js';
 
 // ===== Fixtures =====
 

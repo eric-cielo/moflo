@@ -1,5 +1,5 @@
 /**
- * @claude-flow/embeddings Test Setup
+ * @moflo/embeddings Test Setup
  * Local test configuration for Vitest
  */
 

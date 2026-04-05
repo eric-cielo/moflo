@@ -19,7 +19,7 @@
  * - AgentOverloaded: When an agent exceeds load threshold
  * - AgentUnderloaded: When an agent is below load threshold
  *
- * @module v3/@claude-flow/claims/application/load-balancer
+ * @module v3/@moflo/claims/application/load-balancer
  */
 
 import { EventEmitter } from 'node:events';

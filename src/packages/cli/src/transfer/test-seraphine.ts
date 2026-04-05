@@ -101,7 +101,7 @@ async function test(): Promise<void> {
     console.log('🎉 All module tests passed!');
     console.log('');
     console.log('Next steps:');
-    console.log('  1. Compile TypeScript: cd v3/@claude-flow/cli && npm run build');
+    console.log('  1. Compile TypeScript: cd v3/@moflo/cli && npm run build');
     console.log('  2. Run deployment: npx ts-node src/transfer/deploy-seraphine.ts --to-ipfs');
     console.log('');
   }

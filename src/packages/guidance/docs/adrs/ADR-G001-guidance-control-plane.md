@@ -22,7 +22,7 @@ The existing Claude Flow V3 infrastructure provides hooks (`pre-edit`, `pre-comm
 
 ## Decision
 
-Build a separate package, `@claude-flow/guidance`, that runs **beside** Claude Code as a parallel control plane. The control plane has five components:
+Build a separate package, `@moflo/guidance`, that runs **beside** Claude Code as a parallel control plane. The control plane has five components:
 
 1. **Compiler** (`GuidanceCompiler` in `src/compiler.ts`) -- Parses `CLAUDE.md` and optional `CLAUDE.local.md` into a `PolicyBundle` containing a constitution, rule shards, and a machine-readable manifest. The compiler extracts rule IDs, risk classes, tool classes, intent tags, repo scopes, domain tags, verifiers, and priority annotations using deterministic regex patterns.
 
@@ -68,11 +68,11 @@ Route all enforcement through MCP server endpoints. Rejected for latency reasons
 
 ## References
 
-- `v3/@claude-flow/guidance/src/index.ts` -- `GuidanceControlPlane` orchestrator class
-- `v3/@claude-flow/guidance/src/compiler.ts` -- `GuidanceCompiler`
-- `v3/@claude-flow/guidance/src/retriever.ts` -- `ShardRetriever`
-- `v3/@claude-flow/guidance/src/gates.ts` -- `EnforcementGates`
-- `v3/@claude-flow/guidance/src/ledger.ts` -- `RunLedger`
-- `v3/@claude-flow/guidance/src/optimizer.ts` -- `OptimizerLoop`
-- `v3/@claude-flow/guidance/src/headless.ts` -- `HeadlessRunner`
-- `v3/@claude-flow/guidance/src/types.ts` -- All type definitions
+- `v3/@moflo/guidance/src/index.ts` -- `GuidanceControlPlane` orchestrator class
+- `v3/@moflo/guidance/src/compiler.ts` -- `GuidanceCompiler`
+- `v3/@moflo/guidance/src/retriever.ts` -- `ShardRetriever`
+- `v3/@moflo/guidance/src/gates.ts` -- `EnforcementGates`
+- `v3/@moflo/guidance/src/ledger.ts` -- `RunLedger`
+- `v3/@moflo/guidance/src/optimizer.ts` -- `OptimizerLoop`
+- `v3/@moflo/guidance/src/headless.ts` -- `HeadlessRunner`
+- `v3/@moflo/guidance/src/types.ts` -- All type definitions

@@ -1,5 +1,5 @@
 {
-  "name": "@claude-flow/plugins",
+  "name": "@moflo/plugins",
   "version": "3.0.0-alpha.7",
   "description": "Unified Plugin SDK for Claude Flow V3 - Worker, Hook, and Provider Integration",
   "main": "dist/index.js",
@@ -38,14 +38,14 @@
     "events": "^3.3.0"
   },
   "peerDependencies": {
-    "@claude-flow/hooks": "^3.0.0-alpha.2",
-    "@claude-flow/memory": "^3.0.0-alpha.2"
+    "@moflo/hooks": "^3.0.0-alpha.2",
+    "@moflo/memory": "^3.0.0-alpha.2"
   },
   "peerDependenciesMeta": {
-    "@claude-flow/hooks": {
+    "@moflo/hooks": {
       "optional": true
     },
-    "@claude-flow/memory": {
+    "@moflo/memory": {
       "optional": true
     }
   },

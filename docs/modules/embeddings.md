@@ -1,7 +1,7 @@
-# @claude-flow/embeddings
+# @moflo/embeddings
 
-[![npm version](https://img.shields.io/npm/v/@claude-flow/embeddings.svg)](https://www.npmjs.com/package/@claude-flow/embeddings)
-[![npm downloads](https://img.shields.io/npm/dm/@claude-flow/embeddings.svg)](https://www.npmjs.com/package/@claude-flow/embeddings)
+[![npm version](https://img.shields.io/npm/v/@moflo/embeddings.svg)](https://www.npmjs.com/package/@moflo/embeddings)
+[![npm downloads](https://img.shields.io/npm/dm/@moflo/embeddings.svg)](https://www.npmjs.com/package/@moflo/embeddings)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![Performance](https://img.shields.io/badge/Performance-<5ms-brightgreen.svg)](https://github.com/eric-cielo/moflo)
@@ -29,13 +29,13 @@
 ## Installation
 
 ```bash
-npm install @claude-flow/embeddings
+npm install @moflo/embeddings
 ```
 
 ## Quick Start
 
 ```typescript
-import { createEmbeddingService, cosineSimilarity } from '@claude-flow/embeddings';
+import { createEmbeddingService, cosineSimilarity } from '@moflo/embeddings';
 
 // Create embedding service
 const service = createEmbeddingService({
@@ -92,7 +92,7 @@ import {
   createEmbeddingService,
   createEmbeddingServiceAsync,
   getEmbedding
-} from '@claude-flow/embeddings';
+} from '@moflo/embeddings';
 
 // Sync: Create with known provider
 const service = createEmbeddingService({
@@ -118,7 +118,7 @@ const embedding = await getEmbedding('Hello world', {
 ### OpenAI Provider
 
 ```typescript
-import { OpenAIEmbeddingService } from '@claude-flow/embeddings';
+import { OpenAIEmbeddingService } from '@moflo/embeddings';
 
 const service = new OpenAIEmbeddingService({
   provider: 'openai',
@@ -138,7 +138,7 @@ console.log('Tokens used:', result.usage?.totalTokens);
 ### Agentic-Flow Provider (Fastest)
 
 ```typescript
-import { AgenticFlowEmbeddingService } from '@claude-flow/embeddings';
+import { AgenticFlowEmbeddingService } from '@moflo/embeddings';
 
 const service = new AgenticFlowEmbeddingService({
   provider: 'agentic-flow',
@@ -154,7 +154,7 @@ console.log(`ONNX embedding in ${result.latencyMs}ms`);
 ### Transformers.js Provider (Local)
 
 ```typescript
-import { TransformersEmbeddingService } from '@claude-flow/embeddings';
+import { TransformersEmbeddingService } from '@moflo/embeddings';
 
 const service = new TransformersEmbeddingService({
   provider: 'transformers',
@@ -170,7 +170,7 @@ console.log(`Local embedding generated in ${result.latencyMs}ms`);
 ### Mock Provider (Testing)
 
 ```typescript
-import { MockEmbeddingService } from '@claude-flow/embeddings';
+import { MockEmbeddingService } from '@moflo/embeddings';
 
 const service = new MockEmbeddingService({
   provider: 'mock',
@@ -211,7 +211,7 @@ import {
   euclideanDistance,
   dotProduct,
   computeSimilarity,
-} from '@claude-flow/embeddings';
+} from '@moflo/embeddings';
 
 // Cosine similarity (most common for embeddings)
 const cosine = cosineSimilarity(embedding1, embedding2);
@@ -340,7 +340,7 @@ import type {
   // Similarity types
   SimilarityMetric,
   SimilarityResult,
-} from '@claude-flow/embeddings';
+} from '@moflo/embeddings';
 ```
 
 ## Environment Variables
@@ -372,8 +372,8 @@ try {
 ## Integration with Memory Module
 
 ```typescript
-import { createEmbeddingService } from '@claude-flow/embeddings';
-import { HNSWIndex } from '@claude-flow/memory';
+import { createEmbeddingService } from '@moflo/embeddings';
+import { HNSWIndex } from '@moflo/memory';
 
 // Create embedding service
 const embeddings = createEmbeddingService({
@@ -406,7 +406,7 @@ const results = await index.search(new Float32Array(queryResult.embedding), 5);
 Split long documents into overlapping chunks for embedding:
 
 ```typescript
-import { chunkText, estimateTokens, reconstructFromChunks } from '@claude-flow/embeddings';
+import { chunkText, estimateTokens, reconstructFromChunks } from '@moflo/embeddings';
 
 // Chunk by sentence (default)
 const result = chunkText(longDocument, {
@@ -441,7 +441,7 @@ import {
   normalize,       // Generic with type option
   l2Norm,
   isNormalized,
-} from '@claude-flow/embeddings';
+} from '@moflo/embeddings';
 
 const embedding = new Float32Array([3, 4, 0]);
 
@@ -470,7 +470,7 @@ import {
   isInPoincareBall,
   batchEuclideanToPoincare,
   hyperbolicCentroid,
-} from '@claude-flow/embeddings';
+} from '@moflo/embeddings';
 
 // Convert Euclidean embedding to Poincaré ball
 const euclidean = new Float32Array([0.5, 0.3, 0.2]);
@@ -516,7 +516,7 @@ import {
   isNeuralAvailable,
   listEmbeddingModels,
   downloadEmbeddingModel,
-} from '@claude-flow/embeddings';
+} from '@moflo/embeddings';
 
 // Check if neural features are available
 const available = await isNeuralAvailable();
@@ -565,7 +565,7 @@ const path = await downloadEmbeddingModel('all-MiniLM-L6-v2', '.models');
 SQLite-backed persistent cache for embeddings:
 
 ```typescript
-import { PersistentEmbeddingCache, isPersistentCacheAvailable } from '@claude-flow/embeddings';
+import { PersistentEmbeddingCache, isPersistentCacheAvailable } from '@moflo/embeddings';
 
 // Check if SQLite is available
 const hasSQLite = await isPersistentCacheAvailable();
@@ -642,9 +642,9 @@ claude-flow embeddings cache clear --older-than 7d
 
 ## Related Packages
 
-- [@claude-flow/memory](../memory) - HNSW indexing and vector storage
-- [@claude-flow/providers](../providers) - Multi-LLM provider system
-- [@claude-flow/neural](../neural) - SONA learning integration
+- [@moflo/memory](../memory) - HNSW indexing and vector storage
+- [@moflo/providers](../providers) - Multi-LLM provider system
+- [@moflo/neural](../neural) - SONA learning integration
 
 ## License
 

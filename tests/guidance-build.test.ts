@@ -1,5 +1,5 @@
 /**
- * Tests for @claude-flow/guidance package build configuration
+ * Tests for @moflo/guidance package build configuration
  *
  * Validates that:
  * 1. The guidance package has source files
@@ -15,7 +15,7 @@ import { resolve } from 'path';
 const guidancePkgDir = resolve(__dirname, '../src/packages/guidance');
 const rootPkgPath = resolve(__dirname, '../package.json');
 
-describe('@claude-flow/guidance package build', () => {
+describe('@moflo/guidance package build', () => {
   it('has TypeScript source files', () => {
     const srcDir = resolve(guidancePkgDir, 'src');
     expect(existsSync(srcDir)).toBe(true);

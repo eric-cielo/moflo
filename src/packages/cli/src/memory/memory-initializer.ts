@@ -358,7 +358,7 @@ CREATE TABLE IF NOT EXISTS metadata (
 
 // ============================================================================
 // HNSW INDEX SINGLETON (150x faster vector search)
-// Uses HnswLite pure TypeScript implementation from @claude-flow/memory
+// Uses HnswLite pure TypeScript implementation from @moflo/memory
 // ============================================================================
 
 interface HNSWEntry {
@@ -407,7 +407,7 @@ export async function getHNSWIndex(options?: {
 
   try {
     // Use HnswLite pure TS implementation (no native dependencies)
-    const { HnswLite } = await import('@claude-flow/memory') as any;
+    const { HnswLite } = await import('@moflo/memory') as any;
 
     // Persistent storage paths
     const swarmDir = path.join(process.cwd(), '.swarm');
@@ -1109,7 +1109,7 @@ export async function checkAndMigrateLegacy(options: {
  * a singleton ControllerRegistry and initializes it with the given dbPath.
  * After this call, all enabled controllers are ready for immediate use.
  *
- * Failures are isolated: if @claude-flow/memory or agentdb is not installed,
+ * Failures are isolated: if @moflo/memory or agentdb is not installed,
  * this returns an empty result without throwing.
  */
 async function activateControllerRegistry(

@@ -19,7 +19,7 @@
  * Trust-based rate limiting:
  * - Adjusts rate limits proportionally to accumulated trust
  *
- * @module @claude-flow/guidance/trust
+ * @module @moflo/guidance/trust
  */
 
 // ============================================================================

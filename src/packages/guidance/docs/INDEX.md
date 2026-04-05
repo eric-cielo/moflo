@@ -1,4 +1,4 @@
-# @claude-flow/guidance Documentation
+# @moflo/guidance Documentation
 
 ## Guides
 

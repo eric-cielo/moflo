@@ -13,7 +13,7 @@
  * - Health check: <10ms
  * - Graceful shutdown: <5s
  *
- * @module @claude-flow/cli/mcp-server
+ * @module @moflo/cli/mcp-server
  * @version 3.0.0
  */
 
@@ -592,7 +592,7 @@ export class MCPServerManager extends EventEmitter {
   private async startHttpServer(): Promise<void> {
     // Dynamically import the MCP server package
     // FIX for issue #942: Use proper package import instead of broken relative path
-    const { createMCPServer } = await import('@claude-flow/mcp');
+    const { createMCPServer } = await import('@moflo/mcp');
 
     const logger = {
       debug: (msg: string, data?: unknown) => this.emit('log', { level: 'debug', msg, data }),

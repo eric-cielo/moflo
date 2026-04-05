@@ -62,7 +62,7 @@ node bin/semantic-search.mjs "entity service route file location" --namespace co
 ### Relevance spot-checks
 - "swarm coordination agent spawning" → top result should reference Swarm Coordination or agent spawning
 - "memory store search vector embeddings" → top result should reference Embeddings Package or memory
-- "security input validation CVE scanning" → top result should reference security agents or @claude-flow/security
+- "security input validation CVE scanning" → top result should reference security agents or @moflo/security
 - "entity service route file location" → top result should be a file path (e.g., `file:...`)
 
 **Pass criteria:**
@@ -269,7 +269,7 @@ Store via MCP, retrieve via CLI (and vice versa) to confirm both paths use the s
 
 ## Test 9: SONA Learning Engine
 
-> **OBSOLETE**: This test references `@ruvector/sona` which has been replaced by the in-house pure TypeScript SONA engine in `@claude-flow/neural`. The code below is retained for historical reference only.
+> **OBSOLETE**: This test references `@ruvector/sona` which has been replaced by the in-house pure TypeScript SONA engine in `@moflo/neural`. The code below is retained for historical reference only.
 
 Verify SONA initializes and can process trajectory data.
 
@@ -315,7 +315,7 @@ console.log('final stats:', sona.getStats());
 
 ## Test 10: MicroLoRA (Standalone WASM)
 
-> **OBSOLETE**: This test references `@ruvector/learning-wasm` which has been replaced by the in-house pure TypeScript MicroLoRA in `@claude-flow/neural`. The code below is retained for historical reference only.
+> **OBSOLETE**: This test references `@ruvector/learning-wasm` which has been replaced by the in-house pure TypeScript MicroLoRA in `@moflo/neural`. The code below is retained for historical reference only.
 
 Verify the standalone MicroLoRA WASM module initializes and can adapt.
 

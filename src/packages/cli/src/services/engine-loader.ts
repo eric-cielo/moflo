@@ -1,12 +1,12 @@
 /**
  * Shared Workflow Engine Loader
  *
- * Centralizes dynamic import + caching of the @claude-flow/workflows package.
+ * Centralizes dynamic import + caching of the @moflo/workflows package.
  * Both workflow-tools.ts (MCP layer) and runner-adapter.ts (epic runner) use
  * this instead of maintaining their own import/cache logic.
  *
  * Story #229: Extract shared engine loader.
- * Story #230: Replaced *Like interfaces with import type from @claude-flow/workflows.
+ * Story #230: Replaced *Like interfaces with import type from @moflo/workflows.
  */
 
 import { dirname, join, resolve } from 'node:path';
@@ -31,7 +31,7 @@ export type { WorkflowRegistry };
 /**
  * Shape of the dynamically imported workflow engine module.
  *
- * Uses the canonical types from @claude-flow/workflows (type-only, no runtime dep).
+ * Uses the canonical types from @moflo/workflows (type-only, no runtime dep).
  * The actual module is loaded via dynamic import() at runtime.
  */
 export interface EngineModule {

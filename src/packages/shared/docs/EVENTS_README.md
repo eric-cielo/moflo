@@ -101,7 +101,7 @@ Build queryable read models from events:
 ### Basic Event Storage
 
 ```typescript
-import { EventStore, createAgentSpawnedEvent } from '@claude-flow/shared/events';
+import { EventStore, createAgentSpawnedEvent } from '@moflo/shared/events';
 
 // Initialize
 const eventStore = new EventStore({
@@ -136,7 +136,7 @@ import {
   EventStore,
   AgentStateProjection,
   TaskHistoryProjection
-} from '@claude-flow/shared/events';
+} from '@moflo/shared/events';
 
 const eventStore = new EventStore({ databasePath: './events.db' });
 await eventStore.initialize();
@@ -257,7 +257,7 @@ npm test -- event-store.test.ts -t "Event Appending"
 See `example-usage.ts` for a complete demonstration:
 
 ```bash
-npx tsx v3/@claude-flow/shared/src/events/example-usage.ts
+npx tsx v3/@moflo/shared/src/events/example-usage.ts
 ```
 
 Output includes:

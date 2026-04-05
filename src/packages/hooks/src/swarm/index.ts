@@ -7,7 +7,7 @@
  * Transport: delegates to IMessageBus (Story #120).
  * Domain state (patterns, consensus, handoffs) remains local.
  *
- * @module @claude-flow/hooks/swarm
+ * @module @moflo/hooks/swarm
  */
 
 import { EventEmitter } from 'node:events';

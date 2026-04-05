@@ -8,7 +8,7 @@
  * - Health checks
  * - Alerting
  *
- * @module @claude-flow/cli/production/monitoring
+ * @module @moflo/cli/production/monitoring
  */
 
 // ============================================================================

@@ -366,7 +366,7 @@ The loader reads `package.json` for a `moflo.stepCommand` field pointing to the 
 **Pass `stepDirs` and `projectRoot` to `createRunner()` to enable pluggable step discovery.**
 
 ```typescript
-import { createRunner } from '@claude-flow/workflows';
+import { createRunner } from '@moflo/workflows';
 
 const runner = createRunner({
   stepDirs: ['workflows/steps/', '.claude/workflows/steps/'],
@@ -399,7 +399,7 @@ const runner = createRunner({
 ### Loading Definitions Programmatically
 
 ```typescript
-import { loadWorkflowDefinitions, loadWorkflowByName } from '@claude-flow/workflows';
+import { loadWorkflowDefinitions, loadWorkflowByName } from '@moflo/workflows';
 
 const { workflows, errors } = loadWorkflowDefinitions({
   shippedDir: 'node_modules/moflo/workflows/shipped',
@@ -440,7 +440,7 @@ const result = loadWorkflowByName('deploy-staging', { /* same options */ });
 **Pause serializes workflow state to memory. Resume reconstructs and continues from where it left off.**
 
 ```typescript
-import { buildPausedState, persistPausedState, resumeWorkflow } from '@claude-flow/workflows';
+import { buildPausedState, persistPausedState, resumeWorkflow } from '@moflo/workflows';
 
 // Pause after step 2 of 5
 const state = buildPausedState(workflowId, definition, 2, variables, completedResults, args);
@@ -483,7 +483,7 @@ const result = await resumeWorkflow(workflowId, { memory, variables: { override:
 **Always dry-run before executing a new or modified workflow.** Dry-run validates the definition, resolves arguments, and checks step configs without executing anything.
 
 ```typescript
-import { runWorkflowFromContent } from '@claude-flow/workflows';
+import { runWorkflowFromContent } from '@moflo/workflows';
 
 const result = await runWorkflowFromContent(yamlContent, 'my-workflow.yaml', { dryRun: true });
 if (!result.success) {

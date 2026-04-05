@@ -1,5 +1,5 @@
 /**
- * @claude-flow/workflows
+ * @moflo/workflows
  *
  * Generalized Workflow Engine for MoFlo V4.
  *

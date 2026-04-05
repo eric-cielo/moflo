@@ -1,7 +1,7 @@
-# @claude-flow/testing
+# @moflo/testing
 
-[![npm version](https://img.shields.io/npm/v/@claude-flow/testing.svg)](https://www.npmjs.com/package/@claude-flow/testing)
-[![npm downloads](https://img.shields.io/npm/dm/@claude-flow/testing.svg)](https://www.npmjs.com/package/@claude-flow/testing)
+[![npm version](https://img.shields.io/npm/v/@moflo/testing.svg)](https://www.npmjs.com/package/@moflo/testing)
+[![npm downloads](https://img.shields.io/npm/dm/@moflo/testing.svg)](https://www.npmjs.com/package/@moflo/testing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![TDD](https://img.shields.io/badge/TDD-London%20School-purple.svg)](https://github.com/eric-cielo/moflo)
@@ -14,7 +14,7 @@ Based on ADR-008 (Vitest over Jest).
 ## Installation
 
 ```bash
-npm install @claude-flow/testing vitest --save-dev
+npm install @moflo/testing vitest --save-dev
 ```
 
 ## Quick Start
@@ -26,7 +26,7 @@ import {
   agentConfigs,
   swarmConfigs,
   waitFor,
-} from '@claude-flow/testing';
+} from '@moflo/testing';
 
 // Configure test environment
 setupV3Tests();
@@ -81,7 +81,7 @@ import {
   createV3SwarmAgentConfigs,
   createMockAgent,
   createMockV3Swarm,
-} from '@claude-flow/testing';
+} from '@moflo/testing';
 
 // Pre-defined configs
 const queen = agentConfigs.queenCoordinator;
@@ -114,7 +114,7 @@ import {
   createVectorQuery,
   generateMockEmbedding,
   createMemoryBatch,
-} from '@claude-flow/testing';
+} from '@moflo/testing';
 
 // Pre-defined entries
 const pattern = memoryEntries.agentPattern;
@@ -146,7 +146,7 @@ import {
   createSwarmMessage,
   createConsensusRequest,
   createMockSwarmCoordinator,
-} from '@claude-flow/testing';
+} from '@moflo/testing';
 
 // Pre-defined configs
 const v3Config = swarmConfigs.v3Default;
@@ -181,7 +181,7 @@ import {
   createMCPRequest,
   createMCPResponse,
   createMockMCPClient,
-} from '@claude-flow/testing';
+} from '@moflo/testing';
 
 // Pre-defined tools
 const swarmInit = mcpTools.swarmInit;
@@ -205,7 +205,7 @@ import {
   withTimeout,
   sleep,
   parallelLimit,
-} from '@claude-flow/testing';
+} from '@moflo/testing';
 
 // Wait for condition
 await waitFor(() => element.isVisible(), { timeout: 5000 });
@@ -232,7 +232,7 @@ const results = await parallelLimit(
 ### Time Control
 
 ```typescript
-import { createMockClock, measureTime } from '@claude-flow/testing';
+import { createMockClock, measureTime } from '@moflo/testing';
 
 // Mock clock for time-dependent tests
 const clock = createMockClock();
@@ -249,7 +249,7 @@ const { result, duration } = await measureTime(async () => {
 ### Event Emitter
 
 ```typescript
-import { createTestEmitter } from '@claude-flow/testing';
+import { createTestEmitter } from '@moflo/testing';
 
 const emitter = createTestEmitter<{ message: string; count: number }>();
 
@@ -274,7 +274,7 @@ import {
   createMockSecurityService,
   createMockSwarmCoordinator,
   createMockLogger,
-} from '@claude-flow/testing';
+} from '@moflo/testing';
 
 // Full application with all mocks
 const app = createMockApplication();
@@ -298,7 +298,7 @@ expect(app.taskManager.tasks.size).toBe(1);
 ### MockAgentDB
 
 ```typescript
-import { MockAgentDB } from '@claude-flow/testing';
+import { MockAgentDB } from '@moflo/testing';
 
 const db = new MockAgentDB();
 
@@ -315,7 +315,7 @@ expect(db.insert).toHaveBeenCalledWith('vec-1', expect.any(Array), expect.any(Ob
 ### MockSwarmCoordinator
 
 ```typescript
-import { MockSwarmCoordinator } from '@claude-flow/testing';
+import { MockSwarmCoordinator } from '@moflo/testing';
 
 const coordinator = new MockSwarmCoordinator();
 
@@ -330,7 +330,7 @@ expect(result.success).toBe(true);
 ### MockMCPClient
 
 ```typescript
-import { MockMCPClient, createStandardMockMCPClient } from '@claude-flow/testing';
+import { MockMCPClient, createStandardMockMCPClient } from '@moflo/testing';
 
 // Standard client with common tools
 const client = createStandardMockMCPClient();
@@ -360,7 +360,7 @@ import {
   assertV3PerformanceTargets,
   assertValidStateTransition,
   assertNoSensitiveData,
-} from '@claude-flow/testing';
+} from '@moflo/testing';
 
 // Event assertions
 assertEventPublished(mockEventBus, 'UserCreated', { userId: '123' });
@@ -389,7 +389,7 @@ assertNoSensitiveData(mockLogger.logs, ['password', 'token', 'secret']);
 ### Custom Vitest Matchers
 
 ```typescript
-import { registerCustomMatchers } from '@claude-flow/testing';
+import { registerCustomMatchers } from '@moflo/testing';
 
 // Register in setup
 registerCustomMatchers();
@@ -405,7 +405,7 @@ expect(metrics).toMeetV3PerformanceTargets();
 ### Global Test Setup
 
 ```typescript
-import { setupV3Tests, configureTestEnvironment } from '@claude-flow/testing';
+import { setupV3Tests, configureTestEnvironment } from '@moflo/testing';
 
 // Simple setup
 setupV3Tests();
@@ -425,7 +425,7 @@ configureTestEnvironment({
 ### Test Context
 
 ```typescript
-import { createSetupContext, createTestScope } from '@claude-flow/testing';
+import { createSetupContext, createTestScope } from '@moflo/testing';
 
 // Setup context with cleanup
 const ctx = createSetupContext();
@@ -445,7 +445,7 @@ await scope.run(async () => {
 ### Performance Testing
 
 ```typescript
-import { createPerformanceTestHelper } from '@claude-flow/testing';
+import { createPerformanceTestHelper } from '@moflo/testing';
 
 const perf = createPerformanceTestHelper();
 
@@ -471,7 +471,7 @@ The testing framework includes assertions for V3 performance targets:
 | Response Time | < 100ms |
 
 ```typescript
-import { assertV3PerformanceTargets, TEST_CONFIG } from '@claude-flow/testing';
+import { assertV3PerformanceTargets, TEST_CONFIG } from '@moflo/testing';
 
 // Assert targets
 assertV3PerformanceTargets({

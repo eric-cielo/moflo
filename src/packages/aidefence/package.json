@@ -1,5 +1,5 @@
 {
-  "name": "@claude-flow/aidefence",
+  "name": "@moflo/aidefence",
   "version": "3.0.2",
   "description": "AI Manipulation Defense System (AIMDS) with self-learning, prompt injection detection, and vector search integration",
   "type": "module",
@@ -60,12 +60,12 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/eric-cielo/moflo.git",
-    "directory": "v3/@claude-flow/aidefence"
+    "directory": "v3/@moflo/aidefence"
   },
   "bugs": {
     "url": "https://github.com/eric-cielo/moflo/issues"
   },
-  "homepage": "https://github.com/eric-cielo/moflo/tree/main/v3/@claude-flow/aidefence#readme",
+  "homepage": "https://github.com/eric-cielo/moflo/tree/main/v3/@moflo/aidefence#readme",
   "publishConfig": {
     "access": "public",
     "tag": "alpha"

@@ -6,7 +6,7 @@
  * - Open: Failing fast, not calling service
  * - Half-Open: Testing if service recovered
  *
- * @module @claude-flow/cli/production/circuit-breaker
+ * @module @moflo/cli/production/circuit-breaker
  */
 
 // ============================================================================

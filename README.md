@@ -32,11 +32,11 @@ MoFlo makes deliberate choices so you don't have to:
 - **sql.js (WASM)** — The memory database uses sql.js, a pure WebAssembly build of SQLite. No native `better-sqlite3` bindings to compile, no platform-specific build steps. Works identically on Windows, macOS, and Linux.
 - **Simplified embeddings pipeline** — 384-dimensional neural embeddings via Transformers.js (MiniLM-L6-v2, WASM). Same model and precision as the upstream multi-provider pipeline, but simpler — two scripts instead of an abstraction layer. Runs locally, no API calls.
 - **Full learning stack wired up OOTB** — The following are all configured and functional from `flo init`, no manual setup:
-  - **SONA** (Self-Optimizing Neural Architecture) — learns from task trajectories via pure TypeScript SONA implementation in `@claude-flow/neural`
-  - **MicroLoRA** — rank-2 LoRA weight adaptations at ~1µs per adapt via pure TypeScript MicroLoRA in `@claude-flow/neural`
+  - **SONA** (Self-Optimizing Neural Architecture) — learns from task trajectories via pure TypeScript SONA implementation in `@moflo/neural`
+  - **MicroLoRA** — rank-2 LoRA weight adaptations at ~1µs per adapt via pure TypeScript MicroLoRA in `@moflo/neural`
   - **EWC++** (Elastic Weight Consolidation) — prevents catastrophic forgetting across sessions
   - **HNSW Vector Search** — fast nearest-neighbor search via HNSW indexing with sql.js (WASM SQLite)
-  - **Semantic Routing** — maps tasks to agents via learned routing in `@claude-flow/hooks`
+  - **Semantic Routing** — maps tasks to agents via learned routing in `@moflo/hooks`
   - **Trajectory Persistence** — outcomes stored in `routing-outcomes.json`, survive across sessions
   - All pure TypeScript/WASM-based, no GPU, no API keys, no external services.
 - **Memory-first workflow** — Claude must search what it already knows before exploring files. Enforced by hooks, not just instructions.

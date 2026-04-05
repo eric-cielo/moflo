@@ -12,8 +12,8 @@ import { mkdtempSync, rmSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-import { RvfEmbeddingCache } from '../v3/@claude-flow/embeddings/src/rvf-embedding-cache.js';
-import { RvfEmbeddingService } from '../v3/@claude-flow/embeddings/src/rvf-embedding-service.js';
+import { RvfEmbeddingCache } from '../v3/@moflo/embeddings/src/rvf-embedding-cache.js';
+import { RvfEmbeddingService } from '../v3/@moflo/embeddings/src/rvf-embedding-service.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

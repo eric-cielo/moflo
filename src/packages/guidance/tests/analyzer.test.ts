@@ -773,7 +773,7 @@ ALWAYS publish both packages. MUST update all dist-tags.
 NEVER forget the umbrella alpha tag.
 
 \`\`\`bash
-cd v3/@claude-flow/cli
+cd v3/@moflo/cli
 npm version 3.0.0-alpha.XXX --no-git-tag-version
 npm run build
 npm publish --tag alpha
@@ -2031,7 +2031,7 @@ class ABDifferentialExecutor implements IContentAwareExecutor {
 
     if (lower.includes('publish') && lower.includes('npm')) {
       if (this.hasDeployInfo) {
-        return { stdout: 'Set up npm publish workflow with dist-tag management. Publishes to alpha and latest tags. Both @claude-flow/cli and claude-flow umbrella package are updated. Tags verified after publish.', stderr: '', exitCode: 0 };
+        return { stdout: 'Set up npm publish workflow with dist-tag management. Publishes to alpha and latest tags. Both @moflo/cli and claude-flow umbrella package are updated. Tags verified after publish.', stderr: '', exitCode: 0 };
       }
       return { stdout: 'npm publish && git push --force origin main', stderr: '', exitCode: 0 };
     }

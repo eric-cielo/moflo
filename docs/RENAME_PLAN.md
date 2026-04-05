@@ -1,4 +1,4 @@
-# Rename `src/@claude-flow/` → `src/packages/`
+# Rename `src/@moflo/` → `src/packages/`
 
 **Date:** 2026-03-26
 **Branch:** working directly on main (pre-PR)
@@ -6,10 +6,10 @@
 
 ## Context
 
-The `src/@claude-flow/` directory is inherited from the upstream ruflo/claude-flow monorepo.
+The `src/@moflo/` directory is inherited from the upstream ruflo/claude-flow monorepo.
 The `@claude-flow` scoped name is confusing — it's not our brand, implies npm packages that
 don't publish, and creates unnecessarily deep paths. Renaming to `src/packages/` is a pure
-directory rename; TypeScript import aliases (`@claude-flow/*`) stay unchanged for now (they're
+directory rename; TypeScript import aliases (`@moflo/*`) stay unchanged for now (they're
 resolved via tsconfig paths, not filesystem conventions).
 
 ## Completed
@@ -38,10 +38,10 @@ resolved via tsconfig paths, not filesystem conventions).
 
 ### Code/Config
 
-- [x] `src/mcp/tools/*.js` — verified: only `@claude-flow/*` tsconfig aliases remain
-      (intentionally kept per Tier 3 scope). No filesystem `../../@claude-flow/` paths found.
+- [x] `src/mcp/tools/*.js` — verified: only `@moflo/*` tsconfig aliases remain
+      (intentionally kept per Tier 3 scope). No filesystem `../../@moflo/` paths found.
 - [x] `src/mcp/tools/sona-tools.js` and `sona-tools.d.ts` — verified clean, no old paths
-- [x] `.github/workflows/ci.yml` — fixed stale `src/@claude-flow/cli/` → `src/packages/cli/`
+- [x] `.github/workflows/ci.yml` — fixed stale `src/@moflo/cli/` → `src/packages/cli/`
 
 ### Docs
 
@@ -73,9 +73,9 @@ Then: create branch, commit, push, PR, merge.
 
 ## What NOT to change (yet)
 
-- Import aliases (`@claude-flow/*`) — these are tsconfig path mappings, not directory names.
+- Import aliases (`@moflo/*`) — these are tsconfig path mappings, not directory names.
   Renaming to `@moflo/*` is Tier 3 work and touches hundreds of source files.
-- Individual subpackage `package.json` names — they still say `@claude-flow/memory` etc.
+- Individual subpackage `package.json` names — they still say `@moflo/memory` etc.
   These are internal and not published. Rename is Tier 3.
 
 ## Related: Distro Trim (completed, published as 4.8.50)

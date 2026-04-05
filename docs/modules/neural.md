@@ -1,7 +1,7 @@
-# @claude-flow/neural
+# @moflo/neural
 
-[![npm version](https://img.shields.io/npm/v/@claude-flow/neural.svg)](https://www.npmjs.com/package/@claude-flow/neural)
-[![npm downloads](https://img.shields.io/npm/dm/@claude-flow/neural.svg)](https://www.npmjs.com/package/@claude-flow/neural)
+[![npm version](https://img.shields.io/npm/v/@moflo/neural.svg)](https://www.npmjs.com/package/@moflo/neural)
+[![npm downloads](https://img.shields.io/npm/dm/@moflo/neural.svg)](https://www.npmjs.com/package/@moflo/neural)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![AI Learning](https://img.shields.io/badge/AI-Self--Learning-purple.svg)](https://github.com/eric-cielo/moflo)
@@ -21,13 +21,13 @@
 ## Installation
 
 ```bash
-npm install @claude-flow/neural
+npm install @moflo/neural
 ```
 
 ## Quick Start
 
 ```typescript
-import { SONAManager, createSONAManager } from '@claude-flow/neural';
+import { SONAManager, createSONAManager } from '@moflo/neural';
 
 // Create SONA manager
 const sona = createSONAManager('balanced');
@@ -74,7 +74,7 @@ const { mode, config, optimizations } = sona.getConfig();
 ### SONA Manager
 
 ```typescript
-import { SONAManager } from '@claude-flow/neural';
+import { SONAManager } from '@moflo/neural';
 
 const sona = new SONAManager('balanced');
 await sona.initialize();
@@ -100,7 +100,7 @@ const stats = sona.getStats();
 ### RL Algorithms
 
 ```typescript
-import { PPO, A2C, DQN, QLearning, SARSA, DecisionTransformer } from '@claude-flow/neural';
+import { PPO, A2C, DQN, QLearning, SARSA, DecisionTransformer } from '@moflo/neural';
 
 // Proximal Policy Optimization
 const ppo = new PPO({
@@ -241,19 +241,19 @@ import type {
   LoRAWeights,
   EWCConfig,
   RLAlgorithm
-} from '@claude-flow/neural';
+} from '@moflo/neural';
 ```
 
 ## Dependencies
 
-- [@claude-flow/memory](../memory) - Memory integration
+- [@moflo/memory](../memory) - Memory integration
 - Built-in SONA engine (pure TypeScript)
 
 ## Related Packages
 
-- [@claude-flow/memory](../memory) - Vector memory for patterns
-- [@claude-flow/integration](../integration) - agentic-flow integration
-- [@claude-flow/performance](../performance) - Benchmarking
+- [@moflo/memory](../memory) - Vector memory for patterns
+- [@moflo/integration](../integration) - agentic-flow integration
+- [@moflo/performance](../performance) - Benchmarking
 
 ## License
 
