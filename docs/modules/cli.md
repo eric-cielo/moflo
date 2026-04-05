@@ -53,7 +53,7 @@ MoFlo makes deliberate choices so you don't have to:
 
 ```bash
 npm install --save-dev moflo
-npx flo init
+flo init
 ```
 
 `flo init` automatically scans your project to find where your guidance and code live, then writes the results into `moflo.yaml`. It looks for:
@@ -117,9 +117,9 @@ code_map:
 ### 3. Index and verify
 
 ```bash
-npx flo memory index-guidance    # Index your guidance docs
-npx flo memory code-map          # Index your code structure
-npx flo doctor                   # Verify everything works
+flo memory index-guidance    # Index your guidance docs
+flo memory code-map          # Index your code structure
+flo doctor                   # Verify everything works
 ```
 
 Both indexes run automatically at session start after this, so you only need to run them manually on first setup or after major structural changes.

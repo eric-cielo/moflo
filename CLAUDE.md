@@ -136,6 +136,7 @@ When the user asks you to remember something: `mcp__moflo__memory_store` with na
 
 - **Memory-first**: Must search memory before Glob/Grep/Read
 - **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
+- **Task Icons**: `TaskCreate` MUST use ICON+[Role] format — see `.claude/guidance/moflo-task-icons.md`
 
 ### MCP Tools (preferred over CLI)
 
@@ -150,13 +151,12 @@ When the user asks you to remember something: `mcp__moflo__memory_store` with na
 ### CLI Fallback
 
 ```bash
-npx flo-search "[query]" --namespace guidance   # Semantic search
-npx flo doctor --fix                             # Health check
+flo-search "[query]" --namespace guidance   # Semantic search
+flo doctor --fix                             # Health check
 ```
 
 ### Full Reference
 
-- **Subagents protocol:** `.claude/guidance/shipped/moflo-subagents.md`
-- **Task + swarm coordination:** `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md`
-- **CLI, hooks, swarm, memory, moflo.yaml:** `.claude/guidance/shipped/moflo-core-guidance.md`
+For CLI commands, hooks, agents, swarm config, memory commands, and moflo.yaml options, see:
+`.claude/guidance/shipped/moflo-core-guidance.md`
 <!-- MOFLO:INJECTED:END -->

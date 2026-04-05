@@ -26,16 +26,16 @@ const gateCommand: Command = {
   description: 'Workflow gate enforcement for Claude Code hooks',
   options: [],
   examples: [
-    { command: 'flo gate check-before-scan', description: 'Check memory-first before Glob/Grep' },
-    { command: 'flo gate check-before-agent', description: 'Check TaskCreate before Agent tool' },
-    { command: 'flo gate prompt-reminder', description: 'Reset per-prompt state, show context bracket' },
-    { command: 'flo gate session-reset', description: 'Reset all workflow state' },
+    { command: 'npx flo gate check-before-scan', description: 'Check memory-first before Glob/Grep' },
+    { command: 'npx flo gate check-before-agent', description: 'Check TaskCreate before Agent tool' },
+    { command: 'npx flo gate prompt-reminder', description: 'Reset per-prompt state, show context bracket' },
+    { command: 'npx flo gate session-reset', description: 'Reset all workflow state' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const subcommand = ctx.args?.[0];
 
     if (!subcommand) {
-      console.log('Usage: flo gate <command>');
+      console.log('Usage: npx flo gate <command>');
       console.log('');
       console.log('Commands:');
       console.log('  check-before-scan      Check memory searched before Glob/Grep');

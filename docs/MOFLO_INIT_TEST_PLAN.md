@@ -1,6 +1,6 @@
 # MoFlo Init Integration Test Plan
 
-> Full end-to-end test of `npx flo init` in a fresh Node.js project.
+> Full end-to-end test of `flo init` in a fresh Node.js project.
 > Last validated: 2026-03-20 against moflo@4.7.3
 
 ## Prerequisites
@@ -32,7 +32,7 @@ npm install moflo@latest
 ### 1a. First Run (no --force)
 
 ```bash
-npx flo init --yes
+flo init --yes
 ```
 
 **Expected**: Creates all files and directories listed below. No errors.
@@ -41,7 +41,7 @@ npx flo init --yes
 ### 1b. Re-run (idempotency)
 
 ```bash
-npx flo init --yes
+flo init --yes
 ```
 
 **Expected**: Detects existing setup, skips existing files, updates gracefully.
@@ -50,7 +50,7 @@ npx flo init --yes
 ### 1c. Force Re-init
 
 ```bash
-npx flo init --yes --force
+flo init --yes --force
 ```
 
 **Expected**: Recreates all files.
@@ -122,7 +122,7 @@ npx flo init --yes --force
 ## Test 3: Doctor Diagnostics
 
 ```bash
-npx flo doctor
+flo doctor
 ```
 
 **Expected**: All checks pass (warnings OK for daemon/memory/TypeScript).
@@ -152,7 +152,7 @@ npx flo doctor
 ### 4a. Store
 
 ```bash
-npx flo memory store --key "auth-pattern" --value "Use JWT with refresh tokens" --namespace patterns --tags "auth,security"
+flo memory store --key "auth-pattern" --value "Use JWT with refresh tokens" --namespace patterns --tags "auth,security"
 ```
 
 **Expected**: Success, 384-dim vector generated.
@@ -161,7 +161,7 @@ npx flo memory store --key "auth-pattern" --value "Use JWT with refresh tokens" 
 ### 4b. Retrieve
 
 ```bash
-npx flo memory retrieve --key "auth-pattern" --namespace patterns
+flo memory retrieve --key "auth-pattern" --namespace patterns
 ```
 
 **Expected**: Returns stored value, increments access count.
@@ -170,7 +170,7 @@ npx flo memory retrieve --key "auth-pattern" --namespace patterns
 ### 4c. Semantic Search
 
 ```bash
-npx flo memory search --query "authentication security tokens" --limit 5
+flo memory search --query "authentication security tokens" --limit 5
 ```
 
 **Expected**: Returns results ranked by semantic similarity.
@@ -179,7 +179,7 @@ npx flo memory search --query "authentication security tokens" --limit 5
 ### 4d. List
 
 ```bash
-npx flo memory list --namespace patterns
+flo memory list --namespace patterns
 ```
 
 **Expected**: Shows all entries with metadata.
@@ -188,7 +188,7 @@ npx flo memory list --namespace patterns
 ### 4e. Delete
 
 ```bash
-npx flo memory delete --key "auth-pattern" --namespace patterns
+flo memory delete --key "auth-pattern" --namespace patterns
 ```
 
 **Expected**: Deletes entry, confirms remaining count.
@@ -197,7 +197,7 @@ npx flo memory delete --key "auth-pattern" --namespace patterns
 ### 4f. Stats
 
 ```bash
-npx flo memory stats
+flo memory stats
 ```
 
 **Expected**: Shows backend type, version, entry count.
@@ -210,7 +210,7 @@ npx flo memory stats
 ### 5a. Swarm Init
 
 ```bash
-npx flo swarm init --topology hierarchical --max-agents 6 --strategy specialized
+flo swarm init --topology hierarchical --max-agents 6 --strategy specialized
 ```
 
 **Expected**: Returns swarm ID, topology, agent count.
@@ -219,7 +219,7 @@ npx flo swarm init --topology hierarchical --max-agents 6 --strategy specialized
 ### 5b. Swarm Status
 
 ```bash
-npx flo swarm status
+flo swarm status
 ```
 
 **Expected**: Shows agents, tasks, performance metrics.
@@ -228,7 +228,7 @@ npx flo swarm status
 ### 5c. Agent Spawn
 
 ```bash
-npx flo agent spawn --type coder --name test-coder
+flo agent spawn --type coder --name test-coder
 ```
 
 **Expected**: Agent spawned with capabilities listed.
@@ -237,7 +237,7 @@ npx flo agent spawn --type coder --name test-coder
 ### 5d. Agent List
 
 ```bash
-npx flo agent list
+flo agent list
 ```
 
 **Expected**: Shows spawned agent with full ID (35-char column).
@@ -246,7 +246,7 @@ npx flo agent list
 ### 5e. Swarm Stop
 
 ```bash
-npx flo swarm stop <swarm-id>
+flo swarm stop <swarm-id>
 ```
 
 **Expected**: Graceful shutdown with usage hint on error.
@@ -255,7 +255,7 @@ npx flo swarm stop <swarm-id>
 ### 5f. Agent Stop
 
 ```bash
-npx flo agent stop <agent-id>
+flo agent stop <agent-id>
 ```
 
 **Status**: PASS — Agent ID column widened to 35 chars so full IDs are visible in `agent list`.
@@ -267,7 +267,7 @@ npx flo agent stop <agent-id>
 ### 6a. Hive-Mind Init
 
 ```bash
-npx flo hive-mind init --topology hierarchical-mesh --consensus raft --max-agents 10
+flo hive-mind init --topology hierarchical-mesh --consensus raft --max-agents 10
 ```
 
 **Expected**: Queen agent created, hive ready.
@@ -278,7 +278,7 @@ npx flo hive-mind init --topology hierarchical-mesh --consensus raft --max-agent
 ### 6b. Hive-Mind Status
 
 ```bash
-npx flo hive-mind status
+flo hive-mind status
 ```
 
 **Expected**: Shows queen status, worker count, load.
@@ -287,7 +287,7 @@ npx flo hive-mind status
 ### 6c. Hive-Mind Spawn
 
 ```bash
-npx flo hive-mind spawn --type worker --name test-worker
+flo hive-mind spawn --type worker --name test-worker
 ```
 
 **Expected**: Worker agent spawned and joins hive.
@@ -296,7 +296,7 @@ npx flo hive-mind spawn --type worker --name test-worker
 ### 6d. Hive-Mind Shutdown
 
 ```bash
-npx flo hive-mind shutdown
+flo hive-mind shutdown
 ```
 
 **Expected**: Graceful shutdown with agent count and state saved.
@@ -309,7 +309,7 @@ npx flo hive-mind shutdown
 ### 7a. Task Create
 
 ```bash
-npx flo task create --type implementation --description "Add input validation"
+flo task create --type implementation --description "Add input validation"
 ```
 
 **Expected**: Task created with ID.
@@ -320,7 +320,7 @@ npx flo task create --type implementation --description "Add input validation"
 ### 7b. Task List
 
 ```bash
-npx flo task list
+flo task list
 ```
 
 **Expected**: Shows tasks with status.
@@ -333,7 +333,7 @@ npx flo task list
 ### 8a. Hooks List
 
 ```bash
-npx flo hooks list
+flo hooks list
 ```
 
 **Expected**: Shows all 26 registered hooks.
@@ -342,7 +342,7 @@ npx flo hooks list
 ### 8b. Hooks Route
 
 ```bash
-npx flo hooks route --task "add user authentication"
+flo hooks route --task "add user authentication"
 ```
 
 **Expected**: Returns agent recommendation with confidence score.
@@ -351,7 +351,7 @@ npx flo hooks route --task "add user authentication"
 ### 8c. Neural Status
 
 ```bash
-npx flo neural status
+flo neural status
 ```
 
 **Expected**: Shows neural subsystem status.
@@ -364,7 +364,7 @@ npx flo neural status
 ### 9a. Config List
 
 ```bash
-npx flo config list
+flo config list
 ```
 
 **Expected**: Shows available subcommands.
@@ -373,7 +373,7 @@ npx flo config list
 ### 9b. Config Show
 
 ```bash
-npx flo config show
+flo config show
 ```
 
 **Expected**: Shows current configuration from moflo.yaml.
@@ -386,7 +386,7 @@ npx flo config show
 ### 10a. Session List
 
 ```bash
-npx flo session list
+flo session list
 ```
 
 **Expected**: Shows "No sessions found" for fresh project.
@@ -501,33 +501,33 @@ git add -A && git commit -m "Initial setup"
 npm install moflo@latest
 
 # Run init
-npx flo init --yes
+flo init --yes
 
 # Run full integration diagnostics (14 tests, non-destructive)
-npx flo memory init --force
-npx flo diagnose
+flo memory init --force
+flo diagnose
 
 # Or test a specific subsystem
-npx flo diagnose --suite memory
-npx flo diagnose --suite swarm
+flo diagnose --suite memory
+flo diagnose --suite swarm
 
 # JSON output for CI
-npx flo diagnose --json
+flo diagnose --json
 ```
 
 ### Manual (step-by-step)
 
 ```bash
-npx flo doctor
-npx flo memory store --key "test" --value "hello" --namespace test
-npx flo memory search --query "hello" --limit 5
-npx flo config show
-npx flo swarm init --topology hierarchical --max-agents 6 --strategy specialized
-npx flo swarm status
-npx flo hive-mind init --topology hierarchical-mesh --consensus raft
-npx flo hive-mind shutdown
+flo doctor
+flo memory store --key "test" --value "hello" --namespace test
+flo memory search --query "hello" --limit 5
+flo config show
+flo swarm init --topology hierarchical --max-agents 6 --strategy specialized
+flo swarm status
+flo hive-mind init --topology hierarchical-mesh --consensus raft
+flo hive-mind shutdown
 
 # Re-run init (idempotency)
-npx flo init --yes
+flo init --yes
 # Should show ○ for all skipped items, no errors
 ```

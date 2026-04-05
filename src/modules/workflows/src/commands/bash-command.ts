@@ -88,6 +88,16 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       }
     }
 
+    // If already aborted, bail immediately without spawning a process.
+    if (context.abortSignal?.aborted) {
+      return {
+        success: !failOnError,
+        data: { stdout: '', stderr: '', exitCode: -1, timedOut: false },
+        error: failOnError ? 'Command aborted before execution' : undefined,
+        duration: Date.now() - start,
+      };
+    }
+
     const elapsed = () => `${((Date.now() - start) / 1000).toFixed(1)}s`;
     const cmdPreview = command.length > 80 ? command.slice(0, 77) + '...' : command;
 

@@ -31,6 +31,7 @@ export function generateSettings(options: InitOptions): object {
     allow: [
       'Bash(npx moflo*)',
       'Bash(npx flo*)',
+      'Bash(flo*)',
       'Bash(node .claude/*)',
       'mcp__moflo__:*',
     ],

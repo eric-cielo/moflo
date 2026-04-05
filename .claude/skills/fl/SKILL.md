@@ -149,8 +149,8 @@ Memory has file paths, context, and patterns - often all you need.
 Only read guidance files if memory search returns zero relevant results.
 
 ```bash
-npx flo memory search --query "<issue title keywords>" --namespace patterns
-npx flo memory search --query "<domain keywords>" --namespace guidance
+flo memory search --query "<issue title keywords>" --namespace patterns
+flo memory search --query "<domain keywords>" --namespace guidance
 ```
 
 Or via MCP: `mcp__moflo__memory_search`
@@ -606,7 +606,7 @@ TaskCreate({ subject: "Run /simplify on changed files", ... })
 TaskCreate({ subject: "Review and PR", ... })
 
 // 2. Init swarm
-Bash("npx flo swarm init --topology hierarchical --max-agents 8 --strategy specialized")
+Bash("flo swarm init --topology hierarchical --max-agents 8 --strategy specialized")
 
 // 3. Spawn agents with Task tool (run_in_background: true)
 Task({ prompt: "...", subagent_type: "researcher", run_in_background: true })

@@ -54,8 +54,8 @@ When the user asks you to remember something: \`mcp__moflo__memory_store\` with 
 ### CLI Fallback
 
 \`\`\`bash
-npx flo-search "[query]" --namespace guidance   # Semantic search
-npx flo doctor --fix                             # Health check
+flo-search "[query]" --namespace guidance   # Semantic search
+flo doctor --fix                             # Health check
 \`\`\`
 
 ### Full Reference

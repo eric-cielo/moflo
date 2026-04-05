@@ -184,8 +184,8 @@ npm pack
 mkdir -p /tmp/moflo-test && cd /tmp/moflo-test && npm init -y && npm install /path/to/moflo-x.y.z.tgz
 
 # 3. Verify CLI works
-npx flo --version
-npx flo doctor
+flo --version
+flo doctor
 
 # 4. Verify init assets shipped
 ls node_modules/moflo/.claude/guidance/shipped/

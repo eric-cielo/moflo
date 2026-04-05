@@ -6,9 +6,9 @@
  * adds a CLAUDE.md section so subagents automatically follow the protocol.
  *
  * Usage:
- *   npx flo-setup            # First-time setup
- *   npx flo-setup --update   # Refresh bootstrap file after moflo upgrade
- *   npx flo-setup --check    # Check if setup is current
+ *   flo-setup            # First-time setup
+ *   flo-setup --update   # Refresh bootstrap file after moflo upgrade
+ *   flo-setup --check    # Check if setup is current
  *
  * What it does:
  *   1. Copies .claude/guidance/shipped/moflo-subagents.md → project's .claude/guidance/moflo-bootstrap.md
@@ -74,8 +74,8 @@ When the user asks you to remember something: \`mcp__moflo__memory_store\` with 
 ### CLI Fallback
 
 \`\`\`bash
-npx flo-search "[query]" --namespace guidance   # Semantic search
-npx flo doctor --fix                             # Health check
+flo-search "[query]" --namespace guidance   # Semantic search
+flo doctor --fix                             # Health check
 \`\`\`
 
 ### Full Reference

@@ -22,7 +22,7 @@
  *   node node_modules/moflo/bin/generate-code-map.mjs --verbose   # Detailed logging
  *   node node_modules/moflo/bin/generate-code-map.mjs --no-embeddings  # Skip embedding generation
  *   node node_modules/moflo/bin/generate-code-map.mjs --stats     # Print stats and exit
- *   npx flo-codemap                                              # Via npx
+ *   flo-codemap                                              # Via PATH
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';

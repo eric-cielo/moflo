@@ -14,7 +14,7 @@ MoFlo makes your AI coding assistant remember what it learns, check what it know
 
 ```bash
 npm install --save-dev moflo
-npx flo init
+flo init
 ```
 
 Restart Claude Code (or your MCP client). That's it — memory, indexing, gates, and routing are all active.
@@ -67,7 +67,7 @@ MoFlo makes deliberate choices so you don't have to:
 
 ```bash
 npm install --save-dev moflo
-npx flo init
+flo init
 ```
 
 `flo init` automatically scans your project to find where your guidance, code, and tests live, then writes the results into `moflo.yaml`. It looks for:
@@ -102,7 +102,7 @@ If `flo init` detects an existing `.claude/settings.json` or `.claude-flow/` dir
 To force a clean re-initialization over an existing setup:
 
 ```bash
-npx flo init --force
+flo init --force
 ```
 
 ### 2. Review your guidance and code settings
@@ -159,15 +159,15 @@ code_map:
 ### 3. Index and verify
 
 ```bash
-npx flo memory index-guidance    # Index your guidance docs
-npx flo memory code-map          # Index your code structure
-npx flo doctor                   # Verify everything works
+flo memory index-guidance    # Index your guidance docs
+flo memory code-map          # Index your code structure
+flo doctor                   # Verify everything works
 ```
 
 Both indexes run automatically at session start after this, so you only need to run them manually on first setup or after major structural changes. The first index may take a minute or two on large codebases (1,000+ files) but runs in the background — you can start working immediately. Subsequent indexes are incremental and typically finish in under a second. To reindex everything at once:
 
 ```bash
-npx flo memory refresh           # Reindex all content, rebuild embeddings, cleanup, vacuum
+flo memory refresh           # Reindex all content, rebuild embeddings, cleanup, vacuum
 ```
 
 ## Auto-Indexing
@@ -203,9 +203,9 @@ auto_index:
 Set any to `false` to disable that indexer. The underlying data remains in memory — you just stop refreshing it automatically. You can still run indexers manually:
 
 ```bash
-npx flo memory index-guidance    # Manual guidance reindex
-npx flo memory code-map          # Manual code map reindex
-npx flo memory refresh           # Reindex everything + rebuild embeddings + vacuum
+flo memory index-guidance    # Manual guidance reindex
+flo memory code-map          # Manual code map reindex
+flo memory refresh           # Reindex everything + rebuild embeddings + vacuum
 ```
 
 ### Why this matters

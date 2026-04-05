@@ -28,6 +28,8 @@ export interface InitComponents {
   runtime: boolean;
   /** Create CLAUDE.md with swarm guidance */
   claudeMd: boolean;
+  /** Create .envrc for PATH setup (./node_modules/.bin) */
+  pathSetup: boolean;
 }
 
 /**
@@ -319,6 +321,7 @@ export const DEFAULT_INIT_OPTIONS: InitOptions = {
     mcp: true,
     runtime: true,
     claudeMd: true,
+    pathSetup: true,
   },
   hooks: {
     preToolUse: true,
@@ -417,6 +420,7 @@ export const MINIMAL_INIT_OPTIONS: InitOptions = {
     mcp: true,
     runtime: true,
     claudeMd: true,
+    pathSetup: true,
   },
   hooks: {
     ...DEFAULT_INIT_OPTIONS.hooks,
@@ -482,6 +486,7 @@ export const FULL_INIT_OPTIONS: InitOptions = {
     mcp: true,
     runtime: true,
     claudeMd: true,
+    pathSetup: true,
   },
   skills: {
     core: true,

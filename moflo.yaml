@@ -34,6 +34,7 @@ tests:
     - src/modules/shared/__tests__
     - src/modules/swarm/__tests__
     - src/modules/testing/__tests__
+    - src/modules/workflows/__tests__
     - src/__tests__
   patterns: ["*.test.*", "*.spec.*", "*.test-*"]
   extensions: [".ts", ".tsx", ".js", ".jsx"]
@@ -69,10 +70,6 @@ hooks:
   stop_hook: true              # Session-end persistence and metric export
   session_restore: true        # Restore session state on start
   notification: true           # Hook into Claude Code notifications
-
-# Worker daemon (background indexing, optimization, test gap detection)
-daemon:
-  auto_start: true              # Start daemon automatically on CLI/MCP init (set false to disable)
 
 # MCP server options
 mcp:

@@ -1,30 +1,4 @@
 {
-  "model": "claude-opus-4-6",
-  "customInstructions": "Follow the project's CLAUDE.md guidelines. Use concurrent execution for all operations. Prioritize v3 implementation with security-first development, 15-agent swarm coordination, phased performance optimization, and cross-platform helper automation.",
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
-    "CLAUDE_FLOW_V3_ENABLED": "true",
-    "CLAUDE_FLOW_HOOKS_ENABLED": "true"
-  },
-  "permissions": {
-    "allow": [
-      "Bash",
-      "Read",
-      "Write",
-      "Edit",
-      "MultiEdit",
-      "Glob",
-      "Grep",
-      "Task",
-      "WebFetch(domain:*)",
-      "mcp__*"
-    ],
-    "deny": [
-      "Read(./.env)",
-      "Read(./.env.*)",
-      "Bash(rm -rf /)"
-    ]
-  },
   "hooks": {
     "PreToolUse": [
       {
@@ -63,11 +37,6 @@
           {
             "type": "command",
             "command": "npx flo gate check-dangerous-command",
-            "timeout": 2000
-          },
-          {
-            "type": "command",
-            "command": "npx flo gate check-before-pr",
             "timeout": 2000
           }
         ]
@@ -123,26 +92,6 @@
             "timeout": 2000
           }
         ]
-      },
-      {
-        "matcher": "^TaskUpdate$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "npx flo gate check-task-transition",
-            "timeout": 2000
-          }
-        ]
-      },
-      {
-        "matcher": "^mcp__moflo__memory_store$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "npx flo gate record-learnings-stored",
-            "timeout": 2000
-          }
-        ]
       }
     ],
     "UserPromptSubmit": [
@@ -177,7 +126,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/bin/session-start-launcher.mjs\"",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/scripts/session-start-launcher.mjs\"",
             "timeout": 3000
           }
         ]
@@ -217,13 +166,40 @@
       }
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/statusline.cjs\""
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npx moflo*)",
+      "Bash(npx flo*)",
+      "Bash(flo*)",
+      "Bash(node .claude/*)",
+      "mcp__moflo__:*"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ]
+  },
   "attribution": {
     "commit": "Co-Authored-By: moflo <noreply@motailz.com>",
     "pr": "🤖 Generated with [moflo](https://github.com/eric-cielo/moflo)"
   },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_FLOW_V3_ENABLED": "true",
+    "CLAUDE_FLOW_HOOKS_ENABLED": "true"
+  },
   "claudeFlow": {
-    "version": "4.7.2",
+    "version": "3.0.0",
     "enabled": true,
+    "platform": {
+      "os": "windows",
+      "arch": "x64",
+      "shell": "powershell"
+    },
     "modelPreferences": {
       "default": "claude-opus-4-6",
       "routing": "claude-haiku-4-5-20251001"
@@ -301,11 +277,18 @@
         },
         "document": {
           "interval": "1h",
-          "priority": "normal"
+          "priority": "normal",
+          "triggers": [
+            "adr-update",
+            "api-change"
+          ]
         },
         "deepdive": {
           "interval": "4h",
-          "priority": "normal"
+          "priority": "normal",
+          "triggers": [
+            "complex-change"
+          ]
         },
         "ultralearn": {
           "interval": "1h",
@@ -342,31 +325,5 @@
       "cveCheck": true,
       "threatModel": true
     }
-  },
-  "agents": {
-    "source": ".claude/agents",
-    "customAgents": []
-  },
-  "skills": {
-    "source": ".claude/commands",
-    "enabled": true
-  },
-  "statusLine": {
-    "type": "command",
-    "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/statusline.cjs\""
-  },
-  "mcpServers": {
-    "moflo": {
-      "command": "node",
-      "args": [
-        "bin/cli.js",
-        "mcp",
-        "start"
-      ]
-    }
-  },
-  "enabledMcpjsonServers": [
-    "moflo",
-    "ruv-swarm"
-  ]
+  }
 }

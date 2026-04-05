@@ -178,3 +178,6 @@ test-database-provider.rvf
 
 # Local guidance docs (generated, not tracked)
 .claude/guidance/
+
+# MoFlo state (gitignored)
+.claude-epic/
