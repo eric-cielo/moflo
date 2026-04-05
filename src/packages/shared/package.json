@@ -1,8 +1,6 @@
 {
   "name": "@moflo/shared",
-  "version": "3.0.0-alpha.6",
   "type": "module",
-  "description": "Shared module - common types, events, utilities, core interfaces",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -34,9 +32,5 @@
     "vitest": "^4.0.16",
     "ws": "^8.16.0",
     "zod": "^3.22.4"
-  },
-  "publishConfig": {
-    "access": "public",
-    "tag": "v3alpha"
   }
 }

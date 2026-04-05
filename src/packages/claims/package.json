@@ -1,7 +1,5 @@
 {
   "name": "@moflo/claims",
-  "version": "3.0.0-alpha.8",
-  "description": "Issue claiming and work coordination module for Claude Flow V3",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -22,10 +20,6 @@
       "types": "./dist/api/mcp-tools.d.ts"
     }
   },
-  "files": [
-    "dist",
-    "src"
-  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -36,26 +30,6 @@
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": [
-    "claude-flow",
-    "claims",
-    "issue-tracking",
-    "work-coordination",
-    "multi-agent",
-    "swarm",
-    "mcp"
-  ],
-  "author": "Claude Flow Team",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/eric-cielo/moflo.git",
-    "directory": "v3/@moflo/claims"
-  },
-  "bugs": {
-    "url": "https://github.com/eric-cielo/moflo/issues"
-  },
-  "homepage": "https://github.com/eric-cielo/moflo#readme",
   "dependencies": {
     "zod": "^3.22.4"
   },
@@ -73,12 +47,5 @@
     "@moflo/shared": {
       "optional": true
     }
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "publishConfig": {
-    "access": "public",
-    "tag": "v3alpha"
   }
 }

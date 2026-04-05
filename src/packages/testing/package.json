@@ -1,8 +1,6 @@
 {
   "name": "@moflo/testing",
-  "version": "3.0.0-alpha.6",
   "type": "module",
-  "description": "Testing module - TDD London School framework, test utilities, fixtures, and mock services for V3 Claude-Flow",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -32,15 +30,6 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": [
-    "claude-flow",
-    "testing",
-    "vitest",
-    "tdd",
-    "london-school",
-    "mocks",
-    "fixtures"
-  ],
   "peerDependencies": {
     "@moflo/memory": "^3.0.0-alpha.2",
     "@moflo/shared": "^3.0.0-alpha.1",
@@ -53,9 +42,5 @@
     "@moflo/swarm": "^3.0.0-alpha.1",
     "typescript": "^5.3.0",
     "vitest": "^4.0.16"
-  },
-  "publishConfig": {
-    "access": "public",
-    "tag": "v3alpha"
   }
 }

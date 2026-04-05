@@ -2,7 +2,6 @@
   "name": "@moflo/cli",
   "version": "4.8.52-rc.12",
   "type": "module",
-  "description": "MoFlo CLI — AI agent orchestration with specialized agents, swarm coordination, MCP server, self-learning hooks, and vector memory for Claude Code",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "sideEffects": false,
@@ -11,41 +10,6 @@
     "claude-flow": "./bin/cli.js",
     "claude-flow-mcp": "./bin/mcp-server.js"
   },
-  "homepage": "https://github.com/eric-cielo/moflo#readme",
-  "bugs": {
-    "url": "https://github.com/eric-cielo/moflo/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/eric-cielo/moflo.git",
-    "directory": "v3/@moflo/cli"
-  },
-  "keywords": [
-    "claude",
-    "claude-code",
-    "anthropic",
-    "ai-agents",
-    "multi-agent",
-    "swarm",
-    "mcp",
-    "model-context-protocol",
-    "llm",
-    "cli",
-    "orchestration",
-    "automation",
-    "developer-tools",
-    "coding-assistant",
-    "vector-database",
-    "embeddings",
-    "self-learning",
-    "enterprise"
-  ],
-  "author": {
-    "name": "Eric Cielo",
-    "email": "eric@motailz.com",
-    "url": "https://github.com/eric-cielo"
-  },
-  "license": "MIT",
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
@@ -64,12 +28,6 @@
       "import": "./dist/src/mcp-tools/index.js"
     }
   },
-  "files": [
-    "dist",
-    "bin",
-    ".claude",
-    "README.md"
-  ],
   "scripts": {
     "preversion": "echo 'ERROR: Run npm version from the repo root, not from src/packages/cli/' && exit 1",
     "build": "tsc && node -e \"const{cpSync}=require('fs');cpSync('src/epic/workflows','dist/src/epic/workflows',{recursive:true})\"",
@@ -95,9 +53,5 @@
     "@moflo/memory": "file:../memory",
     "@claude-flow/plugin-gastown-bridge": "^0.1.3",
     "agentic-flow": "^2.0.7"
-  },
-  "publishConfig": {
-    "access": "public",
-    "tag": "latest"
   }
 }

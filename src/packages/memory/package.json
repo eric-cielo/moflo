@@ -1,8 +1,6 @@
 {
   "name": "@moflo/memory",
-  "version": "3.0.0-alpha.11",
   "type": "module",
-  "description": "Memory module - AgentDB unification, HNSW indexing, vector search, hybrid SQLite+AgentDB backend (ADR-009)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -23,14 +21,6 @@
   "devDependencies": {
     "@types/sql.js": "^1.4.9",
     "vitest": "^4.0.16"
-  },
-  "files": [
-    "dist",
-    "README.md"
-  ],
-  "publishConfig": {
-    "access": "public",
-    "tag": "v3alpha"
   },
   "os": [
     "darwin",

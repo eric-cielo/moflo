@@ -1,7 +1,5 @@
 {
   "name": "@moflo/aidefence",
-  "version": "3.0.2",
-  "description": "AI Manipulation Defense System (AIMDS) with self-learning, prompt injection detection, and vector search integration",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,10 +17,6 @@
       "types": "./dist/domain/services/threat-learning-service.d.ts"
     }
   },
-  "files": [
-    "dist",
-    "README.md"
-  ],
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
@@ -42,35 +36,5 @@
     "@types/node": "^20.10.0",
     "typescript": "^5.3.3",
     "vitest": "^1.1.0"
-  },
-  "keywords": [
-    "ai-security",
-    "prompt-injection",
-    "jailbreak-detection",
-    "threat-detection",
-    "pii-detection",
-    "claude-flow",
-    "vector-search",
-    "self-learning",
-    "aimds",
-    "llm-security"
-  ],
-  "author": "Eric Cielo <eric@motailz.com>",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/eric-cielo/moflo.git",
-    "directory": "v3/@moflo/aidefence"
-  },
-  "bugs": {
-    "url": "https://github.com/eric-cielo/moflo/issues"
-  },
-  "homepage": "https://github.com/eric-cielo/moflo/tree/main/v3/@moflo/aidefence#readme",
-  "publishConfig": {
-    "access": "public",
-    "tag": "alpha"
-  },
-  "engines": {
-    "node": ">=18.0.0"
   }
 }
