@@ -91,7 +91,7 @@ Setup is two commands:
 
 ```bash
 npm install --save-dev moflo
-npx flo init
+flo init
 ```
 
 `flo init` scans your project, finds your docs and source directories, writes the config, and installs the Claude Code hooks. Then you restart Claude Code and everything is live. There's a `flo doctor` command that verifies the setup and can auto-fix common issues.

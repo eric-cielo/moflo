@@ -19,7 +19,7 @@
  *   node node_modules/moflo/bin/index-tests.mjs --verbose      # Detailed logging
  *   node node_modules/moflo/bin/index-tests.mjs --no-embeddings  # Skip embeddings
  *   node node_modules/moflo/bin/index-tests.mjs --stats        # Print stats and exit
- *   npx flo-testmap                                            # Via npx
+ *   flo-testmap                                            # Via PATH
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs';

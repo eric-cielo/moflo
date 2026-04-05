@@ -53,6 +53,11 @@ export {
   CLAUDE_MD_TEMPLATES,
 } from './claudemd-generator.js';
 
+export {
+  writeEnvrc,
+  ENVRC_PATH_LINE,
+} from './envrc-generator.js';
+
 // Main executor
 export { executeInit, executeUpgrade, executeUpgradeWithMissing, default } from './executor.js';
 export type { UpgradeResult } from './executor.js';

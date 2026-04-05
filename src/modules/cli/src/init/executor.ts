@@ -27,6 +27,7 @@ import {
   generateHookHandlerScript,
 } from './helpers-generator.js';
 import { generateClaudeMd } from './claudemd-generator.js';
+import { writeEnvrc } from './envrc-generator.js';
 
 /**
  * Skills to copy based on configuration
@@ -223,6 +224,11 @@ export async function executeInit(options: InitOptions): Promise<InitResult> {
     // Inject "flo" npm script into consumer's package.json
     // (avoids npx overhead on Windows — npm scripts resolve .bin directly)
     await injectFloScript(targetDir, result);
+
+    // Create .envrc for PATH setup (./node_modules/.bin)
+    if (options.components.pathSetup) {
+      await writeEnvrc(targetDir, result);
+    }
 
     // Count enabled hooks
     result.summary.hooksEnabled = countEnabledHooks(options);
@@ -549,7 +555,15 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
       }
     }
 
-    // 1c. Build manifest of files we're installing, clean up stale ones
+    // 1c. Create/update .envrc for PATH setup (idempotent)
+    // writeEnvrc expects InitResult shape — adapt UpgradeResult
+    const envrcAdapter = {
+      created: { files: result.created },
+      skipped: [] as string[],
+    } as unknown as InitResult;
+    await writeEnvrc(targetDir, envrcAdapter);
+
+    // 1d. Build manifest of files we're installing, clean up stale ones
     const manifestPath = path.join(targetDir, '.claude-flow', 'installed-files.json');
     let previousManifest: string[] = [];
     try { previousManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')); } catch { /* ok */ }
@@ -968,12 +982,9 @@ async function copySkills(
     // Copy all available skills
     Object.values(SKILLS_MAP).forEach(skills => skillsToCopy.push(...skills));
   } else {
-    if (skillsConfig.core) skillsToCopy.push(...SKILLS_MAP.core);
-    if (skillsConfig.agentdb) skillsToCopy.push(...SKILLS_MAP.agentdb);
-    if (skillsConfig.github) skillsToCopy.push(...SKILLS_MAP.github);
-    if (skillsConfig.flowNexus) skillsToCopy.push(...SKILLS_MAP.flowNexus);
-    if (skillsConfig.browser) skillsToCopy.push(...SKILLS_MAP.browser);
-    if (skillsConfig.v3) skillsToCopy.push(...SKILLS_MAP.v3);
+    for (const [key, skills] of Object.entries(SKILLS_MAP)) {
+      if (skillsConfig[key as keyof typeof skillsConfig]) skillsToCopy.push(...skills);
+    }
   }
 
   // Find source skills directory
@@ -1017,14 +1028,9 @@ async function copyCommands(
   if (commandsConfig.all) {
     Object.values(COMMANDS_MAP).forEach(cmds => commandsToCopy.push(...cmds));
   } else {
-    if (commandsConfig.core) commandsToCopy.push(...COMMANDS_MAP.core);
-    if (commandsConfig.analysis) commandsToCopy.push(...COMMANDS_MAP.analysis);
-    if (commandsConfig.automation) commandsToCopy.push(...COMMANDS_MAP.automation);
-    if (commandsConfig.github) commandsToCopy.push(...COMMANDS_MAP.github);
-    if (commandsConfig.hooks) commandsToCopy.push(...COMMANDS_MAP.hooks);
-    if (commandsConfig.monitoring) commandsToCopy.push(...COMMANDS_MAP.monitoring);
-    if (commandsConfig.optimization) commandsToCopy.push(...COMMANDS_MAP.optimization);
-    if (commandsConfig.sparc) commandsToCopy.push(...COMMANDS_MAP.sparc);
+    for (const [key, cmds] of Object.entries(COMMANDS_MAP)) {
+      if (commandsConfig[key as keyof typeof commandsConfig]) commandsToCopy.push(...cmds);
+    }
   }
 
   // Find source commands directory
@@ -1072,17 +1078,9 @@ async function copyAgents(
   if (agentsConfig.all) {
     Object.values(AGENTS_MAP).forEach(agents => agentsToCopy.push(...agents));
   } else {
-    if (agentsConfig.core) agentsToCopy.push(...AGENTS_MAP.core);
-    if (agentsConfig.consensus) agentsToCopy.push(...AGENTS_MAP.consensus);
-    if (agentsConfig.github) agentsToCopy.push(...AGENTS_MAP.github);
-    if (agentsConfig.hiveMind) agentsToCopy.push(...AGENTS_MAP.hiveMind);
-    if (agentsConfig.sparc) agentsToCopy.push(...AGENTS_MAP.sparc);
-    if (agentsConfig.swarm) agentsToCopy.push(...AGENTS_MAP.swarm);
-    if (agentsConfig.browser) agentsToCopy.push(...AGENTS_MAP.browser);
-    // V3-specific agent categories
-    if (agentsConfig.v3) agentsToCopy.push(...(AGENTS_MAP.v3 || []));
-    if (agentsConfig.optimization) agentsToCopy.push(...(AGENTS_MAP.optimization || []));
-    if (agentsConfig.testing) agentsToCopy.push(...(AGENTS_MAP.testing || []));
+    for (const [key, agents] of Object.entries(AGENTS_MAP)) {
+      if (agentsConfig[key as keyof typeof agentsConfig]) agentsToCopy.push(...agents);
+    }
   }
 
   // Find source agents directory

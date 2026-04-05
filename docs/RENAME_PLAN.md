@@ -63,7 +63,7 @@ resolved via tsconfig paths, not filesystem conventions).
 npm version patch --no-git-tag-version   # 4.8.50 → 4.8.51
 npm run build
 npm test                                  # Must pass 131 files
-npx flo doctor                            # Must pass
+flo doctor                                # Must pass
 npm pack --dry-run                        # Verify ~601 files
 npm publish --otp=<code>
 npm view moflo version                    # Verify

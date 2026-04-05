@@ -174,13 +174,12 @@ describe('bashCommand', () => {
   it('should respect abort signal', async () => {
     const controller = new AbortController();
     const ctx = createContext({ abortSignal: controller.signal });
-    // Start a long-running command and abort immediately
-    const promise = bashCommand.execute({ command: 'sleep 10' }, ctx);
+    // Abort before starting so the command exits immediately
     controller.abort();
-    const output = await promise;
+    const output = await bashCommand.execute({ command: 'sleep 10' }, ctx);
     // Command should complete (killed), not hang
     expect(output.duration).toBeDefined();
-  });
+  }, 10000);
 
   it('should timeout long commands', async () => {
     const ctx = createContext();

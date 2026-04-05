@@ -21,7 +21,7 @@
  *   node node_modules/moflo/bin/index-patterns.mjs --force     # Full reindex
  *   node node_modules/moflo/bin/index-patterns.mjs --verbose   # Detailed logging
  *   node node_modules/moflo/bin/index-patterns.mjs --stats     # Print stats and exit
- *   npx flo-patterns                                           # Via npx
+ *   flo-patterns                                           # Via PATH
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs';

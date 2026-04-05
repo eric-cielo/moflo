@@ -19,7 +19,7 @@ npm install --save-dev moflo
 Add to Claude Code:
 
 ```bash
-claude mcp add moflo-mcp -- npx flo mcp-server
+claude mcp add moflo-mcp -- flo mcp-server
 ```
 
 ---
@@ -64,7 +64,7 @@ const result = await mcp.call('hooks_route', {
 });
 
 // CLI Usage
-npx flo hooks route "implement user login"
+flo hooks route "implement user login"
 ```
 
 **Error Handling:**
@@ -175,7 +175,7 @@ const analysis = await mcp.call('hooks_ast_analyze', {
 });
 
 // CLI Usage
-npx flo hooks ast-analyze src/api/routes.ts --json
+flo hooks ast-analyze src/api/routes.ts --json
 ```
 
 **Error Handling:**
@@ -281,8 +281,8 @@ const commit = await mcp.call('hooks_diff_analyze', {
 });
 
 // CLI Usage
-npx flo hooks diff-analyze --json
-npx flo hooks diff-analyze abc123 --json
+flo hooks diff-analyze --json
+flo hooks diff-analyze abc123 --json
 ```
 
 **Error Handling:**
@@ -353,7 +353,7 @@ const routing = await mcp.call('hooks_coverage_route', {
 });
 
 // CLI Usage
-npx flo hooks coverage-route src/services/auth.ts
+flo hooks coverage-route src/services/auth.ts
 ```
 
 **Error Handling:**
@@ -439,7 +439,7 @@ const boundaries = await mcp.call('hooks_graph_mincut', {
 });
 
 // CLI Usage
-npx flo hooks graph-mincut src/**/*.ts
+flo hooks graph-mincut src/**/*.ts
 ```
 
 **Error Handling:**
@@ -489,8 +489,8 @@ const spectral = await mcp.call('hooks_graph_cluster', {
 });
 
 // CLI Usage
-npx flo hooks graph-cluster src/**/*.ts --method louvain
-npx flo hooks graph-cluster src/**/*.ts --method spectral --clusters 5
+flo hooks graph-cluster src/**/*.ts --method louvain
+flo hooks graph-cluster src/**/*.ts --method spectral --clusters 5
 ```
 
 ---
@@ -626,31 +626,31 @@ const clusters = graph.louvainCommunities(g);
 
 ```bash
 # Initialize hooks
-npx flo hooks init --pretrain --build-agents quality
+flo hooks init --pretrain --build-agents quality
 
 # Verify setup
-npx flo hooks verify
-npx flo hooks doctor --fix
+flo hooks verify
+flo hooks doctor --fix
 
 # Analysis
-npx flo hooks ast-analyze <file> --json
-npx flo hooks ast-complexity <files> --threshold 10
-npx flo hooks diff-analyze [commit] --json
-npx flo hooks diff-classify [commit]
-npx flo hooks coverage-route <file>
-npx flo hooks coverage-suggest <files>
-npx flo hooks graph-mincut <files>
-npx flo hooks graph-cluster <files> --method louvain
+flo hooks ast-analyze <file> --json
+flo hooks ast-complexity <files> --threshold 10
+flo hooks diff-analyze [commit] --json
+flo hooks diff-classify [commit]
+flo hooks coverage-route <file>
+flo hooks coverage-suggest <files>
+flo hooks graph-mincut <files>
+flo hooks graph-cluster <files> --method louvain
 
 # Memory
-npx flo hooks remember "context" -t project
-npx flo hooks recall "query"
-npx flo hooks route "task description"
+flo hooks remember "context" -t project
+flo hooks recall "query"
+flo hooks route "task description"
 
 # Stats and export
-npx flo hooks stats
-npx flo hooks export -o backup.json
-npx flo hooks import backup.json --merge
+flo hooks stats
+flo hooks export -o backup.json
+flo hooks import backup.json --merge
 ```
 
 ---
