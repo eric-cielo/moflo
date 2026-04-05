@@ -35,6 +35,9 @@ function makeResult(): InitResult {
   };
 }
 
+// .envrc is a bash/direnv file — tests only apply on Unix
+const isWindows = process.platform === 'win32';
+
 describe('writeEnvrc', () => {
   let tmpDir: string;
   let result: InitResult;
@@ -52,7 +55,15 @@ describe('writeEnvrc', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates .envrc when it does not exist', async () => {
+  it.skipIf(!isWindows)('skips .envrc generation on Windows', async () => {
+    await writeEnvrc(tmpDir, result);
+
+    const envrcPath = path.join(tmpDir, '.envrc');
+    expect(fs.existsSync(envrcPath)).toBe(false);
+    expect(result.skipped).toEqual(expect.arrayContaining([expect.stringContaining('Windows')]));
+  });
+
+  it.skipIf(isWindows)('creates .envrc when it does not exist', async () => {
     await writeEnvrc(tmpDir, result);
 
     const envrcPath = path.join(tmpDir, '.envrc');
@@ -64,7 +75,7 @@ describe('writeEnvrc', () => {
     expect(result.skipped).not.toContain('.envrc');
   });
 
-  it('appends PATH line to existing .envrc without the line', async () => {
+  it.skipIf(isWindows)('appends PATH line to existing .envrc without the line', async () => {
     const envrcPath = path.join(tmpDir, '.envrc');
     const existingContent = 'export FOO=bar\n';
     fs.writeFileSync(envrcPath, existingContent, 'utf-8');
@@ -77,7 +88,7 @@ describe('writeEnvrc', () => {
     expect(result.skipped).not.toContain('.envrc');
   });
 
-  it('appends newline separator when existing file lacks trailing newline', async () => {
+  it.skipIf(isWindows)('appends newline separator when existing file lacks trailing newline', async () => {
     const envrcPath = path.join(tmpDir, '.envrc');
     const existingContent = 'export FOO=bar'; // no trailing newline
     fs.writeFileSync(envrcPath, existingContent, 'utf-8');
@@ -88,7 +99,7 @@ describe('writeEnvrc', () => {
     expect(content).toBe(existingContent + '\n' + ENVRC_PATH_LINE + '\n');
   });
 
-  it('skips when PATH line is already present', async () => {
+  it.skipIf(isWindows)('skips when PATH line is already present', async () => {
     const envrcPath = path.join(tmpDir, '.envrc');
     const existingContent = ENVRC_PATH_LINE + '\n';
     fs.writeFileSync(envrcPath, existingContent, 'utf-8');
@@ -102,7 +113,7 @@ describe('writeEnvrc', () => {
     expect(result.created.files).toHaveLength(0);
   });
 
-  it('skips when PATH line is present among other lines', async () => {
+  it.skipIf(isWindows)('skips when PATH line is present among other lines', async () => {
     const envrcPath = path.join(tmpDir, '.envrc');
     const existingContent = `export FOO=bar\n${ENVRC_PATH_LINE}\nexport BAZ=qux\n`;
     fs.writeFileSync(envrcPath, existingContent, 'utf-8');
@@ -114,7 +125,7 @@ describe('writeEnvrc', () => {
     expect(result.skipped).toContain('.envrc');
   });
 
-  it('handles Windows-style line endings when checking for existing line', async () => {
+  it.skipIf(isWindows)('handles Windows-style line endings when checking for existing line', async () => {
     const envrcPath = path.join(tmpDir, '.envrc');
     const existingContent = `export FOO=bar\r\n${ENVRC_PATH_LINE}\r\n`;
     fs.writeFileSync(envrcPath, existingContent, 'utf-8');
@@ -126,7 +137,7 @@ describe('writeEnvrc', () => {
     expect(result.created.files).toHaveLength(0);
   });
 
-  it('prints guidance messages to console', async () => {
+  it.skipIf(isWindows)('prints guidance messages to console', async () => {
     const logSpy = vi.spyOn(console, 'log');
 
     await writeEnvrc(tmpDir, result);
@@ -136,7 +147,7 @@ describe('writeEnvrc', () => {
     expect(messages).toContain('source .envrc');
   });
 
-  it('is idempotent — second call is a no-op', async () => {
+  it.skipIf(isWindows)('is idempotent — second call is a no-op', async () => {
     await writeEnvrc(tmpDir, result);
 
     const result2 = makeResult();
