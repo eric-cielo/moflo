@@ -1,7 +1,5 @@
 {
   "name": "@moflo/plugins",
-  "version": "3.0.0-alpha.7",
-  "description": "Unified Plugin SDK for Claude Flow V3 - Worker, Hook, and Provider Integration",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -53,28 +51,5 @@
     "@types/node": "^20.10.0",
     "typescript": "^5.3.0",
     "vitest": "^4.0.16"
-  },
-  "keywords": [
-    "claude-flow",
-    "plugins",
-    "sdk",
-    "workers",
-    "hooks",
-    "agentic-flow",
-    "agentdb",
-    "ai-agents",
-    "hnsw",
-    "vector-search",
-    "lora",
-    "neural-adaptation"
-  ],
-  "author": "Claude Flow Team",
-  "license": "MIT",
-  "engines": {
-    "node": ">=20.0.0"
-  },
-  "publishConfig": {
-    "access": "public",
-    "tag": "v3alpha"
   }
 }

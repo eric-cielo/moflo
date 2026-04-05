@@ -1,7 +1,5 @@
 {
   "name": "@moflo/guidance",
-  "version": "3.0.0-alpha.1",
-  "description": "Guidance Control Plane - Compiles, retrieves, enforces, and evolves guidance rules for Claude Code sessions",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -127,10 +125,6 @@
       "import": "./dist/analyzer.js"
     }
   },
-  "files": [
-    "dist",
-    "wasm-pkg"
-  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
@@ -148,51 +142,5 @@
     "@types/node": "^20.10.0",
     "typescript": "^5.3.0",
     "vitest": "^4.0.16"
-  },
-  "engines": {
-    "node": ">=20.0.0"
-  },
-  "keywords": [
-    "claude-flow",
-    "claude-code",
-    "claude",
-    "anthropic",
-    "ai-agent",
-    "ai-governance",
-    "agent-governance",
-    "guidance",
-    "control-plane",
-    "policy-enforcement",
-    "enforcement-gates",
-    "proof-chain",
-    "trust-system",
-    "long-horizon",
-    "autonomous-agent",
-    "claude-md",
-    "CLAUDE.md",
-    "memory-governance",
-    "adversarial-defense",
-    "prompt-injection",
-    "wasm",
-    "ruvbot",
-    "ruv",
-    "ai-safety",
-    "agent-orchestration",
-    "multi-agent",
-    "code-generation",
-    "llm-governance",
-    "mcp",
-    "model-context-protocol"
-  ],
-  "author": "Claude Flow Team",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/eric-cielo/moflo.git",
-    "directory": "v3/@moflo/guidance"
-  },
-  "publishConfig": {
-    "access": "public",
-    "tag": "v3alpha"
   }
 }
