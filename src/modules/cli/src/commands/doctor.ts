@@ -1238,8 +1238,8 @@ export const doctorCommand: Command = {
         }
 
         // Prefer compiled dist/, fall back to src/ in dev repo
-        const distDir = join(mofloRoot, 'src', 'packages', 'workflows', 'dist');
-        const srcDir = join(mofloRoot, 'src', 'packages', 'workflows', 'src');
+        const distDir = join(mofloRoot, 'src', 'modules', 'workflows', 'dist');
+        const srcDir = join(mofloRoot, 'src', 'modules', 'workflows', 'src');
         const hasDistDir = existsSync(distDir);
         const hasSrcDir = existsSync(srcDir);
 
