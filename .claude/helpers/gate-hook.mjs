@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { resolve } from 'path';
 
 var command = process.argv[2];
@@ -37,8 +37,8 @@ if (hookContext.tool_input && typeof hookContext.tool_input === 'object') {
 var projectDir = (env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var gateScript = resolve(projectDir, '.claude/helpers/gate.cjs');
 try {
-  var output = execSync('node "' + gateScript + '" ' + command, {
-    env: env, encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe']
+  var output = execFileSync('node', [gateScript, command], {
+    env: env, encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true
   });
   if (output.trim()) process.stdout.write(output);
   process.exit(0);

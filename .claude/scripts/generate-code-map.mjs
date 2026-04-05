@@ -29,7 +29,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 
 import { resolve, dirname, relative, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
-import { execSync, spawn } from 'child_process';
+import { execSync, execFileSync, spawn } from 'child_process';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
@@ -264,13 +264,13 @@ function getSourceFiles() {
   const excludeSet = new Set(config.exclude);
 
   // Build git glob patterns from configured extensions
-  const gitGlobs = config.extensions.map(ext => `"*${ext}"`).join(' ');
+  const gitGlobArgs = config.extensions.map(ext => `*${ext}`);
 
   // Try git ls-files first (fast, respects .gitignore)
   try {
-    const raw = execSync(
-      `git ls-files -- ${gitGlobs}`,
-      { cwd: projectRoot, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
+    const raw = execFileSync(
+      'git', ['ls-files', '--', ...gitGlobArgs],
+      { cwd: projectRoot, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, windowsHide: true }
     ).trim();
 
     if (raw) {
@@ -939,7 +939,7 @@ async function runEmbeddings() {
 
   log('Generating embeddings for code-map...');
   try {
-    execSync(`node "${embedScript}" --namespace code-map`, {
+    execFileSync('node', [embedScript, '--namespace', 'code-map'], {
       cwd: projectRoot,
       stdio: 'inherit',
       timeout: 120000,

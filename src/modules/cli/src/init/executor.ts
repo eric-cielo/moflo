@@ -292,14 +292,11 @@ function mergeSettingsForUpgrade(existing: Record<string, unknown>): Record<stri
   const existingHooks = (existing.hooks as Record<string, unknown[]>) || {};
   merged.hooks = { ...existingHooks };
 
-  // Cross-platform auto-memory hook commands that resolve paths via git root.
-  // Uses node -e with git rev-parse so hooks work regardless of CWD (#1259, #1284).
-  const gitRootResolver = "var c=require('child_process'),p=require('path'),u=require('url'),r;"
-    + "try{r=c.execSync('git rev-parse --show-toplevel',{encoding:'utf8'}).trim()}"
-    + 'catch(e){r=process.cwd()}';
-  const autoMemoryScript = '.claude/helpers/auto-memory-hook.mjs';
-  const autoMemoryImportCmd = `node -e "${gitRootResolver}var f=p.join(r,'${autoMemoryScript}');import(u.pathToFileURL(f).href)" import`;
-  const autoMemorySyncCmd = `node -e "${gitRootResolver}var f=p.join(r,'${autoMemoryScript}');import(u.pathToFileURL(f).href)" sync`;
+  // Cross-platform auto-memory hook commands using $CLAUDE_PROJECT_DIR.
+  // Previous approach used `node -e` with deeply nested quotes that broke under cmd.exe.
+  // $CLAUDE_PROJECT_DIR is set by Claude Code for all hooks (#1259, #1284).
+  const autoMemoryImportCmd = 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/auto-memory-hook.mjs" import';
+  const autoMemorySyncCmd = 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/auto-memory-hook.mjs" sync';
 
   // Add auto-memory import to SessionStart (if not already present)
   const sessionStartHooks = existingHooks.SessionStart as Array<{ hooks?: Array<{ command?: string }> }> | undefined;

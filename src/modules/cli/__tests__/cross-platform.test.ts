@@ -353,3 +353,159 @@ describe('bin and .claude/scripts file sync', () => {
     expect(binSrc).toBe(helpersSrc);
   });
 });
+
+// ============================================================================
+// Story #338: execSync to execFileSync migration
+// ============================================================================
+
+describe('execSync to execFileSync migration', () => {
+  describe('gate-hook.mjs', () => {
+    it('should use execFileSync instead of execSync in bin/', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'gate-hook.mjs'),
+        'utf-8'
+      );
+
+      expect(src).toContain("execFileSync('node'");
+      expect(src).not.toMatch(/execSync\s*\(/);
+      expect(src).toContain('windowsHide: true');
+    });
+
+    it('should use execFileSync instead of execSync in .claude/helpers/', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', '.claude', 'helpers', 'gate-hook.mjs'),
+        'utf-8'
+      );
+
+      expect(src).toContain("execFileSync('node'");
+      expect(src).not.toMatch(/execSync\s*\(/);
+    });
+
+    it('should pass script path and command as separate args (no shell string)', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'gate-hook.mjs'),
+        'utf-8'
+      );
+
+      // Should use array args pattern: execFileSync('node', [gateScript, command], ...)
+      expect(src).toContain('[gateScript, command]');
+      // Should NOT use string concatenation for command
+      expect(src).not.toContain("'node \"' + gateScript");
+    });
+  });
+
+  describe('prompt-hook.mjs', () => {
+    it('should use execFileSync instead of execSync in bin/', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'prompt-hook.mjs'),
+        'utf-8'
+      );
+
+      expect(src).toContain("execFileSync('node'");
+      expect(src).not.toMatch(/execSync\s*\(/);
+      expect(src).toContain('windowsHide: true');
+    });
+
+    it('should be in sync between bin/ and .claude/helpers/', () => {
+      const binSrc = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'prompt-hook.mjs'),
+        'utf-8'
+      );
+      const helpersSrc = readFileSync(
+        join(__dirname, '..', '..', '..', '..', '.claude', 'helpers', 'prompt-hook.mjs'),
+        'utf-8'
+      );
+
+      expect(binSrc).toBe(helpersSrc);
+    });
+  });
+
+  describe('generate-code-map.mjs', () => {
+    it('should use execFileSync for git ls-files in bin/', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'generate-code-map.mjs'),
+        'utf-8'
+      );
+
+      // git ls-files should use execFileSync with array args
+      expect(src).toContain("execFileSync(\n      'git', ['ls-files', '--'");
+    });
+
+    it('should use execFileSync for node embed script in bin/', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'generate-code-map.mjs'),
+        'utf-8'
+      );
+
+      expect(src).toContain("execFileSync('node', [embedScript, '--namespace', 'code-map']");
+    });
+
+    it('should be in sync between bin/ and .claude/scripts/', () => {
+      const binSrc = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'generate-code-map.mjs'),
+        'utf-8'
+      );
+      const scriptsSrc = readFileSync(
+        join(__dirname, '..', '..', '..', '..', '.claude', 'scripts', 'generate-code-map.mjs'),
+        'utf-8'
+      );
+
+      expect(binSrc).toBe(scriptsSrc);
+    });
+  });
+
+  describe('index-tests.mjs', () => {
+    it('should use execFileSync for git ls-files in bin/', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'index-tests.mjs'),
+        'utf-8'
+      );
+
+      expect(src).toContain("execFileSync(\n      'git', ['ls-files', '--'");
+    });
+
+    it('should use execFileSync for node embed script in bin/', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'index-tests.mjs'),
+        'utf-8'
+      );
+
+      expect(src).toContain("execFileSync('node', [embedScript, '--namespace', 'tests']");
+    });
+
+    it('should be in sync between bin/ and .claude/scripts/', () => {
+      const binSrc = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'index-tests.mjs'),
+        'utf-8'
+      );
+      const scriptsSrc = readFileSync(
+        join(__dirname, '..', '..', '..', '..', '.claude', 'scripts', 'index-tests.mjs'),
+        'utf-8'
+      );
+
+      expect(binSrc).toBe(scriptsSrc);
+    });
+  });
+
+  describe('executor.ts auto-memory commands', () => {
+    it('should not use node -e with inline scripts', () => {
+      const src = readFileSync(
+        join(__dirname, '..', 'src', 'init', 'executor.ts'),
+        'utf-8'
+      );
+
+      // Should not have inline node -e with git rev-parse
+      expect(src).not.toContain('node -e "');
+      expect(src).not.toContain("gitRootResolver");
+    });
+
+    it('should use $CLAUDE_PROJECT_DIR for auto-memory hooks', () => {
+      const src = readFileSync(
+        join(__dirname, '..', 'src', 'init', 'executor.ts'),
+        'utf-8'
+      );
+
+      expect(src).toContain('$CLAUDE_PROJECT_DIR/.claude/helpers/auto-memory-hook.mjs');
+    });
+  });
+});
