@@ -277,12 +277,16 @@ function mergeSettingsForUpgrade(existing: Record<string, unknown>): Record<stri
 
   // 1. Merge env vars (preserve existing, add new)
   const existingEnv = (existing.env as Record<string, string>) || {};
-  merged.env = {
+  const newEnv: Record<string, string> = {
     ...existingEnv,
     CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
     CLAUDE_FLOW_V3_ENABLED: existingEnv.CLAUDE_FLOW_V3_ENABLED || 'true',
     CLAUDE_FLOW_HOOKS_ENABLED: existingEnv.CLAUDE_FLOW_HOOKS_ENABLED || 'true',
   };
+  // Remove stale PATH override — ${PATH} isn't expanded by Claude Code,
+  // which replaces the inherited PATH and breaks node resolution in hooks.
+  delete newEnv.PATH;
+  merged.env = newEnv;
 
   // 2. Merge hooks (preserve existing, add new Agent Teams + auto-memory hooks)
   const existingHooks = (existing.hooks as Record<string, unknown[]>) || {};
