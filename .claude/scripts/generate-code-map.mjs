@@ -274,12 +274,14 @@ function getSourceFiles() {
     ).trim();
 
     if (raw) {
-      const files = raw.split('\n').filter(f => {
-        for (const ex of EXCLUDE_DIRS) {
-          if (f.startsWith(ex + '/') || f.startsWith(ex + '\\')) return false;
-        }
-        return true;
-      });
+      const files = raw.split('\n')
+        .map(f => f.replace(/\\/g, '/'))  // normalize separators
+        .filter(f => {
+          for (const ex of EXCLUDE_DIRS) {
+            if (f.startsWith(ex + '/')) return false;
+          }
+          return true;
+        });
       if (files.length > 0) return files;
     }
   } catch {

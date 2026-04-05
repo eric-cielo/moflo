@@ -23,7 +23,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync, mkdirSync, writeFileSync } from 'fs';
-import { resolve, dirname, basename, extname } from 'path';
+import { resolve, relative, dirname, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
@@ -528,7 +528,7 @@ function indexFile(db, filePath, keyPrefix) {
     }
 
     const stats = statSync(filePath);
-    const relativePath = filePath.replace(projectRoot, '').replace(/\\/g, '/');
+    const relativePath = '/' + relative(projectRoot, filePath).replace(/\\/g, '/');
 
     // Delete old chunks for this file before re-indexing
     deleteByPrefix(db, chunkPrefix);

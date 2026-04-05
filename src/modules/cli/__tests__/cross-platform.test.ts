@@ -573,3 +573,77 @@ describe('envrc generator cross-platform', () => {
     expect(src).toContain('return');
   });
 });
+
+// ============================================================================
+// Story #340: Path normalization
+// ============================================================================
+
+describe('path normalization fixes', () => {
+  describe('index-guidance.mjs', () => {
+    it('should use path.relative() instead of string replace for path stripping', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'index-guidance.mjs'),
+        'utf-8'
+      );
+
+      // Should use relative() from path module
+      expect(src).toContain('relative(projectRoot, filePath)');
+      // Should NOT use the old case-sensitive string replace
+      expect(src).not.toContain("filePath.replace(projectRoot, '')");
+    });
+
+    it('should import relative from path', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'index-guidance.mjs'),
+        'utf-8'
+      );
+
+      expect(src).toMatch(/import\s*\{[^}]*relative[^}]*\}\s*from\s*'path'/);
+    });
+
+    it('should be in sync between bin/ and .claude/scripts/', () => {
+      const binSrc = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'index-guidance.mjs'),
+        'utf-8'
+      );
+      const scriptsSrc = readFileSync(
+        join(__dirname, '..', '..', '..', '..', '.claude', 'scripts', 'index-guidance.mjs'),
+        'utf-8'
+      );
+
+      expect(binSrc).toBe(scriptsSrc);
+    });
+  });
+
+  describe('git ls-files output normalization', () => {
+    it('should normalize backslashes in generate-code-map.mjs', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'generate-code-map.mjs'),
+        'utf-8'
+      );
+
+      // Should normalize separators after split
+      expect(src).toContain(".map(f => f.replace(/\\\\/g, '/'))");
+    });
+
+    it('should normalize backslashes in index-tests.mjs', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'index-tests.mjs'),
+        'utf-8'
+      );
+
+      expect(src).toContain(".map(f => f.replace(/\\\\/g, '/'))");
+    });
+
+    it('should only check forward slash in exclude dir filtering (generate-code-map)', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'generate-code-map.mjs'),
+        'utf-8'
+      );
+
+      // After normalization, only forward slashes should be checked
+      const filterBlock = src.slice(src.indexOf('.filter(f =>'), src.indexOf('.filter(f =>') + 200);
+      expect(filterBlock).not.toContain("ex + '\\\\'");
+    });
+  });
+});

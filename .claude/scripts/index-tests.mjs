@@ -234,15 +234,17 @@ function getTestFiles() {
     ).trim();
 
     if (raw) {
-      gitFiles = raw.split('\n').filter(f => {
-        // Skip excluded dirs
-        for (const ex of EXCLUDE_DIRS) {
-          if (f.startsWith(ex + '/') || f.startsWith(ex + '\\')) return false;
-        }
-        // Only include recognized extensions
-        const ext = extname(f);
-        return TEST_EXTENSIONS.has(ext);
-      });
+      gitFiles = raw.split('\n')
+        .map(f => f.replace(/\\/g, '/'))  // normalize separators
+        .filter(f => {
+          // Skip excluded dirs
+          for (const ex of EXCLUDE_DIRS) {
+            if (f.startsWith(ex + '/')) return false;
+          }
+          // Only include recognized extensions
+          const ext = extname(f);
+          return TEST_EXTENSIONS.has(ext);
+        });
     }
   } catch { /* git not available or not a repo */ }
 
