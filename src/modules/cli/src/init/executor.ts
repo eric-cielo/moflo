@@ -434,7 +434,7 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
             result.created.push(`.claude/helpers/${helperName}`);
           }
           fs.copyFileSync(sourcePath, targetPath);
-          try { fs.chmodSync(targetPath, '755'); } catch {}
+          if (process.platform !== 'win32') try { fs.chmodSync(targetPath, '755'); } catch {}
         }
       }
     } else {
@@ -454,7 +454,7 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
           result.created.push(`.claude/helpers/${helperName}`);
         }
         fs.writeFileSync(targetPath, content, 'utf-8');
-        try { fs.chmodSync(targetPath, '755'); } catch {}
+        if (process.platform !== 'win32') try { fs.chmodSync(targetPath, '755'); } catch {}
       }
     }
 
@@ -1234,8 +1234,8 @@ async function writeHelpers(
       if (!fs.existsSync(destPath) || options.force) {
         fs.copyFileSync(sourcePath, destPath);
 
-        // Make shell scripts and mjs files executable
-        if (file.endsWith('.sh') || file.endsWith('.mjs')) {
+        // Make shell scripts and mjs files executable (no-op on Windows)
+        if (process.platform !== 'win32' && (file.endsWith('.sh') || file.endsWith('.mjs'))) {
           fs.chmodSync(destPath, '755');
         }
 
@@ -1268,8 +1268,8 @@ async function writeHelpers(
     if (!fs.existsSync(filePath) || options.force) {
       fs.writeFileSync(filePath, content, 'utf-8');
 
-      // Make shell scripts executable
-      if (!name.endsWith('.js')) {
+      // Make shell scripts executable (no-op on Windows)
+      if (process.platform !== 'win32' && !name.endsWith('.js') && !name.endsWith('.cjs')) {
         fs.chmodSync(filePath, '755');
       }
 
@@ -1347,8 +1347,8 @@ async function writeStatusline(
       if (fs.existsSync(sourcePath)) {
         if (!fs.existsSync(destPath) || options.force) {
           fs.copyFileSync(sourcePath, destPath);
-          // Make shell scripts and mjs executable
-          if (file.src.endsWith('.sh') || file.src.endsWith('.mjs')) {
+          // Make shell scripts and mjs executable (no-op on Windows)
+          if (process.platform !== 'win32' && (file.src.endsWith('.sh') || file.src.endsWith('.mjs'))) {
             fs.chmodSync(destPath, '755');
           }
           result.created.files.push(`.claude/${file.dest}`);

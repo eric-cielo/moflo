@@ -111,14 +111,12 @@ const c = {
 
 // Abbreviate path: ~ for home, shorten intermediate dirs
 function abbreviatePath(fullPath) {
-  const home = os.homedir();
-  let p = fullPath;
+  const home = os.homedir().replace(/\\/g, '/');
+  let p = fullPath.replace(/\\/g, '/');
   // Replace home dir with ~
   if (p.startsWith(home)) {
     p = '~' + p.slice(home.length);
   }
-  // Normalize separators
-  p = p.replace(/\\/g, '/');
   return p;
 }
 

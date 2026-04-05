@@ -148,7 +148,7 @@ export function generateSettings(options: InitOptions): object {
     },
     adr: {
       autoGenerate: true,
-      directory: '/docs/adr',
+      directory: 'docs/adr',
       template: 'madr',
     },
     ddd: {

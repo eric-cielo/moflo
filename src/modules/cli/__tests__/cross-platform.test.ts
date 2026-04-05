@@ -647,3 +647,89 @@ describe('path normalization fixes', () => {
     });
   });
 });
+
+// ============================================================================
+// Story #341: Info-level consistency fixes
+// ============================================================================
+
+describe('info-level consistency fixes', () => {
+  describe('statusline.cjs abbreviatePath', () => {
+    it('should normalize both home and fullPath before comparison', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', '.claude', 'helpers', 'statusline.cjs'),
+        'utf-8'
+      );
+
+      // Both home and path should be normalized before startsWith
+      expect(src).toContain("os.homedir().replace(/\\\\/g, '/')");
+      expect(src).toContain("fullPath.replace(/\\\\/g, '/')");
+    });
+  });
+
+  describe('intelligence.cjs', () => {
+    it('should use CLAUDE_PROJECT_DIR with MSYS normalization', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', '.claude', 'helpers', 'intelligence.cjs'),
+        'utf-8'
+      );
+
+      expect(src).toContain('process.env.CLAUDE_PROJECT_DIR');
+      expect(src).toContain(".replace(/^\\/([a-z])\\//i, '$1:/')");
+      expect(src).not.toMatch(/^const DATA_DIR = path\.join\(process\.cwd\(\)/m);
+    });
+  });
+
+  describe('adr.directory', () => {
+    it('should use relative path without leading slash', () => {
+      const src = readFileSync(
+        join(__dirname, '..', 'src', 'init', 'settings-generator.ts'),
+        'utf-8'
+      );
+
+      // Should be relative docs/adr, not /docs/adr
+      expect(src).toContain("directory: 'docs/adr'");
+      expect(src).not.toContain("directory: '/docs/adr'");
+    });
+  });
+
+  describe('executor.ts chmod guards', () => {
+    it('should guard all chmod calls with platform check', () => {
+      const src = readFileSync(
+        join(__dirname, '..', 'src', 'init', 'executor.ts'),
+        'utf-8'
+      );
+
+      // Every chmodSync should be guarded
+      const lines = src.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes('chmodSync')) {
+          // Look backwards for platform check within 3 lines
+          const context = lines.slice(Math.max(0, i - 3), i + 1).join('\n');
+          expect(context).toContain("process.platform !== 'win32'");
+        }
+      }
+    });
+
+    it('should exclude .cjs files from chmod (they are Node.js, not shell scripts)', () => {
+      const src = readFileSync(
+        join(__dirname, '..', 'src', 'init', 'executor.ts'),
+        'utf-8'
+      );
+
+      // The inline helper chmod block should skip .cjs files
+      expect(src).toContain(".endsWith('.cjs')");
+    });
+  });
+
+  describe('process-manager.mjs defaultRoot', () => {
+    it('should prefer CLAUDE_PROJECT_DIR over __dirname traversal', () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', '..', '..', 'bin', 'lib', 'process-manager.mjs'),
+        'utf-8'
+      );
+
+      expect(src).toContain('process.env.CLAUDE_PROJECT_DIR');
+      expect(src).toContain(".replace(/^\\/([a-z])\\//i, '$1:/')");
+    });
+  });
+});

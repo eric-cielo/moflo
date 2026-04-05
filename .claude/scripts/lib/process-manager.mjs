@@ -24,8 +24,10 @@ const __dirname = dirname(__filename);
 
 const LOCK_TTL_MS = 30_000;
 
-/** Resolve the project root (two levels up from bin/lib/). */
+/** Resolve the project root. Prefers CLAUDE_PROJECT_DIR over __dirname traversal. */
 function defaultRoot() {
+  const envDir = process.env.CLAUDE_PROJECT_DIR;
+  if (envDir) return envDir.replace(/^\/([a-z])\//i, '$1:/');
   return resolve(__dirname, '../..');
 }
 
