@@ -4,7 +4,7 @@
  * Provides tamper detection and publisher identity verification using
  * Ed25519 (RFC 8032) via Node.js native crypto. Zero external dependencies.
  *
- * @module @claude-flow/cli/appliance/rvfa-signing
+ * @module @moflo/cli/appliance/rvfa-signing
  */
 
 import {

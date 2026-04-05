@@ -1,7 +1,7 @@
 /**
  * RVF Migration Utility — bidirectional migration between RVF and legacy
  * formats (JSON files, sql.js / better-sqlite3 databases).
- * @module @claude-flow/memory/rvf-migration
+ * @module @moflo/memory/rvf-migration
  */
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';

@@ -11,7 +11,7 @@
  * 4. Evaluate against active rules
  * 5. Store results in the run ledger
  *
- * @module @claude-flow/guidance/headless
+ * @module @moflo/guidance/headless
  */
 
 import type {

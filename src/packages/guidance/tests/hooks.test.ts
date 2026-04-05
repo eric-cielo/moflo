@@ -6,9 +6,9 @@ import { GuidanceHookProvider, createGuidanceHooks, gateResultsToHookResult } fr
 import { EnforcementGates } from '../src/gates.js';
 import { ShardRetriever, HashEmbeddingProvider } from '../src/retriever.js';
 import { RunLedger } from '../src/ledger.js';
-import { HookRegistry } from '@claude-flow/hooks';
-import { HookEvent, HookPriority } from '@claude-flow/hooks';
-import type { HookContext, HookResult } from '@claude-flow/hooks';
+import { HookRegistry } from '@moflo/hooks';
+import { HookEvent, HookPriority } from '@moflo/hooks';
+import type { HookContext, HookResult } from '@moflo/hooks';
 import type { GateResult, RunEvent, PolicyBundle } from '../src/types.js';
 
 // ============================================================================

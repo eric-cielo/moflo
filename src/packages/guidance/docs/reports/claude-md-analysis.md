@@ -1,6 +1,6 @@
 # CLAUDE.md Analysis Report
 
-Generated: 2026-02-01 by `@claude-flow/guidance/analyzer`
+Generated: 2026-02-01 by `@moflo/guidance/analyzer`
 
 ## Root CLAUDE.md (`/CLAUDE.md`)
 
@@ -90,13 +90,13 @@ The v3/CLAUDE.md benefited more from auto-optimization because it was missing bo
 
 ```bash
 # From the guidance package directory
-cd v3/@claude-flow/guidance
+cd v3/@moflo/guidance
 
 # Run the analysis script
 npx tsx scripts/analyze-claude-md.ts
 
 # Or use the API programmatically
-import { analyze, autoOptimize, formatReport } from '@claude-flow/guidance/analyzer';
+import { analyze, autoOptimize, formatReport } from '@moflo/guidance/analyzer';
 
 const result = analyze(claudeMdContent);
 console.log(formatReport(result));

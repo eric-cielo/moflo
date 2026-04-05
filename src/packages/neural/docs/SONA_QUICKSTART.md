@@ -7,7 +7,7 @@ Built-in — no separate install needed
 ## Basic Usage (30 seconds)
 
 ```typescript
-import { createSONALearningEngine, getModeConfig } from '@claude-flow/neural';
+import { createSONALearningEngine, getModeConfig } from '@moflo/neural';
 
 // 1. Create engine
 const sona = createSONALearningEngine('balanced', getModeConfig('balanced'));
@@ -88,7 +88,7 @@ createSONALearningEngine('batch', getModeConfig('batch'));
 
 Run comprehensive examples:
 ```bash
-cd v3/@claude-flow/neural
+cd v3/@moflo/neural
 npx tsx examples/sona-usage.ts
 ```
 
@@ -144,7 +144,7 @@ patterns.forEach(p => {
 ## Files Created
 
 ```
-v3/@claude-flow/neural/
+v3/@moflo/neural/
 ├── src/sona-integration.ts          (432 lines)
 ├── docs/SONA_INTEGRATION.md         (460 lines)
 ├── examples/sona-usage.ts           (318 lines)
@@ -163,6 +163,6 @@ v3/@claude-flow/neural/
 
 **Location**: `src/packages/neural/`
 
-**Package**: `@claude-flow/neural` (built-in SONA engine)
+**Package**: `@moflo/neural` (built-in SONA engine)
 
 **Performance**: <0.05ms learning target achieved

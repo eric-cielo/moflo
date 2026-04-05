@@ -110,7 +110,7 @@ describe('Hooks Module Exports', () => {
 });
 
 describe('Hooks Integration with Shared Module', () => {
-  it('should be importable from @claude-flow/shared', async () => {
+  it('should be importable from @moflo/shared', async () => {
     // This would be the actual import path in production
     const module = await import('../index.js');
 

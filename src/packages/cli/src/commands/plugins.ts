@@ -447,7 +447,7 @@ const infoCommand: Command = {
     { name: 'registry', short: 'r', type: 'string', description: 'Registry to use' },
   ],
   examples: [
-    { command: 'claude-flow plugins info -n @claude-flow/neural', description: 'Show plugin info' },
+    { command: 'claude-flow plugins info -n @moflo/neural', description: 'Show plugin info' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = ctx.flags.name as string;
@@ -675,8 +675,8 @@ const upgradeCommand: Command = {
     { name: 'version', short: 'v', type: 'string', description: 'Target version (default: latest)' },
   ],
   examples: [
-    { command: 'claude-flow plugins upgrade -n @claude-flow/neural', description: 'Upgrade to latest' },
-    { command: 'claude-flow plugins upgrade -n @claude-flow/neural -v 3.1.0', description: 'Upgrade to specific version' },
+    { command: 'claude-flow plugins upgrade -n @moflo/neural', description: 'Upgrade to latest' },
+    { command: 'claude-flow plugins upgrade -n @moflo/neural -v 3.1.0', description: 'Upgrade to specific version' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = ctx.flags.name as string;
@@ -837,7 +837,7 @@ const rateCommand: Command = {
     { name: 'rating', short: 'r', type: 'number', description: 'Rating (1-5)', required: true },
   ],
   examples: [
-    { command: 'claude-flow plugins rate -n @claude-flow/embeddings -r 5', description: 'Rate 5 stars' },
+    { command: 'claude-flow plugins rate -n @moflo/embeddings -r 5', description: 'Rate 5 stars' },
     { command: 'claude-flow plugins rate -n my-plugin -r 4', description: 'Rate 4 stars' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
@@ -918,11 +918,11 @@ export const pluginsCommand: Command = {
     output.writeln();
     output.writeln(output.bold('Official Plugins:'));
     output.printList([
-      '@claude-flow/neural              - Neural patterns and inference (WASM SIMD)',
-      '@claude-flow/security            - Security scanning and CVE detection',
-      '@claude-flow/embeddings          - Vector embeddings with hyperbolic support',
-      '@claude-flow/claims              - Claims-based authorization',
-      '@claude-flow/plugin-gastown-bridge - Gas Town orchestrator integration (WASM-accelerated)',
+      '@moflo/neural              - Neural patterns and inference (WASM SIMD)',
+      '@moflo/security            - Security scanning and CVE detection',
+      '@moflo/embeddings          - Vector embeddings with hyperbolic support',
+      '@moflo/claims              - Claims-based authorization',
+      '@moflo/plugin-gastown-bridge - Gas Town orchestrator integration (WASM-accelerated)',
     ]);
     output.writeln();
     output.writeln(output.dim('Run "claude-flow plugins list --official" to see all official plugins'));

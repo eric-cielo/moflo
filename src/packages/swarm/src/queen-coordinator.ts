@@ -18,7 +18,7 @@
  * - Consensus coordination: <100ms
  * - Health check: <30ms
  *
- * @module @claude-flow/swarm/queen-coordinator
+ * @module @moflo/swarm/queen-coordinator
  */
 
 import { EventEmitter } from 'events';

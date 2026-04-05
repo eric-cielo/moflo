@@ -6,7 +6,7 @@
  * validation error. The ConformanceSuite runs golden traces through an
  * evaluator to prove the platform behaves as specified.
  *
- * @module @claude-flow/guidance/manifest-validator
+ * @module @moflo/guidance/manifest-validator
  */
 
 // ============================================================================

@@ -1408,14 +1408,14 @@ import { validateUpdate, validateBulkUpdate } from '../src/update/validator.js';
 describe.skip('Update Validator', () => {
   it('should validate compatible update', () => {
     const result = validateUpdate(
-      '@claude-flow/cli', '3.0.0-alpha.50', '3.0.0-alpha.55', {}
+      '@moflo/cli', '3.0.0-alpha.50', '3.0.0-alpha.55', {}
     );
     expect(result.valid).toBe(true);
   });
 
   it('should warn about major version bumps', () => {
     const result = validateUpdate(
-      '@claude-flow/cli', '2.0.0', '3.0.0', {}
+      '@moflo/cli', '2.0.0', '3.0.0', {}
     );
     expect(result.warnings.length).toBeGreaterThan(0);
     expect(result.warnings.some(w => w.includes('Major version'))).toBe(true);
@@ -1423,8 +1423,8 @@ describe.skip('Update Validator', () => {
 
   it('should detect incompatible peer dependency', () => {
     const result = validateUpdate(
-      '@claude-flow/cli', '3.0.0-alpha.50', '3.0.0-alpha.55',
-      { '@claude-flow/embeddings': '2.0.0' }
+      '@moflo/cli', '3.0.0-alpha.50', '3.0.0-alpha.55',
+      { '@moflo/embeddings': '2.0.0' }
     );
     // CLI requires embeddings >= 3.0.0-alpha.1
     expect(result.valid).toBe(false);
@@ -1439,10 +1439,10 @@ describe.skip('Update Validator', () => {
   it('validateBulkUpdate checks all updates', () => {
     const result = validateBulkUpdate(
       [
-        { package: '@claude-flow/cli', from: '3.0.0-alpha.50', to: '3.0.0-alpha.55' },
-        { package: '@claude-flow/embeddings', from: '3.0.0-alpha.1', to: '3.0.0-alpha.5' },
+        { package: '@moflo/cli', from: '3.0.0-alpha.50', to: '3.0.0-alpha.55' },
+        { package: '@moflo/embeddings', from: '3.0.0-alpha.1', to: '3.0.0-alpha.5' },
       ],
-      { '@claude-flow/cli': '3.0.0-alpha.50', '@claude-flow/embeddings': '3.0.0-alpha.1' }
+      { '@moflo/cli': '3.0.0-alpha.50', '@moflo/embeddings': '3.0.0-alpha.1' }
     );
     expect(result.valid).toBe(true);
   });

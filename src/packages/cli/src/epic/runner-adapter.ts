@@ -11,7 +11,7 @@
 import { loadWorkflowEngine, type WorkflowResult } from '../services/engine-loader.js';
 import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
 
-/** Minimal workflow result shape matching WorkflowResult from @claude-flow/workflows. */
+/** Minimal workflow result shape matching WorkflowResult from @moflo/workflows. */
 export type EpicWorkflowResult = Pick<
   WorkflowResult,
   'workflowId' | 'success' | 'outputs' | 'duration' | 'cancelled'

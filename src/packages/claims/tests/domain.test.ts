@@ -1,5 +1,5 @@
 /**
- * @claude-flow/claims - Domain Layer Tests
+ * @moflo/claims - Domain Layer Tests
  * Tests for ADR-016 types, events, and business rules
  */
 

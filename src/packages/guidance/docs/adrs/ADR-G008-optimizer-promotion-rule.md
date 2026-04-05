@@ -172,9 +172,9 @@ Require three consecutive wins. Considered but rejected as too slow. At a weekly
 
 ## References
 
-- `v3/@claude-flow/guidance/src/optimizer.ts` -- `OptimizerLoop.runCycle()`, `proposeChanges()`, `evaluateChange()`, `applyPromotions()`, `promotionTracker`
-- `v3/@claude-flow/guidance/src/types.ts` -- `RuleChange`, `ABTestResult`, `OptimizationMetrics`, `ViolationRanking`, `RuleADR`
-- `v3/@claude-flow/guidance/src/ledger.ts` -- `RunLedger.rankViolations()`, `computeMetrics()`
-- `v3/@claude-flow/guidance/src/index.ts` -- `GuidanceControlPlane.optimize()`
+- `v3/@moflo/guidance/src/optimizer.ts` -- `OptimizerLoop.runCycle()`, `proposeChanges()`, `evaluateChange()`, `applyPromotions()`, `promotionTracker`
+- `v3/@moflo/guidance/src/types.ts` -- `RuleChange`, `ABTestResult`, `OptimizationMetrics`, `ViolationRanking`, `RuleADR`
+- `v3/@moflo/guidance/src/ledger.ts` -- `RunLedger.rankViolations()`, `computeMetrics()`
+- `v3/@moflo/guidance/src/index.ts` -- `GuidanceControlPlane.optimize()`
 - ADR-G002 -- Constitution/shard split that promotions modify
 - ADR-G005 -- Proof envelopes that record the evidence for promotion decisions

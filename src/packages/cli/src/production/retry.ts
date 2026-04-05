@@ -7,7 +7,7 @@
  * - Per-error-type configuration
  * - Circuit breaker integration
  *
- * @module @claude-flow/cli/production/retry
+ * @module @moflo/cli/production/retry
  */
 
 // ============================================================================

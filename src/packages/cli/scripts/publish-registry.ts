@@ -190,11 +190,11 @@ async function generateRegistry(): Promise<PluginRegistry> {
   console.log('📦 Fetching npm stats for plugins...');
 
   const officialPackages = [
-    '@claude-flow/security',
-    '@claude-flow/claims',
-    '@claude-flow/embeddings',
-    '@claude-flow/neural',
-    '@claude-flow/plugins',
+    '@moflo/security',
+    '@moflo/claims',
+    '@moflo/embeddings',
+    '@moflo/neural',
+    '@moflo/plugins',
   ];
 
   const plugins: PluginEntry[] = [];
@@ -207,7 +207,7 @@ async function generateRegistry(): Promise<PluginRegistry> {
     plugins.push({
       id: pkg,
       name: pkg,
-      displayName: pkg.replace('@claude-flow/plugin-', '').replace('@claude-flow/', ''),
+      displayName: pkg.replace('@moflo/plugin-', '').replace('@moflo/', ''),
       description: `Official Claude Flow plugin: ${pkg}`,
       version: stats?.version || '0.0.0',
       size: 100000,

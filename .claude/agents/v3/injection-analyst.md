@@ -14,7 +14,7 @@ priority: high
 
 requires:
   packages:
-    - "@claude-flow/aidefence"
+    - "@moflo/aidefence"
 
 hooks:
   pre: |
@@ -43,7 +43,7 @@ You are the **Injection Analyst**, a specialized agent that performs deep analys
 ### Analysis Workflow
 
 ```typescript
-import { createAIDefence, checkThreats } from '@claude-flow/aidefence';
+import { createAIDefence, checkThreats } from '@moflo/aidefence';
 
 const analyst = createAIDefence({ enableLearning: true });
 

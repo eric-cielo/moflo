@@ -6,7 +6,7 @@
  * its own discoveries. The NeuralLearningSystem dependency is optional:
  * when unavailable, all operations degrade gracefully to no-ops.
  *
- * @module @claude-flow/memory/learning-bridge
+ * @module @moflo/memory/learning-bridge
  */
 
 import { EventEmitter } from 'node:events';
@@ -41,7 +41,7 @@ export interface LearningBridgeConfig {
   enabled?: boolean;
   /**
    * Optional factory for the neural learning system.
-   * When provided, this replaces the default dynamic import of @claude-flow/neural.
+   * When provided, this replaces the default dynamic import of @moflo/neural.
    * Primarily used for testing.
    */
   neuralLoader?: NeuralLoader;
@@ -396,7 +396,7 @@ export class LearningBridge extends EventEmitter {
         return;
       }
 
-      const mod = await import('@claude-flow/neural' as string);
+      const mod = await import('@moflo/neural' as string);
       const NeuralLearningSystem = mod.NeuralLearningSystem ?? mod.default;
       if (!NeuralLearningSystem) return;
 
@@ -411,7 +411,7 @@ export class LearningBridge extends EventEmitter {
 
       this.neural = instance;
     } catch {
-      // @claude-flow/neural not installed or failed to initialize.
+      // @moflo/neural not installed or failed to initialize.
       // This is expected in many environments; degrade silently.
       this.neural = null;
     }

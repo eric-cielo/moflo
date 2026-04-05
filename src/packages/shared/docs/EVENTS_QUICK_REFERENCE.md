@@ -5,7 +5,7 @@ Fast reference guide for using the Event Store system.
 ## Installation
 
 ```bash
-cd v3/@claude-flow/shared
+cd v3/@moflo/shared
 npm install
 ```
 
@@ -17,7 +17,7 @@ import {
   AgentStateProjection,
   createAgentSpawnedEvent,
   createTaskCompletedEvent,
-} from '@claude-flow/shared/events';
+} from '@moflo/shared/events';
 
 // 1. Initialize
 const store = new EventStore({ databasePath: './events.db' });

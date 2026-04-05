@@ -26,8 +26,8 @@ import {
   createSONALearningEngine,
   type Trajectory,
   type Context,
-} from '@claude-flow/neural';
-import { getModeConfig } from '@claude-flow/neural';
+} from '@moflo/neural';
+import { getModeConfig } from '@moflo/neural';
 
 // Create SONA engine with balanced mode
 const modeConfig = getModeConfig('balanced');
@@ -341,7 +341,7 @@ See `/examples/sona-usage.ts` for comprehensive examples:
 Run examples:
 
 ```bash
-cd v3/@claude-flow/neural
+cd v3/@moflo/neural
 npx tsx examples/sona-usage.ts
 ```
 
@@ -350,7 +350,7 @@ npx tsx examples/sona-usage.ts
 The SONA integration works seamlessly with other V3 neural components:
 
 ```typescript
-import { createNeuralLearningSystem } from '@claude-flow/neural';
+import { createNeuralLearningSystem } from '@moflo/neural';
 
 const system = createNeuralLearningSystem('balanced');
 await system.initialize();
@@ -385,7 +385,7 @@ Runtime selection is automatic based on platform.
 ### Custom Configuration
 
 ```typescript
-import { createSONALearningEngine } from '@claude-flow/neural';
+import { createSONALearningEngine } from '@moflo/neural';
 
 const customConfig: JsSonaConfig = {
   hiddenDim: 512,
@@ -450,7 +450,7 @@ console.log(status);
 
 ## References
 
-- [`@claude-flow/neural`](../README.md) — built-in SONA engine
+- [`@moflo/neural`](../README.md) — built-in SONA engine
 - [LoRA Paper](https://arxiv.org/abs/2106.09685)
 - [EWC Paper](https://arxiv.org/abs/1612.00796)
 - [V3 Neural Module](../README.md)

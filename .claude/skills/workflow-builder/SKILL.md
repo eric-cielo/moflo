@@ -9,7 +9,7 @@ Create production-ready workflow definitions (YAML/JSON) that compose step comma
 
 ## Prerequisites
 
-- MoFlo project with `@claude-flow/workflows` package
+- MoFlo project with `@moflo/workflows` package
 - Familiarity with YAML syntax
 
 ## What This Skill Does

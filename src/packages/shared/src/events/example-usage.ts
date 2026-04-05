@@ -4,7 +4,7 @@
  * Demonstrates how to use the Event Sourcing system in V3 Claude Flow.
  *
  * Usage:
- *   npx tsx v3/@claude-flow/shared/src/events/example-usage.ts
+ *   npx tsx v3/@moflo/shared/src/events/example-usage.ts
  */
 
 import { EventStore } from './event-store.js';

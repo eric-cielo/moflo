@@ -139,14 +139,14 @@ Complete implementation of Event Store Persistence for V3 Claude Flow, providing
 ### 6. Module Integration
 
 **Updated Files**:
-- ✅ `/v3/@claude-flow/shared/src/events/index.ts` - Module exports
-- ✅ `/v3/@claude-flow/shared/src/index.ts` - Main module integration
-- ✅ `/v3/@claude-flow/shared/package.json` - Dependencies added
+- ✅ `/v3/@moflo/shared/src/events/index.ts` - Module exports
+- ✅ `/v3/@moflo/shared/src/index.ts` - Main module integration
+- ✅ `/v3/@moflo/shared/package.json` - Dependencies added
 
 ## File Structure
 
 ```
-v3/@claude-flow/shared/src/events/
+v3/@moflo/shared/src/events/
 ├── domain-events.ts           # 439 lines - Event type definitions
 ├── event-store.ts             # 447 lines - Core event store
 ├── projections.ts             # 468 lines - Read model projections
@@ -266,7 +266,7 @@ CREATE TABLE snapshots (
 ### Recording Events
 
 ```typescript
-import { EventStore, createAgentSpawnedEvent } from '@claude-flow/shared/events';
+import { EventStore, createAgentSpawnedEvent } from '@moflo/shared/events';
 
 const store = new EventStore({ databasePath: './events.db' });
 await store.initialize();
@@ -280,7 +280,7 @@ await store.append(
 ### Building Projections
 
 ```typescript
-import { AgentStateProjection } from '@claude-flow/shared/events';
+import { AgentStateProjection } from '@moflo/shared/events';
 
 const projection = new AgentStateProjection(store);
 await projection.initialize();
@@ -333,7 +333,7 @@ await eventStore.append(
 npm test -- event-store.test.ts
 
 # Run example
-npx tsx v3/@claude-flow/shared/src/events/example-usage.ts
+npx tsx v3/@moflo/shared/src/events/example-usage.ts
 ```
 
 ## Next Steps
@@ -384,5 +384,5 @@ The Event Store Persistence implementation for ADR-007 is **complete and product
 ---
 
 **Implementation completed**: 2026-01-04
-**Module location**: `/workspaces/claude-flow/v3/@claude-flow/shared/src/events/`
+**Module location**: `/workspaces/claude-flow/v3/@moflo/shared/src/events/`
 **Status**: ✅ Production Ready

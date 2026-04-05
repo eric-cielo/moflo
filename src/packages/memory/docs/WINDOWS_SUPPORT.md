@@ -2,7 +2,7 @@
 
 ## Overview
 
-This implementation adds **complete Windows cross-platform support** to the `@claude-flow/memory` module using sql.js as a WASM-based SQLite fallback when native compilation fails.
+This implementation adds **complete Windows cross-platform support** to the `@moflo/memory` module using sql.js as a WASM-based SQLite fallback when native compilation fails.
 
 ## What Was Implemented
 
@@ -132,7 +132,7 @@ class JsonBackend implements IMemoryBackend {
 ## Files Created
 
 ```
-v3/@claude-flow/memory/
+v3/@moflo/memory/
 ├── src/
 │   ├── sqljs-backend.ts           # SQL.js WASM backend
 │   ├── database-provider.ts       # Platform-aware provider
@@ -149,7 +149,7 @@ v3/@claude-flow/memory/
 ### Automatic Provider Selection (Recommended)
 
 ```typescript
-import { createDatabase } from '@claude-flow/memory';
+import { createDatabase } from '@moflo/memory';
 
 // Auto-selects best provider for current platform
 const db = await createDatabase('./data/memory.db');
@@ -161,7 +161,7 @@ const db = await createDatabase('./data/memory.db');
 ### Windows-Specific Configuration
 
 ```typescript
-import { createDatabase } from '@claude-flow/memory';
+import { createDatabase } from '@moflo/memory';
 
 const db = await createDatabase('./data/memory.db', {
   provider: 'sql.js',
@@ -179,7 +179,7 @@ await db.persist();
 ### Check Platform and Available Providers
 
 ```typescript
-import { getPlatformInfo, getAvailableProviders } from '@claude-flow/memory';
+import { getPlatformInfo, getAvailableProviders } from '@moflo/memory';
 
 const platform = getPlatformInfo();
 console.log(`Running on ${platform.os}`);
@@ -223,7 +223,7 @@ Memory Usage       Low              Medium        ~2x
 ### Standard Installation
 
 ```bash
-npm install @claude-flow/memory
+npm install @moflo/memory
 ```
 
 The module will:
@@ -235,7 +235,7 @@ The module will:
 
 ```bash
 # Skip better-sqlite3 compilation entirely
-npm install @claude-flow/memory --no-optional
+npm install @moflo/memory --no-optional
 ```
 
 ### Docker on Windows
@@ -247,7 +247,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # sql.js will be used automatically
-RUN npm install @claude-flow/memory
+RUN npm install @moflo/memory
 
 COPY . .
 CMD ["node", "index.js"]
@@ -295,7 +295,7 @@ const db = new Database('./memory.db');
 ### After (Cross-platform)
 
 ```typescript
-import { createDatabase } from '@claude-flow/memory';
+import { createDatabase } from '@moflo/memory';
 
 const db = await createDatabase('./memory.db');
 // Works everywhere, auto-selects best provider

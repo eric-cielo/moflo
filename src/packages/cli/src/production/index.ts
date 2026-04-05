@@ -8,7 +8,7 @@
  * - Circuit breaker pattern
  * - Monitoring and observability hooks
  *
- * @module @claude-flow/cli/production
+ * @module @moflo/cli/production
  */
 
 export { ErrorHandler, withErrorHandling } from './error-handler.js';

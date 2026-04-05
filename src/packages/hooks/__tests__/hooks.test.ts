@@ -1,5 +1,5 @@
 /**
- * @claude-flow/hooks — Package export verification tests
+ * @moflo/hooks — Package export verification tests
  *
  * Replaces the previous placeholder tests with real import/export checks
  * against the hooks package main entry point.

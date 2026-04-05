@@ -1,5 +1,5 @@
 /**
- * @claude-flow/claims (ADR-016)
+ * @moflo/claims (ADR-016)
  *
  * Issue claiming and handoff management for human and agent collaboration.
  *

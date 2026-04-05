@@ -11,7 +11,7 @@ The ContinueGate evaluates at the step level: "Should this agent continue at all
 ## Step 1: Create the Gate
 
 ```ts
-import { createContinueGate } from '@claude-flow/guidance/continue-gate';
+import { createContinueGate } from '@moflo/guidance/continue-gate';
 
 const gate = createContinueGate({
   maxConsecutiveSteps: 100,        // Hard stop after 100 steps
@@ -143,7 +143,7 @@ console.log(`Stops: ${stats.stopCount}`);
 Use the `CoherenceScheduler` to compute the coherence score fed into the ContinueGate:
 
 ```ts
-import { createCoherenceScheduler } from '@claude-flow/guidance/coherence';
+import { createCoherenceScheduler } from '@moflo/guidance/coherence';
 
 const scheduler = createCoherenceScheduler();
 
@@ -163,7 +163,7 @@ The coherence score combines:
 Use the `EconomicGovernor` to track budgets and compute remaining capacity:
 
 ```ts
-import { createEconomicGovernor } from '@claude-flow/guidance/coherence';
+import { createEconomicGovernor } from '@moflo/guidance/coherence';
 
 const econ = createEconomicGovernor({
   tokenLimit: 50000,
@@ -188,9 +188,9 @@ gate.evaluate({
 ## Complete Example
 
 ```ts
-import { createContinueGate } from '@claude-flow/guidance/continue-gate';
-import { createCoherenceScheduler, createEconomicGovernor } from '@claude-flow/guidance/coherence';
-import { createProofChain } from '@claude-flow/guidance/proof';
+import { createContinueGate } from '@moflo/guidance/continue-gate';
+import { createCoherenceScheduler, createEconomicGovernor } from '@moflo/guidance/coherence';
+import { createProofChain } from '@moflo/guidance/proof';
 
 const gate = createContinueGate();
 const coherence = createCoherenceScheduler();

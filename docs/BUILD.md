@@ -124,9 +124,9 @@ moflo/
 ├── tsconfig.json         ← Root: tsc -b entry point (project references)
 ├── vitest.config.ts      ← Root: test runner config
 ├── src/
-│   ├── tsconfig.json     ← Workspace: references all @claude-flow/* packages
+│   ├── tsconfig.json     ← Workspace: references all @moflo/* packages
 │   ├── tsconfig.base.json ← Shared compiler options (DO NOT DELETE)
-│   └── @claude-flow/
+│   └── @moflo/
 │       ├── cli/          ← Main CLI package (@moflo/cli)
 │       │   ├── tsconfig.json  ← References shared, swarm
 │       │   └── dist/          ← Compiled output (committed)

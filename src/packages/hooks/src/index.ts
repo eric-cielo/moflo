@@ -1,5 +1,5 @@
 /**
- * @claude-flow/hooks - V3 Hooks System
+ * @moflo/hooks - V3 Hooks System
  *
  * Event-driven lifecycle hooks with ReasoningBank learning integration.
  *

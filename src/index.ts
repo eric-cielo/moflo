@@ -6,12 +6,12 @@
  *
  * @example
  * // Import everything
- * import * as claudeFlow from '@claude-flow/v3';
+ * import * as claudeFlow from '@moflo/v3';
  *
  * // Or import specific modules
- * import { UnifiedSwarmCoordinator } from '@claude-flow/swarm';
- * import { PasswordHasher } from '@claude-flow/security';
- * import { HNSWIndex } from '@claude-flow/memory';
+ * import { UnifiedSwarmCoordinator } from '@moflo/swarm';
+ * import { PasswordHasher } from '@moflo/security';
+ * import { HNSWIndex } from '@moflo/memory';
  *
  * Complete reimagining based on 10 ADRs:
  * - ADR-001: Adopt agentic-flow as core foundation
@@ -32,7 +32,7 @@
  * - Code Reduction: <5,000 lines (vs 15,000+)
  * - Startup Time: <500ms
  *
- * @module @claude-flow/v3
+ * @module @moflo/v3
  * @version 3.0.0-alpha.1
  */
 
@@ -42,43 +42,43 @@
 
 /**
  * Security module - CVE fixes, input validation, credential management
- * @see {@link @claude-flow/security}
+ * @see {@link @moflo/security}
  */
 export * as security from './packages/security/src/index.js';
 
 /**
  * Memory module - AgentDB, HNSW indexing, vector search
- * @see {@link @claude-flow/memory}
+ * @see {@link @moflo/memory}
  */
 export * as memory from './packages/memory/src/index.js';
 
 /**
  * Swarm module - 15-agent coordination, hierarchical mesh, consensus
- * @see {@link @claude-flow/swarm}
+ * @see {@link @moflo/swarm}
  */
 export * as swarm from './packages/swarm/src/index.js';
 
 /**
  * Shared module - common types, events, utilities, core interfaces
- * @see {@link @claude-flow/shared}
+ * @see {@link @moflo/shared}
  */
 export * as shared from './packages/shared/src/index.js';
 
 /**
  * CLI module - Command parsing, prompts, output formatting
- * @see {@link @claude-flow/cli}
+ * @see {@link @moflo/cli}
  */
 export * as cli from './packages/cli/src/index.js';
 
 /**
  * Neural module - SONA learning, neural modes
- * @see {@link @claude-flow/neural}
+ * @see {@link @moflo/neural}
  */
 export * as neural from './packages/neural/src/index.js';
 
 /**
  * Testing module - TDD London School framework, test utilities
- * @see {@link @claude-flow/testing}
+ * @see {@link @moflo/testing}
  */
 export * as testing from './packages/testing/src/index.js';
 
@@ -87,13 +87,13 @@ export * as testing from './packages/testing/src/index.js';
 // =============================================================================
 
 export const MODULES = [
-  '@claude-flow/shared',
-  '@claude-flow/security',
-  '@claude-flow/memory',
-  '@claude-flow/swarm',
-  '@claude-flow/cli',
-  '@claude-flow/neural',
-  '@claude-flow/testing',
+  '@moflo/shared',
+  '@moflo/security',
+  '@moflo/memory',
+  '@moflo/swarm',
+  '@moflo/cli',
+  '@moflo/neural',
+  '@moflo/testing',
 ] as const;
 
 export type ModuleName = (typeof MODULES)[number];

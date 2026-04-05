@@ -9,7 +9,7 @@
  *
  * Zero external dependencies. node-llama-cpp is an optional peer.
  *
- * @module @claude-flow/cli/appliance/gguf-engine
+ * @module @moflo/cli/appliance/gguf-engine
  */
 
 import { open, readFile, writeFile, stat as fsStat } from 'node:fs/promises';

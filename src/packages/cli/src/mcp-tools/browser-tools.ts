@@ -1,7 +1,7 @@
 /**
  * Browser MCP Tools
  *
- * CLI integration for @claude-flow/browser package.
+ * CLI integration for @moflo/browser package.
  * Provides browser automation tools for web navigation, interaction, and data extraction.
  */
 

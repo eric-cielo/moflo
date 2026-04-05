@@ -63,14 +63,14 @@
 | Package | Path | Purpose |
 |---------|------|---------|
 | `@moflo/cli` | `src/packages/cli/` | CLI entry point (40+ commands) |
-| `@claude-flow/guidance` | `src/packages/guidance/` | Governance control plane |
-| `@claude-flow/hooks` | `src/packages/hooks/` | Hooks + workers |
-| `@claude-flow/memory` | `src/packages/memory/` | AgentDB + HNSW search |
-| `@claude-flow/security` | `src/packages/security/` | Input validation, CVE remediation |
-| `@claude-flow/embeddings` | `src/packages/embeddings/` | Vector embeddings (sql.js, HNSW) |
-| `@claude-flow/neural` | `src/packages/neural/` | Neural patterns (SONA) |
-| `@claude-flow/plugins` | `src/packages/plugins/` | Plugin system |
-| `@claude-flow/workflows` | `src/packages/workflows/` | Workflow engine, step commands, YAML/JSON definitions |
+| `@moflo/guidance` | `src/packages/guidance/` | Governance control plane |
+| `@moflo/hooks` | `src/packages/hooks/` | Hooks + workers |
+| `@moflo/memory` | `src/packages/memory/` | AgentDB + HNSW search |
+| `@moflo/security` | `src/packages/security/` | Input validation, CVE remediation |
+| `@moflo/embeddings` | `src/packages/embeddings/` | Vector embeddings (sql.js, HNSW) |
+| `@moflo/neural` | `src/packages/neural/` | Neural patterns (SONA) |
+| `@moflo/plugins` | `src/packages/plugins/` | Plugin system |
+| `@moflo/workflows` | `src/packages/workflows/` | Workflow engine, step commands, YAML/JSON definitions |
 
 ## MoFlo is a Library (CRITICAL)
 

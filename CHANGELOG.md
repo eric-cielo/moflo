@@ -13,7 +13,7 @@ This release marks the official rebranding from **Claude Flow** to **Ruflo** and
 
 ### Highlights
 
-- **Rebranding**: Claude Flow → Ruflo across all packages (`@claude-flow/cli`, `claude-flow`, `ruflo`)
+- **Rebranding**: Claude Flow → Ruflo across all packages (`@moflo/cli`, `claude-flow`, `ruflo`)
 - **agentic-flow v3.0.0-alpha.1 Integration**: Full deep integration with 10 subpath exports (ReasoningBank, Router, Orchestration, Agent Booster, SDK, Security, QUIC transport)
 - **AgentDB v3.0.0-alpha.9**: 8 new controllers (HierarchicalMemory, MemoryConsolidation, SemanticRouter, GNNService, RVFOptimizer, MutationGuard, AttestationLog, GuardedVectorBackend) + 6 MCP tools
 - **215 MCP Tools**: Full Model Context Protocol server with vector memory, neural training, swarm coordination
@@ -24,7 +24,7 @@ This release marks the official rebranding from **Claude Flow** to **Ruflo** and
 ### Added
 
 - `agentic-flow-bridge.ts` — Unified lazy-loading bridge for all agentic-flow v3 modules
-- Tiered embedding resolution: ReasoningBank WASM (Tier 1) → @claude-flow/embeddings (Tier 2) → mock fallback (Tier 3)
+- Tiered embedding resolution: ReasoningBank WASM (Tier 1) → @moflo/embeddings (Tier 2) → mock fallback (Tier 3)
 - Agent Booster local import with npx fallback
 - `checkAgenticFlow()` doctor health check
 - 7 TypeScript module declarations for agentic-flow subpath exports
@@ -98,7 +98,7 @@ This release marks the official rebranding from **Claude Flow** to **Ruflo** and
 - **Plugin Marketplace**: 8 official plugins + IPFS registry via Pinata
 - **Gas Town Bridge Plugin**: WASM-accelerated orchestrator integration
 - **10 RuVector WASM Plugins**: 50 MCP tools for neural computation
-- **@claude-flow/teammate-plugin**: MCP tools for Agent Teams coordination
+- **@moflo/teammate-plugin**: MCP tools for Agent Teams coordination
 
 ### v3.0.0-alpha.150 — SONA & SemanticRouter (2025-11)
 
@@ -108,9 +108,9 @@ This release marks the official rebranding from **Claude Flow** to **Ruflo** and
 - Fixed MCP tool naming (`/` → `_`) for Claude Desktop compatibility
 - Memory namespace support in delete command
 
-### v3.0.0-alpha.100 — @claude-flow/guidance (2025-11)
+### v3.0.0-alpha.100 — @moflo/guidance (2025-11)
 
-- **@claude-flow/guidance Control Plane**: Governance, compliance, and policy enforcement
+- **@moflo/guidance Control Plane**: Governance, compliance, and policy enforcement
 - Wave 1: Proof, gateway, memory-gate, coherence, hooks, persistence primitives
 - Wave 2: Conformance kit, capability algebra, evolution pipeline, artifact ledger
 - Wave 3: Civilization-grade primitives (trust, truth, uncertainty, time, authority)
@@ -135,7 +135,7 @@ This release marks the official rebranding from **Claude Flow** to **Ruflo** and
 
 ### v3.0.0-alpha.1 — Foundation (2025-10)
 
-- Complete V3 monorepo structure (`@claude-flow/cli`, `shared`, `memory`, `hooks`, `security`)
+- Complete V3 monorepo structure (`@moflo/cli`, `shared`, `memory`, `hooks`, `security`)
 - 26 CLI commands with 140+ subcommands
 - 215 MCP tools via FastMCP 3.x
 - RuVector intelligence system (SONA, MoE, HNSW, EWC++, Flash Attention)

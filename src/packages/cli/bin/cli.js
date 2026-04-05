@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * @claude-flow/cli - CLI Entry Point
+ * @moflo/cli - CLI Entry Point
  *
  * Claude Flow V3 Command Line Interface
  *
  * Auto-detects MCP mode when stdin is piped and no args provided.
- * This allows: echo '{"jsonrpc":"2.0",...}' | npx @claude-flow/cli
+ * This allows: echo '{"jsonrpc":"2.0",...}' | npx @moflo/cli
  */
 
 // Suppress agentic-flow's agentdb-runtime-patch warning. The patch targets

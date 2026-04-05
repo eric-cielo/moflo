@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 
 // Use dynamic import — tsx handles TS source directly.
 const { RvfEventLog } = await import(
-  '../v3/@claude-flow/shared/src/events/rvf-event-log.ts'
+  '../v3/@moflo/shared/src/events/rvf-event-log.ts'
 );
 
 // ---------------------------------------------------------------------------

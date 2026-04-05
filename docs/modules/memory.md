@@ -1,7 +1,7 @@
-# @claude-flow/memory
+# @moflo/memory
 
-[![npm version](https://img.shields.io/npm/v/@claude-flow/memory.svg)](https://www.npmjs.com/package/@claude-flow/memory)
-[![npm downloads](https://img.shields.io/npm/dm/@claude-flow/memory.svg)](https://www.npmjs.com/package/@claude-flow/memory)
+[![npm version](https://img.shields.io/npm/v/@moflo/memory.svg)](https://www.npmjs.com/package/@moflo/memory)
+[![npm downloads](https://img.shields.io/npm/dm/@moflo/memory.svg)](https://www.npmjs.com/package/@moflo/memory)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![Performance](https://img.shields.io/badge/Performance-150x--12500x%20Faster-brightgreen.svg)](https://github.com/eric-cielo/moflo)
@@ -25,13 +25,13 @@
 ## Installation
 
 ```bash
-npm install @claude-flow/memory
+npm install @moflo/memory
 ```
 
 ## Quick Start
 
 ```typescript
-import { HNSWIndex, AgentDBAdapter, CacheManager } from '@claude-flow/memory';
+import { HNSWIndex, AgentDBAdapter, CacheManager } from '@moflo/memory';
 
 // Create HNSW index for vector search
 const index = new HNSWIndex({
@@ -55,7 +55,7 @@ const results = await index.search(queryVector, 10);
 ### HNSW Index
 
 ```typescript
-import { HNSWIndex } from '@claude-flow/memory';
+import { HNSWIndex } from '@moflo/memory';
 
 const index = new HNSWIndex({
   dimensions: 1536,
@@ -97,7 +97,7 @@ const stats = index.getStats();
 ### AgentDB Adapter
 
 ```typescript
-import { AgentDBAdapter } from '@claude-flow/memory';
+import { AgentDBAdapter } from '@moflo/memory';
 
 const adapter = new AgentDBAdapter({
   dimension: 1536,
@@ -136,7 +136,7 @@ await adapter.enableCrossAgentSharing({
 ### Cache Manager
 
 ```typescript
-import { CacheManager } from '@claude-flow/memory';
+import { CacheManager } from '@moflo/memory';
 
 const cache = new CacheManager({
   maxSize: 1000,
@@ -159,7 +159,7 @@ const stats = cache.getStats();
 ### Query Builder
 
 ```typescript
-import { QueryBuilder } from '@claude-flow/memory';
+import { QueryBuilder } from '@moflo/memory';
 
 const results = await new QueryBuilder()
   .semantic(queryVector)
@@ -174,7 +174,7 @@ const results = await new QueryBuilder()
 ### Migration
 
 ```typescript
-import { MemoryMigration } from '@claude-flow/memory';
+import { MemoryMigration } from '@moflo/memory';
 
 const migration = new MemoryMigration({
   source: './data/v2-memory.db',
@@ -221,7 +221,7 @@ Bidirectional sync between Claude Code's [auto memory](https://code.claude.com/d
 ### Quick Start
 
 ```typescript
-import { AutoMemoryBridge } from '@claude-flow/memory';
+import { AutoMemoryBridge } from '@moflo/memory';
 
 const bridge = new AutoMemoryBridge(memoryBackend, {
   workingDir: '/workspaces/my-project',
@@ -291,7 +291,7 @@ import {
   hashContent,           // SHA-256 truncated to 16 hex chars
   pruneTopicFile,        // Keep topic files under line limit
   hasSummaryLine,        // Exact bullet-prefix dedup check
-} from '@claude-flow/memory';
+} from '@moflo/memory';
 ```
 
 ### Types
@@ -306,17 +306,17 @@ import type {
   PruneStrategy,
   SyncResult,
   ImportResult,
-} from '@claude-flow/memory';
+} from '@moflo/memory';
 ```
 
 ## Self-Learning Bridge (ADR-049)
 
-Connects insights to the `@claude-flow/neural` learning pipeline. When neural is unavailable, all operations degrade to no-ops.
+Connects insights to the `@moflo/neural` learning pipeline. When neural is unavailable, all operations degrade to no-ops.
 
 ### Quick Start
 
 ```typescript
-import { AutoMemoryBridge, LearningBridge } from '@claude-flow/memory';
+import { AutoMemoryBridge, LearningBridge } from '@moflo/memory';
 
 const bridge = new AutoMemoryBridge(backend, {
   workingDir: '/workspaces/my-project',
@@ -343,12 +343,12 @@ await bridge.syncToAutoMemory(); // Calls consolidate() first
 ### Standalone Usage
 
 ```typescript
-import { LearningBridge } from '@claude-flow/memory';
+import { LearningBridge } from '@moflo/memory';
 
 const lb = new LearningBridge(backend, {
   // Optional: inject neural loader for custom setups
   neuralLoader: async () => {
-    const { NeuralLearningSystem } = await import('@claude-flow/neural');
+    const { NeuralLearningSystem } = await import('@moflo/neural');
     return new NeuralLearningSystem();
   },
 });
@@ -384,7 +384,7 @@ Pure TypeScript knowledge graph with PageRank and community detection. No extern
 ### Quick Start
 
 ```typescript
-import { AutoMemoryBridge, MemoryGraph } from '@claude-flow/memory';
+import { AutoMemoryBridge, MemoryGraph } from '@moflo/memory';
 
 const bridge = new AutoMemoryBridge(backend, {
   workingDir: '/workspaces/my-project',
@@ -405,7 +405,7 @@ await bridge.curateIndex();
 ### Standalone Usage
 
 ```typescript
-import { MemoryGraph } from '@claude-flow/memory';
+import { MemoryGraph } from '@moflo/memory';
 
 const graph = new MemoryGraph({
   pageRankDamping: 0.85,
@@ -467,7 +467,7 @@ Maps Claude Code's 3-scope agent memory directories for per-agent knowledge isol
 ### Quick Start
 
 ```typescript
-import { createAgentBridge, transferKnowledge } from '@claude-flow/memory';
+import { createAgentBridge, transferKnowledge } from '@moflo/memory';
 
 // Create a bridge for a specific agent scope
 const agentBridge = createAgentBridge(backend, {
@@ -510,7 +510,7 @@ import {
   createAgentBridge,       // Create scoped AutoMemoryBridge
   transferKnowledge,       // Cross-agent knowledge sharing
   listAgentScopes,         // Discover existing agent scopes
-} from '@claude-flow/memory';
+} from '@moflo/memory';
 
 // Resolve path for an agent scope
 const dir = resolveAgentMemoryDir('my-agent', 'project');
@@ -566,7 +566,7 @@ import type {
   // Agent Scope (ADR-049)
   AgentMemoryScope, AgentScopedConfig,
   TransferOptions, TransferResult,
-} from '@claude-flow/memory';
+} from '@moflo/memory';
 ```
 
 ## Dependencies
@@ -574,13 +574,13 @@ import type {
 - `agentdb` - Vector database engine
 - `better-sqlite3` - SQLite driver (native)
 - `sql.js` - SQLite driver (WASM fallback)
-- `@claude-flow/neural` - **Optional peer dependency** for self-learning (graceful fallback when unavailable)
+- `@moflo/neural` - **Optional peer dependency** for self-learning (graceful fallback when unavailable)
 
 ## Related Packages
 
-- [@claude-flow/neural](../neural) - Neural learning integration (SONA, ReasoningBank, EWC++)
-- [@claude-flow/shared](../shared) - Shared types and utilities
-- [@claude-flow/hooks](../hooks) - Session lifecycle hooks for auto memory sync
+- [@moflo/neural](../neural) - Neural learning integration (SONA, ReasoningBank, EWC++)
+- [@moflo/shared](../shared) - Shared types and utilities
+- [@moflo/hooks](../hooks) - Session lifecycle hooks for auto memory sync
 
 ## License
 

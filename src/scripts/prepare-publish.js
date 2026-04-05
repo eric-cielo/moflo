@@ -161,13 +161,13 @@ updateMainPackage();
 
 console.log('\n✅ All packages prepared for publishing!');
 console.log(`\n📋 Publish order (${publishOrder.length} packages + main):`);
-publishOrder.forEach((pkg, i) => console.log(`   ${i + 1}. @claude-flow/${pkg}`));
+publishOrder.forEach((pkg, i) => console.log(`   ${i + 1}. @moflo/${pkg}`));
 console.log(`   ${publishOrder.length + 1}. claude-flow`);
 
 console.log('\n🚀 To publish, run:');
 console.log('   npm login');
 console.log('   cd v3 && npm run build');
 for (const pkg of publishOrder) {
-  console.log(`   cd @claude-flow/${pkg} && npm publish --tag v3alpha && cd ../..`);
+  console.log(`   cd @moflo/${pkg} && npm publish --tag v3alpha && cd ../..`);
 }
 console.log('   cd claude-flow && npm publish --tag v3alpha');

@@ -1,8 +1,8 @@
-# @claude-flow/guidance
+# @moflo/guidance
 
-[![npm version](https://img.shields.io/npm/v/@claude-flow/guidance.svg?style=flat-square&label=npm)](https://www.npmjs.com/package/@claude-flow/guidance)
-[![npm downloads](https://img.shields.io/npm/dm/@claude-flow/guidance.svg?style=flat-square&label=downloads)](https://www.npmjs.com/package/@claude-flow/guidance)
-[![license](https://img.shields.io/npm/l/@claude-flow/guidance.svg?style=flat-square)](https://github.com/eric-cielo/moflo/blob/main/LICENSE)
+[![npm version](https://img.shields.io/npm/v/@moflo/guidance.svg?style=flat-square&label=npm)](https://www.npmjs.com/package/@moflo/guidance)
+[![npm downloads](https://img.shields.io/npm/dm/@moflo/guidance.svg?style=flat-square&label=downloads)](https://www.npmjs.com/package/@moflo/guidance)
+[![license](https://img.shields.io/npm/l/@moflo/guidance.svg?style=flat-square)](https://github.com/eric-cielo/moflo/blob/main/LICENSE)
 [![tests](https://img.shields.io/badge/tests-1%2C328%20passing-brightgreen?style=flat-square)](https://github.com/eric-cielo/moflo)
 [![node](https://img.shields.io/badge/node-%3E%3D20-blue?style=flat-square)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3+-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -14,7 +14,7 @@
 
 AI coding agents are powerful for short tasks, but they break down over long sessions. They forget rules, repeat mistakes, run in circles, corrupt their own memory, and eventually need a human to step in. The longer the session, the worse it gets.
 
-`@claude-flow/guidance` fixes this. It takes the memory files Claude Code already uses — `CLAUDE.md` and `CLAUDE.local.md` — and turns them into a structured control plane that compiles rules, enforces them through gates the agent cannot bypass, proves every decision cryptographically, and evolves the rule set over time based on what actually works.
+`@moflo/guidance` fixes this. It takes the memory files Claude Code already uses — `CLAUDE.md` and `CLAUDE.local.md` — and turns them into a structured control plane that compiles rules, enforces them through gates the agent cannot bypass, proves every decision cryptographically, and evolves the rule set over time based on what actually works.
 
 The result: agents that can operate for days instead of minutes.
 
@@ -35,7 +35,7 @@ Claude Code agents load `CLAUDE.md` into their context at session start. That's 
 
 This is not a prompt engineering library. It is not a wrapper around `CLAUDE.md`. It is a runtime governance system with enforcement gates, cryptographic proofs, and feedback loops.
 
-| Capability | Plain CLAUDE.md | Prompt libraries | @claude-flow/guidance |
+| Capability | Plain CLAUDE.md | Prompt libraries | @moflo/guidance |
 |-----------|:-:|:-:|:-:|
 | Rules loaded at session start | Yes | Yes | Yes |
 | Rules compiled into typed policy | | | Yes |
@@ -263,7 +263,7 @@ of security-critical hot paths. Two layers:
   to JS. `batchProcess()` amortizes boundary crossings.
 
 ```typescript
-import { getKernel } from '@claude-flow/guidance/wasm-kernel';
+import { getKernel } from '@moflo/guidance/wasm-kernel';
 
 const kernel = getKernel();
 console.log(kernel.version);        // 'guidance-kernel/0.1.0' or 'js-fallback'
@@ -392,7 +392,7 @@ Four acceptance tests verify the core claims of the control plane. These are int
 ## Install
 
 ```bash
-npm install @claude-flow/guidance@alpha
+npm install @moflo/guidance@alpha
 ```
 
 ## Quickstart
@@ -408,7 +408,7 @@ import {
   createEconomicGovernor,
   createToolGateway,
   createContinueGate,
-} from '@claude-flow/guidance';
+} from '@moflo/guidance';
 
 // 1. Create and initialize the control plane
 const plane = createGuidanceControlPlane({
@@ -455,12 +455,12 @@ Each module is importable independently from its own subpath. The examples below
 
 ```typescript
 // Compile CLAUDE.md into structured policy
-import { createCompiler } from '@claude-flow/guidance/compiler';
+import { createCompiler } from '@moflo/guidance/compiler';
 const compiler = createCompiler();
 const bundle = compiler.compile(claudeMdContent);
 
 // Retrieve task-relevant shards by intent
-import { createRetriever } from '@claude-flow/guidance/retriever';
+import { createRetriever } from '@moflo/guidance/retriever';
 const retriever = createRetriever();
 await retriever.loadBundle(bundle);
 const result = await retriever.retrieve({
@@ -468,7 +468,7 @@ const result = await retriever.retrieve({
 });
 
 // Enforce through 4 gates
-import { createGates } from '@claude-flow/guidance/gates';
+import { createGates } from '@moflo/guidance/gates';
 const gates = createGates();
 const gateResults = gates.evaluateCommand('git push --force');
 ```
@@ -476,7 +476,7 @@ const gateResults = gates.evaluateCommand('git push --force');
 ### Continue Gate (Loop Control)
 
 ```typescript
-import { createContinueGate } from '@claude-flow/guidance/continue-gate';
+import { createContinueGate } from '@moflo/guidance/continue-gate';
 const gate = createContinueGate({
   maxConsecutiveSteps: 100,
   maxReworkRatio: 0.3,
@@ -503,7 +503,7 @@ const stats = gate.getStats();
 ### Proof and Audit
 
 ```typescript
-import { createProofChain } from '@claude-flow/guidance/proof';
+import { createProofChain } from '@moflo/guidance/proof';
 const chain = createProofChain({ signingKey: 'your-key' });
 chain.append({
   agentId: 'coder-1', taskId: 'task-123',
@@ -518,7 +518,7 @@ const serialized = chain.export();
 
 ```typescript
 // Deterministic tool gateway with idempotency
-import { createToolGateway } from '@claude-flow/guidance/gateway';
+import { createToolGateway } from '@moflo/guidance/gateway';
 const gateway = createToolGateway({
   budget: { maxTokens: 100000, maxToolCalls: 500 },
   schemas: { Write: { required: ['file_path', 'content'] } },
@@ -526,7 +526,7 @@ const gateway = createToolGateway({
 const decision = gateway.evaluate('Write', { file_path: 'x.ts', content: '...' });
 
 // Memory write gating
-import { createMemoryWriteGate } from '@claude-flow/guidance/memory-gate';
+import { createMemoryWriteGate } from '@moflo/guidance/memory-gate';
 const memGate = createMemoryWriteGate({
   maxWritesPerMinute: 10,
   requireCoherenceAbove: 0.6,
@@ -538,7 +538,7 @@ const writeOk = memGate.evaluateWrite(entry, authority);
 
 ```typescript
 // Trust score accumulation from gate outcomes
-import { TrustSystem } from '@claude-flow/guidance/trust';
+import { TrustSystem } from '@moflo/guidance/trust';
 const trust = new TrustSystem();
 trust.recordOutcome('agent-1', 'allow');  // +0.01
 trust.recordOutcome('agent-1', 'deny');   // -0.05
@@ -546,7 +546,7 @@ const tier = trust.getTier('agent-1');
 // 'trusted' (>=0.8, 2x) | 'standard' (>=0.5, 1x) | 'probation' (>=0.3, 0.5x) | 'untrusted' (<0.3, 0.1x)
 
 // Truth anchors: immutable external facts
-import { createTruthAnchorStore, createTruthResolver } from '@claude-flow/guidance/truth-anchors';
+import { createTruthAnchorStore, createTruthResolver } from '@moflo/guidance/truth-anchors';
 const anchors = createTruthAnchorStore({ signingKey: process.env.ANCHOR_KEY });
 anchors.anchor({
   kind: 'human-attestation',
@@ -563,7 +563,7 @@ const conflict = resolver.resolveMemoryConflict('user-role', 'guest', 'auth');
 
 ```typescript
 // First-class uncertainty tracking
-import { UncertaintyLedger } from '@claude-flow/guidance/uncertainty';
+import { UncertaintyLedger } from '@moflo/guidance/uncertainty';
 const ledger = new UncertaintyLedger();
 const belief = ledger.assert('OAuth tokens expire after 1 hour', 'auth', [
   { direction: 'supporting', weight: 0.9, source: 'RFC 6749', timestamp: Date.now() },
@@ -575,7 +575,7 @@ const updated = ledger.getBelief(belief.id);
 // updated.status: 'confirmed' | 'probable' | 'uncertain' | 'contested' | 'refuted'
 
 // Bitemporal assertions
-import { TemporalStore, TemporalReasoner } from '@claude-flow/guidance/temporal';
+import { TemporalStore, TemporalReasoner } from '@moflo/guidance/temporal';
 const store = new TemporalStore();
 store.assert('Server is healthy', 'infra', {
   validFrom: Date.now(),
@@ -589,7 +589,7 @@ const past = reasoner.whatWasTrue('infra', Date.now() - 86400000);
 ### Authority and Irreversibility
 
 ```typescript
-import { AuthorityGate, IrreversibilityClassifier } from '@claude-flow/guidance/authority';
+import { AuthorityGate, IrreversibilityClassifier } from '@moflo/guidance/authority';
 
 const gate = new AuthorityGate({ signingKey: process.env.AUTH_KEY });
 gate.registerScope({
@@ -608,7 +608,7 @@ const cls = classifier.classify('send email to customer');
 
 ```typescript
 import { createThreatDetector, createCollusionDetector, createMemoryQuorum }
-  from '@claude-flow/guidance/adversarial';
+  from '@moflo/guidance/adversarial';
 
 const detector = createThreatDetector();
 const threats = detector.analyzeInput(
@@ -635,7 +635,7 @@ const result = quorum.resolve(proposalId);
 ### Meta-Governance
 
 ```typescript
-import { createMetaGovernor } from '@claude-flow/guidance/meta-governance';
+import { createMetaGovernor } from '@moflo/guidance/meta-governance';
 const governor = createMetaGovernor({ supermajorityThreshold: 0.75 });
 
 // Constitutional invariants hold
@@ -663,7 +663,7 @@ const validation = governor.validateOptimizerAction({
 <summary><strong>Tutorial: Wiring into Claude Code hooks</strong></summary>
 
 ```typescript
-import { createGuidanceHooks } from '@claude-flow/guidance';
+import { createGuidanceHooks } from '@moflo/guidance';
 
 const provider = createGuidanceHooks({ gates, retriever, ledger });
 
@@ -685,7 +685,7 @@ Gate decisions map to hook outcomes: `deny` → abort, `warn` → log, `allow` �
 <summary><strong>Tutorial: Trust-gated agent autonomy</strong></summary>
 
 ```typescript
-import { TrustSystem } from '@claude-flow/guidance/trust';
+import { TrustSystem } from '@moflo/guidance/trust';
 const trust = new TrustSystem({ initialScore: 0.5, decayRate: 0.01 });
 
 // Each gate evaluation feeds trust
@@ -708,7 +708,7 @@ const records = trust.exportRecords(); // persistence
 
 ```typescript
 import { createThreatDetector, createCollusionDetector, createMemoryQuorum }
-  from '@claude-flow/guidance/adversarial';
+  from '@moflo/guidance/adversarial';
 
 // 1. Detect prompt injection and exfiltration
 const detector = createThreatDetector();
@@ -744,7 +744,7 @@ const result = quorum.resolve(id);
 <summary><strong>Tutorial: Proof envelope for auditable decisions</strong></summary>
 
 ```typescript
-import { createProofChain } from '@claude-flow/guidance/proof';
+import { createProofChain } from '@moflo/guidance/proof';
 const chain = createProofChain({ signingKey: process.env.PROOF_KEY });
 
 // Each envelope links to the previous via previousHash
@@ -777,7 +777,7 @@ imported.verifyChain(); // true
 <summary><strong>Tutorial: Memory Clerk acceptance test</strong></summary>
 
 ```typescript
-import { createConformanceRunner, createMemoryClerkCell } from '@claude-flow/guidance/conformance-kit';
+import { createConformanceRunner, createMemoryClerkCell } from '@moflo/guidance/conformance-kit';
 
 // Memory Clerk: 20 reads, 1 inference, 5 writes
 // When coherence drops, privilege degrades to read-only
@@ -797,7 +797,7 @@ console.log(result.replayMatch); // true (deterministic replay)
 <summary><strong>Tutorial: Evolution pipeline for safe rule changes</strong></summary>
 
 ```typescript
-import { createEvolutionPipeline } from '@claude-flow/guidance/evolution';
+import { createEvolutionPipeline } from '@moflo/guidance/evolution';
 const pipeline = createEvolutionPipeline();
 
 // 1. Propose
@@ -842,7 +842,7 @@ import {
   generateAgentMd,
   generateAgentIndex,
   scaffold,
-} from '@claude-flow/guidance/generators';
+} from '@moflo/guidance/generators';
 
 // Generate a CLAUDE.md from a project profile
 const claudeMd = generateClaudeMd({
@@ -891,7 +891,7 @@ import {
   analyze, benchmark, autoOptimize, optimizeForSize,
   headlessBenchmark, validateEffect,
   formatReport, formatBenchmark,
-} from '@claude-flow/guidance/analyzer';
+} from '@moflo/guidance/analyzer';
 
 // 1. Score a CLAUDE.md file
 const result = analyze(claudeMdContent);
@@ -953,7 +953,7 @@ console.log(validation.report);                   // full formatted report
 **Content-aware executors** implement `IContentAwareExecutor` — they receive the CLAUDE.md content via `setContext()` before each validation phase, allowing their responses to vary based on the quality of guidance loaded. This is what makes the empirical proof meaningful.
 
 ```typescript
-import type { IContentAwareExecutor } from '@claude-flow/guidance/analyzer';
+import type { IContentAwareExecutor } from '@moflo/guidance/analyzer';
 
 class MyExecutor implements IContentAwareExecutor {
   private rules: string[] = [];
@@ -975,7 +975,7 @@ class MyExecutor implements IContentAwareExecutor {
 The final proof: does the control plane actually help? The `abBenchmark()` function implements the Measurement Plan: run 20 real tasks drawn from Claude Flow repo history under two configs — **A** (no control plane) vs **B** (with Phase 1 guidance) — and compute KPIs, composite scores, and category shift detection.
 
 ```typescript
-import { abBenchmark, getDefaultABTasks } from '@claude-flow/guidance/analyzer';
+import { abBenchmark, getDefaultABTasks } from '@moflo/guidance/analyzer';
 
 // Run A/B benchmark with content-aware executor
 const report = await abBenchmark(claudeMdContent, {
@@ -1182,7 +1182,7 @@ Take 20 real Claude Flow tasks from repo history. Run A without control plane, r
 | Resource | URL |
 |----------|-----|
 | **GitHub** | [github.com/ruvnet/claude-flow](https://github.com/eric-cielo/moflo) |
-| **npm: @claude-flow/guidance** | [npmjs.com/package/@claude-flow/guidance](https://www.npmjs.com/package/@claude-flow/guidance) |
+| **npm: @moflo/guidance** | [npmjs.com/package/@moflo/guidance](https://www.npmjs.com/package/@moflo/guidance) |
 | **npm: claude-flow** | [npmjs.com/package/claude-flow](https://www.npmjs.com/package/claude-flow) |
 | **npm: ruvbot** | [npmjs.com/package/ruvbot](https://www.npmjs.com/package/ruvbot) |
 | **ruv.io** | [ruv.io](https://ruv.io) |

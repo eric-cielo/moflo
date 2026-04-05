@@ -3,7 +3,7 @@
  *
  * Provides MCP tools for checking and syncing V3 implementation progress.
  *
- * @module @claude-flow/cli/mcp-tools/progress
+ * @module @moflo/cli/mcp-tools/progress
  */
 
 import type { MCPTool } from './types.js';
@@ -15,7 +15,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 // From dist/src/mcp-tools or src/mcp-tools, navigate to v3 directory
-// CLI is at v3/@claude-flow/cli, so go up 2 levels from cli to get to v3
+// CLI is at v3/@moflo/cli, so go up 2 levels from cli to get to v3
 const CLI_ROOT = join(__dirname, '../../..');
 const CLAUDE_FLOW_DIR = join(CLI_ROOT, '..'); // @claude-flow directory
 const V3_DIR = join(CLAUDE_FLOW_DIR, '..'); // v3 directory
@@ -142,7 +142,7 @@ async function calculateProgress(): Promise<V3ProgressMetrics> {
 
   // Count CLI commands (from commands/index.ts)
   let cliCommands = 28; // Default to known count
-  const commandsIndexPath = join(V3_DIR, '@claude-flow/cli/src/commands/index.ts');
+  const commandsIndexPath = join(V3_DIR, '@moflo/cli/src/commands/index.ts');
   if (existsSync(commandsIndexPath)) {
     try {
       const content = readFileSync(commandsIndexPath, 'utf-8');
@@ -155,7 +155,7 @@ async function calculateProgress(): Promise<V3ProgressMetrics> {
 
   // Count MCP tools
   let mcpTools = 100; // Approximate
-  const toolsIndexPath = join(V3_DIR, '@claude-flow/cli/src/mcp-tools/index.ts');
+  const toolsIndexPath = join(V3_DIR, '@moflo/cli/src/mcp-tools/index.ts');
   if (existsSync(toolsIndexPath)) {
     try {
       const content = readFileSync(toolsIndexPath, 'utf-8');
@@ -165,7 +165,7 @@ async function calculateProgress(): Promise<V3ProgressMetrics> {
 
   // Count hooks subcommands (count const *Command definitions)
   let hooksSubcommands = 27; // Default to documented count
-  const hooksPath = join(V3_DIR, '@claude-flow/cli/src/commands/hooks.ts');
+  const hooksPath = join(V3_DIR, '@moflo/cli/src/commands/hooks.ts');
   if (existsSync(hooksPath)) {
     try {
       const content = readFileSync(hooksPath, 'utf-8');

@@ -6,7 +6,7 @@ This document summarizes the refactoring of CLI commands to use MCP tools instea
 
 ## Key Changes
 
-### 1. Created MCP Client Helper (`/workspaces/claude-flow/v3/@claude-flow/cli/src/mcp-client.ts`)
+### 1. Created MCP Client Helper (`/workspaces/claude-flow/v3/@moflo/cli/src/mcp-client.ts`)
 
 **Purpose**: Thin wrapper for calling MCP tools from CLI commands
 
@@ -78,7 +78,7 @@ action: async (ctx: CommandContext): Promise<CommandResult> => {
 
 ### 3. Refactored Commands
 
-#### ✅ Agent Commands (`/workspaces/claude-flow/v3/@claude-flow/cli/src/commands/agent.ts`)
+#### ✅ Agent Commands (`/workspaces/claude-flow/v3/@moflo/cli/src/commands/agent.ts`)
 
 | Command | MCP Tool | Status |
 |---------|----------|--------|
@@ -88,7 +88,7 @@ action: async (ctx: CommandContext): Promise<CommandResult> => {
 | `agent stop` | `agent/terminate` | ✅ Refactored |
 | `agent metrics` | (Display only - uses agent/list) | ⚠️ Stub |
 
-#### 🔄 Swarm Commands (`/workspaces/claude-flow/v3/@claude-flow/cli/src/commands/swarm.ts`)
+#### 🔄 Swarm Commands (`/workspaces/claude-flow/v3/@moflo/cli/src/commands/swarm.ts`)
 
 | Command | MCP Tool | Status |
 |---------|----------|--------|
@@ -99,7 +99,7 @@ action: async (ctx: CommandContext): Promise<CommandResult> => {
 | `swarm scale` | `swarm/scale` | ⏳ TODO |
 | `swarm coordinate` | (Display only - shows V3 agents) | ⚠️ Stub |
 
-#### ⏳ Memory Commands (`/workspaces/claude-flow/v3/@claude-flow/cli/src/commands/memory.ts`)
+#### ⏳ Memory Commands (`/workspaces/claude-flow/v3/@moflo/cli/src/commands/memory.ts`)
 
 | Command | MCP Tool | Status |
 |---------|----------|--------|
@@ -111,7 +111,7 @@ action: async (ctx: CommandContext): Promise<CommandResult> => {
 | `memory stats` | (Aggregate of memory/list) | ⏳ TODO |
 | `memory configure` | (Uses config/save) | ⏳ TODO |
 
-#### ⏳ Config Commands (`/workspaces/claude-flow/v3/@claude-flow/cli/src/commands/config.ts`)
+#### ⏳ Config Commands (`/workspaces/claude-flow/v3/@moflo/cli/src/commands/config.ts`)
 
 | Command | MCP Tool | Status |
 |---------|----------|--------|
@@ -134,7 +134,7 @@ action: async (ctx: CommandContext): Promise<CommandResult> => {
 ### 5. File Organization
 
 ```
-v3/@claude-flow/cli/src/
+v3/@moflo/cli/src/
 ├── mcp-client.ts          # NEW: MCP tool client helper
 ├── commands/
 │   ├── agent.ts           # ✅ Refactored to use MCP tools
@@ -163,7 +163,7 @@ To complete the refactoring:
 ### 7. Example: Complete Refactored Command
 
 ```typescript
-// /workspaces/claude-flow/v3/@claude-flow/cli/src/commands/agent.ts
+// /workspaces/claude-flow/v3/@moflo/cli/src/commands/agent.ts
 
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 

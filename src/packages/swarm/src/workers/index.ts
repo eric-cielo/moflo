@@ -1,5 +1,5 @@
 /**
- * @claude-flow/swarm/workers
+ * @moflo/swarm/workers
  * Worker Dispatch Module (agentic-flow@alpha compatible)
  *
  * Provides background worker functionality with 12 trigger types
@@ -19,7 +19,7 @@
  * - benchmark: Performance benchmarking
  * - testgaps: Test coverage analysis
  *
- * @module @claude-flow/swarm/workers
+ * @module @moflo/swarm/workers
  * @version 3.0.0-alpha.1
  */
 

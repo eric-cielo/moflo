@@ -4,7 +4,7 @@
  * Generates Claude-visible guidance output from ReasoningBank patterns.
  * Outputs plain text (exit 0) or JSON with additionalContext.
  *
- * @module @claude-flow/hooks/reasoningbank/guidance-provider
+ * @module @moflo/hooks/reasoningbank/guidance-provider
  */
 
 import { ReasoningBank, GuidanceResult, RoutingResult } from './index.js';

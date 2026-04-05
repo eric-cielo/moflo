@@ -34,7 +34,7 @@ The engine also exposes a **Runner Bridge** (`src/packages/workflows/src/factory
 
 ### Analysis
 
-The 10 MCP tools (`workflow_run`, `workflow_execute`, `workflow_status`, etc.) maintain their own file-based store at `.claude-flow/workflows/store.json` with their own `WorkflowRecord`/`WorkflowStep` types (lines 16-45). They do NOT import or call the real `WorkflowRunner` from `@claude-flow/workflows`.
+The 10 MCP tools (`workflow_run`, `workflow_execute`, `workflow_status`, etc.) maintain their own file-based store at `.claude-flow/workflows/store.json` with their own `WorkflowRecord`/`WorkflowStep` types (lines 16-45). They do NOT import or call the real `WorkflowRunner` from `@moflo/workflows`.
 
 Key evidence:
 - **`workflow_execute` handler (line 252-299):** Loops through steps and immediately marks each as `completed` without executing anything:
@@ -46,7 +46,7 @@ Key evidence:
   ```
 - **`workflow_resume` handler (line 450-489):** Same mock pattern — iterates steps and marks completed without execution.
 - **`workflow_run` handler (line 103-177):** Creates stages from hardcoded template names (`feature`, `bugfix`, `refactor`, `security`) but never parses YAML or invokes the engine.
-- **No imports** from `@claude-flow/workflows` anywhere in the file.
+- **No imports** from `@moflo/workflows` anywhere in the file.
 
 Meanwhile, `runner-bridge.ts` (97 lines) exists specifically to provide `bridgeRunWorkflow()`, `bridgeExecuteWorkflow()`, and `bridgeCancelWorkflow()` as the engine's MCP-facing API — but nothing calls it except the epic command.
 
@@ -317,7 +317,7 @@ Add cycle detection during validation (topological sort of jump targets). Low pr
 
 ### Analysis
 
-The broader plugin system (`@claude-flow/plugins`) supports a `dependencies` field on plugins. The registry collects plugins but may not initialize them in dependency order.
+The broader plugin system (`@moflo/plugins`) supports a `dependencies` field on plugins. The registry collects plugins but may not initialize them in dependency order.
 
 Note: This is in the **plugins** package, not the **workflows** package. It affects the general plugin system, not just workflow steps/tools.
 

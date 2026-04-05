@@ -7,20 +7,20 @@
  * hoisted node_modules are not available.
  */
 
-declare module '@claude-flow/aidefence' {
+declare module '@moflo/aidefence' {
   export function createAIDefence(...args: any[]): any;
   export function isSafe(...args: any[]): any;
   const _default: any;
   export default _default;
 }
-declare module '@claude-flow/embeddings';
-declare module '@claude-flow/guidance/analyzer';
-declare module '@claude-flow/guidance/compiler';
-declare module '@claude-flow/guidance/gates';
-declare module '@claude-flow/guidance/retriever';
-declare module '@claude-flow/mcp';
-declare module '@claude-flow/memory';
-declare module '@claude-flow/shared' {
+declare module '@moflo/embeddings';
+declare module '@moflo/guidance/analyzer';
+declare module '@moflo/guidance/compiler';
+declare module '@moflo/guidance/gates';
+declare module '@moflo/guidance/retriever';
+declare module '@moflo/mcp';
+declare module '@moflo/memory';
+declare module '@moflo/shared' {
   export interface SystemConfig {
     [key: string]: any;
   }

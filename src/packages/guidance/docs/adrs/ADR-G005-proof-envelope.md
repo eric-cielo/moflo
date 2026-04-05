@@ -96,9 +96,9 @@ Log events without running evaluators. Rejected because the evaluators are what 
 
 ## References
 
-- `v3/@claude-flow/guidance/src/types.ts` -- `RunEvent`, `Violation`, `EvaluatorResult`, `ViolationRanking`, `OptimizationMetrics`
-- `v3/@claude-flow/guidance/src/ledger.ts` -- `RunLedger`, all evaluator classes
-- `v3/@claude-flow/guidance/src/compiler.ts` -- `hashContent()` for guidance hash generation
-- `v3/@claude-flow/guidance/src/index.ts` -- `GuidanceControlPlane.startRun()`, `finalizeRun()`
+- `v3/@moflo/guidance/src/types.ts` -- `RunEvent`, `Violation`, `EvaluatorResult`, `ViolationRanking`, `OptimizationMetrics`
+- `v3/@moflo/guidance/src/ledger.ts` -- `RunLedger`, all evaluator classes
+- `v3/@moflo/guidance/src/compiler.ts` -- `hashContent()` for guidance hash generation
+- `v3/@moflo/guidance/src/index.ts` -- `GuidanceControlPlane.startRun()`, `finalizeRun()`
 - ADR-G001 -- Why auditing is needed for autonomous agents
 - ADR-G008 -- How the optimizer consumes violation rankings

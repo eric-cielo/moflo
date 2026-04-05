@@ -70,5 +70,5 @@ npx claude-flow@alpha hooks post-task --task-id "$ID" --success true
 
 ## References
 
-- **Package**: @claude-flow/neural (built-in SONA engine)
+- **Package**: @moflo/neural (built-in SONA engine)
 - **Integration Guide**: docs/modules/neural.md

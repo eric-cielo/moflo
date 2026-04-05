@@ -21,7 +21,7 @@
  * Human interventions are cryptographically signed using HMAC-SHA256 to
  * create an immutable audit trail of override decisions.
  *
- * @module @claude-flow/guidance/authority
+ * @module @moflo/guidance/authority
  */
 
 import { createHmac, randomUUID } from 'node:crypto';

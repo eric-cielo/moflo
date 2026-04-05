@@ -45,7 +45,7 @@ const compileCommand: Command = {
         localContent = await readFile(localPath, 'utf-8');
       }
 
-      const { GuidanceCompiler } = await import('@claude-flow/guidance/compiler');
+      const { GuidanceCompiler } = await import('@moflo/guidance/compiler');
       const compiler = new GuidanceCompiler();
       const bundle = compiler.compile(rootContent, localContent);
 
@@ -122,8 +122,8 @@ const retrieveCommand: Command = {
     try {
       const { readFile } = await import('node:fs/promises');
       const { existsSync } = await import('node:fs');
-      const { GuidanceCompiler } = await import('@claude-flow/guidance/compiler');
-      const { ShardRetriever, HashEmbeddingProvider } = await import('@claude-flow/guidance/retriever');
+      const { GuidanceCompiler } = await import('@moflo/guidance/compiler');
+      const { ShardRetriever, HashEmbeddingProvider } = await import('@moflo/guidance/retriever');
 
       if (!existsSync(rootPath)) {
         output.writeln(output.error(`Root guidance file not found: ${rootPath}`));
@@ -209,7 +209,7 @@ const gatesCommand: Command = {
     output.writeln(output.dim('─'.repeat(50)));
 
     try {
-      const { EnforcementGates } = await import('@claude-flow/guidance/gates');
+      const { EnforcementGates } = await import('@moflo/guidance/gates');
       const gates = new EnforcementGates();
 
       const results: Array<{ type: string; result: any }> = [];
@@ -311,7 +311,7 @@ const statusCommand: Command = {
 
         if (rootExists) {
           const { readFile } = await import('node:fs/promises');
-          const { GuidanceCompiler } = await import('@claude-flow/guidance/compiler');
+          const { GuidanceCompiler } = await import('@moflo/guidance/compiler');
           const rootContent = await readFile('./CLAUDE.md', 'utf-8');
           const compiler = new GuidanceCompiler();
           const bundle = compiler.compile(rootContent);
@@ -382,7 +382,7 @@ const optimizeCommand: Command = {
       }
 
       // Step 1: Analyze current state
-      const { analyze, formatReport, optimizeForSize, formatBenchmark } = await import('@claude-flow/guidance/analyzer');
+      const { analyze, formatReport, optimizeForSize, formatBenchmark } = await import('@moflo/guidance/analyzer');
       const analysis = analyze(rootContent, localContent);
 
       if (jsonOutput && !applyChanges) {
@@ -484,7 +484,7 @@ const abTestCommand: Command = {
     try {
       const { readFile } = await import('node:fs/promises');
       const { existsSync } = await import('node:fs');
-      const { abBenchmark, getDefaultABTasks } = await import('@claude-flow/guidance/analyzer');
+      const { abBenchmark, getDefaultABTasks } = await import('@moflo/guidance/analyzer');
 
       // Load Config B (candidate) content
       if (!existsSync(configBPath)) {

@@ -634,7 +634,7 @@ Single Claude execution without spawning sub-agents.
 
 When `-wf` is used, the /flo skill switches to the generalized workflow engine
 instead of the hardcoded coding workflow. This uses the `WorkflowRegistry` from
-`@claude-flow/workflows` to resolve and run YAML/JSON workflow definitions.
+`@moflo/workflows` to resolve and run YAML/JSON workflow definitions.
 
 **Scan directories** (in priority order):
 1. Shipped: `src/packages/workflows/definitions/` (bundled with moflo)

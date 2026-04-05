@@ -87,7 +87,7 @@ export const agentdbControllers: MCPTool = {
     try {
       const bridge = await getBridge();
       const controllers = await bridge.bridgeListControllers();
-      if (!controllers) return { available: false, controllers: [], error: 'AgentDB bridge not available — @claude-flow/memory not installed or missing controller-registry. Use memory_store/memory_search tools instead.' };
+      if (!controllers) return { available: false, controllers: [], error: 'AgentDB bridge not available — @moflo/memory not installed or missing controller-registry. Use memory_store/memory_search tools instead.' };
       return {
         available: true,
         controllers,

@@ -2,7 +2,7 @@
  * V3 CLI MCP Command
  * MCP server control and management with real server integration
  *
- * @module @claude-flow/cli/commands/mcp
+ * @module @moflo/cli/commands/mcp
  * @version 3.0.0
  */
 

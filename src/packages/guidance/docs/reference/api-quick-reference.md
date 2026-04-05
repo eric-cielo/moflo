@@ -1,41 +1,41 @@
 # API Quick Reference
 
-All exports from `@claude-flow/guidance`. Each module is also available as a standalone import.
+All exports from `@moflo/guidance`. Each module is also available as a standalone import.
 
 ## Import Map
 
 | Import Path | Key Exports |
 |-------------|-------------|
-| `@claude-flow/guidance` | `GuidanceControlPlane`, `createGuidanceControlPlane` |
-| `@claude-flow/guidance/compiler` | `GuidanceCompiler`, `createCompiler` |
-| `@claude-flow/guidance/retriever` | `ShardRetriever`, `createRetriever`, `HashEmbeddingProvider` |
-| `@claude-flow/guidance/gates` | `EnforcementGates`, `createGates` |
-| `@claude-flow/guidance/hooks` | `GuidanceHookProvider`, `createGuidanceHooks` |
-| `@claude-flow/guidance/ledger` | `RunLedger`, `createLedger`, `TestsPassEvaluator`, `ForbiddenCommandEvaluator`, `ForbiddenDependencyEvaluator`, `ViolationRateEvaluator`, `DiffQualityEvaluator` |
-| `@claude-flow/guidance/optimizer` | `OptimizerLoop`, `createOptimizer` |
-| `@claude-flow/guidance/persistence` | `PersistentLedger`, `EventStore`, `createPersistentLedger`, `createEventStore` |
-| `@claude-flow/guidance/headless` | `HeadlessRunner`, `createHeadlessRunner`, `createComplianceSuite` |
-| `@claude-flow/guidance/gateway` | `DeterministicToolGateway`, `createToolGateway` |
-| `@claude-flow/guidance/artifacts` | `ArtifactLedger`, `createArtifactLedger` |
-| `@claude-flow/guidance/evolution` | `EvolutionPipeline`, `createEvolutionPipeline` |
-| `@claude-flow/guidance/manifest-validator` | `ManifestValidator`, `ConformanceSuite`, `createManifestValidator`, `createConformanceSuite` |
-| `@claude-flow/guidance/proof` | `ProofChain`, `createProofChain` |
-| `@claude-flow/guidance/memory-gate` | `MemoryWriteGate`, `createMemoryWriteGate`, `createMemoryEntry` |
-| `@claude-flow/guidance/coherence` | `CoherenceScheduler`, `EconomicGovernor`, `createCoherenceScheduler`, `createEconomicGovernor` |
-| `@claude-flow/guidance/capabilities` | `CapabilityAlgebra`, `createCapabilityAlgebra` |
-| `@claude-flow/guidance/conformance-kit` | `SimulatedRuntime`, `MemoryClerkCell`, `ConformanceRunner`, `createMemoryClerkCell`, `createConformanceRunner` |
-| `@claude-flow/guidance/ruvbot-integration` | `RuvBotGuidanceBridge`, `AIDefenceGate`, `RuvBotMemoryAdapter`, `createRuvBotBridge`, `createAIDefenceGate`, `createRuvBotMemoryAdapter` |
-| `@claude-flow/guidance/meta-governance` | `MetaGovernor`, `createMetaGovernor` |
-| `@claude-flow/guidance/adversarial` | `ThreatDetector`, `CollusionDetector`, `MemoryQuorum`, `createThreatDetector`, `createCollusionDetector`, `createMemoryQuorum` |
-| `@claude-flow/guidance/trust` | `TrustAccumulator`, `TrustScoreLedger`, `TrustSystem`, `getTrustBasedRateLimit`, `createTrustAccumulator`, `createTrustSystem` |
-| `@claude-flow/guidance/truth-anchors` | `TruthAnchorStore`, `TruthResolver`, `createTruthAnchorStore`, `createTruthResolver` |
-| `@claude-flow/guidance/uncertainty` | `UncertaintyLedger`, `UncertaintyAggregator`, `createUncertaintyLedger`, `createUncertaintyAggregator` |
-| `@claude-flow/guidance/temporal` | `TemporalStore`, `TemporalReasoner`, `createTemporalStore`, `createTemporalReasoner` |
-| `@claude-flow/guidance/authority` | `AuthorityGate`, `IrreversibilityClassifier`, `createAuthorityGate`, `createIrreversibilityClassifier`, `isHigherAuthority`, `getAuthorityHierarchy` |
-| `@claude-flow/guidance/continue-gate` | `ContinueGate`, `createContinueGate` |
-| `@claude-flow/guidance/wasm-kernel` | `getKernel`, `isWasmAvailable`, `resetKernel` |
-| `@claude-flow/guidance/generators` | `generateClaudeMd`, `generateClaudeLocalMd`, `generateSkillMd`, `generateAgentMd`, `generateAgentIndex`, `scaffold` |
-| `@claude-flow/guidance/analyzer` | `analyze`, `benchmark`, `autoOptimize`, `optimizeForSize`, `headlessBenchmark`, `validateEffect`, `abBenchmark`, `getDefaultABTasks`, `formatReport`, `formatBenchmark` |
+| `@moflo/guidance` | `GuidanceControlPlane`, `createGuidanceControlPlane` |
+| `@moflo/guidance/compiler` | `GuidanceCompiler`, `createCompiler` |
+| `@moflo/guidance/retriever` | `ShardRetriever`, `createRetriever`, `HashEmbeddingProvider` |
+| `@moflo/guidance/gates` | `EnforcementGates`, `createGates` |
+| `@moflo/guidance/hooks` | `GuidanceHookProvider`, `createGuidanceHooks` |
+| `@moflo/guidance/ledger` | `RunLedger`, `createLedger`, `TestsPassEvaluator`, `ForbiddenCommandEvaluator`, `ForbiddenDependencyEvaluator`, `ViolationRateEvaluator`, `DiffQualityEvaluator` |
+| `@moflo/guidance/optimizer` | `OptimizerLoop`, `createOptimizer` |
+| `@moflo/guidance/persistence` | `PersistentLedger`, `EventStore`, `createPersistentLedger`, `createEventStore` |
+| `@moflo/guidance/headless` | `HeadlessRunner`, `createHeadlessRunner`, `createComplianceSuite` |
+| `@moflo/guidance/gateway` | `DeterministicToolGateway`, `createToolGateway` |
+| `@moflo/guidance/artifacts` | `ArtifactLedger`, `createArtifactLedger` |
+| `@moflo/guidance/evolution` | `EvolutionPipeline`, `createEvolutionPipeline` |
+| `@moflo/guidance/manifest-validator` | `ManifestValidator`, `ConformanceSuite`, `createManifestValidator`, `createConformanceSuite` |
+| `@moflo/guidance/proof` | `ProofChain`, `createProofChain` |
+| `@moflo/guidance/memory-gate` | `MemoryWriteGate`, `createMemoryWriteGate`, `createMemoryEntry` |
+| `@moflo/guidance/coherence` | `CoherenceScheduler`, `EconomicGovernor`, `createCoherenceScheduler`, `createEconomicGovernor` |
+| `@moflo/guidance/capabilities` | `CapabilityAlgebra`, `createCapabilityAlgebra` |
+| `@moflo/guidance/conformance-kit` | `SimulatedRuntime`, `MemoryClerkCell`, `ConformanceRunner`, `createMemoryClerkCell`, `createConformanceRunner` |
+| `@moflo/guidance/ruvbot-integration` | `RuvBotGuidanceBridge`, `AIDefenceGate`, `RuvBotMemoryAdapter`, `createRuvBotBridge`, `createAIDefenceGate`, `createRuvBotMemoryAdapter` |
+| `@moflo/guidance/meta-governance` | `MetaGovernor`, `createMetaGovernor` |
+| `@moflo/guidance/adversarial` | `ThreatDetector`, `CollusionDetector`, `MemoryQuorum`, `createThreatDetector`, `createCollusionDetector`, `createMemoryQuorum` |
+| `@moflo/guidance/trust` | `TrustAccumulator`, `TrustScoreLedger`, `TrustSystem`, `getTrustBasedRateLimit`, `createTrustAccumulator`, `createTrustSystem` |
+| `@moflo/guidance/truth-anchors` | `TruthAnchorStore`, `TruthResolver`, `createTruthAnchorStore`, `createTruthResolver` |
+| `@moflo/guidance/uncertainty` | `UncertaintyLedger`, `UncertaintyAggregator`, `createUncertaintyLedger`, `createUncertaintyAggregator` |
+| `@moflo/guidance/temporal` | `TemporalStore`, `TemporalReasoner`, `createTemporalStore`, `createTemporalReasoner` |
+| `@moflo/guidance/authority` | `AuthorityGate`, `IrreversibilityClassifier`, `createAuthorityGate`, `createIrreversibilityClassifier`, `isHigherAuthority`, `getAuthorityHierarchy` |
+| `@moflo/guidance/continue-gate` | `ContinueGate`, `createContinueGate` |
+| `@moflo/guidance/wasm-kernel` | `getKernel`, `isWasmAvailable`, `resetKernel` |
+| `@moflo/guidance/generators` | `generateClaudeMd`, `generateClaudeLocalMd`, `generateSkillMd`, `generateAgentMd`, `generateAgentIndex`, `scaffold` |
+| `@moflo/guidance/analyzer` | `analyze`, `benchmark`, `autoOptimize`, `optimizeForSize`, `headlessBenchmark`, `validateEffect`, `abBenchmark`, `getDefaultABTasks`, `formatReport`, `formatBenchmark` |
 
 ---
 
@@ -362,7 +362,7 @@ const k = getKernel()
 ## Generators
 
 ```ts
-import { generateClaudeMd, scaffold } from '@claude-flow/guidance/generators';
+import { generateClaudeMd, scaffold } from '@moflo/guidance/generators';
 ```
 
 | Function | Returns | Description |
@@ -381,7 +381,7 @@ import { generateClaudeMd, scaffold } from '@claude-flow/guidance/generators';
 ## Analyzer
 
 ```ts
-import { analyze, validateEffect } from '@claude-flow/guidance/analyzer';
+import { analyze, validateEffect } from '@moflo/guidance/analyzer';
 ```
 
 ### Scoring & Reporting

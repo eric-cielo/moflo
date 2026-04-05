@@ -1408,13 +1408,13 @@ describe.skip('Registry API', () => {
 
   it('should reject invalid ratings', async () => {
     const api = await import('../src/services/registry-api.js');
-    await expect(api.rateItem('@claude-flow/test', 0)).rejects.toThrow('Rating must be integer 1-5');
-    await expect(api.rateItem('@claude-flow/test', 6)).rejects.toThrow('Rating must be integer 1-5');
+    await expect(api.rateItem('@moflo/test', 0)).rejects.toThrow('Rating must be integer 1-5');
+    await expect(api.rateItem('@moflo/test', 6)).rejects.toThrow('Rating must be integer 1-5');
   });
 
   it('should reject non-integer ratings', async () => {
     const api = await import('../src/services/registry-api.js');
-    await expect(api.rateItem('@claude-flow/test', 3.5)).rejects.toThrow('Rating must be integer 1-5');
+    await expect(api.rateItem('@moflo/test', 3.5)).rejects.toThrow('Rating must be integer 1-5');
   });
 
   it('should accept valid item IDs with scopes', async () => {
@@ -1422,7 +1422,7 @@ describe.skip('Registry API', () => {
     // This should not throw on validation, but will fail on network
     // We just check it passes validation by catching the network error
     try {
-      await api.getRating('@claude-flow/test-plugin', 'plugin');
+      await api.getRating('@moflo/test-plugin', 'plugin');
     } catch (e: any) {
       // Network error is expected - validation passed
       expect(e.message).not.toContain('Invalid item ID');

@@ -1,5 +1,5 @@
 /**
- * @claude-flow/guidance - Guidance Control Plane
+ * @moflo/guidance - Guidance Control Plane
  *
  * Sits beside Claude Code (not inside it) to:
  * 1. Compile CLAUDE.md into constitution + shards + manifest
@@ -18,7 +18,7 @@
  * - Hook system for enforcement gates
  * - MoVector/HNSW for semantic shard retrieval
  *
- * @module @claude-flow/guidance
+ * @module @moflo/guidance
  */
 
 import { readFile } from 'node:fs/promises';

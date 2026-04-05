@@ -9,7 +9,7 @@
  *
  * Falls back to built-in implementations when native backend is not available.
  *
- * @module @claude-flow/cli/movector/graph-analyzer
+ * @module @moflo/cli/movector/graph-analyzer
  */
 
 import { readFile, readdir, stat } from 'fs/promises';

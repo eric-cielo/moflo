@@ -1,5 +1,5 @@
 /**
- * @claude-flow/claims - Infrastructure Layer
+ * @moflo/claims - Infrastructure Layer
  *
  * Exports persistence implementations for the claims module.
  *

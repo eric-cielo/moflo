@@ -9,7 +9,7 @@
  * system prompt. MEMORY.md (first 200 lines) is the entrypoint; topic files
  * store detailed notes and are read on demand.
  *
- * @module @claude-flow/memory/auto-memory-bridge
+ * @module @moflo/memory/auto-memory-bridge
  */
 
 import { createHash } from 'node:crypto';

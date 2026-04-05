@@ -3,20 +3,20 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@claude-flow/aidefence": ["./packages/aidefence/src"],
-      "@claude-flow/claims": ["./packages/claims/src"],
-      "@claude-flow/cli": ["./packages/cli/src"],
-      "@claude-flow/embeddings": ["./packages/embeddings/src"],
-      "@claude-flow/guidance": ["./packages/guidance/src"],
-      "@claude-flow/hooks": ["./packages/hooks/src"],
-      "@claude-flow/memory": ["./packages/memory/src"],
-      "@claude-flow/neural": ["./packages/neural/src"],
-      "@claude-flow/plugins": ["./packages/plugins/src"],
-      "@claude-flow/security": ["./packages/security/src"],
-      "@claude-flow/shared": ["./packages/shared/src"],
-      "@claude-flow/swarm": ["./packages/swarm/src"],
-      "@claude-flow/testing": ["./packages/testing/src"],
-      "@claude-flow/workflows": ["./packages/workflows/src"]
+      "@moflo/aidefence": ["./packages/aidefence/src"],
+      "@moflo/claims": ["./packages/claims/src"],
+      "@moflo/cli": ["./packages/cli/src"],
+      "@moflo/embeddings": ["./packages/embeddings/src"],
+      "@moflo/guidance": ["./packages/guidance/src"],
+      "@moflo/hooks": ["./packages/hooks/src"],
+      "@moflo/memory": ["./packages/memory/src"],
+      "@moflo/neural": ["./packages/neural/src"],
+      "@moflo/plugins": ["./packages/plugins/src"],
+      "@moflo/security": ["./packages/security/src"],
+      "@moflo/shared": ["./packages/shared/src"],
+      "@moflo/swarm": ["./packages/swarm/src"],
+      "@moflo/testing": ["./packages/testing/src"],
+      "@moflo/workflows": ["./packages/workflows/src"]
     }
   },
   "references": [

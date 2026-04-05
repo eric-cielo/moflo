@@ -1,5 +1,5 @@
 /**
- * @claude-flow/testing - Agent Fixtures
+ * @moflo/testing - Agent Fixtures
  *
  * Comprehensive mock agents and agent configurations for testing V3 modules.
  * Supports all 15 V3 specialized swarm agents plus core development agents.

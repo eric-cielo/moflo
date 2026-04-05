@@ -38,7 +38,7 @@ npm install hnswlib-node@^3.0.0 better-sqlite3@^11.0.0
 ### Basic Setup
 
 ```typescript
-import { AgentDBBackend } from '@claude-flow/memory';
+import { AgentDBBackend } from '@moflo/memory';
 
 const backend = new AgentDBBackend({
   dbPath: './data/memory.db',
@@ -61,7 +61,7 @@ await backend.initialize();
 Per ADR-009, the recommended approach is to use `HybridBackend`:
 
 ```typescript
-import { HybridBackend } from '@claude-flow/memory';
+import { HybridBackend } from '@moflo/memory';
 
 const memory = new HybridBackend({
   // SQLite for structured queries
@@ -297,7 +297,7 @@ if (stats.hnswStats) {
 The memory module includes migration support for legacy systems:
 
 ```typescript
-import { MemoryMigrator } from '@claude-flow/memory';
+import { MemoryMigrator } from '@moflo/memory';
 
 const migrator = new MemoryMigrator(
   backend,

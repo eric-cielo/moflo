@@ -6,7 +6,7 @@
 
 ## Epic #100: Generalized Workflow Engine
 
-**Ships as part of moflo** — not a separate project. Heavy deps (Playwright, isolated-vm) are optional peer dependencies, same pattern as `@claude-flow/embeddings` requiring `sql.js`.
+**Ships as part of moflo** — not a separate project. Heavy deps (Playwright, isolated-vm) are optional peer dependencies, same pattern as `@moflo/embeddings` requiring `sql.js`.
 
 ### Command Pattern for Steps
 

@@ -2,7 +2,7 @@
  * Google Cloud Storage Backend
  * Real storage implementation using gcloud CLI or GCS APIs
  *
- * @module @claude-flow/cli/transfer/storage/gcs
+ * @module @moflo/cli/transfer/storage/gcs
  * @version 3.0.0
  */
 

@@ -1,5 +1,5 @@
 /**
- * @claude-flow/claims - Vitest Configuration
+ * @moflo/claims - Vitest Configuration
  * Test configuration for the claims module
  */
 import { defineConfig } from 'vitest/config';

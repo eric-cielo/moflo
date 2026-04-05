@@ -7,8 +7,8 @@ import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from 'no
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { RvfMigrator } from '../v3/@claude-flow/memory/src/rvf-migration.js';
-import { RvfBackend } from '../v3/@claude-flow/memory/src/rvf-backend.js';
+import { RvfMigrator } from '../v3/@moflo/memory/src/rvf-migration.js';
+import { RvfBackend } from '../v3/@moflo/memory/src/rvf-backend.js';
 
 describe('RvfMigrator', () => {
   let tmpDir: string;

@@ -20,10 +20,10 @@ Quick reference for migrating from `SwarmHub` to `UnifiedSwarmCoordinator`
 
 ```typescript
 // OLD (deprecated)
-import { createSwarmHub } from '@claude-flow/swarm';
+import { createSwarmHub } from '@moflo/swarm';
 
 // NEW (recommended)
-import { createUnifiedSwarmCoordinator } from '@claude-flow/swarm';
+import { createUnifiedSwarmCoordinator } from '@moflo/swarm';
 ```
 
 ### Initialization
@@ -102,7 +102,7 @@ await coordinator.shutdown();
 ### Before (SwarmHub)
 
 ```typescript
-import { createSwarmHub } from '@claude-flow/swarm';
+import { createSwarmHub } from '@moflo/swarm';
 
 async function runSwarm() {
   const hub = createSwarmHub();
@@ -128,7 +128,7 @@ async function runSwarm() {
 ### After (UnifiedSwarmCoordinator)
 
 ```typescript
-import { createUnifiedSwarmCoordinator } from '@claude-flow/swarm';
+import { createUnifiedSwarmCoordinator } from '@moflo/swarm';
 
 async function runSwarm() {
   const coordinator = createUnifiedSwarmCoordinator({
@@ -187,7 +187,7 @@ async function runSwarm() {
 If you can't migrate immediately, use the compatibility layer:
 
 ```typescript
-import { createSwarmHub } from '@claude-flow/swarm';
+import { createSwarmHub } from '@moflo/swarm';
 
 const hub = createSwarmHub();
 await hub.initialize();
@@ -388,7 +388,7 @@ await coordinator.assignTaskToDomain(taskId, 'security');
 ### Unit Tests
 
 ```typescript
-import { createUnifiedSwarmCoordinator } from '@claude-flow/swarm';
+import { createUnifiedSwarmCoordinator } from '@moflo/swarm';
 
 describe('UnifiedSwarmCoordinator', () => {
   let coordinator;
@@ -434,7 +434,7 @@ describe('UnifiedSwarmCoordinator', () => {
 
 ## Getting Help
 
-- **Documentation**: See `@claude-flow/swarm/README.md`
+- **Documentation**: See `@moflo/swarm/README.md`
 - **Examples**: See `/v3/examples/swarm-coordinator.ts`
 - **Implementation**: See `/v3/docs/ADR-003-implementation-status.md`
 - **Issues**: Report at GitHub
@@ -444,7 +444,7 @@ describe('UnifiedSwarmCoordinator', () => {
 ### Do This ✅
 
 ```typescript
-import { createUnifiedSwarmCoordinator } from '@claude-flow/swarm';
+import { createUnifiedSwarmCoordinator } from '@moflo/swarm';
 
 const coordinator = createUnifiedSwarmCoordinator({
   topology: { type: 'hierarchical', maxAgents: 15 },
@@ -459,7 +459,7 @@ await coordinator.executeParallel(tasks);
 ### Not This ❌
 
 ```typescript
-import { createSwarmHub } from '@claude-flow/swarm';
+import { createSwarmHub } from '@moflo/swarm';
 
 const hub = createSwarmHub();
 await hub.initialize();

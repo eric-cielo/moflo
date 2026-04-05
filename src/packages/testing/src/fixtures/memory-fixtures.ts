@@ -1,5 +1,5 @@
 /**
- * @claude-flow/testing - Memory Fixtures
+ * @moflo/testing - Memory Fixtures
  *
  * Comprehensive mock memory entries and backend configurations for testing.
  * Supports AgentDB, HNSW indexing, vector search, and ReasoningBank patterns.

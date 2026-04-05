@@ -12,21 +12,21 @@
  *   PreTask     -> ShardRetriever.retrieve()            (inject relevant shards)
  *   PostTask    -> RunLedger.finalizeEvent()             (record run completion)
  *
- * @module @claude-flow/guidance/hooks
+ * @module @moflo/guidance/hooks
  */
 
 import type {
   HookContext,
   HookResult,
   HookRegistrationOptions,
-} from '@claude-flow/hooks';
+} from '@moflo/hooks';
 
 import {
   HookEvent,
   HookPriority,
-} from '@claude-flow/hooks';
+} from '@moflo/hooks';
 
-import type { HookRegistry } from '@claude-flow/hooks';
+import type { HookRegistry } from '@moflo/hooks';
 
 import type { EnforcementGates } from './gates.js';
 import type { ShardRetriever } from './retriever.js';

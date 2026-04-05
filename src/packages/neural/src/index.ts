@@ -9,7 +9,7 @@
  * - Pattern matching: <1ms
  * - Learning step: <10ms
  *
- * @module @claude-flow/neural
+ * @module @moflo/neural
  */
 
 // =============================================================================

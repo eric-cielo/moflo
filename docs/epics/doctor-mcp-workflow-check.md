@@ -34,7 +34,7 @@ Doctor should have an integration check that:
 grep -n "real implementation would execute" src/packages/cli/src/mcp-tools/workflow-tools.ts
 
 # Confirm no engine imports in MCP tools
-grep -c "WorkflowRunner\|runner-bridge\|runner-factory\|@claude-flow/workflows" src/packages/cli/src/mcp-tools/workflow-tools.ts
+grep -c "WorkflowRunner\|runner-bridge\|runner-factory\|@moflo/workflows" src/packages/cli/src/mcp-tools/workflow-tools.ts
 # Expected: 0
 
 # Confirm deep check only tests engine directly, not MCP layer

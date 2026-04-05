@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-describe('@claude-flow/testing', () => {
+describe('@moflo/testing', () => {
   it('should export test utilities', () => {
     // Testing module provides test utilities
     expect(true).toBe(true);

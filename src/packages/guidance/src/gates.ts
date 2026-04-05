@@ -10,7 +10,7 @@
  * 3. Diff size gate - requires plan + staged commits for large diffs
  * 4. Secrets gate - redacts and warns on secret patterns
  *
- * @module @claude-flow/guidance/gates
+ * @module @moflo/guidance/gates
  */
 
 import type {

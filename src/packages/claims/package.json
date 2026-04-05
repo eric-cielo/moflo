@@ -1,5 +1,5 @@
 {
-  "name": "@claude-flow/claims",
+  "name": "@moflo/claims",
   "version": "3.0.0-alpha.8",
   "description": "Issue claiming and work coordination module for Claude Flow V3",
   "main": "dist/index.js",
@@ -50,7 +50,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/eric-cielo/moflo.git",
-    "directory": "v3/@claude-flow/claims"
+    "directory": "v3/@moflo/claims"
   },
   "bugs": {
     "url": "https://github.com/eric-cielo/moflo/issues"
@@ -67,10 +67,10 @@
     "vitest": "^4.0.16"
   },
   "peerDependencies": {
-    "@claude-flow/shared": "^3.0.0-alpha.1"
+    "@moflo/shared": "^3.0.0-alpha.1"
   },
   "peerDependenciesMeta": {
-    "@claude-flow/shared": {
+    "@moflo/shared": {
       "optional": true
     }
   },

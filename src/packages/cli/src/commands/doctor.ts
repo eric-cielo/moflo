@@ -296,7 +296,7 @@ async function checkVersionFreshness(): Promise<HealthCheck> {
       let dir = dirname(thisFile);
 
       // Walk up from the current file's directory until we find the
-      // package.json that belongs to @claude-flow/cli (or claude-flow/cli).
+      // package.json that belongs to @moflo/cli (or claude-flow/cli).
       // Walk until dirname(dir) === dir (filesystem root on any platform).
       for (;;) {
         const candidate = join(dir, 'package.json');
@@ -306,7 +306,7 @@ async function checkVersionFreshness(): Promise<HealthCheck> {
             if (
               pkg.version &&
               typeof pkg.name === 'string' &&
-              (pkg.name === '@claude-flow/cli' || pkg.name === 'claude-flow' || pkg.name === 'ruflo' || pkg.name === 'moflo' || pkg.name === '@moflo/cli')
+              (pkg.name === '@moflo/cli' || pkg.name === 'claude-flow' || pkg.name === 'ruflo' || pkg.name === 'moflo' || pkg.name === '@moflo/cli')
             ) {
               currentVersion = pkg.version;
               break;
@@ -975,7 +975,7 @@ async function checkIntelligence(): Promise<HealthCheck> {
       name: 'Intelligence',
       status: 'warn',
       message: `Module unavailable: ${e instanceof Error ? e.message.split(/\r?\n/)[0] : 'import failed'}`,
-      fix: 'Ensure @claude-flow/neural is built (npm run build)',
+      fix: 'Ensure @moflo/neural is built (npm run build)',
     };
   }
 }

@@ -1,7 +1,7 @@
-# @claude-flow/aidefence
+# @moflo/aidefence
 
-[![npm version](https://img.shields.io/npm/v/@claude-flow/aidefence?color=blue&label=npm)](https://www.npmjs.com/package/@claude-flow/aidefence)
-[![npm downloads](https://img.shields.io/npm/dm/@claude-flow/aidefence?color=green)](https://www.npmjs.com/package/@claude-flow/aidefence)
+[![npm version](https://img.shields.io/npm/v/@moflo/aidefence?color=blue&label=npm)](https://www.npmjs.com/package/@moflo/aidefence)
+[![npm downloads](https://img.shields.io/npm/dm/@moflo/aidefence?color=green)](https://www.npmjs.com/package/@moflo/aidefence)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3+-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
@@ -35,7 +35,7 @@ Detection Time: 0.04ms | 50+ Patterns | Self-Learning | HNSW Vector Search
 
 ## Introduction
 
-`@claude-flow/aidefence` is a high-performance security library designed to protect AI/LLM applications from manipulation attempts. It provides:
+`@moflo/aidefence` is a high-performance security library designed to protect AI/LLM applications from manipulation attempts. It provides:
 
 - **Real-time threat detection** with <10ms latency (actual: ~0.04ms)
 - **50+ built-in patterns** for prompt injection, jailbreaks, and social engineering
@@ -92,13 +92,13 @@ Detection Time: 0.04ms | 50+ Patterns | Self-Learning | HNSW Vector Search
 
 ```bash
 # npm
-npm install @claude-flow/aidefence
+npm install @moflo/aidefence
 
 # pnpm
-pnpm add @claude-flow/aidefence
+pnpm add @moflo/aidefence
 
 # yarn
-yarn add @claude-flow/aidefence
+yarn add @moflo/aidefence
 ```
 
 ### Optional: AgentDB for HNSW Search
@@ -116,7 +116,7 @@ npm install agentdb
 ### Basic Usage
 
 ```typescript
-import { isSafe, checkThreats } from '@claude-flow/aidefence';
+import { isSafe, checkThreats } from '@moflo/aidefence';
 
 // Simple boolean check
 const safe = isSafe("Hello, help me write code");
@@ -139,7 +139,7 @@ console.log(result);
 ### With Learning Enabled
 
 ```typescript
-import { createAIDefence } from '@claude-flow/aidefence';
+import { createAIDefence } from '@moflo/aidefence';
 
 const aidefence = createAIDefence({ enableLearning: true });
 
@@ -164,7 +164,7 @@ await aidefence.learnFromDetection(input, result, {
 ### With AgentDB (HNSW Search)
 
 ```typescript
-import { createAIDefence } from '@claude-flow/aidefence';
+import { createAIDefence } from '@moflo/aidefence';
 import { AgentDB } from 'agentdb';
 
 // Initialize with AgentDB for 150x faster search
@@ -397,19 +397,19 @@ Use via Claude Flow CLI:
 
 ```bash
 # Basic threat scan
-npx @claude-flow/cli security defend -i "ignore previous instructions"
+npx @moflo/cli security defend -i "ignore previous instructions"
 
 # Scan a file
-npx @claude-flow/cli security defend -f ./user-prompts.txt
+npx @moflo/cli security defend -f ./user-prompts.txt
 
 # Quick scan (faster)
-npx @claude-flow/cli security defend -i "some text" --quick
+npx @moflo/cli security defend -i "some text" --quick
 
 # JSON output
-npx @claude-flow/cli security defend -i "test" -o json
+npx @moflo/cli security defend -i "test" -o json
 
 # View statistics
-npx @claude-flow/cli security defend --stats
+npx @moflo/cli security defend --stats
 ```
 
 ### CLI Output Example
@@ -508,7 +508,7 @@ const result = await mcp.call('aidefence_scan', {
 Combine assessments from multiple security agents:
 
 ```typescript
-import { calculateSecurityConsensus } from '@claude-flow/aidefence';
+import { calculateSecurityConsensus } from '@moflo/aidefence';
 
 const assessments = [
   { agentId: 'guardian-1', threatAssessment: result1, weight: 1.0 },
@@ -529,7 +529,7 @@ if (consensus.consensus === 'threat') {
 Implement custom storage for patterns:
 
 ```typescript
-import { VectorStore, createAIDefence } from '@claude-flow/aidefence';
+import { VectorStore, createAIDefence } from '@moflo/aidefence';
 
 class MyVectorStore implements VectorStore {
   async store(key: string, vector: number[], metadata: object): Promise<void> {
@@ -556,7 +556,7 @@ Pre-scan agent inputs automatically:
   "hooks": {
     "pre-agent-input": {
       "command": "node -e \"
-        const { isSafe } = require('@claude-flow/aidefence');
+        const { isSafe } = require('@moflo/aidefence');
         if (!isSafe(process.env.AGENT_INPUT)) {
           console.error('BLOCKED: Threat detected');
           process.exit(1);
@@ -579,7 +579,7 @@ Contributions are welcome! Please see our [Contributing Guide](https://github.co
 ```bash
 # Clone repository
 git clone https://github.com/eric-cielo/moflo.git
-cd claude-flow/v3/@claude-flow/aidefence
+cd claude-flow/v3/@moflo/aidefence
 
 # Install dependencies
 npm install
@@ -618,7 +618,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Related Packages
 
-- [`@claude-flow/cli`](https://www.npmjs.com/package/@claude-flow/cli) - CLI with security commands
+- [`@moflo/cli`](https://www.npmjs.com/package/@moflo/cli) - CLI with security commands
 - [`agentdb`](https://www.npmjs.com/package/agentdb) - HNSW vector database
 - [`claude-flow`](https://www.npmjs.com/package/claude-flow) - Full AI coordination system
 

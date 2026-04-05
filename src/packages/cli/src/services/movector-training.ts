@@ -4,7 +4,7 @@
  * Pure TypeScript implementations:
  *   - LoRA adapters:      ../movector/lora-adapter.js
  *   - Flash Attention:    ../movector/flash-attention.js
- *   - SONA engine:        @claude-flow/neural sona-engine (optional)
+ *   - SONA engine:        @moflo/neural sona-engine (optional)
  *   - Utilities:          ./training-utils.js
  *
  * Backward Compatible: All v1 exported APIs preserved.
@@ -150,7 +150,7 @@ export async function initializeTraining(config: TrainingConfig = {}): Promise<{
     hardMiner = new HardNegativeMiner(5, 'semi_hard');
     features.push('Hard Negative Mining');
 
-    // SONA — optional, dynamically imported from @claude-flow/neural
+    // SONA — optional, dynamically imported from @moflo/neural
     if (config.useSona !== false) {
       try {
         const { pathToFileURL } = await import('url');

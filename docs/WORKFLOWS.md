@@ -531,7 +531,7 @@ This means a user step named `bash` will override the built-in `bash` command. T
 Pass `stepDirs` and `projectRoot` to `createRunner()` to enable custom step discovery:
 
 ```typescript
-import { createRunner } from '@claude-flow/workflows';
+import { createRunner } from '@moflo/workflows';
 
 const runner = createRunner({
   stepDirs: ['workflows/steps/', '.claude/workflows/steps/'],
@@ -754,7 +754,7 @@ Dry-run mode validates everything without executing anything. It checks:
 ```
 
 ```typescript
-import { runWorkflowFromContent } from '@claude-flow/workflows';
+import { runWorkflowFromContent } from '@moflo/workflows';
 
 const result = await runWorkflowFromContent(yamlContent, 'deploy.yaml', {
   dryRun: true,
@@ -836,7 +836,7 @@ Each running workflow gets a unique ID (e.g., `wf-1711644123456`) that you can u
 You can also use the workflow engine directly from TypeScript:
 
 ```typescript
-import { createRunner, runWorkflowFromContent } from '@claude-flow/workflows';
+import { createRunner, runWorkflowFromContent } from '@moflo/workflows';
 
 // Option 1: Run from YAML content (parse + validate + execute in one call)
 const result = await runWorkflowFromContent(yamlString, 'my-workflow.yaml', {

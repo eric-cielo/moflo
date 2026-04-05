@@ -2,7 +2,7 @@
  * Transfer MCP Tools
  * Pattern and plugin sharing via IPFS-based decentralized registry
  *
- * @module @claude-flow/cli/mcp-tools/transfer-tools
+ * @module @moflo/cli/mcp-tools/transfer-tools
  * @version 3.0.0
  */
 

@@ -9,7 +9,7 @@ Scaffold production-ready step commands (`StepCommand`) and, when truly needed, 
 
 ## Prerequisites
 
-- MoFlo project with `@claude-flow/workflows` package
+- MoFlo project with `@moflo/workflows` package
 - TypeScript 5+
 - Vitest for testing
 

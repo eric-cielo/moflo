@@ -1,5 +1,5 @@
 /**
- * Simple Node.js test for @claude-flow/embeddings utilities
+ * Simple Node.js test for @moflo/embeddings utilities
  * Uses Node's native test runner to avoid vitest memory issues
  */
 

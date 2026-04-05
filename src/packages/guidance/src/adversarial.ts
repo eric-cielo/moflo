@@ -6,13 +6,13 @@
  * - CollusionDetector: Identifies suspicious coordination patterns between agents
  * - MemoryQuorum: Implements voting-based consensus for critical memory operations
  *
- * @module @claude-flow/guidance/adversarial
+ * @module @moflo/guidance/adversarial
  * @category Security
  * @since 3.0.0-alpha.1
  *
  * @example
  * ```typescript
- * import { createThreatDetector, createCollusionDetector, createMemoryQuorum } from '@claude-flow/guidance/adversarial';
+ * import { createThreatDetector, createCollusionDetector, createMemoryQuorum } from '@moflo/guidance/adversarial';
  *
  * // Threat detection
  * const detector = createThreatDetector();

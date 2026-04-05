@@ -18,7 +18,7 @@
  * - Offline environments without neural model access
  * - Bootstrapping before heavier providers are available
  *
- * @module @claude-flow/embeddings
+ * @module @moflo/embeddings
  */
 
 import { EventEmitter } from 'events';

@@ -153,9 +153,9 @@ Run all tasks concurrently for speed. Considered but deferred. Parallel executio
 
 ## References
 
-- `v3/@claude-flow/guidance/src/headless.ts` -- `HeadlessRunner`, `TestTask`, `TaskAssertion`, `SuiteRunSummary`, `ProcessExecutor`, `createComplianceSuite()`
-- `v3/@claude-flow/guidance/src/types.ts` -- `RunEvent`, `Violation`, `EvaluatorResult`
-- `v3/@claude-flow/guidance/src/ledger.ts` -- `RunLedger.createEvent()`, `finalizeEvent()`, `evaluate()`
-- `v3/@claude-flow/guidance/src/index.ts` -- `GuidanceControlPlane.getHeadlessRunner()`
+- `v3/@moflo/guidance/src/headless.ts` -- `HeadlessRunner`, `TestTask`, `TaskAssertion`, `SuiteRunSummary`, `ProcessExecutor`, `createComplianceSuite()`
+- `v3/@moflo/guidance/src/types.ts` -- `RunEvent`, `Violation`, `EvaluatorResult`
+- `v3/@moflo/guidance/src/ledger.ts` -- `RunLedger.createEvent()`, `finalizeEvent()`, `evaluate()`
+- `v3/@moflo/guidance/src/index.ts` -- `GuidanceControlPlane.getHeadlessRunner()`
 - ADR-G005 -- Proof envelopes that headless runs populate
 - ADR-G008 -- Optimizer loop that uses headless suites for A/B testing

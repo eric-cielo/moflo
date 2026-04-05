@@ -141,11 +141,11 @@ export function resetInstallAttempts(): void {
  * Optional package dependencies and their purposes
  */
 export const OPTIONAL_PACKAGES = {
-  '@claude-flow/aidefence': {
+  '@moflo/aidefence': {
     description: 'AI manipulation defense (prompt injection, PII detection)',
     tools: ['aidefence_scan', 'aidefence_analyze', 'aidefence_stats', 'aidefence_learn'],
   },
-  '@claude-flow/embeddings': {
+  '@moflo/embeddings': {
     description: 'Vector embeddings with ONNX support',
     tools: ['embeddings_generate', 'embeddings_search', 'embeddings_batch'],
   },

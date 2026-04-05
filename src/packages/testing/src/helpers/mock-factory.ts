@@ -1,5 +1,5 @@
 /**
- * @claude-flow/testing - Mock Factory
+ * @moflo/testing - Mock Factory
  *
  * Factory functions for creating comprehensive mocks of V3 services and components.
  * Implements London School TDD patterns with behavior verification.

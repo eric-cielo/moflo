@@ -21,7 +21,7 @@ Three modules handle how the system knows what it knows — and how certain it i
 Every piece of knowledge carries explicit uncertainty metadata:
 
 ```ts
-import { createUncertaintyLedger } from '@claude-flow/guidance/uncertainty';
+import { createUncertaintyLedger } from '@moflo/guidance/uncertainty';
 
 const ledger = createUncertaintyLedger({
   defaultConfidence: { low: 0.3, mid: 0.5, high: 0.7 },
@@ -109,7 +109,7 @@ const security = ledger.query({ tags: ['security'] });
 ### Aggregation
 
 ```ts
-import { createUncertaintyAggregator } from '@claude-flow/guidance/uncertainty';
+import { createUncertaintyAggregator } from '@moflo/guidance/uncertainty';
 
 const agg = createUncertaintyAggregator(ledger);
 
@@ -137,7 +137,7 @@ Every assertion has two time dimensions:
 2. **Validity time** — when the fact is true in the real world
 
 ```ts
-import { createTemporalStore, createTemporalReasoner } from '@claude-flow/guidance/temporal';
+import { createTemporalStore, createTemporalReasoner } from '@moflo/guidance/temporal';
 
 const store = createTemporalStore();
 
@@ -219,7 +219,7 @@ Internal beliefs can be wrong. Agents can reason themselves into incorrect concl
 ### Creating Anchors
 
 ```ts
-import { createTruthAnchorStore, createTruthResolver } from '@claude-flow/guidance/truth-anchors';
+import { createTruthAnchorStore, createTruthResolver } from '@moflo/guidance/truth-anchors';
 
 const store = createTruthAnchorStore('anchor-signing-key');
 
