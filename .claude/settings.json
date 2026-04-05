@@ -172,10 +172,13 @@
   },
   "permissions": {
     "allow": [
-      "Bash(npx moflo*)",
-      "Bash(npx flo*)",
-      "Bash(flo*)",
-      "Bash(node .claude/*)",
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "MultiEdit(*)",
+      "Glob(*)",
+      "Grep(*)",
       "mcp__moflo__:*"
     ],
     "deny": [
