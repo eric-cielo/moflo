@@ -18,7 +18,7 @@
 const { readFileSync, statSync } = require('node:fs');
 const { extname } = require('node:path');
 
-/** @type {import('moflo/dist/packages/workflows/src/types/step-command.types').StepCommand} */
+/** @type {import('moflo/dist/modules/workflows/src/types/step-command.types').StepCommand} */
 const fileStatsCommand = {
   type: 'file-stats',
   description: 'Report file statistics: line count, byte size, and extension',
