@@ -11,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
 const rootVersion = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')).version;
-const cliVersion = JSON.parse(readFileSync(join(root, 'src/packages/cli/package.json'), 'utf-8')).version;
+const cliVersion = JSON.parse(readFileSync(join(root, 'src/modules/cli/package.json'), 'utf-8')).version;
 
 if (rootVersion !== cliVersion) {
   console.error(`✗ Version mismatch: root=${rootVersion}, cli=${cliVersion}`);

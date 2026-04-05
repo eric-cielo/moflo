@@ -13,8 +13,8 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 
-const DOCTOR_FILE = resolve(__dirname, '../src/packages/cli/src/commands/doctor.ts');
-const WORKFLOWS_SRC = resolve(__dirname, '../src/packages/workflows/src');
+const DOCTOR_FILE = resolve(__dirname, '../src/modules/cli/src/commands/doctor.ts');
+const WORKFLOWS_SRC = resolve(__dirname, '../src/modules/workflows/src');
 
 describe('doctor.ts workflow engine check', () => {
   let content: string;

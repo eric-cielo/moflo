@@ -1,11 +1,11 @@
-# src/ — MoFlo Monorepo Packages
+# src/ — MoFlo Monorepo Modules
 
 Root CLAUDE.md rules apply here.
 
 ## Build & Test
 
 ```bash
-# From src/packages/<package>
+# From src/modules/<package>
 npm install && npm run build && npm test
 ```
 
@@ -13,15 +13,15 @@ npm install && npm run build && npm test
 
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@moflo/cli` | `packages/cli/` | CLI entry point (40+ commands) |
-| `@moflo/guidance` | `packages/guidance/` | Governance control plane |
-| `@moflo/hooks` | `packages/hooks/` | Hooks + workers |
-| `@moflo/memory` | `packages/memory/` | AgentDB + HNSW vector search |
-| `@moflo/shared` | `packages/shared/` | Shared types and utilities |
-| `@moflo/security` | `packages/security/` | Input validation, CVE remediation |
-| `@moflo/embeddings` | `packages/embeddings/` | Vector embeddings (sql.js, HNSW) |
-| `@moflo/neural` | `packages/neural/` | Neural patterns (SONA) |
-| `@moflo/plugins` | `packages/plugins/` | Plugin system |
+| `@moflo/cli` | `modules/cli/` | CLI entry point (40+ commands) |
+| `@moflo/guidance` | `modules/guidance/` | Governance control plane |
+| `@moflo/hooks` | `modules/hooks/` | Hooks + workers |
+| `@moflo/memory` | `modules/memory/` | AgentDB + HNSW vector search |
+| `@moflo/shared` | `modules/shared/` | Shared types and utilities |
+| `@moflo/security` | `modules/security/` | Input validation, CVE remediation |
+| `@moflo/embeddings` | `modules/embeddings/` | Vector embeddings (sql.js, HNSW) |
+| `@moflo/neural` | `modules/neural/` | Neural patterns (SONA) |
+| `@moflo/plugins` | `modules/plugins/` | Plugin system |
 
 ## Code Quality
 

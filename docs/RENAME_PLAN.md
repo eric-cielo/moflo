@@ -1,4 +1,4 @@
-# Rename `src/@moflo/` → `src/packages/`
+# Rename `src/@moflo/` → `src/modules/`
 
 **Date:** 2026-03-26
 **Branch:** working directly on main (pre-PR)
@@ -8,7 +8,7 @@
 
 The `src/@moflo/` directory is inherited from the upstream ruflo/claude-flow monorepo.
 The `@claude-flow` scoped name is confusing — it's not our brand, implies npm packages that
-don't publish, and creates unnecessarily deep paths. Renaming to `src/packages/` is a pure
+don't publish, and creates unnecessarily deep paths. Renaming to `src/modules/` is a pure
 directory rename; TypeScript import aliases (`@moflo/*`) stay unchanged for now (they're
 resolved via tsconfig paths, not filesystem conventions).
 
@@ -29,7 +29,7 @@ resolved via tsconfig paths, not filesystem conventions).
 - [x] 9 test files in `tests/` — path assertions updated (guidance-build, doctor-command, doctor-test-dirs, init-test-dirs, issue-fixes, settings-statusline, bin/lib-sync, guidance/lint-*)
 - [x] `CLAUDE.md` — key packages table updated
 - [x] `src/CLAUDE.md` — packages table updated
-- [x] `src/packages/cli/CLAUDE.md` — already uses relative paths, no change needed
+- [x] `src/modules/cli/CLAUDE.md` — already uses relative paths, no change needed
 - [x] Build: `tsc -b` clean (after clearing tsbuildinfo + dist)
 - [x] Tests: 131 passed, 4935 tests, 3 pre-existing worker OOM errors (unchanged)
 - [x] CLI: `flo --version` → 4.8.50, `flo doctor` → 17 passed + 1 warning (stale test-dir cache)
@@ -41,7 +41,7 @@ resolved via tsconfig paths, not filesystem conventions).
 - [x] `src/mcp/tools/*.js` — verified: only `@moflo/*` tsconfig aliases remain
       (intentionally kept per Tier 3 scope). No filesystem `../../@moflo/` paths found.
 - [x] `src/mcp/tools/sona-tools.js` and `sona-tools.d.ts` — verified clean, no old paths
-- [x] `.github/workflows/ci.yml` — fixed stale `src/@moflo/cli/` → `src/packages/cli/`
+- [x] `.github/workflows/ci.yml` — fixed stale `src/@moflo/cli/` → `src/modules/cli/`
 
 ### Docs
 

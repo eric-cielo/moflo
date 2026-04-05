@@ -1,0 +1,57 @@
+{
+  "name": "@moflo/cli",
+  "version": "4.8.52-rc.12",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "sideEffects": false,
+  "bin": {
+    "cli": "./bin/cli.js",
+    "claude-flow": "./bin/cli.js",
+    "claude-flow-mcp": "./bin/mcp-server.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./movector": {
+      "types": "./dist/src/movector/index.d.ts",
+      "import": "./dist/src/movector/index.js"
+    },
+    "./movector/*": {
+      "types": "./dist/src/movector/*.d.ts",
+      "import": "./dist/src/movector/*.js"
+    },
+    "./mcp-tools": {
+      "types": "./dist/src/mcp-tools/index.d.ts",
+      "import": "./dist/src/mcp-tools/index.js"
+    }
+  },
+  "scripts": {
+    "preversion": "echo 'ERROR: Run npm version from the repo root, not from src/modules/cli/' && exit 1",
+    "build": "tsc && node -e \"const{cpSync}=require('fs');cpSync('src/epic/workflows','dist/src/epic/workflows',{recursive:true})\"",
+    "test": "vitest run",
+    "test:plugin-store": "npx tsx src/plugins/tests/standalone-test.ts",
+    "test:pattern-store": "npx tsx src/transfer/store/tests/standalone-test.ts",
+    "preinstall": "node bin/preinstall.cjs || true",
+    "prepublishOnly": "cp ../../../README.md ./README.md",
+    "release": "npm version prerelease --preid=alpha && npm run publish:all",
+    "publish:all": "./scripts/publish.sh"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2.1.0",
+    "semver": "^7.6.0"
+  },
+  "optionalDependencies": {
+    "@moflo/aidefence": "file:../aidefence",
+    "@moflo/embeddings": "file:../embeddings",
+    "@moflo/guidance": "file:../guidance",
+    "@moflo/memory": "file:../memory",
+    "@claude-flow/plugin-gastown-bridge": "^0.1.3",
+    "agentic-flow": "^2.0.7"
+  }
+}

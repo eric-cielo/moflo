@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
 
-const guidancePkgDir = resolve(__dirname, '../src/packages/guidance');
+const guidancePkgDir = resolve(__dirname, '../src/modules/guidance');
 const rootPkgPath = resolve(__dirname, '../package.json');
 
 describe('@moflo/guidance package build', () => {
@@ -51,7 +51,7 @@ describe('@moflo/guidance package build', () => {
     const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf-8'));
     const files: string[] = rootPkg.files || [];
 
-    expect(files.some((f: string) => f.includes('packages/guidance/dist'))).toBe(true);
+    expect(files.some((f: string) => f.includes('modules/guidance/dist'))).toBe(true);
   });
 
   it('root package.json has prepublishOnly that triggers build', () => {
@@ -67,7 +67,7 @@ describe('@moflo/guidance package build', () => {
     const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf-8'));
     const buildGuidance = rootPkg.scripts?.['build:guidance'] || '';
 
-    expect(buildGuidance).toContain('packages/guidance');
+    expect(buildGuidance).toContain('modules/guidance');
     expect(buildGuidance).toContain('tsc');
   });
 });

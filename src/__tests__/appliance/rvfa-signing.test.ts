@@ -17,12 +17,12 @@ import {
   RvfaSigner,
   RvfaVerifier,
   type RvfaKeyPair,
-} from '../../packages/cli/src/appliance/rvfa-signing.js';
+} from '../../modules/cli/src/appliance/rvfa-signing.js';
 import {
   RvfaWriter,
   RvfaReader,
   createDefaultHeader,
-} from '../../packages/cli/src/appliance/rvfa-format.js';
+} from '../../modules/cli/src/appliance/rvfa-format.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

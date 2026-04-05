@@ -13,11 +13,11 @@ import {
   discloseWorkflow,
   formatStepDisclosure,
   formatWorkflowDisclosure,
-} from '../src/packages/workflows/src/core/capability-gateway.js';
-import type { StepCapability, WorkflowContext } from '../src/packages/workflows/src/types/step-command.types.js';
-import { agentCommand } from '../src/packages/workflows/src/commands/agent-command.js';
-import { githubCommand } from '../src/packages/workflows/src/commands/github-command.js';
-import { memoryCommand } from '../src/packages/workflows/src/commands/memory-command.js';
+} from '../src/modules/workflows/src/core/capability-gateway.js';
+import type { StepCapability, WorkflowContext } from '../src/modules/workflows/src/types/step-command.types.js';
+import { agentCommand } from '../src/modules/workflows/src/commands/agent-command.js';
+import { githubCommand } from '../src/modules/workflows/src/commands/github-command.js';
+import { memoryCommand } from '../src/modules/workflows/src/commands/memory-command.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 

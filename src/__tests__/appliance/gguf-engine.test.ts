@@ -15,7 +15,7 @@ import {
   parseGgufHeader,
   GgufEngine,
   type GgufMetadata,
-} from '../../packages/cli/src/appliance/gguf-engine.js';
+} from '../../modules/cli/src/appliance/gguf-engine.js';
 
 // ---------------------------------------------------------------------------
 // GGUF Binary Helpers
