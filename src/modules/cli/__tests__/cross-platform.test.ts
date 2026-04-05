@@ -509,3 +509,67 @@ describe('execSync to execFileSync migration', () => {
     });
   });
 });
+
+// ============================================================================
+// Story #339: Doctor and generator cross-platform fixes
+// ============================================================================
+
+describe('doctor cross-platform fixes', () => {
+  it('should have platform-aware npx cache fix suggestion', () => {
+    const src = readFileSync(
+      join(__dirname, '..', 'src', 'commands', 'doctor.ts'),
+      'utf-8'
+    );
+
+    // Windows should get a Windows-friendly suggestion
+    expect(src).toContain("process.platform === 'win32'");
+    expect(src).toContain('LocalAppData');
+    // Unix should still get rm -rf
+    expect(src).toContain('rm -rf ~/.npm/_npx/*');
+  });
+
+  it('should detect drive letter from cwd for PowerShell disk check', () => {
+    const src = readFileSync(
+      join(__dirname, '..', 'src', 'commands', 'doctor.ts'),
+      'utf-8'
+    );
+
+    // Should extract drive letter from process.cwd()
+    expect(src).toMatch(/process\.cwd\(\).*match.*\[A-Z\]/);
+    // Should NOT hardcode 'C' as the only drive
+    expect(src).not.toContain("Get-PSDrive C |");
+  });
+
+  it('should search %APPDATA%\\Claude\\ for MCP config on Windows', () => {
+    const src = readFileSync(
+      join(__dirname, '..', 'src', 'commands', 'doctor.ts'),
+      'utf-8'
+    );
+
+    expect(src).toContain("process.env.APPDATA");
+    expect(src).toContain("'Claude', 'claude_desktop_config.json'");
+  });
+
+  it('should still search ~/.claude/ for MCP config (cross-platform)', () => {
+    const src = readFileSync(
+      join(__dirname, '..', 'src', 'commands', 'doctor.ts'),
+      'utf-8'
+    );
+
+    expect(src).toContain('.claude/claude_desktop_config.json');
+    expect(src).toContain('.config/claude/mcp.json');
+  });
+});
+
+describe('envrc generator cross-platform', () => {
+  it('should skip .envrc on Windows', () => {
+    const src = readFileSync(
+      join(__dirname, '..', 'src', 'init', 'envrc-generator.ts'),
+      'utf-8'
+    );
+
+    expect(src).toContain("process.platform === 'win32'");
+    expect(src).toContain('Windows');
+    expect(src).toContain('return');
+  });
+});
