@@ -15,6 +15,8 @@ import {
   checkMcpToolInvocation,
   checkMcpWorkflowIntegration,
   checkHookExecution,
+  checkGateHealth,
+  REQUIRED_HOOK_WIRING,
 } from '../src/commands/doctor-checks-deep.js';
 
 describe('doctor-checks-deep', () => {
@@ -98,6 +100,38 @@ describe('doctor-checks-deep', () => {
         expect(result.message).toContain('Bridge → engine OK');
         expect(result.message).toContain('real stdout captured');
       }
+    });
+  });
+
+  describe('REQUIRED_HOOK_WIRING', () => {
+    it('should export all required hook patterns', () => {
+      expect(REQUIRED_HOOK_WIRING).toBeDefined();
+      expect(Array.isArray(REQUIRED_HOOK_WIRING)).toBe(true);
+      expect(REQUIRED_HOOK_WIRING.length).toBeGreaterThanOrEqual(10);
+    });
+
+    it('should include check-before-pr, check-task-transition, and record-learnings-stored', () => {
+      const patterns = REQUIRED_HOOK_WIRING.map(h => h.pattern);
+      expect(patterns).toContain('check-before-pr');
+      expect(patterns).toContain('check-task-transition');
+      expect(patterns).toContain('record-learnings-stored');
+    });
+
+    it('should have valid event types', () => {
+      const validEvents = ['PreToolUse', 'PostToolUse', 'UserPromptSubmit'];
+      for (const hook of REQUIRED_HOOK_WIRING) {
+        expect(validEvents).toContain(hook.event);
+      }
+    });
+  });
+
+  describe('checkGateHealth', () => {
+    it('should return a HealthCheck object', async () => {
+      const result = await checkGateHealth();
+      expect(result).toHaveProperty('name', 'Gate Health');
+      expect(result).toHaveProperty('status');
+      expect(result).toHaveProperty('message');
+      expect(['pass', 'warn', 'fail']).toContain(result.status);
     });
   });
 

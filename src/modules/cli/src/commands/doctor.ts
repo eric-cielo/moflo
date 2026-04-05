@@ -22,6 +22,7 @@ import {
   checkMcpWorkflowIntegration,
   checkGateHealth,
   getMofloRoot,
+  REQUIRED_HOOK_WIRING,
 } from './doctor-checks-deep.js';
 
 // Promisified exec with proper shell and env inheritance for cross-platform support
@@ -599,6 +600,9 @@ async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       const result = await findZombieProcesses(true);
       return result.killed > 0 || result.found === 0;
     },
+    'Gate Health': async () => {
+      return fixGateHealthHooks();
+    },
   };
 
   const fixFn = fixActions[check.name];
@@ -638,6 +642,71 @@ async function runFixCommand(cmd: string): Promise<boolean> {
       env: { ...process.env },
       windowsHide: true,
     });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Map gate pattern → hook entry to add when missing from settings.json.
+ * Gate commands use node with $CLAUDE_PROJECT_DIR helpers for portability.
+ */
+const HOOK_ENTRY_MAP: Record<string, { event: string; matcher: string; hook: { type: string; command: string; timeout: number } }> = {
+  'check-before-scan':       { event: 'PreToolUse',  matcher: '^(Glob|Grep)$',              hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-scan', timeout: 3000 } },
+  'check-before-read':       { event: 'PreToolUse',  matcher: '^Read$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-read', timeout: 3000 } },
+  'check-dangerous-command':  { event: 'PreToolUse',  matcher: '^Bash$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-dangerous-command', timeout: 2000 } },
+  'check-before-pr':          { event: 'PreToolUse',  matcher: '^Bash$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-pr', timeout: 2000 } },
+  'record-task-created':      { event: 'PostToolUse', matcher: '^TaskCreate$',               hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-task-created', timeout: 2000 } },
+  'record-memory-searched':   { event: 'PostToolUse', matcher: 'mcp__moflo__memory_',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-memory-searched', timeout: 3000 } },
+  'check-task-transition':    { event: 'PostToolUse', matcher: '^TaskUpdate$',               hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-task-transition', timeout: 2000 } },
+  'record-learnings-stored':  { event: 'PostToolUse', matcher: '^mcp__moflo__memory_store$', hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-learnings-stored', timeout: 2000 } },
+  'check-bash-memory':        { event: 'PostToolUse', matcher: '^Bash$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-bash-memory', timeout: 2000 } },
+  'prompt-reminder':          { event: 'UserPromptSubmit', matcher: '',                      hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" prompt-reminder', timeout: 3000 } },
+};
+
+/**
+ * Fix missing hook wiring in settings.json by patching in entries for
+ * any REQUIRED_HOOK_WIRING patterns that aren't present.
+ */
+async function fixGateHealthHooks(): Promise<boolean> {
+  const settingsPath = join(process.cwd(), '.claude', 'settings.json');
+  if (!existsSync(settingsPath)) return false;
+
+  try {
+    const raw = readFileSync(settingsPath, 'utf8');
+    const settings = JSON.parse(raw) as Record<string, unknown>;
+    const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>;
+
+    const missingPatterns = REQUIRED_HOOK_WIRING.filter(h => !raw.includes(h.pattern));
+    if (missingPatterns.length === 0) return true; // nothing to fix
+
+    for (const { pattern } of missingPatterns) {
+      const entry = HOOK_ENTRY_MAP[pattern];
+      if (!entry) continue;
+
+      const eventArray = (hooks[entry.event] ?? []) as Array<Record<string, unknown>>;
+
+      // If the matcher already has an entry, append the hook to it; otherwise add a new matcher block
+      const existing = eventArray.find(
+        (block) => block.matcher === entry.matcher,
+      ) as Record<string, unknown> | undefined;
+
+      if (existing) {
+        const blockHooks = (existing.hooks ?? []) as unknown[];
+        blockHooks.push(entry.hook);
+        existing.hooks = blockHooks;
+      } else {
+        const newBlock: Record<string, unknown> = { hooks: [entry.hook] };
+        if (entry.matcher) newBlock.matcher = entry.matcher;
+        eventArray.push(newBlock);
+      }
+
+      hooks[entry.event] = eventArray;
+    }
+
+    settings.hooks = hooks;
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
     return true;
   } catch {
     return false;

@@ -38,6 +38,11 @@
             "type": "command",
             "command": "npx flo gate check-dangerous-command",
             "timeout": 2000
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" check-before-pr",
+            "timeout": 2000
           }
         ]
       }
@@ -92,6 +97,26 @@
             "timeout": 2000
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs\" check-task-transition",
+            "timeout": 2000
+          }
+        ],
+        "matcher": "^TaskUpdate$"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs\" record-learnings-stored",
+            "timeout": 2000
+          }
+        ],
+        "matcher": "^mcp__moflo__memory_store$"
       }
     ],
     "UserPromptSubmit": [

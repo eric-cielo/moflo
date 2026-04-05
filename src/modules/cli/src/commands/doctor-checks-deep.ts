@@ -491,7 +491,7 @@ const REQUIRED_GATE_CASES = [
 ];
 
 /** Required hook matchers that must exist in settings.json for gate enforcement. */
-const REQUIRED_HOOK_WIRING = [
+export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: string }> = [
   { event: 'PreToolUse', pattern: 'check-before-scan' },
   { event: 'PreToolUse', pattern: 'check-before-read' },
   { event: 'PreToolUse', pattern: 'check-dangerous-command' },
