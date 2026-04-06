@@ -137,10 +137,7 @@ describe('DaemonDashboard', () => {
 
   it('serves HTML at GET /', async () => {
     const daemon = makeMockDaemon();
-    dashboard = startDashboard(daemon, { port: testPort });
-
-    // Wait for server to be ready
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort });
 
     const res = await fetchDashboard(testPort, '/');
     expect(res.status).toBe(200);
@@ -152,8 +149,7 @@ describe('DaemonDashboard', () => {
 
   it('returns daemon status at GET /api/status', async () => {
     const daemon = makeMockDaemon();
-    dashboard = startDashboard(daemon, { port: testPort });
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort });
 
     const res = await fetchDashboard(testPort, '/api/status');
     expect(res.status).toBe(200);
@@ -183,8 +179,7 @@ describe('DaemonDashboard', () => {
         score: 1,
       }],
     });
-    dashboard = startDashboard(daemon, { port: testPort, memory });
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort, memory });
 
     const res = await fetchDashboard(testPort, '/api/schedules');
     expect(res.status).toBe(200);
@@ -199,8 +194,7 @@ describe('DaemonDashboard', () => {
 
   it('returns unavailable when memory is not provided', async () => {
     const daemon = makeMockDaemon();
-    dashboard = startDashboard(daemon, { port: testPort });
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort });
 
     const res = await fetchDashboard(testPort, '/api/schedules');
     const data = JSON.parse(res.body);
@@ -217,8 +211,7 @@ describe('DaemonDashboard', () => {
         score: 1,
       }],
     });
-    dashboard = startDashboard(daemon, { port: testPort, memory });
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort, memory });
 
     const res = await fetchDashboard(testPort, '/api/workflows');
     const data = JSON.parse(res.body);
@@ -235,8 +228,7 @@ describe('DaemonDashboard', () => {
       namespaces: { guidance: 34, patterns: 29, 'code-map': 100, knowledge: 3, tests: 10 },
       total: 176,
     });
-    dashboard = startDashboard(daemon, { port: testPort });
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort });
 
     const res = await fetchDashboard(testPort, '/api/memory/stats');
     const data = JSON.parse(res.body);
@@ -251,8 +243,7 @@ describe('DaemonDashboard', () => {
 
   it('returns 404 for unknown routes', async () => {
     const daemon = makeMockDaemon();
-    dashboard = startDashboard(daemon, { port: testPort });
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort });
 
     const res = await fetchDashboard(testPort, '/api/nonexistent');
     expect(res.status).toBe(404);
@@ -262,8 +253,7 @@ describe('DaemonDashboard', () => {
 
   it('returns 405 for non-GET methods', async () => {
     const daemon = makeMockDaemon();
-    dashboard = startDashboard(daemon, { port: testPort });
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort });
 
     const res = await fetchMethod(testPort, '/api/status', 'POST');
     expect(res.status).toBe(405);
@@ -273,8 +263,7 @@ describe('DaemonDashboard', () => {
 
   it('binds to 127.0.0.1 only', async () => {
     const daemon = makeMockDaemon();
-    dashboard = startDashboard(daemon, { port: testPort });
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort });
 
     const addr = dashboard.server.address();
     expect(addr).not.toBeNull();
@@ -285,8 +274,7 @@ describe('DaemonDashboard', () => {
 
   it('stop() closes the server', async () => {
     const daemon = makeMockDaemon();
-    dashboard = startDashboard(daemon, { port: testPort });
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort });
 
     expect(dashboard.server.listening).toBe(true);
     await dashboard.stop();
@@ -296,16 +284,14 @@ describe('DaemonDashboard', () => {
 
   it('reports the correct port', async () => {
     const daemon = makeMockDaemon();
-    dashboard = startDashboard(daemon, { port: testPort });
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort });
 
     expect(dashboard.port).toBe(testPort);
   });
 
   it('all API responses include Content-Type header', async () => {
     const daemon = makeMockDaemon();
-    dashboard = startDashboard(daemon, { port: testPort });
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort });
 
     const endpoints = ['/api/status', '/api/schedules', '/api/workflows', '/api/memory/stats'];
     for (const ep of endpoints) {
@@ -328,8 +314,7 @@ describe('DaemonDashboard', () => {
         score: 1,
       }],
     });
-    dashboard = startDashboard(daemon, { port: testPort, memory });
-    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+    dashboard = await startDashboard(daemon, { port: testPort, memory });
 
     const res = await fetchDashboard(testPort, '/api/workflows');
     const data = JSON.parse(res.body);

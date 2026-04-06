@@ -132,8 +132,8 @@ const startCommand: Command = {
         if (!noDashboard) {
           try {
             const memory = await createDashboardMemoryAccessor();
-            dashboard = startDashboard(daemon, { port: dashboardPort, memory });
-            output.printSuccess(`Dashboard: http://localhost:${dashboardPort}`);
+            dashboard = await startDashboard(daemon, { port: dashboardPort, memory });
+            output.printSuccess(`Dashboard: http://localhost:${dashboard.port}`);
           } catch (err) {
             output.printWarning(`Dashboard failed to start: ${err instanceof Error ? err.message : String(err)}`);
           }
@@ -148,7 +148,7 @@ const startCommand: Command = {
             `Max Concurrent: ${status.config.maxConcurrent}`,
             `Max CPU Load: ${status.config.resourceThresholds.maxCpuLoad}`,
             `Min Free Memory: ${status.config.resourceThresholds.minFreeMemoryPercent}%`,
-            ...(dashboard ? [`Dashboard: http://localhost:${dashboardPort}`] : []),
+            ...(dashboard ? [`Dashboard: http://localhost:${dashboard.port}`] : []),
           ].join('\n'),
           'Daemon Status'
         );
@@ -197,7 +197,7 @@ const startCommand: Command = {
         if (!noDashboard) {
           try {
             const memory = await createDashboardMemoryAccessor();
-            startDashboard(daemon, { port: dashboardPort, memory });
+            await startDashboard(daemon, { port: dashboardPort, memory });
           } catch { /* dashboard is best-effort in quiet mode */ }
         }
         await new Promise(() => {}); // Keep alive
