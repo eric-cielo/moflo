@@ -27,6 +27,7 @@ export interface SecurityConfig {
     blockedPatterns: string[];
     maxPathLength: number;
     allowHidden: boolean;
+    allowedDirectories?: string[];
   };
   validation: {
     maxInputSize: number;
@@ -95,6 +96,7 @@ const strictConfig: SecurityConfig = {
     ],
     maxPathLength: 4096,
     allowHidden: false,
+    allowedDirectories: ['./src/', './tests/', './docs/', './v3/'],
   },
   validation: {
     maxInputSize: 10000,
