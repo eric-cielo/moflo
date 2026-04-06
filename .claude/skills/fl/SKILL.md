@@ -66,62 +66,27 @@ Also available as `/fl` (shorthand alias).
 
 Individual stories within an epic are still processed via `/flo --epic-branch <branch> <issue>` (for single-branch) or `/flo <issue>` (for auto-merge).
 
-### Combined Examples
-
-```
-/flo -wf sa ./src                     # Run security-audit workflow (abbreviation)
-/flo -wf security-audit ./src         # Run security-audit workflow (full name)
-/flo -wf list                         # List available workflows
-/flo -wf info sa                      # Show workflow details + arguments
-/flo 123                              # Normal + full workflow (default) - includes ALL tests
-/flo 42                               # If #42 is epic, processes stories sequentially
-/flo -s 123                           # Swarm + full workflow (multi-agent coordination)
-/flo -t 123                           # Normal + ticket only (no implementation)
-/flo -h -t 123                        # Hive-mind + ticket only
-/flo -s -r 123                        # Swarm + research only
-/flo --swarm --ticket 123             # Explicit swarm + ticket only
-/flo -n 123                           # Normal (explicit, same as default)
-```
-
-## NORMAL MODE IS THE DEFAULT
-
-By default, /flo runs in NORMAL mode — single-agent execution without
-spawning sub-agents. This is efficient for most tasks.
-
-Use `-s`/`--swarm` for multi-agent coordination when the task warrants it.
-Use `-h`/`--hive` for consensus-based coordination on architecture decisions.
-
-POST-TASK NEURAL LEARNING ALWAYS RUNS regardless of execution mode.
-The hooks system collects learnings after every task completion — normal,
-swarm, or hive-mind.
-
-## COMPREHENSIVE TESTING REQUIREMENT
-
-ALL tests MUST pass BEFORE PR creation - NO EXCEPTIONS.
-- Unit Tests: MANDATORY for all new/modified code
-- Integration Tests: MANDATORY for API endpoints and services
-- E2E Tests: MANDATORY for user-facing features
-PR CANNOT BE CREATED until all relevant tests pass.
-
 ## Workflow Overview
 
 ```
-Research -> Ticket -> Execute -> Testing -> Simplify -> PR+Done
+Research -> Ticket -> Execute -> Testing -> Simplify -> Learnings -> PR+Done
 
 Research:    Fetch issue, search memory, read guidance, find files
 Ticket:      Create or update GitHub issue with description, acceptance criteria, test cases
 Execute:     Assign self, create branch, implement changes
 Testing:     Unit + Integration + E2E tests (ALL MUST PASS - gate)
 Simplify:    Run /simplify on changed code (gate - must run before PR)
-PR+Done:     Create PR, update issue status, store learnings
+Learnings:   mcp__moflo__memory_store patterns (gate - MUST run before PR)
+PR+Done:     Create PR, update issue status
 ```
 
 ### Workflow Gates
 
 | Gate | Requirement | Blocked Action |
 |------|-------------|----------------|
-| **Testing Gate** | Unit + Integration + E2E must pass | PR creation |
+| **Testing Gate** | Unit + Integration + E2E must ALL pass | PR creation |
 | **Simplification Gate** | /simplify must run on changed files | PR creation |
+| **Learnings Gate** | mcp__moflo__memory_store must be called | PR creation |
 
 ### Execution Mode (applies to all phases)
 
@@ -365,14 +330,29 @@ Closes #<issue-number>
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-### 5.2 Create PR
+### 5.2 Store Learnings (REQUIRED — gate blocks PR creation until this runs)
+
+Before creating a PR, store what was learned using `mcp__moflo__memory_store`.
+The `check-before-pr` gate will **block** `gh pr create` if this step is skipped.
+
+```
+mcp__moflo__memory_store:
+  key: "pattern:<topic>"
+  namespace: "patterns"
+  value: "<what was learned: files changed, patterns used, decisions made>"
+  tags: ["<relevant-tags>"]
+```
+
+This must happen BEFORE `gh pr create` — not after.
+
+### 5.3 Create PR
 
 **If `--epic-branch` was passed** (epic mode):
 **SKIP PR creation entirely.** The commit from 5.1 (with `Closes #<issue-number>`) is sufficient.
 The epic orchestrator will create a single consolidated PR after all stories complete.
 Also skip pushing — the epic orchestrator handles the final push.
 
-Proceed directly to 5.3 (update issue status only).
+Proceed directly to 5.4 (update issue status only).
 
 **Otherwise** (normal mode):
 ```bash
@@ -392,7 +372,7 @@ gh pr create --title "type(scope): description" --body "## Summary
 Closes #<issue-number>"
 ```
 
-### 5.3 Update Issue Status
+### 5.4 Update Issue Status
 ```bash
 gh issue edit <issue-number> --remove-label "in-progress" --add-label "ready-for-review"
 gh issue comment <issue-number> --body "PR created: <pr-url>"
@@ -407,15 +387,7 @@ The `/flo` skill does NOT shell out — it processes the epic inline within the 
 following the strategy steps described below. This keeps the full context (memory, guidance, session state)
 available throughout story processing.
 
-### Detecting Epics
-
-An issue is an **epic** if:
-1. It has the `epic` label (or `tracking`, `parent`, `umbrella`), OR
-2. Its body contains `## Stories` or `## Tasks` sections, OR
-3. It has linked child issues (via `- [ ] #123` checklist format), OR
-4. It has numbered issue references (e.g., `1. #123`), OR
-5. It has GitHub sub-issues (via `subIssues` API field)
-
+Epic detection criteria are listed under **Usage > Epic Handling** above.
 Detection uses `isEpicIssue()` from `src/modules/cli/src/epic/detection.ts`.
 
 ### Epic Strategies
@@ -575,13 +547,7 @@ if (workflowMode === "workflow") {
 | **WF List** | `/flo -wf list` | Load registry -> Print all workflows | List printed |
 | **WF Info** | `/flo -wf info sa` | Load registry -> Print workflow details | Info printed |
 
-### Execution Modes (how to do it)
-
-| Mode | Flag | Description | When to Use |
-|------|------|-------------|-------------|
-| **Normal** (DEFAULT) | `-n`, `--normal` | Single Claude, no agents | Default for most tasks |
-| **Swarm** | `-s`, `--swarm` | Multi-agent via Task tool | Complex multi-file changes |
-| **Hive-Mind** | `-h`, `--hive` | Consensus-based coordination | Architecture decisions, tradeoffs |
+Execution modes (normal/swarm/hive) are defined in the table under **Workflow Overview > Execution Mode** above.
 
 ## Execution Mode Details
 
@@ -684,5 +650,6 @@ Print: name, abbreviation, description, version, source file, arguments, step co
 3. Assign issue to self, add "in-progress" label
 4. Create branch, implement, test
 5. Run /simplify on changed code, re-test if changes made
-6. Commit, create PR, update issue status
-7. Store learnings
+6. Commit changes
+7. Store learnings via mcp__moflo__memory_store (REQUIRED before PR — gate enforced)
+8. Create PR, update issue status

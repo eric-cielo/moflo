@@ -95,6 +95,29 @@ export interface DryRunResult {
 }
 
 // ============================================================================
+// Flo Run Context — human-readable metadata for dashboard display
+// ============================================================================
+
+export interface FloRunContext {
+  /** Workflow type: ticket, epic, workflow, research, new-ticket */
+  readonly type: 'ticket' | 'epic' | 'workflow' | 'research' | 'new-ticket';
+  /** Human-readable display label, e.g. "#350 — Replace zod with valibot" */
+  readonly label: string;
+  /** GitHub issue number (if applicable) */
+  readonly issueNumber?: number;
+  /** GitHub issue title (if applicable) */
+  readonly issueTitle?: string;
+  /** Workflow name for -wf runs */
+  readonly workflowName?: string;
+  /** Positional args for -wf runs */
+  readonly workflowArgs?: string[];
+  /** Execution mode badge */
+  readonly execMode?: 'normal' | 'swarm' | 'hive';
+  /** Epic story progress: [completed, total] */
+  readonly epicProgress?: readonly [number, number];
+}
+
+// ============================================================================
 // Runner Options
 // ============================================================================
 
@@ -128,4 +151,7 @@ export interface RunnerOptions {
 
   /** Parent workflow's MoFlo level — child workflows cannot exceed this. */
   readonly parentMofloLevel?: MofloLevel;
+
+  /** Human-readable context metadata for dashboard display. */
+  readonly context?: FloRunContext;
 }

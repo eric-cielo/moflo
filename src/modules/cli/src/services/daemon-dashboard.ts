@@ -10,6 +10,7 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { WorkerDaemon } from './worker-daemon.js';
 import type { MemoryAccessor } from '../../../workflows/src/types/step-command.types.js';
+import type { FloRunContext } from '../../../workflows/src/types/runner.types.js';
 
 // ============================================================================
 // Types
@@ -184,6 +185,111 @@ async function handleMemoryStats(): Promise<object> {
     return { namespaces, totalEntries: total, available: total > 0 || Object.keys(namespaces).length > 0 };
   } catch {
     return { namespaces: {}, totalEntries: 0, available: false };
+  }
+}
+
+// ============================================================================
+// Flo Run Context — build and store human-readable run metadata
+// ============================================================================
+
+/**
+ * Build a FloRunContext from /flo invocation arguments.
+ */
+export function buildFloRunContext(opts: {
+  issueNumber?: number;
+  issueTitle?: string;
+  workflowName?: string;
+  workflowArgs?: string[];
+  execMode?: 'normal' | 'swarm' | 'hive';
+  epicProgress?: readonly [number, number];
+  isEpic?: boolean;
+  isResearch?: boolean;
+  isNewTicket?: boolean;
+  ticketTitle?: string;
+}): FloRunContext {
+  const execMode = opts.execMode ?? 'normal';
+
+  if (opts.workflowName) {
+    const argStr = opts.workflowArgs?.length ? ` ${opts.workflowArgs.join(' ')}` : '';
+    return {
+      type: 'workflow',
+      label: `${opts.workflowName}${argStr ? ' \u2192 ' + argStr.trim() : ''}`,
+      workflowName: opts.workflowName,
+      workflowArgs: opts.workflowArgs,
+      execMode,
+    };
+  }
+
+  if (opts.isNewTicket && opts.ticketTitle) {
+    return {
+      type: 'new-ticket',
+      label: `New: ${opts.ticketTitle}`,
+      execMode,
+    };
+  }
+
+  if (opts.issueNumber) {
+    const title = opts.issueTitle ?? '';
+    if (opts.isEpic) {
+      const [done, total] = opts.epicProgress ?? [0, 0];
+      return {
+        type: 'epic',
+        label: `Epic #${opts.issueNumber} \u2014 ${title} (${done}/${total} stories)`,
+        issueNumber: opts.issueNumber,
+        issueTitle: title,
+        execMode,
+        epicProgress: opts.epicProgress,
+      };
+    }
+    if (opts.isResearch) {
+      return {
+        type: 'research',
+        label: `#${opts.issueNumber} \u2014 Research`,
+        issueNumber: opts.issueNumber,
+        issueTitle: title,
+        execMode,
+      };
+    }
+    return {
+      type: 'ticket',
+      label: `#${opts.issueNumber} \u2014 ${title}`,
+      issueNumber: opts.issueNumber,
+      issueTitle: title,
+      execMode,
+    };
+  }
+
+  return { type: 'ticket', label: 'Flo Run', execMode };
+}
+
+/**
+ * Store a flo run record to the tasklist namespace for dashboard display.
+ * Used by non-workflow-engine /flo invocations (ticket, research, epic).
+ */
+export async function storeFloRunRecord(
+  memory: MemoryAccessor,
+  runId: string,
+  context: FloRunContext,
+  status: 'running' | 'completed' | 'failed',
+  extra?: { startedAt?: number; duration?: number; error?: string },
+): Promise<void> {
+  try {
+    const record: Record<string, unknown> = {
+      status,
+      context,
+      workflowName: context.label,
+      updatedAt: new Date().toISOString(),
+    };
+    if (extra?.startedAt) record.startedAt = extra.startedAt;
+    if (extra?.duration != null) record.duration = extra.duration;
+    if (status === 'completed') record.success = true;
+    if (status === 'failed') {
+      record.success = false;
+      if (extra?.error) record.error = extra.error;
+    }
+    await memory.write('tasklist', runId, record);
+  } catch (err) {
+    console.warn(`[dashboard] storeFloRunRecord(${runId}) failed: ${(err as Error).message ?? err}`);
   }
 }
 
@@ -465,6 +571,14 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         '<tbody>' + rows + '</tbody></table>';
     }
 
+    const modeIcons = { swarm: '\\ud83d\\udc1d', hive: '\\ud83e\\udeb7', normal: '' };
+    function fmtContext(ctx) {
+      if (!ctx) return null;
+      const icon = modeIcons[ctx.execMode] || '';
+      const prefix = icon ? icon + ' ' + ctx.execMode.charAt(0).toUpperCase() + ctx.execMode.slice(1) + ' \\u2014 ' : '';
+      return prefix + (ctx.label || '');
+    }
+
     function renderExecutions(w) {
       const el = document.getElementById('panel-executions');
       if (!w || !w.available) { el.innerHTML = '<div class="empty">Scheduler not connected</div>'; return; }
@@ -472,15 +586,19 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 
       let html = '<h2>Recent Flo Runs</h2>';
       w.executions.forEach(e => {
-        const name = e.workflowName || 'Unknown Workflow';
+        const ctx = e.context;
+        const contextLabel = fmtContext(ctx);
+        const name = contextLabel || e.workflowName || 'Unknown Workflow';
         const runId = e.id || '-';
         const statusBadge = e.success === true ? badge('pass','green') : e.success === false ? badge('fail','red') : badge('running','yellow');
         const progress = e.totalSteps ? (e.completedSteps || 0) + '/' + e.totalSteps + ' steps' : '';
         const steps = Array.isArray(e.steps) ? e.steps : [];
+        const typeBadge = ctx ? badge(ctx.type, ctx.type === 'epic' ? 'yellow' : ctx.type === 'workflow' ? 'gray' : 'green') : '';
 
         html += '<div class="wf-group" style="margin-bottom:16px">';
-        // Header: workflow name, run ID, status, timing
+        // Header: context label, type badge, status, timing
         html += '<div class="wf-group-header" style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#161b22;border:1px solid #30363d;border-radius:6px 6px 0 0;cursor:pointer" onclick="this.parentElement.classList.toggle(\\'collapsed\\')">';
+        html += typeBadge + ' ';
         html += '<span style="color:#58a6ff;font-weight:600">' + esc(name) + '</span> ';
         html += statusBadge + ' ';
         html += '<span style="color:#8b949e;font-size:0.8rem">' + progress + ' &middot; ' + fmtDuration(e.duration) + ' &middot; ' + fmtTimeAgo(e.startedAt) + '</span>';
