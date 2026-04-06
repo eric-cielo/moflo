@@ -11,6 +11,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 // ============================================================================
@@ -971,7 +972,6 @@ function installGlobalFloShim(root: string): MofloInitResult['steps'][0] {
 
     // Dynamic import of the ESM shim installer
     // We use a sync approach: spawn a child process to run the installer
-    const { execSync } = require('child_process');
     const result = execSync(
       `node -e "import('file://${shimLib.replace(/\\/g, '/')}').then(m => { const r = m.installGlobalShim(); console.log(JSON.stringify(r)); })"`,
       { encoding: 'utf8', timeout: 10000 },

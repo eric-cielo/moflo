@@ -215,8 +215,13 @@ function killProcessTree(child: ChildProcess): void {
     try {
       spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
         stdio: 'ignore',
-        // detached so taskkill outlives us if needed
       });
+      // Destroy stdio pipes so 'close' fires even if taskkill is async.
+      // Without this, piped stdout/stderr may stay open and the 'close'
+      // event never fires — causing the command to hang until test timeout.
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      try { child.kill(); } catch { /* ok */ }
     } catch {
       child.kill('SIGKILL');
     }

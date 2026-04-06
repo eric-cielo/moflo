@@ -131,17 +131,28 @@ async function defaultStartDaemon(projectRoot: string): Promise<boolean> {
     stdoutFd = openSync(logFile, 'a');
     stderrFd = openSync(logFile, 'a');
 
-    const child = spawn(process.execPath, [cliPath, 'daemon', 'start', '--foreground', '--quiet'], {
-      cwd: projectRoot,
-      detached: !isWin,
-      stdio: ['ignore', stdoutFd, stderrFd],
-      env: {
-        ...process.env,
-        CLAUDE_FLOW_DAEMON: '1',
-        ...(process.platform === 'darwin' ? { NOHUP: '1' } : {}),
-      },
-      ...(isWin ? { shell: true, windowsHide: true } : {}),
-    });
+    const spawnArgs = [cliPath, 'daemon', 'start', '--foreground', '--quiet'];
+    const daemonEnv = {
+      ...process.env,
+      CLAUDE_FLOW_DAEMON: '1',
+      ...(process.platform === 'darwin' ? { NOHUP: '1' } : {}),
+    };
+
+    // On Windows, join command + args into a single shell string to avoid
+    // Node 24 DEP0190 ("args with shell:true" deprecation warning).
+    const child = isWin
+      ? spawn(`"${process.execPath}" ${spawnArgs.map(a => `"${a}"`).join(' ')}`, [], {
+          cwd: projectRoot,
+          stdio: ['ignore', stdoutFd, stderrFd],
+          env: daemonEnv,
+          shell: true, windowsHide: true,
+        })
+      : spawn(process.execPath, spawnArgs, {
+          cwd: projectRoot,
+          detached: true,
+          stdio: ['ignore', stdoutFd, stderrFd],
+          env: daemonEnv,
+        });
 
     child.unref();
 

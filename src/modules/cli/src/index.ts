@@ -476,13 +476,20 @@ export class CLI {
     const logFile = join(stateDir, 'daemon.log');
 
     const isWin = process.platform === 'win32';
-    const child = spawn(process.execPath, [cliPath, 'daemon', 'start', '--foreground', '--quiet'], {
-      cwd: projectRoot,
-      detached: !isWin,
-      stdio: ['ignore', openSync(logFile, 'a'), openSync(logFile, 'a')],
-      env: { ...process.env, CLAUDE_FLOW_DAEMON: '1' },
-      ...(isWin ? { shell: true, windowsHide: true } : {}),
-    });
+    const spawnArgs = [cliPath, 'daemon', 'start', '--foreground', '--quiet'];
+    const child = isWin
+      ? spawn(`"${process.execPath}" ${spawnArgs.map(a => `"${a}"`).join(' ')}`, [], {
+          cwd: projectRoot,
+          stdio: ['ignore', openSync(logFile, 'a'), openSync(logFile, 'a')],
+          env: { ...process.env, CLAUDE_FLOW_DAEMON: '1' },
+          shell: true, windowsHide: true,
+        })
+      : spawn(process.execPath, spawnArgs, {
+          cwd: projectRoot,
+          detached: true,
+          stdio: ['ignore', openSync(logFile, 'a'), openSync(logFile, 'a')],
+          env: { ...process.env, CLAUDE_FLOW_DAEMON: '1' },
+        });
 
     child.unref();
   }

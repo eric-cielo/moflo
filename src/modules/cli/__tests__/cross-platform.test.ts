@@ -122,6 +122,109 @@ describe('platform-aware process killing', () => {
 });
 
 // ============================================================================
+// Regression: Windows spawn DEP0190 fix (Node 24)
+// All daemon spawn sites must use platform-branched spawn:
+//   Windows: single shell string (no args with shell:true)
+//   Unix: detached with args array
+// ============================================================================
+
+describe('Windows spawn DEP0190 avoidance', () => {
+  it('daemon.ts should branch spawn by platform (isWin ternary)', () => {
+    const src = readFileSync(
+      join(__dirname, '..', 'src', 'commands', 'daemon.ts'),
+      'utf-8',
+    );
+    // Must have the isWin ternary pattern for spawn
+    expect(src).toContain('isWin');
+    expect(src).toContain('? spawn(`"${process.execPath}"');
+    // Unix path must use detached: true
+    expect(src).toContain('detached: true');
+    // Windows path must NOT pass args array with shell:true (DEP0190)
+    // Verify shell:true spawn uses empty args array []
+    const winSpawnMatch = src.match(/spawn\(`"\$\{process\.execPath\}".*?\[\]/s);
+    expect(winSpawnMatch).toBeTruthy();
+  });
+
+  it('index.ts (auto-start daemon) should branch spawn by platform', () => {
+    const src = readFileSync(
+      join(__dirname, '..', 'src', 'index.ts'),
+      'utf-8',
+    );
+    expect(src).toContain('isWin');
+    expect(src).toContain('? spawn(`"${process.execPath}"');
+    expect(src).toContain('detached: true');
+  });
+
+  it('daemon-readiness.ts should branch spawn by platform', () => {
+    const src = readFileSync(
+      join(__dirname, '..', 'src', 'services', 'daemon-readiness.ts'),
+      'utf-8',
+    );
+    expect(src).toContain('isWin');
+    expect(src).toContain('? spawn(`"${process.execPath}"');
+    expect(src).toContain('detached: true');
+  });
+
+  it('init.ts Windows daemon start should use single shell string', () => {
+    const src = readFileSync(
+      join(__dirname, '..', 'src', 'commands', 'init.ts'),
+      'utf-8',
+    );
+    // Windows path: spawn('npx moflo daemon start', [], { ... shell: true })
+    expect(src).toContain("spawn('npx moflo daemon start', []");
+    expect(src).toContain('shell: true');
+  });
+});
+
+// ============================================================================
+// Regression: ESM import in moflo-init.ts
+// ============================================================================
+
+describe('moflo-init.ts ESM compliance', () => {
+  it('should import execSync at top level, not via require()', () => {
+    const src = readFileSync(
+      join(__dirname, '..', 'src', 'init', 'moflo-init.ts'),
+      'utf-8',
+    );
+    // Must have top-level ESM import
+    expect(src).toMatch(/^import\s+\{[^}]*execSync[^}]*\}\s+from\s+'child_process'/m);
+    // Must NOT use require('child_process') anywhere
+    expect(src).not.toContain("require('child_process')");
+  });
+});
+
+// ============================================================================
+// Regression: taskkill must use /T (tree kill) to avoid orphans
+// ============================================================================
+
+describe('taskkill tree kill (/T flag)', () => {
+  it('process-manager.mjs killAll should use /T for tree kill', () => {
+    const src = readFileSync(
+      join(__dirname, '..', '..', '..', '..', 'bin', 'lib', 'process-manager.mjs'),
+      'utf-8',
+    );
+    expect(src).toContain("'/T', '/F', '/PID'");
+  });
+
+  it('registry-cleanup.cjs killTrackedSync should use /T for tree kill', () => {
+    const src = readFileSync(
+      join(__dirname, '..', '..', '..', '..', 'bin', 'lib', 'registry-cleanup.cjs'),
+      'utf-8',
+    );
+    expect(src).toContain("'/T', '/F', '/PID'");
+  });
+
+  it('bash-command.ts killProcessTree should destroy stdio pipes on Windows', () => {
+    const src = readFileSync(
+      join(__dirname, '..', '..', '..', '..', 'src', 'modules', 'workflows', 'src', 'commands', 'bash-command.ts'),
+      'utf-8',
+    );
+    expect(src).toContain('child.stdout?.destroy()');
+    expect(src).toContain('child.stderr?.destroy()');
+  });
+});
+
+// ============================================================================
 // Story #337: Hook scripts cross-platform hardening
 // ============================================================================
 
