@@ -18,7 +18,7 @@ import type {
 import type { WorkflowDefinition } from '../types/workflow-definition.types.js';
 import type {
   RunnerOptions, WorkflowResult, WorkflowError,
-  StepResult, StepStatus, DryRunResult,
+  StepResult, StepStatus, DryRunResult, FloRunContext,
 } from '../types/runner.types.js';
 import { StepCommandRegistry } from './step-command-registry.js';
 import type { WorkflowConnectorRegistry } from '../registry/connector-registry.js';
@@ -148,6 +148,7 @@ export class WorkflowRunner {
     definition: WorkflowDefinition, resolvedArgs: Record<string, unknown>,
     workflowId: string, options: RunnerOptions, startTime: number,
   ): Promise<WorkflowResult> {
+    const context = options.context;
     const variables: Record<string, unknown> = { ...options.initialVariables };
     const stepResults: StepResult[] = [];
     const errors: WorkflowError[] = [];
@@ -178,7 +179,7 @@ export class WorkflowRunner {
 
     try {
     await this.storeProgress(workflowId, 'running', 0, definition.steps.length, {
-      workflowName: definition.name, startedAt: startTime,
+      workflowName: definition.name, startedAt: startTime, context,
     });
 
     const stepIndex = new Map<string, number>();
@@ -269,7 +270,7 @@ export class WorkflowRunner {
       // Fire onStepComplete for every step (success, failure, cancelled)
       console.log(`[workflow] Step ${i + 1}/${definition.steps.length}: ${result.status} "${step.id}" (${result.duration}ms)${result.error ? ' — ' + result.error.slice(0, 200) : ''}`);
       await this.storeProgress(workflowId, 'running', stepResults.length, definition.steps.length, {
-        workflowName: definition.name, startedAt: startTime, steps: stepResults,
+        workflowName: definition.name, startedAt: startTime, steps: stepResults, context,
       });
       try { options.onStepComplete?.(result, i, definition.steps.length); } catch { /* safe */ }
 
@@ -297,7 +298,7 @@ export class WorkflowRunner {
 
     const finalStatus = cancelled ? 'cancelled' : errors.length > 0 ? 'failed' : 'completed';
     await this.storeProgress(workflowId, finalStatus, stepResults.length, definition.steps.length, {
-      workflowName: definition.name, startedAt: startTime, errors, steps: stepResults,
+      workflowName: definition.name, startedAt: startTime, errors, steps: stepResults, context,
     });
 
     const outputs: Record<string, unknown> = {};
@@ -352,7 +353,7 @@ export class WorkflowRunner {
 
   private async storeProgress(
     wfId: string, status: string, done: number, total: number,
-    extra?: { workflowName?: string; startedAt?: number; errors?: WorkflowError[]; steps?: StepResult[] },
+    extra?: { workflowName?: string; startedAt?: number; errors?: WorkflowError[]; steps?: StepResult[]; context?: FloRunContext },
   ) {
     try {
       const now = Date.now();
@@ -360,6 +361,7 @@ export class WorkflowRunner {
         status, completedSteps: done, totalSteps: total, updatedAt: new Date().toISOString(),
       };
       if (extra?.workflowName) record.workflowName = extra.workflowName;
+      if (extra?.context) record.context = extra.context;
       if (extra?.startedAt) {
         record.startedAt = extra.startedAt;
         record.duration = now - extra.startedAt;

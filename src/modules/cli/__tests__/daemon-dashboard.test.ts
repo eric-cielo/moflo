@@ -19,7 +19,7 @@ vi.mock('../src/memory/memory-initializer.js', () => ({
   checkMemoryInitialization: vi.fn(),
 }));
 
-import { startDashboard, DEFAULT_DASHBOARD_PORT, type DashboardOptions, type DashboardHandle } from '../src/services/daemon-dashboard.js';
+import { startDashboard, DEFAULT_DASHBOARD_PORT, buildFloRunContext, storeFloRunRecord, type DashboardOptions, type DashboardHandle } from '../src/services/daemon-dashboard.js';
 
 // ============================================================================
 // Mock helpers
@@ -316,5 +316,126 @@ describe('DaemonDashboard', () => {
 
   it('DEFAULT_DASHBOARD_PORT is 3117', () => {
     expect(DEFAULT_DASHBOARD_PORT).toBe(3117);
+  });
+
+  it('returns context metadata in workflow executions', async () => {
+    const daemon = makeMockDaemon();
+    const context = { type: 'ticket', label: '#350 \u2014 Replace zod with valibot', issueNumber: 350, issueTitle: 'Replace zod with valibot', execMode: 'normal' };
+    const memory = makeMockMemory({
+      'tasklist': [{
+        key: 'flo-run-1',
+        value: JSON.stringify({ workflowName: '#350 \u2014 Replace zod with valibot', startedAt: 1711875600000, success: true, duration: 120000, context }),
+        score: 1,
+      }],
+    });
+    dashboard = startDashboard(daemon, { port: testPort, memory });
+    await new Promise(resolve => dashboard!.server.once('listening', resolve));
+
+    const res = await fetchDashboard(testPort, '/api/workflows');
+    const data = JSON.parse(res.body);
+    expect(data.executions).toHaveLength(1);
+    expect(data.executions[0].context).toEqual(context);
+    expect(data.executions[0].context.type).toBe('ticket');
+    expect(data.executions[0].context.label).toContain('#350');
+  });
+});
+
+// ============================================================================
+// buildFloRunContext
+// ============================================================================
+
+describe('buildFloRunContext', () => {
+  it('builds ticket context from issue number and title', () => {
+    const ctx = buildFloRunContext({ issueNumber: 350, issueTitle: 'Replace zod with valibot' });
+    expect(ctx.type).toBe('ticket');
+    expect(ctx.label).toBe('#350 \u2014 Replace zod with valibot');
+    expect(ctx.issueNumber).toBe(350);
+    expect(ctx.execMode).toBe('normal');
+  });
+
+  it('builds epic context with progress', () => {
+    const ctx = buildFloRunContext({
+      issueNumber: 287, issueTitle: 'Consolidated PR', isEpic: true, epicProgress: [3, 5],
+    });
+    expect(ctx.type).toBe('epic');
+    expect(ctx.label).toContain('Epic #287');
+    expect(ctx.label).toContain('3/5 stories');
+    expect(ctx.epicProgress).toEqual([3, 5]);
+  });
+
+  it('builds workflow context with name and args', () => {
+    const ctx = buildFloRunContext({ workflowName: 'security-audit', workflowArgs: ['./src'] });
+    expect(ctx.type).toBe('workflow');
+    expect(ctx.label).toContain('security-audit');
+    expect(ctx.label).toContain('./src');
+  });
+
+  it('builds research context', () => {
+    const ctx = buildFloRunContext({ issueNumber: 350, issueTitle: 'Some issue', isResearch: true });
+    expect(ctx.type).toBe('research');
+    expect(ctx.label).toBe('#350 \u2014 Research');
+  });
+
+  it('builds new-ticket context', () => {
+    const ctx = buildFloRunContext({ isNewTicket: true, ticketTitle: 'Add OAuth2 support' });
+    expect(ctx.type).toBe('new-ticket');
+    expect(ctx.label).toBe('New: Add OAuth2 support');
+  });
+
+  it('includes swarm exec mode', () => {
+    const ctx = buildFloRunContext({ issueNumber: 123, issueTitle: 'Fix bug', execMode: 'swarm' });
+    expect(ctx.execMode).toBe('swarm');
+  });
+
+  it('returns fallback when no identifiers given', () => {
+    const ctx = buildFloRunContext({});
+    expect(ctx.type).toBe('ticket');
+    expect(ctx.label).toBe('Flo Run');
+  });
+});
+
+// ============================================================================
+// storeFloRunRecord
+// ============================================================================
+
+describe('storeFloRunRecord', () => {
+  it('stores a running record with context', async () => {
+    const memory = makeMockMemory();
+    const ctx = buildFloRunContext({ issueNumber: 350, issueTitle: 'Test issue' });
+    await storeFloRunRecord(memory, 'flo-123', ctx, 'running', { startedAt: 1000 });
+    expect(memory.write).toHaveBeenCalledWith('tasklist', 'flo-123', expect.objectContaining({
+      status: 'running',
+      context: ctx,
+      startedAt: 1000,
+    }));
+  });
+
+  it('stores completed record with success=true', async () => {
+    const memory = makeMockMemory();
+    const ctx = buildFloRunContext({ issueNumber: 1, issueTitle: 'Done' });
+    await storeFloRunRecord(memory, 'flo-456', ctx, 'completed', { startedAt: 1000, duration: 5000 });
+    expect(memory.write).toHaveBeenCalledWith('tasklist', 'flo-456', expect.objectContaining({
+      status: 'completed',
+      success: true,
+      duration: 5000,
+    }));
+  });
+
+  it('stores failed record with error message', async () => {
+    const memory = makeMockMemory();
+    const ctx = buildFloRunContext({ issueNumber: 1, issueTitle: 'Broken' });
+    await storeFloRunRecord(memory, 'flo-789', ctx, 'failed', { error: 'Tests failed' });
+    expect(memory.write).toHaveBeenCalledWith('tasklist', 'flo-789', expect.objectContaining({
+      status: 'failed',
+      success: false,
+      error: 'Tests failed',
+    }));
+  });
+
+  it('does not throw when memory.write fails', async () => {
+    const memory = makeMockMemory();
+    memory.write.mockRejectedValue(new Error('DB down'));
+    const ctx = buildFloRunContext({ issueNumber: 1, issueTitle: 'Test' });
+    await expect(storeFloRunRecord(memory, 'flo-err', ctx, 'running')).resolves.toBeUndefined();
   });
 });

@@ -47,6 +47,7 @@ export type {
   StepStatus,
   DryRunResult,
   DryRunStepReport,
+  FloRunContext,
 } from './types/runner.types.js';
 
 // ============================================================================
