@@ -66,43 +66,6 @@ Also available as `/fl` (shorthand alias).
 
 Individual stories within an epic are still processed via `/flo --epic-branch <branch> <issue>` (for single-branch) or `/flo <issue>` (for auto-merge).
 
-### Combined Examples
-
-```
-/flo -wf sa ./src                     # Run security-audit workflow (abbreviation)
-/flo -wf security-audit ./src         # Run security-audit workflow (full name)
-/flo -wf list                         # List available workflows
-/flo -wf info sa                      # Show workflow details + arguments
-/flo 123                              # Normal + full workflow (default) - includes ALL tests
-/flo 42                               # If #42 is epic, processes stories sequentially
-/flo -s 123                           # Swarm + full workflow (multi-agent coordination)
-/flo -t 123                           # Normal + ticket only (no implementation)
-/flo -h -t 123                        # Hive-mind + ticket only
-/flo -s -r 123                        # Swarm + research only
-/flo --swarm --ticket 123             # Explicit swarm + ticket only
-/flo -n 123                           # Normal (explicit, same as default)
-```
-
-## NORMAL MODE IS THE DEFAULT
-
-By default, /flo runs in NORMAL mode — single-agent execution without
-spawning sub-agents. This is efficient for most tasks.
-
-Use `-s`/`--swarm` for multi-agent coordination when the task warrants it.
-Use `-h`/`--hive` for consensus-based coordination on architecture decisions.
-
-POST-TASK NEURAL LEARNING ALWAYS RUNS regardless of execution mode.
-The hooks system collects learnings after every task completion — normal,
-swarm, or hive-mind.
-
-## COMPREHENSIVE TESTING REQUIREMENT
-
-ALL tests MUST pass BEFORE PR creation - NO EXCEPTIONS.
-- Unit Tests: MANDATORY for all new/modified code
-- Integration Tests: MANDATORY for API endpoints and services
-- E2E Tests: MANDATORY for user-facing features
-PR CANNOT BE CREATED until all relevant tests pass.
-
 ## Workflow Overview
 
 ```
@@ -121,8 +84,9 @@ PR+Done:     Create PR, update issue status
 
 | Gate | Requirement | Blocked Action |
 |------|-------------|----------------|
-| **Testing Gate** | Unit + Integration + E2E must pass | PR creation |
+| **Testing Gate** | Unit + Integration + E2E must ALL pass | PR creation |
 | **Simplification Gate** | /simplify must run on changed files | PR creation |
+| **Learnings Gate** | mcp__moflo__memory_store must be called | PR creation |
 
 ### Execution Mode (applies to all phases)
 
@@ -423,15 +387,7 @@ The `/flo` skill does NOT shell out — it processes the epic inline within the 
 following the strategy steps described below. This keeps the full context (memory, guidance, session state)
 available throughout story processing.
 
-### Detecting Epics
-
-An issue is an **epic** if:
-1. It has the `epic` label (or `tracking`, `parent`, `umbrella`), OR
-2. Its body contains `## Stories` or `## Tasks` sections, OR
-3. It has linked child issues (via `- [ ] #123` checklist format), OR
-4. It has numbered issue references (e.g., `1. #123`), OR
-5. It has GitHub sub-issues (via `subIssues` API field)
-
+Epic detection criteria are listed under **Usage > Epic Handling** above.
 Detection uses `isEpicIssue()` from `src/modules/cli/src/epic/detection.ts`.
 
 ### Epic Strategies
@@ -591,13 +547,7 @@ if (workflowMode === "workflow") {
 | **WF List** | `/flo -wf list` | Load registry -> Print all workflows | List printed |
 | **WF Info** | `/flo -wf info sa` | Load registry -> Print workflow details | Info printed |
 
-### Execution Modes (how to do it)
-
-| Mode | Flag | Description | When to Use |
-|------|------|-------------|-------------|
-| **Normal** (DEFAULT) | `-n`, `--normal` | Single Claude, no agents | Default for most tasks |
-| **Swarm** | `-s`, `--swarm` | Multi-agent via Task tool | Complex multi-file changes |
-| **Hive-Mind** | `-h`, `--hive` | Consensus-based coordination | Architecture decisions, tradeoffs |
+Execution modes (normal/swarm/hive) are defined in the table under **Workflow Overview > Execution Mode** above.
 
 ## Execution Mode Details
 
