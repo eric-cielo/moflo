@@ -26,7 +26,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSy
 import { resolve, dirname, relative, basename, extname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
-import { execSync, spawn } from 'child_process';
+import { execSync, execFileSync, spawn } from 'child_process';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
@@ -228,21 +228,23 @@ function getTestFiles() {
   // Strategy 1: git ls-files for tracked test files
   let gitFiles = [];
   try {
-    const raw = execSync(
-      `git ls-files -- "*.test.*" "*.spec.*" "*.test-*"`,
-      { cwd: projectRoot, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
+    const raw = execFileSync(
+      'git', ['ls-files', '--', '*.test.*', '*.spec.*', '*.test-*'],
+      { cwd: projectRoot, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, windowsHide: true }
     ).trim();
 
     if (raw) {
-      gitFiles = raw.split('\n').filter(f => {
-        // Skip excluded dirs
-        for (const ex of EXCLUDE_DIRS) {
-          if (f.startsWith(ex + '/') || f.startsWith(ex + '\\')) return false;
-        }
-        // Only include recognized extensions
-        const ext = extname(f);
-        return TEST_EXTENSIONS.has(ext);
-      });
+      gitFiles = raw.split('\n')
+        .map(f => f.replace(/\\/g, '/'))  // normalize separators
+        .filter(f => {
+          // Skip excluded dirs
+          for (const ex of EXCLUDE_DIRS) {
+            if (f.startsWith(ex + '/')) return false;
+          }
+          // Only include recognized extensions
+          const ext = extname(f);
+          return TEST_EXTENSIONS.has(ext);
+        });
     }
   } catch { /* git not available or not a repo */ }
 
@@ -712,7 +714,7 @@ async function runEmbeddings() {
 
   log('Generating embeddings for tests...');
   try {
-    execSync(`node "${embedScript}" --namespace tests`, {
+    execFileSync('node', [embedScript, '--namespace', 'tests'], {
       cwd: projectRoot,
       stdio: 'inherit',
       timeout: 120000,

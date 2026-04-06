@@ -23,6 +23,12 @@ export async function writeEnvrc(
   targetDir: string,
   result: InitResult,
 ): Promise<void> {
+  // .envrc is a bash/direnv file — useless on Windows
+  if (process.platform === 'win32') {
+    result.skipped.push('.envrc (Windows — not applicable)');
+    return;
+  }
+
   const envrcPath = path.join(targetDir, '.envrc');
   const relativePath = '.envrc';
 

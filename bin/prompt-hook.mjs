@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { resolve } from 'path';
 
 // Read stdin JSON from Claude Code
@@ -27,8 +27,8 @@ var projectDir = (env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\/
 var gateScript = resolve(projectDir, '.claude/helpers/gate.cjs');
 var output = '';
 try {
-  output = execSync('node "' + gateScript + '" prompt-reminder', {
-    env: env, encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe']
+  output = execFileSync('node', [gateScript, 'prompt-reminder'], {
+    env: env, encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true
   });
 } catch (err) { output = (err && err.stdout) || ''; }
 

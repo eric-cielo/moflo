@@ -3,7 +3,7 @@
 var fs = require('fs');
 var path = require('path');
 
-var PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var METRICS_FILE = path.join(PROJECT_DIR, '.claude-flow', 'metrics', 'learning.json');
 var command = process.argv[2];
 
@@ -63,9 +63,16 @@ readStdin().then(function(stdinData) {
       bumpMetric('tasksCompleted');
       console.log('[OK] Task completed');
       break;
-    case 'session-end':
+    case 'session-end': {
+      // Kill tracked background processes via shared sync helper
+      try {
+        var cleanup = require('./lib/registry-cleanup.cjs');
+        var killed = cleanup.killTrackedSync(PROJECT_DIR);
+        if (killed > 0) console.log('[CLEANUP] Killed ' + killed + ' background process(es)');
+      } catch (e) { /* non-fatal: cleanup module not available */ }
       console.log('[OK] Session ended');
       break;
+    }
     case 'notification':
       // Silent — just acknowledge
       break;

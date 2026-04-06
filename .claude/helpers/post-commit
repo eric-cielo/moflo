@@ -1,16 +1,23 @@
-#!/bin/bash
-# Claude Flow Post-Commit Hook
-# Records commit metrics and trains patterns
+#!/usr/bin/env node
+'use strict';
+var childProcess = require('child_process');
 
-COMMIT_HASH=$(git rev-parse HEAD)
-COMMIT_MSG=$(git log -1 --pretty=%B)
+var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 
-echo "📊 Recording commit metrics..."
+try {
+  var hash = childProcess.execFileSync('git', ['rev-parse', 'HEAD'], {
+    encoding: 'utf-8',
+    cwd: PROJECT_DIR,
+    windowsHide: true
+  }).trim();
 
-# Notify claude-flow of commit
-npx moflo hooks notify \
-  --message "Commit: $COMMIT_MSG" \
-  --level info \
-  --metadata '{"hash": "'$COMMIT_HASH'"}' 2>/dev/null || true
+  var msg = childProcess.execFileSync('git', ['log', '-1', '--pretty=%B'], {
+    encoding: 'utf-8',
+    cwd: PROJECT_DIR,
+    windowsHide: true
+  }).trim();
 
-echo "✅ Commit recorded"
+  console.log('Commit recorded: ' + hash.substring(0, 8));
+} catch (e) {
+  // Non-fatal
+}

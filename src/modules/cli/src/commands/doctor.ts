@@ -205,7 +205,11 @@ async function checkMcpServers(): Promise<HealthCheck> {
   const mcpConfigPaths = [
     join(os.homedir(), '.claude/claude_desktop_config.json'),
     join(os.homedir(), '.config/claude/mcp.json'),
-    '.mcp.json'
+    '.mcp.json',
+    // Windows: Claude Desktop stores config under %APPDATA%\Claude\
+    ...(process.platform === 'win32' && process.env.APPDATA
+      ? [join(process.env.APPDATA, 'Claude', 'claude_desktop_config.json')]
+      : []),
   ];
 
   for (const configPath of mcpConfigPaths) {
@@ -234,7 +238,8 @@ async function checkDiskSpace(): Promise<HealthCheck> {
   try {
     if (process.platform === 'win32') {
       try {
-        const psOutput = await runCommand('powershell -NoProfile -Command "Get-PSDrive C | Select-Object -ExpandProperty Free; Get-PSDrive C | Select-Object -ExpandProperty Used"');
+        const driveLetter = process.cwd().match(/^([A-Z]):/i)?.[1]?.toUpperCase() || 'C';
+        const psOutput = await runCommand(`powershell -NoProfile -Command "Get-PSDrive ${driveLetter} | Select-Object -ExpandProperty Free; Get-PSDrive ${driveLetter} | Select-Object -ExpandProperty Used"`);
         const vals = psOutput.split(/\r?\n/).filter(l => l.trim());
         const freeBytes = parseInt(vals[0] || '0', 10);
         const usedBytes = parseInt(vals[1] || '0', 10);
@@ -369,7 +374,9 @@ async function checkVersionFreshness(): Promise<HealthCheck> {
 
     if (isOutdated) {
       const fix = isNpx
-        ? 'rm -rf ~/.npm/_npx/* && npx -y moflo'
+        ? (process.platform === 'win32'
+          ? 'npx -y moflo (or clear %LocalAppData%\\npm-cache\\_npx manually)'
+          : 'rm -rf ~/.npm/_npx/* && npx -y moflo')
         : 'npm update moflo';
 
       return {

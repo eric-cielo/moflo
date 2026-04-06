@@ -9,7 +9,7 @@ import { WorkerDaemon, getDaemon, startDaemon, stopDaemon, type WorkerType, type
 import { acquireDaemonLock, releaseDaemonLock, getDaemonLockHolder, transferDaemonLock, lockPath } from '../services/daemon-lock.js';
 import { installDaemonService, uninstallDaemonService, isDaemonInstalled } from '../services/daemon-service.js';
 import { startDashboard, createDashboardMemoryAccessor, DEFAULT_DASHBOARD_PORT, type DashboardHandle } from '../services/daemon-dashboard.js';
-import { spawn, execFile } from 'child_process';
+import { spawn, execFile, execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve, isAbsolute } from 'path';
 import * as fs from 'fs';
@@ -414,8 +414,17 @@ async function killBackgroundDaemon(projectRoot: string): Promise<boolean> {
   }
 
   try {
-    // Kill the process
-    process.kill(holderPid, 'SIGTERM');
+    // Graceful kill — platform-aware
+    if (process.platform === 'win32') {
+      // SIGTERM silently force-kills on Windows; use taskkill for clean shutdown
+      try {
+        execFileSync('taskkill', ['/PID', String(holderPid)], { windowsHide: true });
+      } catch {
+        // taskkill may fail if process already exiting
+      }
+    } else {
+      process.kill(holderPid, 'SIGTERM');
+    }
 
     // Wait a moment then force kill if needed
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -423,7 +432,11 @@ async function killBackgroundDaemon(projectRoot: string): Promise<boolean> {
     try {
       process.kill(holderPid, 0);
       // Still alive, force kill
-      process.kill(holderPid, 'SIGKILL');
+      if (process.platform === 'win32') {
+        execFileSync('taskkill', ['/F', '/PID', String(holderPid)], { windowsHide: true });
+      } else {
+        process.kill(holderPid, 'SIGKILL');
+      }
     } catch {
       // Process terminated
     }

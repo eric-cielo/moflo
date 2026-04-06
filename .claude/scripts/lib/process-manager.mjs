@@ -14,7 +14,7 @@
  * Lock:     .claude-flow/spawn.lock  (30 s TTL — prevents thundering-herd)
  */
 
-import { spawn } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync, statSync, openSync, closeSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -24,8 +24,10 @@ const __dirname = dirname(__filename);
 
 const LOCK_TTL_MS = 30_000;
 
-/** Resolve the project root (two levels up from bin/lib/). */
+/** Resolve the project root. Prefers CLAUDE_PROJECT_DIR over __dirname traversal. */
 function defaultRoot() {
+  const envDir = process.env.CLAUDE_PROJECT_DIR;
+  if (envDir) return envDir.replace(/^\/([a-z])\//i, '$1:/');
   return resolve(__dirname, '../..');
 }
 
@@ -195,7 +197,11 @@ export function createProcessManager(root) {
       for (const entry of entries) {
         if (!isAlive(entry.pid)) continue;
         try {
-          process.kill(entry.pid, 'SIGTERM');
+          if (process.platform === 'win32') {
+            execFileSync('taskkill', ['/F', '/PID', String(entry.pid)], { windowsHide: true });
+          } else {
+            process.kill(entry.pid, 'SIGTERM');
+          }
           killed++;
         } catch { /* already gone */ }
       }
