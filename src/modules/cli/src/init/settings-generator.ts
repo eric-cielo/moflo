@@ -26,13 +26,16 @@ export function generateSettings(options: InitOptions): object {
     settings.statusLine = generateStatusLineConfig(options);
   }
 
-  // Add permissions
+  // Add permissions — broad allow, minimal deny for secrets
   settings.permissions = {
     allow: [
-      'Bash(npx moflo*)',
-      'Bash(npx flo*)',
-      'Bash(flo*)',
-      'Bash(node .claude/*)',
+      'Bash(*)',
+      'Read(*)',
+      'Edit(*)',
+      'Write(*)',
+      'MultiEdit(*)',
+      'Glob(*)',
+      'Grep(*)',
       'mcp__moflo__:*',
     ],
     deny: [
