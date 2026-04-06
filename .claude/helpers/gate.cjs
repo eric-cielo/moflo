@@ -72,8 +72,9 @@ switch (command) {
     var s = readState();
     if (s.memorySearched || !s.memoryRequired) break;
     var fp = process.env.TOOL_INPUT_file_path || '';
-    if (fp.indexOf('.claude/guidance/') < 0 && fp.indexOf('.claude\\guidance\\') < 0) break;
-    process.stderr.write('BLOCKED: Search memory before reading guidance files. Use mcp__moflo__memory_search.\n');
+    var isGuidance = fp.indexOf('.claude/guidance/') >= 0 || fp.indexOf('.claude\\guidance\\') >= 0;
+    if (!isGuidance && EXEMPT.some(function(p) { return fp.indexOf(p) >= 0; })) break;
+    process.stderr.write('BLOCKED: Search memory before reading files. Use mcp__moflo__memory_search.\n');
     process.exit(2);
   }
   case 'record-task-created': {
@@ -142,7 +143,9 @@ switch (command) {
     s.memorySearched = false;
     s.learningsStored = false;
     var prompt = process.env.CLAUDE_USER_PROMPT || '';
-    s.memoryRequired = prompt.length >= 4 && !DIRECTIVE_RE.test(prompt) && (TASK_RE.test(prompt) || prompt.length > 80);
+    var DIRECTIVE_MAX_LEN = 20;
+    var escaped = /^@@\s*/.test(prompt);
+    s.memoryRequired = !escaped && prompt.length >= 4 && (TASK_RE.test(prompt) || prompt.length > DIRECTIVE_MAX_LEN);
     s.interactionCount = (s.interactionCount || 0) + 1;
     writeState(s);
     if (!s.tasksCreated) console.log('REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.');
