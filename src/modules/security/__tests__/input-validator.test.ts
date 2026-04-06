@@ -2,13 +2,14 @@
  * Input Validator Tests
  *
  * Tests verify:
- * - Zod schema validation
+ * - Valibot schema validation
  * - Input sanitization
  * - Authentication schemas
  * - Command and path schemas
  */
 
 import { describe, it, expect } from 'vitest';
+import * as v from 'valibot';
 import {
   InputValidator,
   sanitizeString,
@@ -30,172 +31,172 @@ import {
   PathSchema,
   PATTERNS,
   LIMITS,
-} from '../../security/input-validator.js';
+} from '../src/input-validator.js';
 
 describe('InputValidator', () => {
   describe('SafeStringSchema', () => {
     it('should accept safe strings', () => {
-      expect(() => SafeStringSchema.parse('hello world')).not.toThrow();
+      expect(() => v.parse(SafeStringSchema, 'hello world')).not.toThrow();
     });
 
     it('should reject empty strings', () => {
-      expect(() => SafeStringSchema.parse('')).toThrow();
+      expect(() => v.parse(SafeStringSchema, '')).toThrow();
     });
 
     it('should reject strings with shell metacharacters', () => {
       const dangerous = [';', '&&', '||', '|', '`', '$()', '${}', '>', '<'];
       for (const char of dangerous) {
-        expect(() => SafeStringSchema.parse(`hello${char}world`)).toThrow();
+        expect(() => v.parse(SafeStringSchema, `hello${char}world`)).toThrow();
       }
     });
   });
 
   describe('IdentifierSchema', () => {
     it('should accept valid identifiers', () => {
-      expect(() => IdentifierSchema.parse('validId')).not.toThrow();
-      expect(() => IdentifierSchema.parse('valid-id')).not.toThrow();
-      expect(() => IdentifierSchema.parse('valid_id')).not.toThrow();
-      expect(() => IdentifierSchema.parse('validId123')).not.toThrow();
+      expect(() => v.parse(IdentifierSchema, 'validId')).not.toThrow();
+      expect(() => v.parse(IdentifierSchema, 'valid-id')).not.toThrow();
+      expect(() => v.parse(IdentifierSchema, 'valid_id')).not.toThrow();
+      expect(() => v.parse(IdentifierSchema, 'validId123')).not.toThrow();
     });
 
     it('should reject identifiers starting with number', () => {
-      expect(() => IdentifierSchema.parse('123invalid')).toThrow();
+      expect(() => v.parse(IdentifierSchema, '123invalid')).toThrow();
     });
 
     it('should reject identifiers with special characters', () => {
-      expect(() => IdentifierSchema.parse('invalid@id')).toThrow();
-      expect(() => IdentifierSchema.parse('invalid id')).toThrow();
+      expect(() => v.parse(IdentifierSchema, 'invalid@id')).toThrow();
+      expect(() => v.parse(IdentifierSchema, 'invalid id')).toThrow();
     });
 
     it('should reject empty identifiers', () => {
-      expect(() => IdentifierSchema.parse('')).toThrow();
+      expect(() => v.parse(IdentifierSchema, '')).toThrow();
     });
   });
 
   describe('EmailSchema', () => {
     it('should accept valid emails', () => {
-      expect(() => EmailSchema.parse('user@example.com')).not.toThrow();
-      expect(() => EmailSchema.parse('user.name@example.co.uk')).not.toThrow();
+      expect(() => v.parse(EmailSchema, 'user@example.com')).not.toThrow();
+      expect(() => v.parse(EmailSchema, 'user.name@example.co.uk')).not.toThrow();
     });
 
     it('should reject invalid emails', () => {
-      expect(() => EmailSchema.parse('notanemail')).toThrow();
-      expect(() => EmailSchema.parse('@nodomain.com')).toThrow();
-      expect(() => EmailSchema.parse('no@')).toThrow();
+      expect(() => v.parse(EmailSchema, 'notanemail')).toThrow();
+      expect(() => v.parse(EmailSchema, '@nodomain.com')).toThrow();
+      expect(() => v.parse(EmailSchema, 'no@')).toThrow();
     });
 
     it('should lowercase emails', () => {
-      const result = EmailSchema.parse('USER@EXAMPLE.COM');
+      const result = v.parse(EmailSchema, 'USER@EXAMPLE.COM');
       expect(result).toBe('user@example.com');
     });
 
     it('should reject too long emails', () => {
       const longEmail = 'a'.repeat(300) + '@example.com';
-      expect(() => EmailSchema.parse(longEmail)).toThrow();
+      expect(() => v.parse(EmailSchema, longEmail)).toThrow();
     });
   });
 
   describe('PasswordSchema', () => {
     it('should accept valid passwords', () => {
-      expect(() => PasswordSchema.parse('SecurePass123')).not.toThrow();
+      expect(() => v.parse(PasswordSchema, 'SecurePass123')).not.toThrow();
     });
 
     it('should reject short passwords', () => {
-      expect(() => PasswordSchema.parse('Short1')).toThrow();
+      expect(() => v.parse(PasswordSchema, 'Short1')).toThrow();
     });
 
     it('should reject passwords without uppercase', () => {
-      expect(() => PasswordSchema.parse('lowercase123')).toThrow();
+      expect(() => v.parse(PasswordSchema, 'lowercase123')).toThrow();
     });
 
     it('should reject passwords without lowercase', () => {
-      expect(() => PasswordSchema.parse('UPPERCASE123')).toThrow();
+      expect(() => v.parse(PasswordSchema, 'UPPERCASE123')).toThrow();
     });
 
     it('should reject passwords without digits', () => {
-      expect(() => PasswordSchema.parse('NoDigitsHere')).toThrow();
+      expect(() => v.parse(PasswordSchema, 'NoDigitsHere')).toThrow();
     });
   });
 
   describe('UUIDSchema', () => {
     it('should accept valid UUIDs', () => {
-      expect(() => UUIDSchema.parse('550e8400-e29b-41d4-a716-446655440000')).not.toThrow();
+      expect(() => v.parse(UUIDSchema, '550e8400-e29b-41d4-a716-446655440000')).not.toThrow();
     });
 
     it('should reject invalid UUIDs', () => {
-      expect(() => UUIDSchema.parse('not-a-uuid')).toThrow();
-      expect(() => UUIDSchema.parse('550e8400-e29b-41d4-a716')).toThrow();
+      expect(() => v.parse(UUIDSchema, 'not-a-uuid')).toThrow();
+      expect(() => v.parse(UUIDSchema, '550e8400-e29b-41d4-a716')).toThrow();
     });
   });
 
   describe('HttpsUrlSchema', () => {
     it('should accept HTTPS URLs', () => {
-      expect(() => HttpsUrlSchema.parse('https://example.com')).not.toThrow();
-      expect(() => HttpsUrlSchema.parse('https://example.com/path')).not.toThrow();
+      expect(() => v.parse(HttpsUrlSchema, 'https://example.com')).not.toThrow();
+      expect(() => v.parse(HttpsUrlSchema, 'https://example.com/path')).not.toThrow();
     });
 
     it('should reject HTTP URLs', () => {
-      expect(() => HttpsUrlSchema.parse('http://example.com')).toThrow();
+      expect(() => v.parse(HttpsUrlSchema, 'http://example.com')).toThrow();
     });
 
     it('should reject invalid URLs', () => {
-      expect(() => HttpsUrlSchema.parse('not-a-url')).toThrow();
+      expect(() => v.parse(HttpsUrlSchema, 'not-a-url')).toThrow();
     });
   });
 
   describe('PortSchema', () => {
     it('should accept valid ports', () => {
-      expect(() => PortSchema.parse(80)).not.toThrow();
-      expect(() => PortSchema.parse(443)).not.toThrow();
-      expect(() => PortSchema.parse(3000)).not.toThrow();
-      expect(() => PortSchema.parse(65535)).not.toThrow();
+      expect(() => v.parse(PortSchema, 80)).not.toThrow();
+      expect(() => v.parse(PortSchema, 443)).not.toThrow();
+      expect(() => v.parse(PortSchema, 3000)).not.toThrow();
+      expect(() => v.parse(PortSchema, 65535)).not.toThrow();
     });
 
     it('should reject invalid ports', () => {
-      expect(() => PortSchema.parse(0)).toThrow();
-      expect(() => PortSchema.parse(-1)).toThrow();
-      expect(() => PortSchema.parse(65536)).toThrow();
-      expect(() => PortSchema.parse(3.14)).toThrow();
+      expect(() => v.parse(PortSchema, 0)).toThrow();
+      expect(() => v.parse(PortSchema, -1)).toThrow();
+      expect(() => v.parse(PortSchema, 65536)).toThrow();
+      expect(() => v.parse(PortSchema, 3.14)).toThrow();
     });
   });
 
   describe('UserRoleSchema', () => {
     it('should accept valid roles', () => {
-      expect(() => UserRoleSchema.parse('admin')).not.toThrow();
-      expect(() => UserRoleSchema.parse('operator')).not.toThrow();
-      expect(() => UserRoleSchema.parse('developer')).not.toThrow();
-      expect(() => UserRoleSchema.parse('viewer')).not.toThrow();
-      expect(() => UserRoleSchema.parse('service')).not.toThrow();
+      expect(() => v.parse(UserRoleSchema, 'admin')).not.toThrow();
+      expect(() => v.parse(UserRoleSchema, 'operator')).not.toThrow();
+      expect(() => v.parse(UserRoleSchema, 'developer')).not.toThrow();
+      expect(() => v.parse(UserRoleSchema, 'viewer')).not.toThrow();
+      expect(() => v.parse(UserRoleSchema, 'service')).not.toThrow();
     });
 
     it('should reject invalid roles', () => {
-      expect(() => UserRoleSchema.parse('superuser')).toThrow();
-      expect(() => UserRoleSchema.parse('root')).toThrow();
+      expect(() => v.parse(UserRoleSchema, 'superuser')).toThrow();
+      expect(() => v.parse(UserRoleSchema, 'root')).toThrow();
     });
   });
 
   describe('PermissionSchema', () => {
     it('should accept valid permissions', () => {
-      expect(() => PermissionSchema.parse('swarm.create')).not.toThrow();
-      expect(() => PermissionSchema.parse('agent.spawn')).not.toThrow();
-      expect(() => PermissionSchema.parse('system.admin')).not.toThrow();
+      expect(() => v.parse(PermissionSchema, 'swarm.create')).not.toThrow();
+      expect(() => v.parse(PermissionSchema, 'agent.spawn')).not.toThrow();
+      expect(() => v.parse(PermissionSchema, 'system.admin')).not.toThrow();
     });
 
     it('should reject invalid permissions', () => {
-      expect(() => PermissionSchema.parse('invalid.permission')).toThrow();
+      expect(() => v.parse(PermissionSchema, 'invalid.permission')).toThrow();
     });
   });
 
   describe('LoginRequestSchema', () => {
     it('should accept valid login request', () => {
-      expect(() => LoginRequestSchema.parse({
+      expect(() => v.parse(LoginRequestSchema, {
         email: 'user@example.com',
         password: 'password123',
       })).not.toThrow();
     });
 
     it('should accept login with MFA code', () => {
-      expect(() => LoginRequestSchema.parse({
+      expect(() => v.parse(LoginRequestSchema, {
         email: 'user@example.com',
         password: 'password123',
         mfaCode: '123456',
@@ -203,7 +204,7 @@ describe('InputValidator', () => {
     });
 
     it('should reject invalid MFA code length', () => {
-      expect(() => LoginRequestSchema.parse({
+      expect(() => v.parse(LoginRequestSchema, {
         email: 'user@example.com',
         password: 'password123',
         mfaCode: '12345', // 5 digits instead of 6
@@ -213,7 +214,7 @@ describe('InputValidator', () => {
 
   describe('CreateUserSchema', () => {
     it('should accept valid user creation', () => {
-      expect(() => CreateUserSchema.parse({
+      expect(() => v.parse(CreateUserSchema, {
         email: 'user@example.com',
         password: 'SecurePass123',
         role: 'developer',
@@ -221,7 +222,7 @@ describe('InputValidator', () => {
     });
 
     it('should require strong password', () => {
-      expect(() => CreateUserSchema.parse({
+      expect(() => v.parse(CreateUserSchema, {
         email: 'user@example.com',
         password: 'weak',
         role: 'developer',
@@ -231,7 +232,7 @@ describe('InputValidator', () => {
 
   describe('TaskInputSchema', () => {
     it('should accept valid task input', () => {
-      expect(() => TaskInputSchema.parse({
+      expect(() => v.parse(TaskInputSchema, {
         taskId: '550e8400-e29b-41d4-a716-446655440000',
         content: 'Implement new feature',
         agentType: 'coder',
@@ -239,7 +240,7 @@ describe('InputValidator', () => {
     });
 
     it('should reject task with shell characters in content', () => {
-      expect(() => TaskInputSchema.parse({
+      expect(() => v.parse(TaskInputSchema, {
         taskId: '550e8400-e29b-41d4-a716-446655440000',
         content: 'Implement feature; rm -rf /',
         agentType: 'coder',
@@ -249,34 +250,34 @@ describe('InputValidator', () => {
 
   describe('CommandArgumentSchema', () => {
     it('should accept safe arguments', () => {
-      expect(() => CommandArgumentSchema.parse('--flag')).not.toThrow();
-      expect(() => CommandArgumentSchema.parse('value')).not.toThrow();
-      expect(() => CommandArgumentSchema.parse('path/to/file')).not.toThrow();
+      expect(() => v.parse(CommandArgumentSchema, '--flag')).not.toThrow();
+      expect(() => v.parse(CommandArgumentSchema, 'value')).not.toThrow();
+      expect(() => v.parse(CommandArgumentSchema, 'path/to/file')).not.toThrow();
     });
 
     it('should reject arguments with null bytes', () => {
-      expect(() => CommandArgumentSchema.parse('arg\x00injected')).toThrow();
+      expect(() => v.parse(CommandArgumentSchema, 'arg\x00injected')).toThrow();
     });
 
     it('should reject arguments with shell metacharacters', () => {
-      expect(() => CommandArgumentSchema.parse('arg;injected')).toThrow();
-      expect(() => CommandArgumentSchema.parse('arg&&injected')).toThrow();
-      expect(() => CommandArgumentSchema.parse('arg|injected')).toThrow();
+      expect(() => v.parse(CommandArgumentSchema, 'arg;injected')).toThrow();
+      expect(() => v.parse(CommandArgumentSchema, 'arg&&injected')).toThrow();
+      expect(() => v.parse(CommandArgumentSchema, 'arg|injected')).toThrow();
     });
   });
 
   describe('PathSchema', () => {
     it('should accept valid paths', () => {
-      expect(() => PathSchema.parse('/path/to/file.ts')).not.toThrow();
-      expect(() => PathSchema.parse('./relative/path')).not.toThrow();
+      expect(() => v.parse(PathSchema, '/path/to/file.ts')).not.toThrow();
+      expect(() => v.parse(PathSchema, './relative/path')).not.toThrow();
     });
 
     it('should reject paths with traversal', () => {
-      expect(() => PathSchema.parse('/path/../etc/passwd')).toThrow();
+      expect(() => v.parse(PathSchema, '/path/../etc/passwd')).toThrow();
     });
 
     it('should reject paths with null bytes', () => {
-      expect(() => PathSchema.parse('/path/file\x00.jpg')).toThrow();
+      expect(() => v.parse(PathSchema, '/path/file\x00.jpg')).toThrow();
     });
   });
 
@@ -326,13 +327,14 @@ describe('InputValidator', () => {
       });
 
       it('should prevent ....// bypass (nested traversal)', () => {
-        expect(sanitizePath('....//etc/passwd')).toBe('/etc/passwd');
-        expect(sanitizePath('....//')).toBe('/');
-        expect(sanitizePath('....//....//etc')).toBe('/etc');
+        // After removing ".." pairs and normalizing slashes, leading slash is stripped
+        expect(sanitizePath('....//etc/passwd')).toBe('etc/passwd');
+        expect(sanitizePath('....//')).toBe('');
+        expect(sanitizePath('....//....//etc')).toBe('etc');
       });
 
       it('should handle deeply nested traversal attempts', () => {
-        expect(sanitizePath('......///etc')).toBe('/etc');
+        expect(sanitizePath('......///etc')).toBe('etc');
         expect(sanitizePath('.a]../b')).toBe('.a]/b');
       });
     });

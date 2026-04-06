@@ -1,7 +1,7 @@
 /**
  * Input Validator - Comprehensive Input Validation
  *
- * Provides Zod-based validation schemas for all security-critical inputs.
+ * Provides Valibot-based validation schemas for all security-critical inputs.
  *
  * Security Properties:
  * - Type-safe validation
@@ -12,35 +12,7 @@
  * @module v3/security/input-validator
  */
 
-import { z } from 'zod';
-
-/**
- * Custom error map for security-focused messages
- */
-const securityErrorMap: z.ZodErrorMap = (issue, ctx) => {
-  switch (issue.code) {
-    case z.ZodIssueCode.too_big:
-      return { message: `Input exceeds maximum allowed size` };
-    case z.ZodIssueCode.too_small:
-      return { message: `Input below minimum required size` };
-    case z.ZodIssueCode.invalid_string:
-      if (issue.validation === 'email') {
-        return { message: 'Invalid email format' };
-      }
-      if (issue.validation === 'url') {
-        return { message: 'Invalid URL format' };
-      }
-      if (issue.validation === 'uuid') {
-        return { message: 'Invalid UUID format' };
-      }
-      return { message: 'Invalid string format' };
-    default:
-      return { message: ctx.defaultError };
-  }
-};
-
-// Apply custom error map globally for this module
-z.setErrorMap(securityErrorMap);
+import * as v from 'valibot';
 
 /**
  * Common validation patterns as reusable regex
@@ -83,91 +55,110 @@ const LIMITS = {
 /**
  * Safe string that cannot contain shell metacharacters
  */
-export const SafeStringSchema = z.string()
-  .min(1, 'String cannot be empty')
-  .max(LIMITS.MAX_CONTENT_LENGTH, 'String too long')
-  .regex(PATTERNS.NO_SHELL_CHARS, 'String contains invalid characters');
+export const SafeStringSchema = v.pipe(
+  v.string(),
+  v.minLength(1, 'String cannot be empty'),
+  v.maxLength(LIMITS.MAX_CONTENT_LENGTH, 'String too long'),
+  v.regex(PATTERNS.NO_SHELL_CHARS, 'String contains invalid characters'),
+);
 
 /**
  * Safe identifier for IDs, names, etc.
  */
-export const IdentifierSchema = z.string()
-  .min(1, 'Identifier cannot be empty')
-  .max(LIMITS.MAX_IDENTIFIER_LENGTH, 'Identifier too long')
-  .regex(PATTERNS.SAFE_IDENTIFIER, 'Invalid identifier format');
+export const IdentifierSchema = v.pipe(
+  v.string(),
+  v.minLength(1, 'Identifier cannot be empty'),
+  v.maxLength(LIMITS.MAX_IDENTIFIER_LENGTH, 'Identifier too long'),
+  v.regex(PATTERNS.SAFE_IDENTIFIER, 'Invalid identifier format'),
+);
 
 /**
  * Safe filename
  */
-export const FilenameSchema = z.string()
-  .min(1, 'Filename cannot be empty')
-  .max(255, 'Filename too long')
-  .regex(PATTERNS.SAFE_FILENAME, 'Invalid filename format');
+export const FilenameSchema = v.pipe(
+  v.string(),
+  v.minLength(1, 'Filename cannot be empty'),
+  v.maxLength(255, 'Filename too long'),
+  v.regex(PATTERNS.SAFE_FILENAME, 'Invalid filename format'),
+);
 
 /**
  * Email schema with length limit
  */
-export const EmailSchema = z.string()
-  .email('Invalid email format')
-  .max(LIMITS.MAX_EMAIL_LENGTH, 'Email too long')
-  .toLowerCase();
+export const EmailSchema = v.pipe(
+  v.string(),
+  v.email('Invalid email format'),
+  v.maxLength(LIMITS.MAX_EMAIL_LENGTH, 'Email too long'),
+  v.toLowerCase(),
+);
 
 /**
  * Password schema with complexity requirements
  */
-export const PasswordSchema = z.string()
-  .min(LIMITS.MIN_PASSWORD_LENGTH, `Password must be at least ${LIMITS.MIN_PASSWORD_LENGTH} characters`)
-  .max(LIMITS.MAX_PASSWORD_LENGTH, `Password must not exceed ${LIMITS.MAX_PASSWORD_LENGTH} characters`)
-  .refine((val) => /[A-Z]/.test(val), 'Password must contain uppercase letter')
-  .refine((val) => /[a-z]/.test(val), 'Password must contain lowercase letter')
-  .refine((val) => /\d/.test(val), 'Password must contain digit');
+export const PasswordSchema = v.pipe(
+  v.string(),
+  v.minLength(LIMITS.MIN_PASSWORD_LENGTH, `Password must be at least ${LIMITS.MIN_PASSWORD_LENGTH} characters`),
+  v.maxLength(LIMITS.MAX_PASSWORD_LENGTH, `Password must not exceed ${LIMITS.MAX_PASSWORD_LENGTH} characters`),
+  v.check((val) => /[A-Z]/.test(val), 'Password must contain uppercase letter'),
+  v.check((val) => /[a-z]/.test(val), 'Password must contain lowercase letter'),
+  v.check((val) => /\d/.test(val), 'Password must contain digit'),
+);
 
 /**
  * UUID schema
  */
-export const UUIDSchema = z.string().uuid('Invalid UUID format');
+export const UUIDSchema = v.pipe(v.string(), v.uuid('Invalid UUID format'));
 
 /**
  * URL schema with HTTPS enforcement
  */
-export const HttpsUrlSchema = z.string()
-  .url('Invalid URL format')
-  .refine(
+export const HttpsUrlSchema = v.pipe(
+  v.string(),
+  v.url('Invalid URL format'),
+  v.check(
     (val) => val.startsWith('https://'),
-    'URL must use HTTPS'
-  );
+    'URL must use HTTPS',
+  ),
+);
 
 /**
  * URL schema (allows HTTP for development)
  */
-export const UrlSchema = z.string()
-  .url('Invalid URL format');
+export const UrlSchema = v.pipe(v.string(), v.url('Invalid URL format'));
 
 /**
  * Semantic version schema
  */
-export const SemverSchema = z.string()
-  .regex(PATTERNS.SEMVER, 'Invalid semantic version format');
+export const SemverSchema = v.pipe(
+  v.string(),
+  v.regex(PATTERNS.SEMVER, 'Invalid semantic version format'),
+);
 
 /**
  * Port number schema
  */
-export const PortSchema = z.number()
-  .int('Port must be an integer')
-  .min(1, 'Port must be at least 1')
-  .max(65535, 'Port must be at most 65535');
+export const PortSchema = v.pipe(
+  v.number('Port must be a number'),
+  v.integer('Port must be an integer'),
+  v.minValue(1, 'Port must be at least 1'),
+  v.maxValue(65535, 'Port must be at most 65535'),
+);
 
 /**
  * IP address schema (v4)
  */
-export const IPv4Schema = z.string()
-  .ip({ version: 'v4', message: 'Invalid IPv4 address' });
+export const IPv4Schema = v.pipe(
+  v.string(),
+  v.ipv4('Invalid IPv4 address'),
+);
 
 /**
  * IP address schema (v4 or v6)
  */
-export const IPSchema = z.string()
-  .ip({ message: 'Invalid IP address' });
+export const IPSchema = v.pipe(
+  v.string(),
+  v.ip('Invalid IP address'),
+);
 
 // ============================================================================
 // Authentication Schemas
@@ -176,7 +167,7 @@ export const IPSchema = z.string()
 /**
  * User role schema
  */
-export const UserRoleSchema = z.enum([
+export const UserRoleSchema = v.picklist([
   'admin',
   'operator',
   'developer',
@@ -187,7 +178,7 @@ export const UserRoleSchema = z.enum([
 /**
  * Permission schema
  */
-export const PermissionSchema = z.enum([
+export const PermissionSchema = v.picklist([
   'swarm.create',
   'swarm.read',
   'swarm.update',
@@ -207,30 +198,30 @@ export const PermissionSchema = z.enum([
 /**
  * Login request schema
  */
-export const LoginRequestSchema = z.object({
+export const LoginRequestSchema = v.object({
   email: EmailSchema,
-  password: z.string().min(1, 'Password is required'),
-  mfaCode: z.string().length(6, 'MFA code must be 6 digits').optional(),
+  password: v.pipe(v.string(), v.minLength(1, 'Password is required')),
+  mfaCode: v.optional(v.pipe(v.string(), v.length(6, 'MFA code must be 6 digits'))),
 });
 
 /**
  * User creation schema
  */
-export const CreateUserSchema = z.object({
+export const CreateUserSchema = v.object({
   email: EmailSchema,
   password: PasswordSchema,
   role: UserRoleSchema,
-  permissions: z.array(PermissionSchema).optional(),
-  isActive: z.boolean().optional().default(true),
+  permissions: v.optional(v.array(PermissionSchema)),
+  isActive: v.optional(v.boolean(), true),
 });
 
 /**
  * API key creation schema
  */
-export const CreateApiKeySchema = z.object({
+export const CreateApiKeySchema = v.object({
   name: IdentifierSchema,
-  permissions: z.array(PermissionSchema).optional(),
-  expiresAt: z.date().optional(),
+  permissions: v.optional(v.array(PermissionSchema)),
+  expiresAt: v.optional(v.date()),
 });
 
 // ============================================================================
@@ -240,7 +231,7 @@ export const CreateApiKeySchema = z.object({
 /**
  * Agent type schema
  */
-export const AgentTypeSchema = z.enum([
+export const AgentTypeSchema = v.picklist([
   'coder',
   'reviewer',
   'tester',
@@ -261,22 +252,22 @@ export const AgentTypeSchema = z.enum([
 /**
  * Agent spawn request schema
  */
-export const SpawnAgentSchema = z.object({
+export const SpawnAgentSchema = v.object({
   type: AgentTypeSchema,
-  id: IdentifierSchema.optional(),
-  config: z.record(z.unknown()).optional(),
-  timeout: z.number().positive().optional(),
+  id: v.optional(IdentifierSchema),
+  config: v.optional(v.record(v.string(), v.unknown())),
+  timeout: v.optional(v.pipe(v.number(), v.minValue(0, 'Must be non-negative'))),
 });
 
 /**
  * Task input schema
  */
-export const TaskInputSchema = z.object({
+export const TaskInputSchema = v.object({
   taskId: UUIDSchema,
-  content: SafeStringSchema.max(10000, 'Task content too long'),
+  content: v.pipe(SafeStringSchema, v.maxLength(10000, 'Task content too long')),
   agentType: AgentTypeSchema,
-  priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  priority: v.optional(v.picklist(['low', 'medium', 'high', 'critical'])),
+  metadata: v.optional(v.record(v.string(), v.unknown())),
 });
 
 // ============================================================================
@@ -286,30 +277,34 @@ export const TaskInputSchema = z.object({
 /**
  * Command argument schema
  */
-export const CommandArgumentSchema = z.string()
-  .max(1024, 'Argument too long')
-  .refine(
+export const CommandArgumentSchema = v.pipe(
+  v.string(),
+  v.maxLength(1024, 'Argument too long'),
+  v.check(
     (val) => !val.includes('\0'),
-    'Argument contains null byte'
-  )
-  .refine(
+    'Argument contains null byte',
+  ),
+  v.check(
     (val) => !/[;&|`$(){}><]/.test(val),
-    'Argument contains shell metacharacters'
-  );
+    'Argument contains shell metacharacters',
+  ),
+);
 
 /**
  * Path schema
  */
-export const PathSchema = z.string()
-  .max(LIMITS.MAX_PATH_LENGTH, 'Path too long')
-  .refine(
+export const PathSchema = v.pipe(
+  v.string(),
+  v.maxLength(LIMITS.MAX_PATH_LENGTH, 'Path too long'),
+  v.check(
     (val) => !val.includes('\0'),
-    'Path contains null byte'
-  )
-  .refine(
+    'Path contains null byte',
+  ),
+  v.check(
     (val) => !val.includes('..'),
-    'Path contains traversal pattern'
-  );
+    'Path contains traversal pattern',
+  ),
+);
 
 // ============================================================================
 // Configuration Schemas
@@ -318,25 +313,25 @@ export const PathSchema = z.string()
 /**
  * Security configuration schema
  */
-export const SecurityConfigSchema = z.object({
-  bcryptRounds: z.number().int().min(10).max(20).default(12),
-  jwtExpiresIn: z.string().default('24h'),
-  sessionTimeout: z.number().positive().default(3600000),
-  maxLoginAttempts: z.number().int().positive().default(5),
-  lockoutDuration: z.number().positive().default(900000),
-  requireMFA: z.boolean().default(false),
+export const SecurityConfigSchema = v.object({
+  bcryptRounds: v.optional(v.pipe(v.number(), v.integer(), v.minValue(10), v.maxValue(20)), 12),
+  jwtExpiresIn: v.optional(v.string(), '24h'),
+  sessionTimeout: v.optional(v.pipe(v.number(), v.minValue(0, 'Must be non-negative')), 3600000),
+  maxLoginAttempts: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1)), 5),
+  lockoutDuration: v.optional(v.pipe(v.number(), v.minValue(0, 'Must be non-negative')), 900000),
+  requireMFA: v.optional(v.boolean(), false),
 });
 
 /**
  * Executor configuration schema
  */
-export const ExecutorConfigSchema = z.object({
-  allowedCommands: z.array(IdentifierSchema).min(1),
-  blockedPatterns: z.array(z.string()).optional(),
-  timeout: z.number().positive().default(30000),
-  maxBuffer: z.number().positive().default(10 * 1024 * 1024),
-  cwd: PathSchema.optional(),
-  allowSudo: z.boolean().default(false),
+export const ExecutorConfigSchema = v.object({
+  allowedCommands: v.pipe(v.array(IdentifierSchema), v.minLength(1)),
+  blockedPatterns: v.optional(v.array(v.string())),
+  timeout: v.optional(v.pipe(v.number(), v.minValue(0, 'Must be non-negative')), 30000),
+  maxBuffer: v.optional(v.pipe(v.number(), v.minValue(0, 'Must be non-negative')), 10 * 1024 * 1024),
+  cwd: v.optional(PathSchema),
+  allowSudo: v.optional(v.boolean(), false),
 });
 
 // ============================================================================
@@ -395,71 +390,75 @@ export class InputValidator {
   /**
    * Validates input against a schema
    */
-  static validate<T>(schema: z.ZodSchema<T>, input: unknown): T {
-    return schema.parse(input);
+  static validate<T>(schema: v.GenericSchema<unknown, T>, input: unknown): T {
+    return v.parse(schema, input);
   }
 
   /**
    * Safely validates input, returning result
    */
-  static safeParse<T>(schema: z.ZodSchema<T>, input: unknown): z.SafeParseReturnType<unknown, T> {
-    return schema.safeParse(input);
+  static safeParse<T>(schema: v.GenericSchema<unknown, T>, input: unknown): { success: boolean; output?: T; issues?: v.BaseIssue<unknown>[] } {
+    const result = v.safeParse(schema, input);
+    if (result.success) {
+      return { success: true, output: result.output };
+    }
+    return { success: false, issues: result.issues };
   }
 
   /**
    * Validates email
    */
   static validateEmail(email: string): string {
-    return EmailSchema.parse(email);
+    return v.parse(EmailSchema, email);
   }
 
   /**
    * Validates password
    */
   static validatePassword(password: string): string {
-    return PasswordSchema.parse(password);
+    return v.parse(PasswordSchema, password);
   }
 
   /**
    * Validates identifier
    */
   static validateIdentifier(id: string): string {
-    return IdentifierSchema.parse(id);
+    return v.parse(IdentifierSchema, id);
   }
 
   /**
    * Validates path
    */
   static validatePath(path: string): string {
-    return PathSchema.parse(path);
+    return v.parse(PathSchema, path);
   }
 
   /**
    * Validates command argument
    */
   static validateCommandArg(arg: string): string {
-    return CommandArgumentSchema.parse(arg);
+    return v.parse(CommandArgumentSchema, arg);
   }
 
   /**
    * Validates login request
    */
-  static validateLoginRequest(data: unknown): z.infer<typeof LoginRequestSchema> {
-    return LoginRequestSchema.parse(data);
+  static validateLoginRequest(data: unknown): v.InferOutput<typeof LoginRequestSchema> {
+    return v.parse(LoginRequestSchema, data);
   }
 
   /**
    * Validates user creation request
    */
-  static validateCreateUser(data: unknown): z.infer<typeof CreateUserSchema> {
-    return CreateUserSchema.parse(data);
+  static validateCreateUser(data: unknown): v.InferOutput<typeof CreateUserSchema> {
+    return v.parse(CreateUserSchema, data);
   }
 
   /**
    * Validates task input
    */
-  static validateTaskInput(data: unknown): z.infer<typeof TaskInputSchema> {
-    return TaskInputSchema.parse(data);
+  static validateTaskInput(data: unknown): v.InferOutput<typeof TaskInputSchema> {
+    return v.parse(TaskInputSchema, data);
   }
 }
 
@@ -468,7 +467,6 @@ export class InputValidator {
 // ============================================================================
 
 export {
-  z,
   PATTERNS,
   LIMITS,
 };

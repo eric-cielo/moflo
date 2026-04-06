@@ -1,9 +1,9 @@
 /**
  * V3 Configuration Validator
- * Validation logic using Zod schemas
+ * Validation logic using Valibot schemas
  */
 
-import { z, type ZodError } from 'zod';
+import * as v from 'valibot';
 import {
   AgentConfigSchema,
   TaskConfigSchema,
@@ -40,13 +40,13 @@ export interface ValidationError {
 }
 
 /**
- * Convert Zod error to validation errors
+ * Convert Valibot issues to validation errors
  */
-function zodErrorToValidationErrors(error: ZodError): ValidationError[] {
-  return error.errors.map((e) => ({
-    path: e.path.join('.'),
-    message: e.message,
-    code: e.code,
+function valibotIssuesToValidationErrors(issues: v.BaseIssue<unknown>[]): ValidationError[] {
+  return issues.map((issue) => ({
+    path: issue.path?.map((p) => 'key' in p ? String(p.key) : String(p)).join('.') ?? '',
+    message: issue.message,
+    code: issue.type,
   }));
 }
 
@@ -54,25 +54,21 @@ function zodErrorToValidationErrors(error: ZodError): ValidationError[] {
  * Generic validation function
  * Uses parse + try/catch to get output types with defaults applied
  */
-function validate<TInput, TOutput>(
-  schema: z.ZodType<TOutput, z.ZodTypeDef, TInput>,
+function validate<TSchema extends v.GenericSchema>(
+  schema: TSchema,
   data: unknown
-): ValidationResult<TOutput> {
-  try {
-    const parsed = schema.parse(data);
+): ValidationResult<v.InferOutput<TSchema>> {
+  const result = v.safeParse(schema, data);
+  if (result.success) {
     return {
       success: true,
-      data: parsed,
+      data: result.output,
     };
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return {
-        success: false,
-        errors: zodErrorToValidationErrors(error),
-      };
-    }
-    throw error;
   }
+  return {
+    success: false,
+    errors: valibotIssuesToValidationErrors(result.issues),
+  };
 }
 
 /**
@@ -131,11 +127,11 @@ export class ConfigValidator {
   /**
    * Validate and throw on error
    */
-  static validateOrThrow<TInput, TOutput>(
-    schema: z.ZodType<TOutput, z.ZodTypeDef, TInput>,
+  static validateOrThrow<TSchema extends v.GenericSchema>(
+    schema: TSchema,
     data: unknown,
     configName: string
-  ): TOutput {
+  ): v.InferOutput<TSchema> {
     const result = validate(schema, data);
 
     if (!result.success) {
@@ -200,8 +196,8 @@ export class ConfigValidator {
   /**
    * Check if data matches schema
    */
-  static isValid<TInput, TOutput>(
-    schema: z.ZodType<TOutput, z.ZodTypeDef, TInput>,
+  static isValid<TSchema extends v.GenericSchema>(
+    schema: TSchema,
     data: unknown
   ): boolean {
     return validate(schema, data).success;
