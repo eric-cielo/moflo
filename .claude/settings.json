@@ -211,15 +211,13 @@
   },
   "permissions": {
     "allow": [
-      "Bash(git *)",
-      "Bash(gh *)",
-      "Bash(npm *)",
-      "Bash(npx *)",
-      "Bash(node *)",
-      "Bash(flo*)",
-      "Bash(cd *)",
-      "Bash(wc *)",
-      "Bash(cp *)",
+      "Bash(*)",
+      "Read(*)",
+      "Edit(*)",
+      "Write(*)",
+      "MultiEdit(*)",
+      "Glob(*)",
+      "Grep(*)",
       "mcp__moflo__:*"
     ],
     "deny": [
