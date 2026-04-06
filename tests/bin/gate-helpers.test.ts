@@ -439,6 +439,26 @@ describe('gate.cjs: state recording', () => {
     const s = readState(tmpDir);
     expect(s.memorySearched).toBe(true);
   });
+
+  it('record-memory-searched is idempotent when already set', () => {
+    writeState(tmpDir, { memorySearched: true, taskCount: 5 });
+    runGate('record-memory-searched', baseEnv(tmpDir));
+    const s = readState(tmpDir);
+    expect(s.memorySearched).toBe(true);
+    expect(s.taskCount).toBe(5); // other state preserved
+  });
+
+  it('any writer of memorySearched=true satisfies the scan gate (#354)', () => {
+    // The MCP memory_search handler writes memorySearched directly to
+    // workflow-state.json (via WorkflowGateService) because PostToolUse
+    // hooks don't fire reliably for MCP tools. This test verifies the
+    // contract: regardless of who sets the flag, the gate passes.
+    writeState(tmpDir, { memorySearched: true, memoryRequired: true });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_pattern = '**/*.ts';
+    const r = runGate('check-before-scan', env);
+    expect(r.exitCode).toBe(0);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -992,11 +1012,12 @@ describe('end-to-end: workflow lifecycle', () => {
       expect(s.memorySearched).toBe(true);
       expect(s.memoryRequired).toBe(true);
 
-      // Transition a task to in_progress — should reset
+      // Transition a task to in_progress — no longer resets (#352)
+      // Memory gate only resets on new user prompts via prompt-reminder.
       env.TOOL_INPUT_status = 'in_progress';
       runGate('check-task-transition', env);
       s = readState(tmpDir);
-      expect(s.memorySearched).toBe(false);
+      expect(s.memorySearched).toBe(true);
       expect(s.learningsStored).toBe(false);
     });
 
