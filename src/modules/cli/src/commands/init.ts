@@ -211,7 +211,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
           output.writeln(output.dim('  Starting daemon...'));
           if (process.platform === 'win32') {
             const { spawn } = await import('child_process');
-            spawn('npx', ['moflo', 'daemon', 'start'], { detached: true, stdio: 'ignore', cwd: ctx.cwd, windowsHide: true }).unref();
+            spawn('npx moflo daemon start', [], { detached: true, stdio: 'ignore', cwd: ctx.cwd, shell: true, windowsHide: true }).unref();
           } else {
             execSync('npx moflo daemon start 2>/dev/null &', {
               stdio: 'pipe',

@@ -282,19 +282,6 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
 
   // Platform-aware spawn flags
   const isWin = process.platform === 'win32';
-  const spawnOpts: any = {
-    cwd: resolvedRoot,
-    detached: !isWin,  // detached is POSIX-only; Windows uses windowsHide
-    stdio: ['ignore', fs.openSync(logFile, 'a'), fs.openSync(logFile, 'a')],
-    env: {
-      ...process.env,
-      CLAUDE_FLOW_DAEMON: '1',
-      // Prevent macOS SIGHUP kill when terminal closes
-      ...(process.platform === 'darwin' ? { NOHUP: '1' } : {}),
-    },
-    ...(isWin ? { shell: true, windowsHide: true } : {}),
-  };
-
   // Use spawn with explicit arguments instead of shell string interpolation
   // This prevents command injection via paths
   const spawnArgs = [
@@ -316,7 +303,31 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
   } else if (dashboardPort && dashboardPort !== DEFAULT_DASHBOARD_PORT) {
     spawnArgs.push('--dashboard-port', String(dashboardPort));
   }
-  const child = spawn(process.execPath, spawnArgs, spawnOpts);
+
+  const daemonEnv = {
+    ...process.env,
+    CLAUDE_FLOW_DAEMON: '1',
+    // Prevent macOS SIGHUP kill when terminal closes
+    ...(process.platform === 'darwin' ? { NOHUP: '1' } : {}),
+  };
+  const stdoutFd = fs.openSync(logFile, 'a');
+  const stderrFd = fs.openSync(logFile, 'a');
+
+  // On Windows, join command + args into a single shell string to avoid
+  // Node 24 DEP0190 ("args with shell:true" deprecation warning).
+  const child = isWin
+    ? spawn(`"${process.execPath}" ${spawnArgs.map(a => `"${a}"`).join(' ')}`, [], {
+        cwd: resolvedRoot,
+        stdio: ['ignore', stdoutFd, stderrFd],
+        env: daemonEnv,
+        shell: true, windowsHide: true,
+      })
+    : spawn(process.execPath, spawnArgs, {
+        cwd: resolvedRoot,
+        detached: true,
+        stdio: ['ignore', stdoutFd, stderrFd],
+        env: daemonEnv,
+      });
 
   // Get PID from spawned process directly (no shell echo needed)
   const pid = child.pid;

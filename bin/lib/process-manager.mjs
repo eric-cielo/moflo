@@ -198,7 +198,7 @@ export function createProcessManager(root) {
         if (!isAlive(entry.pid)) continue;
         try {
           if (process.platform === 'win32') {
-            execFileSync('taskkill', ['/F', '/PID', String(entry.pid)], { windowsHide: true });
+            execFileSync('taskkill', ['/T', '/F', '/PID', String(entry.pid)], { windowsHide: true, timeout: 5000 });
           } else {
             process.kill(entry.pid, 'SIGTERM');
           }

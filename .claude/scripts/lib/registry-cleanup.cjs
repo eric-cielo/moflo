@@ -30,7 +30,7 @@ function killTrackedSync(projectDir) {
         try { process.kill(entries[i].pid, 0); } catch (e) { continue; }
         try {
           if (process.platform === 'win32') {
-            childProcess.execFileSync('taskkill', ['/F', '/PID', String(entries[i].pid)], { windowsHide: true });
+            childProcess.execFileSync('taskkill', ['/T', '/F', '/PID', String(entries[i].pid)], { windowsHide: true, timeout: 5000 });
           } else {
             process.kill(entries[i].pid, 'SIGTERM');
           }
