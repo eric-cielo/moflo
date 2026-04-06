@@ -28,6 +28,7 @@ To verify everything is running, ask Claude to run `flo doctor` with full diagno
 MoFlo makes deliberate choices so you don't have to:
 
 - **Fully self-contained** — No external services, no cloud dependencies, no API keys. Everything runs locally on your machine.
+- **Minimal dependencies** — 4 runtime dependencies (`js-yaml`, `semver`, `sql.js`, `valibot`). The upstream Ruflo/Claude Flow packages pull in multiple internal scoped packages (`@claude-flow/cli`, `@claude-flow/mcp`, `@claude-flow/shared`) plus native crypto libraries. MoFlo consolidates everything into a single package with zero native bindings.
 - **Node.js runtime** — Targets Node.js specifically. All scripts, hooks, and tooling are JavaScript/TypeScript. No Python, no Rust binaries, no native compilation.
 - **sql.js (WASM)** — The memory database uses sql.js, a pure WebAssembly build of SQLite. No native `better-sqlite3` bindings to compile, no platform-specific build steps. Works identically on Windows, macOS, and Linux.
 - **Simplified embeddings pipeline** — 384-dimensional neural embeddings via Transformers.js (MiniLM-L6-v2, WASM). Same model and precision as the upstream multi-provider pipeline, but simpler — two scripts instead of an abstraction layer. Runs locally, no API calls.
@@ -337,6 +338,61 @@ feature:
 | **Dry-run preview** | No | Yes |
 | **Dependency ordering** | No (top-to-bottom) | Yes (YAML only, topological sort) |
 
+## Workflows
+
+MoFlo includes a general-purpose workflow engine that executes multi-step automations defined in YAML. Workflows can run shell commands, spawn agents, perform memory operations, use conditionals and loops, and chain steps together with dependency ordering.
+
+```bash
+flo workflow run -n development          # Run a named workflow
+flo workflow run -f ./my-workflow.yaml   # Run from a file
+flo workflow list                        # List available workflows and recent runs
+flo workflow validate -f ./workflow.yaml # Validate a definition without running it
+flo workflow template list               # Browse built-in workflow templates
+flo workflow schedule list               # List scheduled workflows
+```
+
+### Defining workflows
+
+Workflows are YAML files with steps that run sequentially or in parallel:
+
+```yaml
+name: my-workflow
+steps:
+  - name: lint
+    command: npm run lint
+  - name: test
+    command: npm test
+  - name: deploy
+    command: ./deploy.sh
+    depends_on: [lint, test]
+```
+
+Steps support shell commands (`bash`), agent spawns, memory reads/writes, conditionals, loops, and parallel execution groups. For the full workflow definition format, see [docs/WORKFLOWS.md](docs/WORKFLOWS.md).
+
+### Building workflows with the `/workflow-builder` skill
+
+Inside your AI client, use the `/workflow-builder` skill to create, edit, and validate workflow definitions interactively. The skill understands the full workflow schema and available step commands, so you can describe what you want in natural language and it will generate the YAML:
+
+```
+/workflow-builder                        # Start the workflow builder
+```
+
+### Epics
+
+Epics are a specialized workflow for processing GitHub issues that contain multiple child stories. When you pass a GitHub issue to `/flo` and it's detected as an epic, MoFlo processes each child story sequentially through the full `/flo` workflow (research → implement → test → PR).
+
+For simple epics, `/flo <epic-number>` is all you need. For complex features requiring state tracking, resume from failure, and auto-merge between stories, use the dedicated `flo epic` command:
+
+```bash
+flo epic 42                              # Run all stories in epic #42
+flo epic 42 --strategy auto-merge        # Per-story PRs with auto-merge
+flo epic 42 --dry-run                    # Preview execution plan
+flo epic status 42                       # Check progress
+flo epic reset 42                        # Reset state for re-run
+```
+
+For features with inter-story dependencies, define them in a YAML file with `depends_on` fields for topological ordering. See the [Epic handling](#epic-handling) section above for detection criteria and the full comparison between `/flo <epic>` and `flo epic run`.
+
 ## Commands
 
 You don't need to run these for normal use — `flo init` sets everything up, and the hooks handle memory, routing, and learning automatically. These commands are here for manual setup, debugging, and tweaking.
@@ -383,7 +439,7 @@ flo diagnose --json              # JSON output for CI/automation
 
 #### `flo doctor` — Health Check
 
-`flo doctor` runs 16 parallel health checks against your environment and reports pass/warn/fail for each:
+`flo doctor` runs 25 parallel health checks against your environment and reports pass/warn/fail for each:
 
 | Check | What it verifies |
 |-------|-----------------|
@@ -391,7 +447,8 @@ flo diagnose --json              # JSON output for CI/automation
 | **Node.js Version** | Node.js >= 20 installed |
 | **npm Version** | npm >= 9 installed |
 | **Claude Code CLI** | `claude` command available |
-| **Git** | Git installed and project is a git repository |
+| **Git** | Git installed |
+| **Git Repository** | Project is inside a git repository |
 | **Config File** | Valid `moflo.yaml` or `.claude-flow/config.yaml` exists |
 | **Daemon Status** | Background daemon running (checks PID, cleans stale locks) |
 | **Memory Database** | SQLite memory DB exists and is accessible |
@@ -401,7 +458,16 @@ flo diagnose --json              # JSON output for CI/automation
 | **Disk Space** | Sufficient free disk space (warns at 80%, fails at 90%) |
 | **TypeScript** | TypeScript compiler available |
 | **agentic-flow** | Optional agentic-flow package installed (for enhanced embeddings/routing) |
+| **Semantic Quality** | Semantic search returns relevant, varied results with acceptable similarity scores |
+| **Intelligence** | SONA, ReasoningBank, PatternLearner, LoRA, EWC++, and RL subsystems are loaded |
+| **Workflow Engine** | Core workflow modules, step commands, loaders, and index are present |
 | **Zombie Processes** | No orphaned MoFlo node processes running |
+| **Subagent Health** | Agent lifecycle (spawn → status → terminate) completes successfully |
+| **Workflow Execution** | End-to-end workflow probe runs a real step and captures output |
+| **MCP Tool Invocation** | MCP tool schemas are loaded and callable |
+| **MCP Workflow Integration** | Bridge between MCP tools and workflow engine functions correctly |
+| **Hook Execution** | Hook executor is functional and can fire hooks |
+| **Gate Health** | All gate cases, hook bindings, and state file are intact |
 
 **Auto-fix mode** (`flo doctor --fix`) attempts to repair each failing check automatically:
 
@@ -459,23 +525,28 @@ flo --version                    # Show version
 
 ### Hooks (enabled OOTB)
 
-Hooks are shell commands that Claude Code runs automatically at specific points in its workflow. MoFlo installs 14 hooks across 7 lifecycle events. You don't invoke these — they fire automatically.
+Hooks are shell commands that Claude Code runs automatically at specific points in its workflow. MoFlo installs 21 hook bindings across 8 lifecycle events. You don't invoke these — they fire automatically.
 
 | Hook Event | What fires | What it does | Enabled OOTB |
 |------------|-----------|-------------|:---:|
 | **PreToolUse: Write/Edit** | `flo hooks pre-edit` | Records which file is about to be edited, captures before-state for learning | Yes |
 | **PreToolUse: Glob/Grep** | `flo gate check-before-scan` | Memory-first gate — blocks file exploration until memory is searched | Yes |
 | **PreToolUse: Read** | `flo gate check-before-read` | Blocks reading guidance files directly until memory is searched | Yes |
-| **PreToolUse: Task** | `flo gate check-before-agent` + `flo hooks pre-task` | TaskCreate gate + routing recommendation before agent spawn | Yes |
 | **PreToolUse: Bash** | `flo gate check-dangerous-command` | Safety check on shell commands | Yes |
+| **PreToolUse: Bash** | `flo gate check-before-pr` | Validates PR readiness before `gh pr create` | Yes |
 | **PostToolUse: Write/Edit** | `flo hooks post-edit` | Records edit outcome, optionally trains neural patterns | Yes |
-| **PostToolUse: Task** | `flo hooks post-task` | Records task completion, feeds outcome into routing learner | Yes |
+| **PostToolUse: Agent** | `flo hooks post-task` | Records task completion, feeds outcome into routing learner | Yes |
 | **PostToolUse: TaskCreate** | `flo gate record-task-created` | Records that a task was registered (clears TaskCreate gate) | Yes |
 | **PostToolUse: Bash** | `flo gate check-bash-memory` | Detects memory search commands in Bash (clears memory gate) | Yes |
 | **PostToolUse: memory_search** | `flo gate record-memory-searched` | Records that memory was searched (clears memory-first gate) | Yes |
-| **UserPromptSubmit** | `flo gate prompt-reminder` + `flo hooks route` | Resets per-prompt gate state, tracks context bracket, routes task to agent | Yes |
+| **PostToolUse: TaskUpdate** | `flo gate check-task-transition` | Validates task state transitions (prevents skipping states) | Yes |
+| **PostToolUse: memory_store** | `flo gate record-learnings-stored` | Records that learnings were persisted to memory | Yes |
+| **UserPromptSubmit** | `flo hooks prompt` + `flo gate prompt-reminder` | Resets per-prompt gate state, tracks context bracket, routes task to agent | Yes |
+| **SubagentStart** | `subagent-start` | Injects context and guidance into spawned sub-agents | Yes |
 | **SessionStart** | `session-start-launcher.mjs` | Launches auto-indexers (guidance, code map, tests), restores session state | Yes |
+| **SessionStart** | `auto-memory-hook.mjs` | Imports auto-memory entries from Claude's persistent memory | Yes |
 | **Stop** | `flo hooks session-end` | Persists session metrics, exports learning data | Yes |
+| **Stop** | `auto-memory-hook.mjs` | Syncs auto-memory state on session close | Yes |
 | **PreCompact** | `flo gate compact-guidance` | Injects guidance summary before context compaction | Yes |
 | **Notification** | `flo hooks notification` | Routes Claude Code notifications through MoFlo | Yes |
 
@@ -492,14 +563,14 @@ These are the backend systems that hooks and commands interact with.
 | **Test Indexing** | Maps test files to their source targets based on naming patterns | The AI can answer "what tests cover X?" and identify untested code | Yes |
 | **Workflow Gates** | Hook-based enforcement of memory-first and task-registration patterns | Prevents the AI from wasting tokens on blind exploration and untracked agent spawns | Yes |
 | **Context Tracking** | Interaction counter with bracket classification (FRESH/MODERATE/DEPLETED/CRITICAL) | Warns before context quality degrades, suggests when to checkpoint or start fresh | Yes |
-| **Semantic Routing** | Matches task descriptions to agent types using vector similarity against 12 built-in patterns | Routes work to the right specialist (security-architect, tester, coder, etc.) automatically | Yes |
+| **Semantic Routing** | Matches task descriptions to agent types using vector similarity against 17 built-in patterns | Routes work to the right specialist (security-architect, tester, coder, etc.) automatically | Yes |
 | **Learned Routing** | Records task outcomes (agent type + success/failure) and feeds them back into routing | Routing gets smarter over time — successful patterns are weighted higher in future recommendations | Yes |
 | **SONA Learning** | Self-Optimizing Neural Architecture that learns from task trajectories | Adapts routing weights based on actual outcomes, not just keyword matching | Yes |
 | **MicroLoRA Adaptation** | Rank-2 LoRA weight updates from successful patterns (~1µs per adapt) | Fine-grained model adaptation without full retraining | Yes |
 | **EWC++ Consolidation** | Elastic Weight Consolidation that prevents catastrophic forgetting | New learning doesn't overwrite patterns from earlier sessions | Yes |
 | **Session Persistence** | Stop hook exports session metrics; SessionStart hook restores prior state | Patterns learned on Monday are available on Friday | Yes |
 | **Status Line** | Live dashboard showing git branch, session state, memory stats, MCP status | At-a-glance visibility into what MoFlo is doing | Yes |
-| **MCP Tool Server** | 150+ MCP tools for memory, hooks, coordination, etc. (schemas deferred by default) | Enables AI clients to interact with MoFlo programmatically | Yes (deferred) |
+| **MCP Tool Server** | 140+ MCP tools for memory, hooks, coordination, etc. (schemas deferred by default) | Enables AI clients to interact with MoFlo programmatically | Yes (deferred) |
 
 ### Systems (available but off by default)
 
@@ -507,7 +578,7 @@ These are the backend systems that hooks and commands interact with.
 |--------|-------------|---------------|
 | **Model Routing** | Auto-selects haiku/sonnet/opus per task based on complexity analysis | `model_routing.enabled: true` in `moflo.yaml` |
 | **MCP Auto-Start** | Starts MCP server automatically on session begin | `mcp.auto_start: true` in `moflo.yaml` |
-| **Tool Schema Eager Loading** | Loads all 150+ MCP tool schemas at startup (instead of on-demand) | `mcp.tool_defer: false` in `moflo.yaml` |
+| **Tool Schema Eager Loading** | Loads all 140+ MCP tool schemas at startup (instead of on-demand) | `mcp.tool_defer: false` in `moflo.yaml` |
 
 ## The Two-Layer Task System
 
@@ -540,7 +611,7 @@ The `/flo` skill ties both systems together for GitHub issues — driving a full
 
 ### Intelligent Agent Routing
 
-MoFlo ships with 12 built-in task patterns that map common work to the right agent type:
+MoFlo ships with 17 built-in task patterns that map common work to the right agent type:
 
 | Pattern | Keywords | Primary Agent |
 |---------|----------|---------------|
@@ -550,7 +621,7 @@ MoFlo ships with 12 built-in task patterns that map common work to the right age
 | feature-task | implement, add, create, build | architect → coder |
 | bugfix-task | bug, fix, error, crash, debug | coder |
 | api-task | endpoint, REST, route, handler | architect → coder |
-| ... | | *(12 patterns total)* |
+| ... | | *(17 patterns total)* |
 
 When you route a task (`flo hooks route --task "..."` or via MCP), MoFlo runs semantic similarity against these patterns using HNSW vector search and returns a ranked recommendation with confidence scores.
 
@@ -566,11 +637,12 @@ MoFlo uses a SQLite database (via sql.js/WASM — no native deps) to store three
 |-----------|---------------|-------------------|
 | `guidance` | Chunked project docs (`.claude/guidance/`, `docs/`) with 384-dim embeddings | `flo-index` on session start |
 | `code-map` | Structural index of source files (exports, classes, functions) | `flo-codemap` on session start |
+| `tests` | Test file → source target reverse mapping | `flo-testmap` on session start |
 | `patterns` | Learned patterns from successful task outcomes | Post-task hooks after agent work |
 
 **Semantic search** uses cosine similarity on neural embeddings (MiniLM-L6-v2, 384 dimensions). When Claude searches memory, it gets the most relevant chunks ranked by semantic similarity — not keyword matching.
 
-**Session start indexing** — Three background processes run on every session start: the guidance indexer, the code map generator, and the learning service. All three are incremental (unchanged files are skipped) and run in parallel so they don't block the session.
+**Session start indexing** — Four background processes run on every session start: the guidance indexer, the code map generator, the test mapper, and the learning service. All four are incremental (unchanged files are skipped) and run in parallel so they don't block the session.
 
 **Cross-session persistence** — Everything stored in the database survives across sessions. Patterns learned on Monday are available on Friday. The stop hook exports session metrics, and the session-restore hook loads prior state.
 
@@ -618,7 +690,7 @@ auto_index:
   tests: true                        # Auto-index test files on session start
 
 mcp:
-  tool_defer: true                   # Defer 150+ tool schemas; loaded on demand via ToolSearch
+  tool_defer: true                   # Defer 140+ tool schemas; loaded on demand via ToolSearch
   auto_start: false                  # Auto-start MCP server on session begin
 
 hooks:
@@ -657,7 +729,7 @@ status_line:
 
 ### Tool Deferral
 
-By default, `tool_defer` is `true`. MoFlo exposes 150+ MCP tools — loading all their schemas at conversation start consumes significant context. With deferral enabled, only tool **names** are listed at startup (compact), and full schemas are fetched on demand via `ToolSearch` when actually needed. Hooks and CLI commands continue to work normally since they call the daemon directly, not through MCP tool schemas.
+By default, `tool_defer` is `true`. MoFlo exposes 140+ MCP tools — loading all their schemas at conversation start consumes significant context. With deferral enabled, only tool **names** are listed at startup (compact), and full schemas are fetched on demand via `ToolSearch` when actually needed. Hooks and CLI commands continue to work normally since they call the daemon directly, not through MCP tool schemas.
 
 Set `tool_defer: false` if you want all tool schemas available immediately (useful for offline/air-gapped environments where `ToolSearch` may not work).
 
@@ -687,13 +759,15 @@ model_routing:
 
 ## Architecture
 
-- **7 standalone bin scripts** shipped with npm: `flo-search`, `flo-embeddings`, `flo-index`, `flo-codemap`, `flo-learn`, `flo-setup`, plus the main `flo` CLI
+- **9 bin entries** shipped with npm: `flo` (main CLI), `moflo`, `claude-flow` (aliases), `flo-setup`, `flo-codemap`, `flo-search`, `flo-embeddings`, `flo-index`, `flo-testmap`
 - **Project config system**: `moflo.yaml` for per-project settings
 - **One-stop init**: `flo init` generates everything needed for OOTB operation
 
 ## Ruflo / Claude Flow
 
-MoFlo builds on top of the full [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) engine. For detailed documentation on the underlying capabilities — swarm topologies, hive-mind consensus, HNSW vector search, neural routing, MCP server internals, and more — check out the [Ruflo repository](https://github.com/ruvnet/ruflo).
+MoFlo originated as a fork of [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) and has since diverged significantly. The upstream project distributes functionality across multiple scoped packages (`@claude-flow/cli`, `@claude-flow/mcp`, `@claude-flow/shared`) with native crypto dependencies. MoFlo consolidates everything into a single package with 4 runtime dependencies and zero native bindings — the entire stack runs on pure JavaScript/TypeScript and WASM.
+
+For documentation on the underlying capabilities that both projects share — swarm topologies, hive-mind consensus, HNSW vector search, neural routing, MCP server internals — see the [Ruflo repository](https://github.com/ruvnet/ruflo).
 
 ## Why I Made This
 
