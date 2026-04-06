@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# Thin wrapper — avoids npx overhead on Windows.
-# Runs the local moflo CLI directly via node.
-exec node node_modules/moflo/bin/cli.js "$@"

@@ -293,6 +293,9 @@ export async function initMoflo(options: MofloInitOptions): Promise<MofloInitRes
   // Step 8: Sync ALL shipped guidance docs from moflo to project
   steps.push(...syncAllShippedGuidance(projectRoot, force));
 
+  // Step 9: Install global `flo` shim so bare `flo` command works without npx
+  steps.push(installGlobalFloShim(projectRoot));
+
   return { steps };
 }
 
@@ -945,4 +948,44 @@ function syncAllShippedGuidance(root: string, force?: boolean): MofloInitResult[
   }
 
   return results;
+}
+
+// ============================================================================
+// Step 9: Install global `flo` CLI shim
+// Places a tiny shim in npm's global bin directory so bare `flo` works
+// everywhere without npx. The shim walks up from cwd to find and exec the
+// local project's node_modules/.bin/flo — correct version always runs.
+// ============================================================================
+
+function installGlobalFloShim(root: string): MofloInitResult['steps'][0] {
+  try {
+    const shimLibCandidates = [
+      path.join(root, 'node_modules', 'moflo', 'bin', 'lib', 'install-global-shim.mjs'),
+      path.join(root, 'bin', 'lib', 'install-global-shim.mjs'),
+    ];
+    const shimLib = shimLibCandidates.find(p => fs.existsSync(p));
+
+    if (!shimLib) {
+      return { name: 'global flo shim', status: 'skipped', detail: 'Shim installer not found' };
+    }
+
+    // Dynamic import of the ESM shim installer
+    // We use a sync approach: spawn a child process to run the installer
+    const { execSync } = require('child_process');
+    const result = execSync(
+      `node -e "import('file://${shimLib.replace(/\\/g, '/')}').then(m => { const r = m.installGlobalShim(); console.log(JSON.stringify(r)); })"`,
+      { encoding: 'utf8', timeout: 10000 },
+    ).trim();
+
+    const parsed = JSON.parse(result);
+    if (parsed.installed) {
+      return { name: 'global flo shim', status: 'created', detail: `Installed to ${parsed.path}` };
+    } else if (parsed.skipped) {
+      return { name: 'global flo shim', status: 'skipped', detail: parsed.error || 'Already installed' };
+    }
+    return { name: 'global flo shim', status: 'skipped', detail: 'Already up to date' };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { name: 'global flo shim', status: 'error', detail: msg };
+  }
 }

@@ -330,6 +330,19 @@ try {
   }
 } catch { /* non-fatal */ }
 
+// ── 3d. Ensure global `flo` shim exists ─────────────────────────────────────
+// Installs a tiny shim into npm's global bin so bare `flo` resolves to the
+// local project's node_modules/.bin/flo. Idempotent — skips if already present.
+try {
+  const shimLib = resolve(projectRoot, 'node_modules/moflo/bin/lib/install-global-shim.mjs');
+  const localShimLib = resolve(projectRoot, 'bin/lib/install-global-shim.mjs');
+  const shimPath = existsSync(shimLib) ? shimLib : existsSync(localShimLib) ? localShimLib : null;
+  if (shimPath) {
+    const { installGlobalShim } = await import(`file://${shimPath.replace(/\\/g, '/')}`);
+    installGlobalShim({ silent: true });
+  }
+} catch { /* non-fatal — flo still works via npx */ }
+
 // ── 4. Spawn background tasks ───────────────────────────────────────────────
 const localCli = resolve(projectRoot, 'node_modules/moflo/src/modules/cli/bin/cli.js');
 const hasLocalCli = existsSync(localCli);
