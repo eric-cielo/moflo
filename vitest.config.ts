@@ -34,18 +34,8 @@ export default defineConfig({
       'tests/rvf-*.test.ts',
       // Context persistence hook — missing deps
       'tests/context-persistence-hook.test.mjs',
-      // Security module tests that need native crypto (bcrypt, etc.)
+      // Security module test — needs native bcrypt
       'src/modules/security/__tests__/password-hasher.test.ts',
-      'src/modules/security/__tests__/safe-executor.test.ts',
-      'src/modules/security/__tests__/credential-generator.test.ts',
-      'src/modules/security/__tests__/path-validator.test.ts',
-      // input-validator.test.ts un-excluded — doesn't need native crypto
-      'src/modules/security/__tests__/token-generator.test.ts',
-      'src/modules/security/__tests__/unit/safe-executor.test.ts',
-      'src/modules/security/__tests__/unit/path-validator.test.ts',
-      'src/modules/security/__tests__/unit/token-generator.test.ts',
-      'src/modules/security/__tests__/unit/credential-generator.test.ts',
-      'src/modules/security/__tests__/unit/password-hasher.test.ts',
       // Embeddings .mjs tests — collection failures
       'src/modules/embeddings/__tests__/simple.test.mjs',
       'src/modules/embeddings/__tests__/minimal.test.mjs',
