@@ -106,14 +106,15 @@ PR CANNOT BE CREATED until all relevant tests pass.
 ## Workflow Overview
 
 ```
-Research -> Ticket -> Execute -> Testing -> Simplify -> PR+Done
+Research -> Ticket -> Execute -> Testing -> Simplify -> Learnings -> PR+Done
 
 Research:    Fetch issue, search memory, read guidance, find files
 Ticket:      Create or update GitHub issue with description, acceptance criteria, test cases
 Execute:     Assign self, create branch, implement changes
 Testing:     Unit + Integration + E2E tests (ALL MUST PASS - gate)
 Simplify:    Run /simplify on changed code (gate - must run before PR)
-PR+Done:     Create PR, update issue status, store learnings
+Learnings:   mcp__moflo__memory_store patterns (gate - MUST run before PR)
+PR+Done:     Create PR, update issue status
 ```
 
 ### Workflow Gates
@@ -365,14 +366,29 @@ Closes #<issue-number>
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-### 5.2 Create PR
+### 5.2 Store Learnings (REQUIRED — gate blocks PR creation until this runs)
+
+Before creating a PR, store what was learned using `mcp__moflo__memory_store`.
+The `check-before-pr` gate will **block** `gh pr create` if this step is skipped.
+
+```
+mcp__moflo__memory_store:
+  key: "pattern:<topic>"
+  namespace: "patterns"
+  value: "<what was learned: files changed, patterns used, decisions made>"
+  tags: ["<relevant-tags>"]
+```
+
+This must happen BEFORE `gh pr create` — not after.
+
+### 5.3 Create PR
 
 **If `--epic-branch` was passed** (epic mode):
 **SKIP PR creation entirely.** The commit from 5.1 (with `Closes #<issue-number>`) is sufficient.
 The epic orchestrator will create a single consolidated PR after all stories complete.
 Also skip pushing — the epic orchestrator handles the final push.
 
-Proceed directly to 5.3 (update issue status only).
+Proceed directly to 5.4 (update issue status only).
 
 **Otherwise** (normal mode):
 ```bash
@@ -392,7 +408,7 @@ gh pr create --title "type(scope): description" --body "## Summary
 Closes #<issue-number>"
 ```
 
-### 5.3 Update Issue Status
+### 5.4 Update Issue Status
 ```bash
 gh issue edit <issue-number> --remove-label "in-progress" --add-label "ready-for-review"
 gh issue comment <issue-number> --body "PR created: <pr-url>"
@@ -684,5 +700,6 @@ Print: name, abbreviation, description, version, source file, arguments, step co
 3. Assign issue to self, add "in-progress" label
 4. Create branch, implement, test
 5. Run /simplify on changed code, re-test if changes made
-6. Commit, create PR, update issue status
-7. Store learnings
+6. Commit changes
+7. Store learnings via mcp__moflo__memory_store (REQUIRED before PR — gate enforced)
+8. Create PR, update issue status
