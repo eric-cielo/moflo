@@ -39,7 +39,7 @@ export default defineConfig({
       'src/modules/security/__tests__/safe-executor.test.ts',
       'src/modules/security/__tests__/credential-generator.test.ts',
       'src/modules/security/__tests__/path-validator.test.ts',
-      'src/modules/security/__tests__/input-validator.test.ts',
+      // input-validator.test.ts un-excluded — doesn't need native crypto
       'src/modules/security/__tests__/token-generator.test.ts',
       'src/modules/security/__tests__/unit/safe-executor.test.ts',
       'src/modules/security/__tests__/unit/path-validator.test.ts',

@@ -31,7 +31,7 @@
  * Implements ADR-005: MCP-First API Design
  */
 
-import { z } from 'zod';
+import * as v from 'valibot';
 import { randomBytes } from 'crypto';
 
 // ============================================================================
@@ -337,125 +337,115 @@ function initializeMockData(): void {
 // ============================================================================
 
 // Core Claiming Schemas
-const issueClaimSchema = z.object({
-  issueId: z.string().min(1).describe('Issue ID to claim'),
-  claimantType: z.enum(['human', 'agent']).describe('Type of claimant'),
-  claimantId: z.string().min(1).describe('ID of the claimant'),
-  priority: z.enum(['critical', 'high', 'medium', 'low']).optional()
-    .describe('Override priority for the claim'),
-  expiresInMs: z.number().int().positive().optional()
-    .describe('Claim expiration time in milliseconds'),
+const issueClaimSchema = v.object({
+  issueId: v.pipe(v.string(), v.minLength(1)),
+  claimantType: v.picklist(['human', 'agent']),
+  claimantId: v.pipe(v.string(), v.minLength(1)),
+  priority: v.optional(v.picklist(['critical', 'high', 'medium', 'low'])),
+  expiresInMs: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
 });
 
-const issueReleaseSchema = z.object({
-  issueId: z.string().min(1).describe('Issue ID to release'),
-  claimantId: z.string().min(1).describe('ID of the current claimant'),
-  reason: z.string().optional().describe('Reason for releasing the claim'),
+const issueReleaseSchema = v.object({
+  issueId: v.pipe(v.string(), v.minLength(1)),
+  claimantId: v.pipe(v.string(), v.minLength(1)),
+  reason: v.optional(v.string()),
 });
 
-const issueHandoffSchema = z.object({
-  issueId: z.string().min(1).describe('Issue ID for handoff'),
-  fromId: z.string().min(1).describe('Current claimant ID'),
-  toId: z.string().optional().describe('Target claimant ID (optional for open handoff)'),
-  toType: z.enum(['human', 'agent']).optional().describe('Target claimant type'),
-  reason: z.enum(['blocked', 'expertise-needed', 'capacity', 'reassignment', 'other'])
-    .describe('Reason for handoff'),
-  notes: z.string().optional().describe('Additional notes for handoff'),
+const issueHandoffSchema = v.object({
+  issueId: v.pipe(v.string(), v.minLength(1)),
+  fromId: v.pipe(v.string(), v.minLength(1)),
+  toId: v.optional(v.string()),
+  toType: v.optional(v.picklist(['human', 'agent'])),
+  reason: v.picklist(['blocked', 'expertise-needed', 'capacity', 'reassignment', 'other']),
+  notes: v.optional(v.string()),
 });
 
-const issueStatusUpdateSchema = z.object({
-  issueId: z.string().min(1).describe('Issue ID to update'),
-  claimantId: z.string().min(1).describe('Current claimant ID'),
-  status: z.enum(['active', 'blocked', 'in-review', 'completed']).describe('New status'),
-  progress: z.number().min(0).max(100).optional().describe('Progress percentage (0-100)'),
-  notes: z.string().optional().describe('Status update notes'),
+const issueStatusUpdateSchema = v.object({
+  issueId: v.pipe(v.string(), v.minLength(1)),
+  claimantId: v.pipe(v.string(), v.minLength(1)),
+  status: v.picklist(['active', 'blocked', 'in-review', 'completed']),
+  progress: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(100))),
+  notes: v.optional(v.string()),
 });
 
-const issueListAvailableSchema = z.object({
-  priority: z.enum(['critical', 'high', 'medium', 'low']).optional()
-    .describe('Filter by priority'),
-  labels: z.array(z.string()).optional().describe('Filter by labels'),
-  repository: z.string().optional().describe('Filter by repository'),
-  limit: z.number().int().positive().max(100).default(50).describe('Maximum results'),
-  offset: z.number().int().nonnegative().default(0).describe('Pagination offset'),
+const issueListAvailableSchema = v.object({
+  priority: v.optional(v.picklist(['critical', 'high', 'medium', 'low'])),
+  labels: v.optional(v.array(v.string())),
+  repository: v.optional(v.string()),
+  limit: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100)), 50),
+  offset: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0)), 0),
 });
 
-const issueListMineSchema = z.object({
-  claimantId: z.string().min(1).describe('Claimant ID'),
-  status: z.enum(['active', 'blocked', 'in-review', 'completed', 'released', 'stolen']).optional()
-    .describe('Filter by status'),
-  limit: z.number().int().positive().max(100).default(50).describe('Maximum results'),
-  offset: z.number().int().nonnegative().default(0).describe('Pagination offset'),
+const issueListMineSchema = v.object({
+  claimantId: v.pipe(v.string(), v.minLength(1)),
+  status: v.optional(v.picklist(['active', 'blocked', 'in-review', 'completed', 'released', 'stolen'])),
+  limit: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100)), 50),
+  offset: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0)), 0),
 });
 
-const issueBoardSchema = z.object({
-  includeAgents: z.boolean().default(true).describe('Include agent claims'),
-  includeHumans: z.boolean().default(true).describe('Include human claims'),
-  groupBy: z.enum(['claimant', 'priority', 'status']).optional()
-    .describe('Group claims by field'),
+const issueBoardSchema = v.object({
+  includeAgents: v.optional(v.boolean(), true),
+  includeHumans: v.optional(v.boolean(), true),
+  groupBy: v.optional(v.picklist(['claimant', 'priority', 'status'])),
 });
 
 // Work Stealing Schemas
-const issueMarkStealableSchema = z.object({
-  issueId: z.string().min(1).describe('Issue ID to mark as stealable'),
-  claimantId: z.string().min(1).describe('Current claimant ID'),
-  reason: z.string().optional().describe('Reason for making stealable'),
+const issueMarkStealableSchema = v.object({
+  issueId: v.pipe(v.string(), v.minLength(1)),
+  claimantId: v.pipe(v.string(), v.minLength(1)),
+  reason: v.optional(v.string()),
 });
 
-const issueStealSchema = z.object({
-  issueId: z.string().min(1).describe('Issue ID to steal'),
-  stealerId: z.string().min(1).describe('ID of the stealer'),
-  stealerType: z.enum(['human', 'agent']).describe('Type of stealer'),
-  reason: z.string().optional().describe('Reason for stealing'),
+const issueStealSchema = v.object({
+  issueId: v.pipe(v.string(), v.minLength(1)),
+  stealerId: v.pipe(v.string(), v.minLength(1)),
+  stealerType: v.picklist(['human', 'agent']),
+  reason: v.optional(v.string()),
 });
 
-const issueGetStealableSchema = z.object({
-  priority: z.enum(['critical', 'high', 'medium', 'low']).optional()
-    .describe('Filter by priority'),
-  limit: z.number().int().positive().max(100).default(50).describe('Maximum results'),
+const issueGetStealableSchema = v.object({
+  priority: v.optional(v.picklist(['critical', 'high', 'medium', 'low'])),
+  limit: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100)), 50),
 });
 
-const issueContestStealSchema = z.object({
-  issueId: z.string().min(1).describe('Issue ID being contested'),
-  contesterId: z.string().min(1).describe('ID of the contester'),
-  reason: z.string().min(1).describe('Reason for contesting'),
+const issueContestStealSchema = v.object({
+  issueId: v.pipe(v.string(), v.minLength(1)),
+  contesterId: v.pipe(v.string(), v.minLength(1)),
+  reason: v.pipe(v.string(), v.minLength(1)),
 });
 
 // Load Balancing Schemas
-const agentLoadInfoSchema = z.object({
-  agentId: z.string().min(1).describe('Agent ID to get load info for'),
+const agentLoadInfoSchema = v.object({
+  agentId: v.pipe(v.string(), v.minLength(1)),
 });
 
-const swarmRebalanceSchema = z.object({
-  strategy: z.enum(['round-robin', 'least-loaded', 'priority-based', 'capability-based'])
-    .default('least-loaded').describe('Rebalancing strategy'),
-  dryRun: z.boolean().default(false).describe('Simulate without making changes'),
+const swarmRebalanceSchema = v.object({
+  strategy: v.optional(v.picklist(['round-robin', 'least-loaded', 'priority-based', 'capability-based']), 'least-loaded'),
+  dryRun: v.optional(v.boolean(), false),
 });
 
-const swarmLoadOverviewSchema = z.object({
-  includeRecommendations: z.boolean().default(true)
-    .describe('Include optimization recommendations'),
+const swarmLoadOverviewSchema = v.object({
+  includeRecommendations: v.optional(v.boolean(), true),
 });
 
 // Additional Tools Schemas
-const claimHistorySchema = z.object({
-  issueId: z.string().min(1).describe('Issue ID to get history for'),
-  limit: z.number().int().positive().max(100).default(50).describe('Maximum entries'),
+const claimHistorySchema = v.object({
+  issueId: v.pipe(v.string(), v.minLength(1)),
+  limit: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100)), 50),
 });
 
-const claimMetricsSchema = z.object({
-  timeRange: z.enum(['1h', '24h', '7d', '30d', 'all']).default('24h')
-    .describe('Time range for metrics'),
+const claimMetricsSchema = v.object({
+  timeRange: v.optional(v.picklist(['1h', '24h', '7d', '30d', 'all']), '24h'),
 });
 
-const claimConfigSchema = z.object({
-  action: z.enum(['get', 'set']).describe('Get or set configuration'),
-  config: z.object({
-    defaultExpirationMs: z.number().int().positive().optional(),
-    maxClaimsPerAgent: z.number().int().positive().optional(),
-    contestWindowMs: z.number().int().positive().optional(),
-    autoReleaseOnInactivityMs: z.number().int().positive().optional(),
-  }).optional().describe('Configuration values (for set action)'),
+const claimConfigSchema = v.object({
+  action: v.picklist(['get', 'set']),
+  config: v.optional(v.object({
+    defaultExpirationMs: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
+    maxClaimsPerAgent: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
+    contestWindowMs: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
+    autoReleaseOnInactivityMs: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
+  })),
 });
 
 // ============================================================================
@@ -466,7 +456,7 @@ const claimConfigSchema = z.object({
  * Claim an issue to work on
  */
 async function handleIssueClaim(
-  input: z.infer<typeof issueClaimSchema>,
+  input: v.InferOutput<typeof issueClaimSchema>,
   context?: ToolContext
 ): Promise<{
   claimId: string;
@@ -540,7 +530,7 @@ async function handleIssueClaim(
  * Release a claim
  */
 async function handleIssueRelease(
-  input: z.infer<typeof issueReleaseSchema>,
+  input: v.InferOutput<typeof issueReleaseSchema>,
   context?: ToolContext
 ): Promise<{
   released: boolean;
@@ -590,7 +580,7 @@ async function handleIssueRelease(
  * Request handoff to another agent/human
  */
 async function handleIssueHandoff(
-  input: z.infer<typeof issueHandoffSchema>,
+  input: v.InferOutput<typeof issueHandoffSchema>,
   context?: ToolContext
 ): Promise<{
   handoffId: string;
@@ -635,7 +625,7 @@ async function handleIssueHandoff(
  * Update claim status
  */
 async function handleIssueStatusUpdate(
-  input: z.infer<typeof issueStatusUpdateSchema>,
+  input: v.InferOutput<typeof issueStatusUpdateSchema>,
   context?: ToolContext
 ): Promise<{
   issueId: string;
@@ -680,7 +670,7 @@ async function handleIssueStatusUpdate(
  * List unclaimed issues
  */
 async function handleIssueListAvailable(
-  input: z.infer<typeof issueListAvailableSchema>,
+  input: v.InferOutput<typeof issueListAvailableSchema>,
   context?: ToolContext
 ): Promise<{
   issues: Issue[];
@@ -729,7 +719,7 @@ async function handleIssueListAvailable(
  * List my claims
  */
 async function handleIssueListMine(
-  input: z.infer<typeof issueListMineSchema>,
+  input: v.InferOutput<typeof issueListMineSchema>,
   context?: ToolContext
 ): Promise<{
   claims: Claim[];
@@ -769,7 +759,7 @@ async function handleIssueListMine(
  * View claim board
  */
 async function handleIssueBoard(
-  input: z.infer<typeof issueBoardSchema>,
+  input: v.InferOutput<typeof issueBoardSchema>,
   context?: ToolContext
 ): Promise<{
   claims: Claim[];
@@ -840,7 +830,7 @@ async function handleIssueBoard(
  * Mark claim as stealable
  */
 async function handleIssueMarkStealable(
-  input: z.infer<typeof issueMarkStealableSchema>,
+  input: v.InferOutput<typeof issueMarkStealableSchema>,
   context?: ToolContext
 ): Promise<{
   marked: boolean;
@@ -880,7 +870,7 @@ async function handleIssueMarkStealable(
  * Steal a stealable issue
  */
 async function handleIssueSteal(
-  input: z.infer<typeof issueStealSchema>,
+  input: v.InferOutput<typeof issueStealSchema>,
   context?: ToolContext
 ): Promise<{
   stolen: boolean;
@@ -951,7 +941,7 @@ async function handleIssueSteal(
  * Get stealable issues
  */
 async function handleIssueGetStealable(
-  input: z.infer<typeof issueGetStealableSchema>,
+  input: v.InferOutput<typeof issueGetStealableSchema>,
   context?: ToolContext
 ): Promise<{
   issues: Array<{
@@ -1005,7 +995,7 @@ async function handleIssueGetStealable(
  * Contest a steal
  */
 async function handleIssueContestSteal(
-  input: z.infer<typeof issueContestStealSchema>,
+  input: v.InferOutput<typeof issueContestStealSchema>,
   context?: ToolContext
 ): Promise<{
   contested: boolean;
@@ -1042,7 +1032,7 @@ async function handleIssueContestSteal(
  * Get agent load info
  */
 async function handleAgentLoadInfo(
-  input: z.infer<typeof agentLoadInfoSchema>,
+  input: v.InferOutput<typeof agentLoadInfoSchema>,
   context?: ToolContext
 ): Promise<AgentLoad> {
   if (context?.claimsService) {
@@ -1070,7 +1060,7 @@ async function handleAgentLoadInfo(
  * Trigger swarm rebalancing
  */
 async function handleSwarmRebalance(
-  input: z.infer<typeof swarmRebalanceSchema>,
+  input: v.InferOutput<typeof swarmRebalanceSchema>,
   context?: ToolContext
 ): Promise<{
   rebalanced: boolean;
@@ -1104,7 +1094,7 @@ async function handleSwarmRebalance(
  * Get swarm-wide load overview
  */
 async function handleSwarmLoadOverview(
-  input: z.infer<typeof swarmLoadOverviewSchema>,
+  input: v.InferOutput<typeof swarmLoadOverviewSchema>,
   context?: ToolContext
 ): Promise<{
   totalAgents: number;
@@ -1182,7 +1172,7 @@ async function handleSwarmLoadOverview(
  * Get claim history
  */
 async function handleClaimHistory(
-  input: z.infer<typeof claimHistorySchema>,
+  input: v.InferOutput<typeof claimHistorySchema>,
   context?: ToolContext
 ): Promise<{
   issueId: string;
@@ -1229,7 +1219,7 @@ async function handleClaimHistory(
  * Get claim metrics
  */
 async function handleClaimMetrics(
-  input: z.infer<typeof claimMetricsSchema>,
+  input: v.InferOutput<typeof claimMetricsSchema>,
   context?: ToolContext
 ): Promise<{
   timeRange: string;
@@ -1283,7 +1273,7 @@ async function handleClaimMetrics(
  * Get/set claim configuration
  */
 async function handleClaimConfig(
-  input: z.infer<typeof claimConfigSchema>,
+  input: v.InferOutput<typeof claimConfigSchema>,
   _context?: ToolContext
 ): Promise<{
   action: 'get' | 'set';
@@ -1352,7 +1342,7 @@ export const issueClaimTool: MCPTool = {
     required: ['issueId', 'claimantType', 'claimantId'],
   },
   handler: async (input, context) => {
-    const validated = issueClaimSchema.parse(input);
+    const validated = v.parse(issueClaimSchema, input);
     return handleIssueClaim(validated, context);
   },
   category: 'claims',
@@ -1373,7 +1363,7 @@ export const issueReleaseTool: MCPTool = {
     required: ['issueId', 'claimantId'],
   },
   handler: async (input, context) => {
-    const validated = issueReleaseSchema.parse(input);
+    const validated = v.parse(issueReleaseSchema, input);
     return handleIssueRelease(validated, context);
   },
   category: 'claims',
@@ -1401,7 +1391,7 @@ export const issueHandoffTool: MCPTool = {
     required: ['issueId', 'fromId', 'reason'],
   },
   handler: async (input, context) => {
-    const validated = issueHandoffSchema.parse(input);
+    const validated = v.parse(issueHandoffSchema, input);
     return handleIssueHandoff(validated, context);
   },
   category: 'claims',
@@ -1433,7 +1423,7 @@ export const issueStatusUpdateTool: MCPTool = {
     required: ['issueId', 'claimantId', 'status'],
   },
   handler: async (input, context) => {
-    const validated = issueStatusUpdateSchema.parse(input);
+    const validated = v.parse(issueStatusUpdateSchema, input);
     return handleIssueStatusUpdate(validated, context);
   },
   category: 'claims',
@@ -1474,7 +1464,7 @@ export const issueListAvailableTool: MCPTool = {
     },
   },
   handler: async (input, context) => {
-    const validated = issueListAvailableSchema.parse(input);
+    const validated = v.parse(issueListAvailableSchema, input);
     return handleIssueListAvailable(validated, context);
   },
   category: 'claims',
@@ -1513,7 +1503,7 @@ export const issueListMineTool: MCPTool = {
     required: ['claimantId'],
   },
   handler: async (input, context) => {
-    const validated = issueListMineSchema.parse(input);
+    const validated = v.parse(issueListMineSchema, input);
     return handleIssueListMine(validated, context);
   },
   category: 'claims',
@@ -1547,7 +1537,7 @@ export const issueBoardTool: MCPTool = {
     },
   },
   handler: async (input, context) => {
-    const validated = issueBoardSchema.parse(input);
+    const validated = v.parse(issueBoardSchema, input);
     return handleIssueBoard(validated, context);
   },
   category: 'claims',
@@ -1572,7 +1562,7 @@ export const issueMarkStealableTool: MCPTool = {
     required: ['issueId', 'claimantId'],
   },
   handler: async (input, context) => {
-    const validated = issueMarkStealableSchema.parse(input);
+    const validated = v.parse(issueMarkStealableSchema, input);
     return handleIssueMarkStealable(validated, context);
   },
   category: 'claims',
@@ -1594,7 +1584,7 @@ export const issueStealTool: MCPTool = {
     required: ['issueId', 'stealerId', 'stealerType'],
   },
   handler: async (input, context) => {
-    const validated = issueStealSchema.parse(input);
+    const validated = v.parse(issueStealSchema, input);
     return handleIssueSteal(validated, context);
   },
   category: 'claims',
@@ -1623,7 +1613,7 @@ export const issueGetStealableTool: MCPTool = {
     },
   },
   handler: async (input, context) => {
-    const validated = issueGetStealableSchema.parse(input);
+    const validated = v.parse(issueGetStealableSchema, input);
     return handleIssueGetStealable(validated, context);
   },
   category: 'claims',
@@ -1646,7 +1636,7 @@ export const issueContestStealTool: MCPTool = {
     required: ['issueId', 'contesterId', 'reason'],
   },
   handler: async (input, context) => {
-    const validated = issueContestStealSchema.parse(input);
+    const validated = v.parse(issueContestStealSchema, input);
     return handleIssueContestSteal(validated, context);
   },
   category: 'claims',
@@ -1667,7 +1657,7 @@ export const agentLoadInfoTool: MCPTool = {
     required: ['agentId'],
   },
   handler: async (input, context) => {
-    const validated = agentLoadInfoSchema.parse(input);
+    const validated = v.parse(agentLoadInfoSchema, input);
     return handleAgentLoadInfo(validated, context);
   },
   category: 'claims',
@@ -1697,7 +1687,7 @@ export const swarmRebalanceTool: MCPTool = {
     },
   },
   handler: async (input, context) => {
-    const validated = swarmRebalanceSchema.parse(input);
+    const validated = v.parse(swarmRebalanceSchema, input);
     return handleSwarmRebalance(validated, context);
   },
   category: 'claims',
@@ -1719,7 +1709,7 @@ export const swarmLoadOverviewTool: MCPTool = {
     },
   },
   handler: async (input, context) => {
-    const validated = swarmLoadOverviewSchema.parse(input);
+    const validated = v.parse(swarmLoadOverviewSchema, input);
     return handleSwarmLoadOverview(validated, context);
   },
   category: 'claims',
@@ -1749,7 +1739,7 @@ export const claimHistoryTool: MCPTool = {
     required: ['issueId'],
   },
   handler: async (input, context) => {
-    const validated = claimHistorySchema.parse(input);
+    const validated = v.parse(claimHistorySchema, input);
     return handleClaimHistory(validated, context);
   },
   category: 'claims',
@@ -1774,7 +1764,7 @@ export const claimMetricsTool: MCPTool = {
     },
   },
   handler: async (input, context) => {
-    const validated = claimMetricsSchema.parse(input);
+    const validated = v.parse(claimMetricsSchema, input);
     return handleClaimMetrics(validated, context);
   },
   category: 'claims',
@@ -1805,7 +1795,7 @@ export const claimConfigTool: MCPTool = {
     required: ['action'],
   },
   handler: async (input, context) => {
-    const validated = claimConfigSchema.parse(input);
+    const validated = v.parse(claimConfigSchema, input);
     return handleClaimConfig(validated, context);
   },
   category: 'claims',

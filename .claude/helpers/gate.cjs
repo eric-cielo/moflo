@@ -100,15 +100,9 @@ switch (command) {
     break;
   }
   case 'check-task-transition': {
-    var status = process.env.TOOL_INPUT_status || '';
-    if (status === 'in_progress') {
-      var s = readState();
-      if (s.memorySearched && s.memoryRequired) {
-        s.memorySearched = false;
-        s.learningsStored = false;
-        writeState(s);
-      }
-    }
+    // Memory gate resets on new user prompts (prompt-reminder), not on task
+    // transitions. Within a single prompt (e.g., /flo workflow), memory stays
+    // searched so Read/Grep aren't blocked mid-execution.
     break;
   }
   case 'record-learnings-stored': {
