@@ -359,48 +359,83 @@ async function handleRequest(
 // Server lifecycle
 // ============================================================================
 
+/** Maximum number of ports to try before giving up. */
+const MAX_PORT_ATTEMPTS = 10;
+
 /**
  * Start the dashboard HTTP server.
  *
+ * Tries the requested port first, then falls back to port+1, port+2, ...
+ * up to MAX_PORT_ATTEMPTS to avoid crashing the daemon when another
+ * project's daemon already holds the default port.
+ *
  * @param daemon - WorkerDaemon instance for status data
  * @param opts - Dashboard configuration
- * @returns A handle to stop the server
+ * @returns A handle to stop the server (port reflects the actual bound port)
  */
-export function startDashboard(
+export async function startDashboard(
   daemon: WorkerDaemon,
   opts: DashboardOptions,
-): DashboardHandle {
-  const port = opts.port;
+): Promise<DashboardHandle> {
+  const basePort = opts.port;
 
-  const server = createServer((req, res) => {
-    handleRequest(req, res, daemon, opts).catch(() => {
-      if (!res.headersSent) {
-        sendJson(res, 500, { error: 'Internal server error' });
+  for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
+    const port = basePort + attempt;
+    try {
+      const handle = await tryListenOnPort(daemon, opts, port);
+      return handle;
+    } catch (err: unknown) {
+      const code = err && typeof err === 'object' && 'code' in err ? (err as { code: string }).code : '';
+      if (code === 'EADDRINUSE' && attempt < MAX_PORT_ATTEMPTS - 1) {
+        // Port taken — try the next one
+        continue;
       }
+      throw err;
+    }
+  }
+
+  // Should be unreachable, but satisfies the type checker
+  throw new Error(`All dashboard ports ${basePort}–${basePort + MAX_PORT_ATTEMPTS - 1} are in use`);
+}
+
+/**
+ * Attempt to bind the dashboard server to a specific port.
+ * Returns a Promise that resolves on successful listen or rejects on error.
+ */
+function tryListenOnPort(
+  daemon: WorkerDaemon,
+  opts: DashboardOptions,
+  port: number,
+): Promise<DashboardHandle> {
+  return new Promise((resolve, reject) => {
+    const server = createServer((req, res) => {
+      handleRequest(req, res, daemon, opts).catch(() => {
+        if (!res.headersSent) {
+          sendJson(res, 500, { error: 'Internal server error' });
+        }
+      });
+    });
+
+    server.on('error', (err) => {
+      reject(err);
+    });
+
+    server.listen(port, '127.0.0.1', () => {
+      resolve({
+        server,
+        port,
+        stop(): Promise<void> {
+          return new Promise((res, rej) => {
+            server.closeAllConnections?.();
+            server.close((err) => {
+              if (err) rej(err);
+              else res();
+            });
+          });
+        },
+      });
     });
   });
-
-  // Prevent uncaught EADDRINUSE from crashing the daemon process
-  server.on('error', (err) => {
-    // Re-throw as a catchable error so callers see it
-    throw err;
-  });
-
-  server.listen(port, '127.0.0.1');
-
-  return {
-    server,
-    port,
-    stop(): Promise<void> {
-      return new Promise((resolve, reject) => {
-        server.closeAllConnections?.();
-        server.close((err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-    },
-  };
 }
 
 // ============================================================================
