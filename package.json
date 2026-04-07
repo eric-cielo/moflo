@@ -108,7 +108,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.37",
     "eslint": "^8.0.0",
-    "moflo": "^4.8.53-rc.10",
+    "moflo": "^4.8.53-rc.11",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
