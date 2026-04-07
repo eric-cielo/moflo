@@ -5,6 +5,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
+import { formatStatus } from '../services/cli-formatters.js';
 import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { storeCommand } from './transfer-store.js';
@@ -2355,7 +2356,7 @@ const workerStatusCommand: Command = {
           data: [
             { field: 'Trigger', value: result.worker.trigger },
             { field: 'Context', value: result.worker.context },
-            { field: 'Status', value: formatWorkerStatus(result.worker.status) },
+            { field: 'Status', value: formatStatus(result.worker.status) },
             { field: 'Progress', value: `${result.worker.progress}%` },
             { field: 'Phase', value: result.worker.phase },
             { field: 'Duration', value: `${result.worker.duration}ms` },
@@ -2375,7 +2376,7 @@ const workerStatusCommand: Command = {
           data: result.workers.map(w => ({
             id: w.id,
             trigger: w.trigger,
-            status: formatWorkerStatus(w.status),
+            status: formatStatus(w.status),
             progress: `${w.progress}%`,
             duration: `${w.duration}ms`,
           })),
@@ -2539,21 +2540,6 @@ const workerCancelCommand: Command = {
     }
   }
 };
-
-function formatWorkerStatus(status: string): string {
-  switch (status) {
-    case 'running':
-      return output.highlight(status);
-    case 'completed':
-      return output.success(status);
-    case 'failed':
-      return output.error(status);
-    case 'pending':
-      return output.dim(status);
-    default:
-      return status;
-  }
-}
 
 // ============================================================================
 // Coverage-Aware Routing Commands
