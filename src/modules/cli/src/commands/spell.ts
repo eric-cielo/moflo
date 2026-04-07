@@ -1,7 +1,8 @@
 /**
- * V3 CLI Workflow Command
- * Workflow execution, validation, and template management
+ * V3 CLI Spell Command
+ * Spell casting, validation, and grimoire management
  *
+ * Story #370: Renamed from workflow.ts to spell.ts with wizard terminology.
  * Story #225: Replaced hardcoded WORKFLOW_TEMPLATES with engine registry.
  * The MCP workflow tools now call the real engine, so the CLI just
  * passes parameters through via callMCPTool().
@@ -20,7 +21,7 @@ import type {
   WorkflowTemplateInfoResponse,
   WorkflowErrorResponse,
 } from '../mcp-tools/workflow-response.types.js';
-import { scheduleCommand } from './workflow-schedule.js';
+import { scheduleCommand } from './spell-schedule.js';
 
 // Shared table column definitions
 const REGISTRY_COLUMNS = [
@@ -38,7 +39,7 @@ const STEP_COLUMNS = [
   { key: 'error', header: 'Error', width: 30, format: (v: unknown) => v ? String(v) : '' },
 ];
 
-function printWorkflowErrors(errors: WorkflowErrorResponse[]): void {
+function printSpellErrors(errors: WorkflowErrorResponse[]): void {
   if (errors.length === 0) return;
   output.writeln();
   output.writeln(output.bold(output.error('Errors')));
@@ -47,35 +48,36 @@ function printWorkflowErrors(errors: WorkflowErrorResponse[]): void {
   }
 }
 
-// Run subcommand
-const runCommand: Command = {
-  name: 'run',
-  description: 'Execute a workflow',
+// Cast subcommand (formerly "run")
+const castCommand: Command = {
+  name: 'cast',
+  aliases: ['run'],
+  description: 'Cast a spell',
   options: [
     {
       name: 'name',
       short: 'n',
-      description: 'Workflow name or abbreviation (resolved via registry)',
+      description: 'Spell name or abbreviation (resolved via grimoire)',
       type: 'string',
     },
     {
       name: 'file',
       short: 'f',
-      description: 'Workflow definition file (YAML/JSON)',
+      description: 'Spell definition file (YAML/JSON)',
       type: 'string',
     },
     {
       name: 'dry-run',
       short: 'd',
-      description: 'Validate without executing',
+      description: 'Validate without casting',
       type: 'boolean',
       default: false,
     },
   ],
   examples: [
-    { command: 'moflo workflow run -n development', description: 'Run workflow by name' },
-    { command: 'moflo workflow run -f ./workflow.yaml', description: 'Run from file' },
-    { command: 'moflo workflow run -n sa --dry-run', description: 'Validate via abbreviation' },
+    { command: 'moflo spell cast -n development', description: 'Cast spell by name' },
+    { command: 'moflo spell cast -f ./spell.yaml', description: 'Cast from file' },
+    { command: 'moflo spell cast -n sa --dry-run', description: 'Validate via abbreviation' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = (ctx.flags.name as string) || ctx.args[0];
@@ -84,39 +86,39 @@ const runCommand: Command = {
     const args = (ctx.flags.args as unknown as Record<string, unknown>) ?? {};
 
     if (!name && !file) {
-      // Interactive: list available workflows and let user pick
+      // Interactive: list available spells and let user pick
       if (ctx.interactive) {
         try {
           const listResult = await callMCPTool<WorkflowListResponse>('workflow_list', { source: 'registry' });
 
           const defs = listResult.definitions ?? [];
           if (defs.length === 0) {
-            output.printInfo('No workflow definitions found in the registry.');
+            output.printInfo('No spell definitions found in the grimoire.');
             output.printInfo('Add YAML/JSON files to workflows/ or .claude/workflows/ in your project.');
             return { success: false, exitCode: 1 };
           }
 
           output.writeln();
-          output.writeln(output.bold('Available Workflows'));
+          output.writeln(output.bold('Available Spells'));
           output.writeln();
           output.printTable({ columns: REGISTRY_COLUMNS, data: defs });
 
           output.writeln();
-          const chosen = await input({ message: 'Enter workflow name or abbreviation:' });
+          const chosen = await input({ message: 'Enter spell name or abbreviation:' });
           if (!chosen) {
             return { success: false, exitCode: 1 };
           }
 
           // Re-run with chosen name
-          const result = await runCommand.action!({ ...ctx, flags: { ...ctx.flags, name: chosen } });
+          const result = await castCommand.action!({ ...ctx, flags: { ...ctx.flags, name: chosen } });
           return result ?? { success: false, exitCode: 1 };
         } catch {
-          output.printError('Workflow name or file is required. Use --name or --file');
+          output.printError('Spell name or file is required. Use --name or --file');
           return { success: false, exitCode: 1 };
         }
       }
 
-      output.printError('Workflow name or file is required. Use --name or --file');
+      output.printError('Spell name or file is required. Use --name or --file');
       return { success: false, exitCode: 1 };
     }
 
@@ -124,10 +126,10 @@ const runCommand: Command = {
     if (dryRun) {
       output.writeln(output.warning('DRY RUN MODE - No changes will be made'));
     }
-    output.writeln(output.bold(`Workflow: ${name || file}`));
+    output.writeln(output.bold(`Spell: ${name || file}`));
     output.writeln();
 
-    const spinner = output.createSpinner({ text: 'Running workflow...', spinner: 'dots' });
+    const spinner = output.createSpinner({ text: 'Casting spell...', spinner: 'dots' });
 
     try {
       spinner.start();
@@ -140,14 +142,14 @@ const runCommand: Command = {
       });
 
       if (result.error) {
-        spinner.fail(`Workflow failed: ${result.error}`);
+        spinner.fail(`Spell failed: ${result.error}`);
         return { success: false, exitCode: 1 };
       }
 
       if (dryRun) {
-        spinner.succeed('Workflow validated successfully');
+        spinner.succeed('Spell validated successfully');
       } else {
-        spinner.succeed(result.success ? 'Workflow completed' : 'Workflow finished with errors');
+        spinner.succeed(result.success ? 'Spell completed' : 'Spell finished with errors');
       }
 
       if (ctx.flags.format === 'json') {
@@ -163,7 +165,7 @@ const runCommand: Command = {
           `Steps: ${result.stepCount}`,
           `Duration: ${(result.duration / 1000).toFixed(1)}s`,
         ].join('\n'),
-        'Workflow Result',
+        'Spell Result',
       );
 
       if (result.steps.length > 0) {
@@ -172,13 +174,13 @@ const runCommand: Command = {
         output.printTable({ columns: STEP_COLUMNS, data: result.steps });
       }
 
-      printWorkflowErrors(result.errors);
+      printSpellErrors(result.errors);
 
       return { success: result.success, data: result };
     } catch (error) {
-      spinner.fail('Workflow failed');
+      spinner.fail('Spell failed');
       if (error instanceof MCPClientError) {
-        output.printError(`Workflow error: ${error.message}`);
+        output.printError(`Spell error: ${error.message}`);
       } else {
         output.printError(`Unexpected error: ${String(error)}`);
       }
@@ -190,24 +192,24 @@ const runCommand: Command = {
 // Validate subcommand
 const validateCommand: Command = {
   name: 'validate',
-  description: 'Validate a workflow definition',
+  description: 'Validate a spell definition',
   options: [
     {
       name: 'file',
       short: 'f',
-      description: 'Workflow definition file',
+      description: 'Spell definition file',
       type: 'string',
       required: true,
     },
   ],
   examples: [
-    { command: 'moflo workflow validate -f ./workflow.yaml', description: 'Validate workflow file' },
+    { command: 'moflo spell validate -f ./spell.yaml', description: 'Validate spell file' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const file = (ctx.flags.file as string) || ctx.args[0];
 
     if (!file) {
-      output.printError('Workflow file is required. Use --file or -f');
+      output.printError('Spell file is required. Use --file or -f');
       return { success: false, exitCode: 1 };
     }
 
@@ -225,10 +227,10 @@ const validateCommand: Command = {
       }
 
       if (result.success) {
-        output.printSuccess(`Workflow is valid (${result.steps.length} steps)`);
+        output.printSuccess(`Spell is valid (${result.steps.length} steps)`);
       } else {
-        output.printError('Workflow validation failed');
-        printWorkflowErrors(result.errors);
+        output.printError('Spell validation failed');
+        printSpellErrors(result.errors);
       }
 
       return { success: result.success, data: result };
@@ -247,14 +249,14 @@ const validateCommand: Command = {
 const listCommand: Command = {
   name: 'list',
   aliases: ['ls'],
-  description: 'List workflows (registry definitions and recent runs)',
+  description: 'List spells (grimoire definitions and recent casts)',
   options: [
     {
       name: 'source',
       short: 's',
-      description: 'What to list: registry, runs, or all',
+      description: 'What to list: grimoire, runs, or all',
       type: 'string',
-      choices: ['registry', 'runs', 'all'],
+      choices: ['grimoire', 'runs', 'all'],
     },
     {
       name: 'limit',
@@ -272,7 +274,9 @@ const listCommand: Command = {
     },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const source = (ctx.flags.source as string) ?? 'all';
+    const rawSource = (ctx.flags.source as string) ?? 'all';
+    // Map wizard terminology to engine API values
+    const source = rawSource === 'grimoire' ? 'registry' : rawSource;
     const limit = ctx.flags.limit as number;
     const refresh = ctx.flags.refresh as boolean;
 
@@ -286,45 +290,45 @@ const listCommand: Command = {
 
       if (result.definitions && result.definitions.length > 0) {
         output.writeln();
-        output.writeln(output.bold('Registry Definitions'));
+        output.writeln(output.bold('Grimoire'));
         output.writeln();
         output.printTable({ columns: REGISTRY_COLUMNS, data: result.definitions });
       } else if (source === 'registry' || source === 'all') {
         output.writeln();
         if (result.registryError) {
-          output.printError(`Registry: ${result.registryError}`);
+          output.printError(`Grimoire: ${result.registryError}`);
         } else {
-          output.printInfo('No workflow definitions found. Add YAML/JSON files to workflows/ or .claude/workflows/');
+          output.printInfo('No spell definitions found. Add YAML/JSON files to workflows/ or .claude/workflows/');
         }
       }
 
       if (result.runs && result.runs.length > 0) {
         output.writeln();
-        output.writeln(output.bold('Recent Runs'));
+        output.writeln(output.bold('Recent Casts'));
         output.writeln();
         output.printTable({
           columns: [
             { key: 'workflowId', header: 'ID', width: 20 },
             { key: 'name', header: 'Name', width: 20 },
             { key: 'status', header: 'Status', width: 12, format: formatStageStatus },
-            { key: 'startedAt', header: 'Started', width: 22, format: (v) => v ? new Date(String(v)).toLocaleString() : '-' },
+            { key: 'startedAt', header: 'Cast At', width: 22, format: (v) => v ? new Date(String(v)).toLocaleString() : '-' },
           ],
           data: result.runs,
         });
       } else if (source === 'runs' || source === 'all') {
         output.writeln();
-        output.printInfo('No recent workflow runs');
+        output.printInfo('No recent spell casts');
       }
 
       if (result.activeWorkflows && result.activeWorkflows.length > 0) {
         output.writeln();
-        output.printInfo(`Currently running: ${result.activeWorkflows.join(', ')}`);
+        output.printInfo(`Currently casting: ${result.activeWorkflows.join(', ')}`);
       }
 
       return { success: true, data: result };
     } catch (error) {
       if (error instanceof MCPClientError) {
-        output.printError(`Failed to list workflows: ${error.message}`);
+        output.printError(`Failed to list spells: ${error.message}`);
       } else {
         output.printError(`Unexpected error: ${String(error)}`);
       }
@@ -336,12 +340,12 @@ const listCommand: Command = {
 // Status subcommand
 const statusCommand: Command = {
   name: 'status',
-  description: 'Show workflow status',
+  description: 'Show spell status',
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const workflowId = ctx.args[0];
 
     if (!workflowId) {
-      output.printError('Workflow ID is required');
+      output.printError('Spell ID is required');
       return { success: false, exitCode: 1 };
     }
 
@@ -370,7 +374,7 @@ const statusCommand: Command = {
           result.progress != null ? `Progress: ${result.progress.toFixed(0)}%` : null,
           result.duration != null ? `Duration: ${(result.duration / 1000).toFixed(1)}s` : null,
         ].filter(Boolean).join('\n'),
-        'Workflow Status',
+        'Spell Status',
       );
 
       if (result.steps && result.steps.length > 0) {
@@ -391,10 +395,11 @@ const statusCommand: Command = {
   },
 };
 
-// Stop subcommand
+// Stop subcommand (dispel)
 const stopCommand: Command = {
   name: 'stop',
-  description: 'Stop a running workflow',
+  aliases: ['dispel'],
+  description: 'Stop a running spell',
   options: [
     {
       name: 'force',
@@ -409,13 +414,13 @@ const stopCommand: Command = {
     const force = ctx.flags.force as boolean;
 
     if (!workflowId) {
-      output.printError('Workflow ID is required');
+      output.printError('Spell ID is required');
       return { success: false, exitCode: 1 };
     }
 
     if (!force && ctx.interactive) {
       const confirmed = await confirm({
-        message: `Cancel workflow ${workflowId}?`,
+        message: `Dispel ${workflowId}?`,
         default: false,
       });
       if (!confirmed) {
@@ -427,7 +432,7 @@ const stopCommand: Command = {
     try {
       const result = await callMCPTool<WorkflowCancelResponse>('workflow_cancel', {
         workflowId,
-        reason: 'Stopped via CLI',
+        reason: 'Dispelled via CLI',
       });
 
       if (result.error) {
@@ -435,11 +440,11 @@ const stopCommand: Command = {
         return { success: false, exitCode: 1 };
       }
 
-      output.printSuccess(`Workflow ${workflowId} cancelled`);
+      output.printSuccess(`Spell ${workflowId} dispelled`);
       return { success: true, data: result };
     } catch (error) {
       if (error instanceof MCPClientError) {
-        output.printError(`Failed to stop workflow: ${error.message}`);
+        output.printError(`Failed to dispel: ${error.message}`);
       } else {
         output.printError(`Unexpected error: ${String(error)}`);
       }
@@ -448,14 +453,15 @@ const stopCommand: Command = {
   },
 };
 
-// Template subcommand
+// Template subcommand (grimoire)
 const templateCommand: Command = {
   name: 'template',
-  description: 'Browse workflow templates from the registry',
+  aliases: ['grimoire'],
+  description: 'Browse spell templates from the grimoire',
   subcommands: [
     {
       name: 'list',
-      description: 'List available workflow templates',
+      description: 'List available spell templates',
       action: async (ctx: CommandContext): Promise<CommandResult> => {
         try {
           const result = await callMCPTool<WorkflowTemplateListResponse>('workflow_template', { action: 'list' });
@@ -471,11 +477,11 @@ const templateCommand: Command = {
           }
 
           output.writeln();
-          output.writeln(output.bold('Available Workflow Templates'));
+          output.writeln(output.bold('Grimoire — Spell Templates'));
           output.writeln();
 
           if (result.templates.length === 0) {
-            output.printInfo('No workflow definitions found.');
+            output.printInfo('No spell definitions found.');
             output.printInfo('Add YAML/JSON files to workflows/ or .claude/workflows/ in your project.');
             return { success: true, data: result };
           }
@@ -532,7 +538,7 @@ const templateCommand: Command = {
               `Steps: ${result.stepCount}`,
               `Step Types: ${result.stepTypes?.join(', ') ?? 'none'}`,
             ].filter(Boolean).join('\n'),
-            'Template Details',
+            'Spell Details',
           );
 
           if (result.arguments && Object.keys(result.arguments).length > 0) {
@@ -566,13 +572,13 @@ const templateCommand: Command = {
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
-    output.writeln(output.bold('Template Management'));
+    output.writeln(output.bold('Grimoire'));
     output.writeln();
-    output.writeln('Usage: moflo workflow template <subcommand>');
+    output.writeln('Usage: moflo spell template <subcommand>');
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([
-      `${output.highlight('list')}  - List available workflow templates`,
+      `${output.highlight('list')}  - List available spell templates`,
       `${output.highlight('show')}  - Show template details`,
     ]);
 
@@ -580,37 +586,38 @@ const templateCommand: Command = {
   },
 };
 
-// Main workflow command
-export const workflowCommand: Command = {
-  name: 'workflow',
-  description: 'Workflow execution and management',
-  subcommands: [runCommand, validateCommand, listCommand, statusCommand, stopCommand, templateCommand, scheduleCommand],
+// Main spell command
+export const spellCommand: Command = {
+  name: 'spell',
+  aliases: ['workflow'],
+  description: 'Spell casting and management',
+  subcommands: [castCommand, validateCommand, listCommand, statusCommand, stopCommand, templateCommand, scheduleCommand],
   options: [],
   examples: [
-    { command: 'moflo workflow run -n development', description: 'Run workflow by name' },
-    { command: 'moflo workflow run -f ./workflow.yaml', description: 'Run from file' },
-    { command: 'moflo workflow list', description: 'List workflows' },
-    { command: 'moflo workflow template list', description: 'List registry templates' },
-    { command: 'moflo workflow template show sa', description: 'Show workflow details' },
+    { command: 'moflo spell cast -n development', description: 'Cast spell by name' },
+    { command: 'moflo spell cast -f ./spell.yaml', description: 'Cast from file' },
+    { command: 'moflo spell list', description: 'List spells' },
+    { command: 'moflo spell template list', description: 'List grimoire templates' },
+    { command: 'moflo spell template show sa', description: 'Show spell details' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
-    output.writeln(output.bold('Workflow Commands'));
+    output.writeln(output.bold('Spell Commands'));
     output.writeln();
-    output.writeln('Usage: moflo workflow <subcommand> [options]');
+    output.writeln('Usage: moflo spell <subcommand> [options]');
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([
-      `${output.highlight('run')}       - Execute a workflow`,
-      `${output.highlight('validate')}  - Validate workflow definition`,
-      `${output.highlight('list')}      - List workflows (registry + runs)`,
-      `${output.highlight('status')}    - Show workflow status`,
-      `${output.highlight('stop')}      - Cancel running workflow`,
-      `${output.highlight('template')}  - Browse registry templates`,
-      `${output.highlight('schedule')}  - Manage scheduled workflows`,
+      `${output.highlight('cast')}      - Cast a spell`,
+      `${output.highlight('validate')}  - Validate spell definition`,
+      `${output.highlight('list')}      - List spells (grimoire + casts)`,
+      `${output.highlight('status')}    - Show spell status`,
+      `${output.highlight('stop')}      - Dispel a running spell`,
+      `${output.highlight('template')}  - Browse grimoire templates`,
+      `${output.highlight('schedule')}  - Manage scheduled spells`,
     ]);
     output.writeln();
-    output.writeln('Run "moflo workflow <subcommand> --help" for more info');
+    output.writeln('Run "moflo spell <subcommand> --help" for more info');
 
     return { success: true };
   },
@@ -642,4 +649,4 @@ function formatStageStatus(status: unknown): string {
   }
 }
 
-export default workflowCommand;
+export default spellCommand;
