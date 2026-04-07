@@ -36,7 +36,7 @@ const commandLoaders: Record<string, CommandLoader> = {
   config: () => import('./config.js'),
   migrate: () => import('./migrate.js'),
   hooks: () => import('./hooks.js'),
-  workflow: () => import('./workflow.js'),
+  spell: () => import('./spell.js'),
   'hive-mind': () => import('./hive-mind.js'),
   process: () => import('./process.js'),
   daemon: () => import('./daemon.js'),
@@ -138,7 +138,7 @@ import { hiveMindCommand } from './hive-mind.js';
 import { configCommand } from './config.js';
 import { completionsCommand } from './completions.js';
 import { migrateCommand } from './migrate.js';
-import { workflowCommand } from './workflow.js';
+import { spellCommand } from './spell.js';
 import { analyzeCommand } from './analyze.js';
 import { routeCommand } from './route.js';
 import { progressCommand } from './progress.js';
@@ -206,7 +206,7 @@ export { githubCommand } from './github.js';
 // Lazy-loaded command re-exports (for backwards compatibility, but async-only)
 export async function getConfigCommand() { return loadCommand('config'); }
 export async function getMigrateCommand() { return loadCommand('migrate'); }
-export async function getWorkflowCommand() { return loadCommand('workflow'); }
+export async function getSpellCommand() { return loadCommand('spell'); }
 export async function getHiveMindCommand() { return loadCommand('hive-mind'); }
 export async function getProcessCommand() { return loadCommand('process'); }
 export async function getTaskCommand() { return loadCommand('task'); }
@@ -286,7 +286,7 @@ export const commandsByCategory = {
     daemonCommand,
     completionsCommand,
     migrateCommand,
-    workflowCommand,
+    spellCommand,
   ],
   analysis: [
     analyzeCommand,

@@ -1,8 +1,10 @@
 /**
- * Workflow Schedule Subcommand
+ * Spell Schedule Subcommand
  *
- * CLI interface for creating, listing, and cancelling scheduled workflows.
+ * CLI interface for creating, listing, and cancelling scheduled spells.
  * Includes lazy daemon readiness check on schedule creation.
+ *
+ * Story #370: Renamed from workflow-schedule.ts with wizard terminology.
  *
  * Schedule records are persisted to the 'scheduled-workflows' memory namespace —
  * the same namespace the daemon's SpellScheduler polls. The daemon picks up
@@ -40,17 +42,17 @@ function formatMCPError(error: unknown, action: string): CommandResult {
 
 const createCommand: Command = {
   name: 'create',
-  description: 'Create a scheduled workflow',
+  description: 'Create a scheduled spell',
   options: [
-    { name: 'name', short: 'n', description: 'Workflow name or abbreviation', type: 'string', required: true },
+    { name: 'name', short: 'n', description: 'Spell name or abbreviation', type: 'string', required: true },
     { name: 'cron', short: 'c', description: 'Cron expression (5-field)', type: 'string' },
     { name: 'interval', short: 'i', description: 'Interval (e.g., "6h", "30m", "1d")', type: 'string' },
     { name: 'at', short: 'a', description: 'One-time ISO 8601 datetime', type: 'string' },
   ],
   examples: [
-    { command: 'moflo workflow schedule create -n audit --cron "0 9 * * *"', description: 'Daily at 9am' },
-    { command: 'moflo workflow schedule create -n security-audit --interval 6h', description: 'Every 6 hours' },
-    { command: 'moflo workflow schedule create -n report --at 2026-04-01T09:00:00Z', description: 'One-time run' },
+    { command: 'moflo spell schedule create -n audit --cron "0 9 * * *"', description: 'Daily at 9am' },
+    { command: 'moflo spell schedule create -n security-audit --interval 6h', description: 'Every 6 hours' },
+    { command: 'moflo spell schedule create -n report --at 2026-04-01T09:00:00Z', description: 'One-time cast' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = (ctx.flags.name as string) || ctx.args[0];
@@ -59,7 +61,7 @@ const createCommand: Command = {
     const at = ctx.flags.at as string | undefined;
 
     if (!name) {
-      output.printError('Workflow name is required. Use --name or -n');
+      output.printError('Spell name is required. Use --name or -n');
       return { success: false, exitCode: 1 };
     }
 
@@ -162,15 +164,15 @@ const createCommand: Command = {
     output.printBox(
       [
         `ID: ${id}`,
-        `Workflow: ${name}`,
+        `Spell: ${name}`,
         cron ? `Cron: ${cron}` : null,
         interval ? `Interval: ${interval}` : null,
         at ? `At: ${at}` : null,
-        `Next Run: ${new Date(nextRunAt).toLocaleString()}`,
+        `Next Cast: ${new Date(nextRunAt).toLocaleString()}`,
         `Daemon: ${readiness.daemonRunning ? 'running' : 'not running'}`,
         `Service: ${readiness.daemonInstalled ? 'installed' : 'not installed'}`,
       ].filter(Boolean).join('\n'),
-      'Scheduled Workflow',
+      'Scheduled Spell',
     );
 
     return { success: true, data: record };
@@ -182,7 +184,7 @@ const createCommand: Command = {
 const scheduleListCommand: Command = {
   name: 'list',
   aliases: ['ls'],
-  description: 'List all scheduled workflows',
+  description: 'List all scheduled spells',
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     try {
       const result = await callMCPTool<{ results: Array<{ key: string; value: string }> }>('memory_list', {
@@ -204,19 +206,19 @@ const scheduleListCommand: Command = {
 
       if (schedules.length === 0) {
         output.writeln();
-        output.printInfo('No scheduled workflows');
+        output.printInfo('No scheduled spells');
         return { success: true, data: [] };
       }
 
       output.writeln();
-      output.writeln(output.bold('Scheduled Workflows'));
+      output.writeln(output.bold('Scheduled Spells'));
       output.writeln();
       output.printTable({
         columns: [
           { key: 'id', header: 'ID', width: 30 },
-          { key: 'workflowName', header: 'Workflow', width: 20 },
+          { key: 'workflowName', header: 'Spell', width: 20 },
           { key: 'timing', header: 'Schedule', width: 20 },
-          { key: 'nextRun', header: 'Next Run', width: 22 },
+          { key: 'nextRun', header: 'Next Cast', width: 22 },
           { key: 'enabled', header: 'Enabled', width: 8, format: (v: unknown) => v ? output.success('yes') : output.error('no') },
         ],
         data: schedules.map((s: Record<string, unknown>) => ({
@@ -242,7 +244,7 @@ const scheduleListCommand: Command = {
 
 const cancelCommand: Command = {
   name: 'cancel',
-  description: 'Cancel (disable) a scheduled workflow',
+  description: 'Cancel (disable) a scheduled spell',
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const scheduleId = ctx.args[0];
 
@@ -287,23 +289,23 @@ const cancelCommand: Command = {
 
 export const scheduleCommand: Command = {
   name: 'schedule',
-  description: 'Manage scheduled workflows',
+  description: 'Manage scheduled spells',
   subcommands: [createCommand, scheduleListCommand, cancelCommand],
   examples: [
-    { command: 'moflo workflow schedule create -n audit --cron "0 9 * * *"', description: 'Schedule daily audit' },
-    { command: 'moflo workflow schedule list', description: 'List all schedules' },
-    { command: 'moflo workflow schedule cancel <id>', description: 'Cancel a schedule' },
+    { command: 'moflo spell schedule create -n audit --cron "0 9 * * *"', description: 'Schedule daily audit' },
+    { command: 'moflo spell schedule list', description: 'List all schedules' },
+    { command: 'moflo spell schedule cancel <id>', description: 'Cancel a schedule' },
   ],
   action: async (): Promise<CommandResult> => {
     output.writeln();
     output.writeln(output.bold('Schedule Commands'));
     output.writeln();
-    output.writeln('Usage: moflo workflow schedule <subcommand> [options]');
+    output.writeln('Usage: moflo spell schedule <subcommand> [options]');
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([
-      `${output.highlight('create')}  - Create a scheduled workflow`,
-      `${output.highlight('list')}    - List all scheduled workflows`,
+      `${output.highlight('create')}  - Create a scheduled spell`,
+      `${output.highlight('list')}    - List all scheduled spells`,
       `${output.highlight('cancel')}  - Cancel (disable) a schedule`,
     ]);
 
