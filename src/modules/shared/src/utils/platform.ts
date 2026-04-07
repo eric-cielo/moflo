@@ -5,6 +5,9 @@
 /** True when running on Windows */
 export const IS_WINDOWS = process.platform === 'win32';
 
+/** Date of the cross-platform audit */
+export const PLATFORM_AUDIT_DATE = '2026-04-01';
+
 /** Platform-appropriate null device for stderr/stdout redirection */
 export const NULL_DEVICE = IS_WINDOWS ? 'NUL' : '/dev/null';
 
