@@ -11,7 +11,7 @@
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { confirm, input } from '../prompt.js';
-import { callMCPTool, MCPClientError } from '../mcp-client.js';
+import { callMCPTool } from '../mcp-client.js';
 import type {
   WorkflowRunResponse,
   WorkflowStatusResponse,
@@ -21,7 +21,18 @@ import type {
   WorkflowTemplateInfoResponse,
   WorkflowErrorResponse,
 } from '../mcp-tools/workflow-response.types.js';
+import {
+  TOOL_WORKFLOW_RUN,
+  TOOL_WORKFLOW_LIST,
+  TOOL_WORKFLOW_STATUS,
+  TOOL_WORKFLOW_CANCEL,
+  TOOL_WORKFLOW_TEMPLATE,
+} from '../mcp-tools/tool-names.js';
+import { formatStatus, handleMCPError } from '../services/cli-formatters.js';
 import { scheduleCommand } from './spell-schedule.js';
+
+// Re-export formatStatus as formatStageStatus for table column references
+const formatStageStatus = formatStatus;
 
 // Shared table column definitions
 const REGISTRY_COLUMNS = [
@@ -89,7 +100,7 @@ const castCommand: Command = {
       // Interactive: list available spells and let user pick
       if (ctx.interactive) {
         try {
-          const listResult = await callMCPTool<WorkflowListResponse>('workflow_list', { source: 'registry' });
+          const listResult = await callMCPTool<WorkflowListResponse>(TOOL_WORKFLOW_LIST, { source: 'registry' });
 
           const defs = listResult.definitions ?? [];
           if (defs.length === 0) {
@@ -134,7 +145,7 @@ const castCommand: Command = {
     try {
       spinner.start();
 
-      const result = await callMCPTool<WorkflowRunResponse>('workflow_run', {
+      const result = await callMCPTool<WorkflowRunResponse>(TOOL_WORKFLOW_RUN, {
         name: name || undefined,
         file: file || undefined,
         args,
@@ -179,12 +190,7 @@ const castCommand: Command = {
       return { success: result.success, data: result };
     } catch (error) {
       spinner.fail('Spell failed');
-      if (error instanceof MCPClientError) {
-        output.printError(`Spell error: ${error.message}`);
-      } else {
-        output.printError(`Unexpected error: ${String(error)}`);
-      }
-      return { success: false, exitCode: 1 };
+      return handleMCPError(error, 'cast spell');
     }
   },
 };
@@ -216,7 +222,7 @@ const validateCommand: Command = {
     output.printInfo(`Validating: ${file}`);
 
     try {
-      const result = await callMCPTool<WorkflowRunResponse>('workflow_run', {
+      const result = await callMCPTool<WorkflowRunResponse>(TOOL_WORKFLOW_RUN, {
         file,
         dryRun: true,
       });
@@ -235,12 +241,7 @@ const validateCommand: Command = {
 
       return { success: result.success, data: result };
     } catch (error) {
-      if (error instanceof MCPClientError) {
-        output.printError(`Validation error: ${error.message}`);
-      } else {
-        output.printError(`Unexpected error: ${String(error)}`);
-      }
-      return { success: false, exitCode: 1 };
+      return handleMCPError(error, 'validate spell');
     }
   },
 };
@@ -281,7 +282,7 @@ const listCommand: Command = {
     const refresh = ctx.flags.refresh as boolean;
 
     try {
-      const result = await callMCPTool<WorkflowListResponse>('workflow_list', { source, limit, refresh: refresh || undefined });
+      const result = await callMCPTool<WorkflowListResponse>(TOOL_WORKFLOW_LIST, { source, limit, refresh: refresh || undefined });
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
@@ -327,12 +328,7 @@ const listCommand: Command = {
 
       return { success: true, data: result };
     } catch (error) {
-      if (error instanceof MCPClientError) {
-        output.printError(`Failed to list spells: ${error.message}`);
-      } else {
-        output.printError(`Unexpected error: ${String(error)}`);
-      }
-      return { success: false, exitCode: 1 };
+      return handleMCPError(error, 'list spells');
     }
   },
 };
@@ -350,7 +346,7 @@ const statusCommand: Command = {
     }
 
     try {
-      const result = await callMCPTool<WorkflowStatusResponse>('workflow_status', {
+      const result = await callMCPTool<WorkflowStatusResponse>(TOOL_WORKFLOW_STATUS, {
         workflowId,
         verbose: true,
       });
@@ -385,12 +381,7 @@ const statusCommand: Command = {
 
       return { success: true, data: result };
     } catch (error) {
-      if (error instanceof MCPClientError) {
-        output.printError(`Failed to get status: ${error.message}`);
-      } else {
-        output.printError(`Unexpected error: ${String(error)}`);
-      }
-      return { success: false, exitCode: 1 };
+      return handleMCPError(error, 'get spell status');
     }
   },
 };
@@ -430,7 +421,7 @@ const stopCommand: Command = {
     }
 
     try {
-      const result = await callMCPTool<WorkflowCancelResponse>('workflow_cancel', {
+      const result = await callMCPTool<WorkflowCancelResponse>(TOOL_WORKFLOW_CANCEL, {
         workflowId,
         reason: 'Dispelled via CLI',
       });
@@ -443,12 +434,7 @@ const stopCommand: Command = {
       output.printSuccess(`Spell ${workflowId} dispelled`);
       return { success: true, data: result };
     } catch (error) {
-      if (error instanceof MCPClientError) {
-        output.printError(`Failed to dispel: ${error.message}`);
-      } else {
-        output.printError(`Unexpected error: ${String(error)}`);
-      }
-      return { success: false, exitCode: 1 };
+      return handleMCPError(error, 'dispel');
     }
   },
 };
@@ -464,7 +450,7 @@ const templateCommand: Command = {
       description: 'List available spell templates',
       action: async (ctx: CommandContext): Promise<CommandResult> => {
         try {
-          const result = await callMCPTool<WorkflowTemplateListResponse>('workflow_template', { action: 'list' });
+          const result = await callMCPTool<WorkflowTemplateListResponse>(TOOL_WORKFLOW_TEMPLATE, { action: 'list' });
 
           if (result.error) {
             output.printError(result.error);
@@ -493,12 +479,7 @@ const templateCommand: Command = {
 
           return { success: true, data: result };
         } catch (error) {
-          if (error instanceof MCPClientError) {
-            output.printError(`Failed to list templates: ${error.message}`);
-          } else {
-            output.printError(`Unexpected error: ${String(error)}`);
-          }
-          return { success: false, exitCode: 1 };
+          return handleMCPError(error, 'list templates');
         }
       },
     },
@@ -515,7 +496,7 @@ const templateCommand: Command = {
         }
 
         try {
-          const result = await callMCPTool<WorkflowTemplateInfoResponse>('workflow_template', { action: 'info', query });
+          const result = await callMCPTool<WorkflowTemplateInfoResponse>(TOOL_WORKFLOW_TEMPLATE, { action: 'info', query });
 
           if (result.error) {
             output.printError(result.error);
@@ -560,12 +541,7 @@ const templateCommand: Command = {
 
           return { success: true, data: result };
         } catch (error) {
-          if (error instanceof MCPClientError) {
-            output.printError(`Failed to get template info: ${error.message}`);
-          } else {
-            output.printError(`Unexpected error: ${String(error)}`);
-          }
-          return { success: false, exitCode: 1 };
+          return handleMCPError(error, 'get template info');
         }
       },
     },
@@ -622,31 +598,5 @@ export const spellCommand: Command = {
     return { success: true };
   },
 };
-
-// Helper functions
-function formatStageStatus(status: unknown): string {
-  const statusStr = String(status);
-  switch (statusStr) {
-    case 'completed':
-    case 'succeeded':
-    case 'success':
-      return output.success(statusStr);
-    case 'running':
-    case 'in_progress':
-      return output.highlight(statusStr);
-    case 'pending':
-    case 'waiting':
-    case 'skipped':
-      return output.dim(statusStr);
-    case 'failed':
-    case 'error':
-    case 'cancelled':
-      return output.error(statusStr);
-    case 'validated':
-      return output.success(statusStr);
-    default:
-      return statusStr;
-  }
-}
 
 export default spellCommand;

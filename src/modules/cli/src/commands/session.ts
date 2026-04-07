@@ -5,6 +5,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
+import { formatStatus } from '../services/cli-formatters.js';
 import { confirm, input, select } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import * as fs from 'fs';
@@ -29,20 +30,6 @@ function formatDate(dateStr: string): string {
 
   // Otherwise show date
   return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-}
-
-// Format session status
-function formatStatus(status: string): string {
-  switch (status) {
-    case 'active':
-      return output.success(status);
-    case 'saved':
-      return output.info(status);
-    case 'archived':
-      return output.dim(status);
-    default:
-      return status;
-  }
 }
 
 // List subcommand

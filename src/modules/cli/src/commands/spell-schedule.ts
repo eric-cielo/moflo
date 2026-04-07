@@ -13,7 +13,9 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
-import { callMCPTool, MCPClientError } from '../mcp-client.js';
+import { callMCPTool } from '../mcp-client.js';
+import { TOOL_MEMORY_STORE, TOOL_MEMORY_LIST, TOOL_MEMORY_RETRIEVE } from '../mcp-tools/tool-names.js';
+import { handleMCPError } from '../services/cli-formatters.js';
 import { ensureDaemonForScheduling } from '../services/daemon-readiness.js';
 
 const NAMESPACE_SCHEDULES = 'scheduled-workflows';
@@ -30,12 +32,6 @@ async function getSchedulerUtils() {
   } catch {
     return null;
   }
-}
-
-function formatMCPError(error: unknown, action: string): CommandResult {
-  const msg = error instanceof MCPClientError ? error.message : String(error);
-  output.printError(`Failed to ${action}: ${msg}`);
-  return { success: false, exitCode: 1 };
 }
 
 // ── Schedule Create ───────────────────────────────────────────────────────────
@@ -145,13 +141,13 @@ const createCommand: Command = {
     };
 
     try {
-      await callMCPTool('memory_store', {
+      await callMCPTool(TOOL_MEMORY_STORE, {
         namespace: NAMESPACE_SCHEDULES,
         key: id,
         value: JSON.stringify(record),
       });
     } catch (error) {
-      return formatMCPError(error, 'save schedule');
+      return handleMCPError(error, 'save schedule');
     }
 
     if (ctx.flags.format === 'json') {
@@ -187,7 +183,7 @@ const scheduleListCommand: Command = {
   description: 'List all scheduled spells',
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     try {
-      const result = await callMCPTool<{ results: Array<{ key: string; value: string }> }>('memory_list', {
+      const result = await callMCPTool<{ results: Array<{ key: string; value: string }> }>(TOOL_MEMORY_LIST, {
         namespace: NAMESPACE_SCHEDULES,
       });
 
@@ -235,7 +231,7 @@ const scheduleListCommand: Command = {
 
       return { success: true, data: schedules };
     } catch (error) {
-      return formatMCPError(error, 'list schedules');
+      return handleMCPError(error, 'list schedules');
     }
   },
 };
@@ -255,7 +251,7 @@ const cancelCommand: Command = {
 
     try {
       // Fetch the current schedule
-      const fetchResult = await callMCPTool<{ value: string | null }>('memory_retrieve', {
+      const fetchResult = await callMCPTool<{ value: string | null }>(TOOL_MEMORY_RETRIEVE, {
         namespace: NAMESPACE_SCHEDULES,
         key: scheduleId,
       });
@@ -271,7 +267,7 @@ const cancelCommand: Command = {
 
       // Disable it
       const updated = { ...schedule, enabled: false };
-      await callMCPTool('memory_store', {
+      await callMCPTool(TOOL_MEMORY_STORE, {
         namespace: NAMESPACE_SCHEDULES,
         key: scheduleId,
         value: JSON.stringify(updated),
@@ -280,7 +276,7 @@ const cancelCommand: Command = {
       output.printSuccess(`Schedule ${scheduleId} cancelled`);
       return { success: true, data: updated };
     } catch (error) {
-      return formatMCPError(error, 'cancel schedule');
+      return handleMCPError(error, 'cancel schedule');
     }
   },
 };

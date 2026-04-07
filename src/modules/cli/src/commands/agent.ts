@@ -5,6 +5,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
+import { formatStatus } from '../services/cli-formatters.js';
 import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import * as fs from 'fs';
@@ -755,7 +756,7 @@ const healthCommand: Command = {
         columns: [
           { key: 'id', header: 'Agent ID', width: 18 },
           { key: 'type', header: 'Type', width: 12 },
-          { key: 'health', header: 'Health', width: 10, format: formatHealthStatus },
+          { key: 'health', header: 'Health', width: 10, format: formatStatus },
           { key: 'cpu', header: 'CPU %', width: 8, align: 'right', format: (v) => `${Number(v ?? 0).toFixed(1)}%` },
           { key: 'memory', header: 'Memory', width: 10, align: 'right', format: (v: unknown) => {
             const mem = v as { used: number; limit: number } | undefined;
@@ -904,20 +905,6 @@ const logsCommand: Command = {
   }
 };
 
-function formatHealthStatus(health: unknown): string {
-  const h = String(health);
-  switch (h) {
-    case 'healthy':
-      return output.success(h);
-    case 'degraded':
-      return output.warning(h);
-    case 'unhealthy':
-      return output.error(h);
-    default:
-      return h;
-  }
-}
-
 function formatLogLevel(level: string): string {
   switch (level) {
     case 'debug':
@@ -981,23 +968,6 @@ function getAgentCapabilities(type: string): string[] {
   };
 
   return capabilities[type] || ['general'];
-}
-
-function formatStatus(status: unknown): string {
-  const statusStr = String(status);
-  switch (statusStr) {
-    case 'active':
-      return output.success(statusStr);
-    case 'idle':
-      return output.warning(statusStr);
-    case 'inactive':
-    case 'stopped':
-      return output.dim(statusStr);
-    case 'error':
-      return output.error(statusStr);
-    default:
-      return statusStr;
-  }
 }
 
 export default agentCommand;

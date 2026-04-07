@@ -5,6 +5,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
+import { formatStatus } from '../services/cli-formatters.js';
 import { select, confirm, input, multiSelect } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 
@@ -29,25 +30,6 @@ const TASK_PRIORITIES = [
   { value: 'normal', label: 'Normal', hint: 'Standard priority' },
   { value: 'low', label: 'Low', hint: 'Lower priority' }
 ];
-
-// Format task status with color
-function formatStatus(status: string): string {
-  switch (status) {
-    case 'completed':
-      return output.success(status);
-    case 'running':
-    case 'in_progress':
-      return output.info(status);
-    case 'pending':
-    case 'queued':
-      return output.warning(status);
-    case 'failed':
-    case 'cancelled':
-      return output.error(status);
-    default:
-      return status;
-  }
-}
 
 // Format priority with color
 function formatPriority(priority: string): string {
