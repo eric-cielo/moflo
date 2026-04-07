@@ -263,16 +263,16 @@ Check against all engine validation rules:
 
 ### Type Definitions
 
-- **Workflow definition:** `src/modules/workflows/src/types/workflow-definition.types.ts` — `WorkflowDefinition`, `StepDefinition`, `ArgumentDefinition`, `ArgumentType`
-- **Step command interface:** `src/modules/workflows/src/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `WorkflowContext`, `MofloLevel`, `CapabilityType`
-- **Connector interface:** `src/modules/workflows/src/types/workflow-connector.types.ts` — `WorkflowConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorAccessor`
+- **Spell definition:** `src/modules/spells/src/types/workflow-definition.types.ts` — `SpellDefinition`, `StepDefinition`, `ArgumentDefinition`, `ArgumentType`
+- **Step command interface:** `src/modules/spells/src/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `CastingContext`, `MofloLevel`, `CapabilityType`
+- **Connector interface:** `src/modules/spells/src/types/workflow-connector.types.ts` — `SpellConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorAccessor`
 
 ### Engine Components
 
-- **Schema validator:** `src/modules/workflows/src/schema/validator.ts` — `validateWorkflowDefinition()`
-- **YAML/JSON parser:** `src/modules/workflows/src/schema/parser.ts` — `parseWorkflow()`
-- **Workflow registry:** `src/modules/workflows/src/registry/workflow-registry.ts` — `WorkflowRegistry`
-- **Definition loader:** `src/modules/workflows/src/loaders/definition-loader.ts` — two-tier loading (shipped + user)
+- **Schema validator:** `src/modules/spells/src/schema/validator.ts` — `validateSpellDefinition()`
+- **YAML/JSON parser:** `src/modules/spells/src/schema/parser.ts` — `parseWorkflow()`
+- **Grimoire (registry):** `src/modules/spells/src/registry/workflow-registry.ts` — `Grimoire`
+- **Definition loader:** `src/modules/spells/src/loaders/definition-loader.ts` — two-tier loading (shipped + user)
 
 ### MCP Tools
 

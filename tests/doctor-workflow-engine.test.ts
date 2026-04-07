@@ -2,7 +2,7 @@
  * Tests for doctor.ts workflow engine health check
  *
  * Verifies:
- * - checkWorkflowEngine function exists in doctor command
+ * - checkSpellEngine function exists in doctor command
  * - Validates core workflow modules (runner, step-executor, registry, etc.)
  * - Checks built output existence
  * - Checks step commands and loaders directories
@@ -14,7 +14,7 @@ import { readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 
 const DOCTOR_FILE = resolve(__dirname, '../src/modules/cli/src/commands/doctor.ts');
-const WORKFLOWS_SRC = resolve(__dirname, '../src/modules/workflows/src');
+const WORKFLOWS_SRC = resolve(__dirname, '../src/modules/spells/src');
 
 describe('doctor.ts workflow engine check', () => {
   let content: string;
@@ -23,8 +23,8 @@ describe('doctor.ts workflow engine check', () => {
     content = readFileSync(DOCTOR_FILE, 'utf-8');
   });
 
-  it('defines checkWorkflowEngine function', () => {
-    expect(content).toContain('async function checkWorkflowEngine');
+  it('defines checkSpellEngine function', () => {
+    expect(content).toContain('async function checkSpellEngine');
   });
 
   it('checks for core workflow modules', () => {
@@ -54,15 +54,15 @@ describe('doctor.ts workflow engine check', () => {
   });
 
   it('is included in allChecks array', () => {
-    expect(content).toContain('checkWorkflowEngine,');
+    expect(content).toContain('checkSpellEngine,');
   });
 
   it('is accessible via "workflows" component flag', () => {
-    expect(content).toContain("'workflows': checkWorkflowEngine");
+    expect(content).toContain("'workflows': checkSpellEngine");
   });
 
   it('is accessible via "workflow" component flag', () => {
-    expect(content).toContain("'workflow': checkWorkflowEngine");
+    expect(content).toContain("'workflow': checkSpellEngine");
   });
 
   it('reports missing modules with fix suggestion', () => {
@@ -123,7 +123,7 @@ describe('workflow engine source structure', () => {
     expect(existsSync(join(WORKFLOWS_SRC, 'index.ts'))).toBe(true);
     const indexContent = readFileSync(join(WORKFLOWS_SRC, 'index.ts'), 'utf-8');
     expect(indexContent).toContain('StepCommand');
-    expect(indexContent).toContain('WorkflowRunner');
-    expect(indexContent).toContain('WorkflowRegistry');
+    expect(indexContent).toContain('SpellCaster');
+    expect(indexContent).toContain('Grimoire');
   });
 });

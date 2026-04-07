@@ -8,10 +8,10 @@
  * Story #229: Uses shared engine loader instead of inline dynamic import.
  */
 
-import { loadWorkflowEngine, type WorkflowResult } from '../services/engine-loader.js';
+import { loadSpellEngine, type WorkflowResult } from '../services/engine-loader.js';
 import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
 
-/** Minimal workflow result shape matching WorkflowResult from @moflo/workflows. */
+/** Minimal workflow result shape matching WorkflowResult from @moflo/spells. */
 export type EpicWorkflowResult = Pick<
   WorkflowResult,
   'workflowId' | 'success' | 'outputs' | 'duration' | 'cancelled'
@@ -45,7 +45,7 @@ export async function runEpicWorkflow(
   yamlContent: string,
   options: EpicRunOptions = {},
 ): Promise<EpicWorkflowResult> {
-  const engine = await loadWorkflowEngine();
+  const engine = await loadSpellEngine();
 
   // Lazily initialize a real memory accessor so execution records
   // are persisted and visible in the dashboard.

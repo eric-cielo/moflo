@@ -60,7 +60,7 @@ export interface WorkflowStatusResponse {
 }
 
 /** Entry in a workflow registry list response. */
-export interface WorkflowRegistryEntry {
+export interface GrimoireEntry {
   [key: string]: unknown;
   name: string;
   abbreviation?: string;
@@ -70,7 +70,7 @@ export interface WorkflowRegistryEntry {
 
 /** Response from workflow_list MCP tool. */
 export interface WorkflowListResponse {
-  definitions?: WorkflowRegistryEntry[];
+  definitions?: GrimoireEntry[];
   runs?: WorkflowRunEntry[];
   activeWorkflows?: string[];
   registryError?: string;
@@ -99,7 +99,7 @@ export interface WorkflowCancelResponse {
 /** Response from workflow_template list action. */
 export interface WorkflowTemplateListResponse {
   action: string;
-  templates: WorkflowRegistryEntry[];
+  templates: GrimoireEntry[];
   total: number;
   error?: string;
 }

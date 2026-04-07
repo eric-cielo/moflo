@@ -1301,7 +1301,7 @@ export const doctorCommand: Command = {
     };
 
     // Check Workflow Engine health — validates core modules, built output, and step commands
-    async function checkWorkflowEngine(): Promise<HealthCheck> {
+    async function checkSpellEngine(): Promise<HealthCheck> {
       try {
         // Resolve relative to the moflo package root (works in both dev and consumer)
         const mofloRoot = getMofloRoot();
@@ -1310,8 +1310,8 @@ export const doctorCommand: Command = {
         }
 
         // Prefer compiled dist/, fall back to src/ in dev repo
-        const distDir = join(mofloRoot, 'src', 'modules', 'workflows', 'dist');
-        const srcDir = join(mofloRoot, 'src', 'modules', 'workflows', 'src');
+        const distDir = join(mofloRoot, 'src', 'modules', 'spells', 'dist');
+        const srcDir = join(mofloRoot, 'src', 'modules', 'spells', 'src');
         const hasDistDir = existsSync(distDir);
         const hasSrcDir = existsSync(srcDir);
 
@@ -1400,7 +1400,7 @@ export const doctorCommand: Command = {
       checkAgenticFlow,
       checkSemanticQuality,
       checkIntelligence,
-      checkWorkflowEngine,
+      checkSpellEngine,
       checkZombieProcesses,
       checkSubagentHealth,
       checkWorkflowExecution,
@@ -1431,8 +1431,8 @@ export const doctorCommand: Command = {
       'semantic': checkSemanticQuality,
       'quality': checkSemanticQuality,
       'intelligence': checkIntelligence,
-      'workflows': checkWorkflowEngine,
-      'workflow': checkWorkflowEngine,
+      'workflows': checkSpellEngine,
+      'workflow': checkSpellEngine,
       'subagent': checkSubagentHealth,
       'subagents': checkSubagentHealth,
       'agents': checkSubagentHealth,

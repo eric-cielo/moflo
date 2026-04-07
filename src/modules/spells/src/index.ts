@@ -1,0 +1,260 @@
+/**
+ * @moflo/spells
+ *
+ * Generalized Workflow Engine for MoFlo V4.
+ *
+ * Provides a pluggable, YAML/JSON-defined workflow system where every step type
+ * implements a StepCommand interface — testable, reusable, and extensible.
+ *
+ * @packageDocumentation
+ */
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export type {
+  StepCommand,
+  StepConfig,
+  StepOutput,
+  StepCommandEntry,
+  StepCommandSource,
+  OutputDescriptor,
+  ValidationResult,
+  ValidationError,
+  JSONSchema,
+  CastingContext,
+  CredentialAccessor,
+  MemoryAccessor,
+  StepCapability,
+  CapabilityType,
+  MofloLevel,
+  Prerequisite,
+  PrerequisiteResult,
+} from './types/step-command.types.js';
+
+export {
+  MOFLO_LEVEL_ORDER,
+  DEFAULT_MAX_NESTING_DEPTH,
+} from './types/step-command.types.js';
+
+export type {
+  RunnerOptions,
+  WorkflowResult,
+  WorkflowError,
+  WorkflowErrorCode,
+  StepResult,
+  StepStatus,
+  DryRunResult,
+  DryRunStepReport,
+  FloRunContext,
+} from './types/runner.types.js';
+
+// ============================================================================
+// Core
+// ============================================================================
+
+export { StepCommandRegistry } from './core/step-command-registry.js';
+export { SpellCaster } from './core/runner.js';
+export { ConnectorAccessorImpl } from './core/connector-accessor.js';
+export { GatedConnectorAccessor } from './core/gated-connector-accessor.js';
+export {
+  checkCapabilities,
+  type CapabilityViolation,
+  type CapabilityCheckResult,
+} from './core/capability-validator.js';
+export {
+  CapabilityGateway,
+  CapabilityDeniedError,
+  DenyAllGateway,
+  DENY_ALL_GATEWAY,
+  discloseStep,
+  discloseWorkflow,
+  formatStepDisclosure,
+  formatWorkflowDisclosure,
+  type ICapabilityGateway,
+  type StepDisclosureSummary,
+  type WorkflowDisclosureSummary,
+} from './core/capability-gateway.js';
+export {
+  collectPrerequisites,
+  checkPrerequisites,
+  formatPrerequisiteErrors,
+  commandExists,
+} from './core/prerequisite-checker.js';
+
+// ============================================================================
+// Built-in Commands
+// ============================================================================
+
+export {
+  agentCommand,
+  bashCommand,
+  conditionCommand,
+  promptCommand,
+  memoryCommand,
+  waitCommand,
+  loopCommand,
+  browserCommand,
+  githubCommand,
+  parallelCommand,
+  builtinCommands,
+} from './commands/index.js';
+
+export {
+  createStepCommand,
+  type StepCommandDefinition,
+} from './commands/create-step-command.js';
+
+// ============================================================================
+// Schema (Workflow Definition)
+// ============================================================================
+
+export type {
+  SpellDefinition,
+  StepDefinition,
+  ArgumentDefinition,
+  ArgumentType,
+  ParsedWorkflow,
+} from './types/workflow-definition.types.js';
+
+export type {
+  ScheduleDefinition,
+} from './scheduler/schedule.types.js';
+
+export { parseYaml, parseJson, parseWorkflow } from './schema/parser.js';
+export { validateSpellDefinition, resolveArguments, type ValidatorOptions } from './schema/validator.js';
+
+// ============================================================================
+// Definition Loader (shipped + user override)
+// ============================================================================
+
+export {
+  loadSpellDefinitions,
+  loadWorkflowByName,
+  type LoaderOptions,
+  type LoadedWorkflow,
+  type LoadResult,
+  type LoadError,
+} from './loaders/definition-loader.js';
+
+// ============================================================================
+// Runner Factory (MCP + CLI integration)
+// ============================================================================
+
+export {
+  createRunner,
+  runWorkflowFromContent,
+  type RunnerFactoryOptions,
+  type RunWorkflowOptions,
+} from './factory/runner-factory.js';
+
+export {
+  bridgeRunWorkflow,
+  bridgeExecuteWorkflow,
+  bridgeCancelWorkflow,
+  bridgeIsRunning,
+  bridgeActiveWorkflows,
+} from './factory/runner-bridge.js';
+
+// ============================================================================
+// Pause/Resume
+// ============================================================================
+
+export {
+  buildPausedState,
+  persistPausedState,
+  resumeWorkflow,
+  cleanupStalePaused,
+  type PausedState,
+  type ResumeOptions,
+} from './factory/pause-resume.js';
+
+// ============================================================================
+// Credential Store
+// ============================================================================
+
+export {
+  CredentialStore,
+  CredentialStoreError,
+  type CredentialMeta,
+  type CredentialStoreOptions,
+  type CredentialStoreErrorCode,
+} from './credentials/credential-store.js';
+
+// ============================================================================
+// Workflow Registry (abbreviation lookup + list/info)
+// ============================================================================
+
+export {
+  Grimoire,
+  type RegistryOptions,
+  type RegistryResult,
+  type AbbreviationCollision,
+  type WorkflowInfo,
+  type WorkflowListEntry,
+} from './registry/workflow-registry.js';
+
+// ============================================================================
+// Scheduler (cron, interval, one-time scheduling)
+// ============================================================================
+
+export {
+  parseCron,
+  parseInterval,
+  parseAt,
+  computeNextRun,
+  nextRunFromCron,
+  nextRunFromInterval,
+  nextRunFromAt,
+  validateSchedule,
+  type ParsedCron,
+  type NextRunInput,
+} from './scheduler/cron-parser.js';
+
+export {
+  SpellScheduler,
+  type WorkflowExecutor,
+  type SchedulerEvent,
+  type SchedulerEventType,
+  type SchedulerListener,
+} from './scheduler/scheduler.js';
+
+export type {
+  WorkflowSchedule,
+  ScheduleExecution,
+  SchedulerOptions,
+} from './scheduler/schedule.types.js';
+
+// ============================================================================
+// Workflow Connectors (external resource bridges)
+// ============================================================================
+
+export type {
+  SpellConnector,
+  ConnectorView,
+  ConnectorOutput,
+  ConnectorAction,
+  ConnectorCapability,
+  ConnectorAccessor,
+  ConnectorRegistryEntry,
+  ConnectorSource,
+} from './types/workflow-connector.types.js';
+
+export {
+  SpellConnectorRegistry,
+  type ConnectorRegistryOptions,
+  type ConnectorScanResult,
+  type ConnectorScanError,
+} from './registry/connector-registry.js';
+
+// ============================================================================
+// Built-in Connectors
+// ============================================================================
+
+export {
+  httpConnector,
+  githubCliConnector,
+  playwrightConnector,
+  builtinConnectors,
+} from './connectors/index.js';

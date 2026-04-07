@@ -216,7 +216,7 @@ describe('taskkill tree kill (/T flag)', () => {
 
   it('bash-command.ts killProcessTree should destroy stdio pipes on Windows', () => {
     const src = readFileSync(
-      join(__dirname, '..', '..', '..', '..', 'src', 'modules', 'workflows', 'src', 'commands', 'bash-command.ts'),
+      join(__dirname, '..', '..', '..', '..', 'src', 'modules', 'spells', 'src', 'commands', 'bash-command.ts'),
       'utf-8',
     );
     expect(src).toContain('child.stdout?.destroy()');

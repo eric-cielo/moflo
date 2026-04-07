@@ -34,7 +34,7 @@ tests:
     - src/modules/shared/__tests__
     - src/modules/swarm/__tests__
     - src/modules/testing/__tests__
-    - src/modules/workflows/__tests__
+    - src/modules/spells/__tests__
     - src/__tests__
   patterns: ["*.test.*", "*.spec.*", "*.test-*"]
   extensions: [".ts", ".tsx", ".js", ".jsx"]
