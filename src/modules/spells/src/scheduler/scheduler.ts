@@ -1,7 +1,7 @@
 /**
- * Workflow Scheduler
+ * Spell Scheduler
  *
- * Manages scheduled workflow execution: polls for due workflows, prevents
+ * Manages scheduled spell execution: polls for due spells, prevents
  * overlap, tracks execution history, and handles catch-up after restarts.
  */
 
@@ -24,7 +24,7 @@ import { compareMofloLevels } from '../core/capability-validator.js';
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const DEFAULT_MAX_CONCURRENT = 2;
 const DEFAULT_CATCH_UP_WINDOW_MS = 3_600_000; // 1 hour
-const NAMESPACE_SCHEDULES = 'scheduled-workflows';
+const NAMESPACE_SCHEDULES = 'scheduled-spells';
 const NAMESPACE_EXECUTIONS = 'schedule-executions';
 
 // ============================================================================
@@ -54,7 +54,7 @@ export type SchedulerEventType =
 export interface SchedulerEvent {
   readonly type: SchedulerEventType;
   readonly scheduleId: string;
-  readonly workflowName: string;
+  readonly spellName: string;
   readonly message: string;
   readonly timestamp: number;
 }
@@ -103,7 +103,7 @@ export class SpellScheduler {
   }
 
   /**
-   * Stop the polling loop and cancel all running workflows.
+   * Stop the polling loop and cancel all running spells.
    */
   async stop(): Promise<void> {
     if (this.pollTimer) {
@@ -148,11 +148,11 @@ export class SpellScheduler {
   // ── Schedule CRUD ────────────────────────────────────────────────────────
 
   /**
-   * Register a schedule from a workflow definition's `schedule` block.
+   * Register a schedule from a spell definition's `schedule` block.
    */
   async registerFromDefinition(
     definition: SpellDefinition,
-    workflowPath: string,
+    spellPath: string,
   ): Promise<WorkflowSchedule | null> {
     if (!definition.schedule) return null;
     const { cron, interval, at, enabled } = definition.schedule;
@@ -164,8 +164,8 @@ export class SpellScheduler {
 
     const record: WorkflowSchedule = {
       id: `sched-def-${definition.name}`,
-      workflowName: definition.name,
-      workflowPath,
+      spellName: definition.name,
+      spellPath,
       cron,
       interval,
       at,
@@ -183,8 +183,8 @@ export class SpellScheduler {
    * Create an ad-hoc schedule via CLI.
    */
   async createSchedule(params: {
-    workflowName: string;
-    workflowPath: string;
+    spellName: string;
+    spellPath: string;
     cron?: string;
     interval?: string;
     at?: string;
@@ -204,8 +204,8 @@ export class SpellScheduler {
     const id = `sched-adhoc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const record: WorkflowSchedule = {
       id,
-      workflowName: params.workflowName,
-      workflowPath: params.workflowPath,
+      spellName: params.spellName,
+      spellPath: params.spellPath,
       cron: params.cron,
       interval: params.interval,
       at: params.at,
@@ -233,7 +233,7 @@ export class SpellScheduler {
     this.emit({
       type: 'schedule:disabled',
       scheduleId,
-      workflowName: record.workflowName,
+      spellName: record.spellName,
       message: `Schedule ${scheduleId} disabled`,
       timestamp: Date.now(),
     });
@@ -271,7 +271,7 @@ export class SpellScheduler {
   // ── Polling ──────────────────────────────────────────────────────────────
 
   /**
-   * Poll for due workflows and execute them.
+   * Poll for due spells and execute them.
    * This is the core method called by the polling loop.
    */
   async poll(): Promise<void> {
@@ -281,8 +281,8 @@ export class SpellScheduler {
     for (const schedule of schedules) {
       if (!schedule.enabled) continue;
 
-      // Auto-disable if workflow no longer exists (cancelSchedule emits the event)
-      if (!this.executor.exists(schedule.workflowName)) {
+      // Auto-disable if spell no longer exists (cancelSchedule emits the event)
+      if (!this.executor.exists(schedule.spellName)) {
         await this.cancelSchedule(schedule.id);
         continue;
       }
@@ -295,7 +295,7 @@ export class SpellScheduler {
         this.emit({
           type: 'schedule:skipped',
           scheduleId: schedule.id,
-          workflowName: schedule.workflowName,
+          spellName: schedule.spellName,
           message: `Missed run is older than catch-up window (${this.catchUpWindowMs}ms) — skipping`,
           timestamp: now,
         });
@@ -303,12 +303,12 @@ export class SpellScheduler {
         continue;
       }
 
-      // Overlap check: skip if this workflow is still running
+      // Overlap check: skip if this spell is still running
       if (this.runningWorkflows.has(schedule.id)) {
         this.emit({
           type: 'schedule:skipped',
           scheduleId: schedule.id,
-          workflowName: schedule.workflowName,
+          spellName: schedule.spellName,
           message: 'Prior run still active — skipping overlapping execution',
           timestamp: now,
         });
@@ -323,8 +323,8 @@ export class SpellScheduler {
       this.emit({
         type: 'schedule:due',
         scheduleId: schedule.id,
-        workflowName: schedule.workflowName,
-        message: `Workflow "${schedule.workflowName}" is due for execution`,
+        spellName: schedule.spellName,
+        message: `Spell "${schedule.spellName}" is due for casting`,
         timestamp: now,
       });
 
@@ -345,9 +345,9 @@ export class SpellScheduler {
     const execution: ScheduleExecution = {
       id: executionId,
       scheduleId: schedule.id,
-      workflowName: schedule.workflowName,
+      spellName: schedule.spellName,
       startedAt: now,
-      workflowId: `scheduled-${schedule.workflowName}-${now}`,
+      spellId: `scheduled-${schedule.spellName}-${now}`,
     };
 
     await this.memory.write(NAMESPACE_EXECUTIONS, executionId, execution);
@@ -355,7 +355,7 @@ export class SpellScheduler {
     this.emit({
       type: 'schedule:started',
       scheduleId: schedule.id,
-      workflowName: schedule.workflowName,
+      spellName: schedule.spellName,
       message: `Started scheduled execution ${executionId}`,
       timestamp: now,
     });
@@ -365,7 +365,7 @@ export class SpellScheduler {
       const effectiveLevel = this.resolveEffectiveMofloLevel(schedule.mofloLevel);
 
       const result = await this.executor.execute(
-        schedule.workflowName,
+        schedule.spellName,
         schedule.args ?? {},
         controller.signal,
         effectiveLevel,
@@ -384,7 +384,7 @@ export class SpellScheduler {
       this.emit({
         type: result.success ? 'schedule:completed' : 'schedule:failed',
         scheduleId: schedule.id,
-        workflowName: schedule.workflowName,
+        spellName: schedule.spellName,
         message: result.success
           ? `Completed in ${completedExecution.duration}ms`
           : `Failed: ${completedExecution.error}`,
@@ -404,7 +404,7 @@ export class SpellScheduler {
       this.emit({
         type: 'schedule:failed',
         scheduleId: schedule.id,
-        workflowName: schedule.workflowName,
+        spellName: schedule.spellName,
         message: `Error: ${failedExecution.error}`,
         timestamp: completedAt,
       });

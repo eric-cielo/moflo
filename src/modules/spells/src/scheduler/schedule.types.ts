@@ -1,17 +1,17 @@
 /**
- * Workflow Schedule Types
+ * Spell Schedule Types
  *
- * Types for scheduled workflow execution — cron, interval, and one-time scheduling.
+ * Types for scheduled spell execution — cron, interval, and one-time scheduling.
  */
 
 import type { MofloLevel } from '../types/step-command.types.js';
 
 // ============================================================================
-// Schedule Definition (in workflow YAML/JSON)
+// Schedule Definition (in spell YAML/JSON)
 // ============================================================================
 
 /**
- * Schedule block for a workflow definition.
+ * Schedule block for a spell definition.
  * Exactly one of `cron`, `interval`, or `at` must be specified.
  */
 export interface ScheduleDefinition {
@@ -33,8 +33,8 @@ export interface ScheduleDefinition {
 
 export interface WorkflowSchedule {
   readonly id: string;
-  readonly workflowName: string;
-  readonly workflowPath: string;
+  readonly spellName: string;
+  readonly spellPath: string;
   readonly cron?: string;
   readonly interval?: string;
   readonly at?: string;
@@ -56,12 +56,12 @@ export interface WorkflowSchedule {
 export interface ScheduleExecution {
   readonly id: string;
   readonly scheduleId: string;
-  readonly workflowName: string;
+  readonly spellName: string;
   readonly startedAt: number;
   readonly completedAt?: number;
   readonly success?: boolean;
   readonly error?: string;
-  readonly workflowId: string;
+  readonly spellId: string;
   readonly duration?: number;
 }
 
@@ -72,11 +72,11 @@ export interface ScheduleExecution {
 export interface SchedulerOptions {
   /** Poll interval in milliseconds (default: 60000 — 1 minute). */
   readonly pollIntervalMs?: number;
-  /** Maximum concurrent scheduled workflow executions (default: 2). */
+  /** Maximum concurrent scheduled spell executions (default: 2). */
   readonly maxConcurrent?: number;
   /** Catch-up window: max age in ms for missed runs to still execute (default: 3600000 — 1 hour). */
   readonly catchUpWindowMs?: number;
-  /** Global MoFlo level cap for all scheduler-initiated workflows. Per-schedule caps can only narrow, not widen. */
+  /** Global MoFlo level cap for all scheduler-initiated spells. Per-schedule caps can only narrow, not widen. */
   readonly maxMofloLevel?: MofloLevel;
 }
 
