@@ -290,6 +290,16 @@ try {
       }
     }
 
+    // 3a-iii. Ensure statusLine is wired (statusline.cjs is synced by step 3
+    // but settings.json may lack the config block, so the status line never appears)
+    if (!settings.statusLine) {
+      settings.statusLine = {
+        type: 'command',
+        command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/statusline.cjs" --compact',
+      };
+      dirty = true;
+    }
+
     if (dirty) {
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
     }
