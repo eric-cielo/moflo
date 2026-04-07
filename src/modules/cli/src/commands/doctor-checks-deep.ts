@@ -201,7 +201,7 @@ export async function checkSubagentHealth(): Promise<HealthCheck> {
 export async function checkWorkflowExecution(): Promise<HealthCheck> {
   try {
     const modulePath = findModule(
-      'src/modules/workflows/dist/factory/runner-factory.js',
+      'src/modules/spells/dist/factory/runner-factory.js',
     );
     if (!modulePath) {
       return { name: 'Workflow Execution', status: 'warn', message: 'Workflow runner-factory not found', fix: 'npm run build' };
@@ -411,7 +411,7 @@ export async function checkHookExecution(): Promise<HealthCheck> {
 export async function checkMcpWorkflowIntegration(): Promise<HealthCheck> {
   try {
     const bridgePath = findModule(
-      'src/modules/workflows/dist/factory/runner-bridge.js',
+      'src/modules/spells/dist/factory/runner-bridge.js',
     );
     if (!bridgePath) {
       return { name: 'MCP Workflow Integration', status: 'warn', message: 'runner-bridge not found', fix: 'npm run build' };

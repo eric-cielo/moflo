@@ -1,12 +1,12 @@
 /**
  * Shared Workflow Engine Loader
  *
- * Centralizes dynamic import + caching of the @moflo/workflows package.
+ * Centralizes dynamic import + caching of the @moflo/spells package.
  * Both workflow-tools.ts (MCP layer) and runner-adapter.ts (epic runner) use
  * this instead of maintaining their own import/cache logic.
  *
  * Story #229: Extract shared engine loader.
- * Story #230: Replaced *Like interfaces with import type from @moflo/workflows.
+ * Story #230: Replaced *Like interfaces with import type from @moflo/spells.
  */
 
 import { dirname, join, resolve } from 'node:path';
@@ -14,24 +14,24 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type {
   WorkflowResult,
-} from '../../../../modules/workflows/src/types/runner.types.js';
+} from '../../../../modules/spells/src/types/runner.types.js';
 import type {
-  WorkflowDefinition,
-} from '../../../../modules/workflows/src/types/workflow-definition.types.js';
+  SpellDefinition,
+} from '../../../../modules/spells/src/types/workflow-definition.types.js';
 import type {
-  WorkflowRegistry,
+  Grimoire,
   RegistryOptions,
-} from '../../../../modules/workflows/src/registry/workflow-registry.js';
+} from '../../../../modules/spells/src/registry/workflow-registry.js';
 
 // Re-export workflow types so consumers import from engine-loader (single boundary).
 export type { WorkflowResult };
-export type { WorkflowDefinition };
-export type { WorkflowRegistry };
+export type { SpellDefinition };
+export type { Grimoire };
 
 /**
  * Shape of the dynamically imported workflow engine module.
  *
- * Uses the canonical types from @moflo/workflows (type-only, no runtime dep).
+ * Uses the canonical types from @moflo/spells (type-only, no runtime dep).
  * The actual module is loaded via dynamic import() at runtime.
  */
 export interface EngineModule {
@@ -42,14 +42,14 @@ export interface EngineModule {
     options?: { dryRun?: boolean },
   ) => Promise<WorkflowResult>;
   bridgeExecuteWorkflow: (
-    definition: WorkflowDefinition,
+    definition: SpellDefinition,
     args: Record<string, unknown>,
     options?: { workflowId?: string },
   ) => Promise<WorkflowResult>;
   bridgeCancelWorkflow: (workflowId: string) => boolean;
   bridgeIsRunning: (workflowId: string) => boolean;
   bridgeActiveWorkflows: () => string[];
-  WorkflowRegistry: new (options?: RegistryOptions) => WorkflowRegistry;
+  Grimoire: new (options?: RegistryOptions) => Grimoire;
   runWorkflowFromContent: (
     content: string,
     sourceFile: string | undefined,
@@ -64,7 +64,7 @@ let pendingImport: Promise<EngineModule> | null = null;
  * Dynamically import the workflow engine, caching after first successful load.
  * Uses a pending-promise guard to prevent duplicate imports under concurrency.
  */
-export async function loadWorkflowEngine(): Promise<EngineModule> {
+export async function loadSpellEngine(): Promise<EngineModule> {
   if (cachedEngine) return cachedEngine;
   if (pendingImport) return pendingImport;
 
@@ -78,7 +78,7 @@ export async function loadWorkflowEngine(): Promise<EngineModule> {
       while (cliRoot !== dirname(cliRoot) && !existsSync(join(cliRoot, 'package.json'))) {
         cliRoot = dirname(cliRoot);
       }
-      const workflowsEntry = resolve(cliRoot, '..', 'workflows', 'dist', 'index.js');
+      const workflowsEntry = resolve(cliRoot, '..', 'spells', 'dist', 'index.js');
       const mod = await import(
         /* webpackIgnore: true */
         pathToFileURL(workflowsEntry).href

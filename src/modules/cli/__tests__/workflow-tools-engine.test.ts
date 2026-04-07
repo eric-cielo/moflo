@@ -317,6 +317,6 @@ steps:
     expect(source).toContain('bridgeRunWorkflow');
     expect(source).toContain('bridgeExecuteWorkflow');
     expect(source).toContain('bridgeCancelWorkflow');
-    expect(source).toContain('WorkflowRegistry');
+    expect(source).toContain('Grimoire');
   });
 });

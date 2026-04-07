@@ -19,7 +19,7 @@ function createFakeEngine() {
     bridgeCancelWorkflow: vi.fn(),
     bridgeIsRunning: vi.fn(),
     bridgeActiveWorkflows: vi.fn(),
-    WorkflowRegistry: vi.fn(),
+    Grimoire: vi.fn(),
     runWorkflowFromContent: vi.fn(),
   };
 }
@@ -29,9 +29,9 @@ describe('engine-loader', () => {
     vi.resetModules();
   });
 
-  it('should export loadWorkflowEngine and getCachedEngine', async () => {
+  it('should export loadSpellEngine and getCachedEngine', async () => {
     const mod = await import('../../src/services/engine-loader.js');
-    expect(typeof mod.loadWorkflowEngine).toBe('function');
+    expect(typeof mod.loadSpellEngine).toBe('function');
     expect(typeof mod.getCachedEngine).toBe('function');
   });
 
@@ -40,22 +40,22 @@ describe('engine-loader', () => {
     expect(mod.getCachedEngine()).toBeNull();
   });
 
-  it('loadWorkflowEngine should throw when workflows package is not built', async () => {
-    vi.doMock('../../../../modules/workflows/dist/index.js', () => {
+  it('loadSpellEngine should throw when workflows package is not built', async () => {
+    vi.doMock('../../../../modules/spells/dist/index.js', () => {
       throw new Error('Cannot find module');
     });
 
     const mod = await import('../../src/services/engine-loader.js');
-    await expect(mod.loadWorkflowEngine()).rejects.toThrow(
+    await expect(mod.loadSpellEngine()).rejects.toThrow(
       'Workflow engine not available',
     );
   });
 
-  it('loadWorkflowEngine should return the engine module on success', async () => {
-    vi.doMock('../../../../modules/workflows/dist/index.js', () => createFakeEngine());
+  it('loadSpellEngine should return the engine module on success', async () => {
+    vi.doMock('../../../../modules/spells/dist/index.js', () => createFakeEngine());
 
     const mod = await import('../../src/services/engine-loader.js');
-    const engine = await mod.loadWorkflowEngine();
+    const engine = await mod.loadSpellEngine();
 
     expect(engine).toBeDefined();
     expect(engine.bridgeRunWorkflow).toBeDefined();
@@ -63,22 +63,22 @@ describe('engine-loader', () => {
   });
 
   it('should cache the engine after first load (singleton)', async () => {
-    vi.doMock('../../../../modules/workflows/dist/index.js', () => createFakeEngine());
+    vi.doMock('../../../../modules/spells/dist/index.js', () => createFakeEngine());
 
     const mod = await import('../../src/services/engine-loader.js');
 
-    const first = await mod.loadWorkflowEngine();
-    const second = await mod.loadWorkflowEngine();
+    const first = await mod.loadSpellEngine();
+    const second = await mod.loadSpellEngine();
     expect(first).toBe(second);
   });
 
   it('getCachedEngine should return the engine after successful load', async () => {
-    vi.doMock('../../../../modules/workflows/dist/index.js', () => createFakeEngine());
+    vi.doMock('../../../../modules/spells/dist/index.js', () => createFakeEngine());
 
     const mod = await import('../../src/services/engine-loader.js');
 
     expect(mod.getCachedEngine()).toBeNull();
-    await mod.loadWorkflowEngine();
+    await mod.loadSpellEngine();
     expect(mod.getCachedEngine()).not.toBeNull();
   });
 });

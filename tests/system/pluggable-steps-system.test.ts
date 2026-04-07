@@ -16,9 +16,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createRunner, runWorkflowFromContent } from '../../src/modules/workflows/src/factory/runner-factory.js';
-import { StepCommandRegistry } from '../../src/modules/workflows/src/core/step-command-registry.js';
-import { builtinCommands } from '../../src/modules/workflows/src/commands/index.js';
+import { createRunner, runWorkflowFromContent } from '../../src/modules/spells/src/factory/runner-factory.js';
+import { StepCommandRegistry } from '../../src/modules/spells/src/core/step-command-registry.js';
+import { builtinCommands } from '../../src/modules/spells/src/commands/index.js';
 
 // ============================================================================
 // Test Environment
@@ -303,7 +303,7 @@ describe('Pluggable Steps — System Test', () => {
         projectRoot,
       });
 
-      // Runner should be usable (it's a WorkflowRunner instance)
+      // Runner should be usable (it's a SpellCaster instance)
       expect(runner).toBeDefined();
       expect(typeof runner.run).toBe('function');
     });

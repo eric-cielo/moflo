@@ -72,8 +72,8 @@ describe('connector-builder skill', () => {
       expect(content).toMatch(/## Building a (?:Generalized )?Connector/i);
     });
 
-    it('references WorkflowConnector interface', () => {
-      expect(content).toContain('WorkflowConnector');
+    it('references SpellConnector interface', () => {
+      expect(content).toContain('SpellConnector');
     });
 
     it('references ConnectorAction type', () => {
@@ -121,8 +121,8 @@ describe('connector-builder skill', () => {
       expect(content).toContain('StepOutput');
     });
 
-    it('references WorkflowContext type', () => {
-      expect(content).toContain('WorkflowContext');
+    it('references CastingContext type', () => {
+      expect(content).toContain('CastingContext');
     });
 
     it('includes configSchema with JSONSchema', () => {

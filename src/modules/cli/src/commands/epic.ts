@@ -2,7 +2,7 @@
  * MoFlo Epic Command — Thin Workflow Runner Wrapper
  *
  * Story #197: Refactored from ~1153-line ad-hoc orchestrator to thin wrapper
- * that loads workflow YAML templates and runs them via WorkflowRunner.
+ * that loads workflow YAML templates and runs them via SpellCaster.
  *
  * Usage:
  *   flo epic run 42                          Execute an epic from GitHub

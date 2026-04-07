@@ -10,12 +10,12 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MCPTool } from './types.js';
 import {
-  loadWorkflowEngine,
+  loadSpellEngine,
   getCachedEngine,
   type EngineModule,
   type WorkflowResult,
-  type WorkflowDefinition,
-  type WorkflowRegistry,
+  type SpellDefinition,
+  type Grimoire,
 } from '../services/engine-loader.js';
 import { findProjectRoot } from '../services/project-root.js';
 
@@ -89,7 +89,7 @@ function trackResult(tracked: TrackedWorkflow, result: WorkflowResult): void {
 /** Execute a definition via the engine with tracking and error handling. */
 async function executeAndTrack(
   engine: EngineModule,
-  definition: WorkflowDefinition,
+  definition: SpellDefinition,
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const workflowId = `wf-${Date.now()}`;
@@ -110,23 +110,23 @@ async function executeAndTrack(
 // Registry singleton (created once per session, refreshable on demand)
 // ============================================================================
 
-let registryInstance: WorkflowRegistry | null = null;
-let pendingRegistry: Promise<WorkflowRegistry> | null = null;
+let registryInstance: Grimoire | null = null;
+let pendingRegistry: Promise<Grimoire> | null = null;
 
-async function getRegistry(): Promise<WorkflowRegistry> {
+async function getRegistry(): Promise<Grimoire> {
   if (registryInstance) return registryInstance;
   if (pendingRegistry) return pendingRegistry;
 
   pendingRegistry = (async () => {
     try {
-      const engine = await loadWorkflowEngine();
+      const engine = await loadSpellEngine();
       const shippedDir = resolve(
         dirname(fileURLToPath(import.meta.url)),
-        '../../../../modules/workflows/definitions',
+        '../../../../modules/spells/definitions',
       );
 
       const projectRoot = findProjectRoot();
-      registryInstance = new engine.WorkflowRegistry({
+      registryInstance = new engine.Grimoire({
         shippedDir,
         userDirs: [
           resolve(projectRoot, 'workflows'),
@@ -226,7 +226,7 @@ export const workflowTools: MCPTool[] = [
         if (!loaded) {
           return { error: `Workflow not found in registry: ${input.name}` };
         }
-        const engine = await loadWorkflowEngine();
+        const engine = await loadSpellEngine();
         return executeAndTrack(engine, loaded.definition, args);
       }
 
@@ -252,7 +252,7 @@ export const workflowTools: MCPTool[] = [
       }
 
       // Run from raw content via bridge
-      const engine = await loadWorkflowEngine();
+      const engine = await loadSpellEngine();
       const result = await engine.bridgeRunWorkflow(content, sourceFile, args, { dryRun });
       const tracked = trackStart(result.workflowId, workflowName);
       trackResult(tracked, result);
@@ -294,7 +294,7 @@ export const workflowTools: MCPTool[] = [
       const steps = (input.steps as Array<{ id?: string; type?: string; config?: Record<string, unknown> }>) ?? [];
       const args = input.arguments as Record<string, unknown> | undefined;
 
-      // Build a WorkflowDefinition-compatible object from untyped MCP input
+      // Build a SpellDefinition-compatible object from untyped MCP input
       const definition = {
         name,
         description,
@@ -304,7 +304,7 @@ export const workflowTools: MCPTool[] = [
           type: s.type ?? 'bash',
           config: s.config ?? {},
         })),
-      } as WorkflowDefinition;
+      } as SpellDefinition;
 
       return {
         name,
@@ -326,14 +326,14 @@ export const workflowTools: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        definition: { type: 'object', description: 'WorkflowDefinition object (from workflow_create or parsed YAML)' },
+        definition: { type: 'object', description: 'SpellDefinition object (from workflow_create or parsed YAML)' },
         args: { type: 'object', description: 'Runtime arguments' },
         dryRun: { type: 'boolean', description: 'Validate without executing' },
       },
       required: ['definition'],
     },
     handler: async (input) => {
-      const definition = input.definition as WorkflowDefinition;
+      const definition = input.definition as SpellDefinition;
       const args = (input.args as Record<string, unknown>) ?? {};
 
       if (!definition || !definition.name || !definition.steps) {
@@ -341,7 +341,7 @@ export const workflowTools: MCPTool[] = [
       }
 
       if (input.dryRun) {
-        const engine = await loadWorkflowEngine();
+        const engine = await loadSpellEngine();
         const content = JSON.stringify(definition);
         const result = await engine.runWorkflowFromContent(content, undefined, {
           dryRun: true,
@@ -350,7 +350,7 @@ export const workflowTools: MCPTool[] = [
         return serializeResult(result);
       }
 
-      const engine = await loadWorkflowEngine();
+      const engine = await loadSpellEngine();
       return executeAndTrack(engine, definition, args);
     },
   },
@@ -475,7 +475,7 @@ export const workflowTools: MCPTool[] = [
 
       // Also include currently running workflows from the engine
       try {
-        const engine = await loadWorkflowEngine();
+        const engine = await loadSpellEngine();
         result.activeWorkflows = engine.bridgeActiveWorkflows();
       } catch {
         result.activeWorkflows = [];
@@ -501,7 +501,7 @@ export const workflowTools: MCPTool[] = [
     },
     handler: async (input) => {
       const workflowId = input.workflowId as string;
-      const engine = await loadWorkflowEngine();
+      const engine = await loadSpellEngine();
 
       if (!engine.bridgeIsRunning(workflowId)) {
         return { workflowId, error: 'Workflow not running' };
@@ -585,7 +585,7 @@ export const workflowTools: MCPTool[] = [
     },
     handler: async (input) => {
       const workflowId = input.workflowId as string;
-      const engine = await loadWorkflowEngine();
+      const engine = await loadSpellEngine();
 
       const cancelled = engine.bridgeCancelWorkflow(workflowId);
 

@@ -237,8 +237,8 @@ describe('workflow-builder skill', () => {
   });
 
   describe('type definition references', () => {
-    it('references WorkflowDefinition type', () => {
-      expect(content).toContain('WorkflowDefinition');
+    it('references SpellDefinition type', () => {
+      expect(content).toContain('SpellDefinition');
     });
 
     it('references StepDefinition type', () => {
@@ -250,7 +250,7 @@ describe('workflow-builder skill', () => {
     });
 
     it('references the workflow registry', () => {
-      expect(content).toContain('WorkflowRegistry');
+      expect(content).toContain('Grimoire');
     });
 
     it('references the definition loader', () => {

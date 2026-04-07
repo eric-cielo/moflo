@@ -8,8 +8,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseYaml } from '../src/modules/workflows/src/schema/parser.js';
-import type { WorkflowDefinition } from '../src/modules/workflows/src/types/workflow-definition.types.js';
+import { parseYaml } from '../src/modules/spells/src/schema/parser.js';
+import type { SpellDefinition } from '../src/modules/spells/src/types/workflow-definition.types.js';
 
 // ============================================================================
 // Helpers
@@ -17,7 +17,7 @@ import type { WorkflowDefinition } from '../src/modules/workflows/src/types/work
 
 const WORKFLOWS_DIR = join(__dirname, '..', 'src', 'modules', 'cli', 'src', 'epic', 'workflows');
 
-function loadYaml(filename: string): WorkflowDefinition {
+function loadYaml(filename: string): SpellDefinition {
   const content = readFileSync(join(WORKFLOWS_DIR, filename), 'utf-8');
   const parsed = parseYaml(content, filename);
   return parsed.definition;
@@ -28,7 +28,7 @@ function loadYaml(filename: string): WorkflowDefinition {
 // ============================================================================
 
 describe('single-branch.yaml', () => {
-  let def: WorkflowDefinition;
+  let def: SpellDefinition;
 
   it('parses without error', () => {
     def = loadYaml('single-branch.yaml');
@@ -100,7 +100,7 @@ describe('single-branch.yaml', () => {
 // ============================================================================
 
 describe('auto-merge.yaml', () => {
-  let def: WorkflowDefinition;
+  let def: SpellDefinition;
 
   it('parses without error', () => {
     def = loadYaml('auto-merge.yaml');

@@ -12,6 +12,6 @@
   "references": [
     { "path": "../shared" },
     { "path": "../swarm" },
-    { "path": "../workflows" }
+    { "path": "../spells" }
   ]
 }

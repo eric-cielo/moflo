@@ -1,0 +1,303 @@
+/**
+ * Bash Step Command — runs a shell command.
+ */
+
+import { exec, spawn, type ChildProcess } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { platform } from 'node:os';
+import type {
+  StepCommand,
+  StepConfig,
+  StepOutput,
+  CastingContext,
+  ValidationResult,
+  OutputDescriptor,
+  JSONSchema,
+  StepCapability,
+} from '../types/step-command.types.js';
+import { shellInterpolateString } from '../core/interpolation.js';
+import { enforceScope, formatViolations } from '../core/capability-validator.js';
+
+/** Typed config for the bash step command. */
+export interface BashStepConfig extends StepConfig {
+  readonly command: string;
+  readonly timeout?: number;
+  readonly failOnError?: boolean;
+}
+
+export const bashCommand: StepCommand<BashStepConfig> = {
+  type: 'bash',
+  description: 'Run a shell command and capture output',
+  capabilities: [
+    { type: 'shell' },
+    { type: 'fs:read' },
+    { type: 'fs:write' },
+  ],
+  defaultMofloLevel: 'none',
+  configSchema: {
+    type: 'object',
+    properties: {
+      command: { type: 'string', description: 'Shell command to execute' },
+      timeout: { type: 'number', description: 'Timeout in milliseconds', default: 30000 },
+      failOnError: { type: 'boolean', description: 'Fail step on non-zero exit', default: true },
+    },
+    required: ['command'],
+  } satisfies JSONSchema,
+
+  validate(config: BashStepConfig): ValidationResult {
+    const errors = [];
+    if (!config.command || typeof config.command !== 'string') {
+      errors.push({ path: 'command', message: 'command is required and must be a string' });
+    }
+    if (config.timeout !== undefined && (typeof config.timeout !== 'number' || config.timeout <= 0)) {
+      errors.push({ path: 'timeout', message: 'timeout must be a positive number' });
+    }
+    return { valid: errors.length === 0, errors };
+  },
+
+  async execute(config: BashStepConfig, context: CastingContext): Promise<StepOutput> {
+    const start = Date.now();
+    const command = shellInterpolateString(config.command, context);
+    const timeout = config.timeout ?? 30000;
+    const failOnError = config.failOnError !== false;
+
+    // ── Scope enforcement (#258, #266 — gateway always present) ────────
+    try {
+      context.gateway.checkShell(command);
+    } catch (err) {
+      return {
+        success: false,
+        data: { stdout: '', stderr: '', exitCode: -1 },
+        error: (err as Error).message,
+        duration: Date.now() - start,
+      };
+    }
+
+    // Best-effort fs path scope check — extracts absolute paths from the
+    // command string. This does NOT catch relative paths or paths built at
+    // runtime. True confinement requires OS-level sandboxing.
+    if (context.effectiveCaps) {
+      const scopeViolation = checkBashPathScopes(command, context.effectiveCaps, context.taskId);
+      if (scopeViolation) {
+        return {
+          success: false,
+          data: { stdout: '', stderr: '', exitCode: -1 },
+          error: scopeViolation,
+          duration: Date.now() - start,
+        };
+      }
+    }
+
+    // If already aborted, bail immediately without spawning a process.
+    if (context.abortSignal?.aborted) {
+      return {
+        success: !failOnError,
+        data: { stdout: '', stderr: '', exitCode: -1, timedOut: false },
+        error: failOnError ? 'Command aborted before execution' : undefined,
+        duration: Date.now() - start,
+      };
+    }
+
+    const elapsed = () => `${((Date.now() - start) / 1000).toFixed(1)}s`;
+    const cmdPreview = command.length > 80 ? command.slice(0, 77) + '...' : command;
+
+    // Resolve shell: prefer Git Bash on Windows to avoid WSL bash hanging.
+    const resolvedShell = platform() === 'win32' ? resolveGitBash() : 'bash';
+
+    return new Promise<StepOutput>((resolve) => {
+      let timedOut = false;
+      let resolved = false;
+      let lastStdoutLine = '';
+
+      const finish = (code: number | null, signal: string | null, stdout: string, stderr: string) => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timer);
+        clearInterval(heartbeat);
+        context.abortSignal?.removeEventListener('abort', onAbort);
+
+        const exitCode = code ?? (timedOut ? -1 : 1);
+        const killed = timedOut || signal === 'SIGTERM' || signal === 'SIGKILL';
+        const success = !failOnError || exitCode === 0;
+
+        let errorMsg: string | undefined;
+        if (!success) {
+          if (timedOut) {
+            errorMsg = `Command timed out after ${timeout}ms`;
+          } else if (killed) {
+            errorMsg = `Command killed by signal ${signal}`;
+          } else {
+            errorMsg = `Command exited with code ${exitCode}`;
+          }
+          if (stderr.trim()) errorMsg += ': ' + stderr.trim();
+          else if (stdout.trim()) {
+            errorMsg += ' (stdout tail: ' + stdout.trim().slice(-500) + ')';
+          }
+        }
+
+        resolve({
+          success,
+          data: { stdout: stdout.trim(), stderr: stderr.trim(), exitCode, timedOut },
+          error: errorMsg,
+          duration: Date.now() - start,
+        });
+      };
+
+      // Use spawn (not exec) with stdin set to 'ignore' from the start.
+      // exec() creates a pipe for stdin then we close it — but the shell
+      // may read from stdin before we get a chance to close it, causing a
+      // hang on Windows. 'ignore' maps stdin to /dev/null at spawn time.
+      const child = spawn(resolvedShell, ['-c', command], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+        windowsHide: true,
+      });
+
+      // ── Heartbeat — show the user the step is alive ──────────────
+      const HEARTBEAT_INTERVAL = 15_000; // 15 seconds
+      const heartbeat = setInterval(() => {
+        if (resolved) { clearInterval(heartbeat); return; }
+        const activity = lastStdoutLine
+          ? ` | ${lastStdoutLine.slice(0, 80)}`
+          : '';
+        console.log(`[bash] still running (${elapsed()}) pid=${child.pid ?? '?'} cmd=${cmdPreview}${activity}`);
+      }, HEARTBEAT_INTERVAL);
+
+      // ── Manual timeout with process tree kill ─────────────────────
+      const onAbort = () => {
+        timedOut = true;
+        console.log(`[bash] killing step after ${elapsed()} (timeout=${timeout}ms) pid=${child.pid ?? '?'}`);
+        killProcessTree(child);
+      };
+      const timer = setTimeout(onAbort, timeout);
+      context.abortSignal?.addEventListener('abort', onAbort, { once: true });
+
+      // ── Collect stdout/stderr, track last line for heartbeat ──────
+      let closeStdout = '';
+      let closeStderr = '';
+      child.stdout?.on('data', (chunk: Buffer) => {
+        const text = chunk.toString();
+        closeStdout += text;
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length > 0) lastStdoutLine = lines[lines.length - 1];
+      });
+      child.stderr?.on('data', (chunk: Buffer) => { closeStderr += chunk.toString(); });
+
+      // Resolve when the process exits and all stdio streams close
+      child.on('close', (code, signal) => {
+        finish(code, signal, closeStdout, closeStderr);
+      });
+    });
+  },
+
+  describeOutputs(): OutputDescriptor[] {
+    return [
+      { name: 'stdout', type: 'string', required: true },
+      { name: 'stderr', type: 'string', required: true },
+      { name: 'exitCode', type: 'number', required: true },
+    ];
+  },
+};
+
+// ── Process tree killing ─────────────────────────────────────────────────
+
+/**
+ * Kill a child process and its entire tree.
+ * On Windows, `child.kill()` only kills the immediate process, leaving bash
+ * and its children alive. We use `taskkill /T /F` for a tree kill (#298).
+ */
+function killProcessTree(child: ChildProcess): void {
+  if (!child.pid) {
+    child.kill('SIGKILL');
+    return;
+  }
+  if (platform() === 'win32') {
+    try {
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+        stdio: 'ignore',
+      });
+      // Destroy stdio pipes so 'close' fires even if taskkill is async.
+      // Without this, piped stdout/stderr may stay open and the 'close'
+      // event never fires — causing the command to hang until test timeout.
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      try { child.kill(); } catch { /* ok */ }
+    } catch {
+      child.kill('SIGKILL');
+    }
+  } else {
+    // On Unix, kill the process group (negative pid)
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      child.kill('SIGKILL');
+    }
+  }
+}
+
+// ── Git Bash resolution (Windows) ───────────────────────────────────────
+
+/**
+ * On Windows, multiple `bash.exe` may exist on PATH:
+ *   - C:\Program Files\Git\usr\bin\bash.exe  (Git Bash — works)
+ *   - C:\Windows\System32\bash.exe           (WSL — hangs on Windows FS)
+ *   - C:\Users\...\AppData\Local\Microsoft\WindowsApps\bash.exe (WSL alias)
+ *
+ * We explicitly resolve Git Bash to avoid the WSL variants.
+ */
+let _cachedGitBash: string | undefined;
+function resolveGitBash(): string {
+  if (_cachedGitBash) return _cachedGitBash;
+
+  // Check common Git install locations
+  const candidates = [
+    'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
+    'C:\\Program Files (x86)\\Git\\usr\\bin\\bash.exe',
+    // Git Bash also provides this shorter path
+    'C:\\Program Files\\Git\\bin\\bash.exe',
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      _cachedGitBash = candidate;
+      return candidate;
+    }
+  }
+
+  // Fallback: hope PATH has Git Bash first
+  _cachedGitBash = 'bash';
+  return 'bash';
+}
+
+// ── Best-effort path extraction for scope enforcement ────────────────────
+
+/**
+ * Extract absolute paths from a shell command string.
+ * Matches Unix (/...) and Windows (C:\...) absolute paths.
+ * This is intentionally conservative — it will miss relative paths and
+ * paths constructed at runtime. See the comment in execute() above.
+ */
+const ABSOLUTE_PATH_RE = /(?:\/[\w./-]+|[A-Z]:\\[\w.\\ /-]+)/gi;
+
+function checkBashPathScopes(
+  command: string,
+  caps: readonly StepCapability[],
+  taskId: string,
+): string | null {
+  const fsCapTypes = ['fs:read', 'fs:write'] as const;
+
+  for (const capType of fsCapTypes) {
+    const cap = caps.find(c => c.type === capType);
+    if (!cap?.scope || cap.scope.length === 0) continue;
+
+    const paths = command.match(ABSOLUTE_PATH_RE);
+    if (!paths) continue;
+
+    for (const p of paths) {
+      const violation = enforceScope(caps, capType, p, taskId, 'bash');
+      if (violation) return formatViolations([violation]);
+    }
+  }
+
+  return null;
+}

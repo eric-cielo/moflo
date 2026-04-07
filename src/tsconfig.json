@@ -16,7 +16,7 @@
       "@moflo/shared": ["./modules/shared/src"],
       "@moflo/swarm": ["./modules/swarm/src"],
       "@moflo/testing": ["./modules/testing/src"],
-      "@moflo/workflows": ["./modules/workflows/src"]
+      "@moflo/spells": ["./modules/spells/src"]
     }
   },
   "references": [
@@ -33,7 +33,7 @@
     { "path": "./modules/security" },
     { "path": "./modules/swarm" },
     { "path": "./modules/testing" },
-    { "path": "./modules/workflows" }
+    { "path": "./modules/spells" }
   ],
   "include": [],
   "exclude": ["node_modules", "dist"]

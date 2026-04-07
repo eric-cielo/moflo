@@ -5,7 +5,7 @@
  * Includes lazy daemon readiness check on schedule creation.
  *
  * Schedule records are persisted to the 'scheduled-workflows' memory namespace —
- * the same namespace the daemon's WorkflowScheduler polls. The daemon picks up
+ * the same namespace the daemon's SpellScheduler polls. The daemon picks up
  * new schedules on its next poll cycle (or via catch-up window after restart).
  */
 

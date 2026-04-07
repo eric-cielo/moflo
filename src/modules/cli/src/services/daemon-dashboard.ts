@@ -9,8 +9,8 @@
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { WorkerDaemon } from './worker-daemon.js';
-import type { MemoryAccessor } from '../../../workflows/src/types/step-command.types.js';
-import type { FloRunContext } from '../../../workflows/src/types/runner.types.js';
+import type { MemoryAccessor } from '../../../spells/src/types/step-command.types.js';
+import type { FloRunContext } from '../../../spells/src/types/runner.types.js';
 
 // ============================================================================
 // Types

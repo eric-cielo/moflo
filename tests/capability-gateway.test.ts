@@ -13,15 +13,15 @@ import {
   discloseWorkflow,
   formatStepDisclosure,
   formatWorkflowDisclosure,
-} from '../src/modules/workflows/src/core/capability-gateway.js';
-import type { StepCapability, WorkflowContext } from '../src/modules/workflows/src/types/step-command.types.js';
-import { agentCommand } from '../src/modules/workflows/src/commands/agent-command.js';
-import { githubCommand } from '../src/modules/workflows/src/commands/github-command.js';
-import { memoryCommand } from '../src/modules/workflows/src/commands/memory-command.js';
+} from '../src/modules/spells/src/core/capability-gateway.js';
+import type { StepCapability, CastingContext } from '../src/modules/spells/src/types/step-command.types.js';
+import { agentCommand } from '../src/modules/spells/src/commands/agent-command.js';
+import { githubCommand } from '../src/modules/spells/src/commands/github-command.js';
+import { memoryCommand } from '../src/modules/spells/src/commands/memory-command.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function makeContext(caps: StepCapability[], gateway?: CapabilityGateway): WorkflowContext {
+function makeContext(caps: StepCapability[], gateway?: CapabilityGateway): CastingContext {
   return {
     variables: {},
     args: {},

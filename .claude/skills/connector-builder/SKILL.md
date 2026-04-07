@@ -5,7 +5,7 @@ description: "Scaffold new workflow step commands and (rarely) generalized I/O c
 
 # Connector Builder
 
-Scaffold production-ready step commands (`StepCommand`) and, when truly needed, generalized I/O connectors (`WorkflowConnector`) with proper types, tests, and registration.
+Scaffold production-ready step commands (`StepCommand`) and, when truly needed, generalized I/O connectors (`SpellConnector`) with proper types, tests, and registration.
 
 ## Prerequisites
 
@@ -62,7 +62,7 @@ For each action, ask:
 
 ### Step 2: Generate Connector Source
 
-Create the file at `src/modules/workflows/src/connectors/<name>.ts`.
+Create the file at `src/modules/spells/src/connectors/<name>.ts`.
 
 Follow this template, using `github-cli.ts` as the reference implementation:
 
@@ -76,7 +76,7 @@ Follow this template, using `github-cli.ts` as the reference implementation:
  */
 
 import type {
-  WorkflowConnector,
+  SpellConnector,
   ConnectorAction,
   ConnectorOutput,
   ConnectorCapability,
@@ -133,7 +133,7 @@ const ACTIONS: ConnectorAction[] = [
   },
 ];
 
-export const <name>Connector: WorkflowConnector = {
+export const <name>Connector: SpellConnector = {
   name: '<name>',
   description: '<Description>',
   version: '<version>',
@@ -174,7 +174,7 @@ Create at `tests/packages/workflows/connectors/<name>.test.ts`:
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { <name>Connector, validate<Name>Action } from
-  '../../../../src/modules/workflows/src/connectors/<name>.js';
+  '../../../../src/modules/spells/src/connectors/<name>.js';
 
 describe('<name>Connector', () => {
   describe('metadata', () => {
@@ -239,7 +239,7 @@ describe('<name>Connector', () => {
 
 ### Step 4: Register the Connector
 
-Add to `src/modules/workflows/src/connectors/index.ts`:
+Add to `src/modules/spells/src/connectors/index.ts`:
 
 ```typescript
 import { <name>Connector } from './<name>.js';
@@ -247,7 +247,7 @@ import { <name>Connector } from './<name>.js';
 export { <name>Connector };
 
 // Add to the builtinConnectors array:
-export const builtinConnectors: WorkflowConnector[] = [
+export const builtinConnectors: SpellConnector[] = [
   httpConnector,
   githubCliConnector,
   playwrightConnector,
@@ -298,7 +298,7 @@ Ask the user for:
 
 ### Step 2: Generate Step Command Source
 
-Create at `src/modules/workflows/src/commands/<type>-command.ts`.
+Create at `src/modules/spells/src/commands/<type>-command.ts`.
 
 Follow this template, using `bash-command.ts` as the reference implementation:
 
@@ -311,7 +311,7 @@ import type {
   StepCommand,
   StepConfig,
   StepOutput,
-  WorkflowContext,
+  CastingContext,
   ValidationResult,
   OutputDescriptor,
   JSONSchema,
@@ -348,7 +348,7 @@ export const <type>Command: StepCommand<<Type>StepConfig> = {
     return { valid: errors.length === 0, errors };
   },
 
-  async execute(config: <Type>StepConfig, context: WorkflowContext): Promise<StepOutput> {
+  async execute(config: <Type>StepConfig, context: CastingContext): Promise<StepOutput> {
     const start = Date.now();
     try {
       // Implementation here
@@ -380,7 +380,7 @@ export const <type>Command: StepCommand<<Type>StepConfig> = {
 };
 ```
 
-Alternatively, use the `createStepCommand()` factory from `src/modules/workflows/src/commands/create-step-command.ts` for compile-time type safety.
+Alternatively, use the `createStepCommand()` factory from `src/modules/spells/src/commands/create-step-command.ts` for compile-time type safety.
 
 ### Step 3: Generate Step Command Test
 
@@ -389,11 +389,11 @@ Create at `tests/packages/workflows/commands/<type>-command.test.ts`:
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
 import { <type>Command } from
-  '../../../../src/modules/workflows/src/commands/<type>-command.js';
-import type { WorkflowContext } from
-  '../../../../src/modules/workflows/src/types/step-command.types.js';
+  '../../../../src/modules/spells/src/commands/<type>-command.js';
+import type { CastingContext } from
+  '../../../../src/modules/spells/src/types/step-command.types.js';
 
-const mockContext: WorkflowContext = {
+const mockContext: CastingContext = {
   variables: {},
   args: {},
   credentials: { get: vi.fn(), has: vi.fn() },
@@ -455,7 +455,7 @@ describe('<type>Command', () => {
 
 ### Step 4: Register the Step Command
 
-Add to `src/modules/workflows/src/commands/index.ts`:
+Add to `src/modules/spells/src/commands/index.ts`:
 
 ```typescript
 import { <type>Command } from './<type>-command.js';
@@ -493,15 +493,15 @@ steps:
 
 ### Type Definitions
 
-- **Connector interface:** `src/modules/workflows/src/types/workflow-connector.types.ts` — `WorkflowConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorCapability`
-- **Step command interface:** `src/modules/workflows/src/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `WorkflowContext`, `JSONSchema`
-- **Step factory:** `src/modules/workflows/src/commands/create-step-command.ts` — `createStepCommand()`
+- **Connector interface:** `src/modules/spells/src/types/workflow-connector.types.ts` — `SpellConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorCapability`
+- **Step command interface:** `src/modules/spells/src/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `CastingContext`, `JSONSchema`
+- **Step factory:** `src/modules/spells/src/commands/create-step-command.ts` — `createStepCommand()`
 
 ### Existing Components
 
-**Shipped connectors** (`src/modules/workflows/src/connectors/`): `http` (http-tool.ts), `github-cli` (github-cli.ts), `playwright` (playwright.ts)
+**Shipped connectors** (`src/modules/spells/src/connectors/`): `http` (http-tool.ts), `github-cli` (github-cli.ts), `playwright` (playwright.ts)
 
-**Built-in step commands** (`src/modules/workflows/src/commands/`): `agent` (agent-command.ts), `bash` (bash-command.ts), `condition` (condition-command.ts), `prompt` (prompt-command.ts), `memory` (memory-command.ts), `wait` (wait-command.ts), `loop` (loop-command.ts), `browser` (browser-command.ts), `github` (github-command.ts)
+**Built-in step commands** (`src/modules/spells/src/commands/`): `agent` (agent-command.ts), `bash` (bash-command.ts), `condition` (condition-command.ts), `prompt` (prompt-command.ts), `memory` (memory-command.ts), `wait` (wait-command.ts), `loop` (loop-command.ts), `browser` (browser-command.ts), `github` (github-command.ts)
 
 ### Related Skills
 
