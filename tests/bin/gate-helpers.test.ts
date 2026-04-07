@@ -1104,3 +1104,61 @@ describe('end-to-end: workflow lifecycle', () => {
     });
   });
 });
+
+// ── Settings.json PostToolUse Matcher Validation ────────────────────────────
+// Verifies that the hook matchers in settings.json correctly match MCP tool names.
+// This catches the class of bug where a generic matcher is shadowed by a specific one.
+
+describe('settings.json: PostToolUse matcher coverage', () => {
+  const settingsPath = resolve(__dirname, '../../.claude/settings.json');
+  let postToolUseMatchers: Array<{ matcher: string; hooks: Array<{ command: string }> }>;
+
+  // Load settings once
+  try {
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    postToolUseMatchers = settings.hooks?.PostToolUse ?? [];
+  } catch {
+    postToolUseMatchers = [];
+  }
+
+  function findMatchingEntry(toolName: string) {
+    return postToolUseMatchers.find(entry => new RegExp(entry.matcher).test(toolName));
+  }
+
+  it('mcp__moflo__memory_search matches record-memory-searched hook', () => {
+    const entry = findMatchingEntry('mcp__moflo__memory_search');
+    expect(entry).toBeDefined();
+    const cmds = entry!.hooks.map(h => h.command);
+    expect(cmds.some(c => c.includes('record-memory-searched'))).toBe(true);
+  });
+
+  it('mcp__moflo__memory_retrieve matches record-memory-searched hook', () => {
+    const entry = findMatchingEntry('mcp__moflo__memory_retrieve');
+    expect(entry).toBeDefined();
+    const cmds = entry!.hooks.map(h => h.command);
+    expect(cmds.some(c => c.includes('record-memory-searched'))).toBe(true);
+  });
+
+  it('mcp__moflo__memory_store matches record-learnings-stored hook', () => {
+    const entry = findMatchingEntry('mcp__moflo__memory_store');
+    expect(entry).toBeDefined();
+    const cmds = entry!.hooks.map(h => h.command);
+    expect(cmds.some(c => c.includes('record-learnings-stored'))).toBe(true);
+  });
+
+  it('mcp__moflo__memory_store also matches record-memory-searched hook', () => {
+    const entry = findMatchingEntry('mcp__moflo__memory_store');
+    expect(entry).toBeDefined();
+    const cmds = entry!.hooks.map(h => h.command);
+    expect(cmds.some(c => c.includes('record-memory-searched'))).toBe(true);
+  });
+
+  it('non-memory MCP tools do not match memory matchers', () => {
+    const entry = findMatchingEntry('mcp__moflo__workflow_run');
+    // Should either not match or not trigger memory-related hooks
+    if (entry) {
+      const cmds = entry.hooks.map(h => h.command);
+      expect(cmds.some(c => c.includes('record-memory-searched'))).toBe(false);
+    }
+  });
+});

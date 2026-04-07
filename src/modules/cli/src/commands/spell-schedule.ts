@@ -20,18 +20,21 @@ import { ensureDaemonForScheduling } from '../services/daemon-readiness.js';
 
 const NAMESPACE_SCHEDULES = 'scheduled-spells';
 
+// Cached scheduler utils — resolved once on first call
+let _schedulerUtils: Record<string, Function> | null | undefined;
+
 async function getSchedulerUtils() {
+  if (_schedulerUtils !== undefined) return _schedulerUtils;
   try {
-    // Resolve from moflo's own install location (import.meta.url), not process.cwd()
     const { dirname, join } = await import('path');
     const { fileURLToPath, pathToFileURL } = await import('url');
     const here = dirname(fileURLToPath(import.meta.url));
-    // dist/src/commands -> dist/src -> dist -> cli -> packages -> workflows/dist/scheduler
     const cronParserPath = join(here, '..', '..', '..', '..', 'workflows', 'dist', 'scheduler', 'cron-parser.js');
-    return await import(pathToFileURL(cronParserPath).href);
+    _schedulerUtils = await import(pathToFileURL(cronParserPath).href);
   } catch {
-    return null;
+    _schedulerUtils = null;
   }
+  return _schedulerUtils;
 }
 
 // ── Schedule Create ───────────────────────────────────────────────────────────
@@ -71,7 +74,6 @@ const createCommand: Command = {
       return { success: false, exitCode: 1 };
     }
 
-    // Validate and compute next run using the workflows package
     const utils = await getSchedulerUtils();
     const now = Date.now();
     let nextRunAt: number;
@@ -177,6 +179,14 @@ const createCommand: Command = {
 
 // ── Schedule List ─────────────────────────────────────────────────────────────
 
+const SCHEDULE_COLUMNS = [
+  { key: 'id', header: 'ID', width: 30 },
+  { key: 'spellName', header: 'Spell', width: 20 },
+  { key: 'timing', header: 'Schedule', width: 20 },
+  { key: 'nextRun', header: 'Next Cast', width: 22 },
+  { key: 'enabled', header: 'Enabled', width: 8, format: (v: unknown) => v ? output.success('yes') : output.error('no') },
+];
+
 const scheduleListCommand: Command = {
   name: 'list',
   aliases: ['ls'],
@@ -187,13 +197,24 @@ const scheduleListCommand: Command = {
         namespace: NAMESPACE_SCHEDULES,
       });
 
-      const schedules = (result.results ?? []).map(r => {
+      // Single-pass: parse + transform for display
+      const schedules: Array<Record<string, unknown>> = [];
+      for (const r of result.results ?? []) {
         try {
-          return typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+          const parsed = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+          if (parsed) {
+            schedules.push({
+              id: parsed.id,
+              spellName: parsed.spellName,
+              timing: parsed.cron || parsed.interval || parsed.at || '-',
+              nextRun: parsed.nextRunAt ? new Date(parsed.nextRunAt as number).toLocaleString() : '-',
+              enabled: parsed.enabled,
+            });
+          }
         } catch {
-          return null;
+          output.printWarning(`Skipped malformed schedule record: ${r.key}`);
         }
-      }).filter(Boolean);
+      }
 
       if (ctx.flags.format === 'json') {
         output.printJson(schedules);
@@ -209,22 +230,7 @@ const scheduleListCommand: Command = {
       output.writeln();
       output.writeln(output.bold('Scheduled Spells'));
       output.writeln();
-      output.printTable({
-        columns: [
-          { key: 'id', header: 'ID', width: 30 },
-          { key: 'spellName', header: 'Spell', width: 20 },
-          { key: 'timing', header: 'Schedule', width: 20 },
-          { key: 'nextRun', header: 'Next Cast', width: 22 },
-          { key: 'enabled', header: 'Enabled', width: 8, format: (v: unknown) => v ? output.success('yes') : output.error('no') },
-        ],
-        data: schedules.map((s: Record<string, unknown>) => ({
-          id: s.id,
-          spellName: s.spellName,
-          timing: s.cron || s.interval || s.at || '-',
-          nextRun: s.nextRunAt ? new Date(s.nextRunAt as number).toLocaleString() : '-',
-          enabled: s.enabled,
-        })),
-      });
+      output.printTable({ columns: SCHEDULE_COLUMNS, data: schedules });
 
       output.writeln();
       output.printInfo(`Total: ${schedules.length} schedule(s)`);
