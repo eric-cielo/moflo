@@ -699,6 +699,28 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
       }
     }
 
+    // ── Always ensure statusLine is wired (not gated by --settings) ──
+    // statusLine is core infrastructure — it must be present for the MoFlo
+    // dashboard to appear in Claude Code. Upgrades must always apply this,
+    // even without --settings, because session-start-launcher has a one-session
+    // bootstrap delay (old launcher syncs new code but runs old logic).
+    {
+      const settingsPath = path.join(targetDir, '.claude', 'settings.json');
+      if (fs.existsSync(settingsPath)) {
+        try {
+          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+          if (!settings.statusLine) {
+            settings.statusLine = {
+              type: 'command',
+              command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/statusline.cjs" --compact',
+            };
+            fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+            result.updated.push('.claude/settings.json (statusLine wired)');
+          }
+        } catch { /* non-fatal */ }
+      }
+    }
+
     // ── Final: collect any additional generated files into manifest, then clean up stale ──
     // Re-scan result arrays since metrics/security files were added after initial collection
     for (const entry of [...result.created, ...result.updated]) {

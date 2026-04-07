@@ -14,13 +14,13 @@ import { resolve } from 'path';
 describe('settings-generator statusLine config', () => {
   const generatorPath = resolve(__dirname, '../src/modules/cli/src/init/settings-generator.ts');
 
-  it('checks both components.statusline and statusline.enabled', () => {
+  it('always includes statusLine unconditionally', () => {
     const content = readFileSync(generatorPath, 'utf-8');
 
-    // The guard should use options.components.statusline OR options.statusline?.enabled
-    // Previously it only checked options.statusline.enabled, missing cases where
-    // components.statusline was true but statusline.enabled was unset
-    expect(content).toMatch(/options\.components\.statusline\s*\|\|\s*options\.statusline\??\.\s*enabled/);
+    // statusLine is core infrastructure — must not be gated behind a component flag
+    expect(content).toContain('settings.statusLine = generateStatusLineConfig(options)');
+    // Should NOT be wrapped in a conditional
+    expect(content).not.toMatch(/if\s*\(.*statusline.*\)\s*\{\s*\n\s*settings\.statusLine/);
   });
 
   it('generates statusLine with correct command format', () => {

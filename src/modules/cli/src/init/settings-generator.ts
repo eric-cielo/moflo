@@ -17,14 +17,10 @@ export function generateSettings(options: InitOptions): object {
     settings.hooks = generateHooksConfig(options.hooks);
   }
 
-  // Add statusLine configuration when the statusline component is enabled.
-  // Previously only checked options.statusline.enabled, which could be unset
-  // even when options.components.statusline was true (the guard used by
-  // executor.ts to generate the statusline script). This left settings.json
-  // without a statusLine entry, so the dashboard never appeared.
-  if (options.components.statusline || options.statusline?.enabled) {
-    settings.statusLine = generateStatusLineConfig(options);
-  }
+  // statusLine is always included — it's core infrastructure, not optional.
+  // The helper script (statusline.cjs) is synced by session-start-launcher,
+  // so the config must always be present for it to appear in Claude Code.
+  settings.statusLine = generateStatusLineConfig(options);
 
   // Add permissions — broad allow, minimal deny for secrets
   settings.permissions = {
