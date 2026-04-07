@@ -6,7 +6,7 @@
  *
  * Story #370: Renamed from workflow-schedule.ts with wizard terminology.
  *
- * Schedule records are persisted to the 'scheduled-workflows' memory namespace —
+ * Schedule records are persisted to the 'scheduled-spells' memory namespace —
  * the same namespace the daemon's SpellScheduler polls. The daemon picks up
  * new schedules on its next poll cycle (or via catch-up window after restart).
  */
@@ -18,7 +18,7 @@ import { TOOL_MEMORY_STORE, TOOL_MEMORY_LIST, TOOL_MEMORY_RETRIEVE } from '../mc
 import { handleMCPError } from '../services/cli-formatters.js';
 import { ensureDaemonForScheduling } from '../services/daemon-readiness.js';
 
-const NAMESPACE_SCHEDULES = 'scheduled-workflows';
+const NAMESPACE_SCHEDULES = 'scheduled-spells';
 
 async function getSchedulerUtils() {
   try {
@@ -129,8 +129,8 @@ const createCommand: Command = {
     const id = `sched-adhoc-${now}-${Math.random().toString(36).slice(2, 8)}`;
     const record = {
       id,
-      workflowName: name,
-      workflowPath: '',  // resolved by scheduler at poll time
+      spellName: name,
+      spellPath: '',  // resolved by scheduler at poll time
       cron,
       interval,
       at,
@@ -212,14 +212,14 @@ const scheduleListCommand: Command = {
       output.printTable({
         columns: [
           { key: 'id', header: 'ID', width: 30 },
-          { key: 'workflowName', header: 'Spell', width: 20 },
+          { key: 'spellName', header: 'Spell', width: 20 },
           { key: 'timing', header: 'Schedule', width: 20 },
           { key: 'nextRun', header: 'Next Cast', width: 22 },
           { key: 'enabled', header: 'Enabled', width: 8, format: (v: unknown) => v ? output.success('yes') : output.error('no') },
         ],
         data: schedules.map((s: Record<string, unknown>) => ({
           id: s.id,
-          workflowName: s.workflowName,
+          spellName: s.spellName,
           timing: s.cron || s.interval || s.at || '-',
           nextRun: s.nextRunAt ? new Date(s.nextRunAt as number).toLocaleString() : '-',
           enabled: s.enabled,

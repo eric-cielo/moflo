@@ -136,7 +136,7 @@ async function handleSchedules(memory?: MemoryAccessor): Promise<object> {
     return { schedules: [], available: false };
   }
   try {
-    const results = await memory.search('scheduled-workflows', '*');
+    const results = await memory.search('scheduled-spells', '*');
     const schedules = results.map(r => {
       const data = typeof r.value === 'string' ? tryParse(r.value) : (r.value as Record<string, unknown> ?? {});
       return { id: r.key, ...(data as Record<string, unknown>) };
@@ -594,15 +594,15 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       if (!sc || !sc.available) { el.innerHTML = '<div class="empty">Scheduler not connected</div>'; return; }
       if (sc.schedules.length === 0) { el.innerHTML = '<div class="empty">No active schedules</div>'; return; }
       const rows = sc.schedules.map(s =>
-        '<tr><td>' + esc(s.workflowName) + '</td>' +
+        '<tr><td>' + esc(s.spellName) + '</td>' +
         '<td>' + esc(s.cron || s.interval || s.at || '-') + '</td>' +
         '<td>' + (s.enabled ? badge('on','green') : badge('off','gray')) + '</td>' +
         '<td>' + (s.lastRunAt ? fmtTime(s.lastRunAt) : '-') + '</td>' +
         '<td>' + fmtTime(s.nextRunAt) + '</td>' +
         '<td>' + badge(s.source,'gray') + '</td></tr>'
       ).join('');
-      el.innerHTML = '<h2>Scheduled Workflows</h2>' +
-        '<table><thead><tr><th>Workflow</th><th>Schedule</th><th>Enabled</th><th>Last Run</th><th>Next Run</th><th>Source</th></tr></thead>' +
+      el.innerHTML = '<h2>Scheduled Spells</h2>' +
+        '<table><thead><tr><th>Spell</th><th>Schedule</th><th>Enabled</th><th>Last Run</th><th>Next Run</th><th>Source</th></tr></thead>' +
         '<tbody>' + rows + '</tbody></table>';
     }
 

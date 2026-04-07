@@ -362,7 +362,7 @@ describe('SpellScheduler', () => {
 
   function makeSuccessResult(): WorkflowResult {
     return {
-      workflowId: 'wf-1',
+      spellId: 'wf-1',
       success: true,
       steps: [],
       outputs: {},
@@ -374,7 +374,7 @@ describe('SpellScheduler', () => {
 
   function makeFailResult(): WorkflowResult {
     return {
-      workflowId: 'wf-1',
+      spellId: 'wf-1',
       success: false,
       steps: [],
       outputs: {},
@@ -437,13 +437,13 @@ describe('SpellScheduler', () => {
 
   it('creates an ad-hoc schedule', async () => {
     const schedule = await scheduler.createSchedule({
-      workflowName: 'test-wf',
-      workflowPath: '/workflows/test.yaml',
+      spellName: 'test-wf',
+      spellPath: '/workflows/test.yaml',
       interval: '1h',
     });
 
     expect(schedule.id).toMatch(/^sched-adhoc-/);
-    expect(schedule.workflowName).toBe('test-wf');
+    expect(schedule.spellName).toBe('test-wf');
     expect(schedule.enabled).toBe(true);
     expect(schedule.source).toBe('adhoc');
   });
@@ -474,8 +474,8 @@ describe('SpellScheduler', () => {
 
   it('cancels a schedule', async () => {
     await scheduler.createSchedule({
-      workflowName: 'test-wf',
-      workflowPath: '/path',
+      spellName: 'test-wf',
+      spellPath: '/path',
       interval: '1h',
     });
 
@@ -495,8 +495,8 @@ describe('SpellScheduler', () => {
   });
 
   it('lists all schedules', async () => {
-    await scheduler.createSchedule({ workflowName: 'wf1', workflowPath: '/p1', interval: '1h' });
-    await scheduler.createSchedule({ workflowName: 'wf2', workflowPath: '/p2', cron: '0 * * * *' });
+    await scheduler.createSchedule({ spellName: 'wf1', spellPath: '/p1', interval: '1h' });
+    await scheduler.createSchedule({ spellName: 'wf2', spellPath: '/p2', cron: '0 * * * *' });
 
     const schedules = await scheduler.listSchedules();
     expect(schedules).toHaveLength(2);
@@ -507,10 +507,10 @@ describe('SpellScheduler', () => {
   it('executes a due workflow on poll', async () => {
     // Create a schedule that is already due
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-test', {
+    await memory.write('scheduled-spells', 'sched-test', {
       id: 'sched-test',
-      workflowName: 'test-wf',
-      workflowPath: '/path',
+      spellName: 'test-wf',
+      spellPath: '/path',
       interval: '1h',
       nextRunAt: now - 1000, // already due
       enabled: true,
@@ -525,10 +525,10 @@ describe('SpellScheduler', () => {
 
   it('skips disabled schedules', async () => {
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-disabled', {
+    await memory.write('scheduled-spells', 'sched-disabled', {
       id: 'sched-disabled',
-      workflowName: 'test-wf',
-      workflowPath: '/path',
+      spellName: 'test-wf',
+      spellPath: '/path',
       interval: '1h',
       nextRunAt: now - 1000,
       enabled: false,
@@ -543,10 +543,10 @@ describe('SpellScheduler', () => {
 
   it('skips schedules not yet due', async () => {
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-future', {
+    await memory.write('scheduled-spells', 'sched-future', {
       id: 'sched-future',
-      workflowName: 'test-wf',
-      workflowPath: '/path',
+      spellName: 'test-wf',
+      spellPath: '/path',
       interval: '1h',
       nextRunAt: now + 60_000, // 1 minute in the future
       enabled: true,
@@ -563,10 +563,10 @@ describe('SpellScheduler', () => {
     (executor.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-deleted', {
+    await memory.write('scheduled-spells', 'sched-deleted', {
       id: 'sched-deleted',
-      workflowName: 'deleted-wf',
-      workflowPath: '/path',
+      spellName: 'deleted-wf',
+      spellPath: '/path',
       interval: '1h',
       nextRunAt: now - 1000,
       enabled: true,
@@ -586,10 +586,10 @@ describe('SpellScheduler', () => {
     scheduler.on(e => events.push(e));
 
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-old', {
+    await memory.write('scheduled-spells', 'sched-old', {
       id: 'sched-old',
-      workflowName: 'test-wf',
-      workflowPath: '/path',
+      spellName: 'test-wf',
+      spellPath: '/path',
       interval: '1h',
       nextRunAt: now - 7_200_000, // 2 hours ago — exceeds 1h catch-up window
       enabled: true,
@@ -613,10 +613,10 @@ describe('SpellScheduler', () => {
     );
 
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-overlap', {
+    await memory.write('scheduled-spells', 'sched-overlap', {
       id: 'sched-overlap',
-      workflowName: 'slow-wf',
-      workflowPath: '/path',
+      spellName: 'slow-wf',
+      spellPath: '/path',
       interval: '1m',
       nextRunAt: now - 1000,
       enabled: true,
@@ -649,10 +649,10 @@ describe('SpellScheduler', () => {
     const now = Date.now();
     // Create 3 due schedules, but maxConcurrent is 2
     for (let i = 0; i < 3; i++) {
-      await memory.write('scheduled-workflows', `sched-${i}`, {
+      await memory.write('scheduled-spells', `sched-${i}`, {
         id: `sched-${i}`,
-        workflowName: `wf-${i}`,
-        workflowPath: '/path',
+        spellName: `wf-${i}`,
+        spellPath: '/path',
         interval: '1h',
         nextRunAt: now - 1000,
         enabled: true,
@@ -678,10 +678,10 @@ describe('SpellScheduler', () => {
     scheduler.on(e => events.push(e));
 
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-events', {
+    await memory.write('scheduled-spells', 'sched-events', {
       id: 'sched-events',
-      workflowName: 'test-wf',
-      workflowPath: '/path',
+      spellName: 'test-wf',
+      spellPath: '/path',
       interval: '1h',
       nextRunAt: now - 1000,
       enabled: true,
@@ -706,10 +706,10 @@ describe('SpellScheduler', () => {
     scheduler.on(e => events.push(e));
 
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-fail', {
+    await memory.write('scheduled-spells', 'sched-fail', {
       id: 'sched-fail',
-      workflowName: 'fail-wf',
-      workflowPath: '/path',
+      spellName: 'fail-wf',
+      spellPath: '/path',
       interval: '1h',
       nextRunAt: now - 1000,
       enabled: true,
@@ -732,7 +732,7 @@ describe('SpellScheduler', () => {
     scheduler['emit']({
       type: 'schedule:due',
       scheduleId: 'test',
-      workflowName: 'test',
+      spellName: 'test',
       message: 'test',
       timestamp: Date.now(),
     });
@@ -743,10 +743,10 @@ describe('SpellScheduler', () => {
 
   it('auto-disables one-time schedule after execution', async () => {
     const future = Date.now() - 1000; // already due
-    await memory.write('scheduled-workflows', 'sched-once', {
+    await memory.write('scheduled-spells', 'sched-once', {
       id: 'sched-once',
-      workflowName: 'once-wf',
-      workflowPath: '/path',
+      spellName: 'once-wf',
+      spellPath: '/path',
       at: new Date(future).toISOString(),
       nextRunAt: future,
       enabled: true,
@@ -765,10 +765,10 @@ describe('SpellScheduler', () => {
 
   it('stores execution history', async () => {
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-hist', {
+    await memory.write('scheduled-spells', 'sched-hist', {
       id: 'sched-hist',
-      workflowName: 'hist-wf',
-      workflowPath: '/path',
+      spellName: 'hist-wf',
+      spellPath: '/path',
       interval: '1h',
       nextRunAt: now - 1000,
       enabled: true,
@@ -795,10 +795,10 @@ describe('SpellScheduler', () => {
     });
 
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-capped', {
+    await memory.write('scheduled-spells', 'sched-capped', {
       id: 'sched-capped',
-      workflowName: 'test-wf',
-      workflowPath: '/path',
+      spellName: 'test-wf',
+      spellPath: '/path',
       interval: '1h',
       nextRunAt: now - 1000,
       enabled: true,
@@ -824,10 +824,10 @@ describe('SpellScheduler', () => {
     });
 
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-narrow', {
+    await memory.write('scheduled-spells', 'sched-narrow', {
       id: 'sched-narrow',
-      workflowName: 'test-wf',
-      workflowPath: '/path',
+      spellName: 'test-wf',
+      spellPath: '/path',
       interval: '1h',
       mofloLevel: 'memory',
       nextRunAt: now - 1000,
@@ -854,10 +854,10 @@ describe('SpellScheduler', () => {
     });
 
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-widen', {
+    await memory.write('scheduled-spells', 'sched-widen', {
       id: 'sched-widen',
-      workflowName: 'test-wf',
-      workflowPath: '/path',
+      spellName: 'test-wf',
+      spellPath: '/path',
       interval: '1h',
       mofloLevel: 'full',
       nextRunAt: now - 1000,
@@ -878,10 +878,10 @@ describe('SpellScheduler', () => {
 
   it('passes undefined mofloLevel when no caps are set (default behavior)', async () => {
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-nocp', {
+    await memory.write('scheduled-spells', 'sched-nocp', {
       id: 'sched-nocp',
-      workflowName: 'test-wf',
-      workflowPath: '/path',
+      spellName: 'test-wf',
+      spellPath: '/path',
       interval: '1h',
       nextRunAt: now - 1000,
       enabled: true,
@@ -899,10 +899,10 @@ describe('SpellScheduler', () => {
 
   it('uses only per-schedule cap when no scheduler-level cap exists', async () => {
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-only', {
+    await memory.write('scheduled-spells', 'sched-only', {
       id: 'sched-only',
-      workflowName: 'test-wf',
-      workflowPath: '/path',
+      spellName: 'test-wf',
+      spellPath: '/path',
       interval: '1h',
       mofloLevel: 'hooks',
       nextRunAt: now - 1000,
@@ -923,10 +923,10 @@ describe('SpellScheduler', () => {
 
   it('passes args to workflow executor', async () => {
     const now = Date.now();
-    await memory.write('scheduled-workflows', 'sched-args', {
+    await memory.write('scheduled-spells', 'sched-args', {
       id: 'sched-args',
-      workflowName: 'args-wf',
-      workflowPath: '/path',
+      spellName: 'args-wf',
+      spellPath: '/path',
       interval: '1h',
       args: { target: './src' },
       nextRunAt: now - 1000,
