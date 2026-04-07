@@ -124,8 +124,7 @@ const castCommand: Command = {
           const result = await castCommand.action!({ ...ctx, flags: { ...ctx.flags, name: chosen } });
           return result ?? { success: false, exitCode: 1 };
         } catch {
-          output.printError('Spell name or file is required. Use --name or --file');
-          return { success: false, exitCode: 1 };
+          // Fall through to the shared error message below
         }
       }
 
