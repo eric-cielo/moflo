@@ -117,6 +117,27 @@ async function checkConfigFile(): Promise<HealthCheck> {
   return { name: 'Config File', status: 'warn', message: 'No config file (using defaults)', fix: 'claude-flow config init' };
 }
 
+// Check statusLine is wired in settings.json
+async function checkStatusLine(): Promise<HealthCheck> {
+  const settingsPath = join(process.cwd(), '.claude', 'settings.json');
+  if (!existsSync(settingsPath)) {
+    return { name: 'Status Line', status: 'warn', message: 'No .claude/settings.json found', fix: 'npx moflo init' };
+  }
+
+  try {
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    if (settings.statusLine && settings.statusLine.command) {
+      if (settings.statusLine.command.includes('statusline.cjs')) {
+        return { name: 'Status Line', status: 'pass', message: 'Wired in settings.json' };
+      }
+      return { name: 'Status Line', status: 'pass', message: 'Custom statusLine configured' };
+    }
+    return { name: 'Status Line', status: 'fail', message: 'statusLine not configured in settings.json', fix: 'Add statusLine config to .claude/settings.json' };
+  } catch {
+    return { name: 'Status Line', status: 'fail', message: 'Failed to parse .claude/settings.json', fix: 'Fix JSON syntax in .claude/settings.json' };
+  }
+}
+
 // Check daemon status — delegates to daemon-lock module for proper
 // PID + command-line verification (avoids Windows PID-recycling false positives).
 async function checkDaemonStatus(): Promise<HealthCheck> {
@@ -609,6 +630,23 @@ async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     },
     'Gate Health': async () => {
       return fixGateHealthHooks();
+    },
+    'Status Line': async () => {
+      const settingsPath = join(process.cwd(), '.claude', 'settings.json');
+      if (!existsSync(settingsPath)) return false;
+      try {
+        const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+        if (!settings.statusLine) {
+          settings.statusLine = {
+            type: 'command',
+            command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/statusline.cjs" --compact',
+          };
+          writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+        }
+        return true;
+      } catch {
+        return false;
+      }
     },
   };
 
@@ -1393,6 +1431,7 @@ export const doctorCommand: Command = {
       checkGit,
       checkGitRepo,
       checkConfigFile,
+      checkStatusLine,
       checkDaemonStatus,
       checkMemoryDatabase,
       checkEmbeddings,
@@ -1420,6 +1459,8 @@ export const doctorCommand: Command = {
       'npm': checkNpmVersion,
       'claude': checkClaudeCode,
       'config': checkConfigFile,
+      'statusline': checkStatusLine,
+      'status-line': checkStatusLine,
       'daemon': checkDaemonStatus,
       'memory': checkMemoryDatabase,
       'embeddings': checkEmbeddings,
