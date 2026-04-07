@@ -31,6 +31,34 @@ describe('settings-generator statusLine config', () => {
     expect(content).toContain("type: 'command'");
   });
 
+  it('session-start-launcher ensures statusLine is wired in settings.json', () => {
+    const launcherPath = resolve(__dirname, '../bin/session-start-launcher.mjs');
+    const content = readFileSync(launcherPath, 'utf-8');
+
+    // The launcher must check for missing statusLine and add it
+    expect(content).toContain('if (!settings.statusLine)');
+    expect(content).toContain('statusline.cjs');
+    expect(content).toContain("type: 'command'");
+    // Verify it sets the dirty flag so settings.json is written
+    expect(content).toMatch(/settings\.statusLine\s*=\s*\{[\s\S]*?\};\s*\n\s*dirty\s*=\s*true;/);
+  });
+
+  it('session-start-launcher preserves existing statusLine config', () => {
+    const launcherPath = resolve(__dirname, '../bin/session-start-launcher.mjs');
+    const content = readFileSync(launcherPath, 'utf-8');
+
+    // The guard is `if (!settings.statusLine)` — meaning it only adds when missing,
+    // never overwrites an existing custom statusLine config
+    expect(content).toContain('if (!settings.statusLine)');
+    // Should NOT contain unconditional assignment like `settings.statusLine =` outside the guard
+    const lines = content.split('\n');
+    const assignments = lines.filter(l =>
+      l.includes('settings.statusLine =') && !l.trim().startsWith('//')
+    );
+    // There should be exactly one assignment, inside the if-guard
+    expect(assignments.length).toBe(1);
+  });
+
   it('statusLine command does not use cmd /c wrapper', () => {
     const content = readFileSync(generatorPath, 'utf-8');
 
