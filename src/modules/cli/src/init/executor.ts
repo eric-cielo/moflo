@@ -396,9 +396,8 @@ function mergeSettingsForUpgrade(existing: Record<string, unknown>): Record<stri
  * Execute upgrade - updates helpers and creates missing metrics without losing data
  * This is safe for existing users who want the latest statusline fixes
  * @param targetDir - Target directory
- * @param upgradeSettings - If true, merge new settings into existing settings.json
  */
-export async function executeUpgrade(targetDir: string, upgradeSettings = false): Promise<UpgradeResult> {
+export async function executeUpgrade(targetDir: string, _upgradeSettings = false): Promise<UpgradeResult> {
   const result: UpgradeResult = {
     success: true,
     updated: [],
@@ -669,8 +668,10 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
       }
     }
 
-    // 4. Merge settings if requested
-    if (upgradeSettings) {
+    // 4. Always merge settings during upgrade — upgrades must not be opt-in.
+    // Mismatch between installed moflo version and settings.json causes silent
+    // breakage (missing hooks, missing statusLine, stale env vars).
+    {
       const settingsPath = path.join(targetDir, '.claude', 'settings.json');
       if (fs.existsSync(settingsPath)) {
         try {
@@ -686,6 +687,7 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
             'hooks.TaskCompleted (removed — not a valid Claude Code hook)',
             'claudeFlow.agentTeams',
             'claudeFlow.memory (learningBridge, memoryGraph, agentScopes)',
+            'statusLine',
           ];
         } catch (settingsError) {
           result.errors.push(`Settings merge failed: ${settingsError instanceof Error ? settingsError.message : String(settingsError)}`);
@@ -766,11 +768,10 @@ export async function executeUpgrade(targetDir: string, upgradeSettings = false)
  * Execute upgrade with --add-missing flag
  * Adds any new skills, agents, and commands that don't exist yet
  * @param targetDir - Target directory
- * @param upgradeSettings - If true, merge new settings into existing settings.json
  */
-export async function executeUpgradeWithMissing(targetDir: string, upgradeSettings = false): Promise<UpgradeResult> {
-  // First do the normal upgrade (pass through upgradeSettings)
-  const result = await executeUpgrade(targetDir, upgradeSettings);
+export async function executeUpgradeWithMissing(targetDir: string, _upgradeSettings = false): Promise<UpgradeResult> {
+  // First do the normal upgrade
+  const result = await executeUpgrade(targetDir);
 
   if (!result.success) {
     return result;
