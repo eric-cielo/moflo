@@ -439,7 +439,7 @@ flo diagnose --json              # JSON output for CI/automation
 
 #### `flo doctor` — Health Check
 
-`flo doctor` runs 25 parallel health checks against your environment and reports pass/warn/fail for each:
+`flo doctor` runs 26 parallel health checks against your environment and reports pass/warn/fail for each:
 
 | Check | What it verifies |
 |-------|-----------------|
@@ -450,6 +450,7 @@ flo diagnose --json              # JSON output for CI/automation
 | **Git** | Git installed |
 | **Git Repository** | Project is inside a git repository |
 | **Config File** | Valid `moflo.yaml` or `.claude-flow/config.yaml` exists |
+| **Status Line** | `statusLine` config wired in `.claude/settings.json` (auto-fixes when missing) |
 | **Daemon Status** | Background daemon running (checks PID, cleans stale locks) |
 | **Memory Database** | SQLite memory DB exists and is accessible |
 | **Embeddings** | Vectors indexed in memory DB, HNSW index present |
@@ -476,6 +477,7 @@ flo diagnose --json              # JSON output for CI/automation
 | Missing memory database | Creates `.swarm/` directory and initializes the SQLite DB |
 | Embeddings not initialized | Initializes memory DB and runs `embeddings init` |
 | Missing config file | Runs `config init` to generate defaults |
+| Status line not wired | Adds `statusLine` config block to `.claude/settings.json` |
 | Stale daemon lock | Removes stale `.claude-flow/daemon.lock` and restarts daemon |
 | MCP server not configured | Runs `claude mcp add moflo` to register the server |
 | Claude Code CLI missing | Installs `@anthropic-ai/claude-code` globally |
