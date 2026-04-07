@@ -28,6 +28,7 @@ import {
 } from './helpers-generator.js';
 import { generateClaudeMd } from './claudemd-generator.js';
 import { writeEnvrc } from './envrc-generator.js';
+import { repairHookWiring } from '../services/hook-wiring.js';
 
 /**
  * Skills to copy based on configuration
@@ -389,6 +390,9 @@ function mergeSettingsForUpgrade(existing: Record<string, unknown>): Record<stri
     },
   };
 
+  // 5. Repair any missing required hook wirings (same logic doctor --fix uses)
+  repairHookWiring(merged);
+
   return merged;
 }
 
@@ -685,6 +689,7 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
             'hooks.SessionEnd (auto-memory sync)',
             'hooks.TeammateIdle (removed — not a valid Claude Code hook)',
             'hooks.TaskCompleted (removed — not a valid Claude Code hook)',
+            'hooks (repaired missing gate wirings)',
             'claudeFlow.agentTeams',
             'claudeFlow.memory (learningBridge, memoryGraph, agentScopes)',
             'statusLine',

@@ -83,6 +83,14 @@ export {
   type DashboardHandle,
 } from './daemon-dashboard.js';
 
+// Hook Wiring (shared between doctor, upgrade, and session-start)
+export {
+  repairHookWiring,
+  HOOK_ENTRY_MAP,
+  REQUIRED_HOOK_WIRING,
+  type RepairResult,
+} from './hook-wiring.js';
+
 // Re-export types
 export type { default as WorkerDaemonType, DaemonConfig } from './worker-daemon.js';
 export type { default as HeadlessWorkerExecutorType } from './headless-worker-executor.js';

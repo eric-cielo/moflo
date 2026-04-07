@@ -490,19 +490,11 @@ const REQUIRED_GATE_CASES = [
   'session-reset',
 ];
 
-/** Required hook matchers that must exist in settings.json for gate enforcement. */
-export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: string }> = [
-  { event: 'PreToolUse', pattern: 'check-before-scan' },
-  { event: 'PreToolUse', pattern: 'check-before-read' },
-  { event: 'PreToolUse', pattern: 'check-dangerous-command' },
-  { event: 'PreToolUse', pattern: 'check-before-pr' },
-  { event: 'PostToolUse', pattern: 'record-task-created' },
-  { event: 'PostToolUse', pattern: 'record-memory-searched' },
-  { event: 'PostToolUse', pattern: 'check-task-transition' },
-  { event: 'PostToolUse', pattern: 'record-learnings-stored' },
-  { event: 'PostToolUse', pattern: 'check-bash-memory' },
-  { event: 'UserPromptSubmit', pattern: 'prompt-reminder' },
-];
+// Import + re-export from the self-contained hook-wiring module (single source of truth).
+// hook-wiring.ts has zero moflo imports so it can be dynamically imported by
+// session-start-launcher.mjs in consumer projects without transitive failures.
+import { REQUIRED_HOOK_WIRING } from '../services/hook-wiring.js';
+export { REQUIRED_HOOK_WIRING };
 
 /**
  * Verify gate infrastructure health:

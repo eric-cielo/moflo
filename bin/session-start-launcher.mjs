@@ -300,6 +300,21 @@ try {
       dirty = true;
     }
 
+    // 3a-iv. Repair missing required hook wirings (same logic as doctor --fix
+    // and moflo upgrade — shared via hook-wiring.js to stay DRY)
+    try {
+      const hwPaths = [
+        resolve(projectRoot, 'node_modules/moflo/src/modules/cli/dist/src/services/hook-wiring.js'),
+        resolve(projectRoot, 'src/modules/cli/dist/src/services/hook-wiring.js'),
+      ];
+      const hwPath = hwPaths.find(p => existsSync(p));
+      if (hwPath) {
+        const { repairHookWiring } = await import(`file://${hwPath.replace(/\\/g, '/')}`);
+        const { repaired } = repairHookWiring(settings);
+        if (repaired.length > 0) dirty = true;
+      }
+    } catch { /* non-fatal — doctor can still fix later */ }
+
     if (dirty) {
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
     }
