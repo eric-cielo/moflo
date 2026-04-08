@@ -1,20 +1,20 @@
-# Workflow Connectors — Generalized I/O Wrappers
+# Spell Connectors — Generalized I/O Wrappers
 
-**Purpose:** When and how to use connectors in the workflow engine. Connectors are generalized I/O wrappers (HTTP, CLI, browser) that enforce security and sandboxing boundaries — not per-service adapters.
+**Purpose:** When and how to use connectors in the spell engine. Connectors are generalized I/O wrappers (HTTP, CLI, browser) that enforce security and sandboxing boundaries — not per-service adapters.
 
 ---
 
 ## Architecture: Generalized Wrappers, Not Per-Service Adapters
 
-**Connectors are a small set of generalized I/O wrappers** — one for HTTP, one for CLI tools, one for browser automation. Service-specific logic (Slack, Jira, S3, etc.) is composed in workflow YAML using these generalized connectors, not by creating a new TypeScript connector for each service.
+**Connectors are a small set of generalized I/O wrappers** — one for HTTP, one for CLI tools, one for browser automation. Service-specific logic (Slack, Jira, S3, etc.) is composed in spell YAML using these generalized connectors, not by creating a new TypeScript connector for each service.
 
 | Layer | Purpose | Examples |
 |-------|---------|---------|
 | **Connector** (generalized) | I/O channel with security enforcement | `http`, `github-cli`, `playwright` |
-| **Workflow YAML** (service-specific) | Composes connectors into service operations | Slack posting via `http`, DB migration via `bash` |
+| **Spell YAML** (service-specific) | Composes connectors into service operations | Slack posting via `http`, DB migration via `bash` |
 | **CapabilityGateway** (enforcement) | Structural scope checks on all I/O | Blocks unauthorized URLs, commands, file paths |
 
-**Do NOT create a connector for each external service.** Instead, compose the built-in connectors in workflow steps. A Slack integration is an `http` connector call with the Slack API URL and token — not a `slack` connector.
+**Do NOT create a connector for each external service.** Instead, compose the built-in connectors in spell steps. A Slack integration is an `http` connector call with the Slack API URL and token — not a `slack` connector.
 
 This design was established in issues #233–#259: the original per-service connector approach (Slack, OneDrive, Gmail, Google Drive — #234–#237) was superseded by generalized wrappers with capability enforcement (#254, #257, #258, #259).
 
@@ -44,17 +44,17 @@ The gateway blocks unauthorized operations; connectors provide the controlled I/
 
 | You want to... | Do this | Why |
 |----------------|---------|-----|
-| Call a REST API | Use `http` connector in workflow YAML | Already handles GET/POST/PUT/DELETE/GraphQL |
+| Call a REST API | Use `http` connector in spell YAML | Already handles GET/POST/PUT/DELETE/GraphQL |
 | Run CLI commands | Use `bash` step or `github-cli` connector | Already handles shell execution with scope enforcement |
 | Automate a browser | Use `playwright` connector | Already handles navigation, clicks, fills, screenshots |
-| Integrate a new external service (Slack, Jira, etc.) | **Compose existing connectors in YAML** | Service-specific logic belongs in workflow definitions |
+| Integrate a new external service (Slack, Jira, etc.) | **Compose existing connectors in YAML** | Service-specific logic belongs in spell definitions |
 | Add a fundamentally new I/O channel (e.g., WebSocket, gRPC) | **Create a new generalized connector** | Only when no existing connector covers the I/O type |
 
-**Key rule: only create a new connector for a new I/O transport type.** Service-specific workflows compose existing connectors — they don't create new ones.
+**Key rule: only create a new connector for a new I/O transport type.** Service-specific spells compose existing connectors — they don't create new ones.
 
 ---
 
-## The WorkflowConnector Interface
+## The Spell Connector Interface
 
 **Every connector MUST implement this interface.** The runner manages lifecycle; steps access connectors read-only via `ConnectorAccessor`.
 
@@ -110,7 +110,7 @@ Three connectors ship with moflo. They are registered automatically by `createRu
 
 ## Writing a Custom Connector (Rare — New I/O Transports Only)
 
-**You almost certainly don't need a new connector.** The three built-in connectors (HTTP, GitHub CLI, Playwright) cover web APIs, CLI tools, and browser automation. Service-specific integrations should be composed as workflow YAML using these existing connectors.
+**You almost certainly don't need a new connector.** The three built-in connectors (HTTP, GitHub CLI, Playwright) cover web APIs, CLI tools, and browser automation. Service-specific integrations should be composed as spell YAML using these existing connectors.
 
 Only create a new connector when you need a fundamentally new I/O transport (e.g., WebSocket streams, gRPC, MQTT) that no existing connector supports.
 
@@ -128,6 +128,6 @@ If you do need one:
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-workflow-sandboxing.md` — CapabilityGateway and enforcement rules
-- `.claude/guidance/shipped/moflo-workflow-engine.md` — Running workflows, step command types
-- `.claude/guidance/shipped/moflo-workflow-engine-architecture.md` — Architecture decisions
+- `.claude/guidance/shipped/moflo-spell-sandboxing.md` — CapabilityGateway and enforcement rules
+- `.claude/guidance/shipped/moflo-spell-engine.md` — Running spells, step command types
+- `.claude/guidance/shipped/moflo-spell-engine-architecture.md` — Architecture decisions

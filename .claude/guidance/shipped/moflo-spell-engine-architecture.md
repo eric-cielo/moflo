@@ -1,20 +1,20 @@
-# Workflow Engine & Messaging Architecture
+# Spell Engine & Messaging Architecture
 
-**Purpose:** Architectural decisions and analysis findings for Epic #100 (Generalized Workflow Engine) and Epic #110 (Messaging Migration). Reference when working on stories #100-#117.
+**Purpose:** Architectural decisions and analysis findings for Epic #100 (Generalized Spell Engine) and Epic #110 (Messaging Migration). Reference when working on stories #100-#117.
 
 ---
 
-## Epic #100: Generalized Workflow Engine
+## Epic #100: Generalized Spell Engine
 
 **Ships as part of moflo** — not a separate project. Heavy deps (Playwright, isolated-vm) are optional peer dependencies, same pattern as `@moflo/embeddings` requiring `sql.js`.
 
 ### Command Pattern for Steps
 
-Every workflow step type implements a `StepCommand` interface with `execute()`, `validate()`, `describeOutputs()`, and optional `rollback()`. Register step commands via a plugin-style `StepCommandRegistry` — follow the existing `PluginRegistry` pattern in `src/modules/plugins/`.
+Every spell step type implements a `StepCommand` interface with `execute()`, `validate()`, `describeOutputs()`, and optional `rollback()`. Register step commands via a plugin-style `StepCommandRegistry` — follow the existing `PluginRegistry` pattern in `src/modules/plugins/`.
 
-### Workflow Definitions
+### Spell Definitions
 
-Workflows are YAML/JSON files in `workflows/` or `.claude/workflows/`. Each declares:
+Spells are YAML/JSON files in `workflows/` or `.claude/workflows/`. Each declares:
 - `name` and `abbreviation` (short name for `/flo -wf {abbrev}`)
 - Typed `arguments` with `required`, `default`, `enum`, `description`
 - Ordered `steps` with `{stepId.outputKey}` variable interpolation
@@ -29,7 +29,7 @@ Workflows are YAML/JSON files in `workflows/` or `.claude/workflows/`. Each decl
 | `full` | Above + swarm/hive-mind spawning | — |
 | `recursive` | Above + nested `/flo -wf` invocation | — |
 
-Capabilities only narrow going deeper — a nested workflow cannot escalate beyond its parent.
+Capabilities only narrow going deeper — a nested spell cannot escalate beyond its parent.
 
 ### Sandboxing Tiers
 
@@ -53,7 +53,7 @@ Capabilities only narrow going deeper — a nested workflow cannot escalate beyo
 
 ### Critical Findings
 
-- **Existing `workflow_execute` is a no-op placeholder.** The engine is greenfield.
+- **Existing `spell_execute` is a no-op placeholder.** The engine is greenfield.
 - **`js-yaml` already a dependency** — used in `moflo-config.ts` and `epic.ts`.
 - **Plugin registry pattern is directly reusable** for `StepCommandRegistry`.
 - **No cron support exists** — needs `node-cron` dependency for #117.
@@ -130,7 +130,7 @@ The `MemoryDbMessageBus` adapter (~300 lines) must handle:
 | Blocked Story | Needs from #110 | Why |
 |--------------|-----------------|-----|
 | #109 `full` tier | #113 (Swarm Migration) | Swarm spawning needs DB-backed messaging |
-| #109 `recursive` tier | #113 + #114 | Nested workflows with hive-mind need consensus messaging |
+| #109 `recursive` tier | #113 + #114 | Nested spells with hive-mind need consensus messaging |
 
 Stories #101-#108, #105, #117 have no dependency on Epic #110.
 

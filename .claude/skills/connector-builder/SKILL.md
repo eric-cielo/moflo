@@ -30,7 +30,7 @@ Ask the user:
 > 1. **Step command** — executes logic within a workflow step (transform data, control flow, etc.)
 > 2. **Generalized connector** — wraps a new I/O transport type (e.g., WebSocket, gRPC, MQTT)
 
-**Important:** If the user asks for a service-specific connector (Slack, Jira, S3, etc.), guide them to compose existing connectors (`http`, `github-cli`, `playwright`) in workflow YAML instead. Per-service connectors are not the right pattern — see `.claude/guidance/shipped/moflo-workflow-connectors.md` for the architectural rationale (issues #233–#259).
+**Important:** If the user asks for a service-specific connector (Slack, Jira, S3, etc.), guide them to compose existing connectors (`http`, `github-cli`, `playwright`) in spell YAML instead. Per-service connectors are not the right pattern — see `.claude/guidance/shipped/moflo-spell-connectors.md` for the architectural rationale (issues #233–#259).
 
 Then follow the appropriate section below.
 

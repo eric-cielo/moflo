@@ -1,16 +1,16 @@
-# Workflow Engine
+# Spell Engine
 
-MoFlo includes a generalized workflow engine that lets you define multi-step automation as YAML or JSON files. Each step in a workflow is executed by a typed **step command** — a pluggable unit that knows how to run a shell command, spawn an agent, branch on a condition, loop over items, and more.
+MoFlo includes a generalized spell engine that lets you define multi-step automation as YAML or JSON files. Each step in a spell is executed by a typed **step command** — a pluggable unit that knows how to run a shell command, spawn an agent, branch on a condition, loop over items, and more.
 
-The engine is what powers `/flo` under the hood, but you can also use it directly to build your own workflows for any repeatable process: deployment pipelines, data processing, code generation, review flows, or anything else you'd otherwise script by hand.
+The engine is what powers `/flo` under the hood, but you can also use it directly to build your own spells for any repeatable process: deployment pipelines, data processing, code generation, review flows, or anything else you'd otherwise script by hand.
 
 ## How It Works
 
-A workflow is a definition file (YAML or JSON) plus a runner that executes it step by step.
+A spell is a definition file (YAML or JSON) plus a runner that executes it step by step.
 
 ```
                   ┌─────────────────────────┐
-                  │   Workflow Definition    │
+                  │     Spell Definition     │
                   │   (YAML / JSON file)     │
                   └────────────┬────────────┘
                                │ parse + validate
@@ -35,14 +35,14 @@ A workflow is a definition file (YAML or JSON) plus a runner that executes it st
                 rollback() — undo on failure (optional)
 ```
 
-1. **Parse** — The runner reads your YAML/JSON file and validates it against the workflow schema.
+1. **Parse** — The runner reads your YAML/JSON file and validates it against the spell schema.
 2. **Resolve arguments** — Typed arguments (with defaults, enums, and required flags) are resolved from caller-provided values.
 3. **Execute steps** — Steps run sequentially. Each step's output is available to later steps via variable interpolation. If a step fails, the runner rolls back completed steps (unless `continueOnError` is set).
 4. **Return results** — The runner returns a structured result with per-step status, outputs, errors, and timing.
 
-## Writing a Workflow
+## Writing a Spell
 
-Here's a complete example — a deployment workflow that checks the branch, runs tests, and deploys:
+Here's a complete example — a deployment spell that checks the branch, runs tests, and deploys:
 
 ```yaml
 name: deploy
@@ -101,32 +101,32 @@ steps:
 
 ### Definition Structure
 
-Every workflow definition needs two things: a `name` and a list of `steps`.
+Every spell definition needs two things: a `name` and a list of `steps`.
 
 **Top-level fields:**
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Unique identifier for this workflow |
+| `name` | Yes | Unique identifier for this spell |
 | `description` | No | Human-readable explanation |
-| `arguments` | No | Typed inputs the workflow accepts (see [Arguments](#arguments)) |
+| `arguments` | No | Typed inputs the spell accepts (see [Arguments](#arguments)) |
 | `steps` | Yes | Ordered list of steps to execute |
 
 **Step fields:**
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `id` | Yes | Unique identifier within the workflow (used in interpolation) |
+| `id` | Yes | Unique identifier within the spell (used in interpolation) |
 | `type` | Yes | Which step command to run (`bash`, `agent`, `condition`, etc.) |
 | `config` | Yes | Type-specific configuration (see [Step Types](#step-types)) |
 | `output` | No | Variable name to store this step's output under |
-| `continueOnError` | No | If `true`, workflow continues even if this step fails |
+| `continueOnError` | No | If `true`, spell continues even if this step fails |
 | `timeout` | No | Step-specific timeout in ms (overrides the runner's 5-minute default) |
 | `steps` | No | Nested step definitions (used by `loop` type only) |
 
 ### Arguments
 
-Arguments let callers pass typed values into a workflow. Each argument has a name, type, and optional constraints:
+Arguments let callers pass typed values into a spell. Each argument has a name, type, and optional constraints:
 
 ```yaml
 arguments:
@@ -147,11 +147,11 @@ The runner validates arguments before execution — missing required args or typ
 
 ### Variable Interpolation
 
-Steps can reference outputs from earlier steps and workflow arguments using `{reference}` syntax:
+Steps can reference outputs from earlier steps and spell arguments using `{reference}` syntax:
 
 | Pattern | What it resolves to |
 |---------|-------------------|
-| `{args.environment}` | A workflow argument |
+| `{args.environment}` | A spell argument |
 | `{check-branch.stdout}` | The `stdout` field from step `check-branch`'s output |
 | `{run-tests.exitCode}` | The `exitCode` field from step `run-tests` |
 | `{credentials.API_KEY}` | A credential value (redacted in logs) |
@@ -186,7 +186,7 @@ Executes a command in a child process and captures stdout, stderr, and the exit 
 
 **Outputs:** `stdout`, `stderr`, `exitCode`
 
-Set `failOnError: false` to capture the exit code without failing the workflow — useful for commands where a non-zero exit is informational rather than fatal.
+Set `failOnError: false` to capture the exit code without failing the spell — useful for commands where a non-zero exit is informational rather than fatal.
 
 ### `agent` — Spawn a Claude Subagent
 
@@ -205,7 +205,7 @@ Delegates a task to a Claude subagent and captures its response.
 
 The `agentType` maps to your AI client's agent types — `researcher`, `coder`, `tester`, `reviewer`, etc.
 
-### `condition` — Branch the Workflow
+### `condition` — Branch the Spell
 
 Evaluates an expression and jumps to a different step based on the result.
 
@@ -222,7 +222,7 @@ Evaluates an expression and jumps to a different step based on the result.
 
 **How branching works:** When a condition step executes, the runner doesn't just continue to the next step — it jumps to the step ID specified in `then` or `else`. This means steps between the condition and its target are skipped. Jumps can go forward or backward in the step list.
 
-**Infinite loop protection:** A max-iteration guard (`total steps x 10`) prevents condition chains that loop forever. If the guard trips, the workflow terminates with an error.
+**Infinite loop protection:** A max-iteration guard (`total steps x 10`) prevents condition chains that loop forever. If the guard trips, the spell terminates with an error.
 
 The `if` expression supports JavaScript-style comparisons. The condition command evaluates the interpolated expression and returns `true` or `false`.
 
@@ -251,11 +251,11 @@ Runs a set of nested steps once per item in an array.
 
 **Outputs:** `totalItems`, `iterations`, `truncated`, `items`
 
-Nested steps are defined on the step itself (the `steps` field), not inside `config`. For each iteration, the runner injects `itemVar` and `indexVar` into the variable context, runs all nested steps, then moves to the next item. If those variable names already exist in the workflow context, the runner saves their values before the loop and restores them after.
+Nested steps are defined on the step itself (the `steps` field), not inside `config`. For each iteration, the runner injects `itemVar` and `indexVar` into the variable context, runs all nested steps, then moves to the next item. If those variable names already exist in the spell context, the runner saves their values before the loop and restores them after.
 
 ### `memory` — Read, Write, or Search Shared State
 
-Interacts with MoFlo's memory database during workflow execution.
+Interacts with MoFlo's memory database during spell execution.
 
 ```yaml
 # Write
@@ -263,7 +263,7 @@ Interacts with MoFlo's memory database during workflow execution.
   type: memory
   config:
     action: write
-    namespace: my-workflow
+    namespace: my-spell
     key: last-run
     value: "{build.stdout}"
 
@@ -272,7 +272,7 @@ Interacts with MoFlo's memory database during workflow execution.
   type: memory
   config:
     action: read
-    namespace: my-workflow
+    namespace: my-spell
     key: last-run
 
 # Search
@@ -288,7 +288,7 @@ Interacts with MoFlo's memory database during workflow execution.
 
 ### `prompt` — Ask for User Input
 
-Pauses the workflow to ask the user a question.
+Pauses the spell to ask the user a question.
 
 ```yaml
 - id: confirm
@@ -303,7 +303,7 @@ Pauses the workflow to ask the user a question.
 
 ### `wait` — Pause Execution
 
-Delays the workflow for a specified duration. Useful for rate limiting, cooldowns, or waiting for external processes.
+Delays the spell for a specified duration. Useful for rate limiting, cooldowns, or waiting for external processes.
 
 ```yaml
 - id: cooldown
@@ -359,9 +359,9 @@ Requires the `gh` CLI to be installed and authenticated.
 
 ## Custom Step Commands
 
-Beyond the nine built-in types, you can create your own step commands and drop them into your project. The workflow engine auto-discovers them at startup — no code changes or configuration files needed beyond placing the file in the right directory.
+Beyond the nine built-in types, you can create your own step commands and drop them into your project. The spell engine auto-discovers them at startup — no code changes or configuration files needed beyond placing the file in the right directory.
 
-Custom steps are full participants in the workflow engine: they receive interpolated config, their outputs are available to later steps via `{stepId.field}` references, they can declare capabilities and prerequisites, and they can implement `rollback()` for failure recovery.
+Custom steps are full participants in the spell engine: they receive interpolated config, their outputs are available to later steps via `{stepId.field}` references, they can declare capabilities and prerequisites, and they can implement `rollback()` for failure recovery.
 
 ### Where to Put Custom Steps
 
@@ -373,7 +373,7 @@ your-project/
   .claude/workflows/steps/  # Alternative location
 ```
 
-The engine scans these directories for `.js`, `.ts`, `.mjs`, `.mts`, `.yaml`, and `.yml` files. Each valid file becomes a new step type you can use in any workflow.
+The engine scans these directories for `.js`, `.ts`, `.mjs`, `.mts`, `.yaml`, and `.yml` files. Each valid file becomes a new step type you can use in any spell.
 
 ### Creating a JavaScript Step
 
@@ -381,14 +381,14 @@ Export an object that implements the `StepCommand` interface. The object must ha
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | string | Yes | Step type name (used as `type:` in workflow definitions) |
+| `type` | string | Yes | Step type name (used as `type:` in spell definitions) |
 | `description` | string | Yes | Human-readable description |
 | `configSchema` | object | Yes | JSON Schema describing the step's config |
 | `validate(config, context)` | function | Yes | Returns `{ valid, errors }` |
 | `execute(config, context)` | function | Yes | Returns `{ success, data }` |
 | `describeOutputs()` | function | Yes | Returns array of `{ name, type }` |
 | `capabilities` | array | No | Capability declarations (e.g., `[{ type: 'fs:read' }]`) |
-| `rollback(config, context)` | function | No | Undo logic called on workflow failure |
+| `rollback(config, context)` | function | No | Undo logic called on spell failure |
 
 **Example — `file-stats.js`:**
 
@@ -436,7 +436,7 @@ module.exports = {
 };
 ```
 
-**Use it in a workflow:**
+**Use it in a spell:**
 
 ```yaml
 steps:
@@ -477,7 +477,7 @@ actions:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Step type name (used as `type:` in workflows) |
+| `name` | Yes | Step type name (used as `type:` in spells) |
 | `description` | No | Human-readable description |
 | `inputs` | No | Input schema — each field has `type`, `required`, `default`, `description` |
 | `actions` | Yes | Sequential list of actions to execute |
@@ -587,9 +587,9 @@ Each method calls `enforceScope()` internally. If the resource is outside the st
 | `github` | **Planned** | Will check `shell` scope before `gh` commands |
 | `condition`, `loop`, `wait`, `prompt` | N/A | No I/O capabilities |
 
-See [Workflow Sandboxing](WORKFLOW-SANDBOXING.md) for full capability types and restriction rules.
+See [Spell Sandboxing](SPELL-SANDBOXING.md) for full capability types and restriction rules.
 
-## Custom Workflow Connectors
+## Custom Spell Connectors
 
 Connectors are optional resource adapters that bridge external systems (APIs, CLIs, databases). They provide a reusable interface that multiple step commands can share.
 
@@ -625,14 +625,14 @@ The connector registry scans for `.js`, `.ts`, `.mjs`, and `.mts` files.
 | You want to... | Create a... |
 |----------------|-------------|
 | Wrap a CLI or API that multiple steps will share | **Connector** (`workflows/connectors/`) |
-| Define a specific workflow operation | **Step** (`workflows/steps/`) |
+| Define a specific spell operation | **Step** (`workflows/steps/`) |
 | Combine shell commands into a reusable action | **YAML step** |
 
-A step can use a connector through the workflow context's connector accessor — the engine injects registered connectors so steps can call `context.tools.execute('github-cli', 'create-issue', { title: '...' })`.
+A step can use a connector through the spell context's connector accessor — the engine injects registered connectors so steps can call `context.tools.execute('github-cli', 'create-issue', { title: '...' })`.
 
 ## Error Handling
 
-The runner never throws. It always returns a structured `WorkflowResult` with a `success` flag, per-step results, and an `errors` array.
+The runner never throws. It always returns a structured result with a `success` flag, per-step results, and an `errors` array.
 
 ### What happens when a step fails
 
@@ -641,7 +641,7 @@ By default, a step failure triggers this sequence:
 1. The failed step is recorded with status `failed`
 2. The runner attempts to **rollback** all previously completed steps (calling each command's `rollback()` method in reverse order)
 3. Remaining steps are marked as `skipped`
-4. The workflow result has `success: false`
+4. The spell result has `success: false`
 
 ### `continueOnError`
 
@@ -652,7 +652,7 @@ Set `continueOnError: true` on a step to skip the rollback-and-abort behavior fo
   type: bash
   config:
     command: npm run lint
-  continueOnError: true          # Lint failures don't block the workflow
+  continueOnError: true          # Lint failures don't block the spell
 
 - id: required-tests
   type: bash
@@ -673,14 +673,14 @@ Each error in the result carries a code that tells you what went wrong:
 | `STEP_VALIDATION_FAILED` | A step's config doesn't match its command's schema |
 | `STEP_EXECUTION_FAILED` | A step threw an error during execution |
 | `STEP_TIMEOUT` | A step exceeded its timeout |
-| `STEP_CANCELLED` | The workflow was cancelled while this step was running |
+| `STEP_CANCELLED` | The spell was cancelled while this step was running |
 | `CONDITION_TARGET_NOT_FOUND` | A condition's `then`/`else` references a step ID that doesn't exist |
 | `ROLLBACK_FAILED` | Rollback of a completed step failed |
-| `WORKFLOW_CANCELLED` | The entire workflow was cancelled via AbortSignal |
+| `WORKFLOW_CANCELLED` | The entire spell was cancelled via AbortSignal |
 
 ## Security and Sandboxing
 
-Workflows run with **least-privilege enforcement**. Every step command declares the capabilities it needs (file access, shell execution, network, etc.), and the runner blocks anything undeclared. This means a workflow can only do what its definition explicitly authorizes — nothing more.
+Spells run with **least-privilege enforcement**. Every step command declares the capabilities it needs (file access, shell execution, network, etc.), and the runner blocks anything undeclared. This means a spell can only do what its definition explicitly authorizes — nothing more.
 
 ### How it works
 
@@ -690,7 +690,7 @@ Enforcement happens at two levels:
 1. **Declaration check** — Before a step runs, the runner validates that YAML-declared capabilities don't exceed the command's defaults. This catches configuration errors.
 2. **Runtime enforcement** — When a step performs I/O, the `CapabilityGateway` checks that the specific resource (file path, URL, command) falls within the step's effective scope. This is the actual security boundary. See [Capability Gateway](#capability-gateway--runtime-enforcement) for details.
 
-When you write a workflow, you can **restrict** a step's capabilities further, but you can never **expand** them:
+When you write a spell, you can **restrict** a step's capabilities further, but you can never **expand** them:
 
 ```yaml
 steps:
@@ -725,7 +725,7 @@ Capability violation: step type "bash" does not declare capability "browser"
 | `fs:write` | Write files to disk | `bash`, `browser` |
 | `net` | Network access (HTTP, WebSocket) | `browser` |
 | `shell` | Execute shell commands | `bash` |
-| `memory` | Read/write/search the workflow memory store | `memory` |
+| `memory` | Read/write/search the spell memory store | `memory` |
 | `credentials` | Access the encrypted credential store | Any step using `{credentials.X}` |
 | `browser` | Launch and control browser sessions | `browser` |
 | `agent` | Spawn Claude subagents | `agent` |
@@ -734,17 +734,17 @@ Control-flow commands (`condition`, `loop`, `wait`, `prompt`) perform no I/O and
 
 ### The execution constraint
 
-The capability system enforces limits in code, but the principle goes deeper: **when Claude executes a workflow, it treats the definition as a strict contract.** It performs only the actions the steps specify, using only the capabilities they declare. It does not infer additional actions, add helpful extras, or work around denied capabilities. If the workflow definition doesn't instruct something, that something doesn't happen.
+The capability system enforces limits in code, but the principle goes deeper: **when Claude executes a spell, it treats the definition as a strict contract.** It performs only the actions the steps specify, using only the capabilities they declare. It does not infer additional actions, add helpful extras, or work around denied capabilities. If the spell definition doesn't instruct something, that something doesn't happen.
 
-This is what makes workflows safe for unattended and scheduled execution. You can read a workflow YAML file and know exactly what it will do — the definition is the complete specification.
+This is what makes spells safe for unattended and scheduled execution. You can read a spell YAML file and know exactly what it will do — the definition is the complete specification.
 
-For full details on the sandboxing tiers, restriction rules, and how to declare capabilities on custom step commands, see [Workflow Sandboxing](WORKFLOW-SANDBOXING.md).
+For full details on the sandboxing tiers, restriction rules, and how to declare capabilities on custom step commands, see [Spell Sandboxing](SPELL-SANDBOXING.md).
 
 ## Dry Run
 
 Dry-run mode validates everything without executing anything. It checks:
 
-- Definition schema validity
+- Spell definition schema validity
 - Argument resolution (types, required flags, enums)
 - Step config validation against each command's schema
 - That all referenced step types are registered
@@ -766,11 +766,11 @@ if (!result.success) {
 }
 ```
 
-Use dry run to catch definition errors before committing to execution — especially useful when building or modifying workflows.
+Use dry run to catch definition errors before committing to execution — especially useful when building or modifying spells.
 
 ## Pause and Resume
 
-Long-running workflows can be paused mid-execution and resumed later — even in a different conversation or session. The engine serializes the workflow's state (completed step results, variable context, position) to memory, then reconstructs it on resume.
+Long-running spells can be paused mid-execution and resumed later — even in a different conversation or session. The engine serializes the spell's state (completed step results, variable context, position) to memory, then reconstructs it on resume.
 
 ### How it works
 
@@ -778,11 +778,11 @@ Long-running workflows can be paused mid-execution and resumed later — even in
 
 2. **Wait** — The paused state sits in memory with a configurable stale timeout (default: 24 hours). After that, it's considered expired and will be cleaned up.
 
-3. **Resume** — The engine loads the snapshot from memory, reconstructs the workflow definition, merges any variable overrides the caller provides, and creates a new runner that picks up from the next unexecuted step. Completed step results from before the pause are prepended to the final result, so the caller sees the full execution history.
+3. **Resume** — The engine loads the snapshot from memory, reconstructs the spell definition, merges any variable overrides the caller provides, and creates a new runner that picks up from the next unexecuted step. Completed step results from before the pause are prepended to the final result, so the caller sees the full execution history.
 
 ### Variable overrides on resume
 
-When resuming, you can inject or modify variables — useful when a human needs to review intermediate results and provide input before the workflow continues:
+When resuming, you can inject or modify variables — useful when a human needs to review intermediate results and provide input before the spell continues:
 
 ```typescript
 const result = await resumeWorkflow('wf-12345', {
@@ -795,30 +795,30 @@ The override merges with the paused variable context (overrides win on conflict)
 
 ## Definition Layering
 
-Workflow definitions use a two-tier system, following the same pattern as MoFlo's guidance files:
+Spell definitions use a two-tier system, following the same pattern as MoFlo's guidance files:
 
 | Tier | Source | Priority |
 |------|--------|----------|
-| **Shipped** | Bundled with MoFlo (built-in workflows) | Lower |
-| **User** | Your project's workflow directory | Higher |
+| **Shipped** | Bundled with MoFlo (built-in spells) | Lower |
+| **User** | Your project's spell directory | Higher |
 
-If you create a workflow with the same `name` as a shipped one, your version wins. New names are additive — they extend the available set without replacing anything.
+If you create a spell with the same `name` as a shipped one, your version wins. New names are additive — they extend the available set without replacing anything.
 
 The loader checks for `.yaml`, `.yml`, and `.json` files. Invalid files produce warnings but don't block loading of valid ones.
 
-### Where to put your workflows
+### Where to put your spells
 
-By default, user workflows live in `.claude/workflows/` or a path you configure in `moflo.yaml`. Create a YAML file there and it's automatically available:
+By default, user spells live in `.claude/workflows/` or a path you configure in `moflo.yaml`. Create a YAML file there and it's automatically available:
 
 ```
 .claude/workflows/
-  deploy.yaml          # Your custom deploy workflow
-  data-pipeline.yaml   # Your data processing workflow
+  deploy.yaml          # Your custom deploy spell
+  data-pipeline.yaml   # Your data processing spell
 ```
 
 ## Using the MCP Tools
 
-Your AI client interacts with the workflow engine through MCP tools:
+Your AI client interacts with the spell engine through MCP tools:
 
 | Tool | What it does |
 |------|-------------|
@@ -829,16 +829,16 @@ Your AI client interacts with the workflow engine through MCP tools:
 | `mcp__moflo__spell_suspend` | Suspend a running spell |
 | `mcp__moflo__spell_resume` | Resume a suspended spell |
 
-Each running workflow gets a unique ID (e.g., `wf-1711644123456`) that you can use to check status, cancel, or resume.
+Each running spell gets a unique ID (e.g., `wf-1711644123456`) that you can use to check status, cancel, or resume.
 
 ## Programmatic Usage
 
-You can also use the workflow engine directly from TypeScript:
+You can also use the spell engine directly from TypeScript:
 
 ```typescript
 import { createRunner, runWorkflowFromContent } from '@moflo/workflows';
 
-// Option 1: Run from YAML content (parse + validate + execute in one call)
+// Option 1: Run from YAML content (parse + validate + cast in one call)
 const result = await runWorkflowFromContent(yamlString, 'my-workflow.yaml', {
   args: { environment: 'staging' },
 });
@@ -863,5 +863,5 @@ console.log(result.duration);    // Total execution time in ms
 
 ## Further Reading
 
-- [Workflow Sandboxing](WORKFLOW-SANDBOXING.md) — Full sandboxing reference: capability types, restriction rules, enforcement tiers, and the Execution Constraint Principle
+- [Spell Sandboxing](SPELL-SANDBOXING.md) — Full sandboxing reference: capability types, restriction rules, enforcement tiers, and the Execution Constraint Principle
 - [Build & Publish](BUILD.md) — Building and publishing MoFlo
