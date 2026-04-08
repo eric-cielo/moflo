@@ -1,21 +1,21 @@
-# Workflow Step Sandboxing
+# Spell Step Sandboxing
 
-MoFlo enforces **least-privilege access** for workflow steps. Every step command declares the capabilities it needs, and the runner blocks any undeclared access. Workflow authors can further restrict what a specific step instance is allowed to do.
+MoFlo enforces **least-privilege access** for spell steps. Every step command declares the capabilities it needs, and the runner blocks any undeclared access. Spell authors can further restrict what a specific step instance is allowed to do.
 
 This is defense-in-depth without containers — using capability declarations and runtime enforcement.
 
 ## Execution Constraint Principle
 
-When executing within a workflow, Claude **only performs actions explicitly authorized by the workflow definition, step configuration, and declared capabilities**. This is the foundational security contract:
+When executing within a spell, Claude **only performs actions explicitly authorized by the spell definition, step configuration, and declared capabilities**. This is the foundational security contract:
 
 - **Only do what the step says.** A step's `config` defines the complete scope of work. A `bash` step with `command: "npm test"` runs `npm test` — nothing else.
 - **Respect all capability restrictions.** If a step restricts `fs:read` to `["./config/"]`, files outside that path are off-limits.
 - **Never escalate privileges.** A `CAPABILITY_DENIED` error is intentional — not a problem to work around.
 - **No implicit side effects.** No creating files, making network requests, spawning agents, or modifying state unless a step explicitly authorizes it.
-- **Scheduled workflows have the same restrictions as manual ones.** Automation does not grant additional permissions.
-- **The workflow definition is the complete specification.** If it doesn't instruct an action, that action is not authorized.
+- **Scheduled spells have the same restrictions as manual ones.** Automation does not grant additional permissions.
+- **The spell definition is the complete specification.** If it doesn't instruct an action, that action is not authorized.
 
-This predictability is what makes automated and scheduled workflows safe to deploy.
+This predictability is what makes automated and scheduled spells safe to deploy.
 
 ## Capability Types
 
@@ -25,7 +25,7 @@ This predictability is what makes automated and scheduled workflows safe to depl
 | `fs:write` | Write files to disk | `bash`, `browser` |
 | `net` | Network access (HTTP, WebSocket, etc.) | `browser` |
 | `shell` | Execute shell commands via child process | `bash` |
-| `memory` | Read/write/search the workflow memory store | `memory` |
+| `memory` | Read/write/search the spell memory store | `memory` |
 | `credentials` | Access the encrypted credential store | Any step using `{credentials.X}` |
 | `browser` | Launch and control Playwright browser sessions | `browser` |
 | `agent` | Spawn Claude subagents | `agent` |
@@ -51,7 +51,7 @@ export const bashCommand: StepCommand = {
 The runner checks these before executing any step:
 
 ```
-1. Parse and validate workflow definition
+1. Parse and validate spell definition
 2. For each step:
    a. Interpolate config variables
    b. Validate config (command.validate)
@@ -68,7 +68,7 @@ capability "browser" — cannot grant new capabilities
 
 ## Restricting Capabilities in YAML
 
-Workflow authors can **restrict** (but never expand) a command's default capabilities on a per-step basis:
+Spell authors can **restrict** (but never expand) a command's default capabilities on a per-step basis:
 
 ```yaml
 steps:
@@ -92,7 +92,7 @@ steps:
 
 ### Example: Restricting a Bash Step
 
-The `bash` command declares `shell`, `fs:read`, and `fs:write` by default. A workflow can narrow these:
+The `bash` command declares `shell`, `fs:read`, and `fs:write` by default. A spell can narrow these:
 
 ```yaml
 steps:
@@ -136,7 +136,7 @@ export const myCommand: StepCommand = {
 
 ## Schema Validation
 
-The schema validator checks `capabilities` syntax when a workflow definition is loaded:
+The schema validator checks `capabilities` syntax when a spell definition is loaded:
 
 | Error | Cause |
 |-------|-------|
@@ -144,7 +144,7 @@ The schema validator checks `capabilities` syntax when a workflow definition is 
 | `scope must be an array of strings` | Scope value is not an array |
 | `capabilities must be an object` | Capabilities declared as array instead of object |
 
-Validation errors are caught before the workflow starts — no steps execute if the definition is invalid.
+Validation errors are caught before the spell starts — no steps execute if the definition is invalid.
 
 ## Runtime Enforcement via CapabilityGateway
 
@@ -194,5 +194,5 @@ MoFlo's sandboxing is graduated. The current implementation covers Tier 1:
 
 ## See Also
 
-- [Workflow Engine](WORKFLOWS.md) — Full workflow engine documentation, including the CapabilityGateway section
+- [Spell Engine](SPELLS.md) — Full spell engine documentation, including the CapabilityGateway section
 - [Build & Publish](BUILD.md) — Building and publishing MoFlo

@@ -1,44 +1,44 @@
-# Workflow Engine — Running, Creating, and Customizing Workflows
+# Spell Engine — Running, Creating, and Customizing Spells
 
-**Purpose:** How to run workflows via MCP tools, create new workflow definitions, register custom step commands, and understand the shipped vs user override layering system. Reference when a user asks to run, create, or modify workflows.
+**Purpose:** How to run spells via MCP tools, create new spell definitions, register custom step commands, and understand the shipped vs user override layering system. Reference when a user asks to run, create, or modify spells.
 
 ---
 
-## Claude's Role During Workflow Execution
+## Claude's Role During Spell Execution
 
-**Claude MUST treat the workflow definition as a strict contract — execute only what it specifies, using only the capabilities it declares.** This applies equally whether the workflow is run manually, via MCP, or on a schedule by the daemon.
+**Claude MUST treat the spell definition as a strict contract — execute only what it specifies, using only the capabilities it declares.** This applies equally whether the spell is run manually, via MCP, or on a schedule by the daemon.
 
 | Constraint | Detail |
 |-----------|--------|
 | Step config is the complete instruction | Do not add commands, flags, arguments, or actions beyond what `config` contains |
 | Capability restrictions are absolute | If a step restricts `fs:read` to `["./src/"]`, do not read files outside `./src/` even if helpful |
 | `CAPABILITY_DENIED` means stop | Do not attempt workarounds — report the denial and halt the step |
-| No improvisation between steps | Do not perform actions outside of step boundaries, even if "obvious" (e.g., do not auto-fix a failing step's output before passing it to the next step unless the workflow defines a step for that) |
+| No improvisation between steps | Do not perform actions outside of step boundaries, even if "obvious" (e.g., do not auto-fix a failing step's output before passing it to the next step unless the spell defines a step for that) |
 
-See `.claude/guidance/shipped/moflo-workflow-sandboxing.md` for the full Execution Constraint Principle and capability type reference.
+See `.claude/guidance/shipped/moflo-spell-sandboxing.md` for the full Execution Constraint Principle and capability type reference.
 
 ---
 
-## Running a Workflow via MCP Tools
+## Running a Spell via MCP Tools
 
-**Use `mcp__moflo__workflow_run` to execute a workflow from a YAML/JSON file.** The bridge layer handles parsing, validation, and runner lifecycle automatically.
+**Use `mcp__moflo__spell_run` to execute a spell from a YAML/JSON file.** The bridge layer handles parsing, validation, and runner lifecycle automatically.
 
 | MCP Tool | Purpose |
 |----------|---------|
-| `mcp__moflo__workflow_run` | Run workflow from file content (YAML/JSON) |
-| `mcp__moflo__workflow_execute` | Execute a workflow definition object directly |
-| `mcp__moflo__workflow_cancel` | Cancel a running workflow by ID |
-| `mcp__moflo__workflow_status` | Check if a workflow is currently running |
-| `mcp__moflo__workflow_pause` | Pause a running workflow for later resumption |
-| `mcp__moflo__workflow_resume` | Resume a previously paused workflow |
+| `mcp__moflo__spell_run` | Run spell from file content (YAML/JSON) |
+| `mcp__moflo__spell_execute` | Execute a spell definition object directly |
+| `mcp__moflo__spell_cancel` | Cancel a running spell by ID |
+| `mcp__moflo__spell_status` | Check if a spell is currently running |
+| `mcp__moflo__spell_pause` | Pause a running spell for later resumption |
+| `mcp__moflo__spell_resume` | Resume a previously paused spell |
 
 **Dry-run mode validates without executing.** Pass `dryRun: true` to check definition validity, argument resolution, and step config schemas before committing to execution.
 
 ---
 
-## Workflow Definition Format
+## Spell Definition Format
 
-**Workflows are YAML or JSON files.** YAML is preferred for readability. Every definition must have `name` and `steps`.
+**Spells are YAML or JSON files.** YAML is preferred for readability. Every definition must have `name` and `steps`.
 
 ```yaml
 name: deploy-staging
@@ -71,7 +71,7 @@ steps:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | string | Unique workflow identifier |
+| `name` | string | Unique spell identifier |
 | `steps` | array | Ordered list of step definitions |
 
 ### Optional Fields
@@ -79,7 +79,7 @@ steps:
 | Field | Type | Description |
 |-------|------|-------------|
 | `arguments` | object | Typed arguments with `type`, `required`, `default`, `enum`, `description` |
-| `description` | string | Human-readable workflow description |
+| `description` | string | Human-readable spell description |
 
 ### Step Definition Fields
 
@@ -89,7 +89,7 @@ steps:
 | `type` | string | Yes | Step command type (see Step Command Types below) |
 | `config` | object | Yes | Type-specific configuration |
 | `output` | string | No | Variable name to store step output |
-| `continueOnError` | boolean | No | Continue workflow if this step fails (default: false) |
+| `continueOnError` | boolean | No | Continue spell if this step fails (default: false) |
 | `timeout` | number | No | Step timeout in ms (overrides runner default of 300s) |
 
 ---
@@ -100,7 +100,7 @@ steps:
 
 | Pattern | Resolves To |
 |---------|-------------|
-| `{args.environment}` | Workflow argument value |
+| `{args.environment}` | Spell argument value |
 | `{check-branch.stdout}` | Output field from step `check-branch` |
 | `{credentials.API_KEY}` | Credential value (redacted in logs) |
 
@@ -154,7 +154,7 @@ steps:
 
 ---
 
-### condition — Branch Workflow Execution
+### condition — Branch Spell Execution
 
 ```yaml
 - id: check-env
@@ -278,7 +278,7 @@ Supports 8 actions: `create-issue`, `create-pr`, `add-label`, `remove-label`, `c
 
 ## Pluggable Step Commands
 
-**Drop JS/TS or YAML files into a step directory to extend the workflow engine with custom step types.** User-defined steps are auto-discovered and registered alongside built-in commands.
+**Drop JS/TS or YAML files into a step directory to extend the spell engine with custom step types.** User-defined steps are auto-discovered and registered alongside built-in commands.
 
 ### Discovery Sources (Priority Order)
 
@@ -315,11 +315,11 @@ module.exports = {
 };
 ```
 
-See `examples/workflow-steps/file-stats.js` for a complete, well-commented example.
+See `examples/spell-steps/file-stats.js` for a complete, well-commented example.
 
 ### YAML Composite Steps
 
-**YAML files define reusable composite steps with declared inputs, tool dependencies, and sequential actions.**
+**YAML files define reusable composite spell steps with declared inputs, tool dependencies, and sequential actions.**
 
 ```yaml
 # workflows/steps/notify.yaml
@@ -339,7 +339,7 @@ actions:
 
 | YAML Field | Required | Description |
 |------------|----------|-------------|
-| `name` | Yes | Step type name (used as `type` in workflow definitions) |
+| `name` | Yes | Step type name (used as `type` in spell definitions) |
 | `description` | No | Human-readable description |
 | `tool` | No | Declares tool dependency (maps to `net` capability and prerequisites) |
 | `inputs` | No | Input schema with `type`, `required`, `default`, `description` per field |
@@ -422,22 +422,22 @@ const result = loadWorkflowByName('deploy-staging', { /* same options */ });
 | `STEP_VALIDATION_FAILED` | Step config fails command's schema validation |
 | `STEP_EXECUTION_FAILED` | Step threw during execution |
 | `STEP_TIMEOUT` | Step exceeded its timeout |
-| `STEP_CANCELLED` | Workflow cancelled via AbortSignal |
+| `STEP_CANCELLED` | Spell cancelled via AbortSignal |
 | `CONDITION_TARGET_NOT_FOUND` | Condition branch references nonexistent step ID |
-| `PAUSED_STATE_NOT_FOUND` | No paused state for workflow ID on resume |
+| `PAUSED_STATE_NOT_FOUND` | No paused state for spell ID on resume |
 | `PAUSED_STATE_EXPIRED` | Paused state exceeded stale timeout |
 | `ROLLBACK_FAILED` | Rollback of completed steps failed |
-| `WORKFLOW_CANCELLED` | Entire workflow was cancelled |
+| `WORKFLOW_CANCELLED` | Entire spell was cancelled |
 
 ### continueOnError
 
-**Set `continueOnError: true` on a step to keep running after failure.** The failed step is recorded in results but execution continues. Without this flag, a step failure triggers rollback of completed steps and terminates the workflow.
+**Set `continueOnError: true` on a step to keep running after failure.** The failed step is recorded in results but execution continues. Without this flag, a step failure triggers rollback of completed steps and terminates the spell.
 
 ---
 
 ## Pause and Resume
 
-**Pause serializes workflow state to memory. Resume reconstructs and continues from where it left off.**
+**Pause serializes spell state to memory. Resume reconstructs and continues from where it left off.**
 
 ```typescript
 import { buildPausedState, persistPausedState, resumeWorkflow } from '@moflo/workflows';
@@ -456,9 +456,9 @@ const result = await resumeWorkflow(workflowId, { memory, variables: { override:
 
 ---
 
-## Creating New Workflow Definitions
+## Creating New Spell Definitions
 
-**To create a workflow for a user, write a `.yaml` file in their project's workflow directory** (typically `.claude/workflows/` or a path configured in `moflo.yaml`).
+**To create a spell for a user, write a `.yaml` file in their project's spell directory** (typically `.claude/workflows/` or a path configured in `moflo.yaml`).
 
 1. Start with `name` and `steps`
 2. Add `arguments` for any user-provided values
@@ -480,7 +480,7 @@ const result = await resumeWorkflow(workflowId, { memory, variables: { override:
 
 ## Dry-Run Validation
 
-**Always dry-run before executing a new or modified workflow.** Dry-run validates the definition, resolves arguments, and checks step configs without executing anything.
+**Always dry-run before executing a new or modified spell.** Dry-run validates the definition, resolves arguments, and checks step configs without executing anything.
 
 ```typescript
 import { runWorkflowFromContent } from '@moflo/workflows';
@@ -491,13 +491,13 @@ if (!result.success) {
 }
 ```
 
-Via MCP: pass `dryRun: true` to `mcp__moflo__workflow_run`.
+Via MCP: pass `dryRun: true` to `mcp__moflo__spell_run`.
 
 ---
 
 ## Credential Handling
 
-**Credentials are accessed via `{credentials.KEY}` in interpolation.** The credential accessor is injected into the runner at creation time — workflows never store credentials directly.
+**Credentials are accessed via `{credentials.KEY}` in interpolation.** The credential accessor is injected into the runner at creation time — spells never store credentials directly.
 
 Credential values listed in `RunnerOptions.credentialValues` are automatically redacted from step output to prevent accidental exposure in logs or results.
 
@@ -505,8 +505,8 @@ Credential values listed in `RunnerOptions.credentialValues` are automatically r
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-workflow-connectors.md` — Connectors: resource adapters, registry, step-vs-connector decision
-- `.claude/guidance/shipped/moflo-workflow-sandboxing.md` — Capability-based security for steps
-- `.claude/guidance/shipped/moflo-workflow-engine-architecture.md` — Architecture decisions for Epic #100
+- `.claude/guidance/shipped/moflo-spell-connectors.md` — Connectors: resource adapters, registry, step-vs-connector decision
+- `.claude/guidance/shipped/moflo-spell-sandboxing.md` — Capability-based security for steps
+- `.claude/guidance/shipped/moflo-spell-engine-architecture.md` — Architecture decisions for Epic #100
 - `.claude/guidance/shipped/moflo-core-guidance.md` — CLI, hooks, swarm, memory reference
 - `.claude/guidance/shipped/moflo-subagents.md` — Subagents protocol
