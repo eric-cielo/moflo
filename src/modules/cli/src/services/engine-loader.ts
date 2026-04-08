@@ -1,5 +1,5 @@
 /**
- * Shared Workflow Engine Loader
+ * Shared Spell Engine Loader
  *
  * Centralizes dynamic import + caching of the @moflo/spells package.
  * Both spell-tools.ts (MCP layer) and runner-adapter.ts (epic runner) use
@@ -23,13 +23,13 @@ import type {
   RegistryOptions,
 } from '../../../../modules/spells/src/registry/workflow-registry.js';
 
-// Re-export workflow types so consumers import from engine-loader (single boundary).
+// Re-export spell types so consumers import from engine-loader (single boundary).
 export type { WorkflowResult };
 export type { SpellDefinition };
 export type { Grimoire };
 
 /**
- * Shape of the dynamically imported workflow engine module.
+ * Shape of the dynamically imported spell engine module.
  *
  * Uses the canonical types from @moflo/spells (type-only, no runtime dep).
  * The actual module is loaded via dynamic import() at runtime.
@@ -61,7 +61,7 @@ let cachedEngine: EngineModule | null = null;
 let pendingImport: Promise<EngineModule> | null = null;
 
 /**
- * Dynamically import the workflow engine, caching after first successful load.
+ * Dynamically import the spell engine, caching after first successful load.
  * Uses a pending-promise guard to prevent duplicate imports under concurrency.
  */
 export async function loadSpellEngine(): Promise<EngineModule> {
@@ -87,7 +87,7 @@ export async function loadSpellEngine(): Promise<EngineModule> {
       return cachedEngine;
     } catch {
       throw new Error(
-        'Workflow engine not available. Run `npm run build` to compile the workflows package.',
+        'Spell engine not available. Run `npm run build` to compile the spells package.',
       );
     } finally {
       pendingImport = null;

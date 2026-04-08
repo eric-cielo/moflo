@@ -1,7 +1,7 @@
 /**
  * Scheduler Module
  *
- * Scheduled workflow execution: cron, interval, and one-time scheduling.
+ * Scheduled spell execution: cron, interval, and one-time scheduling.
  */
 
 export type {

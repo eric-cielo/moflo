@@ -122,7 +122,7 @@ export interface FloRunContext {
 // ============================================================================
 
 export interface RunnerOptions {
-  /** Caller-specified workflow ID for status correlation. Auto-generated if omitted. */
+  /** Caller-specified spell ID for status correlation. Auto-generated if omitted. */
   readonly workflowId?: string;
 
   /** Default timeout per step in milliseconds (default: 300000 — 5 min). */
@@ -140,16 +140,16 @@ export interface RunnerOptions {
   /** Literal credential values to redact from step output (matched as exact strings). */
   readonly credentialValues?: readonly string[];
 
-  /** Pre-seeded variables for resuming from a paused workflow. */
+  /** Pre-seeded variables for resuming from a paused spell. */
   readonly initialVariables?: Record<string, unknown>;
 
-  /** Current nesting depth for recursive workflow invocation (0 = top-level). */
+  /** Current nesting depth for recursive spell invocation (0 = top-level). */
   readonly nestingDepth?: number;
 
-  /** Maximum nesting depth for recursive workflows (default: 3). */
+  /** Maximum nesting depth for recursive spells (default: 3). */
   readonly maxNestingDepth?: number;
 
-  /** Parent workflow's MoFlo level — child workflows cannot exceed this. */
+  /** Parent spell's MoFlo level — child spells cannot exceed this. */
   readonly parentMofloLevel?: MofloLevel;
 
   /** Human-readable context metadata for dashboard display. */

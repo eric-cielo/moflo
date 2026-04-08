@@ -22,7 +22,7 @@ npm install && npm run build && npm test
 | `@moflo/embeddings` | `modules/embeddings/` | Vector embeddings (sql.js, HNSW) |
 | `@moflo/neural` | `modules/neural/` | Neural patterns (SONA) |
 | `@moflo/plugins` | `modules/plugins/` | Plugin system |
-| `@moflo/spells` | `modules/spells/` | Spell engine (workflows) |
+| `@moflo/spells` | `modules/spells/` | Spell engine |
 
 ## Code Quality
 

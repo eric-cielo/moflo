@@ -140,7 +140,7 @@ async function runEpic(
 
   if (dryRun) {
     console.log('[epic] Dry-run mode — showing execution plan:');
-    console.log(`[epic] Workflow: ${strategy}`);
+    console.log(`[epic] Strategy: ${strategy}`);
     console.log(`[epic] Args: ${JSON.stringify(args, null, 2)}`);
     console.log('[epic] Stories would be processed in order:');
     for (const num of storyNumbers) {
@@ -154,9 +154,9 @@ async function runEpic(
       });
 
       if (result.success) {
-        console.log('[epic] Dry-run: workflow is valid');
+        console.log('[epic] Dry-run: spell is valid');
       } else {
-        console.log('[epic] Dry-run: workflow has validation errors:');
+        console.log('[epic] Dry-run: spell has validation errors:');
         for (const err of result.errors) {
           console.log(`  - ${err.message}`);
           const details = (err as Record<string, unknown>).details;
@@ -175,7 +175,7 @@ async function runEpic(
   }
 
   // 6. Execute workflow
-  console.log(`[epic] Executing ${strategy} workflow...`);
+  console.log(`[epic] Casting ${strategy} spell...`);
   let stepCount = 0;
 
   try {
@@ -258,7 +258,7 @@ async function showStatus(epicNumber: string): Promise<CommandResult> {
     return { success: false, message: 'Usage: flo epic status <epic-number>' };
   }
   console.log(`[epic] Status for epic #${epicNumber}:`);
-  console.log('[epic] Reading from workflow memory...');
+  console.log('[epic] Reading from spell memory...');
 
   try {
     const result = await runEpicWorkflow(
@@ -364,7 +364,7 @@ function getRemediation(errorMessage: string): string | undefined {
 
 const epicCommand: Command = {
   name: 'epic',
-  description: 'Epic orchestrator — runs GitHub epics through workflow engine',
+  description: 'Epic orchestrator — runs GitHub epics through spell engine',
   options: [],
   examples: [
     { command: 'flo epic 42', description: 'Execute epic (default: run with single-branch strategy)' },
@@ -383,7 +383,7 @@ const epicCommand: Command = {
       console.log('');
       console.log('Commands:');
       console.log('  <issue-number>           Execute epic (shorthand for "run")');
-      console.log('  run <issue-number>       Execute a GitHub epic via workflow engine');
+      console.log('  run <issue-number>       Execute a GitHub epic via spell engine');
       console.log('  status <epic-number>     Check epic progress');
       console.log('  reset <epic-number>      Reset epic state for re-run');
       console.log('');

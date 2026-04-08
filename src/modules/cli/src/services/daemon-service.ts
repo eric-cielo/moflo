@@ -2,7 +2,7 @@
  * OS-Native Daemon Service Registration
  *
  * Registers/removes the moflo daemon as a user-level login service
- * so scheduled workflows survive reboots without Docker.
+ * so scheduled spells survive reboots without Docker.
  *
  * - macOS:   launchd plist in ~/Library/LaunchAgents/
  * - Linux:   systemd --user unit in ~/.config/systemd/user/

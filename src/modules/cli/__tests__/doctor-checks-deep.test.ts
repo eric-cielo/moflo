@@ -38,13 +38,13 @@ describe('doctor-checks-deep', () => {
   describe('checkWorkflowExecution', () => {
     it('should return a HealthCheck object', async () => {
       const result = await checkWorkflowExecution();
-      expect(result).toHaveProperty('name', 'Workflow Execution');
+      expect(result).toHaveProperty('name', 'Spell Execution');
       expect(result).toHaveProperty('status');
       expect(result).toHaveProperty('message');
       expect(['pass', 'warn', 'fail']).toContain(result.status);
     });
 
-    it('should pass when workflow engine is built', async () => {
+    it('should pass when spell engine is built', async () => {
       const result = await checkWorkflowExecution();
       // In the dev repo with a successful build, this should pass
       if (result.status === 'pass') {
@@ -88,7 +88,7 @@ describe('doctor-checks-deep', () => {
   describe('checkMcpWorkflowIntegration', () => {
     it('should return a HealthCheck object', async () => {
       const result = await checkMcpWorkflowIntegration();
-      expect(result).toHaveProperty('name', 'MCP Workflow Integration');
+      expect(result).toHaveProperty('name', 'MCP Spell Integration');
       expect(result).toHaveProperty('status');
       expect(result).toHaveProperty('message');
       expect(['pass', 'warn', 'fail']).toContain(result.status);

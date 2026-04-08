@@ -2,7 +2,7 @@
  * Project Root Discovery
  *
  * Walks up from cwd to find the nearest directory containing package.json or .git.
- * Extracted from workflow-tools.ts for reuse (#229).
+ * Extracted from spell-tools.ts for reuse (#229).
  */
 
 import { existsSync } from 'node:fs';

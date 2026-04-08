@@ -45,7 +45,7 @@ const gateCommand: Command = {
       console.log('  record-memory-searched Record memory search');
       console.log('  check-bash-memory      Detect memory search in Bash commands');
       console.log('  prompt-reminder        Reset memory gate, show context bracket');
-      console.log('  session-reset          Reset all workflow state');
+      console.log('  session-reset          Reset all spell state');
       return { success: true };
     }
 

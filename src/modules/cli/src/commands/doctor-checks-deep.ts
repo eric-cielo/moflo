@@ -191,11 +191,11 @@ export async function checkSubagentHealth(): Promise<HealthCheck> {
 }
 
 // ============================================================================
-// 2. Workflow Execution Check
+// 2. Spell Execution Check
 // ============================================================================
 
 /**
- * Runs a minimal workflow (single echo step) through the full engine pipeline:
+ * Runs a minimal spell (single echo step) through the full engine pipeline:
  * parse → validate → execute → collect result.
  */
 export async function checkWorkflowExecution(): Promise<HealthCheck> {
@@ -204,12 +204,12 @@ export async function checkWorkflowExecution(): Promise<HealthCheck> {
       'src/modules/spells/dist/factory/runner-factory.js',
     );
     if (!modulePath) {
-      return { name: 'Workflow Execution', status: 'warn', message: 'Workflow runner-factory not found', fix: 'npm run build' };
+      return { name: 'Spell Execution', status: 'warn', message: 'Spell runner-factory not found', fix: 'npm run build' };
     }
 
     const { runWorkflowFromContent } = await import(toImportUrl(modulePath));
     if (typeof runWorkflowFromContent !== 'function') {
-      return { name: 'Workflow Execution', status: 'fail', message: 'runWorkflowFromContent is not a function', fix: 'npm run build' };
+      return { name: 'Spell Execution', status: 'fail', message: 'runWorkflowFromContent is not a function', fix: 'npm run build' };
     }
 
     const minimalWorkflow = `
@@ -229,20 +229,20 @@ steps:
     });
 
     if (!result) {
-      return { name: 'Workflow Execution', status: 'fail', message: 'Runner returned no result' };
+      return { name: 'Spell Execution', status: 'fail', message: 'Runner returned no result' };
     }
 
     if (result.success) {
       const stepCount = result.steps?.length ?? 0;
       const duration = result.duration != null ? `${result.duration}ms` : 'unknown';
-      return { name: 'Workflow Execution', status: 'pass', message: `Probe OK (${stepCount} step, ${duration})` };
+      return { name: 'Spell Execution', status: 'pass', message: `Probe OK (${stepCount} step, ${duration})` };
     }
 
     const errMsg = result.errors?.map((e: { message: string }) => e.message).join('; ') || 'unknown error';
-    return { name: 'Workflow Execution', status: 'fail', message: `Probe failed: ${errMsg}`, fix: 'npm run build' };
+    return { name: 'Spell Execution', status: 'fail', message: `Probe failed: ${errMsg}`, fix: 'npm run build' };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { name: 'Workflow Execution', status: 'fail', message: `Workflow engine error: ${msg}`, fix: 'npm run build' };
+    return { name: 'Spell Execution', status: 'fail', message: `Spell engine error: ${msg}`, fix: 'npm run build' };
   }
 }
 
@@ -400,11 +400,11 @@ export async function checkHookExecution(): Promise<HealthCheck> {
 }
 
 // ============================================================================
-// 5. MCP Workflow Integration Check
+// 5. MCP Spell Integration Check
 // ============================================================================
 
 /**
- * Verifies that the MCP workflow tools invoke the real engine via runner-bridge.
+ * Verifies that the MCP spell tools invoke the real engine via runner-bridge.
  * Calls bridgeExecuteWorkflow() with a minimal definition and checks for real
  * bash step stdout, not mock/simulated output.
  */
@@ -414,12 +414,12 @@ export async function checkMcpWorkflowIntegration(): Promise<HealthCheck> {
       'src/modules/spells/dist/factory/runner-bridge.js',
     );
     if (!bridgePath) {
-      return { name: 'MCP Workflow Integration', status: 'warn', message: 'runner-bridge not found', fix: 'npm run build' };
+      return { name: 'MCP Spell Integration', status: 'warn', message: 'runner-bridge not found', fix: 'npm run build' };
     }
 
     const bridge = await import(toImportUrl(bridgePath));
     if (typeof bridge.bridgeExecuteWorkflow !== 'function') {
-      return { name: 'MCP Workflow Integration', status: 'fail', message: 'bridgeExecuteWorkflow is not a function', fix: 'npm run build' };
+      return { name: 'MCP Spell Integration', status: 'fail', message: 'bridgeExecuteWorkflow is not a function', fix: 'npm run build' };
     }
 
     const definition = {
@@ -438,12 +438,12 @@ export async function checkMcpWorkflowIntegration(): Promise<HealthCheck> {
     const result = await bridge.bridgeExecuteWorkflow(definition, {});
 
     if (!result) {
-      return { name: 'MCP Workflow Integration', status: 'fail', message: 'Bridge returned no result' };
+      return { name: 'MCP Spell Integration', status: 'fail', message: 'Bridge returned no result' };
     }
 
     if (!result.success) {
       const errMsg = result.errors?.map((e: { message: string }) => e.message).join('; ') || 'unknown';
-      return { name: 'MCP Workflow Integration', status: 'fail', message: `Bridge execution failed: ${errMsg}`, fix: 'npm run build' };
+      return { name: 'MCP Spell Integration', status: 'fail', message: `Bridge execution failed: ${errMsg}`, fix: 'npm run build' };
     }
 
     // Verify real step output — if MCP tools were still using mocks, there
@@ -455,18 +455,18 @@ export async function checkMcpWorkflowIntegration(): Promise<HealthCheck> {
 
     if (typeof stdout === 'string' && stdout.includes('mcp-bridge-ok')) {
       const duration = result.duration != null ? `${result.duration}ms` : 'unknown';
-      return { name: 'MCP Workflow Integration', status: 'pass', message: `Bridge → engine OK, real stdout captured (${duration})` };
+      return { name: 'MCP Spell Integration', status: 'pass', message: `Bridge → engine OK, real stdout captured (${duration})` };
     }
 
     return {
-      name: 'MCP Workflow Integration',
+      name: 'MCP Spell Integration',
       status: 'fail',
-      message: 'Bridge returned success but no real stdout — MCP tools may not invoke the engine',
+      message: 'Bridge returned success but no real stdout — MCP spell tools may not invoke the engine',
       fix: 'Ensure spell-tools.ts imports from runner-bridge.ts',
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { name: 'MCP Workflow Integration', status: 'fail', message: `MCP workflow bridge error: ${msg}`, fix: 'npm run build' };
+    return { name: 'MCP Spell Integration', status: 'fail', message: `MCP spell bridge error: ${msg}`, fix: 'npm run build' };
   }
 }
 

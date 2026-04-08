@@ -1,7 +1,7 @@
 /**
  * V3 Collaborative Issue Claims Service
  *
- * Implements ADR-016: Collaborative Issue Claims for Human-Agent Workflows
+ * Implements ADR-016: Collaborative Issue Claims for Human-Agent Spells
  *
  * Features:
  * - Issue claiming/releasing for humans and agents

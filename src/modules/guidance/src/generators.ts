@@ -710,7 +710,7 @@ function getDefaultAgents(profile: ProjectProfile): AgentDefinition[] {
   agents.push({
     name: 'coordinator',
     type: 'coordinator',
-    description: `Coordinates multi-agent workflows for ${profile.name}`,
+    description: `Coordinates multi-agent spells for ${profile.name}`,
     category: 'core',
     color: '#4A90D9',
     capabilities: ['task-decomposition', 'agent-routing', 'context-management', 'progress-tracking'],
@@ -822,7 +822,7 @@ function getDefaultSkills(profile: ProjectProfile): SkillDefinition[] {
       profile.testCommand || `${profile.packageManager || 'npm'} test`,
       '```',
       '',
-      '## Workflow',
+      '## Spell Workflow',
       '',
       '1. Run the build first to catch type errors',
       '2. Run tests to verify correctness',

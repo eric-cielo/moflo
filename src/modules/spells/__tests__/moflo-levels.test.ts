@@ -241,7 +241,7 @@ describe('mofloLevel validation', () => {
     });
     const result = validateSpellDefinition(def);
     expect(result.valid).toBe(false);
-    expect(result.errors.some(e => e.message.includes('exceeds workflow-level'))).toBe(true);
+    expect(result.errors.some(e => e.message.includes('exceeds spell-level'))).toBe(true);
   });
 
   it('should allow step level equal to spell level', () => {
@@ -274,7 +274,7 @@ describe('mofloLevel validation', () => {
     });
     const result = validateSpellDefinition(def);
     expect(result.valid).toBe(false);
-    expect(result.errors.some(e => e.message.includes('exceeds workflow-level'))).toBe(true);
+    expect(result.errors.some(e => e.message.includes('exceeds spell-level'))).toBe(true);
   });
 });
 

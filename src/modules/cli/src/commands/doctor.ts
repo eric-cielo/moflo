@@ -1300,13 +1300,13 @@ export const doctorCommand: Command = {
       }
     };
 
-    // Check Workflow Engine health — validates core modules, built output, and step commands
+    // Check Spell Engine health — validates core modules, built output, and step commands
     async function checkSpellEngine(): Promise<HealthCheck> {
       try {
         // Resolve relative to the moflo package root (works in both dev and consumer)
         const mofloRoot = getMofloRoot();
         if (!mofloRoot) {
-          return { name: 'Workflow Engine', status: 'warn', message: 'Could not locate moflo package root', fix: 'npm run build' };
+          return { name: 'Spell Engine', status: 'warn', message: 'Could not locate moflo package root', fix: 'npm run build' };
         }
 
         // Prefer compiled dist/, fall back to src/ in dev repo
@@ -1316,7 +1316,7 @@ export const doctorCommand: Command = {
         const hasSrcDir = existsSync(srcDir);
 
         if (!hasDistDir && !hasSrcDir) {
-          return { name: 'Workflow Engine', status: 'warn', message: 'Workflow engine not found', fix: 'npm run build' };
+          return { name: 'Spell Engine', status: 'warn', message: 'Spell engine not found', fix: 'npm run build' };
         }
 
         // Core compiled modules that must exist
@@ -1347,7 +1347,7 @@ export const doctorCommand: Command = {
 
         if (missing.length > 0) {
           return {
-            name: 'Workflow Engine',
+            name: 'Spell Engine',
             status: 'warn',
             message: `Missing modules: ${missing.join(', ')}`,
             fix: 'npm run build',
@@ -1358,7 +1358,7 @@ export const doctorCommand: Command = {
         const commandsDir = join(baseDir, 'commands');
         const hasCommands = existsSync(commandsDir);
 
-        // Check for workflow definition loaders
+        // Check for spell definition loaders
         const loadersDir = join(baseDir, 'loaders');
         const hasLoaders = existsSync(loadersDir);
 
@@ -1372,12 +1372,12 @@ export const doctorCommand: Command = {
         if (hasIndex) parts.push('index');
 
         return {
-          name: 'Workflow Engine',
+          name: 'Spell Engine',
           status: 'pass',
           message: parts.join(', '),
         };
       } catch {
-        return { name: 'Workflow Engine', status: 'warn', message: 'Unable to check workflow engine' };
+        return { name: 'Spell Engine', status: 'warn', message: 'Unable to check spell engine' };
       }
     }
 
