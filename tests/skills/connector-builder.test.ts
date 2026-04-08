@@ -161,12 +161,12 @@ describe('connector-builder skill', () => {
     });
   });
 
-  describe('workflow YAML examples', () => {
-    it('includes connector workflow YAML example', () => {
+  describe('spell YAML examples', () => {
+    it('includes connector spell YAML example', () => {
       expect(connectorSection).toContain('```yaml');
     });
 
-    it('includes step command workflow YAML example', () => {
+    it('includes step command spell YAML example', () => {
       expect(stepSection).toContain('```yaml');
     });
   });

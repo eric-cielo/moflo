@@ -133,7 +133,7 @@ describe('parseWorkflow', () => {
 // ============================================================================
 
 describe('validateSpellDefinition', () => {
-  it('should accept a valid workflow', () => {
+  it('should accept a valid spell', () => {
     const result = parseYaml(VALID_YAML);
     const validation = validateSpellDefinition(result.definition, { knownStepTypes: KNOWN_TYPES });
     expect(validation.valid).toBe(true);

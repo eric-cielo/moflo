@@ -209,7 +209,7 @@ describe('spell-builder skill', () => {
     });
   });
 
-  describe('complete workflow example', () => {
+  describe('complete spell example', () => {
     it('includes at least one complete YAML example', () => {
       const yamlBlocks = content.match(/```yaml[\s\S]*?```/g);
       expect(yamlBlocks).not.toBeNull();
@@ -249,7 +249,7 @@ describe('spell-builder skill', () => {
       expect(content).toContain('ArgumentDefinition');
     });
 
-    it('references the workflow registry', () => {
+    it('references the spell registry', () => {
       expect(content).toContain('Grimoire');
     });
 

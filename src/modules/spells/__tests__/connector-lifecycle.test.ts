@@ -174,7 +174,7 @@ describe('SpellCaster — connector lifecycle', () => {
     expect(allErrors).toBeTruthy();
   });
 
-  it('should swallow dispose errors without affecting workflow result', async () => {
+  it('should swallow dispose errors without affecting spell result', async () => {
     const conn = createMockConnector('test-conn', {
       dispose: vi.fn(async () => { throw new Error('dispose boom'); }),
     });
@@ -249,7 +249,7 @@ describe('SpellCaster — connector lifecycle', () => {
     expect(conn.dispose).toHaveBeenCalledOnce();
   });
 
-  it('should dispose initialized connectors when workflow is cancelled', async () => {
+  it('should dispose initialized connectors when spell is cancelled', async () => {
     const conn = createMockConnector('test-conn');
     const connectorRegistry = new SpellConnectorRegistry();
     connectorRegistry.register(conn, 'shipped');

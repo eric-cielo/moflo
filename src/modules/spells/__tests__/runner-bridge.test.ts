@@ -32,7 +32,7 @@ describe('createRunner', () => {
 });
 
 describe('runWorkflowFromContent', () => {
-  it('should parse and run a YAML workflow', async () => {
+  it('should parse and run a YAML spell', async () => {
     const yaml = `
 name: test-workflow
 steps:
@@ -90,7 +90,7 @@ steps:
 // ============================================================================
 
 describe('bridgeRunWorkflow', () => {
-  it('should run a workflow from content and track it', async () => {
+  it('should run a spell from content and track it', async () => {
     const yaml = `
 name: bridge-test
 steps:
@@ -109,13 +109,13 @@ steps:
 });
 
 describe('bridgeCancelWorkflow', () => {
-  it('should return false for unknown workflow ID', () => {
+  it('should return false for unknown spell ID', () => {
     expect(bridgeCancelWorkflow('nonexistent')).toBe(false);
   });
 });
 
 describe('bridgeActiveWorkflows', () => {
-  it('should return empty array when no workflows running', () => {
+  it('should return empty array when no spells running', () => {
     expect(bridgeActiveWorkflows()).toEqual([]);
   });
 });

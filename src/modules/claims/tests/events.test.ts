@@ -964,7 +964,7 @@ describe('ClaimEventEmitter', () => {
       expect(acceptEvent.causationId).toBe(requestEvent.id);
     });
 
-    it('should use consistent timestamps within a workflow', async () => {
+    it('should use consistent timestamps within a spell', async () => {
       // Given
       let timeOffset = 0;
       mockClock.now.mockImplementation(() => new Date(baseDate.getTime() + timeOffset));

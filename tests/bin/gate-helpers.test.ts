@@ -654,7 +654,7 @@ describe('gate.cjs: prompt-reminder', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('gate.cjs: session-reset', () => {
-  it('resets all workflow state', () => {
+  it('resets all spell state', () => {
     writeState(tmpDir, {
       tasksCreated: true, taskCount: 5, memorySearched: true,
       memoryRequired: false, interactionCount: 42,
@@ -951,7 +951,7 @@ describe('prompt-hook.mjs: namespace hints', () => {
 // End-to-end: full workflow lifecycle
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('end-to-end: workflow lifecycle', () => {
+describe('end-to-end: spell lifecycle', () => {
   it('session-reset → prompt → memory search → agent spawn', () => {
     const env = baseEnv(tmpDir);
 

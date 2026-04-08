@@ -1,12 +1,12 @@
 /**
- * End-to-End Integration Tests — Workflow Engine
+ * End-to-End Integration Tests — Spell Engine
  *
  * Issue #188: True integration tests exercising the full pipeline without mocks.
  *
  * Tests:
  *   1. Grimoire discover → Runner execute (real built-in commands)
  *   2. CredentialStore → Runner with real {credentials.NAME} resolution
- *   3. Concurrent workflow isolation (two workflows don't corrupt variables)
+ *   3. Concurrent spell isolation (two spells don't corrupt variables)
  *   4. Command injection via interpolated variables in bash command
  */
 
@@ -52,7 +52,7 @@ describe('Registry discover → Runner execute', () => {
     return dir;
   }
 
-  it('loads a workflow definition from disk via registry', () => {
+  it('loads a spell definition from disk via registry', () => {
     const shippedDir = makeTmpDir('shipped');
     writeFixture(shippedDir, 'echo-test.yaml', `
 name: echo-test
@@ -75,7 +75,7 @@ steps:
     expect(workflow!.definition.abbreviation).toBe('et');
   });
 
-  it('resolves a workflow by abbreviation and runs it through the runner', async () => {
+  it('resolves a spell by abbreviation and runs it through the runner', async () => {
     const shippedDir = makeTmpDir('shipped-run');
     writeFixture(shippedDir, 'simple-echo.yaml', `
 name: simple-echo
@@ -105,7 +105,7 @@ steps:
     expect(getStdout(result, 's1')).toBe('integration-test-output');
   });
 
-  it('runs a multi-step workflow with variable passing between steps', async () => {
+  it('runs a multi-step spell with variable passing between steps', async () => {
     const content = `
 name: multi-step
 steps:
@@ -203,13 +203,13 @@ describe('CredentialStore → Runner integration', () => {
 });
 
 // ============================================================================
-// 3. Concurrent workflow isolation
+// 3. Concurrent spell isolation
 // ============================================================================
 
-describe('Concurrent workflow isolation', () => {
+describe('Concurrent spell isolation', () => {
   const runner = createRunner();
 
-  it('two parallel workflows do not corrupt each other\'s variables', async () => {
+  it('two parallel spells do not corrupt each other\'s variables', async () => {
     const workflow1: SpellDefinition = {
       name: 'wf-alpha',
       steps: [
@@ -243,7 +243,7 @@ describe('Concurrent workflow isolation', () => {
     expect(result2.outputs).not.toHaveProperty('a1');
   });
 
-  it('one workflow failing does not affect the other', async () => {
+  it('one spell failing does not affect the other', async () => {
     const goodWorkflow: SpellDefinition = {
       name: 'wf-good',
       steps: [

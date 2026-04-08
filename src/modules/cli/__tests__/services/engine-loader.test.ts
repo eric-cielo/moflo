@@ -40,7 +40,7 @@ describe('engine-loader', () => {
     expect(mod.getCachedEngine()).toBeNull();
   });
 
-  it('loadSpellEngine should throw when workflows package is not built', async () => {
+  it('loadSpellEngine should throw when spells package is not built', async () => {
     vi.doMock('../../../../modules/spells/dist/index.js', () => {
       throw new Error('Cannot find module');
     });

@@ -113,7 +113,7 @@ describe('SpellCaster — parallel step execution', () => {
     expect(executionOrder.slice(1, 4).sort()).toEqual(['lint', 'test', 'typecheck']);
   });
 
-  it('should stop workflow when parallel step fails and continueOnError is not set', async () => {
+  it('should stop spell when parallel step fails and continueOnError is not set', async () => {
     const failCmd = createFailingCommand('lint failed');
     registry.register(failCmd);
 
@@ -142,7 +142,7 @@ describe('SpellCaster — parallel step execution', () => {
     expect(deployStep?.status).toBe('skipped');
   });
 
-  it('should continue workflow when parallel step fails but continueOnError is true', async () => {
+  it('should continue spell when parallel step fails but continueOnError is true', async () => {
     const failCmd = createFailingCommand('test failed');
     registry.register(failCmd);
 

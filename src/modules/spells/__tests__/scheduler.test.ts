@@ -322,7 +322,7 @@ describe('validateSpellDefinition with schedule', () => {
     validateSpellDefinition = mod.validateSpellDefinition;
   });
 
-  it('accepts workflow with valid cron schedule', () => {
+  it('accepts spell with valid cron schedule', () => {
     const result = validateSpellDefinition({
       name: 'nightly-audit',
       steps: [{ id: 's1', type: 'bash', config: { command: 'echo hi' } }],
@@ -331,7 +331,7 @@ describe('validateSpellDefinition with schedule', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('accepts workflow without schedule', () => {
+  it('accepts spell without schedule', () => {
     const result = validateSpellDefinition({
       name: 'manual-wf',
       steps: [{ id: 's1', type: 'bash', config: { command: 'echo hi' } }],
@@ -339,7 +339,7 @@ describe('validateSpellDefinition with schedule', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('rejects workflow with invalid schedule', () => {
+  it('rejects spell with invalid schedule', () => {
     const result = validateSpellDefinition({
       name: 'bad-schedule',
       steps: [{ id: 's1', type: 'bash', config: { command: 'echo hi' } }],
@@ -448,7 +448,7 @@ describe('SpellScheduler', () => {
     expect(schedule.source).toBe('adhoc');
   });
 
-  it('registers from workflow definition', async () => {
+  it('registers from spell definition', async () => {
     const definition = {
       name: 'nightly-audit',
       steps: [{ id: 's1', type: 'bash', config: { command: 'echo hi' } }],
@@ -504,7 +504,7 @@ describe('SpellScheduler', () => {
 
   // ── Polling & Execution ───────────��────────────────────────────────────
 
-  it('executes a due workflow on poll', async () => {
+  it('executes a due spell on poll', async () => {
     // Create a schedule that is already due
     const now = Date.now();
     await memory.write('scheduled-spells', 'sched-test', {
@@ -559,7 +559,7 @@ describe('SpellScheduler', () => {
     expect(executor.execute).not.toHaveBeenCalled();
   });
 
-  it('disables schedule when workflow no longer exists', async () => {
+  it('disables schedule when spell no longer exists', async () => {
     (executor.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
     const now = Date.now();
@@ -921,7 +921,7 @@ describe('SpellScheduler', () => {
 
   // ── Args passing ─────────────────���─────────────────────────────────────
 
-  it('passes args to workflow executor', async () => {
+  it('passes args to spell executor', async () => {
     const now = Date.now();
     await memory.write('scheduled-spells', 'sched-args', {
       id: 'sched-args',

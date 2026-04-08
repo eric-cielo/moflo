@@ -205,7 +205,7 @@ describe('Circular step jump detection (Issue #9)', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('should allow workflows with no condition jumps', () => {
+  it('should allow spells with no condition jumps', () => {
     const def = makeDef([
       bashStep('step-1'),
       bashStep('step-2'),
