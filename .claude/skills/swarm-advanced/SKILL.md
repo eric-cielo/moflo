@@ -227,7 +227,7 @@ mcp__moflo__swarm_status({
 })
 
 // Generate final report
-mcp__moflo__workflow_execute({
+mcp__moflo__spell_cast({
   "workflowId": "research-report-generation",
   "params": {
     "findings": findings,
@@ -364,7 +364,7 @@ mcp__moflo__quality_assess({
 #### Phase 4: Review and Deployment
 ```javascript
 // Code review workflow
-mcp__moflo__workflow_execute({
+mcp__moflo__spell_cast({
   "workflowId": "code-review-process",
   "params": {
     "reviewers": ["Code Reviewer"],
@@ -766,7 +766,7 @@ mcp__moflo__pattern_recognize({
 
 ```javascript
 // Create reusable workflow
-mcp__moflo__workflow_create({
+mcp__moflo__spell_create({
   "name": "full-stack-development",
   "steps": [
     { "phase": "design", "agents": ["architect"] },

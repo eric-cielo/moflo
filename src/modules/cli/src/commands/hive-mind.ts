@@ -119,7 +119,7 @@ ${workerTypes.map(type => `• ${type}: ${workerGroups[type].length} agents`).jo
    mcp__moflo__task_create            - Create hierarchical tasks
    mcp__moflo__task_status            - Track task progress
    mcp__moflo__task_complete          - Mark tasks complete
-   mcp__moflo__workflow_create        - Create spells
+   mcp__moflo__spell_create           - Scribe new spells
 
 5️⃣ **MEMORY & LEARNING**
    mcp__moflo__memory_store           - Store collective knowledge

@@ -1154,7 +1154,7 @@ describe('settings.json: PostToolUse matcher coverage', () => {
   });
 
   it('non-memory MCP tools do not match memory matchers', () => {
-    const entry = findMatchingEntry('mcp__moflo__workflow_run');
+    const entry = findMatchingEntry('mcp__moflo__spell_cast');
     // Should either not match or not trigger memory-related hooks
     if (entry) {
       const cmds = entry.hooks.map(h => h.command);

@@ -15,7 +15,7 @@ tools:
   - mcp__moflo__memory_usage
   - mcp__moflo__performance_report
   - mcp__moflo__bottleneck_analyze
-  - mcp__moflo__workflow_create
+  - mcp__moflo__spell_create
   - mcp__moflo__automation_setup
   - TodoWrite
   - TodoRead

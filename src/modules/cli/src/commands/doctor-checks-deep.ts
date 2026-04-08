@@ -462,7 +462,7 @@ export async function checkMcpWorkflowIntegration(): Promise<HealthCheck> {
       name: 'MCP Workflow Integration',
       status: 'fail',
       message: 'Bridge returned success but no real stdout — MCP tools may not invoke the engine',
-      fix: 'Ensure workflow-tools.ts imports from runner-bridge.ts',
+      fix: 'Ensure spell-tools.ts imports from runner-bridge.ts',
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -1,15 +1,16 @@
 /**
- * Workflow MCP Response Types
+ * Spell MCP Response Types
  *
- * Shared type definitions for workflow MCP tool responses.
- * Used by both the MCP tool handlers (workflow-tools.ts) and
- * the CLI workflow command (commands/workflow.ts) for type-safe
+ * Shared type definitions for spell MCP tool responses.
+ * Used by both the MCP tool handlers (spell-tools.ts) and
+ * the CLI spell command (commands/spell.ts) for type-safe
  * callMCPTool<T>() deserialization.
  *
  * Story #230: Extract shared workflow type definitions.
+ * Story #371: Rename workflow tools to spell tools.
  */
 
-/** Response from workflow_run / workflow_execute MCP tools. */
+/** Response from spell_cast / spell_execute MCP tools. */
 export interface WorkflowRunResponse {
   workflowId: string;
   success: boolean;
@@ -41,7 +42,7 @@ export interface WorkflowErrorResponse {
   stepId?: string;
 }
 
-/** Response from workflow_status MCP tool. */
+/** Response from spell_status MCP tool. */
 export interface WorkflowStatusResponse {
   workflowId: string;
   name?: string;
@@ -68,7 +69,7 @@ export interface GrimoireEntry {
   tier: string;
 }
 
-/** Response from workflow_list MCP tool. */
+/** Response from spell_list MCP tool. */
 export interface WorkflowListResponse {
   definitions?: GrimoireEntry[];
   runs?: WorkflowRunEntry[];
@@ -87,7 +88,7 @@ export interface WorkflowRunEntry {
   completedAt?: string;
 }
 
-/** Response from workflow_cancel MCP tool. */
+/** Response from spell_cancel MCP tool. */
 export interface WorkflowCancelResponse {
   workflowId: string;
   status: string;
@@ -96,7 +97,7 @@ export interface WorkflowCancelResponse {
   error?: string;
 }
 
-/** Response from workflow_template list action. */
+/** Response from spell_template list action. */
 export interface WorkflowTemplateListResponse {
   action: string;
   templates: GrimoireEntry[];
@@ -104,7 +105,7 @@ export interface WorkflowTemplateListResponse {
   error?: string;
 }
 
-/** Response from workflow_template info action. */
+/** Response from spell_template info action. */
 export interface WorkflowTemplateInfoResponse {
   action: string;
   name?: string;

@@ -22,11 +22,11 @@ import type {
   WorkflowErrorResponse,
 } from '../mcp-tools/workflow-response.types.js';
 import {
-  TOOL_WORKFLOW_RUN,
-  TOOL_WORKFLOW_LIST,
-  TOOL_WORKFLOW_STATUS,
-  TOOL_WORKFLOW_CANCEL,
-  TOOL_WORKFLOW_TEMPLATE,
+  TOOL_SPELL_CAST,
+  TOOL_SPELL_LIST,
+  TOOL_SPELL_STATUS,
+  TOOL_SPELL_CANCEL,
+  TOOL_SPELL_TEMPLATE,
 } from '../mcp-tools/tool-names.js';
 import { formatStatus, handleMCPError } from '../services/cli-formatters.js';
 import { scheduleCommand } from './spell-schedule.js';
@@ -100,7 +100,7 @@ const castCommand: Command = {
       // Interactive: list available spells and let user pick
       if (ctx.interactive) {
         try {
-          const listResult = await callMCPTool<WorkflowListResponse>(TOOL_WORKFLOW_LIST, { source: 'registry' });
+          const listResult = await callMCPTool<WorkflowListResponse>(TOOL_SPELL_LIST, { source: 'registry' });
 
           const defs = listResult.definitions ?? [];
           if (defs.length === 0) {
@@ -144,7 +144,7 @@ const castCommand: Command = {
     try {
       spinner.start();
 
-      const result = await callMCPTool<WorkflowRunResponse>(TOOL_WORKFLOW_RUN, {
+      const result = await callMCPTool<WorkflowRunResponse>(TOOL_SPELL_CAST, {
         name: name || undefined,
         file: file || undefined,
         args,
@@ -221,7 +221,7 @@ const validateCommand: Command = {
     output.printInfo(`Validating: ${file}`);
 
     try {
-      const result = await callMCPTool<WorkflowRunResponse>(TOOL_WORKFLOW_RUN, {
+      const result = await callMCPTool<WorkflowRunResponse>(TOOL_SPELL_CAST, {
         file,
         dryRun: true,
       });
@@ -281,7 +281,7 @@ const listCommand: Command = {
     const refresh = ctx.flags.refresh as boolean;
 
     try {
-      const result = await callMCPTool<WorkflowListResponse>(TOOL_WORKFLOW_LIST, { source, limit, refresh: refresh || undefined });
+      const result = await callMCPTool<WorkflowListResponse>(TOOL_SPELL_LIST, { source, limit, refresh: refresh || undefined });
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
@@ -345,7 +345,7 @@ const statusCommand: Command = {
     }
 
     try {
-      const result = await callMCPTool<WorkflowStatusResponse>(TOOL_WORKFLOW_STATUS, {
+      const result = await callMCPTool<WorkflowStatusResponse>(TOOL_SPELL_STATUS, {
         workflowId,
         verbose: true,
       });
@@ -420,7 +420,7 @@ const stopCommand: Command = {
     }
 
     try {
-      const result = await callMCPTool<WorkflowCancelResponse>(TOOL_WORKFLOW_CANCEL, {
+      const result = await callMCPTool<WorkflowCancelResponse>(TOOL_SPELL_CANCEL, {
         workflowId,
         reason: 'Dispelled via CLI',
       });
@@ -449,7 +449,7 @@ const templateCommand: Command = {
       description: 'List available spell templates',
       action: async (ctx: CommandContext): Promise<CommandResult> => {
         try {
-          const result = await callMCPTool<WorkflowTemplateListResponse>(TOOL_WORKFLOW_TEMPLATE, { action: 'list' });
+          const result = await callMCPTool<WorkflowTemplateListResponse>(TOOL_SPELL_TEMPLATE, { action: 'list' });
 
           if (result.error) {
             output.printError(result.error);
@@ -495,7 +495,7 @@ const templateCommand: Command = {
         }
 
         try {
-          const result = await callMCPTool<WorkflowTemplateInfoResponse>(TOOL_WORKFLOW_TEMPLATE, { action: 'info', query });
+          const result = await callMCPTool<WorkflowTemplateInfoResponse>(TOOL_SPELL_TEMPLATE, { action: 'info', query });
 
           if (result.error) {
             output.printError(result.error);

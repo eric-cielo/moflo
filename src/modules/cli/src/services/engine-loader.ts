@@ -2,7 +2,7 @@
  * Shared Workflow Engine Loader
  *
  * Centralizes dynamic import + caching of the @moflo/spells package.
- * Both workflow-tools.ts (MCP layer) and runner-adapter.ts (epic runner) use
+ * Both spell-tools.ts (MCP layer) and runner-adapter.ts (epic runner) use
  * this instead of maintaining their own import/cache logic.
  *
  * Story #229: Extract shared engine loader.

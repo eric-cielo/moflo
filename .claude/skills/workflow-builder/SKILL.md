@@ -140,7 +140,7 @@ Ask the user where to save the workflow:
 
 Use the MCP tool to create the workflow if available:
 ```
-mcp__moflo__workflow_create — name, definition (YAML string), description
+mcp__moflo__spell_create — name, definition (YAML string), description
 ```
 
 Or write the file directly to the chosen directory.
@@ -151,7 +151,7 @@ Or write the file directly to the chosen directory.
 
 ### Step 1: Load the Workflow
 
-Ask for the workflow file path, or use `mcp__moflo__workflow_list` to browse available workflows.
+Ask for the workflow file path, or use `mcp__moflo__spell_list` to browse available workflows.
 
 Read the YAML/JSON file and parse the current definition.
 
@@ -278,10 +278,10 @@ Check against all engine validation rules:
 
 | Tool | Purpose |
 |------|---------|
-| `mcp__moflo__workflow_create` | Create a new workflow definition |
-| `mcp__moflo__workflow_list` | List available workflows |
-| `mcp__moflo__workflow_run` | Execute a workflow |
-| `mcp__moflo__workflow_status` | Check workflow execution status |
+| `mcp__moflo__spell_create` | Create a new workflow definition |
+| `mcp__moflo__spell_list` | List available workflows |
+| `mcp__moflo__spell_cast` | Execute a workflow |
+| `mcp__moflo__spell_status` | Check workflow execution status |
 
 ### MoFlo Integration Levels
 

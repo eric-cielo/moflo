@@ -1,8 +1,9 @@
 /**
- * Workflow MCP Tools for CLI
+ * Spell MCP Tools for CLI
  *
- * Wired to the real workflow engine via runner-bridge.ts.
+ * Wired to the real spell engine via runner-bridge.ts.
  * Story #225: Replace mock file-based store with engine integration.
+ * Story #371: Rename workflow_* tools to spell_* with wizard terminology.
  */
 
 import { readFileSync } from 'node:fs';
@@ -197,22 +198,22 @@ function serializeResult(result: WorkflowResult): Record<string, unknown> {
 // MCP Tool Definitions
 // ============================================================================
 
-export const workflowTools: MCPTool[] = [
+export const spellTools: MCPTool[] = [
   // --------------------------------------------------------------------------
-  // workflow_run — Run a workflow from a file, registry name, or template
+  // spell_cast — Cast a spell from a file, grimoire name, or incantation
   // --------------------------------------------------------------------------
   {
-    name: 'workflow_run',
-    description: 'Run a workflow from a YAML/JSON file, registry name/abbreviation, or inline content',
-    category: 'workflow',
+    name: 'spell_cast',
+    description: 'Cast a spell from a YAML/JSON scroll, grimoire name/abbreviation, or inline incantation',
+    category: 'spell',
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string', description: 'Workflow name or abbreviation (resolved via registry)' },
-        file: { type: 'string', description: 'Path to a YAML/JSON workflow definition file' },
-        content: { type: 'string', description: 'Inline YAML/JSON workflow content' },
-        args: { type: 'object', description: 'Arguments to pass to the workflow' },
-        dryRun: { type: 'boolean', description: 'Validate without executing' },
+        name: { type: 'string', description: 'Spell name or abbreviation (resolved via grimoire)' },
+        file: { type: 'string', description: 'Path to a YAML/JSON spell scroll file' },
+        content: { type: 'string', description: 'Inline YAML/JSON spell incantation' },
+        args: { type: 'object', description: 'Reagents (arguments) to pass to the spell' },
+        dryRun: { type: 'boolean', description: 'Preview the spell without casting' },
       },
     },
     handler: async (input) => {
@@ -224,7 +225,7 @@ export const workflowTools: MCPTool[] = [
         const registry = await getRegistry();
         const loaded = registry.resolve(input.name as string);
         if (!loaded) {
-          return { error: `Workflow not found in registry: ${input.name}` };
+          return { error: `Spell not found in grimoire: ${input.name}` };
         }
         const engine = await loadSpellEngine();
         return executeAndTrack(engine, loaded.definition, args);
@@ -243,12 +244,12 @@ export const workflowTools: MCPTool[] = [
         try {
           content = readFileSync(filePath, 'utf-8');
         } catch {
-          return { error: `Workflow file not found or unreadable: ${filePath}` };
+          return { error: `Spell scroll not found or unreadable: ${filePath}` };
         }
         sourceFile = filePath;
         workflowName = String(input.file);
       } else {
-        return { error: 'One of name, file, or content is required' };
+        return { error: 'One of name, file, or content is required to cast a spell' };
       }
 
       // Run from raw content via bridge
@@ -261,20 +262,20 @@ export const workflowTools: MCPTool[] = [
   },
 
   // --------------------------------------------------------------------------
-  // workflow_create — Create a workflow definition (returns parseable YAML)
+  // spell_create — Scribe a new spell definition (returns parseable YAML)
   // --------------------------------------------------------------------------
   {
-    name: 'workflow_create',
-    description: 'Create a workflow definition from steps (returns YAML content)',
-    category: 'workflow',
+    name: 'spell_create',
+    description: 'Scribe a new spell definition from steps (returns YAML scroll)',
+    category: 'spell',
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string', description: 'Workflow name' },
-        description: { type: 'string', description: 'Workflow description' },
+        name: { type: 'string', description: 'Spell name' },
+        description: { type: 'string', description: 'Spell description' },
         steps: {
           type: 'array',
-          description: 'Workflow steps',
+          description: 'Spell steps (incantation sequence)',
           items: {
             type: 'object',
             properties: {
@@ -284,7 +285,7 @@ export const workflowTools: MCPTool[] = [
             },
           },
         },
-        arguments: { type: 'object', description: 'Workflow argument definitions' },
+        arguments: { type: 'object', description: 'Spell reagent definitions (arguments)' },
       },
       required: ['name'],
     },
@@ -311,24 +312,24 @@ export const workflowTools: MCPTool[] = [
         description,
         stepCount: definition.steps.length,
         definition,
-        message: 'Workflow definition created. Pass it to workflow_execute or workflow_run to run it.',
+        message: 'Spell scribed. Pass it to spell_execute or spell_cast to invoke it.',
       };
     },
   },
 
   // --------------------------------------------------------------------------
-  // workflow_execute — Execute a workflow definition directly
+  // spell_execute — Execute a spell from a definition object
   // --------------------------------------------------------------------------
   {
-    name: 'workflow_execute',
-    description: 'Execute a workflow from a definition object',
-    category: 'workflow',
+    name: 'spell_execute',
+    description: 'Execute a spell from a definition object directly',
+    category: 'spell',
     inputSchema: {
       type: 'object',
       properties: {
-        definition: { type: 'object', description: 'SpellDefinition object (from workflow_create or parsed YAML)' },
-        args: { type: 'object', description: 'Runtime arguments' },
-        dryRun: { type: 'boolean', description: 'Validate without executing' },
+        definition: { type: 'object', description: 'SpellDefinition object (from spell_create or parsed YAML scroll)' },
+        args: { type: 'object', description: 'Reagents (runtime arguments)' },
+        dryRun: { type: 'boolean', description: 'Preview the spell without casting' },
       },
       required: ['definition'],
     },
@@ -356,17 +357,17 @@ export const workflowTools: MCPTool[] = [
   },
 
   // --------------------------------------------------------------------------
-  // workflow_status — Get status of a tracked workflow
+  // spell_status — Scry the status of a tracked spell
   // --------------------------------------------------------------------------
   {
-    name: 'workflow_status',
-    description: 'Get workflow execution status',
-    category: 'workflow',
+    name: 'spell_status',
+    description: 'Scry the execution status of a cast spell',
+    category: 'spell',
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Workflow ID' },
-        verbose: { type: 'boolean', description: 'Include step details' },
+        workflowId: { type: 'string', description: 'Spell invocation ID' },
+        verbose: { type: 'boolean', description: 'Include step details in the scrying' },
       },
       required: ['workflowId'],
     },
@@ -378,7 +379,7 @@ export const workflowTools: MCPTool[] = [
       const isRunning = getCachedEngine()?.bridgeIsRunning(workflowId) ?? false;
 
       if (!tracked && !isRunning) {
-        return { workflowId, error: 'Workflow not found' };
+        return { workflowId, error: 'Spell invocation not found' };
       }
 
       if (isRunning) {
@@ -423,19 +424,19 @@ export const workflowTools: MCPTool[] = [
   },
 
   // --------------------------------------------------------------------------
-  // workflow_list — List workflows from registry and tracked runs
+  // spell_list — List spells from grimoire and tracked castings
   // --------------------------------------------------------------------------
   {
-    name: 'workflow_list',
-    description: 'List available workflows from registry and recent runs',
-    category: 'workflow',
+    name: 'spell_list',
+    description: 'List available spells from the grimoire and recent castings',
+    category: 'spell',
     inputSchema: {
       type: 'object',
       properties: {
         source: { type: 'string', enum: ['registry', 'runs', 'all'], description: 'What to list (default: all)' },
-        status: { type: 'string', description: 'Filter runs by status' },
-        limit: { type: 'number', description: 'Max items to return' },
-        refresh: { type: 'boolean', description: 'Invalidate cached registry and re-scan definition files before listing' },
+        status: { type: 'string', description: 'Filter castings by status' },
+        limit: { type: 'number', description: 'Max spells to return' },
+        refresh: { type: 'boolean', description: 'Re-scan grimoire scrolls before listing' },
       },
     },
     handler: async (input) => {
@@ -454,7 +455,7 @@ export const workflowTools: MCPTool[] = [
           result.definitions = registry.list();
         } catch {
           result.definitions = [];
-          result.registryError = 'Workflow engine not available';
+          result.registryError = 'Spell engine not available';
         }
       }
 
@@ -486,16 +487,16 @@ export const workflowTools: MCPTool[] = [
   },
 
   // --------------------------------------------------------------------------
-  // workflow_pause — Pause is not supported by the engine (workflows run to completion)
+  // spell_suspend — Suspend a running spell (converts to dispel — spells run to completion)
   // --------------------------------------------------------------------------
   {
-    name: 'workflow_pause',
-    description: 'Pause a running workflow (converts to cancel — engine workflows run to completion)',
-    category: 'workflow',
+    name: 'spell_suspend',
+    description: 'Suspend a running spell (converts to dispel — spells run to completion)',
+    category: 'spell',
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Workflow ID' },
+        workflowId: { type: 'string', description: 'Spell invocation ID' },
       },
       required: ['workflowId'],
     },
@@ -504,7 +505,7 @@ export const workflowTools: MCPTool[] = [
       const engine = await loadSpellEngine();
 
       if (!engine.bridgeIsRunning(workflowId)) {
-        return { workflowId, error: 'Workflow not running' };
+        return { workflowId, error: 'Spell not currently active' };
       }
 
       // Engine doesn't support pause — cancel via AbortController
@@ -520,23 +521,23 @@ export const workflowTools: MCPTool[] = [
       return {
         workflowId,
         status: cancelled ? WF_STATUS.CANCELLED : 'not_found',
-        note: 'Engine workflows cannot be paused — cancelled instead. Use workflow_run to restart.',
+        note: 'Spells cannot be suspended mid-cast — dispelled instead. Use spell_cast to re-invoke.',
       };
     },
   },
 
   // --------------------------------------------------------------------------
-  // workflow_resume — Resume is not supported (re-run instead)
+  // spell_resume — Resume a spell (re-casts from beginning — mid-spell resume not supported)
   // --------------------------------------------------------------------------
   {
-    name: 'workflow_resume',
-    description: 'Resume a workflow (re-runs from beginning — engine does not support mid-workflow resume)',
-    category: 'workflow',
+    name: 'spell_resume',
+    description: 'Resume a spell (re-casts from beginning — mid-spell resume not yet supported)',
+    category: 'spell',
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Workflow ID of a previously tracked workflow' },
-        args: { type: 'object', description: 'Override arguments for the re-run' },
+        workflowId: { type: 'string', description: 'Spell invocation ID of a previously tracked spell' },
+        args: { type: 'object', description: 'Override reagents for the re-cast' },
       },
       required: ['workflowId'],
     },
@@ -545,7 +546,7 @@ export const workflowTools: MCPTool[] = [
       const tracked = trackedWorkflows.get(workflowId);
 
       if (!tracked) {
-        return { workflowId, error: 'Workflow not found in tracked runs' };
+        return { workflowId, error: 'Spell not found in tracked castings' };
       }
 
       if (!tracked.result) {
@@ -557,7 +558,7 @@ export const workflowTools: MCPTool[] = [
       // but MCP tools don't currently persist paused definitions. This re-runs from start.
       return {
         workflowId,
-        note: 'Mid-workflow resume is not yet supported via MCP tools. Use workflow_run to re-execute the workflow.',
+        note: 'Mid-spell resume is not yet supported. Use spell_cast to re-invoke the spell.',
         previousStatus: tracked.status,
         previousResult: {
           success: tracked.result.success,
@@ -569,17 +570,17 @@ export const workflowTools: MCPTool[] = [
   },
 
   // --------------------------------------------------------------------------
-  // workflow_cancel — Cancel a running workflow
+  // spell_cancel — Dispel a running spell
   // --------------------------------------------------------------------------
   {
-    name: 'workflow_cancel',
-    description: 'Cancel a running workflow',
-    category: 'workflow',
+    name: 'spell_cancel',
+    description: 'Dispel (cancel) a running spell',
+    category: 'spell',
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Workflow ID' },
-        reason: { type: 'string', description: 'Cancellation reason' },
+        workflowId: { type: 'string', description: 'Spell invocation ID' },
+        reason: { type: 'string', description: 'Reason for dispelling' },
       },
       required: ['workflowId'],
     },
@@ -606,24 +607,24 @@ export const workflowTools: MCPTool[] = [
       // Check if it's a tracked but already finished workflow
       const tracked = trackedWorkflows.get(workflowId);
       if (tracked) {
-        return { workflowId, error: `Workflow already ${tracked.status}` };
+        return { workflowId, error: `Spell already ${tracked.status}` };
       }
 
-      return { workflowId, error: 'Workflow not found' };
+      return { workflowId, error: 'Spell invocation not found' };
     },
   },
 
   // --------------------------------------------------------------------------
-  // workflow_delete — Remove a tracked workflow from memory
+  // spell_delete — Remove a tracked spell record from memory
   // --------------------------------------------------------------------------
   {
-    name: 'workflow_delete',
-    description: 'Delete a tracked workflow record',
-    category: 'workflow',
+    name: 'spell_delete',
+    description: 'Delete a tracked spell casting record',
+    category: 'spell',
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Workflow ID' },
+        workflowId: { type: 'string', description: 'Spell invocation ID' },
       },
       required: ['workflowId'],
     },
@@ -632,7 +633,7 @@ export const workflowTools: MCPTool[] = [
 
       // Only check engine if already loaded (avoid unnecessary dynamic import)
       if (getCachedEngine()?.bridgeIsRunning(workflowId)) {
-        return { workflowId, error: 'Cannot delete a running workflow — cancel it first' };
+        return { workflowId, error: 'Cannot delete an active spell — dispel it first' };
       }
 
       const existed = trackedWorkflows.delete(workflowId);
@@ -645,17 +646,17 @@ export const workflowTools: MCPTool[] = [
   },
 
   // --------------------------------------------------------------------------
-  // workflow_template — List/info from the workflow registry
+  // spell_template — Browse spell templates from the grimoire
   // --------------------------------------------------------------------------
   {
-    name: 'workflow_template',
-    description: 'Browse workflow templates from the registry',
-    category: 'workflow',
+    name: 'spell_template',
+    description: 'Browse spell templates from the grimoire',
+    category: 'spell',
     inputSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'info'], description: 'Template action' },
-        query: { type: 'string', description: 'Workflow name or abbreviation (for info)' },
+        action: { type: 'string', enum: ['list', 'info'], description: 'Grimoire action' },
+        query: { type: 'string', description: 'Spell name or abbreviation (for info)' },
       },
       required: ['action'],
     },
@@ -685,7 +686,7 @@ export const workflowTools: MCPTool[] = [
           const registry = await getRegistry();
           const info = registry.info(query);
           if (!info) {
-            return { action, error: `Workflow not found: ${query}` };
+            return { action, error: `Spell not found in grimoire: ${query}` };
           }
           return { action, ...info };
         } catch (err) {

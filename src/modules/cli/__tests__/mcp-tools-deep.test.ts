@@ -187,7 +187,7 @@ import { systemTools } from '../src/mcp-tools/system-tools.js';
 import { taskTools } from '../src/mcp-tools/task-tools.js';
 import { terminalTools } from '../src/mcp-tools/terminal-tools.js';
 import { transferTools } from '../src/mcp-tools/transfer-tools.js';
-import { workflowTools } from '../src/mcp-tools/workflow-tools.js';
+import { spellTools } from '../src/mcp-tools/spell-tools.js';
 import { hooksTools } from '../src/mcp-tools/hooks-tools.js';
 
 import type { MCPTool } from '../src/mcp-tools/types.js';
@@ -225,7 +225,7 @@ const ALL_MODULES: ToolModule[] = [
   { name: 'task-tools', tools: taskTools },
   { name: 'terminal-tools', tools: terminalTools },
   { name: 'transfer-tools', tools: transferTools },
-  { name: 'workflow-tools', tools: workflowTools },
+  { name: 'spell-tools', tools: spellTools },
 ];
 
 const ALL_TOOLS: MCPTool[] = ALL_MODULES.flatMap(m => m.tools);
@@ -287,7 +287,7 @@ describe('MCP Tools Deep Test Suite', () => {
         'task-tools': 7,
         'terminal-tools': 5,
         'transfer-tools': 11,
-        'workflow-tools': 10,
+        'spell-tools': 10,
       };
 
       for (const mod of ALL_MODULES) {
@@ -668,19 +668,19 @@ describe('MCP Tools Deep Test Suite', () => {
   });
 
   // --------------------------------------------------------------------------
-  // 12. Handler Invocation - Workflow Tools
+  // 12. Handler Invocation - Spell Tools
   // --------------------------------------------------------------------------
-  describe('Workflow Tools - Handler Invocation', () => {
-    it('workflow_list returns workflow data', async () => {
-      const tool = workflowTools.find(t => t.name === 'workflow_list')!;
+  describe('Spell Tools - Handler Invocation', () => {
+    it('spell_list returns spell data', async () => {
+      const tool = spellTools.find(t => t.name === 'spell_list')!;
       const result: any = await tool.handler({});
       // Engine-backed: returns runs and/or definitions
       expect(result.runs).toBeDefined();
     });
 
-    it('workflow_create creates a workflow definition', async () => {
-      const tool = workflowTools.find(t => t.name === 'workflow_create')!;
-      const result: any = await tool.handler({ name: 'test-wf', description: 'Test workflow' });
+    it('spell_create creates a spell definition', async () => {
+      const tool = spellTools.find(t => t.name === 'spell_create')!;
+      const result: any = await tool.handler({ name: 'test-wf', description: 'Test spell' });
       expect(result.definition).toBeDefined();
       expect(result.name).toBe('test-wf');
     });

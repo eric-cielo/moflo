@@ -21,8 +21,8 @@ tools:
   - mcp__moflo__github_pr_manage
   - mcp__moflo__github_issue_track
   - mcp__moflo__github_metrics
-  - mcp__moflo__workflow_create
-  - mcp__moflo__workflow_execute
+  - mcp__moflo__spell_create
+  - mcp__moflo__spell_cast
 hooks:
   pre:
     - "gh auth status || (echo 'GitHub CLI not authenticated' && exit 1)"
