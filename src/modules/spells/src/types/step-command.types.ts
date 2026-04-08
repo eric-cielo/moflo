@@ -101,9 +101,9 @@ export interface CastingContext {
   readonly mofloLevel?: MofloLevel;
   /** Nesting depth for recursive workflow invocations (0 = top-level). */
   readonly nestingDepth?: number;
-  /** Maximum allowed nesting depth for recursive workflows. */
+  /** Maximum allowed nesting depth for recursive spells. */
   readonly maxNestingDepth?: number;
-  /** Workflow connectors accessor — available when a connector registry is configured. */
+  /** Spell connectors accessor — available when a connector registry is configured. */
   readonly tools?: import('./workflow-connector.types.js').ConnectorAccessor;
   /** Capability gateway for structural enforcement (Issue #258, #266 — non-optional). */
   readonly gateway: import('../core/capability-gateway.js').ICapabilityGateway;

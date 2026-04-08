@@ -38,7 +38,7 @@ describe('SpellConnectorRegistry', () => {
   it('throws on duplicate registration', () => {
     registry.register(makeConnector('http'));
     expect(() => registry.register(makeConnector('http'))).toThrow(
-      'Workflow connector "http" is already registered'
+      'Spell connector "http" is already registered'
     );
   });
 

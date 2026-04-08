@@ -203,7 +203,7 @@ export class SpellCaster {
       }
 
       const step = definition.steps[i];
-      console.log(`[workflow] Step ${i + 1}/${definition.steps.length}: starting "${step.id}" [${step.type}]`);
+      console.log(`[spell] Step ${i + 1}/${definition.steps.length}: starting "${step.id}" [${step.type}]`);
       let result = await this.runStep(step, state, i);
       const resultIdx = stepResults.length;
       stepResults.push(result);
@@ -266,7 +266,7 @@ export class SpellCaster {
       }
 
       // Fire onStepComplete for every step (success, failure, cancelled)
-      console.log(`[workflow] Step ${i + 1}/${definition.steps.length}: ${result.status} "${step.id}" (${result.duration}ms)${result.error ? ' — ' + result.error.slice(0, 200) : ''}`);
+      console.log(`[spell] Step ${i + 1}/${definition.steps.length}: ${result.status} "${step.id}" (${result.duration}ms)${result.error ? ' — ' + result.error.slice(0, 200) : ''}`);
       await this.storeProgress(workflowId, 'running', stepResults.length, definition.steps.length, {
         spellName: definition.name, startedAt: startTime, steps: stepResults, context,
       });
@@ -381,7 +381,7 @@ export class SpellCaster {
       }
       await this.memory.write('tasklist', wfId, record);
     } catch (err) {
-      console.warn(`[workflow] storeProgress(${wfId}, ${status}) failed: ${(err as Error).message ?? err}`);
+      console.warn(`[spell] storeProgress(${wfId}, ${status}) failed: ${(err as Error).message ?? err}`);
     }
   }
 

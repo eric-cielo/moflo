@@ -1,7 +1,7 @@
 /**
  * Epic Workflow Runner Adapter
  *
- * Bridges the CLI epic command to the workflow engine without direct
+ * Bridges the CLI epic command to the spell engine without direct
  * cross-package imports (avoids tsconfig rootDir issues).
  *
  * Story #197: Thin adapter for running workflow YAML from epic command.
@@ -36,7 +36,7 @@ export interface EpicRunOptions {
 let memoryAccessor: Awaited<ReturnType<typeof createDashboardMemoryAccessor>> | null = null;
 
 /**
- * Run a workflow YAML string via the workflow engine.
+ * Run a spell YAML string via the spell engine.
  *
  * Uses the shared engine loader (services/engine-loader.ts) which caches the
  * dynamically imported module. The workflows package must be built first.
@@ -52,10 +52,10 @@ export async function runEpicWorkflow(
   if (!memoryAccessor) {
     try {
       memoryAccessor = await createDashboardMemoryAccessor();
-      console.log('[epic] Memory accessor ready — workflow progress will be persisted');
+      console.log('[epic] Memory accessor ready — spell progress will be persisted');
     } catch (err) {
       console.warn(`[epic] ⚠ Dashboard memory unavailable: ${(err as Error).message ?? err}`);
-      console.warn('[epic] ⚠ Workflow executions will NOT appear in the dashboard');
+      console.warn('[epic] ⚠ Spell executions will NOT appear in the dashboard');
     }
   }
 

@@ -1,9 +1,9 @@
 /**
  * @moflo/spells
  *
- * Generalized Workflow Engine for MoFlo V4.
+ * Generalized Spell Engine for MoFlo V4.
  *
- * Provides a pluggable, YAML/JSON-defined workflow system where every step type
+ * Provides a pluggable, YAML/JSON-defined spell system where every step type
  * implements a StepCommand interface — testable, reusable, and extensible.
  *
  * @packageDocumentation

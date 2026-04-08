@@ -187,7 +187,7 @@ function validateSteps(
       } else if (workflowLevel && compareMofloLevels(step.mofloLevel, workflowLevel) > 0) {
         errors.push({
           path: `${path}.mofloLevel`,
-          message: `step mofloLevel "${step.mofloLevel}" exceeds workflow-level "${workflowLevel}" — steps can only narrow, not escalate`,
+          message: `step mofloLevel "${step.mofloLevel}" exceeds spell-level "${workflowLevel}" — steps can only narrow, not escalate`,
         });
       }
     }

@@ -1,5 +1,5 @@
 /**
- * Workflow Definition Parser
+ * Spell Definition Parser
  *
  * Parses YAML/JSON into SpellDefinition objects.
  * NOTE: Parsed output is UNVALIDATED — always call validateSpellDefinition() after parsing.
@@ -16,7 +16,7 @@ import { sanitizeObjectKeys } from '../core/interpolation.js';
 export function parseYaml(content: string, sourceFile?: string): ParsedWorkflow {
   const raw = yamlLoad(content, { schema: JSON_SCHEMA });
   if (!raw || typeof raw !== 'object') {
-    throw new Error(`Invalid workflow YAML${sourceFile ? ` in ${sourceFile}` : ''}: expected an object`);
+    throw new Error(`Invalid spell YAML${sourceFile ? ` in ${sourceFile}` : ''}: expected an object`);
   }
   const sanitized = sanitizeObjectKeys(raw) as Record<string, unknown>;
   return {
@@ -36,11 +36,11 @@ export function parseJson(content: string, sourceFile?: string): ParsedWorkflow 
     raw = JSON.parse(content);
   } catch (e) {
     throw new Error(
-      `Invalid workflow JSON${sourceFile ? ` in ${sourceFile}` : ''}: ${(e as Error).message}`
+      `Invalid spell JSON${sourceFile ? ` in ${sourceFile}` : ''}: ${(e as Error).message}`
     );
   }
   if (!raw || typeof raw !== 'object') {
-    throw new Error(`Invalid workflow JSON${sourceFile ? ` in ${sourceFile}` : ''}: expected an object`);
+    throw new Error(`Invalid spell JSON${sourceFile ? ` in ${sourceFile}` : ''}: expected an object`);
   }
   const sanitized = sanitizeObjectKeys(raw) as Record<string, unknown>;
   return {
@@ -51,7 +51,7 @@ export function parseJson(content: string, sourceFile?: string): ParsedWorkflow 
 }
 
 /**
- * Parse a workflow file by detecting format from extension or content.
+ * Parse a spell file by detecting format from extension or content.
  */
 export function parseWorkflow(content: string, sourceFile?: string): ParsedWorkflow {
   if (sourceFile) {

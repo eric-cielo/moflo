@@ -1,5 +1,5 @@
 /**
- * Daemon Readiness Check for Scheduled Workflows
+ * Daemon Readiness Check for Scheduled Spells
  *
  * Lazy three-state flow: only triggered when creating schedules.
  * 1. Is daemon running? If not, prompt to start it.
@@ -35,7 +35,7 @@ export interface DaemonReadinessOptions {
 }
 
 /**
- * Ensure the daemon is ready for scheduled workflow execution.
+ * Ensure the daemon is ready for scheduled spell execution.
  *
  * Checks daemon state and prompts the user to start/install as needed.
  * Always returns — never throws. The caller should create the schedule
@@ -61,7 +61,7 @@ export async function ensureDaemonForScheduling(
   if (!result.daemonRunning) {
     if (options.interactive) {
       const shouldStart = await promptFn(
-        'Scheduled workflows need the daemon. Start it now?',
+        'Scheduled spells need the daemon. Start it now?',
       );
       if (shouldStart) {
         const started = await startFn(resolvedRoot);

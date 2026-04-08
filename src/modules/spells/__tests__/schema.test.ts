@@ -1,5 +1,5 @@
 /**
- * Workflow Definition Schema Tests
+ * Spell Definition Schema Tests
  *
  * Story #103: YAML/JSON parsing, validation, and argument resolution.
  */
@@ -82,7 +82,7 @@ describe('parseJson', () => {
   });
 
   it('should reject malformed JSON', () => {
-    expect(() => parseJson('not json', 'bad.json')).toThrow('Invalid workflow JSON');
+    expect(() => parseJson('not json', 'bad.json')).toThrow('Invalid spell JSON');
   });
 
   it('should reject non-object JSON', () => {

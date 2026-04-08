@@ -80,7 +80,7 @@ export class SpellConnectorRegistry {
 
     if (this.connectors.has(connector.name)) {
       throw new Error(
-        `Workflow connector "${connector.name}" is already registered`
+        `Spell connector "${connector.name}" is already registered`
       );
     }
 

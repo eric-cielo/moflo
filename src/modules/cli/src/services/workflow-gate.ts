@@ -1,5 +1,5 @@
 /**
- * Workflow Gate Service
+ * Spell Gate Service
  * Enforces TaskCreate + memory-first patterns before agent spawning
  * and file exploration. Tracks context bracket by interaction count.
  *
@@ -360,7 +360,7 @@ export class WorkflowGateService {
   }
 
   /**
-   * Reset all workflow state (new session).
+   * Reset all spell state (new session).
    */
   sessionReset(): void {
     this.writeState({
@@ -375,7 +375,7 @@ export class WorkflowGateService {
 // ============================================================================
 
 /**
- * Process a workflow gate command from CLI args.
+ * Process a spell gate command from CLI args.
  * Used by hooks.mjs dispatcher.
  */
 export function processGateCommand(command: string, env: Record<string, string | undefined> = process.env): void {

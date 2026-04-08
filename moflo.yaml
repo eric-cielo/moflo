@@ -41,7 +41,7 @@ tests:
   exclude: [node_modules, coverage, dist]
   namespace: tests
 
-# Workflow gates (enforced via Claude Code hooks)
+# Spell gates (enforced via Claude Code hooks)
 gates:
   memory_first: true
   task_create_first: true
@@ -65,7 +65,7 @@ hooks:
   post_edit: true              # Record edit outcomes, train neural patterns
   pre_task: true               # Get agent routing before task spawn
   post_task: true              # Record task results for learning
-  gate: true                   # Workflow gate enforcement (memory-first, task-create-first)
+  gate: true                   # Spell gate enforcement (memory-first, task-create-first)
   route: true                  # Intelligent task routing on each prompt
   stop_hook: true              # Session-end persistence and metric export
   session_restore: true        # Restore session state on start

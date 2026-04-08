@@ -179,11 +179,11 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
   async executeWorkflow(workflowId: string): Promise<OrchestrationResult> {
     const workflow = this.workflows.get(workflowId);
     if (!workflow) {
-      throw new Error(`Workflow not found: ${workflowId}`);
+      throw new Error(`Spell not found: ${workflowId}`);
     }
 
     if (this.activeWorkflows >= this.config.maxConcurrentWorkflows) {
-      throw new Error('Maximum concurrent workflows reached');
+      throw new Error('Maximum concurrent spells reached');
     }
 
     const startTime = Date.now();
@@ -248,7 +248,7 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
   async resumeWorkflow(workflowId: string): Promise<OrchestrationResult> {
     const workflow = this.workflows.get(workflowId);
     if (!workflow || workflow.status !== 'paused') {
-      throw new Error('Workflow cannot be resumed');
+      throw new Error('Spell cannot be resumed');
     }
 
     // Restore from checkpoint and continue

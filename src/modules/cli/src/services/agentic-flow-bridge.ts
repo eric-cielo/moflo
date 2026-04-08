@@ -53,7 +53,7 @@ export function getRouter() {
 }
 
 /**
- * Load the Orchestration module (workflow engine).
+ * Load the Orchestration module (spell engine).
  * Returns null if agentic-flow is not installed.
  */
 export function getOrchestration() {

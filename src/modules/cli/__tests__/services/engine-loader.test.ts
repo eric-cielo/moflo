@@ -47,7 +47,7 @@ describe('engine-loader', () => {
 
     const mod = await import('../../src/services/engine-loader.js');
     await expect(mod.loadSpellEngine()).rejects.toThrow(
-      'Workflow engine not available',
+      'Spell engine not available',
     );
   });
 
