@@ -1,11 +1,11 @@
 ---
-name: "Workflow Builder"
-description: "Create, edit, and validate workflow definitions (YAML/JSON) that compose connectors and step commands into end-to-end workflows. Use when building new workflow definitions, modifying existing ones, or exploring available workflow components."
+name: "Spell Builder"
+description: "Create, edit, and validate spell definitions (YAML/JSON) that compose connectors and step commands into end-to-end spells. Use when building new spell definitions, modifying existing ones, or exploring available spell components."
 ---
 
-# Workflow Builder
+# Spell Builder
 
-Create production-ready workflow definitions (YAML/JSON) that compose step commands and connectors into end-to-end automated workflows, with proper data flow, validation, and engine integration.
+Create production-ready spell definitions (YAML/JSON) that compose step commands and connectors into end-to-end automated spells, with proper data flow, validation, and engine integration.
 
 ## Prerequisites
 
@@ -14,11 +14,11 @@ Create production-ready workflow definitions (YAML/JSON) that compose step comma
 
 ## What This Skill Does
 
-1. Guides you through building a **workflow definition** (YAML/JSON)
+1. Guides you through building a **spell definition** (YAML/JSON)
 2. Discovers available **step commands** and **connectors** to compose
 3. Wires up **data flow** between steps via variable references
 4. Validates the generated definition against the engine schema
-5. Outputs the workflow file to the correct project directory
+5. Outputs the spell file to the correct project directory
 
 ---
 
@@ -27,18 +27,18 @@ Create production-ready workflow definitions (YAML/JSON) that compose step comma
 Ask the user:
 
 > **What would you like to do?**
-> 1. **Create** a new workflow definition from scratch
-> 2. **Edit** an existing workflow definition
+> 1. **Create** a new spell definition from scratch
+> 2. **Edit** an existing spell definition
 > 3. **Discover** available step commands and connectors
-> 4. **Validate** an existing workflow file
+> 4. **Validate** an existing spell file
 
 Then follow the appropriate section below.
 
 ---
 
-## Section 1: Create a New Workflow
+## Section 1: Create a New Spell
 
-### Step 1: Gather Workflow Metadata
+### Step 1: Gather Spell Metadata
 
 Ask the user for:
 
@@ -52,7 +52,7 @@ Ask the user for:
 
 ### Step 2: Define Arguments (Optional)
 
-If the workflow needs runtime parameters, define arguments:
+If the spell needs runtime parameters, define arguments:
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -85,7 +85,7 @@ Walk the user through adding steps one at a time. For each step, collect:
 - `{credentials.NAME}` — references a credential (resolved at runtime)
 - `{stepId.outputKey}` — references output from a previous step
 
-### Step 4: Generate the Workflow YAML
+### Step 4: Generate the Spell YAML
 
 Assemble the definition into YAML format following this structure:
 
@@ -114,7 +114,7 @@ steps:
     mofloLevel: <optional-level>
 ```
 
-### Step 5: Validate the Workflow
+### Step 5: Validate the Spell
 
 Before writing the file, validate it against the engine schema. The following rules must pass:
 
@@ -125,7 +125,7 @@ Before writing the file, validate it against the engine schema. The following ru
 5. **Variable references** (`{stepId.outputKey}`) must not be forward references (the referenced step must appear before the current step)
 6. **Argument references** (`{args.name}`) must match declared arguments
 7. **`mofloLevel`** must be one of: `none`, `memory`, `hooks`, `full`, `recursive`
-8. Step-level `mofloLevel` cannot exceed the workflow-level `mofloLevel`
+8. Step-level `mofloLevel` cannot exceed the spell-level `mofloLevel`
 9. No **circular condition jumps** (condition steps referencing each other in a loop)
 10. **Argument definitions** must have valid types, and defaults must match their declared type
 
@@ -133,12 +133,12 @@ If validation fails, show the specific errors and guide the user to fix them.
 
 ### Step 6: Write the File
 
-Ask the user where to save the workflow:
+Ask the user where to save the spell:
 
-- **Project workflows:** `workflows/<name>.yaml` (user-level, project-specific)
-- **Claude workflows:** `.claude/workflows/<name>.yaml` (Claude Code integration)
+- **Project spells:** `workflows/<name>.yaml` (user-level, project-specific)
+- **Claude spells:** `.claude/workflows/<name>.yaml` (Claude Code integration)
 
-Use the MCP tool to create the workflow if available:
+Use the MCP tool to create the spell if available:
 ```
 mcp__moflo__spell_create — name, definition (YAML string), description
 ```
@@ -147,17 +147,17 @@ Or write the file directly to the chosen directory.
 
 ---
 
-## Section 2: Edit an Existing Workflow
+## Section 2: Edit an Existing Spell
 
-### Step 1: Load the Workflow
+### Step 1: Load the Spell
 
-Ask for the workflow file path, or use `mcp__moflo__spell_list` to browse available workflows.
+Ask for the spell file path, or use `mcp__moflo__spell_list` to browse available spells.
 
 Read the YAML/JSON file and parse the current definition.
 
 ### Step 2: Present Current Structure
 
-Show a summary of the workflow:
+Show a summary of the spell:
 - Name, description, version, abbreviation
 - Arguments (if any)
 - Steps list with: id, type, output variable, continueOnError
@@ -184,7 +184,7 @@ Write the updated YAML back to the original file (or a new path if requested).
 
 ---
 
-## Section 3: Discover Available Components
+## Section 3: Discover Available Spell Components
 
 ### Built-in Step Commands
 
@@ -202,7 +202,7 @@ These step command types are available for use in workflow `steps[].type`:
 | `browser` | Browser automation via Playwright | `action`, `url`, `selector`, `value` |
 | `github` | GitHub CLI operations | `action` (create-issue, create-pr, etc.), `repo`, params |
 
-**Source:** `src/modules/workflows/src/commands/index.ts`
+**Source:** `src/modules/spells/src/commands/index.ts`
 
 ### Built-in Connectors (Generalized I/O Wrappers)
 
@@ -214,9 +214,9 @@ Connectors are generalized I/O wrappers — not per-service adapters. Three ship
 | `github-cli` | GitHub CLI (`gh`) operations | read, write, search | `issue-create`, `issue-list`, `pr-create`, `pr-list`, `repo-view` |
 | `playwright` | Browser automation | read, write | `navigate`, `click`, `fill`, `screenshot`, `evaluate` |
 
-**Source:** `src/modules/workflows/src/connectors/index.ts`
+**Source:** `src/modules/spells/src/connectors/index.ts`
 
-To use a connector in a workflow, reference it in an `agent` step's prompt:
+To use a connector in a spell, reference it in an `agent` step's prompt:
 ```yaml
 steps:
   - id: call-api
@@ -229,17 +229,17 @@ steps:
 
 ### Need a Service Integration?
 
-**Compose existing connectors in workflow YAML** — do not create a per-service connector. For example, Slack integration uses the `http` connector with Slack's API URL, not a dedicated `slack` connector.
+**Compose existing connectors in spell YAML** — do not create a per-service connector. For example, Slack integration uses the `http` connector with Slack's API URL, not a dedicated `slack` connector.
 
 Use **`/connector-builder`** only when you need a new **step command** or a new **generalized I/O connector** for a transport type not covered by the built-ins (e.g., WebSocket, gRPC).
 
 ---
 
-## Section 4: Validate an Existing Workflow
+## Section 4: Validate an Existing Spell
 
 ### Step 1: Load and Parse
 
-Read the workflow file (YAML or JSON). The parser auto-detects format.
+Read the spell file (YAML or JSON). The parser auto-detects format.
 
 ### Step 2: Run Validation
 
@@ -248,13 +248,13 @@ Check against all engine validation rules:
 - Required fields: `name` (string), `steps` (non-empty array)
 - Step integrity: unique IDs, valid types, valid config structure
 - Variable references: no forward references, no undefined arguments
-- MoFlo levels: valid values, step-level cannot exceed workflow-level
+- MoFlo levels: valid values, step-level cannot exceed spell-level
 - Circular jumps: condition steps must not form cycles
 - Arguments: valid types, defaults match declared type, enum consistency
 
 ### Step 3: Report Results
 
-- **Valid:** Confirm the workflow passes all checks
+- **Valid:** Confirm the spell passes all checks
 - **Invalid:** List each error with its path and message, then offer to fix
 
 ---
@@ -278,10 +278,10 @@ Check against all engine validation rules:
 
 | Tool | Purpose |
 |------|---------|
-| `mcp__moflo__spell_create` | Create a new workflow definition |
-| `mcp__moflo__spell_list` | List available workflows |
-| `mcp__moflo__spell_cast` | Execute a workflow |
-| `mcp__moflo__spell_status` | Check workflow execution status |
+| `mcp__moflo__spell_create` | Create a new spell definition |
+| `mcp__moflo__spell_list` | List available spells |
+| `mcp__moflo__spell_cast` | Cast (execute) a spell |
+| `mcp__moflo__spell_status` | Check spell execution status |
 
 ### MoFlo Integration Levels
 
@@ -301,7 +301,7 @@ Check against all engine validation rules:
 | `{credentials.NAME}` | Runtime credential | `{credentials.GITHUB_TOKEN}` |
 | `{stepId.key}` | Previous step output | `{fetch-data.url}` |
 
-### Example: Complete Workflow
+### Example: Complete Spell
 
 ```yaml
 name: security-audit
@@ -370,4 +370,4 @@ steps:
 
 ### Related Skills
 
-- [/connector-builder](../connector-builder/) (#238) — scaffold new connectors and step commands when the workflow needs a component that doesn't exist yet
+- [/connector-builder](../connector-builder/) (#238) — scaffold new connectors and step commands when the spell needs a component that doesn't exist yet

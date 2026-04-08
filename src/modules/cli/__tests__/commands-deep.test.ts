@@ -80,7 +80,7 @@ import { securityCommand } from '../src/commands/security.js';
 import { hiveMindCommand } from '../src/commands/hive-mind.js';
 import { completionsCommand } from '../src/commands/completions.js';
 import { migrateCommand } from '../src/commands/migrate.js';
-import { workflowCommand } from '../src/commands/workflow.js';
+import { spellCommand } from '../src/commands/spell.js';
 import { claimsCommand } from '../src/commands/claims.js';
 import { deploymentCommand } from '../src/commands/deployment.js';
 import { providersCommand } from '../src/commands/providers.js';
@@ -331,13 +331,13 @@ describe('Command Definitions', () => {
     });
   });
 
-  describe('workflow command', () => {
+  describe('spell command', () => {
     it('should have correct name', () => {
-      expectValidCommand(workflowCommand, 'workflow');
+      expectValidCommand(spellCommand, 'spell');
     });
 
     it('should have subcommands', () => {
-      expectHasSubcommands(workflowCommand, 3);
+      expectHasSubcommands(spellCommand, 3);
     });
   });
 
@@ -470,7 +470,7 @@ const allCommands: { cmd: Command; name: string }[] = [
   { cmd: hiveMindCommand, name: 'hive-mind' },
   { cmd: completionsCommand, name: 'completions' },
   { cmd: migrateCommand, name: 'migrate' },
-  { cmd: workflowCommand, name: 'workflow' },
+  { cmd: spellCommand, name: 'spell' },
   { cmd: claimsCommand, name: 'claims' },
   { cmd: deploymentCommand, name: 'deployment' },
   { cmd: providersCommand, name: 'providers' },

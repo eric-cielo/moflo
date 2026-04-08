@@ -505,4 +505,4 @@ steps:
 
 ### Related Skills
 
-- [/workflow-builder](../workflow-builder/) (#240) — composes connectors and steps into workflow definitions; references this skill when a needed connector doesn't exist
+- [/spell-builder](../spell-builder/) (#240) — composes connectors and steps into spell definitions; references this skill when a needed connector doesn't exist

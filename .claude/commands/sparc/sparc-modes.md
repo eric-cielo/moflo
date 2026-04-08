@@ -7,7 +7,7 @@ SPARC (Specification, Planning, Architecture, Review, Code) is a comprehensive d
 ### Core Orchestration Modes
 - **orchestrator**: Multi-agent task orchestration
 - **swarm-coordinator**: Specialized swarm management
-- **workflow-manager**: Process automation
+- **spell-manager**: Spell orchestration and process automation
 - **batch-executor**: Parallel task execution
 
 ### Development Modes  

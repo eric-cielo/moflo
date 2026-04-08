@@ -369,12 +369,12 @@ steps:
 
 Steps support shell commands (`bash`), agent spawns, memory reads/writes, conditionals, loops, and parallel execution groups. For the full workflow definition format, see [docs/WORKFLOWS.md](docs/WORKFLOWS.md).
 
-### Building workflows with the `/workflow-builder` skill
+### Building spells with the `/spell-builder` skill
 
-Inside your AI client, use the `/workflow-builder` skill to create, edit, and validate workflow definitions interactively. The skill understands the full workflow schema and available step commands, so you can describe what you want in natural language and it will generate the YAML:
+Inside your AI client, use the `/spell-builder` skill to create, edit, and validate spell definitions interactively. The skill understands the full spell schema and available step commands, so you can describe what you want in natural language and it will generate the YAML:
 
 ```
-/workflow-builder                        # Start the workflow builder
+/spell-builder                           # Start the spell builder
 ```
 
 ### Epics
