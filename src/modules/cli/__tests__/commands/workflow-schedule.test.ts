@@ -51,7 +51,7 @@ vi.mock('../../src/output.js', () => {
 
 import { callMCPTool } from '../../src/mcp-client.js';
 import { ensureDaemonForScheduling } from '../../src/services/daemon-readiness.js';
-import { scheduleCommand } from '../../src/commands/workflow-schedule.js';
+import { scheduleCommand } from '../../src/commands/spell-schedule.js';
 
 const mockCallMCP = vi.mocked(callMCPTool);
 const mockEnsureDaemon = vi.mocked(ensureDaemonForScheduling);
@@ -104,7 +104,7 @@ describe('workflow schedule command', () => {
 
       expect(result.success).toBe(true);
       expect(mockCallMCP).toHaveBeenCalledWith('memory_store', expect.objectContaining({
-        namespace: 'scheduled-workflows',
+        namespace: 'scheduled-spells',
       }));
       expect(mockEnsureDaemon).toHaveBeenCalled();
     });
@@ -207,7 +207,7 @@ describe('workflow schedule command', () => {
             key: 'sched-adhoc-123',
             value: JSON.stringify({
               id: 'sched-adhoc-123',
-              workflowName: 'audit',
+              spellName: 'audit',
               cron: '0 9 * * *',
               nextRunAt: Date.now() + 60000,
               enabled: true,
@@ -219,7 +219,7 @@ describe('workflow schedule command', () => {
       const result = await listCmd().action!(makeCtx()) as CommandResult;
       expect(result.success).toBe(true);
       expect(mockCallMCP).toHaveBeenCalledWith('memory_list', expect.objectContaining({
-        namespace: 'scheduled-workflows',
+        namespace: 'scheduled-spells',
       }));
     });
 
@@ -240,7 +240,7 @@ describe('workflow schedule command', () => {
       mockCallMCP.mockResolvedValueOnce({
         value: JSON.stringify({
           id: 'sched-adhoc-123',
-          workflowName: 'audit',
+          spellName: 'audit',
           enabled: true,
         }),
       }).mockResolvedValueOnce({});

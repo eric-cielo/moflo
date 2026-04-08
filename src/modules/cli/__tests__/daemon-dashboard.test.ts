@@ -74,7 +74,7 @@ function makeMockMemory(overrides: Record<string, Array<{ key: string; value: un
     'patterns': [{ key: 'p1', value: 'v1', score: 1 }],
     'code-map': [],
     'knowledge': [{ key: 'k1', value: 'v1', score: 1 }, { key: 'k2', value: 'v2', score: 1 }, { key: 'k3', value: 'v3', score: 1 }],
-    'scheduled-workflows': [],
+    'scheduled-spells': [],
     'schedule-executions': [],
     'tasklist': [],
     ...overrides,
@@ -173,9 +173,9 @@ describe('DaemonDashboard', () => {
   it('returns schedules at GET /api/schedules', async () => {
     const daemon = makeMockDaemon();
     const memory = makeMockMemory({
-      'scheduled-workflows': [{
+      'scheduled-spells': [{
         key: 'sched-1',
-        value: JSON.stringify({ workflowName: 'security-audit', cron: '0 */6 * * *', enabled: true }),
+        value: JSON.stringify({ spellName: 'security-audit', cron: '0 */6 * * *', enabled: true }),
         score: 1,
       }],
     });
@@ -187,7 +187,7 @@ describe('DaemonDashboard', () => {
     const data = JSON.parse(res.body);
     expect(data.available).toBe(true);
     expect(data.schedules).toHaveLength(1);
-    expect(data.schedules[0].workflowName).toBe('security-audit');
+    expect(data.schedules[0].spellName).toBe('security-audit');
     expect(data.schedules[0].cron).toBe('0 */6 * * *');
     expect(data.schedules[0].enabled).toBe(true);
   });
