@@ -177,7 +177,7 @@ export class SpellCaster {
 
     try {
     await this.storeProgress(workflowId, 'running', 0, definition.steps.length, {
-      workflowName: definition.name, startedAt: startTime, context,
+      spellName: definition.name, startedAt: startTime, context,
     });
 
     const stepIndex = new Map<string, number>();
@@ -268,7 +268,7 @@ export class SpellCaster {
       // Fire onStepComplete for every step (success, failure, cancelled)
       console.log(`[workflow] Step ${i + 1}/${definition.steps.length}: ${result.status} "${step.id}" (${result.duration}ms)${result.error ? ' — ' + result.error.slice(0, 200) : ''}`);
       await this.storeProgress(workflowId, 'running', stepResults.length, definition.steps.length, {
-        workflowName: definition.name, startedAt: startTime, steps: stepResults, context,
+        spellName: definition.name, startedAt: startTime, steps: stepResults, context,
       });
       try { options.onStepComplete?.(result, i, definition.steps.length); } catch { /* safe */ }
 
@@ -296,7 +296,7 @@ export class SpellCaster {
 
     const finalStatus = cancelled ? 'cancelled' : errors.length > 0 ? 'failed' : 'completed';
     await this.storeProgress(workflowId, finalStatus, stepResults.length, definition.steps.length, {
-      workflowName: definition.name, startedAt: startTime, errors, steps: stepResults, context,
+      spellName: definition.name, startedAt: startTime, errors, steps: stepResults, context,
     });
 
     const outputs: Record<string, unknown> = {};
@@ -351,14 +351,14 @@ export class SpellCaster {
 
   private async storeProgress(
     wfId: string, status: string, done: number, total: number,
-    extra?: { workflowName?: string; startedAt?: number; errors?: WorkflowError[]; steps?: StepResult[]; context?: FloRunContext },
+    extra?: { spellName?: string; startedAt?: number; errors?: WorkflowError[]; steps?: StepResult[]; context?: FloRunContext },
   ) {
     try {
       const now = Date.now();
       const record: Record<string, unknown> = {
         status, completedSteps: done, totalSteps: total, updatedAt: new Date().toISOString(),
       };
-      if (extra?.workflowName) record.workflowName = extra.workflowName;
+      if (extra?.spellName) record.spellName = extra.spellName;
       if (extra?.context) record.context = extra.context;
       if (extra?.startedAt) {
         record.startedAt = extra.startedAt;
@@ -385,9 +385,9 @@ export class SpellCaster {
     }
   }
 
-  private async failureResult(workflowId: string, startTime: number, errors: WorkflowError[], workflowName?: string): Promise<WorkflowResult> {
+  private async failureResult(workflowId: string, startTime: number, errors: WorkflowError[], spellName?: string): Promise<WorkflowResult> {
     await this.storeProgress(workflowId, 'failed', 0, 0, {
-      workflowName, startedAt: startTime, errors,
+      spellName, startedAt: startTime, errors,
     });
     return { workflowId, success: false, steps: [], outputs: {}, errors,
       duration: Date.now() - startTime, cancelled: false };
