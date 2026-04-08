@@ -49,7 +49,7 @@ export async function bridgeRunWorkflow(
 }
 
 /**
- * Run a SpellDefinition directly (for workflow_execute).
+ * Run a SpellDefinition directly (for spell_execute).
  */
 export async function bridgeExecuteWorkflow(
   definition: import('../types/workflow-definition.types.js').SpellDefinition,

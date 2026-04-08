@@ -1,56 +1,57 @@
 /**
- * Workflow MCP Tools — Engine Integration Tests
+ * Spell MCP Tools — Engine Integration Tests
  *
- * Story #225: Verifies that MCP workflow tool handlers call the real
- * workflow engine via runner-bridge, not a mock file-based store.
+ * Story #225: Verifies that MCP spell tool handlers call the real
+ * spell engine via runner-bridge, not a mock file-based store.
+ * Story #371: Renamed workflow_* tools to spell_* with wizard terminology.
  */
 
 import { describe, it, expect } from 'vitest';
-import { workflowTools, invalidateRegistry } from '../src/mcp-tools/workflow-tools.js';
+import { spellTools, invalidateRegistry } from '../src/mcp-tools/spell-tools.js';
 
 function findTool(name: string) {
-  const tool = workflowTools.find(t => t.name === name);
+  const tool = spellTools.find(t => t.name === name);
   if (!tool) throw new Error(`Tool ${name} not found`);
   return tool;
 }
 
-describe('Workflow MCP Tools — Engine Integration', () => {
+describe('Spell MCP Tools — Engine Integration', () => {
   // -------------------------------------------------------------------------
   // Tool registration
   // -------------------------------------------------------------------------
 
-  it('exports exactly 10 workflow tools', () => {
-    expect(workflowTools).toHaveLength(10);
-    const names = workflowTools.map(t => t.name).sort();
+  it('exports exactly 10 spell tools', () => {
+    expect(spellTools).toHaveLength(10);
+    const names = spellTools.map(t => t.name).sort();
     expect(names).toEqual([
-      'workflow_cancel',
-      'workflow_create',
-      'workflow_delete',
-      'workflow_execute',
-      'workflow_list',
-      'workflow_pause',
-      'workflow_resume',
-      'workflow_run',
-      'workflow_status',
-      'workflow_template',
+      'spell_cancel',
+      'spell_cast',
+      'spell_create',
+      'spell_delete',
+      'spell_execute',
+      'spell_list',
+      'spell_resume',
+      'spell_status',
+      'spell_suspend',
+      'spell_template',
     ]);
   });
 
-  it('all tools have category "workflow"', () => {
-    for (const tool of workflowTools) {
-      expect(tool.category).toBe('workflow');
+  it('all tools have category "spell"', () => {
+    for (const tool of spellTools) {
+      expect(tool.category).toBe('spell');
     }
   });
 
   // -------------------------------------------------------------------------
-  // workflow_create — returns a definition, not a file-based record
+  // spell_create — returns a definition, not a file-based record
   // -------------------------------------------------------------------------
 
-  it('workflow_create returns a definition object with steps', async () => {
-    const tool = findTool('workflow_create');
+  it('spell_create returns a definition object with steps', async () => {
+    const tool = findTool('spell_create');
     const result: any = await tool.handler({
       name: 'test-create',
-      description: 'Integration test workflow',
+      description: 'Integration test spell',
       steps: [
         { id: 'step-1', type: 'bash', config: { command: 'echo hello' } },
         { id: 'step-2', type: 'bash', config: { command: 'echo world' } },
@@ -69,23 +70,23 @@ describe('Workflow MCP Tools — Engine Integration', () => {
   });
 
   // -------------------------------------------------------------------------
-  // workflow_run — requires content, file, or name (no hardcoded templates)
+  // spell_cast — requires content, file, or name (no hardcoded templates)
   // -------------------------------------------------------------------------
 
-  it('workflow_run returns error when no source provided', async () => {
-    const tool = findTool('workflow_run');
+  it('spell_cast returns error when no source provided', async () => {
+    const tool = findTool('spell_cast');
     const result: any = await tool.handler({});
     expect(result.error).toMatch(/name.*file.*content.*required/i);
   });
 
-  it('workflow_run returns error for non-existent file', async () => {
-    const tool = findTool('workflow_run');
+  it('spell_cast returns error for non-existent file', async () => {
+    const tool = findTool('spell_cast');
     const result: any = await tool.handler({ file: '/tmp/nonexistent-workflow-xyz.yaml' });
     expect(result.error).toMatch(/not found/i);
   });
 
-  it('workflow_run executes inline YAML content via engine', async () => {
-    const tool = findTool('workflow_run');
+  it('spell_cast executes inline YAML content via engine', async () => {
+    const tool = findTool('spell_cast');
     const yamlContent = `
 name: inline-test
 steps:
@@ -107,8 +108,8 @@ steps:
     expect(result.duration).toBeGreaterThanOrEqual(0);
   });
 
-  it('workflow_run dry-run validates without executing', async () => {
-    const tool = findTool('workflow_run');
+  it('spell_cast dry-run validates without executing', async () => {
+    const tool = findTool('spell_cast');
     const yamlContent = `
 name: dryrun-test
 steps:
@@ -124,11 +125,11 @@ steps:
   });
 
   // -------------------------------------------------------------------------
-  // workflow_execute — takes a definition object
+  // spell_execute — takes a definition object
   // -------------------------------------------------------------------------
 
-  it('workflow_execute runs a definition via the engine', async () => {
-    const tool = findTool('workflow_execute');
+  it('spell_execute runs a definition via the engine', async () => {
+    const tool = findTool('spell_execute');
     const definition = {
       name: 'execute-test',
       steps: [
@@ -143,32 +144,32 @@ steps:
     expect(result.steps[0].status).toBe('succeeded');
   });
 
-  it('workflow_execute returns error for invalid definition', async () => {
-    const tool = findTool('workflow_execute');
+  it('spell_execute returns error for invalid definition', async () => {
+    const tool = findTool('spell_execute');
     const result: any = await tool.handler({ definition: { name: null, steps: null } });
     expect(result.error).toBeDefined();
   });
 
   // -------------------------------------------------------------------------
-  // workflow_status — tracks results from engine runs
+  // spell_status — tracks results from engine runs
   // -------------------------------------------------------------------------
 
-  it('workflow_status returns not-found for unknown ID', async () => {
-    const tool = findTool('workflow_status');
+  it('spell_status returns not-found for unknown ID', async () => {
+    const tool = findTool('spell_status');
     const result: any = await tool.handler({ workflowId: 'nonexistent-id' });
     expect(result.error).toMatch(/not found/i);
   });
 
-  it('workflow_status returns result for completed workflow', async () => {
-    // First, run a workflow to get a tracked ID
-    const runTool = findTool('workflow_run');
+  it('spell_status returns result for completed spell', async () => {
+    // First, cast a spell to get a tracked ID
+    const runTool = findTool('spell_cast');
     const runResult: any = await runTool.handler({
       content: 'name: status-test\nsteps:\n  - id: s1\n    type: bash\n    config:\n      command: echo ok',
     });
     const workflowId = runResult.workflowId;
 
     // Now query status
-    const statusTool = findTool('workflow_status');
+    const statusTool = findTool('spell_status');
     const statusResult: any = await statusTool.handler({ workflowId, verbose: true });
 
     expect(statusResult.workflowId).toBe(workflowId);
@@ -178,83 +179,83 @@ steps:
   });
 
   // -------------------------------------------------------------------------
-  // workflow_list — returns registry definitions and tracked runs
+  // spell_list — returns grimoire definitions and tracked castings
   // -------------------------------------------------------------------------
 
-  it('workflow_list returns runs array', async () => {
-    const tool = findTool('workflow_list');
+  it('spell_list returns runs array', async () => {
+    const tool = findTool('spell_list');
     const result: any = await tool.handler({ source: 'runs' });
     expect(result.runs).toBeDefined();
     expect(Array.isArray(result.runs)).toBe(true);
   });
 
-  it('workflow_list returns activeWorkflows array', async () => {
-    const tool = findTool('workflow_list');
+  it('spell_list returns activeWorkflows array', async () => {
+    const tool = findTool('spell_list');
     const result: any = await tool.handler({ source: 'all' });
     expect(result.activeWorkflows).toBeDefined();
     expect(Array.isArray(result.activeWorkflows)).toBe(true);
   });
 
   // -------------------------------------------------------------------------
-  // workflow_cancel — uses engine AbortController
+  // spell_cancel — uses engine AbortController
   // -------------------------------------------------------------------------
 
-  it('workflow_cancel returns not-found for unknown ID', async () => {
-    const tool = findTool('workflow_cancel');
+  it('spell_cancel returns not-found for unknown ID', async () => {
+    const tool = findTool('spell_cancel');
     const result: any = await tool.handler({ workflowId: 'nonexistent' });
     expect(result.error).toMatch(/not found/i);
   });
 
   // -------------------------------------------------------------------------
-  // workflow_delete — removes from tracked map
+  // spell_delete — removes from tracked map
   // -------------------------------------------------------------------------
 
-  it('workflow_delete returns deleted=false for unknown ID', async () => {
-    const tool = findTool('workflow_delete');
+  it('spell_delete returns deleted=false for unknown ID', async () => {
+    const tool = findTool('spell_delete');
     const result: any = await tool.handler({ workflowId: 'nonexistent' });
     expect(result.deleted).toBe(false);
   });
 
   // -------------------------------------------------------------------------
-  // workflow_pause — honest about limitations
+  // spell_suspend — honest about limitations
   // -------------------------------------------------------------------------
 
-  it('workflow_pause returns error for non-running workflow', async () => {
-    const tool = findTool('workflow_pause');
+  it('spell_suspend returns error for non-active spell', async () => {
+    const tool = findTool('spell_suspend');
     const result: any = await tool.handler({ workflowId: 'nonexistent' });
-    expect(result.error).toMatch(/not running/i);
+    expect(result.error).toMatch(/not.*active/i);
   });
 
   // -------------------------------------------------------------------------
-  // workflow_resume — honest about limitations
+  // spell_resume — honest about limitations
   // -------------------------------------------------------------------------
 
-  it('workflow_resume returns error for unknown workflow', async () => {
-    const tool = findTool('workflow_resume');
+  it('spell_resume returns error for unknown spell', async () => {
+    const tool = findTool('spell_resume');
     const result: any = await tool.handler({ workflowId: 'nonexistent' });
     expect(result.error).toMatch(/not found/i);
   });
 
   // -------------------------------------------------------------------------
-  // workflow_template — delegates to registry
+  // spell_template — delegates to grimoire
   // -------------------------------------------------------------------------
 
-  it('workflow_template list returns templates array', async () => {
-    const tool = findTool('workflow_template');
+  it('spell_template list returns templates array', async () => {
+    const tool = findTool('spell_template');
     const result: any = await tool.handler({ action: 'list' });
     expect(result.action).toBe('list');
     expect(result.templates).toBeDefined();
     expect(Array.isArray(result.templates)).toBe(true);
   });
 
-  it('workflow_template info returns error for unknown workflow', async () => {
-    const tool = findTool('workflow_template');
+  it('spell_template info returns error for unknown spell', async () => {
+    const tool = findTool('spell_template');
     const result: any = await tool.handler({ action: 'info', query: 'nonexistent-workflow-xyz' });
     expect(result.error).toMatch(/not found/i);
   });
 
-  it('workflow_template with unknown action returns error', async () => {
-    const tool = findTool('workflow_template');
+  it('spell_template with unknown action returns error', async () => {
+    const tool = findTool('spell_template');
     const result: any = await tool.handler({ action: 'unknown' });
     expect(result.error).toMatch(/unknown action/i);
   });
@@ -263,15 +264,15 @@ steps:
   // Registry invalidation (Story #231)
   // -------------------------------------------------------------------------
 
-  it('workflow_list with refresh=true returns refreshed=true', async () => {
-    const tool = findTool('workflow_list');
+  it('spell_list with refresh=true returns refreshed=true', async () => {
+    const tool = findTool('spell_list');
     const result: any = await tool.handler({ source: 'registry', refresh: true });
     expect(result.refreshed).toBe(true);
     expect(result.definitions).toBeDefined();
   });
 
-  it('workflow_list without refresh does not include refreshed flag', async () => {
-    const tool = findTool('workflow_list');
+  it('spell_list without refresh does not include refreshed flag', async () => {
+    const tool = findTool('spell_list');
     const result: any = await tool.handler({ source: 'registry' });
     expect(result.refreshed).toBeUndefined();
   });
@@ -283,7 +284,7 @@ steps:
   });
 
   it('registry returns fresh data after invalidation', async () => {
-    const tool = findTool('workflow_list');
+    const tool = findTool('spell_list');
 
     // First call loads and caches the registry
     const first: any = await tool.handler({ source: 'registry' });
@@ -306,7 +307,7 @@ steps:
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
     const source = readFileSync(
-      resolve(import.meta.dirname, '../src/mcp-tools/workflow-tools.ts'),
+      resolve(import.meta.dirname, '../src/mcp-tools/spell-tools.ts'),
       'utf-8',
     );
     expect(source).not.toContain('store.json');

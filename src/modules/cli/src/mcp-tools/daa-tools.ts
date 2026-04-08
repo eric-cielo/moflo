@@ -192,15 +192,15 @@ export const daaTools: MCPTool[] = [
     },
   },
   {
-    name: 'daa_workflow_create',
-    description: 'Create an autonomous workflow',
+    name: 'daa_spell_create',
+    description: 'Scribe an autonomous spell',
     category: 'daa',
     inputSchema: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: 'Workflow ID' },
-        name: { type: 'string', description: 'Workflow name' },
-        steps: { type: 'array', items: { type: 'object' }, description: 'Workflow steps' },
+        id: { type: 'string', description: 'Spell ID' },
+        name: { type: 'string', description: 'Spell name' },
+        steps: { type: 'array', items: { type: 'object' }, description: 'Spell steps' },
         strategy: { type: 'string', enum: ['parallel', 'sequential', 'adaptive'], description: 'Execution strategy' },
         dependencies: { type: 'object', description: 'Step dependencies' },
       },
@@ -236,13 +236,13 @@ export const daaTools: MCPTool[] = [
     },
   },
   {
-    name: 'daa_workflow_execute',
-    description: 'Execute a DAA workflow',
+    name: 'daa_spell_cast',
+    description: 'Cast a DAA spell',
     category: 'daa',
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Workflow ID' },
+        workflowId: { type: 'string', description: 'Spell invocation ID' },
         agentIds: { type: 'array', items: { type: 'string' }, description: 'Agent IDs to use' },
         parallelExecution: { type: 'boolean', description: 'Enable parallel execution' },
       },
@@ -254,7 +254,7 @@ export const daaTools: MCPTool[] = [
       const workflow = store.workflows[workflowId];
 
       if (!workflow) {
-        return { success: false, error: 'Workflow not found' };
+        return { success: false, error: 'Spell not found' };
       }
 
       workflow.status = 'running';

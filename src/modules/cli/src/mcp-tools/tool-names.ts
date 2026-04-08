@@ -5,12 +5,12 @@
  * These match the tool names registered in the MCP server (mcp-tools/*.ts).
  */
 
-// Workflow / Spell tools
-export const TOOL_WORKFLOW_RUN = 'workflow_run' as const;
-export const TOOL_WORKFLOW_LIST = 'workflow_list' as const;
-export const TOOL_WORKFLOW_STATUS = 'workflow_status' as const;
-export const TOOL_WORKFLOW_CANCEL = 'workflow_cancel' as const;
-export const TOOL_WORKFLOW_TEMPLATE = 'workflow_template' as const;
+// Spell tools (wizard-themed, formerly workflow_*)
+export const TOOL_SPELL_CAST = 'spell_cast' as const;
+export const TOOL_SPELL_LIST = 'spell_list' as const;
+export const TOOL_SPELL_STATUS = 'spell_status' as const;
+export const TOOL_SPELL_CANCEL = 'spell_cancel' as const;
+export const TOOL_SPELL_TEMPLATE = 'spell_template' as const;
 
 // Memory tools
 export const TOOL_MEMORY_STORE = 'memory_store' as const;

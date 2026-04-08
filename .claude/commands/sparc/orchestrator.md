@@ -97,7 +97,7 @@ mcp__moflo__swarm_init {
 }
 
 // 2. Create workflow
-mcp__moflo__workflow_create {
+mcp__moflo__spell_create {
   name: "feature-development",
   steps: ["design", "implement", "test", "deploy"]
 }

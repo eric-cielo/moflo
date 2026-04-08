@@ -559,7 +559,7 @@ mcp__moflo__swarm_init {
 **Best for**: Ordered workflow execution (spec → design → code → test → review)
 
 ```javascript
-mcp__moflo__workflow_create {
+mcp__moflo__spell_create {
   name: "development-pipeline",
   steps: [
     { mode: "researcher", task: "gather requirements" },

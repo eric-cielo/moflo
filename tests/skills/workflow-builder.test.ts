@@ -227,12 +227,12 @@ describe('workflow-builder skill', () => {
       expect(content).toContain('#238');
     });
 
-    it('references MCP workflow_create tool', () => {
-      expect(content).toContain('mcp__moflo__workflow_create');
+    it('references MCP spell_create tool', () => {
+      expect(content).toContain('mcp__moflo__spell_create');
     });
 
-    it('references MCP workflow_list tool', () => {
-      expect(content).toContain('mcp__moflo__workflow_list');
+    it('references MCP spell_list tool', () => {
+      expect(content).toContain('mcp__moflo__spell_list');
     });
   });
 

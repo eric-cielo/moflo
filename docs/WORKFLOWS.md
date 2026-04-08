@@ -822,12 +822,12 @@ Your AI client interacts with the workflow engine through MCP tools:
 
 | Tool | What it does |
 |------|-------------|
-| `mcp__moflo__workflow_run` | Run a workflow from YAML/JSON content |
-| `mcp__moflo__workflow_execute` | Execute a workflow definition object directly |
-| `mcp__moflo__workflow_cancel` | Cancel a running workflow by ID |
-| `mcp__moflo__workflow_status` | Check if a workflow is running |
-| `mcp__moflo__workflow_pause` | Pause a running workflow |
-| `mcp__moflo__workflow_resume` | Resume a paused workflow |
+| `mcp__moflo__spell_cast` | Cast a spell from YAML/JSON scroll content |
+| `mcp__moflo__spell_execute` | Execute a spell definition object directly |
+| `mcp__moflo__spell_cancel` | Dispel (cancel) a running spell by ID |
+| `mcp__moflo__spell_status` | Scry the status of a running spell |
+| `mcp__moflo__spell_suspend` | Suspend a running spell |
+| `mcp__moflo__spell_resume` | Resume a suspended spell |
 
 Each running workflow gets a unique ID (e.g., `wf-1711644123456`) that you can use to check status, cancel, or resume.
 
