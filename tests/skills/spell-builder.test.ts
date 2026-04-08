@@ -1,18 +1,18 @@
 /**
- * Workflow Builder Skill — Content Validation Tests
+ * Spell Builder Skill — Content Validation Tests
  *
  * Validates that the SKILL.md file is well-formed and contains
  * all required sections for creating, editing, and validating
- * workflow definitions.
+ * spell definitions.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-const SKILL_PATH = path.resolve(__dirname, '../../.claude/skills/workflow-builder/SKILL.md');
+const SKILL_PATH = path.resolve(__dirname, '../../.claude/skills/spell-builder/SKILL.md');
 
-describe('workflow-builder skill', () => {
+describe('spell-builder skill', () => {
   let content: string;
   let fmName: string;
   let fmDescription: string;
@@ -51,9 +51,9 @@ describe('workflow-builder skill', () => {
       expect(fmDescription.length).toBeLessThanOrEqual(1024);
     });
 
-    it('description mentions workflows', () => {
+    it('description mentions spells', () => {
       const desc = fmDescription.toLowerCase();
-      expect(desc).toContain('workflow');
+      expect(desc).toContain('spell');
     });
 
     it('description includes a "when" trigger clause', () => {
@@ -62,9 +62,9 @@ describe('workflow-builder skill', () => {
     });
   });
 
-  describe('workflow creation guidance', () => {
-    it('has a workflow creation section', () => {
-      expect(content).toMatch(/Create a New Workflow/i);
+  describe('spell creation guidance', () => {
+    it('has a spell creation section', () => {
+      expect(content).toMatch(/Create a New Spell/i);
     });
 
     it('documents required metadata fields in gather step', () => {
@@ -156,9 +156,9 @@ describe('workflow-builder skill', () => {
     });
   });
 
-  describe('workflow editing guidance', () => {
+  describe('spell editing guidance', () => {
     it('has an editing section', () => {
-      expect(content).toMatch(/Edit an Existing Workflow/i);
+      expect(content).toMatch(/Edit an Existing Spell/i);
     });
 
     it('documents add step operation', () => {
@@ -180,7 +180,7 @@ describe('workflow-builder skill', () => {
 
   describe('validation guidance', () => {
     it('has a validation section', () => {
-      expect(content).toMatch(/Validate an Existing Workflow|Run Validation/i);
+      expect(content).toMatch(/Validate an Existing Spell|Run Validation/i);
     });
 
     it('documents validation rules for required fields and step integrity', () => {

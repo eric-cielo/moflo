@@ -185,8 +185,8 @@ describe('connector-builder skill', () => {
       expect(content).toContain('memory-command');
     });
 
-    it('references the workflow-builder skill (#240)', () => {
-      expect(content).toContain('workflow-builder');
+    it('references the spell-builder skill (#240)', () => {
+      expect(content).toContain('spell-builder');
       expect(content).toContain('#240');
     });
   });
