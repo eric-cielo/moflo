@@ -76,7 +76,7 @@ beforeEach(() => {
 // ============================================================================
 
 describe('SpellCaster — sequential execution', () => {
-  it('should execute a 3-step workflow passing outputs forward', async () => {
+  it('should execute a 3-step spell passing outputs forward', async () => {
     let callOrder = 0;
 
     const step1 = createMockCommand({
@@ -375,7 +375,7 @@ describe('SpellCaster — timeout', () => {
 // ============================================================================
 
 describe('SpellCaster — cancellation', () => {
-  it('should cancel workflow and mark remaining steps as cancelled', async () => {
+  it('should cancel spell and mark remaining steps as cancelled', async () => {
     const controller = new AbortController();
 
     registry.register(createMockCommand({

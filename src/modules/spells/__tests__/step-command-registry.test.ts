@@ -244,7 +244,7 @@ describe('StepCommandRegistry', () => {
       expect(context.variables['step2.count']).toBe(42);
     });
 
-    it('should carry workflow args', () => {
+    it('should carry spell args', () => {
       const context = createMockContext({
         args: { issueNumber: '123', dryRun: true },
       });

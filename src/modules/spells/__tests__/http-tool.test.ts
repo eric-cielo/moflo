@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { httpConnector } from '../src/connectors/http-tool.js';
 
-describe('httpConnector (workflow connector)', () => {
+describe('httpConnector (spell connector)', () => {
   describe('interface compliance', () => {
     it('has correct name and version', () => {
       expect(httpConnector.name).toBe('http');

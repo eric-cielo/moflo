@@ -309,8 +309,8 @@ describe('Pluggable Steps — System Test', () => {
     });
   });
 
-  describe('7. Full workflow execution with mixed step types', () => {
-    it('should execute a workflow using built-in + user-defined steps', async () => {
+  describe('7. Full spell execution with mixed step types', () => {
+    it('should execute a spell using built-in + user-defined steps', async () => {
       const result = await runWorkflowFromContent(
         WORKFLOW_YAML,
         'system-test.yaml',

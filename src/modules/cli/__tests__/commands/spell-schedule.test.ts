@@ -1,5 +1,5 @@
 /**
- * Workflow Schedule Command Tests
+ * Spell Schedule Command Tests
  *
  * Tests the schedule subcommand: create, list, cancel.
  * Mocks MCP tools and daemon readiness for isolation.
@@ -71,7 +71,7 @@ function makeCtx(overrides: Partial<CommandContext> = {}): CommandContext {
   };
 }
 
-describe('workflow schedule command', () => {
+describe('spell schedule command', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockEnsureDaemon.mockResolvedValue({

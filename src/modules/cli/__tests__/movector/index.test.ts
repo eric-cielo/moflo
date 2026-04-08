@@ -146,7 +146,7 @@ describe('MoVector Module Exports', () => {
 });
 
 describe('MoVector Integration Scenarios', () => {
-  describe('Code Analysis Workflow', () => {
+  describe('Code Analysis Pipeline', () => {
     it('should analyze TypeScript code and extract information', () => {
       const analyzer = createASTAnalyzer();
       const code = `
@@ -174,7 +174,7 @@ export function createUser(name: string) {
     });
   });
 
-  describe('Diff Analysis Workflow', () => {
+  describe('Diff Analysis Pipeline', () => {
     it('should analyze diff and provide classification', () => {
       const classifier = createDiffClassifier();
       const diff = `diff --git a/src/auth/login.ts b/src/auth/login.ts
@@ -201,7 +201,7 @@ export function createUser(name: string) {
     });
   });
 
-  describe('Coverage Routing Workflow', () => {
+  describe('Coverage Routing Pipeline', () => {
     it('should route based on coverage and suggest improvements', () => {
       const router = createCoverageRouter();
       const coverageData = {
@@ -235,7 +235,7 @@ export function createUser(name: string) {
     });
   });
 
-  describe('Dependency Graph Workflow', () => {
+  describe('Dependency Graph Pipeline', () => {
     it('should build graph using function-based API', async () => {
       // The function-based API builds graphs from directories
       // For testing without actual files, we test that the functions are callable
@@ -282,7 +282,7 @@ export function createUser(name: string) {
     });
   });
 
-  describe('Q-Learning Task Routing Workflow', () => {
+  describe('Q-Learning Task Routing Pipeline', () => {
     it('should learn and improve routing decisions', async () => {
       const router = createQLearningRouter({
         explorationInitial: 0.1, // Low exploration for predictable tests
@@ -322,7 +322,7 @@ export function createUser(name: string) {
     });
   });
 
-  describe('Combined Workflow', () => {
+  describe('Combined Pipeline', () => {
     it('should use multiple analyzers together', () => {
       // 1. Analyze code structure
       const astAnalyzer = createASTAnalyzer();

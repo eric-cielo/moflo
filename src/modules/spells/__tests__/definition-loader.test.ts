@@ -80,7 +80,7 @@ afterEach(() => {
 // ============================================================================
 
 describe('DefinitionLoader — shipped definitions', () => {
-  it('should load shipped workflow definitions', () => {
+  it('should load shipped spell definitions', () => {
     const shippedDir = makeDir('shipped');
     writeYaml(shippedDir, 'deploy.yaml', SHIPPED_WORKFLOW);
 
@@ -101,7 +101,7 @@ describe('DefinitionLoader — shipped definitions', () => {
 });
 
 describe('DefinitionLoader — user override', () => {
-  it('should override shipped workflow by name match', () => {
+  it('should override shipped spell by name match', () => {
     const shippedDir = makeDir('shipped');
     const userDir = makeDir('user');
     writeYaml(shippedDir, 'deploy.yaml', SHIPPED_WORKFLOW);
@@ -121,7 +121,7 @@ describe('DefinitionLoader — user override', () => {
     expect(deploy!.definition.description).toBe('User-customized deploy workflow');
   });
 
-  it('should add user workflow with new name additively', () => {
+  it('should add user spell with new name additively', () => {
     const shippedDir = makeDir('shipped');
     const userDir = makeDir('user');
     writeYaml(shippedDir, 'deploy.yaml', SHIPPED_WORKFLOW);
@@ -180,7 +180,7 @@ describe('DefinitionLoader — custom paths', () => {
 });
 
 describe('DefinitionLoader — format support', () => {
-  it('should load JSON format workflow definitions', () => {
+  it('should load JSON format spell definitions', () => {
     const dir = makeDir('json');
     writeFileSync(join(dir, 'wf.json'), JSON_WORKFLOW, 'utf-8');
 
@@ -207,7 +207,7 @@ describe('DefinitionLoader — format support', () => {
     expect(result.workflows.size).toBe(1);
   });
 
-  it('should ignore non-workflow files', () => {
+  it('should ignore non-spell files', () => {
     const dir = makeDir('mixed');
     writeYaml(dir, 'deploy.yaml', SHIPPED_WORKFLOW);
     writeFileSync(join(dir, 'readme.md'), '# README', 'utf-8');
@@ -241,7 +241,7 @@ describe('DefinitionLoader — error handling', () => {
 });
 
 describe('DefinitionLoader — loadWorkflowByName', () => {
-  it('should load a specific workflow by name', () => {
+  it('should load a specific spell by name', () => {
     const shippedDir = makeDir('shipped');
     writeYaml(shippedDir, 'deploy.yaml', SHIPPED_WORKFLOW);
 
@@ -254,7 +254,7 @@ describe('DefinitionLoader — loadWorkflowByName', () => {
     expect(result!.definition.name).toBe('deploy');
   });
 
-  it('should return undefined for unknown workflow name', () => {
+  it('should return undefined for unknown spell name', () => {
     const result = loadWorkflowByName('nonexistent', {
       shippedDir: join(testDir, 'empty'),
       skipValidation: true,

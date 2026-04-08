@@ -1,7 +1,7 @@
 /**
- * Workflow Sandboxing — Runtime Behavioral Tests
+ * Spell Sandboxing — Runtime Behavioral Tests
  *
- * Replaces the source-string assertions from tests/workflow-sandboxing.test.ts
+ * Replaces the source-string assertions from tests/spell-sandboxing.test.ts
  * (Issue #187). Each test exercises actual runtime behavior rather than
  * scanning source code for string patterns.
  *

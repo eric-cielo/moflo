@@ -1,7 +1,7 @@
 /**
- * Epic Workflow YAML Template Tests
+ * Epic Spell YAML Template Tests
  *
- * Story #196: Verify both epic workflow YAML templates parse, validate,
+ * Story #196: Verify both epic spell YAML templates parse, validate,
  * and produce expected structure.
  */
 

@@ -1,7 +1,7 @@
 /**
  * Pause/Resume Tests
  *
- * Story #140: Tests for workflow pause/resume mechanism.
+ * Story #140: Tests for spell pause/resume mechanism.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -170,7 +170,7 @@ describe('Serialization roundtrip', () => {
 // ============================================================================
 
 describe('resumeWorkflow — errors', () => {
-  it('should return error for nonexistent workflow ID', async () => {
+  it('should return error for nonexistent spell ID', async () => {
     const memory = createMockMemory();
 
     const result = await resumeWorkflow('nonexistent', { memory });

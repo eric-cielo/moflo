@@ -163,25 +163,25 @@ describe('resolveMofloLevel', () => {
     expect(resolveMofloLevel(step, command, undefined, undefined)).toBe('memory');
   });
 
-  it('should allow step to narrow below workflow level', () => {
+  it('should allow step to narrow below spell level', () => {
     const step = makeStep({ mofloLevel: 'none' });
     const command = makeCommand({ defaultMofloLevel: 'memory' });
     expect(resolveMofloLevel(step, command, 'full', undefined)).toBe('none');
   });
 
-  it('should cap step level at workflow level', () => {
+  it('should cap step level at spell level', () => {
     const step = makeStep({ mofloLevel: 'full' });
     const command = makeCommand({ defaultMofloLevel: 'memory' });
     expect(resolveMofloLevel(step, command, 'memory', undefined)).toBe('memory');
   });
 
-  it('should cap at parent level for recursive workflows', () => {
+  it('should cap at parent level for recursive spells', () => {
     const step = makeStep({ mofloLevel: 'full' });
     const command = makeCommand({ defaultMofloLevel: 'memory' });
     expect(resolveMofloLevel(step, command, 'recursive', 'hooks')).toBe('hooks');
   });
 
-  it('should not escalate beyond parent even without workflow level', () => {
+  it('should not escalate beyond parent even without spell level', () => {
     const step = makeStep({ type: 'agent' });
     const command = makeCommand({ defaultMofloLevel: 'full' });
     expect(resolveMofloLevel(step, command, undefined, 'memory')).toBe('memory');
@@ -204,13 +204,13 @@ describe('mofloLevel validation', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('should pass with valid workflow mofloLevel', () => {
+  it('should pass with valid spell mofloLevel', () => {
     const def = makeWorkflow({ mofloLevel: 'memory' });
     const result = validateSpellDefinition(def);
     expect(result.valid).toBe(true);
   });
 
-  it('should reject invalid workflow mofloLevel', () => {
+  it('should reject invalid spell mofloLevel', () => {
     const def = makeWorkflow({ mofloLevel: 'admin' as MofloLevel });
     const result = validateSpellDefinition(def);
     expect(result.valid).toBe(false);
@@ -234,7 +234,7 @@ describe('mofloLevel validation', () => {
     expect(result.errors.some(e => e.message.includes('invalid mofloLevel'))).toBe(true);
   });
 
-  it('should reject step mofloLevel that exceeds workflow level', () => {
+  it('should reject step mofloLevel that exceeds spell level', () => {
     const def = makeWorkflow({
       mofloLevel: 'memory',
       steps: [makeStep({ mofloLevel: 'full' })],
@@ -244,7 +244,7 @@ describe('mofloLevel validation', () => {
     expect(result.errors.some(e => e.message.includes('exceeds workflow-level'))).toBe(true);
   });
 
-  it('should allow step level equal to workflow level', () => {
+  it('should allow step level equal to spell level', () => {
     const def = makeWorkflow({
       mofloLevel: 'hooks',
       steps: [makeStep({ mofloLevel: 'hooks' })],
@@ -253,7 +253,7 @@ describe('mofloLevel validation', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('should allow step level below workflow level', () => {
+  it('should allow step level below spell level', () => {
     const def = makeWorkflow({
       mofloLevel: 'full',
       steps: [makeStep({ mofloLevel: 'none' })],
@@ -393,7 +393,7 @@ describe('SpellCaster — mofloLevel enforcement', () => {
     expect(capturedLevel).toBe('none');
   });
 
-  it('should cap step level at workflow level', async () => {
+  it('should cap step level at spell level', async () => {
     let capturedLevel: string | undefined;
     registry.register(makeCommand({
       defaultMofloLevel: 'full',
@@ -434,7 +434,7 @@ describe('SpellCaster — mofloLevel enforcement', () => {
     expect(capturedLevel).toBe('hooks');
   });
 
-  it('should fail nested workflow that exceeds parent level', async () => {
+  it('should fail nested spell that exceeds parent level', async () => {
     registry.register(makeCommand());
 
     const def = makeWorkflow({

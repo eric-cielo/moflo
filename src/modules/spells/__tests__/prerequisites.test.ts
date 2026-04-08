@@ -1,7 +1,7 @@
 /**
  * Prerequisite Checker Tests
  *
- * Story #193: Tests for the workflow engine prerequisites system.
+ * Story #193: Tests for the spell engine prerequisites system.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -227,7 +227,7 @@ describe('SpellCaster — prerequisite integration', () => {
     runner = new SpellCaster(registry, createMockCredentials(), createMockMemory());
   });
 
-  it('fails workflow when prerequisites are not met', async () => {
+  it('fails spell when prerequisites are not met', async () => {
     const failingPrereq = makePrereq('gh', false, 'Install: brew install gh');
     registry.register(makeCommand('github', [failingPrereq]));
 
