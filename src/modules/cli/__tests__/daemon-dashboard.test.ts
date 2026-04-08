@@ -202,22 +202,22 @@ describe('DaemonDashboard', () => {
     expect(data.schedules).toEqual([]);
   });
 
-  it('returns workflow executions at GET /api/workflows', async () => {
+  it('returns spell executions at GET /api/spells', async () => {
     const daemon = makeMockDaemon();
     const memory = makeMockMemory({
       'schedule-executions': [{
         key: 'exec-1',
-        value: JSON.stringify({ workflowName: 'security-audit', startedAt: 1711875600000, success: true, duration: 60000 }),
+        value: JSON.stringify({ spellName: 'security-audit', startedAt: 1711875600000, success: true, duration: 60000 }),
         score: 1,
       }],
     });
     dashboard = await startDashboard(daemon, { port: testPort, memory });
 
-    const res = await fetchDashboard(testPort, '/api/workflows');
+    const res = await fetchDashboard(testPort, '/api/spells');
     const data = JSON.parse(res.body);
     expect(data.available).toBe(true);
     expect(data.executions).toHaveLength(1);
-    expect(data.executions[0].workflowName).toBe('security-audit');
+    expect(data.executions[0].spellName).toBe('security-audit');
     expect(data.executions[0].success).toBe(true);
     expect(data.executions[0].duration).toBe(60000);
   });
@@ -293,7 +293,7 @@ describe('DaemonDashboard', () => {
     const daemon = makeMockDaemon();
     dashboard = await startDashboard(daemon, { port: testPort });
 
-    const endpoints = ['/api/status', '/api/schedules', '/api/workflows', '/api/memory/stats'];
+    const endpoints = ['/api/status', '/api/schedules', '/api/spells', '/api/memory/stats'];
     for (const ep of endpoints) {
       const res = await fetchDashboard(testPort, ep);
       expect(res.headers['content-type']).toContain('application/json');
@@ -304,19 +304,19 @@ describe('DaemonDashboard', () => {
     expect(DEFAULT_DASHBOARD_PORT).toBe(3117);
   });
 
-  it('returns context metadata in workflow executions', async () => {
+  it('returns context metadata in spell executions', async () => {
     const daemon = makeMockDaemon();
     const context = { type: 'ticket', label: '#350 \u2014 Replace zod with valibot', issueNumber: 350, issueTitle: 'Replace zod with valibot', execMode: 'normal' };
     const memory = makeMockMemory({
       'tasklist': [{
         key: 'flo-run-1',
-        value: JSON.stringify({ workflowName: '#350 \u2014 Replace zod with valibot', startedAt: 1711875600000, success: true, duration: 120000, context }),
+        value: JSON.stringify({ spellName: '#350 \u2014 Replace zod with valibot', startedAt: 1711875600000, success: true, duration: 120000, context }),
         score: 1,
       }],
     });
     dashboard = await startDashboard(daemon, { port: testPort, memory });
 
-    const res = await fetchDashboard(testPort, '/api/workflows');
+    const res = await fetchDashboard(testPort, '/api/spells');
     const data = JSON.parse(res.body);
     expect(data.executions).toHaveLength(1);
     expect(data.executions[0].context).toEqual(context);
@@ -348,9 +348,9 @@ describe('buildFloRunContext', () => {
     expect(ctx.epicProgress).toEqual([3, 5]);
   });
 
-  it('builds workflow context with name and args', () => {
-    const ctx = buildFloRunContext({ workflowName: 'security-audit', workflowArgs: ['./src'] });
-    expect(ctx.type).toBe('workflow');
+  it('builds spell context with name and args', () => {
+    const ctx = buildFloRunContext({ spellName: 'security-audit', spellArgs: ['./src'] });
+    expect(ctx.type).toBe('spell');
     expect(ctx.label).toContain('security-audit');
     expect(ctx.label).toContain('./src');
   });

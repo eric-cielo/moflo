@@ -155,7 +155,7 @@ describe('Serialization roundtrip', () => {
     await persistPausedState(originalState, memory);
 
     // Read back
-    const raw = await memory.read('workflow-paused', 'wf-serial-test');
+    const raw = await memory.read('spell-paused', 'wf-serial-test');
     const reconstructed = raw as typeof originalState;
 
     expect(reconstructed.workflowId).toBe('wf-serial-test');
@@ -204,7 +204,7 @@ describe('resumeWorkflow — errors', () => {
     expect(result.success).toBe(false);
     expect(result.errors[0].message).toContain('expired');
     // State should be cleaned up
-    expect(await memory.read('workflow-paused', 'wf-stale-test')).toBeNull();
+    expect(await memory.read('spell-paused', 'wf-stale-test')).toBeNull();
   });
 });
 
@@ -229,7 +229,7 @@ describe('cleanupStalePaused', () => {
     const cleaned = await cleanupStalePaused(memory);
 
     expect(cleaned).toBe(1);
-    expect(await memory.read('workflow-paused', 'wf-stale')).toBeNull();
-    expect(await memory.read('workflow-paused', 'wf-fresh')).not.toBeNull();
+    expect(await memory.read('spell-paused', 'wf-stale')).toBeNull();
+    expect(await memory.read('spell-paused', 'wf-fresh')).not.toBeNull();
   });
 });

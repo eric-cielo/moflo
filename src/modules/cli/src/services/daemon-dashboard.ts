@@ -1,7 +1,7 @@
 /**
  * Daemon Dashboard — Lightweight localhost HTTP server
  *
- * Serves a read-only VanJS dashboard for daemon status, workflow logs,
+ * Serves a read-only VanJS dashboard for daemon status, spell logs,
  * and memory stats. Binds to 127.0.0.1 only (no auth needed).
  *
  * @module daemon-dashboard
@@ -65,7 +65,7 @@ export async function createDashboardMemoryAccessor(): Promise<MemoryAccessor> {
         const listResult = await listEntries({ namespace, limit: 100 });
         if (!listResult.success || listResult.entries.length === 0) {
           // Fall back to semantic search with a meaningful query
-          const result = await searchEntries({ query: query === '*' ? 'workflow execution status' : query, namespace, limit: 100 });
+          const result = await searchEntries({ query: query === '*' ? 'spell execution status' : query, namespace, limit: 100 });
           if (!result.success) return [];
           return result.results.map(r => ({ key: r.key, value: r.content, score: r.score }));
         }
@@ -147,7 +147,7 @@ async function handleSchedules(memory?: MemoryAccessor): Promise<object> {
   }
 }
 
-async function handleWorkflows(memory?: MemoryAccessor): Promise<object> {
+async function handleSpells(memory?: MemoryAccessor): Promise<object> {
   if (!memory) {
     return { executions: [], available: false };
   }
@@ -198,8 +198,8 @@ async function handleMemoryStats(): Promise<object> {
 export function buildFloRunContext(opts: {
   issueNumber?: number;
   issueTitle?: string;
-  workflowName?: string;
-  workflowArgs?: string[];
+  spellName?: string;
+  spellArgs?: string[];
   execMode?: 'normal' | 'swarm' | 'hive';
   epicProgress?: readonly [number, number];
   isEpic?: boolean;
@@ -209,13 +209,13 @@ export function buildFloRunContext(opts: {
 }): FloRunContext {
   const execMode = opts.execMode ?? 'normal';
 
-  if (opts.workflowName) {
-    const argStr = opts.workflowArgs?.length ? ` ${opts.workflowArgs.join(' ')}` : '';
+  if (opts.spellName) {
+    const argStr = opts.spellArgs?.length ? ` ${opts.spellArgs.join(' ')}` : '';
     return {
-      type: 'workflow',
-      label: `${opts.workflowName}${argStr ? ' \u2192 ' + argStr.trim() : ''}`,
-      workflowName: opts.workflowName,
-      workflowArgs: opts.workflowArgs,
+      type: 'spell',
+      label: `${opts.spellName}${argStr ? ' \u2192 ' + argStr.trim() : ''}`,
+      spellName: opts.spellName,
+      spellArgs: opts.spellArgs,
       execMode,
     };
   }
@@ -264,7 +264,7 @@ export function buildFloRunContext(opts: {
 
 /**
  * Store a flo run record to the tasklist namespace for dashboard display.
- * Used by non-workflow-engine /flo invocations (ticket, research, epic).
+ * Used by non-spell-engine /flo invocations (ticket, research, epic).
  */
 export async function storeFloRunRecord(
   memory: MemoryAccessor,
@@ -277,7 +277,7 @@ export async function storeFloRunRecord(
     const record: Record<string, unknown> = {
       status,
       context,
-      workflowName: context.label,
+      spellName: context.label,
       updatedAt: new Date().toISOString(),
     };
     if (extra?.startedAt) record.startedAt = extra.startedAt;
@@ -342,8 +342,8 @@ async function handleRequest(
       sendJson(res, 200, handleStatus(daemon));
     } else if (url === '/api/schedules') {
       sendJson(res, 200, await handleSchedules(opts.memory));
-    } else if (url === '/api/workflows') {
-      sendJson(res, 200, await handleWorkflows(opts.memory));
+    } else if (url === '/api/spells') {
+      sendJson(res, 200, await handleSpells(opts.memory));
     } else if (url === '/api/memory/stats') {
       sendJson(res, 200, await handleMemoryStats());
     } else {
@@ -623,12 +623,12 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       w.executions.forEach(e => {
         const ctx = e.context;
         const contextLabel = fmtContext(ctx);
-        const name = contextLabel || e.workflowName || 'Unknown Workflow';
+        const name = contextLabel || e.spellName || e.workflowName || 'Unknown Spell';
         const runId = e.id || '-';
         const statusBadge = e.success === true ? badge('pass','green') : e.success === false ? badge('fail','red') : badge('running','yellow');
         const progress = e.totalSteps ? (e.completedSteps || 0) + '/' + e.totalSteps + ' steps' : '';
         const steps = Array.isArray(e.steps) ? e.steps : [];
-        const typeBadge = ctx ? badge(ctx.type, ctx.type === 'epic' ? 'yellow' : ctx.type === 'workflow' ? 'gray' : 'green') : '';
+        const typeBadge = ctx ? badge(ctx.type, ctx.type === 'epic' ? 'yellow' : ctx.type === 'spell' ? 'gray' : 'green') : '';
 
         html += '<div class="wf-group" style="margin-bottom:16px">';
         // Header: context label, type badge, status, timing
@@ -689,7 +689,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         const [s, sc, w, m] = await Promise.all([
           fetch('/api/status').then(r => r.json()),
           fetch('/api/schedules').then(r => r.json()),
-          fetch('/api/workflows').then(r => r.json()),
+          fetch('/api/spells').then(r => r.json()),
           fetch('/api/memory/stats').then(r => r.json()),
         ]);
         renderStatus(s);

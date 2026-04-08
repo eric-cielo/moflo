@@ -1,7 +1,7 @@
 /**
- * Workflow Runner Types
+ * Spell Runner Types
  *
- * Types for the sequential workflow executor.
+ * Types for the sequential spell executor.
  */
 
 import type { StepOutput, ValidationError, MofloLevel, PrerequisiteResult } from './step-command.types.js';
@@ -99,18 +99,18 @@ export interface DryRunResult {
 // ============================================================================
 
 export interface FloRunContext {
-  /** Workflow type: ticket, epic, workflow, research, new-ticket */
-  readonly type: 'ticket' | 'epic' | 'workflow' | 'research' | 'new-ticket';
+  /** Run type: ticket, epic, spell, research, new-ticket */
+  readonly type: 'ticket' | 'epic' | 'spell' | 'research' | 'new-ticket';
   /** Human-readable display label, e.g. "#350 — Replace zod with valibot" */
   readonly label: string;
   /** GitHub issue number (if applicable) */
   readonly issueNumber?: number;
   /** GitHub issue title (if applicable) */
   readonly issueTitle?: string;
-  /** Workflow name for -wf runs */
-  readonly workflowName?: string;
+  /** Spell name for -wf runs */
+  readonly spellName?: string;
   /** Positional args for -wf runs */
-  readonly workflowArgs?: string[];
+  readonly spellArgs?: string[];
   /** Execution mode badge */
   readonly execMode?: 'normal' | 'swarm' | 'hive';
   /** Epic story progress: [completed, total] */

@@ -1,7 +1,7 @@
 /**
- * Workflow Pause/Resume
+ * Spell Pause/Resume
  *
- * Serializes workflow execution state to memory for cross-conversation
+ * Serializes spell execution state to memory for cross-conversation
  * survival, and reconstructs it for resumption.
  */
 
@@ -42,7 +42,9 @@ export interface ResumeOptions {
   readonly memory?: MemoryAccessor;
 }
 
-const PAUSE_NAMESPACE = 'workflow-paused';
+const PAUSE_NAMESPACE = 'spell-paused';
+/** Legacy namespace — checked for migration from pre-spell terminology. */
+const LEGACY_PAUSE_NAMESPACE = 'workflow-paused';
 const DEFAULT_STALE_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
 
 // ============================================================================
@@ -96,7 +98,17 @@ export async function resumeWorkflow(
   options: ResumeOptions = {},
 ): Promise<WorkflowResult> {
   const memory = options.memory ?? noopMemory;
-  const raw = await memory.read(PAUSE_NAMESPACE, workflowId);
+  let raw = await memory.read(PAUSE_NAMESPACE, workflowId);
+
+  // Migrate from legacy namespace if not found in new one
+  if (!raw) {
+    raw = await memory.read(LEGACY_PAUSE_NAMESPACE, workflowId);
+    if (raw) {
+      // Migrate: write to new namespace, clear legacy
+      await memory.write(PAUSE_NAMESPACE, workflowId, raw);
+      await memory.write(LEGACY_PAUSE_NAMESPACE, workflowId, null);
+    }
+  }
 
   if (!raw) {
     return {
@@ -104,7 +116,7 @@ export async function resumeWorkflow(
       success: false,
       steps: [],
       outputs: {},
-      errors: [{ code: 'PAUSED_STATE_NOT_FOUND', message: `No paused state found for workflow "${workflowId}"` }],
+      errors: [{ code: 'PAUSED_STATE_NOT_FOUND', message: `No paused state found for spell "${workflowId}"` }],
       duration: 0,
       cancelled: false,
     };
@@ -188,15 +200,25 @@ export async function resumeWorkflow(
  * Remove stale paused workflows. Returns number of cleaned entries.
  */
 export async function cleanupStalePaused(memory: MemoryAccessor): Promise<number> {
-  const results = await memory.search(PAUSE_NAMESPACE, '');
+  // Clean both current and legacy namespaces
+  const [currentResults, legacyResults] = await Promise.all([
+    memory.search(PAUSE_NAMESPACE, ''),
+    memory.search(LEGACY_PAUSE_NAMESPACE, '').catch(() => []),
+  ]);
   let cleaned = 0;
 
-  for (const entry of results) {
-    const state = entry.value as PausedState | undefined;
+  // Tag entries with their source namespace to avoid redundant writes
+  const tagged: Array<{ ns: string; value: unknown }> = [
+    ...currentResults.map(e => ({ ns: PAUSE_NAMESPACE, value: e.value })),
+    ...legacyResults.map(e => ({ ns: LEGACY_PAUSE_NAMESPACE, value: e.value })),
+  ];
+
+  for (const { ns, value } of tagged) {
+    const state = value as PausedState | undefined;
     if (state?.pausedAt && state?.staleAfterMs) {
       const pausedTime = new Date(state.pausedAt).getTime();
       if (Date.now() - pausedTime > state.staleAfterMs) {
-        await memory.write(PAUSE_NAMESPACE, state.workflowId, null);
+        await memory.write(ns, state.workflowId, null);
         cleaned++;
       }
     }
