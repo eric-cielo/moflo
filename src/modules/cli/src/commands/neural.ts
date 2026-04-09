@@ -148,7 +148,7 @@ const trainCommand: Command = {
             'Predict optimal agent for task type',
             'Forecast resource requirements',
             'Anticipate failure modes and mitigate',
-            'Estimate completion time for workflow',
+            'Estimate completion time for spell',
             'Predict pattern similarity before search'
           ],
           security: [

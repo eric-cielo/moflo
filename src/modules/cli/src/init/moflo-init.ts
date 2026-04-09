@@ -224,7 +224,7 @@ async function runWizard(root: string): Promise<MofloInitAnswers> {
   }
 
   const gates = await confirm({
-    message: 'Enable workflow gates (memory-first, task-create-before-agents)?',
+    message: 'Enable spell gates (memory-first, task-create-before-agents)?',
     default: true,
   });
 
@@ -361,7 +361,7 @@ ${testDirs.map(d => `    - ${d}`).join('\n')}
   exclude: [node_modules, coverage, dist]
   namespace: tests
 
-# Workflow gates (enforced via Claude Code hooks)
+# Spell gates (enforced via Claude Code hooks)
 gates:
   memory_first: ${gatesEnabled}
   task_create_first: ${gatesEnabled}
@@ -385,7 +385,7 @@ hooks:
   post_edit: true              # Record edit outcomes, train neural patterns
   pre_task: true               # Get agent routing before task spawn
   post_task: true              # Record task results for learning
-  gate: ${gatesEnabled}                   # Workflow gate enforcement (memory-first, task-create-first)
+  gate: ${gatesEnabled}                   # Spell gate enforcement (memory-first, task-create-first)
   route: true                  # Intelligent task routing on each prompt
   stop_hook: ${answers?.stopHook ?? true}              # Session-end persistence and metric export
   session_restore: true        # Restore session state on start
@@ -689,7 +689,7 @@ function generateClaudeMd(root: string, force?: boolean): MofloInitResult['steps
 ${MOFLO_MARKER}
 ## MoFlo — AI Agent Orchestration
 
-This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted development workflows.
+This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted development spells.
 
 ### FIRST ACTION ON EVERY PROMPT: Search Memory
 
@@ -702,7 +702,7 @@ mcp__moflo__memory_search — query: "<task description>", namespace: "guidance"
 Search \`guidance\` and \`patterns\` namespaces on every prompt. Search \`code-map\` when navigating the codebase.
 When the user asks you to remember something: \`mcp__moflo__memory_store\` with namespace \`knowledge\`.
 
-### Workflow Gates (enforced automatically)
+### Spell Gates (enforced automatically)
 
 - **Memory-first**: Must search memory before Glob/Grep/Read
 - **TaskCreate-first**: Must call TaskCreate before spawning Agent tool

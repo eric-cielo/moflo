@@ -71,7 +71,7 @@ export async function loadSpellEngine(): Promise<EngineModule> {
   pendingImport = (async () => {
     try {
       // Walk up from this file to find the @moflo/cli package root (contains package.json),
-      // then resolve sibling workflows package. Works from both compiled (dist/src/services/)
+      // then resolve sibling spells package. Works from both compiled (dist/src/services/)
       // and source (src/services/) locations.
       const __engineDir = dirname(fileURLToPath(import.meta.url));
       let cliRoot = __engineDir;

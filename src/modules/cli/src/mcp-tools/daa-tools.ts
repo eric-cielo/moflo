@@ -6,7 +6,7 @@
  * ⚠️ IMPORTANT: These tools provide LOCAL STATE MANAGEMENT.
  * - Agent coordination is tracked locally
  * - No distributed network communication
- * - Useful for workflow orchestration and state tracking
+ * - Useful for spell orchestration and state tracking
  */
 
 import type { MCPTool } from './types.js';
@@ -36,7 +36,7 @@ interface DAAAgent {
   lastActivity: string;
 }
 
-interface DAAWorkflow {
+interface DAASpell {
   id: string;
   name: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
@@ -47,7 +47,7 @@ interface DAAWorkflow {
 
 interface DAAStore {
   agents: Record<string, DAAAgent>;
-  workflows: Record<string, DAAWorkflow>;
+  spells: Record<string, DAASpell>;
   knowledge: Record<string, { domain: string; content: unknown; sharedBy: string; timestamp: string }>;
   version: string;
 }
@@ -76,7 +76,7 @@ function loadDAAStore(): DAAStore {
   } catch {
     // Return empty store
   }
-  return { agents: {}, workflows: {}, knowledge: {}, version: '3.0.0' };
+  return { agents: {}, spells: {}, knowledge: {}, version: '3.0.0' };
 }
 
 function saveDAAStore(store: DAAStore): void {
@@ -210,7 +210,7 @@ export const daaTools: MCPTool[] = [
       const store = loadDAAStore();
       const id = input.id as string;
 
-      const workflow: DAAWorkflow = {
+      const spell: DAASpell = {
         id,
         name: input.name as string,
         status: 'pending',
@@ -222,16 +222,16 @@ export const daaTools: MCPTool[] = [
         createdAt: new Date().toISOString(),
       };
 
-      store.workflows[id] = workflow;
+      store.spells[id] = spell;
       saveDAAStore(store);
 
       return {
         success: true,
-        workflowId: id,
-        name: workflow.name,
-        steps: workflow.steps.length,
-        strategy: workflow.strategy,
-        createdAt: workflow.createdAt,
+        spellId: id,
+        name: spell.name,
+        steps: spell.steps.length,
+        strategy: spell.strategy,
+        createdAt: spell.createdAt,
       };
     },
   },
@@ -242,40 +242,40 @@ export const daaTools: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Spell invocation ID' },
+        spellId: { type: 'string', description: 'Spell invocation ID' },
         agentIds: { type: 'array', items: { type: 'string' }, description: 'Agent IDs to use' },
         parallelExecution: { type: 'boolean', description: 'Enable parallel execution' },
       },
-      required: ['workflowId'],
+      required: ['spellId'],
     },
     handler: async (input) => {
       const store = loadDAAStore();
-      const workflowId = input.workflowId as string;
-      const workflow = store.workflows[workflowId];
+      const spellId = input.spellId as string;
+      const spell = store.spells[spellId];
 
-      if (!workflow) {
+      if (!spell) {
         return { success: false, error: 'Spell not found' };
       }
 
-      workflow.status = 'running';
+      spell.status = 'running';
       saveDAAStore(store);
 
       // Simulate execution
-      for (const step of workflow.steps) {
+      for (const step of spell.steps) {
         step.status = 'running';
         await new Promise(resolve => setTimeout(resolve, 10));
         step.status = 'completed';
         step.output = `Completed: ${step.name}`;
       }
 
-      workflow.status = 'completed';
+      spell.status = 'completed';
       saveDAAStore(store);
 
       return {
         success: true,
-        workflowId,
-        status: workflow.status,
-        steps: workflow.steps,
+        spellId,
+        status: spell.status,
+        steps: spell.steps,
         completedAt: new Date().toISOString(),
       };
     },
@@ -450,7 +450,7 @@ export const daaTools: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        category: { type: 'string', enum: ['all', 'agents', 'workflows', 'learning'], description: 'Metrics category' },
+        category: { type: 'string', enum: ['all', 'agents', 'spells', 'learning'], description: 'Metrics category' },
         timeRange: { type: 'string', description: 'Time range' },
       },
     },
@@ -459,7 +459,7 @@ export const daaTools: MCPTool[] = [
       const category = (input.category as string) || 'all';
 
       const agents = Object.values(store.agents);
-      const workflows = Object.values(store.workflows);
+      const spells = Object.values(store.spells);
 
       const metrics = {
         agents: {
@@ -470,12 +470,12 @@ export const daaTools: MCPTool[] = [
             : 0,
           totalTasks: agents.reduce((sum, a) => sum + a.metrics.tasksCompleted, 0),
         },
-        workflows: {
-          total: workflows.length,
-          completed: workflows.filter(w => w.status === 'completed').length,
-          running: workflows.filter(w => w.status === 'running').length,
-          successRate: workflows.length > 0
-            ? workflows.filter(w => w.status === 'completed').length / workflows.length
+        spells: {
+          total: spells.length,
+          completed: spells.filter(w => w.status === 'completed').length,
+          running: spells.filter(w => w.status === 'running').length,
+          successRate: spells.length > 0
+            ? spells.filter(w => w.status === 'completed').length / spells.length
             : 0,
         },
         learning: {

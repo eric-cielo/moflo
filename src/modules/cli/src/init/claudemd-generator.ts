@@ -21,7 +21,7 @@ function mofloSection(): string {
   return `${MARKER_START}
 ## MoFlo — AI Agent Orchestration
 
-This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted development workflows.
+This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted development spells.
 
 ### FIRST ACTION ON EVERY PROMPT: Search Memory
 
@@ -34,7 +34,7 @@ mcp__moflo__memory_search — query: "<task description>", namespace: "guidance"
 Search \`guidance\` and \`patterns\` namespaces on every prompt. Search \`code-map\` when navigating the codebase.
 When the user asks you to remember something: \`mcp__moflo__memory_store\` with namespace \`knowledge\`.
 
-### Workflow Gates (enforced automatically)
+### Spell Gates (enforced automatically)
 
 - **Memory-first**: Must search memory before Glob/Grep/Read
 - **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
@@ -88,7 +88,7 @@ export function generateMinimalClaudeMd(options: InitOptions): string {
 
 /** Available template names for CLI wizard (kept for backward compat, all produce same output) */
 export const CLAUDE_MD_TEMPLATES: Array<{ name: ClaudeMdTemplate; description: string }> = [
-  { name: 'minimal', description: 'Recommended — memory search, workflow gates, MCP tools (~40 lines injected)' },
+  { name: 'minimal', description: 'Recommended — memory search, spell gates, MCP tools (~40 lines injected)' },
   { name: 'standard', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },
   { name: 'full', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },
   { name: 'security', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },

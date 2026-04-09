@@ -6,7 +6,7 @@
  * ⚠️ IMPORTANT: These tools provide LOCAL STATE MANAGEMENT.
  * - Topology/consensus state is tracked locally
  * - No actual distributed coordination
- * - Useful for single-machine workflow orchestration
+ * - Useful for single-machine spell orchestration
  */
 
 import type { MCPTool } from './types.js';

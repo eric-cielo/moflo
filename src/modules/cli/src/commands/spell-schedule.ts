@@ -29,7 +29,7 @@ async function getSchedulerUtils() {
     const { dirname, join } = await import('path');
     const { fileURLToPath, pathToFileURL } = await import('url');
     const here = dirname(fileURLToPath(import.meta.url));
-    const cronParserPath = join(here, '..', '..', '..', '..', 'workflows', 'dist', 'scheduler', 'cron-parser.js');
+    const cronParserPath = join(here, '..', '..', '..', '..', 'spells', 'dist', 'scheduler', 'cron-parser.js');
     _schedulerUtils = await import(pathToFileURL(cronParserPath).href);
   } catch {
     _schedulerUtils = null;
@@ -91,7 +91,7 @@ const createCommand: Command = {
       }
       nextRunAt = computed;
     } else {
-      // Fallback: basic validation if workflows package unavailable
+      // Fallback: basic validation if spells package unavailable
       if (cron && !/^\S+\s+\S+\s+\S+\s+\S+\s+\S+$/.test(cron.trim())) {
         output.printError('Invalid cron expression: must be 5 fields (minute hour day month weekday)');
         return { success: false, exitCode: 1 };

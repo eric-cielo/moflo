@@ -70,8 +70,8 @@ vi.mock('fs', () => ({
   },
 }));
 
-// Mock the workflow-gate service so gate command doesn't call process.exit
-vi.mock('../src/services/workflow-gate.js', () => ({
+// Mock the spell-gate service so gate command doesn't call process.exit
+vi.mock('../src/services/spell-gate.js', () => ({
   processGateCommand: vi.fn(),
 }));
 
@@ -353,7 +353,7 @@ describe('gate command', () => {
   });
 
   it('action delegates to processGateCommand when a subcommand is given', async () => {
-    const { processGateCommand } = await import('../src/services/workflow-gate.js');
+    const { processGateCommand } = await import('../src/services/spell-gate.js');
     const mockProcess = vi.mocked(processGateCommand);
     mockProcess.mockClear();
 

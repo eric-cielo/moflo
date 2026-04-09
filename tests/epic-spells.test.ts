@@ -9,13 +9,13 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseYaml } from '../src/modules/spells/src/schema/parser.js';
-import type { SpellDefinition } from '../src/modules/spells/src/types/workflow-definition.types.js';
+import type { SpellDefinition } from '../src/modules/spells/src/types/spell-definition.types.js';
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-const WORKFLOWS_DIR = join(__dirname, '..', 'src', 'modules', 'cli', 'src', 'epic', 'workflows');
+const WORKFLOWS_DIR = join(__dirname, '..', 'src', 'modules', 'cli', 'src', 'epic', 'spells');
 
 function loadYaml(filename: string): SpellDefinition {
   const content = readFileSync(join(WORKFLOWS_DIR, filename), 'utf-8');

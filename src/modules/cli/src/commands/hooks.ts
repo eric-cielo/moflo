@@ -1,6 +1,6 @@
 /**
  * V3 CLI Hooks Command
- * Self-learning hooks system for intelligent workflow automation
+ * Self-learning hooks system for intelligent spell automation
  */
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
@@ -4515,7 +4515,7 @@ const consolidateCommand: Command = {
 // Main hooks command
 export const hooksCommand: Command = {
   name: 'hooks',
-  description: 'Self-learning hooks system for intelligent workflow automation',
+  description: 'Self-learning hooks system for intelligent spell automation',
   subcommands: [
     preEditCommand,
     postEditCommand,
@@ -4570,7 +4570,7 @@ export const hooksCommand: Command = {
     output.writeln();
     output.writeln(output.bold('Self-Learning Hooks System'));
     output.writeln();
-    output.writeln('Intelligent workflow automation with pattern learning and adaptive routing');
+    output.writeln('Intelligent spell automation with pattern learning and adaptive routing');
     output.writeln();
     output.writeln('Usage: claude-flow hooks <subcommand> [options]');
     output.writeln();

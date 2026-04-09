@@ -11,9 +11,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Import the checks under test
 import {
   checkSubagentHealth,
-  checkWorkflowExecution,
+  checkSpellExecution,
   checkMcpToolInvocation,
-  checkMcpWorkflowIntegration,
+  checkMcpSpellIntegration,
   checkHookExecution,
   checkGateHealth,
   REQUIRED_HOOK_WIRING,
@@ -35,9 +35,9 @@ describe('doctor-checks-deep', () => {
     });
   });
 
-  describe('checkWorkflowExecution', () => {
+  describe('checkSpellExecution', () => {
     it('should return a HealthCheck object', async () => {
-      const result = await checkWorkflowExecution();
+      const result = await checkSpellExecution();
       expect(result).toHaveProperty('name', 'Spell Execution');
       expect(result).toHaveProperty('status');
       expect(result).toHaveProperty('message');
@@ -45,7 +45,7 @@ describe('doctor-checks-deep', () => {
     });
 
     it('should pass when spell engine is built', async () => {
-      const result = await checkWorkflowExecution();
+      const result = await checkSpellExecution();
       // In the dev repo with a successful build, this should pass
       if (result.status === 'pass') {
         expect(result.message).toContain('Probe OK');
@@ -85,9 +85,9 @@ describe('doctor-checks-deep', () => {
     });
   });
 
-  describe('checkMcpWorkflowIntegration', () => {
+  describe('checkMcpSpellIntegration', () => {
     it('should return a HealthCheck object', async () => {
-      const result = await checkMcpWorkflowIntegration();
+      const result = await checkMcpSpellIntegration();
       expect(result).toHaveProperty('name', 'MCP Spell Integration');
       expect(result).toHaveProperty('status');
       expect(result).toHaveProperty('message');
@@ -95,7 +95,7 @@ describe('doctor-checks-deep', () => {
     });
 
     it('should verify real stdout from bash step via bridge', async () => {
-      const result = await checkMcpWorkflowIntegration();
+      const result = await checkMcpSpellIntegration();
       if (result.status === 'pass') {
         expect(result.message).toContain('Bridge → engine OK');
         expect(result.message).toContain('real stdout captured');
@@ -157,9 +157,9 @@ describe('doctor-checks-deep', () => {
       // Run all checks and verify none throw
       const checks = [
         checkSubagentHealth,
-        checkWorkflowExecution,
+        checkSpellExecution,
         checkMcpToolInvocation,
-        checkMcpWorkflowIntegration,
+        checkMcpSpellIntegration,
         checkHookExecution,
       ];
 

@@ -16,10 +16,10 @@ import os from 'os';
 import { getDaemonLockHolder, releaseDaemonLock, isDaemonProcess } from '../services/daemon-lock.js';
 import {
   checkSubagentHealth,
-  checkWorkflowExecution,
+  checkSpellExecution,
   checkMcpToolInvocation,
   checkHookExecution,
-  checkMcpWorkflowIntegration,
+  checkMcpSpellIntegration,
   checkGateHealth,
   getMofloRoot,
 } from './doctor-checks-deep.js';
@@ -1403,9 +1403,9 @@ export const doctorCommand: Command = {
       checkSpellEngine,
       checkZombieProcesses,
       checkSubagentHealth,
-      checkWorkflowExecution,
+      checkSpellExecution,
       checkMcpToolInvocation,
-      checkMcpWorkflowIntegration,
+      checkMcpSpellIntegration,
       checkHookExecution,
       checkGateHealth,
     ];
@@ -1436,9 +1436,9 @@ export const doctorCommand: Command = {
       'subagent': checkSubagentHealth,
       'subagents': checkSubagentHealth,
       'agents': checkSubagentHealth,
-      'workflow-exec': checkWorkflowExecution,
+      'spell-exec': checkSpellExecution,
       'mcp-tools': checkMcpToolInvocation,
-      'mcp-workflow': checkMcpWorkflowIntegration,
+      'mcp-spell': checkMcpSpellIntegration,
       'hooks': checkHookExecution,
       'gates': checkGateHealth,
       'gate': checkGateHealth,

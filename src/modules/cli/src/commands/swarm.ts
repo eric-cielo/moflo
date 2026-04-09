@@ -775,7 +775,7 @@ function getAgentPlan(strategy: string): Array<{ role: string; type: string; cou
       { role: 'Reviewer', type: 'reviewer', count: 1, purpose: 'Code review' }
     ],
     balanced: [
-      { role: 'Coordinator', type: 'coordinator', count: 1, purpose: 'Orchestrate workflow' },
+      { role: 'Coordinator', type: 'coordinator', count: 1, purpose: 'Orchestrate spell' },
       { role: 'Worker', type: 'coder', count: 4, purpose: 'General implementation' },
       { role: 'Reviewer', type: 'reviewer', count: 1, purpose: 'Quality review' }
     ],
@@ -785,7 +785,7 @@ function getAgentPlan(strategy: string): Array<{ role: string; type: string; cou
       { role: 'Worker', type: 'coder', count: 3, purpose: 'Adaptive execution' }
     ],
     development: [
-      { role: 'Coordinator', type: 'coordinator', count: 1, purpose: 'Orchestrate workflow' },
+      { role: 'Coordinator', type: 'coordinator', count: 1, purpose: 'Orchestrate spell' },
       { role: 'Architect', type: 'architect', count: 1, purpose: 'System design' },
       { role: 'Coder', type: 'coder', count: 3, purpose: 'Implementation' },
       { role: 'Tester', type: 'tester', count: 2, purpose: 'Quality assurance' },
