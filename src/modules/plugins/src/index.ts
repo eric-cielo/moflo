@@ -290,6 +290,7 @@ export {
 
 export const VERSION = '3.0.0-alpha.1';
 export const SDK_VERSION = '1.0.0';
+export const MODULE_ID = '@claude-flow/plugins';
 
 // ============================================================================
 // Quick Start Utilities
