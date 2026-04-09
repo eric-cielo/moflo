@@ -556,7 +556,7 @@ const createIntelligentWorkflow = async (repoContext) => {
   await mcp__claude_flow__agent_spawn({ type: "tester", name: "Workflow Validator" });
   
   // Create adaptive workflow based on repository analysis
-  const workflow = await mcp__claude_flow__workflow_create({
+  const spell = await mcp__claude_flow__spell_create({
     name: "Intelligent CI/CD Pipeline",
     steps: [
       {

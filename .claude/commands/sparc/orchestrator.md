@@ -96,7 +96,7 @@ mcp__moflo__swarm_init {
   maxAgents: 10
 }
 
-// 2. Create workflow
+// 2. Create spell
 mcp__moflo__spell_create {
   name: "feature-development",
   steps: ["design", "implement", "test", "deploy"]
@@ -121,8 +121,8 @@ mcp__moflo__swarm_monitor {
 # 1. Initialize orchestration swarm
 npx claude-flow swarm init --topology hierarchical --max-agents 10
 
-# 2. Create workflow
-npx claude-flow workflow create --name "feature-development" --steps "design,implement,test,deploy"
+# 2. Create spell
+npx claude-flow spell create --name "feature-development" --steps "design,implement,test,deploy"
 
 # 3. Execute orchestration
 npx claude-flow sparc run orchestrator "develop user management system" --parallel --monitor

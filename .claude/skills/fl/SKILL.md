@@ -1,6 +1,6 @@
 ---
 name: flo
-description: MoFlo ticket workflow - analyze and execute GitHub issues
+description: MoFlo ticket spell - analyze and execute GitHub issues
 arguments: "[options] <issue-number | title>"
 ---
 
@@ -13,7 +13,7 @@ Research, create tickets for, and execute GitHub issues automatically.
 ## Usage
 
 ```
-/flo <issue-number>                   # Full workflow in NORMAL mode (default)
+/flo <issue-number>                   # Full spell in NORMAL mode (default)
 /flo -t <issue-number>                # Ticket only: research and update ticket, then STOP
 /flo -t <title>                       # Create a NEW ticket with description, acceptance criteria, test cases
 /flo --ticket <issue-number|title>    # Same as -t
@@ -24,13 +24,13 @@ Research, create tickets for, and execute GitHub issues automatically.
 
 Also available as `/fl` (shorthand alias).
 
-### Workflow Engine Mode (-wf)
+### Spell Engine Mode (-wf)
 
 ```
-/flo -wf sa ./src            # Run security-audit workflow with target=./src
+/flo -wf sa ./src            # Run security-audit spell with target=./src
 /flo -wf security-audit ./src  # Same, using full name
-/flo -wf list                # List available workflows
-/flo -wf info sa             # Show workflow details, arguments, steps
+/flo -wf list                # List available spells
+/flo -wf info sa             # Show spell details, arguments, steps
 ```
 
 ### Execution Mode (how work is done)
@@ -408,33 +408,33 @@ Strategy is determined by (in priority order):
 The `flo epic run` command:
 1. Fetches the epic issue and validates it
 2. Extracts and orders stories (topological sort for dependencies)
-3. Loads the appropriate workflow YAML template
-4. Runs via the workflow engine (WorkflowRunner)
-5. The workflow template handles branch creation, story iteration, PR creation, and checklist tracking
+3. Loads the appropriate spell YAML template
+4. Runs via the spell engine (SpellRunner)
+5. The spell template handles branch creation, story iteration, PR creation, and checklist tracking
 
 Individual stories within an epic are processed via `/flo --epic-branch <branch> <issue>`,
-which the workflow engine invokes automatically. The `--epic-branch` flag tells `/flo` to
+which the spell engine invokes automatically. The `--epic-branch` flag tells `/flo` to
 commit to the existing branch and skip branch creation and PR creation.
 
 ### Epic Checklist Tracking
 
-The workflow templates automatically check off stories in the epic body after each commit.
+The spell templates automatically check off stories in the epic body after each commit.
 The checklist state (`[ ]` vs `[x]`) is the **single source of truth** for epic progress.
 
 ## Parse Arguments
 
 ```javascript
 const args = "$ARGUMENTS".trim().split(/\s+/);
-let workflowMode = "full";    // full, ticket, research, workflow
+let workflowMode = "full";    // full, ticket, research, spell-engine
 let execMode = "normal";      // normal (default), swarm, hive
 let epicBranch = null;        // when set, skip branch creation and PR (epic mode)
 let issueNumber = null;
 let titleWords = [];
 
 // Workflow engine (-wf) state
-let wfName = null;             // workflow name or abbreviation
+let wfName = null;             // spell name or abbreviation
 let wfSubcommand = null;       // "list" or "info"
-let wfArgs = [];               // positional args after workflow name
+let wfArgs = [];               // positional args after spell name
 let wfNamedArgs = {};          // --key=value or --key value args
 
 for (let i = 0; i < args.length; i++) {
@@ -442,8 +442,8 @@ for (let i = 0; i < args.length; i++) {
 
   // Workflow engine mode
   if (arg === "-wf" || arg === "--workflow") {
-    workflowMode = "workflow";
-    // Next arg is the workflow name or subcommand
+    workflowMode = "spell-engine";
+    // Next arg is the spell name or subcommand
     if (i + 1 < args.length) {
       const next = args[++i];
       if (next === "list") {
@@ -458,7 +458,7 @@ for (let i = 0; i < args.length; i++) {
         wfName = next;
       }
     }
-    // Collect remaining args as workflow arguments
+    // Collect remaining args as spell arguments
     for (let j = i + 1; j < args.length; j++) {
       const wa = args[j];
       if (wa.startsWith("--")) {
@@ -508,11 +508,11 @@ for (let i = 0; i < args.length; i++) {
 }
 
 // Validation
-if (workflowMode === "workflow") {
+if (workflowMode === "spell-engine") {
   if (!wfName && !wfSubcommand) {
-    throw new Error("Workflow name or subcommand required. Usage: /flo -wf <name|list|info> [args]");
+    throw new Error("Spell name or subcommand required. Usage: /flo -wf <name|list|info> [args]");
   }
-  console.log("WORKFLOW ENGINE MODE: " + (wfSubcommand || wfName));
+  console.log("SPELL ENGINE MODE: " + (wfSubcommand || wfName));
 } else {
   // In ticket mode, a title can be given instead of an issue number
   let ticketTitle = titleWords.join(" ");
@@ -543,9 +543,9 @@ if (workflowMode === "workflow") {
 | **Epic** | `/flo 42` (epic) | Inline epic processing: extract stories, run each via /flo | All stories complete |
 | **Ticket** | `/flo -t 123` | Research -> Ticket | Issue updated |
 | **Research** | `/flo -r 123` | Research | Findings output |
-| **Workflow** | `/flo -wf sa ./src` | Load registry -> Resolve workflow -> Execute with args | Workflow complete |
-| **WF List** | `/flo -wf list` | Load registry -> Print all workflows | List printed |
-| **WF Info** | `/flo -wf info sa` | Load registry -> Print workflow details | Info printed |
+| **Workflow** | `/flo -wf sa ./src` | Load registry -> Resolve spell -> Execute with args | Spell complete |
+| **WF List** | `/flo -wf list` | Load registry -> Print all spells | List printed |
+| **WF Info** | `/flo -wf info sa` | Load registry -> Print spell details | Info printed |
 
 Execution modes (normal/swarm/hive) are defined in the table under **Workflow Overview > Execution Mode** above.
 
@@ -596,42 +596,42 @@ Single Claude execution without spawning sub-agents.
 - Post-task neural learning hooks still fire
 - Just doesn't spawn multiple agents
 
-### WORKFLOW ENGINE Mode (-wf, --workflow)
+### SPELL ENGINE Mode (-wf, --workflow)
 
-When `-wf` is used, the /flo skill switches to the generalized workflow engine
-instead of the hardcoded coding workflow. This uses the `WorkflowRegistry` from
-`@moflo/workflows` to resolve and run YAML/JSON workflow definitions.
+When `-wf` is used, the /flo skill switches to the generalized spell engine
+instead of the hardcoded coding process. This uses the `Grimoire` from
+`@moflo/spells` to resolve and run YAML/JSON spell definitions.
 
 **Scan directories** (in priority order):
-1. Shipped: `src/modules/workflows/definitions/` (bundled with moflo)
-2. User: `workflows/` and `.claude/workflows/` (project-level overrides)
+1. Shipped: `src/modules/spells/definitions/` (bundled with moflo)
+2. User: `spells/` and `.claude/spells/` (project-level overrides)
 
 **Registry behavior:**
-- Each workflow file defines `name` and optional `abbreviation` in frontmatter
+- Each spell file defines `name` and optional `abbreviation` in frontmatter
 - Registry builds lookup map: abbreviation -> file path, full name -> file path
 - Duplicate abbreviations produce a collision error on load
 - User definitions override shipped ones by name match
 
 **Subcommands:**
 
-`/flo -wf list` — List all available workflows:
+`/flo -wf list` — List all available spells:
 ```
-Use WorkflowRegistry.list() to get all registered workflows.
+Use Grimoire.list() to get all registered spells.
 Print a table: name | abbreviation | description | tier (shipped/user)
 ```
 
-`/flo -wf info <name|abbreviation>` — Show workflow details:
+`/flo -wf info <name|abbreviation>` — Show spell details:
 ```
-Use WorkflowRegistry.info(query) to get detailed info.
+Use Grimoire.info(query) to get detailed info.
 Print: name, abbreviation, description, version, source file, arguments, step count, step types
 ```
 
-`/flo -wf <name|abbreviation> [positional-args] [--named-args]` — Execute a workflow:
+`/flo -wf <name|abbreviation> [positional-args] [--named-args]` — Execute a spell:
 ```
-1. Use WorkflowRegistry.resolve(wfName) to find the workflow
+1. Use Grimoire.resolve(wfName) to find the spell
 2. Map positional args to required arguments in order
 3. Parse named args: --key=value or --key value
-4. Use runWorkflowFromContent() or createRunner().run() to execute
+4. Use runSpellFromContent() or createRunner().run() to execute
 5. Print step-by-step progress and final result
 ```
 

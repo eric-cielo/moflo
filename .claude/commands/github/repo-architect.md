@@ -298,7 +298,7 @@ const integrationPattern = {
     "claude-code-flow": {
       role: "orchestration_layer",
       dependencies: ["ruv-swarm"],
-      provides: ["CLI", "workflows", "commands"]
+      provides: ["CLI", "spells", "commands"]
     },
     "ruv-swarm": {
       role: "coordination_engine", 

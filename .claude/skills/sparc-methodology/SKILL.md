@@ -109,7 +109,7 @@ SPARC methodology emphasizes:
 - Documentation finalization
 - Knowledge capture
 
-**Key Modes**: `workflow-manager`, `documenter`, `memory-manager`
+**Key Modes**: `spell-manager`, `documenter`, `memory-manager`
 
 ---
 
@@ -137,7 +137,7 @@ mcp__moflo__sparc_mode {
 ```
 
 #### `swarm-coordinator`
-Specialized swarm management for complex multi-agent workflows.
+Specialized swarm management for complex multi-agent coordination.
 
 **Capabilities**:
 - Topology optimization (mesh, hierarchical, ring, star)
@@ -146,11 +146,11 @@ Specialized swarm management for complex multi-agent workflows.
 - Fault tolerance and recovery
 - Performance monitoring
 
-#### `workflow-manager`
-Process automation and workflow orchestration.
+#### `spell-manager`
+Process automation and spell orchestration.
 
 **Capabilities**:
-- Workflow definition and execution
+- Spell definition and execution
 - Event-driven triggers
 - Sequential and parallel pipelines
 - State management
@@ -967,7 +967,7 @@ npx claude-flow sparc run coder "implement caching layer"
 npx claude-flow sparc run tester "performance benchmarks"
 ```
 
-### Workflow 4: Complete Pipeline
+### Workflow 4: Complete Workflow
 
 ```bash
 # Execute full development pipeline

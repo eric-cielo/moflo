@@ -46,7 +46,7 @@ mcp__moflo__task_orchestrate({ task: "...", strategy: "parallel" })
 **Hierarchical Topology** - Coordinator with subordinates, best for development
 - Clear command structure
 - Sequential workflow support
-- Use for: Development, structured workflows
+- Use for: Development, structured pipelines
 
 **Star Topology** - Central coordinator, best for testing
 - Centralized control and monitoring
@@ -55,7 +55,7 @@ mcp__moflo__task_orchestrate({ task: "...", strategy: "parallel" })
 
 **Ring Topology** - Sequential processing chain
 - Step-by-step processing
-- Pipeline workflows
+- Pipeline processing
 - Use for: Multi-stage processing, data pipelines
 
 ### Agent Strategies
@@ -762,10 +762,10 @@ mcp__moflo__pattern_recognize({
 })
 ```
 
-### Workflow Automation
+### Spell Automation
 
 ```javascript
-// Create reusable workflow
+// Create reusable spell
 mcp__moflo__spell_create({
   "name": "full-stack-development",
   "steps": [
@@ -899,7 +899,7 @@ mcp__moflo__trend_analysis({
 - Implement fault tolerance strategies
 - Use auto-recovery mechanisms
 - Analyze error patterns
-- Create fallback workflows
+- Create fallback pipelines
 
 ## Real-World Examples
 

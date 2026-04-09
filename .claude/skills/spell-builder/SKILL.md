@@ -9,7 +9,7 @@ Create production-ready spell definitions (YAML/JSON) that compose step commands
 
 ## Prerequisites
 
-- MoFlo project with `@moflo/workflows` package
+- MoFlo project with `@moflo/spells` package
 - Familiarity with YAML syntax
 
 ## What This Skill Does
@@ -76,12 +76,12 @@ Walk the user through adding steps one at a time. For each step, collect:
 | **Config** | Yes | Type-specific configuration (see per-type docs below) |
 | **Output** | Optional | Variable name to store step output (for downstream steps) |
 | **Continue on Error** | Optional | `true` to proceed even if this step fails |
-| **MoFlo Level** | Optional | Override workflow-level mofloLevel (can only narrow, not escalate) |
+| **MoFlo Level** | Optional | Override spell-level mofloLevel (can only narrow, not escalate) |
 
 **Data flow between steps:** Use `{stepId.outputKey}` syntax to reference output from a previous step. For example, if step `fetch-data` outputs a `url` field, a later step can use `{fetch-data.url}` in its config.
 
 **Special variable references:**
-- `{args.name}` — references a workflow argument
+- `{args.name}` — references a spell argument
 - `{credentials.NAME}` — references a credential (resolved at runtime)
 - `{stepId.outputKey}` — references output from a previous step
 
@@ -90,7 +90,7 @@ Walk the user through adding steps one at a time. For each step, collect:
 Assemble the definition into YAML format following this structure:
 
 ```yaml
-name: <workflow-name>
+name: <spell-name>
 abbreviation: <optional-abbreviation>
 description: <optional-description>
 version: "<version>"
@@ -135,8 +135,8 @@ If validation fails, show the specific errors and guide the user to fix them.
 
 Ask the user where to save the spell:
 
-- **Project spells:** `workflows/<name>.yaml` (user-level, project-specific)
-- **Claude spells:** `.claude/workflows/<name>.yaml` (Claude Code integration)
+- **Project spells:** `spells/<name>.yaml` (user-level, project-specific)
+- **Claude spells:** `.claude/spells/<name>.yaml` (Claude Code integration)
 
 Use the MCP tool to create the spell if available:
 ```
@@ -173,7 +173,7 @@ Support these edit operations:
 | **Reorder steps** | Move a step to a new position (warn about broken forward refs) |
 | **Update step config** | Modify a step's configuration fields |
 | **Update step type** | Change a step's command type (reset config to match) |
-| **Add/remove arguments** | Modify workflow argument definitions |
+| **Add/remove arguments** | Modify spell argument definitions |
 | **Update metadata** | Change name, description, version, abbreviation, mofloLevel |
 
 After each change, re-validate the definition and show any errors introduced.
@@ -188,7 +188,7 @@ Write the updated YAML back to the original file (or a new path if requested).
 
 ### Built-in Step Commands
 
-These step command types are available for use in workflow `steps[].type`:
+These step command types are available for use in spell `steps[].type`:
 
 | Type | Description | Key Config Fields |
 |------|-------------|-------------------|
@@ -206,7 +206,7 @@ These step command types are available for use in workflow `steps[].type`:
 
 ### Built-in Connectors (Generalized I/O Wrappers)
 
-Connectors are generalized I/O wrappers — not per-service adapters. Three ship with moflo, covering HTTP APIs, CLI tools, and browser automation. Service-specific integrations (Slack, Jira, S3, etc.) are composed in workflow YAML using these connectors.
+Connectors are generalized I/O wrappers — not per-service adapters. Three ship with moflo, covering HTTP APIs, CLI tools, and browser automation. Service-specific integrations (Slack, Jira, S3, etc.) are composed in spell YAML using these connectors.
 
 | Connector | Description | Capabilities | Key Actions |
 |-----------|-------------|--------------|-------------|
@@ -248,7 +248,7 @@ Check against all engine validation rules:
 - Required fields: `name` (string), `steps` (non-empty array)
 - Step integrity: unique IDs, valid types, valid config structure
 - Variable references: no forward references, no undefined arguments
-- MoFlo levels: valid values, step-level cannot exceed spell-level
+- MoFlo levels: valid values, step-level cannot exceed the spell-level
 - Circular jumps: condition steps must not form cycles
 - Arguments: valid types, defaults match declared type, enum consistency
 
@@ -263,15 +263,15 @@ Check against all engine validation rules:
 
 ### Type Definitions
 
-- **Spell definition:** `src/modules/spells/src/types/workflow-definition.types.ts` — `SpellDefinition`, `StepDefinition`, `ArgumentDefinition`, `ArgumentType`
+- **Spell definition:** `src/modules/spells/src/types/spell-definition.types.ts` — `SpellDefinition`, `StepDefinition`, `ArgumentDefinition`, `ArgumentType`
 - **Step command interface:** `src/modules/spells/src/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `CastingContext`, `MofloLevel`, `CapabilityType`
-- **Connector interface:** `src/modules/spells/src/types/workflow-connector.types.ts` — `SpellConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorAccessor`
+- **Connector interface:** `src/modules/spells/src/types/spell-connector.types.ts` — `SpellConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorAccessor`
 
 ### Engine Components
 
 - **Schema validator:** `src/modules/spells/src/schema/validator.ts` — `validateSpellDefinition()`
-- **YAML/JSON parser:** `src/modules/spells/src/schema/parser.ts` — `parseWorkflow()`
-- **Grimoire (registry):** `src/modules/spells/src/registry/workflow-registry.ts` — `Grimoire`
+- **YAML/JSON parser:** `src/modules/spells/src/schema/parser.ts` — `parseSpell()`
+- **Grimoire (registry):** `src/modules/spells/src/registry/spell-registry.ts` — `Grimoire`
 - **Definition loader:** `src/modules/spells/src/loaders/definition-loader.ts` — two-tier loading (shipped + user)
 
 ### MCP Tools
@@ -291,13 +291,13 @@ Check against all engine validation rules:
 | `memory` | Read/write MoFlo memory |
 | `hooks` | Memory + hook triggers |
 | `full` | Hooks + swarm/agent spawning |
-| `recursive` | Full + nested workflow invocation |
+| `recursive` | Full + nested spell invocation |
 
 ### Variable Reference Syntax
 
 | Pattern | Description | Example |
 |---------|-------------|---------|
-| `{args.name}` | Workflow argument | `{args.target}` |
+| `{args.name}` | Spell argument | `{args.target}` |
 | `{credentials.NAME}` | Runtime credential | `{credentials.GITHUB_TOKEN}` |
 | `{stepId.key}` | Previous step output | `{fetch-data.url}` |
 
