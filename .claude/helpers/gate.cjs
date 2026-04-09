@@ -135,7 +135,8 @@ switch (command) {
   case 'prompt-reminder': {
     var s = readState();
     s.memorySearched = false;
-    s.learningsStored = false;
+    // learningsStored is session-scoped — once stored, it stays true until session reset.
+    // Resetting per-prompt caused false blocks when PR creation was on a later prompt.
     var prompt = process.env.CLAUDE_USER_PROMPT || '';
     var DIRECTIVE_MAX_LEN = 20;
     var escaped = /^@@\s*/.test(prompt);
@@ -156,7 +157,7 @@ switch (command) {
     break;
   }
   case 'session-reset': {
-    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null });
+    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, learningsStored: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null });
     break;
   }
   default:

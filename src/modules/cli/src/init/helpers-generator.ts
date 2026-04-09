@@ -305,15 +305,9 @@ switch (command) {
     break;
   }
   case 'check-task-transition': {
-    var status = process.env.TOOL_INPUT_status || '';
-    if (status === 'in_progress') {
-      var s = readState();
-      if (s.memorySearched && s.memoryRequired) {
-        s.memorySearched = false;
-        s.learningsStored = false;
-        writeState(s);
-      }
-    }
+    // Memory gate resets on new user prompts (prompt-reminder), not on task
+    // transitions. Within a single prompt (e.g., /flo workflow), memory stays
+    // searched so Read/Grep aren't blocked mid-execution.
     break;
   }
   case 'record-learnings-stored': {
@@ -346,7 +340,8 @@ switch (command) {
   case 'prompt-reminder': {
     var s = readState();
     s.memorySearched = false;
-    s.learningsStored = false;
+    // learningsStored is session-scoped — once stored, it stays true until session reset.
+    // Resetting per-prompt caused false blocks when PR creation was on a later prompt.
     var prompt = process.env.CLAUDE_USER_PROMPT || '';
     s.memoryRequired = prompt.length >= 4 && !DIRECTIVE_RE.test(prompt) && (TASK_RE.test(prompt) || prompt.length > 80);
     s.interactionCount = (s.interactionCount || 0) + 1;
@@ -365,7 +360,7 @@ switch (command) {
     break;
   }
   case 'session-reset': {
-    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null });
+    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, learningsStored: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null });
     break;
   }
   default:
