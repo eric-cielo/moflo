@@ -8,7 +8,7 @@
 
 ## TL;DR
 
-MoFlo makes your AI coding assistant remember what it learns, check what it knows before exploring files, and get smarter over time — all automatically. Install it, run `flo init`, restart your AI client, and everything just works: your docs and code are indexed on session start so the AI can search them instantly, workflow gates prevent the AI from wasting tokens on blind exploration, task outcomes feed back into routing so it picks the right agent type next time, and context depletion warnings tell you when to start a fresh session. No configuration, no API keys, no cloud services — it all runs locally on your machine.
+MoFlo makes your AI coding assistant remember what it learns, check what it knows before exploring files, and get smarter over time — all automatically. Install it, run `flo init`, restart your AI client, and everything just works: your docs and code are indexed on session start so the AI can search them instantly, gates prevent the AI from wasting tokens on blind exploration, task outcomes feed back into routing so it picks the right agent type next time, and context depletion warnings tell you when to start a fresh session. No configuration, no API keys, no cloud services — it all runs locally on your machine.
 
 ## Quickstart
 
@@ -40,12 +40,12 @@ MoFlo makes deliberate choices so you don't have to:
   - **Semantic Routing** — maps tasks to agents via learned routing in `@moflo/hooks`
   - **Trajectory Persistence** — outcomes stored in `routing-outcomes.json`, survive across sessions
   - All pure TypeScript/WASM-based, no GPU, no API keys, no external services.
-- **Memory-first workflow** — Claude must search what it already knows before exploring files. Enforced by hooks, not just instructions.
+- **Memory-first** — Claude must search what it already knows before exploring files. Enforced by hooks, not just instructions.
 - **Task registration before agents** — Sub-agents can't spawn until work is tracked. Prevents runaway agent proliferation.
 - **Learned routing** — Task outcomes feed back into the routing system automatically. No manual configuration needed — it gets smarter with use.
 - **Incremental indexing** — Guidance and code map indexes run on every session start but skip unchanged files. Fast after the first run.
 - **Built for Claude Code, works with others** — We develop and test exclusively with Claude Code. The MCP tools, memory system, and hooks are client-independent and should work with any MCP-capable AI client, but Claude Code is the only tested target.
-- **GitHub-oriented** — The `/flo` skill, PR workflows, and issue tracking are built around GitHub. With Claude's help, you can adapt them to your own issue tracker and source control system.
+- **GitHub-oriented** — The `/flo` skill, PR automation, and issue tracking are built around GitHub. With Claude's help, you can adapt them to your own issue tracker and source control system.
 - **Cross-platform** — Forward-slash path normalization, no `sh -c` shell commands, `windowsHide` on all spawn calls.
 
 ## Features
@@ -55,10 +55,10 @@ MoFlo makes deliberate choices so you don't have to:
 | **Semantic Memory** | 384-dim domain-aware embeddings. Store knowledge, search it instantly. |
 | **Code Navigation** | Indexes your codebase structure so Claude can answer "where does X live?" without Glob/Grep. |
 | **Guidance Indexing** | Chunks your project docs (`.claude/guidance/`, `docs/`) and makes them searchable. |
-| **Workflow Gates** | Enforces memory-first and task-creation patterns via Claude Code hooks. Prevents Claude from skipping steps. |
+| **Gates** | Enforces memory-first and task-creation patterns via Claude Code hooks. Prevents Claude from skipping steps. |
 | **Learned Routing** | Routes tasks to the right agent type. Learns from outcomes — gets better over time. |
 | **Spell Engine** | Define multi-step automations as YAML — shell commands, agent spawns, conditionals, loops, memory ops. [Full documentation →](docs/SPELLS.md) |
-| **`/flo` Skill** | Execute GitHub issues through a full workflow: research → enhance → implement → test → simplify → PR. (Also available as `/fl`.) |
+| **`/flo` Skill** | Execute GitHub issues through a full process: research → enhance → implement → test → simplify → PR. (Also available as `/fl`.) |
 | **Context Tracking** | Monitors context window usage (FRESH → MODERATE → DEPLETED → CRITICAL) and advises accordingly. |
 | **Cross-Platform** | Works on macOS, Linux, and Windows. |
 
@@ -85,7 +85,7 @@ It also generates:
 | Generated File | Purpose |
 |----------------|---------|
 | `moflo.yaml` | Project config with detected guidance/code locations |
-| `.claude/settings.json` | Workflow gate hooks for Claude Code |
+| `.claude/settings.json` | Gate hooks for Claude Code |
 | `.claude/skills/flo/` | The `/flo` issue execution skill (also `/fl`) |
 | `CLAUDE.md` section | Teaches Claude how to use MoFlo |
 | `.gitignore` entries | Excludes MoFlo state directories |
@@ -261,10 +261,10 @@ You can also disable individual hooks in `.claude/settings.json` by removing the
 
 ## The `/flo` Skill
 
-Inside your AI client, the `/flo` (or `/fl`) slash command drives GitHub issue workflows:
+Inside your AI client, the `/flo` (or `/fl`) slash command drives GitHub issue execution:
 
 ```
-/flo <issue>                  # Full workflow (research → implement → test → PR)
+/flo <issue>                  # Full process (research → implement → test → PR)
 /flo -t <issue>               # Ticket only (research and update ticket, then stop)
 /flo -r <issue>               # Research only (analyze issue, output findings)
 /flo -s <issue>               # Swarm mode (multi-agent coordination)
@@ -284,7 +284,7 @@ When you pass an issue number, `/flo` automatically checks if it's an epic — n
 - Its body has numbered issue references: `1. #101`
 - The issue has GitHub sub-issues (via the API)
 
-When an epic is detected, `/flo` processes each child story sequentially — full workflow per story (research → implement → test → PR), one at a time, in the order listed.
+When an epic is detected, `/flo` processes each child story sequentially — full process per story (research → implement → test → PR), one at a time, in the order listed.
 
 For simple epics with independent stories, `/flo <epic>` is all you need. For complex features where you want state tracking, resume capability, and auto-merge between stories, use `flo epic` instead.
 
@@ -338,25 +338,25 @@ feature:
 | **Dry-run preview** | No | Yes |
 | **Dependency ordering** | No (top-to-bottom) | Yes (YAML only, topological sort) |
 
-## Workflows
+## Spells
 
-MoFlo includes a general-purpose workflow engine that executes multi-step automations defined in YAML. Workflows can run shell commands, spawn agents, perform memory operations, use conditionals and loops, and chain steps together with dependency ordering.
+MoFlo includes a general-purpose spell engine that executes multi-step automations defined in YAML. Spells can run shell commands, spawn agents, perform memory operations, use conditionals and loops, and chain steps together with dependency ordering.
 
 ```bash
-flo workflow run -n development          # Run a named workflow
-flo workflow run -f ./my-workflow.yaml   # Run from a file
-flo workflow list                        # List available workflows and recent runs
-flo workflow validate -f ./workflow.yaml # Validate a definition without running it
-flo workflow template list               # Browse built-in workflow templates
-flo workflow schedule list               # List scheduled workflows
+flo spell cast -n development            # Cast a named spell
+flo spell cast -f ./my-spell.yaml        # Cast from a file
+flo spell list                           # List available spells and recent runs
+flo spell validate -f ./spell.yaml       # Validate a definition without casting it
+flo spell grimoire list                  # Browse built-in spell templates
+flo spell schedule list                  # List scheduled spells
 ```
 
-### Defining workflows
+### Defining spells
 
-Workflows are YAML files with steps that run sequentially or in parallel:
+Spells are YAML files with steps that run sequentially or in parallel:
 
 ```yaml
-name: my-workflow
+name: my-spell
 steps:
   - name: lint
     command: npm run lint
@@ -379,7 +379,7 @@ Inside your AI client, use the `/spell-builder` skill to create, edit, and valid
 
 ### Epics
 
-Epics are a specialized workflow for processing GitHub issues that contain multiple child stories. When you pass a GitHub issue to `/flo` and it's detected as an epic, MoFlo processes each child story sequentially through the full `/flo` workflow (research → implement → test → PR).
+Epics are a specialized process for handling GitHub issues that contain multiple child stories. When you pass a GitHub issue to `/flo` and it's detected as an epic, MoFlo processes each child story sequentially through the full `/flo` process (research → implement → test → PR).
 
 For simple epics, `/flo <epic-number>` is all you need. For complex features requiring state tracking, resume from failure, and auto-merge between stories, use the dedicated `flo epic` command:
 
@@ -418,13 +418,13 @@ flo hooks patterns                            # List learned patterns
 flo hooks consolidate                         # Promote/prune patterns
 ```
 
-### Workflow Gates
+### Gates
 
 ```bash
 flo gate check-before-scan       # Blocks Glob/Grep if memory not searched
 flo gate check-before-agent      # Blocks Agent tool if no TaskCreate
 flo gate prompt-reminder         # Context bracket tracking
-flo gate session-reset           # Reset workflow state
+flo gate session-reset           # Reset gate state
 ```
 
 ### Diagnostics
@@ -461,12 +461,12 @@ flo diagnose --json              # JSON output for CI/automation
 | **agentic-flow** | Optional agentic-flow package installed (for enhanced embeddings/routing) |
 | **Semantic Quality** | Semantic search returns relevant, varied results with acceptable similarity scores |
 | **Intelligence** | SONA, ReasoningBank, PatternLearner, LoRA, EWC++, and RL subsystems are loaded |
-| **Workflow Engine** | Core workflow modules, step commands, loaders, and index are present |
+| **Spell Engine** | Core spell modules, step commands, loaders, and index are present |
 | **Zombie Processes** | No orphaned MoFlo node processes running |
 | **Subagent Health** | Agent lifecycle (spawn → status → terminate) completes successfully |
-| **Workflow Execution** | End-to-end workflow probe runs a real step and captures output |
+| **Spell Execution** | End-to-end spell probe runs a real step and captures output |
 | **MCP Tool Invocation** | MCP tool schemas are loaded and callable |
-| **MCP Workflow Integration** | Bridge between MCP tools and workflow engine functions correctly |
+| **MCP Spell Integration** | Bridge between MCP tools and spell engine functions correctly |
 | **Hook Execution** | Hook executor is functional and can fire hooks |
 | **Gate Health** | All gate cases, hook bindings, and state file are intact |
 
@@ -505,12 +505,12 @@ While `doctor` checks your environment, `diagnose` exercises every subsystem end
 flo github setup                  # One-shot: generate CI + apply repo settings + branch protection
 flo github setup --dry-run        # Preview everything without making changes
 flo github ci                     # Generate .github/workflows/ci.yml from project config
-flo github ci --dry-run           # Print workflow to stdout
+flo github ci --dry-run           # Print CI config to stdout
 flo github settings               # Apply repo settings + branch protection via gh CLI
 flo github settings --dry-run     # Preview settings changes
 ```
 
-`flo github ci` auto-detects your package manager (npm/pnpm/yarn/bun), TypeScript, and test directories from `moflo.yaml` and `package.json`, then generates a CI workflow with install, build, lint, type-check, and test steps.
+`flo github ci` auto-detects your package manager (npm/pnpm/yarn/bun), TypeScript, and test directories from `moflo.yaml` and `package.json`, then generates a GitHub Actions CI pipeline with install, build, lint, type-check, and test steps.
 
 `flo github settings` applies recommended defaults via `gh` CLI: delete-branch-on-merge, squash merge with PR title/body, auto-merge, linear history, and configurable branch protection (required reviews, dismiss stale reviews, block force pushes). Requires `gh auth login`.
 
@@ -527,7 +527,7 @@ flo --version                    # Show version
 
 ### Hooks (enabled OOTB)
 
-Hooks are shell commands that Claude Code runs automatically at specific points in its workflow. MoFlo installs 21 hook bindings across 8 lifecycle events. You don't invoke these — they fire automatically.
+Hooks are shell commands that Claude Code runs automatically at specific points in its lifecycle. MoFlo installs 21 hook bindings across 8 lifecycle events. You don't invoke these — they fire automatically.
 
 | Hook Event | What fires | What it does | Enabled OOTB |
 |------------|-----------|-------------|:---:|
@@ -563,7 +563,7 @@ These are the backend systems that hooks and commands interact with.
 | **Guidance Indexing** | Chunks markdown docs into overlapping segments, embeds each with MiniLM-L6-v2 | Your project documentation becomes searchable by meaning ("how does auth work?") not just keywords | Yes |
 | **Code Map** | Parses source files for exports, classes, functions, types | The AI can answer "where is X defined?" from the index instead of running Glob/Grep | Yes |
 | **Test Indexing** | Maps test files to their source targets based on naming patterns | The AI can answer "what tests cover X?" and identify untested code | Yes |
-| **Workflow Gates** | Hook-based enforcement of memory-first and task-registration patterns | Prevents the AI from wasting tokens on blind exploration and untracked agent spawns | Yes |
+| **Gates** | Hook-based enforcement of memory-first and task-registration patterns | Prevents the AI from wasting tokens on blind exploration and untracked agent spawns | Yes |
 | **Context Tracking** | Interaction counter with bracket classification (FRESH/MODERATE/DEPLETED/CRITICAL) | Warns before context quality degrades, suggests when to checkpoint or start fresh | Yes |
 | **Semantic Routing** | Matches task descriptions to agent types using vector similarity against 17 built-in patterns | Routes work to the right specialist (security-architect, tester, coder, etc.) automatically | Yes |
 | **Learned Routing** | Records task outcomes (agent type + success/failure) and feeds them back into routing | Routing gets smarter over time — successful patterns are weighted higher in future recommendations | Yes |
@@ -609,7 +609,7 @@ The key insight: **your client handles execution, MoFlo handles knowledge.** You
 
 For complex work, MoFlo structures tasks into waves — a research wave discovers context, then an implementation wave acts on it — with dependencies tracked through both the client's task system and MoFlo's coordination layer. The full integration pattern is documented in `.claude/guidance/moflo-claude-swarm-cohesion.md`.
 
-The `/flo` skill ties both systems together for GitHub issues — driving a full workflow (research → enhance → implement → test → simplify → PR) with your client's agents for execution and MoFlo's memory for continuity.
+The `/flo` skill ties both systems together for GitHub issues — driving the full process (research → enhance → implement → test → simplify → PR) with your client's agents for execution and MoFlo's memory for continuity.
 
 ### Intelligent Agent Routing
 
@@ -650,7 +650,7 @@ MoFlo uses a SQLite database (via sql.js/WASM — no native deps) to store three
 
 ### For Claude
 
-When `flo init` runs, it appends a workflow section to your CLAUDE.md that teaches Claude:
+When `flo init` runs, it appends a section to your CLAUDE.md that teaches Claude:
 - Always search memory before Glob/Grep/Read (enforced by gates)
 - Use `mcp__moflo__memory_search` for knowledge retrieval
 - Use `/flo <issue>` (or `/fl`) for issue execution
@@ -700,7 +700,7 @@ hooks:
   post_edit: true                    # Record edit outcomes
   pre_task: true                     # Agent routing before task spawn
   post_task: true                    # Record task results for learning
-  gate: true                         # Workflow gate enforcement
+  gate: true                         # Gate enforcement
   route: true                        # Intelligent task routing
   stop_hook: true                    # Session-end persistence
   session_restore: true              # Restore session state on start
@@ -775,7 +775,7 @@ For documentation on the underlying capabilities that both projects share — sw
 
 [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) is an incredible piece of work. The engineering that [rUv](https://github.com/ruvnet) and the contributors have put into it — swarm topologies, hive-mind consensus, HNSW vector search, neural routing, and so much more — makes it one of the most comprehensive agent orchestration frameworks available. It's a massive, versatile toolbox built to support a wide range of scenarios: distributed systems, multi-agent swarms, enterprise orchestration, research workflows, and beyond.
 
-My use case was just one of those many scenarios: day-to-day local coding, enhancing my normal Claude Code experience on a single project. Claude Flow absolutely supports this — it's all in there — but because the project serves so many different needs, I found myself spending time configuring and tailoring things for my specific workflow each time I pulled in updates. That's not a shortcoming of the project; it's the natural trade-off of a tool designed to be that flexible and powerful.
+My use case was just one of those many scenarios: day-to-day local coding, enhancing my normal Claude Code experience on a single project. Claude Flow absolutely supports this — it's all in there — but because the project serves so many different needs, I found myself spending time configuring and tailoring things for my specific setup each time I pulled in updates. That's not a shortcoming of the project; it's the natural trade-off of a tool designed to be that flexible and powerful.
 
 So I forked the excellent foundation and narrowed the focus to my particular corner of it. I baked in the defaults I kept setting manually, added automatic indexing and memory gating at session start, and tuned the out-of-box experience so that `npm install` and `flo init` gets you straight to coding.
 
