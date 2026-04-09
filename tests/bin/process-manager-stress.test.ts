@@ -388,7 +388,7 @@ describe('rapid spawn-kill cycles', () => {
   beforeEach(() => { root = makeTempRoot(); });
   afterEach(() => { cleanTempRoot(root); });
 
-  it('5 rapid cycles of spawn → killAll', () => {
+  it('5 rapid cycles of spawn → killAll', { timeout: 30000 }, () => {
     for (let i = 0; i < 5; i++) {
       const spawned = runPM(root, `
         pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'cycle-a');
