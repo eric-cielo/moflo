@@ -1087,7 +1087,7 @@ describe('end-to-end: spell lifecycle', () => {
       expect(r.exitCode).toBe(0);
     });
 
-    it('resets learningsStored on new prompt', () => {
+    it('learningsStored persists across prompts (session-scoped)', () => {
       const env = baseEnv(tmpDir);
 
       env.CLAUDE_USER_PROMPT = 'first task';
@@ -1096,11 +1096,11 @@ describe('end-to-end: spell lifecycle', () => {
       let s = readState(tmpDir);
       expect(s.learningsStored).toBe(true);
 
-      // New prompt resets
+      // New prompt does NOT reset — learningsStored is session-scoped
       env.CLAUDE_USER_PROMPT = 'second task needs a pr';
       runGate('prompt-reminder', env);
       s = readState(tmpDir);
-      expect(s.learningsStored).toBe(false);
+      expect(s.learningsStored).toBe(true);
     });
   });
 });
