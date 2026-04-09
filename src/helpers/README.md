@@ -1,6 +1,6 @@
 # Claude Flow V3 Helper System
 
-The V3 Helper System provides cross-platform automation and development tools for claude-flow v3 users. These helpers enable automatic progress tracking, checkpointing, GitHub integration, and development workflow automation.
+The V3 Helper System provides cross-platform automation and development tools for claude-flow v3 users. These helpers enable automatic progress tracking, checkpointing, GitHub integration, and development automation.
 
 ## 🚀 Quick Start
 
@@ -47,7 +47,7 @@ chmod +x your-project/.claude/helpers/*.sh
 - **`session-manager.sh/.ps1`** - Development session tracking
 
 ### 🔧 GitHub Integration
-- **`github-integration.sh/.ps1`** - GitHub workflow automation
+- **`github-integration.sh/.ps1`** - GitHub integration automation
 - **`pr-management.sh/.ps1`** - Pull request automation
 - **`issue-tracker.sh/.ps1`** - Issue management
 
