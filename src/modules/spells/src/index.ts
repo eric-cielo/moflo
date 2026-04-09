@@ -83,6 +83,34 @@ export {
   commandExists,
 } from './core/prerequisite-checker.js';
 
+export {
+  resolvePermissions,
+  buildClaudeCommand,
+  isValidPermissionLevel,
+  VALID_PERMISSION_LEVELS,
+  type PermissionLevel,
+  type ResolvedPermissions,
+} from './core/permission-resolver.js';
+
+export {
+  analyzeStepPermissions,
+  analyzeSpellPermissions,
+  formatStepPermissionReport,
+  formatSpellPermissionReport,
+  type StepPermissionReport,
+  type SpellPermissionReport,
+  type PermissionWarning,
+  type RiskLevel,
+} from './core/permission-disclosure.js';
+
+export {
+  recordAcceptance,
+  checkAcceptance,
+  clearAcceptance,
+  type AcceptanceRecord,
+  type AcceptanceCheckResult,
+} from './core/permission-acceptance.js';
+
 // ============================================================================
 // Built-in Commands
 // ============================================================================

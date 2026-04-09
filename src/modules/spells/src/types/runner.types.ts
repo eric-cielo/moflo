@@ -5,6 +5,8 @@
  */
 
 import type { StepOutput, ValidationError, MofloLevel, PrerequisiteResult } from './step-command.types.js';
+import type { PermissionLevel, ResolvedPermissions } from '../core/permission-resolver.js';
+import type { PermissionWarning, RiskLevel } from '../core/permission-disclosure.js';
 
 // ============================================================================
 // Error Codes
@@ -85,6 +87,14 @@ export interface DryRunStepReport {
   readonly mofloLevel?: MofloLevel;
   /** Prerequisite check results (populated during dry-run). */
   readonly prerequisiteResults?: readonly PrerequisiteResult[];
+  /** Resolved permission level for Claude CLI invocations. */
+  readonly permissionLevel?: PermissionLevel;
+  /** Full resolved permissions (tools, flags). */
+  readonly resolvedPermissions?: ResolvedPermissions;
+  /** Risk classification for this step's capabilities. */
+  readonly riskLevel?: RiskLevel;
+  /** Destructive/sensitive warnings for this step. */
+  readonly permissionWarnings?: readonly PermissionWarning[];
 }
 
 export interface DryRunResult {
@@ -92,6 +102,10 @@ export interface DryRunResult {
   readonly argumentErrors: ValidationError[];
   readonly definitionErrors: ValidationError[];
   readonly steps: DryRunStepReport[];
+  /** SHA-256 hash of the spell's permission profile (changes when permissions change). */
+  readonly permissionHash?: string;
+  /** Highest risk level across all steps. */
+  readonly overallRisk?: RiskLevel;
 }
 
 // ============================================================================

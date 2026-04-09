@@ -130,6 +130,8 @@ export async function executeSingleStep(
   const scopedContext = {
     ...context, effectiveCaps: capCheck.effectiveCaps, gateway,
     mofloLevel: resolvedLevel, nestingDepth: state.nestingDepth, maxNestingDepth: state.maxNestingDepth,
+    // Pass through step-level permissionLevel for Claude CLI invocations
+    permissionLevel: step.permissionLevel,
     // Wrap connector accessor with gateway enforcement (#265)
     tools: context.tools ? new GatedConnectorAccessor(context.tools, gateway) : undefined,
   };

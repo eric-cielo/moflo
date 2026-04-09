@@ -20,6 +20,7 @@ import type {
 import { validateStepCapabilities, isValidMofloLevel, compareMofloLevels } from '../core/capability-validator.js';
 import { MOFLO_LEVEL_ORDER } from '../types/step-command.types.js';
 import type { MofloLevel } from '../types/step-command.types.js';
+import { isValidPermissionLevel, VALID_PERMISSION_LEVELS } from '../core/permission-resolver.js';
 import { validateSchedule } from '../scheduler/cron-parser.js';
 import { VAR_REF_PATTERN } from '../core/interpolation.js';
 
@@ -190,6 +191,14 @@ function validateSteps(
           message: `step mofloLevel "${step.mofloLevel}" exceeds spell-level "${spellLevel}" — steps can only narrow, not escalate`,
         });
       }
+    }
+
+    // Validate permissionLevel if declared
+    if (step.permissionLevel !== undefined && !isValidPermissionLevel(step.permissionLevel)) {
+      errors.push({
+        path: `${path}.permissionLevel`,
+        message: `invalid permissionLevel: "${step.permissionLevel}". Valid levels: ${VALID_PERMISSION_LEVELS.join(', ')}`,
+      });
     }
 
     // Recurse into nested steps (condition/loop/parallel)

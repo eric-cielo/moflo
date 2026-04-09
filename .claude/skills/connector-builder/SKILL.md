@@ -295,8 +295,45 @@ Ask the user for:
 | **Description** | Yes | `Transform data using jq-like expressions` |
 | **Config fields** | Yes (at least 1) | `expression: string`, `input: object` |
 | **Capabilities** | No | `fs:read`, `fs:write`, `net`, `shell`, `memory`, `credentials`, `browser`, `agent` |
+| **Permission Level** | No | `readonly`, `standard`, `elevated`, `autonomous` — auto-derived from capabilities when omitted |
 | **MoFlo level** | No (default `none`) | `none`, `memory`, `hooks`, `full`, `recursive` |
 | **Prerequisites** | No | External CLI tools needed |
+
+#### REQUIRED: Permission Disclosure
+
+**After gathering capabilities, you MUST display the permission implications to the user.** Classify and show:
+
+- **Permission level** — derived from capabilities:
+  - `readonly` (Read, Glob, Grep) — no `shell`, `fs:write`, `agent`, `net`, `browser` capabilities
+  - `standard` (Edit, Write, Read, Glob, Grep) — has `fs:write` or `agent` but not `shell`/`browser`
+  - `elevated` (Edit, Write, Bash, Read, Glob, Grep) — has `shell` or `browser`
+  - `autonomous` — requires explicit opt-in, never auto-derived
+
+- **Risk classification:**
+  - **[SAFE]** — `fs:read`, `memory` only
+  - **[SENSITIVE]** — `agent`, `net`, `browser`
+  - **[DESTRUCTIVE]** — `shell`, `fs:write`, `browser:evaluate`, `credentials`
+
+- **Specific warnings** for each destructive/sensitive capability:
+  - `shell`: "Can execute arbitrary shell commands (rm, git push, etc.)"
+  - `fs:write`: "Can create, overwrite, or delete files on disk"
+  - `credentials`: "Can access stored secrets and API keys"
+  - `agent`: "Can spawn autonomous Claude sub-agents"
+  - `net`: "Can make network requests to external services"
+
+**Example display:**
+
+```
+Step command "deploy" capabilities:
+  [DESTRUCTIVE]
+    Permission level: elevated
+    Capabilities: shell, fs:write, fs:read
+    Warnings:
+      !! shell: Can execute arbitrary shell commands (rm, git push, etc.)
+      !! fs:write: Can create, overwrite, or delete files on disk
+
+    Steps using this command will require user acceptance before first run.
+```
 
 ### Step 2: Generate Step Command Source
 

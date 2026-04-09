@@ -172,9 +172,50 @@ Each method calls `enforceScope()` internally. If the resource is outside the st
 
 ---
 
+## Permission Levels (Least-Privilege Escalation)
+
+When a spell step spawns Claude via `claude -p`, the engine applies **least-privilege permission escalation**. The `--dangerously-skip-permissions` flag is always passed (required for non-interactive mode), but `--allowedTools` restricts what Claude can actually do.
+
+| Level | `--allowedTools` | Derived When |
+|-------|-----------------|--------------|
+| `readonly` | `Read,Glob,Grep` | Step has no shell/write/agent capabilities |
+| `standard` | `Edit,Write,Read,Glob,Grep` | Step has `fs:write` or `agent` capability |
+| `elevated` | `Edit,Write,Bash,Read,Glob,Grep` | Step has `shell` or `browser` capability |
+| `autonomous` | *(no restriction)* | **Explicit opt-in only** via `permissionLevel: autonomous` |
+
+Steps can override with `permissionLevel` in YAML:
+
+```yaml
+- id: implement-story
+  type: bash
+  permissionLevel: elevated
+  config:
+    command: "claude -p 'Implement the feature'"
+```
+
+The engine **automatically rewrites** `claude -p` commands in bash steps — stripping any hardcoded permission flags and injecting the resolver's output. YAML authors write clean commands; the engine handles permission flags.
+
+### Permission Disclosure and Acceptance
+
+- **Dry runs** always show a full permission report: per-step permission level, risk classification (safe/sensitive/destructive), and specific warnings for dangerous capabilities.
+- **New spells** require user acceptance of the permission profile before first real run.
+- **Acceptance is stored** (`.moflo/accepted-permissions/`) as a hash of the permission profile. It persists until a permission-affecting edit changes the hash.
+- **Regular runs** skip verbose permission output — the acceptance gate checks the stored hash silently.
+
+### Risk Classification
+
+| Classification | Capabilities | Meaning |
+|---------------|-------------|---------|
+| **[SAFE]** | `fs:read`, `memory` | No side effects — analysis only |
+| **[SENSITIVE]** | `agent`, `net`, `browser` | Can read external data or spawn processes |
+| **[DESTRUCTIVE]** | `shell`, `fs:write`, `browser:evaluate`, `credentials` | Can permanently modify/delete data |
+
 ## See Also
 
 - `.claude/guidance/shipped/moflo-spell-engine.md` — Spell engine usage and YAML format
 - `.claude/guidance/shipped/moflo-spell-connectors.md` — Optional resource adapters (not the enforcement layer)
 - `.claude/guidance/shipped/moflo-spell-engine-architecture.md` — Engine architecture and messaging
 - `.claude/guidance/shipped/moflo-core-guidance.md` — Full CLI/MCP reference
+- `src/modules/spells/src/core/permission-resolver.ts` — Capability → permission level derivation
+- `src/modules/spells/src/core/permission-disclosure.ts` — Risk classification and reporting
+- `src/modules/spells/src/core/permission-acceptance.ts` — Acceptance storage and gate
