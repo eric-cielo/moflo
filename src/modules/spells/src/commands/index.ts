@@ -13,6 +13,7 @@ import { loopCommand } from './loop-command.js';
 import { browserCommand } from './browser-command.js';
 import { githubCommand } from './github-command.js';
 import { parallelCommand } from './parallel-command.js';
+import { outlookCommand } from './outlook-command.js';
 
 export {
   agentCommand,
@@ -25,6 +26,7 @@ export {
   browserCommand,
   githubCommand,
   parallelCommand,
+  outlookCommand,
 };
 
 // Typed config interfaces (Issue #189)
@@ -38,6 +40,7 @@ export type { LoopStepConfig } from './loop-command.js';
 export type { BrowserStepConfig, BrowserAction } from './browser-command.js';
 export type { GitHubStepConfig, GitHubAction } from './github-command.js';
 export type { ParallelStepConfig } from './parallel-command.js';
+export type { OutlookStepConfig, OutlookAction } from './outlook-command.js';
 
 /** All built-in step commands. */
 export const builtinCommands: readonly StepCommand[] = [
@@ -51,4 +54,5 @@ export const builtinCommands: readonly StepCommand[] = [
   browserCommand,
   githubCommand,
   parallelCommand,
+  outlookCommand,
 ];

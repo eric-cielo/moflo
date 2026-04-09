@@ -28,6 +28,11 @@ import type { SpellConnector, ConnectorAction, ConnectorOutput } from '../types/
 export interface PlaywrightModule {
   chromium: {
     launch(opts?: { headless?: boolean }): Promise<PlaywrightBrowser>;
+    launchPersistentContext(userDataDir: string, opts?: {
+      headless?: boolean;
+      acceptDownloads?: boolean;
+      downloadsPath?: string;
+    }): Promise<PlaywrightPersistentContext>;
   };
 }
 
@@ -36,8 +41,27 @@ export interface PlaywrightBrowser {
   close(): Promise<void>;
 }
 
+export interface PlaywrightPersistentContext {
+  pages(): PlaywrightPage[];
+  newPage(): Promise<PlaywrightPage>;
+  close(): Promise<void>;
+}
+
+export interface PlaywrightElementHandle {
+  click(opts?: Record<string, unknown>): Promise<void>;
+  fill(value: string): Promise<void>;
+  evaluate<T>(fn: string | ((el: unknown) => T)): Promise<T>;
+  $(selector: string): Promise<PlaywrightElementHandle | null>;
+  textContent(): Promise<string | null>;
+}
+
+export interface PlaywrightDownload {
+  suggestedFilename(): string;
+  saveAs(path: string): Promise<void>;
+}
+
 export interface PlaywrightPage {
-  goto(url: string, opts?: { timeout?: number }): Promise<unknown>;
+  goto(url: string, opts?: { timeout?: number; waitUntil?: string }): Promise<unknown>;
   click(selector: string, opts?: { button?: string; clickCount?: number }): Promise<void>;
   fill(selector: string, value: string): Promise<void>;
   type(selector: string, text: string): Promise<void>;
@@ -45,10 +69,18 @@ export interface PlaywrightPage {
   textContent(selector: string): Promise<string | null>;
   inputValue(selector: string): Promise<string>;
   screenshot(opts?: { path?: string; fullPage?: boolean }): Promise<Buffer>;
-  waitForSelector(selector: string, opts?: { timeout?: number }): Promise<unknown>;
+  waitForSelector(selector: string, opts?: { timeout?: number }): Promise<PlaywrightElementHandle | null>;
   waitForURL(url: string | RegExp, opts?: { timeout?: number }): Promise<void>;
-  evaluate<T>(fn: string | (() => T)): Promise<T>;
+  waitForTimeout(ms: number): Promise<void>;
+  waitForEvent(event: string, opts?: { timeout?: number }): Promise<PlaywrightDownload>;
+  evaluate<T>(fn: string | ((arg: unknown) => T), arg?: unknown): Promise<T>;
   hover(selector: string): Promise<void>;
+  $(selector: string): Promise<PlaywrightElementHandle | null>;
+  $$(selector: string): Promise<PlaywrightElementHandle[]>;
+  url(): string;
+  title(): Promise<string>;
+  content(): Promise<string>;
+  isClosed(): boolean;
   keyboard: { press(key: string): Promise<void> };
   mouse: { wheel(deltaX: number, deltaY: number): Promise<void> };
   close(): Promise<void>;

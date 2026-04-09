@@ -24,10 +24,10 @@ import { createMockContext as createContext } from './helpers.js';
 // ============================================================================
 
 describe('builtinCommands', () => {
-  it('should have all 10 commands', () => {
-    expect(builtinCommands).toHaveLength(10);
+  it('should have all 11 commands', () => {
+    expect(builtinCommands).toHaveLength(11);
     const types = builtinCommands.map(c => c.type);
-    expect(types).toEqual(['agent', 'bash', 'condition', 'prompt', 'memory', 'wait', 'loop', 'browser', 'github', 'parallel']);
+    expect(types).toEqual(['agent', 'bash', 'condition', 'prompt', 'memory', 'wait', 'loop', 'browser', 'github', 'parallel', 'outlook']);
   });
 
   it('should have unique types', () => {

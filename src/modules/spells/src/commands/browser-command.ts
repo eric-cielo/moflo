@@ -43,6 +43,7 @@ export interface BrowserStepConfig extends StepConfig {
   readonly actions: BrowserAction[];
   readonly headless?: boolean;
   readonly timeout?: number;
+  readonly userDataDir?: string;
 }
 
 // ── Action types ──────────────────────────────────────────────────────────
@@ -105,6 +106,7 @@ export const browserCommand: StepCommand<BrowserStepConfig> = {
       },
       headless: { type: 'boolean', description: 'Run in headless mode', default: true },
       timeout: { type: 'number', description: 'Default timeout in ms', default: 30000 },
+      userDataDir: { type: 'string', description: 'Path to persistent browser profile directory (preserves cookies/sessions across runs)' },
     },
     required: ['actions'],
   } satisfies JSONSchema,
@@ -144,6 +146,7 @@ export const browserCommand: StepCommand<BrowserStepConfig> = {
     const actions = config.actions;
     const headless = config.headless ?? true;
     const defaultTimeout = config.timeout ?? 30_000;
+    const userDataDir = config.userDataDir;
     const outputs: Record<string, unknown> = {};
 
     // Pre-flight: check all security constraints before loading Playwright.
@@ -186,9 +189,17 @@ export const browserCommand: StepCommand<BrowserStepConfig> = {
     }
 
     let browser: PlaywrightBrowser | null = null;
+    let persistentContext: Awaited<ReturnType<typeof playwright.chromium.launchPersistentContext>> | null = null;
     try {
-      browser = await playwright.chromium.launch({ headless });
-      const page = await browser.newPage();
+      let page;
+      if (userDataDir) {
+        // Persistent context: reuses cookies, localStorage, and sessions across runs.
+        persistentContext = await playwright.chromium.launchPersistentContext(userDataDir, { headless });
+        page = persistentContext.pages()[0] ?? await persistentContext.newPage();
+      } else {
+        browser = await playwright.chromium.launch({ headless });
+        page = await browser.newPage();
+      }
 
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i];
@@ -218,6 +229,9 @@ export const browserCommand: StepCommand<BrowserStepConfig> = {
         duration: Date.now() - start,
       };
     } finally {
+      if (persistentContext) {
+        try { await persistentContext.close(); } catch { /* ignore cleanup errors */ }
+      }
       if (browser) {
         try { await browser.close(); } catch { /* ignore cleanup errors */ }
       }

@@ -235,9 +235,12 @@ function validateVariableReferences(
       }
     }
 
-    // After checking, this step's output is now available to subsequent steps
+    // After checking, this step's ID and output variable are available to subsequent steps
     if (step.id) {
       declaredStepIds.push(step.id);
+    }
+    if (step.output && typeof step.output === 'string' && step.output !== step.id) {
+      declaredStepIds.push(step.output);
     }
 
     // Recurse into nested steps (condition/loop bodies)

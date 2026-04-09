@@ -1,6 +1,6 @@
 ---
 name: "connector-builder"
-description: "Scaffold new spell step commands and (rarely) generalized I/O connectors. Use when building new step commands for spells or extending the spell engine with new capabilities. Connectors are only for new I/O transport types — NOT for per-service wrappers."
+description: "Scaffold new spell step commands and connectors. Use when building new step commands for spells or extending the spell engine with new capabilities. Connectors are for new I/O transport types OR platforms requiring complex multi-step interaction (e.g., browser-based automation)."
 ---
 
 # Connector Builder
@@ -30,7 +30,9 @@ Ask the user:
 > 1. **Step command** — executes logic within a spell step (transform data, control flow, etc.)
 > 2. **Generalized connector** — wraps a new I/O transport type (e.g., WebSocket, gRPC, MQTT)
 
-**Important:** If the user asks for a service-specific connector (Slack, Jira, S3, etc.), guide them to compose existing connectors (`http`, `github-cli`, `playwright`) in spell YAML instead. Per-service connectors are not the right pattern — see `.claude/guidance/shipped/moflo-spell-connectors.md` for the architectural rationale (issues #233–#259).
+**Important:** Simple service integrations (Slack webhook, S3 upload, Jira comment) should compose existing connectors (`http`, `github-cli`, `playwright`) in spell YAML — no dedicated connector needed. However, platforms requiring complex multi-step browser interaction (like Outlook.com web UI) DO warrant a dedicated connector. See `.claude/skills/spell-builder/architecture.md` for the decision tree.
+
+**Documentation requirement:** When creating any new step command or connector, you MUST also create a README.md following `.claude/guidance/internal/guidance-rules.md`. Use existing READMEs in `.claude/skills/spell-builder/steps/` or `connectors/` as templates. Apply automatically — the user should never need to ask.
 
 Then follow the appropriate section below.
 

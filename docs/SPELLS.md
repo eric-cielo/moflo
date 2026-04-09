@@ -169,7 +169,7 @@ If a referenced variable doesn't exist, interpolation throws — catching typos 
 
 ## Step Types
 
-The engine ships with nine built-in step commands. Each one handles a specific kind of work.
+The engine ships with ten built-in step commands. Each one handles a specific kind of work.
 
 ### `bash` — Run a Shell Command
 
@@ -357,9 +357,71 @@ Runs GitHub CLI (`gh`) commands for issue and pull request management.
 
 Requires the `gh` CLI to be installed and authenticated.
 
+### `outlook` — Outlook.com Email Automation
+
+Local Outlook.com automation via Playwright — read your inbox, download attachments, send emails, and search. No API keys, OAuth tokens, or Azure subscriptions required. Uses a persistent browser profile so you sign in once and all subsequent runs (including headless/background) reuse the session.
+
+```yaml
+# Read inbox
+- id: check-mail
+  type: outlook
+  config:
+    action: read-inbox
+    limit: 10
+
+# Read a specific email
+- id: read-first
+  type: outlook
+  config:
+    action: read-email
+    emailIndex: 0
+
+# Download attachments from an email
+- id: get-files
+  type: outlook
+  config:
+    action: download-attachments
+    emailIndex: 0
+    downloadDir: "~/Downloads/attachments"
+
+# Send an email
+- id: notify
+  type: outlook
+  config:
+    action: send-email
+    to: "team@example.com"
+    subject: "Build report"
+    body: "Build succeeded. See attached."
+
+# Search emails
+- id: find-invoices
+  type: outlook
+  config:
+    action: search
+    query: "invoice from:accounting"
+    limit: 20
+```
+
+**Actions:** `read-inbox`, `read-email`, `download-attachments`, `send-email`, `search`
+
+**Outputs (read-inbox):** `totalEmails`, `emails` (array with subject, from, preview, hasAttachment, timestamp), `emailsWithAttachments`
+**Outputs (read-email):** `subject`, `from`, `date`, `body`, `attachments`, `hasAttachments`
+**Outputs (download-attachments):** `downloaded` (file paths), `count`
+**Outputs (send-email):** `to`, `subject`, `sent`
+**Outputs (search):** `query`, `totalResults`, `emails`
+
+**Config options:**
+- `userDataDir` — persistent browser profile path (default: `~/.moflo/browser-profiles/outlook`)
+- `headless` — run without a visible browser window (default: `true`)
+- `timeout` — page load/element wait timeout in ms (default: `30000`)
+
+**First run:** Set `headless: false` to sign into Outlook.com in the browser that opens. The session persists to `userDataDir` and all subsequent headless runs skip login.
+
+Requires `playwright` as a peer dependency.
+
 ## Custom Step Commands
 
-Beyond the nine built-in types, you can create your own step commands and drop them into your project. The spell engine auto-discovers them at startup — no code changes or configuration files needed beyond placing the file in the right directory.
+Beyond the ten built-in types, you can create your own step commands and drop them into your project. The spell engine auto-discovers them at startup — no code changes or configuration files needed beyond placing the file in the right directory.
 
 Custom steps are full participants in the spell engine: they receive interpolated config, their outputs are available to later steps via `{stepId.field}` references, they can declare capabilities and prerequisites, and they can implement `rollback()` for failure recovery.
 

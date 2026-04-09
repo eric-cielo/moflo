@@ -7,6 +7,10 @@ description: "Create, edit, and validate spell definitions (YAML/JSON) that comp
 
 Create production-ready spell definitions (YAML/JSON) that compose step commands and connectors into end-to-end automated spells, with proper data flow, validation, and engine integration.
 
+## Architecture — Read First
+
+**Before creating or modifying spells, read [architecture.md](architecture.md).** It defines the three-layer model (spell → step command → connector) and when to create what. Putting logic in the wrong layer is the most common mistake.
+
 ## Prerequisites
 
 - MoFlo project with `@moflo/spells` package
@@ -186,52 +190,37 @@ Write the updated YAML back to the original file (or a new path if requested).
 
 ## Section 3: Discover Available Spell Components
 
-### Built-in Step Commands
+### Step Commands
 
-These step command types are available for use in spell `steps[].type`:
+**Each step type has its own directory with a self-contained README.** To discover available steps, scan the `steps/` directory within this skill:
 
-| Type | Description | Key Config Fields |
-|------|-------------|-------------------|
-| `agent` | Execute a prompt via an AI agent | `prompt`, `model`, `systemPrompt` |
-| `bash` | Run a shell command | `command`, `cwd`, `timeout` |
-| `condition` | Conditional branching based on expressions | `expression`, `then`, `else`, nested `steps` |
-| `prompt` | Display a prompt and collect user input | `message`, `variable`, `type` |
-| `memory` | Read/write/search MoFlo memory | `operation` (read/write/search), `namespace`, `key`, `value`, `query` |
-| `wait` | Pause execution for a duration | `duration` (ms), `until` (expression) |
-| `loop` | Iterate over items or repeat N times | `items`/`times`, nested `steps` |
-| `browser` | Browser automation via Playwright | `action`, `url`, `selector`, `value` |
-| `github` | GitHub CLI operations | `action` (create-issue, create-pr, etc.), `repo`, params |
-
-**Source:** `src/modules/spells/src/commands/index.ts`
-
-### Built-in Connectors (Generalized I/O Wrappers)
-
-Connectors are generalized I/O wrappers — not per-service adapters. Three ship with moflo, covering HTTP APIs, CLI tools, and browser automation. Service-specific integrations (Slack, Jira, S3, etc.) are composed in spell YAML using these connectors.
-
-| Connector | Description | Capabilities | Key Actions |
-|-----------|-------------|--------------|-------------|
-| `http` | HTTP requests to any URL | read, write | `request` (method, url, headers, body) |
-| `github-cli` | GitHub CLI (`gh`) operations | read, write, search | `issue-create`, `issue-list`, `pr-create`, `pr-list`, `repo-view` |
-| `playwright` | Browser automation | read, write | `navigate`, `click`, `fill`, `screenshot`, `evaluate` |
-
-**Source:** `src/modules/spells/src/connectors/index.ts`
-
-To use a connector in a spell, reference it in an `agent` step's prompt:
-```yaml
-steps:
-  - id: call-api
-    type: agent
-    config:
-      prompt: |
-        Use the http connector to GET https://api.example.com/data.
-        Access via context.tools.execute('http', 'request', { method: 'GET', url: '...' })
+```
+.claude/skills/spell-builder/steps/
+  <step-name>/README.md    — config, outputs, usage examples, source path
 ```
 
-### Need a Service Integration?
+**To find what steps are available:** Use `Glob` on `.claude/skills/spell-builder/steps/*/README.md` and read the H1 heading of each file. Each README is self-contained — it has everything needed to use that step type.
 
-**Compose existing connectors in spell YAML** — do not create a per-service connector. For example, Slack integration uses the `http` connector with Slack's API URL, not a dedicated `slack` connector.
+**Runtime source:** `src/modules/spells/src/commands/` — each step is a TypeScript file registered in `index.ts`.
 
-Use **`/connector-builder`** only when you need a new **step command** or a new **generalized I/O connector** for a transport type not covered by the built-ins (e.g., WebSocket, gRPC).
+**Adding a new step:** Create a directory under `steps/<name>/` with a `README.md`. Follow `.claude/guidance/internal/guidance-rules.md` and use existing step READMEs as templates. The step command source goes in `src/modules/spells/src/commands/` and is registered in `index.ts`. No changes to this SKILL.md needed.
+
+### Connectors
+
+**Each connector has its own directory with a self-contained README.** To discover available connectors, scan the `connectors/` directory:
+
+```
+.claude/skills/spell-builder/connectors/
+  <connector-name>/README.md    — actions, capabilities, usage, source path
+```
+
+**To find what connectors are available:** Use `Glob` on `.claude/skills/spell-builder/connectors/*/README.md`.
+
+**Runtime source:** `src/modules/spells/src/connectors/` — each connector is a TypeScript file registered in `index.ts`.
+
+**Adding a new connector:** Create a directory under `connectors/<name>/` with a `README.md`. Follow `.claude/guidance/internal/guidance-rules.md` and use existing connector READMEs as templates. The connector source goes in `src/modules/spells/src/connectors/` and is registered in `index.ts`. No changes to this SKILL.md needed.
+
+**When to create a new connector vs composing existing ones:** See [architecture.md](architecture.md) for the decision tree.
 
 ---
 
