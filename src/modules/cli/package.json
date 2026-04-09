@@ -1,6 +1,6 @@
 {
   "name": "@moflo/cli",
-  "version": "4.8.56-rc.3",
+  "version": "4.8.56-rc.4",
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
