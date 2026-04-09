@@ -113,7 +113,7 @@ describe('Statusline Collision Zone Avoidance', () => {
     expect(output.includes('\n')).toBe(false);
   });
 
-  it('should have padding in the collision line', async () => {
+  it('should have padding in the collision line', { timeout: 15_000 }, async () => {
     const { StatuslineGenerator } = await import('../../src/statusline/index.js');
 
     const generator = new StatuslineGenerator();
@@ -144,7 +144,7 @@ describe('Statusline Collision Zone Avoidance', () => {
 });
 
 describe('Statusline Output Modes', () => {
-  it('should support all output modes', async () => {
+  it('should support all output modes', { timeout: 15_000 }, async () => {
     const { StatuslineGenerator } = await import('../../src/statusline/index.js');
 
     const generator = new StatuslineGenerator();

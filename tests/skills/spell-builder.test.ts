@@ -128,31 +128,29 @@ describe('spell-builder skill', () => {
   });
 
   describe('built-in step commands', () => {
-    it('lists all 9 built-in step command types', () => {
-      const stepTypes = [
-        'agent', 'bash', 'condition', 'prompt',
-        'memory', 'wait', 'loop', 'browser', 'github',
-      ];
-      for (const type of stepTypes) {
-        expect(content).toContain(`\`${type}\``);
-      }
+    it('documents pluggable step discovery via steps/ directory', () => {
+      // After the pluggable architecture change, step types are discovered
+      // from .claude/skills/spell-builder/steps/*/README.md rather than
+      // being listed inline. Verify the discovery mechanism is documented.
+      expect(content).toContain('.claude/skills/spell-builder/steps/');
+      expect(content).toContain('README.md');
     });
 
-    it('references the commands source file', () => {
-      expect(content).toContain('commands/index.ts');
+    it('references the commands source directory', () => {
+      expect(content).toContain('src/modules/spells/src/commands/');
     });
   });
 
   describe('built-in connectors', () => {
-    it('lists all 3 built-in connectors', () => {
-      const connectorNames = ['http', 'github-cli', 'playwright'];
-      for (const name of connectorNames) {
-        expect(content).toContain(`\`${name}\``);
-      }
+    it('documents pluggable connector discovery via connectors/ directory', () => {
+      // After the pluggable architecture change, connectors are discovered
+      // from .claude/skills/spell-builder/connectors/*/README.md rather than
+      // being listed inline. Verify the discovery mechanism is documented.
+      expect(content).toContain('.claude/skills/spell-builder/connectors/');
     });
 
-    it('references the connectors source file', () => {
-      expect(content).toContain('connectors/index.ts');
+    it('references the connectors source directory', () => {
+      expect(content).toContain('src/modules/spells/src/connectors/');
     });
   });
 
