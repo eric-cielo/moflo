@@ -31,10 +31,10 @@
   ".claude/guidance/moflo-memory-strategy.md",
   ".claude/guidance/moflo-memorydb-maintenance.md",
   ".claude/guidance/moflo-source-hygiene.md",
-  ".claude/guidance/moflo-subagents.md",
-  ".claude/guidance/moflo-task-icons.md",
   ".claude/guidance/moflo-spell-connectors.md",
   ".claude/guidance/moflo-spell-engine-architecture.md",
   ".claude/guidance/moflo-spell-engine.md",
-  ".claude/guidance/moflo-spell-sandboxing.md"
+  ".claude/guidance/moflo-spell-sandboxing.md",
+  ".claude/guidance/moflo-subagents.md",
+  ".claude/guidance/moflo-task-icons.md"
 ]
