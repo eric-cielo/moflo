@@ -13,7 +13,7 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import type { MCPTool } from './types.js';
-import { WorkflowGateService } from '../services/workflow-gate.js';
+import { GateService } from '../services/spell-gate.js';
 
 // Legacy JSON store interface (for migration)
 interface LegacyMemoryEntry {
@@ -55,15 +55,15 @@ function ensureMemoryDir(): void {
 }
 
 /**
- * Notify the workflow gate that a memory search occurred.
+ * Notify the spell gate that a memory search occurred.
  * PostToolUse hooks don't fire reliably for MCP tools (#354),
- * so the handler writes the flag directly via WorkflowGateService.
+ * so the handler writes the flag directly via GateService.
  */
 let _gateNotified = false;
 function notifyMemoryGate(): void {
   if (_gateNotified) return;
   try {
-    new WorkflowGateService().recordMemorySearched();
+    new GateService().recordMemorySearched();
     _gateNotified = true;
   } catch (err) {
     // Non-fatal — gate will still work via bash fallback

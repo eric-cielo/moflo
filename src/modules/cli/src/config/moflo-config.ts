@@ -396,7 +396,7 @@ ${srcDirs.map(d => `    - ${d}`).join('\n')}
   exclude: [node_modules, dist, .next, coverage, build, __pycache__, target, .git]
   namespace: code-map
 
-# Workflow gates (enforced via Claude Code hooks)
+# Spell gates (enforced via Claude Code hooks)
 gates:
   memory_first: true          # Search memory before Glob/Grep
   task_create_first: true     # TaskCreate before Agent tool
@@ -419,7 +419,7 @@ hooks:
   post_edit: true              # Record edit outcomes, train neural patterns
   pre_task: true               # Get agent routing before task spawn
   post_task: true              # Record task results for learning
-  gate: true                   # Workflow gate enforcement (memory-first, task-create-first)
+  gate: true                   # Spell gate enforcement (memory-first, task-create-first)
   route: true                  # Intelligent task routing on each prompt
   stop_hook: true              # Session-end persistence and metric export
   session_restore: true        # Restore session state on start

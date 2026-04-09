@@ -198,7 +198,7 @@ export function generateHelpers(options: InitOptions): Record<string, string> {
 }
 
 /**
- * Generate lightweight gate.cjs — workflow gates without CLI bootstrap.
+ * Generate lightweight gate.cjs — spell gates without CLI bootstrap.
  * Handles JSON state file read/write for memory-first and TaskCreate gates.
  * This replaces `npx flo gate <command>` to avoid spawning a full CLI process
  * on every tool call (~500ms npx overhead → ~20ms direct node).

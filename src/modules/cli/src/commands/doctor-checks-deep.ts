@@ -3,7 +3,7 @@
  *
  * These checks go beyond file-existence — they exercise subsystems end-to-end:
  * - Subagent spawn/terminate lifecycle
- * - Workflow engine execution (minimal bash step)
+ * - Spell engine execution (minimal bash step)
  * - MCP tool registry loading and invocation
  * - Hook executor firing
  *
@@ -198,7 +198,7 @@ export async function checkSubagentHealth(): Promise<HealthCheck> {
  * Runs a minimal spell (single echo step) through the full engine pipeline:
  * parse → validate → execute → collect result.
  */
-export async function checkWorkflowExecution(): Promise<HealthCheck> {
+export async function checkSpellExecution(): Promise<HealthCheck> {
   try {
     const modulePath = findModule(
       'src/modules/spells/dist/factory/runner-factory.js',
@@ -212,9 +212,9 @@ export async function checkWorkflowExecution(): Promise<HealthCheck> {
       return { name: 'Spell Execution', status: 'fail', message: 'runSpellFromContent is not a function', fix: 'npm run build' };
     }
 
-    const minimalWorkflow = `
+    const minimalSpell = `
 name: doctor-probe
-description: Health check probe workflow
+description: Health check probe spell
 steps:
   - id: probe
     type: bash
@@ -223,7 +223,7 @@ steps:
     output: result
 `;
 
-    const result = await runSpellFromContent(minimalWorkflow, 'doctor-probe.yaml', {
+    const result = await runSpellFromContent(minimalSpell, 'doctor-probe.yaml', {
       spellId: `doctor-probe-${Date.now()}`,
       timeout: 10_000,
     });
@@ -408,7 +408,7 @@ export async function checkHookExecution(): Promise<HealthCheck> {
  * Calls bridgeExecuteSpell() with a minimal definition and checks for real
  * bash step stdout, not mock/simulated output.
  */
-export async function checkMcpWorkflowIntegration(): Promise<HealthCheck> {
+export async function checkMcpSpellIntegration(): Promise<HealthCheck> {
   try {
     const bridgePath = findModule(
       'src/modules/spells/dist/factory/runner-bridge.js',

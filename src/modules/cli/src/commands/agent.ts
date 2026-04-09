@@ -54,7 +54,7 @@ const AGENT_TYPES = [
   { value: 'tester', label: 'Tester', hint: 'Comprehensive testing with automation' },
   { value: 'reviewer', label: 'Reviewer', hint: 'Code review with security and quality checks' },
   { value: 'architect', label: 'Architect', hint: 'System design with enterprise patterns' },
-  { value: 'coordinator', label: 'Coordinator', hint: 'Multi-agent orchestration and workflow' },
+  { value: 'coordinator', label: 'Coordinator', hint: 'Multi-agent orchestration and spell management' },
   { value: 'analyst', label: 'Analyst', hint: 'Performance analysis and optimization' },
   { value: 'optimizer', label: 'Optimizer', hint: 'Performance optimization and bottleneck analysis' },
   { value: 'security-architect', label: 'Security Architect', hint: 'Security architecture and threat modeling' },
@@ -961,7 +961,7 @@ function getAgentCapabilities(type: string): string[] {
     tester: ['unit-testing', 'integration-testing', 'coverage-analysis', 'automation'],
     reviewer: ['code-review', 'security-audit', 'quality-check', 'documentation'],
     architect: ['system-design', 'pattern-analysis', 'scalability', 'documentation'],
-    coordinator: ['task-orchestration', 'agent-management', 'workflow-control'],
+    coordinator: ['task-orchestration', 'agent-management', 'spell-control'],
     'security-architect': ['threat-modeling', 'security-patterns', 'compliance', 'audit'],
     'memory-specialist': ['vector-search', 'agentdb', 'caching', 'optimization'],
     'performance-engineer': ['benchmarking', 'profiling', 'optimization', 'monitoring']

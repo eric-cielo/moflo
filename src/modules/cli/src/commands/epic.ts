@@ -1,8 +1,8 @@
 /**
- * MoFlo Epic Command — Thin Workflow Runner Wrapper
+ * MoFlo Epic Command — Thin Spell Runner Wrapper
  *
  * Story #197: Refactored from ~1153-line ad-hoc orchestrator to thin wrapper
- * that loads workflow YAML templates and runs them via SpellCaster.
+ * that loads spell YAML templates and runs them via SpellCaster.
  *
  * Usage:
  *   flo epic run 42                          Execute an epic from GitHub
@@ -24,17 +24,17 @@ import {
   resolveExecutionOrder,
 } from '../epic/index.js';
 import type { EpicStrategy } from '../epic/types.js';
-import { runEpicWorkflow } from '../epic/runner-adapter.js';
+import { runEpicSpell } from '../epic/runner-adapter.js';
 
 // ============================================================================
-// Workflow Template Loader
+// Spell Template Loader
 // ============================================================================
 
-const WORKFLOWS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'epic', 'workflows');
+const SPELLS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'epic', 'spells');
 
-function loadWorkflowTemplate(strategy: EpicStrategy): string {
+function loadSpellTemplate(strategy: EpicStrategy): string {
   const filename = strategy === 'auto-merge' ? 'auto-merge.yaml' : 'single-branch.yaml';
-  return readFileSync(join(WORKFLOWS_DIR, filename), 'utf-8');
+  return readFileSync(join(SPELLS_DIR, filename), 'utf-8');
 }
 
 // ============================================================================
@@ -86,7 +86,7 @@ async function runEpic(
   // 3. Check for prior state (resume support)
   let completedStories = new Set<number>();
   try {
-    const stateResult = await runEpicWorkflow(
+    const stateResult = await runEpicSpell(
       `name: epic-resume-check\nsteps:\n  - id: check-state\n    type: memory\n    config:\n      action: search\n      namespace: epic-state\n      query: "epic ${issueNumber} story completed"`,
       { args: {} },
     );
@@ -117,8 +117,8 @@ async function runEpic(
     .replace(/^-|-$/g, '')
     .substring(0, 40);
 
-  // 5. Load workflow template and execute
-  const yaml = loadWorkflowTemplate(strategy);
+  // 5. Load spell template and execute
+  const yaml = loadSpellTemplate(strategy);
   const allStoryNumbers = plan.order
     .map(id => storyById.get(id)?.issue)
     .filter((n): n is number => n != null);
@@ -149,7 +149,7 @@ async function runEpic(
     }
 
     try {
-      const result = await runEpicWorkflow(yaml, {
+      const result = await runEpicSpell(yaml, {
         args, dryRun: true,
       });
 
@@ -174,12 +174,12 @@ async function runEpic(
     return { success: true, message: 'Dry-run complete' };
   }
 
-  // 6. Execute workflow
+  // 6. Execute spell
   console.log(`[epic] Casting ${strategy} spell...`);
   let stepCount = 0;
 
   try {
-    const result = await runEpicWorkflow(yaml, {
+    const result = await runEpicSpell(yaml, {
       args,
       onStepComplete: (stepResult, index, total) => {
         stepCount++;
@@ -216,11 +216,11 @@ async function runEpic(
         }
       }
 
-      // Print workflow-level errors with full detail
+      // Print spell-level errors with full detail
       for (const err of result.errors) {
         const prefix = (err as Record<string, unknown>).stepId
           ? `  [${(err as Record<string, unknown>).stepId}]`
-          : '  [workflow]';
+          : '  [spell]';
         console.log(`${prefix} ${(err as Record<string, unknown>).code ?? 'ERROR'}: ${err.message}`);
         const details = (err as Record<string, unknown>).details;
         if (Array.isArray(details)) {
@@ -261,7 +261,7 @@ async function showStatus(epicNumber: string): Promise<CommandResult> {
   console.log('[epic] Reading from spell memory...');
 
   try {
-    const result = await runEpicWorkflow(
+    const result = await runEpicSpell(
       `name: epic-status-check\nsteps:\n  - id: read-state\n    type: memory\n    config:\n      action: search\n      namespace: epic-state\n      query: "epic ${epicNumber}"`,
       { args: {} },
     );
@@ -290,7 +290,7 @@ async function resetEpic(epicNumber: string): Promise<CommandResult> {
   console.log(`[epic] Clearing state for epic #${epicNumber}...`);
 
   try {
-    await runEpicWorkflow(
+    await runEpicSpell(
       `name: epic-reset\nsteps:\n  - id: clear-state\n    type: memory\n    config:\n      action: write\n      namespace: epic-state\n      key: "epic-${epicNumber}"\n      value: null`,
       { args: {} },
     );

@@ -3,7 +3,7 @@
  * Enforces TaskCreate + memory-first patterns before agent spawning
  * and file exploration. Tracks context bracket by interaction count.
  *
- * Ported from Motailz .claude/scripts/workflow-gate.mjs into MoFlo core.
+ * Ported from Motailz .claude/scripts/spell-gate.mjs into MoFlo core.
  *
  * Gate types:
  *   check-before-agent     — blocks Agent tool if no TaskCreate or no memory search
@@ -24,7 +24,7 @@ import { loadMofloConfig } from '../config/moflo-config.js';
 // Types
 // ============================================================================
 
-export interface WorkflowState {
+export interface GateState {
   tasksCreated: boolean;
   taskCount: number;
   memorySearched: boolean;
@@ -45,7 +45,7 @@ export interface GateResult {
 // Constants
 // ============================================================================
 
-const DEFAULT_STATE: WorkflowState = {
+const DEFAULT_STATE: GateState = {
   tasksCreated: false,
   taskCount: 0,
   memorySearched: false,
@@ -115,7 +115,7 @@ const EXEMPT_PATTERNS = [
 // Service
 // ============================================================================
 
-export class WorkflowGateService {
+export class GateService {
   private stateFilePath: string;
   private config: { memory_first: boolean; task_create_first: boolean; context_tracking: boolean };
 
@@ -129,7 +129,7 @@ export class WorkflowGateService {
   // State management
   // --------------------------------------------------------------------------
 
-  readState(): WorkflowState {
+  readState(): GateState {
     try {
       return JSON.parse(fs.readFileSync(this.stateFilePath, 'utf-8'));
     } catch {
@@ -138,7 +138,7 @@ export class WorkflowGateService {
     }
   }
 
-  writeState(state: WorkflowState): void {
+  writeState(state: GateState): void {
     try {
       fs.mkdirSync(path.dirname(this.stateFilePath), { recursive: true });
       fs.writeFileSync(this.stateFilePath, JSON.stringify(state, null, 2));
@@ -386,13 +386,13 @@ export function processGateCommand(command: string, env: Record<string, string |
 
   // --- STRICT GATE COMMANDS (must block on failure) ---
   if (command.startsWith('check-before-') || command === 'check-dangerous-command') {
-    const gate = new WorkflowGateService();
+    const gate = new GateService();
 
     switch (command) {
       case 'check-before-agent': {
         const result = gate.checkBeforeAgent();
         // Advisory only — never exit 2 (block). Agent spawning should not be
-        // gated because subagents share workflow state and cascade failures.
+        // gated because subagents share gate state and cascade failures.
         // Memory-first is enforced at the scan/read layer instead.
         // Write to stdout (not stderr) — stderr triggers "hook error" display in Claude Code UI.
         if (result.message) process.stdout.write(result.message + '\n');
@@ -436,7 +436,7 @@ export function processGateCommand(command: string, env: Record<string, string |
 
   // --- FAULT-TOLERANT COMMANDS (never surface errors to user) ---
   try {
-    const gate = new WorkflowGateService();
+    const gate = new GateService();
 
     switch (command) {
       case 'record-task-created':

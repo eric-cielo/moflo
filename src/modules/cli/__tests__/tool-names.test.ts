@@ -65,10 +65,10 @@ describe('spell.ts uses tool name constants (no string literals)', () => {
     // Should import from tool-names
     expect(source).toContain("from '../mcp-tools/tool-names.js'");
     // Should NOT have raw string tool calls with old workflow_* names
-    expect(source).not.toContain("callMCPTool<WorkflowRunResponse>('spell_cast'");
-    expect(source).not.toContain("callMCPTool<WorkflowListResponse>('spell_list'");
-    expect(source).not.toContain("callMCPTool<WorkflowStatusResponse>('spell_status'");
-    expect(source).not.toContain("callMCPTool<WorkflowCancelResponse>('spell_cancel'");
+    expect(source).not.toContain("callMCPTool<SpellRunResponse>('spell_cast'");
+    expect(source).not.toContain("callMCPTool<SpellListResponse>('spell_list'");
+    expect(source).not.toContain("callMCPTool<SpellStatusResponse>('spell_status'");
+    expect(source).not.toContain("callMCPTool<SpellCancelResponse>('spell_cancel'");
     // Should use TOOL_SPELL_ constants instead
     expect(source).toContain('TOOL_SPELL_CAST');
     expect(source).toContain('TOOL_SPELL_LIST');

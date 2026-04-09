@@ -623,7 +623,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       w.executions.forEach(e => {
         const ctx = e.context;
         const contextLabel = fmtContext(ctx);
-        const name = contextLabel || e.spellName || e.workflowName || 'Unknown Spell';
+        const name = contextLabel || e.spellName || e.spellName || 'Unknown Spell';
         const runId = e.id || '-';
         const statusBadge = e.success === true ? badge('pass','green') : e.success === false ? badge('fail','red') : badge('running','yellow');
         const progress = e.totalSteps ? (e.completedSteps || 0) + '/' + e.totalSteps + ' steps' : '';

@@ -25,13 +25,13 @@ import { findProjectRoot } from '../services/project-root.js';
 // Constants
 // ============================================================================
 
-const WF_STATUS = {
+const SPELL_STATUS = {
   RUNNING: 'running',
   COMPLETED: 'completed',
   FAILED: 'failed',
   CANCELLED: 'cancelled',
 } as const;
-type WfStatus = typeof WF_STATUS[keyof typeof WF_STATUS];
+type SpellStatus = typeof SPELL_STATUS[keyof typeof SPELL_STATUS];
 
 const LIST_SOURCE = {
   REGISTRY: 'registry',
@@ -48,41 +48,41 @@ const TEMPLATE_ACTION = {
 // In-memory result tracking (for status queries between runs)
 // ============================================================================
 
-interface TrackedWorkflow {
+interface TrackedSpell {
   spellId: string;
   name: string;
   description?: string;
-  status: WfStatus;
+  status: SpellStatus;
   result?: SpellResult;
   startedAt: string;
   completedAt?: string;
 }
 
 const MAX_TRACKED = 100;
-const trackedWorkflows = new Map<string, TrackedWorkflow>();
+const trackedSpells = new Map<string, TrackedSpell>();
 
 function evictOldest(): void {
-  if (trackedWorkflows.size <= MAX_TRACKED) return;
+  if (trackedSpells.size <= MAX_TRACKED) return;
   // Map iteration order is insertion order — delete the oldest
-  const first = trackedWorkflows.keys().next().value;
-  if (first) trackedWorkflows.delete(first);
+  const first = trackedSpells.keys().next().value;
+  if (first) trackedSpells.delete(first);
 }
 
-function trackStart(spellId: string, name: string, description?: string): TrackedWorkflow {
-  const tracked: TrackedWorkflow = {
+function trackStart(spellId: string, name: string, description?: string): TrackedSpell {
+  const tracked: TrackedSpell = {
     spellId,
     name,
     description,
-    status: WF_STATUS.RUNNING,
+    status: SPELL_STATUS.RUNNING,
     startedAt: new Date().toISOString(),
   };
-  trackedWorkflows.set(spellId, tracked);
+  trackedSpells.set(spellId, tracked);
   evictOldest();
   return tracked;
 }
 
-function trackResult(tracked: TrackedWorkflow, result: SpellResult): void {
-  tracked.status = result.cancelled ? WF_STATUS.CANCELLED : result.success ? WF_STATUS.COMPLETED : WF_STATUS.FAILED;
+function trackResult(tracked: TrackedSpell, result: SpellResult): void {
+  tracked.status = result.cancelled ? SPELL_STATUS.CANCELLED : result.success ? SPELL_STATUS.COMPLETED : SPELL_STATUS.FAILED;
   tracked.result = result;
   tracked.completedAt = new Date().toISOString();
 }
@@ -93,7 +93,7 @@ async function executeAndTrack(
   definition: SpellDefinition,
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const spellId = `wf-${Date.now()}`;
+  const spellId = `sp-${Date.now()}`;
   const tracked = trackStart(spellId, definition.name, definition.description);
 
   try {
@@ -101,7 +101,7 @@ async function executeAndTrack(
     trackResult(tracked, result);
     return serializeResult(result);
   } catch (err) {
-    tracked.status = WF_STATUS.FAILED;
+    tracked.status = SPELL_STATUS.FAILED;
     tracked.completedAt = new Date().toISOString();
     return { spellId, error: errorMsg(err) };
   }
@@ -234,11 +234,11 @@ export const spellTools: MCPTool[] = [
       // Determine raw content source
       let content: string;
       let sourceFile: string | undefined;
-      let workflowName: string;
+      let spellName: string;
 
       if (input.content) {
         content = input.content as string;
-        workflowName = 'inline';
+        spellName = 'inline';
       } else if (input.file) {
         const filePath = resolve(findProjectRoot(), input.file as string);
         try {
@@ -247,7 +247,7 @@ export const spellTools: MCPTool[] = [
           return { error: `Spell scroll not found or unreadable: ${filePath}` };
         }
         sourceFile = filePath;
-        workflowName = String(input.file);
+        spellName = String(input.file);
       } else {
         return { error: 'One of name, file, or content is required to cast a spell' };
       }
@@ -255,7 +255,7 @@ export const spellTools: MCPTool[] = [
       // Run from raw content via bridge
       const engine = await loadSpellEngine();
       const result = await engine.bridgeRunSpell(content, sourceFile, args, { dryRun });
-      const tracked = trackStart(result.spellId, workflowName);
+      const tracked = trackStart(result.spellId, spellName);
       trackResult(tracked, result);
       return serializeResult(result);
     },
@@ -373,7 +373,7 @@ export const spellTools: MCPTool[] = [
     },
     handler: async (input) => {
       const spellId = input.spellId as string;
-      const tracked = trackedWorkflows.get(spellId);
+      const tracked = trackedSpells.get(spellId);
 
       // Only check engine if it's already loaded (avoid unnecessary dynamic import)
       const isRunning = getCachedEngine()?.bridgeIsRunning(spellId) ?? false;
@@ -385,7 +385,7 @@ export const spellTools: MCPTool[] = [
       if (isRunning) {
         return {
           spellId,
-          status: WF_STATUS.RUNNING,
+          status: SPELL_STATUS.RUNNING,
           name: tracked?.name,
           startedAt: tracked?.startedAt,
         };
@@ -460,7 +460,7 @@ export const spellTools: MCPTool[] = [
       }
 
       if (source === LIST_SOURCE.RUNS || source === LIST_SOURCE.ALL) {
-        let runs = [...trackedWorkflows.values()];
+        let runs = [...trackedSpells.values()];
         if (input.status) {
           runs = runs.filter(r => r.status === input.status);
         }
@@ -474,12 +474,12 @@ export const spellTools: MCPTool[] = [
         }));
       }
 
-      // Also include currently running workflows from the engine
+      // Also include currently running spells from the engine
       try {
         const engine = await loadSpellEngine();
-        result.activeWorkflows = engine.bridgeActiveSpells();
+        result.activeSpells = engine.bridgeActiveSpells();
       } catch {
-        result.activeWorkflows = [];
+        result.activeSpells = [];
       }
 
       return result;
@@ -511,16 +511,16 @@ export const spellTools: MCPTool[] = [
       // Engine doesn't support pause — cancel via AbortController
       const cancelled = engine.bridgeCancelSpell(spellId);
       if (cancelled) {
-        const tracked = trackedWorkflows.get(spellId);
+        const tracked = trackedSpells.get(spellId);
         if (tracked) {
-          tracked.status = WF_STATUS.CANCELLED;
+          tracked.status = SPELL_STATUS.CANCELLED;
           tracked.completedAt = new Date().toISOString();
         }
       }
 
       return {
         spellId,
-        status: cancelled ? WF_STATUS.CANCELLED : 'not_found',
+        status: cancelled ? SPELL_STATUS.CANCELLED : 'not_found',
         note: 'Spells cannot be suspended mid-cast — dispelled instead. Use spell_cast to re-invoke.',
       };
     },
@@ -543,7 +543,7 @@ export const spellTools: MCPTool[] = [
     },
     handler: async (input) => {
       const spellId = input.spellId as string;
-      const tracked = trackedWorkflows.get(spellId);
+      const tracked = trackedSpells.get(spellId);
 
       if (!tracked) {
         return { spellId, error: 'Spell not found in tracked castings' };
@@ -553,7 +553,7 @@ export const spellTools: MCPTool[] = [
         return { spellId, error: 'No previous result to resume from' };
       }
 
-      // Re-run the workflow from scratch
+      // Re-run the spell from scratch
       // Note: The engine's runner supports initialVariables for paused-state resume,
       // but MCP tools don't currently persist paused definitions. This re-runs from start.
       return {
@@ -591,21 +591,21 @@ export const spellTools: MCPTool[] = [
       const cancelled = engine.bridgeCancelSpell(spellId);
 
       if (cancelled) {
-        const tracked = trackedWorkflows.get(spellId);
+        const tracked = trackedSpells.get(spellId);
         if (tracked) {
-          tracked.status = WF_STATUS.CANCELLED;
+          tracked.status = SPELL_STATUS.CANCELLED;
           tracked.completedAt = new Date().toISOString();
         }
         return {
           spellId,
-          status: WF_STATUS.CANCELLED,
+          status: SPELL_STATUS.CANCELLED,
           cancelledAt: new Date().toISOString(),
           reason: (input.reason as string) ?? 'Cancelled by user',
         };
       }
 
-      // Check if it's a tracked but already finished workflow
-      const tracked = trackedWorkflows.get(spellId);
+      // Check if it's a tracked but already finished spell
+      const tracked = trackedSpells.get(spellId);
       if (tracked) {
         return { spellId, error: `Spell already ${tracked.status}` };
       }
@@ -636,7 +636,7 @@ export const spellTools: MCPTool[] = [
         return { spellId, error: 'Cannot delete an active spell — dispel it first' };
       }
 
-      const existed = trackedWorkflows.delete(spellId);
+      const existed = trackedSpells.delete(spellId);
       return {
         spellId,
         deleted: existed,

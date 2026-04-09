@@ -189,11 +189,11 @@ steps:
     expect(Array.isArray(result.runs)).toBe(true);
   });
 
-  it('spell_list returns activeWorkflows array', async () => {
+  it('spell_list returns activeSpells array', async () => {
     const tool = findTool('spell_list');
     const result: any = await tool.handler({ source: 'all' });
-    expect(result.activeWorkflows).toBeDefined();
-    expect(Array.isArray(result.activeWorkflows)).toBe(true);
+    expect(result.activeSpells).toBeDefined();
+    expect(Array.isArray(result.activeSpells)).toBe(true);
   });
 
   // -------------------------------------------------------------------------

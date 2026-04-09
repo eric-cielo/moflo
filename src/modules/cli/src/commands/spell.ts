@@ -13,14 +13,14 @@ import { output } from '../output.js';
 import { confirm, input } from '../prompt.js';
 import { callMCPTool } from '../mcp-client.js';
 import type {
-  WorkflowRunResponse,
-  WorkflowStatusResponse,
-  WorkflowListResponse,
-  WorkflowCancelResponse,
-  WorkflowTemplateListResponse,
-  WorkflowTemplateInfoResponse,
-  WorkflowErrorResponse,
-} from '../mcp-tools/workflow-response.types.js';
+  SpellRunResponse,
+  SpellStatusResponse,
+  SpellListResponse,
+  SpellCancelResponse,
+  SpellTemplateListResponse,
+  SpellTemplateInfoResponse,
+  SpellErrorResponse,
+} from '../mcp-tools/spell-response.types.js';
 import {
   TOOL_SPELL_CAST,
   TOOL_SPELL_LIST,
@@ -50,7 +50,7 @@ const STEP_COLUMNS = [
   { key: 'error', header: 'Error', width: 30, format: (v: unknown) => v ? String(v) : '' },
 ];
 
-function printSpellErrors(errors: WorkflowErrorResponse[]): void {
+function printSpellErrors(errors: SpellErrorResponse[]): void {
   if (errors.length === 0) return;
   output.writeln();
   output.writeln(output.bold(output.error('Errors')));
@@ -100,7 +100,7 @@ const castCommand: Command = {
       // Interactive: list available spells and let user pick
       if (ctx.interactive) {
         try {
-          const listResult = await callMCPTool<WorkflowListResponse>(TOOL_SPELL_LIST, { source: 'registry' });
+          const listResult = await callMCPTool<SpellListResponse>(TOOL_SPELL_LIST, { source: 'registry' });
 
           const defs = listResult.definitions ?? [];
           if (defs.length === 0) {
@@ -144,7 +144,7 @@ const castCommand: Command = {
     try {
       spinner.start();
 
-      const result = await callMCPTool<WorkflowRunResponse>(TOOL_SPELL_CAST, {
+      const result = await callMCPTool<SpellRunResponse>(TOOL_SPELL_CAST, {
         name: name || undefined,
         file: file || undefined,
         args,
@@ -221,7 +221,7 @@ const validateCommand: Command = {
     output.printInfo(`Validating: ${file}`);
 
     try {
-      const result = await callMCPTool<WorkflowRunResponse>(TOOL_SPELL_CAST, {
+      const result = await callMCPTool<SpellRunResponse>(TOOL_SPELL_CAST, {
         file,
         dryRun: true,
       });
@@ -281,7 +281,7 @@ const listCommand: Command = {
     const refresh = ctx.flags.refresh as boolean;
 
     try {
-      const result = await callMCPTool<WorkflowListResponse>(TOOL_SPELL_LIST, { source, limit, refresh: refresh || undefined });
+      const result = await callMCPTool<SpellListResponse>(TOOL_SPELL_LIST, { source, limit, refresh: refresh || undefined });
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
@@ -320,9 +320,9 @@ const listCommand: Command = {
         output.printInfo('No recent spell casts');
       }
 
-      if (result.activeWorkflows && result.activeWorkflows.length > 0) {
+      if (result.activeSpells && result.activeSpells.length > 0) {
         output.writeln();
-        output.printInfo(`Currently casting: ${result.activeWorkflows.join(', ')}`);
+        output.printInfo(`Currently casting: ${result.activeSpells.join(', ')}`);
       }
 
       return { success: true, data: result };
@@ -345,7 +345,7 @@ const statusCommand: Command = {
     }
 
     try {
-      const result = await callMCPTool<WorkflowStatusResponse>(TOOL_SPELL_STATUS, {
+      const result = await callMCPTool<SpellStatusResponse>(TOOL_SPELL_STATUS, {
         spellId,
         verbose: true,
       });
@@ -420,7 +420,7 @@ const stopCommand: Command = {
     }
 
     try {
-      const result = await callMCPTool<WorkflowCancelResponse>(TOOL_SPELL_CANCEL, {
+      const result = await callMCPTool<SpellCancelResponse>(TOOL_SPELL_CANCEL, {
         spellId,
         reason: 'Dispelled via CLI',
       });
@@ -449,7 +449,7 @@ const templateCommand: Command = {
       description: 'List available spell templates',
       action: async (ctx: CommandContext): Promise<CommandResult> => {
         try {
-          const result = await callMCPTool<WorkflowTemplateListResponse>(TOOL_SPELL_TEMPLATE, { action: 'list' });
+          const result = await callMCPTool<SpellTemplateListResponse>(TOOL_SPELL_TEMPLATE, { action: 'list' });
 
           if (result.error) {
             output.printError(result.error);
@@ -495,7 +495,7 @@ const templateCommand: Command = {
         }
 
         try {
-          const result = await callMCPTool<WorkflowTemplateInfoResponse>(TOOL_SPELL_TEMPLATE, { action: 'info', query });
+          const result = await callMCPTool<SpellTemplateInfoResponse>(TOOL_SPELL_TEMPLATE, { action: 'info', query });
 
           if (result.error) {
             output.printError(result.error);

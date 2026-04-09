@@ -1,7 +1,7 @@
 /**
  * V3 Issues Command
  *
- * Implements ADR-016: Collaborative Issue Claims for Human-Agent Workflows
+ * Implements ADR-016: Collaborative Issue Claims for Human-Agent Spells
  *
  * Commands:
  * - issues list       List all claims
@@ -556,7 +556,7 @@ const boardCommand: Command = {
 
 export const issuesCommand: Command = {
   name: 'issues',
-  description: 'Collaborative issue claims for human-agent workflows (ADR-016)',
+  description: 'Collaborative issue claims for human-agent spells (ADR-016)',
   subcommands: [
     listCommand,
     claimCommand,

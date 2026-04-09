@@ -1537,9 +1537,9 @@ describe('Init System', () => {
       expect(md).toContain('mcp__moflo__memory_search');
     });
 
-    it('should contain workflow gates', () => {
+    it('should contain spell gates', () => {
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
-      expect(md).toContain('Workflow Gates');
+      expect(md).toContain('Spell Gates');
     });
 
     it('should contain MCP tools table', () => {
@@ -1603,7 +1603,7 @@ describe('Init System', () => {
   });
 
   describe('Task Icons reference in generated CLAUDE.md', () => {
-    it('should reference task-icons.md in workflow gates section', () => {
+    it('should reference task-icons.md in spell gates section', () => {
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
       expect(md).toContain('Task Icons');
       expect(md).toContain('moflo-task-icons.md');

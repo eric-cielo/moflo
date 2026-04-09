@@ -6,25 +6,25 @@
  * the CLI spell command (commands/spell.ts) for type-safe
  * callMCPTool<T>() deserialization.
  *
- * Story #230: Extract shared workflow type definitions.
+ * Story #230: Extract shared spell type definitions.
  * Story #371: Rename workflow tools to spell tools.
  */
 
 /** Response from spell_cast / spell_execute MCP tools. */
-export interface WorkflowRunResponse {
+export interface SpellRunResponse {
   spellId: string;
   success: boolean;
   cancelled: boolean;
   duration: number;
   stepCount: number;
-  steps: WorkflowStepResponse[];
+  steps: SpellStepResponse[];
   outputs: Record<string, unknown>;
-  errors: WorkflowErrorResponse[];
+  errors: SpellErrorResponse[];
   error?: string;
 }
 
-/** Serialized step in a workflow MCP response. */
-export interface WorkflowStepResponse {
+/** Serialized step in a spell MCP response. */
+export interface SpellStepResponse {
   [key: string]: unknown;
   stepId: string;
   stepType: string;
@@ -35,15 +35,15 @@ export interface WorkflowStepResponse {
   outputData?: unknown;
 }
 
-/** Serialized error in a workflow MCP response. */
-export interface WorkflowErrorResponse {
+/** Serialized error in a spell MCP response. */
+export interface SpellErrorResponse {
   code: string;
   message: string;
   stepId?: string;
 }
 
 /** Response from spell_status MCP tool. */
-export interface WorkflowStatusResponse {
+export interface SpellStatusResponse {
   spellId: string;
   name?: string;
   status: string;
@@ -54,13 +54,13 @@ export interface WorkflowStatusResponse {
   progress?: number;
   startedAt?: string;
   completedAt?: string;
-  steps?: WorkflowStepResponse[];
-  errors?: WorkflowErrorResponse[];
+  steps?: SpellStepResponse[];
+  errors?: SpellErrorResponse[];
   outputs?: Record<string, unknown>;
   error?: string;
 }
 
-/** Entry in a workflow registry list response. */
+/** Entry in a spell registry list response. */
 export interface GrimoireEntry {
   [key: string]: unknown;
   name: string;
@@ -70,16 +70,16 @@ export interface GrimoireEntry {
 }
 
 /** Response from spell_list MCP tool. */
-export interface WorkflowListResponse {
+export interface SpellListResponse {
   definitions?: GrimoireEntry[];
-  runs?: WorkflowRunEntry[];
-  activeWorkflows?: string[];
+  runs?: SpellRunEntry[];
+  activeSpells?: string[];
   registryError?: string;
   refreshed?: boolean;
 }
 
-/** A tracked workflow run entry. */
-export interface WorkflowRunEntry {
+/** A tracked spell run entry. */
+export interface SpellRunEntry {
   [key: string]: unknown;
   spellId: string;
   name: string;
@@ -89,7 +89,7 @@ export interface WorkflowRunEntry {
 }
 
 /** Response from spell_cancel MCP tool. */
-export interface WorkflowCancelResponse {
+export interface SpellCancelResponse {
   spellId: string;
   status: string;
   cancelledAt?: string;
@@ -98,7 +98,7 @@ export interface WorkflowCancelResponse {
 }
 
 /** Response from spell_template list action. */
-export interface WorkflowTemplateListResponse {
+export interface SpellTemplateListResponse {
   action: string;
   templates: GrimoireEntry[];
   total: number;
@@ -106,7 +106,7 @@ export interface WorkflowTemplateListResponse {
 }
 
 /** Response from spell_template info action. */
-export interface WorkflowTemplateInfoResponse {
+export interface SpellTemplateInfoResponse {
   action: string;
   name?: string;
   abbreviation?: string;

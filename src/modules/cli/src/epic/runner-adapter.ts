@@ -1,17 +1,17 @@
 /**
- * Epic Workflow Runner Adapter
+ * Epic Spell Runner Adapter
  *
  * Bridges the CLI epic command to the spell engine without direct
  * cross-package imports (avoids tsconfig rootDir issues).
  *
- * Story #197: Thin adapter for running workflow YAML from epic command.
+ * Story #197: Thin adapter for running spell YAML from epic command.
  * Story #229: Uses shared engine loader instead of inline dynamic import.
  */
 
 import { loadSpellEngine, type SpellResult } from '../services/engine-loader.js';
 import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
 
-/** Minimal workflow result shape matching SpellResult from @moflo/spells. */
+/** Minimal spell result shape matching SpellResult from @moflo/spells. */
 export type EpicSpellResult = Pick<
   SpellResult,
   'spellId' | 'success' | 'outputs' | 'duration' | 'cancelled'
@@ -39,9 +39,9 @@ let memoryAccessor: Awaited<ReturnType<typeof createDashboardMemoryAccessor>> | 
  * Run a spell YAML string via the spell engine.
  *
  * Uses the shared engine loader (services/engine-loader.ts) which caches the
- * dynamically imported module. The workflows package must be built first.
+ * dynamically imported module. The spells package must be built first.
  */
-export async function runEpicWorkflow(
+export async function runEpicSpell(
   yamlContent: string,
   options: EpicRunOptions = {},
 ): Promise<EpicSpellResult> {
