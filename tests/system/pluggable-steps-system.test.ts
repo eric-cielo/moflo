@@ -158,12 +158,13 @@ describe('Pluggable Steps — System Test', () => {
       expect(registry.has('bash')).toBe(true);          // built-in
       expect(registry.has('agent')).toBe(true);          // built-in
       expect(registry.has('github')).toBe(true);         // built-in
+      expect(registry.has('outlook')).toBe(true);        // built-in
       expect(registry.has('file-stats')).toBe(true);     // user JS
       expect(registry.has('format-message')).toBe(true); // user YAML
       expect(registry.has('npm-greet')).toBe(true);      // npm
 
-      // 10 built-in + 1 npm + 2 user = 13
-      expect(registry.size).toBe(13);
+      // 11 built-in + 1 npm + 2 user = 14
+      expect(registry.size).toBe(14);
     });
   });
 

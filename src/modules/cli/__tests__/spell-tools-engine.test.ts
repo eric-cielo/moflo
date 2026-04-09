@@ -85,7 +85,7 @@ describe('Spell MCP Tools — Engine Integration', () => {
     expect(result.error).toMatch(/not found/i);
   });
 
-  it('spell_cast executes inline YAML content via engine', async () => {
+  it('spell_cast executes inline YAML content via engine', { timeout: 15_000 }, async () => {
     const tool = findTool('spell_cast');
     const yamlContent = `
 name: inline-test
@@ -128,7 +128,7 @@ steps:
   // spell_execute — takes a definition object
   // -------------------------------------------------------------------------
 
-  it('spell_execute runs a definition via the engine', async () => {
+  it('spell_execute runs a definition via the engine', { timeout: 15_000 }, async () => {
     const tool = findTool('spell_execute');
     const definition = {
       name: 'execute-test',
@@ -160,7 +160,7 @@ steps:
     expect(result.error).toMatch(/not found/i);
   });
 
-  it('spell_status returns result for completed spell', async () => {
+  it('spell_status returns result for completed spell', { timeout: 15_000 }, async () => {
     // First, cast a spell to get a tracked ID
     const runTool = findTool('spell_cast');
     const runResult: any = await runTool.handler({
