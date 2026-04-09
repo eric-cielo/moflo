@@ -58,7 +58,8 @@ const browserPrerequisites: readonly Prerequisite[] = [
     name: 'playwright',
     check: async () => {
       try {
-        await import('playwright');
+        const mod = 'playwright';
+        await import(/* @vite-ignore */ mod);
         return true;
       } catch {
         return false;

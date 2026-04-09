@@ -95,7 +95,8 @@ let cachedPlaywright: PlaywrightModule | null = null;
 export async function loadPlaywright(): Promise<PlaywrightModule> {
   if (cachedPlaywright) return cachedPlaywright;
   try {
-    cachedPlaywright = await import('playwright') as unknown as PlaywrightModule;
+    const mod = 'playwright';
+    cachedPlaywright = await import(/* @vite-ignore */ mod) as unknown as PlaywrightModule;
     return cachedPlaywright;
   } catch {
     throw new Error(
