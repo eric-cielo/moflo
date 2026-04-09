@@ -1,7 +1,7 @@
 /**
- * Workflow Definition Validator
+ * Spell Definition Validator
  *
- * Validates parsed workflow definitions for correctness:
+ * Validates parsed spell definitions for correctness:
  * - Required fields present
  * - Valid step types (against a known registry)
  * - No duplicate step IDs
@@ -16,7 +16,7 @@ import type {
   StepDefinition,
   ArgumentDefinition,
   ArgumentType,
-} from '../types/workflow-definition.types.js';
+} from '../types/spell-definition.types.js';
 import { validateStepCapabilities, isValidMofloLevel, compareMofloLevels } from '../core/capability-validator.js';
 import { MOFLO_LEVEL_ORDER } from '../types/step-command.types.js';
 import type { MofloLevel } from '../types/step-command.types.js';
@@ -41,7 +41,7 @@ export function validateSpellDefinition(
 
   validateTopLevel(def, errors);
 
-  // Validate workflow-level mofloLevel
+  // Validate spell-level mofloLevel
   if (def.mofloLevel !== undefined && !isValidMofloLevel(def.mofloLevel)) {
     errors.push({
       path: 'mofloLevel',
@@ -144,7 +144,7 @@ function validateSteps(
   outputVars: Set<string>,
   options?: ValidatorOptions,
   prefix = 'steps',
-  workflowLevel?: MofloLevel,
+  spellLevel?: MofloLevel,
 ): void {
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
@@ -184,17 +184,17 @@ function validateSteps(
           path: `${path}.mofloLevel`,
           message: `invalid mofloLevel: "${step.mofloLevel}". Valid levels: ${MOFLO_LEVEL_ORDER.join(', ')}`,
         });
-      } else if (workflowLevel && compareMofloLevels(step.mofloLevel, workflowLevel) > 0) {
+      } else if (spellLevel && compareMofloLevels(step.mofloLevel, spellLevel) > 0) {
         errors.push({
           path: `${path}.mofloLevel`,
-          message: `step mofloLevel "${step.mofloLevel}" exceeds spell-level "${workflowLevel}" — steps can only narrow, not escalate`,
+          message: `step mofloLevel "${step.mofloLevel}" exceeds spell-level "${spellLevel}" — steps can only narrow, not escalate`,
         });
       }
     }
 
     // Recurse into nested steps (condition/loop/parallel)
     if (step.steps && Array.isArray(step.steps)) {
-      validateSteps(step.steps, errors, stepIds, outputVars, options, `${path}.steps`, workflowLevel);
+      validateSteps(step.steps, errors, stepIds, outputVars, options, `${path}.steps`, spellLevel);
 
       // Parallel blocks: reject cross-references between sibling steps (#247)
       if (step.type === 'parallel') {

@@ -1,11 +1,11 @@
 /**
- * HTTP Workflow Connector
+ * HTTP Spell Connector
  *
  * Built-in connector for generic REST/GraphQL API calls.
  * Uses Node.js built-in fetch — no external dependencies.
  */
 
-import type { SpellConnector, ConnectorAction, ConnectorOutput } from '../types/workflow-connector.types.js';
+import type { SpellConnector, ConnectorAction, ConnectorOutput } from '../types/spell-connector.types.js';
 
 // ============================================================================
 // Types

@@ -1,7 +1,7 @@
 /**
  * Step Command Registry
  *
- * Plugin-style registry for workflow step commands.
+ * Plugin-style registry for spell step commands.
  * Uses source-based priority: user > built-in > npm.
  */
 

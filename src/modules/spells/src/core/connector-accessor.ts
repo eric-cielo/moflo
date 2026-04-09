@@ -6,7 +6,7 @@
  * exposing lifecycle methods (initialize/dispose).
  */
 
-import type { ConnectorAccessor, ConnectorView, ConnectorOutput, ConnectorCapability } from '../types/workflow-connector.types.js';
+import type { ConnectorAccessor, ConnectorView, ConnectorOutput, ConnectorCapability } from '../types/spell-connector.types.js';
 import type { SpellConnectorRegistry } from '../registry/connector-registry.js';
 
 export class ConnectorAccessorImpl implements ConnectorAccessor {

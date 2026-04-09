@@ -7,13 +7,13 @@
  */
 
 import type { CredentialAccessor, MemoryAccessor } from '../types/step-command.types.js';
-import type { SpellDefinition } from '../types/workflow-definition.types.js';
-import type { RunnerOptions, WorkflowResult } from '../types/runner.types.js';
+import type { SpellDefinition } from '../types/spell-definition.types.js';
+import type { RunnerOptions, SpellResult } from '../types/runner.types.js';
 import { StepCommandRegistry } from '../core/step-command-registry.js';
 import { SpellCaster } from '../core/runner.js';
 import { builtinCommands } from '../commands/index.js';
 import { builtinConnectors } from '../connectors/index.js';
-import { parseWorkflow } from '../schema/parser.js';
+import { parseSpell } from '../schema/parser.js';
 import { validateSpellDefinition } from '../schema/validator.js';
 import { SpellConnectorRegistry } from '../registry/connector-registry.js';
 
@@ -31,8 +31,8 @@ export interface RunnerFactoryOptions {
   readonly projectRoot?: string;
 }
 
-export interface RunWorkflowOptions extends RunnerOptions {
-  /** Arguments to pass to the workflow. */
+export interface RunSpellOptions extends RunnerOptions {
+  /** Arguments to pass to the spell. */
   readonly args?: Record<string, unknown>;
 }
 
@@ -74,21 +74,21 @@ export function createRunner(options: RunnerFactoryOptions = {}): SpellCaster {
 }
 
 /**
- * Parse, validate, and run a workflow from raw YAML/JSON content.
+ * Parse, validate, and run a spell from raw YAML/JSON content.
  * Returns a structured result — never throws.
  */
-export async function runWorkflowFromContent(
+export async function runSpellFromContent(
   content: string,
   sourceFile: string | undefined,
-  options: RunWorkflowOptions & RunnerFactoryOptions = {},
-): Promise<WorkflowResult> {
+  options: RunSpellOptions & RunnerFactoryOptions = {},
+): Promise<SpellResult> {
   let definition: SpellDefinition;
   try {
-    const parsed = parseWorkflow(content, sourceFile);
+    const parsed = parseSpell(content, sourceFile);
     definition = parsed.definition;
   } catch (err) {
     return {
-      workflowId: options.workflowId ?? `wf-${Date.now()}`,
+      spellId: options.spellId ?? `sp-${Date.now()}`,
       success: false,
       steps: [],
       outputs: {},
@@ -101,7 +101,7 @@ export async function runWorkflowFromContent(
   const validation = validateSpellDefinition(definition);
   if (!validation.valid) {
     return {
-      workflowId: options.workflowId ?? `wf-${Date.now()}`,
+      spellId: options.spellId ?? `sp-${Date.now()}`,
       success: false,
       steps: [],
       outputs: {},

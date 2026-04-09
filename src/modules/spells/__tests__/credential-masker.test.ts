@@ -16,7 +16,7 @@ import {
   MIN_REDACT_LENGTH,
 } from '../src/core/credential-masker.js';
 import type { StepOutput, StepCommand } from '../src/types/step-command.types.js';
-import type { StepDefinition } from '../src/types/workflow-definition.types.js';
+import type { StepDefinition } from '../src/types/spell-definition.types.js';
 
 // ============================================================================
 // Helpers

@@ -1,16 +1,16 @@
 /**
- * Workflow Registry
+ * Spell Registry
  *
- * Maps workflow names AND abbreviations to loaded workflow definitions.
+ * Maps spell names AND abbreviations to loaded spell definitions.
  * Wraps the definition-loader with abbreviation-based lookup, collision
  * detection, and list/info capabilities.
  *
- * Story #105: Workflow Registry + /flo -wf Integration
+ * Story #105: Spell Registry + /flo -wf Integration
  */
 
 import { loadSpellDefinitions } from '../loaders/definition-loader.js';
-import type { LoaderOptions, LoadedWorkflow, LoadError } from '../loaders/definition-loader.js';
-import type { SpellDefinition, ArgumentDefinition, StepDefinition } from '../types/workflow-definition.types.js';
+import type { LoaderOptions, LoadedSpell, LoadError } from '../loaders/definition-loader.js';
+import type { SpellDefinition, ArgumentDefinition, StepDefinition } from '../types/spell-definition.types.js';
 
 // ============================================================================
 // Types
@@ -22,7 +22,7 @@ export interface RegistryOptions extends LoaderOptions {
 }
 
 export interface RegistryResult {
-  readonly workflows: ReadonlyMap<string, LoadedWorkflow>;
+  readonly spells: ReadonlyMap<string, LoadedSpell>;
   readonly abbreviations: ReadonlyMap<string, string>;
   readonly collisions: readonly AbbreviationCollision[];
   readonly errors: readonly LoadError[];
@@ -30,10 +30,10 @@ export interface RegistryResult {
 
 export interface AbbreviationCollision {
   readonly abbreviation: string;
-  readonly workflows: readonly string[];
+  readonly spells: readonly string[];
 }
 
-export interface WorkflowInfo {
+export interface SpellInfo {
   readonly name: string;
   readonly abbreviation?: string;
   readonly description?: string;
@@ -45,7 +45,7 @@ export interface WorkflowInfo {
   readonly stepTypes: readonly string[];
 }
 
-export interface WorkflowListEntry {
+export interface SpellListEntry {
   readonly name: string;
   readonly abbreviation?: string;
   readonly description?: string;
@@ -74,15 +74,15 @@ export class Grimoire {
   }
 
   /**
-   * Load and index all workflow definitions.
+   * Load and index all spell definitions.
    * Builds the abbreviation map and detects collisions.
    */
   load(): RegistryResult {
-    const { workflows, errors } = loadSpellDefinitions(this.loaderOptions);
+    const { spells, errors } = loadSpellDefinitions(this.loaderOptions);
     const abbreviations = new Map<string, string>();
     const collisionMap = new Map<string, string[]>();
 
-    for (const [name, loaded] of workflows) {
+    for (const [name, loaded] of spells) {
       const abbr = loaded.definition.abbreviation;
       if (!abbr) continue;
 
@@ -99,39 +99,39 @@ export class Grimoire {
 
     const collisions: AbbreviationCollision[] = [];
     for (const [abbreviation, names] of collisionMap) {
-      collisions.push({ abbreviation, workflows: names });
+      collisions.push({ abbreviation, spells: names });
     }
 
-    this.cachedResult = { workflows, abbreviations, collisions, errors };
+    this.cachedResult = { spells, abbreviations, collisions, errors };
     return this.cachedResult;
   }
 
   /**
-   * Resolve a query (abbreviation OR full name) to a loaded workflow.
+   * Resolve a query (abbreviation OR full name) to a loaded spell.
    * Returns undefined if no match is found.
    */
-  resolve(query: string): LoadedWorkflow | undefined {
+  resolve(query: string): LoadedSpell | undefined {
     const result = this.cachedResult ?? this.load();
 
     // Try full name first
-    const byName = result.workflows.get(query);
+    const byName = result.spells.get(query);
     if (byName) return byName;
 
     // Try abbreviation
     const fullName = result.abbreviations.get(query);
-    if (fullName) return result.workflows.get(fullName);
+    if (fullName) return result.spells.get(fullName);
 
     return undefined;
   }
 
   /**
-   * List all registered workflows (name, abbreviation, description, tier).
+   * List all registered spells (name, abbreviation, description, tier).
    */
-  list(): readonly WorkflowListEntry[] {
+  list(): readonly SpellListEntry[] {
     const result = this.cachedResult ?? this.load();
-    const entries: WorkflowListEntry[] = [];
+    const entries: SpellListEntry[] = [];
 
-    for (const [, loaded] of result.workflows) {
+    for (const [, loaded] of result.spells) {
       entries.push({
         name: loaded.definition.name,
         abbreviation: loaded.definition.abbreviation,
@@ -144,9 +144,9 @@ export class Grimoire {
   }
 
   /**
-   * Get detailed info about a specific workflow (by name or abbreviation).
+   * Get detailed info about a specific spell (by name or abbreviation).
    */
-  info(query: string): WorkflowInfo | undefined {
+  info(query: string): SpellInfo | undefined {
     const loaded = this.resolve(query);
     if (!loaded) return undefined;
 

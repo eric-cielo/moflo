@@ -10,7 +10,7 @@ import type { StepOutput, ValidationError, MofloLevel, PrerequisiteResult } from
 // Error Codes
 // ============================================================================
 
-export type WorkflowErrorCode =
+export type SpellErrorCode =
   | 'ARGUMENT_VALIDATION_FAILED'
   | 'CONDITION_TARGET_NOT_FOUND'
   | 'DEFINITION_VALIDATION_FAILED'
@@ -26,7 +26,7 @@ export type WorkflowErrorCode =
   | 'PAUSED_STATE_NOT_FOUND'
   | 'PAUSED_STATE_EXPIRED'
   | 'PREREQUISITES_FAILED'
-  | 'WORKFLOW_CANCELLED';
+  | 'SPELL_CANCELLED';
 
 // ============================================================================
 // Step Result
@@ -40,7 +40,7 @@ export interface StepResult {
   readonly status: StepStatus;
   readonly output?: StepOutput;
   readonly error?: string;
-  readonly errorCode?: WorkflowErrorCode;
+  readonly errorCode?: SpellErrorCode;
   readonly duration: number;
   readonly rollbackAttempted?: boolean;
   readonly rollbackError?: string;
@@ -49,22 +49,22 @@ export interface StepResult {
 }
 
 // ============================================================================
-// Workflow Result
+// Spell Result
 // ============================================================================
 
-export interface WorkflowResult {
-  readonly workflowId: string;
+export interface SpellResult {
+  readonly spellId: string;
   readonly success: boolean;
   readonly steps: StepResult[];
   readonly outputs: Record<string, unknown>;
-  readonly errors: WorkflowError[];
+  readonly errors: SpellError[];
   readonly duration: number;
   readonly cancelled: boolean;
 }
 
-export interface WorkflowError {
+export interface SpellError {
   readonly stepId?: string;
-  readonly code: WorkflowErrorCode;
+  readonly code: SpellErrorCode;
   readonly message: string;
   readonly details?: ValidationError[];
 }
@@ -123,7 +123,7 @@ export interface FloRunContext {
 
 export interface RunnerOptions {
   /** Caller-specified spell ID for status correlation. Auto-generated if omitted. */
-  readonly workflowId?: string;
+  readonly spellId?: string;
 
   /** Default timeout per step in milliseconds (default: 300000 — 5 min). */
   readonly defaultStepTimeout?: number;

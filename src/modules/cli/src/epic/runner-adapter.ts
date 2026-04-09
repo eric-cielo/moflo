@@ -8,13 +8,13 @@
  * Story #229: Uses shared engine loader instead of inline dynamic import.
  */
 
-import { loadSpellEngine, type WorkflowResult } from '../services/engine-loader.js';
+import { loadSpellEngine, type SpellResult } from '../services/engine-loader.js';
 import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
 
-/** Minimal workflow result shape matching WorkflowResult from @moflo/spells. */
-export type EpicWorkflowResult = Pick<
-  WorkflowResult,
-  'workflowId' | 'success' | 'outputs' | 'duration' | 'cancelled'
+/** Minimal workflow result shape matching SpellResult from @moflo/spells. */
+export type EpicSpellResult = Pick<
+  SpellResult,
+  'spellId' | 'success' | 'outputs' | 'duration' | 'cancelled'
 > & {
   steps: Array<{
     stepId: string;
@@ -44,7 +44,7 @@ let memoryAccessor: Awaited<ReturnType<typeof createDashboardMemoryAccessor>> | 
 export async function runEpicWorkflow(
   yamlContent: string,
   options: EpicRunOptions = {},
-): Promise<EpicWorkflowResult> {
+): Promise<EpicSpellResult> {
   const engine = await loadSpellEngine();
 
   // Lazily initialize a real memory accessor so execution records
@@ -59,9 +59,9 @@ export async function runEpicWorkflow(
     }
   }
 
-  return engine.runWorkflowFromContent(
+  return engine.runSpellFromContent(
     yamlContent,
     undefined,
     { ...options, ...(memoryAccessor ? { memory: memoryAccessor } : {}) },
-  ) as Promise<EpicWorkflowResult>;
+  ) as Promise<EpicSpellResult>;
 }

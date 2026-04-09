@@ -12,7 +12,7 @@
 
 /** Response from spell_cast / spell_execute MCP tools. */
 export interface WorkflowRunResponse {
-  workflowId: string;
+  spellId: string;
   success: boolean;
   cancelled: boolean;
   duration: number;
@@ -44,7 +44,7 @@ export interface WorkflowErrorResponse {
 
 /** Response from spell_status MCP tool. */
 export interface WorkflowStatusResponse {
-  workflowId: string;
+  spellId: string;
   name?: string;
   status: string;
   success?: boolean;
@@ -81,7 +81,7 @@ export interface WorkflowListResponse {
 /** A tracked workflow run entry. */
 export interface WorkflowRunEntry {
   [key: string]: unknown;
-  workflowId: string;
+  spellId: string;
   name: string;
   status: string;
   startedAt: string;
@@ -90,7 +90,7 @@ export interface WorkflowRunEntry {
 
 /** Response from spell_cancel MCP tool. */
 export interface WorkflowCancelResponse {
-  workflowId: string;
+  spellId: string;
   status: string;
   cancelledAt?: string;
   reason?: string;

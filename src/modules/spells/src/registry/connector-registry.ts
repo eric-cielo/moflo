@@ -1,11 +1,11 @@
 /**
- * Workflow Connector Registry
+ * Spell Connector Registry
  *
- * Plugin-style registry for workflow connectors (external resource bridges).
+ * Plugin-style registry for spell connectors (external resource bridges).
  * Parallel to StepCommandRegistry — duplicate names are rejected.
  *
  * Discovery priority (highest to lowest):
- * 1. User project: `workflows/connectors/` or `.claude/workflows/connectors/`
+ * 1. User project: `spells/connectors/` or `.claude/spells/connectors/`
  * 2. Shipped: `src/modules/spells/connectors/` (bundled with moflo)
  * 3. npm packages: `moflo-connector-*` naming convention
  */
@@ -16,7 +16,7 @@ import type {
   SpellConnector,
   ConnectorRegistryEntry,
   ConnectorSource,
-} from '../types/workflow-connector.types.js';
+} from '../types/spell-connector.types.js';
 
 // ============================================================================
 // Types

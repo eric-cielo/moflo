@@ -10,9 +10,9 @@ import {
   CapabilityGateway,
   CapabilityDeniedError,
   discloseStep,
-  discloseWorkflow,
+  discloseSpell,
   formatStepDisclosure,
-  formatWorkflowDisclosure,
+  formatSpellDisclosure,
 } from '../src/modules/spells/src/core/capability-gateway.js';
 import type { StepCapability, CastingContext } from '../src/modules/spells/src/types/step-command.types.js';
 import { agentCommand } from '../src/modules/spells/src/commands/agent-command.js';
@@ -298,15 +298,15 @@ describe('discloseStep', () => {
   });
 });
 
-describe('discloseWorkflow', () => {
+describe('discloseSpell', () => {
   it('aggregates capabilities across steps', () => {
     const steps = [
       { name: 'build', caps: [{ type: 'shell' as const }, { type: 'fs:read' as const }] },
       { name: 'deploy', caps: [{ type: 'shell' as const }, { type: 'net' as const }] },
     ];
-    const summary = discloseWorkflow('deploy-staging', steps);
+    const summary = discloseSpell('deploy-staging', steps);
 
-    expect(summary.workflowName).toBe('deploy-staging');
+    expect(summary.spellName).toBe('deploy-staging');
     expect(summary.stepCount).toBe(2);
     expect(summary.aggregate.get('shell')).toEqual(['build', 'deploy']);
     expect(summary.aggregate.get('fs:read')).toEqual(['build']);
@@ -333,12 +333,12 @@ describe('formatStepDisclosure', () => {
   });
 });
 
-describe('formatWorkflowDisclosure', () => {
+describe('formatSpellDisclosure', () => {
   it('produces readable output with aggregate and unused sections', () => {
-    const summary = discloseWorkflow('test-wf', [
+    const summary = discloseSpell('test-wf', [
       { name: 'step-a', caps: [{ type: 'shell' as const }] },
     ]);
-    const output = formatWorkflowDisclosure(summary);
+    const output = formatSpellDisclosure(summary);
 
     expect(output).toMatch(/Aggregate capabilities:/);
     expect(output).toMatch(/shell/);

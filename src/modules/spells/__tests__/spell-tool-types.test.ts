@@ -7,7 +7,7 @@ import type {
   ConnectorAccessor,
   ConnectorRegistryEntry,
   ConnectorSource,
-} from '../src/types/workflow-connector.types.js';
+} from '../src/types/spell-connector.types.js';
 
 describe('SpellConnector types', () => {
   it('ConnectorOutput has required shape', () => {

@@ -1,5 +1,5 @@
 /**
- * Workflow Connector Type Definitions
+ * Spell Connector Type Definitions
  *
  * Connectors are external resource bridges (HTTP, Gmail, Slack, etc.)
  * that step commands can consume via CastingContext dependency injection.
@@ -49,11 +49,11 @@ export interface ConnectorAccessor {
 }
 
 // ============================================================================
-// Workflow Connector Interface
+// Spell Connector Interface
 // ============================================================================
 
 /**
- * Foundational abstraction for workflow connectors.
+ * Foundational abstraction for spell connectors.
  * Connectors are stateless bridges to external services — configuration flows
  * through initialize(), and runtime parameters flow through execute().
  *

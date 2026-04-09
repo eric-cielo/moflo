@@ -1,7 +1,7 @@
 /**
  * Parallel Step Command — executes nested steps concurrently (fan-out/fan-in).
  *
- * The actual parallel execution is delegated to the workflow runner via
+ * The actual parallel execution is delegated to the spell runner via
  * parallel-executor.ts. This command validates the config and returns
  * metadata about the parallel block.
  *

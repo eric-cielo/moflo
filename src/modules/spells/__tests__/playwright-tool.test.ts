@@ -1,5 +1,5 @@
 /**
- * Playwright Workflow Connector Tests
+ * Playwright Spell Connector Tests
  *
  * Issue #219: Tests for the extracted playwright shipped connector.
  * Playwright is mocked to avoid real browser launches.

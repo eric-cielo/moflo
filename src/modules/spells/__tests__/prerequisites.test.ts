@@ -19,7 +19,7 @@ import type {
   CredentialAccessor,
   MemoryAccessor,
 } from '../src/types/step-command.types.js';
-import type { SpellDefinition } from '../src/types/workflow-definition.types.js';
+import type { SpellDefinition } from '../src/types/spell-definition.types.js';
 
 // ============================================================================
 // Helpers
@@ -46,7 +46,7 @@ function makeCommand(type: string, prereqs?: readonly Prerequisite[]): StepComma
   };
 }
 
-function simpleWorkflow(steps: SpellDefinition['steps']): SpellDefinition {
+function simpleSpell(steps: SpellDefinition['steps']): SpellDefinition {
   return { name: 'test', steps };
 }
 
@@ -80,7 +80,7 @@ describe('collectPrerequisites', () => {
     registry.register(makeCommand('agent', [claudePrereq]));
     registry.register(makeCommand('bash'));
 
-    const def = simpleWorkflow([
+    const def = simpleSpell([
       { id: 's1', type: 'github', config: {} },
       { id: 's2', type: 'agent', config: {} },
       { id: 's3', type: 'bash', config: {} },
@@ -100,7 +100,7 @@ describe('collectPrerequisites', () => {
     const cmd2 = makeCommand('github-pr', [ghPrereq]);
     registry.register(cmd2);
 
-    const def = simpleWorkflow([
+    const def = simpleSpell([
       { id: 's1', type: 'github', config: {} },
       { id: 's2', type: 'github-pr', config: {} },
     ]);
@@ -114,7 +114,7 @@ describe('collectPrerequisites', () => {
     const registry = new StepCommandRegistry();
     registry.register(makeCommand('bash'));
 
-    const def = simpleWorkflow([{ id: 's1', type: 'bash', config: {} }]);
+    const def = simpleSpell([{ id: 's1', type: 'bash', config: {} }]);
     const prereqs = collectPrerequisites(def, registry);
     expect(prereqs).toHaveLength(0);
   });
@@ -123,7 +123,7 @@ describe('collectPrerequisites', () => {
     const registry = new StepCommandRegistry();
     registry.register(makeCommand('bash'));
 
-    const def = simpleWorkflow([
+    const def = simpleSpell([
       { id: 's1', type: 'unknown-type', config: {} },
       { id: 's2', type: 'bash', config: {} },
     ]);
@@ -231,7 +231,7 @@ describe('SpellCaster — prerequisite integration', () => {
     const failingPrereq = makePrereq('gh', false, 'Install: brew install gh');
     registry.register(makeCommand('github', [failingPrereq]));
 
-    const def = simpleWorkflow([{ id: 's1', type: 'github', config: {} }]);
+    const def = simpleSpell([{ id: 's1', type: 'github', config: {} }]);
     const result = await runner.run(def, {});
 
     expect(result.success).toBe(false);
@@ -245,7 +245,7 @@ describe('SpellCaster — prerequisite integration', () => {
     const passingPrereq = makePrereq('gh', true);
     registry.register(makeCommand('github', [passingPrereq]));
 
-    const def = simpleWorkflow([{ id: 's1', type: 'github', config: {} }]);
+    const def = simpleSpell([{ id: 's1', type: 'github', config: {} }]);
     const result = await runner.run(def, {});
 
     expect(result.success).toBe(true);
@@ -255,7 +255,7 @@ describe('SpellCaster — prerequisite integration', () => {
     const failingPrereq = makePrereq('gh', false);
     registry.register(makeCommand('github', [failingPrereq]));
 
-    const def = simpleWorkflow([{ id: 's1', type: 'github', config: {} }]);
+    const def = simpleSpell([{ id: 's1', type: 'github', config: {} }]);
     const result = await runner.run(def, {}, { dryRun: true });
 
     // dry-run reports step validity, not prerequisite failure
@@ -268,7 +268,7 @@ describe('SpellCaster — prerequisite integration', () => {
     registry.register(makeCommand('github', [ghPrereq]));
     registry.register(makeCommand('agent', [claudePrereq]));
 
-    const def = simpleWorkflow([
+    const def = simpleSpell([
       { id: 's1', type: 'github', config: {} },
       { id: 's2', type: 'agent', config: {} },
     ]);

@@ -2,7 +2,7 @@
  * MoFlo Integration Levels Tests
  *
  * Story #109: Tests for MoFlo integration level resolution, validation,
- * and enforcement in the workflow engine.
+ * and enforcement in the spell engine.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -14,7 +14,7 @@ import {
 } from '../src/core/capability-validator.js';
 import { MOFLO_LEVEL_ORDER, DEFAULT_MAX_NESTING_DEPTH } from '../src/types/step-command.types.js';
 import type { MofloLevel, StepCommand } from '../src/types/step-command.types.js';
-import type { StepDefinition, SpellDefinition } from '../src/types/workflow-definition.types.js';
+import type { StepDefinition, SpellDefinition } from '../src/types/spell-definition.types.js';
 import { SpellCaster } from '../src/core/runner.js';
 import { StepCommandRegistry } from '../src/core/step-command-registry.js';
 import type { CredentialAccessor, MemoryAccessor } from '../src/types/step-command.types.js';
@@ -55,9 +55,9 @@ function makeCommand(overrides: Partial<StepCommand> = {}): StepCommand {
   };
 }
 
-function makeWorkflow(overrides: Partial<SpellDefinition> = {}): SpellDefinition {
+function makeSpell(overrides: Partial<SpellDefinition> = {}): SpellDefinition {
   return {
-    name: 'test-workflow',
+    name: 'test-spell',
     steps: [makeStep()],
     ...overrides,
   };
@@ -199,26 +199,26 @@ describe('resolveMofloLevel', () => {
 
 describe('mofloLevel validation', () => {
   it('should pass with no mofloLevel set', () => {
-    const def = makeWorkflow();
+    const def = makeSpell();
     const result = validateSpellDefinition(def);
     expect(result.valid).toBe(true);
   });
 
   it('should pass with valid spell mofloLevel', () => {
-    const def = makeWorkflow({ mofloLevel: 'memory' });
+    const def = makeSpell({ mofloLevel: 'memory' });
     const result = validateSpellDefinition(def);
     expect(result.valid).toBe(true);
   });
 
   it('should reject invalid spell mofloLevel', () => {
-    const def = makeWorkflow({ mofloLevel: 'admin' as MofloLevel });
+    const def = makeSpell({ mofloLevel: 'admin' as MofloLevel });
     const result = validateSpellDefinition(def);
     expect(result.valid).toBe(false);
     expect(result.errors.some(e => e.path === 'mofloLevel' && e.message.includes('invalid mofloLevel'))).toBe(true);
   });
 
   it('should pass with valid step mofloLevel', () => {
-    const def = makeWorkflow({
+    const def = makeSpell({
       steps: [makeStep({ mofloLevel: 'memory' })],
     });
     const result = validateSpellDefinition(def);
@@ -226,7 +226,7 @@ describe('mofloLevel validation', () => {
   });
 
   it('should reject invalid step mofloLevel', () => {
-    const def = makeWorkflow({
+    const def = makeSpell({
       steps: [makeStep({ mofloLevel: 'super' as MofloLevel })],
     });
     const result = validateSpellDefinition(def);
@@ -235,7 +235,7 @@ describe('mofloLevel validation', () => {
   });
 
   it('should reject step mofloLevel that exceeds spell level', () => {
-    const def = makeWorkflow({
+    const def = makeSpell({
       mofloLevel: 'memory',
       steps: [makeStep({ mofloLevel: 'full' })],
     });
@@ -245,7 +245,7 @@ describe('mofloLevel validation', () => {
   });
 
   it('should allow step level equal to spell level', () => {
-    const def = makeWorkflow({
+    const def = makeSpell({
       mofloLevel: 'hooks',
       steps: [makeStep({ mofloLevel: 'hooks' })],
     });
@@ -254,7 +254,7 @@ describe('mofloLevel validation', () => {
   });
 
   it('should allow step level below spell level', () => {
-    const def = makeWorkflow({
+    const def = makeSpell({
       mofloLevel: 'full',
       steps: [makeStep({ mofloLevel: 'none' })],
     });
@@ -263,7 +263,7 @@ describe('mofloLevel validation', () => {
   });
 
   it('should validate nested steps in loops', () => {
-    const def = makeWorkflow({
+    const def = makeSpell({
       mofloLevel: 'memory',
       steps: [{
         id: 'loop1',
@@ -284,7 +284,7 @@ describe('mofloLevel validation', () => {
 
 describe('validateSpellDefinition with mofloLevel', () => {
   it('should pass validation with valid mofloLevel', () => {
-    const def = makeWorkflow({
+    const def = makeSpell({
       mofloLevel: 'hooks',
       steps: [makeStep({ mofloLevel: 'none' })],
     });
@@ -293,7 +293,7 @@ describe('validateSpellDefinition with mofloLevel', () => {
   });
 
   it('should fail validation with escalating step level', () => {
-    const def = makeWorkflow({
+    const def = makeSpell({
       mofloLevel: 'none',
       steps: [makeStep({ mofloLevel: 'full' })],
     });
@@ -364,7 +364,7 @@ describe('SpellCaster — mofloLevel enforcement', () => {
       },
     }));
 
-    const def = makeWorkflow({
+    const def = makeSpell({
       steps: [{ id: 's1', type: 'mock', config: {} }],
     });
 
@@ -383,7 +383,7 @@ describe('SpellCaster — mofloLevel enforcement', () => {
       },
     }));
 
-    const def = makeWorkflow({
+    const def = makeSpell({
       mofloLevel: 'full',
       steps: [{ id: 's1', type: 'mock', config: {}, mofloLevel: 'none' }],
     });
@@ -403,7 +403,7 @@ describe('SpellCaster — mofloLevel enforcement', () => {
       },
     }));
 
-    const def = makeWorkflow({
+    const def = makeSpell({
       mofloLevel: 'memory',
       steps: [{ id: 's1', type: 'mock', config: {} }],
     });
@@ -423,9 +423,9 @@ describe('SpellCaster — mofloLevel enforcement', () => {
       },
     }));
 
-    // Workflow does NOT declare mofloLevel (so no workflow-level vs parent check),
+    // Spell does NOT declare mofloLevel (so no spell-level vs parent check),
     // but the command's default 'full' should be capped by parentMofloLevel 'hooks'
-    const def = makeWorkflow({
+    const def = makeSpell({
       steps: [{ id: 's1', type: 'mock', config: {} }],
     });
 
@@ -437,7 +437,7 @@ describe('SpellCaster — mofloLevel enforcement', () => {
   it('should fail nested spell that exceeds parent level', async () => {
     registry.register(makeCommand());
 
-    const def = makeWorkflow({
+    const def = makeSpell({
       mofloLevel: 'full',
       steps: [{ id: 's1', type: 'mock', config: {} }],
     });
@@ -456,7 +456,7 @@ describe('SpellCaster — mofloLevel enforcement', () => {
       },
     }));
 
-    const def = makeWorkflow({
+    const def = makeSpell({
       steps: [{ id: 's1', type: 'mock', config: {} }],
     });
 
@@ -468,7 +468,7 @@ describe('SpellCaster — mofloLevel enforcement', () => {
   it('should report mofloLevel in dry-run step reports', async () => {
     registry.register(makeCommand({ defaultMofloLevel: 'hooks' }));
 
-    const def = makeWorkflow({
+    const def = makeSpell({
       steps: [{ id: 's1', type: 'mock', config: {} }],
     });
 

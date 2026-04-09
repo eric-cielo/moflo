@@ -65,8 +65,8 @@ describe('Spell MCP Tools — Engine Integration', () => {
     expect(result.definition.steps).toHaveLength(2);
     expect(result.definition.steps[0].id).toBe('step-1');
     expect(result.definition.steps[0].type).toBe('bash');
-    // Should NOT have a workflowId (that's the old mock-store pattern)
-    expect(result.workflowId).toBeUndefined();
+    // Should NOT have a spellId (that's the old mock-store pattern)
+    expect(result.spellId).toBeUndefined();
   });
 
   // -------------------------------------------------------------------------
@@ -97,8 +97,8 @@ steps:
 `;
     const result: any = await tool.handler({ content: yamlContent });
 
-    // Engine returns a structured WorkflowResult
-    expect(result.workflowId).toBeDefined();
+    // Engine returns a structured SpellResult
+    expect(result.spellId).toBeDefined();
     expect(result.success).toBe(true);
     expect(result.steps).toBeDefined();
     expect(result.steps.length).toBeGreaterThan(0);
@@ -119,7 +119,7 @@ steps:
       command: echo should-not-run
 `;
     const result: any = await tool.handler({ content: yamlContent, dryRun: true });
-    expect(result.workflowId).toBeDefined();
+    expect(result.spellId).toBeDefined();
     // Dry run returns a result structure (validated, not executed)
     expect(result.cancelled).toBe(false);
   });
@@ -138,7 +138,7 @@ steps:
     };
     const result: any = await tool.handler({ definition });
 
-    expect(result.workflowId).toBeDefined();
+    expect(result.spellId).toBeDefined();
     expect(result.success).toBe(true);
     expect(result.steps).toHaveLength(1);
     expect(result.steps[0].status).toBe('succeeded');
@@ -156,7 +156,7 @@ steps:
 
   it('spell_status returns not-found for unknown ID', async () => {
     const tool = findTool('spell_status');
-    const result: any = await tool.handler({ workflowId: 'nonexistent-id' });
+    const result: any = await tool.handler({ spellId: 'nonexistent-id' });
     expect(result.error).toMatch(/not found/i);
   });
 
@@ -166,13 +166,13 @@ steps:
     const runResult: any = await runTool.handler({
       content: 'name: status-test\nsteps:\n  - id: s1\n    type: bash\n    config:\n      command: echo ok',
     });
-    const workflowId = runResult.workflowId;
+    const spellId = runResult.spellId;
 
     // Now query status
     const statusTool = findTool('spell_status');
-    const statusResult: any = await statusTool.handler({ workflowId, verbose: true });
+    const statusResult: any = await statusTool.handler({ spellId, verbose: true });
 
-    expect(statusResult.workflowId).toBe(workflowId);
+    expect(statusResult.spellId).toBe(spellId);
     expect(statusResult.status).toBe('completed');
     expect(statusResult.success).toBe(true);
     expect(statusResult.steps).toBeDefined();
@@ -202,7 +202,7 @@ steps:
 
   it('spell_cancel returns not-found for unknown ID', async () => {
     const tool = findTool('spell_cancel');
-    const result: any = await tool.handler({ workflowId: 'nonexistent' });
+    const result: any = await tool.handler({ spellId: 'nonexistent' });
     expect(result.error).toMatch(/not found/i);
   });
 
@@ -212,7 +212,7 @@ steps:
 
   it('spell_delete returns deleted=false for unknown ID', async () => {
     const tool = findTool('spell_delete');
-    const result: any = await tool.handler({ workflowId: 'nonexistent' });
+    const result: any = await tool.handler({ spellId: 'nonexistent' });
     expect(result.deleted).toBe(false);
   });
 
@@ -222,7 +222,7 @@ steps:
 
   it('spell_suspend returns error for non-active spell', async () => {
     const tool = findTool('spell_suspend');
-    const result: any = await tool.handler({ workflowId: 'nonexistent' });
+    const result: any = await tool.handler({ spellId: 'nonexistent' });
     expect(result.error).toMatch(/not.*active/i);
   });
 
@@ -232,7 +232,7 @@ steps:
 
   it('spell_resume returns error for unknown spell', async () => {
     const tool = findTool('spell_resume');
-    const result: any = await tool.handler({ workflowId: 'nonexistent' });
+    const result: any = await tool.handler({ spellId: 'nonexistent' });
     expect(result.error).toMatch(/not found/i);
   });
 
@@ -315,9 +315,9 @@ steps:
     expect(source).not.toContain('saveWorkflowStore');
     expect(source).not.toContain('loadWorkflowStore');
     // Verify it references the engine bridge
-    expect(source).toContain('bridgeRunWorkflow');
-    expect(source).toContain('bridgeExecuteWorkflow');
-    expect(source).toContain('bridgeCancelWorkflow');
+    expect(source).toContain('bridgeRunSpell');
+    expect(source).toContain('bridgeExecuteSpell');
+    expect(source).toContain('bridgeCancelSpell');
     expect(source).toContain('Grimoire');
   });
 });

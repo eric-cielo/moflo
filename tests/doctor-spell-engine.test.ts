@@ -33,7 +33,7 @@ describe('doctor.ts spell engine check', () => {
     expect(content).toContain("'core/step-command-registry'");
     expect(content).toContain("'core/interpolation'");
     expect(content).toContain("'core/credential-masker'");
-    expect(content).toContain("'registry/workflow-registry'");
+    expect(content).toContain("'registry/spell-registry'");
   });
 
   it('checks for schema, types, credentials, and scheduler directories', () => {
@@ -92,7 +92,7 @@ describe('spell engine source structure', () => {
   });
 
   it('has the spell registry', () => {
-    expect(existsSync(join(WORKFLOWS_SRC, 'registry', 'workflow-registry.ts'))).toBe(true);
+    expect(existsSync(join(WORKFLOWS_SRC, 'registry', 'spell-registry.ts'))).toBe(true);
   });
 
   it('has the schema directory', () => {

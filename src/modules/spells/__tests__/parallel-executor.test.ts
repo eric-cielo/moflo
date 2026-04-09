@@ -7,8 +7,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { executeParallelSteps } from '../src/core/parallel-executor.js';
 import type { StepOutput } from '../src/types/step-command.types.js';
-import type { StepResult, WorkflowError } from '../src/types/runner.types.js';
-import type { StepDefinition } from '../src/types/workflow-definition.types.js';
+import type { StepResult, SpellError } from '../src/types/runner.types.js';
+import type { StepDefinition } from '../src/types/spell-definition.types.js';
 
 // ============================================================================
 // Helpers
@@ -74,7 +74,7 @@ describe('executeParallelSteps', () => {
     const parallelStep = makeParallelStep(steps);
     const parallelOutput = makeParallelOutput();
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executeStep = vi.fn()
       .mockImplementation(async (step: StepDefinition) =>
@@ -103,7 +103,7 @@ describe('executeParallelSteps', () => {
     const parallelStep = makeParallelStep(steps);
     const parallelOutput = makeParallelOutput(0, true);
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executeStep = vi.fn()
       .mockImplementation(async (step: StepDefinition) => {
@@ -126,7 +126,7 @@ describe('executeParallelSteps', () => {
     const parallelStep = makeParallelStep(steps);
     const parallelOutput = makeParallelOutput(0, false);
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executeStep = vi.fn()
       .mockImplementation(async (step: StepDefinition) => {
@@ -151,7 +151,7 @@ describe('executeParallelSteps', () => {
     const parallelStep = makeParallelStep(steps);
     const parallelOutput = makeParallelOutput(1, true); // maxConcurrency: 1 = sequential
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executionOrder: string[] = [];
     const executeStep = vi.fn()
@@ -175,7 +175,7 @@ describe('executeParallelSteps', () => {
     const parallelStep = makeParallelStep(steps);
     const parallelOutput = makeParallelOutput(2, true);
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     let concurrentCount = 0;
     let maxObservedConcurrency = 0;
@@ -203,7 +203,7 @@ describe('executeParallelSteps', () => {
     const parallelStep = makeParallelStep([]);
     const parallelOutput = makeParallelOutput();
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executeStep = vi.fn();
 
@@ -221,7 +221,7 @@ describe('executeParallelSteps', () => {
     const parallelStep = makeParallelStep(steps);
     const parallelOutput = makeParallelOutput();
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
     const controller = new AbortController();
 
     let executedCount = 0;
@@ -248,7 +248,7 @@ describe('executeParallelSteps', () => {
     const parallelStep = makeParallelStep(steps);
     const parallelOutput = makeParallelOutput();
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const capturedVars: Array<Record<string, unknown>> = [];
 

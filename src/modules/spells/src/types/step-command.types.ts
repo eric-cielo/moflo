@@ -1,5 +1,5 @@
 /**
- * Workflow Step Command Type Definitions
+ * Spell Step Command Type Definitions
  */
 
 // ============================================================================
@@ -72,7 +72,7 @@ export interface OutputDescriptor {
 }
 
 // ============================================================================
-// Workflow Context
+// Spell Context
 // ============================================================================
 
 export interface CredentialAccessor {
@@ -92,19 +92,19 @@ export interface CastingContext {
   readonly credentials: CredentialAccessor;
   readonly memory: MemoryAccessor;
   readonly taskId: string;
-  readonly workflowId: string;
+  readonly spellId: string;
   readonly stepIndex: number;
   readonly abortSignal?: AbortSignal;
   /** Effective capabilities after merging command defaults with step restrictions. */
   readonly effectiveCaps?: readonly StepCapability[];
   /** Resolved MoFlo integration level for this step. */
   readonly mofloLevel?: MofloLevel;
-  /** Nesting depth for recursive workflow invocations (0 = top-level). */
+  /** Nesting depth for recursive spell invocations (0 = top-level). */
   readonly nestingDepth?: number;
   /** Maximum allowed nesting depth for recursive spells. */
   readonly maxNestingDepth?: number;
   /** Spell connectors accessor — available when a connector registry is configured. */
-  readonly tools?: import('./workflow-connector.types.js').ConnectorAccessor;
+  readonly tools?: import('./spell-connector.types.js').ConnectorAccessor;
   /** Capability gateway for structural enforcement (Issue #258, #266 — non-optional). */
   readonly gateway: import('../core/capability-gateway.js').ICapabilityGateway;
 }
@@ -124,7 +124,7 @@ export const MOFLO_LEVEL_ORDER: readonly MofloLevel[] = [
   'none', 'memory', 'hooks', 'full', 'recursive',
 ];
 
-/** Default max nesting depth for recursive workflows. */
+/** Default max nesting depth for recursive spells. */
 export const DEFAULT_MAX_NESTING_DEPTH = 3;
 
 // ============================================================================
@@ -180,7 +180,7 @@ export interface PrerequisiteResult {
 // ============================================================================
 
 /**
- * Foundational abstraction for workflow steps.
+ * Foundational abstraction for spell steps.
  * Commands are stateless — all state flows through CastingContext.
  *
  * The generic parameter lets commands narrow their config type at compile time

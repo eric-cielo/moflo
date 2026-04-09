@@ -1,5 +1,5 @@
 /**
- * Memory Step Command — read/write/search shared workflow state via MemoryAccessor.
+ * Memory Step Command — read/write/search shared spell state via MemoryAccessor.
  */
 
 import type {
@@ -28,7 +28,7 @@ export interface MemoryStepConfig extends StepConfig {
 
 export const memoryCommand: StepCommand<MemoryStepConfig> = {
   type: 'memory',
-  description: 'Read, write, or search shared workflow state',
+  description: 'Read, write, or search shared spell state',
   capabilities: [{ type: 'memory' }],
   defaultMofloLevel: 'memory',
   configSchema: {

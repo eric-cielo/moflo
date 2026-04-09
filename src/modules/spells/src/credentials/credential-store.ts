@@ -1,9 +1,9 @@
 /**
  * Encrypted Credential Store
  *
- * Provides at-rest encryption for workflow secrets using AES-256-GCM
+ * Provides at-rest encryption for spell secrets using AES-256-GCM
  * with PBKDF2 key derivation. Implements the CredentialAccessor interface
- * so workflows can reference secrets by name via {credentials.NAME}.
+ * so spells can reference secrets by name via {credentials.NAME}.
  *
  * Story #106: Encrypted Credential Storage
  */

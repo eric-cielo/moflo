@@ -1,7 +1,7 @@
 /**
- * Workflow Definition Types
+ * Spell Definition Types
  *
- * TypeScript types for YAML/JSON workflow definition files.
+ * TypeScript types for YAML/JSON spell definition files.
  */
 
 import type { CapabilityType, MofloLevel } from './step-command.types.js';
@@ -35,12 +35,12 @@ export interface StepDefinition {
   readonly steps?: readonly StepDefinition[];
   /** Capability restrictions for this step (narrows the command's defaults). */
   readonly capabilities?: Partial<Record<CapabilityType, readonly string[]>>;
-  /** MoFlo integration level — controls access to memory, hooks, swarms, nested workflows. */
+  /** MoFlo integration level — controls access to memory, hooks, swarms, nested spells. */
   readonly mofloLevel?: MofloLevel;
 }
 
 // ============================================================================
-// Workflow Definition
+// Spell Definition
 // ============================================================================
 
 export interface SpellDefinition {
@@ -57,10 +57,10 @@ export interface SpellDefinition {
 }
 
 // ============================================================================
-// Parsed Workflow (with source metadata)
+// Parsed Spell (with source metadata)
 // ============================================================================
 
-export interface ParsedWorkflow {
+export interface ParsedSpell {
   readonly definition: SpellDefinition;
   readonly sourceFile?: string;
   readonly format: 'yaml' | 'json';

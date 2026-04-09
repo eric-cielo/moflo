@@ -2,14 +2,14 @@
  * Capability Validator
  *
  * Story #108: Tier 1 capability declaration and enforcement.
- * Each step command declares required capabilities. Workflow YAML can further
+ * Each step command declares required capabilities. Spell YAML can further
  * restrict (never expand) capabilities per step. The runner checks capabilities
  * before execution and blocks undeclared access.
  */
 
 import type { StepCapability, CapabilityType, StepCommand, MofloLevel } from '../types/step-command.types.js';
 import { MOFLO_LEVEL_ORDER } from '../types/step-command.types.js';
-import type { StepDefinition } from '../types/workflow-definition.types.js';
+import type { StepDefinition } from '../types/spell-definition.types.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ export const VALID_CAPABILITY_TYPES: ReadonlySet<string> = new Set<CapabilityTyp
 
 /**
  * Check whether a step is allowed to execute given its command's declared
- * capabilities and any per-step restrictions from the workflow YAML.
+ * capabilities and any per-step restrictions from the spell YAML.
  *
  * Restrictions in YAML can only **narrow** the command's defaults — they
  * cannot grant new capability types the command doesn't declare.
@@ -103,7 +103,7 @@ export function isValidCapabilityType(type: string): type is CapabilityType {
 }
 
 /**
- * Validate step capabilities in a workflow definition (for schema validation).
+ * Validate step capabilities in a spell definition (for schema validation).
  */
 export function validateStepCapabilities(
   step: StepDefinition,
@@ -234,32 +234,32 @@ export function getDefaultMofloLevel(_stepType: string, command?: StepCommand): 
 }
 
 /**
- * Resolve the effective MoFlo level for a step given workflow defaults,
+ * Resolve the effective MoFlo level for a step given spell defaults,
  * step overrides, command defaults, and parent constraints.
  *
  * Resolution order (most specific wins, but can only narrow):
  * 1. Command declares its default level
- * 2. Workflow definition may set a workflow-wide level
- * 3. Step may override with its own level (must not exceed workflow level)
- * 4. Parent workflow constrains the maximum level (for recursive invocation)
+ * 2. Spell definition may set a spell-wide level
+ * 3. Step may override with its own level (must not exceed spell level)
+ * 4. Parent spell constrains the maximum level (for recursive invocation)
  */
 export function resolveMofloLevel(
   step: StepDefinition,
   command: StepCommand | undefined,
-  workflowLevel: MofloLevel | undefined,
+  spellLevel: MofloLevel | undefined,
   parentLevel: MofloLevel | undefined,
 ): MofloLevel {
   const commandDefault = getDefaultMofloLevel(step.type, command);
-  const wfLevel = workflowLevel ?? commandDefault;
+  const wfLevel = spellLevel ?? commandDefault;
 
-  // Step can narrow but not exceed the workflow-level default
+  // Step can narrow but not exceed the spell-level default
   let effective: MofloLevel;
   if (step.mofloLevel) {
     effective = compareMofloLevels(step.mofloLevel, wfLevel) <= 0
       ? step.mofloLevel
-      : wfLevel; // Capped at workflow level
+      : wfLevel; // Capped at spell level
   } else {
-    // Use the more restrictive of workflow level and command default
+    // Use the more restrictive of spell level and command default
     effective = compareMofloLevels(commandDefault, wfLevel) <= 0
       ? commandDefault
       : wfLevel;

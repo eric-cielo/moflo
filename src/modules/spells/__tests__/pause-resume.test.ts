@@ -7,11 +7,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { MemoryAccessor } from '../src/types/step-command.types.js';
 import type { StepResult } from '../src/types/runner.types.js';
-import type { SpellDefinition } from '../src/types/workflow-definition.types.js';
+import type { SpellDefinition } from '../src/types/spell-definition.types.js';
 import {
   buildPausedState,
   persistPausedState,
-  resumeWorkflow,
+  resumeSpell,
   cleanupStalePaused,
 } from '../src/factory/pause-resume.js';
 
@@ -39,7 +39,7 @@ function createMockMemory(): MemoryAccessor & { store: Map<string, unknown> } {
 }
 
 const TEST_DEFINITION: SpellDefinition = {
-  name: 'test-workflow',
+  name: 'test-spell',
   steps: [
     { id: 's1', type: 'wait', config: { duration: 0 } },
     { id: 's2', type: 'wait', config: { duration: 0 } },
@@ -69,8 +69,8 @@ describe('buildPausedState', () => {
       { target: 'production' },
     );
 
-    expect(state.workflowId).toBe('wf-123');
-    expect(state.definitionName).toBe('test-workflow');
+    expect(state.spellId).toBe('wf-123');
+    expect(state.definitionName).toBe('test-spell');
     expect(state.nextStepIndex).toBe(2);
     expect(state.variables).toEqual({ s1: { done: true }, s2: { done: true } });
     expect(state.completedStepResults).toHaveLength(2);
@@ -81,10 +81,10 @@ describe('buildPausedState', () => {
 });
 
 // ============================================================================
-// persistPausedState + resumeWorkflow
+// persistPausedState + resumeSpell
 // ============================================================================
 
-describe('persistPausedState + resumeWorkflow', () => {
+describe('persistPausedState + resumeSpell', () => {
   it('should pause after step 2 and resume from step 3', async () => {
     const memory = createMockMemory();
 
@@ -100,7 +100,7 @@ describe('persistPausedState + resumeWorkflow', () => {
     await persistPausedState(state, memory);
 
     // Resume should continue from step 3
-    const result = await resumeWorkflow('wf-pause-test', { memory });
+    const result = await resumeSpell('wf-pause-test', { memory });
 
     expect(result.success).toBe(true);
     // Total steps: 2 completed before pause + 3 from resume
@@ -126,7 +126,7 @@ describe('persistPausedState + resumeWorkflow', () => {
     await persistPausedState(state, memory);
 
     // Resume with user-injected variable overrides
-    const result = await resumeWorkflow('wf-vars-test', {
+    const result = await resumeSpell('wf-vars-test', {
       memory,
       variables: { userOverride: 'injected' },
     });
@@ -158,10 +158,10 @@ describe('Serialization roundtrip', () => {
     const raw = await memory.read('spell-paused', 'wf-serial-test');
     const reconstructed = raw as typeof originalState;
 
-    expect(reconstructed.workflowId).toBe('wf-serial-test');
+    expect(reconstructed.spellId).toBe('wf-serial-test');
     expect(reconstructed.nextStepIndex).toBe(3);
     expect(reconstructed.variables).toEqual({ s1: { nested: { deep: [1, 2, 3] } } });
-    expect(JSON.parse(reconstructed.definition).name).toBe('test-workflow');
+    expect(JSON.parse(reconstructed.definition).name).toBe('test-spell');
   });
 });
 
@@ -169,11 +169,11 @@ describe('Serialization roundtrip', () => {
 // Error cases
 // ============================================================================
 
-describe('resumeWorkflow — errors', () => {
+describe('resumeSpell — errors', () => {
   it('should return error for nonexistent spell ID', async () => {
     const memory = createMockMemory();
 
-    const result = await resumeWorkflow('nonexistent', { memory });
+    const result = await resumeSpell('nonexistent', { memory });
 
     expect(result.success).toBe(false);
     expect(result.errors).toHaveLength(1);
@@ -199,7 +199,7 @@ describe('resumeWorkflow — errors', () => {
     // Wait just enough for it to expire
     await new Promise(r => setTimeout(r, 5));
 
-    const result = await resumeWorkflow('wf-stale-test', { memory });
+    const result = await resumeSpell('wf-stale-test', { memory });
 
     expect(result.success).toBe(false);
     expect(result.errors[0].message).toContain('expired');

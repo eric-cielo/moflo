@@ -6,7 +6,7 @@
  * closing the ungated I/O path through connectors.
  */
 
-import type { ConnectorAccessor, ConnectorView, ConnectorOutput, ConnectorCapability } from '../types/workflow-connector.types.js';
+import type { ConnectorAccessor, ConnectorView, ConnectorOutput, ConnectorCapability } from '../types/spell-connector.types.js';
 import type { ICapabilityGateway } from './capability-gateway.js';
 
 export class GatedConnectorAccessor implements ConnectorAccessor {

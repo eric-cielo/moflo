@@ -1,16 +1,16 @@
 /**
  * Prerequisite Checker
  *
- * Collects and deduplicates prerequisites from all workflow steps,
+ * Collects and deduplicates prerequisites from all spell steps,
  * runs each check once, and returns structured results.
  *
- * Story #193: Workflow engine prerequisites system.
+ * Story #193: Spell engine prerequisites system.
  */
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { StepCommand, Prerequisite, PrerequisiteResult } from '../types/step-command.types.js';
-import type { SpellDefinition } from '../types/workflow-definition.types.js';
+import type { SpellDefinition } from '../types/spell-definition.types.js';
 import type { StepCommandRegistry } from './step-command-registry.js';
 
 const execFileAsync = promisify(execFile);
@@ -27,7 +27,7 @@ export async function commandExists(cmd: string): Promise<boolean> {
 }
 
 /**
- * Collect unique prerequisites from all steps in a workflow definition.
+ * Collect unique prerequisites from all steps in a spell definition.
  * Deduplicates by prerequisite name (first occurrence wins).
  */
 export function collectPrerequisites(

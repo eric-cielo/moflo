@@ -1326,7 +1326,7 @@ export const doctorCommand: Command = {
           'core/step-command-registry',
           'core/interpolation',
           'core/credential-masker',
-          'registry/workflow-registry',
+          'registry/spell-registry',
           'factory/runner-factory',
           'schema',
           'types',

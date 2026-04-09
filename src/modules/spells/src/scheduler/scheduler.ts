@@ -6,11 +6,11 @@
  */
 
 import type { MemoryAccessor } from '../types/step-command.types.js';
-import type { SpellDefinition } from '../types/workflow-definition.types.js';
-import type { WorkflowResult } from '../types/runner.types.js';
+import type { SpellDefinition } from '../types/spell-definition.types.js';
+import type { SpellResult } from '../types/runner.types.js';
 import type { MofloLevel } from '../types/step-command.types.js';
 import type {
-  WorkflowSchedule,
+  SpellSchedule,
   ScheduleExecution,
   SchedulerOptions,
 } from './schedule.types.js';
@@ -31,11 +31,11 @@ const NAMESPACE_EXECUTIONS = 'schedule-executions';
 // Executor Interface (injected by the daemon/CLI)
 // ============================================================================
 
-export interface WorkflowExecutor {
-  /** Execute a workflow by name with given args. Returns the result. */
-  execute(workflowName: string, args: Record<string, unknown>, signal?: AbortSignal, mofloLevel?: MofloLevel): Promise<WorkflowResult>;
-  /** Check if a workflow definition exists. */
-  exists(workflowName: string): boolean;
+export interface SpellExecutor {
+  /** Execute a spell by name with given args. Returns the result. */
+  execute(spellName: string, args: Record<string, unknown>, signal?: AbortSignal, mofloLevel?: MofloLevel): Promise<SpellResult>;
+  /** Check if a spell definition exists. */
+  exists(spellName: string): boolean;
 }
 
 // ============================================================================
@@ -67,20 +67,20 @@ export type SchedulerListener = (event: SchedulerEvent) => void;
 
 export class SpellScheduler {
   private readonly memory: MemoryAccessor;
-  private readonly executor: WorkflowExecutor;
+  private readonly executor: SpellExecutor;
   private readonly pollIntervalMs: number;
   private readonly maxConcurrent: number;
   private readonly catchUpWindowMs: number;
   private readonly maxMofloLevel: MofloLevel | undefined;
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
-  private readonly runningWorkflows = new Map<string, AbortController>();
+  private readonly runningSpells = new Map<string, AbortController>();
   private readonly inflightPromises = new Map<string, Promise<void>>();
   private readonly listeners: SchedulerListener[] = [];
 
   constructor(
     memory: MemoryAccessor,
-    executor: WorkflowExecutor,
+    executor: SpellExecutor,
     options: SchedulerOptions = {},
   ) {
     this.memory = memory;
@@ -110,14 +110,14 @@ export class SpellScheduler {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
-    for (const [, controller] of this.runningWorkflows) {
+    for (const [, controller] of this.runningSpells) {
       controller.abort();
     }
     // Wait for in-flight executions to settle before clearing state
     if (this.inflightPromises.size > 0) {
       await Promise.allSettled([...this.inflightPromises.values()]);
     }
-    this.runningWorkflows.clear();
+    this.runningSpells.clear();
     this.inflightPromises.clear();
   }
 
@@ -153,7 +153,7 @@ export class SpellScheduler {
   async registerFromDefinition(
     definition: SpellDefinition,
     spellPath: string,
-  ): Promise<WorkflowSchedule | null> {
+  ): Promise<SpellSchedule | null> {
     if (!definition.schedule) return null;
     const { cron, interval, at, enabled } = definition.schedule;
 
@@ -162,7 +162,7 @@ export class SpellScheduler {
 
     if (nextRunAt === null) return null;
 
-    const record: WorkflowSchedule = {
+    const record: SpellSchedule = {
       id: `sched-def-${definition.name}`,
       spellName: definition.name,
       spellPath,
@@ -189,7 +189,7 @@ export class SpellScheduler {
     interval?: string;
     at?: string;
     args?: Record<string, unknown>;
-  }): Promise<WorkflowSchedule> {
+  }): Promise<SpellSchedule> {
     const now = Date.now();
     const nextRunAt = computeNextRun({
       cron: params.cron,
@@ -202,7 +202,7 @@ export class SpellScheduler {
     }
 
     const id = `sched-adhoc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const record: WorkflowSchedule = {
+    const record: SpellSchedule = {
       id,
       spellName: params.spellName,
       spellPath: params.spellPath,
@@ -227,7 +227,7 @@ export class SpellScheduler {
     const record = await this.getSchedule(scheduleId);
     if (!record) return false;
 
-    const updated: WorkflowSchedule = { ...record, enabled: false };
+    const updated: SpellSchedule = { ...record, enabled: false };
     await this.memory.write(NAMESPACE_SCHEDULES, scheduleId, updated);
 
     this.emit({
@@ -244,17 +244,17 @@ export class SpellScheduler {
   /**
    * Get a single schedule by ID.
    */
-  async getSchedule(scheduleId: string): Promise<WorkflowSchedule | null> {
+  async getSchedule(scheduleId: string): Promise<SpellSchedule | null> {
     const raw = await this.memory.read(NAMESPACE_SCHEDULES, scheduleId);
-    return raw as WorkflowSchedule | null;
+    return raw as SpellSchedule | null;
   }
 
   /**
    * List all schedules.
    */
-  async listSchedules(): Promise<WorkflowSchedule[]> {
+  async listSchedules(): Promise<SpellSchedule[]> {
     const results = await this.memory.search(NAMESPACE_SCHEDULES, '*');
-    return results.map(r => r.value as WorkflowSchedule);
+    return results.map(r => r.value as SpellSchedule);
   }
 
   /**
@@ -304,7 +304,7 @@ export class SpellScheduler {
       }
 
       // Overlap check: skip if this spell is still running
-      if (this.runningWorkflows.has(schedule.id)) {
+      if (this.runningSpells.has(schedule.id)) {
         this.emit({
           type: 'schedule:skipped',
           scheduleId: schedule.id,
@@ -316,7 +316,7 @@ export class SpellScheduler {
       }
 
       // Concurrency check
-      if (this.runningWorkflows.size >= this.maxConcurrent) {
+      if (this.runningSpells.size >= this.maxConcurrent) {
         continue; // will pick up on next poll
       }
 
@@ -337,9 +337,9 @@ export class SpellScheduler {
 
   // ── Execution ────────────────────────────────────────────────────────────
 
-  private async executeScheduled(schedule: WorkflowSchedule, now: number): Promise<void> {
+  private async executeScheduled(schedule: SpellSchedule, now: number): Promise<void> {
     const controller = new AbortController();
-    this.runningWorkflows.set(schedule.id, controller);
+    this.runningSpells.set(schedule.id, controller);
 
     const executionId = `exec-${schedule.id}-${now}`;
     const execution: ScheduleExecution = {
@@ -409,7 +409,7 @@ export class SpellScheduler {
         timestamp: completedAt,
       });
     } finally {
-      this.runningWorkflows.delete(schedule.id);
+      this.runningSpells.delete(schedule.id);
       this.inflightPromises.delete(schedule.id);
       await this.advanceNextRun(schedule, Date.now());
     }
@@ -434,10 +434,10 @@ export class SpellScheduler {
    * Advance the schedule's nextRunAt after execution or skip.
    * For one-time (`at`) schedules, auto-disables after execution.
    */
-  private async advanceNextRun(schedule: WorkflowSchedule, now: number): Promise<void> {
+  private async advanceNextRun(schedule: SpellSchedule, now: number): Promise<void> {
     // One-time schedule: disable after run
     if (schedule.at) {
-      const updated: WorkflowSchedule = { ...schedule, enabled: false, lastRunAt: now };
+      const updated: SpellSchedule = { ...schedule, enabled: false, lastRunAt: now };
       await this.memory.write(NAMESPACE_SCHEDULES, schedule.id, updated);
       return;
     }
@@ -448,7 +448,7 @@ export class SpellScheduler {
       lastRunAt: now,
     }, now);
 
-    const updated: WorkflowSchedule = {
+    const updated: SpellSchedule = {
       ...schedule,
       lastRunAt: now,
       nextRunAt: nextRunAt ?? now + this.pollIntervalMs, // fallback shouldn't happen

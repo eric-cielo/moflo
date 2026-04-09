@@ -5,9 +5,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseYaml, parseJson, parseWorkflow } from '../src/schema/parser.js';
+import { parseYaml, parseJson, parseSpell } from '../src/schema/parser.js';
 import { validateSpellDefinition, resolveArguments } from '../src/schema/validator.js';
-import type { SpellDefinition } from '../src/types/workflow-definition.types.js';
+import type { SpellDefinition } from '../src/types/spell-definition.types.js';
 
 // ============================================================================
 // Fixtures
@@ -76,7 +76,7 @@ describe('parseYaml', () => {
 
 describe('parseJson', () => {
   it('should parse valid JSON', () => {
-    const result = parseJson(VALID_JSON, 'workflow.json');
+    const result = parseJson(VALID_JSON, 'spell.json');
     expect(result.format).toBe('json');
     expect(result.definition.name).toBe('doc-generation');
   });
@@ -90,40 +90,40 @@ describe('parseJson', () => {
   });
 });
 
-describe('parseWorkflow', () => {
+describe('parseSpell', () => {
   it('should detect format from .yaml extension', () => {
-    const result = parseWorkflow(VALID_YAML, 'test.yaml');
+    const result = parseSpell(VALID_YAML, 'test.yaml');
     expect(result.format).toBe('yaml');
   });
 
   it('should detect format from .yml extension', () => {
-    const result = parseWorkflow(VALID_YAML, 'test.yml');
+    const result = parseSpell(VALID_YAML, 'test.yml');
     expect(result.format).toBe('yaml');
   });
 
   it('should detect format from .json extension', () => {
-    const result = parseWorkflow(VALID_JSON, 'test.json');
+    const result = parseSpell(VALID_JSON, 'test.json');
     expect(result.format).toBe('json');
   });
 
   it('should auto-detect JSON from content', () => {
-    const result = parseWorkflow(VALID_JSON);
+    const result = parseSpell(VALID_JSON);
     expect(result.format).toBe('json');
   });
 
   it('should auto-detect YAML from content', () => {
-    const result = parseWorkflow(VALID_YAML);
+    const result = parseSpell(VALID_YAML);
     expect(result.format).toBe('yaml');
   });
 
   it('should fall through to auto-detect on unknown extension', () => {
     // .txt is not a known extension, should auto-detect as YAML from content
-    const result = parseWorkflow(VALID_YAML, 'workflow.txt');
+    const result = parseSpell(VALID_YAML, 'spell.txt');
     expect(result.format).toBe('yaml');
   });
 
   it('should auto-detect JSON for unknown extension with JSON content', () => {
-    const result = parseWorkflow(VALID_JSON, 'workflow.toml');
+    const result = parseSpell(VALID_JSON, 'spell.toml');
     expect(result.format).toBe('json');
   });
 });

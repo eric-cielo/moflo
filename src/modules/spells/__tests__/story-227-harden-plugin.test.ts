@@ -10,7 +10,7 @@ import { StepCommandRegistry } from '../src/core/step-command-registry.js';
 import { createStepCommand } from '../src/commands/create-step-command.js';
 import { validateSpellDefinition } from '../src/schema/validator.js';
 import { makeCommand } from './helpers.js';
-import type { SpellDefinition, StepDefinition } from '../src/types/workflow-definition.types.js';
+import type { SpellDefinition, StepDefinition } from '../src/types/spell-definition.types.js';
 
 // ============================================================================
 // Issue #5: Debug logging on registerOrReplace override
@@ -140,7 +140,7 @@ describe('createStepCommand factory (Issue #8)', () => {
 describe('Circular step jump detection (Issue #9)', () => {
   function makeDef(steps: StepDefinition[]): SpellDefinition {
     return {
-      name: 'test-workflow',
+      name: 'test-spell',
       steps,
     };
   }

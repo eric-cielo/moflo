@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { loadYamlStep, isYamlStepFile } from '../src/loaders/yaml-step-loader.js';
 import { loadStepsFromDirectories } from '../src/loaders/directory-step-loader.js';
 import { createMockContext } from './helpers.js';
-import type { ConnectorAccessor, ConnectorOutput } from '../src/types/workflow-connector.types.js';
+import type { ConnectorAccessor, ConnectorOutput } from '../src/types/spell-connector.types.js';
 
 // ============================================================================
 // Fixtures

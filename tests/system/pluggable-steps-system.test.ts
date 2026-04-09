@@ -16,7 +16,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createRunner, runWorkflowFromContent } from '../../src/modules/spells/src/factory/runner-factory.js';
+import { createRunner, runSpellFromContent } from '../../src/modules/spells/src/factory/runner-factory.js';
 import { StepCommandRegistry } from '../../src/modules/spells/src/core/step-command-registry.js';
 import { builtinCommands } from '../../src/modules/spells/src/commands/index.js';
 
@@ -74,7 +74,7 @@ module.exports = {
 `;
 
 const WORKFLOW_YAML = `
-name: system-test-workflow
+name: system-test-spell
 description: Tests built-in + user-defined steps together
 arguments:
   target_file:
@@ -105,7 +105,7 @@ beforeAll(() => {
   mkdirSync(projectRoot, { recursive: true });
 
   // Create user step directory
-  const stepsDir = join(projectRoot, 'workflows', 'steps');
+  const stepsDir = join(projectRoot, 'spells', 'steps');
   mkdirSync(stepsDir, { recursive: true });
   writeFileSync(join(stepsDir, 'file-stats.js'), JS_STEP);
   writeFileSync(join(stepsDir, 'format-message.yaml'), YAML_STEP);
@@ -150,7 +150,7 @@ describe('Pluggable Steps — System Test', () => {
 
       // User directory steps (highest priority, loaded last)
       const dirWarnings = registry.loadFromDirectories([
-        join(projectRoot, 'workflows', 'steps'),
+        join(projectRoot, 'spells', 'steps'),
       ]);
       expect(dirWarnings).toHaveLength(0);
 
@@ -170,7 +170,7 @@ describe('Pluggable Steps — System Test', () => {
   describe('2. JS step: discovery → validation → execution', () => {
     it('should discover, validate, and execute a JS step command', async () => {
       const registry = new StepCommandRegistry();
-      registry.loadFromDirectories([join(projectRoot, 'workflows', 'steps')]);
+      registry.loadFromDirectories([join(projectRoot, 'spells', 'steps')]);
 
       const cmd = registry.get('file-stats')!;
       expect(cmd).toBeDefined();
@@ -196,7 +196,7 @@ describe('Pluggable Steps — System Test', () => {
   describe('3. YAML composite step: discovery → validation → execution', () => {
     it('should discover, validate, and execute a YAML composite step', async () => {
       const registry = new StepCommandRegistry();
-      registry.loadFromDirectories([join(projectRoot, 'workflows', 'steps')]);
+      registry.loadFromDirectories([join(projectRoot, 'spells', 'steps')]);
 
       const cmd = registry.get('format-message')!;
       expect(cmd).toBeDefined();
@@ -263,7 +263,7 @@ describe('Pluggable Steps — System Test', () => {
       expect(registry.get('file-stats')!.description).toBe('npm version of file-stats');
 
       // Load user dir last (highest priority) — should override
-      registry.loadFromDirectories([join(projectRoot, 'workflows', 'steps')]);
+      registry.loadFromDirectories([join(projectRoot, 'spells', 'steps')]);
       expect(registry.get('file-stats')!.description).toBe('Report file statistics');
 
       // Cleanup
@@ -299,7 +299,7 @@ describe('Pluggable Steps — System Test', () => {
   describe('6. createRunner with stepDirs and projectRoot', () => {
     it('should create a runner with all discovery sources configured', () => {
       const runner = createRunner({
-        stepDirs: [join(projectRoot, 'workflows', 'steps')],
+        stepDirs: [join(projectRoot, 'spells', 'steps')],
         projectRoot,
       });
 
@@ -311,11 +311,11 @@ describe('Pluggable Steps — System Test', () => {
 
   describe('7. Full spell execution with mixed step types', () => {
     it('should execute a spell using built-in + user-defined steps', async () => {
-      const result = await runWorkflowFromContent(
+      const result = await runSpellFromContent(
         WORKFLOW_YAML,
         'system-test.yaml',
         {
-          stepDirs: [join(projectRoot, 'workflows', 'steps')],
+          stepDirs: [join(projectRoot, 'spells', 'steps')],
           projectRoot,
           args: { target_file: join(projectRoot, 'sample.txt') },
         },
@@ -347,11 +347,11 @@ steps:
     config: {}
 `;
 
-      const result = await runWorkflowFromContent(
+      const result = await runSpellFromContent(
         badWorkflow,
         'bad-test.yaml',
         {
-          stepDirs: [join(projectRoot, 'workflows', 'steps')],
+          stepDirs: [join(projectRoot, 'spells', 'steps')],
         },
       );
 
@@ -369,7 +369,7 @@ steps:
     config: {}
 `;
 
-      const result = await runWorkflowFromContent(
+      const result = await runSpellFromContent(
         missingStepWorkflow,
         'missing-test.yaml',
         {},

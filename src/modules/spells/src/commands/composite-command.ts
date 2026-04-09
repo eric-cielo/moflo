@@ -161,7 +161,7 @@ function buildPrerequisites(def: YamlStepDefinition): Prerequisite[] {
   return [
     {
       name: def.tool,
-      check: async () => true, // Tool availability checked at runtime by the workflow engine
+      check: async () => true, // Tool availability checked at runtime by the spell engine
       installHint: `Tool "${def.tool}" is required by composite step "${def.name}"`,
     },
   ];

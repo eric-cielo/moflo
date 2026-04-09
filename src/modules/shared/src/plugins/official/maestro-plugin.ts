@@ -59,7 +59,7 @@ export interface Workflow {
  * Orchestration result
  */
 export interface OrchestrationResult {
-  workflowId: string;
+  spellId: string;
   success: boolean;
   stepsCompleted: number;
   stepsTotal: number;
@@ -120,7 +120,7 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
         if (this.config.autoRecovery && ctx.error) {
           for (const workflow of this.workflows.values()) {
             if (workflow.status === 'running') {
-              this.handleWorkflowError(workflow, ctx.error);
+              this.handleSpellError(workflow, ctx.error);
             }
           }
         }
@@ -176,10 +176,10 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
   /**
    * Execute a workflow
    */
-  async executeWorkflow(workflowId: string): Promise<OrchestrationResult> {
-    const workflow = this.workflows.get(workflowId);
+  async executeWorkflow(spellId: string): Promise<OrchestrationResult> {
+    const workflow = this.workflows.get(spellId);
     if (!workflow) {
-      throw new Error(`Spell not found: ${workflowId}`);
+      throw new Error(`Spell not found: ${spellId}`);
     }
 
     if (this.activeWorkflows >= this.config.maxConcurrentWorkflows) {
@@ -220,7 +220,7 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
     }
 
     return {
-      workflowId,
+      spellId,
       success: workflow.status === 'completed',
       stepsCompleted: workflow.steps.filter((s) => s.status === 'completed').length,
       stepsTotal: workflow.steps.length,
@@ -233,8 +233,8 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
   /**
    * Pause a workflow
    */
-  pauseWorkflow(workflowId: string): boolean {
-    const workflow = this.workflows.get(workflowId);
+  pauseWorkflow(spellId: string): boolean {
+    const workflow = this.workflows.get(spellId);
     if (!workflow || workflow.status !== 'running') return false;
 
     this.checkpointWorkflow(workflow);
@@ -245,21 +245,21 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
   /**
    * Resume a paused workflow
    */
-  async resumeWorkflow(workflowId: string): Promise<OrchestrationResult> {
-    const workflow = this.workflows.get(workflowId);
+  async resumeSpell(spellId: string): Promise<OrchestrationResult> {
+    const workflow = this.workflows.get(spellId);
     if (!workflow || workflow.status !== 'paused') {
       throw new Error('Spell cannot be resumed');
     }
 
     // Restore from checkpoint and continue
-    return this.executeWorkflow(workflowId);
+    return this.executeWorkflow(spellId);
   }
 
   /**
    * Get workflow status
    */
-  getWorkflow(workflowId: string): Workflow | undefined {
-    return this.workflows.get(workflowId);
+  getWorkflow(spellId: string): Workflow | undefined {
+    return this.workflows.get(spellId);
   }
 
   /**
@@ -480,7 +480,7 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
     }
   }
 
-  private handleWorkflowError(workflow: Workflow, errorData: ErrorInfo): void {
+  private handleSpellError(workflow: Workflow, errorData: ErrorInfo): void {
     const stepId = errorData.context ?? '';
     const step = workflow.steps.find((s) => s.id === stepId);
 

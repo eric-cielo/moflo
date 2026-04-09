@@ -142,9 +142,9 @@ export const DENY_ALL_GATEWAY: ICapabilityGateway = new DenyAllGateway();
 // Re-export disclosure functions from their dedicated module (#267)
 export {
   discloseStep,
-  discloseWorkflow,
+  discloseSpell,
   formatStepDisclosure,
-  formatWorkflowDisclosure,
+  formatSpellDisclosure,
   type StepDisclosureSummary,
-  type WorkflowDisclosureSummary,
+  type SpellDisclosureSummary,
 } from './capability-disclosure.js';
