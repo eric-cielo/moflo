@@ -2,7 +2,7 @@
  * Prompt Step Command — asks the user a question.
  *
  * In non-interactive mode (no stdin), returns a placeholder.
- * The workflow runner can override this with a real prompt implementation.
+ * The spell runner can override this with a real prompt implementation.
  */
 
 import type {
@@ -57,7 +57,7 @@ export const promptCommand: StepCommand<PromptStepConfig> = {
       ? interpolateString(config.default, context)
       : undefined;
 
-    // Prompt execution is delegated to the workflow runner's I/O handler.
+    // Prompt execution is delegated to the spell runner's I/O handler.
     // This command prepares the prompt config; actual user interaction is external.
     return {
       success: true,

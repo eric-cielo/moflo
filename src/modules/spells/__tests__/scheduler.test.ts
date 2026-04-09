@@ -17,9 +17,9 @@ import {
   validateSchedule,
 } from '../src/scheduler/cron-parser.js';
 import { SpellScheduler } from '../src/scheduler/scheduler.js';
-import type { WorkflowExecutor, SchedulerEvent } from '../src/scheduler/scheduler.js';
+import type { SpellExecutor, SchedulerEvent } from '../src/scheduler/scheduler.js';
 import type { MemoryAccessor } from '../src/types/step-command.types.js';
-import type { WorkflowResult } from '../src/types/runner.types.js';
+import type { SpellResult } from '../src/types/runner.types.js';
 
 // ============================================================================
 // parseInterval
@@ -310,7 +310,7 @@ describe('validateSchedule', () => {
 });
 
 // ============================================================================
-// Workflow Definition with schedule block (validator integration)
+// Spell Definition with schedule block (validator integration)
 // ============================================================================
 
 describe('validateSpellDefinition with schedule', () => {
@@ -356,11 +356,11 @@ describe('validateSpellDefinition with schedule', () => {
 
 describe('SpellScheduler', () => {
   let memory: MemoryAccessor;
-  let executor: WorkflowExecutor;
+  let executor: SpellExecutor;
   let scheduler: SpellScheduler;
   let store: Map<string, Map<string, unknown>>;
 
-  function makeSuccessResult(): WorkflowResult {
+  function makeSuccessResult(): SpellResult {
     return {
       spellId: 'wf-1',
       success: true,
@@ -372,7 +372,7 @@ describe('SpellScheduler', () => {
     };
   }
 
-  function makeFailResult(): WorkflowResult {
+  function makeFailResult(): SpellResult {
     return {
       spellId: 'wf-1',
       success: false,
@@ -438,7 +438,7 @@ describe('SpellScheduler', () => {
   it('creates an ad-hoc schedule', async () => {
     const schedule = await scheduler.createSchedule({
       spellName: 'test-wf',
-      spellPath: '/workflows/test.yaml',
+      spellPath: '/spells/test.yaml',
       interval: '1h',
     });
 
@@ -455,7 +455,7 @@ describe('SpellScheduler', () => {
       schedule: { cron: '0 2 * * *' },
     };
 
-    const schedule = await scheduler.registerFromDefinition(definition, '/workflows/nightly.yaml');
+    const schedule = await scheduler.registerFromDefinition(definition, '/spells/nightly.yaml');
     expect(schedule).not.toBeNull();
     expect(schedule!.id).toBe('sched-def-nightly-audit');
     expect(schedule!.source).toBe('definition');
@@ -468,7 +468,7 @@ describe('SpellScheduler', () => {
       steps: [{ id: 's1', type: 'bash', config: { command: 'echo hi' } }],
     };
 
-    const schedule = await scheduler.registerFromDefinition(definition, '/workflows/manual.yaml');
+    const schedule = await scheduler.registerFromDefinition(definition, '/spells/manual.yaml');
     expect(schedule).toBeNull();
   });
 
@@ -607,7 +607,7 @@ describe('SpellScheduler', () => {
     // Make executor hang
     let resolveExecution: () => void;
     (executor.execute as ReturnType<typeof vi.fn>).mockImplementation(
-      () => new Promise<WorkflowResult>(resolve => {
+      () => new Promise<SpellResult>(resolve => {
         resolveExecution = () => resolve(makeSuccessResult());
       }),
     );
@@ -641,7 +641,7 @@ describe('SpellScheduler', () => {
   it('respects maxConcurrent limit', async () => {
     let resolvers: Array<() => void> = [];
     (executor.execute as ReturnType<typeof vi.fn>).mockImplementation(
-      () => new Promise<WorkflowResult>(resolve => {
+      () => new Promise<SpellResult>(resolve => {
         resolvers.push(() => resolve(makeSuccessResult()));
       }),
     );

@@ -18,8 +18,8 @@ import type {
   MemoryAccessor,
   CastingContext,
 } from '../src/types/step-command.types.js';
-import type { SpellDefinition } from '../src/types/workflow-definition.types.js';
-import type { SpellConnector } from '../src/types/workflow-connector.types.js';
+import type { SpellDefinition } from '../src/types/spell-definition.types.js';
+import type { SpellConnector } from '../src/types/spell-connector.types.js';
 
 // ============================================================================
 // Helpers
@@ -41,8 +41,8 @@ function createMockMemory(): MemoryAccessor {
   };
 }
 
-function simpleWorkflow(steps: SpellDefinition['steps']): SpellDefinition {
-  return { name: 'test-workflow', steps };
+function simpleSpell(steps: SpellDefinition['steps']): SpellDefinition {
+  return { name: 'test-spell', steps };
 }
 
 function createMockConnector(name: string, overrides?: Partial<SpellConnector>): SpellConnector {
@@ -115,7 +115,7 @@ describe('SpellCaster — connector lifecycle', () => {
     const runner = new SpellCaster(stepRegistry, createMockCredentials(), memory, connectorRegistry);
 
     const result = await runner.run(
-      simpleWorkflow([{ id: 's1', type: 'connector-call', config: {} }]),
+      simpleSpell([{ id: 's1', type: 'connector-call', config: {} }]),
       {},
     );
 
@@ -136,7 +136,7 @@ describe('SpellCaster — connector lifecycle', () => {
     const runner = new SpellCaster(stepRegistry, createMockCredentials(), memory, connectorRegistry);
 
     const result = await runner.run(
-      simpleWorkflow([{ id: 's1', type: 'connector-call', config: {} }]),
+      simpleSpell([{ id: 's1', type: 'connector-call', config: {} }]),
       {},
     );
 
@@ -159,14 +159,14 @@ describe('SpellCaster — connector lifecycle', () => {
     const runner = new SpellCaster(stepRegistry, createMockCredentials(), memory, connectorRegistry);
 
     const result = await runner.run(
-      simpleWorkflow([{ id: 's1', type: 'connector-call', config: {} }]),
+      simpleSpell([{ id: 's1', type: 'connector-call', config: {} }]),
       {},
     );
 
     expect(result.success).toBe(false);
     // The step that triggered the connector init should have failed
     expect(result.steps[0].status).toBe('failed');
-    // The init error surfaces through the workflow errors
+    // The init error surfaces through the spell errors
     const allErrors = [
       ...result.errors.map(e => e.message),
       result.steps[0].error ?? '',
@@ -186,11 +186,11 @@ describe('SpellCaster — connector lifecycle', () => {
     const runner = new SpellCaster(stepRegistry, createMockCredentials(), memory, connectorRegistry);
 
     const result = await runner.run(
-      simpleWorkflow([{ id: 's1', type: 'connector-call', config: {} }]),
+      simpleSpell([{ id: 's1', type: 'connector-call', config: {} }]),
       {},
     );
 
-    // Workflow should still succeed despite dispose failure
+    // Spell should still succeed despite dispose failure
     expect(result.success).toBe(true);
     expect(conn.dispose).toHaveBeenCalledOnce();
   });
@@ -200,7 +200,7 @@ describe('SpellCaster — connector lifecycle', () => {
     const runner = new SpellCaster(stepRegistry, createMockCredentials(), memory);
 
     const result = await runner.run(
-      simpleWorkflow([{ id: 's1', type: 'mock', config: {} }]),
+      simpleSpell([{ id: 's1', type: 'mock', config: {} }]),
       {},
     );
 
@@ -215,7 +215,7 @@ describe('SpellCaster — connector lifecycle', () => {
     const runner = new SpellCaster(stepRegistry, createMockCredentials(), memory, connectorRegistry);
 
     const result = await runner.run(
-      simpleWorkflow([{ id: 's1', type: 'mock', config: {} }]),
+      simpleSpell([{ id: 's1', type: 'mock', config: {} }]),
       {},
     );
 
@@ -237,7 +237,7 @@ describe('SpellCaster — connector lifecycle', () => {
     const runner = new SpellCaster(stepRegistry, createMockCredentials(), memory, connectorRegistry);
 
     const result = await runner.run(
-      simpleWorkflow([
+      simpleSpell([
         { id: 's1', type: 'connector-call', config: {} },
         { id: 's2', type: 'failing', config: {} },
       ]),
@@ -275,7 +275,7 @@ describe('SpellCaster — connector lifecycle', () => {
     const runner = new SpellCaster(stepRegistry, createMockCredentials(), memory, connectorRegistry);
 
     const result = await runner.run(
-      simpleWorkflow([
+      simpleSpell([
         { id: 's1', type: 'use-and-cancel', config: {} },
         { id: 's2', type: 'mock', config: {} },
       ]),
@@ -297,7 +297,7 @@ describe('SpellCaster — connector lifecycle', () => {
     const runner = new SpellCaster(stepRegistry, createMockCredentials(), memory, connectorRegistry);
 
     const result = await runner.run(
-      simpleWorkflow([
+      simpleSpell([
         { id: 's1', type: 'connector-call', config: {} },
         { id: 's2', type: 'connector-call', config: {} },
       ]),

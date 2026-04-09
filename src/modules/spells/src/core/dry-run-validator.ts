@@ -1,7 +1,7 @@
 /**
  * Dry-Run Validator
  *
- * Validates a workflow definition without executing it, reporting what
+ * Validates a spell definition without executing it, reporting what
  * WOULD happen at each step.
  * Extracted from SpellCaster (Issue #182).
  */
@@ -15,7 +15,7 @@ import type {
 import type {
   SpellDefinition,
   StepDefinition,
-} from '../types/workflow-definition.types.js';
+} from '../types/spell-definition.types.js';
 import type {
   DryRunResult,
   DryRunStepReport,
@@ -117,7 +117,7 @@ async function dryRunValidateStep(
 }
 
 /**
- * Validate a workflow without executing — reports what WOULD happen at each step.
+ * Validate a spell without executing — reports what WOULD happen at each step.
  */
 export async function dryRunValidate(
   definition: SpellDefinition,
@@ -125,7 +125,7 @@ export async function dryRunValidate(
   defValidation: { valid: boolean; errors: ValidationError[] },
   options: RunnerOptions,
   registry: StepCommandRegistry,
-  buildContext: (variables: Record<string, unknown>, workflowId: string, stepIndex: number) => CastingContext,
+  buildContext: (variables: Record<string, unknown>, spellId: string, stepIndex: number) => CastingContext,
 ): Promise<DryRunResult> {
   const argErrors: ValidationError[] = [];
   if (definition.arguments) {
@@ -140,14 +140,14 @@ export async function dryRunValidate(
     : [];
   const prereqByName = new Map(prereqResults.map(r => [r.name, r]));
 
-  const workflowId = `dryrun-${Date.now()}`;
+  const spellId = `dryrun-${Date.now()}`;
   const variables: Record<string, unknown> = {};
   const stepReports: DryRunStepReport[] = [];
   const env: DryRunEnv = { registry, definition, options, prereqByName };
 
   for (let i = 0; i < definition.steps.length; i++) {
     const step = definition.steps[i];
-    const context = buildContext(variables, workflowId, i);
+    const context = buildContext(variables, spellId, i);
 
     const report = await dryRunValidateStep(step, `steps[${i}]`, context, env);
     stepReports.push(report);
@@ -166,7 +166,7 @@ export async function dryRunValidate(
 
       for (let j = 0; j < step.steps.length; j++) {
         const nested = step.steps[j];
-        const nestedContext = buildContext(variables, workflowId, i);
+        const nestedContext = buildContext(variables, spellId, i);
 
         const nestedReport = await dryRunValidateStep(nested, `steps[${i}].steps[${j}]`, nestedContext, env);
         stepReports.push(nestedReport);

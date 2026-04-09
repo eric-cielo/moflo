@@ -1,7 +1,7 @@
 /**
  * Step Executor
  *
- * Executes a single workflow step: credential scoping, interpolation,
+ * Executes a single spell step: credential scoping, interpolation,
  * validation, capability checks, timeout, and credential masking.
  * Extracted from SpellCaster (Issue #182).
  */
@@ -13,7 +13,7 @@ import type {
   MemoryAccessor,
   MofloLevel,
 } from '../types/step-command.types.js';
-import type { StepDefinition } from '../types/workflow-definition.types.js';
+import type { StepDefinition } from '../types/spell-definition.types.js';
 import type {
   RunnerOptions,
   StepResult,
@@ -40,18 +40,18 @@ const DEFAULT_STEP_TIMEOUT = 300_000; // 5 minutes
 export interface StepExecutionState {
   variables: Record<string, unknown>;
   readonly resolvedArgs: Record<string, unknown>;
-  readonly workflowId: string;
+  readonly spellId: string;
   readonly options: RunnerOptions;
   readonly credentialPatterns: RegExp[];
   readonly resolvedCredentials: Record<string, unknown>;
-  readonly workflowMofloLevel: MofloLevel | undefined;
+  readonly spellMofloLevel: MofloLevel | undefined;
   readonly parentMofloLevel: MofloLevel | undefined;
   readonly nestingDepth: number;
   readonly maxNestingDepth: number;
 }
 
 /**
- * Execute a single step within the workflow, handling credential scoping,
+ * Execute a single step within the spell, handling credential scoping,
  * interpolation, validation, capability checks, timeout, and masking.
  */
 export async function executeSingleStep(
@@ -61,7 +61,7 @@ export async function executeSingleStep(
   registry: StepCommandRegistry,
   buildContext: (
     variables: Record<string, unknown>, args: Record<string, unknown>,
-    workflowId: string, stepIndex: number, signal?: AbortSignal,
+    spellId: string, stepIndex: number, signal?: AbortSignal,
   ) => CastingContext,
 ): Promise<StepResult & { interpolatedConfig?: Record<string, unknown> }> {
   const stepStart = Date.now();
@@ -91,7 +91,7 @@ export async function executeSingleStep(
   }
 
   const context = buildContext(
-    stepVariables, state.resolvedArgs, state.workflowId, index, state.options.signal,
+    stepVariables, state.resolvedArgs, state.spellId, index, state.options.signal,
   );
 
   let interpolatedConfig: Record<string, unknown>;
@@ -117,15 +117,15 @@ export async function executeSingleStep(
       errorCode: 'CAPABILITY_DENIED', duration: Date.now() - stepStart };
   }
 
-  const resolvedLevel = resolveMofloLevel(step, command, state.workflowMofloLevel, state.parentMofloLevel);
+  const resolvedLevel = resolveMofloLevel(step, command, state.spellMofloLevel, state.parentMofloLevel);
 
   if (resolvedLevel === 'recursive' && state.nestingDepth >= state.maxNestingDepth) {
     return { stepId: step.id, stepType: step.type, status: 'failed',
-      error: `Recursive workflow nesting depth ${state.nestingDepth} exceeds maximum ${state.maxNestingDepth}`,
+      error: `Recursive spell nesting depth ${state.nestingDepth} exceeds maximum ${state.maxNestingDepth}`,
       errorCode: 'MOFLO_LEVEL_DENIED', duration: Date.now() - stepStart };
   }
 
-  const gateway = new CapabilityGateway(capCheck.effectiveCaps, `${state.workflowId}-step-${index}`, step.type);
+  const gateway = new CapabilityGateway(capCheck.effectiveCaps, `${state.spellId}-step-${index}`, step.type);
 
   const scopedContext = {
     ...context, effectiveCaps: capCheck.effectiveCaps, gateway,

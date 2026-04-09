@@ -1,7 +1,7 @@
 /**
- * Workflow Runner Tests
+ * Spell Runner Tests
  *
- * Story #104: Tests for sequential workflow executor.
+ * Story #104: Tests for sequential spell executor.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -12,7 +12,7 @@ import type {
   CredentialAccessor,
   MemoryAccessor,
 } from '../src/types/step-command.types.js';
-import type { SpellDefinition } from '../src/types/workflow-definition.types.js';
+import type { SpellDefinition } from '../src/types/spell-definition.types.js';
 
 // ============================================================================
 // Helpers
@@ -53,8 +53,8 @@ function createMockMemory(): MemoryAccessor {
   };
 }
 
-function simpleWorkflow(steps: SpellDefinition['steps']): SpellDefinition {
-  return { name: 'test-workflow', steps };
+function simpleSpell(steps: SpellDefinition['steps']): SpellDefinition {
+  return { name: 'test-spell', steps };
 }
 
 // ============================================================================
@@ -115,7 +115,7 @@ describe('SpellCaster — sequential execution', () => {
     registry.register(step2);
     registry.register(step3);
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'step1', config: {}, output: 's1' },
       { id: 's2', type: 'step2', config: {}, output: 's2' },
       { id: 's3', type: 'step3', config: {}, output: 's3' },
@@ -143,7 +143,7 @@ describe('SpellCaster — sequential execution', () => {
     });
     registry.register(cmd);
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 'a', type: 'mock', config: {} },
       { id: 'b', type: 'mock', config: {} },
       { id: 'c', type: 'mock', config: {} },
@@ -165,7 +165,7 @@ describe('SpellCaster — error handling', () => {
     registry.register(createMockCommand({ type: 'good', rollback: rollbackFn }));
     registry.register(createFailingCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'good', config: {}, output: 's1' },
       { id: 's2', type: 'failing', config: {} },
       { id: 's3', type: 'good', config: {} },
@@ -187,7 +187,7 @@ describe('SpellCaster — error handling', () => {
     registry.register(createMockCommand());
     registry.register(createFailingCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {} },
       { id: 's2', type: 'failing', config: {}, continueOnError: true },
       { id: 's3', type: 'mock', config: {} },
@@ -206,7 +206,7 @@ describe('SpellCaster — error handling', () => {
     registry.register(createMockCommand());
     registry.register(createFailingCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'failing', config: {}, continueOnError: true },
       { id: 's2', type: 'failing', config: {}, continueOnError: true },
       { id: 's3', type: 'mock', config: {} },
@@ -233,7 +233,7 @@ describe('SpellCaster — error handling', () => {
     registry.register(makeCmd('b'));
     registry.register(createFailingCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'a', config: {}, output: 's1' },
       { id: 's2', type: 'b', config: {}, output: 's2' },
       { id: 's3', type: 'failing', config: {} },
@@ -259,7 +259,7 @@ describe('SpellCaster — error handling', () => {
     registry.register(cmdB);
     registry.register(createFailingCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'a', config: {}, output: 's1' },
       { id: 's2', type: 'b', config: {}, output: 's2' },
       { id: 's3', type: 'failing', config: {} },
@@ -278,7 +278,7 @@ describe('SpellCaster — error handling', () => {
     registry.register(createMockCommand());
     registry.register(createFailingCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {} },
       { id: 's2', type: 'mock', config: {} },
       { id: 's3', type: 'failing', config: {} },
@@ -358,7 +358,7 @@ describe('SpellCaster — timeout', () => {
       }),
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {} },
     ]);
 
@@ -386,7 +386,7 @@ describe('SpellCaster — cancellation', () => {
       },
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {}, output: 's1' },
       { id: 's2', type: 'mock', config: {} },
     ]);
@@ -396,7 +396,7 @@ describe('SpellCaster — cancellation', () => {
     expect(result.cancelled).toBe(true);
     expect(result.success).toBe(false);
     expect(result.steps.some(s => s.status === 'cancelled')).toBe(true);
-    expect(result.errors.some(e => e.code === 'WORKFLOW_CANCELLED')).toBe(true);
+    expect(result.errors.some(e => e.code === 'SPELL_CANCELLED')).toBe(true);
   });
 });
 
@@ -414,7 +414,7 @@ describe('SpellCaster — credential masking', () => {
       }),
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {} },
     ]);
 
@@ -445,7 +445,7 @@ describe('SpellCaster — credential interpolation', () => {
       },
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: { token: '{credentials.secret}' } },
     ]);
 
@@ -464,7 +464,7 @@ describe('SpellCaster — credential interpolation', () => {
       }),
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: { token: '{credentials.secret}' } },
     ]);
 
@@ -480,7 +480,7 @@ describe('SpellCaster — credential interpolation', () => {
       capabilities: [{ type: 'credentials' }],
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: { token: '{credentials.nonexistent}' } },
     ]);
 
@@ -493,7 +493,7 @@ describe('SpellCaster — credential interpolation', () => {
   it('rejects {credentials.*} when command lacks credentials capability', async () => {
     registry.register(createMockCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: { token: '{credentials.secret}' } },
     ]);
 
@@ -513,7 +513,7 @@ describe('SpellCaster — dry run', () => {
 
     registry.register(createMockCommand({ execute: executeFn }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {} },
       { id: 's2', type: 'mock', config: {} },
     ]);
@@ -528,7 +528,7 @@ describe('SpellCaster — dry run', () => {
   it('should report step details in dry run', async () => {
     registry.register(createMockCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: { key: 'value' } },
     ]);
 
@@ -543,7 +543,7 @@ describe('SpellCaster — dry run', () => {
   });
 
   it('should detect unknown step types in dry run', async () => {
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'nonexistent', config: {} },
     ]);
 
@@ -570,7 +570,7 @@ describe('SpellCaster — definition validation', () => {
   });
 
   it('should reject unknown step types', async () => {
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'nonexistent', config: {} },
     ]);
 
@@ -589,7 +589,7 @@ describe('SpellCaster — progress tracking', () => {
   it('should store progress in memory namespace', async () => {
     registry.register(createMockCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {} },
     ]);
 
@@ -609,7 +609,7 @@ describe('SpellCaster — progress tracking', () => {
   it('should invoke onStepComplete callback', async () => {
     registry.register(createMockCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {} },
       { id: 's2', type: 'mock', config: {} },
     ]);
@@ -640,7 +640,7 @@ describe('SpellCaster — async validation', () => {
       },
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {} },
     ]);
 
@@ -662,7 +662,7 @@ describe('SpellCaster — step validation failure', () => {
       }),
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {} },
     ]);
 
@@ -698,7 +698,7 @@ describe('SpellCaster — variable interpolation', () => {
       },
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 'produce', type: 'producer', config: {}, output: 'produce' },
       { id: 'consume', type: 'consumer', config: { message: '{produce.greeting}' } },
     ]);
@@ -712,7 +712,7 @@ describe('SpellCaster — variable interpolation', () => {
   it('should fail step when interpolation references missing variable', async () => {
     registry.register(createMockCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: { ref: '{nonexistent.value}' } },
     ]);
 
@@ -724,43 +724,43 @@ describe('SpellCaster — variable interpolation', () => {
 });
 
 // ============================================================================
-// Workflow ID
+// Spell ID
 // ============================================================================
 
-describe('SpellCaster — workflowId', () => {
-  it('should expose auto-generated workflowId on result', async () => {
+describe('SpellCaster — spellId', () => {
+  it('should expose auto-generated spellId on result', async () => {
     registry.register(createMockCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {} },
     ]);
 
     const result = await runner.run(definition, {});
 
-    expect(result.workflowId).toBeDefined();
-    expect(result.workflowId).toMatch(/^wf-\d+$/);
+    expect(result.spellId).toBeDefined();
+    expect(result.spellId).toMatch(/^sp-\d+$/);
   });
 
-  it('should use caller-specified workflowId', async () => {
+  it('should use caller-specified spellId', async () => {
     registry.register(createMockCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {} },
     ]);
 
-    const result = await runner.run(definition, {}, { workflowId: 'my-custom-id' });
+    const result = await runner.run(definition, {}, { spellId: 'my-custom-id' });
 
-    expect(result.workflowId).toBe('my-custom-id');
+    expect(result.spellId).toBe('my-custom-id');
   });
 
-  it('should expose workflowId on failure results', async () => {
+  it('should expose spellId on failure results', async () => {
     const result = await runner.run(
       { name: '', steps: [] } as unknown as SpellDefinition,
       {},
-      { workflowId: 'fail-id' },
+      { spellId: 'fail-id' },
     );
 
-    expect(result.workflowId).toBe('fail-id');
+    expect(result.spellId).toBe('fail-id');
   });
 });
 
@@ -772,7 +772,7 @@ describe('SpellCaster — callback safety', () => {
   it('should not crash if onStepComplete throws', async () => {
     registry.register(createMockCommand());
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 's1', type: 'mock', config: {} },
       { id: 's2', type: 'mock', config: {} },
     ]);
@@ -806,7 +806,7 @@ describe('SpellCaster — condition branching', () => {
     registry.register(createConditionCommand(true, 'then-step'));
     registry.register(createMockCommand({ type: 'action' }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 'check', type: 'condition', config: {}, output: 'check' },
       { id: 'skipped-step', type: 'action', config: {} },
       { id: 'then-step', type: 'action', config: {} },
@@ -825,7 +825,7 @@ describe('SpellCaster — condition branching', () => {
     registry.register(createConditionCommand(false, 'else-step'));
     registry.register(createMockCommand({ type: 'action' }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 'check', type: 'condition', config: {}, output: 'check' },
       { id: 'then-step', type: 'action', config: {} },
       { id: 'else-step', type: 'action', config: {} },
@@ -843,7 +843,7 @@ describe('SpellCaster — condition branching', () => {
     registry.register(createConditionCommand(true, 'nonexistent'));
     registry.register(createMockCommand({ type: 'action' }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 'check', type: 'condition', config: {} },
       { id: 'action', type: 'action', config: {} },
     ]);
@@ -889,7 +889,7 @@ describe('SpellCaster — condition branching', () => {
     registry.register(condB);
     registry.register(action);
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 'cond-a', type: 'cond-a', config: {}, output: 'cond-a' },
       { id: 'skipped-1', type: 'action', config: {} },
       { id: 'cond-b', type: 'cond-b', config: {}, output: 'cond-b' },
@@ -926,7 +926,7 @@ describe('SpellCaster — condition branching', () => {
       },
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 'setup', type: 'setup', config: {}, output: 'setup' },
       { id: 'check', type: 'condition', config: {}, output: 'check' },
       { id: 'skipped', type: 'consumer', config: {} },
@@ -946,7 +946,7 @@ describe('SpellCaster — condition branching', () => {
     registry.register(createConditionCommand(true, null));
     registry.register(createMockCommand({ type: 'action' }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 'check', type: 'condition', config: {}, output: 'check' },
       { id: 'next', type: 'action', config: {} },
     ]);
@@ -999,7 +999,7 @@ describe('SpellCaster — loop iteration', () => {
       },
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       {
         id: 'loop1', type: 'loop', config: {}, output: 'loop1',
         steps: [
@@ -1031,7 +1031,7 @@ describe('SpellCaster — loop iteration', () => {
       },
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       {
         id: 'loop1', type: 'loop', config: {}, output: 'loop1',
         steps: [{ id: 'nested', type: 'nested', config: {} }],
@@ -1060,7 +1060,7 @@ describe('SpellCaster — loop iteration', () => {
       },
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       {
         id: 'loop1', type: 'loop', config: {}, output: 'loop1',
         continueOnError: true,
@@ -1092,7 +1092,7 @@ describe('SpellCaster — loop iteration', () => {
       },
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       {
         id: 'loop1', type: 'loop', config: {},
         steps: [{ id: 'nested', type: 'nested', config: {} }],
@@ -1117,7 +1117,7 @@ describe('SpellCaster — loop iteration', () => {
       },
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       {
         id: 'loop1', type: 'loop', config: {}, output: 'loop1',
         steps: [{ id: 'nested', type: 'nested', config: {} }],
@@ -1136,7 +1136,7 @@ describe('SpellCaster — loop iteration', () => {
     registry.register(createLoopCommand([]));
     registry.register(createMockCommand({ type: 'nested' }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       {
         id: 'loop1', type: 'loop', config: {}, output: 'loop1',
         steps: [{ id: 'nested', type: 'nested', config: {} }],
@@ -1162,7 +1162,7 @@ describe('SpellCaster — loop iteration', () => {
       },
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       {
         id: 'loop1', type: 'loop', config: {}, output: 'loop1',
         steps: [{ id: 'nested', type: 'nested', config: {} }],
@@ -1205,7 +1205,7 @@ describe('SpellCaster — parallel step duration', () => {
       },
     }));
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       {
         id: 'par1', type: 'parallel', config: {}, output: 'par1',
         steps: [

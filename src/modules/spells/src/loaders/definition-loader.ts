@@ -1,5 +1,5 @@
 /**
- * Workflow Definition Loader
+ * Spell Definition Loader
  *
  * Two-tier definition system:
  *   Tier 1 — Shipped definitions bundled with moflo (read-only defaults)
@@ -11,9 +11,9 @@
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
-import { parseWorkflow } from '../schema/parser.js';
+import { parseSpell } from '../schema/parser.js';
 import { validateSpellDefinition } from '../schema/validator.js';
-import type { SpellDefinition, ParsedWorkflow } from '../types/workflow-definition.types.js';
+import type { SpellDefinition, ParsedSpell } from '../types/spell-definition.types.js';
 
 // ============================================================================
 // Types
@@ -30,14 +30,14 @@ export interface LoaderOptions {
   readonly skipValidation?: boolean;
 }
 
-export interface LoadedWorkflow {
+export interface LoadedSpell {
   readonly definition: SpellDefinition;
   readonly sourceFile: string;
   readonly tier: 'shipped' | 'user';
 }
 
 export interface LoadResult {
-  readonly workflows: Map<string, LoadedWorkflow>;
+  readonly spells: Map<string, LoadedSpell>;
   readonly errors: readonly LoadError[];
 }
 
@@ -50,40 +50,40 @@ export interface LoadError {
 // Loader
 // ============================================================================
 
-const WORKFLOW_EXTENSIONS = new Set(['.yaml', '.yml', '.json']);
+const SPELL_EXTENSIONS = new Set(['.yaml', '.yml', '.json']);
 
 /**
- * Load workflow definitions from shipped + user directories.
- * User definitions override shipped ones by workflow name match.
+ * Load spell definitions from shipped + user directories.
+ * User definitions override shipped ones by spell name match.
  */
 export function loadSpellDefinitions(options: LoaderOptions = {}): LoadResult {
-  const workflows = new Map<string, LoadedWorkflow>();
+  const spells = new Map<string, LoadedSpell>();
   const errors: LoadError[] = [];
 
   // Tier 1: Shipped definitions (lowest priority)
   if (options.shippedDir) {
-    loadFromDirectory(options.shippedDir, 'shipped', workflows, errors, options);
+    loadFromDirectory(options.shippedDir, 'shipped', spells, errors, options);
   }
 
   // Tier 2: User definitions (override shipped by name)
   if (options.userDirs) {
     for (const dir of options.userDirs) {
-      loadFromDirectory(dir, 'user', workflows, errors, options);
+      loadFromDirectory(dir, 'user', spells, errors, options);
     }
   }
 
-  return { workflows, errors };
+  return { spells, errors };
 }
 
 /**
- * Load a single workflow definition by name from the merged registry.
+ * Load a single spell definition by name from the merged registry.
  */
-export function loadWorkflowByName(
+export function loadSpellByName(
   name: string,
   options: LoaderOptions = {},
-): LoadedWorkflow | undefined {
-  const { workflows } = loadSpellDefinitions(options);
-  return workflows.get(name);
+): LoadedSpell | undefined {
+  const { spells } = loadSpellDefinitions(options);
+  return spells.get(name);
 }
 
 // ============================================================================
@@ -93,7 +93,7 @@ export function loadWorkflowByName(
 function loadFromDirectory(
   dir: string,
   tier: 'shipped' | 'user',
-  workflows: Map<string, LoadedWorkflow>,
+  spells: Map<string, LoadedSpell>,
   errors: LoadError[],
   options: LoaderOptions,
 ): void {
@@ -106,13 +106,13 @@ function loadFromDirectory(
     return;
   }
 
-  const files = entries.filter(f => WORKFLOW_EXTENSIONS.has(extname(f).toLowerCase()));
+  const files = entries.filter(f => SPELL_EXTENSIONS.has(extname(f).toLowerCase()));
 
   for (const file of files) {
     const filePath = join(dir, file);
     try {
       const content = readFileSync(filePath, 'utf-8');
-      const parsed = parseWorkflow(content, filePath);
+      const parsed = parseSpell(content, filePath);
 
       if (!options.skipValidation) {
         const validation = validateSpellDefinition(parsed.definition, {
@@ -128,7 +128,7 @@ function loadFromDirectory(
       }
 
       const key = parsed.definition.name;
-      workflows.set(key, {
+      spells.set(key, {
         definition: parsed.definition,
         sourceFile: filePath,
         tier,

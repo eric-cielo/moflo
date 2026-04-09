@@ -8,8 +8,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { executeLoopIterations } from '../src/core/loop-executor.js';
 import type { LoopResult } from '../src/core/loop-executor.js';
 import type { StepOutput } from '../src/types/step-command.types.js';
-import type { StepResult, WorkflowError } from '../src/types/runner.types.js';
-import type { StepDefinition } from '../src/types/workflow-definition.types.js';
+import type { StepResult, SpellError } from '../src/types/runner.types.js';
+import type { StepDefinition } from '../src/types/spell-definition.types.js';
 
 // ============================================================================
 // Helpers
@@ -75,7 +75,7 @@ describe('executeLoopIterations', () => {
     const loopStep = makeLoopStep([nested]);
     const loopOutput = makeLoopOutput(['a', 'b', 'c']);
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executeStep = vi.fn().mockResolvedValue(makeSuccessResult('inner', { val: 1 }));
 
@@ -93,7 +93,7 @@ describe('executeLoopIterations', () => {
     const loopStep = makeLoopStep([nested]);
     const loopOutput = makeLoopOutput(['x', 'y'], 'myItem', 'myIdx');
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const capturedVars: Array<{ item: unknown; idx: unknown }> = [];
 
@@ -117,7 +117,7 @@ describe('executeLoopIterations', () => {
     const loopStep = makeLoopStep([nested]);
     const loopOutput = makeLoopOutput(['x', 'y'], 'story_number', 'idx');
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const capturedLoop: Array<Record<string, unknown>> = [];
 
@@ -144,7 +144,7 @@ describe('executeLoopIterations', () => {
     const loopStep = makeLoopStep([nested]);
     const loopOutput = makeLoopOutput(['a']);
     const variables: Record<string, unknown> = { loop: { existing: true } };
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executeStep = vi.fn().mockResolvedValue(makeSuccessResult('inner'));
 
@@ -160,7 +160,7 @@ describe('executeLoopIterations', () => {
     const loopStep = makeLoopStep([nested]);
     const loopOutput = makeLoopOutput(['a']);
     const variables: Record<string, unknown> = { item: 'original', index: 99 };
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executeStep = vi.fn().mockResolvedValue(makeSuccessResult('inner'));
 
@@ -177,7 +177,7 @@ describe('executeLoopIterations', () => {
     const loopStep = makeLoopStep([nested]);
     const loopOutput = makeLoopOutput(['a']);
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executeStep = vi.fn().mockResolvedValue(makeSuccessResult('inner'));
 
@@ -194,7 +194,7 @@ describe('executeLoopIterations', () => {
     const loopStep = makeLoopStep([nested]); // continueOnError defaults to undefined/false
     const loopOutput = makeLoopOutput(['a', 'b', 'c']);
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executeStep = vi.fn()
       .mockResolvedValueOnce(makeSuccessResult('inner'))
@@ -216,7 +216,7 @@ describe('executeLoopIterations', () => {
     const loopStep = makeLoopStep([nested], { continueOnError: true });
     const loopOutput = makeLoopOutput(['a', 'b', 'c']);
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executeStep = vi.fn()
       .mockResolvedValueOnce(makeSuccessResult('inner'))
@@ -237,7 +237,7 @@ describe('executeLoopIterations', () => {
     const loopStep = makeLoopStep([nested]);
     const loopOutput = makeLoopOutput([]);
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executeStep = vi.fn();
 
@@ -255,7 +255,7 @@ describe('executeLoopIterations', () => {
     const loopStep = makeLoopStep([nested]);
     const loopOutput = makeLoopOutput(['val']);
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
 
     const executeStep = vi.fn().mockResolvedValue(
       makeSuccessResult('inner', { result: 'data' }),
@@ -276,7 +276,7 @@ describe('executeLoopIterations', () => {
     const loopStep = makeLoopStep([nested]);
     const loopOutput = makeLoopOutput(['a', 'b', 'c']);
     const variables: Record<string, unknown> = {};
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
     const controller = new AbortController();
 
     const executeStep = vi.fn().mockImplementation(async () => {

@@ -170,7 +170,7 @@ const castCommand: Command = {
       output.writeln();
       output.printBox(
         [
-          `ID: ${result.workflowId}`,
+          `ID: ${result.spellId}`,
           `Status: ${result.success ? 'succeeded' : 'failed'}`,
           `Steps: ${result.stepCount}`,
           `Duration: ${(result.duration / 1000).toFixed(1)}s`,
@@ -308,7 +308,7 @@ const listCommand: Command = {
         output.writeln();
         output.printTable({
           columns: [
-            { key: 'workflowId', header: 'ID', width: 20 },
+            { key: 'spellId', header: 'ID', width: 20 },
             { key: 'name', header: 'Name', width: 20 },
             { key: 'status', header: 'Status', width: 12, format: formatStageStatus },
             { key: 'startedAt', header: 'Cast At', width: 22, format: (v) => v ? new Date(String(v)).toLocaleString() : '-' },
@@ -337,16 +337,16 @@ const statusCommand: Command = {
   name: 'status',
   description: 'Show spell status',
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const workflowId = ctx.args[0];
+    const spellId = ctx.args[0];
 
-    if (!workflowId) {
+    if (!spellId) {
       output.printError('Spell ID is required');
       return { success: false, exitCode: 1 };
     }
 
     try {
       const result = await callMCPTool<WorkflowStatusResponse>(TOOL_SPELL_STATUS, {
-        workflowId,
+        spellId,
         verbose: true,
       });
 
@@ -363,7 +363,7 @@ const statusCommand: Command = {
       output.writeln();
       output.printBox(
         [
-          `ID: ${result.workflowId}`,
+          `ID: ${result.spellId}`,
           result.name ? `Name: ${result.name}` : null,
           `Status: ${formatStageStatus(result.status)}`,
           result.progress != null ? `Progress: ${result.progress.toFixed(0)}%` : null,
@@ -400,17 +400,17 @@ const stopCommand: Command = {
     },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const workflowId = ctx.args[0];
+    const spellId = ctx.args[0];
     const force = ctx.flags.force as boolean;
 
-    if (!workflowId) {
+    if (!spellId) {
       output.printError('Spell ID is required');
       return { success: false, exitCode: 1 };
     }
 
     if (!force && ctx.interactive) {
       const confirmed = await confirm({
-        message: `Dispel ${workflowId}?`,
+        message: `Dispel ${spellId}?`,
         default: false,
       });
       if (!confirmed) {
@@ -421,7 +421,7 @@ const stopCommand: Command = {
 
     try {
       const result = await callMCPTool<WorkflowCancelResponse>(TOOL_SPELL_CANCEL, {
-        workflowId,
+        spellId,
         reason: 'Dispelled via CLI',
       });
 
@@ -430,7 +430,7 @@ const stopCommand: Command = {
         return { success: false, exitCode: 1 };
       }
 
-      output.printSuccess(`Spell ${workflowId} dispelled`);
+      output.printSuccess(`Spell ${spellId} dispelled`);
       return { success: true, data: result };
     } catch (error) {
       return handleMCPError(error, 'dispel');

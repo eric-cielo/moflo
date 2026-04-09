@@ -14,13 +14,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 function createFakeEngine() {
   return {
-    bridgeRunWorkflow: vi.fn(),
-    bridgeExecuteWorkflow: vi.fn(),
-    bridgeCancelWorkflow: vi.fn(),
+    bridgeRunSpell: vi.fn(),
+    bridgeExecuteSpell: vi.fn(),
+    bridgeCancelSpell: vi.fn(),
     bridgeIsRunning: vi.fn(),
-    bridgeActiveWorkflows: vi.fn(),
+    bridgeActiveSpells: vi.fn(),
     Grimoire: vi.fn(),
-    runWorkflowFromContent: vi.fn(),
+    runSpellFromContent: vi.fn(),
   };
 }
 
@@ -58,8 +58,8 @@ describe('engine-loader', () => {
     const engine = await mod.loadSpellEngine();
 
     expect(engine).toBeDefined();
-    expect(engine.bridgeRunWorkflow).toBeDefined();
-    expect(engine.runWorkflowFromContent).toBeDefined();
+    expect(engine.bridgeRunSpell).toBeDefined();
+    expect(engine.runSpellFromContent).toBeDefined();
   });
 
   it('should cache the engine after first load (singleton)', async () => {

@@ -13,9 +13,9 @@ import type {
 } from '../types/step-command.types.js';
 import type {
   StepResult,
-  WorkflowError,
+  SpellError,
 } from '../types/runner.types.js';
-import type { StepDefinition } from '../types/workflow-definition.types.js';
+import type { StepDefinition } from '../types/spell-definition.types.js';
 
 export interface ParallelResult {
   success: boolean;
@@ -36,7 +36,7 @@ export async function executeParallelSteps(
   parallelStep: StepDefinition,
   parallelOutput: StepOutput,
   variables: Record<string, unknown>,
-  errors: WorkflowError[],
+  errors: SpellError[],
   signal: AbortSignal | undefined,
   executeStep: (step: StepDefinition, index: number) => Promise<StepResult & { interpolatedConfig?: Record<string, unknown> }>,
 ): Promise<ParallelResult> {

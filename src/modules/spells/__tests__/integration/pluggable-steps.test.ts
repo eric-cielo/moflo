@@ -17,7 +17,7 @@ import { createMockContext } from '../helpers.js';
 // Paths to example step commands
 // ============================================================================
 
-const EXAMPLES_DIR = resolve(__dirname, '../../../../../examples/workflow-steps');
+const EXAMPLES_DIR = resolve(__dirname, '../../../../../examples/spell-steps');
 
 // ============================================================================
 // Helpers

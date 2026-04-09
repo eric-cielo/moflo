@@ -3,7 +3,7 @@
  *
  * Issue #267: Extracted from capability-gateway.ts to separate disclosure
  * (transparency) from enforcement (security). Disclosure functions generate
- * human-readable summaries of what capabilities each step/workflow has.
+ * human-readable summaries of what capabilities each step/spell has.
  */
 
 import type {
@@ -41,8 +41,8 @@ export interface StepDisclosureSummary {
   readonly denied: readonly CapabilityType[];
 }
 
-export interface WorkflowDisclosureSummary {
-  readonly workflowName: string;
+export interface SpellDisclosureSummary {
+  readonly spellName: string;
   readonly stepCount: number;
   /** Capability type -> list of step names that use it. */
   readonly aggregate: ReadonlyMap<CapabilityType, readonly string[]>;
@@ -69,12 +69,12 @@ export function discloseStep(stepName: string, caps: readonly StepCapability[]):
 }
 
 /**
- * Generate an aggregate disclosure summary across all steps in a workflow.
+ * Generate an aggregate disclosure summary across all steps in a spell.
  */
-export function discloseWorkflow(
-  workflowName: string,
+export function discloseSpell(
+  spellName: string,
   steps: ReadonlyArray<{ name: string; caps: readonly StepCapability[] }>,
-): WorkflowDisclosureSummary {
+): SpellDisclosureSummary {
   const aggregate = new Map<CapabilityType, string[]>();
   const usedTypes = new Set<CapabilityType>();
 
@@ -89,7 +89,7 @@ export function discloseWorkflow(
 
   const unused = ALL_CAPABILITY_TYPES.filter(t => !usedTypes.has(t));
 
-  return { workflowName, stepCount: steps.length, aggregate, unused };
+  return { spellName, stepCount: steps.length, aggregate, unused };
 }
 
 /**
@@ -116,9 +116,9 @@ export function formatStepDisclosure(summary: StepDisclosureSummary): string {
 }
 
 /**
- * Format a workflow disclosure summary as a human-readable string.
+ * Format a spell disclosure summary as a human-readable string.
  */
-export function formatWorkflowDisclosure(summary: WorkflowDisclosureSummary): string {
+export function formatSpellDisclosure(summary: SpellDisclosureSummary): string {
   const lines: string[] = [];
 
   lines.push(`  Aggregate capabilities:`);

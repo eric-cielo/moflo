@@ -6,7 +6,7 @@
  * scanning source code for string patterns.
  *
  * Covers:
- *   #155: CAPABILITY_DENIED in WorkflowErrorCode
+ *   #155: CAPABILITY_DENIED in SpellErrorCode
  *   #156: enforceScope runtime enforcement
  *   #157: Credential interpolation bypass
  *   #159: Scoped credentials per-step
@@ -35,12 +35,12 @@ import { SpellCaster } from '../src/core/runner.js';
 import { StepCommandRegistry } from '../src/core/step-command-registry.js';
 import { bashCommand } from '../src/commands/bash-command.js';
 import type { StepCapability } from '../src/types/step-command.types.js';
-import type { SpellDefinition } from '../src/types/workflow-definition.types.js';
-import type { WorkflowErrorCode } from '../src/types/runner.types.js';
+import type { SpellDefinition } from '../src/types/spell-definition.types.js';
+import type { SpellErrorCode } from '../src/types/runner.types.js';
 import { makeStep, makeCommand, makeCredentials, makeMemory } from './helpers.js';
 
 // ============================================================================
-// #155 — CAPABILITY_DENIED is a valid WorkflowErrorCode
+// #155 — CAPABILITY_DENIED is a valid SpellErrorCode
 // ============================================================================
 
 describe('#155 — CAPABILITY_DENIED error code', () => {
@@ -54,7 +54,7 @@ describe('#155 — CAPABILITY_DENIED error code', () => {
     registry.register(cmd);
 
     const runner = new SpellCaster(registry, makeCredentials(), makeMemory());
-    const workflow: SpellDefinition = {
+    const spell: SpellDefinition = {
       name: 'cap-denied-test',
       steps: [{
         id: 'bad-step',
@@ -64,10 +64,10 @@ describe('#155 — CAPABILITY_DENIED error code', () => {
       }],
     };
 
-    const result = await runner.run(workflow, {});
+    const result = await runner.run(spell, {});
     expect(result.success).toBe(false);
     const failedStep = result.steps.find(s => s.stepId === 'bad-step');
-    expect(failedStep?.errorCode).toBe('CAPABILITY_DENIED' satisfies WorkflowErrorCode);
+    expect(failedStep?.errorCode).toBe('CAPABILITY_DENIED' satisfies SpellErrorCode);
   });
 });
 
@@ -138,7 +138,7 @@ describe('#157 — Credential interpolation bypass', () => {
       makeCredentials({ API_KEY: 'secret-value' }),
       makeMemory(),
     );
-    const workflow: SpellDefinition = {
+    const spell: SpellDefinition = {
       name: 'cred-bypass-test',
       steps: [{
         id: 'sneaky-step',
@@ -147,7 +147,7 @@ describe('#157 — Credential interpolation bypass', () => {
       }],
     };
 
-    const result = await runner.run(workflow, {});
+    const result = await runner.run(spell, {});
     expect(result.success).toBe(false);
     const step = result.steps.find(s => s.stepId === 'sneaky-step');
     expect(step?.errorCode).toBe('CAPABILITY_DENIED');
@@ -170,7 +170,7 @@ describe('#157 — Credential interpolation bypass', () => {
       makeCredentials({ API_KEY: 'secret-value' }),
       makeMemory(),
     );
-    const workflow: SpellDefinition = {
+    const spell: SpellDefinition = {
       name: 'cred-allowed-test',
       steps: [{
         id: 'legit-step',
@@ -179,7 +179,7 @@ describe('#157 — Credential interpolation bypass', () => {
       }],
     };
 
-    const result = await runner.run(workflow, {});
+    const result = await runner.run(spell, {});
     expect(result.success).toBe(true);
   });
 });
@@ -208,7 +208,7 @@ describe('#159 — Scoped credential access per-step', () => {
       makeCredentials({ KEY_A: 'val-a', KEY_B: 'val-b', KEY_C: 'val-c' }),
       makeMemory(),
     );
-    const workflow: SpellDefinition = {
+    const spell: SpellDefinition = {
       name: 'scoped-creds-test',
       steps: [
         { id: 'step-a', type: 'cred-cmd', config: { x: '{credentials.KEY_A}' } },
@@ -216,7 +216,7 @@ describe('#159 — Scoped credential access per-step', () => {
       ],
     };
 
-    const result = await runner.run(workflow, {});
+    const result = await runner.run(spell, {});
     expect(result.success).toBe(true);
     expect(capturedCreds[0]).toHaveProperty('KEY_A');
     expect(capturedCreds[0]).not.toHaveProperty('KEY_B');
@@ -242,14 +242,14 @@ describe('#159 — Scoped credential access per-step', () => {
       makeCredentials({ SECRET: 'hidden' }),
       makeMemory(),
     );
-    const workflow: SpellDefinition = {
+    const spell: SpellDefinition = {
       name: 'no-shared-creds',
       steps: [
         { id: 'step-1', type: 'var-spy', config: { command: 'echo test' } },
       ],
     };
 
-    const result = await runner.run(workflow, {});
+    const result = await runner.run(spell, {});
     expect(result.success).toBe(true);
     expect(capturedVars[0]).not.toHaveProperty('credentials');
   });
@@ -269,7 +269,7 @@ describe('#161 — dry-run validates capabilities', () => {
     registry.register(cmd);
 
     const runner = new SpellCaster(registry, makeCredentials(), makeMemory());
-    const workflow: SpellDefinition = {
+    const spell: SpellDefinition = {
       name: 'dry-run-cap-test',
       steps: [{
         id: 'bad-step',
@@ -279,7 +279,7 @@ describe('#161 — dry-run validates capabilities', () => {
       }],
     };
 
-    const result = await runner.run(workflow, {}, { dryRun: true });
+    const result = await runner.run(spell, {}, { dryRun: true });
     expect(result.success).toBe(false);
   });
 });

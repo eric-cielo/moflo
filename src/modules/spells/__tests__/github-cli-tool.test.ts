@@ -1,5 +1,5 @@
 /**
- * GitHub CLI Workflow Connector Tests
+ * GitHub CLI Spell Connector Tests
  *
  * Issue #219: Tests for the extracted github-cli shipped connector.
  * Uses mocked `exec` to avoid real GitHub CLI calls.

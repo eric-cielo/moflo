@@ -1,7 +1,7 @@
 /**
  * Loop Step Command — iterates over an array, executing sub-steps for each item.
  *
- * The actual sub-step execution is delegated to the workflow runner.
+ * The actual sub-step execution is delegated to the spell runner.
  * This command evaluates the iteration config and provides the loop metadata.
  */
 
@@ -60,7 +60,7 @@ export const loopCommand: StepCommand<LoopStepConfig> = {
     const actualCount = Math.min(items.length, maxIterations);
     const truncated = items.length > maxIterations;
 
-    // Loop execution is delegated to the workflow runner.
+    // Loop execution is delegated to the spell runner.
     // This command prepares the iteration metadata.
     return {
       success: true,

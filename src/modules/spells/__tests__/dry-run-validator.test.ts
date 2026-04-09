@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { dryRunValidate } from '../src/core/dry-run-validator.js';
 import { StepCommandRegistry } from '../src/core/step-command-registry.js';
 import type { StepCommand, CastingContext, ValidationError } from '../src/types/step-command.types.js';
-import type { SpellDefinition, StepDefinition } from '../src/types/workflow-definition.types.js';
+import type { SpellDefinition, StepDefinition } from '../src/types/spell-definition.types.js';
 import type { RunnerOptions } from '../src/types/runner.types.js';
 import { createMockContext } from './helpers.js';
 
@@ -42,15 +42,15 @@ function makeDefinition(
   overrides: Partial<SpellDefinition> = {},
 ): SpellDefinition {
   return {
-    name: 'test-workflow',
+    name: 'test-spell',
     steps,
     ...overrides,
   };
 }
 
-function buildContextFactory(): (variables: Record<string, unknown>, workflowId: string, stepIndex: number) => CastingContext {
-  return (variables, workflowId, stepIndex) =>
-    createMockContext({ variables, workflowId, stepIndex });
+function buildContextFactory(): (variables: Record<string, unknown>, spellId: string, stepIndex: number) => CastingContext {
+  return (variables, spellId, stepIndex) =>
+    createMockContext({ variables, spellId, stepIndex });
 }
 
 const defaultOptions: RunnerOptions = {};
@@ -233,9 +233,9 @@ describe('dryRunValidate', () => {
     ]);
 
     const capturedVars: Record<string, unknown>[] = [];
-    const contextFactory = (variables: Record<string, unknown>, workflowId: string, stepIndex: number) => {
+    const contextFactory = (variables: Record<string, unknown>, spellId: string, stepIndex: number) => {
       capturedVars.push({ ...variables });
-      return createMockContext({ variables, workflowId, stepIndex });
+      return createMockContext({ variables, spellId, stepIndex });
     };
 
     const result = await dryRunValidate(
@@ -325,9 +325,9 @@ describe('dryRunValidate', () => {
     ]);
 
     const capturedVars: Record<string, unknown>[] = [];
-    const contextFactory = (variables: Record<string, unknown>, workflowId: string, stepIndex: number) => {
+    const contextFactory = (variables: Record<string, unknown>, spellId: string, stepIndex: number) => {
       capturedVars.push({ ...variables });
-      return createMockContext({ variables, workflowId, stepIndex });
+      return createMockContext({ variables, spellId, stepIndex });
     };
 
     await dryRunValidate(

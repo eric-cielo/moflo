@@ -1,9 +1,9 @@
 /**
- * Playwright Workflow Connector
+ * Playwright Spell Connector
  *
  * Reusable Playwright adapter implementing SpellConnector interface.
  * Extracted from the monolithic browser step command (Issue #219)
- * so custom workflow steps can use browser automation via context.tools.
+ * so custom spell steps can use browser automation via context.tools.
  *
  * Session management: initialize() pre-launches a browser that is reused
  * across execute() calls. dispose() closes the browser and cleans up
@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { unlink } from 'node:fs/promises';
-import type { SpellConnector, ConnectorAction, ConnectorOutput } from '../types/workflow-connector.types.js';
+import type { SpellConnector, ConnectorAction, ConnectorOutput } from '../types/spell-connector.types.js';
 
 // ============================================================================
 // Playwright types (dynamic import — optional peer dependency)

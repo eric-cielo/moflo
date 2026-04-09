@@ -31,7 +31,7 @@ export interface ScheduleDefinition {
 // Schedule Record (persisted in memory DB)
 // ============================================================================
 
-export interface WorkflowSchedule {
+export interface SpellSchedule {
   readonly id: string;
   readonly spellName: string;
   readonly spellPath: string;

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ConnectorAccessorImpl } from '../src/core/connector-accessor.js';
 import { SpellConnectorRegistry } from '../src/registry/connector-registry.js';
-import type { SpellConnector } from '../src/types/workflow-connector.types.js';
+import type { SpellConnector } from '../src/types/spell-connector.types.js';
 
 function makeConnector(name: string): SpellConnector {
   return {
@@ -83,7 +83,7 @@ describe('SpellCaster connector integration', () => {
     const { createRunner } = await import('../src/factory/runner-factory.js');
     const runner = createRunner();
 
-    // A simple workflow with a wait step
+    // A simple spell with a wait step
     const result = await runner.run(
       {
         name: 'test-no-connectors',

@@ -1,5 +1,5 @@
 /**
- * Workflow Runner
+ * Spell Runner
  *
  * Thin orchestrator that drives a parsed SpellDefinition step by step,
  * delegating step execution, validation, loop iteration, rollback,
@@ -13,9 +13,9 @@ import type {
   MemoryAccessor,
   MofloLevel,
 } from '../types/step-command.types.js';
-import type { SpellDefinition } from '../types/workflow-definition.types.js';
+import type { SpellDefinition } from '../types/spell-definition.types.js';
 import type {
-  RunnerOptions, WorkflowResult, WorkflowError,
+  RunnerOptions, SpellResult, SpellError,
   StepResult, StepStatus, DryRunResult, FloRunContext,
 } from '../types/runner.types.js';
 import { StepCommandRegistry } from './step-command-registry.js';
@@ -51,26 +51,26 @@ export class SpellCaster {
     definition: SpellDefinition,
     args: Record<string, unknown>,
     options: RunnerOptions = {},
-  ): Promise<WorkflowResult> {
+  ): Promise<SpellResult> {
     const startTime = Date.now();
     const defValidation = validateSpellDefinition(definition, {
       knownStepTypes: this.registry.types(),
     });
-    const workflowId = options.workflowId ?? `wf-${Date.now()}`;
+    const spellId = options.spellId ?? `sp-${Date.now()}`;
 
     if (!defValidation.valid) {
-      return this.failureResult(workflowId, startTime, [{
+      return this.failureResult(spellId, startTime, [{
         code: 'DEFINITION_VALIDATION_FAILED',
-        message: 'Workflow definition is invalid',
+        message: 'Spell definition is invalid',
         details: defValidation.errors,
       }], definition.name);
     }
 
     if (options.parentMofloLevel && definition.mofloLevel) {
       if (compareMofloLevels(definition.mofloLevel, options.parentMofloLevel) > 0) {
-        return this.failureResult(workflowId, startTime, [{
+        return this.failureResult(spellId, startTime, [{
           code: 'MOFLO_LEVEL_DENIED',
-          message: `Nested workflow mofloLevel "${definition.mofloLevel}" exceeds parent level "${options.parentMofloLevel}"`,
+          message: `Nested spell mofloLevel "${definition.mofloLevel}" exceeds parent level "${options.parentMofloLevel}"`,
         }], definition.name);
       }
     }
@@ -79,7 +79,7 @@ export class SpellCaster {
       definition.arguments ?? {}, args,
     );
     if (argErrors.length > 0) {
-      return this.failureResult(workflowId, startTime, [{
+      return this.failureResult(spellId, startTime, [{
         code: 'ARGUMENT_VALIDATION_FAILED',
         message: 'Argument validation failed',
         details: argErrors,
@@ -92,7 +92,7 @@ export class SpellCaster {
       if (prerequisites.length > 0) {
         const prereqResults = await checkPrerequisites(prerequisites);
         if (prereqResults.some(r => !r.satisfied)) {
-          return this.failureResult(workflowId, startTime, [{
+          return this.failureResult(spellId, startTime, [{
             code: 'PREREQUISITES_FAILED',
             message: formatPrerequisiteErrors(prereqResults),
           }], definition.name);
@@ -107,7 +107,7 @@ export class SpellCaster {
           this.buildContext(variables, resolvedArgs, wfId, stepIndex, options.signal),
       );
       return {
-        workflowId, success: dryResult.valid, steps: [], outputs: {},
+        spellId, success: dryResult.valid, steps: [], outputs: {},
         errors: dryResult.valid ? [] : [{
           code: 'DEFINITION_VALIDATION_FAILED',
           message: 'Dry-run validation failed',
@@ -120,7 +120,7 @@ export class SpellCaster {
       };
     }
 
-    return this.executeSteps(definition, resolvedArgs, workflowId, options, startTime);
+    return this.executeSteps(definition, resolvedArgs, spellId, options, startTime);
   }
 
   async dryRun(
@@ -144,12 +144,12 @@ export class SpellCaster {
 
   private async executeSteps(
     definition: SpellDefinition, resolvedArgs: Record<string, unknown>,
-    workflowId: string, options: RunnerOptions, startTime: number,
-  ): Promise<WorkflowResult> {
+    spellId: string, options: RunnerOptions, startTime: number,
+  ): Promise<SpellResult> {
     const context = options.context;
     const variables: Record<string, unknown> = { ...options.initialVariables };
     const stepResults: StepResult[] = [];
-    const errors: WorkflowError[] = [];
+    const errors: SpellError[] = [];
     const completedSteps: CompletedStep[] = [];
     let cancelled = false;
 
@@ -167,16 +167,16 @@ export class SpellCaster {
     }
 
     const state: StepExecutionState = {
-      variables, resolvedArgs, workflowId, options,
+      variables, resolvedArgs, spellId, options,
       credentialPatterns, resolvedCredentials,
-      workflowMofloLevel: definition.mofloLevel,
+      spellMofloLevel: definition.mofloLevel,
       parentMofloLevel: options.parentMofloLevel,
       nestingDepth: options.nestingDepth ?? 0,
       maxNestingDepth: options.maxNestingDepth ?? DEFAULT_MAX_NESTING_DEPTH,
     };
 
     try {
-    await this.storeProgress(workflowId, 'running', 0, definition.steps.length, {
+    await this.storeProgress(spellId, 'running', 0, definition.steps.length, {
       spellName: definition.name, startedAt: startTime, context,
     });
 
@@ -191,7 +191,7 @@ export class SpellCaster {
     for (let i = 0; i < definition.steps.length; i++) {
       if (++iterations > maxIterations) {
         errors.push({ code: 'STEP_EXECUTION_FAILED',
-          message: `Workflow exceeded maximum iterations (${maxIterations}); possible infinite condition loop` });
+          message: `Spell exceeded maximum iterations (${maxIterations}); possible infinite condition loop` });
         this.markRemaining(definition, i, 'skipped', stepResults);
         break;
       }
@@ -267,7 +267,7 @@ export class SpellCaster {
 
       // Fire onStepComplete for every step (success, failure, cancelled)
       console.log(`[spell] Step ${i + 1}/${definition.steps.length}: ${result.status} "${step.id}" (${result.duration}ms)${result.error ? ' — ' + result.error.slice(0, 200) : ''}`);
-      await this.storeProgress(workflowId, 'running', stepResults.length, definition.steps.length, {
+      await this.storeProgress(spellId, 'running', stepResults.length, definition.steps.length, {
         spellName: definition.name, startedAt: startTime, steps: stepResults, context,
       });
       try { options.onStepComplete?.(result, i, definition.steps.length); } catch { /* safe */ }
@@ -291,11 +291,11 @@ export class SpellCaster {
 
     if (cancelled) {
       if (completedSteps.length > 0) await this.doRollback(completedSteps, state, stepResults);
-      errors.push({ code: 'WORKFLOW_CANCELLED', message: 'Workflow was cancelled' });
+      errors.push({ code: 'SPELL_CANCELLED', message: 'Spell was cancelled' });
     }
 
     const finalStatus = cancelled ? 'cancelled' : errors.length > 0 ? 'failed' : 'completed';
-    await this.storeProgress(workflowId, finalStatus, stepResults.length, definition.steps.length, {
+    await this.storeProgress(spellId, finalStatus, stepResults.length, definition.steps.length, {
       spellName: definition.name, startedAt: startTime, errors, steps: stepResults, context,
     });
 
@@ -306,7 +306,7 @@ export class SpellCaster {
       }
     }
 
-    return { workflowId, success: errors.length === 0 && !cancelled,
+    return { spellId, success: errors.length === 0 && !cancelled,
       steps: stepResults, outputs, errors, duration: Date.now() - startTime, cancelled };
     } finally {
       // Dispose any connectors that were lazily initialized during step execution
@@ -321,7 +321,7 @@ export class SpellCaster {
   // --------------------------------------------------------------------------
 
   private runStep(
-    step: import('../types/workflow-definition.types.js').StepDefinition,
+    step: import('../types/spell-definition.types.js').StepDefinition,
     state: StepExecutionState, index: number,
   ) {
     return executeSingleStep(step, state, index, this.registry, this.buildContext.bind(this));
@@ -329,7 +329,7 @@ export class SpellCaster {
 
   private async doRollback(completed: CompletedStep[], state: StepExecutionState, results: StepResult[]) {
     await rollbackSteps(completed, this.registry,
-      (i) => this.buildContext(state.variables, state.resolvedArgs, state.workflowId, i, state.options.signal),
+      (i) => this.buildContext(state.variables, state.resolvedArgs, state.spellId, i, state.options.signal),
       results);
   }
 
@@ -341,17 +341,17 @@ export class SpellCaster {
 
   private buildContext(
     variables: Record<string, unknown>, args: Record<string, unknown>,
-    workflowId: string, stepIndex: number, signal?: AbortSignal,
+    spellId: string, stepIndex: number, signal?: AbortSignal,
   ): CastingContext {
     return { variables, args, credentials: this.credentials, memory: this.memory,
-      taskId: `${workflowId}-step-${stepIndex}`, workflowId, stepIndex, abortSignal: signal,
+      taskId: `${spellId}-step-${stepIndex}`, spellId, stepIndex, abortSignal: signal,
       gateway: DENY_ALL_GATEWAY,
       ...(this.connectorAccessor ? { tools: this.connectorAccessor } : {}) };
   }
 
   private async storeProgress(
     wfId: string, status: string, done: number, total: number,
-    extra?: { spellName?: string; startedAt?: number; errors?: WorkflowError[]; steps?: StepResult[]; context?: FloRunContext },
+    extra?: { spellName?: string; startedAt?: number; errors?: SpellError[]; steps?: StepResult[]; context?: FloRunContext },
   ) {
     try {
       const now = Date.now();
@@ -385,11 +385,11 @@ export class SpellCaster {
     }
   }
 
-  private async failureResult(workflowId: string, startTime: number, errors: WorkflowError[], spellName?: string): Promise<WorkflowResult> {
-    await this.storeProgress(workflowId, 'failed', 0, 0, {
+  private async failureResult(spellId: string, startTime: number, errors: SpellError[], spellName?: string): Promise<SpellResult> {
+    await this.storeProgress(spellId, 'failed', 0, 0, {
       spellName, startedAt: startTime, errors,
     });
-    return { workflowId, success: false, steps: [], outputs: {}, errors,
+    return { spellId, success: false, steps: [], outputs: {}, errors,
       duration: Date.now() - startTime, cancelled: false };
   }
 }

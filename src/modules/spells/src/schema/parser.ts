@@ -6,14 +6,14 @@
  */
 
 import { load as yamlLoad, JSON_SCHEMA } from 'js-yaml';
-import type { ParsedWorkflow, SpellDefinition } from '../types/workflow-definition.types.js';
+import type { ParsedSpell, SpellDefinition } from '../types/spell-definition.types.js';
 import { sanitizeObjectKeys } from '../core/interpolation.js';
 
 /**
  * Parse a YAML string into a SpellDefinition.
  * @throws if YAML is malformed.
  */
-export function parseYaml(content: string, sourceFile?: string): ParsedWorkflow {
+export function parseYaml(content: string, sourceFile?: string): ParsedSpell {
   const raw = yamlLoad(content, { schema: JSON_SCHEMA });
   if (!raw || typeof raw !== 'object') {
     throw new Error(`Invalid spell YAML${sourceFile ? ` in ${sourceFile}` : ''}: expected an object`);
@@ -30,7 +30,7 @@ export function parseYaml(content: string, sourceFile?: string): ParsedWorkflow 
  * Parse a JSON string into a SpellDefinition.
  * @throws if JSON is malformed.
  */
-export function parseJson(content: string, sourceFile?: string): ParsedWorkflow {
+export function parseJson(content: string, sourceFile?: string): ParsedSpell {
   let raw: unknown;
   try {
     raw = JSON.parse(content);
@@ -53,7 +53,7 @@ export function parseJson(content: string, sourceFile?: string): ParsedWorkflow 
 /**
  * Parse a spell file by detecting format from extension or content.
  */
-export function parseWorkflow(content: string, sourceFile?: string): ParsedWorkflow {
+export function parseSpell(content: string, sourceFile?: string): ParsedSpell {
   if (sourceFile) {
     const ext = sourceFile.toLowerCase();
     if (ext.endsWith('.json')) {

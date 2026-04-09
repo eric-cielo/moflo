@@ -77,7 +77,7 @@ export const agentCommand: StepCommand<AgentStepConfig> = {
       };
     }
 
-    // Agent execution is delegated to the workflow runner's agent spawner.
+    // Agent execution is delegated to the spell runner's agent spawner.
     // This command prepares the invocation; actual spawning is handled externally.
     return {
       success: true,

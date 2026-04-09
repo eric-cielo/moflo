@@ -7,7 +7,7 @@
  *
  * Priority order (last wins):
  *   1. Shipped commands (registered via builtinCommands)
- *   2. User directories: `workflows/steps/`, `.claude/workflows/steps/`
+ *   2. User directories: `spells/steps/`, `.claude/spells/steps/`
  */
 
 import { readdirSync } from 'node:fs';

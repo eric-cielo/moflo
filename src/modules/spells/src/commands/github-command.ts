@@ -1,8 +1,8 @@
 /**
  * GitHub Step Command — typed GitHub operations via `gh` CLI.
  *
- * Story #194: First-class `github` step type for workflow engine.
- * Issue #219: Refactored to delegate to the `github-cli` workflow connector.
+ * Story #194: First-class `github` step type for spell engine.
+ * Issue #219: Refactored to delegate to the `github-cli` spell connector.
  *
  * This is now a thin step wrapper. The reusable gh CLI adapter logic
  * lives in `../connectors/github-cli.ts` so custom steps can also use it

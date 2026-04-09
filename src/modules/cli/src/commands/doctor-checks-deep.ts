@@ -207,9 +207,9 @@ export async function checkWorkflowExecution(): Promise<HealthCheck> {
       return { name: 'Spell Execution', status: 'warn', message: 'Spell runner-factory not found', fix: 'npm run build' };
     }
 
-    const { runWorkflowFromContent } = await import(toImportUrl(modulePath));
-    if (typeof runWorkflowFromContent !== 'function') {
-      return { name: 'Spell Execution', status: 'fail', message: 'runWorkflowFromContent is not a function', fix: 'npm run build' };
+    const { runSpellFromContent } = await import(toImportUrl(modulePath));
+    if (typeof runSpellFromContent !== 'function') {
+      return { name: 'Spell Execution', status: 'fail', message: 'runSpellFromContent is not a function', fix: 'npm run build' };
     }
 
     const minimalWorkflow = `
@@ -223,8 +223,8 @@ steps:
     output: result
 `;
 
-    const result = await runWorkflowFromContent(minimalWorkflow, 'doctor-probe.yaml', {
-      workflowId: `doctor-probe-${Date.now()}`,
+    const result = await runSpellFromContent(minimalWorkflow, 'doctor-probe.yaml', {
+      spellId: `doctor-probe-${Date.now()}`,
       timeout: 10_000,
     });
 
@@ -405,7 +405,7 @@ export async function checkHookExecution(): Promise<HealthCheck> {
 
 /**
  * Verifies that the MCP spell tools invoke the real engine via runner-bridge.
- * Calls bridgeExecuteWorkflow() with a minimal definition and checks for real
+ * Calls bridgeExecuteSpell() with a minimal definition and checks for real
  * bash step stdout, not mock/simulated output.
  */
 export async function checkMcpWorkflowIntegration(): Promise<HealthCheck> {
@@ -418,8 +418,8 @@ export async function checkMcpWorkflowIntegration(): Promise<HealthCheck> {
     }
 
     const bridge = await import(toImportUrl(bridgePath));
-    if (typeof bridge.bridgeExecuteWorkflow !== 'function') {
-      return { name: 'MCP Spell Integration', status: 'fail', message: 'bridgeExecuteWorkflow is not a function', fix: 'npm run build' };
+    if (typeof bridge.bridgeExecuteSpell !== 'function') {
+      return { name: 'MCP Spell Integration', status: 'fail', message: 'bridgeExecuteSpell is not a function', fix: 'npm run build' };
     }
 
     const definition = {
@@ -435,7 +435,7 @@ export async function checkMcpWorkflowIntegration(): Promise<HealthCheck> {
       ],
     };
 
-    const result = await bridge.bridgeExecuteWorkflow(definition, {});
+    const result = await bridge.bridgeExecuteSpell(definition, {});
 
     if (!result) {
       return { name: 'MCP Spell Integration', status: 'fail', message: 'Bridge returned no result' };

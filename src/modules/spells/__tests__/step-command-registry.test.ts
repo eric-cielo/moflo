@@ -1,7 +1,7 @@
 /**
  * Step Command Registry Tests
  *
- * Story #101: Workflow Step Command Interface
+ * Story #101: Spell Step Command Interface
  * Tests: register/retrieve, duplicate prevention, list, get unknown, context flow
  */
 

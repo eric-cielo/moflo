@@ -6,7 +6,7 @@
 
 export type {
   ScheduleDefinition,
-  WorkflowSchedule,
+  SpellSchedule,
   ScheduleExecution,
   SchedulerOptions,
 } from './schedule.types.js';
@@ -26,7 +26,7 @@ export {
 
 export {
   SpellScheduler,
-  type WorkflowExecutor,
+  type SpellExecutor,
   type SchedulerEvent,
   type SchedulerEventType,
   type SchedulerListener,

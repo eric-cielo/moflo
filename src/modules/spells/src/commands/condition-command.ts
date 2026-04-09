@@ -143,7 +143,7 @@ function evaluateStructuredCondition(
 
 export const conditionCommand: StepCommand<ConditionStepConfig> = {
   type: 'condition',
-  description: 'Branch workflow based on expression evaluation',
+  description: 'Branch spell based on expression evaluation',
   defaultMofloLevel: 'none',
   configSchema: {
     type: 'object',

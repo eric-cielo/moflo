@@ -1,5 +1,5 @@
 /**
- * Shared test helpers for workflow tests.
+ * Shared test helpers for spell tests.
  */
 
 import type {
@@ -23,8 +23,8 @@ export const ALLOW_ALL_GATEWAY: ICapabilityGateway = {
   checkBrowserEvaluate() {},
   checkCredentials() {},
 };
-import type { StepDefinition } from '../src/types/workflow-definition.types.js';
-import type { WorkflowResult } from '../src/types/runner.types.js';
+import type { StepDefinition } from '../src/types/spell-definition.types.js';
+import type { SpellResult } from '../src/types/runner.types.js';
 
 export function makeStep(overrides: Partial<StepDefinition> = {}): StepDefinition {
   return { id: 'test-step', type: 'bash', config: { command: 'echo hello' }, ...overrides };
@@ -58,7 +58,7 @@ export function makeMemory(): MemoryAccessor {
   };
 }
 
-export function getStdout(result: WorkflowResult, stepId: string): string {
+export function getStdout(result: SpellResult, stepId: string): string {
   const output = result.outputs[stepId] as Record<string, unknown> | undefined;
   return ((output?.stdout as string) ?? '').trim();
 }
@@ -70,7 +70,7 @@ export function createMockContext(overrides?: Partial<CastingContext>): CastingC
     credentials: makeCredentials(),
     memory: makeMemory(),
     taskId: 'test',
-    workflowId: 'wf-1',
+    spellId: 'wf-1',
     stepIndex: 0,
     gateway: ALLOW_ALL_GATEWAY,
     ...overrides,

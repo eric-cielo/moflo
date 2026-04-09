@@ -13,18 +13,18 @@ import { dirname, join, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type {
-  WorkflowResult,
+  SpellResult,
 } from '../../../../modules/spells/src/types/runner.types.js';
 import type {
   SpellDefinition,
-} from '../../../../modules/spells/src/types/workflow-definition.types.js';
+} from '../../../../modules/spells/src/types/spell-definition.types.js';
 import type {
   Grimoire,
   RegistryOptions,
-} from '../../../../modules/spells/src/registry/workflow-registry.js';
+} from '../../../../modules/spells/src/registry/spell-registry.js';
 
 // Re-export spell types so consumers import from engine-loader (single boundary).
-export type { WorkflowResult };
+export type { SpellResult };
 export type { SpellDefinition };
 export type { Grimoire };
 
@@ -35,26 +35,26 @@ export type { Grimoire };
  * The actual module is loaded via dynamic import() at runtime.
  */
 export interface EngineModule {
-  bridgeRunWorkflow: (
+  bridgeRunSpell: (
     content: string,
     sourceFile: string | undefined,
     args: Record<string, unknown>,
     options?: { dryRun?: boolean },
-  ) => Promise<WorkflowResult>;
-  bridgeExecuteWorkflow: (
+  ) => Promise<SpellResult>;
+  bridgeExecuteSpell: (
     definition: SpellDefinition,
     args: Record<string, unknown>,
-    options?: { workflowId?: string },
-  ) => Promise<WorkflowResult>;
-  bridgeCancelWorkflow: (workflowId: string) => boolean;
-  bridgeIsRunning: (workflowId: string) => boolean;
-  bridgeActiveWorkflows: () => string[];
+    options?: { spellId?: string },
+  ) => Promise<SpellResult>;
+  bridgeCancelSpell: (spellId: string) => boolean;
+  bridgeIsRunning: (spellId: string) => boolean;
+  bridgeActiveSpells: () => string[];
   Grimoire: new (options?: RegistryOptions) => Grimoire;
-  runWorkflowFromContent: (
+  runSpellFromContent: (
     content: string,
     sourceFile: string | undefined,
     options?: Record<string, unknown>,
-  ) => Promise<WorkflowResult>;
+  ) => Promise<SpellResult>;
 }
 
 let cachedEngine: EngineModule | null = null;
@@ -78,10 +78,10 @@ export async function loadSpellEngine(): Promise<EngineModule> {
       while (cliRoot !== dirname(cliRoot) && !existsSync(join(cliRoot, 'package.json'))) {
         cliRoot = dirname(cliRoot);
       }
-      const workflowsEntry = resolve(cliRoot, '..', 'spells', 'dist', 'index.js');
+      const spellsEntry = resolve(cliRoot, '..', 'spells', 'dist', 'index.js');
       const mod = await import(
         /* webpackIgnore: true */
-        pathToFileURL(workflowsEntry).href
+        pathToFileURL(spellsEntry).href
       );
       cachedEngine = mod as unknown as EngineModule;
       return cachedEngine;

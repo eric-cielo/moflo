@@ -16,10 +16,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 
-import { Grimoire } from '../../src/registry/workflow-registry.js';
-import { createRunner, runWorkflowFromContent } from '../../src/factory/runner-factory.js';
+import { Grimoire } from '../../src/registry/spell-registry.js';
+import { createRunner, runSpellFromContent } from '../../src/factory/runner-factory.js';
 import { CredentialStore } from '../../src/credentials/credential-store.js';
-import type { SpellDefinition } from '../../src/types/workflow-definition.types.js';
+import type { SpellDefinition } from '../../src/types/spell-definition.types.js';
 import { getStdout } from '../helpers.js';
 
 // ============================================================================
@@ -62,7 +62,7 @@ steps:
   - id: greet
     type: bash
     config:
-      command: echo "hello from workflow"
+      command: echo "hello from spell"
     output: greet
 `);
 
@@ -70,9 +70,9 @@ steps:
     const result = registry.load();
     expect(result.errors).toHaveLength(0);
 
-    const workflow = result.workflows.get('echo-test');
-    expect(workflow).toBeDefined();
-    expect(workflow!.definition.abbreviation).toBe('et');
+    const spell = result.spells.get('echo-test');
+    expect(spell).toBeDefined();
+    expect(spell!.definition.abbreviation).toBe('et');
   });
 
   it('resolves a spell by abbreviation and runs it through the runner', async () => {
@@ -93,7 +93,7 @@ steps:
     const loadResult = registry.load();
     expect(loadResult.abbreviations.get('se')).toBe('simple-echo');
 
-    const wf = loadResult.workflows.get('simple-echo');
+    const wf = loadResult.spells.get('simple-echo');
     expect(wf).toBeDefined();
 
     const runner = createRunner();
@@ -120,7 +120,7 @@ steps:
       command: echo "second"
     output: step2
 `;
-    const result = await runWorkflowFromContent(content, undefined, { args: {} });
+    const result = await runSpellFromContent(content, undefined, { args: {} });
     expect(result.success).toBe(true);
     expect(result.steps).toHaveLength(2);
     expect(result.steps.every(s => s.status === 'succeeded')).toBe(true);
@@ -210,7 +210,7 @@ describe('Concurrent spell isolation', () => {
   const runner = createRunner();
 
   it('two parallel spells do not corrupt each other\'s variables', async () => {
-    const workflow1: SpellDefinition = {
+    const spell1: SpellDefinition = {
       name: 'wf-alpha',
       steps: [
         { id: 'a1', type: 'bash', config: { command: 'echo "alpha-output"' }, output: 'a1' },
@@ -218,7 +218,7 @@ describe('Concurrent spell isolation', () => {
       ],
     };
 
-    const workflow2: SpellDefinition = {
+    const spell2: SpellDefinition = {
       name: 'wf-beta',
       steps: [
         { id: 'b1', type: 'bash', config: { command: 'echo "beta-output"' }, output: 'b1' },
@@ -227,14 +227,14 @@ describe('Concurrent spell isolation', () => {
     };
 
     const [result1, result2] = await Promise.all([
-      runner.run(workflow1, {}, { workflowId: 'iso-1' }),
-      runner.run(workflow2, {}, { workflowId: 'iso-2' }),
+      runner.run(spell1, {}, { spellId: 'iso-1' }),
+      runner.run(spell2, {}, { spellId: 'iso-2' }),
     ]);
 
     expect(result1.success).toBe(true);
     expect(result2.success).toBe(true);
-    expect(result1.workflowId).toBe('iso-1');
-    expect(result2.workflowId).toBe('iso-2');
+    expect(result1.spellId).toBe('iso-1');
+    expect(result2.spellId).toBe('iso-2');
 
     expect(getStdout(result1, 'a1')).toBe('alpha-output');
     expect(getStdout(result2, 'b1')).toBe('beta-output');
@@ -244,14 +244,14 @@ describe('Concurrent spell isolation', () => {
   });
 
   it('one spell failing does not affect the other', async () => {
-    const goodWorkflow: SpellDefinition = {
+    const goodSpell: SpellDefinition = {
       name: 'wf-good',
       steps: [
         { id: 'g1', type: 'bash', config: { command: 'echo "success"' }, output: 'g1' },
       ],
     };
 
-    const badWorkflow: SpellDefinition = {
+    const badSpell: SpellDefinition = {
       name: 'wf-bad',
       steps: [
         { id: 'bad1', type: 'nonexistent-type', config: {} },
@@ -259,8 +259,8 @@ describe('Concurrent spell isolation', () => {
     };
 
     const [good, bad] = await Promise.all([
-      runner.run(goodWorkflow, {}, { workflowId: 'good-1' }),
-      runner.run(badWorkflow, {}, { workflowId: 'bad-1' }),
+      runner.run(goodSpell, {}, { spellId: 'good-1' }),
+      runner.run(badSpell, {}, { spellId: 'bad-1' }),
     ]);
 
     expect(good.success).toBe(true);
@@ -287,7 +287,7 @@ describe('Command injection through interpolated variables', () => {
     ['$() subshell', '$(echo PWNED)', 'PWNED'],
     ['backtick', '`echo PWNED`', 'PWNED'],
   ])('%s injection is executed (documents vulnerability)', async (_label, input, expected) => {
-    const workflow: SpellDefinition = {
+    const spell: SpellDefinition = {
       name: `injection-${_label}`,
       arguments: { input: { type: 'string', required: true } },
       steps: [{
@@ -298,13 +298,13 @@ describe('Command injection through interpolated variables', () => {
       }],
     };
 
-    const result = await runner.run(workflow, { input });
+    const result = await runner.run(spell, { input });
     expect(result.success).toBe(true);
     expect(getStdout(result, 'inject')).toContain(expected);
   }, 10_000);
 
   it('static commands without interpolated variables are not affected', async () => {
-    const workflow: SpellDefinition = {
+    const spell: SpellDefinition = {
       name: 'static-safe',
       steps: [{
         id: 'safe',
@@ -314,7 +314,7 @@ describe('Command injection through interpolated variables', () => {
       }],
     };
 
-    const result = await runner.run(workflow, {});
+    const result = await runner.run(spell, {});
     expect(result.success).toBe(true);
     expect(getStdout(result, 'safe')).toBe('static-value');
   });

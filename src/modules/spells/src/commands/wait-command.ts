@@ -19,7 +19,7 @@ export interface WaitStepConfig extends StepConfig {
 
 export const waitCommand: StepCommand<WaitStepConfig> = {
   type: 'wait',
-  description: 'Pause workflow for a duration',
+  description: 'Pause spell for a duration',
   defaultMofloLevel: 'none',
   configSchema: {
     type: 'object',

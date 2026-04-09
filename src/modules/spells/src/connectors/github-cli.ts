@@ -1,15 +1,15 @@
 /**
- * GitHub CLI Workflow Connector
+ * GitHub CLI Spell Connector
  *
  * Reusable `gh` CLI adapter implementing SpellConnector interface.
  * Extracted from the monolithic github step command (Issue #219)
- * so custom workflow steps can use GitHub operations via context.tools.
+ * so custom spell steps can use GitHub operations via context.tools.
  *
  * Actions: issue-fetch, issue-edit, pr-create, pr-merge, pr-find,
  *          label, comment, repo-info
  */
 
-import type { SpellConnector, ConnectorAction, ConnectorOutput } from '../types/workflow-connector.types.js';
+import type { SpellConnector, ConnectorAction, ConnectorOutput } from '../types/spell-connector.types.js';
 import { commandExists } from '../core/prerequisite-checker.js';
 import { execAsync, escapeShellArg } from '../core/shell.js';
 

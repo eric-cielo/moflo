@@ -3,7 +3,7 @@
  *
  * Story #107: Implements the `browser` step command backed by Playwright.
  * Issue #219: Refactored to delegate action execution to the `playwright`
- * workflow connector. Security policy (SSRF, evaluate gating) remains here.
+ * spell connector. Security policy (SSRF, evaluate gating) remains here.
  *
  * Playwright is an optional peer dependency. If not installed, the step
  * throws a clear error with install instructions.

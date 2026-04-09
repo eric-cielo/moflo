@@ -13,7 +13,7 @@ import type {
   CredentialAccessor,
   MemoryAccessor,
 } from '../src/types/step-command.types.js';
-import type { SpellDefinition } from '../src/types/workflow-definition.types.js';
+import type { SpellDefinition } from '../src/types/spell-definition.types.js';
 import { validateSpellDefinition } from '../src/schema/validator.js';
 
 // ============================================================================
@@ -55,8 +55,8 @@ function createMockMemory(): MemoryAccessor {
   };
 }
 
-function simpleWorkflow(steps: SpellDefinition['steps']): SpellDefinition {
-  return { name: 'test-workflow', steps };
+function simpleSpell(steps: SpellDefinition['steps']): SpellDefinition {
+  return { name: 'test-spell', steps };
 }
 
 // ============================================================================
@@ -88,7 +88,7 @@ describe('SpellCaster — parallel step execution', () => {
     });
     registry.register(mockCmd);
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 'setup', type: 'mock', config: { name: 'setup' } },
       {
         id: 'checks',
@@ -120,7 +120,7 @@ describe('SpellCaster — parallel step execution', () => {
     const mockCmd = createMockCommand();
     registry.register(mockCmd);
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 'setup', type: 'mock', config: {} },
       {
         id: 'checks',
@@ -149,7 +149,7 @@ describe('SpellCaster — parallel step execution', () => {
     const mockCmd = createMockCommand();
     registry.register(mockCmd);
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       { id: 'setup', type: 'mock', config: {} },
       {
         id: 'checks',
@@ -165,7 +165,7 @@ describe('SpellCaster — parallel step execution', () => {
 
     const result = await runner.run(definition, {});
 
-    // Workflow continues because parallel step has continueOnError: true
+    // Spell continues because parallel step has continueOnError: true
     const deployStep = result.steps.find(s => s.stepId === 'deploy');
     expect(deployStep?.status).toBe('succeeded');
   });
@@ -188,7 +188,7 @@ describe('SpellCaster — parallel step execution', () => {
     registry.register(lintCmd);
     registry.register(deployCmd);
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       {
         id: 'checks',
         type: 'parallel',
@@ -291,7 +291,7 @@ describe('SpellCaster — parallel dry-run', () => {
     const mockCmd = createMockCommand();
     registry.register(mockCmd);
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       {
         id: 'checks',
         type: 'parallel',
@@ -316,7 +316,7 @@ describe('SpellCaster — parallel dry-run', () => {
     const mockCmd = createMockCommand();
     registry.register(mockCmd);
 
-    const definition = simpleWorkflow([
+    const definition = simpleSpell([
       {
         id: 'checks',
         type: 'parallel',

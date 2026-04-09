@@ -6,12 +6,12 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  bridgeRunWorkflow,
-  bridgeCancelWorkflow,
+  bridgeRunSpell,
+  bridgeCancelSpell,
   bridgeIsRunning,
-  bridgeActiveWorkflows,
+  bridgeActiveSpells,
 } from '../src/factory/runner-bridge.js';
-import { createRunner, runWorkflowFromContent } from '../src/factory/runner-factory.js';
+import { createRunner, runSpellFromContent } from '../src/factory/runner-factory.js';
 
 // ============================================================================
 // Runner Factory
@@ -27,21 +27,21 @@ describe('createRunner', () => {
 
     // Should not throw for known step type 'bash'
     const result = await runner.run(definition, {}, { dryRun: true });
-    expect(result.workflowId).toBeDefined();
+    expect(result.spellId).toBeDefined();
   });
 });
 
-describe('runWorkflowFromContent', () => {
+describe('runSpellFromContent', () => {
   it('should parse and run a YAML spell', async () => {
     const yaml = `
-name: test-workflow
+name: test-spell
 steps:
   - id: step1
     type: wait
     config:
       duration: 0
 `;
-    const result = await runWorkflowFromContent(yaml, 'test.yaml');
+    const result = await runSpellFromContent(yaml, 'test.yaml');
 
     expect(result.success).toBe(true);
     expect(result.steps).toHaveLength(1);
@@ -49,7 +49,7 @@ steps:
   });
 
   it('should return structured error for invalid YAML', async () => {
-    const result = await runWorkflowFromContent('{{invalid', 'bad.yaml');
+    const result = await runSpellFromContent('{{invalid', 'bad.yaml');
 
     expect(result.success).toBe(false);
     expect(result.errors).toHaveLength(1);
@@ -62,7 +62,7 @@ steps:
 name: ""
 steps: []
 `;
-    const result = await runWorkflowFromContent(yaml, 'invalid.yaml');
+    const result = await runSpellFromContent(yaml, 'invalid.yaml');
 
     expect(result.success).toBe(false);
     expect(result.errors[0].code).toBe('DEFINITION_VALIDATION_FAILED');
@@ -77,7 +77,7 @@ steps:
     config:
       duration: 0
 `;
-    const result = await runWorkflowFromContent(yaml, 'test.yaml', { dryRun: true });
+    const result = await runSpellFromContent(yaml, 'test.yaml', { dryRun: true });
 
     expect(result.success).toBe(true);
     // Dry run doesn't produce step results
@@ -89,7 +89,7 @@ steps:
 // Runner Bridge
 // ============================================================================
 
-describe('bridgeRunWorkflow', () => {
+describe('bridgeRunSpell', () => {
   it('should run a spell from content and track it', async () => {
     const yaml = `
 name: bridge-test
@@ -99,24 +99,24 @@ steps:
     config:
       duration: 0
 `;
-    const result = await bridgeRunWorkflow(yaml, 'test.yaml', {});
+    const result = await bridgeRunSpell(yaml, 'test.yaml', {});
 
     expect(result.success).toBe(true);
-    expect(result.workflowId).toMatch(/^wf-\d+$/);
+    expect(result.spellId).toMatch(/^sp-\d+$/);
     // After completion, should no longer be tracked
-    expect(bridgeIsRunning(result.workflowId)).toBe(false);
+    expect(bridgeIsRunning(result.spellId)).toBe(false);
   });
 });
 
-describe('bridgeCancelWorkflow', () => {
+describe('bridgeCancelSpell', () => {
   it('should return false for unknown spell ID', () => {
-    expect(bridgeCancelWorkflow('nonexistent')).toBe(false);
+    expect(bridgeCancelSpell('nonexistent')).toBe(false);
   });
 });
 
-describe('bridgeActiveWorkflows', () => {
+describe('bridgeActiveSpells', () => {
   it('should return empty array when no spells running', () => {
-    expect(bridgeActiveWorkflows()).toEqual([]);
+    expect(bridgeActiveSpells()).toEqual([]);
   });
 });
 
@@ -124,8 +124,8 @@ describe('bridgeActiveWorkflows', () => {
 // #160 — Credentials wired through bridge
 // ============================================================================
 
-describe('#160 — bridgeRunWorkflow credentials parameter', () => {
-  it('bridgeRunWorkflow accepts and passes through credentials option', async () => {
+describe('#160 — bridgeRunSpell credentials parameter', () => {
+  it('bridgeRunSpell accepts and passes through credentials option', async () => {
     const credentials = {
       async get(name: string) { return name === 'TOKEN' ? 'secret-val' : undefined; },
       async has(name: string) { return name === 'TOKEN'; },
@@ -140,8 +140,8 @@ describe('#160 — bridgeRunWorkflow credentials parameter', () => {
       '      command: echo ok',
     ].join('\n');
 
-    const result = await bridgeRunWorkflow(yaml, undefined, {}, { credentials });
-    expect(result.workflowId).toBeDefined();
+    const result = await bridgeRunSpell(yaml, undefined, {}, { credentials });
+    expect(result.spellId).toBeDefined();
     expect(result.success).toBe(true);
   });
 });

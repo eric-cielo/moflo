@@ -1,13 +1,13 @@
 /**
  * Variable Interpolation
  *
- * Resolves `{stepId.outputKey}` placeholders in workflow step configs.
+ * Resolves `{stepId.outputKey}` placeholders in spell step configs.
  * Nested property access is supported: `{step1.data.nested.value}`.
  */
 
 import type { CastingContext } from '../types/step-command.types.js';
 
-/** Matches `{path}` variable references in workflow step configs. */
+/** Matches `{path}` variable references in spell step configs. */
 export const VAR_REF_PATTERN = /\{([^}]+)\}/g;
 
 /**
@@ -137,7 +137,7 @@ export function interpolateConfig(
 // Object sanitization (prototype pollution prevention)
 // ============================================================================
 
-/** Keys that must never appear in parsed workflow objects. */
+/** Keys that must never appear in parsed spell objects. */
 const POISONED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 /**

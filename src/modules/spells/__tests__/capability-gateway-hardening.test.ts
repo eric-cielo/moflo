@@ -15,17 +15,17 @@ import {
   DenyAllGateway,
   DENY_ALL_GATEWAY,
   discloseStep,
-  discloseWorkflow,
+  discloseSpell,
   formatStepDisclosure,
-  formatWorkflowDisclosure,
+  formatSpellDisclosure,
   type ICapabilityGateway,
 } from '../src/core/capability-gateway.js';
 import {
   discloseStep as disclosureDiscloseStep,
-  discloseWorkflow as disclosureDiscloseWorkflow,
+  discloseSpell as disclosureDiscloseSpell,
 } from '../src/core/capability-disclosure.js';
 import { GatedConnectorAccessor } from '../src/core/gated-connector-accessor.js';
-import type { ConnectorAccessor, ConnectorOutput } from '../src/types/workflow-connector.types.js';
+import type { ConnectorAccessor, ConnectorOutput } from '../src/types/spell-connector.types.js';
 import type { StepCapability } from '../src/types/step-command.types.js';
 import { ALLOW_ALL_GATEWAY } from './helpers.js';
 
@@ -156,7 +156,7 @@ describe('#267 — Disclosure extraction', () => {
   it('should re-export disclosure functions from capability-gateway', () => {
     // Verify re-exports work and match the dedicated module
     expect(discloseStep).toBe(disclosureDiscloseStep);
-    expect(discloseWorkflow).toBe(disclosureDiscloseWorkflow);
+    expect(discloseSpell).toBe(disclosureDiscloseSpell);
   });
 
   it('discloseStep returns granted and denied capabilities', () => {
@@ -168,12 +168,12 @@ describe('#267 — Disclosure extraction', () => {
     expect(summary.denied).not.toContain('shell');
   });
 
-  it('discloseWorkflow aggregates across steps', () => {
+  it('discloseSpell aggregates across steps', () => {
     const steps = [
       { name: 'step-1', caps: [{ type: 'shell' as const }] },
       { name: 'step-2', caps: [{ type: 'net' as const }, { type: 'shell' as const }] },
     ];
-    const summary = discloseWorkflow('test-wf', steps);
+    const summary = discloseSpell('test-wf', steps);
     expect(summary.stepCount).toBe(2);
     expect(summary.aggregate.get('shell')).toEqual(['step-1', 'step-2']);
     expect(summary.aggregate.get('net')).toEqual(['step-2']);
@@ -187,11 +187,11 @@ describe('#267 — Disclosure extraction', () => {
     expect(text).toContain('Execute shell commands');
   });
 
-  it('formatWorkflowDisclosure produces readable output', () => {
-    const summary = discloseWorkflow('wf', [
+  it('formatSpellDisclosure produces readable output', () => {
+    const summary = discloseSpell('wf', [
       { name: 's1', caps: [{ type: 'shell' }] },
     ]);
-    const text = formatWorkflowDisclosure(summary);
+    const text = formatSpellDisclosure(summary);
     expect(text).toContain('shell');
     expect(text).toContain('s1');
   });

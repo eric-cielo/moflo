@@ -1,12 +1,12 @@
 /**
  * Credential Masker
  *
- * Masks and scans for credential values in workflow step outputs.
+ * Masks and scans for credential values in spell step outputs.
  * Extracted from SpellCaster (Issue #182).
  */
 
 import type { StepOutput, StepCommand } from '../types/step-command.types.js';
-import type { StepDefinition } from '../types/workflow-definition.types.js';
+import type { StepDefinition } from '../types/spell-definition.types.js';
 
 /** Minimum credential length to redact (avoids false-positive redaction). */
 export const MIN_REDACT_LENGTH = 4;

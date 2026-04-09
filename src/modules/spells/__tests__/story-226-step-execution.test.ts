@@ -12,7 +12,7 @@ import { SpellConnectorRegistry } from '../src/registry/connector-registry.js';
 import { createMockContext, makeCommand } from './helpers.js';
 import type { YamlStepDefinition } from '../src/loaders/yaml-step-loader.js';
 import type { CastingContext } from '../src/types/step-command.types.js';
-import type { ConnectorAccessor, ConnectorOutput } from '../src/types/workflow-connector.types.js';
+import type { ConnectorAccessor, ConnectorOutput } from '../src/types/spell-connector.types.js';
 
 // ============================================================================
 // Composite Command Execution

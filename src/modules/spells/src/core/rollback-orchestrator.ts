@@ -12,7 +12,7 @@ import type {
 import type {
   StepResult,
 } from '../types/runner.types.js';
-import type { StepDefinition } from '../types/workflow-definition.types.js';
+import type { StepDefinition } from '../types/spell-definition.types.js';
 import type { StepCommandRegistry } from './step-command-registry.js';
 
 export interface CompletedStep {

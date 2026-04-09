@@ -40,9 +40,9 @@ export {
 
 export type {
   RunnerOptions,
-  WorkflowResult,
-  WorkflowError,
-  WorkflowErrorCode,
+  SpellResult,
+  SpellError,
+  SpellErrorCode,
   StepResult,
   StepStatus,
   DryRunResult,
@@ -69,12 +69,12 @@ export {
   DenyAllGateway,
   DENY_ALL_GATEWAY,
   discloseStep,
-  discloseWorkflow,
+  discloseSpell,
   formatStepDisclosure,
-  formatWorkflowDisclosure,
+  formatSpellDisclosure,
   type ICapabilityGateway,
   type StepDisclosureSummary,
-  type WorkflowDisclosureSummary,
+  type SpellDisclosureSummary,
 } from './core/capability-gateway.js';
 export {
   collectPrerequisites,
@@ -107,7 +107,7 @@ export {
 } from './commands/create-step-command.js';
 
 // ============================================================================
-// Schema (Workflow Definition)
+// Schema (Spell Definition)
 // ============================================================================
 
 export type {
@@ -115,14 +115,14 @@ export type {
   StepDefinition,
   ArgumentDefinition,
   ArgumentType,
-  ParsedWorkflow,
-} from './types/workflow-definition.types.js';
+  ParsedSpell,
+} from './types/spell-definition.types.js';
 
 export type {
   ScheduleDefinition,
 } from './scheduler/schedule.types.js';
 
-export { parseYaml, parseJson, parseWorkflow } from './schema/parser.js';
+export { parseYaml, parseJson, parseSpell } from './schema/parser.js';
 export { validateSpellDefinition, resolveArguments, type ValidatorOptions } from './schema/validator.js';
 
 // ============================================================================
@@ -131,9 +131,9 @@ export { validateSpellDefinition, resolveArguments, type ValidatorOptions } from
 
 export {
   loadSpellDefinitions,
-  loadWorkflowByName,
+  loadSpellByName,
   type LoaderOptions,
-  type LoadedWorkflow,
+  type LoadedSpell,
   type LoadResult,
   type LoadError,
 } from './loaders/definition-loader.js';
@@ -144,17 +144,17 @@ export {
 
 export {
   createRunner,
-  runWorkflowFromContent,
+  runSpellFromContent,
   type RunnerFactoryOptions,
-  type RunWorkflowOptions,
+  type RunSpellOptions,
 } from './factory/runner-factory.js';
 
 export {
-  bridgeRunWorkflow,
-  bridgeExecuteWorkflow,
-  bridgeCancelWorkflow,
+  bridgeRunSpell,
+  bridgeExecuteSpell,
+  bridgeCancelSpell,
   bridgeIsRunning,
-  bridgeActiveWorkflows,
+  bridgeActiveSpells,
 } from './factory/runner-bridge.js';
 
 // ============================================================================
@@ -164,7 +164,7 @@ export {
 export {
   buildPausedState,
   persistPausedState,
-  resumeWorkflow,
+  resumeSpell,
   cleanupStalePaused,
   type PausedState,
   type ResumeOptions,
@@ -183,7 +183,7 @@ export {
 } from './credentials/credential-store.js';
 
 // ============================================================================
-// Workflow Registry (abbreviation lookup + list/info)
+// Spell Registry (abbreviation lookup + list/info)
 // ============================================================================
 
 export {
@@ -191,9 +191,9 @@ export {
   type RegistryOptions,
   type RegistryResult,
   type AbbreviationCollision,
-  type WorkflowInfo,
-  type WorkflowListEntry,
-} from './registry/workflow-registry.js';
+  type SpellInfo,
+  type SpellListEntry,
+} from './registry/spell-registry.js';
 
 // ============================================================================
 // Scheduler (cron, interval, one-time scheduling)
@@ -214,20 +214,20 @@ export {
 
 export {
   SpellScheduler,
-  type WorkflowExecutor,
+  type SpellExecutor,
   type SchedulerEvent,
   type SchedulerEventType,
   type SchedulerListener,
 } from './scheduler/scheduler.js';
 
 export type {
-  WorkflowSchedule,
+  SpellSchedule,
   ScheduleExecution,
   SchedulerOptions,
 } from './scheduler/schedule.types.js';
 
 // ============================================================================
-// Workflow Connectors (external resource bridges)
+// Spell Connectors (external resource bridges)
 // ============================================================================
 
 export type {
@@ -239,7 +239,7 @@ export type {
   ConnectorAccessor,
   ConnectorRegistryEntry,
   ConnectorSource,
-} from './types/workflow-connector.types.js';
+} from './types/spell-connector.types.js';
 
 export {
   SpellConnectorRegistry,

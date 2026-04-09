@@ -14,7 +14,7 @@ import {
   loadSpellEngine,
   getCachedEngine,
   type EngineModule,
-  type WorkflowResult,
+  type SpellResult,
   type SpellDefinition,
   type Grimoire,
 } from '../services/engine-loader.js';
@@ -49,11 +49,11 @@ const TEMPLATE_ACTION = {
 // ============================================================================
 
 interface TrackedWorkflow {
-  workflowId: string;
+  spellId: string;
   name: string;
   description?: string;
   status: WfStatus;
-  result?: WorkflowResult;
+  result?: SpellResult;
   startedAt: string;
   completedAt?: string;
 }
@@ -68,20 +68,20 @@ function evictOldest(): void {
   if (first) trackedWorkflows.delete(first);
 }
 
-function trackStart(workflowId: string, name: string, description?: string): TrackedWorkflow {
+function trackStart(spellId: string, name: string, description?: string): TrackedWorkflow {
   const tracked: TrackedWorkflow = {
-    workflowId,
+    spellId,
     name,
     description,
     status: WF_STATUS.RUNNING,
     startedAt: new Date().toISOString(),
   };
-  trackedWorkflows.set(workflowId, tracked);
+  trackedWorkflows.set(spellId, tracked);
   evictOldest();
   return tracked;
 }
 
-function trackResult(tracked: TrackedWorkflow, result: WorkflowResult): void {
+function trackResult(tracked: TrackedWorkflow, result: SpellResult): void {
   tracked.status = result.cancelled ? WF_STATUS.CANCELLED : result.success ? WF_STATUS.COMPLETED : WF_STATUS.FAILED;
   tracked.result = result;
   tracked.completedAt = new Date().toISOString();
@@ -93,17 +93,17 @@ async function executeAndTrack(
   definition: SpellDefinition,
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const workflowId = `wf-${Date.now()}`;
-  const tracked = trackStart(workflowId, definition.name, definition.description);
+  const spellId = `wf-${Date.now()}`;
+  const tracked = trackStart(spellId, definition.name, definition.description);
 
   try {
-    const result = await engine.bridgeExecuteWorkflow(definition, args, { workflowId });
+    const result = await engine.bridgeExecuteSpell(definition, args, { spellId });
     trackResult(tracked, result);
     return serializeResult(result);
   } catch (err) {
     tracked.status = WF_STATUS.FAILED;
     tracked.completedAt = new Date().toISOString();
-    return { workflowId, error: errorMsg(err) };
+    return { spellId, error: errorMsg(err) };
   }
 }
 
@@ -159,7 +159,7 @@ function errorMsg(err: unknown): string {
 }
 
 /** Serialize a single step for MCP responses. */
-function serializeStep(s: WorkflowResult['steps'][number]) {
+function serializeStep(s: SpellResult['steps'][number]) {
   return {
     stepId: s.stepId,
     stepType: s.stepType,
@@ -172,14 +172,14 @@ function serializeStep(s: WorkflowResult['steps'][number]) {
 }
 
 /** Count succeeded steps in a result. */
-function countCompleted(result: WorkflowResult): number {
+function countCompleted(result: SpellResult): number {
   return result.steps.filter(s => s.status === 'succeeded').length;
 }
 
-/** Serialize a WorkflowResult for MCP response (typed errors, step details). */
-function serializeResult(result: WorkflowResult): Record<string, unknown> {
+/** Serialize a SpellResult for MCP response (typed errors, step details). */
+function serializeResult(result: SpellResult): Record<string, unknown> {
   return {
-    workflowId: result.workflowId,
+    spellId: result.spellId,
     success: result.success,
     cancelled: result.cancelled,
     duration: result.duration,
@@ -254,8 +254,8 @@ export const spellTools: MCPTool[] = [
 
       // Run from raw content via bridge
       const engine = await loadSpellEngine();
-      const result = await engine.bridgeRunWorkflow(content, sourceFile, args, { dryRun });
-      const tracked = trackStart(result.workflowId, workflowName);
+      const result = await engine.bridgeRunSpell(content, sourceFile, args, { dryRun });
+      const tracked = trackStart(result.spellId, workflowName);
       trackResult(tracked, result);
       return serializeResult(result);
     },
@@ -344,7 +344,7 @@ export const spellTools: MCPTool[] = [
       if (input.dryRun) {
         const engine = await loadSpellEngine();
         const content = JSON.stringify(definition);
-        const result = await engine.runWorkflowFromContent(content, undefined, {
+        const result = await engine.runSpellFromContent(content, undefined, {
           dryRun: true,
           args,
         });
@@ -366,25 +366,25 @@ export const spellTools: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Spell invocation ID' },
+        spellId: { type: 'string', description: 'Spell invocation ID' },
         verbose: { type: 'boolean', description: 'Include step details in the scrying' },
       },
-      required: ['workflowId'],
+      required: ['spellId'],
     },
     handler: async (input) => {
-      const workflowId = input.workflowId as string;
-      const tracked = trackedWorkflows.get(workflowId);
+      const spellId = input.spellId as string;
+      const tracked = trackedWorkflows.get(spellId);
 
       // Only check engine if it's already loaded (avoid unnecessary dynamic import)
-      const isRunning = getCachedEngine()?.bridgeIsRunning(workflowId) ?? false;
+      const isRunning = getCachedEngine()?.bridgeIsRunning(spellId) ?? false;
 
       if (!tracked && !isRunning) {
-        return { workflowId, error: 'Spell invocation not found' };
+        return { spellId, error: 'Spell invocation not found' };
       }
 
       if (isRunning) {
         return {
-          workflowId,
+          spellId,
           status: WF_STATUS.RUNNING,
           name: tracked?.name,
           startedAt: tracked?.startedAt,
@@ -392,11 +392,11 @@ export const spellTools: MCPTool[] = [
       }
 
       if (!tracked) {
-        return { workflowId, status: 'unknown' as const };
+        return { spellId, status: 'unknown' as const };
       }
 
       const response: Record<string, unknown> = {
-        workflowId: tracked.workflowId,
+        spellId: tracked.spellId,
         name: tracked.name,
         status: tracked.status,
         startedAt: tracked.startedAt,
@@ -466,7 +466,7 @@ export const spellTools: MCPTool[] = [
         }
         runs.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
         result.runs = runs.slice(0, limit).map(r => ({
-          workflowId: r.workflowId,
+          spellId: r.spellId,
           name: r.name,
           status: r.status,
           startedAt: r.startedAt,
@@ -477,7 +477,7 @@ export const spellTools: MCPTool[] = [
       // Also include currently running workflows from the engine
       try {
         const engine = await loadSpellEngine();
-        result.activeWorkflows = engine.bridgeActiveWorkflows();
+        result.activeWorkflows = engine.bridgeActiveSpells();
       } catch {
         result.activeWorkflows = [];
       }
@@ -496,22 +496,22 @@ export const spellTools: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Spell invocation ID' },
+        spellId: { type: 'string', description: 'Spell invocation ID' },
       },
-      required: ['workflowId'],
+      required: ['spellId'],
     },
     handler: async (input) => {
-      const workflowId = input.workflowId as string;
+      const spellId = input.spellId as string;
       const engine = await loadSpellEngine();
 
-      if (!engine.bridgeIsRunning(workflowId)) {
-        return { workflowId, error: 'Spell not currently active' };
+      if (!engine.bridgeIsRunning(spellId)) {
+        return { spellId, error: 'Spell not currently active' };
       }
 
       // Engine doesn't support pause — cancel via AbortController
-      const cancelled = engine.bridgeCancelWorkflow(workflowId);
+      const cancelled = engine.bridgeCancelSpell(spellId);
       if (cancelled) {
-        const tracked = trackedWorkflows.get(workflowId);
+        const tracked = trackedWorkflows.get(spellId);
         if (tracked) {
           tracked.status = WF_STATUS.CANCELLED;
           tracked.completedAt = new Date().toISOString();
@@ -519,7 +519,7 @@ export const spellTools: MCPTool[] = [
       }
 
       return {
-        workflowId,
+        spellId,
         status: cancelled ? WF_STATUS.CANCELLED : 'not_found',
         note: 'Spells cannot be suspended mid-cast — dispelled instead. Use spell_cast to re-invoke.',
       };
@@ -536,28 +536,28 @@ export const spellTools: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Spell invocation ID of a previously tracked spell' },
+        spellId: { type: 'string', description: 'Spell invocation ID of a previously tracked spell' },
         args: { type: 'object', description: 'Override reagents for the re-cast' },
       },
-      required: ['workflowId'],
+      required: ['spellId'],
     },
     handler: async (input) => {
-      const workflowId = input.workflowId as string;
-      const tracked = trackedWorkflows.get(workflowId);
+      const spellId = input.spellId as string;
+      const tracked = trackedWorkflows.get(spellId);
 
       if (!tracked) {
-        return { workflowId, error: 'Spell not found in tracked castings' };
+        return { spellId, error: 'Spell not found in tracked castings' };
       }
 
       if (!tracked.result) {
-        return { workflowId, error: 'No previous result to resume from' };
+        return { spellId, error: 'No previous result to resume from' };
       }
 
       // Re-run the workflow from scratch
       // Note: The engine's runner supports initialVariables for paused-state resume,
       // but MCP tools don't currently persist paused definitions. This re-runs from start.
       return {
-        workflowId,
+        spellId,
         note: 'Mid-spell resume is not yet supported. Use spell_cast to re-invoke the spell.',
         previousStatus: tracked.status,
         previousResult: {
@@ -579,25 +579,25 @@ export const spellTools: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Spell invocation ID' },
+        spellId: { type: 'string', description: 'Spell invocation ID' },
         reason: { type: 'string', description: 'Reason for dispelling' },
       },
-      required: ['workflowId'],
+      required: ['spellId'],
     },
     handler: async (input) => {
-      const workflowId = input.workflowId as string;
+      const spellId = input.spellId as string;
       const engine = await loadSpellEngine();
 
-      const cancelled = engine.bridgeCancelWorkflow(workflowId);
+      const cancelled = engine.bridgeCancelSpell(spellId);
 
       if (cancelled) {
-        const tracked = trackedWorkflows.get(workflowId);
+        const tracked = trackedWorkflows.get(spellId);
         if (tracked) {
           tracked.status = WF_STATUS.CANCELLED;
           tracked.completedAt = new Date().toISOString();
         }
         return {
-          workflowId,
+          spellId,
           status: WF_STATUS.CANCELLED,
           cancelledAt: new Date().toISOString(),
           reason: (input.reason as string) ?? 'Cancelled by user',
@@ -605,12 +605,12 @@ export const spellTools: MCPTool[] = [
       }
 
       // Check if it's a tracked but already finished workflow
-      const tracked = trackedWorkflows.get(workflowId);
+      const tracked = trackedWorkflows.get(spellId);
       if (tracked) {
-        return { workflowId, error: `Spell already ${tracked.status}` };
+        return { spellId, error: `Spell already ${tracked.status}` };
       }
 
-      return { workflowId, error: 'Spell invocation not found' };
+      return { spellId, error: 'Spell invocation not found' };
     },
   },
 
@@ -624,21 +624,21 @@ export const spellTools: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        workflowId: { type: 'string', description: 'Spell invocation ID' },
+        spellId: { type: 'string', description: 'Spell invocation ID' },
       },
-      required: ['workflowId'],
+      required: ['spellId'],
     },
     handler: async (input) => {
-      const workflowId = input.workflowId as string;
+      const spellId = input.spellId as string;
 
       // Only check engine if already loaded (avoid unnecessary dynamic import)
-      if (getCachedEngine()?.bridgeIsRunning(workflowId)) {
-        return { workflowId, error: 'Cannot delete an active spell — dispel it first' };
+      if (getCachedEngine()?.bridgeIsRunning(spellId)) {
+        return { spellId, error: 'Cannot delete an active spell — dispel it first' };
       }
 
-      const existed = trackedWorkflows.delete(workflowId);
+      const existed = trackedWorkflows.delete(spellId);
       return {
-        workflowId,
+        spellId,
         deleted: existed,
         deletedAt: existed ? new Date().toISOString() : undefined,
       };

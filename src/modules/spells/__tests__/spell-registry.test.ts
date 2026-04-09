@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { Grimoire } from '../src/registry/workflow-registry.js';
+import { Grimoire } from '../src/registry/spell-registry.js';
 
 // ============================================================================
 // Fixtures
@@ -111,20 +111,20 @@ afterEach(() => {
 
 describe('Grimoire — discovery', () => {
   it('should discover and register spells from directories', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'security-audit.yaml', SECURITY_AUDIT);
     writeYaml(dir, 'doc-generation.yaml', DOC_GENERATION);
 
     const registry = new Grimoire({ userDirs: [dir], skipValidation: true });
     const result = registry.load();
 
-    expect(result.workflows.size).toBe(2);
+    expect(result.spells.size).toBe(2);
     expect(result.errors).toHaveLength(0);
     expect(result.collisions).toHaveLength(0);
   });
 
   it('should build abbreviation map from spell frontmatter', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'security-audit.yaml', SECURITY_AUDIT);
     writeYaml(dir, 'doc-generation.yaml', DOC_GENERATION);
 
@@ -137,13 +137,13 @@ describe('Grimoire — discovery', () => {
   });
 
   it('should handle spells without abbreviation', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'lint-check.yaml', LINT_CHECK);
 
     const registry = new Grimoire({ userDirs: [dir], skipValidation: true });
     const result = registry.load();
 
-    expect(result.workflows.size).toBe(1);
+    expect(result.spells.size).toBe(1);
     expect(result.abbreviations.size).toBe(0);
   });
 });
@@ -154,7 +154,7 @@ describe('Grimoire — discovery', () => {
 
 describe('Grimoire — resolve', () => {
   it('should resolve by full name', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'security-audit.yaml', SECURITY_AUDIT);
 
     const registry = new Grimoire({ userDirs: [dir], skipValidation: true });
@@ -166,7 +166,7 @@ describe('Grimoire — resolve', () => {
   });
 
   it('should resolve by abbreviation', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'security-audit.yaml', SECURITY_AUDIT);
 
     const registry = new Grimoire({ userDirs: [dir], skipValidation: true });
@@ -178,7 +178,7 @@ describe('Grimoire — resolve', () => {
   });
 
   it('should return undefined for unknown query', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'security-audit.yaml', SECURITY_AUDIT);
 
     const registry = new Grimoire({ userDirs: [dir], skipValidation: true });
@@ -188,7 +188,7 @@ describe('Grimoire — resolve', () => {
   });
 
   it('should auto-load on first resolve if not loaded', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'security-audit.yaml', SECURITY_AUDIT);
 
     const registry = new Grimoire({ userDirs: [dir], skipValidation: true });
@@ -205,7 +205,7 @@ describe('Grimoire — resolve', () => {
 
 describe('Grimoire — collision detection', () => {
   it('should detect duplicate abbreviations', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'spell-a.yaml', COLLISION_1);
     writeYaml(dir, 'spell-b.yaml', COLLISION_2);
 
@@ -214,12 +214,12 @@ describe('Grimoire — collision detection', () => {
 
     expect(result.collisions).toHaveLength(1);
     expect(result.collisions[0].abbreviation).toBe('dup');
-    expect(result.collisions[0].workflows).toContain('spell-a');
-    expect(result.collisions[0].workflows).toContain('spell-b');
+    expect(result.collisions[0].spells).toContain('spell-a');
+    expect(result.collisions[0].spells).toContain('spell-b');
   });
 
   it('should not include colliding abbreviations in abbreviation map', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'spell-a.yaml', COLLISION_1);
     writeYaml(dir, 'spell-b.yaml', COLLISION_2);
 
@@ -230,7 +230,7 @@ describe('Grimoire — collision detection', () => {
   });
 
   it('should still allow full name resolution for colliding spells', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'spell-a.yaml', COLLISION_1);
     writeYaml(dir, 'spell-b.yaml', COLLISION_2);
 
@@ -249,7 +249,7 @@ describe('Grimoire — collision detection', () => {
 
 describe('Grimoire — list', () => {
   it('should list all spells sorted by name', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'security-audit.yaml', SECURITY_AUDIT);
     writeYaml(dir, 'doc-generation.yaml', DOC_GENERATION);
     writeYaml(dir, 'lint-check.yaml', LINT_CHECK);
@@ -290,7 +290,7 @@ describe('Grimoire — list', () => {
 
 describe('Grimoire — info', () => {
   it('should return detailed info by name', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'security-audit.yaml', SECURITY_AUDIT);
 
     const registry = new Grimoire({ userDirs: [dir], skipValidation: true });
@@ -309,7 +309,7 @@ describe('Grimoire — info', () => {
   });
 
   it('should return detailed info by abbreviation', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'security-audit.yaml', SECURITY_AUDIT);
 
     const registry = new Grimoire({ userDirs: [dir], skipValidation: true });
@@ -321,7 +321,7 @@ describe('Grimoire — info', () => {
   });
 
   it('should return undefined for unknown query', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
 
     const registry = new Grimoire({ userDirs: [dir], skipValidation: true });
     registry.load();
@@ -330,7 +330,7 @@ describe('Grimoire — info', () => {
   });
 
   it('should count nested steps', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'nested.yaml', `
 name: nested-spell
 steps:
@@ -367,7 +367,7 @@ steps:
 
 describe('Grimoire — cache', () => {
   it('should cache results after first load', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'sa.yaml', SECURITY_AUDIT);
 
     const registry = new Grimoire({ userDirs: [dir], skipValidation: true });
@@ -381,7 +381,7 @@ describe('Grimoire — cache', () => {
   });
 
   it('should reload after invalidate()', () => {
-    const dir = makeDir('workflows');
+    const dir = makeDir('spells');
     writeYaml(dir, 'sa.yaml', SECURITY_AUDIT);
 
     const registry = new Grimoire({ userDirs: [dir], skipValidation: true });
@@ -412,7 +412,7 @@ describe('Grimoire — extraDirs', () => {
     });
     const result = registry.load();
 
-    expect(result.workflows.size).toBe(2);
+    expect(result.spells.size).toBe(2);
   });
 });
 
@@ -429,7 +429,7 @@ describe('Grimoire — does not affect existing /flo behavior', () => {
     });
 
     const result = registry.load();
-    expect(result.workflows.size).toBe(0);
+    expect(result.spells.size).toBe(0);
     expect(result.abbreviations.size).toBe(0);
     expect(result.collisions).toHaveLength(0);
     expect(result.errors).toHaveLength(0);

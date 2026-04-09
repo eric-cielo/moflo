@@ -57,7 +57,7 @@ function makeContext(overrides?: Partial<CastingContext>): CastingContext {
       search: async () => [],
     } as MemoryAccessor,
     taskId: 'test-task',
-    workflowId: 'test-wf',
+    spellId: 'test-wf',
     stepIndex: 0,
     gateway: ALLOW_ALL_GATEWAY,
     ...overrides,

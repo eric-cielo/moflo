@@ -12,7 +12,7 @@ import {
   formatViolations,
 } from '../src/core/capability-validator.js';
 import type { StepCommand, StepCapability } from '../src/types/step-command.types.js';
-import type { StepDefinition } from '../src/types/workflow-definition.types.js';
+import type { StepDefinition } from '../src/types/spell-definition.types.js';
 import { bashCommand } from '../src/commands/bash-command.js';
 import { agentCommand } from '../src/commands/agent-command.js';
 import { memoryCommand } from '../src/commands/memory-command.js';

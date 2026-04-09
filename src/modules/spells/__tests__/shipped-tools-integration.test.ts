@@ -32,7 +32,7 @@ describe('shipped connectors integration', () => {
   it('createRunner auto-registers http, github-cli, and playwright connectors', () => {
     const runner = createRunner();
     // The runner is created — we need to verify the connector registry it uses.
-    // Since the runner is opaque, test via a workflow that accesses connectors.
+    // Since the runner is opaque, test via a spell that accesses connectors.
     expect(runner).toBeDefined();
   });
 
