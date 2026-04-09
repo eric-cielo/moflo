@@ -29,6 +29,7 @@ import {
   resolveMofloLevel,
 } from './capability-validator.js';
 import { collectPrerequisites, checkPrerequisites } from './prerequisite-checker.js';
+import { analyzeStepPermissions, analyzeSpellPermissions } from './permission-disclosure.js';
 
 /** Invariant context shared across all `dryRunValidateStep` calls within a single dry-run. */
 interface DryRunEnv {
@@ -103,6 +104,9 @@ async function dryRunValidateStep(
         .filter((r): r is NonNullable<typeof r> => r !== undefined)
     : undefined;
 
+  // Analyze permissions for this step
+  const permReport = analyzeStepPermissions(step, env.registry);
+
   return {
     stepId: step.id,
     stepType: step.type,
@@ -113,6 +117,10 @@ async function dryRunValidateStep(
     hasRollback: command?.rollback !== undefined,
     mofloLevel,
     prerequisiteResults,
+    permissionLevel: permReport.permissionLevel,
+    resolvedPermissions: permReport.resolved,
+    riskLevel: permReport.riskLevel,
+    permissionWarnings: permReport.warnings,
   };
 }
 
@@ -186,10 +194,15 @@ export async function dryRunValidate(
     argErrors.length === 0 &&
     stepReports.every(s => s.validationResult.valid);
 
+  // Compute spell-level permission summary
+  const spellPermissions = analyzeSpellPermissions(definition, registry);
+
   return {
     valid: allValid,
     argumentErrors: argErrors,
     definitionErrors: defValidation.errors,
     steps: stepReports,
+    permissionHash: spellPermissions.permissionHash,
+    overallRisk: spellPermissions.overallRisk,
   };
 }

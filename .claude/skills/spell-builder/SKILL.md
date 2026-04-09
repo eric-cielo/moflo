@@ -81,8 +81,55 @@ Walk the user through adding steps one at a time. For each step, collect:
 | **Output** | Optional | Variable name to store step output (for downstream steps) |
 | **Continue on Error** | Optional | `true` to proceed even if this step fails |
 | **MoFlo Level** | Optional | Override spell-level mofloLevel (can only narrow, not escalate) |
+| **Permission Level** | Optional | `readonly`, `standard`, `elevated`, `autonomous` — controls Claude CLI tools when this step spawns a sub-agent. Auto-derived from capabilities when omitted. |
 
 **Data flow between steps:** Use `{stepId.outputKey}` syntax to reference output from a previous step. For example, if step `fetch-data` outputs a `url` field, a later step can use `{fetch-data.url}` in its config.
+
+#### REQUIRED: Permission Disclosure on Step Creation
+
+**After defining each step, you MUST display its permission requirements.** This is not optional — users must understand what each step can do before it becomes part of a spell.
+
+For each step, determine and display:
+
+1. **Permission level** — derived from capabilities or explicit `permissionLevel`:
+   - `readonly` (Read, Glob, Grep) — safe, analysis only
+   - `standard` (Edit, Write, Read, Glob, Grep) — can modify files
+   - `elevated` (Edit, Write, Bash, Read, Glob, Grep) — can run shell commands
+   - `autonomous` (all tools) — unrestricted, requires explicit opt-in
+
+2. **Risk classification** — based on the step's capabilities:
+   - **[SAFE]** — `fs:read`, `memory` only — no side effects
+   - **[SENSITIVE]** — `agent`, `net`, `browser` — can read external data or spawn processes
+   - **[DESTRUCTIVE]** — `shell`, `fs:write`, `browser:evaluate`, `credentials` — can permanently modify/delete data
+
+3. **Specific warnings** — for each destructive or sensitive capability, explain:
+   - `shell`: "Can execute arbitrary shell commands (rm, git push, etc.)"
+   - `fs:write`: "Can create, overwrite, or delete files on disk"
+   - `credentials`: "Can access stored secrets and API keys"
+   - `agent`: "Can spawn autonomous Claude sub-agents"
+   - `net`: "Can make network requests to external services"
+
+**Display format (show after every step definition):**
+
+```
+Permissions for step "deploy-code":
+  [DESTRUCTIVE] deploy-code (bash)
+    Permission level: elevated
+    Allowed tools: Edit, Write, Bash, Read, Glob, Grep
+    Warnings:
+      !! shell: Can execute arbitrary shell commands (rm, git push, etc.)
+      !! fs:write: Can create, overwrite, or delete files on disk
+```
+
+If the step is safe, still display the permissions but with a reassuring tone:
+
+```
+Permissions for step "analyze-logs":
+  [SAFE] analyze-logs (bash)
+    Permission level: readonly
+    Allowed tools: Read, Glob, Grep
+    No destructive capabilities.
+```
 
 **Special variable references:**
 - `{args.name}` — references a spell argument
@@ -132,8 +179,53 @@ Before writing the file, validate it against the engine schema. The following ru
 8. Step-level `mofloLevel` cannot exceed the spell-level `mofloLevel`
 9. No **circular condition jumps** (condition steps referencing each other in a loop)
 10. **Argument definitions** must have valid types, and defaults must match their declared type
+11. **`permissionLevel`** (if declared) must be one of: `readonly`, `standard`, `elevated`, `autonomous`
 
 If validation fails, show the specific errors and guide the user to fix them.
+
+### Step 5b: REQUIRED — Permission Dry-Run Report
+
+**After schema validation passes, you MUST display a full permission report for the spell.** This is mandatory for new spells and updated spells — users must see and accept the permission profile before the spell can be run.
+
+Display the report in this format:
+
+```
+Permission Report: <spell-name>
+Overall risk: [DESTRUCTIVE] destructive
+Permission hash: a1b2c3d4e5f6g7h8
+
+  [SAFE] fetch-config (bash)
+    Permission level: readonly
+    Allowed tools: Read, Glob, Grep
+
+  [DESTRUCTIVE] implement-story (bash)
+    Permission level: elevated
+    Allowed tools: Edit, Write, Bash, Read, Glob, Grep
+    Warnings:
+      !! shell: Can execute arbitrary shell commands (rm, git push, etc.)
+      !! fs:write: Can create, overwrite, or delete files on disk
+
+  [SENSITIVE] analyze-results (agent)
+    Permission level: standard
+    Allowed tools: Edit, Write, Read, Glob, Grep
+    Warnings:
+      ! agent: Can spawn autonomous Claude sub-agents
+
+--- DESTRUCTIVE STEPS ---
+1 step(s) can make destructive changes:
+  - implement-story: shell, fs:write
+
+These steps can modify files, run shell commands, or access credentials.
+Review the spell definition before accepting.
+```
+
+**After showing the report, ask the user:**
+
+> The spell requires the permissions shown above. Do you accept? (y/n)
+
+If the user accepts, the permission hash is stored and subsequent runs will not prompt again (unless the spell's permissions change).
+
+**Regular runs** (not dry-runs) do NOT show this verbose permission output — they just run quietly. The acceptance gate checks the stored hash and only blocks if it doesn't match.
 
 ### Step 6: Write the File
 
@@ -181,6 +273,8 @@ Support these edit operations:
 | **Update metadata** | Change name, description, version, abbreviation, mofloLevel |
 
 After each change, re-validate the definition and show any errors introduced.
+
+**REQUIRED: When adding or modifying a step, display its permission report** (same format as Section 1, Step 3 — Permission Disclosure on Step Creation). If the change introduces new destructive capabilities or raises the permission level, explicitly call this out to the user.
 
 ### Step 4: Save
 

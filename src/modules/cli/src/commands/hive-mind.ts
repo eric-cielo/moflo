@@ -13,6 +13,7 @@ import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { spawn as childSpawn, execSync } from 'child_process';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { resolvePermissions } from '../../../spells/src/core/permission-resolver.js';
 
 // Worker type definitions for prompt generation
 interface HiveWorker {
@@ -251,13 +252,16 @@ async function spawnClaudeCodeInstance(
         output.printInfo('Running in non-interactive mode');
       }
 
-      // Add auto-permission flag unless explicitly disabled
-      const skipPermissions = flags['dangerously-skip-permissions'] !== false && !flags['no-auto-permissions'];
-      if (skipPermissions) {
-        claudeArgs.push('--dangerously-skip-permissions');
-        if (!isNonInteractive) {
-          output.printWarning('Using --dangerously-skip-permissions for seamless hive-mind execution');
-        }
+      // Resolve least-privilege permissions for Claude CLI invocation.
+      // Defaults to 'elevated' (Edit, Write, Bash, Read, Glob, Grep) unless
+      // explicitly set to 'autonomous' via flag. Non-interactive mode is
+      // required for headless execution, so --dangerously-skip-permissions
+      // is always included — but --allowedTools restricts the blast radius.
+      const noAutoPerms = flags['no-auto-permissions'];
+      if (!noAutoPerms) {
+        const permLevel = flags['permission-level'] ?? 'elevated';
+        const resolved = resolvePermissions(permLevel);
+        claudeArgs.push(...resolved.cliArgs);
       }
 
       // Add the prompt as the LAST argument
@@ -339,7 +343,7 @@ async function spawnClaudeCodeInstance(
         'Install Claude Code: npm install -g @anthropic-ai/claude-code',
         `Run with saved prompt: claude < ${promptFile}`,
         `Or copy manually: cat ${promptFile} | claude`,
-        `With auto-permissions: claude --dangerously-skip-permissions < ${promptFile}`
+        `With auto-permissions: claude --allowedTools Edit,Write,Bash,Read,Glob,Grep < ${promptFile}`
       ]);
 
       return { success: true, promptFile };
@@ -542,14 +546,14 @@ const spawnCommand: Command = {
       type: 'string'
     },
     {
-      name: 'dangerously-skip-permissions',
-      description: 'Skip permission prompts in Claude Code (use with caution)',
-      type: 'boolean',
-      default: true
+      name: 'permission-level',
+      description: 'Permission level for Claude: readonly, standard, elevated (default), autonomous',
+      type: 'string',
+      default: 'elevated'
     },
     {
       name: 'no-auto-permissions',
-      description: 'Disable automatic permission skipping',
+      description: 'Disable automatic permission handling (Claude will prompt for each action)',
       type: 'boolean',
       default: false
     },

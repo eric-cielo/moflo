@@ -5,6 +5,7 @@
  */
 
 import type { CapabilityType, MofloLevel } from './step-command.types.js';
+import type { PermissionLevel } from '../core/permission-resolver.js';
 import type { ScheduleDefinition } from '../scheduler/schedule.types.js';
 
 // ============================================================================
@@ -37,6 +38,16 @@ export interface StepDefinition {
   readonly capabilities?: Partial<Record<CapabilityType, readonly string[]>>;
   /** MoFlo integration level — controls access to memory, hooks, swarms, nested spells. */
   readonly mofloLevel?: MofloLevel;
+  /**
+   * Permission level for Claude CLI invocations spawned by this step.
+   * Controls --allowedTools to enforce least-privilege:
+   *   readonly   → Read,Glob,Grep
+   *   standard   → Edit,Write,Read,Glob,Grep
+   *   elevated   → Edit,Write,Bash,Read,Glob,Grep
+   *   autonomous → no tool restriction (explicit opt-in only)
+   * When omitted, derived automatically from the step's capabilities.
+   */
+  readonly permissionLevel?: PermissionLevel;
 }
 
 // ============================================================================

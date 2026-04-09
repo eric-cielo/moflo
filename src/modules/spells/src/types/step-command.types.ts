@@ -107,6 +107,8 @@ export interface CastingContext {
   readonly tools?: import('./spell-connector.types.js').ConnectorAccessor;
   /** Capability gateway for structural enforcement (Issue #258, #266 — non-optional). */
   readonly gateway: import('../core/capability-gateway.js').ICapabilityGateway;
+  /** Permission level declared on the step definition (controls Claude CLI invocation flags). */
+  readonly permissionLevel?: import('../core/permission-resolver.js').PermissionLevel;
 }
 
 // ============================================================================

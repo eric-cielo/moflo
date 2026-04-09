@@ -17,6 +17,7 @@ import type {
 } from '../types/step-command.types.js';
 import { shellInterpolateString } from '../core/interpolation.js';
 import { enforceScope, formatViolations } from '../core/capability-validator.js';
+import { resolvePermissions, type PermissionLevel } from '../core/permission-resolver.js';
 
 /** Typed config for the bash step command. */
 export interface BashStepConfig extends StepConfig {
@@ -57,9 +58,16 @@ export const bashCommand: StepCommand<BashStepConfig> = {
 
   async execute(config: BashStepConfig, context: CastingContext): Promise<StepOutput> {
     const start = Date.now();
-    const command = shellInterpolateString(config.command, context);
+    let command = shellInterpolateString(config.command, context);
     const timeout = config.timeout ?? 30000;
     const failOnError = config.failOnError !== false;
+
+    // ── Least-privilege Claude CLI permission injection ──────────────
+    // When the command spawns `claude -p`, replace any hardcoded permission
+    // flags with the resolver's output based on the step's permissionLevel
+    // (or derive from capabilities). This ensures least-privilege even if
+    // the YAML author forgot to restrict tools.
+    command = applyClaudePermissions(command, context.permissionLevel, context.effectiveCaps);
 
     // ── Scope enforcement (#258, #266 — gateway always present) ────────
     try {
@@ -267,6 +275,44 @@ function resolveGitBash(): string {
   // Fallback: hope PATH has Git Bash first
   _cachedGitBash = 'bash';
   return 'bash';
+}
+
+// ── Least-privilege Claude CLI permission rewriting ─────────────────
+
+/**
+ * Detect `claude` invocations in a bash command and ensure they use the
+ * permission resolver's output. Strips any existing --dangerously-skip-permissions
+ * and --allowedTools flags, then injects the resolver's flags.
+ *
+ * Only rewrites commands that contain `claude` followed by `-p` (headless mode).
+ * Interactive Claude invocations are left untouched.
+ */
+const CLAUDE_HEADLESS_RE = /\bclaude\b[^|;&]*\s-p\s/;
+const EXISTING_PERM_FLAGS_RE = /\s*--dangerously-skip-permissions\b/g;
+const EXISTING_ALLOWED_TOOLS_RE = /\s*--allowedTools\s+[^\s]+/g;
+
+function applyClaudePermissions(
+  command: string,
+  explicitLevel?: PermissionLevel | string,
+  capabilities?: readonly StepCapability[],
+): string {
+  if (!CLAUDE_HEADLESS_RE.test(command)) return command;
+
+  const resolved = resolvePermissions(explicitLevel, capabilities);
+
+  // Strip existing permission flags
+  let rewritten = command
+    .replace(EXISTING_PERM_FLAGS_RE, '')
+    .replace(EXISTING_ALLOWED_TOOLS_RE, '');
+
+  // Inject resolved flags right after `claude`
+  const injectedArgs = resolved.cliArgs.join(' ');
+  rewritten = rewritten.replace(/\bclaude\b/, `claude ${injectedArgs}`);
+
+  // Clean up any double spaces introduced by stripping
+  rewritten = rewritten.replace(/ {2,}/g, ' ');
+
+  return rewritten;
 }
 
 // ── Best-effort path extraction for scope enforcement ────────────────────
