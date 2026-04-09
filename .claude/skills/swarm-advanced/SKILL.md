@@ -28,7 +28,7 @@ claude mcp add moflo npx moflo mcp start
 mcp__moflo__swarm_init({ topology: "mesh", maxAgents: 6 })
 
 // 2. Spawn specialized agents
-mcp__moflo__agent_spawn({ type: "researcher", name: "Agent 1" })
+mcp__moflo__agent_spawn({ type: "researcher", name: "swarm-advanced" })
 
 // 3. Orchestrate tasks
 mcp__moflo__task_orchestrate({ task: "...", strategy: "parallel" })

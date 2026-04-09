@@ -80,7 +80,7 @@ npx ruv-swarm github board-init \
 ```javascript
 // Initialize issue management swarm
 mcp__moflo__swarm_init { topology: "star", maxAgents: 3 }
-mcp__moflo__agent_spawn { type: "coordinator", name: "Issue Coordinator" }
+mcp__moflo__agent_spawn { type: "coordinator", name: "github-project-management" }
 mcp__moflo__agent_spawn { type: "researcher", name: "Requirements Analyst" }
 mcp__moflo__agent_spawn { type: "coder", name: "Implementation Planner" }
 

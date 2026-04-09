@@ -560,7 +560,7 @@ mcp__moflo__swarm_init {
 
 ```javascript
 mcp__moflo__spell_create {
-  name: "development-pipeline",
+  name: "sparc-methodology",
   steps: [
     { mode: "researcher", task: "gather requirements" },
     { mode: "architect", task: "design system" },

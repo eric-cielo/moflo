@@ -157,7 +157,7 @@ gh release create $(npm pkg get version) \
   }
 
   // Spawn specialized agents
-  mcp__moflo__agent_spawn { type: "coordinator", name: "Release Director" }
+  mcp__moflo__agent_spawn { type: "coordinator", name: "github-release-management" }
   mcp__moflo__agent_spawn { type: "coder", name: "Version Manager" }
   mcp__moflo__agent_spawn { type: "tester", name: "QA Engineer" }
   mcp__moflo__agent_spawn { type: "reviewer", name: "Release Reviewer" }

@@ -1,5 +1,5 @@
 ---
-name: "Connector Builder"
+name: "connector-builder"
 description: "Scaffold new spell step commands and (rarely) generalized I/O connectors. Use when building new step commands for spells or extending the spell engine with new capabilities. Connectors are only for new I/O transport types — NOT for per-service wrappers."
 ---
 

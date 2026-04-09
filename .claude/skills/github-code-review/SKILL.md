@@ -1028,7 +1028,7 @@ fi
 [Single Message - Parallel Execution]:
   // Initialize coordination
   mcp__moflo__swarm_init { topology: "hierarchical", maxAgents: 5 }
-  mcp__moflo__agent_spawn { type: "reviewer", name: "Senior Reviewer" }
+  mcp__moflo__agent_spawn { type: "reviewer", name: "github-code-review" }
   mcp__moflo__agent_spawn { type: "tester", name: "QA Engineer" }
   mcp__moflo__agent_spawn { type: "coordinator", name: "Merge Coordinator" }
 

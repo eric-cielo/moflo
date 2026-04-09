@@ -283,7 +283,7 @@ mcp__moflo__swarm_init({
 [Template Creation]:
   // Create template repository
   mcp__github__create_repository({
-    name: "claude-project-template",
+    name: "github-multi-repo",
     description: "Standardized template for Claude Code projects",
     private: false,
     autoInit: true

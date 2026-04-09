@@ -543,7 +543,7 @@ mcp__moflo__swarm_init {
 }
 
 // Step 2: Spawn specialized agents
-mcp__moflo__agent_spawn { type: "coordinator", name: "GitHub Coordinator" }
+mcp__moflo__agent_spawn { type: "coordinator", name: "github-workflow-automation" }
 mcp__moflo__agent_spawn { type: "reviewer", name: "Code Reviewer" }
 mcp__moflo__agent_spawn { type: "tester", name: "QA Agent" }
 mcp__moflo__agent_spawn { type: "analyst", name: "Security Analyst" }

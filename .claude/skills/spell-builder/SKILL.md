@@ -1,5 +1,5 @@
 ---
-name: "Spell Builder"
+name: "spell-builder"
 description: "Create, edit, and validate spell definitions (YAML/JSON) that compose connectors and step commands into end-to-end spells. Use when building new spell definitions, modifying existing ones, or exploring available spell components."
 ---
 
