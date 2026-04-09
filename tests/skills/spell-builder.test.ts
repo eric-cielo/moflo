@@ -264,8 +264,8 @@ describe('spell-builder skill', () => {
     });
 
     it('references output directories', () => {
-      expect(content).toContain('workflows/');
-      expect(content).toContain('.claude/workflows/');
+      expect(content).toContain('spells/');
+      expect(content).toContain('.claude/spells/');
     });
   });
 });
