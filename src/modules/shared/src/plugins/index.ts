@@ -28,7 +28,7 @@ export {
   MaestroPlugin,
   createMaestroPlugin,
   type MaestroConfig,
-  type WorkflowStep,
-  type Workflow,
+  type SpellStep,
+  type Spell,
   type OrchestrationResult,
 } from './official/index.js';

@@ -1,7 +1,7 @@
 /**
  * Maestro Plugin - Official Plugin (ADR-004)
  *
- * Implements orchestration patterns for complex multi-agent workflows.
+ * Implements orchestration patterns for complex multi-agent spells.
  * Part of the official plugin collection.
  *
  * @module v3/shared/plugins/official/maestro
@@ -15,16 +15,16 @@ import { HookEvent, HookPriority, type TaskInfo, type ErrorInfo } from '../../ho
  */
 export interface MaestroConfig extends PluginConfig {
   orchestrationMode: 'sequential' | 'parallel' | 'adaptive';
-  maxConcurrentWorkflows: number;
-  workflowTimeout: number; // ms
+  maxConcurrentSpells: number;
+  spellTimeout: number; // ms
   autoRecovery: boolean;
   checkpointInterval: number; // ms
 }
 
 /**
- * Workflow step
+ * Spell step
  */
-export interface WorkflowStep {
+export interface SpellStep {
   id: string;
   name: string;
   type: string;
@@ -39,13 +39,13 @@ export interface WorkflowStep {
 }
 
 /**
- * Workflow definition
+ * Spell definition
  */
-export interface Workflow {
+export interface Spell {
   id: string;
   name: string;
   description: string;
-  steps: WorkflowStep[];
+  steps: SpellStep[];
   status: 'created' | 'running' | 'paused' | 'completed' | 'failed';
   currentStep?: string;
   progress: number;
@@ -73,21 +73,21 @@ export interface OrchestrationResult {
  */
 export class MaestroPlugin implements ClaudeFlowPlugin {
   readonly id = 'maestro';
-  readonly name = 'Maestro Workflow Orchestrator';
+  readonly name = 'Maestro Spell Orchestrator';
   readonly version = '1.0.0';
-  readonly description = 'Complex multi-agent workflow orchestration with adaptive strategies';
+  readonly description = 'Complex multi-agent spell orchestration with adaptive strategies';
 
   private context?: PluginContext;
   private config: MaestroConfig;
-  private workflows: Map<string, Workflow> = new Map();
-  private activeWorkflows = 0;
+  private spells: Map<string, Spell> = new Map();
+  private activeSpells = 0;
 
   constructor(config?: Partial<MaestroConfig>) {
     this.config = {
       enabled: true,
       orchestrationMode: 'adaptive',
-      maxConcurrentWorkflows: 5,
-      workflowTimeout: 600000, // 10 minutes
+      maxConcurrentSpells: 5,
+      spellTimeout: 600000, // 10 minutes
       autoRecovery: true,
       checkpointInterval: 30000, // 30 seconds
       ...config,
@@ -97,14 +97,14 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
   async initialize(context: PluginContext): Promise<void> {
     this.context = context;
 
-    // Register hooks for workflow monitoring
+    // Register hooks for spell monitoring
     context.hooks?.register(
       HookEvent.PostTaskComplete,
       async (ctx) => {
-        // Update workflow progress on task completion
-        for (const workflow of this.workflows.values()) {
-          if (workflow.status === 'running' && ctx.task) {
-            this.updateWorkflowProgress(workflow, ctx.task);
+        // Update spell progress on task completion
+        for (const spell of this.spells.values()) {
+          if (spell.status === 'running' && ctx.task) {
+            this.updateSpellProgress(spell, ctx.task);
           }
         }
         return { success: true, continueChain: true };
@@ -116,11 +116,11 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
     context.hooks?.register(
       HookEvent.OnError,
       async (ctx) => {
-        // Handle workflow errors with recovery
+        // Handle spell errors with recovery
         if (this.config.autoRecovery && ctx.error) {
-          for (const workflow of this.workflows.values()) {
-            if (workflow.status === 'running') {
-              this.handleSpellError(workflow, ctx.error);
+          for (const spell of this.spells.values()) {
+            if (spell.status === 'running') {
+              this.handleSpellError(spell, ctx.error);
             }
           }
         }
@@ -132,30 +132,30 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
   }
 
   async shutdown(): Promise<void> {
-    // Checkpoint all running workflows
-    for (const workflow of this.workflows.values()) {
-      if (workflow.status === 'running') {
-        this.checkpointWorkflow(workflow);
+    // Checkpoint all running spells
+    for (const spell of this.spells.values()) {
+      if (spell.status === 'running') {
+        this.checkpointSpell(spell);
       }
     }
-    this.workflows.clear();
+    this.spells.clear();
     this.context = undefined;
   }
 
   // ============================================================================
-  // Workflow Management
+  // Spell Management
   // ============================================================================
 
   /**
-   * Create a new workflow
+   * Create a new spell
    */
-  createWorkflow(
+  createSpell(
     name: string,
     description: string,
-    steps: Array<Omit<WorkflowStep, 'id' | 'status'>>
-  ): Workflow {
-    const workflow: Workflow = {
-      id: `workflow-${Date.now()}`,
+    steps: Array<Omit<SpellStep, 'id' | 'status'>>
+  ): Spell {
+    const spell: Spell = {
+      id: `spell-${Date.now()}`,
       name,
       description,
       steps: steps.map((step, index) => ({
@@ -169,27 +169,27 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
       checkpoints: new Map(),
     };
 
-    this.workflows.set(workflow.id, workflow);
-    return workflow;
+    this.spells.set(spell.id, spell);
+    return spell;
   }
 
   /**
-   * Execute a workflow
+   * Execute a spell
    */
-  async executeWorkflow(spellId: string): Promise<OrchestrationResult> {
-    const workflow = this.workflows.get(spellId);
-    if (!workflow) {
+  async executeSpell(spellId: string): Promise<OrchestrationResult> {
+    const spell = this.spells.get(spellId);
+    if (!spell) {
       throw new Error(`Spell not found: ${spellId}`);
     }
 
-    if (this.activeWorkflows >= this.config.maxConcurrentWorkflows) {
+    if (this.activeSpells >= this.config.maxConcurrentSpells) {
       throw new Error('Maximum concurrent spells reached');
     }
 
     const startTime = Date.now();
-    workflow.status = 'running';
-    workflow.startedAt = new Date();
-    this.activeWorkflows++;
+    spell.status = 'running';
+    spell.startedAt = new Date();
+    this.activeSpells++;
 
     const errors: Array<{ stepId: string; error: string }> = [];
     const outputs: Record<string, unknown> = {};
@@ -197,33 +197,33 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
     try {
       switch (this.config.orchestrationMode) {
         case 'sequential':
-          await this.executeSequential(workflow, outputs, errors);
+          await this.executeSequential(spell, outputs, errors);
           break;
         case 'parallel':
-          await this.executeParallel(workflow, outputs, errors);
+          await this.executeParallel(spell, outputs, errors);
           break;
         case 'adaptive':
-          await this.executeAdaptive(workflow, outputs, errors);
+          await this.executeAdaptive(spell, outputs, errors);
           break;
       }
 
-      workflow.status = errors.length === 0 ? 'completed' : 'failed';
-      workflow.completedAt = new Date();
+      spell.status = errors.length === 0 ? 'completed' : 'failed';
+      spell.completedAt = new Date();
     } catch (error) {
-      workflow.status = 'failed';
+      spell.status = 'failed';
       errors.push({
-        stepId: 'workflow',
+        stepId: 'spell',
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      this.activeWorkflows--;
+      this.activeSpells--;
     }
 
     return {
       spellId,
-      success: workflow.status === 'completed',
-      stepsCompleted: workflow.steps.filter((s) => s.status === 'completed').length,
-      stepsTotal: workflow.steps.length,
+      success: spell.status === 'completed',
+      stepsCompleted: spell.steps.filter((s) => s.status === 'completed').length,
+      stepsTotal: spell.steps.length,
       outputs,
       errors,
       duration: Date.now() - startTime,
@@ -231,42 +231,42 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
   }
 
   /**
-   * Pause a workflow
+   * Pause a spell
    */
-  pauseWorkflow(spellId: string): boolean {
-    const workflow = this.workflows.get(spellId);
-    if (!workflow || workflow.status !== 'running') return false;
+  pauseSpell(spellId: string): boolean {
+    const spell = this.spells.get(spellId);
+    if (!spell || spell.status !== 'running') return false;
 
-    this.checkpointWorkflow(workflow);
-    workflow.status = 'paused';
+    this.checkpointSpell(spell);
+    spell.status = 'paused';
     return true;
   }
 
   /**
-   * Resume a paused workflow
+   * Resume a paused spell
    */
   async resumeSpell(spellId: string): Promise<OrchestrationResult> {
-    const workflow = this.workflows.get(spellId);
-    if (!workflow || workflow.status !== 'paused') {
+    const spell = this.spells.get(spellId);
+    if (!spell || spell.status !== 'paused') {
       throw new Error('Spell cannot be resumed');
     }
 
     // Restore from checkpoint and continue
-    return this.executeWorkflow(spellId);
+    return this.executeSpell(spellId);
   }
 
   /**
-   * Get workflow status
+   * Get spell status
    */
-  getWorkflow(spellId: string): Workflow | undefined {
-    return this.workflows.get(spellId);
+  getSpell(spellId: string): Spell | undefined {
+    return this.spells.get(spellId);
   }
 
   /**
-   * List all workflows
+   * List all spells
    */
-  listWorkflows(): Workflow[] {
-    return Array.from(this.workflows.values());
+  listSpells(): Spell[] {
+    return Array.from(this.spells.values());
   }
 
   // ============================================================================
@@ -274,16 +274,16 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
   // ============================================================================
 
   private async executeSequential(
-    workflow: Workflow,
+    spell: Spell,
     outputs: Record<string, unknown>,
     errors: Array<{ stepId: string; error: string }>
   ): Promise<void> {
-    for (const step of workflow.steps) {
+    for (const step of spell.steps) {
       if (step.status !== 'pending') continue;
 
       // Check dependencies
       const depsComplete = step.dependencies.every((depId) => {
-        const dep = workflow.steps.find((s) => s.id === depId);
+        const dep = spell.steps.find((s) => s.id === depId);
         return dep?.status === 'completed';
       });
 
@@ -292,7 +292,7 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
         continue;
       }
 
-      workflow.currentStep = step.id;
+      spell.currentStep = step.id;
       const result = await this.executeStep(step, outputs);
 
       if (!result.success) {
@@ -301,16 +301,16 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
       }
 
       outputs[step.id] = result.output;
-      this.updateProgress(workflow);
+      this.updateProgress(spell);
     }
   }
 
   private async executeParallel(
-    workflow: Workflow,
+    spell: Spell,
     outputs: Record<string, unknown>,
     errors: Array<{ stepId: string; error: string }>
   ): Promise<void> {
-    const layers = this.buildExecutionLayers(workflow.steps);
+    const layers = this.buildExecutionLayers(spell.steps);
 
     for (const layer of layers) {
       const results = await Promise.all(
@@ -328,18 +328,18 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
         }
       }
 
-      this.updateProgress(workflow);
+      this.updateProgress(spell);
     }
   }
 
   private async executeAdaptive(
-    workflow: Workflow,
+    spell: Spell,
     outputs: Record<string, unknown>,
     errors: Array<{ stepId: string; error: string }>
   ): Promise<void> {
     // Adaptive: start parallel, switch to sequential on errors
     const completedIds = new Set<string>();
-    const pendingSteps = [...workflow.steps];
+    const pendingSteps = [...spell.steps];
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 2;
 
@@ -384,7 +384,7 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
         }
       }
 
-      this.updateProgress(workflow);
+      this.updateProgress(spell);
     }
   }
 
@@ -393,7 +393,7 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
   // ============================================================================
 
   private async executeStep(
-    step: WorkflowStep,
+    step: SpellStep,
     outputs: Record<string, unknown>
   ): Promise<{ success: boolean; output?: unknown; error?: string }> {
     step.status = 'running';
@@ -421,12 +421,12 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
     }
   }
 
-  private buildExecutionLayers(steps: WorkflowStep[]): WorkflowStep[][] {
-    const layers: WorkflowStep[][] = [];
+  private buildExecutionLayers(steps: SpellStep[]): SpellStep[][] {
+    const layers: SpellStep[][] = [];
     const completed = new Set<string>();
 
     while (completed.size < steps.length) {
-      const layer: WorkflowStep[] = [];
+      const layer: SpellStep[] = [];
 
       for (const step of steps) {
         if (completed.has(step.id)) continue;
@@ -463,26 +463,26 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
     return resolved;
   }
 
-  private updateProgress(workflow: Workflow): void {
-    const completed = workflow.steps.filter((s) => s.status === 'completed').length;
-    workflow.progress = (completed / workflow.steps.length) * 100;
+  private updateProgress(spell: Spell): void {
+    const completed = spell.steps.filter((s) => s.status === 'completed').length;
+    spell.progress = (completed / spell.steps.length) * 100;
   }
 
-  private updateWorkflowProgress(workflow: Workflow, taskData: TaskInfo): void {
-    // Match task to workflow step and update
+  private updateSpellProgress(spell: Spell, taskData: TaskInfo): void {
+    // Match task to spell step and update
     const taskId = taskData.id;
-    const step = workflow.steps.find((s) => s.id === taskId);
+    const step = spell.steps.find((s) => s.id === taskId);
     if (step && step.status === 'running') {
       step.status = 'completed';
       step.output = taskData.metadata;
       step.completedAt = new Date();
-      this.updateProgress(workflow);
+      this.updateProgress(spell);
     }
   }
 
-  private handleSpellError(workflow: Workflow, errorData: ErrorInfo): void {
+  private handleSpellError(spell: Spell, errorData: ErrorInfo): void {
     const stepId = errorData.context ?? '';
-    const step = workflow.steps.find((s) => s.id === stepId);
+    const step = spell.steps.find((s) => s.id === stepId);
 
     if (step && step.status === 'running') {
       step.status = 'failed';
@@ -491,11 +491,11 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
     }
   }
 
-  private checkpointWorkflow(workflow: Workflow): void {
-    workflow.checkpoints.set(`checkpoint-${Date.now()}`, {
-      progress: workflow.progress,
-      currentStep: workflow.currentStep,
-      stepStatuses: workflow.steps.map((s) => ({ id: s.id, status: s.status })),
+  private checkpointSpell(spell: Spell): void {
+    spell.checkpoints.set(`checkpoint-${Date.now()}`, {
+      progress: spell.progress,
+      currentStep: spell.currentStep,
+      stepStatuses: spell.steps.map((s) => ({ id: s.id, status: s.status })),
     });
   }
 }
