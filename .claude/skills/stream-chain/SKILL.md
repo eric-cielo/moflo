@@ -1,6 +1,6 @@
 ---
 name: stream-chain
-description: Stream-JSON chaining for multi-agent pipelines, data transformation, and sequential workflows
+description: Stream-JSON chaining for multi-agent workflows, data transformation, and sequential workflows
 version: 1.0.0
 category: workflow
 tags: [streaming, pipeline, chaining, multi-agent, workflow]
@@ -311,7 +311,7 @@ claude-flow stream-chain pipeline documentation
 
 ### Multi-Agent Coordination
 
-Chain different agent types for complex workflows:
+Chain different agent types for complex multi-agent workflows:
 
 ```bash
 claude-flow stream-chain run \
@@ -560,4 +560,4 @@ Stream-Chain enables sophisticated multi-step workflows by:
 - **Agent Coordination**: Natural multi-agent collaboration pattern
 - **Data Transformation**: Complex processing through simple steps
 
-Use `run` for custom workflows and `pipeline` for battle-tested solutions.
+Use `run` for custom workflows and `pipeline` for battle-tested workflows.

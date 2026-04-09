@@ -1,6 +1,6 @@
 ---
 name: flo
-description: MoFlo ticket workflow - analyze and execute GitHub issues
+description: MoFlo ticket spell - analyze and execute GitHub issues
 arguments: "[options] <issue-number | title>"
 ---
 

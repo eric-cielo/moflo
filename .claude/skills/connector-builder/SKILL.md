@@ -1,6 +1,6 @@
 ---
 name: "Connector Builder"
-description: "Scaffold new workflow step commands and (rarely) generalized I/O connectors. Use when building new step commands for workflows or extending the workflow engine with new capabilities. Connectors are only for new I/O transport types — NOT for per-service wrappers."
+description: "Scaffold new spell step commands and (rarely) generalized I/O connectors. Use when building new step commands for spells or extending the spell engine with new capabilities. Connectors are only for new I/O transport types — NOT for per-service wrappers."
 ---
 
 # Connector Builder
@@ -9,16 +9,16 @@ Scaffold production-ready step commands (`StepCommand`) and, when truly needed, 
 
 ## Prerequisites
 
-- MoFlo project with `@moflo/workflows` package
+- MoFlo project with `@moflo/spells` package
 - TypeScript 5+
 - Vitest for testing
 
 ## What This Skill Does
 
-1. Guides you through building a **step command** (workflow step logic) or, rarely, a **generalized connector** (new I/O transport)
+1. Guides you through building a **step command** (spell step logic) or, rarely, a **generalized connector** (new I/O transport)
 2. Generates type-safe TypeScript implementing the correct interface
 3. Creates a test file with vitest mocks
-4. Shows how to register the component and use it in workflow YAML
+4. Shows how to register the component and use it in spell YAML
 
 ---
 
@@ -27,7 +27,7 @@ Scaffold production-ready step commands (`StepCommand`) and, when truly needed, 
 Ask the user:
 
 > **What do you want to build?**
-> 1. **Step command** — executes logic within a workflow step (transform data, control flow, etc.)
+> 1. **Step command** — executes logic within a spell step (transform data, control flow, etc.)
 > 2. **Generalized connector** — wraps a new I/O transport type (e.g., WebSocket, gRPC, MQTT)
 
 **Important:** If the user asks for a service-specific connector (Slack, Jira, S3, etc.), guide them to compose existing connectors (`http`, `github-cli`, `playwright`) in spell YAML instead. Per-service connectors are not the right pattern — see `.claude/guidance/shipped/moflo-spell-connectors.md` for the architectural rationale (issues #233–#259).
@@ -80,7 +80,7 @@ import type {
   ConnectorAction,
   ConnectorOutput,
   ConnectorCapability,
-} from '../types/workflow-connector.types.js';
+} from '../types/spell-connector.types.js';
 
 export type <Name>Action = '<action-1>' | '<action-2>';
 
@@ -169,7 +169,7 @@ export const <name>Connector: SpellConnector = {
 
 ### Step 3: Generate Connector Test
 
-Create at `tests/packages/workflows/connectors/<name>.test.ts`:
+Create at `tests/packages/spells/connectors/<name>.test.ts`:
 
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -260,7 +260,7 @@ export const builtinConnectors: SpellConnector[] = [
 ```yaml
 name: example-with-<name>
 version: "1.0"
-description: Example workflow using the <name> connector
+description: Example spell using the <name> connector
 
 connectors:
   - <name>
@@ -384,7 +384,7 @@ Alternatively, use the `createStepCommand()` factory from `src/modules/spells/sr
 
 ### Step 3: Generate Step Command Test
 
-Create at `tests/packages/workflows/commands/<type>-command.test.ts`:
+Create at `tests/packages/spells/commands/<type>-command.test.ts`:
 
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
@@ -399,7 +399,7 @@ const mockContext: CastingContext = {
   credentials: { get: vi.fn(), has: vi.fn() },
   memory: { read: vi.fn(), write: vi.fn(), search: vi.fn() },
   taskId: 'test-task',
-  workflowId: 'test-workflow',
+  spellId: 'test-spell',
   stepIndex: 0,
 };
 
@@ -477,7 +477,7 @@ export const builtinCommands: readonly StepCommand[] = [
 ```yaml
 name: example-with-<type>
 version: "1.0"
-description: Example workflow using the <type> step
+description: Example spell using the <type> step
 
 steps:
   - name: my-step
@@ -493,7 +493,7 @@ steps:
 
 ### Type Definitions
 
-- **Connector interface:** `src/modules/spells/src/types/workflow-connector.types.ts` — `SpellConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorCapability`
+- **Connector interface:** `src/modules/spells/src/types/spell-connector.types.ts` — `SpellConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorCapability`
 - **Step command interface:** `src/modules/spells/src/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `CastingContext`, `JSONSchema`
 - **Step factory:** `src/modules/spells/src/commands/create-step-command.ts` — `createStepCommand()`
 

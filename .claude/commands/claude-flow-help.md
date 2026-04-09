@@ -29,7 +29,7 @@ Claude-Flow is the ultimate multi-terminal orchestration platform that revolutio
 - `./claude-flow task list` - List all tasks
 - `./claude-flow task status <id>` - Task status
 - `./claude-flow task cancel <id>` - Cancel task
-- `./claude-flow task workflow <file>` - Execute workflow
+- `./claude-flow task spell <file>` - Execute spell
 
 ### 🧠 Memory Operations
 - `./claude-flow memory store "key" "value"` - Store data
@@ -60,7 +60,7 @@ Claude-Flow is the ultimate multi-terminal orchestration platform that revolutio
 
 ### 🤖 Claude Integration
 - `./claude-flow claude spawn "task"` - Spawn Claude with enhanced guidance
-- `./claude-flow claude batch <file>` - Execute workflow configuration
+- `./claude-flow claude batch <file>` - Execute spell configuration
 
 ## 🌟 Quick Examples
 

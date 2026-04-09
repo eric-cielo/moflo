@@ -1,6 +1,6 @@
 ---
 name: "V3 CLI Modernization"
-description: "CLI modernization and hooks system enhancement for claude-flow v3. Implements interactive prompts, command decomposition, enhanced hooks integration, and intelligent workflow automation."
+description: "CLI modernization and hooks system enhancement for claude-flow v3. Implements interactive prompts, command decomposition, enhanced hooks integration, and intelligent spell automation."
 ---
 
 # V3 CLI Modernization
@@ -30,13 +30,13 @@ Current CLI Issues:
 ├── enterprise.ts: 68KB feature module
 ├── Limited interactivity: Basic command parsing
 ├── Hooks integration: Basic pre/post execution
-└── No intelligent workflows: Manual command chaining
+└── No intelligent spells: Manual command chaining
 
 Target Architecture:
 ├── Modular Commands: <500 lines per command
 ├── Interactive Prompts: Smart context-aware UX
 ├── Enhanced Hooks: Deep lifecycle integration
-├── Workflow Automation: Intelligent command orchestration
+├── Spell Automation: Intelligent command orchestration
 └── Performance: <200ms command response time
 ```
 
@@ -552,44 +552,44 @@ export class LearningHooksIntegration {
 }
 ```
 
-## Intelligent Workflow Automation
+## Intelligent Spell Automation
 
-### Workflow Orchestrator
+### Spell Orchestrator
 ```typescript
-// src/cli/workflows/workflow-orchestrator.ts
-interface WorkflowStep {
+// src/cli/workflows/spell-orchestrator.ts
+interface SpellStep {
   id: string;
   command: string;
   args: string[];
   dependsOn: string[];
-  condition?: WorkflowCondition;
+  condition?: SpellCondition;
   retryPolicy?: RetryPolicy;
 }
 
-export class WorkflowOrchestrator {
+export class SpellOrchestrator {
   constructor(
     private commandRegistry: ModularCommandRegistry,
     private promptService: InteractivePromptService
   ) {}
 
-  async executeWorkflow(workflow: Workflow): Promise<WorkflowResult> {
-    const context = new WorkflowExecutionContext(workflow);
+  async castSpell(spell: Spell): Promise<SpellResult> {
+    const context = new SpellCastingContext(spell);
 
     // Display workflow overview
-    await this.displayWorkflowOverview(workflow);
+    await this.displaySpellOverview(spell);
 
     const confirmed = await this.promptService.confirm(
       'Execute this workflow?'
     );
 
     if (!confirmed) {
-      return WorkflowResult.cancelled();
+      return SpellResult.cancelled();
     }
 
     // Execute steps
     return this.promptService.progressTask(
       async ({ updateProgress }) => {
-        const steps = this.sortStepsByDependencies(workflow.steps);
+        const steps = this.sortStepsByDependencies(spell.steps);
 
         for (let i = 0; i < steps.length; i++) {
           const step = steps[i];
@@ -598,35 +598,35 @@ export class WorkflowOrchestrator {
           await this.executeStep(step, context);
         }
 
-        return WorkflowResult.success(context.getResults());
+        return SpellResult.success(context.getResults());
       },
-      { title: `Workflow: ${workflow.name}` }
+      { title: `Spell: ${spell.name}` }
     );
   }
 
-  async generateWorkflowFromIntent(intent: string): Promise<Workflow> {
+  async generateSpellFromIntent(intent: string): Promise<Workflow> {
     // Use learning system to generate workflow
-    const patterns = await this.findWorkflowPatterns(intent);
+    const patterns = await this.findSpellPatterns(intent);
 
     if (patterns.length === 0) {
-      throw new Error('Could not generate workflow for intent');
+      throw new Error('Could not generate spell for intent');
     }
 
     // Select best pattern or let user choose
     const selectedPattern = patterns.length === 1
       ? patterns[0]
       : await this.promptService.select({
-          message: 'Select workflow template:',
+          message: 'Select spell template:',
           choices: patterns.map(p => ({
             name: `${p.name} (${p.confidence}% match)`,
             value: p
           }))
         });
 
-    return this.customizeWorkflow(selectedPattern, intent);
+    return this.customizeSpell(selectedPattern, intent);
   }
 
-  private async executeStep(step: WorkflowStep, context: WorkflowExecutionContext): Promise<void> {
+  private async executeStep(step: SpellStep, context: SpellCastingContext): Promise<void> {
     // Check conditions
     if (step.condition && !this.evaluateCondition(step.condition, context)) {
       context.skipStep(step.id, 'Condition not met');
@@ -636,7 +636,7 @@ export class WorkflowOrchestrator {
     // Check dependencies
     const missingDeps = step.dependsOn.filter(dep => !context.isStepCompleted(dep));
     if (missingDeps.length > 0) {
-      throw new WorkflowError(`Step ${step.id} has unmet dependencies: ${missingDeps.join(', ')}`);
+      throw new SpellError(`Step ${step.id} has unmet dependencies: ${missingDeps.join(', ')}`);
     }
 
     // Execute with retry policy
@@ -657,7 +657,7 @@ export class WorkflowOrchestrator {
       }
     }
 
-    throw new WorkflowError(`Step ${step.id} failed after ${retryPolicy.maxAttempts} attempts: ${lastError?.message}`);
+    throw new SpellError(`Step ${step.id} failed after ${retryPolicy.maxAttempts} attempts: ${lastError?.message}`);
   }
 }
 ```
@@ -824,7 +824,7 @@ export class IntelligentCompletion {
 - [ ] **File Decomposition**: index.ts (108KB) → <10KB per command module
 - [ ] **Interactive UX**: Smart prompts with context awareness
 - [ ] **Hook Integration**: Deep lifecycle integration with learning
-- [ ] **Workflow Automation**: Intelligent multi-step command orchestration
+- [ ] **Spell Automation**: Intelligent multi-step command orchestration
 - [ ] **Auto-completion**: >90% accuracy for command suggestions
 
 ### User Experience Improvements
@@ -859,7 +859,7 @@ const cliImprovements = {
 ```bash
 # Full CLI modernization implementation
 Task("CLI modernization implementation",
-     "Implement modular commands, interactive prompts, and intelligent workflows",
+     "Implement modular commands, interactive prompts, and intelligent spells",
      "cli-hooks-developer")
 ```
 
@@ -868,5 +868,5 @@ Task("CLI modernization implementation",
 # Enhanced interactive commands
 claude-flow swarm init --interactive
 claude-flow learning start --guided
-claude-flow workflow create --from-intent "setup new project"
+claude-flow spell create --from-intent "setup new project"
 ```
