@@ -37,6 +37,7 @@ import { DENY_ALL_GATEWAY } from './capability-gateway.js';
 import {
   resolveEffectiveSandbox, formatSandboxLog,
   DEFAULT_SANDBOX_CONFIG,
+  type EffectiveSandbox,
 } from './platform-sandbox.js';
 
 export class SpellCaster {
@@ -126,11 +127,12 @@ export class SpellCaster {
       };
     }
 
-    // Log OS sandbox status at spell start
+    // Resolve OS sandbox status at spell start (#410)
+    let effectiveSandbox: EffectiveSandbox | undefined;
     try {
       const sandboxCfg = options.sandboxConfig ?? DEFAULT_SANDBOX_CONFIG;
-      const effective = resolveEffectiveSandbox(sandboxCfg);
-      console.log(formatSandboxLog(effective));
+      effectiveSandbox = resolveEffectiveSandbox(sandboxCfg);
+      console.log(formatSandboxLog(effectiveSandbox));
     } catch (err) {
       // tier: full but no sandbox available — fail the spell
       return this.failureResult(spellId, startTime, [{
@@ -139,7 +141,7 @@ export class SpellCaster {
       }], definition.name);
     }
 
-    return this.executeSteps(definition, resolvedArgs, spellId, options, startTime);
+    return this.executeSteps(definition, resolvedArgs, spellId, options, startTime, effectiveSandbox);
   }
 
   async dryRun(
@@ -164,6 +166,7 @@ export class SpellCaster {
   private async executeSteps(
     definition: SpellDefinition, resolvedArgs: Record<string, unknown>,
     spellId: string, options: RunnerOptions, startTime: number,
+    effectiveSandbox?: EffectiveSandbox,
   ): Promise<SpellResult> {
     const context = options.context;
     const variables: Record<string, unknown> = { ...options.initialVariables };
@@ -192,6 +195,7 @@ export class SpellCaster {
       parentMofloLevel: options.parentMofloLevel,
       nestingDepth: options.nestingDepth ?? 0,
       maxNestingDepth: options.maxNestingDepth ?? DEFAULT_MAX_NESTING_DEPTH,
+      effectiveSandbox,
     };
 
     try {
@@ -343,12 +347,14 @@ export class SpellCaster {
     step: import('../types/spell-definition.types.js').StepDefinition,
     state: StepExecutionState, index: number,
   ) {
-    return executeSingleStep(step, state, index, this.registry, this.buildContext.bind(this));
+    const ctxBuilder = (v: Record<string, unknown>, a: Record<string, unknown>, sid: string, si: number, sig?: AbortSignal) =>
+      this.buildContext(v, a, sid, si, sig, state.effectiveSandbox);
+    return executeSingleStep(step, state, index, this.registry, ctxBuilder);
   }
 
   private async doRollback(completed: CompletedStep[], state: StepExecutionState, results: StepResult[]) {
     await rollbackSteps(completed, this.registry,
-      (i) => this.buildContext(state.variables, state.resolvedArgs, state.spellId, i, state.options.signal),
+      (i) => this.buildContext(state.variables, state.resolvedArgs, state.spellId, i, state.options.signal, state.effectiveSandbox),
       results);
   }
 
@@ -361,11 +367,13 @@ export class SpellCaster {
   private buildContext(
     variables: Record<string, unknown>, args: Record<string, unknown>,
     spellId: string, stepIndex: number, signal?: AbortSignal,
+    sandbox?: EffectiveSandbox,
   ): CastingContext {
     return { variables, args, credentials: this.credentials, memory: this.memory,
       taskId: `${spellId}-step-${stepIndex}`, spellId, stepIndex, abortSignal: signal,
       gateway: DENY_ALL_GATEWAY,
-      ...(this.connectorAccessor ? { tools: this.connectorAccessor } : {}) };
+      ...(this.connectorAccessor ? { tools: this.connectorAccessor } : {}),
+      ...(sandbox ? { sandbox } : {}) };
   }
 
   private async storeProgress(
