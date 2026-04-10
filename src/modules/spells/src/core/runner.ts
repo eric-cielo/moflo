@@ -34,6 +34,10 @@ import { buildCredentialPatterns, addCredentialPattern, collectCredentialNames }
 import { executeSingleStep, type StepExecutionState } from './step-executor.js';
 import { collectPrerequisites, checkPrerequisites, formatPrerequisiteErrors } from './prerequisite-checker.js';
 import { DENY_ALL_GATEWAY } from './capability-gateway.js';
+import {
+  resolveEffectiveSandbox, formatSandboxLog,
+  DEFAULT_SANDBOX_CONFIG,
+} from './platform-sandbox.js';
 
 export class SpellCaster {
   private readonly connectorAccessor?: ConnectorAccessorImpl;
@@ -120,6 +124,19 @@ export class SpellCaster {
         }],
         duration: Date.now() - startTime, cancelled: false,
       };
+    }
+
+    // Log OS sandbox status at spell start
+    try {
+      const sandboxCfg = options.sandboxConfig ?? DEFAULT_SANDBOX_CONFIG;
+      const effective = resolveEffectiveSandbox(sandboxCfg);
+      console.log(formatSandboxLog(effective));
+    } catch (err) {
+      // tier: full but no sandbox available — fail the spell
+      return this.failureResult(spellId, startTime, [{
+        code: 'PREREQUISITES_FAILED',
+        message: (err as Error).message,
+      }], definition.name);
     }
 
     return this.executeSteps(definition, resolvedArgs, spellId, options, startTime);

@@ -7,6 +7,7 @@
 import type { StepOutput, ValidationError, MofloLevel, PrerequisiteResult } from './step-command.types.js';
 import type { PermissionLevel, ResolvedPermissions } from '../core/permission-resolver.js';
 import type { PermissionWarning, RiskLevel } from '../core/permission-disclosure.js';
+import type { SandboxConfig } from '../core/platform-sandbox.js';
 
 // ============================================================================
 // Error Codes
@@ -168,4 +169,7 @@ export interface RunnerOptions {
 
   /** Human-readable context metadata for dashboard display. */
   readonly context?: FloRunContext;
+
+  /** OS-level sandbox configuration from moflo.yaml. */
+  readonly sandboxConfig?: SandboxConfig;
 }
