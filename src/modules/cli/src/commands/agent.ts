@@ -12,10 +12,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
- * Update swarm-activity.json metrics after agent count changes.
+ * Update swarm-activity.json metrics with absolute agent count.
  * The statusline reads this file to display the swarm agent count.
+ *
+ * Uses absolute counts (not deltas) to prevent drift when agents
+ * crash or terminate without an explicit stop command.
  */
-function updateSwarmActivityMetrics(agentCountDelta: number): void {
+function syncSwarmAgentCount(absoluteCount: number): void {
   try {
     const metricsDir = path.join(process.cwd(), '.claude-flow', 'metrics');
     const activityPath = path.join(metricsDir, 'swarm-activity.json');
@@ -31,19 +34,32 @@ function updateSwarmActivityMetrics(agentCountDelta: number): void {
       fs.mkdirSync(metricsDir, { recursive: true });
     }
 
+    const count = Math.max(0, absoluteCount);
     const swarm = (data.swarm as Record<string, unknown>) ?? {};
-    const currentCount = Math.max(0, (swarm.agent_count as number) || 0);
-    const newCount = Math.max(0, currentCount + agentCountDelta);
-
-    swarm.agent_count = newCount;
-    swarm.active = newCount > 0;
-    swarm.coordination_active = newCount > 0;
+    swarm.agent_count = count;
+    swarm.active = count > 0;
+    swarm.coordination_active = count > 0;
     data.swarm = swarm;
     data.timestamp = new Date().toISOString();
 
     fs.writeFileSync(activityPath, JSON.stringify(data, null, 2));
   } catch {
     // Non-critical — don't fail the command if metrics update fails
+  }
+}
+
+/**
+ * Read the current agent_count from swarm-activity.json.
+ * Returns 0 if the file doesn't exist or is unreadable.
+ */
+function readSwarmAgentCount(): number {
+  try {
+    const activityPath = path.join(process.cwd(), '.claude-flow', 'metrics', 'swarm-activity.json');
+    if (!fs.existsSync(activityPath)) return 0;
+    const data = JSON.parse(fs.readFileSync(activityPath, 'utf-8'));
+    return Math.max(0, (data?.swarm?.agent_count as number) || 0);
+  } catch {
+    return 0;
   }
 }
 
@@ -187,7 +203,7 @@ const spawnCommand: Command = {
       output.printSuccess(`Agent ${agentName} spawned successfully`);
 
       // Update swarm-activity.json so statusline reflects the new agent count
-      updateSwarmActivityMetrics(1);
+      syncSwarmAgentCount(readSwarmAgentCount() + 1);
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
@@ -248,6 +264,10 @@ const listCommand: Command = {
         agentType: ctx.flags.type || undefined,
         limit: 100,
       });
+
+      // Sync true active count to swarm-activity.json (prevents drift)
+      const activeCount = result.agents.filter(a => a.status === 'active' || a.status === 'idle').length;
+      syncSwarmAgentCount(activeCount);
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
@@ -461,7 +481,7 @@ const stopCommand: Command = {
       output.printSuccess(`Agent ${agentId} stopped successfully`);
 
       // Update swarm-activity.json so statusline reflects the reduced agent count
-      updateSwarmActivityMetrics(-1);
+      syncSwarmAgentCount(readSwarmAgentCount() - 1);
 
       if (ctx.flags.format === 'json') {
         output.printJson(result);
