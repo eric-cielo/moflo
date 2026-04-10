@@ -18,12 +18,14 @@ import type {
 import { shellInterpolateString } from '../core/interpolation.js';
 import { enforceScope, formatViolations } from '../core/capability-validator.js';
 import { resolvePermissions, type PermissionLevel } from '../core/permission-resolver.js';
+import { checkDestructivePatterns, formatDestructiveError } from './destructive-pattern-checker.js';
 
 /** Typed config for the bash step command. */
 export interface BashStepConfig extends StepConfig {
   readonly command: string;
   readonly timeout?: number;
   readonly failOnError?: boolean;
+  readonly allowDestructive?: boolean;
 }
 
 export const bashCommand: StepCommand<BashStepConfig> = {
@@ -41,6 +43,7 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       command: { type: 'string', description: 'Shell command to execute' },
       timeout: { type: 'number', description: 'Timeout in milliseconds', default: 30000 },
       failOnError: { type: 'boolean', description: 'Fail step on non-zero exit', default: true },
+      allowDestructive: { type: 'boolean', description: 'Allow destructive commands that would normally be blocked', default: false },
     },
     required: ['command'],
   } satisfies JSONSchema,
@@ -91,6 +94,19 @@ export const bashCommand: StepCommand<BashStepConfig> = {
           success: false,
           data: { stdout: '', stderr: '', exitCode: -1 },
           error: scopeViolation,
+          duration: Date.now() - start,
+        };
+      }
+    }
+
+    // ── Destructive command denylist (#408) ──────────────────────────
+    if (!config.allowDestructive) {
+      const destructiveMatch = checkDestructivePatterns(command);
+      if (destructiveMatch) {
+        return {
+          success: false,
+          data: { stdout: '', stderr: '', exitCode: -1 },
+          error: formatDestructiveError(destructiveMatch),
           duration: Date.now() - start,
         };
       }
