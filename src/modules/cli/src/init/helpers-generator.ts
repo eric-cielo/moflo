@@ -212,11 +212,16 @@ var path = require('path');
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\\/([a-z])\\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, learningsStored: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null };
+
 function readState() {
   try {
-    if (fs.existsSync(STATE_FILE)) return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+    if (fs.existsSync(STATE_FILE)) {
+      var parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+      return Object.assign({}, STATE_DEFAULTS, parsed);
+    }
   } catch (e) { /* reset on corruption */ }
-  return { tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, learningsStored: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null };
+  return Object.assign({}, STATE_DEFAULTS);
 }
 
 function writeState(s) {
@@ -320,12 +325,8 @@ switch (command) {
     var cmd = process.env.TOOL_INPUT_command || '';
     if (/gh\\s+pr\\s+create/.test(cmd)) {
       var s = readState();
-      // Trivial sessions (≤3 interactions) skip the learnings gate —
-      // version bumps, typo fixes, etc. have nothing worth storing.
-      var trivial = (s.interactionCount || 0) <= 3;
-      if (!s.learningsStored && !trivial) {
-        process.stderr.write('BLOCKED: Store learnings before creating a PR. Use mcp__moflo__memory_store to record what was learned.\\n');
-        process.exit(2);
+      if (!s.learningsStored && (s.interactionCount || 0) > 5) {
+        process.stdout.write('ADVISORY: Consider storing learnings (mcp__moflo__memory_store) before creating a PR — this was a substantial session.\\n');
       }
     }
     break;

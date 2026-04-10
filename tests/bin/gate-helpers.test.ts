@@ -433,6 +433,18 @@ describe('gate.cjs: state recording', () => {
     expect(s.taskCount).toBe(4);
   });
 
+  it('readState merges defaults for missing keys', () => {
+    // Simulate a state file from an older gate version missing learningsStored
+    writeState(tmpDir, { tasksCreated: true, taskCount: 2, memorySearched: false });
+    // Any gate call that reads state should see defaults for missing keys
+    runGate('record-memory-searched', baseEnv(tmpDir));
+    const s = readState(tmpDir);
+    expect(s.memorySearched).toBe(true);
+    // learningsStored should be filled in as false (default), not undefined
+    expect(s.learningsStored).toBe(false);
+    expect(s.interactionCount).toBe(0);
+  });
+
   it('record-memory-searched sets memorySearched', () => {
     writeState(tmpDir, { memorySearched: false });
     runGate('record-memory-searched', baseEnv(tmpDir));
@@ -1049,31 +1061,26 @@ describe('end-to-end: spell lifecycle', () => {
   });
 
   describe('learnings gate (check-before-pr)', () => {
-    it('blocks gh pr create when learnings not stored in non-trivial session', () => {
+    it('emits advisory for long sessions without learnings stored', () => {
       const env = baseEnv(tmpDir);
 
-      // Simulate 4+ interactions so session is non-trivial
-      env.CLAUDE_USER_PROMPT = 'implement the feature';
-      runGate('prompt-reminder', env);
-      env.CLAUDE_USER_PROMPT = 'fix the tests';
-      runGate('prompt-reminder', env);
-      env.CLAUDE_USER_PROMPT = 'refactor the module';
-      runGate('prompt-reminder', env);
-      env.CLAUDE_USER_PROMPT = 'create the pr';
-      runGate('prompt-reminder', env);
+      // Simulate 6+ interactions — substantial session
+      for (const prompt of ['implement feature', 'fix tests', 'refactor module', 'add validation', 'update docs', 'create pr']) {
+        env.CLAUDE_USER_PROMPT = prompt;
+        runGate('prompt-reminder', env);
+      }
       runGate('record-memory-searched', env);
 
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
       const r = runGate('check-before-pr', env);
-      expect(r.exitCode).toBe(2);
-      expect(r.stderr).toContain('BLOCKED');
-      expect(r.stderr).toContain('learnings');
+      expect(r.exitCode).toBe(0); // advisory, not a block
+      expect(r.stdout).toContain('ADVISORY');
     });
 
-    it('allows gh pr create in trivial sessions without learnings', () => {
+    it('no advisory for short sessions without learnings', () => {
       const env = baseEnv(tmpDir);
 
-      // Only 1 interaction — trivial session (version bump, typo fix, etc.)
+      // Only 1 interaction — trivial session
       env.CLAUDE_USER_PROMPT = 'bump version and pr';
       runGate('prompt-reminder', env);
       runGate('record-memory-searched', env);
@@ -1081,26 +1088,23 @@ describe('end-to-end: spell lifecycle', () => {
       env.TOOL_INPUT_command = 'gh pr create --title "chore: bump version"';
       const r = runGate('check-before-pr', env);
       expect(r.exitCode).toBe(0);
+      expect(r.stdout).not.toContain('ADVISORY');
     });
 
-    it('allows gh pr create after memory_store', () => {
+    it('no advisory when learnings stored in long session', () => {
       const env = baseEnv(tmpDir);
 
-      // Non-trivial session but learnings stored
-      env.CLAUDE_USER_PROMPT = 'implement feature';
-      runGate('prompt-reminder', env);
-      env.CLAUDE_USER_PROMPT = 'fix edge case';
-      runGate('prompt-reminder', env);
-      env.CLAUDE_USER_PROMPT = 'add tests';
-      runGate('prompt-reminder', env);
-      env.CLAUDE_USER_PROMPT = 'create the pr';
-      runGate('prompt-reminder', env);
+      for (const prompt of ['implement feature', 'fix edge case', 'add tests', 'refactor', 'update config', 'create pr']) {
+        env.CLAUDE_USER_PROMPT = prompt;
+        runGate('prompt-reminder', env);
+      }
       runGate('record-memory-searched', env);
       runGate('record-learnings-stored', env);
 
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
       const r = runGate('check-before-pr', env);
       expect(r.exitCode).toBe(0);
+      expect(r.stdout).not.toContain('ADVISORY');
     });
 
     it('does not block non-PR bash commands', () => {
