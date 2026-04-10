@@ -64,7 +64,7 @@ describe('denylist blocks catastrophic commands (integration)', () => {
 
     const formatted = formatDestructiveError(match!);
     expect(formatted).toContain('Command blocked');
-    expect(formatted).toContain('allowDestructive: true');
+    expect(formatted).toContain('allowDestructive: ["./path/"]');
   });
 
   it('blocks catastrophic commands through bashCommand.execute()', async () => {

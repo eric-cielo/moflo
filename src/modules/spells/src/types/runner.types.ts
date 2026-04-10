@@ -96,6 +96,12 @@ export interface DryRunStepReport {
   readonly riskLevel?: RiskLevel;
   /** Destructive/sensitive warnings for this step. */
   readonly permissionWarnings?: readonly PermissionWarning[];
+  /** Destructive override configuration, if present (Issue #419). */
+  readonly destructiveOverride?: {
+    readonly type: 'boolean' | 'scoped';
+    readonly scope?: readonly string[];
+    readonly deprecated?: boolean;
+  };
 }
 
 export interface DryRunResult {

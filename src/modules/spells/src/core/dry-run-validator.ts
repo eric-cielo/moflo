@@ -107,6 +107,9 @@ async function dryRunValidateStep(
   // Analyze permissions for this step
   const permReport = analyzeStepPermissions(step, env.registry);
 
+  // Detect destructive overrides for dry-run visibility (#419)
+  const destructiveOverride = resolveDestructiveOverride(interpolatedConfig);
+
   return {
     stepId: step.id,
     stepType: step.type,
@@ -121,6 +124,7 @@ async function dryRunValidateStep(
     resolvedPermissions: permReport.resolved,
     riskLevel: permReport.riskLevel,
     permissionWarnings: permReport.warnings,
+    destructiveOverride,
   };
 }
 
@@ -205,4 +209,20 @@ export async function dryRunValidate(
     permissionHash: spellPermissions.permissionHash,
     overallRisk: spellPermissions.overallRisk,
   };
+}
+
+// ── Destructive override detection (#419) ───────────────────────────────
+
+function resolveDestructiveOverride(
+  config: Record<string, unknown> | null,
+): DryRunStepReport['destructiveOverride'] {
+  if (!config) return undefined;
+  const ad = config.allowDestructive;
+  if (ad === true) {
+    return { type: 'boolean', deprecated: true };
+  }
+  if (Array.isArray(ad) && ad.length > 0) {
+    return { type: 'scoped', scope: ad as string[] };
+  }
+  return undefined;
 }
