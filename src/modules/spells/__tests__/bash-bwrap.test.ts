@@ -1,16 +1,16 @@
 /**
- * Bash Command — Sandbox-exec Integration Tests
+ * Bash Command — Bubblewrap (bwrap) Integration Tests
  *
- * Tests that the bash step command correctly integrates with sandbox-exec
- * wrapping when sandbox is enabled on macOS.
+ * Tests that the bash step command correctly integrates with bwrap
+ * wrapping when sandbox is enabled on Linux.
  *
- * @see https://github.com/eric-cielo/moflo/issues/410
+ * @see https://github.com/eric-cielo/moflo/issues/411
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ============================================================================
-// Mocks
+// Mocks (must be before imports that use mocked modules)
 // ============================================================================
 
 const mockSpawn = vi.fn();
@@ -20,8 +20,8 @@ vi.mock('node:child_process', () => ({
 }));
 
 vi.mock('node:os', () => ({
-  platform: vi.fn(() => 'darwin'),
-  tmpdir: vi.fn(() => '/private/tmp'),
+  platform: vi.fn(() => 'linux'),
+  tmpdir: vi.fn(() => '/tmp'),
 }));
 
 vi.mock('node:fs', () => ({
@@ -69,17 +69,17 @@ import { createMockProcess, makeSandbox, makeContext } from './helpers/bash-test
 // Tests
 // ============================================================================
 
-describe('bash command sandbox-exec integration', () => {
+describe('bash command bwrap integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('spawns with sandbox-exec when sandbox is enabled on macOS', async () => {
+  it('spawns with bwrap when sandbox is enabled on Linux', async () => {
     const proc = createMockProcess();
     mockSpawn.mockReturnValue(proc);
 
     const config: BashStepConfig = { command: 'echo hello' };
-    const context = makeContext('/Users/dev/project', makeSandbox(true, 'darwin', 'sandbox-exec'));
+    const context = makeContext('/home/user/project', makeSandbox(true, 'linux', 'bwrap'));
 
     const promise = bashCommand.execute(config, context);
 
@@ -92,12 +92,14 @@ describe('bash command sandbox-exec integration', () => {
 
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const [bin, args] = mockSpawn.mock.calls[0];
-    expect(bin).toBe('/usr/bin/sandbox-exec');
-    expect(args[0]).toBe('-f');
-    expect(args[1]).toMatch(/moflo-sandbox-.*\.sb$/);
-    expect(args[2]).toBe('bash');
-    expect(args[3]).toBe('-c');
-    expect(args[4]).toBe('echo hello');
+    expect(bin).toBe('bwrap');
+    expect(args).toContain('--ro-bind');
+    expect(args).toContain('--unshare-pid');
+    expect(args).toContain('--unshare-net');
+    const bashIdx = args.indexOf('bash');
+    expect(bashIdx).toBeGreaterThan(-1);
+    expect(args[bashIdx + 1]).toBe('-c');
+    expect(args[bashIdx + 2]).toBe('echo hello');
     expect(result.success).toBe(true);
   });
 
@@ -106,7 +108,7 @@ describe('bash command sandbox-exec integration', () => {
     mockSpawn.mockReturnValue(proc);
 
     const config: BashStepConfig = { command: 'echo hello' };
-    const context = makeContext('/Users/dev/project', makeSandbox(false, 'darwin', 'sandbox-exec'));
+    const context = makeContext('/home/user/project', makeSandbox(false, 'linux', 'bwrap'));
 
     const promise = bashCommand.execute(config, context);
 
@@ -119,7 +121,7 @@ describe('bash command sandbox-exec integration', () => {
 
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const [bin, args] = mockSpawn.mock.calls[0];
-    expect(bin).not.toBe('/usr/bin/sandbox-exec');
+    expect(bin).not.toBe('bwrap');
     expect(args).toEqual(['-c', 'echo hello']);
     expect(result.success).toBe(true);
   });
@@ -129,7 +131,7 @@ describe('bash command sandbox-exec integration', () => {
     mockSpawn.mockReturnValue(proc);
 
     const config: BashStepConfig = { command: 'echo hello' };
-    const context = makeContext('/Users/dev/project');
+    const context = makeContext('/home/user/project');
 
     const promise = bashCommand.execute(config, context);
 
@@ -141,11 +143,11 @@ describe('bash command sandbox-exec integration', () => {
     const result = await promise;
 
     const [bin] = mockSpawn.mock.calls[0];
-    expect(bin).not.toBe('/usr/bin/sandbox-exec');
+    expect(bin).not.toBe('bwrap');
     expect(result.success).toBe(true);
   });
 
-  it('falls back to unsandboxed when sandbox-exec spawn fails', async () => {
+  it('falls back to unsandboxed when bwrap spawn fails', async () => {
     const failProc = createMockProcess();
     const fallbackProc = createMockProcess();
 
@@ -157,7 +159,7 @@ describe('bash command sandbox-exec integration', () => {
     });
 
     const config: BashStepConfig = { command: 'echo hello' };
-    const context = makeContext('/Users/dev/project', makeSandbox(true, 'darwin', 'sandbox-exec'));
+    const context = makeContext('/home/user/project', makeSandbox(true, 'linux', 'bwrap'));
 
     const promise = bashCommand.execute(config, context);
 

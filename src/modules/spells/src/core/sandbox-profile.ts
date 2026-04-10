@@ -12,19 +12,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import type { StepCapability } from '../types/step-command.types.js';
+import { resolveScopePath, type SandboxWrapResult } from './sandbox-utils.js';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface SandboxWrapResult {
-  /** Shell binary to spawn (sandbox-exec). */
-  readonly bin: string;
-  /** Args array: ['-f', profilePath, 'bash', '-c', command]. */
-  readonly args: readonly string[];
-  /** Call after process exits to remove the temp profile. */
-  readonly cleanup: () => void;
-}
+export type { SandboxWrapResult } from './sandbox-utils.js';
 
 // ============================================================================
 // Profile Generation
@@ -155,16 +145,6 @@ export function wrapWithSandboxExec(
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/**
- * Resolve a scope path relative to project root.
- * Absolute paths pass through; relative paths are joined with projectRoot.
- */
-function resolveScopePath(scopePath: string, projectRoot: string): string {
-  if (scopePath.startsWith('/')) return scopePath;
-  const cleaned = scopePath.replace(/^\.\//, '');
-  return join(projectRoot, cleaned);
-}
 
 /**
  * Escape a path for use inside a sandbox profile string literal.

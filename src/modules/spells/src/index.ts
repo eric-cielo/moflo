@@ -98,10 +98,19 @@ export {
 } from './core/platform-sandbox.js';
 
 export {
+  resolveScopePath,
+  type SandboxWrapResult,
+} from './core/sandbox-utils.js';
+
+export {
   generateSandboxProfile,
   wrapWithSandboxExec,
-  type SandboxWrapResult,
 } from './core/sandbox-profile.js';
+
+export {
+  buildBwrapArgs,
+  wrapWithBwrap,
+} from './core/bwrap-sandbox.js';
 
 export {
   resolvePermissions,

@@ -19,7 +19,9 @@ import { shellInterpolateString } from '../core/interpolation.js';
 import { enforceScope, formatViolations } from '../core/capability-validator.js';
 import { resolvePermissions, type PermissionLevel } from '../core/permission-resolver.js';
 import { checkDestructivePatterns, formatDestructiveError } from './destructive-pattern-checker.js';
-import { wrapWithSandboxExec, type SandboxWrapResult } from '../core/sandbox-profile.js';
+import type { SandboxWrapResult } from '../core/sandbox-utils.js';
+import { wrapWithSandboxExec } from '../core/sandbox-profile.js';
+import { wrapWithBwrap } from '../core/bwrap-sandbox.js';
 
 /** Typed config for the bash step command. */
 export interface BashStepConfig extends StepConfig {
@@ -129,16 +131,21 @@ export const bashCommand: StepCommand<BashStepConfig> = {
     // Resolve shell: prefer Git Bash on Windows to avoid WSL bash hanging.
     const resolvedShell = platform() === 'win32' ? resolveGitBash() : 'bash';
 
-    // ── macOS sandbox-exec wrapping (#410) ─────────────────────────────
-    // When on macOS with OS sandbox enabled, wrap via sandbox-exec.
+    // ── OS sandbox wrapping (#410 macOS, #411 Linux) ────────────────────
+    // When OS sandbox is enabled, wrap via the platform-specific tool.
     let sandboxWrap: SandboxWrapResult | null = null;
-    if (context.sandbox?.useOsSandbox && context.sandbox.capability.tool === 'sandbox-exec') {
+    if (context.sandbox?.useOsSandbox) {
+      const tool = context.sandbox.capability.tool;
       try {
         const projectRoot = (context.variables.projectRoot as string) || process.cwd();
         const caps = context.effectiveCaps ?? [];
-        sandboxWrap = wrapWithSandboxExec(command, caps, projectRoot);
+        if (tool === 'sandbox-exec') {
+          sandboxWrap = wrapWithSandboxExec(command, caps, projectRoot);
+        } else if (tool === 'bwrap') {
+          sandboxWrap = wrapWithBwrap(command, caps, projectRoot);
+        }
       } catch (err) {
-        console.log(`[bash] sandbox-exec profile generation failed, running unsandboxed: ${(err as Error).message}`);
+        console.log(`[bash] ${tool} wrapping failed, running unsandboxed: ${(err as Error).message}`);
       }
     }
 
@@ -213,13 +220,13 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       let activeChild: ChildProcess = spawn(spawnBin, spawnArgs, spawnOpts);
       wireOutputs(activeChild);
 
-      // ── Sandbox-exec fallback (#410) ───────────────────────────────
-      // If sandbox-exec spawn itself fails (ENOENT, permission error),
+      // ── Sandbox fallback (#410, #411) ──────────────────────────────
+      // If the sandbox tool spawn fails (ENOENT, permission error),
       // fall back to unsandboxed execution with new child.
       if (sandboxWrap) {
         activeChild.on('error', (err: NodeJS.ErrnoException) => {
           if (resolved) return;
-          console.log(`[bash] sandbox-exec failed (${err.code ?? err.message}), retrying unsandboxed`);
+          console.log(`[bash] sandbox failed (${err.code ?? err.message}), retrying unsandboxed`);
           cleanupSandbox();
           closeStdout = '';
           closeStderr = '';
