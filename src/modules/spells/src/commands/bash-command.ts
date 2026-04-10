@@ -19,6 +19,7 @@ import { shellInterpolateString } from '../core/interpolation.js';
 import { enforceScope, formatViolations } from '../core/capability-validator.js';
 import { resolvePermissions, type PermissionLevel } from '../core/permission-resolver.js';
 import { checkDestructivePatterns, formatDestructiveError } from './destructive-pattern-checker.js';
+import { wrapWithSandboxExec, type SandboxWrapResult } from '../core/sandbox-profile.js';
 
 /** Typed config for the bash step command. */
 export interface BashStepConfig extends StepConfig {
@@ -128,16 +129,31 @@ export const bashCommand: StepCommand<BashStepConfig> = {
     // Resolve shell: prefer Git Bash on Windows to avoid WSL bash hanging.
     const resolvedShell = platform() === 'win32' ? resolveGitBash() : 'bash';
 
+    // ── macOS sandbox-exec wrapping (#410) ─────────────────────────────
+    // When on macOS with OS sandbox enabled, wrap via sandbox-exec.
+    let sandboxWrap: SandboxWrapResult | null = null;
+    if (context.sandbox?.useOsSandbox && context.sandbox.capability.tool === 'sandbox-exec') {
+      try {
+        const projectRoot = (context.variables.projectRoot as string) || process.cwd();
+        const caps = context.effectiveCaps ?? [];
+        sandboxWrap = wrapWithSandboxExec(command, caps, projectRoot);
+      } catch (err) {
+        console.log(`[bash] sandbox-exec profile generation failed, running unsandboxed: ${(err as Error).message}`);
+      }
+    }
+
     return new Promise<StepOutput>((resolve) => {
       let timedOut = false;
       let resolved = false;
       let lastStdoutLine = '';
+      const cleanupSandbox = () => sandboxWrap?.cleanup();
 
       const finish = (code: number | null, signal: string | null, stdout: string, stderr: string) => {
         if (resolved) return;
         resolved = true;
         clearTimeout(timer);
         clearInterval(heartbeat);
+        cleanupSandbox();
         context.abortSignal?.removeEventListener('abort', onAbort);
 
         const exitCode = code ?? (timedOut ? -1 : 1);
@@ -167,15 +183,50 @@ export const bashCommand: StepCommand<BashStepConfig> = {
         });
       };
 
-      // Use spawn (not exec) with stdin set to 'ignore' from the start.
-      // exec() creates a pipe for stdin then we close it — but the shell
-      // may read from stdin before we get a chance to close it, causing a
-      // hang on Windows. 'ignore' maps stdin to /dev/null at spawn time.
-      const child = spawn(resolvedShell, ['-c', command], {
-        stdio: ['ignore', 'pipe', 'pipe'],
+      // Shared spawn options — stdin ignored to avoid WSL hangs on Windows.
+      const spawnOpts = {
+        stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
         windowsHide: true,
-      });
+      };
+
+      // Determine spawn binary and args.
+      const spawnBin = sandboxWrap ? sandboxWrap.bin : resolvedShell;
+      const spawnArgs = sandboxWrap ? [...sandboxWrap.args] : ['-c', command];
+
+      let closeStdout = '';
+      let closeStderr = '';
+
+      // Wire stdout/stderr collectors onto a child process.
+      const wireOutputs = (child: ChildProcess) => {
+        child.stdout?.on('data', (chunk: Buffer) => {
+          const text = chunk.toString();
+          closeStdout += text;
+          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          if (lines.length > 0) lastStdoutLine = lines[lines.length - 1];
+        });
+        child.stderr?.on('data', (chunk: Buffer) => { closeStderr += chunk.toString(); });
+        child.on('close', (code, signal) => { finish(code, signal, closeStdout, closeStderr); });
+      };
+
+      // activeChild tracks the running process for heartbeat/timeout (may change on fallback).
+      let activeChild: ChildProcess = spawn(spawnBin, spawnArgs, spawnOpts);
+      wireOutputs(activeChild);
+
+      // ── Sandbox-exec fallback (#410) ───────────────────────────────
+      // If sandbox-exec spawn itself fails (ENOENT, permission error),
+      // fall back to unsandboxed execution with new child.
+      if (sandboxWrap) {
+        activeChild.on('error', (err: NodeJS.ErrnoException) => {
+          if (resolved) return;
+          console.log(`[bash] sandbox-exec failed (${err.code ?? err.message}), retrying unsandboxed`);
+          cleanupSandbox();
+          closeStdout = '';
+          closeStderr = '';
+          activeChild = spawn(resolvedShell, ['-c', command], spawnOpts);
+          wireOutputs(activeChild);
+        });
+      }
 
       // ── Heartbeat — show the user the step is alive ──────────────
       const HEARTBEAT_INTERVAL = 15_000; // 15 seconds
@@ -184,33 +235,17 @@ export const bashCommand: StepCommand<BashStepConfig> = {
         const activity = lastStdoutLine
           ? ` | ${lastStdoutLine.slice(0, 80)}`
           : '';
-        console.log(`[bash] still running (${elapsed()}) pid=${child.pid ?? '?'} cmd=${cmdPreview}${activity}`);
+        console.log(`[bash] still running (${elapsed()}) pid=${activeChild.pid ?? '?'} cmd=${cmdPreview}${activity}`);
       }, HEARTBEAT_INTERVAL);
 
       // ── Manual timeout with process tree kill ─────────────────────
       const onAbort = () => {
         timedOut = true;
-        console.log(`[bash] killing step after ${elapsed()} (timeout=${timeout}ms) pid=${child.pid ?? '?'}`);
-        killProcessTree(child);
+        console.log(`[bash] killing step after ${elapsed()} (timeout=${timeout}ms) pid=${activeChild.pid ?? '?'}`);
+        killProcessTree(activeChild);
       };
       const timer = setTimeout(onAbort, timeout);
       context.abortSignal?.addEventListener('abort', onAbort, { once: true });
-
-      // ── Collect stdout/stderr, track last line for heartbeat ──────
-      let closeStdout = '';
-      let closeStderr = '';
-      child.stdout?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString();
-        closeStdout += text;
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (lines.length > 0) lastStdoutLine = lines[lines.length - 1];
-      });
-      child.stderr?.on('data', (chunk: Buffer) => { closeStderr += chunk.toString(); });
-
-      // Resolve when the process exits and all stdio streams close
-      child.on('close', (code, signal) => {
-        finish(code, signal, closeStdout, closeStderr);
-      });
     });
   },
 

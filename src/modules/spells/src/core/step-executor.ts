@@ -48,6 +48,8 @@ export interface StepExecutionState {
   readonly parentMofloLevel: MofloLevel | undefined;
   readonly nestingDepth: number;
   readonly maxNestingDepth: number;
+  /** Resolved sandbox state for this spell run (Issue #410). */
+  readonly effectiveSandbox?: import('./platform-sandbox.js').EffectiveSandbox;
 }
 
 /**

@@ -84,6 +84,26 @@ export {
 } from './core/prerequisite-checker.js';
 
 export {
+  detectSandboxCapability,
+  resetSandboxCache,
+  resolveSandboxConfig,
+  resolveEffectiveSandbox,
+  formatSandboxLog,
+  DEFAULT_SANDBOX_CONFIG,
+  type SandboxCapability,
+  type SandboxConfig,
+  type SandboxTier,
+  type SandboxOverhead,
+  type EffectiveSandbox,
+} from './core/platform-sandbox.js';
+
+export {
+  generateSandboxProfile,
+  wrapWithSandboxExec,
+  type SandboxWrapResult,
+} from './core/sandbox-profile.js';
+
+export {
   resolvePermissions,
   buildClaudeCommand,
   isValidPermissionLevel,

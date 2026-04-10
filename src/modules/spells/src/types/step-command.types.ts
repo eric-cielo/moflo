@@ -109,6 +109,8 @@ export interface CastingContext {
   readonly gateway: import('../core/capability-gateway.js').ICapabilityGateway;
   /** Permission level declared on the step definition (controls Claude CLI invocation flags). */
   readonly permissionLevel?: import('../core/permission-resolver.js').PermissionLevel;
+  /** Effective sandbox state for OS-level confinement (Issue #410). */
+  readonly sandbox?: import('../core/platform-sandbox.js').EffectiveSandbox;
 }
 
 // ============================================================================

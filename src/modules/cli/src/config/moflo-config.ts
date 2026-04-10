@@ -88,6 +88,11 @@ export interface MofloConfig {
     helpers: boolean;
   };
 
+  sandbox: {
+    enabled: boolean;
+    tier: 'auto' | 'denylist-only' | 'full';
+  };
+
   epic: {
     admin_merge: boolean;
     default_strategy: 'single-branch' | 'auto-merge';
@@ -174,6 +179,10 @@ const DEFAULT_CONFIG: MofloConfig = {
     enabled: true,
     scripts: true,
     helpers: true,
+  },
+  sandbox: {
+    enabled: true,
+    tier: 'auto',
   },
   epic: {
     admin_merge: true,
@@ -280,6 +289,10 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
       enabled: raw.auto_update?.enabled ?? raw.autoUpdate?.enabled ?? DEFAULT_CONFIG.auto_update.enabled,
       scripts: raw.auto_update?.scripts ?? raw.autoUpdate?.scripts ?? DEFAULT_CONFIG.auto_update.scripts,
       helpers: raw.auto_update?.helpers ?? raw.autoUpdate?.helpers ?? DEFAULT_CONFIG.auto_update.helpers,
+    },
+    sandbox: {
+      enabled: raw.sandbox?.enabled ?? DEFAULT_CONFIG.sandbox.enabled,
+      tier: raw.sandbox?.tier ?? DEFAULT_CONFIG.sandbox.tier,
     },
     epic: {
       admin_merge: raw.epic?.admin_merge ?? raw.epic?.adminMerge ?? DEFAULT_CONFIG.epic.admin_merge,
@@ -453,6 +466,15 @@ auto_update:
   enabled: true                  # Master toggle for version-change auto-sync
   scripts: true                  # Sync .claude/scripts/ from moflo bin/
   helpers: true                  # Sync .claude/helpers/ from moflo source
+
+# OS-level sandbox for spell bash steps
+# Denylist always runs regardless of this setting
+sandbox:
+  enabled: true                  # false to disable OS sandbox (keeps denylist)
+  tier: auto                     # auto | denylist-only | full
+                                 # auto = best available, graceful fallback
+                                 # denylist-only = skip OS sandbox
+                                 # full = require OS sandbox, fail if unavailable
 
 # Epic processing (flo epic run)
 epic:
