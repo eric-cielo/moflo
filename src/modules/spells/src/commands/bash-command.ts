@@ -18,7 +18,13 @@ import type {
 import { shellInterpolateString } from '../core/interpolation.js';
 import { enforceScope, formatViolations } from '../core/capability-validator.js';
 import { resolvePermissions, type PermissionLevel } from '../core/permission-resolver.js';
-import { checkDestructivePatterns, formatDestructiveError } from './destructive-pattern-checker.js';
+import {
+  checkDestructivePatterns,
+  checkDestructivePatternsScoped,
+  formatDestructiveError,
+  validateDestructiveScope,
+  formatScopeViolation,
+} from './destructive-pattern-checker.js';
 import type { SandboxWrapResult } from '../core/sandbox-utils.js';
 import { wrapWithSandboxExec } from '../core/sandbox-profile.js';
 import { wrapWithBwrap } from '../core/bwrap-sandbox.js';
@@ -28,7 +34,16 @@ export interface BashStepConfig extends StepConfig {
   readonly command: string;
   readonly timeout?: number;
   readonly failOnError?: boolean;
-  readonly allowDestructive?: boolean;
+  /**
+   * Allow destructive commands that would normally be blocked by the denylist.
+   *
+   * - `string[]` (recommended): Scoped override — permits destructive operations
+   *   only within the listed paths. E.g., `["./build/", "./tmp/"]`.
+   * - `true` (deprecated): Full bypass — disables the entire denylist.
+   *   Emits a deprecation warning; migrate to scoped form.
+   * - `false` or omitted: Denylist fully active (default).
+   */
+  readonly allowDestructive?: boolean | readonly string[];
 }
 
 export const bashCommand: StepCommand<BashStepConfig> = {
@@ -46,7 +61,14 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       command: { type: 'string', description: 'Shell command to execute' },
       timeout: { type: 'number', description: 'Timeout in milliseconds', default: 30000 },
       failOnError: { type: 'boolean', description: 'Fail step on non-zero exit', default: true },
-      allowDestructive: { type: 'boolean', description: 'Allow destructive commands that would normally be blocked', default: false },
+      allowDestructive: {
+        description: 'Allow destructive commands. Array of paths (scoped) or true (full bypass, deprecated).',
+        anyOf: [
+          { type: 'boolean' },
+          { type: 'array', items: { type: 'string' } },
+        ],
+        default: false,
+      },
     },
     required: ['command'],
   } satisfies JSONSchema,
@@ -102,8 +124,35 @@ export const bashCommand: StepCommand<BashStepConfig> = {
       }
     }
 
-    // ── Destructive command denylist (#408) ──────────────────────────
-    if (!config.allowDestructive) {
+    // ── Destructive command denylist (#408, #419 scoped overrides) ───
+    const allowDestructive = config.allowDestructive;
+    if (allowDestructive === true) {
+      console.warn('[bash] DEPRECATION: allowDestructive: true is deprecated. Use allowDestructive: ["./path/"] for scoped overrides.');
+    } else if (Array.isArray(allowDestructive) && allowDestructive.length > 0) {
+      // Scoped override — validate scope is subset of fs:write
+      const writeCaps = (context.effectiveCaps ?? []).filter(c => c.type === 'fs:write');
+      const writeScopes = writeCaps.flatMap(c => c.scope ?? []);
+      if (writeScopes.length > 0) {
+        const scopeViolations = validateDestructiveScope(allowDestructive, writeScopes);
+        if (scopeViolations.length > 0) {
+          return {
+            success: false,
+            data: { stdout: '', stderr: '', exitCode: -1 },
+            error: formatScopeViolation(scopeViolations),
+            duration: Date.now() - start,
+          };
+        }
+      }
+      const destructiveMatch = checkDestructivePatternsScoped(command, allowDestructive);
+      if (destructiveMatch) {
+        return {
+          success: false,
+          data: { stdout: '', stderr: '', exitCode: -1 },
+          error: formatDestructiveError(destructiveMatch, true),
+          duration: Date.now() - start,
+        };
+      }
+    } else if (!allowDestructive) {
       const destructiveMatch = checkDestructivePatterns(command);
       if (destructiveMatch) {
         return {

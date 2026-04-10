@@ -223,7 +223,7 @@ describe('formatDestructiveError', () => {
     });
     expect(msg).toContain('Command blocked: git reset --hard');
     expect(msg).toContain('Discarding uncommitted work');
-    expect(msg).toContain('allowDestructive: true');
+    expect(msg).toContain('allowDestructive: ["./path/"]');
   });
 });
 
