@@ -115,7 +115,10 @@ switch (command) {
     var cmd = process.env.TOOL_INPUT_command || '';
     if (/gh\s+pr\s+create/.test(cmd)) {
       var s = readState();
-      if (!s.learningsStored) {
+      // Trivial sessions (≤3 interactions) skip the learnings gate —
+      // version bumps, typo fixes, etc. have nothing worth storing.
+      var trivial = (s.interactionCount || 0) <= 3;
+      if (!s.learningsStored && !trivial) {
         process.stderr.write('BLOCKED: Store learnings before creating a PR. Use mcp__moflo__memory_store to record what was learned.\n');
         process.exit(2);
       }

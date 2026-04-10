@@ -1049,9 +1049,16 @@ describe('end-to-end: spell lifecycle', () => {
   });
 
   describe('learnings gate (check-before-pr)', () => {
-    it('blocks gh pr create when learnings not stored', () => {
+    it('blocks gh pr create when learnings not stored in non-trivial session', () => {
       const env = baseEnv(tmpDir);
 
+      // Simulate 4+ interactions so session is non-trivial
+      env.CLAUDE_USER_PROMPT = 'implement the feature';
+      runGate('prompt-reminder', env);
+      env.CLAUDE_USER_PROMPT = 'fix the tests';
+      runGate('prompt-reminder', env);
+      env.CLAUDE_USER_PROMPT = 'refactor the module';
+      runGate('prompt-reminder', env);
       env.CLAUDE_USER_PROMPT = 'create the pr';
       runGate('prompt-reminder', env);
       runGate('record-memory-searched', env);
@@ -1063,9 +1070,29 @@ describe('end-to-end: spell lifecycle', () => {
       expect(r.stderr).toContain('learnings');
     });
 
+    it('allows gh pr create in trivial sessions without learnings', () => {
+      const env = baseEnv(tmpDir);
+
+      // Only 1 interaction — trivial session (version bump, typo fix, etc.)
+      env.CLAUDE_USER_PROMPT = 'bump version and pr';
+      runGate('prompt-reminder', env);
+      runGate('record-memory-searched', env);
+
+      env.TOOL_INPUT_command = 'gh pr create --title "chore: bump version"';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(0);
+    });
+
     it('allows gh pr create after memory_store', () => {
       const env = baseEnv(tmpDir);
 
+      // Non-trivial session but learnings stored
+      env.CLAUDE_USER_PROMPT = 'implement feature';
+      runGate('prompt-reminder', env);
+      env.CLAUDE_USER_PROMPT = 'fix edge case';
+      runGate('prompt-reminder', env);
+      env.CLAUDE_USER_PROMPT = 'add tests';
+      runGate('prompt-reminder', env);
       env.CLAUDE_USER_PROMPT = 'create the pr';
       runGate('prompt-reminder', env);
       runGate('record-memory-searched', env);
