@@ -98,6 +98,12 @@ export {
 } from './core/platform-sandbox.js';
 
 export {
+  generateSandboxProfile,
+  wrapWithSandboxExec,
+  type SandboxWrapResult,
+} from './core/sandbox-profile.js';
+
+export {
   resolvePermissions,
   buildClaudeCommand,
   isValidPermissionLevel,
