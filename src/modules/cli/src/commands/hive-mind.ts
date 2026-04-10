@@ -13,7 +13,19 @@ import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { spawn as childSpawn, execSync } from 'child_process';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { resolvePermissions } from '../../../spells/src/core/permission-resolver.js';
+// Inline permission resolver to avoid cross-package runtime import
+// (cli rootDir:"." produces dist/src/ which breaks relative paths to spells/)
+const PERM_TOOLS: Record<string, readonly string[]> = {
+  readonly:  ['Read', 'Glob', 'Grep'],
+  standard:  ['Edit', 'Write', 'Read', 'Glob', 'Grep'],
+  elevated:  ['Edit', 'Write', 'Bash', 'Read', 'Glob', 'Grep'],
+};
+function resolvePermissions(level?: string): { cliArgs: string[] } {
+  const args = ['--dangerously-skip-permissions'];
+  const tools = level && level !== 'autonomous' ? PERM_TOOLS[level] : undefined;
+  if (tools) args.push('--allowedTools', tools.join(','));
+  return { cliArgs: args };
+}
 
 // Worker type definitions for prompt generation
 interface HiveWorker {
@@ -259,7 +271,7 @@ async function spawnClaudeCodeInstance(
       // is always included — but --allowedTools restricts the blast radius.
       const noAutoPerms = flags['no-auto-permissions'];
       if (!noAutoPerms) {
-        const permLevel = flags['permission-level'] ?? 'elevated';
+        const permLevel = (flags['permission-level'] as string) ?? 'elevated';
         const resolved = resolvePermissions(permLevel);
         claudeArgs.push(...resolved.cliArgs);
       }
