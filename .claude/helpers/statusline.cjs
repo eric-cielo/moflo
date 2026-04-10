@@ -698,6 +698,10 @@ function generateDashboard() {
     if (git.ahead > 0) header += ` ${c.brightGreen}\u2191${git.ahead}${c.reset}`;
     if (git.behind > 0) header += ` ${c.brightRed}\u2193${git.behind}${c.reset}`;
   }
+  if (SL_CONFIG.show_model) {
+    const modelName = getModelName();
+    if (modelName) header += `  ${c.dim}\u2502${c.reset}  ${c.purple}${modelName}${c.reset}`;
+  }
   if (SL_CONFIG.show_session && session.duration) {
     header += `  ${c.dim}\u2502${c.reset}  ${c.cyan}\u23F1 ${session.duration}${c.reset}`;
   }
@@ -768,6 +772,10 @@ function generateCompactDashboard() {
     }
     if (git.ahead > 0) header += ` ${c.brightGreen}\u2191${git.ahead}${c.reset}`;
     if (git.behind > 0) header += ` ${c.brightRed}\u2193${git.behind}${c.reset}`;
+  }
+  if (SL_CONFIG.show_model) {
+    const modelName = getModelName();
+    if (modelName) header += `  ${c.dim}\u2502${c.reset}  ${c.purple}${modelName}${c.reset}`;
   }
   if (SL_CONFIG.show_session && session.duration) {
     header += `  ${c.dim}\u2502${c.reset}  ${c.cyan}\u23F1 ${session.duration}${c.reset}`;
