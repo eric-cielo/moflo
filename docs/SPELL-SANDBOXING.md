@@ -180,17 +180,81 @@ This makes enforcement structural — commands cannot bypass it because all I/O 
 
 Without runtime enforcement, capabilities are advisory — a step declares what it *should* do, but nothing prevents it from doing more. The gateway closes this gap by ensuring every I/O operation is checked against the step's effective scope at the moment it happens.
 
-## Sandboxing Tiers
+## Security Model — Defense in Depth
 
-MoFlo's sandboxing is graduated. The current implementation covers Tier 1:
+MoFlo uses three independent security layers. Each layer catches different threats, and they work together so that no single bypass compromises the whole system.
 
-| Tier | Mechanism | Status | Scope |
-|------|-----------|--------|-------|
-| 1 | Capability declaration + gateway enforcement | **Shipped** (partial — see above) | All step commands |
-| 2 | Node `--experimental-permission` for bash | Planned | `bash` steps with path restrictions |
-| 3 | V8 isolates (`isolated-vm`) for expressions | Planned | `condition`, `evaluate` |
-| 4 | Linux namespaces (`unshare`) | Future | Untrusted steps on Linux |
-| 5 | WASM sandbox | Future | Community step commands |
+### Layer 1: Command Denylist (all platforms)
+
+Before any bash step executes, MoFlo checks the command against a denylist of known-catastrophic patterns. This catches accidental destructive commands regardless of capabilities or sandbox status.
+
+**Blocked patterns:**
+
+| Pattern | Example | Why It's Blocked |
+|---------|---------|-----------------|
+| Recursive delete of root/home/system dirs | `rm -rf /`, `rm -rf ~` | Filesystem wipe |
+| Force push to main/master | `git push --force main` | Overwrites shared git history |
+| Hard reset | `git reset --hard` | Discards uncommitted work |
+| DROP TABLE/DATABASE/SCHEMA | `DROP TABLE users` | Irreversible database destruction |
+| chmod -R 777 | `chmod -R 777 /var` | Permission blowout |
+| mkfs/format on device | `mkfs.ext4 /dev/sda` | Destroys all data on device |
+| Fork bomb | `:(){ :|:& };:` | Exhausts system resources |
+| curl/wget piped to shell | `curl url \| sh` | Remote code execution |
+
+**Overriding:** If a spell step legitimately needs to run a blocked command, set `allowDestructive: true` in the step config. This should be rare and intentional.
+
+```yaml
+steps:
+  - id: dangerous-but-necessary
+    type: bash
+    config:
+      command: "git reset --hard origin/main"
+      allowDestructive: true  # Bypasses denylist for this step only
+```
+
+### Layer 2: Capability Gateway (all platforms)
+
+Every step command declares capabilities (`fs:read`, `fs:write`, `net`, `shell`, etc.) and the CapabilityGateway enforces them at runtime. See the sections above for full details.
+
+This layer prevents steps from accessing resources they didn't declare — a step without `net` capability cannot make HTTP requests, a step without `fs:write` cannot create files.
+
+### Layer 3: OS-Level Process Isolation (macOS and Linux)
+
+On macOS and Linux, MoFlo automatically wraps bash steps in an OS-level sandbox that enforces capability restrictions at the process level. This is the strongest layer — even if a command finds a way around the gateway, the OS blocks the operation.
+
+| Platform | Tool | How It Works | Overhead |
+|----------|------|-------------|----------|
+| **macOS** | `sandbox-exec` | Apple Seatbelt profiles restrict filesystem and network access | Low |
+| **Linux** | `bwrap` (bubblewrap) | Linux namespaces with read-only root bind, PID isolation, network unsharing | Low |
+| **Windows** | *None available* | OS-level sandboxing is not available — Layers 1 and 2 still apply | N/A |
+
+**What the OS sandbox enforces:**
+- Filesystem is read-only by default — only paths granted via `fs:write` become writable
+- Network access is blocked unless the step declares `net` capability
+- PID namespace is isolated (Linux) — the step cannot see or signal other processes
+- Graceful fallback — if the sandbox tool isn't installed or fails to start, the step runs unsandboxed with an info log
+
+### Platform Security Comparison
+
+| Protection | Windows | macOS | Linux |
+|-----------|---------|-------|-------|
+| Command denylist | Yes | Yes | Yes |
+| Capability gateway | Yes | Yes | Yes |
+| OS filesystem isolation | No | Yes (sandbox-exec) | Yes (bwrap) |
+| OS network isolation | No | Yes (sandbox-exec) | Yes (bwrap) |
+| OS process isolation | No | No | Yes (bwrap --unshare-pid) |
+
+**Windows users:** Layers 1 and 2 provide meaningful protection — the denylist catches catastrophic mistakes, and the gateway enforces capability boundaries in code. However, these are application-level controls that a sufficiently crafted command could bypass. Review spell permissions carefully, especially for spells from untrusted sources.
+
+### Checking Your Sandbox Tier
+
+Run `flo doctor` to see which sandbox tier is active on your system:
+
+```
+flo doctor sandbox
+```
+
+This reports the detected sandbox tool and platform, or warns if only the denylist is available.
 
 ## See Also
 

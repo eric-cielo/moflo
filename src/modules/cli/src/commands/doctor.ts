@@ -1381,6 +1381,43 @@ export const doctorCommand: Command = {
       }
     }
 
+    // Check sandbox tier — reports which OS-level sandbox is available (#412)
+    async function checkSandboxTier(): Promise<HealthCheck> {
+      try {
+        const { detectSandboxCapability } = await import(
+          '../../../spells/src/core/platform-sandbox.js'
+        );
+        const cap = detectSandboxCapability();
+
+        if (cap.available) {
+          return {
+            name: 'Sandbox Tier',
+            status: 'pass',
+            message: `${cap.tool} (${cap.platform})`,
+          };
+        }
+
+        const platformHint: Record<string, string> = {
+          win32: 'Windows has no OS-level sandbox — denylist and capability gateway still active',
+          linux: 'Install bubblewrap: sudo apt install bubblewrap',
+          darwin: 'sandbox-exec should be available on macOS — check /usr/bin/sandbox-exec',
+        };
+
+        return {
+          name: 'Sandbox Tier',
+          status: 'warn',
+          message: `denylist only (${cap.platform})`,
+          fix: platformHint[cap.platform] ?? 'No OS sandbox available for this platform',
+        };
+      } catch (err) {
+        return {
+          name: 'Sandbox Tier',
+          status: 'warn',
+          message: `Unable to detect: ${err instanceof Error ? err.message : 'unknown error'}`,
+        };
+      }
+    }
+
     const allChecks: (() => Promise<HealthCheck>)[] = [
       checkVersionFreshness,
       checkNodeVersion,
@@ -1408,6 +1445,7 @@ export const doctorCommand: Command = {
       checkMcpSpellIntegration,
       checkHookExecution,
       checkGateHealth,
+      checkSandboxTier,
     ];
 
     const componentMap: Record<string, () => Promise<HealthCheck>> = {
@@ -1442,6 +1480,8 @@ export const doctorCommand: Command = {
       'hooks': checkHookExecution,
       'gates': checkGateHealth,
       'gate': checkGateHealth,
+      'sandbox': checkSandboxTier,
+      'sandbox-tier': checkSandboxTier,
     };
 
     let checksToRun = allChecks;
