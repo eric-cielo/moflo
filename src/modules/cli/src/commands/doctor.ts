@@ -9,7 +9,8 @@ import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, statSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { resolve } from 'path';
 import { execSync, exec } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
@@ -1384,8 +1385,16 @@ export const doctorCommand: Command = {
     // Check sandbox tier — reports which OS-level sandbox is available (#412)
     async function checkSandboxTier(): Promise<HealthCheck> {
       try {
+        // Walk up to CLI package root, then resolve sibling spells package
+        // (works from both src/ and dist/src/ locations)
+        const __doctorDir = dirname(fileURLToPath(import.meta.url));
+        let cliPkgRoot = __doctorDir;
+        while (cliPkgRoot !== dirname(cliPkgRoot) && !existsSync(join(cliPkgRoot, 'package.json'))) {
+          cliPkgRoot = dirname(cliPkgRoot);
+        }
+        const sandboxPath = resolve(cliPkgRoot, '..', 'spells', 'dist', 'core', 'platform-sandbox.js');
         const { detectSandboxCapability } = await import(
-          '../../../spells/src/core/platform-sandbox.js'
+          pathToFileURL(sandboxPath).href
         );
         const cap = detectSandboxCapability();
 
