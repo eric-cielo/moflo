@@ -74,7 +74,31 @@ git push origin main
 
 Only commit version-related files. Do not stage unrelated changes.
 
-### Step 6: Publish to npm
+### Step 6: Verify npm Authentication
+
+Before publishing, verify npm auth is valid:
+
+```bash
+npm whoami
+```
+
+If this returns a 401 or "not logged in" error, the auth token in `~/.npmrc` is missing or expired. Ask the user to provide a valid npm publish token.
+
+**How to create a token** (provide these instructions to the user if needed):
+1. Go to https://www.npmjs.com/settings/~/tokens
+2. Click "Generate New Token" → select "Granular Access Token"
+3. Set permissions: "Read and write" for the `moflo` package
+4. Copy the token (starts with `npm_...`)
+
+Once the user provides the token, write it to `~/.npmrc`:
+
+```bash
+echo "//registry.npmjs.org/:_authToken=<token>" > ~/.npmrc
+```
+
+Then verify with `npm whoami` before proceeding.
+
+### Step 7: Publish to npm
 
 ```bash
 npm publish --tag <tag>
@@ -84,15 +108,11 @@ npm publish --tag <tag>
 - For RC releases: `npm publish --tag rc` (publishes to `rc` tag so it doesn't become `latest`)
 
 **OTP handling:**
-- First attempt: run `npm publish` without `--otp`
-- If npm prompts for a one-time password or returns an OTP error, ask the user for their authenticator code
+- If npm returns an OTP/one-time-password error, ask the user for their authenticator code
 - Then retry with: `npm publish --otp=<code> --tag <tag>`
+- Tip: Granular access tokens created on npmjs.com do NOT require OTP — prefer those over legacy tokens
 
-**Login handling:**
-- If npm returns a 401/403 or "not logged in" error, tell the user to run `! npm login` (interactive login in their terminal)
-- After they confirm login, retry the publish
-
-### Step 7: Verify Publication
+### Step 8: Verify Publication
 
 ```bash
 npm view moflo version
@@ -101,7 +121,7 @@ npm view moflo dist-tags
 
 Confirm the published version matches what we just built.
 
-### Step 8: Install Locally
+### Step 9: Install Locally
 
 ```bash
 npm install moflo@<new-version> --save-dev
@@ -109,7 +129,7 @@ npm install moflo@<new-version> --save-dev
 
 This updates `package.json` and `package-lock.json` to use the newly published version as a devDependency.
 
-### Step 9: Final Commit
+### Step 10: Final Commit
 
 If `package.json` or `package-lock.json` changed from the install:
 
