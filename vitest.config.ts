@@ -1,5 +1,23 @@
 import { defineConfig } from 'vitest/config';
 
+/**
+ * Tests that pass in isolation but timeout under full-suite load.
+ * These are excluded from the parallel run and executed sequentially
+ * by scripts/test-runner.mjs in a second pass.
+ *
+ * To flag a new test: add its path here. The test-runner picks up
+ * this list automatically — no other config needed.
+ */
+export const isolationTests = [
+  'tests/bin/process-manager-stress.test.ts',
+  'src/modules/memory/src/database-provider.test.ts',
+  'src/modules/spells/__tests__/sandbox-tier-integration.test.ts',
+  'src/modules/spells/__tests__/spell-sandboxing.test.ts',
+  'src/modules/hooks/__tests__/statusline/statusline-collision.test.ts',
+  'src/modules/spells/__tests__/integration/permission-system-e2e.test.ts',
+  'src/modules/spells/__tests__/integration/spell-engine-e2e.test.ts',
+];
+
 export default defineConfig({
   test: {
     // Use forks to prevent segfaults from native modules (agentdb/sql.js)
@@ -18,7 +36,7 @@ export default defineConfig({
       'src/modules/**/__tests__/**/*.{test,spec}.{ts,mts}',
       'src/modules/**/src/**/*.{test,spec}.{ts,mts}',
       'src/modules/**/tests/**/*.{test,spec}.{ts,mts}',
-'src/__tests__/**/*.{test,spec}.ts',
+      'src/__tests__/**/*.{test,spec}.ts',
       'src/plugins/**/__tests__/**/*.{test,spec}.ts',
       'src/plugins/**/tests/**/*.{test,spec}.ts',
       'src/modules/**/examples/**/*.{test,spec}.{ts,mts}',
@@ -42,6 +60,8 @@ export default defineConfig({
       // Guidance tests with 0 tests (collection failures)
       'src/modules/guidance/tests/hooks.test.ts',
       'src/modules/guidance/tests/integration.test.ts',
+      // Isolation tests — run sequentially in second pass (see isolationTests above)
+      ...isolationTests,
     ],
   },
 });
