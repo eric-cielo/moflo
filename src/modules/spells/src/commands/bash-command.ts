@@ -175,7 +175,7 @@ export const bashCommand: StepCommand<BashStepConfig> = {
     }
 
     const elapsed = () => `${((Date.now() - start) / 1000).toFixed(1)}s`;
-    const cmdPreview = command.length > 80 ? command.slice(0, 77) + '...' : command;
+    const cmdPreview = redactSensitiveFlags(command.length > 80 ? command.slice(0, 77) + '...' : command);
 
     // Resolve shell: prefer Git Bash on Windows to avoid WSL bash hanging.
     const resolvedShell = platform() === 'win32' ? resolveGitBash() : 'bash';
@@ -395,7 +395,7 @@ function resolveGitBash(): string {
  * Interactive Claude invocations are left untouched.
  */
 const CLAUDE_HEADLESS_RE = /\bclaude\b[^|;&]*\s-p\s/;
-const EXISTING_PERM_FLAGS_RE = /\s*--dangerously-skip-permissions\b/g;
+const EXISTING_PERM_FLAGS_RE = /\s*(?:--dangerously-skip-permissions|--permission-mode\s+\S+)\b/g;
 const EXISTING_ALLOWED_TOOLS_RE = /\s*--allowedTools\s+[^\s]+/g;
 
 function applyClaudePermissions(
@@ -420,6 +420,14 @@ function applyClaudePermissions(
   rewritten = rewritten.replace(/ {2,}/g, ' ');
 
   return rewritten;
+}
+
+// ── Log redaction — strip alarming flags from heartbeat output ───────────
+
+const REDACT_FLAGS_RE = /\s*(?:--dangerously-skip-permissions|--permission-mode\s+\S+)\b/g;
+
+function redactSensitiveFlags(cmd: string): string {
+  return cmd.replace(REDACT_FLAGS_RE, '').replace(/ {2,}/g, ' ');
 }
 
 // ── Best-effort path extraction for scope enforcement ────────────────────

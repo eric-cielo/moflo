@@ -2,13 +2,12 @@
  * Permission Resolver — Least-Privilege Escalation for Spell Steps
  *
  * Determines the minimum Claude Code CLI permission flags needed for a step.
- * Always uses --dangerously-skip-permissions (required for non-interactive -p mode)
- * but varies --allowedTools to enforce least-privilege:
+ * Uses the least-permissive --permission-mode for each level:
  *
- *   readonly   → Read,Glob,Grep                    (analysis only)
- *   standard   → Edit,Write,Read,Glob,Grep         (code changes, no shell)
- *   elevated   → Edit,Write,Bash,Read,Glob,Grep    (shell access for git/npm/etc.)
- *   autonomous → (no --allowedTools restriction)    (explicit opt-in only)
+ *   readonly   → Read,Glob,Grep                    (no permission bypass)
+ *   standard   → Edit,Write,Read,Glob,Grep         (--permission-mode acceptEdits)
+ *   elevated   → Edit,Write,Bash,Read,Glob,Grep    (--permission-mode bypassPermissions)
+ *   autonomous → (no --allowedTools restriction)    (--permission-mode bypassPermissions)
  *
  * Resolution order:
  *   1. Explicit `permissionLevel` on the step definition → use directly
@@ -41,9 +40,9 @@ const TOOL_SETS: Record<Exclude<PermissionLevel, 'autonomous'>, readonly string[
 export interface ResolvedPermissions {
   /** The resolved permission level. */
   readonly level: PermissionLevel;
-  /** CLI args to append when spawning Claude (e.g. ['--dangerously-skip-permissions', '--allowedTools', 'Read,Glob,Grep']). */
+  /** CLI args to append when spawning Claude (e.g. ['--permission-mode', 'acceptEdits', '--allowedTools', 'Read,Glob,Grep']). */
   readonly cliArgs: readonly string[];
-  /** Whether --dangerously-skip-permissions is included (always true in non-interactive). */
+  /** Whether full permission bypass is included (only for elevated/autonomous). */
   readonly skipPermissions: boolean;
   /** The allowed tools list, or undefined for autonomous (no restriction). */
   readonly allowedTools?: readonly string[];
@@ -69,8 +68,17 @@ export function resolvePermissions(
     ? explicitLevel as PermissionLevel
     : deriveFromCapabilities(capabilities);
 
-  const args: string[] = ['--dangerously-skip-permissions'];
+  const args: string[] = [];
+  const needsBypass = level === 'elevated' || level === 'autonomous';
   let allowedTools: string[] | undefined;
+
+  // Only bypass permissions when the step actually needs it (shell/autonomous)
+  if (needsBypass) {
+    args.push('--permission-mode', 'bypassPermissions');
+  } else if (level === 'standard') {
+    args.push('--permission-mode', 'acceptEdits');
+  }
+  // readonly: no permission mode needed — Read/Glob/Grep don't require approval
 
   if (level !== 'autonomous') {
     const baseTools = [...TOOL_SETS[level]];
@@ -86,7 +94,7 @@ export function resolvePermissions(
   return {
     level,
     cliArgs: args,
-    skipPermissions: true,
+    skipPermissions: needsBypass,
     allowedTools: allowedTools ? Object.freeze([...allowedTools]) : undefined,
   };
 }
@@ -98,7 +106,7 @@ export function resolvePermissions(
  * @param explicitLevel - Optional explicit `permissionLevel` from step config.
  * @param capabilities  - The step's effective capabilities.
  * @param additionalTools - Extra tools beyond the permission level's defaults.
- * @returns The complete command string (e.g. `claude --dangerously-skip-permissions --allowedTools Edit,Write,Read,Glob,Grep -p "..."`)
+ * @returns The complete command string (e.g. `claude --permission-mode acceptEdits --allowedTools Edit,Write,Read,Glob,Grep -p "..."`)
  */
 export function buildClaudeCommand(
   prompt: string,
