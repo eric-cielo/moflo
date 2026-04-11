@@ -13,6 +13,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Command, CommandContext, CommandResult } from '../types.js';
@@ -106,8 +107,40 @@ async function runEpic(
     // No prior state — fresh run
   }
 
+  // 3b. Reconcile memory with branch state — if the branch doesn't exist
+  //     or has no commits ahead of main, memory is stale (e.g. after a reset)
   if (completedStories.size > 0) {
-    console.log(`[epic] Resuming: ${completedStories.size} stories already completed`);
+    const slug = issue.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .substring(0, 40);
+    const epicBranch = `epic/${issueNumber}-${slug}`;
+
+    let branchHasCommits = false;
+    try {
+      // Check if the epic branch exists (local or remote) and has commits ahead of main
+      const revCheck = execSync(
+        `git rev-parse --verify refs/heads/${epicBranch} 2>/dev/null || git rev-parse --verify refs/remotes/origin/${epicBranch} 2>/dev/null`,
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+      ).trim();
+      if (revCheck) {
+        const aheadCount = execSync(
+          `git rev-list --count main..${revCheck}`,
+          { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+        ).trim();
+        branchHasCommits = parseInt(aheadCount, 10) > 0;
+      }
+    } catch {
+      // Branch doesn't exist — memory is stale
+    }
+
+    if (branchHasCommits) {
+      console.log(`[epic] Resuming: ${completedStories.size} stories already completed (branch verified)`);
+    } else {
+      console.log(`[epic] Memory shows ${completedStories.size} completed stories, but epic branch is missing or empty — starting fresh`);
+      completedStories = new Set<number>();
+    }
   }
 
   // 4. Build slug for branch name
@@ -289,16 +322,39 @@ async function resetEpic(epicNumber: string): Promise<CommandResult> {
   }
   console.log(`[epic] Clearing state for epic #${epicNumber}...`);
 
+  // 1. Find all story keys for this epic from memory
+  let storyKeys: string[] = [];
   try {
-    await runEpicSpell(
-      `name: epic-reset\nsteps:\n  - id: clear-state\n    type: memory\n    config:\n      action: write\n      namespace: epic-state\n      key: "epic-${epicNumber}"\n      value: null`,
+    const searchResult = await runEpicSpell(
+      `name: epic-reset-search\nsteps:\n  - id: find-stories\n    type: memory\n    config:\n      action: search\n      namespace: epic-state\n      query: "epic ${epicNumber} story completed"`,
       { args: {} },
     );
-    console.log(`[epic] State cleared for epic #${epicNumber}`);
+    if (searchResult.success && searchResult.outputs['find-stories']) {
+      const data = searchResult.outputs['find-stories'] as { results?: Array<{ key: string }> };
+      if (data.results) {
+        storyKeys = data.results.map(r => r.key).filter(k => k.startsWith('story-'));
+      }
+    }
   } catch {
-    console.log(`[epic] Could not clear epic state.`);
+    // Couldn't search — just clear the epic key below
   }
 
+  // 2. Clear epic key + all story keys
+  const keysToDelete = [`epic-${epicNumber}`, ...storyKeys];
+  let cleared = 0;
+  for (const key of keysToDelete) {
+    try {
+      await runEpicSpell(
+        `name: epic-reset-delete\nsteps:\n  - id: delete-key\n    type: memory\n    config:\n      action: write\n      namespace: epic-state\n      key: "${key}"\n      value: null`,
+        { args: {} },
+      );
+      cleared++;
+    } catch {
+      // Key may not exist — safe to ignore
+    }
+  }
+
+  console.log(`[epic] Cleared ${cleared} memory entries for epic #${epicNumber}`);
   return { success: true };
 }
 

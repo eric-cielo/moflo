@@ -26,7 +26,8 @@ Given an epic issue number, perform ALL of the following:
 4. **Delete local branches**: Delete any local branches matching the same patterns (skip the current branch)
 5. **Reopen issues**: Reopen all story issues and the epic itself if any were closed
 6. **Uncheck task lists**: Edit the epic body to uncheck all `- [x]` checkboxes back to `- [ ]`
-7. **Verify clean state**: Confirm all stories are OPEN, no related PRs are open, no related branches exist
+7. **Clear epic-state memory**: Delete all entries in the `epic-state` memory namespace for this epic and its stories (keys: `epic-<N>`, `story-<N>` for each story). Use `mcp__moflo__memory_list` with namespace `epic-state` to find entries, then `mcp__moflo__memory_delete` for each.
+8. **Verify clean state**: Confirm all stories are OPEN, no related PRs are open, no related branches exist, and epic-state memory is empty
 
 ## Output
 
