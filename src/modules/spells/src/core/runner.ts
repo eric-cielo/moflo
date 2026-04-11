@@ -37,6 +37,8 @@ import {
   type EffectiveSandbox,
 } from './platform-sandbox.js';
 
+export const ENGINE_VERSION = '1.0.0';
+
 export class SpellCaster {
   private readonly connectorAccessor?: ConnectorAccessorImpl;
 
