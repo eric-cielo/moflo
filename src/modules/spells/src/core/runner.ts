@@ -5,6 +5,8 @@
  * delegating step execution, validation, loop iteration, rollback,
  * credential masking, and timeout handling to focused modules.
  */
+
+export const ENGINE_VERSION = '1.0.0';
 import type {
   CastingContext,
   StepOutput,
