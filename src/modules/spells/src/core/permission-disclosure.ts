@@ -29,14 +29,24 @@ import { checkCapabilities } from './capability-validator.js';
 import { createHash } from 'node:crypto';
 
 // ============================================================================
-// Destructive Capability Classification
+// Risk Classification
 // ============================================================================
 
 /**
- * Capabilities classified as destructive — can permanently modify or delete
+ * Risk levels shown to users during permission disclosure.
+ *
+ *   none     — No external side effects (condition, memory read)
+ *   low      — Can read external data or spawn sub-agents
+ *   moderate — Can make network requests or control browsers
+ *   higher   — Can modify files, run shell commands, or access credentials
+ */
+export type RiskLevel = 'none' | 'low' | 'moderate' | 'higher';
+
+/**
+ * Capabilities classified as higher-risk — can permanently modify or delete
  * data, spawn processes, or access credentials. Users must be made aware.
  */
-const DESTRUCTIVE_CAPABILITIES: ReadonlySet<CapabilityType> = new Set([
+const HIGHER_RISK_CAPABILITIES: ReadonlySet<CapabilityType> = new Set([
   'shell',
   'fs:write',
   'browser:evaluate',
@@ -44,26 +54,24 @@ const DESTRUCTIVE_CAPABILITIES: ReadonlySet<CapabilityType> = new Set([
 ]);
 
 /**
- * Capabilities classified as sensitive — can read private data or spawn
- * autonomous processes. Not destructive, but worth calling out.
+ * Capabilities classified as moderate-risk — can read private data or spawn
+ * autonomous processes. Worth calling out but not directly destructive.
  */
-const SENSITIVE_CAPABILITIES: ReadonlySet<CapabilityType> = new Set([
+const MODERATE_RISK_CAPABILITIES: ReadonlySet<CapabilityType> = new Set([
   'agent',
   'net',
   'browser',
 ]);
 
-export type RiskLevel = 'safe' | 'sensitive' | 'destructive';
-
 /** Human-readable risk explanations for each capability. */
 const RISK_EXPLANATIONS: Partial<Record<CapabilityType, string>> = {
-  'shell': 'Can execute arbitrary shell commands (rm, git push, etc.)',
-  'fs:write': 'Can create, overwrite, or delete files on disk',
-  'browser:evaluate': 'Can execute JavaScript in a browser context',
-  'credentials': 'Can access stored secrets and API keys',
-  'agent': 'Can spawn autonomous Claude sub-agents',
-  'net': 'Can make network requests to external services',
-  'browser': 'Can launch and control browser sessions',
+  'shell': 'Runs shell commands on your machine',
+  'fs:write': 'Creates, overwrites, or deletes files',
+  'browser:evaluate': 'Executes JavaScript in a browser context',
+  'credentials': 'Accesses stored secrets and API keys',
+  'agent': 'Spawns autonomous AI sub-agents',
+  'net': 'Makes network requests to external services',
+  'browser': 'Launches and controls browser sessions',
 };
 
 // ============================================================================
@@ -87,9 +95,9 @@ export interface StepPermissionReport {
 
 export interface PermissionWarning {
   readonly capability: CapabilityType;
-  readonly riskLevel: 'sensitive' | 'destructive';
+  readonly riskLevel: 'moderate' | 'higher';
   readonly explanation: string;
-  /** Scope restriction (if any) — makes a destructive cap less dangerous. */
+  /** Scope restriction (if any) — narrows the risk. */
   readonly scope?: readonly string[];
 }
 
@@ -181,17 +189,17 @@ function classifyCapabilities(caps: readonly StepCapability[]): PermissionWarnin
   const warnings: PermissionWarning[] = [];
 
   for (const cap of caps) {
-    if (DESTRUCTIVE_CAPABILITIES.has(cap.type)) {
+    if (HIGHER_RISK_CAPABILITIES.has(cap.type)) {
       warnings.push({
         capability: cap.type,
-        riskLevel: 'destructive',
+        riskLevel: 'higher',
         explanation: RISK_EXPLANATIONS[cap.type] ?? `Has ${cap.type} access`,
         scope: cap.scope,
       });
-    } else if (SENSITIVE_CAPABILITIES.has(cap.type)) {
+    } else if (MODERATE_RISK_CAPABILITIES.has(cap.type)) {
       warnings.push({
         capability: cap.type,
-        riskLevel: 'sensitive',
+        riskLevel: 'moderate',
         explanation: RISK_EXPLANATIONS[cap.type] ?? `Has ${cap.type} access`,
         scope: cap.scope,
       });
@@ -202,9 +210,9 @@ function classifyCapabilities(caps: readonly StepCapability[]): PermissionWarnin
 }
 
 function computeRiskLevel(warnings: readonly PermissionWarning[]): RiskLevel {
-  if (warnings.some(w => w.riskLevel === 'destructive')) return 'destructive';
-  if (warnings.some(w => w.riskLevel === 'sensitive')) return 'sensitive';
-  return 'safe';
+  if (warnings.some(w => w.riskLevel === 'higher')) return 'higher';
+  if (warnings.some(w => w.riskLevel === 'moderate')) return 'moderate';
+  return 'none';
 }
 
 // ============================================================================
@@ -240,10 +248,11 @@ function computePermissionHash(steps: readonly StepPermissionReport[]): string {
 // Formatting — Human-Readable Output
 // ============================================================================
 
-const RISK_ICONS: Record<RiskLevel, string> = {
-  safe: '[SAFE]',
-  sensitive: '[SENSITIVE]',
-  destructive: '[DESTRUCTIVE]',
+const RISK_LABELS: Record<RiskLevel, string> = {
+  none: '[No risk]',
+  low: '[Low risk]',
+  moderate: '[Moderate risk]',
+  higher: '[Higher risk]',
 };
 
 /**
@@ -251,9 +260,9 @@ const RISK_ICONS: Record<RiskLevel, string> = {
  */
 export function formatStepPermissionReport(report: StepPermissionReport): string {
   const lines: string[] = [];
-  const icon = RISK_ICONS[report.riskLevel];
+  const label = RISK_LABELS[report.riskLevel];
 
-  lines.push(`  ${icon} ${report.stepId} (${report.stepType})`);
+  lines.push(`  ${label} ${report.stepId} (${report.stepType})`);
   lines.push(`    Permission level: ${report.permissionLevel}`);
 
   if (report.resolved.allowedTools) {
@@ -263,13 +272,11 @@ export function formatStepPermissionReport(report: StepPermissionReport): string
   }
 
   if (report.warnings.length > 0) {
-    lines.push('    Warnings:');
     for (const w of report.warnings) {
       const scopeNote = w.scope?.length
         ? ` (scoped to: ${w.scope.join(', ')})`
         : '';
-      const marker = w.riskLevel === 'destructive' ? '!!' : '!';
-      lines.push(`      ${marker} ${w.capability}: ${w.explanation}${scopeNote}`);
+      lines.push(`    - ${w.capability}: ${w.explanation}${scopeNote}`);
     }
   }
 
@@ -283,8 +290,8 @@ export function formatStepPermissionReport(report: StepPermissionReport): string
 export function formatSpellPermissionReport(report: SpellPermissionReport): string {
   const lines: string[] = [];
 
-  lines.push(`Permission Report: ${report.spellName}`);
-  lines.push(`Overall risk: ${RISK_ICONS[report.overallRisk]} ${report.overallRisk}`);
+  lines.push(`--- Risk Analysis: ${report.spellName} ---`);
+  lines.push(`Overall: ${RISK_LABELS[report.overallRisk]}`);
   lines.push(`Permission hash: ${report.permissionHash}`);
   lines.push('');
 
@@ -293,14 +300,13 @@ export function formatSpellPermissionReport(report: SpellPermissionReport): stri
     lines.push('');
   }
 
-  if (report.overallRisk === 'destructive') {
-    const destructiveSteps = report.steps.filter(s => s.riskLevel === 'destructive');
-    lines.push('--- DESTRUCTIVE STEPS ---');
-    lines.push(`${destructiveSteps.length} step(s) can make destructive changes:`);
-    for (const s of destructiveSteps) {
-      const caps = s.warnings
-        .filter(w => w.riskLevel === 'destructive')
-        .map(w => w.capability);
+  if (report.overallRisk === 'higher' || report.overallRisk === 'moderate') {
+    const riskySteps = report.steps.filter(
+      s => s.riskLevel === 'higher' || s.riskLevel === 'moderate',
+    );
+    lines.push(`--- ${riskySteps.length} step(s) require elevated permissions ---`);
+    for (const s of riskySteps) {
+      const caps = s.warnings.map(w => w.capability);
       lines.push(`  - ${s.stepId}: ${caps.join(', ')}`);
     }
     lines.push('');

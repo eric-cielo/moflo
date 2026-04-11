@@ -11,6 +11,7 @@ export const TOOL_SPELL_LIST = 'spell_list' as const;
 export const TOOL_SPELL_STATUS = 'spell_status' as const;
 export const TOOL_SPELL_CANCEL = 'spell_cancel' as const;
 export const TOOL_SPELL_TEMPLATE = 'spell_template' as const;
+export const TOOL_SPELL_ACCEPT = 'spell_accept' as const;
 
 // Memory tools
 export const TOOL_MEMORY_STORE = 'memory_store' as const;

@@ -93,9 +93,9 @@ export class SpellCaster {
     }
 
     // ---------------------------------------------------------------
-    // Permission acceptance gate: first-run spells auto-trigger a
-    // dry-run with permission disclosure so the user sees what the
-    // spell requires before it executes, then proceed.
+    // Permission acceptance gate: first-run spells show a risk
+    // analysis and block execution until the user explicitly accepts
+    // via the spell_accept MCP tool.
     // ---------------------------------------------------------------
     if (!options.dryRun && !options.skipAcceptanceCheck && options.projectRoot) {
       const permReport = analyzeSpellPermissions(definition, this.registry);
@@ -125,24 +125,14 @@ export class SpellCaster {
           for (const err of [...dryResult.definitionErrors, ...dryResult.argumentErrors]) {
             console.log(`  - ${err.message}`);
           }
-          // Block execution when dry-run reveals structural problems
-          return this.failureResult(spellId, startTime, [{
-            code: 'ACCEPTANCE_REQUIRED',
-            message: `${reason}. Dry-run validation failed — fix errors before running.`,
-          }], definition.name);
         }
 
-        // Record acceptance so subsequent runs skip the gate
-        try {
-          await recordAcceptance(
-            options.projectRoot, definition.name, permReport.permissionHash,
-          );
-        } catch (err) {
-          console.warn(`[spell] Could not record acceptance: ${(err as Error).message ?? err}`);
-        }
-
-        console.log('\n[spell] Permissions accepted — proceeding with execution.\n');
-        // Fall through to execute the spell
+        // Always block — user must explicitly accept via spell_accept
+        console.log(`\n[spell] To accept these permissions, run: spell_accept({ name: "${definition.name}" })`);
+        return this.failureResult(spellId, startTime, [{
+          code: 'ACCEPTANCE_REQUIRED',
+          message: `${reason}. Review the risk analysis above and accept with spell_accept({ name: "${definition.name}" }).`,
+        }], definition.name);
       }
     }
 

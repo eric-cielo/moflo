@@ -61,26 +61,26 @@ function makeSpell(steps: StepDefinition[]): SpellDefinition {
 describe('analyzeStepPermissions', () => {
   const registry = makeRegistry();
 
-  it('classifies bash step as destructive (has shell + fs:write)', () => {
+  it('classifies bash step as higher risk (has shell + fs:write)', () => {
     const step = makeStep({ id: 'deploy', type: 'bash' });
     const report = analyzeStepPermissions(step, registry);
 
-    expect(report.riskLevel).toBe('destructive');
+    expect(report.riskLevel).toBe('higher');
     expect(report.permissionLevel).toBe('elevated');
     expect(report.warnings.length).toBeGreaterThan(0);
     expect(report.warnings.some(w => w.capability === 'shell')).toBe(true);
     expect(report.warnings.some(w => w.capability === 'fs:write')).toBe(true);
   });
 
-  it('classifies agent step as sensitive (has agent capability)', () => {
+  it('classifies agent step as moderate risk (has agent capability)', () => {
     const step = makeStep({ id: 'research', type: 'agent', config: { prompt: 'hello' } });
     const report = analyzeStepPermissions(step, registry);
 
-    expect(report.riskLevel).toBe('sensitive');
+    expect(report.riskLevel).toBe('moderate');
     expect(report.warnings.some(w => w.capability === 'agent')).toBe(true);
   });
 
-  it('classifies memory step as safe', () => {
+  it('classifies memory step as no risk', () => {
     const step = makeStep({
       id: 'save',
       type: 'memory',
@@ -88,11 +88,11 @@ describe('analyzeStepPermissions', () => {
     });
     const report = analyzeStepPermissions(step, registry);
 
-    expect(report.riskLevel).toBe('safe');
+    expect(report.riskLevel).toBe('none');
     expect(report.warnings.length).toBe(0);
   });
 
-  it('classifies condition step as safe (no I/O)', () => {
+  it('classifies condition step as no risk (no I/O)', () => {
     const step = makeStep({
       id: 'check',
       type: 'condition',
@@ -100,7 +100,7 @@ describe('analyzeStepPermissions', () => {
     });
     const report = analyzeStepPermissions(step, registry);
 
-    expect(report.riskLevel).toBe('safe');
+    expect(report.riskLevel).toBe('none');
   });
 
   it('respects explicit permissionLevel override', () => {
@@ -110,7 +110,7 @@ describe('analyzeStepPermissions', () => {
     // permissionLevel is readonly even though bash has shell caps
     expect(report.permissionLevel).toBe('readonly');
     // But the risk is still classified based on capabilities
-    expect(report.riskLevel).toBe('destructive');
+    expect(report.riskLevel).toBe('higher');
   });
 
   it('includes scope info in warnings when capabilities are scoped', () => {
@@ -136,24 +136,24 @@ describe('analyzeSpellPermissions', () => {
 
   it('computes overall risk as highest step risk', () => {
     const spell = makeSpell([
-      makeStep({ id: 'safe', type: 'memory', config: { action: 'read', namespace: 'x', key: 'k' } }),
+      makeStep({ id: 'none', type: 'memory', config: { action: 'read', namespace: 'x', key: 'k' } }),
       makeStep({ id: 'dangerous', type: 'bash', config: { command: 'rm -rf /' } }),
     ]);
 
     const report = analyzeSpellPermissions(spell, registry);
 
-    expect(report.overallRisk).toBe('destructive');
+    expect(report.overallRisk).toBe('higher');
     expect(report.steps.length).toBe(2);
   });
 
-  it('reports safe when all steps are safe', () => {
+  it('reports no risk when all steps are safe', () => {
     const spell = makeSpell([
       makeStep({ id: 'check', type: 'condition', config: { expression: 'true', then: 'done' } }),
       makeStep({ id: 'save', type: 'memory', config: { action: 'read', namespace: 'x', key: 'k' } }),
     ]);
 
     const report = analyzeSpellPermissions(spell, registry);
-    expect(report.overallRisk).toBe('safe');
+    expect(report.overallRisk).toBe('none');
   });
 
   it('generates a stable permission hash', () => {
@@ -211,7 +211,7 @@ describe('analyzeSpellPermissions', () => {
 
     const report = analyzeSpellPermissions(spell, registry);
     expect(report.allWarnings.some(w => w.capability === 'shell')).toBe(true);
-    expect(report.overallRisk).toBe('destructive');
+    expect(report.overallRisk).toBe('higher');
   });
 });
 
@@ -222,18 +222,18 @@ describe('analyzeSpellPermissions', () => {
 describe('formatStepPermissionReport', () => {
   const registry = makeRegistry();
 
-  it('includes [DESTRUCTIVE] marker for bash steps', () => {
+  it('includes [Higher risk] label for bash steps', () => {
     const step = makeStep({ id: 'deploy', type: 'bash' });
     const report = analyzeStepPermissions(step, registry);
     const output = formatStepPermissionReport(report);
 
-    expect(output).toContain('[DESTRUCTIVE]');
+    expect(output).toContain('[Higher risk]');
     expect(output).toContain('deploy');
     expect(output).toContain('elevated');
-    expect(output).toContain('!! shell');
+    expect(output).toContain('- shell:');
   });
 
-  it('includes [SAFE] marker for safe steps', () => {
+  it('includes [No risk] label for safe steps', () => {
     const step = makeStep({
       id: 'check',
       type: 'condition',
@@ -242,14 +242,14 @@ describe('formatStepPermissionReport', () => {
     const report = analyzeStepPermissions(step, registry);
     const output = formatStepPermissionReport(report);
 
-    expect(output).toContain('[SAFE]');
+    expect(output).toContain('[No risk]');
   });
 });
 
 describe('formatSpellPermissionReport', () => {
   const registry = makeRegistry();
 
-  it('includes DESTRUCTIVE STEPS summary for destructive spells', () => {
+  it('includes require elevated permissions summary for destructive spells', () => {
     const spell = makeSpell([
       makeStep({ id: 'safe-step', type: 'memory', config: { action: 'read', namespace: 'x', key: 'k' } }),
       makeStep({ id: 'danger-step', type: 'bash', config: { command: 'deploy' } }),
@@ -258,7 +258,7 @@ describe('formatSpellPermissionReport', () => {
     const report = analyzeSpellPermissions(spell, registry);
     const output = formatSpellPermissionReport(report);
 
-    expect(output).toContain('DESTRUCTIVE STEPS');
+    expect(output).toContain('require elevated permissions');
     expect(output).toContain('danger-step');
     expect(output).toContain('Permission hash');
   });

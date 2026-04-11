@@ -318,6 +318,7 @@ describe('Pluggable Steps — System Test', () => {
         {
           stepDirs: [join(projectRoot, 'spells', 'steps')],
           projectRoot,
+          skipAcceptanceCheck: true,
           args: { target_file: join(projectRoot, 'sample.txt') },
         },
       );

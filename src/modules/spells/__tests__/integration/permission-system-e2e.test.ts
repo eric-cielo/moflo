@@ -80,23 +80,23 @@ steps:
     const parsed = parseSpell(yaml, 'yaml');
     const report = analyzeSpellPermissions(parsed.definition, registry);
 
-    expect(report.overallRisk).toBe('destructive');
+    expect(report.overallRisk).toBe('higher');
     expect(report.steps).toHaveLength(3);
 
-    // bash steps have shell capability → destructive
-    expect(report.steps[0].riskLevel).toBe('destructive');
+    // bash steps have shell capability → higher risk
+    expect(report.steps[0].riskLevel).toBe('higher');
     expect(report.steps[0].permissionLevel).toBe('elevated');
 
     // memory step → safe
-    expect(report.steps[1].riskLevel).toBe('safe');
+    expect(report.steps[1].riskLevel).toBe('none');
     expect(report.steps[1].permissionLevel).toBe('readonly');
 
-    // bash step → destructive
-    expect(report.steps[2].riskLevel).toBe('destructive');
+    // bash step → higher risk
+    expect(report.steps[2].riskLevel).toBe('higher');
     expect(report.steps[2].permissionLevel).toBe('elevated');
   });
 
-  it('produces a human-readable report with destructive summary', () => {
+  it('produces a human-readable report with higher risk summary', () => {
     const yaml = `
 name: danger-spell
 steps:
@@ -109,9 +109,9 @@ steps:
     const report = analyzeSpellPermissions(parsed.definition, registry);
     const output = formatSpellPermissionReport(report);
 
-    expect(output).toContain('Permission Report: danger-spell');
-    expect(output).toContain('[DESTRUCTIVE]');
-    expect(output).toContain('DESTRUCTIVE STEPS');
+    expect(output).toContain('Risk Analysis: danger-spell');
+    expect(output).toContain('[Higher risk]');
+    expect(output).toContain('require elevated permissions');
     expect(output).toContain('nuke');
     expect(output).toContain('shell');
     expect(output).toContain('Permission hash:');
@@ -347,7 +347,7 @@ steps:
     // permissionLevel is respected
     expect(report.steps[0].permissionLevel).toBe('readonly');
     // But risk is still based on actual capabilities
-    expect(report.steps[0].riskLevel).toBe('destructive');
+    expect(report.steps[0].riskLevel).toBe('higher');
   });
 });
 
@@ -404,23 +404,23 @@ steps:
     const parsed = parseSpell(yaml, 'yaml');
     const report = analyzeSpellPermissions(parsed.definition, registry);
 
-    // Overall spell is destructive (has bash steps)
-    expect(report.overallRisk).toBe('destructive');
+    // Overall spell is higher risk (has bash steps)
+    expect(report.overallRisk).toBe('higher');
     expect(report.steps).toHaveLength(5);
 
-    // preflight-check: bash → destructive, elevated
+    // preflight-check: bash → higher risk, elevated
     expect(report.steps[0].stepId).toBe('preflight-check');
-    expect(report.steps[0].riskLevel).toBe('destructive');
+    expect(report.steps[0].riskLevel).toBe('higher');
     expect(report.steps[0].permissionLevel).toBe('elevated');
 
     // init-state: memory → safe, readonly
     expect(report.steps[1].stepId).toBe('init-state');
-    expect(report.steps[1].riskLevel).toBe('safe');
+    expect(report.steps[1].riskLevel).toBe('none');
     expect(report.steps[1].permissionLevel).toBe('readonly');
 
-    // create-branch: bash → destructive, elevated
+    // create-branch: bash → higher risk, elevated
     expect(report.steps[2].stepId).toBe('create-branch');
-    expect(report.steps[2].riskLevel).toBe('destructive');
+    expect(report.steps[2].riskLevel).toBe('higher');
 
     // implement-story: bash with explicit elevated → elevated
     expect(report.steps[3].stepId).toBe('implement-story');
@@ -429,9 +429,9 @@ steps:
       ['Edit', 'Write', 'Bash', 'Read', 'Glob', 'Grep'],
     );
 
-    // push-branch: bash → destructive, elevated
+    // push-branch: bash → higher risk, elevated
     expect(report.steps[4].stepId).toBe('push-branch');
-    expect(report.steps[4].riskLevel).toBe('destructive');
+    expect(report.steps[4].riskLevel).toBe('higher');
 
     // Hash is present and stable
     expect(report.permissionHash).toHaveLength(16);
@@ -461,12 +461,12 @@ steps:
     const output = formatSpellPermissionReport(report);
 
     // Contains all expected sections
-    expect(output).toContain('Permission Report: epic-report-test');
-    expect(output).toContain('Overall risk:');
+    expect(output).toContain('Risk Analysis: epic-report-test');
+    expect(output).toContain('Overall:');
     expect(output).toContain('Permission hash:');
-    expect(output).toContain('[SAFE] safe-step');
-    expect(output).toContain('[DESTRUCTIVE] dangerous-step');
-    expect(output).toContain('DESTRUCTIVE STEPS');
+    expect(output).toContain('[No risk] safe-step');
+    expect(output).toContain('[Higher risk] dangerous-step');
+    expect(output).toContain('require elevated permissions');
     expect(output).toContain('dangerous-step: shell, fs:write');
   });
 });

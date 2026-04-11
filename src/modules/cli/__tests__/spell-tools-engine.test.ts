@@ -20,10 +20,11 @@ describe('Spell MCP Tools — Engine Integration', () => {
   // Tool registration
   // -------------------------------------------------------------------------
 
-  it('exports exactly 10 spell tools', () => {
-    expect(spellTools).toHaveLength(10);
+  it('exports exactly 11 spell tools', () => {
+    expect(spellTools).toHaveLength(11);
     const names = spellTools.map(t => t.name).sort();
     expect(names).toEqual([
+      'spell_accept',
       'spell_cancel',
       'spell_cast',
       'spell_create',

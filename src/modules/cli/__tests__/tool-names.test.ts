@@ -16,6 +16,7 @@ describe('MCP Tool Name Constants', () => {
     expect(toolNames.TOOL_SPELL_STATUS).toBe('spell_status');
     expect(toolNames.TOOL_SPELL_CANCEL).toBe('spell_cancel');
     expect(toolNames.TOOL_SPELL_TEMPLATE).toBe('spell_template');
+    expect(toolNames.TOOL_SPELL_ACCEPT).toBe('spell_accept');
   });
 
   it('exports memory tool names', () => {

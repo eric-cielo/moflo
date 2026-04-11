@@ -697,4 +697,63 @@ export const spellTools: MCPTool[] = [
       return { action, error: `Unknown action: ${action}. Use 'list' or 'info'.` };
     },
   },
+
+  // --------------------------------------------------------------------------
+  // spell_accept — Accept a spell's permissions after reviewing risk analysis
+  // --------------------------------------------------------------------------
+  {
+    name: 'spell_accept',
+    description: 'Accept a spell\'s permissions after reviewing the risk analysis. Required before first execution.',
+    category: 'spell',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Spell name (as shown in the risk analysis)' },
+      },
+      required: ['name'],
+    },
+    handler: async (input) => {
+      const spellName = input.name as string;
+
+      // Dynamically import to avoid circular deps with the spell engine
+      const { recordAcceptance } = await import(
+        '../../../../modules/spells/src/core/permission-acceptance.js'
+      );
+      const { analyzeSpellPermissions } = await import(
+        '../../../../modules/spells/src/core/permission-disclosure.js'
+      );
+      const { StepCommandRegistry } = await import(
+        '../../../../modules/spells/src/core/step-command-registry.js'
+      );
+      const { builtinCommands } = await import(
+        '../../../../modules/spells/src/commands/index.js'
+      );
+
+      const projectRoot = findProjectRoot();
+
+      // Resolve the spell definition
+      const registry = await getRegistry();
+      const loaded = registry.resolve(spellName);
+      if (!loaded) {
+        return { error: `Spell not found in grimoire: ${spellName}` };
+      }
+
+      // Build a step command registry for permission analysis
+      const stepRegistry = new StepCommandRegistry();
+      for (const cmd of builtinCommands) {
+        stepRegistry.register(cmd, 'built-in');
+      }
+      const report = analyzeSpellPermissions(loaded.definition, stepRegistry);
+
+      await recordAcceptance(projectRoot, loaded.definition.name, report.permissionHash);
+
+      return {
+        accepted: true,
+        spell: loaded.definition.name,
+        permissionHash: report.permissionHash,
+        overallRisk: report.overallRisk,
+        message: `Permissions accepted for "${loaded.definition.name}". You can now cast this spell.`,
+      };
+    },
+  },
 ];
