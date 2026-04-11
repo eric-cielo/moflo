@@ -20,32 +20,41 @@ import type { StepCapability } from '../src/types/step-command.types.js';
 
 describe('resolvePermissions', () => {
   describe('explicit permission levels', () => {
-    it('readonly → Read,Glob,Grep only', () => {
+    it('readonly → Read,Glob,Grep only, no permission bypass', () => {
       const result = resolvePermissions('readonly');
       expect(result.level).toBe('readonly');
       expect(result.allowedTools).toEqual(['Read', 'Glob', 'Grep']);
-      expect(result.cliArgs).toContain('--dangerously-skip-permissions');
+      expect(result.skipPermissions).toBe(false);
       expect(result.cliArgs).toContain('--allowedTools');
       expect(result.cliArgs).toContain('Read,Glob,Grep');
+      expect(result.cliArgs).not.toContain('--permission-mode');
     });
 
-    it('standard → Edit,Write,Read,Glob,Grep', () => {
+    it('standard → Edit,Write,Read,Glob,Grep with acceptEdits', () => {
       const result = resolvePermissions('standard');
       expect(result.level).toBe('standard');
       expect(result.allowedTools).toEqual(['Edit', 'Write', 'Read', 'Glob', 'Grep']);
+      expect(result.skipPermissions).toBe(false);
+      expect(result.cliArgs).toContain('--permission-mode');
+      expect(result.cliArgs).toContain('acceptEdits');
     });
 
-    it('elevated → Edit,Write,Bash,Read,Glob,Grep', () => {
+    it('elevated → Edit,Write,Bash,Read,Glob,Grep with bypassPermissions', () => {
       const result = resolvePermissions('elevated');
       expect(result.level).toBe('elevated');
       expect(result.allowedTools).toEqual(['Edit', 'Write', 'Bash', 'Read', 'Glob', 'Grep']);
+      expect(result.skipPermissions).toBe(true);
+      expect(result.cliArgs).toContain('--permission-mode');
+      expect(result.cliArgs).toContain('bypassPermissions');
     });
 
-    it('autonomous → no tool restriction', () => {
+    it('autonomous → no tool restriction, bypassPermissions', () => {
       const result = resolvePermissions('autonomous');
       expect(result.level).toBe('autonomous');
       expect(result.allowedTools).toBeUndefined();
-      expect(result.cliArgs).toContain('--dangerously-skip-permissions');
+      expect(result.skipPermissions).toBe(true);
+      expect(result.cliArgs).toContain('--permission-mode');
+      expect(result.cliArgs).toContain('bypassPermissions');
       expect(result.cliArgs).not.toContain('--allowedTools');
     });
   });
@@ -145,14 +154,26 @@ describe('resolvePermissions', () => {
     });
   });
 
-  describe('all results include --dangerously-skip-permissions', () => {
-    for (const level of VALID_PERMISSION_LEVELS) {
-      it(`${level} includes the flag`, () => {
-        const result = resolvePermissions(level);
-        expect(result.skipPermissions).toBe(true);
-        expect(result.cliArgs[0]).toBe('--dangerously-skip-permissions');
-      });
-    }
+  describe('permission bypass only for elevated/autonomous', () => {
+    it('readonly does not bypass', () => {
+      const result = resolvePermissions('readonly');
+      expect(result.skipPermissions).toBe(false);
+    });
+
+    it('standard does not bypass', () => {
+      const result = resolvePermissions('standard');
+      expect(result.skipPermissions).toBe(false);
+    });
+
+    it('elevated bypasses', () => {
+      const result = resolvePermissions('elevated');
+      expect(result.skipPermissions).toBe(true);
+    });
+
+    it('autonomous bypasses', () => {
+      const result = resolvePermissions('autonomous');
+      expect(result.skipPermissions).toBe(true);
+    });
   });
 });
 
@@ -164,9 +185,22 @@ describe('buildClaudeCommand', () => {
   it('produces a valid claude command for elevated level', () => {
     const cmd = buildClaudeCommand('Do something', 'elevated');
     expect(cmd).toContain('claude');
-    expect(cmd).toContain('--dangerously-skip-permissions');
+    expect(cmd).toContain('--permission-mode bypassPermissions');
     expect(cmd).toContain('--allowedTools Edit,Write,Bash,Read,Glob,Grep');
     expect(cmd).toContain('-p "Do something"');
+  });
+
+  it('readonly command has no permission-mode flag', () => {
+    const cmd = buildClaudeCommand('Analyze code', 'readonly');
+    expect(cmd).not.toContain('--permission-mode');
+    expect(cmd).not.toContain('--dangerously-skip-permissions');
+    expect(cmd).toContain('--allowedTools Read,Glob,Grep');
+  });
+
+  it('standard command uses acceptEdits mode', () => {
+    const cmd = buildClaudeCommand('Edit files', 'standard');
+    expect(cmd).toContain('--permission-mode acceptEdits');
+    expect(cmd).not.toContain('bypassPermissions');
   });
 
   it('escapes double quotes in prompt', () => {
