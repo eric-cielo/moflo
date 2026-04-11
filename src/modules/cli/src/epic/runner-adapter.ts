@@ -62,6 +62,6 @@ export async function runEpicSpell(
   return engine.runSpellFromContent(
     yamlContent,
     undefined,
-    { ...options, ...(memoryAccessor ? { memory: memoryAccessor } : {}) },
+    { ...options, projectRoot: process.cwd(), ...(memoryAccessor ? { memory: memoryAccessor } : {}) },
   ) as Promise<EpicSpellResult>;
 }

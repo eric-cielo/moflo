@@ -14,6 +14,7 @@ import type { SandboxConfig } from '../core/platform-sandbox.js';
 // ============================================================================
 
 export type SpellErrorCode =
+  | 'ACCEPTANCE_REQUIRED'
   | 'ARGUMENT_VALIDATION_FAILED'
   | 'CONDITION_TARGET_NOT_FOUND'
   | 'DEFINITION_VALIDATION_FAILED'
@@ -178,4 +179,10 @@ export interface RunnerOptions {
 
   /** OS-level sandbox configuration from moflo.yaml. */
   readonly sandboxConfig?: SandboxConfig;
+
+  /** Project root for acceptance gate storage (.moflo/accepted-permissions/). */
+  readonly projectRoot?: string;
+
+  /** Skip the first-run acceptance gate (e.g. for internal/nested spells). */
+  readonly skipAcceptanceCheck?: boolean;
 }

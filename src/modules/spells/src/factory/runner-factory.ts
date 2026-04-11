@@ -112,7 +112,8 @@ export async function runSpellFromContent(
   }
 
   const runner = createRunner(options);
-  const { args = {}, ...runnerOptions } = options;
+  // Strip factory-only fields; keep RunSpellOptions (extends RunnerOptions) for runner.run()
+  const { args = {}, stepDirs: _s, credentials: _c, memory: _m, connectorRegistry: _cr, ...runnerOptions } = options;
   return runner.run(definition, args, runnerOptions);
 }
 

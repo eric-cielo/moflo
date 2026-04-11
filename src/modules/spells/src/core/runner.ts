@@ -36,6 +36,8 @@ import {
   DEFAULT_SANDBOX_CONFIG,
   type EffectiveSandbox,
 } from './platform-sandbox.js';
+import { checkAcceptance, recordAcceptance } from './permission-acceptance.js';
+import { analyzeSpellPermissions, formatSpellPermissionReport } from './permission-disclosure.js';
 
 export class SpellCaster {
   private readonly connectorAccessor?: ConnectorAccessorImpl;
@@ -88,6 +90,60 @@ export class SpellCaster {
         message: 'Argument validation failed',
         details: argErrors,
       }], definition.name);
+    }
+
+    // ---------------------------------------------------------------
+    // Permission acceptance gate: first-run spells auto-trigger a
+    // dry-run with permission disclosure so the user sees what the
+    // spell requires before it executes, then proceed.
+    // ---------------------------------------------------------------
+    if (!options.dryRun && !options.skipAcceptanceCheck && options.projectRoot) {
+      const permReport = analyzeSpellPermissions(definition, this.registry);
+      const acceptance = await checkAcceptance(
+        options.projectRoot, definition.name, permReport.permissionHash,
+      );
+
+      if (!acceptance.accepted) {
+        const reason = acceptance.reason === 'hash-mismatch'
+          ? 'Spell permissions have changed since last acceptance'
+          : 'First run — reviewing spell permissions';
+        const report = formatSpellPermissionReport(permReport);
+
+        console.log(`[spell] ${reason}`);
+        console.log(`[spell] Running automatic dry-run validation...\n`);
+        console.log(report);
+
+        // Run dry-run validation so the user also sees structural issues
+        const dryResult = await dryRunValidate(
+          definition, resolvedArgs, defValidation, options, this.registry,
+          (variables, wfId, stepIndex) =>
+            this.buildContext(variables, resolvedArgs, wfId, stepIndex, options.signal),
+        );
+
+        if (!dryResult.valid) {
+          console.log('\n[spell] Dry-run validation found errors:');
+          for (const err of [...dryResult.definitionErrors, ...dryResult.argumentErrors]) {
+            console.log(`  - ${err.message}`);
+          }
+          // Block execution when dry-run reveals structural problems
+          return this.failureResult(spellId, startTime, [{
+            code: 'ACCEPTANCE_REQUIRED',
+            message: `${reason}. Dry-run validation failed — fix errors before running.`,
+          }], definition.name);
+        }
+
+        // Record acceptance so subsequent runs skip the gate
+        try {
+          await recordAcceptance(
+            options.projectRoot, definition.name, permReport.permissionHash,
+          );
+        } catch (err) {
+          console.warn(`[spell] Could not record acceptance: ${(err as Error).message ?? err}`);
+        }
+
+        console.log('\n[spell] Permissions accepted — proceeding with execution.\n');
+        // Fall through to execute the spell
+      }
     }
 
     // Pre-flight prerequisite checks (Story #193)

@@ -27,7 +27,7 @@ export async function bridgeRunSpell(
   content: string,
   sourceFile: string | undefined,
   args: Record<string, unknown>,
-  options: { dryRun?: boolean; memory?: MemoryAccessor; credentials?: CredentialAccessor } = {},
+  options: { dryRun?: boolean; memory?: MemoryAccessor; credentials?: CredentialAccessor; projectRoot?: string } = {},
 ): Promise<SpellResult> {
   const spellId = `sp-${Date.now()}`;
   const controller = new AbortController();
@@ -41,6 +41,7 @@ export async function bridgeRunSpell(
       signal: controller.signal,
       memory: options.memory,
       credentials: options.credentials,
+      ...(options.projectRoot ? { projectRoot: options.projectRoot } : {}),
     });
     return result;
   } finally {
@@ -54,7 +55,7 @@ export async function bridgeRunSpell(
 export async function bridgeExecuteSpell(
   definition: import('../types/spell-definition.types.js').SpellDefinition,
   args: Record<string, unknown>,
-  options: { spellId?: string; memory?: MemoryAccessor; credentials?: CredentialAccessor } = {},
+  options: { spellId?: string; memory?: MemoryAccessor; credentials?: CredentialAccessor; projectRoot?: string } = {},
 ): Promise<SpellResult> {
   const spellId = options.spellId ?? `sp-${Date.now()}`;
   const controller = new AbortController();
@@ -65,6 +66,7 @@ export async function bridgeExecuteSpell(
     return await runner.run(definition, args, {
       spellId,
       signal: controller.signal,
+      ...(options.projectRoot ? { projectRoot: options.projectRoot } : {}),
     });
   } finally {
     activeSpells.delete(spellId);
