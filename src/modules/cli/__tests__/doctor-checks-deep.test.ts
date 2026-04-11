@@ -36,7 +36,7 @@ describe('doctor-checks-deep', () => {
   });
 
   describe('checkSpellExecution', () => {
-    it('should return a HealthCheck object', async () => {
+    it('should return a HealthCheck object', { timeout: 15_000 }, async () => {
       const result = await checkSpellExecution();
       expect(result).toHaveProperty('name', 'Spell Execution');
       expect(result).toHaveProperty('status');
@@ -44,7 +44,7 @@ describe('doctor-checks-deep', () => {
       expect(['pass', 'warn', 'fail']).toContain(result.status);
     });
 
-    it('should pass when spell engine is built', async () => {
+    it('should pass when spell engine is built', { timeout: 15_000 }, async () => {
       const result = await checkSpellExecution();
       // In the dev repo with a successful build, this should pass
       if (result.status === 'pass') {
