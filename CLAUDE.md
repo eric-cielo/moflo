@@ -38,6 +38,10 @@ flo-search "[query]" --namespace guidance   # Semantic search
 flo doctor --fix                             # Health check
 ```
 
+### Broken Window Theory (mandatory)
+
+Zero tolerance for unresolved failures. Every failing test, every warning, every bug gets fixed before moving on — no exceptions by severity, no "probably flaky" without individual re-verification. If a test fails in the full suite, retest individually to distinguish real failures from flaky ones. If flaky, fix the flakiness itself (tight timeouts, resource contention, etc.) — don't just re-run and move on. A red signal is never acceptable as background noise.
+
 ### Full Reference
 
 - **Subagents protocol:** `.claude/guidance/shipped/moflo-subagents.md`
