@@ -201,6 +201,33 @@ function validateSteps(
       });
     }
 
+    // Validate declarative preflight specs (runtime state checks)
+    if (step.preflight !== undefined) {
+      if (!Array.isArray(step.preflight)) {
+        errors.push({ path: `${path}.preflight`, message: 'preflight must be an array' });
+      } else {
+        step.preflight.forEach((pf, pi) => {
+          const pfPath = `${path}.preflight[${pi}]`;
+          if (!pf || typeof pf !== 'object') {
+            errors.push({ path: pfPath, message: 'preflight entry must be an object' });
+            return;
+          }
+          if (typeof pf.name !== 'string' || pf.name.length === 0) {
+            errors.push({ path: `${pfPath}.name`, message: 'preflight.name is required' });
+          }
+          if (typeof pf.command !== 'string' || pf.command.length === 0) {
+            errors.push({ path: `${pfPath}.command`, message: 'preflight.command is required' });
+          }
+          if (pf.expectExitCode !== undefined && typeof pf.expectExitCode !== 'number') {
+            errors.push({ path: `${pfPath}.expectExitCode`, message: 'expectExitCode must be a number' });
+          }
+          if (pf.timeoutMs !== undefined && (typeof pf.timeoutMs !== 'number' || pf.timeoutMs <= 0)) {
+            errors.push({ path: `${pfPath}.timeoutMs`, message: 'timeoutMs must be a positive number' });
+          }
+        });
+      }
+    }
+
     // Recurse into nested steps (condition/loop/parallel)
     if (step.steps && Array.isArray(step.steps)) {
       validateSteps(step.steps, errors, stepIds, outputVars, options, `${path}.steps`, spellLevel);

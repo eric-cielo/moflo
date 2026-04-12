@@ -48,6 +48,21 @@ export interface StepDefinition {
    * When omitted, derived automatically from the step's capabilities.
    */
   readonly permissionLevel?: PermissionLevel;
+  /**
+   * Declarative preflight checks run BEFORE step execution begins.
+   * Each check runs a shell command; a check passes when exit code matches
+   * `expectExitCode` (default 0). Variable interpolation in `command` is
+   * resolved against spell args only (no prior step outputs yet).
+   */
+  readonly preflight?: readonly PreflightSpec[];
+}
+
+/** Declarative preflight check in a step definition. */
+export interface PreflightSpec {
+  readonly name: string;
+  readonly command: string;
+  readonly expectExitCode?: number;
+  readonly timeoutMs?: number;
 }
 
 // ============================================================================

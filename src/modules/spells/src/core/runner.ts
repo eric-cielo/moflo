@@ -30,6 +30,7 @@ import { rollbackSteps, type CompletedStep } from './rollback-orchestrator.js';
 import { buildCredentialPatterns, addCredentialPattern, collectCredentialNames } from './credential-masker.js';
 import { executeSingleStep, type StepExecutionState } from './step-executor.js';
 import { collectPrerequisites, checkPrerequisites, formatPrerequisiteErrors } from './prerequisite-checker.js';
+import { collectPreflights, checkPreflights, formatPreflightErrors } from './preflight-checker.js';
 import { DENY_ALL_GATEWAY } from './capability-gateway.js';
 import {
   resolveEffectiveSandbox, formatSandboxLog,
@@ -151,6 +152,22 @@ export class SpellCaster {
           return this.failureResult(spellId, startTime, [{
             code: 'PREREQUISITES_FAILED',
             message: formatPrerequisiteErrors(prereqResults),
+          }], definition.name);
+        }
+      }
+
+      // Preflight runtime-state checks — fail fast before any step runs.
+      const preflights = collectPreflights(definition, this.registry, {
+        args: resolvedArgs,
+        credentials: this.credentials,
+      });
+      if (preflights.length > 0) {
+        const preflightResults = await checkPreflights(preflights);
+        if (preflightResults.some(r => !r.passed)) {
+          console.log(`[spell] ${formatPreflightErrors(preflightResults)}`);
+          return this.failureResult(spellId, startTime, [{
+            code: 'PREFLIGHT_FAILED',
+            message: formatPreflightErrors(preflightResults),
           }], definition.name);
         }
       }

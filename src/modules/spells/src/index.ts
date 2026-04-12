@@ -31,6 +31,9 @@ export type {
   MofloLevel,
   Prerequisite,
   PrerequisiteResult,
+  PreflightCheck,
+  PreflightContext,
+  PreflightResult,
 } from './types/step-command.types.js';
 
 export {
@@ -173,6 +176,7 @@ export type {
   ArgumentDefinition,
   ArgumentType,
   ParsedSpell,
+  PreflightSpec,
 } from './types/spell-definition.types.js';
 
 export type {

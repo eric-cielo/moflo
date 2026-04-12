@@ -18,6 +18,7 @@ import type {
   OutputDescriptor,
   JSONSchema,
   Prerequisite,
+  PreflightCheck,
 } from '../types/step-command.types.js';
 import { interpolateString } from '../core/interpolation.js';
 import { commandExists } from '../core/prerequisite-checker.js';
@@ -79,6 +80,39 @@ const githubPrerequisites: readonly Prerequisite[] = [
 ];
 
 // ============================================================================
+// Preflights — runtime state checks
+// ============================================================================
+
+/** Confirm an issue/PR number referenced in config actually exists. */
+const githubPreflights: readonly PreflightCheck<GitHubStepConfig>[] = [
+  {
+    name: 'issue-exists',
+    check: async (config) => {
+      if (typeof config.issue !== 'number') return { passed: true };
+      // Skip for create-type actions that don't require the issue to exist.
+      if (config.action === 'issue-edit' || config.action === 'issue-fetch' || config.action === 'comment' || config.action === 'label') {
+        const result = await execAsync(`gh issue view ${config.issue} --json number`, 5000);
+        if (result.exitCode === 0) return { passed: true };
+        return { passed: false, reason: `issue #${config.issue} not found or not accessible` };
+      }
+      return { passed: true };
+    },
+  },
+  {
+    name: 'pr-exists',
+    check: async (config) => {
+      if (typeof config.pr !== 'number') return { passed: true };
+      if (config.action === 'pr-merge' || config.action === 'pr-find') {
+        const result = await execAsync(`gh pr view ${config.pr} --json number`, 5000);
+        if (result.exitCode === 0) return { passed: true };
+        return { passed: false, reason: `PR #${config.pr} not found or not accessible` };
+      }
+      return { passed: true };
+    },
+  },
+];
+
+// ============================================================================
 // GitHub Step Command (thin wrapper delegating to github-cli tool)
 // ============================================================================
 
@@ -88,6 +122,7 @@ export const githubCommand: StepCommand<GitHubStepConfig> = {
   capabilities: [{ type: 'shell' }, { type: 'net' }],
   defaultMofloLevel: 'none',
   prerequisites: githubPrerequisites,
+  preflight: githubPreflights,
 
   configSchema: {
     type: 'object',

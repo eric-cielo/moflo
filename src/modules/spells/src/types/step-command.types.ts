@@ -180,6 +180,41 @@ export interface PrerequisiteResult {
 }
 
 // ============================================================================
+// Preflight Checks (Runtime State Validation)
+// ============================================================================
+
+/**
+ * Context passed to a preflight check. Subset of CastingContext — preflights
+ * run BEFORE any step executes, so no outputs or variables from prior steps
+ * are available yet (only resolved spell arguments).
+ */
+export interface PreflightContext {
+  readonly args: Record<string, unknown>;
+  readonly credentials?: CredentialAccessor;
+  readonly stepId: string;
+  readonly stepIndex: number;
+}
+
+/** Result of running a single preflight check. */
+export interface PreflightResult {
+  readonly stepId: string;
+  readonly name: string;
+  readonly passed: boolean;
+  readonly reason?: string;
+}
+
+/**
+ * A runtime state check that runs BEFORE step execution begins.
+ * Unlike Prerequisites (static capability checks), preflights receive
+ * the resolved step config + context so they can validate runtime state
+ * like "issue #X is open" or "working tree is clean".
+ */
+export interface PreflightCheck<TConfig extends StepConfig = StepConfig> {
+  readonly name: string;
+  check(config: TConfig, context: PreflightContext): Promise<{ passed: boolean; reason?: string }>;
+}
+
+// ============================================================================
 // Step Command Interface
 // ============================================================================
 
@@ -200,6 +235,12 @@ export interface StepCommand<TConfig extends StepConfig = StepConfig> {
   readonly defaultMofloLevel?: MofloLevel;
   /** External tool prerequisites required before this command can execute. */
   readonly prerequisites?: readonly Prerequisite[];
+  /**
+   * Runtime state preflights. Run BEFORE any step executes, after prerequisites.
+   * Receives resolved step config + args — can validate "issue open", "branch clean", etc.
+   * Opt-in; steps without preflights behave unchanged.
+   */
+  readonly preflight?: readonly PreflightCheck<TConfig>[];
 
   /** Validate may be async (e.g. checking credentials or remote state). */
   validate(config: TConfig, context: CastingContext): ValidationResult | Promise<ValidationResult>;
