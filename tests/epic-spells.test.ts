@@ -58,13 +58,44 @@ describe('single-branch.yaml', () => {
   it('has expected step sequence', () => {
     def = loadYaml('single-branch.yaml');
     const stepIds = def.steps.map(s => s.id);
-    expect(stepIds).toEqual(['preflight-check', 'init-state', 'create-branch', 'process-stories', 'push-branch', 'create-pr', 'finalize-state']);
+    expect(stepIds).toEqual(['init-state', 'create-branch', 'process-stories', 'push-branch', 'create-pr', 'finalize-state']);
   });
 
   it('uses correct step types', () => {
     def = loadYaml('single-branch.yaml');
     const stepTypes = def.steps.map(s => s.type);
-    expect(stepTypes).toEqual(['bash', 'memory', 'bash', 'loop', 'bash', 'github', 'memory']);
+    expect(stepTypes).toEqual(['memory', 'bash', 'loop', 'bash', 'github', 'memory']);
+  });
+
+  it('declares preflight checks on create-branch', () => {
+    def = loadYaml('single-branch.yaml');
+    const createBranch = def.steps.find(s => s.id === 'create-branch');
+    expect(createBranch?.preflight).toBeDefined();
+    const names = createBranch!.preflight!.map(p => p.name);
+    expect(names).toContain('working tree clean (tracked changes)');
+    expect(names).toContain('working tree clean (staged changes)');
+    expect(names).toContain('gh cli authenticated');
+    expect(names).toContain('no unmerged files');
+  });
+
+  it('declares preflight on push-branch to verify origin remote', () => {
+    def = loadYaml('single-branch.yaml');
+    const pushBranch = def.steps.find(s => s.id === 'push-branch');
+    expect(pushBranch?.preflight).toBeDefined();
+    expect(pushBranch!.preflight!.some(p => p.name === 'origin remote configured')).toBe(true);
+  });
+
+  it('preflight shell commands are non-empty strings', () => {
+    def = loadYaml('single-branch.yaml');
+    for (const step of def.steps) {
+      if (!step.preflight) continue;
+      for (const pf of step.preflight) {
+        expect(typeof pf.command).toBe('string');
+        expect(pf.command.length).toBeGreaterThan(0);
+        expect(typeof pf.name).toBe('string');
+        expect(pf.name.length).toBeGreaterThan(0);
+      }
+    }
   });
 
   it('initializes and finalizes epic state in memory', () => {
@@ -127,15 +158,24 @@ describe('auto-merge.yaml', () => {
 
   it('has init-state, loop, and finalize-state as top-level steps', () => {
     def = loadYaml('auto-merge.yaml');
-    expect(def.steps).toHaveLength(4);
-    expect(def.steps[0].id).toBe('preflight-check');
-    expect(def.steps[0].type).toBe('bash');
-    expect(def.steps[1].id).toBe('init-state');
-    expect(def.steps[1].type).toBe('memory');
-    expect(def.steps[2].type).toBe('loop');
-    expect(def.steps[2].id).toBe('process-stories');
-    expect(def.steps[3].id).toBe('finalize-state');
-    expect(def.steps[3].type).toBe('memory');
+    expect(def.steps).toHaveLength(3);
+    expect(def.steps[0].id).toBe('init-state');
+    expect(def.steps[0].type).toBe('memory');
+    expect(def.steps[1].type).toBe('loop');
+    expect(def.steps[1].id).toBe('process-stories');
+    expect(def.steps[2].id).toBe('finalize-state');
+    expect(def.steps[2].type).toBe('memory');
+  });
+
+  it('declares preflight checks on checkout-base step', () => {
+    def = loadYaml('auto-merge.yaml');
+    const loop = def.steps.find(s => s.id === 'process-stories')!;
+    const checkoutBase = loop.steps!.find(s => s.id === 'checkout-base');
+    expect(checkoutBase?.preflight).toBeDefined();
+    const names = checkoutBase!.preflight!.map(p => p.name);
+    expect(names).toContain('working tree clean (tracked changes)');
+    expect(names).toContain('gh cli authenticated');
+    expect(names).toContain('origin remote configured');
   });
 
   it('loop contains checkout, implement, find, merge, pull, comment, record', () => {
@@ -160,5 +200,54 @@ describe('auto-merge.yaml', () => {
   it('sets mofloLevel to hooks', () => {
     def = loadYaml('auto-merge.yaml');
     expect(def.mofloLevel).toBe('hooks');
+  });
+});
+
+// ============================================================================
+// Preflight Integration — ensures runner picks up YAML preflights correctly
+// ============================================================================
+
+import { collectPreflights } from '../src/modules/spells/src/core/preflight-checker.js';
+import { StepCommandRegistry } from '../src/modules/spells/src/core/step-command-registry.js';
+import { builtinCommands } from '../src/modules/spells/src/commands/index.js';
+
+describe('epic spell preflight integration', () => {
+  function buildRegistry(): StepCommandRegistry {
+    const reg = new StepCommandRegistry();
+    for (const cmd of builtinCommands) reg.register(cmd, 'built-in');
+    return reg;
+  }
+
+  it('collectPreflights picks up every declared YAML preflight in single-branch', () => {
+    const def = loadYaml('single-branch.yaml');
+    const preflights = collectPreflights(def, buildRegistry(), { args: {} });
+    const names = preflights.map(p => p.name);
+    // working tree + gh auth + unmerged files + origin remote
+    expect(names).toContain('working tree clean (tracked changes)');
+    expect(names).toContain('working tree clean (staged changes)');
+    expect(names).toContain('gh cli authenticated');
+    expect(names).toContain('no unmerged files');
+    expect(names).toContain('origin remote configured');
+  });
+
+  it('preflights are bound to the correct step ids', () => {
+    const def = loadYaml('single-branch.yaml');
+    const preflights = collectPreflights(def, buildRegistry(), { args: {} });
+    const byStep = new Map<string, string[]>();
+    for (const p of preflights) {
+      if (!byStep.has(p.stepId)) byStep.set(p.stepId, []);
+      byStep.get(p.stepId)!.push(p.name);
+    }
+    expect(byStep.get('create-branch')).toContain('gh cli authenticated');
+    expect(byStep.get('push-branch')).toContain('origin remote configured');
+  });
+
+  it('collectPreflights recurses into loop-nested steps (auto-merge)', () => {
+    const def = loadYaml('auto-merge.yaml');
+    const preflights = collectPreflights(def, buildRegistry(), { args: {} });
+    // checkout-base is inside the loop; its preflights must still be collected
+    const checkoutBasePf = preflights.filter(p => p.stepId === 'checkout-base');
+    expect(checkoutBasePf.length).toBeGreaterThan(0);
+    expect(checkoutBasePf.map(p => p.name)).toContain('gh cli authenticated');
   });
 });

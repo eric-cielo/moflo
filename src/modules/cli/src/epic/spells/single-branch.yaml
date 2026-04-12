@@ -38,14 +38,6 @@ arguments:
 mofloLevel: hooks
 
 steps:
-  # Step 0: Pre-flight — fail fast if worktree is dirty or has unmerged files
-  - id: preflight-check
-    type: bash
-    config:
-      command: "if [ -n \"$(git diff --name-only --diff-filter=U 2>/dev/null)\" ]; then echo 'ERROR: Unmerged files detected. Resolve conflicts before running epic.' >&2; git diff --name-only --diff-filter=U 2>/dev/null >&2; exit 1; fi && if [ -n \"$(git -c core.autocrlf=false -c core.safecrlf=false status --porcelain 2>/dev/null)\" ]; then echo 'ERROR: Working tree is dirty. Commit, stash, or discard changes before running epic.' >&2; git -c core.autocrlf=false -c core.safecrlf=false status --short 2>/dev/null >&2; exit 1; fi"
-      timeout: 120000
-      failOnError: true
-
   # Step 1: Initialize epic state in memory (enables resume)
   - id: init-state
     type: memory
@@ -59,9 +51,20 @@ steps:
         stories: "{args.stories}"
         branch: "epic/{args.epic_number}-{args.epic_slug}"
 
-  # Step 1: Create epic branch from base
+  # Step 2: Create epic branch from base
+  # Preflights run BEFORE any step — fail fast on dirty tree or auth issues
   - id: create-branch
     type: bash
+    preflight:
+      - name: "no unmerged files"
+        command: "git diff --name-only --diff-filter=U"
+        expectExitCode: 0
+      - name: "working tree clean (tracked changes)"
+        command: "git diff --quiet"
+      - name: "working tree clean (staged changes)"
+        command: "git diff --cached --quiet"
+      - name: "gh cli authenticated"
+        command: "gh auth status"
     config:
       command: "git stash --include-untracked -q 2>/dev/null; git checkout {args.base_branch} && git pull origin {args.base_branch} && (git show-ref --verify --quiet refs/heads/epic/{args.epic_number}-{args.epic_slug} && git checkout epic/{args.epic_number}-{args.epic_slug} || git checkout -b epic/{args.epic_number}-{args.epic_slug}); git stash pop -q 2>/dev/null || true"
       timeout: 120000
@@ -104,8 +107,12 @@ steps:
             epic: "{args.epic_number}"
 
   # Step 3: Push epic branch
+  # Preflight: verify origin remote exists so push won't fail mid-way
   - id: push-branch
     type: bash
+    preflight:
+      - name: "origin remote configured"
+        command: "git remote get-url origin"
     config:
       command: "git push -u origin epic/{args.epic_number}-{args.epic_slug}"
       timeout: 120000
