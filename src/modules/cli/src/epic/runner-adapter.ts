@@ -8,6 +8,7 @@
  * Story #229: Uses shared engine loader instead of inline dynamic import.
  */
 
+import * as readline from 'node:readline';
 import { loadSpellEngine, type SpellResult } from '../services/engine-loader.js';
 import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
 import { recordAcceptance } from '../../../../modules/spells/src/core/permission-acceptance.js';
@@ -39,6 +40,19 @@ export interface EpicRunOptions {
 
 /** Cached memory accessor — created once per process. */
 let memoryAccessor: Awaited<ReturnType<typeof createDashboardMemoryAccessor>> | null = null;
+
+/** Prompt the user to accept or decline spell permissions. */
+async function promptAcceptPermissions(): Promise<boolean> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await new Promise<string>(resolve => {
+      rl.question('\n[epic] Accept these permissions? (y/N) ', resolve);
+    });
+    return answer.trim().toLowerCase() === 'y' || answer.trim().toLowerCase() === 'yes';
+  } finally {
+    rl.close();
+  }
+}
 
 /**
  * Run a spell YAML string via the spell engine.
@@ -77,6 +91,11 @@ export async function runEpicSpell(
     result.errors.some(e => (e as Record<string, unknown>).code === 'ACCEPTANCE_REQUIRED');
 
   if (hasAcceptanceError) {
+    const accepted = await promptAcceptPermissions();
+    if (!accepted) {
+      return result;
+    }
+
     const projectRoot = process.cwd();
     const parsed = parseSpell(yamlContent);
     const stepRegistry = new StepCommandRegistry();
@@ -86,7 +105,7 @@ export async function runEpicSpell(
     const report = analyzeSpellPermissions(parsed.definition, stepRegistry);
 
     await recordAcceptance(projectRoot, parsed.definition.name, report.permissionHash);
-    console.log(`[epic] Permissions accepted for "${parsed.definition.name}" — retrying...`);
+    console.log(`[epic] Permissions accepted for "${parsed.definition.name}" — retrying...\n`);
 
     return engine.runSpellFromContent(
       yamlContent, undefined, runOpts,
