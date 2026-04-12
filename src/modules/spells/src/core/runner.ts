@@ -104,35 +104,41 @@ export class SpellCaster {
       );
 
       if (!acceptance.accepted) {
-        const reason = acceptance.reason === 'hash-mismatch'
-          ? 'Spell permissions have changed since last acceptance'
-          : 'First run — reviewing spell permissions';
-        const report = formatSpellPermissionReport(permReport);
+        // Auto-accept spells with no real risk — no need to prompt the user
+        if (permReport.overallRisk === 'none' || permReport.overallRisk === 'low') {
+          await recordAcceptance(options.projectRoot, definition.name, permReport.permissionHash);
+          console.log(`[spell] Auto-accepted "${definition.name}" (${permReport.overallRisk} risk)`);
+        } else {
+          const reason = acceptance.reason === 'hash-mismatch'
+            ? 'Spell permissions have changed since last acceptance'
+            : 'First run — reviewing spell permissions';
+          const report = formatSpellPermissionReport(permReport);
 
-        console.log(`[spell] ${reason}`);
-        console.log(`[spell] Running automatic dry-run validation...\n`);
-        console.log(report);
+          console.log(`[spell] ${reason}`);
+          console.log(`[spell] Running automatic dry-run validation...\n`);
+          console.log(report);
 
-        // Run dry-run validation so the user also sees structural issues
-        const dryResult = await dryRunValidate(
-          definition, resolvedArgs, defValidation, options, this.registry,
-          (variables, wfId, stepIndex) =>
-            this.buildContext(variables, resolvedArgs, wfId, stepIndex, options.signal),
-        );
+          // Run dry-run validation so the user also sees structural issues
+          const dryResult = await dryRunValidate(
+            definition, resolvedArgs, defValidation, options, this.registry,
+            (variables, wfId, stepIndex) =>
+              this.buildContext(variables, resolvedArgs, wfId, stepIndex, options.signal),
+          );
 
-        if (!dryResult.valid) {
-          console.log('\n[spell] Dry-run validation found errors:');
-          for (const err of [...dryResult.definitionErrors, ...dryResult.argumentErrors]) {
-            console.log(`  - ${err.message}`);
+          if (!dryResult.valid) {
+            console.log('\n[spell] Dry-run validation found errors:');
+            for (const err of [...dryResult.definitionErrors, ...dryResult.argumentErrors]) {
+              console.log(`  - ${err.message}`);
+            }
           }
-        }
 
-        // Always block — user must explicitly accept via spell_accept
-        console.log(`\n[spell] To accept these permissions, run: spell_accept({ name: "${definition.name}" })`);
-        return this.failureResult(spellId, startTime, [{
-          code: 'ACCEPTANCE_REQUIRED',
-          message: `${reason}. Review the risk analysis above and accept with spell_accept({ name: "${definition.name}" }).`,
-        }], definition.name);
+          // Block — user must explicitly accept
+          console.log(`\n[spell] To accept these permissions, run: spell_accept({ name: "${definition.name}" })`);
+          return this.failureResult(spellId, startTime, [{
+            code: 'ACCEPTANCE_REQUIRED',
+            message: `${reason}. Review the risk analysis above and accept with spell_accept({ name: "${definition.name}" }).`,
+          }], definition.name);
+        }
       }
     }
 
