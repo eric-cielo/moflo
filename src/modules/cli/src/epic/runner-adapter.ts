@@ -11,11 +11,6 @@
 import * as readline from 'node:readline';
 import { loadSpellEngine, type SpellResult } from '../services/engine-loader.js';
 import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
-import { recordAcceptance } from '../../../../modules/spells/src/core/permission-acceptance.js';
-import { analyzeSpellPermissions } from '../../../../modules/spells/src/core/permission-disclosure.js';
-import { StepCommandRegistry } from '../../../../modules/spells/src/core/step-command-registry.js';
-import { builtinCommands } from '../../../../modules/spells/src/commands/index.js';
-import { parseSpell } from '../../../../modules/spells/src/schema/parser.js';
 
 /** Minimal spell result shape matching SpellResult from @moflo/spells. */
 export type EpicSpellResult = Pick<
@@ -95,6 +90,18 @@ export async function runEpicSpell(
     if (!accepted) {
       return result;
     }
+
+    // Use the already-loaded engine module (dynamic import) for spells internals.
+    // Static cross-package imports break when installed as a dependency because
+    // the relative paths from dist/ don't match the source layout.
+    const spells = engine as unknown as Record<string, unknown>;
+    const { parseSpell, StepCommandRegistry, builtinCommands, analyzeSpellPermissions, recordAcceptance } = spells as {
+      parseSpell: (content: string) => { definition: { name: string } };
+      StepCommandRegistry: new () => { register: (cmd: unknown, source: string) => void };
+      builtinCommands: unknown[];
+      analyzeSpellPermissions: (def: unknown, reg: unknown) => { permissionHash: string };
+      recordAcceptance: (root: string, name: string, hash: string) => Promise<void>;
+    };
 
     const projectRoot = process.cwd();
     const parsed = parseSpell(yamlContent);
