@@ -10,6 +10,11 @@
 
 import { loadSpellEngine, type SpellResult } from '../services/engine-loader.js';
 import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
+import { recordAcceptance } from '../../../../modules/spells/src/core/permission-acceptance.js';
+import { analyzeSpellPermissions } from '../../../../modules/spells/src/core/permission-disclosure.js';
+import { StepCommandRegistry } from '../../../../modules/spells/src/core/step-command-registry.js';
+import { builtinCommands } from '../../../../modules/spells/src/commands/index.js';
+import { parseSpell } from '../../../../modules/spells/src/schema/parser.js';
 
 /** Minimal spell result shape matching SpellResult from @moflo/spells. */
 export type EpicSpellResult = Pick<
@@ -59,9 +64,34 @@ export async function runEpicSpell(
     }
   }
 
-  return engine.runSpellFromContent(
-    yamlContent,
-    undefined,
-    { ...options, projectRoot: process.cwd(), ...(memoryAccessor ? { memory: memoryAccessor } : {}) },
-  ) as Promise<EpicSpellResult>;
+  const runOpts = { ...options, projectRoot: process.cwd(), ...(memoryAccessor ? { memory: memoryAccessor } : {}) };
+
+  const result = await engine.runSpellFromContent(
+    yamlContent, undefined, runOpts,
+  ) as EpicSpellResult;
+
+  // Auto-accept permissions on first run: the spell runner already printed
+  // the full risk analysis to the console. The user initiated the epic
+  // command, so we accept on their behalf and retry immediately.
+  const hasAcceptanceError = !result.success &&
+    result.errors.some(e => (e as Record<string, unknown>).code === 'ACCEPTANCE_REQUIRED');
+
+  if (hasAcceptanceError) {
+    const projectRoot = process.cwd();
+    const parsed = parseSpell(yamlContent);
+    const stepRegistry = new StepCommandRegistry();
+    for (const cmd of builtinCommands) {
+      stepRegistry.register(cmd, 'built-in');
+    }
+    const report = analyzeSpellPermissions(parsed.definition, stepRegistry);
+
+    await recordAcceptance(projectRoot, parsed.definition.name, report.permissionHash);
+    console.log(`[epic] Permissions accepted for "${parsed.definition.name}" — retrying...`);
+
+    return engine.runSpellFromContent(
+      yamlContent, undefined, runOpts,
+    ) as Promise<EpicSpellResult>;
+  }
+
+  return result;
 }

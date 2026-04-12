@@ -1,6 +1,6 @@
 {
   "name": "@moflo/cli",
-  "version": "4.8.56-rc.14",
+  "version": "4.8.56-rc.15",
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -30,7 +30,7 @@
   },
   "scripts": {
     "preversion": "echo 'ERROR: Run npm version from the repo root, not from src/modules/cli/' && exit 1",
-    "build": "tsc && node -e \"const{cpSync}=require('fs');cpSync('src/epic/workflows','dist/src/epic/workflows',{recursive:true})\"",
+    "build": "tsc && node -e \"const{cpSync}=require('fs');cpSync('src/epic/spells','dist/src/epic/spells',{recursive:true})\"",
     "test": "vitest run",
     "test:plugin-store": "npx tsx src/plugins/tests/standalone-test.ts",
     "test:pattern-store": "npx tsx src/transfer/store/tests/standalone-test.ts",
