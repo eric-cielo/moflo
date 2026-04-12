@@ -28,6 +28,8 @@ import { executeLoopIterations } from './loop-executor.js';
 import { executeParallelSteps } from './parallel-executor.js';
 import { rollbackSteps, type CompletedStep } from './rollback-orchestrator.js';
 import { buildCredentialPatterns, addCredentialPattern, collectCredentialNames } from './credential-masker.js';
+
+export const ENGINE_VERSION = '1.0.0';
 import { executeSingleStep, type StepExecutionState } from './step-executor.js';
 import { collectPrerequisites, checkPrerequisites, formatPrerequisiteErrors } from './prerequisite-checker.js';
 import { collectPreflights, checkPreflights, formatPreflightErrors } from './preflight-checker.js';
