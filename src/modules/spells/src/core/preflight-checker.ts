@@ -32,6 +32,10 @@ import type {
 import type { StepCommandRegistry } from './step-command-registry.js';
 import { interpolateString } from './interpolation.js';
 import type { CastingContext } from '../types/step-command.types.js';
+import type {
+  PreflightSeverity,
+  PreflightResolution,
+} from '../types/spell-definition.types.js';
 
 // ============================================================================
 // Types
@@ -42,6 +46,8 @@ interface BoundPreflight {
   readonly stepId: string;
   readonly stepIndex: number;
   readonly name: string;
+  readonly severity: PreflightSeverity;
+  readonly resolutions?: readonly PreflightResolution[];
   readonly run: () => Promise<{ passed: boolean; reason?: string }>;
 }
 
@@ -114,6 +120,8 @@ function bindCommandPreflight(
     stepId: step.id,
     stepIndex,
     name: check.name,
+    severity: check.severity ?? 'fatal',
+    resolutions: check.resolutions,
     run: () => {
       const ctx: PreflightContext = {
         args: context.args,
@@ -136,12 +144,17 @@ function bindYamlPreflight(
     stepId: step.id,
     stepIndex,
     name: spec.name,
+    severity: spec.severity ?? 'fatal',
+    resolutions: spec.resolutions,
     run: async () => {
       const command = interpolateSafe(spec.command, context.args);
       const expected = spec.expectExitCode ?? 0;
       const timeoutMs = spec.timeoutMs ?? 10_000;
       const actualExitCode = await runShellExitCode(command, timeoutMs);
       if (actualExitCode === expected) return { passed: true };
+      if (spec.hint) {
+        return { passed: false, reason: spec.hint };
+      }
       return {
         passed: false,
         reason: `command "${command}" exited with ${actualExitCode}, expected ${expected}`,
@@ -167,6 +180,8 @@ export async function checkPreflights(
           name: pf.name,
           passed: result.passed,
           reason: result.reason,
+          severity: pf.severity,
+          resolutions: pf.resolutions,
         };
       } catch (err) {
         return {
@@ -174,10 +189,26 @@ export async function checkPreflights(
           name: pf.name,
           passed: false,
           reason: (err as Error).message,
+          severity: pf.severity,
+          resolutions: pf.resolutions,
         };
       }
     }),
   );
+}
+
+/**
+ * Run a resolution shell command chosen by the user.
+ * Returns true iff the command exits 0 (or no command was provided).
+ */
+export async function runResolutionCommand(
+  resolution: PreflightResolution,
+  args: Record<string, unknown>,
+): Promise<{ ok: boolean; exitCode: number }> {
+  if (!resolution.command) return { ok: true, exitCode: 0 };
+  const cmd = interpolateSafe(resolution.command, args);
+  const exitCode = await runShellExitCode(cmd, resolution.timeoutMs ?? 30_000);
+  return { ok: exitCode === 0, exitCode };
 }
 
 /** Format failed preflights into a user-friendly error message. */
@@ -185,11 +216,29 @@ export function formatPreflightErrors(results: readonly PreflightResult[]): stri
   const failed = results.filter(r => !r.passed);
   if (failed.length === 0) return '';
 
-  const lines = ['Preflight checks failed:'];
+  const header = failed.length === 1
+    ? 'A prerequisite for this spell was not met:'
+    : `${failed.length} prerequisites for this spell were not met:`;
+  const lines = [header];
   for (const f of failed) {
-    lines.push(`  - [${f.stepId}] ${f.name}${f.reason ? `: ${f.reason}` : ''}`);
+    const message = f.reason && f.reason.trim().length > 0 ? f.reason : f.name;
+    lines.push(`  - ${message}`);
   }
   return lines.join('\n');
+}
+
+/** Partition preflight results by severity. */
+export function partitionPreflightResults(
+  results: readonly PreflightResult[],
+): { fatals: readonly PreflightResult[]; warnings: readonly PreflightResult[] } {
+  const fatals: PreflightResult[] = [];
+  const warnings: PreflightResult[] = [];
+  for (const r of results) {
+    if (r.passed) continue;
+    if (r.severity === 'warning') warnings.push(r);
+    else fatals.push(r);
+  }
+  return { fatals, warnings };
 }
 
 // ============================================================================

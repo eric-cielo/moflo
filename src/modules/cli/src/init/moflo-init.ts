@@ -817,10 +817,17 @@ function isStale(srcPath: string, destPath: string): boolean {
 
 function updateGitignore(root: string): MofloInitResult['steps'][0] {
   const gitignorePath = path.join(root, '.gitignore');
-  const entries = ['.claude-epic/', '.swarm/', '.moflo/'];
+  const entries = [
+    '.claude-epic/',
+    '.claude-flow/',
+    '.swarm/',
+    '.moflo/',
+    '.claude/settings.local.json',
+    '.claude/scheduled_tasks.lock',
+    '**/workflow-state.json',
+  ];
 
   if (!fs.existsSync(gitignorePath)) {
-    // Create .gitignore with common defaults + MoFlo entries
     const defaultEntries = ['node_modules/', 'dist/', '.env', '.env.*', ''];
     const content = '# Dependencies\n' + defaultEntries.join('\n') + '\n# MoFlo state\n' + entries.join('\n') + '\n';
     fs.writeFileSync(gitignorePath, content, 'utf-8');
@@ -828,13 +835,17 @@ function updateGitignore(root: string): MofloInitResult['steps'][0] {
   }
 
   const existing = fs.readFileSync(gitignorePath, 'utf-8');
-  const toAdd = entries.filter(e => !existing.includes(e));
+  const existingLines = new Set(
+    existing.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#')),
+  );
+  const toAdd = entries.filter(e => !existingLines.has(e));
 
   if (toAdd.length === 0) {
     return { name: '.gitignore', status: 'skipped', detail: 'Entries already present' };
   }
 
-  fs.appendFileSync(gitignorePath, '\n# MoFlo state (gitignored)\n' + toAdd.join('\n') + '\n');
+  const sep = existing.endsWith('\n') ? '' : '\n';
+  fs.appendFileSync(gitignorePath, sep + '\n# MoFlo state (gitignored)\n' + toAdd.join('\n') + '\n');
   return { name: '.gitignore', status: 'updated', detail: `Added: ${toAdd.join(', ')}` };
 }
 

@@ -414,12 +414,64 @@ export const <type>Command: StepCommand<<Type>StepConfig> = {
     ];
   },
 
+  // Optional: runtime preflight checks — run BEFORE any step executes.
+  // Use for validating runtime state (issue open, service reachable, etc).
+  // CRITICAL: the `reason` string IS the message the end user sees.
+  // Write it in plain English. State the problem AND the fix. No tool
+  // jargon, no exit codes, no internal identifiers.
+  //
+  // Default severity is 'fatal' (abort on failure). Set severity: 'warning'
+  // + resolutions when the user can safely choose how to proceed; in
+  // interactive runs they'll be prompted, in non-interactive runs warnings
+  // behave like fatals.
+  //
+  // preflight: [
+  //   {
+  //     name: '<service> reachable',
+  //     severity: 'fatal',
+  //     check: async (config, ctx) => {
+  //       const ok = await ping(config.endpoint);
+  //       if (ok) return { passed: true };
+  //       return {
+  //         passed: false,
+  //         reason: `Can't reach ${config.endpoint}. Check your network connection or the service URL in your spell config.`,
+  //       };
+  //     },
+  //   },
+  //   {
+  //     name: 'local cache fresh',
+  //     severity: 'warning',
+  //     resolutions: [
+  //       { label: 'Refresh the cache now', command: '<type>-cli cache refresh' },
+  //       { label: 'Continue with stale cache' },
+  //     ],
+  //     check: async (config) => {
+  //       const stale = await isCacheStale(config.endpoint);
+  //       return stale
+  //         ? { passed: false, reason: 'Your local cache is more than 24 hours old and may produce outdated results.' }
+  //         : { passed: true };
+  //     },
+  //   },
+  // ],
+
   // Optional: rollback on failure
   // async rollback(config, context) { /* undo side effects */ },
 };
 ```
 
 Alternatively, use the `createStepCommand()` factory from `src/modules/spells/src/commands/create-step-command.ts` for compile-time type safety.
+
+#### Preflight `reason` strings — write for humans
+
+When your step declares `preflight` checks, the `reason` string returned on failure is shown verbatim to end users as the error message. Treat it as user-facing copy:
+
+- Plain English, no command names, exit codes, or internal identifiers.
+- State BOTH the problem and the fix.
+- Assume a non-technical reader.
+
+Good: `"You're not signed in to GitHub. Run: gh auth login"`
+Bad: `"gh auth status exited with code 1"` — leaks implementation detail
+Bad: `"auth check failed"` — tells the user nothing actionable
 
 ### Step 3: Generate Step Command Test
 

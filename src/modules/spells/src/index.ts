@@ -51,6 +51,9 @@ export type {
   DryRunResult,
   DryRunStepReport,
   FloRunContext,
+  PreflightWarning,
+  PreflightWarningDecision,
+  PreflightWarningHandler,
 } from './types/runner.types.js';
 
 // ============================================================================
@@ -177,6 +180,8 @@ export type {
   ArgumentType,
   ParsedSpell,
   PreflightSpec,
+  PreflightSeverity,
+  PreflightResolution,
 } from './types/spell-definition.types.js';
 
 export type {

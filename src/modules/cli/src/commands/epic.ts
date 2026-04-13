@@ -25,7 +25,12 @@ import {
   resolveExecutionOrder,
 } from '../epic/index.js';
 import type { EpicStrategy } from '../epic/types.js';
-import { runEpicSpell } from '../epic/runner-adapter.js';
+import {
+  runEpicSpell,
+  type PreflightWarning,
+  type PreflightWarningDecision,
+} from '../epic/runner-adapter.js';
+import { select } from '../prompt.js';
 
 // ============================================================================
 // Spell Template Loader
@@ -223,6 +228,7 @@ async function runEpic(
           console.log(`[epic]   └─ ${stepResult.error}`);
         }
       },
+      onPreflightWarnings: isInteractive() ? resolvePreflightWarningsInteractively : undefined,
     });
 
     if (result.success) {
@@ -235,9 +241,19 @@ async function runEpic(
       }
       return { success: true, message: 'Epic completed', data: result };
     } else {
+      const firstErr = result.errors[0] as Record<string, unknown> | undefined;
+      const errCode = firstErr?.code as string | undefined;
+
+      // Preflight failures are user environment problems, not epic bugs.
+      // Show only the friendly prerequisite message, nothing else.
+      if (errCode === 'PREFLIGHT_FAILED' && typeof firstErr?.message === 'string') {
+        console.log(`\n${firstErr.message}`);
+        console.log('\nThe epic was not started. Fix the item(s) above and try again.');
+        return { success: false, message: firstErr.message, data: result };
+      }
+
       console.log(`\n[epic] Epic #${issueNumber} failed`);
 
-      // Print step-level results for visibility
       if (result.steps && result.steps.length > 0) {
         for (const step of result.steps) {
           const icon = step.status === 'succeeded' ? '✓' : step.status === 'skipped' ? '○' : '✗';
@@ -249,7 +265,6 @@ async function runEpic(
         }
       }
 
-      // Print spell-level errors with full detail
       for (const err of result.errors) {
         const prefix = (err as Record<string, unknown>).stepId
           ? `  [${(err as Record<string, unknown>).stepId}]`
@@ -263,8 +278,6 @@ async function runEpic(
         }
       }
 
-      // Build actionable error message from first failure
-      const firstErr = result.errors[0] as Record<string, unknown> | undefined;
       const rawMsg = firstErr?.message as string ?? 'Unknown error';
       const summary = buildFailureSummary(rawMsg, {
         stepId: firstErr?.stepId as string | undefined,
@@ -356,6 +369,45 @@ async function resetEpic(epicNumber: string): Promise<CommandResult> {
 
   console.log(`[epic] Cleared ${cleared} memory entries for epic #${epicNumber}`);
   return { success: true };
+}
+
+// ============================================================================
+// Preflight warning interactive resolver
+// ============================================================================
+
+function isInteractive(): boolean {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY) && process.env.CI !== 'true';
+}
+
+async function resolvePreflightWarningsInteractively(
+  warnings: readonly PreflightWarning[],
+): Promise<readonly PreflightWarningDecision[]> {
+  console.log('\nBefore this spell starts, some things need your attention:\n');
+
+  const decisions: PreflightWarningDecision[] = [];
+  for (let i = 0; i < warnings.length; i++) {
+    const w = warnings[i];
+    const choices = [
+      ...w.resolutions.map((r, idx) => ({
+        label: r.label,
+        value: { action: 'resolve', resolutionIndex: idx } as PreflightWarningDecision,
+      })),
+      { label: "Continue anyway (I'll handle it)", value: { action: 'continue' } as PreflightWarningDecision },
+      { label: 'Abort the spell', value: { action: 'abort' } as PreflightWarningDecision },
+    ];
+
+    const decision = await select<PreflightWarningDecision>({
+      message: `${i + 1}. ${w.reason}`,
+      options: choices,
+    });
+    decisions.push(decision);
+
+    if (decision.action === 'abort') {
+      while (decisions.length < warnings.length) decisions.push({ action: 'abort' });
+      break;
+    }
+  }
+  return decisions;
 }
 
 // ============================================================================

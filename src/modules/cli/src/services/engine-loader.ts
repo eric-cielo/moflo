@@ -14,6 +14,9 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type {
   SpellResult,
+  PreflightWarning,
+  PreflightWarningDecision,
+  PreflightWarningHandler,
 } from '../../../../modules/spells/src/types/runner.types.js';
 import type {
   SpellDefinition,
@@ -27,6 +30,7 @@ import type {
 export type { SpellResult };
 export type { SpellDefinition };
 export type { Grimoire };
+export type { PreflightWarning, PreflightWarningDecision, PreflightWarningHandler };
 
 /**
  * Shape of the dynamically imported spell engine module.
