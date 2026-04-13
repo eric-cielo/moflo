@@ -136,6 +136,65 @@ Permissions for step "analyze-logs":
 - `{credentials.NAME}` — references a credential (resolved at runtime)
 - `{stepId.outputKey}` — references output from a previous step
 
+#### REQUIRED: Preflight checks with human-readable hints
+
+When a step depends on runtime state the user controls (clean git tree, logged-in CLI, reachable host, etc.), declare a `preflight:` block so the spell fails fast with a helpful message BEFORE any side effects occur.
+
+**Every preflight MUST include a `hint:` field.** The hint is what the end user will see when the check fails. Without it they get raw shell output (`command "git diff --quiet" exited with 1, expected 0`), which looks like a bug in the spell engine.
+
+Good hints:
+- Speak in plain English (no command names, exit codes, or tool jargon).
+- State the problem AND the fix in one or two sentences.
+- Assume a non-technical reader.
+
+```yaml
+steps:
+  - id: create-branch
+    type: bash
+    preflight:
+      - name: "working tree clean (tracked changes)"
+        command: "git diff --quiet"
+        hint: "You have uncommitted changes to tracked files. Commit them or stash them (git stash) before running this spell."
+      - name: "gh cli authenticated"
+        command: "gh auth status"
+        hint: "The GitHub CLI isn't signed in. Run: gh auth login"
+    config:
+      command: "git checkout -b feature/new"
+```
+
+Bad hint (don't do this):
+```yaml
+hint: "git diff --quiet failed with exit code 1"   # leaks command name + exit code
+hint: "Precondition violated"                       # tells user nothing actionable
+```
+
+Preflights with no `hint` still work but produce unfriendly default output — flag this to the user as a quality issue before saving the spell.
+
+##### Fatal vs warning severity
+
+By default every preflight is `severity: fatal` — if it fails, the spell aborts. Some preflights are better expressed as `severity: warning`: the user gets to choose how to handle the problem, and the spell continues if they pick a resolution.
+
+Use `warning` ONLY when:
+- The underlying problem has a safe, one-step fix the user might reasonably want to apply.
+- Proceeding is viable either way — the step itself is robust to the condition.
+
+Warning preflights MUST declare `resolutions:` — a list of options the user can pick from. Each resolution has a `label` and an optional `command` to run before continuing. If `command` is omitted, picking the resolution just proceeds (useful for "I'll handle it myself").
+
+```yaml
+preflight:
+  - name: "working tree clean (tracked changes)"
+    command: "git diff --quiet"
+    severity: "warning"
+    hint: "You have uncommitted changes. If you want them carried onto the new branch, pick 'Stash and carry over'."
+    resolutions:
+      - label: "Stash changes and carry them onto the new branch"
+        command: "git stash push --include-untracked --message 'pre-spell autostash'"
+      - label: "Commit changes to the current branch first, then continue"
+        command: "git commit -am 'wip: pre-spell snapshot'"
+```
+
+In non-interactive contexts (CI, daemons, scheduled spells) warnings automatically behave like fatals, because there is no one to prompt. Don't use `warning` as a way to silently ignore a problem — if ignoring it is always safe, the check shouldn't be there.
+
 ### Step 4: Generate the Spell YAML
 
 Assemble the definition into YAML format following this structure:
@@ -407,6 +466,13 @@ arguments:
 steps:
   - id: scan-deps
     type: bash
+    preflight:
+      - name: "npm available"
+        command: "npm --version"
+        hint: "npm isn't installed or isn't on your PATH. Install Node.js from https://nodejs.org and try again."
+      - name: "target directory exists"
+        command: "test -d \"{args.target}\""
+        hint: "The directory you passed as --target doesn't exist. Check the path and try again."
     config:
       command: "npm audit --json"
       cwd: "{args.target}"

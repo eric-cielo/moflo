@@ -9,7 +9,12 @@
  */
 
 import * as readline from 'node:readline';
-import { loadSpellEngine, type SpellResult } from '../services/engine-loader.js';
+import {
+  loadSpellEngine,
+  type SpellResult,
+  type PreflightWarning,
+  type PreflightWarningDecision,
+} from '../services/engine-loader.js';
 import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
 
 /** Minimal spell result shape matching SpellResult from @moflo/spells. */
@@ -31,7 +36,11 @@ export interface EpicRunOptions {
   args?: Record<string, unknown>;
   dryRun?: boolean;
   onStepComplete?: (step: { stepId: string; status: string; duration: number; error?: string }, index: number, total: number) => void;
+  /** Called when one or more warning-severity preflights fail. */
+  onPreflightWarnings?: (warnings: readonly PreflightWarning[]) => Promise<readonly PreflightWarningDecision[]>;
 }
+
+export type { PreflightWarning, PreflightWarningDecision };
 
 /** Cached memory accessor — created once per process. */
 let memoryAccessor: Awaited<ReturnType<typeof createDashboardMemoryAccessor>> | null = null;

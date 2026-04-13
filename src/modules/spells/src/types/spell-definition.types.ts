@@ -57,12 +57,53 @@ export interface StepDefinition {
   readonly preflight?: readonly PreflightSpec[];
 }
 
+/**
+ * Severity of a preflight failure.
+ *   fatal   — always aborts the spell (default).
+ *   warning — surfaces resolution options via the runner's warning handler.
+ *             If no handler is configured (non-interactive run), warnings
+ *             behave like fatals.
+ */
+export type PreflightSeverity = 'fatal' | 'warning';
+
+/**
+ * One user-pickable resolution for a failed warning preflight.
+ * When the user selects a resolution, its optional `command` runs before
+ * the spell proceeds; if the command fails, the spell aborts.
+ */
+export interface PreflightResolution {
+  /** User-facing label (imperative, e.g. "Stash changes and continue"). */
+  readonly label: string;
+  /**
+   * Shell command to run when the user picks this resolution.
+   * Interpolated against spell args. If omitted, picking the resolution
+   * proceeds without running anything — useful for "I'll handle it" opts.
+   */
+  readonly command?: string;
+  /** Timeout in ms for the resolution command (default: 30_000). */
+  readonly timeoutMs?: number;
+}
+
 /** Declarative preflight check in a step definition. */
 export interface PreflightSpec {
   readonly name: string;
   readonly command: string;
   readonly expectExitCode?: number;
   readonly timeoutMs?: number;
+  /**
+   * Human-readable message shown to the user when this check fails.
+   * Should explain the problem and how to fix it, in plain language
+   * (no command names, exit codes, or tool jargon).
+   * Example: "You have uncommitted changes. Commit or stash them first."
+   */
+  readonly hint?: string;
+  /** Failure severity. Defaults to 'fatal'. */
+  readonly severity?: PreflightSeverity;
+  /**
+   * Resolution options offered to the user when this warning fires.
+   * Only relevant when severity is 'warning'.
+   */
+  readonly resolutions?: readonly PreflightResolution[];
 }
 
 // ============================================================================

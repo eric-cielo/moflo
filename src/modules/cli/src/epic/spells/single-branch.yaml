@@ -59,12 +59,28 @@ steps:
       - name: "no unmerged files"
         command: "git diff --name-only --diff-filter=U"
         expectExitCode: 0
+        hint: "You have unresolved merge conflicts. Resolve them and commit before running this spell."
       - name: "working tree clean (tracked changes)"
         command: "git diff --quiet"
+        severity: "warning"
+        hint: "You have uncommitted changes to tracked files. If you want them carried onto the epic branch, pick 'Stash and carry over'."
+        resolutions:
+          - label: "Stash changes and carry them onto the epic branch"
+            command: "git stash push --include-untracked --message 'moflo-epic-autostash'"
+          - label: "Commit changes to the current branch first, then continue"
+            command: "git commit -am 'wip: pre-epic snapshot'"
       - name: "working tree clean (staged changes)"
         command: "git diff --cached --quiet"
+        severity: "warning"
+        hint: "You have staged changes that aren't committed. If you want them carried onto the epic branch, pick 'Stash and carry over'."
+        resolutions:
+          - label: "Stash staged changes and carry them onto the epic branch"
+            command: "git stash push --include-untracked --message 'moflo-epic-autostash'"
+          - label: "Commit staged changes to the current branch first, then continue"
+            command: "git commit -m 'wip: pre-epic snapshot'"
       - name: "gh cli authenticated"
         command: "gh auth status"
+        hint: "The GitHub CLI isn't signed in. Run: gh auth login"
     config:
       command: "git stash --include-untracked -q 2>/dev/null; git checkout {args.base_branch} && git pull origin {args.base_branch} && (git show-ref --verify --quiet refs/heads/epic/{args.epic_number}-{args.epic_slug} && git checkout epic/{args.epic_number}-{args.epic_slug} || git checkout -b epic/{args.epic_number}-{args.epic_slug}); git stash pop -q 2>/dev/null || true"
       timeout: 120000

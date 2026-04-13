@@ -224,6 +224,34 @@ function validateSteps(
           if (pf.timeoutMs !== undefined && (typeof pf.timeoutMs !== 'number' || pf.timeoutMs <= 0)) {
             errors.push({ path: `${pfPath}.timeoutMs`, message: 'timeoutMs must be a positive number' });
           }
+          if (pf.hint !== undefined && typeof pf.hint !== 'string') {
+            errors.push({ path: `${pfPath}.hint`, message: 'hint must be a string' });
+          }
+          if (pf.severity !== undefined && pf.severity !== 'fatal' && pf.severity !== 'warning') {
+            errors.push({ path: `${pfPath}.severity`, message: 'severity must be "fatal" or "warning"' });
+          }
+          if (pf.resolutions !== undefined) {
+            if (!Array.isArray(pf.resolutions)) {
+              errors.push({ path: `${pfPath}.resolutions`, message: 'resolutions must be an array' });
+            } else {
+              pf.resolutions.forEach((r: Record<string, unknown>, ri: number) => {
+                const rPath = `${pfPath}.resolutions[${ri}]`;
+                if (!r || typeof r !== 'object') {
+                  errors.push({ path: rPath, message: 'resolution must be an object' });
+                  return;
+                }
+                if (typeof r.label !== 'string' || r.label.length === 0) {
+                  errors.push({ path: `${rPath}.label`, message: 'resolution.label is required' });
+                }
+                if (r.command !== undefined && typeof r.command !== 'string') {
+                  errors.push({ path: `${rPath}.command`, message: 'resolution.command must be a string' });
+                }
+                if (r.timeoutMs !== undefined && (typeof r.timeoutMs !== 'number' || r.timeoutMs <= 0)) {
+                  errors.push({ path: `${rPath}.timeoutMs`, message: 'resolution.timeoutMs must be a positive number' });
+                }
+              });
+            }
+          }
         });
       }
     }

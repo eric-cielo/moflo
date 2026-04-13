@@ -2,6 +2,8 @@
  * Spell Step Command Type Definitions
  */
 
+import type { PreflightSeverity, PreflightResolution } from './spell-definition.types.js';
+
 // ============================================================================
 // Validation
 // ============================================================================
@@ -201,6 +203,10 @@ export interface PreflightResult {
   readonly name: string;
   readonly passed: boolean;
   readonly reason?: string;
+  /** Severity of this check. Always resolved to a concrete value. */
+  readonly severity: PreflightSeverity;
+  /** Resolution options available (only meaningful when failed + warning). */
+  readonly resolutions?: readonly PreflightResolution[];
 }
 
 /**
@@ -211,6 +217,10 @@ export interface PreflightResult {
  */
 export interface PreflightCheck<TConfig extends StepConfig = StepConfig> {
   readonly name: string;
+  /** Failure severity. Defaults to 'fatal'. */
+  readonly severity?: PreflightSeverity;
+  /** Resolution options offered when a warning fires. */
+  readonly resolutions?: readonly PreflightResolution[];
   check(config: TConfig, context: PreflightContext): Promise<{ passed: boolean; reason?: string }>;
 }
 

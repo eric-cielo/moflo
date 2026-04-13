@@ -30,7 +30,14 @@ import { rollbackSteps, type CompletedStep } from './rollback-orchestrator.js';
 import { buildCredentialPatterns, addCredentialPattern, collectCredentialNames } from './credential-masker.js';
 import { executeSingleStep, type StepExecutionState } from './step-executor.js';
 import { collectPrerequisites, checkPrerequisites, formatPrerequisiteErrors } from './prerequisite-checker.js';
-import { collectPreflights, checkPreflights, formatPreflightErrors } from './preflight-checker.js';
+import {
+  collectPreflights,
+  checkPreflights,
+  formatPreflightErrors,
+  partitionPreflightResults,
+  runResolutionCommand,
+} from './preflight-checker.js';
+import type { PreflightWarning } from '../types/runner.types.js';
 import { DENY_ALL_GATEWAY } from './capability-gateway.js';
 import {
   resolveEffectiveSandbox, formatSandboxLog,
@@ -157,19 +164,13 @@ export class SpellCaster {
       }
 
       // Preflight runtime-state checks — fail fast before any step runs.
-      const preflights = collectPreflights(definition, this.registry, {
-        args: resolvedArgs,
-        credentials: this.credentials,
-      });
-      if (preflights.length > 0) {
-        const preflightResults = await checkPreflights(preflights);
-        if (preflightResults.some(r => !r.passed)) {
-          console.log(`[spell] ${formatPreflightErrors(preflightResults)}`);
-          return this.failureResult(spellId, startTime, [{
-            code: 'PREFLIGHT_FAILED',
-            message: formatPreflightErrors(preflightResults),
-          }], definition.name);
-        }
+      const preflightFailure = await this.runPreflights(definition, resolvedArgs, options);
+      if (preflightFailure) {
+        return this.failureResult(
+          spellId, startTime,
+          [{ code: 'PREFLIGHT_FAILED', message: preflightFailure }],
+          definition.name,
+        );
       }
     }
 
@@ -408,6 +409,60 @@ export class SpellCaster {
   // --------------------------------------------------------------------------
   // Private — Helpers
   // --------------------------------------------------------------------------
+
+  /**
+   * Run every preflight declared by the spell.
+   * Returns a user-facing failure message, or null if the spell may proceed.
+   */
+  private async runPreflights(
+    definition: SpellDefinition,
+    resolvedArgs: Record<string, unknown>,
+    options: RunnerOptions,
+  ): Promise<string | null> {
+    const preflights = collectPreflights(definition, this.registry, {
+      args: resolvedArgs,
+      credentials: this.credentials,
+    });
+    if (preflights.length === 0) return null;
+
+    const results = await checkPreflights(preflights);
+    const { fatals, warnings } = partitionPreflightResults(results);
+
+    if (fatals.length > 0) return formatPreflightErrors(fatals);
+    if (warnings.length === 0) return null;
+    if (!options.onPreflightWarnings) return formatPreflightErrors(warnings);
+
+    const payload: PreflightWarning[] = warnings.map(w => ({
+      stepId: w.stepId,
+      name: w.name,
+      reason: w.reason ?? w.name,
+      resolutions: w.resolutions ?? [],
+    }));
+
+    const decisions = await options.onPreflightWarnings(payload);
+    if (decisions.length !== warnings.length) {
+      return `Preflight warning handler returned ${decisions.length} decisions for ${warnings.length} warnings`;
+    }
+
+    for (let i = 0; i < decisions.length; i++) {
+      const decision = decisions[i];
+      const warn = warnings[i];
+      if (decision.action === 'abort') {
+        return formatPreflightErrors([warn]);
+      }
+      if (decision.action === 'resolve') {
+        const chosen = (warn.resolutions ?? [])[decision.resolutionIndex];
+        if (!chosen) {
+          return `Invalid resolution index ${decision.resolutionIndex} for "${warn.name}"`;
+        }
+        const { ok, exitCode } = await runResolutionCommand(chosen, resolvedArgs);
+        if (!ok) {
+          return `Resolution "${chosen.label}" failed (exit code ${exitCode}). Fix the underlying issue and try again.`;
+        }
+      }
+    }
+    return null;
+  }
 
   private runStep(
     step: import('../types/spell-definition.types.js').StepDefinition,

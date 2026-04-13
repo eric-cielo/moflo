@@ -8,6 +8,7 @@ import type { StepOutput, ValidationError, MofloLevel, PrerequisiteResult } from
 import type { PermissionLevel, ResolvedPermissions } from '../core/permission-resolver.js';
 import type { PermissionWarning, RiskLevel } from '../core/permission-disclosure.js';
 import type { SandboxConfig } from '../core/platform-sandbox.js';
+import type { PreflightResolution } from './spell-definition.types.js';
 
 // ============================================================================
 // Error Codes
@@ -186,4 +187,41 @@ export interface RunnerOptions {
 
   /** Skip the first-run acceptance gate (e.g. for internal/nested spells). */
   readonly skipAcceptanceCheck?: boolean;
+
+  /**
+   * Handler invoked when one or more warning-severity preflights fail but
+   * no fatal ones did. The handler decides whether to abort, continue, or
+   * resolve each warning via its declared resolutions.
+   *
+   * If not provided, warnings are treated as fatal (safer default for
+   * non-interactive contexts like CI, daemons, and scheduled spells).
+   */
+  readonly onPreflightWarnings?: PreflightWarningHandler;
 }
+
+// ============================================================================
+// Preflight warning handling
+// ============================================================================
+
+/** A single warning preflight surfaced to the user for a decision. */
+export interface PreflightWarning {
+  readonly stepId: string;
+  readonly name: string;
+  readonly reason: string;
+  readonly resolutions: readonly PreflightResolution[];
+}
+
+/** Per-warning decision returned by the handler. */
+export type PreflightWarningDecision =
+  | { readonly action: 'abort' }
+  | { readonly action: 'continue' }
+  | { readonly action: 'resolve'; readonly resolutionIndex: number };
+
+/**
+ * Called with the full list of warnings. Must return one decision per warning
+ * (same length, same order). Any 'abort' aborts the whole spell. 'resolve'
+ * runs the chosen resolution's command before the spell continues.
+ */
+export type PreflightWarningHandler = (
+  warnings: readonly PreflightWarning[],
+) => Promise<readonly PreflightWarningDecision[]>;

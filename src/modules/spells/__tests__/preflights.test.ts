@@ -219,14 +219,29 @@ describe('YAML declarative preflights', () => {
 });
 
 describe('formatPreflightErrors', () => {
-  it('summarizes failures with step id and reason', () => {
+  it('summarizes failures with human-friendly header and reason', () => {
     const out = formatPreflightErrors([
       { stepId: 's1', name: 'issue-exists', passed: false, reason: 'issue #10 not found' },
       { stepId: 's2', name: 'tree-clean', passed: true },
     ]);
-    expect(out).toContain('[s1] issue-exists');
+    expect(out).toContain('prerequisite');
     expect(out).toContain('issue #10 not found');
     expect(out).not.toContain('tree-clean');
+  });
+
+  it('falls back to check name when no reason is provided', () => {
+    const out = formatPreflightErrors([
+      { stepId: 's1', name: 'working tree clean', passed: false },
+    ]);
+    expect(out).toContain('working tree clean');
+  });
+
+  it('uses plural header for multiple failures', () => {
+    const out = formatPreflightErrors([
+      { stepId: 's1', name: 'a', passed: false, reason: 'fail-a' },
+      { stepId: 's2', name: 'b', passed: false, reason: 'fail-b' },
+    ]);
+    expect(out).toContain('2 prerequisites');
   });
 
   it('returns empty string when all pass', () => {
