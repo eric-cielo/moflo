@@ -138,6 +138,40 @@ describe('generateSandboxProfile', () => {
     expect(profile).toContain('(allow file-read* (subpath "/opt/data"))');
     expect(profile).toContain('(allow file-read* (subpath "/var/log"))');
   });
+
+  it('adds tool home paths for elevated permission level', () => {
+    const profile = generateSandboxProfile([], PROJECT_ROOT, {
+      permissionLevel: 'elevated',
+      homeDir: '/Users/tester',
+    });
+    expect(profile).toContain('; Tool home paths (elevated)');
+    expect(profile).toContain('(allow file-write* (subpath "/Users/tester/.claude"))');
+    expect(profile).toContain('(allow file-write* (subpath "/Users/tester/.claude.json"))');
+    expect(profile).toContain('(allow file-write* (subpath "/Users/tester/Library/Application Support/Claude"))');
+    expect(profile).toContain('(allow file-write* (subpath "/Users/tester/.config/gh"))');
+    expect(profile).toContain('(allow file-write* (subpath "/Users/tester/.gitconfig"))');
+  });
+
+  it('adds tool home paths for autonomous permission level', () => {
+    const profile = generateSandboxProfile([], PROJECT_ROOT, {
+      permissionLevel: 'autonomous',
+      homeDir: '/Users/tester',
+    });
+    expect(profile).toContain('; Tool home paths (elevated)');
+  });
+
+  it('does NOT add tool home paths for readonly/standard levels', () => {
+    const readonlyProfile = generateSandboxProfile([], PROJECT_ROOT, {
+      permissionLevel: 'readonly',
+      homeDir: '/Users/tester',
+    });
+    const standardProfile = generateSandboxProfile([{ type: 'fs:write' }], PROJECT_ROOT, {
+      permissionLevel: 'standard',
+      homeDir: '/Users/tester',
+    });
+    expect(readonlyProfile).not.toContain('Tool home paths');
+    expect(standardProfile).not.toContain('Tool home paths');
+  });
 });
 
 // ============================================================================

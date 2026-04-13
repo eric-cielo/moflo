@@ -114,6 +114,70 @@ describe('buildBwrapArgs', () => {
 
     expect(args).toContain('--unshare-pid');
   });
+
+  it('binds tool home paths writable for elevated permission level', () => {
+    const home = '/home/tester';
+    const args = buildBwrapArgs('claude -p "hi"', [], PROJECT_ROOT, {
+      permissionLevel: 'elevated',
+      homeDir: home,
+    });
+
+    const findBindTry = (path: string): boolean => {
+      for (let i = 0; i < args.length - 2; i++) {
+        if (args[i] === '--bind-try' && args[i + 1] === path && args[i + 2] === path) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    expect(findBindTry('/home/tester/.claude')).toBe(true);
+    expect(findBindTry('/home/tester/.claude.json')).toBe(true);
+    expect(findBindTry('/home/tester/.config/gh')).toBe(true);
+    expect(findBindTry('/home/tester/.gitconfig')).toBe(true);
+    expect(findBindTry('/home/tester/.npmrc')).toBe(true);
+  });
+
+  it('binds tool home paths writable for autonomous permission level', () => {
+    const args = buildBwrapArgs('claude', [], PROJECT_ROOT, {
+      permissionLevel: 'autonomous',
+      homeDir: '/home/tester',
+    });
+
+    expect(args).toContain('--bind-try');
+  });
+
+  it('does NOT bind tool home paths for readonly/standard levels', () => {
+    const rArgs = buildBwrapArgs('ls', [], PROJECT_ROOT, {
+      permissionLevel: 'readonly',
+      homeDir: '/home/tester',
+    });
+    const sArgs = buildBwrapArgs('edit', [{ type: 'fs:write' }], PROJECT_ROOT, {
+      permissionLevel: 'standard',
+      homeDir: '/home/tester',
+    });
+
+    expect(rArgs).not.toContain('--bind-try');
+    expect(sArgs).not.toContain('--bind-try');
+  });
+
+  it('does not duplicate tool home bind when already covered by fs:write scope', () => {
+    const home = '/home/tester';
+    const args = buildBwrapArgs('claude', [{ type: 'fs:write', scope: [`${home}/.claude`] }], PROJECT_ROOT, {
+      permissionLevel: 'elevated',
+      homeDir: home,
+    });
+
+    const claudePath = `${home}/.claude`;
+    let writableBinds = 0;
+    for (let i = 0; i < args.length - 2; i++) {
+      if ((args[i] === '--bind' || args[i] === '--bind-try') && args[i + 1] === claudePath) {
+        writableBinds++;
+      }
+    }
+
+    expect(writableBinds).toBe(1);
+  });
 });
 
 describe('wrapWithBwrap', () => {

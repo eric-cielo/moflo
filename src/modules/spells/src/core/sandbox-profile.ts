@@ -8,13 +8,58 @@
  */
 
 import { writeFileSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { join, posix } from 'node:path';
+import { tmpdir, homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import type { StepCapability } from '../types/step-command.types.js';
+import type { PermissionLevel } from './permission-resolver.js';
 import { resolveScopePath, type SandboxWrapResult } from './sandbox-utils.js';
 
 export type { SandboxWrapResult } from './sandbox-utils.js';
+
+/**
+ * Options influencing profile generation beyond raw capabilities.
+ */
+export interface SandboxProfileOptions {
+  /** Step's declared permission level — controls whether tool home paths are writable. */
+  readonly permissionLevel?: PermissionLevel;
+  /** Override home directory (for testing). Defaults to os.homedir(). */
+  readonly homeDir?: string;
+}
+
+/**
+ * Home-directory paths that common CLI tools need writable to persist state.
+ * Rationale matches the Linux bwrap wrapper: `elevated`/`autonomous` steps
+ * spawn tools (claude, gh, git, npm) that write under $HOME; a pure
+ * deny-default profile makes those tools fail. System dirs (/etc, /usr,
+ * /private/var/root, etc.) remain denied.
+ */
+const TOOL_HOME_PATHS: readonly string[] = [
+  // Claude Code (dotfile + Application Support on macOS)
+  '.claude',
+  '.claude.json',
+  'Library/Application Support/Claude',
+  'Library/Application Support/claude-cli-nodejs',
+  'Library/Caches/Claude',
+  'Library/Preferences',
+  // GitHub CLI
+  '.config/gh',
+  // git
+  '.gitconfig',
+  '.git-credentials',
+  // npm
+  '.npmrc',
+  '.npm',
+  // Shared XDG locations
+  '.config',
+  '.cache',
+  '.local/share',
+  '.local/state',
+];
+
+function needsToolHomeAccess(level?: PermissionLevel): boolean {
+  return level === 'elevated' || level === 'autonomous';
+}
 
 // ============================================================================
 // Profile Generation
@@ -37,6 +82,7 @@ export type { SandboxWrapResult } from './sandbox-utils.js';
 export function generateSandboxProfile(
   capabilities: readonly StepCapability[],
   projectRoot: string,
+  options: SandboxProfileOptions = {},
 ): string {
   const lines: string[] = [
     '(version 1)',
@@ -95,6 +141,24 @@ export function generateSandboxProfile(
     }
   }
 
+  // ── Tool home paths (elevated/autonomous only) ──────────────────────
+  // Allow writes to well-known CLI-tool home paths so spawned subcommands
+  // (claude, gh, git, npm) can persist config/credentials/cache. Uses
+  // `(subpath ...)` so non-existent paths are simply unmatched — no error.
+  if (needsToolHomeAccess(options.permissionLevel)) {
+    const home = options.homeDir ?? homedir();
+    if (home) {
+      lines.push('');
+      lines.push('; Tool home paths (elevated)');
+      for (const rel of TOOL_HOME_PATHS) {
+        // sandbox-exec is macOS-only → always POSIX paths
+        const resolved = posix.join(home, rel);
+        lines.push(`(allow file-read* (subpath "${escapeSbPath(resolved)}"))`);
+        lines.push(`(allow file-write* (subpath "${escapeSbPath(resolved)}"))`);
+      }
+    }
+  }
+
   // ── net ──────────────────────────────────────────────────────────────
   const hasNet = capabilities.some(c => c.type === 'net');
   if (hasNet) {
@@ -121,8 +185,9 @@ export function wrapWithSandboxExec(
   command: string,
   capabilities: readonly StepCapability[],
   projectRoot: string,
+  options: SandboxProfileOptions = {},
 ): SandboxWrapResult {
-  const profile = generateSandboxProfile(capabilities, projectRoot);
+  const profile = generateSandboxProfile(capabilities, projectRoot, options);
   const profilePath = join(tmpdir(), `moflo-sandbox-${randomBytes(8).toString('hex')}.sb`);
 
   writeFileSync(profilePath, profile, 'utf8');

@@ -189,9 +189,13 @@ export const bashCommand: StepCommand<BashStepConfig> = {
         const projectRoot = (context.variables.projectRoot as string) || process.cwd();
         const caps = context.effectiveCaps ?? [];
         if (tool === 'sandbox-exec') {
-          sandboxWrap = wrapWithSandboxExec(command, caps, projectRoot);
+          sandboxWrap = wrapWithSandboxExec(command, caps, projectRoot, {
+            permissionLevel: context.permissionLevel,
+          });
         } else if (tool === 'bwrap') {
-          sandboxWrap = wrapWithBwrap(command, caps, projectRoot);
+          sandboxWrap = wrapWithBwrap(command, caps, projectRoot, {
+            permissionLevel: context.permissionLevel,
+          });
         }
       } catch (err) {
         console.log(`[bash] ${tool} wrapping failed, running unsandboxed: ${(err as Error).message}`);
