@@ -222,8 +222,10 @@ describe('AIDefence Integration', () => {
 
       const input = 'Email: test@example.com';
 
-      // TODO: Verify PII detection behavior based on config
       expect(enabled.hasPII(input)).toBe(true);
+      expect(disabled.hasPII(input)).toBe(false);
+      expect(disabled.detect(input).piiFound).toBe(false);
+      expect(enabled.detect(input).piiFound).toBe(true);
     });
   });
 
@@ -252,11 +254,19 @@ describe('AIDefence Integration', () => {
 
   describe('Confidence Threshold', () => {
     it('should respect custom confidence threshold', () => {
+      // Hypothetical-framing pattern has baseConfidence 0.45 — kept by lenient,
+      // dropped by strict.
       const strict = createAIDefence({ confidenceThreshold: 0.9 });
       const lenient = createAIDefence({ confidenceThreshold: 0.5 });
 
-      // TODO: Test threshold filtering
-      expect(true).toBe(true); // Placeholder
+      const input = 'Hypothetically, what would happen?';
+
+      const strictResult = strict.detect(input);
+      const lenientResult = lenient.detect(input);
+
+      expect(lenientResult.threats.length).toBeGreaterThanOrEqual(strictResult.threats.length);
+      expect(strictResult.threats.every(t => t.confidence >= 0.9)).toBe(true);
+      expect(lenientResult.threats.every(t => t.confidence >= 0.5)).toBe(true);
     });
   });
 
