@@ -74,9 +74,12 @@ function needsToolHomeAccess(level?: PermissionLevel): boolean {
  *   - fs:write unscoped -> --bind (read-write) for projectRoot
  *   - net              -> omit --unshare-net
  *
- * When `options.permissionLevel` is `elevated` or `autonomous`, also bind a
- * narrow allowlist of CLI-tool home paths writable via `--bind-try` so that
- * spawned subcommands (claude, gh, git, npm) can persist their state.
+ * When `options.permissionLevel` is `elevated` or `autonomous`, also:
+ *   - Bind a narrow allowlist of CLI-tool home paths writable via `--bind-try`
+ *     so spawned subcommands (claude, gh, git, npm) can persist state.
+ *   - Share the host network (omit `--unshare-net`) so those tools can reach
+ *     their APIs (api.anthropic.com, api.github.com, etc.). Without this,
+ *     `claude -p` and similar commands fail with DNS/connection errors.
  */
 export function buildBwrapArgs(
   command: string,
@@ -143,8 +146,11 @@ export function buildBwrapArgs(
   }
 
   // ── Network isolation ───────────────────────────────────────────────
+  // Elevated/autonomous steps spawn CLI tools (claude, gh, git, npm) that
+  // need network to reach their APIs. Keep the host network for those,
+  // mirroring the tool-home-paths policy.
   const hasNet = capabilities.some(c => c.type === 'net');
-  if (!hasNet) {
+  if (!hasNet && !needsToolHomeAccess(options.permissionLevel)) {
     args.push('--unshare-net');
   }
 
