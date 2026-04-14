@@ -1,7 +1,4 @@
 [
-  ".claude/scripts/hooks.mjs",
-  ".claude/scripts/session-start-launcher.mjs",
-  ".claude/scripts/index-guidance.mjs",
   ".claude/scripts/build-embeddings.mjs",
   ".claude/scripts/generate-code-map.mjs",
   ".claude/scripts/semantic-search.mjs",
