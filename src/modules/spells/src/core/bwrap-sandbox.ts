@@ -157,6 +157,15 @@ export function buildBwrapArgs(
   // ── PID isolation (always) ──────────────────────────────────────────
   args.push('--unshare-pid');
 
+  // ── Lifetime bound to parent ────────────────────────────────────────
+  // Without this, child processes spawned by the sandboxed command (e.g.
+  // node workers from `claude -p`) keep the PID namespace alive past the
+  // entry script's exit — bwrap waits for the namespace to drain even
+  // though the user-visible work is done. --die-with-parent makes bwrap
+  // and everything inside terminate when the spawning runner exits or
+  // sends a signal, guaranteeing cleanup on success and on timeout.
+  args.push('--die-with-parent');
+
   // ── Command ─────────────────────────────────────────────────────────
   args.push('bash', '-c', command);
 

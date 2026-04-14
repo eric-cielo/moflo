@@ -95,6 +95,7 @@ export {
   resolveSandboxConfig,
   resolveEffectiveSandbox,
   formatSandboxLog,
+  loadSandboxConfigFromProject,
   DEFAULT_SANDBOX_CONFIG,
   type SandboxCapability,
   type SandboxConfig,

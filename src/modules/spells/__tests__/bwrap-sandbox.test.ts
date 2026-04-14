@@ -115,6 +115,15 @@ describe('buildBwrapArgs', () => {
     expect(args).toContain('--unshare-pid');
   });
 
+  // Regression: without --die-with-parent, child processes from sandboxed
+  // commands (e.g. node workers from `claude -p`) keep the PID namespace
+  // alive past entry-script exit and the runner's timeout cleanup can't
+  // tear bwrap down. See verify-sandbox-bash-wsl.mjs probe.
+  it('always includes --die-with-parent so cleanup propagates', () => {
+    const args = buildBwrapArgs('ps aux', [{ type: 'shell' }], PROJECT_ROOT);
+    expect(args).toContain('--die-with-parent');
+  });
+
   it('binds tool home paths writable for elevated permission level', () => {
     const home = '/home/tester';
     const args = buildBwrapArgs('claude -p "hi"', [], PROJECT_ROOT, {

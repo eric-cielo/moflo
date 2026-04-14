@@ -5,6 +5,9 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   bridgeRunSpell,
   bridgeCancelSpell,
@@ -12,6 +15,7 @@ import {
   bridgeActiveSpells,
 } from '../src/factory/runner-bridge.js';
 import { createRunner, runSpellFromContent } from '../src/factory/runner-factory.js';
+import { loadSandboxConfigFromProject } from '../src/core/platform-sandbox.js';
 
 // ============================================================================
 // Runner Factory
@@ -123,6 +127,74 @@ describe('bridgeActiveSpells', () => {
 // ============================================================================
 // #160 — Credentials wired through bridge
 // ============================================================================
+
+// ============================================================================
+// Sandbox config auto-loaded from moflo.yaml at projectRoot
+// ============================================================================
+
+describe('loadSandboxConfigFromProject', () => {
+  it('parses sandbox block from moflo.yaml', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'moflo-sb-load-'));
+    try {
+      writeFileSync(join(tmp, 'moflo.yaml'), 'sandbox:\n  enabled: true\n  tier: denylist-only\n', 'utf-8');
+      const cfg = await loadSandboxConfigFromProject(tmp);
+      expect(cfg.enabled).toBe(true);
+      expect(cfg.tier).toBe('denylist-only');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('returns defaults when moflo.yaml is missing', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'moflo-sb-missing-'));
+    try {
+      const cfg = await loadSandboxConfigFromProject(tmp);
+      expect(cfg.enabled).toBe(false);
+      expect(cfg.tier).toBe('auto');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('returns defaults when moflo.yaml has no sandbox block', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'moflo-sb-empty-'));
+    try {
+      writeFileSync(join(tmp, 'moflo.yaml'), 'project:\n  name: x\n', 'utf-8');
+      const cfg = await loadSandboxConfigFromProject(tmp);
+      expect(cfg.enabled).toBe(false);
+      expect(cfg.tier).toBe('auto');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('bridgeRunSpell — sandboxConfig threading', () => {
+  it('explicit sandboxConfig wins over moflo.yaml', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'moflo-bridge-sb-'));
+    try {
+      // moflo.yaml says tier: full (would throw on Windows where bwrap is absent)
+      writeFileSync(join(tmp, 'moflo.yaml'), 'sandbox:\n  enabled: true\n  tier: full\n', 'utf-8');
+
+      const yaml = [
+        'name: sb-explicit',
+        'steps:',
+        '  - id: s1',
+        '    type: wait',
+        '    config:',
+        '      duration: 0',
+      ].join('\n');
+
+      const result = await bridgeRunSpell(yaml, undefined, {}, {
+        projectRoot: tmp,
+        sandboxConfig: { enabled: true, tier: 'denylist-only' },
+      });
+      expect(result.success).toBe(true);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('#160 — bridgeRunSpell credentials parameter', () => {
   it('bridgeRunSpell accepts and passes through credentials option', async () => {

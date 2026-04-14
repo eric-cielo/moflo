@@ -13,8 +13,11 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { platform } from 'node:os';
+import { join } from 'node:path';
+
+type YamlModule = { load: (s: string) => unknown; default?: { load: (s: string) => unknown } };
 
 // ============================================================================
 // Types
@@ -180,6 +183,25 @@ export function resolveSandboxConfig(raw?: Record<string, unknown>): SandboxConf
 
 function isValidTier(value: unknown): value is SandboxTier {
   return value === 'auto' || value === 'denylist-only' || value === 'full';
+}
+
+/**
+ * Load sandbox config from a project's moflo.yaml.
+ * Returns DEFAULT_SANDBOX_CONFIG on any failure (missing file, parse error, etc.).
+ *
+ * Lets the spell engine auto-discover sandbox settings from the project root
+ * without forcing every caller (MCP tools, CLI adapters) to load moflo.yaml.
+ */
+export async function loadSandboxConfigFromProject(projectRoot: string): Promise<SandboxConfig> {
+  try {
+    const content = readFileSync(join(projectRoot, 'moflo.yaml'), 'utf-8');
+    const mod = await import('js-yaml') as YamlModule;
+    const yaml = mod.default ?? mod;
+    const raw = yaml.load(content) as { sandbox?: Record<string, unknown> } | null;
+    return resolveSandboxConfig(raw?.sandbox);
+  } catch {
+    return DEFAULT_SANDBOX_CONFIG;
+  }
 }
 
 // ============================================================================

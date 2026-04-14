@@ -25,12 +25,14 @@ import type {
   Grimoire,
   RegistryOptions,
 } from '../../../../modules/spells/src/registry/spell-registry.js';
+import type { SandboxConfig } from '../../../../modules/spells/src/core/platform-sandbox.js';
 
 // Re-export spell types so consumers import from engine-loader (single boundary).
 export type { SpellResult };
 export type { SpellDefinition };
 export type { Grimoire };
 export type { PreflightWarning, PreflightWarningDecision, PreflightWarningHandler };
+export type { SandboxConfig };
 
 /**
  * Shape of the dynamically imported spell engine module.
@@ -43,12 +45,12 @@ export interface EngineModule {
     content: string,
     sourceFile: string | undefined,
     args: Record<string, unknown>,
-    options?: { dryRun?: boolean },
+    options?: { dryRun?: boolean; projectRoot?: string; memory?: unknown; sandboxConfig?: SandboxConfig },
   ) => Promise<SpellResult>;
   bridgeExecuteSpell: (
     definition: SpellDefinition,
     args: Record<string, unknown>,
-    options?: { spellId?: string },
+    options?: { spellId?: string; projectRoot?: string; memory?: unknown; sandboxConfig?: SandboxConfig },
   ) => Promise<SpellResult>;
   bridgeCancelSpell: (spellId: string) => boolean;
   bridgeIsRunning: (spellId: string) => boolean;

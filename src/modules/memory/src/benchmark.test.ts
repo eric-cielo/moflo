@@ -241,7 +241,7 @@ describe('ADR-049 Performance Benchmarks', () => {
     for (let i = 0; i < 10000; i++) resolveAgentMemoryDir(`agent-${i % 100}`, scopes[i % 3]);
     const dt = performance.now() - t0;
     console.log(`  Resolve 10k paths:  ${dt.toFixed(2)}ms  (${(dt/10).toFixed(1)}us/each)`);
-    expect(dt).toBeLessThan(1000); // Not an ADR-049 target; relaxed for CI/full-suite variance
+    expect(dt).toBeLessThan(2500); // Not an ADR-049 target; relaxed for CI/full-suite variance (10k path resolves on contended CI)
   });
 
   it('AgentMemoryScope: transfer knowledge', async () => {

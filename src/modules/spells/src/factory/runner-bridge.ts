@@ -11,7 +11,23 @@
 
 import type { SpellResult } from '../types/runner.types.js';
 import type { CredentialAccessor, MemoryAccessor } from '../types/step-command.types.js';
+import type { SandboxConfig } from '../core/platform-sandbox.js';
+import { loadSandboxConfigFromProject } from '../core/platform-sandbox.js';
 import { createRunner, runSpellFromContent } from './runner-factory.js';
+
+/**
+ * Resolve sandbox config: prefer caller-supplied; fall back to auto-loading
+ * from moflo.yaml at projectRoot. Returns undefined when neither is available
+ * (runner falls back to DEFAULT_SANDBOX_CONFIG with denylist-only).
+ */
+async function resolveSandbox(
+  explicit: SandboxConfig | undefined,
+  projectRoot: string | undefined,
+): Promise<SandboxConfig | undefined> {
+  if (explicit) return explicit;
+  if (!projectRoot) return undefined;
+  return loadSandboxConfigFromProject(projectRoot);
+}
 
 // Track active spells for cancellation
 const activeSpells = new Map<string, AbortController>();
@@ -27,13 +43,14 @@ export async function bridgeRunSpell(
   content: string,
   sourceFile: string | undefined,
   args: Record<string, unknown>,
-  options: { dryRun?: boolean; memory?: MemoryAccessor; credentials?: CredentialAccessor; projectRoot?: string } = {},
+  options: { dryRun?: boolean; memory?: MemoryAccessor; credentials?: CredentialAccessor; projectRoot?: string; sandboxConfig?: SandboxConfig } = {},
 ): Promise<SpellResult> {
   const spellId = `sp-${Date.now()}`;
   const controller = new AbortController();
   activeSpells.set(spellId, controller);
 
   try {
+    const sandboxConfig = await resolveSandbox(options.sandboxConfig, options.projectRoot);
     const result = await runSpellFromContent(content, sourceFile, {
       spellId,
       args,
@@ -42,6 +59,7 @@ export async function bridgeRunSpell(
       memory: options.memory,
       credentials: options.credentials,
       ...(options.projectRoot ? { projectRoot: options.projectRoot } : {}),
+      ...(sandboxConfig ? { sandboxConfig } : {}),
     });
     return result;
   } finally {
@@ -55,18 +73,20 @@ export async function bridgeRunSpell(
 export async function bridgeExecuteSpell(
   definition: import('../types/spell-definition.types.js').SpellDefinition,
   args: Record<string, unknown>,
-  options: { spellId?: string; memory?: MemoryAccessor; credentials?: CredentialAccessor; projectRoot?: string } = {},
+  options: { spellId?: string; memory?: MemoryAccessor; credentials?: CredentialAccessor; projectRoot?: string; sandboxConfig?: SandboxConfig } = {},
 ): Promise<SpellResult> {
   const spellId = options.spellId ?? `sp-${Date.now()}`;
   const controller = new AbortController();
   activeSpells.set(spellId, controller);
 
   try {
+    const sandboxConfig = await resolveSandbox(options.sandboxConfig, options.projectRoot);
     const runner = createRunner({ memory: options.memory, credentials: options.credentials });
     return await runner.run(definition, args, {
       spellId,
       signal: controller.signal,
       ...(options.projectRoot ? { projectRoot: options.projectRoot } : {}),
+      ...(sandboxConfig ? { sandboxConfig } : {}),
     });
   } finally {
     activeSpells.delete(spellId);
