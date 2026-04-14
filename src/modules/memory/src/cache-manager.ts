@@ -24,6 +24,8 @@ interface LRUNode<T> {
   value: CachedEntry<T>;
   prev: LRUNode<T> | null;
   next: LRUNode<T> | null;
+  // Cache the computed size to avoid repeated JSON.stringify
+  estimatedSize: number;
 }
 
 /**
@@ -43,6 +45,10 @@ export class CacheManager<T = MemoryEntry> extends EventEmitter {
   private head: LRUNode<T> | null = null;
   private tail: LRUNode<T> | null = null;
   private currentMemory: number = 0;
+
+  // Cache size estimates to avoid repeated JSON.stringify
+  private sizeCache = new Map<string, number>();
+  private readonly maxSizeCacheEntries = 10000;
 
   // Statistics
   private stats: {
@@ -112,19 +118,24 @@ export class CacheManager<T = MemoryEntry> extends EventEmitter {
     // Check if key already exists
     const existingNode = this.cache.get(key);
     if (existingNode) {
-      // Update existing entry
+      // Update existing entry - recalculate size if data changed
+      const oldSize = existingNode.estimatedSize;
+      const newSize = this.estimateSizeCached(key, data);
+
       existingNode.value.data = data;
       existingNode.value.cachedAt = now;
       existingNode.value.expiresAt = now + entryTtl;
       existingNode.value.lastAccessedAt = now;
+      existingNode.estimatedSize = newSize;
 
+      this.currentMemory = this.currentMemory - oldSize + newSize;
       this.moveToFront(existingNode);
       this.stats.writes++;
       return;
     }
 
-    // Calculate memory for new entry
-    const entryMemory = this.estimateSize(data);
+    // Calculate memory for new entry (with caching)
+    const entryMemory = this.estimateSizeCached(key, data);
 
     // Evict entries if needed for memory pressure
     if (this.config.maxMemory) {
@@ -155,6 +166,7 @@ export class CacheManager<T = MemoryEntry> extends EventEmitter {
       value: cachedEntry,
       prev: null,
       next: null,
+      estimatedSize: entryMemory, // Store computed size
     };
 
     // Add to cache
@@ -177,7 +189,8 @@ export class CacheManager<T = MemoryEntry> extends EventEmitter {
 
     this.removeNode(node);
     this.cache.delete(key);
-    this.currentMemory -= this.estimateSize(node.value.data);
+    this.currentMemory -= node.estimatedSize; // Use cached size
+    this.sizeCache.delete(key); // Clean up size cache
 
     this.emit('cache:delete', { key });
     return true;
@@ -200,12 +213,14 @@ export class CacheManager<T = MemoryEntry> extends EventEmitter {
    * Clear all entries from the cache
    */
   clear(): void {
+    const previousSize = this.cache.size;
     this.cache.clear();
+    this.sizeCache.clear();
     this.head = null;
     this.tail = null;
     this.currentMemory = 0;
 
-    this.emit('cache:cleared', { previousSize: this.cache.size });
+    this.emit('cache:cleared', { previousSize });
   }
 
   /**
@@ -334,8 +349,41 @@ export class CacheManager<T = MemoryEntry> extends EventEmitter {
     return Date.now() > entry.expiresAt;
   }
 
+  /**
+   * OPTIMIZED: Cache size estimates to avoid repeated JSON.stringify
+   * This is called on every cache set and eviction, so caching saves significant CPU
+   */
+  private estimateSizeCached(key: string, data: T): number {
+    // Check if we have a cached size estimate
+    const cached = this.sizeCache.get(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    // Compute size
+    const size = this.estimateSize(data);
+
+    // Cache the result (with LRU eviction)
+    if (this.sizeCache.size >= this.maxSizeCacheEntries) {
+      const firstKey = this.sizeCache.keys().next().value;
+      this.sizeCache.delete(firstKey);
+    }
+    this.sizeCache.set(key, size);
+
+    return size;
+  }
+
   private estimateSize(data: T): number {
     try {
+      // For primitive types, use fast path
+      if (typeof data === 'string') {
+        return data.length * 2;
+      }
+      if (typeof data === 'number' || typeof data === 'boolean') {
+        return 8;
+      }
+
+      // For objects, use JSON.stringify (but only once due to caching)
       return JSON.stringify(data).length * 2; // Rough UTF-16 estimate
     } catch {
       return 1000; // Default for non-serializable objects
@@ -382,10 +430,11 @@ export class CacheManager<T = MemoryEntry> extends EventEmitter {
     if (!this.tail) return;
 
     const evictedKey = this.tail.key;
-    const evictedSize = this.estimateSize(this.tail.value.data);
+    const evictedSize = this.tail.estimatedSize; // Use cached size
 
     this.removeNode(this.tail);
     this.cache.delete(evictedKey);
+    this.sizeCache.delete(evictedKey); // Clean up size cache
     this.currentMemory -= evictedSize;
     this.stats.evictions++;
 
