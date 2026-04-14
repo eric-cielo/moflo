@@ -12,6 +12,7 @@
 
 import type { MCPTool, MCPToolResult } from './types.js';
 import { autoInstallPackage } from './auto-install.js';
+import { tryCreateAgentDBStore } from './aidefence-agentdb-store.js';
 import { createRequire } from 'module';
 
 // Create require for resolving module paths
@@ -27,6 +28,21 @@ let aidefenceInstance: AIDefenceInstance | null = null;
 let installAttempted = false;
 
 /**
+ * Build createAIDefence config, attaching an AgentDB-backed vector store
+ * when the memory bridge is available. Falls back to the package default
+ * (InMemoryVectorStore) otherwise so the MCP tools still function standalone.
+ */
+async function buildAIDefenceConfig(): Promise<{ enableLearning: boolean; vectorStore?: unknown }> {
+  const store = await tryCreateAgentDBStore();
+  if (store) {
+    console.error('[claude-flow] aidefence: using AgentDB-backed vector store (HNSW)');
+    return { enableLearning: true, vectorStore: store };
+  }
+  console.error('[claude-flow] aidefence: AgentDB bridge unavailable, using in-memory store');
+  return { enableLearning: true };
+}
+
+/**
  * Get or create AIDefence instance (throws if unavailable)
  */
 async function getAIDefence(): Promise<AIDefenceInstance> {
@@ -39,7 +55,8 @@ async function getAIDefence(): Promise<AIDefenceInstance> {
   // First attempt - try to load via dynamic import (ESM)
   try {
     const aidefence = await import(packageName);
-    const instance = aidefence.createAIDefence({ enableLearning: true });
+    const config = await buildAIDefenceConfig();
+    const instance = aidefence.createAIDefence(config);
     if (!instance) {
       throw new Error('createAIDefence returned null');
     }
@@ -74,7 +91,8 @@ async function getAIDefence(): Promise<AIDefenceInstance> {
     const modulePath = require.resolve(packageName);
     const cacheBust = `?t=${Date.now()}`;
     const aidefence = await import(pathToFileURL(modulePath).href + cacheBust);
-    const instance = aidefence.createAIDefence({ enableLearning: true });
+    const config = await buildAIDefenceConfig();
+    const instance = aidefence.createAIDefence(config);
     if (!instance) {
       throw new Error('createAIDefence returned null after install');
     }
