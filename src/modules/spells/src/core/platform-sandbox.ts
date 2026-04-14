@@ -48,7 +48,7 @@ export interface SandboxConfig {
 }
 
 export const DEFAULT_SANDBOX_CONFIG: SandboxConfig = {
-  enabled: true,
+  enabled: false,
   tier: 'auto',
 };
 

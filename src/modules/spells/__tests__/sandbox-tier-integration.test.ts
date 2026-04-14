@@ -496,7 +496,7 @@ describe('full pipeline: config through execution', () => {
 
   it('default config values are sensible', () => {
     const config = resolveSandboxConfig();
-    expect(config.enabled).toBe(true);
+    expect(config.enabled).toBe(false);
     expect(config.tier).toBe('auto');
   });
 });

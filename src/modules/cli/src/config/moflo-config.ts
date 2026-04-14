@@ -181,7 +181,7 @@ const DEFAULT_CONFIG: MofloConfig = {
     helpers: true,
   },
   sandbox: {
-    enabled: true,
+    enabled: false,
     tier: 'auto',
   },
   epic: {
@@ -470,7 +470,7 @@ auto_update:
 # OS-level sandbox for spell bash steps
 # Denylist always runs regardless of this setting
 sandbox:
-  enabled: true                  # false to disable OS sandbox (keeps denylist)
+  enabled: false                 # true to enable OS sandbox (denylist runs either way)
   tier: auto                     # auto | denylist-only | full
                                  # auto = best available, graceful fallback
                                  # denylist-only = skip OS sandbox
