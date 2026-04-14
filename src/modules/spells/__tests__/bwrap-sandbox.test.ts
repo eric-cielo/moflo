@@ -161,6 +161,36 @@ describe('buildBwrapArgs', () => {
     expect(sArgs).not.toContain('--bind-try');
   });
 
+  it('omits --unshare-net for elevated permission level (claude -p needs network)', () => {
+    const args = buildBwrapArgs('claude -p "hi"', [], PROJECT_ROOT, {
+      permissionLevel: 'elevated',
+      homeDir: '/home/tester',
+    });
+
+    expect(args).not.toContain('--unshare-net');
+  });
+
+  it('omits --unshare-net for autonomous permission level', () => {
+    const args = buildBwrapArgs('claude', [], PROJECT_ROOT, {
+      permissionLevel: 'autonomous',
+      homeDir: '/home/tester',
+    });
+
+    expect(args).not.toContain('--unshare-net');
+  });
+
+  it('includes --unshare-net for readonly/standard levels without net cap', () => {
+    const rArgs = buildBwrapArgs('ls', [], PROJECT_ROOT, {
+      permissionLevel: 'readonly',
+    });
+    const sArgs = buildBwrapArgs('edit', [{ type: 'fs:write' }], PROJECT_ROOT, {
+      permissionLevel: 'standard',
+    });
+
+    expect(rArgs).toContain('--unshare-net');
+    expect(sArgs).toContain('--unshare-net');
+  });
+
   it('does not duplicate tool home bind when already covered by fs:write scope', () => {
     const home = '/home/tester';
     const args = buildBwrapArgs('claude', [{ type: 'fs:write', scope: [`${home}/.claude`] }], PROJECT_ROOT, {
