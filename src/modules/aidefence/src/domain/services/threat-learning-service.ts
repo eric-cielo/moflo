@@ -11,6 +11,8 @@
  * - Integration with agentic-flow attention mechanisms
  */
 
+import { createHash } from 'crypto';
+
 import type {
   Threat,
   ThreatType,
@@ -158,7 +160,6 @@ export class ThreatLearningService {
   private readonly namespace = 'security_threats';
   private readonly mitigationNamespace = 'security_mitigations';
   private trajectories = new Map<string, LearningTrajectory>();
-  private patternKeyByText = new Map<string, string>();
   private learnedPatternCount = 0;
   private mitigationCount = 0;
   private mitigationEffectivenessSum = 0;
@@ -206,33 +207,30 @@ export class ThreatLearningService {
       }
     }
 
-    // Store each detected threat — aggregate by pattern text so repeated detections
-    // update a single record instead of creating new ones.
+    // Store each detected threat. Deterministic key (hash of type+pattern) so the
+    // same threat text always maps to the same record, even after restart — no
+    // in-memory dedup map required.
     for (const threat of result.threats) {
-      const dedupKey = `${threat.type}:${threat.pattern}`;
-      const existingId = this.patternKeyByText.get(dedupKey);
+      const patternId = this.patternKey(threat.type, threat.pattern);
       const isFalsePositive = feedback?.wasAccurate === false ? 1 : 0;
+      const existing = (await this.vectorStore.get(this.namespace, patternId)) as LearnedThreatPattern | null;
 
-      if (existingId) {
-        const existing = (await this.vectorStore.get(this.namespace, existingId)) as LearnedThreatPattern | null;
-        if (existing) {
-          const updated: LearnedThreatPattern = {
-            ...existing,
-            effectiveness: 0.2 * reward + 0.8 * existing.effectiveness,
-            detectionCount: existing.detectionCount + 1,
-            falsePositiveCount: existing.falsePositiveCount + isFalsePositive,
-            lastUpdated: new Date(),
-          };
-          await this.vectorStore.store({
-            namespace: this.namespace,
-            key: existingId,
-            value: updated,
-          });
-          continue;
-        }
+      if (existing) {
+        const updated: LearnedThreatPattern = {
+          ...existing,
+          effectiveness: 0.2 * reward + 0.8 * existing.effectiveness,
+          detectionCount: existing.detectionCount + 1,
+          falsePositiveCount: existing.falsePositiveCount + isFalsePositive,
+          lastUpdated: new Date(),
+        };
+        await this.vectorStore.store({
+          namespace: this.namespace,
+          key: patternId,
+          value: updated,
+        });
+        continue;
       }
 
-      const patternId = `learned-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const learnedPattern: LearnedThreatPattern = {
         id: patternId,
         pattern: threat.pattern,
@@ -254,9 +252,13 @@ export class ThreatLearningService {
         key: patternId,
         value: learnedPattern,
       });
-      this.patternKeyByText.set(dedupKey, patternId);
       this.learnedPatternCount++;
     }
+  }
+
+  private patternKey(threatType: ThreatType, pattern: string): string {
+    const hash = createHash('sha256').update(pattern).digest('hex').slice(0, 16);
+    return `learned-${threatType}-${hash}`;
   }
 
   /**

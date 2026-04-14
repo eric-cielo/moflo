@@ -148,6 +148,7 @@ export interface AIDefence {
     learnedPatterns: number;
     mitigationStrategies: number;
     avgMitigationEffectiveness: number;
+    trajectoryCount: number;
   };
 }
 
@@ -176,10 +177,21 @@ export function createAIDefence(config: AIDefenceConfig = {}): AIDefence {
   const learningService = config.enableLearning
     ? createThreatLearningService(config.vectorStore)
     : null;
+  const confidenceThreshold = config.confidenceThreshold ?? 0;
+  const piiEnabled = config.enablePIIDetection !== false;
 
   return {
     detect(input: string) {
-      const result = detectionService.detect(input);
+      const raw = detectionService.detect(input);
+      const filteredThreats = confidenceThreshold > 0
+        ? raw.threats.filter(t => t.confidence >= confidenceThreshold)
+        : raw.threats;
+      const result: ThreatDetectionResult = {
+        ...raw,
+        threats: filteredThreats,
+        safe: filteredThreats.length === 0,
+        piiFound: piiEnabled ? raw.piiFound : false,
+      };
 
       // Auto-learn if enabled (fire-and-forget)
       if (learningService && result.threats.length > 0) {
@@ -194,6 +206,7 @@ export function createAIDefence(config: AIDefenceConfig = {}): AIDefence {
     },
 
     hasPII(input: string) {
+      if (!piiEnabled) return false;
       return detectionService.detectPII(input);
     },
 
@@ -240,6 +253,7 @@ export function createAIDefence(config: AIDefenceConfig = {}): AIDefence {
         learnedPatterns: learningStats?.learnedPatterns ?? 0,
         mitigationStrategies: learningStats?.mitigationStrategies ?? 0,
         avgMitigationEffectiveness: learningStats?.avgEffectiveness ?? 0,
+        trajectoryCount: learningStats?.trajectoryCount ?? 0,
       };
     },
   };
