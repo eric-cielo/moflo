@@ -148,6 +148,7 @@ export interface AIDefence {
     learnedPatterns: number;
     mitigationStrategies: number;
     avgMitigationEffectiveness: number;
+    trajectoryCount: number;
   };
 }
 
@@ -240,6 +241,7 @@ export function createAIDefence(config: AIDefenceConfig = {}): AIDefence {
         learnedPatterns: learningStats?.learnedPatterns ?? 0,
         mitigationStrategies: learningStats?.mitigationStrategies ?? 0,
         avgMitigationEffectiveness: learningStats?.avgEffectiveness ?? 0,
+        trajectoryCount: learningStats?.trajectoryCount ?? 0,
       };
     },
   };
