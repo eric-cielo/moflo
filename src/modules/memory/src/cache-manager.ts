@@ -366,7 +366,7 @@ export class CacheManager<T = MemoryEntry> extends EventEmitter {
     // Cache the result (with LRU eviction)
     if (this.sizeCache.size >= this.maxSizeCacheEntries) {
       const firstKey = this.sizeCache.keys().next().value;
-      this.sizeCache.delete(firstKey);
+      if (firstKey !== undefined) this.sizeCache.delete(firstKey);
     }
     this.sizeCache.set(key, size);
 

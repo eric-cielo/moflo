@@ -208,7 +208,7 @@ export class OptimizedVectorStore implements VectorStore {
     // LRU eviction for query cache
     if (this.queryCache.size >= this.maxQueryCacheSize) {
       const firstKey = this.queryCache.keys().next().value;
-      this.queryCache.delete(firstKey);
+      if (firstKey !== undefined) this.queryCache.delete(firstKey);
     }
 
     this.queryCache.set(query, normalized);
