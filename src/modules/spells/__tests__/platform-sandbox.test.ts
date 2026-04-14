@@ -235,7 +235,7 @@ describe('resolveSandboxConfig', () => {
 
   it('ignores non-boolean enabled values', () => {
     const config = resolveSandboxConfig({ enabled: 'yes' });
-    expect(config.enabled).toBe(true); // default
+    expect(config.enabled).toBe(false); // default (sandbox off unless opted in)
   });
 });
 
@@ -291,7 +291,7 @@ describe('formatSandboxLog', () => {
   it('formats the log message with [spell] prefix', () => {
     mockPlatform.mockReturnValue('darwin');
     mockExistsSync.mockReturnValue(true);
-    const effective = resolveEffectiveSandbox(DEFAULT_SANDBOX_CONFIG);
+    const effective = resolveEffectiveSandbox({ enabled: true, tier: 'auto' });
     const log = formatSandboxLog(effective);
     expect(log).toBe('[spell] OS sandbox: sandbox-exec (darwin)');
   });
