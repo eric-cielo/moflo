@@ -51,11 +51,6 @@ describe('ThreatLearningService', () => {
       expect(patterns[0]?.effectiveness).toBeLessThan(1.0);
     });
 
-    it('should decay confidence for patterns with false positives', async () => {
-      // TODO: Implement confidence decay testing
-      expect(true).toBe(true); // Placeholder
-    });
-
     it('should store pattern metadata (source, context)', async () => {
       // TODO: Test metadata storage and retrieval
       expect(true).toBe(true); // Placeholder
@@ -126,11 +121,6 @@ describe('ThreatLearningService', () => {
       // TODO: Test per-threat-type mitigation tracking
       expect(true).toBe(true); // Placeholder
     });
-
-    it('should track recursion depth for strange-loop meta-learning', async () => {
-      // TODO: Test meta-learning depth tracking
-      expect(true).toBe(true); // Placeholder
-    });
   });
 
   describe('Learning Trajectories (ReasoningBank)', () => {
@@ -157,23 +147,9 @@ describe('ThreatLearningService', () => {
       expect(stats.trajectoryCount).toBe(1);
     });
 
-    it('should calculate trajectory reward', async () => {
-      // TODO: Test reward calculation
-      expect(true).toBe(true); // Placeholder
-    });
-
-    it('should support trajectory replay for learning', async () => {
-      // TODO: Test experience replay
-      expect(true).toBe(true); // Placeholder
-    });
   });
 
   describe('Integration with AgentDB', () => {
-    it('should work with custom vector store', async () => {
-      // TODO: Test with mock AgentDB interface
-      expect(true).toBe(true); // Placeholder
-    });
-
     it('should achieve fast search with HNSW indexing', async () => {
       // Performance test - should be <10ms for search
       const start = performance.now();
@@ -184,22 +160,6 @@ describe('ThreatLearningService', () => {
     });
   });
 
-  describe('Error Handling', () => {
-    it('should handle corrupt pattern data gracefully', async () => {
-      // TODO: Test error recovery
-      expect(true).toBe(true); // Placeholder
-    });
-
-    it('should handle vector store failures', async () => {
-      // TODO: Test storage failures
-      expect(true).toBe(true); // Placeholder
-    });
-
-    it('should validate pattern structure', async () => {
-      // TODO: Test pattern validation
-      expect(true).toBe(true); // Placeholder
-    });
-  });
 });
 
 describe('InMemoryVectorStore', () => {
@@ -218,18 +178,6 @@ describe('InMemoryVectorStore', () => {
 
     const result = await store.get('test', 'key1');
     expect(result).toEqual({ data: 'value1' });
-  });
-
-  it('should support embeddings', async () => {
-    await store.store({
-      namespace: 'test',
-      key: 'key1',
-      value: { data: 'value1' },
-      embedding: [0.1, 0.2, 0.3],
-    });
-
-    // TODO: Test embedding-based search
-    expect(true).toBe(true); // Placeholder
   });
 
   it('should search across namespace', async () => {
