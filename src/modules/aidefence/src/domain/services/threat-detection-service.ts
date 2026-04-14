@@ -282,8 +282,11 @@ export class ThreatDetectionService {
     const startTime = performance.now();
     const threats: Threat[] = [];
 
+    // Coerce null/undefined/non-strings to empty string
+    const safeInput = typeof input === 'string' ? input : '';
+
     // Normalize input
-    const normalizedInput = this.normalizeInput(input);
+    const normalizedInput = this.normalizeInput(safeInput);
 
     // Pattern matching
     for (const pattern of this.patterns) {
@@ -307,7 +310,7 @@ export class ThreatDetectionService {
     }
 
     // PII detection
-    const piiFound = this.detectPII(input);
+    const piiFound = this.detectPII(safeInput);
 
     const detectionTimeMs = performance.now() - startTime;
     this.detectionCount++;
@@ -318,7 +321,7 @@ export class ThreatDetectionService {
       threats: this.deduplicateThreats(threats),
       detectionTimeMs,
       piiFound,
-      inputHash: this.hashInput(input),
+      inputHash: this.hashInput(safeInput),
     };
   }
 
@@ -327,7 +330,8 @@ export class ThreatDetectionService {
    * Target: <5ms latency
    */
   quickScan(input: string): { threat: boolean; confidence: number } {
-    const normalizedInput = this.normalizeInput(input);
+    const safeInput = typeof input === 'string' ? input : '';
+    const normalizedInput = this.normalizeInput(safeInput);
 
     let maxConfidence = 0;
     let threatFound = false;
@@ -351,8 +355,12 @@ export class ThreatDetectionService {
    * Detect PII in text
    */
   detectPII(input: string): boolean {
+    const safeInput = typeof input === 'string' ? input : '';
     for (const pii of PII_PATTERNS) {
-      if (pii.pattern.test(input)) {
+      // Reset lastIndex — PII_PATTERNS uses /g flag, and .test() retains state across calls
+      pii.pattern.lastIndex = 0;
+      if (pii.pattern.test(safeInput)) {
+        pii.pattern.lastIndex = 0;
         return true;
       }
     }

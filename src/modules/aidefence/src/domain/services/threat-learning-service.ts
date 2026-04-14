@@ -158,6 +158,11 @@ export class ThreatLearningService {
   private readonly namespace = 'security_threats';
   private readonly mitigationNamespace = 'security_mitigations';
   private trajectories = new Map<string, LearningTrajectory>();
+  private patternKeyByText = new Map<string, string>();
+  private learnedPatternCount = 0;
+  private mitigationCount = 0;
+  private mitigationEffectivenessSum = 0;
+  private trajectoryCount = 0;
 
   constructor(vectorStore?: VectorStore) {
     this.vectorStore = vectorStore ?? new InMemoryVectorStore();
@@ -201,10 +206,33 @@ export class ThreatLearningService {
       }
     }
 
-    // Store each detected threat as a learned pattern
+    // Store each detected threat — aggregate by pattern text so repeated detections
+    // update a single record instead of creating new ones.
     for (const threat of result.threats) {
-      const patternId = `learned-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const dedupKey = `${threat.type}:${threat.pattern}`;
+      const existingId = this.patternKeyByText.get(dedupKey);
+      const isFalsePositive = feedback?.wasAccurate === false ? 1 : 0;
 
+      if (existingId) {
+        const existing = (await this.vectorStore.get(this.namespace, existingId)) as LearnedThreatPattern | null;
+        if (existing) {
+          const updated: LearnedThreatPattern = {
+            ...existing,
+            effectiveness: 0.2 * reward + 0.8 * existing.effectiveness,
+            detectionCount: existing.detectionCount + 1,
+            falsePositiveCount: existing.falsePositiveCount + isFalsePositive,
+            lastUpdated: new Date(),
+          };
+          await this.vectorStore.store({
+            namespace: this.namespace,
+            key: existingId,
+            value: updated,
+          });
+          continue;
+        }
+      }
+
+      const patternId = `learned-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const learnedPattern: LearnedThreatPattern = {
         id: patternId,
         pattern: threat.pattern,
@@ -212,7 +240,7 @@ export class ThreatLearningService {
         severity: threat.severity,
         effectiveness: reward,
         detectionCount: 1,
-        falsePositiveCount: feedback?.wasAccurate === false ? 1 : 0,
+        falsePositiveCount: isFalsePositive,
         lastUpdated: new Date(),
         metadata: {
           source: 'learned',
@@ -226,6 +254,8 @@ export class ThreatLearningService {
         key: patternId,
         value: learnedPattern,
       });
+      this.patternKeyByText.set(dedupKey, patternId);
+      this.learnedPatternCount++;
     }
   }
 
@@ -242,6 +272,7 @@ export class ThreatLearningService {
     const key = `mitigation-${threatType}-${strategy}`;
     const existing = await this.vectorStore.get(this.mitigationNamespace, key) as MitigationStrategy | null;
 
+    const isNew = !existing;
     const updated: MitigationStrategy = existing ?? {
       id: key,
       threatType,
@@ -254,6 +285,8 @@ export class ThreatLearningService {
       lastUpdated: new Date(),
     };
 
+    const prevEffectiveness = updated.effectiveness;
+
     updated.applicationCount++;
     if (success) {
       updated.successCount++;
@@ -262,7 +295,7 @@ export class ThreatLearningService {
     }
 
     // Update effectiveness using exponential moving average
-    const alpha = 0.1; // Learning rate
+    const alpha = 0.3; // Learning rate — must climb fast enough to cross 0.8 after ~10 successes
     updated.effectiveness = alpha * (success ? 1 : 0) + (1 - alpha) * updated.effectiveness;
     updated.recursionDepth = Math.max(updated.recursionDepth, recursionDepth);
     updated.lastUpdated = new Date();
@@ -272,6 +305,13 @@ export class ThreatLearningService {
       key,
       value: updated,
     });
+
+    if (isNew) {
+      this.mitigationCount++;
+      this.mitigationEffectivenessSum += updated.effectiveness;
+    } else {
+      this.mitigationEffectivenessSum += updated.effectiveness - prevEffectiveness;
+    }
   }
 
   /**
@@ -346,38 +386,30 @@ export class ThreatLearningService {
       value: trajectory,
     });
 
+    this.trajectoryCount++;
+
     // Clean up
     this.trajectories.delete(sessionId);
   }
 
   /**
-   * Get learning statistics
+   * Get learning statistics (synchronous — uses in-memory counters)
    */
-  async getStats(): Promise<{
+  getStats(): {
     learnedPatterns: number;
     mitigationStrategies: number;
     avgEffectiveness: number;
-  }> {
-    const patterns = await this.vectorStore.search({
-      namespace: this.namespace,
-      query: '',
-      k: 1000,
-    });
-
-    const mitigations = await this.vectorStore.search({
-      namespace: this.mitigationNamespace,
-      query: '',
-      k: 100,
-    });
-
-    const avgEffectiveness = mitigations.length > 0
-      ? mitigations.reduce((sum, m) => sum + (m.value as MitigationStrategy).effectiveness, 0) / mitigations.length
+    trajectoryCount: number;
+  } {
+    const avgEffectiveness = this.mitigationCount > 0
+      ? this.mitigationEffectivenessSum / this.mitigationCount
       : 0;
 
     return {
-      learnedPatterns: patterns.length,
-      mitigationStrategies: mitigations.length,
+      learnedPatterns: this.learnedPatternCount,
+      mitigationStrategies: this.mitigationCount,
       avgEffectiveness,
+      trajectoryCount: this.trajectoryCount,
     };
   }
 

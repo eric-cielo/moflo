@@ -232,13 +232,14 @@ export function createAIDefence(config: AIDefenceConfig = {}): AIDefence {
 
     getStats() {
       const detectionStats = detectionService.getStats();
+      const learningStats = learningService?.getStats();
 
       return {
         detectionCount: detectionStats.detectionCount,
         avgDetectionTimeMs: detectionStats.avgDetectionTimeMs,
-        learnedPatterns: 0,
-        mitigationStrategies: 0,
-        avgMitigationEffectiveness: 0,
+        learnedPatterns: learningStats?.learnedPatterns ?? 0,
+        mitigationStrategies: learningStats?.mitigationStrategies ?? 0,
+        avgMitigationEffectiveness: learningStats?.avgEffectiveness ?? 0,
       };
     },
   };
