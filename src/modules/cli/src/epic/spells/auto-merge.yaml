@@ -58,6 +58,8 @@ steps:
       # on dirty tree, missing auth, or unreachable remote.
       - id: checkout-base
         type: bash
+        # elevated — bwrap network access for git pull (see single-branch create-branch).
+        permissionLevel: elevated
         preflight:
           - name: "no unmerged files"
             command: "git diff --name-only --diff-filter=U"
@@ -123,6 +125,8 @@ steps:
       # 5: Pull merged changes
       - id: pull-merged
         type: bash
+        # elevated — bwrap network access for git pull (see checkout-base).
+        permissionLevel: elevated
         config:
           # set -e: fail fast if checkout/pull fails (see checkout-base).
           command: "set -e; git stash --include-untracked -q 2>/dev/null || true; git checkout {args.base_branch}; git pull origin {args.base_branch}; git stash pop -q 2>/dev/null || true"

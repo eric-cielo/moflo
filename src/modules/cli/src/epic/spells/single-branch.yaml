@@ -55,6 +55,11 @@ steps:
   # Preflights run BEFORE any step — fail fast on dirty tree or auth issues
   - id: create-branch
     type: bash
+    # elevated — needed for bwrap to share the host network so `git pull`
+    # can reach github. Without it, bwrap adds --unshare-net and the pull
+    # fails with a DNS / SSH resolution error even though the outer shell
+    # has working network.
+    permissionLevel: elevated
     preflight:
       - name: "no unmerged files"
         command: "git diff --name-only --diff-filter=U"
@@ -134,6 +139,8 @@ steps:
   # Preflight: verify origin remote exists so push won't fail mid-way
   - id: push-branch
     type: bash
+    # elevated — bwrap network access for git push (see create-branch).
+    permissionLevel: elevated
     preflight:
       - name: "origin remote configured"
         command: "git remote get-url origin"
