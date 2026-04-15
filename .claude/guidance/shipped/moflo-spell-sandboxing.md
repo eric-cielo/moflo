@@ -210,6 +210,29 @@ The engine **automatically rewrites** `claude -p` commands in bash steps — str
 | **[SENSITIVE]** | `agent`, `net`, `browser` | Can read external data or spawn processes |
 | **[DESTRUCTIVE]** | `shell`, `fs:write`, `browser:evaluate`, `credentials` | Can permanently modify/delete data |
 
+## OS-Level Sandbox Configuration (`moflo.yaml`)
+
+Capabilities and the gateway always apply. An **additional** OS-level process sandbox (Layer 3) wraps bash steps on macOS (`sandbox-exec`) and Linux/WSL (`bwrap`). It is controlled by the `sandbox:` block in `moflo.yaml`:
+
+```yaml
+sandbox:
+  enabled: false   # Master toggle — false = OS sandbox off (denylist + gateway still apply)
+  tier: auto       # auto | denylist-only | full
+```
+
+Semantics (from `resolveEffectiveSandbox()` in `src/modules/spells/src/core/platform-sandbox.ts`):
+
+| `enabled` | `tier` | Tool available | OS sandbox runs? | Notes |
+|-----------|--------|----------------|------------------|-------|
+| `false` | (any) | (any) | No | **Absolute disable** — master toggle wins |
+| `true` | `auto` | Yes | Yes | Use detected tool (bwrap/sandbox-exec) |
+| `true` | `auto` | No | No | Graceful fallback; logs "not available" |
+| `true` | `denylist-only` | (any) | No | Layer 1 only, skip OS isolation |
+| `true` | `full` | Yes | Yes | Require OS sandbox |
+| `true` | `full` | No | — | **Throws** at spell start |
+
+Existing projects that predate this block get it auto-appended on session start — never require `moflo init` to re-run after a version bump.
+
 ## See Also
 
 - `.claude/guidance/shipped/moflo-spell-engine.md` — Spell engine usage and YAML format

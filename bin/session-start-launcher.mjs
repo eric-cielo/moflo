@@ -355,6 +355,25 @@ try {
   }
 } catch { /* non-fatal */ }
 
+// ── 3d-yaml. Append missing top-level sections to moflo.yaml ───────────────
+// Users must never be required to re-run `moflo init` after a version bump.
+// When moflo ships a new top-level config section (e.g. sandbox:), append it
+// with defaults + comments if the user's yaml doesn't already have it.
+// Fully idempotent and never touches user-set values.
+// See: .claude/guidance/internal/upgrade-contract.md
+try {
+  const upgraderPaths = [
+    resolve(projectRoot, 'node_modules/moflo/bin/lib/yaml-upgrader.mjs'),
+    resolve(projectRoot, 'bin/lib/yaml-upgrader.mjs'),
+  ];
+  const upgraderPath = upgraderPaths.find((p) => existsSync(p));
+  const mofloYaml = resolve(projectRoot, 'moflo.yaml');
+  if (upgraderPath && existsSync(mofloYaml)) {
+    const { ensureYamlSections } = await import(`file://${upgraderPath.replace(/\\/g, '/')}`);
+    ensureYamlSections(mofloYaml);
+  }
+} catch { /* non-fatal — yaml stays as-is, user can still edit manually */ }
+
 // ── 3d. Ensure global `flo` shim exists ─────────────────────────────────────
 // Installs a tiny shim into npm's global bin so bare `flo` resolves to the
 // local project's node_modules/.bin/flo. Idempotent — skips if already present.
