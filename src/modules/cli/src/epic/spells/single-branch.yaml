@@ -95,11 +95,15 @@ steps:
     output: story_results
     steps:
       # 2a: Spawn Claude agent to implement the story and commit to epic branch
+      # Pin the branch before and after: subagents have wandered to main and
+      # landed commits there, leaving epic branch empty. We re-assert the epic
+      # branch up front, snapshot HEAD, and if the subagent strays we cherry-pick
+      # the stray commits back onto the epic branch before the step succeeds.
       - id: implement-story
         type: bash
         permissionLevel: elevated
         config:
-          command: "export PATH=\"$HOME/.local/bin:$PATH\" && claude -p \"Read GitHub issue #{loop.story_number} using gh issue view {loop.story_number}. Implement exactly what the issue asks for — nothing more. Commit your changes with a message referencing the issue number. Do not create a branch or PR.\""
+          command: "export PATH=\"$HOME/.local/bin:$PATH\" && EPIC_BRANCH=\"epic/{args.epic_number}-{args.epic_slug}\" && git checkout \"$EPIC_BRANCH\" && BEFORE=$(git rev-parse HEAD) && claude -p \"You are on git branch $EPIC_BRANCH. Stay on it — do NOT run git checkout, git switch, or git branch. Read GitHub issue #{loop.story_number} using gh issue view {loop.story_number}. Implement exactly what the issue asks for — nothing more. Commit your changes on $EPIC_BRANCH with a message referencing the issue number. Do not create a PR.\" && CURRENT=$(git rev-parse --abbrev-ref HEAD) && if [ \"$CURRENT\" != \"$EPIC_BRANCH\" ]; then echo \"[epic] agent strayed from $EPIC_BRANCH to $CURRENT — recovering commits\" >&2 && STRAY_HEAD=$(git rev-parse HEAD) && git checkout \"$EPIC_BRANCH\" && git cherry-pick \"$BEFORE\"..\"$STRAY_HEAD\"; fi"
           timeout: 600000
           failOnError: true
 
