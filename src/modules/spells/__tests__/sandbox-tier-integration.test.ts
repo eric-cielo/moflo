@@ -332,21 +332,18 @@ describe('graceful fallback when OS sandbox is unavailable', () => {
   });
 
   it('auto tier falls back to denylist-only when no OS sandbox detected', () => {
-    vi.spyOn(platformSandbox, 'detectSandboxCapability')
-      .mockReturnValueOnce(UNAVAILABLE_CAPABILITY);
-
-    const effective = resolveEffectiveSandbox({ enabled: true, tier: 'auto' });
+    const effective = resolveEffectiveSandbox(
+      { enabled: true, tier: 'auto' },
+      UNAVAILABLE_CAPABILITY,
+    );
     expect(effective.useOsSandbox).toBe(false);
     expect(effective.displayStatus).toContain('not available');
   });
 
   it('full tier throws when no OS sandbox is available', () => {
-    vi.spyOn(platformSandbox, 'detectSandboxCapability')
-      .mockReturnValueOnce(UNAVAILABLE_CAPABILITY);
-
-    expect(() => resolveEffectiveSandbox({ enabled: true, tier: 'full' })).toThrow(
-      /Sandbox tier "full" requires an OS sandbox/,
-    );
+    expect(() =>
+      resolveEffectiveSandbox({ enabled: true, tier: 'full' }, UNAVAILABLE_CAPABILITY),
+    ).toThrow(/Sandbox tier "full" requires an OS sandbox/);
   });
 
   it('denylist-only tier always skips OS sandbox', () => {

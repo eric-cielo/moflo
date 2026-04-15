@@ -222,11 +222,15 @@ export interface EffectiveSandbox {
 /**
  * Combine detected capability with user config to determine effective sandbox behavior.
  *
+ * @param config — resolved user config (enabled + tier)
+ * @param capability — optional capability override (for tests; skips OS detection)
  * @returns EffectiveSandbox — includes display status for spell-start logging.
  * @throws Error if tier is 'full' but no OS sandbox is available.
  */
-export function resolveEffectiveSandbox(config: SandboxConfig): EffectiveSandbox {
-  const capability = detectSandboxCapability();
+export function resolveEffectiveSandbox(
+  config: SandboxConfig,
+  capability: SandboxCapability = detectSandboxCapability(),
+): EffectiveSandbox {
 
   // Config disabled or tier is denylist-only => no OS sandbox
   if (!config.enabled || config.tier === 'denylist-only') {
