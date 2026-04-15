@@ -396,6 +396,16 @@ mcp:
   tool_defer: deferred           # Defer 150+ tool schemas; loaded on demand via ToolSearch
   auto_start: false              # Auto-start MCP server on session begin
 
+# Spell step sandboxing (OS-level process isolation for bash steps)
+# Platform support: macOS (sandbox-exec), Linux/WSL (bwrap). Windows has no OS sandbox.
+# Tiers:
+#   auto          — Use best available sandbox for this platform (recommended when enabled)
+#   denylist-only — Layer 1 only: block catastrophic commands, no OS isolation
+#   full          — Require full OS isolation; throws if the sandbox tool is unavailable
+sandbox:
+  enabled: false                 # Set to true to wrap bash steps in an OS sandbox
+  tier: auto                     # auto | denylist-only | full
+
 # Status line display (shown at bottom of Claude Code)
 # mode: "compact" (default), "single-line", or "dashboard" (full multi-line)
 status_line:

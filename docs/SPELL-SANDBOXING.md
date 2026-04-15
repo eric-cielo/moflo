@@ -246,6 +246,28 @@ On macOS and Linux, MoFlo automatically wraps bash steps in an OS-level sandbox 
 
 **Windows users:** Layers 1 and 2 provide meaningful protection — the denylist catches catastrophic mistakes, and the gateway enforces capability boundaries in code. However, these are application-level controls that a sufficiently crafted command could bypass. Review spell permissions carefully, especially for spells from untrusted sources.
 
+### Configuring Sandboxing in `moflo.yaml`
+
+OS-level process isolation is controlled by the `sandbox:` block in your project's `moflo.yaml`:
+
+```yaml
+sandbox:
+  enabled: false     # Set to true to wrap bash steps in an OS sandbox
+  tier: auto         # auto | denylist-only | full
+```
+
+**Defaults:** `enabled: false`, `tier: auto`. When enabled is `false`, only Layers 1 and 2 (denylist + capability gateway) apply — bash steps run unwrapped.
+
+**Tiers:**
+
+| Tier | Behavior |
+|------|----------|
+| `auto` | Use the best available sandbox for the platform (`sandbox-exec` on macOS, `bwrap` on Linux/WSL). Falls back to denylist-only if unavailable. Recommended when `enabled: true`. |
+| `denylist-only` | Skip OS sandboxing even if available — Layer 1 denylist still blocks catastrophic commands. |
+| `full` | Require full OS isolation; `resolveEffectiveSandbox()` throws if the sandbox tool is not installed. Use this when a security policy requires OS isolation. |
+
+**On upgrade:** If your `moflo.yaml` predates the `sandbox:` block, MoFlo appends it with default values + inline comments on the next session start. Your existing values in other sections are left untouched. You never need to re-run `moflo init`.
+
 ### Checking Your Sandbox Tier
 
 Run `flo doctor` to see which sandbox tier is active on your system:
