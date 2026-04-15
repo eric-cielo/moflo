@@ -97,7 +97,8 @@ async function executeAndTrack(
   const tracked = trackStart(spellId, definition.name, definition.description);
 
   try {
-    const result = await engine.bridgeExecuteSpell(definition, args, { spellId });
+    const sandboxConfig = await engine.loadSandboxConfigFromProject(findProjectRoot());
+    const result = await engine.bridgeExecuteSpell(definition, args, { spellId, sandboxConfig });
     trackResult(tracked, result);
     return serializeResult(result);
   } catch (err) {
@@ -254,7 +255,8 @@ export const spellTools: MCPTool[] = [
 
       // Run from raw content via bridge
       const engine = await loadSpellEngine();
-      const result = await engine.bridgeRunSpell(content, sourceFile, args, { dryRun });
+      const sandboxConfig = await engine.loadSandboxConfigFromProject(findProjectRoot());
+      const result = await engine.bridgeRunSpell(content, sourceFile, args, { dryRun, sandboxConfig });
       const tracked = trackStart(result.spellId, spellName);
       trackResult(tracked, result);
       return serializeResult(result);
