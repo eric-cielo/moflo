@@ -584,7 +584,15 @@ status_line:
   show_adrs: true                # ADR compliance (dashboard only)
   show_agentdb: true             # AgentDB vectors/size (dashboard only)
   show_tests: true               # Test file count (dashboard only)
+
+# Spell step sandboxing (OS-level process isolation for bash steps)
+# Platform support: macOS (sandbox-exec), Linux/WSL (bwrap). Windows has no OS sandbox.
+sandbox:
+  enabled: false                 # Set to true to wrap bash steps in an OS sandbox
+  tier: auto                     # auto | denylist-only | full
 ```
+
+If your `moflo.yaml` predates the `sandbox:` block, it is auto-appended on the next session start — you never need to re-run `moflo init` after a version bump.
 
 ### Key Behaviors
 
@@ -606,6 +614,9 @@ status_line:
 | `model_routing.enabled: true` | Auto-select haiku/sonnet/opus based on task complexity |
 | `status_line.mode: dashboard` | Switch to multi-line status display |
 | `status_line.show_swarm: false` | Hide swarm agent count from status bar |
+| `sandbox.enabled: true` | Wrap bash steps in an OS sandbox (macOS/Linux/WSL) — absolute disable when `false`, regardless of tier |
+| `sandbox.tier: full` | Require OS sandbox; throw at runtime if the platform tool is unavailable |
+| `sandbox.tier: denylist-only` | Keep Layer 1 denylist only; skip OS isolation even when enabled |
 
 ---
 
