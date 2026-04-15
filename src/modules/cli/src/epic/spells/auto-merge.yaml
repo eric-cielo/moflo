@@ -88,7 +88,9 @@ steps:
             command: "git remote get-url origin"
             hint: "This repo has no 'origin' remote. Set one with: git remote add origin <url>"
         config:
-          command: "git stash --include-untracked -q 2>/dev/null; git checkout {args.base_branch} && git pull origin {args.base_branch}; git stash pop -q 2>/dev/null || true"
+          # set -e: fail fast if checkout/pull fails; otherwise the trailing
+          # `stash pop ... || true` would mask the real failure.
+          command: "set -e; git stash --include-untracked -q 2>/dev/null || true; git checkout {args.base_branch}; git pull origin {args.base_branch}; git stash pop -q 2>/dev/null || true"
           failOnError: true
 
       # 2: Spawn Claude agent to implement the story (creates branch + PR)
@@ -122,7 +124,8 @@ steps:
       - id: pull-merged
         type: bash
         config:
-          command: "git stash --include-untracked -q 2>/dev/null; git checkout {args.base_branch} && git pull origin {args.base_branch}; git stash pop -q 2>/dev/null || true"
+          # set -e: fail fast if checkout/pull fails (see checkout-base).
+          command: "set -e; git stash --include-untracked -q 2>/dev/null || true; git checkout {args.base_branch}; git pull origin {args.base_branch}; git stash pop -q 2>/dev/null || true"
           failOnError: true
 
       # 6: Comment on epic with progress

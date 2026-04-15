@@ -82,7 +82,11 @@ steps:
         command: "gh auth status"
         hint: "The GitHub CLI isn't signed in. Run: gh auth login"
     config:
-      command: "git stash --include-untracked -q 2>/dev/null; git checkout {args.base_branch} && git pull origin {args.base_branch} && (git show-ref --verify --quiet refs/heads/epic/{args.epic_number}-{args.epic_slug} && git checkout epic/{args.epic_number}-{args.epic_slug} || git checkout -b epic/{args.epic_number}-{args.epic_slug}); git stash pop -q 2>/dev/null || true"
+      # set -e: any failing step aborts the whole command. Without it, the
+      # trailing `git stash pop ... || true` would swallow real failures
+      # (e.g., checkout/pull/branch-create errors) and report success,
+      # leaving later steps to crash when the epic branch isn't there.
+      command: "set -e; git stash --include-untracked -q 2>/dev/null || true; git checkout {args.base_branch}; git pull origin {args.base_branch}; BRANCH=\"epic/{args.epic_number}-{args.epic_slug}\"; if git show-ref --verify --quiet \"refs/heads/$BRANCH\"; then git checkout \"$BRANCH\"; else git checkout -b \"$BRANCH\"; fi; git stash pop -q 2>/dev/null || true"
       timeout: 120000
       failOnError: true
 
