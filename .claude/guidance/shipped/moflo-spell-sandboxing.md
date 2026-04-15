@@ -233,6 +233,71 @@ Semantics (from `resolveEffectiveSandbox()` in `src/modules/spells/src/core/plat
 
 Existing projects that predate this block get it auto-appended on session start — never require `moflo init` to re-run after a version bump.
 
+## Authoring Checklist — Always Double-Check Step Permissions
+
+Before shipping any new or edited spell step, walk through every item. Silently-missing permissions don't fail with `CAPABILITY_DENIED` — they fail confusingly several steps later.
+
+1. **What does the command actually do?** List every external effect — file reads/writes, git/gh calls, outbound HTTP, Claude subagents, credential use.
+2. **Which capabilities map to those effects?** `fs:read`, `fs:write`, `shell`, `net`, `credentials`, `agent`, `browser`, `memory`.
+3. **What is the minimum `permissionLevel`?**
+   - Pure analysis (read only) → `readonly`
+   - Edits project files but no shell/network → `standard`
+   - Runs shell commands, **or needs network inside a bwrap-sandboxed step** → `elevated`
+   - Spawns Claude subagents with unrestricted tools → `autonomous`
+4. **Does this step need network?** If so, either give it `permissionLevel: elevated` or declare the `net` capability explicitly. See the Troubleshooting section — bwrap strips network from any bash step that has neither, and the failure surfaces as a DNS error, not a permission error.
+5. **Does the command chain multiple statements (`;`, `&&`, `||`)?** Lead the command with `set -e`. A trailing tolerated-failure cleanup like `git stash pop ... || true` will otherwise return 0 for the whole step even when the real work (checkout, pull, push) failed.
+6. **Does this step produce state that later steps rely on?** If this step silently no-ops, will the downstream symptom be understandable? If not, tighten the failure mode (`set -e`, explicit error, `failOnError: true`).
+
+When reviewing a spell PR, scan every bash step for a missing `permissionLevel` and ask: *does this step touch the network, or does it depend on network state from earlier?* If yes, `elevated` (or an explicit `net` grant) is required.
+
+## Troubleshooting
+
+### Symptom: bash step fails with DNS / SSH resolution errors inside a spell
+
+Typical error messages from inside a bash step:
+
+- `ssh: Could not resolve hostname github.com: Temporary failure in name resolution`
+- `fatal: Could not read from remote repository.`
+- `curl: (6) Could not resolve host ...`
+- `getaddrinfo ENOTFOUND ...`
+- Any other DNS/connection failure, even though the **same command works in your normal shell**.
+
+**Tell-tale clue:** the error mentions `Temporary failure in name resolution` (a glibc-specific wording). That means the step is running inside a Linux sandbox (`bwrap` on Linux / WSL), **not** your outer shell — Git Bash or PowerShell won't produce that exact message.
+
+**Root cause:** `src/modules/spells/src/core/bwrap-sandbox.ts` isolates the network by default:
+
+```ts
+if (!hasNet && !needsToolHomeAccess(options.permissionLevel)) {
+  args.push('--unshare-net');   // ← no network, no DNS
+}
+```
+
+A bash step gets network access only when **one** of these is true:
+
+1. The step declares a `net` capability, **or**
+2. The step's `permissionLevel` is `elevated` or `autonomous`.
+
+If neither applies, bwrap runs the command in a namespace with `--unshare-net`, and DNS silently fails. There is no log line announcing the network was taken away — you just see the command's own DNS error.
+
+**Fix:** for any bash step that does `git pull`/`git push`/`git fetch`, `gh` API calls, `curl`, `npm install`, or any other outbound network:
+
+```yaml
+- id: create-branch
+  type: bash
+  permissionLevel: elevated       # ← grants network in bwrap
+  config:
+    command: "git pull origin main && ..."
+```
+
+Or declare the `net` capability explicitly if the step doesn't need the full `elevated` profile (note: `bash-command.ts` must include `net` in its declared capabilities for the engine to accept the grant — otherwise you'll see `Capability violation: step type "bash" does not declare capability "net"`).
+
+**Quick diagnosis checklist** when a spell's bash step can't reach the network:
+
+1. Does the same command work in your outer shell? If yes, it's sandbox-related, not config.
+2. Is the error wording glibc-style (`Temporary failure in name resolution`)? → bwrap is involved.
+3. Open the spell YAML — does the failing step have `permissionLevel: elevated`? If not, add it and retry.
+4. If you use `set -e` in a multi-command bash step, **do it**. Without it, a trailing `... || true` (common for stash-pop cleanups) will mask the real network failure and you'll see a confusing error several steps later (e.g. "pathspec did not match" when a branch that was never pulled/created is later checked out).
+
 ## See Also
 
 - `.claude/guidance/shipped/moflo-spell-engine.md` — Spell engine usage and YAML format
