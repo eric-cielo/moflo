@@ -61,6 +61,7 @@ export interface EngineModule {
     sourceFile: string | undefined,
     options?: Record<string, unknown>,
   ) => Promise<SpellResult>;
+  loadSandboxConfigFromProject: (projectRoot: string) => Promise<SandboxConfig>;
 }
 
 let cachedEngine: EngineModule | null = null;
