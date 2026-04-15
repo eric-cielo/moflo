@@ -16,6 +16,7 @@ import { builtinConnectors } from '../connectors/index.js';
 import { parseSpell } from '../schema/parser.js';
 import { validateSpellDefinition } from '../schema/validator.js';
 import { SpellConnectorRegistry } from '../registry/connector-registry.js';
+import { loadSandboxConfigFromProject } from '../core/platform-sandbox.js';
 
 // ============================================================================
 // Types
@@ -114,6 +115,15 @@ export async function runSpellFromContent(
   const runner = createRunner(options);
   // Strip factory-only fields; keep RunSpellOptions (extends RunnerOptions) for runner.run()
   const { args = {}, stepDirs: _s, credentials: _c, memory: _m, connectorRegistry: _cr, ...runnerOptions } = options;
+
+  // Auto-load sandbox config from moflo.yaml when caller supplied projectRoot
+  // but not an explicit sandboxConfig. Keeps CLI/epic callers from having to
+  // thread config themselves; MCP tools still pass explicitly.
+  if (!runnerOptions.sandboxConfig && runnerOptions.projectRoot) {
+    const autoCfg = await loadSandboxConfigFromProject(runnerOptions.projectRoot);
+    (runnerOptions as { sandboxConfig?: typeof autoCfg }).sandboxConfig = autoCfg;
+  }
+
   return runner.run(definition, args, runnerOptions);
 }
 
