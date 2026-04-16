@@ -160,8 +160,12 @@ export function generateSandboxProfile(
   }
 
   // ── net ──────────────────────────────────────────────────────────────
+  // Elevated/autonomous steps spawn CLI tools (claude, gh, git, npm) that
+  // need network to reach their APIs. Mirror the tool-home-paths policy
+  // and bwrap's host-network share so those tools can reach
+  // api.anthropic.com, api.github.com, etc. without DNS/TLS failures.
   const hasNet = capabilities.some(c => c.type === 'net');
-  if (hasNet) {
+  if (hasNet || needsToolHomeAccess(options.permissionLevel)) {
     lines.push('');
     lines.push('; Network access');
     lines.push('(allow network*)');

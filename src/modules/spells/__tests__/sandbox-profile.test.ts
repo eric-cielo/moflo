@@ -160,6 +160,34 @@ describe('generateSandboxProfile', () => {
     expect(profile).toContain('; Tool home paths (elevated)');
   });
 
+  it('allows network for elevated permission level without net capability', () => {
+    const profile = generateSandboxProfile([], PROJECT_ROOT, {
+      permissionLevel: 'elevated',
+      homeDir: '/Users/tester',
+    });
+    expect(profile).toContain('; Network access');
+    expect(profile).toContain('(allow network*)');
+  });
+
+  it('allows network for autonomous permission level without net capability', () => {
+    const profile = generateSandboxProfile([], PROJECT_ROOT, {
+      permissionLevel: 'autonomous',
+      homeDir: '/Users/tester',
+    });
+    expect(profile).toContain('(allow network*)');
+  });
+
+  it('denies network for readonly/standard levels without net capability', () => {
+    const readonlyProfile = generateSandboxProfile([], PROJECT_ROOT, {
+      permissionLevel: 'readonly',
+    });
+    const standardProfile = generateSandboxProfile([], PROJECT_ROOT, {
+      permissionLevel: 'standard',
+    });
+    expect(readonlyProfile).not.toContain('(allow network*)');
+    expect(standardProfile).not.toContain('(allow network*)');
+  });
+
   it('does NOT add tool home paths for readonly/standard levels', () => {
     const readonlyProfile = generateSandboxProfile([], PROJECT_ROOT, {
       permissionLevel: 'readonly',
