@@ -52,7 +52,7 @@ export interface SandboxConfig {
    * Docker image for Windows sandboxing (required when `tool === 'docker'`).
    *
    * No default on purpose — the user picks an image so the pull is explicit.
-   * Recommended: `node:20-bookworm-slim` (ships node + npm; claude, gh, git
+   * Recommended: `node:20-bookworm` (ships node + npm; claude, gh, git
    * install cleanly on top).
    *
    * See the setup instructions emitted when this is missing.
@@ -66,7 +66,7 @@ export const DEFAULT_SANDBOX_CONFIG: SandboxConfig = {
 };
 
 /** Recommended image for first-time Windows Docker sandbox setup. */
-export const RECOMMENDED_DOCKER_IMAGE = 'node:20-bookworm-slim';
+export const RECOMMENDED_DOCKER_IMAGE = 'node:20-bookworm';
 
 // ============================================================================
 // Detection (cached)
@@ -260,19 +260,20 @@ export function resolveEffectiveSandbox(
     };
   }
 
-  // Windows: give beginner-friendly setup instructions when sandboxing is
-  // enabled but Docker isn't ready. Runs before the generic "not available"
-  // branch so Windows users see actionable guidance instead of a terse
-  // "not available (win32)" message.
+  // Windows: Docker is required for OS sandboxing. If Docker is available,
+  // auto-default the image and auto-pull it on first use so the user doesn't
+  // have to do manual setup. Only throw if Docker itself isn't installed/running.
   if (capability.platform === 'win32') {
     if (!capability.available) {
       throw new Error(formatWindowsDockerNotReadyMessage());
     }
+    const image = config.dockerImage || RECOMMENDED_DOCKER_IMAGE;
     if (!config.dockerImage) {
-      throw new Error(formatWindowsDockerImageMissingMessage());
+      // Mutate config to carry the defaulted image through the rest of the pipeline
+      config = { ...config, dockerImage: image };
     }
-    if (!dockerImageExists(config.dockerImage)) {
-      throw new Error(formatWindowsDockerImageNotPulledMessage(config.dockerImage));
+    if (!dockerImageExists(image)) {
+      dockerPullImage(image);
     }
   }
 
@@ -314,6 +315,26 @@ function dockerImageExists(image: string): boolean {
   }
 }
 
+/**
+ * Pull a Docker image, printing a one-time setup banner so the user knows
+ * what's happening and why. Throws if the pull fails.
+ */
+function dockerPullImage(image: string): void {
+  console.log(
+    `[spell] One-time setup: pulling Docker image ${image} for sandboxing...\n` +
+    `        This only happens once — Docker caches the image afterwards.`,
+  );
+  try {
+    execSync(`docker pull ${shellQuote(image)}`, { stdio: 'inherit', timeout: 300_000 });
+    console.log(`[spell] Docker image ${image} is ready.`);
+  } catch {
+    throw new Error(
+      `Failed to pull Docker image "${image}".\n\n` +
+      'Make sure Docker Desktop is running and you have internet access, then try again.',
+    );
+  }
+}
+
 /** Minimal shell quoting for image names — keeps the execSync call safe. */
 function shellQuote(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
@@ -335,53 +356,14 @@ function formatWindowsDockerNotReadyMessage(): string {
     '     Wait for the whale icon in your system tray to stop animating —',
     '     that means Docker is ready.',
     '',
-    '  3. Open PowerShell (or any terminal) and pull the recommended image:',
-    `       docker pull ${RECOMMENDED_DOCKER_IMAGE}`,
+    `MoFlo will auto-pull the default image (${RECOMMENDED_DOCKER_IMAGE}) on`,
+    'the first spell run.',
     '',
-    '  4. Add this to your moflo.yaml:',
-    '       sandbox:',
-    '         enabled: true',
-    `         dockerImage: ${RECOMMENDED_DOCKER_IMAGE}`,
-    '',
-    'Not ready to set this up? You can turn sandboxing off instead by setting',
+    'Not ready to set this up? Turn sandboxing off by setting',
     '`sandbox.enabled: false` in moflo.yaml.',
   ].join('\n');
 }
 
-function formatWindowsDockerImageMissingMessage(): string {
-  return [
-    'Sandboxing is enabled, but no Docker image is configured.',
-    '',
-    'Docker is ready on this machine — it just needs to know which image to',
-    'run your spell steps inside. This is a one-time setup:',
-    '',
-    '  1. Open PowerShell (or any terminal) and pull the recommended image:',
-    `       docker pull ${RECOMMENDED_DOCKER_IMAGE}`,
-    '',
-    '  2. Add this to your moflo.yaml:',
-    '       sandbox:',
-    '         enabled: true',
-    `         dockerImage: ${RECOMMENDED_DOCKER_IMAGE}`,
-    '',
-    `The recommended image (${RECOMMENDED_DOCKER_IMAGE}) includes node, npm,`,
-    'bash, git, and curl. Any image with bash will work.',
-  ].join('\n');
-}
-
-function formatWindowsDockerImageNotPulledMessage(image: string): string {
-  return [
-    `Sandboxing is enabled, but the Docker image "${image}" is not available`,
-    'on this machine yet.',
-    '',
-    'To fix this, open PowerShell (or any terminal) and run:',
-    `       docker pull ${image}`,
-    '',
-    'This only needs to happen once — Docker caches the image afterwards.',
-    '',
-    'If Docker Desktop is not running, start it from the Start menu first',
-    'and wait for the whale icon in your system tray to stop animating.',
-  ].join('\n');
-}
 
 /**
  * Format a one-line log message for spell startup.

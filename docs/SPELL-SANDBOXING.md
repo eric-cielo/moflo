@@ -270,29 +270,31 @@ sandbox:
 
 ### Windows Docker Setup
 
-On Windows, OS-level sandboxing runs each bash step inside a Docker container. This requires a one-time setup:
+On Windows, OS-level sandboxing runs each bash step inside a Docker container. Setup is mostly automatic:
 
 1. **Install Docker Desktop** (free): https://www.docker.com/products/docker-desktop/
 
 2. **Start Docker Desktop** from the Start menu. Wait for the whale icon in the system tray to stop animating — that means Docker is ready.
 
-3. **Pull an image.** Open PowerShell and run:
-   ```
-   docker pull node:20-bookworm-slim
-   ```
-   The recommended image (`node:20-bookworm-slim`) includes node, npm, bash, git, and curl. Any image with bash will work.
-
-4. **Add to `moflo.yaml`:**
+3. **Enable sandboxing** in `moflo.yaml`:
    ```yaml
    sandbox:
      enabled: true
-     dockerImage: node:20-bookworm-slim
    ```
 
-5. **Verify** with `flo doctor sandbox`. You should see:
-   ```
-   ✓ Sandbox Tier — docker ready (win32, node:20-bookworm-slim)
-   ```
+That's it. On the first spell run, MoFlo auto-pulls the default image (`node:20-bookworm`) and caches it. The image includes node, npm, bash, git, curl, and ssh.
+
+To use a custom image instead, set `dockerImage` in your config:
+```yaml
+sandbox:
+  enabled: true
+  dockerImage: my-custom-image:latest
+```
+
+**Verify** with `flo doctor sandbox`. You should see:
+```
+✓ Sandbox Tier — docker ready (win32, node:20-bookworm)
+```
 
 **How the Docker sandbox works:**
 

@@ -13,7 +13,7 @@ import type { StepCapability } from '../src/types/step-command.types.js';
 
 const PROJECT_ROOT = '/c/Users/tester/project';
 const HOME_DIR = '/c/Users/tester';
-const IMAGE = 'node:20-bookworm-slim';
+const IMAGE = 'node:20-bookworm';
 
 function opts(extra: Record<string, unknown> = {}) {
   return { image: IMAGE, homeDir: HOME_DIR, ...extra } as const;

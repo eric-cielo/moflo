@@ -296,7 +296,7 @@ describe('resolveEffectiveSandbox', () => {
       expect(() => resolveEffectiveSandbox({
         enabled: true,
         tier: 'auto',
-        dockerImage: 'node:20-bookworm-slim',
+        dockerImage: 'node:20-bookworm',
       })).toThrow(/Install Docker Desktop/);
     });
 
@@ -312,34 +312,38 @@ describe('resolveEffectiveSandbox', () => {
       expect(() => resolveEffectiveSandbox({
         enabled: true,
         tier: 'auto',
-        dockerImage: 'node:20-bookworm-slim',
+        dockerImage: 'node:20-bookworm',
       })).toThrow(/start Docker Desktop/i);
     });
 
-    it('throws friendly message when Docker ready but no image configured', () => {
-      // binaryExists ok, docker info ok; dockerImageExists not reached because config is missing
+    it('auto-defaults dockerImage to recommended image when not configured', () => {
+      // where docker ok, docker info ok, docker image inspect ok (auto-default image exists)
       mockExecSync.mockReturnValue(Buffer.from(''));
 
-      expect(() => resolveEffectiveSandbox({
+      const effective = resolveEffectiveSandbox({
         enabled: true,
         tier: 'auto',
-      })).toThrow(/no Docker image is configured/);
+      });
+      expect(effective.useOsSandbox).toBe(true);
+      expect(effective.config.dockerImage).toBe('node:20-bookworm');
     });
 
-    it('throws friendly message when image configured but not pulled', () => {
-      // where docker ok, docker info ok, docker image inspect throws
+    it('auto-pulls image when configured but not present locally', () => {
+      // where docker ok, docker info ok, docker image inspect fails, docker pull ok
       let call = 0;
       mockExecSync.mockImplementation(() => {
         call++;
         if (call <= 2) return Buffer.from(''); // where + info
-        throw new Error('No such image');
+        if (call === 3) throw new Error('No such image'); // docker image inspect
+        return Buffer.from(''); // docker pull succeeds
       });
 
-      expect(() => resolveEffectiveSandbox({
+      const effective = resolveEffectiveSandbox({
         enabled: true,
         tier: 'auto',
-        dockerImage: 'node:20-bookworm-slim',
-      })).toThrow(/is not available\s+on this machine/);
+        dockerImage: 'node:20-bookworm',
+      });
+      expect(effective.useOsSandbox).toBe(true);
     });
 
     it('succeeds when Docker ready, image configured and pulled', () => {
@@ -348,11 +352,11 @@ describe('resolveEffectiveSandbox', () => {
       const effective = resolveEffectiveSandbox({
         enabled: true,
         tier: 'auto',
-        dockerImage: 'node:20-bookworm-slim',
+        dockerImage: 'node:20-bookworm',
       });
       expect(effective.useOsSandbox).toBe(true);
       expect(effective.capability.tool).toBe('docker');
-      expect(effective.config.dockerImage).toBe('node:20-bookworm-slim');
+      expect(effective.config.dockerImage).toBe('node:20-bookworm');
     });
 
     it('skips Docker checks when sandbox disabled', () => {

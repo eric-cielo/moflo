@@ -458,21 +458,15 @@ describe('full pipeline: config through execution', () => {
   });
 
   it('resolveSandboxConfig → resolveEffectiveSandbox produces consistent state', () => {
-    const config = resolveSandboxConfig({ enabled: true, tier: 'auto' });
+    // Windows auto-defaults dockerImage and auto-pulls if missing. Provide the
+    // image in config so the test doesn't trigger a real docker pull.
+    const opts: Record<string, unknown> = { enabled: true, tier: 'auto' };
+    if (IS_WINDOWS) {
+      opts.dockerImage = 'node:20-bookworm';
+    }
+    const config = resolveSandboxConfig(opts);
     expect(config.enabled).toBe(true);
     expect(config.tier).toBe('auto');
-
-    // Windows + Docker requires a configured & pulled image; detect capability
-    // first and skip the full resolveEffectiveSandbox call if the image prereqs
-    // aren't met (the missing-image error paths have their own dedicated tests).
-    const capability = detectSandboxCapability();
-    if (IS_WINDOWS && capability.available) {
-      // Docker is available but image may not be configured/pulled — the
-      // production code correctly throws here. Verify the throw rather than
-      // trying to exercise the happy path without the image.
-      expect(() => resolveEffectiveSandbox(config)).toThrow(/Docker image/i);
-      return;
-    }
 
     const effective = resolveEffectiveSandbox(config);
     expect(effective.config).toEqual(config);
