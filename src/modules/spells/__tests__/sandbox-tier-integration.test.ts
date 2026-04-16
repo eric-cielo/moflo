@@ -462,6 +462,18 @@ describe('full pipeline: config through execution', () => {
     expect(config.enabled).toBe(true);
     expect(config.tier).toBe('auto');
 
+    // Windows + Docker requires a configured & pulled image; detect capability
+    // first and skip the full resolveEffectiveSandbox call if the image prereqs
+    // aren't met (the missing-image error paths have their own dedicated tests).
+    const capability = detectSandboxCapability();
+    if (IS_WINDOWS && capability.available) {
+      // Docker is available but image may not be configured/pulled — the
+      // production code correctly throws here. Verify the throw rather than
+      // trying to exercise the happy path without the image.
+      expect(() => resolveEffectiveSandbox(config)).toThrow(/Docker image/i);
+      return;
+    }
+
     const effective = resolveEffectiveSandbox(config);
     expect(effective.config).toEqual(config);
     expect(effective.capability.platform).toBe(platform());
