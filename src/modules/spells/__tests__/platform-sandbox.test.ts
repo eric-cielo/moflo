@@ -325,7 +325,7 @@ describe('resolveEffectiveSandbox', () => {
         tier: 'auto',
       });
       expect(effective.useOsSandbox).toBe(true);
-      expect(effective.config.dockerImage).toBe('node:20-bookworm');
+      expect(effective.config.dockerImage).toBe('ghcr.io/eric-cielo/moflo-sandbox:latest');
     });
 
     it('auto-pulls image when configured but not present locally', () => {
