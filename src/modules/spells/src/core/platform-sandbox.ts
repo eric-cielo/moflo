@@ -16,6 +16,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { platform } from 'node:os';
 import { join } from 'node:path';
+import { escapeShellArg } from './shell.js';
 
 type YamlModule = { load: (s: string) => unknown; default?: { load: (s: string) => unknown } };
 
@@ -49,13 +50,10 @@ export interface SandboxConfig {
    */
   readonly tier: SandboxTier;
   /**
-   * Docker image for Windows sandboxing (required when `tool === 'docker'`).
+   * Docker image for Windows sandboxing.
    *
-   * No default on purpose — the user picks an image so the pull is explicit.
-   * Recommended: `node:20-bookworm` (ships node + npm; claude, gh, git
-   * install cleanly on top).
-   *
-   * See the setup instructions emitted when this is missing.
+   * Auto-defaults to {@link RECOMMENDED_DOCKER_IMAGE} and auto-pulls on
+   * first use. Set explicitly to override the default image.
    */
   readonly dockerImage?: string;
 }
@@ -89,6 +87,7 @@ export function detectSandboxCapability(): SandboxCapability {
 /** Reset the cached result (for testing). */
 export function resetSandboxCache(): void {
   _cached = undefined;
+  _imageExistsCache.clear();
 }
 
 function detectUncached(): SandboxCapability {
@@ -249,13 +248,14 @@ export function resolveEffectiveSandbox(
   config: SandboxConfig,
   capability: SandboxCapability = detectSandboxCapability(),
 ): EffectiveSandbox {
+  let resolved = config;
 
   // Config disabled or tier is denylist-only => no OS sandbox
-  if (!config.enabled || config.tier === 'denylist-only') {
+  if (!resolved.enabled || resolved.tier === 'denylist-only') {
     return {
       useOsSandbox: false,
       capability,
-      config,
+      config: resolved,
       displayStatus: `OS sandbox: disabled (denylist active)`,
     };
   }
@@ -267,10 +267,9 @@ export function resolveEffectiveSandbox(
     if (!capability.available) {
       throw new Error(formatWindowsDockerNotReadyMessage());
     }
-    const image = config.dockerImage || RECOMMENDED_DOCKER_IMAGE;
-    if (!config.dockerImage) {
-      // Mutate config to carry the defaulted image through the rest of the pipeline
-      config = { ...config, dockerImage: image };
+    const image = resolved.dockerImage || RECOMMENDED_DOCKER_IMAGE;
+    if (!resolved.dockerImage) {
+      resolved = { ...resolved, dockerImage: image };
     }
     if (!dockerImageExists(image)) {
       dockerPullImage(image);
@@ -278,7 +277,7 @@ export function resolveEffectiveSandbox(
   }
 
   // tier: full — require OS sandbox on non-Windows platforms
-  if (config.tier === 'full' && !capability.available) {
+  if (resolved.tier === 'full' && !capability.available) {
     throw new Error(
       `Sandbox tier "full" requires an OS sandbox but none was detected on ${capability.platform}. ` +
       `Install bubblewrap (Linux) or set sandbox.tier to "auto".`,
@@ -289,7 +288,7 @@ export function resolveEffectiveSandbox(
     return {
       useOsSandbox: false,
       capability,
-      config,
+      config: resolved,
       displayStatus: `OS sandbox: not available (${capability.platform})`,
     };
   }
@@ -297,18 +296,23 @@ export function resolveEffectiveSandbox(
   return {
     useOsSandbox: true,
     capability,
-    config,
+    config: resolved,
     displayStatus: `OS sandbox: ${capability.tool} (${capability.platform})`,
   };
 }
 
+const _imageExistsCache = new Map<string, boolean>();
+
 /**
  * Check whether a Docker image is available locally (already pulled).
- * Returns false on any error (daemon down, image missing, docker not in PATH).
+ * Result is cached per image name for the process lifetime.
  */
 function dockerImageExists(image: string): boolean {
+  const cached = _imageExistsCache.get(image);
+  if (cached !== undefined) return cached;
   try {
-    execSync(`docker image inspect ${shellQuote(image)}`, { stdio: 'ignore', timeout: 5000 });
+    execSync(`docker image inspect ${escapeShellArg(image)}`, { stdio: 'ignore', timeout: 5000 });
+    _imageExistsCache.set(image, true);
     return true;
   } catch {
     return false;
@@ -325,7 +329,8 @@ function dockerPullImage(image: string): void {
     `        This only happens once — Docker caches the image afterwards.`,
   );
   try {
-    execSync(`docker pull ${shellQuote(image)}`, { stdio: 'inherit', timeout: 300_000 });
+    execSync(`docker pull ${escapeShellArg(image)}`, { stdio: 'inherit', timeout: 300_000 });
+    _imageExistsCache.set(image, true);
     console.log(`[spell] Docker image ${image} is ready.`);
   } catch {
     throw new Error(
@@ -333,11 +338,6 @@ function dockerPullImage(image: string): void {
       'Make sure Docker Desktop is running and you have internet access, then try again.',
     );
   }
-}
-
-/** Minimal shell quoting for image names — keeps the execSync call safe. */
-function shellQuote(value: string): string {
-  return `"${value.replace(/"/g, '\\"')}"`;
 }
 
 // ── Beginner-friendly setup messages (Windows) ──────────────────────────
