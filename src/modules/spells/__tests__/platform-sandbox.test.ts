@@ -281,6 +281,122 @@ describe('resolveEffectiveSandbox', () => {
     expect(effective.useOsSandbox).toBe(false);
     expect(effective.displayStatus).toContain('not available');
   });
+
+  // ── Windows-specific Docker setup guidance ─────────────────────────
+
+  describe('Windows Docker setup errors', () => {
+    beforeEach(() => {
+      mockPlatform.mockReturnValue('win32');
+    });
+
+    it('throws friendly message when sandbox enabled but Docker not installed', () => {
+      // binaryExists(docker) returns false
+      mockExecSync.mockImplementation(() => { throw new Error('where: not found'); });
+
+      expect(() => resolveEffectiveSandbox({
+        enabled: true,
+        tier: 'auto',
+        dockerImage: 'node:20-bookworm-slim',
+      })).toThrow(/Install Docker Desktop/);
+    });
+
+    it('throws friendly message when sandbox enabled but daemon not running', () => {
+      // binaryExists returns true, docker info throws
+      let call = 0;
+      mockExecSync.mockImplementation(() => {
+        call++;
+        if (call === 1) return Buffer.from(''); // where docker
+        throw new Error('daemon not running'); // docker info
+      });
+
+      expect(() => resolveEffectiveSandbox({
+        enabled: true,
+        tier: 'auto',
+        dockerImage: 'node:20-bookworm-slim',
+      })).toThrow(/start Docker Desktop/i);
+    });
+
+    it('throws friendly message when Docker ready but no image configured', () => {
+      // binaryExists ok, docker info ok; dockerImageExists not reached because config is missing
+      mockExecSync.mockReturnValue(Buffer.from(''));
+
+      expect(() => resolveEffectiveSandbox({
+        enabled: true,
+        tier: 'auto',
+      })).toThrow(/no Docker image is configured/);
+    });
+
+    it('throws friendly message when image configured but not pulled', () => {
+      // where docker ok, docker info ok, docker image inspect throws
+      let call = 0;
+      mockExecSync.mockImplementation(() => {
+        call++;
+        if (call <= 2) return Buffer.from(''); // where + info
+        throw new Error('No such image');
+      });
+
+      expect(() => resolveEffectiveSandbox({
+        enabled: true,
+        tier: 'auto',
+        dockerImage: 'node:20-bookworm-slim',
+      })).toThrow(/is not available\s+on this machine/);
+    });
+
+    it('succeeds when Docker ready, image configured and pulled', () => {
+      mockExecSync.mockReturnValue(Buffer.from(''));
+
+      const effective = resolveEffectiveSandbox({
+        enabled: true,
+        tier: 'auto',
+        dockerImage: 'node:20-bookworm-slim',
+      });
+      expect(effective.useOsSandbox).toBe(true);
+      expect(effective.capability.tool).toBe('docker');
+      expect(effective.config.dockerImage).toBe('node:20-bookworm-slim');
+    });
+
+    it('skips Docker checks when sandbox disabled', () => {
+      mockExecSync.mockImplementation(() => { throw new Error('no docker'); });
+
+      const effective = resolveEffectiveSandbox({ enabled: false, tier: 'auto' });
+      expect(effective.useOsSandbox).toBe(false);
+      expect(effective.displayStatus).toContain('disabled');
+    });
+
+    it('skips Docker checks when tier is denylist-only', () => {
+      mockExecSync.mockImplementation(() => { throw new Error('no docker'); });
+
+      const effective = resolveEffectiveSandbox({ enabled: true, tier: 'denylist-only' });
+      expect(effective.useOsSandbox).toBe(false);
+      expect(effective.displayStatus).toContain('disabled');
+    });
+  });
+});
+
+// ============================================================================
+// resolveSandboxConfig — dockerImage handling
+// ============================================================================
+
+describe('resolveSandboxConfig', () => {
+  it('picks up dockerImage from camelCase key', () => {
+    const cfg = resolveSandboxConfig({ enabled: true, dockerImage: 'my:img' });
+    expect(cfg.dockerImage).toBe('my:img');
+  });
+
+  it('picks up dockerImage from snake_case key', () => {
+    const cfg = resolveSandboxConfig({ enabled: true, docker_image: 'my:img' });
+    expect(cfg.dockerImage).toBe('my:img');
+  });
+
+  it('ignores blank dockerImage', () => {
+    const cfg = resolveSandboxConfig({ enabled: true, dockerImage: '   ' });
+    expect(cfg.dockerImage).toBeUndefined();
+  });
+
+  it('omits dockerImage when not set', () => {
+    const cfg = resolveSandboxConfig({ enabled: true });
+    expect(cfg.dockerImage).toBeUndefined();
+  });
 });
 
 // ============================================================================

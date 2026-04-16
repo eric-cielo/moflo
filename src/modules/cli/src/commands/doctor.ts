@@ -1382,42 +1382,75 @@ export const doctorCommand: Command = {
       }
     }
 
-    // Check sandbox tier — reports which OS-level sandbox is available (#412)
+    // Check sandbox tier — reports OS sandbox capability AND, if the project
+    // has `sandbox.enabled: true`, whether the effective sandbox would
+    // actually start (e.g. Windows Docker image pulled and configured).
     async function checkSandboxTier(): Promise<HealthCheck> {
       try {
-        // Walk up to CLI package root, then resolve sibling spells package
-        // (works from both src/ and dist/src/ locations)
         const __doctorDir = dirname(fileURLToPath(import.meta.url));
         let cliPkgRoot = __doctorDir;
         while (cliPkgRoot !== dirname(cliPkgRoot) && !existsSync(join(cliPkgRoot, 'package.json'))) {
           cliPkgRoot = dirname(cliPkgRoot);
         }
         const sandboxPath = resolve(cliPkgRoot, '..', 'spells', 'dist', 'core', 'platform-sandbox.js');
-        const { detectSandboxCapability } = await import(
-          pathToFileURL(sandboxPath).href
-        );
-        const cap = detectSandboxCapability();
+        const sandboxModule = await import(pathToFileURL(sandboxPath).href);
+        const {
+          detectSandboxCapability,
+          loadSandboxConfigFromProject,
+          resolveEffectiveSandbox,
+        } = sandboxModule;
 
-        if (cap.available) {
+        const cap = detectSandboxCapability();
+        const config = await loadSandboxConfigFromProject(process.cwd());
+
+        // If sandboxing isn't enabled in moflo.yaml, just report capability.
+        if (!config.enabled) {
+          if (cap.available) {
+            return {
+              name: 'Sandbox Tier',
+              status: 'pass',
+              message: `${cap.tool} available (${cap.platform}) — sandboxing off in moflo.yaml`,
+            };
+          }
+
+          const offHint: Record<string, string> = {
+            win32: 'Install Docker Desktop and set sandbox.dockerImage in moflo.yaml to enable sandboxing',
+            linux: 'Install bubblewrap: sudo apt install bubblewrap',
+            darwin: 'sandbox-exec should be available on macOS — check /usr/bin/sandbox-exec',
+          };
+
           return {
             name: 'Sandbox Tier',
             status: 'pass',
-            message: `${cap.tool} (${cap.platform})`,
+            message: `sandboxing off (${cap.platform}, denylist active)`,
+            fix: offHint[cap.platform],
           };
         }
 
-        const platformHint: Record<string, string> = {
-          win32: 'Windows has no OS-level sandbox — denylist and capability gateway still active',
-          linux: 'Install bubblewrap: sudo apt install bubblewrap',
-          darwin: 'sandbox-exec should be available on macOS — check /usr/bin/sandbox-exec',
-        };
-
-        return {
-          name: 'Sandbox Tier',
-          status: 'warn',
-          message: `denylist only (${cap.platform})`,
-          fix: platformHint[cap.platform] ?? 'No OS sandbox available for this platform',
-        };
+        // Sandboxing is enabled — run the real resolver and surface any error.
+        try {
+          const effective = resolveEffectiveSandbox(config);
+          if (effective.useOsSandbox) {
+            const imageHint = effective.config.dockerImage ? `, ${effective.config.dockerImage}` : '';
+            return {
+              name: 'Sandbox Tier',
+              status: 'pass',
+              message: `${cap.tool} ready (${cap.platform}${imageHint})`,
+            };
+          }
+          return {
+            name: 'Sandbox Tier',
+            status: 'warn',
+            message: `denylist only (${cap.platform})`,
+          };
+        } catch (err) {
+          return {
+            name: 'Sandbox Tier',
+            status: 'warn',
+            message: `sandboxing enabled but not ready (${cap.platform})`,
+            fix: err instanceof Error ? err.message : String(err),
+          };
+        }
       } catch (err) {
         return {
           name: 'Sandbox Tier',

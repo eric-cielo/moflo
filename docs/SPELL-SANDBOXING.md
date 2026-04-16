@@ -226,25 +226,25 @@ On macOS and Linux, MoFlo automatically wraps bash steps in an OS-level sandbox 
 |----------|------|-------------|----------|
 | **macOS** | `sandbox-exec` | Apple Seatbelt profiles restrict filesystem and network access | Low |
 | **Linux** | `bwrap` (bubblewrap) | Linux namespaces with read-only root bind, PID isolation, network unsharing | Low |
-| **Windows** | *None available* | OS-level sandboxing is not available — Layers 1 and 2 still apply | N/A |
+| **Windows** | Docker Desktop | Runs each bash step inside a Linux container | Medium |
 
 **What the OS sandbox enforces:**
 - Filesystem is read-only by default — only paths granted via `fs:write` become writable
 - Network access is blocked unless the step declares `net` capability
-- PID namespace is isolated (Linux) — the step cannot see or signal other processes
+- PID namespace is isolated (Linux/Docker) — the step cannot see or signal other processes
 - Graceful fallback — if the sandbox tool isn't installed or fails to start, the step runs unsandboxed with an info log
 
 ### Platform Security Comparison
 
-| Protection | Windows | macOS | Linux |
+| Protection | Windows (Docker) | macOS | Linux |
 |-----------|---------|-------|-------|
 | Command denylist | Yes | Yes | Yes |
 | Capability gateway | Yes | Yes | Yes |
-| OS filesystem isolation | No | Yes (sandbox-exec) | Yes (bwrap) |
-| OS network isolation | No | Yes (sandbox-exec) | Yes (bwrap) |
-| OS process isolation | No | No | Yes (bwrap --unshare-pid) |
+| OS filesystem isolation | Yes (container mounts) | Yes (sandbox-exec) | Yes (bwrap) |
+| OS network isolation | Yes (`--network none`) | Yes (sandbox-exec) | Yes (bwrap) |
+| OS process isolation | Yes (container PID ns) | No | Yes (bwrap --unshare-pid) |
 
-**Windows users:** Layers 1 and 2 provide meaningful protection — the denylist catches catastrophic mistakes, and the gateway enforces capability boundaries in code. However, these are application-level controls that a sufficiently crafted command could bypass. Review spell permissions carefully, especially for spells from untrusted sources.
+**Windows users:** With Docker Desktop enabled, Windows gets full OS-level isolation. Without Docker, Layers 1 and 2 still provide meaningful protection — the denylist catches catastrophic mistakes, and the gateway enforces capability boundaries in code. Review spell permissions carefully, especially for spells from untrusted sources.
 
 ### Configuring Sandboxing in `moflo.yaml`
 
@@ -262,11 +262,44 @@ sandbox:
 
 | Tier | Behavior |
 |------|----------|
-| `auto` | Use the best available sandbox for the platform (`sandbox-exec` on macOS, `bwrap` on Linux/WSL). Falls back to denylist-only if unavailable. Recommended when `enabled: true`. |
+| `auto` | Use the best available sandbox for the platform (`sandbox-exec` on macOS, `bwrap` on Linux/WSL, Docker on Windows). Falls back to denylist-only if unavailable. Recommended when `enabled: true`. |
 | `denylist-only` | Skip OS sandboxing even if available — Layer 1 denylist still blocks catastrophic commands. |
 | `full` | Require full OS isolation; `resolveEffectiveSandbox()` throws if the sandbox tool is not installed. Use this when a security policy requires OS isolation. |
 
 **On upgrade:** If your `moflo.yaml` predates the `sandbox:` block, MoFlo appends it with default values + inline comments on the next session start. Your existing values in other sections are left untouched. You never need to re-run `moflo init`.
+
+### Windows Docker Setup
+
+On Windows, OS-level sandboxing runs each bash step inside a Docker container. This requires a one-time setup:
+
+1. **Install Docker Desktop** (free): https://www.docker.com/products/docker-desktop/
+
+2. **Start Docker Desktop** from the Start menu. Wait for the whale icon in the system tray to stop animating — that means Docker is ready.
+
+3. **Pull an image.** Open PowerShell and run:
+   ```
+   docker pull node:20-bookworm-slim
+   ```
+   The recommended image (`node:20-bookworm-slim`) includes node, npm, bash, git, and curl. Any image with bash will work.
+
+4. **Add to `moflo.yaml`:**
+   ```yaml
+   sandbox:
+     enabled: true
+     dockerImage: node:20-bookworm-slim
+   ```
+
+5. **Verify** with `flo doctor sandbox`. You should see:
+   ```
+   ✓ Sandbox Tier — docker ready (win32, node:20-bookworm-slim)
+   ```
+
+**How the Docker sandbox works:**
+
+- Your project is mounted read-only at `/workspace` inside the container. Only paths granted via `fs:write` become writable (via overlay mounts on specific subdirectories).
+- Network access is blocked (`--network none`) unless the step declares the `net` capability or uses `permissionLevel: elevated`/`autonomous`.
+- Elevated/autonomous steps get writable mounts for tool config paths (`~/.claude`, `~/.config/gh`, `~/.gitconfig`, etc.) so spawned tools like `claude`, `gh`, and `git` can persist their state.
+- Containers are removed automatically after each step (`--rm`).
 
 ### Checking Your Sandbox Tier
 

@@ -28,6 +28,7 @@ import {
 import type { SandboxWrapResult } from '../core/sandbox-utils.js';
 import { wrapWithSandboxExec } from '../core/sandbox-profile.js';
 import { wrapWithBwrap } from '../core/bwrap-sandbox.js';
+import { wrapWithDocker } from '../core/docker-sandbox.js';
 
 /** Typed config for the bash step command. */
 export interface BashStepConfig extends StepConfig {
@@ -194,6 +195,18 @@ export const bashCommand: StepCommand<BashStepConfig> = {
           });
         } else if (tool === 'bwrap') {
           sandboxWrap = wrapWithBwrap(command, caps, projectRoot, {
+            permissionLevel: context.permissionLevel,
+          });
+        } else if (tool === 'docker') {
+          const image = context.sandbox.config.dockerImage;
+          if (!image) {
+            // Defence-in-depth — resolveEffectiveSandbox should have thrown
+            // already when the image is missing. If we somehow get here,
+            // fall through to unsandboxed rather than crashing the step.
+            throw new Error('Docker sandboxing enabled but no dockerImage configured');
+          }
+          sandboxWrap = wrapWithDocker(command, caps, projectRoot, {
+            image,
             permissionLevel: context.permissionLevel,
           });
         }

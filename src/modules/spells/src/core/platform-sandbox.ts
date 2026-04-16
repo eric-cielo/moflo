@@ -48,12 +48,25 @@ export interface SandboxConfig {
    *   - full:          require OS sandbox, fail if unavailable
    */
   readonly tier: SandboxTier;
+  /**
+   * Docker image for Windows sandboxing (required when `tool === 'docker'`).
+   *
+   * No default on purpose — the user picks an image so the pull is explicit.
+   * Recommended: `node:20-bookworm-slim` (ships node + npm; claude, gh, git
+   * install cleanly on top).
+   *
+   * See the setup instructions emitted when this is missing.
+   */
+  readonly dockerImage?: string;
 }
 
 export const DEFAULT_SANDBOX_CONFIG: SandboxConfig = {
   enabled: false,
   tier: 'auto',
 };
+
+/** Recommended image for first-time Windows Docker sandbox setup. */
+export const RECOMMENDED_DOCKER_IMAGE = 'node:20-bookworm-slim';
 
 // ============================================================================
 // Detection (cached)
@@ -174,10 +187,15 @@ export function resolveSandboxConfig(raw?: Record<string, unknown>): SandboxConf
 
   const enabled = raw.enabled;
   const tier = raw.tier;
+  const dockerImageRaw = raw.dockerImage ?? raw.docker_image;
+  const dockerImage = typeof dockerImageRaw === 'string' && dockerImageRaw.trim().length > 0
+    ? dockerImageRaw.trim()
+    : undefined;
 
   return {
     enabled: typeof enabled === 'boolean' ? enabled : DEFAULT_SANDBOX_CONFIG.enabled,
     tier: isValidTier(tier) ? tier : DEFAULT_SANDBOX_CONFIG.tier,
+    ...(dockerImage ? { dockerImage } : {}),
   };
 }
 
@@ -242,11 +260,27 @@ export function resolveEffectiveSandbox(
     };
   }
 
-  // tier: full — require OS sandbox
+  // Windows: give beginner-friendly setup instructions when sandboxing is
+  // enabled but Docker isn't ready. Runs before the generic "not available"
+  // branch so Windows users see actionable guidance instead of a terse
+  // "not available (win32)" message.
+  if (capability.platform === 'win32') {
+    if (!capability.available) {
+      throw new Error(formatWindowsDockerNotReadyMessage());
+    }
+    if (!config.dockerImage) {
+      throw new Error(formatWindowsDockerImageMissingMessage());
+    }
+    if (!dockerImageExists(config.dockerImage)) {
+      throw new Error(formatWindowsDockerImageNotPulledMessage(config.dockerImage));
+    }
+  }
+
+  // tier: full — require OS sandbox on non-Windows platforms
   if (config.tier === 'full' && !capability.available) {
     throw new Error(
       `Sandbox tier "full" requires an OS sandbox but none was detected on ${capability.platform}. ` +
-      `Install bubblewrap (Linux), or Docker Desktop (Windows), or set sandbox.tier to "auto".`,
+      `Install bubblewrap (Linux) or set sandbox.tier to "auto".`,
     );
   }
 
@@ -265,6 +299,88 @@ export function resolveEffectiveSandbox(
     config,
     displayStatus: `OS sandbox: ${capability.tool} (${capability.platform})`,
   };
+}
+
+/**
+ * Check whether a Docker image is available locally (already pulled).
+ * Returns false on any error (daemon down, image missing, docker not in PATH).
+ */
+function dockerImageExists(image: string): boolean {
+  try {
+    execSync(`docker image inspect ${shellQuote(image)}`, { stdio: 'ignore', timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Minimal shell quoting for image names — keeps the execSync call safe. */
+function shellQuote(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+// ── Beginner-friendly setup messages (Windows) ──────────────────────────
+
+function formatWindowsDockerNotReadyMessage(): string {
+  return [
+    'Sandboxing is enabled, but Docker Desktop is not ready on this machine.',
+    '',
+    'Windows sandboxing runs your spell steps inside a Docker container so',
+    'they cannot touch the rest of your system. This is a one-time setup:',
+    '',
+    '  1. Install Docker Desktop (free):',
+    '       https://www.docker.com/products/docker-desktop/',
+    '',
+    '  2. After installing, start Docker Desktop from the Start menu.',
+    '     Wait for the whale icon in your system tray to stop animating —',
+    '     that means Docker is ready.',
+    '',
+    '  3. Open PowerShell (or any terminal) and pull the recommended image:',
+    `       docker pull ${RECOMMENDED_DOCKER_IMAGE}`,
+    '',
+    '  4. Add this to your moflo.yaml:',
+    '       sandbox:',
+    '         enabled: true',
+    `         dockerImage: ${RECOMMENDED_DOCKER_IMAGE}`,
+    '',
+    'Not ready to set this up? You can turn sandboxing off instead by setting',
+    '`sandbox.enabled: false` in moflo.yaml.',
+  ].join('\n');
+}
+
+function formatWindowsDockerImageMissingMessage(): string {
+  return [
+    'Sandboxing is enabled, but no Docker image is configured.',
+    '',
+    'Docker is ready on this machine — it just needs to know which image to',
+    'run your spell steps inside. This is a one-time setup:',
+    '',
+    '  1. Open PowerShell (or any terminal) and pull the recommended image:',
+    `       docker pull ${RECOMMENDED_DOCKER_IMAGE}`,
+    '',
+    '  2. Add this to your moflo.yaml:',
+    '       sandbox:',
+    '         enabled: true',
+    `         dockerImage: ${RECOMMENDED_DOCKER_IMAGE}`,
+    '',
+    `The recommended image (${RECOMMENDED_DOCKER_IMAGE}) includes node, npm,`,
+    'bash, git, and curl. Any image with bash will work.',
+  ].join('\n');
+}
+
+function formatWindowsDockerImageNotPulledMessage(image: string): string {
+  return [
+    `Sandboxing is enabled, but the Docker image "${image}" is not available`,
+    'on this machine yet.',
+    '',
+    'To fix this, open PowerShell (or any terminal) and run:',
+    `       docker pull ${image}`,
+    '',
+    'This only needs to happen once — Docker caches the image afterwards.',
+    '',
+    'If Docker Desktop is not running, start it from the Start menu first',
+    'and wait for the whale icon in your system tray to stop animating.',
+  ].join('\n');
 }
 
 /**
