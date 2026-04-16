@@ -282,7 +282,7 @@ On Windows, OS-level sandboxing runs each bash step inside a Docker container. S
      enabled: true
    ```
 
-That's it. On the first spell run, MoFlo auto-pulls the default image (`node:20-bookworm`) and caches it. The image includes node, npm, bash, git, curl, and ssh.
+That's it. On the first spell run, MoFlo auto-pulls the default image (`ghcr.io/eric-cielo/moflo-sandbox`) and caches it. The image includes node, npm, bash, git, curl, ssh, Claude Code CLI, and GitHub CLI.
 
 To use a custom image instead, set `dockerImage` in your config:
 ```yaml
@@ -293,7 +293,7 @@ sandbox:
 
 **Verify** with `flo doctor sandbox`. You should see:
 ```
-✓ Sandbox Tier — docker ready (win32, node:20-bookworm)
+✓ Sandbox Tier — docker ready (win32, ghcr.io/eric-cielo/moflo-sandbox:latest)
 ```
 
 **How the Docker sandbox works:**

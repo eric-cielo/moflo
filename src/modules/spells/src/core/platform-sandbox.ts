@@ -64,7 +64,7 @@ export const DEFAULT_SANDBOX_CONFIG: SandboxConfig = {
 };
 
 /** Recommended image for first-time Windows Docker sandbox setup. */
-export const RECOMMENDED_DOCKER_IMAGE = 'node:20-bookworm';
+export const RECOMMENDED_DOCKER_IMAGE = 'ghcr.io/eric-cielo/moflo-sandbox:latest';
 
 // ============================================================================
 // Detection (cached)
@@ -356,7 +356,7 @@ function formatWindowsDockerNotReadyMessage(): string {
     '     Wait for the whale icon in your system tray to stop animating —',
     '     that means Docker is ready.',
     '',
-    `MoFlo will auto-pull the default image (${RECOMMENDED_DOCKER_IMAGE}) on`,
+    `MoFlo will auto-pull the sandbox image (${RECOMMENDED_DOCKER_IMAGE}) on`,
     'the first spell run.',
     '',
     'Not ready to set this up? Turn sandboxing off by setting',
