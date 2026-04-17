@@ -10,9 +10,11 @@
  *     container. projectRoot mounts at `/workspace` (the container's CWD);
  *     scopes inside projectRoot translate to `/workspace/<rel>`; absolute
  *     scopes outside the project are skipped with a log line.
- *   - Tool home paths mount under `/root/<rel>` so that claude/gh/git inside
- *     the container read and write the same config files the user edits on
- *     Windows.
+ *   - Tool home paths mount under `/home/node/<rel>` so that claude/gh/git
+ *     inside the container read and write the same config files the user
+ *     edits on Windows. The container runs as the `node` user (uid 1000)
+ *     because Claude Code CLI refuses to run as root with
+ *     `--dangerously-skip-permissions`.
  *   - `--network none` is the default; `net` cap or elevated/autonomous omit
  *     it (default bridge) — mirrors the bwrap policy.
  *   - `--rm` handles cleanup automatically.
@@ -29,8 +31,12 @@ import type { SandboxWrapResult } from './sandbox-utils.js';
 /** Container path where projectRoot is mounted. */
 const CONTAINER_WORKSPACE = '/workspace';
 
-/** Container path where the user's home is projected (for tool home mounts). */
-const CONTAINER_HOME = '/root';
+/**
+ * Container path where the user's home is projected (for tool home mounts).
+ * The sandbox image switches to the `node` user, so tool configs must land
+ * in that user's home — not `/root`.
+ */
+const CONTAINER_HOME = '/home/node';
 
 /**
  * Tool home paths mounted rw for elevated/autonomous steps so claude, gh,
@@ -140,7 +146,7 @@ function toSafeSegment(hostPath: string): string {
  *   - net              → omit `--network none`
  *
  * When `permissionLevel` is `elevated` or `autonomous`:
- *   - Mount tool home paths rw at `/root/<rel>`
+ *   - Mount tool home paths rw at `/home/node/<rel>`
  *   - Share the host network (omit `--network none`)
  */
 export function buildDockerArgs(

@@ -94,10 +94,10 @@ describe('buildDockerArgs', () => {
     }));
 
     const binds = args.filter((_a, i) => args[i - 1] === '-v');
-    expect(binds.some(b => b === `${HOME_DIR}/.claude:/root/.claude`)).toBe(true);
-    expect(binds.some(b => b === `${HOME_DIR}/.claude.json:/root/.claude.json`)).toBe(true);
-    expect(binds.some(b => b === `${HOME_DIR}/.config/gh:/root/.config/gh`)).toBe(true);
-    expect(binds.some(b => b === `${HOME_DIR}/.gitconfig:/root/.gitconfig`)).toBe(true);
+    expect(binds.some(b => b === `${HOME_DIR}/.claude:/home/node/.claude`)).toBe(true);
+    expect(binds.some(b => b === `${HOME_DIR}/.claude.json:/home/node/.claude.json`)).toBe(true);
+    expect(binds.some(b => b === `${HOME_DIR}/.config/gh:/home/node/.config/gh`)).toBe(true);
+    expect(binds.some(b => b === `${HOME_DIR}/.gitconfig:/home/node/.gitconfig`)).toBe(true);
   });
 
   it('mounts tool home paths for autonomous level', () => {
@@ -106,7 +106,7 @@ describe('buildDockerArgs', () => {
     }));
 
     const binds = args.filter((_a, i) => args[i - 1] === '-v');
-    expect(binds.some(b => b.includes('/.claude:/root/.claude'))).toBe(true);
+    expect(binds.some(b => b.includes('/.claude:/home/node/.claude'))).toBe(true);
   });
 
   it('does not mount tool home paths for readonly/standard levels', () => {
@@ -115,7 +115,7 @@ describe('buildDockerArgs', () => {
         permissionLevel: level,
       }));
       const binds = args.filter((_a, i) => args[i - 1] === '-v');
-      expect(binds.some(b => b.includes('/root/.claude'))).toBe(false);
+      expect(binds.some(b => b.includes('/home/node/.claude'))).toBe(false);
     }
   });
 

@@ -35,4 +35,19 @@ RUN npm install -g @anthropic-ai/claude-code
 # Verify both tools are on PATH
 RUN claude --version && gh --version && git --version
 
+# ── Non-root runtime user ────────────────────────────────────────────────
+# node:20-bookworm ships a `node` user (uid 1000). Claude Code CLI refuses
+# to run as root when --dangerously-skip-permissions is set, so switch
+# before ENTRYPOINT. Pre-create /workspace and tool-home subdirs so
+# bind-mounts land on node-owned paths instead of root-owned mountpoints.
+RUN mkdir -p /workspace \
+      /home/node/.claude \
+      /home/node/.config/gh \
+      /home/node/.npm \
+      /home/node/.cache \
+      /home/node/.local/share \
+      /home/node/.local/state \
+ && chown -R node:node /workspace /home/node
+
+USER node
 WORKDIR /workspace
