@@ -16,6 +16,7 @@ export const isolationTests = [
   'src/modules/hooks/__tests__/statusline/statusline-collision.test.ts',
   'src/modules/spells/__tests__/integration/permission-system-e2e.test.ts',
   'src/modules/spells/__tests__/integration/spell-engine-e2e.test.ts',
+  'tests/system/pluggable-steps-system.test.ts',
 ];
 
 export default defineConfig({
