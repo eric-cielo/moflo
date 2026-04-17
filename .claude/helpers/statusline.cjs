@@ -26,6 +26,16 @@ const CONFIG = {
 
 const CWD = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
+// Claude Code pipes session JSON (incl. current model) via stdin. Read it
+// synchronously — authoritative source, no file lookups needed.
+let STDIN_PAYLOAD = null;
+try {
+  if (!process.stdin.isTTY) {
+    const raw = fs.readFileSync(0, 'utf8');
+    if (raw.trim()) STDIN_PAYLOAD = JSON.parse(raw);
+  }
+} catch { /* ignore */ }
+
 // Load status_line config from moflo.yaml (show/hide individual items)
 function loadStatusLineConfig() {
   const defaults = {
@@ -199,8 +209,12 @@ function getGitInfo() {
   return result;
 }
 
-// Detect model name from Claude config (pure file reads, no exec)
+// Detect model name. Prefers stdin payload from Claude Code (authoritative),
+// then falls back to file-based lookups for manual/CLI invocations.
 function getModelName() {
+  const m = STDIN_PAYLOAD?.model;
+  if (m?.display_name) return m.display_name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  if (m?.id) return formatModelName(m.id);
   try {
     const claudeConfig = readJSON(path.join(os.homedir(), '.claude.json'));
     if (claudeConfig?.projects) {
@@ -218,10 +232,7 @@ function getModelName() {
                 const ts = usage[id]?.lastUsedAt ? new Date(usage[id].lastUsedAt).getTime() : 0;
                 if (ts > latest) { latest = ts; modelId = id; }
               }
-              if (modelId.includes('opus')) return 'Opus 4.6';
-              if (modelId.includes('sonnet')) return 'Sonnet 4.6';
-              if (modelId.includes('haiku')) return 'Haiku 4.5';
-              return modelId.split('-').slice(1, 3).join(' ');
+              return formatModelName(modelId);
             }
           }
           break;
@@ -232,12 +243,16 @@ function getModelName() {
 
   // Fallback: settings.json model field
   const settings = getSettings();
-  if (settings?.model) {
-    const m = settings.model;
-    if (m.includes('opus')) return 'Opus 4.6';
-    if (m.includes('sonnet')) return 'Sonnet 4.6';
-    if (m.includes('haiku')) return 'Haiku 4.5';
-  }
+  if (settings?.model) return formatModelName(settings.model);
+  return 'Claude Code';
+}
+
+function formatModelName(modelId) {
+  const m = modelId.match(/claude-(opus|sonnet|haiku)-(\d+)-(\d+)/);
+  if (m) return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}`;
+  if (modelId.includes('opus')) return 'Opus';
+  if (modelId.includes('sonnet')) return 'Sonnet';
+  if (modelId.includes('haiku')) return 'Haiku';
   return 'Claude Code';
 }
 
