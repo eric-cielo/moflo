@@ -49,5 +49,15 @@ RUN mkdir -p /workspace \
       /home/node/.local/state \
  && chown -R node:node /workspace /home/node
 
+# ── Git safe.directory ───────────────────────────────────────────────────
+# Windows Docker Desktop bind-mounts expose /workspace with uid 0 or a uid
+# that doesn't match the container's `node` user (1000). Git 2.35+ refuses
+# to operate on repos owned by other users unless they're in safe.directory.
+# Set this at /etc/gitconfig (system level) so the `node` user's own
+# .gitconfig bind-mount (from the host via tool-home mounts) doesn't
+# override it. `*` is appropriate for a sandbox image that only ever sees
+# bind-mounted project dirs.
+RUN git config --system --add safe.directory '*'
+
 USER node
 WORKDIR /workspace
