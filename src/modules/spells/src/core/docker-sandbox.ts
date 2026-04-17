@@ -22,6 +22,7 @@
  * @see https://github.com/eric-cielo/moflo/issues/412
  */
 
+import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { posix, isAbsolute, relative } from 'node:path';
 import type { StepCapability } from '../types/step-command.types.js';
@@ -72,10 +73,58 @@ export interface DockerOptions {
   readonly homeDir?: string;
   /** Override docker binary (for testing). Defaults to `docker`. */
   readonly dockerBin?: string;
+  /**
+   * GitHub token to inject as `GH_TOKEN` for elevated/autonomous steps.
+   *
+   * Why: bind-mounting `~/.config/gh/hosts.yml` is insufficient because
+   * gh stores tokens in OS-native secret stores (Windows Credential
+   * Manager, macOS Keychain, libsecret) — `hosts.yml` only records the
+   * username and "(keyring)" marker. Passing the actual token via env
+   * var is the only portable way to authenticate gh + git inside the
+   * container.
+   */
+  readonly ghToken?: string;
 }
 
 function needsToolHomeAccess(level?: PermissionLevel): boolean {
   return level === 'elevated' || level === 'autonomous';
+}
+
+/**
+ * Cached GitHub token resolution. `null` means resolution was attempted
+ * and produced no token (gh missing or not authenticated); we cache the
+ * negative result too so we don't shell out on every step.
+ */
+let cachedGhToken: string | null | undefined;
+
+/**
+ * Resolve the GitHub auth token from the host's gh CLI.
+ *
+ * Synchronous because the docker-sandbox API is synchronous (callers
+ * build args in-line). Cached per-process — gh tokens don't change
+ * during a session. Failure is silent and returns null; the caller will
+ * still attempt the docker run (which may fail later if the step needs
+ * git auth) rather than blocking unrelated bash steps on gh availability.
+ */
+export function resolveGhToken(): string | null {
+  if (cachedGhToken !== undefined) return cachedGhToken;
+  try {
+    const out = execFileSync('gh', ['auth', 'token'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5000,
+      windowsHide: true,
+    }).trim();
+    cachedGhToken = out.length > 0 ? out : null;
+  } catch {
+    cachedGhToken = null;
+  }
+  return cachedGhToken;
+}
+
+/** Reset the cached token. Test-only — production code should never call this. */
+export function _resetGhTokenCacheForTesting(): void {
+  cachedGhToken = undefined;
 }
 
 /**
@@ -213,8 +262,8 @@ export function buildDockerArgs(
     // bind-mounted .gitconfig declares a helper that can't run in the
     // Linux container (Windows: `manager` .exe; macOS: `osxkeychain`;
     // Linux: libsecret/etc — all host-OS-specific). gh is installed in
-    // the sandbox image and `.config/gh` is bind-mounted, so
-    // `gh auth git-credential` supplies the token for HTTPS git ops.
+    // the sandbox image; with GH_TOKEN supplied via env (below), `gh
+    // auth git-credential` resolves credentials for HTTPS git ops.
     // First entry (empty value) resets the inherited helper list; the
     // second entry installs the gh helper as the only one. Applied via
     // GIT_CONFIG_* env vars so no config file is modified.
@@ -223,6 +272,15 @@ export function buildDockerArgs(
     args.push('-e', 'GIT_CONFIG_VALUE_0=');
     args.push('-e', 'GIT_CONFIG_KEY_1=credential.helper');
     args.push('-e', 'GIT_CONFIG_VALUE_1=!gh auth git-credential');
+
+    // Inject GH_TOKEN so gh recognises the user as authenticated inside
+    // the container. Without this the credential.helper above runs but
+    // returns nothing — gh's host config file (`hosts.yml`) only stores
+    // the username when the token lives in the OS keyring, which is
+    // unreachable from a Linux container on Windows or macOS.
+    if (options.ghToken) {
+      args.push('-e', `GH_TOKEN=${options.ghToken}`);
+    }
   }
 
   // ── Network isolation ───────────────────────────────────────────────
@@ -250,7 +308,14 @@ export function wrapWithDocker(
   projectRoot: string,
   options: DockerOptions,
 ): SandboxWrapResult {
-  const args = buildDockerArgs(command, capabilities, projectRoot, options);
+  // For elevated/autonomous steps, auto-resolve the host gh token if the
+  // caller didn't supply one. Tests inject `ghToken` explicitly so the
+  // host's gh CLI never needs to run during unit tests.
+  const resolvedOptions: DockerOptions =
+    options.ghToken === undefined && needsToolHomeAccess(options.permissionLevel)
+      ? { ...options, ghToken: resolveGhToken() ?? undefined }
+      : options;
+  const args = buildDockerArgs(command, capabilities, projectRoot, resolvedOptions);
   return {
     bin: options.dockerBin ?? 'docker',
     args,

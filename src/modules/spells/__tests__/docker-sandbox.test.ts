@@ -149,6 +149,43 @@ describe('buildDockerArgs', () => {
     }
   });
 
+  it('injects GH_TOKEN env var when ghToken is supplied for elevated', () => {
+    const args = buildDockerArgs('git push', [], PROJECT_ROOT, opts({
+      permissionLevel: 'elevated',
+      ghToken: 'gho_testtoken123',
+    }));
+    const envs = args.filter((_a, i) => args[i - 1] === '-e');
+    expect(envs).toContain('GH_TOKEN=gho_testtoken123');
+  });
+
+  it('injects GH_TOKEN env var when ghToken is supplied for autonomous', () => {
+    const args = buildDockerArgs('gh pr create', [], PROJECT_ROOT, opts({
+      permissionLevel: 'autonomous',
+      ghToken: 'gho_testtoken456',
+    }));
+    const envs = args.filter((_a, i) => args[i - 1] === '-e');
+    expect(envs).toContain('GH_TOKEN=gho_testtoken456');
+  });
+
+  it('does not inject GH_TOKEN env var when ghToken is not supplied', () => {
+    const args = buildDockerArgs('git push', [], PROJECT_ROOT, opts({
+      permissionLevel: 'elevated',
+    }));
+    const envs = args.filter((_a, i) => args[i - 1] === '-e');
+    expect(envs.some(e => e.startsWith('GH_TOKEN='))).toBe(false);
+  });
+
+  it('does not inject GH_TOKEN env var for readonly/standard even when supplied', () => {
+    for (const level of ['readonly', 'standard'] as const) {
+      const args = buildDockerArgs('ls', [], PROJECT_ROOT, opts({
+        permissionLevel: level,
+        ghToken: 'gho_testtoken789',
+      }));
+      const envs = args.filter((_a, i) => args[i - 1] === '-e');
+      expect(envs.some(e => e.startsWith('GH_TOKEN='))).toBe(false);
+    }
+  });
+
   it('shares host network for elevated without net capability', () => {
     const args = buildDockerArgs('claude -p', [], PROJECT_ROOT, opts({
       permissionLevel: 'elevated',
@@ -198,5 +235,14 @@ describe('wrapWithDocker', () => {
   it('respects dockerBin override', () => {
     const result = wrapWithDocker('ls', [], PROJECT_ROOT, opts({ dockerBin: '/usr/local/bin/docker' }));
     expect(result.bin).toBe('/usr/local/bin/docker');
+  });
+
+  it('passes through explicit ghToken without invoking host gh CLI', () => {
+    const result = wrapWithDocker('git push', [], PROJECT_ROOT, opts({
+      permissionLevel: 'elevated',
+      ghToken: 'gho_explicittoken',
+    }));
+    const envs = result.args.filter((_a, i) => result.args[i - 1] === '-e');
+    expect(envs).toContain('GH_TOKEN=gho_explicittoken');
   });
 });
