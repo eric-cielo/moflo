@@ -119,6 +119,36 @@ describe('buildDockerArgs', () => {
     }
   });
 
+  it('installs gh credential helper via GIT_CONFIG_* env vars for elevated', () => {
+    const args = buildDockerArgs('git push', [], PROJECT_ROOT, opts({
+      permissionLevel: 'elevated',
+    }));
+    const envs = args.filter((_a, i) => args[i - 1] === '-e');
+    expect(envs).toContain('GIT_CONFIG_COUNT=2');
+    expect(envs).toContain('GIT_CONFIG_KEY_0=credential.helper');
+    expect(envs).toContain('GIT_CONFIG_VALUE_0=');
+    expect(envs).toContain('GIT_CONFIG_KEY_1=credential.helper');
+    expect(envs).toContain('GIT_CONFIG_VALUE_1=!gh auth git-credential');
+  });
+
+  it('installs gh credential helper via GIT_CONFIG_* env vars for autonomous', () => {
+    const args = buildDockerArgs('git push', [], PROJECT_ROOT, opts({
+      permissionLevel: 'autonomous',
+    }));
+    const envs = args.filter((_a, i) => args[i - 1] === '-e');
+    expect(envs).toContain('GIT_CONFIG_VALUE_1=!gh auth git-credential');
+  });
+
+  it('does not set GIT_CONFIG_* env vars for readonly/standard levels', () => {
+    for (const level of ['readonly', 'standard'] as const) {
+      const args = buildDockerArgs('ls', [], PROJECT_ROOT, opts({
+        permissionLevel: level,
+      }));
+      const envs = args.filter((_a, i) => args[i - 1] === '-e');
+      expect(envs.some(e => e.startsWith('GIT_CONFIG_'))).toBe(false);
+    }
+  });
+
   it('shares host network for elevated without net capability', () => {
     const args = buildDockerArgs('claude -p', [], PROJECT_ROOT, opts({
       permissionLevel: 'elevated',

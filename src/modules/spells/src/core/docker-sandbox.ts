@@ -208,6 +208,21 @@ export function buildDockerArgs(
         mountedContainerPaths.add(containerPath);
       }
     }
+
+    // Override git credential.helper to the gh CLI helper. The host's
+    // bind-mounted .gitconfig declares a helper that can't run in the
+    // Linux container (Windows: `manager` .exe; macOS: `osxkeychain`;
+    // Linux: libsecret/etc — all host-OS-specific). gh is installed in
+    // the sandbox image and `.config/gh` is bind-mounted, so
+    // `gh auth git-credential` supplies the token for HTTPS git ops.
+    // First entry (empty value) resets the inherited helper list; the
+    // second entry installs the gh helper as the only one. Applied via
+    // GIT_CONFIG_* env vars so no config file is modified.
+    args.push('-e', 'GIT_CONFIG_COUNT=2');
+    args.push('-e', 'GIT_CONFIG_KEY_0=credential.helper');
+    args.push('-e', 'GIT_CONFIG_VALUE_0=');
+    args.push('-e', 'GIT_CONFIG_KEY_1=credential.helper');
+    args.push('-e', 'GIT_CONFIG_VALUE_1=!gh auth git-credential');
   }
 
   // ── Network isolation ───────────────────────────────────────────────
