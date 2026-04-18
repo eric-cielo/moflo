@@ -9,6 +9,9 @@ import { WorkerDaemon, getDaemon, startDaemon, stopDaemon, type WorkerType, type
 import { acquireDaemonLock, releaseDaemonLock, getDaemonLockHolder, transferDaemonLock, lockPath } from '../services/daemon-lock.js';
 import { installDaemonService, uninstallDaemonService, isDaemonInstalled } from '../services/daemon-service.js';
 import { startDashboard, createDashboardMemoryAccessor, DEFAULT_DASHBOARD_PORT, type DashboardHandle } from '../services/daemon-dashboard.js';
+import { bootstrapDaemonScheduler } from '../services/daemon-scheduler-bootstrap.js';
+import type { MemoryAccessor } from '../../../spells/src/types/step-command.types.js';
+import type { SchedulerEvent } from '../../../spells/src/scheduler/scheduler.js';
 import { spawn, execFile, execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve, isAbsolute } from 'path';
@@ -127,17 +130,9 @@ const startCommand: Command = {
 
         spinner.succeed('Worker daemon started (foreground mode)');
 
-        // Start dashboard unless disabled
-        let dashboard: DashboardHandle | null = null;
-        if (!noDashboard) {
-          try {
-            const memory = await createDashboardMemoryAccessor();
-            dashboard = await startDashboard(daemon, { port: dashboardPort, memory });
-            output.printSuccess(`Dashboard: http://localhost:${dashboard.port}`);
-          } catch (err) {
-            output.printWarning(`Dashboard failed to start: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        }
+        const { dashboard } = await attachDaemonServices(daemon, {
+          projectRoot, noDashboard, dashboardPort, verbose: true,
+        });
 
         output.writeln();
         output.printBox(
@@ -190,16 +185,17 @@ const startCommand: Command = {
           output.writeln(output.error(`[daemon] Worker failed: ${type} - ${error}`));
         });
 
+        daemon.on('scheduler:event', (ev: SchedulerEvent) => {
+          const line = `[scheduler] ${ev.type} ${ev.spellName}: ${ev.message}`;
+          if (ev.type === 'schedule:failed') output.writeln(output.error(line));
+          else output.writeln(output.dim(line));
+        });
+
         // Keep process alive
         await new Promise(() => {}); // Never resolves - daemon runs until killed
       } else {
         const daemon = await startDaemon(projectRoot, config);
-        if (!noDashboard) {
-          try {
-            const memory = await createDashboardMemoryAccessor();
-            await startDashboard(daemon, { port: dashboardPort, memory });
-          } catch { /* dashboard is best-effort in quiet mode */ }
-        }
+        await attachDaemonServices(daemon, { projectRoot, noDashboard, dashboardPort, verbose: false });
         await new Promise(() => {}); // Keep alive
       }
 
@@ -210,6 +206,50 @@ const startCommand: Command = {
     }
   },
 };
+
+/**
+ * Create a shared memory accessor, start the dashboard (unless disabled),
+ * and bootstrap the spell scheduler. `verbose: true` prints progress to
+ * the user; `verbose: false` logs warnings via the daemon log file only.
+ *
+ * Each step is best-effort — the daemon's own worker tick loop keeps
+ * running even if dashboard or scheduler wiring fails.
+ */
+async function attachDaemonServices(
+  daemon: WorkerDaemon,
+  opts: { projectRoot: string; noDashboard?: boolean; dashboardPort: number; verbose: boolean },
+): Promise<{ dashboard: DashboardHandle | null; memory: MemoryAccessor | null }> {
+  const logWarn = (msg: string) => opts.verbose
+    ? output.printWarning(msg)
+    : daemon.emit('log', { level: 'warn', message: msg, timestamp: new Date().toISOString() });
+
+  let memory: MemoryAccessor | null = null;
+  try {
+    memory = await createDashboardMemoryAccessor();
+  } catch (err) {
+    logWarn(`Memory accessor unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    return { dashboard: null, memory: null };
+  }
+
+  let dashboard: DashboardHandle | null = null;
+  if (!opts.noDashboard) {
+    try {
+      dashboard = await startDashboard(daemon, { port: opts.dashboardPort, memory });
+      if (opts.verbose) output.printSuccess(`Dashboard: http://localhost:${dashboard.port}`);
+    } catch (err) {
+      logWarn(`Dashboard failed to start: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  try {
+    await bootstrapDaemonScheduler(daemon, { projectRoot: opts.projectRoot, memory });
+    if (opts.verbose) output.printSuccess('Spell scheduler attached');
+  } catch (err) {
+    logWarn(`Spell scheduler not started: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  return { dashboard, memory };
+}
 
 /**
  * Validate path for security - prevents path traversal and injection
