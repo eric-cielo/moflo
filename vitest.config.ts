@@ -20,6 +20,11 @@ export const isolationTests = [
   // Timing-based parallelism assertion — Windows maxForks contention pushes
   // the 75ms threshold over on full-suite runs; passes alone consistently.
   'src/modules/spells/__tests__/preflights.test.ts',
+  // ReasoningBank + GuidanceProvider load AgentDB (sql.js + HNSW + Transformers)
+  // inside test hooks. Under Linux CI parallel load this pushes storePattern
+  // and searchPatterns past the default 5s timeout. Pass in isolation.
+  'src/modules/hooks/src/__tests__/reasoningbank.test.ts',
+  'src/modules/hooks/src/__tests__/guidance-provider.test.ts',
 ];
 
 export default defineConfig({

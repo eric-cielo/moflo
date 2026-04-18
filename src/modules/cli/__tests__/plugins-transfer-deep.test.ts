@@ -1912,7 +1912,8 @@ describe('GCS Storage', () => {
     // In test environment, gcloud is likely not available
     expect(status).toHaveProperty('available');
     expect(status).toHaveProperty('message');
-  });
+  }, 15_000); // isGCloudAvailable runs execSync('gcloud --version'); subprocess
+             // spawn can exceed the default 5s under CI parallel load.
 });
 
 // ============================================================================
