@@ -82,6 +82,13 @@ export interface MofloConfig {
     auto_start: boolean;
   };
 
+  scheduler: {
+    enabled: boolean;
+    pollIntervalMs: number;
+    maxConcurrent: number;
+    catchUpWindowMs: number;
+  };
+
   auto_update: {
     enabled: boolean;
     scripts: boolean;
@@ -180,6 +187,12 @@ const DEFAULT_CONFIG: MofloConfig = {
   daemon: {
     auto_start: true,
   },
+  scheduler: {
+    enabled: true,
+    pollIntervalMs: 60_000,
+    maxConcurrent: 2,
+    catchUpWindowMs: 3_600_000,
+  },
   auto_update: {
     enabled: true,
     scripts: true,
@@ -232,6 +245,16 @@ function findConfigFile(root: string): { path: string; format: 'yaml' | 'json' }
     }
   }
   return null;
+}
+
+/**
+ * Coerce user-supplied numeric config values to a positive number, falling
+ * back to the default when the input is not a finite positive number.
+ * Zero and negative values would silently break the scheduler's poll loop
+ * and concurrency limiter, so they're rejected here at config-load time.
+ */
+function positiveNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && isFinite(value) && value > 0 ? value : fallback;
 }
 
 /**
@@ -292,6 +315,21 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
     },
     daemon: {
       auto_start: raw.daemon?.auto_start ?? raw.daemon?.autoStart ?? DEFAULT_CONFIG.daemon.auto_start,
+    },
+    scheduler: {
+      enabled: raw.scheduler?.enabled ?? DEFAULT_CONFIG.scheduler.enabled,
+      pollIntervalMs: positiveNumber(
+        raw.scheduler?.pollIntervalMs ?? raw.scheduler?.poll_interval_ms,
+        DEFAULT_CONFIG.scheduler.pollIntervalMs,
+      ),
+      maxConcurrent: positiveNumber(
+        raw.scheduler?.maxConcurrent ?? raw.scheduler?.max_concurrent,
+        DEFAULT_CONFIG.scheduler.maxConcurrent,
+      ),
+      catchUpWindowMs: positiveNumber(
+        raw.scheduler?.catchUpWindowMs ?? raw.scheduler?.catch_up_window_ms,
+        DEFAULT_CONFIG.scheduler.catchUpWindowMs,
+      ),
     },
     auto_update: {
       enabled: raw.auto_update?.enabled ?? raw.autoUpdate?.enabled ?? DEFAULT_CONFIG.auto_update.enabled,
@@ -463,6 +501,13 @@ hooks:
 # Worker daemon (background indexing, optimization, test gap detection)
 daemon:
   auto_start: true              # Start daemon automatically on CLI/MCP init (set false to disable)
+
+# Spell scheduler (fires scheduled spells inside the running daemon)
+scheduler:
+  enabled: true                 # set false to disable scheduled spells without affecting other daemon workers
+  pollIntervalMs: 60000         # how often the scheduler checks for due spells (ms)
+  maxConcurrent: 2              # max concurrent scheduled spell executions
+  catchUpWindowMs: 3600000      # max age of a missed run to still execute after restart (ms)
 
 # Model preferences (haiku, sonnet, opus)
 models:

@@ -178,7 +178,7 @@ describe('ensureDaemonForScheduling', () => {
 
   // ── State 5: Daemon not running (non-interactive) ─────────────────────────
 
-  it('should warn without prompting when daemon not running (non-interactive)', async () => {
+  it('should warn about both start and autostart when daemon not running (non-interactive)', async () => {
     mockGetHolder.mockReturnValue(null);
     mockIsInstalled.mockReturnValue(false);
 
@@ -188,8 +188,29 @@ describe('ensureDaemonForScheduling', () => {
     });
 
     expect(result.daemonRunning).toBe(false);
-    // Only one warning: daemon not running. Install check is skipped because
-    // the daemon isn't running — no point warning about service registration.
+    expect(result.daemonInstalled).toBe(false);
+    // Two warnings: daemon isn't running AND autostart isn't registered.
+    // We surface autostart even when the daemon is down so the user knows
+    // to run `moflo daemon install` for the next reboot.
+    expect(result.warnings).toHaveLength(2);
+    expect(result.warnings).toContainEqual(expect.stringContaining('moflo daemon start'));
+    expect(result.warnings).toContainEqual(expect.stringContaining('moflo daemon install'));
+  });
+
+  it('reports installed=true even when daemon is down', async () => {
+    // Autostart registration is an OS-level check and does not depend on
+    // whether the daemon process is currently alive.
+    mockGetHolder.mockReturnValue(null);
+    mockIsInstalled.mockReturnValue(true);
+
+    const result = await ensureDaemonForScheduling({
+      projectRoot: '/test/project',
+      interactive: false,
+    });
+
+    expect(result.daemonRunning).toBe(false);
+    expect(result.daemonInstalled).toBe(true);
+    // No autostart warning — only "daemon not running" warning.
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]).toContain('moflo daemon start');
   });
