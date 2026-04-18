@@ -22,6 +22,10 @@ import {
   type HeadlessWorkerType,
   type HeadlessExecutionResult,
 } from './headless-worker-executor.js';
+import type {
+  SpellScheduler,
+  SchedulerEvent,
+} from '../../../spells/src/scheduler/scheduler.js';
 
 // Worker types matching hooks-tools.ts
 export type WorkerType =
@@ -122,6 +126,9 @@ export class WorkerDaemon extends EventEmitter {
   // Headless execution support
   private headlessExecutor: HeadlessWorkerExecutor | null = null;
   private headlessAvailable: boolean = false;
+
+  private scheduler: SpellScheduler | null = null;
+  private unsubScheduler: (() => void) | null = null;
 
   // Preserve the original constructor config so we can detect explicit overrides
   // during state restoration (R1: constructor config takes priority over stale state)
@@ -456,6 +463,11 @@ export class WorkerDaemon extends EventEmitter {
       }
     }
 
+    if (this.scheduler && !this.scheduler.isRunning) {
+      this.scheduler.start();
+      this.log('info', 'Spell scheduler poll loop started');
+    }
+
     // Save state
     this.saveState();
 
@@ -479,10 +491,77 @@ export class WorkerDaemon extends EventEmitter {
     }
     this.timers.clear();
 
+    // Stop the spell scheduler if attached
+    if (this.scheduler && this.scheduler.isRunning) {
+      try {
+        await this.scheduler.stop();
+        this.log('info', 'Spell scheduler stopped');
+      } catch (err) {
+        this.log('warn', `Scheduler stop error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
     this.running = false;
     this.saveState();
     this.emit('stopped', { stoppedAt: new Date() });
     this.log('info', 'Daemon stopped');
+  }
+
+  /**
+   * Attach a SpellScheduler to the daemon lifecycle.
+   *
+   * The scheduler's poll loop starts immediately if the daemon is already
+   * running; otherwise it starts when `start()` is called. Scheduler events
+   * are forwarded through this daemon's EventEmitter (both as a generic
+   * `scheduler:event` and as the specific event type — e.g. `schedule:due`),
+   * so dashboard/logging consumers receive live updates.
+   *
+   * If a different scheduler is already attached, awaits detach before
+   * wiring the new one so the old scheduler's stop doesn't race with the
+   * new assignment.
+   */
+  async attachScheduler(scheduler: SpellScheduler): Promise<void> {
+    if (this.scheduler === scheduler) return;
+    if (this.scheduler) {
+      this.log('warn', 'Replacing previously attached scheduler');
+      await this.detachScheduler();
+    }
+
+    this.scheduler = scheduler;
+    this.unsubScheduler = scheduler.on((event: SchedulerEvent) => {
+      this.emit('scheduler:event', event);
+      this.emit(event.type, event);
+    });
+
+    if (this.running && !scheduler.isRunning) {
+      scheduler.start();
+      this.log('info', 'Spell scheduler poll loop started');
+    }
+  }
+
+  /**
+   * Detach and stop the currently attached scheduler, if any. Errors during
+   * stop are logged but do not propagate — detach must be non-fatal so
+   * daemon shutdown can always complete.
+   */
+  async detachScheduler(): Promise<void> {
+    if (this.unsubScheduler) {
+      this.unsubScheduler();
+      this.unsubScheduler = null;
+    }
+    if (this.scheduler) {
+      try {
+        await this.scheduler.stop();
+      } catch (err) {
+        this.log('warn', `Scheduler stop during detach failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      this.scheduler = null;
+    }
+  }
+
+  /** The currently attached scheduler, or null if none. */
+  getScheduler(): SpellScheduler | null {
+    return this.scheduler;
   }
 
   /**

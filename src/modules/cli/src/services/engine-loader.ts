@@ -26,6 +26,12 @@ import type {
   RegistryOptions,
 } from '../../../../modules/spells/src/registry/spell-registry.js';
 import type { SandboxConfig } from '../../../../modules/spells/src/core/platform-sandbox.js';
+import type {
+  SpellScheduler,
+  SpellExecutor,
+} from '../../../../modules/spells/src/scheduler/scheduler.js';
+import type { SchedulerOptions } from '../../../../modules/spells/src/scheduler/schedule.types.js';
+import type { MemoryAccessor } from '../../../../modules/spells/src/types/step-command.types.js';
 
 // Re-export spell types so consumers import from engine-loader (single boundary).
 export type { SpellResult };
@@ -33,6 +39,7 @@ export type { SpellDefinition };
 export type { Grimoire };
 export type { PreflightWarning, PreflightWarningDecision, PreflightWarningHandler };
 export type { SandboxConfig };
+export type { SpellScheduler, SpellExecutor, SchedulerOptions };
 
 /**
  * Shape of the dynamically imported spell engine module.
@@ -56,6 +63,11 @@ export interface EngineModule {
   bridgeIsRunning: (spellId: string) => boolean;
   bridgeActiveSpells: () => string[];
   Grimoire: new (options?: RegistryOptions) => Grimoire;
+  SpellScheduler: new (
+    memory: MemoryAccessor,
+    executor: SpellExecutor,
+    options?: SchedulerOptions,
+  ) => SpellScheduler;
   runSpellFromContent: (
     content: string,
     sourceFile: string | undefined,

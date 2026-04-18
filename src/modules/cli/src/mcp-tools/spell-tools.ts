@@ -7,8 +7,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import type { MCPTool } from './types.js';
 import {
   loadSpellEngine,
@@ -19,7 +18,7 @@ import {
   type Grimoire,
 } from '../services/engine-loader.js';
 import { findProjectRoot } from '../services/project-root.js';
-import { loadMofloConfig } from '../config/moflo-config.js';
+import { buildGrimoire } from '../services/grimoire-builder.js';
 
 
 // ============================================================================
@@ -122,22 +121,8 @@ async function getRegistry(): Promise<Grimoire> {
 
   pendingRegistry = (async () => {
     try {
-      const engine = await loadSpellEngine();
-      const projectRoot = findProjectRoot();
-      const config = loadMofloConfig(projectRoot);
-
-      const defaultShippedDir = resolve(
-        dirname(fileURLToPath(import.meta.url)),
-        '../../../../modules/spells/definitions',
-      );
-      const shippedDir = config.spells.shippedDir
-        ? resolve(projectRoot, config.spells.shippedDir)
-        : defaultShippedDir;
-
-      const userDirs = config.spells.userDirs.map(d => resolve(projectRoot, d));
-
-      registryInstance = new engine.Grimoire({ shippedDir, userDirs });
-
+      const { registry } = await buildGrimoire(findProjectRoot());
+      registryInstance = registry;
       return registryInstance;
     } finally {
       pendingRegistry = null;
