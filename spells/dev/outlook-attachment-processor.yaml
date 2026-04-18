@@ -1,0 +1,102 @@
+name: outlook-attachment-processor
+abbreviation: oap
+description: >
+  Scans Microsoft Graph /me/messages for emails newer than a start date,
+  downloads any attachments to ~/Downloads/attachments/, then posts a
+  summary to Slack. Uses GRAPH_ACCESS_TOKEN env (Graph Explorer token
+  works for quick tests; ~1h lifetime). Requires SLACK_WEBHOOK_URL.
+version: "5.0"
+mofloLevel: memory
+
+arguments:
+  maxEmails:
+    type: number
+    required: false
+    default: 25
+  sinceDays:
+    type: number
+    required: false
+    default: 7
+  downloadDir:
+    type: string
+    required: false
+    default: "~/Downloads/attachments"
+
+steps:
+  - id: ensure-dir
+    type: bash
+    config:
+      command: "mkdir -p {args.downloadDir}"
+
+  - id: last-run
+    type: memory
+    config:
+      action: read
+      namespace: spell-state
+      key: "outlook-attachment-processor:last-processed-at"
+    output: lastRun
+
+  - id: ask-start-date
+    type: prompt
+    config:
+      message: "Inbox start date (ISO, e.g. 2026-04-10T00:00:00Z)"
+      default: "{lastRun.value}"
+      fallbackDaysAgo: "{args.sinceDays}"
+    output: startDate
+
+  - id: read-inbox
+    type: graph
+    config:
+      action: read-inbox
+      limit: "{args.maxEmails}"
+      sinceDate: "{startDate.response}"
+    output: inbox
+
+  - id: download-attachments
+    type: loop
+    config:
+      over: "{inbox.emails}"
+    steps:
+      - id: check-attachment
+        type: condition
+        config:
+          left: "has:{loop.item.hasAttachment}"
+          op: "=="
+          right: "has:true"
+          then: do-download
+
+      - id: do-download
+        type: graph
+        config:
+          action: download-attachments
+          id: "{loop.item.id}"
+          downloadDir: "{args.downloadDir}"
+
+  - id: notify-slack
+    type: slack
+    config:
+      action: post-webhook
+      text: |
+        📧 Inbox scan complete
+        Scanned since: {inbox.sinceDate}
+        Emails matched: {inbox.totalEmails} (raw scan: {inbox.totalBeforeFilter})
+        With attachments: {inbox.emailsWithAttachments}
+        Download dir: {args.downloadDir}
+
+  - id: save-timestamp
+    type: memory
+    config:
+      action: write
+      namespace: spell-state
+      key: "outlook-attachment-processor:last-processed-at"
+      value: "{inbox.newestTimestamp}"
+
+  - id: log-run
+    type: memory
+    config:
+      action: write
+      namespace: spell-runs
+      key: "outlook-attachment-processor-latest"
+      value: |
+        Scanned since {inbox.sinceDate}; matched {inbox.totalEmails} emails,
+        {inbox.emailsWithAttachments} with attachments. Slack notified.
