@@ -14,6 +14,10 @@ import { browserCommand } from './browser-command.js';
 import { githubCommand } from './github-command.js';
 import { parallelCommand } from './parallel-command.js';
 import { outlookCommand } from './outlook-command.js';
+import { slackCommand } from './slack-command.js';
+import { imapCommand } from './imap-command.js';
+import { mcpCommand } from './mcp-command.js';
+import { graphCommand } from './graph-command.js';
 
 export {
   agentCommand,
@@ -27,6 +31,10 @@ export {
   githubCommand,
   parallelCommand,
   outlookCommand,
+  slackCommand,
+  imapCommand,
+  mcpCommand,
+  graphCommand,
 };
 
 // Typed config interfaces (Issue #189)
@@ -41,6 +49,10 @@ export type { BrowserStepConfig, BrowserAction } from './browser-command.js';
 export type { GitHubStepConfig, GitHubAction } from './github-command.js';
 export type { ParallelStepConfig } from './parallel-command.js';
 export type { OutlookStepConfig, OutlookAction } from './outlook-command.js';
+export type { SlackStepConfig, SlackAction } from './slack-command.js';
+export type { ImapStepConfig, ImapAction } from './imap-command.js';
+export type { McpStepConfig, McpAction } from './mcp-command.js';
+export type { GraphStepConfig, GraphAction } from './graph-command.js';
 
 /** All built-in step commands. */
 export const builtinCommands: readonly StepCommand[] = [
@@ -55,4 +67,8 @@ export const builtinCommands: readonly StepCommand[] = [
   githubCommand,
   parallelCommand,
   outlookCommand,
+  slackCommand,
+  imapCommand,
+  mcpCommand,
+  graphCommand,
 ];

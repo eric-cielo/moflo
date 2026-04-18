@@ -74,15 +74,21 @@ const SEL = {
 function makeInboxScript(max: number): string {
   return `(() => {
     const items = document.querySelectorAll('${SEL.emailItems}');
-    return Array.from(items).slice(0, ${max}).map((item, i) => ({
-      index: i,
-      subject: (item.querySelector('${SEL.subject}') || {}).textContent?.trim() || '(no subject)',
-      from: (item.querySelector('${SEL.sender}') || {}).textContent?.trim() || '(unknown)',
-      preview: (item.querySelector('${SEL.preview}') || {}).textContent?.trim()?.slice(0, 150) || '',
-      hasAttachment: !!item.querySelector('${SEL.attachmentIcon}'),
-      timestamp: (item.querySelector('${SEL.timestamp}') || {}).textContent?.trim()
-        || (item.querySelector('${SEL.timestamp}') || {}).getAttribute?.('datetime') || '',
-    }));
+    return Array.from(items).slice(0, ${max}).map((item, i) => {
+      const tsEl = item.querySelector('${SEL.timestamp}');
+      // Prefer machine-readable ISO datetime attr; fall back to visible text.
+      const iso = tsEl?.getAttribute?.('datetime') || '';
+      const text = tsEl?.textContent?.trim() || '';
+      return {
+        index: i,
+        subject: (item.querySelector('${SEL.subject}') || {}).textContent?.trim() || '(no subject)',
+        from: (item.querySelector('${SEL.sender}') || {}).textContent?.trim() || '(unknown)',
+        preview: (item.querySelector('${SEL.preview}') || {}).textContent?.trim()?.slice(0, 150) || '',
+        hasAttachment: !!item.querySelector('${SEL.attachmentIcon}'),
+        timestamp: text || iso,
+        timestampIso: iso,
+      };
+    });
   })()`;
 }
 
@@ -106,24 +112,86 @@ function makeReadEmailScript(): string {
 // Action implementations
 // ============================================================================
 
-async function readInbox(page: PlaywrightPage, params: { limit?: number; timeout?: number }): Promise<ConnectorOutput> {
+export interface InboxEmail {
+  index: number;
+  subject: string;
+  from: string;
+  preview: string;
+  hasAttachment: boolean;
+  timestamp: string;
+  timestampIso: string;
+}
+
+/**
+ * Filter emails to those with ISO timestamp >= sinceDate.
+ * Emails with no parseable ISO timestamp are included (can't safely exclude).
+ * Exported so tests can exercise it without Playwright.
+ */
+export function filterEmailsSince(
+  emails: readonly InboxEmail[],
+  sinceDate: string | undefined,
+): { kept: InboxEmail[]; newestTimestamp: string | null } {
+  const sinceMs = sinceDate ? Date.parse(sinceDate) : NaN;
+  const useFilter = Number.isFinite(sinceMs);
+
+  let newest = 0;
+  const kept: InboxEmail[] = [];
+  for (const e of emails) {
+    const ms = Date.parse(e.timestampIso);
+    const hasIso = Number.isFinite(ms);
+    if (useFilter && hasIso && ms < sinceMs) continue;
+    if (hasIso && ms > newest) newest = ms;
+    kept.push(e);
+  }
+
+  return {
+    kept,
+    newestTimestamp: newest > 0 ? new Date(newest).toISOString() : null,
+  };
+}
+
+/**
+ * Resolve the effective sinceDate for an inbox read.
+ * Precedence: explicit sinceDate (if parseable) > sinceDays fallback > null.
+ * Exported so spells and tests can agree on the policy.
+ */
+export function resolveSinceDate(
+  sinceDate: string | null | undefined,
+  sinceDays: number | null | undefined,
+): string | null {
+  if (sinceDate && Number.isFinite(Date.parse(sinceDate))) {
+    return sinceDate;
+  }
+  if (typeof sinceDays === 'number' && Number.isFinite(sinceDays) && sinceDays > 0) {
+    return new Date(Date.now() - sinceDays * 86_400_000).toISOString();
+  }
+  return null;
+}
+
+async function readInbox(
+  page: PlaywrightPage,
+  params: { limit?: number; sinceDate?: string | null; sinceDays?: number | null; timeout?: number },
+): Promise<ConnectorOutput> {
   const start = Date.now();
   const limit = params.limit ?? 10;
   const timeout = params.timeout ?? DEFAULT_TIMEOUT;
+  const effectiveSince = resolveSinceDate(params.sinceDate, params.sinceDays);
 
   await page.goto(OUTLOOK_INBOX_URL, { timeout });
   await page.waitForSelector(SEL.inboxList, { timeout });
 
-  const emails = await page.evaluate(makeInboxScript(limit)) as Array<{
-    index: number; subject: string; from: string; preview: string; hasAttachment: boolean; timestamp: string;
-  }>;
+  const rawEmails = await page.evaluate(makeInboxScript(limit)) as InboxEmail[];
+  const { kept, newestTimestamp } = filterEmailsSince(rawEmails, effectiveSince ?? undefined);
 
   return {
     success: true,
     data: {
-      totalEmails: emails.length,
-      emails,
-      emailsWithAttachments: emails.filter(e => e.hasAttachment).length,
+      totalEmails: kept.length,
+      emails: kept,
+      emailsWithAttachments: kept.filter(e => e.hasAttachment).length,
+      newestTimestamp,
+      sinceDate: effectiveSince,
+      totalBeforeFilter: rawEmails.length,
     },
     duration: Date.now() - start,
   };
@@ -241,9 +309,27 @@ async function searchEmails(page: PlaywrightPage, params: { query: string; limit
 const ACTIONS: ConnectorAction[] = [
   {
     name: 'read-inbox',
-    description: 'Fetch recent emails from Outlook.com inbox',
-    inputSchema: { type: 'object', properties: { limit: { type: 'number' }, timeout: { type: 'number' } } },
-    outputSchema: { type: 'object', properties: { totalEmails: { type: 'number' }, emails: { type: 'array' }, emailsWithAttachments: { type: 'number' } } },
+    description: 'Fetch recent emails from Outlook.com inbox, optionally filtered by sinceDate',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number' },
+        sinceDate: { type: 'string', description: 'ISO datetime — only return emails at or after this moment' },
+        sinceDays: { type: 'number', description: 'Fallback when sinceDate is absent — filter to emails newer than N days ago' },
+        timeout: { type: 'number' },
+      },
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        totalEmails: { type: 'number' },
+        emails: { type: 'array' },
+        emailsWithAttachments: { type: 'number' },
+        newestTimestamp: { type: 'string' },
+        sinceDate: { type: 'string' },
+        totalBeforeFilter: { type: 'number' },
+      },
+    },
   },
   {
     name: 'read-email',
@@ -336,7 +422,7 @@ export function createLocalOutlookConnector(): SpellConnector {
 
         switch (action) {
           case 'read-inbox':
-            return await readInbox(page, params as { limit?: number; timeout?: number });
+            return await readInbox(page, params as { limit?: number; sinceDate?: string | null; sinceDays?: number | null; timeout?: number });
           case 'read-email':
             return await readEmail(page, params as { emailIndex: number; timeout?: number });
           case 'download-attachments':

@@ -340,20 +340,30 @@ feature:
 
 ## Spells
 
-MoFlo includes a general-purpose spell engine that executes multi-step automations defined in YAML. Spells can run shell commands, spawn agents, perform memory operations, use conditionals and loops, and chain steps together with dependency ordering.
+### What are spells?
+
+Spells are declarative YAML automations composed of pluggable step commands. They exist because shell scripts drift, ad-hoc prompts aren't reproducible, and CI/CD pipelines are the wrong tool for local automation. A spell is **deterministic** (same inputs → same steps), **reviewable** (a YAML file you read like a recipe), and **replayable** (re-cast it tomorrow and it behaves the same). Spells run from the CLI (`flo spell cast`), from an MCP tool call inside your AI client, or on a schedule.
+
+### How do they work?
+
+Each cast goes through the same lifecycle:
+
+1. **Parse & validate** — YAML is parsed and every step's `config` is checked against its command's schema.
+2. **Resolve capabilities** — every step declares what it needs (`shell`, `network`, `fs:read`, `fs:write`, `memory`, `credentials`, `browser`, `agent`). Undeclared access is rejected before execution.
+3. **Execute the step graph** — steps run sequentially by default, or in parallel groups, with `depends_on` for ordering and `condition`/`loop` for flow control.
+4. **Outputs flow forward** — any step can reference a prior step's output as `{stepId.field}`, so later steps can consume earlier results.
+5. **Persistence** — memory writes, artifacts, and per-step logs persist between runs; pause/resume and dry-run are supported.
 
 ```bash
 flo spell cast -n development            # Cast a named spell
 flo spell cast -f ./my-spell.yaml        # Cast from a file
+flo spell cast -n sa --dry-run           # Validate without casting
 flo spell list                           # List available spells and recent runs
-flo spell validate -f ./spell.yaml       # Validate a definition without casting it
 flo spell grimoire list                  # Browse built-in spell templates
 flo spell schedule list                  # List scheduled spells
 ```
 
 ### Defining spells
-
-Spells are YAML files with steps that run sequentially or in parallel:
 
 ```yaml
 name: my-spell
@@ -367,7 +377,37 @@ steps:
     depends_on: [lint, test]
 ```
 
-Steps support shell commands (`bash`), agent spawns, memory reads/writes, conditionals, loops, and parallel execution groups. For the full spell definition format, see [docs/SPELLS.md](docs/SPELLS.md).
+Steps support shell (`bash`), agent spawns, memory reads/writes, conditionals, loops, parallel groups, HTTP/IMAP/Slack/MCP connectors, and more. See [docs/SPELLS.md](docs/SPELLS.md) for the full schema.
+
+### Sandboxing and security
+
+Spells run with **least-privilege access**. Each step command declares the capabilities it needs (`shell`, `net`, `fs:read`, `fs:write`, `memory`, `credentials`, `browser`, `agent`), and the runner blocks any undeclared access. Spell authors can further restrict capabilities per step — e.g. `fs:read: ["./config/"]` or `shell: ["cat", "jq"]` — but never expand them.
+
+Bash steps also run inside an OS sandbox when one is available. MoFlo auto-selects the best tier installed on your machine:
+
+| Tier | Platform | Isolation |
+|------|----------|-----------|
+| Docker | all | Container, strictest |
+| bwrap | Linux | User namespaces |
+| sandbox-exec | macOS | Apple seatbelt profile |
+| none | fallback | Capability-only enforcement |
+
+The sandbox is `network-off` by default; a step must explicitly declare `net` to reach the outside world. Credentials referenced as `{credentials.X}` are resolved from the encrypted credential store, masked in logs, and never written to disk. A destructive-pattern checker refuses to run bash commands that look like `rm -rf /`, unscoped `git push --force`, and similar footguns. See [docs/SPELL-SANDBOXING.md](docs/SPELL-SANDBOXING.md) for the full model.
+
+### Reusability
+
+You interact with spells at three tiers:
+
+1. **Shipped spells** — bundled with MoFlo and ready to cast. Browse them with `flo spell grimoire list`.
+2. **User spells** — YAML files you drop in `.claude/spells/`. Override the location in `moflo.yaml`:
+   ```yaml
+   spells:
+     userDirs:
+       - .claude/spells
+       - my/project/spells
+   ```
+   A user spell with the same `name` as a shipped one wins — that's how you customize a shipped spell without forking.
+3. **Custom step commands and connectors** — drop TypeScript/JavaScript files in `.claude/spells/steps/` (new step types) and `.claude/spells/connectors/` (new connectors). They're auto-discovered at startup. Connectors that wrap heavy SDKs (IMAP, MCP) declare those SDKs as `optionalDependencies`; install them only if your spells use them.
 
 ### Building spells with the `/spell-builder` skill
 

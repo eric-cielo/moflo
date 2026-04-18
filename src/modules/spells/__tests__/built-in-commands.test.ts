@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { createRequire } from 'node:module';
 import { agentCommand } from '../src/commands/agent-command.js';
 import { bashCommand } from '../src/commands/bash-command.js';
 import { conditionCommand } from '../src/commands/condition-command.js';
@@ -19,15 +20,31 @@ import type { MemoryAccessor } from '../src/types/step-command.types.js';
 import { CapabilityGateway } from '../src/core/capability-gateway.js';
 import { createMockContext as createContext } from './helpers.js';
 
+/**
+ * Some browser tests assert the "Playwright not installed" error path.
+ * When Playwright is actually installed in the dev environment (e.g. after
+ * running the outlook spell), those assertions fail. Skip them in that case —
+ * the code path under test cannot fire.
+ */
+const playwrightInstalled = (() => {
+  try {
+    createRequire(import.meta.url).resolve('playwright');
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const itWithoutPlaywright = playwrightInstalled ? it.skip : it;
+
 // ============================================================================
 // Registry
 // ============================================================================
 
 describe('builtinCommands', () => {
-  it('should have all 11 commands', () => {
-    expect(builtinCommands).toHaveLength(11);
+  it('should have all 15 commands', () => {
+    expect(builtinCommands).toHaveLength(15);
     const types = builtinCommands.map(c => c.type);
-    expect(types).toEqual(['agent', 'bash', 'condition', 'prompt', 'memory', 'wait', 'loop', 'browser', 'github', 'parallel', 'outlook']);
+    expect(types).toEqual(['agent', 'bash', 'condition', 'prompt', 'memory', 'wait', 'loop', 'browser', 'github', 'parallel', 'outlook', 'slack', 'imap', 'mcp', 'graph']);
   });
 
   it('should have unique types', () => {
@@ -643,7 +660,7 @@ describe('browserCommand', () => {
 
   // --- Execution (Playwright not installed) ---
 
-  it('should fail execution with Playwright install instructions', async () => {
+  itWithoutPlaywright('should fail execution with Playwright install instructions', async () => {
     const output = await browserCommand.execute(
       { actions: [{ action: 'open', url: 'https://example.com' }] },
       createContext(),
@@ -683,7 +700,7 @@ describe('browserCommand', () => {
     expect(output.error).toContain('net');
   });
 
-  it('should allow open to URL within net scope', async () => {
+  itWithoutPlaywright('should allow open to URL within net scope', async () => {
     const caps = [
       { type: 'browser' as const },
       { type: 'net' as const, scope: ['https://allowed.com'] },
@@ -754,7 +771,7 @@ describe('browserCommand', () => {
     expect(output.error).toContain('browser:evaluate');
   });
 
-  it('should allow evaluate with browser:evaluate capability', async () => {
+  itWithoutPlaywright('should allow evaluate with browser:evaluate capability', async () => {
     const ctx = createContext({
       effectiveCaps: [{ type: 'browser' }, { type: 'net' }, { type: 'browser:evaluate' }],
     });
