@@ -50,6 +50,73 @@ const STEP_COLUMNS = [
   { key: 'error', header: 'Error', width: 30, format: (v: unknown) => v ? String(v) : '' },
 ];
 
+/**
+ * Coerce a key=value string tail into a typed JS value.
+ * - Literal `true`/`false` → boolean
+ * - Finite numeric strings → number
+ * - Strings that parse as JSON (arrays/objects) → parsed value
+ * - Otherwise → raw string
+ */
+export function coerceArgValue(raw: string): unknown {
+  const trimmed = raw.trim();
+  if (trimmed === 'true') return true;
+  if (trimmed === 'false') return false;
+  if (trimmed === 'null') return null;
+  if (trimmed !== '' && !isNaN(Number(trimmed)) && Number.isFinite(Number(trimmed))) {
+    return Number(trimmed);
+  }
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}'))
+      || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try { return JSON.parse(trimmed); } catch { /* fall through */ }
+  }
+  return raw;
+}
+
+/**
+ * Resolve spell arguments from the `--args <json>` flag (object) and the
+ * repeatable `--arg key=value` flag. Key=value overrides take precedence
+ * over JSON keys when both are present.
+ */
+export function resolveSpellArgs(
+  jsonFlag: unknown,
+  pairsFlag: unknown,
+): { args: Record<string, unknown>; error?: string } {
+  const args: Record<string, unknown> = {};
+
+  if (typeof jsonFlag === 'string' && jsonFlag.trim()) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonFlag);
+    } catch (err) {
+      return { args, error: `Invalid JSON in --args: ${(err as Error).message}` };
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return { args, error: '--args must be a JSON object (e.g. \'{"maxEmails":50}\')' };
+    }
+    Object.assign(args, parsed as Record<string, unknown>);
+  }
+
+  // The CLI parser returns a string for a single --arg and an array for
+  // repeated ones; normalize to an array of strings.
+  const pairs: string[] = Array.isArray(pairsFlag)
+    ? pairsFlag.map(String)
+    : typeof pairsFlag === 'string'
+      ? [pairsFlag]
+      : [];
+
+  for (const pair of pairs) {
+    const eqIdx = pair.indexOf('=');
+    if (eqIdx <= 0) {
+      return { args, error: `--arg must be key=value, got: "${pair}"` };
+    }
+    const key = pair.slice(0, eqIdx).trim();
+    if (!key) return { args, error: `--arg key is empty in: "${pair}"` };
+    args[key] = coerceArgValue(pair.slice(eqIdx + 1));
+  }
+
+  return { args };
+}
+
 function printSpellErrors(errors: SpellErrorResponse[]): void {
   if (errors.length === 0) return;
   output.writeln();
@@ -84,17 +151,37 @@ const castCommand: Command = {
       type: 'boolean',
       default: false,
     },
+    {
+      name: 'args',
+      description: 'Spell arguments as JSON object, e.g. \'{"maxEmails":50,"headless":false}\'',
+      type: 'string',
+    },
+    {
+      name: 'arg',
+      description: 'Single key=value spell argument (repeatable). Numeric/boolean strings are coerced.',
+      type: 'array',
+    },
   ],
   examples: [
     { command: 'moflo spell cast -n development', description: 'Cast spell by name' },
     { command: 'moflo spell cast -f ./spell.yaml', description: 'Cast from file' },
     { command: 'moflo spell cast -n sa --dry-run', description: 'Validate via abbreviation' },
+    { command: "moflo spell cast -n oap --args '{\"maxEmails\":50}'", description: 'Pass spell arguments as JSON' },
+    { command: 'moflo spell cast -n oap --arg headless=false --arg maxEmails=50', description: 'Pass arguments as key=value pairs' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = (ctx.flags.name as string) || ctx.args[0];
     const file = ctx.flags.file as string;
     const dryRun = ctx.flags.dryRun as boolean;
-    const args = (ctx.flags.args as unknown as Record<string, unknown>) ?? {};
+
+    const { args, error: argsError } = resolveSpellArgs(
+      ctx.flags.args,
+      ctx.flags.arg,
+    );
+    if (argsError) {
+      output.printError(argsError);
+      return { success: false, exitCode: 1 };
+    }
 
     if (!name && !file) {
       // Interactive: list available spells and let user pick
@@ -105,7 +192,7 @@ const castCommand: Command = {
           const defs = listResult.definitions ?? [];
           if (defs.length === 0) {
             output.printInfo('No spell definitions found in the grimoire.');
-            output.printInfo('Add YAML/JSON files to workflows/ or .claude/workflows/ in your project.');
+            output.printInfo('Add YAML/JSON files to .claude/spells/ in your project.');
             return { success: false, exitCode: 1 };
           }
 
@@ -298,7 +385,7 @@ const listCommand: Command = {
         if (result.registryError) {
           output.printError(`Grimoire: ${result.registryError}`);
         } else {
-          output.printInfo('No spell definitions found. Add YAML/JSON files to workflows/ or .claude/workflows/');
+          output.printInfo('No spell definitions found. Add YAML/JSON files to .claude/spells/');
         }
       }
 
@@ -467,7 +554,7 @@ const templateCommand: Command = {
 
           if (result.templates.length === 0) {
             output.printInfo('No spell definitions found.');
-            output.printInfo('Add YAML/JSON files to workflows/ or .claude/workflows/ in your project.');
+            output.printInfo('Add YAML/JSON files to .claude/spells/ in your project.');
             return { success: true, data: result };
           }
 

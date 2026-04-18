@@ -98,6 +98,11 @@ export interface MofloConfig {
     default_strategy: 'single-branch' | 'auto-merge';
   };
 
+  spells: {
+    userDirs: string[];
+    shippedDir?: string;
+  };
+
   status_line: {
     enabled: boolean;
     branding: string;
@@ -187,6 +192,9 @@ const DEFAULT_CONFIG: MofloConfig = {
   epic: {
     admin_merge: true,
     default_strategy: 'single-branch',
+  },
+  spells: {
+    userDirs: ['.claude/spells'],
   },
   status_line: {
     enabled: true,
@@ -297,6 +305,20 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
     epic: {
       admin_merge: raw.epic?.admin_merge ?? raw.epic?.adminMerge ?? DEFAULT_CONFIG.epic.admin_merge,
       default_strategy: raw.epic?.default_strategy ?? raw.epic?.defaultStrategy ?? DEFAULT_CONFIG.epic.default_strategy,
+    },
+    spells: {
+      // Accept camelCase (`userDirs`) or snake_case (`user_dirs`) to match
+      // the rest of this file. Empty or absent → default, so a consumer
+      // can't accidentally disable user-spell discovery with `userDirs: []`.
+      userDirs: (() => {
+        const raw_dirs = raw.spells?.userDirs ?? raw.spells?.user_dirs;
+        return Array.isArray(raw_dirs) && raw_dirs.length > 0
+          ? raw_dirs.map((d: unknown) => String(d))
+          : DEFAULT_CONFIG.spells.userDirs;
+      })(),
+      shippedDir: typeof (raw.spells?.shippedDir ?? raw.spells?.shipped_dir) === 'string'
+        ? String(raw.spells?.shippedDir ?? raw.spells?.shipped_dir)
+        : undefined,
     },
     status_line: {
       enabled: raw.status_line?.enabled ?? raw.statusLine?.enabled ?? DEFAULT_CONFIG.status_line.enabled,
@@ -480,6 +502,14 @@ sandbox:
 epic:
   admin_merge: true              # Use --admin flag on gh pr merge (bypasses branch protection)
   default_strategy: single-branch  # single-branch (one PR) or auto-merge (per-story PRs)
+
+# Spell engine discovery
+# userDirs: directories to scan for user-authored spells (YAML/JSON).
+# Paths are resolved relative to the project root.
+# shippedDir: override the bundled spell directory (rarely needed; mainly for tests).
+spells:
+  userDirs:
+    - .claude/spells               # Canonical user spell directory
 
 # Status line items (show/hide individual sections)
 status_line:

@@ -19,6 +19,7 @@ import {
   type Grimoire,
 } from '../services/engine-loader.js';
 import { findProjectRoot } from '../services/project-root.js';
+import { loadMofloConfig } from '../config/moflo-config.js';
 
 
 // ============================================================================
@@ -122,19 +123,20 @@ async function getRegistry(): Promise<Grimoire> {
   pendingRegistry = (async () => {
     try {
       const engine = await loadSpellEngine();
-      const shippedDir = resolve(
+      const projectRoot = findProjectRoot();
+      const config = loadMofloConfig(projectRoot);
+
+      const defaultShippedDir = resolve(
         dirname(fileURLToPath(import.meta.url)),
         '../../../../modules/spells/definitions',
       );
+      const shippedDir = config.spells.shippedDir
+        ? resolve(projectRoot, config.spells.shippedDir)
+        : defaultShippedDir;
 
-      const projectRoot = findProjectRoot();
-      registryInstance = new engine.Grimoire({
-        shippedDir,
-        userDirs: [
-          resolve(projectRoot, 'workflows'),
-          resolve(projectRoot, '.claude/workflows'),
-        ],
-      });
+      const userDirs = config.spells.userDirs.map(d => resolve(projectRoot, d));
+
+      registryInstance = new engine.Grimoire({ shippedDir, userDirs });
 
       return registryInstance;
     } finally {

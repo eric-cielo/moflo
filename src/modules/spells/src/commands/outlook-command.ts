@@ -43,6 +43,8 @@ export type OutlookAction = (typeof OUTLOOK_ACTIONS)[number];
 export interface OutlookStepConfig extends StepConfig {
   readonly action: OutlookAction;
   readonly limit?: number;
+  readonly sinceDate?: string | null;
+  readonly sinceDays?: number | null;
   readonly emailIndex?: number;
   readonly downloadDir?: string;
   readonly to?: string;
@@ -94,6 +96,8 @@ export const outlookCommand: StepCommand<OutlookStepConfig> = {
         description: 'Outlook action: read-inbox, read-email, download-attachments, send-email, search',
       },
       limit: { type: 'number', description: 'Max emails (read-inbox, search). Default: 10', default: 10 },
+      sinceDate: { type: 'string', description: 'ISO datetime — read-inbox only returns emails at/after this moment' },
+      sinceDays: { type: 'number', description: 'Fallback when sinceDate is empty — filter to last N days' },
       emailIndex: { type: 'number', description: 'Email index (0-based) for read-email, download-attachments' },
       downloadDir: { type: 'string', description: 'Attachment download directory', default: '~/Downloads/attachments' },
       to: { type: 'string', description: 'Recipient email (send-email)' },
@@ -146,6 +150,8 @@ export const outlookCommand: StepCommand<OutlookStepConfig> = {
     if (context.tools?.has('local-outlook')) {
       return context.tools.execute('local-outlook', config.action, {
         limit: config.limit,
+        sinceDate: config.sinceDate,
+        sinceDays: config.sinceDays,
         emailIndex: config.emailIndex,
         downloadDir: config.downloadDir,
         to: config.to,
@@ -168,6 +174,8 @@ export const outlookCommand: StepCommand<OutlookStepConfig> = {
     try {
       return await connector.execute(config.action, {
         limit: config.limit,
+        sinceDate: config.sinceDate,
+        sinceDays: config.sinceDays,
         emailIndex: config.emailIndex,
         downloadDir: config.downloadDir,
         to: config.to,
@@ -183,9 +191,11 @@ export const outlookCommand: StepCommand<OutlookStepConfig> = {
 
   describeOutputs(): OutputDescriptor[] {
     return [
-      { name: 'totalEmails', type: 'number', description: 'Number of emails returned' },
+      { name: 'totalEmails', type: 'number', description: 'Number of emails returned after sinceDate filter' },
       { name: 'emails', type: 'array', description: 'Array of email objects' },
       { name: 'emailsWithAttachments', type: 'number', description: 'Count of emails with attachments' },
+      { name: 'newestTimestamp', type: 'string', description: 'ISO timestamp of newest email seen — persist for next run' },
+      { name: 'totalBeforeFilter', type: 'number', description: 'Raw email count before sinceDate filter' },
       { name: 'downloaded', type: 'array', description: 'Paths of downloaded attachments' },
       { name: 'count', type: 'number', description: 'Number of attachments downloaded' },
       { name: 'sent', type: 'boolean', description: 'Whether email was sent (send-email)' },

@@ -1,0 +1,30 @@
+name: workiq-ping
+abbreviation: wqp
+description: >
+  Smoke test for the mcp step. Spawns the Work IQ MCP server, lists its
+  available tools, and posts the count to Slack. Proves the spell engine
+  can call any stdio MCP server.
+version: "1.0"
+mofloLevel: memory
+
+steps:
+  - id: list-tools
+    type: mcp
+    config:
+      action: list-tools
+      server: workiq
+      timeout: 60000
+      servers:
+        workiq:
+          command: npx
+          args: ["-y", "@microsoft/workiq", "mcp"]
+    output: tools
+
+  - id: notify-slack
+    type: slack
+    config:
+      action: post-webhook
+      text: |
+        ✅ Work IQ MCP connectivity test
+        Tools discovered: {tools.server}
+        Count: (see stdout)

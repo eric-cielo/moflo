@@ -427,15 +427,14 @@ Custom steps are full participants in the spell engine: they receive interpolate
 
 ### Where to Put Custom Steps
 
-Place your step files in one of these directories:
+Place your step files in:
 
 ```
 your-project/
-  workflows/steps/          # Project-level custom steps
-  .claude/workflows/steps/  # Alternative location
+  .claude/spells/steps/     # Canonical location for custom step commands
 ```
 
-The engine scans these directories for `.js`, `.ts`, `.mjs`, `.mts`, `.yaml`, and `.yml` files. Each valid file becomes a new step type you can use in any spell.
+The engine scans this directory for `.js`, `.ts`, `.mjs`, `.mts`, `.yaml`, and `.yml` files. Each valid file becomes a new step type you can use in any spell.
 
 ### Creating a JavaScript Step
 
@@ -596,7 +595,7 @@ Pass `stepDirs` and `projectRoot` to `createRunner()` to enable custom step disc
 import { createRunner } from '@moflo/workflows';
 
 const runner = createRunner({
-  stepDirs: ['workflows/steps/', '.claude/workflows/steps/'],
+  stepDirs: ['.claude/spells/steps/'],
   projectRoot: process.cwd(),  // Enables npm moflo-step-* discovery
 });
 ```
@@ -676,18 +675,23 @@ Connectors implement a lifecycle-aware interface with named actions:
 
 ```
 your-project/
-  workflows/connectors/          # Project-level custom connectors
-  .claude/workflows/connectors/  # Alternative location
+  .claude/spells/connectors/     # Canonical location for custom connectors
 ```
 
 The connector registry scans for `.js`, `.ts`, `.mjs`, and `.mts` files.
+
+> **Heavy-SDK connectors** — the bundled `imap` and `mcp` connectors declare
+> `imapflow`, `mailparser`, and `@modelcontextprotocol/sdk` as
+> `optionalDependencies`. If your spell uses those connectors, install the
+> peers: `npm i imapflow mailparser @modelcontextprotocol/sdk`. Connectors
+> that only use `fetch` (like `slack` and `graph`) need no extra installs.
 
 ### When to Create a Connector vs a Step
 
 | You want to... | Create a... |
 |----------------|-------------|
-| Wrap a CLI or API that multiple steps will share | **Connector** (`workflows/connectors/`) |
-| Define a specific spell operation | **Step** (`workflows/steps/`) |
+| Wrap a CLI or API that multiple steps will share | **Connector** (`.claude/spells/connectors/`) |
+| Define a specific spell operation | **Step** (`.claude/spells/steps/`) |
 | Combine shell commands into a reusable action | **YAML step** |
 
 A step can use a connector through the spell context's connector accessor — the engine injects registered connectors so steps can call `context.tools.execute('github-cli', 'create-issue', { title: '...' })`.
@@ -870,13 +874,26 @@ The loader checks for `.yaml`, `.yml`, and `.json` files. Invalid files produce 
 
 ### Where to put your spells
 
-By default, user spells live in `.claude/workflows/` or a path you configure in `moflo.yaml`. Create a YAML file there and it's automatically available:
+By default, user spells live in `.claude/spells/`. Create a YAML file there and it's automatically available:
 
 ```
-.claude/workflows/
+.claude/spells/
   deploy.yaml          # Your custom deploy spell
   data-pipeline.yaml   # Your data processing spell
+  steps/               # Custom step commands (optional)
+  connectors/          # Custom connectors (optional)
 ```
+
+Override the location in `moflo.yaml`:
+
+```yaml
+spells:
+  userDirs:
+    - .claude/spells         # Default — add or replace to taste
+    - my/project/spells      # Extra directory
+```
+
+Paths are resolved relative to the project root. An empty or missing `userDirs` falls back to the default `[.claude/spells]`.
 
 ## Using the MCP Tools
 
