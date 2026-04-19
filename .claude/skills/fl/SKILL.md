@@ -13,13 +13,11 @@ Research, create tickets for, and execute GitHub issues automatically.
 ## Usage
 
 ```
-/flo <issue-number>                   # Full spell in NORMAL mode (default)
-/flo -t <issue-number>                # Ticket only: research and update ticket, then STOP
-/flo -t <title>                       # Create a NEW ticket with description, acceptance criteria, test cases
-/flo --ticket <issue-number|title>    # Same as -t
-/flo -r <issue-number>                # Research only: analyze issue, output findings
-/flo --research <issue-number>        # Same as -r
-/flo --epic-branch <branch> <issue>   # Epic mode: commit to existing branch, skip branch creation and PR
+/flo <issue-number>                        # Full spell in NORMAL mode (default)
+/flo -t | --ticket <issue-number>          # Ticket only: research and update existing ticket, then STOP
+/flo -t | --ticket <title>                 # Create a NEW ticket with description, acceptance criteria, test cases
+/flo -r | --research <issue-number>        # Research only: analyze issue, output findings
+/flo --epic-branch <branch> <issue>        # Epic mode: commit to existing branch, skip branch creation and PR
 ```
 
 Also available as `/fl` (shorthand alias).
@@ -27,22 +25,18 @@ Also available as `/fl` (shorthand alias).
 ### Spell Engine Mode (-wf)
 
 ```
-/flo -wf sa ./src            # Run security-audit spell with target=./src
-/flo -wf security-audit ./src  # Same, using full name
-/flo -wf list                # List available spells
-/flo -wf info sa             # Show spell details, arguments, steps
+/flo -wf <name|abbreviation> [args]   # Run a spell (e.g. `-wf sa ./src` or `-wf security-audit ./src`)
+/flo -wf list                          # List available spells
+/flo -wf info <name|abbreviation>      # Show spell details, arguments, steps
 ```
 
 ### Execution Mode (how work is done)
 
 ```
 /flo 123                              # NORMAL mode (default) - single-agent execution
-/flo -s 123                           # SWARM mode - multi-agent coordination
-/flo --swarm 123                      # Same as -s
-/flo -h 123                           # HIVE-MIND mode - consensus-based coordination
-/flo --hive 123                       # Same as -h
-/flo -n 123                           # NORMAL mode - single Claude, no agents
-/flo --normal 123                     # Same as -n
+/flo -s | --swarm 123                 # SWARM mode - multi-agent coordination via Task tool
+/flo -h | --hive 123                  # HIVE-MIND mode - consensus-based coordination
+/flo -n | --normal 123                # NORMAL mode - explicit single-Claude, no agents
 ```
 
 ### Epic Handling
@@ -58,13 +52,7 @@ Also available as `/fl` (shorthand alias).
 - Body has numbered issue references: `1. #123`
 - The issue has GitHub sub-issues (via `subIssues` API field)
 
-**Epic processing:** When an epic is detected, use the same logic as `flo epic run`:
-1. Extract stories using detection from `src/modules/cli/src/epic/detection.ts`
-2. Determine strategy from `moflo.yaml` config (`epic.default_strategy`), defaulting to `single-branch`
-3. For **single-branch**: create shared `epic/<number>-<slug>` branch, process each story via `/flo --epic-branch <branch> <issue>`, then create one consolidated PR
-4. For **auto-merge**: process each story via `/flo <issue>`, merge its PR, then proceed to next
-
-Individual stories within an epic are still processed via `/flo --epic-branch <branch> <issue>` (for single-branch) or `/flo <issue>` (for auto-merge).
+When an epic is detected, processing runs inline (no shell-out) using `flo epic run` logic. **Read `./epic.md` before proceeding** — it has the strategy selection, branch handling, and checklist tracking details.
 
 ## Workflow Overview
 
@@ -96,330 +84,19 @@ PR+Done:     Create PR, update issue status
 | **SWARM** (-s) | Multi-agent via Task tool: researcher, coder, tester, reviewer |
 | **HIVE-MIND** (-h) | Consensus-based coordination for architecture decisions |
 
-## Phase 1: Research (-r or default first step)
-
-### 1.1 Fetch Issue Details
-```bash
-gh issue view <issue-number> --json number,title,body,labels,state,assignees,comments,milestone
-```
-
-### 1.2 Check Ticket Status
-Look for `## Acceptance Criteria` marker in issue body.
-- **If present**: Ticket already enhanced, skip to execute or confirm
-- **If absent**: Proceed with research and ticket update
-
-### 1.3 Search Memory FIRST
-ALWAYS search memory BEFORE reading guidance or docs files.
-Memory has file paths, context, and patterns - often all you need.
-Only read guidance files if memory search returns zero relevant results.
-
-```bash
-flo memory search --query "<issue title keywords>" --namespace patterns
-flo memory search --query "<domain keywords>" --namespace guidance
-```
-
-Or via MCP: `mcp__moflo__memory_search`
-
-### 1.4 Read Guidance Docs (ONLY if memory insufficient)
-**Only if memory search returned < 3 relevant results**, read guidance files:
-- Bug -> testing patterns, error handling
-- Feature -> domain model, architecture
-- UI -> frontend patterns, components
-
-### 1.5 Research Codebase
-Use Task tool with Explore agent to find:
-- Affected files and their current state
-- Related code and dependencies
-- Existing patterns to follow
-- Test coverage gaps
-
-## Phase 2: Ticket (-t creates or updates a ticket)
-
-When given an issue number, `-t` enhances the existing ticket. When given a title (non-numeric argument), `-t` creates a new GitHub issue. Either way, the ticket MUST include all three of the following sections.
-
-### 2.0 Complexity Assessment (MANDATORY before building ticket)
-
-After research, assess the complexity of the work. This determines whether the issue stays as a single ticket or gets promoted to an epic with sub-issues.
-
-**Complexity Signals — count how many apply:**
-
-| Signal | Weight | Example |
-|--------|--------|---------|
-| Multiple files changed (5+) | +2 | Touches models, API, tests, docs, config |
-| New module or package | +2 | Requires new directory structure |
-| Cross-cutting concern | +2 | Auth, logging, error handling across layers |
-| Database/schema changes | +2 | Migrations, new tables, index changes |
-| Multiple independent work streams | +3 | Frontend + backend + infra changes |
-| External API integration | +1 | Third-party service, webhook, OAuth |
-| Breaking change / migration | +2 | Requires deprecation, data migration |
-| Significant test surface | +1 | Needs 10+ new test cases across categories |
-| Security implications | +1 | Authentication, authorization, input validation |
-| UI + backend changes together | +2 | Full-stack feature spanning layers |
-
-**Complexity Thresholds:**
-
-| Score | Classification | Action |
-|-------|---------------|--------|
-| 0–3 | **Simple** | Single ticket — proceed normally |
-| 4–6 | **Moderate** | Single ticket — flag in description that it may benefit from splitting |
-| 7+ | **Complex** | **PROMOTE TO EPIC** — decompose into sub-issues |
-
-**When promoting to epic:**
-
-1. Decompose the work into 2–6 independent, shippable stories
-2. Each story should be completable in a single PR
-3. Stories should have clear boundaries (one concern per story)
-4. Order stories by dependency (independent ones first)
-5. Create each story as a GitHub issue with its own Description, Acceptance Criteria, and Test Cases
-6. Create or convert the parent issue into an epic with a `## Stories` checklist
-
-```javascript
-// Complexity assessment pseudocode
-function assessComplexity(research) {
-  let score = 0;
-  if (research.affectedFiles.length >= 5) score += 2;
-  if (research.requiresNewModule) score += 2;
-  if (research.crossCutting) score += 2;
-  if (research.schemaChanges) score += 2;
-  if (research.independentWorkStreams >= 2) score += 3;
-  if (research.externalAPIs) score += 1;
-  if (research.breakingChanges) score += 2;
-  if (research.estimatedTestCases >= 10) score += 1;
-  if (research.securityImplications) score += 1;
-  if (research.fullStack) score += 2;
-  return score;
-}
-```
-
-### 2.0.1 Epic Decomposition (when score >= 7)
-
-When complexity warrants an epic, decompose into stories:
-
-```bash
-# Step 1: Create each sub-issue
-gh issue create --title "Story: <story-title>" --body "<## Description + ## Acceptance Criteria + ## Suggested Test Cases>" --label "story"
-# Capture the new issue number from output
-
-# Step 2: Repeat for all stories (2-6 stories typically)
-
-# Step 3: Build the epic body with checklist referencing ALL story issue numbers
-# Step 4: If updating an existing issue, convert it to epic:
-gh issue edit <parent-number> --add-label "epic" --body "<epic body with ## Stories checklist>"
-
-# Step 5: If creating new, create the epic:
-gh issue create --title "Epic: <title>" --label "epic" --body "<epic body>"
-```
-
-**Epic body format (MANDATORY — this is how tracking works):**
-
-```markdown
-## Overview
-<High-level description of the epic goal>
-
-## Stories
-
-- [ ] #<story-1-number> <story-1-title>
-- [ ] #<story-2-number> <story-2-title>
-- [ ] #<story-3-number> <story-3-title>
-
-## Complexity Assessment
-Score: <N>/20 — <Simple|Moderate|Complex>
-Signals: <list of signals that triggered>
-```
-
-The `## Stories` checklist with `- [ ] #<number>` format is **mandatory** — this is what enables:
-- Epic detection by the `/flo` skill
-- Story extraction for sequential processing
-- Progress tracking via checked/unchecked items
-
-### 2.1 Build Ticket Content
-Compile research into a well-structured ticket. The issue MUST include all three of the following sections:
-
-**Detailed Description** — Clear, thorough explanation of what needs to be done and why. Include:
-- Root cause analysis (bugs) or approach rationale (features)
-- Impact and risk factors
-- Affected files (with line numbers), new files, deletions
-- Implementation plan: numbered steps with clear actions, dependencies, decision points
-
-**Acceptance Criteria** — Specific, testable conditions that must be true for this issue to be considered complete. Write as a checklist:
-- [ ] Criterion 1 (e.g., "API returns 200 with valid token")
-- [ ] Criterion 2 (e.g., "Error message shown when input exceeds 255 chars")
-- [ ] ...each criterion must be independently verifiable
-
-**Suggested Test Cases** — Concrete test scenarios covering happy path, edge cases, and error conditions:
-- Test case 1: description, input, expected output
-- Test case 2: description, input, expected output
-- Include unit, integration, and E2E test suggestions as appropriate
-
-### 2.2 Create or Update GitHub Issue
-
-**If issue number was given** (update existing):
-```bash
-gh issue edit <issue-number> --body "<original body + ## Description + ## Acceptance Criteria + ## Suggested Test Cases>"
-gh issue comment <issue-number> --body "Ticket enhanced with description, acceptance criteria, and test cases. Ready for execution."
-```
-
-**If title was given** (create new):
-```bash
-gh issue create --title "<title>" --body "<## Description + ## Acceptance Criteria + ## Suggested Test Cases>"
-```
-Print the new issue URL so the user can see it.
-
-## Phase 3: Execute (default, runs automatically after ticket)
-
-### 3.1 Assign Issue and Update Status
-```bash
-gh issue edit <issue-number> --add-assignee @me
-gh issue edit <issue-number> --add-label "in-progress"
-```
-
-### 3.2 Create Branch
-
-**If `--epic-branch <branch>` was passed** (epic mode):
-Skip branch creation entirely. The epic orchestrator has already created and checked out the shared epic branch. Just verify you're on it:
-```bash
-git branch --show-current  # Should match the epic branch name
-```
-
-**Otherwise** (normal mode):
-```bash
-git checkout main && git pull origin main
-git checkout -b <type>/<issue-number>-<short-desc>
-```
-Types: `feature/`, `fix/`, `refactor/`, `docs/`
-
-### 3.3 Implement
-Follow the implementation plan from the ticket. No prompts - execute all steps.
-
-## Phase 4: Testing (MANDATORY GATE)
-
-This is NOT optional. ALL applicable test types must pass for the change type.
-WORKFLOW STOPS HERE until tests pass. No shortcuts. No exceptions.
-
-### 4.1 Write and Run Tests
-Write unit, integration, and E2E tests as appropriate for the change type.
-Follow the project's established test style, runner, and patterns. If no existing tests or test guidance is present, choose the best options for the project's language and stack, taking compatibility with existing dependencies into account.
-
-### 4.2 Test Auto-Fix Loop
-If any tests fail, enter the auto-fix loop (max 3 retries OR 10 minutes):
-1. Run all tests
-2. If ALL pass -> proceed to simplification
-3. If ANY fail: analyze failure, fix test or implementation code, retry
-4. If retries exhausted -> STOP and report to user
-
-## Phase 4.5: Code Simplification (MANDATORY)
-
-The built-in /simplify command reviews ALL changed code for:
-- Reuse opportunities and code quality
-- Efficiency improvements
-- Consistency with existing codebase patterns
-- Preserves ALL functionality - no behavior changes
-
-If /simplify makes changes -> re-run tests to confirm nothing broke.
-If re-tests fail -> revert changes, proceed with original code.
-
-## Phase 5: Commit and PR (only after tests pass)
-
-### 5.1 Commit
-```bash
-git add <specific files>
-git commit -m "type(scope): description
-
-Closes #<issue-number>
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
-```
-
-### 5.2 Store Learnings (REQUIRED — gate blocks PR creation until this runs)
-
-Before creating a PR, store what was learned using `mcp__moflo__memory_store`.
-The `check-before-pr` gate will **block** `gh pr create` if this step is skipped.
-
-```
-mcp__moflo__memory_store:
-  key: "pattern:<topic>"
-  namespace: "patterns"
-  value: "<what was learned: files changed, patterns used, decisions made>"
-  tags: ["<relevant-tags>"]
-```
-
-This must happen BEFORE `gh pr create` — not after.
-
-### 5.3 Create PR
-
-**If `--epic-branch` was passed** (epic mode):
-**SKIP PR creation entirely.** The commit from 5.1 (with `Closes #<issue-number>`) is sufficient.
-The epic orchestrator will create a single consolidated PR after all stories complete.
-Also skip pushing — the epic orchestrator handles the final push.
-
-Proceed directly to 5.4 (update issue status only).
-
-**Otherwise** (normal mode):
-```bash
-git push -u origin <branch-name>
-gh pr create --title "type(scope): description" --body "## Summary
-<brief description>
-
-## Changes
-<bullet list>
-
-## Testing
-- [x] Unit tests pass
-- [x] Integration tests pass
-- [x] E2E tests pass
-- [ ] Manual testing done
-
-Closes #<issue-number>"
-```
-
-### 5.4 Update Issue Status
-```bash
-gh issue edit <issue-number> --remove-label "in-progress" --add-label "ready-for-review"
-gh issue comment <issue-number> --body "PR created: <pr-url>"
-```
-
-## Epic Handling
-
-### Unified Epic Processing
-
-When `/flo <issue>` detects an epic, it follows the same orchestration logic as `flo epic run`.
-The `/flo` skill does NOT shell out — it processes the epic inline within the current Claude session,
-following the strategy steps described below. This keeps the full context (memory, guidance, session state)
-available throughout story processing.
-
-Epic detection criteria are listed under **Usage > Epic Handling** above.
-Detection uses `isEpicIssue()` from `src/modules/cli/src/epic/detection.ts`.
-
-### Epic Strategies
-
-| Strategy | Default | Description |
-|----------|---------|-------------|
-| `single-branch` | **Yes** | One shared branch, one commit per story, one PR at the end |
-| `auto-merge` | No | Per-story branches and PRs, each auto-merged before the next story |
-
-Strategy is determined by (in priority order):
-1. CLI flag: `--strategy auto-merge`
-2. Feature definition: `strategy` field in YAML
-3. Config: `epic.default_strategy` in `moflo.yaml`
-4. Default: `single-branch`
-
-### How It Works
-
-The `flo epic run` command:
-1. Fetches the epic issue and validates it
-2. Extracts and orders stories (topological sort for dependencies)
-3. Loads the appropriate spell YAML template
-4. Runs via the spell engine (SpellRunner)
-5. The spell template handles branch creation, story iteration, PR creation, and checklist tracking
-
-Individual stories within an epic are processed via `/flo --epic-branch <branch> <issue>`,
-which the spell engine invokes automatically. The `--epic-branch` flag tells `/flo` to
-commit to the existing branch and skip branch creation and PR creation.
-
-### Epic Checklist Tracking
-
-The spell templates automatically check off stories in the epic body after each commit.
-The checklist state (`[ ]` vs `[x]`) is the **single source of truth** for epic progress.
+## Companion Files (progressive disclosure)
+
+This skill is split across focused files. **You MUST read the relevant companion file before executing that phase or mode** — the details are not repeated here.
+
+| File | Read when |
+|------|-----------|
+| `./phases.md` | Executing any full-run step: Research (Phase 1), Execute (Phase 3), Testing (Phase 4), Simplify (Phase 4.5), Commit/PR (Phase 5) |
+| `./ticket.md` | Running `-t`, or whenever Phase 2 applies (complexity scoring, ticket content, epic promotion) |
+| `./epic.md` | Processing a detected epic (strategies, inline orchestration, checklist tracking) |
+| `./execution-modes.md` | Any `-s` / `--swarm` or `-h` / `--hive` invocation, or the details of NORMAL mode |
+| `./spell-engine.md` | Any `-wf` / `--workflow` invocation (list, info, execute) |
+
+Do not guess at companion content — read the file. This is a hard requirement, not a suggestion.
 
 ## Parse Arguments
 
@@ -537,119 +214,26 @@ if (workflowMode === "spell-engine") {
 
 ### Workflow Modes (what to do)
 
-| Mode | Command | Steps | Stops After |
-|------|---------|-------|-------------|
-| **Full** (default) | `/flo 123` | Research -> Ticket -> Implement -> Test -> Simplify -> PR | PR created |
-| **Epic** | `/flo 42` (epic) | Inline epic processing: extract stories, run each via /flo | All stories complete |
-| **Ticket** | `/flo -t 123` | Research -> Ticket | Issue updated |
-| **Research** | `/flo -r 123` | Research | Findings output |
-| **Workflow** | `/flo -wf sa ./src` | Load registry -> Resolve spell -> Execute with args | Spell complete |
-| **WF List** | `/flo -wf list` | Load registry -> Print all spells | List printed |
-| **WF Info** | `/flo -wf info sa` | Load registry -> Print spell details | Info printed |
+| Mode | Command | Steps | Stops After | Read |
+|------|---------|-------|-------------|------|
+| **Full** (default) | `/flo 123` | Research -> Ticket -> Implement -> Test -> Simplify -> PR | PR created | `./phases.md` + `./ticket.md` |
+| **Epic** | `/flo 42` (epic) | Inline epic processing: extract stories, run each via /flo | All stories complete | `./epic.md` |
+| **Ticket** | `/flo -t 123` | Research -> Ticket | Issue updated | `./ticket.md` |
+| **Research** | `/flo -r 123` | Research | Findings output | `./phases.md` (Phase 1) |
+| **Workflow** | `/flo -wf sa ./src` | Load registry -> Resolve spell -> Execute with args | Spell complete | `./spell-engine.md` |
+| **WF List** | `/flo -wf list` | Load registry -> Print all spells | List printed | `./spell-engine.md` |
+| **WF Info** | `/flo -wf info sa` | Load registry -> Print spell details | Info printed | `./spell-engine.md` |
 
-Execution modes (normal/swarm/hive) are defined in the table under **Workflow Overview > Execution Mode** above.
-
-## Execution Mode Details
-
-### SWARM Mode (-s, --swarm)
-
-When swarm is requested, you MUST use the Task tool to spawn agents. No exceptions.
-
-**Swarm spawns these agents via Task tool:**
-- `researcher` - Analyzes issue, searches memory, finds patterns
-- `coder` - Implements changes following plan
-- `tester` - Writes and runs tests
-- `/simplify` - Built-in command that reviews changed code before PR
-- `reviewer` - Reviews code before PR
-
-**Swarm execution pattern:**
-```javascript
-// 1. Create task list FIRST
-TaskCreate({ subject: "Research issue #123", ... })
-TaskCreate({ subject: "Implement changes", ... })
-TaskCreate({ subject: "Test implementation", ... })
-TaskCreate({ subject: "Run /simplify on changed files", ... })
-TaskCreate({ subject: "Review and PR", ... })
-
-// 2. Init swarm
-Bash("flo swarm init --topology hierarchical --max-agents 8 --strategy specialized")
-
-// 3. Spawn agents with Task tool (run_in_background: true)
-Task({ prompt: "...", subagent_type: "researcher", run_in_background: true })
-Task({ prompt: "...", subagent_type: "coder", run_in_background: true })
-
-// 4. Wait for results, synthesize, continue
-```
-
-### HIVE-MIND Mode (-h, --hive)
-
-Use for consensus-based decisions:
-- Architecture choices
-- Approach tradeoffs
-- Design decisions with multiple valid options
-
-### NORMAL Mode (Default)
-
-Single Claude execution without spawning sub-agents.
-- Still uses Task tool for tracking
-- Still creates tasks for visibility
-- Post-task neural learning hooks still fire
-- Just doesn't spawn multiple agents
-
-### SPELL ENGINE Mode (-wf, --workflow)
-
-When `-wf` is used, the /flo skill switches to the generalized spell engine
-instead of the hardcoded coding process. This uses the `Grimoire` from
-`@moflo/spells` to resolve and run YAML/JSON spell definitions.
-
-**Scan directories** (in priority order):
-1. Shipped: `src/modules/spells/definitions/` (bundled with moflo)
-2. User: `spells/` and `.claude/spells/` (project-level overrides)
-
-**Registry behavior:**
-- Each spell file defines `name` and optional `abbreviation` in frontmatter
-- Registry builds lookup map: abbreviation -> file path, full name -> file path
-- Duplicate abbreviations produce a collision error on load
-- User definitions override shipped ones by name match
-
-**Subcommands:**
-
-`/flo -wf list` — List all available spells:
-```
-Use Grimoire.list() to get all registered spells.
-Print a table: name | abbreviation | description | tier (shipped/user)
-```
-
-`/flo -wf info <name|abbreviation>` — Show spell details:
-```
-Use Grimoire.info(query) to get detailed info.
-Print: name, abbreviation, description, version, source file, arguments, step count, step types
-```
-
-`/flo -wf <name|abbreviation> [positional-args] [--named-args]` — Execute a spell:
-```
-1. Use Grimoire.resolve(wfName) to find the spell
-2. Map positional args to required arguments in order
-3. Parse named args: --key=value or --key value
-4. Use runSpellFromContent() or createRunner().run() to execute
-5. Print step-by-step progress and final result
-```
-
-**Argument mapping:**
-- Positional args mapped to required arguments in definition order
-- Named args: `--severity=critical` or `--severity critical`
-- Boolean flags: `--autofix` (true if present)
-- Example: `/flo -wf sa ./src --severity critical --autofix`
-  Maps to: `{ target: "./src", severity: "critical", autofix: "true" }`
+Execution modes (normal/swarm/hive) are defined in the table under **Workflow Overview > Execution Mode** above. Full agent-spawning details and swarm patterns live in `./execution-modes.md`.
 
 ---
 
 **Full mode executes without prompts.** It will:
-1. Research the issue and codebase
-2. Enhance the GitHub issue with implementation plan
-3. Assign issue to self, add "in-progress" label
-4. Create branch, implement, test
-5. Run /simplify on changed code, re-test if changes made
-6. Commit changes
-7. Store learnings via mcp__moflo__memory_store (REQUIRED before PR — gate enforced)
-8. Create PR, update issue status
+1. Research the issue and codebase (see `./phases.md` Phase 1)
+2. Enhance the GitHub issue with implementation plan (see `./ticket.md`)
+3. Assign issue to self, add "in-progress" label (see `./phases.md` Phase 3)
+4. Create branch, implement, test (see `./phases.md` Phases 3–4)
+5. Run /simplify on changed code, re-test if changes made (see `./phases.md` Phase 4.5)
+6. Commit changes (see `./phases.md` Phase 5.1)
+7. Store learnings via mcp__moflo__memory_store (REQUIRED before PR — gate enforced; see `./phases.md` Phase 5.2)
+8. Create PR, update issue status (see `./phases.md` Phases 5.3–5.4)
