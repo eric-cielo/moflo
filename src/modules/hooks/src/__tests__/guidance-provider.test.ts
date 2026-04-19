@@ -409,17 +409,23 @@ describe('GuidanceProvider', () => {
       expect(result.shouldStop).toBe(true);
     });
 
-    it('should block stopping when too many unconsolidated patterns', async () => {
-      // Store more than 10 patterns to trigger the check
-      for (let i = 0; i < 12; i++) {
-        await reasoningBank.storePattern(`Pattern ${i}`, 'general');
-      }
+    it(
+      'should block stopping when too many unconsolidated patterns',
+      async () => {
+        // Store more than 10 patterns to trigger the check
+        for (let i = 0; i < 12; i++) {
+          await reasoningBank.storePattern(`Pattern ${i}`, 'general');
+        }
 
-      const result = await provider.generateStopCheck();
+        const result = await provider.generateStopCheck();
 
-      expect(result.shouldStop).toBe(false);
-      expect(result.reason).toContain('patterns not yet consolidated');
-    });
+        expect(result.shouldStop).toBe(false);
+        expect(result.reason).toContain('patterns not yet consolidated');
+      },
+      // 12 sequential AgentDB-backed stores can exceed the 30s file-level timeout
+      // under CI parallel load (observed ~40s). Give this one test extra room.
+      60_000,
+    );
   });
 });
 
