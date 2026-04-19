@@ -940,6 +940,122 @@ console.log(result.duration);    // Total execution time in ms
 
 `createRunner()` registers all nine built-in step commands automatically. To enable custom step discovery, pass `stepDirs` and/or `projectRoot` (see [Custom Step Commands](#custom-step-commands)). The runner accepts optional `memory` and `credentials` accessors — if you don't provide them, it uses no-op defaults (memory reads return null, credential lookups return undefined).
 
+## Scheduling
+
+Spells can run on a schedule. The MoFlo background daemon polls the schedule store once a minute and casts due spells. There is no external cron, no second runtime, and no message queue — schedules live in the same memory database the rest of MoFlo uses, and execution goes through the same engine path as `flo spell cast`.
+
+### CLI
+
+```bash
+# Cron — 5 fields: minute hour day-of-month month day-of-week
+flo spell schedule create -n nightly-audit --cron "0 2 * * *"
+
+# Interval — 90s, 30m, 6h, 1d
+flo spell schedule create -n health-check --interval 30m
+
+# One-time — ISO 8601 datetime
+flo spell schedule create -n migration --at 2026-04-15T09:00:00Z
+
+flo spell schedule list                   # all schedules
+flo spell schedule cancel <schedule-id>   # disable a schedule
+```
+
+### Definition-embedded schedules
+
+A spell can declare its schedule inline. The daemon registers it on every start.
+
+```yaml
+name: nightly-audit
+schedule:
+  cron: "0 2 * * *"
+  enabled: true            # default true; set false to keep the definition without scheduling
+  mofloLevel: hooks        # optional cap: narrows the scheduler-level cap (cannot widen)
+steps:
+  - id: audit
+    type: bash
+    config:
+      command: ./scripts/audit.sh
+```
+
+Exactly one of `cron`, `interval`, or `at` must be set. Validation rejects `cron: "invalid"`, `interval: "10w"` (only `s/m/h/d` are valid units), or non-ISO datetimes — the spell fails to load before the scheduler ever sees it.
+
+### Configuration (`moflo.yaml`)
+
+```yaml
+scheduler:
+  enabled: true             # set false to disable scheduled spells without affecting other daemon workers
+  pollIntervalMs: 60000     # how often the scheduler checks for due spells
+  maxConcurrent: 2          # max concurrent scheduled spell executions
+  catchUpWindowMs: 3600000  # max age (ms) of a missed run that should still execute after restart
+```
+
+All four fields are optional and default to the values shown above. Non-positive numeric values are rejected at load time and replaced with the defaults — a `pollIntervalMs: 0` config wouldn't silently break the poll loop.
+
+### Executor model
+
+The daemon constructs a `DaemonSpellExecutor` and hands it to the scheduler. When a schedule fires, the executor:
+
+1. Resolves the spell name through the `Grimoire` registry. If the spell is missing, the schedule is auto-disabled and a `schedule:skipped` event fires.
+2. Computes the effective `mofloLevel`: the per-schedule cap, then the spell definition's level, then the daemon-wide `defaultMofloLevel`. The more restrictive of the scheduler-level cap and per-schedule cap wins — per-schedule caps can never widen the scheduler-level cap.
+3. Loads the sandbox config from `moflo.yaml` (or uses an explicit override) and calls into the same engine path `flo spell cast` uses.
+4. Wires the abort signal to `bridgeCancelSpell` so daemon shutdown cleanly cancels in-flight spells.
+
+Each execution writes a `ScheduleExecution` record to the `schedule-executions` namespace with `startedAt`, `completedAt`, `success`, `error`, `duration`, and a unique `spellId`.
+
+### Catch-up semantics
+
+When the daemon starts, schedules whose `nextRunAt` is in the past are evaluated against the catch-up window:
+
+- **Within the window** (`now - nextRunAt <= catchUpWindowMs`) — the run fires on the next poll. If the lag exceeds one `pollIntervalMs` (i.e., we actually missed a poll cycle), a `schedule:catchup` event is emitted before `schedule:due` so the dashboard can distinguish caught-up runs from normal on-pace runs. Sub-interval lag is treated as routine cron-tick drift and doesn't trigger the catchup event.
+- **Outside the window** — the missed run is skipped (a `schedule:skipped` event fires) and `nextRunAt` advances past it. This prevents a daemon that was offline for days from firing dozens of stale schedules at once.
+
+For a one-time `at:` schedule that exists past its trigger time, the schedule is auto-disabled rather than rescheduled — re-enabling it returns `null` because there's no future run to compute.
+
+### Concurrency and overlap
+
+`maxConcurrent` (default `2`) caps the number of scheduled spells running at any one time. Inside one schedule:
+
+- If the same schedule's prior run is still in flight when the next fire would happen, the new fire is skipped (`schedule:skipped` event) — overlap is never allowed for a single schedule.
+- If `maxConcurrent` is already saturated by other schedules, additional due fires wait until the next poll. Nothing is queued — a fire that didn't get a slot just shows up again on the next tick if it's still due.
+
+Manual runs via `runScheduleNow` (used by the dashboard's "Run now" button) execute outside the poll loop but still respect the per-schedule overlap rule. Manual runs do NOT advance `nextRunAt`, so the regular cron pacing continues unchanged.
+
+### Event types
+
+The scheduler emits typed events that the daemon forwards to the dashboard event stream:
+
+| Event | When |
+|-------|------|
+| `schedule:catchup` | A missed run (lag > one poll interval, within the catch-up window) is about to fire |
+| `schedule:due` | A schedule is due for casting (always emitted, with or without catch-up) |
+| `schedule:started` | Execution started; an execution record exists in `schedule-executions` |
+| `schedule:completed` | Execution finished successfully |
+| `schedule:failed` | Execution finished with `success: false` or threw |
+| `schedule:skipped` | Execution skipped — overlap, expired catch-up, or missing spell |
+| `schedule:disabled` | Schedule was disabled (manually or auto-disabled because the spell vanished) |
+
+Subscribe via `scheduler.on(listener)`; the returned function unsubscribes. Listener exceptions are caught so a misbehaving subscriber can't break the poll loop.
+
+### Daemon prerequisite
+
+Schedules only fire while the daemon is running. To survive reboot, register the OS-level autostart service:
+
+```bash
+flo daemon install   # one-time setup; idempotent
+flo daemon status    # shows whether the service is registered AND the process is up
+```
+
+`flo spell schedule create` warns when the daemon isn't installed so you don't quietly miss runs. Autostart is wired for Windows (Task Scheduler), macOS (launchd), and Linux (systemd `--user`).
+
+### Storage namespaces
+
+| Namespace | Contents |
+|-----------|----------|
+| `scheduled-spells` | One record per `SpellSchedule` (`id`, `spellName`, timing, `nextRunAt`, `enabled`, `args`, etc.) |
+| `schedule-executions` | One record per `ScheduleExecution` — the audit trail surfaced by the dashboard |
+
+Both namespaces are scoped to the project's memory database, so schedules and history don't leak across projects.
+
 ## Further Reading
 
 - [Spell Sandboxing](SPELL-SANDBOXING.md) — Full sandboxing reference: capability types, restriction rules, enforcement tiers, and the Execution Constraint Principle

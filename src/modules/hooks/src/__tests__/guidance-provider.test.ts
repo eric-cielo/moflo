@@ -4,7 +4,7 @@
  * Integration tests for the V3 GuidanceProvider that generates Claude-visible output.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { GuidanceProvider, type ClaudeHookOutput } from '../reasoningbank/guidance-provider.js';
 import { ReasoningBank } from '../reasoningbank/index.js';
 
@@ -16,8 +16,8 @@ describe('GuidanceProvider', () => {
   let provider: GuidanceProvider;
   let reasoningBank: ReasoningBank;
 
-  beforeEach(async () => {
-    // Create a fresh ReasoningBank with mock embeddings
+  // Share one initialized instance across all tests; _clearForTest() isolates state.
+  beforeAll(async () => {
     reasoningBank = new ReasoningBank({
       useMockEmbeddings: true,
       dimensions: 384,
@@ -26,6 +26,10 @@ describe('GuidanceProvider', () => {
 
     provider = new GuidanceProvider(reasoningBank);
     await provider.initialize();
+  });
+
+  afterEach(async () => {
+    await reasoningBank._clearForTest();
   });
 
   describe('generateSessionContext', () => {
@@ -409,6 +413,7 @@ describe('GuidanceProvider', () => {
       expect(result.shouldStop).toBe(true);
     });
 
+    // 60s override dropped: beforeAll shares AgentDB init, so 12 stores fit in the 30s budget.
     it('should block stopping when too many unconsolidated patterns', async () => {
       // Store more than 10 patterns to trigger the check
       for (let i = 0; i < 12; i++) {

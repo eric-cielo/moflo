@@ -652,6 +652,52 @@ export class ReasoningBank extends EventEmitter {
   }
 
   /**
+   * Test-only: drop all in-memory patterns + reset metrics without re-initializing AgentDB.
+   * Lets test suites share one expensive initialize() across tests.
+   */
+  async _clearForTest(): Promise<void> {
+    this.shortTermPatterns.clear();
+    this.longTermPatterns.clear();
+    this.metrics = {
+      patternsStored: 0,
+      patternsRetrieved: 0,
+      searchCount: 0,
+      totalSearchTime: 0,
+      promotions: 0,
+      hnswSearchTime: 0,
+      bruteForceSearchTime: 0,
+    };
+    // Rebuild HNSW index from scratch (addPoint has no delete-all equivalent)
+    if (this.hnswIndex && HNSWIndex) {
+      try {
+        this.hnswIndex = new HNSWIndex({
+          dimensions: this.config.dimensions,
+          M: this.config.hnswM,
+          efConstruction: this.config.hnswEfConstruction,
+          maxElements: this.config.maxShortTerm + this.config.maxLongTerm,
+          metric: 'cosine',
+        });
+      } catch {
+        // Leave stale index; tests tolerate this since shortTermPatterns Map is the source of truth
+      }
+    }
+    // Purge AgentDB-backed patterns so the next test starts clean
+    if (this.agentDB) {
+      try {
+        const entries = [
+          ...(await this.agentDB.query({ namespace: 'patterns:short_term', limit: this.config.maxShortTerm })),
+          ...(await this.agentDB.query({ namespace: 'patterns:long_term', limit: this.config.maxLongTerm })),
+        ];
+        for (const entry of entries) {
+          await this.agentDB.delete(entry.id || entry.key);
+        }
+      } catch {
+        // Best-effort; in-memory Maps are source of truth for test assertions
+      }
+    }
+  }
+
+  /**
    * Import patterns from backup
    */
   async importPatterns(data: {

@@ -409,6 +409,49 @@ You interact with spells at three tiers:
    A user spell with the same `name` as a shipped one wins — that's how you customize a shipped spell without forking.
 3. **Custom step commands and connectors** — drop TypeScript/JavaScript files in `.claude/spells/steps/` (new step types) and `.claude/spells/connectors/` (new connectors). They're auto-discovered at startup. Connectors that wrap heavy SDKs (IMAP, MCP) declare those SDKs as `optionalDependencies`; install them only if your spells use them.
 
+### Scheduling
+
+Spells can run on a schedule. The MoFlo background daemon polls for due spells once a minute and casts them — no external cron, no extra services.
+
+**Three timing options:**
+
+```bash
+# Cron (5 fields: minute hour day-of-month month day-of-week)
+flo spell schedule create -n nightly-audit --cron "0 2 * * *"
+
+# Interval (e.g., 90s, 30m, 6h, 1d)
+flo spell schedule create -n health-check --interval 30m
+
+# One-time (ISO 8601 datetime)
+flo spell schedule create -n migration --at 2026-04-15T09:00:00Z
+```
+
+You can also declare a schedule directly inside the spell YAML — that registers it on every daemon start:
+
+```yaml
+name: nightly-audit
+schedule:
+  cron: "0 2 * * *"
+steps:
+  - id: audit
+    type: bash
+    config:
+      command: ./scripts/audit.sh
+```
+
+**Daemon prerequisite.** Schedules only fire while the daemon is running. To survive reboot:
+
+```bash
+flo daemon install   # registers an OS-level autostart service
+flo daemon status    # shows whether the service is registered AND running
+```
+
+`flo spell schedule create` warns when the daemon isn't installed so you don't quietly miss runs.
+
+**Monitoring.** The daemon dashboard surfaces live schedules, recent executions, and per-schedule controls (disable / re-enable / run now). It starts alongside the daemon at `http://localhost:3117` (override with `--dashboard-port` or disable with `--no-dashboard`).
+
+For full configuration (`scheduler:` block in `moflo.yaml`), event types, and the catch-up window after restarts, see [docs/SPELLS.md#scheduling](docs/SPELLS.md#scheduling).
+
 ### Building spells with the `/spell-builder` skill
 
 Inside your AI client, use the `/spell-builder` skill to create, edit, and validate spell definitions interactively. The skill understands the full spell schema and available step commands, so you can describe what you want in natural language and it will generate the YAML:

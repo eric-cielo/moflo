@@ -581,6 +581,64 @@ describe('SpellScheduler', () => {
     expect(updated!.enabled).toBe(false);
   });
 
+  it('fires a missed schedule within the catch-up window and emits schedule:catchup', async () => {
+    const events: SchedulerEvent[] = [];
+    scheduler.on(e => events.push(e));
+
+    // 30 minutes ago — well inside the 1h default catch-up window
+    const lagMs = 30 * 60 * 1000;
+    const now = Date.now();
+    await memory.write('scheduled-spells', 'sched-catchup', {
+      id: 'sched-catchup',
+      spellName: 'catchup-wf',
+      spellPath: '/path',
+      interval: '1h',
+      nextRunAt: now - lagMs,
+      enabled: true,
+      createdAt: now - 86_400_000,
+      source: 'adhoc',
+    });
+
+    await scheduler.poll();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(executor.execute).toHaveBeenCalledTimes(1);
+
+    const types = events.map(e => e.type);
+    expect(types).toContain('schedule:catchup');
+    expect(types).toContain('schedule:due');
+    expect(types).toContain('schedule:completed');
+
+    // History record reflects the catch-up fire
+    const history = await scheduler.getExecutionHistory('sched-catchup');
+    expect(history).toHaveLength(1);
+    expect(history[0].success).toBe(true);
+  });
+
+  it('does not emit schedule:catchup for an exactly-on-time fire', async () => {
+    const events: SchedulerEvent[] = [];
+    scheduler.on(e => events.push(e));
+
+    // nextRunAt set exactly to "now" — no lag, not a catch-up
+    const now = Date.now();
+    await memory.write('scheduled-spells', 'sched-ontime', {
+      id: 'sched-ontime',
+      spellName: 'ontime-wf',
+      spellPath: '/path',
+      interval: '1h',
+      nextRunAt: now,
+      enabled: true,
+      createdAt: now,
+      source: 'adhoc',
+    });
+
+    await scheduler.poll();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(events.some(e => e.type === 'schedule:catchup')).toBe(false);
+    expect(events.some(e => e.type === 'schedule:due')).toBe(true);
+  });
+
   it('skips expired catch-up runs', async () => {
     const events: SchedulerEvent[] = [];
     scheduler.on(e => events.push(e));
@@ -783,6 +841,46 @@ describe('SpellScheduler', () => {
     expect(history.length).toBeGreaterThan(0);
     expect(history[0].scheduleId).toBe('sched-hist');
     expect(history[0].success).toBe(true);
+  });
+
+  // ── End-to-end integration ─────────────────────────────────────────────
+
+  it('end-to-end: createSchedule → make due → poll → execute → history written', async () => {
+    // 1. Create a fresh schedule via the public API (no manual memory writes)
+    const created = await scheduler.createSchedule({
+      spellName: 'integration-wf',
+      spellPath: '/spells/integration.yaml',
+      interval: '1h',
+      args: { mode: 'audit' },
+    });
+
+    expect(created.enabled).toBe(true);
+
+    // 2. Force the schedule to be due by rewriting only `nextRunAt`. We avoid
+    //    sleeping for the real interval so the test stays fast and deterministic.
+    const stored = await scheduler.getSchedule(created.id);
+    await memory.write('scheduled-spells', created.id, { ...stored, nextRunAt: Date.now() - 100 });
+
+    // 3. Tick the scheduler once
+    await scheduler.poll();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // 4. Verify the spell executed with the correct args
+    expect(executor.execute).toHaveBeenCalledWith(
+      'integration-wf', { mode: 'audit' }, expect.any(AbortSignal), undefined,
+    );
+
+    // 5. Verify history record persisted with success
+    const history = await scheduler.getExecutionHistory(created.id);
+    expect(history).toHaveLength(1);
+    expect(history[0].success).toBe(true);
+    expect(history[0].spellName).toBe('integration-wf');
+    expect(history[0].duration).toBeGreaterThanOrEqual(0);
+
+    // 6. Verify nextRunAt advanced past now (so it doesn't fire again immediately)
+    const after = await scheduler.getSchedule(created.id);
+    expect(after!.nextRunAt).toBeGreaterThan(Date.now());
+    expect(after!.lastRunAt).toBeDefined();
   });
 
   // ── MoFlo Level Caps (Issue #185) ──────────────────────────────────────

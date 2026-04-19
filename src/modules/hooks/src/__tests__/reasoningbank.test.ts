@@ -4,7 +4,7 @@
  * Unit tests for the V3 ReasoningBank pattern learning system.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { ReasoningBank, type GuidancePattern } from '../reasoningbank/index.js';
 
 // ReasoningBank.initialize() loads AgentDB (sql.js + HNSW + Transformers);
@@ -14,18 +14,21 @@ vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 describe('ReasoningBank', () => {
   let reasoningBank: ReasoningBank;
 
-  beforeEach(() => {
-    // Create a fresh instance for each test with mock embeddings
+  // Share one initialized instance across all tests — AgentDB boot dominates runtime.
+  // _clearForTest() in afterEach guarantees per-test isolation of state.
+  beforeAll(async () => {
     reasoningBank = new ReasoningBank({
       useMockEmbeddings: true,
       dimensions: 384,
       hnswM: 16,
       hnswEfConstruction: 200,
     });
+    await reasoningBank.initialize();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await reasoningBank._clearForTest();
   });
 
   describe('initialization', () => {
