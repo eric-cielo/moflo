@@ -134,6 +134,29 @@ describe('DaemonSpellExecutor', () => {
       expect(engine.bridgeExecuteSpell).not.toHaveBeenCalled();
     });
 
+    it('surfaces an engine-returned validation failure transparently', async () => {
+      // The engine validates spell args internally and returns a SpellResult
+      // with success:false rather than throwing. The executor must pass that
+      // through untouched so the scheduler records the real failure.
+      const registry = makeRegistry({ wf: makeDefinition({ name: 'wf' }) });
+      engine.bridgeExecuteSpell.mockResolvedValueOnce({
+        spellId: 'spell-x',
+        success: false,
+        steps: [],
+        outputs: {},
+        errors: [{ code: 'ARGUMENT_VALIDATION_FAILED', message: 'missing required arg: target' }],
+        duration: 1,
+        cancelled: false,
+      } as SpellResult);
+      const exec = new DaemonSpellExecutor({ registry, projectRoot: '/p', engine });
+
+      const result = await exec.execute('wf', {});
+
+      expect(result.success).toBe(false);
+      expect(result.errors[0].code).toBe('ARGUMENT_VALIDATION_FAILED');
+      expect(result.errors[0].message).toMatch(/missing required arg/);
+    });
+
     it('returns a failed SpellResult when the engine throws', async () => {
       const registry = makeRegistry({ wf: makeDefinition({ name: 'wf' }) });
       engine.bridgeExecuteSpell.mockRejectedValueOnce(new Error('engine explosion'));

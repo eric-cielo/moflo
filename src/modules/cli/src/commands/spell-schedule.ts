@@ -289,9 +289,11 @@ const cancelCommand: Command = {
 
 // ── Schedule Command (parent) ─────────────────────────────────────────────────
 
+const SCHEDULE_DOCS_URL = 'https://github.com/eric-cielo/moflo/blob/main/docs/SPELLS.md#scheduling';
+
 export const scheduleCommand: Command = {
   name: 'schedule',
-  description: 'Manage scheduled spells',
+  description: `Manage scheduled spells (full reference: ${SCHEDULE_DOCS_URL})`,
   subcommands: [createCommand, scheduleListCommand, cancelCommand],
   examples: [
     { command: 'moflo spell schedule create -n audit --cron "0 9 * * *"', description: 'Schedule daily audit' },
@@ -310,6 +312,8 @@ export const scheduleCommand: Command = {
       `${output.highlight('list')}    - List all scheduled spells`,
       `${output.highlight('cancel')}  - Cancel (disable) a schedule`,
     ]);
+    output.writeln();
+    output.writeln(`Full reference: ${SCHEDULE_DOCS_URL}`);
 
     return { success: true };
   },

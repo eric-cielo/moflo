@@ -393,6 +393,22 @@ export class SpellScheduler {
         continue; // will pick up on next poll
       }
 
+      // A fire whose lag exceeds one poll interval means we actually missed
+      // a poll cycle (typically because the daemon was restarted) — emit a
+      // distinct event so dashboards can surface caught-up runs separately
+      // from normal on-pace runs. Sub-interval lag is just cron-tick drift
+      // between polls and isn't worth flagging.
+      const lagMs = now - schedule.nextRunAt;
+      if (lagMs > this.pollIntervalMs) {
+        this.emit({
+          type: 'schedule:catchup',
+          scheduleId: schedule.id,
+          spellName: schedule.spellName,
+          message: `Catching up missed run from ${lagMs}ms ago`,
+          timestamp: now,
+        });
+      }
+
       this.emit({
         type: 'schedule:due',
         scheduleId: schedule.id,
