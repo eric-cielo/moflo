@@ -11,7 +11,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { WorkerDaemon } from './worker-daemon.js';
 import type { MemoryAccessor } from '../../../spells/src/types/step-command.types.js';
 import type { FloRunContext } from '../../../spells/src/types/runner.types.js';
-import { SchedulerError } from '../../../spells/src/scheduler/scheduler.js';
+import type { SchedulerErrorCode } from '../../../spells/src/scheduler/scheduler.js';
 
 // ============================================================================
 // Types
@@ -442,11 +442,19 @@ async function handleScheduleAction(
     });
     sendJson(res, 202, { ok: true, id: scheduleId, accepted: true });
   } catch (err) {
-    const status = err instanceof SchedulerError
-      ? (err.code === 'busy' ? 409 : 404)
-      : 500;
+    const code = getSchedulerErrorCode(err);
+    const status = code === 'busy' ? 409 : code ? 404 : 500;
     sendJson(res, status, { error: err instanceof Error ? err.message : String(err) });
   }
+}
+
+/** Duck-type check: SpellScheduler throws errors with `name: 'SchedulerError'` and a `code` field. */
+function getSchedulerErrorCode(err: unknown): SchedulerErrorCode | null {
+  if (err && typeof err === 'object' && (err as { name?: string }).name === 'SchedulerError') {
+    const code = (err as { code?: string }).code;
+    if (code === 'not-found' || code === 'spell-missing' || code === 'busy') return code;
+  }
+  return null;
 }
 
 // ============================================================================
