@@ -8,6 +8,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GuidanceProvider, type ClaudeHookOutput } from '../reasoningbank/guidance-provider.js';
 import { ReasoningBank } from '../reasoningbank/index.js';
 
+// ReasoningBank.initialize() loads AgentDB (sql.js + HNSW + Transformers);
+// the one-time native module boot can exceed 5s under Linux CI parallel load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 describe('GuidanceProvider', () => {
   let provider: GuidanceProvider;
   let reasoningBank: ReasoningBank;
