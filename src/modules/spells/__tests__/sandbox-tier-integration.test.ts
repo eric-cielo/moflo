@@ -458,25 +458,24 @@ describe('full pipeline: config through execution', () => {
   });
 
   it('resolveSandboxConfig → resolveEffectiveSandbox produces consistent state', () => {
-    // Windows auto-defaults dockerImage and auto-pulls if missing. Provide the
-    // image in config so the test doesn't trigger a real docker pull.
-    const opts: Record<string, unknown> = { enabled: true, tier: 'auto' };
-    if (IS_WINDOWS) {
-      opts.dockerImage = 'node:20-bookworm';
-    }
+    // Pass explicit capabilities so this config-consistency test doesn't depend
+    // on the host's real Docker/bwrap availability (Windows without Docker
+    // Desktop running would otherwise hit the throw path).
+    const opts: Record<string, unknown> = { enabled: true, tier: 'auto', dockerImage: 'node:20-bookworm' };
     const config = resolveSandboxConfig(opts);
     expect(config.enabled).toBe(true);
     expect(config.tier).toBe('auto');
 
-    const effective = resolveEffectiveSandbox(config);
-    expect(effective.config).toEqual(config);
-    expect(effective.capability.platform).toBe(platform());
-    // On auto tier: useOsSandbox matches capability.available
-    if (effective.capability.available) {
-      expect(effective.useOsSandbox).toBe(true);
-    } else {
-      expect(effective.useOsSandbox).toBe(false);
-    }
+    const availableCap = { platform: 'linux' as NodeJS.Platform, available: true, tool: 'bwrap', overhead: 'low' as const };
+    const unavailableCap = { platform: 'linux' as NodeJS.Platform, available: false, tool: null, overhead: null };
+
+    const effectiveAvailable = resolveEffectiveSandbox(config, availableCap);
+    expect(effectiveAvailable.config).toEqual(config);
+    expect(effectiveAvailable.useOsSandbox).toBe(true);
+
+    const effectiveUnavailable = resolveEffectiveSandbox(config, unavailableCap);
+    expect(effectiveUnavailable.config).toEqual(config);
+    expect(effectiveUnavailable.useOsSandbox).toBe(false);
   });
 
   it('denylist-only config always results in useOsSandbox: false', () => {

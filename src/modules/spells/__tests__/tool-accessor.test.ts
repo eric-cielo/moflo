@@ -78,8 +78,9 @@ describe('ConnectorAccessorImpl', () => {
 });
 
 describe('SpellCaster connector integration', () => {
-  it('runner works without connector registry (backward compat)', async () => {
-    // Import dynamically to avoid circular issues
+  // Dynamic imports + factory init are slow under Windows parallel-fork load;
+  // 5s default isn't enough when worker cold-starts contend for CPU.
+  it('runner works without connector registry (backward compat)', { timeout: 30000 }, async () => {
     const { createRunner } = await import('../src/factory/runner-factory.js');
     const runner = createRunner();
 
