@@ -11,6 +11,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { WorkerDaemon } from './worker-daemon.js';
 import type { MemoryAccessor } from '../../../spells/src/types/step-command.types.js';
 import type { FloRunContext } from '../../../spells/src/types/runner.types.js';
+import { SchedulerError } from '../../../spells/src/scheduler/scheduler.js';
 
 // ============================================================================
 // Types
@@ -21,6 +22,12 @@ export interface DashboardOptions {
   port: number;
   /** Optional MemoryAccessor for namespace stats. */
   memory?: MemoryAccessor;
+  /**
+   * Whether `scheduler.enabled` is true in moflo.yaml. When false the
+   * dashboard surfaces a distinct "disabled in moflo.yaml" state rather
+   * than the generic "not connected" placeholder.
+   */
+  schedulerEnabledInConfig?: boolean;
 }
 
 export interface DashboardHandle {
@@ -131,9 +138,35 @@ function handleStatus(daemon: WorkerDaemon): object {
   };
 }
 
-async function handleSchedules(memory?: MemoryAccessor): Promise<object> {
+/**
+ * Build the `/api/schedules` response.
+ *
+ * Three output states are signalled via (disabledInConfig, schedulerAttached):
+ *   - disabled in moflo.yaml → disabledInConfig: true
+ *   - config on, daemon has a live scheduler → schedulerAttached: true
+ *   - config on, no scheduler → fall back to persisted memory records
+ */
+async function handleSchedules(daemon: WorkerDaemon, opts: DashboardOptions): Promise<object> {
+  if (opts.schedulerEnabledInConfig === false) {
+    return { schedules: [], history: [], available: false, disabledInConfig: true, schedulerAttached: false };
+  }
+
+  const scheduler = daemon.getScheduler();
+  if (scheduler) {
+    try {
+      const [schedules, history] = await Promise.all([
+        scheduler.listSchedules(),
+        scheduler.getRecentExecutions(50),
+      ]);
+      return { schedules, history, available: true, disabledInConfig: false, schedulerAttached: true };
+    } catch (err) {
+      console.warn(`[dashboard] scheduler query failed: ${(err as Error).message ?? err}`);
+    }
+  }
+
+  const memory = opts.memory;
   if (!memory) {
-    return { schedules: [], available: false };
+    return { schedules: [], history: [], available: false, disabledInConfig: false, schedulerAttached: false };
   }
   try {
     const results = await memory.search('scheduled-spells', '*');
@@ -141,9 +174,9 @@ async function handleSchedules(memory?: MemoryAccessor): Promise<object> {
       const data = typeof r.value === 'string' ? tryParse(r.value) : (r.value as Record<string, unknown> ?? {});
       return { id: r.key, ...(data as Record<string, unknown>) };
     });
-    return { schedules, available: true };
+    return { schedules, history: [], available: true, disabledInConfig: false, schedulerAttached: false };
   } catch {
-    return { schedules: [], available: true };
+    return { schedules: [], history: [], available: true, disabledInConfig: false, schedulerAttached: false };
   }
 }
 
@@ -329,19 +362,29 @@ async function handleRequest(
   const url = req.url ?? '/';
   const method = req.method ?? 'GET';
 
-  // Only allow GET requests — dashboard is read-only
-  if (method !== 'GET') {
-    sendJson(res, 405, { error: 'Method not allowed' });
-    return;
-  }
-
   try {
+    // POST: schedule actions (disable / enable / run). Only 127.0.0.1 traffic
+    // reaches here (server.listen bind), so no CSRF layer is needed. Any
+    // other POST falls through to the read-only 405 below.
+    if (method === 'POST') {
+      const action = matchScheduleAction(url);
+      if (action) {
+        await handleScheduleAction(res, daemon, action.id, action.verb);
+        return;
+      }
+    }
+
+    if (method !== 'GET') {
+      sendJson(res, 405, { error: 'Method not allowed' });
+      return;
+    }
+
     if (url === '/') {
       sendHtml(res, DASHBOARD_HTML);
     } else if (url === '/api/status') {
       sendJson(res, 200, handleStatus(daemon));
     } else if (url === '/api/schedules') {
-      sendJson(res, 200, await handleSchedules(opts.memory));
+      sendJson(res, 200, await handleSchedules(daemon, opts));
     } else if (url === '/api/spells') {
       sendJson(res, 200, await handleSpells(opts.memory));
     } else if (url === '/api/memory/stats') {
@@ -352,6 +395,57 @@ async function handleRequest(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     sendJson(res, 500, { error: 'Internal server error', message });
+  }
+}
+
+type ScheduleVerb = 'disable' | 'enable' | 'run';
+
+/** Parse `/api/schedules/:id/:verb`. Returns null if the URL doesn't match. */
+function matchScheduleAction(url: string): { id: string; verb: ScheduleVerb } | null {
+  const path = url.split('?')[0];
+  const m = path.match(/^\/api\/schedules\/([^/]+)\/(disable|enable|run)$/);
+  if (!m) return null;
+  return { id: decodeURIComponent(m[1]), verb: m[2] as ScheduleVerb };
+}
+
+async function handleScheduleAction(
+  res: ServerResponse,
+  daemon: WorkerDaemon,
+  scheduleId: string,
+  verb: ScheduleVerb,
+): Promise<void> {
+  const scheduler = daemon.getScheduler();
+  if (!scheduler) {
+    sendJson(res, 503, { error: 'Scheduler not attached' });
+    return;
+  }
+
+  try {
+    if (verb === 'disable') {
+      const ok = await scheduler.cancelSchedule(scheduleId);
+      if (!ok) { sendJson(res, 404, { error: 'Schedule not found' }); return; }
+      sendJson(res, 200, { ok: true, id: scheduleId, enabled: false });
+      return;
+    }
+
+    if (verb === 'enable') {
+      const updated = await scheduler.enableSchedule(scheduleId);
+      if (!updated) { sendJson(res, 404, { error: 'Schedule not found or expired' }); return; }
+      sendJson(res, 200, { ok: true, id: scheduleId, enabled: true, nextRunAt: updated.nextRunAt });
+      return;
+    }
+
+    // verb === 'run' — execute asynchronously so the response returns fast;
+    // the UI polls history for completion.
+    scheduler.runScheduleNow(scheduleId).catch(err => {
+      console.warn(`[dashboard] runScheduleNow(${scheduleId}) failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+    sendJson(res, 202, { ok: true, id: scheduleId, accepted: true });
+  } catch (err) {
+    const status = err instanceof SchedulerError
+      ? (err.code === 'busy' ? 409 : 404)
+      : 500;
+    sendJson(res, status, { error: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -488,6 +582,13 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     .wf-group.collapsed .wf-group-body { display: none; }
     .wf-group.collapsed .wf-chevron { transform: rotate(-90deg); }
     .wf-chevron { transition: transform 0.15s; display: inline-block; }
+    .btn { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 3px 10px; font-size: 0.75rem; cursor: pointer; font-family: inherit; margin-right: 4px; }
+    .btn:hover { background: #30363d; border-color: #484f58; }
+    .btn:active { background: #161b22; }
+    .btn-sm { padding: 2px 8px; font-size: 0.72rem; }
+    .btn-primary { background: #238636; border-color: #2ea043; color: #fff; }
+    .btn-primary:hover { background: #2ea043; border-color: #3fb950; }
+    .dim { color: #484f58; font-size: 0.75rem; font-style: italic; }
   </style>
 </head>
 <body>
@@ -589,21 +690,78 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         '<tbody>' + rows + '</tbody></table>';
     }
 
+    async function scheduleAction(id, verb) {
+      try {
+        const r = await fetch('/api/schedules/' + encodeURIComponent(id) + '/' + verb, { method: 'POST' });
+        if (!r.ok && r.status !== 202) {
+          const body = await r.json().catch(() => ({}));
+          console.warn('Schedule ' + verb + ' failed (' + r.status + '):', body.error);
+        }
+      } catch (e) {
+        console.error('Schedule ' + verb + ' request failed:', e);
+      }
+      poll();
+    }
+    window.__schedAction = scheduleAction;
+
     function renderSchedules(sc) {
       const el = document.getElementById('panel-schedules');
-      if (!sc || !sc.available) { el.innerHTML = '<div class="empty">Scheduler not connected</div>'; return; }
-      if (sc.schedules.length === 0) { el.innerHTML = '<div class="empty">No active schedules</div>'; return; }
-      const rows = sc.schedules.map(s =>
-        '<tr><td>' + esc(s.spellName) + '</td>' +
-        '<td>' + esc(s.cron || s.interval || s.at || '-') + '</td>' +
-        '<td>' + (s.enabled ? badge('on','green') : badge('off','gray')) + '</td>' +
-        '<td>' + (s.lastRunAt ? fmtTime(s.lastRunAt) : '-') + '</td>' +
-        '<td>' + fmtTime(s.nextRunAt) + '</td>' +
-        '<td>' + badge(s.source,'gray') + '</td></tr>'
-      ).join('');
+      if (!sc) { el.innerHTML = '<div class="empty">Loading...</div>'; return; }
+
+      if (sc.disabledInConfig) {
+        el.innerHTML = '<h2>Scheduled Spells</h2>' +
+          '<div class="empty">Scheduler disabled in moflo.yaml (scheduler.enabled: false)</div>';
+        return;
+      }
+      if (!sc.schedulerAttached && !sc.available) {
+        el.innerHTML = '<h2>Scheduled Spells</h2>' +
+          '<div class="empty">Scheduler not attached — start the daemon to activate</div>';
+        return;
+      }
+      if (!sc.schedules || sc.schedules.length === 0) {
+        el.innerHTML = '<h2>Scheduled Spells</h2>' +
+          '<div class="empty">No active schedules &middot; create one with <code>moflo spell schedule create</code></div>';
+        if (sc.history && sc.history.length) renderSchedulesHistory(el, sc.history, /*append*/ true);
+        return;
+      }
+      const canControl = !!sc.schedulerAttached;
+      const rows = sc.schedules.map(s => {
+        const toggle = s.enabled
+          ? '<button class="btn btn-sm" onclick="__schedAction(\\'' + esc(s.id) + '\\', \\'disable\\')">Disable</button>'
+          : '<button class="btn btn-sm" onclick="__schedAction(\\'' + esc(s.id) + '\\', \\'enable\\')">Enable</button>';
+        const run = '<button class="btn btn-sm btn-primary" onclick="__schedAction(\\'' + esc(s.id) + '\\', \\'run\\')">Run now</button>';
+        const controls = canControl ? (toggle + ' ' + run) : '<span class="dim">offline</span>';
+        return '<tr><td>' + esc(s.spellName) + '</td>' +
+          '<td>' + esc(s.cron || s.interval || s.at || '-') + '</td>' +
+          '<td>' + (s.enabled ? badge('on','green') : badge('off','gray')) + '</td>' +
+          '<td>' + (s.lastRunAt ? fmtTime(s.lastRunAt) : '-') + '</td>' +
+          '<td>' + fmtTime(s.nextRunAt) + '</td>' +
+          '<td>' + badge(s.source,'gray') + '</td>' +
+          '<td>' + controls + '</td></tr>';
+      }).join('');
       el.innerHTML = '<h2>Scheduled Spells</h2>' +
-        '<table><thead><tr><th>Spell</th><th>Schedule</th><th>Enabled</th><th>Last Run</th><th>Next Run</th><th>Source</th></tr></thead>' +
+        '<table><thead><tr><th>Spell</th><th>Schedule</th><th>Enabled</th><th>Last Run</th><th>Next Run</th><th>Source</th><th>Actions</th></tr></thead>' +
         '<tbody>' + rows + '</tbody></table>';
+
+      if (sc.history && sc.history.length) renderSchedulesHistory(el, sc.history, /*append*/ true);
+    }
+
+    function renderSchedulesHistory(el, history, append) {
+      const rows = history.map(h => {
+        const statusBadge = h.success === true ? badge('pass','green')
+          : h.success === false ? badge('fail','red')
+          : badge('running','yellow');
+        const manual = h.manualRun ? ' ' + badge('manual','yellow') : '';
+        return '<tr><td>' + esc(h.spellName) + manual + '</td>' +
+          '<td>' + statusBadge + '</td>' +
+          '<td>' + fmtDuration(h.duration) + '</td>' +
+          '<td>' + fmtTime(h.startedAt) + '</td>' +
+          '<td>' + (h.error ? '<span style="color:#f85149">' + esc(String(h.error).substring(0,120)) + '</span>' : '-') + '</td></tr>';
+      }).join('');
+      const html = '<h2>Recent Executions</h2>' +
+        '<table><thead><tr><th>Spell</th><th>Status</th><th>Duration</th><th>Started</th><th>Error</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>';
+      if (append) el.innerHTML += html; else el.innerHTML = html;
     }
 
     const modeIcons = { swarm: '\\ud83d\\udc1d', hive: '\\ud83e\\udeb7', normal: '' };
@@ -616,7 +774,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 
     function renderExecutions(w) {
       const el = document.getElementById('panel-executions');
-      if (!w || !w.available) { el.innerHTML = '<div class="empty">Scheduler not connected</div>'; return; }
+      if (!w || !w.available) { el.innerHTML = '<div class="empty">Flo run history unavailable</div>'; return; }
       if (w.executions.length === 0) { el.innerHTML = '<div class="empty">No recent flo runs</div>'; return; }
 
       let html = '<h2>Recent Flo Runs</h2>';

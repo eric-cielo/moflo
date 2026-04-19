@@ -63,6 +63,8 @@ export interface ScheduleExecution {
   readonly error?: string;
   readonly spellId: string;
   readonly duration?: number;
+  /** True if the run was invoked via `runScheduleNow` rather than the poll loop. */
+  readonly manualRun?: boolean;
 }
 
 // ============================================================================
