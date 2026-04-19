@@ -25,7 +25,55 @@ import { startDashboard, DEFAULT_DASHBOARD_PORT, buildFloRunContext, storeFloRun
 // Mock helpers
 // ============================================================================
 
-function makeMockDaemon(overrides: Record<string, unknown> = {}) {
+/** Build a mock SpellScheduler that mimics the subset of the API the dashboard touches. */
+function makeMockScheduler(opts: {
+  schedules?: Array<Record<string, unknown>>;
+  history?: Record<string, Array<Record<string, unknown>>>;
+} = {}) {
+  const schedules = new Map<string, Record<string, unknown>>();
+  for (const s of opts.schedules ?? []) schedules.set(s.id as string, { ...s });
+  const history = { ...(opts.history ?? {}) };
+
+  const scheduler = {
+    listSchedules: vi.fn().mockImplementation(async () => [...schedules.values()]),
+    getExecutionHistory: vi.fn().mockImplementation(async (id: string) => history[id] ?? []),
+    getRecentExecutions: vi.fn().mockImplementation(async (limit = 50) => {
+      const all = Object.values(history).flat() as Array<Record<string, unknown>>;
+      return all.sort((a, b) => (b.startedAt as number) - (a.startedAt as number)).slice(0, limit);
+    }),
+    cancelSchedule: vi.fn().mockImplementation(async (id: string) => {
+      const s = schedules.get(id);
+      if (!s) return false;
+      s.enabled = false;
+      return true;
+    }),
+    enableSchedule: vi.fn().mockImplementation(async (id: string) => {
+      const s = schedules.get(id);
+      if (!s) return null;
+      s.enabled = true;
+      s.nextRunAt = Date.now() + 3_600_000;
+      return s;
+    }),
+    runScheduleNow: vi.fn().mockImplementation(async (id: string) => {
+      const s = schedules.get(id);
+      if (!s) throw new Error(`Schedule not found: ${id}`);
+      const exec = {
+        id: `exec-manual-${id}-${Date.now()}`,
+        scheduleId: id,
+        spellName: s.spellName,
+        startedAt: Date.now(),
+        manualRun: true,
+        success: true,
+        duration: 42,
+      };
+      history[id] = [...(history[id] ?? []), exec];
+      return exec;
+    }),
+  };
+  return { scheduler, schedules, history };
+}
+
+function makeMockDaemon(overrides: Record<string, unknown> = {}, scheduler: any = null) {
   const defaultStatus = {
     running: true,
     pid: 12345,
@@ -65,6 +113,7 @@ function makeMockDaemon(overrides: Record<string, unknown> = {}) {
 
   return {
     getStatus: vi.fn().mockReturnValue(defaultStatus),
+    getScheduler: vi.fn().mockReturnValue(scheduler),
   } as any;
 }
 
@@ -302,6 +351,129 @@ describe('DaemonDashboard', () => {
 
   it('DEFAULT_DASHBOARD_PORT is 3117', () => {
     expect(DEFAULT_DASHBOARD_PORT).toBe(3117);
+  });
+
+  // ── Story #447: live scheduler panel ─────────────────────────────────
+
+  it('returns disabledInConfig state when schedulerEnabledInConfig: false', async () => {
+    const daemon = makeMockDaemon();
+    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: false });
+    const res = await fetchDashboard(testPort, '/api/schedules');
+    const data = JSON.parse(res.body);
+    expect(data.disabledInConfig).toBe(true);
+    expect(data.available).toBe(false);
+    expect(data.schedulerAttached).toBe(false);
+    expect(data.schedules).toEqual([]);
+  });
+
+  it('returns live scheduler data when scheduler is attached', async () => {
+    const now = Date.now();
+    const { scheduler } = makeMockScheduler({
+      schedules: [{
+        id: 'sched-1', spellName: 'security-audit', cron: '0 */6 * * *',
+        nextRunAt: now + 3_600_000, enabled: true, source: 'definition', createdAt: now,
+      }],
+      history: {
+        'sched-1': [{
+          id: 'exec-1', scheduleId: 'sched-1', spellName: 'security-audit',
+          startedAt: now - 1000, success: true, duration: 500, manualRun: false,
+        }],
+      },
+    });
+    const daemon = makeMockDaemon({}, scheduler);
+    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+
+    const res = await fetchDashboard(testPort, '/api/schedules');
+    const data = JSON.parse(res.body);
+    expect(data.schedulerAttached).toBe(true);
+    expect(data.available).toBe(true);
+    expect(data.disabledInConfig).toBe(false);
+    expect(data.schedules).toHaveLength(1);
+    expect(data.schedules[0].spellName).toBe('security-audit');
+    expect(data.history).toHaveLength(1);
+    expect(data.history[0].success).toBe(true);
+  });
+
+  it('POST /api/schedules/:id/disable flips enabled=false', async () => {
+    const { scheduler, schedules } = makeMockScheduler({
+      schedules: [{ id: 'sched-1', spellName: 'w', enabled: true, nextRunAt: Date.now() + 1000, source: 'adhoc', createdAt: Date.now() }],
+    });
+    const daemon = makeMockDaemon({}, scheduler);
+    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+
+    const res = await fetchMethod(testPort, '/api/schedules/sched-1/disable', 'POST');
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data.ok).toBe(true);
+    expect(data.enabled).toBe(false);
+    expect(schedules.get('sched-1')!.enabled).toBe(false);
+    expect(scheduler.cancelSchedule).toHaveBeenCalledWith('sched-1');
+  });
+
+  it('POST /api/schedules/:id/enable flips enabled=true and returns nextRunAt', async () => {
+    const { scheduler } = makeMockScheduler({
+      schedules: [{ id: 'sched-2', spellName: 'w', enabled: false, nextRunAt: 0, source: 'adhoc', createdAt: Date.now() }],
+    });
+    const daemon = makeMockDaemon({}, scheduler);
+    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+
+    const res = await fetchMethod(testPort, '/api/schedules/sched-2/enable', 'POST');
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data.ok).toBe(true);
+    expect(data.enabled).toBe(true);
+    expect(data.nextRunAt).toBeGreaterThan(Date.now());
+  });
+
+  it('POST /api/schedules/:id/run accepts 202 and triggers runScheduleNow', async () => {
+    const { scheduler } = makeMockScheduler({
+      schedules: [{ id: 'sched-3', spellName: 'w', enabled: true, nextRunAt: Date.now() + 3_600_000, source: 'adhoc', createdAt: Date.now() }],
+    });
+    const daemon = makeMockDaemon({}, scheduler);
+    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+
+    const res = await fetchMethod(testPort, '/api/schedules/sched-3/run', 'POST');
+    expect(res.status).toBe(202);
+    const data = JSON.parse(res.body);
+    expect(data.accepted).toBe(true);
+    // Wait for the fire-and-forget promise to resolve
+    await new Promise(r => setTimeout(r, 20));
+    expect(scheduler.runScheduleNow).toHaveBeenCalledWith('sched-3');
+  });
+
+  it('POST schedule action returns 503 when scheduler is not attached', async () => {
+    const daemon = makeMockDaemon({}, /*scheduler*/ null);
+    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+
+    const res = await fetchMethod(testPort, '/api/schedules/sched-x/disable', 'POST');
+    expect(res.status).toBe(503);
+    expect(JSON.parse(res.body).error).toMatch(/not attached/i);
+  });
+
+  it('POST schedule action returns 404 when schedule is unknown', async () => {
+    const { scheduler } = makeMockScheduler({ schedules: [] });
+    const daemon = makeMockDaemon({}, scheduler);
+    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+
+    const res = await fetchMethod(testPort, '/api/schedules/missing/disable', 'POST');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST to unknown schedule action URL returns 405', async () => {
+    const { scheduler } = makeMockScheduler({ schedules: [] });
+    const daemon = makeMockDaemon({}, scheduler);
+    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+
+    const res = await fetchMethod(testPort, '/api/schedules/x/unknown', 'POST');
+    expect(res.status).toBe(405);
+  });
+
+  it('HTML no longer contains the "Scheduler not connected" placeholder literal', async () => {
+    const daemon = makeMockDaemon();
+    dashboard = await startDashboard(daemon, { port: testPort });
+    const res = await fetchDashboard(testPort, '/');
+    expect(res.body).not.toContain('Scheduler not connected');
+    expect(res.body).toContain('Scheduler disabled in moflo.yaml');
   });
 
   it('returns context metadata in spell executions', async () => {

@@ -232,17 +232,22 @@ async function attachDaemonServices(
     return { dashboard: null, memory: null };
   }
 
+  const schedulerConfig = loadMofloConfig(opts.projectRoot).scheduler;
+
   let dashboard: DashboardHandle | null = null;
   if (!opts.noDashboard) {
     try {
-      dashboard = await startDashboard(daemon, { port: opts.dashboardPort, memory });
+      dashboard = await startDashboard(daemon, {
+        port: opts.dashboardPort,
+        memory,
+        schedulerEnabledInConfig: schedulerConfig.enabled,
+      });
       if (opts.verbose) output.printSuccess(`Dashboard: http://localhost:${dashboard.port}`);
     } catch (err) {
       logWarn(`Dashboard failed to start: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  const schedulerConfig = loadMofloConfig(opts.projectRoot).scheduler;
   if (!schedulerConfig.enabled) {
     if (opts.verbose) output.printInfo('Spell scheduler disabled via moflo.yaml (scheduler.enabled: false)');
     return { dashboard, memory };

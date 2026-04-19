@@ -939,4 +939,142 @@ describe('SpellScheduler', () => {
 
     expect(executor.execute).toHaveBeenCalledWith('args-wf', { target: './src' }, expect.any(AbortSignal), undefined);
   });
+
+  // ── getRecentExecutions ────────────────────────────────────────────────
+
+  it('getRecentExecutions merges executions across all schedules, newest first', async () => {
+    const now = Date.now();
+    await memory.write('schedule-executions', 'exec-1', {
+      id: 'exec-1', scheduleId: 'sched-a', spellName: 'a', startedAt: now - 3000, success: true,
+    });
+    await memory.write('schedule-executions', 'exec-2', {
+      id: 'exec-2', scheduleId: 'sched-b', spellName: 'b', startedAt: now - 1000, success: false,
+    });
+    await memory.write('schedule-executions', 'exec-3', {
+      id: 'exec-3', scheduleId: 'sched-a', spellName: 'a', startedAt: now - 2000, success: true, manualRun: true,
+    });
+
+    const recent = await scheduler.getRecentExecutions(10);
+    expect(recent.map(e => e.id)).toEqual(['exec-2', 'exec-3', 'exec-1']);
+    expect(recent[1].manualRun).toBe(true);
+  });
+
+  it('getRecentExecutions respects limit', async () => {
+    const now = Date.now();
+    for (let i = 0; i < 5; i++) {
+      await memory.write('schedule-executions', `exec-${i}`, {
+        id: `exec-${i}`, scheduleId: 'sched-x', spellName: 'x', startedAt: now - i * 100, success: true,
+      });
+    }
+    const recent = await scheduler.getRecentExecutions(3);
+    expect(recent).toHaveLength(3);
+  });
+
+  // ── Dashboard story #447: runScheduleNow + enableSchedule ──────────────
+
+  it('runScheduleNow writes a manual-marked execution record', async () => {
+    const now = Date.now();
+    await memory.write('scheduled-spells', 'sched-manual', {
+      id: 'sched-manual',
+      spellName: 'manual-wf',
+      spellPath: '/path',
+      interval: '6h',
+      nextRunAt: now + 3_600_000, // an hour away — nothing would fire naturally
+      enabled: true,
+      createdAt: now,
+      source: 'adhoc',
+    });
+
+    const exec = await scheduler.runScheduleNow('sched-manual');
+    expect(exec.manualRun).toBe(true);
+    expect(exec.success).toBe(true);
+    expect(exec.id).toMatch(/^exec-manual-/);
+
+    const history = await scheduler.getExecutionHistory('sched-manual');
+    expect(history).toHaveLength(1);
+    expect(history[0].manualRun).toBe(true);
+  });
+
+  it('runScheduleNow does NOT advance nextRunAt', async () => {
+    const now = Date.now();
+    const originalNextRun = now + 3_600_000;
+    await memory.write('scheduled-spells', 'sched-noadvance', {
+      id: 'sched-noadvance',
+      spellName: 'test-wf',
+      spellPath: '/path',
+      interval: '1h',
+      nextRunAt: originalNextRun,
+      enabled: true,
+      createdAt: now,
+      source: 'adhoc',
+    });
+
+    await scheduler.runScheduleNow('sched-noadvance');
+
+    const updated = await scheduler.getSchedule('sched-noadvance');
+    expect(updated!.nextRunAt).toBe(originalNextRun); // unchanged
+    expect(updated!.lastRunAt).toBeUndefined(); // manual runs don't claim the slot
+  });
+
+  it('runScheduleNow throws when schedule is unknown', async () => {
+    await expect(scheduler.runScheduleNow('no-such-id')).rejects.toThrow(/not found/i);
+  });
+
+  it('runScheduleNow throws when spell no longer exists', async () => {
+    (executor.exists as any).mockReturnValueOnce(false);
+    await memory.write('scheduled-spells', 'sched-gone', {
+      id: 'sched-gone',
+      spellName: 'ghost-wf',
+      spellPath: '/path',
+      interval: '1h',
+      nextRunAt: Date.now() + 1000,
+      enabled: true,
+      createdAt: Date.now(),
+      source: 'adhoc',
+    });
+    await expect(scheduler.runScheduleNow('sched-gone')).rejects.toThrow(/no longer exists/i);
+  });
+
+  it('enableSchedule flips enabled=true and pushes nextRunAt forward', async () => {
+    const past = Date.now() - 10 * 86_400_000; // 10 days ago — stale
+    await memory.write('scheduled-spells', 'sched-reenable', {
+      id: 'sched-reenable',
+      spellName: 'test-wf',
+      spellPath: '/path',
+      interval: '1h',
+      nextRunAt: past,
+      enabled: false,
+      createdAt: past,
+      source: 'adhoc',
+    });
+
+    const before = Date.now();
+    const updated = await scheduler.enableSchedule('sched-reenable');
+
+    expect(updated).not.toBeNull();
+    expect(updated!.enabled).toBe(true);
+    expect(updated!.nextRunAt).toBeGreaterThanOrEqual(before);
+  });
+
+  it('enableSchedule returns null for unknown schedule', async () => {
+    const result = await scheduler.enableSchedule('no-such-id');
+    expect(result).toBeNull();
+  });
+
+  it('enableSchedule returns null for expired one-time (at) schedule', async () => {
+    const past = Date.now() - 86_400_000;
+    await memory.write('scheduled-spells', 'sched-at-expired', {
+      id: 'sched-at-expired',
+      spellName: 'test-wf',
+      spellPath: '/path',
+      at: new Date(past).toISOString(),
+      nextRunAt: past,
+      enabled: false,
+      createdAt: past,
+      source: 'adhoc',
+    });
+
+    const result = await scheduler.enableSchedule('sched-at-expired');
+    expect(result).toBeNull();
+  });
 });

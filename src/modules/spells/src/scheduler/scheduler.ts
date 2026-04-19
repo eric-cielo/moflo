@@ -62,6 +62,19 @@ export interface SchedulerEvent {
 export type SchedulerListener = (event: SchedulerEvent) => void;
 
 // ============================================================================
+// Scheduler Errors
+// ============================================================================
+
+export type SchedulerErrorCode = 'not-found' | 'spell-missing' | 'busy';
+
+export class SchedulerError extends Error {
+  constructor(public readonly code: SchedulerErrorCode, message: string) {
+    super(message);
+    this.name = 'SchedulerError';
+  }
+}
+
+// ============================================================================
 // SpellScheduler
 // ============================================================================
 
@@ -242,6 +255,52 @@ export class SpellScheduler {
   }
 
   /**
+   * Re-enable a previously disabled schedule. Recomputes `nextRunAt` forward
+   * of `now` so a stale past-due timestamp doesn't cause an immediate fire
+   * that would be skipped by the catch-up window.
+   *
+   * Returns null if the schedule doesn't exist or has expired (one-time `at`
+   * schedule whose trigger time has passed — re-enabling it would be useless).
+   */
+  async enableSchedule(scheduleId: string): Promise<SpellSchedule | null> {
+    const record = await this.getSchedule(scheduleId);
+    if (!record) return null;
+
+    const now = Date.now();
+    const nextRunAt = computeNextRun(
+      { cron: record.cron, interval: record.interval, at: record.at, lastRunAt: now },
+      now,
+    );
+    if (nextRunAt === null) return null;
+
+    const updated: SpellSchedule = { ...record, enabled: true, nextRunAt };
+    await this.memory.write(NAMESPACE_SCHEDULES, scheduleId, updated);
+    return updated;
+  }
+
+  /**
+   * Manually run a schedule immediately (bypasses the poll loop).
+   * The resulting execution record is tagged `manualRun: true` and does NOT
+   * advance `nextRunAt` — the regular cron pacing continues unchanged.
+   *
+   * Throws if the schedule is unknown or the spell no longer exists.
+   */
+  async runScheduleNow(scheduleId: string): Promise<ScheduleExecution> {
+    const schedule = await this.getSchedule(scheduleId);
+    if (!schedule) {
+      throw new SchedulerError('not-found', `Schedule not found: ${scheduleId}`);
+    }
+    if (!this.executor.exists(schedule.spellName)) {
+      throw new SchedulerError('spell-missing', `Spell no longer exists: ${schedule.spellName}`);
+    }
+    if (this.runningSpells.has(scheduleId)) {
+      throw new SchedulerError('busy', `Schedule already running: ${scheduleId}`);
+    }
+
+    return this.executeCore(schedule, Date.now(), { manual: true });
+  }
+
+  /**
    * Get a single schedule by ID.
    */
   async getSchedule(scheduleId: string): Promise<SpellSchedule | null> {
@@ -264,6 +323,20 @@ export class SpellScheduler {
     const results = await this.memory.search(NAMESPACE_EXECUTIONS, scheduleId);
     return results
       .map(r => r.value as ScheduleExecution)
+      .sort((a, b) => b.startedAt - a.startedAt)
+      .slice(0, limit);
+  }
+
+  /**
+   * Get the most recent executions across ALL schedules — single memory query.
+   * Used by the dashboard to render a merged recent-activity table without
+   * fanning out per-schedule.
+   */
+  async getRecentExecutions(limit = 50): Promise<ScheduleExecution[]> {
+    const results = await this.memory.search(NAMESPACE_EXECUTIONS, '*');
+    return results
+      .map(r => r.value as ScheduleExecution)
+      .filter(e => e && typeof e.startedAt === 'number')
       .sort((a, b) => b.startedAt - a.startedAt)
       .slice(0, limit);
   }
@@ -338,32 +411,52 @@ export class SpellScheduler {
   // ── Execution ────────────────────────────────────────────────────────────
 
   private async executeScheduled(schedule: SpellSchedule, now: number): Promise<void> {
+    await this.executeCore(schedule, now, { manual: false });
+  }
+
+  /**
+   * Core execution path shared by the poll loop and `runScheduleNow`.
+   *
+   * When `manual` is true, the execution record is tagged and `advanceNextRun`
+   * is skipped so the regular schedule cadence is preserved. Poll-driven calls
+   * always advance.
+   */
+  private async executeCore(
+    schedule: SpellSchedule,
+    now: number,
+    opts: { manual: boolean },
+  ): Promise<ScheduleExecution> {
     const controller = new AbortController();
     this.runningSpells.set(schedule.id, controller);
 
-    const executionId = `exec-${schedule.id}-${now}`;
-    const execution: ScheduleExecution = {
+    const executionId = opts.manual
+      ? `exec-manual-${schedule.id}-${now}`
+      : `exec-${schedule.id}-${now}`;
+
+    const initial: ScheduleExecution = {
       id: executionId,
       scheduleId: schedule.id,
       spellName: schedule.spellName,
       startedAt: now,
-      spellId: `scheduled-${schedule.spellName}-${now}`,
+      spellId: `${opts.manual ? 'manual' : 'scheduled'}-${schedule.spellName}-${now}`,
+      ...(opts.manual ? { manualRun: true } : {}),
     };
 
-    await this.memory.write(NAMESPACE_EXECUTIONS, executionId, execution);
+    await this.memory.write(NAMESPACE_EXECUTIONS, executionId, initial);
 
     this.emit({
       type: 'schedule:started',
       scheduleId: schedule.id,
       spellName: schedule.spellName,
-      message: `Started scheduled execution ${executionId}`,
+      message: opts.manual
+        ? `Started manual execution ${executionId}`
+        : `Started scheduled execution ${executionId}`,
       timestamp: now,
     });
 
+    let finalRecord: ScheduleExecution = initial;
     try {
-      // Compute effective MoFlo level: min(scheduler-level cap, per-schedule cap)
       const effectiveLevel = this.resolveEffectiveMofloLevel(schedule.mofloLevel);
-
       const result = await this.executor.execute(
         schedule.spellName,
         schedule.args ?? {},
@@ -372,47 +465,50 @@ export class SpellScheduler {
       );
 
       const completedAt = Date.now();
-      const completedExecution: ScheduleExecution = {
-        ...execution,
+      finalRecord = {
+        ...initial,
         completedAt,
         success: result.success,
         error: result.success ? undefined : result.errors.map(e => e.message).join('; '),
         duration: completedAt - now,
       };
-      await this.memory.write(NAMESPACE_EXECUTIONS, executionId, completedExecution);
+      await this.memory.write(NAMESPACE_EXECUTIONS, executionId, finalRecord);
 
       this.emit({
         type: result.success ? 'schedule:completed' : 'schedule:failed',
         scheduleId: schedule.id,
         spellName: schedule.spellName,
         message: result.success
-          ? `Completed in ${completedExecution.duration}ms`
-          : `Failed: ${completedExecution.error}`,
+          ? `Completed in ${finalRecord.duration}ms`
+          : `Failed: ${finalRecord.error}`,
         timestamp: completedAt,
       });
     } catch (err) {
       const completedAt = Date.now();
-      const failedExecution: ScheduleExecution = {
-        ...execution,
+      finalRecord = {
+        ...initial,
         completedAt,
         success: false,
         error: err instanceof Error ? err.message : String(err),
         duration: completedAt - now,
       };
-      await this.memory.write(NAMESPACE_EXECUTIONS, executionId, failedExecution);
+      await this.memory.write(NAMESPACE_EXECUTIONS, executionId, finalRecord);
 
       this.emit({
         type: 'schedule:failed',
         scheduleId: schedule.id,
         spellName: schedule.spellName,
-        message: `Error: ${failedExecution.error}`,
+        message: `Error: ${finalRecord.error}`,
         timestamp: completedAt,
       });
     } finally {
       this.runningSpells.delete(schedule.id);
       this.inflightPromises.delete(schedule.id);
-      await this.advanceNextRun(schedule, Date.now());
+      if (!opts.manual) {
+        await this.advanceNextRun(schedule, Date.now());
+      }
     }
+    return finalRecord;
   }
 
   /**
