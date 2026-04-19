@@ -307,13 +307,12 @@ describe('TokenGenerator', () => {
     });
 
     it('should use timing-safe comparison', () => {
-      // This test verifies the comparison takes consistent time
-      // regardless of where the mismatch occurs
       const token = generator.generate();
-      const mismatchEarly = 'X' + token.slice(1);
-      const mismatchLate = token.slice(0, -1) + 'X';
+      // '!' is outside the base64url alphabet, so it's guaranteed to differ
+      // from token[0]/token[-1] regardless of random generator output.
+      const mismatchEarly = '!' + token.slice(1);
+      const mismatchLate = token.slice(0, -1) + '!';
 
-      // Both comparisons should work (timing consistency is internal)
       expect(generator.compare(token, mismatchEarly)).toBe(false);
       expect(generator.compare(token, mismatchLate)).toBe(false);
     });
