@@ -77,13 +77,14 @@ export async function ensureDaemonForScheduling(
     }
   }
 
-  // Step 2: Check if daemon is installed as OS service
-  if (result.daemonRunning) {
-    result.daemonInstalled = isDaemonInstalled(resolvedRoot);
-  }
+  // Step 2: Check if daemon is installed as OS autostart service. This
+  // check is independent of the running state — a user with the daemon
+  // currently down still needs the autostart warning so their new schedule
+  // survives the next reboot.
+  result.daemonInstalled = isDaemonInstalled(resolvedRoot);
 
-  if (result.daemonRunning && !result.daemonInstalled) {
-    if (options.interactive) {
+  if (!result.daemonInstalled) {
+    if (options.interactive && result.daemonRunning) {
       const shouldInstall = await promptFn(
         'Register the daemon as a login service so schedules survive reboots?',
       );
@@ -94,10 +95,14 @@ export async function ensureDaemonForScheduling(
           result.warnings.push(`Failed to install daemon service: ${installResult.message}`);
         }
       } else {
-        result.warnings.push('Daemon is running but not installed as a login service. Schedules will stop after reboot.');
+        result.warnings.push(
+          "Daemon is not set to autostart. Run 'moflo daemon install' so this schedule survives reboot.",
+        );
       }
     } else {
-      result.warnings.push('Daemon is not registered as a login service. Install with: moflo daemon install');
+      result.warnings.push(
+        "Daemon is not set to autostart. Run 'moflo daemon install' so this schedule survives reboot.",
+      );
     }
   }
 

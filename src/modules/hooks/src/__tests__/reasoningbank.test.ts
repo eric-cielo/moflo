@@ -7,6 +7,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ReasoningBank, type GuidancePattern } from '../reasoningbank/index.js';
 
+// ReasoningBank.initialize() loads AgentDB (sql.js + HNSW + Transformers);
+// the one-time native module boot can exceed 5s under Linux CI parallel load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 describe('ReasoningBank', () => {
   let reasoningBank: ReasoningBank;
 

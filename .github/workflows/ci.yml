@@ -57,7 +57,11 @@ jobs:
         run: npm run build
 
       - name: Run tests
-        run: npx vitest run --reporter=verbose
+        # Uses scripts/test-runner.mjs: parallel pass + sequential isolation pass.
+        # Isolation tests (see isolationTests in vitest.config.ts) are files that
+        # pass alone but timeout under parallel CI load — they must be exercised
+        # in a dedicated second pass, which `npx vitest run` does not perform.
+        run: npm test
 
   lint:
     name: Lint & Security

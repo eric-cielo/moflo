@@ -17,6 +17,9 @@ export const isolationTests = [
   'src/modules/spells/__tests__/integration/permission-system-e2e.test.ts',
   'src/modules/spells/__tests__/integration/spell-engine-e2e.test.ts',
   'tests/system/pluggable-steps-system.test.ts',
+  // Timing-based parallelism assertion — Windows maxForks contention pushes
+  // the 75ms threshold over on full-suite runs; passes alone consistently.
+  'src/modules/spells/__tests__/preflights.test.ts',
 ];
 
 export default defineConfig({

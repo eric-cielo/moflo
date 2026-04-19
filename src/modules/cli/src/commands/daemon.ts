@@ -10,6 +10,7 @@ import { acquireDaemonLock, releaseDaemonLock, getDaemonLockHolder, transferDaem
 import { installDaemonService, uninstallDaemonService, isDaemonInstalled } from '../services/daemon-service.js';
 import { startDashboard, createDashboardMemoryAccessor, DEFAULT_DASHBOARD_PORT, type DashboardHandle } from '../services/daemon-dashboard.js';
 import { bootstrapDaemonScheduler } from '../services/daemon-scheduler-bootstrap.js';
+import { loadMofloConfig } from '../config/moflo-config.js';
 import type { MemoryAccessor } from '../../../spells/src/types/step-command.types.js';
 import type { SchedulerEvent } from '../../../spells/src/scheduler/scheduler.js';
 import { spawn, execFile, execFileSync } from 'child_process';
@@ -241,8 +242,24 @@ async function attachDaemonServices(
     }
   }
 
+  const schedulerConfig = loadMofloConfig(opts.projectRoot).scheduler;
+  if (!schedulerConfig.enabled) {
+    if (opts.verbose) output.printInfo('Spell scheduler disabled via moflo.yaml (scheduler.enabled: false)');
+    return { dashboard, memory };
+  }
+
   try {
-    await bootstrapDaemonScheduler(daemon, { projectRoot: opts.projectRoot, memory });
+    // enabled is pre-gated above (early return); skip the redundant arg —
+    // bootstrap's default is true.
+    await bootstrapDaemonScheduler(daemon, {
+      projectRoot: opts.projectRoot,
+      memory,
+      schedulerOptions: {
+        pollIntervalMs: schedulerConfig.pollIntervalMs,
+        maxConcurrent: schedulerConfig.maxConcurrent,
+        catchUpWindowMs: schedulerConfig.catchUpWindowMs,
+      },
+    });
     if (opts.verbose) output.printSuccess('Spell scheduler attached');
   } catch (err) {
     logWarn(`Spell scheduler not started: ${err instanceof Error ? err.message : String(err)}`);
@@ -545,6 +562,11 @@ const statusCommand: Command = {
       const isRunning = status.running || bgRunning;
       const displayPid = bgPid || status.pid;
 
+      // Surface OS-level autostart + scheduler config so users can tell at
+      // a glance whether scheduled spells will actually fire across reboots.
+      const autostartInstalled = isDaemonInstalled(projectRoot);
+      const schedulerConfig = loadMofloConfig(projectRoot).scheduler;
+
       output.writeln();
 
       // Daemon status box
@@ -552,11 +574,18 @@ const statusCommand: Command = {
       const statusText = isRunning ? output.success('RUNNING') : output.error('STOPPED');
       const mode = bgRunning ? output.dim(' (background)') : status.running ? output.dim(' (foreground)') : '';
 
+      const autostartIcon = autostartInstalled ? output.success('✓') : output.dim('○');
+      const autostartText = autostartInstalled ? 'registered' : 'not registered';
+      const schedIcon = schedulerConfig.enabled ? output.success('✓') : output.dim('○');
+      const schedText = schedulerConfig.enabled ? 'enabled' : 'disabled';
+
       output.printBox(
         [
           `Status: ${statusIcon} ${statusText}${mode}`,
           `PID: ${displayPid}`,
           status.startedAt ? `Started: ${status.startedAt.toISOString()}` : '',
+          `Autostart: ${autostartIcon} ${autostartText}`,
+          `Scheduler: ${schedIcon} ${schedText}`,
           `Workers Enabled: ${status.config.workers.filter(w => w.enabled).length}`,
           `Max Concurrent: ${status.config.maxConcurrent}`,
           `Max CPU Load: ${status.config.resourceThresholds.maxCpuLoad}`,
@@ -634,11 +663,20 @@ const statusCommand: Command = {
 
       return { success: true, data: status };
     } catch (error) {
-      // Daemon not initialized
+      // Daemon not initialized — still surface autostart + scheduler state so
+      // the user can see where the gap is (install + config are readable
+      // even when the daemon process hasn't been instantiated).
+      const autostartInstalled = isDaemonInstalled(projectRoot);
+      const schedulerConfig = loadMofloConfig(projectRoot).scheduler;
+      const autostartIcon = autostartInstalled ? output.success('✓') : output.dim('○');
+      const schedIcon = schedulerConfig.enabled ? output.success('✓') : output.dim('○');
+
       output.writeln();
       output.printBox(
         [
           `Status: ${output.error('○')} ${output.error('NOT INITIALIZED')}`,
+          `Autostart: ${autostartIcon} ${autostartInstalled ? 'registered' : 'not registered'}`,
+          `Scheduler: ${schedIcon} ${schedulerConfig.enabled ? 'enabled' : 'disabled'} (config)`,
           '',
           'Run "claude-flow daemon start" to start the daemon',
         ].join('\n'),

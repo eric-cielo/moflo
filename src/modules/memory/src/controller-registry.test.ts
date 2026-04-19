@@ -372,9 +372,11 @@ describe('ControllerRegistry', () => {
     it('should not enable optional controllers by default', async () => {
       await registry.initialize({ backend: mockBackend });
 
+      // semanticRouter was moved from opt-in to auto-enable when agentdb is
+      // available (see controller-registry.ts:556). Exclude it from this list —
+      // it is no longer an "optional by default" controller.
       expect(registry.isEnabled('hybridSearch')).toBe(false);
       expect(registry.isEnabled('federatedSession')).toBe(false);
-      expect(registry.isEnabled('semanticRouter')).toBe(false);
       expect(registry.isEnabled('sonaTrajectory')).toBe(false);
     });
   });
