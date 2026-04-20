@@ -282,9 +282,12 @@ function validateVariableReferences(
   args?: Record<string, ArgumentDefinition>,
   errors?: ValidationError[],
   prefix = 'steps',
+  parentDeclaredStepIds: readonly string[] = [],
 ): void {
   if (!errors) return;
-  const declaredStepIds: string[] = [];
+  // Nested steps can reference parent-scope declarations (e.g. a loop body
+  // referencing an output declared before the loop).
+  const declaredStepIds: string[] = [...parentDeclaredStepIds];
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
@@ -309,7 +312,7 @@ function validateVariableReferences(
 
     // Recurse into nested steps (condition/loop bodies)
     if (step.steps && Array.isArray(step.steps)) {
-      validateVariableReferences(step.steps, outputVars, args, errors, `${path}.steps`);
+      validateVariableReferences(step.steps, outputVars, args, errors, `${path}.steps`, declaredStepIds);
 
       // Parallel/loop nested step IDs are available to subsequent top-level steps (#247)
       for (const nested of step.steps) {

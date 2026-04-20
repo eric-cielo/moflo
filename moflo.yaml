@@ -107,3 +107,10 @@ model_routing:
   # agent_overrides:
   #   security-architect: opus     # Always use opus for security
   #   researcher: sonnet           # Pin research to sonnet
+
+# Spell loader directories (searched in order; later entries override earlier for same abbreviation)
+spells:
+  userDirs:
+    - .claude/spells
+    - spells/dev
+

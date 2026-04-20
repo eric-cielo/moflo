@@ -26,7 +26,36 @@ steps:
   - id: ensure-dir
     type: bash
     config:
-      command: "mkdir -p {args.downloadDir}"
+      command: |
+        node -e "var fs=require('fs'),os=require('os');var d='{args.downloadDir}'.replace(/^~/,os.homedir());var o=new Object();o.recursive=true;fs.mkdirSync(d,o);console.log(d);"
+
+  - id: env-graph
+    type: bash
+    config:
+      command: |
+        node -e "process.stdout.write(process.env.GRAPH_ACCESS_TOKEN||'')"
+    output: graphEnv
+
+  - id: ask-graph-token
+    type: prompt
+    config:
+      message: "Microsoft Graph access token (GRAPH_ACCESS_TOKEN)"
+      default: "{graphEnv.stdout}"
+    output: graphToken
+
+  - id: env-slack
+    type: bash
+    config:
+      command: |
+        node -e "process.stdout.write(process.env.SLACK_WEBHOOK_URL||'')"
+    output: slackEnv
+
+  - id: ask-slack-url
+    type: prompt
+    config:
+      message: "Slack webhook URL (SLACK_WEBHOOK_URL)"
+      default: "{slackEnv.stdout}"
+    output: slackUrl
 
   - id: last-run
     type: memory
@@ -48,6 +77,7 @@ steps:
     type: graph
     config:
       action: read-inbox
+      accessToken: "{graphToken.response}"
       limit: "{args.maxEmails}"
       sinceDate: "{startDate.response}"
     output: inbox
@@ -69,6 +99,7 @@ steps:
         type: graph
         config:
           action: download-attachments
+          accessToken: "{graphToken.response}"
           id: "{loop.item.id}"
           downloadDir: "{args.downloadDir}"
 
@@ -76,6 +107,7 @@ steps:
     type: slack
     config:
       action: post-webhook
+      webhookUrl: "{slackUrl.response}"
       text: |
         📧 Inbox scan complete
         Scanned since: {inbox.sinceDate}
