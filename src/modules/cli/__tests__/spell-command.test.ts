@@ -80,6 +80,22 @@ describe('Command index registration', () => {
     expect(cmd!.name).toBe('spell');
   });
 
+  it('castCommand is registered as a top-level command', async () => {
+    const { hasCommand, getCommandAsync } = await import('../src/commands/index.js');
+    expect(hasCommand('cast')).toBe(true);
+    const cmd = await getCommandAsync('cast');
+    expect(cmd).toBeDefined();
+    expect(cmd!.name).toBe('cast');
+  });
+
+  it('top-level cast and spell cast share the same Command object', async () => {
+    const { getCommandAsync } = await import('../src/commands/index.js');
+    const topCast = await getCommandAsync('cast');
+    const spell = await getCommandAsync('spell');
+    const spellCast = spell!.subcommands!.find(s => s.name === 'cast');
+    expect(topCast).toBe(spellCast);
+  });
+
   it('no "workflow" as a primary command name in loaders', async () => {
     const { getCommandNames } = await import('../src/commands/index.js');
     const names = getCommandNames();

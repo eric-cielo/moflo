@@ -37,6 +37,7 @@ const commandLoaders: Record<string, CommandLoader> = {
   migrate: () => import('./migrate.js'),
   hooks: () => import('./hooks.js'),
   spell: () => import('./spell.js'),
+  cast: () => import('./spell.js').then(m => ({ default: m.castCommand })),
   'hive-mind': () => import('./hive-mind.js'),
   process: () => import('./process.js'),
   daemon: () => import('./daemon.js'),
@@ -138,7 +139,7 @@ import { hiveMindCommand } from './hive-mind.js';
 import { configCommand } from './config.js';
 import { completionsCommand } from './completions.js';
 import { migrateCommand } from './migrate.js';
-import { spellCommand } from './spell.js';
+import { spellCommand, castCommand } from './spell.js';
 import { analyzeCommand } from './analyze.js';
 import { routeCommand } from './route.js';
 import { progressCommand } from './progress.js';
@@ -167,6 +168,7 @@ loadedCommands.set('mcp', mcpCommand);
 loadedCommands.set('hooks', hooksCommand);
 loadedCommands.set('daemon', daemonCommand);
 loadedCommands.set('doctor', doctorCommand);
+loadedCommands.set('cast', castCommand);
 loadedCommands.set('embeddings', embeddingsCommand);
 loadedCommands.set('neural', neuralCommand);
 loadedCommands.set('performance', performanceCommand);
@@ -245,6 +247,7 @@ export const commands: Command[] = [
   hooksCommand,
   daemonCommand,
   doctorCommand,
+  castCommand,
   embeddingsCommand,
   neuralCommand,
   performanceCommand,
@@ -263,6 +266,7 @@ export const commandsByCategory = {
     initCommand,
     startCommand,
     statusCommand,
+    castCommand,
     agentCommand,
     swarmCommand,
     memoryCommand,

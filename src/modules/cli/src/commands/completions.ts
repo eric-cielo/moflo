@@ -10,7 +10,7 @@ import { output } from '../output.js';
 
 // Get all top-level commands for completions
 const TOP_LEVEL_COMMANDS = [
-  'swarm', 'agent', 'task', 'session', 'config', 'memory', 'spell',
+  'swarm', 'agent', 'task', 'session', 'config', 'memory', 'spell', 'cast',
   'hive-mind', 'hooks', 'daemon', 'neural', 'security', 'performance',
   'providers', 'plugins', 'deployment', 'claims', 'embeddings',
   'doctor', 'completions', 'help', 'version'
@@ -151,6 +151,7 @@ _claude_flow() {
         'config:Configuration management'
         'memory:Memory operations with AgentDB'
         'spell:Spell casting & automation'
+        'cast:Cast a spell (shortcut for spell cast)'
         'hive-mind:Queen-led consensus coordination'
         'hooks:Self-learning automation hooks'
         'daemon:Background service management'
