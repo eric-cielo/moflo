@@ -34,14 +34,21 @@ const execAsync = promisify(exec);
  * Critical for Windows where PATH may not be inherited properly
  */
 async function runCommand(command: string, timeoutMs: number = 5000): Promise<string> {
-  const { stdout } = await execAsync(command, {
+  const opts = {
     encoding: 'utf8' as BufferEncoding,
     timeout: timeoutMs,
     shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh', // Use proper shell per platform
     env: { ...process.env }, // Explicitly inherit full environment
     windowsHide: true, // Hide window on Windows
-  });
-  return (stdout as string).trim();
+  };
+  const { stdout } = await execAsync(command, opts);
+  const out = (stdout as string).trim();
+  // Windows parallel exec occasionally returns empty stdout under shell contention — retry once serially
+  if (!out && process.platform === 'win32') {
+    const retry = await execAsync(command, opts);
+    return (retry.stdout as string).trim();
+  }
+  return out;
 }
 
 interface HealthCheck {
