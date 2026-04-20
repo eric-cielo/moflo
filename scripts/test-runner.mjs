@@ -100,33 +100,37 @@ async function main() {
     console.log(`\n✓ Parallel suite: ${main.passed} tests passed`);
   }
 
-  // ── Pass 2: Isolation tests (sequential) ──
-  if (isolationTests.length > 0) {
-    console.log(`\n━━ Pass 2: Isolation tests (${isolationTests.length} files, sequential) ━━\n`);
+  // ── Pass 2: Isolation tests (single batch, serialized via maxForks:1) ──
+  //
+  // Previously this spawned one vitest process per file. Each cold-boot
+  // costs 3-6s for ts-node + plugin + transform setup, adding 30-60s of
+  // pure startup overhead across the list. A single invocation with
+  // maxForks:1 gives us the same one-at-a-time execution with a single
+  // cold-boot, typically cutting Pass 2 wall time in half.
+  const presentIsolationTests = isolationTests.filter((t) => {
+    if (existsSync(resolve(root, t))) return true;
+    console.log(`  ⚠ skipped (not found): ${t}`);
+    return false;
+  });
 
-    for (const testFile of isolationTests) {
-      const fullPath = resolve(root, testFile);
-      if (!existsSync(fullPath)) {
-        console.log(`  ⚠ skipped (not found): ${testFile}`);
-        continue;
-      }
+  if (presentIsolationTests.length > 0) {
+    console.log(`\n━━ Pass 2: Isolation tests (${presentIsolationTests.length} files, single batch) ━━\n`);
 
-      const result = await runVitest([
-        'run',
-        testFile,
-        '--reporter=default',
-        '--reporter=json',
-        `--outputFile.json=${jsonFile}`,
-      ], { config: isolationConfig });
+    const result = await runVitest([
+      'run',
+      ...presentIsolationTests,
+      '--reporter=default',
+      '--reporter=json',
+      `--outputFile.json=${jsonFile}`,
+    ], { config: isolationConfig });
 
-      totalPassed += result.passed;
-      totalFailed += result.failed;
+    totalPassed += result.passed;
+    totalFailed += result.failed;
 
-      if (result.failed > 0) {
-        console.log(`  ✗ ${testFile}: ${result.failed} failure(s)`);
-      } else {
-        console.log(`  ✓ ${testFile}: ${result.passed} passed`);
-      }
+    if (result.failed > 0) {
+      console.log(`\n✗ Isolation batch: ${result.failed} failure(s)`);
+    } else {
+      console.log(`\n✓ Isolation batch: ${result.passed} tests passed`);
     }
   }
 
