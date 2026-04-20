@@ -20,6 +20,9 @@ export const isolationTests = [
   // Timing-based parallelism assertion — Windows maxForks contention pushes
   // the 75ms threshold over on full-suite runs; passes alone consistently.
   'src/modules/spells/__tests__/preflights.test.ts',
+  // 47 tests sharing one AgentDB instance via beforeAll; _clearForTest + 12
+  // storePattern calls exceed 30s under Linux CI parallel load (186s file total).
+  'src/modules/hooks/src/__tests__/guidance-provider.test.ts',
 ];
 
 export default defineConfig({
