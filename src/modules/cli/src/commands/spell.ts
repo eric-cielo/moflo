@@ -127,7 +127,7 @@ function printSpellErrors(errors: SpellErrorResponse[]): void {
 }
 
 // Cast subcommand (formerly "run")
-const castCommand: Command = {
+export const castCommand: Command = {
   name: 'cast',
   aliases: ['run'],
   description: 'Cast a spell',
