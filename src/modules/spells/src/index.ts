@@ -147,6 +147,13 @@ export {
   type AcceptanceCheckResult,
 } from './core/permission-acceptance.js';
 
+export {
+  registerTTYPauser,
+  acquireTTYLock,
+  type TTYLockHandle,
+  type TTYPauser,
+} from './core/tty-lock.js';
+
 // ============================================================================
 // Built-in Commands
 // ============================================================================

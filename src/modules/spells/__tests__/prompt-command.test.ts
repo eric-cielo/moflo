@@ -14,6 +14,10 @@ import {
   promptCommand,
   resolveDefault,
 } from '../src/commands/prompt-command.js';
+import {
+  registerTTYPauser,
+  _resetTTYLockForTest,
+} from '../src/core/tty-lock.js';
 import { createMockContext } from './helpers.js';
 
 describe('resolveDefault', () => {
@@ -196,6 +200,21 @@ describe('promptCommand', () => {
       const parsed = Date.parse(output.data.response as string);
       expect(Date.now() - parsed).toBeGreaterThan(7 * 86_400_000 - 5_000);
       expect(Date.now() - parsed).toBeLessThan(7 * 86_400_000 + 5_000);
+    });
+
+    it('acquires and releases the TTY lock around the readline call', async () => {
+      _resetTTYLockForTest();
+      const events: string[] = [];
+      registerTTYPauser(() => {
+        events.push('pause');
+        return { release: () => events.push('resume') };
+      });
+      try {
+        await runWithStdinLine('answer', { message: 'Q?', default: null });
+      } finally {
+        _resetTTYLockForTest();
+      }
+      expect(events).toEqual(['pause', 'resume']);
     });
   });
 });

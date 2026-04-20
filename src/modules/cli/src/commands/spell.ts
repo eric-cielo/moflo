@@ -30,6 +30,7 @@ import {
 } from '../mcp-tools/tool-names.js';
 import { formatStatus, handleMCPError } from '../services/cli-formatters.js';
 import { scheduleCommand } from './spell-schedule.js';
+import { loadSpellEngine } from '../services/engine-loader.js';
 
 // Re-export formatStatus as formatStageStatus for table column references
 const formatStageStatus = formatStatus;
@@ -228,6 +229,20 @@ export const castCommand: Command = {
 
     const spinner = output.createSpinner({ text: 'Casting spell...', spinner: 'dots' });
 
+    // Let interactive step commands (e.g. `prompt`) reclaim the TTY so their
+    // input doesn't get scrambled by the spinner's redraws.
+    let unregisterPauser: (() => void) | null = null;
+    try {
+      const engine = await loadSpellEngine();
+      unregisterPauser = engine.registerTTYPauser(() => {
+        spinner.stop();
+        return { release: () => spinner.start() };
+      });
+    } catch {
+      // Engine not available (e.g. package not built) — the spell call below
+      // will surface a clearer error. The spinner-pause feature is best-effort.
+    }
+
     try {
       spinner.start();
 
@@ -277,6 +292,8 @@ export const castCommand: Command = {
     } catch (error) {
       spinner.fail('Spell failed');
       return handleMCPError(error, 'cast spell');
+    } finally {
+      unregisterPauser?.();
     }
   },
 };

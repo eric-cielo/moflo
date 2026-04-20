@@ -74,6 +74,7 @@ export interface EngineModule {
     options?: Record<string, unknown>,
   ) => Promise<SpellResult>;
   loadSandboxConfigFromProject: (projectRoot: string) => Promise<SandboxConfig>;
+  registerTTYPauser: (pauser: () => { release: () => void }) => () => void;
 }
 
 let cachedEngine: EngineModule | null = null;

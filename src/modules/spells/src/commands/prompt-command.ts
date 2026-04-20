@@ -22,6 +22,7 @@ import type {
   JSONSchema,
 } from '../types/step-command.types.js';
 import { interpolateString } from '../core/interpolation.js';
+import { acquireTTYLock } from '../core/tty-lock.js';
 
 /** Typed config for the prompt step command. */
 export interface PromptStepConfig extends StepConfig {
@@ -146,9 +147,15 @@ export const promptCommand: StepCommand<PromptStepConfig> = {
 
     if (interactive) {
       const hint = effectiveDefault ? ` [${effectiveDefault}]` : '';
-      const prompt = `? ${message}${hint}: `;
-      const line = await readLineFromStdin(prompt, context.abortSignal);
-      response = line || effectiveDefault;
+      const banner = '\n\x1b[1;36m━━━ Input needed ━━━\x1b[0m\n';
+      const prompt = `${banner}\x1b[1m${message}\x1b[0m${hint}\n> `;
+      const lock = acquireTTYLock();
+      try {
+        const line = await readLineFromStdin(prompt, context.abortSignal);
+        response = line || effectiveDefault;
+      } finally {
+        lock.release();
+      }
     }
 
     return {
