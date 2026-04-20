@@ -39,7 +39,13 @@ steps:
   - id: ask-graph-token
     type: prompt
     config:
-      message: "Microsoft Graph access token (GRAPH_ACCESS_TOKEN)"
+      message: |
+        Microsoft Graph access token needed to read your Outlook/Microsoft 365 inbox.
+        Get one (expires in ~1h):
+          1. Open https://developer.microsoft.com/en-us/graph/graph-explorer
+          2. Sign in with the Microsoft 365 account whose mailbox you want to scan
+          3. Click the "Access token" tab and copy the full token string
+        Paste the token now (or set GRAPH_ACCESS_TOKEN env to skip this prompt)
       default: "{graphEnv.stdout}"
     output: graphToken
 
@@ -53,7 +59,13 @@ steps:
   - id: ask-slack-url
     type: prompt
     config:
-      message: "Slack webhook URL (SLACK_WEBHOOK_URL)"
+      message: |
+        Slack incoming-webhook URL for the scan summary notification.
+        Get one:
+          1. Open https://api.slack.com/apps → pick (or create) an app
+          2. Features → "Incoming Webhooks" → toggle on → "Add New Webhook to Workspace"
+          3. Pick the channel to post into; copy the https://hooks.slack.com/... URL
+        Paste the webhook URL now (or set SLACK_WEBHOOK_URL env to skip this prompt)
       default: "{slackEnv.stdout}"
     output: slackUrl
 
