@@ -212,7 +212,10 @@ export class ReasoningBank extends EventEmitter {
   constructor(config: Partial<ReasoningBankConfig> = {}) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.embeddingService = new FallbackEmbeddingService(this.config.dimensions);
+    this.embeddingService = new FallbackEmbeddingService(
+      this.config.dimensions,
+      this.config.useMockEmbeddings === true,
+    );
   }
 
   /**
@@ -220,6 +223,20 @@ export class ReasoningBank extends EventEmitter {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
+
+    // Fast path for tests: skip dependency load + backend init entirely.
+    // loadDependencies() transitively imports onnxruntime-node via @moflo/memory,
+    // which costs 5-10s of native boot even when we don't use it.
+    if (this.config.useMockEmbeddings) {
+      this.useRealBackend = false;
+      this.initialized = true;
+      this.emit('initialized', {
+        shortTermCount: 0,
+        longTermCount: 0,
+        useRealBackend: false,
+      });
+      return;
+    }
 
     try {
       // Try to load real implementations
@@ -1007,15 +1024,26 @@ class RealEmbeddingService implements IEmbeddingService {
 class FallbackEmbeddingService implements IEmbeddingService {
   private dimensions: number;
   private cache: Map<string, Float32Array> = new Map();
+  private skipSubprocess: boolean;
 
-  constructor(dimensions: number = 384) {
+  constructor(dimensions: number = 384, skipSubprocess: boolean = false) {
     this.dimensions = dimensions;
+    this.skipSubprocess = skipSubprocess;
   }
 
   async embed(text: string): Promise<Float32Array> {
     const cacheKey = text.slice(0, 200);
     if (this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey)!;
+    }
+
+    // Skip subprocess entirely when mock mode is requested — spawning
+    // `npx agentic-flow` per call costs 1-10s on CI (cold cache) even
+    // when the call ultimately fails.
+    if (this.skipSubprocess) {
+      const embedding = this.hashEmbed(text);
+      this.cache.set(cacheKey, embedding);
+      return embedding;
     }
 
     // Try agentic-flow ONNX embeddings first

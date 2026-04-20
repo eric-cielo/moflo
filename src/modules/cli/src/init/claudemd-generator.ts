@@ -25,14 +25,7 @@ This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted d
 
 ### FIRST ACTION ON EVERY PROMPT: Search Memory
 
-Your first tool call for every new user prompt MUST be a memory search. Do this BEFORE Glob, Grep, Read, or any file exploration.
-
-\`\`\`
-mcp__moflo__memory_search — query: "<task description>", namespace: "guidance" or "patterns" or "code-map"
-\`\`\`
-
-Search \`guidance\` and \`patterns\` namespaces on every prompt. Search \`code-map\` when navigating the codebase.
-When the user asks you to remember something: \`mcp__moflo__memory_store\` with namespace \`knowledge\`.
+MUST call \`mcp__moflo__memory_search\` BEFORE any Glob/Grep/Read/file exploration. Namespaces: \`guidance\`+\`patterns\` every prompt; \`code-map\` when navigating code. When the user says "remember this": \`mcp__moflo__memory_store\` with namespace \`knowledge\`.
 
 ### Spell Gates (enforced automatically)
 
@@ -47,9 +40,6 @@ When the user asks you to remember something: \`mcp__moflo__memory_store\` with 
 |------|---------|
 | \`mcp__moflo__memory_search\` | Semantic search across indexed knowledge |
 | \`mcp__moflo__memory_store\` | Store patterns and decisions |
-| \`mcp__moflo__hooks_route\` | Route task to optimal agent type |
-| \`mcp__moflo__hooks_pre-task\` | Record task start |
-| \`mcp__moflo__hooks_post-task\` | Record task completion for learning |
 
 ### CLI Fallback
 
