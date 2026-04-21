@@ -139,6 +139,20 @@ export function generateId(prefix: string): string {
 }
 
 /**
+ * Bounded-value helpers shared by controllers. `clamp01` is the common
+ * score/weight path; `clampInt` coerces pagination/limit arguments.
+ */
+export function clamp01(n: unknown): number {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+export function clampInt(n: unknown, min: number, max: number, fallback: number = min): number {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+/**
  * Runtime duck-type check. Small helper so controller-registry can detect
  * moflo-owned controllers without a static import-cycle on the classes.
  */
