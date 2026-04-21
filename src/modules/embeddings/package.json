@@ -26,12 +26,6 @@
     "vitest": "^4.0.16"
   },
   "peerDependencies": {
-    "@moflo/shared": "^3.0.0-alpha.1",
-    "agentic-flow": "^2.0.0"
-  },
-  "peerDependenciesMeta": {
-    "agentic-flow": {
-      "optional": true
-    }
+    "@moflo/shared": "^3.0.0-alpha.1"
   }
 }

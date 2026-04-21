@@ -51,7 +51,6 @@
     "@moflo/embeddings": "file:../embeddings",
     "@moflo/guidance": "file:../guidance",
     "@moflo/memory": "file:../memory",
-    "@claude-flow/plugin-gastown-bridge": "^0.1.3",
-    "agentic-flow": "^2.0.7"
+    "@claude-flow/plugin-gastown-bridge": "^0.1.3"
   }
 }

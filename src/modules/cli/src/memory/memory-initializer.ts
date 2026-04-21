@@ -1569,54 +1569,6 @@ export async function loadEmbeddingModel(options?: {
       };
     }
 
-    // Fallback: Check for agentic-flow ReasoningBank embeddings (v3)
-    const reasoningBank = await mofloImport('agentic-flow/reasoningbank');
-
-    if (reasoningBank?.computeEmbedding) {
-      if (verbose) {
-        console.log('Loading agentic-flow ReasoningBank embedding model...');
-      }
-
-      embeddingModelState = {
-        loaded: true,
-        model: { embed: reasoningBank.computeEmbedding },
-        tokenizer: null,
-        dimensions: 768,
-        modelName: 'agentic-flow/reasoningbank'
-      };
-
-      return {
-        success: true,
-        dimensions: 768,
-        modelName: 'agentic-flow/reasoningbank',
-        loadTime: Date.now() - startTime
-      };
-    }
-
-    // Legacy fallback: Check for agentic-flow core embeddings
-    const agenticFlow = await mofloImport('agentic-flow');
-
-    if (agenticFlow && (agenticFlow as any).embeddings) {
-      if (verbose) {
-        console.log('Loading agentic-flow embedding model...');
-      }
-
-      embeddingModelState = {
-        loaded: true,
-        model: (agenticFlow as any).embeddings,
-        tokenizer: null,
-        dimensions: 768,
-        modelName: 'agentic-flow'
-      };
-
-      return {
-        success: true,
-        dimensions: 768,
-        modelName: 'agentic-flow',
-        loadTime: Date.now() - startTime
-      };
-    }
-
     // No ONNX model available - use fallback
     embeddingModelState = {
       loaded: true,

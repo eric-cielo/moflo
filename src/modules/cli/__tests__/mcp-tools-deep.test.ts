@@ -157,10 +157,6 @@ vi.mock('@moflo/embeddings', () => {
   throw new Error('Cannot find package');
 });
 
-vi.mock('agentic-flow/reasoningbank', () => {
-  throw new Error('Cannot find package');
-});
-
 // ============================================================================
 // Import all tool modules (after mocks are set up)
 // ============================================================================
