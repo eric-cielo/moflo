@@ -515,8 +515,11 @@ export class ControllerRegistry extends EventEmitter {
       case 'memoryGraph':
         return !!(this.config.memory?.memoryGraph || this.backend);
 
-      // Security — enabled if AgentDB available
+      // MutationGuard is moflo-owned + in-memory — no DB needed (epic #464 Phase C5).
       case 'mutationGuard':
+        return true;
+
+      // Security — enabled if AgentDB available (for sql.js handle)
       case 'attestationLog':
         return this.agentdb !== null;
 
@@ -780,6 +783,17 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'causalGraph': {
+        // Prefer moflo-owned impl (epic #464 Phase C5).
+        if (this.agentdb?.database) {
+          try {
+            const { CausalGraph } = await import('./controllers/causal-graph.js');
+            const graph = new CausalGraph(this.agentdb.database);
+            await graph.initializeDatabase();
+            return graph;
+          } catch {
+            // Fall through to agentdb.
+          }
+        }
         if (!this.agentdb || typeof this.agentdb.getController !== 'function') return null;
         try {
           return this.agentdb.getController(name) ?? null;
@@ -787,6 +801,17 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'learningSystem': {
+        // Prefer moflo-owned impl (epic #464 Phase C5).
+        if (this.agentdb?.database) {
+          try {
+            const { LearningSystem } = await import('./controllers/learning-system.js');
+            const ls = new LearningSystem(this.agentdb.database);
+            await ls.initializeDatabase();
+            return ls;
+          } catch {
+            // Fall through to agentdb.
+          }
+        }
         if (!this.agentdb) return null;
         try {
           const agentdbModule: any = await import('agentdb');
@@ -862,8 +887,13 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'mutationGuard': {
-        // MutationGuard exported from agentdb 3.0.0-alpha.10 (ADR-060)
-        // Constructor: (config?) where config.dimension, config.maxElements, config.enableWasmProofs
+        // Prefer moflo-owned impl (epic #464 Phase C5) — pure in-memory, no DB needed.
+        try {
+          const { MutationGuard } = await import('./controllers/mutation-guard.js');
+          return new MutationGuard();
+        } catch {
+          // Fall through to agentdb.
+        }
         if (!this.agentdb) return null;
         try {
           const agentdbModule: any = await import('agentdb');
