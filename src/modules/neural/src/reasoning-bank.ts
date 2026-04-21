@@ -27,21 +27,26 @@ import type {
 } from './types.js';
 
 // ============================================================================
-// AgentDB Integration
+// Persistence via @moflo/memory (shared with hooks/ReasoningBank)
 // ============================================================================
 
-let AgentDB: any;
+let AgentDBAdapter: any;
+let createDefaultEntry: ((input: any) => any) | undefined;
 let agentdbImportPromise: Promise<void> | undefined;
 
-async function ensureAgentDBImport(): Promise<void> {
+async function ensureAgentDBAdapterImport(): Promise<void> {
   if (!agentdbImportPromise) {
     agentdbImportPromise = (async () => {
       try {
-        const agentdbModule: any = await import('agentdb');
-        AgentDB = agentdbModule.AgentDB || agentdbModule.default;
+        // Variable specifier so tsc/bundlers skip static resolution;
+        // @moflo/memory is an optional runtime peer installed by the consumer.
+        const moduleName = '@moflo/memory';
+        const memoryModule: any = await import(/* webpackIgnore: true */ moduleName);
+        AgentDBAdapter = memoryModule.AgentDBAdapter;
+        createDefaultEntry = memoryModule.createDefaultEntry;
       } catch {
-        // AgentDB not available - will use fallback
-        AgentDB = undefined;
+        AgentDBAdapter = undefined;
+        createDefaultEntry = undefined;
       }
     })();
   }
@@ -171,9 +176,8 @@ export class ReasoningBank {
   private patterns: Map<string, Pattern> = new Map();
   private eventListeners: Set<NeuralEventListener> = new Set();
 
-  // AgentDB instance for vector storage
+  // @moflo/memory adapter for vector storage (shared with hooks/ReasoningBank)
   private agentdb: any = null;
-  private agentdbAvailable: boolean = false;
   private initialized: boolean = false;
 
   // Performance tracking
@@ -195,29 +199,27 @@ export class ReasoningBank {
   // ==========================================================================
 
   /**
-   * Initialize ReasoningBank with AgentDB
+   * Initialize ReasoningBank with the @moflo/memory AgentDBAdapter.
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
     if (this.config.enableAgentDB) {
-      await ensureAgentDBImport();
-      this.agentdbAvailable = AgentDB !== undefined;
-
-      if (this.agentdbAvailable) {
+      await ensureAgentDBAdapterImport();
+      if (AgentDBAdapter !== undefined) {
         try {
-          this.agentdb = new AgentDB({
-            dbPath: this.config.dbPath || ':memory:',
-            namespace: this.config.namespace,
-            vectorDimension: this.config.vectorDimension,
-            vectorBackend: 'auto',
+          this.agentdb = new AgentDBAdapter({
+            dimensions: this.config.vectorDimension,
+            defaultNamespace: this.config.namespace,
+            persistenceEnabled: Boolean(this.config.dbPath),
+            persistencePath: this.config.dbPath,
           });
 
           await this.agentdb.initialize();
           this.emitEvent({ type: 'memory_consolidated', memoriesCount: 0 });
         } catch (error) {
-          console.warn('AgentDB initialization failed, using fallback:', error);
-          this.agentdbAvailable = false;
+          console.warn('AgentDBAdapter initialization failed, using fallback:', error);
+          this.agentdb = null;
         }
       }
     }
@@ -230,7 +232,7 @@ export class ReasoningBank {
    */
   async shutdown(): Promise<void> {
     if (this.agentdb) {
-      await this.agentdb.close?.();
+      await this.agentdb.shutdown();
     }
     this.initialized = false;
   }
@@ -259,7 +261,7 @@ export class ReasoningBank {
     let candidates: Array<{ entry: MemoryEntry; relevance: number }> = [];
 
     // Try AgentDB HNSW search first
-    if (this.agentdb && this.agentdbAvailable) {
+    if (this.agentdb) {
       try {
         const results = await this.searchWithAgentDB(queryEmbedding, retrieveK * 3);
         candidates = results
@@ -268,8 +270,8 @@ export class ReasoningBank {
             return entry ? { entry, relevance: r.similarity } : null;
           })
           .filter((c): c is { entry: MemoryEntry; relevance: number } => c !== null);
-      } catch {
-        // Fall through to brute-force
+      } catch (error) {
+        console.warn('AgentDB search failed, falling back to brute-force:', error);
       }
     }
 
@@ -484,7 +486,7 @@ export class ReasoningBank {
     this.memories.set(memory.memoryId, entry);
 
     // Store in AgentDB for vector search
-    if (this.agentdb && this.agentdbAvailable) {
+    if (this.agentdb) {
       await this.storeInAgentDB(memory);
     }
 
@@ -731,7 +733,7 @@ export class ReasoningBank {
         .filter(e => e.consolidated).length,
       successfulTrajectories: this.getSuccessfulTrajectories().length,
       failedTrajectories: this.getFailedTrajectories().length,
-      agentdbEnabled: this.agentdbAvailable ? 1 : 0,
+      agentdbEnabled: this.agentdb ? 1 : 0,
       retrievalCount: this.retrievalCount,
       distillationCount: this.distillationCount,
       judgeCount: this.judgeCount,
@@ -827,32 +829,36 @@ export class ReasoningBank {
   // ==========================================================================
 
   /**
-   * Store memory in AgentDB for vector search
+   * Store memory in the @moflo/memory adapter for vector search.
    */
   private async storeInAgentDB(memory: DistilledMemory): Promise<void> {
-    if (!this.agentdb) return;
+    if (!this.agentdb || !createDefaultEntry) return;
 
     try {
-      if (typeof this.agentdb.store === 'function') {
-        await this.agentdb.store(memory.memoryId, {
-          content: memory.strategy,
-          embedding: memory.embedding,
-          metadata: {
-            trajectoryId: memory.trajectoryId,
-            quality: memory.quality,
-            keyLearnings: memory.keyLearnings,
-            usageCount: memory.usageCount,
-            lastUsed: memory.lastUsed,
-          },
-        });
-      }
+      const entry = createDefaultEntry({
+        key: memory.memoryId,
+        content: memory.strategy,
+        type: 'semantic',
+        namespace: this.config.namespace,
+        tags: ['reasoning-bank', 'distilled-memory'],
+        metadata: {
+          trajectoryId: memory.trajectoryId,
+          quality: memory.quality,
+          keyLearnings: memory.keyLearnings,
+          usageCount: memory.usageCount,
+          lastUsed: memory.lastUsed,
+        },
+      });
+      entry.id = memory.memoryId;
+      entry.embedding = memory.embedding;
+      await this.agentdb.store(entry);
     } catch (error) {
-      console.warn('Failed to store in AgentDB:', error);
+      console.warn('Failed to store in AgentDB adapter:', error);
     }
   }
 
   /**
-   * Search using AgentDB HNSW index
+   * Search via the @moflo/memory adapter's HNSW index.
    */
   private async searchWithAgentDB(
     queryEmbedding: Float32Array,
@@ -861,38 +867,24 @@ export class ReasoningBank {
     if (!this.agentdb) return [];
 
     try {
-      if (typeof this.agentdb.search === 'function') {
-        return await this.agentdb.search(queryEmbedding, k);
-      }
-
-      // Try HNSW controller if available
-      const hnsw = this.agentdb.getController?.('hnsw');
-      if (hnsw) {
-        const results = await hnsw.search(queryEmbedding, k);
-        return results.map((r: any) => ({
-          id: String(r.id),
-          similarity: r.similarity || 1 - r.distance,
-        }));
-      }
-    } catch {
-      // Fall through to return empty
+      const results = await this.agentdb.search(queryEmbedding, { k });
+      return results.map((r: any) => ({ id: r.entry.id, similarity: r.score }));
+    } catch (error) {
+      console.warn('AgentDB search failed:', error);
+      return [];
     }
-
-    return [];
   }
 
   /**
-   * Delete from AgentDB
+   * Delete from the @moflo/memory adapter.
    */
   private async deleteFromAgentDB(memoryId: string): Promise<void> {
     if (!this.agentdb) return;
 
     try {
-      if (typeof this.agentdb.delete === 'function') {
-        await this.agentdb.delete(memoryId);
-      }
-    } catch {
-      // Ignore deletion errors
+      await this.agentdb.delete(memoryId);
+    } catch (error) {
+      console.warn('AgentDB delete failed:', error);
     }
   }
 
@@ -1250,7 +1242,7 @@ export class ReasoningBank {
    * Check if AgentDB is available and initialized
    */
   isAgentDBAvailable(): boolean {
-    return this.agentdbAvailable;
+    return this.agentdb !== null;
   }
 }
 
