@@ -25,23 +25,46 @@ const mofloRequire = createRequire(fileURLToPath(import.meta.url));
  * On Windows, `createRequire.resolve()` returns a native path (C:\...) which
  * `import()` rejects — it requires a file:// URL.  We convert via pathToFileURL.
  *
- * @param specifier  Package specifier, e.g. 'sql.js' or '@xenova/transformers'
- * @returns          The imported module, or null if not available
+ * @param specifier       Package specifier, e.g. 'sql.js' or '@xenova/transformers'
+ * @param expectedExports Optional list of named exports the caller relies on.
+ *                        When provided, the module is validated after load; if any
+ *                        named export is missing, a warning is emitted and null
+ *                        is returned (issue #482 — prevent silent shape mismatches).
+ * @returns               The imported module, or null if not available / shape mismatch
  */
-export async function mofloImport(specifier: string): Promise<any> {
+export async function mofloImport(
+  specifier: string,
+  expectedExports?: readonly string[],
+): Promise<any> {
+  let mod: any;
   try {
     const resolved = mofloRequire.resolve(specifier);
     // Convert native path → file:// URL (required on Windows for ESM import())
     const url = pathToFileURL(resolved).href;
-    return await import(url);
+    mod = await import(url);
   } catch {
     // Local resolution failed — try bare import as last resort
     try {
-      return await import(specifier);
+      mod = await import(specifier);
     } catch {
       return null;
     }
   }
+
+  if (expectedExports && expectedExports.length > 0) {
+    // `in` distinguishes missing-export from present-but-undefined re-exports.
+    const missing = expectedExports.filter(
+      k => !(k in mod) || mod[k] === undefined
+    );
+    if (missing.length > 0) {
+      console.warn(
+        `[mofloImport] '${specifier}' missing expected exports: ${missing.join(', ')}`
+      );
+      return null;
+    }
+  }
+
+  return mod;
 }
 
 /**

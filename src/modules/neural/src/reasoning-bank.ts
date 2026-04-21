@@ -34,6 +34,8 @@ let MofloDbAdapter: any;
 let createDefaultEntry: ((input: any) => any) | undefined;
 let mofloDbImportPromise: Promise<void> | undefined;
 
+const REQUIRED_MEMORY_EXPORTS = ['MofloDbAdapter', 'createDefaultEntry'] as const;
+
 async function ensureMofloDbAdapterImport(): Promise<void> {
   if (!mofloDbImportPromise) {
     mofloDbImportPromise = (async () => {
@@ -42,9 +44,26 @@ async function ensureMofloDbAdapterImport(): Promise<void> {
         // @moflo/memory is an optional runtime peer installed by the consumer.
         const moduleName = '@moflo/memory';
         const memoryModule: any = await import(/* webpackIgnore: true */ moduleName);
+
+        // Shape-check so a renamed/missing export is noisy instead of silently
+        // downgrading ReasoningBank into a pass-through (issue #482). `in`
+        // distinguishes missing-export from present-but-undefined re-exports.
+        const missing = REQUIRED_MEMORY_EXPORTS.filter(
+          k => !(k in memoryModule) || memoryModule[k] === undefined
+        );
+        if (missing.length > 0) {
+          console.warn(
+            `[ReasoningBank] @moflo/memory missing expected exports: ${missing.join(', ')} — persistence disabled`
+          );
+          MofloDbAdapter = undefined;
+          createDefaultEntry = undefined;
+          return;
+        }
+
         MofloDbAdapter = memoryModule.MofloDbAdapter;
         createDefaultEntry = memoryModule.createDefaultEntry;
       } catch {
+        // @moflo/memory not installed — expected when consumers opt out of persistence.
         MofloDbAdapter = undefined;
         createDefaultEntry = undefined;
       }
