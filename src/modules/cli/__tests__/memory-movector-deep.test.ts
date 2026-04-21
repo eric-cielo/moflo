@@ -1329,69 +1329,6 @@ describe('Q-Learning Router', () => {
 });
 
 // =============================================================================
-// Service Layer: Agentic Flow Bridge
-// =============================================================================
-
-describe('Agentic Flow Bridge', () => {
-  it('should export getReasoningBank function', async () => {
-    const bridge = await import('../src/services/agentic-flow-bridge.js');
-    expect(typeof bridge.getReasoningBank).toBe('function');
-  });
-
-  it('should export getRouter function', async () => {
-    const bridge = await import('../src/services/agentic-flow-bridge.js');
-    expect(typeof bridge.getRouter).toBe('function');
-  });
-
-  it('should export getOrchestration function', async () => {
-    const bridge = await import('../src/services/agentic-flow-bridge.js');
-    expect(typeof bridge.getOrchestration).toBe('function');
-  });
-
-  it('should handle missing agentic-flow gracefully in isAvailable', async () => {
-    const bridge = await import('../src/services/agentic-flow-bridge.js');
-    const available = await bridge.isAvailable();
-    expect(typeof available).toBe('boolean');
-  });
-
-  it('should return capabilities summary', async () => {
-    const bridge = await import('../src/services/agentic-flow-bridge.js');
-    const caps = await bridge.capabilities();
-    expect(typeof caps.available).toBe('boolean');
-    expect(typeof caps.reasoningBank).toBe('boolean');
-    expect(typeof caps.router).toBe('boolean');
-    expect(typeof caps.orchestration).toBe('boolean');
-  });
-
-  it('should return embedding or null for computeEmbedding', async () => {
-    const bridge = await import('../src/services/agentic-flow-bridge.js');
-    const result = await bridge.computeEmbedding('test');
-    // If agentic-flow is installed, returns an array-like of numbers (may be Float32Array);
-    // otherwise null
-    if (result !== null && result !== undefined) {
-      // Accept both regular Array and TypedArray (Float32Array, etc.)
-      expect(typeof result.length).toBe('number');
-      expect(result.length).toBeGreaterThan(0);
-      expect(typeof result[0]).toBe('number');
-    } else {
-      expect(result).toBeNull();
-    }
-  });
-
-  it('should return array or handle error for retrieveMemories', async () => {
-    const bridge = await import('../src/services/agentic-flow-bridge.js');
-    try {
-      const result = await bridge.retrieveMemories('test');
-      // If it succeeds, it returns an array
-      expect(Array.isArray(result)).toBe(true);
-    } catch (err: any) {
-      // If agentic-flow is installed but DB not initialized, it may throw
-      expect(err.message).toMatch(/Database|not initialized|unavailable/i);
-    }
-  });
-});
-
-// =============================================================================
 // Service Layer: Registry API
 // =============================================================================
 

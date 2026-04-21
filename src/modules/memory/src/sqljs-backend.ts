@@ -57,6 +57,25 @@ export interface SqlJsBackendConfig {
 }
 
 /**
+ * Load sql.js WASM and open a Database — from disk if `dbPath` exists,
+ * otherwise in-memory. Shared between `SqlJsBackend` and `ControllerRegistry`.
+ */
+export async function openSqlJsDatabase(
+  dbPath: string,
+  wasmPath?: string,
+): Promise<SqlJsDatabase> {
+  const SQL = await initSqlJs({
+    locateFile: wasmPath
+      ? () => wasmPath
+      : (file: string) => `https://sql.js.org/dist/${file}`,
+  });
+  if (dbPath !== ':memory:' && existsSync(dbPath)) {
+    return new SQL.Database(new Uint8Array(readFileSync(dbPath)));
+  }
+  return new SQL.Database();
+}
+
+/**
  * Default configuration values
  */
 const DEFAULT_CONFIG: SqlJsBackendConfig = {
@@ -82,7 +101,6 @@ export class SqlJsBackend extends EventEmitter implements IMemoryBackend {
   private db: SqlJsDatabase | null = null;
   private initialized: boolean = false;
   private persistTimer: NodeJS.Timeout | null = null;
-  private SQL: any = null;
 
   // Performance tracking
   private stats = {
@@ -103,28 +121,13 @@ export class SqlJsBackend extends EventEmitter implements IMemoryBackend {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    // Load sql.js WASM
-    this.SQL = await initSqlJs({
-      locateFile: this.config.wasmPath
-        ? () => this.config.wasmPath!
-        : (file) => `https://sql.js.org/dist/${file}`,
-    });
+    this.db = await openSqlJsDatabase(this.config.databasePath, this.config.wasmPath);
 
-    // Load existing database if exists and not in-memory
-    if (this.config.databasePath !== ':memory:' && existsSync(this.config.databasePath)) {
-      const buffer = readFileSync(this.config.databasePath);
-      this.db = new this.SQL.Database(new Uint8Array(buffer));
-
-      if (this.config.verbose) {
-        console.log(`[SqlJsBackend] Loaded database from ${this.config.databasePath}`);
-      }
-    } else {
-      // Create new database
-      this.db = new this.SQL.Database();
-
-      if (this.config.verbose) {
-        console.log('[SqlJsBackend] Created new in-memory database');
-      }
+    if (this.config.verbose) {
+      const loaded = this.config.databasePath !== ':memory:' && existsSync(this.config.databasePath);
+      console.log(loaded
+        ? `[SqlJsBackend] Loaded database from ${this.config.databasePath}`
+        : '[SqlJsBackend] Created new in-memory database');
     }
 
     // Create schema

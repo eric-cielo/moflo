@@ -180,8 +180,6 @@ export type {
 // ===== Core Components =====
 export { AgentDBAdapter } from './agentdb-adapter.js';
 export type { AgentDBAdapterConfig } from './agentdb-adapter.js';
-export { AgentDBBackend } from './agentdb-backend.js';
-export type { AgentDBBackendConfig } from './agentdb-backend.js';
 export { SqlJsBackend } from './sqljs-backend.js';
 export type { SqlJsBackendConfig } from './sqljs-backend.js';
 export { RvfBackend } from './rvf-backend.js';

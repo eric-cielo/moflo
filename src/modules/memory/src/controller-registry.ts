@@ -1,25 +1,23 @@
 /**
- * ControllerRegistry - Central controller lifecycle management for AgentDB v3
+ * ControllerRegistry - Central controller lifecycle management.
  *
- * Wraps the AgentDB class and adds CLI-specific controllers from @moflo/memory.
- * Manages initialization (level-based ordering), health checks, and graceful shutdown.
+ * Owns a sql.js Database handle and instantiates moflo memory controllers
+ * (see ./controllers/) against it.
  *
- * Per ADR-053: Replaces memory-initializer.js's raw sql.js usage with a unified
- * controller ecosystem routing all memory operations through AgentDB v3.
+ * Per ADR-053.
  *
  * @module @moflo/memory/controller-registry
  */
 
 import { EventEmitter } from 'node:events';
 import * as path from 'node:path';
+import type { Database as SqlJsDatabase } from 'sql.js';
 import type {
   IMemoryBackend,
-  HealthCheckResult,
-  ComponentHealth,
-  BackendStats,
   EmbeddingGenerator,
   SONAMode,
 } from './types.js';
+import { openSqlJsDatabase } from './sqljs-backend.js';
 import { LearningBridge } from './learning-bridge.js';
 import type { LearningBridgeConfig } from './learning-bridge.js';
 import { MemoryGraph } from './memory-graph.js';
@@ -30,7 +28,9 @@ import type { CacheConfig } from './types.js';
 // ===== Types =====
 
 /**
- * Controllers accessible via AgentDB.getController()
+ * Controllers that require the shared sql.js Database handle.
+ * `reasoningBank` has no moflo implementation yet — it registers as
+ * unavailable and consumers must null-check.
  */
 export type AgentDBControllerName =
   | 'reasoningBank'
@@ -43,7 +43,7 @@ export type AgentDBControllerName =
   | 'attestationLog';
 
 /**
- * CLI-layer controllers (from @moflo/memory or new)
+ * CLI-layer controllers (from @moflo/memory)
  */
 export type CLIControllerName =
   | 'learningBridge'
@@ -97,7 +97,7 @@ export interface RegistryHealthReport {
  * Runtime configuration for controller activation
  */
 export interface RuntimeConfig {
-  /** Database path for AgentDB */
+  /** Database path for sql.js (`:memory:` for in-memory). */
   dbPath?: string;
 
   /** Vector dimension (default: 384 for MiniLM) */
@@ -126,6 +126,9 @@ export interface RuntimeConfig {
 
   /** Backend instance to use (if pre-created) */
   backend?: IMemoryBackend;
+
+  /** Optional sql.js WASM path override. */
+  wasmPath?: string;
 }
 
 /**
@@ -138,6 +141,15 @@ interface ControllerEntry {
   initTimeMs: number;
   enabled: boolean;
   error?: string;
+}
+
+/**
+ * Minimal wrapper holding the sql.js Database handle used by moflo-owned
+ * controllers. Exposed via `getAgentDB()` for backwards-compatible callers.
+ */
+interface SqlJsHandle {
+  database: SqlJsDatabase;
+  close(): Promise<void>;
 }
 
 // ===== Initialization Levels =====
@@ -165,10 +177,10 @@ export const INIT_LEVELS: InitLevel[] = [
 // ===== ControllerRegistry =====
 
 /**
- * Central registry for AgentDB v3 controller lifecycle management.
+ * Central registry for moflo memory controller lifecycle management.
  *
  * Handles:
- * - Level-based initialization ordering (levels 0-6)
+ * - Level-based initialization ordering (levels 0-5)
  * - Graceful degradation (each controller fails independently)
  * - Config-driven activation (controllers only instantiate when enabled)
  * - Health check aggregation across all controllers
@@ -187,7 +199,7 @@ export const INIT_LEVELS: InitLevel[] = [
  *   },
  * });
  *
- * const reasoning = registry.get<ReasoningBank>('reasoningBank');
+ * const bridge = registry.get<LearningBridge>('learningBridge');
  * const graph = registry.get<MemoryGraph>('memoryGraph');
  *
  * await registry.shutdown();
@@ -195,7 +207,8 @@ export const INIT_LEVELS: InitLevel[] = [
  */
 export class ControllerRegistry extends EventEmitter {
   private controllers: Map<ControllerName, ControllerEntry> = new Map();
-  private agentdb: any = null;
+  /** sql.js Database handle — field name preserved for API stability. */
+  private agentdb: SqlJsHandle | null = null;
   private backend: IMemoryBackend | null = null;
   private config: RuntimeConfig = {};
   private initialized = false;
@@ -215,8 +228,8 @@ export class ControllerRegistry extends EventEmitter {
     this.config = config;
     const startTime = performance.now();
 
-    // Step 1: Initialize AgentDB (the core)
-    await this.initAgentDB(config);
+    // Step 1: Open the shared sql.js Database used by moflo controllers.
+    await this.initSqlJs(config);
 
     // Step 2: Set up the backend
     this.backend = config.backend || null;
@@ -287,12 +300,10 @@ export class ControllerRegistry extends EventEmitter {
       );
     }
 
-    // Shutdown AgentDB
+    // Close sql.js handle
     if (this.agentdb) {
       try {
-        if (typeof this.agentdb.close === 'function') {
-          await this.agentdb.close();
-        }
+        await this.agentdb.close();
       } catch {
         // Best-effort cleanup
       }
@@ -309,22 +320,10 @@ export class ControllerRegistry extends EventEmitter {
    * Returns null if the controller is not initialized or unavailable.
    */
   get<T>(name: ControllerName): T | null {
-    // First check CLI-layer controllers
     const entry = this.controllers.get(name);
     if (entry?.enabled && entry?.instance) {
       return entry.instance as T;
     }
-
-    // Fall back to AgentDB internal controllers
-    if (this.agentdb && typeof this.agentdb.getController === 'function') {
-      try {
-        const controller = this.agentdb.getController(name);
-        if (controller) return controller as T;
-      } catch {
-        // Controller not available in AgentDB
-      }
-    }
-
     return null;
   }
 
@@ -333,18 +332,7 @@ export class ControllerRegistry extends EventEmitter {
    */
   isEnabled(name: ControllerName): boolean {
     const entry = this.controllers.get(name);
-    if (entry?.enabled) return true;
-
-    // Check AgentDB internal controllers
-    if (this.agentdb && typeof this.agentdb.getController === 'function') {
-      try {
-        return this.agentdb.getController(name) !== null;
-      } catch {
-        return false;
-      }
-    }
-
-    return false;
+    return Boolean(entry?.enabled);
   }
 
   /**
@@ -366,16 +354,6 @@ export class ControllerRegistry extends EventEmitter {
       });
     }
 
-    // Check AgentDB health
-    let agentdbAvailable = false;
-    if (this.agentdb) {
-      try {
-        agentdbAvailable = typeof this.agentdb.getController === 'function';
-      } catch {
-        agentdbAvailable = false;
-      }
-    }
-
     const active = controllerHealth.filter((c) => c.status === 'healthy').length;
     const unavailable = controllerHealth.filter((c) => c.status === 'unavailable').length;
 
@@ -389,7 +367,7 @@ export class ControllerRegistry extends EventEmitter {
     return {
       status,
       controllers: controllerHealth,
-      agentdbAvailable,
+      agentdbAvailable: this.agentdb !== null,
       initTimeMs: this.initTimeMs,
       timestamp: Date.now(),
       activeControllers: active,
@@ -398,9 +376,9 @@ export class ControllerRegistry extends EventEmitter {
   }
 
   /**
-   * Get the underlying AgentDB instance.
+   * Get the underlying sql.js handle (exposed as `agentdb` for API stability).
    */
-  getAgentDB(): any {
+  getAgentDB(): SqlJsHandle | null {
     return this.agentdb;
   }
 
@@ -443,9 +421,10 @@ export class ControllerRegistry extends EventEmitter {
   // ===== Private Methods =====
 
   /**
-   * Initialize AgentDB instance with dynamic import and fallback chain.
+   * Open a sql.js Database and expose it via `this.agentdb.database` to the
+   * moflo controllers that need one.
    */
-  private async initAgentDB(config: RuntimeConfig): Promise<void> {
+  private async initSqlJs(config: RuntimeConfig): Promise<void> {
     try {
       // Validate dbPath to prevent path traversal
       const dbPath = config.dbPath || ':memory:';
@@ -457,33 +436,12 @@ export class ControllerRegistry extends EventEmitter {
         }
       }
 
-      const agentdbModule: any = await import('agentdb');
-      const AgentDBClass = agentdbModule.AgentDB || agentdbModule.default;
+      const database = await openSqlJsDatabase(dbPath, config.wasmPath);
 
-      if (!AgentDBClass) {
-        this.emit('agentdb:unavailable', { reason: 'No AgentDB class found' });
-        return;
-      }
-
-      this.agentdb = new AgentDBClass({ dbPath });
-
-      // Suppress agentdb's noisy info-level output during init
-      // using stderr redirect instead of monkey-patching console.log
-      const origLog = console.log;
-      const suppressFilter = (args: unknown[]) => {
-        const msg = String(args[0] ?? '');
-        return msg.includes('Transformers.js') ||
-               
-               msg.includes('[AgentDB]');
+      this.agentdb = {
+        database,
+        close: async () => database.close(),
       };
-      console.log = (...args: unknown[]) => {
-        if (!suppressFilter(args)) origLog.apply(console, args);
-      };
-      try {
-        await this.agentdb.initialize();
-      } finally {
-        console.log = origLog;
-      }
       this.emit('agentdb:initialized');
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -505,25 +463,26 @@ export class ControllerRegistry extends EventEmitter {
     // Default behavior: enable based on category
     switch (name) {
       // Core intelligence — enabled by default
-      case 'reasoningBank':
       case 'learningBridge':
       case 'tieredCache':
       case 'hierarchicalMemory':
         return true;
 
-      // Graph — enabled if backend available
+      // No moflo implementation yet — see createController.
+      case 'reasoningBank':
+        return false;
+
       case 'memoryGraph':
         return !!(this.config.memory?.memoryGraph || this.backend);
 
-      // MutationGuard is moflo-owned + in-memory — no DB needed (epic #464 Phase C5).
+      // In-memory, no DB needed.
       case 'mutationGuard':
+      case 'contextSynthesizer':
+      case 'semanticRouter':
         return true;
 
-      // Security — enabled if AgentDB available (for sql.js handle)
+      // Need the sql.js handle.
       case 'attestationLog':
-        return this.agentdb !== null;
-
-      // AgentDB-internal controllers — only if AgentDB available
       case 'skills':
       case 'reflexion':
       case 'causalGraph':
@@ -533,18 +492,10 @@ export class ControllerRegistry extends EventEmitter {
       case 'batchOperations':
         return this.agentdb !== null;
 
-      // ContextSynthesizer — moflo-owned, pure static class (no DB needed).
-      case 'contextSynthesizer':
-        return true;
-
-      // SemanticRouter — moflo-owned, no DB needed.
-      case 'semanticRouter':
-        return true;
-
-      // Optional controllers
+      // Require explicit enabling via config.controllers.
       case 'hybridSearch':
       case 'agentMemoryScope':
-        return false; // Require explicit enabling
+        return false;
 
       default:
         return false;
@@ -592,9 +543,8 @@ export class ControllerRegistry extends EventEmitter {
   }
 
   /**
-   * Factory method to create a controller instance.
-   * Handles CLI-layer controllers; AgentDB-internal controllers are
-   * accessed via agentdb.getController().
+   * Factory method to create a controller instance. `reasoningBank` has no
+   * moflo implementation yet and returns null — consumers null-check already.
    */
   private async createController(name: ControllerName): Promise<unknown> {
     switch (name) {
@@ -652,273 +602,113 @@ export class ControllerRegistry extends EventEmitter {
         return null;
 
       case 'semanticRouter': {
-        // Prefer moflo-owned impl (epic #464 Phase C2); no agentdb needed.
-        try {
-          const { SemanticRouter } = await import('./controllers/semantic-router.js');
-          const router = new SemanticRouter();
-          await router.initialize();
-          return router;
-        } catch {
-          // Fall through to agentdb's SemanticRouter if our impl fails to load.
-        }
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const SR = agentdbModule.SemanticRouter;
-          if (!SR) return null;
-          const router = new SR();
-          await router.initialize();
-          return router;
-        } catch { return null; }
+        const { SemanticRouter } = await import('./controllers/semantic-router.js');
+        const router = new SemanticRouter();
+        await router.initialize();
+        return router;
       }
 
       case 'hierarchicalMemory': {
-        // Prefer moflo-owned impl (epic #464 Phase C3). Needs the sql.js
-        // handle agentdb initializes for us; falls back to the in-memory
-        // stub if that's unavailable.
         if (!this.agentdb?.database) return this.createTieredMemoryStub();
-        try {
-          const { HierarchicalMemory } = await import('./controllers/hierarchical-memory.js');
-          const embedder = this.config.embeddingGenerator;
-          const hm = new HierarchicalMemory(this.agentdb.database, { embedder });
-          await hm.initializeDatabase();
-          return hm;
-        } catch {
-          // Fall through to agentdb.
-        }
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const HM = agentdbModule.HierarchicalMemory;
-          if (!HM) return this.createTieredMemoryStub();
-          const embedder = this.createEmbeddingService();
-          const hm = new HM(this.agentdb.database, embedder);
-          await hm.initializeDatabase();
-          return hm;
-        } catch {
-          return this.createTieredMemoryStub();
-        }
+        const { HierarchicalMemory } = await import('./controllers/hierarchical-memory.js');
+        const embedder = this.config.embeddingGenerator;
+        const hm = new HierarchicalMemory(this.agentdb.database, { embedder });
+        await hm.initializeDatabase();
+        return hm;
       }
 
       case 'memoryConsolidation': {
-        // Prefer moflo-owned impl (epic #464 Phase C3). Composes over the
-        // HierarchicalMemory instantiated at level 1.
+        // Composes over the HierarchicalMemory instantiated at level 1.
         const hm: any = this.get('hierarchicalMemory');
-        const isMofloHm =
-          hm && typeof hm.listTier === 'function' && typeof hm.promote === 'function';
-        if (isMofloHm) {
-          try {
-            const { MemoryConsolidation } = await import('./controllers/memory-consolidation.js');
-            return new MemoryConsolidation(hm);
-          } catch {
-            // Fall through to agentdb.
-          }
+        if (hm && typeof hm.listTier === 'function' && typeof hm.promote === 'function') {
+          const { MemoryConsolidation } = await import('./controllers/memory-consolidation.js');
+          return new MemoryConsolidation(hm);
         }
-        if (!this.agentdb) return this.createConsolidationStub();
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const MC = agentdbModule.MemoryConsolidation;
-          if (!MC) return this.createConsolidationStub();
-          if (!hm || typeof hm.recall !== 'function' || typeof hm.store !== 'function') {
-            return this.createConsolidationStub();
-          }
-          const embedder = this.createEmbeddingService();
-          const mc = new MC(this.agentdb.database, hm, embedder);
-          await mc.initializeDatabase();
-          return mc;
-        } catch {
-          return this.createConsolidationStub();
-        }
+        return this.createConsolidationStub();
       }
 
-      // ----- AgentDB-internal controllers (via getController) -----
-      // AgentDB.getController() only supports: reflexion/memory, skills, causalGraph/causal
       case 'reasoningBank': {
-        // ReasoningBank is exported directly, not via getController
-        if (!this.agentdb) return null;
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const RB = agentdbModule.ReasoningBank;
-          if (!RB) return null;
-          return new RB(this.agentdb.database);
-        } catch { return null; }
+        // @moflo/neural's ReasoningBank has a trajectory-based API that
+        // doesn't match what memory-bridge expects (title/description/content).
+        // Null-returning keeps pattern-store calls as no-ops at the bridge.
+        return null;
       }
 
       case 'skills': {
-        // Prefer moflo-owned impl (epic #464 Phase C3).
-        if (this.agentdb?.database) {
-          try {
-            const { Skills } = await import('./controllers/skills.js');
-            const skills = new Skills(this.agentdb.database, {
-              embedder: this.config.embeddingGenerator,
-            });
-            await skills.initializeDatabase();
-            return skills;
-          } catch {
-            // Fall through to agentdb.
-          }
-        }
-        if (!this.agentdb || typeof this.agentdb.getController !== 'function') return null;
-        try {
-          return this.agentdb.getController('skills') ?? null;
-        } catch { return null; }
+        if (!this.agentdb?.database) return null;
+        const { Skills } = await import('./controllers/skills.js');
+        const skills = new Skills(this.agentdb.database, {
+          embedder: this.config.embeddingGenerator,
+        });
+        await skills.initializeDatabase();
+        return skills;
       }
 
       case 'reflexion': {
-        // Prefer moflo-owned impl (epic #464 Phase C3).
-        if (this.agentdb?.database) {
-          try {
-            const { Reflexion } = await import('./controllers/reflexion.js');
-            const reflexion = new Reflexion(this.agentdb.database, {
-              embedder: this.config.embeddingGenerator,
-            });
-            await reflexion.initializeDatabase();
-            return reflexion;
-          } catch {
-            // Fall through to agentdb.
-          }
-        }
-        if (!this.agentdb || typeof this.agentdb.getController !== 'function') return null;
-        try {
-          return this.agentdb.getController('reflexion') ?? null;
-        } catch { return null; }
+        if (!this.agentdb?.database) return null;
+        const { Reflexion } = await import('./controllers/reflexion.js');
+        const reflexion = new Reflexion(this.agentdb.database, {
+          embedder: this.config.embeddingGenerator,
+        });
+        await reflexion.initializeDatabase();
+        return reflexion;
       }
 
       case 'causalGraph': {
-        // Prefer moflo-owned impl (epic #464 Phase C5).
-        if (this.agentdb?.database) {
-          try {
-            const { CausalGraph } = await import('./controllers/causal-graph.js');
-            const graph = new CausalGraph(this.agentdb.database);
-            await graph.initializeDatabase();
-            return graph;
-          } catch {
-            // Fall through to agentdb.
-          }
-        }
-        if (!this.agentdb || typeof this.agentdb.getController !== 'function') return null;
-        try {
-          return this.agentdb.getController(name) ?? null;
-        } catch { return null; }
+        if (!this.agentdb?.database) return null;
+        const { CausalGraph } = await import('./controllers/causal-graph.js');
+        const graph = new CausalGraph(this.agentdb.database);
+        await graph.initializeDatabase();
+        return graph;
       }
 
       case 'learningSystem': {
-        // Prefer moflo-owned impl (epic #464 Phase C5).
-        if (this.agentdb?.database) {
-          try {
-            const { LearningSystem } = await import('./controllers/learning-system.js');
-            const ls = new LearningSystem(this.agentdb.database);
-            await ls.initializeDatabase();
-            return ls;
-          } catch {
-            // Fall through to agentdb.
-          }
-        }
-        if (!this.agentdb) return null;
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const LS = agentdbModule.LearningSystem;
-          if (!LS) return null;
-          return new LS(this.agentdb.database);
-        } catch { return null; }
+        if (!this.agentdb?.database) return null;
+        const { LearningSystem } = await import('./controllers/learning-system.js');
+        const ls = new LearningSystem(this.agentdb.database);
+        await ls.initializeDatabase();
+        return ls;
       }
 
       case 'nightlyLearner': {
-        // Prefer moflo-owned impl (epic #464 Phase C3). Pulls together
-        // MemoryConsolidation / Reflexion / Skills already in the registry.
-        try {
-          const { NightlyLearner } = await import('./controllers/nightly-learner.js');
-          const { hasMethod } = await import('./controllers/_shared.js');
-          const mc: any = this.get('memoryConsolidation');
-          const refl: any = this.get('reflexion');
-          const sk: any = this.get('skills');
-          const mofloMc = hasMethod(mc, 'getOptions') ? mc : undefined;
-          const mofloRefl = hasMethod(refl, 'episodeCount') ? refl : undefined;
-          const mofloSk = hasMethod(sk, 'list') ? sk : undefined;
-          if (mofloMc || mofloRefl || mofloSk) {
-            return new NightlyLearner({
-              memoryConsolidation: mofloMc,
-              reflexion: mofloRefl,
-              skills: mofloSk,
-            });
-          }
-        } catch {
-          // Fall through to agentdb.
-        }
-        if (!this.agentdb) return null;
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const NL = agentdbModule.NightlyLearner;
-          if (!NL) return null;
-          return new NL(this.agentdb.database);
-        } catch { return null; }
+        // Pulls together MemoryConsolidation / Reflexion / Skills already in the registry.
+        const { NightlyLearner } = await import('./controllers/nightly-learner.js');
+        const { hasMethod } = await import('./controllers/_shared.js');
+        const mc: any = this.get('memoryConsolidation');
+        const refl: any = this.get('reflexion');
+        const sk: any = this.get('skills');
+        const mofloMc = hasMethod(mc, 'getOptions') ? mc : undefined;
+        const mofloRefl = hasMethod(refl, 'episodeCount') ? refl : undefined;
+        const mofloSk = hasMethod(sk, 'list') ? sk : undefined;
+        if (!mofloMc && !mofloRefl && !mofloSk) return null;
+        return new NightlyLearner({
+          memoryConsolidation: mofloMc,
+          reflexion: mofloRefl,
+          skills: mofloSk,
+        });
       }
 
-      // ----- Direct-instantiation controllers -----
       case 'batchOperations': {
         if (!this.agentdb?.database) return null;
-        // Prefer moflo-owned impl (epic #464 Phase C2).
-        try {
-          const { BatchOperations } = await import('./controllers/batch-operations.js');
-          return new BatchOperations(this.agentdb.database, this.config.embeddingGenerator);
-        } catch {
-          // Fall through to agentdb.
-        }
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const BO = agentdbModule.BatchOperations;
-          if (!BO) return null;
-          const embedder = this.config.embeddingGenerator || null;
-          return new BO(this.agentdb.database, embedder);
-        } catch { return null; }
+        const { BatchOperations } = await import('./controllers/batch-operations.js');
+        return new BatchOperations(this.agentdb.database, this.config.embeddingGenerator);
       }
 
       case 'contextSynthesizer': {
         // ContextSynthesizer.synthesize is static — return the class itself.
-        // Prefer moflo-owned impl (epic #464 Phase C2).
-        try {
-          const { ContextSynthesizer } = await import('./controllers/context-synthesizer.js');
-          return ContextSynthesizer;
-        } catch {
-          // Fall through to agentdb.
-        }
-        try {
-          const agentdbModule: any = await import('agentdb');
-          return agentdbModule.ContextSynthesizer ?? null;
-        } catch { return null; }
+        const { ContextSynthesizer } = await import('./controllers/context-synthesizer.js');
+        return ContextSynthesizer;
       }
 
       case 'mutationGuard': {
-        // Prefer moflo-owned impl (epic #464 Phase C5) — pure in-memory, no DB needed.
-        try {
-          const { MutationGuard } = await import('./controllers/mutation-guard.js');
-          return new MutationGuard();
-        } catch {
-          // Fall through to agentdb.
-        }
-        if (!this.agentdb) return null;
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const MG = agentdbModule.MutationGuard;
-          if (!MG) return null;
-          return new MG({ dimension: this.config.dimension || 384 });
-        } catch { return null; }
+        const { MutationGuard } = await import('./controllers/mutation-guard.js');
+        return new MutationGuard();
       }
 
       case 'attestationLog': {
-        // AttestationLog: append-only audit log.
-        // Prefer moflo-owned impl (epic #464 Phase C2).
         if (!this.agentdb?.database) return null;
-        try {
-          const { AttestationLog } = await import('./controllers/attestation-log.js');
-          return new AttestationLog(this.agentdb.database);
-        } catch {
-          // Fall through to agentdb.
-        }
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const AL = agentdbModule.AttestationLog;
-          if (!AL) return null;
-          return new AL(this.agentdb.database);
-        } catch { return null; }
+        const { AttestationLog } = await import('./controllers/attestation-log.js');
+        return new AttestationLog(this.agentdb.database);
       }
 
       default:
@@ -953,29 +743,8 @@ export class ControllerRegistry extends EventEmitter {
   }
 
   /**
-   * Create an EmbeddingService for controllers that need it.
-   * Uses the config's embedding generator or creates a minimal local service.
-   */
-  private createEmbeddingService(): any {
-    // If user provided an embedding generator, wrap it
-    if (this.config.embeddingGenerator) {
-      return {
-        embed: async (text: string) => this.config.embeddingGenerator!(text),
-        embedBatch: async (texts: string[]) => Promise.all(texts.map(t => this.config.embeddingGenerator!(t))),
-        initialize: async () => {},
-      };
-    }
-    // Return a minimal stub — HierarchicalMemory falls back to manualSearch without embeddings
-    return {
-      embed: async () => new Float32Array(this.config.dimension || 384),
-      embedBatch: async (texts: string[]) => texts.map(() => new Float32Array(this.config.dimension || 384)),
-      initialize: async () => {},
-    };
-  }
-
-  /**
    * Lightweight in-memory tiered store (fallback when HierarchicalMemory
-   * cannot be initialized from agentdb).
+   * cannot be initialized from sql.js).
    * Enforces per-tier size limits to prevent unbounded memory growth.
    */
   private createTieredMemoryStub() {
@@ -1019,7 +788,7 @@ export class ControllerRegistry extends EventEmitter {
 
   /**
    * No-op consolidation stub (fallback when MemoryConsolidation
-   * cannot be initialized from agentdb).
+   * cannot be initialized).
    */
   private createConsolidationStub() {
     return {
