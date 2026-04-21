@@ -8,6 +8,7 @@
 
 import { clamp01, clampInt, parseJsonSafe } from './_shared.js';
 import type { SqlJsDatabaseLike } from './types.js';
+import type { ControllerSpec } from '../controller-spec.js';
 
 const TABLE = 'moflo_causal_edges';
 
@@ -169,5 +170,17 @@ function rowToEdge(r: Record<string, any>): CausalEdge {
     metadata: parseJsonSafe(r.metadata),
   };
 }
+
+export const causalGraphSpec: ControllerSpec = {
+  name: 'causalGraph',
+  level: 4,
+  requires: ['sqljs'],
+  enabledByDefault: true,
+  create: async ({ mofloDb }) => {
+    const graph = new CausalGraph(mofloDb!.database);
+    await graph.initializeDatabase();
+    return graph;
+  },
+};
 
 export default CausalGraph;

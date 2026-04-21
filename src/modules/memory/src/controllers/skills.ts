@@ -27,6 +27,7 @@ import {
   type Embedder,
 } from './_shared.js';
 import type { SqlJsDatabaseLike } from './types.js';
+import type { ControllerSpec } from '../controller-spec.js';
 
 const TABLE = 'moflo_skills';
 const PROMOTE_THRESHOLD = 0.8;
@@ -303,5 +304,17 @@ function rowToSkill(r: Record<string, any>): SkillRow {
     updatedAt: Number(r.updated_at ?? 0),
   };
 }
+
+export const skillsSpec: ControllerSpec = {
+  name: 'skills',
+  level: 3,
+  requires: ['sqljs'],
+  enabledByDefault: true,
+  create: async ({ mofloDb, embedder }) => {
+    const skills = new Skills(mofloDb!.database, { embedder });
+    await skills.initializeDatabase();
+    return skills;
+  },
+};
 
 export default Skills;

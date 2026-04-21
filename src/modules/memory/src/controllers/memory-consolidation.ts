@@ -13,6 +13,7 @@
  */
 
 import type { HierarchicalMemory, MemoryItem, Tier } from './hierarchical-memory.js';
+import type { ControllerSpec } from '../controller-spec.js';
 
 export interface ConsolidationReport {
   episodicProcessed: number;
@@ -111,5 +112,34 @@ export class MemoryConsolidation {
 
 // Re-export types needed by controller-registry consumers.
 export type { Tier, MemoryItem };
+
+/**
+ * No-op consolidation used when the real HierarchicalMemory isn't
+ * available (in-memory stub only supports store/recall).
+ */
+function createConsolidationStub() {
+  return {
+    consolidate() {
+      return { promoted: 0, pruned: 0, timestamp: Date.now() };
+    },
+  };
+}
+
+export const memoryConsolidationSpec: ControllerSpec = {
+  name: 'memoryConsolidation',
+  level: 3,
+  enabledByDefault: true,
+  create: ({ registry }) => {
+    const hm = registry.get<HierarchicalMemory>('hierarchicalMemory');
+    if (
+      hm &&
+      typeof (hm as any).listTier === 'function' &&
+      typeof (hm as any).promote === 'function'
+    ) {
+      return new MemoryConsolidation(hm);
+    }
+    return createConsolidationStub();
+  },
+};
 
 export default MemoryConsolidation;

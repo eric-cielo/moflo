@@ -10,6 +10,7 @@
  */
 import { EventEmitter } from 'node:events';
 import type { IMemoryBackend, MemoryEntry, SearchResult } from './types.js';
+import type { ControllerSpec, EnablementContext } from './controller-spec.js';
 
 // ===== Types =====
 
@@ -390,3 +391,22 @@ export class MemoryGraph extends EventEmitter {
     return shuffled;
   }
 }
+
+export const memoryGraphSpec: ControllerSpec = {
+  name: 'memoryGraph',
+  level: 2,
+  enabledByDefault: (ctx: EnablementContext) =>
+    Boolean(ctx.config.memory?.memoryGraph || ctx.backend),
+  create: async ({ backend, config }) => {
+    const mgConfig = config.memory?.memoryGraph ?? {};
+    const graph = new MemoryGraph({ ...mgConfig });
+    if (backend) {
+      try {
+        await graph.buildFromBackend(backend);
+      } catch {
+        // Empty graph is still usable.
+      }
+    }
+    return graph;
+  },
+};

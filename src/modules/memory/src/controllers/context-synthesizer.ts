@@ -13,6 +13,7 @@
  */
 
 import type { MemoryPattern } from './types.js';
+import type { ControllerSpec } from '../controller-spec.js';
 
 export interface SynthesisOptions {
   includeRecommendations?: boolean;
@@ -140,5 +141,13 @@ function buildRecommendations(
   }
   return recs;
 }
+
+export const contextSynthesizerSpec: ControllerSpec = {
+  name: 'contextSynthesizer',
+  level: 5,
+  enabledByDefault: true,
+  // ContextSynthesizer.synthesize is static — expose the class itself.
+  create: () => ContextSynthesizer,
+};
 
 export default ContextSynthesizer;

@@ -15,6 +15,7 @@
 
 import { generateId, serializeEmbedding } from './_shared.js';
 import type { EpisodeInput, SqlJsDatabaseLike } from './types.js';
+import type { ControllerSpec } from '../controller-spec.js';
 
 const EPISODES_TABLE = 'moflo_episodes';
 const ALLOWED_TABLES = new Set(['episodes']);
@@ -206,5 +207,13 @@ function normalizeValue(value: unknown): unknown {
   if (value instanceof Uint8Array) return value;
   return JSON.stringify(value);
 }
+
+export const batchOperationsSpec: ControllerSpec = {
+  name: 'batchOperations',
+  level: 3,
+  requires: ['sqljs'],
+  enabledByDefault: true,
+  create: ({ mofloDb, embedder }) => new BatchOperations(mofloDb!.database, embedder),
+};
 
 export default BatchOperations;

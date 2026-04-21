@@ -26,6 +26,7 @@ import {
   type Embedder,
 } from './_shared.js';
 import type { SqlJsDatabaseLike } from './types.js';
+import type { ControllerSpec } from '../controller-spec.js';
 
 const REFLEXIONS_TABLE = 'moflo_reflexions';
 const EPISODES_TABLE = 'moflo_reflexion_episodes';
@@ -280,5 +281,17 @@ function rowToEpisode(r: Record<string, any>): EpisodeRow {
     patternsLearned: Number(r.patterns_learned ?? 0),
   };
 }
+
+export const reflexionSpec: ControllerSpec = {
+  name: 'reflexion',
+  level: 3,
+  requires: ['sqljs'],
+  enabledByDefault: true,
+  create: async ({ mofloDb, embedder }) => {
+    const reflexion = new Reflexion(mofloDb!.database, { embedder });
+    await reflexion.initializeDatabase();
+    return reflexion;
+  },
+};
 
 export default Reflexion;

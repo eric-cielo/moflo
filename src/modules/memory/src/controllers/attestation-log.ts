@@ -17,6 +17,7 @@
 import { createHash } from 'node:crypto';
 import { parseJsonSafe } from './_shared.js';
 import type { SqlJsDatabaseLike } from './types.js';
+import type { ControllerSpec } from '../controller-spec.js';
 
 export interface AttestationEntry {
   operation: string;
@@ -199,5 +200,13 @@ function hashEntry(
   });
   return createHash('sha256').update(canonical).digest('hex');
 }
+
+export const attestationLogSpec: ControllerSpec = {
+  name: 'attestationLog',
+  level: 3,
+  requires: ['sqljs'],
+  enabledByDefault: true,
+  create: ({ mofloDb }) => new AttestationLog(mofloDb!.database),
+};
 
 export default AttestationLog;

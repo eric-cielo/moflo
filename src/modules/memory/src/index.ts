@@ -168,14 +168,23 @@ export type {
 // ===== Controller Registry (ADR-053) =====
 export { ControllerRegistry, INIT_LEVELS } from './controller-registry.js';
 export type {
-  MofloDbControllerName,
-  CLIControllerName,
-  ControllerName,
   InitLevel,
   ControllerHealth,
   RegistryHealthReport,
-  RuntimeConfig,
 } from './controller-registry.js';
+export { CONTROLLER_SPECS } from './controller-specs.js';
+export type {
+  MofloDbControllerName,
+  CLIControllerName,
+  ControllerName,
+  RuntimeConfig,
+  ControllerSpec,
+  ControllerDeps,
+  EnablementContext,
+  RegistryView,
+  ResourceName,
+  SqlJsHandle,
+} from './controller-spec.js';
 
 // ===== Core Components =====
 export { MofloDbAdapter } from './moflo-db-adapter.js';
