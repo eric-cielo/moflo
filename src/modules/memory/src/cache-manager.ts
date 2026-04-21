@@ -15,6 +15,7 @@ import {
   MemoryEntry,
   MemoryEvent,
 } from './types.js';
+import type { ControllerSpec } from './controller-spec.js';
 
 /**
  * Doubly-linked list node for LRU implementation
@@ -561,5 +562,21 @@ export class TieredCacheManager<T = MemoryEntry> extends EventEmitter {
     this.l1Cache.shutdown();
   }
 }
+
+export const tieredCacheSpec: ControllerSpec = {
+  name: 'tieredCache',
+  level: 1,
+  enabledByDefault: true,
+  create: ({ config }) => {
+    const tcConfig = config.memory?.tieredCache ?? {};
+    return new TieredCacheManager({
+      maxSize: tcConfig.maxSize ?? 10000,
+      ttl: tcConfig.ttl ?? 300000,
+      lruEnabled: true,
+      writeThrough: false,
+      ...tcConfig,
+    });
+  },
+};
 
 export default CacheManager;

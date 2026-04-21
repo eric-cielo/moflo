@@ -9,6 +9,7 @@
 
 import { clamp01 } from './_shared.js';
 import type { SqlJsDatabaseLike } from './types.js';
+import type { ControllerSpec } from '../controller-spec.js';
 
 const FEEDBACK_TABLE = 'moflo_learning_feedback';
 const ALGO_TABLE = 'moflo_learning_algorithms';
@@ -254,5 +255,17 @@ function sampleBoost(samples: number): number {
   // boost that still lets a newer high-quality algorithm overtake an old one.
   return Math.log2(Math.max(0, samples) + 2);
 }
+
+export const learningSystemSpec: ControllerSpec = {
+  name: 'learningSystem',
+  level: 4,
+  requires: ['sqljs'],
+  enabledByDefault: true,
+  create: async ({ mofloDb }) => {
+    const ls = new LearningSystem(mofloDb!.database);
+    await ls.initializeDatabase();
+    return ls;
+  },
+};
 
 export default LearningSystem;

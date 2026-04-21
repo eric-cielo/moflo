@@ -17,6 +17,7 @@
  */
 
 import { cosine, toFloat32 } from './_shared.js';
+import type { ControllerSpec } from '../controller-spec.js';
 
 export interface SemanticRouterIntent {
   name: string;
@@ -207,5 +208,16 @@ function keywordScore(lowerInput: string, keywords: string[]): number {
   }
   return keywords.length === 0 ? 0 : hits / keywords.length;
 }
+
+export const semanticRouterSpec: ControllerSpec = {
+  name: 'semanticRouter',
+  level: 4,
+  enabledByDefault: true,
+  create: async () => {
+    const router = new SemanticRouter();
+    await router.initialize();
+    return router;
+  },
+};
 
 export default SemanticRouter;

@@ -19,6 +19,7 @@ import {
   type ControllerName,
   type RegistryHealthReport,
 } from './controller-registry.js';
+import { CONTROLLER_SPECS } from './controller-specs.js';
 import { LearningBridge } from './learning-bridge.js';
 import { MemoryGraph } from './memory-graph.js';
 import { TieredCacheManager } from './cache-manager.js';
@@ -668,6 +669,101 @@ describe('ControllerRegistry', () => {
 
       await registry.shutdown();
       expect(events).toContain('shutdown');
+    });
+  });
+
+  // ----- ControllerSpec Contract (issue #481) -----
+
+  describe('ControllerSpec contract', () => {
+    it('should have a spec for every registered controller name', () => {
+      const names = new Set(CONTROLLER_SPECS.map((s) => s.name));
+      // Sanity: list includes the core moflo + CLI controllers
+      expect(names.has('skills')).toBe(true);
+      expect(names.has('learningBridge')).toBe(true);
+      expect(names.has('memoryGraph')).toBe(true);
+      expect(names.has('nightlyLearner')).toBe(true);
+      expect(names.has('contextSynthesizer')).toBe(true);
+    });
+
+    it('should have no duplicate names in CONTROLLER_SPECS', () => {
+      const seen = new Set<string>();
+      for (const spec of CONTROLLER_SPECS) {
+        expect(seen.has(spec.name)).toBe(false);
+        seen.add(spec.name);
+      }
+    });
+
+    it('should give every spec a level and create function', () => {
+      for (const spec of CONTROLLER_SPECS) {
+        expect(typeof spec.level).toBe('number');
+        expect(spec.level).toBeGreaterThanOrEqual(0);
+        expect(typeof spec.create).toBe('function');
+      }
+    });
+
+    it('should derive INIT_LEVELS from CONTROLLER_SPECS', () => {
+      const specsByLevel = new Map<number, number>();
+      for (const spec of CONTROLLER_SPECS) {
+        specsByLevel.set(spec.level, (specsByLevel.get(spec.level) ?? 0) + 1);
+      }
+      for (const level of INIT_LEVELS) {
+        if (level.level === 0) continue; // reserved empty foundation slot
+        expect(level.controllers.length).toBe(specsByLevel.get(level.level) ?? 0);
+      }
+    });
+
+    it("should mark sqljs-dependent controllers with requires: ['sqljs']", () => {
+      const sqljsDependents = new Set([
+        'skills',
+        'reflexion',
+        'causalGraph',
+        'learningSystem',
+        'attestationLog',
+        'batchOperations',
+      ]);
+      for (const spec of CONTROLLER_SPECS) {
+        if (sqljsDependents.has(spec.name)) {
+          expect(spec.requires).toContain('sqljs');
+        }
+      }
+    });
+
+    it("should mark backend-dependent controllers with requires: ['backend']", () => {
+      const backendSpec = CONTROLLER_SPECS.find((s) => s.name === 'learningBridge');
+      expect(backendSpec?.requires).toContain('backend');
+    });
+
+    it('should not instantiate sqljs-required controllers when mofloDb missing', async () => {
+      await registry.initialize({
+        backend: mockBackend,
+        controllers: { skills: true, reflexion: true },
+      });
+      expect(registry.get('skills')).toBeNull();
+      expect(registry.get('reflexion')).toBeNull();
+    });
+
+    it('should respect explicit-disable even when enabledByDefault is true', async () => {
+      await registry.initialize({
+        backend: mockBackend,
+        controllers: { tieredCache: false },
+      });
+      expect(registry.isEnabled('tieredCache')).toBe(false);
+    });
+
+    it('should fall back to hierarchicalMemory stub when mofloDb missing', async () => {
+      await registry.initialize({ backend: mockBackend });
+      const hm: any = registry.get('hierarchicalMemory');
+      expect(hm).not.toBeNull();
+      // Stub exposes store/recall/getTierStats; no listTier/promote
+      expect(typeof hm.store).toBe('function');
+      expect(typeof hm.recall).toBe('function');
+    });
+
+    it('should compose memoryConsolidation from hierarchicalMemory via registry', async () => {
+      await registry.initialize({ backend: mockBackend });
+      const mc: any = registry.get('memoryConsolidation');
+      expect(mc).not.toBeNull();
+      expect(typeof mc.consolidate).toBe('function');
     });
   });
 

@@ -5,6 +5,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import type { ControllerSpec } from '../controller-spec.js';
 
 export interface ValidateInput {
   operation: string;
@@ -140,5 +141,12 @@ function canonicalize(value: unknown): unknown {
   }
   return sorted;
 }
+
+export const mutationGuardSpec: ControllerSpec = {
+  name: 'mutationGuard',
+  level: 2,
+  enabledByDefault: true,
+  create: () => new MutationGuard(),
+};
 
 export default MutationGuard;

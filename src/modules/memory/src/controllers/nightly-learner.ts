@@ -17,6 +17,8 @@
 import type { MemoryConsolidation, ConsolidationReport } from './memory-consolidation.js';
 import type { Reflexion } from './reflexion.js';
 import type { Skills } from './skills.js';
+import type { ControllerSpec } from '../controller-spec.js';
+import { hasMethod } from './_shared.js';
 
 export interface NightlyReport {
   consolidation?: ConsolidationReport;
@@ -131,5 +133,21 @@ export class NightlyLearner {
     return this.timer !== null;
   }
 }
+
+export const nightlyLearnerSpec: ControllerSpec = {
+  name: 'nightlyLearner',
+  level: 4,
+  enabledByDefault: true,
+  create: ({ registry }) => {
+    const mc = registry.get<MemoryConsolidation>('memoryConsolidation');
+    const refl = registry.get<Reflexion>('reflexion');
+    const sk = registry.get<Skills>('skills');
+    const memoryConsolidation = hasMethod(mc, 'getOptions') ? mc ?? undefined : undefined;
+    const reflexion = hasMethod(refl, 'episodeCount') ? refl ?? undefined : undefined;
+    const skills = hasMethod(sk, 'list') ? sk ?? undefined : undefined;
+    if (!memoryConsolidation && !reflexion && !skills) return null;
+    return new NightlyLearner({ memoryConsolidation, reflexion, skills });
+  },
+};
 
 export default NightlyLearner;

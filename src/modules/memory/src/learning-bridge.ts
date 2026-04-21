@@ -12,6 +12,7 @@
 import { EventEmitter } from 'node:events';
 import type { IMemoryBackend, MemoryEntry, SONAMode } from './types.js';
 import type { MemoryInsight, InsightCategory } from './auto-memory-bridge.js';
+import type { ControllerSpec } from './controller-spec.js';
 
 // ===== Types =====
 
@@ -449,5 +450,22 @@ export class LearningBridge extends EventEmitter {
     return embedding;
   }
 }
+
+export const learningBridgeSpec: ControllerSpec = {
+  name: 'learningBridge',
+  level: 1,
+  requires: ['backend'],
+  enabledByDefault: true,
+  create: ({ backend, config }) => {
+    const lbConfig = config.memory?.learningBridge ?? {};
+    return new LearningBridge(backend!, {
+      sonaMode: lbConfig.sonaMode ?? config.neural?.sonaMode ?? 'balanced',
+      confidenceDecayRate: lbConfig.confidenceDecayRate,
+      accessBoostAmount: lbConfig.accessBoostAmount,
+      consolidationThreshold: lbConfig.consolidationThreshold,
+      enabled: true,
+    });
+  },
+};
 
 export default LearningBridge;

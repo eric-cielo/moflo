@@ -30,6 +30,7 @@ import {
   type Embedder,
 } from './_shared.js';
 import type { SqlJsDatabaseLike } from './types.js';
+import type { ControllerSpec } from '../controller-spec.js';
 
 const TABLE = 'moflo_hierarchical_memory';
 
@@ -358,5 +359,60 @@ function rowToItem(r: Record<string, any>): InternalRow {
     accessCount: Number(r.access_count ?? 0),
   };
 }
+
+/**
+ * Lightweight in-memory tiered store used when the real HierarchicalMemory
+ * can't bind to a sql.js handle. Enforces per-tier size limits so the
+ * stub doesn't grow unbounded.
+ */
+function createTieredMemoryStub() {
+  const MAX_PER_TIER = 5000;
+  const tiers: Record<string, Map<string, { value: string; ts: number }>> = {
+    working: new Map(),
+    episodic: new Map(),
+    semantic: new Map(),
+  };
+  return {
+    store(key: string, value: string, tier = 'working') {
+      const t = tiers[tier] || tiers.working;
+      if (t.size >= MAX_PER_TIER) {
+        const oldest = t.keys().next().value;
+        if (oldest !== undefined) t.delete(oldest);
+      }
+      t.set(key, { value: value.substring(0, 100_000), ts: Date.now() });
+    },
+    recall(query: string, topK = 5) {
+      const safeTopK = Math.min(Math.max(1, topK), 100);
+      const q = query.toLowerCase().substring(0, 10_000);
+      const results: Array<{ key: string; value: string; tier: string; ts: number }> = [];
+      for (const [tierName, map] of Object.entries(tiers)) {
+        for (const [key, entry] of map) {
+          if (key.toLowerCase().includes(q) || entry.value.toLowerCase().includes(q)) {
+            results.push({ key, value: entry.value, tier: tierName, ts: entry.ts });
+            if (results.length >= safeTopK * 3) break;
+          }
+        }
+      }
+      return results.sort((a, b) => b.ts - a.ts).slice(0, safeTopK);
+    },
+    getTierStats() {
+      return Object.fromEntries(
+        Object.entries(tiers).map(([name, map]) => [name, map.size]),
+      );
+    },
+  };
+}
+
+export const hierarchicalMemorySpec: ControllerSpec = {
+  name: 'hierarchicalMemory',
+  level: 1,
+  enabledByDefault: true,
+  create: async ({ mofloDb, embedder }) => {
+    if (!mofloDb?.database) return createTieredMemoryStub();
+    const hm = new HierarchicalMemory(mofloDb.database, { embedder });
+    await hm.initializeDatabase();
+    return hm;
+  },
+};
 
 export default HierarchicalMemory;
