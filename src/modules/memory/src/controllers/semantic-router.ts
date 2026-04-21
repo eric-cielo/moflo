@@ -16,6 +16,8 @@
  * deterministic and fast enough for routing decisions.
  */
 
+import { cosine, toFloat32 } from './_shared.js';
+
 export interface SemanticRouterIntent {
   name: string;
   keywords: string[];
@@ -204,24 +206,6 @@ function keywordScore(lowerInput: string, keywords: string[]): number {
     if (lowerInput.includes(kw.toLowerCase())) hits++;
   }
   return keywords.length === 0 ? 0 : hits / keywords.length;
-}
-
-function toFloat32(vec: Float32Array | number[]): Float32Array {
-  return vec instanceof Float32Array ? vec : Float32Array.from(vec);
-}
-
-function cosine(a: Float32Array, b: Float32Array): number {
-  const len = Math.min(a.length, b.length);
-  if (len === 0) return 0;
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < len; i++) {
-    const x = a[i], y = b[i];
-    dot += x * y;
-    na += x * x;
-    nb += y * y;
-  }
-  const mag = Math.sqrt(na) * Math.sqrt(nb);
-  return mag === 0 ? 0 : dot / mag;
 }
 
 export default SemanticRouter;

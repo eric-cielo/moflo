@@ -669,9 +669,19 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'hierarchicalMemory': {
-        // HierarchicalMemory exported from agentdb 3.0.0-alpha.10 (ADR-066 Phase P2-3)
-        // Constructor: (db, embedder, vectorBackend?, graphBackend?, config?)
-        if (!this.agentdb) return this.createTieredMemoryStub();
+        // Prefer moflo-owned impl (epic #464 Phase C3). Needs the sql.js
+        // handle agentdb initializes for us; falls back to the in-memory
+        // stub if that's unavailable.
+        if (!this.agentdb?.database) return this.createTieredMemoryStub();
+        try {
+          const { HierarchicalMemory } = await import('./controllers/hierarchical-memory.js');
+          const embedder = this.config.embeddingGenerator;
+          const hm = new HierarchicalMemory(this.agentdb.database, { embedder });
+          await hm.initializeDatabase();
+          return hm;
+        } catch {
+          // Fall through to agentdb.
+        }
         try {
           const agentdbModule: any = await import('agentdb');
           const HM = agentdbModule.HierarchicalMemory;
@@ -686,15 +696,24 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'memoryConsolidation': {
-        // MemoryConsolidation exported from agentdb 3.0.0-alpha.10 (ADR-066 Phase P2-3)
-        // Constructor: (db, hierarchicalMemory, embedder, vectorBackend?, graphBackend?, config?)
+        // Prefer moflo-owned impl (epic #464 Phase C3). Composes over the
+        // HierarchicalMemory instantiated at level 1.
+        const hm: any = this.get('hierarchicalMemory');
+        const isMofloHm =
+          hm && typeof hm.listTier === 'function' && typeof hm.promote === 'function';
+        if (isMofloHm) {
+          try {
+            const { MemoryConsolidation } = await import('./controllers/memory-consolidation.js');
+            return new MemoryConsolidation(hm);
+          } catch {
+            // Fall through to agentdb.
+          }
+        }
         if (!this.agentdb) return this.createConsolidationStub();
         try {
           const agentdbModule: any = await import('agentdb');
           const MC = agentdbModule.MemoryConsolidation;
           if (!MC) return this.createConsolidationStub();
-          // Get the HierarchicalMemory instance (must be initialized at level 1 before us at level 3)
-          const hm: any = this.get('hierarchicalMemory');
           if (!hm || typeof hm.recall !== 'function' || typeof hm.store !== 'function') {
             return this.createConsolidationStub();
           }
@@ -720,8 +739,46 @@ export class ControllerRegistry extends EventEmitter {
         } catch { return null; }
       }
 
-      case 'skills':
-      case 'reflexion':
+      case 'skills': {
+        // Prefer moflo-owned impl (epic #464 Phase C3).
+        if (this.agentdb?.database) {
+          try {
+            const { Skills } = await import('./controllers/skills.js');
+            const skills = new Skills(this.agentdb.database, {
+              embedder: this.config.embeddingGenerator,
+            });
+            await skills.initializeDatabase();
+            return skills;
+          } catch {
+            // Fall through to agentdb.
+          }
+        }
+        if (!this.agentdb || typeof this.agentdb.getController !== 'function') return null;
+        try {
+          return this.agentdb.getController('skills') ?? null;
+        } catch { return null; }
+      }
+
+      case 'reflexion': {
+        // Prefer moflo-owned impl (epic #464 Phase C3).
+        if (this.agentdb?.database) {
+          try {
+            const { Reflexion } = await import('./controllers/reflexion.js');
+            const reflexion = new Reflexion(this.agentdb.database, {
+              embedder: this.config.embeddingGenerator,
+            });
+            await reflexion.initializeDatabase();
+            return reflexion;
+          } catch {
+            // Fall through to agentdb.
+          }
+        }
+        if (!this.agentdb || typeof this.agentdb.getController !== 'function') return null;
+        try {
+          return this.agentdb.getController('reflexion') ?? null;
+        } catch { return null; }
+      }
+
       case 'causalGraph': {
         if (!this.agentdb || typeof this.agentdb.getController !== 'function') return null;
         try {
@@ -740,6 +797,27 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'nightlyLearner': {
+        // Prefer moflo-owned impl (epic #464 Phase C3). Pulls together
+        // MemoryConsolidation / Reflexion / Skills already in the registry.
+        try {
+          const { NightlyLearner } = await import('./controllers/nightly-learner.js');
+          const { hasMethod } = await import('./controllers/_shared.js');
+          const mc: any = this.get('memoryConsolidation');
+          const refl: any = this.get('reflexion');
+          const sk: any = this.get('skills');
+          const mofloMc = hasMethod(mc, 'getOptions') ? mc : undefined;
+          const mofloRefl = hasMethod(refl, 'episodeCount') ? refl : undefined;
+          const mofloSk = hasMethod(sk, 'list') ? sk : undefined;
+          if (mofloMc || mofloRefl || mofloSk) {
+            return new NightlyLearner({
+              memoryConsolidation: mofloMc,
+              reflexion: mofloRefl,
+              skills: mofloSk,
+            });
+          }
+        } catch {
+          // Fall through to agentdb.
+        }
         if (!this.agentdb) return null;
         try {
           const agentdbModule: any = await import('agentdb');

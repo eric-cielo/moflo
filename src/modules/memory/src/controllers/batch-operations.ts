@@ -13,7 +13,7 @@
  * SQL surface narrow; attempts to target any other table throw.
  */
 
-import { randomBytes } from 'node:crypto';
+import { generateId, serializeEmbedding } from './_shared.js';
 import type { EpisodeInput, SqlJsDatabaseLike } from './types.js';
 
 const EPISODES_TABLE = 'moflo_episodes';
@@ -57,11 +57,11 @@ export class BatchOperations {
       );
       try {
         for (const ep of episodes) {
-          const id = generateId();
+          const id = generateId('ep');
           const meta = ep.metadata ?? {};
           const key = typeof (meta as any).key === 'string' ? (meta as any).key : id;
           const content = typeof ep.content === 'string' ? ep.content : String(ep.content ?? '');
-          const embeddingBlob = serializeEmbedding(ep.embedding);
+          const embeddingBlob = serializeEmbedding(ep.embedding ?? null);
           stmt.run?.([id, key, content, JSON.stringify(meta), embeddingBlob, now]);
           ids.push(id);
         }
@@ -172,18 +172,6 @@ export class BatchOperations {
       CREATE INDEX IF NOT EXISTS idx_${EPISODES_TABLE}_ts ON ${EPISODES_TABLE}(ts);`,
     );
   }
-}
-
-function generateId(): string {
-  return `ep-${Date.now().toString(36)}-${randomBytes(6).toString('hex')}`;
-}
-
-function serializeEmbedding(embedding: EpisodeInput['embedding']): Uint8Array | null {
-  if (!embedding) return null;
-  const arr = embedding instanceof Float32Array
-    ? embedding
-    : Float32Array.from(embedding as number[]);
-  return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
 }
 
 function buildWhere(conditions: Record<string, unknown>): { whereSql: string; values: unknown[] } {

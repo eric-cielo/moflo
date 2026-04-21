@@ -15,6 +15,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { parseJsonSafe } from './_shared.js';
 import type { SqlJsDatabaseLike } from './types.js';
 
 export interface AttestationEntry {
@@ -197,16 +198,6 @@ function hashEntry(
     prev: prevHash,
   });
   return createHash('sha256').update(canonical).digest('hex');
-}
-
-function parseJsonSafe(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'string' || value.length === 0) return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
 }
 
 export default AttestationLog;

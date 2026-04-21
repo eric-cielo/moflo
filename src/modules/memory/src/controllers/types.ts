@@ -16,6 +16,8 @@ export interface SqlJsDatabaseLike {
   run(sql: string, params?: any): unknown;
   exec(sql: string): Array<{ columns: string[]; values: any[][] }>;
   prepare(sql: string): SqlJsStatement;
+  /** Rows touched by the last successful INSERT/UPDATE/DELETE. */
+  getRowsModified?(): number;
 }
 
 export interface SqlJsStatement {
