@@ -149,7 +149,7 @@ This gives Claude access to 200+ MCP tools (`mcp__moflo__memory_*`, `mcp__moflo_
 | `init`      | 4           | Project initialization with wizard, presets, skills, hooks               |
 | `agent`     | 8           | Agent lifecycle (spawn, list, status, stop, metrics, pool, health, logs) |
 | `swarm`     | 6           | Multi-agent swarm coordination and orchestration                         |
-| `memory`    | 11          | AgentDB memory with vector search (150x-12,500x faster)                  |
+| `memory`    | 11          | sql.js + HNSW vector search, 150x-12,500x faster                         |
 | `mcp`       | 9           | MCP server management and tool execution                                 |
 | `task`      | 6           | Task creation, assignment, and lifecycle                                 |
 | `session`   | 7           | Session state management and persistence                                 |
@@ -535,7 +535,7 @@ auto_index:
 
 # Memory backend
 memory:
-  backend: sql.js                 # sql.js (WASM) | agentdb | json
+  backend: sql.js                 # sql.js (WASM) | json
   embedding_model: Xenova/all-MiniLM-L6-v2   # 384-dim neural embeddings
   namespace: default              # Default namespace for memory operations
 
@@ -582,7 +582,7 @@ status_line:
   show_mcp: true                 # MCP server count
   show_security: true            # CVE/security status (dashboard only)
   show_adrs: true                # ADR compliance (dashboard only)
-  show_agentdb: true             # AgentDB vectors/size (dashboard only)
+  show_agentdb: true             # MofloDb vectors/size (dashboard only)
   show_tests: true               # Test file count (dashboard only)
 
 # Spell step sandboxing (OS-level process isolation for bash steps)
