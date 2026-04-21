@@ -407,7 +407,15 @@ export async function getHNSWIndex(options?: {
 
   try {
     // Use HnswLite pure TS implementation (no native dependencies)
-    const { HnswLite } = await import('@moflo/memory') as any;
+    const memoryModule = await import('@moflo/memory') as any;
+    if (!('HnswLite' in memoryModule) || memoryModule.HnswLite === undefined) {
+      // Shape-check (issue #482): warn loudly and bail — the outer catch
+      // would otherwise swallow a cryptic "undefined is not a constructor".
+      console.warn('[getHNSWIndex] @moflo/memory missing expected export: HnswLite');
+      hnswInitializing = false;
+      return null;
+    }
+    const { HnswLite } = memoryModule;
 
     // Persistent storage paths
     const swarmDir = path.join(process.cwd(), '.swarm');

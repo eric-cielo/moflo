@@ -300,22 +300,37 @@ export class ReasoningBank extends EventEmitter {
    * Load optional dependencies
    */
   private async loadDependencies(): Promise<void> {
-    // Try to load optional peer dependencies at runtime
-    const dynamicImport = async (moduleName: string): Promise<any> => {
+    // Shape-check each optional peer so a renamed/missing export is noisy instead
+    // of silently no-op'ing into the in-memory fallback (issue #482).
+    const dynamicImport = async (
+      moduleName: string,
+      requiredExports: readonly string[],
+    ): Promise<any> => {
       try {
-        return await import(/* webpackIgnore: true */ moduleName);
+        const mod: any = await import(/* webpackIgnore: true */ moduleName);
+        // `in` distinguishes missing-export from present-but-undefined re-exports.
+        const missing = requiredExports.filter(
+          k => !(k in mod) || mod[k] === undefined
+        );
+        if (missing.length > 0) {
+          console.warn(
+            `[ReasoningBank] ${moduleName} missing expected exports: ${missing.join(', ')} — feature disabled`
+          );
+          return null;
+        }
+        return mod;
       } catch {
         return null;
       }
     };
 
-    const memoryModule = await dynamicImport('@moflo/memory');
+    const memoryModule = await dynamicImport('@moflo/memory', ['MofloDbAdapter', 'HNSWIndex']);
     if (memoryModule) {
       MofloDbAdapter = memoryModule.MofloDbAdapter;
       HNSWIndex = memoryModule.HNSWIndex;
     }
 
-    const embeddingsModule = await dynamicImport('@moflo/embeddings');
+    const embeddingsModule = await dynamicImport('@moflo/embeddings', ['createEmbeddingService']);
     if (embeddingsModule) {
       EmbeddingServiceImpl = embeddingsModule.createEmbeddingService;
     }
