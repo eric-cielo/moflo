@@ -211,7 +211,7 @@ describe('ControllerRegistry', () => {
 
     it('should include core controllers in level 1', () => {
       const level1 = INIT_LEVELS.find((l) => l.level === 1);
-      expect(level1?.controllers).toContain('reasoningBank');
+      expect(level1?.controllers).toContain('hierarchicalMemory');
       expect(level1?.controllers).toContain('learningBridge');
       expect(level1?.controllers).toContain('tieredCache');
     });
@@ -275,10 +275,10 @@ describe('ControllerRegistry', () => {
       // Enable a controller that requires MofloDb (which is unavailable)
       await registry.initialize({
         backend: mockBackend,
-        controllers: { reasoningBank: true },
+        controllers: { skills: true },
       });
 
-      // ReasoningBank requires MofloDb, so it should fail or be unavailable
+      // Skills requires MofloDb, so it should fail or be unavailable
       // The exact behavior depends on whether the sql.js handle is available
     });
 
@@ -700,7 +700,7 @@ describe('ControllerRegistry', () => {
       for (let i = 0; i < 1000; i++) {
         registry.get('learningBridge');
         registry.get('tieredCache');
-        registry.isEnabled('reasoningBank');
+        registry.isEnabled('skills');
       }
       const duration = performance.now() - start;
 

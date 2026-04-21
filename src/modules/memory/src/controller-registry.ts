@@ -29,11 +29,8 @@ import type { CacheConfig } from './types.js';
 
 /**
  * Controllers that require the shared sql.js Database handle.
- * `reasoningBank` has no moflo implementation yet — it registers as
- * unavailable and consumers must null-check.
  */
 export type MofloDbControllerName =
-  | 'reasoningBank'
   | 'skills'
   | 'reflexion'
   | 'causalGraph'
@@ -163,7 +160,7 @@ export const INIT_LEVELS: InitLevel[] = [
   // Level 0: Foundation - already exists
   { level: 0, controllers: [] },
   // Level 1: Core intelligence
-  { level: 1, controllers: ['reasoningBank', 'hierarchicalMemory', 'learningBridge', 'hybridSearch', 'tieredCache'] },
+  { level: 1, controllers: ['hierarchicalMemory', 'learningBridge', 'hybridSearch', 'tieredCache'] },
   // Level 2: Graph & security
   { level: 2, controllers: ['memoryGraph', 'agentMemoryScope', 'mutationGuard'] },
   // Level 3: Specialization
@@ -468,10 +465,6 @@ export class ControllerRegistry extends EventEmitter {
       case 'hierarchicalMemory':
         return true;
 
-      // No moflo implementation yet — see createController.
-      case 'reasoningBank':
-        return false;
-
       case 'memoryGraph':
         return !!(this.config.memory?.memoryGraph || this.backend);
 
@@ -543,8 +536,7 @@ export class ControllerRegistry extends EventEmitter {
   }
 
   /**
-   * Factory method to create a controller instance. `reasoningBank` has no
-   * moflo implementation yet and returns null — consumers null-check already.
+   * Factory method to create a controller instance.
    */
   private async createController(name: ControllerName): Promise<unknown> {
     switch (name) {
@@ -625,13 +617,6 @@ export class ControllerRegistry extends EventEmitter {
           return new MemoryConsolidation(hm);
         }
         return this.createConsolidationStub();
-      }
-
-      case 'reasoningBank': {
-        // @moflo/neural's ReasoningBank has a trajectory-based API that
-        // doesn't match what memory-bridge expects (title/description/content).
-        // Null-returning keeps pattern-store calls as no-ops at the bridge.
-        return null;
       }
 
       case 'skills': {

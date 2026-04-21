@@ -143,7 +143,6 @@ async function getRegistry(dbPath?: string): Promise<any | null> {
             dbPath: dbPath || getDbPath(),
             dimension: 384,
             controllers: {
-              reasoningBank: true,
               learningBridge: false,
               tieredCache: true,
               hierarchicalMemory: true,
@@ -1180,11 +1179,10 @@ export async function shutdownBridge(): Promise<void> {
   }
 }
 
-// ===== Phase 3: ReasoningBank pattern operations =====
+// ===== Pattern operations (raw-SQL bridge) =====
 
 /**
- * Store a pattern via ReasoningBank controller.
- * Falls back to raw SQL if ReasoningBank unavailable.
+ * Store a pattern via raw-SQL bridge with embedding + tags.
  */
 export async function bridgeStorePattern(options: {
   pattern: string;
@@ -1193,26 +1191,9 @@ export async function bridgeStorePattern(options: {
   metadata?: Record<string, unknown>;
   dbPath?: string;
 }): Promise<{ success: boolean; patternId: string; controller: string } | null> {
-  const registry = await getRegistry(options.dbPath);
-  if (!registry) return null;
-
   try {
-    const reasoningBank = registry.get('reasoningBank');
     const patternId = generateId('pattern');
 
-    if (reasoningBank && typeof reasoningBank.store === 'function') {
-      await reasoningBank.store({
-        id: patternId,
-        content: options.pattern,
-        type: options.type,
-        confidence: options.confidence,
-        metadata: options.metadata,
-        timestamp: Date.now(),
-      });
-      return { success: true, patternId, controller: 'reasoningBank' };
-    }
-
-    // Fallback: store via bridge SQL
     const result = await bridgeStoreEntry({
       key: patternId,
       value: JSON.stringify({ pattern: options.pattern, type: options.type, confidence: options.confidence, metadata: options.metadata }),
@@ -1222,14 +1203,14 @@ export async function bridgeStorePattern(options: {
       dbPath: options.dbPath,
     });
 
-    return result ? { success: true, patternId: result.id, controller: 'bridge-fallback' } : null;
+    return result ? { success: true, patternId: result.id, controller: 'bridge' } : null;
   } catch {
     return null;
   }
 }
 
 /**
- * Search patterns via ReasoningBank controller.
+ * Search patterns via raw-SQL bridge with BM25 + cosine fusion.
  */
 export async function bridgeSearchPatterns(options: {
   query: string;
@@ -1237,28 +1218,7 @@ export async function bridgeSearchPatterns(options: {
   minConfidence?: number;
   dbPath?: string;
 }): Promise<{ results: Array<{ id: string; content: string; score: number }>; controller: string } | null> {
-  const registry = await getRegistry(options.dbPath);
-  if (!registry) return null;
-
   try {
-    const reasoningBank = registry.get('reasoningBank');
-
-    if (reasoningBank && typeof reasoningBank.search === 'function') {
-      const results = await reasoningBank.search(options.query, {
-        topK: options.topK || 5,
-        minScore: options.minConfidence || 0.3,
-      });
-      return {
-        results: Array.isArray(results) ? results.map((r: any) => ({
-          id: r.id || r.patternId || '',
-          content: r.content || r.pattern || '',
-          score: r.score ?? r.confidence ?? 0,
-        })) : [],
-        controller: 'reasoningBank',
-      };
-    }
-
-    // Fallback: search via bridge
     const result = await bridgeSearchEntries({
       query: options.query,
       namespace: 'pattern',
@@ -1269,17 +1229,17 @@ export async function bridgeSearchPatterns(options: {
 
     return result ? {
       results: result.results.map(r => ({ id: r.id, content: r.content, score: r.score })),
-      controller: 'bridge-fallback',
+      controller: 'bridge',
     } : null;
   } catch {
     return null;
   }
 }
 
-// ===== Phase 3: Feedback recording =====
+// ===== Feedback recording =====
 
 /**
- * Record task feedback for learning via ReasoningBank or LearningSystem.
+ * Record task feedback for learning via LearningSystem + SkillLibrary + bridge store.
  * Wired into hooks_post-task handler.
  */
 export async function bridgeRecordFeedback(options: {
@@ -1312,25 +1272,6 @@ export async function bridgeRecordFeedback(options: {
         } else if (typeof learningSystem.record === 'function') {
           await learningSystem.record(options.taskId, options.quality, options.success ? 'success' : 'failure');
           controller = 'learningSystem';
-          updated++;
-        }
-      } catch { /* API mismatch — skip */ }
-    }
-
-    // Also record in ReasoningBank for pattern reinforcement
-    const reasoningBank = registry.get('reasoningBank');
-    if (reasoningBank) {
-      try {
-        if (typeof reasoningBank.recordOutcome === 'function') {
-          await reasoningBank.recordOutcome({
-            taskId: options.taskId, verdict: options.success ? 'success' : 'failure',
-            score: options.quality, timestamp: Date.now(),
-          });
-          controller = controller === 'none' ? 'reasoningBank' : `${controller}+reasoningBank`;
-          updated++;
-        } else if (typeof reasoningBank.record === 'function') {
-          await reasoningBank.record(options.taskId, options.quality);
-          controller = controller === 'none' ? 'reasoningBank' : `${controller}+reasoningBank`;
           updated++;
         }
       } catch { /* API mismatch — skip */ }

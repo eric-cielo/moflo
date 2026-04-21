@@ -2570,18 +2570,18 @@ export const hooksPatternStore: MCPTool = {
     const timestamp = new Date().toISOString();
     const patternId = `pattern-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-    // Phase 3: Try ReasoningBank via bridge first
-    let reasoningResult: { success: boolean; patternId: string; controller: string } | null = null;
+    // Try pattern bridge first (HNSW-indexed raw SQL)
+    let bridgeResult: { success: boolean; patternId: string; controller: string } | null = null;
     try {
       const bridge = await import('../memory/memory-bridge.js');
-      reasoningResult = await bridge.bridgeStorePattern({ pattern, type, confidence, metadata: metadata as Record<string, unknown> | undefined });
+      bridgeResult = await bridge.bridgeStorePattern({ pattern, type, confidence, metadata: metadata as Record<string, unknown> | undefined });
     } catch {
       // Bridge not available
     }
 
     // Fallback: persist using memory-initializer store
     let storeResult: { success: boolean; id?: string; embedding?: { dimensions: number; model: string }; error?: string } = { success: false };
-    if (!reasoningResult) {
+    if (!bridgeResult) {
       const storeFn = await getRealStoreFunction();
       if (storeFn) {
         try {
@@ -2598,23 +2598,21 @@ export const hooksPatternStore: MCPTool = {
       }
     }
 
-    const success = reasoningResult?.success || storeResult.success;
-    const controller = reasoningResult?.controller || (storeResult.success ? 'bridge-store' : 'none');
+    const success = bridgeResult?.success || storeResult.success;
+    const controller = bridgeResult?.controller || (storeResult.success ? 'bridge-store' : 'none');
 
     return {
-      patternId: reasoningResult?.patternId || storeResult.id || patternId,
+      patternId: bridgeResult?.patternId || storeResult.id || patternId,
       pattern,
       type,
       confidence,
       indexed: success,
-      hnswIndexed: success && (!!storeResult.embedding || controller === 'reasoningBank'),
+      hnswIndexed: success && !!storeResult.embedding,
       embedding: storeResult.embedding,
       timestamp,
       controller,
-      implementation: controller === 'reasoningBank' ? 'reasoning-bank-controller' : (storeResult.success ? 'real-hnsw-indexed' : 'memory-only'),
-      note: controller === 'reasoningBank'
-        ? 'Pattern stored via ReasoningBank controller with HNSW indexing'
-        : (storeResult.success ? 'Pattern stored with vector embedding for semantic search' : (storeResult.error || 'Store function unavailable')),
+      implementation: storeResult.success ? 'real-hnsw-indexed' : 'memory-only',
+      note: storeResult.success ? 'Pattern stored with vector embedding for semantic search' : (storeResult.error || 'Store function unavailable'),
     };
   },
 };
@@ -2638,14 +2636,14 @@ export const hooksPatternSearch: MCPTool = {
     const minConfidence = (params.minConfidence as number) || 0.3;
     const namespace = (params.namespace as string) || 'patterns';
 
-    // Phase 3: Try ReasoningBank search via bridge first
+    // Try pattern bridge first (BM25 + cosine fusion)
     try {
       const bridge = await import('../memory/memory-bridge.js');
-      const rbResult = await bridge.bridgeSearchPatterns({ query, topK, minConfidence });
-      if (rbResult && rbResult.results.length > 0) {
+      const bridgeResult = await bridge.bridgeSearchPatterns({ query, topK, minConfidence });
+      if (bridgeResult && bridgeResult.results.length > 0) {
         return {
           query,
-          results: rbResult.results.map(r => ({
+          results: bridgeResult.results.map(r => ({
             patternId: r.id,
             pattern: r.content,
             similarity: r.score,
@@ -2653,8 +2651,8 @@ export const hooksPatternSearch: MCPTool = {
             namespace,
           })),
           searchTimeMs: 0,
-          backend: rbResult.controller,
-          note: `Results from ${rbResult.controller} controller`,
+          backend: bridgeResult.controller,
+          note: `Results from ${bridgeResult.controller} controller`,
         };
       }
     } catch {
