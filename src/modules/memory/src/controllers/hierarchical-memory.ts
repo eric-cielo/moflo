@@ -16,8 +16,9 @@
  *   getStats()                                          → Record<tier, n>
  *   promote(id, fromTier, toTier)                       → boolean
  *
- * Detection: memory-bridge treats a controller as the "real" impl when
- * both `getStats` and `promote` are functions on it.
+ * `HierarchicalMemoryStub` shadows the same public shape so callers can
+ * invoke the API unconditionally without duck-type probes when sql.js
+ * is unavailable.
  */
 
 import {
@@ -361,46 +362,132 @@ function rowToItem(r: Record<string, any>): InternalRow {
 }
 
 /**
- * Lightweight in-memory tiered store used when the real HierarchicalMemory
- * can't bind to a sql.js handle. Enforces per-tier size limits so the
- * stub doesn't grow unbounded.
+ * In-memory fallback used when sql.js is unavailable. Mirrors the public
+ * surface of {@link HierarchicalMemory} so callers can invoke the API
+ * unconditionally — no duck-type probes.
  */
-function createTieredMemoryStub() {
-  const MAX_PER_TIER = 5000;
-  const tiers: Record<string, Map<string, { value: string; ts: number }>> = {
-    working: new Map(),
-    episodic: new Map(),
-    semantic: new Map(),
-  };
-  return {
-    store(key: string, value: string, tier = 'working') {
-      const t = tiers[tier] || tiers.working;
-      if (t.size >= MAX_PER_TIER) {
-        const oldest = t.keys().next().value;
-        if (oldest !== undefined) t.delete(oldest);
-      }
-      t.set(key, { value: value.substring(0, 100_000), ts: Date.now() });
-    },
-    recall(query: string, topK = 5) {
-      const safeTopK = Math.min(Math.max(1, topK), 100);
-      const q = query.toLowerCase().substring(0, 10_000);
-      const results: Array<{ key: string; value: string; tier: string; ts: number }> = [];
-      for (const [tierName, map] of Object.entries(tiers)) {
-        for (const [key, entry] of map) {
-          if (key.toLowerCase().includes(q) || entry.value.toLowerCase().includes(q)) {
-            results.push({ key, value: entry.value, tier: tierName, ts: entry.ts });
-            if (results.length >= safeTopK * 3) break;
-          }
+export class HierarchicalMemoryStub {
+  private static readonly MAX_PER_TIER = 5000;
+  private readonly tiers = new Map<Tier, Map<string, InternalStubRow>>();
+
+  constructor() {
+    for (const tier of TIERS) this.tiers.set(tier, new Map());
+  }
+
+  async store(
+    content: string,
+    importance: number = 0.5,
+    tier: Tier | string = 'working',
+    options: HierarchicalStoreOptions = {},
+  ): Promise<string> {
+    const tierName = coerceTier(tier);
+    const id = generateId('hm-stub');
+    const keyMeta = typeof options.metadata?.key === 'string' ? (options.metadata.key as string) : undefined;
+    const key = options.key ?? keyMeta ?? id;
+    const row: InternalStubRow = {
+      id,
+      key,
+      tier: tierName,
+      content: String(content ?? '').substring(0, 100_000),
+      importance: clamp(importance, 0, 1),
+      metadata: options.metadata ?? {},
+      tags: options.tags ?? [],
+      timestamp: Date.now(),
+      accessCount: 0,
+    };
+    const bucket = this.tiers.get(tierName)!;
+    if (bucket.size >= HierarchicalMemoryStub.MAX_PER_TIER) {
+      const oldest = bucket.keys().next().value;
+      if (oldest !== undefined) bucket.delete(oldest);
+    }
+    bucket.set(id, row);
+    return id;
+  }
+
+  async recall(query: MemoryQuery | string, legacyK?: number): Promise<MemoryItem[]> {
+    if (typeof query === 'string') {
+      return this.recall({ query, k: typeof legacyK === 'number' ? legacyK : 10 });
+    }
+    if (!query || typeof query.query !== 'string') return [];
+    const k = Math.max(1, Math.min(query.k ?? 10, 1000));
+    const tierFilter = query.tier ? coerceTier(query.tier) : null;
+    const q = query.query.toLowerCase().substring(0, 10_000);
+
+    const matches: MemoryItem[] = [];
+    for (const [tierName, bucket] of this.tiers) {
+      if (tierFilter && tierName !== tierFilter) continue;
+      for (const row of bucket.values()) {
+        if (row.key.toLowerCase().includes(q) || row.content.toLowerCase().includes(q)) {
+          row.accessCount += 1;
+          matches.push({
+            id: row.id,
+            key: row.key,
+            tier: row.tier,
+            content: row.content,
+            importance: row.importance,
+            metadata: row.metadata,
+            tags: row.tags,
+            score: 1,
+            timestamp: row.timestamp,
+            accessCount: row.accessCount,
+          });
         }
       }
-      return results.sort((a, b) => b.ts - a.ts).slice(0, safeTopK);
-    },
-    getTierStats() {
-      return Object.fromEntries(
-        Object.entries(tiers).map(([name, map]) => [name, map.size]),
-      );
-    },
-  };
+    }
+    return matches.sort((a, b) => b.timestamp - a.timestamp).slice(0, k);
+  }
+
+  async promote(id: string, _fromTier: Tier | string, toTier: Tier | string): Promise<boolean> {
+    const target = coerceTier(toTier);
+    for (const [tierName, bucket] of this.tiers) {
+      const row = bucket.get(id);
+      if (!row) continue;
+      if (tierName === target) return true;
+      bucket.delete(id);
+      row.tier = target;
+      this.tiers.get(target)!.set(id, row);
+      return true;
+    }
+    return false;
+  }
+
+  async forget(id: string): Promise<boolean> {
+    for (const bucket of this.tiers.values()) {
+      if (bucket.delete(id)) return true;
+    }
+    return false;
+  }
+
+  getStats(): Record<string, number> {
+    const stats: Record<string, number> = {};
+    let total = 0;
+    for (const tier of TIERS) {
+      const n = this.tiers.get(tier)?.size ?? 0;
+      stats[tier] = n;
+      total += n;
+    }
+    stats.total = total;
+    return stats;
+  }
+
+  count(tier?: Tier | string): number {
+    if (tier) return this.tiers.get(coerceTier(tier))?.size ?? 0;
+    let total = 0;
+    for (const bucket of this.tiers.values()) total += bucket.size;
+    return total;
+  }
+}
+
+interface InternalStubRow {
+  id: string;
+  key: string;
+  tier: Tier;
+  content: string;
+  importance: number;
+  metadata: Record<string, unknown>;
+  tags: string[];
+  timestamp: number;
+  accessCount: number;
 }
 
 export const hierarchicalMemorySpec: ControllerSpec = {
@@ -408,7 +495,7 @@ export const hierarchicalMemorySpec: ControllerSpec = {
   level: 1,
   enabledByDefault: true,
   create: async ({ mofloDb, embedder }) => {
-    if (!mofloDb?.database) return createTieredMemoryStub();
+    if (!mofloDb?.database) return new HierarchicalMemoryStub();
     const hm = new HierarchicalMemory(mofloDb.database, { embedder });
     await hm.initializeDatabase();
     return hm;

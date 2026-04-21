@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import initSqlJs, { Database } from 'sql.js';
-import { HierarchicalMemory } from './hierarchical-memory.js';
+import { HierarchicalMemory, HierarchicalMemoryStub, hierarchicalMemorySpec } from './hierarchical-memory.js';
 
 let SQL: any;
 
@@ -112,5 +112,75 @@ describe('HierarchicalMemory', () => {
     const list = hm.listTier('working');
     expect(list[0].content).toBe('first');
     expect((list[0] as any).embedding).toBeUndefined();
+  });
+});
+
+describe('HierarchicalMemoryStub', () => {
+  let stub: HierarchicalMemoryStub;
+
+  beforeEach(() => {
+    stub = new HierarchicalMemoryStub();
+  });
+
+  it('store returns ids and counts per tier', async () => {
+    const id = await stub.store('hello', 0.5, 'working');
+    expect(id).toMatch(/^hm-stub-/);
+    expect(stub.count('working')).toBe(1);
+    expect(stub.count()).toBe(1);
+  });
+
+  it('recall honours tier filter and object-form query', async () => {
+    await stub.store('working-item', 0.5, 'working');
+    await stub.store('semantic-item', 0.5, 'semantic');
+    const working = await stub.recall({ query: 'item', tier: 'working', k: 5 });
+    expect(working.every((r) => r.tier === 'working')).toBe(true);
+  });
+
+  it('recall supports legacy (string, number) signature', async () => {
+    await stub.store('legacy call form', 0.5);
+    const hits = await stub.recall('legacy' as any, 3 as any);
+    expect(hits.length).toBeGreaterThan(0);
+  });
+
+  it('promote moves item between tiers', async () => {
+    const id = await stub.store('migratory', 0.5, 'working');
+    expect(await stub.promote(id, 'working', 'episodic')).toBe(true);
+    expect(stub.count('working')).toBe(0);
+    expect(stub.count('episodic')).toBe(1);
+  });
+
+  it('promote returns false for unknown id', async () => {
+    expect(await stub.promote('missing', 'working', 'semantic')).toBe(false);
+  });
+
+  it('forget removes by id', async () => {
+    const id = await stub.store('ephemeral', 0.5);
+    expect(await stub.forget(id)).toBe(true);
+    expect(await stub.forget('missing')).toBe(false);
+    expect(stub.count()).toBe(0);
+  });
+
+  it('getStats returns per-tier counts + total', async () => {
+    await stub.store('a', 0.5, 'working');
+    await stub.store('b', 0.5, 'episodic');
+    await stub.store('c', 0.5, 'semantic');
+    const stats = stub.getStats();
+    expect(stats.working).toBe(1);
+    expect(stats.episodic).toBe(1);
+    expect(stats.semantic).toBe(1);
+    expect(stats.total).toBe(3);
+  });
+
+  it('hierarchicalMemorySpec returns stub when mofloDb lacks database', async () => {
+    const result = await hierarchicalMemorySpec.create({
+      mofloDb: null,
+      embedder: undefined,
+      registry: { get: () => null, isEnabled: () => false },
+      config: {},
+      backend: null,
+    } as any);
+    expect(result).toBeInstanceOf(HierarchicalMemoryStub);
+    expect(typeof (result as any).promote).toBe('function');
+    expect(typeof (result as any).getStats).toBe('function');
   });
 });
