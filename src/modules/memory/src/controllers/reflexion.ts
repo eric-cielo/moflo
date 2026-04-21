@@ -17,6 +17,7 @@
  */
 
 import {
+  clampInt,
   deserializeEmbedding,
   embedWithFallback,
   generateId,
@@ -177,7 +178,7 @@ export class Reflexion {
   }
 
   listEpisodes(limit: number = 100): EpisodeRow[] {
-    const safeLimit = Math.max(1, Math.min(limit, 10_000));
+    const safeLimit = clampInt(limit, 1, 10_000, 100);
     const stmt = this.db.prepare(
       `SELECT session_id, started_at, ended_at, context, summary, tasks_completed, patterns_learned
        FROM ${EPISODES_TABLE}

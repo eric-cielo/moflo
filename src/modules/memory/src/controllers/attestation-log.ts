@@ -15,7 +15,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { parseJsonSafe } from './_shared.js';
+import { clampInt, parseJsonSafe } from './_shared.js';
 import type { SqlJsDatabaseLike } from './types.js';
 import type { ControllerSpec } from '../controller-spec.js';
 
@@ -77,7 +77,7 @@ export class AttestationLog {
    * future admin tooling.
    */
   list(limit: number = 100): AttestationEntry[] {
-    const safeLimit = Math.max(1, Math.min(limit, 10_000));
+    const safeLimit = clampInt(limit, 1, 10_000, 100);
     const stmt = this.db.prepare(
       `SELECT operation, entry_id, ts, metadata, prev_hash, entry_hash
        FROM ${TABLE}

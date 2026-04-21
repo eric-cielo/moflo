@@ -173,7 +173,7 @@ export async function vectorSearchRows<T extends { embedding: Float32Array | nul
   dimension: number,
   getContent: (row: T) => string,
 ): Promise<Array<T & { score: number }>> {
-  const safeK = Math.max(1, Math.min(k, 1000));
+  const safeK = clampInt(k, 1, 1000, 10);
   if (rows.length === 0) return [];
   const queryVec = await embedWithFallback(embedder, queryText, dimension);
   const withContent = rows.map((r) => ({ ...r, content: getContent(r) }));

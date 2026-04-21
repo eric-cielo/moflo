@@ -24,6 +24,8 @@
  */
 
 import {
+  clamp01,
+  clampInt,
   deserializeEmbedding,
   embedWithFallback,
   generateId,
@@ -36,6 +38,7 @@ import type { SqlJsDatabaseLike } from './types.js';
 import type { ControllerSpec } from '../controller-spec.js';
 
 const TABLE = 'moflo_hierarchical_memory';
+const SELECT_COLS = 'id, key, tier, content, importance, metadata, tags, embedding, created_at, access_count';
 
 export type Tier = 'working' | 'episodic' | 'semantic' | 'metaCognitive';
 const TIERS: Tier[] = ['working', 'episodic', 'semantic', 'metaCognitive'];
@@ -117,7 +120,7 @@ export class HierarchicalMemory {
     const blob = serializeEmbedding(embedding);
     const metaJson = JSON.stringify(options.metadata ?? {});
     const tagsJson = JSON.stringify(options.tags ?? []);
-    const clampedImportance = clamp(importance, 0, 1);
+    const clampedImportance = clamp01(importance);
     this.db.run(
       `INSERT INTO ${TABLE}
          (id, key, tier, content, importance, metadata, tags, embedding, created_at, accessed_at, access_count)
@@ -134,7 +137,7 @@ export class HierarchicalMemory {
       return this.recall({ query, k: typeof legacyK === 'number' ? legacyK : 10 });
     }
     if (!query || typeof query.query !== 'string') return [];
-    const k = Math.max(1, Math.min(query.k ?? 10, 1000));
+    const k = clampInt(query.k, 1, 1000, 10);
     const tier = query.tier ? coerceTier(query.tier) : null;
     const threshold = typeof query.threshold === 'number' ? query.threshold : 0;
     const rows = this.loadByTier(tier);
@@ -214,9 +217,9 @@ export class HierarchicalMemory {
    */
   listTier(tier: Tier | string, limit: number = 1000): MemoryItem[] {
     const t = coerceTier(tier);
-    const safeLimit = Math.max(1, Math.min(limit, 100_000));
+    const safeLimit = clampInt(limit, 1, 100_000, 1000);
     const stmt = this.db.prepare(
-      `SELECT id, key, tier, content, importance, metadata, tags, embedding, created_at, access_count
+      `SELECT ${SELECT_COLS}
        FROM ${TABLE}
        WHERE tier = ?
        ORDER BY created_at ASC
@@ -241,10 +244,8 @@ export class HierarchicalMemory {
 
   private loadByTier(tier: Tier | null): InternalRow[] {
     const sql = tier
-      ? `SELECT id, key, tier, content, importance, metadata, tags, embedding, created_at, access_count
-         FROM ${TABLE} WHERE tier = ?`
-      : `SELECT id, key, tier, content, importance, metadata, tags, embedding, created_at, access_count
-         FROM ${TABLE}`;
+      ? `SELECT ${SELECT_COLS} FROM ${TABLE} WHERE tier = ?`
+      : `SELECT ${SELECT_COLS} FROM ${TABLE}`;
     const stmt = this.db.prepare(sql);
     const rows: InternalRow[] = [];
     try {
@@ -331,11 +332,6 @@ function coerceTier(tier: Tier | string): Tier {
   return (TIERS as string[]).includes(t) ? (t as Tier) : 'working';
 }
 
-function clamp(n: number, lo: number, hi: number): number {
-  if (typeof n !== 'number' || Number.isNaN(n)) return lo;
-  return Math.max(lo, Math.min(hi, n));
-}
-
 function parseTags(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(String);
   if (typeof value !== 'string' || value.length === 0) return [];
@@ -406,7 +402,7 @@ export class HierarchicalMemoryStub {
       key,
       tier: tierName,
       content: String(content ?? '').substring(0, 100_000),
-      importance: clamp(importance, 0, 1),
+      importance: clamp01(importance),
       metadata: options.metadata ?? {},
       tags: options.tags ?? [],
       timestamp: Date.now(),
@@ -426,7 +422,7 @@ export class HierarchicalMemoryStub {
       return this.recall({ query, k: typeof legacyK === 'number' ? legacyK : 10 });
     }
     if (!query || typeof query.query !== 'string') return [];
-    const k = Math.max(1, Math.min(query.k ?? 10, 1000));
+    const k = clampInt(query.k, 1, 1000, 10);
     const tierFilter = query.tier ? coerceTier(query.tier) : null;
     const q = query.query.toLowerCase().substring(0, 10_000);
 
@@ -472,7 +468,7 @@ export class HierarchicalMemoryStub {
     const t = coerceTier(tier);
     const bucket = this.tiers.get(t);
     if (!bucket) return [];
-    const safeLimit = Math.max(1, Math.min(limit, 100_000));
+    const safeLimit = clampInt(limit, 1, 100_000, 1000);
     const out: MemoryItem[] = [];
     for (const row of bucket.values()) out.push(stubRowToItem(row, 0));
     out.sort((a, b) => a.timestamp - b.timestamp);

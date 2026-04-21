@@ -12,6 +12,7 @@
  *   { content, key, reward, verdict }[]
  */
 
+import { clampInt } from './_shared.js';
 import type { MemoryPattern } from './types.js';
 import type { ControllerSpec } from '../controller-spec.js';
 
@@ -109,7 +110,7 @@ function buildSummary(memories: MemoryPattern[], maxContent: number): string {
     if (budget <= 0) break;
     const label = m.key ? `[${m.key}] ` : '';
     const trimmed = m.content.trim().replace(/\s+/g, ' ');
-    const room = Math.max(60, Math.min(400, budget));
+    const room = clampInt(budget, 60, 400, 60);
     const excerpt = trimmed.length > room ? trimmed.slice(0, room - 1) + '…' : trimmed;
     excerpts.push(`${label}${excerpt}`);
     budget -= excerpt.length + label.length + 2;

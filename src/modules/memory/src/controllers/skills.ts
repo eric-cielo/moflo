@@ -18,6 +18,7 @@
  */
 
 import {
+  clampInt,
   deserializeEmbedding,
   embedWithFallback,
   generateId,
@@ -190,7 +191,7 @@ export class Skills {
 
   // Admin: return all skills (newest first). Used by nightly learner and tests.
   list(limit: number = 100): SkillRow[] {
-    const safeLimit = Math.max(1, Math.min(limit, 10_000));
+    const safeLimit = clampInt(limit, 1, 10_000, 100);
     const stmt = this.db.prepare(
       `SELECT id, name, description, code, quality, uses, metadata, embedding, created_at, updated_at
        FROM ${TABLE}
