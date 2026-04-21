@@ -174,7 +174,7 @@ hive-mind-prompt-*.txt
 .claude/scheduled_tasks.lock
 **/workflow-state.json
 src/modules/*/package-lock.json
-test-database-provider.rvf
+*.rvf
 .vitest-results.json
 
 # Local guidance docs (generated, not tracked)

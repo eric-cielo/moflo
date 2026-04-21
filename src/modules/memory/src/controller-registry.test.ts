@@ -197,10 +197,10 @@ describe('ControllerRegistry', () => {
   // ----- Level-Based Ordering -----
 
   describe('level-based initialization ordering', () => {
-    it('should define 7 initialization levels (0-6)', () => {
-      expect(INIT_LEVELS).toHaveLength(7);
+    it('should define 6 initialization levels (0-5)', () => {
+      expect(INIT_LEVELS).toHaveLength(6);
       expect(INIT_LEVELS[0].level).toBe(0);
-      expect(INIT_LEVELS[6].level).toBe(6);
+      expect(INIT_LEVELS[5].level).toBe(5);
     });
 
     it('should have monotonically increasing levels', () => {
@@ -225,7 +225,6 @@ describe('ControllerRegistry', () => {
     it('should include specialization controllers in level 3', () => {
       const level3 = INIT_LEVELS.find((l) => l.level === 3);
       expect(level3?.controllers).toContain('skills');
-      expect(level3?.controllers).toContain('explainableRecall');
       expect(level3?.controllers).toContain('reflexion');
     });
 
@@ -237,13 +236,7 @@ describe('ControllerRegistry', () => {
 
     it('should include advanced services in level 5', () => {
       const level5 = INIT_LEVELS.find((l) => l.level === 5);
-      expect(level5?.controllers).toContain('graphTransformer');
-      expect(level5?.controllers).toContain('sonaTrajectory');
-    });
-
-    it('should include session management in level 6', () => {
-      const level6 = INIT_LEVELS.find((l) => l.level === 6);
-      expect(level6?.controllers).toContain('federatedSession');
+      expect(level5?.controllers).toContain('contextSynthesizer');
     });
 
     it('should not have duplicate controller names across levels', () => {
@@ -373,11 +366,10 @@ describe('ControllerRegistry', () => {
       await registry.initialize({ backend: mockBackend });
 
       // semanticRouter was moved from opt-in to auto-enable when agentdb is
-      // available (see controller-registry.ts:556). Exclude it from this list —
+      // available (see controller-registry.ts). Exclude it from this list —
       // it is no longer an "optional by default" controller.
       expect(registry.isEnabled('hybridSearch')).toBe(false);
-      expect(registry.isEnabled('federatedSession')).toBe(false);
-      expect(registry.isEnabled('sonaTrajectory')).toBe(false);
+      expect(registry.isEnabled('agentMemoryScope')).toBe(false);
     });
   });
 

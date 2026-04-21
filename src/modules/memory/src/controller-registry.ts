@@ -37,15 +37,10 @@ export type AgentDBControllerName =
   | 'skills'
   | 'reflexion'
   | 'causalGraph'
-  | 'causalRecall'
   | 'learningSystem'
-  | 'explainableRecall'
   | 'nightlyLearner'
-  | 'graphTransformer'
   | 'mutationGuard'
-  | 'attestationLog'
-  | 'vectorBackend'
-  | 'graphAdapter';
+  | 'attestationLog';
 
 /**
  * CLI-layer controllers (from @moflo/memory or new)
@@ -56,17 +51,11 @@ export type CLIControllerName =
   | 'agentMemoryScope'
   | 'tieredCache'
   | 'hybridSearch'
-  | 'federatedSession'
   | 'semanticRouter'
-  | 'sonaTrajectory'
   | 'hierarchicalMemory'
   | 'memoryConsolidation'
   | 'batchOperations'
-  | 'contextSynthesizer'
-  | 'gnnService'
-  | 'rvfOptimizer'
-  | 'mmrDiversityRanker'
-  | 'guardedVectorBackend';
+  | 'contextSynthesizer';
 
 /**
  * All controller names
@@ -164,15 +153,13 @@ export const INIT_LEVELS: InitLevel[] = [
   // Level 1: Core intelligence
   { level: 1, controllers: ['reasoningBank', 'hierarchicalMemory', 'learningBridge', 'hybridSearch', 'tieredCache'] },
   // Level 2: Graph & security
-  { level: 2, controllers: ['memoryGraph', 'agentMemoryScope', 'vectorBackend', 'mutationGuard', 'gnnService'] },
+  { level: 2, controllers: ['memoryGraph', 'agentMemoryScope', 'mutationGuard'] },
   // Level 3: Specialization
-  { level: 3, controllers: ['skills', 'explainableRecall', 'reflexion', 'attestationLog', 'batchOperations', 'memoryConsolidation'] },
+  { level: 3, controllers: ['skills', 'reflexion', 'attestationLog', 'batchOperations', 'memoryConsolidation'] },
   // Level 4: Causal & routing
   { level: 4, controllers: ['causalGraph', 'nightlyLearner', 'learningSystem', 'semanticRouter'] },
   // Level 5: Advanced services
-  { level: 5, controllers: ['graphTransformer', 'sonaTrajectory', 'contextSynthesizer', 'rvfOptimizer', 'mmrDiversityRanker', 'guardedVectorBackend'] },
-  // Level 6: Session management
-  { level: 6, controllers: ['federatedSession', 'graphAdapter'] },
+  { level: 5, controllers: ['contextSynthesizer'] },
 ];
 
 // ===== ControllerRegistry =====
@@ -531,37 +518,29 @@ export class ControllerRegistry extends EventEmitter {
       // Security — enabled if AgentDB available
       case 'mutationGuard':
       case 'attestationLog':
-      case 'vectorBackend':
-      case 'guardedVectorBackend':
         return this.agentdb !== null;
 
       // AgentDB-internal controllers — only if AgentDB available
       case 'skills':
       case 'reflexion':
       case 'causalGraph':
-      case 'causalRecall':
       case 'learningSystem':
-      case 'explainableRecall':
       case 'nightlyLearner':
-      case 'graphTransformer':
-      case 'graphAdapter':
-      case 'gnnService':
       case 'memoryConsolidation':
       case 'batchOperations':
-      case 'contextSynthesizer':
-      case 'rvfOptimizer':
-      case 'mmrDiversityRanker':
         return this.agentdb !== null;
 
-      // SemanticRouter — auto-enable if agentdb available (exported since alpha.10)
+      // ContextSynthesizer — moflo-owned, pure static class (no DB needed).
+      case 'contextSynthesizer':
+        return true;
+
+      // SemanticRouter — moflo-owned, no DB needed.
       case 'semanticRouter':
-        return this.agentdb !== null;
+        return true;
 
       // Optional controllers
       case 'hybridSearch':
       case 'agentMemoryScope':
-      case 'sonaTrajectory':
-      case 'federatedSession':
         return false; // Require explicit enabling
 
       default:
@@ -670,8 +649,15 @@ export class ControllerRegistry extends EventEmitter {
         return null;
 
       case 'semanticRouter': {
-        // SemanticRouter exported from agentdb 3.0.0-alpha.10 (ADR-062)
-        // Constructor: () — requires initialize() after construction
+        // Prefer moflo-owned impl (epic #464 Phase C2); no agentdb needed.
+        try {
+          const { SemanticRouter } = await import('./controllers/semantic-router.js');
+          const router = new SemanticRouter();
+          await router.initialize();
+          return router;
+        } catch {
+          // Fall through to agentdb's SemanticRouter if our impl fails to load.
+        }
         try {
           const agentdbModule: any = await import('agentdb');
           const SR = agentdbModule.SemanticRouter;
@@ -682,21 +668,20 @@ export class ControllerRegistry extends EventEmitter {
         } catch { return null; }
       }
 
-      case 'sonaTrajectory':
-        // Delegate to AgentDB's SonaTrajectoryService if available
-        if (this.agentdb && typeof this.agentdb.getController === 'function') {
-          try {
-            return this.agentdb.getController('sonaTrajectory');
-          } catch {
-            return null;
-          }
-        }
-        return null;
-
       case 'hierarchicalMemory': {
-        // HierarchicalMemory exported from agentdb 3.0.0-alpha.10 (ADR-066 Phase P2-3)
-        // Constructor: (db, embedder, vectorBackend?, graphBackend?, config?)
-        if (!this.agentdb) return this.createTieredMemoryStub();
+        // Prefer moflo-owned impl (epic #464 Phase C3). Needs the sql.js
+        // handle agentdb initializes for us; falls back to the in-memory
+        // stub if that's unavailable.
+        if (!this.agentdb?.database) return this.createTieredMemoryStub();
+        try {
+          const { HierarchicalMemory } = await import('./controllers/hierarchical-memory.js');
+          const embedder = this.config.embeddingGenerator;
+          const hm = new HierarchicalMemory(this.agentdb.database, { embedder });
+          await hm.initializeDatabase();
+          return hm;
+        } catch {
+          // Fall through to agentdb.
+        }
         try {
           const agentdbModule: any = await import('agentdb');
           const HM = agentdbModule.HierarchicalMemory;
@@ -711,15 +696,24 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'memoryConsolidation': {
-        // MemoryConsolidation exported from agentdb 3.0.0-alpha.10 (ADR-066 Phase P2-3)
-        // Constructor: (db, hierarchicalMemory, embedder, vectorBackend?, graphBackend?, config?)
+        // Prefer moflo-owned impl (epic #464 Phase C3). Composes over the
+        // HierarchicalMemory instantiated at level 1.
+        const hm: any = this.get('hierarchicalMemory');
+        const isMofloHm =
+          hm && typeof hm.listTier === 'function' && typeof hm.promote === 'function';
+        if (isMofloHm) {
+          try {
+            const { MemoryConsolidation } = await import('./controllers/memory-consolidation.js');
+            return new MemoryConsolidation(hm);
+          } catch {
+            // Fall through to agentdb.
+          }
+        }
         if (!this.agentdb) return this.createConsolidationStub();
         try {
           const agentdbModule: any = await import('agentdb');
           const MC = agentdbModule.MemoryConsolidation;
           if (!MC) return this.createConsolidationStub();
-          // Get the HierarchicalMemory instance (must be initialized at level 1 before us at level 3)
-          const hm: any = this.get('hierarchicalMemory');
           if (!hm || typeof hm.recall !== 'function' || typeof hm.store !== 'function') {
             return this.createConsolidationStub();
           }
@@ -731,10 +725,6 @@ export class ControllerRegistry extends EventEmitter {
           return this.createConsolidationStub();
         }
       }
-
-      case 'federatedSession':
-        // Federated session — placeholder for Phase 4
-        return null;
 
       // ----- AgentDB-internal controllers (via getController) -----
       // AgentDB.getController() only supports: reflexion/memory, skills, causalGraph/causal
@@ -749,22 +739,50 @@ export class ControllerRegistry extends EventEmitter {
         } catch { return null; }
       }
 
-      case 'skills':
-      case 'reflexion':
+      case 'skills': {
+        // Prefer moflo-owned impl (epic #464 Phase C3).
+        if (this.agentdb?.database) {
+          try {
+            const { Skills } = await import('./controllers/skills.js');
+            const skills = new Skills(this.agentdb.database, {
+              embedder: this.config.embeddingGenerator,
+            });
+            await skills.initializeDatabase();
+            return skills;
+          } catch {
+            // Fall through to agentdb.
+          }
+        }
+        if (!this.agentdb || typeof this.agentdb.getController !== 'function') return null;
+        try {
+          return this.agentdb.getController('skills') ?? null;
+        } catch { return null; }
+      }
+
+      case 'reflexion': {
+        // Prefer moflo-owned impl (epic #464 Phase C3).
+        if (this.agentdb?.database) {
+          try {
+            const { Reflexion } = await import('./controllers/reflexion.js');
+            const reflexion = new Reflexion(this.agentdb.database, {
+              embedder: this.config.embeddingGenerator,
+            });
+            await reflexion.initializeDatabase();
+            return reflexion;
+          } catch {
+            // Fall through to agentdb.
+          }
+        }
+        if (!this.agentdb || typeof this.agentdb.getController !== 'function') return null;
+        try {
+          return this.agentdb.getController('reflexion') ?? null;
+        } catch { return null; }
+      }
+
       case 'causalGraph': {
         if (!this.agentdb || typeof this.agentdb.getController !== 'function') return null;
         try {
           return this.agentdb.getController(name) ?? null;
-        } catch { return null; }
-      }
-
-      case 'causalRecall': {
-        if (!this.agentdb) return null;
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const CR = agentdbModule.CausalRecall;
-          if (!CR) return null;
-          return new CR(this.agentdb.database);
         } catch { return null; }
       }
 
@@ -778,17 +796,28 @@ export class ControllerRegistry extends EventEmitter {
         } catch { return null; }
       }
 
-      case 'explainableRecall': {
-        if (!this.agentdb) return null;
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const ER = agentdbModule.ExplainableRecall;
-          if (!ER) return null;
-          return new ER(this.agentdb.database);
-        } catch { return null; }
-      }
-
       case 'nightlyLearner': {
+        // Prefer moflo-owned impl (epic #464 Phase C3). Pulls together
+        // MemoryConsolidation / Reflexion / Skills already in the registry.
+        try {
+          const { NightlyLearner } = await import('./controllers/nightly-learner.js');
+          const { hasMethod } = await import('./controllers/_shared.js');
+          const mc: any = this.get('memoryConsolidation');
+          const refl: any = this.get('reflexion');
+          const sk: any = this.get('skills');
+          const mofloMc = hasMethod(mc, 'getOptions') ? mc : undefined;
+          const mofloRefl = hasMethod(refl, 'episodeCount') ? refl : undefined;
+          const mofloSk = hasMethod(sk, 'list') ? sk : undefined;
+          if (mofloMc || mofloRefl || mofloSk) {
+            return new NightlyLearner({
+              memoryConsolidation: mofloMc,
+              reflexion: mofloRefl,
+              skills: mofloSk,
+            });
+          }
+        } catch {
+          // Fall through to agentdb.
+        }
         if (!this.agentdb) return null;
         try {
           const agentdbModule: any = await import('agentdb');
@@ -798,19 +827,16 @@ export class ControllerRegistry extends EventEmitter {
         } catch { return null; }
       }
 
-      case 'graphTransformer': {
-        if (!this.agentdb) return null;
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const GT = agentdbModule.CausalMemoryGraph;
-          if (!GT) return null;
-          return new GT(this.agentdb.database);
-        } catch { return null; }
-      }
-
       // ----- Direct-instantiation controllers -----
       case 'batchOperations': {
-        if (!this.agentdb) return null;
+        if (!this.agentdb?.database) return null;
+        // Prefer moflo-owned impl (epic #464 Phase C2).
+        try {
+          const { BatchOperations } = await import('./controllers/batch-operations.js');
+          return new BatchOperations(this.agentdb.database, this.config.embeddingGenerator);
+        } catch {
+          // Fall through to agentdb.
+        }
         try {
           const agentdbModule: any = await import('agentdb');
           const BO = agentdbModule.BatchOperations;
@@ -821,19 +847,17 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'contextSynthesizer': {
-        // ContextSynthesizer.synthesize is static — return the class itself
+        // ContextSynthesizer.synthesize is static — return the class itself.
+        // Prefer moflo-owned impl (epic #464 Phase C2).
+        try {
+          const { ContextSynthesizer } = await import('./controllers/context-synthesizer.js');
+          return ContextSynthesizer;
+        } catch {
+          // Fall through to agentdb.
+        }
         try {
           const agentdbModule: any = await import('agentdb');
           return agentdbModule.ContextSynthesizer ?? null;
-        } catch { return null; }
-      }
-
-      case 'mmrDiversityRanker': {
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const MMR = agentdbModule.MMRDiversityRanker;
-          if (!MMR) return null;
-          return new MMR();
         } catch { return null; }
       }
 
@@ -850,68 +874,21 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'attestationLog': {
-        // AttestationLog exported from agentdb 3.0.0-alpha.10 (ADR-060)
-        // Constructor: (db) — uses database for append-only audit log
-        if (!this.agentdb) return null;
+        // AttestationLog: append-only audit log.
+        // Prefer moflo-owned impl (epic #464 Phase C2).
+        if (!this.agentdb?.database) return null;
+        try {
+          const { AttestationLog } = await import('./controllers/attestation-log.js');
+          return new AttestationLog(this.agentdb.database);
+        } catch {
+          // Fall through to agentdb.
+        }
         try {
           const agentdbModule: any = await import('agentdb');
           const AL = agentdbModule.AttestationLog;
           if (!AL) return null;
           return new AL(this.agentdb.database);
         } catch { return null; }
-      }
-
-      case 'gnnService': {
-        // GNNService exported from agentdb 3.0.0-alpha.10 (ADR-062)
-        // Constructor: (config?) — requires initialize() after construction
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const GNN = agentdbModule.GNNService;
-          if (!GNN) return null;
-          const gnn = new GNN({ inputDim: this.config.dimension || 384 });
-          await gnn.initialize();
-          return gnn;
-        } catch { return null; }
-      }
-
-      case 'rvfOptimizer': {
-        // RVFOptimizer exported from agentdb 3.0.0-alpha.10 (ADR-062/065)
-        // Constructor: (config?) — no-arg for defaults
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const RVF = agentdbModule.RVFOptimizer;
-          if (!RVF) return null;
-          return new RVF();
-        } catch { return null; }
-      }
-
-      case 'guardedVectorBackend': {
-        // GuardedVectorBackend exported from agentdb 3.0.0-alpha.10 (ADR-060)
-        // Constructor: (innerBackend, mutationGuard, attestationLog?)
-        // Requires vectorBackend and mutationGuard to be initialized first (level 2)
-        if (!this.agentdb) return null;
-        try {
-          const vb = this.get('vectorBackend');
-          const guard = this.get('mutationGuard');
-          if (!vb || !guard) return null;
-          const agentdbModule: any = await import('agentdb');
-          const GVB = agentdbModule.GuardedVectorBackend;
-          if (!GVB) return null;
-          const log = this.get('attestationLog');
-          return new GVB(vb, guard, log || undefined);
-        } catch { return null; }
-      }
-
-      case 'vectorBackend':
-      case 'graphAdapter': {
-        // These are accessed via AgentDB internal state, not direct construction
-        if (!this.agentdb) return null;
-        try {
-          if (typeof this.agentdb.getController === 'function') {
-            return this.agentdb.getController(name) ?? null;
-          }
-        } catch { /* fallthrough */ }
-        return null;
       }
 
       default:
