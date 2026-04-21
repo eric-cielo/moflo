@@ -37,15 +37,10 @@ export type AgentDBControllerName =
   | 'skills'
   | 'reflexion'
   | 'causalGraph'
-  | 'causalRecall'
   | 'learningSystem'
-  | 'explainableRecall'
   | 'nightlyLearner'
-  | 'graphTransformer'
   | 'mutationGuard'
-  | 'attestationLog'
-  | 'vectorBackend'
-  | 'graphAdapter';
+  | 'attestationLog';
 
 /**
  * CLI-layer controllers (from @moflo/memory or new)
@@ -56,17 +51,11 @@ export type CLIControllerName =
   | 'agentMemoryScope'
   | 'tieredCache'
   | 'hybridSearch'
-  | 'federatedSession'
   | 'semanticRouter'
-  | 'sonaTrajectory'
   | 'hierarchicalMemory'
   | 'memoryConsolidation'
   | 'batchOperations'
-  | 'contextSynthesizer'
-  | 'gnnService'
-  | 'rvfOptimizer'
-  | 'mmrDiversityRanker'
-  | 'guardedVectorBackend';
+  | 'contextSynthesizer';
 
 /**
  * All controller names
@@ -164,15 +153,13 @@ export const INIT_LEVELS: InitLevel[] = [
   // Level 1: Core intelligence
   { level: 1, controllers: ['reasoningBank', 'hierarchicalMemory', 'learningBridge', 'hybridSearch', 'tieredCache'] },
   // Level 2: Graph & security
-  { level: 2, controllers: ['memoryGraph', 'agentMemoryScope', 'vectorBackend', 'mutationGuard', 'gnnService'] },
+  { level: 2, controllers: ['memoryGraph', 'agentMemoryScope', 'mutationGuard'] },
   // Level 3: Specialization
-  { level: 3, controllers: ['skills', 'explainableRecall', 'reflexion', 'attestationLog', 'batchOperations', 'memoryConsolidation'] },
+  { level: 3, controllers: ['skills', 'reflexion', 'attestationLog', 'batchOperations', 'memoryConsolidation'] },
   // Level 4: Causal & routing
   { level: 4, controllers: ['causalGraph', 'nightlyLearner', 'learningSystem', 'semanticRouter'] },
   // Level 5: Advanced services
-  { level: 5, controllers: ['graphTransformer', 'sonaTrajectory', 'contextSynthesizer', 'rvfOptimizer', 'mmrDiversityRanker', 'guardedVectorBackend'] },
-  // Level 6: Session management
-  { level: 6, controllers: ['federatedSession', 'graphAdapter'] },
+  { level: 5, controllers: ['contextSynthesizer'] },
 ];
 
 // ===== ControllerRegistry =====
@@ -531,26 +518,17 @@ export class ControllerRegistry extends EventEmitter {
       // Security — enabled if AgentDB available
       case 'mutationGuard':
       case 'attestationLog':
-      case 'vectorBackend':
-      case 'guardedVectorBackend':
         return this.agentdb !== null;
 
       // AgentDB-internal controllers — only if AgentDB available
       case 'skills':
       case 'reflexion':
       case 'causalGraph':
-      case 'causalRecall':
       case 'learningSystem':
-      case 'explainableRecall':
       case 'nightlyLearner':
-      case 'graphTransformer':
-      case 'graphAdapter':
-      case 'gnnService':
       case 'memoryConsolidation':
       case 'batchOperations':
       case 'contextSynthesizer':
-      case 'rvfOptimizer':
-      case 'mmrDiversityRanker':
         return this.agentdb !== null;
 
       // SemanticRouter — auto-enable if agentdb available (exported since alpha.10)
@@ -560,8 +538,6 @@ export class ControllerRegistry extends EventEmitter {
       // Optional controllers
       case 'hybridSearch':
       case 'agentMemoryScope':
-      case 'sonaTrajectory':
-      case 'federatedSession':
         return false; // Require explicit enabling
 
       default:
@@ -682,17 +658,6 @@ export class ControllerRegistry extends EventEmitter {
         } catch { return null; }
       }
 
-      case 'sonaTrajectory':
-        // Delegate to AgentDB's SonaTrajectoryService if available
-        if (this.agentdb && typeof this.agentdb.getController === 'function') {
-          try {
-            return this.agentdb.getController('sonaTrajectory');
-          } catch {
-            return null;
-          }
-        }
-        return null;
-
       case 'hierarchicalMemory': {
         // HierarchicalMemory exported from agentdb 3.0.0-alpha.10 (ADR-066 Phase P2-3)
         // Constructor: (db, embedder, vectorBackend?, graphBackend?, config?)
@@ -732,10 +697,6 @@ export class ControllerRegistry extends EventEmitter {
         }
       }
 
-      case 'federatedSession':
-        // Federated session — placeholder for Phase 4
-        return null;
-
       // ----- AgentDB-internal controllers (via getController) -----
       // AgentDB.getController() only supports: reflexion/memory, skills, causalGraph/causal
       case 'reasoningBank': {
@@ -758,16 +719,6 @@ export class ControllerRegistry extends EventEmitter {
         } catch { return null; }
       }
 
-      case 'causalRecall': {
-        if (!this.agentdb) return null;
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const CR = agentdbModule.CausalRecall;
-          if (!CR) return null;
-          return new CR(this.agentdb.database);
-        } catch { return null; }
-      }
-
       case 'learningSystem': {
         if (!this.agentdb) return null;
         try {
@@ -778,16 +729,6 @@ export class ControllerRegistry extends EventEmitter {
         } catch { return null; }
       }
 
-      case 'explainableRecall': {
-        if (!this.agentdb) return null;
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const ER = agentdbModule.ExplainableRecall;
-          if (!ER) return null;
-          return new ER(this.agentdb.database);
-        } catch { return null; }
-      }
-
       case 'nightlyLearner': {
         if (!this.agentdb) return null;
         try {
@@ -795,16 +736,6 @@ export class ControllerRegistry extends EventEmitter {
           const NL = agentdbModule.NightlyLearner;
           if (!NL) return null;
           return new NL(this.agentdb.database);
-        } catch { return null; }
-      }
-
-      case 'graphTransformer': {
-        if (!this.agentdb) return null;
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const GT = agentdbModule.CausalMemoryGraph;
-          if (!GT) return null;
-          return new GT(this.agentdb.database);
         } catch { return null; }
       }
 
@@ -825,15 +756,6 @@ export class ControllerRegistry extends EventEmitter {
         try {
           const agentdbModule: any = await import('agentdb');
           return agentdbModule.ContextSynthesizer ?? null;
-        } catch { return null; }
-      }
-
-      case 'mmrDiversityRanker': {
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const MMR = agentdbModule.MMRDiversityRanker;
-          if (!MMR) return null;
-          return new MMR();
         } catch { return null; }
       }
 
@@ -859,59 +781,6 @@ export class ControllerRegistry extends EventEmitter {
           if (!AL) return null;
           return new AL(this.agentdb.database);
         } catch { return null; }
-      }
-
-      case 'gnnService': {
-        // GNNService exported from agentdb 3.0.0-alpha.10 (ADR-062)
-        // Constructor: (config?) — requires initialize() after construction
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const GNN = agentdbModule.GNNService;
-          if (!GNN) return null;
-          const gnn = new GNN({ inputDim: this.config.dimension || 384 });
-          await gnn.initialize();
-          return gnn;
-        } catch { return null; }
-      }
-
-      case 'rvfOptimizer': {
-        // RVFOptimizer exported from agentdb 3.0.0-alpha.10 (ADR-062/065)
-        // Constructor: (config?) — no-arg for defaults
-        try {
-          const agentdbModule: any = await import('agentdb');
-          const RVF = agentdbModule.RVFOptimizer;
-          if (!RVF) return null;
-          return new RVF();
-        } catch { return null; }
-      }
-
-      case 'guardedVectorBackend': {
-        // GuardedVectorBackend exported from agentdb 3.0.0-alpha.10 (ADR-060)
-        // Constructor: (innerBackend, mutationGuard, attestationLog?)
-        // Requires vectorBackend and mutationGuard to be initialized first (level 2)
-        if (!this.agentdb) return null;
-        try {
-          const vb = this.get('vectorBackend');
-          const guard = this.get('mutationGuard');
-          if (!vb || !guard) return null;
-          const agentdbModule: any = await import('agentdb');
-          const GVB = agentdbModule.GuardedVectorBackend;
-          if (!GVB) return null;
-          const log = this.get('attestationLog');
-          return new GVB(vb, guard, log || undefined);
-        } catch { return null; }
-      }
-
-      case 'vectorBackend':
-      case 'graphAdapter': {
-        // These are accessed via AgentDB internal state, not direct construction
-        if (!this.agentdb) return null;
-        try {
-          if (typeof this.agentdb.getController === 'function') {
-            return this.agentdb.getController(name) ?? null;
-          }
-        } catch { /* fallthrough */ }
-        return null;
       }
 
       default:
