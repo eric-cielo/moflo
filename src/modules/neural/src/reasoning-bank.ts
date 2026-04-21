@@ -1,14 +1,14 @@
 /**
- * ReasoningBank Integration with AgentDB
+ * ReasoningBank Integration with MofloDb
  *
  * Implements the 4-step learning pipeline with real vector storage:
- * 1. RETRIEVE - Top-k memory injection with MMR diversity (using AgentDB HNSW)
+ * 1. RETRIEVE - Top-k memory injection with MMR diversity (using MofloDb HNSW)
  * 2. JUDGE - LLM-as-judge trajectory evaluation
  * 3. DISTILL - Extract strategy memories from trajectories
  * 4. CONSOLIDATE - Dedup, detect contradictions, prune old patterns
  *
  * Performance Targets:
- * - Retrieval: <10ms with AgentDB HNSW (150x faster than brute-force)
+ * - Retrieval: <10ms with MofloDb HNSW (150x faster than brute-force)
  * - Learning step: <10ms
  * - Consolidation: <100ms
  *
@@ -30,27 +30,27 @@ import type {
 // Persistence via @moflo/memory (shared with hooks/ReasoningBank)
 // ============================================================================
 
-let AgentDBAdapter: any;
+let MofloDbAdapter: any;
 let createDefaultEntry: ((input: any) => any) | undefined;
-let agentdbImportPromise: Promise<void> | undefined;
+let mofloDbImportPromise: Promise<void> | undefined;
 
-async function ensureAgentDBAdapterImport(): Promise<void> {
-  if (!agentdbImportPromise) {
-    agentdbImportPromise = (async () => {
+async function ensureMofloDbAdapterImport(): Promise<void> {
+  if (!mofloDbImportPromise) {
+    mofloDbImportPromise = (async () => {
       try {
         // Variable specifier so tsc/bundlers skip static resolution;
         // @moflo/memory is an optional runtime peer installed by the consumer.
         const moduleName = '@moflo/memory';
         const memoryModule: any = await import(/* webpackIgnore: true */ moduleName);
-        AgentDBAdapter = memoryModule.AgentDBAdapter;
+        MofloDbAdapter = memoryModule.MofloDbAdapter;
         createDefaultEntry = memoryModule.createDefaultEntry;
       } catch {
-        AgentDBAdapter = undefined;
+        MofloDbAdapter = undefined;
         createDefaultEntry = undefined;
       }
     })();
   }
-  return agentdbImportPromise;
+  return mofloDbImportPromise;
 }
 
 // ============================================================================
@@ -88,11 +88,11 @@ export interface ReasoningBankConfig {
   /** Vector dimension for embeddings */
   vectorDimension: number;
 
-  /** Namespace for AgentDB storage */
+  /** Namespace for MofloDb storage */
   namespace: string;
 
-  /** Enable AgentDB vector storage */
-  enableAgentDB: boolean;
+  /** Enable MofloDb vector storage */
+  enableMofloDb: boolean;
 }
 
 /**
@@ -109,7 +109,7 @@ const DEFAULT_CONFIG: ReasoningBankConfig = {
   dbPath: undefined,
   vectorDimension: 768,
   namespace: 'reasoning-bank',
-  enableAgentDB: true,
+  enableMofloDb: true,
 };
 
 // ============================================================================
@@ -161,7 +161,7 @@ interface StepAnalysis {
 // ============================================================================
 
 /**
- * ReasoningBank - Trajectory storage and learning pipeline with AgentDB
+ * ReasoningBank - Trajectory storage and learning pipeline with MofloDb
  *
  * This class implements a complete learning pipeline for AI agents:
  * - Store and retrieve trajectories using vector similarity
@@ -177,7 +177,7 @@ export class ReasoningBank {
   private eventListeners: Set<NeuralEventListener> = new Set();
 
   // @moflo/memory adapter for vector storage (shared with hooks/ReasoningBank)
-  private agentdb: any = null;
+  private mofloDb: any = null;
   private initialized: boolean = false;
 
   // Performance tracking
@@ -199,27 +199,27 @@ export class ReasoningBank {
   // ==========================================================================
 
   /**
-   * Initialize ReasoningBank with the @moflo/memory AgentDBAdapter.
+   * Initialize ReasoningBank with the @moflo/memory MofloDbAdapter.
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    if (this.config.enableAgentDB) {
-      await ensureAgentDBAdapterImport();
-      if (AgentDBAdapter !== undefined) {
+    if (this.config.enableMofloDb) {
+      await ensureMofloDbAdapterImport();
+      if (MofloDbAdapter !== undefined) {
         try {
-          this.agentdb = new AgentDBAdapter({
+          this.mofloDb = new MofloDbAdapter({
             dimensions: this.config.vectorDimension,
             defaultNamespace: this.config.namespace,
             persistenceEnabled: Boolean(this.config.dbPath),
             persistencePath: this.config.dbPath,
           });
 
-          await this.agentdb.initialize();
+          await this.mofloDb.initialize();
           this.emitEvent({ type: 'memory_consolidated', memoriesCount: 0 });
         } catch (error) {
-          console.warn('AgentDBAdapter initialization failed, using fallback:', error);
-          this.agentdb = null;
+          console.warn('MofloDbAdapter initialization failed, using fallback:', error);
+          this.mofloDb = null;
         }
       }
     }
@@ -231,8 +231,8 @@ export class ReasoningBank {
    * Shutdown and cleanup resources
    */
   async shutdown(): Promise<void> {
-    if (this.agentdb) {
-      await this.agentdb.shutdown();
+    if (this.mofloDb) {
+      await this.mofloDb.shutdown();
     }
     this.initialized = false;
   }
@@ -244,7 +244,7 @@ export class ReasoningBank {
   /**
    * Retrieve relevant memories using Maximal Marginal Relevance (MMR)
    *
-   * Uses AgentDB HNSW index for 150x faster retrieval when available.
+   * Uses MofloDb HNSW index for 150x faster retrieval when available.
    *
    * @param queryEmbedding - Query vector for similarity search
    * @param k - Number of results to return (default: config.retrievalK)
@@ -260,10 +260,10 @@ export class ReasoningBank {
 
     let candidates: Array<{ entry: MemoryEntry; relevance: number }> = [];
 
-    // Try AgentDB HNSW search first
-    if (this.agentdb) {
+    // Try MofloDb HNSW search first
+    if (this.mofloDb) {
       try {
-        const results = await this.searchWithAgentDB(queryEmbedding, retrieveK * 3);
+        const results = await this.searchWithMofloDb(queryEmbedding, retrieveK * 3);
         candidates = results
           .map(r => {
             const entry = this.memories.get(r.id);
@@ -271,7 +271,7 @@ export class ReasoningBank {
           })
           .filter((c): c is { entry: MemoryEntry; relevance: number } => c !== null);
       } catch (error) {
-        console.warn('AgentDB search failed, falling back to brute-force:', error);
+        console.warn('MofloDb search failed, falling back to brute-force:', error);
       }
     }
 
@@ -485,9 +485,9 @@ export class ReasoningBank {
     };
     this.memories.set(memory.memoryId, entry);
 
-    // Store in AgentDB for vector search
-    if (this.agentdb) {
-      await this.storeInAgentDB(memory);
+    // Store in MofloDb for vector search
+    if (this.mofloDb) {
+      await this.storeInMofloDb(memory);
     }
 
     // Also store trajectory reference
@@ -733,7 +733,7 @@ export class ReasoningBank {
         .filter(e => e.consolidated).length,
       successfulTrajectories: this.getSuccessfulTrajectories().length,
       failedTrajectories: this.getFailedTrajectories().length,
-      agentdbEnabled: this.agentdb ? 1 : 0,
+      mofloDbEnabled: this.mofloDb ? 1 : 0,
       retrievalCount: this.retrievalCount,
       distillationCount: this.distillationCount,
       judgeCount: this.judgeCount,
@@ -825,14 +825,14 @@ export class ReasoningBank {
   }
 
   // ==========================================================================
-  // AgentDB Integration Helpers
+  // MofloDb Integration Helpers
   // ==========================================================================
 
   /**
    * Store memory in the @moflo/memory adapter for vector search.
    */
-  private async storeInAgentDB(memory: DistilledMemory): Promise<void> {
-    if (!this.agentdb || !createDefaultEntry) return;
+  private async storeInMofloDb(memory: DistilledMemory): Promise<void> {
+    if (!this.mofloDb || !createDefaultEntry) return;
 
     try {
       const entry = createDefaultEntry({
@@ -851,26 +851,26 @@ export class ReasoningBank {
       });
       entry.id = memory.memoryId;
       entry.embedding = memory.embedding;
-      await this.agentdb.store(entry);
+      await this.mofloDb.store(entry);
     } catch (error) {
-      console.warn('Failed to store in AgentDB adapter:', error);
+      console.warn('Failed to store in MofloDb adapter:', error);
     }
   }
 
   /**
    * Search via the @moflo/memory adapter's HNSW index.
    */
-  private async searchWithAgentDB(
+  private async searchWithMofloDb(
     queryEmbedding: Float32Array,
     k: number
   ): Promise<Array<{ id: string; similarity: number }>> {
-    if (!this.agentdb) return [];
+    if (!this.mofloDb) return [];
 
     try {
-      const results = await this.agentdb.search(queryEmbedding, { k });
+      const results = await this.mofloDb.search(queryEmbedding, { k });
       return results.map((r: any) => ({ id: r.entry.id, similarity: r.score }));
     } catch (error) {
-      console.warn('AgentDB search failed:', error);
+      console.warn('MofloDb search failed:', error);
       return [];
     }
   }
@@ -878,13 +878,13 @@ export class ReasoningBank {
   /**
    * Delete from the @moflo/memory adapter.
    */
-  private async deleteFromAgentDB(memoryId: string): Promise<void> {
-    if (!this.agentdb) return;
+  private async deleteFromMofloDb(memoryId: string): Promise<void> {
+    if (!this.mofloDb) return;
 
     try {
-      await this.agentdb.delete(memoryId);
+      await this.mofloDb.delete(memoryId);
     } catch (error) {
-      console.warn('AgentDB delete failed:', error);
+      console.warn('MofloDb delete failed:', error);
     }
   }
 
@@ -1095,10 +1095,10 @@ export class ReasoningBank {
           // Keep the higher quality one
           if (entries[i][1].memory.quality >= entries[j][1].memory.quality) {
             this.memories.delete(entries[j][0]);
-            await this.deleteFromAgentDB(entries[j][0]);
+            await this.deleteFromMofloDb(entries[j][0]);
           } else {
             this.memories.delete(entries[i][0]);
-            await this.deleteFromAgentDB(entries[i][0]);
+            await this.deleteFromMofloDb(entries[i][0]);
           }
           removed++;
         }
@@ -1239,10 +1239,10 @@ export class ReasoningBank {
   }
 
   /**
-   * Check if AgentDB is available and initialized
+   * Check if MofloDb is available and initialized
    */
-  isAgentDBAvailable(): boolean {
-    return this.agentdb !== null;
+  isMofloDbAvailable(): boolean {
+    return this.mofloDb !== null;
   }
 }
 

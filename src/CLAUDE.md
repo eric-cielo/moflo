@@ -16,7 +16,7 @@ npm install && npm run build && npm test
 | `@moflo/cli` | `modules/cli/` | CLI entry point (40+ commands) |
 | `@moflo/guidance` | `modules/guidance/` | Governance control plane |
 | `@moflo/hooks` | `modules/hooks/` | Hooks + workers |
-| `@moflo/memory` | `modules/memory/` | AgentDB + HNSW vector search |
+| `@moflo/memory` | `modules/memory/` | sql.js + HNSW vector search (MofloDb) |
 | `@moflo/shared` | `modules/shared/` | Shared types and utilities |
 | `@moflo/security` | `modules/security/` | Input validation, CVE remediation |
 | `@moflo/embeddings` | `modules/embeddings/` | Vector embeddings (sql.js, HNSW) |

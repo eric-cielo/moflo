@@ -32,7 +32,7 @@ import type { CacheConfig } from './types.js';
  * `reasoningBank` has no moflo implementation yet — it registers as
  * unavailable and consumers must null-check.
  */
-export type AgentDBControllerName =
+export type MofloDbControllerName =
   | 'reasoningBank'
   | 'skills'
   | 'reflexion'
@@ -60,7 +60,7 @@ export type CLIControllerName =
 /**
  * All controller names
  */
-export type ControllerName = AgentDBControllerName | CLIControllerName;
+export type ControllerName = MofloDbControllerName | CLIControllerName;
 
 /**
  * Initialization level for dependency ordering
@@ -86,7 +86,7 @@ export interface ControllerHealth {
 export interface RegistryHealthReport {
   status: 'healthy' | 'degraded' | 'unhealthy';
   controllers: ControllerHealth[];
-  agentdbAvailable: boolean;
+  mofloDbAvailable: boolean;
   initTimeMs: number;
   timestamp: number;
   activeControllers: number;
@@ -145,7 +145,7 @@ interface ControllerEntry {
 
 /**
  * Minimal wrapper holding the sql.js Database handle used by moflo-owned
- * controllers. Exposed via `getAgentDB()` for backwards-compatible callers.
+ * controllers. Exposed via `getMofloDb()` to consumers.
  */
 interface SqlJsHandle {
   database: SqlJsDatabase;
@@ -207,8 +207,8 @@ export const INIT_LEVELS: InitLevel[] = [
  */
 export class ControllerRegistry extends EventEmitter {
   private controllers: Map<ControllerName, ControllerEntry> = new Map();
-  /** sql.js Database handle — field name preserved for API stability. */
-  private agentdb: SqlJsHandle | null = null;
+  /** sql.js Database handle wrapped as MofloDb. */
+  private mofloDb: SqlJsHandle | null = null;
   private backend: IMemoryBackend | null = null;
   private config: RuntimeConfig = {};
   private initialized = false;
@@ -301,13 +301,13 @@ export class ControllerRegistry extends EventEmitter {
     }
 
     // Close sql.js handle
-    if (this.agentdb) {
+    if (this.mofloDb) {
       try {
-        await this.agentdb.close();
+        await this.mofloDb.close();
       } catch {
         // Best-effort cleanup
       }
-      this.agentdb = null;
+      this.mofloDb = null;
     }
 
     this.controllers.clear();
@@ -367,7 +367,7 @@ export class ControllerRegistry extends EventEmitter {
     return {
       status,
       controllers: controllerHealth,
-      agentdbAvailable: this.agentdb !== null,
+      mofloDbAvailable: this.mofloDb !== null,
       initTimeMs: this.initTimeMs,
       timestamp: Date.now(),
       activeControllers: active,
@@ -376,10 +376,10 @@ export class ControllerRegistry extends EventEmitter {
   }
 
   /**
-   * Get the underlying sql.js handle (exposed as `agentdb` for API stability).
+   * Get the underlying sql.js handle wrapped as MofloDb.
    */
-  getAgentDB(): SqlJsHandle | null {
-    return this.agentdb;
+  getMofloDb(): SqlJsHandle | null {
+    return this.mofloDb;
   }
 
   /**
@@ -421,7 +421,7 @@ export class ControllerRegistry extends EventEmitter {
   // ===== Private Methods =====
 
   /**
-   * Open a sql.js Database and expose it via `this.agentdb.database` to the
+   * Open a sql.js Database and expose it via `this.mofloDb.database` to the
    * moflo controllers that need one.
    */
   private async initSqlJs(config: RuntimeConfig): Promise<void> {
@@ -431,22 +431,22 @@ export class ControllerRegistry extends EventEmitter {
       if (dbPath !== ':memory:') {
         const resolved = path.resolve(dbPath);
         if (resolved.includes('..')) {
-          this.emit('agentdb:unavailable', { reason: 'Invalid dbPath' });
+          this.emit('mofloDb:unavailable', { reason: 'Invalid dbPath' });
           return;
         }
       }
 
       const database = await openSqlJsDatabase(dbPath, config.wasmPath);
 
-      this.agentdb = {
+      this.mofloDb = {
         database,
         close: async () => database.close(),
       };
-      this.emit('agentdb:initialized');
+      this.emit('mofloDb:initialized');
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      this.emit('agentdb:unavailable', { reason: msg.substring(0, 200) });
-      this.agentdb = null;
+      this.emit('mofloDb:unavailable', { reason: msg.substring(0, 200) });
+      this.mofloDb = null;
     }
   }
 
@@ -490,7 +490,7 @@ export class ControllerRegistry extends EventEmitter {
       case 'nightlyLearner':
       case 'memoryConsolidation':
       case 'batchOperations':
-        return this.agentdb !== null;
+        return this.mofloDb !== null;
 
       // Require explicit enabling via config.controllers.
       case 'hybridSearch':
@@ -609,10 +609,10 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'hierarchicalMemory': {
-        if (!this.agentdb?.database) return this.createTieredMemoryStub();
+        if (!this.mofloDb?.database) return this.createTieredMemoryStub();
         const { HierarchicalMemory } = await import('./controllers/hierarchical-memory.js');
         const embedder = this.config.embeddingGenerator;
-        const hm = new HierarchicalMemory(this.agentdb.database, { embedder });
+        const hm = new HierarchicalMemory(this.mofloDb.database, { embedder });
         await hm.initializeDatabase();
         return hm;
       }
@@ -635,9 +635,9 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'skills': {
-        if (!this.agentdb?.database) return null;
+        if (!this.mofloDb?.database) return null;
         const { Skills } = await import('./controllers/skills.js');
-        const skills = new Skills(this.agentdb.database, {
+        const skills = new Skills(this.mofloDb.database, {
           embedder: this.config.embeddingGenerator,
         });
         await skills.initializeDatabase();
@@ -645,9 +645,9 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'reflexion': {
-        if (!this.agentdb?.database) return null;
+        if (!this.mofloDb?.database) return null;
         const { Reflexion } = await import('./controllers/reflexion.js');
-        const reflexion = new Reflexion(this.agentdb.database, {
+        const reflexion = new Reflexion(this.mofloDb.database, {
           embedder: this.config.embeddingGenerator,
         });
         await reflexion.initializeDatabase();
@@ -655,17 +655,17 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'causalGraph': {
-        if (!this.agentdb?.database) return null;
+        if (!this.mofloDb?.database) return null;
         const { CausalGraph } = await import('./controllers/causal-graph.js');
-        const graph = new CausalGraph(this.agentdb.database);
+        const graph = new CausalGraph(this.mofloDb.database);
         await graph.initializeDatabase();
         return graph;
       }
 
       case 'learningSystem': {
-        if (!this.agentdb?.database) return null;
+        if (!this.mofloDb?.database) return null;
         const { LearningSystem } = await import('./controllers/learning-system.js');
-        const ls = new LearningSystem(this.agentdb.database);
+        const ls = new LearningSystem(this.mofloDb.database);
         await ls.initializeDatabase();
         return ls;
       }
@@ -689,9 +689,9 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'batchOperations': {
-        if (!this.agentdb?.database) return null;
+        if (!this.mofloDb?.database) return null;
         const { BatchOperations } = await import('./controllers/batch-operations.js');
-        return new BatchOperations(this.agentdb.database, this.config.embeddingGenerator);
+        return new BatchOperations(this.mofloDb.database, this.config.embeddingGenerator);
       }
 
       case 'contextSynthesizer': {
@@ -706,9 +706,9 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'attestationLog': {
-        if (!this.agentdb?.database) return null;
+        if (!this.mofloDb?.database) return null;
         const { AttestationLog } = await import('./controllers/attestation-log.js');
-        return new AttestationLog(this.agentdb.database);
+        return new AttestationLog(this.mofloDb.database);
       }
 
       default:

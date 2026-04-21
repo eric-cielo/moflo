@@ -273,7 +273,7 @@ export class AutoMemoryBridge extends EventEmitter {
     this.insights.push(insight);
 
     // Store in AgentDB
-    const key = await this.storeInsightInAgentDB(insight);
+    const key = await this.storeInsightInMofloDb(insight);
     this.syncedInsightKeys.add(key);
 
     // If sync-on-write, write immediately to files
@@ -594,7 +594,7 @@ export class AutoMemoryBridge extends EventEmitter {
     }
   }
 
-  private async storeInsightInAgentDB(insight: MemoryInsight): Promise<string> {
+  private async storeInsightInMofloDb(insight: MemoryInsight): Promise<string> {
     const content = insight.detail
       ? `${insight.summary}\n\n${insight.detail}`
       : insight.summary;
