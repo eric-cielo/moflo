@@ -12,7 +12,6 @@
 import { existsSync, readFileSync } from 'fs';
 import { extname } from 'path';
 import { ClaudeModel, getModelRouter, ModelRouter, ModelRoutingResult } from './model-router.js';
-import { mofloImport } from '../services/moflo-require.js';
 
 // ============================================================================
 // Types
@@ -552,23 +551,7 @@ export class EnhancedModelRouter {
       const instruction = intentToInstruction[intent.type];
       const language = intent.language || 'javascript';
 
-      // Try local agentic-flow agent-booster (v3 — no npx needed)
-      // Note: agent-booster export declared but dist missing in alpha.1; use intelligence path as fallback
-      const boosterModule = await mofloImport('agentic-flow/agent-booster')
-        || await mofloImport('agentic-flow/intelligence/agent-booster-enhanced');
-      if (boosterModule?.enhancedApply) {
-        const result = await boosterModule.enhancedApply({
-          code: originalCode,
-          edit: instruction,
-          language,
-        });
-        if (result && result.confidence >= this.config.agentBoosterConfidenceThreshold) {
-          return { success: true, confidence: result.confidence, output: result.output };
-        }
-        return { success: false, confidence: result?.confidence ?? 0 };
-      }
-
-      // Fallback: shell out to npx agent-booster
+      // Shell out to npx agent-booster
       // Sanitize language to prevent command injection (whitelist only)
       const SAFE_LANGUAGES = ['javascript', 'typescript', 'python', 'rust', 'go', 'java', 'c', 'cpp', 'ruby', 'swift', 'kotlin'];
       const safeLang = SAFE_LANGUAGES.includes(language) ? language : 'javascript';

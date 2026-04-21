@@ -11,7 +11,7 @@
  * - Coverage router: parsing formats, routing, gap analysis, trends
  * - Graph analyzer: circular deps, mincut, louvain, DOT export
  * - Q-learning router: route decisions, update, exploration, replay, cache
- * - Service layer: agentic-flow bridge, registry-api validation
+ * - Service layer: memory bridge, registry-api validation
  * - Infrastructure: in-memory repositories
  */
 

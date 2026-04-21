@@ -15,43 +15,24 @@
 import type { MCPTool } from './types.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { mofloImport } from '../services/moflo-require.js';
 
-// Try to import real embeddings — prefer agentic-flow v3 ReasoningBank, then @moflo/embeddings
+// Try to import real embeddings from @moflo/embeddings (auto-selects best provider)
 let realEmbeddings: { embed: (text: string) => Promise<number[]> } | null = null;
 let embeddingServiceName: string = 'none';
 try {
-  // Tier 1: agentic-flow v3 ReasoningBank (fastest — WASM-accelerated)
-  const rb = await mofloImport('agentic-flow/reasoningbank');
-  if (rb?.computeEmbedding) {
-    realEmbeddings = { embed: (text: string) => rb.computeEmbedding(text) };
-    embeddingServiceName = 'agentic-flow/reasoningbank';
-  }
-
-  // Tier 2: @moflo/embeddings
-  if (!realEmbeddings) {
-    const embeddingsModule = await import('@moflo/embeddings').catch(() => null);
-    if (embeddingsModule?.createEmbeddingService) {
-      try {
-        const service = embeddingsModule.createEmbeddingService({ provider: 'agentic-flow' });
-        realEmbeddings = {
-          embed: async (text: string) => {
-            const result = await service.embed(text);
-            return Array.from(result.embedding);
-          },
-        };
-        embeddingServiceName = 'agentic-flow';
-      } catch {
-        const service = embeddingsModule.createEmbeddingService({ provider: 'mock' });
-        realEmbeddings = {
-          embed: async (text: string) => {
-            const result = await service.embed(text);
-            return Array.from(result.embedding);
-          },
-        };
-        embeddingServiceName = 'mock';
-      }
-    }
+  const embeddingsModule = await import('@moflo/embeddings').catch(() => null);
+  if (embeddingsModule?.createEmbeddingServiceAsync) {
+    const service = await embeddingsModule.createEmbeddingServiceAsync({
+      provider: 'auto',
+      autoInstall: false,
+    });
+    realEmbeddings = {
+      embed: async (text: string) => {
+        const result = await service.embed(text);
+        return Array.from(result.embedding);
+      },
+    };
+    embeddingServiceName = `@moflo/embeddings (${service.provider})`;
   }
 } catch {
   // No embedding provider available, will use fallback
