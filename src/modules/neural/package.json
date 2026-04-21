@@ -12,8 +12,5 @@
   },
   "dependencies": {
     "@moflo/memory": "^3.0.0-alpha.2"
-  },
-  "optionalDependencies": {
-    "agentdb": "^2.0.0 || ^3.0.0-alpha.1"
   }
 }

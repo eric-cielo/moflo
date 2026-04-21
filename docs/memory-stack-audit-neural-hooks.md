@@ -12,7 +12,7 @@ Verdict: **Green for Option B** (remove + rely on fallbacks), with two caveats n
 | Pattern-learning hooks | Degrades silently | M | In-memory fallback works; persistence + HNSW lost |
 | Trajectory recording | Degrades silently | M | In-memory fallback; trajectories lost across process restart |
 | SONA | Unaffected | — | Persists to `.swarm/sona-patterns.json`; never touched agentdb |
-| ReasoningBank (neural/) | Degrades silently | M | Brute-force cosine fallback wired at `reasoning-bank.ts:277` |
+| ReasoningBank (neural/) | Unified on @moflo/memory | L | Consolidated on the bridge-backed AgentDBAdapter in C4 (issue #468); brute-force fallback retained for `enableAgentDB: false` |
 | agentic-flow subprocess | Unaffected | — | Zero static imports; only 6 lazy `import('agentic-flow/…').catch(() => null)` sites |
 
 Two caveats for the decision memo:
@@ -132,12 +132,21 @@ None.
 
 ### 5. ReasoningBank (neural module)
 
+> **Update 2026-04-20 (C4, issue #468):** consolidated on the moflo-owned
+> `AgentDBAdapter` from `@moflo/memory`. The neural ReasoningBank no longer
+> imports the external `agentdb` package; both neural/ and hooks/ paths now
+> share the same adapter + HNSW index. `optionalDependencies.agentdb` was
+> removed from `@moflo/neural`. Brute-force fallback retained for
+> `enableAgentDB: false`. The divergence noted below in "known gaps" #2 is
+> closed.
+
 **Entry points**
-- `src/modules/neural/src/reasoning-bank.ts` (1279 LOC) — the 4-step RETRIEVE/JUDGE/DISTILL/CONSOLIDATE pipeline
-- Imported by: `src/modules/neural/src/reasoningbank-adapter.ts`, `src/modules/hooks/src/reasoningbank/index.ts`
+- `src/modules/neural/src/reasoning-bank.ts` (~1290 LOC) — the 4-step RETRIEVE/JUDGE/DISTILL/CONSOLIDATE pipeline
+- Imported by: `src/modules/neural/src/index.ts` (NeuralLearningSystem), `src/modules/neural/__tests__/patterns.test.ts`
+- No external consumers outside `@moflo/neural` (grep-verified)
 
 **Code path**
-`ReasoningBank.initialize()` → `ensureAgentDBImport()` → if `AgentDB !== undefined`, constructs `new AgentDB({ dbPath, namespace, vectorDimension, vectorBackend: 'auto' })` at `reasoning-bank.ts:209`. On any throw, `this.agentdbAvailable = false` (line 220).
+`ReasoningBank.initialize()` → `ensureAgentDBAdapterImport()` → dynamic `import('@moflo/memory')` via a variable specifier (same pattern as hooks/). If the module resolves, constructs `new AgentDBAdapter({ dimensions, defaultNamespace, persistenceEnabled, persistencePath })`. On any throw, `this.agentdbAvailable = false`.
 
 Retrieval (`reasoning-bank.ts:251-290`):
 ```ts
@@ -234,10 +243,7 @@ Eight total. Zero are static imports. All dynamic imports are either wrapped in 
 
 1. **No "agentdb-absent" integration test.** Every test that exercises agentdb-dependent code initializes it in-memory or mocks the sub-components. Gate 3 (consumer smoke harness) is the right venue to prove the fallback end-to-end.
 
-2. **In-process vs. bridge-backed ReasoningBank divergence.** There are two ReasoningBank implementations:
-   - `neural/src/reasoning-bank.ts` — in-process `Map` + brute-force; no persistence without agentdb
-   - `hooks/src/reasoningbank/index.ts` — routes through `memory-bridge.ts` which has a sql.js fallback that *does* persist
-   On Option B removal, the hooks layer survives with persistence; the neural layer loses persistence. If both are user-facing, consumers will see inconsistent durability. Worth a human decision: consolidate to the bridge-backed path, or document the two tiers.
+2. **In-process vs. bridge-backed ReasoningBank divergence.** ✅ RESOLVED in C4 (issue #468, 2026-04-20). Both neural/ and hooks/ ReasoningBank now share `@moflo/memory`'s `AgentDBAdapter` + `HNSWIndex`. Persistence behaviour is uniform (whatever the adapter provides — currently in-memory; real disk persistence is scheduled for a later C-phase). The external `agentdb` package is no longer referenced from either module.
 
 3. **Silent degradation vs. visible warning.** Every fallback path returns `null` / `[]` / no-op. No console warning is emitted when agentdb is missing at runtime. If we land Option B, a single init-time warning ("agentdb not available; using sql.js fallback with reduced features") would massively help users understand what changed.
 
