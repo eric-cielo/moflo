@@ -1,18 +1,18 @@
 /**
- * Memory Bridge — Routes CLI memory operations through ControllerRegistry + AgentDB v3
+ * Memory Bridge — Routes CLI memory operations through ControllerRegistry + MofloDb
  *
  * Per ADR-053 Phases 1-6: Full controller activation pipeline.
- * CLI → ControllerRegistry → AgentDB v3 controllers.
+ * CLI → ControllerRegistry → moflo-owned controllers.
  *
  * Phase 1: Core CRUD + embeddings + HNSW + controller access (complete)
  * Phase 2: BM25 hybrid search, TieredCache read/write, MutationGuard validation
  * Phase 3: ReasoningBank pattern store, recordFeedback, CausalMemoryGraph edges
  * Phase 4: SkillLibrary promotion, ExplainableRecall provenance, AttestationLog
  * Phase 5: ReflexionMemory session lifecycle, WitnessChain attestation
- * Phase 6: AgentDB MCP tools (separate file), COW branching
+ * Phase 6: MofloDb MCP tools (separate file), COW branching
  *
- * Uses better-sqlite3 API (synchronous .all()/.get()/.run()) since that's
- * what AgentDB v3 uses internally.
+ * Uses sql.js synchronous API (.all()/.get()/.run()) since that's what
+ * the moflo-owned controllers use internally.
  *
  * @module v3/cli/memory-bridge
  */
@@ -132,7 +132,7 @@ async function getRegistry(dbPath?: string): Promise<any | null> {
           const msg = String(args[0] ?? '');
           if (msg.includes('Transformers.js') ||
               
-              msg.includes('[AgentDB]') ||
+              msg.includes('[MofloDb]') ||
               msg.includes('[HNSWLibBackend]') ||
               msg.includes('MoVector graph')) return;
           origLog.apply(console, args);
@@ -322,14 +322,14 @@ async function logAttestation(
 }
 
 /**
- * Get the AgentDB database handle and ensure memory_entries table exists.
+ * Get the MofloDb database handle and ensure memory_entries table exists.
  * Returns null if not available.
  */
 function getDb(registry: any): any | null {
-  const agentdb = registry.getAgentDB();
-  if (!agentdb?.database) return null;
+  const mofloDb = registry.getMofloDb();
+  if (!mofloDb?.database) return null;
 
-  const db = agentdb.database;
+  const db = mofloDb.database;
 
   // Ensure memory_entries table exists (idempotent)
   try {
@@ -361,7 +361,7 @@ function getDb(registry: any): any | null {
     // Table already exists or db is read-only — that's fine
   }
 
-  return { db, agentdb };
+  return { db, mofloDb };
 }
 
 // ===== Bridge functions — match memory-initializer.ts signatures =====
@@ -413,7 +413,7 @@ export async function bridgeStoreEntry(options: {
 
     if (options.generateEmbeddingFlag !== false && value.length > 0) {
       try {
-        const embedder = ctx.agentdb.embedder;
+        const embedder = ctx.mofloDb.embedder;
         if (embedder) {
           const emb = await embedder.embed(value);
           if (emb) {
@@ -513,7 +513,7 @@ export async function bridgeSearchEntries(options: {
     // Generate query embedding
     let queryEmbedding: number[] | null = null;
     try {
-      const embedder = ctx.agentdb.embedder;
+      const embedder = ctx.mofloDb.embedder;
       if (embedder) {
         const emb = await embedder.embed(queryStr);
         queryEmbedding = Array.from(emb);
@@ -887,8 +887,8 @@ export async function bridgeGenerateEmbedding(
   if (!registry) return null;
 
   try {
-    const agentdb = registry.getAgentDB();
-    const embedder = agentdb?.embedder;
+    const mofloDb = registry.getMofloDb();
+    const embedder = mofloDb?.embedder;
     if (!embedder) return null;
 
     const emb = await embedder.embed(text);
@@ -905,7 +905,7 @@ export async function bridgeGenerateEmbedding(
 }
 
 /**
- * Load embedding model via AgentDB v3 (it loads on init).
+ * Load embedding model via MofloDb (it loads on init).
  * Returns null if unavailable.
  */
 export async function bridgeLoadEmbeddingModel(
@@ -921,8 +921,8 @@ export async function bridgeLoadEmbeddingModel(
   if (!registry) return null;
 
   try {
-    const agentdb = registry.getAgentDB();
-    const embedder = agentdb?.embedder;
+    const mofloDb = registry.getMofloDb();
+    const embedder = mofloDb?.embedder;
     if (!embedder) return null;
 
     // Verify embedder works by generating a test embedding

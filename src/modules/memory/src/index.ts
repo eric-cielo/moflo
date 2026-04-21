@@ -1,7 +1,7 @@
 /**
  * @moflo/memory - V3 Unified Memory System
  *
- * Provides a unified memory interface backed by AgentDB with HNSW indexing
+ * Provides a unified memory interface backed by MofloDb with HNSW indexing
  * for 150x-12,500x faster vector search compared to brute-force approaches.
  *
  * @module @moflo/memory
@@ -168,7 +168,7 @@ export type {
 // ===== Controller Registry (ADR-053) =====
 export { ControllerRegistry, INIT_LEVELS } from './controller-registry.js';
 export type {
-  AgentDBControllerName,
+  MofloDbControllerName,
   CLIControllerName,
   ControllerName,
   InitLevel,
@@ -178,8 +178,8 @@ export type {
 } from './controller-registry.js';
 
 // ===== Core Components =====
-export { AgentDBAdapter } from './agentdb-adapter.js';
-export type { AgentDBAdapterConfig } from './agentdb-adapter.js';
+export { MofloDbAdapter } from './moflo-db-adapter.js';
+export type { MofloDbAdapterConfig } from './moflo-db-adapter.js';
 export { SqlJsBackend } from './sqljs-backend.js';
 export type { SqlJsBackendConfig } from './sqljs-backend.js';
 export { RvfBackend } from './rvf-backend.js';
@@ -211,13 +211,13 @@ import {
   MigrationConfig,
   MigrationResult,
 } from './types.js';
-import { AgentDBAdapter, AgentDBAdapterConfig } from './agentdb-adapter.js';
+import { MofloDbAdapter, MofloDbAdapterConfig } from './moflo-db-adapter.js';
 import { MemoryMigrator } from './migration.js';
 
 /**
  * Configuration for UnifiedMemoryService
  */
-export interface UnifiedMemoryServiceConfig extends Partial<AgentDBAdapterConfig> {
+export interface UnifiedMemoryServiceConfig extends Partial<MofloDbAdapterConfig> {
   /** Enable automatic embedding generation */
   autoEmbed?: boolean;
 
@@ -240,7 +240,7 @@ export interface UnifiedMemoryServiceConfig extends Partial<AgentDBAdapterConfig
  * - Performance monitoring
  */
 export class UnifiedMemoryService extends EventEmitter implements IMemoryBackend {
-  private adapter: AgentDBAdapter;
+  private adapter: MofloDbAdapter;
   private config: UnifiedMemoryServiceConfig;
   private initialized: boolean = false;
 
@@ -253,7 +253,7 @@ export class UnifiedMemoryService extends EventEmitter implements IMemoryBackend
       ...config,
     };
 
-    this.adapter = new AgentDBAdapter({
+    this.adapter = new MofloDbAdapter({
       dimensions: this.config.dimensions,
       cacheEnabled: this.config.cacheEnabled,
       cacheSize: this.config.cacheSize,
@@ -496,7 +496,7 @@ export class UnifiedMemoryService extends EventEmitter implements IMemoryBackend
   /**
    * Get the underlying adapter for advanced operations
    */
-  getAdapter(): AgentDBAdapter {
+  getAdapter(): MofloDbAdapter {
     return this.adapter;
   }
 
@@ -547,7 +547,7 @@ export function createEmbeddingService(
 }
 
 /**
- * Create a hybrid memory service (SQLite + AgentDB)
+ * Create a hybrid memory service (SQLite + MofloDb)
  * This is the DEFAULT recommended configuration per ADR-009
  *
  * @example
@@ -558,7 +558,7 @@ export function createEmbeddingService(
  * // Structured queries go to SQLite
  * const user = await memory.getByKey('users', 'john@example.com');
  *
- * // Semantic queries go to AgentDB
+ * // Semantic queries go to MofloDb
  * const similar = await memory.semanticSearch('authentication patterns', 10);
  * ```
  */

@@ -8,7 +8,7 @@
  * - Health check aggregation
  * - Shutdown ordering
  * - Cross-platform path handling (Linux/Mac/Windows)
- * - AgentDB unavailable scenarios
+ * - MofloDb unavailable scenarios
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -253,8 +253,8 @@ describe('ControllerRegistry', () => {
   // ----- Graceful Degradation -----
 
   describe('graceful degradation', () => {
-    it('should continue when AgentDB is unavailable', async () => {
-      // No AgentDB module available — should still init CLI-layer controllers
+    it('should continue when MofloDb is unavailable', async () => {
+      // No sql.js handle available — should still init CLI-layer controllers
       await registry.initialize({ backend: mockBackend });
       expect(registry.isInitialized()).toBe(true);
     });
@@ -263,7 +263,7 @@ describe('ControllerRegistry', () => {
       await registry.initialize({ backend: mockBackend });
       const report = await registry.healthCheck();
 
-      // Some controllers should be unavailable (no AgentDB)
+      // Some controllers should be unavailable (no MofloDb)
       // but the registry itself should be functional
       expect(report.status).not.toBe('unhealthy');
     });
@@ -272,14 +272,14 @@ describe('ControllerRegistry', () => {
       const handler = vi.fn();
       registry.on('controller:failed', handler);
 
-      // Enable a controller that requires AgentDB (which is unavailable)
+      // Enable a controller that requires MofloDb (which is unavailable)
       await registry.initialize({
         backend: mockBackend,
         controllers: { reasoningBank: true },
       });
 
-      // ReasoningBank requires AgentDB, so it should fail or be unavailable
-      // The exact behavior depends on whether agentdb is importable
+      // ReasoningBank requires MofloDb, so it should fail or be unavailable
+      // The exact behavior depends on whether the sql.js handle is available
     });
 
     it('should handle null backend gracefully', async () => {
@@ -365,7 +365,7 @@ describe('ControllerRegistry', () => {
     it('should not enable optional controllers by default', async () => {
       await registry.initialize({ backend: mockBackend });
 
-      // semanticRouter was moved from opt-in to auto-enable when agentdb is
+      // semanticRouter was moved from opt-in to auto-enable when mofloDb is
       // available (see controller-registry.ts). Exclude it from this list —
       // it is no longer an "optional by default" controller.
       expect(registry.isEnabled('hybridSearch')).toBe(false);
@@ -420,10 +420,10 @@ describe('ControllerRegistry', () => {
       expect(report.totalControllers).toBeGreaterThanOrEqual(report.activeControllers);
     });
 
-    it('should report agentdb availability', async () => {
+    it('should report mofloDb availability', async () => {
       await registry.initialize({ backend: mockBackend });
       const report = await registry.healthCheck();
-      expect(typeof report.agentdbAvailable).toBe('boolean');
+      expect(typeof report.mofloDbAvailable).toBe('boolean');
     });
 
     it('should classify status correctly', async () => {
@@ -509,21 +509,21 @@ describe('ControllerRegistry', () => {
     });
   });
 
-  // ----- AgentDB Integration -----
+  // ----- MofloDb Integration -----
 
-  describe('AgentDB integration', () => {
-    it('should handle missing agentdb module', async () => {
-      // With no agentdb installed, should still work
+  describe('MofloDb integration', () => {
+    it('should handle missing sql.js handle', async () => {
+      // With no sql.js handle available, should still work
       await registry.initialize({ backend: mockBackend });
       expect(registry.isInitialized()).toBe(true);
     });
 
-    it('should return null AgentDB when unavailable', async () => {
+    it('should return null MofloDb when unavailable', async () => {
       await registry.initialize({ backend: mockBackend });
       // May or may not be available depending on test environment
-      const agentdb = registry.getAgentDB();
+      const mofloDb = registry.getMofloDb();
       // Just ensure it doesn't throw
-      expect(agentdb === null || agentdb !== null).toBe(true);
+      expect(mofloDb === null || mofloDb !== null).toBe(true);
     });
   });
 
@@ -650,11 +650,11 @@ describe('ControllerRegistry', () => {
   // ----- Event Emission -----
 
   describe('events', () => {
-    it('should emit agentdb:unavailable when module missing', async () => {
+    it('should emit mofloDb:unavailable when sql.js handle missing', async () => {
       const handler = vi.fn();
-      registry.on('agentdb:unavailable', handler);
+      registry.on('mofloDb:unavailable', handler);
       await registry.initialize({ backend: mockBackend });
-      // AgentDB may or may not be available in test environment
+      // MofloDb may or may not be available in test environment
       // Just verify the listener doesn't break anything
     });
 

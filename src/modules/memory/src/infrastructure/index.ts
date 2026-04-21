@@ -14,8 +14,8 @@ export {
 } from './repositories/hybrid-memory-repository.js';
 
 // Re-export existing adapters
-export { AgentDBAdapter } from '../agentdb-adapter.js';
-export type { AgentDBAdapterConfig } from '../agentdb-adapter.js';
+export { MofloDbAdapter } from '../moflo-db-adapter.js';
+export type { MofloDbAdapterConfig } from '../moflo-db-adapter.js';
 export { HNSWIndex } from '../hnsw-index.js';
 export type { HNSWConfig } from '../types.js';
 export { CacheManager } from '../cache-manager.js';

@@ -22,7 +22,7 @@ import {
   EmbeddingGenerator,
   createDefaultEntry,
 } from './types.js';
-import { AgentDBAdapter } from './agentdb-adapter.js';
+import { MofloDbAdapter } from './moflo-db-adapter.js';
 
 /**
  * Default migration configuration
@@ -64,12 +64,12 @@ interface LegacyEntry {
  */
 export class MemoryMigrator extends EventEmitter {
   private config: MigrationConfig;
-  private target: AgentDBAdapter;
+  private target: MofloDbAdapter;
   private embeddingGenerator?: EmbeddingGenerator;
   private progress: MigrationProgress;
 
   constructor(
-    target: AgentDBAdapter,
+    target: MofloDbAdapter,
     config: Partial<MigrationConfig>,
     embeddingGenerator?: EmbeddingGenerator
   ) {
@@ -627,7 +627,7 @@ export class MemoryMigrator extends EventEmitter {
  * Convenience function to create a migrator
  */
 export function createMigrator(
-  target: AgentDBAdapter,
+  target: MofloDbAdapter,
   source: MigrationSource,
   sourcePath: string,
   options: Partial<MigrationConfig> = {},
@@ -644,7 +644,7 @@ export function createMigrator(
  * Migrate from multiple sources
  */
 export async function migrateMultipleSources(
-  target: AgentDBAdapter,
+  target: MofloDbAdapter,
   sources: Array<{ source: MigrationSource; path: string }>,
   options: Partial<MigrationConfig> = {},
   embeddingGenerator?: EmbeddingGenerator

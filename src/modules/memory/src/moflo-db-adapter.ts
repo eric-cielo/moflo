@@ -1,10 +1,11 @@
 /**
- * V3 AgentDB Adapter
+ * MofloDb Adapter
  *
- * Unified memory backend implementation using AgentDB with HNSW indexing
- * for 150x-12,500x faster vector search. Implements IMemoryBackend interface.
+ * Moflo-owned in-memory backend with HNSW indexing for 150x-12,500x faster
+ * vector search. Implements IMemoryBackend interface. Backed by Map + HNSW
+ * with optional sql.js persistence; has no external agentdb dependency.
  *
- * @module v3/memory/agentdb-adapter
+ * @module v3/memory/moflo-db-adapter
  */
 
 import { EventEmitter } from 'node:events';
@@ -30,9 +31,9 @@ import { HNSWIndex } from './hnsw-index.js';
 import { CacheManager } from './cache-manager.js';
 
 /**
- * Configuration for AgentDB Adapter
+ * Configuration for MofloDb Adapter
  */
-export interface AgentDBAdapterConfig {
+export interface MofloDbAdapterConfig {
   /** Vector dimensions for embeddings (default: 1536 for OpenAI) */
   dimensions: number;
 
@@ -70,7 +71,7 @@ export interface AgentDBAdapterConfig {
 /**
  * Default configuration values
  */
-const DEFAULT_CONFIG: AgentDBAdapterConfig = {
+const DEFAULT_CONFIG: MofloDbAdapterConfig = {
   dimensions: 1536,
   maxEntries: 1000000,
   cacheEnabled: true,
@@ -83,7 +84,7 @@ const DEFAULT_CONFIG: AgentDBAdapterConfig = {
 };
 
 /**
- * AgentDB Memory Backend Adapter
+ * MofloDb Memory Backend Adapter
  *
  * Provides unified memory storage with:
  * - HNSW-based vector search (150x-12,500x faster than brute force)
@@ -92,8 +93,8 @@ const DEFAULT_CONFIG: AgentDBAdapterConfig = {
  * - Full-text and metadata filtering
  * - Event-driven architecture
  */
-export class AgentDBAdapter extends EventEmitter implements IMemoryBackend {
-  private config: AgentDBAdapterConfig;
+export class MofloDbAdapter extends EventEmitter implements IMemoryBackend {
+  private config: MofloDbAdapterConfig;
   private entries: Map<string, MemoryEntry> = new Map();
   private index: HNSWIndex;
   private cache: CacheManager<MemoryEntry>;
@@ -112,7 +113,7 @@ export class AgentDBAdapter extends EventEmitter implements IMemoryBackend {
     totalWriteTime: 0,
   };
 
-  constructor(config: Partial<AgentDBAdapterConfig> = {}) {
+  constructor(config: Partial<MofloDbAdapterConfig> = {}) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
 
@@ -1034,4 +1035,4 @@ export class AgentDBAdapter extends EventEmitter implements IMemoryBackend {
   }
 }
 
-export default AgentDBAdapter;
+export default MofloDbAdapter;
