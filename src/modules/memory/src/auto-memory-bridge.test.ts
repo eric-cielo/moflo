@@ -2,7 +2,7 @@
  * Tests for AutoMemoryBridge
  *
  * TDD London School (mock-first) tests for the bidirectional bridge
- * between Claude Code auto memory and AgentDB.
+ * between Claude Code auto memory and MofloDb.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -371,7 +371,7 @@ describe('AutoMemoryBridge', () => {
   });
 
   describe('recordInsight', () => {
-    it('should store insight in AgentDB', async () => {
+    it('should store insight in MofloDb', async () => {
       const insight = createTestInsight();
       await bridge.recordInsight(insight);
 
@@ -480,11 +480,11 @@ describe('AutoMemoryBridge', () => {
       expect(bridge.getStatus().bufferedInsights).toBe(0);
     });
 
-    it('should skip AgentDB entries already synced from the buffer', async () => {
-      // Record an insight (stored in buffer AND AgentDB)
+    it('should skip MofloDb entries already synced from the buffer', async () => {
+      // Record an insight (stored in buffer AND MofloDb)
       await bridge.recordInsight(createTestInsight());
 
-      // Mock backend.query to return the same insight from AgentDB
+      // Mock backend.query to return the same insight from MofloDb
       const mockEntry: Partial<MemoryEntry> = {
         id: 'test-1',
         key: 'insight:debugging:12345',
@@ -525,7 +525,7 @@ describe('AutoMemoryBridge', () => {
       expect(backend.bulkInsert).toHaveBeenCalled();
     });
 
-    it('should skip entries already in AgentDB', async () => {
+    it('should skip entries already in MofloDb', async () => {
       const topicContent = `# Test
 
 ## Existing

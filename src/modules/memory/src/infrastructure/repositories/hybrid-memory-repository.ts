@@ -1,7 +1,7 @@
 /**
  * Hybrid Memory Repository - Infrastructure Layer
  *
- * Implements IMemoryRepository using SQLite + AgentDB hybrid backend.
+ * Implements IMemoryRepository using SQLite + MofloDb hybrid backend.
  * Per ADR-009, this is the default memory backend.
  *
  * @module v3/memory/infrastructure/repositories
@@ -39,7 +39,7 @@ interface CacheEntry {
 /**
  * Hybrid Memory Repository
  *
- * Uses SQLite for metadata and AgentDB for vectors.
+ * Uses SQLite for metadata and MofloDb for vectors.
  * Implements hot caching for frequently accessed entries.
  */
 export class HybridMemoryRepository implements IMemoryRepository {
@@ -58,7 +58,7 @@ export class HybridMemoryRepository implements IMemoryRepository {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    // In production, would initialize SQLite and AgentDB connections
+    // In production, would initialize SQLite and MofloDb connections
     // For now, using in-memory implementation
     this.entries = new Map();
     this.namespaceIndex = new Map();

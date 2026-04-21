@@ -72,7 +72,7 @@ export interface MemoryStatistics {
  * Memory Repository Interface
  *
  * Defines all operations for memory persistence.
- * Implementations can use SQLite, AgentDB, or hybrid backends.
+ * Implementations can use SQLite, MofloDb, or hybrid backends.
  */
 export interface IMemoryRepository {
   // Basic CRUD Operations

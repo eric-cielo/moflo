@@ -1,9 +1,9 @@
 /**
- * AutoMemoryBridge - Bidirectional sync between Claude Code Auto Memory and AgentDB
+ * AutoMemoryBridge - Bidirectional sync between Claude Code Auto Memory and MofloDb
  *
  * Per ADR-048: Bridges Claude Code's auto memory (markdown files at
  * ~/.claude/projects/<project>/memory/) with claude-flow's unified memory
- * system (AgentDB + HNSW).
+ * system (MofloDb: sql.js + HNSW).
  *
  * Auto memory files are human-readable markdown that Claude loads into its
  * system prompt. MEMORY.md (first 200 lines) is the entrypoint; topic files
@@ -102,7 +102,7 @@ export interface MemoryInsight {
   /** Confidence score (0-1), used for curation priority */
   confidence: number;
 
-  /** AgentDB entry ID for cross-reference */
+  /** MofloDb entry ID for cross-reference */
   agentDbId?: string;
 }
 
@@ -126,7 +126,7 @@ export interface ImportResult {
   /** Number of entries imported */
   imported: number;
 
-  /** Number of entries skipped (already in AgentDB) */
+  /** Number of entries skipped (already in MofloDb) */
   skipped: number;
 
   /** Files processed */
@@ -182,7 +182,7 @@ const DEFAULT_CONFIG: ResolvedConfig = {
 // ===== AutoMemoryBridge =====
 
 /**
- * Bidirectional bridge between Claude Code auto memory and AgentDB.
+ * Bidirectional bridge between Claude Code auto memory and MofloDb.
  *
  * @example
  * ```typescript
@@ -201,7 +201,7 @@ const DEFAULT_CONFIG: ResolvedConfig = {
  * // Sync to auto memory files
  * await bridge.syncToAutoMemory();
  *
- * // Import auto memory into AgentDB
+ * // Import auto memory into MofloDb
  * await bridge.importFromAutoMemory();
  * ```
  */
@@ -211,7 +211,7 @@ export class AutoMemoryBridge extends EventEmitter {
   private lastSyncTime: number = 0;
   private syncTimer: ReturnType<typeof setInterval> | null = null;
   private insights: MemoryInsight[] = [];
-  /** Track AgentDB keys of insights already written to files during this session */
+  /** Track MofloDb keys of insights already written to files during this session */
   private syncedInsightKeys = new Set<string>();
   /** Monotonic counter to prevent key collisions within the same ms */
   private insightCounter = 0;
@@ -272,7 +272,7 @@ export class AutoMemoryBridge extends EventEmitter {
   async recordInsight(insight: MemoryInsight): Promise<void> {
     this.insights.push(insight);
 
-    // Store in AgentDB
+    // Store in MofloDb
     const key = await this.storeInsightInMofloDb(insight);
     this.syncedInsightKeys.add(key);
 
@@ -290,7 +290,7 @@ export class AutoMemoryBridge extends EventEmitter {
   }
 
   /**
-   * Sync high-confidence AgentDB entries to auto memory files.
+   * Sync high-confidence MofloDb entries to auto memory files.
    * Called on session-end or periodically.
    */
   async syncToAutoMemory(): Promise<SyncResult> {
@@ -320,7 +320,7 @@ export class AutoMemoryBridge extends EventEmitter {
         }
       }
 
-      // Query AgentDB for high-confidence entries since last sync,
+      // Query MofloDb for high-confidence entries since last sync,
       // skipping entries we already wrote from the buffer above
       const entries = await this.queryRecentInsights();
       for (const entry of entries) {
@@ -371,8 +371,8 @@ export class AutoMemoryBridge extends EventEmitter {
   }
 
   /**
-   * Import auto memory files into AgentDB.
-   * Called on session-start to hydrate AgentDB with previous learnings.
+   * Import auto memory files into MofloDb.
+   * Called on session-start to hydrate MofloDb with previous learnings.
    * Uses bulk insert for efficiency.
    */
   async importFromAutoMemory(): Promise<ImportResult> {

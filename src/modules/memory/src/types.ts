@@ -1,7 +1,7 @@
 /**
  * V3 Unified Memory Types
  *
- * Type definitions for the unified memory system based on AgentDB with HNSW indexing.
+ * Type definitions for the unified memory system based on sql.js with HNSW indexing.
  * Supports 150x-12,500x faster vector search compared to brute-force approaches.
  *
  * @module v3/memory/types
