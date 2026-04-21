@@ -23,6 +23,7 @@ import { CONTROLLER_SPECS } from './controller-specs.js';
 import { LearningBridge } from './learning-bridge.js';
 import { MemoryGraph } from './memory-graph.js';
 import { TieredCacheManager } from './cache-manager.js';
+import { HIERARCHICAL_MEMORY_SURFACE } from './controllers/hierarchical-memory.js';
 import type {
   IMemoryBackend,
   MemoryEntry,
@@ -754,9 +755,10 @@ describe('ControllerRegistry', () => {
       await registry.initialize({ backend: mockBackend });
       const hm: any = registry.get('hierarchicalMemory');
       expect(hm).not.toBeNull();
-      // Stub exposes store/recall/getTierStats; no listTier/promote
-      expect(typeof hm.store).toBe('function');
-      expect(typeof hm.recall).toBe('function');
+      // Stub mirrors the full HierarchicalMemory surface (issue #493).
+      for (const method of HIERARCHICAL_MEMORY_SURFACE) {
+        expect(typeof hm[method]).toBe('function');
+      }
     });
 
     it('should compose memoryConsolidation from hierarchicalMemory via registry', async () => {
