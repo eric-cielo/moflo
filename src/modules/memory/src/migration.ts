@@ -2,7 +2,7 @@
  * V3 Memory Migration Utility
  *
  * Migrates data from legacy memory systems (SQLite, Markdown, JSON, etc.)
- * to the unified AgentDB-backed memory system with HNSW indexing.
+ * to the unified MofloDb-backed memory system with HNSW indexing.
  *
  * @module v3/memory/migration
  */

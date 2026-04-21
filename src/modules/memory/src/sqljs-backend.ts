@@ -654,7 +654,7 @@ export class SqlJsBackend extends EventEmitter implements IMemoryBackend {
       message: 'No vector index (brute-force search)',
     };
 
-    recommendations.push('Consider using AgentDB with HNSW for faster vector search');
+    recommendations.push('Consider using MofloDbAdapter for HNSW-indexed vector search');
 
     // Cache health (not applicable for sql.js)
     const cacheHealth: ComponentHealth = {

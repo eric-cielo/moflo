@@ -151,7 +151,7 @@ export function resolveAgentMemoryDir(
  * the correct memory directory based on agent name and scope, then
  * delegates to AutoMemoryBridge for the actual sync logic.
  *
- * @param backend - The AgentDB memory backend
+ * @param backend - The MofloDb memory backend
  * @param config - Agent-scoped configuration
  * @returns A configured AutoMemoryBridge instance
  *
