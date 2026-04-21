@@ -16,9 +16,11 @@
  *   getStats()                                          → Record<tier, n>
  *   promote(id, fromTier, toTier)                       → boolean
  *
- * `HierarchicalMemoryStub` shadows the same public shape so callers can
- * invoke the API unconditionally without duck-type probes when sql.js
- * is unavailable.
+ * `HierarchicalMemoryStub` shadows the same public shape (including
+ * listTier/transaction/initializeDatabase) so callers can invoke the API
+ * unconditionally without duck-type probes when sql.js is unavailable.
+ * Downstream controllers should accept the `HierarchicalMemoryLike` alias
+ * exported below rather than the concrete class.
  */
 
 import {
@@ -345,6 +347,21 @@ function parseTags(value: unknown): string[] {
   }
 }
 
+function stubRowToItem(row: InternalStubRow, score: number): MemoryItem {
+  return {
+    id: row.id,
+    key: row.key,
+    tier: row.tier,
+    content: row.content,
+    importance: row.importance,
+    metadata: row.metadata,
+    tags: row.tags,
+    score,
+    timestamp: row.timestamp,
+    accessCount: row.accessCount,
+  };
+}
+
 function rowToItem(r: Record<string, any>): InternalRow {
   return {
     id: String(r.id),
@@ -419,18 +436,7 @@ export class HierarchicalMemoryStub {
       for (const row of bucket.values()) {
         if (row.key.toLowerCase().includes(q) || row.content.toLowerCase().includes(q)) {
           row.accessCount += 1;
-          matches.push({
-            id: row.id,
-            key: row.key,
-            tier: row.tier,
-            content: row.content,
-            importance: row.importance,
-            metadata: row.metadata,
-            tags: row.tags,
-            score: 1,
-            timestamp: row.timestamp,
-            accessCount: row.accessCount,
-          });
+          matches.push(stubRowToItem(row, 1));
         }
       }
     }
@@ -456,6 +462,28 @@ export class HierarchicalMemoryStub {
       if (bucket.delete(id)) return true;
     }
     return false;
+  }
+
+  async initializeDatabase(): Promise<void> {
+    // In-memory stub has no schema to create.
+  }
+
+  listTier(tier: Tier | string, limit: number = 1000): MemoryItem[] {
+    const t = coerceTier(tier);
+    const bucket = this.tiers.get(t);
+    if (!bucket) return [];
+    const safeLimit = Math.max(1, Math.min(limit, 100_000));
+    const out: MemoryItem[] = [];
+    for (const row of bucket.values()) out.push(stubRowToItem(row, 0));
+    out.sort((a, b) => a.timestamp - b.timestamp);
+    return out.slice(0, safeLimit);
+  }
+
+  async transaction<T>(fn: () => T | Promise<T>): Promise<T> {
+    // Stub has no durable state — a thrown error propagates but any
+    // in-memory writes made by fn are NOT rolled back (the real class
+    // emits SQL ROLLBACK; we have nothing to revert against).
+    return Promise.resolve().then(() => fn());
   }
 
   getStats(): Record<string, number> {
@@ -489,6 +517,30 @@ interface InternalStubRow {
   timestamp: number;
   accessCount: number;
 }
+
+/**
+ * Shared surface between {@link HierarchicalMemory} and
+ * {@link HierarchicalMemoryStub}. Use this where a caller must work with
+ * either implementation (e.g. MemoryConsolidation).
+ */
+export type HierarchicalMemoryLike = HierarchicalMemory | HierarchicalMemoryStub;
+
+/**
+ * Method names that MUST exist on both HierarchicalMemory and
+ * HierarchicalMemoryStub (issue #493 — stub parity). Tests iterate this
+ * to verify no duck-typing is needed on the consumer side.
+ */
+export const HIERARCHICAL_MEMORY_SURFACE = [
+  'store',
+  'recall',
+  'promote',
+  'forget',
+  'getStats',
+  'count',
+  'listTier',
+  'transaction',
+  'initializeDatabase',
+] as const;
 
 export const hierarchicalMemorySpec: ControllerSpec = {
   name: 'hierarchicalMemory',

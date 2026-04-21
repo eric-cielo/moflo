@@ -12,7 +12,7 @@
  *   consolidate() → ConsolidationReport
  */
 
-import type { HierarchicalMemory, MemoryItem, Tier } from './hierarchical-memory.js';
+import type { HierarchicalMemoryLike, MemoryItem, Tier } from './hierarchical-memory.js';
 import type { ControllerSpec } from '../controller-spec.js';
 
 export interface ConsolidationReport {
@@ -44,10 +44,10 @@ const DEFAULTS: Required<MemoryConsolidationOptions> = {
 };
 
 export class MemoryConsolidation {
-  private hm: HierarchicalMemory;
+  private readonly hm: HierarchicalMemoryLike;
   private opts: Required<MemoryConsolidationOptions>;
 
-  constructor(hm: HierarchicalMemory, options: MemoryConsolidationOptions = {}) {
+  constructor(hm: HierarchicalMemoryLike, options: MemoryConsolidationOptions = {}) {
     if (!hm) throw new Error('MemoryConsolidation requires a HierarchicalMemory');
     this.hm = hm;
     this.opts = { ...DEFAULTS, ...options };
@@ -113,32 +113,16 @@ export class MemoryConsolidation {
 // Re-export types needed by controller-registry consumers.
 export type { Tier, MemoryItem };
 
-/**
- * No-op consolidation used when the real HierarchicalMemory isn't
- * available (in-memory stub only supports store/recall).
- */
-function createConsolidationStub() {
-  return {
-    consolidate() {
-      return { promoted: 0, pruned: 0, timestamp: Date.now() };
-    },
-  };
-}
-
 export const memoryConsolidationSpec: ControllerSpec = {
   name: 'memoryConsolidation',
   level: 3,
   enabledByDefault: true,
   create: ({ registry }) => {
-    const hm = registry.get<HierarchicalMemory>('hierarchicalMemory');
-    if (
-      hm &&
-      typeof (hm as any).listTier === 'function' &&
-      typeof (hm as any).promote === 'function'
-    ) {
-      return new MemoryConsolidation(hm);
-    }
-    return createConsolidationStub();
+    // hm is always present unless a consumer explicitly disables
+    // hierarchicalMemory via config.controllers.hierarchicalMemory=false.
+    const hm = registry.get<HierarchicalMemoryLike>('hierarchicalMemory');
+    if (!hm) return null;
+    return new MemoryConsolidation(hm);
   },
 };
 

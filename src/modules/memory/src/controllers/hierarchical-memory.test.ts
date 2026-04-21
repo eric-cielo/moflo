@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import initSqlJs, { Database } from 'sql.js';
-import { HierarchicalMemory, HierarchicalMemoryStub, hierarchicalMemorySpec } from './hierarchical-memory.js';
+import {
+  HierarchicalMemory,
+  HierarchicalMemoryStub,
+  HIERARCHICAL_MEMORY_SURFACE,
+  hierarchicalMemorySpec,
+} from './hierarchical-memory.js';
 
 let SQL: any;
 
@@ -171,6 +176,44 @@ describe('HierarchicalMemoryStub', () => {
     expect(stats.total).toBe(3);
   });
 
+  it('listTier returns bucket items oldest-first and respects limit', async () => {
+    await stub.store('first', 0.5, 'working');
+    await new Promise((r) => setTimeout(r, 2));
+    await stub.store('second', 0.5, 'working');
+    await new Promise((r) => setTimeout(r, 2));
+    await stub.store('third', 0.5, 'working');
+    const all = stub.listTier('working');
+    expect(all.map((r) => r.content)).toEqual(['first', 'second', 'third']);
+    const capped = stub.listTier('working', 2);
+    expect(capped).toHaveLength(2);
+    expect(capped[0].content).toBe('first');
+  });
+
+  it('listTier returns empty array for tier with no items', () => {
+    expect(stub.listTier('semantic')).toEqual([]);
+  });
+
+  it('transaction runs the fn and returns its result', async () => {
+    const result = await stub.transaction(async () => {
+      await stub.store('inside-txn', 0.5, 'working');
+      return 42;
+    });
+    expect(result).toBe(42);
+    expect(stub.count('working')).toBe(1);
+  });
+
+  it('transaction propagates thrown errors', async () => {
+    await expect(
+      stub.transaction(async () => {
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+  });
+
+  it('initializeDatabase is a callable no-op', async () => {
+    await expect(stub.initializeDatabase()).resolves.toBeUndefined();
+  });
+
   it('hierarchicalMemorySpec returns stub when mofloDb lacks database', async () => {
     const result = await hierarchicalMemorySpec.create({
       mofloDb: null,
@@ -180,7 +223,10 @@ describe('HierarchicalMemoryStub', () => {
       backend: null,
     } as any);
     expect(result).toBeInstanceOf(HierarchicalMemoryStub);
-    expect(typeof (result as any).promote).toBe('function');
-    expect(typeof (result as any).getStats).toBe('function');
+    // Stub must expose the full HierarchicalMemory surface (issue #493) so
+    // callers never need `typeof hm.X === 'function'` duck-type guards.
+    for (const method of HIERARCHICAL_MEMORY_SURFACE) {
+      expect(typeof (result as any)[method]).toBe('function');
+    }
   });
 });
