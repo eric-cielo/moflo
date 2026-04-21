@@ -528,12 +528,15 @@ export class ControllerRegistry extends EventEmitter {
       case 'nightlyLearner':
       case 'memoryConsolidation':
       case 'batchOperations':
-      case 'contextSynthesizer':
         return this.agentdb !== null;
 
-      // SemanticRouter — auto-enable if agentdb available (exported since alpha.10)
+      // ContextSynthesizer — moflo-owned, pure static class (no DB needed).
+      case 'contextSynthesizer':
+        return true;
+
+      // SemanticRouter — moflo-owned, no DB needed.
       case 'semanticRouter':
-        return this.agentdb !== null;
+        return true;
 
       // Optional controllers
       case 'hybridSearch':
@@ -646,8 +649,15 @@ export class ControllerRegistry extends EventEmitter {
         return null;
 
       case 'semanticRouter': {
-        // SemanticRouter exported from agentdb 3.0.0-alpha.10 (ADR-062)
-        // Constructor: () — requires initialize() after construction
+        // Prefer moflo-owned impl (epic #464 Phase C2); no agentdb needed.
+        try {
+          const { SemanticRouter } = await import('./controllers/semantic-router.js');
+          const router = new SemanticRouter();
+          await router.initialize();
+          return router;
+        } catch {
+          // Fall through to agentdb's SemanticRouter if our impl fails to load.
+        }
         try {
           const agentdbModule: any = await import('agentdb');
           const SR = agentdbModule.SemanticRouter;
@@ -741,7 +751,14 @@ export class ControllerRegistry extends EventEmitter {
 
       // ----- Direct-instantiation controllers -----
       case 'batchOperations': {
-        if (!this.agentdb) return null;
+        if (!this.agentdb?.database) return null;
+        // Prefer moflo-owned impl (epic #464 Phase C2).
+        try {
+          const { BatchOperations } = await import('./controllers/batch-operations.js');
+          return new BatchOperations(this.agentdb.database, this.config.embeddingGenerator);
+        } catch {
+          // Fall through to agentdb.
+        }
         try {
           const agentdbModule: any = await import('agentdb');
           const BO = agentdbModule.BatchOperations;
@@ -752,7 +769,14 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'contextSynthesizer': {
-        // ContextSynthesizer.synthesize is static — return the class itself
+        // ContextSynthesizer.synthesize is static — return the class itself.
+        // Prefer moflo-owned impl (epic #464 Phase C2).
+        try {
+          const { ContextSynthesizer } = await import('./controllers/context-synthesizer.js');
+          return ContextSynthesizer;
+        } catch {
+          // Fall through to agentdb.
+        }
         try {
           const agentdbModule: any = await import('agentdb');
           return agentdbModule.ContextSynthesizer ?? null;
@@ -772,9 +796,15 @@ export class ControllerRegistry extends EventEmitter {
       }
 
       case 'attestationLog': {
-        // AttestationLog exported from agentdb 3.0.0-alpha.10 (ADR-060)
-        // Constructor: (db) — uses database for append-only audit log
-        if (!this.agentdb) return null;
+        // AttestationLog: append-only audit log.
+        // Prefer moflo-owned impl (epic #464 Phase C2).
+        if (!this.agentdb?.database) return null;
+        try {
+          const { AttestationLog } = await import('./controllers/attestation-log.js');
+          return new AttestationLog(this.agentdb.database);
+        } catch {
+          // Fall through to agentdb.
+        }
         try {
           const agentdbModule: any = await import('agentdb');
           const AL = agentdbModule.AttestationLog;
