@@ -511,10 +511,13 @@ describe('waitCommand', () => {
   });
 
   it('should wait for specified duration', async () => {
-    const output = await waitCommand.execute({ duration: 10 }, createContext());
+    const target = 10;
+    const output = await waitCommand.execute({ duration: target }, createContext());
     expect(output.success).toBe(true);
-    expect(output.data.waited).toBe(10);
-    expect(output.duration).toBeGreaterThanOrEqual(10);
+    expect(output.data.waited).toBe(target);
+    // Allow 1ms of timer jitter: Date.now() has integer-ms resolution and Node's
+    // setTimeout may fire slightly before the target on fast Linux CI runners.
+    expect(output.duration).toBeGreaterThanOrEqual(target - 1);
   });
 
   it('should reject on abort signal', async () => {

@@ -9,6 +9,7 @@ import { join, relative } from 'node:path';
 
 import { run, runNode, flo, NPM_CMD } from './proc.mjs';
 import { section, record, recordExit, log } from './report.mjs';
+import { findOrphans } from '../../../scripts/clean-dist.mjs';
 
 // Epic #501 acceptance criterion: a fresh `npm install moflo` consumer sees
 // zero of the following packages anywhere in its dep tree.
@@ -31,6 +32,18 @@ function matchesForbidden(name) {
     if (name === bad || (bad.startsWith('@') && name.startsWith(bad + '/'))) return true;
   }
   return false;
+}
+
+export function verifyDistHygiene(repoRoot) {
+  section('Verify dist hygiene');
+  const orphans = findOrphans();
+  if (orphans.length === 0) {
+    record('dist-orphans', 'pass', 'no orphaned compiled outputs');
+    return;
+  }
+  const preview = orphans.slice(0, 5).map((o) => relative(repoRoot, o)).join(' | ');
+  const suffix = orphans.length > 5 ? ` (+${orphans.length - 5} more)` : '';
+  record('dist-orphans', 'fail', `${orphans.length} orphan(s): ${preview}${suffix}`);
 }
 
 export function packMoflo({ repoRoot, workDir, tarballOverride, skipPack }) {

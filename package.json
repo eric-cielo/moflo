@@ -74,7 +74,7 @@
   ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "prebuild": "node scripts/sync-version.mjs",
+    "prebuild": "node scripts/sync-version.mjs && node scripts/clean-dist.mjs",
     "build": "tsc -b && node -e \"const{cpSync}=require('fs');cpSync('src/modules/cli/src/epic/spells','src/modules/cli/dist/src/epic/spells',{recursive:true})\"",
     "build:ts": "cd src/modules/cli && npm run build",
     "build:neural": "cd src/modules/neural && npx tsc -p tsconfig.json",
