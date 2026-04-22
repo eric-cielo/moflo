@@ -10,8 +10,7 @@
 
 ## Features
 
-- **CVE Remediation** - Fixes for CVE-2 (Weak Password Hashing), CVE-3 (Hardcoded Credentials), HIGH-1 (Command Injection), HIGH-2 (Path Traversal)
-- **Password Hashing** - Secure bcrypt-based password hashing with configurable rounds (12+ recommended)
+- **CVE Remediation** - Fixes for CVE-3 (Hardcoded Credentials), HIGH-1 (Command Injection), HIGH-2 (Path Traversal)
 - **Credential Generation** - Cryptographically secure credential and API key generation
 - **Safe Command Execution** - Allowlist-based command execution preventing injection attacks
 - **Path Validation** - Protection against path traversal and symlink attacks
@@ -33,12 +32,8 @@ import { createSecurityModule } from '@moflo/security';
 const security = createSecurityModule({
   projectRoot: '/workspaces/project',
   hmacSecret: process.env.HMAC_SECRET!,
-  bcryptRounds: 12,
   allowedCommands: ['git', 'npm', 'npx', 'node']
 });
-
-// Hash a password
-const hash = await security.passwordHasher.hash('userPassword123');
 
 // Validate a path
 const pathResult = await security.pathValidator.validate('/workspaces/project/src/file.ts');
@@ -51,23 +46,6 @@ const creds = await security.credentialGenerator.generate();
 ```
 
 ## API Reference
-
-### Password Hashing (CVE-2 Fix)
-
-```typescript
-import { PasswordHasher, createPasswordHasher } from '@moflo/security';
-
-const hasher = createPasswordHasher({ rounds: 12 });
-
-// Hash password
-const hash = await hasher.hash('password');
-
-// Verify password
-const isValid = await hasher.verify('password', hash);
-
-// Check if hash needs rehashing
-const needsRehash = hasher.needsRehash(hash);
-```
 
 ### Credential Generation (CVE-3 Fix)
 
@@ -178,10 +156,6 @@ const verificationCode = quickGenerate.verificationCode();
 
 ```typescript
 import {
-  MIN_BCRYPT_ROUNDS,      // 12
-  MAX_BCRYPT_ROUNDS,      // 14
-  MIN_PASSWORD_LENGTH,    // 8
-  MAX_PASSWORD_LENGTH,    // 72 (bcrypt limit)
   DEFAULT_TOKEN_EXPIRATION,   // 3600 (1 hour)
   DEFAULT_SESSION_EXPIRATION  // 86400 (24 hours)
 } from '@moflo/security';
@@ -193,12 +167,10 @@ import {
 import { auditSecurityConfig } from '@moflo/security';
 
 const warnings = auditSecurityConfig({
-  bcryptRounds: 10,
   hmacSecret: 'short'
 });
 
-// ['bcryptRounds (10) below recommended minimum (12)',
-//  'hmacSecret should be at least 32 characters']
+// ['hmacSecret should be at least 32 characters']
 ```
 
 ## Validation Schemas
@@ -221,7 +193,6 @@ const warnings = auditSecurityConfig({
 
 ## Dependencies
 
-- `bcrypt` - Password hashing
 - `zod` - Schema validation
 
 ## Related Packages

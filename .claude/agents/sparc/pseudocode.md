@@ -58,7 +58,7 @@ BEGIN
     END IF
     
     // Verify password
-    isValid ← PasswordHasher.verify(password, user.passwordHash)
+    isValid ← CredentialStore.verify(password, user.passwordHash)
     
     IF NOT isValid THEN
         // Log failed attempt
@@ -225,7 +225,7 @@ ANALYSIS: User Authentication Flow
 Time Complexity:
     - Email validation: O(1)
     - Database lookup: O(log n) with index
-    - Password verification: O(1) - fixed bcrypt rounds
+    - Password verification: O(1) - fixed-cost hash compare
     - Session creation: O(1)
     - Total: O(log n)
 

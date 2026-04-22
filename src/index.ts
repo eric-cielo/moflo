@@ -10,7 +10,7 @@
  *
  * // Or import specific modules
  * import { UnifiedSwarmCoordinator } from '@moflo/swarm';
- * import { PasswordHasher } from '@moflo/security';
+ * import { PathValidator } from '@moflo/security';
  * import { HNSWIndex } from '@moflo/memory';
  *
  * Complete reimagining based on 10 ADRs:
