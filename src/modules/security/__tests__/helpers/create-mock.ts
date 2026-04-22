@@ -111,30 +111,6 @@ export function createSpy<T extends object, K extends keyof T>(
 }
 
 /**
- * Mock factory for PasswordHasher
- */
-export interface MockPasswordHasher {
-  hash: MockInstance<(password: string) => Promise<string>>;
-  verify: MockInstance<(password: string, hash: string) => Promise<boolean>>;
-  validate: MockInstance<(password: string) => { isValid: boolean; errors: string[] }>;
-  needsRehash: MockInstance<(hash: string) => boolean>;
-  getConfig: MockInstance<() => Record<string, unknown>>;
-}
-
-export function createMockPasswordHasher(
-  overrides: Partial<MockPasswordHasher> = {}
-): MockPasswordHasher {
-  return {
-    hash: vi.fn().mockResolvedValue('$2b$12$mockedHashValue'),
-    verify: vi.fn().mockResolvedValue(true),
-    validate: vi.fn().mockReturnValue({ isValid: true, errors: [] }),
-    needsRehash: vi.fn().mockReturnValue(false),
-    getConfig: vi.fn().mockReturnValue({ rounds: 12 }),
-    ...overrides,
-  };
-}
-
-/**
  * Mock factory for CredentialGenerator
  */
 export interface MockCredentialGenerator {
