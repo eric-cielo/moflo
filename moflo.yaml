@@ -114,3 +114,12 @@ spells:
     - .claude/spells
     - spells/dev
 
+# Spell step sandboxing (OS-level process isolation for bash steps)
+# Platform support: macOS (sandbox-exec), Linux/WSL (bwrap). Windows has no OS sandbox.
+# Tiers:
+#   auto          — Use best available sandbox for this platform (recommended when enabled)
+#   denylist-only — Layer 1 only: block catastrophic commands, no OS isolation
+#   full          — Require full OS isolation; throws if the sandbox tool is unavailable
+sandbox:
+  enabled: false                 # Set to true to wrap bash steps in an OS sandbox
+  tier: auto                     # auto | denylist-only | full
