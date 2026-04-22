@@ -117,8 +117,8 @@ interface SqliteRow { [key: string]: unknown }
 async function readSqliteRows(dbPath: string): Promise<SqliteRow[]> {
   // Use sql.js (WASM) for SQLite reading
   try {
-    const initSqlJs = (await import('sql.js')).default;
-    const SQL = await initSqlJs();
+    const { initSqlJsForNode } = await import('./sqljs-backend.js');
+    const SQL = await initSqlJsForNode();
     const fs = await import('node:fs');
     const buf = fs.readFileSync(dbPath);
     const db = new SQL.Database(buf);

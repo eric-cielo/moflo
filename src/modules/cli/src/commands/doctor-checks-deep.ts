@@ -471,6 +471,58 @@ export async function checkMcpSpellIntegration(): Promise<HealthCheck> {
 }
 
 // ============================================================================
+// MofloDb Bridge Check
+// ============================================================================
+
+/**
+ * Verify the moflodb bridge (v3 ControllerRegistry) actually loads and
+ * returns real controllers. If it fails, every moflodb_* MCP tool degrades
+ * to a stub response.
+ */
+export async function checkMofloDbBridge(): Promise<HealthCheck> {
+  try {
+    const modulePath = findModule('src/modules/cli/dist/src/memory/memory-bridge.js');
+    if (!modulePath) {
+      return { name: 'MofloDb Bridge', status: 'warn', message: 'memory-bridge module not found', fix: 'npm run build' };
+    }
+
+    const bridge = await import(toImportUrl(modulePath));
+    const health = await bridge.bridgeHealthCheck?.();
+    if (!health) {
+      const err = bridge.getBridgeLastError?.();
+      const reason = err?.message ? err.message.slice(0, 200) : 'bridge unavailable';
+      return {
+        name: 'MofloDb Bridge',
+        status: 'fail',
+        message: `init failed: ${reason}`,
+        fix: 'Check that sql.js and @moflo/memory are installed; rebuild: npm run build',
+      };
+    }
+
+    const controllers = Array.isArray(health.controllers) ? health.controllers : [];
+    const required: readonly string[] = bridge.REQUIRED_BRIDGE_CONTROLLERS ?? [];
+    const present = new Set(controllers.map((c: { name: string }) => c.name));
+    const missing = required.filter(r => !present.has(r));
+    if (missing.length > 0) {
+      return {
+        name: 'MofloDb Bridge',
+        status: 'warn',
+        message: `loaded but missing controllers: ${missing.join(', ')}`,
+      };
+    }
+
+    return {
+      name: 'MofloDb Bridge',
+      status: 'pass',
+      message: `${controllers.length} controllers loaded`,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message.split(/\r?\n/)[0] : String(err);
+    return { name: 'MofloDb Bridge', status: 'fail', message: `check error: ${msg}`, fix: 'npm run build' };
+  }
+}
+
+// ============================================================================
 // Gate Health Check
 // ============================================================================
 

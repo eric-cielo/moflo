@@ -171,15 +171,16 @@ export async function bridgeStoreEntry(options: {
           tags, metadata, created_at, updated_at, expires_at, status
         ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, ?, ?, ?, 'active')`;
 
+    // sql.js Statement.run takes an array of bindings — not varargs.
     const stmt = ctx.db.prepare(insertSql);
-    stmt.run(
+    stmt.run([
       id, key, namespace, value,
       embeddingJson, dimensions || null, model,
       tags.length > 0 ? JSON.stringify(tags) : null,
       '{}',
       now, now,
       ttl ? now + (ttl * 1000) : null,
-    );
+    ]);
 
     const cacheKey = makeEntryCacheKey(namespace, key);
     await cacheSet(registry, cacheKey, { id, key, namespace, content: value, embedding: embeddingJson });
@@ -428,7 +429,8 @@ export async function bridgeGetEntry(options: {
         WHERE status = 'active' AND key = ? AND namespace = ?
         LIMIT 1
       `);
-      row = stmt.get(key, namespace);
+      // sql.js Statement.get takes an array of bindings — not varargs.
+      row = stmt.get([key, namespace]);
     } catch {
       return null;
     }
@@ -438,7 +440,7 @@ export async function bridgeGetEntry(options: {
     try {
       ctx.db.prepare(
         `UPDATE memory_entries SET access_count = access_count + 1, last_accessed_at = ? WHERE id = ?`,
-      ).run(Date.now(), row.id);
+      ).run([Date.now(), row.id]);
     } catch {
       // Non-fatal
     }
@@ -496,7 +498,7 @@ export async function bridgeDeleteEntry(options: {
         UPDATE memory_entries
         SET status = 'deleted', updated_at = ?
         WHERE key = ? AND namespace = ? AND status = 'active'
-      `).run(Date.now(), key, namespace);
+      `).run([Date.now(), key, namespace]);
       changes = result?.changes ?? 0;
     } catch {
       return null;

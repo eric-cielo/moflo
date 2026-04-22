@@ -53,6 +53,17 @@ async function getBridge() {
   return bridgeModule;
 }
 
+/**
+ * When the bridge returns null, surface the underlying init error instead of
+ * the generic "bridge not available" stub.
+ */
+async function bridgeUnavailableReason(fallback: string): Promise<string> {
+  const bridge = await getBridge();
+  const err = bridge.getBridgeLastError?.();
+  if (err) return `MofloDb bridge init failed: ${sanitizeError(err)}`;
+  return fallback;
+}
+
 // ===== moflodb_health — Controller health check =====
 
 export const moflodbHealth: MCPTool = {
@@ -66,7 +77,9 @@ export const moflodbHealth: MCPTool = {
     try {
       const bridge = await getBridge();
       const health = await bridge.bridgeHealthCheck();
-      if (!health) return { available: false, error: 'MofloDb bridge not available' };
+      if (!health) {
+        return { available: false, error: await bridgeUnavailableReason('MofloDb bridge not available') };
+      }
       return health;
     } catch (error) {
       return { available: false, error: sanitizeError(error) };
@@ -87,7 +100,15 @@ export const moflodbControllers: MCPTool = {
     try {
       const bridge = await getBridge();
       const controllers = await bridge.bridgeListControllers();
-      if (!controllers) return { available: false, controllers: [], error: 'MofloDb bridge not available — @moflo/memory not installed or missing controller-registry. Use memory_store/memory_search tools instead.' };
+      if (!controllers) {
+        return {
+          available: false,
+          controllers: [],
+          error: await bridgeUnavailableReason(
+            'MofloDb bridge not available — controllers could not be listed. Use memory_store/memory_search tools instead.',
+          ),
+        };
+      }
       return {
         available: true,
         controllers,

@@ -24,6 +24,8 @@ import {
 // ===== Re-exports: primitives =====
 
 export {
+  REQUIRED_BRIDGE_CONTROLLERS,
+  getBridgeLastError,
   getControllerRegistry,
   isBridgeAvailable,
   refreshVectorStatsCache,
@@ -196,11 +198,11 @@ export async function bridgeAddToHNSW(
         embedding, embedding_dimensions, embedding_model,
         created_at, updated_at, status
       ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, 'Xenova/all-MiniLM-L6-v2', ?, ?, 'active')
-    `).run(
+    `).run([
       id, entry.key, entry.namespace, entry.content,
       embeddingJson, embedding.length,
       now, now,
-    );
+    ]);
     return true;
   });
 }

@@ -9,6 +9,8 @@
 
 import { EventEmitter } from 'node:events';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join as joinPath } from 'node:path';
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import {
   IMemoryBackend,
@@ -57,6 +59,47 @@ export interface SqlJsBackendConfig {
 }
 
 /**
+ * Resolve the directory that bundles sql-wasm.wasm alongside sql.js. In Node
+ * the default `locateFile` (sql.js.org CDN) is treated as a file path and
+ * fails with ENOENT — sql.js then crashes on WASM cleanup. Walk to the
+ * installed sql.js package and point at its local dist/ instead.
+ */
+let cachedSqlJsWasmDir: string | null = null;
+function resolveSqlJsWasmDir(): string | null {
+  if (cachedSqlJsWasmDir !== null) return cachedSqlJsWasmDir;
+  try {
+    // Resolve sql.js's main entry (sql-wasm.js lives next to it in dist/).
+    // Can't use require.resolve('sql.js/package.json') because sql.js's
+    // `exports` field doesn't expose it. `require.resolve` returns an OS-
+    // native absolute path — works on Windows (backslashes) and POSIX.
+    const require = createRequire(import.meta.url);
+    const mainEntry = require.resolve('sql.js');
+    cachedSqlJsWasmDir = dirname(mainEntry);
+  } catch {
+    cachedSqlJsWasmDir = null;
+  }
+  return cachedSqlJsWasmDir;
+}
+
+/**
+ * Initialize sql.js with a Node-aware `locateFile` that points at the
+ * installed sql.js package's own dist/ directory. Prefer this over bare
+ * `initSqlJs()` anywhere sql.js is used in Node.
+ */
+export async function initSqlJsForNode(wasmPath?: string): Promise<Awaited<ReturnType<typeof initSqlJs>>> {
+  return initSqlJs({ locateFile: buildLocateFile(wasmPath) });
+}
+
+function buildLocateFile(wasmPath?: string): (file: string) => string {
+  if (wasmPath) return () => wasmPath;
+  const localWasmDir = resolveSqlJsWasmDir();
+  if (localWasmDir) return (file: string) => joinPath(localWasmDir, file);
+  // Browser/unbundled fallback — sql.js can fetch over HTTP when running in
+  // environments where require.resolve('sql.js') can't find the package.
+  return (file: string) => `https://sql.js.org/dist/${file}`;
+}
+
+/**
  * Load sql.js WASM and open a Database — from disk if `dbPath` exists,
  * otherwise in-memory. Shared between `SqlJsBackend` and `ControllerRegistry`.
  */
@@ -64,11 +107,7 @@ export async function openSqlJsDatabase(
   dbPath: string,
   wasmPath?: string,
 ): Promise<SqlJsDatabase> {
-  const SQL = await initSqlJs({
-    locateFile: wasmPath
-      ? () => wasmPath
-      : (file: string) => `https://sql.js.org/dist/${file}`,
-  });
+  const SQL = await initSqlJsForNode(wasmPath);
   if (dbPath !== ':memory:' && existsSync(dbPath)) {
     return new SQL.Database(new Uint8Array(readFileSync(dbPath)));
   }

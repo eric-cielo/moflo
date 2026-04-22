@@ -38,11 +38,33 @@ function getProjectRoot(): string {
   return _projectRoot;
 }
 
+import { importMofloMemory } from '../services/moflo-require.js';
+
 let registryPromise: Promise<any | null> | null = null;
 // Sync handle populated once the promise resolves. Lets sync callers
 // (refreshVectorStatsCache) read the registry without awaiting.
 let resolvedRegistry: any | null = null;
+let lastBridgeError: Error | null = null;
 const schemaInitialized = new WeakSet<object>();
+
+/** Controllers every moflodb_* MCP tool assumes are present when the bridge is available. */
+export const REQUIRED_BRIDGE_CONTROLLERS = Object.freeze([
+  'hierarchicalMemory',
+  'tieredCache',
+  'memoryConsolidation',
+  'memoryGraph',
+] as const);
+
+/** Last error thrown during bridge init, or null after a successful init. */
+export function getBridgeLastError(): Error | null {
+  return lastBridgeError;
+}
+
+function logBridgeError(context: string, err: unknown): void {
+  if (process.env.MOFLO_BRIDGE_QUIET) return;
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error(`[moflo] ${context}: ${msg}`);
+}
 
 function getDbPath(customPath?: string): string {
   const swarmDir = path.resolve(getProjectRoot(), '.swarm');
@@ -71,7 +93,7 @@ export async function getRegistry(dbPath?: string): Promise<any | null> {
   if (!registryPromise) {
     registryPromise = (async () => {
       try {
-        const { ControllerRegistry } = await import('@moflo/memory');
+        const { ControllerRegistry } = await importMofloMemory(import.meta.url);
         const registry = new ControllerRegistry();
 
         // Suppress noisy init logs
@@ -102,8 +124,11 @@ export async function getRegistry(dbPath?: string): Promise<any | null> {
         }
 
         resolvedRegistry = registry;
+        lastBridgeError = null;
         return registry;
-      } catch {
+      } catch (err) {
+        lastBridgeError = err instanceof Error ? err : new Error(String(err));
+        logBridgeError('MofloDb bridge init failed', lastBridgeError);
         registryPromise = null;
         return null;
       }
@@ -165,7 +190,8 @@ export function getDb(registry: any): BridgeDbContext | null {
 
 /**
  * Resolve registry + db, run fn, return null on any unexpected failure so
- * the caller falls back to raw sql.js.
+ * the caller falls back to raw sql.js. Errors are logged to stderr —
+ * silently swallowing them previously masked real bugs in bridge-entries.ts.
  */
 export async function withDb<T>(
   dbPath: string | undefined,
@@ -177,7 +203,8 @@ export async function withDb<T>(
   if (!ctx) return null;
   try {
     return await fn(ctx, registry);
-  } catch {
+  } catch (err) {
+    logBridgeError('bridge operation failed', err);
     return null;
   }
 }

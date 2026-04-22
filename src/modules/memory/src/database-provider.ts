@@ -104,8 +104,8 @@ async function testRvf(): Promise<boolean> {
  */
 async function testSqlJs(): Promise<boolean> {
   try {
-    const initSqlJs = (await import('sql.js')).default;
-    const SQL = await initSqlJs();
+    const { initSqlJsForNode } = await import('./sqljs-backend.js');
+    const SQL = await initSqlJsForNode();
     const testDb = new SQL.Database();
     testDb.close();
     return true;
