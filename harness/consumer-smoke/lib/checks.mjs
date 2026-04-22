@@ -29,11 +29,7 @@ export const FORBIDDEN_DEPS = [
 // entry MUST reference the tracking issue. Leaking deps in this list are
 // reported as WARN and do NOT cause the harness to exit non-zero; deps not in
 // this list are hard failures. Trim entries here as fixes ship.
-//
-//   onnxruntime-node: transitive of @xenova/transformers@2.17.2
-//     (in moflo's optionalDependencies). Blocks epic #501 Story 1 ship;
-//     follow-up discussion in #501's PR.
-export const KNOWN_FORBIDDEN_REGRESSIONS = new Set(['onnxruntime-node']);
+export const KNOWN_FORBIDDEN_REGRESSIONS = new Set();
 
 function matchesForbidden(name) {
   for (const bad of FORBIDDEN_DEPS) {

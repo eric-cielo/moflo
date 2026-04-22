@@ -17,7 +17,6 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@xenova/transformers": "^2.17.0",
     "sql.js": "^1.13.0"
   },
   "devDependencies": {
@@ -26,6 +25,12 @@
     "vitest": "^4.0.16"
   },
   "peerDependencies": {
-    "@moflo/shared": "^3.0.0-alpha.1"
+    "@moflo/shared": "^3.0.0-alpha.1",
+    "@xenova/transformers": "^2.17.0"
+  },
+  "peerDependenciesMeta": {
+    "@xenova/transformers": {
+      "optional": true
+    }
   }
 }
