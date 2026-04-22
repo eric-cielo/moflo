@@ -1,61 +1,106 @@
 # Consumer smoke-test harness
 
-Epic #464 Gate 3 — prove that a fresh consumer install of moflo exercises the Claude-Code-facing surface end-to-end. Re-run the same harness against a post-removal build to catch agentdb-removal regressions.
+Proves that a fresh consumer install of moflo exercises the Claude-Code-facing
+surface end-to-end. Built for **epic #464 Gate 3** and now the passing gate
+for **epic #501 Story 2 / Story 3** (verify the shipped agentdb-removal build
+against this harness before closing #464).
 
 ## Run
 
 ```bash
-# from repo root
-node harness/consumer-smoke/run.mjs
-
-# skip the pack step (reuse last tarball)
-node harness/consumer-smoke/run.mjs --skip-pack
-
-# keep the consumer .work/consumer dir for inspection
-node harness/consumer-smoke/run.mjs --keep
+npm run test:smoke              # from repo root — full run
+npm run test:smoke -- --keep    # keep .work for inspection
+npm run test:smoke -- --verbose # stream subprocess stdout/stderr
+npm run test:smoke -- --json    # JSON summary for CI ingestion
 ```
 
-## What it does
+Takes ~30–60 seconds; most of it is `npm install` in the scratch consumer.
 
-1. `npm pack` the repo root into `harness/consumer-smoke/.work/`.
-2. Create `.work/consumer/` with a minimal `package.json` installing moflo from the tarball.
-3. `npm install` into the consumer dir.
-4. Run a sequence of `flo …` subcommands and assert exit codes + round-trip behavior:
-   - `flo --version`
-   - `flo doctor --json`
-   - `flo memory store / get / search`
-   - `flo spell list`
-5. Assert consumer invariants:
-   - No stray `*.rvf` files in consumer root
-   - No `agentdb.rvf` written unexpectedly
-   - Report `.swarm/` contents
-   - Report presence/absence of `node_modules/agentdb` and `node_modules/agentic-flow`
+## What it checks
+
+| Phase | Step | Verifies |
+|-------|------|----------|
+| Pack | `pack` | `npm pack` produces a tarball |
+| Install | `install` | Tarball installs cleanly into a scratch consumer |
+| Forbidden deps | `forbidden-deps` | `node_modules` + full dep tree free of `agentdb`, `agentic-flow`, `@ruvector/*`, `ruvector`, `onnxruntime-node` |
+| CLI | `cli-version` | `flo --version` reports a semver |
+| CLI | `doctor` | `flo doctor --json` runs (exit 0 or 1) |
+| Memory | `memory-init` | `flo memory init` initializes the sql.js+HNSW store |
+| Memory | `memory-store/retrieve/search/list/delete` | CRUD round-trips |
+| Spell | `spell-list` | `flo spell list` runs (exit 0 or 1) |
+| MCP | `mcp-tools:moflodb` | `flo mcp tools` lists `moflodb_*` tools |
+| MCP | `mcp-tools:no-legacy` | No `agentdb_*` tools left from the old naming |
+| CLI | `flo-search` | `flo-search` binary loads |
+| Hooks | `hooks-list / pre-task / post-edit` | Hook commands succeed end-to-end |
+| Skill | `flo-skill` | `.claude/skills/fl/SKILL.md` ships inside the package |
+| Invariants | `no-stray-rvf`, `no-agentdb-rvf` | No surprise `.rvf` files at consumer root |
+| Surface | `moflo-install-size` | Reports installed size (informational) |
 
 ## Exit codes
 
-- `0` — every smoke check passed
-- `1` — at least one smoke check failed
-- `2` — harness itself aborted before running checks (pack/install failure)
+- `0` — every check passed (warnings for known regressions allowed)
+- `1` — at least one hard-fail check failed
+- `2` — harness aborted before checks could run (pack/install failure)
 
-## Baseline expectations (moflo@4.8.80-rc.7, pre-removal)
+## Known regressions (WARN, do not block)
 
-Expected state today:
-- `node_modules/agentdb`: **present** (it's in optionalDependencies)
-- `node_modules/agentic-flow`: **present** (same)
-- `.swarm/memory.db` created on first memory op
-- No `*.rvf` in consumer root (fixed in Phase A by pinning to alpha.10 and `*.rvf` gitignore)
+Some forbidden deps still leak through pending a dedicated fix. These are
+tracked in `lib/checks.mjs` under `KNOWN_FORBIDDEN_REGRESSIONS` with a link to
+the issue. Trim entries as fixes ship:
 
-## Re-using against post-removal build
+- `onnxruntime-node` — transitive of `@xenova/transformers@2.17.2`
+  (in moflo's optionalDependencies). Blocks epic #501 Story 1 ship.
 
-When Option B/C is picked and implemented:
-1. Rerun `node harness/consumer-smoke/run.mjs`
-2. Expected deltas:
-   - `node_modules/agentdb`: **absent**
-   - `node_modules/agentic-flow`: **absent**
-   - All other smoke checks still pass (or a delta is documented)
+## Cross-platform
 
-## Limitations
+Runs on Linux, macOS, and Windows. Uses Node built-ins only (no POSIX-specific
+shell commands), invokes moflo via `node <path>/bin/cli.js` to avoid the
+Windows `.cmd` wrapper / PATHEXT resolution issue, and uses `path.join`
+throughout.
 
-- MCP tools can only be tested via a running Claude Code client; this harness checks that the MCP-server bin starts, not that tool calls succeed end-to-end.
-- Spell execution is not exercised — the spell engine requires an LLM call which is out of scope. `spell list` is the proxy for "spell engine loads."
-- Embedding generation via `@xenova/transformers` requires a model download on first run (~80 MB). The harness does **not** exercise this; cover it in Gate 3 followup if needed.
+One Windows-specific tolerance: `flo memory list` currently crashes at process
+teardown with a libuv async-handle assertion (`src/win/async.c:76`) after
+printing correct output. The harness marks this as WARN when the table is
+present in stdout and the crash is only at exit. The underlying moflo bug
+should be fixed separately.
+
+## CI
+
+Runs in `.github/workflows/ci.yml` as the `smoke` job across an
+`ubuntu-latest` / `macos-latest` / `windows-latest` matrix. Failures block PR
+merge.
+
+## Options
+
+- `--keep` — Keep the scratch consumer directory after the run.
+- `--skip-pack` — Reuse the last tarball in `.work/` (faster iteration).
+- `--verbose` / `-v` — Stream subprocess stdout/stderr instead of capturing.
+- `--tarball <path>` — Use an existing tarball. Useful for Story 3:
+  ```bash
+  # validate the published build
+  npm pack moflo@latest --pack-destination /tmp
+  node harness/consumer-smoke/run.mjs --tarball /tmp/moflo-*.tgz
+  ```
+- `--json` — Print machine-readable JSON summary (pass/fail/warn counts plus
+  the full results array).
+
+## When to run
+
+- Before every `/publish` — part of the publish preflight gate.
+- On any PR that touches `package.json`, `src/modules/*/package.json`, `bin/`,
+  `src/modules/cli/src/mcp-tools/`, or `.claude/skills/fl/`.
+- As the last gate in Story 3 of epic #501 — run against the shipped build
+  via `--tarball` and close #464 when it passes clean (zero WARN is the bar).
+
+## Structure
+
+```
+harness/consumer-smoke/
+  run.mjs            # entry: arg parsing + pipeline orchestration
+  lib/
+    proc.mjs         # spawn helpers (cross-platform npm + node invocation)
+    report.mjs       # structured status/summary output
+    checks.mjs       # all individual checks + KNOWN_FORBIDDEN_REGRESSIONS list
+  .work/             # scratch tarballs + consumer dirs (gitignored)
+  README.md          # this file
+```

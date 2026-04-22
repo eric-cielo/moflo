@@ -83,6 +83,7 @@
     "test": "node scripts/test-runner.mjs",
     "test:ui": "vitest --ui",
     "test:security": "vitest run src/__tests__/security/",
+    "test:smoke": "node harness/consumer-smoke/run.mjs",
     "lint": "cd src/modules/cli && npm run lint || true",
     "security:audit": "npm audit --audit-level high",
     "security:fix": "npm audit fix",
