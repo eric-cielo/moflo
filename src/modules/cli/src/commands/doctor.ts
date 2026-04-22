@@ -778,44 +778,6 @@ async function checkTestDirs(): Promise<HealthCheck> {
   }
 }
 
-// Check agentic-flow v3 integration (filesystem-based to avoid slow WASM/DB init)
-async function checkAgenticFlow(): Promise<HealthCheck> {
-  try {
-    // Walk common node_modules paths to find agentic-flow/package.json
-    const candidates = [
-      join(process.cwd(), 'node_modules', 'agentic-flow', 'package.json'),
-      join(process.cwd(), '..', 'node_modules', 'agentic-flow', 'package.json'),
-    ];
-    let pkgJsonPath: string | null = null;
-    for (const p of candidates) {
-      if (existsSync(p)) { pkgJsonPath = p; break; }
-    }
-    if (!pkgJsonPath) {
-      return {
-        name: 'agentic-flow',
-        status: 'warn',
-        message: 'Not installed (optional — embeddings/routing will use fallbacks)',
-        fix: 'npm install agentic-flow@latest'
-      };
-    }
-    const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'));
-    const version = pkg.version || 'unknown';
-    const exports = pkg.exports || {};
-    const features = [
-      exports['./reasoningbank'] ? 'ReasoningBank' : null,
-      exports['./router'] ? 'Router' : null,
-      exports['./transport/quic'] ? 'QUIC' : null,
-    ].filter(Boolean);
-    return {
-      name: 'agentic-flow',
-      status: 'pass',
-      message: `v${version} (${features.join(', ')})`
-    };
-  } catch {
-    return { name: 'agentic-flow', status: 'warn', message: 'Check failed' };
-  }
-}
-
 // Check semantic search quality — verify no 0.500 keyword fallback scores
 async function checkSemanticQuality(): Promise<HealthCheck> {
   try {
@@ -1483,7 +1445,6 @@ export const doctorCommand: Command = {
       checkMcpServers,
       checkDiskSpace,
       checkBuildTools,
-      checkAgenticFlow,
       checkSemanticQuality,
       checkIntelligence,
       checkSpellEngine,
@@ -1514,7 +1475,6 @@ export const doctorCommand: Command = {
       'disk': checkDiskSpace,
       'typescript': checkBuildTools,
       'tests': checkTestDirs,
-      'agentic-flow': checkAgenticFlow,
       'semantic': checkSemanticQuality,
       'quality': checkSemanticQuality,
       'intelligence': checkIntelligence,

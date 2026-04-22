@@ -3098,7 +3098,7 @@ export const hooksIntelligenceAttention: MCPTool = {
 // =============================================================================
 
 /**
- * Worker trigger types matching agentic-flow v3
+ * Worker trigger types
  */
 type WorkerTrigger =
   | 'ultralearn'    // Deep knowledge acquisition

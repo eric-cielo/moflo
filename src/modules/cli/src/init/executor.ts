@@ -1960,12 +1960,6 @@ npx moflo hive-mind consensus --propose "task"
 
 ## Integration Ecosystem
 
-### Integrated Packages
-| Package | Version | Purpose |
-|---------|---------|---------|
-| agentic-flow | 3.0.0-alpha.1 | Core coordination + ReasoningBank + Router |
-| agentdb | 3.0.0-alpha.10 | Vector database + 8 controllers |
-
 ### Optional Integrations
 | Package | Command |
 |---------|---------|

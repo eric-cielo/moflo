@@ -32,7 +32,7 @@ const generateCommand: Command = {
   description: 'Generate embeddings for text',
   options: [
     { name: 'text', short: 't', type: 'string', description: 'Text to embed', required: true },
-    { name: 'provider', short: 'p', type: 'string', description: 'Provider: openai, transformers, agentic-flow, local', default: 'local' },
+    { name: 'provider', short: 'p', type: 'string', description: 'Provider: openai, transformers, local', default: 'local' },
     { name: 'model', short: 'm', type: 'string', description: 'Model to use' },
     { name: 'output', short: 'o', type: 'string', description: 'Output format: json, array, preview', default: 'preview' },
   ],

@@ -30,7 +30,6 @@ const COMPATIBILITY_MATRIX: Record<string, Record<string, PackageCompatibility>>
   },
   '@moflo/integration': {
     'moflo': { minVersion: '3.0.0-alpha.70' },
-    'agentic-flow': { minVersion: '3.0.0-alpha.1' },
   },
 };
 

@@ -3281,7 +3281,7 @@ const statuslineCommand: Command = {
       try {
         const psCmd = isWindows
           ? 'tasklist /FI "IMAGENAME eq node.exe" 2>NUL | findstr /I /C:"node" >NUL && echo 1 || echo 0'
-          : 'ps aux 2>/dev/null | grep -c agentic-flow || echo "0"';
+          : 'pgrep -c -f moflo 2>/dev/null || echo "0"';
         const ps = execSync(psCmd, { encoding: 'utf-8', windowsHide: true });
         activeAgents = Math.max(0, parseInt(ps.trim()) - 1);
         coordinationActive = activeAgents > 0;
