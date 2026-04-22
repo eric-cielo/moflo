@@ -143,6 +143,43 @@ export interface BridgeDbContext {
   mofloDb: any;
 }
 
+/**
+ * Read rows from sql.js as an array of column-keyed objects. sql.js doesn't
+ * have a `.all()` / `.get()` → object API — the native `Statement.get()`
+ * returns a positional array, and `.all()` doesn't exist at all. This is a
+ * thin wrapper around `db.exec(sql, bindings)` that converts the
+ * `{ columns, values }` shape into objects.
+ */
+export function execRows(db: any, sql: string, params?: unknown[]): Record<string, unknown>[] {
+  const result = params && params.length > 0 ? db.exec(sql, params) : db.exec(sql);
+  if (!result || result.length === 0) return [];
+  const { columns, values } = result[0];
+  return values.map((row: unknown[]) => {
+    const obj: Record<string, unknown> = {};
+    for (let i = 0; i < columns.length; i++) obj[columns[i]] = row[i];
+    return obj;
+  });
+}
+
+/**
+ * Persist the in-memory sql.js DB back to disk. sql.js is purely in-memory —
+ * without an explicit export+writeFileSync after each mutation, writes vanish
+ * when the process exits, which breaks store→retrieve across CLI commands.
+ */
+export function persistBridgeDb(db: any, dbPath?: string): void {
+  const target = dbPath
+    ? path.resolve(dbPath)
+    : path.join(getProjectRoot(), '.swarm', 'memory.db');
+  if (target === ':memory:') return;
+  try {
+    const data = db.export();
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, Buffer.from(data));
+  } catch (err) {
+    logBridgeError('bridge persist failed', err);
+  }
+}
+
 // Kept in sync with MEMORY_SCHEMA_V3.memory_entries in memory-initializer.ts.
 // Running `CREATE TABLE IF NOT EXISTS` is a no-op if the initializer already
 // ran; when the bridge runs first, matching CHECKs here prevents drift.
