@@ -19,6 +19,29 @@ export { VERSION };
 
 const LONG_RUNNING_COMMANDS = ['mcp', 'daemon'];
 
+/**
+ * Flush stdout/stderr, shut down the memory bridge if it was initialized,
+ * then `process.exit(code)`. Prevents the libuv `uv_async_send` assertion
+ * on Windows when stdout is an async pipe (issue #504).
+ */
+async function drainAndExit(code: number): Promise<void> {
+  try {
+    const { shutdownBridge } = await import('./memory/memory-bridge.js');
+    await shutdownBridge();
+  } catch {
+    // Bridge may not have been loaded — that's fine
+  }
+
+  const flush = (stream: NodeJS.WriteStream) =>
+    new Promise<void>((resolve) => {
+      if (!stream.writable) return resolve();
+      stream.write('', () => resolve());
+    });
+
+  await Promise.all([flush(process.stdout), flush(process.stderr)]);
+  process.exit(code);
+}
+
 export interface CLIOptions {
   name?: string;
   description?: string;
@@ -247,8 +270,12 @@ export class CLI {
           || 'JEST_WORKER_ID' in process.env
           || process.env.NODE_ENV === 'test';
         if (!LONG_RUNNING_COMMANDS.includes(commandName) && !isTestEnv) {
-          // Use setImmediate to let any pending I/O flush before exit
-          setImmediate(() => process.exit(0));
+          // On Windows, stdout/stderr are async pipes when captured by a
+          // parent process; `process.exit` fires uv_async_send on an already-
+          // closing handle and trips libuv's assertion in src/win/async.c
+          // (issue #504). Drain the streams and stop the memory-bridge timers
+          // before exiting.
+          void drainAndExit(0);
         }
       } else {
         // No action - show command help

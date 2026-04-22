@@ -7,13 +7,8 @@
 import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync, statSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-import { run, runNode, flo, NPM_CMD, IS_WIN } from './proc.mjs';
+import { run, runNode, flo, NPM_CMD } from './proc.mjs';
 import { section, record, recordExit, log } from './report.mjs';
-
-// Regex for the Windows-specific libuv async-handle teardown assertion that
-// crashes `flo memory list` at process exit after printing correct output
-// (bug in moflo; fix tracked separately). We downgrade to WARN in that case.
-const WIN_LIBUV_TEARDOWN_RE = /Assertion failed.*async\.c/i;
 
 // Epic #501 acceptance criterion: a fresh `npm install moflo` consumer sees
 // zero of the following packages anywhere in its dep tree.
@@ -180,18 +175,7 @@ export function memoryCrud(consumerDir) {
 
   recordExit('memory-search', flo(consumerDir, ['memory', 'search', '-q', 'smoke', '--namespace', 'smoke', '--limit', '5']));
 
-  const list = flo(consumerDir, ['memory', 'list', '--namespace', 'smoke']);
-  // `memory list` can crash at teardown on Windows (libuv async-handle
-  // assertion) after printing correct output; downgrade to WARN in that case.
-  const listedOk = /Memory Entries/.test(list.stdout);
-  const winTeardownCrash = IS_WIN && WIN_LIBUV_TEARDOWN_RE.test(list.stderr);
-  if (list.code === 0) {
-    record('memory-list', 'pass');
-  } else if (listedOk && winTeardownCrash) {
-    record('memory-list', 'warn', 'Windows libuv teardown crash after correct output (moflo bug)');
-  } else {
-    record('memory-list', 'fail', `exit ${list.code}: ${list.stderr.trim().slice(0, 200)}`);
-  }
+  recordExit('memory-list', flo(consumerDir, ['memory', 'list', '--namespace', 'smoke']));
 
   recordExit('memory-delete', flo(consumerDir, ['memory', 'delete', '-k', key, '--namespace', 'smoke']));
 }

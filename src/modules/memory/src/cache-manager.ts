@@ -447,6 +447,9 @@ export class CacheManager<T = MemoryEntry> extends EventEmitter {
     this.cleanupInterval = setInterval(() => {
       this.cleanupExpired();
     }, 60000);
+    // Don't keep the event loop alive — short-lived CLI commands shouldn't
+    // have to wait for cleanup to decide to exit (issue #504).
+    this.cleanupInterval.unref?.();
   }
 
   private cleanupExpired(): void {
