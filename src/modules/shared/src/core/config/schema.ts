@@ -112,15 +112,15 @@ export const MemoryConfigSchema = v.object({
 
 /**
  * MCP server configuration schema
+ *
+ * stdio is the only supported transport; host/port/path were removed when
+ * http/websocket transports were deleted.
  */
 export const MCPServerConfigSchema = v.object({
   name: v.optional(v.pipe(v.string(), v.minLength(1)), 'moflo'),
   version: v.optional(v.pipe(v.string(), v.minLength(1)), '3.0.0'),
   transport: v.object({
-    type: v.optional(v.picklist(['stdio', 'http', 'websocket']), 'stdio'),
-    port: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
-    host: v.optional(v.string()),
-    path: v.optional(v.string()),
+    type: v.optional(v.picklist(['stdio']), 'stdio'),
   }),
   capabilities: v.optional(v.object({
     tools: v.optional(v.boolean(), true),

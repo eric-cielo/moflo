@@ -3,7 +3,6 @@
  *
  * Manages MCP sessions with:
  * - Session lifecycle management
- * - Authentication integration
  * - Session timeout handling
  * - Concurrent session support
  * - Session metrics and monitoring
@@ -20,9 +19,6 @@ import {
   SessionState,
   SessionMetrics,
   MCPInitializeParams,
-  MCPCapabilities,
-  MCPClientInfo,
-  MCPProtocolVersion,
   TransportType,
   ILogger,
 } from './types.js';
@@ -91,7 +87,6 @@ export class SessionManager extends EventEmitter {
       createdAt: now,
       lastActivityAt: now,
       isInitialized: false,
-      isAuthenticated: false,
     };
 
     this.sessions.set(id, session);
@@ -131,24 +126,6 @@ export class SessionManager extends EventEmitter {
 
     this.emit('session:initialized', session);
     return session;
-  }
-
-  /**
-   * Authenticate a session
-   */
-  authenticateSession(sessionId: string): boolean {
-    const session = this.sessions.get(sessionId);
-    if (!session) {
-      return false;
-    }
-
-    session.isAuthenticated = true;
-    session.lastActivityAt = new Date();
-
-    this.logger.debug('Session authenticated', { sessionId });
-    this.emit('session:authenticated', session);
-
-    return true;
   }
 
   /**
@@ -266,18 +243,15 @@ export class SessionManager extends EventEmitter {
    * Get session metrics
    */
   getSessionMetrics(): SessionMetrics {
-    let authenticated = 0;
     let active = 0;
 
     for (const session of this.sessions.values()) {
-      if (session.isAuthenticated) authenticated++;
       if (session.state === 'ready') active++;
     }
 
     return {
       total: this.sessions.size,
       active,
-      authenticated,
       expired: this.totalExpired,
     };
   }
@@ -306,8 +280,6 @@ export class SessionManager extends EventEmitter {
 
     const byTransport: Record<string, number> = {
       stdio: 0,
-      http: 0,
-      websocket: 0,
       'in-process': 0,
     };
 

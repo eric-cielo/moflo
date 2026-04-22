@@ -97,32 +97,22 @@ function loadEnvConfig(): Partial<SystemConfig> {
     }
   }
 
-  // MCP transport
+  // MCP transport (only 'stdio' is supported; env var kept for forward-compat but narrowed)
   const defaultMcp = defaultSystemConfig.mcp ?? { name: 'moflo', version: '3.0.0', transport: { type: 'stdio' as const } };
   if (process.env.CLAUDE_FLOW_MCP_TRANSPORT) {
-    const transport = process.env.CLAUDE_FLOW_MCP_TRANSPORT as 'stdio' | 'http' | 'websocket';
-    if (['stdio', 'http', 'websocket'].includes(transport)) {
+    const transport = process.env.CLAUDE_FLOW_MCP_TRANSPORT;
+    if (transport === 'stdio') {
       config.mcp = {
         ...defaultMcp,
         transport: {
           ...defaultMcp.transport,
-          type: transport,
+          type: 'stdio',
         },
       };
     }
   }
 
-  if (process.env.CLAUDE_FLOW_MCP_PORT) {
-    config.mcp = {
-      ...config.mcp,
-      ...defaultMcp,
-      transport: {
-        ...config.mcp?.transport,
-        ...defaultMcp.transport,
-        port: parseInt(process.env.CLAUDE_FLOW_MCP_PORT, 10),
-      },
-    };
-  }
+  // CLAUDE_FLOW_MCP_PORT removed — stdio transport does not use a port.
 
   // Swarm topology
   const defaultSwarm = defaultSystemConfig.swarm ?? { topology: 'hierarchical-mesh' as const, maxAgents: 20 };

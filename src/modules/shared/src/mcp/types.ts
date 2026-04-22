@@ -3,8 +3,7 @@
  *
  * Optimized type definitions for the V3 MCP server with:
  * - Strict typing for performance
- * - Connection pooling types
- * - Transport layer abstractions
+ * - Transport layer abstractions (stdio only)
  * - Tool registry interfaces
  *
  * Performance Targets:
@@ -85,77 +84,18 @@ export interface MCPResponse extends MCPMessage {
 /**
  * Transport type options
  */
-export type TransportType = 'stdio' | 'http' | 'websocket' | 'in-process';
-
-/**
- * Authentication method
- */
-export type AuthMethod = 'token' | 'oauth' | 'api-key' | 'none';
-
-/**
- * Authentication configuration
- */
-export interface AuthConfig {
-  enabled: boolean;
-  method: AuthMethod;
-  tokens?: string[];
-  apiKeys?: string[];
-  jwtSecret?: string;
-  oauth?: {
-    clientId: string;
-    clientSecret: string;
-    authorizationUrl: string;
-    tokenUrl: string;
-  };
-}
-
-/**
- * Load balancer configuration
- */
-export interface LoadBalancerConfig {
-  enabled: boolean;
-  maxConcurrentRequests: number;
-  rateLimit?: {
-    requestsPerSecond: number;
-    burstSize: number;
-  };
-  circuitBreaker?: {
-    failureThreshold: number;
-    resetTimeout: number;
-  };
-}
-
-/**
- * Connection pool configuration
- */
-export interface ConnectionPoolConfig {
-  maxConnections: number;
-  minConnections: number;
-  idleTimeout: number;
-  acquireTimeout: number;
-  maxWaitingClients: number;
-  evictionRunInterval: number;
-}
+export type TransportType = 'stdio' | 'in-process';
 
 /**
  * MCP Server configuration
+ *
+ * stdio is the only supported transport; http/websocket plumbing
+ * (host/port/tls/auth/cors/pool) was removed.
  */
 export interface MCPServerConfig {
   name: string;
   version: string;
   transport: TransportType;
-  host?: string;
-  port?: number;
-  tlsEnabled?: boolean;
-  tlsCert?: string;
-  tlsKey?: string;
-  auth?: AuthConfig;
-  loadBalancer?: LoadBalancerConfig;
-  connectionPool?: ConnectionPoolConfig;
-  corsEnabled?: boolean;
-  corsOrigins?: string[];
-  maxRequestSize?: number;
-  requestTimeout?: number;
   enableMetrics?: boolean;
   enableCaching?: boolean;
   cacheTTL?: number;
@@ -181,7 +121,6 @@ export interface MCPSession {
   createdAt: Date;
   lastActivityAt: Date;
   isInitialized: boolean;
-  isAuthenticated: boolean;
   clientInfo?: MCPClientInfo;
   protocolVersion?: MCPProtocolVersion;
   capabilities?: MCPCapabilities;
@@ -368,57 +307,6 @@ export interface ITransport {
 }
 
 // ============================================================================
-// Connection Pool Types
-// ============================================================================
-
-/**
- * Connection state
- */
-export type ConnectionState = 'idle' | 'busy' | 'closing' | 'closed' | 'error';
-
-/**
- * Pooled connection
- */
-export interface PooledConnection {
-  id: string;
-  state: ConnectionState;
-  createdAt: Date;
-  lastUsedAt: Date;
-  useCount: number;
-  transport: TransportType;
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * Connection pool statistics
- */
-export interface ConnectionPoolStats {
-  totalConnections: number;
-  idleConnections: number;
-  busyConnections: number;
-  pendingRequests: number;
-  totalAcquired: number;
-  totalReleased: number;
-  totalCreated: number;
-  totalDestroyed: number;
-  avgAcquireTime: number;
-}
-
-/**
- * Connection pool interface
- */
-export interface IConnectionPool {
-  acquire(): Promise<PooledConnection>;
-  release(connection: PooledConnection): void;
-  destroy(connection: PooledConnection): void;
-
-  getStats(): ConnectionPoolStats;
-
-  drain(): Promise<void>;
-  clear(): Promise<void>;
-}
-
-// ============================================================================
 // Metrics Types
 // ============================================================================
 
@@ -456,7 +344,6 @@ export interface MCPServerMetrics {
 export interface SessionMetrics {
   total: number;
   active: number;
-  authenticated: number;
   expired: number;
 }
 
@@ -482,11 +369,7 @@ export type MCPEventType =
   | 'tool:error'
   | 'transport:connected'
   | 'transport:disconnected'
-  | 'transport:error'
-  | 'pool:connection:acquired'
-  | 'pool:connection:released'
-  | 'pool:connection:created'
-  | 'pool:connection:destroyed';
+  | 'transport:error';
 
 /**
  * MCP Event
@@ -538,8 +421,6 @@ export const ErrorCodes = {
   UNKNOWN_ERROR: -32001,
   REQUEST_CANCELLED: -32800,
   RATE_LIMITED: -32000,
-  AUTHENTICATION_REQUIRED: -32001,
-  AUTHORIZATION_FAILED: -32002,
 } as const;
 
 /**

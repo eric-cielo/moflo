@@ -11,7 +11,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Default configuration
-const DEFAULT_PORT = 3000;
 const DEFAULT_TOPOLOGY = 'hierarchical-mesh';
 const DEFAULT_MAX_AGENTS = 15;
 
@@ -89,7 +88,6 @@ function loadConfig(cwd: string): Record<string, unknown> | null {
 // Main start action
 const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
   const daemon = ctx.flags.daemon as boolean;
-  const port = (ctx.flags.port as number) || DEFAULT_PORT;
   const topology = (ctx.flags.topology as string) || DEFAULT_TOPOLOGY;
   const skipMcp = ctx.flags['skip-mcp'] as boolean;
   const cwd = ctx.cwd;
@@ -109,7 +107,6 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
   const finalTopology = topology || (swarmConfig.topology as string) || DEFAULT_TOPOLOGY;
   const maxAgents = (swarmConfig.maxAgents as number) || DEFAULT_MAX_AGENTS;
   const autoStartMcp = (mcpConfig.autoStart as boolean) !== false && !skipMcp;
-  const mcpPort = port || (mcpConfig.serverPort as number) || DEFAULT_PORT;
 
   output.writeln();
   output.writeln(output.bold('Starting MoFlo V4'));
@@ -136,7 +133,7 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
 
     spinner.succeed(`Swarm initialized (${finalTopology})`);
 
-    // Step 2: Start MCP server if configured
+    // Step 2: Start MCP server if configured (stdio only)
     let mcpResult: Record<string, unknown> | null = null;
     if (autoStartMcp) {
       spinner.setText('Starting MCP server...');
@@ -145,16 +142,14 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
       try {
         mcpResult = await callMCPTool<{
           serverId: string;
-          port: number;
           transport: string;
           startedAt: string;
         }>('mcp_start', {
-          port: mcpPort,
           transport: mcpConfig.transportType || 'stdio',
           tools: mcpConfig.tools || ['agent', 'swarm', 'memory', 'task']
         });
 
-        spinner.succeed(`MCP server started on port ${mcpPort}`);
+        spinner.succeed('MCP server started (stdio)');
       } catch (error) {
         spinner.fail('MCP server failed to start');
         output.printWarning(
@@ -194,7 +189,7 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
         `Swarm ID:  ${swarmResult.swarmId}`,
         `Topology:  ${finalTopology}`,
         `Max Agents: ${maxAgents}`,
-        `MCP Server: ${autoStartMcp ? `localhost:${mcpPort}` : 'disabled'}`,
+        `MCP Server: ${autoStartMcp ? 'stdio' : 'disabled'}`,
         `Mode:      ${daemon ? 'Daemon' : 'Foreground'}`,
         `Health:    ${healthResult.status}`
       ].join('\n'),
@@ -246,7 +241,6 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
       topology: finalTopology,
       maxAgents,
       mcp: mcpResult ? {
-        port: mcpPort,
         transport: mcpConfig.transportType || 'stdio'
       } : null,
       health: healthResult.status,
@@ -442,13 +436,6 @@ export const startCommand: Command = {
       default: false
     },
     {
-      name: 'port',
-      short: 'p',
-      description: 'MCP server port',
-      type: 'number',
-      default: DEFAULT_PORT
-    },
-    {
       name: 'topology',
       short: 't',
       description: 'Swarm topology (hierarchical-mesh, mesh, hierarchical, ring, star)',
@@ -465,7 +452,6 @@ export const startCommand: Command = {
   examples: [
     { command: 'claude-flow start', description: 'Start with configuration defaults' },
     { command: 'claude-flow start --daemon', description: 'Start as background daemon' },
-    { command: 'claude-flow start --port 3001', description: 'Start MCP on custom port' },
     { command: 'claude-flow start --topology mesh', description: 'Start with mesh topology' },
     { command: 'claude-flow start --skip-mcp', description: 'Start without MCP server' },
     { command: 'claude-flow start quick', description: 'Quick start with defaults' },

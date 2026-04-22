@@ -377,54 +377,14 @@ export const systemTools: MCPTool[] = [
       properties: {},
     },
     handler: async () => {
-      // Detect if we are running inside an MCP stdio session.
-      // When Claude Code launches us via `claude mcp add`, stdin is piped (not a TTY)
-      // and the process IS the MCP server, so it is running.
-      const isStdio = !process.stdin.isTTY;
-      const transport = process.env.CLAUDE_FLOW_MCP_TRANSPORT || (isStdio ? 'stdio' : 'http');
-      const port = parseInt(process.env.CLAUDE_FLOW_MCP_PORT || '3000', 10);
-
-      if (transport === 'stdio' || isStdio) {
-        // In stdio mode the MCP server is this process itself
-        return {
-          running: true,
-          pid: process.pid,
-          transport: 'stdio',
-          port: null,
-          host: null,
-        };
-      }
-
-      // For HTTP/WebSocket, try to check if the server is listening
-      const host = process.env.CLAUDE_FLOW_MCP_HOST || 'localhost';
-      try {
-        const { createConnection } = await import('node:net');
-        const connected = await new Promise<boolean>((resolve) => {
-          const socket = createConnection({ host, port }, () => {
-            socket.destroy();
-            resolve(true);
-          });
-          socket.on('error', () => resolve(false));
-          socket.setTimeout(2000, () => {
-            socket.destroy();
-            resolve(false);
-          });
-        });
-
-        return {
-          running: connected,
-          transport,
-          port,
-          host,
-        };
-      } catch {
-        return {
-          running: false,
-          transport,
-          port,
-          host,
-        };
-      }
+      // Only stdio transport is supported. When Claude Code launches us via
+      // `claude mcp add`, stdin is piped (not a TTY) and the process IS the
+      // MCP server, so it is running.
+      return {
+        running: true,
+        pid: process.pid,
+        transport: 'stdio',
+      };
     },
   },
   {

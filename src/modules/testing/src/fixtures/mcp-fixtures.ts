@@ -10,8 +10,10 @@ import { vi, type Mock } from 'vitest';
 
 /**
  * MCP transport types
+ *
+ * Only 'stdio' is supported; http/websocket were removed.
  */
-export type MCPTransportType = 'stdio' | 'http' | 'websocket';
+export type MCPTransportType = 'stdio';
 
 /**
  * MCP content types
@@ -109,12 +111,11 @@ export interface MCPServerConfig {
 
 /**
  * MCP transport configuration
+ *
+ * host/port/path were removed with http/websocket transports.
  */
 export interface MCPTransportConfig {
   type: MCPTransportType;
-  port?: number;
-  host?: string;
-  path?: string;
   timeout?: number;
 }
 
@@ -577,16 +578,15 @@ export const mcpPrompts: Record<string, MCPPrompt> = {
 };
 
 /**
- * Pre-defined MCP server configurations
+ * Pre-defined MCP server configurations (stdio only — the other transports
+ * were removed)
  */
 export const mcpServerConfigs: Record<string, MCPServerConfig> = {
   development: {
     name: 'claude-flow-dev',
     version: '3.0.0-alpha',
     transport: {
-      type: 'http',
-      port: 3000,
-      host: 'localhost',
+      type: 'stdio',
       timeout: 30000,
     },
     tools: Object.values(mcpTools),
@@ -605,9 +605,7 @@ export const mcpServerConfigs: Record<string, MCPServerConfig> = {
     name: 'claude-flow',
     version: '3.0.0',
     transport: {
-      type: 'http',
-      port: 443,
-      host: '0.0.0.0',
+      type: 'stdio',
       timeout: 15000,
     },
     capabilities: {
@@ -630,25 +628,6 @@ export const mcpServerConfigs: Record<string, MCPServerConfig> = {
       resources: true,
       prompts: true,
       logging: true,
-    },
-  },
-
-  websocket: {
-    name: 'claude-flow-ws',
-    version: '3.0.0-alpha',
-    transport: {
-      type: 'websocket',
-      port: 8080,
-      host: 'localhost',
-      path: '/mcp',
-      timeout: 30000,
-    },
-    capabilities: {
-      tools: true,
-      resources: true,
-      prompts: true,
-      logging: true,
-      experimental: { streaming: true, multiplexing: true },
     },
   },
 };
@@ -912,15 +891,6 @@ export const invalidMCPConfigs = {
     name: '',
   },
 
-  invalidPort: {
-    ...mcpServerConfigs.development,
-    transport: {
-      type: 'http' as MCPTransportType,
-      port: -1,
-      host: 'localhost',
-    },
-  },
-
   missingTransport: {
     name: 'invalid-server',
     version: '1.0.0',
@@ -995,7 +965,7 @@ export function createMockMCPServer(): MockMCPServer {
     }),
     getStatus: vi.fn().mockReturnValue({
       running: true,
-      transport: 'http',
+      transport: 'stdio',
       connectedClients: 1,
       toolsRegistered: Object.keys(mcpTools).length,
       resourcesRegistered: Object.keys(mcpResources).length,

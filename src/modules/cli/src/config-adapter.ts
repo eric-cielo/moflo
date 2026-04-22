@@ -41,12 +41,10 @@ export function systemConfigToV3Config(systemConfig: SystemConfig): V3Config {
       vectorDimension: systemConfig.memory?.agentdb?.dimensions ?? 1536,
     },
 
-    // MCP configuration
+    // MCP configuration (only stdio transport is supported)
     mcp: {
-      serverHost: systemConfig.mcp?.transport?.host || 'localhost',
-      serverPort: systemConfig.mcp?.transport?.port ?? 3000,
       autoStart: false, // Not in SystemConfig
-      transportType: systemConfig.mcp?.transport?.type || 'stdio',
+      transportType: 'stdio',
       tools: [], // Not in SystemConfig
     },
 
@@ -135,9 +133,7 @@ export function v3ConfigToSystemConfig(v3Config: V3Config): Partial<SystemConfig
       name: 'moflo',
       version: '3.0.0',
       transport: {
-        type: v3Config.mcp.transportType as 'stdio' | 'http' | 'websocket',
-        host: v3Config.mcp.serverHost,
-        port: v3Config.mcp.serverPort,
+        type: 'stdio',
       },
       capabilities: {
         tools: true,

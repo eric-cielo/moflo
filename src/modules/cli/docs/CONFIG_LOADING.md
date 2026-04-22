@@ -91,10 +91,8 @@ interface V3Config {
   };
 
   mcp: {
-    serverHost: string;
-    serverPort: number;
     autoStart: boolean;
-    transportType: 'stdio' | 'http' | 'websocket';
+    transportType: 'stdio';
     tools: string[];
   };
 
