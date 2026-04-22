@@ -22,6 +22,7 @@ import {
   checkHookExecution,
   checkMcpSpellIntegration,
   checkGateHealth,
+  checkMofloDbBridge,
   getMofloRoot,
 } from './doctor-checks-deep.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
@@ -1455,6 +1456,7 @@ export const doctorCommand: Command = {
       checkMcpSpellIntegration,
       checkHookExecution,
       checkGateHealth,
+      checkMofloDbBridge,
       checkSandboxTier,
     ];
 
@@ -1491,6 +1493,8 @@ export const doctorCommand: Command = {
       'gate': checkGateHealth,
       'sandbox': checkSandboxTier,
       'sandbox-tier': checkSandboxTier,
+      'moflodb': checkMofloDbBridge,
+      'bridge': checkMofloDbBridge,
     };
 
     let checksToRun = allChecks;

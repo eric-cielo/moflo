@@ -12,8 +12,10 @@
 
 import {
   cosineSim,
+  execRows,
   generateId,
   getRegistry,
+  persistBridgeDb,
   withDb,
 } from './bridge-core.js';
 import {
@@ -24,6 +26,8 @@ import {
 // ===== Re-exports: primitives =====
 
 export {
+  REQUIRED_BRIDGE_CONTROLLERS,
+  getBridgeLastError,
   getControllerRegistry,
   isBridgeAvailable,
   refreshVectorStatsCache,
@@ -111,10 +115,11 @@ export async function bridgeGetHNSWStatus(
   return withDb(dbPath, async (ctx) => {
     let entryCount = 0;
     try {
-      const row = ctx.db.prepare(
+      const rows = execRows(
+        ctx.db,
         `SELECT COUNT(*) as cnt FROM memory_entries WHERE status = 'active' AND embedding IS NOT NULL`,
-      ).get();
-      entryCount = row?.cnt ?? 0;
+      );
+      entryCount = Number(rows[0]?.cnt ?? 0);
     } catch {
       // Table might not exist
     }
@@ -141,15 +146,15 @@ export async function bridgeSearchHNSW(
       ? `AND namespace = ?`
       : '';
 
-    let rows: any[];
+    let rows: Record<string, unknown>[];
     try {
-      const stmt = ctx.db.prepare(`
+      const sql = `
         SELECT id, key, namespace, content, embedding
         FROM memory_entries
         WHERE status = 'active' AND embedding IS NOT NULL ${nsFilter}
         LIMIT 10000
-      `);
-      rows = nsFilter ? stmt.all(options!.namespace) : stmt.all();
+      `;
+      rows = nsFilter ? execRows(ctx.db, sql, [options!.namespace]) : execRows(ctx.db, sql);
     } catch {
       return null;
     }
@@ -159,16 +164,16 @@ export async function bridgeSearchHNSW(
     for (const row of rows) {
       if (!row.embedding) continue;
       try {
-        const emb = JSON.parse(row.embedding) as number[];
+        const emb = JSON.parse(String(row.embedding)) as number[];
         const score = cosineSim(queryEmbedding, emb);
         if (score >= threshold) {
+          const content = String(row.content || '');
           results.push({
             id: String(row.id).substring(0, 12),
-            key: row.key || String(row.id).substring(0, 15),
-            content: (row.content || '').substring(0, 60) +
-              ((row.content || '').length > 60 ? '...' : ''),
+            key: String(row.key || row.id).substring(0, 15),
+            content: content.substring(0, 60) + (content.length > 60 ? '...' : ''),
             score,
-            namespace: row.namespace || 'default',
+            namespace: String(row.namespace || 'default'),
           });
         }
       } catch {
@@ -196,11 +201,12 @@ export async function bridgeAddToHNSW(
         embedding, embedding_dimensions, embedding_model,
         created_at, updated_at, status
       ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, 'Xenova/all-MiniLM-L6-v2', ?, ?, 'active')
-    `).run(
+    `).run([
       id, entry.key, entry.namespace, entry.content,
       embeddingJson, embedding.length,
       now, now,
-    );
+    ]);
+    persistBridgeDb(ctx.db, dbPath);
     return true;
   });
 }

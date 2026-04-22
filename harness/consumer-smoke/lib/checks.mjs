@@ -219,6 +219,60 @@ export function mcpTools(consumerDir) {
   }
 }
 
+/**
+ * Probe the bridge itself — asserts it actually initializes, not just that
+ * moflodb_* tools are registered (the MCP tool list check above is theatre
+ * on its own; the whole subsystem can be non-functional while listed).
+ */
+export function moflodbBridge(consumerDir) {
+  section('MofloDb bridge health');
+  const probe = join(consumerDir, 'moflodb-bridge-probe.mjs');
+  const bridgePath = join(consumerDir, 'node_modules', 'moflo', 'src', 'modules', 'cli', 'dist', 'src', 'memory', 'memory-bridge.js')
+    .replace(/\\/g, '/');
+  writeFileSync(probe, `
+import { pathToFileURL } from 'node:url';
+const bridge = await import(pathToFileURL(${JSON.stringify(bridgePath)}).href);
+const health = await bridge.bridgeHealthCheck();
+const controllers = await bridge.bridgeListControllers();
+console.log(JSON.stringify({
+  available: !!health?.available,
+  controllerCount: Array.isArray(controllers) ? controllers.length : 0,
+  controllerNames: Array.isArray(controllers) ? controllers.map(c => c.name) : [],
+  required: Array.isArray(bridge.REQUIRED_BRIDGE_CONTROLLERS) ? [...bridge.REQUIRED_BRIDGE_CONTROLLERS] : [],
+  attestationCount: health?.attestationCount ?? null,
+  hasCacheStats: !!health?.cacheStats,
+}));
+`);
+
+  const r = runNode(probe, [], { cwd: consumerDir, timeout: 60_000, env: { MOFLO_BRIDGE_QUIET: '1' } });
+  if (r.code !== 0) {
+    record('moflodb-bridge', 'fail', `probe exit ${r.code}: ${(r.stderr || r.stdout).trim().slice(0, 300)}`);
+    return;
+  }
+
+  let parsed;
+  try { parsed = JSON.parse(r.stdout.trim()); } catch {
+    record('moflodb-bridge', 'fail', `probe stdout not JSON: ${r.stdout.trim().slice(0, 200)}`);
+    return;
+  }
+
+  if (!parsed.available) {
+    record('moflodb-bridge:available', 'fail', 'bridgeHealthCheck returned available=false');
+    return;
+  }
+  record('moflodb-bridge:available', 'pass');
+
+  const required = parsed.required.length > 0
+    ? parsed.required
+    : ['hierarchicalMemory', 'tieredCache', 'memoryConsolidation', 'memoryGraph'];
+  const missing = required.filter(n => !parsed.controllerNames.includes(n));
+  if (missing.length > 0) {
+    record('moflodb-bridge:controllers', 'fail', `missing required controllers: ${missing.join(', ')}`);
+  } else {
+    record('moflodb-bridge:controllers', 'pass', `${parsed.controllerCount} loaded (${required.length} required present)`);
+  }
+}
+
 export function floSearch(consumerDir) {
   section('flo-search CLI');
   const bin = join(consumerDir, 'node_modules', 'moflo', 'bin', 'semantic-search.mjs');

@@ -11,7 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { mofloImport } from '../services/moflo-require.js';
+import { mofloImport, importMofloMemory } from '../services/moflo-require.js';
 
 /**
  * Write vector-stats.json cache for the statusline (no subprocess needed).
@@ -406,8 +406,10 @@ export async function getHNSWIndex(options?: {
   hnswInitializing = true;
 
   try {
-    // Use HnswLite pure TS implementation (no native dependencies)
-    const memoryModule = await import('@moflo/memory') as any;
+    // Use HnswLite pure TS implementation (no native dependencies). The
+    // shared resolver handles the consumer case where @moflo/memory is not
+    // a declared dep and must be loaded via a relative URL fallback.
+    const memoryModule = await importMofloMemory(import.meta.url);
     if (!('HnswLite' in memoryModule) || memoryModule.HnswLite === undefined) {
       // Shape-check (issue #482): warn loudly and bail — the outer catch
       // would otherwise swallow a cryptic "undefined is not a constructor".

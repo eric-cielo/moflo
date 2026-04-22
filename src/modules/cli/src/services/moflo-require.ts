@@ -89,3 +89,20 @@ export function mofloResolve(specifier: string): string | null {
     return null;
   }
 }
+
+/**
+ * Import `@moflo/memory` from within a moflo source module. The root `moflo`
+ * package ships @moflo/memory as a source folder rather than a declared
+ * dependency, so `mofloImport('@moflo/memory')` fails in consumer installs
+ * (node_modules/@moflo/memory/ doesn't exist). Fall back to a URL resolved
+ * relative to the caller's file — the same src/modules/memory/dist/index.js
+ * layout holds in both dev and consumer.
+ *
+ * @param callerUrl `import.meta.url` of the file that needs @moflo/memory
+ */
+export async function importMofloMemory(callerUrl: string): Promise<any> {
+  const viaRequire = await mofloImport('@moflo/memory');
+  if (viaRequire) return viaRequire;
+  const memoryUrl = new URL('../../../../memory/dist/index.js', callerUrl);
+  return import(memoryUrl.href);
+}

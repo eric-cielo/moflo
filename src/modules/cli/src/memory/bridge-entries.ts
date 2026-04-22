@@ -8,7 +8,7 @@
  * @module v3/cli/bridge-entries
  */
 
-import { cosineSim, generateId, refreshVectorStatsCache, withDb } from './bridge-core.js';
+import { cosineSim, execRows, generateId, persistBridgeDb, refreshVectorStatsCache, withDb } from './bridge-core.js';
 
 function makeEntryCacheKey(namespace: string, key: string): string {
   const safeNs = String(namespace).replace(/:/g, '_');
@@ -44,13 +44,13 @@ function bm25Score(
 
 function computeTermDocFreqs(
   queryTerms: string[],
-  rows: Array<{ content: string }>,
+  rows: Array<{ content?: unknown }>,
 ): { termDocFreqs: Map<string, number>; avgDocLength: number } {
   const termDocFreqs = new Map<string, number>();
   let totalLength = 0;
 
   for (const row of rows) {
-    const content = (row.content || '').toLowerCase();
+    const content = String(row.content || '').toLowerCase();
     const words = content.split(/\s+/);
     totalLength += words.length;
 
@@ -171,15 +171,17 @@ export async function bridgeStoreEntry(options: {
           tags, metadata, created_at, updated_at, expires_at, status
         ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, ?, ?, ?, 'active')`;
 
+    // sql.js Statement.run takes an array of bindings — not varargs.
     const stmt = ctx.db.prepare(insertSql);
-    stmt.run(
+    stmt.run([
       id, key, namespace, value,
       embeddingJson, dimensions || null, model,
       tags.length > 0 ? JSON.stringify(tags) : null,
       '{}',
       now, now,
       ttl ? now + (ttl * 1000) : null,
-    );
+    ]);
+    persistBridgeDb(ctx.db, options.dbPath);
 
     const cacheKey = makeEntryCacheKey(namespace, key);
     await cacheSet(registry, cacheKey, { id, key, namespace, content: value, embedding: embeddingJson });
@@ -239,15 +241,15 @@ export async function bridgeSearchEntries(options: {
 
     const nsFilter = namespace !== 'all' ? `AND namespace = ?` : '';
 
-    let rows: any[];
+    let rows: Record<string, unknown>[];
     try {
-      const stmt = ctx.db.prepare(`
+      const sql = `
         SELECT id, key, namespace, content, embedding
         FROM memory_entries
         WHERE status = 'active' ${nsFilter}
         LIMIT 1000
-      `);
-      rows = namespace !== 'all' ? stmt.all(namespace) : stmt.all();
+      `;
+      rows = namespace !== 'all' ? execRows(ctx.db, sql, [namespace]) : execRows(ctx.db, sql);
     } catch {
       return null;
     }
@@ -261,18 +263,19 @@ export async function bridgeSearchEntries(options: {
     for (const row of rows) {
       let semanticScore = 0;
       let bm25ScoreVal = 0;
+      const rowContent = String(row.content || '');
 
       if (queryEmbedding && row.embedding) {
         try {
-          const embedding = JSON.parse(row.embedding) as number[];
+          const embedding = JSON.parse(String(row.embedding)) as number[];
           semanticScore = cosineSim(queryEmbedding, embedding);
         } catch {
           // Invalid embedding
         }
       }
 
-      if (queryTerms.length > 0 && row.content) {
-        bm25ScoreVal = bm25Score(queryTerms, row.content, avgDocLength, docCount, termDocFreqs);
+      if (queryTerms.length > 0 && rowContent) {
+        bm25ScoreVal = bm25Score(queryTerms, rowContent, avgDocLength, docCount, termDocFreqs);
         bm25ScoreVal = Math.min(bm25ScoreVal / 10, 1.0);
       }
 
@@ -286,10 +289,10 @@ export async function bridgeSearchEntries(options: {
 
         results.push({
           id: String(row.id).substring(0, 12),
-          key: row.key || String(row.id).substring(0, 15),
-          content: (row.content || '').substring(0, 60) + ((row.content || '').length > 60 ? '...' : ''),
+          key: String(row.key || row.id).substring(0, 15),
+          content: rowContent.substring(0, 60) + (rowContent.length > 60 ? '...' : ''),
           score,
-          namespace: row.namespace || 'default',
+          namespace: String(row.namespace || 'default'),
           provenance,
         });
       }
@@ -333,32 +336,34 @@ export async function bridgeListEntries(options: {
 
     let total = 0;
     try {
-      const countStmt = ctx.db.prepare(
+      const countRows = execRows(
+        ctx.db,
         `SELECT COUNT(*) as cnt FROM memory_entries WHERE status = 'active' ${nsFilter}`,
+        nsParams,
       );
-      const countRow = countStmt.get(...nsParams);
-      total = countRow?.cnt ?? 0;
+      total = Number(countRows[0]?.cnt ?? 0);
     } catch {
       return null;
     }
 
     const entries: any[] = [];
     try {
-      const stmt = ctx.db.prepare(`
-        SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at
-        FROM memory_entries
-        WHERE status = 'active' ${nsFilter}
-        ORDER BY updated_at DESC
-        LIMIT ? OFFSET ?
-      `);
-      const rows = stmt.all(...nsParams, limit, offset);
+      const rows = execRows(
+        ctx.db,
+        `SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at
+         FROM memory_entries
+         WHERE status = 'active' ${nsFilter}
+         ORDER BY updated_at DESC
+         LIMIT ? OFFSET ?`,
+        [...nsParams, limit, offset],
+      );
       for (const row of rows) {
         entries.push({
           id: String(row.id).substring(0, 20),
           key: row.key || String(row.id).substring(0, 15),
           namespace: row.namespace || 'default',
-          size: (row.content || '').length,
-          accessCount: row.access_count ?? 0,
+          size: String(row.content || '').length,
+          accessCount: Number(row.access_count ?? 0),
           createdAt: row.created_at || new Date().toISOString(),
           updatedAt: row.updated_at || new Date().toISOString(),
           hasEmbedding: !!(row.embedding && String(row.embedding).length > 10),
@@ -428,7 +433,12 @@ export async function bridgeGetEntry(options: {
         WHERE status = 'active' AND key = ? AND namespace = ?
         LIMIT 1
       `);
-      row = stmt.get(key, namespace);
+      // sql.js: Statement.get returns a positional array, not an object.
+      // Use getAsObject to read columns by name downstream. Bindings are
+      // passed as a single array — varargs are silently ignored.
+      row = stmt.getAsObject([key, namespace]);
+      // getAsObject returns {} when no row matches; treat as null.
+      if (!row || Object.keys(row).length === 0) row = null;
     } catch {
       return null;
     }
@@ -438,7 +448,7 @@ export async function bridgeGetEntry(options: {
     try {
       ctx.db.prepare(
         `UPDATE memory_entries SET access_count = access_count + 1, last_accessed_at = ? WHERE id = ?`,
-      ).run(Date.now(), row.id);
+      ).run([Date.now(), row.id]);
     } catch {
       // Non-fatal
     }
@@ -492,15 +502,19 @@ export async function bridgeDeleteEntry(options: {
 
     let changes = 0;
     try {
-      const result = ctx.db.prepare(`
+      ctx.db.prepare(`
         UPDATE memory_entries
         SET status = 'deleted', updated_at = ?
         WHERE key = ? AND namespace = ? AND status = 'active'
-      `).run(Date.now(), key, namespace);
-      changes = result?.changes ?? 0;
+      `).run([Date.now(), key, namespace]);
+      // sql.js Statement.run returns true/false, not { changes }. Use
+      // db.getRowsModified() to read the row count from the last statement.
+      changes = ctx.db.getRowsModified?.() ?? 0;
     } catch {
       return null;
     }
+
+    if (changes > 0) persistBridgeDb(ctx.db, options.dbPath);
 
     await cacheInvalidate(registry, makeEntryCacheKey(namespace, key));
 
@@ -510,8 +524,8 @@ export async function bridgeDeleteEntry(options: {
 
     let remaining = 0;
     try {
-      const row = ctx.db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE status = 'active'`).get();
-      remaining = row?.cnt ?? 0;
+      const result = ctx.db.exec(`SELECT COUNT(*) as cnt FROM memory_entries WHERE status = 'active'`);
+      remaining = result[0]?.values?.[0]?.[0] ?? 0;
     } catch {
       // Non-fatal
     }

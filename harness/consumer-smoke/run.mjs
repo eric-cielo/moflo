@@ -70,6 +70,7 @@ function main() {
       () => check.memoryCrud(consumerDir),
       () => check.spellList(consumerDir),
       () => check.mcpTools(consumerDir),
+      () => check.moflodbBridge(consumerDir),
       () => check.floSearch(consumerDir),
       () => check.hooks(consumerDir),
       () => check.floSkillPackaged(consumerDir),

@@ -145,6 +145,7 @@ describe('ControllerRegistry', () => {
     if (registry.isInitialized()) {
       await registry.shutdown();
     }
+    vi.restoreAllMocks();
   });
 
   // ----- Lifecycle Tests -----
@@ -735,6 +736,12 @@ describe('ControllerRegistry', () => {
     });
 
     it('should not instantiate sqljs-required controllers when mofloDb missing', async () => {
+      // Simulate a failed sqljs init by stubbing the private initSqlJs
+      // hook — it leaves `mofloDb` null, which gates `skills` / `reflexion`.
+      vi.spyOn(registry as any, 'initSqlJs').mockImplementation(async function (this: any) {
+        this.mofloDb = null;
+        this.emit('mofloDb:unavailable', { reason: 'simulated' });
+      });
       await registry.initialize({
         backend: mockBackend,
         controllers: { skills: true, reflexion: true },
