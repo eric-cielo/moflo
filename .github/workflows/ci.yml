@@ -106,5 +106,4 @@ jobs:
         run: npm run lint
 
       - name: Security audit
-        run: npm audit --audit-level=high || true
-        continue-on-error: true
+        run: npm audit --audit-level=high
