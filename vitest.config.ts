@@ -56,8 +56,6 @@ export default defineConfig({
       'tests/rvf-*.test.ts',
       // Context persistence hook — missing deps
       'tests/context-persistence-hook.test.mjs',
-      // Security module test — needs native bcrypt
-      'src/modules/security/__tests__/password-hasher.test.ts',
       // Embeddings .mjs tests — collection failures
       'src/modules/embeddings/__tests__/simple.test.mjs',
       'src/modules/embeddings/__tests__/minimal.test.mjs',

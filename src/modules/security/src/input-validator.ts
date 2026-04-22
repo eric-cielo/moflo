@@ -314,7 +314,6 @@ export const PathSchema = v.pipe(
  * Security configuration schema
  */
 export const SecurityConfigSchema = v.object({
-  bcryptRounds: v.optional(v.pipe(v.number(), v.integer(), v.minValue(10), v.maxValue(20)), 12),
   jwtExpiresIn: v.optional(v.string(), '24h'),
   sessionTimeout: v.optional(v.pipe(v.number(), v.minValue(0, 'Must be non-negative')), 3600000),
   maxLoginAttempts: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1)), 5),

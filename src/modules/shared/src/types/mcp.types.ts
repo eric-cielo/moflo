@@ -103,12 +103,12 @@ export interface MCPServerConfig {
 
 /**
  * MCP transport configuration
+ *
+ * Only 'stdio' is supported; host/port/path were removed when http/websocket
+ * transports were deleted.
  */
 export interface MCPTransportConfig {
-  type: 'stdio' | 'http' | 'websocket';
-  port?: number;
-  host?: string;
-  path?: string;
+  type: 'stdio';
 }
 
 /**

@@ -26,16 +26,6 @@ npm update @anthropic-ai/claude-code@^2.0.31
 npm audit --audit-level high
 ```
 
-### CVE-2: Weak Password Hashing
-```typescript
-// ❌ Old: SHA-256 with hardcoded salt
-const hash = crypto.createHash('sha256').update(password + salt).digest('hex');
-
-// ✅ New: bcrypt with 12 rounds
-import bcrypt from 'bcrypt';
-const hash = await bcrypt.hash(password, 12);
-```
-
 ### CVE-3: Hardcoded Credentials
 ```typescript
 // ✅ Generate secure random credentials

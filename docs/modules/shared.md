@@ -15,7 +15,7 @@
 - **Configuration** - Schema validation, loading, and default values
 - **Event System** - Event bus, coordinator, and handler utilities
 - **Hooks System** - Pre/post execution hooks for extensibility
-- **MCP Infrastructure** - Server, transport, connection pool, and tool registry
+- **MCP Infrastructure** - Server, stdio transport, and tool registry
 - **Health Monitoring** - Health checks and monitoring utilities
 
 ## Installation
@@ -230,7 +230,6 @@ const result = await hooks.execute('task', context, async (ctx) => {
 import {
   createMCPServer,
   createToolRegistry,
-  createConnectionPool,
   createSessionManager,
   defineTool,
   quickStart,
@@ -250,12 +249,6 @@ registry.register(defineTool({
   inputSchema: { type: 'object', properties: { topology: { type: 'string' } } },
   handler: async (params) => ({ result: 'initialized' }),
 }));
-
-// Connection pool
-const pool = createConnectionPool({
-  maxConnections: 10,
-  acquireTimeoutMs: 30000,
-});
 
 // Session manager
 const sessions = createSessionManager({ timeoutMs: 3600000 });

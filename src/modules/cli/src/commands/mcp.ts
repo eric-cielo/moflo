@@ -54,26 +54,12 @@ const startCommand: Command = {
   description: 'Start MCP server',
   options: [
     {
-      name: 'port',
-      short: 'p',
-      description: 'Server port',
-      type: 'number',
-      default: 3000
-    },
-    {
-      name: 'host',
-      short: 'h',
-      description: 'Server host',
-      type: 'string',
-      default: 'localhost'
-    },
-    {
       name: 'transport',
       short: 't',
-      description: 'Transport type (stdio, http, websocket)',
+      description: 'Transport type (stdio only; http/websocket were removed)',
       type: 'string',
       default: 'stdio',
-      choices: ['stdio', 'http', 'websocket']
+      choices: ['stdio']
     },
     {
       name: 'tools',
@@ -98,14 +84,11 @@ const startCommand: Command = {
   ],
   examples: [
     { command: 'claude-flow mcp start', description: 'Start with defaults (stdio)' },
-    { command: 'claude-flow mcp start -p 8080 -t http', description: 'Start HTTP server' },
     { command: 'claude-flow mcp start -d', description: 'Start as daemon' },
     { command: 'claude-flow mcp start -f', description: 'Force restart (kill existing)' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const port = (ctx.flags.port as number) ?? 3000;
-    const host = (ctx.flags.host as string) ?? 'localhost';
-    const transport = (ctx.flags.transport as 'stdio' | 'http' | 'websocket') ?? 'stdio';
+    const transport = (ctx.flags.transport as 'stdio') ?? 'stdio';
     const tools = (ctx.flags.tools as string) || 'all';
     const daemon = (ctx.flags.daemon as boolean) ?? false;
     const force = (ctx.flags.force as boolean) ?? false;
@@ -126,18 +109,6 @@ const startCommand: Command = {
     // Check if already running via server status
     const existingStatus = await getMCPServerStatus();
     if (existingStatus.running) {
-      // For non-stdio transports, check health unless --force is specified
-      if (!force && transport !== 'stdio') {
-        const manager = getServerManager();
-        const health = await manager.checkHealth();
-
-        if (health.healthy) {
-          output.printWarning(`MCP Server already running (PID: ${existingStatus.pid})`);
-          output.writeln(output.dim('Use "claude-flow mcp stop" to stop the server first, or use --force'));
-          return { success: false, exitCode: 1 };
-        }
-      }
-
       if (force) {
         // Force restart — kill existing and continue
         output.printWarning(`MCP Server (PID: ${existingStatus.pid}) - restarting...`);
@@ -170,8 +141,6 @@ const startCommand: Command = {
 
     const options: MCPServerOptions = {
       transport,
-      host,
-      port,
       tools: !tools || tools === 'all' ? 'all' : tools.split(','),
       daemonize: daemon,
     };
@@ -208,8 +177,6 @@ const startCommand: Command = {
         data: [
           { property: 'Server PID', value: status.pid || process.pid },
           { property: 'Transport', value: transport },
-          { property: 'Host', value: host },
-          { property: 'Port', value: port },
           { property: 'Tools', value: !tools || tools === 'all' ? '27 enabled' : `${tools.split(',').length} enabled` },
           { property: 'Status', value: output.success('Running') }
         ]
@@ -217,13 +184,6 @@ const startCommand: Command = {
 
       output.writeln();
       output.printSuccess('MCP Server started');
-
-      if (transport === 'http') {
-        output.writeln(output.dim(`  Health: http://${host}:${port}/health`));
-        output.writeln(output.dim(`  RPC: http://${host}:${port}/rpc`));
-      } else if (transport === 'websocket') {
-        output.writeln(output.dim(`  WebSocket: ws://${host}:${port}/ws`));
-      }
 
       if (daemon) {
         output.writeln(output.dim('  Running in background mode'));
@@ -346,12 +306,6 @@ const statusCommand: Command = {
         { metric: 'PID', value: status.pid },
         { metric: 'Transport', value: status.transport },
       ];
-
-      // Only show host/port for non-stdio transports
-      if (status.transport !== 'stdio') {
-        displayData.push({ metric: 'Host', value: status.host });
-        displayData.push({ metric: 'Port', value: status.port });
-      }
 
       if (status.uptime !== undefined) {
         displayData.push({ metric: 'Uptime', value: formatUptime(status.uptime) });
@@ -794,8 +748,7 @@ export const mcpCommand: Command = {
   ],
   options: [],
   examples: [
-    { command: 'claude-flow mcp start', description: 'Start MCP server' },
-    { command: 'claude-flow mcp start -t http -p 8080', description: 'Start HTTP server on port 8080' },
+    { command: 'claude-flow mcp start', description: 'Start MCP server (stdio)' },
     { command: 'claude-flow mcp status', description: 'Show server status' },
     { command: 'claude-flow mcp tools', description: 'List tools' },
     { command: 'claude-flow mcp stop', description: 'Stop the server' }

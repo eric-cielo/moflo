@@ -117,10 +117,8 @@ export interface MemoryConfig {
 }
 
 export interface MCPConfig {
-  serverHost: string;
-  serverPort: number;
   autoStart: boolean;
-  transportType: 'stdio' | 'http' | 'websocket';
+  transportType: 'stdio';
   tools: string[];
 }
 

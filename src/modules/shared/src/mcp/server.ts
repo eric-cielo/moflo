@@ -2,10 +2,9 @@
  * V3 MCP Server Implementation
  *
  * Optimized MCP server with:
- * - Connection pooling for efficient resource usage
  * - Fast tool registration (<10ms)
  * - Optimized request routing (<50ms overhead)
- * - Multiple transport support (stdio, http, websocket, in-process)
+ * - Transport support (stdio, in-process)
  * - Session management with timeout handling
  * - Comprehensive metrics and monitoring
  *
@@ -32,13 +31,11 @@ import {
   MCPServerError,
   ErrorCodes,
   ITransport,
-  TransportType,
   ILogger,
   ToolContext,
 } from './types.js';
 import { ToolRegistry, createToolRegistry } from './tool-registry.js';
 import { SessionManager, createSessionManager } from './session-manager.js';
-import { ConnectionPool, createConnectionPool } from './connection-pool.js';
 import { createTransport, TransportManager, createTransportManager } from './transport/index.js';
 
 /**
@@ -48,14 +45,10 @@ const DEFAULT_CONFIG: Partial<MCPServerConfig> = {
   name: 'Claude-Flow MCP Server V3',
   version: '3.0.0',
   transport: 'stdio',
-  host: 'localhost',
-  port: 3000,
   enableMetrics: true,
   enableCaching: true,
   cacheTTL: 10000,
   logLevel: 'info',
-  requestTimeout: 30000,
-  maxRequestSize: 10 * 1024 * 1024,
 };
 
 /**
@@ -84,7 +77,6 @@ export class MCPServer extends EventEmitter implements IMCPServer {
   private readonly config: MCPServerConfig;
   private readonly toolRegistry: ToolRegistry;
   private readonly sessionManager: SessionManager;
-  private readonly connectionPool?: ConnectionPool;
   private readonly transportManager: TransportManager;
   private transport?: ITransport;
   private running = false;
@@ -138,15 +130,6 @@ export class MCPServer extends EventEmitter implements IMCPServer {
     });
     this.transportManager = createTransportManager(logger);
 
-    // Initialize connection pool if enabled
-    if (this.config.connectionPool) {
-      this.connectionPool = createConnectionPool(
-        this.config.connectionPool,
-        logger,
-        this.config.transport
-      );
-    }
-
     // Setup event handlers
     this.setupEventHandlers();
   }
@@ -169,16 +152,9 @@ export class MCPServer extends EventEmitter implements IMCPServer {
     });
 
     try {
-      // Create and start transport
+      // Create and start transport (only stdio / in-process are supported)
       this.transport = createTransport(this.config.transport, this.logger, {
         type: this.config.transport,
-        host: this.config.host,
-        port: this.config.port,
-        corsEnabled: this.config.corsEnabled,
-        corsOrigins: this.config.corsOrigins,
-        auth: this.config.auth,
-        maxRequestSize: String(this.config.maxRequestSize),
-        requestTimeout: this.config.requestTimeout,
       } as any);
 
       // Setup request handler
@@ -236,11 +212,6 @@ export class MCPServer extends EventEmitter implements IMCPServer {
       // Clear sessions
       this.sessionManager.clearAll();
 
-      // Clear connection pool
-      if (this.connectionPool) {
-        await this.connectionPool.clear();
-      }
-
       this.running = false;
       this.currentSession = undefined;
 
@@ -288,7 +259,6 @@ export class MCPServer extends EventEmitter implements IMCPServer {
         : { healthy: false, error: 'Transport not initialized' };
 
       const sessionMetrics = this.sessionManager.getSessionMetrics();
-      const poolStats = this.connectionPool?.getStats();
 
       const metrics: Record<string, number> = {
         registeredTools: this.toolRegistry.getToolCount(),
@@ -299,12 +269,6 @@ export class MCPServer extends EventEmitter implements IMCPServer {
         activeSessions: sessionMetrics.active,
         ...(transportHealth.metrics || {}),
       };
-
-      if (poolStats) {
-        metrics.poolConnections = poolStats.totalConnections;
-        metrics.poolIdleConnections = poolStats.idleConnections;
-        metrics.poolBusyConnections = poolStats.busyConnections;
-      }
 
       return {
         healthy: this.running && transportHealth.healthy,

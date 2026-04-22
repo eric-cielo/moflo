@@ -18,8 +18,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { spawn, ChildProcess } from 'child_process';
-import { createServer, Server } from 'http';
+import type { ChildProcess } from 'child_process';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -33,16 +32,16 @@ const __dirname = dirname(__filename);
 
 /**
  * MCP Server configuration
+ *
+ * Only 'stdio' transport is supported — http/websocket were removed to avoid
+ * pulling in express/ws/cors/helmet.
  */
 export interface MCPServerOptions {
-  transport?: 'stdio' | 'http' | 'websocket';
-  host?: string;
-  port?: number;
+  transport?: 'stdio';
   pidFile?: string;
   logFile?: string;
   tools?: string[] | 'all';
   daemonize?: boolean;
-  timeout?: number;
 }
 
 /**
@@ -52,8 +51,6 @@ export interface MCPServerStatus {
   running: boolean;
   pid?: number;
   transport?: string;
-  host?: string;
-  port?: number;
   uptime?: number;
   tools?: number;
   startedAt?: string;
@@ -69,13 +66,10 @@ export interface MCPServerStatus {
  */
 const DEFAULT_OPTIONS: Required<MCPServerOptions> = {
   transport: 'stdio',
-  host: 'localhost',
-  port: 3000,
   pidFile: path.join(os.tmpdir(), 'claude-flow-mcp.pid'),
   logFile: path.join(os.tmpdir(), 'claude-flow-mcp.log'),
   tools: 'all',
   daemonize: false,
-  timeout: 30000,
 };
 
 /**
@@ -86,7 +80,6 @@ const DEFAULT_OPTIONS: Required<MCPServerOptions> = {
 export class MCPServerManager extends EventEmitter {
   private options: Required<MCPServerOptions>;
   private process?: ChildProcess;
-  private server?: Server;
   private startTime?: Date;
   private healthCheckInterval?: NodeJS.Timeout;
 
@@ -111,13 +104,8 @@ export class MCPServerManager extends EventEmitter {
     this.emit('starting', { options: this.options });
 
     try {
-      if (this.options.transport === 'stdio') {
-        // For stdio transport, spawn the server process
-        await this.startStdioServer();
-      } else {
-        // For HTTP/WebSocket, start in-process server
-        await this.startHttpServer();
-      }
+      // Only stdio is supported — start the stdio server in-process.
+      await this.startStdioServer();
 
       const duration = performance.now() - startTime;
 
@@ -175,13 +163,6 @@ export class MCPServerManager extends EventEmitter {
         this.process = undefined;
       }
 
-      if (this.server) {
-        await new Promise<void>((resolve) => {
-          this.server!.close(() => resolve());
-        });
-        this.server = undefined;
-      }
-
       // Remove PID file
       await this.removePidFile();
 
@@ -233,64 +214,33 @@ export class MCPServerManager extends EventEmitter {
       running: true,
       pid,
       transport: this.options.transport,
-      host: this.options.host,
-      port: this.options.port,
       startedAt: this.startTime?.toISOString(),
       uptime: this.startTime
         ? Math.floor((Date.now() - this.startTime.getTime()) / 1000)
         : undefined,
     };
 
-    // Get health status for HTTP transport
-    if (this.options.transport !== 'stdio') {
-      status.health = await this.checkHealth();
-    }
-
     return status;
   }
 
   /**
-   * Check server health
+   * Check server health (stdio only — checks the PID is alive)
    */
   async checkHealth(): Promise<{
     healthy: boolean;
     error?: string;
     metrics?: Record<string, number>;
   }> {
-    if (this.options.transport === 'stdio') {
-      // For stdio, check if process is running
-      const pid = await this.readPidFile();
-      if (pid === null) {
-        return { healthy: false, error: 'No PID file found' };
-      }
-      if (!this.isProcessRunning(pid)) {
-        // Clean up stale PID file
-        await this.removePidFile();
-        return { healthy: false, error: 'Process not running (cleaned up stale PID)' };
-      }
-      return { healthy: true };
+    const pid = await this.readPidFile();
+    if (pid === null) {
+      return { healthy: false, error: 'No PID file found' };
     }
-
-    // For HTTP/WebSocket, make health check request
-    try {
-      const response = await this.httpRequest(
-        `http://${this.options.host}:${this.options.port}/health`,
-        'GET',
-        this.options.timeout
-      );
-
-      return {
-        healthy: response.status === 'ok',
-        metrics: {
-          connections: response.connections || 0,
-        },
-      };
-    } catch (error) {
-      return {
-        healthy: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
+    if (!this.isProcessRunning(pid)) {
+      // Clean up stale PID file
+      await this.removePidFile();
+      return { healthy: false, error: 'Process not running (cleaned up stale PID)' };
     }
+    return { healthy: true };
   }
 
   /**
@@ -587,62 +537,6 @@ export class MCPServerManager extends EventEmitter {
   }
 
   /**
-   * Start HTTP server in-process
-   */
-  private async startHttpServer(): Promise<void> {
-    // Dynamically import the MCP server package
-    // FIX for issue #942: Use proper package import instead of broken relative path
-    const { createMCPServer } = await import('@moflo/mcp');
-
-    const logger = {
-      debug: (msg: string, data?: unknown) => this.emit('log', { level: 'debug', msg, data }),
-      info: (msg: string, data?: unknown) => this.emit('log', { level: 'info', msg, data }),
-      warn: (msg: string, data?: unknown) => this.emit('log', { level: 'warn', msg, data }),
-      error: (msg: string, data?: unknown) => this.emit('log', { level: 'error', msg, data }),
-    };
-
-    const mcpServer = createMCPServer(
-      {
-        name: 'MoFlo MCP Server V3',
-        version: '3.0.0',
-        transport: this.options.transport as 'http' | 'websocket',
-        host: this.options.host,
-        port: this.options.port,
-        enableMetrics: true,
-        enableCaching: true,
-      },
-      logger
-    );
-
-    await mcpServer.start();
-
-    // Store reference for stopping
-    (this as any)._mcpServer = mcpServer;
-  }
-
-  /**
-   * Wait for server to be ready
-   */
-  private async waitForReady(timeout = 10000): Promise<void> {
-    // For stdio transport, we're ready immediately (in-process)
-    if (this.options.transport === 'stdio') {
-      return;
-    }
-
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < timeout) {
-      const health = await this.checkHealth();
-      if (health.healthy) {
-        return;
-      }
-      await this.sleep(100);
-    }
-
-    throw new Error('Server failed to start within timeout');
-  }
-
-  /**
    * Wait for process to exit
    */
   private async waitForExit(timeout: number): Promise<void> {
@@ -723,57 +617,6 @@ export class MCPServerManager extends EventEmitter {
     }
   }
 
-  /**
-   * Make HTTP request
-   */
-  private async httpRequest(
-    url: string,
-    method: string,
-    timeout: number
-  ): Promise<any> {
-    return new Promise((resolve, reject) => {
-      const urlObj = new URL(url);
-      const http = require('http');
-
-      const req = http.request(
-        {
-          hostname: urlObj.hostname,
-          port: urlObj.port,
-          path: urlObj.pathname,
-          method,
-          timeout,
-        },
-        (res: any) => {
-          let data = '';
-          res.on('data', (chunk: string) => {
-            data += chunk;
-          });
-          res.on('end', () => {
-            try {
-              resolve(JSON.parse(data));
-            } catch {
-              resolve({ status: res.statusCode === 200 ? 'ok' : 'error' });
-            }
-          });
-        }
-      );
-
-      req.on('error', reject);
-      req.on('timeout', () => {
-        req.destroy();
-        reject(new Error('Request timeout'));
-      });
-
-      req.end();
-    });
-  }
-
-  /**
-   * Sleep utility
-   */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
 }
 
 /**

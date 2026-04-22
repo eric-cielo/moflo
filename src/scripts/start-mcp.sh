@@ -6,16 +6,13 @@
 #   ./start-mcp.sh [options]
 #
 # Options:
-#   --transport, -t <type>   Transport: stdio, http, websocket (default: stdio)
-#   --host <host>            Server host (default: localhost)
-#   --port, -p <port>        Server port (default: 3000)
+#   --transport, -t <type>   Transport: stdio (default: stdio; only value supported)
 #   --log-level, -l <level>  Log level: debug, info, warn, error (default: info)
 #   --daemon, -d             Run as daemon
 #   --help                   Show help
 #
 # Examples:
 #   ./start-mcp.sh                          # Start with defaults
-#   ./start-mcp.sh -t http -p 8080          # Start HTTP on port 8080
 #   ./start-mcp.sh --daemon                 # Run as background daemon
 #
 
@@ -28,8 +25,6 @@ PROJECT_ROOT="$(dirname "$V3_DIR")"
 
 # Default configuration
 TRANSPORT="stdio"
-HOST="localhost"
-PORT="3000"
 LOG_LEVEL="info"
 DAEMON=false
 
@@ -70,9 +65,7 @@ Usage:
   ./start-mcp.sh [options]
 
 Options:
-  --transport, -t <type>   Transport type: stdio, http, websocket (default: stdio)
-  --host <host>            Server host (default: localhost)
-  --port, -p <port>        Server port (default: 3000)
+  --transport, -t <type>   Transport type: stdio (default: stdio; only value supported)
   --log-level, -l <level>  Log level: debug, info, warn, error (default: info)
   --daemon, -d             Run as background daemon
   --stop                   Stop running server
@@ -81,15 +74,12 @@ Options:
 
 Examples:
   ./start-mcp.sh                          # Start with defaults (stdio)
-  ./start-mcp.sh -t http -p 8080          # Start HTTP server on port 8080
   ./start-mcp.sh --daemon                 # Run as background daemon
   ./start-mcp.sh --stop                   # Stop the daemon
   ./start-mcp.sh --status                 # Check if server is running
 
 Environment Variables:
   MCP_TRANSPORT       Override transport type
-  MCP_HOST            Override host
-  MCP_PORT            Override port
   MCP_LOG_LEVEL       Override log level
 
 EOF
@@ -154,7 +144,6 @@ show_status() {
         pid=$(get_pid)
         print_success "MCP Server is running (PID: $pid)"
 
-        # Show additional info if HTTP transport
         if [ -f "$LOG_FILE" ]; then
             echo ""
             echo "Recent logs:"
@@ -171,14 +160,6 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --transport|-t)
             TRANSPORT="$2"
-            shift 2
-            ;;
-        --host)
-            HOST="$2"
-            shift 2
-            ;;
-        --port|-p)
-            PORT="$2"
             shift 2
             ;;
         --log-level|-l)
@@ -211,8 +192,6 @@ done
 
 # Override from environment variables
 TRANSPORT="${MCP_TRANSPORT:-$TRANSPORT}"
-HOST="${MCP_HOST:-$HOST}"
-PORT="${MCP_PORT:-$PORT}"
 LOG_LEVEL="${MCP_LOG_LEVEL:-$LOG_LEVEL}"
 
 # Check if already running
@@ -247,15 +226,11 @@ fi
 # Build command
 CMD="npx tsx $SERVER_ENTRY \
     --transport $TRANSPORT \
-    --host $HOST \
-    --port $PORT \
     --log-level $LOG_LEVEL"
 
 # Start server
 print_info "Starting Claude-Flow MCP Server V3..."
 print_info "  Transport: $TRANSPORT"
-print_info "  Host: $HOST"
-print_info "  Port: $PORT"
 print_info "  Log level: $LOG_LEVEL"
 
 if [ "$DAEMON" = true ]; then
@@ -273,13 +248,6 @@ if [ "$DAEMON" = true ]; then
         pid=$(get_pid)
         print_success "MCP Server started (PID: $pid)"
         print_info "Logs: $LOG_FILE"
-
-        if [ "$TRANSPORT" = "http" ]; then
-            print_info "Health check: http://$HOST:$PORT/health"
-            print_info "RPC endpoint: http://$HOST:$PORT/rpc"
-        elif [ "$TRANSPORT" = "websocket" ]; then
-            print_info "WebSocket: ws://$HOST:$PORT/ws"
-        fi
     else
         print_error "Failed to start MCP Server"
         print_info "Check logs: $LOG_FILE"

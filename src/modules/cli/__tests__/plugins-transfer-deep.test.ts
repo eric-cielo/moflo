@@ -923,13 +923,13 @@ describe('Config Adapter', () => {
     expect(v3.memory.vectorDimension).toBe(384);
   });
 
-  it('should preserve MCP port in round trip', () => {
+  it('should preserve MCP stdio transport in round trip', () => {
     const v3 = systemConfigToV3Config({
-      mcp: { transport: { port: 4000 } },
+      mcp: { transport: { type: 'stdio' } },
     } as any);
-    expect(v3.mcp.serverPort).toBe(4000);
+    expect(v3.mcp.transportType).toBe('stdio');
     const sys = v3ConfigToSystemConfig(v3);
-    expect(sys.mcp?.transport?.port).toBe(4000);
+    expect(sys.mcp?.transport?.type).toBe('stdio');
   });
 });
 

@@ -9,8 +9,6 @@
  *
  * Supported transports:
  * - stdio: Standard I/O (default for CLI)
- * - http: HTTP/REST with WebSocket upgrade
- * - websocket: Standalone WebSocket
  * - in-process: Direct function calls (fastest)
  */
 
@@ -21,26 +19,18 @@ import {
   ILogger,
 } from '../types.js';
 import { StdioTransport, StdioTransportConfig, createStdioTransport } from './stdio.js';
-import { HttpTransport, HttpTransportConfig, createHttpTransport } from './http.js';
-import { WebSocketTransport, WebSocketTransportConfig, createWebSocketTransport } from './websocket.js';
 
 // Re-export transport classes (values)
 export { StdioTransport } from './stdio.js';
-export { HttpTransport } from './http.js';
-export { WebSocketTransport } from './websocket.js';
 
 // Re-export transport config types
 export type { StdioTransportConfig } from './stdio.js';
-export type { HttpTransportConfig } from './http.js';
-export type { WebSocketTransportConfig } from './websocket.js';
 
 /**
  * Transport configuration union
  */
 export type TransportConfig =
   | { type: 'stdio' } & StdioTransportConfig
-  | { type: 'http' } & HttpTransportConfig
-  | { type: 'websocket' } & WebSocketTransportConfig
   | { type: 'in-process' };
 
 /**
@@ -54,26 +44,6 @@ export function createTransport(
   switch (type) {
     case 'stdio':
       return createStdioTransport(logger, config as StdioTransportConfig);
-
-    case 'http':
-      if (!config || !('host' in config) || !('port' in config)) {
-        throw new Error('HTTP transport requires host and port configuration');
-      }
-      return createHttpTransport(logger, {
-        host: config.host as string,
-        port: config.port as number,
-        ...config,
-      } as HttpTransportConfig);
-
-    case 'websocket':
-      if (!config || !('host' in config) || !('port' in config)) {
-        throw new Error('WebSocket transport requires host and port configuration');
-      }
-      return createWebSocketTransport(logger, {
-        host: config.host as string,
-        port: config.port as number,
-        ...config,
-      } as WebSocketTransportConfig);
 
     case 'in-process':
       // In-process transport is handled directly by the server
@@ -272,23 +242,4 @@ export function createTransportManager(logger: ILogger): TransportManager {
  */
 export const DEFAULT_TRANSPORT_CONFIGS = {
   stdio: {} as StdioTransportConfig,
-
-  http: {
-    host: 'localhost',
-    port: 3000,
-    corsEnabled: true,
-    corsOrigins: ['*'],
-    maxRequestSize: '10mb',
-    requestTimeout: 30000,
-  } as HttpTransportConfig,
-
-  websocket: {
-    host: 'localhost',
-    port: 3001,
-    path: '/ws',
-    maxConnections: 100,
-    heartbeatInterval: 30000,
-    heartbeatTimeout: 10000,
-    maxMessageSize: 10 * 1024 * 1024,
-  } as WebSocketTransportConfig,
 } as const;

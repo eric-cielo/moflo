@@ -84,8 +84,6 @@ function minimalV3Config(overrides: Partial<V3Config> = {}): V3Config {
       vectorDimension: 1536,
     },
     mcp: {
-      serverHost: 'localhost',
-      serverPort: 3000,
       autoStart: false,
       transportType: 'stdio',
       tools: [],
@@ -184,11 +182,11 @@ describe('ConfigAdapter deep edge cases', () => {
       expect(v3.memory.persistPath).toBe('./data/memory');
     });
 
-    it('should use default MCP host when transport host is missing', () => {
+    it('should always emit stdio transport', () => {
       const cfg = minimalSystemConfig();
-      (cfg.mcp as any).transport = { type: 'stdio', port: 3000 };
+      (cfg.mcp as any).transport = { type: 'stdio' };
       const v3 = systemConfigToV3Config(cfg);
-      expect(v3.mcp.serverHost).toBe('localhost');
+      expect(v3.mcp.transportType).toBe('stdio');
     });
 
     it('should use default maxAgents of 15 when swarm.maxAgents is missing', () => {
@@ -357,22 +355,12 @@ describe('ConfigAdapter deep edge cases', () => {
   });
 
   describe('MCP transport mapping in v3ConfigToSystemConfig', () => {
-    it('should map transportType "http" correctly', () => {
+    it('should map transportType "stdio" correctly', () => {
       const v3 = minimalV3Config({
-        mcp: { ...minimalV3Config().mcp, transportType: 'http', serverPort: 8080 },
+        mcp: { ...minimalV3Config().mcp, transportType: 'stdio' },
       });
       const sys = v3ConfigToSystemConfig(v3);
-      expect(sys.mcp?.transport?.type).toBe('http');
-      expect(sys.mcp?.transport?.port).toBe(8080);
-    });
-
-    it('should map transportType "websocket" correctly', () => {
-      const v3 = minimalV3Config({
-        mcp: { ...minimalV3Config().mcp, transportType: 'websocket', serverHost: '0.0.0.0' },
-      });
-      const sys = v3ConfigToSystemConfig(v3);
-      expect(sys.mcp?.transport?.type).toBe('websocket');
-      expect(sys.mcp?.transport?.host).toBe('0.0.0.0');
+      expect(sys.mcp?.transport?.type).toBe('stdio');
     });
   });
 

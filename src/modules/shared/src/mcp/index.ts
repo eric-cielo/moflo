@@ -5,8 +5,7 @@
  *
  * Features:
  * - High-performance server with <400ms startup
- * - Connection pooling with max 10 connections
- * - Multiple transport support (stdio, http, websocket, in-process)
+ * - Transport support (stdio, in-process)
  * - Fast tool registry with <10ms registration
  * - Session management with timeout handling
  * - Comprehensive metrics and monitoring
@@ -15,7 +14,6 @@
  * - Server startup: <400ms
  * - Tool registration: <10ms
  * - Tool execution: <50ms overhead
- * - Connection acquire: <5ms
  *
  * @module @moflo/mcp
  * @version 3.0.0
@@ -34,10 +32,6 @@ export type {
 
   // Server configuration
   TransportType,
-  AuthMethod,
-  AuthConfig,
-  LoadBalancerConfig,
-  ConnectionPoolConfig,
   MCPServerConfig,
 
   // Session types
@@ -64,12 +58,6 @@ export type {
   NotificationHandler,
   TransportHealthStatus,
   ITransport,
-
-  // Connection pool types
-  ConnectionState,
-  PooledConnection,
-  ConnectionPoolStats,
-  IConnectionPool,
 
   // Metrics types
   ToolCallMetrics,
@@ -105,9 +93,6 @@ import { SessionManager, createSessionManager } from './session-manager.js';
 export { SessionManager, createSessionManager };
 export type { SessionConfig } from './session-manager.js';
 
-// Connection Pool
-export { ConnectionPool, createConnectionPool } from './connection-pool.js';
-
 // Transport layer - values
 export {
   // Factory
@@ -119,16 +104,12 @@ export {
 
   // Specific transports
   StdioTransport,
-  HttpTransport,
-  WebSocketTransport,
 } from './transport/index.js';
 
 // Transport layer - types
 export type {
   TransportConfig,
   StdioTransportConfig,
-  HttpTransportConfig,
-  WebSocketTransportConfig,
 } from './transport/index.js';
 
 /**

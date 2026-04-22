@@ -922,7 +922,6 @@ export const pluginsCommand: Command = {
       '@moflo/security            - Security scanning and CVE detection',
       '@moflo/embeddings          - Vector embeddings with hyperbolic support',
       '@moflo/claims              - Claims-based authorization',
-      '@moflo/plugin-gastown-bridge - Gas Town orchestrator integration (WASM-accelerated)',
     ]);
     output.writeln();
     output.writeln(output.dim('Run "claude-flow plugins list --official" to see all official plugins'));

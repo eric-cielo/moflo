@@ -211,11 +211,10 @@ v3/
 Security-first implementation with CVE fixes, input validation, and credential management.
 
 ```typescript
-import { PasswordHasher, validateInput, sanitizePath } from '@moflo/security';
+import { PathValidator, sanitizePath, validateInput } from '@moflo/security';
 
-const hasher = new PasswordHasher();
-const hash = await hasher.hash('password');
-const valid = await hasher.verify('password', hash);
+const validator = new PathValidator({ allowedPrefixes: ['/workspaces/project'] });
+const result = await validator.validate('/workspaces/project/src/file.ts');
 ```
 
 ### @moflo/memory
@@ -355,7 +354,7 @@ import * as claudeFlow from '@moflo/v3';
 
 // Or import specific modules for tree-shaking
 import { UnifiedSwarmCoordinator } from '@moflo/swarm';
-import { PasswordHasher } from '@moflo/security';
+import { PathValidator } from '@moflo/security';
 import { HNSWIndex } from '@moflo/memory';
 ```
 
