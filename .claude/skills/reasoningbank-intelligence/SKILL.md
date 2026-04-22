@@ -1,201 +1,148 @@
 ---
 name: "reasoningbank-intelligence"
-description: "Implement adaptive learning with ReasoningBank for pattern recognition, strategy optimization, and continuous improvement. Use when building self-learning agents, optimizing workflows, or implementing meta-cognitive systems."
+description: "Adaptive learning for moflo agents via ReasoningBank: trajectory storage, verdict judgment, memory distillation, consolidation, and MMR retrieval. Use when building agents that should improve from experience across runs."
 ---
 
 # ReasoningBank Intelligence
 
-## What This Skill Does
-
-Implements ReasoningBank's adaptive learning system for AI agents to learn from experience, recognize patterns, and optimize strategies over time. Enables meta-cognitive capabilities and continuous improvement.
+Trajectory-based learning pipeline for moflo-enabled agents. Records what an agent did, judges the outcome, distills successful runs into reusable patterns, and retrieves relevant prior experience on the next task.
 
 ## Prerequisites
 
-- agentic-flow v1.5.11+
-- AgentDB v1.0.4+ (for persistence)
-- Node.js 18+
+- `@moflo/neural` (ships with moflo)
+- Moflo's memory DB at `.swarm/memory.db` (created on first run)
 
 ## Quick Start
 
 ```typescript
-import { ReasoningBank } from 'agentic-flow/reasoningbank';
+import { createInitializedReasoningBank } from '@moflo/neural';
 
-// Initialize ReasoningBank
-const rb = new ReasoningBank({
-  persist: true,
-  learningRate: 0.1,
-  adapter: 'agentdb' // Use AgentDB for storage
-});
-
-// Record task outcome
-await rb.recordExperience({
-  task: 'code_review',
-  approach: 'static_analysis_first',
-  outcome: {
-    success: true,
-    metrics: {
-      bugs_found: 5,
-      time_taken: 120,
-      false_positives: 1
-    }
-  },
-  context: {
-    language: 'typescript',
-    complexity: 'medium'
-  }
-});
-
-// Get optimal strategy
-const strategy = await rb.recommendStrategy('code_review', {
-  language: 'typescript',
-  complexity: 'high'
+const rb = await createInitializedReasoningBank({
+  namespace: 'reasoning-bank',
+  vectorDimension: 768,
+  retrievalK: 3,
+  mmrLambda: 0.7,              // 0=pure relevance, 1=pure diversity
+  distillationThreshold: 0.6,  // min verdict score to keep
+  dedupThreshold: 0.95,
 });
 ```
 
-## Core Features
+## The Pipeline
 
-### 1. Pattern Recognition
-```typescript
-// Learn patterns from data
-await rb.learnPattern({
-  pattern: 'api_errors_increase_after_deploy',
-  triggers: ['deployment', 'traffic_spike'],
-  actions: ['rollback', 'scale_up'],
-  confidence: 0.85
-});
+Four stages. You typically call each once per task:
 
-// Match patterns
-const matches = await rb.matchPatterns(currentSituation);
+```text
+1. Record trajectory  →  storeTrajectory({ id, input, actions, outcome, reward, ... })
+2. Judge              →  const verdict = await rb.judge(trajectory)
+3. Distill            →  const memory  = await rb.distill(trajectory)   // if verdict good enough
+4. Retrieve (next task) →  const hits  = await rb.retrieveByContent(query, k)
 ```
 
-### 2. Strategy Optimization
-```typescript
-// Compare strategies
-const comparison = await rb.compareStrategies('bug_fixing', [
-  'tdd_approach',
-  'debug_first',
-  'reproduce_then_fix'
-]);
-
-// Get best strategy
-const best = comparison.strategies[0];
-console.log(`Best: ${best.name} (score: ${best.score})`);
-```
-
-### 3. Continuous Learning
-```typescript
-// Enable auto-learning from all tasks
-await rb.enableAutoLearning({
-  threshold: 0.7,        // Only learn from high-confidence outcomes
-  updateFrequency: 100   // Update models every 100 experiences
-});
-```
-
-## Advanced Usage
-
-### Meta-Learning
-```typescript
-// Learn about learning
-await rb.metaLearn({
-  observation: 'parallel_execution_faster_for_independent_tasks',
-  confidence: 0.95,
-  applicability: {
-    task_types: ['batch_processing', 'data_transformation'],
-    conditions: ['tasks_independent', 'io_bound']
-  }
-});
-```
-
-### Transfer Learning
-```typescript
-// Apply knowledge from one domain to another
-await rb.transferKnowledge({
-  from: 'code_review_javascript',
-  to: 'code_review_typescript',
-  similarity: 0.8
-});
-```
-
-### Adaptive Agents
-```typescript
-// Create self-improving agent
-class AdaptiveAgent {
-  async execute(task: Task) {
-    // Get optimal strategy
-    const strategy = await rb.recommendStrategy(task.type, task.context);
-
-    // Execute with strategy
-    const result = await this.executeWithStrategy(task, strategy);
-
-    // Learn from outcome
-    await rb.recordExperience({
-      task: task.type,
-      approach: strategy.name,
-      outcome: result,
-      context: task.context
-    });
-
-    return result;
-  }
-}
-```
-
-## Integration with AgentDB
+### 1. Record
 
 ```typescript
-// Persist ReasoningBank data
-await rb.configure({
-  storage: {
-    type: 'agentdb',
-    options: {
-      database: './reasoning-bank.db',
-      enableVectorSearch: true
-    }
-  }
-});
+const trajectory = {
+  id: taskId,
+  input: userRequest,
+  actions: ['read_file', 'edit_file', 'run_tests'],
+  outcome: 'success' as const,
+  reward: 1.0,                // 0..1
+  metadata: { toolCalls: 3, durationMs: 1800 },
+  timestamp: new Date(),
+};
 
-// Query learned patterns
-const patterns = await rb.query({
-  category: 'optimization',
-  minConfidence: 0.8,
-  timeRange: { last: '30d' }
-});
+rb.storeTrajectory(trajectory);
 ```
 
-## Performance Metrics
+### 2. Judge
+
+The built-in judge scores on outcome + reward + action-step quality. No external LLM call.
 
 ```typescript
-// Track learning effectiveness
-const metrics = await rb.getMetrics();
-console.log(`
-  Total Experiences: ${metrics.totalExperiences}
-  Patterns Learned: ${metrics.patternsLearned}
-  Strategy Success Rate: ${metrics.strategySuccessRate}
-  Improvement Over Time: ${metrics.improvement}
-`);
+const verdict = await rb.judge(trajectory);
+// { score: 0-1, outcome: 'success' | ..., reasoning: string }
 ```
 
-## Best Practices
+Swap in your own judge by extending `ReasoningBank` if you want LLM-in-the-loop scoring — this was designed as a rule-based baseline so the hot path stays cheap.
 
-1. **Record consistently**: Log all task outcomes, not just successes
-2. **Provide context**: Rich context improves pattern matching
-3. **Set thresholds**: Filter low-confidence learnings
-4. **Review periodically**: Audit learned patterns for quality
-5. **Use vector search**: Enable semantic pattern matching
+### 3. Distill
 
-## Troubleshooting
+Compresses a trajectory into a reusable `DistilledMemory` (signature, approach, outcome-tagged). Skips if the verdict is below `distillationThreshold`.
 
-### Issue: Poor recommendations
-**Solution**: Ensure sufficient training data (100+ experiences per task type)
+```typescript
+const memory = await rb.distill(trajectory);
+// null if verdict below threshold → not worth learning from
+```
 
-### Issue: Slow pattern matching
-**Solution**: Enable vector indexing in AgentDB
+For batch runs (nightly, offline replay):
 
-### Issue: Memory growing large
-**Solution**: Set TTL for old experiences or enable pruning
+```typescript
+const memories = await rb.distillBatch(trajectories);
+```
 
-## Learn More
+### 4. Retrieve
 
-- ReasoningBank Guide: agentic-flow/src/reasoningbank/README.md
-- AgentDB Integration: packages/agentdb/docs/reasoningbank.md
-- Pattern Learning: docs/reasoning/patterns.md
+Query by text (embedding generated for you) or by pre-computed vector:
+
+```typescript
+const hits = await rb.retrieveByContent(newTaskDescription, 5);
+// [{ memory, relevanceScore, diversityScore, combinedScore }]
+```
+
+MMR (maximal marginal relevance) prevents the top-K from collapsing to "five slight variations of the same thing" — tune `mmrLambda` to push more diversity.
+
+## Consolidation
+
+Memory quality degrades over time without maintenance. Run consolidation periodically (once a week, once after N new entries, etc.):
+
+```typescript
+const result = await rb.consolidate();
+// { removedDuplicates, contradictionsDetected, prunedPatterns, mergedPatterns }
+```
+
+Consolidation:
+- Removes duplicates above `dedupThreshold` similarity.
+- Detects contradictions (same signature, opposite outcomes) if `enableContradictionDetection`.
+- Prunes entries older than `maxPatternAgeDays`.
+- Merges semantically-adjacent patterns.
+
+## Persistence
+
+ReasoningBank persists through `MofloDbAdapter` to `.swarm/memory.db`. Set `enableMofloDb: false` for ephemeral in-memory use (tests).
+
+The `namespace` config isolates reasoning-bank entries from general memory. Default is `reasoning-bank`.
+
+## Anti-Patterns
+
+- **Don't record every step as a separate trajectory.** A trajectory = one task. Steps are a field inside the trajectory.
+- **Don't skip the judge.** Distilling every trajectory poisons the pool with failures — that's what `distillationThreshold` guards against.
+- **Don't run consolidation on the hot path.** It's a sweep — do it out-of-band.
+- **Don't share `namespace` between different agent roles.** Keep `reasoning-bank:reviewer`, `reasoning-bank:researcher`, etc. separate; signatures overlap otherwise.
+- **Don't raise `retrievalK` to tame bad retrieval.** Tune `mmrLambda` or the embedder instead — more K just dilutes the top results.
+
+## Integration with moflo's Hooks
+
+Moflo's session/hook system already wires ReasoningBank into the `/flo` spell and the SubAgentStart hook. If you're building a custom agent that should participate, hook into `post-task`:
+
+```typescript
+await mcp.hooks_post_task({
+  trajectoryId: taskId,
+  outcome: 'success',
+  reward: 1.0,
+});
+```
+
+That records, judges, and distills in one call.
+
+## Performance
+
+- Retrieve (k=5, corpus of 10k): ~3–8ms.
+- Distill: single call ≈ vector embed + a few similarity checks; ~10–50ms.
+- Consolidate: O(n²) in the namespace — run offline for corpora > 10k.
+
+## See Also
+
+- `memory-patterns` skill — for non-trajectory memory (sessions, knowledge)
+- `memory-optimization` skill — HNSW tuning, quantization
+- `src/modules/neural/src/reasoning-bank.ts` — full API
+- `src/modules/neural/src/domain/services/learning-service.ts` — trajectory types

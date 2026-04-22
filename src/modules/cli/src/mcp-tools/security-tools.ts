@@ -12,7 +12,7 @@
 
 import type { MCPTool, MCPToolResult } from './types.js';
 import { autoInstallPackage } from './auto-install.js';
-import { tryCreateAgentDBStore } from './aidefence-agentdb-store.js';
+import { tryCreateMofloDbStore } from './aidefence-moflodb-store.js';
 import { createRequire } from 'module';
 
 // Create require for resolving module paths
@@ -28,17 +28,17 @@ let aidefenceInstance: AIDefenceInstance | null = null;
 let installAttempted = false;
 
 /**
- * Build createAIDefence config, attaching an AgentDB-backed vector store
+ * Build createAIDefence config, attaching an MofloDb-backed vector store
  * when the memory bridge is available. Falls back to the package default
  * (InMemoryVectorStore) otherwise so the MCP tools still function standalone.
  */
 async function buildAIDefenceConfig(): Promise<{ enableLearning: boolean; vectorStore?: unknown }> {
-  const store = await tryCreateAgentDBStore();
+  const store = await tryCreateMofloDbStore();
   if (store) {
-    console.error('[claude-flow] aidefence: using AgentDB-backed vector store (HNSW)');
+    console.error('[claude-flow] aidefence: using MofloDb-backed vector store (HNSW)');
     return { enableLearning: true, vectorStore: store };
   }
-  console.error('[claude-flow] aidefence: AgentDB bridge unavailable, using in-memory store');
+  console.error('[claude-flow] aidefence: MofloDb bridge unavailable, using in-memory store');
   return { enableLearning: true };
 }
 

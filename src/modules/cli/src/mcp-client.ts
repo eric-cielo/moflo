@@ -35,8 +35,8 @@ import { githubTools } from './mcp-tools/github-tools.js';
 import { daaTools } from './mcp-tools/daa-tools.js';
 import { coordinationTools } from './mcp-tools/coordination-tools.js';
 import { browserTools } from './mcp-tools/browser-tools.js';
-// Phase 6: AgentDB v3 controller tools
-import { agentdbTools } from './mcp-tools/agentdb-tools.js';
+// Phase 6: MofloDb v3 controller tools
+import { moflodbTools } from './mcp-tools/moflodb-tools.js';
 
 /**
  * MCP Tool Registry
@@ -78,7 +78,7 @@ registerTools([
   ...coordinationTools,
   ...browserTools,
   // Phase 6: AgentDB v3 controller tools
-  ...agentdbTools,
+  ...moflodbTools,
 ]);
 
 /**

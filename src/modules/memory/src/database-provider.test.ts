@@ -4,23 +4,30 @@
  * Tests for platform-aware database selection and fallback mechanisms
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
 import { createDatabase, getPlatformInfo, getAvailableProviders } from './database-provider.js';
 import { generateMemoryId, createDefaultEntry } from './types.js';
-import { unlinkSync, existsSync } from 'node:fs';
+import { unlinkSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('DatabaseProvider', () => {
-  const testDbPath = './test-database-provider.db';
+  // Write to OS tmpdir so stray .db/.rvf files can't leak into the project root.
+  const testDir = mkdtempSync(join(tmpdir(), 'moflo-dbprovider-'));
+  const testDbPath = join(testDir, 'test-database-provider.db');
 
   afterEach(() => {
-    // Cleanup test database
-    if (existsSync(testDbPath)) {
-      try {
-        unlinkSync(testDbPath);
-      } catch (error) {
-        // Ignore cleanup errors
+    // Clean up both the .db and its .rvf sibling (rvf backend rewrites the
+    // suffix, so the paths diverge; see database-provider.ts:229).
+    for (const p of [testDbPath, testDbPath.replace(/\.db$/, '.rvf')]) {
+      if (existsSync(p)) {
+        try { unlinkSync(p); } catch { /* ignore */ }
       }
     }
+  });
+
+  afterAll(() => {
+    try { rmSync(testDir, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 
   describe('Platform Detection', () => {

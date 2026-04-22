@@ -1,7 +1,7 @@
 /**
- * AgentDB-backed VectorStore adapter for AIDefence.
+ * MofloDb-backed VectorStore adapter for AIDefence.
  *
- * Wraps the CLI memory-bridge (AgentDB v3 + HNSW + embeddings) so the
+ * Wraps the CLI memory-bridge (MofloDb v3 + HNSW + embeddings) so the
  * 6 aidefence_* MCP tools persist learned threat patterns and mitigation
  * strategies across process restarts with 150x-12,500x faster search.
  *
@@ -36,7 +36,7 @@ function safeParse(raw: string): unknown {
   }
 }
 
-export class AgentDBAIDefenceStore {
+export class MofloDbAIDefenceStore {
   async store(params: {
     namespace: string;
     key: string;
@@ -96,10 +96,10 @@ export class AgentDBAIDefenceStore {
 }
 
 /**
- * Return an AgentDB-backed store if the memory bridge is available,
+ * Return an MofloDb-backed store if the memory bridge is available,
  * otherwise null so the caller can fall back to the default in-memory store.
  */
-export async function tryCreateAgentDBStore(): Promise<AgentDBAIDefenceStore | null> {
+export async function tryCreateMofloDbStore(): Promise<MofloDbAIDefenceStore | null> {
   const available = await isBridgeAvailable();
-  return available ? new AgentDBAIDefenceStore() : null;
+  return available ? new MofloDbAIDefenceStore() : null;
 }

@@ -1,5 +1,5 @@
 /**
- * Tests for AgentDBAIDefenceStore.
+ * Tests for MofloDbAIDefenceStore.
  *
  * Exercises the adapter's shape-transformation logic against a mocked
  * memory-bridge so that coverage does not depend on @moflo/memory being
@@ -63,22 +63,22 @@ vi.mock('../src/memory/memory-bridge.js', () => ({
   shutdownBridge: vi.fn(async () => {}),
 }));
 
-const { AgentDBAIDefenceStore, tryCreateAgentDBStore } = await import(
-  '../src/mcp-tools/aidefence-agentdb-store.js'
+const { MofloDbAIDefenceStore, tryCreateMofloDbStore } = await import(
+  '../src/mcp-tools/aidefence-moflodb-store.js'
 );
 
-describe('AgentDBAIDefenceStore', () => {
+describe('MofloDbAIDefenceStore', () => {
   beforeEach(() => {
     stored.length = 0;
   });
 
-  it('tryCreateAgentDBStore returns an instance when bridge is available', async () => {
-    const store = await tryCreateAgentDBStore();
-    expect(store).toBeInstanceOf(AgentDBAIDefenceStore);
+  it('tryCreateMofloDbStore returns an instance when bridge is available', async () => {
+    const store = await tryCreateMofloDbStore();
+    expect(store).toBeInstanceOf(MofloDbAIDefenceStore);
   });
 
   it('prefixes namespaces with "aidefence:" to isolate from general memory', async () => {
-    const store = new AgentDBAIDefenceStore();
+    const store = new MofloDbAIDefenceStore();
     await store.store({
       namespace: 'security_threats',
       key: 'k1',
@@ -88,7 +88,7 @@ describe('AgentDBAIDefenceStore', () => {
   });
 
   it('round-trips an arbitrary object via JSON serialization', async () => {
-    const store = new AgentDBAIDefenceStore();
+    const store = new MofloDbAIDefenceStore();
     const value = {
       id: 'learned-prompt_injection-abc',
       pattern: 'Ignore all previous instructions',
@@ -103,7 +103,7 @@ describe('AgentDBAIDefenceStore', () => {
   });
 
   it('upserts the same key instead of duplicating', async () => {
-    const store = new AgentDBAIDefenceStore();
+    const store = new MofloDbAIDefenceStore();
     const key = 'mitigation-prompt_injection-block';
 
     await store.store({ namespace: 'security_mitigations', key, value: { effectiveness: 0.5 } });
@@ -115,7 +115,7 @@ describe('AgentDBAIDefenceStore', () => {
   });
 
   it('delete removes stored entries', async () => {
-    const store = new AgentDBAIDefenceStore();
+    const store = new MofloDbAIDefenceStore();
     await store.store({ namespace: 'security_threats', key: 'delete-me', value: { x: 1 } });
 
     await store.delete('security_threats', 'delete-me');
@@ -124,7 +124,7 @@ describe('AgentDBAIDefenceStore', () => {
   });
 
   it('search returns entries with similarity scores and k limit', async () => {
-    const store = new AgentDBAIDefenceStore();
+    const store = new MofloDbAIDefenceStore();
     await store.store({ namespace: 'security_threats', key: 'a', value: { pattern: 'prompt injection' } });
     await store.store({ namespace: 'security_threats', key: 'b', value: { pattern: 'jailbreak attempt' } });
     await store.store({ namespace: 'security_threats', key: 'c', value: { pattern: 'benign text' } });
@@ -141,12 +141,12 @@ describe('AgentDBAIDefenceStore', () => {
   });
 });
 
-describe('tryCreateAgentDBStore falls back when bridge is unavailable', () => {
+describe('tryCreateMofloDbStore falls back when bridge is unavailable', () => {
   it('returns null when isBridgeAvailable reports false', async () => {
     const bridgeModule = await import('../src/memory/memory-bridge.js');
     vi.mocked(bridgeModule.isBridgeAvailable).mockResolvedValueOnce(false);
 
-    const store = await tryCreateAgentDBStore();
+    const store = await tryCreateMofloDbStore();
     expect(store).toBeNull();
   });
 });

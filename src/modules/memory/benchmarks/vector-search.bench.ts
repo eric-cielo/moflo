@@ -360,17 +360,20 @@ export const vectorSearchOptimizations = {
     description: 'Use HNSW for O(log n) approximate nearest neighbor search',
     expectedImprovement: '150x-12500x',
     implementation: `
-      import { HNSW } from 'agentdb';
+      import { HNSWIndex } from '@moflo/memory';
 
-      const index = new HNSW({
+      const index = new HNSWIndex({
         dimensions: 384,
         maxElements: 1000000,
         efConstruction: 200,
         M: 16,
+        metric: 'cosine',
       });
 
-      index.addItems(vectors);
-      const results = index.search(query, k);
+      for (const [id, vector] of entries) {
+        await index.addPoint(id, vector);
+      }
+      const results = await index.search(query, k);
     `,
   },
 

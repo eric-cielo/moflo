@@ -1,14 +1,14 @@
 /**
- * AgentDB MCP Tools — Phase 6 of ADR-053
+ * MofloDb MCP Tools — Phase 6 of ADR-053
  *
- * Exposes AgentDB v3 controller operations as MCP tools.
+ * Exposes MofloDb v3 controller operations as MCP tools.
  * Provides direct access to ReasoningBank, CausalGraph, SkillLibrary,
  * AttestationLog, and bridge health through the MCP protocol.
  *
  * Security: All handlers validate input types, enforce length bounds,
  * and sanitize error messages before returning to MCP callers.
  *
- * @module v3/cli/mcp-tools/agentdb-tools
+ * @module v3/cli/mcp-tools/moflodb-tools
  */
 
 import type { MCPTool } from './types.js';
@@ -53,11 +53,11 @@ async function getBridge() {
   return bridgeModule;
 }
 
-// ===== agentdb_health — Controller health check =====
+// ===== moflodb_health — Controller health check =====
 
-export const agentdbHealth: MCPTool = {
-  name: 'agentdb_health',
-  description: 'Get AgentDB v3 controller health status including cache stats and attestation count',
+export const moflodbHealth: MCPTool = {
+  name: 'moflodb_health',
+  description: 'Get MofloDb v3 controller health status including cache stats and attestation count',
   inputSchema: {
     type: 'object',
     properties: {},
@@ -66,7 +66,7 @@ export const agentdbHealth: MCPTool = {
     try {
       const bridge = await getBridge();
       const health = await bridge.bridgeHealthCheck();
-      if (!health) return { available: false, error: 'AgentDB bridge not available' };
+      if (!health) return { available: false, error: 'MofloDb bridge not available' };
       return health;
     } catch (error) {
       return { available: false, error: sanitizeError(error) };
@@ -74,11 +74,11 @@ export const agentdbHealth: MCPTool = {
   },
 };
 
-// ===== agentdb_controllers — List all controllers =====
+// ===== moflodb_controllers — List all controllers =====
 
-export const agentdbControllers: MCPTool = {
-  name: 'agentdb_controllers',
-  description: 'List all AgentDB v3 controllers and their initialization status',
+export const moflodbControllers: MCPTool = {
+  name: 'moflodb_controllers',
+  description: 'List all MofloDb v3 controllers and their initialization status',
   inputSchema: {
     type: 'object',
     properties: {},
@@ -87,7 +87,7 @@ export const agentdbControllers: MCPTool = {
     try {
       const bridge = await getBridge();
       const controllers = await bridge.bridgeListControllers();
-      if (!controllers) return { available: false, controllers: [], error: 'AgentDB bridge not available — @moflo/memory not installed or missing controller-registry. Use memory_store/memory_search tools instead.' };
+      if (!controllers) return { available: false, controllers: [], error: 'MofloDb bridge not available — @moflo/memory not installed or missing controller-registry. Use memory_store/memory_search tools instead.' };
       return {
         available: true,
         controllers,
@@ -100,10 +100,10 @@ export const agentdbControllers: MCPTool = {
   },
 };
 
-// ===== agentdb_pattern_store — Store via ReasoningBank =====
+// ===== moflodb_pattern_store — Store via ReasoningBank =====
 
-export const agentdbPatternStore: MCPTool = {
-  name: 'agentdb_pattern-store',
+export const moflodbPatternStore: MCPTool = {
+  name: 'moflodb_pattern-store',
   description: 'Store a pattern directly via ReasoningBank controller',
   inputSchema: {
     type: 'object',
@@ -124,17 +124,17 @@ export const agentdbPatternStore: MCPTool = {
         type: validateString(params.type, 'type', 200) ?? 'general',
         confidence: validateScore(params.confidence, 0.8),
       });
-      return result ?? { success: false, error: 'AgentDB bridge not available. Use memory_store/memory_search instead.' };
+      return result ?? { success: false, error: 'MofloDb bridge not available. Use memory_store/memory_search instead.' };
     } catch (error) {
       return { success: false, error: sanitizeError(error) };
     }
   },
 };
 
-// ===== agentdb_pattern_search — Search via ReasoningBank =====
+// ===== moflodb_pattern_search — Search via ReasoningBank =====
 
-export const agentdbPatternSearch: MCPTool = {
-  name: 'agentdb_pattern-search',
+export const moflodbPatternSearch: MCPTool = {
+  name: 'moflodb_pattern-search',
   description: 'Search patterns via ReasoningBank controller with BM25+semantic hybrid',
   inputSchema: {
     type: 'object',
@@ -162,10 +162,10 @@ export const agentdbPatternSearch: MCPTool = {
   },
 };
 
-// ===== agentdb_feedback — Record task feedback =====
+// ===== moflodb_feedback — Record task feedback =====
 
-export const agentdbFeedback: MCPTool = {
-  name: 'agentdb_feedback',
+export const moflodbFeedback: MCPTool = {
+  name: 'moflodb_feedback',
   description: 'Record task feedback for learning via LearningSystem + ReasoningBank controllers',
   inputSchema: {
     type: 'object',
@@ -188,17 +188,17 @@ export const agentdbFeedback: MCPTool = {
         quality: validateScore(params.quality, 0.85),
         agent: validateString(params.agent, 'agent', 200) ?? undefined,
       });
-      return result ?? { success: false, error: 'AgentDB bridge not available. Use memory_store/memory_search instead.' };
+      return result ?? { success: false, error: 'MofloDb bridge not available. Use memory_store/memory_search instead.' };
     } catch (error) {
       return { success: false, error: sanitizeError(error) };
     }
   },
 };
 
-// ===== agentdb_causal_edge — Record causal relationships =====
+// ===== moflodb_causal_edge — Record causal relationships =====
 
-export const agentdbCausalEdge: MCPTool = {
-  name: 'agentdb_causal-edge',
+export const moflodbCausalEdge: MCPTool = {
+  name: 'moflodb_causal-edge',
   description: 'Record a causal edge between two memory entries via CausalMemoryGraph',
   inputSchema: {
     type: 'object',
@@ -225,18 +225,18 @@ export const agentdbCausalEdge: MCPTool = {
         relation,
         weight: typeof params.weight === 'number' ? validateScore(params.weight, 0.5) : undefined,
       });
-      return result ?? { success: false, error: 'AgentDB bridge not available. Use memory_store/memory_search instead.' };
+      return result ?? { success: false, error: 'MofloDb bridge not available. Use memory_store/memory_search instead.' };
     } catch (error) {
       return { success: false, error: sanitizeError(error) };
     }
   },
 };
 
-// ===== agentdb_route — Route via SemanticRouter =====
+// ===== moflodb_route — Route via SemanticRouter =====
 
-export const agentdbRoute: MCPTool = {
-  name: 'agentdb_route',
-  description: 'Route a task via AgentDB SemanticRouter or LearningSystem recommendAlgorithm',
+export const moflodbRoute: MCPTool = {
+  name: 'moflodb_route',
+  description: 'Route a task via MofloDb SemanticRouter or LearningSystem recommendAlgorithm',
   inputSchema: {
     type: 'object',
     properties: {
@@ -261,10 +261,10 @@ export const agentdbRoute: MCPTool = {
   },
 };
 
-// ===== agentdb_session_start — Session with ReflexionMemory =====
+// ===== moflodb_session_start — Session with ReflexionMemory =====
 
-export const agentdbSessionStart: MCPTool = {
-  name: 'agentdb_session-start',
+export const moflodbSessionStart: MCPTool = {
+  name: 'moflodb_session-start',
   description: 'Start a session with ReflexionMemory episodic replay',
   inputSchema: {
     type: 'object',
@@ -283,17 +283,17 @@ export const agentdbSessionStart: MCPTool = {
         sessionId,
         context: validateString(params.context, 'context', 10_000) ?? undefined,
       });
-      return result ?? { success: false, error: 'AgentDB bridge not available. Use memory_store/memory_search instead.' };
+      return result ?? { success: false, error: 'MofloDb bridge not available. Use memory_store/memory_search instead.' };
     } catch (error) {
       return { success: false, error: sanitizeError(error) };
     }
   },
 };
 
-// ===== agentdb_session_end — End session + NightlyLearner =====
+// ===== moflodb_session_end — End session + NightlyLearner =====
 
-export const agentdbSessionEnd: MCPTool = {
-  name: 'agentdb_session-end',
+export const moflodbSessionEnd: MCPTool = {
+  name: 'moflodb_session-end',
   description: 'End session, persist to ReflexionMemory, trigger NightlyLearner consolidation',
   inputSchema: {
     type: 'object',
@@ -314,17 +314,17 @@ export const agentdbSessionEnd: MCPTool = {
         summary: validateString(params.summary, 'summary', 50_000) ?? undefined,
         tasksCompleted: validatePositiveInt(params.tasksCompleted, 0, 10_000),
       });
-      return result ?? { success: false, error: 'AgentDB bridge not available. Use memory_store/memory_search instead.' };
+      return result ?? { success: false, error: 'MofloDb bridge not available. Use memory_store/memory_search instead.' };
     } catch (error) {
       return { success: false, error: sanitizeError(error) };
     }
   },
 };
 
-// ===== agentdb_hierarchical_store — Store to hierarchical memory =====
+// ===== moflodb_hierarchical_store — Store to hierarchical memory =====
 
-export const agentdbHierarchicalStore: MCPTool = {
-  name: 'agentdb_hierarchical-store',
+export const moflodbHierarchicalStore: MCPTool = {
+  name: 'moflodb_hierarchical-store',
   description: 'Store to hierarchical memory with tier (working, episodic, semantic)',
   inputSchema: {
     type: 'object',
@@ -352,17 +352,17 @@ export const agentdbHierarchicalStore: MCPTool = {
       }
       const bridge = await getBridge();
       const result = await bridge.bridgeHierarchicalStore({ key, value, tier });
-      return result ?? { success: false, error: 'AgentDB bridge not available. Use memory_store/memory_search instead.' };
+      return result ?? { success: false, error: 'MofloDb bridge not available. Use memory_store/memory_search instead.' };
     } catch (error) {
       return { success: false, error: sanitizeError(error) };
     }
   },
 };
 
-// ===== agentdb_hierarchical_recall — Recall from hierarchical memory =====
+// ===== moflodb_hierarchical_recall — Recall from hierarchical memory =====
 
-export const agentdbHierarchicalRecall: MCPTool = {
-  name: 'agentdb_hierarchical-recall',
+export const moflodbHierarchicalRecall: MCPTool = {
+  name: 'moflodb_hierarchical-recall',
   description: 'Recall from hierarchical memory with optional tier filter',
   inputSchema: {
     type: 'object',
@@ -387,17 +387,17 @@ export const agentdbHierarchicalRecall: MCPTool = {
         tier: tier ?? undefined,
         topK: validatePositiveInt(params.topK, 5, MAX_TOP_K),
       });
-      return result ?? { results: [], error: 'AgentDB bridge not available. Use memory_search instead.' };
+      return result ?? { results: [], error: 'MofloDb bridge not available. Use memory_search instead.' };
     } catch (error) {
       return { results: [], error: sanitizeError(error) };
     }
   },
 };
 
-// ===== agentdb_consolidate — Run memory consolidation =====
+// ===== moflodb_consolidate — Run memory consolidation =====
 
-export const agentdbConsolidate: MCPTool = {
-  name: 'agentdb_consolidate',
+export const moflodbConsolidate: MCPTool = {
+  name: 'moflodb_consolidate',
   description: 'Run memory consolidation to promote entries across tiers and compress old data',
   inputSchema: {
     type: 'object',
@@ -413,17 +413,17 @@ export const agentdbConsolidate: MCPTool = {
         minAge: typeof params.minAge === 'number' ? Math.max(0, params.minAge) : undefined,
         maxEntries: validatePositiveInt(params.maxEntries, 1000, 10_000),
       });
-      return result ?? { success: false, error: 'AgentDB bridge not available. Use memory_store/memory_search instead.' };
+      return result ?? { success: false, error: 'MofloDb bridge not available. Use memory_store/memory_search instead.' };
     } catch (error) {
       return { success: false, error: sanitizeError(error) };
     }
   },
 };
 
-// ===== agentdb_batch — Batch operations (insert, update, delete) =====
+// ===== moflodb_batch — Batch operations (insert, update, delete) =====
 
-export const agentdbBatch: MCPTool = {
-  name: 'agentdb_batch',
+export const moflodbBatch: MCPTool = {
+  name: 'moflodb_batch',
   description: 'Batch operations on memory entries (insert, update, delete)',
   inputSchema: {
     type: 'object',
@@ -478,17 +478,17 @@ export const agentdbBatch: MCPTool = {
         operation,
         entries: validatedEntries,
       });
-      return result ?? { success: false, error: 'AgentDB bridge not available. Use memory_store/memory_search instead.' };
+      return result ?? { success: false, error: 'MofloDb bridge not available. Use memory_store/memory_search instead.' };
     } catch (error) {
       return { success: false, error: sanitizeError(error) };
     }
   },
 };
 
-// ===== agentdb_context_synthesize — Synthesize context from memories =====
+// ===== moflodb_context_synthesize — Synthesize context from memories =====
 
-export const agentdbContextSynthesize: MCPTool = {
-  name: 'agentdb_context-synthesize',
+export const moflodbContextSynthesize: MCPTool = {
+  name: 'moflodb_context-synthesize',
   description: 'Synthesize context from stored memories for a given query',
   inputSchema: {
     type: 'object',
@@ -507,18 +507,18 @@ export const agentdbContextSynthesize: MCPTool = {
         query,
         maxEntries: validatePositiveInt(params.maxEntries, 10, MAX_TOP_K),
       });
-      return result ?? { success: false, error: 'AgentDB bridge not available. Use memory_store/memory_search instead.' };
+      return result ?? { success: false, error: 'MofloDb bridge not available. Use memory_store/memory_search instead.' };
     } catch (error) {
       return { success: false, error: sanitizeError(error) };
     }
   },
 };
 
-// ===== agentdb_semantic_route — Route via SemanticRouter =====
+// ===== moflodb_semantic_route — Route via SemanticRouter =====
 
-export const agentdbSemanticRoute: MCPTool = {
-  name: 'agentdb_semantic-route',
-  description: 'Route an input via AgentDB SemanticRouter for intent classification',
+export const moflodbSemanticRoute: MCPTool = {
+  name: 'moflodb_semantic-route',
+  description: 'Route an input via MofloDb SemanticRouter for intent classification',
   inputSchema: {
     type: 'object',
     properties: {
@@ -532,7 +532,7 @@ export const agentdbSemanticRoute: MCPTool = {
       if (!input) return { route: null, error: 'input is required (non-empty string, max 10KB)' };
       const bridge = await getBridge();
       const result = await bridge.bridgeSemanticRoute({ input });
-      return result ?? { route: null, error: 'AgentDB bridge not available. Use hooks route instead.' };
+      return result ?? { route: null, error: 'MofloDb bridge not available. Use hooks route instead.' };
     } catch (error) {
       return { route: null, error: sanitizeError(error) };
     }
@@ -541,20 +541,20 @@ export const agentdbSemanticRoute: MCPTool = {
 
 // ===== Export all tools =====
 
-export const agentdbTools: MCPTool[] = [
-  agentdbHealth,
-  agentdbControllers,
-  agentdbPatternStore,
-  agentdbPatternSearch,
-  agentdbFeedback,
-  agentdbCausalEdge,
-  agentdbRoute,
-  agentdbSessionStart,
-  agentdbSessionEnd,
-  agentdbHierarchicalStore,
-  agentdbHierarchicalRecall,
-  agentdbConsolidate,
-  agentdbBatch,
-  agentdbContextSynthesize,
-  agentdbSemanticRoute,
+export const moflodbTools: MCPTool[] = [
+  moflodbHealth,
+  moflodbControllers,
+  moflodbPatternStore,
+  moflodbPatternSearch,
+  moflodbFeedback,
+  moflodbCausalEdge,
+  moflodbRoute,
+  moflodbSessionStart,
+  moflodbSessionEnd,
+  moflodbHierarchicalStore,
+  moflodbHierarchicalRecall,
+  moflodbConsolidate,
+  moflodbBatch,
+  moflodbContextSynthesize,
+  moflodbSemanticRoute,
 ];
