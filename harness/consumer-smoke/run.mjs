@@ -54,6 +54,7 @@ function main() {
   let consumerDir;
 
   try {
+    check.verifyDistHygiene(repoRoot);
     const tarball = check.packMoflo({
       repoRoot, workDir,
       tarballOverride: opts.tarball,
