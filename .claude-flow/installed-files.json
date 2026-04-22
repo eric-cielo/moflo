@@ -1,4 +1,7 @@
 [
+  ".claude/scripts/hooks.mjs",
+  ".claude/scripts/session-start-launcher.mjs",
+  ".claude/scripts/index-guidance.mjs",
   ".claude/scripts/build-embeddings.mjs",
   ".claude/scripts/generate-code-map.mjs",
   ".claude/scripts/semantic-search.mjs",
@@ -10,6 +13,7 @@
   ".claude/scripts/lib/moflo-resolve.mjs",
   ".claude/scripts/lib/process-manager.mjs",
   ".claude/scripts/lib/registry-cleanup.cjs",
+  ".claude/scripts/lib/yaml-upgrader.mjs",
   ".claude/helpers/gate.cjs",
   ".claude/helpers/gate-hook.mjs",
   ".claude/helpers/prompt-hook.mjs",
