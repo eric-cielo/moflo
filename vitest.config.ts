@@ -23,6 +23,16 @@ export const isolationTests = [
   // Command-index registration — dynamic import of the command registry
   // consistently exceeds 5s under full-suite load on Windows (6s cold alone).
   'src/modules/cli/__tests__/spell-command.test.ts',
+  // CLI/spell dynamic-import heavy tests — all pass cleanly alone but
+  // intermittently exceed their per-test timeouts under full-suite load
+  // (maxForks=2 + Windows fork contention). Confirmed green in isolation.
+  'src/modules/cli/__tests__/doctor-checks-deep.test.ts',
+  'src/modules/cli/__tests__/p1-commands.test.ts',
+  'src/modules/cli/__tests__/services/worker-daemon-resource-thresholds.test.ts',
+  'src/modules/cli/__tests__/spell-tools-engine.test.ts',
+  'src/modules/spells/__tests__/connector-lifecycle.test.ts',
+  'src/modules/spells/__tests__/prerequisites.test.ts',
+  'tests/bin/gate-helpers.test.ts',
 ];
 
 export default defineConfig({

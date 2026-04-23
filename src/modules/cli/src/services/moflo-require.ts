@@ -98,11 +98,15 @@ export function mofloResolve(specifier: string): string | null {
  * relative to the caller's file — the same src/modules/memory/dist/index.js
  * layout holds in both dev and consumer.
  *
+ * Callers live at src/modules/cli/src/memory/<file>.ts, so from that dir
+ * the memory dist is 3 levels up (cli/src/memory → cli/src → cli → modules)
+ * plus `memory/dist/index.js`.
+ *
  * @param callerUrl `import.meta.url` of the file that needs @moflo/memory
  */
 export async function importMofloMemory(callerUrl: string): Promise<any> {
   const viaRequire = await mofloImport('@moflo/memory');
   if (viaRequire) return viaRequire;
-  const memoryUrl = new URL('../../../../memory/dist/index.js', callerUrl);
+  const memoryUrl = new URL('../../../memory/dist/index.js', callerUrl);
   return import(memoryUrl.href);
 }
