@@ -93,6 +93,7 @@
     "flo": "node bin/cli.js"
   },
   "dependencies": {
+    "fastembed": "^2.1.0",
     "js-yaml": "^4.1.1",
     "lru-cache": "^11.3.5",
     "semver": "^7.7.4",
