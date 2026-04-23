@@ -19,7 +19,7 @@
 /**
  * Supported embedding providers
  */
-export type EmbeddingProvider = 'openai' | 'transformers' | 'mock' | 'agentic-flow' | 'rvf';
+export type EmbeddingProvider = 'openai' | 'transformers' | 'mock' | 'agentic-flow' | 'rvf' | 'fastembed';
 
 /**
  * Normalization type for embeddings
@@ -162,6 +162,30 @@ export interface RvfEmbeddingConfig extends EmbeddingBaseConfig {
 }
 
 /**
+ * Fastembed provider configuration
+ * Uses Qdrant's `fastembed` package — ONNX-based neural embeddings with a
+ * native Rust tokenizer. Default model is all-MiniLM-L6-v2 (384-dim).
+ */
+export interface FastembedEmbeddingConfig extends EmbeddingBaseConfig {
+  provider: 'fastembed';
+
+  /** Model identifier from the fastembed `EmbeddingModel` enum (default: AllMiniLML6V2) */
+  model?: string;
+
+  /** Directory where model files are cached (default: fastembed internal — ~/.cache/fastembed) */
+  cacheDir?: string;
+
+  /** Maximum input token length (default: fastembed internal) */
+  maxLength?: number;
+
+  /** Show download progress bar on first-run model fetch (default: false) */
+  showDownloadProgress?: boolean;
+
+  /** Batch size passed to the fastembed generator (default: 32) */
+  batchSize?: number;
+}
+
+/**
  * Union of all provider configs
  */
 export type EmbeddingConfig =
@@ -169,7 +193,8 @@ export type EmbeddingConfig =
   | TransformersEmbeddingConfig
   | MockEmbeddingConfig
   | AgenticFlowEmbeddingConfig
-  | RvfEmbeddingConfig;
+  | RvfEmbeddingConfig
+  | FastembedEmbeddingConfig;
 
 // ============================================================================
 // Result Types

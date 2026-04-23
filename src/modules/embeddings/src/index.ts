@@ -40,6 +40,9 @@ export type { AutoEmbeddingConfig } from './embedding-service.js';
 // RVF embedding service (pure-TS hash-based embeddings)
 export { RvfEmbeddingService } from './rvf-embedding-service.js';
 
+// Fastembed embedding service (ONNX-based neural embeddings via Qdrant's fastembed)
+export { FastembedEmbeddingService } from './fastembed-embedding-service.js';
+
 // RVF embedding cache (binary file persistence)
 export {
   RvfEmbeddingCache,
@@ -116,6 +119,7 @@ export type {
   MockEmbeddingConfig,
   AgenticFlowEmbeddingConfig,
   RvfEmbeddingConfig,
+  FastembedEmbeddingConfig,
   EmbeddingResult,
   BatchEmbeddingResult,
   IEmbeddingService,

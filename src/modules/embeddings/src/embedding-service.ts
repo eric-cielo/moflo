@@ -102,7 +102,7 @@ class LRUCache<K, V> {
 // Base Embedding Service
 // ============================================================================
 
-abstract class BaseEmbeddingService extends EventEmitter implements IEmbeddingService {
+export abstract class BaseEmbeddingService extends EventEmitter implements IEmbeddingService {
   abstract readonly provider: EmbeddingProvider;
   protected cache: LRUCache<string, Float32Array>;
   protected persistentCache: PersistentEmbeddingCache | null = null;
