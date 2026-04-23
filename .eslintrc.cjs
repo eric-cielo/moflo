@@ -56,6 +56,35 @@ const bannedEmbeddingRules = {
   ],
 };
 
+// Structural guard: any function that both constructs a Float32Array AND
+// calls charCodeAt is a hash embedding regardless of method name. The
+// identifier ban above missed the inline implementations removed in #542
+// because their enclosing methods used generic names.
+const INLINE_HASH_EMBEDDING_MESSAGE =
+  'Inline hash-embedding pattern detected (Float32Array + charCodeAt in the ' +
+  'same function). Inject a fastembed-backed IEmbeddingProvider from ' +
+  '@moflo/embeddings instead.';
+
+const INLINE_HASH_EMBEDDING_SELECTORS = [
+  'FunctionDeclaration',
+  'FunctionExpression',
+  'ArrowFunctionExpression',
+  'MethodDefinition > FunctionExpression',
+].map(fn => ({
+  selector:
+    `${fn}:has(NewExpression[callee.name='Float32Array'])` +
+    `:has(CallExpression[callee.property.name='charCodeAt'])`,
+  message: INLINE_HASH_EMBEDDING_MESSAGE,
+}));
+
+const swarmSrcRules = {
+  'no-restricted-syntax': [
+    'error',
+    ...bannedEmbeddingRules['no-restricted-syntax'].slice(1),
+    ...INLINE_HASH_EMBEDDING_SELECTORS,
+  ],
+};
+
 module.exports = {
   root: true,
   ignorePatterns: [
@@ -103,6 +132,18 @@ module.exports = {
         sourceType: 'module',
       },
       rules: bannedEmbeddingRules,
+    },
+    {
+      // Issue #542: structural ban on inline hash embeddings in swarm
+      // coordinators. Layered on top of the repo-wide identifier/literal ban.
+      files: ['src/modules/swarm/src/**/*.ts'],
+      parser: '@typescript-eslint/parser',
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+      },
+      plugins: ['@typescript-eslint'],
+      rules: swarmSrcRules,
     },
     {
       // Test-only deterministic mocks are explicitly allowed to reference the

@@ -460,6 +460,9 @@ export interface IMemoryService {
   store(entry: MemoryStoreEntry): Promise<void>;
 }
 
+import type { IEmbeddingProvider } from './attention-coordinator.js';
+export type { IEmbeddingProvider };
+
 /**
  * Search result entry from memory service
  */
@@ -502,6 +505,8 @@ export class QueenCoordinator extends EventEmitter {
   private swarm: ISwarmCoordinator;
   private neural?: INeuralLearningSystem;
   private memory?: IMemoryService;
+  private embeddingProvider?: IEmbeddingProvider;
+  private taskEmbeddingCache: WeakMap<TaskDefinition, Float32Array> = new WeakMap();
 
   // Internal state
   private analysisCache: Map<string, TaskAnalysis> = new Map();
@@ -529,13 +534,36 @@ export class QueenCoordinator extends EventEmitter {
     swarm: ISwarmCoordinator,
     config: Partial<QueenCoordinatorConfig> = {},
     neural?: INeuralLearningSystem,
-    memory?: IMemoryService
+    memory?: IMemoryService,
+    embeddingProvider?: IEmbeddingProvider
   ) {
     super();
     this.swarm = swarm;
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.neural = neural;
     this.memory = memory;
+    this.embeddingProvider = embeddingProvider;
+  }
+
+  /**
+   * Memoized embed of a task's description. Both findMatchingPatterns (during
+   * analyzeTask) and learnFromOutcome need the same vector for the same task;
+   * caching skips the second fastembed round-trip per task.
+   */
+  private async embedTaskText(task: TaskDefinition): Promise<Float32Array> {
+    const cached = this.taskEmbeddingCache.get(task);
+    if (cached) return cached;
+    if (!this.embeddingProvider) {
+      throw new Error(
+        'QueenCoordinator: learning is enabled but no IEmbeddingProvider was ' +
+          'injected. Pass one as the 5th arg to createQueenCoordinator.'
+      );
+    }
+    const embedding = await this.embeddingProvider.embed(
+      task.description || task.name
+    );
+    this.taskEmbeddingCache.set(task, embedding);
+    return embedding;
   }
 
   // ===========================================================================
@@ -987,8 +1015,7 @@ export class QueenCoordinator extends EventEmitter {
     }
 
     try {
-      // Create a simple embedding from task description
-      const embedding = this.createSimpleEmbedding(task.description || task.name);
+      const embedding = await this.embedTaskText(task);
 
       // Query ReasoningBank for similar patterns
       const results = await this.neural.findPatterns(embedding, this.config.patternRetrievalK);
@@ -1010,39 +1037,6 @@ export class QueenCoordinator extends EventEmitter {
     }
 
     return patterns;
-  }
-
-  /**
-   * Create a simple embedding from text using hash-based approach.
-   * For higher quality embeddings, integrate agentic-flow's computeEmbedding.
-   */
-  private createSimpleEmbedding(text: string): Float32Array {
-    // Hash-based embedding - lightweight and fast for local similarity matching
-    // For production ML embeddings, use: import('agentic-flow').computeEmbedding
-    const embedding = new Float32Array(768);
-    const words = text.toLowerCase().split(/\s+/);
-
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-      for (let j = 0; j < word.length; j++) {
-        const idx = (word.charCodeAt(j) * (i + 1) * (j + 1)) % 768;
-        embedding[idx] += 1 / words.length;
-      }
-    }
-
-    // Normalize
-    let norm = 0;
-    for (let i = 0; i < embedding.length; i++) {
-      norm += embedding[i] * embedding[i];
-    }
-    norm = Math.sqrt(norm);
-    if (norm > 0) {
-      for (let i = 0; i < embedding.length; i++) {
-        embedding[i] /= norm;
-      }
-    }
-
-    return embedding;
   }
 
   /**
@@ -1872,7 +1866,7 @@ export class QueenCoordinator extends EventEmitter {
     );
 
     // Record the execution step
-    const embedding = this.createSimpleEmbedding(task.description || task.name);
+    const embedding = await this.embedTaskText(task);
     const reward = result.success
       ? result.metrics.qualityScore * 0.8 + 0.2
       : result.metrics.qualityScore * 0.3;
@@ -2017,9 +2011,10 @@ export function createQueenCoordinator(
   swarm: ISwarmCoordinator,
   config?: Partial<QueenCoordinatorConfig>,
   neural?: INeuralLearningSystem,
-  memory?: IMemoryService
+  memory?: IMemoryService,
+  embeddingProvider?: IEmbeddingProvider
 ): QueenCoordinator {
-  return new QueenCoordinator(swarm, config, neural, memory);
+  return new QueenCoordinator(swarm, config, neural, memory, embeddingProvider);
 }
 
 export default QueenCoordinator;

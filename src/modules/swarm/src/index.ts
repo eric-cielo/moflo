@@ -293,6 +293,7 @@ export {
   type SpecializedAgent,
   type SwarmTopology,
   type GraphContext,
+  type IEmbeddingProvider,
 } from './attention-coordinator.js';
 
 // =============================================================================

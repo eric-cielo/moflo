@@ -205,6 +205,61 @@ export function verifyRequiredDeps(consumerDir) {
 }
 
 /**
+ * Structural check: any file in the swarm dist that contains both
+ * `new Float32Array(` AND `charCodeAt(` is a hash-embedding regardless of
+ * method name. Layered on top of the identifier guard because the identifier
+ * ban alone missed the inline implementations removed in #542.
+ */
+export function verifyNoInlineHashEmbeddingsInSwarm(consumerDir) {
+  section('Verify no inline hash embeddings in @moflo/swarm dist');
+  const swarmDist = join(
+    consumerDir,
+    'node_modules',
+    'moflo',
+    'src',
+    'modules',
+    'swarm',
+    'dist',
+  );
+  if (!existsSync(swarmDist)) {
+    record('no-inline-hash-embeddings:swarm', 'info', 'swarm dist not present in consumer');
+    return;
+  }
+
+  const hits = [];
+  let filesScanned = 0;
+  for (const file of walkJsFiles(swarmDist)) {
+    filesScanned++;
+    let text;
+    try {
+      text = readFileSync(file, 'utf8');
+    } catch (err) {
+      log(`  skipped unreadable file ${file}: ${err.message}`);
+      continue;
+    }
+    if (text.includes('new Float32Array(') && text.includes('charCodeAt(')) {
+      hits.push(relative(consumerDir, file));
+    }
+  }
+
+  if (hits.length > 0) {
+    const preview = hits.slice(0, 5).join(' | ');
+    const suffix = hits.length > 5 ? ` (+${hits.length - 5} more)` : '';
+    record(
+      'no-inline-hash-embeddings:swarm',
+      'fail',
+      `inline hash-embedding pattern leaked into swarm dist — ${hits.length} file(s): ${preview}${suffix}`,
+    );
+    return;
+  }
+  record(
+    'no-inline-hash-embeddings:swarm',
+    'pass',
+    `${filesScanned} swarm JS file(s) scanned, no inline hash pattern`,
+  );
+}
+
+/**
  * Epic #527 story #532: scans the installed moflo dist tree for any banned
  * hash-embedding identifier. The ESLint guard catches these in source; this
  * check catches them in compiled output — e.g. a bundled copy, a transform
