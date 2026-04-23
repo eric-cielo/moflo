@@ -11,8 +11,11 @@
  * `agentdb`, `agentic-flow`, `@ruvector/*`, `ruvector`, `@xenova/transformers`,
  * and any hash-embedding identifiers (HashEmbeddingProvider, createHashEmbedding,
  * generateHashEmbedding, RvfEmbeddingService, RvfEmbeddingCache,
- * `domain-aware-hash-*`). Asserts required deps present (`fastembed`) and
- * that postinstall pruned onnxruntime-node to the current platform+arch.
+ * `domain-aware-hash-*`). Also applies a structural guard over the swarm
+ * dist: any file containing both `new Float32Array(` and `charCodeAt(` is
+ * rejected regardless of method name. Asserts required deps present
+ * (`fastembed`) and that postinstall pruned onnxruntime-node to the current
+ * platform+arch.
  *
  * Usage:
  *   node harness/consumer-smoke/run.mjs                # full run
@@ -69,6 +72,7 @@ function main() {
       () => check.verifyForbiddenDeps(consumerDir),
       () => check.verifyRequiredDeps(consumerDir),
       () => check.verifyNoBannedEmbeddings(consumerDir),
+      () => check.verifyNoInlineHashEmbeddingsInSwarm(consumerDir),
       () => check.cliLoads(consumerDir),
       () => check.doctor(consumerDir),
       () => check.memoryInit(consumerDir),

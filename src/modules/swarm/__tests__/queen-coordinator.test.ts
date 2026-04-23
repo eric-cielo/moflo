@@ -22,6 +22,7 @@ import {
   type ISwarmCoordinator,
   type INeuralLearningSystem,
   type IMemoryService,
+  type IEmbeddingProvider,
   type TaskAnalysis,
   type DelegationPlan,
   type HealthReport,
@@ -81,6 +82,21 @@ function createMockMemoryService(): IMemoryService {
   return {
     semanticSearch: vi.fn().mockResolvedValue([]),
     store: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+/**
+ * Deterministic embedding provider — issue #542. Produces a stable zero-filled
+ * 768-dim vector so test outputs don't depend on any neural runtime. The queen
+ * only passes these embeddings to the mock neural system (which ignores them),
+ * so identity doesn't matter for these tests — only that the call is awaited.
+ */
+function createMockEmbeddingProvider(): IEmbeddingProvider {
+  return {
+    embed: vi.fn().mockImplementation(async () => new Float32Array(768)),
+    batchEmbed: vi.fn().mockImplementation(async (texts: string[]) =>
+      texts.map(() => new Float32Array(768))
+    ),
   };
 }
 
@@ -277,12 +293,14 @@ describe('QueenCoordinator', () => {
   let mockSwarm: ISwarmCoordinator;
   let mockNeural: INeuralLearningSystem;
   let mockMemory: IMemoryService;
+  let mockEmbedding: IEmbeddingProvider;
 
   beforeEach(() => {
     vi.useFakeTimers();
     mockSwarm = createMockSwarmCoordinator();
     mockNeural = createMockNeuralSystem();
     mockMemory = createMockMemoryService();
+    mockEmbedding = createMockEmbeddingProvider();
   });
 
   afterEach(async () => {
@@ -311,14 +329,14 @@ describe('QueenCoordinator', () => {
         healthCheckIntervalMs: 5000,
       };
 
-      queen = createQueenCoordinator(mockSwarm, config, mockNeural, mockMemory);
+      queen = createQueenCoordinator(mockSwarm, config, mockNeural, mockMemory, mockEmbedding);
 
       expect(queen).toBeInstanceOf(QueenCoordinator);
       expect(queen.isLearningEnabled()).toBe(true);
     });
 
     it('should initialize neural system when learning is enabled', async () => {
-      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural);
+      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural, undefined, mockEmbedding);
 
       await queen.initialize();
 
@@ -351,7 +369,7 @@ describe('QueenCoordinator', () => {
     });
 
     it('should trigger learning on shutdown when enabled', async () => {
-      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural);
+      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural, undefined, mockEmbedding);
       await queen.initialize();
 
       await queen.shutdown();
@@ -381,7 +399,7 @@ describe('QueenCoordinator', () => {
 
   describe('Strategic Task Analysis', () => {
     beforeEach(async () => {
-      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural);
+      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural, undefined, mockEmbedding);
       await queen.initialize();
     });
 
@@ -450,7 +468,7 @@ describe('QueenCoordinator', () => {
 
     it('should filter patterns below threshold', async () => {
       const config = { enableLearning: true, patternThreshold: 0.7 };
-      queen = createQueenCoordinator(mockSwarm, config, mockNeural);
+      queen = createQueenCoordinator(mockSwarm, config, mockNeural, undefined, mockEmbedding);
       await queen.initialize();
 
       vi.mocked(mockNeural.findPatterns).mockResolvedValue([
@@ -1002,7 +1020,7 @@ describe('QueenCoordinator', () => {
 
   describe('Learning from Outcomes', () => {
     beforeEach(async () => {
-      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural, mockMemory);
+      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural, mockMemory, mockEmbedding);
       await queen.initialize();
     });
 
@@ -1202,7 +1220,7 @@ describe('QueenCoordinator', () => {
 
     it('should work with NeuralLearningSystem interface', async () => {
       const neural = createMockNeuralSystem();
-      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, neural);
+      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, neural, undefined, mockEmbedding);
       await queen.initialize();
 
       expect(neural.initialize).toHaveBeenCalled();
@@ -1210,7 +1228,7 @@ describe('QueenCoordinator', () => {
 
     it('should work with UnifiedMemoryService interface', async () => {
       const memory = createMockMemoryService();
-      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural, memory);
+      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural, memory, mockEmbedding);
       await queen.initialize();
 
       const task = createMockTask('task_1', 'coding');
@@ -1237,7 +1255,7 @@ describe('QueenCoordinator', () => {
       queen = createQueenCoordinator(mockSwarm, { enableLearning: false });
       expect(queen.isLearningEnabled()).toBe(false);
 
-      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural);
+      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural, undefined, mockEmbedding);
       expect(queen.isLearningEnabled()).toBe(true);
     });
   });
@@ -1275,7 +1293,7 @@ describe('QueenCoordinator', () => {
     });
 
     it('should handle neural system errors gracefully', async () => {
-      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural);
+      queen = createQueenCoordinator(mockSwarm, { enableLearning: true }, mockNeural, undefined, mockEmbedding);
       await queen.initialize();
 
       vi.mocked(mockNeural.findPatterns).mockRejectedValue(new Error('Neural error'));

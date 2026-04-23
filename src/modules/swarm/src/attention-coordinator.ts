@@ -24,6 +24,19 @@ import { EventEmitter } from 'events';
 // =============================================================================
 
 /**
+ * Injectable neural embedding provider.
+ *
+ * Mirrors the shape of the same-named interface in `@moflo/guidance`; kept
+ * local so `@moflo/swarm` doesn't take a dependency on guidance. Production
+ * wires a fastembed-backed service from `@moflo/embeddings`; tests inject a
+ * deterministic mock. Hash fallbacks are banned (epic #527).
+ */
+export interface IEmbeddingProvider {
+  embed(text: string): Promise<Float32Array>;
+  batchEmbed(texts: string[]): Promise<Float32Array[]>;
+}
+
+/**
  * Attention mechanism types
  */
 export type AttentionType =
@@ -179,6 +192,7 @@ const DEFAULT_CONFIG: AttentionCoordinatorConfig = {
  */
 export class AttentionCoordinator extends EventEmitter {
   private config: AttentionCoordinatorConfig;
+  private embeddingProvider: IEmbeddingProvider;
   private performanceStats = {
     totalCoordinations: 0,
     totalLatency: 0,
@@ -186,8 +200,19 @@ export class AttentionCoordinator extends EventEmitter {
     memoryReduction: 0,
   };
 
-  constructor(config: Partial<AttentionCoordinatorConfig> = {}) {
+  constructor(
+    embeddingProvider: IEmbeddingProvider,
+    config: Partial<AttentionCoordinatorConfig> = {}
+  ) {
     super();
+    if (!embeddingProvider) {
+      throw new Error(
+        'AttentionCoordinator requires an IEmbeddingProvider. Pass a ' +
+          'fastembed-backed provider from @moflo/embeddings in production ' +
+          'and a deterministic mock in tests.'
+      );
+    }
+    this.embeddingProvider = embeddingProvider;
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
@@ -379,6 +404,8 @@ export class AttentionCoordinator extends EventEmitter {
   private async flashAttentionCoordination(
     agentOutputs: AgentOutput[]
   ): Promise<CoordinationResult> {
+    await this.ensureEmbeddings(agentOutputs);
+
     const n = agentOutputs.length;
     const blockSize = this.config.flashAttention.blockSize;
 
@@ -431,6 +458,8 @@ export class AttentionCoordinator extends EventEmitter {
   private async multiHeadAttentionCoordination(
     agentOutputs: AgentOutput[]
   ): Promise<CoordinationResult> {
+    await this.ensureEmbeddings(agentOutputs);
+
     const n = agentOutputs.length;
     const numHeads = 8;
     const headDim = 64;
@@ -526,6 +555,8 @@ export class AttentionCoordinator extends EventEmitter {
     curvature: number = this.config.hyperbolic.curvature,
     hierarchicalWeights?: number[]
   ): Promise<CoordinationResult> {
+    await this.ensureEmbeddings(agentOutputs);
+
     const n = agentOutputs.length;
     const c = Math.abs(curvature);
 
@@ -548,9 +579,8 @@ export class AttentionCoordinator extends EventEmitter {
       let totalWeight = 0;
 
       for (let j = 0; j < n; j++) {
-        // Use embeddings or create synthetic vectors
-        const embI = this.getOrCreateEmbedding(agentOutputs[i]);
-        const embJ = this.getOrCreateEmbedding(agentOutputs[j]);
+        const embI = this.requireEmbedding(agentOutputs[i]);
+        const embJ = this.requireEmbedding(agentOutputs[j]);
 
         const distance = hyperbolicDistance(
           Array.from(embI),
@@ -678,6 +708,8 @@ export class AttentionCoordinator extends EventEmitter {
     agentOutputs: AgentOutput[],
     positionEncodings: Map<string, number[]>
   ): Promise<CoordinationResult> {
+    await this.ensureEmbeddings(agentOutputs);
+
     const n = agentOutputs.length;
     const attentionWeights = new Array(n).fill(0);
 
@@ -728,8 +760,8 @@ export class AttentionCoordinator extends EventEmitter {
     head?: number
   ): number {
     // Compute similarity-based attention score
-    const emb1 = this.getOrCreateEmbedding(output1);
-    const emb2 = this.getOrCreateEmbedding(output2);
+    const emb1 = this.requireEmbedding(output1);
+    const emb2 = this.requireEmbedding(output2);
 
     // Cosine similarity
     let dot = 0;
@@ -752,35 +784,49 @@ export class AttentionCoordinator extends EventEmitter {
     return similarity * (conf1 + conf2) / 2;
   }
 
-  private getOrCreateEmbedding(output: AgentOutput): Float32Array {
-    if (output.embedding) {
-      return output.embedding instanceof Float32Array
-        ? output.embedding
-        : new Float32Array(output.embedding);
+  /**
+   * Batch-embed any outputs missing a cached embedding and write results back
+   * onto `output.embedding`. Call once per coordination pass before invoking
+   * any of the pairwise similarity methods.
+   *
+   * Centralizing the embed call keeps attention math sync and collapses O(n²)
+   * pairwise similarity into a single O(n) provider batch.
+   */
+  private async ensureEmbeddings(outputs: AgentOutput[]): Promise<void> {
+    const missing: AgentOutput[] = [];
+    const texts: string[] = [];
+    for (const output of outputs) {
+      if (output.embedding) continue;
+      missing.push(output);
+      texts.push(
+        typeof output.content === 'string'
+          ? output.content
+          : JSON.stringify(output.content)
+      );
     }
+    if (missing.length === 0) return;
 
-    // Create hash-based embedding from content
-    const content = typeof output.content === 'string'
-      ? output.content
-      : JSON.stringify(output.content);
-
-    const dim = 64;
-    const embedding = new Float32Array(dim);
-
-    for (let i = 0; i < content.length; i++) {
-      const idx = i % dim;
-      embedding[idx] += content.charCodeAt(i) / 1000;
+    const embeddings = await this.embeddingProvider.batchEmbed(texts);
+    for (let i = 0; i < missing.length; i++) {
+      missing[i].embedding = embeddings[i];
     }
+  }
 
-    // Normalize
-    const norm = Math.sqrt(embedding.reduce((s, v) => s + v * v, 0));
-    if (norm > 0) {
-      for (let i = 0; i < dim; i++) {
-        embedding[i] /= norm;
-      }
+  /**
+   * Sync lookup for a cached embedding. Callers MUST invoke
+   * {@link ensureEmbeddings} first — otherwise this throws. Kept sync so
+   * pairwise similarity loops stay tight and allocation-free.
+   */
+  private requireEmbedding(output: AgentOutput): Float32Array {
+    if (!output.embedding) {
+      throw new Error(
+        `AttentionCoordinator: missing embedding for agent '${output.agentId}'. ` +
+          'Call ensureEmbeddings(outputs) before pairwise similarity.'
+      );
     }
-
-    return embedding;
+    return output.embedding instanceof Float32Array
+      ? output.embedding
+      : new Float32Array(output.embedding);
   }
 
   private computeWeightedConsensus(
@@ -835,11 +881,15 @@ export class AttentionCoordinator extends EventEmitter {
     agents: SpecializedAgent[]
   ): Promise<Map<string, number>> {
     const scores = new Map<string, number>();
-    const taskEmbedding = this.getOrCreateEmbedding({
-      agentId: 'task',
-      content: task.content,
-      embedding: task.embedding,
-    });
+
+    let taskEmbedding: Float32Array;
+    if (task.embedding) {
+      taskEmbedding = task.embedding instanceof Float32Array
+        ? task.embedding
+        : new Float32Array(task.embedding);
+    } else {
+      taskEmbedding = await this.embeddingProvider.embed(task.content);
+    }
 
     for (const agent of agents) {
       const agentEmbedding = agent.embedding instanceof Float32Array
@@ -992,9 +1042,10 @@ export class AttentionCoordinator extends EventEmitter {
 // =============================================================================
 
 export function createAttentionCoordinator(
+  embeddingProvider: IEmbeddingProvider,
   config?: Partial<AttentionCoordinatorConfig>
 ): AttentionCoordinator {
-  return new AttentionCoordinator(config);
+  return new AttentionCoordinator(embeddingProvider, config);
 }
 
 export default AttentionCoordinator;
