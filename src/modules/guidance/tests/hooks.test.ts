@@ -4,8 +4,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GuidanceHookProvider, createGuidanceHooks, gateResultsToHookResult } from '../src/hooks.js';
 import { EnforcementGates } from '../src/gates.js';
-import { ShardRetriever, HashEmbeddingProvider } from '../src/retriever.js';
+import { ShardRetriever } from '../src/retriever.js';
 import { RunLedger } from '../src/ledger.js';
+import { DeterministicTestEmbeddingProvider } from './__mocks__/deterministic-embedding-provider.js';
 import { HookRegistry } from '@moflo/hooks';
 import { HookEvent, HookPriority } from '@moflo/hooks';
 import type { HookContext, HookResult } from '@moflo/hooks';
@@ -182,7 +183,7 @@ describe('GuidanceHookProvider', () => {
 
   beforeEach(async () => {
     gates = new EnforcementGates();
-    retriever = new ShardRetriever(new HashEmbeddingProvider());
+    retriever = new ShardRetriever(new DeterministicTestEmbeddingProvider());
     ledger = new RunLedger();
     registry = new HookRegistry();
     provider = new GuidanceHookProvider(gates, retriever, ledger);
@@ -554,7 +555,7 @@ describe('GuidanceHookProvider', () => {
     });
 
     it('should gracefully handle retriever without a loaded bundle', async () => {
-      const emptyRetriever = new ShardRetriever(new HashEmbeddingProvider());
+      const emptyRetriever = new ShardRetriever(new DeterministicTestEmbeddingProvider());
       const emptyProvider = new GuidanceHookProvider(gates, emptyRetriever, ledger);
       emptyProvider.registerAll(registry);
 

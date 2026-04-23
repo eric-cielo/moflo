@@ -1,10 +1,9 @@
 /**
- * V3 Embedding Service Types
+ * Embedding Service Types
  *
- * Type definitions for embedding service aligned with agentic-flow@alpha:
- * - OpenAI provider
- * - Transformers.js provider
- * - Mock provider
+ * Neural embeddings are required; there is no hash fallback in production. The
+ * `'transformers'` provider key is retained as an alias that instantiates the
+ * fastembed-backed service so existing callers keep working after the swap.
  *
  * Performance Targets:
  * - Single embedding: <100ms (API), <50ms (local)
@@ -17,9 +16,14 @@
 // ============================================================================
 
 /**
- * Supported embedding providers
+ * Supported embedding providers.
+ *
+ * - `openai`, `fastembed` — neural providers available to consumers.
+ * - `transformers` — backwards-compatible alias; the factory instantiates
+ *   a fastembed-backed service under the hood.
+ * - `mock` — deterministic in-memory service used only by tests.
  */
-export type EmbeddingProvider = 'openai' | 'transformers' | 'mock' | 'agentic-flow' | 'rvf' | 'fastembed';
+export type EmbeddingProvider = 'openai' | 'transformers' | 'mock' | 'fastembed';
 
 /**
  * Normalization type for embeddings
@@ -118,50 +122,6 @@ export interface MockEmbeddingConfig extends EmbeddingBaseConfig {
 }
 
 /**
- * Agentic-flow provider configuration
- * Uses optimized ONNX embeddings with:
- * - Float32Array with flattened matrices
- * - 256-entry LRU cache with FNV-1a hash
- * - SIMD-friendly loop unrolling (4x)
- * - Pre-allocated buffers (no GC pressure)
- */
-export interface AgenticFlowEmbeddingConfig extends EmbeddingBaseConfig {
-  provider: 'agentic-flow';
-
-  /** Model ID (default: all-MiniLM-L6-v2) */
-  modelId?: string;
-
-  /** Embedding dimensions (default: 384) */
-  dimensions?: number;
-
-  /** Internal cache size for embedder (default: 256) */
-  embedderCacheSize?: number;
-
-  /** Model directory path */
-  modelDir?: string;
-
-  /** Auto-download model if not present */
-  autoDownload?: boolean;
-}
-
-/**
- * RVF provider configuration
- * Lightweight hash-based embeddings (no neural model, sub-ms latency)
- */
-export interface RvfEmbeddingConfig extends EmbeddingBaseConfig {
-  provider: 'rvf';
-
-  /** Embedding dimensions (default: 384) */
-  dimensions?: number;
-
-  /** Path to binary cache file for persistent storage */
-  cachePath?: string;
-
-  /** Similarity metric preference (default: 'cosine') */
-  metric?: 'cosine' | 'l2' | 'dotproduct';
-}
-
-/**
  * Fastembed provider configuration
  * Uses Qdrant's `fastembed` package — ONNX-based neural embeddings with a
  * native Rust tokenizer. Default model is all-MiniLM-L6-v2 (384-dim).
@@ -192,8 +152,6 @@ export type EmbeddingConfig =
   | OpenAIEmbeddingConfig
   | TransformersEmbeddingConfig
   | MockEmbeddingConfig
-  | AgenticFlowEmbeddingConfig
-  | RvfEmbeddingConfig
   | FastembedEmbeddingConfig;
 
 // ============================================================================

@@ -1,17 +1,18 @@
 /**
  * Neural Substrate Integration
  *
- * Integrates agentic-flow's neural embedding features:
- * - Semantic drift detection
- * - Memory physics (hippocampal dynamics)
- * - Embedding state machine
- * - Swarm coordination
- * - Coherence monitoring
+ * Previously wrapped `agentic-flow/embeddings` for semantic drift detection,
+ * memory physics, swarm coordination, and coherence monitoring. That dependency
+ * was removed in moflo@4.8.80 (see `project_agentdb_removal`), so these APIs
+ * now permanently report "unavailable" and the wrapper is a no-op. Public
+ * shapes are retained so existing consumers keep compiling.
  *
- * These features treat embeddings as a synthetic nervous system.
+ * Neural embeddings themselves remain fully supported via the fastembed-backed
+ * {@link FastembedEmbeddingService} in this package. This module is only for
+ * the agentic-flow neural-substrate extensions (drift / coherence / swarm),
+ * which have no replacement wired into moflo yet.
  */
 
-// Types from agentic-flow/embeddings
 export interface DriftResult {
   distance: number;
   velocity: number;
@@ -64,204 +65,67 @@ export interface NeuralSubstrateConfig {
 }
 
 /**
- * Lazy-loaded Neural Substrate wrapper
- *
- * Wraps agentic-flow's NeuralSubstrate with graceful fallback
+ * No-op neural substrate wrapper. All methods return `null`/`false`/empty
+ * values so existing callers continue to work without behavior change.
  */
 export class NeuralEmbeddingService {
-  private substrate: any = null;
   private initialized = false;
-  private available = false;
 
-  constructor(private config: NeuralSubstrateConfig = {}) {}
+  constructor(_config: NeuralSubstrateConfig = {}) {}
 
-  /**
-   * Initialize neural substrate
-   */
   async init(): Promise<boolean> {
-    if (this.initialized) return this.available;
-
-    try {
-      const { getNeuralSubstrate } = await import('agentic-flow/embeddings');
-      this.substrate = await getNeuralSubstrate(this.config);
-      await this.substrate.init();
-      this.available = true;
-    } catch (error) {
-      console.warn('[neural] Neural substrate not available:', error instanceof Error ? error.message : error);
-      this.available = false;
-    }
-
     this.initialized = true;
-    return this.available;
+    return false;
   }
 
-  /**
-   * Check if neural features are available
-   */
   isAvailable(): boolean {
-    return this.available;
+    return false;
   }
 
-  /**
-   * Detect semantic drift from baseline
-   */
-  async detectDrift(input: string): Promise<DriftResult | null> {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.drift.detect(input);
+  async detectDrift(_input: string): Promise<DriftResult | null> {
+    return null;
   }
 
-  /**
-   * Set baseline for drift detection
-   */
-  async setDriftBaseline(context: string): Promise<void> {
-    if (!this.available || !this.substrate) return;
-    await this.substrate.drift.setBaseline(context);
+  async setDriftBaseline(_context: string): Promise<void> {}
+
+  async addMemory(_entry: MemoryEntry): Promise<void> {}
+
+  async recallMemory(_query: string, _k?: number): Promise<MemoryEntry[]> {
+    return [];
   }
 
-  /**
-   * Store memory with interference detection
-   */
-  async storeMemory(id: string, content: string): Promise<{ stored: boolean; interference: string[] } | null> {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.memory.store(id, content);
+  async checkCoherence(_input: string): Promise<CoherenceResult | null> {
+    return null;
   }
 
-  /**
-   * Recall memories by similarity
-   */
-  async recallMemories(query: string, topK = 5): Promise<Array<MemoryEntry & { relevance: number }> | null> {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.memory.recall(query, topK);
+  async registerAgent(_state: AgentState): Promise<void> {}
+
+  async updateAgentState(_id: string, _patch: Partial<AgentState>): Promise<void> {}
+
+  async getHealth(): Promise<SubstrateHealth | null> {
+    return null;
   }
 
-  /**
-   * Consolidate memories (merge similar, forget weak)
-   */
-  consolidateMemories(): { merged: number; forgotten: number; remaining: number } | null {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.memory.consolidate();
-  }
-
-  /**
-   * Register agent for state tracking
-   */
-  async registerAgent(id: string, role: string): Promise<AgentState | null> {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.states.registerAgent(id, role);
-  }
-
-  /**
-   * Update agent state based on observation
-   */
-  async updateAgentState(agentId: string, observation: string): Promise<{
-    newState: AgentState;
-    nearestRegion: string;
-    regionProximity: number;
-  } | null> {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.states.updateState(agentId, observation);
-  }
-
-  /**
-   * Get agent state
-   */
-  getAgentState(agentId: string): AgentState | null {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.states.getAgent(agentId);
-  }
-
-  /**
-   * Coordinate swarm for task
-   */
-  async coordinateSwarm(task: string): Promise<Array<{
-    agentId: string;
-    taskAlignment: number;
-    bestCollaborator: string | null;
-    collaborationScore: number;
-  }> | null> {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.swarm.coordinate(task);
-  }
-
-  /**
-   * Add agent to swarm
-   */
-  async addSwarmAgent(id: string, role: string): Promise<AgentState | null> {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.swarm.addAgent(id, role);
-  }
-
-  /**
-   * Calibrate coherence monitor
-   */
-  async calibrateCoherence(goodOutputs: string[]): Promise<{ calibrated: boolean; sampleCount: number } | null> {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.coherence.calibrate(goodOutputs);
-  }
-
-  /**
-   * Check output coherence
-   */
-  async checkCoherence(output: string): Promise<CoherenceResult | null> {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.coherence.check(output);
-  }
-
-  /**
-   * Process input through full neural substrate
-   */
-  async process(input: string, context?: {
-    agentId?: string;
-    memoryId?: string;
-    checkCoherence?: boolean;
-  }): Promise<{
-    drift: DriftResult;
-    state?: { nearestRegion: string; regionProximity: number };
-    coherence?: CoherenceResult;
-    stored?: boolean;
-  } | null> {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.process(input, context);
-  }
-
-  /**
-   * Get substrate health
-   */
-  health(): SubstrateHealth | null {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.health();
-  }
-
-  /**
-   * Full consolidation pass
-   */
-  consolidate(): { memory: { merged: number; forgotten: number; remaining: number } } | null {
-    if (!this.available || !this.substrate) return null;
-    return this.substrate.consolidate();
-  }
+  async consolidate(): Promise<void> {}
 }
 
-/**
- * Create neural embedding service
- */
 export function createNeuralService(config: NeuralSubstrateConfig = {}): NeuralEmbeddingService {
   return new NeuralEmbeddingService(config);
 }
 
 /**
- * Check if neural features are available
+ * Neural-substrate features (drift / coherence / swarm) have no runtime since
+ * the agentic-flow dependency was removed. Callers should treat neural
+ * features as optional and skip them when this returns `false`.
  */
 export async function isNeuralAvailable(): Promise<boolean> {
-  try {
-    await import('agentic-flow/embeddings');
-    return true;
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 /**
- * List available ONNX embedding models
+ * Default catalog of neural embedding models. Since the agentic-flow model
+ * registry is no longer bundled, this returns a static fallback list of
+ * well-known models so UI rendering keeps working.
  */
 export async function listEmbeddingModels(): Promise<Array<{
   id: string;
@@ -270,26 +134,24 @@ export async function listEmbeddingModels(): Promise<Array<{
   quantized: boolean;
   downloaded: boolean;
 }>> {
-  try {
-    const { listAvailableModels } = await import('agentic-flow/embeddings');
-    return listAvailableModels();
-  } catch {
-    // Return default models if agentic-flow not available
-    return [
-      { id: 'all-MiniLM-L6-v2', dimension: 384, size: '23MB', quantized: false, downloaded: false },
-      { id: 'all-mpnet-base-v2', dimension: 768, size: '110MB', quantized: false, downloaded: false },
-    ];
-  }
+  return [
+    { id: 'all-MiniLM-L6-v2', dimension: 384, size: '23MB', quantized: false, downloaded: false },
+    { id: 'all-mpnet-base-v2', dimension: 768, size: '110MB', quantized: false, downloaded: false },
+  ];
 }
 
 /**
- * Download embedding model
+ * The old `downloadModel` path (via `agentic-flow/embeddings`) is no longer
+ * available. Neural models are fetched on-demand by `FastembedEmbeddingService`
+ * through the upstream `fastembed` package itself.
  */
 export async function downloadEmbeddingModel(
-  modelId: string,
-  targetDir?: string,
-  onProgress?: (progress: { percent: number; bytesDownloaded: number; totalBytes: number }) => void
+  _modelId: string,
+  _targetDir?: string,
+  _onProgress?: (progress: { percent: number; bytesDownloaded: number; totalBytes: number }) => void,
 ): Promise<string> {
-  const { downloadModel } = await import('agentic-flow/embeddings');
-  return downloadModel(modelId, targetDir ?? '.models', onProgress);
+  throw new Error(
+    'Explicit model downloads are not supported in this build. The ' +
+      'fastembed runtime fetches its model automatically on first use.',
+  );
 }

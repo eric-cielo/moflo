@@ -28,7 +28,7 @@ import { createHash } from 'node:crypto';
 
 // Core components
 import { GuidanceCompiler, createCompiler } from './compiler.js';
-import { ShardRetriever, createRetriever, HashEmbeddingProvider } from './retriever.js';
+import { ShardRetriever, createRetriever } from './retriever.js';
 import { EnforcementGates, createGates } from './gates.js';
 import { RunLedger, createLedger } from './ledger.js';
 import { OptimizerLoop, createOptimizer } from './optimizer.js';
@@ -71,7 +71,7 @@ export type {
 // Re-export components
 export { GuidanceCompiler, createCompiler } from './compiler.js';
 export type { CompilerConfig } from './compiler.js';
-export { ShardRetriever, createRetriever, HashEmbeddingProvider } from './retriever.js';
+export { ShardRetriever, createRetriever } from './retriever.js';
 export type { IEmbeddingProvider } from './retriever.js';
 export { EnforcementGates, createGates } from './gates.js';
 export {
@@ -434,7 +434,7 @@ import type {
 // Default Configuration
 // ============================================================================
 
-const DEFAULT_CONFIG: GuidanceControlPlaneConfig = {
+const DEFAULT_CONFIG: Omit<GuidanceControlPlaneConfig, 'embeddingProvider'> = {
   rootGuidancePath: './CLAUDE.md',
   localGuidancePath: './CLAUDE.local.md',
   gates: {},
@@ -474,8 +474,16 @@ export class GuidanceControlPlane {
   constructor(config: Partial<GuidanceControlPlaneConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
 
+    if (!this.config.embeddingProvider) {
+      throw new Error(
+        'GuidanceControlPlane requires config.embeddingProvider. The retriever ' +
+          'is neural-only; wire a real provider from @moflo/embeddings (production) ' +
+          'or inject a deterministic mock (tests).',
+      );
+    }
+
     this.compiler = createCompiler();
-    this.retriever = createRetriever();
+    this.retriever = createRetriever(this.config.embeddingProvider);
     this.gates = createGates(this.config.gates);
     this.ledger = createLedger();
     this.optimizer = createOptimizer();

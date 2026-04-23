@@ -25,7 +25,6 @@ export interface VectorDB {
 
 export interface MoVectorModule {
   createVectorDB(dimensions: number): Promise<VectorDB>;
-  generateEmbedding(text: string, dimensions?: number): Float32Array;
   cosineSimilarity(a: Float32Array, b: Float32Array): number;
   isWASMAccelerated(): boolean;
 }
@@ -94,38 +93,6 @@ function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   return denom === 0 ? 0 : dotProduct / denom;
 }
 
-/**
- * Generate a simple hash-based embedding (fallback when native backend not available)
- */
-function generateHashEmbedding(text: string, dimensions: number = 768): Float32Array {
-  const embedding = new Float32Array(dimensions);
-  const normalized = text.toLowerCase().trim();
-
-  // Simple hash function
-  let hash = 0;
-  for (let i = 0; i < normalized.length; i++) {
-    hash = ((hash << 5) - hash) + normalized.charCodeAt(i);
-    hash = hash & hash; // Convert to 32bit integer
-  }
-
-  // Generate pseudo-random embedding based on hash
-  for (let i = 0; i < dimensions; i++) {
-    embedding[i] = Math.sin(hash * (i + 1) * 0.001) * 0.5 + 0.5;
-  }
-
-  // Normalize
-  let norm = 0;
-  for (let i = 0; i < dimensions; i++) {
-    norm += embedding[i] * embedding[i];
-  }
-  norm = Math.sqrt(norm);
-  for (let i = 0; i < dimensions; i++) {
-    embedding[i] /= norm;
-  }
-
-  return embedding;
-}
-
 // ============================================================================
 // Module State
 // ============================================================================
@@ -169,13 +136,6 @@ export function isWASMAccelerated(): boolean {
  */
 export async function createVectorDB(dimensions: number = 768): Promise<VectorDB> {
   return new FallbackVectorDB(dimensions);
-}
-
-/**
- * Generate an embedding for text using hash-based embedding
- */
-export function generateEmbedding(text: string, dimensions: number = 768): Float32Array {
-  return generateHashEmbedding(text, dimensions);
 }
 
 /**

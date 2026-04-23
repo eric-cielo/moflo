@@ -52,7 +52,7 @@ All non-constitution rules become `RuleShard` objects. Each shard contains:
 - A `compactText` field: `[RULE-ID] rule text @tag1 @tag2`
 - An optional `embedding` vector (Float32Array) for semantic retrieval
 
-The `ShardRetriever` in `src/retriever.ts` indexes shards by generating embeddings (via `IEmbeddingProvider`, defaulting to `HashEmbeddingProvider` for zero-dependency operation). At task start, retrieval works as follows:
+The `ShardRetriever` in `src/retriever.ts` indexes shards by generating embeddings via a caller-supplied `IEmbeddingProvider` (production uses a neural fastembed-backed provider; tests inject a deterministic mock from `tests/__mocks__/`). At task start, retrieval works as follows:
 
 1. Classify the task intent using weighted pattern matching (see ADR-G003)
 2. Embed the task description
@@ -75,7 +75,7 @@ The `ShardRetriever.retrieve()` method returns a `RetrievalResult` containing th
 ### Negative
 
 - **Missing shards.** If retrieval misses a relevant shard, the model lacks that guidance. Mitigation: critical rules belong in the constitution (always loaded), and the intent boost ensures domain-matched shards score higher.
-- **Embedding quality.** The default `HashEmbeddingProvider` uses a deterministic hash-based pseudo-embedding that is not semantically meaningful. Production deployments should plug in an ONNX-based provider for real semantic similarity.
+- **Embedding quality depends on the injected provider.** Production must wire a neural provider (the CLI uses fastembed via `@moflo/embeddings`); the deterministic test mock is intentionally semantic-free and only used in unit tests. Epic #527 removed the built-in hash fallback — callers that fail to inject a real provider will fail fast instead of silently degrading.
 - **Constitution size pressure.** Teams may want to put too many rules in the constitution, defeating the purpose. The `maxConstitutionLines` cap (default 60) enforces discipline.
 
 ## Alternatives Considered

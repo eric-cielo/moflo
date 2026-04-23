@@ -35,6 +35,14 @@ export interface PersistentSonaConfig {
   autoPersistInterval?: number;
   /** Enable verbose logging (default: false) */
   verbose?: boolean;
+  /**
+   * Optional factory for the embedding service used during trajectory mining.
+   * Defaults to a dynamic import of `@moflo/embeddings` (fastembed provider).
+   * Tests inject a deterministic mock.
+   */
+  embeddingLoader?: () => Promise<{
+    embed(text: string): Promise<{ embedding: Float32Array | number[] }>;
+  } | null>;
 }
 
 // ===== Constants =====
@@ -112,11 +120,17 @@ export class PersistentSonaCoordinator {
   private maxTrajectoryBuffer: number;
   private verbose: boolean;
   private initialized = false;
+  private embeddingLoader: PersistentSonaConfig['embeddingLoader'];
+  private embeddingService: {
+    embed(text: string): Promise<{ embedding: Float32Array | number[] }>;
+  } | null = null;
+  private embeddingInitPromise: Promise<void> | null = null;
 
   constructor(config: PersistentSonaConfig) {
     this.patternThreshold = config.patternThreshold ?? DEFAULT_PATTERN_THRESHOLD;
     this.maxTrajectoryBuffer = config.maxTrajectoryBuffer ?? DEFAULT_MAX_TRAJECTORY_BUFFER;
     this.verbose = config.verbose ?? false;
+    this.embeddingLoader = config.embeddingLoader;
 
     const storeConfig: RvfLearningStoreConfig = {
       storePath: config.storePath,
@@ -286,10 +300,10 @@ export class PersistentSonaCoordinator {
    *
    * @returns Summary of the learning pass
    */
-  runBackgroundLoop(): {
+  async runBackgroundLoop(): Promise<{
     patternsLearned: number;
     trajectoriesProcessed: number;
-  } {
+  }> {
     this.ensureInitialized();
 
     let patternsLearned = 0;
@@ -297,7 +311,7 @@ export class PersistentSonaCoordinator {
 
     for (const traj of this.trajectoryBuffer) {
       if (traj.outcome === 'success' || traj.outcome === 'partial') {
-        patternsLearned += this.extractPatternsFromTrajectory(traj);
+        patternsLearned += await this.extractPatternsFromTrajectory(traj);
       }
     }
 
@@ -378,13 +392,14 @@ export class PersistentSonaCoordinator {
    * A step produces a new pattern only if no sufficiently similar
    * pattern already exists.
    */
-  private extractPatternsFromTrajectory(trajectory: TrajectoryRecord): number {
+  private async extractPatternsFromTrajectory(trajectory: TrajectoryRecord): Promise<number> {
     let extracted = 0;
 
     for (const step of trajectory.steps) {
       if (step.confidence < this.patternThreshold) continue;
 
-      const embedding = this.createHashEmbedding(step.input + step.output);
+      const embedding = await this.embedText(step.input + step.output);
+      if (embedding.length === 0) continue; // embedding service unavailable — skip
       const similar = this.findSimilarPatterns(embedding, 1);
 
       if (similar.length === 0) {
@@ -397,29 +412,53 @@ export class PersistentSonaCoordinator {
   }
 
   /**
-   * Deterministic hash-based embedding for pattern extraction.
-   * This is a lightweight stand-in for a real embedding model,
-   * matching the approach used in SonaCoordinator.
+   * Embed text via the shared neural service. Returns an empty array if no
+   * service is available so callers can skip the step cleanly.
    */
-  private createHashEmbedding(text: string, dim: number = 64): number[] {
-    const embedding = new Array<number>(dim).fill(0);
+  private async embedText(text: string): Promise<number[]> {
+    await this.initEmbeddings();
+    if (!this.embeddingService) return [];
 
-    for (let i = 0; i < text.length; i++) {
-      const idx = (text.charCodeAt(i) * (i + 1)) % dim;
-      embedding[idx] += 0.1;
+    try {
+      const result = await this.embeddingService.embed(text);
+      const embedding = result.embedding;
+      if (embedding instanceof Float32Array) {
+        return Array.from(embedding);
+      }
+      return embedding as number[];
+    } catch {
+      return [];
+    }
+  }
+
+  private async initEmbeddings(): Promise<void> {
+    if (this.embeddingService) return;
+    if (this.embeddingInitPromise) {
+      await this.embeddingInitPromise;
+      return;
     }
 
-    let norm = 0;
-    for (let i = 0; i < dim; i++) {
-      norm += embedding[i] * embedding[i];
-    }
-    norm = Math.sqrt(norm) || 1;
+    this.embeddingInitPromise = (async () => {
+      try {
+        if (this.embeddingLoader) {
+          this.embeddingService = await this.embeddingLoader();
+          return;
+        }
 
-    for (let i = 0; i < dim; i++) {
-      embedding[i] /= norm;
-    }
+        const mod: any = await import('@moflo/embeddings' as string);
+        const create = mod.createEmbeddingService;
+        if (typeof create !== 'function') return;
 
-    return embedding;
+        this.embeddingService = create({
+          provider: 'fastembed',
+          dimensions: 384,
+        });
+      } catch {
+        this.embeddingService = null;
+      }
+    })();
+
+    await this.embeddingInitPromise;
   }
 
   private ensureInitialized(): void {

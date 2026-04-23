@@ -15,6 +15,7 @@ import type {
   ConsolidateResult,
   PatternMatch,
   NeuralLoader,
+  EmbeddingLoader,
 } from './learning-bridge.js';
 
 // ===== Mock Neural System =====
@@ -36,6 +37,25 @@ function createNeuralLoader(neural: ReturnType<typeof createMockNeuralSystem>): 
 
 function createFailingNeuralLoader(): NeuralLoader {
   return async () => { throw new Error('Module not found'); };
+}
+
+// ===== Mock Embedding Service =====
+
+/**
+ * Stub embedding service that returns a deterministic Float32Array of the
+ * requested size. Satisfies the shape that LearningBridge now depends on so
+ * tests don't need the real `@moflo/embeddings` runtime.
+ */
+function createMockEmbeddingLoader(dimensions: number = 768): EmbeddingLoader {
+  return async () => ({
+    async embed(text: string) {
+      const embedding = new Float32Array(dimensions);
+      for (let i = 0; i < dimensions; i++) {
+        embedding[i] = (text.charCodeAt(i % Math.max(1, text.length)) % 97) / 97;
+      }
+      return { embedding };
+    },
+  });
 }
 
 // ===== Mock Backend =====
@@ -125,7 +145,10 @@ describe('LearningBridge', () => {
   beforeEach(() => {
     backend = createMockBackend();
     neural = createMockNeuralSystem();
-    bridge = new LearningBridge(backend, { neuralLoader: createNeuralLoader(neural) });
+    bridge = new LearningBridge(backend, {
+      neuralLoader: createNeuralLoader(neural),
+      embeddingLoader: createMockEmbeddingLoader(768),
+    });
   });
 
   afterEach(() => {
@@ -220,7 +243,7 @@ describe('LearningBridge', () => {
       safeBridge.destroy();
     });
 
-    it('should pass hash embedding as stateEmbedding', async () => {
+    it('should pass a neural embedding from the injected loader as stateEmbedding', async () => {
       await bridge.onInsightRecorded(createTestInsight(), 'entry-1');
 
       const stepArg = neural.recordStep.mock.calls[0][1];

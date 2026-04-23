@@ -39,10 +39,3 @@ declare module 'sql.js' {
   const initSqlJs: any;
   export default initSqlJs;
 }
-
-declare module '@xenova/transformers' {
-  const transformers: any;
-  export default transformers;
-  export const pipeline: any;
-  export const env: any;
-}

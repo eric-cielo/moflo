@@ -26,6 +26,120 @@ async function getEmbeddings() {
   }
 }
 
+/**
+ * Run the embeddings-version upgrade on the given DB when its stored version
+ * is below the current runtime version. Safe to call on every session start
+ * — returns fast when the DB is already up-to-date or when @moflo/embeddings
+ * isn't installed.
+ *
+ * The story-2 driver (`runUpgrade`) and story-3 UX are wired here. The
+ * concrete `MigrationStore` adapter for moflo's memory.db schema lives in
+ * `services/sqljs-migration-store.ts`.
+ */
+async function runEmbeddingsMigrationIfNeeded(options: {
+  dbPath?: string;
+  verbose?: boolean;
+}): Promise<boolean> {
+  const fs = await import('fs');
+  const path = await import('path');
+
+  const dbPath = path.resolve(options.dbPath ?? path.join(process.cwd(), '.swarm', 'memory.db'));
+  if (!fs.existsSync(dbPath)) return false;
+
+  const embeddings = await getEmbeddings();
+  if (!embeddings) return false;
+
+  const initSqlJs = (await mofloImport('sql.js'))?.default;
+  if (!initSqlJs) return false;
+
+  const SQL = await initSqlJs();
+  const buffer = fs.readFileSync(dbPath);
+  const db = new SQL.Database(buffer);
+
+  // Quick probe: does this DB carry embedding data at all? If not, skip.
+  const hasEmbeddingsTable = tableHasColumn(db, 'memory_entries', 'embedding');
+  if (!hasEmbeddingsTable) {
+    db.close();
+    return false;
+  }
+
+  const { SqlJsMemoryEntriesStore } = await import(
+    '../services/sqljs-migration-store.js'
+  );
+  const store = new SqlJsMemoryEntriesStore(db, path.basename(dbPath));
+
+  const currentVersion = await store.getVersion();
+  const targetVersion = (embeddings as { EMBEDDINGS_VERSION: number }).EMBEDDINGS_VERSION;
+  if (currentVersion !== null && currentVersion >= targetVersion) {
+    db.close();
+    return false;
+  }
+
+  const service = (embeddings as {
+    createEmbeddingService: (c: unknown) => {
+      embedBatch(texts: string[]): Promise<{ embeddings: Array<Float32Array | number[]> }>;
+    };
+  }).createEmbeddingService({
+    provider: 'fastembed',
+    dimensions: 384,
+  });
+
+  const runUpgrade = (embeddings as {
+    runUpgrade: (opts: unknown) => Promise<{ status: string; errors: readonly string[] }>;
+  }).runUpgrade;
+
+  const summary = await runUpgrade({
+    plan: {
+      steps: [
+        {
+          label: 'Re-index memory so search can find things again',
+          store,
+          embedder: {
+            async embedBatch(texts: string[]): Promise<Float32Array[]> {
+              const result = await service.embedBatch(texts);
+              return result.embeddings.map(vec =>
+                vec instanceof Float32Array ? vec : new Float32Array(vec),
+              );
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  if (summary.status === 'completed') {
+    const exported = db.export();
+    fs.writeFileSync(dbPath, Buffer.from(exported));
+  }
+  db.close();
+
+  return summary.status === 'completed';
+}
+
+/** Return true if the given table has the given column. */
+function tableHasColumn(db: unknown, table: string, column: string): boolean {
+  try {
+    const stmt = (db as { prepare(sql: string): {
+      step(): boolean;
+      get(): unknown[];
+      free(): void;
+    } }).prepare(`PRAGMA table_info(${JSON.stringify(table).slice(1, -1)})`);
+    let hit = false;
+    while (stmt.step()) {
+      const row = stmt.get();
+      // PRAGMA table_info returns [cid, name, type, notnull, dflt_value, pk]
+      if (Array.isArray(row) && row[1] === column) {
+        hit = true;
+        break;
+      }
+    }
+    stmt.free();
+    return hit;
+  } catch {
+    return false;
+  }
+}
+
 // Generate subcommand - REAL implementation
 const generateCommand: Command = {
   name: 'generate',
@@ -758,6 +872,16 @@ const initCommand: Command = {
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
       spinner.succeed('Embedding subsystem initialized');
+
+      // Auto-migrate existing memory DBs whose embeddings_version < current. The
+      // migration driver is resumable and idempotent, so running it on every
+      // init is safe and keeps upgrades seamless — no separate command required.
+      try {
+        await runEmbeddingsMigrationIfNeeded({ verbose: false });
+      } catch (migrationError) {
+        const msg = migrationError instanceof Error ? migrationError.message : String(migrationError);
+        output.printWarning(`Embeddings migration check failed: ${msg}`);
+      }
 
       output.writeln();
       output.printTable({
@@ -1672,6 +1796,36 @@ const benchmarkCommand: Command = {
   },
 };
 
+// Migrate subcommand — runs the story-2 driver with the story-3 UX on any
+// DB whose embeddings_version is below current. Invoked manually by the user
+// and automatically from `embeddings init` (session-start).
+const migrateCommand: Command = {
+  name: 'migrate',
+  description:
+    'Re-embed existing vectors using the current neural model (runs automatically on session start if needed)',
+  options: [
+    { name: 'db', short: 'd', type: 'string', description: 'Path to memory DB', default: '.swarm/memory.db' },
+    { name: 'batch-size', short: 'b', type: 'number', description: 'Batch size', default: '128' },
+    { name: 'verbose', short: 'v', type: 'boolean', description: 'Verbose output', default: 'false' },
+  ],
+  examples: [
+    { command: 'claude-flow embeddings migrate', description: 'Migrate .swarm/memory.db to current version' },
+    { command: 'claude-flow embeddings migrate -d .custom/mem.db', description: 'Migrate a custom DB' },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const dbPath = (ctx.flags.db as string) || '.swarm/memory.db';
+    const verbose = ctx.flags.verbose === true;
+    try {
+      const ran = await runEmbeddingsMigrationIfNeeded({ dbPath, verbose });
+      return { success: true, data: { ran } };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      output.printError(`Migration failed: ${msg}`);
+      return { success: false, exitCode: 1 };
+    }
+  },
+};
+
 // Main embeddings command
 export const embeddingsCommand: Command = {
   name: 'embeddings',
@@ -1679,6 +1833,7 @@ export const embeddingsCommand: Command = {
   aliases: ['embed'],
   subcommands: [
     initCommand,
+    migrateCommand,
     generateCommand,
     searchCommand,
     compareCommand,

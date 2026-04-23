@@ -28,7 +28,7 @@ A comprehensive code review of the `@moflo/guidance` package identified several 
 
 ### Medium Issues Found
 
-7. **`HashEmbeddingProvider` undocumented as test-only**. The hash-based embedding provider has no semantic meaning but lacked a clear warning against production use.
+7. **Hash-based embedding provider undocumented as test-only** (resolved in epic #527 — the class has since been removed; see `tests/__mocks__/deterministic-embedding-provider.ts` for the test fixture).
 
 8. **`simulateChangeEffect` in optimizer presented as A/B testing**. The method applies fixed multipliers, not real traffic measurement, but the surrounding code and ADR language implied real experimentation.
 
@@ -72,9 +72,9 @@ Replaced single-element `shift()` calls with batch `splice()`:
 - `ThreatDetector.addSignal()`: trims 10% of `maxSignals` when over capacity
 - `CollusionDetector.recordInteraction()`: trims 1,000 interactions (10% of the 10,000 limit) when over capacity
 
-### 7. Document `HashEmbeddingProvider` as test-only
+### 7. Document the hash-based embedding provider as test-only
 
-Added a JSDoc block explicitly stating the provider has no semantic meaning and must not be used in production.
+Added a JSDoc block explicitly stating the provider has no semantic meaning and must not be used in production. (Superseded by epic #527, which removed the class entirely and moved the test fixture to `tests/__mocks__/`.)
 
 ### 8. Clarify `simulateChangeEffect` as heuristic
 
@@ -111,6 +111,6 @@ Added a `Map<string, RegExp>` cache to `ShardRetriever` so that each glob patter
 - `src/ledger.ts` -- RunLedger, evictIfNeeded, createLedger
 - `src/adversarial.ts` -- ThreatDetector.addSignal, CollusionDetector.recordInteraction
 - `src/optimizer.ts` -- simulateChangeEffect documentation
-- `src/retriever.ts` -- HashEmbeddingProvider documentation, matchGlob cache
+- `src/retriever.ts` -- matchGlob cache (hash-embedding provider was later removed in epic #527)
 - ADR-G005 -- Proof envelope model (updated to reflect signing key requirement)
 - ADR-G014 -- Conformance kit (updated to reflect explicit key requirement)
