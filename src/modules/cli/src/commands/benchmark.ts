@@ -125,20 +125,12 @@ const neuralCommand: Command = {
 
       // 1. Embedding Generation
       spinner.setText('Benchmarking embedding generation...');
-      type EmbeddingResult = { embedding: number[]; dimensions: number; model: string };
-      let generateEmbedding: (text: string) => Promise<EmbeddingResult>;
-      try {
-        const memory = await import('../memory/memory-initializer.js');
-        generateEmbedding = memory.generateEmbedding;
-      } catch {
-        generateEmbedding = async (text: string) => {
-          const emb: number[] = [];
-          for (let i = 0; i < dimension; i++) {
-            emb.push(Math.sin(text.charCodeAt(i % text.length) * (i + 1)));
-          }
-          return { embedding: emb, dimensions: dimension, model: 'fallback' };
-        };
-      }
+      // Neural embeddings are required per ADR-EMB-001; the hash fallback
+      // that used to live here was removed as part of issue #545 because a
+      // benchmark path that silently degrades to hashes produces numbers
+      // that don't reflect reality. If memory-initializer can't load, fail
+      // loudly and let the caller know.
+      const { generateEmbedding } = await import('../memory/memory-initializer.js');
 
       const embedTimes: number[] = [];
       for (let i = 0; i < iterations; i++) {

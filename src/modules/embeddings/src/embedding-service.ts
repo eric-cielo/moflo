@@ -427,6 +427,7 @@ export class MockEmbeddingService extends BaseEmbeddingService {
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- test-only hash; relocation tracked by #558
   private deterministicEmbedding(text: string): Float32Array {
     const embedding = new Float32Array(this.dimensions);
 

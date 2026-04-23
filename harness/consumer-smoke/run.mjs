@@ -72,7 +72,7 @@ function main() {
       () => check.verifyForbiddenDeps(consumerDir),
       () => check.verifyRequiredDeps(consumerDir),
       () => check.verifyNoBannedEmbeddings(consumerDir),
-      () => check.verifyNoInlineHashEmbeddingsInSwarm(consumerDir),
+      () => check.verifyNoInlineHashEmbeddings(consumerDir),
       () => check.cliLoads(consumerDir),
       () => check.doctor(consumerDir),
       () => check.memoryInit(consumerDir),
