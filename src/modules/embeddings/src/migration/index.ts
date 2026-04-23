@@ -38,3 +38,29 @@ export {
   type SqlJsDatabase,
   type SqlJsStatement,
 } from './sqljs-helpers.js';
+
+export {
+  runUpgrade,
+  type UpgradeStep,
+  type UpgradePlan,
+  type UpgradeStatus,
+  type UpgradeStepSummary,
+  type UpgradeSummary,
+  type UpgradeCoordinatorOptions,
+} from './upgrade-coordinator.js';
+
+export { UpgradeRenderer, type UpgradeRendererOptions } from './upgrade-renderer.js';
+
+export {
+  announcement,
+  estimateMinutes,
+  stepCompleted,
+  finalSuccess,
+  pauseOnInterrupt,
+  batchExhaustionFailure,
+  retryingBatch,
+  formatDuration,
+  BANNED_TECHNICAL_TERMS,
+  type AnnouncementInput,
+  type AnnouncementStep,
+} from './upgrade-messages.js';
