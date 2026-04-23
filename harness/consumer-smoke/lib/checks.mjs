@@ -13,13 +13,41 @@ import { findOrphans } from '../../../scripts/clean-dist.mjs';
 
 // Epic #501 acceptance criterion: a fresh `npm install moflo` consumer sees
 // zero of the following packages anywhere in its dep tree.
+// Epic #527 (story #532) extended this list with `@xenova/transformers` —
+// the archived transformers runtime replaced by `fastembed`.
+//
+// Note: `onnxruntime-node` was previously forbidden (it came in via agentdb).
+// After epic #527 `fastembed` is a required hard dep and legitimately pulls
+// `onnxruntime-node` in as the ONNX runtime. Its binaries are pruned by
+// epic #527 story 6 (#533); the package itself is expected and allowed.
 export const FORBIDDEN_DEPS = [
   'agentdb',
   'agentic-flow',
   '@ruvector',
   'ruvector',
-  'onnxruntime-node',
+  '@xenova/transformers',
 ];
+
+// Epic #527 (story #532): dependencies that MUST be present in a fresh
+// consumer install. Fastembed is the required neural runtime — if it's
+// missing we have regressed to hash-fallback silently.
+export const REQUIRED_DEPS = [
+  'fastembed',
+];
+
+// Epic #527 (story #532): banned identifiers that must not appear anywhere
+// in the published dist tree. If any of these leak through into compiled
+// output, hash-fallback code has crept back in.
+export const BANNED_EMBEDDING_IDENTIFIERS = [
+  'HashEmbeddingProvider',
+  'createHashEmbedding',
+  'generateHashEmbedding',
+  'RvfEmbeddingService',
+  'RvfEmbeddingCache',
+];
+// Literal pattern — `domain-aware-hash-384`, `domain-aware-hash-v1`, or
+// anything else starting with the banned prefix.
+export const BANNED_EMBEDDING_LITERAL_RE = /domain-aware-hash/;
 
 // Known regressions that still leak through until a dedicated fix lands. Each
 // entry MUST reference the tracking issue. Leaking deps in this list are
@@ -148,6 +176,111 @@ export function verifyForbiddenDeps(consumerDir) {
   }
   for (const w of [...leaked].filter(d => KNOWN_FORBIDDEN_REGRESSIONS.has(d))) {
     record(`forbidden-deps:${w}`, 'warn', 'known regression — leaking until tracking fix lands');
+  }
+}
+
+/**
+ * Epic #527 story #532: asserts every required dep landed in the consumer
+ * install. If `fastembed` is missing, moflo has either regressed to
+ * hash-fallback or the publish manifest is broken — either way, hard fail.
+ */
+export function verifyRequiredDeps(consumerDir) {
+  section('Verify required deps present');
+  const nm = join(consumerDir, 'node_modules');
+  const missing = [];
+  for (const name of REQUIRED_DEPS) {
+    const dir = name.startsWith('@')
+      ? join(nm, ...name.split('/'))
+      : join(nm, name);
+    if (!existsSync(join(dir, 'package.json'))) {
+      missing.push(name);
+    }
+  }
+  if (missing.length > 0) {
+    record('required-deps', 'fail', `missing: ${missing.join(', ')}`);
+    return;
+  }
+  record('required-deps', 'pass', `${REQUIRED_DEPS.join(', ')} present`);
+}
+
+/**
+ * Epic #527 story #532: scans the installed moflo dist tree for any banned
+ * hash-embedding identifier. The ESLint guard catches these in source; this
+ * check catches them in compiled output — e.g. a bundled copy, a transform
+ * that resurrects a deleted helper, or a vendored file that slipped past
+ * lint.
+ */
+export function verifyNoBannedEmbeddings(consumerDir) {
+  section('Verify no banned embedding identifiers in dist');
+  const mofloDir = join(consumerDir, 'node_modules', 'moflo');
+  if (!existsSync(mofloDir)) {
+    record('no-banned-embeddings', 'fail', 'node_modules/moflo missing');
+    return;
+  }
+
+  const bannedRe = new RegExp(
+    `\\b(${BANNED_EMBEDDING_IDENTIFIERS.join('|')})\\b|${BANNED_EMBEDDING_LITERAL_RE.source}`,
+  );
+
+  const hits = [];
+  let filesScanned = 0;
+
+  for (const file of walkJsFiles(mofloDir)) {
+    filesScanned++;
+    let text;
+    try {
+      text = readFileSync(file, 'utf8');
+    } catch (err) {
+      log(`  skipped unreadable file ${file}: ${err.message}`);
+      continue;
+    }
+    const match = text.match(bannedRe);
+    if (match) {
+      hits.push({ file, match: match[0] });
+    }
+  }
+
+  if (hits.length > 0) {
+    const preview = hits
+      .slice(0, 5)
+      .map(h => `${relative(consumerDir, h.file)}:${h.match}`)
+      .join(' | ');
+    const suffix = hits.length > 5 ? ` (+${hits.length - 5} more)` : '';
+    record(
+      'no-banned-embeddings',
+      'fail',
+      `hash-embedding code leaked into dist — ${hits.length} hit(s): ${preview}${suffix}`,
+    );
+    return;
+  }
+
+  record(
+    'no-banned-embeddings',
+    'pass',
+    `${filesScanned} JS file(s) scanned, no banned identifiers`,
+  );
+}
+
+function* walkJsFiles(dir) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    log(`  walkJsFiles: cannot read ${dir}: ${err.message}`);
+    return;
+  }
+  for (const entry of entries) {
+    // Don't recurse into nested node_modules — moflo doesn't bundle its deps,
+    // so anything under moflo/node_modules is someone else's code and not
+    // our concern. This also prevents the scan from exploding in size.
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules') continue;
+      yield* walkJsFiles(join(dir, entry.name));
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    if (!/\.(m?js|cjs)$/.test(entry.name)) continue;
+    yield join(dir, entry.name);
   }
 }
 

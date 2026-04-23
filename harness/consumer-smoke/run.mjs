@@ -11,6 +11,12 @@
  * invariant: no `agentdb`, `agentic-flow`, `@ruvector/*`, `ruvector`, or
  * `onnxruntime-node` in a fresh consumer install.
  *
+ * Epic #527 Story #532 — extends the invariant: no `@xenova/transformers`
+ * and no hash-embedding identifiers (HashEmbeddingProvider, createHashEmbedding,
+ * generateHashEmbedding, RvfEmbeddingService, RvfEmbeddingCache,
+ * `domain-aware-hash-*`) in the installed dist tree. Also asserts the
+ * required neural runtime (`fastembed`) is present.
+ *
  * Usage:
  *   node harness/consumer-smoke/run.mjs                # full run
  *   node harness/consumer-smoke/run.mjs --skip-pack    # reuse last tarball
@@ -64,6 +70,8 @@ function main() {
 
     const checks = [
       () => check.verifyForbiddenDeps(consumerDir),
+      () => check.verifyRequiredDeps(consumerDir),
+      () => check.verifyNoBannedEmbeddings(consumerDir),
       () => check.cliLoads(consumerDir),
       () => check.doctor(consumerDir),
       () => check.memoryInit(consumerDir),
