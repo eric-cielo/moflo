@@ -9,6 +9,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseYaml } from '../src/modules/spells/src/schema/parser.js';
+import { interpolateString } from '../src/modules/spells/src/core/interpolation.js';
+import { createMockContext } from '../src/modules/spells/__tests__/helpers.js';
 import type { SpellDefinition } from '../src/modules/spells/src/types/spell-definition.types.js';
 
 // ============================================================================
@@ -148,6 +150,25 @@ describe('single-branch.yaml', () => {
     const closeCmd = (closeStory!.config as Record<string, unknown>).command as string;
     expect(closeCmd).toContain('gh issue close');
     expect(closeCmd).toContain('--reason completed');
+  });
+
+  it('check-off-story command interpolates without eating bash ${VAR} expansions', () => {
+    // Regression: the template-variable regex used to match `{STORY}` inside
+    // `${STORY}`, then fail with "Variable not found: STORY". The spell uses
+    // a bash variable STORY inside the sed pattern — interpolation must leave
+    // those bash expansions untouched while resolving real spell variables.
+    def = loadYaml('single-branch.yaml');
+    const loop = def.steps.find(s => s.id === 'process-stories')!;
+    const checkOff = loop.steps!.find(s => s.id === 'check-off-story')!;
+    const cmd = (checkOff.config as Record<string, unknown>).command as string;
+    const ctx = createMockContext({
+      args: { epic_number: '287' },
+      variables: { loop: { story_number: '288' } },
+    });
+    const interpolated = interpolateString(cmd, ctx);
+    expect(interpolated).toContain('STORY=288');
+    expect(interpolated).toContain('${STORY}');
+    expect(interpolated).toContain('EPIC=287');
   });
 
   it('sets mofloLevel to hooks', () => {

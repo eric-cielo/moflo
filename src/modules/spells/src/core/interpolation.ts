@@ -7,8 +7,15 @@
 
 import type { CastingContext } from '../types/step-command.types.js';
 
-/** Matches `{path}` variable references in spell step configs. */
-export const VAR_REF_PATTERN = /\{([^}]+)\}/g;
+/**
+ * Matches `{path}` variable references in spell step configs.
+ *
+ * The `(?<!\$)` negative lookbehind skips `${VAR}` — that's bash parameter
+ * expansion inside shell steps, not a spell template reference. Without it,
+ * a bash command like `sed "s/#${STORY}/.../"` would try to resolve `STORY`
+ * as a spell variable and fail.
+ */
+export const VAR_REF_PATTERN = /(?<!\$)\{([^}]+)\}/g;
 
 /**
  * Resolve a dot-separated path against the context variables.

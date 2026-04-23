@@ -54,6 +54,21 @@ describe('interpolateString', () => {
     expect(interpolateString('empty {} braces', ctx)).toBe('empty {} braces');
   });
 
+  it('should ignore ${VAR} bash parameter expansion', () => {
+    const ctx = createContext({ args: { epic_number: '287' } });
+    // A bash command embedding a shell variable alongside a spell variable.
+    // ${STORY} is a bash ref, {args.epic_number} is a spell ref.
+    const input = 'gh issue edit {args.epic_number} --body "closed #${STORY}"';
+    expect(interpolateString(input, ctx)).toBe('gh issue edit 287 --body "closed #${STORY}"');
+  });
+
+  it('should ignore ${VAR} even when spell has no matching variable', () => {
+    const ctx = createContext();
+    // Must not throw "Variable not found: STORY" for a bash-only expression.
+    expect(() => interpolateString('sed "s/#${STORY}/.../g"', ctx)).not.toThrow();
+    expect(interpolateString('sed "s/#${STORY}/.../g"', ctx)).toBe('sed "s/#${STORY}/.../g"');
+  });
+
   it('should coerce non-string values to string', () => {
     const ctx = createContext({ variables: { step1: { count: 42, ok: true } } });
     expect(interpolateString('{step1.count}', ctx)).toBe('42');

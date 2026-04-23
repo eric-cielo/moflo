@@ -118,15 +118,17 @@ export class SpellCaster {
           console.log(`[spell] Auto-accepted "${definition.name}" (${permReport.overallRisk} risk)`);
         } else {
           const reason = acceptance.reason === 'hash-mismatch'
-            ? 'Spell permissions have changed since last acceptance'
-            : 'First run — reviewing spell permissions';
+            ? 'Spell permissions have changed — please re-review'
+            : 'First run — please review permissions before running this spell';
           const report = formatSpellPermissionReport(permReport);
 
           console.log(`[spell] ${reason}`);
-          console.log(`[spell] Running automatic dry-run validation...\n`);
+          console.log('');
           console.log(report);
 
-          // Run dry-run validation so the user also sees structural issues
+          // Also run dry-run validation so genuine definition issues surface
+          // alongside the permission review — but keep them cleanly separated
+          // from the acceptance prompt (not having accepted is not an error).
           const dryResult = await dryRunValidate(
             definition, resolvedArgs, defValidation, options, this.registry,
             (variables, wfId, stepIndex) =>
@@ -134,17 +136,17 @@ export class SpellCaster {
           );
 
           if (!dryResult.valid) {
-            console.log('\n[spell] Dry-run validation found errors:');
+            console.log('\n[spell] Issues found while validating the spell definition:');
             for (const err of [...dryResult.definitionErrors, ...dryResult.argumentErrors]) {
               console.log(`  - ${err.message}`);
             }
           }
 
           // Block — user must explicitly accept
-          console.log(`\n[spell] To accept these permissions, run: spell_accept({ name: "${definition.name}" })`);
+          console.log(`\n[spell] To run this spell, ask Claude to accept it, or call the spell_accept tool with name "${definition.name}".`);
           return this.failureResult(spellId, startTime, [{
             code: 'ACCEPTANCE_REQUIRED',
-            message: `${reason}. Review the risk analysis above and accept with spell_accept({ name: "${definition.name}" }).`,
+            message: `${reason}. Review the permissions above, then accept the spell "${definition.name}" to continue.`,
           }], definition.name);
         }
       }
