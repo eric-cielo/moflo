@@ -16,6 +16,7 @@
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { mofloImport } from '../services/moflo-require.js';
+import { runEmbeddingsMigrationIfNeeded } from '../services/embeddings-migration.js';
 
 // Dynamic imports for embeddings package (optional — may not be installed)
 async function getEmbeddings() {
@@ -23,120 +24,6 @@ async function getEmbeddings() {
     return await import('@moflo/embeddings');
   } catch {
     return null;
-  }
-}
-
-/**
- * Run the embeddings-version upgrade on the given DB when its stored version
- * is below the current runtime version. Safe to call on every session start
- * — returns fast when the DB is already up-to-date or when @moflo/embeddings
- * isn't installed.
- *
- * The story-2 driver (`runUpgrade`) and story-3 UX are wired here. The
- * concrete `MigrationStore` adapter for moflo's memory.db schema lives in
- * `services/sqljs-migration-store.ts`.
- */
-async function runEmbeddingsMigrationIfNeeded(options: {
-  dbPath?: string;
-  verbose?: boolean;
-}): Promise<boolean> {
-  const fs = await import('fs');
-  const path = await import('path');
-
-  const dbPath = path.resolve(options.dbPath ?? path.join(process.cwd(), '.swarm', 'memory.db'));
-  if (!fs.existsSync(dbPath)) return false;
-
-  const embeddings = await getEmbeddings();
-  if (!embeddings) return false;
-
-  const initSqlJs = (await mofloImport('sql.js'))?.default;
-  if (!initSqlJs) return false;
-
-  const SQL = await initSqlJs();
-  const buffer = fs.readFileSync(dbPath);
-  const db = new SQL.Database(buffer);
-
-  // Quick probe: does this DB carry embedding data at all? If not, skip.
-  const hasEmbeddingsTable = tableHasColumn(db, 'memory_entries', 'embedding');
-  if (!hasEmbeddingsTable) {
-    db.close();
-    return false;
-  }
-
-  const { SqlJsMemoryEntriesStore } = await import(
-    '../services/sqljs-migration-store.js'
-  );
-  const store = new SqlJsMemoryEntriesStore(db, path.basename(dbPath));
-
-  const currentVersion = await store.getVersion();
-  const targetVersion = (embeddings as { EMBEDDINGS_VERSION: number }).EMBEDDINGS_VERSION;
-  if (currentVersion !== null && currentVersion >= targetVersion) {
-    db.close();
-    return false;
-  }
-
-  const service = (embeddings as {
-    createEmbeddingService: (c: unknown) => {
-      embedBatch(texts: string[]): Promise<{ embeddings: Array<Float32Array | number[]> }>;
-    };
-  }).createEmbeddingService({
-    provider: 'fastembed',
-    dimensions: 384,
-  });
-
-  const runUpgrade = (embeddings as {
-    runUpgrade: (opts: unknown) => Promise<{ status: string; errors: readonly string[] }>;
-  }).runUpgrade;
-
-  const summary = await runUpgrade({
-    plan: {
-      steps: [
-        {
-          label: 'Re-index memory so search can find things again',
-          store,
-          embedder: {
-            async embedBatch(texts: string[]): Promise<Float32Array[]> {
-              const result = await service.embedBatch(texts);
-              return result.embeddings.map(vec =>
-                vec instanceof Float32Array ? vec : new Float32Array(vec),
-              );
-            },
-          },
-        },
-      ],
-    },
-  });
-
-  if (summary.status === 'completed') {
-    const exported = db.export();
-    fs.writeFileSync(dbPath, Buffer.from(exported));
-  }
-  db.close();
-
-  return summary.status === 'completed';
-}
-
-/** Return true if the given table has the given column. */
-function tableHasColumn(db: unknown, table: string, column: string): boolean {
-  try {
-    const stmt = (db as { prepare(sql: string): {
-      step(): boolean;
-      get(): unknown[];
-      free(): void;
-    } }).prepare(`PRAGMA table_info(${JSON.stringify(table).slice(1, -1)})`);
-    let hit = false;
-    while (stmt.step()) {
-      const row = stmt.get();
-      // PRAGMA table_info returns [cid, name, type, notnull, dflt_value, pk]
-      if (Array.isArray(row) && row[1] === column) {
-        hit = true;
-        break;
-      }
-    }
-    stmt.free();
-    return hit;
-  } catch {
-    return false;
   }
 }
 
@@ -766,6 +653,19 @@ const indexCommand: Command = {
   },
 };
 
+// Call the migration service, turning any failure into a warning instead of an
+// exit code. Used from both the "config already exists" and normal init paths
+// so the error surface stays consistent.
+async function safelyRunEmbeddingsMigration(dbPath?: string): Promise<boolean> {
+  try {
+    return await runEmbeddingsMigrationIfNeeded(dbPath ? { dbPath } : {});
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    output.printWarning(`Embeddings migration check failed: ${msg}`);
+    return false;
+  }
+}
+
 // Init subcommand - Initialize ONNX models and hyperbolic config
 const initCommand: Command = {
   name: 'init',
@@ -812,13 +712,19 @@ const initCommand: Command = {
       const modelDir = path.join(configDir, 'models');
       const configPath = path.join(configDir, 'embeddings.json');
 
-      // Check for existing config
-      if (fs.existsSync(configPath) && !force) {
-        output.printWarning('Embeddings already initialized');
-        output.printInfo(`Config exists: ${configPath}`);
-        output.writeln();
-        output.writeln(output.dim('Use --force to overwrite existing configuration'));
-        return { success: false, exitCode: 1 };
+      // Second-session path: config already exists. Skip download / rewrite,
+      // but still run the migration check so users upgrading moflo mid-project
+      // get their embeddings re-indexed. Migration is idempotent, resumable,
+      // and fast when already at target version.
+      const configAlreadyExisted = fs.existsSync(configPath);
+      if (configAlreadyExisted && !force) {
+        output.printInfo(`Embeddings config already present: ${configPath}`);
+        output.writeln(output.dim('Checking if memory DBs need re-embedding...'));
+        const ran = await safelyRunEmbeddingsMigration();
+        if (ran) {
+          output.printSuccess('Memory DB re-embedded to current version');
+        }
+        return { success: true, data: { reused: true, configPath } };
       }
 
       const spinner = output.createSpinner({ text: 'Initializing...', spinner: 'dots' });
@@ -876,12 +782,7 @@ const initCommand: Command = {
       // Auto-migrate existing memory DBs whose embeddings_version < current. The
       // migration driver is resumable and idempotent, so running it on every
       // init is safe and keeps upgrades seamless — no separate command required.
-      try {
-        await runEmbeddingsMigrationIfNeeded({ verbose: false });
-      } catch (migrationError) {
-        const msg = migrationError instanceof Error ? migrationError.message : String(migrationError);
-        output.printWarning(`Embeddings migration check failed: ${msg}`);
-      }
+      await safelyRunEmbeddingsMigration();
 
       output.writeln();
       output.printTable({
@@ -1814,9 +1715,8 @@ const migrateCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const dbPath = (ctx.flags.db as string) || '.swarm/memory.db';
-    const verbose = ctx.flags.verbose === true;
     try {
-      const ran = await runEmbeddingsMigrationIfNeeded({ dbPath, verbose });
+      const ran = await runEmbeddingsMigrationIfNeeded({ dbPath });
       return { success: true, data: { ran } };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
