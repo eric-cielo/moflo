@@ -116,15 +116,40 @@ steps:
           timeout: 600000
           failOnError: true
 
-      # 2b: Check off story in epic body
+      # 2b: Flip `- [ ] #<story>` to `- [x] #<story>` on the epic body.
+      # The github `comment` action only appends a comment — it does NOT
+      # touch the task-list checkboxes. We read the body, substitute, and
+      # write it back so the epic reflects progress at a glance.
       - id: check-off-story
-        type: github
+        type: bash
+        permissionLevel: elevated
         config:
-          action: "comment"
-          issue: "{args.epic_number}"
-          body: "Story #{loop.story_number} committed to epic branch"
+          command: |
+            set -e
+            STORY={loop.story_number}
+            EPIC={args.epic_number}
+            BODY=$(gh issue view "$EPIC" --json body -q .body)
+            UPDATED=$(printf '%s' "$BODY" | sed -E "s/- \[ \] #${STORY}\b/- [x] #${STORY}/")
+            if [ "$BODY" != "$UPDATED" ]; then
+              printf '%s' "$UPDATED" | gh issue edit "$EPIC" --body-file -
+            fi
+          timeout: 60000
+          failOnError: true
 
-      # 2c: Record completion in memory
+      # 2c: Close the story issue explicitly. Single-branch defers to the
+      # consolidated PR's Closes-keywords on merge; if the PR never lands,
+      # stories would stay OPEN forever. Closing here makes the issue state
+      # track the commit, not the eventual merge.
+      - id: close-story
+        type: bash
+        permissionLevel: elevated
+        config:
+          command: |
+            gh issue close {loop.story_number} --reason completed --comment "Closed by epic #{args.epic_number}: commits landed on epic branch."
+          timeout: 60000
+          failOnError: true
+
+      # 2d: Record completion in memory
       - id: record-completion
         type: memory
         config:
@@ -149,17 +174,29 @@ steps:
       timeout: 120000
       failOnError: true
 
-  # Step 4: Create consolidated PR
+  # Step 4: Build the 'Closes #<story>' fragment for the PR body so that
+  # merging the consolidated PR auto-closes each individual story issue,
+  # not just the epic. Without this, only the epic would close on merge
+  # and story issues would linger open indefinitely.
+  - id: build-closes-list
+    type: bash
+    config:
+      command: |
+        echo {args.stories} | tr ',' '\n' | awk 'NF {printf "Closes #%s ", $0}'
+      timeout: 30000
+      failOnError: true
+
+  # Step 5: Create consolidated PR
   - id: create-pr
     type: github
     config:
       action: "pr-create"
       title: "epic(#{args.epic_number}): consolidated epic PR"
-      body: "## Epic #{args.epic_number}\n\nConsolidated PR for all stories.\n\nCloses #{args.epic_number}"
+      body: "## Epic #{args.epic_number}\n\nConsolidated PR for all stories.\n\n{build-closes-list.stdout} Closes #{args.epic_number}"
       base: "{args.base_branch}"
       head: "epic/{args.epic_number}-{args.epic_slug}"
 
-  # Step 5: Mark epic as completed in memory
+  # Step 6: Mark epic as completed in memory
   - id: finalize-state
     type: memory
     config:
