@@ -11,7 +11,6 @@
  *   3. empty string
  */
 
-import * as readline from 'node:readline';
 import type {
   StepCommand,
   StepConfig,
@@ -23,6 +22,7 @@ import type {
 } from '../types/step-command.types.js';
 import { interpolateString } from '../core/interpolation.js';
 import { acquireTTYLock } from '../core/tty-lock.js';
+import { readLineFromStdin } from '../core/stdin-reader.js';
 
 /** Typed config for the prompt step command. */
 export interface PromptStepConfig extends StepConfig {
@@ -63,29 +63,6 @@ export function resolveDefault(
     return new Date(now - fallbackDaysAgo * 86_400_000).toISOString();
   }
   return '';
-}
-
-/**
- * Read one line from stdin. Resolves with the trimmed line (empty string
- * if the user just hit enter). Honors the provided abort signal.
- */
-async function readLineFromStdin(
-  prompt: string,
-  abortSignal?: AbortSignal,
-): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const onAbort = () => { rl.close(); reject(new Error('Prompt aborted')); };
-    if (abortSignal) {
-      if (abortSignal.aborted) { rl.close(); reject(new Error('Prompt aborted')); return; }
-      abortSignal.addEventListener('abort', onAbort, { once: true });
-    }
-    rl.question(prompt, (answer) => {
-      if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
 }
 
 export const promptCommand: StepCommand<PromptStepConfig> = {

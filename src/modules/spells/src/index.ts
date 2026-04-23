@@ -87,6 +87,11 @@ export {
   checkPrerequisites,
   formatPrerequisiteErrors,
   commandExists,
+  compilePrerequisiteSpec,
+  resolveUnmetPrerequisites,
+  type PromptLineFn,
+  type ResolvePrerequisitesOptions,
+  type ResolvePrerequisitesResult,
 } from './core/prerequisite-checker.js';
 
 export {
@@ -190,6 +195,8 @@ export type {
   PreflightSpec,
   PreflightSeverity,
   PreflightResolution,
+  PrerequisiteSpec,
+  PrerequisiteDetect,
 } from './types/spell-definition.types.js';
 
 export type {

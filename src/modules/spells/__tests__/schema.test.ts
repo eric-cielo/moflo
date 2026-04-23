@@ -453,3 +453,121 @@ describe('nested step variable validation', () => {
     expect(result.errors.some(e => e.message.includes('undefined argument'))).toBe(true);
   });
 });
+
+// ============================================================================
+// PrerequisiteSpec validation (#460)
+// ============================================================================
+
+describe('validateSpellDefinition — prerequisites', () => {
+  const minimalStep = { id: 's1', type: 'bash', config: {} };
+
+  it('accepts a well-formed spell-level prerequisite', () => {
+    const result = validateSpellDefinition({
+      name: 'x',
+      prerequisites: [{
+        name: 'GRAPH_TOKEN',
+        description: 'graph token',
+        docsUrl: 'https://docs.example',
+        detect: { type: 'env', key: 'GRAPH_TOKEN' },
+        promptOnMissing: true,
+      }],
+      steps: [minimalStep],
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects prerequisites that is not an array', () => {
+    const result = validateSpellDefinition({
+      name: 'x',
+      // @ts-expect-error intentionally wrong shape
+      prerequisites: { name: 'X', detect: { type: 'env', key: 'X' } },
+      steps: [minimalStep],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.path === 'prerequisites')).toBe(true);
+  });
+
+  it('rejects missing name', () => {
+    const result = validateSpellDefinition({
+      name: 'x',
+      // @ts-expect-error missing name
+      prerequisites: [{ detect: { type: 'env', key: 'X' } }],
+      steps: [minimalStep],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.message.includes('prerequisite.name is required'))).toBe(true);
+  });
+
+  it('rejects duplicate names within the same block', () => {
+    const result = validateSpellDefinition({
+      name: 'x',
+      prerequisites: [
+        { name: 'DUP', detect: { type: 'env', key: 'A' } },
+        { name: 'DUP', detect: { type: 'env', key: 'B' } },
+      ],
+      steps: [minimalStep],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.message.includes('duplicate prerequisite name'))).toBe(true);
+  });
+
+  it('rejects unknown detect.type', () => {
+    const result = validateSpellDefinition({
+      name: 'x',
+      prerequisites: [{
+        name: 'X',
+        // @ts-expect-error unknown type
+        detect: { type: 'magic', key: 'X' },
+      }],
+      steps: [minimalStep],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.path.endsWith('.detect.type'))).toBe(true);
+  });
+
+  it('rejects env detector missing key', () => {
+    const result = validateSpellDefinition({
+      name: 'x',
+      // @ts-expect-error missing key for env detector
+      prerequisites: [{ name: 'X', detect: { type: 'env' } }],
+      steps: [minimalStep],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.message.includes('detect.key is required'))).toBe(true);
+  });
+
+  it('rejects command detector missing command', () => {
+    const result = validateSpellDefinition({
+      name: 'x',
+      // @ts-expect-error missing command
+      prerequisites: [{ name: 'X', detect: { type: 'command' } }],
+      steps: [minimalStep],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.message.includes('detect.command is required'))).toBe(true);
+  });
+
+  it('rejects file detector missing path', () => {
+    const result = validateSpellDefinition({
+      name: 'x',
+      // @ts-expect-error missing path
+      prerequisites: [{ name: 'X', detect: { type: 'file' } }],
+      steps: [minimalStep],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.message.includes('detect.path is required'))).toBe(true);
+  });
+
+  it('validates step-level prerequisites under step path', () => {
+    const result = validateSpellDefinition({
+      name: 'x',
+      steps: [{
+        id: 's1', type: 'bash', config: {},
+        // @ts-expect-error intentionally wrong
+        prerequisites: [{ name: 'X' }],
+      }],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.path.startsWith('steps[0].prerequisites'))).toBe(true);
+  });
+});

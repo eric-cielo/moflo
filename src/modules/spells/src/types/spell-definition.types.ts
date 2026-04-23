@@ -55,6 +55,12 @@ export interface StepDefinition {
    * resolved against spell args only (no prior step outputs yet).
    */
   readonly preflight?: readonly PreflightSpec[];
+  /**
+   * Declarative prerequisites required for this step (env vars, CLI binaries,
+   * files). Collected at cast time across the whole spell tree (including
+   * nested loop/condition/parallel bodies) and evaluated before step 1.
+   */
+  readonly prerequisites?: readonly PrerequisiteSpec[];
 }
 
 /**
@@ -82,6 +88,47 @@ export interface PreflightResolution {
   readonly command?: string;
   /** Timeout in ms for the resolution command (default: 30_000). */
   readonly timeoutMs?: number;
+}
+
+// ============================================================================
+// Prerequisite Specs (declarative, YAML-authored)
+// ============================================================================
+//
+// Distinct from the imperative step-command-owned `Prerequisite` (which carries
+// a `check()` callback) and the step-level `PreflightSpec` (runtime state
+// checks via shell command). A `PrerequisiteSpec` is a declarative, detector-
+// based description of an external dependency (env var, CLI binary, file).
+// Collected at cast time, compiled into the imperative `Prerequisite` shape,
+// and evaluated BEFORE step 1. When unmet on a TTY, the engine prompts once
+// per prereq (env-type writes the answer to `process.env`).
+
+/** Detector discriminator — how to check whether a prerequisite is satisfied. */
+export type PrerequisiteDetect =
+  /** Satisfied when `process.env[key]` is set to a non-empty string. */
+  | { readonly type: 'env'; readonly key: string }
+  /** Satisfied when `command` is resolvable on the system PATH. */
+  | { readonly type: 'command'; readonly command: string }
+  /** Satisfied when `path` exists on disk. */
+  | { readonly type: 'file'; readonly path: string };
+
+/** YAML-declared prerequisite on a spell or step. */
+export interface PrerequisiteSpec {
+  /** Stable name used for dedupe across spell + step + built-in sources. */
+  readonly name: string;
+  /** Short human-readable explanation shown when the prereq is unmet. */
+  readonly description?: string;
+  /** Link to setup docs, shown alongside the description in preflight output. */
+  readonly docsUrl?: string;
+  /** How to detect whether this prereq is satisfied. */
+  readonly detect: PrerequisiteDetect;
+  /**
+   * When true and stdin+stdout are a TTY, prompt the user for the value when
+   * unmet. For `env`-type prereqs the answer is written to `process.env[key]`
+   * so downstream steps (including nested loop bodies) can read it directly.
+   * For `command`/`file` types the prompt surfaces guidance only (no write-back).
+   * Defaults to `true`.
+   */
+  readonly promptOnMissing?: boolean;
 }
 
 /** Declarative preflight check in a step definition. */
@@ -121,6 +168,12 @@ export interface SpellDefinition {
   readonly mofloLevel?: MofloLevel;
   /** Schedule for automatic execution (cron, interval, or one-time). */
   readonly schedule?: ScheduleDefinition;
+  /**
+   * Declarative prerequisites required for this spell (env vars, CLI binaries,
+   * files). Evaluated before step 1; missing env prereqs on a TTY trigger an
+   * interactive prompt. See `PrerequisiteSpec` for detector details.
+   */
+  readonly prerequisites?: readonly PrerequisiteSpec[];
 }
 
 // ============================================================================
