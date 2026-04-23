@@ -412,6 +412,12 @@ export interface GuidanceControlPlaneConfig {
   dataDir: string;
   /** Enable headless mode integration */
   headlessMode: boolean;
+  /**
+   * Embedding provider used by the retriever. Required in production — the
+   * guidance module no longer ships a hash fallback. Tests inject a
+   * deterministic mock from `tests/__mocks__/`.
+   */
+  embeddingProvider?: import('./retriever.js').IEmbeddingProvider;
 }
 
 /**

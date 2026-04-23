@@ -1,10 +1,15 @@
 /**
- * V3 Embedding Service Implementation
+ * Embedding Service Implementation
  *
- * Production embedding service aligned with agentic-flow@alpha:
- * - OpenAI provider (text-embedding-3-small/large)
- * - Transformers.js provider (local ONNX models)
- * - Mock provider (development/testing)
+ * Neural embeddings only. Supported providers:
+ * - `fastembed` — local ONNX via Qdrant's `fastembed` package (required hard dep)
+ * - `transformers` — backwards-compatible alias for `fastembed`
+ * - `openai` — remote API
+ * - `mock` — deterministic test-only service, never reachable from production factories
+ *
+ * There is no hash fallback. If the selected provider cannot initialize, the
+ * factory throws — silent degradation to hash-based pseudo-embeddings is a
+ * correctness hazard (see ADR-G002, ADR-G026, epic #527).
  *
  * Performance Targets:
  * - Single embedding: <100ms (API), <50ms (local)
@@ -19,8 +24,7 @@ import type {
   OpenAIEmbeddingConfig,
   TransformersEmbeddingConfig,
   MockEmbeddingConfig,
-  AgenticFlowEmbeddingConfig,
-  RvfEmbeddingConfig,
+  FastembedEmbeddingConfig,
   EmbeddingResult,
   BatchEmbeddingResult,
   IEmbeddingService,
@@ -33,7 +37,6 @@ import type {
 } from './types.js';
 import { normalize } from './normalization.js';
 import { PersistentEmbeddingCache } from './persistent-cache.js';
-import { RvfEmbeddingService } from './rvf-embedding-service.js';
 
 // ============================================================================
 // LRU Cache Implementation
@@ -49,7 +52,6 @@ class LRUCache<K, V> {
   get(key: K): V | undefined {
     const value = this.cache.get(key);
     if (value !== undefined) {
-      // Move to end (most recently used)
       this.cache.delete(key);
       this.cache.set(key, value);
       this.hits++;
@@ -63,7 +65,6 @@ class LRUCache<K, V> {
     if (this.cache.has(key)) {
       this.cache.delete(key);
     } else if (this.cache.size >= this.maxSize) {
-      // Remove oldest (first) entry
       const firstKey = this.cache.keys().next().value;
       if (firstKey !== undefined) {
         this.cache.delete(firstKey);
@@ -114,7 +115,6 @@ export abstract class BaseEmbeddingService extends EventEmitter implements IEmbe
     this.cache = new LRUCache(config.cacheSize ?? 1000);
     this.normalizationType = config.normalization ?? 'none';
 
-    // Initialize persistent cache if configured
     if (config.persistentCache?.enabled) {
       const pcConfig: PersistentCacheConfig = config.persistentCache;
       this.persistentCache = new PersistentEmbeddingCache({
@@ -128,9 +128,6 @@ export abstract class BaseEmbeddingService extends EventEmitter implements IEmbe
   abstract embed(text: string): Promise<EmbeddingResult>;
   abstract embedBatch(texts: string[]): Promise<BatchEmbeddingResult>;
 
-  /**
-   * Apply normalization to embedding if configured
-   */
   protected applyNormalization(embedding: Float32Array): Float32Array {
     if (this.normalizationType === 'none') {
       return embedding;
@@ -138,17 +135,11 @@ export abstract class BaseEmbeddingService extends EventEmitter implements IEmbe
     return normalize(embedding, { type: this.normalizationType });
   }
 
-  /**
-   * Check persistent cache for embedding
-   */
   protected async checkPersistentCache(text: string): Promise<Float32Array | null> {
     if (!this.persistentCache) return null;
     return this.persistentCache.get(text);
   }
 
-  /**
-   * Store embedding in persistent cache
-   */
   protected async storePersistentCache(text: string, embedding: Float32Array): Promise<void> {
     if (!this.persistentCache) return;
     await this.persistentCache.set(text, embedding);
@@ -216,15 +207,10 @@ export class OpenAIEmbeddingService extends BaseEmbeddingService {
   }
 
   async embed(text: string): Promise<EmbeddingResult> {
-    // Check cache
     const cached = this.cache.get(text);
     if (cached) {
       this.emitEvent({ type: 'cache_hit', text });
-      return {
-        embedding: cached,
-        latencyMs: 0,
-        cached: true,
-      };
+      return { embedding: cached, latencyMs: 0, cached: true };
     }
 
     this.emitEvent({ type: 'embed_start', text });
@@ -233,8 +219,6 @@ export class OpenAIEmbeddingService extends BaseEmbeddingService {
     try {
       const response = await this.callOpenAI([text]);
       const embedding = new Float32Array(response.data[0].embedding);
-
-      // Cache result
       this.cache.set(text, embedding);
 
       const latencyMs = performance.now() - startTime;
@@ -259,7 +243,6 @@ export class OpenAIEmbeddingService extends BaseEmbeddingService {
     this.emitEvent({ type: 'batch_start', count: texts.length });
     const startTime = performance.now();
 
-    // Check cache for each text
     const cached: Array<{ index: number; embedding: Float32Array }> = [];
     const uncached: Array<{ index: number; text: string }> = [];
 
@@ -273,7 +256,6 @@ export class OpenAIEmbeddingService extends BaseEmbeddingService {
       }
     });
 
-    // Fetch uncached embeddings
     let apiEmbeddings: Float32Array[] = [];
     let usage = { promptTokens: 0, totalTokens: 0 };
 
@@ -281,7 +263,6 @@ export class OpenAIEmbeddingService extends BaseEmbeddingService {
       const response = await this.callOpenAI(uncached.map(u => u.text));
       apiEmbeddings = response.data.map(d => new Float32Array(d.embedding));
 
-      // Cache results
       uncached.forEach((item, i) => {
         this.cache.set(item.text, apiEmbeddings[i]);
       });
@@ -292,7 +273,6 @@ export class OpenAIEmbeddingService extends BaseEmbeddingService {
       };
     }
 
-    // Reconstruct result array in original order
     const embeddings: Array<Float32Array> = new Array(texts.length);
     cached.forEach(c => {
       embeddings[c.index] = c.embedding;
@@ -356,7 +336,6 @@ export class OpenAIEmbeddingService extends BaseEmbeddingService {
         if (attempt === this.maxRetries - 1) {
           throw error;
         }
-        // Exponential backoff
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 100));
       }
     }
@@ -366,112 +345,14 @@ export class OpenAIEmbeddingService extends BaseEmbeddingService {
 }
 
 // ============================================================================
-// Transformers.js Embedding Service
+// Mock Embedding Service (TEST-ONLY — never returned by createEmbeddingService)
 // ============================================================================
 
-export class TransformersEmbeddingService extends BaseEmbeddingService {
-  readonly provider: EmbeddingProvider = 'transformers';
-  private pipeline: any = null;
-  private readonly modelName: string;
-  private initialized = false;
-
-  constructor(config: TransformersEmbeddingConfig) {
-    super(config);
-    this.modelName = config.model ?? 'Xenova/all-MiniLM-L6-v2';
-  }
-
-  private async initialize(): Promise<void> {
-    if (this.initialized) return;
-
-    try {
-      const { pipeline } = await import('@xenova/transformers');
-      this.pipeline = await pipeline('feature-extraction', this.modelName);
-      this.initialized = true;
-    } catch (error) {
-      throw new Error(`Failed to initialize transformers.js: ${error}`);
-    }
-  }
-
-  async embed(text: string): Promise<EmbeddingResult> {
-    await this.initialize();
-
-    // Check cache
-    const cached = this.cache.get(text);
-    if (cached) {
-      this.emitEvent({ type: 'cache_hit', text });
-      return {
-        embedding: cached,
-        latencyMs: 0,
-        cached: true,
-      };
-    }
-
-    this.emitEvent({ type: 'embed_start', text });
-    const startTime = performance.now();
-
-    try {
-      const output = await this.pipeline(text, { pooling: 'mean', normalize: true });
-      const embedding = new Float32Array(output.data);
-
-      // Cache result
-      this.cache.set(text, embedding);
-
-      const latencyMs = performance.now() - startTime;
-      this.emitEvent({ type: 'embed_complete', text, latencyMs });
-
-      return {
-        embedding,
-        latencyMs,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      this.emitEvent({ type: 'embed_error', text, error: message });
-      throw new Error(`Transformers.js embedding failed: ${message}`);
-    }
-  }
-
-  async embedBatch(texts: string[]): Promise<BatchEmbeddingResult> {
-    await this.initialize();
-
-    this.emitEvent({ type: 'batch_start', count: texts.length });
-    const startTime = performance.now();
-
-    const embeddings: Float32Array[] = [];
-    let cacheHits = 0;
-
-    for (const text of texts) {
-      const cached = this.cache.get(text);
-      if (cached) {
-        embeddings.push(cached);
-        cacheHits++;
-        this.emitEvent({ type: 'cache_hit', text });
-      } else {
-        const output = await this.pipeline(text, { pooling: 'mean', normalize: true });
-        const embedding = new Float32Array(output.data);
-        this.cache.set(text, embedding);
-        embeddings.push(embedding);
-      }
-    }
-
-    const totalLatencyMs = performance.now() - startTime;
-    this.emitEvent({ type: 'batch_complete', count: texts.length, latencyMs: totalLatencyMs });
-
-    return {
-      embeddings,
-      totalLatencyMs,
-      avgLatencyMs: totalLatencyMs / texts.length,
-      cacheStats: {
-        hits: cacheHits,
-        misses: texts.length - cacheHits,
-      },
-    };
-  }
-}
-
-// ============================================================================
-// Mock Embedding Service
-// ============================================================================
-
+/**
+ * Deterministic test-only service. Retained so `@moflo/embeddings` has a stable
+ * in-process fake for unit tests, but NOT reachable from the factory — the
+ * production path is neural-only.
+ */
 export class MockEmbeddingService extends BaseEmbeddingService {
   readonly provider: EmbeddingProvider = 'mock';
   private readonly dimensions: number;
@@ -491,35 +372,26 @@ export class MockEmbeddingService extends BaseEmbeddingService {
   }
 
   async embed(text: string): Promise<EmbeddingResult> {
-    // Check cache
     const cached = this.cache.get(text);
     if (cached) {
       this.emitEvent({ type: 'cache_hit', text });
-      return {
-        embedding: cached,
-        latencyMs: 0,
-        cached: true,
-      };
+      return { embedding: cached, latencyMs: 0, cached: true };
     }
 
     this.emitEvent({ type: 'embed_start', text });
     const startTime = performance.now();
 
-    // Simulate latency
     if (this.simulatedLatency > 0) {
       await new Promise(resolve => setTimeout(resolve, this.simulatedLatency));
     }
 
-    const embedding = this.hashEmbedding(text);
+    const embedding = this.deterministicEmbedding(text);
     this.cache.set(text, embedding);
 
     const latencyMs = performance.now() - startTime;
     this.emitEvent({ type: 'embed_complete', text, latencyMs });
 
-    return {
-      embedding,
-      latencyMs,
-    };
+    return { embedding, latencyMs };
   }
 
   async embedBatch(texts: string[]): Promise<BatchEmbeddingResult> {
@@ -535,7 +407,7 @@ export class MockEmbeddingService extends BaseEmbeddingService {
         embeddings.push(cached);
         cacheHits++;
       } else {
-        const embedding = this.hashEmbedding(text);
+        const embedding = this.deterministicEmbedding(text);
         this.cache.set(text, embedding);
         embeddings.push(embedding);
       }
@@ -555,27 +427,21 @@ export class MockEmbeddingService extends BaseEmbeddingService {
     };
   }
 
-  /**
-   * Generate deterministic hash-based embedding
-   */
-  private hashEmbedding(text: string): Float32Array {
+  private deterministicEmbedding(text: string): Float32Array {
     const embedding = new Float32Array(this.dimensions);
 
-    // Seed with text hash
     let hash = 0;
     for (let i = 0; i < text.length; i++) {
       hash = (hash << 5) - hash + text.charCodeAt(i);
       hash = hash & hash;
     }
 
-    // Generate pseudo-random embedding
     for (let i = 0; i < this.dimensions; i++) {
       const seed = hash + i * 2654435761;
       const x = Math.sin(seed) * 10000;
       embedding[i] = x - Math.floor(x);
     }
 
-    // Normalize to unit vector
     const norm = Math.sqrt(embedding.reduce((sum, v) => sum + v * v, 0));
     for (let i = 0; i < this.dimensions; i++) {
       embedding[i] /= norm;
@@ -586,321 +452,138 @@ export class MockEmbeddingService extends BaseEmbeddingService {
 }
 
 // ============================================================================
-// Agentic-Flow Embedding Service
-// ============================================================================
-
-/**
- * Agentic-Flow embedding service using OptimizedEmbedder
- *
- * Features:
- * - ONNX-based embeddings with SIMD acceleration
- * - 256-entry LRU cache with FNV-1a hash
- * - 8x loop unrolling for cosine similarity
- * - Pre-allocated buffers (no GC pressure)
- * - 3-4x faster batch processing
- */
-export class AgenticFlowEmbeddingService extends BaseEmbeddingService {
-  readonly provider: EmbeddingProvider = 'agentic-flow';
-  private embedder: any = null;
-  private initialized = false;
-  private readonly modelId: string;
-  private readonly dimensions: number;
-  private readonly embedderCacheSize: number;
-  private readonly modelDir: string | undefined;
-  private readonly autoDownload: boolean;
-
-  constructor(config: AgenticFlowEmbeddingConfig) {
-    super(config);
-    this.modelId = config.modelId ?? 'all-MiniLM-L6-v2';
-    this.dimensions = config.dimensions ?? 384;
-    this.embedderCacheSize = config.embedderCacheSize ?? 256;
-    this.modelDir = config.modelDir;
-    this.autoDownload = config.autoDownload ?? false;
-  }
-
-  private async initialize(): Promise<void> {
-    if (this.initialized) return;
-
-    let lastError: Error | undefined;
-
-    const createEmbedder = async (modulePath: string): Promise<boolean> => {
-      try {
-        // Use pathToFileURL for absolute paths (cross-platform)
-        const { isAbsolute } = await import('path');
-        const { pathToFileURL } = await import('url');
-        const importPath = isAbsolute(modulePath) ? pathToFileURL(modulePath).href : modulePath;
-        const module = await import(/* webpackIgnore: true */ importPath);
-        const getOptimizedEmbedder = module.getOptimizedEmbedder || module.default?.getOptimizedEmbedder;
-        if (!getOptimizedEmbedder) {
-          lastError = new Error(`Module loaded but getOptimizedEmbedder not found`);
-          return false;
-        }
-
-        // Only include defined values to not override defaults
-        const embedderConfig: Record<string, unknown> = {
-          modelId: this.modelId,
-          dimension: this.dimensions,
-          cacheSize: this.embedderCacheSize,
-          autoDownload: this.autoDownload,
-        };
-        if (this.modelDir !== undefined) {
-          embedderConfig.modelDir = this.modelDir;
-        }
-        this.embedder = getOptimizedEmbedder(embedderConfig);
-        await this.embedder.init();
-        this.initialized = true;
-        return true;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        return false;
-      }
-    };
-
-    // Build list of possible module paths to try
-    const possiblePaths: string[] = [];
-
-    // Try proper package exports first (preferred)
-    possiblePaths.push('agentic-flow/embeddings');
-
-    // Try node_modules resolution from different locations (for file:// imports)
-    try {
-      const path = await import('path');
-      const { existsSync } = await import('fs');
-      const cwd = process.cwd();
-
-      // Prioritize absolute paths that exist (for file:// import fallback)
-      const absolutePaths = [
-        path.join(cwd, 'node_modules/agentic-flow/dist/embeddings/optimized-embedder.js'),
-        path.join(cwd, '../node_modules/agentic-flow/dist/embeddings/optimized-embedder.js'),
-        '/workspaces/claude-flow/node_modules/agentic-flow/dist/embeddings/optimized-embedder.js',
-      ];
-
-      for (const p of absolutePaths) {
-        if (existsSync(p)) {
-          possiblePaths.push(p);
-        }
-      }
-    } catch {
-      // fs/path module not available
-    }
-
-    // Try each path
-    for (const modulePath of possiblePaths) {
-      if (await createEmbedder(modulePath)) {
-        return;
-      }
-    }
-
-    const errorDetail = lastError?.message ? ` Last error: ${lastError.message}` : '';
-    throw new Error(
-      `Failed to initialize agentic-flow embeddings.${errorDetail} ` +
-      `Ensure agentic-flow is installed and ONNX model is downloaded: ` +
-      `npx agentic-flow@alpha embeddings init`
-    );
-  }
-
-  async embed(text: string): Promise<EmbeddingResult> {
-    await this.initialize();
-
-    // Check our LRU cache first
-    const cached = this.cache.get(text);
-    if (cached) {
-      this.emitEvent({ type: 'cache_hit', text });
-      return {
-        embedding: cached,
-        latencyMs: 0,
-        cached: true,
-      };
-    }
-
-    this.emitEvent({ type: 'embed_start', text });
-    const startTime = performance.now();
-
-    try {
-      // Use agentic-flow's optimized embedder (has its own internal cache)
-      const embedding = await this.embedder.embed(text);
-
-      // Store in our cache as well
-      this.cache.set(text, embedding);
-
-      const latencyMs = performance.now() - startTime;
-      this.emitEvent({ type: 'embed_complete', text, latencyMs });
-
-      return {
-        embedding,
-        latencyMs,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      this.emitEvent({ type: 'embed_error', text, error: message });
-      throw new Error(`Agentic-flow embedding failed: ${message}`);
-    }
-  }
-
-  async embedBatch(texts: string[]): Promise<BatchEmbeddingResult> {
-    await this.initialize();
-
-    this.emitEvent({ type: 'batch_start', count: texts.length });
-    const startTime = performance.now();
-
-    // Check cache for each text
-    const cached: Array<{ index: number; embedding: Float32Array }> = [];
-    const uncached: Array<{ index: number; text: string }> = [];
-
-    texts.forEach((text, index) => {
-      const cachedEmbedding = this.cache.get(text);
-      if (cachedEmbedding) {
-        cached.push({ index, embedding: cachedEmbedding });
-        this.emitEvent({ type: 'cache_hit', text });
-      } else {
-        uncached.push({ index, text });
-      }
-    });
-
-    // Use optimized batch embedding for uncached texts
-    let batchEmbeddings: Float32Array[] = [];
-    if (uncached.length > 0) {
-      const uncachedTexts = uncached.map(u => u.text);
-      batchEmbeddings = await this.embedder.embedBatch(uncachedTexts);
-
-      // Cache results
-      uncached.forEach((item, i) => {
-        this.cache.set(item.text, batchEmbeddings[i]);
-      });
-    }
-
-    // Reconstruct result array in original order
-    const embeddings: Float32Array[] = new Array(texts.length);
-    cached.forEach(c => {
-      embeddings[c.index] = c.embedding;
-    });
-    uncached.forEach((u, i) => {
-      embeddings[u.index] = batchEmbeddings[i];
-    });
-
-    const totalLatencyMs = performance.now() - startTime;
-    this.emitEvent({ type: 'batch_complete', count: texts.length, latencyMs: totalLatencyMs });
-
-    return {
-      embeddings,
-      totalLatencyMs,
-      avgLatencyMs: totalLatencyMs / texts.length,
-      cacheStats: {
-        hits: cached.length,
-        misses: uncached.length,
-      },
-    };
-  }
-
-  /**
-   * Get combined cache statistics from both our LRU cache and embedder's internal cache
-   */
-  override getCacheStats() {
-    const baseStats = super.getCacheStats();
-
-    if (this.embedder && this.embedder.getCacheStats) {
-      const embedderStats = this.embedder.getCacheStats();
-      return {
-        size: baseStats.size + embedderStats.size,
-        maxSize: baseStats.maxSize + embedderStats.maxSize,
-        hitRate: baseStats.hitRate,
-        embedderCache: embedderStats,
-      };
-    }
-
-    return baseStats;
-  }
-
-  override async shutdown(): Promise<void> {
-    if (this.embedder && this.embedder.clearCache) {
-      this.embedder.clearCache();
-    }
-    await super.shutdown();
-  }
-}
-
-// ============================================================================
 // Factory Functions
 // ============================================================================
 
-/**
- * Check if agentic-flow is available
- */
-async function isAgenticFlowAvailable(): Promise<boolean> {
-  try {
-    await import('agentic-flow/embeddings');
-    return true;
-  } catch {
-    return false;
-  }
+// Lazy-resolved at call time so tests can mock the module via vi.mock.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function loadFastembedService(): Promise<any> {
+  const mod = await import('./fastembed-embedding-service.js');
+  return mod.FastembedEmbeddingService;
 }
 
 /**
- * Auto-install agentic-flow and initialize model
- */
-async function autoInstallAgenticFlow(): Promise<boolean> {
-  const { exec } = await import('child_process');
-  const { promisify } = await import('util');
-  const execAsync = promisify(exec);
-
-  try {
-    // Check if already available
-    if (await isAgenticFlowAvailable()) {
-      return true;
-    }
-
-    console.log('[embeddings] Installing agentic-flow@alpha...');
-    await execAsync('npm install agentic-flow@alpha --save', { timeout: 120000 });
-
-    // Initialize the model
-    console.log('[embeddings] Downloading embedding model...');
-    await execAsync('npx agentic-flow@alpha embeddings init', { timeout: 300000 });
-
-    // Verify installation
-    return await isAgenticFlowAvailable();
-  } catch (error) {
-    console.warn('[embeddings] Auto-install failed:', error instanceof Error ? error.message : error);
-    return false;
-  }
-}
-
-/**
- * Create embedding service based on configuration (sync version)
- * Note: For 'auto' provider or smart fallback, use createEmbeddingServiceAsync
+ * Construct an embedding service from a configuration.
+ *
+ * Synchronous factory. For providers that require initialization (fastembed
+ * model load), that work is performed lazily inside the service. If model
+ * loading fails at first-use time, the service throws — there is no hash
+ * fallback.
+ *
+ * `'mock'` is accepted only for test contexts; production callers should not
+ * pass it. The `'transformers'` key is a backwards-compatible alias for
+ * `'fastembed'` so existing callers keep working without config changes.
  */
 export function createEmbeddingService(config: EmbeddingConfig): IEmbeddingService {
   switch (config.provider) {
     case 'openai':
       return new OpenAIEmbeddingService(config as OpenAIEmbeddingConfig);
-    case 'transformers':
-      return new TransformersEmbeddingService(config as TransformersEmbeddingConfig);
+    case 'fastembed':
+    case 'transformers': {
+      // Synchronous construction — the async model load happens on first embed().
+      // Lazy-requiring keeps the fastembed module out of the call stack when it
+      // isn't needed (e.g. mock-only tests).
+      // eslint-disable-next-line @typescript-eslint/no-require-imports,@typescript-eslint/no-var-requires
+      return lazyFastembed(config as FastembedEmbeddingConfig | TransformersEmbeddingConfig);
+    }
     case 'mock':
       return new MockEmbeddingService(config as MockEmbeddingConfig);
-    case 'agentic-flow':
-      return new AgenticFlowEmbeddingService(config as AgenticFlowEmbeddingConfig);
-    case 'rvf':
-      return new RvfEmbeddingService(config as RvfEmbeddingConfig);
-    default:
-      console.warn(`Unknown provider, using mock`);
-      return new MockEmbeddingService({ provider: 'mock', dimensions: 384 });
+    default: {
+      const provider: string = (config as { provider?: string }).provider ?? '<none>';
+      throw new Error(
+        `Unknown embedding provider: '${provider}'. Supported: 'openai', 'fastembed', 'transformers', 'mock'.`,
+      );
+    }
   }
 }
 
 /**
- * Extended config with auto provider option
+ * Build a fastembed-backed service whose init is deferred until first embed().
+ * Keeps `createEmbeddingService` synchronous while still sharing the real
+ * FastembedEmbeddingService implementation.
+ */
+function lazyFastembed(
+  config: FastembedEmbeddingConfig | TransformersEmbeddingConfig,
+): IEmbeddingService {
+  const fastembedConfig: FastembedEmbeddingConfig = {
+    provider: 'fastembed',
+    dimensions: config.dimensions,
+    cacheSize: config.cacheSize,
+    enableCache: config.enableCache,
+    normalization: config.normalization,
+    persistentCache: config.persistentCache,
+    model: 'model' in config ? (config.model as string | undefined) : undefined,
+  };
+
+  return new LazyFastembedService(fastembedConfig);
+}
+
+/**
+ * Wrapper that defers loading the fastembed-backed service implementation
+ * until the first embed call. Keeps `createEmbeddingService` synchronous.
+ */
+class LazyFastembedService implements IEmbeddingService {
+  readonly provider: EmbeddingProvider;
+  private inner: IEmbeddingService | null = null;
+  private loadPromise: Promise<IEmbeddingService> | null = null;
+
+  constructor(private readonly config: FastembedEmbeddingConfig) {
+    this.provider = config.provider ?? 'fastembed';
+  }
+
+  private async ensure(): Promise<IEmbeddingService> {
+    if (this.inner) return this.inner;
+    if (!this.loadPromise) {
+      this.loadPromise = (async () => {
+        const Service = await loadFastembedService();
+        this.inner = new Service(this.config) as IEmbeddingService;
+        return this.inner;
+      })();
+    }
+    return this.loadPromise;
+  }
+
+  async embed(text: string): Promise<EmbeddingResult> {
+    const svc = await this.ensure();
+    return svc.embed(text);
+  }
+
+  async embedBatch(texts: string[]): Promise<BatchEmbeddingResult> {
+    const svc = await this.ensure();
+    return svc.embedBatch(texts);
+  }
+
+  clearCache(): void {
+    this.inner?.clearCache();
+  }
+
+  getCacheStats() {
+    return this.inner?.getCacheStats() ?? { size: 0, maxSize: 0, hitRate: 0 };
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.inner) {
+      await this.inner.shutdown();
+      this.inner = null;
+    }
+    this.loadPromise = null;
+  }
+}
+
+/**
+ * Extended config with explicit provider selection.
+ *
+ * Unlike the previous `'auto'` behaviour, there is no silent fallback chain —
+ * the chosen provider either initializes or throws.
  */
 export interface AutoEmbeddingConfig {
-  /** Provider: 'auto' will pick best available (agentic-flow > transformers > mock) */
-  provider: EmbeddingProvider | 'auto';
-  /** Fallback provider if primary fails */
-  fallback?: EmbeddingProvider;
-  /** Auto-install agentic-flow if not available (default: true for 'auto' provider) */
-  autoInstall?: boolean;
-  /** Model ID for agentic-flow */
-  modelId?: string;
-  /** Model name for transformers */
+  /** Provider: neural only — 'fastembed', 'transformers' (alias), 'openai'. 'mock' is test-only. */
+  provider: EmbeddingProvider;
+  /** Model name (fastembed/transformers) */
   model?: string;
-  /** Dimensions */
+  /** Model ID override (legacy parameter kept for call-site compatibility) */
+  modelId?: string;
+  /** Embedding dimensions */
   dimensions?: number;
   /** Cache size */
   cacheSize?: number;
@@ -909,151 +592,64 @@ export interface AutoEmbeddingConfig {
 }
 
 /**
- * Create embedding service with automatic provider detection and fallback
+ * Async factory — constructs a service and validates it can embed.
  *
- * Features:
- * - 'auto' provider picks best available: agentic-flow > transformers > mock
- * - Automatic fallback if primary provider fails to initialize
- * - Pre-validates provider availability before returning
- *
- * @example
- * // Auto-select best provider
- * const service = await createEmbeddingServiceAsync({ provider: 'auto' });
- *
- * // Try agentic-flow, fallback to transformers
- * const service = await createEmbeddingServiceAsync({
- *   provider: 'agentic-flow',
- *   fallback: 'transformers'
- * });
+ * Unlike the old `'auto'` behaviour, this never silently falls back to another
+ * provider. Validation happens eagerly so callers learn about a broken model
+ * download (etc.) at startup rather than at first query.
  */
 export async function createEmbeddingServiceAsync(
-  config: AutoEmbeddingConfig
+  config: AutoEmbeddingConfig,
 ): Promise<IEmbeddingService> {
-  const { provider, fallback, autoInstall = true, ...rest } = config;
+  const { provider, ...rest } = config;
 
-  // Auto provider selection
-  if (provider === 'auto') {
-    // Try RVF first (52KB, always available, fast hash embeddings)
-    try {
-      const service = new RvfEmbeddingService({
-        provider: 'rvf',
+  const service = createEmbeddingService(buildConfig(provider, rest));
+
+  // Prove the service works (loads fastembed model, hits OpenAI, etc.).
+  // A failure here is a hard error — no hash fallback.
+  await service.embed('test');
+  return service;
+}
+
+function buildConfig(
+  provider: EmbeddingProvider,
+  rest: Omit<AutoEmbeddingConfig, 'provider'>,
+): EmbeddingConfig {
+  switch (provider) {
+    case 'openai':
+      if (!rest.apiKey) throw new Error('OpenAI provider requires apiKey');
+      return {
+        provider: 'openai',
+        apiKey: rest.apiKey,
+        dimensions: rest.dimensions,
+        cacheSize: rest.cacheSize,
+      };
+    case 'fastembed':
+    case 'transformers':
+      return {
+        provider,
+        model: rest.model,
+        dimensions: rest.dimensions,
+        cacheSize: rest.cacheSize,
+      } as FastembedEmbeddingConfig | TransformersEmbeddingConfig;
+    case 'mock':
+      return {
+        provider: 'mock',
         dimensions: rest.dimensions ?? 384,
         cacheSize: rest.cacheSize,
-      });
-      await service.embed('test');
-      return service;
-    } catch { /* fall through */ }
-
-    // Try agentic-flow (fastest neural, ONNX-based)
-    let agenticFlowAvailable = await isAgenticFlowAvailable();
-
-    // Auto-install if not available and autoInstall is enabled
-    if (!agenticFlowAvailable && autoInstall) {
-      agenticFlowAvailable = await autoInstallAgenticFlow();
-    }
-
-    if (agenticFlowAvailable) {
-      try {
-        const service = new AgenticFlowEmbeddingService({
-          provider: 'agentic-flow',
-          modelId: rest.modelId ?? 'all-MiniLM-L6-v2',
-          dimensions: rest.dimensions ?? 384,
-          cacheSize: rest.cacheSize,
-        });
-        // Validate it can initialize
-        await service.embed('test');
-        return service;
-      } catch {
-        // Fall through to next option
-      }
-    }
-
-    // Try transformers (good quality, built-in)
-    try {
-      const service = new TransformersEmbeddingService({
-        provider: 'transformers',
-        model: rest.model ?? 'Xenova/all-MiniLM-L6-v2',
-        cacheSize: rest.cacheSize,
-      });
-      // Validate it can initialize
-      await service.embed('test');
-      return service;
-    } catch {
-      // Fall through to mock
-    }
-
-    // Fallback to mock (always works)
-    console.warn('[embeddings] Using mock provider - install agentic-flow or @xenova/transformers for real embeddings');
-    return new MockEmbeddingService({
-      dimensions: rest.dimensions ?? 384,
-      cacheSize: rest.cacheSize,
-    });
-  }
-
-  // Specific provider with optional fallback
-  const createPrimary = (): IEmbeddingService => {
-    switch (provider) {
-      case 'agentic-flow':
-        return new AgenticFlowEmbeddingService({
-          provider: 'agentic-flow',
-          modelId: rest.modelId ?? 'all-MiniLM-L6-v2',
-          dimensions: rest.dimensions ?? 384,
-          cacheSize: rest.cacheSize,
-        });
-      case 'transformers':
-        return new TransformersEmbeddingService({
-          provider: 'transformers',
-          model: rest.model ?? 'Xenova/all-MiniLM-L6-v2',
-          cacheSize: rest.cacheSize,
-        });
-      case 'openai':
-        if (!rest.apiKey) throw new Error('OpenAI provider requires apiKey');
-        return new OpenAIEmbeddingService({
-          provider: 'openai',
-          apiKey: rest.apiKey,
-          dimensions: rest.dimensions,
-          cacheSize: rest.cacheSize,
-        });
-      case 'rvf':
-        return new RvfEmbeddingService({
-          provider: 'rvf',
-          dimensions: rest.dimensions ?? 384,
-          cacheSize: rest.cacheSize,
-        });
-      case 'mock':
-        return new MockEmbeddingService({
-          dimensions: rest.dimensions ?? 384,
-          cacheSize: rest.cacheSize,
-        });
-      default:
-        throw new Error(`Unknown provider: ${provider}`);
-    }
-  };
-
-  const primary = createPrimary();
-
-  // Try to validate primary provider
-  try {
-    await primary.embed('test');
-    return primary;
-  } catch (error) {
-    if (!fallback) {
-      throw error;
-    }
-
-    // Try fallback
-    console.warn(`[embeddings] Primary provider '${provider}' failed, using fallback '${fallback}'`);
-    const fallbackConfig: AutoEmbeddingConfig = { ...rest, provider: fallback };
-    return createEmbeddingServiceAsync(fallbackConfig);
+      };
+    default:
+      throw new Error(`Unknown embedding provider: '${provider as string}'`);
   }
 }
 
 /**
- * Convenience function for quick embeddings
+ * Convenience — embed a single string. Test-only; production callers should
+ * construct a long-lived service and reuse it.
  */
 export async function getEmbedding(
   text: string,
-  config?: Partial<EmbeddingConfig>
+  config?: Partial<EmbeddingConfig>,
 ): Promise<Float32Array | number[]> {
   const service = createEmbeddingService({
     provider: 'mock',
@@ -1073,12 +669,9 @@ export async function getEmbedding(
 // Similarity Functions
 // ============================================================================
 
-/**
- * Compute cosine similarity between two embeddings
- */
 export function cosineSimilarity(
   a: Float32Array | number[],
-  b: Float32Array | number[]
+  b: Float32Array | number[],
 ): number {
   if (a.length !== b.length) {
     throw new Error('Embedding dimensions must match');
@@ -1098,12 +691,9 @@ export function cosineSimilarity(
   return denom > 0 ? dot / denom : 0;
 }
 
-/**
- * Compute Euclidean distance between two embeddings
- */
 export function euclideanDistance(
   a: Float32Array | number[],
-  b: Float32Array | number[]
+  b: Float32Array | number[],
 ): number {
   if (a.length !== b.length) {
     throw new Error('Embedding dimensions must match');
@@ -1118,12 +708,9 @@ export function euclideanDistance(
   return Math.sqrt(sum);
 }
 
-/**
- * Compute dot product between two embeddings
- */
 export function dotProduct(
   a: Float32Array | number[],
-  b: Float32Array | number[]
+  b: Float32Array | number[],
 ): number {
   if (a.length !== b.length) {
     throw new Error('Embedding dimensions must match');
@@ -1137,13 +724,10 @@ export function dotProduct(
   return dot;
 }
 
-/**
- * Compute similarity using specified metric
- */
 export function computeSimilarity(
   a: Float32Array | number[],
   b: Float32Array | number[],
-  metric: SimilarityMetric = 'cosine'
+  metric: SimilarityMetric = 'cosine',
 ): SimilarityResult {
   switch (metric) {
     case 'cosine':

@@ -2,9 +2,10 @@
  * Tests for the Shard Retriever and Intent Classifier
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ShardRetriever, HashEmbeddingProvider } from '../src/retriever.js';
+import { ShardRetriever } from '../src/retriever.js';
 import { GuidanceCompiler } from '../src/compiler.js';
 import type { PolicyBundle } from '../src/types.js';
+import { DeterministicTestEmbeddingProvider } from './__mocks__/deterministic-embedding-provider.js';
 
 describe('ShardRetriever', () => {
   let retriever: ShardRetriever;
@@ -41,7 +42,7 @@ describe('ShardRetriever', () => {
 - [R041] Run full test suite before deploy @deployment #deployment
 `);
 
-    retriever = new ShardRetriever(new HashEmbeddingProvider(128));
+    retriever = new ShardRetriever(new DeterministicTestEmbeddingProvider(128));
     await retriever.loadBundle(bundle);
   });
 

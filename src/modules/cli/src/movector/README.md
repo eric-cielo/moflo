@@ -658,7 +658,7 @@ flo hooks import backup.json --merge
 ## Dependencies
 
 - `@modelcontextprotocol/sdk`: ^1.0.0
-- `@xenova/transformers`: ^2.17.2
+- `fastembed`: ^2.1.0 (neural embeddings; replaces the retired xenova transformers.js dependency)
 
 ---
 

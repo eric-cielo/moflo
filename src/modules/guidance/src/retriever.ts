@@ -86,67 +86,6 @@ export interface IEmbeddingProvider {
   batchEmbed(texts: string[]): Promise<Float32Array[]>;
 }
 
-/**
- * Deterministic hash-based embedding provider — **test-only**.
- *
- * Produces fixed-dimension vectors from a simple character-hash → sin()
- * transform.  The resulting embeddings have no real semantic meaning;
- * they are stable and fast, which makes them useful for unit/integration
- * tests that need a concrete {@link IEmbeddingProvider} without loading
- * an ONNX model.
- *
- * **Do NOT use in production** — replace with a real model-backed
- * provider (e.g. the agentic-flow ONNX integration).
- */
-export class HashEmbeddingProvider implements IEmbeddingProvider {
-  private dimensions: number;
-  private cache = new Map<string, Float32Array>();
-
-  constructor(dimensions: number = 384) {
-    this.dimensions = dimensions;
-  }
-
-  async embed(text: string): Promise<Float32Array> {
-    const key = text.slice(0, 200);
-    if (this.cache.has(key)) return this.cache.get(key)!;
-
-    const embedding = this.hashEmbed(text);
-    this.cache.set(key, embedding);
-    return embedding;
-  }
-
-  async batchEmbed(texts: string[]): Promise<Float32Array[]> {
-    return Promise.all(texts.map(t => this.embed(t)));
-  }
-
-  private hashEmbed(text: string): Float32Array {
-    const embedding = new Float32Array(this.dimensions);
-    const normalized = text.toLowerCase().trim();
-
-    for (let i = 0; i < this.dimensions; i++) {
-      let hash = 0;
-      for (let j = 0; j < normalized.length; j++) {
-        hash = ((hash << 5) - hash + normalized.charCodeAt(j) * (i + 1)) | 0;
-      }
-      embedding[i] = (Math.sin(hash) + 1) / 2;
-    }
-
-    // L2 normalize
-    let norm = 0;
-    for (let i = 0; i < this.dimensions; i++) {
-      norm += embedding[i] * embedding[i];
-    }
-    norm = Math.sqrt(norm);
-    if (norm > 0) {
-      for (let i = 0; i < this.dimensions; i++) {
-        embedding[i] /= norm;
-      }
-    }
-
-    return embedding;
-  }
-}
-
 // ============================================================================
 // Shard Retriever
 // ============================================================================
@@ -158,8 +97,19 @@ export class ShardRetriever {
   private indexed = false;
   private globCache = new Map<string, RegExp>();
 
-  constructor(embeddingProvider?: IEmbeddingProvider) {
-    this.embeddingProvider = embeddingProvider ?? new HashEmbeddingProvider();
+  /**
+   * Construct a retriever. An {@link IEmbeddingProvider} is required — there
+   * is no built-in hash fallback (see epic #527). Tests inject a deterministic
+   * mock; production wires a neural provider backed by `@moflo/embeddings`.
+   */
+  constructor(embeddingProvider: IEmbeddingProvider) {
+    if (!embeddingProvider) {
+      throw new Error(
+        'ShardRetriever requires an IEmbeddingProvider. Pass a neural-backed ' +
+          'provider in production and a deterministic mock in tests.',
+      );
+    }
+    this.embeddingProvider = embeddingProvider;
   }
 
   /**
@@ -475,8 +425,9 @@ export class ShardRetriever {
 }
 
 /**
- * Create a retriever instance
+ * Create a retriever instance. A neural-backed {@link IEmbeddingProvider} is
+ * required — see {@link ShardRetriever}.
  */
-export function createRetriever(embeddingProvider?: IEmbeddingProvider): ShardRetriever {
+export function createRetriever(embeddingProvider: IEmbeddingProvider): ShardRetriever {
   return new ShardRetriever(embeddingProvider);
 }

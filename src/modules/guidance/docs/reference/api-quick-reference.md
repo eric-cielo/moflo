@@ -8,7 +8,7 @@ All exports from `@moflo/guidance`. Each module is also available as a standalon
 |-------------|-------------|
 | `@moflo/guidance` | `GuidanceControlPlane`, `createGuidanceControlPlane` |
 | `@moflo/guidance/compiler` | `GuidanceCompiler`, `createCompiler` |
-| `@moflo/guidance/retriever` | `ShardRetriever`, `createRetriever`, `HashEmbeddingProvider` |
+| `@moflo/guidance/retriever` | `ShardRetriever`, `createRetriever`, `IEmbeddingProvider` |
 | `@moflo/guidance/gates` | `EnforcementGates`, `createGates` |
 | `@moflo/guidance/hooks` | `GuidanceHookProvider`, `createGuidanceHooks` |
 | `@moflo/guidance/ledger` | `RunLedger`, `createLedger`, `TestsPassEvaluator`, `ForbiddenCommandEvaluator`, `ForbiddenDependencyEvaluator`, `ViolationRateEvaluator`, `DiffQualityEvaluator` |

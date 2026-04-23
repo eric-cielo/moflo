@@ -123,7 +123,8 @@ const retrieveCommand: Command = {
       const { readFile } = await import('node:fs/promises');
       const { existsSync } = await import('node:fs');
       const { GuidanceCompiler } = await import('@moflo/guidance/compiler');
-      const { ShardRetriever, HashEmbeddingProvider } = await import('@moflo/guidance/retriever');
+      const { ShardRetriever } = await import('@moflo/guidance/retriever');
+      const { createNeuralEmbeddingProvider } = await import('../services/neural-embedding-provider.js');
 
       if (!existsSync(rootPath)) {
         output.writeln(output.error(`Root guidance file not found: ${rootPath}`));
@@ -139,7 +140,7 @@ const retrieveCommand: Command = {
       const compiler = new GuidanceCompiler();
       const bundle = compiler.compile(rootContent, localContent);
 
-      const retriever = new ShardRetriever(new HashEmbeddingProvider(128));
+      const retriever = new ShardRetriever(await createNeuralEmbeddingProvider());
       await retriever.loadBundle(bundle);
 
       const result = await retriever.retrieve({

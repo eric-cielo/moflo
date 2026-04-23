@@ -22,6 +22,15 @@ import type { ControllerSpec } from './controller-spec.js';
  */
 export type NeuralLoader = () => Promise<any>;
 
+/**
+ * Factory function that returns an embedding service instance.
+ * Used by the bridge to embed insight summaries — hash fallback was removed
+ * in epic #527 so the bridge requires a real service (or a test mock).
+ */
+export type EmbeddingLoader = () => Promise<{
+  embed(text: string): Promise<{ embedding: Float32Array | number[] }>;
+} | null>;
+
 /** Configuration for the LearningBridge */
 export interface LearningBridgeConfig {
   /** SONA operating mode (default: 'balanced') */
@@ -46,6 +55,12 @@ export interface LearningBridgeConfig {
    * Primarily used for testing.
    */
   neuralLoader?: NeuralLoader;
+  /**
+   * Optional factory for the embedding service used to embed insight summaries.
+   * Defaults to a dynamic import of `@moflo/embeddings` (fastembed provider).
+   * Tests inject a deterministic mock.
+   */
+  embeddingLoader?: EmbeddingLoader;
 }
 
 /** Aggregated learning statistics */
@@ -77,9 +92,10 @@ export interface PatternMatch {
 
 // ===== Defaults =====
 
-/** Internal resolved config type where neuralLoader stays optional */
-type ResolvedConfig = Required<Omit<LearningBridgeConfig, 'neuralLoader'>> & {
+/** Internal resolved config type where loaders stay optional */
+type ResolvedConfig = Required<Omit<LearningBridgeConfig, 'neuralLoader' | 'embeddingLoader'>> & {
   neuralLoader?: NeuralLoader;
+  embeddingLoader?: EmbeddingLoader;
 };
 
 const DEFAULT_CONFIG: ResolvedConfig = {
@@ -123,6 +139,10 @@ export class LearningBridge extends EventEmitter {
   };
   private destroyed = false;
   private neuralInitPromise: Promise<void> | null = null;
+  private embeddingService: {
+    embed(text: string): Promise<{ embedding: Float32Array | number[] }>;
+  } | null = null;
+  private embeddingInitPromise: Promise<void> | null = null;
 
   constructor(backend: IMemoryBackend, config?: LearningBridgeConfig) {
     super();
@@ -148,7 +168,7 @@ export class LearningBridge extends EventEmitter {
         this.activeTrajectories.set(entryId, trajectoryId);
         this.stats.totalTrajectories++;
 
-        const embedding = this.createHashEmbedding(insight.summary);
+        const embedding = await this.embedText(insight.summary);
         this.neural.recordStep(trajectoryId, {
           action: `record:${insight.category}`,
           reward: insight.confidence,
@@ -319,7 +339,7 @@ export class LearningBridge extends EventEmitter {
     if (!this.neural) return [];
 
     try {
-      const embedding = this.createHashEmbedding(content);
+      const embedding = await this.embedText(content);
       const results = await this.neural.findPatterns(embedding, k);
 
       if (!Array.isArray(results)) return [];
@@ -419,35 +439,59 @@ export class LearningBridge extends EventEmitter {
   }
 
   /**
-   * Create a deterministic hash-based embedding for content.
-   * This is a lightweight stand-in for a real embedding model,
-   * suitable for pattern matching within the neural trajectory system.
+   * Embed text for pattern matching inside the neural trajectory system.
+   *
+   * Lazily initializes the shared embedding service (fastembed-backed by
+   * default) and returns its Float32Array output. When no embedding service
+   * can be loaded, returns an empty Float32Array so the caller can skip the
+   * step rather than poison the trajectory with fake vectors.
    */
-  private createHashEmbedding(text: string, dimensions: number = 768): Float32Array {
-    const embedding = new Float32Array(dimensions);
-    const normalized = text.toLowerCase().trim();
+  private async embedText(text: string): Promise<Float32Array> {
+    await this.initEmbeddings();
+    if (!this.embeddingService) return new Float32Array(0);
+    try {
+      const result = await this.embeddingService.embed(text);
+      return result.embedding instanceof Float32Array
+        ? result.embedding
+        : new Float32Array(result.embedding);
+    } catch {
+      return new Float32Array(0);
+    }
+  }
 
-    for (let i = 0; i < dimensions; i++) {
-      let hash = 0;
-      for (let j = 0; j < normalized.length; j++) {
-        hash = ((hash << 5) - hash + normalized.charCodeAt(j) * (i + 1)) | 0;
+  /**
+   * Lazily load the embedding service. Uses an injected loader (tests) or the
+   * shared `@moflo/embeddings` module (production). Failures leave
+   * `embeddingService = null` so callers skip embedding without crashing.
+   */
+  private async initEmbeddings(): Promise<void> {
+    if (this.embeddingService) return;
+    if (this.embeddingInitPromise) {
+      await this.embeddingInitPromise;
+      return;
+    }
+
+    this.embeddingInitPromise = (async () => {
+      try {
+        if (this.config.embeddingLoader) {
+          this.embeddingService = await this.config.embeddingLoader();
+          return;
+        }
+
+        const mod: any = await import('@moflo/embeddings' as string);
+        const create = mod.createEmbeddingService;
+        if (typeof create !== 'function') return;
+
+        this.embeddingService = create({
+          provider: 'fastembed',
+          dimensions: 384,
+        });
+      } catch {
+        this.embeddingService = null;
       }
-      embedding[i] = (Math.sin(hash) + 1) / 2;
-    }
+    })();
 
-    let norm = 0;
-    for (let i = 0; i < dimensions; i++) {
-      norm += embedding[i] * embedding[i];
-    }
-    norm = Math.sqrt(norm);
-
-    if (norm > 0) {
-      for (let i = 0; i < dimensions; i++) {
-        embedding[i] /= norm;
-      }
-    }
-
-    return embedding;
+    await this.embeddingInitPromise;
   }
 }
 

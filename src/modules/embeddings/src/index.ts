@@ -1,11 +1,11 @@
 /**
- * V3 Embedding Service Module
+ * Embedding Service Module
  *
- * Production embedding service aligned with agentic-flow@alpha:
- * - OpenAI provider (text-embedding-3-small/large)
- * - Transformers.js provider (local ONNX models)
- * - Agentic-flow provider (optimized ONNX with SIMD)
- * - Mock provider (development/testing)
+ * Neural embeddings only. Supported providers:
+ * - `fastembed` — Qdrant's fastembed (ONNX) — the default and required runtime
+ * - `transformers` — backwards-compatible alias that resolves to `fastembed`
+ * - `openai` — remote API
+ * - `mock` — deterministic test-only service (not reachable from the factory path)
  *
  * Additional features:
  * - Persistent SQLite cache
@@ -30,15 +30,10 @@ export {
   dotProduct,
   computeSimilarity,
   OpenAIEmbeddingService,
-  TransformersEmbeddingService,
   MockEmbeddingService,
-  AgenticFlowEmbeddingService,
 } from './embedding-service.js';
 
 export type { AutoEmbeddingConfig } from './embedding-service.js';
-
-// RVF embedding service (pure-TS hash-based embeddings)
-export { RvfEmbeddingService } from './rvf-embedding-service.js';
 
 // Fastembed embedding service (ONNX-based neural embeddings via Qdrant's fastembed)
 export { FastembedEmbeddingService } from './fastembed-embedding-service.js';
@@ -91,12 +86,6 @@ export {
   type AnnouncementInput,
   type AnnouncementStep,
 } from './migration/index.js';
-
-// RVF embedding cache (binary file persistence)
-export {
-  RvfEmbeddingCache,
-  type RvfEmbeddingCacheConfig,
-} from './rvf-embedding-cache.js';
 
 // Chunking utilities
 export {
@@ -166,8 +155,6 @@ export type {
   OpenAIEmbeddingConfig,
   TransformersEmbeddingConfig,
   MockEmbeddingConfig,
-  AgenticFlowEmbeddingConfig,
-  RvfEmbeddingConfig,
   FastembedEmbeddingConfig,
   EmbeddingResult,
   BatchEmbeddingResult,

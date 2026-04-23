@@ -9,7 +9,7 @@
  * Usage:
  *   import { mofloImport } from '../services/moflo-require.js';
  *   const sqlJs = await mofloImport('sql.js');
- *   const transformers = await mofloImport('@xenova/transformers');
+ *   const embeddings = await mofloImport('@moflo/embeddings');
  */
 
 import { createRequire } from 'module';
@@ -27,7 +27,7 @@ const mofloRequire = createRequire(fileURLToPath(import.meta.url));
  * On Windows, `createRequire.resolve()` returns a native path (C:\...) which
  * `import()` rejects — it requires a file:// URL.  We convert via pathToFileURL.
  *
- * @param specifier       Package specifier, e.g. 'sql.js' or '@xenova/transformers'
+ * @param specifier       Package specifier, e.g. 'sql.js' or '@moflo/embeddings'
  * @param expectedExports Optional list of named exports the caller relies on.
  *                        When provided, the module is validated after load; if any
  *                        named export is missing, a warning is emitted and null

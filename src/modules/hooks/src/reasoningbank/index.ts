@@ -212,10 +212,9 @@ export class ReasoningBank extends EventEmitter {
   constructor(config: Partial<ReasoningBankConfig> = {}) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.embeddingService = new FallbackEmbeddingService(
-      this.config.dimensions,
-      this.config.useMockEmbeddings === true,
-    );
+    this.embeddingService = this.config.useMockEmbeddings
+      ? new TestDeterministicEmbedding(this.config.dimensions)
+      : new RealEmbeddingService(this.config.dimensions);
   }
 
   /**
@@ -266,14 +265,9 @@ export class ReasoningBank extends EventEmitter {
         await this.mofloDb.initialize();
         this.useRealBackend = true;
 
-        // Try to use real embedding service
+        // Initialize the real embedding service now that @moflo/embeddings is loaded.
         if (EmbeddingServiceImpl && !this.config.useMockEmbeddings) {
-          try {
-            this.embeddingService = new RealEmbeddingService(this.config.dimensions);
-            await (this.embeddingService as RealEmbeddingService).initialize();
-          } catch (e) {
-            console.warn('[ReasoningBank] Real embeddings unavailable, using hash-based fallback');
-          }
+          await (this.embeddingService as RealEmbeddingService).initialize();
         }
 
         await this.loadPatterns();
@@ -994,7 +988,11 @@ interface IEmbeddingService {
 }
 
 /**
- * Real embedding service using @moflo/embeddings
+ * Real embedding service using @moflo/embeddings (fastembed provider).
+ *
+ * This is the only production path — the previous `FallbackEmbeddingService`
+ * with hash fallback was removed in epic #527. If the embeddings module cannot
+ * be resolved at initialize time, calls to `embed()` throw.
  */
 class RealEmbeddingService implements IEmbeddingService {
   private service: any = null;
@@ -1008,8 +1006,7 @@ class RealEmbeddingService implements IEmbeddingService {
   async initialize(): Promise<void> {
     if (EmbeddingServiceImpl) {
       this.service = await EmbeddingServiceImpl({
-        provider: 'transformers',
-        model: 'Xenova/all-MiniLM-L6-v2',
+        provider: 'fastembed',
         dimensions: this.dimensions,
         cacheSize: 1000,
       });
@@ -1024,77 +1021,50 @@ class RealEmbeddingService implements IEmbeddingService {
 
     if (this.service) {
       const result = await this.service.embed(text);
-      const embedding = result.embedding;
+      const embedding =
+        result.embedding instanceof Float32Array
+          ? result.embedding
+          : new Float32Array(result.embedding);
       this.cache.set(cacheKey, embedding);
       return embedding;
     }
 
-    throw new Error('Embedding service not initialized');
+    throw new Error(
+      'Embedding service not initialized. Neural embeddings are required; ' +
+        'the hash fallback was removed in epic #527. Run initialize() first.',
+    );
   }
 }
 
 /**
- * Fallback embedding service (hash-based)
+ * Deterministic test-only embedding. Used when `useMockEmbeddings: true` is
+ * passed to the {@link ReasoningBank} so tests avoid the multi-second ONNX
+ * model boot. NOT reachable from any production code path.
  */
-class FallbackEmbeddingService implements IEmbeddingService {
+class TestDeterministicEmbedding implements IEmbeddingService {
   private dimensions: number;
   private cache: Map<string, Float32Array> = new Map();
-  private skipSubprocess: boolean;
 
-  constructor(dimensions: number = 384, skipSubprocess: boolean = false) {
+  constructor(dimensions: number = 384) {
     this.dimensions = dimensions;
-    this.skipSubprocess = skipSubprocess;
   }
 
   async embed(text: string): Promise<Float32Array> {
     const cacheKey = text.slice(0, 200);
-    if (this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey)!;
-    }
+    const cached = this.cache.get(cacheKey);
+    if (cached) return cached;
 
-    // Skip subprocess entirely when mock mode is requested — spawning
-    // `npx agentic-flow` per call costs 1-10s on CI (cold cache) even
-    // when the call ultimately fails.
-    if (this.skipSubprocess) {
-      const embedding = this.hashEmbed(text);
-      this.cache.set(cacheKey, embedding);
-      return embedding;
-    }
-
-    // Try agentic-flow ONNX embeddings first
-    try {
-      const { execFileSync } = await import('child_process');
-      // Use execFileSync with shell: false to prevent command injection
-      // Pass text as argument array to avoid shell interpolation
-      const safeText = text.slice(0, 500).replace(/[\x00-\x1f]/g, ''); // Remove control chars
-      const result = execFileSync(
-        'npx',
-        ['agentic-flow@alpha', 'embeddings', 'generate', safeText, '--format', 'json'],
-        { encoding: 'utf-8', timeout: 10000, shell: false, stdio: ['pipe', 'pipe', 'pipe'] }
-      );
-      const parsed = JSON.parse(result);
-      const embedding = new Float32Array(parsed.embedding || parsed);
-      this.cache.set(cacheKey, embedding);
-      return embedding;
-    } catch {
-      // Fallback to hash-based embedding
-      return this.hashEmbed(text);
-    }
-  }
-
-  private hashEmbed(text: string): Float32Array {
     const embedding = new Float32Array(this.dimensions);
     const normalized = text.toLowerCase().trim();
 
     for (let i = 0; i < this.dimensions; i++) {
-      let hash = 0;
+      let h = 0;
       for (let j = 0; j < normalized.length; j++) {
-        hash = ((hash << 5) - hash + normalized.charCodeAt(j) * (i + 1)) | 0;
+        h = ((h << 5) - h + normalized.charCodeAt(j) * (i + 1)) | 0;
       }
-      embedding[i] = (Math.sin(hash) + 1) / 2;
+      embedding[i] = (Math.sin(h) + 1) / 2;
     }
 
-    // Normalize
     let norm = 0;
     for (let i = 0; i < this.dimensions; i++) {
       norm += embedding[i] * embedding[i];
@@ -1106,7 +1076,7 @@ class FallbackEmbeddingService implements IEmbeddingService {
       }
     }
 
-    this.cache.set(text.slice(0, 200), embedding);
+    this.cache.set(cacheKey, embedding);
     return embedding;
   }
 }
