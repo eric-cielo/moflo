@@ -32,6 +32,32 @@ arguments:
 
 mofloLevel: hooks
 
+# Command-presence checks — fail fast with an actionable message if any
+# of these aren't on PATH. Runtime-state checks (auth, dirty tree, remote)
+# still live on the individual steps that need them via `preflight:`.
+prerequisites:
+  - name: gh-cli
+    description: GitHub CLI is required to read issues and manage PRs
+    docsUrl: https://cli.github.com
+    detect:
+      type: command
+      command: gh
+    promptOnMissing: false
+  - name: git
+    description: Git is required for branch management
+    docsUrl: https://git-scm.com/downloads
+    detect:
+      type: command
+      command: git
+    promptOnMissing: false
+  - name: claude-cli
+    description: Claude Code CLI is required to run the story implementer subagent
+    docsUrl: https://docs.anthropic.com/en/docs/claude-code
+    detect:
+      type: command
+      command: claude
+    promptOnMissing: false
+
 steps:
   # Step 1: Initialize epic state in memory (enables resume)
   - id: init-state
