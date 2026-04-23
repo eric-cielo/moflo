@@ -69,6 +69,41 @@ describe('interpolateString', () => {
     expect(interpolateString('sed "s/#${STORY}/.../g"', ctx)).toBe('sed "s/#${STORY}/.../g"');
   });
 
+  it('should leave JS destructuring and object literals untouched inside node -e scripts', () => {
+    // Regression (epic #287, 2026-04-22): a loose `{([^}]+)}` regex swallowed
+    // JS code like `{ spawnSync }` and `{ encoding: "utf8" }` when a spell
+    // embedded a `node -e '…'` script in a bash step, throwing
+    // "Variable not found: spawnSync". The interpolator must only consume
+    // identifier-shape references.
+    const ctx = createContext({ args: { epic_number: '287' } });
+    const input = [
+      'node -e \'',
+      '  const { spawnSync } = require("node:child_process");',
+      '  const view = spawnSync("gh", ["issue", "view", "{args.epic_number}"], { encoding: "utf8" });',
+      '\'',
+    ].join('\n');
+    const out = interpolateString(input, ctx);
+    expect(out).toContain('{ spawnSync }');
+    expect(out).toContain('{ encoding: "utf8" }');
+    expect(out).toContain('"287"');
+  });
+
+  it('should not treat braces with whitespace or non-identifier chars as references', () => {
+    const ctx = createContext();
+    // All of these must pass through unchanged — none are identifier-shaped refs.
+    const cases = [
+      '{ foo }',              // leading/trailing whitespace
+      '{a: b}',               // colon
+      '{"key": "value"}',     // quotes
+      '{1abc}',               // starts with digit
+      '{foo bar}',            // inner whitespace
+      '{foo+bar}',            // arithmetic/operator
+    ];
+    for (const s of cases) {
+      expect(interpolateString(s, ctx)).toBe(s);
+    }
+  });
+
   it('should coerce non-string values to string', () => {
     const ctx = createContext({ variables: { step1: { count: 42, ok: true } } });
     expect(interpolateString('{step1.count}', ctx)).toBe('42');

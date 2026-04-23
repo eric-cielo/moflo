@@ -20,6 +20,9 @@ export const isolationTests = [
   // Timing-based parallelism assertion — Windows maxForks contention pushes
   // the 75ms threshold over on full-suite runs; passes alone consistently.
   'src/modules/spells/__tests__/preflights.test.ts',
+  // Command-index registration — dynamic import of the command registry
+  // consistently exceeds 5s under full-suite load on Windows (6s cold alone).
+  'src/modules/cli/__tests__/spell-command.test.ts',
 ];
 
 export default defineConfig({

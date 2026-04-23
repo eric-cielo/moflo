@@ -10,12 +10,19 @@ import type { CastingContext } from '../types/step-command.types.js';
 /**
  * Matches `{path}` variable references in spell step configs.
  *
- * The `(?<!\$)` negative lookbehind skips `${VAR}` — that's bash parameter
- * expansion inside shell steps, not a spell template reference. Without it,
- * a bash command like `sed "s/#${STORY}/.../"` would try to resolve `STORY`
- * as a spell variable and fail.
+ * Content must be identifier-shape: letter/underscore followed by
+ * letters, digits, `_`, `.`, or `-`. This tight grammar accommodates
+ * every real spell ref (`{args.x}`, `{loop.x}`, `{step-id.out}`) while
+ * letting bash steps embed literal `{...}` blocks — JS destructuring
+ * `{ foo }` (whitespace), object literals `{ a: b }` (colon), shell
+ * expansions `${VAR}` (lookbehind), and so on — without tripping the
+ * interpolator. A greedy `[^}]+` class ate JS code inside `node -e`
+ * scripts and threw "Variable not found" at runtime.
+ *
+ * The `(?<!\$)` negative lookbehind also skips `${VAR}` — bash parameter
+ * expansion inside shell steps must pass through untouched.
  */
-export const VAR_REF_PATTERN = /(?<!\$)\{([^}]+)\}/g;
+export const VAR_REF_PATTERN = /(?<!\$)\{([A-Za-z_][A-Za-z0-9_.-]*)\}/g;
 
 /**
  * Resolve a dot-separated path against the context variables.

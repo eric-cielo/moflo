@@ -120,6 +120,18 @@ steps:
       # The github `comment` action only appends a comment — it does NOT
       # touch the task-list checkboxes. We read the body, substitute, and
       # write it back so the epic reflects progress at a glance.
+      #
+      # Cross-platform notes:
+      #   - Uses `node -e` instead of sed/awk/tr because coreutils are
+      #     not guaranteed on PATH (minimal containers, some Git-Bash
+      #     installs). Node is always available — moflo runs on it.
+      #   - Values reach node via env vars (not argv) so the script is
+      #     immune to Node's argv[1]-"[eval]" quirk across versions.
+      #   - The embedded JS contains ZERO backslashes. When Node spawns
+      #     `bash -c '<script>'` on Windows, Cygwin/MSYS bash strips one
+      #     layer of backslash escapes from the command line, which
+      #     silently broke regex escapes like `\[` and `\b`. Using
+      #     indexOf + a char-code `isWord` check avoids the trap entirely.
       - id: check-off-story
         type: bash
         permissionLevel: elevated
@@ -128,11 +140,42 @@ steps:
             set -e
             STORY={loop.story_number}
             EPIC={args.epic_number}
-            BODY=$(gh issue view "$EPIC" --json body -q .body)
-            UPDATED=$(printf '%s' "$BODY" | sed -E "s/- \[ \] #${STORY}\b/- [x] #${STORY}/")
-            if [ "$BODY" != "$UPDATED" ]; then
-              printf '%s' "$UPDATED" | gh issue edit "$EPIC" --body-file -
-            fi
+            export STORY EPIC
+            node -e '
+              const cp = require("node:child_process");
+              const epic = process.env.EPIC;
+              const story = process.env.STORY;
+              const view = cp.spawnSync("gh", ["issue", "view", epic, "--json", "body", "-q", ".body"], { encoding: "utf8" });
+              if (view.status !== 0) {
+                process.stderr.write(view.stderr || "gh issue view failed");
+                process.exit(view.status || 1);
+              }
+              const body = view.stdout;
+              const target = "- [ ] #" + story;
+              const replacement = "- [x] #" + story;
+              function isWord(c) {
+                if (!c) return false;
+                const n = c.charCodeAt(0);
+                return (n >= 48 && n <= 57) || (n >= 65 && n <= 90) || (n >= 97 && n <= 122) || n === 95;
+              }
+              let updated = "";
+              let i = 0;
+              while (i < body.length) {
+                const idx = body.indexOf(target, i);
+                if (idx < 0) { updated += body.slice(i); break; }
+                updated += body.slice(i, idx);
+                const end = idx + target.length;
+                if (isWord(body[end])) {
+                  updated += body.slice(idx, end);
+                } else {
+                  updated += replacement;
+                }
+                i = end;
+              }
+              if (updated === body) process.exit(0);
+              const edit = cp.spawnSync("gh", ["issue", "edit", epic, "--body-file", "-"], { input: updated, stdio: ["pipe", "inherit", "inherit"] });
+              if (edit.status !== 0) process.exit(edit.status || 1);
+            '
           timeout: 60000
           failOnError: true
 
@@ -178,11 +221,20 @@ steps:
   # merging the consolidated PR auto-closes each individual story issue,
   # not just the epic. Without this, only the epic would close on merge
   # and story issues would linger open indefinitely.
+  #
+  # Cross-platform: uses `node -e` instead of tr/awk (see check-off-story
+  # for rationale).
   - id: build-closes-list
     type: bash
     config:
       command: |
-        echo {args.stories} | tr ',' '\n' | awk 'NF {printf "Closes #%s ", $0}'
+        STORIES={args.stories}
+        export STORIES
+        node -e '
+          const raw = process.env.STORIES || "";
+          const stories = raw.split(",").map(s => s.trim()).filter(Boolean);
+          process.stdout.write(stories.map(s => "Closes #" + s).join(" "));
+        '
       timeout: 30000
       failOnError: true
 

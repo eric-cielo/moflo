@@ -146,17 +146,23 @@ describe('single-branch.yaml', () => {
     expect(checkOff?.type).toBe('bash');
     expect(closeStory?.type).toBe('bash');
     const checkOffCmd = (checkOff!.config as Record<string, unknown>).command as string;
-    expect(checkOffCmd).toContain('gh issue edit');
+    // The check-off step uses `gh issue edit` via node's spawnSync — assert
+    // both tokens appear so the check survives whether the call is inlined
+    // (`gh issue edit`) or split across spawn args (`"gh", "issue", "edit"`).
+    expect(checkOffCmd).toMatch(/\bgh\b/);
+    expect(/"issue"\s*,\s*"edit"/.test(checkOffCmd) || /gh issue edit/.test(checkOffCmd)).toBe(true);
     const closeCmd = (closeStory!.config as Record<string, unknown>).command as string;
     expect(closeCmd).toContain('gh issue close');
     expect(closeCmd).toContain('--reason completed');
   });
 
-  it('check-off-story command interpolates without eating bash ${VAR} expansions', () => {
-    // Regression: the template-variable regex used to match `{STORY}` inside
-    // `${STORY}`, then fail with "Variable not found: STORY". The spell uses
-    // a bash variable STORY inside the sed pattern — interpolation must leave
-    // those bash expansions untouched while resolving real spell variables.
+  it('check-off-story command interpolates without eating node -e object literal braces', () => {
+    // Regression (epic #287, 2026-04-22): the interpolator's `{([^}]+)}` regex
+    // matched `{ encoding: "utf8" }` inside the `node -e` script, throwing
+    // "Variable not found: encoding: \"utf8\"" at runtime. The regex was
+    // tightened to identifier-shape content; this test guards the contract
+    // at the spell level. Bash `${VAR}` pass-through is covered separately
+    // in interpolation.test.ts.
     def = loadYaml('single-branch.yaml');
     const loop = def.steps.find(s => s.id === 'process-stories')!;
     const checkOff = loop.steps!.find(s => s.id === 'check-off-story')!;
@@ -167,8 +173,54 @@ describe('single-branch.yaml', () => {
     });
     const interpolated = interpolateString(cmd, ctx);
     expect(interpolated).toContain('STORY=288');
-    expect(interpolated).toContain('${STORY}');
     expect(interpolated).toContain('EPIC=287');
+    // JS object-literal braces must survive interpolation unchanged
+    expect(interpolated).toContain('encoding: "utf8"');
+  });
+
+  it('check-off-story node -e script contains no backslashes (Windows-safe)', () => {
+    // Regression (epic #287, 2026-04-22): when Node spawns `bash -c <cmd>` on
+    // Windows, Git-Bash's Cygwin/MSYS argv reconstruction strips one layer
+    // of backslash escapes from the command line. That silently broke regex
+    // escapes like `\[` and `\b` inside the embedded JS, making the
+    // replacement a no-op. Guard: the JS body must contain zero backslashes
+    // so there's nothing for Cygwin to eat.
+    def = loadYaml('single-branch.yaml');
+    const loop = def.steps.find(s => s.id === 'process-stories')!;
+    const checkOff = loop.steps!.find(s => s.id === 'check-off-story')!;
+    const cmd = (checkOff.config as Record<string, unknown>).command as string;
+    // Isolate the node -e body (single-quoted block after `node -e`).
+    const m = cmd.match(/node -e '([\s\S]*?)'/);
+    expect(m).not.toBeNull();
+    const js = m![1];
+    expect(js.includes('\\')).toBe(false);
+  });
+
+  it('epic spell bash steps use only portable tools (node + git + gh) — no sed/awk/tr/grep/cut', () => {
+    // Regression (epic #287, 2026-04-22): sed was missing on PATH in the
+    // execution environment and the loop failed on iteration 0. Enumerate
+    // every bash step's command and assert no GNU coreutils text-processing
+    // tool is invoked — the canonical portable substitute is `node -e`.
+    def = loadYaml('single-branch.yaml');
+    const bashSteps: { id: string; cmd: string }[] = [];
+    function collectBash(steps: typeof def.steps) {
+      for (const s of steps) {
+        if (s.type === 'bash') {
+          const cmd = ((s.config ?? {}) as Record<string, unknown>).command as string;
+          if (cmd) bashSteps.push({ id: s.id, cmd });
+        }
+        if (s.steps) collectBash(s.steps);
+      }
+    }
+    collectBash(def.steps);
+    // Word-boundary tokens for tools that are not guaranteed on PATH.
+    const banned = /(?:^|[\s|&;()`'"<>])(sed|awk|tr|grep|cut|head|tail|wc|sort|uniq|xargs|find|basename|dirname|realpath|mktemp|touch|stat|tee|column|paste|jq|yq)(?=\s|$|[|&;()`'"<>])/;
+    for (const { id, cmd } of bashSteps) {
+      const match = banned.exec(cmd);
+      if (match) {
+        throw new Error(`epic spell step "${id}" uses non-portable tool "${match[1]}". Rewrite with node -e so the step runs on any host (minimal Linux images, Git Bash on Windows).`);
+      }
+    }
   });
 
   it('sets mofloLevel to hooks', () => {
