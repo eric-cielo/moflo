@@ -17,6 +17,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { mofloImport } from './moflo-require.js';
+import { atomicWriteFileSync } from './atomic-file-write.js';
 
 export interface RunEmbeddingsMigrationOptions {
   /** Path to the memory DB. Defaults to `<cwd>/.swarm/memory.db`. */
@@ -117,8 +118,10 @@ export async function runEmbeddingsMigrationIfNeeded(
     });
 
     if (summary.status === 'completed') {
-      const exported = db.export();
-      fs.writeFileSync(dbPath, Buffer.from(exported));
+      // `db.export()` returns a Uint8Array; `writeFileSync` accepts it directly,
+      // so no Buffer.from() copy. Atomic temp-file + rename so SIGINT mid-write
+      // cannot truncate memory.db — see atomic-file-write.ts.
+      atomicWriteFileSync(dbPath, db.export());
       return true;
     }
 
