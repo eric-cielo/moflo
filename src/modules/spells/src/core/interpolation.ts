@@ -31,8 +31,10 @@ export const VAR_REF_PATTERN = /(?<!\$)\{([A-Za-z_][A-Za-z0-9_.-]*)\}/g;
 /**
  * Resolution precedence:
  * 1. {args.key} — explicit args prefix (depth-2 only)
- * 2. {stepId.outputKey} — walk context.variables
- * 3. {key} — single-segment fallback to context.args
+ * 2. {env.KEY} — environment variable (depth-2 only); typically populated
+ *    by a spell-level `prerequisites:` entry with `promptOnMissing: true`
+ * 3. {stepId.outputKey} — walk context.variables
+ * 4. {key} — single-segment fallback to context.args
  */
 function resolveVariable(path: string, context: CastingContext): unknown {
   const segments = path.split('.');
@@ -41,6 +43,12 @@ function resolveVariable(path: string, context: CastingContext): unknown {
   if (segments[0] === 'args' && segments.length === 2) {
     const val = context.args[segments[1]];
     if (val !== undefined) return val;
+  }
+
+  // Environment variable prefix: {env.KEY}
+  if (segments[0] === 'env' && segments.length === 2) {
+    const val = process.env[segments[1]];
+    if (val !== undefined && val.length > 0) return val;
   }
 
   // Walk context.variables (step outputs): {stepId.outputKey}

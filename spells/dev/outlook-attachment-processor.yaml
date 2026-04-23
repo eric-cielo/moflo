@@ -5,7 +5,7 @@ description: >
   downloads any attachments to ~/Downloads/attachments/, then posts a
   summary to Slack. Uses GRAPH_ACCESS_TOKEN env (Graph Explorer token
   works for quick tests; ~1h lifetime). Requires SLACK_WEBHOOK_URL.
-version: "5.0"
+version: "5.1"
 mofloLevel: memory
 
 arguments:
@@ -22,52 +22,36 @@ arguments:
     required: false
     default: "~/Downloads/attachments"
 
+prerequisites:
+  - name: GRAPH_ACCESS_TOKEN
+    description: >
+      Microsoft Graph access token for reading your Outlook/Microsoft 365 inbox.
+      Get one (expires in ~1h): open Graph Explorer, sign in with the account
+      whose mailbox you want to scan, click the "Access token" tab, copy the token.
+    docsUrl: https://developer.microsoft.com/en-us/graph/graph-explorer
+    detect:
+      type: env
+      key: GRAPH_ACCESS_TOKEN
+    promptOnMissing: true
+
+  - name: SLACK_WEBHOOK_URL
+    description: >
+      Slack incoming-webhook URL for the scan summary notification.
+      Get one: open https://api.slack.com/apps, pick or create an app, enable
+      Incoming Webhooks, "Add New Webhook to Workspace", pick the target channel,
+      copy the https://hooks.slack.com/... URL.
+    docsUrl: https://api.slack.com/messaging/webhooks
+    detect:
+      type: env
+      key: SLACK_WEBHOOK_URL
+    promptOnMissing: true
+
 steps:
   - id: ensure-dir
     type: bash
     config:
       command: |
         node -e "var fs=require('fs'),os=require('os');var d='{args.downloadDir}'.replace(/^~/,os.homedir());var o=new Object();o.recursive=true;fs.mkdirSync(d,o);console.log(d);"
-
-  - id: env-graph
-    type: bash
-    config:
-      command: |
-        node -e "process.stdout.write(process.env.GRAPH_ACCESS_TOKEN||'')"
-    output: graphEnv
-
-  - id: ask-graph-token
-    type: prompt
-    config:
-      message: |
-        Microsoft Graph access token needed to read your Outlook/Microsoft 365 inbox.
-        Get one (expires in ~1h):
-          1. Open https://developer.microsoft.com/en-us/graph/graph-explorer
-          2. Sign in with the Microsoft 365 account whose mailbox you want to scan
-          3. Click the "Access token" tab and copy the full token string
-        Paste the token now (or set GRAPH_ACCESS_TOKEN env to skip this prompt)
-      default: "{graphEnv.stdout}"
-    output: graphToken
-
-  - id: env-slack
-    type: bash
-    config:
-      command: |
-        node -e "process.stdout.write(process.env.SLACK_WEBHOOK_URL||'')"
-    output: slackEnv
-
-  - id: ask-slack-url
-    type: prompt
-    config:
-      message: |
-        Slack incoming-webhook URL for the scan summary notification.
-        Get one:
-          1. Open https://api.slack.com/apps → pick (or create) an app
-          2. Features → "Incoming Webhooks" → toggle on → "Add New Webhook to Workspace"
-          3. Pick the channel to post into; copy the https://hooks.slack.com/... URL
-        Paste the webhook URL now (or set SLACK_WEBHOOK_URL env to skip this prompt)
-      default: "{slackEnv.stdout}"
-    output: slackUrl
 
   - id: last-run
     type: memory
@@ -89,7 +73,7 @@ steps:
     type: graph
     config:
       action: read-inbox
-      accessToken: "{graphToken.response}"
+      accessToken: "{env.GRAPH_ACCESS_TOKEN}"
       limit: "{args.maxEmails}"
       sinceDate: "{startDate.response}"
     output: inbox
@@ -111,7 +95,7 @@ steps:
         type: graph
         config:
           action: download-attachments
-          accessToken: "{graphToken.response}"
+          accessToken: "{env.GRAPH_ACCESS_TOKEN}"
           id: "{loop.item.id}"
           downloadDir: "{args.downloadDir}"
 
@@ -119,7 +103,7 @@ steps:
     type: slack
     config:
       action: post-webhook
-      webhookUrl: "{slackUrl.response}"
+      webhookUrl: "{env.SLACK_WEBHOOK_URL}"
       text: |
         📧 Inbox scan complete
         Scanned since: {inbox.sinceDate}

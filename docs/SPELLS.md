@@ -192,6 +192,7 @@ Steps can reference outputs from earlier steps and spell arguments using `{refer
 | Pattern | What it resolves to |
 |---------|-------------------|
 | `{args.environment}` | A spell argument |
+| `{env.GRAPH_ACCESS_TOKEN}` | An environment variable (typically populated by a `prerequisites:` entry with `promptOnMissing: true`) |
 | `{check-branch.stdout}` | The `stdout` field from step `check-branch`'s output |
 | `{run-tests.exitCode}` | The `exitCode` field from step `run-tests` |
 | `{credentials.API_KEY}` | A credential value (redacted in logs) |

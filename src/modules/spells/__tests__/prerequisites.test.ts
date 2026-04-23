@@ -15,6 +15,8 @@ import {
 } from '../src/core/prerequisite-checker.js';
 import { StepCommandRegistry } from '../src/core/step-command-registry.js';
 import { SpellCaster } from '../src/core/runner.js';
+import { parseSpell } from '../src/schema/parser.js';
+import { validateSpellDefinition } from '../src/schema/validator.js';
 import type {
   StepCommand,
   Prerequisite,
@@ -27,8 +29,10 @@ import type {
   PrerequisiteSpec,
 } from '../src/types/spell-definition.types.js';
 import * as fsPromises from 'node:fs/promises';
+import { accessSync } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 // ============================================================================
 // Helpers
@@ -604,5 +608,108 @@ describe('resolveUnmetPrerequisites', () => {
       log: () => {},
     });
     expect(result.ok).toBe(false);
+  });
+});
+
+// ============================================================================
+// OAP retrofit (#518) — outlook-attachment-processor.yaml end-to-end
+// ============================================================================
+//
+// Acceptance criteria from issue #518:
+//   - Both tokens are declared as spell-level `prerequisites:`.
+//   - The four hand-rolled preflight steps are removed.
+//   - Casting on a non-TTY without env vars fails fast with BOTH tokens listed
+//     and both docs URLs present in the error report (no partial run).
+
+describe('OAP spell retrofit (#518)', () => {
+  // Walk up from this test file until we find the repo root (where `spells/`
+  // lives). Avoids hard-coding ../ counts, which drift if the test file moves.
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  function findOapPath(): string {
+    let dir = here;
+    for (let i = 0; i < 10; i++) {
+      const candidate = path.join(dir, 'spells', 'dev', 'outlook-attachment-processor.yaml');
+      try {
+        accessSync(candidate);
+        return candidate;
+      } catch {
+        // keep walking
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    throw new Error(`Cannot locate spells/dev/outlook-attachment-processor.yaml above ${here}`);
+  }
+  const oapPath = findOapPath();
+
+  async function loadOap(): Promise<SpellDefinition> {
+    const yaml = await fsPromises.readFile(oapPath, 'utf8');
+    const parsed = parseSpell(yaml, oapPath);
+    return parsed.definition;
+  }
+
+  it('parses + validates with both prerequisites declared at spell level', async () => {
+    const def = await loadOap();
+    const result = validateSpellDefinition(def);
+    expect(result.errors).toEqual([]);
+    expect(result.valid).toBe(true);
+
+    const prereqNames = (def.prerequisites ?? []).map(p => p.name);
+    expect(prereqNames).toEqual(['GRAPH_ACCESS_TOKEN', 'SLACK_WEBHOOK_URL']);
+  });
+
+  it('has no hand-rolled preflight steps (env-graph/ask-graph-token/env-slack/ask-slack-url)', async () => {
+    const def = await loadOap();
+    const stepIds = def.steps.map(s => s.id);
+    expect(stepIds).not.toContain('env-graph');
+    expect(stepIds).not.toContain('ask-graph-token');
+    expect(stepIds).not.toContain('env-slack');
+    expect(stepIds).not.toContain('ask-slack-url');
+  });
+
+  it('non-TTY without env vars fails fast with both tokens + docs URLs', async () => {
+    const prevGraph = process.env.GRAPH_ACCESS_TOKEN;
+    const prevSlack = process.env.SLACK_WEBHOOK_URL;
+    delete process.env.GRAPH_ACCESS_TOKEN;
+    delete process.env.SLACK_WEBHOOK_URL;
+    try {
+      const def = await loadOap();
+      const prereqs = (def.prerequisites ?? []).map(compilePrerequisiteSpec);
+      const result = await resolveUnmetPrerequisites(prereqs, { interactive: false });
+      expect(result.ok).toBe(false);
+      expect(result.message).toContain('GRAPH_ACCESS_TOKEN');
+      expect(result.message).toContain('SLACK_WEBHOOK_URL');
+      expect(result.message).toContain('https://developer.microsoft.com/en-us/graph/graph-explorer');
+      expect(result.message).toContain('https://api.slack.com/messaging/webhooks');
+    } finally {
+      if (prevGraph !== undefined) process.env.GRAPH_ACCESS_TOKEN = prevGraph;
+      if (prevSlack !== undefined) process.env.SLACK_WEBHOOK_URL = prevSlack;
+    }
+  });
+
+  it('with both env vars set, preflight passes without prompting', async () => {
+    const prevGraph = process.env.GRAPH_ACCESS_TOKEN;
+    const prevSlack = process.env.SLACK_WEBHOOK_URL;
+    process.env.GRAPH_ACCESS_TOKEN = 'test-graph-token';
+    process.env.SLACK_WEBHOOK_URL = 'https://hooks.slack.com/test';
+    try {
+      const def = await loadOap();
+      const prereqs = (def.prerequisites ?? []).map(compilePrerequisiteSpec);
+      const promptLine = vi.fn<PromptLineFn>(async () => 'unreachable');
+      const result = await resolveUnmetPrerequisites(prereqs, {
+        interactive: true,
+        promptLine,
+        log: () => {},
+      });
+      expect(result.ok).toBe(true);
+      expect(result.resolvedNames).toEqual([]);
+      expect(promptLine).not.toHaveBeenCalled();
+    } finally {
+      if (prevGraph === undefined) delete process.env.GRAPH_ACCESS_TOKEN;
+      else process.env.GRAPH_ACCESS_TOKEN = prevGraph;
+      if (prevSlack === undefined) delete process.env.SLACK_WEBHOOK_URL;
+      else process.env.SLACK_WEBHOOK_URL = prevSlack;
+    }
   });
 });
