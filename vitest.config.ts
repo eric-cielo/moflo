@@ -31,7 +31,12 @@ export const isolationTests = [
   'src/modules/cli/__tests__/services/worker-daemon-resource-thresholds.test.ts',
   'src/modules/cli/__tests__/spell-tools-engine.test.ts',
   'src/modules/spells/__tests__/connector-lifecycle.test.ts',
-  'src/modules/spells/__tests__/prerequisites.test.ts',
+  // prerequisites.test.ts split into 4 files (#522) — all share the same
+  // dynamic-import load profile, so all four stay on the isolation list.
+  'src/modules/spells/__tests__/prerequisites-registry.test.ts',
+  'src/modules/spells/__tests__/prerequisites-spec.test.ts',
+  'src/modules/spells/__tests__/prerequisites-resolve.test.ts',
+  'src/modules/spells/__tests__/prerequisites-integration.test.ts',
   'tests/bin/gate-helpers.test.ts',
 ];
 
