@@ -43,6 +43,35 @@ export { RvfEmbeddingService } from './rvf-embedding-service.js';
 // Fastembed embedding service (ONNX-based neural embeddings via Qdrant's fastembed)
 export { FastembedEmbeddingService } from './fastembed-embedding-service.js';
 
+// Embeddings-version migration driver (resumable batch re-embed)
+export {
+  EMBEDDINGS_VERSION,
+  EMBEDDINGS_VERSION_KEY,
+  migrateStore,
+  ensureCursorTable,
+  ensureMetadataTable,
+  readEmbeddingsVersion,
+  writeEmbeddingsVersion,
+  loadCursorRow,
+  saveCursorRow,
+  clearCursorRow,
+  InMemoryMigrationStore,
+  MockBatchEmbedder,
+  type MigrateStoreOptions,
+  type MigrationBatchUpdate,
+  type MigrationCursor,
+  type MigrationEmbedder,
+  type MigrationItem,
+  type MigrationProgress,
+  type MigrationResult,
+  type MigrationStore,
+  type InMemoryItem,
+  type InMemoryStoreOptions,
+  type FailureInjector,
+  type SqlJsDatabase,
+  type SqlJsStatement,
+} from './migration/index.js';
+
 // RVF embedding cache (binary file persistence)
 export {
   RvfEmbeddingCache,
