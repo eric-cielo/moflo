@@ -1,4 +1,7 @@
 # Neural + hooks audit — agentdb removal impact
+
+> **Historical — pre-epic #527 (2026-04-22).** This audit describes the 3-tier embedding fallback (`agentic-flow → transformers → mock`) that existed before epic #527 removed every hash-fallback path and swapped `@xenova/transformers` for `fastembed`. The "embeddings" section below no longer reflects the live system. Kept as a point-in-time snapshot of the agentdb removal decision; see [ADR-EMB-001](../src/modules/embeddings/docs/adrs/ADR-EMB-001-neural-embeddings-mandatory.md) for the current embedding architecture.
+
 Date: 2026-04-20
 Epic: #464 Gate 2
 

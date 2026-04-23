@@ -52,7 +52,7 @@ All non-constitution rules become `RuleShard` objects. Each shard contains:
 - A `compactText` field: `[RULE-ID] rule text @tag1 @tag2`
 - An optional `embedding` vector (Float32Array) for semantic retrieval
 
-The `ShardRetriever` in `src/retriever.ts` indexes shards by generating embeddings via a caller-supplied `IEmbeddingProvider` (production uses a neural fastembed-backed provider; tests inject a deterministic mock from `tests/__mocks__/`). At task start, retrieval works as follows:
+The `ShardRetriever` in `src/retriever.ts` indexes shards by generating embeddings via a caller-supplied `IEmbeddingProvider`. Production wires a neural provider backed by `fastembed` (model: `all-MiniLM-L6-v2`, 384-dim — see ADR-EMB-001 and epic #527); tests inject a deterministic mock from `tests/__mocks__/`. There is no built-in hash-embedding fallback — the legacy `HashEmbeddingProvider` was removed in epic #527, so callers that fail to inject a real provider fail fast instead of silently degrading. At task start, retrieval works as follows:
 
 1. Classify the task intent using weighted pattern matching (see ADR-G003)
 2. Embed the task description
@@ -75,7 +75,7 @@ The `ShardRetriever.retrieve()` method returns a `RetrievalResult` containing th
 ### Negative
 
 - **Missing shards.** If retrieval misses a relevant shard, the model lacks that guidance. Mitigation: critical rules belong in the constitution (always loaded), and the intent boost ensures domain-matched shards score higher.
-- **Embedding quality depends on the injected provider.** Production must wire a neural provider (the CLI uses fastembed via `@moflo/embeddings`); the deterministic test mock is intentionally semantic-free and only used in unit tests. Epic #527 removed the built-in hash fallback — callers that fail to inject a real provider will fail fast instead of silently degrading.
+- **Embedding quality depends on the injected provider.** The `HashEmbeddingProvider` that previously shipped as a silent fallback has been removed (epic #527); production now requires a neural provider and the CLI wires `fastembed` with `all-MiniLM-L6-v2` (384-dim) via `@moflo/embeddings`. The deterministic test mock in `tests/__mocks__/` is intentionally semantic-free and only reachable from unit tests. Callers that fail to inject a real provider fail fast at initialization instead of silently degrading to near-random-quality vectors. See ADR-EMB-001 for the decision record.
 - **Constitution size pressure.** Teams may want to put too many rules in the constitution, defeating the purpose. The `maxConstitutionLines` cap (default 60) enforces discipline.
 
 ## Alternatives Considered

@@ -50,6 +50,19 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      # Cache the fastembed model (~90 MB) across runs. Key includes the
+      # lockfile hash so bumping fastembed invalidates automatically, and the
+      # model name so swapping models never reuses a stale vector space. No
+      # restore-keys — partial prefix matches could restore the wrong model's
+      # binary blobs on a future model swap. A full miss is one ~90 MB
+      # download, exactly what the cache exists to amortize.
+      # See ADR-EMB-001 and epic #527.
+      - name: Cache fastembed model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/fastembed
+          key: fastembed-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-fast-all-MiniLM-L6-v2
+
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
@@ -78,6 +91,15 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+
+      # See the test job for cache-key rationale. `~/.cache/fastembed`
+      # expands on all three runners (Linux/macOS/Windows) — actions/cache
+      # resolves `~` via os.homedir() and fastembed agrees on the path.
+      - name: Cache fastembed model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/fastembed
+          key: fastembed-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-fast-all-MiniLM-L6-v2
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps

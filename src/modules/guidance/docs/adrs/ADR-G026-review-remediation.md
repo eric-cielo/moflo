@@ -28,7 +28,7 @@ A comprehensive code review of the `@moflo/guidance` package identified several 
 
 ### Medium Issues Found
 
-7. **Hash-based embedding provider undocumented as test-only** (resolved in epic #527 — the class has since been removed; see `tests/__mocks__/deterministic-embedding-provider.ts` for the test fixture).
+7. **Hash-based embedding provider undocumented as test-only** — originally the `HashEmbeddingProvider` class shipped in `@moflo/guidance` without a clear test-only marker, allowing it to be picked up silently in production paths. **Resolved by epic #527:** the class has been deleted entirely; the deterministic test fixture now lives in `tests/__mocks__/deterministic-embedding-provider.ts` and is only reachable from unit tests. Production wires `fastembed` (see ADR-EMB-001).
 
 8. **`simulateChangeEffect` in optimizer presented as A/B testing**. The method applies fixed multipliers, not real traffic measurement, but the surrounding code and ADR language implied real experimentation.
 
@@ -74,7 +74,7 @@ Replaced single-element `shift()` calls with batch `splice()`:
 
 ### 7. Document the hash-based embedding provider as test-only
 
-Added a JSDoc block explicitly stating the provider has no semantic meaning and must not be used in production. (Superseded by epic #527, which removed the class entirely and moved the test fixture to `tests/__mocks__/`.)
+**Resolved by epic #527 — hash provider no longer exists.** The original remediation added a JSDoc block marking the provider as test-only, but the class has since been deleted wholesale: every production path now requires a neural provider (see ADR-EMB-001). The deterministic test fixture moved to `tests/__mocks__/deterministic-embedding-provider.ts` and is unreachable from production factories. The ESLint guard + consumer-smoke harness (stories #532, #534) permanently block any reintroduction.
 
 ### 8. Clarify `simulateChangeEffect` as heuristic
 

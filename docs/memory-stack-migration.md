@@ -1,5 +1,7 @@
 # Design: sql.js + HNSW + moflo-owned controllers
 
+> **Historical — pre-epic #527 (2026-04-22).** This draft predates both the agentdb removal (see `project_agentdb_removal.md`) and the `@xenova/transformers` → `fastembed` swap. References to `@xenova/transformers` as the embedding runtime in the "Runtime plumbing" section below are stale. Kept as the design-discussion record for the controller ownership decision; see [ADR-EMB-001](../src/modules/embeddings/docs/adrs/ADR-EMB-001-neural-embeddings-mandatory.md) for the current embedding backing.
+
 Status: **draft — for discussion, not committed**
 Date: 2026-04-20
 Context: `agentdb@3.0.0-alpha.11` silently wrote `agentdb.rvf` to consumer project roots because `AgentDBConfig` has no way to route the vector-backend storage path. We reverted to `alpha.10`. This doc scopes whether we should keep agentdb or replace it.

@@ -35,17 +35,17 @@ Run domain-specific queries against each namespace and verify scores meet minimu
 
 | Namespace | Model | Min Top Score | Min Top-3 Avg |
 |-----------|-------|---------------|---------------|
-| `guidance` | Xenova/all-MiniLM-L6-v2 | ≥ 0.40 | ≥ 0.35 |
-| `patterns` | Xenova/all-MiniLM-L6-v2 | ≥ 0.40 | ≥ 0.35 |
-| `code-map` | Xenova/all-MiniLM-L6-v2 | ≥ 0.40 | ≥ 0.35 |
+| `guidance` | fast-all-MiniLM-L6-v2 | ≥ 0.40 | ≥ 0.35 |
+| `patterns` | fast-all-MiniLM-L6-v2 | ≥ 0.40 | ≥ 0.35 |
+| `code-map` | fast-all-MiniLM-L6-v2 | ≥ 0.40 | ≥ 0.35 |
 
-### CRITICAL: Vectorization fallback check
+### CRITICAL: Vectorization check
 
-**A score of exactly 0.500 means vectorization failed** and the system returned a default fallback score. Any result with score === 0.500 (or all results sharing the same score) is a FAIL — it indicates the entry was not properly embedded.
-- If top-N results all share the same score, the search is degraded (hash/fallback mode)
+**A score of exactly 0.500 means vectorization failed** and the system returned a default fallback score. Any result with score === 0.500 (or all results sharing the same score) is a FAIL — it indicates the entry was not properly embedded. Since epic #527 removed every hash-embedding fallback (see [ADR-EMB-001](../src/modules/embeddings/docs/adrs/ADR-EMB-001-neural-embeddings-mandatory.md)), this now indicates a broken fastembed model load rather than a silent downgrade.
+- If top-N results all share the same score, embeddings are not being generated — check fastembed model cache and `~/.cache/fastembed`.
 - Valid semantic search always produces varied scores across results
 
-### Guidance queries (Xenova model — expect 0.40–0.60)
+### Guidance queries (fast-all-MiniLM-L6-v2 — expect 0.40–0.60)
 
 ```bash
 node bin/semantic-search.mjs "swarm coordination agent spawning" --namespace guidance --limit 5
@@ -53,7 +53,7 @@ node bin/semantic-search.mjs "memory store search vector embeddings" --namespace
 node bin/semantic-search.mjs "security input validation CVE scanning" --namespace guidance --limit 5
 ```
 
-### Code-map queries (Xenova model — expect 0.40–0.55)
+### Code-map queries (fast-all-MiniLM-L6-v2 — expect 0.40–0.55)
 
 ```bash
 node bin/semantic-search.mjs "entity service route file location" --namespace code-map --limit 5
@@ -66,7 +66,7 @@ node bin/semantic-search.mjs "entity service route file location" --namespace co
 - "entity service route file location" → top result should be a file path (e.g., `file:...`)
 
 **Pass criteria:**
-- `[Xenova/all-MiniLM-L6-v2]` appears in output per namespace
+- `[fast-all-MiniLM-L6-v2]` appears in output per namespace
 - **No score is exactly 0.500** — that's a vectorization fallback, not real similarity
 - Scores within a result set are varied (not all identical)
 - Top score meets namespace threshold; top-3 average meets threshold
