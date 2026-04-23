@@ -3,6 +3,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { GuidanceControlPlane } from '../src/index.js';
+import { DeterministicTestEmbeddingProvider } from './__mocks__/deterministic-embedding-provider.js';
 
 const SAMPLE_ROOT_GUIDANCE = `
 # Safety Invariants
@@ -53,6 +54,7 @@ describe('GuidanceControlPlane - Integration', () => {
     plane = new GuidanceControlPlane({
       rootGuidancePath: '/nonexistent', // We'll compile directly
       headlessMode: false,
+      embeddingProvider: new DeterministicTestEmbeddingProvider(128),
     });
   });
 

@@ -2,10 +2,37 @@
  * Tests for the Shard Retriever and Intent Classifier
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ShardRetriever } from '../src/retriever.js';
+import { ShardRetriever, createRetriever, type IEmbeddingProvider } from '../src/retriever.js';
 import { GuidanceCompiler } from '../src/compiler.js';
 import type { PolicyBundle } from '../src/types.js';
 import { DeterministicTestEmbeddingProvider } from './__mocks__/deterministic-embedding-provider.js';
+
+// Hash fallback is banned (epic #527 / ADR-EMB-001). Pin the DI contract so
+// a future "optional" provider argument cannot sneak a silent degrade back in.
+describe('ShardRetriever DI contract', () => {
+  it('constructor throws when no provider is supplied', () => {
+    expect(() => new ShardRetriever(undefined as unknown as IEmbeddingProvider))
+      .toThrow(/IEmbeddingProvider/);
+  });
+
+  it('constructor throws when provider is null', () => {
+    expect(() => new ShardRetriever(null as unknown as IEmbeddingProvider))
+      .toThrow(/IEmbeddingProvider/);
+  });
+
+  it('createRetriever factory rejects missing provider', () => {
+    expect(() => createRetriever(undefined as unknown as IEmbeddingProvider))
+      .toThrow(/IEmbeddingProvider/);
+  });
+
+  it('accepts any IEmbeddingProvider conformer (no ambient lookup)', () => {
+    const provider: IEmbeddingProvider = {
+      embed: async () => new Float32Array(8),
+      batchEmbed: async (ts) => ts.map(() => new Float32Array(8)),
+    };
+    expect(() => new ShardRetriever(provider)).not.toThrow();
+  });
+});
 
 describe('ShardRetriever', () => {
   let retriever: ShardRetriever;
