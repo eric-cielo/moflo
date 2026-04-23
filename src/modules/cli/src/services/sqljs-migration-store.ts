@@ -6,13 +6,17 @@
  * table, re-embed the source text with the new neural model, and write the
  * updated vectors back transactionally.
  *
- * Schema assumptions (matches moflo's memory-initializer):
- *   CREATE TABLE memory_entries (id TEXT PRIMARY KEY, key TEXT, value TEXT,
- *                                embedding BLOB, dimensions INTEGER, ...);
- *   CREATE TABLE migration_cursor (store_id TEXT PRIMARY KEY, last_id TEXT,
- *                                  items_done INTEGER, items_total INTEGER,
- *                                  started_at INTEGER, updated_at INTEGER);
- *   CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT);
+ * Schema assumptions — matches MEMORY_SCHEMA_V3 in
+ * `src/modules/cli/src/memory/memory-initializer.ts`:
+ *   CREATE TABLE memory_entries (
+ *     id TEXT PRIMARY KEY, key TEXT NOT NULL,
+ *     content TEXT NOT NULL,
+ *     embedding TEXT,              -- JSON-encoded Float32 array
+ *     embedding_dimensions INTEGER,
+ *     ...
+ *   );
+ *   CREATE TABLE migration_cursor (...);
+ *   CREATE TABLE metadata (...);
  *
  * Tables are created lazily if missing so the adapter works on older DBs.
  */
@@ -71,7 +75,7 @@ export class SqlJsMemoryEntriesStore {
 
   async countItems(): Promise<number> {
     const stmt = this.db.prepare(
-      `SELECT COUNT(*) AS n FROM memory_entries WHERE value IS NOT NULL AND length(value) > 0`,
+      `SELECT COUNT(*) AS n FROM memory_entries WHERE content IS NOT NULL AND length(content) > 0`,
     );
     try {
       if (stmt.step()) {
@@ -86,11 +90,11 @@ export class SqlJsMemoryEntriesStore {
 
   async iterItems(afterId: string | null, limit: number): Promise<MigrationItemRow[]> {
     const sql = afterId === null
-      ? `SELECT id, value FROM memory_entries
-         WHERE value IS NOT NULL AND length(value) > 0
+      ? `SELECT id, content FROM memory_entries
+         WHERE content IS NOT NULL AND length(content) > 0
          ORDER BY id ASC LIMIT ?`
-      : `SELECT id, value FROM memory_entries
-         WHERE value IS NOT NULL AND length(value) > 0 AND id > ?
+      : `SELECT id, content FROM memory_entries
+         WHERE content IS NOT NULL AND length(content) > 0 AND id > ?
          ORDER BY id ASC LIMIT ?`;
 
     const stmt = this.db.prepare(sql);
@@ -99,7 +103,7 @@ export class SqlJsMemoryEntriesStore {
       const out: MigrationItemRow[] = [];
       while (stmt.step()) {
         const row = stmt.getAsObject();
-        out.push({ id: String(row.id), sourceText: String(row.value ?? '') });
+        out.push({ id: String(row.id), sourceText: String(row.content ?? '') });
       }
       return out;
     } finally {
@@ -109,13 +113,16 @@ export class SqlJsMemoryEntriesStore {
 
   async updateBatch(updates: readonly { id: string; embedding: Float32Array }[]): Promise<void> {
     if (updates.length === 0) return;
+    // Embeddings are stored as JSON text in MEMORY_SCHEMA_V3's `embedding TEXT`
+    // column — matches how `memory-initializer.ts` and `commands/memory.ts`
+    // write them so `embeddings search` can JSON.parse() the result.
     const stmt = this.db.prepare(
-      `UPDATE memory_entries SET embedding = ?, dimensions = ? WHERE id = ?`,
+      `UPDATE memory_entries SET embedding = ?, embedding_dimensions = ? WHERE id = ?`,
     );
     try {
       for (const { id, embedding } of updates) {
-        const buf = Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength);
-        stmt.run([buf, embedding.length, id]);
+        const json = JSON.stringify(Array.from(embedding));
+        stmt.run([json, embedding.length, id]);
       }
     } finally {
       stmt.free();
