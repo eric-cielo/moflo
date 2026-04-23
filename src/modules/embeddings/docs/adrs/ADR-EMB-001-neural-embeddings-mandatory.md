@@ -79,7 +79,7 @@ Two layers prevent hash-fallback code from re-entering the tree:
 - **Install size ballooned.** Pre-epic: 34 MB default install. Post-epic + prune: ~80 MB. Still ~14× smaller than Ruflo's ~1.1 GB default, but a real regression from the old hash-fallback default. This is a deliberate trade-off — real semantic search is worth the extra ~46 MB.
 - **First-run download.** On a fresh machine without the cache, the user waits ~1–3 minutes for the model to download (one-time per machine, stored in `~/.cache/fastembed`).
 - **Air-gapped installs need a preload.** Users on air-gapped networks must pre-populate `~/.cache/fastembed` before `flo init`.
-- **Docker sandbox caching.** The sandbox Dockerfile needs either a writable cache mount or the model baked into the image to avoid downloading on every container start.
+- **Docker sandbox caching.** ~~The sandbox Dockerfile needs either a writable cache mount or the model baked into the image to avoid downloading on every container start.~~ **Resolved by issue #549** (2026-04-23): `docker/sandbox/Dockerfile` bakes the default `all-MiniLM-L6-v2` model into `/opt/fastembed-cache` at image build and exports `FASTEMBED_CACHE=/opt/fastembed-cache`; `FastembedEmbeddingService` reads the env var as a `cacheDir` fallback so sandboxed spell steps work under `--network none` with no per-container redownload.
 - **Upgrade migration is the default experience.** The README never documented `@xenova/transformers`, so most live users are currently on hash vectors and will see the re-embed migration (1–3 min) on upgrade.
 
 ### Neutral

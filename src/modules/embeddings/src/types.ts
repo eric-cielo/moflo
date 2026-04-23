@@ -132,7 +132,12 @@ export interface FastembedEmbeddingConfig extends EmbeddingBaseConfig {
   /** Model identifier from the fastembed `EmbeddingModel` enum (default: AllMiniLML6V2) */
   model?: string;
 
-  /** Directory where model files are cached (default: fastembed internal — ~/.cache/fastembed) */
+  /**
+   * Directory where model files are cached.
+   *
+   * Resolution order: explicit `cacheDir` > `FASTEMBED_CACHE` env var >
+   * fastembed's internal default (`~/.cache/fastembed`).
+   */
   cacheDir?: string;
 
   /** Maximum input token length (default: fastembed internal) */

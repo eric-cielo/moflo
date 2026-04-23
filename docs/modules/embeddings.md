@@ -351,7 +351,32 @@ OPENAI_API_KEY=sk-...
 
 # Optional: Custom base URL (for Azure OpenAI, etc.)
 OPENAI_BASE_URL=https://your-endpoint.openai.azure.com/
+
+# Fastembed cache directory (fallback when cacheDir is not set in config).
+# The moflo docker sandbox image (ghcr.io/eric-cielo/moflo-sandbox) exports
+# this automatically — see "Sandbox & air-gapped first-run" below.
+FASTEMBED_CACHE=/opt/fastembed-cache
 ```
+
+## Sandbox & air-gapped first-run
+
+First-run embedding downloads the ~90 MB `all-MiniLM-L6-v2` ONNX model to
+`~/.cache/fastembed`. This is fine on a developer machine with network access,
+but breaks in two environments unless the cache is pre-populated:
+
+- **Docker sandbox** (`ghcr.io/eric-cielo/moflo-sandbox`) — non-elevated spell
+  steps run with `--network none`, so the first embedding call would fail. The
+  image pre-bakes the model into `/opt/fastembed-cache` during build and exports
+  `FASTEMBED_CACHE=/opt/fastembed-cache`. `FastembedEmbeddingService` picks up
+  the env var when no explicit `cacheDir` is configured, so sandboxed spell
+  steps work offline with no per-container redownload.
+- **Air-gapped hosts** — pre-populate `~/.cache/fastembed` from a reachable
+  machine, or copy the fastembed cache directory to the air-gapped host and
+  set `FASTEMBED_CACHE` to its path. The service will use it as the cacheDir
+  fallback and skip the download step.
+
+Explicit `config.cacheDir` always wins over `FASTEMBED_CACHE`, which always
+wins over fastembed's built-in default (`~/.cache/fastembed`).
 
 ## Error Handling
 
