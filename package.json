@@ -70,7 +70,8 @@
     "!.claude/**/*.map",
     "spells/shipped/**",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "scripts/prune-native-binaries.mjs"
   ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -80,6 +81,7 @@
     "build:neural": "cd src/modules/neural && npx tsc -p tsconfig.json",
     "build:guidance": "cd src/modules/guidance && npx tsc -p tsconfig.json",
     "prepublishOnly": "node scripts/check-version-sync.mjs && npm run build",
+    "postinstall": "node scripts/prune-native-binaries.mjs",
     "test": "node scripts/test-runner.mjs",
     "test:ui": "vitest --ui",
     "test:security": "vitest run src/__tests__/security/",
