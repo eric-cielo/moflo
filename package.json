@@ -86,7 +86,7 @@
     "test:ui": "vitest --ui",
     "test:security": "vitest run src/__tests__/security/",
     "test:smoke": "node harness/consumer-smoke/run.mjs",
-    "lint": "eslint src/ bin/ --ext .ts,.tsx,.mts,.cts,.js,.mjs,.cjs --max-warnings 0",
+    "lint": "eslint src/ bin/ .claude/scripts/ --ext .ts,.tsx,.mts,.cts,.js,.mjs,.cjs --max-warnings 0",
     "security:audit": "npm audit --audit-level high",
     "security:fix": "npm audit fix",
     "security:test": "npm run test:security",

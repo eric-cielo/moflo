@@ -116,6 +116,7 @@ let routerBackend: 'pure-js' | 'none' = 'none';
 // Pre-computed embeddings for common task patterns (cached)
 const TASK_PATTERN_EMBEDDINGS: Map<string, Float32Array> = new Map();
 
+// eslint-disable-next-line no-restricted-syntax -- inline hash embedding, fastembed migration tracked by #558
 function generateSimpleEmbedding(text: string, dimension: number = 384): Float32Array {
   // Simple deterministic embedding based on character codes
   // This is for routing purposes where we need consistent, fast embeddings
@@ -2985,6 +2986,7 @@ export const hooksIntelligenceAttention: MCPTool = {
     },
     required: ['query'],
   },
+  // eslint-disable-next-line no-restricted-syntax -- MoE demo branch hash-embeds inline, tracked by #558
   handler: async (params: Record<string, unknown>) => {
     const query = params.query as string;
     const mode = (params.mode as string) || 'flash';

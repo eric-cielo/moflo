@@ -218,6 +218,7 @@ export class MockBatchEmbedder {
   }
 }
 
+// eslint-disable-next-line no-restricted-syntax -- migration-driver test fixture, relocation tracked by #558
 function seedVector(text: string, dim: number): Float32Array {
   const v = new Float32Array(dim);
   let h = 0x811c9dc5;

@@ -39,10 +39,18 @@ export const REQUIRED_DEPS = [
 // Epic #527 (story #532): banned identifiers that must not appear anywhere
 // in the published dist tree. If any of these leak through into compiled
 // output, hash-fallback code has crept back in.
+//
+// Issue #545 extended the list with `hashEmbed` + `embedWithFallback` — the
+// actual live call-sites deleted in PR #557. `generateEmbedding` is
+// deliberately omitted because it is the legitimate public fastembed API
+// re-exported by @moflo/memory; any real hash impl hiding behind that name
+// is caught by `verifyNoInlineHashEmbeddings` below.
 export const BANNED_EMBEDDING_IDENTIFIERS = [
   'HashEmbeddingProvider',
   'createHashEmbedding',
   'generateHashEmbedding',
+  'hashEmbed',
+  'embedWithFallback',
   'RvfEmbeddingService',
   'RvfEmbeddingCache',
 ];
@@ -205,30 +213,30 @@ export function verifyRequiredDeps(consumerDir) {
 }
 
 /**
- * Structural check: any file in the swarm dist that contains both
+ * Structural check: any file in the moflo dist tree that contains both
  * `new Float32Array(` AND `charCodeAt(` is a hash-embedding regardless of
  * method name. Layered on top of the identifier guard because the identifier
  * ban alone missed the inline implementations removed in #542.
+ *
+ * Issue #545 unscoped this from swarm-only to the whole moflo install —
+ * the same anti-pattern was leaking into memory, CLI, and hooks compiled
+ * output before this check saw it.
  */
-export function verifyNoInlineHashEmbeddingsInSwarm(consumerDir) {
-  section('Verify no inline hash embeddings in @moflo/swarm dist');
-  const swarmDist = join(
-    consumerDir,
-    'node_modules',
-    'moflo',
-    'src',
-    'modules',
-    'swarm',
-    'dist',
-  );
-  if (!existsSync(swarmDist)) {
-    record('no-inline-hash-embeddings:swarm', 'info', 'swarm dist not present in consumer');
+export function verifyNoInlineHashEmbeddings(consumerDir) {
+  section('Verify no inline hash embeddings in moflo dist');
+  const mofloDir = join(consumerDir, 'node_modules', 'moflo');
+  if (!existsSync(mofloDir)) {
+    record('no-inline-hash-embeddings', 'fail', 'node_modules/moflo missing');
     return;
   }
 
   const hits = [];
   let filesScanned = 0;
-  for (const file of walkJsFiles(swarmDist)) {
+  for (const file of walkJsFiles(mofloDir)) {
+    // Skip .d.ts — typings can't instantiate Float32Array or call charCodeAt,
+    // but a substring check would false-match their return-type positions.
+    if (file.endsWith('.d.ts')) continue;
+
     filesScanned++;
     let text;
     try {
@@ -246,16 +254,16 @@ export function verifyNoInlineHashEmbeddingsInSwarm(consumerDir) {
     const preview = hits.slice(0, 5).join(' | ');
     const suffix = hits.length > 5 ? ` (+${hits.length - 5} more)` : '';
     record(
-      'no-inline-hash-embeddings:swarm',
+      'no-inline-hash-embeddings',
       'fail',
-      `inline hash-embedding pattern leaked into swarm dist — ${hits.length} file(s): ${preview}${suffix}`,
+      `inline hash-embedding pattern leaked into moflo dist — ${hits.length} file(s): ${preview}${suffix}`,
     );
     return;
   }
   record(
-    'no-inline-hash-embeddings:swarm',
+    'no-inline-hash-embeddings',
     'pass',
-    `${filesScanned} swarm JS file(s) scanned, no inline hash pattern`,
+    `${filesScanned} JS file(s) scanned, no inline hash pattern`,
   );
 }
 
@@ -335,7 +343,10 @@ function* walkJsFiles(dir) {
       continue;
     }
     if (!entry.isFile()) continue;
-    if (!/\.(m?js|cjs)$/.test(entry.name)) continue;
+    // Issue #545: `.d.ts` files are emitted alongside `.js` for TS packages
+    // and can carry re-exports of banned symbols (`export { hashEmbed }`).
+    // The previous `/\.(m?js|cjs)$/` filter skipped them entirely.
+    if (!/\.(m?js|cjs|d\.ts)$/.test(entry.name)) continue;
     yield join(dir, entry.name);
   }
 }
