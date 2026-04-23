@@ -1119,6 +1119,25 @@ describe('QueenCoordinator', () => {
       await queen.recordOutcome(task, result);
     });
 
+    // Hash fallback is banned (epic #527 / ADR-EMB-001). When learning is
+    // enabled with a neural system but no IEmbeddingProvider, learnFromOutcome
+    // must surface a hard error instead of silently degrading.
+    it('rejects learnFromOutcome when embeddingProvider is missing', async () => {
+      queen = createQueenCoordinator(
+        mockSwarm,
+        { enableLearning: true },
+        mockNeural,
+        mockMemory,
+        // intentionally omit embeddingProvider
+      );
+      await queen.initialize();
+
+      const task = createMockTask('task_1', 'coding');
+      const result = createMockTaskResult(true);
+
+      await expect(queen.recordOutcome(task, result)).rejects.toThrow(/IEmbeddingProvider/);
+    });
+
     it('should handle memory storage errors gracefully', async () => {
       vi.mocked(mockMemory.store).mockRejectedValue(new Error('Storage failed'));
 
