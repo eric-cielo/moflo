@@ -18,6 +18,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import initSqlJs from 'sql.js';
 import { Reflexion } from './reflexion.js';
+import { deterministicTestEmbedder } from './_test-embedder.js';
 
 let SQL: any;
 
@@ -28,7 +29,7 @@ beforeAll(async () => {
 describe('Reflexion benchmark @ N=1000', () => {
   it('recall@10 ≥ 0.85 and p95 latency < 500ms', async () => {
     const db = new SQL.Database();
-    const reflexion = new Reflexion(db as any);
+    const reflexion = new Reflexion(db as any, { embedder: deterministicTestEmbedder });
 
     const N = 1000;
     const fixtures: Array<{ id: string; action: string; keyword: string }> = [];

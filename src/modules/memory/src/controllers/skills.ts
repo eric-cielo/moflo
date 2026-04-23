@@ -20,7 +20,7 @@
 import {
   clampInt,
   deserializeEmbedding,
-  embedWithFallback,
+  embedText,
   generateId,
   parseJsonSafe,
   serializeEmbedding,
@@ -99,7 +99,7 @@ export class Skills {
     const description = String(input.description ?? '');
     const code = String(input.code ?? '');
     const text = `${input.name}\n${description}\n${code}`;
-    const embedding = await embedWithFallback(this.embedder, text, this.dimension);
+    const embedding = await embedText(this.embedder, text);
     const blob = serializeEmbedding(embedding);
     this.db.run(
       `INSERT INTO ${TABLE}
@@ -155,7 +155,6 @@ export class Skills {
       query,
       k,
       this.embedder,
-      this.dimension,
       (r) => `${r.name} ${r.description} ${r.code}`,
     );
   }

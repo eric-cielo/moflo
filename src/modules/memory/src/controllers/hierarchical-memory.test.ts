@@ -6,6 +6,7 @@ import {
   HIERARCHICAL_MEMORY_SURFACE,
   hierarchicalMemorySpec,
 } from './hierarchical-memory.js';
+import { deterministicTestEmbedder } from './_test-embedder.js';
 
 let SQL: any;
 
@@ -19,7 +20,7 @@ describe('HierarchicalMemory', () => {
 
   beforeEach(() => {
     db = new SQL.Database();
-    hm = new HierarchicalMemory(db as any);
+    hm = new HierarchicalMemory(db as any, { embedder: deterministicTestEmbedder });
   });
 
   it('rejects null db', () => {
@@ -101,6 +102,7 @@ describe('HierarchicalMemory', () => {
 
   it('enforces per-tier capacity', async () => {
     const small = new HierarchicalMemory(new SQL.Database() as any, {
+      embedder: deterministicTestEmbedder,
       capacities: { working: 3 } as any,
     });
     for (let i = 0; i < 6; i++) {

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import initSqlJs, { Database } from 'sql.js';
 import { Reflexion } from './reflexion.js';
+import { deterministicTestEmbedder } from './_test-embedder.js';
 
 let SQL: any;
 
@@ -14,7 +15,7 @@ describe('Reflexion', () => {
 
   beforeEach(() => {
     db = new SQL.Database();
-    reflexion = new Reflexion(db as any);
+    reflexion = new Reflexion(db as any, { embedder: deterministicTestEmbedder });
   });
 
   it('rejects null db', () => {
@@ -22,7 +23,7 @@ describe('Reflexion', () => {
   });
 
   it('creates schema idempotently', () => {
-    const second = new Reflexion(db as any);
+    const second = new Reflexion(db as any, { embedder: deterministicTestEmbedder });
     expect(second.count()).toBe(0);
   });
 
