@@ -121,5 +121,5 @@ spells:
 #   denylist-only — Layer 1 only: block catastrophic commands, no OS isolation
 #   full          — Require full OS isolation; throws if the sandbox tool is unavailable
 sandbox:
-  enabled: false                 # Set to true to wrap bash steps in an OS sandbox
+  enabled: true                  # Set to true to wrap bash steps in an OS sandbox
   tier: auto                     # auto | denylist-only | full
