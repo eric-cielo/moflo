@@ -7,15 +7,12 @@
  * facing surface: memory CRUD, spell list, MCP tools registration, hooks,
  * `/flo` skill packaging, and flo-search CLI.
  *
- * Epic #464 Gate 3 / Epic #501 Story 2 — also asserts the forbidden-dep
- * invariant: no `agentdb`, `agentic-flow`, `@ruvector/*`, `ruvector`, or
- * `onnxruntime-node` in a fresh consumer install.
- *
- * Epic #527 Story #532 — extends the invariant: no `@xenova/transformers`
- * and no hash-embedding identifiers (HashEmbeddingProvider, createHashEmbedding,
+ * Also asserts forbidden-dep invariants in the installed dist tree:
+ * `agentdb`, `agentic-flow`, `@ruvector/*`, `ruvector`, `@xenova/transformers`,
+ * and any hash-embedding identifiers (HashEmbeddingProvider, createHashEmbedding,
  * generateHashEmbedding, RvfEmbeddingService, RvfEmbeddingCache,
- * `domain-aware-hash-*`) in the installed dist tree. Also asserts the
- * required neural runtime (`fastembed`) is present.
+ * `domain-aware-hash-*`). Asserts required deps present (`fastembed`) and
+ * that postinstall pruned onnxruntime-node to the current platform+arch.
  *
  * Usage:
  *   node harness/consumer-smoke/run.mjs                # full run
@@ -84,6 +81,8 @@ function main() {
       () => check.floSkillPackaged(consumerDir),
       () => check.consumerInvariants(consumerDir),
       () => check.installSurface(consumerDir),
+      () => check.verifyPrunedBinaries(consumerDir),
+      () => check.verifyTokenizerSubpackage(consumerDir),
     ];
     for (const fn of checks) {
       try { fn(); } catch (err) {

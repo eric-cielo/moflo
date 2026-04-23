@@ -10,6 +10,7 @@ import { join, relative } from 'node:path';
 import { run, runNode, flo, NPM_CMD } from './proc.mjs';
 import { section, record, recordExit, log } from './report.mjs';
 import { findOrphans } from '../../../scripts/clean-dist.mjs';
+import { findOrtPackages } from '../../../scripts/prune-native-binaries.mjs';
 
 // Epic #501 acceptance criterion: a fresh `npm install moflo` consumer sees
 // zero of the following packages anywhere in its dep tree.
@@ -485,6 +486,92 @@ export function installSurface(consumerDir) {
   }
   const sz = folderSize(mofloDir);
   record('moflo-install-size', 'info', `${(sz / 1024 / 1024).toFixed(1)} MB`);
+}
+
+/** Inspect one onnxruntime-node install; return a problem string or null. */
+function inspectOrtInstall(ortDir, consumerDir) {
+  const napi = join(ortDir, 'bin', 'napi-v3');
+  if (!existsSync(napi)) return null; // future layout change, not a prune failure
+  const rel = relative(consumerDir, ortDir);
+  const dirNames = (d) => readdirSync(d, { withFileTypes: true })
+    .filter(e => e.isDirectory())
+    .map(e => e.name);
+
+  const platforms = dirNames(napi);
+  const platExtras = platforms.filter(p => p !== process.platform);
+  if (platExtras.length > 0) return `${rel}: extra platforms present — ${platExtras.join(', ')}`;
+  if (!platforms.includes(process.platform)) return `${rel}: current platform dir missing (${process.platform})`;
+
+  const archs = dirNames(join(napi, process.platform));
+  const archExtras = archs.filter(a => a !== process.arch);
+  if (archExtras.length > 0) return `${rel}: extra archs under ${process.platform} — ${archExtras.join(', ')}`;
+  if (!archs.includes(process.arch)) return `${rel}: current arch dir missing (${process.arch})`;
+  return null;
+}
+
+/**
+ * After postinstall, every onnxruntime-node install should retain only the
+ * current `<platform>/<arch>` subtree under `bin/napi-v3/`. Hard-fail on any
+ * non-current platform directory or any extra arch under the kept platform.
+ */
+export function verifyPrunedBinaries(consumerDir) {
+  section('Verify onnxruntime-node binaries pruned to current platform');
+  const nm = join(consumerDir, 'node_modules');
+  const ortInstalls = findOrtPackages(nm);
+
+  if (ortInstalls.length === 0) {
+    record('ort-pruned', 'info', 'no onnxruntime-node install found');
+    return;
+  }
+
+  const problems = [];
+  for (const ort of ortInstalls) {
+    const p = inspectOrtInstall(ort, consumerDir);
+    if (p) problems.push(p);
+  }
+
+  if (problems.length > 0) {
+    record('ort-pruned', 'fail', `prune incomplete — ${problems.join(' | ')}`);
+    return;
+  }
+  record('ort-pruned', 'pass', `${ortInstalls.length} install(s) pruned to ${process.platform}/${process.arch}`);
+}
+
+/**
+ * `@anush008/tokenizers` ships its native binary via the sharp-style
+ * optional-subpackage pattern. A healthy install has exactly one
+ * `@anush008/tokenizers-<platform>-<arch>[-<abi>]` sibling — zero means npm's
+ * optional-dep selection failed (broken install), multiple means something is
+ * packaging too many variants.
+ */
+export function verifyTokenizerSubpackage(consumerDir) {
+  section('Verify @anush008/tokenizers native subpackage');
+  const scopeDir = join(consumerDir, 'node_modules', '@anush008');
+  if (!existsSync(scopeDir)) {
+    record('tokenizer-subpackage', 'fail', '@anush008/ scope missing — fastembed cannot tokenize');
+    return;
+  }
+  let entries;
+  try { entries = readdirSync(scopeDir); }
+  catch (err) {
+    record('tokenizer-subpackage', 'fail', `cannot read @anush008/: ${err.message}`);
+    return;
+  }
+  const hasBase = entries.includes('tokenizers');
+  const platformPkgs = entries.filter(n => /^tokenizers-/.test(n));
+  if (!hasBase) {
+    record('tokenizer-subpackage', 'fail', '@anush008/tokenizers base package missing');
+    return;
+  }
+  if (platformPkgs.length === 0) {
+    record('tokenizer-subpackage', 'fail', 'no @anush008/tokenizers-<platform> subpackage installed (optional-dep selection failed)');
+    return;
+  }
+  if (platformPkgs.length > 1) {
+    record('tokenizer-subpackage', 'fail', `expected exactly one platform subpackage, found ${platformPkgs.length}: ${platformPkgs.join(', ')}`);
+    return;
+  }
+  record('tokenizer-subpackage', 'pass', `@anush008/${platformPkgs[0]} present`);
 }
 
 function folderSize(dir) {
