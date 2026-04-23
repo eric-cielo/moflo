@@ -165,12 +165,32 @@ export interface StepCapability {
 /**
  * A prerequisite that must be satisfied before a step command can execute.
  * E.g., `gh` CLI installed and authenticated, Playwright browsers available.
+ *
+ * Optional declarative fields are populated by `compilePrerequisiteSpec()`
+ * when collecting YAML-authored `PrerequisiteSpec` entries — they let the
+ * engine offer interactive resolution (prompt + env write-back) instead of
+ * just failing fast. Step-command-owned prereqs leave these unset and keep
+ * the original install-hint behavior.
  */
 export interface Prerequisite {
   readonly name: string;
   readonly check: () => Promise<boolean>;
   readonly installHint: string;
   readonly url?: string;
+  /** Short description shown in preflight output (from YAML `description`). */
+  readonly description?: string;
+  /**
+   * When true and stdin+stdout are a TTY, prompt the user for the value
+   * when unmet. For env-type prereqs the answer is written to
+   * `process.env[envKey]`; other types surface guidance only.
+   */
+  readonly promptOnMissing?: boolean;
+  /**
+   * Environment variable to write the prompted answer into. Set only when
+   * the prereq compiles from an `env`-type detector. Presence of this field
+   * is what makes a prereq resolvable via prompt.
+   */
+  readonly envKey?: string;
 }
 
 /** Result of checking a single prerequisite. */

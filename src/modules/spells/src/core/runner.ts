@@ -29,7 +29,7 @@ import { executeParallelSteps } from './parallel-executor.js';
 import { rollbackSteps, type CompletedStep } from './rollback-orchestrator.js';
 import { buildCredentialPatterns, addCredentialPattern, collectCredentialNames } from './credential-masker.js';
 import { executeSingleStep, type StepExecutionState } from './step-executor.js';
-import { collectPrerequisites, checkPrerequisites, formatPrerequisiteErrors } from './prerequisite-checker.js';
+import { collectPrerequisites, resolveUnmetPrerequisites } from './prerequisite-checker.js';
 import {
   collectPreflights,
   checkPreflights,
@@ -152,15 +152,18 @@ export class SpellCaster {
       }
     }
 
-    // Pre-flight prerequisite checks (Story #193)
+    // Pre-flight prerequisite checks — walks YAML + step-command sources,
+    // prompts on a TTY for unmet env-type prereqs (issue #460).
     if (!options.dryRun) {
       const prerequisites = collectPrerequisites(definition, this.registry);
       if (prerequisites.length > 0) {
-        const prereqResults = await checkPrerequisites(prerequisites);
-        if (prereqResults.some(r => !r.satisfied)) {
+        const resolution = await resolveUnmetPrerequisites(prerequisites, {
+          abortSignal: options.signal,
+        });
+        if (!resolution.ok) {
           return this.failureResult(spellId, startTime, [{
             code: 'PREREQUISITES_FAILED',
-            message: formatPrerequisiteErrors(prereqResults),
+            message: resolution.message ?? 'Prerequisites failed',
           }], definition.name);
         }
       }

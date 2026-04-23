@@ -9,6 +9,9 @@ import {
   collectPrerequisites,
   checkPrerequisites,
   formatPrerequisiteErrors,
+  compilePrerequisiteSpec,
+  resolveUnmetPrerequisites,
+  type PromptLineFn,
 } from '../src/core/prerequisite-checker.js';
 import { StepCommandRegistry } from '../src/core/step-command-registry.js';
 import { SpellCaster } from '../src/core/runner.js';
@@ -19,7 +22,13 @@ import type {
   CredentialAccessor,
   MemoryAccessor,
 } from '../src/types/step-command.types.js';
-import type { SpellDefinition } from '../src/types/spell-definition.types.js';
+import type {
+  SpellDefinition,
+  PrerequisiteSpec,
+} from '../src/types/spell-definition.types.js';
+import * as fsPromises from 'node:fs/promises';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
 // ============================================================================
 // Helpers
@@ -262,6 +271,30 @@ describe('SpellCaster — prerequisite integration', () => {
     expect(result.errors.every(e => e.code !== 'PREREQUISITES_FAILED')).toBe(true);
   });
 
+  it('collects and fails on spell-level YAML prereq', async () => {
+    registry.register(makeCommand('bash'));
+
+    const def: SpellDefinition = {
+      name: 'needs-env',
+      prerequisites: [{
+        name: 'FLO_TEST_MISSING_460',
+        description: 'Test env var',
+        docsUrl: 'https://example.com/460',
+        detect: { type: 'env', key: 'FLO_TEST_MISSING_460' },
+        promptOnMissing: false, // force non-prompt fail-fast path
+      }],
+      steps: [{ id: 's1', type: 'bash', config: {} }],
+    };
+
+    delete process.env.FLO_TEST_MISSING_460;
+    const result = await runner.run(def, {});
+
+    expect(result.success).toBe(false);
+    expect(result.errors[0].code).toBe('PREREQUISITES_FAILED');
+    expect(result.errors[0].message).toContain('FLO_TEST_MISSING_460');
+    expect(result.errors[0].message).toContain('https://example.com/460');
+  });
+
   it('reports prerequisite status in dry-run step reports', async () => {
     const ghPrereq = makePrereq('gh', true);
     const claudePrereq = makePrereq('claude', false);
@@ -282,5 +315,294 @@ describe('SpellCaster — prerequisite integration', () => {
 
     expect(s2Report.prerequisiteResults).toHaveLength(1);
     expect(s2Report.prerequisiteResults![0].satisfied).toBe(false);
+  });
+});
+
+// ============================================================================
+// compilePrerequisiteSpec — detectors (#460)
+// ============================================================================
+
+describe('compilePrerequisiteSpec', () => {
+  it('env detector: passes when env var is set to non-empty', async () => {
+    process.env.FLO_PREREQ_TEST_ENV = 'value';
+    const compiled = compilePrerequisiteSpec({
+      name: 'TEST_ENV',
+      detect: { type: 'env', key: 'FLO_PREREQ_TEST_ENV' },
+    });
+    expect(await compiled.check()).toBe(true);
+    expect(compiled.envKey).toBe('FLO_PREREQ_TEST_ENV');
+    delete process.env.FLO_PREREQ_TEST_ENV;
+  });
+
+  it('env detector: fails when env var is unset', async () => {
+    delete process.env.FLO_PREREQ_TEST_ENV;
+    const compiled = compilePrerequisiteSpec({
+      name: 'TEST_ENV',
+      detect: { type: 'env', key: 'FLO_PREREQ_TEST_ENV' },
+    });
+    expect(await compiled.check()).toBe(false);
+  });
+
+  it('env detector: fails when env var is an empty string', async () => {
+    process.env.FLO_PREREQ_TEST_ENV = '';
+    const compiled = compilePrerequisiteSpec({
+      name: 'TEST_ENV',
+      detect: { type: 'env', key: 'FLO_PREREQ_TEST_ENV' },
+    });
+    expect(await compiled.check()).toBe(false);
+    delete process.env.FLO_PREREQ_TEST_ENV;
+  });
+
+  it('file detector: passes when file exists, fails when missing', async () => {
+    const tmp = path.join(os.tmpdir(), `flo-prereq-${Date.now()}.txt`);
+    await fsPromises.writeFile(tmp, 'x');
+    try {
+      const present = compilePrerequisiteSpec({
+        name: 'CFG',
+        detect: { type: 'file', path: tmp },
+      });
+      expect(await present.check()).toBe(true);
+    } finally {
+      await fsPromises.unlink(tmp);
+    }
+
+    const missing = compilePrerequisiteSpec({
+      name: 'CFG',
+      detect: { type: 'file', path: path.join(os.tmpdir(), 'flo-prereq-nonexistent-xyz') },
+    });
+    expect(await missing.check()).toBe(false);
+  });
+
+  it('command detector: fails when command is not on PATH', async () => {
+    const compiled = compilePrerequisiteSpec({
+      name: 'UNICORN',
+      detect: { type: 'command', command: 'this-command-definitely-does-not-exist-xyz-460' },
+    });
+    expect(await compiled.check()).toBe(false);
+    expect(compiled.envKey).toBeUndefined();
+  });
+
+  it('defaults promptOnMissing to true, url passes through from docsUrl', () => {
+    const compiled = compilePrerequisiteSpec({
+      name: 'X',
+      docsUrl: 'https://docs.example',
+      detect: { type: 'env', key: 'X' },
+    });
+    expect(compiled.promptOnMissing).toBe(true);
+    expect(compiled.url).toBe('https://docs.example');
+  });
+
+  it('respects explicit promptOnMissing=false', () => {
+    const compiled = compilePrerequisiteSpec({
+      name: 'X',
+      promptOnMissing: false,
+      detect: { type: 'env', key: 'X' },
+    });
+    expect(compiled.promptOnMissing).toBe(false);
+  });
+});
+
+// ============================================================================
+// collectPrerequisites — YAML + step + nested walker (#460)
+// ============================================================================
+
+describe('collectPrerequisites — YAML walker', () => {
+  it('picks up spell-level YAML prereqs', () => {
+    const registry = new StepCommandRegistry();
+    registry.register(makeCommand('bash'));
+    const def: SpellDefinition = {
+      name: 'x',
+      prerequisites: [{ name: 'TOK', detect: { type: 'env', key: 'TOK' } }],
+      steps: [{ id: 's1', type: 'bash', config: {} }],
+    };
+    const prereqs = collectPrerequisites(def, registry);
+    expect(prereqs.map(p => p.name)).toContain('TOK');
+    expect(prereqs.find(p => p.name === 'TOK')!.envKey).toBe('TOK');
+  });
+
+  it('picks up step-level YAML prereqs', () => {
+    const registry = new StepCommandRegistry();
+    registry.register(makeCommand('bash'));
+    const def: SpellDefinition = {
+      name: 'x',
+      steps: [{
+        id: 's1', type: 'bash', config: {},
+        prerequisites: [{ name: 'GH', detect: { type: 'command', command: 'gh' } }],
+      }],
+    };
+    expect(collectPrerequisites(def, registry).map(p => p.name)).toEqual(['GH']);
+  });
+
+  it('walks nested loop/condition/parallel step bodies', () => {
+    const registry = new StepCommandRegistry();
+    registry.register(makeCommand('loop'));
+    registry.register(makeCommand('bash'));
+    const def: SpellDefinition = {
+      name: 'x',
+      steps: [{
+        id: 'outer', type: 'loop', config: {},
+        steps: [{
+          id: 'inner', type: 'bash', config: {},
+          prerequisites: [{ name: 'NESTED', detect: { type: 'env', key: 'NESTED' } }],
+        }],
+      }],
+    };
+    expect(collectPrerequisites(def, registry).map(p => p.name)).toContain('NESTED');
+  });
+
+  it('dedupes across spell + step + step-command built-in (first wins)', () => {
+    const registry = new StepCommandRegistry();
+    const builtin = makePrereq('SHARED', true, 'builtin-hint');
+    registry.register(makeCommand('github', [builtin]));
+
+    const spellSpec: PrerequisiteSpec = {
+      name: 'SHARED',
+      description: 'spell-level',
+      detect: { type: 'env', key: 'SHARED' },
+    };
+    const def: SpellDefinition = {
+      name: 'x',
+      prerequisites: [spellSpec],
+      steps: [{ id: 's1', type: 'github', config: {} }],
+    };
+
+    const prereqs = collectPrerequisites(def, registry);
+    expect(prereqs).toHaveLength(1);
+    // Spell-level declaration wins (compiled from the YAML spec)
+    expect(prereqs[0].description).toBe('spell-level');
+    expect(prereqs[0].installHint).toBe('spell-level');
+    expect(prereqs[0].envKey).toBe('SHARED');
+  });
+});
+
+// ============================================================================
+// resolveUnmetPrerequisites — prompt + fail-fast (#460)
+// ============================================================================
+
+describe('resolveUnmetPrerequisites', () => {
+  const ENV_KEY = 'FLO_RESOLVE_TEST_460';
+
+  beforeEach(() => { delete process.env[ENV_KEY]; });
+
+  it('returns ok immediately when every prereq is satisfied', async () => {
+    const result = await resolveUnmetPrerequisites([makePrereq('ok', true)], {
+      interactive: false,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.resolvedNames).toEqual([]);
+  });
+
+  it('non-TTY path: fails fast with a report listing every unmet prereq', async () => {
+    const prereqs: Prerequisite[] = [
+      compilePrerequisiteSpec({
+        name: 'TOK_A',
+        docsUrl: 'https://a.example',
+        detect: { type: 'env', key: 'TOK_A_460' },
+      }),
+      compilePrerequisiteSpec({
+        name: 'TOK_B',
+        docsUrl: 'https://b.example',
+        detect: { type: 'env', key: 'TOK_B_460' },
+      }),
+    ];
+    const result = await resolveUnmetPrerequisites(prereqs, { interactive: false });
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('TOK_A');
+    expect(result.message).toContain('TOK_B');
+    expect(result.message).toContain('https://a.example');
+    expect(result.message).toContain('https://b.example');
+  });
+
+  it('TTY path: prompts for unmet env prereq and writes answer into process.env', async () => {
+    const spec: PrerequisiteSpec = {
+      name: 'GRAPH_TOKEN',
+      description: 'Graph token',
+      docsUrl: 'https://graph.example',
+      detect: { type: 'env', key: ENV_KEY },
+      promptOnMissing: true,
+    };
+    const prereq = compilePrerequisiteSpec(spec);
+    const promptLine = vi.fn<PromptLineFn>(async () => 'provided-value');
+    const logged: string[] = [];
+    const result = await resolveUnmetPrerequisites([prereq], {
+      interactive: true,
+      promptLine,
+      log: (l) => logged.push(l),
+    });
+    expect(result.ok).toBe(true);
+    expect(result.resolvedNames).toEqual(['GRAPH_TOKEN']);
+    expect(process.env[ENV_KEY]).toBe('provided-value');
+    expect(promptLine).toHaveBeenCalledTimes(1);
+    expect(logged.some(l => l.includes('Preflight'))).toBe(true);
+    expect(logged.some(l => l.includes('Graph token'))).toBe(true);
+    expect(logged.some(l => l.includes('https://graph.example'))).toBe(true);
+  });
+
+  it('TTY path: empty answer fails with "was not provided"', async () => {
+    const prereq = compilePrerequisiteSpec({
+      name: 'X',
+      detect: { type: 'env', key: ENV_KEY },
+    });
+    const promptLine = vi.fn<PromptLineFn>(async () => '');
+    const result = await resolveUnmetPrerequisites([prereq], {
+      interactive: true,
+      promptLine,
+      log: () => {},
+    });
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('was not provided');
+    expect(process.env[ENV_KEY]).toBeUndefined();
+  });
+
+  it('command-type unmet prereq with no promptable partner fails fast even on TTY', async () => {
+    const prereq = compilePrerequisiteSpec({
+      name: 'UNICORN_CLI',
+      detect: { type: 'command', command: 'this-command-does-not-exist-xyz-460' },
+    });
+    const promptLine = vi.fn<PromptLineFn>(async () => 'ignored');
+    const result = await resolveUnmetPrerequisites([prereq], {
+      interactive: true,
+      promptLine,
+      log: () => {},
+    });
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('UNICORN_CLI');
+    expect(promptLine).not.toHaveBeenCalled();
+  });
+
+  it('does not prompt when promptOnMissing is explicitly false', async () => {
+    const prereq = compilePrerequisiteSpec({
+      name: 'OPT_OUT',
+      promptOnMissing: false,
+      detect: { type: 'env', key: ENV_KEY },
+    });
+    const promptLine = vi.fn<PromptLineFn>(async () => 'ignored');
+    const result = await resolveUnmetPrerequisites([prereq], {
+      interactive: true,
+      promptLine,
+      log: () => {},
+    });
+    expect(result.ok).toBe(false);
+    expect(promptLine).not.toHaveBeenCalled();
+  });
+
+  it('aborts mid-prompt when abortSignal fires', async () => {
+    const controller = new AbortController();
+    const prereq = compilePrerequisiteSpec({
+      name: 'X',
+      detect: { type: 'env', key: ENV_KEY },
+    });
+    const promptLine: PromptLineFn = async (_line, signal) => {
+      controller.abort();
+      if (signal?.aborted) throw new Error('Prompt aborted');
+      return '';
+    };
+    const result = await resolveUnmetPrerequisites([prereq], {
+      interactive: true,
+      promptLine,
+      abortSignal: controller.signal,
+      log: () => {},
+    });
+    expect(result.ok).toBe(false);
   });
 });

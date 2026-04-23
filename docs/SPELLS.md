@@ -110,6 +110,7 @@ Every spell definition needs two things: a `name` and a list of `steps`.
 | `name` | Yes | Unique identifier for this spell |
 | `description` | No | Human-readable explanation |
 | `arguments` | No | Typed inputs the spell accepts (see [Arguments](#arguments)) |
+| `prerequisites` | No | External deps (env vars, CLI binaries, files) checked before step 1 (see [Prerequisites](#prerequisites)) |
 | `steps` | Yes | Ordered list of steps to execute |
 
 **Step fields:**
@@ -123,6 +124,7 @@ Every spell definition needs two things: a `name` and a list of `steps`.
 | `continueOnError` | No | If `true`, spell continues even if this step fails |
 | `timeout` | No | Step-specific timeout in ms (overrides the runner's 5-minute default) |
 | `steps` | No | Nested step definitions (used by `loop` type only) |
+| `prerequisites` | No | External deps scoped to this step; folded into the spell-level preflight at cast time |
 
 ### Arguments
 
@@ -144,6 +146,44 @@ arguments:
 ```
 
 The runner validates arguments before execution — missing required args or type mismatches produce a structured error without running any steps.
+
+### Prerequisites
+
+Declare external dependencies the spell needs — environment variables, CLI binaries, or files — and the engine will check them before step 1 runs. On an interactive terminal, unmet env-type prerequisites prompt the user once for the value and write it into `process.env` so downstream steps inherit it. In non-interactive runs (CI, piped stdin), missing prerequisites fail the spell up front with a single report listing every unmet dep and its docs URL, instead of letting the spell fail mid-cast with a cryptic error.
+
+```yaml
+prerequisites:
+  - name: GRAPH_ACCESS_TOKEN
+    description: Microsoft Graph access token for reading your inbox
+    docsUrl: https://developer.microsoft.com/en-us/graph/graph-explorer
+    detect:
+      type: env
+      key: GRAPH_ACCESS_TOKEN
+    promptOnMissing: true    # default: true
+
+  - name: gh-cli
+    description: GitHub CLI
+    docsUrl: https://cli.github.com
+    detect:
+      type: command
+      command: gh
+    promptOnMissing: false   # no useful prompt for a missing binary
+
+  - name: deploy-key
+    detect:
+      type: file
+      path: /etc/deploy-keys/prod.pem
+```
+
+**Detector types:**
+
+| Type | Detects | Can resolve via prompt? |
+|------|---------|-------------------------|
+| `env` | `process.env[key]` is set to a non-empty string | Yes — answer is written to `process.env[key]` |
+| `command` | `which <cmd>` / `where <cmd>` succeeds | No — surfaces the docs URL only |
+| `file` | `fs.access(path)` succeeds | No — surfaces the docs URL only |
+
+Prerequisites can also be declared on individual steps (`StepDefinition.prerequisites`); the engine walks every step — including nested `loop` / `condition` / `parallel` bodies — and deduplicates by `name` (first occurrence wins) before running any detectors. Dry-run mode (`flo cast --dry-run`) skips the prompt path so validations stay side-effect-free.
 
 ### Variable Interpolation
 
