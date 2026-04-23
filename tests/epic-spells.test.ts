@@ -58,13 +58,13 @@ describe('single-branch.yaml', () => {
   it('has expected step sequence', () => {
     def = loadYaml('single-branch.yaml');
     const stepIds = def.steps.map(s => s.id);
-    expect(stepIds).toEqual(['init-state', 'create-branch', 'process-stories', 'push-branch', 'create-pr', 'finalize-state']);
+    expect(stepIds).toEqual(['init-state', 'create-branch', 'process-stories', 'push-branch', 'build-closes-list', 'create-pr', 'finalize-state']);
   });
 
   it('uses correct step types', () => {
     def = loadYaml('single-branch.yaml');
     const stepTypes = def.steps.map(s => s.type);
-    expect(stepTypes).toEqual(['memory', 'bash', 'loop', 'bash', 'github', 'memory']);
+    expect(stepTypes).toEqual(['memory', 'bash', 'loop', 'bash', 'bash', 'github', 'memory']);
   });
 
   it('declares preflight checks on create-branch', () => {
@@ -118,6 +118,36 @@ describe('single-branch.yaml', () => {
     const prStep = def.steps.find(s => s.id === 'create-pr');
     expect(prStep?.type).toBe('github');
     expect((prStep?.config as Record<string, unknown>).action).toBe('pr-create');
+  });
+
+  it('PR body references build-closes-list output so stories auto-close on merge', () => {
+    def = loadYaml('single-branch.yaml');
+    const prStep = def.steps.find(s => s.id === 'create-pr');
+    const body = (prStep!.config as Record<string, unknown>).body as string;
+    expect(body).toContain('{build-closes-list.stdout}');
+    expect(body).toContain('Closes #{args.epic_number}');
+  });
+
+  it('build-closes-list emits a bash step that precedes create-pr', () => {
+    def = loadYaml('single-branch.yaml');
+    const ids = def.steps.map(s => s.id);
+    expect(ids.indexOf('build-closes-list')).toBeLessThan(ids.indexOf('create-pr'));
+    const step = def.steps.find(s => s.id === 'build-closes-list');
+    expect(step?.type).toBe('bash');
+  });
+
+  it('loop flips checkboxes and closes issues (not just a comment)', () => {
+    def = loadYaml('single-branch.yaml');
+    const loop = def.steps.find(s => s.id === 'process-stories')!;
+    const checkOff = loop.steps!.find(s => s.id === 'check-off-story');
+    const closeStory = loop.steps!.find(s => s.id === 'close-story');
+    expect(checkOff?.type).toBe('bash');
+    expect(closeStory?.type).toBe('bash');
+    const checkOffCmd = (checkOff!.config as Record<string, unknown>).command as string;
+    expect(checkOffCmd).toContain('gh issue edit');
+    const closeCmd = (closeStory!.config as Record<string, unknown>).command as string;
+    expect(closeCmd).toContain('gh issue close');
+    expect(closeCmd).toContain('--reason completed');
   });
 
   it('sets mofloLevel to hooks', () => {
