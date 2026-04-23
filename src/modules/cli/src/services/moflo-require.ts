@@ -14,6 +14,8 @@
 
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { existsSync } from 'fs';
+import { dirname, join } from 'path';
 
 // createRequire anchored to this file — resolves from moflo's own node_modules
 const mofloRequire = createRequire(fileURLToPath(import.meta.url));
@@ -91,22 +93,63 @@ export function mofloResolve(specifier: string): string | null {
 }
 
 /**
- * Import `@moflo/memory` from within a moflo source module. The root `moflo`
- * package ships @moflo/memory as a source folder rather than a declared
- * dependency, so `mofloImport('@moflo/memory')` fails in consumer installs
- * (node_modules/@moflo/memory/ doesn't exist). Fall back to a URL resolved
- * relative to the caller's file — the same src/modules/memory/dist/index.js
- * layout holds in both dev and consumer.
+ * Locate `src/modules/memory/dist/index.js` by walking up from this file's
+ * directory until the path resolves. Layout-invariant across:
+ *   - dev source (cli/src/services/)
+ *   - built output (cli/dist/src/services/)
+ *   - installed package (node_modules/moflo/src/modules/cli/dist/src/services/)
+ *   - Windows and POSIX (path.join/dirname are platform-aware)
  *
- * Callers live at src/modules/cli/src/memory/<file>.ts, so from that dir
- * the memory dist is 3 levels up (cli/src/memory → cli/src → cli → modules)
- * plus `memory/dist/index.js`.
- *
- * @param callerUrl `import.meta.url` of the file that needs @moflo/memory
+ * Returns a file:// URL for ESM `import()`, or null if memory isn't built.
  */
-export async function importMofloMemory(callerUrl: string): Promise<any> {
+let cachedMemoryUrl: string | null | undefined;
+
+function locateMofloMemoryDist(): string | null {
+  if (cachedMemoryUrl !== undefined) return cachedMemoryUrl;
+
+  let dir = dirname(fileURLToPath(import.meta.url));
+  const rel = join('src', 'modules', 'memory', 'dist', 'index.js');
+
+  // 12 levels is far more than any real moflo install depth
+  for (let i = 0; i < 12; i++) {
+    const candidate = join(dir, rel);
+    if (existsSync(candidate)) {
+      cachedMemoryUrl = pathToFileURL(candidate).href;
+      return cachedMemoryUrl;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break; // filesystem root
+    dir = parent;
+  }
+
+  cachedMemoryUrl = null;
+  return null;
+}
+
+/**
+ * Import `@moflo/memory` from within a moflo source module.
+ *
+ * The root `moflo` package ships @moflo/memory as a source folder rather than
+ * a declared dependency, so `mofloImport('@moflo/memory')` fails in consumer
+ * installs (node_modules/@moflo/memory/ doesn't exist). Fall back to a
+ * layout-invariant walk-up that finds `src/modules/memory/dist/index.js`
+ * regardless of whether the caller is running source, built, or installed.
+ *
+ * Returns null when memory isn't available — callers must handle that.
+ */
+export async function importMofloMemory(): Promise<any | null> {
   const viaRequire = await mofloImport('@moflo/memory');
   if (viaRequire) return viaRequire;
-  const memoryUrl = new URL('../../../memory/dist/index.js', callerUrl);
-  return import(memoryUrl.href);
+  const url = locateMofloMemoryDist();
+  if (!url) return null;
+  try {
+    return await import(url);
+  } catch {
+    return null;
+  }
+}
+
+// Test-only: reset the cache between unit tests that mutate the filesystem.
+export function _resetMofloMemoryCacheForTest(): void {
+  cachedMemoryUrl = undefined;
 }

@@ -93,7 +93,11 @@ export async function getRegistry(dbPath?: string): Promise<any | null> {
   if (!registryPromise) {
     registryPromise = (async () => {
       try {
-        const { ControllerRegistry } = await importMofloMemory(import.meta.url);
+        const memoryModule = await importMofloMemory();
+        if (!memoryModule) {
+          throw new Error('@moflo/memory not available (src/modules/memory/dist/index.js not found)');
+        }
+        const { ControllerRegistry } = memoryModule;
         const registry = new ControllerRegistry();
 
         // Suppress noisy init logs
