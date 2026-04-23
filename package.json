@@ -84,7 +84,7 @@
     "test:ui": "vitest --ui",
     "test:security": "vitest run src/__tests__/security/",
     "test:smoke": "node harness/consumer-smoke/run.mjs",
-    "lint": "cd src/modules/cli && npm run lint || true",
+    "lint": "eslint src/ bin/ --ext .ts,.tsx,.mts,.cts,.js,.mjs,.cjs --max-warnings 0",
     "security:audit": "npm audit --audit-level high",
     "security:fix": "npm audit fix",
     "security:test": "npm run test:security",
@@ -108,6 +108,8 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.12.2",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.0.0",
     "moflo": "^4.8.87-rc.1",
     "tsx": "^4.21.0",
