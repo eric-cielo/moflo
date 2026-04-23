@@ -577,6 +577,24 @@ export function getWorkerConfig(type: WorkerType): HeadlessWorkerConfig | undefi
 // HeadlessWorkerExecutor Class
 // ============================================
 
+// Module-level registry + single process 'exit' listener.
+// Attaching the listener per instance leaked handlers (MaxListenersExceededWarning
+// after ~11 daemons), so we install one global listener that walks a live registry.
+// Instances remove themselves on dispose() for long-running hosts / test suites.
+const liveExecutors = new Set<HeadlessWorkerExecutor>();
+let exitListenerInstalled = false;
+
+function ensureExitListener(): void {
+  if (exitListenerInstalled) return;
+  exitListenerInstalled = true;
+  // 'exit' (not 'beforeExit') fires on explicit process.exit(); handler must be sync.
+  process.on('exit', () => {
+    for (const executor of liveExecutors) {
+      executor._killPoolOnExit();
+    }
+  });
+}
+
 /**
  * HeadlessWorkerExecutor - Executes workers using Claude Code in headless mode
  *
@@ -615,19 +633,30 @@ export class HeadlessWorkerExecutor extends EventEmitter {
     // Ensure log directory exists
     this.ensureLogDir();
 
-    // Kill child processes on parent exit to prevent orphaned node processes.
-    // Uses 'exit' (not 'beforeExit') so it fires even on explicit process.exit().
-    // The handler must be synchronous — no async work allowed in 'exit' handlers.
-    process.on('exit', () => {
-      for (const [, entry] of this.processPool) {
-        try {
-          clearTimeout(entry.timeout);
-          entry.process.kill('SIGTERM');
-        } catch {
-          // Process already gone — ignore
-        }
+    // Register for process-exit cleanup via the shared listener.
+    ensureExitListener();
+    liveExecutors.add(this);
+  }
+
+  /**
+   * Remove this executor from the exit-cleanup registry. Call when the host
+   * (daemon / test) is done with the instance — otherwise the registry
+   * retains a strong ref via the pool/cache Maps.
+   */
+  dispose(): void {
+    liveExecutors.delete(this);
+  }
+
+  /** @internal — invoked by the shared process-exit listener. Must stay sync. */
+  _killPoolOnExit(): void {
+    for (const [, entry] of this.processPool) {
+      try {
+        clearTimeout(entry.timeout);
+        entry.process.kill('SIGTERM');
+      } catch {
+        // Process already gone — ignore
       }
-    });
+    }
   }
 
   // ============================================
