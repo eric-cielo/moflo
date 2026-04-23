@@ -17,6 +17,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "fastembed": "^2.1.0",
     "sql.js": "^1.13.0"
   },
   "devDependencies": {
