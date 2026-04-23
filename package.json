@@ -103,7 +103,8 @@
   "overrides": {
     "hono": ">=4.11.4",
     "picomatch": ">=2.3.2",
-    "protobufjs": ">=7.5.5"
+    "protobufjs": ">=7.5.5",
+    "tar": ">=7.5.11"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
