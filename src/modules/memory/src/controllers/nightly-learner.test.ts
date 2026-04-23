@@ -5,6 +5,7 @@ import { MemoryConsolidation } from './memory-consolidation.js';
 import { Reflexion } from './reflexion.js';
 import { Skills } from './skills.js';
 import { NightlyLearner } from './nightly-learner.js';
+import { deterministicTestEmbedder } from './_test-embedder.js';
 
 let SQL: any;
 
@@ -22,10 +23,10 @@ describe('NightlyLearner', () => {
 
   beforeEach(() => {
     db = new SQL.Database();
-    hm = new HierarchicalMemory(db as any);
+    hm = new HierarchicalMemory(db as any, { embedder: deterministicTestEmbedder });
     mc = new MemoryConsolidation(hm, { workingTtlMs: 0 });
-    reflexion = new Reflexion(db as any);
-    skills = new Skills(db as any);
+    reflexion = new Reflexion(db as any, { embedder: deterministicTestEmbedder });
+    skills = new Skills(db as any, { embedder: deterministicTestEmbedder });
     nightly = new NightlyLearner({
       memoryConsolidation: mc,
       reflexion,

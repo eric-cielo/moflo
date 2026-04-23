@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import initSqlJs, { Database } from 'sql.js';
 import { Skills } from './skills.js';
+import { deterministicTestEmbedder } from './_test-embedder.js';
 
 let SQL: any;
 
@@ -14,7 +15,7 @@ describe('Skills', () => {
 
   beforeEach(() => {
     db = new SQL.Database();
-    skills = new Skills(db as any);
+    skills = new Skills(db as any, { embedder: deterministicTestEmbedder });
   });
 
   it('rejects null db', () => {

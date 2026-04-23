@@ -27,7 +27,7 @@ import {
   clamp01,
   clampInt,
   deserializeEmbedding,
-  embedWithFallback,
+  embedText,
   generateId,
   parseJsonSafe,
   rankByVector,
@@ -116,7 +116,7 @@ export class HierarchicalMemory {
     const now = Date.now();
     const keyMeta = typeof options.metadata?.key === 'string' ? (options.metadata.key as string) : undefined;
     const key = options.key ?? keyMeta ?? id;
-    const embedding = await embedWithFallback(this.embedder, String(content ?? ''), this.dimension);
+    const embedding = await embedText(this.embedder, String(content ?? ''));
     const blob = serializeEmbedding(embedding);
     const metaJson = JSON.stringify(options.metadata ?? {});
     const tagsJson = JSON.stringify(options.tags ?? []);
@@ -142,7 +142,7 @@ export class HierarchicalMemory {
     const threshold = typeof query.threshold === 'number' ? query.threshold : 0;
     const rows = this.loadByTier(tier);
     if (rows.length === 0) return [];
-    const queryVec = await embedWithFallback(this.embedder, query.query, this.dimension);
+    const queryVec = await embedText(this.embedder, query.query);
     const ranked = rankByVector(rows, queryVec, query.query, k)
       .filter((r) => r.score >= threshold)
       .slice(0, k);

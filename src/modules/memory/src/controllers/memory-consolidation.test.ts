@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import initSqlJs, { Database } from 'sql.js';
 import { HierarchicalMemory } from './hierarchical-memory.js';
 import { MemoryConsolidation } from './memory-consolidation.js';
+import { deterministicTestEmbedder } from './_test-embedder.js';
 
 let SQL: any;
 
@@ -16,7 +17,7 @@ describe('MemoryConsolidation', () => {
 
   beforeEach(() => {
     db = new SQL.Database();
-    hm = new HierarchicalMemory(db as any);
+    hm = new HierarchicalMemory(db as any, { embedder: deterministicTestEmbedder });
     // Zero TTLs so the first consolidate() fires all rules deterministically.
     mc = new MemoryConsolidation(hm, {
       workingTtlMs: 0,

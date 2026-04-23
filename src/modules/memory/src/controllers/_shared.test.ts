@@ -2,45 +2,26 @@ import { describe, it, expect } from 'vitest';
 import {
   cosine,
   deserializeEmbedding,
-  embedWithFallback,
-  hashEmbed,
+  embedText,
   rankByVector,
   serializeEmbedding,
 } from './_shared.js';
+import { deterministicTestEmbedder } from './_test-embedder.js';
 
 describe('_shared vector helpers', () => {
-  it('hashEmbed produces a unit-normalized vector', () => {
-    const v = hashEmbed('hello world', 64);
-    expect(v.length).toBe(64);
-    let mag = 0;
-    for (let i = 0; i < v.length; i++) mag += v[i] * v[i];
-    expect(Math.sqrt(mag)).toBeCloseTo(1, 4);
-  });
-
-  it('hashEmbed returns zero vector for empty input', () => {
-    const v = hashEmbed('', 16);
-    expect(v.every((x) => x === 0)).toBe(true);
-  });
-
-  it('hashEmbed is deterministic', () => {
-    const a = hashEmbed('stable tokens', 32);
-    const b = hashEmbed('stable tokens', 32);
-    expect(Array.from(a)).toEqual(Array.from(b));
-  });
-
   it('cosine of identical vectors is 1', () => {
-    const v = hashEmbed('abc', 16);
+    const v = Float32Array.from([0.3, 0.4, 0.5]);
     expect(cosine(v, v)).toBeCloseTo(1, 6);
   });
 
   it('cosine of zero vector is 0', () => {
-    const zero = new Float32Array(8);
-    const v = hashEmbed('abc', 8);
+    const zero = new Float32Array(4);
+    const v = Float32Array.from([1, 0, 0, 0]);
     expect(cosine(zero, v)).toBe(0);
   });
 
   it('serialize/deserialize round-trips embeddings', () => {
-    const v = hashEmbed('payload', 32);
+    const v = Float32Array.from([0.1, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8]);
     const blob = serializeEmbedding(v);
     expect(blob).toBeInstanceOf(Uint8Array);
     const restored = deserializeEmbedding(blob);
@@ -50,22 +31,28 @@ describe('_shared vector helpers', () => {
 
   it('deserialize rejects malformed blobs', () => {
     expect(deserializeEmbedding(null)).toBeNull();
-    expect(deserializeEmbedding('not a blob' as any)).toBeNull();
+    expect(deserializeEmbedding('not a blob' as unknown)).toBeNull();
     expect(deserializeEmbedding(new Uint8Array(3))).toBeNull(); // not mult of 4
   });
 
-  it('embedWithFallback uses embedder when provided, else hashEmbed', async () => {
-    const custom = async () => Float32Array.from([1, 0, 0, 0]);
-    const a = await embedWithFallback(custom, 'ignored', 4);
-    expect(Array.from(a)).toEqual([1, 0, 0, 0]);
-    const b = await embedWithFallback(undefined, 'anything', 4);
-    expect(b.length).toBe(4);
+  it('embedText uses the supplied embedder', async () => {
+    const v = await embedText(deterministicTestEmbedder, 'alpha beta');
+    expect(v).toBeInstanceOf(Float32Array);
+    expect(v.length).toBe(384);
+    // Token-bag: two unique tokens light up exactly two slots.
+    const ones = Array.from(v).filter((x) => x === 1).length;
+    expect(ones).toBe(2);
   });
 
-  it('embedWithFallback falls back when embedder throws', async () => {
-    const bad = async () => { throw new Error('no embedder'); };
-    const v = await embedWithFallback(bad, 'fallback', 8);
-    expect(v.length).toBe(8);
+  it('embedText throws when no embedder is configured', async () => {
+    await expect(embedText(undefined, 'anything')).rejects.toThrow(/ADR-EMB-001/);
+  });
+
+  it('embedText propagates embedder failures (no silent fallback)', async () => {
+    const boom = async () => {
+      throw new Error('fastembed model missing');
+    };
+    await expect(embedText(boom, 'x')).rejects.toThrow(/fastembed model missing/);
   });
 
   it('rankByVector sorts by cosine and honours k', () => {

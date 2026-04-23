@@ -5,12 +5,11 @@
  * hierarchical-memory don't each reinvent cosine and BLOB serialization.
  */
 
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 
 /**
- * Embedder signature matches the one @moflo/memory already uses
- * (`EmbeddingGenerator`). Accept both Float32Array and number[] for
- * compatibility with agentdb's embed() shape.
+ * Matches `EmbeddingGenerator` in controller-spec; accepts number[] so
+ * fastembed's raw return shape doesn't need coercing at every call site.
  */
 export type Embedder = (text: string) => Promise<Float32Array | number[]>;
 
@@ -57,46 +56,26 @@ export function cosine(a: Float32Array, b: Float32Array): number {
 }
 
 /**
- * Deterministic hash-based embedding. Produces a unit-normalized vector
- * so controllers can function when no real embedder is configured. Good
- * enough for tests and for token-overlap-style recall; swap in a real
- * embedder (Xenova/all-MiniLM-L6-v2) for semantic quality.
+ * Embed `text` with the supplied neural embedder.
+ *
+ * Throws if no embedder is configured or if the embedder itself fails.
+ * ADR-EMB-001 makes neural embeddings a hard requirement — silent
+ * degradation to hash-quality vectors is a correctness hazard, so this
+ * never falls back. Wire a fastembed-backed provider through the
+ * controller registry's `embeddingGenerator` config.
  */
-export function hashEmbed(text: string, dimension = 384): Float32Array {
-  const out = new Float32Array(dimension);
-  const tokens = String(text).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-  if (tokens.length === 0) return out;
-  for (const tok of tokens) {
-    const digest = createHash('sha256').update(tok).digest();
-    // Spread each token across `dimension` slots by walking the digest.
-    for (let i = 0; i < dimension; i++) {
-      const byte = digest[i % digest.length];
-      out[i] += ((byte / 255) * 2) - 1;
-    }
-  }
-  let mag = 0;
-  for (let i = 0; i < dimension; i++) mag += out[i] * out[i];
-  mag = Math.sqrt(mag);
-  if (mag > 0) {
-    for (let i = 0; i < dimension; i++) out[i] /= mag;
-  }
-  return out;
-}
-
-export async function embedWithFallback(
+export async function embedText(
   embedder: Embedder | undefined,
   text: string,
-  dimension = 384,
 ): Promise<Float32Array> {
-  if (embedder) {
-    try {
-      const vec = await embedder(text);
-      return toFloat32(vec);
-    } catch {
-      // Fall through to the deterministic fallback.
-    }
+  if (!embedder) {
+    throw new Error(
+      '[@moflo/memory] No embedder configured. ADR-EMB-001 requires a ' +
+        'fastembed-backed IEmbeddingProvider — hash fallbacks are banned. ' +
+        "Supply one via RuntimeConfig.embeddingGenerator.",
+    );
   }
-  return hashEmbed(text, dimension);
+  return toFloat32(await embedder(text));
 }
 
 /**
@@ -170,12 +149,11 @@ export async function vectorSearchRows<T extends { embedding: Float32Array | nul
   queryText: string,
   k: number,
   embedder: Embedder | undefined,
-  dimension: number,
   getContent: (row: T) => string,
 ): Promise<Array<T & { score: number }>> {
   const safeK = clampInt(k, 1, 1000, 10);
   if (rows.length === 0) return [];
-  const queryVec = await embedWithFallback(embedder, queryText, dimension);
+  const queryVec = await embedText(embedder, queryText);
   const withContent = rows.map((r) => ({ ...r, content: getContent(r) }));
   const ranked = rankByVector(withContent, queryVec, queryText, safeK);
   return ranked.map(({ content: _content, ...rest }) => rest as unknown as T & { score: number });

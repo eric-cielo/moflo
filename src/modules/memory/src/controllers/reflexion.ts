@@ -19,7 +19,7 @@
 import {
   clampInt,
   deserializeEmbedding,
-  embedWithFallback,
+  embedText,
   generateId,
   parseJsonSafe,
   serializeEmbedding,
@@ -94,7 +94,7 @@ export class Reflexion {
     const id = generateId('rfx');
     const ts = Date.now();
     const text = `${input.action}\n${input.outcome}\n${input.reflection}`;
-    const embedding = await embedWithFallback(this.embedder, text, this.dimension);
+    const embedding = await embedText(this.embedder, text);
     const blob = serializeEmbedding(embedding);
     this.db.run(
       `INSERT INTO ${REFLEXIONS_TABLE}
@@ -111,7 +111,6 @@ export class Reflexion {
       query,
       k,
       this.embedder,
-      this.dimension,
       (r) => `${r.action} ${r.outcome} ${r.reflection}`,
     );
   }

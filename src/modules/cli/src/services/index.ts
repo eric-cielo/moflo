@@ -54,7 +54,6 @@ export {
   LearningService,
   getLearningService,
   HNSWIndex,
-  hashEmbed,
   cosineSimilarity,
   LEARNING_CONFIG,
   type PatternSearchResult,

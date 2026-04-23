@@ -16,6 +16,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { mofloImport } from './moflo-require.js';
+import {
+  createNeuralEmbeddingProvider,
+  type NeuralEmbeddingProvider,
+} from './neural-embedding-provider.js';
 
 // ============================================================================
 // Configuration
@@ -334,36 +338,7 @@ function dbRun(db: SqlJsDatabase, sql: string, params: unknown[] = []): { change
   return { changes: db.getRowsModified() as number };
 }
 
-// ============================================================================
-// Embedding (deterministic hash-based fallback)
-// ============================================================================
-
-function hashEmbed(text: string): Float32Array {
-  const embedding = new Float32Array(CONFIG.embedding.dimension);
-  const normalized = text.toLowerCase().trim();
-
-  for (let i = 0; i < embedding.length; i++) {
-    let hash = 0;
-    for (let j = 0; j < normalized.length; j++) {
-      hash = ((hash << 5) - hash + normalized.charCodeAt(j) * (i + 1)) | 0;
-    }
-    embedding[i] = (Math.sin(hash) + 1) / 2;
-  }
-
-  // L2 normalize
-  let norm = 0;
-  for (let i = 0; i < embedding.length; i++) {
-    norm += embedding[i] * embedding[i];
-  }
-  norm = Math.sqrt(norm);
-  if (norm > 0) {
-    for (let i = 0; i < embedding.length; i++) {
-      embedding[i] /= norm;
-    }
-  }
-
-  return embedding;
-}
+// Neural-only per ADR-EMB-001; see createNeuralEmbeddingProvider for lazy-load.
 
 function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   let dot = 0, normA = 0, normB = 0;
@@ -387,11 +362,18 @@ export class LearningService {
   private dirty = false;
   private dbPath: string;
   private dataDir: string;
+  private embedderPromise: Promise<NeuralEmbeddingProvider> | null = null;
 
-  constructor(projectRoot?: string) {
+  constructor(projectRoot?: string, embedder?: NeuralEmbeddingProvider) {
     const root = projectRoot || process.cwd();
     this.dataDir = join(root, '.swarm');
     this.dbPath = join(this.dataDir, 'memory.db');
+    if (embedder) this.embedderPromise = Promise.resolve(embedder);
+  }
+
+  private getEmbedder(): Promise<NeuralEmbeddingProvider> {
+    this.embedderPromise ??= createNeuralEmbeddingProvider();
+    return this.embedderPromise;
   }
 
   /**
@@ -427,7 +409,8 @@ export class LearningService {
       quality = CONFIG.patterns.qualityThreshold;
     }
 
-    const embedding = hashEmbed(pattern);
+    const embedder = await this.getEmbedder();
+    const embedding = await embedder.embed(pattern);
 
     // Check for duplicates via HNSW
     const { results } = this.shortTermIndex.search(embedding, 1);
@@ -477,7 +460,8 @@ export class LearningService {
   async searchPatterns(query: string, k = 5): Promise<PatternSearchResult[]> {
     this.requireDb();
 
-    const embedding = hashEmbed(query);
+    const embedder = await this.getEmbedder();
+    const embedding = await embedder.embed(query);
     const results: (SearchResult & { type: string })[] = [];
 
     // Search long-term first (higher quality)
@@ -835,5 +819,5 @@ export function getLearningService(projectRoot?: string): LearningService {
   return _instance;
 }
 
-export { CONFIG as LEARNING_CONFIG, HNSWIndex, hashEmbed, cosineSimilarity };
+export { CONFIG as LEARNING_CONFIG, HNSWIndex, cosineSimilarity };
 export type { PatternSearchResult, StoreResult, ConsolidateResult, LearningStats, PatternRow };
