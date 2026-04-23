@@ -4,7 +4,7 @@
  * Story #102: Built-in Step Commands — interpolation utility
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { interpolateString, interpolateConfig } from '../src/core/interpolation.js';
 import { createMockContext as createContext } from './helpers.js';
 
@@ -108,6 +108,45 @@ describe('interpolateString', () => {
     const ctx = createContext({ variables: { step1: { count: 42, ok: true } } });
     expect(interpolateString('{step1.count}', ctx)).toBe('42');
     expect(interpolateString('{step1.ok}', ctx)).toBe('true');
+  });
+
+  describe('{env.KEY} prefix (#518)', () => {
+    const ENV_KEY = 'FLO_INTERP_TEST_518';
+
+    afterEach(() => { delete process.env[ENV_KEY]; });
+
+    it('resolves an env-var reference when set', () => {
+      process.env[ENV_KEY] = 'secret-value';
+      const ctx = createContext();
+      expect(interpolateString(`Bearer {env.${ENV_KEY}}`, ctx)).toBe('Bearer secret-value');
+    });
+
+    it('throws "Variable not found" when env var is unset', () => {
+      delete process.env[ENV_KEY];
+      const ctx = createContext();
+      expect(() => interpolateString(`{env.${ENV_KEY}}`, ctx))
+        .toThrow(`Variable not found: env.${ENV_KEY}`);
+    });
+
+    it('throws when env var is an empty string (matches prereq env detector)', () => {
+      process.env[ENV_KEY] = '';
+      const ctx = createContext();
+      expect(() => interpolateString(`{env.${ENV_KEY}}`, ctx))
+        .toThrow(`Variable not found: env.${ENV_KEY}`);
+    });
+
+    it('does not collide with a step output also named "env"', () => {
+      // If a spell had a step with id "env" producing a field "KEY", that
+      // {env.KEY} would now hit the env-prefix branch first. Document the
+      // expected behaviour: env-prefix wins; when the env var is unset,
+      // interpolation falls through to the variables walk.
+      process.env[ENV_KEY] = 'from-env';
+      const ctx = createContext({ variables: { env: { [ENV_KEY]: 'from-step-output' } } });
+      expect(interpolateString(`{env.${ENV_KEY}}`, ctx)).toBe('from-env');
+
+      delete process.env[ENV_KEY];
+      expect(interpolateString(`{env.${ENV_KEY}}`, ctx)).toBe('from-step-output');
+    });
   });
 });
 

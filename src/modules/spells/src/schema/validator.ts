@@ -434,6 +434,12 @@ function checkStringReferences(
       continue;
     }
 
+    // {env.KEY} — resolved at runtime from process.env, typically populated
+    // by a spell-level `prerequisites:` entry with promptOnMissing: true.
+    if (segments[0] === 'env' && segments.length === 2) {
+      continue;
+    }
+
     // {loop.varName} — resolved at runtime by the loop executor
     if (segments[0] === 'loop') {
       continue;
@@ -484,7 +490,12 @@ function validateParallelCrossReferences(
       while ((match = VAR_REF_PATTERN.exec(value)) !== null) {
         const ref = match[1];
         const segments = ref.split('.');
-        if (segments.length >= 2 && segments[0] !== 'args' && segments[0] !== 'credentials') {
+        if (
+          segments.length >= 2
+          && segments[0] !== 'args'
+          && segments[0] !== 'credentials'
+          && segments[0] !== 'env'
+        ) {
           if (siblingIds.has(segments[0]) && segments[0] !== step.id) {
             errors.push({
               path: `${path}.config.${key}`,
