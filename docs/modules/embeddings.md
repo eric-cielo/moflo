@@ -6,18 +6,18 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![Performance](https://img.shields.io/badge/Performance-<5ms-brightgreen.svg)](https://github.com/eric-cielo/moflo)
 
-> High-performance embedding generation module for Claude Flow V3 - multi-provider support with persistent caching, document chunking, normalization, hyperbolic embeddings, and neural substrate integration.
+> **⚠️ Document partially superseded by epic #527 (2026-04-22).** The current production backing is **`fastembed`** with `all-MiniLM-L6-v2` (384-dim). The `agentic-flow`, hash-fallback, `@xenova/transformers`, and `'auto'` provider-ranking descriptions below are historical — see [ADR-EMB-001](../../src/modules/embeddings/docs/adrs/ADR-EMB-001-neural-embeddings-mandatory.md) for the current decision record. Neural embeddings are now mandatory: there is no hash fallback, and the only supported providers are `fastembed` (default) and `openai` (opt-in).
+
+> High-performance embedding generation module — `fastembed`-backed neural embeddings with persistent caching, document chunking, normalization, and hyperbolic embeddings.
 
 ## Features
 
 ### Core Embedding
-- **Multiple Providers** - Agentic-Flow (ONNX), OpenAI, Transformers.js, and Mock
-- **Auto-Install** - Automatically installs agentic-flow when using `provider: 'auto'`
-- **Smart Fallback** - Graceful fallback chain: agentic-flow → transformers → mock
-- **LRU + Disk Caching** - In-memory LRU + SQLite persistent cache with TTL
-- **Batch Processing** - Efficient batch embedding with partial cache hits
-- **Similarity Functions** - Cosine, Euclidean, and dot product metrics
-- **75x Faster** - Agentic-flow ONNX is 75x faster than Transformers.js
+- **`fastembed` default** — ONNX-based neural embeddings via Qdrant's `fastembed` (native Rust tokenizer, 384-dim `all-MiniLM-L6-v2`). Neural-only — no hash fallback, no auto-install recovery path.
+- **OpenAI opt-in** — `provider: 'openai'` for cloud embeddings when configured.
+- **LRU + Disk Caching** — In-memory LRU + SQLite persistent cache with TTL
+- **Batch Processing** — Efficient batch embedding with partial cache hits
+- **Similarity Functions** — Cosine, Euclidean, and dot product metrics
 
 ### Advanced Features (New in v3.0.0-alpha.11)
 - **Document Chunking** - Character, sentence, paragraph, and token-based chunking with overlap
