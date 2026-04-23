@@ -940,7 +940,8 @@ INSERT OR REPLACE INTO metadata (key, value) VALUES
   ('vector_embeddings', 'enabled'),
   ('pattern_learning', 'enabled'),
   ('temporal_decay', 'enabled'),
-  ('hnsw_indexing', 'enabled');
+  ('hnsw_indexing', 'enabled'),
+  ('embeddings_version', '2');
 
 -- Create default vector index configuration
 INSERT OR IGNORE INTO vector_indexes (id, name, dimensions) VALUES

@@ -90,7 +90,8 @@ export class PersistentEmbeddingCache {
       }
 
       // Load existing database or create new
-      if (existsSync(this.dbPath)) {
+      const dbExisted = existsSync(this.dbPath);
+      if (dbExisted) {
         const fileBuffer = readFileSync(this.dbPath);
         this.db = new this.SQL.Database(fileBuffer);
       } else {
@@ -110,6 +111,24 @@ export class PersistentEmbeddingCache {
       `);
       this.db.run('CREATE INDEX IF NOT EXISTS idx_accessed_at ON embeddings(accessed_at)');
       this.db.run('CREATE INDEX IF NOT EXISTS idx_created_at ON embeddings(created_at)');
+
+      // `embeddings_version` marker for the migration driver (epic #527).
+      // Only seed the marker when the DB file is brand new. Pre-existing
+      // caches deliberately lack the marker so story 3's open-time check can
+      // treat them as pre-v2 (hash-backed) and invalidate them on upgrade.
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS metadata (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
+        )
+      `);
+      if (!dbExisted) {
+        this.db.run(
+          `INSERT OR IGNORE INTO metadata (key, value, updated_at)
+           VALUES ('embeddings_version', '2', strftime('%s', 'now') * 1000)`,
+        );
+      }
 
       // Clean expired entries on startup
       this.cleanExpired();

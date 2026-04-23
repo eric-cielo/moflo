@@ -246,6 +246,12 @@ describe('Memory Initializer', () => {
       expect(sql).toContain("'3.0.0'");
       expect(sql).toContain("'sql.js'");
     });
+
+    it('should seed embeddings_version=2 for fresh databases (epic #527)', async () => {
+      const { getInitialMetadata } = await import('../src/memory/memory-initializer.js');
+      const sql = getInitialMetadata('sql.js');
+      expect(sql).toContain("('embeddings_version', '2')");
+    });
   });
 
   describe('HNSW status', () => {
