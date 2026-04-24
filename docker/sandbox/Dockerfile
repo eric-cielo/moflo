@@ -9,8 +9,13 @@
 # Published to: ghcr.io/eric-cielo/moflo-sandbox
 #
 # Rebuild:
-#   docker build -t ghcr.io/eric-cielo/moflo-sandbox:latest docker/sandbox/
-#   docker push ghcr.io/eric-cielo/moflo-sandbox:latest
+#   Automated — pushes to `main` that touch `docker/sandbox/**` rebuild and
+#   publish `:latest` + `:sha-<short>` via `.github/workflows/sandbox-image.yml`.
+#   Manual `workflow_dispatch` can publish preview tags from any branch.
+#
+#   Local testing only:
+#     docker build -t ghcr.io/eric-cielo/moflo-sandbox:latest docker/sandbox/
+#     docker push ghcr.io/eric-cielo/moflo-sandbox:latest
 
 FROM node:20-bookworm
 
