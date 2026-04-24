@@ -63,14 +63,36 @@ Same model architecture → same vector space → vectors from both runtimes are
 
 ### 5. Permanent regression guard
 
-Two layers prevent hash-fallback code from re-entering the tree:
+Five layers prevent hash-fallback code from re-entering the tree. Layers 1 and 2 shipped with this ADR; layers 3–5 were added as **behaviour-based** augmentation after anonymous inline hash producers were discovered slipping past the identifier-only guard (see the **Post-decision correction** section below for the full history):
 
-- **ESLint rule** (`.eslintrc.cjs`) — flags any occurrence of the banned identifiers above in `src/` and `bin/`.
-- **Consumer-smoke harness** (`harness/consumer-smoke/`) — a fresh `npm install moflo` in a scratch consumer project asserts `fastembed` is present and no banned identifiers leak into the published `dist/` tree.
+1. **ESLint identifier rule** (`.eslintrc.cjs`) — flags any occurrence of the banned identifiers above (`HashEmbeddingProvider`, `createHashEmbedding`, `generateHashEmbedding`, `RvfEmbedding*`, `domain-aware-hash-*`) in `src/` and `bin/`.
+2. **Consumer-smoke banned-identifier check** (`harness/consumer-smoke/`) — a fresh `npm install moflo` in a scratch consumer project asserts `fastembed` is present and no banned identifiers leak into the published `dist/` tree.
+3. **ESLint structural rule** (`.eslintrc.cjs`, added in PR #543, unscoped across `src/**/*.ts` in #545) — `no-restricted-syntax` with `:has()` selectors flags any function that both constructs a `Float32Array` and calls `charCodeAt(...)`. Catches the anti-pattern regardless of method name.
+4. **Consumer-smoke dist-walker** (`harness/consumer-smoke/lib/checks.mjs::verifyNoInlineHashEmbeddingsInSwarm`, added in PR #543) — walks the published `dist/` tree and rejects any file containing both `new Float32Array(` and `charCodeAt(`; defends against source-tree lint bypasses.
+5. **DI-compliance test** (`src/modules/embeddings/__tests__/provider-di-compliance.test.ts`, added in #546) — pins the positive contract: every known semantic-embedding entry point (`ShardRetriever`, hierarchical-memory controller, attention/queen coordinators, hooks ReasoningBank) must reject a missing `IEmbeddingProvider` at construction or first `embed()` call. Catches the anti-pattern when someone reintroduces an ambient / default-constructed provider.
 
 ### 6. CI model cache
 
 `actions/cache@v4` caches `~/.cache/fastembed` across CI runs (this ADR, epic #527, story #534). First CI run warms the cache; subsequent runs on the same lockfile skip the ~90 MB model download.
+
+## Post-decision correction
+
+The regression guard shipped with the original decision (section 5 above) was **identifier-based** — ESLint flagged occurrences of `HashEmbeddingProvider`, `createHashEmbedding`, `generateHashEmbedding`, `RvfEmbedding*`, and `domain-aware-hash-*`. It could not see anonymous inline hash producers — methods that constructed a `Float32Array` and populated it from `charCodeAt()` under innocuous names like `getOrCreateEmbedding` or `createSimpleEmbedding`. Several live paths slipped through:
+
+- **2026-04-23 — #542 / PR #543.** Two inline hash embedders discovered in `src/modules/swarm/attention-coordinator.ts` (`getOrCreateEmbedding`, 64-dim) and `src/modules/swarm/queen-coordinator.ts` (`createSimpleEmbedding`, 768-dim). Both were removed; both coordinators now take an injected `IEmbeddingProvider`. PR #543 also shipped the **first behaviour-based guard** — an ESLint `no-restricted-syntax` rule that flags any function combining `new Float32Array(...)` with `charCodeAt(...)`, initially scoped to `src/modules/swarm/**`, plus a smoke dist-walker (`harness/consumer-smoke/lib/checks.mjs::verifyNoInlineHashEmbeddingsInSwarm`) that rejects the same pattern in compiled output.
+- **2026-04-23 — #545.** Architect review unscoped the `Float32Array + charCodeAt` structural rule across the entire `src/` tree (not just swarm) and added the newly found method names to the banned-identifier list. This surfaced additional live paths in `src/modules/cli/src/mcp-tools/hooks-tools.ts` (`generateSimpleEmbedding` + inline MoE / Flash-Attention demo branches) and `src/modules/embeddings/src/embedding-service.ts` (`MockEmbeddingService.deterministicEmbedding` reachable via factory `case 'mock'`).
+- **2026-04-23 — #546.** Full audit of every `Float32Array` producer under `src/` at [`docs/audits/2026-04-23-float32array-producers.md`](../audits/2026-04-23-float32array-producers.md). Classifies every producer as **PROVIDER** (flows through `IEmbeddingProvider`), **NON-SEMANTIC** (RL state, SONA LoRA, MoE weights, HNSW index), or **NEEDS-FIX**. Adds `src/modules/embeddings/__tests__/provider-di-compliance.test.ts` — a DI-compliance test that pins the contract: every known semantic-embedding entry point must reject a missing provider at construction or first `embed()` call.
+- **2026-04-24 — #558 / #560.** Purge of the remaining NEEDS-FIX sites surfaced by the strengthened guard. #558 covered the known `hooks-tools.ts` + migration fixture sites; #560 tracks the newly discovered `src/modules/cli/src/benchmarks/pretrain/index.ts` benchmark that reported hash-based "embeddings" as real `ops/sec` in a user-visible CLI metric.
+
+**Root cause.** Name-based guards enforce a vocabulary, not a behaviour. An engineer writing a new anonymous hash producer under a generic name passes the guard by construction. Every site listed above compiled, tested, and lint-cleaned under the original epic #527 guard.
+
+**Remediation.** Three behaviour-based layers that are blind to identifier choice:
+
+1. **Structural AST rule** — ESLint `no-restricted-syntax` with `:has()` selectors for the `Float32Array` + `charCodeAt` co-occurrence, unscoped across `src/**/*.ts`.
+2. **Compiled-dist smoke walker** — consumer-smoke harness walks the published `dist/` tree and rejects any file containing both patterns; catches the anti-pattern even when source-tree lint is skipped.
+3. **DI-compliance test** — `provider-di-compliance.test.ts` asserts every known semantic-embedding entry point requires an `IEmbeddingProvider` via constructor or factory and throws when the caller omits it. Catches the anti-pattern when someone reintroduces an ambient / default-constructed provider.
+
+**Lesson.** Atomic-removal ADRs must ship **behaviour-based** guards in the same PR as the removal, not name-based guards. Name-based guards are cheap and look thorough, but they enforce the spelling of the old mistake, not the shape of it. The four-day tail of #542 → #558 → #560 is the cost of having only identifier coverage on the day the epic closed; the final guard stack above is what the epic should have shipped on day one.
 
 ## Consequences
 
@@ -80,7 +102,7 @@ Two layers prevent hash-fallback code from re-entering the tree:
 - **Smaller JS footprint.** `@xenova/transformers` (45 MB) → `fastembed` (109 KB). Net JS payload drops dramatically.
 - **Maintained upstream.** `fastembed` is actively developed; `@xenova/transformers` is archived.
 - **Hard-fail guarantees.** Missing model, broken network on first run, or a misconfigured provider produces a user-visible error instead of silent quality degradation.
-- **Regression-proof.** ESLint + smoke harness together block any future PR that re-adds the banned identifiers.
+- **Regression-proof.** Five guard layers (identifier-based ESLint + smoke check, plus behaviour-based structural ESLint rule, dist-walker, and DI-compliance test) together block any future PR that reintroduces hash-embedding code — whether under the original banned names, an anonymous inline producer matching the `Float32Array + charCodeAt` shape, or an ambient-provider entry point that bypasses dependency injection. See **Post-decision correction** for why all five are load-bearing.
 - **Interchangeable vectors.** Same `all-MiniLM-L6-v2` architecture → existing DBs only need re-embedding when the model itself changes, not when swapping runtime libraries.
 
 ### Negative
@@ -131,5 +153,16 @@ Rejected. Correctness beats latency for a one-shot DB re-embed. Blocking migrati
 - ADR-G002 — Constitution / shard split (updated to reference fastembed + epic #527)
 - ADR-G026 — Review remediation (section 7 marked resolved)
 - `src/modules/embeddings/src/fastembed-embedding-service.ts` — production service
-- `harness/consumer-smoke/lib/checks.mjs` — banned-identifier + required-dep guard
+- `harness/consumer-smoke/lib/checks.mjs` — banned-identifier + required-dep guard + `verifyNoInlineHashEmbeddingsInSwarm` dist-walker
 - `scripts/prune-native-binaries.mjs` — platform-specific ONNX prune
+
+### Post-decision follow-ups (see **Post-decision correction** above)
+
+- #542 / PR #543 — Remove inline hash embeddings in swarm coordinators; ship first structural `Float32Array + charCodeAt` ESLint rule + smoke dist-walker
+- #545 — Strengthen regression guard (unscope structural rule across `src/`, extend banned-identifier list)
+- #546 — Full `Float32Array` producer audit + DI-compliance test
+- #555 — This amendment
+- #558 — Purge remaining inline hash embeddings caught by the unscoped guard (hooks-tools, migration fixtures, mock service)
+- #560 — Pretrain benchmark `ops/sec` reported on hash embeddings (discovered by the audit)
+- `src/modules/embeddings/docs/audits/2026-04-23-float32array-producers.md` — full classification of every `Float32Array` producer under `src/`
+- `src/modules/embeddings/__tests__/provider-di-compliance.test.ts` — DI-compliance test pinning the provider-required contract
