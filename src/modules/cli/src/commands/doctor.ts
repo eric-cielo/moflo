@@ -26,6 +26,7 @@ import {
   getMofloRoot,
 } from './doctor-checks-deep.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
+import { locateMofloModuleDist } from '../services/moflo-require.js';
 
 // Promisified exec with proper shell and env inheritance for cross-platform support
 const execAsync = promisify(exec);
@@ -868,9 +869,19 @@ async function checkMemoryPatterns(_namespace: string): Promise<number> {
 // Exercises each component with a lightweight functional test rather than just checking "loaded".
 async function checkIntelligence(): Promise<HealthCheck> {
   try {
+    // Walk-up resolve avoids fixed-depth `../` strings that break under dev
+    // (.ts via tsx) where depth differs from compiled output — issue #575.
+    const neuralUrl = locateMofloModuleDist('neural', 'index.js');
+    if (!neuralUrl) {
+      return {
+        name: 'Intelligence',
+        status: 'warn',
+        message: 'Neural module not built — run `npm run build` to enable intelligence checks',
+        fix: 'npm run build',
+      };
+    }
     // @ts-ignore — neural is not in tsconfig project references but is available at runtime
-    // Import neural module — path is relative to compiled output at dist/src/commands/
-    const neural = await import('../../../../neural/dist/index.js');
+    const neural = await import(neuralUrl);
     const results: string[] = [];
     const failures: string[] = [];
 

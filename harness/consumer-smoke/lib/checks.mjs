@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync, statSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-import { run, runNode, flo, NPM_CMD } from './proc.mjs';
+import { run, runNode, flo, NPM_CMD, getStderrSamples } from './proc.mjs';
 import { section, record, recordExit, log } from './report.mjs';
 import { findOrphans } from '../../../scripts/clean-dist.mjs';
 import { findOrtPackages } from '../../../scripts/prune-native-binaries.mjs';
@@ -742,6 +742,50 @@ function folderSize(dir) {
     else total += s.size;
   }
   return total;
+}
+
+/**
+ * Issue #575: scan captured stderr from every subprocess for `Cannot find
+ * module` / `ENOENT` lines — exit-zero commands can still emit those from
+ * optional dynamic imports, hiding the path regressions this audit guards.
+ */
+export function verifyNoPathResolutionErrors() {
+  section('Path resolution stderr scan (issue #575)');
+  const samples = getStderrSamples();
+  const offenders = [];
+
+  const CANNOT_FIND_RE = /Cannot find module ['"]([^'"]+)['"]/g;
+  const ENOENT_RE = /ENOENT[^\n]*['"]([^'"]+\.(?:js|mjs|cjs|ts|json))['"]/g;
+
+  for (const { label, stderr } of samples) {
+    let m;
+    CANNOT_FIND_RE.lastIndex = 0;
+    while ((m = CANNOT_FIND_RE.exec(stderr)) !== null) {
+      offenders.push({ label, kind: 'cannot-find-module', target: m[1] });
+    }
+    ENOENT_RE.lastIndex = 0;
+    while ((m = ENOENT_RE.exec(stderr)) !== null) {
+      offenders.push({ label, kind: 'enoent', target: m[1] });
+    }
+  }
+
+  if (offenders.length === 0) {
+    record('path-resolution-stderr', 'pass', `${samples.length} subprocess(es) clean`);
+    return;
+  }
+
+  const byTarget = new Map();
+  for (const o of offenders) {
+    if (!byTarget.has(o.target)) byTarget.set(o.target, []);
+    byTarget.get(o.target).push(`${o.label}(${o.kind})`);
+  }
+  for (const [target, sites] of byTarget) {
+    record(
+      `path-resolution:${target.slice(0, 80)}`,
+      'fail',
+      `seen in: ${[...new Set(sites)].slice(0, 4).join(', ')}`,
+    );
+  }
 }
 
 export function stopConsumerDaemon(consumerDir) {

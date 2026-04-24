@@ -9,11 +9,13 @@ import {
   createHash, scryptSync, randomBytes, createCipheriv, createDecipheriv,
 } from 'node:crypto';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import {
   RvfaWriter, type RvfaHeader, type RvfaBootConfig, type RvfaModelConfig,
 } from './rvfa-format.js';
+import { locateMofloRootPath } from '../services/moflo-require.js';
+import { VERSION } from '../version.js';
 
 // ── Public Interfaces ────────────────────────────────────────
 
@@ -109,7 +111,7 @@ export class RvfaBuilder {
       arch: options.arch || 'x86_64',
       profile: options.profile,
       output: resolve(options.output),
-      rufloVersion: options.rufloVersion || detectRufloVersion(),
+      rufloVersion: options.rufloVersion || VERSION,
       models: options.models ?? defaultModelsForProfile(options.profile),
       apiKeys: options.apiKeys ?? '',
       verbose: options.verbose ?? false,
@@ -282,10 +284,12 @@ export class RvfaBuilder {
   }
 
   private buildVerifySection(): Buffer {
-    const scriptPath = resolve(dirname(new URL(import.meta.url).pathname), '../../../../scripts/verify-appliance.sh');
+    // Walk up to moflo root for the bundled verify script — see issue #575
+    // (prior `new URL().pathname` was Windows-broken and the depth was wrong).
+    const scriptPath = locateMofloRootPath(join('scripts', 'verify-appliance.sh'));
     let script: Buffer;
 
-    if (existsSync(scriptPath)) {
+    if (scriptPath && existsSync(scriptPath)) {
       script = readFileSync(scriptPath);
       this.log(`    Bundled verify-appliance.sh (${fmtBytes(script.length)})`);
     } else {
@@ -362,14 +366,6 @@ function parseEnvFile(content: string): Record<string, string> {
     if (k) result[k] = v;
   }
   return result;
-}
-
-function detectRufloVersion(): string {
-  try {
-    const p = resolve(dirname(new URL(import.meta.url).pathname), '../../package.json');
-    if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf-8')).version ?? '3.5.0';
-  } catch { /* ignore */ }
-  return '3.5.0';
 }
 
 function defaultModelsForProfile(profile: string): string[] {

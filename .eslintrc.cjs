@@ -1,10 +1,15 @@
 /**
- * Hash-embedding regression guard (epic #527, story #532).
+ * Cross-cutting source guards.
  *
- * Story 4 (#531) deleted every hash-embedding code path from moflo. This
- * config installs a standing guard so no future PR can silently reintroduce
- * one. The one rule below is the entire point of this file — do not add
- * unrelated lint rules here without a separate discussion.
+ * Originated as the hash-embedding regression guard (epic #527, story #532)
+ * and now hosts the small set of structural rules that protect consumer
+ * installs from silent regressions:
+ *   - Hash-embedding identifiers + inline patterns (epic #527 / #545)
+ *   - Raw `writeFileSync(path, db.export())` non-atomic DB writes (#564)
+ *   - Fixed-depth `../../../../modules/<pkg>/...` runtime/type paths (#575)
+ *
+ * Each rule cluster has its own selectors block — keep new clusters
+ * similarly delineated so the file stays scannable.
  */
 
 const BANNED_EMBEDDING_MESSAGE =
@@ -56,6 +61,30 @@ const RAW_DB_WRITE_SELECTORS = [
   },
 ];
 
+// Issue #575 / feedback_no_fixed_depth_paths: ban 4+ deep `../` chains that
+// cross a moflo package boundary. Source vs dist depths differ — these
+// strings silently resolve to the wrong dir under installed and dev layouts.
+const FIXED_DEPTH_MODULES_MESSAGE =
+  'Fixed-depth `../../../../modules/<pkg>/...` paths break under installed ' +
+  'and dev layouts because source/dist depths differ. Use ' +
+  '`locateMofloModuleDist`/`locateMofloModulePath` from ' +
+  '`services/moflo-require.js` (or the in-package equivalent) instead.';
+
+// Slashes wrapped in character classes so the trailing `/` doesn't terminate
+// the outer regex literal in the esquery selector.
+const FIXED_DEPTH_MODULES_PATTERN = '(\\.\\.[/\\\\]){4,}modules[/\\\\]';
+
+const FIXED_DEPTH_MODULES_SELECTORS = [
+  {
+    selector: `Literal[value=/${FIXED_DEPTH_MODULES_PATTERN}/]`,
+    message: FIXED_DEPTH_MODULES_MESSAGE,
+  },
+  {
+    selector: `TemplateElement[value.raw=/${FIXED_DEPTH_MODULES_PATTERN}/]`,
+    message: FIXED_DEPTH_MODULES_MESSAGE,
+  },
+];
+
 // Structural guard: any function that both constructs a Float32Array AND
 // calls charCodeAt is a hash embedding regardless of method name. The
 // identifier ban above missed the inline implementations removed in #542
@@ -96,6 +125,7 @@ const bannedEmbeddingRules = {
     },
     ...INLINE_HASH_EMBEDDING_SELECTORS,
     ...RAW_DB_WRITE_SELECTORS,
+    ...FIXED_DEPTH_MODULES_SELECTORS,
   ],
   'no-restricted-imports': [
     'error',
