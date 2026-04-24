@@ -16,6 +16,15 @@ export const NPM_CMD = IS_WIN ? 'npm.cmd' : 'npm';
 let verbose = false;
 export function configure({ verbose: v }) { verbose = !!v; }
 
+// Issue #575: stderr from every subprocess is sampled so a final pass can
+// detect `Cannot find module ...` leaks that exit-zero commands hide.
+const stderrSamples = [];
+export function recordSample(label, stderr) {
+  if (stderr && stderr.length > 0) stderrSamples.push({ label, stderr });
+}
+export function getStderrSamples() { return stderrSamples; }
+export function clearStderrSamples() { stderrSamples.length = 0; }
+
 function quoteWin(arg) {
   const s = String(arg);
   return /[\s"&|<>^%]/.test(s) ? `"${s.replace(/"/g, '\\"')}"` : s;
@@ -35,10 +44,13 @@ export function run(cmd, args, runOpts = {}) {
   const result = needsShell
     ? spawnSync([cmd, ...args.map(quoteWin)].join(' '), { ...spawnOpts, shell: true })
     : spawnSync(cmd, args, { ...spawnOpts, shell: false });
+  const stderr = result.stderr || '';
+  const label = `${cmd.split(/[\\/]/).pop()}${args[0] ? ` ${args[0]}` : ''}`.slice(0, 60);
+  recordSample(label, stderr);
   return {
     code: result.status,
     stdout: result.stdout || '',
-    stderr: result.stderr || '',
+    stderr,
     error: result.error,
   };
 }

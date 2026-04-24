@@ -20,7 +20,7 @@ import type {
   Message,
   MessageType,
   MessageFilter,
-} from '../../../../modules/swarm/src/types.js';
+} from '../../../swarm/src/types.js';
 
 /**
  * Walk up from this file to find `src/modules/swarm/dist/<rel>`. Layout- and

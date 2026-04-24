@@ -87,6 +87,8 @@ function main() {
       () => check.installSurface(consumerDir),
       () => check.verifyPrunedBinaries(consumerDir),
       () => check.verifyTokenizerSubpackage(consumerDir),
+      // Issue #575: must run LAST so it sees stderr from every preceding check.
+      () => check.verifyNoPathResolutionErrors(),
     ];
     for (const fn of checks) {
       try { fn(); } catch (err) {

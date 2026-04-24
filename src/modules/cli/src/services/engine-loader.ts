@@ -17,21 +17,21 @@ import type {
   PreflightWarning,
   PreflightWarningDecision,
   PreflightWarningHandler,
-} from '../../../../modules/spells/src/types/runner.types.js';
+} from '../../../spells/src/types/runner.types.js';
 import type {
   SpellDefinition,
-} from '../../../../modules/spells/src/types/spell-definition.types.js';
+} from '../../../spells/src/types/spell-definition.types.js';
 import type {
   Grimoire,
   RegistryOptions,
-} from '../../../../modules/spells/src/registry/spell-registry.js';
-import type { SandboxConfig } from '../../../../modules/spells/src/core/platform-sandbox.js';
+} from '../../../spells/src/registry/spell-registry.js';
+import type { SandboxConfig } from '../../../spells/src/core/platform-sandbox.js';
 import type {
   SpellScheduler,
   SpellExecutor,
-} from '../../../../modules/spells/src/scheduler/scheduler.js';
-import type { SchedulerOptions } from '../../../../modules/spells/src/scheduler/schedule.types.js';
-import type { MemoryAccessor } from '../../../../modules/spells/src/types/step-command.types.js';
+} from '../../../spells/src/scheduler/scheduler.js';
+import type { SchedulerOptions } from '../../../spells/src/scheduler/schedule.types.js';
+import type { MemoryAccessor } from '../../../spells/src/types/step-command.types.js';
 
 // Re-export spell types so consumers import from engine-loader (single boundary).
 export type { SpellResult };

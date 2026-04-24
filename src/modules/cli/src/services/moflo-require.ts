@@ -107,7 +107,8 @@ export type MofloInternalPackage =
   | 'security'
   | 'shared'
   | 'spells'
-  | 'plugins';
+  | 'plugins'
+  | 'cli';
 
 /**
  * Locate a built artifact inside `src/modules/<pkg>/dist/<relFromDist>` by
@@ -126,36 +127,41 @@ export type MofloInternalPackage =
  * Returns a `file://` URL suitable for ESM `import()`, or `null` if the
  * artifact isn't on disk (package not built / missing from install).
  */
-const moduleDistUrlCache = new Map<string, string | null>();
-
-// Walk cap: the deepest real install is roughly
-// `<consumer>/node_modules/moflo/src/modules/<pkg>/dist/src/<...>` ≈ 8 hops up
-// to the moflo root. 12 gives comfortable headroom for worktree and monorepo
-// layouts without risking an unbounded loop at filesystem root.
+// Walk cap: deepest real install is `<consumer>/node_modules/moflo/src/modules/<pkg>/dist/src/<...>`
+// ≈ 8 hops to the moflo root. 12 gives headroom for worktree/monorepo layouts.
 const MAX_WALK_DEPTH = 12;
 
-export function locateMofloModuleDist(pkg: MofloInternalPackage, relFromDist: string): string | null {
-  const cacheKey = `${pkg}::${relFromDist}`;
-  const cached = moduleDistUrlCache.get(cacheKey);
-  if (cached !== undefined) return cached;
-
+// Walk up from this file's dir, returning the first non-null `test(dir)` result.
+function walkUpFromSelf<T>(test: (dir: string) => T | null): T | null {
   let dir = dirname(fileURLToPath(import.meta.url));
-  const rel = join('src', 'modules', pkg, 'dist', relFromDist);
-
   for (let i = 0; i < MAX_WALK_DEPTH; i++) {
-    const candidate = join(dir, rel);
-    if (existsSync(candidate)) {
-      const url = pathToFileURL(candidate).href;
-      moduleDistUrlCache.set(cacheKey, url);
-      return url;
-    }
+    const hit = test(dir);
+    if (hit !== null) return hit;
     const parent = dirname(dir);
-    if (parent === dir) break; // filesystem root
+    if (parent === dir) return null;
     dir = parent;
   }
-
-  moduleDistUrlCache.set(cacheKey, null);
   return null;
+}
+
+function memoize<T>(cache: Map<string, T | null>, key: string, compute: () => T | null): T | null {
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached;
+  const result = compute();
+  cache.set(key, result);
+  return result;
+}
+
+const moduleDistUrlCache = new Map<string, string | null>();
+
+export function locateMofloModuleDist(pkg: MofloInternalPackage, relFromDist: string): string | null {
+  return memoize(moduleDistUrlCache, `${pkg}::${relFromDist}`, () => {
+    const rel = join('src', 'modules', pkg, 'dist', relFromDist);
+    return walkUpFromSelf(dir => {
+      const candidate = join(dir, rel);
+      return existsSync(candidate) ? pathToFileURL(candidate).href : null;
+    });
+  });
 }
 
 function locateMofloMemoryDist(): string | null {
@@ -164,40 +170,19 @@ function locateMofloMemoryDist(): string | null {
 
 /**
  * Locate a filesystem path inside `src/modules/<pkg>/<rel>` (not limited to
- * `dist/`) by the same walk-up strategy as locateMofloModuleDist. Useful for
- * non-built data folders shipped alongside the module — e.g. spell YAML
- * definitions, template assets, etc.
- *
- * Cross-platform: `path.join` handles separators on POSIX and Windows;
- * `existsSync` returns the same answer in all environments. Works whether
- * moflo is running from dev source, its own dist, or installed under a
- * consumer's `node_modules/moflo/`.
- *
- * Returns the absolute filesystem path, or null if not found.
+ * `dist/`). Useful for non-built data folders shipped alongside the module
+ * — e.g. spell YAML definitions, template assets.
  */
 const moduleSubpathCache = new Map<string, string | null>();
 
 export function locateMofloModulePath(pkg: MofloInternalPackage, rel: string): string | null {
-  const cacheKey = `${pkg}::${rel}`;
-  const cached = moduleSubpathCache.get(cacheKey);
-  if (cached !== undefined) return cached;
-
-  let dir = dirname(fileURLToPath(import.meta.url));
-  const relPath = join('src', 'modules', pkg, rel);
-
-  for (let i = 0; i < MAX_WALK_DEPTH; i++) {
-    const candidate = join(dir, relPath);
-    if (existsSync(candidate)) {
-      moduleSubpathCache.set(cacheKey, candidate);
-      return candidate;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  moduleSubpathCache.set(cacheKey, null);
-  return null;
+  return memoize(moduleSubpathCache, `${pkg}::${rel}`, () => {
+    const relPath = join('src', 'modules', pkg, rel);
+    return walkUpFromSelf(dir => {
+      const candidate = join(dir, relPath);
+      return existsSync(candidate) ? candidate : null;
+    });
+  });
 }
 
 /**
@@ -223,8 +208,29 @@ export async function importMofloMemory(): Promise<any | null> {
   }
 }
 
+/**
+ * Walk up to the moflo monorepo / installed-package root and join `rel`.
+ *
+ * "Moflo root" is the first ancestor directory that contains a `src/modules/`
+ * subtree — true for both the dev source tree (repo root) and an installed
+ * tree (`node_modules/moflo/`). Use for files shipped at the root of moflo
+ * (e.g. `scripts/*.sh`); the package walk-ups only see `src/modules/<pkg>/`.
+ */
+const rootPathCache = new Map<string, string | null>();
+
+export function locateMofloRootPath(rel: string): string | null {
+  return memoize(rootPathCache, rel, () =>
+    walkUpFromSelf(dir => {
+      if (!existsSync(join(dir, 'src', 'modules'))) return null;
+      const candidate = join(dir, rel);
+      return existsSync(candidate) ? candidate : null;
+    }),
+  );
+}
+
 // Test-only: reset the caches between unit tests that mutate the filesystem.
 export function _resetMofloMemoryCacheForTest(): void {
   moduleDistUrlCache.clear();
   moduleSubpathCache.clear();
+  rootPathCache.clear();
 }

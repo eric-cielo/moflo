@@ -8,6 +8,7 @@ import {
   importMofloMemory,
   locateMofloModuleDist,
   locateMofloModulePath,
+  locateMofloRootPath,
   _resetMofloMemoryCacheForTest,
 } from '../../src/services/moflo-require.js';
 
@@ -165,6 +166,37 @@ describe('locateMofloModulePath (non-dist subpaths)', () => {
   it('is cached per (pkg, rel) key', () => {
     const a = locateMofloModulePath('spells', 'package.json');
     const b = locateMofloModulePath('spells', 'package.json');
+    expect(a).toBe(b);
+  });
+});
+
+describe('locateMofloRootPath (root-level shipped files — issue #575)', () => {
+  beforeEach(() => {
+    _resetMofloMemoryCacheForTest();
+  });
+
+  it('resolves the moflo root README.md (a stable root-level file)', () => {
+    const result = locateMofloRootPath('README.md');
+    expect(result).not.toBeNull();
+    expect(existsSync(result!)).toBe(true);
+    // Must end at the actual file, not a `src/modules/<pkg>/README.md` sibling.
+    expect(result!).not.toMatch(/[\\/]src[\\/]modules[\\/]/);
+  });
+
+  it('returns null for a non-existent root file (no silent success)', () => {
+    const result = locateMofloRootPath('definitely-not-a-real-file.txt');
+    expect(result).toBeNull();
+  });
+
+  it('resolves nested root subpaths (e.g. scripts/clean-dist.mjs)', () => {
+    const result = locateMofloRootPath(join('scripts', 'clean-dist.mjs'));
+    expect(result).not.toBeNull();
+    expect(existsSync(result!)).toBe(true);
+  });
+
+  it('is cached per `rel` key', () => {
+    const a = locateMofloRootPath('README.md');
+    const b = locateMofloRootPath('README.md');
     expect(a).toBe(b);
   });
 });
