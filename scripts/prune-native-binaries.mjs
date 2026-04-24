@@ -21,12 +21,14 @@
  */
 
 import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { dirname, join, sep } from 'node:path';
+import { basename, dirname, join, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const BYTES_PER_MB = 1024 * 1024;
 const NODE_MODULES_SEGMENT = `${sep}node_modules${sep}`;
+const FASTEMBED_OWNER = 'fastembed';
+const ORT_DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
 
 function info(msg) { console.log(`moflo:prune ${msg}`); }
 function warn(msg) { console.warn(`moflo:prune warn: ${msg}`); }
@@ -72,19 +74,16 @@ export function findConsumerRoot(scriptPath) {
 }
 
 /**
- * Collect every `onnxruntime-node` directory under `nodeModulesDir`. Checks
- * the two common layouts first (hoisted + nested under fastembed) to avoid
- * walking a large consumer `node_modules/` tree in the common case, and
- * falls back to a bounded recursive walk for non-standard layouts.
+ * Walk `nodeModulesDir` collecting every install whose basename matches one
+ * of `ownerNames`. Bounded recursive walk — descends into each package's
+ * nested `node_modules/` so non-hoisted copies are also found.
+ *
+ * Scoped owner names are not matched (fastembed isn't scoped); the walker
+ * still descends through `@scope/<pkg>/node_modules/` to find nested owners.
  */
-export function findOrtPackages(nodeModulesDir, maxDepth = 10) {
-  const fast = [
-    join(nodeModulesDir, 'fastembed', 'node_modules', 'onnxruntime-node'),
-    join(nodeModulesDir, 'onnxruntime-node'),
-  ].filter(existsSync);
-  if (fast.length > 0) return fast;
-
+function findOwnerInstalls(nodeModulesDir, ownerNames, maxDepth) {
   const hits = [];
+  const owners = new Set(ownerNames);
 
   function scanNodeModules(nmDir, depth) {
     if (depth > maxDepth) return;
@@ -94,7 +93,7 @@ export function findOrtPackages(nodeModulesDir, maxDepth = 10) {
     for (const ent of entries) {
       if (!ent.isDirectory()) continue;
       const pkgDir = join(nmDir, ent.name);
-      if (ent.name === 'onnxruntime-node') { hits.push(pkgDir); continue; }
+      if (owners.has(ent.name)) { hits.push(pkgDir); continue; }
       if (ent.name.startsWith('@')) { scanScope(pkgDir, depth + 1); continue; }
       scanNodeModules(join(pkgDir, 'node_modules'), depth + 1);
     }
@@ -107,14 +106,125 @@ export function findOrtPackages(nodeModulesDir, maxDepth = 10) {
     catch { return; }
     for (const ent of entries) {
       if (!ent.isDirectory()) continue;
-      const pkgDir = join(scopeDir, ent.name);
-      if (ent.name === 'onnxruntime-node') hits.push(pkgDir);
-      scanNodeModules(join(pkgDir, 'node_modules'), depth + 1);
+      scanNodeModules(join(scopeDir, ent.name, 'node_modules'), depth + 1);
     }
   }
 
   scanNodeModules(nodeModulesDir, 0);
   return hits;
+}
+
+/**
+ * Mirror Node's `require.resolve` upward walk: from `startDir`, probe each
+ * `<ancestor>/node_modules/onnxruntime-node` in turn and return the first
+ * that exists. Skips `<dir>` when `dir` is itself a `node_modules` directory
+ * to avoid the pathological `…/node_modules/node_modules/…` probe. Returns
+ * `null` when no ancestor carries ORT.
+ */
+export function resolveOrtForOwner(startDir) {
+  let dir = startDir;
+  while (true) {
+    if (basename(dir) !== 'node_modules') {
+      const candidate = join(dir, 'node_modules', 'onnxruntime-node');
+      if (existsSync(candidate)) return candidate;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/**
+ * Return the set of top-level package names (excluding `fastembed`) that
+ * declare `onnxruntime-node` in any dep field. A non-empty set means the
+ * hoisted ORT is shared — pruning its non-current binaries could strand
+ * another consumer (e.g. an Electron packager cross-compiling). Only scans
+ * direct `<nm>/<pkg>` and `<nm>/@scope/<pkg>` — packages that keep their own
+ * ORT nested under their own `node_modules/` don't share the hoisted copy.
+ */
+export function collectOtherOrtDeclarers(nodeModulesDir) {
+  const declarers = new Set();
+
+  function record(pkgDir, name) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'));
+      for (const kind of ORT_DEP_FIELDS) {
+        if (pkg?.[kind]?.['onnxruntime-node']) { declarers.add(name); return; }
+      }
+    } catch { /* missing or unreadable package.json — ignore */ }
+  }
+
+  let entries;
+  try { entries = readdirSync(nodeModulesDir, { withFileTypes: true }); }
+  catch { return declarers; }
+
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    if (ent.name === 'onnxruntime-node' || ent.name === FASTEMBED_OWNER) continue;
+    const pkgDir = join(nodeModulesDir, ent.name);
+    if (ent.name.startsWith('@')) {
+      let scopeEntries;
+      try { scopeEntries = readdirSync(pkgDir, { withFileTypes: true }); }
+      catch { continue; }
+      for (const s of scopeEntries) {
+        if (!s.isDirectory()) continue;
+        record(join(pkgDir, s.name), `${ent.name}/${s.name}`);
+      }
+      continue;
+    }
+    record(pkgDir, ent.name);
+  }
+  return declarers;
+}
+
+function isNestedUnderFastembed(ortDir) {
+  // Path structurally ends in `<…>/fastembed/node_modules/onnxruntime-node`.
+  return basename(dirname(dirname(ortDir))) === FASTEMBED_OWNER;
+}
+
+/**
+ * Collect every `onnxruntime-node` directory that moflo owns via its
+ * dependency graph. Ownership rules:
+ *   - Find every `fastembed` install; resolve its ORT by the Node algorithm.
+ *   - ORT strictly nested under `fastembed/node_modules/` is always pruned
+ *     (private to fastembed, cannot be shared).
+ *   - A hoisted ORT resolved by fastembed is pruned only when no other
+ *     top-level package declares `onnxruntime-node` — otherwise the copy is
+ *     shared (Electron cross-compile packager, sibling ORT consumer) and we
+ *     leave all of its platform binaries intact.
+ *
+ * Returns deduped absolute paths.
+ */
+export function findOrtPackages(nodeModulesDir, maxDepth = 10) {
+  // Fast path: fastembed is almost always hoisted to `<nm>/fastembed` — skip
+  // the full walk when we can see it there. Falls through to the recursive
+  // walker when fastembed is non-hoisted (version conflict) or absent.
+  const hoisted = join(nodeModulesDir, FASTEMBED_OWNER);
+  const owners = existsSync(hoisted)
+    ? [hoisted]
+    : findOwnerInstalls(nodeModulesDir, [FASTEMBED_OWNER], maxDepth);
+  if (owners.length === 0) return [];
+
+  const ortPaths = new Set();
+  // Lazily computed: we only need the declarer scan if at least one owner
+  // resolves to a hoisted ORT. Skipped entirely when every fastembed carries
+  // its own nested copy.
+  let otherDeclarers = null;
+
+  for (const owner of owners) {
+    const ort = resolveOrtForOwner(owner);
+    if (!ort) continue;
+
+    if (isNestedUnderFastembed(ort)) {
+      ortPaths.add(ort);
+      continue;
+    }
+    if (otherDeclarers === null) otherDeclarers = collectOtherOrtDeclarers(nodeModulesDir);
+    if (otherDeclarers.size === 0) ortPaths.add(ort);
+    // else: hoisted copy is shared with another consumer — untouched.
+  }
+
+  return [...ortPaths];
 }
 
 function dirSize(dir) {

@@ -9,13 +9,23 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import {
+  collectOtherOrtDeclarers,
   findConsumerRoot,
   findOrtPackages,
   isSourceRepo,
   pruneOrtPackage,
   removeDir,
+  resolveOrtForOwner,
   run,
 } from '../../scripts/prune-native-binaries.mjs';
+
+/** Minimal `package.json` for a fastembed install in a test fixture. */
+function writeFastembedPkg(fastembedDir: string): void {
+  writeFileSync(
+    join(fastembedDir, 'package.json'),
+    JSON.stringify({ name: 'fastembed', dependencies: { 'onnxruntime-node': '^1.0.0' } }),
+  );
+}
 
 const ALL_PLATFORMS = ['darwin', 'linux', 'win32'] as const;
 const ALL_ARCHES = ['arm64', 'x64'] as const;
@@ -48,39 +58,8 @@ function buildOrtTree(
   return ortDir;
 }
 
-describe('findOrtPackages', () => {
-  it('finds a single top-level onnxruntime-node', () => {
-    const nm = join(tmp, 'node_modules');
-    mkdirSync(join(nm, 'onnxruntime-node'), { recursive: true });
-    const hits = findOrtPackages(nm);
-    expect(hits).toHaveLength(1);
-    expect(hits[0]).toBe(join(nm, 'onnxruntime-node'));
-  });
-
-  it('finds nested onnxruntime-node under another package', () => {
-    const nm = join(tmp, 'node_modules');
-    mkdirSync(join(nm, 'fastembed', 'node_modules', 'onnxruntime-node'), { recursive: true });
-    const hits = findOrtPackages(nm);
-    expect(hits).toHaveLength(1);
-    expect(hits[0]).toBe(join(nm, 'fastembed', 'node_modules', 'onnxruntime-node'));
-  });
-
-  it('finds both hoisted and nested copies in the same tree', () => {
-    const nm = join(tmp, 'node_modules');
-    mkdirSync(join(nm, 'onnxruntime-node'), { recursive: true });
-    mkdirSync(join(nm, 'fastembed', 'node_modules', 'onnxruntime-node'), { recursive: true });
-    const hits = findOrtPackages(nm);
-    expect(hits).toHaveLength(2);
-  });
-
-  it('descends into scoped @org dirs', () => {
-    const nm = join(tmp, 'node_modules');
-    mkdirSync(join(nm, '@scope', 'pkg', 'node_modules', 'onnxruntime-node'), { recursive: true });
-    const hits = findOrtPackages(nm);
-    expect(hits).toHaveLength(1);
-  });
-
-  it('returns empty array when node_modules has no onnxruntime-node', () => {
+describe('findOrtPackages (fastembed-owned only)', () => {
+  it('returns empty when node_modules has no onnxruntime-node and no fastembed', () => {
     const nm = join(tmp, 'node_modules');
     mkdirSync(join(nm, 'lodash'), { recursive: true });
     expect(findOrtPackages(nm)).toEqual([]);
@@ -88,6 +67,194 @@ describe('findOrtPackages', () => {
 
   it('tolerates a non-existent directory', () => {
     expect(findOrtPackages(join(tmp, 'does-not-exist'))).toEqual([]);
+  });
+
+  it('returns empty when onnxruntime-node exists but no fastembed is installed', () => {
+    // A bare top-level ORT with no fastembed owner belongs to some other
+    // consumer — we must not touch it.
+    const nm = join(tmp, 'node_modules');
+    mkdirSync(join(nm, 'onnxruntime-node'), { recursive: true });
+    expect(findOrtPackages(nm)).toEqual([]);
+  });
+
+  it('returns the nested ORT when fastembed carries its own private copy', () => {
+    const nm = join(tmp, 'node_modules');
+    const fastembed = join(nm, 'fastembed');
+    mkdirSync(join(fastembed, 'node_modules', 'onnxruntime-node'), { recursive: true });
+    writeFastembedPkg(fastembed);
+    expect(findOrtPackages(nm)).toEqual([join(fastembed, 'node_modules', 'onnxruntime-node')]);
+  });
+
+  it('returns the hoisted ORT when fastembed is the sole ORT declarer', () => {
+    const nm = join(tmp, 'node_modules');
+    mkdirSync(join(nm, 'fastembed'), { recursive: true });
+    writeFastembedPkg(join(nm, 'fastembed'));
+    mkdirSync(join(nm, 'onnxruntime-node'), { recursive: true });
+    expect(findOrtPackages(nm)).toEqual([join(nm, 'onnxruntime-node')]);
+  });
+
+  it('leaves the hoisted ORT alone when a sibling package also declares it', () => {
+    // Regression guard for EPIC #527 architect review (#552): a hoisted ORT
+    // shared with an Electron cross-compile packager must keep its full
+    // platform binary set.
+    const nm = join(tmp, 'node_modules');
+    mkdirSync(join(nm, 'fastembed'), { recursive: true });
+    writeFastembedPkg(join(nm, 'fastembed'));
+    mkdirSync(join(nm, 'onnxruntime-node'), { recursive: true });
+
+    mkdirSync(join(nm, 'electron-packager'), { recursive: true });
+    writeFileSync(
+      join(nm, 'electron-packager', 'package.json'),
+      JSON.stringify({
+        name: 'electron-packager',
+        dependencies: { 'onnxruntime-node': '^1.0.0' },
+      }),
+    );
+
+    expect(findOrtPackages(nm)).toEqual([]);
+  });
+
+  it('still prunes nested ORT even when a sibling declarer blocks the hoisted copy', () => {
+    const nm = join(tmp, 'node_modules');
+    const fastembed = join(nm, 'fastembed');
+    mkdirSync(join(fastembed, 'node_modules', 'onnxruntime-node'), { recursive: true });
+    writeFastembedPkg(fastembed);
+    // Foreign hoisted copy — owned by electron-packager, must be preserved.
+    mkdirSync(join(nm, 'onnxruntime-node'), { recursive: true });
+    mkdirSync(join(nm, 'electron-packager'), { recursive: true });
+    writeFileSync(
+      join(nm, 'electron-packager', 'package.json'),
+      JSON.stringify({
+        name: 'electron-packager',
+        optionalDependencies: { 'onnxruntime-node': '^1.0.0' },
+      }),
+    );
+
+    expect(findOrtPackages(nm)).toEqual([join(fastembed, 'node_modules', 'onnxruntime-node')]);
+  });
+
+  it('ignores a sibling onnxruntime-node nested under a non-fastembed parent', () => {
+    // Acceptance test (#552): foreign nested ORT must be untouched.
+    const nm = join(tmp, 'node_modules');
+    const fastembed = join(nm, 'fastembed');
+    mkdirSync(join(fastembed, 'node_modules', 'onnxruntime-node'), { recursive: true });
+    writeFastembedPkg(fastembed);
+
+    // Another package with its own nested ORT — completely unrelated to ours.
+    mkdirSync(join(nm, 'electron-packager', 'node_modules', 'onnxruntime-node'), { recursive: true });
+    writeFileSync(
+      join(nm, 'electron-packager', 'package.json'),
+      JSON.stringify({ name: 'electron-packager' }),
+    );
+
+    expect(findOrtPackages(nm)).toEqual([join(fastembed, 'node_modules', 'onnxruntime-node')]);
+  });
+
+  it('descends into scoped @org dirs to find nested fastembed owners', () => {
+    const nm = join(tmp, 'node_modules');
+    const fastembed = join(nm, '@scope', 'pkg', 'node_modules', 'fastembed');
+    mkdirSync(join(fastembed, 'node_modules', 'onnxruntime-node'), { recursive: true });
+    writeFastembedPkg(fastembed);
+    expect(findOrtPackages(nm)).toEqual([join(fastembed, 'node_modules', 'onnxruntime-node')]);
+  });
+
+  it('dedupes when multiple non-hoisted fastembed installs resolve to the same ORT', () => {
+    // No `<nm>/fastembed` — forces the walker path. Two nested fastembed
+    // installs both resolve upward to the single hoisted ORT.
+    const nm = join(tmp, 'node_modules');
+    mkdirSync(join(nm, 'foo', 'node_modules', 'fastembed'), { recursive: true });
+    writeFastembedPkg(join(nm, 'foo', 'node_modules', 'fastembed'));
+    mkdirSync(join(nm, 'bar', 'node_modules', 'fastembed'), { recursive: true });
+    writeFastembedPkg(join(nm, 'bar', 'node_modules', 'fastembed'));
+    mkdirSync(join(nm, 'onnxruntime-node'), { recursive: true });
+    expect(findOrtPackages(nm)).toEqual([join(nm, 'onnxruntime-node')]);
+  });
+});
+
+describe('resolveOrtForOwner', () => {
+  it('returns the nested ORT when present in the owner dir', () => {
+    const owner = join(tmp, 'node_modules', 'fastembed');
+    const ort = join(owner, 'node_modules', 'onnxruntime-node');
+    mkdirSync(ort, { recursive: true });
+    expect(resolveOrtForOwner(owner)).toBe(ort);
+  });
+
+  it('walks up through a parent node_modules to find the hoisted ORT', () => {
+    const owner = join(tmp, 'node_modules', 'fastembed');
+    mkdirSync(owner, { recursive: true });
+    const hoisted = join(tmp, 'node_modules', 'onnxruntime-node');
+    mkdirSync(hoisted, { recursive: true });
+    expect(resolveOrtForOwner(owner)).toBe(hoisted);
+  });
+
+  it('prefers the nested copy over a hoisted one when both exist', () => {
+    const owner = join(tmp, 'node_modules', 'fastembed');
+    const nested = join(owner, 'node_modules', 'onnxruntime-node');
+    mkdirSync(nested, { recursive: true });
+    mkdirSync(join(tmp, 'node_modules', 'onnxruntime-node'), { recursive: true });
+    expect(resolveOrtForOwner(owner)).toBe(nested);
+  });
+
+  it('returns null when no ancestor carries ORT', () => {
+    const owner = join(tmp, 'node_modules', 'fastembed');
+    mkdirSync(owner, { recursive: true });
+    expect(resolveOrtForOwner(owner)).toBeNull();
+  });
+
+  it('skips the pathological node_modules/node_modules probe', () => {
+    // Plant `<tmp>/node_modules/node_modules/onnxruntime-node` — which Node's
+    // resolver would never look at — and assert it's not returned.
+    const owner = join(tmp, 'node_modules', 'fastembed');
+    mkdirSync(owner, { recursive: true });
+    mkdirSync(join(tmp, 'node_modules', 'node_modules', 'onnxruntime-node'), { recursive: true });
+    expect(resolveOrtForOwner(owner)).toBeNull();
+  });
+});
+
+describe('collectOtherOrtDeclarers', () => {
+  it('returns empty when no packages declare ORT', () => {
+    const nm = join(tmp, 'node_modules');
+    mkdirSync(join(nm, 'lodash'), { recursive: true });
+    writeFileSync(join(nm, 'lodash', 'package.json'), JSON.stringify({ name: 'lodash' }));
+    expect([...collectOtherOrtDeclarers(nm)]).toEqual([]);
+  });
+
+  it('excludes fastembed itself from the declarer set', () => {
+    const nm = join(tmp, 'node_modules');
+    mkdirSync(join(nm, 'fastembed'), { recursive: true });
+    writeFastembedPkg(join(nm, 'fastembed'));
+    expect([...collectOtherOrtDeclarers(nm)]).toEqual([]);
+  });
+
+  it('detects ORT in dependencies / optionalDependencies / peerDependencies', () => {
+    const nm = join(tmp, 'node_modules');
+    mkdirSync(join(nm, 'a'), { recursive: true });
+    writeFileSync(join(nm, 'a', 'package.json'), JSON.stringify({ name: 'a', dependencies: { 'onnxruntime-node': '^1' } }));
+    mkdirSync(join(nm, 'b'), { recursive: true });
+    writeFileSync(join(nm, 'b', 'package.json'), JSON.stringify({ name: 'b', optionalDependencies: { 'onnxruntime-node': '^1' } }));
+    mkdirSync(join(nm, 'c'), { recursive: true });
+    writeFileSync(join(nm, 'c', 'package.json'), JSON.stringify({ name: 'c', peerDependencies: { 'onnxruntime-node': '^1' } }));
+    mkdirSync(join(nm, 'd'), { recursive: true });
+    writeFileSync(join(nm, 'd', 'package.json'), JSON.stringify({ name: 'd' }));
+    expect([...collectOtherOrtDeclarers(nm)].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('scans scoped packages under @org/', () => {
+    const nm = join(tmp, 'node_modules');
+    mkdirSync(join(nm, '@scope', 'ort-user'), { recursive: true });
+    writeFileSync(
+      join(nm, '@scope', 'ort-user', 'package.json'),
+      JSON.stringify({ name: '@scope/ort-user', dependencies: { 'onnxruntime-node': '^1' } }),
+    );
+    expect([...collectOtherOrtDeclarers(nm)]).toEqual(['@scope/ort-user']);
+  });
+
+  it('tolerates missing or malformed package.json files', () => {
+    const nm = join(tmp, 'node_modules');
+    mkdirSync(join(nm, 'missing-pkg-json'), { recursive: true });
+    mkdirSync(join(nm, 'broken-pkg-json'), { recursive: true });
+    writeFileSync(join(nm, 'broken-pkg-json', 'package.json'), '{not valid json');
+    expect([...collectOtherOrtDeclarers(nm)]).toEqual([]);
   });
 });
 
