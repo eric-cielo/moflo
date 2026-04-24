@@ -644,7 +644,7 @@ All code changes MUST work on Windows, macOS, and Linux. Follow these rules:
 | Low search quality | Guidance docs missing `**Purpose:**` lines or generic headings | Follow guidance optimization rules in `guidance-memory-strategy.md` |
 | Session start slow | All three indexers running | Set `auto_index.code_map: false` in `moflo.yaml` if code map not needed |
 | Status line not showing | `statusline.cjs` error or `status_line.enabled: false` | Run `node .claude/helpers/statusline.cjs` to test, check `moflo.yaml` |
-| Embeddings falling back to hash | Transformers.js not available | Install `@xenova/transformers` — moflo includes it but some environments strip it |
+| Embeddings fail on first run (offline / air-gapped) | `fastembed` model cache missing | Pre-populate `~/.cache/fastembed` or set `FASTEMBED_CACHE` to a pre-baked cache dir — see `docs/modules/embeddings.md` "Sandbox & air-gapped first-run" |
 | `flo` command not found | Not in PATH | Use `npx flo` or `node node_modules/moflo/bin/index-guidance.mjs` |
 | Bundled guidance not indexed | Running inside moflo repo (same dir) | Bundled guidance only indexes when installed as a dependency in a different project |
 
