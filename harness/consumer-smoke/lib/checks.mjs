@@ -600,10 +600,44 @@ export function installSurface(consumerDir) {
     ` warn > ${warnMb} MB, fail > ${maxMb} MB)`;
   if (totalMb > maxMb) {
     record('moflo-install-size', 'fail', detail);
+    logTopOffenders(nodeModulesDir);
   } else if (totalMb > warnMb) {
     record('moflo-install-size', 'warn', detail);
+    logTopOffenders(nodeModulesDir);
   } else {
     record('moflo-install-size', 'pass', detail);
+  }
+}
+
+/**
+ * Print the top-10 largest direct children of node_modules so a budget
+ * failure is actionable without another CI round-trip. Scope resolution
+ * (e.g. `@anush008/*`) is flattened so scoped subpackages surface on their
+ * own rather than hiding inside a scope total.
+ */
+function logTopOffenders(nodeModulesDir) {
+  const children = [];
+  for (const name of readdirSync(nodeModulesDir)) {
+    const full = join(nodeModulesDir, name);
+    let s;
+    try { s = statSync(full); } catch { continue; }
+    if (!s.isDirectory()) continue;
+    if (name.startsWith('@')) {
+      for (const sub of readdirSync(full)) {
+        const subFull = join(full, sub);
+        try {
+          if (!statSync(subFull).isDirectory()) continue;
+        } catch { continue; }
+        children.push({ name: `${name}/${sub}`, size: folderSize(subFull) });
+      }
+    } else {
+      children.push({ name, size: folderSize(full) });
+    }
+  }
+  children.sort((a, b) => b.size - a.size);
+  log('  top offenders:');
+  for (const c of children.slice(0, 10)) {
+    log(`    ${(c.size / 1024 / 1024).toFixed(1).padStart(6)} MB  ${c.name}`);
   }
 }
 
