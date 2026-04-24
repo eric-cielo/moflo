@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { mofloImport, importMofloMemory } from '../services/moflo-require.js';
+import { formatEmbeddingError } from './embedding-errors.js';
 
 /**
  * Write vector-stats.json cache for the statusline (no subprocess needed).
@@ -1616,10 +1617,7 @@ export async function generateEmbedding(text: string): Promise<{
   if (!embeddingModelState?.loaded) {
     const load = await loadEmbeddingModel();
     if (!load.success) {
-      throw new Error(
-        `Embedding model not available: ${load.error ?? 'unknown error'}. ` +
-          `Neural embeddings are required (epic #527).`,
-      );
+      throw new Error(formatEmbeddingError(load.error ?? 'unknown error'));
     }
   }
 
@@ -1632,7 +1630,12 @@ export async function generateEmbedding(text: string): Promise<{
     );
   }
 
-  const result = await state.service.embed(text);
+  let result: { embedding: Float32Array | number[] };
+  try {
+    result = await state.service.embed(text);
+  } catch (err) {
+    throw new Error(formatEmbeddingError(err));
+  }
   const embedding = Array.from(result.embedding as Float32Array | number[]);
   return {
     embedding,
