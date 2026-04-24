@@ -182,3 +182,6 @@ src/modules/*/package-lock.json
 
 # MoFlo state (gitignored)
 .claude-epic/
+
+# Local runtime cache
+local_cache/

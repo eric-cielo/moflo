@@ -19,6 +19,7 @@ import {
 } from '../services/engine-loader.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { buildGrimoire } from '../services/grimoire-builder.js';
+import { locateMofloModuleDist } from '../services/moflo-require.js';
 
 
 // ============================================================================
@@ -60,6 +61,55 @@ interface TrackedSpell {
 
 const MAX_TRACKED = 100;
 const trackedSpells = new Map<string, TrackedSpell>();
+
+// ============================================================================
+// @moflo/spells artifact loading
+//
+// Depth-invariant alternative to brittle '../../../../modules/spells/...'
+// relative imports. Those strings happened to resolve in the source tree and
+// blew up in the shipped dist layout (see PR #556 for the same class of bug
+// in hive-mind-tools). locateMofloModuleDist walks up from import.meta.url
+// to find src/modules/spells/dist/<rel> regardless of caller depth.
+// ============================================================================
+
+interface StepCommand {
+  readonly type: string;
+}
+type StepCommandSource = 'npm' | 'built-in' | 'user';
+interface StepCommandRegistryInstance {
+  register(command: StepCommand, source?: StepCommandSource): void;
+}
+interface StepCommandRegistryCtor {
+  new (): StepCommandRegistryInstance;
+}
+interface SpellPermissionReport {
+  permissionHash: string;
+  overallRisk: string;
+}
+
+interface PermissionAcceptanceModule {
+  recordAcceptance(projectRoot: string, spellIdentifier: string, permissionHash: string): Promise<void>;
+}
+interface PermissionDisclosureModule {
+  analyzeSpellPermissions(definition: SpellDefinition, registry: StepCommandRegistryInstance): SpellPermissionReport;
+}
+interface StepCommandRegistryModule {
+  StepCommandRegistry: StepCommandRegistryCtor;
+}
+interface BuiltinCommandsModule {
+  builtinCommands: readonly StepCommand[];
+}
+
+async function importSpellsArtifact<T>(relFromDist: string): Promise<T> {
+  const url = locateMofloModuleDist('spells', relFromDist);
+  if (!url) {
+    throw new Error(
+      `@moflo/spells artifact not found: src/modules/spells/dist/${relFromDist}. ` +
+      `Run 'npm run build' to compile the spells package.`
+    );
+  }
+  return import(url) as Promise<T>;
+}
 
 function evictOldest(): void {
   if (trackedSpells.size <= MAX_TRACKED) return;
@@ -704,18 +754,20 @@ export const spellTools: MCPTool[] = [
     handler: async (input) => {
       const spellName = input.name as string;
 
-      // Dynamically import to avoid circular deps with the spell engine
-      const { recordAcceptance } = await import(
-        '../../../../modules/spells/src/core/permission-acceptance.js'
+      // Load via depth-invariant walk-up (PR #556 pattern) — relative
+      // ../../../../ strings silently point at the wrong dir under the dist
+      // layout that ships to consumers.
+      const { recordAcceptance } = await importSpellsArtifact<PermissionAcceptanceModule>(
+        'core/permission-acceptance.js'
       );
-      const { analyzeSpellPermissions } = await import(
-        '../../../../modules/spells/src/core/permission-disclosure.js'
+      const { analyzeSpellPermissions } = await importSpellsArtifact<PermissionDisclosureModule>(
+        'core/permission-disclosure.js'
       );
-      const { StepCommandRegistry } = await import(
-        '../../../../modules/spells/src/core/step-command-registry.js'
+      const { StepCommandRegistry } = await importSpellsArtifact<StepCommandRegistryModule>(
+        'core/step-command-registry.js'
       );
-      const { builtinCommands } = await import(
-        '../../../../modules/spells/src/commands/index.js'
+      const { builtinCommands } = await importSpellsArtifact<BuiltinCommandsModule>(
+        'commands/index.js'
       );
 
       const projectRoot = findProjectRoot();

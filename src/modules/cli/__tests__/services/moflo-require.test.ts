@@ -7,6 +7,7 @@ import { tmpdir } from 'os';
 import {
   importMofloMemory,
   locateMofloModuleDist,
+  locateMofloModulePath,
   _resetMofloMemoryCacheForTest,
 } from '../../src/services/moflo-require.js';
 
@@ -133,6 +134,37 @@ describe('locateMofloModuleDist (regression guard for #556)', () => {
   it('is cached per (pkg, rel) key so repeat calls are cheap', () => {
     const a = locateMofloModuleDist('swarm', 'message-bus/index.js');
     const b = locateMofloModuleDist('swarm', 'message-bus/index.js');
+    expect(a).toBe(b);
+  });
+});
+
+describe('locateMofloModulePath (non-dist subpaths)', () => {
+  beforeEach(() => {
+    _resetMofloMemoryCacheForTest();
+  });
+
+  it('returns null for a non-existent subpath (no silent success)', () => {
+    const result = locateMofloModulePath('spells', 'definitely-not-a-real-subdir');
+    expect(result).toBeNull();
+  });
+
+  it('resolves an existing non-dist subpath (e.g. package.json)', () => {
+    // Every moflo package has a package.json — use it as a stable marker.
+    const result = locateMofloModulePath('spells', 'package.json');
+    expect(result).not.toBeNull();
+    expect(existsSync(result!)).toBe(true);
+    expect(result!).toMatch(/[\\/]src[\\/]modules[\\/]spells[\\/]package\.json$/);
+  });
+
+  it('never emits a "modules/modules" path shape', () => {
+    const result = locateMofloModulePath('spells', 'package.json');
+    expect(result).not.toBeNull();
+    expect(result!).not.toMatch(/[\\/]modules[\\/]modules[\\/]/);
+  });
+
+  it('is cached per (pkg, rel) key', () => {
+    const a = locateMofloModulePath('spells', 'package.json');
+    const b = locateMofloModulePath('spells', 'package.json');
     expect(a).toBe(b);
   });
 });
