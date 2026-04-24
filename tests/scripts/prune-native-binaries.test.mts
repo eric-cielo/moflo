@@ -4,7 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -13,6 +13,8 @@ import {
   findConsumerRoot,
   findOrtPackages,
   isSourceRepo,
+  plantCudaStub,
+  pruneGpuProviders,
   pruneOrtPackage,
   removeDir,
   resolveOrtForOwner,
@@ -338,6 +340,212 @@ describe('pruneOrtPackage', () => {
     expect(calls).toBeGreaterThan(0);
     // The original tree is still intact because rm was a no-op spy.
     expect(existsSync(join(ortDir, 'bin', 'napi-v3', 'win32', 'x64'))).toBe(true);
+  });
+
+  it('strips GPU provider libraries and plants a CUDA stub on linux/x64', () => {
+    // Regression guard for the 327 MB CUDA provider (ORT 1.21 linux/x64) that
+    // fastembed never loads. We prune any bundled providers, then plant a
+    // zero-byte stub so the upstream ORT postinstall (running AFTER us) sees
+    // the file and skips its download.
+    const ortDir = buildOrtTree(tmp, [{ platform: 'linux', arch: 'x64' }]);
+    const archDir = join(ortDir, 'bin', 'napi-v3', 'linux', 'x64');
+    writeFileSync(join(archDir, 'libonnxruntime.so.1'), Buffer.alloc(1024));
+    writeFileSync(join(archDir, 'libonnxruntime_providers_tensorrt.so'), Buffer.alloc(2048));
+    writeFileSync(join(archDir, 'libonnxruntime_providers_shared.so'), Buffer.alloc(512));
+
+    pruneOrtPackage(ortDir, { keepPlatform: 'linux', keepArch: 'x64' });
+
+    expect(existsSync(join(archDir, 'libonnxruntime.so.1'))).toBe(true);
+    expect(existsSync(join(archDir, 'onnxruntime_binding.node'))).toBe(true);
+    expect(existsSync(join(archDir, 'libonnxruntime_providers_tensorrt.so'))).toBe(false);
+    expect(existsSync(join(archDir, 'libonnxruntime_providers_shared.so'))).toBe(false);
+    // CUDA stub planted: zero-byte sentinel blocks the upstream fetch.
+    const stub = join(archDir, 'libonnxruntime_providers_cuda.so');
+    expect(existsSync(stub)).toBe(true);
+    expect(statSync(stub).size).toBe(0);
+  });
+
+  it('does not plant a CUDA stub on non-linux platforms', () => {
+    const ortDir = buildOrtTree(tmp, [{ platform: 'darwin', arch: 'arm64' }]);
+    const archDir = join(ortDir, 'bin', 'napi-v3', 'darwin', 'arm64');
+
+    pruneOrtPackage(ortDir, { keepPlatform: 'darwin', keepArch: 'arm64' });
+
+    expect(existsSync(join(archDir, 'libonnxruntime_providers_cuda.so'))).toBe(false);
+  });
+});
+
+describe('pruneGpuProviders', () => {
+  function populate(dir: string, names: string[], bytes = 1024) {
+    mkdirSync(dir, { recursive: true });
+    for (const n of names) writeFileSync(join(dir, n), Buffer.alloc(bytes));
+  }
+
+  it('removes CUDA / TensorRT / shared providers on Linux (.so)', () => {
+    const archDir = join(tmp, 'linux-x64');
+    populate(archDir, [
+      'libonnxruntime.so.1',
+      'libonnxruntime.so.1.21.0',
+      'onnxruntime_binding.node',
+      'libonnxruntime_providers_cuda.so',
+      'libonnxruntime_providers_tensorrt.so',
+      'libonnxruntime_providers_shared.so',
+    ]);
+
+    const bytes = pruneGpuProviders(archDir, { measure: true });
+    expect(bytes).toBe(3072);
+
+    const survivors = readdirSync(archDir).sort();
+    expect(survivors).toEqual([
+      'libonnxruntime.so.1',
+      'libonnxruntime.so.1.21.0',
+      'onnxruntime_binding.node',
+    ]);
+  });
+
+  it('removes DirectML.dll on Windows (case-insensitive)', () => {
+    const archDir = join(tmp, 'win32-x64');
+    populate(archDir, ['DirectML.dll', 'onnxruntime.dll', 'onnxruntime_binding.node']);
+
+    pruneGpuProviders(archDir);
+
+    expect(existsSync(join(archDir, 'DirectML.dll'))).toBe(false);
+    expect(existsSync(join(archDir, 'onnxruntime.dll'))).toBe(true);
+    expect(existsSync(join(archDir, 'onnxruntime_binding.node'))).toBe(true);
+  });
+
+  it('matches Windows onnxruntime_providers_*.dll naming', () => {
+    const archDir = join(tmp, 'win32-x64');
+    populate(archDir, [
+      'onnxruntime.dll',
+      'onnxruntime_providers_cuda.dll',
+      'onnxruntime_providers_shared.dll',
+    ]);
+
+    pruneGpuProviders(archDir);
+
+    expect(existsSync(join(archDir, 'onnxruntime.dll'))).toBe(true);
+    expect(existsSync(join(archDir, 'onnxruntime_providers_cuda.dll'))).toBe(false);
+    expect(existsSync(join(archDir, 'onnxruntime_providers_shared.dll'))).toBe(false);
+  });
+
+  it('preserves the CPU core and Node binding on every platform', () => {
+    const archDir = join(tmp, 'any');
+    populate(archDir, [
+      'libonnxruntime.so.1',             // linux cpu core
+      'libonnxruntime.so.1.21.0',        // linux cpu core (versioned)
+      'libonnxruntime.1.21.0.dylib',     // darwin cpu core
+      'onnxruntime.dll',                 // windows cpu core
+      'onnxruntime_binding.node',        // node binding
+    ]);
+
+    pruneGpuProviders(archDir);
+    expect(readdirSync(archDir).sort()).toEqual([
+      'libonnxruntime.1.21.0.dylib',
+      'libonnxruntime.so.1',
+      'libonnxruntime.so.1.21.0',
+      'onnxruntime.dll',
+      'onnxruntime_binding.node',
+    ]);
+  });
+
+  it('is a no-op when the arch dir has no GPU providers', () => {
+    const archDir = join(tmp, 'darwin-arm64');
+    populate(archDir, ['libonnxruntime.1.21.0.dylib', 'onnxruntime_binding.node']);
+
+    expect(pruneGpuProviders(archDir, { measure: true })).toBe(0);
+    expect(readdirSync(archDir)).toHaveLength(2);
+  });
+
+  it('returns 0 when the arch dir does not exist', () => {
+    expect(pruneGpuProviders(join(tmp, 'missing'))).toBe(0);
+  });
+
+  it('tolerates rm failure, leaves the file in place, and moves on', () => {
+    const archDir = join(tmp, 'linux-x64');
+    populate(archDir, ['libonnxruntime_providers_cuda.so', 'libonnxruntime_providers_tensorrt.so']);
+
+    // Spy that errors on CUDA, succeeds on tensorrt.
+    const removed: string[] = [];
+    const rm = (path: string) => {
+      if (path.endsWith('libonnxruntime_providers_cuda.so')) {
+        const err = new Error('busy') as NodeJS.ErrnoException;
+        err.code = 'EBUSY';
+        throw err;
+      }
+      removed.push(path);
+    };
+
+    expect(() => pruneGpuProviders(archDir, { rm })).not.toThrow();
+    expect(removed).toHaveLength(1);
+    expect(removed[0]).toMatch(/libonnxruntime_providers_tensorrt\.so$/);
+  });
+});
+
+describe('plantCudaStub', () => {
+  const linuxX64 = { keepPlatform: 'linux', keepArch: 'x64', env: {} };
+
+  it('creates a zero-byte stub on linux/x64', () => {
+    const archDir = join(tmp, 'linux-x64');
+    mkdirSync(archDir, { recursive: true });
+
+    expect(plantCudaStub(archDir, linuxX64)).toBe(true);
+
+    const stub = join(archDir, 'libonnxruntime_providers_cuda.so');
+    expect(existsSync(stub)).toBe(true);
+    expect(statSync(stub).size).toBe(0);
+    expect(readdirSync(archDir)).toEqual(['libonnxruntime_providers_cuda.so']);
+  });
+
+  it('no-ops on non-linux platforms', () => {
+    const archDir = join(tmp, 'darwin-arm64');
+    mkdirSync(archDir, { recursive: true });
+
+    expect(plantCudaStub(archDir, { keepPlatform: 'darwin', keepArch: 'arm64', env: {} })).toBe(false);
+    expect(plantCudaStub(archDir, { keepPlatform: 'win32', keepArch: 'x64', env: {} })).toBe(false);
+    expect(existsSync(join(archDir, 'libonnxruntime_providers_cuda.so'))).toBe(false);
+  });
+
+  it('no-ops on linux/arm64 (upstream does not fetch CUDA there)', () => {
+    const archDir = join(tmp, 'linux-arm64');
+    mkdirSync(archDir, { recursive: true });
+
+    expect(plantCudaStub(archDir, { keepPlatform: 'linux', keepArch: 'arm64', env: {} })).toBe(false);
+    expect(existsSync(join(archDir, 'libonnxruntime_providers_cuda.so'))).toBe(false);
+  });
+
+  it('no-ops when ONNXRUNTIME_NODE_INSTALL_CUDA=true (user opt-in to CUDA)', () => {
+    const archDir = join(tmp, 'linux-x64');
+    mkdirSync(archDir, { recursive: true });
+
+    const env = { ONNXRUNTIME_NODE_INSTALL_CUDA: 'true' };
+    expect(plantCudaStub(archDir, { keepPlatform: 'linux', keepArch: 'x64', env })).toBe(false);
+    expect(existsSync(join(archDir, 'libonnxruntime_providers_cuda.so'))).toBe(false);
+  });
+
+  it('no-ops when a real CUDA binary already exists (do not clobber)', () => {
+    const archDir = join(tmp, 'linux-x64');
+    mkdirSync(archDir, { recursive: true });
+    writeFileSync(join(archDir, 'libonnxruntime_providers_cuda.so'), Buffer.alloc(4096));
+
+    expect(plantCudaStub(archDir, linuxX64)).toBe(false);
+    expect(statSync(join(archDir, 'libonnxruntime_providers_cuda.so')).size).toBe(4096);
+  });
+
+  it('pruneOrtPackage on linux/x64 prunes GPU then plants the stub', () => {
+    const ortDir = buildOrtTree(tmp, [{ platform: 'linux', arch: 'x64' }]);
+    const archDir = join(ortDir, 'bin', 'napi-v3', 'linux', 'x64');
+    writeFileSync(join(archDir, 'libonnxruntime.so.1'), Buffer.alloc(1024));
+    writeFileSync(join(archDir, 'libonnxruntime_providers_shared.so'), Buffer.alloc(512));
+
+    pruneOrtPackage(ortDir, { keepPlatform: 'linux', keepArch: 'x64' });
+
+    expect(existsSync(join(archDir, 'libonnxruntime.so.1'))).toBe(true);
+    expect(existsSync(join(archDir, 'libonnxruntime_providers_shared.so'))).toBe(false);
+    // Stub planted last — blocks upstream ORT postinstall CUDA fetch.
+    const stub = join(archDir, 'libonnxruntime_providers_cuda.so');
+    expect(existsSync(stub)).toBe(true);
+    expect(statSync(stub).size).toBe(0);
   });
 });
 

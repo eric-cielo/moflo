@@ -4,14 +4,19 @@
  *
  * Trims `onnxruntime-node`'s multi-platform binary bundle under
  * `bin/napi-v3/<platform>/<arch>/` down to just the current combination,
- * reclaiming ~150 MB per install. `fastembed` pulls the full bundle by
- * default.
+ * and also strips GPU-only provider libraries (CUDA ~327 MB, TensorRT,
+ * DirectML ~18 MB) that fastembed never loads. Reclaims ~340 MB per Linux
+ * install and ~150 MB per Windows install.
+ *
+ * Ownership-scoped: only prunes `onnxruntime-node` copies that fastembed
+ * owns via its dependency graph. Foreign sibling ORT installs (e.g. an
+ * Electron cross-compile packager) are left alone. See `findOrtPackages`.
  *
  * Escape hatches:
  *   - `MOFLO_NO_PRUNE=1`             → skip entirely
  *   - script is inside moflo source  → skip (dev/CI needs the full set)
  *   - no `node_modules/` (Yarn PnP)  → skip with info log
- *   - no onnxruntime-node installed  → no-op
+ *   - no fastembed-owned ORT found   → no-op
  *
  * Failure posture: a consumer install must NEVER fail because of this
  * script. All errors are logged and swallowed; exit is always 0.
@@ -20,7 +25,9 @@
  * `npm install` before any of moflo's own compiled code exists on disk.
  */
 
-import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import {
+  existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync,
+} from 'node:fs';
 import { basename, dirname, join, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -29,6 +36,19 @@ const BYTES_PER_MB = 1024 * 1024;
 const NODE_MODULES_SEGMENT = `${sep}node_modules${sep}`;
 const FASTEMBED_OWNER = 'fastembed';
 const ORT_DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
+// GPU-only provider libraries that ship in onnxruntime-node's binary bundle but
+// are never loaded by fastembed (CPU inference). Matches files like:
+//   libonnxruntime_providers_cuda.so      (linux — 327 MB for ORT 1.21)
+//   libonnxruntime_providers_tensorrt.so  (linux)
+//   libonnxruntime_providers_shared.so    (linux — GPU-loader helper only)
+//   onnxruntime_providers_*.dll           (windows variant, same role)
+//   DirectML.dll                          (windows DirectX GPU — 18 MB)
+// The CPU runtime (`libonnxruntime.so.1*`, `onnxruntime.dll`, `libonnxruntime.*.dylib`)
+// and the Node binding (`onnxruntime_binding.node`) never match and are preserved.
+// Other GPU providers (openvino, rocm, qnn) aren't shipped in ORT 1.21; revisit
+// on version bumps if they appear.
+const GPU_PROVIDER_FILE_PATTERN =
+  /^(lib)?onnxruntime_providers_(cuda|tensorrt|shared)(\.|$)|^directml\.dll$/i;
 
 function info(msg) { console.log(`moflo:prune ${msg}`); }
 function warn(msg) { console.warn(`moflo:prune warn: ${msg}`); }
@@ -262,14 +282,71 @@ export function removeDir(dir, { rm = rmSync, measure = false } = {}) {
 }
 
 /**
+ * Plant a zero-byte `libonnxruntime_providers_cuda.so` stub in the linux/x64
+ * arch dir. `onnxruntime-node@1.21`'s own postinstall downloads a 327 MB CUDA
+ * provider tarball *after* moflo's postinstall runs (npm orders file:-tarball
+ * roots before their deps). The download is gated on `!CUDA_DLL_EXISTS`, so
+ * pre-creating the path as an empty file short-circuits the fetch entirely.
+ * No-op when the user opts in to CUDA via `ONNXRUNTIME_NODE_INSTALL_CUDA=true`
+ * or when the stub already exists. See `node_modules/onnxruntime-node/script/install.js`
+ * for the upstream check.
+ */
+export function plantCudaStub(archDir, { keepPlatform, keepArch, env = process.env }) {
+  if (keepPlatform !== 'linux' || keepArch !== 'x64') return false;
+  if (env.ONNXRUNTIME_NODE_INSTALL_CUDA === 'true') return false;
+  const stubPath = join(archDir, 'libonnxruntime_providers_cuda.so');
+  if (existsSync(stubPath)) return false;
+  try {
+    writeFileSync(stubPath, '');
+    return true;
+  } catch (err) {
+    warn(`could not plant CUDA stub at ${stubPath}: ${err.code || err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Remove GPU-only ORT provider libraries from a kept `<platform>/<arch>/`
+ * directory. Matches `GPU_PROVIDER_FILE_PATTERN`; leaves everything else
+ * (CPU runtime, Node bindings, manifests) untouched.
+ */
+export function pruneGpuProviders(archDir, { rm = rmSync, measure = false } = {}) {
+  let entries;
+  try { entries = readdirSync(archDir, { withFileTypes: true }); }
+  catch { return 0; }
+
+  let bytes = 0;
+  for (const ent of entries) {
+    if (!ent.isFile() || !GPU_PROVIDER_FILE_PATTERN.test(ent.name)) continue;
+    const full = join(archDir, ent.name);
+    let size = 0;
+    if (measure) {
+      try { size = statSync(full).size; } catch { /* ignore */ }
+    }
+    try {
+      rm(full, { force: true, maxRetries: 1, retryDelay: 250 });
+      bytes += size;
+    } catch (err) {
+      warn(`could not remove ${full}: ${err.code || err.message} (leaving in place)`);
+    }
+  }
+  return bytes;
+}
+
+/**
  * Prune `bin/napi-v3/<platform>/<arch>/` from one onnxruntime-node package,
- * keeping only the current combination.
+ * keeping only the current combination. Also strips GPU-only provider
+ * libraries (`libonnxruntime_providers_{cuda,tensorrt,shared}.*`, `DirectML.dll`)
+ * from the kept arch dir — fastembed runs on the CPU provider only, so these
+ * are dead weight on every host (ORT 1.21 ships a 327 MB CUDA provider on
+ * linux/x64 that nothing in our graph loads).
  */
 export function pruneOrtPackage(ortDir, {
   keepPlatform = process.platform,
   keepArch = process.arch,
   rm = rmSync,
   measure = false,
+  env = process.env,
 } = {}) {
   const napiDir = join(ortDir, 'bin', 'napi-v3');
   let platforms;
@@ -288,7 +365,15 @@ export function pruneOrtPackage(ortDir, {
     try { archs = readdirSync(pDir, { withFileTypes: true }); }
     catch (err) { warn(`cannot read ${pDir}: ${err.message}`); continue; }
     for (const a of archs) {
-      if (!a.isDirectory() || a.name === keepArch) continue;
+      if (!a.isDirectory()) continue;
+      if (a.name === keepArch) {
+        const archDir = join(pDir, a.name);
+        bytes += pruneGpuProviders(archDir, { rm, measure });
+        // Plant stub AFTER prune so the upstream ORT postinstall (which runs
+        // later on linux/x64) sees `CUDA_DLL_EXISTS` and skips the fetch.
+        plantCudaStub(archDir, { keepPlatform, keepArch, env });
+        continue;
+      }
       bytes += removeDir(join(pDir, a.name), { rm, measure });
     }
   }
@@ -334,7 +419,7 @@ export function run({
 
   let totalBytes = 0;
   for (const pkg of ortPkgs) {
-    totalBytes += pruneOrtPackage(pkg, { measure: verbose });
+    totalBytes += pruneOrtPackage(pkg, { measure: verbose, env });
   }
 
   if (verbose) {
