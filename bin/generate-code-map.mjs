@@ -925,7 +925,7 @@ async function main() {
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   log(`Done in ${elapsed}s — ${allChunks.length} chunks written to code-map namespace`);
 
-  // 7. Generate embeddings inline (not detached — ensures Xenova runs reliably)
+  // 7. Generate embeddings inline (not detached — ensures fastembed runs reliably)
   if (!skipEmbeddings) {
     await runEmbeddings();
   }

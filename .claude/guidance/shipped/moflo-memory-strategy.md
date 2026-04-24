@@ -105,42 +105,28 @@ ASCII boxes, excessive emoji, rhetorical questions, and motivational text all wa
 
 ## Embedding Strategy
 
-### Embedding Models
+### Embedding Model
 
-| Model | Quality | Speed | When Used |
-|-------|---------|-------|-----------|
-| `Xenova/all-MiniLM-L6-v2` | High (true semantic) | ~3s for 1000 entries | Primary — `build-embeddings.mjs` uses this |
-| `domain-aware-hash-v1` | Good (domain clustering) | <1s for 1000 entries | Fallback when Transformers.js unavailable |
+| Model | Runtime | Speed | Notes |
+|-------|---------|-------|-------|
+| `fast-all-MiniLM-L6-v2` | `fastembed` (native ONNX + Rust tokenizer) | ~3s for 1000 entries | The only supported model — neural embeddings are mandatory (ADR-EMB-001) |
 
-**Neural embeddings (Xenova/all-MiniLM-L6-v2):**
-- Uses `@xenova/transformers` with ONNX WASM runtime
+**Neural embeddings (fast-all-MiniLM-L6-v2):**
+- Uses the `fastembed` npm package (Qdrant's embeddings-only ONNX client)
 - 384-dimensional vectors, L2-normalized
 - True semantic understanding — "soft delete" matches "mark as deleted" without keyword overlap
-- Loaded lazily on first use, cached for subsequent queries
+- Model auto-downloads to `~/.cache/fastembed` on first use; cached for subsequent queries
+- For offline / air-gapped / sandboxed runs, pre-populate the cache or set `FASTEMBED_CACHE` — see `docs/modules/embeddings.md` "Sandbox & air-gapped first-run"
 
-**Domain-aware hash embeddings (fallback):**
-- Custom SimHash-style algorithm with 12 domain clusters
-- Multi-position hashing with bigram/trigram features
-- Good at keyword-level matching but misses semantic paraphrases
-- No external dependencies — always available
+**Legacy-compatible model names:** Entries embedded by earlier moflo versions may be tagged `Xenova/all-MiniLM-L6-v2` or `onnx`. These share the same vector space as `fast-all-MiniLM-L6-v2`, so search treats them as compatible (`semantic-search.mjs` `COMPATIBLE_MODELS`).
+
+**No hash fallback.** Epic #527 removed every hash-embedding path. If the `fastembed` model cannot load, memory operations fail loudly rather than silently degrading to FNV-1a pseudo-vectors. See [ADR-EMB-001](../../../src/modules/embeddings/docs/adrs/ADR-EMB-001-neural-embeddings-mandatory.md).
 
 ### The Embedding Alignment Problem
 
 **Critical rule:** Query embeddings MUST match stored embeddings. Computing cosine similarity between vectors from different models produces meaningless scores.
 
-Both the search scripts and the MCP memory tools auto-detect the stored embedding model and generate matching query vectors. Search also filters out entries with mismatched `embedding_model`.
-
-### Domain Cluster Tuning
-
-The hash fallback's domain clusters can be extended with project-specific terms:
-
-| Cluster | Example Terms |
-|---------|--------------|
-| `database` | your ORM, database engine, schema terms |
-| `frontend` | UI framework, component library terms |
-| `backend` | DI container, API framework terms |
-| `testing` | test framework, assertion library terms |
-| `security` | auth system, permission model terms |
+Both the search scripts and the MCP memory tools use `fastembed` for query vectors and filter stored entries by `embedding_model` (via the legacy-compatible alias list above), so a mixed-version database remains coherent.
 
 ---
 
