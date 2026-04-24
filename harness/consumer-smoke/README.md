@@ -34,7 +34,7 @@ Takes ~30–60 seconds; most of it is `npm install` in the scratch consumer.
 | Hooks | `hooks-list / pre-task / post-edit` | Hook commands succeed end-to-end |
 | Skill | `flo-skill` | `.claude/skills/fl/SKILL.md` ships inside the package |
 | Invariants | `no-stray-rvf`, `no-agentdb-rvf` | No surprise `.rvf` files at consumer root |
-| Surface | `moflo-install-size` | Reports installed size (informational) |
+| Surface | `moflo-install-size` | Enforces installed size budget (warn > 100 MB, fail > 120 MB) |
 
 ## Exit codes
 
@@ -83,6 +83,14 @@ merge.
   ```
 - `--json` — Print machine-readable JSON summary (pass/fail/warn counts plus
   the full results array).
+
+## Environment variables
+
+- `MOFLO_INSTALL_SIZE_WARN_MB` — Override the install-size warn threshold
+  (default: 100 MB). Non-positive or non-numeric values fall back to the default.
+- `MOFLO_INSTALL_SIZE_MAX_MB` — Override the install-size fail threshold
+  (default: 120 MB). Use deliberately (e.g. a model bump) and land the new
+  ceiling in the same PR as a README note so the budget stays a real contract.
 
 ## When to run
 

@@ -565,6 +565,18 @@ export function consumerInvariants(consumerDir) {
   }
 }
 
+// Defaults headroom over the README's ~80 MB post-prune claim.
+// Override via MOFLO_INSTALL_SIZE_{WARN,MAX}_MB (see harness README).
+const INSTALL_SIZE_WARN_MB_DEFAULT = 100;
+const INSTALL_SIZE_MAX_MB_DEFAULT = 120;
+
+function readEnvMb(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export function installSurface(consumerDir) {
   section('Install surface');
   const mofloDir = join(consumerDir, 'node_modules', 'moflo');
@@ -572,8 +584,61 @@ export function installSurface(consumerDir) {
     record('install-surface', 'fail', 'node_modules/moflo missing');
     return;
   }
-  const sz = folderSize(mofloDir);
-  record('moflo-install-size', 'info', `${(sz / 1024 / 1024).toFixed(1)} MB`);
+  const nodeModulesDir = join(consumerDir, 'node_modules');
+  const totalMb = folderSize(nodeModulesDir) / 1024 / 1024;
+  const mofloMb = folderSize(mofloDir) / 1024 / 1024;
+  const maxMb = readEnvMb('MOFLO_INSTALL_SIZE_MAX_MB', INSTALL_SIZE_MAX_MB_DEFAULT);
+  // Clamp warn to max so a user who raises MAX alone still gets a sensible
+  // warn ceiling instead of a nonsensical "warn > 200, fail > 120" print.
+  const warnMb = Math.min(
+    readEnvMb('MOFLO_INSTALL_SIZE_WARN_MB', INSTALL_SIZE_WARN_MB_DEFAULT),
+    maxMb,
+  );
+  const detail =
+    `${totalMb.toFixed(1)} MB total` +
+    ` (moflo pkg ${mofloMb.toFixed(1)} MB;` +
+    ` warn > ${warnMb} MB, fail > ${maxMb} MB)`;
+  if (totalMb > maxMb) {
+    record('moflo-install-size', 'fail', detail);
+    logTopOffenders(nodeModulesDir);
+  } else if (totalMb > warnMb) {
+    record('moflo-install-size', 'warn', detail);
+    logTopOffenders(nodeModulesDir);
+  } else {
+    record('moflo-install-size', 'pass', detail);
+  }
+}
+
+/**
+ * Print the top-10 largest direct children of node_modules so a budget
+ * failure is actionable without another CI round-trip. Scope resolution
+ * (e.g. `@anush008/*`) is flattened so scoped subpackages surface on their
+ * own rather than hiding inside a scope total.
+ */
+function logTopOffenders(nodeModulesDir) {
+  const children = [];
+  for (const name of readdirSync(nodeModulesDir)) {
+    const full = join(nodeModulesDir, name);
+    let s;
+    try { s = statSync(full); } catch { continue; }
+    if (!s.isDirectory()) continue;
+    if (name.startsWith('@')) {
+      for (const sub of readdirSync(full)) {
+        const subFull = join(full, sub);
+        try {
+          if (!statSync(subFull).isDirectory()) continue;
+        } catch { continue; }
+        children.push({ name: `${name}/${sub}`, size: folderSize(subFull) });
+      }
+    } else {
+      children.push({ name, size: folderSize(full) });
+    }
+  }
+  children.sort((a, b) => b.size - a.size);
+  log('  top offenders:');
+  for (const c of children.slice(0, 10)) {
+    log(`    ${(c.size / 1024 / 1024).toFixed(1).padStart(6)} MB  ${c.name}`);
+  }
 }
 
 /** Inspect one onnxruntime-node install; return a problem string or null. */
