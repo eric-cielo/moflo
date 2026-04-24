@@ -15,13 +15,22 @@
 import type { MCPTool } from './types.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { requireMofloOrWarn } from '../services/moflo-require.js';
 
-// Try to import real embeddings from @moflo/embeddings (auto-selects best provider)
 let realEmbeddings: { embed: (text: string) => Promise<number[]> } | null = null;
 let embeddingServiceName: string = 'none';
 try {
-  const embeddingsModule = await import('@moflo/embeddings').catch(() => null);
-  if (embeddingsModule?.createEmbeddingServiceAsync) {
+  const embeddingsModule = await requireMofloOrWarn(
+    '@moflo/embeddings',
+    ['createEmbeddingServiceAsync'],
+    {
+      tag: 'neural-tools',
+      consequence:
+        'neural_predict / neural_patterns will fall back to deterministic-hash embeddings, ' +
+        'which is not allowed in production.',
+    },
+  );
+  if (embeddingsModule) {
     const service = await embeddingsModule.createEmbeddingServiceAsync({
       provider: 'auto',
       autoInstall: false,
@@ -34,8 +43,10 @@ try {
     };
     embeddingServiceName = `@moflo/embeddings (${service.provider})`;
   }
-} catch {
-  // No embedding provider available, will use fallback
+} catch (err) {
+  process.stderr.write(
+    `[neural-tools] @moflo/embeddings load failed: ${err instanceof Error ? err.message : String(err)}\n`,
+  );
 }
 
 // Storage paths
