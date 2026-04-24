@@ -4,12 +4,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createEmbeddingService,
-  MockEmbeddingService,
   cosineSimilarity,
   euclideanDistance,
   dotProduct,
   computeSimilarity,
 } from '../index.js';
+import { MockEmbeddingService } from './mocks/mock-embedding-service.js';
 
 describe('EmbeddingService', () => {
   describe('MockEmbeddingService', () => {
@@ -45,13 +45,14 @@ describe('EmbeddingService', () => {
   });
 
   describe('createEmbeddingService', () => {
-    it('should create mock service', () => {
-      const service = createEmbeddingService({
-        provider: 'mock',
-        dimensions: 64,
-      });
-
-      expect(service).toBeInstanceOf(MockEmbeddingService);
+    it("rejects 'mock' provider — the factory only returns production embedders", () => {
+      expect(() =>
+        createEmbeddingService({
+          // @ts-expect-error — 'mock' is intentionally unsupported at runtime
+          provider: 'mock',
+          dimensions: 64,
+        }),
+      ).toThrow(/Unknown embedding provider/);
     });
   });
 });

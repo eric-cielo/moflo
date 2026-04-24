@@ -6,7 +6,7 @@
  * (guarded by `FASTEMBED_INTEGRATION=1`) exercises the real model to verify
  * dimension parity with `TransformersEmbeddingService`.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   FastembedEmbeddingService,
   type FastembedModule,
@@ -47,12 +47,19 @@ describe('FastembedEmbeddingService', () => {
   let loadModule: () => Promise<FastembedModule>;
 
   beforeEach(() => {
+    // FASTEMBED_CACHE is read as a cacheDir fallback in production; clear it
+    // so init-arg assertions are deterministic regardless of host env.
+    vi.stubEnv('FASTEMBED_CACHE', '');
     mockModel = createMockModel();
     initSpy = vi.fn(async () => mockModel);
     loadModule = async () => ({
       EmbeddingModel: { AllMiniLML6V2: 'fast-all-MiniLM-L6-v2' },
       FlagEmbedding: { init: initSpy } as unknown as FastembedModule['FlagEmbedding'],
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   describe('init', () => {
@@ -91,6 +98,43 @@ describe('FastembedEmbeddingService', () => {
         cacheDir: '/tmp/fe-cache',
         maxLength: 256,
         showDownloadProgress: true,
+      });
+    });
+
+    describe('FASTEMBED_CACHE env var fallback', () => {
+      it('uses FASTEMBED_CACHE as cacheDir when config omits cacheDir', async () => {
+        vi.stubEnv('FASTEMBED_CACHE', '/opt/fastembed-cache');
+        const service = new FastembedEmbeddingService({ provider: 'fastembed' }, { loadModule });
+        await service.embed('warm up');
+
+        expect(initSpy).toHaveBeenCalledWith({
+          model: 'fast-all-MiniLM-L6-v2',
+          cacheDir: '/opt/fastembed-cache',
+          showDownloadProgress: false,
+        });
+      });
+
+      it('explicit config.cacheDir wins over FASTEMBED_CACHE', async () => {
+        vi.stubEnv('FASTEMBED_CACHE', '/opt/fastembed-cache');
+        const service = new FastembedEmbeddingService(
+          { provider: 'fastembed', cacheDir: '/tmp/explicit' },
+          { loadModule },
+        );
+        await service.embed('warm up');
+
+        expect(initSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ cacheDir: '/tmp/explicit' }),
+        );
+      });
+
+      it('ignores empty FASTEMBED_CACHE and lets fastembed default win', async () => {
+        const service = new FastembedEmbeddingService({ provider: 'fastembed' }, { loadModule });
+        await service.embed('warm up');
+
+        expect(initSpy).toHaveBeenCalledWith({
+          model: 'fast-all-MiniLM-L6-v2',
+          showDownloadProgress: false,
+        });
       });
     });
   });

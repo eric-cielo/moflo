@@ -6,12 +6,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 // Import directly from modules to avoid heavy dependencies
 import {
-  MockEmbeddingService,
   cosineSimilarity,
   euclideanDistance,
   dotProduct,
   computeSimilarity,
 } from '../src/embedding-service.js';
+import { MockEmbeddingService } from '../src/__tests__/mocks/mock-embedding-service.js';
 
 import {
   chunkText,

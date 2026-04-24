@@ -89,7 +89,9 @@ export class FastembedEmbeddingService extends BaseEmbeddingService {
           model: modelName,
           showDownloadProgress: this.showDownloadProgress,
         };
-        if (this.cacheDir !== undefined) initOptions.cacheDir = this.cacheDir;
+        // Resolution order: explicit config > FASTEMBED_CACHE env > fastembed default.
+        const cacheDir = this.cacheDir ?? process.env.FASTEMBED_CACHE;
+        if (cacheDir) initOptions.cacheDir = cacheDir;
         if (this.maxLength !== undefined) initOptions.maxLength = this.maxLength;
         const model = await mod.FlagEmbedding.init(initOptions);
         this.model = model;

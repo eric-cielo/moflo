@@ -182,57 +182,6 @@ export class InMemoryMigrationStore implements MigrationStore {
   }
 }
 
-/**
- * A deterministic mock embedder — returns a `Float32Array` of `dimensions`
- * length seeded from the text so assertions can verify "the right text was
- * embedded" without relying on a real ONNX runtime.
- *
- * Pass `failAt: N` to make the Nth call throw (1-indexed), exercising retry
- * semantics. Pass `miscountAt: N` to return the wrong number of vectors on
- * the Nth call, exercising defensive validation in the driver.
- */
-export class MockBatchEmbedder {
-  public calls = 0;
-  public lastInputs: string[] = [];
-  public history: string[][] = [];
-
-  constructor(
-    private readonly dimensions = 8,
-    private readonly options: { failAt?: number; miscountAt?: number } = {},
-  ) {}
-
-  async embedBatch(texts: string[]): Promise<Float32Array[]> {
-    this.calls++;
-    this.lastInputs = [...texts];
-    this.history.push([...texts]);
-
-    if (this.options.failAt === this.calls) {
-      throw new Error(`mock embedder: injected failure on call ${this.calls}`);
-    }
-
-    const out: Float32Array[] = texts.map((text) => seedVector(text, this.dimensions));
-    if (this.options.miscountAt === this.calls) {
-      return out.slice(0, Math.max(0, out.length - 1));
-    }
-    return out;
-  }
-}
-
-// eslint-disable-next-line no-restricted-syntax -- migration-driver test fixture, relocation tracked by #558
-function seedVector(text: string, dim: number): Float32Array {
-  const v = new Float32Array(dim);
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = (h * 0x01000193) >>> 0;
-  }
-  for (let i = 0; i < dim; i++) {
-    // Deterministic per (text, index). Small numbers so equality is easy.
-    v[i] = ((h ^ (i * 0x9e3779b1)) >>> 0) / 0xffffffff;
-  }
-  return v;
-}
-
 function indexAfter(items: InMemoryItem[], afterId: string): number {
   // Linear scan is plenty for tests and reference use.
   for (let i = 0; i < items.length; i++) {

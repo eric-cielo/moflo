@@ -47,7 +47,8 @@ RUN mkdir -p /workspace \
       /home/node/.cache \
       /home/node/.local/share \
       /home/node/.local/state \
- && chown -R node:node /workspace /home/node
+      /opt/fastembed-cache \
+ && chown -R node:node /workspace /home/node /opt/fastembed-cache
 
 # ── Git safe.directory ───────────────────────────────────────────────────
 # Windows Docker Desktop bind-mounts expose /workspace with uid 0 or a uid
@@ -59,5 +60,23 @@ RUN mkdir -p /workspace \
 # bind-mounted project dirs.
 RUN git config --system --add safe.directory '*'
 
+# ── Fastembed model cache (baked) ────────────────────────────────────────
+# Bake the default all-MiniLM-L6-v2 model so sandboxed spell steps work
+# with `--network none` and avoid re-downloading the ~90 MB ONNX model
+# per container boot. `/opt/fastembed-cache` is not under `/home/node/.cache`,
+# so the elevated/autonomous `.cache` tool-home bind mount does not shadow
+# it. FASTEMBED_CACHE is read by FastembedEmbeddingService as the cacheDir
+# fallback when no explicit cacheDir is configured.
+ENV FASTEMBED_CACHE=/opt/fastembed-cache
 USER node
+RUN set -e \
+ && cd /tmp \
+ && mkdir -p fastembed-warm \
+ && cd fastembed-warm \
+ && npm init -y >/dev/null \
+ && npm install --silent --no-audit --no-fund fastembed@2.1.0 \
+ && node -e "const {FlagEmbedding,EmbeddingModel}=require('fastembed');FlagEmbedding.init({model:EmbeddingModel.AllMiniLML6V2,cacheDir:process.env.FASTEMBED_CACHE,showDownloadProgress:false}).then(()=>process.exit(0)).catch(e=>{console.error(e);process.exit(1)})" \
+ && cd / \
+ && rm -rf /tmp/fastembed-warm
+
 WORKDIR /workspace

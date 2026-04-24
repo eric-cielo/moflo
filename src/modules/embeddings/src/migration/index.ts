@@ -20,7 +20,6 @@ export { migrateStore } from './migrate-store.js';
 
 export {
   InMemoryMigrationStore,
-  MockBatchEmbedder,
   type FailureInjector,
   type InMemoryItem,
   type InMemoryStoreOptions,

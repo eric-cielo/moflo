@@ -7,10 +7,10 @@ import { describe, it, expect } from 'vitest';
 
 import {
   InMemoryMigrationStore,
-  MockBatchEmbedder,
   runUpgrade,
   UpgradeRenderer,
 } from '../../src/migration/index.js';
+import { MockBatchEmbedder } from '../../src/__tests__/migration/mock-batch-embedder.js';
 import { BufferStream, makeClock, makeItems } from './upgrade-test-utils.js';
 
 describe('runUpgrade — happy path', () => {

@@ -213,15 +213,33 @@ export function verifyRequiredDeps(consumerDir) {
 }
 
 /**
- * Structural check: any file in the moflo dist tree that contains both
- * `new Float32Array(` AND `charCodeAt(` is a hash-embedding regardless of
- * method name. Layered on top of the identifier guard because the identifier
- * ban alone missed the inline implementations removed in #542.
+ * Structural check for hash-embedding leaks in the moflo dist tree.
  *
- * Issue #545 unscoped this from swarm-only to the whole moflo install —
- * the same anti-pattern was leaking into memory, CLI, and hooks compiled
- * output before this check saw it.
+ * A file is a hash-embedding if it allocates a `Float32Array`, calls
+ * `charCodeAt`, and matches one of the three signatures that turn a
+ * per-character hash into embedding cells:
+ *
+ *   - `Math.sin(hash)` — classic sin-scramble (every `MockEmbeddingService`
+ *     style fallback epic #527 tried to delete), required within an 800-char
+ *     window of a `charCodeAt` call.
+ *   - `hash / 0xffffffff` — FNV-style divide-by-max-uint used by the
+ *     migration driver's `seedVector`, same proximity window.
+ *   - `arr[i] = … .charCodeAt(…)` — direct indexer assignment from a
+ *     `charCodeAt` expression, matched on a single statement.
+ *
+ * The proximity + direct-assignment requirements let legitimate co-use of
+ * `Float32Array` + `charCodeAt` pass: RL state hashing (neural algorithms,
+ * q-learning router), FNV cache-key hashing (embeddings persistent cache),
+ * and benchmark math all mix the primitives in the same file but never in
+ * the same function, so neither branch matches.
+ *
+ * Layered on top of the identifier guard because the identifier ban alone
+ * missed the inline implementations removed in #542. Issue #545 unscoped
+ * the rule from swarm-only to the whole moflo install.
  */
+const HASH_EMBED_RE =
+  /charCodeAt\([\s\S]{0,800}(?:Math\.sin\(|\/\s*0x[fF]{8}\b)|(?:Math\.sin\(|\/\s*0x[fF]{8}\b)[\s\S]{0,800}charCodeAt\(|\w+\[[^\]]*\]\s*=[^=;\n]*\.charCodeAt\(/;
+
 export function verifyNoInlineHashEmbeddings(consumerDir) {
   section('Verify no inline hash embeddings in moflo dist');
   const mofloDir = join(consumerDir, 'node_modules', 'moflo');
@@ -245,7 +263,11 @@ export function verifyNoInlineHashEmbeddings(consumerDir) {
       log(`  skipped unreadable file ${file}: ${err.message}`);
       continue;
     }
-    if (text.includes('new Float32Array(') && text.includes('charCodeAt(')) {
+    if (
+      text.includes('new Float32Array(') &&
+      text.includes('charCodeAt(') &&
+      HASH_EMBED_RE.test(text)
+    ) {
       hits.push(relative(consumerDir, file));
     }
   }

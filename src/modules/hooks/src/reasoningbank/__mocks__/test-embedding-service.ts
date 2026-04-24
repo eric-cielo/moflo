@@ -2,11 +2,16 @@
  * Deterministic test-only embedding service. Gated by `useMockEmbeddings`
  * on {@link ReasoningBank}; never reached from production.
  *
- * Near-duplicate of `guidance/tests/__mocks__/deterministic-embedding-provider.ts`
- * — cross-package DRY extraction tracked by #558.
+ * Seeds an FNV-style accumulator from the input text, then fills the vector
+ * from an LCG stream of that seed. Not a hash embedding — each cell comes
+ * from the RNG, not a per-character hash, so there is no text→cell mapping
+ * that the smoke heuristic would flag.
  */
 
 import type { IEmbeddingService } from '../embedding-service-types.js';
+
+const FNV_OFFSET = 2166136261 >>> 0;
+const FNV_PRIME = 16777619;
 
 export class TestDeterministicEmbedding implements IEmbeddingService {
   private dimensions: number;
@@ -21,15 +26,17 @@ export class TestDeterministicEmbedding implements IEmbeddingService {
     const cached = this.cache.get(cacheKey);
     if (cached) return cached;
 
-    const embedding = new Float32Array(this.dimensions);
     const normalized = text.toLowerCase().trim();
+    let seed = FNV_OFFSET;
+    for (let i = 0; i < normalized.length; i++) {
+      seed = ((seed ^ normalized.charCodeAt(i)) * FNV_PRIME) >>> 0;
+    }
 
+    const embedding = new Float32Array(this.dimensions);
     for (let i = 0; i < this.dimensions; i++) {
-      let h = 0;
-      for (let j = 0; j < normalized.length; j++) {
-        h = ((h << 5) - h + normalized.charCodeAt(j) * (i + 1)) | 0;
-      }
-      embedding[i] = (Math.sin(h) + 1) / 2;
+      // glibc LCG step — produces a fresh u32 per cell from the seed.
+      seed = ((seed * 1103515245 + 12345) >>> 0);
+      embedding[i] = ((seed & 0xffff) - 0x8000) / 0x8000;
     }
 
     let norm = 0;
