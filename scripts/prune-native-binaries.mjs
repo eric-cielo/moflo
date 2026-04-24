@@ -4,14 +4,19 @@
  *
  * Trims `onnxruntime-node`'s multi-platform binary bundle under
  * `bin/napi-v3/<platform>/<arch>/` down to just the current combination,
- * reclaiming ~150 MB per install. `fastembed` pulls the full bundle by
- * default.
+ * and also strips GPU-only provider libraries (CUDA ~327 MB, TensorRT,
+ * DirectML ~18 MB) that fastembed never loads. Reclaims ~340 MB per Linux
+ * install and ~150 MB per Windows install.
+ *
+ * Ownership-scoped: only prunes `onnxruntime-node` copies that fastembed
+ * owns via its dependency graph. Foreign sibling ORT installs (e.g. an
+ * Electron cross-compile packager) are left alone. See `findOrtPackages`.
  *
  * Escape hatches:
  *   - `MOFLO_NO_PRUNE=1`             → skip entirely
  *   - script is inside moflo source  → skip (dev/CI needs the full set)
  *   - no `node_modules/` (Yarn PnP)  → skip with info log
- *   - no onnxruntime-node installed  → no-op
+ *   - no fastembed-owned ORT found   → no-op
  *
  * Failure posture: a consumer install must NEVER fail because of this
  * script. All errors are logged and swallowed; exit is always 0.
@@ -20,13 +25,30 @@
  * `npm install` before any of moflo's own compiled code exists on disk.
  */
 
-import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { dirname, join, sep } from 'node:path';
+import {
+  existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync,
+} from 'node:fs';
+import { basename, dirname, join, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const BYTES_PER_MB = 1024 * 1024;
 const NODE_MODULES_SEGMENT = `${sep}node_modules${sep}`;
+const FASTEMBED_OWNER = 'fastembed';
+const ORT_DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
+// GPU-only provider libraries that ship in onnxruntime-node's binary bundle but
+// are never loaded by fastembed (CPU inference). Matches files like:
+//   libonnxruntime_providers_cuda.so      (linux — 327 MB for ORT 1.21)
+//   libonnxruntime_providers_tensorrt.so  (linux)
+//   libonnxruntime_providers_shared.so    (linux — GPU-loader helper only)
+//   onnxruntime_providers_*.dll           (windows variant, same role)
+//   DirectML.dll                          (windows DirectX GPU — 18 MB)
+// The CPU runtime (`libonnxruntime.so.1*`, `onnxruntime.dll`, `libonnxruntime.*.dylib`)
+// and the Node binding (`onnxruntime_binding.node`) never match and are preserved.
+// Other GPU providers (openvino, rocm, qnn) aren't shipped in ORT 1.21; revisit
+// on version bumps if they appear.
+const GPU_PROVIDER_FILE_PATTERN =
+  /^(lib)?onnxruntime_providers_(cuda|tensorrt|shared)(\.|$)|^directml\.dll$/i;
 
 function info(msg) { console.log(`moflo:prune ${msg}`); }
 function warn(msg) { console.warn(`moflo:prune warn: ${msg}`); }
@@ -72,19 +94,16 @@ export function findConsumerRoot(scriptPath) {
 }
 
 /**
- * Collect every `onnxruntime-node` directory under `nodeModulesDir`. Checks
- * the two common layouts first (hoisted + nested under fastembed) to avoid
- * walking a large consumer `node_modules/` tree in the common case, and
- * falls back to a bounded recursive walk for non-standard layouts.
+ * Walk `nodeModulesDir` collecting every install whose basename matches one
+ * of `ownerNames`. Bounded recursive walk — descends into each package's
+ * nested `node_modules/` so non-hoisted copies are also found.
+ *
+ * Scoped owner names are not matched (fastembed isn't scoped); the walker
+ * still descends through `@scope/<pkg>/node_modules/` to find nested owners.
  */
-export function findOrtPackages(nodeModulesDir, maxDepth = 10) {
-  const fast = [
-    join(nodeModulesDir, 'fastembed', 'node_modules', 'onnxruntime-node'),
-    join(nodeModulesDir, 'onnxruntime-node'),
-  ].filter(existsSync);
-  if (fast.length > 0) return fast;
-
+function findOwnerInstalls(nodeModulesDir, ownerNames, maxDepth) {
   const hits = [];
+  const owners = new Set(ownerNames);
 
   function scanNodeModules(nmDir, depth) {
     if (depth > maxDepth) return;
@@ -94,7 +113,7 @@ export function findOrtPackages(nodeModulesDir, maxDepth = 10) {
     for (const ent of entries) {
       if (!ent.isDirectory()) continue;
       const pkgDir = join(nmDir, ent.name);
-      if (ent.name === 'onnxruntime-node') { hits.push(pkgDir); continue; }
+      if (owners.has(ent.name)) { hits.push(pkgDir); continue; }
       if (ent.name.startsWith('@')) { scanScope(pkgDir, depth + 1); continue; }
       scanNodeModules(join(pkgDir, 'node_modules'), depth + 1);
     }
@@ -107,14 +126,125 @@ export function findOrtPackages(nodeModulesDir, maxDepth = 10) {
     catch { return; }
     for (const ent of entries) {
       if (!ent.isDirectory()) continue;
-      const pkgDir = join(scopeDir, ent.name);
-      if (ent.name === 'onnxruntime-node') hits.push(pkgDir);
-      scanNodeModules(join(pkgDir, 'node_modules'), depth + 1);
+      scanNodeModules(join(scopeDir, ent.name, 'node_modules'), depth + 1);
     }
   }
 
   scanNodeModules(nodeModulesDir, 0);
   return hits;
+}
+
+/**
+ * Mirror Node's `require.resolve` upward walk: from `startDir`, probe each
+ * `<ancestor>/node_modules/onnxruntime-node` in turn and return the first
+ * that exists. Skips `<dir>` when `dir` is itself a `node_modules` directory
+ * to avoid the pathological `…/node_modules/node_modules/…` probe. Returns
+ * `null` when no ancestor carries ORT.
+ */
+export function resolveOrtForOwner(startDir) {
+  let dir = startDir;
+  while (true) {
+    if (basename(dir) !== 'node_modules') {
+      const candidate = join(dir, 'node_modules', 'onnxruntime-node');
+      if (existsSync(candidate)) return candidate;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/**
+ * Return the set of top-level package names (excluding `fastembed`) that
+ * declare `onnxruntime-node` in any dep field. A non-empty set means the
+ * hoisted ORT is shared — pruning its non-current binaries could strand
+ * another consumer (e.g. an Electron packager cross-compiling). Only scans
+ * direct `<nm>/<pkg>` and `<nm>/@scope/<pkg>` — packages that keep their own
+ * ORT nested under their own `node_modules/` don't share the hoisted copy.
+ */
+export function collectOtherOrtDeclarers(nodeModulesDir) {
+  const declarers = new Set();
+
+  function record(pkgDir, name) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'));
+      for (const kind of ORT_DEP_FIELDS) {
+        if (pkg?.[kind]?.['onnxruntime-node']) { declarers.add(name); return; }
+      }
+    } catch { /* missing or unreadable package.json — ignore */ }
+  }
+
+  let entries;
+  try { entries = readdirSync(nodeModulesDir, { withFileTypes: true }); }
+  catch { return declarers; }
+
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    if (ent.name === 'onnxruntime-node' || ent.name === FASTEMBED_OWNER) continue;
+    const pkgDir = join(nodeModulesDir, ent.name);
+    if (ent.name.startsWith('@')) {
+      let scopeEntries;
+      try { scopeEntries = readdirSync(pkgDir, { withFileTypes: true }); }
+      catch { continue; }
+      for (const s of scopeEntries) {
+        if (!s.isDirectory()) continue;
+        record(join(pkgDir, s.name), `${ent.name}/${s.name}`);
+      }
+      continue;
+    }
+    record(pkgDir, ent.name);
+  }
+  return declarers;
+}
+
+function isNestedUnderFastembed(ortDir) {
+  // Path structurally ends in `<…>/fastembed/node_modules/onnxruntime-node`.
+  return basename(dirname(dirname(ortDir))) === FASTEMBED_OWNER;
+}
+
+/**
+ * Collect every `onnxruntime-node` directory that moflo owns via its
+ * dependency graph. Ownership rules:
+ *   - Find every `fastembed` install; resolve its ORT by the Node algorithm.
+ *   - ORT strictly nested under `fastembed/node_modules/` is always pruned
+ *     (private to fastembed, cannot be shared).
+ *   - A hoisted ORT resolved by fastembed is pruned only when no other
+ *     top-level package declares `onnxruntime-node` — otherwise the copy is
+ *     shared (Electron cross-compile packager, sibling ORT consumer) and we
+ *     leave all of its platform binaries intact.
+ *
+ * Returns deduped absolute paths.
+ */
+export function findOrtPackages(nodeModulesDir, maxDepth = 10) {
+  // Fast path: fastembed is almost always hoisted to `<nm>/fastembed` — skip
+  // the full walk when we can see it there. Falls through to the recursive
+  // walker when fastembed is non-hoisted (version conflict) or absent.
+  const hoisted = join(nodeModulesDir, FASTEMBED_OWNER);
+  const owners = existsSync(hoisted)
+    ? [hoisted]
+    : findOwnerInstalls(nodeModulesDir, [FASTEMBED_OWNER], maxDepth);
+  if (owners.length === 0) return [];
+
+  const ortPaths = new Set();
+  // Lazily computed: we only need the declarer scan if at least one owner
+  // resolves to a hoisted ORT. Skipped entirely when every fastembed carries
+  // its own nested copy.
+  let otherDeclarers = null;
+
+  for (const owner of owners) {
+    const ort = resolveOrtForOwner(owner);
+    if (!ort) continue;
+
+    if (isNestedUnderFastembed(ort)) {
+      ortPaths.add(ort);
+      continue;
+    }
+    if (otherDeclarers === null) otherDeclarers = collectOtherOrtDeclarers(nodeModulesDir);
+    if (otherDeclarers.size === 0) ortPaths.add(ort);
+    // else: hoisted copy is shared with another consumer — untouched.
+  }
+
+  return [...ortPaths];
 }
 
 function dirSize(dir) {
@@ -152,14 +282,71 @@ export function removeDir(dir, { rm = rmSync, measure = false } = {}) {
 }
 
 /**
+ * Plant a zero-byte `libonnxruntime_providers_cuda.so` stub in the linux/x64
+ * arch dir. `onnxruntime-node@1.21`'s own postinstall downloads a 327 MB CUDA
+ * provider tarball *after* moflo's postinstall runs (npm orders file:-tarball
+ * roots before their deps). The download is gated on `!CUDA_DLL_EXISTS`, so
+ * pre-creating the path as an empty file short-circuits the fetch entirely.
+ * No-op when the user opts in to CUDA via `ONNXRUNTIME_NODE_INSTALL_CUDA=true`
+ * or when the stub already exists. See `node_modules/onnxruntime-node/script/install.js`
+ * for the upstream check.
+ */
+export function plantCudaStub(archDir, { keepPlatform, keepArch, env = process.env }) {
+  if (keepPlatform !== 'linux' || keepArch !== 'x64') return false;
+  if (env.ONNXRUNTIME_NODE_INSTALL_CUDA === 'true') return false;
+  const stubPath = join(archDir, 'libonnxruntime_providers_cuda.so');
+  if (existsSync(stubPath)) return false;
+  try {
+    writeFileSync(stubPath, '');
+    return true;
+  } catch (err) {
+    warn(`could not plant CUDA stub at ${stubPath}: ${err.code || err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Remove GPU-only ORT provider libraries from a kept `<platform>/<arch>/`
+ * directory. Matches `GPU_PROVIDER_FILE_PATTERN`; leaves everything else
+ * (CPU runtime, Node bindings, manifests) untouched.
+ */
+export function pruneGpuProviders(archDir, { rm = rmSync, measure = false } = {}) {
+  let entries;
+  try { entries = readdirSync(archDir, { withFileTypes: true }); }
+  catch { return 0; }
+
+  let bytes = 0;
+  for (const ent of entries) {
+    if (!ent.isFile() || !GPU_PROVIDER_FILE_PATTERN.test(ent.name)) continue;
+    const full = join(archDir, ent.name);
+    let size = 0;
+    if (measure) {
+      try { size = statSync(full).size; } catch { /* ignore */ }
+    }
+    try {
+      rm(full, { force: true, maxRetries: 1, retryDelay: 250 });
+      bytes += size;
+    } catch (err) {
+      warn(`could not remove ${full}: ${err.code || err.message} (leaving in place)`);
+    }
+  }
+  return bytes;
+}
+
+/**
  * Prune `bin/napi-v3/<platform>/<arch>/` from one onnxruntime-node package,
- * keeping only the current combination.
+ * keeping only the current combination. Also strips GPU-only provider
+ * libraries (`libonnxruntime_providers_{cuda,tensorrt,shared}.*`, `DirectML.dll`)
+ * from the kept arch dir — fastembed runs on the CPU provider only, so these
+ * are dead weight on every host (ORT 1.21 ships a 327 MB CUDA provider on
+ * linux/x64 that nothing in our graph loads).
  */
 export function pruneOrtPackage(ortDir, {
   keepPlatform = process.platform,
   keepArch = process.arch,
   rm = rmSync,
   measure = false,
+  env = process.env,
 } = {}) {
   const napiDir = join(ortDir, 'bin', 'napi-v3');
   let platforms;
@@ -178,7 +365,15 @@ export function pruneOrtPackage(ortDir, {
     try { archs = readdirSync(pDir, { withFileTypes: true }); }
     catch (err) { warn(`cannot read ${pDir}: ${err.message}`); continue; }
     for (const a of archs) {
-      if (!a.isDirectory() || a.name === keepArch) continue;
+      if (!a.isDirectory()) continue;
+      if (a.name === keepArch) {
+        const archDir = join(pDir, a.name);
+        bytes += pruneGpuProviders(archDir, { rm, measure });
+        // Plant stub AFTER prune so the upstream ORT postinstall (which runs
+        // later on linux/x64) sees `CUDA_DLL_EXISTS` and skips the fetch.
+        plantCudaStub(archDir, { keepPlatform, keepArch, env });
+        continue;
+      }
       bytes += removeDir(join(pDir, a.name), { rm, measure });
     }
   }
@@ -224,7 +419,7 @@ export function run({
 
   let totalBytes = 0;
   for (const pkg of ortPkgs) {
-    totalBytes += pruneOrtPackage(pkg, { measure: verbose });
+    totalBytes += pruneOrtPackage(pkg, { measure: verbose, env });
   }
 
   if (verbose) {

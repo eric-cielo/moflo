@@ -52,6 +52,15 @@ Same model architecture → same vector space → vectors from both runtimes are
 
 `onnxruntime-node` ships binaries for every supported platform (~230 MB across all binaries). A `postinstall` script (`scripts/prune-native-binaries.mjs`) deletes binaries for non-matching platforms on the current host, reducing install size to ~80 MB.
 
+**Ownership-scoped (#552, architect review of this epic).** The walker only prunes ORT installs that moflo owns via its dependency graph: every `fastembed` install is resolved to its `onnxruntime-node` via Node's standard upward `node_modules/` walk. Two ownership rails keep us off foreign ORT copies:
+
+1. **Nested** `…/fastembed/node_modules/onnxruntime-node` — always pruned (private to fastembed, cannot be shared).
+2. **Hoisted** `<root>/node_modules/onnxruntime-node` resolved by fastembed — pruned **only** when no other top-level package declares `onnxruntime-node` in `dependencies` / `optionalDependencies` / `peerDependencies`. If another consumer is present (e.g. an Electron cross-compile packager that needs binaries for a non-current platform), the hoisted copy is left intact.
+
+**GPU provider stripping.** The postinstall also removes GPU-only provider libraries that fastembed (CPU-only inference) never loads: `libonnxruntime_providers_{cuda,tensorrt,shared}.*`, `DirectML.dll`, and the Windows `onnxruntime_providers_*.dll` variants. Matters most on Linux/x64 where ORT 1.21 *downloads* a 327 MB CUDA provider during its own postinstall; moflo plants a zero-byte `libonnxruntime_providers_cuda.so` stub so ORT's `CUDA_DLL_EXISTS` check short-circuits the fetch entirely. Result: Linux installs drop from ~430 MB to ~100 MB, Windows from ~80 MB to ~60 MB.
+
+**Escape hatches.** Set `MOFLO_NO_PRUNE=1` before `npm install` to disable the prune entirely — useful for cross-compile packagers, CI that ships multi-platform artifacts, or debugging a broken ORT install. To keep moflo's prune but force ORT to fetch CUDA anyway (GPU inference), also set `ONNXRUNTIME_NODE_INSTALL_CUDA=true`. The script no-ops inside the moflo source repo itself (detected via nearest-ancestor `package.json` name) and under Yarn PnP (no `node_modules/` present).
+
 ### 5. Permanent regression guard
 
 Two layers prevent hash-fallback code from re-entering the tree:
