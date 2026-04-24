@@ -163,6 +163,44 @@ function locateMofloMemoryDist(): string | null {
 }
 
 /**
+ * Locate a filesystem path inside `src/modules/<pkg>/<rel>` (not limited to
+ * `dist/`) by the same walk-up strategy as locateMofloModuleDist. Useful for
+ * non-built data folders shipped alongside the module — e.g. spell YAML
+ * definitions, template assets, etc.
+ *
+ * Cross-platform: `path.join` handles separators on POSIX and Windows;
+ * `existsSync` returns the same answer in all environments. Works whether
+ * moflo is running from dev source, its own dist, or installed under a
+ * consumer's `node_modules/moflo/`.
+ *
+ * Returns the absolute filesystem path, or null if not found.
+ */
+const moduleSubpathCache = new Map<string, string | null>();
+
+export function locateMofloModulePath(pkg: MofloInternalPackage, rel: string): string | null {
+  const cacheKey = `${pkg}::${rel}`;
+  const cached = moduleSubpathCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  let dir = dirname(fileURLToPath(import.meta.url));
+  const relPath = join('src', 'modules', pkg, rel);
+
+  for (let i = 0; i < MAX_WALK_DEPTH; i++) {
+    const candidate = join(dir, relPath);
+    if (existsSync(candidate)) {
+      moduleSubpathCache.set(cacheKey, candidate);
+      return candidate;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  moduleSubpathCache.set(cacheKey, null);
+  return null;
+}
+
+/**
  * Import `@moflo/memory` from within a moflo source module.
  *
  * The root `moflo` package ships @moflo/memory as a source folder rather than
@@ -185,7 +223,8 @@ export async function importMofloMemory(): Promise<any | null> {
   }
 }
 
-// Test-only: reset the cache between unit tests that mutate the filesystem.
+// Test-only: reset the caches between unit tests that mutate the filesystem.
 export function _resetMofloMemoryCacheForTest(): void {
   moduleDistUrlCache.clear();
+  moduleSubpathCache.clear();
 }
