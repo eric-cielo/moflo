@@ -63,10 +63,13 @@ Same model architecture → same vector space → vectors from both runtimes are
 
 ### 5. Permanent regression guard
 
-Two layers prevent hash-fallback code from re-entering the tree:
+Five layers prevent hash-fallback code from re-entering the tree. Layers 1 and 2 shipped with this ADR; layers 3–5 were added as **behaviour-based** augmentation after anonymous inline hash producers were discovered slipping past the identifier-only guard (see the **Post-decision correction** section below for the full history):
 
-- **ESLint rule** (`.eslintrc.cjs`) — flags any occurrence of the banned identifiers above in `src/` and `bin/`.
-- **Consumer-smoke harness** (`harness/consumer-smoke/`) — a fresh `npm install moflo` in a scratch consumer project asserts `fastembed` is present and no banned identifiers leak into the published `dist/` tree.
+1. **ESLint identifier rule** (`.eslintrc.cjs`) — flags any occurrence of the banned identifiers above (`HashEmbeddingProvider`, `createHashEmbedding`, `generateHashEmbedding`, `RvfEmbedding*`, `domain-aware-hash-*`) in `src/` and `bin/`.
+2. **Consumer-smoke banned-identifier check** (`harness/consumer-smoke/`) — a fresh `npm install moflo` in a scratch consumer project asserts `fastembed` is present and no banned identifiers leak into the published `dist/` tree.
+3. **ESLint structural rule** (`.eslintrc.cjs`, added in PR #543, unscoped across `src/**/*.ts` in #545) — `no-restricted-syntax` with `:has()` selectors flags any function that both constructs a `Float32Array` and calls `charCodeAt(...)`. Catches the anti-pattern regardless of method name.
+4. **Consumer-smoke dist-walker** (`harness/consumer-smoke/lib/checks.mjs::verifyNoInlineHashEmbeddingsInSwarm`, added in PR #543) — walks the published `dist/` tree and rejects any file containing both `new Float32Array(` and `charCodeAt(`; defends against source-tree lint bypasses.
+5. **DI-compliance test** (`src/modules/embeddings/__tests__/provider-di-compliance.test.ts`, added in #546) — pins the positive contract: every known semantic-embedding entry point (`ShardRetriever`, hierarchical-memory controller, attention/queen coordinators, hooks ReasoningBank) must reject a missing `IEmbeddingProvider` at construction or first `embed()` call. Catches the anti-pattern when someone reintroduces an ambient / default-constructed provider.
 
 ### 6. CI model cache
 
@@ -99,7 +102,7 @@ The regression guard shipped with the original decision (section 5 above) was **
 - **Smaller JS footprint.** `@xenova/transformers` (45 MB) → `fastembed` (109 KB). Net JS payload drops dramatically.
 - **Maintained upstream.** `fastembed` is actively developed; `@xenova/transformers` is archived.
 - **Hard-fail guarantees.** Missing model, broken network on first run, or a misconfigured provider produces a user-visible error instead of silent quality degradation.
-- **Regression-proof.** ESLint + smoke harness together block any future PR that re-adds the banned identifiers.
+- **Regression-proof.** Five guard layers (identifier-based ESLint + smoke check, plus behaviour-based structural ESLint rule, dist-walker, and DI-compliance test) together block any future PR that reintroduces hash-embedding code — whether under the original banned names, an anonymous inline producer matching the `Float32Array + charCodeAt` shape, or an ambient-provider entry point that bypasses dependency injection. See **Post-decision correction** for why all five are load-bearing.
 - **Interchangeable vectors.** Same `all-MiniLM-L6-v2` architecture → existing DBs only need re-embedding when the model itself changes, not when swapping runtime libraries.
 
 ### Negative
