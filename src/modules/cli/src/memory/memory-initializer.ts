@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { mofloImport, importMofloMemory } from '../services/moflo-require.js';
+import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 import { formatEmbeddingError } from './embedding-errors.js';
 
 /**
@@ -1036,9 +1037,7 @@ export async function ensureSchemaColumns(dbPath: string): Promise<{
     }
 
     if (modified) {
-      // Save updated database
-      const data = db.export();
-      fs.writeFileSync(dbPath, Buffer.from(data));
+      atomicWriteFileSync(dbPath, db.export());
     }
 
     db.close();
@@ -1477,9 +1476,7 @@ export async function applyTemporalDecay(dbPath?: string): Promise<{
 
     const changes = db.getRowsModified();
 
-    // Save
-    const data = db.export();
-    fs.writeFileSync(path_, Buffer.from(data));
+    atomicWriteFileSync(path_, db.export());
     db.close();
 
     return {
@@ -1888,9 +1885,7 @@ export async function verifyMemoryInit(dbPath: string, options?: {
     // Cleanup test entry
     db.run(`DELETE FROM memory_entries WHERE id = ?`, [testId]);
 
-    // Save changes
-    const data = db.export();
-    fs.writeFileSync(dbPath, Buffer.from(data));
+    atomicWriteFileSync(dbPath, db.export());
     db.close();
 
     const passed = tests.filter(t => t.passed).length;
@@ -2022,9 +2017,7 @@ export async function storeEntry(options: {
       ttl ? now + (ttl * 1000) : null
     ]);
 
-    // Save
-    const data = db.export();
-    fs.writeFileSync(dbPath, Buffer.from(data));
+    atomicWriteFileSync(dbPath, db.export());
 
     // Query exact stats while DB is still open
     let vecCount = 0, nsCount = 0;
@@ -2423,9 +2416,7 @@ export async function getEntry(options: {
       WHERE id = '${String(id).replace(/'/g, "''")}'
     `);
 
-    // Save updated database
-    const data = db.export();
-    fs.writeFileSync(dbPath, Buffer.from(data));
+    atomicWriteFileSync(dbPath, db.export());
 
     db.close();
 
@@ -2553,9 +2544,7 @@ export async function deleteEntry(options: {
     const countResult = db.exec(`SELECT COUNT(*) FROM memory_entries WHERE status = 'active'`);
     const remainingEntries = countResult[0]?.values?.[0]?.[0] as number || 0;
 
-    // Save updated database
-    const data = db.export();
-    fs.writeFileSync(dbPath, Buffer.from(data));
+    atomicWriteFileSync(dbPath, db.export());
 
     db.close();
 

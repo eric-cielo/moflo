@@ -12,6 +12,7 @@ import { output } from '../output.js';
 import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { mofloImport } from '../services/moflo-require.js';
+import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 
 // Memory backends
 const BACKENDS = [
@@ -1520,8 +1521,7 @@ async function openDb(cwd: string): Promise<{ db: any; dbPath: string; SQL: any 
 }
 
 function saveAndCloseDb(db: any, dbPath: string): void {
-  const data = db.export();
-  fs.writeFileSync(dbPath, Buffer.from(data));
+  atomicWriteFileSync(dbPath, db.export());
   db.close();
 }
 
@@ -2208,11 +2208,8 @@ const rebuildIndexCommand: Command = {
         failed++;
       }
 
-      // Batch save every BATCH_SIZE entries
       if ((i + 1) % BATCH_SIZE === 0) {
-        const fs = await import('fs');
-        const data = db.export();
-        fs.writeFileSync(dbPath, Buffer.from(data));
+        atomicWriteFileSync(dbPath, db.export());
       }
     }
 

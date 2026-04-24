@@ -198,3 +198,9 @@ export * from './services/index.js';
 // Platform Utilities
 // =============================================================================
 export { IS_WINDOWS, NULL_DEVICE, silenceStderr, getShell, escapeShellArg } from './utils/platform.js';
+
+// =============================================================================
+// Atomic File Write (shared by cli, embeddings, memory, shared itself — #564)
+// =============================================================================
+export { atomicWriteFileSync } from './utils/atomic-file-write.js';
+export type { AtomicWriteFs } from './utils/atomic-file-write.js';
