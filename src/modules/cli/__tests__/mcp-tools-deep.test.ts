@@ -17,12 +17,20 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 // Mock setup - must be before imports
 // ============================================================================
 
-// Mock fs to prevent actual file I/O during tests
-vi.mock('node:fs', () => {
+// Mock fs writes to prevent test side effects on disk. `existsSync` and
+// `readFileSync` fall through to real fs so legitimate resolvers (e.g.
+// locateMofloModuleDist walking up to src/modules/swarm/dist/) keep working.
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
   const memStore = new Map<string, string>();
   return {
-    existsSync: vi.fn((p: string) => memStore.has(p)),
-    readFileSync: vi.fn((p: string) => memStore.get(p) || '{}'),
+    ...actual,
+    existsSync: vi.fn((p: string) => memStore.has(p) || actual.existsSync(p)),
+    readFileSync: vi.fn((p: string, ...rest: unknown[]) =>
+      memStore.has(p)
+        ? memStore.get(p) as string
+        : (actual.readFileSync as (...args: unknown[]) => string | Buffer)(p, ...rest)
+    ),
     writeFileSync: vi.fn((p: string, d: string) => memStore.set(p, d)),
     mkdirSync: vi.fn(),
     readdirSync: vi.fn(() => []),
@@ -31,11 +39,17 @@ vi.mock('node:fs', () => {
   };
 });
 
-vi.mock('fs', () => {
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
   const memStore = new Map<string, string>();
   return {
-    existsSync: vi.fn((p: string) => memStore.has(p)),
-    readFileSync: vi.fn((p: string) => memStore.get(p) || '{}'),
+    ...actual,
+    existsSync: vi.fn((p: string) => memStore.has(p) || actual.existsSync(p)),
+    readFileSync: vi.fn((p: string, ...rest: unknown[]) =>
+      memStore.has(p)
+        ? memStore.get(p) as string
+        : (actual.readFileSync as (...args: unknown[]) => string | Buffer)(p, ...rest)
+    ),
     writeFileSync: vi.fn((p: string, d: string) => memStore.set(p, d)),
     mkdirSync: vi.fn(),
     readdirSync: vi.fn(() => []),

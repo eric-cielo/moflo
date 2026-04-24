@@ -93,37 +93,73 @@ export function mofloResolve(specifier: string): string | null {
 }
 
 /**
- * Locate `src/modules/memory/dist/index.js` by walking up from this file's
- * directory until the path resolves. Layout-invariant across:
- *   - dev source (cli/src/services/)
- *   - built output (cli/dist/src/services/)
- *   - installed package (node_modules/moflo/src/modules/cli/dist/src/services/)
- *   - Windows and POSIX (path.join/dirname are platform-aware)
- *
- * Returns a file:// URL for ESM `import()`, or null if memory isn't built.
+ * Internal moflo packages whose built artifacts can be resolved via walk-up.
+ * Union rather than free string: catches typos at the call site and documents
+ * the intended consumers.
  */
-let cachedMemoryUrl: string | null | undefined;
+export type MofloInternalPackage =
+  | 'memory'
+  | 'swarm'
+  | 'hooks'
+  | 'embeddings'
+  | 'guidance'
+  | 'neural'
+  | 'security'
+  | 'shared'
+  | 'spells'
+  | 'plugins';
 
-function locateMofloMemoryDist(): string | null {
-  if (cachedMemoryUrl !== undefined) return cachedMemoryUrl;
+/**
+ * Locate a built artifact inside `src/modules/<pkg>/dist/<relFromDist>` by
+ * walking up from this file's directory until the path resolves. Layout- and
+ * platform-invariant across:
+ *   - dev source (<caller>/src/...)
+ *   - built output (<caller>/dist/src/...)
+ *   - installed package (node_modules/moflo/src/modules/<caller>/dist/src/...)
+ *   - Windows and POSIX (`path.join`/`dirname` are platform-aware,
+ *     `pathToFileURL` emits valid `file://` URLs on both)
+ *
+ * Consolidates the walk-up logic so callers can't construct brittle
+ * `../../../../` strings that silently point at the wrong package when the
+ * source/dist depth changes (see feedback_no_fixed_depth_paths).
+ *
+ * Returns a `file://` URL suitable for ESM `import()`, or `null` if the
+ * artifact isn't on disk (package not built / missing from install).
+ */
+const moduleDistUrlCache = new Map<string, string | null>();
+
+// Walk cap: the deepest real install is roughly
+// `<consumer>/node_modules/moflo/src/modules/<pkg>/dist/src/<...>` ≈ 8 hops up
+// to the moflo root. 12 gives comfortable headroom for worktree and monorepo
+// layouts without risking an unbounded loop at filesystem root.
+const MAX_WALK_DEPTH = 12;
+
+export function locateMofloModuleDist(pkg: MofloInternalPackage, relFromDist: string): string | null {
+  const cacheKey = `${pkg}::${relFromDist}`;
+  const cached = moduleDistUrlCache.get(cacheKey);
+  if (cached !== undefined) return cached;
 
   let dir = dirname(fileURLToPath(import.meta.url));
-  const rel = join('src', 'modules', 'memory', 'dist', 'index.js');
+  const rel = join('src', 'modules', pkg, 'dist', relFromDist);
 
-  // 12 levels is far more than any real moflo install depth
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < MAX_WALK_DEPTH; i++) {
     const candidate = join(dir, rel);
     if (existsSync(candidate)) {
-      cachedMemoryUrl = pathToFileURL(candidate).href;
-      return cachedMemoryUrl;
+      const url = pathToFileURL(candidate).href;
+      moduleDistUrlCache.set(cacheKey, url);
+      return url;
     }
     const parent = dirname(dir);
     if (parent === dir) break; // filesystem root
     dir = parent;
   }
 
-  cachedMemoryUrl = null;
+  moduleDistUrlCache.set(cacheKey, null);
   return null;
+}
+
+function locateMofloMemoryDist(): string | null {
+  return locateMofloModuleDist('memory', 'index.js');
 }
 
 /**
@@ -151,5 +187,5 @@ export async function importMofloMemory(): Promise<any | null> {
 
 // Test-only: reset the cache between unit tests that mutate the filesystem.
 export function _resetMofloMemoryCacheForTest(): void {
-  cachedMemoryUrl = undefined;
+  moduleDistUrlCache.clear();
 }

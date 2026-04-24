@@ -38,6 +38,10 @@ export const isolationTests = [
   'src/modules/spells/__tests__/prerequisites-resolve.test.ts',
   'src/modules/spells/__tests__/prerequisites-integration.test.ts',
   'tests/bin/gate-helpers.test.ts',
+  // Spawn/kill timing sensitive — `getActive returns only alive processes`
+  // intermittently observes the child before it's reaped on Windows maxForks=2.
+  // Passes in isolation; add here rather than retry-in-place.
+  'tests/bin/process-manager.test.ts',
 ];
 
 export default defineConfig({
