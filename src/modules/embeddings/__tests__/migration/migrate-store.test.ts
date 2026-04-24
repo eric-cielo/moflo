@@ -10,11 +10,11 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   EMBEDDINGS_VERSION,
   InMemoryMigrationStore,
-  MockBatchEmbedder,
   migrateStore,
   type InMemoryItem,
   type MigrationProgress,
 } from '../../src/migration/index.js';
+import { MockBatchEmbedder } from '../../src/__tests__/migration/mock-batch-embedder.js';
 
 function makeItems(count: number): InMemoryItem[] {
   return Array.from({ length: count }, (_, i) => ({

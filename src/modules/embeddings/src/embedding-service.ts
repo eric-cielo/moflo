@@ -345,114 +345,6 @@ export class OpenAIEmbeddingService extends BaseEmbeddingService {
 }
 
 // ============================================================================
-// Mock Embedding Service (TEST-ONLY — never returned by createEmbeddingService)
-// ============================================================================
-
-/**
- * Deterministic test-only service. Retained so `@moflo/embeddings` has a stable
- * in-process fake for unit tests, but NOT reachable from the factory — the
- * production path is neural-only.
- */
-export class MockEmbeddingService extends BaseEmbeddingService {
-  readonly provider: EmbeddingProvider = 'mock';
-  private readonly dimensions: number;
-  private readonly simulatedLatency: number;
-
-  constructor(config: Partial<MockEmbeddingConfig> = {}) {
-    const fullConfig: MockEmbeddingConfig = {
-      provider: 'mock',
-      dimensions: config.dimensions ?? 384,
-      cacheSize: config.cacheSize ?? 1000,
-      simulatedLatency: config.simulatedLatency ?? 0,
-      enableCache: config.enableCache ?? true,
-    };
-    super(fullConfig);
-    this.dimensions = fullConfig.dimensions!;
-    this.simulatedLatency = fullConfig.simulatedLatency!;
-  }
-
-  async embed(text: string): Promise<EmbeddingResult> {
-    const cached = this.cache.get(text);
-    if (cached) {
-      this.emitEvent({ type: 'cache_hit', text });
-      return { embedding: cached, latencyMs: 0, cached: true };
-    }
-
-    this.emitEvent({ type: 'embed_start', text });
-    const startTime = performance.now();
-
-    if (this.simulatedLatency > 0) {
-      await new Promise(resolve => setTimeout(resolve, this.simulatedLatency));
-    }
-
-    const embedding = this.deterministicEmbedding(text);
-    this.cache.set(text, embedding);
-
-    const latencyMs = performance.now() - startTime;
-    this.emitEvent({ type: 'embed_complete', text, latencyMs });
-
-    return { embedding, latencyMs };
-  }
-
-  async embedBatch(texts: string[]): Promise<BatchEmbeddingResult> {
-    this.emitEvent({ type: 'batch_start', count: texts.length });
-    const startTime = performance.now();
-
-    const embeddings: Float32Array[] = [];
-    let cacheHits = 0;
-
-    for (const text of texts) {
-      const cached = this.cache.get(text);
-      if (cached) {
-        embeddings.push(cached);
-        cacheHits++;
-      } else {
-        const embedding = this.deterministicEmbedding(text);
-        this.cache.set(text, embedding);
-        embeddings.push(embedding);
-      }
-    }
-
-    const totalLatencyMs = performance.now() - startTime;
-    this.emitEvent({ type: 'batch_complete', count: texts.length, latencyMs: totalLatencyMs });
-
-    return {
-      embeddings,
-      totalLatencyMs,
-      avgLatencyMs: totalLatencyMs / texts.length,
-      cacheStats: {
-        hits: cacheHits,
-        misses: texts.length - cacheHits,
-      },
-    };
-  }
-
-  // eslint-disable-next-line no-restricted-syntax -- test-only hash; relocation tracked by #558
-  private deterministicEmbedding(text: string): Float32Array {
-    const embedding = new Float32Array(this.dimensions);
-
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      hash = (hash << 5) - hash + text.charCodeAt(i);
-      hash = hash & hash;
-    }
-
-    for (let i = 0; i < this.dimensions; i++) {
-      const seed = hash + i * 2654435761;
-      const x = Math.sin(seed) * 10000;
-      embedding[i] = x - Math.floor(x);
-    }
-
-    const norm = Math.sqrt(embedding.reduce((sum, v) => sum + v * v, 0));
-    for (let i = 0; i < this.dimensions; i++) {
-      embedding[i] /= norm;
-    }
-
-    return embedding;
-  }
-}
-
-// ============================================================================
 // Factory Functions
 // ============================================================================
 
@@ -471,9 +363,11 @@ async function loadFastembedService(): Promise<any> {
  * loading fails at first-use time, the service throws — there is no hash
  * fallback.
  *
- * `'mock'` is accepted only for test contexts; production callers should not
- * pass it. The `'transformers'` key is a backwards-compatible alias for
- * `'fastembed'` so existing callers keep working without config changes.
+ * Production providers: `'openai'` and `'fastembed'` (with `'transformers'`
+ * as a backwards-compatible alias for fastembed). Tests needing a
+ * synchronous, network-free embedder import `MockEmbeddingService` directly
+ * from `__tests__/mocks/mock-embedding-service.ts` — it is not reachable
+ * from this factory per ADR-EMB-001.
  */
 export function createEmbeddingService(config: EmbeddingConfig): IEmbeddingService {
   switch (config.provider) {
@@ -487,12 +381,10 @@ export function createEmbeddingService(config: EmbeddingConfig): IEmbeddingServi
       // eslint-disable-next-line @typescript-eslint/no-require-imports,@typescript-eslint/no-var-requires
       return lazyFastembed(config as FastembedEmbeddingConfig | TransformersEmbeddingConfig);
     }
-    case 'mock':
-      return new MockEmbeddingService(config as MockEmbeddingConfig);
     default: {
       const provider: string = (config as { provider?: string }).provider ?? '<none>';
       throw new Error(
-        `Unknown embedding provider: '${provider}'. Supported: 'openai', 'fastembed', 'transformers', 'mock'.`,
+        `Unknown embedding provider: '${provider}'. Supported: 'openai', 'fastembed', 'transformers'.`,
       );
     }
   }
@@ -633,12 +525,6 @@ function buildConfig(
         dimensions: rest.dimensions,
         cacheSize: rest.cacheSize,
       } as FastembedEmbeddingConfig | TransformersEmbeddingConfig;
-    case 'mock':
-      return {
-        provider: 'mock',
-        dimensions: rest.dimensions ?? 384,
-        cacheSize: rest.cacheSize,
-      };
     default:
       throw new Error(`Unknown embedding provider: '${provider as string}'`);
   }

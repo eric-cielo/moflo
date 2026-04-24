@@ -14,9 +14,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 
 import {
   EMBEDDINGS_VERSION,
-  MockBatchEmbedder,
   migrateStore,
 } from '../../../embeddings/src/migration/index.js';
+import { MockBatchEmbedder } from '../../../embeddings/src/__tests__/migration/mock-batch-embedder.js';
 import { SqlJsMemoryEntriesStore } from '../../src/services/sqljs-migration-store.js';
 import { MEMORY_SCHEMA_V3 } from '../../src/memory/memory-initializer.js';
 

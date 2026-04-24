@@ -30,7 +30,6 @@ export {
   dotProduct,
   computeSimilarity,
   OpenAIEmbeddingService,
-  MockEmbeddingService,
 } from './embedding-service.js';
 
 export type { AutoEmbeddingConfig } from './embedding-service.js';
@@ -51,7 +50,6 @@ export {
   saveCursorRow,
   clearCursorRow,
   InMemoryMigrationStore,
-  MockBatchEmbedder,
   type MigrateStoreOptions,
   type MigrationBatchUpdate,
   type MigrationCursor,

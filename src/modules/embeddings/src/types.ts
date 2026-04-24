@@ -23,7 +23,10 @@
  *   a fastembed-backed service under the hood.
  * - `mock` — deterministic in-memory service used only by tests.
  */
-export type EmbeddingProvider = 'openai' | 'transformers' | 'mock' | 'fastembed';
+// Production providers. The `'mock'` shape lives under `src/__tests__/mocks/`
+// and is not part of the `EmbeddingProvider` union — it is imported directly
+// by tests so no production code path can route to it.
+export type EmbeddingProvider = 'openai' | 'transformers' | 'fastembed';
 
 /**
  * Normalization type for embeddings
@@ -109,9 +112,14 @@ export interface TransformersEmbeddingConfig extends EmbeddingBaseConfig {
 }
 
 /**
- * Mock provider configuration
+ * Mock provider configuration — test-only, not part of `EmbeddingConfig`.
+ *
+ * Retained as a standalone interface so the test-only `MockEmbeddingService`
+ * under `src/__tests__/mocks/` stays typed; `createEmbeddingService` rejects
+ * the `'mock'` string at runtime (production path is neural-only per
+ * ADR-EMB-001). Test callers construct `MockEmbeddingService` directly.
  */
-export interface MockEmbeddingConfig extends EmbeddingBaseConfig {
+export interface MockEmbeddingConfig extends Omit<EmbeddingBaseConfig, 'provider'> {
   provider: 'mock';
 
   /** Output dimensions */
@@ -156,7 +164,6 @@ export interface FastembedEmbeddingConfig extends EmbeddingBaseConfig {
 export type EmbeddingConfig =
   | OpenAIEmbeddingConfig
   | TransformersEmbeddingConfig
-  | MockEmbeddingConfig
   | FastembedEmbeddingConfig;
 
 // ============================================================================

@@ -116,47 +116,27 @@ let routerBackend: 'pure-js' | 'none' = 'none';
 // Pre-computed embeddings for common task patterns (cached)
 const TASK_PATTERN_EMBEDDINGS: Map<string, Float32Array> = new Map();
 
-// eslint-disable-next-line no-restricted-syntax -- inline hash embedding, fastembed migration tracked by #558
-function generateSimpleEmbedding(text: string, dimension: number = 384): Float32Array {
-  // Simple deterministic embedding based on character codes
-  // This is for routing purposes where we need consistent, fast embeddings
-  const embedding = new Float32Array(dimension);
-  const normalized = text.toLowerCase().replace(/[^a-z0-9\s]/g, '');
-  const words = normalized.split(/\s+/).filter(w => w.length > 0);
+// Lazy neural embedding service — ADR-EMB-001 forbids hash fallbacks, so
+// routing and attention handlers embed through fastembed. The service boots
+// once per process; first call pays the ~1–3 s model-load cost, later calls
+// are sub-ms cached lookups.
+let embeddingService: { embed(t: string): Promise<{ embedding: Float32Array }>; embedBatch(ts: string[]): Promise<{ embeddings: Float32Array[] }> } | null = null;
+async function getEmbeddingService() {
+  if (embeddingService) return embeddingService;
+  const { createEmbeddingService } = await import('@moflo/embeddings');
+  embeddingService = createEmbeddingService({ provider: 'fastembed' }) as typeof embeddingService;
+  return embeddingService!;
+}
 
-  // Combine word-level and character-level features
-  for (let i = 0; i < dimension; i++) {
-    let value = 0;
+async function embedTexts(texts: string[]): Promise<Float32Array[]> {
+  const svc = await getEmbeddingService();
+  const { embeddings } = await svc.embedBatch(texts);
+  return embeddings;
+}
 
-    // Word-level features
-    for (let w = 0; w < words.length; w++) {
-      const word = words[w];
-      for (let c = 0; c < word.length; c++) {
-        const charCode = word.charCodeAt(c);
-        value += Math.sin((charCode * (i + 1) + w * 17 + c * 23) * 0.0137);
-      }
-    }
-
-    // Character-level features
-    for (let c = 0; c < text.length; c++) {
-      value += Math.cos((text.charCodeAt(c) * (i + 1) + c * 7) * 0.0073);
-    }
-
-    embedding[i] = value / Math.max(1, text.length);
-  }
-
-  // Normalize
-  let norm = 0;
-  for (let i = 0; i < dimension; i++) {
-    norm += embedding[i] * embedding[i];
-  }
-  norm = Math.sqrt(norm);
-  if (norm > 0) {
-    for (let i = 0; i < dimension; i++) {
-      embedding[i] /= norm;
-    }
-  }
-
+async function embedText(text: string): Promise<Float32Array> {
+  const svc = await getEmbeddingService();
+  const { embedding } = await svc.embed(text);
   return embedding;
 }
 
@@ -320,7 +300,7 @@ async function getSemanticRouter() {
     semanticRouter = new SemanticRouter({ dimension: 384 });
 
     for (const [patternName, { keywords, agents }] of Object.entries(TASK_PATTERNS)) {
-      const embeddings = keywords.map(kw => generateSimpleEmbedding(kw));
+      const embeddings = await embedTexts(keywords);
       semanticRouter.addIntentWithEmbeddings(patternName, embeddings, { agents, keywords });
 
       // Cache embeddings for keywords
@@ -332,7 +312,7 @@ async function getSemanticRouter() {
     // Also load learned patterns from previous task executions
     const learned = learnedPatternsFromOutcomes();
     for (const [patternName, { keywords, agents }] of Object.entries(learned)) {
-      const embeddings = keywords.map(kw => generateSimpleEmbedding(kw));
+      const embeddings = await embedTexts(keywords);
       semanticRouter.addIntentWithEmbeddings(patternName, embeddings, { agents, keywords });
       keywords.forEach((kw, i) => {
         TASK_PATTERN_EMBEDDINGS.set(`${patternName}:${kw}`, embeddings[i]);
@@ -858,7 +838,7 @@ export const hooksRoute: MCPTool = {
     let backendInfo = '';
 
     const queryText = context ? `${task} ${context}` : task;
-    const queryEmbedding = generateSimpleEmbedding(queryText);
+    const queryEmbedding = await embedText(queryText);
 
     // Pure JS SemanticRouter (cosine similarity)
     if (router && backend === 'pure-js') {
@@ -2986,7 +2966,6 @@ export const hooksIntelligenceAttention: MCPTool = {
     },
     required: ['query'],
   },
-  // eslint-disable-next-line no-restricted-syntax -- MoE demo branch hash-embeds inline, tracked by #558
   handler: async (params: Record<string, unknown>) => {
     const query = params.query as string;
     const mode = (params.mode as string) || 'flash';
@@ -3001,11 +2980,7 @@ export const hooksIntelligenceAttention: MCPTool = {
       const moe = await getMoERouter();
       if (moe) {
         try {
-          // Generate a simple embedding from query (hash-based for demo)
-          const embedding = new Float32Array(384);
-          for (let i = 0; i < 384; i++) {
-            embedding[i] = Math.sin(query.charCodeAt(i % query.length) * (i + 1) * 0.01);
-          }
+          const embedding = await embedText(query);
 
           const routingResult = moe.route(embedding);
           for (let i = 0; i < Math.min(topK, routingResult.experts.length); i++) {
@@ -3027,16 +3002,14 @@ export const hooksIntelligenceAttention: MCPTool = {
       const flash = await getFlashAttention();
       if (flash) {
         try {
-          // Generate query/key/value embeddings
-          const q = new Float32Array(384);
+          // Query via fastembed; keys/values stay synthetic demo placeholders
+          // (this handler demonstrates the attention primitive, not a retrieval
+          // pipeline — a real pipeline would pass embeddings from memory).
+          const q = await embedText(query);
           const keys: Float32Array[] = [];
           const values: Float32Array[] = [];
 
-          for (let i = 0; i < 384; i++) {
-            q[i] = Math.sin(query.charCodeAt(i % query.length) * (i + 1) * 0.01);
-          }
-
-          // Generate some keys/values
+          // Generate some keys/values (synthetic, no input text)
           for (let k = 0; k < topK; k++) {
             const key = new Float32Array(384);
             const value = new Float32Array(384);

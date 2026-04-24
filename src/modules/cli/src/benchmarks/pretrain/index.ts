@@ -288,28 +288,10 @@ export async function benchmarkMemoryRetrieval(config: BenchmarkConfig): Promise
 // ============================================================================
 
 export async function benchmarkEmbeddingGeneration(config: BenchmarkConfig): Promise<BenchmarkResult> {
-  // Simulate embedding generation
-  const generateEmbedding = async (text: string) => {
-    const dim = 384;
-    const embedding = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      let hash = 0;
-      for (let j = 0; j < text.length; j++) {
-        hash = ((hash << 5) - hash + text.charCodeAt(j) * (i + 1)) | 0;
-      }
-      embedding[i] = Math.sin(hash) * 0.5;
-    }
-    // Normalize
-    let norm = 0;
-    for (let i = 0; i < dim; i++) {
-      norm += embedding[i] * embedding[i];
-    }
-    norm = Math.sqrt(norm);
-    for (let i = 0; i < dim; i++) {
-      embedding[i] /= norm;
-    }
-    return embedding;
-  };
+  // Benchmarks the real production embedder (fastembed) — a synthetic sim
+  // here would measure arithmetic, not the component users actually pay for.
+  const { createEmbeddingService } = await import('@moflo/embeddings');
+  const service = createEmbeddingService({ provider: 'fastembed' });
 
   const testTexts = [
     'Implement user authentication with JWT tokens',
@@ -324,7 +306,7 @@ export async function benchmarkEmbeddingGeneration(config: BenchmarkConfig): Pro
   return runBenchmark(
     'Embedding Generation',
     async () => {
-      await generateEmbedding(testTexts[textIdx % testTexts.length]);
+      await service.embed(testTexts[textIdx % testTexts.length]);
       textIdx++;
     },
     { ...config, targetMs: config.targetMs || 5.0 }
@@ -439,14 +421,13 @@ export async function benchmarkPretrainPipeline(config: BenchmarkConfig): Promis
     }));
 
     // Step 2: Generate embeddings for each file
-    const embeddings: Float32Array[] = [];
-    for (const file of files) {
+    // Synthetic random vectors — the pipeline benchmark measures index/pattern
+    // wiring, not the embedder itself (covered by benchmarkEmbeddingGeneration).
+    const embeddings: Float32Array[] = files.map(() => {
       const embedding = new Float32Array(384);
-      for (let i = 0; i < 384; i++) {
-        embedding[i] = Math.sin(file.path.charCodeAt(i % file.path.length) * (i + 1));
-      }
-      embeddings.push(embedding);
-    }
+      for (let i = 0; i < 384; i++) embedding[i] = Math.random() * 2 - 1;
+      return embedding;
+    });
 
     // Step 3: Build pattern index (simulated HNSW construction)
     const index = new Map<number, Float32Array>();
