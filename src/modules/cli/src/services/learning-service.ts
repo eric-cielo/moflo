@@ -13,9 +13,10 @@
  * - HNSW indexing for fast similarity search
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { mofloImport } from './moflo-require.js';
+import { atomicWriteFileSync } from './atomic-file-write.js';
 import {
   createNeuralEmbeddingProvider,
   type NeuralEmbeddingProvider,
@@ -628,8 +629,7 @@ export class LearningService {
    */
   save(): void {
     if (!this.db) return;
-    const data = this.db.export();
-    writeFileSync(this.dbPath, Buffer.from(data));
+    atomicWriteFileSync(this.dbPath, this.db.export());
     this.dirty = false;
   }
 

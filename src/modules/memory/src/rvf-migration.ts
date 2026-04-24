@@ -3,7 +3,7 @@
  * formats (JSON files, sql.js / better-sqlite3 databases).
  * @module @moflo/memory/rvf-migration
  */
-import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, rename, unlink, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { RvfBackend } from './rvf-backend.js';
@@ -84,13 +84,28 @@ async function ensureDir(filePath: string): Promise<void> {
   if (!existsSync(dir)) await mkdir(dir, { recursive: true });
 }
 
+// Local async helper — exempt from the shared `atomicWriteFileSync` migration
+// in #564 because the migrator runs in an async streaming context and adding
+// sync writes inside the per-entry loop would block the event loop during
+// large migrations. Mirrors the shared helper's temp-file + rename semantics
+// with the addition of a timestamp suffix for concurrent-write isolation and
+// best-effort cleanup on rename failure (restored with this change — PR #564).
 async function atomicWrite(targetPath: string, data: string | Buffer): Promise<void> {
   validateMigrationPath(targetPath);
   const abs = resolve(targetPath);
   const tmp = abs + '.tmp.' + Date.now();
   await ensureDir(abs);
   await writeFile(tmp, data, typeof data === 'string' ? 'utf-8' : undefined);
-  await rename(tmp, abs);
+  try {
+    await rename(tmp, abs);
+  } catch (err) {
+    try {
+      await unlink(tmp);
+    } catch {
+      /* best-effort cleanup — tmp may already be gone */
+    }
+    throw err;
+  }
 }
 
 function mkResult(

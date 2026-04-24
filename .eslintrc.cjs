@@ -36,6 +36,26 @@ const BANNED_IDENTIFIER_PATTERN = `^(${BANNED_IDENTIFIERS.join('|')})$`;
 // tag, and any future suffix a contributor might try to sneak through.
 const BANNED_LITERAL_PATTERN = '^domain-aware-hash';
 
+// Issue #564: Flag raw `fs.writeFileSync(path, <anything>.export())` and
+// `writeFileSync(path, Buffer.from(<anything>.export()))` patterns. The
+// `:has(...)` guard scopes the rule to writeFileSync calls whose argument
+// tree contains a `.export()` call — the signature of a sql.js DB write.
+// The canonical `atomicWriteFileSync` helper never nests a `.export()` under
+// its own internal writeFileSync, so it doesn't self-trigger.
+const RAW_DB_WRITE_MESSAGE =
+  'Raw fs.writeFileSync(path, db.export()) is not atomic — SIGINT mid-write ' +
+  'can truncate the DB file. Use atomicWriteFileSync from @moflo/shared ' +
+  '(see #564 / #548).';
+
+const RAW_DB_WRITE_SELECTORS = [
+  {
+    selector:
+      "CallExpression[callee.property.name='writeFileSync']" +
+      ":has(CallExpression[callee.property.name='export'])",
+    message: RAW_DB_WRITE_MESSAGE,
+  },
+];
+
 // Structural guard: any function that both constructs a Float32Array AND
 // calls charCodeAt is a hash embedding regardless of method name. The
 // identifier ban above missed the inline implementations removed in #542
@@ -75,6 +95,7 @@ const bannedEmbeddingRules = {
       message: BANNED_EMBEDDING_MESSAGE,
     },
     ...INLINE_HASH_EMBEDDING_SELECTORS,
+    ...RAW_DB_WRITE_SELECTORS,
   ],
   'no-restricted-imports': [
     'error',

@@ -10,8 +10,9 @@
  * - Lazy initialization (no startup cost if not used)
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { dirname } from 'path';
+import { atomicWriteFileSync } from './utils/atomic-file-write.js';
 
 // Use 'any' for sql.js types to avoid complex typing issues
 // sql.js has its own types but they don't always match perfectly
@@ -178,9 +179,7 @@ export class PersistentEmbeddingCache {
     if (!this.db) return;
 
     try {
-      const data = this.db.export();
-      const buffer = Buffer.from(data);
-      writeFileSync(this.dbPath, buffer);
+      atomicWriteFileSync(this.dbPath, this.db.export());
       this.dirty = false;
     } catch (error) {
       console.error('[persistent-cache] Save error:', error);

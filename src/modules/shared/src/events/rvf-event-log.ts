@@ -16,8 +16,9 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, appendFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { atomicWriteFileSync } from '../utils/atomic-file-write.js';
 import type { DomainEvent } from './domain-events.js';
 
 // Re-export shared interfaces so consumers do not need to import event-store.ts
@@ -108,9 +109,7 @@ export class RvfEventLog extends EventEmitter {
         this.indexEvent(event);
       });
     } else {
-      const tmpLog = this.config.logPath + '.tmp';
-      writeFileSync(tmpLog, MAGIC);
-      renameSync(tmpLog, this.config.logPath);
+      atomicWriteFileSync(this.config.logPath, MAGIC);
     }
 
     // --- snapshots file ---
@@ -120,9 +119,7 @@ export class RvfEventLog extends EventEmitter {
         this.snapshots.set(snap.aggregateId, snap);
       });
     } else {
-      const tmpSnap = this.snapshotPath + '.tmp';
-      writeFileSync(tmpSnap, MAGIC);
-      renameSync(tmpSnap, this.snapshotPath);
+      atomicWriteFileSync(this.snapshotPath, MAGIC);
     }
 
     this.initialized = true;

@@ -1,6 +1,6 @@
 /**
  * Unit tests for `atomicWriteFileSync` — the temp-file + rename helper that
- * protects DB/config files from mid-write corruption (#548).
+ * protects DB/config files from mid-write corruption (#548, #564).
  *
  * Covers the three failure modes a real SIGINT mid-write can produce:
  *   1. write itself throws (e.g. ENOSPC) — original intact, temp cleaned up
@@ -30,7 +30,7 @@ import { join } from 'node:path';
 import {
   atomicWriteFileSync,
   type AtomicWriteFs,
-} from '../../src/services/atomic-file-write.js';
+} from '../../src/utils/atomic-file-write.js';
 
 const tmpDirs: string[] = [];
 afterEach(() => {
@@ -70,6 +70,21 @@ describe('atomicWriteFileSync (real fs)', () => {
 
     expect(readFileSync(target, 'utf8')).toBe('replaced');
     expect(existsSync(`${target}.tmp`)).toBe(false);
+  });
+
+  it('accepts a Uint8Array directly without Buffer.from wrapping (#564)', () => {
+    // db.export() returns a Uint8Array — the helper must accept it as-is
+    // so callers don't need a Buffer.from(...) copy.
+    const dir = makeTmpDir();
+    const target = join(dir, 'data.bin');
+    const payload = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
+
+    atomicWriteFileSync(target, payload);
+
+    const read = readFileSync(target);
+    expect(read.length).toBe(4);
+    expect(read[0]).toBe(0xde);
+    expect(read[3]).toBe(0xef);
   });
 });
 

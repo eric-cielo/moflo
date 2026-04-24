@@ -8,6 +8,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 
 // When run via npx, CWD may be node_modules/moflo — walk up to find actual project
 let _projectRoot: string | undefined;
@@ -176,9 +177,8 @@ export function persistBridgeDb(db: any, dbPath?: string): void {
     : path.join(getProjectRoot(), '.swarm', 'memory.db');
   if (target === ':memory:') return;
   try {
-    const data = db.export();
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, Buffer.from(data));
+    atomicWriteFileSync(target, db.export());
   } catch (err) {
     logBridgeError('bridge persist failed', err);
   }
