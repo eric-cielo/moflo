@@ -11,6 +11,9 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { reasoningBank, type GuidancePattern } from '../reasoningbank/index.js';
 import type {
   IMessageBus,
@@ -19,31 +22,57 @@ import type {
   MessageFilter,
 } from '../../../../modules/swarm/src/types.js';
 
-// Lazy-load MessageBus to avoid hard dependency on swarm package at import time.
-// The swarm package compiles to dist/ but hooks references src/ paths — lazy
-// import avoids the broken path at module evaluation time.
-async function loadMessageBus(): Promise<new () => IMessageBus> {
-  try {
-    // Try dist first (correct compiled output)
-    const mod = await import('../../../../modules/swarm/dist/message-bus/message-bus.js');
-    return mod.MessageBus;
-  } catch {
-    try {
-      // Fallback: src path (may have pre-compiled .js)
-      const mod = await import('../../../../modules/swarm/src/message-bus/message-bus.js');
-      return mod.MessageBus;
-    } catch {
-      // Final fallback: no-op message bus
-      const NoopMessageBus = class {
-        async initialize() {}
-        async shutdown() {}
-        async publish() {}
-        subscribe() { return () => {}; }
-        getMessages() { return []; }
-      };
-      return NoopMessageBus as unknown as new () => IMessageBus;
-    }
+/**
+ * Walk up from this file to find `src/modules/swarm/dist/<rel>`. Layout- and
+ * platform-invariant — works from source, built, and installed contexts on
+ * Windows/Linux/macOS. Mirrors `locateMofloModuleDist` in @moflo/cli
+ * (feedback_no_fixed_depth_paths: never use fixed ../ counts to cross
+ * moflo packages).
+ */
+export function locateSwarmArtifact(relFromDist: string): string | null {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  const rel = join('src', 'modules', 'swarm', 'dist', relFromDist);
+  for (let i = 0; i < 12; i++) {
+    const candidate = join(dir, rel);
+    if (existsSync(candidate)) return pathToFileURL(candidate).href;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
   }
+  return null;
+}
+
+// Lazy-load MessageBus: the swarm package is a runtime peer and may not be
+// built in every consumer install. On failure we fall back to a no-op bus so
+// hooks keep functioning; the failure is logged (feedback_no_silent_failures)
+// rather than swallowed.
+async function loadMessageBus(): Promise<new () => IMessageBus> {
+  const url = locateSwarmArtifact('message-bus/message-bus.js');
+  if (url) {
+    try {
+      const mod = await import(url);
+      return mod.MessageBus;
+    } catch (err) {
+      console.warn(
+        `[moflo/hooks] Failed to load @moflo/swarm MessageBus from ${url}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  } else {
+    console.warn(
+      '[moflo/hooks] @moflo/swarm MessageBus not built — using no-op bus. ' +
+      'Run `npm run build` to enable swarm coordination.',
+    );
+  }
+  // No-op fallback — hooks continue to work without cross-agent messaging.
+  const NoopMessageBus = class {
+    async initialize() {}
+    async shutdown() {}
+    async publish() {}
+    subscribe() { return () => {}; }
+    getMessages() { return []; }
+  };
+  return NoopMessageBus as unknown as new () => IMessageBus;
 }
 
 // ============================================================================
