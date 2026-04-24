@@ -10,7 +10,7 @@
 **Related:**
 - Epic #527 — "Hard-require neural embeddings; remove all hash fallbacks"
 - Issue #558 — "Purge remaining inline hash embeddings caught by unscoped guard"
-- Issue #560 — "Pretrain benchmark ships hash-based embeddings" (audit follow-up)
+- Issue #560 — "Pretrain benchmark ships hash-based embeddings" (resolved in PR #565; regression guard added under `src/modules/cli/__tests__/pretrain-no-hash-embeddings.test.ts`)
 - ADR-EMB-001 — Neural embeddings mandatory
 
 ## Methodology
@@ -36,16 +36,18 @@
 
 | Category | Files | Notes |
 |---|---|---|
-| PROVIDER | 12 | All reached via constructor/DI; none ambient. |
+| PROVIDER | 13 | All reached via constructor/DI; none ambient. `benchmarkEmbeddingGeneration` now routes through `createEmbeddingService` (#560, PR #565). |
 | STORAGE / DESERIALIZATION | 6 | Reconstitute provider output; safe. |
-| NON-SEMANTIC | 34+ | RL, LoRA, attention, optimiser state, math helpers. |
+| NON-SEMANTIC | 35+ | RL, LoRA, attention, optimiser state, math helpers. Now includes `benchmarkPretrainPipeline`'s `Math.random` fixture vectors (pipeline-wiring measurement, not a text→vector; #560). |
 | NEEDS-FIX (tracked in #558) | 4 | `eslint-disable` with `tracked by #558`. |
-| **NEEDS-FIX (new, not in #558)** | **1 file / 2 sites** | `benchmarks/pretrain/index.ts` — tracked as #560. |
+| **NEEDS-FIX (new, not in #558)** | **0** | `benchmarks/pretrain/index.ts` was promoted to PROVIDER + NON-SEMANTIC in PR #565 (issue #560). |
 
 Net result: the name-based guard already caught everything #558 tracks. The
 structural guard (`Float32Array + charCodeAt`) missed two hash-embedding sites
 inside `src/modules/cli/src/benchmarks/pretrain/index.ts` because the rule exempts
-paths under `benchmarks/`. These are filed as a new follow-up.
+paths under `benchmarks/`. Those were fixed in PR #565 and are now covered by a
+dedicated `__tests__/` regression guard (`pretrain-no-hash-embeddings.test.ts`)
+that is NOT subject to the `benchmarks/` exemption.
 
 ## PROVIDER — Flows through `IEmbeddingProvider`
 
@@ -63,6 +65,7 @@ paths under `benchmarks/`. These are filed as a new follow-up.
 | `src/modules/swarm/src/attention-coordinator.ts:829,889,897,891` | Same pattern — prefers caller-supplied vector, otherwise delegates to `this.embeddingProvider.embed`. | PR #543. |
 | `src/modules/hooks/src/reasoningbank/index.ts:862-868,1022-1028` | `ensureEmbedding()` calls the injected `embeddingService`. | Constructor-injected. |
 | `src/modules/cli/src/commands/embeddings.ts` | CLI wrapper over provider results. | Same DI path. |
+| `src/modules/cli/src/benchmarks/pretrain/index.ts:290-313` (`benchmarkEmbeddingGeneration`) | `createEmbeddingService({ provider: 'fastembed' })` + `service.embed(...)`. | Shipped via `moflo benchmark pretrain`; the reported number now reflects real fastembed throughput (#560, PR #565). |
 
 ## STORAGE / DESERIALIZATION — Reconstitutes prior provider output
 
@@ -105,6 +108,11 @@ Grouped by concern for readability.
 | `src/modules/cli/src/services/training-utils.ts:32-69,186-190` | Adam optimiser `m`/`v`, contrastive-loss gradient buffer. |
 | `src/modules/cli/src/services/movector-training.ts:128,233` | MoE expert-weight init, synthetic gradient for reward-shaped adaptation. |
 
+### Benchmark fixtures (pipeline-wiring measurement, not text→vector)
+| File | What the `Float32Array` holds |
+|---|---|
+| `src/modules/cli/src/benchmarks/pretrain/index.ts:421-430` (`benchmarkPretrainPipeline`) | Random fixture vectors used to time index construction and pattern extraction. The embedder itself is covered by `benchmarkEmbeddingGeneration` in the PROVIDER table; this helper deliberately uses `Math.random` so it cannot be mistaken for a real embedding (#560, PR #565). |
+
 ### Test-only paths NOT classified
 
 Skipped per audit scope. Listed here only so the audit is demonstrably complete.
@@ -129,26 +137,31 @@ All four carry `// eslint-disable-next-line no-restricted-syntax -- … tracked 
 
 This audit does **not** duplicate those into fresh issues — #558 is their owner.
 
-### #560 — NEW, not in #558
+### #560 — RESOLVED (PR #565)
 
-**Files:**
-- `src/modules/cli/src/benchmarks/pretrain/index.ts:290-312` — `benchmarkEmbeddingGeneration` builds a 384-dim vector from `text.charCodeAt` + `Math.sin`.
-- `src/modules/cli/src/benchmarks/pretrain/index.ts:432-465` — `benchmarkPretrainPipeline` generates 50 file embeddings via `Math.sin(file.path.charCodeAt(...))`.
+**Sites (original):**
+- `src/modules/cli/src/benchmarks/pretrain/index.ts:290-312` — `benchmarkEmbeddingGeneration` built a 384-dim vector from `text.charCodeAt` + `Math.sin`.
+- `src/modules/cli/src/benchmarks/pretrain/index.ts:432-465` — `benchmarkPretrainPipeline` generated 50 file embeddings via `Math.sin(file.path.charCodeAt(...))`.
 
 **Why the guard missed it:** the `no-restricted-syntax` structural rule exempts
 `benchmarks/` paths because benchmarks routinely compute synthetic vectors.
-These two functions however are imported from `src/modules/cli/src/commands/benchmark.ts`
-and are invoked by the user-facing `moflo benchmark` command — so `npm i moflo` ships
-them, and users see "Embedding Generation: N ops/sec" numbers that measure a
+These two functions however were imported from `src/modules/cli/src/commands/benchmark.ts`
+and are invoked by the user-facing `moflo benchmark` command — so `npm i moflo` shipped
+them, and users saw "Embedding Generation: N ops/sec" numbers that measured a
 hash function, not the real fastembed pipeline.
 
-**Recommendation:** either
-1. measure the real `IEmbeddingService` (integrity fix, preferred), or
-2. rename the reported label to `Hash Embedding Baseline (synthetic)` to
-   prevent misleading users, and move the synthetic helper under
-   `__tests__/` or `benchmarks/` where the lint exemption is justified.
+**Fix (option 1 — integrity):**
+- `benchmarkEmbeddingGeneration` now calls `createEmbeddingService({ provider: 'fastembed' }).embed(...)`. The reported throughput is real fastembed.
+- `benchmarkPretrainPipeline` keeps synthetic fixture vectors (its point is to time index/pattern wiring, not the embedder) but uses `Math.random` — an obviously synthetic generator that cannot be mistaken for a real embedding.
 
-Tracked as issue #560.
+**Why a new guard was required after PR #565:** the repo-wide ESLint structural
+rule still exempts `src/**/benchmarks/**`, so a future PR could re-introduce
+`charCodeAt` + `Math.sin` here and lint would stay green. Consumer-smoke's
+`verifyNoInlineHashEmbeddings` catches it at dist time but only on PR CI.
+The regression is now also gated by
+`src/modules/cli/__tests__/pretrain-no-hash-embeddings.test.ts`, which runs
+in the normal unit suite and is NOT subject to the `benchmarks/` exemption
+because it lives under `__tests__/`.
 
 ## Confidence
 
@@ -156,8 +169,9 @@ Tracked as issue #560.
   classified — spot-checked every file listed in the grep index before writing
   this document.
 - High confidence that no production hash-embedding path remains outside
-  `hooks-tools.ts` (tracked by #558) and `benchmarks/pretrain/index.ts`
-  (tracked by the new companion issue).
+  `hooks-tools.ts` (tracked by #558). `benchmarks/pretrain/index.ts` was fixed
+  in PR #565 and is guarded at unit-test time by
+  `pretrain-no-hash-embeddings.test.ts` (outside the `benchmarks/` ESLint exemption).
 - Moderate confidence that `neural/src/{reasoning-bank,reasoningbank-adapter,pattern-learner}.ts`'s
   `computePatternEmbedding` variants are truly non-semantic — they average
   `step.stateAfter` vectors which originate as RL state, not text embeddings.
