@@ -139,6 +139,53 @@ describe('FastembedEmbeddingService', () => {
     });
   });
 
+  describe('init failure', () => {
+    it('surfaces the inner cause when loadModule throws', async () => {
+      const failingLoad = async () => {
+        throw new Error('cache write denied');
+      };
+      const service = new FastembedEmbeddingService(
+        { provider: 'fastembed' },
+        { loadModule: failingLoad },
+      );
+
+      await expect(service.embed('x')).rejects.toThrow(
+        /Failed to initialize fastembed:.*cache write denied/,
+      );
+    });
+
+    it('rejects both embed() and embedBatch() when init failed', async () => {
+      const failingLoad = async () => {
+        throw new Error('model file missing');
+      };
+      const service = new FastembedEmbeddingService(
+        { provider: 'fastembed' },
+        { loadModule: failingLoad },
+      );
+
+      await expect(service.embed('x')).rejects.toThrow(/model file missing/);
+      await expect(service.embedBatch(['a', 'b'])).rejects.toThrow(/model file missing/);
+    });
+
+    it('recovers on retry when the loader succeeds the second time', async () => {
+      const flakyLoad = vi
+        .fn<() => Promise<FastembedModule>>()
+        .mockRejectedValueOnce(new Error('transient network'))
+        .mockImplementation(loadModule);
+      const service = new FastembedEmbeddingService(
+        { provider: 'fastembed' },
+        { loadModule: flakyLoad },
+      );
+
+      await expect(service.embed('x')).rejects.toThrow(/transient network/);
+
+      const result = await service.embed('x');
+      expect(result.embedding).toBeInstanceOf(Float32Array);
+      expect(result.embedding.length).toBe(DIM);
+      expect(flakyLoad).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('single embed', () => {
     it('returns Float32Array of length 384', async () => {
       const service = new FastembedEmbeddingService({ provider: 'fastembed' }, { loadModule });
