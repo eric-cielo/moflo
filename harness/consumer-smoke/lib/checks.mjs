@@ -565,6 +565,18 @@ export function consumerInvariants(consumerDir) {
   }
 }
 
+// Defaults headroom over the README's ~80 MB post-prune claim.
+// Override via MOFLO_INSTALL_SIZE_{WARN,MAX}_MB (see harness README).
+const INSTALL_SIZE_WARN_MB_DEFAULT = 100;
+const INSTALL_SIZE_MAX_MB_DEFAULT = 120;
+
+function readEnvMb(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export function installSurface(consumerDir) {
   section('Install surface');
   const mofloDir = join(consumerDir, 'node_modules', 'moflo');
@@ -572,8 +584,27 @@ export function installSurface(consumerDir) {
     record('install-surface', 'fail', 'node_modules/moflo missing');
     return;
   }
-  const sz = folderSize(mofloDir);
-  record('moflo-install-size', 'info', `${(sz / 1024 / 1024).toFixed(1)} MB`);
+  const nodeModulesDir = join(consumerDir, 'node_modules');
+  const totalMb = folderSize(nodeModulesDir) / 1024 / 1024;
+  const mofloMb = folderSize(mofloDir) / 1024 / 1024;
+  const maxMb = readEnvMb('MOFLO_INSTALL_SIZE_MAX_MB', INSTALL_SIZE_MAX_MB_DEFAULT);
+  // Clamp warn to max so a user who raises MAX alone still gets a sensible
+  // warn ceiling instead of a nonsensical "warn > 200, fail > 120" print.
+  const warnMb = Math.min(
+    readEnvMb('MOFLO_INSTALL_SIZE_WARN_MB', INSTALL_SIZE_WARN_MB_DEFAULT),
+    maxMb,
+  );
+  const detail =
+    `${totalMb.toFixed(1)} MB total` +
+    ` (moflo pkg ${mofloMb.toFixed(1)} MB;` +
+    ` warn > ${warnMb} MB, fail > ${maxMb} MB)`;
+  if (totalMb > maxMb) {
+    record('moflo-install-size', 'fail', detail);
+  } else if (totalMb > warnMb) {
+    record('moflo-install-size', 'warn', detail);
+  } else {
+    record('moflo-install-size', 'pass', detail);
+  }
 }
 
 /** Inspect one onnxruntime-node install; return a problem string or null. */
