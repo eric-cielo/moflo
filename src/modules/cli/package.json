@@ -47,7 +47,6 @@
     "semver": "^7.6.0"
   },
   "optionalDependencies": {
-    "@moflo/guidance": "file:../guidance",
     "@moflo/memory": "file:../memory"
   }
 }

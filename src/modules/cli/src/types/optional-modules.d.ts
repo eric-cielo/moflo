@@ -7,10 +7,6 @@
  * hoisted node_modules are not available.
  */
 
-declare module '@moflo/guidance/analyzer';
-declare module '@moflo/guidance/compiler';
-declare module '@moflo/guidance/gates';
-declare module '@moflo/guidance/retriever';
 declare module '@moflo/mcp';
 declare module '@moflo/memory';
 declare module '@noble/ed25519';

@@ -57,7 +57,7 @@ export const isolationTests = [
   'src/modules/cli/__tests__/doctor-sandbox-tier.test.ts',
   'src/modules/cli/__tests__/mcp-tools-deep.test.ts',
   'src/modules/cli/__tests__/services/moflo-require.test.ts',
-  'src/modules/guidance/tests/persistence.test.ts',
+  'src/modules/cli/__tests__/guidance/persistence.test.ts',
   'src/modules/hooks/__tests__/workers.test.ts',
   'src/modules/cli/src/shared/hooks/verify-exports.test.ts',
   'src/modules/spells/__tests__/built-in-commands.test.ts',
@@ -110,8 +110,8 @@ export default defineConfig({
       'src/modules/cli/__tests__/embeddings/simple.test.mjs',
       'src/modules/cli/__tests__/embeddings/minimal.test.mjs',
       // Guidance tests with 0 tests (collection failures)
-      'src/modules/guidance/tests/hooks.test.ts',
-      'src/modules/guidance/tests/integration.test.ts',
+      'src/modules/cli/__tests__/guidance/hooks.test.ts',
+      'src/modules/cli/__tests__/guidance/integration.test.ts',
       // Isolation tests — run sequentially in second pass (see isolationTests above)
       ...isolationTests,
     ],

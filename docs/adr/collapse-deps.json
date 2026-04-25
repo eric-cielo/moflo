@@ -1,7 +1,6 @@
 {
   "packages": [
     "cli",
-    "guidance",
     "hooks",
     "memory",
     "neural",
@@ -11,15 +10,11 @@
   ],
   "adjacency": {
     "cli": [
-      "guidance",
       "hooks",
       "memory",
       "neural",
       "swarm",
       "testing"
-    ],
-    "guidance": [
-      "hooks"
     ],
     "hooks": [
       "memory"
@@ -50,6 +45,6 @@
       "neural"
     ]
   ],
-  "files": 942,
-  "generatedAt": "2026-04-25T17:01:12Z"
+  "files": 939,
+  "generatedAt": "2026-04-25T19:27:02Z"
 }

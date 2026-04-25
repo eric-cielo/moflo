@@ -4,7 +4,6 @@
     "baseUrl": ".",
     "paths": {
       "@moflo/cli": ["./modules/cli/src"],
-      "@moflo/guidance": ["./modules/guidance/src"],
       "@moflo/hooks": ["./modules/hooks/src"],
       "@moflo/memory": ["./modules/memory/src"],
       "@moflo/neural": ["./modules/neural/src"],
@@ -15,7 +14,6 @@
   },
   "references": [
     { "path": "./modules/cli" },
-    { "path": "./modules/guidance" },
     { "path": "./modules/hooks" },
     { "path": "./modules/memory" },
     { "path": "./modules/neural" },

@@ -139,7 +139,6 @@ export type MofloInternalPackage =
   | 'memory'
   | 'swarm'
   | 'hooks'
-  | 'guidance'
   | 'neural'
   | 'security'
   | 'shared'

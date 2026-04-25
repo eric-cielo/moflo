@@ -26,8 +26,8 @@ import { EventEmitter } from 'events';
 /**
  * Injectable neural embedding provider.
  *
- * Mirrors the shape of the same-named interface in `@moflo/guidance`; kept
- * local so `@moflo/swarm` doesn't take a dependency on guidance. Production
+ * Mirrors the shape of the same-named interface in cli's `guidance/retriever.ts`;
+ * kept local so `@moflo/swarm` doesn't take a dependency on cli/guidance. Production
  * wires a fastembed-backed service from cli's embeddings module; tests inject
  * a deterministic mock. Hash fallbacks are banned (epic #527).
  */

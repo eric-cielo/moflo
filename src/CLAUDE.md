@@ -13,8 +13,7 @@ npm install && npm run build && npm test
 
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@moflo/cli` | `modules/cli/` | CLI entry point (40+ commands); also hosts inlined `aidefence`, `embeddings`, `shared` |
-| `@moflo/guidance` | `modules/guidance/` | Governance control plane |
+| `@moflo/cli` | `modules/cli/` | CLI entry point (40+ commands); also hosts inlined `aidefence`, `embeddings`, `guidance`, `shared` |
 | `@moflo/hooks` | `modules/hooks/` | Hooks + workers |
 | `@moflo/memory` | `modules/memory/` | sql.js + HNSW vector search (MofloDb) |
 | `@moflo/neural` | `modules/neural/` | Neural patterns (SONA) |
