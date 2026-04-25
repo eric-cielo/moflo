@@ -13,7 +13,7 @@ import {
   TaskHooksManager,
   HookRegistry,
   HookEvent,
-} from '../../src/hooks/index.js';
+} from '../../../src/shared/hooks/index.js';
 
 describe('TaskHooksManager', () => {
   let registry: HookRegistry;

@@ -53,9 +53,9 @@ export * as swarm from './modules/swarm/src/index.js';
 
 /**
  * Shared module - common types, events, utilities, core interfaces
- * @see {@link @moflo/shared}
+ * (collapsed into cli per epic #586 / story #595)
  */
-export * as shared from './modules/shared/src/index.js';
+export * as shared from './modules/cli/src/shared/index.js';
 
 /**
  * CLI module - Command parsing, prompts, output formatting
@@ -80,7 +80,6 @@ export * as testing from './modules/testing/src/index.js';
 // =============================================================================
 
 export const MODULES = [
-  '@moflo/shared',
   '@moflo/memory',
   '@moflo/swarm',
   '@moflo/cli',

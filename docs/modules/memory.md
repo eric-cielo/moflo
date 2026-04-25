@@ -579,7 +579,6 @@ import type {
 ## Related Packages
 
 - [@moflo/neural](../neural) - Neural learning integration (SONA, ReasoningBank, EWC++)
-- [@moflo/shared](../shared) - Shared types and utilities
 - [@moflo/hooks](../hooks) - Session lifecycle hooks for auto memory sync
 
 ## License

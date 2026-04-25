@@ -13,12 +13,6 @@ declare module '@moflo/guidance/gates';
 declare module '@moflo/guidance/retriever';
 declare module '@moflo/mcp';
 declare module '@moflo/memory';
-declare module '@moflo/shared' {
-  export interface SystemConfig {
-    [key: string]: any;
-  }
-  export function loadConfig(...args: any[]): any;
-}
 declare module '@noble/ed25519';
 
 declare module 'pg' {
@@ -28,7 +22,3 @@ declare module 'pg' {
   export const Client: any;
 }
 
-declare module 'sql.js' {
-  const initSqlJs: any;
-  export default initSqlJs;
-}

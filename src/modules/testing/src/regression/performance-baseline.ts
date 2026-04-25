@@ -8,6 +8,7 @@
 
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
+import { importCliShared } from '../locate-cli-shared.js';
 
 /**
  * Baseline metric definition
@@ -182,7 +183,7 @@ export class PerformanceBaseline {
    */
   private async simulateStartup(): Promise<void> {
     // Import key modules to simulate startup
-    await import('@moflo/shared');
+    await importCliShared();
     await import('@moflo/memory');
   }
 
@@ -250,7 +251,7 @@ export class PerformanceBaseline {
    * Benchmark event bus operations
    */
   private async benchmarkEventBus(): Promise<number> {
-    const { EventBus, createAgentSpawnedEvent } = await import('@moflo/shared');
+    const { EventBus, createAgentSpawnedEvent } = await importCliShared();
     const eventBus = new EventBus();
 
     const iterations = 1000;
@@ -290,13 +291,12 @@ export class PerformanceBaseline {
    * Benchmark event throughput
    */
   private async benchmarkEventThroughput(): Promise<number> {
-    const { EventBus } = await import('@moflo/shared');
+    const { EventBus, createAgentSpawnedEvent } = await importCliShared();
     const eventBus = new EventBus();
 
     let count = 0;
     eventBus.subscribe('agent:spawned', () => { count++; });
 
-    const { createAgentSpawnedEvent } = await import('@moflo/shared');
     const duration = 1000; // 1 second
     const start = Date.now();
 

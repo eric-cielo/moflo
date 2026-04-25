@@ -30,7 +30,7 @@ import { join } from 'node:path';
 import {
   atomicWriteFileSync,
   type AtomicWriteFs,
-} from '../../src/utils/atomic-file-write.js';
+} from '../../../src/shared/utils/atomic-file-write.js';
 
 const tmpDirs: string[] = [];
 afterEach(() => {

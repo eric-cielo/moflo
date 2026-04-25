@@ -7,7 +7,6 @@
     "declaration": true,
     "declarationMap": true,
     "paths": {
-      "@moflo/shared": ["../shared/src"],
       "@moflo/memory": ["../memory/src"],
       "@moflo/swarm": ["../swarm/src"]
     }
@@ -18,7 +17,6 @@
     "dist"
   ],
   "references": [
-    { "path": "../shared" },
     { "path": "../memory" },
     { "path": "../swarm" }
   ]

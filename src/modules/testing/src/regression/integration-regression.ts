@@ -6,6 +6,8 @@
  * @module v3/testing/regression/integration-regression
  */
 
+import { importCliShared } from '../locate-cli-shared.js';
+
 /**
  * Integration test definition
  */
@@ -196,7 +198,7 @@ export class IntegrationRegressionSuite {
       critical: true,
       timeout: 5000,
       run: async () => {
-        const { EventBus, createAgentSpawnedEvent } = await import('@moflo/shared');
+        const { EventBus, createAgentSpawnedEvent } = await importCliShared();
 
         const eventBus = new EventBus();
         let received = false;
@@ -226,7 +228,7 @@ export class IntegrationRegressionSuite {
       critical: false,
       timeout: 5000,
       run: async () => {
-        const { EventBus, createAgentSpawnedEvent } = await import('@moflo/shared');
+        const { EventBus, createAgentSpawnedEvent } = await importCliShared();
 
         const eventBus = new EventBus();
         let count = 0;
@@ -283,7 +285,7 @@ export class IntegrationRegressionSuite {
       timeout: 5000,
       run: async () => {
         try {
-          const { HookRegistry, HookPriority } = await import('@moflo/shared');
+          const { HookRegistry, HookPriority } = await importCliShared();
 
           const registry = new HookRegistry();
 
@@ -315,7 +317,7 @@ export class IntegrationRegressionSuite {
       run: async () => {
         try {
           // MCP types and utilities should be available from shared
-          const shared = await import('@moflo/shared');
+          const shared = await importCliShared();
 
           // Verify key exports exist
           return (
@@ -339,7 +341,7 @@ export class IntegrationRegressionSuite {
       timeout: 5000,
       run: async () => {
         try {
-          const shared = await import('@moflo/shared');
+          const shared = await importCliShared();
           return (
             typeof shared.EventBus === 'function' &&
             typeof shared.generateSecureId === 'function'

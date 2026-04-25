@@ -49,7 +49,7 @@ const BANNED_LITERAL_PATTERN = '^domain-aware-hash';
 // its own internal writeFileSync, so it doesn't self-trigger.
 const RAW_DB_WRITE_MESSAGE =
   'Raw fs.writeFileSync(path, db.export()) is not atomic — SIGINT mid-write ' +
-  'can truncate the DB file. Use atomicWriteFileSync from @moflo/shared ' +
+  'can truncate the DB file. Use atomicWriteFileSync from cli/src/shared/utils/atomic-file-write.js ' +
   '(see #564 / #548).';
 
 const RAW_DB_WRITE_SELECTORS = [
