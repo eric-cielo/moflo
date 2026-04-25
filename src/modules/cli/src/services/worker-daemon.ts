@@ -25,7 +25,7 @@ import {
 import type {
   SpellScheduler,
   SchedulerEvent,
-} from '../../../spells/src/scheduler/scheduler.js';
+} from '../spells/scheduler/scheduler.js';
 
 // Worker types matching hooks-tools.ts
 export type WorkerType =

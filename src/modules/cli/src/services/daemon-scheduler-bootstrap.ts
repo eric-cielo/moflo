@@ -8,9 +8,9 @@
  */
 
 import type { WorkerDaemon } from './worker-daemon.js';
-import type { MemoryAccessor } from '../../../spells/src/types/step-command.types.js';
-import type { SpellScheduler } from '../../../spells/src/scheduler/scheduler.js';
-import type { SchedulerOptions } from '../../../spells/src/scheduler/schedule.types.js';
+import type { MemoryAccessor } from '../spells/types/step-command.types.js';
+import type { SpellScheduler } from '../spells/scheduler/scheduler.js';
+import type { SchedulerOptions } from '../spells/scheduler/schedule.types.js';
 import { loadSpellEngine } from './engine-loader.js';
 import { buildGrimoire } from './grimoire-builder.js';
 import { DaemonSpellExecutor } from './daemon-spell-executor.js';

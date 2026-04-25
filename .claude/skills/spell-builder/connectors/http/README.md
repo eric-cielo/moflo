@@ -40,4 +40,4 @@ const response = await context.tools.execute('http', 'request', {
 
 ## Source
 
-`src/modules/spells/src/connectors/http-tool.ts`
+`src/modules/cli/src/spells/connectors/http-tool.ts`

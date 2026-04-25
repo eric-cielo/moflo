@@ -1,37 +1,31 @@
 /**
  * Shared Spell Engine Loader
  *
- * Centralizes dynamic import + caching of the @moflo/spells package.
- * Both spell-tools.ts (MCP layer) and runner-adapter.ts (epic runner) use
- * this instead of maintaining their own import/cache logic.
- *
- * Story #229: Extract shared engine loader.
- * Story #230: Replaced *Like interfaces with import type from @moflo/spells.
+ * Centralizes the dynamic import + caching used by spell-tools.ts (MCP layer)
+ * and runner-adapter.ts (epic runner). Deferred-import shape lets non-spell
+ * cli subcommands skip evaluating the engine on startup.
  */
 
-import { dirname, join, resolve } from 'node:path';
-import { existsSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import type {
   SpellResult,
   PreflightWarning,
   PreflightWarningDecision,
   PreflightWarningHandler,
-} from '../../../spells/src/types/runner.types.js';
+} from '../spells/types/runner.types.js';
 import type {
   SpellDefinition,
-} from '../../../spells/src/types/spell-definition.types.js';
+} from '../spells/types/spell-definition.types.js';
 import type {
   Grimoire,
   RegistryOptions,
-} from '../../../spells/src/registry/spell-registry.js';
-import type { SandboxConfig } from '../../../spells/src/core/platform-sandbox.js';
+} from '../spells/registry/spell-registry.js';
+import type { SandboxConfig } from '../spells/core/platform-sandbox.js';
 import type {
   SpellScheduler,
   SpellExecutor,
-} from '../../../spells/src/scheduler/scheduler.js';
-import type { SchedulerOptions } from '../../../spells/src/scheduler/schedule.types.js';
-import type { MemoryAccessor } from '../../../spells/src/types/step-command.types.js';
+} from '../spells/scheduler/scheduler.js';
+import type { SchedulerOptions } from '../spells/scheduler/schedule.types.js';
+import type { MemoryAccessor } from '../spells/types/step-command.types.js';
 
 // Re-export spell types so consumers import from engine-loader (single boundary).
 export type { SpellResult };
@@ -43,9 +37,6 @@ export type { SpellScheduler, SpellExecutor, SchedulerOptions };
 
 /**
  * Shape of the dynamically imported spell engine module.
- *
- * Uses the canonical types from @moflo/spells (type-only, no runtime dep).
- * The actual module is loaded via dynamic import() at runtime.
  */
 export interface EngineModule {
   bridgeRunSpell: (
@@ -90,24 +81,15 @@ export async function loadSpellEngine(): Promise<EngineModule> {
 
   pendingImport = (async () => {
     try {
-      // Walk up from this file to find the @moflo/cli package root (contains package.json),
-      // then resolve sibling spells package. Works from both compiled (dist/src/services/)
-      // and source (src/services/) locations.
-      const __engineDir = dirname(fileURLToPath(import.meta.url));
-      let cliRoot = __engineDir;
-      while (cliRoot !== dirname(cliRoot) && !existsSync(join(cliRoot, 'package.json'))) {
-        cliRoot = dirname(cliRoot);
-      }
-      const spellsEntry = resolve(cliRoot, '..', 'spells', 'dist', 'index.js');
       const mod = await import(
         /* webpackIgnore: true */
-        pathToFileURL(spellsEntry).href
+        '../spells/index.js'
       );
       cachedEngine = mod as unknown as EngineModule;
       return cachedEngine;
     } catch {
       throw new Error(
-        'Spell engine not available. Run `npm run build` to compile the spells package.',
+        'Spell engine not available. Run `npm run build` to compile the cli package.',
       );
     } finally {
       pendingImport = null;

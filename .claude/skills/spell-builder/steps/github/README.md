@@ -49,4 +49,4 @@ Delegates to the `github-cli` connector. See `connectors/github-cli/README.md`.
 
 ## Source
 
-`src/modules/spells/src/commands/github-command.ts`
+`src/modules/cli/src/spells/commands/github-command.ts`

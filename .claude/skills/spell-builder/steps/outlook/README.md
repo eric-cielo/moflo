@@ -88,4 +88,4 @@ Delegates to the `local-outlook` connector. See `connectors/local-outlook/README
 
 ## Source
 
-`src/modules/spells/src/commands/outlook-command.ts`
+`src/modules/cli/src/spells/commands/outlook-command.ts`

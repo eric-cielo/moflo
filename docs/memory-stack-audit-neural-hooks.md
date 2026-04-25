@@ -217,7 +217,7 @@ Callers check `if (!rb?.computeEmbedding) return null;` (line 77) — everything
 **Consumer-visible on removal**
 - If `agentic-flow` is not in `node_modules/`: `isAvailable()` returns false; consumers that check this degrade gracefully.
 - Users relying on `agentic-flow/router` for model routing fall back to whatever the local router is.
-- Spell orchestration via `agentic-flow/orchestration` disables; moflo has its own spell engine that does not depend on it (`@moflo/spells`).
+- Spell orchestration via `agentic-flow/orchestration` disables; moflo has its own spell engine that does not depend on it (`cli/spells`).
 
 **Risk: ZERO for direct imports, LOW for feature completeness.** Nothing crashes; some "advanced" paths disappear.
 

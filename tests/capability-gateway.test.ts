@@ -13,11 +13,11 @@ import {
   discloseSpell,
   formatStepDisclosure,
   formatSpellDisclosure,
-} from '../src/modules/spells/src/core/capability-gateway.js';
-import type { StepCapability, CastingContext } from '../src/modules/spells/src/types/step-command.types.js';
-import { agentCommand } from '../src/modules/spells/src/commands/agent-command.js';
-import { githubCommand } from '../src/modules/spells/src/commands/github-command.js';
-import { memoryCommand } from '../src/modules/spells/src/commands/memory-command.js';
+} from '../src/modules/cli/src/spells/core/capability-gateway.js';
+import type { StepCapability, CastingContext } from '../src/modules/cli/src/spells/types/step-command.types.js';
+import { agentCommand } from '../src/modules/cli/src/spells/commands/agent-command.js';
+import { githubCommand } from '../src/modules/cli/src/spells/commands/github-command.js';
+import { memoryCommand } from '../src/modules/cli/src/spells/commands/memory-command.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 

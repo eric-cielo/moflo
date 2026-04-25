@@ -17,7 +17,7 @@ import {
 } from '../services/engine-loader.js';
 import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
 
-/** Minimal spell result shape matching SpellResult from @moflo/spells. */
+/** Minimal spell result shape matching SpellResult from the inlined spell engine. */
 export type EpicSpellResult = Pick<
   SpellResult,
   'spellId' | 'success' | 'outputs' | 'duration' | 'cancelled'

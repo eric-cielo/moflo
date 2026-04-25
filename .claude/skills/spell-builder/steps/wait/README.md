@@ -25,4 +25,4 @@
 
 ## Source
 
-`src/modules/spells/src/commands/wait-command.ts`
+`src/modules/cli/src/spells/commands/wait-command.ts`

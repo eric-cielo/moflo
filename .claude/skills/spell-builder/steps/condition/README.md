@@ -35,4 +35,4 @@ Infinite loop protection is built in: max iterations = total steps x 10.
 
 ## Source
 
-`src/modules/spells/src/commands/condition-command.ts`
+`src/modules/cli/src/spells/commands/condition-command.ts`

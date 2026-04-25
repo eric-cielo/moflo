@@ -9,9 +9,9 @@
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { WorkerDaemon } from './worker-daemon.js';
-import type { MemoryAccessor } from '../../../spells/src/types/step-command.types.js';
-import type { FloRunContext } from '../../../spells/src/types/runner.types.js';
-import type { SchedulerErrorCode } from '../../../spells/src/scheduler/scheduler.js';
+import type { MemoryAccessor } from '../spells/types/step-command.types.js';
+import type { FloRunContext } from '../spells/types/runner.types.js';
+import type { SchedulerErrorCode } from '../spells/scheduler/scheduler.js';
 
 // ============================================================================
 // Types

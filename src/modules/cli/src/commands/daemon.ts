@@ -11,8 +11,8 @@ import { installDaemonService, uninstallDaemonService, isDaemonInstalled } from 
 import { startDashboard, createDashboardMemoryAccessor, DEFAULT_DASHBOARD_PORT, type DashboardHandle } from '../services/daemon-dashboard.js';
 import { bootstrapDaemonScheduler } from '../services/daemon-scheduler-bootstrap.js';
 import { loadMofloConfig } from '../config/moflo-config.js';
-import type { MemoryAccessor } from '../../../spells/src/types/step-command.types.js';
-import type { SchedulerEvent } from '../../../spells/src/scheduler/scheduler.js';
+import type { MemoryAccessor } from '../spells/types/step-command.types.js';
+import type { SchedulerEvent } from '../spells/scheduler/scheduler.js';
 import { spawn, execFile, execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve, isAbsolute } from 'path';

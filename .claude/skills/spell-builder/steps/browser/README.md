@@ -60,4 +60,4 @@ Delegates to the `playwright` connector. See `connectors/playwright/README.md`.
 
 ## Source
 
-`src/modules/spells/src/commands/browser-command.ts`
+`src/modules/cli/src/spells/commands/browser-command.ts`

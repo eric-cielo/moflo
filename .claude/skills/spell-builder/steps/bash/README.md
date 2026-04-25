@@ -33,4 +33,4 @@
 
 ## Source
 
-`src/modules/spells/src/commands/bash-command.ts`
+`src/modules/cli/src/spells/commands/bash-command.ts`

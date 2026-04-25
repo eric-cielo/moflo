@@ -34,4 +34,4 @@
 
 ## Source
 
-`src/modules/spells/src/commands/agent-command.ts`
+`src/modules/cli/src/spells/commands/agent-command.ts`
