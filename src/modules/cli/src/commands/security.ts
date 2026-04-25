@@ -451,16 +451,7 @@ const defendCommand: Command = {
     output.writeln(output.bold('🛡️ AIDefence - AI Manipulation Defense System'));
     output.writeln(output.dim('─'.repeat(55)));
 
-    // Dynamic import of aidefence (allows package to be optional)
-    let createAIDefence: typeof import('@moflo/aidefence').createAIDefence;
-    try {
-      const aidefence = await import('@moflo/aidefence');
-      createAIDefence = aidefence.createAIDefence;
-    } catch {
-      output.error('AIDefence package not installed. Run: npm install @moflo/aidefence');
-      return { success: false, message: 'AIDefence not available' };
-    }
-
+    const { createAIDefence } = await import('../aidefence/index.js');
     const defender = createAIDefence({ enableLearning });
 
     // Show stats mode
@@ -509,9 +500,13 @@ const defendCommand: Command = {
 
     // Perform scan
     const startTime = performance.now();
-    const result = quickMode
-      ? { ...defender.quickScan(textToScan), threats: [], piiFound: false, detectionTimeMs: 0, inputHash: '', safe: !defender.quickScan(textToScan).threat }
-      : await defender.detect(textToScan);
+    let result;
+    if (quickMode) {
+      const quick = defender.quickScan(textToScan);
+      result = { safe: !quick.threat, threats: [], piiFound: false, detectionTimeMs: 0, inputHash: '' };
+    } else {
+      result = await defender.detect(textToScan);
+    }
     const scanTime = performance.now() - startTime;
 
     spinner.stop();

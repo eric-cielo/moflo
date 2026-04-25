@@ -6,33 +6,22 @@
  * - aidefence_analyze: Deep analysis of threats
  * - aidefence_stats: Get detection statistics
  * - aidefence_learn: Learn from detection feedback
+ * - aidefence_is_safe: Boolean-only quick check
+ * - aidefence_has_pii: PII-only check
  *
  * Created with ❤️ by motailz.com
  */
 
 import type { MCPTool, MCPToolResult } from './types.js';
-import { autoInstallPackage } from './auto-install.js';
 import { tryCreateMofloDbStore } from './aidefence-moflodb-store.js';
-import { createRequire } from 'module';
+import { createAIDefence, type AIDefence, type AIDefenceConfig } from '../aidefence/index.js';
 
-// Create require for resolving module paths
-const require = createRequire(import.meta.url);
+// Lazy-instantiated singleton: first MCP call wires aidefence against the
+// MofloDb-backed HNSW vector store when the memory bridge is available, and
+// falls back to the in-memory store otherwise.
+let aidefenceInstance: AIDefence | null = null;
 
-// AIDefence instance type
-type AIDefenceInstance = ReturnType<typeof import('@moflo/aidefence').createAIDefence>;
-
-// Lazy-loaded AIDefence instance
-let aidefenceInstance: AIDefenceInstance | null = null;
-
-// Track if we've attempted install this session
-let installAttempted = false;
-
-/**
- * Build createAIDefence config, attaching an MofloDb-backed vector store
- * when the memory bridge is available. Falls back to the package default
- * (InMemoryVectorStore) otherwise so the MCP tools still function standalone.
- */
-async function buildAIDefenceConfig(): Promise<{ enableLearning: boolean; vectorStore?: unknown }> {
+async function buildAIDefenceConfig(): Promise<AIDefenceConfig> {
   const store = await tryCreateMofloDbStore();
   if (store) {
     console.error('[claude-flow] aidefence: using MofloDb-backed vector store (HNSW)');
@@ -42,66 +31,10 @@ async function buildAIDefenceConfig(): Promise<{ enableLearning: boolean; vector
   return { enableLearning: true };
 }
 
-/**
- * Get or create AIDefence instance (throws if unavailable)
- */
-async function getAIDefence(): Promise<AIDefenceInstance> {
-  if (aidefenceInstance) {
-    return aidefenceInstance;
-  }
-
-  const packageName = '@moflo/aidefence';
-
-  // First attempt - try to load via dynamic import (ESM)
-  try {
-    const aidefence = await import(packageName);
-    const config = await buildAIDefenceConfig();
-    const instance = aidefence.createAIDefence(config);
-    if (!instance) {
-      throw new Error('createAIDefence returned null');
-    }
-    aidefenceInstance = instance;
-    return instance;
-  } catch (e) {
-    // Package not found or failed to load
-    const error = e as Error;
-    if (!error.message?.includes('Cannot find package') && !error.message?.includes('ERR_MODULE_NOT_FOUND')) {
-      // Different error - might be a real issue
-      throw new Error(`AIDefence failed to load: ${error.message}`);
-    }
-  }
-
-  // Don't attempt install more than once per session
-  if (installAttempted) {
-    throw new Error('AIDefence package not available. Install with: npm install @moflo/aidefence');
-  }
-  installAttempted = true;
-
-  // Second attempt - auto-install and retry
-  console.error(`[claude-flow] ${packageName} not found, attempting auto-install...`);
-  const installed = await autoInstallPackage(packageName);
-
-  if (!installed) {
-    throw new Error('AIDefence package not available. Install with: npm install @moflo/aidefence');
-  }
-
-  // Retry with ESM cache busting via file:// URL + timestamp
-  try {
-    const { pathToFileURL } = await import('url');
-    const modulePath = require.resolve(packageName);
-    const cacheBust = `?t=${Date.now()}`;
-    const aidefence = await import(pathToFileURL(modulePath).href + cacheBust);
-    const config = await buildAIDefenceConfig();
-    const instance = aidefence.createAIDefence(config);
-    if (!instance) {
-      throw new Error('createAIDefence returned null after install');
-    }
-    aidefenceInstance = instance;
-    console.error(`[claude-flow] ${packageName} loaded successfully after install`);
-    return instance;
-  } catch (retryError) {
-    throw new Error(`AIDefence installed but failed to load: ${retryError}. Try restarting the MCP server.`);
-  }
+async function getAIDefence(): Promise<AIDefence> {
+  if (aidefenceInstance) return aidefenceInstance;
+  aidefenceInstance = createAIDefence(await buildAIDefenceConfig());
+  return aidefenceInstance;
 }
 
 /**
@@ -412,10 +345,6 @@ const aidefenceIsSafeTool: MCPTool = {
     const input = args.input as string;
 
     try {
-      // Route through getAIDefence() so this tool inherits the same auto-install
-      // fallback as every other aidefence handler in this file. A bare
-      // `import('@moflo/aidefence')` skips that path and surfaces a hard
-      // ERR_MODULE_NOT_FOUND when the package isn't resolvable.
       const defender = await getAIDefence();
       const result = defender.quickScan(input);
       const safe = !result.threat;

@@ -99,8 +99,8 @@ export interface VectorStore {
  * Simple in-memory vector store for standalone usage.
  *
  * Search is a keyword-substring fallback — it ignores embeddings entirely
- * and ranks by naive JSON string inclusion. Pass an AgentDB-backed
- * VectorStore for real HNSW vector similarity (see @moflo/aidefence README).
+ * and ranks by naive JSON string inclusion. Pass a MofloDb-backed
+ * VectorStore for real HNSW vector similarity (see docs/modules/aidefence.md).
  */
 export class InMemoryVectorStore implements VectorStore {
   private storage = new Map<string, Map<string, { value: unknown; embedding?: number[] }>>();

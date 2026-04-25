@@ -12,10 +12,6 @@ capabilities:
   - mitigation_recommendation
 priority: high
 
-requires:
-  packages:
-    - "@moflo/aidefence"
-
 hooks:
   pre: |
     echo "🔬 Injection Analyst initializing deep analysis..."
@@ -43,7 +39,7 @@ You are the **Injection Analyst**, a specialized agent that performs deep analys
 ### Analysis Workflow
 
 ```typescript
-import { createAIDefence, checkThreats } from '@moflo/aidefence';
+import { createAIDefence, checkThreats } from 'moflo's bundled AIDefence facade';
 
 const analyst = createAIDefence({ enableLearning: true });
 

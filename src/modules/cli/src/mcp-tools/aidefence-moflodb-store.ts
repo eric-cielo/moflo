@@ -5,10 +5,10 @@
  * 6 aidefence_* MCP tools persist learned threat patterns and mitigation
  * strategies across process restarts with 150x-12,500x faster search.
  *
- * @moflo/aidefence stays pure-lib: this adapter lives in the CLI package
- * where the bridge is already available. Arbitrary values are JSON-serialised
- * into the bridge's `content` field; namespaces are prefixed with
- * `aidefence:` to isolate from general memory entries.
+ * The aidefence facade itself stays pure-lib (no MofloDb import); this
+ * adapter is the seam where the bridge is plugged in. Arbitrary values are
+ * JSON-serialised into the bridge's `content` field; namespaces are prefixed
+ * with `aidefence:` to isolate from general memory entries.
  */
 import {
   bridgeStoreEntry,
@@ -17,10 +17,6 @@ import {
   bridgeDeleteEntry,
   isBridgeAvailable,
 } from '../memory/memory-bridge.js';
-
-// Structural duck-typed shape of @moflo/aidefence's VectorStore interface.
-// Declared locally to avoid cross-package type resolution fragility; TypeScript
-// verifies compatibility structurally when passed to createAIDefence().
 
 const NS_PREFIX = 'aidefence:';
 
@@ -36,6 +32,11 @@ function safeParse(raw: string): unknown {
   }
 }
 
+/**
+ * Duck-typed against aidefence's `VectorStore` interface — TypeScript verifies
+ * structurally at the `createAIDefence({ vectorStore })` call site. Kept that
+ * way so this adapter has no compile-time edge to the aidefence tree.
+ */
 export class MofloDbAIDefenceStore {
   async store(params: {
     namespace: string;

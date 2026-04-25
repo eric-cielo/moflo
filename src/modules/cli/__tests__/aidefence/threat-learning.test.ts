@@ -9,8 +9,8 @@ import {
   InMemoryVectorStore,
   type LearnedThreatPattern,
   type MitigationStrategy,
-} from '../src/index.js';
-import { createThreatDetectionService } from '../src/domain/services/threat-detection-service.js';
+} from '../../src/aidefence/index.js';
+import { createThreatDetectionService } from '../../src/aidefence/domain/services/threat-detection-service.js';
 
 describe('ThreatLearningService', () => {
   let learningService: ThreatLearningService;
