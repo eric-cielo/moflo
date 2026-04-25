@@ -192,7 +192,6 @@ async function generateRegistry(): Promise<PluginRegistry> {
   const officialPackages = [
     '@moflo/security',
     '@moflo/neural',
-    '@moflo/plugins',
   ];
 
   const plugins: PluginEntry[] = [];

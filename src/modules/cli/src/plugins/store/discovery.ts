@@ -442,51 +442,6 @@ export class PluginDiscoveryService {
         verified: false,
         trustLevel: 'community',
       },
-      // Plugin SDK - Unified Plugin SDK for creating plugins
-      {
-        id: '@moflo/plugins',
-        name: '@moflo/plugins',
-        displayName: 'Plugin SDK',
-        description: 'Unified Plugin SDK for MoFlo V4 - Worker, Hook, and Provider Integration. Create, test, and publish MoFlo plugins.',
-        version: '3.0.0-alpha.2',
-        cid: 'bafybeipluginsdk2024xyz',
-        size: 156000,
-        checksum: 'sha256:pluginsdk2024abc',
-        author: officialAuthor,
-        license: 'MIT',
-        categories: ['devops'],
-        tags: ['plugin', 'sdk', 'development', 'toolkit', 'workers', 'hooks', 'providers'],
-        keywords: ['plugin', 'sdk', 'development'],
-        downloads: 0,
-        rating: 0,
-        ratingCount: 0,
-        lastUpdated: baseTime,
-        createdAt: '2024-04-01T00:00:00Z',
-        minClaudeFlowVersion: '3.0.0',
-        dependencies: [
-          { name: '@moflo/core', version: '^3.0.0' },
-        ],
-        type: 'core',
-        hooks: [
-          'plugin:create',
-          'plugin:validate',
-          'plugin:test',
-        ],
-        commands: [
-          'plugins create',
-          'plugins validate',
-          'plugins test',
-        ],
-        permissions: ['filesystem'],
-        exports: [
-          'PluginBuilder',
-          'WorkerPlugin',
-          'HookPlugin',
-          'ProviderPlugin',
-        ],
-        verified: true,
-        trustLevel: 'official',
-      },
       // Domain-specific plugins
       {
         id: '@moflo/plugin-healthcare-clinical',
@@ -792,7 +747,6 @@ export class PluginDiscoveryService {
     // Only fetch stats for real npm packages
     const realNpmPackages = [
       '@moflo/security',
-      '@moflo/plugins',
       '@moflo/neural',
       // Domain-specific plugins
       '@moflo/plugin-healthcare-clinical',

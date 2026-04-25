@@ -16,13 +16,9 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@moflo/memory": "^3.0.0-alpha.2",
-    "@moflo/plugins": "^3.0.0-alpha.1"
+    "@moflo/memory": "^3.0.0-alpha.2"
   },
   "peerDependenciesMeta": {
-    "@moflo/plugins": {
-      "optional": true
-    },
     "@moflo/memory": {
       "optional": true
     }

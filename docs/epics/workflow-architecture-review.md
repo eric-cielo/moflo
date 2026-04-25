@@ -310,30 +310,6 @@ Add cycle detection during validation (topological sort of jump targets). Low pr
 
 ---
 
-## Issue 10: Plugin Registry Doesn't Topologically Sort Dependencies
-
-**Severity:** LOW
-**Files:** `src/modules/plugins/src/registry/plugin-registry.ts`
-
-### Analysis
-
-The broader plugin system (`@moflo/plugins`) supports a `dependencies` field on plugins. The registry collects plugins but may not initialize them in dependency order.
-
-Note: This is in the **plugins** package, not the **workflows** package. It affects the general plugin system, not just workflow steps/tools.
-
-### Verification Instructions
-
-1. **Read plugin-registry.ts:** Check if there's initialization ordering logic
-2. **Check the dependencies field:** `grep -n "dependencies\|topolog\|sort" src/modules/plugins/src/registry/plugin-registry.ts`
-3. **Check if any plugins declare dependencies:** `grep -rn "dependencies:" src/modules/plugins/` — are there actual consumers?
-4. **Assess scope:** If no plugins currently declare dependencies, this is a latent issue, not an active bug
-
-### Recommended Fix
-
-If plugins with dependencies exist or are planned, add topological sort before initialization. Otherwise, document the limitation.
-
----
-
 ## Previously Reported Issues Found to be Non-Issues
 
 ### Capability Scope Uses Exact Match Only — FALSE

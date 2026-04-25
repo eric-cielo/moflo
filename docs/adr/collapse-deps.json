@@ -5,7 +5,6 @@
     "hooks",
     "memory",
     "neural",
-    "plugins",
     "security",
     "shared",
     "spells",
@@ -18,7 +17,6 @@
       "hooks",
       "memory",
       "neural",
-      "plugins",
       "security",
       "shared",
       "swarm",
@@ -37,7 +35,6 @@
     "neural": [
       "memory"
     ],
-    "plugins": [],
     "security": [],
     "shared": [],
     "spells": [],
@@ -63,6 +60,6 @@
       "neural"
     ]
   ],
-  "files": 988,
-  "generatedAt": "2026-04-25T05:27:09Z"
+  "files": 964,
+  "generatedAt": "2026-04-25T12:40:39Z"
 }
