@@ -62,7 +62,7 @@ node bin/semantic-search.mjs "entity service route file location" --namespace co
 ### Relevance spot-checks
 - "swarm coordination agent spawning" → top result should reference Swarm Coordination or agent spawning
 - "memory store search vector embeddings" → top result should reference Embeddings Package or memory
-- "security input validation CVE scanning" → top result should reference security agents or @moflo/security
+- "security input validation CVE scanning" → top result should reference security agents, `cli/aidefence/`, or `shared/security/`
 - "entity service route file location" → top result should be a file path (e.g., `file:...`)
 
 **Pass criteria:**

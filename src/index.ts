@@ -10,7 +10,6 @@
  *
  * // Or import specific modules
  * import { UnifiedSwarmCoordinator } from '@moflo/swarm';
- * import { PathValidator } from '@moflo/security';
  * import { HNSWIndex } from '@moflo/memory';
  *
  * Complete reimagining based on 10 ADRs:
@@ -39,12 +38,6 @@
 // =============================================================================
 // @claude-flow Module Exports (New Modular Architecture)
 // =============================================================================
-
-/**
- * Security module - CVE fixes, input validation, credential management
- * @see {@link @moflo/security}
- */
-export * as security from './modules/security/src/index.js';
 
 /**
  * Memory module - AgentDB, HNSW indexing, vector search
@@ -88,7 +81,6 @@ export * as testing from './modules/testing/src/index.js';
 
 export const MODULES = [
   '@moflo/shared',
-  '@moflo/security',
   '@moflo/memory',
   '@moflo/swarm',
   '@moflo/cli',

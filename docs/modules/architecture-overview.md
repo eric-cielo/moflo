@@ -207,16 +207,6 @@ v3/
 
 ## Modules
 
-### @moflo/security
-Security-first implementation with CVE fixes, input validation, and credential management.
-
-```typescript
-import { PathValidator, sanitizePath, validateInput } from '@moflo/security';
-
-const validator = new PathValidator({ allowedPrefixes: ['/workspaces/project'] });
-const result = await validator.validate('/workspaces/project/src/file.ts');
-```
-
 ### @moflo/memory
 Unified memory service with AgentDB, HNSW indexing, and 150x-12,500x faster search.
 
@@ -354,7 +344,6 @@ import * as claudeFlow from '@moflo/v3';
 
 // Or import specific modules for tree-shaking
 import { UnifiedSwarmCoordinator } from '@moflo/swarm';
-import { PathValidator } from '@moflo/security';
 import { HNSWIndex } from '@moflo/memory';
 ```
 
@@ -451,7 +440,6 @@ pnpm test:coverage
 - [Helper System](./helpers/README.md)
 
 ### Modules
-- [@moflo/security](./@moflo/security/)
 - [@moflo/memory](./@moflo/memory/)
 - [@moflo/swarm](./@moflo/swarm/)
 - [@moflo/integration](./@moflo/integration/)

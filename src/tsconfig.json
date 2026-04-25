@@ -8,7 +8,6 @@
       "@moflo/hooks": ["./modules/hooks/src"],
       "@moflo/memory": ["./modules/memory/src"],
       "@moflo/neural": ["./modules/neural/src"],
-      "@moflo/security": ["./modules/security/src"],
       "@moflo/shared": ["./modules/shared/src"],
       "@moflo/swarm": ["./modules/swarm/src"],
       "@moflo/testing": ["./modules/testing/src"],
@@ -22,7 +21,6 @@
     { "path": "./modules/hooks" },
     { "path": "./modules/memory" },
     { "path": "./modules/neural" },
-    { "path": "./modules/security" },
     { "path": "./modules/swarm" },
     { "path": "./modules/testing" },
     { "path": "./modules/spells" }

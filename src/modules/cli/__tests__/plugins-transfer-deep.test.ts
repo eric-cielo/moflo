@@ -1424,9 +1424,9 @@ describe('Update Validator', () => {
   it('should detect incompatible peer dependency', () => {
     const result = validateUpdate(
       'moflo', '3.0.0-alpha.50', '3.0.0-alpha.55',
-      { '@moflo/security': '2.0.0' }
+      { '@moflo/integration': '2.0.0' }
     );
-    // moflo requires @moflo/security >= 3.0.0-alpha.1
+    // moflo requires @moflo/integration >= 3.0.0-alpha.1
     expect(result.valid).toBe(false);
     expect(result.incompatibilities.length).toBeGreaterThan(0);
   });
@@ -1440,9 +1440,9 @@ describe('Update Validator', () => {
     const result = validateBulkUpdate(
       [
         { package: '@moflo/cli', from: '3.0.0-alpha.50', to: '3.0.0-alpha.55' },
-        { package: '@moflo/security', from: '3.0.0-alpha.1', to: '3.0.0-alpha.5' },
+        { package: '@moflo/integration', from: '3.0.0-alpha.1', to: '3.0.0-alpha.5' },
       ],
-      { '@moflo/cli': '3.0.0-alpha.50', '@moflo/security': '3.0.0-alpha.1' }
+      { '@moflo/cli': '3.0.0-alpha.50', '@moflo/integration': '3.0.0-alpha.1' }
     );
     expect(result.valid).toBe(true);
   });

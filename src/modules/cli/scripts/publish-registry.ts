@@ -190,7 +190,6 @@ async function generateRegistry(): Promise<PluginRegistry> {
   console.log('📦 Fetching npm stats for plugins...');
 
   const officialPackages = [
-    '@moflo/security',
     '@moflo/neural',
   ];
 

@@ -21,7 +21,6 @@ interface PackageCompatibility {
 // Known compatibility matrix between moflo packages
 const COMPATIBILITY_MATRIX: Record<string, Record<string, PackageCompatibility>> = {
   'moflo': {
-    '@moflo/security': { minVersion: '3.0.0-alpha.1' },
     '@moflo/integration': { minVersion: '3.0.0-alpha.1' },
   },
   '@moflo/integration': {
