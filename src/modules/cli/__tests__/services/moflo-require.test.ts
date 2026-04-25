@@ -105,8 +105,8 @@ describe('locateMofloModuleDist (regression guard for #556)', () => {
     _resetMofloMemoryCacheForTest();
   });
 
-  it('resolves @moflo/swarm message-bus from inside the cli package', () => {
-    const url = locateMofloModuleDist('swarm', 'message-bus/index.js');
+  it('resolves @moflo/memory index from inside the cli package', () => {
+    const url = locateMofloModuleDist('memory', 'index.js');
     expect(url).not.toBeNull();
     expect(url).toMatch(/^file:\/\//);
   });
@@ -116,9 +116,9 @@ describe('locateMofloModuleDist (regression guard for #556)', () => {
     // `../../../../modules/swarm/...` string walked up past `src/modules/` and
     // then re-appended `modules/`, producing `src/modules/modules/swarm/...`.
     // The resolver must never produce that shape on any platform.
-    const swarmUrl = locateMofloModuleDist('swarm', 'message-bus/index.js');
     const memoryUrl = locateMofloModuleDist('memory', 'index.js');
-    for (const url of [swarmUrl, memoryUrl]) {
+    const hooksUrl = locateMofloModuleDist('hooks', 'index.js');
+    for (const url of [memoryUrl, hooksUrl]) {
       expect(url).not.toBeNull();
       // Check both URL and decoded-path forms — pathToFileURL percent-encodes
       // some characters on Windows, so we verify both shapes.
@@ -133,8 +133,8 @@ describe('locateMofloModuleDist (regression guard for #556)', () => {
   });
 
   it('is cached per (pkg, rel) key so repeat calls are cheap', () => {
-    const a = locateMofloModuleDist('swarm', 'message-bus/index.js');
-    const b = locateMofloModuleDist('swarm', 'message-bus/index.js');
+    const a = locateMofloModuleDist('memory', 'index.js');
+    const b = locateMofloModuleDist('memory', 'index.js');
     expect(a).toBe(b);
   });
 });

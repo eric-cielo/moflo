@@ -4,10 +4,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { RaftConsensus, createRaftConsensus } from '../src/consensus/raft.js';
-import { ByzantineConsensus, createByzantineConsensus } from '../src/consensus/byzantine.js';
-import { GossipConsensus, createGossipConsensus } from '../src/consensus/gossip.js';
-import type { ConsensusVote } from '../src/types.js';
+import { RaftConsensus, createRaftConsensus } from '../../src/swarm/consensus/raft.js';
+import { ByzantineConsensus, createByzantineConsensus } from '../../src/swarm/consensus/byzantine.js';
+import { GossipConsensus, createGossipConsensus } from '../../src/swarm/consensus/gossip.js';
+import type { ConsensusVote } from '../../src/swarm/types.js';
 
 describe('Raft Consensus', () => {
   let raft: RaftConsensus;

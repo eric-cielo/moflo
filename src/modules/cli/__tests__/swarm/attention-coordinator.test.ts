@@ -14,7 +14,7 @@ import {
   createAttentionCoordinator,
   type AgentOutput,
   type IEmbeddingProvider,
-} from '../src/attention-coordinator.js';
+} from '../../src/swarm/attention-coordinator.js';
 
 /**
  * Deterministic mock provider. Every call returns the same fixed zero-filled

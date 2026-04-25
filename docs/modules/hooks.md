@@ -431,7 +431,7 @@ Add to your Claude settings (`~/.claude/settings.json`):
 ## Related Packages
 
 - [@moflo/neural](../neural) - Neural network and SONA learning
-- [@moflo/swarm](../swarm) - Multi-agent coordination
+- [cli/swarm](./swarm.md) - Multi-agent coordination (inlined into cli)
 - [@moflo/memory](../memory) - AgentDB memory system
 
 ## License

@@ -47,9 +47,9 @@ export * as memory from './modules/memory/src/index.js';
 
 /**
  * Swarm module - 15-agent coordination, hierarchical mesh, consensus
- * @see {@link @moflo/swarm}
+ * (collapsed into cli per epic #586 / story #597)
  */
-export * as swarm from './modules/swarm/src/index.js';
+export * as swarm from './modules/cli/src/swarm/index.js';
 
 /**
  * Shared module - common types, events, utilities, core interfaces
@@ -81,7 +81,6 @@ export * as testing from './modules/testing/src/index.js';
 
 export const MODULES = [
   '@moflo/memory',
-  '@moflo/swarm',
   '@moflo/cli',
   '@moflo/neural',
   '@moflo/testing',

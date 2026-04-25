@@ -4,8 +4,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { TopologyManager, createTopologyManager } from '../src/topology-manager.js';
-import type { TopologyConfig, TopologyType } from '../src/types.js';
+import { TopologyManager, createTopologyManager } from '../../src/swarm/topology-manager.js';
+import type { TopologyConfig, TopologyType } from '../../src/swarm/types.js';
 
 describe('TopologyManager', () => {
   let topology: TopologyManager;

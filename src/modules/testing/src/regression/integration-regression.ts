@@ -6,7 +6,31 @@
  * @module v3/testing/regression/integration-regression
  */
 
+import { existsSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
 import { importCliShared } from '../locate-cli-shared.js';
+
+// Swarm lives in cli's dist tree. Walk up to find it; layout-invariant
+// across dev source, built output, and installed consumer trees. Cached
+// so consecutive `runAll`/`runCategory` invocations don't re-walk the fs.
+let _swarmModCache: Promise<Record<string, unknown>> | null = null;
+function importCliSwarm(): Promise<Record<string, unknown>> {
+  if (_swarmModCache) return _swarmModCache;
+  _swarmModCache = (async () => {
+    let dir = dirname(fileURLToPath(import.meta.url));
+    const rel = join('src', 'modules', 'cli', 'dist', 'src', 'swarm', 'index.js');
+    for (let i = 0; i < 12; i++) {
+      const candidate = join(dir, rel);
+      if (existsSync(candidate)) return import(pathToFileURL(candidate).href);
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    throw new Error('cli swarm module not found on disk');
+  })();
+  return _swarmModCache;
+}
 
 /**
  * Integration test definition
@@ -255,7 +279,12 @@ export class IntegrationRegressionSuite {
       timeout: 10000,
       run: async () => {
         try {
-          const { UnifiedSwarmCoordinator } = await import('@moflo/swarm');
+          const swarmMod = await importCliSwarm();
+          const UnifiedSwarmCoordinator = swarmMod.UnifiedSwarmCoordinator as new (config: unknown) => {
+            initialize(): Promise<void>;
+            getStatus(): { status: string };
+            shutdown(): Promise<void>;
+          };
 
           const coordinator = new UnifiedSwarmCoordinator({
             topology: { type: 'hierarchical', maxAgents: 10 },
@@ -379,7 +408,7 @@ export class IntegrationRegressionSuite {
       timeout: 5000,
       run: async () => {
         try {
-          const swarm = await import('@moflo/swarm');
+          const swarm = await importCliSwarm();
           return typeof swarm.UnifiedSwarmCoordinator === 'function';
         } catch {
           return false;

@@ -7,7 +7,6 @@
       "@moflo/hooks": ["./modules/hooks/src"],
       "@moflo/memory": ["./modules/memory/src"],
       "@moflo/neural": ["./modules/neural/src"],
-      "@moflo/swarm": ["./modules/swarm/src"],
       "@moflo/testing": ["./modules/testing/src"]
     }
   },
@@ -16,7 +15,6 @@
     { "path": "./modules/hooks" },
     { "path": "./modules/memory" },
     { "path": "./modules/neural" },
-    { "path": "./modules/swarm" },
     { "path": "./modules/testing" }
   ],
   "include": [],

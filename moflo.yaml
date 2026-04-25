@@ -27,7 +27,6 @@ tests:
     - src/modules/cli/__tests__
     - src/modules/hooks/__tests__
     - src/modules/neural/__tests__
-    - src/modules/swarm/__tests__
     - src/modules/testing/__tests__
     - src/__tests__
   patterns: ["*.test.*", "*.spec.*", "*.test-*"]

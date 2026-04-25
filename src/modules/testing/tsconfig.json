@@ -7,8 +7,7 @@
     "declaration": true,
     "declarationMap": true,
     "paths": {
-      "@moflo/memory": ["../memory/src"],
-      "@moflo/swarm": ["../swarm/src"]
+      "@moflo/memory": ["../memory/src"]
     }
   },
   "include": ["src/**/*"],
@@ -17,7 +16,6 @@
     "dist"
   ],
   "references": [
-    { "path": "../memory" },
-    { "path": "../swarm" }
+    { "path": "../memory" }
   ]
 }

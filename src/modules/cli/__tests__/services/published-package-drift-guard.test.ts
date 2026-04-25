@@ -51,7 +51,6 @@ const AUTO_INSTALLED_EXTERNALS = new Set<string>();
 // consumer-smoke probe still covers them.
 const ALLOWED_BARE_PACKAGES = new Set([
   '@moflo/memory',
-  '@moflo/swarm',
   '@moflo/neural',
   '@moflo/hooks',
 ]);

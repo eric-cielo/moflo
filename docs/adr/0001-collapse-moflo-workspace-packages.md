@@ -29,8 +29,8 @@ The published tarball (`npm pack`) bundles only **11** of these (cli, embeddings
 
 From [`collapse-deps.md`](./collapse-deps.md):
 
-- **Leaves (zero outbound `@moflo/*` imports):** `aidefence`, `claims`, `embeddings`, `guidance`, `plugins`, `security`, `shared`, `spells`, `swarm` (10/14 — `aidefence` inlined in #590, `claims` deleted in #591, `embeddings` inlined in #592, `plugins` deleted in #593, `guidance` inlined in #600, `spells` inlined in #596)
-- **Mid-tier:** `neural` → `memory`; `hooks` → `memory`; `testing` → `memory`, `swarm`
+- **Leaves (zero outbound `@moflo/*` imports):** `aidefence`, `claims`, `embeddings`, `guidance`, `plugins`, `security`, `shared`, `spells`, `swarm` (10/14 — `aidefence` inlined in #590, `claims` deleted in #591, `embeddings` inlined in #592, `plugins` deleted in #593, `guidance` inlined in #600, `spells` inlined in #596, `swarm` inlined in #597)
+- **Mid-tier:** `neural` → `memory`; `hooks` → `memory`; `testing` → `memory`
 - **Trunk:** `cli` (outbound 8), `memory` (inbound 4)
 - **Cycle:** `memory ↔ neural` (both edges are guarded dynamic imports — disappears on collapse)
 

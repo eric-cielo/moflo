@@ -21,9 +21,9 @@ import {
   MessageBus,
   WriteThroughAdapter,
   type Message,
-} from '../src/modules/swarm/src/index.js';
-import { Deque } from '../src/modules/swarm/src/message-bus/deque.js';
-import { PriorityMessageQueue, type MessageQueueEntry } from '../src/modules/swarm/src/message-bus/priority-queue.js';
+} from '../src/modules/cli/src/swarm/index.js';
+import { Deque } from '../src/modules/cli/src/swarm/message-bus/deque.js';
+import { PriorityMessageQueue, type MessageQueueEntry } from '../src/modules/cli/src/swarm/message-bus/priority-queue.js';
 
 // ==========================================================================
 // Deque Unit Tests

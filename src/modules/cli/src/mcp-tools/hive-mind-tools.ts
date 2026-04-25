@@ -10,7 +10,7 @@
  */
 
 import type { MCPTool } from './types.js';
-import { locateMofloModuleDist } from '../services/moflo-require.js';
+import { MessageBus, WriteThroughAdapter } from '../swarm/message-bus/index.js';
 
 // Namespace constants — avoids hardcoded strings scattered across handlers
 const HIVE_NS = 'hive-mind' as const;
@@ -18,59 +18,14 @@ const HIVE_MEMORY_NS = 'hive-mind-memory' as const;
 const HIVE_TTL_MS = 300_000;
 const CONSENSUS_TTL_MS = 600_000;
 
-// ===== Lazy-loaded dependencies (avoid eager import of heavy modules) =====
+// ===== Singletons (constructed on first use to avoid spinning timers in
+// CLI invocations that load the tool registry but never call hive-mind) =====
 
-// Structural typing of the swarm runtime shapes we use. Defined locally to
-// avoid a hard `@moflo/swarm` type dep — see feedback_no_fixed_depth_paths and
-// the walk-up resolver that locates the built artifact at runtime.
-interface MessageBusInstance {
-  initialize(): Promise<void>;
-  subscribe(id: string, cb: () => void, opts: { namespace: string }): void;
-  unsubscribe(id: string): void;
-  sendUnified(msg: Record<string, unknown>): Promise<string>;
-  broadcastUnified(msg: Record<string, unknown>): Promise<string>;
-  getStats(): { totalMessages: number; messagesPerSecond: number; queueDepth: number; activeNamespaces: number };
-}
-interface MessageBusCtor {
-  new (opts: { processingIntervalMs: number; reaperIntervalMs: number }): MessageBusInstance;
-}
+let _messageBus: MessageBus | null = null;
+let _writeThroughAdapter: WriteThroughAdapter | null = null;
 
-interface WriteThroughAdapterInstance {
-  attach(): void;
-  detach(): void;
-  clearNamespace(ns: string): Promise<void>;
-  getStats(): { written: number; errors: number; reaped: number };
-}
-interface WriteThroughAdapterCtor {
-  new (
-    bus: MessageBusInstance,
-    opts: { enabled: boolean; namespaces: readonly string[] },
-    memStore: (opts: Record<string, unknown>) => Promise<{ success: boolean; id: string; error?: string }>,
-    memOps: {
-      deleteEntry?: (opts: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
-      listEntries?: (opts: Record<string, unknown>) => Promise<{ entries: Array<{ key: string; metadata?: Record<string, unknown> }> }>;
-    },
-  ): WriteThroughAdapterInstance;
-}
-
-let _messageBus: MessageBusInstance | null = null;
-let _writeThroughAdapter: WriteThroughAdapterInstance | null = null;
-
-async function importSwarmArtifact(relFromDist: string): Promise<Record<string, unknown>> {
-  const url = locateMofloModuleDist('swarm', relFromDist);
-  if (!url) {
-    throw new Error(
-      `@moflo/swarm artifact not found: src/modules/swarm/dist/${relFromDist}. ` +
-      `Run 'npm run build' to compile the swarm package.`
-    );
-  }
-  return import(url) as Promise<Record<string, unknown>>;
-}
-
-async function getMessageBus(): Promise<MessageBusInstance> {
+async function getMessageBus(): Promise<MessageBus> {
   if (_messageBus) return _messageBus;
-  const mod = await importSwarmArtifact('message-bus/index.js');
-  const MessageBus = mod.MessageBus as MessageBusCtor;
   _messageBus = new MessageBus({
     processingIntervalMs: 50,
     reaperIntervalMs: 60_000,
@@ -79,12 +34,10 @@ async function getMessageBus(): Promise<MessageBusInstance> {
   return _messageBus;
 }
 
-async function getWriteThroughAdapter(): Promise<WriteThroughAdapterInstance> {
+async function getWriteThroughAdapter(): Promise<WriteThroughAdapter> {
   if (_writeThroughAdapter) return _writeThroughAdapter;
 
   const bus = await getMessageBus();
-  const mod = await importSwarmArtifact('message-bus/write-through-adapter.js');
-  const WriteThroughAdapter = mod.WriteThroughAdapter as WriteThroughAdapterCtor;
 
   // Lazy-load memory functions
   let memStore: ((opts: Record<string, unknown>) => Promise<{ success: boolean; id: string; error?: string }>) | null = null;
