@@ -39,8 +39,8 @@ Each row lists the `@moflo/*` packages a given module imports.
 
 These have no relative paths to other moflo packages to rewrite, so they merge cleanly:
 
-- `@moflo/aidefence` _(separately published, not in moflo tarball)_
-- `@moflo/claims` _(separately published, not in moflo tarball)_
+- `@moflo/aidefence` _(inlined in #590)_
+- `@moflo/claims` _(inline pending #591)_
 - `@moflo/embeddings`
 - `@moflo/plugins`
 - `@moflo/security`
@@ -80,8 +80,8 @@ Both edges are dynamic `await import(...)` guarded by try/catch — the runtime 
 
 After leaves and mid-tier are merged, the trunk falls in last. This ordering minimises work-in-progress: each step's `@moflo/*` imports are already local by the time we touch it.
 
-1. `@moflo/aidefence` _(leaf, optional add-on)_
-2. `@moflo/claims` _(leaf, optional add-on)_
+1. `@moflo/aidefence` _(leaf, inlined in #590)_
+2. `@moflo/claims` _(leaf, inline pending #591)_
 3. `@moflo/embeddings` _(leaf)_
 4. `@moflo/plugins` _(leaf)_
 5. `@moflo/security` _(leaf)_
@@ -99,26 +99,20 @@ Steps 9–10 must move together because of the dynamic-import cycle.
 
 ## Consumer-surface caveat (the published tarball)
 
-`npm pack` only ships **11** of the 14 packages — `aidefence`, `claims`, and `testing` are deliberately excluded from `package.json#files`. They publish as their own npm packages.
+`npm pack` only ships **11** of the 14 packages — `aidefence`, `claims`, and `testing` are excluded from `package.json#files`. They were declared `optionalDependencies: "file:../X"` in `src/modules/cli/package.json` to publish as standalone packages, but none is actually published on npm (`npm view @moflo/aidefence` 404s; same for `claims` and `testing`). The standalone-publish framing is **leftover from the ruvnet/ruflo fork** — these packages have zero external consumers.
 
 `@moflo/cli` (which DOES ship in the tarball) keeps live import strings to all three:
 
 | Site | Form | Behaviour when missing |
 |------|------|------------------------|
-| `src/modules/cli/src/mcp-tools/security-tools.ts` | `await import('@moflo/aidefence')` | Throws `AIDefence package not available. Install with: npm install @moflo/aidefence` |
-| `src/modules/cli/src/commands/security.js` | `await import('@moflo/aidefence')` | Same error path |
-| `src/modules/cli/src/mcp-tools/auto-install.ts` | Registry entry | Surfaces in interactive install prompt |
+| `src/modules/cli/src/mcp-tools/auto-install.ts` | Registry entry (claims, testing) | Surfaces in interactive install prompt |
 | `src/modules/cli/src/update/checker.ts` | List of moflo packages | Skipped if not installed |
 | `src/modules/cli/src/plugins/store/discovery.ts` | Featured/official catalogue | Listing-only, no runtime resolve |
-| `src/modules/cli/package.json#optionalDependencies` | `"@moflo/aidefence": "file:../aidefence"` | Soft-fails npm-install; consumers must `npm i @moflo/aidefence` separately |
+| `src/modules/cli/package.json#optionalDependencies` | `"@moflo/<pkg>": "file:../<pkg>"` | Soft-fails npm-install; consumers can never `npm i @moflo/<pkg>` because it is not on npm |
 
-**Implication for the collapse epic:** these "optional add-on" references must be converted to one of three end states by the per-module stories:
+(The aidefence rows were removed as part of the #590 inline; #591 and #601 will remove the rest.)
 
-1. **Inline** — pull aidefence/claims/testing into the root `moflo` package and remove the optional-dependency machinery (loses the "install only what you need" affordance).
-2. **Keep separate** — leave aidefence/claims/testing as standalone npm packages but rewrite cli's references to use the established lazy-load pattern (today's behaviour, just made explicit).
-3. **Drop** — remove the optional features entirely if they're underused.
-
-The choice is per-package and out of scope for this artifact; the dependency graph just records that the references exist and ship live in the cli.
+**Implication for the collapse epic:** the per-module stories for `aidefence`, `claims`, and `testing` collapse exactly like every other package — **inline**. Drop the `optionalDependencies` entries, the auto-install registry rows, the lazy-load retry paths in `security-tools.ts`, the phantom `optional-modules.d.ts` blocks, and the standalone-package marketing in `docs/modules/*.md`. There is no "keep separate" or "drop" branch to evaluate.
 
 ## Reproducing this artifact
 

@@ -19,14 +19,16 @@
     "aidefence": [],
     "claims": [],
     "cli": [
-      "aidefence",
       "claims",
       "embeddings",
+      "guidance",
+      "hooks",
       "memory",
       "neural",
       "plugins",
       "security",
       "shared",
+      "swarm",
       "testing"
     ],
     "embeddings": [],
@@ -59,6 +61,7 @@
   },
   "rootRefs": [
     "cli",
+    "embeddings",
     "memory",
     "neural",
     "security",
@@ -72,6 +75,6 @@
       "neural"
     ]
   ],
-  "files": 1016,
-  "generatedAt": "2026-04-25T01:01:02Z"
+  "files": 1018,
+  "generatedAt": "2026-04-25T03:25:50Z"
 }

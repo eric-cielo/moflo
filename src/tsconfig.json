@@ -3,7 +3,6 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@moflo/aidefence": ["./modules/aidefence/src"],
       "@moflo/claims": ["./modules/claims/src"],
       "@moflo/cli": ["./modules/cli/src"],
       "@moflo/embeddings": ["./modules/embeddings/src"],
@@ -21,7 +20,6 @@
   },
   "references": [
     { "path": "./modules/shared" },
-    { "path": "./modules/aidefence" },
     { "path": "./modules/claims" },
     { "path": "./modules/cli" },
     { "path": "./modules/embeddings" },

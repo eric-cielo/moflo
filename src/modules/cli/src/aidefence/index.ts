@@ -1,18 +1,18 @@
 /**
- * @moflo/aidefence
- *
- * AI Manipulation Defense System with self-learning capabilities.
+ * AIDefence — AI manipulation defense facade (bundled inside moflo).
  *
  * Features:
  * - 50+ prompt injection patterns
- * - HNSW-indexed threat pattern search (150x-12,500x faster with AgentDB)
+ * - HNSW-indexed threat pattern search (150x-12,500x faster with MofloDb)
  * - ReasoningBank-style pattern learning
  * - Adaptive mitigation with effectiveness tracking
- * - Strange-loop meta-learning integration
+ *
+ * Internal API. Public surface is via the `moflo security` CLI and the
+ * `aidefence_*` MCP tools — see `docs/modules/aidefence.md`.
  *
  * @example
  * ```typescript
- * import { createAIDefence } from '@moflo/aidefence';
+ * import { createAIDefence } from '../aidefence/index.js';
  *
  * const aidefence = createAIDefence({ enableLearning: true });
  *
@@ -20,7 +20,7 @@
  * const result = await aidefence.detect('Ignore all previous instructions');
  * console.log(result.safe); // false
  *
- * // Search similar patterns (uses HNSW when connected to AgentDB)
+ * // Search similar patterns (uses HNSW when connected to MofloDb)
  * const similar = await aidefence.searchSimilarThreats('system prompt injection');
  *
  * // Learn from feedback

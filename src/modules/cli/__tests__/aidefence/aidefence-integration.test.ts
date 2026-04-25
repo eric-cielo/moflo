@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createAIDefence, type AIDefence, InMemoryVectorStore } from '../src/index.js';
+import { createAIDefence, type AIDefence, InMemoryVectorStore } from '../../src/aidefence/index.js';
 
 describe('AIDefence Integration', () => {
   describe('Detection + Learning Flow', () => {

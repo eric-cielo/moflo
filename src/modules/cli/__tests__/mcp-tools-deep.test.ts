@@ -161,11 +161,6 @@ vi.mock('../src/mcp-tools/auto-install.js', () => ({
   autoInstallPackage: vi.fn(async () => false),
 }));
 
-// Mock security package
-vi.mock('@moflo/aidefence', () => {
-  throw new Error('Cannot find package');
-});
-
 // Mock embeddings package
 vi.mock('@moflo/embeddings', () => {
   throw new Error('Cannot find package');

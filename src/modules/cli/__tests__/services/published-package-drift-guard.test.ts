@@ -45,7 +45,7 @@ const SRC_ROOT = join(REPO_ROOT, 'src');
 // Auto-installed externals that intentionally aren't in moflo's `files` array.
 // Adding to this list is a deliberate choice — every entry here costs the
 // consumer an extra install on first use.
-const AUTO_INSTALLED_EXTERNALS = new Set(['@moflo/aidefence']);
+const AUTO_INSTALLED_EXTERNALS = new Set<string>();
 
 // Pinned inventory of bare packages. New entries force a dev to verify the
 // consumer-smoke probe still covers them.
@@ -55,7 +55,6 @@ const ALLOWED_BARE_PACKAGES = new Set([
   '@moflo/swarm',
   '@moflo/neural',
   '@moflo/embeddings',
-  '@moflo/aidefence',
   '@moflo/guidance',
   '@moflo/hooks',
 ]);

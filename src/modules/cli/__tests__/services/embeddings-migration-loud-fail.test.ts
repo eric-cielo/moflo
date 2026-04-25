@@ -114,16 +114,6 @@ describe('source-guard: no silent @moflo/* catches in cli (issue #583)', () => {
       expect(text, 'silent try/catch returning false/null around @moflo/* import')
         .not.toMatch(silentTryCatch);
 
-      // 3. No bare `await import('@moflo/aidefence')` — all aidefence access
-      //    must route through getAIDefence() so the auto-install + typed-error
-      //    path runs uniformly. The leading `await` requirement excludes the
-      //    type-only `import('@moflo/aidefence').createAIDefence` in
-      //    `ReturnType<typeof ...>` positions, which is compiled away.
-      if (file.endsWith('security-tools.ts')) {
-        const bareAidefenceImport = /await\s+import\(\s*['"]@moflo\/aidefence['"]\s*\)/g;
-        const matches = text.match(bareAidefenceImport) ?? [];
-        expect(matches.length, `bare runtime imports of @moflo/aidefence: ${matches.length}`).toBe(0);
-      }
     });
   }
 });

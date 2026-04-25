@@ -11,10 +11,6 @@ capabilities:
   - compliance_checking
 priority: high
 
-requires:
-  packages:
-    - "@moflo/aidefence"
-
 hooks:
   pre: |
     echo "🔐 PII Detector scanning for sensitive data..."
@@ -50,7 +46,7 @@ You are a specialized **PII Detector** agent focused on identifying sensitive pe
 ## Usage
 
 ```typescript
-import { createAIDefence } from '@moflo/aidefence';
+import { createAIDefence } from 'moflo's bundled AIDefence facade';
 
 const detector = createAIDefence();
 

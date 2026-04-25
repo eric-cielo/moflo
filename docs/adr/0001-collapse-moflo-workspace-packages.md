@@ -47,7 +47,7 @@ Concretely:
 3. Replace all `from '@moflo/X'` and `import('@moflo/X')` with relative imports that don't need the moflo-require walk-up.
 4. Delete `src/modules/cli/src/services/moflo-require.ts` and its 11 call sites. Replace `mofloImport`/`locateMofloModuleDist`/`requireMofloOrWarn` with direct relative imports.
 5. Delete `feedback_no_fixed_depth_paths.md`'s ESLint guard (the rule is moot once there's only one package depth).
-6. Resolve the three optional add-ons (`aidefence`, `claims`, `testing`) per the recommendations in [`collapse-deps.md`](./collapse-deps.md) — inline, keep separate with explicit lazy-load, or drop. Each is a per-module story.
+6. Inline the three "optional add-on" packages (`aidefence`, `claims`, `testing`) into the root tree on the same terms as every other package. They are `optionalDependencies: "file:../X"` workspace fictions left over from the ruvnet/ruflo fork — none is actually published to npm (verify with `npm view @moflo/X`), and there are no external consumers to protect. Drop the optional-dependency machinery entirely; do not preserve a "standalone install" affordance.
 
 The collapse runs **leaves first** per the topological order in [`collapse-deps.md`](./collapse-deps.md), so each step's existing `@moflo/*` imports become trivially local by the time it's touched.
 
