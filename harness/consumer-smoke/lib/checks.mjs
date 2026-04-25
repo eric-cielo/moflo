@@ -788,6 +788,43 @@ export function verifyNoPathResolutionErrors() {
   }
 }
 
+/**
+ * Issue #585: probe every `@moflo/*` bare-specifier path in the consumer
+ * install. Catches the regression class that shipped in 4.8.87-rc.2 — silent
+ * `try/catch { return null }` blocks around `import('@moflo/<pkg>')` that hid
+ * a broken tarball from consumers.
+ *
+ * Delegates to `scripts/consumer-smoke/probe-bare-specifiers.mjs` so
+ * contributors can reproduce locally with one command:
+ *   node scripts/consumer-smoke/probe-bare-specifiers.mjs --consumer-dir <path>
+ */
+export function consumerInstallSensitivePaths(consumerDir, repoRoot) {
+  section('Consumer-install-sensitive @moflo/* probes (issue #585)');
+  const probe = join(repoRoot, 'scripts', 'consumer-smoke', 'probe-bare-specifiers.mjs');
+  if (!existsSync(probe)) {
+    record('probe-bare-specifiers', 'fail', `${relative(repoRoot, probe)} missing`);
+    return;
+  }
+  const r = runNode(probe, ['--consumer-dir', consumerDir, '--json'], {
+    cwd: repoRoot,
+    timeout: 180_000,
+  });
+  let parsed;
+  try { parsed = JSON.parse(r.stdout.trim()); } catch {
+    record('probe-bare-specifiers', 'fail',
+      `non-JSON output (exit ${r.code}): ${(r.stderr || r.stdout).trim().slice(0, 300)}`);
+    return;
+  }
+  for (const pr of parsed.results) {
+    record(`probe:${pr.name}`, pr.status, pr.detail);
+  }
+  if (r.code !== 0 && parsed.hardFails === 0) {
+    // Probe exit was non-zero but no hard fails were recorded — surface so
+    // the harness doesn't silently miss an aborted probe run.
+    record('probe-bare-specifiers', 'fail', `probe exit ${r.code} with no recorded fails`);
+  }
+}
+
 export function stopConsumerDaemon(consumerDir) {
   // Consumer scratch dirs have no moflo.yaml, so the daemon auto-starts
   // during memory ops and holds locks on .swarm/memory.db. Stop it so the

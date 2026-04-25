@@ -1,0 +1,67 @@
+name: Consumer install smoke
+
+# Issue #585: standalone gate for consumer-install packaging regressions.
+#
+# Tests moflo as a real consumer would — `npm pack` + scratch-dir install —
+# rather than as an in-tree workspace where bare `@moflo/*` specifiers resolve
+# via hoisting. This is the harness that would have caught the silent
+# migration skip shipped in 4.8.87-rc.2 (regression test landed in #583,
+# tracker test landed in PR for this issue).
+#
+# Required for /publish: keep this workflow as a required check on the
+# protected branch so a release can never tag from a tree that fails here.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+
+# Cancel superseded PR runs but never cancel an in-flight push to main:
+# a half-finished smoke on main leaves the branch in an unverified state and
+# the next push has nothing to compare against.
+concurrency:
+  group: consumer-smoke-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  smoke:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    # Acceptance criterion: < 5 min on Ubuntu. Cap all runners conservatively
+    # so a stuck install can't hold the queue.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # Caches the fastembed model (~90 MB). Key includes the lockfile hash
+      # so a fastembed bump invalidates automatically, and the model name so
+      # swapping models never reuses a stale vector space. No restore-keys —
+      # partial prefix matches could restore the wrong model's binary blobs
+      # on a future model swap. See ADR-EMB-001 / epic #527.
+      - name: Cache fastembed model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/fastembed
+          key: fastembed-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-fast-all-MiniLM-L6-v2
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Run consumer smoke harness
+        run: npm run test:smoke

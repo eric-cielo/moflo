@@ -87,6 +87,9 @@ function main() {
       () => check.installSurface(consumerDir),
       () => check.verifyPrunedBinaries(consumerDir),
       () => check.verifyTokenizerSubpackage(consumerDir),
+      // Issue #585: probe every @moflo/* bare specifier the consumer install
+      // exercises, including the four call sites loud-failed in #583.
+      () => check.consumerInstallSensitivePaths(consumerDir, repoRoot),
       // Issue #575: must run LAST so it sees stderr from every preceding check.
       () => check.verifyNoPathResolutionErrors(),
     ];
