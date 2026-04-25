@@ -17,23 +17,26 @@ import { findOrtPackages, listNapiDirs } from '../../../scripts/prune-native-bin
 // Epic #527 (story #532) extended this list with `@xenova/transformers` —
 // the archived transformers runtime replaced by `fastembed`.
 //
-// Note: `onnxruntime-node` was previously forbidden (it came in via agentdb).
-// After epic #527 `fastembed` is a required hard dep and legitimately pulls
-// `onnxruntime-node` in as the ONNX runtime. Its binaries are pruned by
-// epic #527 story 6 (#533); the package itself is expected and allowed.
+// Note: `onnxruntime-node` is required since #613 — moflo declares it directly
+// (replacing the upstream `fastembed` pin that crashed on macOS at process exit
+// per microsoft/onnxruntime#24579). Its binaries are pruned by the postinstall
+// script. `fastembed` itself is now FORBIDDEN: any consumer install that pulls
+// it back in has regressed and would re-introduce the pinned ORT 1.21.0.
 export const FORBIDDEN_DEPS = [
   'agentdb',
   'agentic-flow',
   '@ruvector',
   'ruvector',
   '@xenova/transformers',
+  'fastembed',
 ];
 
-// Epic #527 (story #532): dependencies that MUST be present in a fresh
-// consumer install. Fastembed is the required neural runtime — if it's
-// missing we have regressed to hash-fallback silently.
+// Dependencies that MUST be present in a fresh consumer install. Missing
+// `onnxruntime-node` or `@anush008/tokenizers` means the embedding stack is
+// broken — hash-fallback is no longer permitted (epic #527 story #532).
 export const REQUIRED_DEPS = [
-  'fastembed',
+  'onnxruntime-node',
+  '@anush008/tokenizers',
 ];
 
 // Epic #527 (story #532): banned identifiers that must not appear anywhere

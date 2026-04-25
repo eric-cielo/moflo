@@ -40,15 +40,18 @@ export type FastembedModule = {
 };
 
 /**
- * Optional dependency injection for the `fastembed` module — tests pass a mock
- * loader here; production callers omit `deps` and get the real `import('fastembed')`.
+ * Optional dependency injection for the embedding backend — tests pass a mock
+ * loader here; production callers omit `deps` and get the in-tree
+ * `fastembed-inline/` implementation.
  */
 export interface FastembedServiceDeps {
   loadModule?: () => Promise<FastembedModule>;
 }
 
+// In-tree fastembed replacement — avoids the upstream `onnxruntime-node@1.21.0`
+// pin that crashes on macOS at process exit (see issue #613, fastembed-inline/index.ts).
 const defaultLoader = async (): Promise<FastembedModule> =>
-  (await import('fastembed')) as unknown as FastembedModule;
+  (await import('./fastembed-inline/index.js')) as unknown as FastembedModule;
 
 export class FastembedEmbeddingService extends BaseEmbeddingService {
   readonly provider: EmbeddingProvider = 'fastembed';

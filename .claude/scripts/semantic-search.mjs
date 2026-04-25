@@ -19,8 +19,9 @@
 
 import { existsSync, readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { mofloResolveURL } from './lib/moflo-resolve.mjs';
+import { mofloResolveURL, mofloInternalURL } from './lib/moflo-resolve.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
+const FASTEMBED_INLINE = 'src/modules/cli/dist/src/embeddings/fastembed-inline/index.js';
 
 function findProjectRoot() {
   let dir = process.cwd();
@@ -71,7 +72,7 @@ let fastembedModel = null;
 async function loadModel() {
   if (fastembedModel) return fastembedModel;
 
-  const mod = await import(mofloResolveURL('fastembed'));
+  const mod = await import(mofloInternalURL(FASTEMBED_INLINE));
   const { FlagEmbedding, EmbeddingModel } = mod;
 
   fastembedModel = await FlagEmbedding.init({

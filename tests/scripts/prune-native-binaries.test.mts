@@ -187,6 +187,35 @@ describe('findOrtPackages (fastembed-owned only)', () => {
     mkdirSync(join(nm, 'onnxruntime-node'), { recursive: true });
     expect(findOrtPackages(nm)).toEqual([join(nm, 'onnxruntime-node')]);
   });
+
+  // Post-#613 ownership: moflo declares onnxruntime-node directly, so a
+  // hoisted ORT under a moflo install must be pruned even when fastembed is
+  // entirely absent. This is the consumer-install path the smoke harness
+  // exercises after the workspace-collapse epic.
+  it('returns the hoisted ORT when moflo is the sole ORT declarer', () => {
+    const nm = join(tmp, 'node_modules');
+    mkdirSync(join(nm, 'moflo'), { recursive: true });
+    writeFileSync(
+      join(nm, 'moflo', 'package.json'),
+      JSON.stringify({ name: 'moflo', dependencies: { 'onnxruntime-node': '^1.24.3' } }),
+    );
+    mkdirSync(join(nm, 'onnxruntime-node'), { recursive: true });
+    expect(findOrtPackages(nm)).toEqual([join(nm, 'onnxruntime-node')]);
+  });
+
+  it('treats moflo as a safe declarer (does not block its own hoisted ORT)', () => {
+    // moflo's own dep declaration must not be counted as a "shared" sibling
+    // that triggers the safety bail. Without this rule, the consumer-install
+    // hoisted ORT goes unpruned and install size blows past the 120 MB gate.
+    const nm = join(tmp, 'node_modules');
+    mkdirSync(join(nm, 'moflo'), { recursive: true });
+    writeFileSync(
+      join(nm, 'moflo', 'package.json'),
+      JSON.stringify({ name: 'moflo', dependencies: { 'onnxruntime-node': '^1.24.3' } }),
+    );
+    mkdirSync(join(nm, 'onnxruntime-node'), { recursive: true });
+    expect(collectOtherOrtDeclarers(nm).has('moflo')).toBe(false);
+  });
 });
 
 describe('resolveOrtForOwner', () => {

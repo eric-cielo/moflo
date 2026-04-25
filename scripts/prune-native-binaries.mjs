@@ -36,7 +36,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const BYTES_PER_MB = 1024 * 1024;
 const NODE_MODULES_SEGMENT = `${sep}node_modules${sep}`;
-const FASTEMBED_OWNER = 'fastembed';
+// Packages whose installed `onnxruntime-node` we are responsible for pruning.
+// `moflo` declares ORT directly (post-#613), so a hoisted ORT under a moflo
+// install is ours to trim. `fastembed` stays in the list defensively — any
+// transitive that re-pulls it would otherwise reintroduce the pinned 1.21.0.
+// Also doubles as the safe-declarer set: a hoisted ORT shared only with
+// these owners is ours to prune; any other declarer (Electron packagers,
+// etc.) makes the copy shared and triggers the safety bail.
+const ORT_OWNERS = new Set(['moflo', 'fastembed']);
 const ORT_DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
 // GPU-only provider libraries that ship in onnxruntime-node's binary bundle but
 // are never loaded by fastembed (CPU inference). Matches files like:
@@ -164,12 +171,13 @@ export function resolveOrtForOwner(startDir) {
 }
 
 /**
- * Return the set of top-level package names (excluding `fastembed`) that
+ * Return the set of top-level package names (excluding our own owners) that
  * declare `onnxruntime-node` in any dep field. A non-empty set means the
- * hoisted ORT is shared — pruning its non-current binaries could strand
- * another consumer (e.g. an Electron packager cross-compiling). Only scans
- * direct `<nm>/<pkg>` and `<nm>/@scope/<pkg>` — packages that keep their own
- * ORT nested under their own `node_modules/` don't share the hoisted copy.
+ * hoisted ORT is shared with a real third party — pruning its non-current
+ * binaries could strand them (e.g. an Electron packager cross-compiling).
+ * Only scans direct `<nm>/<pkg>` and `<nm>/@scope/<pkg>` — packages that keep
+ * their own ORT nested under their own `node_modules/` don't share the hoisted
+ * copy.
  */
 export function collectOtherOrtDeclarers(nodeModulesDir) {
   const declarers = new Set();
@@ -189,7 +197,7 @@ export function collectOtherOrtDeclarers(nodeModulesDir) {
 
   for (const ent of entries) {
     if (!ent.isDirectory()) continue;
-    if (ent.name === 'onnxruntime-node' || ent.name === FASTEMBED_OWNER) continue;
+    if (ent.name === 'onnxruntime-node' || ORT_OWNERS.has(ent.name)) continue;
     const pkgDir = join(nodeModulesDir, ent.name);
     if (ent.name.startsWith('@')) {
       let scopeEntries;
@@ -206,45 +214,51 @@ export function collectOtherOrtDeclarers(nodeModulesDir) {
   return declarers;
 }
 
-function isNestedUnderFastembed(ortDir) {
-  // Path structurally ends in `<…>/fastembed/node_modules/onnxruntime-node`.
-  return basename(dirname(dirname(ortDir))) === FASTEMBED_OWNER;
+function isNestedUnderOwner(ortDir) {
+  // Path structurally ends in `<…>/<owner>/node_modules/onnxruntime-node`.
+  return ORT_OWNERS.has(basename(dirname(dirname(ortDir))));
 }
 
 /**
  * Collect every `onnxruntime-node` directory that moflo owns via its
- * dependency graph. Ownership rules:
- *   - Find every `fastembed` install; resolve its ORT by the Node algorithm.
- *   - ORT strictly nested under `fastembed/node_modules/` is always pruned
- *     (private to fastembed, cannot be shared).
- *   - A hoisted ORT resolved by fastembed is pruned only when no other
- *     top-level package declares `onnxruntime-node` — otherwise the copy is
- *     shared (Electron cross-compile packager, sibling ORT consumer) and we
- *     leave all of its platform binaries intact.
+ * dependency graph. Ownership rules (post-#613):
+ *   - Find every owner install (`moflo` itself, or a transitive `fastembed`
+ *     if it sneaks back in). Resolve each one's ORT by the Node algorithm.
+ *   - ORT strictly nested under `<owner>/node_modules/` is always pruned
+ *     (private to that owner, cannot be shared).
+ *   - A hoisted ORT is pruned only when no third-party package declares
+ *     `onnxruntime-node` — otherwise the copy is shared and we leave all of
+ *     its platform binaries intact.
  *
  * Returns deduped absolute paths.
  */
 export function findOrtPackages(nodeModulesDir, maxDepth = 10) {
-  // Fast path: fastembed is almost always hoisted to `<nm>/fastembed` — skip
-  // the full walk when we can see it there. Falls through to the recursive
-  // walker when fastembed is non-hoisted (version conflict) or absent.
-  const hoisted = join(nodeModulesDir, FASTEMBED_OWNER);
-  const owners = existsSync(hoisted)
-    ? [hoisted]
-    : findOwnerInstalls(nodeModulesDir, [FASTEMBED_OWNER], maxDepth);
+  // Fast path: each owner is almost always hoisted to `<nm>/<owner>` — skip
+  // the full walk when we can see them there. Falls through to the recursive
+  // walker when an owner is non-hoisted (version conflict) or absent.
+  const owners = [];
+  for (const owner of ORT_OWNERS) {
+    const hoisted = join(nodeModulesDir, owner);
+    if (existsSync(hoisted)) owners.push(hoisted);
+  }
+  if (owners.length === 0) {
+    // No hoisted owners — fall back to the recursive walker for non-hoisted
+    // installs (rare, only happens with version conflicts).
+    owners.push(...findOwnerInstalls(nodeModulesDir, ORT_OWNERS, maxDepth));
+  }
   if (owners.length === 0) return [];
 
   const ortPaths = new Set();
   // Lazily computed: we only need the declarer scan if at least one owner
-  // resolves to a hoisted ORT. Skipped entirely when every fastembed carries
-  // its own nested copy.
+  // resolves to a hoisted ORT. Skipped entirely when every owner carries its
+  // own nested copy.
   let otherDeclarers = null;
 
   for (const owner of owners) {
     const ort = resolveOrtForOwner(owner);
     if (!ort) continue;
 
-    if (isNestedUnderFastembed(ort)) {
+    if (isNestedUnderOwner(ort)) {
       ortPaths.add(ort);
       continue;
     }
