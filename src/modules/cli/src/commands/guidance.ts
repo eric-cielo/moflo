@@ -45,7 +45,7 @@ const compileCommand: Command = {
         localContent = await readFile(localPath, 'utf-8');
       }
 
-      const { GuidanceCompiler } = await import('@moflo/guidance/compiler');
+      const { GuidanceCompiler } = await import('../guidance/compiler.js');
       const compiler = new GuidanceCompiler();
       const bundle = compiler.compile(rootContent, localContent);
 
@@ -122,8 +122,8 @@ const retrieveCommand: Command = {
     try {
       const { readFile } = await import('node:fs/promises');
       const { existsSync } = await import('node:fs');
-      const { GuidanceCompiler } = await import('@moflo/guidance/compiler');
-      const { ShardRetriever } = await import('@moflo/guidance/retriever');
+      const { GuidanceCompiler } = await import('../guidance/compiler.js');
+      const { ShardRetriever } = await import('../guidance/retriever.js');
       const { createNeuralEmbeddingProvider } = await import('../services/neural-embedding-provider.js');
 
       if (!existsSync(rootPath)) {
@@ -210,7 +210,7 @@ const gatesCommand: Command = {
     output.writeln(output.dim('─'.repeat(50)));
 
     try {
-      const { EnforcementGates } = await import('@moflo/guidance/gates');
+      const { EnforcementGates } = await import('../guidance/gates.js');
       const gates = new EnforcementGates();
 
       const results: Array<{ type: string; result: any }> = [];
@@ -312,7 +312,7 @@ const statusCommand: Command = {
 
         if (rootExists) {
           const { readFile } = await import('node:fs/promises');
-          const { GuidanceCompiler } = await import('@moflo/guidance/compiler');
+          const { GuidanceCompiler } = await import('../guidance/compiler.js');
           const rootContent = await readFile('./CLAUDE.md', 'utf-8');
           const compiler = new GuidanceCompiler();
           const bundle = compiler.compile(rootContent);
@@ -383,7 +383,7 @@ const optimizeCommand: Command = {
       }
 
       // Step 1: Analyze current state
-      const { analyze, formatReport, optimizeForSize, formatBenchmark } = await import('@moflo/guidance/analyzer');
+      const { analyze, formatReport, optimizeForSize, formatBenchmark } = await import('../guidance/analyzer.js');
       const analysis = analyze(rootContent, localContent);
 
       if (jsonOutput && !applyChanges) {
@@ -485,7 +485,7 @@ const abTestCommand: Command = {
     try {
       const { readFile } = await import('node:fs/promises');
       const { existsSync } = await import('node:fs');
-      const { abBenchmark, getDefaultABTasks } = await import('@moflo/guidance/analyzer');
+      const { abBenchmark, getDefaultABTasks } = await import('../guidance/analyzer.js');
 
       // Load Config B (candidate) content
       if (!existsSync(configBPath)) {
