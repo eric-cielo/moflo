@@ -14,6 +14,7 @@ import * as path from 'path';
 import { mofloImport, importMofloMemory } from '../services/moflo-require.js';
 import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 import { formatEmbeddingError } from './embedding-errors.js';
+import { createEmbeddingService } from '../embeddings/index.js';
 
 /**
  * Write vector-stats.json cache for the statusline (no subprocess needed).
@@ -1495,7 +1496,7 @@ export async function applyTemporalDecay(dbPath?: string): Promise<{
 /**
  * Neural embedding model manager.
  *
- * Lazily loads the fastembed-backed service from `@moflo/embeddings`. The
+ * Lazily loads the fastembed-backed service from cli's embeddings module. The
  * service itself defers the ONNX model download until the first embed call,
  * so `loadEmbeddingModel` is cheap until embeddings are actually needed.
  *
@@ -1515,7 +1516,7 @@ let embeddingModelState: EmbeddingModel | null = null;
 /**
  * Lazy-load the neural embedding service.
  *
- * Delegates to `@moflo/embeddings` (fastembed provider). Returns a diagnostic
+ * Delegates to the local fastembed-backed service. Returns a diagnostic
  * result for callers that want to report status; if model loading fails later
  * on first `embed()`, that throws from `generateEmbedding`.
  */
@@ -1556,24 +1557,11 @@ export async function loadEmbeddingModel(options?: {
     }
   }
 
-  const embeddings = await mofloImport('@moflo/embeddings', ['createEmbeddingService']);
-  if (!embeddings) {
-    const error =
-      '@moflo/embeddings is not installed. Neural embeddings are required — ' +
-      'the hash fallback was removed in epic #527.';
-    return {
-      success: false,
-      dimensions: 0,
-      modelName: 'none',
-      error,
-    };
-  }
-
   if (verbose) {
     console.log('Preparing neural embedding runtime (fastembed / all-MiniLM-L6-v2)...');
   }
 
-  const service = embeddings.createEmbeddingService({
+  const service = createEmbeddingService({
     provider: 'fastembed',
     dimensions: 384,
   });
@@ -1596,7 +1584,7 @@ export async function loadEmbeddingModel(options?: {
 /**
  * Generate a neural embedding for text.
  *
- * Uses the fastembed-backed service via `@moflo/embeddings`. Throws on model
+ * Uses the fastembed-backed service from cli's embeddings module. Throws on model
  * load / inference failure — there is no hash fallback.
  */
 export async function generateEmbedding(text: string): Promise<{

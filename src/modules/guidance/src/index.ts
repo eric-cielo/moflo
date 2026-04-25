@@ -477,8 +477,8 @@ export class GuidanceControlPlane {
     if (!this.config.embeddingProvider) {
       throw new Error(
         'GuidanceControlPlane requires config.embeddingProvider. The retriever ' +
-          'is neural-only; wire a real provider from @moflo/embeddings (production) ' +
-          'or inject a deterministic mock (tests).',
+          "is neural-only; wire a real provider from cli's embeddings module " +
+          '(production) or inject a deterministic mock (tests).',
       );
     }
 

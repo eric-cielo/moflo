@@ -141,10 +141,6 @@ export function resetInstallAttempts(): void {
  * Optional package dependencies and their purposes
  */
 export const OPTIONAL_PACKAGES = {
-  '@moflo/embeddings': {
-    description: 'Vector embeddings with ONNX support',
-    tools: ['embeddings_generate', 'embeddings_search', 'embeddings_batch'],
-  },
   'onnxruntime-node': {
     description: 'ONNX runtime for neural network inference',
     tools: ['neural_*'],

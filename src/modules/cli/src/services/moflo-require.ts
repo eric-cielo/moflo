@@ -9,7 +9,7 @@
  * Usage:
  *   import { mofloImport } from '../services/moflo-require.js';
  *   const sqlJs = await mofloImport('sql.js');
- *   const embeddings = await mofloImport('@moflo/embeddings');
+ *   const memory = await mofloImport('@moflo/memory');
  */
 
 import { createRequire } from 'module';
@@ -27,7 +27,7 @@ const mofloRequire = createRequire(fileURLToPath(import.meta.url));
  * On Windows, `createRequire.resolve()` returns a native path (C:\...) which
  * `import()` rejects — it requires a file:// URL.  We convert via pathToFileURL.
  *
- * @param specifier       Package specifier, e.g. 'sql.js' or '@moflo/embeddings'
+ * @param specifier       Package specifier, e.g. 'sql.js' or '@moflo/memory'
  * @param expectedExports Optional list of named exports the caller relies on.
  *                        When provided, the module is validated after load; if any
  *                        named export is missing, a warning is emitted and null
@@ -139,7 +139,6 @@ export type MofloInternalPackage =
   | 'memory'
   | 'swarm'
   | 'hooks'
-  | 'embeddings'
   | 'guidance'
   | 'neural'
   | 'security'

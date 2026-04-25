@@ -7,7 +7,6 @@
  * hoisted node_modules are not available.
  */
 
-declare module '@moflo/embeddings';
 declare module '@moflo/guidance/analyzer';
 declare module '@moflo/guidance/compiler';
 declare module '@moflo/guidance/gates';

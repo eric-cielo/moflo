@@ -17,15 +17,7 @@ import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { mofloImport } from '../services/moflo-require.js';
 import { runEmbeddingsMigrationIfNeeded } from '../services/embeddings-migration.js';
-
-// Dynamic imports for embeddings package (optional — may not be installed)
-async function getEmbeddings() {
-  try {
-    return await import('@moflo/embeddings');
-  } catch {
-    return null;
-  }
-}
+import * as embeddings from '../embeddings/index.js';
 
 // Generate subcommand - REAL implementation
 const generateCommand: Command = {
@@ -740,17 +732,9 @@ const initCommand: Command = {
       // Download model if requested
       if (download) {
         spinner.setText(`Downloading ONNX model: ${model}...`);
-        const embeddings = await getEmbeddings();
-
-        if (embeddings) {
-          await embeddings.downloadEmbeddingModel(model, modelDir, (p) => {
-            spinner.setText(`Downloading ${model}... ${p.percent.toFixed(0)}%`);
-          });
-        } else {
-          // Simulate download for when embeddings package not available
-          await new Promise(r => setTimeout(r, 500));
-          output.writeln(output.dim('  (Simulated - @moflo/embeddings not installed)'));
-        }
+        await embeddings.downloadEmbeddingModel(model, modelDir, (p) => {
+          spinner.setText(`Downloading ${model}... ${p.percent.toFixed(0)}%`);
+        });
       }
 
       // Write embeddings config
@@ -882,7 +866,6 @@ const chunkCommand: Command = {
     { command: 'claude-flow embeddings chunk -f doc.txt --strategy paragraph', description: 'Chunk file by paragraph' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const embeddings = await getEmbeddings();
     const text = ctx.flags.text as string || '';
     const maxSize = parseInt(ctx.flags['max-size'] as string || '512', 10);
     const overlap = parseInt(ctx.flags.overlap as string || '50', 10);
@@ -891,19 +874,6 @@ const chunkCommand: Command = {
     output.writeln();
     output.writeln(output.bold('Document Chunking'));
     output.writeln(output.dim('─'.repeat(50)));
-
-    if (!embeddings) {
-      output.printWarning('@moflo/embeddings not installed, showing preview');
-      output.writeln();
-      output.printBox([
-        `Strategy: ${strategy}`,
-        `Max Size: ${maxSize} chars`,
-        `Overlap: ${overlap} chars`,
-        ``,
-        `Estimated chunks: ${Math.ceil(text.length / (maxSize - overlap))}`,
-      ].join('\n'), 'Chunking Preview');
-      return { success: true };
-    }
 
     const result = embeddings.chunkText(text, { maxChunkSize: maxSize, overlap, strategy: strategy as 'character' | 'sentence' | 'paragraph' | 'token' });
 
@@ -996,15 +966,7 @@ const hyperbolicCommand: Command = {
     output.writeln(output.dim('Poincaré Ball Model'));
     output.writeln(output.dim('─'.repeat(50)));
 
-    // Try to import hyperbolic functions from embeddings package
     try {
-      const hyperbolic = await import('@moflo/embeddings').then(m => m).catch(() => null);
-
-      if (!hyperbolic || !hyperbolic.euclideanToPoincare) {
-        output.printWarning('@moflo/embeddings hyperbolic module not available');
-        output.printInfo('Install with: npm install @moflo/embeddings');
-        return { success: false, exitCode: 1 };
-      }
 
       if (!inputJson) {
         // Show help if no input
@@ -1035,7 +997,7 @@ const hyperbolicCommand: Command = {
       switch (action) {
         case 'convert': {
           const vec = Array.isArray(input[0]) ? input[0] as number[] : input as number[];
-          const rawResult = hyperbolic.euclideanToPoincare(vec, { curvature });
+          const rawResult = embeddings.euclideanToPoincare(vec, { curvature });
           const result: number[] = Array.from(rawResult);
           output.writeln(output.success('Euclidean → Poincaré conversion:'));
           output.writeln();
@@ -1052,7 +1014,7 @@ const hyperbolicCommand: Command = {
             return { success: false, exitCode: 1 };
           }
           const [v1, v2] = input as number[][];
-          const dist = hyperbolic.hyperbolicDistance(v1, v2, { curvature });
+          const dist = embeddings.hyperbolicDistance(v1, v2, { curvature });
           output.writeln(output.success('Hyperbolic (geodesic) distance:'));
           output.writeln();
           output.writeln(`Vector 1: [${v1.slice(0, 4).map(v => v.toFixed(4)).join(', ')}...]`);
@@ -1067,7 +1029,7 @@ const hyperbolicCommand: Command = {
             return { success: false, exitCode: 1 };
           }
           const vectors = input as number[][];
-          const rawCentroid = hyperbolic.hyperbolicCentroid(vectors, { curvature });
+          const rawCentroid = embeddings.hyperbolicCentroid(vectors, { curvature });
           const centroid: number[] = Array.from(rawCentroid);
           output.writeln(output.success('Hyperbolic centroid (Fréchet mean):'));
           output.writeln();
@@ -1262,7 +1224,6 @@ const modelsCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const download = ctx.flags.download as string;
-    const embeddings = await getEmbeddings();
 
     output.writeln();
     output.writeln(output.bold('Embedding Models'));
@@ -1272,35 +1233,27 @@ const modelsCommand: Command = {
       const spinner = output.createSpinner({ text: `Downloading ${download}...`, spinner: 'dots' });
       spinner.start();
 
-      if (embeddings) {
-        try {
-          await embeddings.downloadEmbeddingModel(download, '.models', (p) => {
-            spinner.setText(`Downloading ${download}... ${p.percent.toFixed(1)}%`);
-          });
-          spinner.succeed(`Downloaded ${download}`);
-        } catch (err) {
-          spinner.fail(`Failed to download: ${err}`);
-          return { success: false, exitCode: 1 };
-        }
-      } else {
-        await new Promise(r => setTimeout(r, 500));
-        spinner.succeed(`Download complete (simulated)`);
+      try {
+        await embeddings.downloadEmbeddingModel(download, '.models', (p) => {
+          spinner.setText(`Downloading ${download}... ${p.percent.toFixed(1)}%`);
+        });
+        spinner.succeed(`Downloaded ${download}`);
+      } catch (err) {
+        spinner.fail(`Failed to download: ${err}`);
+        return { success: false, exitCode: 1 };
       }
       return { success: true };
     }
 
-    // List models
     let models = [
       { id: 'all-MiniLM-L6-v2', dimension: 384, size: '23MB', quantized: false, downloaded: true },
       { id: 'all-mpnet-base-v2', dimension: 768, size: '110MB', quantized: false, downloaded: false },
       { id: 'paraphrase-MiniLM-L3-v2', dimension: 384, size: '17MB', quantized: false, downloaded: false },
     ];
 
-    if (embeddings) {
-      try {
-        models = await embeddings.listEmbeddingModels();
-      } catch { /* use defaults */ }
-    }
+    try {
+      models = await embeddings.listEmbeddingModels();
+    } catch { /* use defaults */ }
 
     output.printTable({
       columns: [

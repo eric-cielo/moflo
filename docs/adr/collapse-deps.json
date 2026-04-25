@@ -1,7 +1,6 @@
 {
   "packages": [
     "cli",
-    "embeddings",
     "guidance",
     "hooks",
     "memory",
@@ -15,7 +14,6 @@
   ],
   "adjacency": {
     "cli": [
-      "embeddings",
       "guidance",
       "hooks",
       "memory",
@@ -26,18 +24,14 @@
       "swarm",
       "testing"
     ],
-    "embeddings": [],
     "guidance": [
-      "embeddings",
       "hooks"
     ],
     "hooks": [
-      "embeddings",
       "memory",
       "security"
     ],
     "memory": [
-      "embeddings",
       "neural"
     ],
     "neural": [
@@ -56,7 +50,6 @@
   },
   "rootRefs": [
     "cli",
-    "embeddings",
     "memory",
     "neural",
     "security",
@@ -70,6 +63,6 @@
       "neural"
     ]
   ],
-  "files": 994,
-  "generatedAt": "2026-04-25T04:54:26Z"
+  "files": 988,
+  "generatedAt": "2026-04-25T05:27:09Z"
 }

@@ -6,7 +6,7 @@
  *
  * Features:
  * - Real HNSW indexing (M=16, efConstruction=200) for 150x+ faster search
- * - ONNX embeddings via @moflo/embeddings (MiniLM-L6 384-dim)
+ * - ONNX embeddings via cli/src/embeddings (MiniLM-L6 384-dim)
  * - MofloDb backend for persistence
  * - Pattern promotion from short-term to long-term memory
  *
@@ -17,6 +17,7 @@ import { EventEmitter } from 'node:events';
 import type { HookContext, HookEvent } from '../types.js';
 import type { IEmbeddingService } from './embedding-service-types.js';
 import { TestDeterministicEmbedding } from './__mocks__/test-embedding-service.js';
+import { locateCliEmbeddings } from './locate-cli-embeddings.js';
 
 // Dynamic imports for optional dependencies
 let MofloDbAdapter: any = null;
@@ -267,7 +268,7 @@ export class ReasoningBank extends EventEmitter {
         await this.mofloDb.initialize();
         this.useRealBackend = true;
 
-        // Initialize the real embedding service now that @moflo/embeddings is loaded.
+        // Initialize the real embedding service now that the embeddings module is loaded.
         if (EmbeddingServiceImpl && !this.config.useMockEmbeddings) {
           await (this.embeddingService as RealEmbeddingService).initialize();
         }
@@ -298,23 +299,27 @@ export class ReasoningBank extends EventEmitter {
   private async loadDependencies(): Promise<void> {
     // Shape-check each optional peer so a renamed/missing export is noisy instead
     // of silently no-op'ing into the in-memory fallback (issue #482).
+    const checkExports = (mod: any, name: string, required: readonly string[]): any => {
+      // `in` distinguishes missing-export from present-but-undefined re-exports.
+      const missing = required.filter(
+        k => !(k in mod) || mod[k] === undefined
+      );
+      if (missing.length > 0) {
+        console.warn(
+          `[ReasoningBank] ${name} missing expected exports: ${missing.join(', ')} — feature disabled`
+        );
+        return null;
+      }
+      return mod;
+    };
+
     const dynamicImport = async (
       moduleName: string,
       requiredExports: readonly string[],
     ): Promise<any> => {
       try {
         const mod: any = await import(/* webpackIgnore: true */ moduleName);
-        // `in` distinguishes missing-export from present-but-undefined re-exports.
-        const missing = requiredExports.filter(
-          k => !(k in mod) || mod[k] === undefined
-        );
-        if (missing.length > 0) {
-          console.warn(
-            `[ReasoningBank] ${moduleName} missing expected exports: ${missing.join(', ')} — feature disabled`
-          );
-          return null;
-        }
-        return mod;
+        return checkExports(mod, moduleName, requiredExports);
       } catch {
         return null;
       }
@@ -326,9 +331,16 @@ export class ReasoningBank extends EventEmitter {
       HNSWIndex = memoryModule.HNSWIndex;
     }
 
-    const embeddingsModule = await dynamicImport('@moflo/embeddings', ['createEmbeddingService']);
-    if (embeddingsModule) {
-      EmbeddingServiceImpl = embeddingsModule.createEmbeddingService;
+    // Embeddings was inlined into cli (#592 / epic #586) — walk up to find it.
+    const embeddingsUrl = locateCliEmbeddings();
+    if (embeddingsUrl) {
+      try {
+        const mod: any = await import(embeddingsUrl);
+        const checked = checkExports(mod, 'cli/embeddings', ['createEmbeddingService']);
+        if (checked) EmbeddingServiceImpl = checked.createEmbeddingService;
+      } catch {
+        /* leave EmbeddingServiceImpl null; degrades to mock */
+      }
     }
   }
 
@@ -986,7 +998,7 @@ export class ReasoningBank extends EventEmitter {
 // ============================================================================
 
 /**
- * Real embedding service using @moflo/embeddings (fastembed provider).
+ * Real embedding service using cli's embeddings module (fastembed provider).
  *
  * This is the only production path — the previous `FallbackEmbeddingService`
  * with hash fallback was removed in epic #527. If the embeddings module cannot

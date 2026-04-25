@@ -837,7 +837,7 @@ const rateCommand: Command = {
     { name: 'rating', short: 'r', type: 'number', description: 'Rating (1-5)', required: true },
   ],
   examples: [
-    { command: 'claude-flow plugins rate -n @moflo/embeddings -r 5', description: 'Rate 5 stars' },
+    { command: 'claude-flow plugins rate -n @moflo/neural -r 5', description: 'Rate 5 stars' },
     { command: 'claude-flow plugins rate -n my-plugin -r 4', description: 'Rate 4 stars' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
@@ -920,7 +920,6 @@ export const pluginsCommand: Command = {
     output.printList([
       '@moflo/neural              - Neural patterns and inference (WASM SIMD)',
       '@moflo/security            - Security scanning and CVE detection',
-      '@moflo/embeddings          - Vector embeddings with hyperbolic support',
     ]);
     output.writeln();
     output.writeln(output.dim('Run "claude-flow plugins list --official" to see all official plugins'));

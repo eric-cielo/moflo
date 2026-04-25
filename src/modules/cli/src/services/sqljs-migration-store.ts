@@ -1,7 +1,7 @@
 /**
  * sql.js-backed {@link MigrationStore} adapter for moflo's memory.db.
  *
- * Implements the abstract store interface from `@moflo/embeddings/migration`
+ * Implements the abstract store interface from `cli/src/embeddings/migration`
  * so the story-2 resumable re-embed driver can walk an existing `memory_entries`
  * table, re-embed the source text with the new neural model, and write the
  * updated vectors back transactionally.

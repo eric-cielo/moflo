@@ -14,7 +14,7 @@
 
 const BANNED_EMBEDDING_MESSAGE =
   'Hash embeddings are permanently banned (epic #527, story #532). ' +
-  'Use the fastembed-backed IEmbeddingService from @moflo/embeddings instead. ' +
+  'Use the fastembed-backed IEmbeddingService from cli/src/embeddings instead. ' +
   'Test-only deterministic mocks belong under __tests__/.';
 
 // Issue #545: architect review of PR #539's whitelist flagged it as
@@ -94,7 +94,7 @@ const FIXED_DEPTH_MODULES_SELECTORS = [
 const INLINE_HASH_EMBEDDING_MESSAGE =
   'Inline hash-embedding pattern detected (Float32Array + charCodeAt in the ' +
   'same function). Inject a fastembed-backed IEmbeddingProvider from ' +
-  '@moflo/embeddings instead.';
+  'cli/src/embeddings instead.';
 
 const INLINE_HASH_EMBEDDING_SELECTORS = [
   'FunctionDeclaration',
@@ -134,7 +134,7 @@ const bannedEmbeddingRules = {
         {
           name: '@xenova/transformers',
           message:
-            '@xenova/transformers was removed in epic #527. Import from @moflo/embeddings (fastembed-backed) instead.',
+            '@xenova/transformers was removed in epic #527. Import from cli/src/embeddings (fastembed-backed) instead.',
         },
       ],
     },

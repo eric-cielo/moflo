@@ -308,7 +308,6 @@ This package is a dependency of all other @claude-flow modules:
 - [@moflo/integration](../integration) - agentic-flow@alpha bridge
 - [@moflo/testing](../testing) - TDD framework & fixtures
 - [@moflo/deployment](../deployment) - Release management
-- [@moflo/embeddings](../embeddings) - Embedding service
 - [@moflo/hooks](../hooks) - Hooks system
 
 ## License

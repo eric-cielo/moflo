@@ -3,11 +3,9 @@
  *
  * V2 Compatibility - Neural network and ML tools
  *
- * ✅ HYBRID Implementation:
- * - Uses @moflo/embeddings for REAL embeddings when available
- * - Falls back to simulated embeddings when @moflo/embeddings not installed
- * - Pattern storage and search with cosine similarity
- * - Training progress tracked (actual model training requires external tools)
+ * Real embeddings via cli's local embeddings module; pattern storage and
+ * search with cosine similarity; training progress tracked (actual model
+ * training requires external tools).
  *
  * Note: For production neural features, use @moflo/neural module
  */
@@ -15,37 +13,24 @@
 import type { MCPTool } from './types.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { requireMofloOrWarn } from '../services/moflo-require.js';
+import { createEmbeddingServiceAsync } from '../embeddings/index.js';
 
 let realEmbeddings: { embed: (text: string) => Promise<number[]> } | null = null;
 let embeddingServiceName: string = 'none';
 try {
-  const embeddingsModule = await requireMofloOrWarn(
-    '@moflo/embeddings',
-    ['createEmbeddingServiceAsync'],
-    {
-      tag: 'neural-tools',
-      consequence:
-        'neural_predict / neural_patterns will fall back to deterministic-hash embeddings, ' +
-        'which is not allowed in production.',
+  const service = await createEmbeddingServiceAsync({
+    provider: 'fastembed',
+  });
+  realEmbeddings = {
+    embed: async (text: string) => {
+      const result = await service.embed(text);
+      return Array.from(result.embedding);
     },
-  );
-  if (embeddingsModule) {
-    const service = await embeddingsModule.createEmbeddingServiceAsync({
-      provider: 'auto',
-      autoInstall: false,
-    });
-    realEmbeddings = {
-      embed: async (text: string) => {
-        const result = await service.embed(text);
-        return Array.from(result.embedding);
-      },
-    };
-    embeddingServiceName = `@moflo/embeddings (${service.provider})`;
-  }
+  };
+  embeddingServiceName = service.provider;
 } catch (err) {
   process.stderr.write(
-    `[neural-tools] @moflo/embeddings load failed: ${err instanceof Error ? err.message : String(err)}\n`,
+    `[neural-tools] embeddings load failed: ${err instanceof Error ? err.message : String(err)}\n`,
   );
 }
 
@@ -450,7 +435,7 @@ export const neuralTools: MCPTool[] = [
 
       return {
         _realEmbeddings: !!realEmbeddings,
-        embeddingProvider: realEmbeddings ? `@moflo/embeddings (${embeddingServiceName})` : 'hash-based (deterministic)',
+        embeddingProvider: realEmbeddings ? `cli/embeddings (${embeddingServiceName})` : 'hash-based (deterministic)',
         models: {
           total: models.length,
           ready: models.filter(m => m.status === 'ready').length,

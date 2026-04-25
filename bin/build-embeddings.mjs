@@ -8,7 +8,7 @@
  *
  * Model: `fast-all-MiniLM-L6-v2` via the `fastembed` npm package (384 dims,
  * L2-normalised). Matches the shape and vector space of entries embedded by
- * `@moflo/embeddings`'s `FastembedEmbeddingService`.
+ * cli's `FastembedEmbeddingService`.
  *
  * Usage:
  *   node node_modules/moflo/bin/build-embeddings.mjs          # embed rows with no embedding

@@ -3,7 +3,7 @@
  * Probe consumer-install-sensitive `@moflo/*` bare-specifier paths.
  *
  * Catches the regression class shipped in 4.8.87-rc.2 (issue #583): silent
- * `try { import('@moflo/embeddings') } catch { return null }` blocks that
+ * `try { import('@moflo/<pkg>') } catch { return null }` blocks that
  * left consumers with a broken install and no signal in their logs.
  *
  * Inversion to keep in mind: in a consumer install, the `@moflo/<pkg>` bare
@@ -75,10 +75,11 @@ if (!existsSync(cliDist)) {
 }
 
 /**
- * The four files patched in PR #583. `loudFailExpected` is true when the
- * file has a top-level `await requireMofloOrWarn(...)` that fires on
- * import — currently only `neural-tools.js`. Other files defer until the
- * function is called, so importing them alone produces no signal.
+ * The four files patched in PR #583. After embeddings was inlined into cli
+ * (#592), the `@moflo/embeddings` loud-fail at neural-tools is moot — the
+ * specifier no longer exists in source. The probe still verifies all four
+ * files import cleanly without `ERR_MODULE_NOT_FOUND` from any remaining
+ * `@moflo/<pkg>` dynamic imports they may carry.
  */
 const PR_583_FILES = [
   {
@@ -94,9 +95,7 @@ const PR_583_FILES = [
   {
     label: 'neural-tools',
     relPath: 'mcp-tools/neural-tools.js',
-    loudFailExpected: true,
-    expectedTag: 'neural-tools',
-    expectedSpecifier: '@moflo/embeddings',
+    loudFailExpected: false,
   },
   {
     label: 'security-tools',
@@ -215,9 +214,8 @@ if (!existsSync(launcher)) {
   } else {
     // The launcher imports `embeddings-migration.js` and calls
     // `runEmbeddingsMigrationIfNeeded`. In a fresh consumer scratch dir
-    // there's no DB, so the function returns false BEFORE the
-    // `@moflo/embeddings` resolution attempt — meaning we get no
-    // loud-fail line. That's expected and not a regression.
+    // there's no DB, so the function returns false early — no signal
+    // expected, that's not a regression.
     //
     // What we DO assert: the launcher itself didn't print
     // `embeddings migration check skipped: <error>` to stderr (the

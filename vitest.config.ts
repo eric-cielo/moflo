@@ -74,13 +74,11 @@ export default defineConfig({
       '.git/**',
       // Appliance tests — require native GGUF/RVFA bindings not installed
       'src/__tests__/appliance/**',
-      // RVF tests — require native backends not installed
-      'tests/rvf-*.test.ts',
       // Context persistence hook — missing deps
       'tests/context-persistence-hook.test.mjs',
       // Embeddings .mjs tests — collection failures
-      'src/modules/embeddings/__tests__/simple.test.mjs',
-      'src/modules/embeddings/__tests__/minimal.test.mjs',
+      'src/modules/cli/__tests__/embeddings/simple.test.mjs',
+      'src/modules/cli/__tests__/embeddings/minimal.test.mjs',
       // Guidance tests with 0 tests (collection failures)
       'src/modules/guidance/tests/hooks.test.ts',
       'src/modules/guidance/tests/integration.test.ts',

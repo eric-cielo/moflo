@@ -1,6 +1,6 @@
 # Decision memo: agentdb removal (epic #464)
 
-> **Historical — pre-epic #527 (2026-04-22).** This memo captured the agentdb-removal decision before epic #527 landed. The "three-tier fallback `agentic-flow → @xenova/transformers → mock`" described below is no longer the live architecture: epic #527 removed every hash/mock fallback and swapped `@xenova/transformers` for `fastembed`. Kept as the point-in-time record of the Option-B decision. See [ADR-EMB-001](../src/modules/embeddings/docs/adrs/ADR-EMB-001-neural-embeddings-mandatory.md) for the current embedding architecture.
+> **Historical — pre-epic #527 (2026-04-22).** This memo captured the agentdb-removal decision before epic #527 landed. The "three-tier fallback `agentic-flow → @xenova/transformers → mock`" described below is no longer the live architecture: epic #527 removed every hash/mock fallback and swapped `@xenova/transformers` for `fastembed`. Kept as the point-in-time record of the Option-B decision. See [ADR-EMB-001](./adr/ADR-EMB-001-neural-embeddings-mandatory.md) for the current embedding architecture.
 
 Date: 2026-04-20
 Status: **shipped — agentdb removed in 4.8.80, `@xenova/transformers` replaced in #527**
