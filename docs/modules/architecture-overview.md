@@ -207,19 +207,15 @@ v3/
 
 ## Modules
 
-### @moflo/memory
-Unified memory service with AgentDB, HNSW indexing, and 150x-12,500x faster search.
+### cli/memory
+Unified memory service with sql.js + HNSW indexing, 150x-12,500x faster search. Inlined into `@moflo/cli` by [#598](https://github.com/eric-cielo/moflo/issues/598) — see [cli/memory](./memory.md).
 
 ```typescript
-import { HybridMemoryRepository, HNSWIndex } from '@moflo/memory';
+// From cli source — direct relative import
+import { MofloDbAdapter, HnswLite } from '../memory/index.js';
 
-const memory = new HybridMemoryRepository({
-  backend: 'agentdb',
-  vectorSearch: true
-});
-
-await memory.store({ key: 'knowledge', value: 'context', embedding: [...] });
-const results = await memory.search({ query: 'knowledge', limit: 10 });
+const adapter = new MofloDbAdapter({ dimensions: 384 });
+await adapter.initialize();
 ```
 
 ### cli/swarm
@@ -262,15 +258,15 @@ const result = await runner.run('map-lookup', () => map.get(key), {
 });
 ```
 
-### @moflo/neural
-SONA learning integration for self-optimizing agents.
+### cli/neural
+SONA learning integration for self-optimizing agents. Inlined into `@moflo/cli` by [#598](https://github.com/eric-cielo/moflo/issues/598) — see [cli/neural](./neural.md).
 
 ```typescript
-import { SONAAdapter } from '@moflo/neural';
+// From cli source — direct relative import
+import { NeuralLearningSystem } from '../neural/index.js';
 
-const sona = new SONAAdapter();
-await sona.train({ patterns: learningData });
-const prediction = await sona.predict(context);
+const neural = new NeuralLearningSystem('balanced');
+await neural.initialize();
 ```
 
 ### @moflo/cli
@@ -335,9 +331,11 @@ const result = await swarm.waitForTask(task.id);
 // Import everything
 import * as claudeFlow from '@moflo/v3';
 
-// Or import specific modules for tree-shaking
-import { UnifiedSwarmCoordinator } from '@moflo/cli/swarm'; // inlined per #597
-import { HNSWIndex } from '@moflo/memory';
+// Or import specific modules for tree-shaking via the moflo barrel
+import { swarm, memory, neural } from 'moflo';
+const { UnifiedSwarmCoordinator } = swarm;
+const { HnswLite, MofloDbAdapter } = memory;
+const { NeuralLearningSystem } = neural;
 ```
 
 ### MCP Server
@@ -433,11 +431,11 @@ pnpm test:coverage
 - [Helper System](./helpers/README.md)
 
 ### Modules
-- [@moflo/memory](./@moflo/memory/)
+- [cli/memory](./memory.md) (inlined into cli per #598)
+- [cli/neural](./neural.md) (inlined into cli per #598)
 - [cli/swarm](./swarm.md) (inlined into cli per #597)
 - [@moflo/integration](./@moflo/integration/)
 - [@moflo/performance](./@moflo/performance/)
-- [@moflo/neural](./@moflo/neural/)
 - [@moflo/cli](./@moflo/cli/)
 - [@moflo/testing](./@moflo/testing/)
 - [@moflo/deployment](./@moflo/deployment/)

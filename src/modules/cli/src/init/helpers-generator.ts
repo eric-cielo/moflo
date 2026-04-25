@@ -79,7 +79,7 @@ export function generateAutoMemoryHook(): string {
  *   node auto-memory-hook.mjs status   # Show bridge status
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -97,24 +97,29 @@ const dim = (msg) => console.log(\`  \${DIM}\${msg}\${RESET}\`);
 if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 
 async function loadMemoryPackage() {
-  // Strategy 1: Use createRequire for CJS-style resolution (handles nested node_modules
-  // when installed as a transitive dependency via npx ruflo / npx claude-flow)
+  // Memory was inlined into moflo's cli package by the workspace-collapse epic
+  // (#586 / story #598) — the bare \`@moflo/memory\` specifier no longer resolves.
+  // The compiled module ships at <moflo-pkg-root>/src/modules/cli/dist/src/memory/index.js.
+  const MEMORY_REL = join('src', 'modules', 'cli', 'dist', 'src', 'memory', 'index.js');
+  const { pathToFileURL } = await import('url');
+
+  // Strategy 1: Resolve moflo's package.json directly from the consumer
+  // project — its dirname IS the package root, no walk needed.
   try {
     const { createRequire } = await import('module');
     const require = createRequire(join(PROJECT_ROOT, 'package.json'));
-    return require('@moflo/memory');
+    const pkgRoot = dirname(require.resolve('moflo/package.json'));
+    const candidate = join(pkgRoot, MEMORY_REL);
+    if (existsSync(candidate)) return await import(pathToFileURL(candidate).href);
   } catch { /* fall through */ }
 
-  // Strategy 2: ESM import (works when @moflo/memory is a direct dependency)
-  try { return await import('@moflo/memory'); } catch { /* fall through */ }
-
-  // Strategy 3: Walk up from PROJECT_ROOT looking for the package in any node_modules
+  // Strategy 2: Walk up from PROJECT_ROOT looking for moflo in any node_modules.
   let searchDir = PROJECT_ROOT;
   const { parse } = await import('path');
   while (searchDir !== parse(searchDir).root) {
-    const candidate = join(searchDir, 'node_modules', '@claude-flow', 'memory', 'dist', 'index.js');
+    const candidate = join(searchDir, 'node_modules', 'moflo', MEMORY_REL);
     if (existsSync(candidate)) {
-      try { const { pathToFileURL } = await import('url'); return await import(pathToFileURL(candidate).href); } catch { /* fall through */ }
+      try { return await import(pathToFileURL(candidate).href); } catch { /* fall through */ }
     }
     searchDir = dirname(searchDir);
   }

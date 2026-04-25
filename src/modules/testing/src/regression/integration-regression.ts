@@ -10,6 +10,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { importCliShared } from '../locate-cli-shared.js';
+import { importCliMemory } from '../locate-cli-memory.js';
 
 // Swarm lives in cli's dist tree. Walk up to find it; layout-invariant
 // across dev source, built output, and installed consumer trees. Cached
@@ -154,7 +155,7 @@ export class IntegrationRegressionSuite {
       critical: true,
       timeout: 5000,
       run: async () => {
-        const { createInMemoryService } = await import('@moflo/memory');
+        const { createInMemoryService } = await importCliMemory();
 
         // Create in-memory service
         const memory = createInMemoryService();
@@ -184,7 +185,7 @@ export class IntegrationRegressionSuite {
       critical: true,
       timeout: 10000,
       run: async () => {
-        const { createInMemoryService } = await import('@moflo/memory');
+        const { createInMemoryService } = await importCliMemory();
 
         const memory = createInMemoryService();
         await memory.initialize();
@@ -389,7 +390,7 @@ export class IntegrationRegressionSuite {
       timeout: 5000,
       run: async () => {
         try {
-          const memory = await import('@moflo/memory');
+          const memory = await importCliMemory();
           return (
             typeof memory.UnifiedMemoryService === 'function' ||
             typeof memory.createInMemoryService === 'function'

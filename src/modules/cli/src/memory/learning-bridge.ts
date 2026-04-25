@@ -6,14 +6,15 @@
  * its own discoveries. The NeuralLearningSystem dependency is optional:
  * when unavailable, all operations degrade gracefully to no-ops.
  *
- * @module @moflo/memory/learning-bridge
+ * @module cli/memory/learning-bridge
  */
 
 import { EventEmitter } from 'node:events';
 import type { IMemoryBackend, MemoryEntry, SONAMode } from './types.js';
 import type { MemoryInsight, InsightCategory } from './auto-memory-bridge.js';
 import type { ControllerSpec } from './controller-spec.js';
-import { locateCliEmbeddings } from './locate-cli-embeddings.js';
+import { createEmbeddingService } from '../embeddings/index.js';
+import { NeuralLearningSystem } from '../neural/index.js';
 
 // ===== Types =====
 
@@ -417,24 +418,14 @@ export class LearningBridge extends EventEmitter {
         this.neural = await this.config.neuralLoader();
         return;
       }
-
-      const mod = await import('@moflo/neural' as string);
-      const NeuralLearningSystem = mod.NeuralLearningSystem ?? mod.default;
-      if (!NeuralLearningSystem) return;
-
-      const instance = new NeuralLearningSystem({
-        mode: this.config.sonaMode,
-        ewcLambda: this.config.ewcLambda,
-      });
-
-      if (typeof instance.initialize === 'function') {
-        await instance.initialize();
-      }
-
+      const instance = new NeuralLearningSystem(this.config.sonaMode);
+      await instance.initialize();
       this.neural = instance;
-    } catch {
-      // @moflo/neural not installed or failed to initialize.
-      // This is expected in many environments; degrade silently.
+    } catch (err) {
+      console.warn(
+        '[LearningBridge] neural initialize failed — neural features disabled:',
+        err instanceof Error ? err.message : err,
+      );
       this.neural = null;
     }
   }
@@ -473,23 +464,21 @@ export class LearningBridge extends EventEmitter {
     }
 
     this.embeddingInitPromise = (async () => {
+      if (this.config.embeddingLoader) {
+        this.embeddingService = await this.config.embeddingLoader();
+        return;
+      }
+
       try {
-        if (this.config.embeddingLoader) {
-          this.embeddingService = await this.config.embeddingLoader();
-          return;
-        }
-
-        const url = locateCliEmbeddings();
-        if (!url) return;
-        const mod: any = await import(url);
-        const create = mod.createEmbeddingService;
-        if (typeof create !== 'function') return;
-
-        this.embeddingService = create({
+        this.embeddingService = createEmbeddingService({
           provider: 'fastembed',
           dimensions: 384,
         });
-      } catch {
+      } catch (err) {
+        console.warn(
+          '[LearningBridge] createEmbeddingService(fastembed) failed — insight embedding disabled:',
+          err instanceof Error ? err.message : err,
+        );
         this.embeddingService = null;
       }
     })();

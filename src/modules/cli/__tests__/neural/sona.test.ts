@@ -15,8 +15,8 @@ import {
   SONALearningEngine,
   createSONALearningEngine,
   type Context,
-} from '../src/sona-integration.js';
-import type { Trajectory, SONAMode, SONAModeConfig } from '../src/types.js';
+} from '../../src/neural/sona-integration.js';
+import type { Trajectory, SONAMode, SONAModeConfig } from '../../src/neural/types.js';
 
 describe('SONALearningEngine', () => {
   let engine: SONALearningEngine;

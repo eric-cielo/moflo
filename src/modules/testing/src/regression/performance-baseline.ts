@@ -9,6 +9,7 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { importCliShared } from '../locate-cli-shared.js';
+import { importCliMemory } from '../locate-cli-memory.js';
 
 /**
  * Baseline metric definition
@@ -184,7 +185,7 @@ export class PerformanceBaseline {
   private async simulateStartup(): Promise<void> {
     // Import key modules to simulate startup
     await importCliShared();
-    await import('@moflo/memory');
+    await importCliMemory();
   }
 
   /**

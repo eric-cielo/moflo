@@ -1,260 +1,36 @@
-# @moflo/neural
+# cli/neural
 
-[![npm version](https://img.shields.io/npm/v/@moflo/neural.svg)](https://www.npmjs.com/package/@moflo/neural)
-[![npm downloads](https://img.shields.io/npm/dm/@moflo/neural.svg)](https://www.npmjs.com/package/@moflo/neural)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
-[![AI Learning](https://img.shields.io/badge/AI-Self--Learning-purple.svg)](https://github.com/eric-cielo/moflo)
+> **Inlined into `@moflo/cli` by [#598](https://github.com/eric-cielo/moflo/issues/598)** (epic [#586](https://github.com/eric-cielo/moflo/issues/586) / [ADR-0001](../adr/0001-collapse-moflo-workspace-packages.md)). The `@moflo/neural` workspace package no longer exists — its contents live at `src/modules/cli/src/neural/` and ship inside the `moflo` tarball.
 
-> Self-Optimizing Neural Architecture (SONA) module for Claude Flow V3 - adaptive learning, trajectory tracking, and pattern-based optimization.
+The Self-Optimizing Neural Architecture (SONA) module: trajectory tracking, pattern learning, ReasoningBank with HNSW-backed vector storage, and 9 RL algorithms (PPO, A2C, DQN, Q-Learning, SARSA, Decision Transformer, etc.). Provides 5 learning modes (real-time, balanced, research, edge, batch) and `NeuralLearningSystem` as the integrated entry point.
 
-## Features
+## Where things live
 
-- **SONA Learning** - Self-Optimizing Neural Architecture with <0.05ms adaptation time
-- **5 Learning Modes** - Real-time, Balanced, Research, Edge, and Batch modes
-- **9 RL Algorithms** - PPO, A2C, DQN, Q-Learning, SARSA, Decision Transformer, and more
-- **LoRA Integration** - Low-Rank Adaptation for efficient fine-tuning
-- **EWC++ Memory** - Elastic Weight Consolidation for continual learning without forgetting
-- **Trajectory Tracking** - Record and learn from agent execution paths
-- **Pattern Recognition** - Automatic pattern extraction and reuse
+| Concern | Path |
+|---------|------|
+| Source | `src/modules/cli/src/neural/` |
+| Public surface | `src/modules/cli/src/neural/index.ts` (re-exports SONA, ReasoningBank, PatternLearner, modes, algorithms) |
+| Integrated system | `src/modules/cli/src/neural/sona-integration.ts`, `index.ts` (`NeuralLearningSystem`) |
+| SONA engine | `src/modules/cli/src/neural/sona-engine.ts`, `sona-manager.ts` |
+| ReasoningBank | `src/modules/cli/src/neural/reasoning-bank.ts`, `reasoningbank-adapter.ts` |
+| Pattern learning | `src/modules/cli/src/neural/pattern-learner.ts` |
+| Modes | `src/modules/cli/src/neural/modes/` (real-time, balanced, research, edge, batch) |
+| Algorithms | `src/modules/cli/src/neural/algorithms/` |
+| Domain types | `src/modules/cli/src/neural/types.ts`, `domain/` |
+| Tests | `src/modules/cli/__tests__/neural/` |
 
-## Installation
+## Internal usage
 
-```bash
-npm install @moflo/neural
+The cli imports neural via direct relative paths (no `@moflo/neural` bare specifier, no walk-up resolver inside cli):
+
+```ts
+// From cli source (e.g. cli/src/memory/learning-bridge.ts):
+import { NeuralLearningSystem } from '../neural/index.js';
+
+// From cli/src/commands/doctor.ts:
+const neural = await import('../neural/index.js');
 ```
 
-## Quick Start
+The `cli/src/neural/reasoning-bank.ts` ↔ `cli/src/memory/learning-bridge.ts` SCC that previously required guarded dynamic imports across the package boundary collapses to plain sibling imports — no try/catch fallback, no shape-check probe.
 
-```typescript
-import { SONAManager, createSONAManager } from '@moflo/neural';
-
-// Create SONA manager
-const sona = createSONAManager('balanced');
-await sona.initialize();
-
-// Begin trajectory tracking
-const trajectoryId = sona.beginTrajectory('code-review-task', 'development');
-
-// Record steps
-sona.recordStep(trajectoryId, 'analyze-code', 0.8, stateEmbedding, {
-  filesAnalyzed: 5,
-  issuesFound: 2
-});
-
-sona.recordStep(trajectoryId, 'generate-feedback', 0.9, newStateEmbedding);
-
-// Complete trajectory
-const trajectory = sona.completeTrajectory(trajectoryId);
-
-// Find similar patterns for guidance
-const patterns = await sona.findSimilarPatterns(contextEmbedding, 3);
-```
-
-## Learning Modes
-
-| Mode | Adaptation | Quality | Memory | Use Case |
-|------|------------|---------|--------|----------|
-| **real-time** | <0.5ms | 70%+ | 25MB | Production, low-latency |
-| **balanced** | <18ms | 75%+ | 50MB | General purpose |
-| **research** | <100ms | 95%+ | 100MB | Deep exploration |
-| **edge** | <1ms | 80%+ | 5MB | Resource-constrained |
-| **batch** | <50ms | 85%+ | 75MB | High-throughput |
-
-```typescript
-// Switch modes dynamically
-await sona.setMode('research');
-
-// Get current configuration
-const { mode, config, optimizations } = sona.getConfig();
-```
-
-## API Reference
-
-### SONA Manager
-
-```typescript
-import { SONAManager } from '@moflo/neural';
-
-const sona = new SONAManager('balanced');
-await sona.initialize();
-
-// Trajectory Management
-const trajectoryId = sona.beginTrajectory(context, domain);
-sona.recordStep(trajectoryId, action, reward, stateEmbedding, metadata);
-const trajectory = sona.completeTrajectory(trajectoryId, finalQuality);
-
-// Pattern Matching
-const patterns = await sona.findSimilarPatterns(embedding, k);
-const pattern = sona.storePattern({ name, strategy, embedding, domain });
-sona.updatePatternUsage(patternId, quality);
-
-// Learning
-await sona.triggerLearning('manual');
-const output = await sona.applyAdaptations(input, domain);
-
-// Statistics
-const stats = sona.getStats();
-```
-
-### RL Algorithms
-
-```typescript
-import { PPO, A2C, DQN, QLearning, SARSA, DecisionTransformer } from '@moflo/neural';
-
-// Proximal Policy Optimization
-const ppo = new PPO({
-  learningRate: 0.0003,
-  epsilon: 0.2,
-  valueCoef: 0.5
-});
-
-// Advantage Actor-Critic
-const a2c = new A2C({
-  learningRate: 0.001,
-  gamma: 0.99,
-  entropyCoef: 0.01
-});
-
-// Deep Q-Network
-const dqn = new DQN({
-  learningRate: 0.001,
-  gamma: 0.99,
-  epsilon: 0.1,
-  targetUpdateFreq: 100
-});
-
-// Decision Transformer
-const dt = new DecisionTransformer({
-  contextLength: 20,
-  embeddingDim: 256,
-  numHeads: 4
-});
-```
-
-### LoRA Configuration
-
-```typescript
-// Get LoRA config for current mode
-const loraConfig = sona.getLoRAConfig();
-// {
-//   rank: 4,
-//   alpha: 8,
-//   dropout: 0.05,
-//   targetModules: ['q_proj', 'v_proj', 'k_proj', 'o_proj'],
-//   microLoRA: false
-// }
-
-// Initialize LoRA weights for a domain
-const weights = sona.initializeLoRAWeights('code-generation');
-```
-
-### EWC++ (Elastic Weight Consolidation)
-
-```typescript
-// Get EWC config
-const ewcConfig = sona.getEWCConfig();
-// {
-//   lambda: 2000,
-//   decay: 0.9,
-//   fisherSamples: 100,
-//   minFisher: 1e-8,
-//   online: true
-// }
-
-// Consolidate after learning a new task
-sona.consolidateEWC();
-```
-
-### Event System
-
-```typescript
-// Subscribe to neural events
-sona.addEventListener((event) => {
-  switch (event.type) {
-    case 'trajectory_started':
-      console.log(`Started: ${event.trajectoryId}`);
-      break;
-    case 'trajectory_completed':
-      console.log(`Completed with quality: ${event.qualityScore}`);
-      break;
-    case 'pattern_matched':
-      console.log(`Pattern ${event.patternId} matched`);
-      break;
-    case 'learning_triggered':
-      console.log(`Learning: ${event.reason}`);
-      break;
-    case 'mode_changed':
-      console.log(`Mode: ${event.fromMode} -> ${event.toMode}`);
-      break;
-  }
-});
-```
-
-## Mode Configurations
-
-```typescript
-// Real-time mode (ultra-fast)
-{
-  loraRank: 2,
-  learningRate: 0.001,
-  batchSize: 32,
-  trajectoryCapacity: 1000,
-  qualityThreshold: 0.7,
-  maxLatencyMs: 0.5
-}
-
-// Research mode (high quality)
-{
-  loraRank: 16,
-  learningRate: 0.002,
-  batchSize: 64,
-  trajectoryCapacity: 10000,
-  qualityThreshold: 0.2,
-  maxLatencyMs: 100
-}
-```
-
-## Performance Targets
-
-| Metric | Target | Typical |
-|--------|--------|---------|
-| Adaptation latency | <0.05ms | 0.02ms |
-| Pattern retrieval | <1ms | 0.5ms |
-| Learning step | <10ms | 5ms |
-| Quality improvement | +55% | +40-60% |
-| Memory overhead | <50MB | 25-75MB |
-
-## TypeScript Types
-
-```typescript
-import type {
-  SONAMode,
-  SONAModeConfig,
-  Trajectory,
-  TrajectoryStep,
-  Pattern,
-  PatternMatch,
-  NeuralStats,
-  NeuralEvent,
-  LoRAConfig,
-  LoRAWeights,
-  EWCConfig,
-  RLAlgorithm
-} from '@moflo/neural';
-```
-
-## Dependencies
-
-- [@moflo/memory](../memory) - Memory integration
-- Built-in SONA engine (pure TypeScript)
-
-## Related Packages
-
-- [@moflo/memory](../memory) - Vector memory for patterns
-- [@moflo/integration](../integration) - agentic-flow integration
-- [@moflo/performance](../performance) - Benchmarking
-
-## License
-
-MIT
+There are no external-package consumers of neural after collapse: `hooks` reaches MofloDb / HNSWIndex via memory's walk-up resolver, not neural. Production callers verified via `scripts/analyze-collapse-deps.mjs` before the move.

@@ -18,6 +18,7 @@ import type { HookContext, HookEvent } from '../types.js';
 import type { IEmbeddingService } from './embedding-service-types.js';
 import { TestDeterministicEmbedding } from './__mocks__/test-embedding-service.js';
 import { locateCliEmbeddings } from './locate-cli-embeddings.js';
+import { locateCliMemory } from './locate-cli-memory.js';
 
 // Dynamic imports for optional dependencies
 let MofloDbAdapter: any = null;
@@ -313,22 +314,21 @@ export class ReasoningBank extends EventEmitter {
       return mod;
     };
 
-    const dynamicImport = async (
-      moduleName: string,
-      requiredExports: readonly string[],
-    ): Promise<any> => {
+    const memoryUrl = locateCliMemory();
+    if (memoryUrl) {
       try {
-        const mod: any = await import(/* webpackIgnore: true */ moduleName);
-        return checkExports(mod, moduleName, requiredExports);
-      } catch {
-        return null;
+        const mod: any = await import(memoryUrl);
+        const checked = checkExports(mod, 'cli/memory', ['MofloDbAdapter', 'HNSWIndex']);
+        if (checked) {
+          MofloDbAdapter = checked.MofloDbAdapter;
+          HNSWIndex = checked.HNSWIndex;
+        }
+      } catch (err) {
+        console.warn(
+          `[ReasoningBank] Failed to load cli/memory from ${memoryUrl}:`,
+          err instanceof Error ? err.message : err,
+        );
       }
-    };
-
-    const memoryModule = await dynamicImport('@moflo/memory', ['MofloDbAdapter', 'HNSWIndex']);
-    if (memoryModule) {
-      MofloDbAdapter = memoryModule.MofloDbAdapter;
-      HNSWIndex = memoryModule.HNSWIndex;
     }
 
     // Embeddings was inlined into cli (#592 / epic #586) — walk up to find it.

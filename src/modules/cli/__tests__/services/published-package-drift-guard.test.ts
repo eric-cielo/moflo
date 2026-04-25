@@ -50,8 +50,6 @@ const AUTO_INSTALLED_EXTERNALS = new Set<string>();
 // Pinned inventory of bare packages. New entries force a dev to verify the
 // consumer-smoke probe still covers them.
 const ALLOWED_BARE_PACKAGES = new Set([
-  '@moflo/memory',
-  '@moflo/neural',
   '@moflo/hooks',
 ]);
 
