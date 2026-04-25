@@ -1,17 +1,16 @@
 /**
  * Neural IEmbeddingProvider adapter for the guidance retriever.
  *
- * Wraps `@moflo/embeddings`'s fastembed-backed service so the
- * `ShardRetriever` can use real neural semantics. Loading is lazy: the
- * fastembed model is only fetched when `embed()`/`batchEmbed()` is first
- * called. A hard error is thrown if the embeddings module is not installed
- * — there is no hash fallback (see epic #527).
+ * Wraps the local fastembed-backed service so the `ShardRetriever` can use
+ * real neural semantics. Loading is lazy: the fastembed model is only fetched
+ * when `embed()`/`batchEmbed()` is first called. There is no hash fallback
+ * (see epic #527).
  */
 
-import { mofloImport } from './moflo-require.js';
+import { createEmbeddingService } from '../embeddings/index.js';
 
 // Keeping the shape minimal avoids a build-time coupling on the
-// @moflo/guidance retriever type definition from this loader.
+// guidance retriever type definition from this loader.
 export interface NeuralEmbeddingProvider {
   embed(text: string): Promise<Float32Array>;
   batchEmbed(texts: string[]): Promise<Float32Array[]>;
@@ -23,41 +22,29 @@ interface EmbeddingServiceLike {
 }
 
 class FastembedBackedProvider implements NeuralEmbeddingProvider {
-  private servicePromise: Promise<EmbeddingServiceLike> | null = null;
+  private service: EmbeddingServiceLike | null = null;
 
   async embed(text: string): Promise<Float32Array> {
-    const svc = await this.getService();
+    const svc = this.getService();
     const result = await svc.embed(text);
     return toFloat32(result.embedding);
   }
 
   async batchEmbed(texts: string[]): Promise<Float32Array[]> {
-    const svc = await this.getService();
+    const svc = this.getService();
     const result = await svc.embedBatch(texts);
     return result.embeddings.map(toFloat32);
   }
 
-  private getService(): Promise<EmbeddingServiceLike> {
-    if (!this.servicePromise) {
-      this.servicePromise = loadFastembedService();
+  private getService(): EmbeddingServiceLike {
+    if (!this.service) {
+      this.service = createEmbeddingService({
+        provider: 'fastembed',
+        dimensions: 384,
+      }) as EmbeddingServiceLike;
     }
-    return this.servicePromise;
+    return this.service;
   }
-}
-
-async function loadFastembedService(): Promise<EmbeddingServiceLike> {
-  const mod = await mofloImport('@moflo/embeddings', ['createEmbeddingService']);
-  if (!mod) {
-    throw new Error(
-      `@moflo/embeddings is required for the guidance retriever but could not be loaded. ` +
-        `Ensure moflo was installed with the default (neural) runtime.`,
-    );
-  }
-  const service = mod.createEmbeddingService({
-    provider: 'fastembed',
-    dimensions: 384,
-  }) as EmbeddingServiceLike;
-  return service;
 }
 
 function toFloat32(vec: Float32Array | number[]): Float32Array {
@@ -67,9 +54,7 @@ function toFloat32(vec: Float32Array | number[]): Float32Array {
 /**
  * Build a neural embedding provider for the guidance retriever.
  *
- * The factory itself is synchronous-ish (returns after confirming the
- * embeddings module is resolvable) but defers the fastembed model fetch
- * until the first embed call.
+ * Defers the fastembed model fetch until the first embed call.
  */
 export async function createNeuralEmbeddingProvider(): Promise<NeuralEmbeddingProvider> {
   return new FastembedBackedProvider();

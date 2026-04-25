@@ -100,7 +100,7 @@ export class ShardRetriever {
   /**
    * Construct a retriever. An {@link IEmbeddingProvider} is required — there
    * is no built-in hash fallback (see epic #527). Tests inject a deterministic
-   * mock; production wires a neural provider backed by `@moflo/embeddings`.
+   * mock; production wires a neural provider backed by cli's embeddings module.
    */
   constructor(embeddingProvider: IEmbeddingProvider) {
     if (!embeddingProvider) {

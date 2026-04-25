@@ -4,20 +4,24 @@
  * Runs the story-2 driver (`runUpgrade`) with the story-3 UX on any DB whose
  * stored `embeddings_version` is below the current runtime version. Safe to
  * call on every session start — returns fast when the DB is already
- * up-to-date or when `@moflo/embeddings` / `sql.js` aren't installed.
+ * up-to-date or when `sql.js` isn't available.
  *
  * Lives in `services/` so it has no dependency on the CLI command machinery.
  * That lets `bin/session-start-launcher.mjs` dynamic-import it and run the
  * migration in foreground with piped stdio — so the renderer's TTY bar /
  * non-TTY status lines actually reach the user.
  *
- * @module @moflo/cli/services/embeddings-migration
+ * @module cli/services/embeddings-migration
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { mofloImport, requireMofloOrWarn } from './moflo-require.js';
+import { mofloImport } from './moflo-require.js';
 import { atomicWriteFileSync } from './atomic-file-write.js';
+// EMBEDDINGS_VERSION is a number constant in a leaf types module — pulling it
+// eagerly is cheap. The heavy imports (fastembed wrapper, upgrade renderer,
+// etc.) stay deferred behind the early returns so session-start stays fast.
+import { EMBEDDINGS_VERSION } from '../embeddings/migration/types.js';
 
 export interface RunEmbeddingsMigrationOptions {
   /** Path to the memory DB. Defaults to `<cwd>/.swarm/memory.db`. */
@@ -33,9 +37,9 @@ export interface RunEmbeddingsMigrationOptions {
  *
  * Returns `true` when the driver completed with status `'completed'` and
  * wrote the new embeddings back to the DB file. Returns `false` in every
- * other case — no DB found, embeddings package missing, DB schema lacks
- * embedding columns, already at target version, or the driver aborted /
- * failed mid-run. Errors propagate to the caller.
+ * other case — no DB found, sql.js unavailable, DB schema lacks embedding
+ * columns, already at target version, or the driver aborted / failed
+ * mid-run. Errors propagate to the caller.
  */
 export async function runEmbeddingsMigrationIfNeeded(
   options: RunEmbeddingsMigrationOptions = {},
@@ -47,16 +51,6 @@ export async function runEmbeddingsMigrationIfNeeded(
     options.dbPath ?? path.join(process.cwd(), '.swarm', 'memory.db'),
   );
   if (!fs.existsSync(dbPath)) return false;
-
-  const embeddings = await requireMofloOrWarn(
-    '@moflo/embeddings',
-    ['EMBEDDINGS_VERSION', 'createEmbeddingService', 'runUpgrade'],
-    {
-      tag: 'embeddings-migration',
-      consequence: 'migration skipped; memory.db will keep its current embeddings_version.',
-    },
-  );
-  if (!embeddings) return false;
 
   const initSqlJs = (await mofloImport('sql.js'))?.default;
   if (!initSqlJs) return false;
@@ -78,23 +72,15 @@ export async function runEmbeddingsMigrationIfNeeded(
     const store = new SqlJsMemoryEntriesStore(db, path.basename(dbPath));
 
     const currentVersion = await store.getVersion();
-    const targetVersion = (embeddings as { EMBEDDINGS_VERSION: number }).EMBEDDINGS_VERSION;
-    if (currentVersion !== null && currentVersion >= targetVersion) {
+    if (currentVersion !== null && currentVersion >= EMBEDDINGS_VERSION) {
       return false;
     }
 
-    const service = (embeddings as {
-      createEmbeddingService: (c: unknown) => {
-        embedBatch(texts: string[]): Promise<{ embeddings: Array<Float32Array | number[]> }>;
-      };
-    }).createEmbeddingService({
+    const { createEmbeddingService, runUpgrade } = await import('../embeddings/index.js');
+    const service = createEmbeddingService({
       provider: 'fastembed',
       dimensions: 384,
     });
-
-    const runUpgrade = (embeddings as {
-      runUpgrade: (opts: unknown) => Promise<{ status: string; errors: readonly string[] }>;
-    }).runUpgrade;
 
     const out = options.out ?? process.stderr;
     const isTTY = options.isTTY ?? (out as { isTTY?: boolean }).isTTY ?? false;

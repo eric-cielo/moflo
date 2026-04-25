@@ -19,7 +19,6 @@ npm install && npm run build && npm test
 | `@moflo/memory` | `modules/memory/` | sql.js + HNSW vector search (MofloDb) |
 | `@moflo/shared` | `modules/shared/` | Shared types and utilities |
 | `@moflo/security` | `modules/security/` | Input validation, CVE remediation |
-| `@moflo/embeddings` | `modules/embeddings/` | Vector embeddings (sql.js, HNSW) |
 | `@moflo/neural` | `modules/neural/` | Neural patterns (SONA) |
 | `@moflo/plugins` | `modules/plugins/` | Plugin system |
 | `@moflo/spells` | `modules/spells/` | Spell engine |

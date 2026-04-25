@@ -41,7 +41,7 @@ Run domain-specific queries against each namespace and verify scores meet minimu
 
 ### CRITICAL: Vectorization check
 
-**A score of exactly 0.500 means vectorization failed** and the system returned a default fallback score. Any result with score === 0.500 (or all results sharing the same score) is a FAIL — it indicates the entry was not properly embedded. Since epic #527 removed every hash-embedding fallback (see [ADR-EMB-001](../src/modules/embeddings/docs/adrs/ADR-EMB-001-neural-embeddings-mandatory.md)), this now indicates a broken fastembed model load rather than a silent downgrade.
+**A score of exactly 0.500 means vectorization failed** and the system returned a default fallback score. Any result with score === 0.500 (or all results sharing the same score) is a FAIL — it indicates the entry was not properly embedded. Since epic #527 removed every hash-embedding fallback (see [ADR-EMB-001](./adr/ADR-EMB-001-neural-embeddings-mandatory.md)), this now indicates a broken fastembed model load rather than a silent downgrade.
 - If top-N results all share the same score, embeddings are not being generated — check fastembed model cache and `~/.cache/fastembed`.
 - Valid semantic search always produces varied scores across results
 

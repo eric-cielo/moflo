@@ -13,6 +13,7 @@ import { EventEmitter } from 'node:events';
 import type { IMemoryBackend, MemoryEntry, SONAMode } from './types.js';
 import type { MemoryInsight, InsightCategory } from './auto-memory-bridge.js';
 import type { ControllerSpec } from './controller-spec.js';
+import { locateCliEmbeddings } from './locate-cli-embeddings.js';
 
 // ===== Types =====
 
@@ -57,7 +58,7 @@ export interface LearningBridgeConfig {
   neuralLoader?: NeuralLoader;
   /**
    * Optional factory for the embedding service used to embed insight summaries.
-   * Defaults to a dynamic import of `@moflo/embeddings` (fastembed provider).
+   * Defaults to a dynamic import of cli's embeddings module (fastembed provider).
    * Tests inject a deterministic mock.
    */
   embeddingLoader?: EmbeddingLoader;
@@ -460,8 +461,8 @@ export class LearningBridge extends EventEmitter {
   }
 
   /**
-   * Lazily load the embedding service. Uses an injected loader (tests) or the
-   * shared `@moflo/embeddings` module (production). Failures leave
+   * Lazily load the embedding service. Uses an injected loader (tests) or
+   * walks up to cli's compiled embeddings module (production). Failures leave
    * `embeddingService = null` so callers skip embedding without crashing.
    */
   private async initEmbeddings(): Promise<void> {
@@ -478,7 +479,9 @@ export class LearningBridge extends EventEmitter {
           return;
         }
 
-        const mod: any = await import('@moflo/embeddings' as string);
+        const url = locateCliEmbeddings();
+        if (!url) return;
+        const mod: any = await import(url);
         const create = mod.createEmbeddingService;
         if (typeof create !== 'function') return;
 

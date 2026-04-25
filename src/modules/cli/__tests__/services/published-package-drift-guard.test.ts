@@ -54,7 +54,6 @@ const ALLOWED_BARE_PACKAGES = new Set([
   '@moflo/memory',
   '@moflo/swarm',
   '@moflo/neural',
-  '@moflo/embeddings',
   '@moflo/guidance',
   '@moflo/hooks',
 ]);

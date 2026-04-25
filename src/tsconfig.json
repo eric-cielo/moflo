@@ -4,7 +4,6 @@
     "baseUrl": ".",
     "paths": {
       "@moflo/cli": ["./modules/cli/src"],
-      "@moflo/embeddings": ["./modules/embeddings/src"],
       "@moflo/guidance": ["./modules/guidance/src"],
       "@moflo/hooks": ["./modules/hooks/src"],
       "@moflo/memory": ["./modules/memory/src"],
@@ -20,7 +19,6 @@
   "references": [
     { "path": "./modules/shared" },
     { "path": "./modules/cli" },
-    { "path": "./modules/embeddings" },
     { "path": "./modules/guidance" },
     { "path": "./modules/hooks" },
     { "path": "./modules/memory" },

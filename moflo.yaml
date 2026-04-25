@@ -24,9 +24,7 @@ code_map:
 tests:
   directories:
     - tests
-    - src/modules/aidefence/__tests__
     - src/modules/cli/__tests__
-    - src/modules/embeddings/__tests__
     - src/modules/hooks/__tests__
     - src/modules/neural/__tests__
     - src/modules/plugins/__tests__

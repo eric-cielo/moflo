@@ -21,12 +21,8 @@ interface PackageCompatibility {
 // Known compatibility matrix between moflo packages
 const COMPATIBILITY_MATRIX: Record<string, Record<string, PackageCompatibility>> = {
   'moflo': {
-    '@moflo/embeddings': { minVersion: '3.0.0-alpha.1' },
     '@moflo/security': { minVersion: '3.0.0-alpha.1' },
     '@moflo/integration': { minVersion: '3.0.0-alpha.1' },
-  },
-  '@moflo/embeddings': {
-    'moflo': { minVersion: '3.0.0-alpha.50' },
   },
   '@moflo/integration': {
     'moflo': { minVersion: '3.0.0-alpha.70' },
@@ -40,12 +36,6 @@ const BREAKING_CHANGES: Record<string, Record<string, string[]>> = {
       'Memory API changed from key-value to vector-based',
       'Hooks system completely redesigned',
       'Agent spawning now requires type parameter',
-    ],
-  },
-  '@moflo/embeddings': {
-    '3.0.0': [
-      'Switched from better-sqlite3 to sql.js',
-      'New initialization required with initEmbeddings()',
     ],
   },
 };

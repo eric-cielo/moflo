@@ -28,8 +28,8 @@ import { EventEmitter } from 'events';
  *
  * Mirrors the shape of the same-named interface in `@moflo/guidance`; kept
  * local so `@moflo/swarm` doesn't take a dependency on guidance. Production
- * wires a fastembed-backed service from `@moflo/embeddings`; tests inject a
- * deterministic mock. Hash fallbacks are banned (epic #527).
+ * wires a fastembed-backed service from cli's embeddings module; tests inject
+ * a deterministic mock. Hash fallbacks are banned (epic #527).
  */
 export interface IEmbeddingProvider {
   embed(text: string): Promise<Float32Array>;
@@ -208,7 +208,7 @@ export class AttentionCoordinator extends EventEmitter {
     if (!embeddingProvider) {
       throw new Error(
         'AttentionCoordinator requires an IEmbeddingProvider. Pass a ' +
-          'fastembed-backed provider from @moflo/embeddings in production ' +
+          "fastembed-backed provider from cli's embeddings module in production " +
           'and a deterministic mock in tests.'
       );
     }

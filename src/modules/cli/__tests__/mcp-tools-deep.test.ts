@@ -161,11 +161,6 @@ vi.mock('../src/mcp-tools/auto-install.js', () => ({
   autoInstallPackage: vi.fn(async () => false),
 }));
 
-// Mock embeddings package
-vi.mock('@moflo/embeddings', () => {
-  throw new Error('Cannot find package');
-});
-
 // ============================================================================
 // Import all tool modules (after mocks are set up)
 // ============================================================================

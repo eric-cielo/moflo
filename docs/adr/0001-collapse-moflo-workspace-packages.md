@@ -31,7 +31,7 @@ From [`collapse-deps.md`](./collapse-deps.md):
 
 - **Leaves (zero outbound `@moflo/*` imports):** `aidefence`, `claims`, `embeddings`, `plugins`, `security`, `shared`, `spells`, `swarm` (8/14)
 - **Mid-tier:** `neural` → `memory`; `guidance` → `embeddings`, `hooks`; `hooks` → `embeddings`, `memory`, `security`; `testing` → `memory`, `shared`, `swarm`
-- **Trunk:** `cli` (outbound 10), `memory` (inbound 4), `embeddings` (inbound 4)
+- **Trunk:** `cli` (outbound 9), `memory` (inbound 4)
 - **Cycle:** `memory ↔ neural` (both edges are guarded dynamic imports — disappears on collapse)
 
 The graph is identical between TypeScript source and compiled `dist/` output. The published tarball preserves the same edges but is missing three packages (the optional add-ons).

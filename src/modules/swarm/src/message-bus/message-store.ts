@@ -38,7 +38,7 @@ export type MemoryRetrieveFunction = (options: {
   namespace: string;
 }) => Promise<{ value?: string; metadata?: Record<string, unknown> } | null>;
 
-/** Duck-typed embedding service — avoids hard dependency on @moflo/embeddings */
+/** Duck-typed embedding service — avoids hard dependency on cli's embeddings module */
 export interface EmbeddingFunction {
   embed(text: string): Promise<{ embedding: Float32Array | number[] }>;
 }

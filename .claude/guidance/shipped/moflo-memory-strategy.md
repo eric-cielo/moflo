@@ -120,7 +120,7 @@ ASCII boxes, excessive emoji, rhetorical questions, and motivational text all wa
 
 **Legacy-compatible model names:** Entries embedded by earlier moflo versions may be tagged `Xenova/all-MiniLM-L6-v2` or `onnx`. These share the same vector space as `fast-all-MiniLM-L6-v2`, so search treats them as compatible (`semantic-search.mjs` `COMPATIBLE_MODELS`).
 
-**No hash fallback.** Epic #527 removed every hash-embedding path. If the `fastembed` model cannot load, memory operations fail loudly rather than silently degrading to FNV-1a pseudo-vectors. See [ADR-EMB-001](../../../src/modules/embeddings/docs/adrs/ADR-EMB-001-neural-embeddings-mandatory.md).
+**No hash fallback.** Epic #527 removed every hash-embedding path. If the `fastembed` model cannot load, memory operations fail loudly rather than silently degrading to FNV-1a pseudo-vectors. See [ADR-EMB-001](../../../docs/adr/ADR-EMB-001-neural-embeddings-mandatory.md).
 
 ### The Embedding Alignment Problem
 

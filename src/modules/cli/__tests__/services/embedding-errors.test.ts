@@ -2,8 +2,8 @@
  * Tests for the friendly embedding-error formatter (#553).
  *
  * Covers each mapped error code path (network, cache permission, corrupted
- * download, missing package, generic) and the verbose gate that hides the
- * raw message + stack behind `--verbose` / `DEBUG=moflo:*`.
+ * download, generic) and the verbose gate that hides the raw message +
+ * stack behind `--verbose` / `DEBUG=moflo:*`.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -51,13 +51,6 @@ describe('embedding-errors: classifyEmbeddingError', () => {
     for (const msg of cases) {
       expect(classifyEmbeddingError(new Error(msg)).code).toBe('cache-corrupted');
     }
-  });
-
-  it('classifies missing @moflo/embeddings package', () => {
-    const err = new Error(
-      '@moflo/embeddings is not installed. Neural embeddings are required — the hash fallback was removed in epic #527.',
-    );
-    expect(classifyEmbeddingError(err).code).toBe('missing-package');
   });
 
   it('falls through to generic when nothing matches', () => {

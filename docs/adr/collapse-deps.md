@@ -33,7 +33,7 @@ Each row lists the `@moflo/*` packages a given module imports.
 | `swarm` | 0 | 1 | _leaf_ |
 | `testing` | 3 | 1 | `memory`, `shared`, `swarm` |
 
-Done so far: `aidefence` (inlined into cli/src in #590), `claims` (deleted as dead code in #591 — source had zero importers; cli has its own live `ClaimService` and `claims-tools.ts`).
+Done so far: `aidefence` (inlined into cli/src in #590), `claims` (deleted as dead code in #591 — source had zero importers; cli has its own live `ClaimService` and `claims-tools.ts`), `embeddings` (inlined into cli/src in #592).
 
 ## Leaves (zero outbound `@moflo/*` imports — collapse first)
 
@@ -41,29 +41,26 @@ These have no relative paths to other moflo packages to rewrite, so they merge c
 
 - `@moflo/aidefence` _(inlined in #590)_
 - `@moflo/claims` _(deleted as dead code in #591 — package source had zero importers; cli has its own live impl)_
-- `@moflo/embeddings`
+- `@moflo/embeddings` _(inlined into cli/src in #592)_
 - `@moflo/plugins`
 - `@moflo/security`
 - `@moflo/shared`
 - `@moflo/spells` _(also zero inbound — fully isolated)_
 - `@moflo/swarm`
 
-`@moflo/embeddings` is technically a leaf in the package-import graph, but it _does_ reach into `@moflo/shared` via a runtime filesystem walk-up to `../../../shared/dist/utils/atomic-file-write.js` (`src/modules/embeddings/src/utils/atomic-file-write.ts`). After collapse, that walk-up becomes a normal local import — strictly an improvement.
-
 ## Mid-tier (one level of fan-in or fan-out)
 
 Collapse after leaves; each has a single dependency edge to rewrite:
 
 - `@moflo/neural` → `memory`
-- `@moflo/guidance` → `embeddings`, `hooks`
-- `@moflo/hooks` → `embeddings`, `memory`, `security`
+- `@moflo/guidance` → `hooks`
+- `@moflo/hooks` → `memory`, `security`
 - `@moflo/testing` → `memory`, `shared`, `swarm` _(inline pending #601)_
 
 ## Trunk (highest fan-in / fan-out — collapse last)
 
 - `@moflo/cli` — outbound 9, inbound 0. CLI is the ultimate consumer; flipping it changes every command surface. By the time everything else has collapsed, all of cli's `@moflo/*` imports become local.
 - `@moflo/memory` — inbound 4 (cli, hooks, neural, testing). Touching memory's package boundary affects four call-site groups.
-- `@moflo/embeddings` — inbound 4 (cli, guidance, hooks, memory). Already a leaf; the inbound count just means the rewrite is broad but mechanical.
 
 ## Cycles
 
@@ -82,7 +79,7 @@ After leaves and mid-tier are merged, the trunk falls in last. This ordering min
 
 1. `@moflo/aidefence` _(leaf, inlined in #590)_
 2. `@moflo/claims` _(leaf, deleted as dead code in #591)_
-3. `@moflo/embeddings` _(leaf)_
+3. `@moflo/embeddings` _(leaf, inlined into cli/src in #592)_
 4. `@moflo/plugins` _(leaf)_
 5. `@moflo/security` _(leaf)_
 6. `@moflo/shared` _(leaf)_

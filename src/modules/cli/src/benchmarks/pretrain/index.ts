@@ -290,7 +290,7 @@ export async function benchmarkMemoryRetrieval(config: BenchmarkConfig): Promise
 export async function benchmarkEmbeddingGeneration(config: BenchmarkConfig): Promise<BenchmarkResult> {
   // Benchmarks the real production embedder (fastembed) — a synthetic sim
   // here would measure arithmetic, not the component users actually pay for.
-  const { createEmbeddingService } = await import('@moflo/embeddings');
+  const { createEmbeddingService } = await import('../../embeddings/index.js');
   const service = createEmbeddingService({ provider: 'fastembed' });
 
   const testTexts = [

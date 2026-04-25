@@ -21,6 +21,7 @@ import type {
   EwcRecord,
   TrajectoryRecord,
 } from './rvf-learning-store.js';
+import { locateCliEmbeddings } from './locate-cli-embeddings.js';
 
 // ===== Types =====
 
@@ -37,7 +38,7 @@ export interface PersistentSonaConfig {
   verbose?: boolean;
   /**
    * Optional factory for the embedding service used during trajectory mining.
-   * Defaults to a dynamic import of `@moflo/embeddings` (fastembed provider).
+   * Defaults to a dynamic import of cli's embeddings module (fastembed provider).
    * Tests inject a deterministic mock.
    */
   embeddingLoader?: () => Promise<{
@@ -445,7 +446,9 @@ export class PersistentSonaCoordinator {
           return;
         }
 
-        const mod: any = await import('@moflo/embeddings' as string);
+        const url = locateCliEmbeddings();
+        if (!url) return;
+        const mod: any = await import(url);
         const create = mod.createEmbeddingService;
         if (typeof create !== 'function') return;
 

@@ -1,11 +1,11 @@
 /**
  * Friendly formatting for neural-embedding load/inference failures.
  *
- * Classifies the raw error surfaced by `@moflo/embeddings` / `fastembed`
- * (network, cache-permission, corrupted download, generic) and renders a
- * plain-English message with a concrete next step. Stack + raw text are
- * withheld unless verbose output is enabled via `--verbose` or
- * `DEBUG=moflo` / `DEBUG=moflo:*` / `DEBUG=*`.
+ * Classifies the raw error surfaced by `fastembed` (network,
+ * cache-permission, corrupted download, generic) and renders a plain-English
+ * message with a concrete next step. Stack + raw text are withheld unless
+ * verbose output is enabled via `--verbose` or `DEBUG=moflo` /
+ * `DEBUG=moflo:*` / `DEBUG=*`.
  *
  * Failure still propagates — this is formatting, not recovery (#553, AC #6).
  */
@@ -14,7 +14,6 @@ export type EmbeddingErrorCode =
   | 'network'
   | 'cache-permission'
   | 'cache-corrupted'
-  | 'missing-package'
   | 'generic';
 
 export interface EmbeddingErrorDetails {
@@ -60,17 +59,6 @@ export function classifyEmbeddingError(err: unknown): EmbeddingErrorDetails {
   const rawMessage = getRawMessage(err);
   const stack = getStack(err);
   const code = getErrnoCode(err) ?? '';
-
-  if (/@moflo\/embeddings is not installed/i.test(rawMessage)) {
-    return {
-      code: 'missing-package',
-      message: 'Neural embeddings package is not installed.',
-      nextStep:
-        'Install it with `npm install @moflo/embeddings`, or run `flo doctor --fix` to repair the environment.',
-      rawMessage,
-      stack,
-    };
-  }
 
   if (NETWORK_RE.test(code) || NETWORK_RE.test(rawMessage)) {
     return {

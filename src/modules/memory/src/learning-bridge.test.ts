@@ -44,7 +44,7 @@ function createFailingNeuralLoader(): NeuralLoader {
 /**
  * Stub embedding service that returns a deterministic Float32Array of the
  * requested size. Satisfies the shape that LearningBridge now depends on so
- * tests don't need the real `@moflo/embeddings` runtime.
+ * tests don't need the real cli embeddings runtime.
  */
 function createMockEmbeddingLoader(dimensions: number = 768): EmbeddingLoader {
   return async () => ({

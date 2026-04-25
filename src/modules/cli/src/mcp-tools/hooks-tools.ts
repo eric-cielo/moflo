@@ -6,7 +6,7 @@
 import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync, readdirSync } from 'fs';
 import { dirname, join, resolve, extname } from 'path';
 import type { MCPTool } from './types.js';
-import { requireMofloOrWarn } from '../services/moflo-require.js';
+import { createEmbeddingService } from '../embeddings/index.js';
 
 // Real vector search functions - lazy loaded to avoid circular imports
 let searchEntriesFn: ((options: {
@@ -121,32 +121,28 @@ const TASK_PATTERN_EMBEDDINGS: Map<string, Float32Array> = new Map();
 // routing and attention handlers embed through fastembed. The service boots
 // once per process; first call pays the ~1–3 s model-load cost, later calls
 // are sub-ms cached lookups.
-let embeddingService: { embed(t: string): Promise<{ embedding: Float32Array }>; embedBatch(ts: string[]): Promise<{ embeddings: Float32Array[] }> } | null = null;
-async function getEmbeddingService() {
-  if (embeddingService) return embeddingService;
-  const mod = await requireMofloOrWarn(
-    '@moflo/embeddings',
-    ['createEmbeddingService'],
-    {
-      tag: 'hooks-tools',
-      consequence: 'routing/attention require fastembed and have nothing to fall back to.',
-      throwIfMissing: true,
-    },
-  );
-  embeddingService = mod.createEmbeddingService({ provider: 'fastembed' }) as typeof embeddingService;
-  return embeddingService!;
+let embeddingService: ReturnType<typeof createEmbeddingService> | null = null;
+function getEmbeddingService() {
+  if (!embeddingService) {
+    embeddingService = createEmbeddingService({ provider: 'fastembed' });
+  }
+  return embeddingService;
+}
+
+function toFloat32(vec: Float32Array | number[]): Float32Array {
+  return vec instanceof Float32Array ? vec : new Float32Array(vec);
 }
 
 async function embedTexts(texts: string[]): Promise<Float32Array[]> {
-  const svc = await getEmbeddingService();
+  const svc = getEmbeddingService();
   const { embeddings } = await svc.embedBatch(texts);
-  return embeddings;
+  return embeddings.map(toFloat32);
 }
 
 async function embedText(text: string): Promise<Float32Array> {
-  const svc = await getEmbeddingService();
+  const svc = getEmbeddingService();
   const { embedding } = await svc.embed(text);
-  return embedding;
+  return toFloat32(embedding);
 }
 
 // ── Runtime routing outcome persistence ──────────────────────────────
