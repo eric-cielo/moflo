@@ -27,8 +27,6 @@ tests:
     - src/modules/cli/__tests__
     - src/modules/hooks/__tests__
     - src/modules/neural/__tests__
-    - src/modules/plugins/__tests__
-    - src/modules/security/__tests__
     - src/modules/shared/__tests__
     - src/modules/swarm/__tests__
     - src/modules/testing/__tests__

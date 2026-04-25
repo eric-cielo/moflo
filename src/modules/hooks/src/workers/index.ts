@@ -1388,7 +1388,6 @@ export function createDDDWorker(projectRoot: string): WorkerHandler {
     const modules = [
       '@moflo/hooks',
       '@moflo/memory',
-      '@moflo/security',
     ];
 
     // Process all modules in parallel for 70-90% speedup

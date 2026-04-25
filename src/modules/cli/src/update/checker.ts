@@ -38,7 +38,6 @@ const DEFAULT_CONFIG: UpdateConfig = {
   },
   priority: {
     'moflo': 'high',
-    '@moflo/security': 'critical',
     '@moflo/integration': 'normal',
     '@moflo/testing': 'low',
   },
@@ -48,7 +47,6 @@ const DEFAULT_CONFIG: UpdateConfig = {
 // Packages to check for updates
 const CLAUDE_FLOW_PACKAGES = [
   'moflo',
-  '@moflo/security',
   '@moflo/integration',
   '@moflo/testing',
 ];

@@ -300,7 +300,6 @@ export * from './types/mcp.types';
 This package is a dependency of all other @claude-flow modules:
 
 - [@moflo/cli](../cli) - CLI module
-- [@moflo/security](../security) - Security & validation
 - [@moflo/memory](../memory) - AgentDB & HNSW indexing
 - [@moflo/neural](../neural) - SONA learning & RL algorithms
 - [@moflo/performance](../performance) - Benchmarking & optimization

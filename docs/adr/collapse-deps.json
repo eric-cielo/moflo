@@ -5,7 +5,6 @@
     "hooks",
     "memory",
     "neural",
-    "security",
     "shared",
     "spells",
     "swarm",
@@ -17,7 +16,6 @@
       "hooks",
       "memory",
       "neural",
-      "security",
       "shared",
       "swarm",
       "testing"
@@ -26,8 +24,7 @@
       "hooks"
     ],
     "hooks": [
-      "memory",
-      "security"
+      "memory"
     ],
     "memory": [
       "neural"
@@ -35,7 +32,6 @@
     "neural": [
       "memory"
     ],
-    "security": [],
     "shared": [],
     "spells": [],
     "swarm": [],
@@ -49,7 +45,6 @@
     "cli",
     "memory",
     "neural",
-    "security",
     "shared",
     "swarm",
     "testing"
@@ -60,6 +55,6 @@
       "neural"
     ]
   ],
-  "files": 964,
-  "generatedAt": "2026-04-25T12:40:39Z"
+  "files": 937,
+  "generatedAt": "2026-04-25T13:18:49Z"
 }

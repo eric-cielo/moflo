@@ -1,205 +1,33 @@
-# @moflo/security
+# security (deleted)
 
-[![npm version](https://img.shields.io/npm/v/@moflo/security.svg)](https://www.npmjs.com/package/@moflo/security)
-[![npm downloads](https://img.shields.io/npm/dm/@moflo/security.svg)](https://www.npmjs.com/package/@moflo/security)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
-[![Security Audit](https://img.shields.io/badge/Security-Audited-green.svg)](https://github.com/eric-cielo/moflo)
+> **Deleted as dead code by [#594](https://github.com/eric-cielo/moflo/issues/594)** (epic [#586](https://github.com/eric-cielo/moflo/issues/586) / [ADR-0001](../adr/0001-collapse-moflo-workspace-packages.md)). The `@moflo/security` workspace package no longer exists and is not relocated anywhere. Fifth removal in the workspace-collapse sequence after `aidefence` #590 (inlined), `claims` #591 (deleted), `embeddings` #592 (inlined), `plugins` #593 (deleted).
 
-> Comprehensive security module for Claude Flow V3 - CVE fixes, input validation, path security, and secure credential management.
+## Why deleted, not inlined
 
-## Features
+A symbol-by-symbol usage scan returned **zero production callers** for `PathValidator`, `SafeExecutor`, `CredentialGenerator`, `TokenGenerator`, `InputValidator`, `createSecurityModule`, `auditSecurityConfig`, or any of the validation schemas. The "inbound from cli/hooks" edges in `docs/adr/collapse-deps.md` were entirely string-literal mentions in metadata: plugin-store demo data, the update-checker priority list, the peer-dep `COMPATIBILITY_MATRIX`, the DDD-pattern scanner's module list, and CLI plugins help text. Nothing called the code.
 
-- **CVE Remediation** - Fixes for CVE-3 (Hardcoded Credentials), HIGH-1 (Command Injection), HIGH-2 (Path Traversal)
-- **Credential Generation** - Cryptographically secure credential and API key generation
-- **Safe Command Execution** - Allowlist-based command execution preventing injection attacks
-- **Path Validation** - Protection against path traversal and symlink attacks
-- **Input Validation** - Zod-based schema validation for all input types
-- **Token Generation** - Secure token creation with HMAC signing
+The only re-export was `src/index.ts` (an unshipped library entry — `dist/index.js` is `package.json#main` but is not in `package.json#files`). The CLI ships through `src/modules/cli/bin/cli.js`, which never traverses `src/index.ts`.
 
-## Installation
+Inlining dead code into `cli/src/security/` would just relocate noise. Per claims (#591) and plugins (#593) precedent, the right call was deletion.
 
-```bash
-npm install @moflo/security
-```
+## What this module did (for git-history readers)
 
-## Quick Start
+CVE remediation primitives + a Valibot-schema input validator + secure token / credential generation, originating in the Ruvnet/ruflo fork's audit response:
 
-```typescript
-import { createSecurityModule } from '@moflo/security';
+- `PathValidator` — prefix allowlist, symlink resolution, null-byte rejection (HIGH-2).
+- `SafeExecutor` — allowlisted-binary command execution with argument sanitization (HIGH-1).
+- `CredentialGenerator` — cryptographically secure password / API-key generation (CVE-3).
+- `TokenGenerator` — HMAC-signed tokens, expirations, timing-safe comparison.
+- `InputValidator` + Valibot schemas (`SafeStringSchema`, `EmailSchema`, etc.).
+- DDD wrappers (`SecurityContext`, `SecurityDomainService`, `SecurityApplicationService`).
 
-// Create a complete security module
-const security = createSecurityModule({
-  projectRoot: '/workspaces/project',
-  hmacSecret: process.env.HMAC_SECRET!,
-  allowedCommands: ['git', 'npm', 'npx', 'node']
-});
+## Where the live security primitives are
 
-// Validate a path
-const pathResult = await security.pathValidator.validate('/workspaces/project/src/file.ts');
+If you need any of these capabilities in production code, use the live alternatives:
 
-// Execute command safely
-const output = await security.safeExecutor.execute('git', ['status']);
+- **Path / command validation, ID generation, sanitization** → [`src/modules/shared/src/security/`](../../src/modules/shared/src/security/) exports `validateInput`, `validatePath`, `validateCommand`, `sanitizeString`, `escapeForSql`, `generateSecureId`, `generateUUID`, `generateSecureToken`, `secureRandomInt`, etc.
+- **AI manipulation defense / prompt injection / jailbreak detection** → [`src/modules/cli/src/aidefence/`](../../src/modules/cli/src/aidefence/) (used by `flo security` CLI and the `aidefence_*` MCP tools).
+- **CLI security commands** → `src/modules/cli/src/commands/security.ts` (the `flo security` command tree).
+- **MCP security tools** → `src/modules/cli/src/mcp-tools/security-tools.ts` (registers `aidefence_*` tools).
 
-// Generate secure credentials
-const creds = await security.credentialGenerator.generate();
-```
-
-## API Reference
-
-### Credential Generation (CVE-3 Fix)
-
-```typescript
-import { CredentialGenerator, generateCredentials } from '@moflo/security';
-
-const generator = new CredentialGenerator();
-
-// Generate API key
-const apiKey = await generator.generateApiKey({
-  prefix: 'cf',
-  length: 32
-});
-
-// Generate complete credentials
-const creds = generateCredentials({
-  includeApiKey: true,
-  includeSecret: true
-});
-```
-
-### Safe Command Execution (HIGH-1 Fix)
-
-```typescript
-import { SafeExecutor, createDevelopmentExecutor } from '@moflo/security';
-
-const executor = createDevelopmentExecutor();
-
-// Execute allowed command
-const result = await executor.execute('git', ['status']);
-
-// With timeout
-const result2 = await executor.execute('npm', ['install'], {
-  timeout: 60000,
-  cwd: '/workspaces/project'
-});
-```
-
-### Path Validation (HIGH-2 Fix)
-
-```typescript
-import { PathValidator, createProjectPathValidator } from '@moflo/security';
-
-const validator = createProjectPathValidator('/workspaces/project');
-
-// Validate path
-const result = await validator.validate('../../../etc/passwd');
-// { valid: false, reason: 'Path traversal detected' }
-
-// Safe path
-const result2 = await validator.validate('/workspaces/project/src/index.ts');
-// { valid: true, normalized: '/workspaces/project/src/index.ts' }
-```
-
-### Input Validation
-
-```typescript
-import {
-  InputValidator,
-  SafeStringSchema,
-  EmailSchema,
-  PasswordSchema,
-  SpawnAgentSchema
-} from '@moflo/security';
-
-// Validate email
-const email = EmailSchema.parse('user@example.com');
-
-// Validate password
-const password = PasswordSchema.parse('SecurePass123!');
-
-// Validate agent spawn request
-const agentRequest = SpawnAgentSchema.parse({
-  type: 'coder',
-  name: 'code-agent-1'
-});
-
-// Sanitize HTML
-import { sanitizeHtml } from '@moflo/security';
-const safe = sanitizeHtml('<script>alert("xss")</script>Hello');
-// 'Hello'
-```
-
-### Token Generation
-
-```typescript
-import { TokenGenerator, quickGenerate } from '@moflo/security';
-
-const generator = new TokenGenerator({
-  hmacSecret: process.env.HMAC_SECRET!
-});
-
-// Generate signed token
-const token = await generator.generate({
-  type: 'session',
-  expiresIn: 3600
-});
-
-// Verify token
-const verified = await generator.verify(token);
-
-// Quick generation
-const sessionToken = quickGenerate.sessionToken();
-const verificationCode = quickGenerate.verificationCode();
-```
-
-## Security Constants
-
-```typescript
-import {
-  DEFAULT_TOKEN_EXPIRATION,   // 3600 (1 hour)
-  DEFAULT_SESSION_EXPIRATION  // 86400 (24 hours)
-} from '@moflo/security';
-```
-
-## Security Audit
-
-```typescript
-import { auditSecurityConfig } from '@moflo/security';
-
-const warnings = auditSecurityConfig({
-  hmacSecret: 'short'
-});
-
-// ['hmacSecret should be at least 32 characters']
-```
-
-## Validation Schemas
-
-| Schema | Description |
-|--------|-------------|
-| `SafeStringSchema` | Basic safe string with length limits |
-| `IdentifierSchema` | Alphanumeric identifiers |
-| `FilenameSchema` | Safe filenames |
-| `EmailSchema` | Email addresses |
-| `PasswordSchema` | Secure passwords |
-| `UUIDSchema` | UUID v4 format |
-| `HttpsUrlSchema` | HTTPS URLs only |
-| `SemverSchema` | Semantic versions |
-| `PortSchema` | Valid port numbers |
-| `IPv4Schema` | IPv4 addresses |
-| `SpawnAgentSchema` | Agent spawn requests |
-| `TaskInputSchema` | Task definitions |
-| `SecurityConfigSchema` | Security configuration |
-
-## Dependencies
-
-- `zod` - Schema validation
-
-## Related Packages
-
-- [@moflo/shared](../shared) - Shared types and utilities
-- [@moflo/swarm](../swarm) - Swarm coordination (secure agent spawning)
-
-## License
-
-MIT
+If a future feature genuinely needs HMAC-signed tokens or a prefix-allowlist `PathValidator`, write a focused implementation when needed — don't resurrect shelfware.

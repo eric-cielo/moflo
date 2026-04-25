@@ -238,13 +238,12 @@ export class PluginDiscoveryService {
       totalPlugins: plugins.length,
       totalDownloads: plugins.reduce((sum, p) => sum + p.downloads, 0),
       totalAuthors: 1,
-      featured: ['@moflo/security'],
+      featured: ['@moflo/neural'],
       trending: [],
       newest: [],
-      official: ['@moflo/security'],
+      official: ['@moflo/neural'],
       compatibilityMatrix: [
         { pluginId: '@moflo/neural', pluginVersion: '3.0.0', claudeFlowVersions: ['3.x'], tested: true },
-        { pluginId: '@moflo/security', pluginVersion: '3.0.0', claudeFlowVersions: ['3.x'], tested: true },
       ],
     };
 
@@ -315,42 +314,6 @@ export class PluginDiscoveryService {
         exports: ['NeuralTrainer', 'PatternRecognizer', 'FlashAttention'],
         verified: true,
         trustLevel: 'official',
-      },
-      {
-        id: '@moflo/security',
-        name: '@moflo/security',
-        displayName: 'Security Scanner',
-        description: 'Security scanning, CVE detection, and compliance auditing with threat modeling',
-        version: '3.0.0',
-        cid: 'bafybeisecurityplugin',
-        size: 180000,
-        checksum: 'sha256:def456security',
-        author: officialAuthor,
-        license: 'MIT',
-        categories: ['security'],
-        tags: ['security', 'cve', 'audit', 'compliance', 'threats'],
-        keywords: ['security', 'scanner'],
-        downloads: 12000,
-        rating: 4.8,
-        ratingCount: 189,
-        lastUpdated: baseTime,
-        createdAt: '2024-01-15T00:00:00Z',
-        minClaudeFlowVersion: '3.0.0',
-        dependencies: [{ name: '@moflo/core', version: '^3.0.0' }],
-        type: 'command',
-        hooks: ['security:scan', 'security:audit'],
-        commands: ['security scan', 'security audit', 'security cve', 'security threats'],
-        permissions: ['filesystem', 'network'],
-        exports: ['SecurityScanner', 'CVEDetector', 'ThreatModeler'],
-        verified: true,
-        trustLevel: 'official',
-        securityAudit: {
-          auditor: 'claude-flow-security-team',
-          auditDate: '2024-12-01T00:00:00Z',
-          auditVersion: '3.0.0',
-          passed: true,
-          issues: [],
-        },
       },
       {
         id: 'community-analytics',
@@ -746,7 +709,6 @@ export class PluginDiscoveryService {
 
     // Only fetch stats for real npm packages
     const realNpmPackages = [
-      '@moflo/security',
       '@moflo/neural',
       // Domain-specific plugins
       '@moflo/plugin-healthcare-clinical',

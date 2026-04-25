@@ -919,7 +919,6 @@ export const pluginsCommand: Command = {
     output.writeln(output.bold('Official Plugins:'));
     output.printList([
       '@moflo/neural              - Neural patterns and inference (WASM SIMD)',
-      '@moflo/security            - Security scanning and CVE detection',
     ]);
     output.writeln();
     output.writeln(output.dim('Run "claude-flow plugins list --official" to see all official plugins'));
