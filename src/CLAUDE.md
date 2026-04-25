@@ -13,10 +13,9 @@ npm install && npm run build && npm test
 
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@moflo/cli` | `modules/cli/` | CLI entry point (40+ commands); also hosts inlined `aidefence`, `embeddings`, `guidance`, `shared`, `spells` |
+| `@moflo/cli` | `modules/cli/` | CLI entry point (40+ commands); also hosts inlined `aidefence`, `embeddings`, `guidance`, `memory`, `neural`, `shared`, `spells`, `swarm` |
 | `@moflo/hooks` | `modules/hooks/` | Hooks + workers |
-| `@moflo/memory` | `modules/memory/` | sql.js + HNSW vector search (MofloDb) |
-| `@moflo/neural` | `modules/neural/` | Neural patterns (SONA) |
+| `@moflo/testing` | `modules/testing/` | Test framework, fixtures, regression suites |
 
 ## Code Quality
 

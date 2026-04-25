@@ -9,7 +9,6 @@
  * Usage:
  *   import { mofloImport } from '../services/moflo-require.js';
  *   const sqlJs = await mofloImport('sql.js');
- *   const memory = await mofloImport('@moflo/memory');
  */
 
 import { createRequire } from 'module';
@@ -136,12 +135,7 @@ export function mofloResolve(specifier: string): string | null {
  * the intended consumers.
  */
 export type MofloInternalPackage =
-  | 'memory'
   | 'hooks'
-  | 'neural'
-  | 'security'
-  | 'shared'
-  | 'plugins'
   | 'cli';
 
 /**
@@ -198,10 +192,6 @@ export function locateMofloModuleDist(pkg: MofloInternalPackage, relFromDist: st
   });
 }
 
-function locateMofloMemoryDist(): string | null {
-  return locateMofloModuleDist('memory', 'index.js');
-}
-
 /**
  * Locate a filesystem path inside `src/modules/<pkg>/<rel>` (not limited to
  * `dist/`). Useful for non-built data folders shipped alongside the module
@@ -217,29 +207,6 @@ export function locateMofloModulePath(pkg: MofloInternalPackage, rel: string): s
       return existsSync(candidate) ? candidate : null;
     });
   });
-}
-
-/**
- * Import `@moflo/memory` from within a moflo source module.
- *
- * The root `moflo` package ships @moflo/memory as a source folder rather than
- * a declared dependency, so `mofloImport('@moflo/memory')` fails in consumer
- * installs (node_modules/@moflo/memory/ doesn't exist). Fall back to a
- * layout-invariant walk-up that finds `src/modules/memory/dist/index.js`
- * regardless of whether the caller is running source, built, or installed.
- *
- * Returns null when memory isn't available — callers must handle that.
- */
-export async function importMofloMemory(): Promise<any | null> {
-  const viaRequire = await mofloImport('@moflo/memory');
-  if (viaRequire) return viaRequire;
-  const url = locateMofloMemoryDist();
-  if (!url) return null;
-  try {
-    return await import(url);
-  } catch {
-    return null;
-  }
 }
 
 /**

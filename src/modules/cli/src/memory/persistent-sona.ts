@@ -9,7 +9,7 @@
  * it defines its own compatible types and delegates persistence to
  * RvfLearningStore.
  *
- * @module @moflo/memory/persistent-sona
+ * @module cli/memory/persistent-sona
  */
 
 import {
@@ -21,7 +21,7 @@ import type {
   EwcRecord,
   TrajectoryRecord,
 } from './rvf-learning-store.js';
-import { locateCliEmbeddings } from './locate-cli-embeddings.js';
+import { createEmbeddingService } from '../embeddings/index.js';
 
 // ===== Types =====
 
@@ -440,23 +440,21 @@ export class PersistentSonaCoordinator {
     }
 
     this.embeddingInitPromise = (async () => {
+      if (this.embeddingLoader) {
+        this.embeddingService = await this.embeddingLoader();
+        return;
+      }
+
       try {
-        if (this.embeddingLoader) {
-          this.embeddingService = await this.embeddingLoader();
-          return;
-        }
-
-        const url = locateCliEmbeddings();
-        if (!url) return;
-        const mod: any = await import(url);
-        const create = mod.createEmbeddingService;
-        if (typeof create !== 'function') return;
-
-        this.embeddingService = create({
+        this.embeddingService = createEmbeddingService({
           provider: 'fastembed',
           dimensions: 384,
         });
-      } catch {
+      } catch (err) {
+        console.warn(
+          '[PersistentSonaCoordinator] createEmbeddingService(fastembed) failed — embedding disabled:',
+          err instanceof Error ? err.message : err,
+        );
         this.embeddingService = null;
       }
     })();

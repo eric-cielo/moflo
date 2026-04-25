@@ -5,17 +5,11 @@
     "rootDir": "./src",
     "composite": true,
     "declaration": true,
-    "declarationMap": true,
-    "paths": {
-      "@moflo/memory": ["../memory/src"]
-    }
+    "declarationMap": true
   },
   "include": ["src/**/*"],
   "exclude": [
     "node_modules",
     "dist"
-  ],
-  "references": [
-    { "path": "../memory" }
   ]
 }

@@ -2,42 +2,21 @@
   "packages": [
     "cli",
     "hooks",
-    "memory",
-    "neural",
     "testing"
   ],
   "adjacency": {
     "cli": [
       "hooks",
-      "memory",
-      "neural",
       "testing"
     ],
-    "hooks": [
-      "memory"
-    ],
-    "memory": [
-      "neural"
-    ],
-    "neural": [
-      "memory"
-    ],
-    "testing": [
-      "memory"
-    ]
+    "hooks": [],
+    "testing": []
   },
   "rootRefs": [
     "cli",
-    "memory",
-    "neural",
     "testing"
   ],
-  "cycles": [
-    [
-      "memory",
-      "neural"
-    ]
-  ],
-  "files": 939,
-  "generatedAt": "2026-04-25T20:07:36Z"
+  "cycles": [],
+  "files": 929,
+  "generatedAt": "2026-04-25T23:01:16Z"
 }

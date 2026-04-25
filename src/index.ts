@@ -5,12 +5,8 @@
  * Each module can also be imported directly for tree-shaking.
  *
  * @example
- * // Import everything
- * import * as claudeFlow from '@moflo/v3';
- *
- * // Or import specific modules
- * import { UnifiedSwarmCoordinator } from '@moflo/swarm';
- * import { HNSWIndex } from '@moflo/memory';
+ * // Import via root barrel
+ * import { memory, neural, swarm } from 'moflo';
  *
  * Complete reimagining based on 10 ADRs:
  * - ADR-001: Adopt agentic-flow as core foundation
@@ -41,9 +37,9 @@
 
 /**
  * Memory module - AgentDB, HNSW indexing, vector search
- * @see {@link @moflo/memory}
+ * (collapsed into cli per epic #586 / story #598)
  */
-export * as memory from './modules/memory/src/index.js';
+export * as memory from './modules/cli/src/memory/index.js';
 
 /**
  * Swarm module - 15-agent coordination, hierarchical mesh, consensus
@@ -65,9 +61,9 @@ export * as cli from './modules/cli/src/index.js';
 
 /**
  * Neural module - SONA learning, neural modes
- * @see {@link @moflo/neural}
+ * (collapsed into cli per epic #586 / story #598)
  */
-export * as neural from './modules/neural/src/index.js';
+export * as neural from './modules/cli/src/neural/index.js';
 
 /**
  * Testing module - TDD London School framework, test utilities
@@ -80,9 +76,7 @@ export * as testing from './modules/testing/src/index.js';
 // =============================================================================
 
 export const MODULES = [
-  '@moflo/memory',
   '@moflo/cli',
-  '@moflo/neural',
   '@moflo/testing',
 ] as const;
 

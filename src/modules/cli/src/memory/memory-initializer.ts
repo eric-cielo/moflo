@@ -11,10 +11,11 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { mofloImport, importMofloMemory } from '../services/moflo-require.js';
+import { mofloImport } from '../services/moflo-require.js';
 import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 import { formatEmbeddingError } from './embedding-errors.js';
 import { createEmbeddingService } from '../embeddings/index.js';
+import { HnswLite } from './hnsw-lite.js';
 
 /**
  * Write vector-stats.json cache for the statusline (no subprocess needed).
@@ -409,18 +410,7 @@ export async function getHNSWIndex(options?: {
   hnswInitializing = true;
 
   try {
-    // Use HnswLite pure TS implementation (no native dependencies). The
-    // shared resolver handles the consumer case where @moflo/memory is not
-    // a declared dep and must be loaded via a relative URL fallback.
-    const memoryModule = await importMofloMemory();
-    if (!memoryModule || !('HnswLite' in memoryModule) || memoryModule.HnswLite === undefined) {
-      // Shape-check (issue #482): warn loudly and bail — the outer catch
-      // would otherwise swallow a cryptic "undefined is not a constructor".
-      console.warn('[getHNSWIndex] @moflo/memory missing expected export: HnswLite');
-      hnswInitializing = false;
-      return null;
-    }
-    const { HnswLite } = memoryModule;
+    // Use HnswLite pure TS implementation (no native dependencies).
 
     // Persistent storage paths
     const swarmDir = path.join(process.cwd(), '.swarm');

@@ -39,7 +39,7 @@ function getProjectRoot(): string {
   return _projectRoot;
 }
 
-import { importMofloMemory } from '../services/moflo-require.js';
+import { ControllerRegistry } from './controller-registry.js';
 
 let registryPromise: Promise<any | null> | null = null;
 // Sync handle populated once the promise resolves. Lets sync callers
@@ -94,11 +94,6 @@ export async function getRegistry(dbPath?: string): Promise<any | null> {
   if (!registryPromise) {
     registryPromise = (async () => {
       try {
-        const memoryModule = await importMofloMemory();
-        if (!memoryModule) {
-          throw new Error('@moflo/memory not available (src/modules/memory/dist/index.js not found)');
-        }
-        const { ControllerRegistry } = memoryModule;
         const registry = new ControllerRegistry();
 
         // Suppress noisy init logs

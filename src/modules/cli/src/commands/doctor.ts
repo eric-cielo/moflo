@@ -26,7 +26,6 @@ import {
   getMofloRoot,
 } from './doctor-checks-deep.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
-import { locateMofloModuleDist } from '../services/moflo-require.js';
 
 // Promisified exec with proper shell and env inheritance for cross-platform support
 const execAsync = promisify(exec);
@@ -869,19 +868,7 @@ async function checkMemoryPatterns(_namespace: string): Promise<number> {
 // Exercises each component with a lightweight functional test rather than just checking "loaded".
 async function checkIntelligence(): Promise<HealthCheck> {
   try {
-    // Walk-up resolve avoids fixed-depth `../` strings that break under dev
-    // (.ts via tsx) where depth differs from compiled output — issue #575.
-    const neuralUrl = locateMofloModuleDist('neural', 'index.js');
-    if (!neuralUrl) {
-      return {
-        name: 'Intelligence',
-        status: 'warn',
-        message: 'Neural module not built — run `npm run build` to enable intelligence checks',
-        fix: 'npm run build',
-      };
-    }
-    // @ts-ignore — neural is not in tsconfig project references but is available at runtime
-    const neural = await import(neuralUrl);
+    const neural = await import('../neural/index.js');
     const results: string[] = [];
     const failures: string[] = [];
 
@@ -906,11 +893,12 @@ async function checkIntelligence(): Promise<HealthCheck> {
     // 2. ReasoningBank — verify instantiation and trajectory store/distill lifecycle
     try {
       const rb = neural.createReasoningBank();
+      const stateAfter = new Float32Array(64).fill(0.2);
       const trajectory = {
         trajectoryId: 'doctor-test',
         context: 'health check',
-        domain: 'general',
-        steps: [{ action: 'test', reward: 1, stateAfter: new Float32Array(64).fill(0.2), timestamp: Date.now() }],
+        domain: 'general' as const,
+        steps: [{ stepId: 's1', action: 'test', reward: 1, stateBefore: stateAfter, stateAfter, timestamp: Date.now() }],
         startTime: Date.now(),
         endTime: Date.now(),
         qualityScore: 0.9,
@@ -949,11 +937,11 @@ async function checkIntelligence(): Promise<HealthCheck> {
       const now = Date.now();
       pl.extractPattern(
         {
-          trajectoryId: 'doctor-pl', context: 'test', domain: 'general',
+          trajectoryId: 'doctor-pl', context: 'test', domain: 'general' as const,
           steps: [{ stepId: 's1', action: 'test', reward: 1, stateBefore: embedding, stateAfter: embedding, timestamp: now }],
           startTime: now, endTime: now, qualityScore: 1, isComplete: true,
         },
-        { trajectoryId: 'doctor-pl', keyInsights: ['test'], compressedEmbedding: embedding, timestamp: now }
+        { memoryId: 'doctor-pl-mem', trajectoryId: 'doctor-pl', strategy: 'health-check', keyLearnings: ['test'], embedding, quality: 1, usageCount: 0, lastUsed: now }
       );
       const matches = pl.findMatches(embedding, 1);
       if (matches.length > 0) {

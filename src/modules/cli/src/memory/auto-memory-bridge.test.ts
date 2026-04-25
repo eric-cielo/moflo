@@ -105,8 +105,10 @@ describe('resolveAutoMemoryDir', () => {
 });
 
 describe('findGitRoot', () => {
-  // Use the actual repo root (works on any platform)
-  const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+  // Use the actual repo root (works on any platform).
+  // After the workspace-collapse epic moved memory into cli (#598), this test
+  // sits at src/modules/cli/src/memory/ — five levels above the repo root.
+  const repoRoot = path.resolve(__dirname, '..', '..', '..', '..', '..');
 
   it('should find git root for a directory inside a repo', () => {
     const root = findGitRoot(path.join(repoRoot, 'src', '@claude-flow', 'memory'));

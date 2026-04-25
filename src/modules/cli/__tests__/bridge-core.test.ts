@@ -17,9 +17,8 @@ describe('bridge-core error surfacing', () => {
   it('captures init error on getBridgeLastError() when ControllerRegistry throws', async () => {
     process.env.MOFLO_BRIDGE_QUIET = '1'; // suppress stderr in test output
     const kaboom = new Error('ControllerRegistry init failed: synthetic test failure');
-    // Stub the @moflo/memory import so we don't rely on the package being
-    // installed and can control the failure mode.
-    vi.doMock('@moflo/memory', () => ({
+    // Stub the ControllerRegistry import so we can control the failure mode.
+    vi.doMock('../src/memory/controller-registry.js', () => ({
       ControllerRegistry: class {
         async initialize() {
           throw kaboom;
@@ -39,7 +38,7 @@ describe('bridge-core error surfacing', () => {
   it('clears lastBridgeError after a successful init', async () => {
     process.env.MOFLO_BRIDGE_QUIET = '1';
     let attempt = 0;
-    vi.doMock('@moflo/memory', () => ({
+    vi.doMock('../src/memory/controller-registry.js', () => ({
       ControllerRegistry: class {
         async initialize() {
           attempt++;
@@ -67,7 +66,7 @@ describe('bridge-core error surfacing', () => {
 
   it('writes a stderr breadcrumb on init failure (unless MOFLO_BRIDGE_QUIET is set)', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.doMock('@moflo/memory', () => ({
+    vi.doMock('../src/memory/controller-registry.js', () => ({
       ControllerRegistry: class {
         async initialize() { throw new Error('boom-surfaced-to-stderr'); }
       },
@@ -84,7 +83,7 @@ describe('bridge-core error surfacing', () => {
   it('respects MOFLO_BRIDGE_QUIET=1 — no stderr breadcrumb', async () => {
     process.env.MOFLO_BRIDGE_QUIET = '1';
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.doMock('@moflo/memory', () => ({
+    vi.doMock('../src/memory/controller-registry.js', () => ({
       ControllerRegistry: class {
         async initialize() { throw new Error('quiet-error'); }
       },

@@ -1,112 +1,21 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { fileURLToPath, pathToFileURL } from 'url';
-import { dirname, join } from 'path';
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
+import { join } from 'path';
+import { existsSync } from 'fs';
 
 import {
-  importMofloMemory,
   locateMofloModuleDist,
   locateMofloModulePath,
   locateMofloRootPath,
   _resetMofloMemoryCacheForTest,
 } from '../../src/services/moflo-require.js';
 
-describe('importMofloMemory (walk-up resolver)', () => {
-  beforeEach(() => {
-    _resetMofloMemoryCacheForTest();
-  });
-
-  it('locates src/modules/memory/dist/index.js from inside moflo tree', async () => {
-    const mod = await importMofloMemory();
-    expect(mod).not.toBeNull();
-    expect(mod).toHaveProperty('HnswLite');
-    expect(mod).toHaveProperty('ControllerRegistry');
-  });
-
-  it('uses import.meta.url anchor (consumer install layout)', () => {
-    // Simulate the installed layout: node_modules/moflo/src/modules/cli/dist/src/services/
-    // The real moflo-require.js lives inside moflo regardless of where the consumer
-    // project sits on the filesystem. Walk-up from that path must reach the memory
-    // dist — which is the same relative layout in every install.
-    const selfPath = fileURLToPath(
-      // @ts-ignore — test-only: we want the real URL of the compiled/source file
-      new URL('../../src/services/moflo-require.ts', import.meta.url),
-    );
-    expect(existsSync(selfPath)).toBe(true);
-
-    // From moflo-require.ts, walk up to moflo root, then into memory/dist
-    let dir = dirname(selfPath);
-    let found: string | null = null;
-    for (let i = 0; i < 12; i++) {
-      const candidate = join(dir, 'src', 'modules', 'memory', 'dist', 'index.js');
-      if (existsSync(candidate)) {
-        found = candidate;
-        break;
-      }
-      const parent = dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-    expect(found).not.toBeNull();
-    expect(found).toMatch(/[\\/]src[\\/]modules[\\/]memory[\\/]dist[\\/]index\.js$/);
-  });
-
-  it('returns null when memory dist is missing (fake tree)', async () => {
-    // Build a throwaway tree with moflo-require at cli/dist/src/services/
-    // but no memory/dist sibling. Simulates a broken/partial install.
-    const tmpRoot = mkdtempSync(join(tmpdir(), 'moflo-require-test-'));
-    try {
-      const requirePath = join(
-        tmpRoot,
-        'fake-moflo',
-        'src',
-        'modules',
-        'cli',
-        'dist',
-        'src',
-        'services',
-        'moflo-require.js',
-      );
-      mkdirSync(dirname(requirePath), { recursive: true });
-      writeFileSync(requirePath, '// fake', 'utf8');
-
-      // Replicate the walk-up logic inline — we can't re-anchor the real function
-      // to a different file, but verifying the algorithm is sufficient.
-      let dir = dirname(requirePath);
-      let found: string | null = null;
-      for (let i = 0; i < 12; i++) {
-        const candidate = join(dir, 'src', 'modules', 'memory', 'dist', 'index.js');
-        if (existsSync(candidate)) {
-          found = candidate;
-          break;
-        }
-        const parent = dirname(dir);
-        if (parent === dir) break;
-        dir = parent;
-      }
-      expect(found).toBeNull();
-    } finally {
-      rmSync(tmpRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('returns file:// URL (ESM import() requires URL on Windows)', async () => {
-    const mod = await importMofloMemory();
-    expect(mod).not.toBeNull();
-    // If this resolved to a native Windows path instead of file:// URL,
-    // import() would have thrown — the fact that we got a module back
-    // proves pathToFileURL conversion is in place.
-  });
-});
-
 describe('locateMofloModuleDist (regression guard for #556)', () => {
   beforeEach(() => {
     _resetMofloMemoryCacheForTest();
   });
 
-  it('resolves @moflo/memory index from inside the cli package', () => {
-    const url = locateMofloModuleDist('memory', 'index.js');
+  it('resolves the hooks index from inside the cli package', () => {
+    const url = locateMofloModuleDist('hooks', 'index.js');
     expect(url).not.toBeNull();
     expect(url).toMatch(/^file:\/\//);
   });
@@ -116,25 +25,22 @@ describe('locateMofloModuleDist (regression guard for #556)', () => {
     // `../../../../modules/swarm/...` string walked up past `src/modules/` and
     // then re-appended `modules/`, producing `src/modules/modules/swarm/...`.
     // The resolver must never produce that shape on any platform.
-    const memoryUrl = locateMofloModuleDist('memory', 'index.js');
     const hooksUrl = locateMofloModuleDist('hooks', 'index.js');
-    for (const url of [memoryUrl, hooksUrl]) {
-      expect(url).not.toBeNull();
-      // Check both URL and decoded-path forms — pathToFileURL percent-encodes
-      // some characters on Windows, so we verify both shapes.
-      expect(url!).not.toMatch(/[\\/]modules[\\/]modules[\\/]/);
-      expect(url!).not.toMatch(/\/modules\/modules\//);
-    }
+    expect(hooksUrl).not.toBeNull();
+    // Check both URL and decoded-path forms — pathToFileURL percent-encodes
+    // some characters on Windows, so we verify both shapes.
+    expect(hooksUrl!).not.toMatch(/[\\/]modules[\\/]modules[\\/]/);
+    expect(hooksUrl!).not.toMatch(/\/modules\/modules\//);
   });
 
   it('returns null for a non-existent package (no silent success)', () => {
-    const url = locateMofloModuleDist('definitely-not-a-real-package', 'index.js');
+    const url = locateMofloModuleDist('definitely-not-a-real-package' as 'hooks', 'index.js');
     expect(url).toBeNull();
   });
 
   it('is cached per (pkg, rel) key so repeat calls are cheap', () => {
-    const a = locateMofloModuleDist('memory', 'index.js');
-    const b = locateMofloModuleDist('memory', 'index.js');
+    const a = locateMofloModuleDist('hooks', 'index.js');
+    const b = locateMofloModuleDist('hooks', 'index.js');
     expect(a).toBe(b);
   });
 });
@@ -145,27 +51,27 @@ describe('locateMofloModulePath (non-dist subpaths)', () => {
   });
 
   it('returns null for a non-existent subpath (no silent success)', () => {
-    const result = locateMofloModulePath('spells', 'definitely-not-a-real-subdir');
+    const result = locateMofloModulePath('hooks', 'definitely-not-a-real-subdir');
     expect(result).toBeNull();
   });
 
   it('resolves an existing non-dist subpath (e.g. package.json)', () => {
-    // Every moflo package has a package.json — use it as a stable marker.
-    const result = locateMofloModulePath('spells', 'package.json');
+    // Every remaining moflo package ships a package.json — use it as a stable marker.
+    const result = locateMofloModulePath('hooks', 'package.json');
     expect(result).not.toBeNull();
     expect(existsSync(result!)).toBe(true);
-    expect(result!).toMatch(/[\\/]src[\\/]modules[\\/]spells[\\/]package\.json$/);
+    expect(result!).toMatch(/[\\/]src[\\/]modules[\\/]hooks[\\/]package\.json$/);
   });
 
   it('never emits a "modules/modules" path shape', () => {
-    const result = locateMofloModulePath('spells', 'package.json');
+    const result = locateMofloModulePath('hooks', 'package.json');
     expect(result).not.toBeNull();
     expect(result!).not.toMatch(/[\\/]modules[\\/]modules[\\/]/);
   });
 
   it('is cached per (pkg, rel) key', () => {
-    const a = locateMofloModulePath('spells', 'package.json');
-    const b = locateMofloModulePath('spells', 'package.json');
+    const a = locateMofloModulePath('hooks', 'package.json');
+    const b = locateMofloModulePath('hooks', 'package.json');
     expect(a).toBe(b);
   });
 });

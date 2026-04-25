@@ -5,16 +5,12 @@
     "paths": {
       "@moflo/cli": ["./modules/cli/src"],
       "@moflo/hooks": ["./modules/hooks/src"],
-      "@moflo/memory": ["./modules/memory/src"],
-      "@moflo/neural": ["./modules/neural/src"],
       "@moflo/testing": ["./modules/testing/src"]
     }
   },
   "references": [
     { "path": "./modules/cli" },
     { "path": "./modules/hooks" },
-    { "path": "./modules/memory" },
-    { "path": "./modules/neural" },
     { "path": "./modules/testing" }
   ],
   "include": [],

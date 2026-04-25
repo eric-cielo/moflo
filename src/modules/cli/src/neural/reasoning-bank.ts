@@ -26,51 +26,11 @@ import type {
   NeuralEventListener,
 } from './types.js';
 
-// ============================================================================
-// Persistence via @moflo/memory (shared with hooks/ReasoningBank)
-// ============================================================================
-
-let MofloDbAdapter: any;
-let createDefaultEntry: ((input: any) => any) | undefined;
-let mofloDbImportPromise: Promise<void> | undefined;
-
-const REQUIRED_MEMORY_EXPORTS = ['MofloDbAdapter', 'createDefaultEntry'] as const;
-
-async function ensureMofloDbAdapterImport(): Promise<void> {
-  if (!mofloDbImportPromise) {
-    mofloDbImportPromise = (async () => {
-      try {
-        // Variable specifier so tsc/bundlers skip static resolution;
-        // @moflo/memory is an optional runtime peer installed by the consumer.
-        const moduleName = '@moflo/memory';
-        const memoryModule: any = await import(/* webpackIgnore: true */ moduleName);
-
-        // Shape-check so a renamed/missing export is noisy instead of silently
-        // downgrading ReasoningBank into a pass-through (issue #482). `in`
-        // distinguishes missing-export from present-but-undefined re-exports.
-        const missing = REQUIRED_MEMORY_EXPORTS.filter(
-          k => !(k in memoryModule) || memoryModule[k] === undefined
-        );
-        if (missing.length > 0) {
-          console.warn(
-            `[ReasoningBank] @moflo/memory missing expected exports: ${missing.join(', ')} — persistence disabled`
-          );
-          MofloDbAdapter = undefined;
-          createDefaultEntry = undefined;
-          return;
-        }
-
-        MofloDbAdapter = memoryModule.MofloDbAdapter;
-        createDefaultEntry = memoryModule.createDefaultEntry;
-      } catch {
-        // @moflo/memory not installed — expected when consumers opt out of persistence.
-        MofloDbAdapter = undefined;
-        createDefaultEntry = undefined;
-      }
-    })();
-  }
-  return mofloDbImportPromise;
-}
+// Imported from declaring files (not ../memory/index.js) to avoid an
+// evaluation-order cycle: memory/index → controller-specs → learning-bridge →
+// neural/index → here would leave MofloDbAdapter undefined at module load.
+import { MofloDbAdapter } from '../memory/moflo-db-adapter.js';
+import { createDefaultEntry } from '../memory/types.js';
 
 // ============================================================================
 // Configuration
@@ -195,8 +155,8 @@ export class ReasoningBank {
   private patterns: Map<string, Pattern> = new Map();
   private eventListeners: Set<NeuralEventListener> = new Set();
 
-  // @moflo/memory adapter for vector storage (shared with hooks/ReasoningBank)
-  private mofloDb: any = null;
+  // MofloDb adapter for vector storage (shared with hooks/ReasoningBank).
+  private mofloDb: MofloDbAdapter | null = null;
   private initialized: boolean = false;
 
   // Performance tracking
@@ -224,22 +184,19 @@ export class ReasoningBank {
     if (this.initialized) return;
 
     if (this.config.enableMofloDb) {
-      await ensureMofloDbAdapterImport();
-      if (MofloDbAdapter !== undefined) {
-        try {
-          this.mofloDb = new MofloDbAdapter({
-            dimensions: this.config.vectorDimension,
-            defaultNamespace: this.config.namespace,
-            persistenceEnabled: Boolean(this.config.dbPath),
-            persistencePath: this.config.dbPath,
-          });
+      try {
+        this.mofloDb = new MofloDbAdapter({
+          dimensions: this.config.vectorDimension,
+          defaultNamespace: this.config.namespace,
+          persistenceEnabled: Boolean(this.config.dbPath),
+          persistencePath: this.config.dbPath,
+        });
 
-          await this.mofloDb.initialize();
-          this.emitEvent({ type: 'memory_consolidated', memoriesCount: 0 });
-        } catch (error) {
-          console.warn('MofloDbAdapter initialization failed, using fallback:', error);
-          this.mofloDb = null;
-        }
+        await this.mofloDb.initialize();
+        this.emitEvent({ type: 'memory_consolidated', memoriesCount: 0 });
+      } catch (error) {
+        console.warn('MofloDbAdapter initialization failed, using fallback:', error);
+        this.mofloDb = null;
       }
     }
 
@@ -851,7 +808,7 @@ export class ReasoningBank {
    * Store memory in the @moflo/memory adapter for vector search.
    */
   private async storeInMofloDb(memory: DistilledMemory): Promise<void> {
-    if (!this.mofloDb || !createDefaultEntry) return;
+    if (!this.mofloDb) return;
 
     try {
       const entry = createDefaultEntry({
