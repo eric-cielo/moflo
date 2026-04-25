@@ -77,7 +77,7 @@
     "test:ui": "vitest --ui",
     "test:smoke": "node harness/consumer-smoke/run.mjs",
     "lint": "eslint src/ bin/ .claude/scripts/ --ext .ts,.tsx,.mts,.cts,.js,.mjs,.cjs --max-warnings 0",
-    "security:audit": "npm audit --audit-level high",
+    "security:audit": "npm audit --omit=dev --audit-level high",
     "security:fix": "npm audit fix",
     "version": "node scripts/sync-version.mjs && git add src/modules/cli/package.json src/modules/cli/src/version.ts",
     "flo": "node bin/cli.js"

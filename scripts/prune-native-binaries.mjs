@@ -304,28 +304,46 @@ export function removeDir(dir, { rm = rmSync, measure = false } = {}) {
   }
 }
 
+// Files in `bin/napi-v6/linux/x64/` that ORT 1.24+'s `script/install.js`
+// fetches from NuGet at install time (CUDA EP + dependents — too large for
+// the npm tarball). The script's `existsSync(filepath)` gate skips the fetch
+// only when EVERY manifest file already exists; planting a zero-byte stub
+// for any one of them is not enough. Source of truth:
+// `node_modules/onnxruntime-node/script/install-metadata.js` — when ORT
+// adds files there, mirror them here. Mismatch silently re-introduces the
+// 350+ MB GPU download.
+const LINUX_X64_GPU_STUBS = [
+  'libonnxruntime_providers_cuda.so',
+  'libonnxruntime_providers_shared.so',
+  'libonnxruntime_providers_tensorrt.so',
+];
+
 /**
- * Plant a zero-byte `libonnxruntime_providers_cuda.so` stub in the linux/x64
- * arch dir. `onnxruntime-node`'s own postinstall downloads a 327 MB CUDA
- * provider tarball *after* moflo's postinstall runs (npm orders file:-tarball
- * roots before their deps). The download is gated on `existsSync(filepath)`
- * for each manifested file, so pre-creating the path as an empty file
- * short-circuits the fetch entirely. No-op when the user opts in to CUDA via
- * `ONNXRUNTIME_NODE_INSTALL_CUDA=true` or when the stub already exists. See
- * `node_modules/onnxruntime-node/script/install.js` for the upstream check.
+ * Plant zero-byte stubs for every GPU-provider file `onnxruntime-node`'s
+ * postinstall expects on `linux/x64`. ORT's install runs after moflo's
+ * (npm orders file:-tarball roots before their deps) and exits early when
+ * `existsSync` returns true for ALL manifest entries — so leaving any
+ * single file unstubbed re-triggers the full ~350 MB CUDA EP download.
+ *
+ * No-op outside linux/x64, when the user opts in to CUDA via
+ * `ONNXRUNTIME_NODE_INSTALL_CUDA=true`, or when stubs already exist.
+ * Returns the number of stubs planted (0 means nothing to do).
  */
 export function plantCudaStub(archDir, { keepPlatform, keepArch, env = process.env }) {
-  if (keepPlatform !== 'linux' || keepArch !== 'x64') return false;
-  if (env.ONNXRUNTIME_NODE_INSTALL_CUDA === 'true') return false;
-  const stubPath = join(archDir, 'libonnxruntime_providers_cuda.so');
-  if (existsSync(stubPath)) return false;
-  try {
-    writeFileSync(stubPath, '');
-    return true;
-  } catch (err) {
-    warn(`could not plant CUDA stub at ${stubPath}: ${err.code || err.message}`);
-    return false;
+  if (keepPlatform !== 'linux' || keepArch !== 'x64') return 0;
+  if (env.ONNXRUNTIME_NODE_INSTALL_CUDA === 'true') return 0;
+  let planted = 0;
+  for (const filename of LINUX_X64_GPU_STUBS) {
+    const stubPath = join(archDir, filename);
+    if (existsSync(stubPath)) continue;
+    try {
+      writeFileSync(stubPath, '');
+      planted++;
+    } catch (err) {
+      warn(`could not plant stub at ${stubPath}: ${err.code || err.message}`);
+    }
   }
+  return planted;
 }
 
 /**

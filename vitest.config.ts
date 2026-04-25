@@ -42,6 +42,11 @@ export const isolationTests = [
   // intermittently observes the child before it's reaped on Windows maxForks=2.
   // Passes in isolation; add here rather than retry-in-place.
   'tests/bin/process-manager.test.ts',
+  // First-run downloads the 25 MB ONNX model from GCS and runs real ORT
+  // inference — competes for CPU/network with parallel benchmarks under
+  // maxForks=2 and pushes neighboring tests over their timeouts. Cached
+  // runs are <2 s but the cache-cold path is the one CI exercises.
+  'src/modules/cli/__tests__/embeddings/fastembed-inline-integration.test.ts',
 ];
 
 export default defineConfig({
