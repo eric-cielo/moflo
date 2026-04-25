@@ -921,7 +921,6 @@ export const pluginsCommand: Command = {
       '@moflo/neural              - Neural patterns and inference (WASM SIMD)',
       '@moflo/security            - Security scanning and CVE detection',
       '@moflo/embeddings          - Vector embeddings with hyperbolic support',
-      '@moflo/claims              - Claims-based authorization',
     ]);
     output.writeln();
     output.writeln(output.dim('Run "claude-flow plugins list --official" to see all official plugins'));

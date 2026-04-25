@@ -3,7 +3,6 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@moflo/claims": ["./modules/claims/src"],
       "@moflo/cli": ["./modules/cli/src"],
       "@moflo/embeddings": ["./modules/embeddings/src"],
       "@moflo/guidance": ["./modules/guidance/src"],
@@ -20,7 +19,6 @@
   },
   "references": [
     { "path": "./modules/shared" },
-    { "path": "./modules/claims" },
     { "path": "./modules/cli" },
     { "path": "./modules/embeddings" },
     { "path": "./modules/guidance" },
