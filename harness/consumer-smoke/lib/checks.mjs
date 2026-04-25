@@ -5,12 +5,12 @@
  */
 
 import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync, statSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 
 import { run, runNode, flo, NPM_CMD, getStderrSamples } from './proc.mjs';
 import { section, record, recordExit, log } from './report.mjs';
 import { findOrphans } from '../../../scripts/clean-dist.mjs';
-import { findOrtPackages } from '../../../scripts/prune-native-binaries.mjs';
+import { findOrtPackages, listNapiDirs } from '../../../scripts/prune-native-binaries.mjs';
 
 // Epic #501 acceptance criterion: a fresh `npm install moflo` consumer sees
 // zero of the following packages anywhere in its dep tree.
@@ -641,31 +641,43 @@ function logTopOffenders(nodeModulesDir) {
   }
 }
 
-/** Inspect one onnxruntime-node install; return a problem string or null. */
+/**
+ * Inspect one onnxruntime-node install; return a problem string or null.
+ *
+ * ORT names this directory after the N-API ABI it was built against — `napi-v3`
+ * in 1.21, `napi-v6` in 1.24+ — so we discover whichever subdir(s) the install
+ * actually ships (via the same helper the pruner uses) and assert each one is
+ * pruned to the current platform/arch.
+ */
 function inspectOrtInstall(ortDir, consumerDir) {
-  const napi = join(ortDir, 'bin', 'napi-v3');
-  if (!existsSync(napi)) return null; // future layout change, not a prune failure
+  const napiDirs = listNapiDirs(join(ortDir, 'bin'));
+  if (napiDirs.length === 0) return null; // future layout change, not a prune failure
+
   const rel = relative(consumerDir, ortDir);
   const dirNames = (d) => readdirSync(d, { withFileTypes: true })
     .filter(e => e.isDirectory())
     .map(e => e.name);
 
-  const platforms = dirNames(napi);
-  const platExtras = platforms.filter(p => p !== process.platform);
-  if (platExtras.length > 0) return `${rel}: extra platforms present — ${platExtras.join(', ')}`;
-  if (!platforms.includes(process.platform)) return `${rel}: current platform dir missing (${process.platform})`;
+  for (const napi of napiDirs) {
+    const napiName = basename(napi);
+    const platforms = dirNames(napi);
+    const platExtras = platforms.filter(p => p !== process.platform);
+    if (platExtras.length > 0) return `${rel}: extra platforms in ${napiName} — ${platExtras.join(', ')}`;
+    if (!platforms.includes(process.platform)) return `${rel}: current platform dir missing in ${napiName} (${process.platform})`;
 
-  const archs = dirNames(join(napi, process.platform));
-  const archExtras = archs.filter(a => a !== process.arch);
-  if (archExtras.length > 0) return `${rel}: extra archs under ${process.platform} — ${archExtras.join(', ')}`;
-  if (!archs.includes(process.arch)) return `${rel}: current arch dir missing (${process.arch})`;
+    const archs = dirNames(join(napi, process.platform));
+    const archExtras = archs.filter(a => a !== process.arch);
+    if (archExtras.length > 0) return `${rel}: extra archs under ${napiName}/${process.platform} — ${archExtras.join(', ')}`;
+    if (!archs.includes(process.arch)) return `${rel}: current arch dir missing in ${napiName}/${process.platform} (${process.arch})`;
+  }
   return null;
 }
 
 /**
  * After postinstall, every onnxruntime-node install should retain only the
- * current `<platform>/<arch>` subtree under `bin/napi-v3/`. Hard-fail on any
- * non-current platform directory or any extra arch under the kept platform.
+ * current `<platform>/<arch>` subtree under each `bin/napi-v<N>/` directory.
+ * Hard-fail on any non-current platform directory or any extra arch under the
+ * kept platform.
  */
 export function verifyPrunedBinaries(consumerDir) {
   section('Verify onnxruntime-node binaries pruned to current platform');

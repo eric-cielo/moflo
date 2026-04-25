@@ -92,6 +92,7 @@
   },
   "overrides": {
     "hono": ">=4.11.4",
+    "onnxruntime-node": ">=1.24.3",
     "picomatch": ">=2.3.2",
     "protobufjs": ">=7.5.5",
     "tar": ">=7.5.11"

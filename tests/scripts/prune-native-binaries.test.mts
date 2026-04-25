@@ -42,22 +42,38 @@ afterEach(() => {
   if (existsSync(tmp)) rmSync(tmp, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
 });
 
-/** Build an `onnxruntime-node/bin/napi-v3/<plat>/<arch>/` fixture tree. */
+/**
+ * Build an `onnxruntime-node/bin/napi-v<N>/<plat>/<arch>/` fixture tree.
+ * `napiVersion` defaults to `3` (matching ORT 1.21's layout); pass `6` to
+ * model ORT 1.24+, or call `addNapiTier` to plant additional N-API dirs in
+ * the same package.
+ */
 function buildOrtTree(
   root: string,
   combos: Array<{ platform: string; arch: string; bytes?: number }>,
+  { napiVersion = 3 }: { napiVersion?: number } = {},
 ): string {
   const ortDir = join(root, 'onnxruntime-node');
-  const napi = join(ortDir, 'bin', 'napi-v3');
+  addNapiTier(ortDir, combos, napiVersion);
+  // Non-binary sibling file to confirm we don't touch anything outside bin/.
+  writeFileSync(join(ortDir, 'package.json'), '{"name":"onnxruntime-node"}');
+  return ortDir;
+}
+
+/** Plant or extend a `bin/napi-v<N>/` tier inside an existing ORT fixture. */
+function addNapiTier(
+  ortDir: string,
+  combos: Array<{ platform: string; arch: string; bytes?: number }>,
+  napiVersion: number,
+): string {
+  const napi = join(ortDir, 'bin', `napi-v${napiVersion}`);
   mkdirSync(napi, { recursive: true });
   for (const { platform, arch, bytes = 1024 } of combos) {
     const leaf = join(napi, platform, arch);
     mkdirSync(leaf, { recursive: true });
     writeFileSync(join(leaf, 'onnxruntime_binding.node'), Buffer.alloc(bytes));
   }
-  // Non-binary sibling file to confirm we don't touch anything outside napi-v3
-  writeFileSync(join(ortDir, 'package.json'), '{"name":"onnxruntime-node"}');
-  return ortDir;
+  return napi;
 }
 
 describe('findOrtPackages (fastembed-owned only)', () => {
@@ -305,19 +321,58 @@ describe('pruneOrtPackage', () => {
     expect(existsSync(join(ortDir, 'bin', 'napi-v3', 'linux', 'x64'))).toBe(true);
   });
 
-  it('returns 0 when bin/napi-v3 is missing (future layout change)', () => {
+  it('returns 0 when no bin/napi-v<N>/ subdir exists (future layout change)', () => {
     const ortDir = join(tmp, 'onnxruntime-node');
     mkdirSync(ortDir, { recursive: true });
     expect(pruneOrtPackage(ortDir)).toBe(0);
   });
 
-  it('preserves sibling files outside bin/napi-v3', () => {
+  it('returns 0 when bin/ has only non-napi siblings', () => {
+    const ortDir = join(tmp, 'onnxruntime-node');
+    mkdirSync(join(ortDir, 'bin', 'something-else'), { recursive: true });
+    expect(pruneOrtPackage(ortDir)).toBe(0);
+  });
+
+  it('preserves sibling files outside bin/napi-v<N>/', () => {
     const ortDir = buildOrtTree(tmp, [
       { platform: 'linux', arch: 'x64' },
       { platform: 'win32', arch: 'x64' },
     ]);
     pruneOrtPackage(ortDir, { keepPlatform: 'linux', keepArch: 'x64' });
     expect(existsSync(join(ortDir, 'package.json'))).toBe(true);
+  });
+
+  it('prunes a napi-v6 layout (ORT 1.24+) the same way as napi-v3', () => {
+    // Regression test for issue #613: ORT 1.24's `bin/napi-v6/` layout was
+    // silently no-op'd when the pruner had `napi-v3` hardcoded. Verifies the
+    // dynamic discovery handles whichever ABI dir the install actually ships.
+    const ortDir = buildOrtTree(
+      tmp,
+      ALL_PLATFORMS.flatMap((p) => ALL_ARCHES.map((a) => ({ platform: p, arch: a }))),
+      { napiVersion: 6 },
+    );
+
+    pruneOrtPackage(ortDir, { keepPlatform: 'darwin', keepArch: 'arm64' });
+
+    const napi = join(ortDir, 'bin', 'napi-v6');
+    expect(readdirSync(napi)).toEqual(['darwin']);
+    expect(readdirSync(join(napi, 'darwin'))).toEqual(['arm64']);
+  });
+
+  it('prunes both napi-v3 and napi-v6 when an install ships both', () => {
+    // Defensive: a transitional ORT release could ship both ABI dirs at once.
+    // The pruner walks each independently rather than picking one.
+    const combos = ALL_PLATFORMS.flatMap((p) => ALL_ARCHES.map((a) => ({ platform: p, arch: a })));
+    const ortDir = buildOrtTree(tmp, combos, { napiVersion: 3 });
+    addNapiTier(ortDir, combos, 6);
+
+    pruneOrtPackage(ortDir, { keepPlatform: 'linux', keepArch: 'x64' });
+
+    for (const napiName of ['napi-v3', 'napi-v6']) {
+      const napi = join(ortDir, 'bin', napiName);
+      expect(readdirSync(napi)).toEqual(['linux']);
+      expect(readdirSync(join(napi, 'linux'))).toEqual(['x64']);
+    }
   });
 
   it('retries once on EBUSY then swallows persistent failures', () => {
