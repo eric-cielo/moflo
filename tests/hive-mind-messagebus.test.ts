@@ -14,7 +14,7 @@ import {
   MessageBus,
   WriteThroughAdapter,
   type WriteThroughConfig,
-} from '../src/modules/swarm/src/index.js';
+} from '../src/modules/cli/src/swarm/index.js';
 
 // ==========================================================================
 // WriteThroughAdapter Tests

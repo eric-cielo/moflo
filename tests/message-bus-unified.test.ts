@@ -18,7 +18,7 @@ import {
   type UnifiedMessage,
   type MessageFilter,
   type MessageBusStats,
-} from '../src/modules/swarm/src/index.js';
+} from '../src/modules/cli/src/swarm/index.js';
 
 describe('MessageBus — Unified Interface (Story #119)', () => {
   let bus: MessageBus;

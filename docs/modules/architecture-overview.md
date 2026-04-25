@@ -222,11 +222,12 @@ await memory.store({ key: 'knowledge', value: 'context', embedding: [...] });
 const results = await memory.search({ query: 'knowledge', limit: 10 });
 ```
 
-### @moflo/swarm
-15-agent hierarchical mesh coordination with consensus protocols.
+### cli/swarm
+15-agent hierarchical mesh coordination with consensus protocols. Inlined into `@moflo/cli` by [#597](https://github.com/eric-cielo/moflo/issues/597) — see [cli/swarm](./swarm.md).
 
 ```typescript
-import { UnifiedSwarmCoordinator } from '@moflo/swarm';
+// From cli source — direct relative import
+import { UnifiedSwarmCoordinator } from '../swarm/unified-coordinator.js';
 
 const coordinator = new UnifiedSwarmCoordinator({
   topology: 'hierarchical-mesh',
@@ -335,7 +336,7 @@ const result = await swarm.waitForTask(task.id);
 import * as claudeFlow from '@moflo/v3';
 
 // Or import specific modules for tree-shaking
-import { UnifiedSwarmCoordinator } from '@moflo/swarm';
+import { UnifiedSwarmCoordinator } from '@moflo/cli/swarm'; // inlined per #597
 import { HNSWIndex } from '@moflo/memory';
 ```
 
@@ -433,7 +434,7 @@ pnpm test:coverage
 
 ### Modules
 - [@moflo/memory](./@moflo/memory/)
-- [@moflo/swarm](./@moflo/swarm/)
+- [cli/swarm](./swarm.md) (inlined into cli per #597)
 - [@moflo/integration](./@moflo/integration/)
 - [@moflo/performance](./@moflo/performance/)
 - [@moflo/neural](./@moflo/neural/)

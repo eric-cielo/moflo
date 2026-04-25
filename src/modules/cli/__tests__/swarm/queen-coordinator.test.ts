@@ -29,7 +29,7 @@ import {
   type Decision,
   type TaskResult,
   type AgentScore,
-} from '../src/queen-coordinator.js';
+} from '../../src/swarm/queen-coordinator.js';
 import type {
   AgentState,
   AgentType,
@@ -42,8 +42,8 @@ import type {
   ConsensusResult,
   AgentCapabilities,
   AgentMetrics,
-} from '../src/types.js';
-import type { AgentDomain, DomainStatus } from '../src/unified-coordinator.js';
+} from '../../src/swarm/types.js';
+import type { AgentDomain, DomainStatus } from '../../src/swarm/unified-coordinator.js';
 
 // =============================================================================
 // Mock Factories

@@ -19,7 +19,7 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 
 // Mock fs writes to prevent test side effects on disk. `existsSync` and
 // `readFileSync` fall through to real fs so legitimate resolvers (e.g.
-// locateMofloModuleDist walking up to src/modules/swarm/dist/) keep working.
+// locateMofloModuleDist walking up to src/modules/<pkg>/dist/) keep working.
 vi.mock('node:fs', async () => {
   const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
   const memStore = new Map<string, string>();

@@ -137,7 +137,6 @@ export function mofloResolve(specifier: string): string | null {
  */
 export type MofloInternalPackage =
   | 'memory'
-  | 'swarm'
   | 'hooks'
   | 'neural'
   | 'security'

@@ -10,15 +10,15 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   ByzantineConsensus,
   createByzantineConsensus,
-} from '../src/consensus/byzantine.js';
+} from '../../src/swarm/consensus/byzantine.js';
 import {
   RaftConsensus,
   createRaftConsensus,
-} from '../src/consensus/raft.js';
+} from '../../src/swarm/consensus/raft.js';
 import {
   GossipConsensus,
   createGossipConsensus,
-} from '../src/consensus/gossip.js';
+} from '../../src/swarm/consensus/gossip.js';
 
 // ---------------------------------------------------------------------------
 // Byzantine

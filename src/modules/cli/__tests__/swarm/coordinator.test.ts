@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { UnifiedSwarmCoordinator, createUnifiedSwarmCoordinator } from '../src/unified-coordinator.js';
+import { UnifiedSwarmCoordinator, createUnifiedSwarmCoordinator } from '../../src/swarm/unified-coordinator.js';
 import type {
   AgentState,
   TaskDefinition,
@@ -12,7 +12,7 @@ import type {
   AgentType,
   TaskType,
   TaskPriority,
-} from '../src/types.js';
+} from '../../src/swarm/types.js';
 
 describe('UnifiedSwarmCoordinator', () => {
   let coordinator: UnifiedSwarmCoordinator;

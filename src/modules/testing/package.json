@@ -32,12 +32,10 @@
   },
   "peerDependencies": {
     "@moflo/memory": "^3.0.0-alpha.2",
-    "@moflo/swarm": "^3.0.0-alpha.1",
     "vitest": ">=1.0.0"
   },
   "devDependencies": {
     "@moflo/memory": "^3.0.0-alpha.2",
-    "@moflo/swarm": "^3.0.0-alpha.1",
     "typescript": "^5.3.0",
     "vitest": "^4.0.16"
   }

@@ -89,7 +89,7 @@ const FIXED_DEPTH_MODULES_SELECTORS = [
 // calls charCodeAt is a hash embedding regardless of method name. The
 // identifier ban above missed the inline implementations removed in #542
 // because their enclosing methods used generic names. Issue #545 unscoped
-// this from `src/modules/swarm/` to repo-wide — the same anti-pattern was
+// this from the swarm package to repo-wide — the same anti-pattern was
 // leaking into memory/CLI/hooks.
 const INLINE_HASH_EMBEDDING_MESSAGE =
   'Inline hash-embedding pattern detected (Float32Array + charCodeAt in the ' +

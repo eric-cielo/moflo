@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { locateSwarmArtifact } from '../src/swarm/index.js';
 
 describe('hooks/swarm locateSwarmArtifact (regression #556)', () => {
-  it('resolves @moflo/swarm MessageBus from inside the hooks package', () => {
+  it('resolves swarm MessageBus from inside the hooks package', () => {
     const url = locateSwarmArtifact('message-bus/message-bus.js');
     expect(url).not.toBeNull();
     expect(url).toMatch(/^file:\/\//);

@@ -10,12 +10,11 @@ Each row lists the `@moflo/*` packages a given module imports (static `from`, dy
 
 | Package | Outbound count | Imports |
 |---------|----------------|---------|
-| `cli` | 5 | `hooks`, `memory`, `neural`, `swarm`, `testing` |
+| `cli` | 4 | `hooks`, `memory`, `neural`, `testing` |
 | `hooks` | 1 | `memory` |
 | `memory` | 1 | `neural` |
 | `neural` | 1 | `memory` |
-| `swarm` | 0 | — |
-| `testing` | 2 | `memory`, `swarm` |
+| `testing` | 1 | `memory` |
 
 ## Inbound count (how many other packages import this one)
 
@@ -25,14 +24,7 @@ Each row lists the `@moflo/*` packages a given module imports (static `from`, dy
 | `hooks` | 1 |
 | `memory` | 4 |
 | `neural` | 2 |
-| `swarm` | 2 |
 | `testing` | 1 |
-
-## Leaves (zero outbound `@moflo/*` imports)
-
-Safe to merge first — no relative paths to other moflo packages will need rewriting.
-
-- `@moflo/swarm`
 
 ## Early-collapse candidates (outbound ≤ 1, not trunk)
 
@@ -40,7 +32,6 @@ After leaves, collapse these next — single relative-path rewrite each.
 
 - `@moflo/hooks` → `memory`
 - `@moflo/neural` → `memory`
-- `@moflo/swarm` → _leaf_
 
 ## Trunk (≥ 3 inbound)
 
@@ -52,8 +43,7 @@ Collapse last — these are widely depended on, so flipping them changes many ca
 
 Recommended merge order. Each subsequent step has all of its dependencies already merged into the root package, so its own internal `@moflo/*` imports become local relative paths.
 
-1. `@moflo/swarm`
-2. `@moflo/<cycle:cli,hooks,memory,neural,testing>`
+1. `@moflo/<cycle:cli,hooks,memory,neural,testing>`
 
 ## Root-level references
 
@@ -62,5 +52,4 @@ Files outside `src/modules/` (e.g. `bin/`, `src/index.ts`, `scripts/`) that refe
 - `@moflo/cli`
 - `@moflo/memory`
 - `@moflo/neural`
-- `@moflo/swarm`
 - `@moflo/testing`

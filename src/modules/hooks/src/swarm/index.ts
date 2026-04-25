@@ -15,23 +15,48 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { reasoningBank, type GuidancePattern } from '../reasoningbank/index.js';
-import type {
-  IMessageBus,
-  Message,
-  MessageType,
-  MessageFilter,
-} from '../../../swarm/src/types.js';
+// Structural types for the swarm runtime shapes we use. Defined locally
+// because swarm lives in a sibling package and is loaded dynamically at
+// runtime — rootDir constraints rule out a cross-package compile-time
+// import, and a project reference would create a cycle (cli → hooks).
+interface Message {
+  id: string;
+  type: string;
+  from: string;
+  to: string | 'broadcast';
+  payload: unknown;
+  timestamp: Date | number;
+  priority: 'urgent' | 'high' | 'normal' | 'low';
+  requiresAck: boolean;
+  ttlMs: number;
+}
+interface MessageFilter {
+  from?: string;
+  type?: string;
+  since?: number;
+  limit?: number;
+  namespace?: string;
+}
+interface IMessageBus {
+  initialize(): Promise<void>;
+  shutdown(): Promise<void>;
+  sendUnified(message: Record<string, unknown>): Promise<string>;
+  subscribe(agentId: string, callback: (message: Message) => void, options?: { namespace?: string }): void;
+  unsubscribe(agentId: string): void;
+  getMessages(agentId: string, filter?: MessageFilter): Message[];
+  getQueueDepth(): number;
+}
 
 /**
- * Walk up from this file to find `src/modules/swarm/dist/<rel>`. Layout- and
- * platform-invariant — works from source, built, and installed contexts on
- * Windows/Linux/macOS. Mirrors `locateMofloModuleDist` in @moflo/cli
- * (feedback_no_fixed_depth_paths: never use fixed ../ counts to cross
- * moflo packages).
+ * Walk up from this file to find `src/modules/cli/dist/src/swarm/<rel>`.
+ * Layout- and platform-invariant — works from source, built, and installed
+ * contexts on Windows/Linux/macOS. Mirrors `locateMofloModuleDist` in
+ * @moflo/cli (feedback_no_fixed_depth_paths: never use fixed ../ counts to
+ * cross moflo packages).
  */
 export function locateSwarmArtifact(relFromDist: string): string | null {
   let dir = dirname(fileURLToPath(import.meta.url));
-  const rel = join('src', 'modules', 'swarm', 'dist', relFromDist);
+  const rel = join('src', 'modules', 'cli', 'dist', 'src', 'swarm', relFromDist);
   for (let i = 0; i < 12; i++) {
     const candidate = join(dir, rel);
     if (existsSync(candidate)) return pathToFileURL(candidate).href;
@@ -42,9 +67,9 @@ export function locateSwarmArtifact(relFromDist: string): string | null {
   return null;
 }
 
-// Lazy-load MessageBus: the swarm package is a runtime peer and may not be
-// built in every consumer install. On failure we fall back to a no-op bus so
-// hooks keep functioning; the failure is logged (feedback_no_silent_failures)
+// Lazy-load MessageBus: swarm lives in cli's dist tree and may not be built
+// in every consumer install. On failure we fall back to a no-op bus so hooks
+// keep functioning; the failure is logged (feedback_no_silent_failures)
 // rather than swallowed.
 async function loadMessageBus(): Promise<new () => IMessageBus> {
   const url = locateSwarmArtifact('message-bus/message-bus.js');
@@ -54,13 +79,13 @@ async function loadMessageBus(): Promise<new () => IMessageBus> {
       return mod.MessageBus;
     } catch (err) {
       console.warn(
-        `[moflo/hooks] Failed to load @moflo/swarm MessageBus from ${url}:`,
+        `[moflo/hooks] Failed to load swarm MessageBus from ${url}:`,
         err instanceof Error ? err.message : err,
       );
     }
   } else {
     console.warn(
-      '[moflo/hooks] @moflo/swarm MessageBus not built — using no-op bus. ' +
+      '[moflo/hooks] swarm MessageBus not built — using no-op bus. ' +
       'Run `npm run build` to enable swarm coordination.',
     );
   }
@@ -366,7 +391,7 @@ export class SwarmCommunication extends EventEmitter {
     const ttl = options.ttl || this.config.messageRetention;
 
     const id = await this.messageBus.sendUnified({
-      type: type as MessageType,
+      type,
       from: this.config.agentId,
       to: to === '*' ? '*' : to,
       payload: content,
@@ -418,7 +443,7 @@ export class SwarmCommunication extends EventEmitter {
       filter.from = options.from;
     }
     if (options.type) {
-      filter.type = options.type as MessageType;
+      filter.type = options.type;
     }
     if (options.since !== undefined) {
       filter.since = options.since;
