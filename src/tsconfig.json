@@ -8,14 +8,12 @@
       "@moflo/hooks": ["./modules/hooks/src"],
       "@moflo/memory": ["./modules/memory/src"],
       "@moflo/neural": ["./modules/neural/src"],
-      "@moflo/shared": ["./modules/shared/src"],
       "@moflo/swarm": ["./modules/swarm/src"],
       "@moflo/testing": ["./modules/testing/src"],
       "@moflo/spells": ["./modules/spells/src"]
     }
   },
   "references": [
-    { "path": "./modules/shared" },
     { "path": "./modules/cli" },
     { "path": "./modules/guidance" },
     { "path": "./modules/hooks" },

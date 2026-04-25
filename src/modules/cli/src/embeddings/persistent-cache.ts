@@ -12,7 +12,7 @@
 
 import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { dirname } from 'path';
-import { atomicWriteFileSync } from './utils/atomic-file-write.js';
+import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 
 // Use 'any' for sql.js types to avoid complex typing issues
 // sql.js has its own types but they don't always match perfectly

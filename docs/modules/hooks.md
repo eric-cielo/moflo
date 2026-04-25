@@ -430,7 +430,6 @@ Add to your Claude settings (`~/.claude/settings.json`):
 
 ## Related Packages
 
-- [@moflo/shared](../shared) - Shared utilities and types
 - [@moflo/neural](../neural) - Neural network and SONA learning
 - [@moflo/swarm](../swarm) - Multi-agent coordination
 - [@moflo/memory](../memory) - AgentDB memory system

@@ -26,9 +26,6 @@
     "src/modules/cli/dist/**/*.yaml",
     "!src/modules/cli/dist/**/*.map",
     "src/modules/cli/package.json",
-    "src/modules/shared/dist/**/*.js",
-    "!src/modules/shared/dist/**/*.map",
-    "src/modules/shared/package.json",
     "src/modules/guidance/dist/**/*.js",
     "!src/modules/guidance/dist/**/*.map",
     "src/modules/guidance/package.json",
@@ -100,6 +97,7 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.12.2",
+    "@types/sql.js": "^1.4.9",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.0.0",

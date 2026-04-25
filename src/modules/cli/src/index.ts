@@ -527,7 +527,7 @@ export class CLI {
   private async loadConfig(configPath?: string): Promise<V3Config | undefined> {
     try {
       // Import config utilities
-      const { loadConfig: loadSystemConfig } = await import('@moflo/shared');
+      const { loadConfig: loadSystemConfig } = await import('./shared/index.js');
       const { systemConfigToV3Config } = await import('./config-adapter.js');
 
       // Load configuration

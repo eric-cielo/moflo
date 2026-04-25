@@ -12,7 +12,7 @@ import {
   createBashSafetyHook,
   BashSafetyHook,
   HookRegistry,
-} from '../../src/hooks/index.js';
+} from '../../../src/shared/hooks/index.js';
 
 describe('BashSafetyHook', () => {
   let registry: HookRegistry;

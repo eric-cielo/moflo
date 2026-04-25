@@ -135,8 +135,7 @@
   },
   "dependencies": {
     "@moflo/hooks": "^3.0.0-alpha.7",
-    "@moflo/memory": "^3.0.0-alpha.2",
-    "@moflo/shared": "^3.0.0-alpha.1"
+    "@moflo/memory": "^3.0.0-alpha.2"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

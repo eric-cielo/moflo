@@ -291,14 +291,6 @@ const mockAgent = createMockAgent({ type: 'coder' });
 const fixture = createTestFixture('swarm-coordination');
 ```
 
-### @moflo/shared
-Common types, events, utilities, and core interfaces.
-
-```typescript
-import { EventBus, Result, success, failure } from '@moflo/shared';
-import type { AgentId, TaskStatus } from '@moflo/shared/types';
-```
-
 ### @moflo/deployment
 Release management and CI/CD automation.
 
@@ -447,7 +439,6 @@ pnpm test:coverage
 - [@moflo/neural](./@moflo/neural/)
 - [@moflo/cli](./@moflo/cli/)
 - [@moflo/testing](./@moflo/testing/)
-- [@moflo/shared](./@moflo/shared/)
 - [@moflo/deployment](./@moflo/deployment/)
 
 ### Examples

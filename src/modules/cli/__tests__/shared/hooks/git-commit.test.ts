@@ -12,7 +12,7 @@ import {
   createGitCommitHook,
   GitCommitHook,
   HookRegistry,
-} from '../../src/hooks/index.js';
+} from '../../../src/shared/hooks/index.js';
 
 describe('GitCommitHook', () => {
   let registry: HookRegistry;

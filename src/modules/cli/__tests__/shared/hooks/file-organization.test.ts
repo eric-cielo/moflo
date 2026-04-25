@@ -12,7 +12,7 @@ import {
   createFileOrganizationHook,
   FileOrganizationHook,
   HookRegistry,
-} from '../../src/hooks/index.js';
+} from '../../../src/shared/hooks/index.js';
 
 describe('FileOrganizationHook', () => {
   let registry: HookRegistry;

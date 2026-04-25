@@ -59,7 +59,7 @@ export const isolationTests = [
   'src/modules/cli/__tests__/services/moflo-require.test.ts',
   'src/modules/guidance/tests/persistence.test.ts',
   'src/modules/hooks/__tests__/workers.test.ts',
-  'src/modules/shared/src/hooks/verify-exports.test.ts',
+  'src/modules/cli/src/shared/hooks/verify-exports.test.ts',
   'src/modules/spells/__tests__/built-in-commands.test.ts',
   'src/modules/spells/__tests__/moflo-levels.test.ts',
   'src/modules/spells/__tests__/parallel-integration.test.ts',

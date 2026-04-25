@@ -14,7 +14,7 @@ import {
   HookRegistry,
   HookEvent,
   InMemorySessionStorage,
-} from '../../src/hooks/index.js';
+} from '../../../src/shared/hooks/index.js';
 
 describe('SessionHooksManager', () => {
   let registry: HookRegistry;
