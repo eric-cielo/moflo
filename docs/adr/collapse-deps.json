@@ -1,0 +1,77 @@
+{
+  "packages": [
+    "aidefence",
+    "claims",
+    "cli",
+    "embeddings",
+    "guidance",
+    "hooks",
+    "memory",
+    "neural",
+    "plugins",
+    "security",
+    "shared",
+    "spells",
+    "swarm",
+    "testing"
+  ],
+  "adjacency": {
+    "aidefence": [],
+    "claims": [],
+    "cli": [
+      "aidefence",
+      "claims",
+      "embeddings",
+      "memory",
+      "neural",
+      "plugins",
+      "security",
+      "shared",
+      "testing"
+    ],
+    "embeddings": [],
+    "guidance": [
+      "embeddings",
+      "hooks"
+    ],
+    "hooks": [
+      "embeddings",
+      "memory",
+      "security"
+    ],
+    "memory": [
+      "embeddings",
+      "neural"
+    ],
+    "neural": [
+      "memory"
+    ],
+    "plugins": [],
+    "security": [],
+    "shared": [],
+    "spells": [],
+    "swarm": [],
+    "testing": [
+      "memory",
+      "shared",
+      "swarm"
+    ]
+  },
+  "rootRefs": [
+    "cli",
+    "memory",
+    "neural",
+    "security",
+    "shared",
+    "swarm",
+    "testing"
+  ],
+  "cycles": [
+    [
+      "memory",
+      "neural"
+    ]
+  ],
+  "files": 1016,
+  "generatedAt": "2026-04-25T01:01:02Z"
+}
