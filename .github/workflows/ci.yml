@@ -97,4 +97,10 @@ jobs:
         run: npm run lint
 
       - name: Security audit
-        run: npm audit --audit-level=high
+        # `--omit=dev` scopes the audit to production deps — what consumers
+        # actually install. Dev-only vulns still surface in local `npm audit`
+        # for maintainers but no longer gate PRs (the moflo self-devDep used
+        # for dogfooding pulls our own previously-published transitives,
+        # which intermittently lag behind security advisories until the next
+        # publish ships).
+        run: npm audit --omit=dev --audit-level=high

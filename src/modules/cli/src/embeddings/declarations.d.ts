@@ -1,17 +1,4 @@
-declare module 'fastembed' {
-  export enum EmbeddingModel {
-    AllMiniLML6V2 = 'fast-all-MiniLM-L6-v2',
-  }
-  export interface InitOptions {
-    model: string;
-    cacheDir?: string;
-    maxLength?: number;
-    showDownloadProgress?: boolean;
-  }
-  export class FlagEmbedding {
-    static init(options: InitOptions): Promise<FlagEmbedding>;
-    embed(texts: string[], batchSize?: number): AsyncGenerator<number[][], void, unknown>;
-    queryEmbed(query: string): Promise<number[]>;
-  }
-}
-
+// Intentionally empty — the previous `declare module 'fastembed'` shim is no
+// longer needed. The in-tree replacement under `fastembed-inline/` is plain
+// TypeScript and provides its own type definitions.
+export {};

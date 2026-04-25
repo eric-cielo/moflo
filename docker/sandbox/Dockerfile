@@ -74,14 +74,16 @@ RUN git config --system --add safe.directory '*'
 # fallback when no explicit cacheDir is configured.
 ENV FASTEMBED_CACHE=/opt/fastembed-cache
 USER node
+# Pre-warm the model directly from Qdrant's GCS bucket — the same source the
+# in-tree fastembed replacement uses. Avoids installing the upstream `fastembed`
+# package (and its onnxruntime-node@1.21.0 transitive pin) in the image.
+# Cache layout matches `fastembed-inline/model-loader.ts`: `<cacheDir>/<model>/`.
 RUN set -e \
- && cd /tmp \
- && mkdir -p fastembed-warm \
- && cd fastembed-warm \
- && npm init -y >/dev/null \
- && npm install --silent --no-audit --no-fund fastembed@2.1.0 \
- && node -e "const {FlagEmbedding,EmbeddingModel}=require('fastembed');FlagEmbedding.init({model:EmbeddingModel.AllMiniLML6V2,cacheDir:process.env.FASTEMBED_CACHE,showDownloadProgress:false}).then(()=>process.exit(0)).catch(e=>{console.error(e);process.exit(1)})" \
- && cd / \
- && rm -rf /tmp/fastembed-warm
+ && mkdir -p "$FASTEMBED_CACHE" \
+ && curl -fsSL https://storage.googleapis.com/qdrant-fastembed/sentence-transformers-all-MiniLM-L6-v2.tar.gz \
+      -o "$FASTEMBED_CACHE/model.tar.gz" \
+ && tar -xzf "$FASTEMBED_CACHE/model.tar.gz" -C "$FASTEMBED_CACHE" \
+ && rm "$FASTEMBED_CACHE/model.tar.gz" \
+ && test -f "$FASTEMBED_CACHE/fast-all-MiniLM-L6-v2/model.onnx"
 
 WORKDIR /workspace
