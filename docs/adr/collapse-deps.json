@@ -1,7 +1,5 @@
 {
   "packages": [
-    "aidefence",
-    "claims",
     "cli",
     "embeddings",
     "guidance",
@@ -16,10 +14,7 @@
     "testing"
   ],
   "adjacency": {
-    "aidefence": [],
-    "claims": [],
     "cli": [
-      "claims",
       "embeddings",
       "guidance",
       "hooks",
@@ -75,6 +70,6 @@
       "neural"
     ]
   ],
-  "files": 1018,
-  "generatedAt": "2026-04-25T03:25:50Z"
+  "files": 994,
+  "generatedAt": "2026-04-25T04:54:26Z"
 }

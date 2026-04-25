@@ -31,7 +31,7 @@ From [`collapse-deps.md`](./collapse-deps.md):
 
 - **Leaves (zero outbound `@moflo/*` imports):** `aidefence`, `claims`, `embeddings`, `plugins`, `security`, `shared`, `spells`, `swarm` (8/14)
 - **Mid-tier:** `neural` → `memory`; `guidance` → `embeddings`, `hooks`; `hooks` → `embeddings`, `memory`, `security`; `testing` → `memory`, `shared`, `swarm`
-- **Trunk:** `cli` (outbound 9), `memory` (inbound 4), `embeddings` (inbound 4)
+- **Trunk:** `cli` (outbound 10), `memory` (inbound 4), `embeddings` (inbound 4)
 - **Cycle:** `memory ↔ neural` (both edges are guarded dynamic imports — disappears on collapse)
 
 The graph is identical between TypeScript source and compiled `dist/` output. The published tarball preserves the same edges but is missing three packages (the optional add-ons).
@@ -99,7 +99,7 @@ Delete the moflo-require helper, mandate `../../<other-pkg>/src/...` everywhere,
 ### Risks and mitigations
 
 - **Risk:** test runner picks up cross-test pollution that was previously hidden by per-package isolation. **Mitigation:** `vitest.config.ts` has the `isolationTests` list (`feedback_vitest_isolation_list.md`); audit during the collapse and extend as needed.
-- **Risk:** something downstream depends on `@moflo/<pkg>` as an importable string (e.g., a plugin loaded via `import('@moflo/X')`). **Mitigation:** the dependency graph artifact catches every such reference; the collapse stories must address each. The plugin-store registry advertises `@moflo/security`, `@moflo/claims`, etc. — those entries will be revisited as part of the optional-add-on resolution.
+- **Risk:** something downstream depends on `@moflo/<pkg>` as an importable string (e.g., a plugin loaded via `import('@moflo/X')`). **Mitigation:** the dependency graph artifact catches every such reference; the collapse stories must address each. The plugin-store registry advertises `@moflo/security`, etc. — those entries will be revisited as part of the optional-add-on resolution.
 - **Risk:** the three optional add-ons (`aidefence`, `claims`, `testing`) are out of the tarball today; collapsing them in changes that. **Mitigation:** the decision is per-package and tracked in the epic. Each can independently inline / stay-separate / drop.
 
 ## Migration plan

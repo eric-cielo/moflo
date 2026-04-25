@@ -191,7 +191,6 @@ async function generateRegistry(): Promise<PluginRegistry> {
 
   const officialPackages = [
     '@moflo/security',
-    '@moflo/claims',
     '@moflo/embeddings',
     '@moflo/neural',
     '@moflo/plugins',

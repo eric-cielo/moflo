@@ -20,11 +20,19 @@
 import { readdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, relative, sep } from 'path';
 
-const KNOWN_PACKAGES = [
-  'aidefence', 'claims', 'cli', 'embeddings', 'guidance', 'hooks',
-  'memory', 'neural', 'plugins', 'security', 'shared', 'spells',
-  'swarm', 'testing',
-];
+// Derive from the filesystem so deleted packages drop out without analyzer maintenance.
+function discoverKnownPackages(repoRoot) {
+  const modulesDir = join(repoRoot, 'src', 'modules');
+  if (!existsSync(modulesDir)) return [];
+  return readdirSync(modulesDir, { withFileTypes: true })
+    .filter(e => e.isDirectory() && existsSync(join(modulesDir, e.name, 'package.json')))
+    .map(e => e.name)
+    .sort();
+}
+
+// Module-level binding read by buildGraph/topoSort/findCycles/classify/renderJson/renderMd.
+// Set once in main() before any call site fires.
+let KNOWN_PACKAGES = [];
 
 const MODES = {
   src: { label: 'TypeScript source tree' },
@@ -390,6 +398,7 @@ function renderMd(result, mode, outFile) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
+  KNOWN_PACKAGES = discoverKnownPackages(args.root);
   const result = buildGraph(args);
 
   if (args.json) renderJson(result, args.json);

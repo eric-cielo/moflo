@@ -6,11 +6,11 @@ Foundation artifact for the workspace-collapse epic. Companion to [`0001-collaps
 
 The scanner walks three trees and produces the same edges in each:
 
-| Tree | Files | Notes |
-|------|-------|-------|
-| `src/**/*.ts` (source) | 1016 | Reference adjacency (canonical) |
-| `src/modules/*/dist/**/*.js` (compiled) | 651 | Identical adjacency to source — TypeScript build preserves edges |
-| `npm pack` tarball (consumer surface) | 602 | Same edges, but only 11 of 14 packages ship inside the tarball |
+| Tree | Notes |
+|------|-------|
+| `src/**/*.ts` (source) | Reference adjacency (canonical). File count: see `files` field in [`collapse-deps.json`](./collapse-deps.json). |
+| `src/modules/*/dist/**/*.js` (compiled) | Identical adjacency to source — TypeScript build preserves edges. |
+| `npm pack` tarball (consumer surface) | Same edges, but `testing` is excluded from the tarball (claims and aidefence were removed in #591/#590). |
 
 The scanner strips `/* ... */` and `// ...` comments before matching `'@moflo/<pkg>'` so JSDoc mentions don't contaminate the graph. Both `from '@moflo/X'` and `import('@moflo/X')` are included, plus string-form references inside `mofloImport(...)` / `requireMofloOrWarn(...)` (the moflo-require helpers used to dodge consumer-project resolution).
 
@@ -20,9 +20,7 @@ Each row lists the `@moflo/*` packages a given module imports.
 
 | Package | Outbound | Inbound | Imports |
 |---------|----------|---------|---------|
-| `aidefence` | 0 | 1 | _leaf_ |
-| `claims` | 0 | 1 | _leaf_ |
-| `cli` | 9 | 0 | `aidefence`, `claims`, `embeddings`, `memory`, `neural`, `plugins`, `security`, `shared`, `testing` |
+| `cli` | 10 | 0 | `embeddings`, `guidance`, `hooks`, `memory`, `neural`, `plugins`, `security`, `shared`, `swarm`, `testing` |
 | `embeddings` | 0 | 4 | _leaf_ |
 | `guidance` | 2 | 0 | `embeddings`, `hooks` |
 | `hooks` | 3 | 1 | `embeddings`, `memory`, `security` |
@@ -35,12 +33,14 @@ Each row lists the `@moflo/*` packages a given module imports.
 | `swarm` | 0 | 1 | _leaf_ |
 | `testing` | 3 | 1 | `memory`, `shared`, `swarm` |
 
+Done so far: `aidefence` (inlined into cli/src in #590), `claims` (deleted as dead code in #591 — source had zero importers; cli has its own live `ClaimService` and `claims-tools.ts`).
+
 ## Leaves (zero outbound `@moflo/*` imports — collapse first)
 
 These have no relative paths to other moflo packages to rewrite, so they merge cleanly:
 
 - `@moflo/aidefence` _(inlined in #590)_
-- `@moflo/claims` _(inline pending #591)_
+- `@moflo/claims` _(deleted as dead code in #591 — package source had zero importers; cli has its own live impl)_
 - `@moflo/embeddings`
 - `@moflo/plugins`
 - `@moflo/security`
@@ -57,7 +57,7 @@ Collapse after leaves; each has a single dependency edge to rewrite:
 - `@moflo/neural` → `memory`
 - `@moflo/guidance` → `embeddings`, `hooks`
 - `@moflo/hooks` → `embeddings`, `memory`, `security`
-- `@moflo/testing` → `memory`, `shared`, `swarm` _(separately published)_
+- `@moflo/testing` → `memory`, `shared`, `swarm` _(inline pending #601)_
 
 ## Trunk (highest fan-in / fan-out — collapse last)
 
@@ -81,7 +81,7 @@ Both edges are dynamic `await import(...)` guarded by try/catch — the runtime 
 After leaves and mid-tier are merged, the trunk falls in last. This ordering minimises work-in-progress: each step's `@moflo/*` imports are already local by the time we touch it.
 
 1. `@moflo/aidefence` _(leaf, inlined in #590)_
-2. `@moflo/claims` _(leaf, inline pending #591)_
+2. `@moflo/claims` _(leaf, deleted as dead code in #591)_
 3. `@moflo/embeddings` _(leaf)_
 4. `@moflo/plugins` _(leaf)_
 5. `@moflo/security` _(leaf)_
@@ -99,18 +99,18 @@ Steps 9–10 must move together because of the dynamic-import cycle.
 
 ## Consumer-surface caveat (the published tarball)
 
-`npm pack` only ships **11** of the 14 packages — `aidefence`, `claims`, and `testing` are excluded from `package.json#files`. They were declared `optionalDependencies: "file:../X"` in `src/modules/cli/package.json` to publish as standalone packages, but none is actually published on npm (`npm view @moflo/aidefence` 404s; same for `claims` and `testing`). The standalone-publish framing is **leftover from the ruvnet/ruflo fork** — these packages have zero external consumers.
+`npm pack` only ships **11** of the 12 remaining packages — `testing` is still excluded from `package.json#files`. It was declared `optionalDependencies: "file:../testing"` in `src/modules/cli/package.json` to look like a standalone package, but it is not actually published on npm (`npm view @moflo/testing` 404s). The standalone-publish framing is **leftover from the ruvnet/ruflo fork** — these packages have zero external consumers. (`aidefence` and `claims` shared this framing and were removed in #590 / #591.)
 
 `@moflo/cli` (which DOES ship in the tarball) keeps live import strings to all three:
 
 | Site | Form | Behaviour when missing |
 |------|------|------------------------|
-| `src/modules/cli/src/mcp-tools/auto-install.ts` | Registry entry (claims, testing) | Surfaces in interactive install prompt |
+| `src/modules/cli/src/mcp-tools/auto-install.ts` | Registry entry (testing) | Surfaces in interactive install prompt |
 | `src/modules/cli/src/update/checker.ts` | List of moflo packages | Skipped if not installed |
 | `src/modules/cli/src/plugins/store/discovery.ts` | Featured/official catalogue | Listing-only, no runtime resolve |
 | `src/modules/cli/package.json#optionalDependencies` | `"@moflo/<pkg>": "file:../<pkg>"` | Soft-fails npm-install; consumers can never `npm i @moflo/<pkg>` because it is not on npm |
 
-(The aidefence rows were removed as part of the #590 inline; #591 and #601 will remove the rest.)
+(The aidefence and claims rows were removed as part of #590 / #591; #601 will remove `testing`.)
 
 **Implication for the collapse epic:** the per-module stories for `aidefence`, `claims`, and `testing` collapse exactly like every other package — **inline**. Drop the `optionalDependencies` entries, the auto-install registry rows, the lazy-load retry paths in `security-tools.ts`, the phantom `optional-modules.d.ts` blocks, and the standalone-package marketing in `docs/modules/*.md`. There is no "keep separate" or "drop" branch to evaluate.
 
