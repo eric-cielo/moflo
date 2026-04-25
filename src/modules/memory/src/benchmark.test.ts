@@ -1,9 +1,24 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryGraph } from './memory-graph.js';
-import { LearningBridge } from './learning-bridge.js';
+import { LearningBridge, type EmbeddingLoader } from './learning-bridge.js';
 import { AutoMemoryBridge } from './auto-memory-bridge.js';
 import { resolveAgentMemoryDir, transferKnowledge } from './agent-memory-scope.js';
 import { createDefaultEntry, type IMemoryBackend, type MemoryEntry } from './types.js';
+
+// Stub embedder so benchmarks measure bridge overhead, not real ONNX
+// inference. Required since #531 removed the hash fallback — without a
+// loader, 1000 onInsightRecorded calls run fastembed and blow the 5s timeout.
+function createMockEmbeddingLoader(dimensions: number = 384): EmbeddingLoader {
+  return async () => ({
+    async embed(text: string) {
+      const embedding = new Float32Array(dimensions);
+      for (let i = 0; i < dimensions; i++) {
+        embedding[i] = (text.charCodeAt(i % Math.max(1, text.length)) % 97) / 97;
+      }
+      return { embedding };
+    },
+  });
+}
 
 function createMockBackend(entries: MemoryEntry[] = []): IMemoryBackend {
   const stored = new Map<string, MemoryEntry>();
@@ -173,7 +188,7 @@ describe('ADR-049 Performance Benchmarks', () => {
   it('LearningBridge: record 1000 insights', async () => {
     const mockNeural = createMockNeural();
     const backend = createMockBackend();
-    const lb = new LearningBridge(backend, { neuralLoader: async () => mockNeural, consolidationThreshold: 99999 });
+    const lb = new LearningBridge(backend, { neuralLoader: async () => mockNeural, embeddingLoader: createMockEmbeddingLoader(), consolidationThreshold: 99999 });
     const t0 = performance.now();
     for (let i = 0; i < 1000; i++) {
       await lb.onInsightRecorded({ category: 'debugging', summary: `Insight ${i}`, source: 'bench', confidence: 0.8 }, `entry-${i}`);
@@ -191,7 +206,7 @@ describe('ADR-049 Performance Benchmarks', () => {
     const entries: MemoryEntry[] = [];
     for (let i = 0; i < 1000; i++) { const e = makeEntry(`entry-${i}`); e.metadata.confidence = 0.5; entries.push(e); }
     const backend = createMockBackend(entries);
-    const lb = new LearningBridge(backend, { neuralLoader: async () => mockNeural, consolidationThreshold: 99999 });
+    const lb = new LearningBridge(backend, { neuralLoader: async () => mockNeural, embeddingLoader: createMockEmbeddingLoader(), consolidationThreshold: 99999 });
     // warm up trajectories
     for (let i = 0; i < 1000; i++) {
       await lb.onInsightRecorded({ category: 'debugging', summary: `I-${i}`, source: 'bench', confidence: 0.8 }, `entry-${i}`);
@@ -207,7 +222,7 @@ describe('ADR-049 Performance Benchmarks', () => {
   it('LearningBridge: consolidation', async () => {
     const mockNeural = createMockNeural();
     const backend = createMockBackend();
-    const lb = new LearningBridge(backend, { neuralLoader: async () => mockNeural, consolidationThreshold: 1 });
+    const lb = new LearningBridge(backend, { neuralLoader: async () => mockNeural, embeddingLoader: createMockEmbeddingLoader(), consolidationThreshold: 1 });
     for (let i = 0; i < 100; i++) {
       await lb.onInsightRecorded({ category: 'debugging', summary: `I-${i}`, source: 'bench', confidence: 0.8 }, `entry-${i}`);
     }
