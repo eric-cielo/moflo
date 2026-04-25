@@ -20,20 +20,20 @@ Each row lists the `@moflo/*` packages a given module imports.
 
 | Package | Outbound | Inbound | Imports |
 |---------|----------|---------|---------|
-| `cli` | 10 | 0 | `embeddings`, `guidance`, `hooks`, `memory`, `neural`, `plugins`, `security`, `shared`, `swarm`, `testing` |
-| `embeddings` | 0 | 4 | _leaf_ |
-| `guidance` | 2 | 0 | `embeddings`, `hooks` |
-| `hooks` | 3 | 1 | `embeddings`, `memory`, `security` |
-| `memory` | 2 | 4 | `embeddings`, `neural` |
+| `cli` | 8 | 0 | `guidance`, `hooks`, `memory`, `neural`, `security`, `shared`, `swarm`, `testing` |
+| `guidance` | 1 | 1 | `hooks` |
+| `hooks` | 2 | 2 | `memory`, `security` |
+| `memory` | 1 | 4 | `neural` |
 | `neural` | 1 | 2 | `memory` |
-| `plugins` | 0 | 1 | _leaf_ |
 | `security` | 0 | 2 | _leaf_ |
 | `shared` | 0 | 2 | _leaf_ |
 | `spells` | 0 | 0 | _leaf, isolated_ |
-| `swarm` | 0 | 1 | _leaf_ |
+| `swarm` | 0 | 2 | _leaf_ |
 | `testing` | 3 | 1 | `memory`, `shared`, `swarm` |
 
-Done so far: `aidefence` (inlined into cli/src in #590), `claims` (deleted as dead code in #591 — source had zero importers; cli has its own live `ClaimService` and `claims-tools.ts`), `embeddings` (inlined into cli/src in #592).
+(Source of truth: [`collapse-deps.json`](./collapse-deps.json). If this table drifts, regenerate via `node scripts/analyze-collapse-deps.mjs --src --json docs/adr/collapse-deps.json`.)
+
+Done so far: `aidefence` (inlined into cli/src in #590), `claims` (deleted as dead code in #591 — source had zero importers; cli has its own live `ClaimService` and `claims-tools.ts`), `embeddings` (inlined into cli/src in #592), `plugins` (deleted as dead code in #593 — SDK had zero importers; spell engine has its own parallel `StepCommandRegistry` + `ConnectorRegistry`).
 
 ## Leaves (zero outbound `@moflo/*` imports — collapse first)
 
@@ -42,7 +42,7 @@ These have no relative paths to other moflo packages to rewrite, so they merge c
 - `@moflo/aidefence` _(inlined in #590)_
 - `@moflo/claims` _(deleted as dead code in #591 — package source had zero importers; cli has its own live impl)_
 - `@moflo/embeddings` _(inlined into cli/src in #592)_
-- `@moflo/plugins`
+- `@moflo/plugins` _(deleted as dead code in #593 — SDK had zero importers; spell engine uses its own parallel `StepCommandRegistry` + `ConnectorRegistry`)_
 - `@moflo/security`
 - `@moflo/shared`
 - `@moflo/spells` _(also zero inbound — fully isolated)_
@@ -59,7 +59,7 @@ Collapse after leaves; each has a single dependency edge to rewrite:
 
 ## Trunk (highest fan-in / fan-out — collapse last)
 
-- `@moflo/cli` — outbound 9, inbound 0. CLI is the ultimate consumer; flipping it changes every command surface. By the time everything else has collapsed, all of cli's `@moflo/*` imports become local.
+- `@moflo/cli` — outbound 8, inbound 0. CLI is the ultimate consumer; flipping it changes every command surface. By the time everything else has collapsed, all of cli's `@moflo/*` imports become local.
 - `@moflo/memory` — inbound 4 (cli, hooks, neural, testing). Touching memory's package boundary affects four call-site groups.
 
 ## Cycles
@@ -80,7 +80,7 @@ After leaves and mid-tier are merged, the trunk falls in last. This ordering min
 1. `@moflo/aidefence` _(leaf, inlined in #590)_
 2. `@moflo/claims` _(leaf, deleted as dead code in #591)_
 3. `@moflo/embeddings` _(leaf, inlined into cli/src in #592)_
-4. `@moflo/plugins` _(leaf)_
+4. `@moflo/plugins` _(leaf, deleted as dead code in #593)_
 5. `@moflo/security` _(leaf)_
 6. `@moflo/shared` _(leaf)_
 7. `@moflo/spells` _(leaf, isolated)_
@@ -96,7 +96,7 @@ Steps 9–10 must move together because of the dynamic-import cycle.
 
 ## Consumer-surface caveat (the published tarball)
 
-`npm pack` only ships **11** of the 12 remaining packages — `testing` is still excluded from `package.json#files`. It was declared `optionalDependencies: "file:../testing"` in `src/modules/cli/package.json` to look like a standalone package, but it is not actually published on npm (`npm view @moflo/testing` 404s). The standalone-publish framing is **leftover from the ruvnet/ruflo fork** — these packages have zero external consumers. (`aidefence` and `claims` shared this framing and were removed in #590 / #591.)
+`npm pack` only ships **9** of the 10 remaining packages — `testing` is still excluded from `package.json#files`. It was declared `optionalDependencies: "file:../testing"` in `src/modules/cli/package.json` to look like a standalone package, but it is not actually published on npm (`npm view @moflo/testing` 404s). The standalone-publish framing is **leftover from the ruvnet/ruflo fork** — these packages have zero external consumers. (`aidefence`, `claims`, and `plugins` shared this framing and were removed in #590 / #591 / #593.)
 
 `@moflo/cli` (which DOES ship in the tarball) keeps live import strings to all three:
 
