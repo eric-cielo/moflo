@@ -81,6 +81,44 @@ export async function mofloImportRequired(specifier: string): Promise<any> {
 }
 
 /**
+ * Import a moflo-bundled package and loud-fail when it isn't resolvable.
+ *
+ * `mofloImport` returns null silently on resolution failure so probe-style
+ * callers (e.g. `mofloImport('sql.js')` for an optional dep) work cleanly.
+ * Packages bundled in the moflo tarball must be louder: an unresolved
+ * `@moflo/*` means a broken install, and silent skip leaves consumers stuck
+ * on stale state with no signal in their logs. Wrap with this helper at any
+ * call site where missing == broken.
+ *
+ * Behaviour:
+ *   - Resolves: returns the module.
+ *   - Unresolvable + `throwIfMissing: true`: throws Error with the same
+ *     message that would otherwise be written to stderr (caller catches
+ *     and surfaces a typed response — used by MCP handlers).
+ *   - Unresolvable + `throwIfMissing: false` (default): writes one stderr
+ *     line and returns null. Caller continues with a fallback path.
+ *
+ * The stderr line shape is `[<tag>] <specifier> not resolvable — <consequence>`,
+ * so log-grep and the consumer-smoke harness's stderr scan both pick it up.
+ */
+export async function requireMofloOrWarn(
+  specifier: string,
+  expectedExports: readonly string[],
+  opts: { tag: string; consequence: string; throwIfMissing?: boolean },
+): Promise<any | null> {
+  const mod = await mofloImport(specifier, expectedExports);
+  if (mod) return mod;
+  const message =
+    `[${opts.tag}] ${specifier} not resolvable — ${opts.consequence} ` +
+    `Indicates a broken moflo install (missing from tarball or hoisting failure).`;
+  if (opts.throwIfMissing) {
+    throw new Error(message);
+  }
+  process.stderr.write(message + '\n');
+  return null;
+}
+
+/**
  * Resolve a package path without importing (useful for WASM file paths etc).
  * Returns the resolved path, or null if not found.
  */

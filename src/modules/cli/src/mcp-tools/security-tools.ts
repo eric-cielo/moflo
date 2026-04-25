@@ -412,8 +412,13 @@ const aidefenceIsSafeTool: MCPTool = {
     const input = args.input as string;
 
     try {
-      const { isSafe } = await import('@moflo/aidefence');
-      const safe = isSafe(input);
+      // Route through getAIDefence() so this tool inherits the same auto-install
+      // fallback as every other aidefence handler in this file. A bare
+      // `import('@moflo/aidefence')` skips that path and surfaces a hard
+      // ERR_MODULE_NOT_FOUND when the package isn't resolvable.
+      const defender = await getAIDefence();
+      const result = defender.quickScan(input);
+      const safe = !result.threat;
 
       return {
         content: [{

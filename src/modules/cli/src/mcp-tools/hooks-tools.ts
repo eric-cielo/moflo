@@ -6,6 +6,7 @@
 import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync, readdirSync } from 'fs';
 import { dirname, join, resolve, extname } from 'path';
 import type { MCPTool } from './types.js';
+import { requireMofloOrWarn } from '../services/moflo-require.js';
 
 // Real vector search functions - lazy loaded to avoid circular imports
 let searchEntriesFn: ((options: {
@@ -123,8 +124,16 @@ const TASK_PATTERN_EMBEDDINGS: Map<string, Float32Array> = new Map();
 let embeddingService: { embed(t: string): Promise<{ embedding: Float32Array }>; embedBatch(ts: string[]): Promise<{ embeddings: Float32Array[] }> } | null = null;
 async function getEmbeddingService() {
   if (embeddingService) return embeddingService;
-  const { createEmbeddingService } = await import('@moflo/embeddings');
-  embeddingService = createEmbeddingService({ provider: 'fastembed' }) as typeof embeddingService;
+  const mod = await requireMofloOrWarn(
+    '@moflo/embeddings',
+    ['createEmbeddingService'],
+    {
+      tag: 'hooks-tools',
+      consequence: 'routing/attention require fastembed and have nothing to fall back to.',
+      throwIfMissing: true,
+    },
+  );
+  embeddingService = mod.createEmbeddingService({ provider: 'fastembed' }) as typeof embeddingService;
   return embeddingService!;
 }
 

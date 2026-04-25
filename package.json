@@ -1,6 +1,6 @@
 {
   "name": "moflo",
-  "version": "4.8.87-rc.2",
+  "version": "4.8.87-rc.3",
   "description": "MoFlo — AI agent orchestration for Claude Code. Forked from ruflo/claude-flow with patches applied to source, plus feature-level orchestration.",
   "main": "dist/index.js",
   "type": "module",
@@ -114,7 +114,7 @@
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.0.0",
-    "moflo": "^4.8.87-rc.2",
+    "moflo": "^4.8.87-rc.3",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"

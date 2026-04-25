@@ -399,6 +399,36 @@ try {
   }
 } catch { /* non-fatal — flo still works via npx */ }
 
+// ── 3e. Foreground embeddings migration (visible UX) ───────────────────────
+// Run the embeddings-version migration synchronously with piped stdio BEFORE
+// we fire off background tasks, so the UpgradeRenderer's TTY bar / non-TTY
+// status lines reach the user. Returns fast when no DB exists, the schema
+// predates v3, or the stored version is already current — so the happy-path
+// cost on every session start is a few ms of probe work.
+try {
+  const migrationPaths = [
+    resolve(projectRoot, 'node_modules/moflo/src/modules/cli/dist/src/services/embeddings-migration.js'),
+    resolve(projectRoot, 'src/modules/cli/dist/src/services/embeddings-migration.js'),
+  ];
+  const migrationPath = migrationPaths.find((p) => existsSync(p));
+  if (migrationPath) {
+    const mod = await import(`file://${migrationPath.replace(/\\/g, '/')}`);
+    if (typeof mod.runEmbeddingsMigrationIfNeeded === 'function') {
+      await mod.runEmbeddingsMigrationIfNeeded({
+        out: process.stderr,
+        isTTY: Boolean(process.stderr.isTTY),
+      });
+    }
+  }
+} catch (err) {
+  // Non-fatal — a failed/aborted migration must not block session start. The
+  // driver persists its cursor so the next session picks up where we left off.
+  try {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`embeddings migration check skipped: ${msg}\n`);
+  } catch { /* writing the failure itself must not throw */ }
+}
+
 // ── 4. Spawn background tasks ───────────────────────────────────────────────
 const localCli = resolve(projectRoot, 'node_modules/moflo/src/modules/cli/bin/cli.js');
 const hasLocalCli = existsSync(localCli);

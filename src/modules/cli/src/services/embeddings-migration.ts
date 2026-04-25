@@ -16,7 +16,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { mofloImport } from './moflo-require.js';
+import { mofloImport, requireMofloOrWarn } from './moflo-require.js';
 import { atomicWriteFileSync } from './atomic-file-write.js';
 
 export interface RunEmbeddingsMigrationOptions {
@@ -48,12 +48,15 @@ export async function runEmbeddingsMigrationIfNeeded(
   );
   if (!fs.existsSync(dbPath)) return false;
 
-  let embeddings: unknown;
-  try {
-    embeddings = await import('@moflo/embeddings');
-  } catch {
-    return false;
-  }
+  const embeddings = await requireMofloOrWarn(
+    '@moflo/embeddings',
+    ['EMBEDDINGS_VERSION', 'createEmbeddingService', 'runUpgrade'],
+    {
+      tag: 'embeddings-migration',
+      consequence: 'migration skipped; memory.db will keep its current embeddings_version.',
+    },
+  );
+  if (!embeddings) return false;
 
   const initSqlJs = (await mofloImport('sql.js'))?.default;
   if (!initSqlJs) return false;
