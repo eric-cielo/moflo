@@ -142,7 +142,6 @@ export type MofloInternalPackage =
   | 'neural'
   | 'security'
   | 'shared'
-  | 'spells'
   | 'plugins'
   | 'cli';
 

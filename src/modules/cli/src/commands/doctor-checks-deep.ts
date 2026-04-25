@@ -201,7 +201,7 @@ export async function checkSubagentHealth(): Promise<HealthCheck> {
 export async function checkSpellExecution(): Promise<HealthCheck> {
   try {
     const modulePath = findModule(
-      'src/modules/spells/dist/factory/runner-factory.js',
+      'src/modules/cli/dist/src/spells/factory/runner-factory.js',
     );
     if (!modulePath) {
       return { name: 'Spell Execution', status: 'warn', message: 'Spell runner-factory not found', fix: 'npm run build' };
@@ -411,7 +411,7 @@ export async function checkHookExecution(): Promise<HealthCheck> {
 export async function checkMcpSpellIntegration(): Promise<HealthCheck> {
   try {
     const bridgePath = findModule(
-      'src/modules/spells/dist/factory/runner-bridge.js',
+      'src/modules/cli/dist/src/spells/factory/runner-bridge.js',
     );
     if (!bridgePath) {
       return { name: 'MCP Spell Integration', status: 'warn', message: 'runner-bridge not found', fix: 'npm run build' };

@@ -11,15 +11,15 @@ import { defineConfig } from 'vitest/config';
 export const isolationTests = [
   'tests/bin/process-manager-stress.test.ts',
   'src/modules/memory/src/database-provider.test.ts',
-  'src/modules/spells/__tests__/sandbox-tier-integration.test.ts',
-  'src/modules/spells/__tests__/spell-sandboxing.test.ts',
+  'src/modules/cli/__tests__/spells/sandbox-tier-integration.test.ts',
+  'src/modules/cli/__tests__/spells/spell-sandboxing.test.ts',
   'src/modules/hooks/__tests__/statusline/statusline-collision.test.ts',
-  'src/modules/spells/__tests__/integration/permission-system-e2e.test.ts',
-  'src/modules/spells/__tests__/integration/spell-engine-e2e.test.ts',
+  'src/modules/cli/__tests__/spells/integration/permission-system-e2e.test.ts',
+  'src/modules/cli/__tests__/spells/integration/spell-engine-e2e.test.ts',
   'tests/system/pluggable-steps-system.test.ts',
   // Timing-based parallelism assertion — Windows maxForks contention pushes
   // the 75ms threshold over on full-suite runs; passes alone consistently.
-  'src/modules/spells/__tests__/preflights.test.ts',
+  'src/modules/cli/__tests__/spells/preflights.test.ts',
   // Command-index registration — dynamic import of the command registry
   // consistently exceeds 5s under full-suite load on Windows (6s cold alone).
   'src/modules/cli/__tests__/spell-command.test.ts',
@@ -30,13 +30,13 @@ export const isolationTests = [
   'src/modules/cli/__tests__/p1-commands.test.ts',
   'src/modules/cli/__tests__/services/worker-daemon-resource-thresholds.test.ts',
   'src/modules/cli/__tests__/spell-tools-engine.test.ts',
-  'src/modules/spells/__tests__/connector-lifecycle.test.ts',
+  'src/modules/cli/__tests__/spells/connector-lifecycle.test.ts',
   // prerequisites.test.ts split into 4 files (#522) — all share the same
   // dynamic-import load profile, so all four stay on the isolation list.
-  'src/modules/spells/__tests__/prerequisites-registry.test.ts',
-  'src/modules/spells/__tests__/prerequisites-spec.test.ts',
-  'src/modules/spells/__tests__/prerequisites-resolve.test.ts',
-  'src/modules/spells/__tests__/prerequisites-integration.test.ts',
+  'src/modules/cli/__tests__/spells/prerequisites-registry.test.ts',
+  'src/modules/cli/__tests__/spells/prerequisites-spec.test.ts',
+  'src/modules/cli/__tests__/spells/prerequisites-resolve.test.ts',
+  'src/modules/cli/__tests__/spells/prerequisites-integration.test.ts',
   'tests/bin/gate-helpers.test.ts',
   // Spawn/kill timing sensitive — `getActive returns only alive processes`
   // intermittently observes the child before it's reaped on Windows maxForks=2.
@@ -60,14 +60,14 @@ export const isolationTests = [
   'src/modules/cli/__tests__/guidance/persistence.test.ts',
   'src/modules/hooks/__tests__/workers.test.ts',
   'src/modules/cli/src/shared/hooks/verify-exports.test.ts',
-  'src/modules/spells/__tests__/built-in-commands.test.ts',
-  'src/modules/spells/__tests__/moflo-levels.test.ts',
-  'src/modules/spells/__tests__/parallel-integration.test.ts',
-  'src/modules/spells/__tests__/pause-resume.test.ts',
-  'src/modules/spells/__tests__/preflight-severity.test.ts',
-  'src/modules/spells/__tests__/runner-bridge.test.ts',
-  'src/modules/spells/__tests__/runner.test.ts',
-  'src/modules/spells/__tests__/tool-registry.test.ts',
+  'src/modules/cli/__tests__/spells/built-in-commands.test.ts',
+  'src/modules/cli/__tests__/spells/moflo-levels.test.ts',
+  'src/modules/cli/__tests__/spells/parallel-integration.test.ts',
+  'src/modules/cli/__tests__/spells/pause-resume.test.ts',
+  'src/modules/cli/__tests__/spells/preflight-severity.test.ts',
+  'src/modules/cli/__tests__/spells/runner-bridge.test.ts',
+  'src/modules/cli/__tests__/spells/runner.test.ts',
+  'src/modules/cli/__tests__/spells/tool-registry.test.ts',
   'tests/bin/bin-scripts.test.ts',
   'tests/guards/hash-fallback-guard.test.ts',
   'tests/hive-mind-messagebus.test.ts',

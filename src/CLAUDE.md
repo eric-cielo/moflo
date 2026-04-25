@@ -13,11 +13,10 @@ npm install && npm run build && npm test
 
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@moflo/cli` | `modules/cli/` | CLI entry point (40+ commands); also hosts inlined `aidefence`, `embeddings`, `guidance`, `shared` |
+| `@moflo/cli` | `modules/cli/` | CLI entry point (40+ commands); also hosts inlined `aidefence`, `embeddings`, `guidance`, `shared`, `spells` |
 | `@moflo/hooks` | `modules/hooks/` | Hooks + workers |
 | `@moflo/memory` | `modules/memory/` | sql.js + HNSW vector search (MofloDb) |
 | `@moflo/neural` | `modules/neural/` | Neural patterns (SONA) |
-| `@moflo/spells` | `modules/spells/` | Spell engine |
 
 ## Code Quality
 

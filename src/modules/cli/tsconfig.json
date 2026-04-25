@@ -15,7 +15,6 @@
   "exclude": ["node_modules", "dist"],
   "references": [
     { "path": "../hooks" },
-    { "path": "../swarm" },
-    { "path": "../spells" }
+    { "path": "../swarm" }
   ]
 }

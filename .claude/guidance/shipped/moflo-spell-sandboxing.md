@@ -220,7 +220,7 @@ sandbox:
   tier: auto       # auto | denylist-only | full
 ```
 
-Semantics (from `resolveEffectiveSandbox()` in `src/modules/spells/src/core/platform-sandbox.ts`):
+Semantics (from `resolveEffectiveSandbox()` in `src/modules/cli/src/spells/core/platform-sandbox.ts`):
 
 | `enabled` | `tier` | Tool available | OS sandbox runs? | Notes |
 |-----------|--------|----------------|------------------|-------|
@@ -264,7 +264,7 @@ Typical error messages from inside a bash step:
 
 **Tell-tale clue:** the error mentions `Temporary failure in name resolution` (a glibc-specific wording). That means the step is running inside a Linux sandbox (`bwrap` on Linux / WSL), **not** your outer shell — Git Bash or PowerShell won't produce that exact message.
 
-**Root cause:** `src/modules/spells/src/core/bwrap-sandbox.ts` isolates the network by default:
+**Root cause:** `src/modules/cli/src/spells/core/bwrap-sandbox.ts` isolates the network by default:
 
 ```ts
 if (!hasNet && !needsToolHomeAccess(options.permissionLevel)) {
@@ -304,6 +304,6 @@ Or declare the `net` capability explicitly if the step doesn't need the full `el
 - `.claude/guidance/shipped/moflo-spell-connectors.md` — Optional resource adapters (not the enforcement layer)
 - `.claude/guidance/shipped/moflo-spell-engine-architecture.md` — Engine architecture and messaging
 - `.claude/guidance/shipped/moflo-core-guidance.md` — Full CLI/MCP reference
-- `src/modules/spells/src/core/permission-resolver.ts` — Capability → permission level derivation
-- `src/modules/spells/src/core/permission-disclosure.ts` — Risk classification and reporting
-- `src/modules/spells/src/core/permission-acceptance.ts` — Acceptance storage and gate
+- `src/modules/cli/src/spells/core/permission-resolver.ts` — Capability → permission level derivation
+- `src/modules/cli/src/spells/core/permission-disclosure.ts` — Risk classification and reporting
+- `src/modules/cli/src/spells/core/permission-acceptance.ts` — Acceptance storage and gate

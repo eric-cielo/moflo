@@ -42,4 +42,4 @@ Nested steps are defined on the step itself via the `steps` field, not inside `c
 
 ## Source
 
-`src/modules/spells/src/commands/parallel-command.ts`
+`src/modules/cli/src/spells/commands/parallel-command.ts`

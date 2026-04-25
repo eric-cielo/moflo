@@ -52,4 +52,4 @@ Requires `playwright` as a peer dependency.
 
 ## Source
 
-`src/modules/spells/src/connectors/playwright.ts`
+`src/modules/cli/src/spells/connectors/playwright.ts`

@@ -40,8 +40,8 @@ describe('engine-loader', () => {
     expect(mod.getCachedEngine()).toBeNull();
   });
 
-  it('loadSpellEngine should throw when spells package is not built', async () => {
-    vi.doMock('../../../../modules/spells/dist/index.js', () => {
+  it('loadSpellEngine should throw when the spells engine import fails', async () => {
+    vi.doMock('../../src/spells/index.js', () => {
       throw new Error('Cannot find module');
     });
 
@@ -52,7 +52,7 @@ describe('engine-loader', () => {
   });
 
   it('loadSpellEngine should return the engine module on success', async () => {
-    vi.doMock('../../../../modules/spells/dist/index.js', () => createFakeEngine());
+    vi.doMock('../../src/spells/index.js', () => createFakeEngine());
 
     const mod = await import('../../src/services/engine-loader.js');
     const engine = await mod.loadSpellEngine();
@@ -63,7 +63,7 @@ describe('engine-loader', () => {
   });
 
   it('should cache the engine after first load (singleton)', async () => {
-    vi.doMock('../../../../modules/spells/dist/index.js', () => createFakeEngine());
+    vi.doMock('../../src/spells/index.js', () => createFakeEngine());
 
     const mod = await import('../../src/services/engine-loader.js');
 
@@ -73,7 +73,7 @@ describe('engine-loader', () => {
   });
 
   it('getCachedEngine should return the engine after successful load', async () => {
-    vi.doMock('../../../../modules/spells/dist/index.js', () => createFakeEngine());
+    vi.doMock('../../src/spells/index.js', () => createFakeEngine());
 
     const mod = await import('../../src/services/engine-loader.js');
 

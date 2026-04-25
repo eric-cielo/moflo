@@ -9,14 +9,14 @@
 
 import type {
   SpellExecutor,
-} from '../../../spells/src/scheduler/scheduler.js';
+} from '../spells/scheduler/scheduler.js';
 import type {
   MofloLevel,
   MemoryAccessor,
-} from '../../../spells/src/types/step-command.types.js';
-import type { SpellResult, SpellErrorCode } from '../../../spells/src/types/runner.types.js';
-import type { SpellDefinition } from '../../../spells/src/types/spell-definition.types.js';
-import type { Grimoire } from '../../../spells/src/registry/spell-registry.js';
+} from '../spells/types/step-command.types.js';
+import type { SpellResult, SpellErrorCode } from '../spells/types/runner.types.js';
+import type { SpellDefinition } from '../spells/types/spell-definition.types.js';
+import type { Grimoire } from '../spells/registry/spell-registry.js';
 import {
   loadSpellEngine,
   type EngineModule,

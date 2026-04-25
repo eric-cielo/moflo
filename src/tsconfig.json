@@ -8,8 +8,7 @@
       "@moflo/memory": ["./modules/memory/src"],
       "@moflo/neural": ["./modules/neural/src"],
       "@moflo/swarm": ["./modules/swarm/src"],
-      "@moflo/testing": ["./modules/testing/src"],
-      "@moflo/spells": ["./modules/spells/src"]
+      "@moflo/testing": ["./modules/testing/src"]
     }
   },
   "references": [
@@ -18,8 +17,7 @@
     { "path": "./modules/memory" },
     { "path": "./modules/neural" },
     { "path": "./modules/swarm" },
-    { "path": "./modules/testing" },
-    { "path": "./modules/spells" }
+    { "path": "./modules/testing" }
   ],
   "include": [],
   "exclude": ["node_modules", "dist"]

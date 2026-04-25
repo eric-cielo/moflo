@@ -4,7 +4,6 @@
     "hooks",
     "memory",
     "neural",
-    "spells",
     "swarm",
     "testing"
   ],
@@ -25,7 +24,6 @@
     "neural": [
       "memory"
     ],
-    "spells": [],
     "swarm": [],
     "testing": [
       "memory",
@@ -46,5 +44,5 @@
     ]
   ],
   "files": 939,
-  "generatedAt": "2026-04-25T19:27:02Z"
+  "generatedAt": "2026-04-25T20:07:36Z"
 }

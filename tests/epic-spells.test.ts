@@ -8,10 +8,10 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseYaml } from '../src/modules/spells/src/schema/parser.js';
-import { interpolateString } from '../src/modules/spells/src/core/interpolation.js';
-import { createMockContext } from '../src/modules/spells/__tests__/helpers.js';
-import type { SpellDefinition } from '../src/modules/spells/src/types/spell-definition.types.js';
+import { parseYaml } from '../src/modules/cli/src/spells/schema/parser.js';
+import { interpolateString } from '../src/modules/cli/src/spells/core/interpolation.js';
+import { createMockContext } from '../src/modules/cli/__tests__/spells/helpers.js';
+import type { SpellDefinition } from '../src/modules/cli/src/spells/types/spell-definition.types.js';
 
 // ============================================================================
 // Helpers
@@ -310,9 +310,9 @@ describe('auto-merge.yaml', () => {
 // Preflight Integration — ensures runner picks up YAML preflights correctly
 // ============================================================================
 
-import { collectPreflights } from '../src/modules/spells/src/core/preflight-checker.js';
-import { StepCommandRegistry } from '../src/modules/spells/src/core/step-command-registry.js';
-import { builtinCommands } from '../src/modules/spells/src/commands/index.js';
+import { collectPreflights } from '../src/modules/cli/src/spells/core/preflight-checker.js';
+import { StepCommandRegistry } from '../src/modules/cli/src/spells/core/step-command-registry.js';
+import { builtinCommands } from '../src/modules/cli/src/spells/commands/index.js';
 
 describe('epic spell preflight integration', () => {
   function buildRegistry(): StepCommandRegistry {

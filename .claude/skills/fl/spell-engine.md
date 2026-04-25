@@ -2,7 +2,7 @@
 
 When `-wf` is used, the /flo skill switches to the generalized spell engine
 instead of the hardcoded coding process. This uses the `Grimoire` from
-`@moflo/spells` to resolve and run YAML/JSON spell definitions.
+`cli/spells` to resolve and run YAML/JSON spell definitions.
 
 ## Scan Directories (in priority order)
 
