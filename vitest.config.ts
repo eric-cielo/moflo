@@ -47,6 +47,31 @@ export const isolationTests = [
   // maxForks=2 and pushes neighboring tests over their timeouts. Cached
   // runs are <2 s but the cache-cold path is the one CI exercises.
   'src/modules/cli/__tests__/embeddings/fastembed-inline-integration.test.ts',
+  // Issue #617 — full-suite Windows fork contention triage. Across 4
+  // back-to-back `npm test` runs the failure set varied 31/41/42/49 with
+  // wildly different members; every file below was verified to pass in
+  // isolation (and the three that needed individual re-verification —
+  // doctor-sandbox-tier, pause-resume, runner-bridge — pass cleanly when
+  // run alone, but exceed 5 s timeouts when batched even sequentially).
+  'src/modules/cli/__tests__/cli.test.ts',
+  'src/modules/cli/__tests__/doctor-sandbox-tier.test.ts',
+  'src/modules/cli/__tests__/mcp-tools-deep.test.ts',
+  'src/modules/cli/__tests__/services/moflo-require.test.ts',
+  'src/modules/guidance/tests/persistence.test.ts',
+  'src/modules/hooks/__tests__/workers.test.ts',
+  'src/modules/shared/src/hooks/verify-exports.test.ts',
+  'src/modules/spells/__tests__/built-in-commands.test.ts',
+  'src/modules/spells/__tests__/moflo-levels.test.ts',
+  'src/modules/spells/__tests__/parallel-integration.test.ts',
+  'src/modules/spells/__tests__/pause-resume.test.ts',
+  'src/modules/spells/__tests__/preflight-severity.test.ts',
+  'src/modules/spells/__tests__/runner-bridge.test.ts',
+  'src/modules/spells/__tests__/runner.test.ts',
+  'src/modules/spells/__tests__/tool-registry.test.ts',
+  'tests/bin/bin-scripts.test.ts',
+  'tests/guards/hash-fallback-guard.test.ts',
+  'tests/hive-mind-messagebus.test.ts',
+  'tests/issue-fixes.test.ts',
 ];
 
 export default defineConfig({
