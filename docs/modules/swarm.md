@@ -30,5 +30,3 @@ The cli imports swarm via direct relative paths (no `@moflo/swarm` bare specifie
 import { MessageBus, WriteThroughAdapter } from '../swarm/message-bus/index.js';
 import { UnifiedSwarmCoordinator } from '../swarm/unified-coordinator.js';
 ```
-
-External-package consumers (`@moflo/testing`) reach the built artifact via a layout-invariant walk-up to `src/modules/cli/dist/src/swarm/...` — required because testing lives in a sibling package whose `node_modules/@moflo/swarm` does not exist after collapse. After #599 the hooks code is inlined into cli and imports `MessageBus` directly from `../../swarm/message-bus/message-bus.js`.

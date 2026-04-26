@@ -1,19 +1,14 @@
 {
   "packages": [
-    "cli",
-    "testing"
+    "cli"
   ],
   "adjacency": {
-    "cli": [
-      "testing"
-    ],
-    "testing": []
+    "cli": []
   },
   "rootRefs": [
-    "cli",
-    "testing"
+    "cli"
   ],
   "cycles": [],
-  "files": 929,
-  "generatedAt": "2026-04-25T23:01:16Z"
+  "files": 891,
+  "generatedAt": "2026-04-26T00:13:16Z"
 }

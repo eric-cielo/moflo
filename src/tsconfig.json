@@ -3,13 +3,11 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@moflo/cli": ["./modules/cli/src"],
-      "@moflo/testing": ["./modules/testing/src"]
+      "@moflo/cli": ["./modules/cli/src"]
     }
   },
   "references": [
-    { "path": "./modules/cli" },
-    { "path": "./modules/testing" }
+    { "path": "./modules/cli" }
   ],
   "include": [],
   "exclude": ["node_modules", "dist"]

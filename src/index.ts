@@ -65,19 +65,12 @@ export * as cli from './modules/cli/src/index.js';
  */
 export * as neural from './modules/cli/src/neural/index.js';
 
-/**
- * Testing module - TDD London School framework, test utilities
- * @see {@link @moflo/testing}
- */
-export * as testing from './modules/testing/src/index.js';
-
 // =============================================================================
 // Module List for Dynamic Loading
 // =============================================================================
 
 export const MODULES = [
   '@moflo/cli',
-  '@moflo/testing',
 ] as const;
 
 export type ModuleName = (typeof MODULES)[number];
