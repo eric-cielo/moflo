@@ -78,6 +78,27 @@ describe('WorkerDaemon', () => {
       expect(typeof daemon.on).toBe('function');
       expect(typeof daemon.emit).toBe('function');
     });
+
+    it('default registry has audit worker disabled (#633)', () => {
+      // No explicit workers config — falls through to DEFAULT_WORKERS
+      const defaultDaemon = new WorkerDaemon('/tmp/test-default', { autoStart: false });
+      const audit = defaultDaemon.getStatus().config.workers.find(w => w.type === 'audit');
+      expect(audit).toBeDefined();
+      expect(audit?.enabled).toBe(false);
+    });
+
+    it('default registry keeps non-audit workers enabled', () => {
+      const defaultDaemon = new WorkerDaemon('/tmp/test-default-others', { autoStart: false });
+      const workers = defaultDaemon.getStatus().config.workers;
+      const map = workers.find(w => w.type === 'map');
+      const optimize = workers.find(w => w.type === 'optimize');
+      const consolidate = workers.find(w => w.type === 'consolidate');
+      const testgaps = workers.find(w => w.type === 'testgaps');
+      expect(map?.enabled).toBe(true);
+      expect(optimize?.enabled).toBe(true);
+      expect(consolidate?.enabled).toBe(true);
+      expect(testgaps?.enabled).toBe(true);
+    });
   });
 
   // ===========================================================================

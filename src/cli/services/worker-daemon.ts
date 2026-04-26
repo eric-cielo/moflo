@@ -99,7 +99,10 @@ interface WorkerConfigInternal extends WorkerConfig {
 // Default worker configurations with improved intervals (P0 fix: map 5min -> 15min)
 const DEFAULT_WORKERS: WorkerConfigInternal[] = [
   { type: 'map', intervalMs: 15 * 60 * 1000, offsetMs: 0, priority: 'normal', description: 'Codebase mapping', enabled: true },
-  { type: 'audit', intervalMs: 10 * 60 * 1000, offsetMs: 2 * 60 * 1000, priority: 'critical', description: 'Security analysis', enabled: true },
+  // Default-disabled until the perf regression in #631 is remediated. The
+  // worker averages 238 s/run on real installs, saturating cores back-to-back
+  // when scheduled at the 10-minute interval. Re-enable here when #631 ships.
+  { type: 'audit', intervalMs: 10 * 60 * 1000, offsetMs: 2 * 60 * 1000, priority: 'critical', description: 'Security analysis', enabled: false },
   { type: 'optimize', intervalMs: 15 * 60 * 1000, offsetMs: 4 * 60 * 1000, priority: 'high', description: 'Performance optimization', enabled: true },
   { type: 'consolidate', intervalMs: 30 * 60 * 1000, offsetMs: 6 * 60 * 1000, priority: 'low', description: 'Memory consolidation', enabled: true },
   { type: 'testgaps', intervalMs: 20 * 60 * 1000, offsetMs: 8 * 60 * 1000, priority: 'normal', description: 'Test coverage analysis', enabled: true },
@@ -457,10 +460,16 @@ export class WorkerDaemon extends EventEmitter {
     this.emit('started', { pid: process.pid, startedAt: this.startedAt });
 
     // Schedule all enabled workers
+    const skipped: string[] = [];
     for (const workerConfig of this.config.workers) {
       if (workerConfig.enabled) {
         this.scheduleWorker(workerConfig);
+      } else {
+        skipped.push(workerConfig.type);
       }
+    }
+    if (skipped.length > 0) {
+      this.log('info', `Skipping disabled workers: ${skipped.join(', ')} (audit is default-off pending #631)`);
     }
 
     if (this.scheduler && !this.scheduler.isRunning) {
