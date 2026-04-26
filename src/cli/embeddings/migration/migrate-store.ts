@@ -6,6 +6,15 @@
  * bumps the store's `embeddings_version` marker to {@link EMBEDDINGS_VERSION}
  * only once the final batch commits.
  *
+ * **Eligibility is the store's contract, not the driver's.** The driver
+ * iterates whatever `store.iterItems()` yields. Modern stores
+ * (`SqlJsMemoryEntriesStore` with `targetModel` set, post-#650) filter to
+ * rows whose `embedding_model` does not match the target — so a partially-
+ * migrated DB self-heals on the next call instead of trusting the
+ * `embeddings_version` stamp. Stores that omit `targetModel` keep the legacy
+ * "blanket re-embed every row with content" semantics for callers that
+ * pre-date the eligibility filter.
+ *
  * Semantics:
  *   - Resumable: persists a cursor per store; a second call with the same
  *     arguments after an abort picks up exactly where the previous call left

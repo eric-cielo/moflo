@@ -19,6 +19,21 @@
 export const EMBEDDINGS_VERSION = 2 as const;
 
 /**
+ * Canonical model label written into `memory_entries.embedding_model` by every
+ * code path that produces a vector for moflo's memory.db — the bridge embedder
+ * (`bridgeStoreEntry`), the migration store (`SqlJsMemoryEntriesStore` repair
+ * mode), and the indexer (`bin/build-embeddings.mjs`). Centralized here so
+ * `services/`, `memory/`, `embeddings/`, and `bin/` cannot drift; the
+ * pre-#650 mix of `'Xenova/all-MiniLM-L6-v2'`, `'fastembed/all-MiniLM-L6-v2'`,
+ * `'fast-all-MiniLM-L6-v2'`, `'local'`, and `'domain-aware-hash-v1'` was the
+ * exact failure mode #648 documented.
+ */
+export const CANONICAL_EMBEDDING_MODEL = 'fast-all-MiniLM-L6-v2';
+
+/** Vector dimension every CANONICAL_EMBEDDING_MODEL embedder must produce. */
+export const CANONICAL_EMBEDDING_DIMENSIONS = 384;
+
+/**
  * A single item in a store that carries an embedding derived from source text.
  */
 export interface MigrationItem {

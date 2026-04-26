@@ -2,9 +2,10 @@
  * Idempotent embeddings-version migration for moflo's memory.db.
  *
  * Runs the story-2 driver (`runUpgrade`) with the story-3 UX on any DB whose
- * stored `embeddings_version` is below the current runtime version. Safe to
- * call on every session start — returns fast when the DB is already
- * up-to-date or when `sql.js` isn't available.
+ * stored `embeddings_version` is below the current runtime version OR whose
+ * active rows include any non-target `embedding_model` (#650 — repair mode).
+ * Safe to call on every session start — returns fast when the DB is fully
+ * on-target, when sql.js isn't available, or when the schema is too old.
  *
  * Lives in `services/` so it has no dependency on the CLI command machinery.
  * That lets `bin/session-start-launcher.mjs` dynamic-import it and run the
@@ -21,7 +22,10 @@ import { atomicWriteFileSync } from './atomic-file-write.js';
 // EMBEDDINGS_VERSION is a number constant in a leaf types module — pulling it
 // eagerly is cheap. The heavy imports (fastembed wrapper, upgrade renderer,
 // etc.) stay deferred behind the early returns so session-start stays fast.
-import { EMBEDDINGS_VERSION } from '../embeddings/migration/types.js';
+import {
+  CANONICAL_EMBEDDING_MODEL,
+  EMBEDDINGS_VERSION,
+} from '../embeddings/migration/types.js';
 
 export interface RunEmbeddingsMigrationOptions {
   /** Path to the memory DB. Defaults to `<cwd>/.swarm/memory.db`. */
@@ -69,11 +73,28 @@ export async function runEmbeddingsMigrationIfNeeded(
     }
 
     const { SqlJsMemoryEntriesStore } = await import('./sqljs-migration-store.js');
-    const store = new SqlJsMemoryEntriesStore(db, path.basename(dbPath));
+    // `targetModel` makes the store filter rows by `embedding_model != target`
+    // and re-tag them on update. Combined with the version + eligibility probe
+    // below this turns the migration into a self-healing pass — no separate
+    // "repair" command needed for #648's surviving Xenova / hash / 'local'
+    // residue. See the constructor's docstring for full semantics.
+    const store = new SqlJsMemoryEntriesStore(db, path.basename(dbPath), {
+      targetModel: CANONICAL_EMBEDDING_MODEL,
+    });
 
+    // Two-stage probe — keep session-start cost flat regardless of DB size.
+    //
+    //   1. `getVersion()` — single-row metadata SELECT, sub-millisecond.
+    //   2. `hasIneligibleRows()` — `SELECT 1 ... LIMIT 1` against
+    //      `memory_entries`, bounded regardless of row count.
+    //
+    // The clean common case (v2 stamped, all rows on target) costs both
+    // probes plus zero work. The migrate-store driver bumps the version on
+    // a successful 0-item run — so a fresh DB or a stale-stamp DB falls
+    // through naturally without a special-case write here.
     const currentVersion = await store.getVersion();
     if (currentVersion !== null && currentVersion >= EMBEDDINGS_VERSION) {
-      return false;
+      if (!(await store.hasIneligibleRows())) return false;
     }
 
     const { createEmbeddingService, runUpgrade } = await import('../embeddings/index.js');

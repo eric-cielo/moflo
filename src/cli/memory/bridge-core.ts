@@ -12,6 +12,16 @@ import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 
 // When run via npx, CWD may be node_modules/moflo — walk up to find actual project
 let _projectRoot: string | undefined;
+
+/**
+ * Reset the cached project root. Tests that change `process.cwd()` or
+ * `process.env.CLAUDE_PROJECT_DIR` between cases must call this to avoid
+ * leaking state across tests.
+ */
+export function _resetProjectRootForTest(): void {
+  _projectRoot = undefined;
+}
+
 function getProjectRoot(): string {
   if (_projectRoot) return _projectRoot;
   if (process.env.CLAUDE_PROJECT_DIR) {
@@ -282,6 +292,42 @@ export function cosineSim(a: number[], b: number[]): number {
   return mag === 0 ? 0 : dot / mag;
 }
 
+/** Stats payload that goes into `.claude-flow/vector-stats.json`. */
+export interface VectorStatsPayload {
+  vectorCount: number;
+  missing: number;
+  dbSizeKB: number;
+  namespaces: number;
+  hasHnsw: boolean;
+}
+
+/**
+ * Single source of truth for the on-disk vector-stats.json shape. Both the
+ * bridge path (refreshVectorStatsCache, this module) and the raw-sql.js
+ * fallback (writeVectorStatsCache, memory-initializer.ts) call this so the
+ * field order and key set never drift. Issue #639 was caused by exactly that
+ * kind of dual-writer divergence.
+ */
+export function writeVectorStatsJson(rootDir: string, stats: VectorStatsPayload): void {
+  const cacheDir = path.join(rootDir, '.claude-flow');
+  fs.mkdirSync(cacheDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(cacheDir, 'vector-stats.json'),
+    JSON.stringify({ ...stats, updatedAt: Date.now() }),
+  );
+}
+
+/** Probe both legacy locations for an HNSW index sidecar file. */
+function detectHnswIndex(rootDir: string): boolean {
+  for (const p of [
+    path.join(rootDir, '.swarm', 'hnsw.index'),
+    path.join(rootDir, '.claude-flow', 'hnsw.index'),
+  ]) {
+    try { fs.statSync(p); return true; } catch { /* nope */ }
+  }
+  return false;
+}
+
 /**
  * Write vector-stats.json cache file used by the statusline. Runs
  * synchronously — only fires when the registry is already resolved, so
@@ -298,18 +344,31 @@ export function refreshVectorStatsCache(dbPathOverride?: string): void {
     let vectorCount = 0;
     let namespaces = 0;
     let dbSizeKB = 0;
-    let hasHnsw = false;
+    let missing = 0;
 
     try {
-      const countRow = ctx.db.prepare(
-        'SELECT COUNT(*) as c FROM memory_entries WHERE status = ? AND embedding IS NOT NULL',
-      ).get('active') as { c: number } | undefined;
-      vectorCount = countRow?.c ?? 0;
+      // sql.js Statement.get() returns positional arrays — read with execRows()
+      // (which wraps db.exec()) to get column-keyed objects. Pre-#649 these
+      // reads happened to never fire (the bridge embedder was always missing
+      // so bridgeStoreEntry never reached this call), and when fixed they
+      // would have clobbered vector-stats.json with zeros via .get().
+      const [countRow] = execRows(
+        ctx.db,
+        "SELECT COUNT(*) as c FROM memory_entries WHERE status = 'active' AND embedding IS NOT NULL",
+      );
+      vectorCount = Number(countRow?.c ?? 0);
 
-      const nsRow = ctx.db.prepare(
-        'SELECT COUNT(DISTINCT namespace) as n FROM memory_entries WHERE status = ?',
-      ).get('active') as { n: number } | undefined;
-      namespaces = nsRow?.n ?? 0;
+      const [nsRow] = execRows(
+        ctx.db,
+        "SELECT COUNT(DISTINCT namespace) as n FROM memory_entries WHERE status = 'active'",
+      );
+      namespaces = Number(nsRow?.n ?? 0);
+
+      const [missingRow] = execRows(
+        ctx.db,
+        "SELECT COUNT(*) as c FROM memory_entries WHERE status = 'active' AND embedding IS NULL",
+      );
+      missing = Number(missingRow?.c ?? 0);
     } catch {
       // Table may not exist yet
     }
@@ -321,20 +380,13 @@ export function refreshVectorStatsCache(dbPathOverride?: string): void {
     } catch { /* file may not exist */ }
 
     const root = getProjectRoot();
-    const hnswPaths = [
-      path.join(root, '.swarm', 'hnsw.index'),
-      path.join(root, '.claude-flow', 'hnsw.index'),
-    ];
-    for (const p of hnswPaths) {
-      try { fs.statSync(p); hasHnsw = true; break; } catch { /* nope */ }
-    }
-
-    const cacheDir = path.join(root, '.claude-flow');
-    fs.mkdirSync(cacheDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(cacheDir, 'vector-stats.json'),
-      JSON.stringify({ vectorCount, dbSizeKB, namespaces, hasHnsw, updatedAt: Date.now() }),
-    );
+    writeVectorStatsJson(root, {
+      vectorCount,
+      missing,
+      dbSizeKB,
+      namespaces,
+      hasHnsw: detectHnswIndex(root),
+    });
   } catch {
     // Non-fatal — statusline falls back to file size estimate
   }

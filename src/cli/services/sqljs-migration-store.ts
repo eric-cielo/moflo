@@ -45,12 +45,47 @@ export interface MigrationItemRow {
   sourceText: string;
 }
 
+/** Optional store-wide configuration; legacy callers can omit. */
+export interface SqlJsMemoryEntriesStoreOptions {
+  /**
+   * Canonical model label this migration produces (e.g.
+   * `'fast-all-MiniLM-L6-v2'`). When set:
+   *   - `countItems()` and `iterItems()` only return rows whose
+   *     `embedding_model` differs from `targetModel` (or is NULL). This
+   *     turns the migration into a self-healing pass: completed rows are
+   *     filtered out, surviving non-target rows (Xenova-tagged,
+   *     domain-aware-hash-*, NULL/'local' residue from #649's silent
+   *     failures, etc.) are re-embedded.
+   *   - `updateBatch()` writes `embedding_model = targetModel` alongside
+   *     the new vector, so the post-migration label faithfully describes
+   *     the producing embedder. Pre-#650 the column was untouched, which
+   *     is how the live DB ended up with non-target rows surviving past
+   *     a successful v2 stamp.
+   *
+   * Omit for the legacy "blanket re-embed without re-tagging" semantics
+   * still used by the existing tests.
+   */
+  targetModel?: string;
+}
+
+// SQL fragment shared by countItems / iterItems / hasIneligibleRows when the
+// store has a configured `targetModel`. Centralized so the eligibility rule
+// stays consistent across read paths — drift here re-opens #648's failure
+// mode where some queries treat a row as "done" while others don't.
+const ELIGIBILITY_AND_CLAUSE = 'AND (embedding_model IS NULL OR embedding_model != ?)';
+
 export class SqlJsMemoryEntriesStore {
   readonly storeId: string;
   private inTransaction = false;
+  private readonly targetModel: string | null;
 
-  constructor(private readonly db: SqlJsDatabase, dbFileName: string) {
+  constructor(
+    private readonly db: SqlJsDatabase,
+    dbFileName: string,
+    options: SqlJsMemoryEntriesStoreOptions = {},
+  ) {
     this.storeId = `${dbFileName}:memory_entries`;
+    this.targetModel = options.targetModel ?? null;
     this.ensureTables();
   }
 
@@ -73,11 +108,18 @@ export class SqlJsMemoryEntriesStore {
     `);
   }
 
+  /**
+   * Count rows the migration would touch. When `targetModel` is set this
+   * is the count of rows NOT yet on the target — so a clean DB returns 0
+   * and the migration short-circuits.
+   */
   async countItems(): Promise<number> {
-    const stmt = this.db.prepare(
-      `SELECT COUNT(*) AS n FROM memory_entries WHERE content IS NOT NULL AND length(content) > 0`,
-    );
+    const baseSql = `SELECT COUNT(*) AS n FROM memory_entries
+                     WHERE content IS NOT NULL AND length(content) > 0`;
+    const sql = this.targetModel === null ? baseSql : `${baseSql} ${ELIGIBILITY_AND_CLAUSE}`;
+    const stmt = this.db.prepare(sql);
     try {
+      if (this.targetModel !== null) stmt.bind([this.targetModel]);
       if (stmt.step()) {
         const row = stmt.getAsObject();
         return Number(row.n ?? 0);
@@ -88,18 +130,53 @@ export class SqlJsMemoryEntriesStore {
     }
   }
 
+  /**
+   * Bounded eligibility probe — `LIMIT 1` exits as soon as one ineligible row
+   * is found. Used by the orchestrator's session-start short-circuit so the
+   * "v2 stamped, all rows on target" common case doesn't pay for a full
+   * COUNT(*). Returns false (no work needed) when called on a store with no
+   * `targetModel` configured.
+   */
+  async hasIneligibleRows(): Promise<boolean> {
+    if (this.targetModel === null) return false;
+    const stmt = this.db.prepare(
+      `SELECT 1 FROM memory_entries
+       WHERE content IS NOT NULL AND length(content) > 0 ${ELIGIBILITY_AND_CLAUSE}
+       LIMIT 1`,
+    );
+    try {
+      stmt.bind([this.targetModel]);
+      return stmt.step();
+    } finally {
+      stmt.free();
+    }
+  }
+
+  /**
+   * Iterate rows the migration should re-embed. With `targetModel` set,
+   * already-target rows are filtered out — interrupted runs naturally
+   * resume only on stragglers, and a finished run yields no rows at all.
+   */
   async iterItems(afterId: string | null, limit: number): Promise<MigrationItemRow[]> {
+    const eligibilityClause = this.targetModel === null ? '' : ELIGIBILITY_AND_CLAUSE;
+
     const sql = afterId === null
       ? `SELECT id, content FROM memory_entries
          WHERE content IS NOT NULL AND length(content) > 0
+           ${eligibilityClause}
          ORDER BY id ASC LIMIT ?`
       : `SELECT id, content FROM memory_entries
          WHERE content IS NOT NULL AND length(content) > 0 AND id > ?
+           ${eligibilityClause}
          ORDER BY id ASC LIMIT ?`;
 
     const stmt = this.db.prepare(sql);
     try {
-      stmt.bind(afterId === null ? [limit] : [afterId, limit]);
+      const params: unknown[] = [];
+      if (afterId !== null) params.push(afterId);
+      if (this.targetModel !== null) params.push(this.targetModel);
+      params.push(limit);
+      stmt.bind(params);
       const out: MigrationItemRow[] = [];
       while (stmt.step()) {
         const row = stmt.getAsObject();
@@ -116,13 +193,27 @@ export class SqlJsMemoryEntriesStore {
     // Embeddings are stored as JSON text in MEMORY_SCHEMA_V3's `embedding TEXT`
     // column — matches how `memory-initializer.ts` and `commands/memory.ts`
     // write them so `embeddings search` can JSON.parse() the result.
-    const stmt = this.db.prepare(
-      `UPDATE memory_entries SET embedding = ?, embedding_dimensions = ? WHERE id = ?`,
-    );
+    //
+    // When `targetModel` is configured the UPDATE also re-tags the row so
+    // post-migration `embedding_model` faithfully describes the producing
+    // embedder. Pre-#650 the column was left untouched, which let
+    // mixed-model rows survive past a successful v2 stamp.
+    const stmt = this.targetModel === null
+      ? this.db.prepare(
+          `UPDATE memory_entries SET embedding = ?, embedding_dimensions = ? WHERE id = ?`,
+        )
+      : this.db.prepare(
+          `UPDATE memory_entries
+           SET embedding = ?, embedding_dimensions = ?, embedding_model = ?
+           WHERE id = ?`,
+        );
     try {
       for (const { id, embedding } of updates) {
         const json = JSON.stringify(Array.from(embedding));
-        stmt.run([json, embedding.length, id]);
+        const params = this.targetModel === null
+          ? [json, embedding.length, id]
+          : [json, embedding.length, this.targetModel, id];
+        stmt.run(params);
       }
     } finally {
       stmt.free();

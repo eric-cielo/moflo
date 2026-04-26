@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { runEmbeddingsMigrationIfNeeded } from '../../services/embeddings-migration.js';
+import { CANONICAL_EMBEDDING_MODEL } from '../../embeddings/migration/types.js';
 
 type SqlJsDb = {
   run(sql: string, params?: unknown[]): void;
@@ -98,5 +99,78 @@ describe('runEmbeddingsMigrationIfNeeded', () => {
     `);
     const ran = await runEmbeddingsMigrationIfNeeded({ dbPath });
     expect(ran).toBe(false);
+  });
+});
+
+// ── Story 2 / #650: eligibility-aware short-circuit ──────────────────────────
+// These tests exercise the orchestrator's "should we run?" logic without
+// touching fastembed — when there are no eligible rows the orchestrator
+// short-circuits before constructing an embedder. The end-to-end repair
+// behavior is covered at the store layer in sqljs-migration-store-v3.test.ts.
+
+describe('runEmbeddingsMigrationIfNeeded — eligibility short-circuit (#650)', () => {
+  /** Apply MEMORY_SCHEMA_V3 to a fresh in-memory DB, then export to disk. */
+  async function makeV3Db(setup?: (db: SqlJsDb & { exec(sql: string): unknown }) => void): Promise<string> {
+    const { MEMORY_SCHEMA_V3 } = await import('../../memory/memory-initializer.js');
+    const dir = await mkdtemp(join(tmpdir(), 'moflo-migration-elig-'));
+    tmpDirs.push(dir);
+    const dbPath = join(dir, 'memory.db');
+    const db = new SQL.Database() as SqlJsDb & { exec(sql: string): unknown };
+    db.run(MEMORY_SCHEMA_V3);
+    if (setup) setup(db);
+    const bytes = db.export();
+    db.close();
+    await writeFile(dbPath, Buffer.from(bytes));
+    return dbPath;
+  }
+
+  async function readVersion(dbPath: string): Promise<number | null> {
+    const { readFile } = await import('node:fs/promises');
+    const bytes = await readFile(dbPath);
+    const db = new SQL.Database(bytes) as SqlJsDb & {
+      exec(sql: string): Array<{ columns: string[]; values: unknown[][] }>;
+    };
+    try {
+      const res = db.exec(`SELECT value FROM metadata WHERE key='embeddings_version'`);
+      const row = res[0]?.values[0];
+      return row ? Number(row[0]) : null;
+    } finally {
+      db.close();
+    }
+  }
+
+  // Use the canonical constant so a rename ripples through automatically.
+  const TARGET_MODEL = CANONICAL_EMBEDDING_MODEL;
+
+  /** No-op WritableStream for test runs so the renderer doesn't dirty output. */
+  const silentOut = {
+    write: () => true,
+    isTTY: false,
+  } as unknown as NodeJS.WritableStream & { isTTY?: boolean };
+
+  it('runs the driver on a fresh DB and bumps version to v2 with zero items', async () => {
+    const dbPath = await makeV3Db();
+    const ran = await runEmbeddingsMigrationIfNeeded({ dbPath, out: silentOut });
+    // Fresh DB had no version stamp → short-circuit doesn't fire → driver
+    // runs, sees 0 items, bumps version, exits success. The orchestrator
+    // returns true because the driver completed.
+    expect(ran).toBe(true);
+    expect(await readVersion(dbPath)).toBe(2);
+  });
+
+  it('skips a v2-stamped DB whose rows are all on the target model', async () => {
+    const dbPath = await makeV3Db((db) => {
+      db.run(
+        `INSERT INTO memory_entries (id, key, content, embedding, embedding_dimensions, embedding_model)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        ['a', 'k-a', 'content-a', JSON.stringify([0.1, 0.2]), 2, TARGET_MODEL],
+      );
+      db.run(
+        `INSERT INTO metadata (key, value) VALUES ('embeddings_version', '2')`,
+      );
+    });
+    const ran = await runEmbeddingsMigrationIfNeeded({ dbPath });
+    expect(ran).toBe(false); // clean DB — short-circuit before driver loads
+    expect(await readVersion(dbPath)).toBe(2);
   });
 });
