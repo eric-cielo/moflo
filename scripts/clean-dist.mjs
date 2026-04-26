@@ -2,10 +2,10 @@
 // Scan dist/ for orphaned build outputs whose TypeScript source has been
 // renamed or deleted, and remove them.
 //
-// Background: after a source file rename, tsc -b writes the new output but
-// leaves the old one behind, and tsc -b --clean only removes files the current
-// build graph knows about — so once tsbuildinfo is rewritten post-rename, the
-// orphan slips past it. Since package.json's files whitelist includes the
+// Background: after a source file rename, tsc writes the new output but
+// leaves the old one behind. Incremental tsbuildinfo only tracks files the
+// current build graph knows about — once tsbuildinfo is rewritten post-rename,
+// the orphan slips past it. Since package.json's files whitelist includes the
 // compiled output, those orphans leak into npm pack tarballs.
 //
 // Exports findOrphans() for in-process use (smoke harness); runs as CLI with

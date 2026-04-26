@@ -31,14 +31,9 @@ Always pull before starting work. Remote may have merged PRs since your last syn
 npm run build
 ```
 
-This runs `tsc -b` which builds all packages via TypeScript project references.
+This runs `tsc` against the single root `tsconfig.json`. After workspace-collapse epic #586 there are no project references, no per-module tsconfigs, and no per-module `dist/` directories.
 
 **Expected output:** no output (clean build). Any errors must be fixed before proceeding.
-
-**Do NOT use:**
-- `npm run build:ts` — broken, tries to find tsc in `src/node_modules/` which doesn't exist
-- `cd src/modules/cli && npm run build` — same problem
-- `npx tsc` from subdirectories — wrong resolution
 
 ### 3. Test
 
@@ -46,10 +41,9 @@ This runs `tsc -b` which builds all packages via TypeScript project references.
 npm test
 ```
 
-Runs `vitest run` with the root `vitest.config.ts`.
+Runs `scripts/test-runner.mjs` — a parallel pass via vitest plus a sequential isolation pass for the files listed in `vitest.config.ts:isolationTests`.
 
-**Pass criteria:** 0 test failures. Worker OOM errors (3-4) are non-fatal background noise.
-Current baseline: ~148 files passed, ~26 skipped, ~5500 tests.
+**Pass criteria:** 0 test failures.
 
 ### 4. Version bump
 
@@ -57,7 +51,7 @@ Current baseline: ~148 files passed, ~26 skipped, ~5500 tests.
 npm version patch --no-git-tag-version
 ```
 
-This bumps `package.json` AND syncs `src/cli/package.json` via the `version` lifecycle script.
+This bumps `package.json` and the `version` lifecycle script syncs `src/cli/version.ts`.
 
 For minor/major: replace `patch` with `minor` or `major`.
 
@@ -67,13 +61,13 @@ For minor/major: replace `patch` with `minor` or `major`.
 npm run build
 ```
 
-The version change updates `package.json` files which may affect compiled output. Always rebuild.
+The version change updates `src/cli/version.ts` which gets compiled into `dist/`. Always rebuild.
 
 ### 6. Commit & PR
 
 ```bash
 git checkout -b <branch-name>
-git add <changed files> package.json package-lock.json src/cli/package.json
+git add <changed files> package.json package-lock.json
 git commit -m "description"
 git push -u origin <branch-name>
 gh pr create --title "..." --body "..."
@@ -98,12 +92,11 @@ npm view moflo version          # Should match what you just published
 
 | Wrong | Why | Correct |
 |-------|-----|---------|
-| `cd src/modules/cli && npm run build` | tsc not in src/node_modules | `npm run build` from root |
-| Publish without building | Ships stale .js artifacts — `prepublishOnly` now runs `npm run build` which will fail-fast on errors | Always `npm run build` then verify exit 0 |
+| Publish without building | Ships stale `.js` artifacts — `prepublishOnly` runs `npm run build` which will fail-fast on errors | Always `npm run build` then verify exit 0 |
 | Publish without testing | May ship broken code | Always `npm test` with 0 failures |
 | Publish without pulling | Version conflicts, rebase hell | Always `git pull origin main` first |
-| `npm run build:ts` | Uses broken workspace cd | `npm run build` (tsc -b) |
 | Using pnpm/yarn/bun | Not configured, will create orphaned artifacts | npm only |
+| Adding `composite: true` or project references | Single-package layout — adds coordination cost with no benefit | Plain `tsc` from one root config |
 
 ## Adding New Scripts to `bin/`
 
@@ -121,25 +114,18 @@ When you add a new `.mjs` script to `bin/`, you **must** also add it to the `scr
 ```
 moflo/
 ├── package.json          ← Root: build scripts, version source of truth
-├── tsconfig.json         ← Root: tsc -b entry point (project references)
+├── tsconfig.json         ← Root: single tsc entry point (no project references)
 ├── vitest.config.ts      ← Root: test runner config
 ├── src/
-│   ├── tsconfig.json     ← Workspace: references all @moflo/* packages
-│   ├── tsconfig.base.json ← Shared compiler options (DO NOT DELETE)
-│   └── @moflo/
-│       ├── cli/          ← Main CLI package (@moflo/cli)
-│       │   ├── tsconfig.json  ← References shared, swarm
-│       │   └── dist/          ← Compiled output (committed)
-│       ├── neural/       ← SONA, EWC++, LoRA, RL algorithms
-│       ├── memory/       ← AgentDB, HNSW, persistent SONA
-│       ├── shared/       ← Shared types, hooks, safety
-│       └── ...           ← Other packages
-└── bin/                  ← Indexer scripts (synced to consumer projects)
+│   ├── cli/              ← Entire shipped source tree (commands, hooks, memory,
+│   │                        neural, swarm, spells, embeddings, guidance,
+│   │                        aidefence, services, mcp-server, mcp-tools, …)
+│   └── __tests__/        ← Top-level integration tests (extend root tsconfig)
+├── dist/                 ← Build output: `dist/src/cli/**` ships to npm
+└── bin/                  ← CLI entry points (synced to consumer projects)
 ```
 
-`tsc -b` follows the project reference chain from root → src → individual packages.
-Compiled `.js` + `.d.ts` output goes to each package's `dist/` directory.
-The `dist/` directories are committed and published — npm consumers get pre-compiled JS.
+`tsc` reads `tsconfig.json` and emits compiled `.js` + `.d.ts` to `dist/src/cli/**`. The `dist/` directory is not committed; it is rebuilt via `prepublishOnly` before each publish.
 
 ## Package Contents (`files` field)
 
@@ -150,25 +136,26 @@ The `files` array in root `package.json` controls what ships to npm. This is car
 | Pattern | Purpose |
 |---------|---------|
 | `bin/**` | CLI entry points (`flo`, `flo-search`, etc.) |
-| `src/modules/*/dist/**/*.js` | Compiled runtime code |
-| `src/modules/*/package.json` | Workspace resolution for internal imports |
+| `dist/src/cli/**/*.js` | Compiled runtime code |
+| `dist/src/cli/**/*.d.ts` | Type declarations |
+| `dist/src/cli/**/*.yaml` | Bundled YAML resources (spells, agents) |
+| `src/cli/agents/**` | Source-form agent definitions used at runtime |
+| `src/cli/data/**` | Static data files (model registry, etc.) |
 | `.claude/commands/**/*.md` | Slash commands — copied to user projects by `flo init` |
 | `.claude/agents/**/*.md` | Agent definitions — copied to user projects by `flo init` |
 | `.claude/helpers/**` | Hook scripts (statusline, gate, auto-memory) — copied by `flo init` |
-| `.claude/scripts/**` | Utility scripts (session-start, etc.) — synced by `flo init` |
 | `.claude/guidance/shipped/**` | Shipped guidance docs — synced by `flo init` |
+| `.claude/skills/**/*.md` | Skill definitions — copied by `flo init` |
+| `spells/shipped/**` | Shipped spell definitions |
+| `scripts/prune-native-binaries.mjs` | Postinstall script |
 | `README.md`, `LICENSE` | Standard package metadata |
 
 ### What's excluded and why
 
 | Excluded | Why |
 |----------|-----|
-| `**/*.d.ts` | moflo is a CLI tool, not a library — no one imports its types |
 | `**/*.map` | Source maps are dev-only |
-| `.claude/checkpoints/` | Dev-only state |
-| `.claude/config/` | Dev-only configuration |
-| `.claude/mcp.json` | Dev-only MCP server config |
-| `.claude/guidance/internal/` | Internal guidance not shipped to users |
+| `**/__tests__/**`, `**/*.test.js`, `**/*.spec.js` | Tests don't ship |
 | `.claude/**/*.db` | Database files are dev-only |
 
 ### Pre-publish verification
@@ -196,4 +183,4 @@ ls node_modules/moflo/.claude/agents/
 cd - && rm -rf /tmp/moflo-test && rm moflo-*.tgz
 ```
 
-**Baseline (v4.8.33):** ~653 files, ~1.7 MB packed, ~7.6 MB unpacked (includes neural dist).
+The CI consumer-install smoke test (`harness/consumer-smoke/run.mjs`) automates the same checks on every PR.

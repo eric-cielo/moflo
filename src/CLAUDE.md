@@ -5,7 +5,7 @@ Root CLAUDE.md rules apply here.
 ## Build & Test
 
 ```bash
-npm run build   # tsc -b from repo root
+npm run build   # tsc from repo root
 npm test        # parallel + isolation passes
 ```
 

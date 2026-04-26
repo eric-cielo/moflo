@@ -45,7 +45,7 @@
   "scripts": {
     "dev": "tsx watch src/cli/index.ts",
     "prebuild": "node scripts/sync-version.mjs && node scripts/clean-dist.mjs",
-    "build": "tsc -b && node -e \"const{cpSync}=require('fs');cpSync('src/cli/epic/spells','dist/src/cli/epic/spells',{recursive:true})\"",
+    "build": "tsc && node -e \"const{cpSync}=require('fs');cpSync('src/cli/epic/spells','dist/src/cli/epic/spells',{recursive:true})\"",
     "prepublishOnly": "npm run build",
     "postinstall": "node scripts/prune-native-binaries.mjs",
     "test": "node scripts/test-runner.mjs",
