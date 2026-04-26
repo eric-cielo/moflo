@@ -2,7 +2,7 @@
  * RVFA binary format tests.
  *
  * Uses the Node.js built-in test runner (node:test).
- * Run: npx tsx --test v3/__tests__/appliance/rvfa-format.test.ts
+ * Run: npx tsx --test src/__tests__/appliance/rvfa-format.test.ts
  */
 
 import { describe, it, beforeEach } from 'node:test';
@@ -16,7 +16,7 @@ import {
   validateHeader,
   RVFA_MAGIC,
   RVFA_VERSION,
-} from '../../modules/cli/src/appliance/rvfa-format.js';
+} from '../../cli/appliance/rvfa-format.js';
 
 // -- Helpers ------------------------------------------------------------------
 
