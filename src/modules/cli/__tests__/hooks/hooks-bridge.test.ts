@@ -14,8 +14,8 @@ import {
   outputOfficialHookResult,
   type OfficialHookInput,
   type OfficialHookOutput,
-} from '../src/bridge/official-hooks-bridge.js';
-import { HookEvent } from '../src/types.js';
+} from '../../src/hooks/bridge/official-hooks-bridge.js';
+import { HookEvent } from '../../src/hooks/types.js';
 
 // ---------------------------------------------------------------------------
 // Module exports

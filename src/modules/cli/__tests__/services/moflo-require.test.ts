@@ -7,6 +7,7 @@ import {
   locateMofloModulePath,
   locateMofloRootPath,
   _resetMofloMemoryCacheForTest,
+  type MofloInternalPackage,
 } from '../../src/services/moflo-require.js';
 
 describe('locateMofloModuleDist (regression guard for #556)', () => {
@@ -14,8 +15,8 @@ describe('locateMofloModuleDist (regression guard for #556)', () => {
     _resetMofloMemoryCacheForTest();
   });
 
-  it('resolves the hooks index from inside the cli package', () => {
-    const url = locateMofloModuleDist('hooks', 'index.js');
+  it('resolves the cli built index', () => {
+    const url = locateMofloModuleDist('cli', 'src/index.js');
     expect(url).not.toBeNull();
     expect(url).toMatch(/^file:\/\//);
   });
@@ -25,22 +26,22 @@ describe('locateMofloModuleDist (regression guard for #556)', () => {
     // `../../../../modules/swarm/...` string walked up past `src/modules/` and
     // then re-appended `modules/`, producing `src/modules/modules/swarm/...`.
     // The resolver must never produce that shape on any platform.
-    const hooksUrl = locateMofloModuleDist('hooks', 'index.js');
-    expect(hooksUrl).not.toBeNull();
+    const url = locateMofloModuleDist('cli', 'src/index.js');
+    expect(url).not.toBeNull();
     // Check both URL and decoded-path forms — pathToFileURL percent-encodes
     // some characters on Windows, so we verify both shapes.
-    expect(hooksUrl!).not.toMatch(/[\\/]modules[\\/]modules[\\/]/);
-    expect(hooksUrl!).not.toMatch(/\/modules\/modules\//);
+    expect(url!).not.toMatch(/[\\/]modules[\\/]modules[\\/]/);
+    expect(url!).not.toMatch(/\/modules\/modules\//);
   });
 
   it('returns null for a non-existent package (no silent success)', () => {
-    const url = locateMofloModuleDist('definitely-not-a-real-package' as 'hooks', 'index.js');
+    const url = locateMofloModuleDist('definitely-not-a-real-package' as MofloInternalPackage, 'index.js');
     expect(url).toBeNull();
   });
 
   it('is cached per (pkg, rel) key so repeat calls are cheap', () => {
-    const a = locateMofloModuleDist('hooks', 'index.js');
-    const b = locateMofloModuleDist('hooks', 'index.js');
+    const a = locateMofloModuleDist('cli', 'src/index.js');
+    const b = locateMofloModuleDist('cli', 'src/index.js');
     expect(a).toBe(b);
   });
 });
@@ -51,27 +52,27 @@ describe('locateMofloModulePath (non-dist subpaths)', () => {
   });
 
   it('returns null for a non-existent subpath (no silent success)', () => {
-    const result = locateMofloModulePath('hooks', 'definitely-not-a-real-subdir');
+    const result = locateMofloModulePath('cli', 'definitely-not-a-real-subdir');
     expect(result).toBeNull();
   });
 
   it('resolves an existing non-dist subpath (e.g. package.json)', () => {
     // Every remaining moflo package ships a package.json — use it as a stable marker.
-    const result = locateMofloModulePath('hooks', 'package.json');
+    const result = locateMofloModulePath('cli', 'package.json');
     expect(result).not.toBeNull();
     expect(existsSync(result!)).toBe(true);
-    expect(result!).toMatch(/[\\/]src[\\/]modules[\\/]hooks[\\/]package\.json$/);
+    expect(result!).toMatch(/[\\/]src[\\/]modules[\\/]cli[\\/]package\.json$/);
   });
 
   it('never emits a "modules/modules" path shape', () => {
-    const result = locateMofloModulePath('hooks', 'package.json');
+    const result = locateMofloModulePath('cli', 'package.json');
     expect(result).not.toBeNull();
     expect(result!).not.toMatch(/[\\/]modules[\\/]modules[\\/]/);
   });
 
   it('is cached per (pkg, rel) key', () => {
-    const a = locateMofloModulePath('hooks', 'package.json');
-    const b = locateMofloModulePath('hooks', 'package.json');
+    const a = locateMofloModulePath('cli', 'package.json');
+    const b = locateMofloModulePath('cli', 'package.json');
     expect(a).toBe(b);
   });
 });

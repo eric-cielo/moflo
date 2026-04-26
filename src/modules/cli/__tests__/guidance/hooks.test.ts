@@ -7,9 +7,9 @@ import { EnforcementGates } from '../../src/guidance/gates.js';
 import { ShardRetriever } from '../../src/guidance/retriever.js';
 import { RunLedger } from '../../src/guidance/ledger.js';
 import { DeterministicTestEmbeddingProvider } from './__mocks__/deterministic-embedding-provider.js';
-import { HookRegistry } from '@moflo/hooks';
-import { HookEvent, HookPriority } from '@moflo/hooks';
-import type { HookContext, HookResult } from '@moflo/hooks';
+import { HookRegistry } from '../../src/hooks/index.js';
+import { HookEvent, HookPriority } from '../../src/hooks/index.js';
+import type { HookContext, HookResult } from '../../src/hooks/index.js';
 import type { GateResult, RunEvent, PolicyBundle } from '../../src/guidance/types.js';
 
 // ============================================================================

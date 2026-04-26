@@ -22,7 +22,7 @@ import {
   createDDDWorker,
   type WorkerResult,
   type AlertThreshold,
-} from '../src/index.js';
+} from '../../src/hooks/index.js';
 
 // ============================================================================
 // Test Setup

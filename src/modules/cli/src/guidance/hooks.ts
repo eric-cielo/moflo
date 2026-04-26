@@ -19,14 +19,14 @@ import type {
   HookContext,
   HookResult,
   HookRegistrationOptions,
-} from '@moflo/hooks';
+} from '../hooks/index.js';
 
 import {
   HookEvent,
   HookPriority,
-} from '@moflo/hooks';
+} from '../hooks/index.js';
 
-import type { HookRegistry } from '@moflo/hooks';
+import type { HookRegistry } from '../hooks/index.js';
 
 import type { EnforcementGates } from './gates.js';
 import type { ShardRetriever } from './retriever.js';

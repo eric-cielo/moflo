@@ -4,13 +4,11 @@
     "baseUrl": ".",
     "paths": {
       "@moflo/cli": ["./modules/cli/src"],
-      "@moflo/hooks": ["./modules/hooks/src"],
       "@moflo/testing": ["./modules/testing/src"]
     }
   },
   "references": [
     { "path": "./modules/cli" },
-    { "path": "./modules/hooks" },
     { "path": "./modules/testing" }
   ],
   "include": [],

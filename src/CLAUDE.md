@@ -13,8 +13,7 @@ npm install && npm run build && npm test
 
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@moflo/cli` | `modules/cli/` | CLI entry point (40+ commands); also hosts inlined `aidefence`, `embeddings`, `guidance`, `memory`, `neural`, `shared`, `spells`, `swarm` |
-| `@moflo/hooks` | `modules/hooks/` | Hooks + workers |
+| `@moflo/cli` | `modules/cli/` | CLI entry point (40+ commands); also hosts inlined `aidefence`, `embeddings`, `guidance`, `hooks`, `memory`, `neural`, `shared`, `spells`, `swarm` |
 | `@moflo/testing` | `modules/testing/` | Test framework, fixtures, regression suites |
 
 ## Code Quality

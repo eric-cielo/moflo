@@ -134,9 +134,7 @@ export function mofloResolve(specifier: string): string | null {
  * Union rather than free string: catches typos at the call site and documents
  * the intended consumers.
  */
-export type MofloInternalPackage =
-  | 'hooks'
-  | 'cli';
+export type MofloInternalPackage = 'cli';
 
 /**
  * Locate a built artifact inside `src/modules/<pkg>/dist/<relFromDist>` by

@@ -23,7 +23,7 @@ MoFlo makes deliberate choices so you don't have to:
   - **MicroLoRA** — rank-2 LoRA weight adaptations at ~1µs per adapt via pure TypeScript MicroLoRA in `@moflo/neural`
   - **EWC++** (Elastic Weight Consolidation) — prevents catastrophic forgetting across sessions
   - **HNSW Vector Search** — fast nearest-neighbor search via sql.js HNSW index (WASM SQLite)
-  - **Semantic Routing** — maps tasks to agents via learned routing in `@moflo/hooks`
+  - **Semantic Routing** — maps tasks to agents via learned routing in `cli/src/hooks` (ReasoningBank)
   - **Trajectory Persistence** — outcomes stored in `routing-outcomes.json`, survive across sessions
   - All WASM/NAPI-based, no GPU, no API keys, no external services.
 - **Memory-first workflow** — Claude must search what it already knows before exploring files. Enforced by hooks, not just instructions.
@@ -371,7 +371,7 @@ Routing outcomes are stored in `.claude-flow/routing-outcomes.json` and persist 
 |--------|-------------|------------|
 | **Semantic Memory** | Store and search knowledge with 384-dim embeddings | sql.js (WASM SQLite) + Transformers.js (MiniLM-L6-v2) |
 | **HNSW Vector Search** | Fast nearest-neighbor search across all stored knowledge | sql.js HNSW index (WASM SQLite) |
-| **Semantic Routing** | Match tasks to agent types using vector similarity | `@moflo/hooks` learned routing |
+| **Semantic Routing** | Match tasks to agent types using vector similarity | `cli/src/hooks` (ReasoningBank) learned routing |
 | **SONA Learning** | Learn from task trajectories — what agent handled what, and whether it succeeded | `@moflo/neural` SonaEngine (pure TS) |
 | **MicroLoRA Adaptation** | Rank-2 LoRA weight updates from successful patterns (~1µs per adapt) | `@moflo/neural` MicroLoRA (pure TS) |
 | **EWC++ Consolidation** | Prevent catastrophic forgetting — new learning doesn't overwrite old patterns | Built into hooks-tools |

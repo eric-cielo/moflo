@@ -39,7 +39,7 @@ import {
   initializeHooks,
   runHook,
   addHook,
-} from '../src/index.js';
+} from '../../src/hooks/index.js';
 
 // ---------------------------------------------------------------------------
 // Enum exports

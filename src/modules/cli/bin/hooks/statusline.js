@@ -13,7 +13,7 @@
 
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { StatuslineGenerator, parseStatuslineData } from '../dist/statusline/index.js';
+import { StatuslineGenerator, parseStatuslineData } from '../../dist/src/hooks/statusline/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

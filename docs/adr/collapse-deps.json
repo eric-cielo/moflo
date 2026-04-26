@@ -1,15 +1,12 @@
 {
   "packages": [
     "cli",
-    "hooks",
     "testing"
   ],
   "adjacency": {
     "cli": [
-      "hooks",
       "testing"
     ],
-    "hooks": [],
     "testing": []
   },
   "rootRefs": [
