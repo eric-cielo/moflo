@@ -19,16 +19,17 @@ import { HnswLite } from './hnsw-lite.js';
 
 /**
  * Write vector-stats.json cache for the statusline (no subprocess needed).
- * Called after memory store/delete to keep the cache fresh.
+ * Called after memory store in the raw-sql.js fallback path. The bridge path
+ * goes through refreshVectorStatsCache() in bridge-core.ts instead.
  * @param dbPath - path to the SQLite database file
- * @param stats  - optional exact counts from a db query already in progress
+ * @param stats  - exact counts from a db query already in progress (required —
+ *                 making this optional caused issue #639 by silently writing 0)
  */
-function writeVectorStatsCache(dbPath: string, stats?: { vectorCount: number; namespaces: number }): void {
+function writeVectorStatsCache(dbPath: string, stats: { vectorCount: number; namespaces: number }): void {
   try {
     const fileStat = fs.statSync(dbPath);
     const dbSizeKB = Math.floor(fileStat.size / 1024);
-    const vectorCount = stats?.vectorCount ?? 0;
-    const namespaces = stats?.namespaces ?? 0;
+    const { vectorCount, namespaces } = stats;
 
     // Check HNSW index presence
     const dbDir = path.dirname(dbPath);
@@ -1910,17 +1911,14 @@ export async function storeEntry(options: {
   embedding?: { dimensions: number; model: string };
   error?: string;
 }> {
-  // ADR-053: Try AgentDB v3 bridge first
+  // ADR-053: Try AgentDB v3 bridge first. The bridge calls
+  // refreshVectorStatsCache() itself (bridge-entries.ts:191) — a second
+  // write here was redundant and previously clobbered the correct count
+  // with 0 (#639).
   const bridge = await getBridge();
   if (bridge) {
     const bridgeResult = await bridge.bridgeStoreEntry(options);
-    if (bridgeResult) {
-      // Update statusline cache after successful bridge store
-      const swarmDir = path.join(process.cwd(), '.swarm');
-      const dbFile = options.dbPath || path.join(swarmDir, 'memory.db');
-      writeVectorStatsCache(dbFile);
-      return bridgeResult;
-    }
+    if (bridgeResult) return bridgeResult;
   }
 
   // Fallback: raw sql.js
