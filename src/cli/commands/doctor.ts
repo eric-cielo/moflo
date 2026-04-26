@@ -25,6 +25,7 @@ import {
   checkMofloDbBridge,
   getMofloRoot,
 } from './doctor-checks-deep.js';
+import { checkEmbeddingHygiene } from './doctor-embedding-hygiene.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 
 // Promisified exec with proper shell and env inheritance for cross-platform support
@@ -1441,6 +1442,7 @@ export const doctorCommand: Command = {
       checkDaemonStatus,
       checkMemoryDatabase,
       checkEmbeddings,
+      checkEmbeddingHygiene,
       checkTestDirs,
       checkMcpServers,
       checkDiskSpace,
@@ -1471,6 +1473,8 @@ export const doctorCommand: Command = {
       'daemon': checkDaemonStatus,
       'memory': checkMemoryDatabase,
       'embeddings': checkEmbeddings,
+      'embedding-hygiene': checkEmbeddingHygiene,
+      'hygiene': checkEmbeddingHygiene,
       'git': checkGit,
       'mcp': checkMcpServers,
       'disk': checkDiskSpace,
