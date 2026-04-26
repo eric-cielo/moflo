@@ -19,9 +19,12 @@ const BIN = resolve(__dirname, '../../bin');
 /** Run `node --check <file>` and return whether it succeeded. */
 function syntaxCheck(file: string): { ok: boolean; error?: string } {
   try {
+    // Spawning `node --check` under cumulative isolation-batch load can
+    // exceed a tight 5 s ceiling on Windows; the check itself is fast,
+    // it's just the child-process spin-up that's contended.
     execFileSync('node', ['--check', file], {
       encoding: 'utf-8',
-      timeout: 5000,
+      timeout: 30_000,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     return { ok: true };

@@ -76,6 +76,10 @@ export const isolationTests = [
   // forks because cwd is process-global and the registry singleton is
   // module-shared.
   'src/cli/__tests__/bridge-entries.test.ts',
+  // performance/timing assertions (initialize<500ms, shutdown<100ms, access
+  // overhead<threshold) bust under Windows parallel-fork contention; whole
+  // file passes <200ms in isolation.
+  'src/cli/memory/controller-registry.test.ts',
 ];
 
 export default defineConfig({

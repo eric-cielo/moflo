@@ -16,7 +16,7 @@ import {
   detectSandboxCapability,
   resetSandboxCache,
   type SandboxCapability,
-} from '../../spells/src/core/platform-sandbox.js';
+} from '../spells/core/platform-sandbox.js';
 
 describe('doctor sandbox tier diagnostic', { timeout: 15_000 }, () => {
   afterEach(() => {

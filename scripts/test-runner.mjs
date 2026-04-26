@@ -15,6 +15,7 @@ import { spawn } from 'child_process';
 import { readFileSync, unlinkSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { loadIsolationTests } from './load-isolation-tests.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -22,26 +23,6 @@ const jsonFile = resolve(root, '.vitest-results.json');
 const vitestBin = resolve(root, 'node_modules/vitest/vitest.mjs');
 const isolationConfig = resolve(root, 'vitest.isolation.config.ts');
 const env = { ...process.env, NODE_OPTIONS: '--max-old-space-size=8192' };
-
-/**
- * Load isolation test list from vitest.config.ts at runtime.
- * Reads the exported array via regex since it's a .ts file.
- */
-function loadIsolationTests() {
-  try {
-    const raw = readFileSync(resolve(root, 'vitest.config.ts'), 'utf-8');
-    const match = raw.match(/export\s+const\s+isolationTests\s*=\s*\[([\s\S]*?)\];/);
-    if (!match) return [];
-    // Extract quoted strings from the array literal
-    const entries = [];
-    for (const m of match[1].matchAll(/'([^']+)'|"([^"]+)"/g)) {
-      entries.push(m[1] || m[2]);
-    }
-    return entries;
-  } catch {
-    return [];
-  }
-}
 
 /** Run vitest with given args, return { code, passed, failed } */
 function runVitest(args, { config } = {}) {
@@ -80,7 +61,7 @@ function cleanup() {
 }
 
 async function main() {
-  const isolationTests = loadIsolationTests();
+  const isolationTests = loadIsolationTests(resolve(root, 'vitest.config.ts'));
 
   // ── Pass 1: Main parallel suite ──
   console.log('\n━━ Pass 1: Parallel suite ━━\n');

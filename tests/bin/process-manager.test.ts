@@ -167,8 +167,10 @@ describe('getActive() and prune()', () => {
       return true;
     `);
 
-    // Wait for the short-lived one to exit
-    try { execFileSync('node', ['-e', 'setTimeout(()=>{},500)'], { timeout: 2000 }); } catch { /* ok */ }
+    // Wait for the short-lived one to exit. Bumped from 500 ms because
+    // under cumulative isolation-batch load the OS reaper can lag and
+    // getActive() still observes the not-yet-reaped child PID.
+    try { execFileSync('node', ['-e', 'setTimeout(()=>{},2000)'], { timeout: 5000 }); } catch { /* ok */ }
 
     const active = runPM(root, `return pm.getActive();`);
     expect(active.length).toBe(1);

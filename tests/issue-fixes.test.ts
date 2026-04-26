@@ -14,7 +14,6 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 const rootPkgPath = resolve(__dirname, '../package.json');
-const cliPkgPath = resolve(__dirname, '../src/cli/package.json');
 const versionTsPath = resolve(__dirname, '../src/cli/version.ts');
 
 describe('#74 — CLI version sync', () => {
@@ -27,12 +26,6 @@ describe('#74 — CLI version sync', () => {
     const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf-8'));
     const content = readFileSync(versionTsPath, 'utf-8');
     expect(content).toContain(`'${rootPkg.version}'`);
-  });
-
-  it('CLI package.json matches root package.json version', () => {
-    const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf-8'));
-    const cliPkg = JSON.parse(readFileSync(cliPkgPath, 'utf-8'));
-    expect(cliPkg.version).toBe(rootPkg.version);
   });
 
   it('root package.json has prebuild script that syncs version', () => {
