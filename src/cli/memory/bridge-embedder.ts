@@ -20,12 +20,21 @@
 
 import { createEmbeddingService } from '../embeddings/index.js';
 import type { IEmbeddingService } from '../embeddings/types.js';
+import {
+  CANONICAL_EMBEDDING_DIMENSIONS,
+  CANONICAL_EMBEDDING_MODEL,
+} from '../embeddings/migration/types.js';
 
-/** Canonical model label written into `memory_entries.embedding_model`. */
-export const BRIDGE_EMBEDDING_MODEL = 'fast-all-MiniLM-L6-v2';
+/**
+ * Canonical model label written into `memory_entries.embedding_model`.
+ * Aliased from {@link CANONICAL_EMBEDDING_MODEL} for backward compatibility
+ * with bridge-side callers; new code in `services/` and `embeddings/` should
+ * import the canonical name directly to avoid sideways `memory/` coupling.
+ */
+export const BRIDGE_EMBEDDING_MODEL = CANONICAL_EMBEDDING_MODEL;
 
 /** Canonical embedding dimension count for the bridge embedder. */
-export const BRIDGE_EMBEDDING_DIMENSIONS = 384;
+export const BRIDGE_EMBEDDING_DIMENSIONS = CANONICAL_EMBEDDING_DIMENSIONS;
 
 /**
  * `embedding_model` value for rows where the caller intentionally skipped
