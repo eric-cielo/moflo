@@ -7,8 +7,6 @@
  * hoisted node_modules are not available.
  */
 
-declare module '@moflo/mcp';
-declare module '@moflo/memory';
 declare module '@noble/ed25519';
 
 declare module 'pg' {
