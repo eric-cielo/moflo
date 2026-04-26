@@ -9,6 +9,7 @@
  */
 
 import { cosineSim, execRows, generateId, persistBridgeDb, refreshVectorStatsCache, withDb } from './bridge-core.js';
+import { EMBEDDING_MODEL_OPT_OUT, getBridgeEmbedder } from './bridge-embedder.js';
 
 function makeEntryCacheKey(namespace: string, key: string): string {
   const safeNs = String(namespace).replace(/:/g, '_');
@@ -141,21 +142,19 @@ export async function bridgeStoreEntry(options: {
 
     let embeddingJson: string | null = null;
     let dimensions = 0;
-    let model = 'local';
+    let model: string = EMBEDDING_MODEL_OPT_OUT;
 
-    if (options.generateEmbeddingFlag !== false && value.length > 0) {
+    const wantsEmbedding = options.generateEmbeddingFlag !== false && value.length > 0;
+    if (wantsEmbedding) {
+      const embedder = getBridgeEmbedder();
       try {
-        const embedder = ctx.mofloDb.embedder;
-        if (embedder) {
-          const emb = await embedder.embed(value);
-          if (emb) {
-            embeddingJson = JSON.stringify(Array.from(emb));
-            dimensions = emb.length;
-            model = 'Xenova/all-MiniLM-L6-v2';
-          }
-        }
-      } catch {
-        // Embedding failed — store without
+        const vector = await embedder.embed(value);
+        embeddingJson = JSON.stringify(Array.from(vector));
+        dimensions = vector.length;
+        model = embedder.model;
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        return { success: false, id, error: `embedding generation failed: ${reason}` };
       }
     }
 

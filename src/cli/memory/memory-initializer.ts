@@ -16,6 +16,8 @@ import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 import { formatEmbeddingError } from './embedding-errors.js';
 import { createEmbeddingService } from '../embeddings/index.js';
 import { HnswLite } from './hnsw-lite.js';
+import { EMBEDDING_MODEL_OPT_OUT } from './bridge-embedder.js';
+import { writeVectorStatsJson } from './bridge-core.js';
 
 /**
  * Write vector-stats.json cache for the statusline (no subprocess needed).
@@ -25,13 +27,15 @@ import { HnswLite } from './hnsw-lite.js';
  * @param stats  - exact counts from a db query already in progress (required —
  *                 making this optional caused issue #639 by silently writing 0)
  */
-function writeVectorStatsCache(dbPath: string, stats: { vectorCount: number; namespaces: number }): void {
+function writeVectorStatsCache(
+  dbPath: string,
+  stats: { vectorCount: number; namespaces: number; missing?: number },
+): void {
   try {
     const fileStat = fs.statSync(dbPath);
     const dbSizeKB = Math.floor(fileStat.size / 1024);
-    const { vectorCount, namespaces } = stats;
+    const { vectorCount, namespaces, missing = 0 } = stats;
 
-    // Check HNSW index presence
     const dbDir = path.dirname(dbPath);
     const projectDir = path.dirname(dbDir); // .swarm -> project root
     let hasHnsw = false;
@@ -42,13 +46,7 @@ function writeVectorStatsCache(dbPath: string, stats: { vectorCount: number; nam
       try { fs.statSync(p); hasHnsw = true; break; } catch { /* nope */ }
     }
 
-    // Write to .claude-flow dir next to the .swarm dir
-    const cacheDir = path.join(projectDir, '.claude-flow');
-    if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(cacheDir, 'vector-stats.json'),
-      JSON.stringify({ vectorCount, dbSizeKB, namespaces, hasHnsw, updatedAt: Date.now() })
-    );
+    writeVectorStatsJson(projectDir, { vectorCount, missing, dbSizeKB, namespaces, hasHnsw });
   } catch { /* Non-fatal */ }
 }
 
@@ -1953,10 +1951,13 @@ export async function storeEntry(options: {
     const id = `entry_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const now = Date.now();
 
-    // Generate embedding if requested
+    // generateEmbedding() throws on embed failure; the outer try/catch returns
+    // success:false rather than inserting a null-embedded row. Opt-out rows
+    // (generateEmbeddingFlag=false) are tagged EMBEDDING_MODEL_OPT_OUT — see
+    // the constant's docstring in bridge-embedder.ts for the rationale.
     let embeddingJson: string | null = null;
     let embeddingDimensions: number | null = null;
-    let embeddingModel: string | null = null;
+    let embeddingModel: string = EMBEDDING_MODEL_OPT_OUT;
 
     if (generateEmbeddingFlag && value.length > 0) {
       const embResult = await generateEmbedding(value);
@@ -1995,13 +1996,17 @@ export async function storeEntry(options: {
 
     atomicWriteFileSync(dbPath, db.export());
 
-    // Query exact stats while DB is still open
-    let vecCount = 0, nsCount = 0;
+    // Query exact stats while DB is still open. `missing` is the active-rows-
+    // with-NULL-embedding count, surfaced via vector-stats.json so the
+    // statusline can warn on coverage holes (#648 / #649).
+    let vecCount = 0, nsCount = 0, missingCount = 0;
     try {
       const vc = db.exec("SELECT COUNT(*) FROM memory_entries WHERE status='active' AND embedding IS NOT NULL");
       vecCount = vc[0]?.values?.[0]?.[0] as number ?? 0;
       const nc = db.exec("SELECT COUNT(DISTINCT namespace) FROM memory_entries WHERE status='active'");
       nsCount = nc[0]?.values?.[0]?.[0] as number ?? 0;
+      const mc = db.exec("SELECT COUNT(*) FROM memory_entries WHERE status='active' AND embedding IS NULL");
+      missingCount = mc[0]?.values?.[0]?.[0] as number ?? 0;
     } catch { /* table may not have status column in older DBs */ }
 
     db.close();
@@ -2018,7 +2023,7 @@ export async function storeEntry(options: {
     }
 
     // Update statusline cache with exact counts
-    writeVectorStatsCache(dbPath, { vectorCount: vecCount, namespaces: nsCount });
+    writeVectorStatsCache(dbPath, { vectorCount: vecCount, namespaces: nsCount, missing: missingCount });
 
     return {
       success: true,

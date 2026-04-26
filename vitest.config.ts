@@ -72,6 +72,10 @@ export const isolationTests = [
   'tests/guards/hash-fallback-guard.test.ts',
   'tests/hive-mind-messagebus.test.ts',
   'tests/issue-fixes.test.ts',
+  // process.chdir + bridge singleton reset per test — racy under parallel
+  // forks because cwd is process-global and the registry singleton is
+  // module-shared.
+  'src/cli/__tests__/bridge-entries.test.ts',
 ];
 
 export default defineConfig({

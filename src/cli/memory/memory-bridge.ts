@@ -22,6 +22,10 @@ import {
   bridgeSearchEntries,
   bridgeStoreEntry,
 } from './bridge-entries.js';
+import {
+  BRIDGE_EMBEDDING_MODEL,
+  getBridgeEmbedder,
+} from './bridge-embedder.js';
 
 // ===== Re-exports: primitives =====
 
@@ -53,22 +57,17 @@ export async function bridgeGenerateEmbedding(
   const registry = await getRegistry(dbPath);
   if (!registry) return null;
 
-  try {
-    const mofloDb = registry.getMofloDb();
-    const embedder = mofloDb?.embedder;
-    if (!embedder) return null;
-
-    const emb = await embedder.embed(text);
-    if (!emb) return null;
-
-    return {
-      embedding: Array.from(emb),
-      dimensions: emb.length,
-      model: 'Xenova/all-MiniLM-L6-v2',
-    };
-  } catch {
-    return null;
-  }
+  // Pre-#648 this read `mofloDb.embedder`, which never exists on a SqlJsHandle —
+  // the path always returned null and silently fell through to the
+  // memory-initializer fastembed path. Wired through bridge-embedder so the
+  // bridge does the work directly and tags results with the canonical model.
+  const embedder = getBridgeEmbedder();
+  const vector = await embedder.embed(text);
+  return {
+    embedding: Array.from(vector),
+    dimensions: vector.length,
+    model: embedder.model,
+  };
 }
 
 export async function bridgeLoadEmbeddingModel(
@@ -83,23 +82,17 @@ export async function bridgeLoadEmbeddingModel(
   const registry = await getRegistry(dbPath);
   if (!registry) return null;
 
-  try {
-    const mofloDb = registry.getMofloDb();
-    const embedder = mofloDb?.embedder;
-    if (!embedder) return null;
-
-    const test = await embedder.embed('test');
-    if (!test) return null;
-
-    return {
-      success: true,
-      dimensions: test.length,
-      modelName: 'Xenova/all-MiniLM-L6-v2',
-      loadTime: Date.now() - startTime,
-    };
-  } catch {
-    return null;
-  }
+  // Probe the embedder so callers see real load failure rather than a stale
+  // cached "available" — embed() lazily initializes fastembed and throws on
+  // model-load failure (per #648 acceptance: no silent fallback).
+  const embedder = getBridgeEmbedder();
+  const probe = await embedder.embed('moflo bridge embedder probe');
+  return {
+    success: true,
+    dimensions: probe.length,
+    modelName: embedder.model,
+    loadTime: Date.now() - startTime,
+  };
 }
 
 // ===== HNSW bridge =====
@@ -195,15 +188,18 @@ export async function bridgeAddToHNSW(
   return withDb(dbPath, async (ctx) => {
     const now = Date.now();
     const embeddingJson = JSON.stringify(embedding);
+    // Bridge-produced vectors come from getBridgeEmbedder() (fastembed, 384-dim).
+    // Pre-#648 this column was hardcoded to 'Xenova/all-MiniLM-L6-v2' which
+    // misrepresented the producing model — fixed to the canonical bridge label.
     ctx.db.prepare(`
       INSERT OR REPLACE INTO memory_entries (
         id, key, namespace, content, type,
         embedding, embedding_dimensions, embedding_model,
         created_at, updated_at, status
-      ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, 'Xenova/all-MiniLM-L6-v2', ?, ?, 'active')
+      ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, 'active')
     `).run([
       id, entry.key, entry.namespace, entry.content,
-      embeddingJson, embedding.length,
+      embeddingJson, embedding.length, BRIDGE_EMBEDDING_MODEL,
       now, now,
     ]);
     persistBridgeDb(ctx.db, dbPath);
