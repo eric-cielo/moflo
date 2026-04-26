@@ -42,6 +42,7 @@ let storeEntryFn: ((options: {
   generateEmbeddingFlag?: boolean;
   tags?: string[];
   ttl?: number;
+  upsert?: boolean;
 }) => Promise<{
   success: boolean;
   id: string;
@@ -1712,6 +1713,9 @@ export const hooksPretrain: MCPTool = {
             namespace: 'patterns',
             generateEmbeddingFlag: true,
             tags: [pattern.type, 'pretrain', `depth-${depth}`],
+            // Pretrain keys are deterministic content hashes — re-running on a
+            // seeded DB must refresh, not throw UNIQUE(namespace, key) (#658).
+            upsert: true,
           });
           patternsStored++;
         } catch {
