@@ -222,6 +222,42 @@ try {
         }
       }
 
+      // Recycle the running daemon — its in-process module cache holds the
+      // previous moflo image. After an upgrade that cache is stale, which
+      // shows up as warnings from removed code paths (e.g. the
+      // `[neural-tools] @moflo/embeddings not resolvable` spam from #639,
+      // emitted by pre-#592 collapse code that no longer exists in source)
+      // and means freshly-disabled workers keep running.
+      //
+      // Recycle = stop old + start new. We kill the lock-recorded PID,
+      // remove the lock, then fire a fresh daemon so the user keeps the
+      // functionality they had. `daemon.autoStart` only governs the
+      // cold-start case (no daemon existed); here a daemon was actually
+      // running, so replacing it with a current-code copy is the desired
+      // behaviour regardless of that flag.
+      try {
+        const lockFile = resolve(projectRoot, '.claude-flow', 'daemon.lock');
+        if (existsSync(lockFile)) {
+          let stalePid = null;
+          try {
+            const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
+            if (typeof lock?.pid === 'number' && lock.pid > 0) stalePid = lock.pid;
+          } catch { /* malformed lock — fall through to unlink */ }
+          if (stalePid !== null) {
+            try { process.kill(stalePid, 'SIGTERM'); } catch { /* already dead */ }
+          }
+          try { unlinkSync(lockFile); } catch { /* non-fatal */ }
+          // Respawn only if a live daemon was actually recorded — no point
+          // starting one when there wasn't one before.
+          if (stalePid !== null) {
+            const localCliPath = resolve(binDir, 'cli.js');
+            if (existsSync(localCliPath)) {
+              fireAndForget('node', [localCliPath, 'daemon', 'start', '--quiet'], 'daemon-recycle');
+            }
+          }
+        }
+      } catch { /* non-fatal — daemon recycle is best-effort */ }
+
       // Write updated manifest + version stamp
       try {
         const cfDir = resolve(projectRoot, '.claude-flow');
