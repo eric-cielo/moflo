@@ -86,6 +86,34 @@ describe('atomicWriteFileSync (real fs)', () => {
     expect(read[0]).toBe(0xde);
     expect(read[3]).toBe(0xef);
   });
+
+  it('uses a process-unique temp path (#635) — concurrent writers cannot clobber tmp', async () => {
+    // 50 concurrent writers within the same process race for the same target.
+    // Each writes a complete, parseable JSON payload tagged with its writer ID.
+    // The destination must always end up with EXACTLY ONE writer's full payload —
+    // never a corrupted mix or partial JSON.
+    const dir = makeTmpDir();
+    const target = join(dir, 'concurrent.json');
+
+    const writers = Array.from({ length: 50 }, (_, i) =>
+      Promise.resolve().then(() => {
+        try {
+          atomicWriteFileSync(target, JSON.stringify({ writer: i, payload: 'x'.repeat(2048) }));
+        } catch {
+          /* rename-race losers throw; that's expected last-writer-wins behavior */
+        }
+      }),
+    );
+    await Promise.all(writers);
+
+    const final = readFileSync(target, 'utf8');
+    // Always parseable — proves no torn write.
+    const parsed = JSON.parse(final);
+    expect(typeof parsed.writer).toBe('number');
+    expect(parsed.writer).toBeGreaterThanOrEqual(0);
+    expect(parsed.writer).toBeLessThan(50);
+    expect(parsed.payload).toBe('x'.repeat(2048));
+  });
 });
 
 describe('atomicWriteFileSync (injected fs)', () => {

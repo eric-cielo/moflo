@@ -12,6 +12,7 @@
 
 import { EventEmitter } from 'events';
 import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from 'fs';
+import { atomicWriteFileSync } from './atomic-file-write.js';
 import { cpus } from 'os';
 import { join } from 'path';
 import {
@@ -1089,7 +1090,9 @@ export class WorkerDaemon extends EventEmitter {
     };
 
     try {
-      writeFileSync(this.config.stateFile, JSON.stringify(state, null, 2));
+      // Atomic write protects daemon-state.json from corruption when the
+      // daemon is force-killed mid-write (#635).
+      atomicWriteFileSync(this.config.stateFile, JSON.stringify(state, null, 2));
     } catch (error) {
       this.log('error', `Failed to save state: ${error}`);
     }

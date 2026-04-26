@@ -18,6 +18,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { atomicWriteFileSync } from './atomic-file-write.js';
 import { loadMofloConfig } from '../config/moflo-config.js';
 
 // ============================================================================
@@ -141,9 +142,14 @@ export class GateService {
   writeState(state: GateState): void {
     try {
       fs.mkdirSync(path.dirname(this.stateFilePath), { recursive: true });
-      fs.writeFileSync(this.stateFilePath, JSON.stringify(state, null, 2));
+      // Atomic write — concurrent gate hooks fire as separate node processes
+      // and used to produce torn JSON when they raced on naked writeFileSync
+      // (#629/#635). atomicWriteFileSync uses a process-unique temp path +
+      // rename so the destination always reflects exactly one writer's data.
+      atomicWriteFileSync(this.stateFilePath, JSON.stringify(state, null, 2));
     } catch {
-      // Non-fatal
+      // Non-fatal — last-writer-wins semantics; some updates may be lost
+      // under contention but the file is never corrupted.
     }
   }
 
