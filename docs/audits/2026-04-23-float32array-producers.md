@@ -63,7 +63,7 @@ that is NOT subject to the `benchmarks/` exemption.
 | `src/modules/memory/src/learning-bridge.ts:449-460` | `await this.embeddingService.embed(text)`; returns an empty `Float32Array(0)` on catch (not a hash fallback — an empty vector that downstream callers check). | Injected service via factory. |
 | `src/modules/swarm/src/queen-coordinator.ts` | Accepts pre-computed embeddings on task/agent inputs; otherwise calls injected `IEmbeddingProvider.embed`. | PR #543. |
 | `src/modules/swarm/src/attention-coordinator.ts:829,889,897,891` | Same pattern — prefers caller-supplied vector, otherwise delegates to `this.embeddingProvider.embed`. | PR #543. |
-| `src/modules/hooks/src/reasoningbank/index.ts:862-868,1022-1028` | `ensureEmbedding()` calls the injected `embeddingService`. | Constructor-injected. |
+| `src/modules/cli/src/hooks/reasoningbank/index.ts:862-868,1022-1028` | `ensureEmbedding()` calls the injected `embeddingService`. | Constructor-injected. |
 | `src/modules/cli/src/commands/embeddings.ts` | CLI wrapper over provider results. | Same DI path. |
 | `src/modules/cli/src/benchmarks/pretrain/index.ts:290-313` (`benchmarkEmbeddingGeneration`) | `createEmbeddingService({ provider: 'fastembed' })` + `service.embed(...)`. | Shipped via `moflo benchmark pretrain`; the reported number now reflects real fastembed throughput (#560, PR #565). |
 
@@ -117,7 +117,7 @@ Grouped by concern for readability.
 
 Skipped per audit scope. Listed here only so the audit is demonstrably complete.
 
-- `src/modules/hooks/src/reasoningbank/__mocks__/test-embedding-service.ts` — deterministic test mock.
+- `src/modules/cli/src/hooks/reasoningbank/__mocks__/test-embedding-service.ts` — deterministic test mock.
 - `src/modules/guidance/tests/__mocks__/deterministic-embedding-provider.ts` — deterministic test mock.
 - `src/modules/memory/src/controllers/_test-embedder.ts` — test-only embedder helper.
 - `src/modules/embeddings/__tests__/**`, `src/modules/memory/benchmarks/*.bench.ts`, `src/modules/neural/__tests__/**`, etc. — vitest / benchmark suites.

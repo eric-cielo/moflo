@@ -6,99 +6,12 @@
  *
  * Transport: delegates to IMessageBus (Story #120).
  * Domain state (patterns, consensus, handoffs) remains local.
- *
- * @module @moflo/hooks/swarm
  */
 
 import { EventEmitter } from 'node:events';
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import { reasoningBank, type GuidancePattern } from '../reasoningbank/index.js';
-// Structural types for the swarm runtime shapes we use. Defined locally
-// because swarm lives in a sibling package and is loaded dynamically at
-// runtime — rootDir constraints rule out a cross-package compile-time
-// import, and a project reference would create a cycle (cli → hooks).
-interface Message {
-  id: string;
-  type: string;
-  from: string;
-  to: string | 'broadcast';
-  payload: unknown;
-  timestamp: Date | number;
-  priority: 'urgent' | 'high' | 'normal' | 'low';
-  requiresAck: boolean;
-  ttlMs: number;
-}
-interface MessageFilter {
-  from?: string;
-  type?: string;
-  since?: number;
-  limit?: number;
-  namespace?: string;
-}
-interface IMessageBus {
-  initialize(): Promise<void>;
-  shutdown(): Promise<void>;
-  sendUnified(message: Record<string, unknown>): Promise<string>;
-  subscribe(agentId: string, callback: (message: Message) => void, options?: { namespace?: string }): void;
-  unsubscribe(agentId: string): void;
-  getMessages(agentId: string, filter?: MessageFilter): Message[];
-  getQueueDepth(): number;
-}
-
-/**
- * Walk up from this file to find `src/modules/cli/dist/src/swarm/<rel>`.
- * Layout- and platform-invariant — works from source, built, and installed
- * contexts on Windows/Linux/macOS. Mirrors `locateMofloModuleDist` in
- * @moflo/cli (feedback_no_fixed_depth_paths: never use fixed ../ counts to
- * cross moflo packages).
- */
-export function locateSwarmArtifact(relFromDist: string): string | null {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  const rel = join('src', 'modules', 'cli', 'dist', 'src', 'swarm', relFromDist);
-  for (let i = 0; i < 12; i++) {
-    const candidate = join(dir, rel);
-    if (existsSync(candidate)) return pathToFileURL(candidate).href;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
-// Lazy-load MessageBus: swarm lives in cli's dist tree and may not be built
-// in every consumer install. On failure we fall back to a no-op bus so hooks
-// keep functioning; the failure is logged (feedback_no_silent_failures)
-// rather than swallowed.
-async function loadMessageBus(): Promise<new () => IMessageBus> {
-  const url = locateSwarmArtifact('message-bus/message-bus.js');
-  if (url) {
-    try {
-      const mod = await import(url);
-      return mod.MessageBus;
-    } catch (err) {
-      console.warn(
-        `[moflo/hooks] Failed to load swarm MessageBus from ${url}:`,
-        err instanceof Error ? err.message : err,
-      );
-    }
-  } else {
-    console.warn(
-      '[moflo/hooks] swarm MessageBus not built — using no-op bus. ' +
-      'Run `npm run build` to enable swarm coordination.',
-    );
-  }
-  // No-op fallback — hooks continue to work without cross-agent messaging.
-  const NoopMessageBus = class {
-    async initialize() {}
-    async shutdown() {}
-    async publish() {}
-    subscribe() { return () => {}; }
-    getMessages() { return []; }
-  };
-  return NoopMessageBus as unknown as new () => IMessageBus;
-}
+import { MessageBus } from '../../swarm/message-bus/message-bus.js';
+import type { Message, MessageFilter, IMessageBus } from '../../swarm/types.js';
 
 // ============================================================================
 // Types
@@ -1074,27 +987,14 @@ export function createSwarmCommunication(
 }
 
 /** @deprecated Use createSwarmCommunication() with an injected IMessageBus. */
-let _swarmCommSingleton: SwarmCommunication | null = null;
-const _swarmCommProxy = new Proxy({} as SwarmCommunication, {
-  get(_target, prop) {
-    if (!_swarmCommSingleton) {
-      // Not yet initialized — return no-op for common methods
-      if (prop === 'sendMessage') return async () => {};
-      if (prop === 'getMessages') return async () => [];
-      if (prop === 'broadcastContext') return async () => {};
-    }
-    return _swarmCommSingleton?.[prop as keyof SwarmCommunication];
-  },
+const _defaultBus = new MessageBus();
+_defaultBus.initialize().catch(err => {
+  console.warn(
+    '[moflo/hooks/swarm] MessageBus initialize failed:',
+    err instanceof Error ? err.message : err,
+  );
 });
-// Async init — non-blocking
-loadMessageBus().then(MessageBusCtor => {
-  const bus = new MessageBusCtor();
-  if ('initialize' in bus && typeof bus.initialize === 'function') {
-    (bus.initialize() as Promise<void>).catch(() => {});
-  }
-  _swarmCommSingleton = new SwarmCommunication(bus);
-}).catch(() => { /* swarm unavailable — singleton remains proxy */ });
-export const swarmComm: SwarmCommunication = _swarmCommProxy;
+export const swarmComm: SwarmCommunication = new SwarmCommunication(_defaultBus);
 
 export {
   SwarmCommunication as default,

@@ -13,7 +13,7 @@ export const isolationTests = [
   'src/modules/memory/src/database-provider.test.ts',
   'src/modules/cli/__tests__/spells/sandbox-tier-integration.test.ts',
   'src/modules/cli/__tests__/spells/spell-sandboxing.test.ts',
-  'src/modules/hooks/__tests__/statusline/statusline-collision.test.ts',
+  'src/modules/cli/__tests__/hooks/statusline/statusline-collision.test.ts',
   'src/modules/cli/__tests__/spells/integration/permission-system-e2e.test.ts',
   'src/modules/cli/__tests__/spells/integration/spell-engine-e2e.test.ts',
   'tests/system/pluggable-steps-system.test.ts',
@@ -58,7 +58,7 @@ export const isolationTests = [
   'src/modules/cli/__tests__/mcp-tools-deep.test.ts',
   'src/modules/cli/__tests__/services/moflo-require.test.ts',
   'src/modules/cli/__tests__/guidance/persistence.test.ts',
-  'src/modules/hooks/__tests__/workers.test.ts',
+  'src/modules/cli/__tests__/hooks/workers.test.ts',
   'src/modules/cli/src/shared/hooks/verify-exports.test.ts',
   'src/modules/cli/__tests__/spells/built-in-commands.test.ts',
   'src/modules/cli/__tests__/spells/moflo-levels.test.ts',
@@ -110,7 +110,6 @@ export default defineConfig({
       'src/modules/cli/__tests__/embeddings/simple.test.mjs',
       'src/modules/cli/__tests__/embeddings/minimal.test.mjs',
       // Guidance tests with 0 tests (collection failures)
-      'src/modules/cli/__tests__/guidance/hooks.test.ts',
       'src/modules/cli/__tests__/guidance/integration.test.ts',
       // Isolation tests — run sequentially in second pass (see isolationTests above)
       ...isolationTests,

@@ -335,17 +335,14 @@ export async function checkMcpToolInvocation(): Promise<HealthCheck> {
 /**
  * Fires a pre-task hook with a synthetic context and verifies the executor
  * completes without error. Does NOT modify any state — purely diagnostic.
- *
- * Note: The hooks package is not currently included in the published npm
- * package `files` array, so this check gracefully degrades in consumer projects.
  */
 export async function checkHookExecution(): Promise<HealthCheck> {
   try {
     const modulePath = findModule(
-      'src/modules/hooks/dist/index.js',
+      'src/modules/cli/dist/src/hooks/index.js',
     );
     if (!modulePath) {
-      return { name: 'Hook Execution', status: 'warn', message: 'Hooks package not available (not shipped in this build)', fix: 'Run from moflo dev repo or add hooks to package.json files' };
+      return { name: 'Hook Execution', status: 'warn', message: 'Hooks module not built', fix: 'npm run build' };
     }
 
     let hooksModule: Record<string, unknown>;

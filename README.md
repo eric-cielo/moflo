@@ -37,7 +37,7 @@ MoFlo makes deliberate choices so you don't have to:
   - **MicroLoRA** — rank-2 LoRA weight adaptations at ~1µs per adapt via pure TypeScript MicroLoRA in `@moflo/neural`
   - **EWC++** (Elastic Weight Consolidation) — prevents catastrophic forgetting across sessions
   - **HNSW Vector Search** — fast nearest-neighbor search via HNSW indexing with sql.js (WASM SQLite)
-  - **Semantic Routing** — maps tasks to agents via learned routing in `@moflo/hooks`
+  - **Semantic Routing** — maps tasks to agents via learned routing in `cli/src/hooks` (ReasoningBank)
   - **Trajectory Persistence** — outcomes stored in `routing-outcomes.json`, survive across sessions
   - All pure TypeScript/WASM-based, no GPU, no API keys, no external services.
 - **Memory-first** — Claude must search what it already knows before exploring files. Enforced by hooks, not just instructions.

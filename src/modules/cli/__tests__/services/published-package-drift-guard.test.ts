@@ -49,9 +49,7 @@ const AUTO_INSTALLED_EXTERNALS = new Set<string>();
 
 // Pinned inventory of bare packages. New entries force a dev to verify the
 // consumer-smoke probe still covers them.
-const ALLOWED_BARE_PACKAGES = new Set([
-  '@moflo/hooks',
-]);
+const ALLOWED_BARE_PACKAGES = new Set<string>([]);
 
 const BARE_RE = /(?:from|import)\s*\(?\s*['"](@moflo\/[a-z][a-z0-9_-]*)(?:\/[a-z0-9_/.-]+)?['"]/g;
 

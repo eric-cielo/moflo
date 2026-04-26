@@ -1,5 +1,5 @@
 /**
- * @moflo/hooks - V3 Hooks System
+ * cli/hooks - V3 Hooks System
  *
  * Event-driven lifecycle hooks with ReasoningBank learning integration.
  *

@@ -15,7 +15,7 @@
 
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { DaemonManager, HooksLearningDaemon, MetricsDaemon } from '../dist/daemons/index.js';
+import { DaemonManager, HooksLearningDaemon, MetricsDaemon } from '../../dist/src/hooks/daemons/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

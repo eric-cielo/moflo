@@ -60,7 +60,7 @@ Call → `@moflo/embeddings` `EmbeddingService` → provider selection. Provider
 - Auto-invoked by: `hooks_post-task`, `hooks_post-edit` from `.claude/settings.json` hooks configuration
 
 **Code path**
-`mcp-tools/hooks-tools.ts` → `@moflo/hooks` `reasoningbank/index.ts` (1164 LOC) → optional `agentdb` backend via `memoryBridge.bridgeStorePattern()` / `bridgeSearchPatterns()` / `bridgeRecordFeedback()` (memory-bridge.ts:1189, 1234, 1302).
+`mcp-tools/hooks-tools.ts` → `cli/src/hooks/reasoningbank/index.ts` (1164 LOC) → optional `agentdb` backend via `memoryBridge.bridgeStorePattern()` / `bridgeSearchPatterns()` / `bridgeRecordFeedback()` (memory-bridge.ts:1189, 1234, 1302).
 
 **Fallback path**
 `memory-bridge.ts` wraps every `reasoningBank.*` call in `if (controller) { try … } else { fallback }`. Fallback for pattern-store/search is `bridgeStoreEntry()` / `bridgeSearchEntries()`, which writes to `memory_entries` via sql.js directly (audit Gate 1 confirmed).

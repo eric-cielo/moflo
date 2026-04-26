@@ -40,7 +40,7 @@ const service = createEmbeddingService({ provider: 'fastembed' });
 const { embedding } = await service.embed('Hello world');
 ```
 
-Cross-module consumers (memory, hooks) load the embeddings module via a stable-marker walk-up — see `src/modules/memory/src/locate-cli-embeddings.ts` and `src/modules/hooks/src/reasoningbank/locate-cli-embeddings.ts`. Both helpers disappear once the workspace-collapse epic finishes and every consumer is in the same source tree.
+After the workspace-collapse epic (#586) memory and hooks now live inside cli, so they import embeddings via direct relative paths — the previous walk-up helpers (`locate-cli-embeddings.ts`) are gone.
 
 ## Why the rewrite
 

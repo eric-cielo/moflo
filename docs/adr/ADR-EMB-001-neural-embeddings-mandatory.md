@@ -28,7 +28,7 @@ Remove every hash-embedding code path from the production tree atomically in a s
 
 - Delete `HashEmbeddingProvider`, `createHashEmbedding`, `generateHashEmbedding`, `RvfEmbeddingService`, `RvfEmbeddingCache`, and any `domain-aware-hash-*` helpers from `src/`.
 - Keep the deterministic test fixture in `tests/__mocks__/deterministic-embedding-provider.ts` — unreachable from production factories, only used in unit tests that explicitly inject it.
-- Every embedding consumer (`@moflo/memory`, `@moflo/guidance`, `@moflo/hooks`, `@moflo/neural`, CLI bridge) now throws on a missing provider instead of falling through.
+- Every embedding consumer (the inlined memory, guidance, hooks, neural, and CLI bridge — all under `cli/src/`) now throws on a missing provider instead of falling through.
 
 ### 2. Swap `@xenova/transformers` → `fastembed`
 

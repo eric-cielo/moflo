@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
-import { ReasoningBank, type GuidancePattern } from '../reasoningbank/index.js';
+import { ReasoningBank, type GuidancePattern } from '../../src/hooks/reasoningbank/index.js';
 
 // ReasoningBank.initialize() loads AgentDB (sql.js + HNSW + Transformers);
 // the one-time native module boot can exceed 5s under Linux CI parallel load.

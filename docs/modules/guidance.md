@@ -38,7 +38,7 @@ const { EnforcementGates } = await import('../guidance/gates.js');
 const { analyze, abBenchmark } = await import('../guidance/analyzer.js');
 ```
 
-The control plane has zero inbound `@moflo/*` dependents — only `cli` consumes it. The single outbound dependency on `@moflo/hooks` (registry types in `guidance/hooks.ts`) remains a workspace bare-specifier and dissolves when `@moflo/hooks` collapses.
+The control plane has zero inbound `@moflo/*` dependents — only `cli` consumes it. The hook-registry integration in `guidance/hooks.ts` reaches the inlined hooks module via a direct relative import (`../hooks/index.js`) after #599.
 
 ## Why the rewrite
 

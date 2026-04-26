@@ -5,8 +5,8 @@
  */
 
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
-import { GuidanceProvider, type ClaudeHookOutput } from '../reasoningbank/guidance-provider.js';
-import { ReasoningBank } from '../reasoningbank/index.js';
+import { GuidanceProvider, type ClaudeHookOutput } from '../../src/hooks/reasoningbank/guidance-provider.js';
+import { ReasoningBank } from '../../src/hooks/reasoningbank/index.js';
 
 // ReasoningBank.initialize() loads AgentDB (sql.js + HNSW + Transformers);
 // the one-time native module boot can exceed 5s under Linux CI parallel load.

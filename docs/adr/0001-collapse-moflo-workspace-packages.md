@@ -29,8 +29,8 @@ The published tarball (`npm pack`) bundles only **11** of these (cli, embeddings
 
 From [`collapse-deps.md`](./collapse-deps.md):
 
-- **Leaves (zero outbound `@moflo/*` imports):** `aidefence`, `claims`, `embeddings`, `guidance`, `plugins`, `security`, `shared`, `spells`, `swarm`, `memory`, `neural` (12/14 — `aidefence` inlined in #590, `claims` deleted in #591, `embeddings` inlined in #592, `plugins` deleted in #593, `guidance` inlined in #600, `spells` inlined in #596, `swarm` inlined in #597, `memory + neural` inlined together in #598)
-- **Mid-tier:** `hooks` → `cli` (walk-up); `testing` → `cli` (walk-up)
+- **Leaves (zero outbound `@moflo/*` imports):** `aidefence`, `claims`, `embeddings`, `guidance`, `hooks`, `plugins`, `security`, `shared`, `spells`, `swarm`, `memory`, `neural` (13/14 — `aidefence` inlined in #590, `claims` deleted in #591, `embeddings` inlined in #592, `plugins` deleted in #593, `guidance` inlined in #600, `spells` inlined in #596, `swarm` inlined in #597, `memory + neural` inlined together in #598, `hooks` inlined in #599)
+- **Mid-tier:** `testing` → `cli` (walk-up)
 - **Trunk:** `cli` (the inlined home for all collapsed packages)
 - **Cycle:** ~~`memory ↔ neural`~~ (resolved by #598 — both packages share a compilation unit, dynamic imports replaced with sibling relative imports)
 

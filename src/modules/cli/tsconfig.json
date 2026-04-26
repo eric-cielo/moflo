@@ -5,15 +5,8 @@
     "rootDir": ".",
     "composite": true,
     "declaration": true,
-    "declarationMap": true,
-    "baseUrl": ".",
-    "paths": {
-      "@moflo/hooks": ["../hooks/src"]
-    }
+    "declarationMap": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
-  "references": [
-    { "path": "../hooks" }
-  ]
+  "exclude": ["node_modules", "dist"]
 }

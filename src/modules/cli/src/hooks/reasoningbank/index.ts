@@ -17,8 +17,6 @@ import { EventEmitter } from 'node:events';
 import type { HookContext, HookEvent } from '../types.js';
 import type { IEmbeddingService } from './embedding-service-types.js';
 import { TestDeterministicEmbedding } from './__mocks__/test-embedding-service.js';
-import { locateCliEmbeddings } from './locate-cli-embeddings.js';
-import { locateCliMemory } from './locate-cli-memory.js';
 
 // Dynamic imports for optional dependencies
 let MofloDbAdapter: any = null;
@@ -314,33 +312,29 @@ export class ReasoningBank extends EventEmitter {
       return mod;
     };
 
-    const memoryUrl = locateCliMemory();
-    if (memoryUrl) {
-      try {
-        const mod: any = await import(memoryUrl);
-        const checked = checkExports(mod, 'cli/memory', ['MofloDbAdapter', 'HNSWIndex']);
-        if (checked) {
-          MofloDbAdapter = checked.MofloDbAdapter;
-          HNSWIndex = checked.HNSWIndex;
-        }
-      } catch (err) {
-        console.warn(
-          `[ReasoningBank] Failed to load cli/memory from ${memoryUrl}:`,
-          err instanceof Error ? err.message : err,
-        );
+    // Lazy import the heavy memory + embeddings deps — onnxruntime-node would
+    // otherwise pay 5–10s of native boot during module load, even for tests
+    // that flip useMockEmbeddings on (handled by the early-return above).
+    try {
+      const mod: any = await import('../../memory/index.js');
+      const checked = checkExports(mod, 'cli/memory', ['MofloDbAdapter', 'HNSWIndex']);
+      if (checked) {
+        MofloDbAdapter = checked.MofloDbAdapter;
+        HNSWIndex = checked.HNSWIndex;
       }
+    } catch (err) {
+      console.warn(
+        `[ReasoningBank] Failed to load cli/memory:`,
+        err instanceof Error ? err.message : err,
+      );
     }
 
-    // Embeddings was inlined into cli (#592 / epic #586) — walk up to find it.
-    const embeddingsUrl = locateCliEmbeddings();
-    if (embeddingsUrl) {
-      try {
-        const mod: any = await import(embeddingsUrl);
-        const checked = checkExports(mod, 'cli/embeddings', ['createEmbeddingService']);
-        if (checked) EmbeddingServiceImpl = checked.createEmbeddingService;
-      } catch {
-        /* leave EmbeddingServiceImpl null; degrades to mock */
-      }
+    try {
+      const mod: any = await import('../../embeddings/index.js');
+      const checked = checkExports(mod, 'cli/embeddings', ['createEmbeddingService']);
+      if (checked) EmbeddingServiceImpl = checked.createEmbeddingService;
+    } catch {
+      /* leave EmbeddingServiceImpl null; degrades to mock */
     }
   }
 
