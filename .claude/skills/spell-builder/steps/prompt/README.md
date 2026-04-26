@@ -30,4 +30,4 @@
 
 ## Source
 
-`src/modules/cli/src/spells/commands/prompt-command.ts`
+`src/cli/spells/commands/prompt-command.ts`

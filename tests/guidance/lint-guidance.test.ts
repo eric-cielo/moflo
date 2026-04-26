@@ -74,7 +74,7 @@ function getGuidanceFiles(): string[] {
   return globMd(ROOT, ['node_modules', 'dist', '.git']).filter(f =>
     f.startsWith('.claude/guidance/') ||
     f === 'CLAUDE.md' ||
-    f === 'src/modules/cli/CLAUDE.md'
+    f === 'src/cli/CLAUDE.md'
   );
 }
 

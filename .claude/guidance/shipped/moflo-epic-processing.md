@@ -57,6 +57,6 @@ The strategy is resolved with this precedence (highest first):
 
 ## See Also
 
-- `src/modules/cli/src/commands/epic.ts` — Epic command implementation
-- `src/modules/cli/src/config/moflo-config.ts` — `MofloConfig.epic` interface and defaults
+- `src/cli/commands/epic.ts` — Epic command implementation
+- `src/cli/config/moflo-config.ts` — `MofloConfig.epic` interface and defaults
 - `.claude/skills/fl/SKILL.md` — `/flo` skill epic handling section

@@ -12,8 +12,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { MessageStore } from '../src/modules/cli/src/swarm/message-bus/message-store.js';
-import type { MessageStoreConfig, EmbeddingFunction } from '../src/modules/cli/src/swarm/message-bus/message-store.js';
+import { MessageStore } from '../src/cli/swarm/message-bus/message-store.js';
+import type { MessageStoreConfig, EmbeddingFunction } from '../src/cli/swarm/message-bus/message-store.js';
 
 /** In-memory mock for Memory DB */
 function createMockMemoryDb() {

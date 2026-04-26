@@ -12,7 +12,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 describe('settings-generator statusLine config', () => {
-  const generatorPath = resolve(__dirname, '../src/modules/cli/src/init/settings-generator.ts');
+  const generatorPath = resolve(__dirname, '../src/cli/init/settings-generator.ts');
 
   it('always includes statusLine unconditionally', () => {
     const content = readFileSync(generatorPath, 'utf-8');

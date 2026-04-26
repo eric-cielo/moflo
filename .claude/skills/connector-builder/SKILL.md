@@ -64,7 +64,7 @@ For each action, ask:
 
 ### Step 2: Generate Connector Source
 
-Create the file at `src/modules/cli/src/spells/connectors/<name>.ts`.
+Create the file at `src/cli/spells/connectors/<name>.ts`.
 
 Follow this template, using `github-cli.ts` as the reference implementation:
 
@@ -176,7 +176,7 @@ Create at `tests/packages/spells/connectors/<name>.test.ts`:
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { <name>Connector, validate<Name>Action } from
-  '../../../../src/modules/cli/src/spells/connectors/<name>.js';
+  '../../../../src/cli/spells/connectors/<name>.js';
 
 describe('<name>Connector', () => {
   describe('metadata', () => {
@@ -241,7 +241,7 @@ describe('<name>Connector', () => {
 
 ### Step 4: Register the Connector
 
-Add to `src/modules/cli/src/spells/connectors/index.ts`:
+Add to `src/cli/spells/connectors/index.ts`:
 
 ```typescript
 import { <name>Connector } from './<name>.js';
@@ -337,7 +337,7 @@ Step command "deploy" capabilities:
 
 ### Step 2: Generate Step Command Source
 
-Create at `src/modules/cli/src/spells/commands/<type>-command.ts`.
+Create at `src/cli/spells/commands/<type>-command.ts`.
 
 Follow this template, using `bash-command.ts` as the reference implementation:
 
@@ -459,7 +459,7 @@ export const <type>Command: StepCommand<<Type>StepConfig> = {
 };
 ```
 
-Alternatively, use the `createStepCommand()` factory from `src/modules/cli/src/spells/commands/create-step-command.ts` for compile-time type safety.
+Alternatively, use the `createStepCommand()` factory from `src/cli/spells/commands/create-step-command.ts` for compile-time type safety.
 
 #### Preflight `reason` strings — write for humans
 
@@ -480,9 +480,9 @@ Create at `tests/packages/spells/commands/<type>-command.test.ts`:
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
 import { <type>Command } from
-  '../../../../src/modules/cli/src/spells/commands/<type>-command.js';
+  '../../../../src/cli/spells/commands/<type>-command.js';
 import type { CastingContext } from
-  '../../../../src/modules/cli/src/spells/types/step-command.types.js';
+  '../../../../src/cli/spells/types/step-command.types.js';
 
 const mockContext: CastingContext = {
   variables: {},
@@ -546,7 +546,7 @@ describe('<type>Command', () => {
 
 ### Step 4: Register the Step Command
 
-Add to `src/modules/cli/src/spells/commands/index.ts`:
+Add to `src/cli/spells/commands/index.ts`:
 
 ```typescript
 import { <type>Command } from './<type>-command.js';
@@ -584,15 +584,15 @@ steps:
 
 ### Type Definitions
 
-- **Connector interface:** `src/modules/cli/src/spells/types/spell-connector.types.ts` — `SpellConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorCapability`
-- **Step command interface:** `src/modules/cli/src/spells/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `CastingContext`, `JSONSchema`
-- **Step factory:** `src/modules/cli/src/spells/commands/create-step-command.ts` — `createStepCommand()`
+- **Connector interface:** `src/cli/spells/types/spell-connector.types.ts` — `SpellConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorCapability`
+- **Step command interface:** `src/cli/spells/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `CastingContext`, `JSONSchema`
+- **Step factory:** `src/cli/spells/commands/create-step-command.ts` — `createStepCommand()`
 
 ### Existing Components
 
-**Shipped connectors** (`src/modules/cli/src/spells/connectors/`): `http` (http-tool.ts), `github-cli` (github-cli.ts), `playwright` (playwright.ts)
+**Shipped connectors** (`src/cli/spells/connectors/`): `http` (http-tool.ts), `github-cli` (github-cli.ts), `playwright` (playwright.ts)
 
-**Built-in step commands** (`src/modules/cli/src/spells/commands/`): `agent` (agent-command.ts), `bash` (bash-command.ts), `condition` (condition-command.ts), `prompt` (prompt-command.ts), `memory` (memory-command.ts), `wait` (wait-command.ts), `loop` (loop-command.ts), `browser` (browser-command.ts), `github` (github-command.ts)
+**Built-in step commands** (`src/cli/spells/commands/`): `agent` (agent-command.ts), `bash` (bash-command.ts), `condition` (condition-command.ts), `prompt` (prompt-command.ts), `memory` (memory-command.ts), `wait` (wait-command.ts), `loop` (loop-command.ts), `browser` (browser-command.ts), `github` (github-command.ts)
 
 ### Related Skills
 

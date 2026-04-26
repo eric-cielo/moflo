@@ -29,8 +29,9 @@ if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 async function loadMemoryPackage() {
   // Memory was inlined into moflo's cli package by the workspace-collapse epic
   // (#586 / story #598) — the bare `@moflo/memory` specifier no longer resolves.
-  // The compiled module ships at <moflo-pkg-root>/src/modules/cli/dist/src/memory/index.js.
-  const MEMORY_REL = join('src', 'modules', 'cli', 'dist', 'src', 'memory', 'index.js');
+  // After the final cli collapse (#602) the compiled module ships at
+  // <moflo-pkg-root>/dist/src/cli/memory/index.js.
+  const MEMORY_REL = join('dist', 'src', 'cli', 'memory', 'index.js');
   const { pathToFileURL } = await import('url');
 
   // Strategy 1: Resolve moflo's package.json directly from the consumer

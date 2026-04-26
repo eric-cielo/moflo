@@ -57,7 +57,7 @@ Current baseline: ~148 files passed, ~26 skipped, ~5500 tests.
 npm version patch --no-git-tag-version
 ```
 
-This bumps `package.json` AND syncs `src/modules/cli/package.json` via the `version` lifecycle script.
+This bumps `package.json` AND syncs `src/cli/package.json` via the `version` lifecycle script.
 
 For minor/major: replace `patch` with `minor` or `major`.
 
@@ -73,7 +73,7 @@ The version change updates `package.json` files which may affect compiled output
 
 ```bash
 git checkout -b <branch-name>
-git add <changed files> package.json package-lock.json src/modules/cli/package.json
+git add <changed files> package.json package-lock.json src/cli/package.json
 git commit -m "description"
 git push -u origin <branch-name>
 gh pr create --title "..." --body "..."
@@ -114,7 +114,7 @@ When you add a new `.mjs` script to `bin/`, you **must** also add it to the `scr
 1. Add the script to `bin/`
 2. Add its filename to `scriptFiles` in `bin/session-start-launcher.mjs`
 3. Mirror the same change in `.claude/scripts/session-start-launcher.mjs` (the dev copy)
-4. Update the test list in `src/modules/cli/__tests__/services/auto-update.test.ts`
+4. Update the test list in `src/cli/__tests__/services/auto-update.test.ts`
 
 ## Build Architecture
 

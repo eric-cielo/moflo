@@ -1,9 +1,10 @@
 # ADR-0001 — Collapse `@moflo/*` Workspace Packages into a Single `moflo` Package
 
-- **Status:** Accepted
-- **Date:** 2026-04-24
-- **Related:** Workspace-collapse epic (TBD link), issue #584, `feedback_no_fixed_depth_paths.md`, `feedback_no_stale_docs.md`, `feedback_optional_deps_gotcha.md`
+- **Status:** Implemented
+- **Date:** 2026-04-24 (decided), 2026-04-25 (implemented)
+- **Related:** Epic [#586](https://github.com/eric-cielo/moflo/issues/586), final story [#602](https://github.com/eric-cielo/moflo/issues/602), `feedback_no_fixed_depth_paths.md`, `feedback_no_stale_docs.md`, `feedback_optional_deps_gotcha.md`
 - **Foundation artifacts:** [`collapse-deps.json`](./collapse-deps.json), [`collapse-deps.md`](./collapse-deps.md)
+- **Outcome:** every former `@moflo/<pkg>` workspace package is now inlined under `src/cli/` (or deleted as dead code). The repo no longer has a `src/modules/` tree, no per-package `tsconfig.json`/`package.json`, and no bare `@moflo/*` specifiers in source.
 
 ## Context
 
@@ -15,7 +16,7 @@ The published tarball (`npm pack`) bundles only **11** of these (cli, embeddings
 
 ### What goes wrong with this layout
 
-1. **Bare `@moflo/X` specifiers don't resolve in consumer installs.** When a user runs `npx moflo` from their own project, Node resolves `import '@moflo/memory'` against the consumer's `node_modules/`, not moflo's. Consumer projects don't have `@moflo/memory` installed (it ships _inside_ `node_modules/moflo/src/modules/memory/dist/`), so resolution fails. We worked around this with `mofloImport()` and `locateMofloModuleDist()` (`src/modules/cli/src/services/moflo-require.ts`) — a `createRequire`-anchored helper that walks up to find the right `dist/` folder. That helper now has 11 call sites and a 12-deep walk cap with caching. It exists purely because the workspace layout doesn't match the shipping reality.
+1. **Bare `@moflo/X` specifiers don't resolve in consumer installs.** When a user runs `npx moflo` from their own project, Node resolves `import '@moflo/memory'` against the consumer's `node_modules/`, not moflo's. Consumer projects don't have `@moflo/memory` installed (it ships _inside_ `node_modules/moflo/src/modules/memory/dist/`), so resolution fails. We worked around this with `mofloImport()` and `locateMofloModuleDist()` (`src/cli/services/moflo-require.ts`) — a `createRequire`-anchored helper that walks up to find the right `dist/` folder. That helper now has 11 call sites and a 12-deep walk cap with caching. It exists purely because the workspace layout doesn't match the shipping reality.
 
 2. **Cross-package relative paths leak build layout.** Where the import-string workaround is inconvenient, modules use literal `../../../shared/dist/utils/atomic-file-write.js` paths (e.g. `src/modules/embeddings/src/utils/atomic-file-write.ts`). Those break the moment source/dist depth changes, which is why `feedback_no_fixed_depth_paths.md` and PR #581 added a guard. The guard is symptom-treatment for layout that shouldn't exist.
 
@@ -45,7 +46,7 @@ Concretely:
 1. Move every `src/modules/<pkg>/src/*` tree into a single source tree under the root `moflo` package — final layout TBD by the per-module stories, but the constraint is "no internal `@moflo/*` import strings remain."
 2. Delete the per-module `package.json`, `tsconfig.json`, and `vitest.config.ts` files. One root build, one root test run.
 3. Replace all `from '@moflo/X'` and `import('@moflo/X')` with relative imports that don't need the moflo-require walk-up.
-4. Delete `src/modules/cli/src/services/moflo-require.ts` and its 11 call sites. Replace `mofloImport`/`locateMofloModuleDist`/`requireMofloOrWarn` with direct relative imports.
+4. Delete `src/cli/services/moflo-require.ts` and its 11 call sites. Replace `mofloImport`/`locateMofloModuleDist`/`requireMofloOrWarn` with direct relative imports.
 5. Delete `feedback_no_fixed_depth_paths.md`'s ESLint guard (the rule is moot once there's only one package depth).
 6. Inline the three "optional add-on" packages (`aidefence`, `claims`, `testing`) into the root tree on the same terms as every other package. They are `optionalDependencies: "file:../X"` workspace fictions left over from the ruvnet/ruflo fork — none is actually published to npm (verify with `npm view @moflo/X`), and there are no external consumers to protect. Drop the optional-dependency machinery entirely; do not preserve a "standalone install" affordance.
 

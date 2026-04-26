@@ -2,7 +2,7 @@
 
 > **Note:** AIDefence is bundled inside `moflo`. There is no separate `@moflo/aidefence` npm package — collapsed into the moflo tree per [ADR-0001](../adr/0001-collapse-moflo-workspace-packages.md). Use the CLI command and MCP tools below.
 
-AIDefence is moflo's AI-manipulation defense layer: prompt-injection and jailbreak detection, PII scanning, and self-learning threat patterns with sub-millisecond latency. Source lives at `src/modules/cli/src/aidefence/`.
+AIDefence is moflo's AI-manipulation defense layer: prompt-injection and jailbreak detection, PII scanning, and self-learning threat patterns with sub-millisecond latency. Source lives at `src/cli/aidefence/`.
 
 ---
 
@@ -65,7 +65,7 @@ Patterns persist across restarts via the `aidefence:` namespace prefix in the sh
 
 ## Adding new patterns
 
-Patterns are defined in `src/modules/cli/src/aidefence/domain/services/threat-detection-service.ts`:
+Patterns are defined in `src/cli/aidefence/domain/services/threat-detection-service.ts`:
 
 ```typescript
 const PROMPT_INJECTION_PATTERNS: ThreatPattern[] = [
@@ -80,14 +80,14 @@ const PROMPT_INJECTION_PATTERNS: ThreatPattern[] = [
 ];
 ```
 
-Add a pattern, add a unit test in `src/modules/cli/__tests__/aidefence/threat-detection.test.ts`, ship.
+Add a pattern, add a unit test in `src/cli/__tests__/aidefence/threat-detection.test.ts`, ship.
 
 ---
 
 ## Tests
 
 ```bash
-npm test -- src/modules/cli/__tests__/aidefence
+npm test -- src/cli/__tests__/aidefence
 ```
 
-Three suites: detection, learning, integration. The MCP-tool surface is covered by `src/modules/cli/__tests__/mcp-tools-deep.test.ts`.
+Three suites: detection, learning, integration. The MCP-tool surface is covered by `src/cli/__tests__/mcp-tools-deep.test.ts`.

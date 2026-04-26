@@ -14,8 +14,8 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 const rootPkgPath = resolve(__dirname, '../package.json');
-const cliPkgPath = resolve(__dirname, '../src/modules/cli/package.json');
-const versionTsPath = resolve(__dirname, '../src/modules/cli/src/version.ts');
+const cliPkgPath = resolve(__dirname, '../src/cli/package.json');
+const versionTsPath = resolve(__dirname, '../src/cli/version.ts');
 
 describe('#74 — CLI version sync', () => {
   it('version.ts exists and exports VERSION', () => {
@@ -42,7 +42,7 @@ describe('#74 — CLI version sync', () => {
 
   it('VERSION re-exported from CLI index matches root', async () => {
     const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf-8'));
-    const { VERSION } = await import('../src/modules/cli/src/version.js');
+    const { VERSION } = await import('../src/cli/version.js');
     expect(VERSION).toBe(rootPkg.version);
   });
 });
@@ -51,7 +51,7 @@ describe('#75 — session-start auto-pretrain', () => {
   it('session-start handler calls pretrain when restoredPatterns is 0', async () => {
     // Import the handler (heavy import tree — needs extended timeout under full suite)
     const { hooksSessionStart } = await import(
-      '../src/modules/cli/src/mcp-tools/hooks-tools.js'
+      '../src/cli/mcp-tools/hooks-tools.js'
     );
 
     // Run with daemon disabled to keep test fast
@@ -77,7 +77,7 @@ describe('#77 — createSONALearningEngine default args', () => {
 
   it('source file contains DEFAULT_MODE_CONFIGS fallback', () => {
     const content = readFileSync(
-      resolve(__dirname, '../src/modules/neural/src/sona-integration.ts'),
+      resolve(__dirname, '../src/cli/neural/sona-integration.ts'),
       'utf-8'
     );
     expect(content).toContain('DEFAULT_MODE_CONFIGS');
@@ -87,7 +87,7 @@ describe('#77 — createSONALearningEngine default args', () => {
 
   it('Compiled JS file also contains DEFAULT_MODE_CONFIGS fallback', () => {
     const content = readFileSync(
-      resolve(__dirname, '../src/modules/neural/dist/sona-integration.js'),
+      resolve(__dirname, '../dist/src/cli/neural/sona-integration.js'),
       'utf-8'
     );
     expect(content).toContain('DEFAULT_MODE_CONFIGS');
@@ -98,7 +98,7 @@ describe('#77 — createSONALearningEngine default args', () => {
 describe('#79 — extractPatterns produces granular patterns', () => {
   it('extractPatterns source has extended pattern categories', () => {
     const content = readFileSync(
-      resolve(__dirname, '../src/modules/cli/src/mcp-tools/hooks-tools.ts'),
+      resolve(__dirname, '../src/cli/mcp-tools/hooks-tools.ts'),
       'utf-8'
     );
     // Should have all the new granular pattern types
@@ -116,7 +116,7 @@ describe('#79 — extractPatterns produces granular patterns', () => {
 
   it('file limit increased for medium depth', () => {
     const content = readFileSync(
-      resolve(__dirname, '../src/modules/cli/src/mcp-tools/hooks-tools.ts'),
+      resolve(__dirname, '../src/cli/mcp-tools/hooks-tools.ts'),
       'utf-8'
     );
     // Medium depth should scan 200 files (was 60)
@@ -129,7 +129,7 @@ describe('#79 — extractPatterns produces granular patterns', () => {
 describe('#80 — Doctor ReasoningBank uses distill() lifecycle', () => {
   it('doctor.ts uses distill() instead of retrieve()', () => {
     const content = readFileSync(
-      resolve(__dirname, '../src/modules/cli/src/commands/doctor.ts'),
+      resolve(__dirname, '../src/cli/commands/doctor.ts'),
       'utf-8'
     );
     // Should use distill() which populates memories, not retrieve() which reads from empty map

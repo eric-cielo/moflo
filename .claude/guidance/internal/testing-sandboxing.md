@@ -88,9 +88,9 @@ steps:
 
 Before merging any change to the sandbox plumbing, ALL of these must pass:
 
-- [ ] `npx vitest run src/modules/cli/__tests__/spells/bwrap-sandbox.test.ts` — args correctness
-- [ ] `npx vitest run src/modules/cli/__tests__/spells/runner-bridge.test.ts` — bridge auto-loads `moflo.yaml`
-- [ ] `npx vitest run src/modules/cli/__tests__/spells/platform-sandbox.test.ts` — config + capability detection
+- [ ] `npx vitest run src/cli/__tests__/spells/bwrap-sandbox.test.ts` — args correctness
+- [ ] `npx vitest run src/cli/__tests__/spells/runner-bridge.test.ts` — bridge auto-loads `moflo.yaml`
+- [ ] `npx vitest run src/cli/__tests__/spells/platform-sandbox.test.ts` — config + capability detection
 - [ ] `node scripts/verify-bwrap-wsl.mjs` (from Windows) — bwrap isolates per permission level
 - [ ] `verify-sandbox-wiring-wsl.mjs` — log line shows the right tool name in WSL
 - [ ] `verify-sandbox-bash-wsl.mjs` — `TAG_CLAUDE_WORKS` emitted under sandbox-enabled scenario
@@ -116,8 +116,8 @@ Without all five, the functional probe cannot prove anything. macOS uses `sandbo
 ## See Also
 
 - `.claude/guidance/moflo-spell-sandboxing.md` — User-facing sandbox documentation
-- `src/modules/cli/src/spells/core/bwrap-sandbox.ts` — Linux sandbox wrapper
-- `src/modules/cli/src/spells/core/platform-sandbox.ts` — Detection + config resolution
+- `src/cli/spells/core/bwrap-sandbox.ts` — Linux sandbox wrapper
+- `src/cli/spells/core/platform-sandbox.ts` — Detection + config resolution
 - `scripts/verify-bwrap-wsl.mjs` — Args-level isolation probe (5 capability scenarios)
 - `scripts/verify-sandbox-wiring-wsl.mjs` — End-to-end wiring probe
 - `scripts/verify-sandbox-bash-wsl.mjs` — End-to-end functional probe (claude inside sandbox)

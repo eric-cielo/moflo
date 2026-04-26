@@ -1,6 +1,6 @@
 # Guidance Documentation
 
-> **The `@moflo/guidance` workspace package was inlined into `@moflo/cli` by [#600](https://github.com/eric-cielo/moflo/issues/600).** Source now lives at `src/modules/cli/src/guidance/`. Import-statement examples in this directory still show the old `@moflo/guidance/X` form for narrative clarity; they resolve from inside `cli` as relative paths (e.g. `../guidance/compiler.js`).
+> **The `@moflo/guidance` workspace package was inlined into `@moflo/cli` by [#600](https://github.com/eric-cielo/moflo/issues/600).** Source now lives at `src/cli/guidance/`. Import-statement examples in this directory still show the old `@moflo/guidance/X` form for narrative clarity; they resolve from inside `cli` as relative paths (e.g. `../guidance/compiler.js`).
 
 ## Guides
 

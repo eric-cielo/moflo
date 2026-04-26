@@ -1,12 +1,180 @@
 #!/usr/bin/env node
 /**
- * MoFlo CLI - Entry point
- * Proxies to @moflo/cli bin for cross-platform compatibility.
- * Forked from ruflo/claude-flow with Motailz patches applied to source.
+ * @moflo/cli - CLI Entry Point
+ *
+ * Claude Flow V3 Command Line Interface
+ *
+ * Auto-detects MCP mode when stdin is piped and no args provided.
+ * This allows: echo '{"jsonrpc":"2.0",...}' | npx @moflo/cli
  */
-import { pathToFileURL, fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const cliPath = join(__dirname, '..', 'src', 'modules', 'cli', 'bin', 'cli.js');
-await import(pathToFileURL(cliPath).href);
+// Suppress agentic-flow's agentdb-runtime-patch warning. The patch targets
+// agentdb v1.x (dist/controllers/) but v3+ uses dist/src/controllers/ and
+// already ships with correct .js extensions — the patch is unnecessary.
+process.env.SKIP_AGENTDB_PATCH ??= '1';
+
+import { randomUUID } from 'crypto';
+
+// Check if we should run in MCP server mode
+// Conditions:
+//   1. stdin is being piped AND no CLI arguments provided (auto-detect)
+//   2. stdin is being piped AND args are "mcp start" (explicit, e.g. npx claude-flow@alpha mcp start)
+const cliArgs = process.argv.slice(2);
+const isExplicitMCP = cliArgs.length >= 1 && cliArgs[0] === 'mcp' && (cliArgs.length === 1 || cliArgs[1] === 'start');
+const isMCPMode = !process.stdin.isTTY && (process.argv.length === 2 || isExplicitMCP);
+
+if (isMCPMode) {
+  // Run MCP server mode
+  const { listMCPTools, callMCPTool, hasTool } = await import('../dist/src/cli/mcp-client.js');
+
+  // Read version from the root moflo package.json dynamically
+  const { readFileSync } = await import('fs');
+  const { dirname: _dirname, join: _join } = await import('path');
+  const { fileURLToPath: _fileURLToPath } = await import('url');
+  let VERSION = '4.6.2';
+  try {
+    const _thisDir = _dirname(_fileURLToPath(import.meta.url));
+    // Walk up to find root moflo package.json
+    let _dir = _thisDir;
+    for (;;) {
+      const _candidate = _join(_dir, 'package.json');
+      try {
+        const _pkg = JSON.parse(readFileSync(_candidate, 'utf8'));
+        if (_pkg.name === 'moflo' && _pkg.version) { VERSION = _pkg.version; break; }
+      } catch {}
+      const _parent = _dirname(_dir);
+      if (_parent === _dir) break;
+      _dir = _parent;
+    }
+  } catch {}
+  const sessionId = `mcp-${Date.now()}-${randomUUID().slice(0, 8)}`;
+
+  console.error(
+    `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${sessionId}) Starting in stdio mode`
+  );
+
+  let buffer = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', async (chunk) => {
+    buffer += chunk;
+    let lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.trim()) {
+        try {
+          const message = JSON.parse(line);
+          const response = await handleMessage(message);
+          if (response) {
+            console.log(JSON.stringify(response));
+          }
+        } catch (error) {
+          console.log(JSON.stringify({
+            jsonrpc: '2.0',
+            id: null,
+            error: { code: -32700, message: 'Parse error' },
+          }));
+        }
+      }
+    }
+  });
+
+  process.stdin.on('end', () => {
+    process.exit(0);
+  });
+
+  async function handleMessage(message) {
+    if (!message.method) {
+      return {
+        jsonrpc: '2.0',
+        id: message.id,
+        error: { code: -32600, message: 'Invalid Request: missing method' },
+      };
+    }
+
+    const params = message.params || {};
+
+    switch (message.method) {
+      case 'initialize':
+        return {
+          jsonrpc: '2.0',
+          id: message.id,
+          result: {
+            protocolVersion: '2024-11-05',
+            serverInfo: { name: 'moflo', version: VERSION },
+            capabilities: {
+              tools: { listChanged: true },
+              resources: { subscribe: true, listChanged: true },
+            },
+          },
+        };
+
+      case 'tools/list': {
+        const tools = listMCPTools();
+        return {
+          jsonrpc: '2.0',
+          id: message.id,
+          result: {
+            tools: tools.map(tool => ({
+              name: tool.name,
+              description: tool.description,
+              inputSchema: tool.inputSchema,
+            })),
+          },
+        };
+      }
+
+      case 'tools/call': {
+        const toolName = params.name;
+        const toolParams = params.arguments || {};
+
+        if (!hasTool(toolName)) {
+          return {
+            jsonrpc: '2.0',
+            id: message.id,
+            error: { code: -32601, message: `Tool not found: ${toolName}` },
+          };
+        }
+
+        try {
+          const result = await callMCPTool(toolName, toolParams, { sessionId });
+          return {
+            jsonrpc: '2.0',
+            id: message.id,
+            result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
+          };
+        } catch (error) {
+          return {
+            jsonrpc: '2.0',
+            id: message.id,
+            error: {
+              code: -32603,
+              message: error instanceof Error ? error.message : 'Tool execution failed',
+            },
+          };
+        }
+      }
+
+      case 'notifications/initialized':
+        return null;
+
+      case 'ping':
+        return { jsonrpc: '2.0', id: message.id, result: {} };
+
+      default:
+        return {
+          jsonrpc: '2.0',
+          id: message.id,
+          error: { code: -32601, message: `Method not found: ${message.method}` },
+        };
+    }
+  }
+} else {
+  // Run normal CLI mode
+  const { CLI } = await import('../dist/src/cli/index.js');
+  const cli = new CLI();
+  cli.run().catch((error) => {
+    console.error('Fatal error:', error.message);
+    process.exit(1);
+  });
+}

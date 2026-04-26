@@ -48,4 +48,4 @@ Requires `gh` CLI installed and authenticated (`gh auth login`).
 
 ## Source
 
-`src/modules/cli/src/spells/connectors/github-cli.ts`
+`src/cli/spells/connectors/github-cli.ts`

@@ -21,7 +21,7 @@ import { existsSync, readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { mofloResolveURL, mofloInternalURL } from './lib/moflo-resolve.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
-const FASTEMBED_INLINE = 'src/modules/cli/dist/src/embeddings/fastembed-inline/index.js';
+const FASTEMBED_INLINE = 'dist/src/cli/embeddings/fastembed-inline/index.js';
 
 function findProjectRoot() {
   let dir = process.cwd();

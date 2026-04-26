@@ -8,10 +8,10 @@ following the strategy steps below. This keeps the full context (memory, guidanc
 available throughout story processing.
 
 Epic detection criteria are listed in `SKILL.md` under **Usage > Epic Handling**.
-Detection uses `isEpicIssue()` from `src/modules/cli/src/epic/detection.ts`.
+Detection uses `isEpicIssue()` from `src/cli/epic/detection.ts`.
 
 **Inline processing steps when `/flo <issue>` detects an epic:**
-1. Extract stories using detection from `src/modules/cli/src/epic/detection.ts`
+1. Extract stories using detection from `src/cli/epic/detection.ts`
 2. Determine strategy from `moflo.yaml` config (`epic.default_strategy`), defaulting to `single-branch`
 3. For **single-branch**: create shared `epic/<number>-<slug>` branch, process each story via `/flo --epic-branch <branch> <issue>`, then create one consolidated PR
 4. For **auto-merge**: process each story via `/flo <issue>`, merge its PR, then proceed to next

@@ -2,7 +2,7 @@
   "name": "moflo",
   "version": "4.8.87-rc.3",
   "description": "MoFlo — AI agent orchestration for Claude Code. Forked from ruflo/claude-flow with patches applied to source, plus feature-level orchestration.",
-  "main": "dist/index.js",
+  "main": "dist/src/cli/index.js",
   "type": "module",
   "bin": {
     "flo": "bin/cli.js",
@@ -21,13 +21,12 @@
   },
   "files": [
     "bin/**",
-    "src/modules/cli/bin/**",
-    "src/modules/cli/dist/**/*.js",
-    "src/modules/cli/dist/**/*.yaml",
-    "!src/modules/cli/dist/**/*.map",
-    "src/modules/cli/package.json",
-    "!src/modules/*/README.md",
-    "!src/README.md",
+    "dist/src/cli/**/*.js",
+    "dist/src/cli/**/*.d.ts",
+    "dist/src/cli/**/*.yaml",
+    "!dist/**/*.map",
+    "src/cli/agents/**",
+    "src/cli/data/**",
     "!**/*.test.js",
     "!**/*.spec.js",
     "!**/__tests__/**",
@@ -44,11 +43,10 @@
     "scripts/prune-native-binaries.mjs"
   ],
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch src/cli/index.ts",
     "prebuild": "node scripts/sync-version.mjs && node scripts/clean-dist.mjs",
-    "build": "tsc -b && node -e \"const{cpSync}=require('fs');cpSync('src/modules/cli/src/epic/spells','src/modules/cli/dist/src/epic/spells',{recursive:true})\"",
-    "build:ts": "cd src/modules/cli && npm run build",
-    "prepublishOnly": "node scripts/check-version-sync.mjs && npm run build",
+    "build": "tsc -b && node -e \"const{cpSync}=require('fs');cpSync('src/cli/epic/spells','dist/src/cli/epic/spells',{recursive:true})\"",
+    "prepublishOnly": "npm run build",
     "postinstall": "node scripts/prune-native-binaries.mjs",
     "test": "node scripts/test-runner.mjs",
     "test:ui": "vitest --ui",
@@ -56,7 +54,7 @@
     "lint": "eslint src/ bin/ .claude/scripts/ --ext .ts,.tsx,.mts,.cts,.js,.mjs,.cjs --max-warnings 0",
     "security:audit": "npm audit --omit=dev --audit-level high",
     "security:fix": "npm audit fix",
-    "version": "node scripts/sync-version.mjs && git add src/modules/cli/package.json src/modules/cli/src/version.ts",
+    "version": "node scripts/sync-version.mjs && git add src/cli/version.ts",
     "flo": "node bin/cli.js"
   },
   "dependencies": {

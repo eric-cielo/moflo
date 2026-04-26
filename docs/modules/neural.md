@@ -1,6 +1,6 @@
 # cli/neural
 
-> **Inlined into `@moflo/cli` by [#598](https://github.com/eric-cielo/moflo/issues/598)** (epic [#586](https://github.com/eric-cielo/moflo/issues/586) / [ADR-0001](../adr/0001-collapse-moflo-workspace-packages.md)). The `@moflo/neural` workspace package no longer exists — its contents live at `src/modules/cli/src/neural/` and ship inside the `moflo` tarball.
+> **Inlined into `@moflo/cli` by [#598](https://github.com/eric-cielo/moflo/issues/598)** (epic [#586](https://github.com/eric-cielo/moflo/issues/586) / [ADR-0001](../adr/0001-collapse-moflo-workspace-packages.md)). The `@moflo/neural` workspace package no longer exists — its contents live at `src/cli/neural/` and ship inside the `moflo` tarball.
 
 The Self-Optimizing Neural Architecture (SONA) module: trajectory tracking, pattern learning, ReasoningBank with HNSW-backed vector storage, and 9 RL algorithms (PPO, A2C, DQN, Q-Learning, SARSA, Decision Transformer, etc.). Provides 5 learning modes (real-time, balanced, research, edge, batch) and `NeuralLearningSystem` as the integrated entry point.
 
@@ -8,16 +8,16 @@ The Self-Optimizing Neural Architecture (SONA) module: trajectory tracking, patt
 
 | Concern | Path |
 |---------|------|
-| Source | `src/modules/cli/src/neural/` |
-| Public surface | `src/modules/cli/src/neural/index.ts` (re-exports SONA, ReasoningBank, PatternLearner, modes, algorithms) |
-| Integrated system | `src/modules/cli/src/neural/sona-integration.ts`, `index.ts` (`NeuralLearningSystem`) |
-| SONA engine | `src/modules/cli/src/neural/sona-engine.ts`, `sona-manager.ts` |
-| ReasoningBank | `src/modules/cli/src/neural/reasoning-bank.ts`, `reasoningbank-adapter.ts` |
-| Pattern learning | `src/modules/cli/src/neural/pattern-learner.ts` |
-| Modes | `src/modules/cli/src/neural/modes/` (real-time, balanced, research, edge, batch) |
-| Algorithms | `src/modules/cli/src/neural/algorithms/` |
-| Domain types | `src/modules/cli/src/neural/types.ts`, `domain/` |
-| Tests | `src/modules/cli/__tests__/neural/` |
+| Source | `src/cli/neural/` |
+| Public surface | `src/cli/neural/index.ts` (re-exports SONA, ReasoningBank, PatternLearner, modes, algorithms) |
+| Integrated system | `src/cli/neural/sona-integration.ts`, `index.ts` (`NeuralLearningSystem`) |
+| SONA engine | `src/cli/neural/sona-engine.ts`, `sona-manager.ts` |
+| ReasoningBank | `src/cli/neural/reasoning-bank.ts`, `reasoningbank-adapter.ts` |
+| Pattern learning | `src/cli/neural/pattern-learner.ts` |
+| Modes | `src/cli/neural/modes/` (real-time, balanced, research, edge, batch) |
+| Algorithms | `src/cli/neural/algorithms/` |
+| Domain types | `src/cli/neural/types.ts`, `domain/` |
+| Tests | `src/cli/__tests__/neural/` |
 
 ## Internal usage
 

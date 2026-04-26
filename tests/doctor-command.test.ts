@@ -13,7 +13,7 @@ describe('doctor command structure', () => {
   let doctorCommand: any;
 
   beforeEach(async () => {
-    const mod = await import('../src/modules/cli/src/commands/doctor.js');
+    const mod = await import('../src/cli/commands/doctor.js');
     doctorCommand = mod.doctorCommand || mod.default;
   });
 
@@ -87,7 +87,7 @@ describe('embeddings health check via vector-stats.json', () => {
 
 describe('fix option descriptions', () => {
   it('should have actionable fix strings', async () => {
-    const mod = await import('../src/modules/cli/src/commands/doctor.js');
+    const mod = await import('../src/cli/commands/doctor.js');
     const cmd = mod.doctorCommand || mod.default;
 
     // The examples should show --fix for auto-fixing

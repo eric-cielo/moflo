@@ -20,15 +20,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir, platform } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { bridgeRunSpell } from '../src/modules/cli/dist/src/spells/factory/runner-bridge.js';
+import { bridgeRunSpell } from '../dist/src/cli/spells/factory/runner-bridge.js';
 import {
   parseSpell,
-} from '../src/modules/cli/dist/src/spells/schema/parser.js';
+} from '../dist/src/cli/spells/schema/parser.js';
 import {
   StepCommandRegistry,
-} from '../src/modules/cli/dist/src/spells/core/step-command-registry.js';
-import { builtinCommands } from '../src/modules/cli/dist/src/spells/commands/index.js';
-import { analyzeSpellPermissions } from '../src/modules/cli/dist/src/spells/core/permission-disclosure.js';
+} from '../dist/src/cli/spells/core/step-command-registry.js';
+import { builtinCommands } from '../dist/src/cli/spells/commands/index.js';
+import { analyzeSpellPermissions } from '../dist/src/cli/spells/core/permission-disclosure.js';
 
 if (platform() !== 'linux') {
   console.error(`Must run on Linux (currently ${platform()}).`);

@@ -29,7 +29,7 @@ Both directories are indexed locally during moflo development because the indexe
 
 ## Publishing Checklist
 
-1. Bump version in both `package.json` (root) and `src/modules/cli/package.json`
+1. Bump version in both `package.json` (root) and `src/cli/package.json`
 2. Build: `cd src/modules/cli && npm run build && cd -`
 3. Verify shipped guidance will be included: `npm pack --dry-run | grep guidance`
 4. Publish: `npm publish`

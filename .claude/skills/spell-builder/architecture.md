@@ -167,13 +167,13 @@ These files ship with moflo and are consumed by Claude to understand available s
 
 | What | Where |
 |------|-------|
-| Step commands | `src/modules/cli/src/spells/commands/` |
-| Connectors | `src/modules/cli/src/spells/connectors/` |
-| Type definitions | `src/modules/cli/src/spells/types/` |
+| Step commands | `src/cli/spells/commands/` |
+| Connectors | `src/cli/spells/connectors/` |
+| Type definitions | `src/cli/spells/types/` |
 | Shipped spells | `spells/shipped/` |
 | User spells | `spells/` or `.claude/spells/` |
-| Step command registry | `src/modules/cli/src/spells/core/step-command-registry.ts` |
-| Connector registry | `src/modules/cli/src/spells/core/connector-registry.ts` |
+| Step command registry | `src/cli/spells/core/step-command-registry.ts` |
+| Connector registry | `src/cli/spells/core/connector-registry.ts` |
 
 ---
 
@@ -182,5 +182,5 @@ These files ship with moflo and are consumed by Claude to understand available s
 - `steps/<name>/README.md` — self-contained reference per step command (scan with `Glob`)
 - `connectors/<name>/README.md` — self-contained reference per connector (scan with `Glob`)
 - `SKILL.md` — spell builder main skill file
-- `src/modules/cli/src/spells/types/spell-connector.types.ts` — connector interface
-- `src/modules/cli/src/spells/types/step-command.types.ts` — step command interface
+- `src/cli/spells/types/spell-connector.types.ts` — connector interface
+- `src/cli/spells/types/step-command.types.ts` — step command interface

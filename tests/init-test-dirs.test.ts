@@ -15,7 +15,7 @@ import * as path from 'path';
 // We test the function by reading the source and verifying the patterns
 // Since moflo-init.ts is TypeScript and needs compilation, we verify the source directly
 
-const INIT_FILE = path.resolve(__dirname, '../src/modules/cli/src/init/moflo-init.ts');
+const INIT_FILE = path.resolve(__dirname, '../src/cli/init/moflo-init.ts');
 
 describe('moflo-init.ts test directory support', () => {
   let content: string;

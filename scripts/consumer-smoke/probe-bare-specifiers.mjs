@@ -7,9 +7,9 @@
  * left consumers with a broken install and no signal in their logs.
  *
  * Inversion to keep in mind: in a consumer install, the `@moflo/<pkg>` bare
- * specifiers are NOT resolvable — those packages live as folders inside
- * `node_modules/moflo/src/modules/<pkg>/` and have no top-level
- * `node_modules/@moflo/` symlinks. moflo uses walk-up fallbacks
+ * specifiers are NOT resolvable — after epic #586 every former workspace
+ * package is inlined under `node_modules/moflo/dist/src/cli/` with no
+ * top-level `node_modules/@moflo/` symlinks. moflo uses walk-up fallbacks
  * (`importMofloMemory`) or graceful loud-fail (`requireMofloOrWarn`) to
  * cope. This probe verifies the loud-fail signal IS present at the call
  * sites patched in #583 — its absence is the bug we're guarding against.
@@ -30,10 +30,9 @@
  *      signal (proves the migration foreground hook didn't silently
  *      no-op).
  *
- *   3. **Files-array sanity** — every `src/modules/<pkg>/dist/` glob in
- *      the published `package.json` "files" array must point to a real
- *      directory in the installed tarball. Catches stale `files`
- *      entries.
+ *   3. **Files-array sanity** — every `dist/**` glob in the published
+ *      `package.json` "files" array must point to a real directory in
+ *      the installed tarball. Catches stale `files` entries.
  *
  * Locally invokable; the consumer-smoke harness wires this in as one of
  * its checks.
@@ -68,7 +67,7 @@ if (!existsSync(mofloPkgDir)) {
   process.exit(2);
 }
 
-const cliDist = join(mofloPkgDir, 'src', 'modules', 'cli', 'dist', 'src');
+const cliDist = join(mofloPkgDir, 'dist', 'src', 'cli');
 if (!existsSync(cliDist)) {
   process.stderr.write(`cli dist missing at ${cliDist} — did the tarball pack correctly?\n`);
   process.exit(2);
@@ -239,11 +238,11 @@ if (!existsSync(launcher)) {
 const ROOT_PKG = JSON.parse(readFileSync(join(mofloPkgDir, 'package.json'), 'utf8'));
 const filesEntries = Array.isArray(ROOT_PKG.files) ? ROOT_PKG.files : [];
 const moduleDistGlobs = filesEntries.filter(
-  (e) => /^src\/modules\/[^/]+\/dist\//.test(e) && !e.startsWith('!'),
+  (e) => /^dist\//.test(e) && !e.startsWith('!'),
 );
 const missingDists = [];
 for (const glob of moduleDistGlobs) {
-  // `src/modules/<pkg>/dist/**/*.js` → `src/modules/<pkg>/dist`
+  // `dist/src/cli/**/*.js` → `dist/src/cli`
   const distDir = glob.replace(/\/(?:\*\*|\!).*$/, '').replace(/\/\*\*\/.+$/, '');
   const abs = join(mofloPkgDir, distDir);
   if (!existsSync(abs) || !statSync(abs).isDirectory()) {
@@ -260,7 +259,7 @@ if (missingDists.length > 0) {
   record(
     'files-array:dists',
     'pass',
-    `${moduleDistGlobs.length} module dist dir(s) present`,
+    `${moduleDistGlobs.length} dist dir(s) present`,
   );
 }
 

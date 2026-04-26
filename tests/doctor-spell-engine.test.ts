@@ -13,8 +13,8 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 
-const DOCTOR_FILE = resolve(__dirname, '../src/modules/cli/src/commands/doctor.ts');
-const WORKFLOWS_SRC = resolve(__dirname, '../src/modules/cli/src/spells');
+const DOCTOR_FILE = resolve(__dirname, '../src/cli/commands/doctor.ts');
+const WORKFLOWS_SRC = resolve(__dirname, '../src/cli/spells');
 
 describe('doctor.ts spell engine check', () => {
   let content: string;

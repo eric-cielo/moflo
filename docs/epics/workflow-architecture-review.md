@@ -3,7 +3,7 @@
 **Date:** 2026-03-29
 **Status:** Draft
 **Priority:** High
-**Scope:** `src/modules/workflows/`, `src/modules/cli/src/mcp-tools/workflow-tools.ts`, `src/modules/cli/src/commands/workflow.ts`
+**Scope:** `src/modules/workflows/`, `src/cli/mcp-tools/workflow-tools.ts`, `src/cli/commands/workflow.ts`
 
 ---
 
@@ -20,8 +20,8 @@ The workflow system has three layers:
 | Layer | Path | Lines | Role |
 |-------|------|-------|------|
 | **Engine** | `src/modules/workflows/` | ~8,000 | Real execution: WorkflowRunner, step commands, tools, registries |
-| **MCP Tools** | `src/modules/cli/src/mcp-tools/workflow-tools.ts` | 671 | MCP tool handlers exposed to Claude sessions |
-| **CLI** | `src/modules/cli/src/commands/workflow.ts` | 742 | CLI subcommands that call MCP tools via `callMCPTool()` |
+| **MCP Tools** | `src/cli/mcp-tools/workflow-tools.ts` | 671 | MCP tool handlers exposed to Claude sessions |
+| **CLI** | `src/cli/commands/workflow.ts` | 742 | CLI subcommands that call MCP tools via `callMCPTool()` |
 
 The engine also exposes a **Runner Bridge** (`src/modules/workflows/src/factory/runner-bridge.ts`) intended as the integration point for MCP tools, but the current MCP layer does not use it.
 
@@ -30,7 +30,7 @@ The engine also exposes a **Runner Bridge** (`src/modules/workflows/src/factory/
 ## Issue 1: MCP Workflow Tools Do Not Use the Real Engine
 
 **Severity:** HIGH
-**Files:** `src/modules/cli/src/mcp-tools/workflow-tools.ts`
+**Files:** `src/cli/mcp-tools/workflow-tools.ts`
 
 ### Analysis
 
@@ -52,10 +52,10 @@ Meanwhile, `runner-bridge.ts` (97 lines) exists specifically to provide `bridgeR
 
 ### Verification Instructions
 
-1. **Confirm no engine imports:** `grep -n "workflows" src/modules/cli/src/mcp-tools/workflow-tools.ts` — expect zero hits
+1. **Confirm no engine imports:** `grep -n "workflows" src/cli/mcp-tools/workflow-tools.ts` — expect zero hits
 2. **Confirm mock execution:** Read `workflow-tools.ts` lines 274-284 — the comment on line 281 explicitly says "real implementation would execute actual tasks"
-3. **Confirm bridge exists unused:** `grep -rn "bridgeRunWorkflow\|bridgeExecuteWorkflow" src/modules/cli/` — expect hits only in epic-related files, not in workflow-tools.ts
-4. **Confirm epic uses real engine:** Check `src/modules/cli/src/commands/epic/runner-adapter.ts` for the dynamic import of `runWorkflowFromContent`
+3. **Confirm bridge exists unused:** `grep -rn "bridgeRunWorkflow\|bridgeExecuteWorkflow" src/cli/` — expect hits only in epic-related files, not in workflow-tools.ts
+4. **Confirm epic uses real engine:** Check `src/cli/commands/epic/runner-adapter.ts` for the dynamic import of `runWorkflowFromContent`
 
 ### Recommended Fix
 
@@ -134,8 +134,8 @@ No shared error type flows from engine through MCP to CLI.
 ### Verification Instructions
 
 1. **Catalog engine errors:** `grep -n "WorkflowError\|errors:" src/modules/workflows/src/types/runner.types.ts`
-2. **Catalog MCP error returns:** `grep -n "error:" src/modules/cli/src/mcp-tools/workflow-tools.ts` — count inline error returns
-3. **Catalog CLI error handling:** `grep -n "catch\|MCPClientError\|printError" src/modules/cli/src/commands/workflow.ts`
+2. **Catalog MCP error returns:** `grep -n "error:" src/cli/mcp-tools/workflow-tools.ts` — count inline error returns
+3. **Catalog CLI error handling:** `grep -n "catch\|MCPClientError\|printError" src/cli/commands/workflow.ts`
 4. **Check if engine errors propagate:** If Issue 1 is fixed and MCP tools call the engine, do the `WorkflowResult.errors` get relayed to the CLI or swallowed?
 
 ### Recommended Fix
@@ -232,7 +232,7 @@ Either enforce loading order (npm first, then built-in, then user) or add priori
 ## Issue 7: CLI Templates vs Engine WorkflowDefinitions are Different Systems
 
 **Severity:** MEDIUM
-**Files:** `src/modules/cli/src/commands/workflow.ts`, `src/modules/workflows/src/types/workflow-definition.types.ts`
+**Files:** `src/cli/commands/workflow.ts`, `src/modules/workflows/src/types/workflow-definition.types.ts`
 
 ### Analysis
 

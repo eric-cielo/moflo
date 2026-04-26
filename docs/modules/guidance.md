@@ -1,6 +1,6 @@
 # cli/guidance
 
-> **Inlined into `@moflo/cli` by [#600](https://github.com/eric-cielo/moflo/issues/600)** (epic [#586](https://github.com/eric-cielo/moflo/issues/586) / [ADR-0001](../adr/0001-collapse-moflo-workspace-packages.md)). The `@moflo/guidance` workspace package no longer exists — its contents live at `src/modules/cli/src/guidance/` and ship inside the `moflo` tarball.
+> **Inlined into `@moflo/cli` by [#600](https://github.com/eric-cielo/moflo/issues/600)** (epic [#586](https://github.com/eric-cielo/moflo/issues/586) / [ADR-0001](../adr/0001-collapse-moflo-workspace-packages.md)). The `@moflo/guidance` workspace package no longer exists — its contents live at `src/cli/guidance/` and ship inside the `moflo` tarball.
 
 Long-horizon governance for Claude Code agents. Compiles `CLAUDE.md` / `CLAUDE.local.md` into a constitution + shards + manifest, enforces rules through hook gates, signs every decision via the proof envelope, and evolves the rule set with an A/B optimizer.
 
@@ -8,12 +8,12 @@ Long-horizon governance for Claude Code agents. Compiles `CLAUDE.md` / `CLAUDE.l
 
 | Concern | Path |
 |---------|------|
-| Source | `src/modules/cli/src/guidance/` |
-| Public surface | `src/modules/cli/src/guidance/index.ts` (sub-paths via `../guidance/<name>.js`) |
-| WASM kernel (Rust) | `src/modules/cli/src/guidance/wasm-kernel/` |
-| WASM artifacts | `src/modules/cli/src/guidance/wasm-pkg/` |
-| Tests | `src/modules/cli/__tests__/guidance/` |
-| Reviewer/coder agent prompts | `src/modules/cli/src/guidance/agents/` |
+| Source | `src/cli/guidance/` |
+| Public surface | `src/cli/guidance/index.ts` (sub-paths via `../guidance/<name>.js`) |
+| WASM kernel (Rust) | `src/cli/guidance/wasm-kernel/` |
+| WASM artifacts | `src/cli/guidance/wasm-pkg/` |
+| Tests | `src/cli/__tests__/guidance/` |
+| Reviewer/coder agent prompts | `src/cli/guidance/agents/` |
 | ADRs (G001–G026) | [`docs/guidance/adrs/`](../guidance/adrs/) |
 | Guides + tutorials | [`docs/guidance/`](../guidance/) |
 | CLI commands | `claude-flow guidance {compile,retrieve,gates,status,optimize,ab-test}` |

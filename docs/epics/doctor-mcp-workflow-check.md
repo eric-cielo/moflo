@@ -11,7 +11,7 @@ Doctor has two workflow checks that both pass, giving a false sense of health:
 
 **Neither check validates that the MCP tool layer actually calls the engine.**
 
-The 10 MCP workflow tools in `src/modules/cli/src/mcp-tools/workflow-tools.ts` maintain their own file-based mock store (`.claude-flow/workflows/store.json`) and simulate step completion without invoking `WorkflowRunner`. Line 281 explicitly says:
+The 10 MCP workflow tools in `src/cli/mcp-tools/workflow-tools.ts` maintain their own file-based mock store (`.claude-flow/workflows/store.json`) and simulate step completion without invoking `WorkflowRunner`. Line 281 explicitly says:
 
 ```typescript
 // For now, mark as completed (real implementation would execute actual tasks)
@@ -31,14 +31,14 @@ Doctor should have an integration check that:
 
 ```bash
 # Confirm the mock pattern exists
-grep -n "real implementation would execute" src/modules/cli/src/mcp-tools/workflow-tools.ts
+grep -n "real implementation would execute" src/cli/mcp-tools/workflow-tools.ts
 
 # Confirm no engine imports in MCP tools
-grep -c "WorkflowRunner\|runner-bridge\|runner-factory\|@moflo/workflows" src/modules/cli/src/mcp-tools/workflow-tools.ts
+grep -c "WorkflowRunner\|runner-bridge\|runner-factory\|@moflo/workflows" src/cli/mcp-tools/workflow-tools.ts
 # Expected: 0
 
 # Confirm deep check only tests engine directly, not MCP layer
-grep -n "runWorkflowFromContent\|workflow_execute\|workflow_run" src/modules/cli/src/commands/doctor-checks-deep.ts
+grep -n "runWorkflowFromContent\|workflow_execute\|workflow_run" src/cli/commands/doctor-checks-deep.ts
 # Expected: only runWorkflowFromContent hits (direct engine), no MCP tool calls
 ```
 
@@ -48,6 +48,6 @@ grep -n "runWorkflowFromContent\|workflow_execute\|workflow_run" src/modules/cli
 
 ## Files
 
-- `src/modules/cli/src/commands/doctor.ts` — checkWorkflowEngine (file existence only)
-- `src/modules/cli/src/commands/doctor-checks-deep.ts` — checkWorkflowExecution (engine-direct only)
-- `src/modules/cli/src/mcp-tools/workflow-tools.ts` — mock implementations that bypass engine
+- `src/cli/commands/doctor.ts` — checkWorkflowEngine (file existence only)
+- `src/cli/commands/doctor-checks-deep.ts` — checkWorkflowExecution (engine-direct only)
+- `src/cli/mcp-tools/workflow-tools.ts` — mock implementations that bypass engine
