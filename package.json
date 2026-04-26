@@ -79,7 +79,7 @@
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.0.0",
-    "moflo": "^4.8.87-rc.3",
+    "moflo": "^4.8.87-rc.4",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
