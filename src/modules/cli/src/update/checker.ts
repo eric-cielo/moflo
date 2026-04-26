@@ -39,7 +39,6 @@ const DEFAULT_CONFIG: UpdateConfig = {
   priority: {
     'moflo': 'high',
     '@moflo/integration': 'normal',
-    '@moflo/testing': 'low',
   },
   exclude: [],
 };
@@ -48,7 +47,6 @@ const DEFAULT_CONFIG: UpdateConfig = {
 const CLAUDE_FLOW_PACKAGES = [
   'moflo',
   '@moflo/integration',
-  '@moflo/testing',
 ];
 
 interface NpmPackageInfo {

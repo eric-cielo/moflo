@@ -13,6 +13,3 @@ Shared types, events, hooks, plugin system, security, resilience, services, and 
 | Tests | `src/modules/cli/__tests__/shared/` |
 | Path-safety helpers | `src/modules/cli/src/services/moflo-require.ts` (the actual `mofloPath()` / `mofloUrl()` anchors live here, not in shared) |
 
-## Cross-package access
-
-The `testing` module dynamic-imports the inlined shared via a stable-marker walk-up at `src/modules/testing/src/locate-cli-shared.ts`. That helper disappears once the testing collapse story (#601) finishes.

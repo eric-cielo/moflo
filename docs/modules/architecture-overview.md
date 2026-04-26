@@ -278,16 +278,6 @@ npx @moflo/cli agent spawn --type queen-coordinator
 npx @moflo/cli memory search "knowledge"
 ```
 
-### @moflo/testing
-TDD London School framework with mocks, fixtures, and regression testing.
-
-```typescript
-import { createMockAgent, createTestFixture } from '@moflo/testing';
-
-const mockAgent = createMockAgent({ type: 'coder' });
-const fixture = createTestFixture('swarm-coordination');
-```
-
 ### @moflo/deployment
 Release management and CI/CD automation.
 
@@ -437,7 +427,6 @@ pnpm test:coverage
 - [@moflo/integration](./@moflo/integration/)
 - [@moflo/performance](./@moflo/performance/)
 - [@moflo/cli](./@moflo/cli/)
-- [@moflo/testing](./@moflo/testing/)
 - [@moflo/deployment](./@moflo/deployment/)
 
 ### Examples
