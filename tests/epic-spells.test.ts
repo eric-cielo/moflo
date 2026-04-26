@@ -8,16 +8,16 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseYaml } from '../src/modules/cli/src/spells/schema/parser.js';
-import { interpolateString } from '../src/modules/cli/src/spells/core/interpolation.js';
-import { createMockContext } from '../src/modules/cli/__tests__/spells/helpers.js';
-import type { SpellDefinition } from '../src/modules/cli/src/spells/types/spell-definition.types.js';
+import { parseYaml } from '../src/cli/spells/schema/parser.js';
+import { interpolateString } from '../src/cli/spells/core/interpolation.js';
+import { createMockContext } from '../src/cli/__tests__/spells/helpers.js';
+import type { SpellDefinition } from '../src/cli/spells/types/spell-definition.types.js';
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-const WORKFLOWS_DIR = join(__dirname, '..', 'src', 'modules', 'cli', 'src', 'epic', 'spells');
+const WORKFLOWS_DIR = join(__dirname, '..', 'src', 'cli', 'epic', 'spells');
 
 function loadYaml(filename: string): SpellDefinition {
   const content = readFileSync(join(WORKFLOWS_DIR, filename), 'utf-8');
@@ -310,9 +310,9 @@ describe('auto-merge.yaml', () => {
 // Preflight Integration — ensures runner picks up YAML preflights correctly
 // ============================================================================
 
-import { collectPreflights } from '../src/modules/cli/src/spells/core/preflight-checker.js';
-import { StepCommandRegistry } from '../src/modules/cli/src/spells/core/step-command-registry.js';
-import { builtinCommands } from '../src/modules/cli/src/spells/commands/index.js';
+import { collectPreflights } from '../src/cli/spells/core/preflight-checker.js';
+import { StepCommandRegistry } from '../src/cli/spells/core/step-command-registry.js';
+import { builtinCommands } from '../src/cli/spells/commands/index.js';
 
 describe('epic spell preflight integration', () => {
   function buildRegistry(): StepCommandRegistry {

@@ -56,4 +56,4 @@ Requires `playwright` as a peer dependency.
 
 ## Source
 
-`src/modules/cli/src/spells/connectors/local-outlook.ts`
+`src/cli/spells/connectors/local-outlook.ts`

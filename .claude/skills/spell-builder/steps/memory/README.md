@@ -53,4 +53,4 @@
 
 ## Source
 
-`src/modules/cli/src/spells/commands/memory-command.ts`
+`src/cli/spells/commands/memory-command.ts`

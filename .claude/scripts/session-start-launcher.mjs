@@ -174,7 +174,7 @@ try {
         // Other helpers from .claude/helpers/ and CLI .claude/helpers/
         const helperSources = [
           resolve(projectRoot, 'node_modules/moflo/.claude/helpers'),
-          resolve(projectRoot, 'node_modules/moflo/src/modules/cli/.claude/helpers'),
+          resolve(projectRoot, 'node_modules/moflo/src/cli/.claude/helpers'),
         ];
         const sourceHelperFiles = [
           'auto-memory-hook.mjs', 'statusline.cjs', 'intelligence.cjs', 'subagent-start.cjs', 'pre-commit', 'post-commit',
@@ -316,8 +316,8 @@ try {
     // and moflo upgrade — shared via hook-wiring.js to stay DRY)
     try {
       const hwPaths = [
-        resolve(projectRoot, 'node_modules/moflo/src/modules/cli/dist/src/services/hook-wiring.js'),
-        resolve(projectRoot, 'src/modules/cli/dist/src/services/hook-wiring.js'),
+        resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/hook-wiring.js'),
+        resolve(projectRoot, 'dist/src/cli/services/hook-wiring.js'),
       ];
       const hwPath = hwPaths.find(p => existsSync(p));
       if (hwPath) {
@@ -407,8 +407,8 @@ try {
 // cost on every session start is a few ms of probe work.
 try {
   const migrationPaths = [
-    resolve(projectRoot, 'node_modules/moflo/src/modules/cli/dist/src/services/embeddings-migration.js'),
-    resolve(projectRoot, 'src/modules/cli/dist/src/services/embeddings-migration.js'),
+    resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/embeddings-migration.js'),
+    resolve(projectRoot, 'dist/src/cli/services/embeddings-migration.js'),
   ];
   const migrationPath = migrationPaths.find((p) => existsSync(p));
   if (migrationPath) {
@@ -430,7 +430,7 @@ try {
 }
 
 // ── 4. Spawn background tasks ───────────────────────────────────────────────
-const localCli = resolve(projectRoot, 'node_modules/moflo/src/modules/cli/bin/cli.js');
+const localCli = resolve(projectRoot, 'node_modules/moflo/bin/cli.js');
 const hasLocalCli = existsSync(localCli);
 
 // hooks.mjs session-start (daemon, indexer, pretrain, HNSW, neural patterns)

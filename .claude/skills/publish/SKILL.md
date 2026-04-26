@@ -42,7 +42,7 @@ Follow docs/BUILD.md exactly. Every step must succeed before proceeding to the n
 npm run build
 ```
 
-This syncs the version to `src/modules/cli/src/version.ts` and `src/modules/cli/package.json` via the `version` lifecycle script, then compiles all TypeScript.
+This syncs the version to `src/cli/version.ts` and `src/cli/package.json` via the `version` lifecycle script, then compiles all TypeScript.
 
 **Must exit 0.** If it fails, stop and fix the build error.
 
@@ -67,7 +67,7 @@ All checks must pass (warnings are acceptable on Windows for sandbox tier). If d
 Commit the version bump files:
 
 ```bash
-git add package.json package-lock.json src/modules/cli/package.json src/modules/cli/src/version.ts
+git add package.json package-lock.json src/cli/package.json src/cli/version.ts
 git commit -m "chore: bump version to <new-version>"
 git push origin main
 ```

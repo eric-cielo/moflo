@@ -14,9 +14,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { SwarmCommunication, createSwarmCommunication } from '../src/modules/cli/src/hooks/swarm/index.js';
-import { MessageBus } from '../src/modules/cli/src/swarm/message-bus/message-bus.js';
-import type { IMessageBus } from '../src/modules/cli/src/swarm/types.js';
+import { SwarmCommunication, createSwarmCommunication } from '../src/cli/hooks/swarm/index.js';
+import { MessageBus } from '../src/cli/swarm/message-bus/message-bus.js';
+import type { IMessageBus } from '../src/cli/swarm/types.js';
 
 describe('SwarmCommunication + MessageBus (Story #120)', () => {
   let bus: MessageBus;

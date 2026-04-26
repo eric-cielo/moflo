@@ -14,7 +14,7 @@ import {
   MessageBus,
   WriteThroughAdapter,
   type WriteThroughConfig,
-} from '../src/modules/cli/src/swarm/index.js';
+} from '../src/cli/swarm/index.js';
 
 // ==========================================================================
 // WriteThroughAdapter Tests
@@ -264,7 +264,7 @@ describe('Hive-Mind Tools — MessageBus Backend (Story #121)', () => {
   beforeEach(async () => {
     // Dynamic import to get fresh module state
     // We rely on the tool handlers being stateless across tests via hive-mind_shutdown
-    const { hiveMindTools } = await import('../src/modules/cli/src/mcp-tools/hive-mind-tools.js');
+    const { hiveMindTools } = await import('../src/cli/mcp-tools/hive-mind-tools.js');
     tools = {};
     for (const tool of hiveMindTools) {
       tools[tool.name] = tool.handler;

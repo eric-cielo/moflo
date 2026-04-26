@@ -155,7 +155,7 @@ describe('yaml-upgrader', () => {
     it('init template contains a sandbox block identical in intent to the registry', () => {
       // The two sources of truth must stay in sync: moflo-init.ts template emits
       // the same block for new projects that yaml-upgrader appends to existing ones.
-      const initPath = resolve(__dirname, '../../src/modules/cli/src/init/moflo-init.ts');
+      const initPath = resolve(__dirname, '../../src/cli/init/moflo-init.ts');
       const initSource = readFileSync(initPath, 'utf-8');
       const sandboxEntry = REQUIRED_SECTIONS.find((s: any) => s.key === 'sandbox');
       expect(sandboxEntry).toBeTruthy();

@@ -54,11 +54,11 @@ function resolveBin(binName, localScript) {
 
 function getLocalCliPath() {
   const paths = [
-    resolve(projectRoot, 'node_modules/moflo/src/modules/cli/bin/cli.js'),
+    resolve(projectRoot, 'node_modules/moflo/bin/cli.js'),
     resolve(projectRoot, 'node_modules/moflo/bin/cli.js'),
     resolve(projectRoot, 'node_modules/.bin/flo'),
     // Development: local CLI
-    resolve(projectRoot, 'src/modules/cli/bin/cli.js'),
+    resolve(projectRoot, 'bin/cli.js'),
   ];
   for (const p of paths) {
     if (existsSync(p)) return p;

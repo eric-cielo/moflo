@@ -921,7 +921,7 @@ TaskCreate({ subject: "Review changes", activeForm: "Reviewing" })
     const realFiles = [
       'CLAUDE.md',
       '.claude/guidance/shipped/moflo-claude-swarm-cohesion.md',
-      'src/modules/cli/CLAUDE.md',
+      'src/cli/CLAUDE.md',
     ];
 
     for (const file of realFiles) {

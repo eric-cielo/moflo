@@ -1,6 +1,20 @@
 {
-  "files": [],
-  "references": [
-    { "path": "src" }
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "baseUrl": "."
+  },
+  "include": ["src/cli/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/cli/__tests__/**",
+    "src/cli/**/*.test.ts",
+    "src/cli/**/*.spec.ts",
+    "src/cli/**/*.bench.ts"
   ]
 }

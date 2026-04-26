@@ -29,8 +29,8 @@ Two caveats for the decision memo:
 ### 1. Embeddings
 
 **Entry points**
-- MCP tools: `embeddings_generate`, `embeddings_search`, `embeddings_hyperbolic`, `embeddings_init`, `embeddings_compare`, `embeddings_status`, `embeddings_neural` (`src/modules/cli/src/mcp-tools/embeddings-tools.ts`, 869 LOC)
-- CLI: `flo embeddings …` (`src/modules/cli/src/commands/embeddings.ts`)
+- MCP tools: `embeddings_generate`, `embeddings_search`, `embeddings_hyperbolic`, `embeddings_init`, `embeddings_compare`, `embeddings_status`, `embeddings_neural` (`src/cli/mcp-tools/embeddings-tools.ts`, 869 LOC)
+- CLI: `flo embeddings …` (`src/cli/commands/embeddings.ts`)
 
 **Code path**
 Call → `@moflo/embeddings` `EmbeddingService` → provider selection. Providers declared in `embedding-service.ts:22` as: `'openai' | 'transformers' | 'mock' | 'agentic-flow' | 'rvf'`.
@@ -55,8 +55,8 @@ Call → `@moflo/embeddings` `EmbeddingService` → provider selection. Provider
 ### 2. Pattern-learning hooks
 
 **Entry points**
-- MCP tools: `hooks_intelligence`, `hooks_intelligence_learn`, `hooks_intelligence_pattern-search`, `hooks_intelligence_pattern-store`, `hooks_intelligence_stats`, `hooks_intelligence_attention`, `hooks_intelligence_trajectory-start/step/end`, `hooks_intelligence-reset` (`src/modules/cli/src/mcp-tools/hooks-tools.ts`)
-- CLI: `flo hooks intelligence …` (`src/modules/cli/src/commands/hooks.ts`)
+- MCP tools: `hooks_intelligence`, `hooks_intelligence_learn`, `hooks_intelligence_pattern-search`, `hooks_intelligence_pattern-store`, `hooks_intelligence_stats`, `hooks_intelligence_attention`, `hooks_intelligence_trajectory-start/step/end`, `hooks_intelligence-reset` (`src/cli/mcp-tools/hooks-tools.ts`)
+- CLI: `flo hooks intelligence …` (`src/cli/commands/hooks.ts`)
 - Auto-invoked by: `hooks_post-task`, `hooks_post-edit` from `.claude/settings.json` hooks configuration
 
 **Code path**
@@ -108,11 +108,11 @@ No standalone "trajectory-without-agentdb" test. Hooks tests use the registry in
 
 **Entry points**
 - MCP tools: `hooks_pretrain`, neural training paths
-- CLI: `flo neural …` (`src/modules/cli/src/commands/neural.ts`)
+- CLI: `flo neural …` (`src/cli/commands/neural.ts`)
 - Exposed via `@moflo/neural` `createSONAManager` (`src/modules/neural/src/index.ts:201`)
 
 **Code path**
-`createSONAManager(mode)` returns a SONAManager instance. Actual implementation in `src/modules/cli/src/memory/sona-optimizer.ts:122`:
+`createSONAManager(mode)` returns a SONAManager instance. Actual implementation in `src/cli/memory/sona-optimizer.ts:122`:
 
 ```ts
 const DEFAULT_PERSISTENCE_PATH = '.swarm/sona-patterns.json';
@@ -124,7 +124,7 @@ SONA reads/writes a JSON file, not a SQLite/vector database. The `sonaMode` conf
 No fallback needed. Agentdb removal has zero impact on SONA.
 
 **Tested?**
-`src/modules/cli/__tests__/memory-movector-deep.test.ts:277, 305, 315, 325` assert `sonaEnabled` toggling works. No agentdb-absence variant needed.
+`src/cli/__tests__/memory-movector-deep.test.ts:277, 305, 315, 325` assert `sonaEnabled` toggling works. No agentdb-absence variant needed.
 
 **Consumer-visible on removal**
 None.
@@ -190,10 +190,10 @@ In-memory `Map` of memories + brute-force cosine. No persistence without agentdb
 ### 6. agentic-flow subprocess integration
 
 **Entry points**
-- `src/modules/cli/src/services/agentic-flow-bridge.ts` (120 LOC) — lazy loader
-- `src/modules/cli/src/movector/enhanced-model-router.ts` — router subprocess
-- `src/modules/cli/src/update/validator.ts` — version check
-- `src/modules/cli/src/init/executor.ts` — project bootstrap
+- `src/cli/services/agentic-flow-bridge.ts` (120 LOC) — lazy loader
+- `src/cli/movector/enhanced-model-router.ts` — router subprocess
+- `src/cli/update/validator.ts` — version check
+- `src/cli/init/executor.ts` — project bootstrap
 
 **Code path**
 All six usages of `agentic-flow` in the `src/` tree (outside of docs) are either:

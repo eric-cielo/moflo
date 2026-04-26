@@ -14,7 +14,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir, platform } from 'node:os';
 import { join } from 'node:path';
-import { bridgeRunSpell } from '../src/modules/cli/dist/src/spells/factory/runner-bridge.js';
+import { bridgeRunSpell } from '../dist/src/cli/spells/factory/runner-bridge.js';
 
 if (platform() !== 'linux') {
   console.error(`This probe must run on Linux (currently ${platform()}). Run via: wsl -d Ubuntu -- node ...`);

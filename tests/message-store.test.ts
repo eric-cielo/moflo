@@ -12,9 +12,9 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { MessageStore } from '../src/modules/cli/src/swarm/message-bus/message-store.js';
-import type { MessageStoreConfig } from '../src/modules/cli/src/swarm/message-bus/message-store.js';
-import type { AgentMessage } from '../src/modules/cli/src/swarm/types.js';
+import { MessageStore } from '../src/cli/swarm/message-bus/message-store.js';
+import type { MessageStoreConfig } from '../src/cli/swarm/message-bus/message-store.js';
+import type { AgentMessage } from '../src/cli/swarm/types.js';
 
 /** In-memory mock for Memory DB */
 function createMockMemoryDb() {

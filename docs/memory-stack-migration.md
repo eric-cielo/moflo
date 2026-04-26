@@ -27,7 +27,7 @@ From those we depend on three categories of value:
 - **Vector index** — HNSW. We already have `src/modules/memory/src/hnsw-lite.ts` (pure TS HNSW) and `src/modules/memory/src/rvf-backend.ts` (persistent single-file). These are moflo-owned.
 
 ### B. Pre-built domain controllers — the real lock-in
-From `controller-registry.ts:670-915`, moflo registers 21 agentdb-provided controllers. The ones actively consumed by `src/modules/cli/src/memory/memory-bridge.ts` (and surfaced via MCP tools) are:
+From `controller-registry.ts:670-915`, moflo registers 21 agentdb-provided controllers. The ones actively consumed by `src/cli/memory/memory-bridge.ts` (and surfaced via MCP tools) are:
 
 | Controller | Purpose | Hard to reimplement? |
 |---|---|---|

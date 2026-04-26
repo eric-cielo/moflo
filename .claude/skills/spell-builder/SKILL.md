@@ -354,9 +354,9 @@ Write the updated YAML back to the original file (or a new path if requested).
 
 **To find what steps are available:** Use `Glob` on `.claude/skills/spell-builder/steps/*/README.md` and read the H1 heading of each file. Each README is self-contained — it has everything needed to use that step type.
 
-**Runtime source:** `src/modules/cli/src/spells/commands/` — each step is a TypeScript file registered in `index.ts`.
+**Runtime source:** `src/cli/spells/commands/` — each step is a TypeScript file registered in `index.ts`.
 
-**Adding a new step:** Create a directory under `steps/<name>/` with a `README.md`. Follow `.claude/guidance/internal/guidance-rules.md` and use existing step READMEs as templates. The step command source goes in `src/modules/cli/src/spells/commands/` and is registered in `index.ts`. No changes to this SKILL.md needed.
+**Adding a new step:** Create a directory under `steps/<name>/` with a `README.md`. Follow `.claude/guidance/internal/guidance-rules.md` and use existing step READMEs as templates. The step command source goes in `src/cli/spells/commands/` and is registered in `index.ts`. No changes to this SKILL.md needed.
 
 ### Connectors
 
@@ -369,9 +369,9 @@ Write the updated YAML back to the original file (or a new path if requested).
 
 **To find what connectors are available:** Use `Glob` on `.claude/skills/spell-builder/connectors/*/README.md`.
 
-**Runtime source:** `src/modules/cli/src/spells/connectors/` — each connector is a TypeScript file registered in `index.ts`.
+**Runtime source:** `src/cli/spells/connectors/` — each connector is a TypeScript file registered in `index.ts`.
 
-**Adding a new connector:** Create a directory under `connectors/<name>/` with a `README.md`. Follow `.claude/guidance/internal/guidance-rules.md` and use existing connector READMEs as templates. The connector source goes in `src/modules/cli/src/spells/connectors/` and is registered in `index.ts`. No changes to this SKILL.md needed.
+**Adding a new connector:** Create a directory under `connectors/<name>/` with a `README.md`. Follow `.claude/guidance/internal/guidance-rules.md` and use existing connector READMEs as templates. The connector source goes in `src/cli/spells/connectors/` and is registered in `index.ts`. No changes to this SKILL.md needed.
 
 **When to create a new connector vs composing existing ones:** See [architecture.md](architecture.md) for the decision tree.
 
@@ -405,16 +405,16 @@ Check against all engine validation rules:
 
 ### Type Definitions
 
-- **Spell definition:** `src/modules/cli/src/spells/types/spell-definition.types.ts` — `SpellDefinition`, `StepDefinition`, `ArgumentDefinition`, `ArgumentType`
-- **Step command interface:** `src/modules/cli/src/spells/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `CastingContext`, `MofloLevel`, `CapabilityType`
-- **Connector interface:** `src/modules/cli/src/spells/types/spell-connector.types.ts` — `SpellConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorAccessor`
+- **Spell definition:** `src/cli/spells/types/spell-definition.types.ts` — `SpellDefinition`, `StepDefinition`, `ArgumentDefinition`, `ArgumentType`
+- **Step command interface:** `src/cli/spells/types/step-command.types.ts` — `StepCommand`, `StepConfig`, `StepOutput`, `CastingContext`, `MofloLevel`, `CapabilityType`
+- **Connector interface:** `src/cli/spells/types/spell-connector.types.ts` — `SpellConnector`, `ConnectorAction`, `ConnectorOutput`, `ConnectorAccessor`
 
 ### Engine Components
 
-- **Schema validator:** `src/modules/cli/src/spells/schema/validator.ts` — `validateSpellDefinition()`
-- **YAML/JSON parser:** `src/modules/cli/src/spells/schema/parser.ts` — `parseSpell()`
-- **Grimoire (registry):** `src/modules/cli/src/spells/registry/spell-registry.ts` — `Grimoire`
-- **Definition loader:** `src/modules/cli/src/spells/loaders/definition-loader.ts` — two-tier loading (shipped + user)
+- **Schema validator:** `src/cli/spells/schema/validator.ts` — `validateSpellDefinition()`
+- **YAML/JSON parser:** `src/cli/spells/schema/parser.ts` — `parseSpell()`
+- **Grimoire (registry):** `src/cli/spells/registry/spell-registry.ts` — `Grimoire`
+- **Definition loader:** `src/cli/spells/loaders/definition-loader.ts` — two-tier loading (shipped + user)
 
 ### MCP Tools
 

@@ -9,7 +9,7 @@ describe('epic command structure', () => {
   let epicCommand: any;
 
   beforeEach(async () => {
-    const mod = await import('../src/modules/cli/src/commands/epic.js');
+    const mod = await import('../src/cli/commands/epic.js');
     epicCommand = mod.default;
   });
 

@@ -24,7 +24,7 @@ code_map:
 tests:
   directories:
     - tests
-    - src/modules/cli/__tests__
+    - src/cli/__tests__
     - src/__tests__
   patterns: ["*.test.*", "*.spec.*", "*.test-*"]
   extensions: [".ts", ".tsx", ".js", ".jsx"]

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Scan each monorepo module's dist/ for orphaned build outputs whose TypeScript
-// source has been renamed or deleted, and remove them.
+// Scan dist/ for orphaned build outputs whose TypeScript source has been
+// renamed or deleted, and remove them.
 //
-// Background: after a source file rename, tsc -b writes the new output but leaves
-// the old one behind, and tsc -b --clean only removes files the current build
-// graph knows about — so once tsbuildinfo is rewritten post-rename, the orphan
-// slips past it. Since package.json's files whitelist includes every module's
-// dist js output, those orphans leak into npm pack tarballs.
+// Background: after a source file rename, tsc -b writes the new output but
+// leaves the old one behind, and tsc -b --clean only removes files the current
+// build graph knows about — so once tsbuildinfo is rewritten post-rename, the
+// orphan slips past it. Since package.json's files whitelist includes the
+// compiled output, those orphans leak into npm pack tarballs.
 //
 // Exports findOrphans() for in-process use (smoke harness); runs as CLI with
 // optional --check flag (exit 1 if any orphans found).
@@ -18,7 +18,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
-const modulesRoot = join(repoRoot, 'src', 'modules');
 
 // Order matters: longer suffixes (.d.ts.map, .js.map) must match before their
 // shorter parents (.d.ts, .js) when stripping a compiled extension.
@@ -28,24 +27,6 @@ const SKIP_BASENAMES = new Set(['tsconfig.tsbuildinfo']);
 
 function stripJsonComments(s) {
   return s.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
-}
-
-function readTsconfig(path) {
-  try {
-    return JSON.parse(stripJsonComments(readFileSync(path, 'utf8')));
-  } catch (e) {
-    throw new Error(`failed to parse ${path}: ${e.message}`);
-  }
-}
-
-function moduleDistPaths(modDir) {
-  const tsconfigPath = join(modDir, 'tsconfig.json');
-  if (!existsSync(tsconfigPath)) return null;
-  const cfg = readTsconfig(tsconfigPath);
-  const co = cfg.compilerOptions || {};
-  const outDir = resolve(modDir, co.outDir || '.');
-  const rootDir = resolve(modDir, co.rootDir || '.');
-  return { outDir, rootDir };
 }
 
 function stripCompiledExt(name) {
@@ -83,14 +64,11 @@ function walkDist(outDir, rootDir, out) {
 }
 
 export function findOrphans() {
-  if (!existsSync(modulesRoot)) return [];
+  // Single root tsconfig after #602: rootDir=. → outDir=./dist, but
+  // include is scoped to src/cli/**/*. So the only dist subtree that matters
+  // is dist/src/cli/, and its source root is src/cli/.
   const orphans = [];
-  for (const d of readdirSync(modulesRoot, { withFileTypes: true })) {
-    if (!d.isDirectory()) continue;
-    const paths = moduleDistPaths(join(modulesRoot, d.name));
-    if (!paths) continue;
-    walkDist(paths.outDir, paths.rootDir, orphans);
-  }
+  walkDist(join(repoRoot, 'dist', 'src', 'cli'), join(repoRoot, 'src', 'cli'), orphans);
   return orphans;
 }
 

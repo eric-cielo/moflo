@@ -10,10 +10,10 @@ This is a CRITICAL invariant. Every PR that adds or changes a config surface MUS
 |----------|-----------|-------------|
 | `.claude/scripts/*.mjs`, `.claude/scripts/lib/*` | Static file sync on version change | `bin/session-start-launcher.mjs` scriptFiles list |
 | `.claude/helpers/*` | Static file sync on version change | `bin/session-start-launcher.mjs` helper list |
-| `.claude/guidance/**` (shipped) | `syncAllShippedGuidance()` on init; also session-start refresh | `src/modules/cli/src/init/moflo-init.ts` |
-| `.claude/settings.json` hooks | Merge on session-start / init | `src/modules/cli/src/init/settings-generator.ts` |
+| `.claude/guidance/**` (shipped) | `syncAllShippedGuidance()` on init; also session-start refresh | `src/cli/init/moflo-init.ts` |
+| `.claude/settings.json` hooks | Merge on session-start / init | `src/cli/init/settings-generator.ts` |
 | `moflo.yaml` top-level sections | **Idempotent append** of missing sections on session start | See §"Yaml upgrade pattern" |
-| `CLAUDE.md` moflo block | Regenerated between marker comments | `src/modules/cli/src/init/claudemd-generator.ts` |
+| `CLAUDE.md` moflo block | Regenerated between marker comments | `src/cli/init/claudemd-generator.ts` |
 
 If you add a new artifact class, wire it into one of these paths. Do **not** invent new upgrade mechanisms that require user intervention.
 
@@ -26,8 +26,8 @@ When we added the `sandbox:` config block, the default was `enabled: false` and 
 
 **The correct pattern for adding a new top-level config section:**
 
-1. Add the block (with sensible defaults and inline comments) to the init template in `src/modules/cli/src/init/moflo-init.ts`
-2. Add the schema + defaults to `src/modules/cli/src/config/moflo-config.ts` (`DEFAULT_CONFIG`, type, parser)
+1. Add the block (with sensible defaults and inline comments) to the init template in `src/cli/init/moflo-init.ts`
+2. Add the schema + defaults to `src/cli/config/moflo-config.ts` (`DEFAULT_CONFIG`, type, parser)
 3. Register the section in the session-start yaml upgrader so that existing projects get the block appended idempotently on next version bump
 4. Document in `docs/` — any setting that can't be discovered by reading `moflo.yaml` has failed the contract
 

@@ -16,9 +16,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createRunner, runSpellFromContent } from '../../src/modules/cli/src/spells/factory/runner-factory.js';
-import { StepCommandRegistry } from '../../src/modules/cli/src/spells/core/step-command-registry.js';
-import { builtinCommands } from '../../src/modules/cli/src/spells/commands/index.js';
+import { createRunner, runSpellFromContent } from '../../src/cli/spells/factory/runner-factory.js';
+import { StepCommandRegistry } from '../../src/cli/spells/core/step-command-registry.js';
+import { builtinCommands } from '../../src/cli/spells/commands/index.js';
 
 // ============================================================================
 // Test Environment

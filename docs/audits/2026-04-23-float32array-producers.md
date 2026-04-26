@@ -10,7 +10,7 @@
 **Related:**
 - Epic #527 — "Hard-require neural embeddings; remove all hash fallbacks"
 - Issue #558 — "Purge remaining inline hash embeddings caught by unscoped guard"
-- Issue #560 — "Pretrain benchmark ships hash-based embeddings" (resolved in PR #565; regression guard added under `src/modules/cli/__tests__/pretrain-no-hash-embeddings.test.ts`)
+- Issue #560 — "Pretrain benchmark ships hash-based embeddings" (resolved in PR #565; regression guard added under `src/cli/__tests__/pretrain-no-hash-embeddings.test.ts`)
 - ADR-EMB-001 — Neural embeddings mandatory
 
 ## Methodology
@@ -44,7 +44,7 @@
 
 Net result: the name-based guard already caught everything #558 tracks. The
 structural guard (`Float32Array + charCodeAt`) missed two hash-embedding sites
-inside `src/modules/cli/src/benchmarks/pretrain/index.ts` because the rule exempts
+inside `src/cli/benchmarks/pretrain/index.ts` because the rule exempts
 paths under `benchmarks/`. Those were fixed in PR #565 and are now covered by a
 dedicated `__tests__/` regression guard (`pretrain-no-hash-embeddings.test.ts`)
 that is NOT subject to the `benchmarks/` exemption.
@@ -54,24 +54,24 @@ that is NOT subject to the `benchmarks/` exemption.
 | File | Evidence | Notes |
 |---|---|---|
 | `src/modules/guidance/src/retriever.ts:84,96,112` | `interface IEmbeddingProvider`; constructor throws without one. | Ground-truth interface definition. |
-| `src/modules/cli/src/services/neural-embedding-provider.ts:28-46,74` | `FastembedBackedProvider` wraps cli's `createEmbeddingService` `embed()` / `embedBatch()`. | Returns real neural embeddings; hard-errors if module absent. |
-| `src/modules/cli/src/embeddings/embedding-service.ts:106-185` | `BaseEmbeddingService` + `OpenAIEmbeddingService` + `LazyFastembedService`. | `createEmbeddingService()` is the only public factory. |
-| `src/modules/cli/src/embeddings/fastembed-embedding-service.ts` | Fastembed ONNX implementation of `IEmbeddingService`. | Default production provider. |
-| `src/modules/cli/src/embeddings/persistent-cache.ts` | SQLite-backed cache of provider output. | Wraps an existing provider. |
+| `src/cli/services/neural-embedding-provider.ts:28-46,74` | `FastembedBackedProvider` wraps cli's `createEmbeddingService` `embed()` / `embedBatch()`. | Returns real neural embeddings; hard-errors if module absent. |
+| `src/cli/embeddings/embedding-service.ts:106-185` | `BaseEmbeddingService` + `OpenAIEmbeddingService` + `LazyFastembedService`. | `createEmbeddingService()` is the only public factory. |
+| `src/cli/embeddings/fastembed-embedding-service.ts` | Fastembed ONNX implementation of `IEmbeddingService`. | Default production provider. |
+| `src/cli/embeddings/persistent-cache.ts` | SQLite-backed cache of provider output. | Wraps an existing provider. |
 | `src/modules/memory/src/controllers/_shared.ts:67+` | `embedText(embedder, text)` throws if `embedder` is missing. | DI enforcement helper. |
 | `src/modules/memory/src/controllers/hierarchical-memory.ts:119+` | `await embedText(this.embedder, ...)` — rejects missing embedder. | Per ADR-EMB-001. |
 | `src/modules/memory/src/learning-bridge.ts:449-460` | `await this.embeddingService.embed(text)`; returns an empty `Float32Array(0)` on catch (not a hash fallback — an empty vector that downstream callers check). | Injected service via factory. |
 | `src/modules/swarm/src/queen-coordinator.ts` | Accepts pre-computed embeddings on task/agent inputs; otherwise calls injected `IEmbeddingProvider.embed`. | PR #543. |
 | `src/modules/swarm/src/attention-coordinator.ts:829,889,897,891` | Same pattern — prefers caller-supplied vector, otherwise delegates to `this.embeddingProvider.embed`. | PR #543. |
-| `src/modules/cli/src/hooks/reasoningbank/index.ts:862-868,1022-1028` | `ensureEmbedding()` calls the injected `embeddingService`. | Constructor-injected. |
-| `src/modules/cli/src/commands/embeddings.ts` | CLI wrapper over provider results. | Same DI path. |
-| `src/modules/cli/src/benchmarks/pretrain/index.ts:290-313` (`benchmarkEmbeddingGeneration`) | `createEmbeddingService({ provider: 'fastembed' })` + `service.embed(...)`. | Shipped via `moflo benchmark pretrain`; the reported number now reflects real fastembed throughput (#560, PR #565). |
+| `src/cli/hooks/reasoningbank/index.ts:862-868,1022-1028` | `ensureEmbedding()` calls the injected `embeddingService`. | Constructor-injected. |
+| `src/cli/commands/embeddings.ts` | CLI wrapper over provider results. | Same DI path. |
+| `src/cli/benchmarks/pretrain/index.ts:290-313` (`benchmarkEmbeddingGeneration`) | `createEmbeddingService({ provider: 'fastembed' })` + `service.embed(...)`. | Shipped via `moflo benchmark pretrain`; the reported number now reflects real fastembed throughput (#560, PR #565). |
 
 ## STORAGE / DESERIALIZATION — Reconstitutes prior provider output
 
 | File | Evidence |
 |---|---|
-| `src/modules/cli/src/services/learning-service.ts:677,706,777,788` | `new Float32Array(JSON.parse(row.embedding))` — rehydrates sqlite-stored provider vectors. |
+| `src/cli/services/learning-service.ts:677,706,777,788` | `new Float32Array(JSON.parse(row.embedding))` — rehydrates sqlite-stored provider vectors. |
 | `src/modules/memory/src/rvf-backend.ts:427` | Parses journal entry; promotes `embedding` array to `Float32Array`. |
 | `src/modules/memory/src/rvf-migration.ts:311` | Loads persisted entries during migration. |
 | `src/modules/memory/src/sqljs-backend.ts:760` | `new Float32Array(new Uint8Array(row.embedding).buffer)` — binary blob decode. |
@@ -93,31 +93,31 @@ Grouped by concern for readability.
 | `src/modules/neural/src/algorithms/{a2c,dqn,ppo,q-learning,sarsa,decision-transformer,curiosity}.ts` | Policy / value-head buffers, advantage vectors, replay-buffer tensors. |
 | `src/modules/neural/src/modes/{balanced,batch,base,edge,real-time,research}.ts` | Per-mode RL feature tensors. |
 
-### MoVector (routing / attention math, `src/modules/cli/src/movector/`)
+### MoVector (routing / attention math, `src/cli/movector/`)
 | File | What the `Float32Array` holds |
 |---|---|
-| `src/modules/cli/src/movector/semantic-router.ts:29,178+` | L2-normalisation scratch buffer; `embeddings: Float32Array[]` field holds pre-computed vectors supplied by callers (not produced here). |
-| `src/modules/cli/src/movector/moe-router.ts:71+` | `scoreBuffer`, `expBuffer` — softmax / routing scores, not text embeddings. |
-| `src/modules/cli/src/movector/flash-attention.ts:37+` | `output` / `weights` — attention matrices. |
-| `src/modules/cli/src/movector/q-learning-router.ts` | RL state/value buffers. |
-| `src/modules/cli/src/movector/lora-adapter.ts` | LoRA adapter weights. |
+| `src/cli/movector/semantic-router.ts:29,178+` | L2-normalisation scratch buffer; `embeddings: Float32Array[]` field holds pre-computed vectors supplied by callers (not produced here). |
+| `src/cli/movector/moe-router.ts:71+` | `scoreBuffer`, `expBuffer` — softmax / routing scores, not text embeddings. |
+| `src/cli/movector/flash-attention.ts:37+` | `output` / `weights` — attention matrices. |
+| `src/cli/movector/q-learning-router.ts` | RL state/value buffers. |
+| `src/cli/movector/lora-adapter.ts` | LoRA adapter weights. |
 
 ### Training utilities
 | File | What the `Float32Array` holds |
 |---|---|
-| `src/modules/cli/src/services/training-utils.ts:32-69,186-190` | Adam optimiser `m`/`v`, contrastive-loss gradient buffer. |
-| `src/modules/cli/src/services/movector-training.ts:128,233` | MoE expert-weight init, synthetic gradient for reward-shaped adaptation. |
+| `src/cli/services/training-utils.ts:32-69,186-190` | Adam optimiser `m`/`v`, contrastive-loss gradient buffer. |
+| `src/cli/services/movector-training.ts:128,233` | MoE expert-weight init, synthetic gradient for reward-shaped adaptation. |
 
 ### Benchmark fixtures (pipeline-wiring measurement, not text→vector)
 | File | What the `Float32Array` holds |
 |---|---|
-| `src/modules/cli/src/benchmarks/pretrain/index.ts:421-430` (`benchmarkPretrainPipeline`) | Random fixture vectors used to time index construction and pattern extraction. The embedder itself is covered by `benchmarkEmbeddingGeneration` in the PROVIDER table; this helper deliberately uses `Math.random` so it cannot be mistaken for a real embedding (#560, PR #565). |
+| `src/cli/benchmarks/pretrain/index.ts:421-430` (`benchmarkPretrainPipeline`) | Random fixture vectors used to time index construction and pattern extraction. The embedder itself is covered by `benchmarkEmbeddingGeneration` in the PROVIDER table; this helper deliberately uses `Math.random` so it cannot be mistaken for a real embedding (#560, PR #565). |
 
 ### Test-only paths NOT classified
 
 Skipped per audit scope. Listed here only so the audit is demonstrably complete.
 
-- `src/modules/cli/src/hooks/reasoningbank/__mocks__/test-embedding-service.ts` — deterministic test mock.
+- `src/cli/hooks/reasoningbank/__mocks__/test-embedding-service.ts` — deterministic test mock.
 - `src/modules/guidance/tests/__mocks__/deterministic-embedding-provider.ts` — deterministic test mock.
 - `src/modules/memory/src/controllers/_test-embedder.ts` — test-only embedder helper.
 - `src/modules/embeddings/__tests__/**`, `src/modules/memory/benchmarks/*.bench.ts`, `src/modules/neural/__tests__/**`, etc. — vitest / benchmark suites.
@@ -130,8 +130,8 @@ All four carry `// eslint-disable-next-line no-restricted-syntax -- … tracked 
 
 | Site | Note |
 |---|---|
-| `src/modules/cli/src/mcp-tools/hooks-tools.ts:120` (`generateSimpleEmbedding`) | Called at `:323`, `:335`, `:861` — live MCP routing path. |
-| `src/modules/cli/src/mcp-tools/hooks-tools.ts:2990+` (`hooks_intelligence_attention` MoE / Flash demo branches) | Inline `Math.sin(query.charCodeAt(...))`. |
+| `src/cli/mcp-tools/hooks-tools.ts:120` (`generateSimpleEmbedding`) | Called at `:323`, `:335`, `:861` — live MCP routing path. |
+| `src/cli/mcp-tools/hooks-tools.ts:2990+` (`hooks_intelligence_attention` MoE / Flash demo branches) | Inline `Math.sin(query.charCodeAt(...))`. |
 | `src/modules/embeddings/src/embedding-service.ts:430` (`MockEmbeddingService.deterministicEmbedding`) | Class doc says "TEST-ONLY — never returned by createEmbeddingService", but `createEmbeddingService` still returns it for `provider: 'mock'`. |
 | `src/modules/embeddings/src/migration/in-memory-store.ts:221` (`MockBatchEmbedder.seedVector`) | Migration-driver test fixture that leaks into `src/`. |
 
@@ -140,12 +140,12 @@ This audit does **not** duplicate those into fresh issues — #558 is their owne
 ### #560 — RESOLVED (PR #565)
 
 **Sites (original):**
-- `src/modules/cli/src/benchmarks/pretrain/index.ts:290-312` — `benchmarkEmbeddingGeneration` built a 384-dim vector from `text.charCodeAt` + `Math.sin`.
-- `src/modules/cli/src/benchmarks/pretrain/index.ts:432-465` — `benchmarkPretrainPipeline` generated 50 file embeddings via `Math.sin(file.path.charCodeAt(...))`.
+- `src/cli/benchmarks/pretrain/index.ts:290-312` — `benchmarkEmbeddingGeneration` built a 384-dim vector from `text.charCodeAt` + `Math.sin`.
+- `src/cli/benchmarks/pretrain/index.ts:432-465` — `benchmarkPretrainPipeline` generated 50 file embeddings via `Math.sin(file.path.charCodeAt(...))`.
 
 **Why the guard missed it:** the `no-restricted-syntax` structural rule exempts
 `benchmarks/` paths because benchmarks routinely compute synthetic vectors.
-These two functions however were imported from `src/modules/cli/src/commands/benchmark.ts`
+These two functions however were imported from `src/cli/commands/benchmark.ts`
 and are invoked by the user-facing `moflo benchmark` command — so `npm i moflo` shipped
 them, and users saw "Embedding Generation: N ops/sec" numbers that measured a
 hash function, not the real fastembed pipeline.
@@ -159,7 +159,7 @@ rule still exempts `src/**/benchmarks/**`, so a future PR could re-introduce
 `charCodeAt` + `Math.sin` here and lint would stay green. Consumer-smoke's
 `verifyNoInlineHashEmbeddings` catches it at dist time but only on PR CI.
 The regression is now also gated by
-`src/modules/cli/__tests__/pretrain-no-hash-embeddings.test.ts`, which runs
+`src/cli/__tests__/pretrain-no-hash-embeddings.test.ts`, which runs
 in the normal unit suite and is NOT subject to the `benchmarks/` exemption
 because it lives under `__tests__/`.
 

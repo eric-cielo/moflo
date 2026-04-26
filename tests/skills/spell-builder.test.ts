@@ -137,7 +137,7 @@ describe('spell-builder skill', () => {
     });
 
     it('references the commands source directory', () => {
-      expect(content).toContain('src/modules/cli/src/spells/commands/');
+      expect(content).toContain('src/cli/spells/commands/');
     });
   });
 
@@ -150,7 +150,7 @@ describe('spell-builder skill', () => {
     });
 
     it('references the connectors source directory', () => {
-      expect(content).toContain('src/modules/cli/src/spells/connectors/');
+      expect(content).toContain('src/cli/spells/connectors/');
     });
   });
 

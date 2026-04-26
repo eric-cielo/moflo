@@ -452,7 +452,7 @@ export function mcpTools(consumerDir) {
 export function moflodbBridge(consumerDir) {
   section('MofloDb bridge health');
   const probe = join(consumerDir, 'moflodb-bridge-probe.mjs');
-  const bridgePath = join(consumerDir, 'node_modules', 'moflo', 'src', 'modules', 'cli', 'dist', 'src', 'memory', 'memory-bridge.js')
+  const bridgePath = join(consumerDir, 'node_modules', 'moflo', 'dist', 'src', 'cli', 'memory', 'memory-bridge.js')
     .replace(/\\/g, '/');
   writeFileSync(probe, `
 import { pathToFileURL } from 'node:url';

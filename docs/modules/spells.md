@@ -1,6 +1,6 @@
 # cli/spells
 
-> **Inlined into `@moflo/cli` by [#596](https://github.com/eric-cielo/moflo/issues/596)** (epic [#586](https://github.com/eric-cielo/moflo/issues/586) / [ADR-0001](../adr/0001-collapse-moflo-workspace-packages.md)). The `@moflo/spells` workspace package no longer exists — its contents live at `src/modules/cli/src/spells/` and ship inside the `moflo` tarball.
+> **Inlined into `@moflo/cli` by [#596](https://github.com/eric-cielo/moflo/issues/596)** (epic [#586](https://github.com/eric-cielo/moflo/issues/586) / [ADR-0001](../adr/0001-collapse-moflo-workspace-packages.md)). The `@moflo/spells` workspace package no longer exists — its contents live at `src/cli/spells/` and ship inside the `moflo` tarball.
 
 The wizard-themed workflow engine. Parses YAML/JSON spell definitions, validates them against a step-command registry, and executes them through a sandboxed runner with capability gates, prerequisite checks, permission acceptance, pause/resume, and a scheduler.
 
@@ -8,22 +8,22 @@ The wizard-themed workflow engine. Parses YAML/JSON spell definitions, validates
 
 | Concern | Path |
 |---------|------|
-| Source | `src/modules/cli/src/spells/` |
-| Public surface | `src/modules/cli/src/spells/index.ts` (re-exports core, commands, connectors, schema, factory, scheduler) |
-| Built-in step commands | `src/modules/cli/src/spells/commands/` (agent, bash, browser, condition, github, loop, memory, parallel, prompt, wait + IMAP/Outlook/Slack/MCP/graph) |
-| Built-in connectors | `src/modules/cli/src/spells/connectors/` (http, github-cli, playwright + IMAP/Outlook/Slack/MCP) |
-| Sandbox tiers | `src/modules/cli/src/spells/core/` — `bwrap-sandbox.ts`, `sandbox-profile.ts` (sandbox-exec), `docker-sandbox.ts`, `platform-sandbox.ts` |
-| Schema + parser | `src/modules/cli/src/spells/schema/` |
-| Definition loader | `src/modules/cli/src/spells/loaders/definition-loader.ts` (shipped + user precedence) |
-| Scheduler | `src/modules/cli/src/spells/scheduler/` (cron, interval, one-time) |
-| Tests | `src/modules/cli/__tests__/spells/` |
+| Source | `src/cli/spells/` |
+| Public surface | `src/cli/spells/index.ts` (re-exports core, commands, connectors, schema, factory, scheduler) |
+| Built-in step commands | `src/cli/spells/commands/` (agent, bash, browser, condition, github, loop, memory, parallel, prompt, wait + IMAP/Outlook/Slack/MCP/graph) |
+| Built-in connectors | `src/cli/spells/connectors/` (http, github-cli, playwright + IMAP/Outlook/Slack/MCP) |
+| Sandbox tiers | `src/cli/spells/core/` — `bwrap-sandbox.ts`, `sandbox-profile.ts` (sandbox-exec), `docker-sandbox.ts`, `platform-sandbox.ts` |
+| Schema + parser | `src/cli/spells/schema/` |
+| Definition loader | `src/cli/spells/loaders/definition-loader.ts` (shipped + user precedence) |
+| Scheduler | `src/cli/spells/scheduler/` (cron, interval, one-time) |
+| Tests | `src/cli/__tests__/spells/` |
 
 ## Internal usage
 
 The cli wraps the engine through two thin services — both already use relative paths into `cli/src/spells/`:
 
-- `src/modules/cli/src/services/engine-loader.ts` — single-load cache for the runtime module, type-only imports for the engine surface.
-- `src/modules/cli/src/services/grimoire-builder.ts` — composes the registry from shipped + user dirs (`moflo.yaml.spells.userDirs`).
+- `src/cli/services/engine-loader.ts` — single-load cache for the runtime module, type-only imports for the engine surface.
+- `src/cli/services/grimoire-builder.ts` — composes the registry from shipped + user dirs (`moflo.yaml.spells.userDirs`).
 
 ```ts
 // From any cli source file:

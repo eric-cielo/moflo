@@ -15,7 +15,7 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { buildBwrapArgs } from '../src/modules/cli/dist/src/spells/core/bwrap-sandbox.js';
+import { buildBwrapArgs } from '../dist/src/cli/spells/core/bwrap-sandbox.js';
 
 const WIN_PROJECT_ROOT = 'C:/Users/eric/Projects/moflo';
 

@@ -1,21 +1,19 @@
-# src/ — MoFlo Monorepo Modules
+# src/ — MoFlo Source
 
 Root CLAUDE.md rules apply here.
 
 ## Build & Test
 
 ```bash
-# From src/modules/<package>
-npm install && npm run build && npm test
+npm run build   # tsc -b from repo root
+npm test        # parallel + isolation passes
 ```
 
-## Packages
+## Layout
 
-| Package | Path | Purpose |
-|---------|------|---------|
-| `@moflo/cli` | `modules/cli/` | CLI entry point (40+ commands); also hosts inlined `aidefence`, `embeddings`, `guidance`, `hooks`, `memory`, `neural`, `shared`, `spells`, `swarm` |
+- `cli/` — the moflo source tree (commands, init, hooks, memory, neural, swarm, spells, embeddings, guidance, aidefence, shared, mcp-server, mcp-tools, services, …). After workspace-collapse epic #586 this is the entire shipped package — no more `src/modules/<pkg>/` subtrees.
 
-The repo no longer hosts `@moflo/testing` — the package was unreferenced by both production and test code (story #601, epic #586) and was removed entirely.
+The compiled output lives at `dist/src/cli/**` and is what gets shipped to npm consumers.
 
 ## Code Quality
 

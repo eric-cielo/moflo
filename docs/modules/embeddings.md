@@ -1,6 +1,6 @@
 # cli/embeddings
 
-> **Inlined into `@moflo/cli` by [#592](https://github.com/eric-cielo/moflo/issues/592)** (epic [#586](https://github.com/eric-cielo/moflo/issues/586) / [ADR-0001](../adr/0001-collapse-moflo-workspace-packages.md)). The `@moflo/embeddings` workspace package no longer exists — its contents live at `src/modules/cli/src/embeddings/` and ship inside the `moflo` tarball.
+> **Inlined into `@moflo/cli` by [#592](https://github.com/eric-cielo/moflo/issues/592)** (epic [#586](https://github.com/eric-cielo/moflo/issues/586) / [ADR-0001](../adr/0001-collapse-moflo-workspace-packages.md)). The `@moflo/embeddings` workspace package no longer exists — its contents live at `src/cli/embeddings/` and ship inside the `moflo` tarball.
 
 `fastembed`-backed neural embeddings with persistent caching, document chunking, normalization, and hyperbolic embeddings. Used internally by cli, hooks, and memory; not exported as a separate npm package.
 
@@ -8,9 +8,9 @@
 
 | Concern | Path |
 |---------|------|
-| Source | `src/modules/cli/src/embeddings/` |
-| Public surface | `src/modules/cli/src/embeddings/index.ts` (named exports) |
-| Tests | `src/modules/cli/__tests__/embeddings/` |
+| Source | `src/cli/embeddings/` |
+| Public surface | `src/cli/embeddings/index.ts` (named exports) |
+| Tests | `src/cli/__tests__/embeddings/` |
 | ADR (neural mandatory) | [ADR-EMB-001](../adr/ADR-EMB-001-neural-embeddings-mandatory.md) |
 | Float32Array audit | [docs/audits/2026-04-23-float32array-producers.md](../audits/2026-04-23-float32array-producers.md) |
 
@@ -24,7 +24,7 @@
 - Document chunking (character, sentence, paragraph, token strategies with overlap).
 - Normalization (L2 / L1 / min-max / z-score).
 - Hyperbolic embeddings (Poincaré ball) for hierarchical representations.
-- Resumable embeddings-version migration driver (`src/modules/cli/src/embeddings/migration/`).
+- Resumable embeddings-version migration driver (`src/cli/embeddings/migration/`).
 
 ## Internal usage
 
