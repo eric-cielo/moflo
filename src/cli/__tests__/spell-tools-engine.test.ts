@@ -6,8 +6,19 @@
  * Story #371: Renamed workflow_* tools to spell_* with wizard terminology.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spellTools, invalidateRegistry } from '../mcp-tools/spell-tools.js';
+
+// Disable sandbox at the engine layer so the bash steps below run unsandboxed
+// regardless of host capability. Without this, sandbox.enabled=true in the
+// project's moflo.yaml + Windows-without-Docker makes the engine bail out on
+// the prerequisite check before any step runs.
+const ORIGINAL_SANDBOX_ENV = process.env.MOFLO_SANDBOX_DISABLED;
+beforeAll(() => { process.env.MOFLO_SANDBOX_DISABLED = '1'; });
+afterAll(() => {
+  if (ORIGINAL_SANDBOX_ENV === undefined) delete process.env.MOFLO_SANDBOX_DISABLED;
+  else process.env.MOFLO_SANDBOX_DISABLED = ORIGINAL_SANDBOX_ENV;
+});
 
 function findTool(name: string) {
   const tool = spellTools.find(t => t.name === name);

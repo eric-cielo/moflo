@@ -208,8 +208,16 @@ function isValidTier(value: unknown): value is SandboxTier {
  *
  * Lets the spell engine auto-discover sandbox settings from the project root
  * without forcing every caller (MCP tools, CLI adapters) to load moflo.yaml.
+ *
+ * `MOFLO_SANDBOX_DISABLED=1` short-circuits to disabled config so tests can
+ * exercise spell-engine paths without depending on host sandbox capability
+ * (e.g. Windows-without-Docker). The override is intentionally undocumented
+ * for end users — production callers should set sandbox.enabled in moflo.yaml.
  */
 export async function loadSandboxConfigFromProject(projectRoot: string): Promise<SandboxConfig> {
+  if (process.env.MOFLO_SANDBOX_DISABLED === '1') {
+    return DEFAULT_SANDBOX_CONFIG;
+  }
   try {
     const content = readFileSync(join(projectRoot, 'moflo.yaml'), 'utf-8');
     const mod = await import('js-yaml') as YamlModule;
