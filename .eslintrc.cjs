@@ -205,6 +205,26 @@ module.exports = {
       rules: bannedEmbeddingRules,
     },
     {
+      // The embedding-hygiene doctor is the legitimate detector for the banned
+      // `domain-aware-hash*` model tag — its entire purpose is to find rows in
+      // the user's memory DB that still carry the retired model label. The
+      // identifier-rule still applies (no ressurrected hashEmbed/HashEmbedding*
+      // function names), but the literal-prefix selector is allowed here.
+      files: ['src/cli/commands/doctor-embedding-hygiene.ts'],
+      rules: {
+        'no-restricted-syntax': [
+          'error',
+          {
+            selector: `Identifier[name=/${BANNED_IDENTIFIER_PATTERN}/]`,
+            message: BANNED_EMBEDDING_MESSAGE,
+          },
+          ...INLINE_HASH_EMBEDDING_SELECTORS,
+          ...RAW_DB_WRITE_SELECTORS,
+          ...FIXED_DEPTH_MODULES_SELECTORS,
+        ],
+      },
+    },
+    {
       // Test-only deterministic mocks are explicitly allowed to reference the
       // hash-embedding identifiers so existing guidance-retriever test
       // fixtures continue to work. They are NOT exported from any package.

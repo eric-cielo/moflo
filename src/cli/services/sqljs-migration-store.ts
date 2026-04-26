@@ -53,9 +53,9 @@ export interface SqlJsMemoryEntriesStoreOptions {
    *   - `countItems()` and `iterItems()` only return rows whose
    *     `embedding_model` differs from `targetModel` (or is NULL). This
    *     turns the migration into a self-healing pass: completed rows are
-   *     filtered out, surviving non-target rows (Xenova-tagged,
-   *     domain-aware-hash-*, NULL/'local' residue from #649's silent
-   *     failures, etc.) are re-embedded.
+   *     filtered out, surviving non-target rows (Xenova-tagged, retired
+   *     hash-fallback rows from epic #527, NULL/'local' residue from #649's
+   *     silent failures, etc.) are re-embedded.
    *   - `updateBatch()` writes `embedding_model = targetModel` alongside
    *     the new vector, so the post-migration label faithfully describes
    *     the producing embedder. Pre-#650 the column was untouched, which
