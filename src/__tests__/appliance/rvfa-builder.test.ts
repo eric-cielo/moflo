@@ -2,7 +2,7 @@
  * RVFA Builder pipeline tests.
  *
  * Uses the Node.js built-in test runner (node:test).
- * Run: npx tsx --test v3/__tests__/appliance/rvfa-builder.test.ts
+ * Run: npx tsx --test src/__tests__/appliance/rvfa-builder.test.ts
  */
 
 import { describe, it, afterEach } from 'node:test';
@@ -14,8 +14,8 @@ import {
   RvfaBuilder,
   encryptApiKeys,
   decryptApiKeys,
-} from '../../modules/cli/src/appliance/rvfa-builder.js';
-import { RvfaReader } from '../../modules/cli/src/appliance/rvfa-format.js';
+} from '../../cli/appliance/rvfa-builder.js';
+import { RvfaReader } from '../../cli/appliance/rvfa-format.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

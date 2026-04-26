@@ -2,7 +2,7 @@
  * RVFA Distribution & Hot-Patch module tests.
  *
  * Uses the Node.js built-in test runner (node:test).
- * Run: npx tsx --test v3/__tests__/appliance/rvfa-distribution.test.ts
+ * Run: npx tsx --test src/__tests__/appliance/rvfa-distribution.test.ts
  */
 
 import { describe, it, afterEach } from 'node:test';

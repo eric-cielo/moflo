@@ -2,7 +2,7 @@
  * RVFA Ed25519 signing module tests.
  *
  * Uses the Node.js built-in test runner (node:test).
- * Run: npx tsx --test v3/__tests__/appliance/rvfa-signing.test.ts
+ * Run: npx tsx --test src/__tests__/appliance/rvfa-signing.test.ts
  */
 
 import { describe, it, afterEach } from 'node:test';
@@ -17,12 +17,12 @@ import {
   RvfaSigner,
   RvfaVerifier,
   type RvfaKeyPair,
-} from '../../modules/cli/src/appliance/rvfa-signing.js';
+} from '../../cli/appliance/rvfa-signing.js';
 import {
   RvfaWriter,
   RvfaReader,
   createDefaultHeader,
-} from '../../modules/cli/src/appliance/rvfa-format.js';
+} from '../../cli/appliance/rvfa-format.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

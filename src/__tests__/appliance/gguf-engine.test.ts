@@ -2,7 +2,7 @@
  * GGUF inference engine tests.
  *
  * Uses the Node.js built-in test runner (node:test).
- * Run: npx tsx --test v3/__tests__/appliance/gguf-engine.test.ts
+ * Run: npx tsx --test src/__tests__/appliance/gguf-engine.test.ts
  */
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
@@ -15,7 +15,7 @@ import {
   parseGgufHeader,
   GgufEngine,
   type GgufMetadata,
-} from '../../modules/cli/src/appliance/gguf-engine.js';
+} from '../../cli/appliance/gguf-engine.js';
 
 // ---------------------------------------------------------------------------
 // GGUF Binary Helpers
