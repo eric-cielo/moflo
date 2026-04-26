@@ -15,12 +15,12 @@ import {
   RvfaPublisher,
   type RvfpHeader,
   type CreatePatchOptions,
-} from '../../@moflo/cli/src/appliance/rvfa-distribution.js';
+} from '../../cli/appliance/rvfa-distribution.js';
 import {
   RvfaWriter,
   RvfaReader,
   createDefaultHeader,
-} from '../../@moflo/cli/src/appliance/rvfa-format.js';
+} from '../../cli/appliance/rvfa-format.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
