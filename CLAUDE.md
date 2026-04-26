@@ -1,3 +1,28 @@
+## ⚠ This repo dogfoods MoFlo — read before any diagnostic
+
+**MoFlo IS the project AND the installed devDependency that drives the editor.** Two layers exist and they routinely diverge:
+
+| Layer | Location | Role |
+|-------|----------|------|
+| **Source** | `src/cli/...`, `bin/...` (working tree) | What's being edited |
+| **Installed** | `node_modules/moflo/...` | What's actually running — Claude Code's SessionStart hooks, daemon, statusline, indexers, embeddings migration all execute from here |
+
+When diagnosing any "X is broken" symptom (statusline numbers, daemon spam, missing upgrade UI, indexer behavior, hook output, anything observable in the editor) the symptom is produced by the **installed** bits — NOT by the source. Diagnostic instinct of "open the source file and read the code" is wrong here unless the install was just refreshed.
+
+**Before opening issues for runtime symptoms, verify the install state:**
+
+```bash
+node -p "require('./node_modules/moflo/package.json').version"  # what's running
+node -p "require('./package.json').version"                     # source version
+git log --oneline -5                                            # what's in source not yet shipped
+```
+
+If installed lags source, **publish + reinstall first** (use `/publish`), then re-test. Most "the code is buggy" symptoms turn out to be stale-install artifacts in this repo specifically because of the dogfood loop.
+
+**Corollary:** features must work from `node_modules/moflo/...` paths (consumer perspective), not from source paths anchored on `process.cwd()`. See `feedback_consumer_path_resolution.md`.
+
+---
+
 <!-- MOFLO:INJECTED:START -->
 ## MoFlo — AI Agent Orchestration
 
