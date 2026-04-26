@@ -390,6 +390,12 @@ export class PersistentLedger extends RunLedger {
   private readonly store: EventStore;
   private compactTimer: ReturnType<typeof setInterval> | null = null;
   private initialized = false;
+  // Serializes the fire-and-forget appends from logEvent()/importEvents() so
+  // save()/load()/compact() can wait for prior writes before reading or
+  // rewriting events.ndjson. Without this, save() can race a still-pending
+  // importEvents() loop and the file ends up with extra appended events
+  // after writeAll() — see #670.
+  private pendingWrites: Promise<void> = Promise.resolve();
 
   constructor(config?: Partial<PersistenceConfig>) {
     super();
@@ -415,14 +421,12 @@ export class PersistentLedger extends RunLedger {
   override logEvent(event: RunEvent | Omit<RunEvent, 'eventId'>): RunEvent {
     const logged = super.logEvent(event);
 
-    // Fire-and-forget persist. If enableWAL is true, we await in a microtask
-    // to minimize the chance of data loss without blocking the caller.
     if (this.config.enableWAL) {
-      // Use a void promise to avoid unhandled rejection
-      void this.store.append(logged).catch(() => {
-        // Silently swallow persistence errors to not break the caller.
-        // In production you would log this.
-      });
+      this.pendingWrites = this.pendingWrites
+        .then(() => this.store.append(logged))
+        .catch(() => {
+          // Silently swallow persistence errors to not break the caller.
+        });
     }
 
     return logged;
@@ -434,16 +438,19 @@ export class PersistentLedger extends RunLedger {
   override importEvents(events: RunEvent[]): void {
     super.importEvents(events);
 
-    // Persist each imported event
-    void (async () => {
-      for (const event of events) {
-        try {
-          await this.store.append(event);
-        } catch {
-          // Silently continue
+    this.pendingWrites = this.pendingWrites
+      .then(async () => {
+        for (const event of events) {
+          try {
+            await this.store.append(event);
+          } catch {
+            // Silently continue
+          }
         }
-      }
-    })();
+      })
+      .catch(() => {
+        // Keep the chain resolved so future writes and flush() callers aren't poisoned.
+      });
   }
 
   /**
@@ -451,6 +458,7 @@ export class PersistentLedger extends RunLedger {
    * This performs a full atomic rewrite of the NDJSON file.
    */
   async save(): Promise<void> {
+    await this.flush();
     const events = this.exportEvents();
 
     await this.store.acquireLock();
@@ -466,6 +474,7 @@ export class PersistentLedger extends RunLedger {
    * Clears the in-memory ledger first, then loads all stored events.
    */
   async load(): Promise<void> {
+    await this.flush();
     const events = await this.store.readAll();
     this.clear();
     if (events.length > 0) {
@@ -480,6 +489,7 @@ export class PersistentLedger extends RunLedger {
    * @returns The number of evicted events.
    */
   async compact(): Promise<number> {
+    await this.flush();
     await this.store.acquireLock();
     try {
       const evicted = await this.store.compact(this.config.maxEvents);
@@ -503,6 +513,7 @@ export class PersistentLedger extends RunLedger {
    * Get storage statistics.
    */
   async getStorageStats(): Promise<StorageStats> {
+    await this.flush();
     return this.store.getStats();
   }
 
@@ -511,6 +522,7 @@ export class PersistentLedger extends RunLedger {
    */
   async destroy(): Promise<void> {
     this.stopCompactTimer();
+    await this.flush();
     await this.store.releaseLock();
   }
 
@@ -522,6 +534,14 @@ export class PersistentLedger extends RunLedger {
   }
 
   // ===== Private =====
+
+  /**
+   * Drain queued background appends so the next read or rewrite reflects
+   * every prior logEvent()/importEvents() call.
+   */
+  private async flush(): Promise<void> {
+    await this.pendingWrites;
+  }
 
   private startCompactTimer(): void {
     if (this.config.compactIntervalMs > 0) {
