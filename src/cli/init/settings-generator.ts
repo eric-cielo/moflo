@@ -115,9 +115,12 @@ export function generateSettings(options: InitOptions): object {
     },
     daemon: {
       autoStart: true,
+      // Note: this list is documentation for the user — the daemon's actual
+      // worker registry lives in src/cli/services/worker-daemon.ts DEFAULT_WORKERS.
+      // 'audit' is intentionally absent here because it's default-disabled
+      // pending the perf fix in #631.
       workers: [
         'map',           // Codebase mapping
-        'audit',         // Security auditing (critical priority)
         'optimize',      // Performance optimization (high priority)
         'consolidate',   // Memory consolidation
         'testgaps',      // Test coverage gaps

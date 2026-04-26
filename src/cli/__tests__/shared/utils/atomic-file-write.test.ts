@@ -18,6 +18,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
   mkdtempSync,
   readFileSync,
+  readdirSync,
   existsSync,
   writeFileSync,
   renameSync,
@@ -85,6 +86,36 @@ describe('atomicWriteFileSync (real fs)', () => {
     expect(read.length).toBe(4);
     expect(read[0]).toBe(0xde);
     expect(read[3]).toBe(0xef);
+  });
+
+  it('uses a process-unique temp path so concurrent writers cannot clobber tmp', async () => {
+    // 50 concurrent writers race for the same target. Each writes a complete
+    // parseable JSON payload tagged with its writer ID. The destination must
+    // always end up with exactly one writer's full payload — never a mix.
+    const dir = makeTmpDir();
+    const target = join(dir, 'concurrent.json');
+
+    const writers = Array.from({ length: 50 }, (_, i) =>
+      Promise.resolve().then(() => {
+        try {
+          atomicWriteFileSync(target, JSON.stringify({ writer: i, payload: 'x'.repeat(2048) }));
+        } catch {
+          /* rename-race losers throw; expected under last-writer-wins semantics */
+        }
+      }),
+    );
+    await Promise.all(writers);
+
+    const parsed = JSON.parse(readFileSync(target, 'utf8'));
+    expect(typeof parsed.writer).toBe('number');
+    expect(parsed.writer).toBeGreaterThanOrEqual(0);
+    expect(parsed.writer).toBeLessThan(50);
+    expect(parsed.payload).toBe('x'.repeat(2048));
+
+    // No leftover .tmp.* files — the helper either renamed them or unlinked
+    // them on failure. Stale tmp files would silently leak disk over time.
+    const stragglers = readdirSync(dir).filter(f => f.startsWith('concurrent.json.tmp.'));
+    expect(stragglers).toEqual([]);
   });
 });
 

@@ -189,6 +189,29 @@ describe('getActive() and prune()', () => {
     expect(result.pruned).toBe(1);
     expect(result.remaining).toBe(0);
   });
+
+  it('getActive auto-prunes the file when stale entries are present (#634)', () => {
+    // Seed registry with two dead PIDs and one live PID.
+    writeFileSync(
+      join(root, '.claude-flow', 'background-pids.json'),
+      JSON.stringify([
+        { pid: 99999998, label: 'ghost-a', cmd: 'node -e ...', startedAt: new Date().toISOString() },
+        { pid: process.pid, label: 'parent-test', cmd: 'vitest', startedAt: new Date().toISOString() },
+        { pid: 99999999, label: 'ghost-b', cmd: 'node -e ...', startedAt: new Date().toISOString() },
+      ]),
+    );
+
+    const active = runPM(root, `return pm.getActive();`);
+    expect(active.length).toBe(1);
+    expect(active[0].label).toBe('parent-test');
+
+    // Critical assertion: the file on disk was rewritten with the live subset.
+    // This proves we're not leaving stale entries to accumulate across sessions
+    // when session-end didn't fire (abnormal termination).
+    const onDisk = JSON.parse(readFileSync(join(root, '.claude-flow', 'background-pids.json'), 'utf-8'));
+    expect(onDisk).toHaveLength(1);
+    expect(onDisk[0].label).toBe('parent-test');
+  });
 });
 
 describe('lock guard', () => {
