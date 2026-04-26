@@ -9,6 +9,7 @@
   ".claude/scripts/index-patterns.mjs",
   ".claude/scripts/index-all.mjs",
   ".claude/scripts/setup-project.mjs",
+  ".claude/scripts/lib/daemon-config.mjs",
   ".claude/scripts/lib/install-global-shim.mjs",
   ".claude/scripts/lib/moflo-resolve.mjs",
   ".claude/scripts/lib/process-manager.mjs",
