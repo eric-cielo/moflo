@@ -1,38 +1,12 @@
-/**
- * Tests for bin/lib/daemon-config.mjs — the SessionStart spawn gate that
- * honors .claude/settings.json claudeFlow.daemon.autoStart.
- *
- * Story #632 / epic #629.
- */
-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { writeFileSync, mkdirSync, rmSync } from 'fs';
+import { writeFileSync, mkdirSync } from 'fs';
 import { resolve } from 'path';
+import { makeTempRoot, cleanTempRoot } from './_helpers.js';
 
 const helperUrl =
   'file://' +
   resolve(__dirname, '../../bin/lib/daemon-config.mjs').replace(/\\/g, '/');
 const { shouldDaemonAutoStart } = await import(helperUrl);
-
-function makeTempRoot(): string {
-  const root = resolve(
-    __dirname,
-    '../../.testoutput/.test-daemon-config-' +
-      Date.now() +
-      '-' +
-      Math.random().toString(36).slice(2, 8),
-  );
-  mkdirSync(root, { recursive: true });
-  return root;
-}
-
-function cleanTempRoot(root: string) {
-  try {
-    rmSync(root, { recursive: true, force: true });
-  } catch {
-    /* ok */
-  }
-}
 
 function writeSettings(root: string, settings: unknown) {
   const dir = resolve(root, '.claude');
@@ -44,7 +18,7 @@ describe('shouldDaemonAutoStart', () => {
   let root: string;
 
   beforeEach(() => {
-    root = makeTempRoot();
+    root = makeTempRoot('daemon-config');
   });
   afterEach(() => cleanTempRoot(root));
 

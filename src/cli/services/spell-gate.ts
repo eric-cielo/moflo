@@ -142,14 +142,10 @@ export class GateService {
   writeState(state: GateState): void {
     try {
       fs.mkdirSync(path.dirname(this.stateFilePath), { recursive: true });
-      // Atomic write — concurrent gate hooks fire as separate node processes
-      // and used to produce torn JSON when they raced on naked writeFileSync
-      // (#629/#635). atomicWriteFileSync uses a process-unique temp path +
-      // rename so the destination always reflects exactly one writer's data.
+      // Atomic write so concurrent gate-hook processes never produce torn JSON.
       atomicWriteFileSync(this.stateFilePath, JSON.stringify(state, null, 2));
     } catch {
-      // Non-fatal — last-writer-wins semantics; some updates may be lost
-      // under contention but the file is never corrupted.
+      // Non-fatal — last-writer-wins; updates may be lost, never corrupted.
     }
   }
 

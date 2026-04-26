@@ -6,8 +6,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
+import { makeTempRoot, cleanTempRoot } from './_helpers.js';
 
 // Dynamic import so Vitest can resolve the .mjs from this .ts test file.
 const upgraderUrl = 'file://' + resolve(__dirname, '../../bin/lib/yaml-upgrader.mjs').replace(/\\/g, '/');
@@ -18,22 +19,12 @@ const {
   ensureYamlSections,
 } = await import(upgraderUrl);
 
-function makeTempRoot(): string {
-  const root = resolve(__dirname, '../../.testoutput/.test-yaml-upgrader-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
-  mkdirSync(root, { recursive: true });
-  return root;
-}
-
-function cleanTempRoot(root: string) {
-  try { rmSync(root, { recursive: true, force: true }); } catch { /* ok */ }
-}
-
 describe('yaml-upgrader', () => {
   let root: string;
   let yamlPath: string;
 
   beforeEach(() => {
-    root = makeTempRoot();
+    root = makeTempRoot('yaml-upgrader');
     yamlPath = resolve(root, 'moflo.yaml');
   });
   afterEach(() => cleanTempRoot(root));

@@ -470,7 +470,7 @@ export class WorkerDaemon extends EventEmitter {
       }
     }
     if (skipped.length > 0) {
-      this.log('info', `Skipping disabled workers: ${skipped.join(', ')} (audit is default-off pending #631)`);
+      this.log('info', `Skipping disabled workers: ${skipped.join(', ')}`);
     }
 
     if (this.scheduler && !this.scheduler.isRunning) {
@@ -1090,8 +1090,7 @@ export class WorkerDaemon extends EventEmitter {
     };
 
     try {
-      // Atomic write protects daemon-state.json from corruption when the
-      // daemon is force-killed mid-write (#635).
+      // Atomic write so a force-kill mid-write can't leave partial JSON behind.
       atomicWriteFileSync(this.config.stateFile, JSON.stringify(state, null, 2));
     } catch (error) {
       this.log('error', `Failed to save state: ${error}`);
