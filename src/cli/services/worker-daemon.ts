@@ -59,6 +59,9 @@ interface WorkerState {
   failureCount: number;
   averageDurationMs: number;
   isRunning: boolean;
+  lastDurationMs?: number;
+  consecutiveOverruns: number;
+  disabledByOverrun?: boolean;
 }
 
 interface WorkerResult {
@@ -85,6 +88,8 @@ export interface DaemonConfig {
   stateFile: string;
   maxConcurrent: number;
   workerTimeoutMs: number;
+  overrunMultiplier: number;
+  maxConsecutiveOverruns: number;
   resourceThresholds: {
     maxCpuLoad: number;
     minFreeMemoryPercent: number;
@@ -113,6 +118,13 @@ const DEFAULT_WORKERS: WorkerConfigInternal[] = [
 
 // Worker timeout (5 minutes max per worker)
 const DEFAULT_WORKER_TIMEOUT_MS = 5 * 60 * 1000;
+
+// Overrun-backoff defaults: a worker run that exceeds intervalMs × multiplier
+// counts as an overrun; reaching maxConsecutiveOverruns auto-disables it.
+const DEFAULT_OVERRUN_MULTIPLIER = 2;
+const DEFAULT_MAX_CONSECUTIVE_OVERRUNS = 3;
+// Cap the linear backoff so a slow worker can't wedge its next run far in the future.
+const MAX_OVERRUN_BACKOFF_MS = 30 * 60 * 1000;
 
 /**
  * Worker Daemon - Manages background workers with Node.js
@@ -169,6 +181,8 @@ export class WorkerDaemon extends EventEmitter {
       stateFile: config?.stateFile ?? join(claudeFlowDir, 'daemon-state.json'),
       maxConcurrent: config?.maxConcurrent ?? fileConfig.maxConcurrent ?? 2,
       workerTimeoutMs: config?.workerTimeoutMs ?? fileConfig.workerTimeoutMs ?? DEFAULT_WORKER_TIMEOUT_MS,
+      overrunMultiplier: config?.overrunMultiplier ?? DEFAULT_OVERRUN_MULTIPLIER,
+      maxConsecutiveOverruns: config?.maxConsecutiveOverruns ?? DEFAULT_MAX_CONSECUTIVE_OVERRUNS,
       resourceThresholds: {
         maxCpuLoad: config?.resourceThresholds?.maxCpuLoad ?? fileConfig.maxCpuLoad ?? smartMaxCpuLoad,
         minFreeMemoryPercent: config?.resourceThresholds?.minFreeMemoryPercent ?? fileConfig.minFreeMemoryPercent ?? defaultMinFreeMemory,
@@ -417,7 +431,7 @@ export class WorkerDaemon extends EventEmitter {
           for (const [type, state] of Object.entries(saved.workers)) {
             const savedState = state as Record<string, unknown>;
             const lastRunValue = savedState.lastRun;
-            this.workers.set(type as WorkerType, {
+            const restoredState: WorkerState = {
               runCount: (savedState.runCount as number) || 0,
               successCount: (savedState.successCount as number) || 0,
               failureCount: (savedState.failureCount as number) || 0,
@@ -425,7 +439,19 @@ export class WorkerDaemon extends EventEmitter {
               lastRun: lastRunValue ? new Date(lastRunValue as string) : undefined,
               nextRun: undefined,
               isRunning: false,
-            });
+              consecutiveOverruns: (savedState.consecutiveOverruns as number) || 0,
+            };
+            if (typeof savedState.lastDurationMs === 'number') {
+              restoredState.lastDurationMs = savedState.lastDurationMs;
+            }
+            if (savedState.disabledByOverrun === true) {
+              restoredState.disabledByOverrun = true;
+              // Persist the disable across restarts: the saved enabled flag will
+              // already be false, but be defensive in case state was hand-edited.
+              const workerConfig = this.config.workers.find(w => w.type === type);
+              if (workerConfig) workerConfig.enabled = false;
+            }
+            this.workers.set(type as WorkerType, restoredState);
           }
         }
       } catch {
@@ -442,6 +468,7 @@ export class WorkerDaemon extends EventEmitter {
           failureCount: 0,
           averageDurationMs: 0,
           isRunning: false,
+          consecutiveOverruns: 0,
         });
       }
     }
@@ -610,11 +637,11 @@ export class WorkerDaemon extends EventEmitter {
       // Use concurrency-controlled execution (P0 fix)
       await this.executeWorkerWithConcurrencyControl(workerConfig);
 
-      // Reschedule
-      if (this.running) {
-        const timer = setTimeout(runAndReschedule, workerConfig.intervalMs);
+      if (this.running && workerConfig.enabled && !state.disabledByOverrun) {
+        const nextDelay = this.computeNextDelay(workerConfig, state);
+        const timer = setTimeout(runAndReschedule, nextDelay);
         this.timers.set(workerConfig.type, timer);
-        state.nextRun = new Date(Date.now() + workerConfig.intervalMs);
+        state.nextRun = new Date(Date.now() + nextDelay);
       }
     };
 
@@ -623,6 +650,47 @@ export class WorkerDaemon extends EventEmitter {
     this.timers.set(workerConfig.type, timer);
 
     this.log('info', `Scheduled ${workerConfig.type} (interval: ${workerConfig.intervalMs / 1000}s, first run in ${initialDelay / 1000}s)`);
+  }
+
+  private computeNextDelay(workerConfig: WorkerConfig, state: WorkerState): number {
+    if (state.consecutiveOverruns <= 0) return workerConfig.intervalMs;
+    const extra = state.consecutiveOverruns * workerConfig.intervalMs;
+    return Math.min(workerConfig.intervalMs + extra, MAX_OVERRUN_BACKOFF_MS);
+  }
+
+  private evaluateOverrun(
+    workerConfig: WorkerConfig,
+    state: WorkerState,
+    durationMs: number,
+  ): void {
+    state.lastDurationMs = durationMs;
+    if (state.disabledByOverrun) return;
+
+    const overrunBudget = workerConfig.intervalMs * this.config.overrunMultiplier;
+    if (durationMs <= overrunBudget) {
+      state.consecutiveOverruns = 0;
+      return;
+    }
+
+    state.consecutiveOverruns++;
+    this.log(
+      'warn',
+      `Worker ${workerConfig.type} overran: ${durationMs}ms > ${overrunBudget}ms (${state.consecutiveOverruns}/${this.config.maxConsecutiveOverruns} consecutive)`,
+    );
+
+    if (state.consecutiveOverruns >= this.config.maxConsecutiveOverruns) {
+      state.disabledByOverrun = true;
+      this.setWorkerEnabled(workerConfig.type, false);
+      this.log(
+        'error',
+        `Worker ${workerConfig.type} auto-disabled after ${state.consecutiveOverruns} consecutive overruns; manual re-enable required`,
+      );
+      this.emit('worker:disabled-overrun', {
+        type: workerConfig.type,
+        consecutiveOverruns: state.consecutiveOverruns,
+        lastDurationMs: durationMs,
+      });
+    }
   }
 
   /**
@@ -678,6 +746,7 @@ export class WorkerDaemon extends EventEmitter {
       state.lastRun = new Date();
       state.averageDurationMs = (state.averageDurationMs * (state.runCount - 1) + durationMs) / state.runCount;
       state.isRunning = false;
+      this.evaluateOverrun(workerConfig, state, durationMs);
 
       const result: WorkerResult = {
         workerId,
@@ -700,6 +769,7 @@ export class WorkerDaemon extends EventEmitter {
       state.failureCount++;
       state.lastRun = new Date();
       state.isRunning = false;
+      this.evaluateOverrun(workerConfig, state, durationMs);
 
       const result: WorkerResult = {
         workerId,
