@@ -25,8 +25,8 @@ export const EMBEDDINGS_VERSION = 2 as const;
  * mode), and the indexer (`bin/build-embeddings.mjs`). Centralized here so
  * `services/`, `memory/`, `embeddings/`, and `bin/` cannot drift; the
  * pre-#650 mix of `'Xenova/all-MiniLM-L6-v2'`, `'fastembed/all-MiniLM-L6-v2'`,
- * `'fast-all-MiniLM-L6-v2'`, `'local'`, and `'domain-aware-hash-v1'` was the
- * exact failure mode #648 documented.
+ * `'fast-all-MiniLM-L6-v2'`, `'local'`, and the retired hash-fallback model
+ * tag (epic #527) was the exact failure mode #648 documented.
  */
 export const CANONICAL_EMBEDDING_MODEL = 'fast-all-MiniLM-L6-v2';
 

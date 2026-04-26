@@ -61,6 +61,15 @@ export const BANNED_EMBEDDING_IDENTIFIERS = [
 // anything else starting with the banned prefix.
 export const BANNED_EMBEDDING_LITERAL_RE = /domain-aware-hash/;
 
+// Files whose stated purpose is to *detect* the banned literal — the
+// embedding-hygiene doctor (#651) reads it back out of the consumer's memory
+// DB to flag residue rows. Compiled `.js` + `.d.ts` siblings are both skipped
+// from the literal scan; identifier rules still apply repo-wide.
+const BANNED_LITERAL_DETECTOR_FILES = new Set([
+  'doctor-embedding-hygiene.js',
+  'doctor-embedding-hygiene.d.ts',
+]);
+
 // Known regressions that still leak through until a dedicated fix lands. Each
 // entry MUST reference the tracking issue. Leaking deps in this list are
 // reported as WARN and do NOT cause the harness to exit non-zero; deps not in
@@ -307,6 +316,7 @@ export function verifyNoBannedEmbeddings(consumerDir) {
     return;
   }
 
+  const identifierRe = new RegExp(`\\b(${BANNED_EMBEDDING_IDENTIFIERS.join('|')})\\b`);
   const bannedRe = new RegExp(
     `\\b(${BANNED_EMBEDDING_IDENTIFIERS.join('|')})\\b|${BANNED_EMBEDDING_LITERAL_RE.source}`,
   );
@@ -323,7 +333,10 @@ export function verifyNoBannedEmbeddings(consumerDir) {
       log(`  skipped unreadable file ${file}: ${err.message}`);
       continue;
     }
-    const match = text.match(bannedRe);
+    // The hygiene doctor file is the legitimate literal detector — only the
+    // identifier rules apply there.
+    const re = BANNED_LITERAL_DETECTOR_FILES.has(basename(file)) ? identifierRe : bannedRe;
+    const match = text.match(re);
     if (match) {
       hits.push({ file, match: match[0] });
     }
