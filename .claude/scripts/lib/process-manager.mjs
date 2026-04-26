@@ -56,7 +56,8 @@ function lockPath(root) {
   return resolve(root, '.claude-flow', 'spawn.lock');
 }
 
-function readRegistry(root) {
+/** Raw read — returns whatever's on disk without filtering or rewriting. */
+function readRegistryRaw(root) {
   const p = registryPath(root);
   if (!existsSync(p)) return [];
   try {
@@ -65,6 +66,22 @@ function readRegistry(root) {
   } catch {
     return [];
   }
+}
+
+/**
+ * Default read — auto-prunes dead PIDs and rewrites the file when stale
+ * entries are detected. Catches the "abnormal session termination" case
+ * (Claude killed via task manager, OS reboot, hard crash) where session-end
+ * never ran and the registry would otherwise grow unboundedly. Rewrite is
+ * skipped when nothing changed so steady-state reads stay cheap.
+ */
+function readRegistry(root) {
+  const raw = readRegistryRaw(root);
+  const live = raw.filter(e => e && typeof e.pid === 'number' && isAlive(e.pid));
+  if (live.length !== raw.length) {
+    try { writeRegistry(root, live); } catch { /* non-fatal */ }
+  }
+  return live;
 }
 
 /** Atomic write: write to tmp file then rename to avoid torn reads. */
@@ -191,7 +208,9 @@ export function createProcessManager(root) {
      * @returns {{ killed: number, total: number }}
      */
     killAll() {
-      const entries = readRegistry(projectRoot);
+      // Use raw read so `total` reflects every on-disk entry — including
+      // dead ones we'd otherwise skip silently. Matches the prior contract.
+      const entries = readRegistryRaw(projectRoot);
       let killed = 0;
 
       for (const entry of entries) {
@@ -227,7 +246,9 @@ export function createProcessManager(root) {
      * @returns {{ pruned: number, remaining: number }}
      */
     prune() {
-      const entries = readRegistry(projectRoot);
+      // Use raw read so the pruned count reflects what was on disk, not
+      // what the auto-pruning readRegistry would have already cleaned up.
+      const entries = readRegistryRaw(projectRoot);
       const alive = entries.filter(e => isAlive(e.pid));
       writeRegistry(projectRoot, alive);
       return { pruned: entries.length - alive.length, remaining: alive.length };

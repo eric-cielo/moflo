@@ -455,6 +455,32 @@ describe('bin and .claude/scripts file sync', () => {
 
     expect(binSrc).toBe(helpersSrc);
   });
+
+  it('hooks.mjs should be in sync between bin/ and .claude/scripts/', () => {
+    const binSrc = readFileSync(
+      join(__dirname, '..', '..', '..', 'bin', 'hooks.mjs'),
+      'utf-8'
+    );
+    const scriptsSrc = readFileSync(
+      join(__dirname, '..', '..', '..', '.claude', 'scripts', 'hooks.mjs'),
+      'utf-8'
+    );
+
+    expect(binSrc).toBe(scriptsSrc);
+  });
+
+  it('daemon-config.mjs should be in sync between bin/ and .claude/scripts/', () => {
+    const binSrc = readFileSync(
+      join(__dirname, '..', '..', '..', 'bin', 'lib', 'daemon-config.mjs'),
+      'utf-8'
+    );
+    const scriptsSrc = readFileSync(
+      join(__dirname, '..', '..', '..', '.claude', 'scripts', 'lib', 'daemon-config.mjs'),
+      'utf-8'
+    );
+
+    expect(binSrc).toBe(scriptsSrc);
+  });
 });
 
 // ============================================================================

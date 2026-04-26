@@ -24,6 +24,7 @@ import { existsSync, appendFileSync, readFileSync, writeFileSync, mkdirSync, sta
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { createProcessManager } from './lib/process-manager.mjs';
+import { shouldDaemonAutoStart } from './lib/daemon-config.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -560,13 +561,19 @@ function touchSpawnStamp() {
 
 // Run daemon start in background (non-blocking) — skip if already running
 function runDaemonStartBackground() {
-  // 1. Check if a live daemon already holds the lock
+  // 1. Honor user opt-out via .claude/settings.json claudeFlow.daemon.autoStart
+  if (!shouldDaemonAutoStart(projectRoot)) {
+    log('info', 'Daemon autoStart disabled in settings, skipping');
+    return;
+  }
+
+  // 2. Check if a live daemon already holds the lock
   if (isDaemonLockHeld()) {
     log('info', 'Daemon already running (lock held), skipping start');
     return;
   }
 
-  // 2. Debounce: skip if we spawned recently (prevents thundering herd)
+  // 3. Debounce: skip if we spawned recently (prevents thundering herd)
   if (isDaemonSpawnRecent()) {
     log('info', 'Daemon spawn debounced (recent attempt), skipping');
     return;
@@ -578,7 +585,7 @@ function runDaemonStartBackground() {
     return;
   }
 
-  // 3. Write stamp BEFORE spawning so concurrent callers see it immediately
+  // 4. Write stamp BEFORE spawning so concurrent callers see it immediately
   touchSpawnStamp();
 
   spawnWindowless('node', [localCli, 'daemon', 'start', '--quiet'], 'daemon');
