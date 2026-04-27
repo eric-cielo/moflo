@@ -5,13 +5,12 @@
  * - Schema validation (name, description, inputSchema)
  * - Array schemas have `items` field
  * - Handler existence and error handling
- * - Tool registration across all 24 tool modules
- * - System tools version/status correctness
+ * - Tool registration across all retained tool modules
  *
  * Uses vitest with mocks to isolate from external dependencies.
  */
 
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 // ============================================================================
 // Mock setup - must be before imports
@@ -58,7 +57,7 @@ vi.mock('fs', async () => {
   };
 });
 
-// Mock child_process for browser/security tools
+// Mock child_process for security tools that may shell out
 vi.mock('child_process', () => ({
   execSync: vi.fn(() => '{}'),
   spawnSync: vi.fn(() => ({ status: 0, stdout: '' })),
@@ -122,19 +121,6 @@ vi.mock('../movector/enhanced-model-router.js', () => ({
   })),
 }));
 
-vi.mock('../movector/diff-classifier.js', () => ({
-  analyzeDiff: vi.fn(async () => ({
-    ref: 'HEAD', timestamp: new Date().toISOString(), files: [],
-    risk: { overall: 'low', score: 10 }, classification: { type: 'patch' },
-    summary: 'No changes', fileRisks: [], recommendedReviewers: [],
-  })),
-  assessFileRisk: vi.fn(() => ({ risk: 'low', score: 10, reasons: [] })),
-  assessOverallRisk: vi.fn(() => ({ overall: 'low', score: 10 })),
-  classifyDiff: vi.fn(() => ({ type: 'patch' })),
-  suggestReviewers: vi.fn(() => []),
-  getGitDiffNumstat: vi.fn(() => []),
-}));
-
 vi.mock('../movector/moe-router.js', () => ({
   getMoERouter: vi.fn(async () => null),
 }));
@@ -147,46 +133,29 @@ vi.mock('../memory/ewc-consolidation.js', () => ({
   getEWCConsolidator: vi.fn(async () => null),
 }));
 
-// Mock transfer modules
-vi.mock('../transfer/anonymization/index.js', () => ({
-  detectPII: vi.fn(() => ({ hasPII: false, entities: [] })),
-}));
-
-vi.mock('../transfer/ipfs/client.js', () => ({
-  resolveIPNS: vi.fn(async () => 'QmMock'),
-}));
-
 // Mock module for auto-install
 vi.mock('../mcp-tools/auto-install.js', () => ({
   autoInstallPackage: vi.fn(async () => false),
 }));
 
 // ============================================================================
-// Import all tool modules (after mocks are set up)
+// Import all retained tool modules (after mocks are set up)
 // ============================================================================
 
 import { agentTools } from '../mcp-tools/agent-tools.js';
 import { moflodbTools } from '../mcp-tools/moflodb-tools.js';
-import { analyzeTools } from '../mcp-tools/analyze-tools.js';
-import { browserTools } from '../mcp-tools/browser-tools.js';
-import { claimsTools } from '../mcp-tools/claims-tools.js';
 import { configTools } from '../mcp-tools/config-tools.js';
 import { coordinationTools } from '../mcp-tools/coordination-tools.js';
-import { daaTools } from '../mcp-tools/daa-tools.js';
-import { embeddingsTools } from '../mcp-tools/embeddings-tools.js';
 import { githubTools } from '../mcp-tools/github-tools.js';
 import { hiveMindTools } from '../mcp-tools/hive-mind-tools.js';
 import { memoryTools } from '../mcp-tools/memory-tools.js';
 import { neuralTools } from '../mcp-tools/neural-tools.js';
 import { performanceTools } from '../mcp-tools/performance-tools.js';
-import { progressTools } from '../mcp-tools/progress-tools.js';
 import { securityTools } from '../mcp-tools/security-tools.js';
 import { sessionTools } from '../mcp-tools/session-tools.js';
 import { swarmTools } from '../mcp-tools/swarm-tools.js';
 import { systemTools } from '../mcp-tools/system-tools.js';
 import { taskTools } from '../mcp-tools/task-tools.js';
-import { terminalTools } from '../mcp-tools/terminal-tools.js';
-import { transferTools } from '../mcp-tools/transfer-tools.js';
 import { spellTools } from '../mcp-tools/spell-tools.js';
 import { hooksTools } from '../mcp-tools/hooks-tools.js';
 
@@ -204,27 +173,19 @@ interface ToolModule {
 const ALL_MODULES: ToolModule[] = [
   { name: 'agent-tools', tools: agentTools },
   { name: 'moflodb-tools', tools: moflodbTools },
-  { name: 'analyze-tools', tools: analyzeTools },
-  { name: 'browser-tools', tools: browserTools },
-  { name: 'claims-tools', tools: claimsTools },
   { name: 'config-tools', tools: configTools },
   { name: 'coordination-tools', tools: coordinationTools },
-  { name: 'daa-tools', tools: daaTools },
-  { name: 'embeddings-tools', tools: embeddingsTools },
   { name: 'github-tools', tools: githubTools },
   { name: 'hive-mind-tools', tools: hiveMindTools },
   { name: 'hooks-tools', tools: hooksTools },
   { name: 'memory-tools', tools: memoryTools },
   { name: 'neural-tools', tools: neuralTools },
   { name: 'performance-tools', tools: performanceTools },
-  { name: 'progress-tools', tools: progressTools },
   { name: 'security-tools', tools: securityTools },
   { name: 'session-tools', tools: sessionTools },
   { name: 'swarm-tools', tools: swarmTools },
   { name: 'system-tools', tools: systemTools },
   { name: 'task-tools', tools: taskTools },
-  { name: 'terminal-tools', tools: terminalTools },
-  { name: 'transfer-tools', tools: transferTools },
   { name: 'spell-tools', tools: spellTools },
 ];
 
@@ -240,12 +201,9 @@ describe('MCP Tools Deep Test Suite', () => {
   // 1. Module Loading & Registration
   // --------------------------------------------------------------------------
   describe('Module Loading & Registration', () => {
-    it('should load all 24 tool modules', () => {
-      expect(ALL_MODULES).toHaveLength(24);
-    });
-
-    it('should have at least 100 total tools across all modules', () => {
-      expect(ALL_TOOLS.length).toBeGreaterThanOrEqual(100);
+    it('should load the retained tool modules', () => {
+      // Lower bound only — exact accounting lives in the drift-guard test.
+      expect(ALL_MODULES.length).toBeGreaterThanOrEqual(15);
     });
 
     it('should export arrays from each module', () => {
@@ -267,26 +225,18 @@ describe('MCP Tools Deep Test Suite', () => {
       const minCounts: Record<string, number> = {
         'agent-tools': 7,
         'moflodb-tools': 15,
-        'analyze-tools': 6,
-        'browser-tools': 20,
-        'claims-tools': 12,
         'config-tools': 6,
-        'coordination-tools': 7,
-        'daa-tools': 8,
-        'embeddings-tools': 7,
+        'coordination-tools': 1,
         'github-tools': 5,
         'hive-mind-tools': 9,
         'memory-tools': 7,
         'neural-tools': 6,
-        'performance-tools': 6,
-        'progress-tools': 4,
+        'performance-tools': 2,
         'security-tools': 6,
         'session-tools': 5,
         'swarm-tools': 4,
-        'system-tools': 7,
+        'system-tools': 1,
         'task-tools': 7,
-        'terminal-tools': 5,
-        'transfer-tools': 11,
         'spell-tools': 10,
       };
 
@@ -364,8 +314,6 @@ describe('MCP Tools Deep Test Suite', () => {
 
     it('tool names follow naming conventions (category_action or category_action-detail)', () => {
       for (const tool of ALL_TOOLS) {
-        // Names should contain underscore or hyphen as separators
-        // and not have spaces or special chars
         expect(tool.name).toMatch(/^[a-z][a-z0-9_-]+$/);
       }
     });
@@ -419,16 +367,10 @@ describe('MCP Tools Deep Test Suite', () => {
   // --------------------------------------------------------------------------
   describe('Category Consistency', () => {
     it('tool name prefix matches category when category is set', () => {
-      const exceptions = new Set([
-        'mcp_status',      // system-tools exports mcp_status
-        'task_summary',    // system-tools exports task_summary
-      ]);
-
       for (const tool of ALL_TOOLS) {
-        if (tool.category && !exceptions.has(tool.name)) {
+        if (tool.category) {
           const prefix = tool.name.split('_')[0].replace(/-/g, '');
           const cat = tool.category.replace(/-/g, '');
-          // Prefix should match category (e.g., agent_spawn -> agent category)
           expect(prefix).toBe(cat);
         }
       }
@@ -487,41 +429,14 @@ describe('MCP Tools Deep Test Suite', () => {
   });
 
   // --------------------------------------------------------------------------
-  // 6. Handler Invocation - System Tools
+  // 6. Handler Invocation - System Tools (only system_health remains)
   // --------------------------------------------------------------------------
   describe('System Tools - Handler Invocation', () => {
-    it('system_status returns version and status', async () => {
-      const tool = systemTools.find(t => t.name === 'system_status')!;
-      const result: any = await tool.handler({});
-      expect(result.version).toBeDefined();
-      expect(result.status).toBeDefined();
-    });
-
-    it('system_info returns system information', async () => {
-      const tool = systemTools.find(t => t.name === 'system_info')!;
-      const result: any = await tool.handler({});
-      expect(result.version).toBeDefined();
-      expect(result.platform).toBeDefined();
-    });
-
     it('system_health returns health checks', async () => {
       const tool = systemTools.find(t => t.name === 'system_health')!;
       const result: any = await tool.handler({});
       expect(result.overall).toBeDefined();
       expect(result.checks).toBeDefined();
-    });
-
-    it('system_metrics returns metrics data', async () => {
-      const tool = systemTools.find(t => t.name === 'system_metrics')!;
-      const result: any = await tool.handler({});
-      expect(result).toBeDefined();
-    });
-
-    it('mcp_status returns MCP server info', async () => {
-      const tool = systemTools.find(t => t.name === 'mcp_status')!;
-      const result: any = await tool.handler({});
-      expect(result.running).toBeDefined();
-      expect(result.transport).toBeDefined();
     });
   });
 
@@ -674,7 +589,6 @@ describe('MCP Tools Deep Test Suite', () => {
     it('spell_list returns spell data', async () => {
       const tool = spellTools.find(t => t.name === 'spell_list')!;
       const result: any = await tool.handler({});
-      // Engine-backed: returns runs and/or definitions
       expect(result.runs).toBeDefined();
     });
 
@@ -687,77 +601,18 @@ describe('MCP Tools Deep Test Suite', () => {
   });
 
   // --------------------------------------------------------------------------
-  // 13. Handler Invocation - DAA Tools
-  // --------------------------------------------------------------------------
-  describe('DAA Tools - Handler Invocation', () => {
-    it('daa_agent_create creates an agent', async () => {
-      const tool = daaTools.find(t => t.name === 'daa_agent_create')!;
-      const result: any = await tool.handler({ id: 'test-daa-1' });
-      expect(result.success).toBe(true);
-      expect(result.agent.id).toBe('test-daa-1');
-    });
-
-    it('daa_learning_status returns summary', async () => {
-      const tool = daaTools.find(t => t.name === 'daa_learning_status')!;
-      const result: any = await tool.handler({});
-      expect(result.success).toBe(true);
-      expect(result.summary).toBeDefined();
-    });
-
-    it('daa_cognitive_pattern returns patterns info', async () => {
-      const tool = daaTools.find(t => t.name === 'daa_cognitive_pattern')!;
-      const result: any = await tool.handler({});
-      expect(result.success).toBe(true);
-      expect(result.patterns).toBeDefined();
-    });
-
-    it('daa_performance_metrics returns metrics', async () => {
-      const tool = daaTools.find(t => t.name === 'daa_performance_metrics')!;
-      const result: any = await tool.handler({});
-      expect(result.success).toBe(true);
-    });
-  });
-
-  // --------------------------------------------------------------------------
-  // 14. Handler Invocation - Coordination Tools
+  // 13. Handler Invocation - Coordination Tools (only coordination_sync remains)
   // --------------------------------------------------------------------------
   describe('Coordination Tools - Handler Invocation', () => {
-    it('coordination_topology get action returns topology', async () => {
-      const tool = coordinationTools.find(t => t.name === 'coordination_topology')!;
-      const result: any = await tool.handler({ action: 'get' });
-      expect(result.success).toBe(true);
-      expect(result.topology).toBeDefined();
-    });
-
     it('coordination_sync status returns sync state', async () => {
       const tool = coordinationTools.find(t => t.name === 'coordination_sync')!;
       const result: any = await tool.handler({ action: 'status' });
       expect(result.success).toBe(true);
     });
-
-    it('coordination_node list returns nodes', async () => {
-      const tool = coordinationTools.find(t => t.name === 'coordination_node')!;
-      const result: any = await tool.handler({ action: 'list' });
-      expect(result.success).toBe(true);
-      expect(result.nodes).toBeDefined();
-    });
-
-    it('coordination_metrics returns metrics', async () => {
-      const tool = coordinationTools.find(t => t.name === 'coordination_metrics')!;
-      const result: any = await tool.handler({});
-      expect(result.success).toBe(true);
-    });
-
-    it('coordination_orchestrate accepts task', async () => {
-      const tool = coordinationTools.find(t => t.name === 'coordination_orchestrate')!;
-      const result: any = await tool.handler({ task: 'test task' });
-      expect(result.success).toBe(true);
-      expect(result.orchestrationId).toBeDefined();
-    });
   });
 
   // --------------------------------------------------------------------------
-  // 15. Handler Invocation - GitHub Tools
+  // 14. Handler Invocation - GitHub Tools
   // --------------------------------------------------------------------------
   describe('GitHub Tools - Handler Invocation', () => {
     it('github_repo_analyze returns analysis', async () => {
@@ -782,67 +637,11 @@ describe('MCP Tools Deep Test Suite', () => {
   });
 
   // --------------------------------------------------------------------------
-  // 16. Handler Invocation - Terminal Tools
-  // --------------------------------------------------------------------------
-  describe('Terminal Tools - Handler Invocation', () => {
-    it('terminal_create creates a session', async () => {
-      const tool = terminalTools.find(t => t.name === 'terminal_create')!;
-      const result: any = await tool.handler({});
-      expect(result.success).toBe(true);
-      expect(result.sessionId).toBeDefined();
-    });
-
-    it('terminal_list returns sessions', async () => {
-      const tool = terminalTools.find(t => t.name === 'terminal_list')!;
-      const result: any = await tool.handler({});
-      expect(result.sessions).toBeDefined();
-    });
-  });
-
-  // --------------------------------------------------------------------------
-  // 17. Handler Invocation - Claims Tools
-  // --------------------------------------------------------------------------
-  describe('Claims Tools - Handler Invocation', () => {
-    it('claims_list returns claims', async () => {
-      const tool = claimsTools.find(t => t.name === 'claims_list')!;
-      const result: any = await tool.handler({});
-      expect(result.success).toBe(true);
-      expect(result.claims).toBeDefined();
-    });
-
-    it('claims_claim with invalid claimant returns error', async () => {
-      const tool = claimsTools.find(t => t.name === 'claims_claim')!;
-      const result: any = await tool.handler({ issueId: 'issue-1', claimant: 'invalid' });
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Invalid claimant');
-    });
-
-    it('claims_board returns board view', async () => {
-      const tool = claimsTools.find(t => t.name === 'claims_board')!;
-      const result: any = await tool.handler({});
-      expect(result.success).toBe(true);
-      expect(result.board).toBeDefined();
-    });
-
-    it('claims_stealable returns stealable issues', async () => {
-      const tool = claimsTools.find(t => t.name === 'claims_stealable')!;
-      const result: any = await tool.handler({});
-      expect(result.success).toBe(true);
-    });
-  });
-
-  // --------------------------------------------------------------------------
-  // 18. Handler Invocation - Performance Tools
+  // 15. Handler Invocation - Performance Tools (report + benchmark)
   // --------------------------------------------------------------------------
   describe('Performance Tools - Handler Invocation', () => {
     it('performance_report returns a report', async () => {
       const tool = performanceTools.find(t => t.name === 'performance_report')!;
-      const result: any = await tool.handler({});
-      expect(result).toBeDefined();
-    });
-
-    it('performance_metrics returns metrics', async () => {
-      const tool = performanceTools.find(t => t.name === 'performance_metrics')!;
       const result: any = await tool.handler({});
       expect(result).toBeDefined();
     });
@@ -855,7 +654,7 @@ describe('MCP Tools Deep Test Suite', () => {
   });
 
   // --------------------------------------------------------------------------
-  // 19. Handler Invocation - Neural Tools
+  // 16. Handler Invocation - Neural Tools
   // --------------------------------------------------------------------------
   describe('Neural Tools - Handler Invocation', () => {
     it('neural_status returns status', async () => {
@@ -872,7 +671,7 @@ describe('MCP Tools Deep Test Suite', () => {
   });
 
   // --------------------------------------------------------------------------
-  // 20. Handler Invocation - MofloDb Tools
+  // 17. Handler Invocation - MofloDb Tools
   // --------------------------------------------------------------------------
   describe('MofloDb Tools - Handler Invocation', () => {
     it('moflodb_health returns availability', async () => {
@@ -928,18 +727,16 @@ describe('MCP Tools Deep Test Suite', () => {
   });
 
   // --------------------------------------------------------------------------
-  // 21. Error Handling
+  // 18. Error Handling
   // --------------------------------------------------------------------------
   describe('Error Handling', () => {
     it('tools handle empty input gracefully', async () => {
-      // Test a selection of tools with empty input
       const toolsToTest = [
         agentTools.find(t => t.name === 'agent_list')!,
         configTools.find(t => t.name === 'config_list')!,
         swarmTools.find(t => t.name === 'swarm_status')!,
         taskTools.find(t => t.name === 'task_list')!,
-        daaTools.find(t => t.name === 'daa_learning_status')!,
-        coordinationTools.find(t => t.name === 'coordination_metrics')!,
+        coordinationTools.find(t => t.name === 'coordination_sync')!,
         performanceTools.find(t => t.name === 'performance_report')!,
       ];
 
@@ -950,24 +747,19 @@ describe('MCP Tools Deep Test Suite', () => {
     });
 
     it('tools do not throw on invalid input types', async () => {
-      // These should return errors gracefully instead of throwing
       const tool = agentTools.find(t => t.name === 'agent_spawn')!;
-      // Pass number instead of string for agentType
       const result: any = await tool.handler({ agentType: 123 as any });
-      // Should still succeed - type coercion
       expect(result).toBeDefined();
     });
 
     it('moflodb tools validate string inputs', async () => {
       const tool = moflodbTools.find(t => t.name === 'moflodb_pattern-store')!;
-      // Empty string should fail validation
       const result: any = await tool.handler({ pattern: '' });
       expect(result.success).toBe(false);
     });
 
     it('moflodb tools enforce max string length', async () => {
       const tool = moflodbTools.find(t => t.name === 'moflodb_feedback')!;
-      // Very long taskId should be rejected
       const longId = 'x'.repeat(1000);
       const result: any = await tool.handler({ taskId: longId });
       expect(result.success).toBe(false);
@@ -975,7 +767,7 @@ describe('MCP Tools Deep Test Suite', () => {
   });
 
   // --------------------------------------------------------------------------
-  // 22. Security Checks
+  // 19. Security Checks
   // --------------------------------------------------------------------------
   describe('Security Checks', () => {
     it('no tool schemas contain hardcoded paths', () => {
@@ -1004,15 +796,13 @@ describe('MCP Tools Deep Test Suite', () => {
     });
 
     it('session tools sanitize sessionId against path traversal', () => {
-      // session_save should handle path traversal attempts
       const tool = sessionTools.find(t => t.name === 'session_save')!;
-      // The session file path should be sanitized
       expect(tool).toBeDefined();
     });
   });
 
   // --------------------------------------------------------------------------
-  // 23. Return Format Consistency
+  // 20. Return Format Consistency
   // --------------------------------------------------------------------------
   describe('Return Format Consistency', () => {
     it('agent_spawn returns success field', async () => {
@@ -1044,40 +834,7 @@ describe('MCP Tools Deep Test Suite', () => {
   });
 
   // --------------------------------------------------------------------------
-  // 24. Progress & Embeddings Tools
-  // --------------------------------------------------------------------------
-  describe('Progress Tools - Handler Invocation', () => {
-    it('progress_check returns progress metrics', async () => {
-      const tool = progressTools.find(t => t.name === 'progress_check')!;
-      expect(tool).toBeDefined();
-      const result: any = await tool.handler({});
-      expect(result).toBeDefined();
-    });
-
-    it('progress_summary returns summary', async () => {
-      const tool = progressTools.find(t => t.name === 'progress_summary')!;
-      expect(tool).toBeDefined();
-      const result: any = await tool.handler({});
-      expect(result).toBeDefined();
-    });
-  });
-
-  describe('Embeddings Tools - Handler Invocation', () => {
-    it('embeddings_status returns initialization state', async () => {
-      const tool = embeddingsTools.find(t => t.name === 'embeddings_status')!;
-      const result: any = await tool.handler({});
-      expect(result).toBeDefined();
-    });
-
-    it('embeddings_init initializes the subsystem', async () => {
-      const tool = embeddingsTools.find(t => t.name === 'embeddings_init')!;
-      const result: any = await tool.handler({ force: true });
-      expect(result.success).toBe(true);
-    });
-  });
-
-  // --------------------------------------------------------------------------
-  // 25. Hooks Tools
+  // 21. Hooks Tools
   // --------------------------------------------------------------------------
   describe('Hooks Tools - Handler Invocation', () => {
     it('hooks_list returns hooks list', async () => {
@@ -1103,7 +860,7 @@ describe('MCP Tools Deep Test Suite', () => {
   });
 
   // --------------------------------------------------------------------------
-  // 26. Memory Tools
+  // 22. Memory Tools
   // --------------------------------------------------------------------------
   describe('Memory Tools - Handler Invocation', () => {
     it('memory_store stores an entry', async () => {
@@ -1129,14 +886,12 @@ describe('MCP Tools Deep Test Suite', () => {
   });
 
   // --------------------------------------------------------------------------
-  // 27. Cross-Module Integrity
+  // 23. Cross-Module Integrity
   // --------------------------------------------------------------------------
   describe('Cross-Module Integrity', () => {
     it('all tool names are valid MCP tool identifiers', () => {
       for (const tool of ALL_TOOLS) {
-        // MCP tool names should be alphanumeric with underscores/hyphens
         expect(tool.name).toMatch(/^[a-z][a-z0-9_-]*$/);
-        // No double underscores or hyphens
         expect(tool.name).not.toMatch(/__/);
         expect(tool.name).not.toMatch(/--/);
       }
@@ -1144,9 +899,7 @@ describe('MCP Tools Deep Test Suite', () => {
 
     it('all descriptions are human-readable sentences', () => {
       for (const tool of ALL_TOOLS) {
-        // Description should start with uppercase or lowercase letter
         expect(tool.description).toMatch(/^[A-Za-z]/);
-        // Should be at least 10 characters
         expect(tool.description.length).toBeGreaterThanOrEqual(10);
       }
     });
@@ -1162,9 +915,8 @@ describe('MCP Tools Deep Test Suite', () => {
 
     it('every property in schema has a type or description', () => {
       for (const tool of ALL_TOOLS) {
-        for (const [propName, prop] of Object.entries(tool.inputSchema.properties)) {
+        for (const [, prop] of Object.entries(tool.inputSchema.properties)) {
           const p = prop as Record<string, unknown>;
-          // Every property should have at least a type or description
           const hasType = p.type !== undefined;
           const hasDesc = p.description !== undefined;
           expect(hasType || hasDesc).toBe(true);
