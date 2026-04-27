@@ -17,19 +17,16 @@ hooks:
     # Initialize mesh topology
     mcp__moflo__swarm_init mesh --maxAgents=12 --strategy=distributed
     # Set up peer discovery and communication
-    mcp__moflo__daa_communication --from="mesh-coordinator" --to="all" --message="{\"type\":\"network_init\",\"topology\":\"mesh\"}"
     # Initialize consensus mechanisms
-    mcp__moflo__daa_consensus --agents="all" --proposal="{\"coordination_protocol\":\"gossip\",\"consensus_threshold\":0.67}"
     # Store network state
-    mcp__moflo__memory_usage store "mesh:network:${TASK_ID}" "$(date): Mesh network initialized" --namespace=mesh
+    mcp__moflo__memory_store store "mesh:network:${TASK_ID}" "$(date): Mesh network initialized" --namespace=mesh
   post: |
     echo "✨ Mesh coordination complete - network resilient"
     # Generate network analysis
     mcp__moflo__performance_report --format=json --timeframe=24h
     # Store final network metrics
-    mcp__moflo__memory_usage store "mesh:metrics:${TASK_ID}" "$(mcp__moflo__swarm_status)" --namespace=mesh
+    mcp__moflo__memory_store store "mesh:metrics:${TASK_ID}" "$(mcp__moflo__swarm_status)" --namespace=mesh
     # Graceful network shutdown
-    mcp__moflo__daa_communication --from="mesh-coordinator" --to="all" --message="{\"type\":\"network_shutdown\",\"reason\":\"task_complete\"}"
 ---
 
 # Mesh Network Swarm Coordinator
@@ -193,19 +190,16 @@ class TaskAuction:
 mcp__moflo__swarm_init mesh --maxAgents=12 --strategy=distributed
 
 # Establish peer connections
-mcp__moflo__daa_communication --from="node-1" --to="node-2" --message="{\"type\":\"peer_connect\"}"
 
 # Monitor network health
-mcp__moflo__swarm_monitor --interval=3000 --metrics="connectivity,latency,throughput"
+mcp__moflo__swarm_status --interval=3000 --metrics="connectivity,latency,throughput"
 ```
 
 ### Consensus Operations
 ```bash
 # Propose network-wide decision
-mcp__moflo__daa_consensus --agents="all" --proposal="{\"task_assignment\":\"auth-service\",\"assigned_to\":\"node-3\"}"
 
 # Participate in voting
-mcp__moflo__daa_consensus --agents="current" --vote="approve" --proposal_id="prop-123"
 
 # Monitor consensus status
 mcp__moflo__neural_patterns analyze --operation="consensus_tracking" --outcome="decision_approved"
@@ -214,13 +208,10 @@ mcp__moflo__neural_patterns analyze --operation="consensus_tracking" --outcome="
 ### Fault Tolerance
 ```bash
 # Detect failed nodes
-mcp__moflo__daa_fault_tolerance --agentId="node-4" --strategy="heartbeat_monitor"
 
 # Trigger recovery procedures  
-mcp__moflo__daa_fault_tolerance --agentId="failed-node" --strategy="failover_recovery"
 
 # Update network topology
-mcp__moflo__topology_optimize --swarmId="${SWARM_ID}"
 ```
 
 ## Consensus Algorithms

@@ -40,11 +40,6 @@ mcp__github__create_branch {
 }
 
 // Orchestrate release preparation
-mcp__moflo__task_orchestrate {
-  task: "Prepare release v1.0.72 with comprehensive testing and validation",
-  strategy: "sequential",
-  priority: "critical"
-}
 ```
 
 ### 2. Multi-Package Version Coordination
@@ -222,9 +217,8 @@ This release is production-ready with comprehensive validation and testing.
   ]}
   
   // Store release state
-  mcp__moflo__memory_usage {
-    action: "store", 
-    key: "release/v1.0.72/status",
+  mcp__moflo__memory_store {
+        key: "release/v1.0.72/status",
     value: {
       timestamp: Date.now(),
       version: "1.0.72",

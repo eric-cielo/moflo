@@ -258,9 +258,8 @@ describe('Security', () => {
 ### Memory Coordination
 ```javascript
 // Report test status
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/tester/status",
+mcp__moflo__memory_store {
+    key: "swarm/tester/status",
   namespace: "coordination",
   value: JSON.stringify({
     agent: "tester",
@@ -271,9 +270,8 @@ mcp__moflo__memory_usage {
 }
 
 // Share test results
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/test-results",
+mcp__moflo__memory_store {
+    key: "swarm/shared/test-results",
   namespace: "coordination",
   value: JSON.stringify({
     passed: 145,
@@ -284,9 +282,8 @@ mcp__moflo__memory_usage {
 }
 
 // Check implementation status
-mcp__moflo__memory_usage {
-  action: "retrieve",
-  key: "swarm/coder/status",
+mcp__moflo__memory_retrieve {
+    key: "swarm/coder/status",
   namespace: "coordination"
 }
 ```
@@ -294,7 +291,7 @@ mcp__moflo__memory_usage {
 ### Performance Testing
 ```javascript
 // Run performance benchmarks
-mcp__moflo__benchmark_run {
+mcp__moflo__performance_benchmark {
   type: "test",
   iterations: 100
 }

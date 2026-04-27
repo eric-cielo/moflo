@@ -6,16 +6,6 @@ UI/UX design with Memory coordination for consistent experiences.
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "designer",
-  task_description: "create dashboard UI",
-  options: {
-    design_system: true,
-    responsive: true
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

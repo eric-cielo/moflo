@@ -6,16 +6,6 @@ Autonomous code generation with batch file operations.
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "coder",
-  task_description: "implement user authentication",
-  options: {
-    test_driven: true,
-    parallel_edits: true
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

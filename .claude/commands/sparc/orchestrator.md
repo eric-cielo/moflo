@@ -6,12 +6,6 @@ Multi-agent task orchestration with TodoWrite/TodoRead/Task/Memory using MCP too
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "orchestrator",
-  task_description: "coordinate feature development"
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -53,11 +47,6 @@ mcp__moflo__agent_spawn {
 }
 
 // Orchestrate tasks
-mcp__moflo__task_orchestrate {
-  task: "feature development",
-  strategy: "parallel",
-  dependencies: ["auth", "ui", "api"]
-}
 ```
 
 ### Using NPX CLI (Fallback)
@@ -103,14 +92,9 @@ mcp__moflo__spell_create {
 }
 
 // 3. Execute orchestration
-mcp__moflo__sparc_mode {
-  mode: "orchestrator",
-  options: {parallel: true, monitor: true},
-  task_description: "develop user management system"
-}
 
 // 4. Monitor progress
-mcp__moflo__swarm_monitor {
+mcp__moflo__swarm_status {
   swarmId: "current",
   interval: 5000
 }

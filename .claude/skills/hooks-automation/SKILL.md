@@ -607,9 +607,8 @@ mcp__moflo__agent_spawn {
   capabilities: ["api", "database", "testing"]
 }
 
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/task/api-build/context",
+mcp__moflo__memory_store {
+    key: "swarm/task/api-build/context",
   namespace: "coordination",
   value: JSON.stringify({
     description: "Build REST API",
@@ -626,9 +625,8 @@ mcp__moflo__memory_usage {
 npx claude-flow hook post-edit --file "api/auth.js"
 
 // Internally calls MCP tools:
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/edits/api/auth.js",
+mcp__moflo__memory_store {
+    key: "swarm/edits/api/auth.js",
   namespace: "coordination",
   value: JSON.stringify({
     file: "api/auth.js",
@@ -652,9 +650,6 @@ mcp__moflo__neural_train {
 npx claude-flow hook session-end --session-id "dev-2024"
 
 // Internally calls MCP tools:
-mcp__moflo__memory_persist {
-  sessionId: "dev-2024"
-}
 
 mcp__moflo__swarm_status {
   swarmId: "current"
@@ -671,9 +666,8 @@ All hooks follow a standardized memory coordination pattern:
 
 **Phase 1: STATUS** - Hook starts
 ```javascript
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/hooks/pre-edit/status",
+mcp__moflo__memory_store {
+    key: "swarm/hooks/pre-edit/status",
   namespace: "coordination",
   value: JSON.stringify({
     status: "running",
@@ -686,9 +680,8 @@ mcp__moflo__memory_usage {
 
 **Phase 2: PROGRESS** - Hook processes
 ```javascript
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/hooks/pre-edit/progress",
+mcp__moflo__memory_store {
+    key: "swarm/hooks/pre-edit/progress",
   namespace: "coordination",
   value: JSON.stringify({
     progress: 50,
@@ -700,9 +693,8 @@ mcp__moflo__memory_usage {
 
 **Phase 3: COMPLETE** - Hook finishes
 ```javascript
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/hooks/pre-edit/complete",
+mcp__moflo__memory_store {
+    key: "swarm/hooks/pre-edit/complete",
   namespace: "coordination",
   value: JSON.stringify({
     status: "complete",

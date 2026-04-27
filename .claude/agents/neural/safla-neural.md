@@ -59,9 +59,8 @@ mcp__moflo__neural_train {
 }
 
 // Store learning patterns
-mcp__moflo__memory_usage {
-  action: "store",
-  namespace: "safla-learning",
+mcp__moflo__memory_store {
+    namespace: "safla-learning",
   key: "pattern_${timestamp}",
   value: JSON.stringify({
     context: interaction_context,

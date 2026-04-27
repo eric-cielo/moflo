@@ -21,16 +21,6 @@ Audit files for clarity, modularity, and size. Break large components (>500 line
 ## Usage
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "refinement-optimization-mode",
-  task_description: "optimize database queries",
-  options: {
-    namespace: "refinement-optimization-mode",
-    non_interactive: false
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -58,9 +48,8 @@ npx claude-flow sparc run refinement-optimization-mode "your task" --non-interac
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "refinement-optimization-mode_context",
+mcp__moflo__memory_store {
+    key: "refinement-optimization-mode_context",
   value: "important decisions",
   namespace: "refinement-optimization-mode"
 }

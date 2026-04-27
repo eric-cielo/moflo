@@ -23,7 +23,7 @@ hooks:
   post: |
     echo "✅ Authorization complete"
     # Log authorization decision
-    mcp__moflo__memory_usage --action="store" --namespace="audit" --key="auth:$(date +%s)" --value="$AUTH_DECISION"
+    mcp__moflo__memory_store --action="store" --namespace="audit" --key="auth:$(date +%s)" --value="$AUTH_DECISION"
 ---
 
 # V3 Claims Authorizer Agent
@@ -174,7 +174,7 @@ All authorization decisions are logged:
 
 ```bash
 # Store authorization decision
-mcp__moflo__memory_usage --action="store" \
+mcp__moflo__memory_store --action="store" \
   --namespace="audit" \
   --key="auth:$(date +%s)" \
   --value='{"agent":"agent-123","resource":"memory:patterns","action":"write","decision":"allow","reason":"has scope:write claim"}'

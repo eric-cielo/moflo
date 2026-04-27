@@ -128,13 +128,6 @@ Multi-agent task orchestration with TodoWrite/Task/Memory coordination.
 - Cross-agent communication
 
 **Usage**:
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "orchestrator",
-  task_description: "coordinate feature development",
-  options: { parallel: true, monitor: true }
-}
-```
 
 #### `swarm-coordinator`
 Specialized swarm management for complex multi-agent coordination.
@@ -188,17 +181,6 @@ Autonomous code generation with batch file operations.
 - Security best practices
 
 **Usage**:
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "coder",
-  task_description: "implement user authentication with JWT",
-  options: {
-    test_driven: true,
-    parallel_edits: true,
-    typescript: true
-  }
-}
-```
 
 #### `architect`
 System design with Memory-based coordination.
@@ -224,17 +206,6 @@ System design with Memory-based coordination.
 - Infrastructure as Code
 
 **Usage**:
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "architect",
-  task_description: "design scalable e-commerce platform",
-  options: {
-    detailed: true,
-    memory_enabled: true,
-    patterns: ["microservices", "event-driven"]
-  }
-}
-```
 
 #### `tdd`
 Test-driven development with comprehensive testing.
@@ -261,17 +232,6 @@ Test-driven development with comprehensive testing.
 - Security testing
 
 **Usage**:
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "tdd",
-  task_description: "shopping cart feature with payment integration",
-  options: {
-    coverage_target: 90,
-    test_framework: "jest",
-    e2e_framework: "playwright"
-  }
-}
-```
 
 #### `reviewer`
 Code review using batch file analysis.
@@ -300,17 +260,6 @@ Code review using batch file analysis.
 - Automated reporting
 
 **Usage**:
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "reviewer",
-  task_description: "review authentication module PR #123",
-  options: {
-    security_check: true,
-    performance_check: true,
-    test_coverage_check: true
-  }
-}
-```
 
 ---
 
@@ -341,17 +290,6 @@ Deep research with parallel WebSearch/WebFetch and Memory coordination.
 - Maintain research history
 
 **Usage**:
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "researcher",
-  task_description: "research microservices best practices 2024",
-  options: {
-    depth: "comprehensive",
-    sources: ["academic", "industry", "news"],
-    citations: true
-  }
-}
-```
 
 #### `analyzer`
 Code and data analysis with pattern recognition.
@@ -447,13 +385,6 @@ Knowledge management and context preservation.
 
 ```javascript
 // Basic mode execution
-mcp__moflo__sparc_mode {
-  mode: "<mode-name>",
-  task_description: "<task description>",
-  options: {
-    // mode-specific options
-  }
-}
 
 // Initialize swarm for complex tasks
 mcp__moflo__swarm_init {
@@ -469,7 +400,7 @@ mcp__moflo__agent_spawn {
 }
 
 // Monitor execution
-mcp__moflo__swarm_monitor {
+mcp__moflo__swarm_status {
   swarmId: "current",
   interval: 5000
 }
@@ -576,19 +507,6 @@ mcp__moflo__spell_create {
 
 **Best for**: Independent tasks that can run concurrently
 
-```javascript
-mcp__moflo__task_orchestrate {
-  task: "build full-stack application",
-  strategy: "parallel",
-  dependencies: {
-    backend: [],
-    frontend: [],
-    database: [],
-    tests: ["backend", "frontend"]
-  }
-}
-```
-
 ### Pattern 5: Adaptive Strategy
 
 **Best for**: Dynamic workloads with changing requirements
@@ -615,68 +533,24 @@ mcp__moflo__swarm_init {
 }
 
 // Step 2: Research and planning
-mcp__moflo__sparc_mode {
-  mode: "researcher",
-  task_description: "research testing best practices for feature X"
-}
 
 // Step 3: Architecture design
-mcp__moflo__sparc_mode {
-  mode: "architect",
-  task_description: "design testable architecture for feature X"
-}
 
 // Step 4: TDD implementation
-mcp__moflo__sparc_mode {
-  mode: "tdd",
-  task_description: "implement feature X with 90% coverage",
-  options: {
-    coverage_target: 90,
-    test_framework: "jest",
-    parallel_tests: true
-  }
-}
 
 // Step 5: Code review
-mcp__moflo__sparc_mode {
-  mode: "reviewer",
-  task_description: "review feature X implementation",
-  options: {
-    test_coverage_check: true,
-    security_check: true
-  }
-}
 
 // Step 6: Optimization
-mcp__moflo__sparc_mode {
-  mode: "optimizer",
-  task_description: "optimize feature X performance"
-}
 ```
 
 ### Red-Green-Refactor Cycle
 
 ```javascript
 // RED: Write failing test
-mcp__moflo__sparc_mode {
-  mode: "tester",
-  task_description: "create failing test for shopping cart add item",
-  options: { expect_failure: true }
-}
 
 // GREEN: Minimal implementation
-mcp__moflo__sparc_mode {
-  mode: "coder",
-  task_description: "implement minimal code to pass test",
-  options: { minimal: true }
-}
 
 // REFACTOR: Improve code quality
-mcp__moflo__sparc_mode {
-  mode: "coder",
-  task_description: "refactor shopping cart implementation",
-  options: { maintain_tests: true }
-}
 ```
 
 ---
@@ -689,18 +563,16 @@ mcp__moflo__sparc_mode {
 
 ```javascript
 // Store architectural decisions
-mcp__moflo__memory_usage {
-  action: "store",
-  namespace: "architecture",
+mcp__moflo__memory_store {
+    namespace: "architecture",
   key: "api-design-v1",
   value: JSON.stringify(apiDesign),
   ttl: 86400000  // 24 hours
 }
 
 // Retrieve in subsequent agents
-mcp__moflo__memory_usage {
-  action: "retrieve",
-  namespace: "architecture",
+mcp__moflo__memory_retrieve {
+    namespace: "architecture",
   key: "api-design-v1"
 }
 ```
@@ -788,38 +660,14 @@ mcp__moflo__swarm_init {
 }
 
 // Architecture phase
-mcp__moflo__sparc_mode {
-  mode: "architect",
-  task_description: "design REST API with authentication",
-  options: { memory_enabled: true }
-}
 
 // Research phase
-mcp__moflo__sparc_mode {
-  mode: "researcher",
-  task_description: "research authentication best practices"
-}
 
 // Implementation phase
-mcp__moflo__sparc_mode {
-  mode: "coder",
-  task_description: "implement Express API with JWT auth",
-  options: { test_driven: true }
-}
 
 // Testing phase
-mcp__moflo__sparc_mode {
-  mode: "tdd",
-  task_description: "comprehensive API tests",
-  options: { coverage_target: 90 }
-}
 
 // Review phase
-mcp__moflo__sparc_mode {
-  mode: "reviewer",
-  task_description: "security and performance review",
-  options: { security_check: true }
-}
 
 // Batch todos
 TodoWrite {
@@ -840,76 +688,28 @@ TodoWrite {
 
 ```javascript
 // Research phase
-mcp__moflo__sparc_mode {
-  mode: "researcher",
-  task_description: "research AI-powered search implementations",
-  options: {
-    depth: "comprehensive",
-    sources: ["academic", "industry"]
-  }
-}
 
 // Innovation phase
-mcp__moflo__sparc_mode {
-  mode: "innovator",
-  task_description: "propose novel search algorithm",
-  options: { memory_enabled: true }
-}
 
 // Architecture phase
-mcp__moflo__sparc_mode {
-  mode: "architect",
-  task_description: "design scalable search system"
-}
 
 // Implementation phase
-mcp__moflo__sparc_mode {
-  mode: "coder",
-  task_description: "implement search algorithm",
-  options: { test_driven: true }
-}
 
 // Documentation phase
-mcp__moflo__sparc_mode {
-  mode: "documenter",
-  task_description: "document search system architecture and API"
-}
 ```
 
 ### Example 3: Legacy Code Refactoring
 
 ```javascript
 // Analysis phase
-mcp__moflo__sparc_mode {
-  mode: "analyzer",
-  task_description: "analyze legacy codebase dependencies"
-}
 
 // Planning phase
-mcp__moflo__sparc_mode {
-  mode: "orchestrator",
-  task_description: "plan incremental refactoring strategy"
-}
 
 // Testing phase (create safety net)
-mcp__moflo__sparc_mode {
-  mode: "tester",
-  task_description: "create comprehensive test suite for legacy code",
-  options: { coverage_target: 80 }
-}
 
 // Refactoring phase
-mcp__moflo__sparc_mode {
-  mode: "coder",
-  task_description: "refactor module X with modern patterns",
-  options: { maintain_tests: true }
-}
 
 // Review phase
-mcp__moflo__sparc_mode {
-  mode: "reviewer",
-  task_description: "validate refactoring maintains functionality"
-}
 ```
 
 ---
@@ -1002,14 +802,8 @@ mcp__moflo__neural_train {
 
 ```javascript
 // Save session state
-mcp__moflo__memory_persist {
-  sessionId: "feature-auth-v1"
-}
 
 // Restore in new session
-mcp__moflo__context_restore {
-  snapshotId: "feature-auth-v1"
-}
 ```
 
 ### GitHub Integration
@@ -1033,22 +827,18 @@ mcp__moflo__github_pr_manage {
 
 ```javascript
 // Real-time swarm monitoring
-mcp__moflo__swarm_monitor {
+mcp__moflo__swarm_status {
   swarmId: "current",
   interval: 5000
 }
 
 // Bottleneck analysis
-mcp__moflo__bottleneck_analyze {
+mcp__moflo__performance_report {
   component: "api-layer",
   metrics: ["latency", "throughput", "errors"]
 }
 
 // Token usage tracking
-mcp__moflo__token_usage {
-  operation: "feature-development",
-  timeframe: "24h"
-}
 ```
 
 ---
@@ -1101,13 +891,12 @@ npx claude-flow sparc batch <modes> "task"
 mcp__moflo__swarm_init { topology: "hierarchical" }
 
 // Execute mode
-mcp__moflo__sparc_mode { mode: "coder", task_description: "..." }
 
 // Monitor progress
-mcp__moflo__swarm_monitor { interval: 5000 }
+mcp__moflo__swarm_status { interval: 5000 }
 
 // Store in memory
-mcp__moflo__memory_usage { action: "store", key: "...", value: "..." }
+mcp__moflo__memory_store { action: "store", key: "...", value: "..." }
 ```
 
 ---

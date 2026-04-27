@@ -323,14 +323,14 @@ npx claude-flow@v3alpha security learn --threat-type prompt_injection --strategy
 
 ```javascript
 // Real-time threat scanning
-mcp__moflo__security_scan({
+mcp__moflo__aidefence_scan({
   action: "defend",
   input: userInput,
   mode: "thorough"
 })
 
 // Behavioral anomaly detection
-mcp__moflo__security_analyze({
+mcp__moflo__aidefence_analyze({
   action: "behavior",
   agentId: agentId,
   timeWindow: "1h",
@@ -338,11 +338,6 @@ mcp__moflo__security_analyze({
 })
 
 // LTL policy verification
-mcp__moflo__security_verify({
-  action: "policy",
-  agentId: agentId,
-  policy: "G(!self_approve)"
-})
 ```
 
 ## Threat Pattern Storage (AgentDB)

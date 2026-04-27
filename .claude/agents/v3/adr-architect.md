@@ -28,7 +28,7 @@ hooks:
   post: |
     echo "✅ ADR documentation complete"
     # Store new ADR in memory
-    mcp__moflo__memory_usage --action="store" --namespace="decisions" --key="adr:$ADR_NUMBER" --value="$ADR_TITLE"
+    mcp__moflo__memory_store --action="store" --namespace="decisions" --key="adr:$ADR_NUMBER" --value="$ADR_TITLE"
     # Train pattern on successful decision
     npx claude-flow@v3alpha hooks intelligence trajectory-step --operation="adr-created" --outcome="success"
 ---
@@ -144,7 +144,7 @@ npx claude-flow@v3alpha adr supersede ADR-005 ADR-012
 
 ```bash
 # Store ADR in memory
-mcp__moflo__memory_usage --action="store" \
+mcp__moflo__memory_store --action="store" \
   --namespace="decisions" \
   --key="adr:006" \
   --value='{"title":"Unified Memory Service","status":"accepted","date":"2026-01-08"}'
@@ -153,7 +153,7 @@ mcp__moflo__memory_usage --action="store" \
 mcp__moflo__memory_search --pattern="adr:*memory*" --namespace="decisions"
 
 # Get ADR details
-mcp__moflo__memory_usage --action="retrieve" --namespace="decisions" --key="adr:006"
+mcp__moflo__memory_store --action="retrieve" --namespace="decisions" --key="adr:006"
 ```
 
 ## Decision Categories

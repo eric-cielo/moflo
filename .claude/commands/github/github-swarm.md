@@ -105,14 +105,6 @@ npx claude-flow github swarm -r owner/repo -a 8 -f triage --issue-labels --auto-
 
 Use in Claude Code with MCP tools:
 
-```javascript
-mcp__moflo__github_swarm {
-  repository: "owner/repo",
-  agents: 6,
-  focus: "maintenance"
-}
-```
-
 ## See Also
 
 - `repo analyze` - Deep repository analysis

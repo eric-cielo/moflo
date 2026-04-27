@@ -6,16 +6,6 @@ System design with Memory-based coordination for scalable architectures.
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "architect",
-  task_description: "design microservices architecture",
-  options: {
-    detailed: true,
-    memory_enabled: true
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

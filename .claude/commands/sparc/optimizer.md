@@ -6,16 +6,6 @@ Performance optimization with systematic analysis and improvements.
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "optimizer",
-  task_description: "optimize application performance",
-  options: {
-    profile: true,
-    benchmark: true
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

@@ -45,20 +45,9 @@ use new_task for each new task as a sub-task.
 
 ## Available Tools
 
-
 ## Usage
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "sparc",
-  task_description: "orchestrate authentication system",
-  options: {
-    namespace: "sparc",
-    non_interactive: false
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -86,9 +75,8 @@ npx claude-flow sparc run sparc "your task" --non-interactive
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "sparc_context",
+mcp__moflo__memory_store {
+    key: "sparc_context",
   value: "important decisions",
   namespace: "sparc"
 }

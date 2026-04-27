@@ -47,11 +47,6 @@ Bash(`gh api repos/:owner/:repo/contents/claude-code-flow/claude-code-flow/packa
   -f sha="$(gh api repos/:owner/:repo/contents/claude-code-flow/claude-code-flow/package.json?ref=sync/package-alignment --jq '.sha')")`)
 
 // Orchestrate validation
-mcp__moflo__task_orchestrate {
-  task: "Validate package synchronization and run integration tests",
-  strategy: "parallel",
-  priority: "high"
-}
 ```
 
 ### 2. Documentation Synchronization
@@ -73,9 +68,8 @@ Bash(`gh api repos/:owner/:repo/contents/claude-code-flow/claude-code-flow/CLAUD
   -f sha="$(gh api repos/:owner/:repo/contents/claude-code-flow/claude-code-flow/CLAUDE.md?ref=sync/documentation --jq '.sha' 2>/dev/null || echo '')")`)
 
 // Store sync state in memory
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "sync/documentation/status",
+mcp__moflo__memory_store {
+    key: "sync/documentation/status",
   value: { timestamp: Date.now(), status: "synchronized", files: ["CLAUDE.md"] }
 }
 ```
@@ -186,9 +180,8 @@ This integration uses ruv-swarm agents for:
   ]}
   
   // Store comprehensive sync state
-  mcp__moflo__memory_usage {
-    action: "store",
-    key: "sync/complete/status",
+  mcp__moflo__memory_store {
+        key: "sync/complete/status",
     value: {
       timestamp: Date.now(),
       packages_synced: ["claude-code-flow", "ruv-swarm"],

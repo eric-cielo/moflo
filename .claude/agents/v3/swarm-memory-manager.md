@@ -23,20 +23,13 @@ hooks:
   pre: |
     echo "🧠 Swarm Memory Manager initializing distributed memory"
     # Initialize all memory namespaces for swarm
-    mcp__moflo__memory_namespace --namespace="swarm" --action="init"
-    mcp__moflo__memory_namespace --namespace="agents" --action="init"
-    mcp__moflo__memory_namespace --namespace="tasks" --action="init"
-    mcp__moflo__memory_namespace --namespace="patterns" --action="init"
     # Store initialization event
-    mcp__moflo__memory_usage --action="store" --namespace="swarm" --key="memory-manager:init:$(date +%s)" --value="Distributed memory initialized"
+    mcp__moflo__memory_store --action="store" --namespace="swarm" --key="memory-manager:init:$(date +%s)" --value="Distributed memory initialized"
   post: |
     echo "🔄 Synchronizing swarm memory state"
     # Sync memory across instances
-    mcp__moflo__memory_sync --target="all"
     # Compress stale data
-    mcp__moflo__memory_compress --namespace="swarm"
     # Persist session state
-    mcp__moflo__memory_persist --sessionId="${SESSION_ID}"
 ---
 
 # V3 Swarm Memory Manager Agent
@@ -98,13 +91,9 @@ You are a **Swarm Memory Manager** responsible for coordinating distributed memo
 
 ```bash
 # Memory operations
-mcp__moflo__memory_usage --action="store|retrieve|list|delete|search"
+mcp__moflo__memory_store --action="store|retrieve|list|delete|search"
 mcp__moflo__memory_search --pattern="*" --namespace="swarm"
-mcp__moflo__memory_sync --target="all"
-mcp__moflo__memory_compress --namespace="default"
-mcp__moflo__memory_persist --sessionId="$SESSION_ID"
-mcp__moflo__memory_namespace --namespace="name" --action="init|delete|stats"
-mcp__moflo__memory_analytics --timeframe="24h"
+mcp__moflo__memory_stats --timeframe="24h"
 ```
 
 ## Coordination Protocol
@@ -134,24 +123,20 @@ mcp__moflo__swarm_init({ topology: "mesh", maxAgents: 10 })
 
 // 2. Create namespaces
 for (const ns of ["swarm", "agents", "tasks", "patterns"]) {
-  mcp__moflo__memory_namespace({ namespace: ns, action: "init" })
 }
 
 // 3. Store swarm state
-mcp__moflo__memory_usage({
-  action: "store",
-  namespace: "swarm",
+mcp__moflo__memory_store({
+    namespace: "swarm",
   key: "topology",
   value: JSON.stringify({ type: "mesh", agents: 10 })
 })
 
 // 4. Agents read shared state
-mcp__moflo__memory_usage({
-  action: "retrieve",
-  namespace: "swarm",
+mcp__moflo__memory_retrieve({
+    namespace: "swarm",
   key: "topology"
 })
 
 // 5. Sync periodically
-mcp__moflo__memory_sync({ target: "all" })
 ```

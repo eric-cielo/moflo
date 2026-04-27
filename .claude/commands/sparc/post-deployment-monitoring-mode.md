@@ -21,16 +21,6 @@ Configure metrics, logs, uptime checks, and alerts. Recommend improvements if th
 ## Usage
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "post-deployment-monitoring-mode",
-  task_description: "monitor production metrics",
-  options: {
-    namespace: "post-deployment-monitoring-mode",
-    non_interactive: false
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -58,9 +48,8 @@ npx claude-flow sparc run post-deployment-monitoring-mode "your task" --non-inte
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "post-deployment-monitoring-mode_context",
+mcp__moflo__memory_store {
+    key: "post-deployment-monitoring-mode_context",
   value: "important decisions",
   namespace: "post-deployment-monitoring-mode"
 }

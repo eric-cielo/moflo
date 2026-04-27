@@ -17,15 +17,15 @@ hooks:
     # Initialize swarm topology
     mcp__moflo__swarm_init hierarchical --maxAgents=10 --strategy=adaptive
     # MANDATORY: Write initial status to coordination namespace
-    mcp__moflo__memory_usage store "swarm/hierarchical/status" "{\"agent\":\"hierarchical-coordinator\",\"status\":\"initializing\",\"timestamp\":$(date +%s),\"topology\":\"hierarchical\"}" --namespace=coordination
+    mcp__moflo__memory_store store "swarm/hierarchical/status" "{\"agent\":\"hierarchical-coordinator\",\"status\":\"initializing\",\"timestamp\":$(date +%s),\"topology\":\"hierarchical\"}" --namespace=coordination
     # Set up monitoring
-    mcp__moflo__swarm_monitor --interval=5000 --swarmId="${SWARM_ID}"
+    mcp__moflo__swarm_status --interval=5000 --swarmId="${SWARM_ID}"
   post: |
     echo "✨ Hierarchical coordination complete"
     # Generate performance report
     mcp__moflo__performance_report --format=detailed --timeframe=24h
     # MANDATORY: Write completion status
-    mcp__moflo__memory_usage store "swarm/hierarchical/complete" "{\"status\":\"complete\",\"agents_used\":$(mcp__moflo__swarm_status | jq '.agents.total'),\"timestamp\":$(date +%s)}" --namespace=coordination
+    mcp__moflo__memory_store store "swarm/hierarchical/complete" "{\"status\":\"complete\",\"agents_used\":$(mcp__moflo__swarm_status | jq '.agents.total'),\"timestamp\":$(date +%s)}" --namespace=coordination
     # Cleanup resources
     mcp__moflo__coordination_sync --swarmId="${SWARM_ID}"
 ---
@@ -148,9 +148,8 @@ WORKERS WORKERS WORKERS WORKERS
 
 ```javascript
 // 1️⃣ IMMEDIATELY write initial status
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/hierarchical/status",
+mcp__moflo__memory_store {
+    key: "swarm/hierarchical/status",
   namespace: "coordination",
   value: JSON.stringify({
     agent: "hierarchical-coordinator",
@@ -162,9 +161,8 @@ mcp__moflo__memory_usage {
 }
 
 // 2️⃣ UPDATE progress after each delegation
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/hierarchical/progress",
+mcp__moflo__memory_store {
+    key: "swarm/hierarchical/progress",
   namespace: "coordination",
   value: JSON.stringify({
     completed: ["task1", "task2"],
@@ -175,9 +173,8 @@ mcp__moflo__memory_usage {
 }
 
 // 3️⃣ SHARE command structure for workers
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/hierarchy",
+mcp__moflo__memory_store {
+    key: "swarm/shared/hierarchy",
   namespace: "coordination",
   value: JSON.stringify({
     queen: "hierarchical-coordinator",
@@ -188,16 +185,14 @@ mcp__moflo__memory_usage {
 }
 
 // 4️⃣ CHECK worker status before assigning
-const workerStatus = mcp__moflo__memory_usage {
-  action: "retrieve",
-  key: "swarm/worker-1/status",
+const workerStatus = mcp__moflo__memory_retrieve {
+    key: "swarm/worker-1/status",
   namespace: "coordination"
 }
 
 // 5️⃣ SIGNAL completion
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/hierarchical/complete",
+mcp__moflo__memory_store {
+    key: "swarm/hierarchical/complete",
   namespace: "coordination",
   value: JSON.stringify({
     status: "complete",
@@ -226,16 +221,15 @@ mcp__moflo__agent_spawn coder --capabilities="implementation,testing"
 mcp__moflo__agent_spawn analyst --capabilities="data_analysis,reporting"
 
 # Monitor swarm health
-mcp__moflo__swarm_monitor --interval=5000
+mcp__moflo__swarm_status --interval=5000
 ```
 
 ### Task Orchestration
 ```bash
 # Coordinate complex workflows
-mcp__moflo__task_orchestrate "Build authentication service" --strategy=sequential --priority=high
 
 # Load balance across workers
-mcp__moflo__load_balance --tasks="auth_api,auth_tests,auth_docs" --strategy=capability_based
+ --tasks="auth_api,auth_tests,auth_docs" --strategy=capability_based
 
 # Sync coordination state
 mcp__moflo__coordination_sync --namespace=hierarchy
@@ -247,10 +241,10 @@ mcp__moflo__coordination_sync --namespace=hierarchy
 mcp__moflo__performance_report --format=detailed --timeframe=24h
 
 # Analyze bottlenecks
-mcp__moflo__bottleneck_analyze --component=coordination --metrics="throughput,latency,success_rate"
+mcp__moflo__performance_report --component=coordination --metrics="throughput,latency,success_rate"
 
 # Monitor resource usage
-mcp__moflo__metrics_collect --components="agents,tasks,coordination"
+ --components="agents,tasks,coordination"
 ```
 
 ## Decision Making Framework

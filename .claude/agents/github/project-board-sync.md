@@ -14,9 +14,8 @@ tools:
   - TodoWrite
   - mcp__moflo__swarm_init
   - mcp__moflo__agent_spawn
-  - mcp__moflo__task_orchestrate
   - mcp__moflo__swarm_status
-  - mcp__moflo__memory_usage
+  - mcp__moflo__memory_store
   - mcp__moflo__github_repo_analyze
   - mcp__moflo__github_pr_manage
   - mcp__moflo__github_issue_track

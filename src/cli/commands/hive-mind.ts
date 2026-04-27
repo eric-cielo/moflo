@@ -119,13 +119,11 @@ ${workerTypes.map(type => `• ${type}: ${workerGroups[type].length} agents`).jo
 2️⃣ **QUEEN COORDINATION**
    mcp__moflo__hive-mind_status       - Monitor swarm health
    mcp__moflo__task_create            - Create and delegate tasks
-   mcp__moflo__task_orchestrate       - Orchestrate task distribution
    mcp__moflo__agent_spawn            - Spawn additional workers
 
 3️⃣ **WORKER MANAGEMENT**
    mcp__moflo__agent_list             - List all active agents
-   mcp__moflo__agent_status           - Check agent status
-   mcp__moflo__agent_metrics          - Track worker performance
+   mcp__moflo__agent_status           - Check agent status / worker performance
    mcp__moflo__hive-mind_join         - Add agent to hive
    mcp__moflo__hive-mind_leave        - Remove agent from hive
 

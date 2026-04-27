@@ -6,16 +6,6 @@ Test-driven development with TodoWrite planning and comprehensive testing.
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "tdd",
-  task_description: "shopping cart feature",
-  options: {
-    coverage_target: 90,
-    test_framework: "jest"
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

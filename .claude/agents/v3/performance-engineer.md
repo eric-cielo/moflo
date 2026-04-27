@@ -1026,12 +1026,12 @@ class V3BenchmarkSuite {
 const performanceMCP = {
   // Run benchmark suite
   async runBenchmarks(suite = 'all') {
-    return await mcp__moflo__benchmark_run({ suite });
+    return await mcp__moflo__performance_benchmark({ suite });
   },
 
   // Analyze bottlenecks
   async analyzeBottlenecks(component) {
-    return await mcp__moflo__bottleneck_analyze({
+    return await mcp__moflo__performance_report({
       component: component,
       metrics: ['latency', 'throughput', 'memory', 'cpu']
     });
@@ -1047,17 +1047,10 @@ const performanceMCP = {
 
   // Token usage analysis
   async analyzeTokenUsage(operation) {
-    return await mcp__moflo__token_usage({
-      operation: operation,
-      timeframe: '24h'
-    });
   },
 
   // WASM optimization
   async optimizeWASM(operation) {
-    return await mcp__moflo__wasm_optimize({
-      operation: operation
-    });
   },
 
   // Neural pattern optimization
@@ -1070,9 +1063,8 @@ const performanceMCP = {
 
   // Store performance metrics
   async storeMetrics(key, value) {
-    return await mcp__moflo__memory_usage({
-      action: 'store',
-      key: `performance/${key}`,
+    return await mcp__moflo__memory_store({
+            key: `performance/${key}`,
       value: JSON.stringify(value),
       namespace: 'v3-performance',
       ttl: 604800000 // 7 days

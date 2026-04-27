@@ -6,16 +6,6 @@ Spell orchestration and process automation with TodoWrite planning and Task exec
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "spell-manager",
-  task_description: "automate deployment",
-  options: {
-    pipeline: "ci-cd",
-    rollback_enabled: true
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

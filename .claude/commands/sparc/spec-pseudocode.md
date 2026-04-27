@@ -18,16 +18,6 @@ Write pseudocode as a series of md files with phase_number_name.md and flow logi
 ## Usage
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "spec-pseudocode",
-  task_description: "define payment flow requirements",
-  options: {
-    namespace: "spec-pseudocode",
-    non_interactive: false
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -55,9 +45,8 @@ npx claude-flow sparc run spec-pseudocode "your task" --non-interactive
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "spec-pseudocode_context",
+mcp__moflo__memory_store {
+    key: "spec-pseudocode_context",
   value: "important decisions",
   namespace: "spec-pseudocode"
 }

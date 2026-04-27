@@ -6,16 +6,6 @@ Parallel task execution specialist using batch operations.
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "batch-executor",
-  task_description: "process multiple files",
-  options: {
-    parallel: true,
-    batch_size: 10
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

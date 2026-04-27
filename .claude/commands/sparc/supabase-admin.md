@@ -286,16 +286,6 @@ Rebases a development branch on production. This will effectively run any newer 
 ## Usage
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "supabase-admin",
-  task_description: "create user authentication schema",
-  options: {
-    namespace: "supabase-admin",
-    non_interactive: false
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -323,9 +313,8 @@ npx claude-flow sparc run supabase-admin "your task" --non-interactive
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "supabase-admin_context",
+mcp__moflo__memory_store {
+    key: "supabase-admin_context",
   value: "important decisions",
   namespace: "supabase-admin"
 }

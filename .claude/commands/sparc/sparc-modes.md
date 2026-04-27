@@ -34,13 +34,6 @@ SPARC (Specification, Planning, Architecture, Review, Code) is a comprehensive d
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
 // Execute SPARC mode directly
-mcp__moflo__sparc_mode {
-  mode: "<mode>",
-  task_description: "<task>",
-  options: {
-    // mode-specific options
-  }
-}
 
 // Initialize swarm for advanced coordination
 mcp__moflo__swarm_init {
@@ -56,7 +49,7 @@ mcp__moflo__agent_spawn {
 }
 
 // Monitor execution
-mcp__moflo__swarm_monitor {
+mcp__moflo__swarm_status {
   swarmId: "current",
   interval: 5000
 }
@@ -99,28 +92,12 @@ mcp__moflo__swarm_init {
 }
 
 // 2. Architecture design
-mcp__moflo__sparc_mode {
-  mode: "architect",
-  task_description: "design microservices"
-}
 
 // 3. Implementation
-mcp__moflo__sparc_mode {
-  mode: "coder",
-  task_description: "implement services"
-}
 
 // 4. Testing
-mcp__moflo__sparc_mode {
-  mode: "tdd",
-  task_description: "test all services"
-}
 
 // 5. Review
-mcp__moflo__sparc_mode {
-  mode: "reviewer",
-  task_description: "review implementation"
-}
 ```
 
 #### Using NPX CLI (Fallback)
@@ -143,22 +120,10 @@ npx claude-flow sparc run reviewer "review implementation"
 #### Using MCP Tools (Preferred)
 ```javascript
 // 1. Research phase
-mcp__moflo__sparc_mode {
-  mode: "researcher",
-  task_description: "research best practices"
-}
 
 // 2. Innovation
-mcp__moflo__sparc_mode {
-  mode: "innovator",
-  task_description: "propose novel solutions"
-}
 
 // 3. Documentation
-mcp__moflo__sparc_mode {
-  mode: "documenter",
-  task_description: "document findings"
-}
 ```
 
 #### Using NPX CLI (Fallback)

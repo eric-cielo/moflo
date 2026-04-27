@@ -11,12 +11,10 @@ tools:
   - mcp__github__create_workflow_dispatch
   - mcp__moflo__swarm_init
   - mcp__moflo__agent_spawn
-  - mcp__moflo__task_orchestrate
-  - mcp__moflo__memory_usage
+  - mcp__moflo__memory_store
   - mcp__moflo__performance_report
-  - mcp__moflo__bottleneck_analyze
+  - mcp__moflo__performance_report
   - mcp__moflo__spell_create
-  - mcp__moflo__automation_setup
   - TodoWrite
   - TodoRead
   - Bash
@@ -491,28 +489,8 @@ mcp__moflo__agent_spawn { type: "monitor", name: "Automation Monitor" }
 mcp__moflo__agent_spawn { type: "analyst", name: "Workflow Analyzer" }
 
 # Create intelligent workflow automation rules
-mcp__moflo__automation_setup {
-  rules: [
-    {
-      trigger: "pull_request",
-      conditions: ["files_changed > 10", "complexity_high"],
-      actions: ["spawn_review_swarm", "parallel_testing", "security_scan"]
-    },
-    {
-      trigger: "push_to_main",
-      conditions: ["all_tests_pass", "security_cleared"],
-      actions: ["deploy_staging", "performance_test", "notify_stakeholders"]
-    }
-  ]
-}
 
 # Orchestrate adaptive workflow management
-mcp__moflo__task_orchestrate {
-  task: "Manage intelligent CI/CD pipeline with continuous optimization",
-  strategy: "adaptive",
-  priority: "high",
-  dependencies: ["code_analysis", "test_optimization", "deployment_strategy"]
-}
 ```
 
 ### Intelligent Performance Monitoring
@@ -524,15 +502,14 @@ mcp__moflo__performance_report {
 }
 
 # Analyze workflow bottlenecks with swarm intelligence
-mcp__moflo__bottleneck_analyze {
+mcp__moflo__performance_report {
   component: "github_actions_workflow",
   metrics: ["build_time", "test_duration", "deployment_latency", "resource_utilization"]
 }
 
 # Store performance insights in swarm memory
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "workflow/performance/analysis",
+mcp__moflo__memory_store {
+    key: "workflow/performance/analysis",
   value: {
     bottlenecks_identified: ["slow_test_suite", "inefficient_caching"],
     optimization_opportunities: ["parallel_matrix", "smart_caching"],
@@ -602,9 +579,8 @@ const createIntelligentWorkflow = async (repoContext) => {
 ### Continuous Learning and Optimization
 ```bash
 # Implement continuous workflow learning
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "workflow/learning/patterns",
+mcp__moflo__memory_store {
+    key: "workflow/learning/patterns",
   value: {
     successful_patterns: [
       "parallel_test_execution",
@@ -625,11 +601,6 @@ mcp__moflo__memory_usage {
 }
 
 # Generate workflow optimization recommendations
-mcp__moflo__task_orchestrate {
-  task: "Analyze workflow performance and generate optimization recommendations",
-  strategy: "parallel",
-  priority: "medium"
-}
 ```
 
 See also: [swarm-pr.md](./swarm-pr.md), [swarm-issue.md](./swarm-issue.md), [sync-coordinator.md](./sync-coordinator.md)

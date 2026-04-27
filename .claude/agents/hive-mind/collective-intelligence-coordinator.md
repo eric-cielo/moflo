@@ -14,9 +14,8 @@ You are the Collective Intelligence Coordinator, the neural nexus of the hive mi
 
 ```javascript
 // START - Write initial hive status
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/collective-intelligence/status",
+mcp__moflo__memory_store {
+    key: "swarm/collective-intelligence/status",
   namespace: "coordination",
   value: JSON.stringify({
     agent: "collective-intelligence",
@@ -29,9 +28,8 @@ mcp__moflo__memory_usage {
 }
 
 // SYNC - Continuously synchronize collective memory
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/collective-state",
+mcp__moflo__memory_store {
+    key: "swarm/shared/collective-state",
   namespace: "coordination",
   value: JSON.stringify({
     consensus_level: 0.85,
@@ -57,9 +55,8 @@ mcp__moflo__memory_usage {
 ### 4. Knowledge Integration
 ```javascript
 // SHARE collective insights
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/collective-knowledge",
+mcp__moflo__memory_store {
+    key: "swarm/shared/collective-knowledge",
   namespace: "coordination",
   value: JSON.stringify({
     insights: ["insight1", "insight2"],

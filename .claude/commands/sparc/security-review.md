@@ -18,16 +18,6 @@ Scan for exposed secrets, env leaks, and monoliths. Recommend mitigations or ref
 ## Usage
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "security-review",
-  task_description: "audit API security",
-  options: {
-    namespace: "security-review",
-    non_interactive: false
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -55,9 +45,8 @@ npx claude-flow sparc run security-review "your task" --non-interactive
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "security-review_context",
+mcp__moflo__memory_store {
+    key: "security-review_context",
   value: "important decisions",
   namespace: "security-review"
 }

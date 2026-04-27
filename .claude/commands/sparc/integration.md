@@ -21,16 +21,6 @@ Verify interface compatibility, shared modules, and env config standards. Split 
 ## Usage
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "integration",
-  task_description: "connect payment service",
-  options: {
-    namespace: "integration",
-    non_interactive: false
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -58,9 +48,8 @@ npx claude-flow sparc run integration "your task" --non-interactive
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "integration_context",
+mcp__moflo__memory_store {
+    key: "integration_context",
   value: "important decisions",
   namespace: "integration"
 }

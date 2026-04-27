@@ -107,11 +107,6 @@ mcp__github__create_issue {
 }
 
 // Set up automated tracking
-mcp__moflo__task_orchestrate {
-  task: "Monitor and coordinate issue progress with automated updates",
-  strategy: "adaptive",
-  priority: "medium"
-}
 ```
 
 #### Batch Issue Creation

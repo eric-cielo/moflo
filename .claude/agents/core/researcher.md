@@ -123,9 +123,8 @@ read specific-file.ts
 ### Memory Coordination
 ```javascript
 // Report research status
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/researcher/status",
+mcp__moflo__memory_store {
+    key: "swarm/researcher/status",
   namespace: "coordination",
   value: JSON.stringify({
     agent: "researcher",
@@ -137,9 +136,8 @@ mcp__moflo__memory_usage {
 }
 
 // Share research findings
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/research-findings",
+mcp__moflo__memory_store {
+    key: "swarm/shared/research-findings",
   namespace: "coordination",
   value: JSON.stringify({
     patterns_found: ["MVC", "Repository", "Factory"],
@@ -166,7 +164,7 @@ mcp__moflo__github_repo_analyze {
 }
 
 // Track research metrics
-mcp__moflo__agent_metrics {
+mcp__moflo__agent_status {
   agentId: "researcher"
 }
 ```

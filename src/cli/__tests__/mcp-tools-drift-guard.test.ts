@@ -27,7 +27,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -168,7 +168,9 @@ function buildCorpus(): CorpusEntry[] {
       let st;
       try { st = statSync(full); } catch { continue; }
       if (st.isDirectory()) {
-        if (e === 'node_modules' || e === 'dist' || e === '.git') continue;
+        // tmp/ holds one-shot audit scripts (e.g. .claude/tmp/audit-693-*) that
+        // intentionally enumerate stale tool names — exclude from drift guard.
+        if (e === 'node_modules' || e === 'dist' || e === '.git' || e === 'tmp') continue;
         walk(full);
       } else if (st.isFile()) {
         if (SKIP_BASENAMES.has(e)) continue;
@@ -249,6 +251,55 @@ describe('MCP Tools Drift Guard (#693)', () => {
   it('every allowlist entry has a non-empty justification', () => {
     for (const [name, justification] of Object.entries(ALLOWLIST)) {
       expect(justification.trim().length, `${name} needs a justification`).toBeGreaterThan(10);
+    }
+  });
+
+  // Files that reference `mcp__moflo__<prefix>` as a regex matcher (hook
+  // event prefix, settings hook config) rather than a tool name. The
+  // doc-side drift guard (#698) skips these so wildcard stems aren't flagged.
+  const TOKEN_REGEX_SOURCE_BASENAMES: ReadonlySet<string> = new Set([
+    'mcp-client.ts',
+    'hook-wiring.ts',
+    'settings-generator.ts',
+    'moflo-init.ts',
+    'settings.json',
+  ]);
+  const MCP_TOKEN_DIR = join('src', 'cli', 'mcp-tools') + sep;
+
+  // Inverse direction (#698): every `mcp__moflo__<name>` token in any
+  // skill / agent / doc file must resolve to a registered tool. This caught
+  // ~210 stale tokens across 90+ files inherited from upstream forks
+  // (memory_usage, sparc_mode, task_orchestrate, swarm_monitor, etc).
+  it('every mcp__moflo__ token in skills/agents/docs names a registered tool', () => {
+    const registered = new Set(collectRegisteredTools().map(t => t.name));
+    // Family-prefix wildcards intentionally appear in guidance prose
+    // (`mcp__moflo__memory_*`, `mcp__moflo__hooks_*`); the regex captures
+    // them as `memory_`, `hooks_`, etc. Skip those.
+    const isWildcardStem = (name: string): boolean => /^[a-z]+_$/.test(name);
+
+    const orphans = new Map<string, string[]>();
+    for (const entry of getCorpus()) {
+      if (entry.path.includes(MCP_TOKEN_DIR)) continue;
+      if (TOKEN_REGEX_SOURCE_BASENAMES.has(basename(entry.path))) continue;
+
+      const seen = new Set<string>();
+      // matchAll avoids the module-scoped /g regex `lastIndex` footgun.
+      for (const m of entry.content.matchAll(/mcp__moflo__([a-zA-Z0-9_-]+)/g)) {
+        const name = m[1];
+        if (registered.has(name) || isWildcardStem(name) || seen.has(name)) continue;
+        seen.add(name);
+        if (!orphans.has(name)) orphans.set(name, []);
+        orphans.get(name)!.push(entry.path);
+      }
+    }
+
+    if (orphans.size > 0) {
+      const lines = [...orphans.entries()]
+        .sort((a, b) => b[1].length - a[1].length)
+        .map(([name, files]) => `  - mcp__moflo__${name} (${files.length} file(s); first: ${files[0]})`)
+        .join('\n');
+      const hint = `\n\n${orphans.size} stale MCP tool name(s) referenced in docs:\n${lines}\n\nFix: replace with the closest real tool, or remove the reference.`;
+      expect([...orphans.keys()], hint).toEqual([]);
     }
   });
 });

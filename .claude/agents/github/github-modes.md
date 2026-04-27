@@ -1,7 +1,7 @@
 ---
 name: github-modes
 description: Comprehensive GitHub integration modes for workflow orchestration, PR management, and repository coordination with batch optimization
-tools: mcp__moflo__swarm_init, mcp__moflo__agent_spawn, mcp__moflo__task_orchestrate, Bash, TodoWrite, Read, Write
+tools: mcp__moflo__swarm_init, mcp__moflo__agent_spawn, Bash, TodoWrite, Read, Write
 color: purple
 type: development
 capabilities:
@@ -169,5 +169,4 @@ mcp__moflo__agent_spawn { type: "reviewer", name: "Code Reviewer" }
 mcp__moflo__agent_spawn { type: "tester", name: "QA Agent" }
 
 // Execute GitHub workflow with coordination
-mcp__moflo__task_orchestrate { task: "GitHub workflow", strategy: "parallel" }
 ```

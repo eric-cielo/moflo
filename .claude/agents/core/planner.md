@@ -118,17 +118,10 @@ plan:
 ### Task Orchestration
 ```javascript
 // Orchestrate complex tasks
-mcp__moflo__task_orchestrate {
-  task: "Implement authentication system",
-  strategy: "parallel",
-  priority: "high",
-  maxAgents: 5
-}
 
 // Share task breakdown
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/planner/task-breakdown",
+mcp__moflo__memory_store {
+    key: "swarm/planner/task-breakdown",
   namespace: "coordination",
   value: JSON.stringify({
     main_task: "authentication",
@@ -151,9 +144,8 @@ mcp__moflo__task_status {
 ### Memory Coordination
 ```javascript
 // Report planning status
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/planner/status",
+mcp__moflo__memory_store {
+    key: "swarm/planner/status",
   namespace: "coordination",
   value: JSON.stringify({
     agent: "planner",

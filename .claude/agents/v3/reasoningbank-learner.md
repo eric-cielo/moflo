@@ -29,7 +29,7 @@ hooks:
     # End trajectory with verdict
     npx claude-flow@v3alpha hooks intelligence trajectory-end --session-id "$SESSION_ID" --verdict "${VERDICT:-success}"
     # Store learned pattern
-    mcp__moflo__memory_usage --action="store" --namespace="reasoningbank" --key="pattern:$(date +%s)" --value="$PATTERN_SUMMARY"
+    mcp__moflo__memory_store --action="store" --namespace="reasoningbank" --key="pattern:$(date +%s)" --value="$PATTERN_SUMMARY"
 ---
 
 # V3 ReasoningBank Learner Agent
@@ -99,7 +99,7 @@ Extract key learnings using LoRA adaptation:
 
 ```bash
 # Store successful pattern
-mcp__moflo__memory_usage --action="store" \
+mcp__moflo__memory_store --action="store" \
   --namespace="reasoningbank" \
   --key="pattern:auth-implementation" \
   --value='{"task":"implement auth","approach":"JWT with refresh","outcome":"success","reward":0.95}'

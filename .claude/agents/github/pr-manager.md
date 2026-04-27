@@ -14,11 +14,9 @@ tools:
   - TodoWrite
   - mcp__moflo__swarm_init
   - mcp__moflo__agent_spawn
-  - mcp__moflo__task_orchestrate
   - mcp__moflo__swarm_status
-  - mcp__moflo__memory_usage
+  - mcp__moflo__memory_store
   - mcp__moflo__github_pr_manage
-  - mcp__moflo__github_code_review
   - mcp__moflo__github_metrics
 hooks:
   pre:
@@ -66,11 +64,6 @@ mcp__github__create_pull_request {
 }
 
 // Orchestrate review process
-mcp__moflo__task_orchestrate {
-  task: "Complete PR review with testing and validation",
-  strategy: "parallel",
-  priority: "high"
-}
 ```
 
 ### 2. Automated Multi-File Review
@@ -108,9 +101,8 @@ mcp__github__merge_pull_request {
 }
 
 // Post-merge coordination
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "pr/54/merged",
+mcp__moflo__memory_store {
+    key: "pr/54/merged",
   value: { timestamp: Date.now(), status: "success" }
 }
 ```

@@ -169,9 +169,8 @@ mcp__moflo__swarm_init({
     -f content="$(cat aligned-package.json | base64)"`)
 
   // Store sync state
-  mcp__moflo__memory_usage({
-    action: "store",
-    key: "sync/packages/status",
+  mcp__moflo__memory_store({
+        key: "sync/packages/status",
     value: {
       timestamp: Date.now(),
       packages_synced: ["claude-code-flow", "ruv-swarm"],
@@ -196,9 +195,8 @@ mcp__moflo__swarm_init({
     -f content="$(cat /tmp/claude-source.md | base64)"`)
 
   // Track sync status
-  mcp__moflo__memory_usage({
-    action: "store",
-    key: "sync/documentation/status",
+  mcp__moflo__memory_store({
+        key: "sync/documentation/status",
     value: { status: "synchronized", files: ["CLAUDE.md"] }
   })
 ```
@@ -266,9 +264,8 @@ mcp__moflo__swarm_init({
     --order desc`)
 
   // Store analysis results
-  mcp__moflo__memory_usage({
-    action: "store",
-    key: "architecture/analysis/results",
+  mcp__moflo__memory_store({
+        key: "architecture/analysis/results",
     value: {
       repositories_analyzed: ["claude-code-flow", "ruv-swarm"],
       optimization_areas: ["structure", "workflows", "templates"],
@@ -416,11 +413,6 @@ Part of #$TRACKING_ISSUE"
   Task("Integration Tester", "Validate refactored code", "tester")
 
   // Execute refactoring
-  mcp__moflo__task_orchestrate({
-    task: "Rename OldAPI to NewAPI across all repositories",
-    strategy: "sequential",
-    priority: "high"
-  })
 ```
 
 #### Security Updates

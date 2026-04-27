@@ -21,8 +21,7 @@ tools:
   - mcp__github__create_or_update_file
   - mcp__moflo__swarm_init
   - mcp__moflo__agent_spawn
-  - mcp__moflo__task_orchestrate
-  - mcp__moflo__memory_usage
+  - mcp__moflo__memory_store
 hooks:
   pre_task: |
     echo "🏗️ Initializing repository architecture analysis..."
@@ -73,11 +72,6 @@ mcp__github__search_repositories {
 }
 
 // Orchestrate structure optimization
-mcp__moflo__task_orchestrate {
-  task: "Analyze and optimize repository structure for scalability and maintainability",
-  strategy: "adaptive",
-  priority: "medium"
-}
 ```
 
 ### 2. Multi-Repository Template Creation
@@ -254,9 +248,8 @@ jobs:
   ]}
   
   // Store architecture analysis
-  mcp__moflo__memory_usage {
-    action: "store",
-    key: "architecture/analysis/results",
+  mcp__moflo__memory_store {
+        key: "architecture/analysis/results",
     value: {
       timestamp: Date.now(),
       repositories_analyzed: ["claude-code-flow", "ruv-swarm"],
