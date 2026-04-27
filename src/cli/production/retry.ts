@@ -67,39 +67,45 @@ const DEFAULT_CONFIG: RetryConfig = {
 // ============================================================================
 
 /**
- * Calculate delay for a given attempt
+ * Calculate delay for a given attempt using the chosen backoff strategy.
+ *
+ * Exported so callers outside the retry loop (e.g. the worker daemon's
+ * overrun backoff scheduling) can reuse the same math instead of
+ * re-implementing it inline. Accepts `Partial<RetryConfig>` so external
+ * callers don't need to spell out fields that don't affect their strategy.
  */
-function calculateDelay(
+export function calculateDelay(
   attempt: number,
-  config: RetryConfig,
+  config: Partial<RetryConfig>,
   strategy: RetryStrategy = 'exponential'
 ): number {
+  const cfg: RetryConfig = { ...DEFAULT_CONFIG, ...config };
   let delay: number;
 
   switch (strategy) {
     case 'linear':
-      delay = config.initialDelayMs * attempt;
+      delay = cfg.initialDelayMs * attempt;
       break;
 
     case 'constant':
-      delay = config.initialDelayMs;
+      delay = cfg.initialDelayMs;
       break;
 
     case 'fibonacci':
-      delay = config.initialDelayMs * fibonacci(attempt);
+      delay = cfg.initialDelayMs * fibonacci(attempt);
       break;
 
     case 'exponential':
     default:
-      delay = config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt - 1);
+      delay = cfg.initialDelayMs * Math.pow(cfg.backoffMultiplier, attempt - 1);
   }
 
   // Apply max delay cap
-  delay = Math.min(delay, config.maxDelayMs);
+  delay = Math.min(delay, cfg.maxDelayMs);
 
   // Apply jitter
-  if (config.jitter > 0) {
-    const jitterRange = delay * config.jitter;
+  if (cfg.jitter > 0) {
+    const jitterRange = delay * cfg.jitter;
     delay += (Math.random() - 0.5) * 2 * jitterRange;
   }
 

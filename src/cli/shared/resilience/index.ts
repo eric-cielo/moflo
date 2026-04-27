@@ -10,8 +10,8 @@
  */
 
 // Retry
-export { retry, RetryError } from './retry.js';
-export type { RetryOptions, RetryResult } from './retry.js';
+export { retry, RetryError, withTimeout } from './retry.js';
+export type { RetryOptions, RetryResult, WithTimeoutOptions } from './retry.js';
 
 // Circuit Breaker
 export { CircuitBreaker } from './circuit-breaker.js';
