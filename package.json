@@ -22,7 +22,6 @@
   "files": [
     "bin/**",
     "dist/src/cli/**/*.js",
-    "dist/src/cli/**/*.d.ts",
     "dist/src/cli/**/*.yaml",
     "!dist/**/*.map",
     "src/cli/agents/**",
