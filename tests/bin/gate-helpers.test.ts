@@ -51,11 +51,14 @@ function baseEnv(projectDir: string): Record<string, string> {
   };
 }
 
-/** Run gate.cjs with a subcommand and env vars. Returns { stdout, stderr, exitCode }. */
+/** Run gate.cjs with a subcommand and env vars. Returns { stdout, stderr, exitCode }.
+ *  Timeout is generous because under isolation-batch contention (Windows in
+ *  particular) `node + load gate.cjs` can take well over the 5 s the test
+ *  used to allow; the test measures behavior, not speed. */
 function runGate(command: string, env: Record<string, string>): { stdout: string; stderr: string; exitCode: number } {
   try {
     const stdout = execFileSync('node', [GATE, command], {
-      env, encoding: 'utf-8', timeout: 5000,
+      env, encoding: 'utf-8', timeout: 30000,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     return { stdout, stderr: '', exitCode: 0 };
@@ -99,11 +102,12 @@ function runEsmWithStdin(
     proc.stdin.write(JSON.stringify(stdinJson));
     proc.stdin.end();
 
-    // Safety timeout
+    // Safety timeout — generous so isolation-batch contention can't false-fail
+    // a behavior test (paired with the 30 s runGate budget above).
     setTimeout(() => {
       try { proc.kill(); } catch {}
       resolve({ stdout, stderr, exitCode: -1 });
-    }, 8000);
+    }, 30000);
   });
 }
 
