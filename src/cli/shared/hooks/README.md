@@ -21,7 +21,7 @@ import {
   createHookExecutor,
   HookEvent,
   HookPriority
-} from '@moflo/shared/hooks';
+} from './index.js';
 ```
 
 ## Quick Start
@@ -29,8 +29,8 @@ import {
 ### 1. Create Registry and Executor
 
 ```typescript
-import { createHookRegistry, createHookExecutor } from '@moflo/shared/hooks';
-import { createEventBus } from '@moflo/shared/core';
+import { createHookRegistry, createHookExecutor } from './index.js';
+import { createEventBus } from '../core/index.js';
 
 const registry = createHookRegistry();
 const eventBus = createEventBus();
@@ -395,7 +395,7 @@ registry.register(
 ## Example: Pre-Edit Hook for Learning
 
 ```typescript
-import { HookEvent, HookPriority } from '@moflo/shared/hooks';
+import { HookEvent, HookPriority } from './index.js';
 
 // Register pre-edit hook for context retrieval
 registry.register(
@@ -500,7 +500,7 @@ registry.register(
 Run the test suite:
 
 ```bash
-cd /workspaces/claude-flow/v3/@moflo/shared
+cd src/cli/shared
 npm test -- hooks.test.ts
 ```
 
@@ -511,7 +511,7 @@ All 23 tests pass:
 ## File Structure
 
 ```
-v3/@moflo/shared/src/hooks/
+src/cli/shared/hooks/
 ├── types.ts           # Type definitions (~150 lines)
 ├── registry.ts        # Hook registry (~200 lines)
 ├── executor.ts        # Hook executor (~250 lines)

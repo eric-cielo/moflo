@@ -65,7 +65,7 @@ echo "✅ Commit recorded"
 /**
  * Generate a minimal auto-memory-hook.mjs fallback for fresh installs.
  * This ESM script handles import/sync/status commands gracefully when
- * @moflo/memory is not installed. Gets overwritten when source copy succeeds.
+ * moflo/cli/memory is not installed. Gets overwritten when source copy succeeds.
  */
 export function generateAutoMemoryHook(): string {
   return `#!/usr/bin/env node

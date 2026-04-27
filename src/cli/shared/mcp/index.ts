@@ -15,7 +15,7 @@
  * - Tool registration: <10ms
  * - Tool execution: <50ms overhead
  *
- * @module @moflo/mcp
+ * @module moflo/cli/mcp
  * @version 3.0.0
  */
 
@@ -117,7 +117,7 @@ export type {
  *
  * @example
  * ```typescript
- * import { quickStart } from '@moflo/mcp';
+ * import { quickStart } from './index.js';
  *
  * const server = await quickStart({
  *   transport: 'stdio',
@@ -153,12 +153,3 @@ export async function quickStart(
   return server;
 }
 
-/**
- * Module version
- */
-export const VERSION = '3.0.0';
-
-/**
- * Module name
- */
-export const MODULE_NAME = '@moflo/mcp';

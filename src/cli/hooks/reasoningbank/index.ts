@@ -10,7 +10,7 @@
  * - MofloDb backend for persistence
  * - Pattern promotion from short-term to long-term memory
  *
- * @module @moflo/hooks/reasoningbank
+ * @module moflo/cli/hooks/reasoningbank
  */
 
 import { EventEmitter } from 'node:events';
@@ -226,7 +226,7 @@ export class ReasoningBank extends EventEmitter {
     if (this.initialized) return;
 
     // Fast path for tests: skip dependency load + backend init entirely.
-    // loadDependencies() transitively imports onnxruntime-node via @moflo/memory,
+    // loadDependencies() transitively imports onnxruntime-node via the inlined memory module,
     // which costs 5-10s of native boot even when we don't use it.
     if (this.config.useMockEmbeddings) {
       this.useRealBackend = false;

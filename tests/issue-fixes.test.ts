@@ -65,7 +65,7 @@ describe('#75 — session-start auto-pretrain', () => {
 });
 
 describe('#77 — createSONALearningEngine default args', () => {
-  // Full functional tests are in src/modules/neural/__tests__/sona.test.ts
+  // Full functional tests are in src/cli/__tests__/neural/sona.test.ts
   // Here we verify the source code structure is correct
 
   it('source file contains DEFAULT_MODE_CONFIGS fallback', () => {

@@ -6,7 +6,7 @@
  * pipeline: idempotency check -> schema validation -> budget check ->
  * enforcement gates -> allow/deny.
  *
- * @module @moflo/guidance/gateway
+ * @module moflo/cli/guidance/gateway
  */
 
 import { createHash } from 'node:crypto';

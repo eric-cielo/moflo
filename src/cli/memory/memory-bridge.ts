@@ -1,5 +1,5 @@
 /**
- * Memory Bridge — Routes CLI memory operations through @moflo/memory + MofloDb.
+ * Memory Bridge — Routes CLI memory operations through the inlined memory module + MofloDb.
  *
  * Top-level facade. Primitives live in `./bridge-core.ts`, the sql.js entries
  * store lives in `./bridge-entries.ts`. This module holds controller-op

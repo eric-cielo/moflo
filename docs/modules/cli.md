@@ -19,8 +19,8 @@ MoFlo makes deliberate choices so you don't have to:
 - **sql.js (WASM)** — The memory database uses sql.js, a pure WebAssembly build of SQLite. No native `better-sqlite3` bindings to compile, no platform-specific build steps. Works identically on Windows, macOS, and Linux.
 - **Simplified embeddings pipeline** — 384-dimensional neural embeddings via Transformers.js (MiniLM-L6-v2, WASM). Same model and precision as the upstream multi-provider pipeline, but simpler — two scripts instead of an abstraction layer. Runs locally, no API calls.
 - **Full learning stack wired up OOTB** — The following are all configured and functional from `flo init`, no manual setup:
-  - **SONA** (Self-Optimizing Neural Architecture) — learns from task trajectories via pure TypeScript SONA in `@moflo/neural`
-  - **MicroLoRA** — rank-2 LoRA weight adaptations at ~1µs per adapt via pure TypeScript MicroLoRA in `@moflo/neural`
+  - **SONA** (Self-Optimizing Neural Architecture) — learns from task trajectories via pure TypeScript SONA in `src/cli/neural/`
+  - **MicroLoRA** — rank-2 LoRA weight adaptations at ~1µs per adapt via pure TypeScript MicroLoRA in `src/cli/neural/`
   - **EWC++** (Elastic Weight Consolidation) — prevents catastrophic forgetting across sessions
   - **HNSW Vector Search** — fast nearest-neighbor search via sql.js HNSW index (WASM SQLite)
   - **Semantic Routing** — maps tasks to agents via learned routing in `cli/src/hooks` (ReasoningBank)
@@ -372,8 +372,8 @@ Routing outcomes are stored in `.claude-flow/routing-outcomes.json` and persist 
 | **Semantic Memory** | Store and search knowledge with 384-dim embeddings | sql.js (WASM SQLite) + Transformers.js (MiniLM-L6-v2) |
 | **HNSW Vector Search** | Fast nearest-neighbor search across all stored knowledge | sql.js HNSW index (WASM SQLite) |
 | **Semantic Routing** | Match tasks to agent types using vector similarity | `cli/src/hooks` (ReasoningBank) learned routing |
-| **SONA Learning** | Learn from task trajectories — what agent handled what, and whether it succeeded | `@moflo/neural` SonaEngine (pure TS) |
-| **MicroLoRA Adaptation** | Rank-2 LoRA weight updates from successful patterns (~1µs per adapt) | `@moflo/neural` MicroLoRA (pure TS) |
+| **SONA Learning** | Learn from task trajectories — what agent handled what, and whether it succeeded | `src/cli/neural/` SonaEngine (pure TS) |
+| **MicroLoRA Adaptation** | Rank-2 LoRA weight updates from successful patterns (~1µs per adapt) | `src/cli/neural/` MicroLoRA (pure TS) |
 | **EWC++ Consolidation** | Prevent catastrophic forgetting — new learning doesn't overwrite old patterns | Built into hooks-tools |
 | **Workflow Gates** | Memory-first and task-registration enforcement via Claude Code hooks | `.claude/settings.json` hooks |
 | **Context Tracking** | Monitor context window depletion (FRESH → CRITICAL) | Session interaction counter |

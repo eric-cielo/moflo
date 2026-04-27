@@ -12,7 +12,7 @@
  *   PreTask     -> ShardRetriever.retrieve()            (inject relevant shards)
  *   PostTask    -> RunLedger.finalizeEvent()             (record run completion)
  *
- * @module @moflo/guidance/hooks
+ * @module moflo/cli/guidance/hooks
  */
 
 import type {

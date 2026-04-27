@@ -1,5 +1,5 @@
 /**
- * @moflo/embeddings Test Setup
+ * moflo/cli/embeddings Test Setup
  * Local test configuration for Vitest
  */
 

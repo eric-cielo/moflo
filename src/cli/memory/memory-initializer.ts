@@ -361,7 +361,7 @@ CREATE TABLE IF NOT EXISTS metadata (
 
 // ============================================================================
 // HNSW INDEX SINGLETON (150x faster vector search)
-// Uses HnswLite pure TypeScript implementation from @moflo/memory
+// Uses HnswLite pure TypeScript implementation from src/cli/memory
 // ============================================================================
 
 interface HNSWEntry {
@@ -1110,7 +1110,7 @@ export async function checkAndMigrateLegacy(options: {
  * a singleton ControllerRegistry and initializes it with the given dbPath.
  * After this call, all enabled controllers are ready for immediate use.
  *
- * Failures are isolated: if @moflo/memory or agentdb is not installed,
+ * Failures are isolated: if the memory module or its native deps are not installed,
  * this returns an empty result without throwing.
  */
 async function activateControllerRegistry(

@@ -173,7 +173,6 @@ hive-mind-prompt-*.txt
 .claude/projects/
 .claude/scheduled_tasks.lock
 **/workflow-state.json
-src/modules/*/package-lock.json
 *.rvf
 .vitest-results.json
 

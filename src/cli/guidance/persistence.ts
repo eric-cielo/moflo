@@ -10,7 +10,7 @@
  *   {storagePath}/index.json     - Metadata index (counts, timestamps, task IDs)
  *   {storagePath}/.lock          - Lock file for concurrent access prevention
  *
- * @module @moflo/guidance/persistence
+ * @module moflo/cli/guidance/persistence
  */
 
 import { mkdir, readFile, writeFile, appendFile, stat, unlink, rename } from 'node:fs/promises';

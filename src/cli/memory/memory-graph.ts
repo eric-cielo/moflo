@@ -1,5 +1,5 @@
 /**
- * Knowledge Graph Module for @moflo/memory
+ * Knowledge Graph Module for moflo memory
  *
  * Builds a graph from MemoryEntry.references, computes PageRank,
  * detects communities via label propagation, and provides

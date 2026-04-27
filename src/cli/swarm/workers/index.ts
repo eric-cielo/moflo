@@ -19,7 +19,7 @@
  * - benchmark: Performance benchmarking
  * - testgaps: Test coverage analysis
  *
- * @module @moflo/swarm/workers
+ * @module moflo/cli/swarm/workers
  * @version 3.0.0-alpha.1
  */
 

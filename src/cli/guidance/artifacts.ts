@@ -10,7 +10,7 @@
  * - Multi-dimensional search (by kind, run, cell, tags, time range)
  * - Export/import for portability and replay
  *
- * @module @moflo/guidance/artifacts
+ * @module moflo/cli/guidance/artifacts
  */
 
 import { createHash, createHmac, randomUUID } from 'node:crypto';

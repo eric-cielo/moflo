@@ -1,7 +1,7 @@
 /**
  * Browser MCP Tools
  *
- * CLI integration for @moflo/browser package.
+ * CLI integration for the inlined browser module.
  * Provides browser automation tools for web navigation, interaction, and data extraction.
  */
 

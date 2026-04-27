@@ -6,7 +6,7 @@
  * attestations, constraint evaluation, and set-theoretic composition
  * (intersection for actions, union for constraints).
  *
- * @module @moflo/guidance/capabilities
+ * @module moflo/cli/guidance/capabilities
  */
 
 import { randomUUID } from 'node:crypto';

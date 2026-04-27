@@ -188,7 +188,7 @@ async function runClaudeFlow(subcommand, cliArgs = []) {
 
     return exitCode;
   } else {
-    log('warn', 'Local CLI not found. Install with: npm install @moflo/cli');
+    log('warn', 'Local CLI not found. Install with: npm install moflo');
     return 1;
   }
 }

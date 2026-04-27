@@ -1,5 +1,5 @@
 /**
- * @moflo/swarm - Standalone Event System
+ * moflo/cli/swarm - Standalone Event System
  * Event-driven communication for multi-agent swarm coordination
  *
  * This file provides a complete event system for standalone operation

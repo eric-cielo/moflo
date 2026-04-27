@@ -70,7 +70,7 @@ export async function embedText(
 ): Promise<Float32Array> {
   if (!embedder) {
     throw new Error(
-      '[@moflo/memory] No embedder configured. ADR-EMB-001 requires a ' +
+      '[moflo memory] No embedder configured. ADR-EMB-001 requires a ' +
         'fastembed-backed IEmbeddingProvider — hash fallbacks are banned. ' +
         "Supply one via RuntimeConfig.embeddingGenerator.",
     );

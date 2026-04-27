@@ -8,7 +8,7 @@
  *
  * Per ADR-053.
  *
- * @module @moflo/memory/controller-registry
+ * @module moflo/cli/memory/controller-registry
  */
 
 import { EventEmitter } from 'node:events';
@@ -26,7 +26,7 @@ import type {
 } from './controller-spec.js';
 
 // Re-export public types so consumers can import them from
-// @moflo/memory/controller-registry (pre-spec-pattern surface).
+// memory/controller-registry (pre-spec-pattern surface).
 export type {
   ControllerName,
   CLIControllerName,

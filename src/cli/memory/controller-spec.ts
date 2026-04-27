@@ -5,7 +5,7 @@
  * Each controller module exports its own `*Spec` and the registry iterates
  * a central list ({@link ./controller-specs.ts}) — no switch-on-name.
  *
- * @module @moflo/memory/controller-spec
+ * @module moflo/cli/memory/controller-spec
  */
 
 import type { Database as SqlJsDatabase } from 'sql.js';

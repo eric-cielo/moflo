@@ -12,7 +12,7 @@
  * 6. Emit a signed proof envelope
  * 7. Return a complete, replayable trace
  *
- * @module @moflo/guidance/conformance-kit
+ * @module moflo/cli/guidance/conformance-kit
  */
 
 import { createHash, randomUUID } from 'node:crypto';

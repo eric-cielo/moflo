@@ -178,7 +178,7 @@ export class ReasoningBank {
   // ==========================================================================
 
   /**
-   * Initialize ReasoningBank with the @moflo/memory MofloDbAdapter.
+   * Initialize ReasoningBank with the MofloDbAdapter.
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
@@ -805,7 +805,7 @@ export class ReasoningBank {
   // ==========================================================================
 
   /**
-   * Store memory in the @moflo/memory adapter for vector search.
+   * Store memory in the MofloDbAdapter for vector search.
    */
   private async storeInMofloDb(memory: DistilledMemory): Promise<void> {
     if (!this.mofloDb) return;
@@ -834,7 +834,7 @@ export class ReasoningBank {
   }
 
   /**
-   * Search via the @moflo/memory adapter's HNSW index.
+   * Search via the MofloDbAdapter's HNSW index.
    */
   private async searchWithMofloDb(
     queryEmbedding: Float32Array,
@@ -852,7 +852,7 @@ export class ReasoningBank {
   }
 
   /**
-   * Delete from the @moflo/memory adapter.
+   * Delete from the MofloDbAdapter.
    */
   private async deleteFromMofloDb(memoryId: string): Promise<void> {
     if (!this.mofloDb) return;

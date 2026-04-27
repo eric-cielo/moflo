@@ -10,7 +10,7 @@
  * 3. Diff size gate - requires plan + staged commits for large diffs
  * 4. Secrets gate - redacts and warns on secret patterns
  *
- * @module @moflo/guidance/gates
+ * @module moflo/cli/guidance/gates
  */
 
 import type {

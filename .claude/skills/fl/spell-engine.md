@@ -6,7 +6,7 @@ instead of the hardcoded coding process. This uses the `Grimoire` from
 
 ## Scan Directories (in priority order)
 
-1. Shipped: `src/modules/spells/definitions/` (bundled with moflo)
+1. Shipped: `src/cli/spells/definitions/` (bundled with moflo)
 2. User: `spells/` and `.claude/spells/` (project-level overrides)
 
 ## Registry Behavior

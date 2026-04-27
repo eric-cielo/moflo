@@ -1,14 +1,14 @@
 /**
- * @moflo/memory - V3 Unified Memory System
+ * moflo/cli/memory - V3 Unified Memory System
  *
  * Provides a unified memory interface backed by MofloDb with HNSW indexing
  * for 150x-12,500x faster vector search compared to brute-force approaches.
  *
- * @module @moflo/memory
+ * @module moflo/cli/memory
  *
  * @example
  * ```typescript
- * import { UnifiedMemoryService, query, QueryTemplates } from '@moflo/memory';
+ * import { UnifiedMemoryService, query, QueryTemplates } from './index.js';
  *
  * // Initialize the memory service
  * const memory = new UnifiedMemoryService({

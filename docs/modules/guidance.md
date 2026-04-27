@@ -14,8 +14,6 @@ Long-horizon governance for Claude Code agents. Compiles `CLAUDE.md` / `CLAUDE.l
 | WASM artifacts | `src/cli/guidance/wasm-pkg/` |
 | Tests | `src/cli/__tests__/guidance/` |
 | Reviewer/coder agent prompts | `src/cli/guidance/agents/` |
-| ADRs (G001–G026) | [`docs/guidance/adrs/`](../guidance/adrs/) |
-| Guides + tutorials | [`docs/guidance/`](../guidance/) |
 | CLI commands | `claude-flow guidance {compile,retrieve,gates,status,optimize,ab-test}` |
 
 ## Core capabilities

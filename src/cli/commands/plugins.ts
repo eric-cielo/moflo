@@ -447,7 +447,7 @@ const infoCommand: Command = {
     { name: 'registry', short: 'r', type: 'string', description: 'Registry to use' },
   ],
   examples: [
-    { command: 'claude-flow plugins info -n @moflo/neural', description: 'Show plugin info' },
+    { command: 'claude-flow plugins info -n example-org/sample-plugin', description: 'Show plugin info' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = ctx.flags.name as string;
@@ -675,8 +675,8 @@ const upgradeCommand: Command = {
     { name: 'version', short: 'v', type: 'string', description: 'Target version (default: latest)' },
   ],
   examples: [
-    { command: 'claude-flow plugins upgrade -n @moflo/neural', description: 'Upgrade to latest' },
-    { command: 'claude-flow plugins upgrade -n @moflo/neural -v 3.1.0', description: 'Upgrade to specific version' },
+    { command: 'claude-flow plugins upgrade -n example-org/sample-plugin', description: 'Upgrade to latest' },
+    { command: 'claude-flow plugins upgrade -n example-org/sample-plugin -v 3.1.0', description: 'Upgrade to specific version' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = ctx.flags.name as string;
@@ -837,7 +837,7 @@ const rateCommand: Command = {
     { name: 'rating', short: 'r', type: 'number', description: 'Rating (1-5)', required: true },
   ],
   examples: [
-    { command: 'claude-flow plugins rate -n @moflo/neural -r 5', description: 'Rate 5 stars' },
+    { command: 'claude-flow plugins rate -n example-org/sample-plugin -r 5', description: 'Rate 5 stars' },
     { command: 'claude-flow plugins rate -n my-plugin -r 4', description: 'Rate 4 stars' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
@@ -918,7 +918,7 @@ export const pluginsCommand: Command = {
     output.writeln();
     output.writeln(output.bold('Official Plugins:'));
     output.printList([
-      '@moflo/neural              - Neural patterns and inference (WASM SIMD)',
+      'example-org/sample-plugin              - Example community plugin (replace with a real plugin name)',
     ]);
     output.writeln();
     output.writeln(output.dim('Run "claude-flow plugins list --official" to see all official plugins'));

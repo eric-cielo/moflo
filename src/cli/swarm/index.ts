@@ -1,5 +1,5 @@
 /**
- * @moflo/swarm
+ * moflo/cli/swarm
  * V3 Unified Swarm Coordination Module (ADR-003)
  *
  * ADR-003 IMPLEMENTATION:
@@ -22,7 +22,7 @@
  *
  * Recommended Usage:
  * ```typescript
- * import { createUnifiedSwarmCoordinator } from '@moflo/swarm';
+ * import { createUnifiedSwarmCoordinator } from './index.js';
  *
  * const coordinator = createUnifiedSwarmCoordinator({
  *   topology: { type: 'hierarchical', maxAgents: 15 },
@@ -32,7 +32,7 @@
  * await coordinator.initialize();
  * ```
  *
- * @module @moflo/swarm
+ * @module moflo/cli/swarm
  * @version 3.0.0-alpha.1
  */
 
@@ -245,11 +245,11 @@ export {
  * Migration:
  * ```typescript
  * // OLD:
- * import { createSwarmHub } from '@moflo/swarm';
+ * import { createSwarmHub } from './index.js';
  * const hub = createSwarmHub();
  *
  * // NEW:
- * import { createUnifiedSwarmCoordinator } from '@moflo/swarm';
+ * import { createUnifiedSwarmCoordinator } from './index.js';
  * const coordinator = createUnifiedSwarmCoordinator();
  * ```
  */

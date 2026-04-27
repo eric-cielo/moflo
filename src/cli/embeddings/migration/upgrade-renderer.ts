@@ -11,7 +11,7 @@
  *
  * The renderer is framework-free — it writes to a caller-supplied
  * `NodeJS.WritableStream` (typically `process.stderr`) so it works from any
- * entry point without the `@moflo/cli` output singleton, which lives above
+ * entry point without the moflo CLI output singleton, which lives above
  * this package in the dependency graph.
  *
  * @module cli/embeddings/migration/upgrade-renderer

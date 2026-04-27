@@ -5,14 +5,14 @@ description: "Tune moflo's memory stack for speed, RAM, and index quality. Cover
 
 # MoFlo Memory Optimization
 
-When the default `@moflo/memory` settings stop being enough — past ~100k entries, or when p95 search latency climbs — these are the levers.
+When the default moflo memory settings stop being enough — past ~100k entries, or when p95 search latency climbs — these are the levers.
 
 ## HNSW Parameters
 
 HNSW has three knobs. They trade build time, query time, memory, and recall.
 
 ```typescript
-import { HNSWIndex } from '@moflo/memory';
+import { HNSWIndex } from 'moflo/dist/src/cli/memory/index.js';
 
 const index = new HNSWIndex({
   dimensions: 1536,        // must match your embedding model
@@ -33,7 +33,7 @@ Rule of thumb: `M` and `efConstruction` are set once. `ef` is the runtime dial.
 
 ## Quantization
 
-`@moflo/memory` supports scalar quantization (Float32 → Int8) for a ~4× memory reduction with a ~1-2% recall hit. Turn it on when the index doesn't fit comfortably in RAM.
+moflo memory supports scalar quantization (Float32 → Int8) for a ~4× memory reduction with a ~1-2% recall hit. Turn it on when the index doesn't fit comfortably in RAM.
 
 ```typescript
 const index = new HNSWIndex({
@@ -72,7 +72,7 @@ For >10k entries, prefer `bin/build-embeddings.mjs` / `bin/index-all.mjs` — th
 `MofloDbAdapter` has a built-in LRU cache (default 10k entries, 5-min TTL):
 
 ```typescript
-import { MofloDbAdapter } from '@moflo/memory';
+import { MofloDbAdapter } from 'moflo/dist/src/cli/memory/index.js';
 
 const store = new MofloDbAdapter({
   cacheEnabled: true,
@@ -86,7 +86,7 @@ Cache hits on exact keys bypass HNSW entirely. If your workload is read-heavy an
 ## Measuring
 
 ```bash
-npx vitest bench src/modules/memory/benchmarks/vector-search.bench.ts
+npx vitest bench src/cli/memory/benchmarks/vector-search.bench.ts
 ```
 
 The bench prints linear vs HNSW times for 1k and 10k vectors. Run it before and after any parameter change — "it felt faster" is not a benchmark.
@@ -118,4 +118,4 @@ const stats = await mcp.memory_stats({});
 
 - `memory-patterns` skill — API usage and namespace design
 - `vector-search` skill — RAG-specific patterns on top of the optimized index
-- `src/modules/memory/benchmarks/` — runnable benches for every knob above
+- `src/cli/memory/benchmarks/` — runnable benches for every knob above

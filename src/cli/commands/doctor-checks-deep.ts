@@ -441,7 +441,7 @@ export async function checkMofloDbBridge(): Promise<HealthCheck> {
         name: 'MofloDb Bridge',
         status: 'fail',
         message: `init failed: ${reason}`,
-        fix: 'Check that sql.js and @moflo/memory are installed; rebuild: npm run build',
+        fix: 'Check that sql.js is installed and moflo is built: npm run build',
       };
     }
 

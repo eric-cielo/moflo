@@ -290,23 +290,24 @@ function getLearningStats() {
   return { patterns: 0, sessions };
 }
 
-// V3 progress from metrics files (pure file reads)
+// Learning-system maturity from learned-patterns count.
+// (Originally surfaced "DDD domains" via a v3-progress worker that scanned
+// pre-collapse v3/@moflo paths; that worker was removed in #661 once it
+// became clear it could never produce real data post-collapse. The shipped
+// statusline kept the same widget because patterns-learned is a meaningful
+// proxy for the same "system is becoming useful" signal.)
 function getV3Progress() {
   const learning = getLearningStats();
   const totalDomains = 5;
+  let domainsCompleted = 0;
 
-  const dddData = readJSON(path.join(CWD, '.claude-flow', 'metrics', 'ddd-progress.json'));
-  let dddProgress = dddData?.progress || 0;
-  let domainsCompleted = Math.min(5, Math.floor(dddProgress / 20));
+  if (learning.patterns >= 500) domainsCompleted = 5;
+  else if (learning.patterns >= 200) domainsCompleted = 4;
+  else if (learning.patterns >= 100) domainsCompleted = 3;
+  else if (learning.patterns >= 50) domainsCompleted = 2;
+  else if (learning.patterns >= 10) domainsCompleted = 1;
 
-  if (dddProgress === 0 && learning.patterns > 0) {
-    if (learning.patterns >= 500) domainsCompleted = 5;
-    else if (learning.patterns >= 200) domainsCompleted = 4;
-    else if (learning.patterns >= 100) domainsCompleted = 3;
-    else if (learning.patterns >= 50) domainsCompleted = 2;
-    else if (learning.patterns >= 10) domainsCompleted = 1;
-    dddProgress = Math.floor((domainsCompleted / totalDomains) * 100);
-  }
+  const dddProgress = Math.floor((domainsCompleted / totalDomains) * 100);
 
   return {
     domainsCompleted, totalDomains, dddProgress,

@@ -21,7 +21,7 @@
  * `fs` is injectable so the interrupt-mid-write paths can be exercised in
  * unit tests without depending on ESM-unfriendly module spies.
  *
- * @module @moflo/shared/utils/atomic-file-write
+ * @module moflo/cli/shared/utils/atomic-file-write
  */
 
 import * as realFs from 'node:fs';

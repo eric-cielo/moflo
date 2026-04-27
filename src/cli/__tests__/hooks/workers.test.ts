@@ -18,8 +18,6 @@ import {
   createPerformanceWorker,
   createHealthWorker,
   createSecurityWorker,
-  createADRWorker,
-  createDDDWorker,
   type WorkerResult,
   type AlertThreshold,
 } from '../../hooks/index.js';
@@ -32,7 +30,6 @@ const TEST_PROJECT_ROOT = path.join(os.tmpdir(), 'claude-flow-test-' + Date.now(
 
 async function setupTestDir(): Promise<void> {
   await fs.mkdir(path.join(TEST_PROJECT_ROOT, '.claude-flow', 'metrics'), { recursive: true });
-  await fs.mkdir(path.join(TEST_PROJECT_ROOT, 'v3', '@claude-flow', 'hooks', 'src'), { recursive: true });
 }
 
 async function cleanupTestDir(): Promise<void> {
@@ -462,8 +459,6 @@ describe('Statusline Integration', () => {
     expect(data.workers).toBeDefined();
     expect(data.health).toBeDefined();
     expect(data.security).toBeDefined();
-    expect(data.adr).toBeDefined();
-    expect(data.ddd).toBeDefined();
     expect(data.performance).toBeDefined();
     expect(data.lastUpdate).toBeDefined();
   });
