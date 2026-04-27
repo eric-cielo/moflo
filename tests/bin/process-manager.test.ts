@@ -26,8 +26,9 @@ function cleanTempRoot(root: string) {
   try { rmSync(root, { recursive: true, force: true }); } catch { /* ok */ }
 }
 
-/** Run a snippet that imports process-manager.mjs and returns JSON output. */
-function runPM(root: string, code: string): any {
+/** Run a snippet that imports process-manager.mjs and returns JSON output.
+ *  Pass `timeout` when the snippet polls or otherwise needs more than 10s. */
+function runPM(root: string, code: string, timeout = 10000): any {
   const pmURL = pathToFileURL(PM_PATH).href;
   const script = `
     import { createProcessManager } from '${pmURL}';
@@ -37,7 +38,7 @@ function runPM(root: string, code: string): any {
   `;
   const out = execFileSync('node', ['--input-type=module', '-e', script], {
     encoding: 'utf-8',
-    timeout: 10000,
+    timeout,
     cwd: root,
   });
   return JSON.parse(out.trim());
@@ -167,12 +168,18 @@ describe('getActive() and prune()', () => {
       return true;
     `);
 
-    // Wait for the short-lived one to exit. Bumped from 500 ms because
-    // under cumulative isolation-batch load the OS reaper can lag and
-    // getActive() still observes the not-yet-reaped child PID.
-    try { execFileSync('node', ['-e', 'setTimeout(()=>{},2000)'], { timeout: 5000 }); } catch { /* ok */ }
-
-    const active = runPM(root, `return pm.getActive();`);
+    // The OS reaper finishes whenever it finishes — on Windows under
+    // isolation-batch load it can lag arbitrarily, so any fixed sleep
+    // (#672 leaked at both 500 ms and 2 s) is wrong by construction.
+    const active = runPM(root, `
+      const deadline = Date.now() + 20000;
+      let active = pm.getActive();
+      while (active.some((p) => p.label === 'dead') && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 100));
+        active = pm.getActive();
+      }
+      return active;
+    `, 30000);
     expect(active.length).toBe(1);
     expect(active[0].label).toBe('alive');
 
