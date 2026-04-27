@@ -30,10 +30,12 @@ vi.mock('fs', async () => {
 
 // Mock the headless executor so constructor doesn't spawn processes
 vi.mock('../../services/headless-worker-executor.js', () => ({
-  HeadlessWorkerExecutor: vi.fn().mockImplementation(() => ({
-    isAvailable: vi.fn().mockResolvedValue(false),
-    on: vi.fn(),
-  })),
+  HeadlessWorkerExecutor: vi.fn().mockImplementation(function () {
+    return {
+      isAvailable: vi.fn().mockResolvedValue(false),
+      on: vi.fn(),
+    };
+  }),
   HEADLESS_WORKER_TYPES: [],
   HEADLESS_WORKER_CONFIGS: {},
   isHeadlessWorker: vi.fn().mockReturnValue(false),
