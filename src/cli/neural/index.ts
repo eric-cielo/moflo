@@ -4,11 +4,6 @@
  * Complete neural learning module with SONA learning modes,
  * ReasoningBank integration, pattern learning, and RL algorithms.
  *
- * Performance Targets:
- * - SONA adaptation: <0.05ms
- * - Pattern matching: <1ms
- * - Learning step: <10ms
- *
  * @module moflo/cli/neural
  */
 

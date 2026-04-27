@@ -6,8 +6,6 @@
  * - N-step returns
  * - Entropy regularization
  * - Advantage normalization
- *
- * Performance Target: <10ms per update step
  */
 
 import type {
@@ -131,11 +129,8 @@ export class A2CAlgorithm {
 
   /**
    * Perform A2C update
-   * Target: <10ms
    */
   update(): { policyLoss: number; valueLoss: number; entropy: number } {
-    const startTime = performance.now();
-
     if (this.buffer.length < this.config.nSteps) {
       return { policyLoss: 0, valueLoss: 0, entropy: 0 };
     }
@@ -201,11 +196,6 @@ export class A2CAlgorithm {
     this.avgPolicyLoss = totalPolicyLoss / this.buffer.length || 0;
     this.avgValueLoss = totalValueLoss / this.buffer.length || 0;
     this.avgEntropy = totalEntropy / this.buffer.length || 0;
-
-    const elapsed = performance.now() - startTime;
-    if (elapsed > 10) {
-      console.warn(`A2C update exceeded target: ${elapsed.toFixed(2)}ms > 10ms`);
-    }
 
     return {
       policyLoss: this.avgPolicyLoss,

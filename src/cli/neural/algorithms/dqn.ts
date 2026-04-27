@@ -7,8 +7,6 @@
  * - Double DQN (optional)
  * - Dueling architecture (optional)
  * - Epsilon-greedy exploration
- *
- * Performance Target: <10ms per update step
  */
 
 import type {
@@ -118,11 +116,8 @@ export class DQNAlgorithm {
 
   /**
    * Perform DQN update
-   * Target: <10ms
    */
   update(): { loss: number; epsilon: number } {
-    const startTime = performance.now();
-
     if (this.buffer.length < this.config.miniBatchSize) {
       return { loss: 0, epsilon: this.epsilon };
     }
@@ -183,11 +178,6 @@ export class DQNAlgorithm {
 
     this.updateCount++;
     this.avgLoss = totalLoss / batch.length;
-
-    const elapsed = performance.now() - startTime;
-    if (elapsed > 10) {
-      console.warn(`DQN update exceeded target: ${elapsed.toFixed(2)}ms > 10ms`);
-    }
 
     return {
       loss: this.avgLoss,

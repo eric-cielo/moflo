@@ -6,8 +6,6 @@
  * - GAE (Generalized Advantage Estimation)
  * - Value function clipping
  * - Entropy bonus
- *
- * Performance Target: <10ms per update step
  */
 
 import type {
@@ -127,11 +125,8 @@ export class PPOAlgorithm {
 
   /**
    * Perform PPO update
-   * Target: <10ms
    */
   update(): { policyLoss: number; valueLoss: number; entropy: number } {
-    const startTime = performance.now();
-
     if (this.buffer.length < this.config.miniBatchSize) {
       return { policyLoss: 0, valueLoss: 0, entropy: 0 };
     }
@@ -182,11 +177,6 @@ export class PPOAlgorithm {
     // Clear buffer
     this.buffer = [];
     this.updateCount++;
-
-    const elapsed = performance.now() - startTime;
-    if (elapsed > 10) {
-      console.warn(`PPO update exceeded target: ${elapsed.toFixed(2)}ms > 10ms`);
-    }
 
     return {
       policyLoss: numUpdates > 0 ? totalPolicyLoss / numUpdates : 0,

@@ -7,11 +7,6 @@
  * 3. DISTILL - Extract strategy memories from trajectories
  * 4. CONSOLIDATE - Dedup, detect contradictions, prune old patterns
  *
- * Performance Targets:
- * - Retrieval: <10ms with MofloDb HNSW (150x faster than brute-force)
- * - Learning step: <10ms
- * - Consolidation: <100ms
- *
  * @module reasoning-bank
  */
 

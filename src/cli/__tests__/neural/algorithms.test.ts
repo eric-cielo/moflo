@@ -7,8 +7,6 @@
  * - DQN
  * - PPO
  * - Decision Transformer
- *
- * Performance target: <10ms per update
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -71,14 +69,14 @@ describe('Q-Learning Algorithm', () => {
     expect(stats.qTableSize).toBeGreaterThan(0);
   });
 
-  it('should update under performance target (<1ms)', () => {
+  it('should complete update within 10ms (smoke check)', () => {
     const trajectory = createTestTrajectory(10);
 
     const startTime = performance.now();
     qlearning.update(trajectory);
     const elapsed = performance.now() - startTime;
 
-    expect(elapsed).toBeLessThan(10); // Reasonable target for small trajectories
+    expect(elapsed).toBeLessThan(10);
   });
 
   it('should decay exploration rate', () => {
@@ -281,7 +279,7 @@ describe('DQN Algorithm', () => {
     expect(result.epsilon).toBeGreaterThan(0);
   });
 
-  it('should update under performance target (<10ms)', () => {
+  it('should complete update within 500ms (smoke check)', () => {
     // Add experiences
     for (let i = 0; i < 5; i++) {
       dqn.addExperience(createTestTrajectory(10));
@@ -291,8 +289,6 @@ describe('DQN Algorithm', () => {
     dqn.update();
     const elapsed = performance.now() - startTime;
 
-    // Allow generous overhead for neural network in test environment
-    // (actual production target is <10ms, but tests run in CI may be slower)
     expect(elapsed).toBeLessThan(500);
   });
 
@@ -401,7 +397,7 @@ describe('PPO Algorithm', () => {
     expect(result.entropy).toBeGreaterThanOrEqual(0);
   });
 
-  it('should update under performance target (<10ms for small batches)', () => {
+  it('should complete update within 100ms (smoke check)', () => {
     const smallPPO = createPPO({
       miniBatchSize: 16,
       epochs: 1,
@@ -415,7 +411,7 @@ describe('PPO Algorithm', () => {
     smallPPO.update();
     const elapsed = performance.now() - startTime;
 
-    expect(elapsed).toBeLessThan(100); // Allow overhead for PPO complexity
+    expect(elapsed).toBeLessThan(100);
   });
 
   it('should compute GAE advantages', () => {
@@ -517,7 +513,7 @@ describe('Decision Transformer', () => {
     expect(result.accuracy).toBeLessThanOrEqual(1);
   });
 
-  it('should train under performance target (<10ms per batch)', () => {
+  it('should complete training within 100ms (smoke check)', () => {
     for (let i = 0; i < 3; i++) {
       dt.addTrajectory(createTestTrajectory(5));
     }
@@ -526,7 +522,7 @@ describe('Decision Transformer', () => {
     dt.train();
     const elapsed = performance.now() - startTime;
 
-    expect(elapsed).toBeLessThan(100); // Allow overhead for transformer
+    expect(elapsed).toBeLessThan(100);
   });
 
   it('should get action conditioned on target return', () => {

@@ -3,11 +3,6 @@
  *
  * Implements pattern extraction, matching, and evolution for
  * continuous learning from agent experiences.
- *
- * Performance Targets:
- * - Pattern matching: <1ms
- * - Pattern extraction: <5ms
- * - Evolution step: <2ms
  */
 
 import type {
@@ -98,7 +93,6 @@ export class PatternLearner {
 
   /**
    * Find matching patterns for a query embedding
-   * Target: <1ms
    */
   findMatches(queryEmbedding: Float32Array, k: number = 3): PatternMatch[] {
     const startTime = performance.now();
@@ -141,11 +135,6 @@ export class PatternLearner {
     this.matchCount++;
     this.totalMatchTime += elapsed;
 
-    // Warn if over target
-    if (elapsed > 1) {
-      console.warn(`Pattern matching exceeded target: ${elapsed.toFixed(2)}ms > 1ms`);
-    }
-
     return result;
   }
 
@@ -163,7 +152,6 @@ export class PatternLearner {
 
   /**
    * Extract a pattern from a trajectory
-   * Target: <5ms
    */
   extractPattern(trajectory: Trajectory, memory?: DistilledMemory): Pattern | null {
     const startTime = performance.now();
@@ -246,7 +234,6 @@ export class PatternLearner {
 
   /**
    * Evolve a pattern based on new experience
-   * Target: <2ms
    */
   evolvePattern(patternId: string, quality: number, context?: string): void {
     const startTime = performance.now();

@@ -4,7 +4,6 @@
  * Pure TypeScript SONA engine with:
  * - Trajectory tracking and verdict judgment
  * - Pattern extraction and memory distillation
- * - Sub-0.05ms learning performance target
  * - Clean TypeScript API with proper types
  *
  * @module sona-integration
@@ -139,11 +138,6 @@ function modeToConfig(mode: SONAMode, modeConfig: SONAModeConfig): JsSonaConfig 
 
 /**
  * SONA Learning Engine - wraps pure TS SonaEngine for V3 usage
- *
- * Performance targets:
- * - learn(): <0.05ms
- * - adapt(): <0.1ms
- * - Full learning cycle: <10ms
  */
 export class SONALearningEngine {
   private engine: SonaEngine;
@@ -162,8 +156,6 @@ export class SONALearningEngine {
 
   /**
    * Learn from a trajectory
-   *
-   * Performance target: <0.05ms
    *
    * @param trajectory - Trajectory to learn from
    */

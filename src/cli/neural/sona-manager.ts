@@ -3,11 +3,6 @@
  *
  * Manages learning modes and provides adaptive optimization for agent tasks.
  *
- * Performance Targets:
- * - Adaptation: <0.05ms
- * - Pattern retrieval: <1ms
- * - Learning step: <10ms
- *
  * Supported Modes:
  * - real-time: Sub-millisecond adaptation (2200 ops/sec)
  * - balanced: General purpose (+25% quality)
@@ -468,8 +463,6 @@ export class SONAManager {
     input: Float32Array,
     domain?: string
   ): Promise<Float32Array> {
-    const startTime = performance.now();
-
     // Get relevant LoRA weights
     const weights = domain
       ? this.loraWeights.get(domain)
@@ -477,13 +470,6 @@ export class SONAManager {
 
     // Apply adaptations via mode implementation
     const output = await this.modeImpl.applyLoRA(input, weights);
-
-    const latency = performance.now() - startTime;
-
-    // Verify performance target
-    if (latency > 0.05 && this.currentMode !== 'research' && this.currentMode !== 'batch') {
-      console.warn(`SONA adaptation exceeded target: ${latency.toFixed(3)}ms > 0.05ms`);
-    }
 
     return output;
   }
