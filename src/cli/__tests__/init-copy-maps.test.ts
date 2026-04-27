@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { executeInit, DEFAULT_INIT_OPTIONS } from '../init/index.js';
+import { SKILLS_MAP } from '../init/executor.js';
 import type { InitOptions } from '../init/types.js';
 
 // ============================================================================
@@ -123,5 +124,21 @@ describe('init copy maps — no hardcoded property access (structural regression
     expect(source).toContain('Object.entries(COMMANDS_MAP)');
     expect(source).toContain('Object.entries(SKILLS_MAP)');
     expect(source).toContain('Object.entries(AGENTS_MAP)');
+  });
+});
+
+describe('SKILLS_MAP — every entry resolves to a real source skill dir', () => {
+  const skillsDir = path.resolve(__dirname, '..', '..', '..', '.claude', 'skills');
+
+  it('every SKILLS_MAP value names a directory under .claude/skills/', () => {
+    const missing: string[] = [];
+    for (const [category, skills] of Object.entries(SKILLS_MAP)) {
+      for (const skill of skills) {
+        if (!fs.existsSync(path.join(skillsDir, skill))) {
+          missing.push(`${category}.${skill}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });

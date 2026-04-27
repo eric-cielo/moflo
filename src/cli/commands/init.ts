@@ -384,19 +384,13 @@ const wizardCommand: Command = {
           const skillSets = await multiSelect({
             message: 'Select skill sets:',
             options: [
-              { value: 'core', label: 'Core', hint: 'Swarm, memory, SPARC skills', selected: true },
-              { value: 'agentdb', label: 'AgentDB', hint: 'Vector database skills', selected: true },
+              { value: 'core', label: 'Core', hint: 'Swarm, memory, SPARC, ReasoningBank skills', selected: true },
               { value: 'github', label: 'GitHub', hint: 'GitHub integration skills', selected: true },
-              { value: 'flowNexus', label: 'Flow Nexus', hint: 'Cloud platform skills', selected: false },
-              { value: 'v3', label: 'V3', hint: 'V3 implementation skills', selected: true },
             ],
           });
 
           options.skills.core = skillSets.includes('core');
-          options.skills.agentdb = skillSets.includes('agentdb');
           options.skills.github = skillSets.includes('github');
-          options.skills.flowNexus = skillSets.includes('flowNexus');
-          options.skills.v3 = skillSets.includes('v3');
         }
 
         // Hooks selection
@@ -624,9 +618,7 @@ const skillsCommand: Command = {
   options: [
     { name: 'all', description: 'Install all skills', type: 'boolean', default: false },
     { name: 'core', description: 'Install core skills', type: 'boolean', default: true },
-    { name: 'agentdb', description: 'Install AgentDB skills', type: 'boolean', default: false },
     { name: 'github', description: 'Install GitHub skills', type: 'boolean', default: false },
-    { name: 'v3', description: 'Install V3 skills', type: 'boolean', default: false },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const options: InitOptions = {
@@ -648,11 +640,8 @@ const skillsCommand: Command = {
       skills: {
         all: ctx.flags.all as boolean,
         core: ctx.flags.core as boolean,
-        agentdb: ctx.flags.agentdb as boolean,
         github: ctx.flags.github as boolean,
-        flowNexus: false,
         browser: false,
-        v3: ctx.flags.v3 as boolean,
       },
     };
 

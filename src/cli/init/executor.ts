@@ -1,6 +1,7 @@
 /**
  * Init Executor
- * Main execution logic for V3 initialization
+ *
+ * Main execution logic for `flo init`.
  */
 
 import * as fs from 'fs';
@@ -31,9 +32,9 @@ import { writeEnvrc } from './envrc-generator.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 
 /**
- * Skills to copy based on configuration
+ * Skills to copy based on configuration. Exported for integrity tests.
  */
-const SKILLS_MAP: Record<string, string[]> = {
+export const SKILLS_MAP: Record<string, string[]> = {
   core: [
     'swarm-orchestration',
     'swarm-advanced',
@@ -43,39 +44,15 @@ const SKILLS_MAP: Record<string, string[]> = {
     'verification-quality',
     'stream-chain',
     'skill-builder',
-  ],
-  browser: ['browser'],  // agent-browser integration
-  agentdb: [
-    'agentdb-advanced',
-    'agentdb-learning',
-    'agentdb-memory-patterns',
-    'agentdb-optimization',
-    'agentdb-vector-search',
-    'reasoningbank-agentdb',
     'reasoningbank-intelligence',
   ],
+  browser: ['browser'],
   github: [
     'github-code-review',
     'github-multi-repo',
     'github-project-management',
     'github-release-management',
     'github-workflow-automation',
-  ],
-  flowNexus: [
-    'flow-nexus-neural',
-    'flow-nexus-platform',
-    'flow-nexus-swarm',
-  ],
-  v3: [
-    'v3-cli-modernization',
-    'v3-core-implementation',
-    'v3-ddd-architecture',
-    'v3-integration-deep',
-    'v3-mcp-optimization',
-    'v3-memory-unification',
-    'v3-performance-optimization',
-    'v3-security-overhaul',
-    'v3-swarm-coordination',
   ],
 };
 
