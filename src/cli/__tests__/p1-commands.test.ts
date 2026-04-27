@@ -60,26 +60,9 @@ vi.mock('../mcp-client.js', () => ({
       };
     }
 
-    if (toolName === 'swarm_stop') {
-      return { stopped: true, stoppedAt: new Date().toISOString() };
-    }
-
     // MCP tools
-    if (toolName === 'mcp_start') {
-      return {
-        serverId: 'mcp-mock-123',
-        port: input.port || 3000,
-        transport: input.transport || 'stdio',
-        startedAt: new Date().toISOString()
-      };
-    }
-
     if (toolName === 'mcp_status') {
       return { running: true, port: 3000, transport: 'stdio' };
-    }
-
-    if (toolName === 'mcp_stop') {
-      return { stopped: true };
     }
 
     // Memory tools
@@ -558,14 +541,119 @@ describe('Start Command', () => {
   });
 
   describe('start stop', () => {
-    it('should stop system', async () => {
+    // Helper: simulate a daemon.pid file containing the given pid string.
+    // Other reads (config.yaml) keep returning the default YAML.
+    const mockDaemonPidFile = (pid: string) => {
+      vi.mocked(fs.readFileSync).mockImplementation((p) =>
+        String(p).includes('daemon.pid')
+          ? pid
+          : 'version: 3.0.0\nswarm:\n  topology: mesh'
+      );
+    };
+
+    // Helper: simulate no daemon.pid file (readFileSync throws ENOENT).
+    const mockNoDaemonPidFile = () => {
+      vi.mocked(fs.readFileSync).mockImplementation((p) => {
+        if (String(p).includes('daemon.pid')) {
+          const err = new Error('ENOENT') as NodeJS.ErrnoException;
+          err.code = 'ENOENT';
+          throw err;
+        }
+        return 'version: 3.0.0\nswarm:\n  topology: mesh';
+      });
+    };
+
+    const spyOnKill = (impl: NodeJS.Process['kill']) =>
+      vi.spyOn(process, 'kill').mockImplementation(impl);
+
+    it('should stop system when no daemon is running', async () => {
+      mockNoDaemonPidFile();
       ctx.flags = { force: true, _: [] };
 
       const stopCmd = startCommand.subcommands?.find(c => c.name === 'stop');
       const result = await stopCmd!.action!(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveProperty('stopped', true);
+      expect(result.data).toMatchObject({
+        stopped: true,
+        daemonWasRunning: false,
+        signaledPid: null
+      });
+    });
+
+    it('should not call any MCP tool during stop (regression for #697)', async () => {
+      mockNoDaemonPidFile();
+      const { callMCPTool } = await import('../mcp-client.js');
+      vi.mocked(callMCPTool).mockClear();
+      ctx.flags = { force: true, _: [] };
+
+      const stopCmd = startCommand.subcommands?.find(c => c.name === 'stop');
+      await stopCmd!.action!(ctx);
+
+      expect(callMCPTool).not.toHaveBeenCalled();
+    });
+
+    it('should signal the daemon and remove the PID file when one exists', async () => {
+      mockDaemonPidFile('12345');
+      const killSpy = spyOnKill((() => true) as NodeJS.Process['kill']);
+      ctx.flags = { force: false, _: [] };
+
+      try {
+        const stopCmd = startCommand.subcommands?.find(c => c.name === 'stop');
+        const result = await stopCmd!.action!(ctx);
+
+        expect(result.success).toBe(true);
+        expect(killSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
+        expect(fs.unlinkSync).toHaveBeenCalled();
+        expect(result.data).toMatchObject({
+          stopped: true,
+          daemonWasRunning: true,
+          signaledPid: 12345
+        });
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
+    it('should send SIGKILL when --force is passed', async () => {
+      mockDaemonPidFile('54321');
+      const killSpy = spyOnKill((() => true) as NodeJS.Process['kill']);
+      ctx.flags = { force: true, _: [] };
+
+      try {
+        const stopCmd = startCommand.subcommands?.find(c => c.name === 'stop');
+        await stopCmd!.action!(ctx);
+
+        expect(killSpy).toHaveBeenCalledWith(54321, 'SIGKILL');
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
+    it('should treat ESRCH (no such process) as benign', async () => {
+      mockDaemonPidFile('99999');
+      const killSpy = spyOnKill((() => {
+        const err = new Error('No such process') as NodeJS.ErrnoException;
+        err.code = 'ESRCH';
+        throw err;
+      }) as NodeJS.Process['kill']);
+      ctx.flags = { force: false, _: [] };
+
+      try {
+        const stopCmd = startCommand.subcommands?.find(c => c.name === 'stop');
+        const result = await stopCmd!.action!(ctx);
+
+        // Stale PID file is treated as "daemon already exited" — still cleans up.
+        expect(result.success).toBe(true);
+        expect(fs.unlinkSync).toHaveBeenCalled();
+        expect(result.data).toMatchObject({
+          stopped: true,
+          daemonWasRunning: true,
+          signaledPid: null
+        });
+      } finally {
+        killSpy.mockRestore();
+      }
     });
   });
 

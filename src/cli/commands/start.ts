@@ -133,32 +133,12 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
 
     spinner.succeed(`Swarm initialized (${finalTopology})`);
 
-    // Step 2: Start MCP server if configured (stdio only)
-    let mcpResult: Record<string, unknown> | null = null;
+    // Step 2: Note MCP server lifecycle is external
+    // The MCP server is launched directly by Claude Code (or via `flo mcp serve`)
+    // as a stdio subprocess — there is no `mcp_start` MCP tool. This `flo start`
+    // command does not own that process's lifecycle.
     if (autoStartMcp) {
-      spinner.setText('Starting MCP server...');
-      spinner.start();
-
-      try {
-        mcpResult = await callMCPTool<{
-          serverId: string;
-          transport: string;
-          startedAt: string;
-        }>('mcp_start', {
-          transport: mcpConfig.transportType || 'stdio',
-          tools: mcpConfig.tools || ['agent', 'swarm', 'memory', 'task']
-        });
-
-        spinner.succeed('MCP server started (stdio)');
-      } catch (error) {
-        spinner.fail('MCP server failed to start');
-        output.printWarning(
-          error instanceof MCPClientError
-            ? error.message
-            : String(error)
-        );
-        // Continue without MCP
-      }
+      spinner.succeed('MCP server (stdio) is launched separately by the host');
     }
 
     // Step 3: Run health check
@@ -240,9 +220,7 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
       swarmId: swarmResult.swarmId,
       topology: finalTopology,
       maxAgents,
-      mcp: mcpResult ? {
-        transport: mcpConfig.transportType || 'stdio'
-      } : null,
+      mcp: autoStartMcp ? { transport: mcpConfig.transportType || 'stdio' } : null,
       health: healthResult.status,
       daemon,
       startedAt: new Date().toISOString()
@@ -307,41 +285,76 @@ const stopCommand: Command = {
     spinner.start();
 
     try {
-      // Stop MCP server
-      spinner.setText('Stopping MCP server...');
-      try {
-        await callMCPTool('mcp_stop', { graceful: !force, timeout });
-        spinner.succeed('MCP server stopped');
-      } catch {
-        spinner.fail('MCP server was not running');
-      }
-
-      // Stop swarm
-      spinner.setText('Stopping swarm...');
-      spinner.start();
-      try {
-        await callMCPTool('swarm_stop', {
-          graceful: !force,
-          timeout,
-          saveState: true
-        });
-        spinner.succeed('Swarm stopped');
-      } catch {
-        spinner.fail('Swarm was not running');
-      }
-
-      // Clean up daemon PID
+      // The stop mechanism is daemon-PID-file deletion. The daemon's keep-alive
+      // interval (set up in startAction) polls for the PID file and exits when
+      // it's gone. There are no `mcp_stop` or `swarm_stop` MCP tools — the MCP
+      // server is a stdio subprocess of the host (Claude Code) and the swarm
+      // is in-memory orchestration with no separate process to terminate.
       const daemonPidPath = path.join(ctx.cwd, '.claude-flow', 'daemon.pid');
-      if (fs.existsSync(daemonPidPath)) {
-        fs.unlinkSync(daemonPidPath);
+      const signal: NodeJS.Signals = force ? 'SIGKILL' : 'SIGTERM';
+
+      let pidStr: string;
+      try {
+        pidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          spinner.succeed('No running daemon found (nothing to stop)');
+          output.writeln();
+          output.printSuccess('MoFlo stopped successfully');
+          return {
+            success: true,
+            data: {
+              stopped: true,
+              force,
+              daemonWasRunning: false,
+              signaledPid: null,
+              stoppedAt: new Date().toISOString()
+            }
+          };
+        }
+        throw err;
       }
+
+      spinner.setText('Stopping daemon...');
+      const pid = Number.parseInt(pidStr, 10);
+      let signaledPid: number | null = null;
+      let pidValid = Number.isFinite(pid) && pid > 0;
+
+      if (pidValid) {
+        try {
+          process.kill(pid, signal);
+          signaledPid = pid;
+        } catch (err) {
+          // ESRCH = no such process; benign (daemon already exited).
+          // Anything else (EPERM, EINVAL) is a real failure.
+          if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err;
+        }
+      }
+
+      fs.unlinkSync(daemonPidPath);
+
+      let stopMessage: string;
+      if (signaledPid !== null) {
+        stopMessage = `Daemon signaled (pid ${signaledPid}) and PID file removed`;
+      } else if (!pidValid) {
+        stopMessage = 'PID file was malformed; removed';
+      } else {
+        stopMessage = 'PID file removed (daemon process already exited)';
+      }
+      spinner.succeed(stopMessage);
 
       output.writeln();
       output.printSuccess('MoFlo stopped successfully');
 
       return {
         success: true,
-        data: { stopped: true, force, stoppedAt: new Date().toISOString() }
+        data: {
+          stopped: true,
+          force,
+          daemonWasRunning: true,
+          signaledPid,
+          stoppedAt: new Date().toISOString()
+        }
       };
     } catch (error) {
       spinner.fail('Stop failed');
