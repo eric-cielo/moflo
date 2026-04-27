@@ -786,6 +786,26 @@ export class WorkerDaemon extends EventEmitter {
   }
 
   /**
+   * Finalize a worker run (shared by success and failure paths). Keeps both
+   * branches' state updates aligned — previously the success branch updated
+   * averageDurationMs but the failure branch did not, while both incremented
+   * runCount, so the displayed average drifted low whenever a worker failed
+   * (#666).
+   */
+  private finalizeRun(
+    workerConfig: WorkerConfig,
+    state: WorkerState,
+    durationMs: number,
+  ): void {
+    state.runCount++;
+    state.lastRun = new Date();
+    state.averageDurationMs =
+      (state.averageDurationMs * (state.runCount - 1) + durationMs) / state.runCount;
+    state.isRunning = false;
+    this.evaluateOverrun(workerConfig, state, durationMs);
+  }
+
+  /**
    * Execute a worker with concurrency control (P0 fix)
    */
   private async executeWorkerWithConcurrencyControl(workerConfig: WorkerConfig): Promise<WorkerResult | null> {
@@ -841,13 +861,8 @@ export class WorkerDaemon extends EventEmitter {
       );
       const durationMs = Date.now() - startTime;
 
-      // Update state
-      state.runCount++;
       state.successCount++;
-      state.lastRun = new Date();
-      state.averageDurationMs = (state.averageDurationMs * (state.runCount - 1) + durationMs) / state.runCount;
-      state.isRunning = false;
-      this.evaluateOverrun(workerConfig, state, durationMs);
+      this.finalizeRun(workerConfig, state, durationMs);
 
       const result: WorkerResult = {
         workerId,
@@ -866,11 +881,8 @@ export class WorkerDaemon extends EventEmitter {
     } catch (error) {
       const durationMs = Date.now() - startTime;
 
-      state.runCount++;
       state.failureCount++;
-      state.lastRun = new Date();
-      state.isRunning = false;
-      this.evaluateOverrun(workerConfig, state, durationMs);
+      this.finalizeRun(workerConfig, state, durationMs);
 
       const result: WorkerResult = {
         workerId,
