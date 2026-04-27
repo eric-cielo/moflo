@@ -1018,7 +1018,7 @@ async function checkIntelligence(): Promise<HealthCheck> {
       name: 'Intelligence',
       status: 'warn',
       message: `Module unavailable: ${e instanceof Error ? e.message.split(/\r?\n/)[0] : 'import failed'}`,
-      fix: 'Ensure @moflo/neural is built (npm run build)',
+      fix: 'Ensure moflo is built (npm run build)',
     };
   }
 }

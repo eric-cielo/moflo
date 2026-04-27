@@ -97,7 +97,7 @@ export function generateId(prefix: string): string {
 }
 
 /**
- * Returns null if @moflo/memory cannot be loaded or sql.js fails to open —
+ * Returns null if the memory module cannot be loaded or sql.js fails to open —
  * callers fall back to raw sql.js.
  */
 export async function getRegistry(dbPath?: string): Promise<any | null> {

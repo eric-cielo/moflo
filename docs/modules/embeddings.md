@@ -12,7 +12,7 @@
 | Public surface | `src/cli/embeddings/index.ts` (named exports) |
 | Tests | `src/cli/__tests__/embeddings/` |
 | ADR (neural mandatory) | [ADR-EMB-001](../adr/ADR-EMB-001-neural-embeddings-mandatory.md) |
-| Float32Array audit | [docs/audits/2026-04-23-float32array-producers.md](../audits/2026-04-23-float32array-producers.md) |
+| DI-compliance test (Float32Array gate) | `src/cli/__tests__/embeddings/provider-di-compliance.test.ts` |
 
 ## Core capabilities
 

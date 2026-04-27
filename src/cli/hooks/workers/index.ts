@@ -23,8 +23,8 @@ const FILE_CACHE_TTL = 30_000; // 30 seconds
 
 // Allowed worker names for input validation
 const ALLOWED_WORKERS = new Set([
-  'performance', 'health', 'security', 'adr', 'ddd',
-  'patterns', 'learning', 'cache', 'git', 'swarm', 'v3progress'
+  'performance', 'health', 'security',
+  'patterns', 'learning', 'cache', 'git', 'swarm'
 ]);
 
 // ============================================================================
@@ -92,19 +92,6 @@ function safeJsonParse<T>(content: string): T {
 function isValidWorkerName(name: unknown): name is string {
   return typeof name === 'string' && (ALLOWED_WORKERS.has(name) || name.startsWith('test-'));
 }
-
-// ============================================================================
-// Pre-compiled Regexes for DDD Pattern Detection (20-40% faster)
-// ============================================================================
-
-const DDD_PATTERNS = {
-  entity: /class\s+\w+Entity\b|interface\s+\w+Entity\b/,
-  valueObject: /class\s+\w+(VO|ValueObject)\b|type\s+\w+VO\s*=/,
-  aggregate: /class\s+\w+Aggregate\b|AggregateRoot/,
-  repository: /class\s+\w+Repository\b|interface\s+I\w+Repository\b/,
-  service: /class\s+\w+Service\b|interface\s+I\w+Service\b/,
-  domainEvent: /class\s+\w+Event\b|DomainEvent/,
-} as const;
 
 // ============================================================================
 // File Cache for Repeated Reads (30-50% I/O reduction)
@@ -318,12 +305,6 @@ export interface StatuslineData {
     status: 'clean' | 'warning' | 'critical';
     issues: number;
   };
-  adr: {
-    compliance: number;
-  };
-  ddd: {
-    progress: number;
-  };
   performance: {
     speedup: string;
   };
@@ -358,22 +339,6 @@ export const WORKER_CONFIGS: Record<string, WorkerConfig> = {
     interval: 900_000,  // 15 min
     enabled: true,
     priority: WorkerPriority.Normal,
-    timeout: 60_000,
-  },
-  'ddd': {
-    name: 'ddd',
-    description: 'Track DDD domain implementation progress',
-    interval: 600_000,  // 10 min
-    enabled: true,
-    priority: WorkerPriority.Low,
-    timeout: 30_000,
-  },
-  'adr': {
-    name: 'adr',
-    description: 'Check ADR compliance across codebase',
-    interval: 900_000,  // 15 min
-    enabled: true,
-    priority: WorkerPriority.Low,
     timeout: 60_000,
   },
   'security': {
@@ -690,8 +655,6 @@ export class WorkerManager extends EventEmitter {
     // Get latest results
     const healthResult = this.metrics.get('health')?.lastResult as Record<string, unknown> | undefined;
     const securityResult = this.metrics.get('security')?.lastResult as Record<string, unknown> | undefined;
-    const adrResult = this.metrics.get('adr')?.lastResult as Record<string, unknown> | undefined;
-    const dddResult = this.metrics.get('ddd')?.lastResult as Record<string, unknown> | undefined;
     const perfResult = this.metrics.get('performance')?.lastResult as Record<string, unknown> | undefined;
 
     return {
@@ -708,12 +671,6 @@ export class WorkerManager extends EventEmitter {
       security: {
         status: securityResult?.status as 'clean' | 'warning' | 'critical' ?? 'clean',
         issues: securityResult?.totalIssues as number ?? 0,
-      },
-      adr: {
-        compliance: adrResult?.compliance as number ?? 0,
-      },
-      ddd: {
-        progress: dddResult?.progress as number ?? 0,
       },
       performance: {
         speedup: perfResult?.speedup as string ?? '1.0x',
@@ -755,12 +712,6 @@ export class WorkerManager extends EventEmitter {
     const secIcon = data.security.status === 'critical' ? '🚨' :
                     data.security.status === 'warning' ? '⚠️' : '🛡️';
     parts.push(`${secIcon}${data.security.issues}`);
-
-    // ADR Compliance
-    parts.push(`📋${data.adr.compliance}%`);
-
-    // DDD Progress
-    parts.push(`🏗️${data.ddd.progress}%`);
 
     // Performance
     parts.push(`⚡${data.performance.speedup}`);
@@ -1049,15 +1000,6 @@ export function createPerformanceWorker(projectRoot: string): WorkerHandler {
     const cpus = os.cpus();
     const loadAvg = os.loadavg()[0];
 
-    // V3 codebase stats
-    let v3Lines = 0;
-    try {
-      const v3Path = path.join(projectRoot, 'v3');
-      v3Lines = await countLines(v3Path, '.ts');
-    } catch {
-      // V3 dir may not exist
-    }
-
     return {
       worker: 'performance',
       success: true,
@@ -1072,9 +1014,6 @@ export function createPerformanceWorker(projectRoot: string): WorkerHandler {
         cpu: {
           cores: cpus.length,
           loadAvg: loadAvg.toFixed(2),
-        },
-        codebase: {
-          v3Lines,
         },
         speedup: '1.0x',  // Placeholder
       },
@@ -1254,212 +1193,6 @@ export function createLearningWorker(projectRoot: string): WorkerHandler {
       duration: Date.now() - startTime,
       timestamp: new Date(),
       data: learningData,
-    };
-  };
-}
-
-export function createADRWorker(projectRoot: string): WorkerHandler {
-  return async (): Promise<WorkerResult> => {
-    const startTime = Date.now();
-
-    const adrChecks: Record<string, { compliant: boolean; reason?: string }> = {};
-    const v3Path = path.join(projectRoot, 'v3');
-    const dddDomains = ['agent-lifecycle', 'task-execution', 'memory-management', 'coordination'];
-
-    // Run all ADR checks in parallel for 60-80% speedup
-    const [
-      adr001Result,
-      adr002Results,
-      adr005Result,
-      adr006Result,
-      adr008Result,
-      adr011Result,
-      adr012Result,
-    ] = await Promise.all([
-      // ADR-001: agentic-flow integration
-      fs.readFile(path.join(v3Path, 'package.json'), 'utf-8')
-        .then(content => {
-          const pkg = safeJsonParse<Record<string, unknown>>(content);
-          return {
-            compliant: pkg.dependencies?.['agentic-flow'] !== undefined ||
-                       pkg.devDependencies?.['agentic-flow'] !== undefined,
-            reason: 'agentic-flow dependency',
-          };
-        })
-        .catch(() => ({ compliant: false, reason: 'Package not found' })),
-
-      // ADR-002: DDD domains (parallel check)
-      Promise.allSettled(
-        dddDomains.map(d => fs.access(path.join(v3Path, '@claude-flow', d)))
-      ),
-
-      // ADR-005: MCP-first design
-      fs.access(path.join(v3Path, '@claude-flow', 'mcp'))
-        .then(() => ({ compliant: true, reason: 'MCP package exists' }))
-        .catch(() => ({ compliant: false, reason: 'No MCP package' })),
-
-      // ADR-006: Memory unification
-      fs.access(path.join(v3Path, '@claude-flow', 'memory'))
-        .then(() => ({ compliant: true, reason: 'Memory package exists' }))
-        .catch(() => ({ compliant: false, reason: 'No memory package' })),
-
-      // ADR-008: Vitest over Jest
-      fs.readFile(path.join(projectRoot, 'package.json'), 'utf-8')
-        .then(content => {
-          const pkg = safeJsonParse<Record<string, unknown>>(content);
-          const hasVitest = (pkg.devDependencies as Record<string, unknown>)?.vitest !== undefined;
-          return { compliant: hasVitest, reason: hasVitest ? 'Vitest found' : 'No Vitest' };
-        })
-        .catch(() => ({ compliant: false, reason: 'Package not readable' })),
-
-      // ADR-011: LLM Provider System
-      fs.access(path.join(v3Path, '@claude-flow', 'providers'))
-        .then(() => ({ compliant: true, reason: 'Providers package exists' }))
-        .catch(() => ({ compliant: false, reason: 'No providers package' })),
-
-      // ADR-012: MCP Security
-      fs.readFile(path.join(v3Path, '@claude-flow', 'mcp', 'src', 'index.ts'), 'utf-8')
-        .then(content => {
-          const hasRateLimiter = content.includes('RateLimiter');
-          const hasOAuth = content.includes('OAuth');
-          const hasSchemaValidator = content.includes('validateSchema');
-          return {
-            compliant: hasRateLimiter && hasOAuth && hasSchemaValidator,
-            reason: `Rate:${hasRateLimiter} OAuth:${hasOAuth} Schema:${hasSchemaValidator}`,
-          };
-        })
-        .catch(() => ({ compliant: false, reason: 'MCP index not readable' })),
-    ]);
-
-    // Process results
-    adrChecks['ADR-001'] = adr001Result;
-
-    const dddCount = adr002Results.filter(r => r.status === 'fulfilled').length;
-    adrChecks['ADR-002'] = {
-      compliant: dddCount >= 2,
-      reason: `${dddCount}/${dddDomains.length} domains`,
-    };
-
-    adrChecks['ADR-005'] = adr005Result;
-    adrChecks['ADR-006'] = adr006Result;
-    adrChecks['ADR-008'] = adr008Result;
-    adrChecks['ADR-011'] = adr011Result;
-    adrChecks['ADR-012'] = adr012Result;
-
-    const compliantCount = Object.values(adrChecks).filter(c => c.compliant).length;
-    const totalCount = Object.keys(adrChecks).length;
-
-    // Save results
-    try {
-      const outputPath = path.join(projectRoot, '.claude-flow', 'metrics', 'adr-compliance.json');
-      await fs.writeFile(outputPath, JSON.stringify({
-        timestamp: new Date().toISOString(),
-        compliance: Math.round((compliantCount / totalCount) * 100),
-        checks: adrChecks,
-      }, null, 2));
-    } catch {
-      // Ignore write errors
-    }
-
-    return {
-      worker: 'adr',
-      success: true,
-      duration: Date.now() - startTime,
-      timestamp: new Date(),
-      data: {
-        compliance: Math.round((compliantCount / totalCount) * 100),
-        compliant: compliantCount,
-        total: totalCount,
-        checks: adrChecks,
-      },
-    };
-  };
-}
-
-export function createDDDWorker(projectRoot: string): WorkerHandler {
-  return async (): Promise<WorkerResult> => {
-    const startTime = Date.now();
-
-    const v3Path = path.join(projectRoot, 'v3');
-    const dddMetrics: Record<string, Record<string, number>> = {};
-    let totalScore = 0;
-    let maxScore = 0;
-
-    const modules = [
-      '@moflo/hooks',
-      '@moflo/memory',
-    ];
-
-    // Process all modules in parallel for 70-90% speedup
-    const moduleResults = await Promise.all(
-      modules.map(async (mod) => {
-        const modPath = path.join(v3Path, mod);
-        const modMetrics: Record<string, number> = {
-          entities: 0,
-          valueObjects: 0,
-          aggregates: 0,
-          repositories: 0,
-          services: 0,
-          domainEvents: 0,
-        };
-
-        try {
-          await fs.access(modPath);
-
-          // Count DDD patterns by searching for common patterns
-          const srcPath = path.join(modPath, 'src');
-          const patterns = await searchDDDPatterns(srcPath);
-          Object.assign(modMetrics, patterns);
-
-          // Calculate score (simple heuristic)
-          const modScore = patterns.entities * 2 + patterns.valueObjects +
-                          patterns.aggregates * 3 + patterns.repositories * 2 +
-                          patterns.services + patterns.domainEvents * 2;
-
-          return { mod, modMetrics, modScore, exists: true };
-        } catch {
-          return { mod, modMetrics, modScore: 0, exists: false };
-        }
-      })
-    );
-
-    // Aggregate results
-    for (const result of moduleResults) {
-      if (result.exists) {
-        dddMetrics[result.mod] = result.modMetrics;
-        totalScore += result.modScore;
-        maxScore += 20;
-      }
-    }
-
-    const progressPct = maxScore > 0 ? Math.min(100, Math.round((totalScore / maxScore) * 100)) : 0;
-
-    // Save metrics
-    try {
-      const outputPath = path.join(projectRoot, '.claude-flow', 'metrics', 'ddd-progress.json');
-      await fs.writeFile(outputPath, JSON.stringify({
-        timestamp: new Date().toISOString(),
-        progress: progressPct,
-        score: totalScore,
-        maxScore,
-        modules: dddMetrics,
-      }, null, 2));
-    } catch {
-      // Ignore write errors
-    }
-
-    return {
-      worker: 'ddd',
-      success: true,
-      duration: Date.now() - startTime,
-      timestamp: new Date(),
-      data: {
-        progress: progressPct,
-        score: totalScore,
-        maxScore,
-        modulesTracked: Object.keys(dddMetrics).length,
-        modules: dddMetrics,
-      },
     };
   };
 }
@@ -1683,68 +1416,7 @@ export function createCacheWorker(projectRoot: string): WorkerHandler {
 // Utility Functions
 // ============================================================================
 
-async function countLines(dir: string, ext: string): Promise<number> {
-  let total = 0;
 
-  try {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-
-      if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
-        total += await countLines(fullPath, ext);
-      } else if (entry.isFile() && entry.name.endsWith(ext)) {
-        const content = await fs.readFile(fullPath, 'utf-8');
-        total += content.split(/\r?\n/).length;
-      }
-    }
-  } catch {
-    // Directory doesn't exist or can't be read
-  }
-
-  return total;
-}
-
-async function searchDDDPatterns(srcPath: string): Promise<Record<string, number>> {
-  const patterns = {
-    entities: 0,
-    valueObjects: 0,
-    aggregates: 0,
-    repositories: 0,
-    services: 0,
-    domainEvents: 0,
-  };
-
-  try {
-    const files = await collectFiles(srcPath, '.ts');
-
-    // Process files in batches for better I/O performance
-    const BATCH_SIZE = 10;
-    for (let i = 0; i < files.length; i += BATCH_SIZE) {
-      const batch = files.slice(i, i + BATCH_SIZE);
-      const contents = await Promise.all(
-        batch.map(file => cachedReadFile(file).catch(() => ''))
-      );
-
-      for (const content of contents) {
-        if (!content) continue;
-
-        // Use pre-compiled regexes (no /g flag to avoid state issues)
-        if (DDD_PATTERNS.entity.test(content)) patterns.entities++;
-        if (DDD_PATTERNS.valueObject.test(content)) patterns.valueObjects++;
-        if (DDD_PATTERNS.aggregate.test(content)) patterns.aggregates++;
-        if (DDD_PATTERNS.repository.test(content)) patterns.repositories++;
-        if (DDD_PATTERNS.service.test(content)) patterns.services++;
-        if (DDD_PATTERNS.domainEvent.test(content)) patterns.domainEvents++;
-      }
-    }
-  } catch {
-    // Ignore errors
-  }
-
-  return patterns;
-}
 
 async function collectFiles(dir: string, ext: string, depth = 0): Promise<string[]> {
   // Security: Prevent infinite recursion
@@ -1828,222 +1500,6 @@ function calculateAvgQuality(patterns: Array<{ quality?: number }>): number {
 }
 
 // ============================================================================
-// V3 Progress Worker - Accurate Implementation Metrics
-// ============================================================================
-
-/**
- * Creates a worker that calculates accurate V3 implementation progress.
- * Counts actual CLI commands, MCP tools, hooks, and packages.
- * Writes to v3-progress.json for statusline display.
- */
-export function createV3ProgressWorker(projectRoot: string): WorkerHandler {
-  return async (): Promise<WorkerResult> => {
-    const startTime = Date.now();
-    const v3Path = path.join(projectRoot, 'v3');
-    const cliPath = path.join(v3Path, '@claude-flow', 'cli', 'src');
-
-    // Count CLI commands (excluding index.ts)
-    let cliCommands = 0;
-    try {
-      const commandsPath = path.join(cliPath, 'commands');
-      const cmdFiles = await fs.readdir(commandsPath);
-      cliCommands = cmdFiles.filter(f => f.endsWith('.ts') && f !== 'index.ts').length;
-    } catch {
-      cliCommands = 28; // Known count from audit
-    }
-
-    // Count MCP tools
-    let mcpTools = 0;
-    try {
-      const toolsPath = path.join(cliPath, 'mcp-tools');
-      const toolFiles = await fs.readdir(toolsPath);
-      const toolModules = toolFiles.filter(f => f.endsWith('-tools.ts'));
-
-      // Count actual tool exports in each module
-      for (const toolFile of toolModules) {
-        const content = await fs.readFile(path.join(toolsPath, toolFile), 'utf-8');
-        // Count tool definitions by name patterns
-        const toolMatches = content.match(/name:\s*['"`][^'"`]+['"`]/g);
-        if (toolMatches) mcpTools += toolMatches.length;
-      }
-    } catch {
-      mcpTools = 119; // Known count from audit
-    }
-
-    // Count hooks subcommands
-    let hooksSubcommands = 0;
-    try {
-      const hooksPath = path.join(cliPath, 'commands', 'hooks.ts');
-      const content = await fs.readFile(hooksPath, 'utf-8');
-      // Count subcommand definitions
-      const subcmdMatches = content.match(/subcommands\s*:\s*\[[\s\S]*?\]/);
-      if (subcmdMatches) {
-        const nameMatches = subcmdMatches[0].match(/name:\s*['"`][^'"`]+['"`]/g);
-        hooksSubcommands = nameMatches ? nameMatches.length : 20;
-      }
-    } catch {
-      hooksSubcommands = 20; // Known count
-    }
-
-    // Count @claude-flow packages (excluding hidden directories)
-    let packages = 0;
-    const packageDirs: string[] = [];
-    try {
-      const packagesPath = path.join(v3Path, '@claude-flow');
-      const dirs = await fs.readdir(packagesPath, { withFileTypes: true });
-      for (const dir of dirs) {
-        if (dir.isDirectory() && !dir.name.startsWith('.')) {
-          packages++;
-          packageDirs.push(dir.name);
-        }
-      }
-    } catch {
-      packages = 17; // Known count from audit
-    }
-
-    // Count DDD layers (domain/, application/ folders in packages)
-    // Utility/service packages follow DDD differently - their services ARE the application layer
-    const utilityPackages = new Set([
-      'cli', 'hooks', 'mcp', 'shared', 'testing', 'agents', 'integration',
-      'embeddings', 'deployment', 'performance', 'plugins', 'providers'
-    ]);
-    let packagesWithDDD = 0;
-    for (const pkg of packageDirs) {
-      // Skip hidden packages
-      if (pkg.startsWith('.')) continue;
-
-      try {
-        const srcPath = path.join(v3Path, '@claude-flow', pkg, 'src');
-        const srcDirs = await fs.readdir(srcPath, { withFileTypes: true });
-        const hasDomain = srcDirs.some(d => d.isDirectory() && d.name === 'domain');
-        const hasApp = srcDirs.some(d => d.isDirectory() && d.name === 'application');
-        // Count as DDD if has explicit layers OR is a utility package (DDD by design)
-        if (hasDomain || hasApp || utilityPackages.has(pkg)) {
-          packagesWithDDD++;
-        }
-      } catch {
-        // Package doesn't have src - check if it's a utility package
-        if (utilityPackages.has(pkg)) packagesWithDDD++;
-      }
-    }
-
-    // Count total TS files and lines
-    let totalFiles = 0;
-    let totalLines = 0;
-    try {
-      const v3ClaudeFlow = path.join(v3Path, '@claude-flow');
-      totalFiles = await countFilesRecursive(v3ClaudeFlow, '.ts');
-      totalLines = await countLines(v3ClaudeFlow, '.ts');
-    } catch {
-      totalFiles = 419;
-      totalLines = 290913;
-    }
-
-    // Calculate progress based on actual implementation metrics
-    // Weights: CLI (25%), MCP (25%), Hooks (20%), Packages (15%), DDD Layers (15%)
-    const cliProgress = Math.min(100, (cliCommands / 28) * 100);
-    const mcpProgress = Math.min(100, (mcpTools / 100) * 100); // 100 is target baseline
-    const hooksProgress = Math.min(100, (hooksSubcommands / 20) * 100);
-    const pkgProgress = Math.min(100, (packages / 17) * 100); // 17 packages in v3
-    const dddProgress = Math.min(100, (packagesWithDDD / packages) * 100); // DDD relative to actual packages
-
-    const overallProgress = Math.round(
-      (cliProgress * 0.25) +
-      (mcpProgress * 0.25) +
-      (hooksProgress * 0.20) +
-      (pkgProgress * 0.15) +
-      (dddProgress * 0.15)
-    );
-
-    // Build metrics object
-    const metrics = {
-      domains: {
-        completed: packagesWithDDD,
-        total: packages,
-      },
-      ddd: {
-        progress: overallProgress,
-        modules: packages,
-        totalFiles,
-        totalLines,
-      },
-      cli: {
-        commands: cliCommands,
-        progress: Math.round(cliProgress),
-      },
-      mcp: {
-        tools: mcpTools,
-        progress: Math.round(mcpProgress),
-      },
-      hooks: {
-        subcommands: hooksSubcommands,
-        progress: Math.round(hooksProgress),
-      },
-      packages: {
-        total: packages,
-        withDDD: packagesWithDDD,
-        list: packageDirs,
-      },
-      swarm: {
-        activeAgents: 0,
-        totalAgents: 15,
-      },
-      lastUpdated: new Date().toISOString(),
-      source: 'v3progress-worker',
-    };
-
-    // Write to v3-progress.json
-    try {
-      const metricsDir = path.join(projectRoot, '.claude-flow', 'metrics');
-      await fs.mkdir(metricsDir, { recursive: true });
-      const outputPath = path.join(metricsDir, 'v3-progress.json');
-      await fs.writeFile(outputPath, JSON.stringify(metrics, null, 2));
-    } catch (error) {
-      // Log but don't fail
-      console.error('Failed to write v3-progress.json:', error);
-    }
-
-    return {
-      worker: 'v3progress',
-      success: true,
-      duration: Date.now() - startTime,
-      timestamp: new Date(),
-      data: {
-        progress: overallProgress,
-        cli: cliCommands,
-        mcp: mcpTools,
-        hooks: hooksSubcommands,
-        packages,
-        packagesWithDDD,
-        totalFiles,
-        totalLines,
-      },
-    };
-  };
-}
-
-/**
- * Count files recursively with extension
- */
-async function countFilesRecursive(dir: string, ext: string): Promise<number> {
-  let count = 0;
-  try {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
-        count += await countFilesRecursive(fullPath, ext);
-      } else if (entry.isFile() && entry.name.endsWith(ext)) {
-        count++;
-      }
-    }
-  } catch {
-    // Ignore
-  }
-  return count;
-}
-
-// ============================================================================
 // Factory
 // ============================================================================
 
@@ -2057,12 +1513,9 @@ export function createWorkerManager(projectRoot?: string): WorkerManager {
   manager.register('swarm', createSwarmWorker(root));
   manager.register('git', createGitWorker(root));
   manager.register('learning', createLearningWorker(root));
-  manager.register('adr', createADRWorker(root));
-  manager.register('ddd', createDDDWorker(root));
   manager.register('security', createSecurityWorker(root));
   manager.register('patterns', createPatternsWorker(root));
   manager.register('cache', createCacheWorker(root));
-  manager.register('v3progress', createV3ProgressWorker(root));
 
   return manager;
 }

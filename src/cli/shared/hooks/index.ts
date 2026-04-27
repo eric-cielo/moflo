@@ -7,7 +7,7 @@
  * Example usage:
  *
  * ```typescript
- * import { createHookRegistry, createHookExecutor, HookEvent, HookPriority } from '@moflo/shared/hooks';
+ * import { createHookRegistry, createHookExecutor, HookEvent, HookPriority } from './index.js';
  *
  * const registry = createHookRegistry();
  * const executor = createHookExecutor(registry, eventBus);

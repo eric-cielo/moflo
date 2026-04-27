@@ -11,7 +11,7 @@
  * 4. Evaluate against active rules
  * 5. Store results in the run ledger
  *
- * @module @moflo/guidance/headless
+ * @module moflo/cli/guidance/headless
  */
 
 import type {

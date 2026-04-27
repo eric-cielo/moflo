@@ -53,7 +53,7 @@ export interface LearningBridgeConfig {
   enabled?: boolean;
   /**
    * Optional factory for the neural learning system.
-   * When provided, this replaces the default dynamic import of @moflo/neural.
+   * When provided, this replaces the default dynamic import of the inlined neural module.
    * Primarily used for testing.
    */
   neuralLoader?: NeuralLoader;

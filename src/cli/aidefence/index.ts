@@ -164,7 +164,7 @@ export interface AIDefence {
  * const learning = createAIDefence({ enableLearning: true });
  *
  * // With MofloDb-backed vector store for HNSW search
- * import { MofloDbAdapter } from '@moflo/memory';
+ * import { MofloDbAdapter } from '../memory/index.js';
  * const vectorStore = new MofloDbAdapter({
  *   persistenceEnabled: true,
  *   persistencePath: './data/aidefence',

@@ -8,7 +8,7 @@
  * - Performance metrics
  * - Pattern learning
  *
- * @module @moflo/hooks/llm/llm-hooks
+ * @module moflo/cli/hooks/llm/llm-hooks
  */
 
 import { reasoningBank } from '../reasoningbank/index.js';

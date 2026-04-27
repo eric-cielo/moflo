@@ -235,7 +235,7 @@ describe('Plugin registry dependency ordering (Issue #10)', () => {
   it('should be verified by existing plugin-registry tests', () => {
     // The plugin registry already implements topological sorting with
     // cycle detection in resolveDependencies(). This sub-task is verified
-    // by existing tests in src/modules/plugins/__tests__/.
+    // by existing tests in src/cli/__tests__/plugins/.
     // This test documents that finding.
     expect(true).toBe(true);
   });

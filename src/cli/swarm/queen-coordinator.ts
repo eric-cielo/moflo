@@ -18,7 +18,7 @@
  * - Consensus coordination: <100ms
  * - Health check: <30ms
  *
- * @module @moflo/swarm/queen-coordinator
+ * @module moflo/cli/swarm/queen-coordinator
  */
 
 import { EventEmitter } from 'events';

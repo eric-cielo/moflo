@@ -3,8 +3,7 @@
 - **Status:** Implemented
 - **Date:** 2026-04-24 (decided), 2026-04-25 (implemented)
 - **Related:** Epic [#586](https://github.com/eric-cielo/moflo/issues/586), final story [#602](https://github.com/eric-cielo/moflo/issues/602), `feedback_no_fixed_depth_paths.md`, `feedback_no_stale_docs.md`, `feedback_optional_deps_gotcha.md`
-- **Foundation artifacts:** [`collapse-deps.json`](./collapse-deps.json), [`collapse-deps.md`](./collapse-deps.md)
-- **Outcome:** every former `@moflo/<pkg>` workspace package is now inlined under `src/cli/` (or deleted as dead code). The repo no longer has a `src/modules/` tree, no per-package `tsconfig.json`/`package.json`, and no bare `@moflo/*` specifiers in source.
+- **Outcome:** every former `@moflo/<pkg>` workspace package is now inlined under `src/cli/` (or deleted as dead code). The repo no longer has a `src/modules/` tree, no per-package `tsconfig.json`/`package.json`, and no bare `@moflo/*` specifiers in source. The static drift guard at `src/cli/__tests__/services/published-package-drift-guard.test.ts` now enforces non-regression.
 
 ## Context
 
@@ -28,7 +27,7 @@ The published tarball (`npm pack`) bundles only **11** of these (cli, embeddings
 
 ### Dependency graph snapshot
 
-From [`collapse-deps.md`](./collapse-deps.md):
+Pre-collapse leaf/trunk classification (preserved as historical context for the merge order):
 
 - **Leaves (zero outbound `@moflo/*` imports):** `aidefence`, `claims`, `embeddings`, `guidance`, `hooks`, `plugins`, `security`, `shared`, `spells`, `swarm`, `memory`, `neural` (13/14 — `aidefence` inlined in #590, `claims` deleted in #591, `embeddings` inlined in #592, `plugins` deleted in #593, `guidance` inlined in #600, `spells` inlined in #596, `swarm` inlined in #597, `memory + neural` inlined together in #598, `hooks` inlined in #599)
 - **Mid-tier:** `testing` → `cli` (walk-up)
@@ -119,11 +118,4 @@ The epic completes when all 14 packages are merged, the moflo-require helper is 
 
 ## Verification
 
-The dependency graph in [`collapse-deps.json`](./collapse-deps.json) is the source of truth for "is this collapse complete?" After each story merges:
-
-```bash
-node scripts/analyze-collapse-deps.mjs --src --json /tmp/post-merge.json
-jq '.adjacency | to_entries | map(select(.value | length > 0))' /tmp/post-merge.json
-```
-
-When that command returns `[]` and `jq '.rootRefs | length' /tmp/post-merge.json` returns `0`, the workspace collapse is done.
+Collapse completion is enforced statically by `src/cli/__tests__/services/published-package-drift-guard.test.ts`. The test fails if any `@moflo/*` bare specifier reappears in production source, or if `src/modules/` paths re-enter source/scripts/shipped docs.

@@ -10,7 +10,7 @@
 
 ### Command Pattern for Steps
 
-Every spell step type implements a `StepCommand` interface with `execute()`, `validate()`, `describeOutputs()`, and optional `rollback()`. Register step commands via a plugin-style `StepCommandRegistry` — follow the existing `PluginRegistry` pattern in `src/modules/plugins/`.
+Every spell step type implements a `StepCommand` interface with `execute()`, `validate()`, `describeOutputs()`, and optional `rollback()`. Register step commands via a plugin-style `StepCommandRegistry` — follow the existing `PluginRegistry` pattern in `src/cli/plugins/`.
 
 ### Spell Definitions
 

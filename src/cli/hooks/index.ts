@@ -121,8 +121,6 @@ export {
   createSwarmWorker,
   createGitWorker,
   createLearningWorker,
-  createADRWorker,
-  createDDDWorker,
   createSecurityWorker,
   createPatternsWorker,
   createCacheWorker,

@@ -32,9 +32,9 @@ This guide shows how to integrate the hooks system with V3's event bus, event st
 ### Step 1: Initialize Core Components
 
 ```typescript
-import { createEventBus } from '@moflo/shared/core';
-import { createHookRegistry, createHookExecutor } from '@moflo/shared/hooks';
-import { EventStore } from '@moflo/shared/events';
+import { createEventBus } from '../core/index.js';
+import { createHookRegistry, createHookExecutor } from './index.js';
+import { EventStore } from '../events/index.js';
 
 // Create core components
 const eventBus = createEventBus();
@@ -116,7 +116,7 @@ eventBus.on('hooks:error', async (event) => {
 ### Example: File Read with Hooks
 
 ```typescript
-import { HookEvent, HookContext } from '@moflo/shared/hooks';
+import { HookEvent, HookContext } from './index.js';
 import { readFile } from 'fs/promises';
 
 async function readFileWithHooks(filePath: string): Promise<string> {
@@ -184,7 +184,7 @@ async function readFileWithHooks(filePath: string): Promise<string> {
 ```typescript
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { HookEvent, HookContext } from '@moflo/shared/hooks';
+import { HookEvent, HookContext } from './index.js';
 
 const execAsync = promisify(exec);
 
@@ -255,7 +255,7 @@ async function executeCommandWithHooks(
 ## Integration with Agent Lifecycle
 
 ```typescript
-import { HookEvent, HookContext } from '@moflo/shared/hooks';
+import { HookEvent, HookContext } from './index.js';
 
 class AgentManager {
   async spawnAgent(type: string, config: Record<string, unknown>) {
@@ -339,7 +339,7 @@ class AgentManager {
 ## Integration with Session Management
 
 ```typescript
-import { HookEvent, HookContext } from '@moflo/shared/hooks';
+import { HookEvent, HookContext } from './index.js';
 
 class SessionManager {
   async startSession(userId?: string) {
@@ -395,8 +395,8 @@ Hooks can be registered via plugins (ADR-004):
 
 ```typescript
 // v3/plugins/security-hooks/index.ts
-import { Plugin } from '@moflo/shared';
-import { HookEvent, HookPriority } from '@moflo/shared/hooks';
+import { Plugin } from '../index.js';
+import { HookEvent, HookPriority } from './index.js';
 
 export default {
   name: 'security-hooks',
@@ -437,7 +437,7 @@ export default {
 Expose hooks via MCP tools:
 
 ```typescript
-// v3/@moflo/shared/src/mcp/tools/hooks.ts
+// src/cli/shared/mcp/tools/hooks.ts
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 export const registerHookTool: Tool = {
@@ -495,7 +495,7 @@ export const getHookStatsTool: Tool = {
 Store all hook executions for audit trail:
 
 ```typescript
-import { EventStore } from '@moflo/shared/events';
+import { EventStore } from '../events/index.js';
 
 // Create event store
 const eventStore = new EventStore({
@@ -540,7 +540,7 @@ import {
   HookEvent,
   HookPriority,
   HookContext,
-} from '@moflo/shared';
+} from '../index.js';
 
 class V3ToolManager {
   private eventBus = createEventBus();

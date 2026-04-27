@@ -146,7 +146,7 @@ describe('generateClaudeMd', () => {
   it('includes guidance control plane section when enabled', () => {
     const md = generateClaudeMd({ ...minimal, guidanceControlPlane: true });
     expect(md).toContain('## Guidance Control Plane');
-    expect(md).toContain('@moflo/guidance');
+    expect(md).toContain('uses moflo to enforce');
     expect(md).toContain('Gates enforce');
   });
 

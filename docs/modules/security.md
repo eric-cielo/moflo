@@ -25,7 +25,7 @@ CVE remediation primitives + a Valibot-schema input validator + secure token / c
 
 If you need any of these capabilities in production code, use the live alternatives:
 
-- **Path / command validation, ID generation, sanitization** → [`src/modules/shared/src/security/`](../../src/modules/shared/src/security/) exports `validateInput`, `validatePath`, `validateCommand`, `sanitizeString`, `escapeForSql`, `generateSecureId`, `generateUUID`, `generateSecureToken`, `secureRandomInt`, etc.
+- **Path / command validation, ID generation, sanitization** → [`src/cli/shared/security/`](../../src/cli/shared/security/) exports `validateInput`, `validatePath`, `validateCommand`, `sanitizeString`, `escapeForSql`, `generateSecureId`, `generateUUID`, `generateSecureToken`, `secureRandomInt`, etc.
 - **AI manipulation defense / prompt injection / jailbreak detection** → [`src/cli/aidefence/`](../../src/cli/aidefence/) (used by `flo security` CLI and the `aidefence_*` MCP tools).
 - **CLI security commands** → `src/cli/commands/security.ts` (the `flo security` command tree).
 - **MCP security tools** → `src/cli/mcp-tools/security-tools.ts` (registers `aidefence_*` tools).

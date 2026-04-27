@@ -6,7 +6,7 @@
  * 2. A set of task-scoped rule shards tagged by intent, risk, domain, repo path, tool class
  * 3. A machine-readable manifest with rule IDs, triggers, and verifiers
  *
- * @module @moflo/guidance/compiler
+ * @module moflo/cli/guidance/compiler
  */
 
 import { createHash } from 'node:crypto';

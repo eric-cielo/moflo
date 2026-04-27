@@ -20,7 +20,7 @@
  * Implements ADR-001: agentic-flow@alpha compatibility
  * Implements ADR-003: Unified coordination engine
  *
- * @module @moflo/swarm/federation-hub
+ * @module moflo/cli/swarm/federation-hub
  * @version 3.0.0-alpha.1
  */
 

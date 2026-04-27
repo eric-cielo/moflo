@@ -10,7 +10,7 @@
  * - Filters sensitive keys from error objects
  * - Truncates long messages to prevent log injection
  *
- * @module @moflo/shared/utils/secure-logger
+ * @module moflo/cli/shared/utils/secure-logger
  */
 interface LoggerConfig {
     /** Environment mode */

@@ -633,7 +633,7 @@ This means a user step named `bash` will override the built-in `bash` command. T
 Pass `stepDirs` and `projectRoot` to `createRunner()` to enable custom step discovery:
 
 ```typescript
-import { createRunner } from '@moflo/workflows';
+import { createRunner } from 'moflo/dist/src/cli/spells/index.js';
 
 const runner = createRunner({
   stepDirs: ['.claude/spells/steps/'],
@@ -861,9 +861,9 @@ Dry-run mode validates everything without executing anything. It checks:
 ```
 
 ```typescript
-import { runWorkflowFromContent } from '@moflo/workflows';
+import { runSpellFromContent } from 'moflo/dist/src/cli/spells/index.js';
 
-const result = await runWorkflowFromContent(yamlContent, 'deploy.yaml', {
+const result = await runSpellFromContent(yamlContent, 'deploy.yaml', {
   dryRun: true,
   args: { environment: 'staging' },
 });
@@ -956,10 +956,10 @@ Each running spell gets a unique ID (e.g., `wf-1711644123456`) that you can use 
 You can also use the spell engine directly from TypeScript:
 
 ```typescript
-import { createRunner, runWorkflowFromContent } from '@moflo/workflows';
+import { createRunner, runSpellFromContent } from 'moflo/dist/src/cli/spells/index.js';
 
 // Option 1: Run from YAML content (parse + validate + cast in one call)
-const result = await runWorkflowFromContent(yamlString, 'my-workflow.yaml', {
+const result = await runSpellFromContent(yamlString, 'my-spell.yaml', {
   args: { environment: 'staging' },
 });
 

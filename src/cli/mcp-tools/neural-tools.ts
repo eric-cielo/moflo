@@ -7,7 +7,7 @@
  * search with cosine similarity; training progress tracked (actual model
  * training requires external tools).
  *
- * Note: For production neural features, use @moflo/neural module
+ * Note: For production neural features, use the inlined src/cli/neural module
  */
 
 import type { MCPTool } from './types.js';

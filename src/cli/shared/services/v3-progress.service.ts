@@ -9,7 +9,7 @@
  *
  * Can be used from CLI, MCP tools, hooks, or programmatically.
  *
- * @module @moflo/shared/services/v3-progress
+ * @module moflo/cli/shared/services/v3-progress
  */
 
 import { promises as fs, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'fs';

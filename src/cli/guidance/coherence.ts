@@ -13,7 +13,7 @@
  * - Checks budgets and emits alerts when thresholds are crossed
  * - Estimates remaining capacity and costs
  *
- * @module @moflo/guidance/coherence
+ * @module moflo/cli/guidance/coherence
  */
 
 import type { RunEvent, OptimizationMetrics } from './types.js';

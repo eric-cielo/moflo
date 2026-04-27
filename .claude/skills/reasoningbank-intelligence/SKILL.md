@@ -9,13 +9,13 @@ Trajectory-based learning pipeline for moflo-enabled agents. Records what an age
 
 ## Prerequisites
 
-- `@moflo/neural` (ships with moflo)
+- moflo (the neural subsystem ships inline as part of the moflo package)
 - Moflo's memory DB at `.swarm/memory.db` (created on first run)
 
 ## Quick Start
 
 ```typescript
-import { createInitializedReasoningBank } from '@moflo/neural';
+import { createInitializedReasoningBank } from 'moflo/dist/src/cli/neural/reasoning-bank.js';
 
 const rb = await createInitializedReasoningBank({
   namespace: 'reasoning-bank',
@@ -144,5 +144,5 @@ That records, judges, and distills in one call.
 
 - `memory-patterns` skill — for non-trajectory memory (sessions, knowledge)
 - `memory-optimization` skill — HNSW tuning, quantization
-- `src/modules/neural/src/reasoning-bank.ts` — full API
-- `src/modules/neural/src/domain/services/learning-service.ts` — trajectory types
+- `src/cli/neural/reasoning-bank.ts` — full API
+- `src/cli/services/learning-service.ts` — trajectory types

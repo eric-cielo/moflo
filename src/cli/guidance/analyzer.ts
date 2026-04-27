@@ -9,7 +9,7 @@
  * list of changes that would improve the score. Changes can be applied
  * programmatically and the score re-measured to verify improvement.
  *
- * @module @moflo/guidance/analyzer
+ * @module moflo/cli/guidance/analyzer
  */
 
 import { createHash } from 'node:crypto';

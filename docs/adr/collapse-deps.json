@@ -1,9 +1,0 @@
-{
-  "packages": [],
-  "adjacency": {},
-  "rootRefs": [],
-  "cycles": [],
-  "files": 0,
-  "generatedAt": "2026-04-25T00:00:00Z",
-  "note": "Empty after epic #586 / story #602: every @moflo/* workspace package has been inlined or deleted. Re-running scripts/analyze-collapse-deps.mjs over a post-collapse tree is a no-op."
-}

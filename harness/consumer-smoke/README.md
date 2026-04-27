@@ -95,7 +95,7 @@ merge.
 ## When to run
 
 - Before every `/publish` — part of the publish preflight gate.
-- On any PR that touches `package.json`, `src/modules/*/package.json`, `bin/`,
+- On any PR that touches `package.json`, `bin/`,
   `src/cli/mcp-tools/`, or `.claude/skills/fl/`.
 - As the last gate in Story 3 of epic #501 — run against the shipped build
   via `--tarball` and close #464 when it passes clean (zero WARN is the bar).

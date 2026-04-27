@@ -33,7 +33,7 @@ powershell.exe -NoProfile -Command "wsl -d Ubuntu -- /home/eric/.nvm/versions/no
 node scripts/verify-bwrap-wsl.mjs
 ```
 
-The probes use the freshly-built `dist/`. Always run `cd src/modules/spells && npm run build` before invoking them.
+The probes use the freshly-built `dist/`. Always run `npm run build` before invoking them.
 
 ---
 

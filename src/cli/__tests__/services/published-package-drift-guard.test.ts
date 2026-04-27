@@ -157,4 +157,112 @@ describe('published-package drift guard (issue #585)', () => {
       `package.json "files" still has src/modules/ entries:\n  ${stale.join('\n  ')}`,
     ).toEqual([]);
   });
+
+  it('no src/modules/ references re-enter source, scripts, bin, or shipped guidance/skills', () => {
+    // Issue #661: post-collapse audit. The src/modules/ tree was deleted in
+    // PR #602 — every reference to it in code, scripts, comments, or shipped
+    // docs is stale and either misleading or actively wrong. Catches the next
+    // engineer who copies an old path from git history.
+    //
+    // Scope: production-relevant trees only. Historical refs in docs/ (e.g.
+    // ADRs that describe the collapse itself) are explicitly excluded.
+    const SCAN_ROOTS = [
+      join(REPO_ROOT, 'src', 'cli'),
+      join(REPO_ROOT, 'bin'),
+      join(REPO_ROOT, 'scripts'),
+      join(REPO_ROOT, '.claude', 'guidance', 'shipped'),
+      join(REPO_ROOT, '.claude', 'skills'),
+      join(REPO_ROOT, '.claude', 'scripts'),
+    ];
+    const STALE_RE = /\bsrc\/modules\//;
+    // Lines that mention `src/modules/` to *document its absence* are allowed:
+    // typical phrasings — "no longer", "deleted", "WRONG", "pre-collapse",
+    // "Replaced the pre-#XXX", etc. Any line missing these markers is a
+    // real violation.
+    const HISTORICAL_MARKERS = /no longer|deleted|removed|WRONG|pre-collapse|pre-#?\d|formerly|workspace tree|workspace-collapse|was the|used to|legacy|stale|banned/i;
+    const offenders: string[] = [];
+    for (const root of SCAN_ROOTS) {
+      if (!existsSync(root)) continue;
+      for (const file of walkAll(root)) {
+        // Skip the drift guard itself — it intentionally talks about the
+        // legacy tree to assert its absence.
+        if (file.endsWith('published-package-drift-guard.test.ts')) continue;
+        if (file.endsWith('.db') || file.endsWith('.bin') || file.endsWith('.wasm')) continue;
+        const text = readFileSync(file, 'utf8');
+        if (!STALE_RE.test(text)) continue;
+        const rel = relative(REPO_ROOT, file).replace(/\\/g, '/');
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          if (!STALE_RE.test(lines[i])) continue;
+          if (HISTORICAL_MARKERS.test(lines[i])) continue;
+          offenders.push(`${rel}:${i + 1}`);
+        }
+      }
+    }
+    expect(
+      offenders,
+      `Stale src/modules/ refs detected (collapse #586/#602 deleted that tree):\n  ${offenders.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
+  it('no `npm install @moflo/<pkg>` strings remain in source or shipped guidance', () => {
+    // Issue #661: moflo publishes as a single npm package called `moflo`. Any
+    // `npm install @moflo/cli` (or @moflo/neural, @moflo/memory, …) string in
+    // user-facing output sends consumers to a 404. Catches both error
+    // messages and example commands.
+    const SCAN_ROOTS = [
+      join(REPO_ROOT, 'src', 'cli'),
+      join(REPO_ROOT, 'bin'),
+      join(REPO_ROOT, 'scripts'),
+      join(REPO_ROOT, '.claude', 'guidance', 'shipped'),
+      join(REPO_ROOT, '.claude', 'skills'),
+      join(REPO_ROOT, '.claude', 'scripts'),
+    ];
+    const STALE_RE = /npm\s+install\s+(?:-g\s+)?@moflo\//;
+    const offenders: string[] = [];
+    for (const root of SCAN_ROOTS) {
+      if (!existsSync(root)) continue;
+      for (const file of walkAll(root)) {
+        if (file.endsWith('published-package-drift-guard.test.ts')) continue;
+        if (file.endsWith('.db') || file.endsWith('.bin') || file.endsWith('.wasm')) continue;
+        const text = readFileSync(file, 'utf8');
+        if (!STALE_RE.test(text)) continue;
+        const rel = relative(REPO_ROOT, file).replace(/\\/g, '/');
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          if (STALE_RE.test(lines[i])) offenders.push(`${rel}:${i + 1}`);
+        }
+      }
+    }
+    expect(
+      offenders,
+      `Stale "npm install @moflo/<pkg>" strings — moflo publishes as a single package called "moflo":\n  ${offenders.join('\n  ')}`,
+    ).toEqual([]);
+  });
 });
+
+/**
+ * Walk every file under `dir`, recursively. Excludes node_modules, dist,
+ * .git, and other generated directories. Yields absolute paths for any file
+ * — caller filters by extension.
+ */
+function* walkAll(dir: string): Generator<string> {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '.git') continue;
+    if (entry.name === '.swarm' || entry.name === '.claude-flow' || entry.name === '.moflo') continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      yield* walkAll(full);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    if (entry.name.endsWith('.d.ts')) continue;
+    yield full;
+  }
+}

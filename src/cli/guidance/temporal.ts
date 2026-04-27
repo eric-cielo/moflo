@@ -28,7 +28,7 @@
  * - Conflict detection at a point in time
  * - Forward projection of assertion validity
  *
- * @module @moflo/guidance/temporal
+ * @module moflo/cli/guidance/temporal
  */
 
 import { randomUUID } from 'node:crypto';

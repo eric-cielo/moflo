@@ -175,7 +175,7 @@ const mofloRootCache = new Map<string, string | null>();
  *
  * This is the ONE walk-up routine — every other helper that needs to resolve
  * a path inside the moflo package should anchor here, not roll its own
- * `existsSync(...)` cascade. (Replaces the pre-#602 `src/modules/` anchor,
+ * `existsSync(...)` cascade. (Replaced the pre-#602 `src/modules/` anchor,
  * which silently broke after the workspace tree was collapsed.)
  */
 export function findMofloPackageRoot(): string | null {

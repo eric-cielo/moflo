@@ -1,5 +1,5 @@
 /**
- * @moflo/swarm - Standalone Types
+ * moflo/cli/swarm - Standalone Types
  * Core type definitions for multi-agent swarm coordination
  *
  * This file provides all types needed for standalone operation

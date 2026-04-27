@@ -46,7 +46,7 @@ async function loadModule<T>(path: string, exportName: string, label: string): P
     const mod = await import(path);
     return mod[exportName] as T;
   } catch {
-    output.printError(`RVFA ${label} module not found`, 'Install with: npm install @moflo/appliance');
+    output.printError(`RVFA ${label} module not found`, 'Rebuild with: npm run build (RVFA ships inline with moflo)');
     return null;
   }
 }

@@ -1,7 +1,7 @@
 /**
  * Shared Services
  *
- * @module @moflo/shared/services
+ * @module moflo/cli/shared/services
  */
 
 export {
