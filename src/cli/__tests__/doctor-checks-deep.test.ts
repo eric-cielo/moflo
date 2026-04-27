@@ -36,7 +36,11 @@ describe('doctor-checks-deep', () => {
   });
 
   describe('checkSpellExecution', () => {
-    it('should return a HealthCheck object', { timeout: 15_000 }, async () => {
+    // 30s timeout: this probe runs a real spell end-to-end (subprocess + spell
+    // engine + step execution). 15s was OK alone but flaked under full-suite
+    // load after the parallel batch had spun up the system. The check itself
+    // typically runs in ~7s; the headroom absorbs noisy CI / loaded-host runs.
+    it('should return a HealthCheck object', { timeout: 30_000 }, async () => {
       const result = await checkSpellExecution();
       expect(result).toHaveProperty('name', 'Spell Execution');
       expect(result).toHaveProperty('status');
@@ -44,7 +48,7 @@ describe('doctor-checks-deep', () => {
       expect(['pass', 'warn', 'fail']).toContain(result.status);
     });
 
-    it('should pass when spell engine is built', { timeout: 15_000 }, async () => {
+    it('should pass when spell engine is built', { timeout: 30_000 }, async () => {
       const result = await checkSpellExecution();
       // In the dev repo with a successful build, this should pass
       if (result.status === 'pass') {

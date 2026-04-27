@@ -1,15 +1,13 @@
 /**
  * Performance MCP Tools for CLI
  *
- * V2 Compatibility - Performance monitoring and optimization tools
+ * Performance reporting and benchmarking using real process / OS metrics.
  *
- * ✅ Uses REAL process metrics where available:
- * - process.memoryUsage() for real heap/memory stats
- * - process.cpuUsage() for real CPU time
+ * Uses REAL process metrics where available:
+ * - process.memoryUsage() for heap/memory stats
+ * - process.cpuUsage() for CPU time
  * - os module for system load and memory
- * - Real timing for benchmark operations
- *
- * Note: Some optimization suggestions are illustrative
+ * - performance.now() for benchmark timing
  */
 
 import type { MCPTool } from './types.js';
@@ -21,7 +19,6 @@ import * as os from 'node:os';
 const STORAGE_DIR = '.claude-flow';
 const PERF_DIR = 'performance';
 const METRICS_FILE = 'metrics.json';
-const BENCHMARKS_FILE = 'benchmarks.json';
 
 interface PerfMetrics {
   timestamp: string;
@@ -102,7 +99,6 @@ export const performanceTools: MCPTool[] = [
 
       // Get REAL system metrics via Node.js APIs
       const memUsage = process.memoryUsage();
-      const cpuUsage = process.cpuUsage();
       const loadAvg = os.loadavg();
       const cpus = os.cpus();
       const totalMem = os.totalmem();
@@ -184,70 +180,6 @@ export const performanceTools: MCPTool[] = [
           : currentMetrics.cpu.usage > 70
             ? [{ priority: 'medium', message: 'CPU load elevated - check for resource-intensive processes' }]
             : [{ priority: 'low', message: 'System running normally' }],
-      };
-    },
-  },
-  {
-    name: 'performance_bottleneck',
-    description: 'Detect performance bottlenecks',
-    category: 'performance',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        component: { type: 'string', description: 'Component to analyze' },
-        threshold: { type: 'number', description: 'Alert threshold' },
-        deep: { type: 'boolean', description: 'Deep analysis' },
-      },
-    },
-    handler: async (input) => {
-      const deep = input.deep as boolean;
-
-      const bottlenecks = [
-        {
-          component: 'memory',
-          severity: 'medium',
-          metric: 'heap_usage',
-          current: 78,
-          threshold: 80,
-          impact: 'May cause GC pressure',
-          suggestion: 'Consider increasing heap size or optimizing memory usage',
-        },
-        {
-          component: 'neural',
-          severity: 'low',
-          metric: 'inference_latency',
-          current: 45,
-          threshold: 100,
-          impact: 'Within acceptable range',
-          suggestion: 'Enable Flash Attention for further optimization',
-        },
-      ];
-
-      if (deep) {
-        bottlenecks.push({
-          component: 'database',
-          severity: 'low',
-          metric: 'query_time',
-          current: 15,
-          threshold: 50,
-          impact: 'Queries performing well',
-          suggestion: 'Consider adding indexes for frequently accessed patterns',
-        });
-      }
-
-      const criticalCount = bottlenecks.filter(b => b.severity === 'critical').length;
-      const warningCount = bottlenecks.filter(b => b.severity === 'medium').length;
-
-      return {
-        status: criticalCount > 0 ? 'critical' : warningCount > 0 ? 'warning' : 'healthy',
-        bottlenecks,
-        summary: {
-          total: bottlenecks.length,
-          critical: criticalCount,
-          warning: warningCount,
-          info: bottlenecks.filter(b => b.severity === 'low').length,
-        },
-        analyzedAt: new Date().toISOString(),
       };
     },
   },
@@ -379,221 +311,6 @@ export const performanceTools: MCPTool[] = [
         warmup,
         results,
         comparison,
-        timestamp: new Date().toISOString(),
-      };
-    },
-  },
-  {
-    name: 'performance_profile',
-    description: 'Profile specific component or operation',
-    category: 'performance',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        target: { type: 'string', description: 'Component to profile' },
-        duration: { type: 'number', description: 'Profile duration in seconds' },
-        sampleRate: { type: 'number', description: 'Sampling rate' },
-      },
-    },
-    handler: async (input) => {
-      const target = (input.target as string) || 'all';
-      const duration = (input.duration as number) || 5;
-
-      // Simulate profiling
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      return {
-        target,
-        duration: `${duration}s`,
-        samples: Math.floor(duration * 100),
-        hotspots: [
-          { function: 'vectorSearch', time: '35%', calls: 1500 },
-          { function: 'embedText', time: '25%', calls: 800 },
-          { function: 'agentCoordinate', time: '15%', calls: 200 },
-          { function: 'memoryStore', time: '10%', calls: 500 },
-          { function: 'other', time: '15%', calls: 3000 },
-        ],
-        memory: {
-          peakHeap: '256MB',
-          avgHeap: '180MB',
-          gcPauses: 5,
-          gcTime: '50ms',
-        },
-        recommendations: [
-          'vectorSearch: Consider batch processing for bulk operations',
-          'embedText: Enable caching for repeated queries',
-        ],
-      };
-    },
-  },
-  {
-    name: 'performance_optimize',
-    description: 'Apply performance optimizations',
-    category: 'performance',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        target: { type: 'string', enum: ['memory', 'latency', 'throughput', 'all'], description: 'Optimization target' },
-        aggressive: { type: 'boolean', description: 'Apply aggressive optimizations' },
-      },
-    },
-    handler: async (input) => {
-      const target = (input.target as string) || 'all';
-      const aggressive = input.aggressive as boolean;
-
-      const optimizations: Record<string, string[]> = {
-        memory: [
-          'Enabled Int8 quantization (3.92x compression)',
-          'Activated gradient checkpointing',
-          'Configured memory pooling',
-        ],
-        latency: [
-          'Enabled response caching (95% hit rate)',
-          'Activated batch processing',
-          'Configured connection pooling',
-        ],
-        throughput: [
-          'Enabled parallel processing',
-          'Configured worker pool (4 workers)',
-          'Activated request pipelining',
-        ],
-      };
-
-      const applied: string[] = [];
-      if (target === 'all') {
-        Object.values(optimizations).forEach(opts => applied.push(...opts));
-      } else {
-        applied.push(...(optimizations[target] || []));
-      }
-
-      if (aggressive) {
-        applied.push('Enabled aggressive GC');
-        applied.push('Activated speculative execution');
-      }
-
-      return {
-        target,
-        aggressive,
-        applied,
-        improvements: {
-          memory: '-50%',
-          latency: '-40%',
-          throughput: '+60%',
-        },
-        status: 'optimized',
-        timestamp: new Date().toISOString(),
-      };
-    },
-  },
-  {
-    name: 'performance_metrics',
-    description: 'Get detailed performance metrics',
-    category: 'performance',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        metric: { type: 'string', enum: ['cpu', 'memory', 'latency', 'throughput', 'all'], description: 'Metric type' },
-        aggregation: { type: 'string', enum: ['avg', 'min', 'max', 'p50', 'p95', 'p99'], description: 'Aggregation method' },
-        timeRange: { type: 'string', description: 'Time range' },
-      },
-    },
-    handler: async (input) => {
-      const metric = (input.metric as string) || 'all';
-      const aggregation = (input.aggregation as string) || 'avg';
-
-      // Get REAL system metrics
-      const memUsage = process.memoryUsage();
-      const loadAvg = os.loadavg();
-      const cpus = os.cpus();
-      const totalMem = os.totalmem();
-      const freeMem = os.freemem();
-      const store = loadPerfStore();
-
-      // Calculate real CPU percentage from load average
-      const cpuPercent = Math.min((loadAvg[0] / cpus.length) * 100, 100);
-      const memUsedMB = Math.round((totalMem - freeMem) / 1024 / 1024);
-      const memTotalMB = Math.round(totalMem / 1024 / 1024);
-      const heapMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-
-      // Calculate statistics from stored history
-      const history = store.metrics.slice(-100);
-      const cpuHistory = history.map(m => m.cpu.usage);
-      const memHistory = history.map(m => m.memory.used);
-
-      const calcStats = (arr: number[], current: number) => {
-        if (arr.length === 0) return { current, avg: current, min: current, max: current, p50: current, p95: current, p99: current };
-        const sorted = [...arr].sort((a, b) => a - b);
-        return {
-          current,
-          avg: arr.reduce((s, v) => s + v, 0) / arr.length,
-          min: Math.min(...arr),
-          max: Math.max(...arr),
-          p50: sorted[Math.floor(sorted.length * 0.5)],
-          p95: sorted[Math.floor(sorted.length * 0.95)],
-          p99: sorted[Math.floor(sorted.length * 0.99)],
-        };
-      };
-
-      const cpuStats = calcStats(cpuHistory, cpuPercent);
-      const memStats = calcStats(memHistory, memUsedMB);
-
-      const allMetrics = {
-        cpu: {
-          ...cpuStats,
-          unit: '%',
-          cores: cpus.length,
-          model: cpus[0]?.model,
-          loadAverage: loadAvg,
-          _real: true,
-        },
-        memory: {
-          ...memStats,
-          total: memTotalMB,
-          heap: heapMB,
-          heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
-          external: Math.round(memUsage.external / 1024 / 1024),
-          unit: 'MB',
-          _real: true,
-        },
-        latency: {
-          current: 45,
-          avg: 52,
-          min: 15,
-          max: 250,
-          p50: 48,
-          p95: 150,
-          p99: 220,
-          unit: 'ms',
-        },
-        throughput: {
-          current: 1250,
-          avg: 1100,
-          min: 500,
-          max: 2000,
-          p50: 1050,
-          p95: 1800,
-          p99: 1950,
-          unit: 'ops/s',
-        },
-      };
-
-      if (metric === 'all') {
-        return {
-          _real: true,
-          metrics: allMetrics,
-          aggregation,
-          historySize: history.length,
-          timestamp: new Date().toISOString(),
-        };
-      }
-
-      const selectedMetric = allMetrics[metric as keyof typeof allMetrics];
-      return {
-        _real: ['cpu', 'memory'].includes(metric),
-        metric,
-        value: selectedMetric[aggregation as keyof typeof selectedMetric],
-        unit: selectedMetric.unit,
-        details: selectedMetric,
         timestamp: new Date().toISOString(),
       };
     },
