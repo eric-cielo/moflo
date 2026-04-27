@@ -17,6 +17,7 @@
 
 import { HeadlessWorkerExecutor, HEADLESS_WORKER_TYPES, type HeadlessWorkerType } from '../services/headless-worker-executor.js';
 import { WorkerDaemon, getDaemon, startDaemon, stopDaemon } from '../services/worker-daemon.js';
+import { attachSignalHandlers } from '../shared/resilience/signal-handlers.js';
 import {
   initializeIntelligence,
   benchmarkAdaptation,
@@ -173,18 +174,11 @@ async function runDaemon(): Promise<void> {
   console.log('[Headless] Daemon started');
   console.log('[Headless] Press Ctrl+C to stop');
 
-  // Handle shutdown
-  process.on('SIGINT', async () => {
-    console.log('\n[Headless] Shutting down daemon...');
+  attachSignalHandlers(async (sig) => {
+    console.log(`\n[Headless] Received ${sig}, shutting down daemon...`);
     await stopDaemon();
     process.exit(0);
-  });
-
-  process.on('SIGTERM', async () => {
-    console.log('\n[Headless] Received SIGTERM, shutting down...');
-    await stopDaemon();
-    process.exit(0);
-  });
+  }, ['SIGINT', 'SIGTERM']);
 
   // Keep process running
   await new Promise(() => {});
