@@ -6,6 +6,7 @@
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { WorkerDaemon, getDaemon, startDaemon, stopDaemon, type WorkerType, type DaemonConfig } from '../services/worker-daemon.js';
+import { attachSignalHandlers } from '../shared/resilience/signal-handlers.js';
 import { acquireDaemonLock, releaseDaemonLock, getDaemonLockHolder, transferDaemonLock, lockPath } from '../services/daemon-lock.js';
 import { installDaemonService, uninstallDaemonService, isDaemonInstalled } from '../services/daemon-service.js';
 import { startDashboard, createDashboardMemoryAccessor, DEFAULT_DASHBOARD_PORT, type DashboardHandle } from '../services/daemon-dashboard.js';
@@ -115,8 +116,7 @@ const startCommand: Command = {
         releaseDaemonLock(projectRoot, process.pid, true);
       };
       process.on('exit', cleanup);
-      process.on('SIGINT', () => { cleanup(); process.exit(0); });
-      process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+      attachSignalHandlers(() => { cleanup(); process.exit(0); }, ['SIGINT', 'SIGTERM']);
       // Ignore SIGHUP on macOS/Linux — prevents daemon death when terminal closes (#1283)
       if (process.platform !== 'win32') {
         process.on('SIGHUP', () => { /* ignore — keep running */ });

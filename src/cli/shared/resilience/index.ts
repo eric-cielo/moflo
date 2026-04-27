@@ -24,3 +24,7 @@ export type { RateLimiter, RateLimiterOptions, RateLimitResult } from './rate-li
 // Bulkhead
 export { Bulkhead } from './bulkhead.js';
 export type { BulkheadOptions, BulkheadStats } from './bulkhead.js';
+
+// Signal handlers
+export { SHUTDOWN_SIGNALS, attachSignalHandlers } from './signal-handlers.js';
+export type { ShutdownSignal } from './signal-handlers.js';

@@ -28,6 +28,7 @@ import type {
   SchedulerEvent,
 } from '../spells/scheduler/scheduler.js';
 import { withTimeout } from '../shared/resilience/retry.js';
+import { attachSignalHandlers } from '../shared/resilience/signal-handlers.js';
 import { calculateDelay } from '../production/retry.js';
 import { CircuitBreaker } from '../production/circuit-breaker.js';
 
@@ -166,6 +167,17 @@ export class WorkerDaemon extends EventEmitter {
   // Injectable OS provider for testing (avoids ESM module namespace issues)
   private _osProvider?: { loadavg: () => number[]; totalmem: () => number; freemem: () => number };
 
+  // Detach callback returned by attachSignalHandlers; calling it removes the
+  // SIGTERM/SIGINT/SIGHUP handlers this daemon registered. Without this,
+  // every `new WorkerDaemon()` permanently bumps those listener counts and
+  // eventually trips MaxListenersExceededWarning.
+  private _detachShutdownHandlers?: () => void;
+
+  // Detach callbacks for the listeners forwarded from the headless executor.
+  // Mirrors the unsubScheduler pattern so stop() can release the executor's
+  // hold on this daemon's `this`.
+  private _detachHeadlessForwarders: Array<() => void> = [];
+
   constructor(projectRoot: string, config?: Partial<DaemonConfig>) {
     super();
     this.projectRoot = projectRoot;
@@ -237,22 +249,21 @@ export class WorkerDaemon extends EventEmitter {
       if (this.headlessAvailable) {
         this.log('info', 'Claude Code headless mode available - AI workers enabled');
 
-        // Forward headless executor events
-        this.headlessExecutor.on('execution:start', (data) => {
-          this.emit('headless:start', data);
-        });
-
-        this.headlessExecutor.on('execution:complete', (data) => {
-          this.emit('headless:complete', data);
-        });
-
-        this.headlessExecutor.on('execution:error', (data) => {
-          this.emit('headless:error', data);
-        });
-
-        this.headlessExecutor.on('output', (data) => {
-          this.emit('headless:output', data);
-        });
+        // Forward headless executor events. Track detach callbacks so stop()
+        // can release the executor's hold on `this` instead of leaving the
+        // forwarder closures alive on the executor's emitter.
+        const executor = this.headlessExecutor;
+        const forwards: Array<[string, string]> = [
+          ['execution:start', 'headless:start'],
+          ['execution:complete', 'headless:complete'],
+          ['execution:error', 'headless:error'],
+          ['output', 'headless:output'],
+        ];
+        for (const [src, dst] of forwards) {
+          const forwarder = (data: unknown) => { this.emit(dst, data); };
+          executor.on(src, forwarder);
+          this._detachHeadlessForwarders.push(() => executor.removeListener(src, forwarder));
+        }
       } else {
         this.log('info', 'Claude Code not found - AI workers will run in local fallback mode');
       }
@@ -344,15 +355,17 @@ export class WorkerDaemon extends EventEmitter {
    * Setup graceful shutdown handlers
    */
   private setupShutdownHandlers(): void {
-    const shutdown = async () => {
+    this._detachShutdownHandlers = attachSignalHandlers(async () => {
       this.log('info', 'Received shutdown signal, stopping daemon...');
       await this.stop();
       process.exit(0);
-    };
+    });
+  }
 
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
-    process.on('SIGHUP', shutdown);
+  /** Idempotent: clears `_detachShutdownHandlers` so a second call is a no-op. */
+  private removeShutdownHandlers(): void {
+    this._detachShutdownHandlers?.();
+    this._detachShutdownHandlers = undefined;
   }
 
   /**
@@ -537,6 +550,12 @@ export class WorkerDaemon extends EventEmitter {
   async stop(): Promise<void> {
     if (!this.running) {
       this.emit('warning', 'Daemon not running');
+      // Constructor registered signal handlers and headless-forwarders before
+      // start() was ever called, so stop()-without-start must still tear them
+      // down.
+      this.removeShutdownHandlers();
+      this.detachHeadlessForwarders();
+      this.removeAllListeners();
       return;
     }
 
@@ -562,6 +581,19 @@ export class WorkerDaemon extends EventEmitter {
     this.saveState();
     this.emit('stopped', { stoppedAt: new Date() });
     this.log('info', 'Daemon stopped');
+
+    // Tear down last so subscribers still observe the terminal events above.
+    this.removeShutdownHandlers();
+    this.detachHeadlessForwarders();
+    this.removeAllListeners();
+  }
+
+  /** Idempotent: drains the detach-callback list. */
+  private detachHeadlessForwarders(): void {
+    while (this._detachHeadlessForwarders.length > 0) {
+      const detach = this._detachHeadlessForwarders.pop();
+      detach?.();
+    }
   }
 
   /**
@@ -1279,11 +1311,14 @@ export async function startDaemon(projectRoot: string, config?: Partial<DaemonCo
 }
 
 /**
- * Stop daemon
+ * Stop daemon. Releases the singleton so a subsequent getDaemon() builds a
+ * fresh instance instead of handing back a torn-down zombie whose listeners
+ * have all been removed.
  */
 export async function stopDaemon(): Promise<void> {
   if (daemonInstance) {
     await daemonInstance.stop();
+    daemonInstance = null;
   }
 }
 

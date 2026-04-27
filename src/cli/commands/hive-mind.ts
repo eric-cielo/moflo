@@ -10,6 +10,7 @@ import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
+import { attachSignalHandlers } from '../shared/resilience/signal-handlers.js';
 import { spawn as childSpawn, execSync } from 'child_process';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -311,14 +312,11 @@ async function spawnClaudeCodeInstance(
         process.exit(0);
       };
 
-      process.on('SIGINT', sigintHandler);
-      process.on('SIGTERM', sigintHandler);
+      const detachSignals = attachSignalHandlers(sigintHandler, ['SIGINT', 'SIGTERM']);
 
       // Handle process exit
       claudeProcess.on('exit', (code) => {
-        // Clean up signal handlers
-        process.removeListener('SIGINT', sigintHandler);
-        process.removeListener('SIGTERM', sigintHandler);
+        detachSignals();
 
         if (code === 0) {
           output.writeln();

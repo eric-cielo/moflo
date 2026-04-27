@@ -17,6 +17,7 @@
  */
 
 import { migrateStore } from './migrate-store.js';
+import { attachSignalHandlers } from '../../shared/resilience/signal-handlers.js';
 import type {
   MigrationEmbedder,
   MigrationProgress,
@@ -131,10 +132,9 @@ export async function runUpgrade(options: UpgradeCoordinatorOptions): Promise<Up
     }
   }
 
-  let sigintListener: (() => void) | null = null;
+  let detachSigint: (() => void) | null = null;
   if (options.installSigintHandler !== false) {
-    sigintListener = () => abortAll('SIGINT');
-    process.on('SIGINT', sigintListener);
+    detachSigint = attachSignalHandlers(() => abortAll('SIGINT'), ['SIGINT']);
   }
 
   const startedAt = now();
@@ -190,7 +190,7 @@ export async function runUpgrade(options: UpgradeCoordinatorOptions): Promise<Up
       renderer.complete(totalMigrated, now() - startedAt);
     }
   } finally {
-    if (sigintListener) process.off('SIGINT', sigintListener);
+    detachSigint?.();
     if (externalAbortListener && externalSignal) {
       externalSignal.removeEventListener('abort', externalAbortListener);
     }
