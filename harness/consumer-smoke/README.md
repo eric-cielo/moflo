@@ -22,7 +22,8 @@ Takes ~30–60 seconds; most of it is `npm install` in the scratch consumer.
 |-------|------|----------|
 | Pack | `pack` | `npm pack` produces a tarball |
 | Install | `install` | Tarball installs cleanly into a scratch consumer |
-| Forbidden deps | `forbidden-deps` | `node_modules` + full dep tree free of `agentdb`, `agentic-flow`, `@ruvector/*`, `ruvector`, `onnxruntime-node` |
+| Forbidden deps | `forbidden-deps` | `node_modules` + full dep tree free of `agentdb`, `agentic-flow`, `@ruvector/*`, `ruvector`, `@xenova/transformers`, `fastembed` |
+| Required deps | `required-deps` | `onnxruntime-node` and `@anush008/tokenizers` are present (embedding stack intact) |
 | CLI | `cli-version` | `flo --version` reports a semver |
 | CLI | `doctor` | `flo doctor --json` runs (exit 0 or 1) |
 | Memory | `memory-init` | `flo memory init` initializes the sql.js+HNSW store |
@@ -34,7 +35,7 @@ Takes ~30–60 seconds; most of it is `npm install` in the scratch consumer.
 | Hooks | `hooks-list / pre-task / post-edit` | Hook commands succeed end-to-end |
 | Skill | `flo-skill` | `.claude/skills/fl/SKILL.md` ships inside the package |
 | Invariants | `no-stray-rvf`, `no-agentdb-rvf` | No surprise `.rvf` files at consumer root |
-| Surface | `moflo-install-size` | Enforces installed size budget (warn > 100 MB, fail > 120 MB) |
+| Surface | `moflo-install-size` | Enforces installed size budget (warn > 95 MB, fail > 110 MB) |
 
 ## Exit codes
 
@@ -44,12 +45,9 @@ Takes ~30–60 seconds; most of it is `npm install` in the scratch consumer.
 
 ## Known regressions (WARN, do not block)
 
-Some forbidden deps still leak through pending a dedicated fix. These are
-tracked in `lib/checks.mjs` under `KNOWN_FORBIDDEN_REGRESSIONS` with a link to
-the issue. Trim entries as fixes ship:
-
-- `onnxruntime-node` — transitive of `@xenova/transformers@2.17.2`
-  (in moflo's optionalDependencies). Blocks epic #501 Story 1 ship.
+`KNOWN_FORBIDDEN_REGRESSIONS` in `lib/checks.mjs` lists forbidden deps that
+still leak through pending a dedicated fix. Currently empty — every entry on
+the `FORBIDDEN_DEPS` list is a hard fail.
 
 ## Cross-platform
 
@@ -87,9 +85,9 @@ merge.
 ## Environment variables
 
 - `MOFLO_INSTALL_SIZE_WARN_MB` — Override the install-size warn threshold
-  (default: 100 MB). Non-positive or non-numeric values fall back to the default.
+  (default: 95 MB). Non-positive or non-numeric values fall back to the default.
 - `MOFLO_INSTALL_SIZE_MAX_MB` — Override the install-size fail threshold
-  (default: 120 MB). Use deliberately (e.g. a model bump) and land the new
+  (default: 110 MB). Use deliberately (e.g. a model bump) and land the new
   ceiling in the same PR as a README note so the budget stays a real contract.
 
 ## When to run

@@ -581,10 +581,14 @@ export function consumerInvariants(consumerDir) {
   }
 }
 
-// Defaults headroom over the README's ~80 MB post-prune claim.
+// Re-baselined post-workspace-collapse (#605, epic #586): consumer install
+// measured at ~83 MB on Windows (moflo pkg 10 MB + ORT/tokenizers/sql.js).
+// Warn ≈ +15% headroom, fail ≈ +33% headroom — same ratios as the prior
+// 100/120 budget held against an ~80 MB anchor, just tightened to the
+// current floor so a regression is caught before the budget creeps.
 // Override via MOFLO_INSTALL_SIZE_{WARN,MAX}_MB (see harness README).
-const INSTALL_SIZE_WARN_MB_DEFAULT = 100;
-const INSTALL_SIZE_MAX_MB_DEFAULT = 120;
+const INSTALL_SIZE_WARN_MB_DEFAULT = 95;
+const INSTALL_SIZE_MAX_MB_DEFAULT = 110;
 
 function readEnvMb(name, fallback) {
   const raw = process.env[name];

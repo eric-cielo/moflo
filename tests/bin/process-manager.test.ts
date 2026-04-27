@@ -113,14 +113,17 @@ describe('spawn()', () => {
       return { pid: r.pid };
     `);
 
-    // Wait a moment for it to exit
-    try { execFileSync('node', ['-e', 'setTimeout(()=>{},500)'], { timeout: 2000 }); } catch { /* ok */ }
-
-    // Respawn with same label should succeed (not skipped)
+    // Poll getActive until the OS reaper clears the previous PID, then respawn.
+    // Same fix as the `getActive returns only alive processes` test above —
+    // any fixed sleep is wrong by construction (#672 leaked at 500 ms and 2 s).
     const r2 = runPM(root, `
+      const deadline = Date.now() + 20000;
+      while (pm.getActive().some((p) => p.label === 'short-lived') && Date.now() < deadline) {
+        await new Promise((res) => setTimeout(res, 100));
+      }
       const r = pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'short-lived');
       return { pid: r.pid, skipped: r.skipped };
-    `);
+    `, 30000);
     expect(r2.skipped).toBe(false);
     expect(r2.pid).not.toBe(r1.pid);
 
