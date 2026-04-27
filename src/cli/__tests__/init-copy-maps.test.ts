@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { executeInit, DEFAULT_INIT_OPTIONS } from '../init/index.js';
-import { SKILLS_MAP } from '../init/executor.js';
+import { SKILLS_MAP, AGENTS_MAP } from '../init/executor.js';
 import type { InitOptions } from '../init/types.js';
 
 // ============================================================================
@@ -142,3 +142,50 @@ describe('SKILLS_MAP — every entry resolves to a real source skill dir', () =>
     expect(missing).toEqual([]);
   });
 });
+
+// ============================================================================
+// AGENTS_MAP integrity (mirrors SKILLS_MAP check — fixes orphans like #690/#694)
+// ============================================================================
+
+describe('AGENTS_MAP — every entry resolves to a real source agent dir', () => {
+  const agentsDir = path.resolve(__dirname, '..', '..', '..', '.claude', 'agents');
+
+  it('every AGENTS_MAP value names a directory under .claude/agents/', () => {
+    const missing: string[] = [];
+    for (const [category, agents] of Object.entries(AGENTS_MAP)) {
+      for (const agent of agents) {
+        if (!fs.existsSync(path.join(agentsDir, agent))) {
+          missing.push(`${category}.${agent}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+});
+
+// ============================================================================
+// flow-nexus drift guard (#694)
+//
+// Default-shipped agents/skills must not reference `mcp__flow-nexus__*` tools.
+// Flow-nexus is gated behind `mcp.flowNexus = true` opt-in — references in the
+// default ship path silently fail for any consumer who hasn't enabled it.
+// ============================================================================
+
+describe.each(['agents', 'skills'])(
+  'flow-nexus drift guard — no mcp__flow-nexus__ refs under .claude/%s/',
+  (subdir) => {
+    const claudeDir = path.resolve(__dirname, '..', '..', '..', '.claude');
+
+    it('contains zero offenders', () => {
+      const root = path.join(claudeDir, subdir);
+      if (!fs.existsSync(root)) return;
+      const offenders = fs
+        .readdirSync(root, { recursive: true, withFileTypes: true })
+        .filter((e) => e.isFile() && e.name.endsWith('.md'))
+        .map((e) => path.join(e.parentPath ?? (e as { path?: string }).path ?? root, e.name))
+        .filter((file) => /mcp__flow-nexus__\w+/.test(fs.readFileSync(file, 'utf-8')))
+        .map((file) => path.relative(claudeDir, file));
+      expect(offenders).toEqual([]);
+    });
+  },
+);
