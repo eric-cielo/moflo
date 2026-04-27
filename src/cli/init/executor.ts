@@ -71,9 +71,9 @@ const COMMANDS_MAP: Record<string, string[]> = {
 };
 
 /**
- * Agents to copy based on configuration
+ * Agents to copy based on configuration. Exported for integrity tests.
  */
-const AGENTS_MAP: Record<string, string[]> = {
+export const AGENTS_MAP: Record<string, string[]> = {
   core: ['core'],
   consensus: ['consensus'],
   github: ['github'],
@@ -84,10 +84,7 @@ const AGENTS_MAP: Record<string, string[]> = {
   // V3-specific agents
   v3: ['v3'],
   optimization: ['optimization'],
-  templates: ['templates'],
   testing: ['testing'],
-  sublinear: ['sublinear'],
-  flowNexus: ['flow-nexus'],
   analysis: ['analysis'],
   architecture: ['architecture'],
   development: ['development'],
@@ -96,7 +93,6 @@ const AGENTS_MAP: Record<string, string[]> = {
   specialized: ['specialized'],
   goal: ['goal'],
   sona: ['sona'],
-  payments: ['payments'],
   data: ['data'],
   custom: ['custom'],
 };
