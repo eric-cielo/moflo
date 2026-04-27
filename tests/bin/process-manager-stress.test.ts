@@ -35,13 +35,13 @@ function makeTempRoot(): string {
     __dirname,
     '../../.testoutput/.test-pm-stress-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
   );
-  mkdirSync(resolve(root, '.claude-flow'), { recursive: true });
+  mkdirSync(resolve(root, '.moflo'), { recursive: true });
   return root;
 }
 
 function cleanTempRoot(root: string) {
   // Kill any leftover processes tracked in the registry
-  const pidFile = join(root, '.claude-flow', 'background-pids.json');
+  const pidFile = join(root, '.moflo', 'background-pids.json');
   try {
     if (existsSync(pidFile)) {
       const entries = JSON.parse(readFileSync(pidFile, 'utf-8'));
@@ -73,7 +73,7 @@ function runPM(root: string, code: string): any {
 }
 
 function readRegistry(root: string): any[] {
-  const p = join(root, '.claude-flow', 'background-pids.json');
+  const p = join(root, '.moflo', 'background-pids.json');
   if (!existsSync(p)) return [];
   try {
     const parsed = JSON.parse(readFileSync(p, 'utf-8'));
@@ -186,7 +186,7 @@ describe('full lifecycle', () => {
     expect(readRegistry(root)).toHaveLength(0);
 
     // Lock should be cleared
-    expect(existsSync(join(root, '.claude-flow', 'spawn.lock'))).toBe(false);
+    expect(existsSync(join(root, '.moflo', 'spawn.lock'))).toBe(false);
   });
 
   it('new session after previous session-end works cleanly', () => {
@@ -272,7 +272,7 @@ describe('registry corruption resilience', () => {
   afterEach(() => { cleanTempRoot(root); });
 
   it('handles corrupt JSON in registry', () => {
-    writeFileSync(join(root, '.claude-flow', 'background-pids.json'), '{{{not json');
+    writeFileSync(join(root, '.moflo', 'background-pids.json'), '{{{not json');
     // Should not throw — readRegistry returns []
     const r = runPM(root, `
       const active = pm.getActive();
@@ -285,7 +285,7 @@ describe('registry corruption resilience', () => {
 
   it('handles non-array JSON in registry (e.g. object)', () => {
     writeFileSync(
-      join(root, '.claude-flow', 'background-pids.json'),
+      join(root, '.moflo', 'background-pids.json'),
       JSON.stringify({ notAnArray: true }),
     );
     const r = runPM(root, `return pm.getActive();`);
@@ -293,12 +293,12 @@ describe('registry corruption resilience', () => {
   });
 
   it('handles empty file', () => {
-    writeFileSync(join(root, '.claude-flow', 'background-pids.json'), '');
+    writeFileSync(join(root, '.moflo', 'background-pids.json'), '');
     const r = runPM(root, `return pm.getActive();`);
     expect(r).toEqual([]);
   });
 
-  it('handles missing .claude-flow directory', () => {
+  it('handles missing .moflo directory', () => {
     const bareRoot = resolve(
       __dirname,
       '../../.testoutput/.test-pm-bare-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
@@ -306,14 +306,14 @@ describe('registry corruption resilience', () => {
     mkdirSync(bareRoot, { recursive: true });
 
     try {
-      // Should create .claude-flow/ on first spawn
+      // Should create .moflo/ on first spawn
       const r = runPM(bareRoot, `
         const spawned = pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'bootstrap');
         return { pid: spawned.pid, skipped: spawned.skipped };
       `);
       expect(r.skipped).toBe(false);
       expect(r.pid).toBeGreaterThan(0);
-      expect(existsSync(join(bareRoot, '.claude-flow', 'background-pids.json'))).toBe(true);
+      expect(existsSync(join(bareRoot, '.moflo', 'background-pids.json'))).toBe(true);
     } finally {
       cleanTempRoot(bareRoot);
     }
@@ -321,7 +321,7 @@ describe('registry corruption resilience', () => {
 
   it('handles registry with entries missing pid field', () => {
     writeFileSync(
-      join(root, '.claude-flow', 'background-pids.json'),
+      join(root, '.moflo', 'background-pids.json'),
       JSON.stringify([{ label: 'no-pid', cmd: 'node' }]),
     );
     // isAlive(undefined) should return false, not throw
@@ -370,7 +370,7 @@ describe('killAll edge cases', () => {
     // Manually add a dead PID to registry
     const reg = readRegistry(root);
     reg.push({ pid: 99999999, label: 'dead', cmd: 'fake', startedAt: new Date().toISOString() });
-    writeFileSync(join(root, '.claude-flow', 'background-pids.json'), JSON.stringify(reg));
+    writeFileSync(join(root, '.moflo', 'background-pids.json'), JSON.stringify(reg));
 
     const r = runPM(root, `return pm.killAll();`);
     // Only the alive one should count as killed
@@ -445,7 +445,7 @@ describe('prune accuracy', () => {
     for (let i = 0; i < 3; i++) {
       reg.push({ pid: 99999990 + i, label: `ghost-${i}`, cmd: 'fake', startedAt: new Date().toISOString() });
     }
-    writeFileSync(join(root, '.claude-flow', 'background-pids.json'), JSON.stringify(reg));
+    writeFileSync(join(root, '.moflo', 'background-pids.json'), JSON.stringify(reg));
 
     const r = runPM(root, `return pm.prune();`);
     expect(r.pruned).toBe(3);
@@ -497,15 +497,15 @@ describe('registry-cleanup.cjs', () => {
 
   it('killTrackedSync removes spawn lock', () => {
     // Create a lock file
-    writeFileSync(join(root, '.claude-flow', 'spawn.lock'), String(Date.now()));
-    expect(existsSync(join(root, '.claude-flow', 'spawn.lock'))).toBe(true);
+    writeFileSync(join(root, '.moflo', 'spawn.lock'), String(Date.now()));
+    expect(existsSync(join(root, '.moflo', 'spawn.lock'))).toBe(true);
 
     execFileSync('node', ['-e', `
       const { killTrackedSync } = require('${CLEANUP_PATH.replace(/\\/g, '/')}');
       killTrackedSync('${root.replace(/\\/g, '/')}');
     `], { encoding: 'utf-8', timeout: 10000 });
 
-    expect(existsSync(join(root, '.claude-flow', 'spawn.lock'))).toBe(false);
+    expect(existsSync(join(root, '.moflo', 'spawn.lock'))).toBe(false);
   });
 
   it('killTrackedSync handles empty/missing registry gracefully', () => {
@@ -520,7 +520,7 @@ describe('registry-cleanup.cjs', () => {
   });
 
   it('killTrackedSync handles corrupt registry', () => {
-    writeFileSync(join(root, '.claude-flow', 'background-pids.json'), 'NOT-JSON!!!');
+    writeFileSync(join(root, '.moflo', 'background-pids.json'), 'NOT-JSON!!!');
 
     const result = execFileSync('node', ['-e', `
       const { killTrackedSync } = require('${CLEANUP_PATH.replace(/\\/g, '/')}');
@@ -572,7 +572,7 @@ describe('lock contention', () => {
 
   it('stale lock can be overwritten by acquireLock', () => {
     // Create a stale lock (mtime = 60s ago)
-    const lockFile = join(root, '.claude-flow', 'spawn.lock');
+    const lockFile = join(root, '.moflo', 'spawn.lock');
     writeFileSync(lockFile, String(Date.now()));
     const past = new Date(Date.now() - 60000);
     utimesSync(lockFile, past, past);

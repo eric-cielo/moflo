@@ -1,8 +1,8 @@
 #!/bin/bash
 # Claude Flow V3 Status Display Template (Linux/macOS)
 
-METRICS_DIR="${PROJECT_ROOT:-.}/.claude-flow/metrics"
-SECURITY_DIR="${PROJECT_ROOT:-.}/.claude-flow/security"
+METRICS_DIR="${PROJECT_ROOT:-.}/.moflo/metrics"
+SECURITY_DIR="${PROJECT_ROOT:-.}/.moflo/security"
 
 # Colors
 GREEN='\033[0;32m'

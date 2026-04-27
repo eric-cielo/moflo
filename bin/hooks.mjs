@@ -522,7 +522,7 @@ function isDaemonLockHeld() {
   }
 
   // Fallback: naive PID check (only if daemon-lock.js unavailable)
-  const lockFile = resolve(projectRoot, '.claude-flow', 'daemon.lock');
+  const lockFile = resolve(projectRoot, '.moflo', 'daemon.lock');
   if (!existsSync(lockFile)) return false;
   try {
     const data = JSON.parse(readFileSync(lockFile, 'utf-8'));
@@ -539,7 +539,7 @@ function isDaemonLockHeld() {
 // Debounce file — prevents thundering-herd spawns when multiple hooks fire
 // within the same second (e.g. subagents each triggering SessionStart).
 const SPAWN_DEBOUNCE_MS = 30_000;
-const SPAWN_STAMP_FILE = resolve(projectRoot, '.claude-flow', 'daemon-spawn.stamp');
+const SPAWN_STAMP_FILE = resolve(projectRoot, '.moflo', 'daemon-spawn.stamp');
 
 function isDaemonSpawnRecent() {
   try {
@@ -553,7 +553,7 @@ function isDaemonSpawnRecent() {
 
 function touchSpawnStamp() {
   try {
-    const dir = resolve(projectRoot, '.claude-flow');
+    const dir = resolve(projectRoot, '.moflo');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(SPAWN_STAMP_FILE, String(Date.now()));
   } catch { /* non-fatal */ }

@@ -113,7 +113,7 @@ export class V3ProgressService extends EventEmitter {
     this.projectRoot = options.projectRoot || process.cwd();
     this.v3Path = join(this.projectRoot, 'v3');
     this.cliPath = join(this.v3Path, '@claude-flow', 'cli', 'src');
-    this.metricsPath = options.outputPath || join(this.projectRoot, '.claude-flow', 'metrics', 'v3-progress.json');
+    this.metricsPath = options.outputPath || join(this.projectRoot, '.moflo', 'metrics', 'v3-progress.json');
   }
 
   /**

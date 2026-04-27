@@ -300,7 +300,7 @@ const statusCommand: Command = {
       const statusData = {
         rootGuidance: rootExists ? 'found' : 'not found',
         localOverlay: localExists ? 'found' : 'not configured',
-        dataDir: existsSync('./.claude-flow/guidance') ? 'exists' : 'not created',
+        dataDir: existsSync('./.moflo/guidance') ? 'exists' : 'not created',
       };
 
       if (jsonOutput) {

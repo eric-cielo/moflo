@@ -291,7 +291,7 @@ function validatePath(path: string, label: string): void {
   }
 
   // Prevent path traversal outside expected directories
-  if (!resolved.includes('.claude-flow') && !resolved.includes('bin')) {
+  if (!resolved.includes('.moflo') && !resolved.includes('bin')) {
     // Allow only paths within project structure
     const cwd = process.cwd();
     if (!resolved.startsWith(cwd)) {
@@ -308,7 +308,7 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
   const resolvedRoot = resolve(projectRoot);
   validatePath(resolvedRoot, 'Project root');
 
-  const stateDir = join(resolvedRoot, '.claude-flow');
+  const stateDir = join(resolvedRoot, '.moflo');
   const logFile = join(stateDir, 'daemon.log');
 
   // Validate all paths

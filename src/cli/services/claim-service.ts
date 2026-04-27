@@ -214,7 +214,7 @@ export class ClaimService extends EventEmitter {
 
   constructor(projectRoot: string, config?: Partial<WorkStealingConfig>) {
     super();
-    this.storagePath = path.join(projectRoot, '.claude-flow', 'claims');
+    this.storagePath = path.join(projectRoot, '.moflo', 'claims');
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 

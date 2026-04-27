@@ -38,7 +38,7 @@ function simulateAutoUpdate(projectRoot: string) {
 
   // 2. Check version and sync
   const mofloPkgPath = join(projectRoot, 'node_modules/moflo/package.json');
-  const versionStampPath = join(projectRoot, '.claude-flow', 'moflo-version');
+  const versionStampPath = join(projectRoot, '.moflo', 'moflo-version');
 
   if (!autoUpdateConfig.enabled || !existsSync(mofloPkgPath)) {
     return { synced: false, reason: !autoUpdateConfig.enabled ? 'disabled' : 'no-package' };
@@ -110,7 +110,7 @@ function simulateAutoUpdate(projectRoot: string) {
   }
 
   // Write version stamp
-  const cfDir = join(projectRoot, '.claude-flow');
+  const cfDir = join(projectRoot, '.moflo');
   if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
   writeFileSync(versionStampPath, installedVersion);
 
@@ -169,7 +169,7 @@ describe('auto-update', () => {
     // Project directories
     mkdirSync(join(tempDir, '.claude/scripts'), { recursive: true });
     mkdirSync(join(tempDir, '.claude/helpers'), { recursive: true });
-    mkdirSync(join(tempDir, '.claude-flow'), { recursive: true });
+    mkdirSync(join(tempDir, '.moflo'), { recursive: true });
 
     // Write old scripts (to verify they get overwritten)
     writeFileSync(join(tempDir, '.claude/scripts/hooks.mjs'), '// old v1');
@@ -177,7 +177,7 @@ describe('auto-update', () => {
 
     // Cached version stamp
     if (cachedVersion) {
-      writeFileSync(join(tempDir, '.claude-flow/moflo-version'), cachedVersion);
+      writeFileSync(join(tempDir, '.moflo/moflo-version'), cachedVersion);
     }
 
     // moflo.yaml
@@ -226,7 +226,7 @@ describe('auto-update', () => {
       scaffoldProject({ mofloVersion: '4.8.0' });
       simulateAutoUpdate(tempDir);
 
-      const stamp = readFileSync(join(tempDir, '.claude-flow/moflo-version'), 'utf-8');
+      const stamp = readFileSync(join(tempDir, '.moflo/moflo-version'), 'utf-8');
       expect(stamp).toBe('4.8.0');
     });
 
@@ -526,7 +526,7 @@ describe('auto-update', () => {
 
         mkdirSync(join(spaceDir, '.claude/scripts'), { recursive: true });
         mkdirSync(join(spaceDir, '.claude/helpers'), { recursive: true });
-        mkdirSync(join(spaceDir, '.claude-flow'), { recursive: true });
+        mkdirSync(join(spaceDir, '.moflo'), { recursive: true });
 
         const result = simulateAutoUpdate(spaceDir);
         expect(result.synced).toBe(true);
@@ -552,7 +552,7 @@ describe('auto-update', () => {
       const mofloPkgDir = join(tempDir, 'node_modules/moflo');
       mkdirSync(mofloPkgDir, { recursive: true });
       writeFileSync(join(mofloPkgDir, 'package.json'), JSON.stringify({ version: '4.8.0' }));
-      mkdirSync(join(tempDir, '.claude-flow'), { recursive: true });
+      mkdirSync(join(tempDir, '.moflo'), { recursive: true });
 
       const result = simulateAutoUpdate(tempDir);
       expect(result.synced).toBe(true);
@@ -560,14 +560,14 @@ describe('auto-update', () => {
       expect(result.helpersSynced).toBe(0);
     });
 
-    it('should create .claude-flow directory if missing', () => {
+    it('should create .moflo directory if missing', () => {
       scaffoldProject({ mofloVersion: '4.8.0' });
-      // Remove .claude-flow to simulate fresh state
-      rmSync(join(tempDir, '.claude-flow'), { recursive: true, force: true });
+      // Remove .moflo to simulate fresh state
+      rmSync(join(tempDir, '.moflo'), { recursive: true, force: true });
 
       const result = simulateAutoUpdate(tempDir);
       expect(result.synced).toBe(true);
-      expect(existsSync(join(tempDir, '.claude-flow/moflo-version'))).toBe(true);
+      expect(existsSync(join(tempDir, '.moflo/moflo-version'))).toBe(true);
     });
   });
 
@@ -606,7 +606,7 @@ describe('auto-update', () => {
       expect(result.version).toBe('4.9.0-beta.1');
 
       // Stamp should match exactly
-      const stamp = readFileSync(join(tempDir, '.claude-flow/moflo-version'), 'utf-8');
+      const stamp = readFileSync(join(tempDir, '.moflo/moflo-version'), 'utf-8');
       expect(stamp).toBe('4.9.0-beta.1');
     });
   });

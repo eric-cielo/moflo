@@ -700,7 +700,7 @@ const initCommand: Command = {
       const path = await import('path');
 
       // Create directories
-      const configDir = path.join(process.cwd(), '.claude-flow');
+      const configDir = path.join(process.cwd(), '.moflo');
       const modelDir = path.join(configDir, 'models');
       const configPath = path.join(configDir, 'embeddings.json');
 
@@ -1082,7 +1082,7 @@ const neuralCommand: Command = {
     // Check if embeddings config exists
     const fs = await import('fs');
     const path = await import('path');
-    const configPath = path.join(process.cwd(), '.claude-flow', 'embeddings.json');
+    const configPath = path.join(process.cwd(), '.moflo', 'embeddings.json');
 
     if (!fs.existsSync(configPath)) {
       output.printWarning('Embeddings not initialized');
@@ -1202,7 +1202,7 @@ const neuralCommand: Command = {
     if (!neuralConfig.enabled) {
       output.printInfo('Run with --init to enable neural substrate');
     } else {
-      output.writeln(output.dim('Configuration: .claude-flow/embeddings.json'));
+      output.writeln(output.dim('Configuration: .moflo/embeddings.json'));
       output.writeln(output.dim('Next: Use "hooks pretrain" to train patterns'));
     }
 

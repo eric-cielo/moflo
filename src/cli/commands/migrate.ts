@@ -29,8 +29,8 @@ const statusCommand: Command = {
       migrationState: 'partial',
       components: [
         { name: 'Configuration', status: 'migrated', v2Path: './claude-flow.json', v3Path: './claude-flow.config.json' },
-        { name: 'Memory Data', status: 'pending', v2Path: './.claude-flow/memory', v3Path: './data/memory' },
-        { name: 'Agent Configs', status: 'pending', v2Path: './.claude-flow/agents', v3Path: './v3/agents' },
+        { name: 'Memory Data', status: 'pending', v2Path: './.moflo/memory', v3Path: './data/memory' },
+        { name: 'Agent Configs', status: 'pending', v2Path: './.moflo/agents', v3Path: './v3/agents' },
         { name: 'Hooks', status: 'pending', v2Path: './src/hooks', v3Path: './v3/hooks' },
         { name: 'Workflows', status: 'not-required', v2Path: 'N/A', v3Path: 'N/A' },
         { name: 'Embeddings', status: 'pending', v2Path: 'OpenAI/TF.js', v3Path: 'ONNX + Hyperbolic' }
@@ -135,6 +135,7 @@ const runCommand: Command = {
     // Backup step
     if (backup && !dryRun) {
       output.writeln(output.dim('Creating backup...'));
+      // LEGACY-V2: backup name describes the v2 source dir being migrated
       output.writeln(output.dim(`  Backup created: ./.claude-flow-backup-${Date.now()}`));
       output.writeln();
     }
@@ -334,7 +335,7 @@ const breakingCommand: Command = {
         changes: [
           { change: 'Backend option changed', from: 'memory: { type }', to: 'memory: { backend }' },
           { change: 'HNSW enabled by default', from: 'Manual opt-in', to: 'Auto-enabled' },
-          { change: 'Storage path changed', from: '.claude-flow/memory', to: 'data/memory' }
+          { change: 'Storage path changed', from: '.moflo/memory', to: 'data/memory' }
         ]
       },
       {
@@ -444,11 +445,11 @@ function formatMigrationStatus(status: string): string {
 function getMigrationSteps(target: string): Array<{ name: string; description: string; source: string; dest: string }> {
   const allSteps = [
     { name: 'Configuration Files', description: 'Migrate config schema to V3 format', source: './claude-flow.json', dest: './claude-flow.config.json' },
-    { name: 'Memory Backend', description: 'Upgrade to hybrid backend with AgentDB', source: './.claude-flow/memory', dest: './data/memory' },
-    { name: 'Agent Definitions', description: 'Convert agent configs to V3 format', source: './.claude-flow/agents', dest: './v3/agents' },
+    { name: 'Memory Backend', description: 'Upgrade to hybrid backend with AgentDB', source: './.moflo/memory', dest: './data/memory' },
+    { name: 'Agent Definitions', description: 'Convert agent configs to V3 format', source: './.moflo/agents', dest: './v3/agents' },
     { name: 'Hook Registry', description: 'Migrate hooks to V3 hook system', source: './src/hooks', dest: './v3/hooks' },
-    { name: 'Workflow Definitions', description: 'Convert workflows to event-sourced format', source: './.claude-flow/workflows', dest: './data/workflows' },
-    { name: 'Embeddings System', description: 'Migrate to ONNX with hyperbolic (Poincaré ball)', source: 'OpenAI/TF.js embeddings', dest: '.claude-flow/embeddings.json' }
+    { name: 'Workflow Definitions', description: 'Convert workflows to event-sourced format', source: './.moflo/workflows', dest: './data/workflows' },
+    { name: 'Embeddings System', description: 'Migrate to ONNX with hyperbolic (Poincaré ball)', source: 'OpenAI/TF.js embeddings', dest: '.moflo/embeddings.json' }
   ];
 
   if (target === 'all') return allSteps;

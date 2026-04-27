@@ -292,7 +292,7 @@ export function cosineSim(a: number[], b: number[]): number {
   return mag === 0 ? 0 : dot / mag;
 }
 
-/** Stats payload that goes into `.claude-flow/vector-stats.json`. */
+/** Stats payload that goes into `.moflo/vector-stats.json`. */
 export interface VectorStatsPayload {
   vectorCount: number;
   missing: number;
@@ -309,7 +309,7 @@ export interface VectorStatsPayload {
  * kind of dual-writer divergence.
  */
 export function writeVectorStatsJson(rootDir: string, stats: VectorStatsPayload): void {
-  const cacheDir = path.join(rootDir, '.claude-flow');
+  const cacheDir = path.join(rootDir, '.moflo');
   fs.mkdirSync(cacheDir, { recursive: true });
   fs.writeFileSync(
     path.join(cacheDir, 'vector-stats.json'),
@@ -321,7 +321,7 @@ export function writeVectorStatsJson(rootDir: string, stats: VectorStatsPayload)
 function detectHnswIndex(rootDir: string): boolean {
   for (const p of [
     path.join(rootDir, '.swarm', 'hnsw.index'),
-    path.join(rootDir, '.claude-flow', 'hnsw.index'),
+    path.join(rootDir, '.moflo', 'hnsw.index'),
   ]) {
     try { fs.statSync(p); return true; } catch { /* nope */ }
   }

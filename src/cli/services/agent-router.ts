@@ -92,7 +92,7 @@ interface LearnedPattern {
 
 function loadLearnedPatterns(projectRoot: string): Map<string, string> {
   const patterns = new Map<string, string>();
-  const filePath = join(projectRoot, '.claude-flow', 'routing-outcomes.json');
+  const filePath = join(projectRoot, '.moflo', 'routing-outcomes.json');
 
   try {
     if (existsSync(filePath)) {
@@ -227,7 +227,7 @@ export class AgentRouter {
     learnedPatterns: number;
   } {
     const root = projectRoot || process.cwd();
-    const filePath = join(root, '.claude-flow', 'routing-outcomes.json');
+    const filePath = join(root, '.moflo', 'routing-outcomes.json');
 
     const stats = {
       totalOutcomes: 0,
@@ -271,7 +271,7 @@ export class AgentRouter {
   syncLearningMetrics(projectRoot?: string): void {
     const root = projectRoot || process.cwd();
     const stats = this.getStats(root);
-    const metricsPath = join(root, '.claude-flow', 'metrics', 'learning.json');
+    const metricsPath = join(root, '.moflo', 'metrics', 'learning.json');
 
     try {
       const dir = dirname(metricsPath);

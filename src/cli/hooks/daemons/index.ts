@@ -29,8 +29,8 @@ interface DaemonInstance {
  * Default daemon manager configuration
  */
 const DEFAULT_CONFIG: DaemonManagerConfig = {
-  pidDirectory: '.claude-flow/pids',
-  logDirectory: '.claude-flow/logs',
+  pidDirectory: '.moflo/pids',
+  logDirectory: '.moflo/logs',
   daemons: [],
   autoRestart: true,
   maxRestartAttempts: 3,

@@ -86,7 +86,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PROJECT_ROOT = join(__dirname, '../..');
-const DATA_DIR = join(PROJECT_ROOT, '.claude-flow', 'data');
+const DATA_DIR = join(PROJECT_ROOT, '.moflo', 'data');
 const STORE_PATH = join(DATA_DIR, 'auto-memory-store.json');
 
 const DIM = '\\x1b[2m';
@@ -533,7 +533,7 @@ var fs = require('fs');
 var path = require('path');
 
 var PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-var METRICS_FILE = path.join(PROJECT_DIR, '.claude-flow', 'metrics', 'learning.json');
+var METRICS_FILE = path.join(PROJECT_DIR, '.moflo', 'metrics', 'learning.json');
 var command = process.argv[2];
 
 // Read stdin (Claude Code sends hook data as JSON)

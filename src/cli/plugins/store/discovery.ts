@@ -88,7 +88,7 @@ export const DEFAULT_PLUGIN_STORE_CONFIG: PluginStoreConfig = {
   defaultRegistry: 'claude-flow-official',
   gateway: 'https://gateway.pinata.cloud',
   timeout: 30000,
-  cacheDir: '.claude-flow/plugins/cache',
+  cacheDir: '.moflo/plugins/cache',
   cacheExpiry: 3600000, // 1 hour
   requireVerification: true,
   requireSecurityAudit: false,

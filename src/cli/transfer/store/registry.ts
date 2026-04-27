@@ -48,7 +48,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   defaultRegistry: 'claude-flow-official',
   gateway: 'https://w3s.link',
   timeout: 30000,
-  cacheDir: '.claude-flow/patterns/cache',
+  cacheDir: '.moflo/patterns/cache',
   cacheExpiry: 3600000, // 1 hour
   requireVerification: false,
   minTrustLevel: 'unverified',

@@ -30,7 +30,7 @@ describe('daemon-service', () => {
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'daemon-service-test-'));
-    mkdirSync(join(tempDir, '.claude-flow'), { recursive: true });
+    mkdirSync(join(tempDir, '.moflo'), { recursive: true });
   });
 
   afterEach(() => {

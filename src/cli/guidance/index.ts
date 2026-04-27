@@ -440,7 +440,7 @@ const DEFAULT_CONFIG: Omit<GuidanceControlPlaneConfig, 'embeddingProvider'> = {
   gates: {},
   maxShardsPerTask: 5,
   optimizationCycleDays: 7,
-  dataDir: './.claude-flow/guidance',
+  dataDir: './.moflo/guidance',
   headlessMode: false,
 };
 

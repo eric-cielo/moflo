@@ -3,8 +3,8 @@
 
 set -e
 
-METRICS_DIR="${PROJECT_ROOT:-.}/.claude-flow/metrics"
-SECURITY_DIR="${PROJECT_ROOT:-.}/.claude-flow/security"
+METRICS_DIR="${PROJECT_ROOT:-.}/.moflo/metrics"
+SECURITY_DIR="${PROJECT_ROOT:-.}/.moflo/security"
 
 # Colors
 GREEN='\033[0;32m'

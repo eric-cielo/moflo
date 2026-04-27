@@ -14,6 +14,15 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
+// Directories that walkers should never recurse into when discovering project
+// structure. The runtime state dirs (.swarm, .moflo) and other generated/
+// tooling trees would only produce noise. Hoisted from three identical inline
+// copies in this file's discover* helpers.
+const WALK_SKIP_DIRS = new Set([
+  'node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.reports',
+  '.swarm', '.moflo', 'packages',
+]);
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -54,14 +63,12 @@ function discoverGuidanceDirs(root: string): string[] {
   const found = TOP_LEVEL.filter(d => fs.existsSync(path.join(root, d)));
 
   // Walk up to 3 levels deep looking for .claude/guidance in subprojects
-  const SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.reports', '.swarm', '.claude-flow', 'packages']);
-
   function walk(dir: string, depth: number) {
     if (depth > 3) return;
     try {
       const entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true });
       for (const entry of entries) {
-        if (!entry.isDirectory() || SKIP.has(entry.name)) continue;
+        if (!entry.isDirectory() || WALK_SKIP_DIRS.has(entry.name)) continue;
         const rel = dir ? `${dir}/${entry.name}` : entry.name;
         const guidancePath = `${rel}/.claude/guidance`;
         if (fs.existsSync(path.join(root, guidancePath))) {
@@ -90,14 +97,12 @@ export function discoverTestDirs(root: string): string[] {
   const found = TOP_LEVEL.filter(d => fs.existsSync(path.join(root, d)));
 
   // Walk up to 3 levels deep looking for __tests__ dirs inside src
-  const SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.reports', '.swarm', '.claude-flow']);
-
   function walk(dir: string, depth: number) {
     if (depth > 3) return;
     try {
       const entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true });
       for (const entry of entries) {
-        if (!entry.isDirectory() || SKIP.has(entry.name)) continue;
+        if (!entry.isDirectory() || WALK_SKIP_DIRS.has(entry.name)) continue;
         const rel = dir ? `${dir}/${entry.name}` : entry.name;
         if (entry.name === '__tests__') {
           found.push(rel);
@@ -118,7 +123,6 @@ export function discoverTestDirs(root: string): string[] {
  * that contain .ts/.tsx/.js/.jsx files. Skips node_modules, dist, etc.
  */
 function discoverSrcDirs(root: string): string[] {
-  const SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.reports', '.swarm', '.claude-flow']);
   // Top-level candidates that are always source roots if they exist
   const TOP_LEVEL = ['packages', 'lib', 'app', 'apps', 'services', 'server', 'client'];
   const found: string[] = [];
@@ -135,7 +139,7 @@ function discoverSrcDirs(root: string): string[] {
     try {
       const entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true });
       for (const entry of entries) {
-        if (!entry.isDirectory() || SKIP.has(entry.name)) continue;
+        if (!entry.isDirectory() || WALK_SKIP_DIRS.has(entry.name)) continue;
         const rel = dir ? `${dir}/${entry.name}` : entry.name;
         if (SRC_NAMES.has(entry.name)) {
           // Check it actually has source files
@@ -829,7 +833,7 @@ function updateGitignore(root: string): MofloInitResult['steps'][0] {
   const gitignorePath = path.join(root, '.gitignore');
   const entries = [
     '.claude-epic/',
-    '.claude-flow/',
+    '.moflo/',
     '.swarm/',
     '.moflo/',
     '.claude/settings.local.json',

@@ -886,7 +886,7 @@ describe('hook-handler.cjs', () => {
   });
 
   it('bumps metrics file on edit', async () => {
-    const metricsFile = join(tmpDir, '.claude-flow', 'metrics', 'learning.json');
+    const metricsFile = join(tmpDir, '.moflo', 'metrics', 'learning.json');
     await runEsmWithStdin(HOOK_HANDLER, ['pre-edit'], {}, baseEnv(tmpDir));
     await runEsmWithStdin(HOOK_HANDLER, ['post-edit'], {}, baseEnv(tmpDir));
     expect(existsSync(metricsFile)).toBe(true);

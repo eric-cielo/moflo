@@ -65,13 +65,13 @@ const daemonCommand: Command = {
       name: 'pid-file',
       type: 'string',
       description: 'PID file location',
-      default: '.claude-flow/daemon.pid',
+      default: '.moflo/daemon.pid',
     },
     {
       name: 'log-file',
       type: 'string',
       description: 'Log file location',
-      default: '.claude-flow/daemon.log',
+      default: '.moflo/daemon.log',
     },
     {
       name: 'detach',
@@ -89,8 +89,8 @@ const daemonCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const action = (ctx.flags?.action as string) || 'status';
     const port = (ctx.flags?.port as number) || 3847;
-    const pidFile = (ctx.flags?.['pid-file'] as string) || '.claude-flow/daemon.pid';
-    const logFile = (ctx.flags?.['log-file'] as string) || '.claude-flow/daemon.log';
+    const pidFile = (ctx.flags?.['pid-file'] as string) || '.moflo/daemon.pid';
+    const logFile = (ctx.flags?.['log-file'] as string) || '.moflo/daemon.log';
     const detach = ctx.flags?.detach !== false;
 
     // Check existing daemon state from PID file

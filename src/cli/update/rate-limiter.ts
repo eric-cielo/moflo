@@ -14,7 +14,7 @@ export interface RateLimitState {
   packageVersions: Record<string, string>;
 }
 
-const STATE_FILE = path.join(os.homedir(), '.claude-flow', 'update-state.json');
+const STATE_FILE = path.join(os.homedir(), '.moflo', 'update-state.json');
 const DEFAULT_INTERVAL_HOURS = 24;
 const MAX_CHECKS_PER_DAY = 10;
 

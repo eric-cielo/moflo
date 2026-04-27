@@ -13,6 +13,7 @@
 import { EventEmitter } from 'events';
 import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from 'fs';
 import { atomicWriteFileSync } from './atomic-file-write.js';
+import { mofloDir } from './moflo-paths.js';
 import { cpus } from 'os';
 import { join } from 'path';
 import {
@@ -183,10 +184,10 @@ export class WorkerDaemon extends EventEmitter {
     this.projectRoot = projectRoot;
     this.originalConfig = config;
 
-    const claudeFlowDir = join(projectRoot, '.claude-flow');
+    const stateDir = mofloDir(projectRoot);
 
-    // Read daemon config from .claude-flow/config.json (Layer B)
-    const fileConfig = this.readDaemonConfigFromFile(claudeFlowDir);
+    // Read daemon config from .moflo/config.json (Layer B)
+    const fileConfig = this.readDaemonConfigFromFile(stateDir);
 
     // CPU-proportional smart default instead of hardcoded 2.0
     const cpuCount = WorkerDaemon.getEffectiveCpuCount();
@@ -202,8 +203,8 @@ export class WorkerDaemon extends EventEmitter {
     // (e.g. only --max-cpu-load) still pick up defaults for other fields.
     this.config = {
       autoStart: config?.autoStart ?? fileConfig.autoStart ?? false,
-      logDir: config?.logDir ?? join(claudeFlowDir, 'logs'),
-      stateFile: config?.stateFile ?? join(claudeFlowDir, 'daemon-state.json'),
+      logDir: config?.logDir ?? join(stateDir, 'logs'),
+      stateFile: config?.stateFile ?? join(stateDir, 'daemon-state.json'),
       maxConcurrent: config?.maxConcurrent ?? fileConfig.maxConcurrent ?? 2,
       workerTimeoutMs: config?.workerTimeoutMs ?? fileConfig.workerTimeoutMs ?? DEFAULT_WORKER_TIMEOUT_MS,
       overrunMultiplier: config?.overrunMultiplier ?? DEFAULT_OVERRUN_MULTIPLIER,
@@ -219,8 +220,8 @@ export class WorkerDaemon extends EventEmitter {
     this.setupShutdownHandlers();
 
     // Ensure directories exist
-    if (!existsSync(claudeFlowDir)) {
-      mkdirSync(claudeFlowDir, { recursive: true });
+    if (!existsSync(stateDir)) {
+      mkdirSync(stateDir, { recursive: true });
     }
     if (!existsSync(this.config.logDir)) {
       mkdirSync(this.config.logDir, { recursive: true });
@@ -319,17 +320,17 @@ export class WorkerDaemon extends EventEmitter {
   }
 
   /**
-   * Read daemon-specific config from .claude-flow/config.json
+   * Read daemon-specific config from .moflo/config.json
    * Supports dot-notation keys like 'daemon.resourceThresholds.maxCpuLoad'
    */
-  private readDaemonConfigFromFile(claudeFlowDir: string): {
+  private readDaemonConfigFromFile(stateDir: string): {
     autoStart?: boolean;
     maxConcurrent?: number;
     workerTimeoutMs?: number;
     maxCpuLoad?: number;
     minFreeMemoryPercent?: number;
   } {
-    const configPath = join(claudeFlowDir, 'config.json');
+    const configPath = join(stateDir, 'config.json');
     if (!existsSync(configPath)) return {};
     try {
       const raw = JSON.parse(readFileSync(configPath, 'utf-8'));
@@ -966,8 +967,8 @@ export class WorkerDaemon extends EventEmitter {
 
   private async runMapWorker(): Promise<unknown> {
     // Scan project structure and update metrics
-    const metricsFile = join(this.projectRoot, '.claude-flow', 'metrics', 'codebase-map.json');
-    const metricsDir = join(this.projectRoot, '.claude-flow', 'metrics');
+    const metricsFile = join(this.projectRoot, '.moflo', 'metrics', 'codebase-map.json');
+    const metricsDir = join(this.projectRoot, '.moflo', 'metrics');
 
     if (!existsSync(metricsDir)) {
       mkdirSync(metricsDir, { recursive: true });
@@ -980,7 +981,7 @@ export class WorkerDaemon extends EventEmitter {
         hasPackageJson: existsSync(join(this.projectRoot, 'package.json')),
         hasTsConfig: existsSync(join(this.projectRoot, 'tsconfig.json')),
         hasClaudeConfig: existsSync(join(this.projectRoot, '.claude')),
-        hasClaudeFlow: existsSync(join(this.projectRoot, '.claude-flow')),
+        hasMofloState: existsSync(mofloDir(this.projectRoot)),
       },
       scannedAt: Date.now(),
     };
@@ -994,8 +995,8 @@ export class WorkerDaemon extends EventEmitter {
    */
   private async runAuditWorkerLocal(): Promise<unknown> {
     // Basic security checks
-    const auditFile = join(this.projectRoot, '.claude-flow', 'metrics', 'security-audit.json');
-    const metricsDir = join(this.projectRoot, '.claude-flow', 'metrics');
+    const auditFile = join(this.projectRoot, '.moflo', 'metrics', 'security-audit.json');
+    const metricsDir = join(this.projectRoot, '.moflo', 'metrics');
 
     if (!existsSync(metricsDir)) {
       mkdirSync(metricsDir, { recursive: true });
@@ -1023,8 +1024,8 @@ export class WorkerDaemon extends EventEmitter {
    */
   private async runOptimizeWorkerLocal(): Promise<unknown> {
     // Update performance metrics
-    const optimizeFile = join(this.projectRoot, '.claude-flow', 'metrics', 'performance.json');
-    const metricsDir = join(this.projectRoot, '.claude-flow', 'metrics');
+    const optimizeFile = join(this.projectRoot, '.moflo', 'metrics', 'performance.json');
+    const metricsDir = join(this.projectRoot, '.moflo', 'metrics');
 
     if (!existsSync(metricsDir)) {
       mkdirSync(metricsDir, { recursive: true });
@@ -1048,8 +1049,8 @@ export class WorkerDaemon extends EventEmitter {
 
   private async runConsolidateWorker(): Promise<unknown> {
     // Memory consolidation - clean up old patterns
-    const consolidateFile = join(this.projectRoot, '.claude-flow', 'metrics', 'consolidation.json');
-    const metricsDir = join(this.projectRoot, '.claude-flow', 'metrics');
+    const consolidateFile = join(this.projectRoot, '.moflo', 'metrics', 'consolidation.json');
+    const metricsDir = join(this.projectRoot, '.moflo', 'metrics');
 
     if (!existsSync(metricsDir)) {
       mkdirSync(metricsDir, { recursive: true });
@@ -1071,8 +1072,8 @@ export class WorkerDaemon extends EventEmitter {
    */
   private async runTestGapsWorkerLocal(): Promise<unknown> {
     // Check for test coverage gaps
-    const testGapsFile = join(this.projectRoot, '.claude-flow', 'metrics', 'test-gaps.json');
-    const metricsDir = join(this.projectRoot, '.claude-flow', 'metrics');
+    const testGapsFile = join(this.projectRoot, '.moflo', 'metrics', 'test-gaps.json');
+    const metricsDir = join(this.projectRoot, '.moflo', 'metrics');
 
     if (!existsSync(metricsDir)) {
       mkdirSync(metricsDir, { recursive: true });
@@ -1160,8 +1161,8 @@ export class WorkerDaemon extends EventEmitter {
    * Local benchmark worker
    */
   private async runBenchmarkWorkerLocal(): Promise<unknown> {
-    const benchmarkFile = join(this.projectRoot, '.claude-flow', 'metrics', 'benchmark.json');
-    const metricsDir = join(this.projectRoot, '.claude-flow', 'metrics');
+    const benchmarkFile = join(this.projectRoot, '.moflo', 'metrics', 'benchmark.json');
+    const metricsDir = join(this.projectRoot, '.moflo', 'metrics');
 
     if (!existsSync(metricsDir)) {
       mkdirSync(metricsDir, { recursive: true });

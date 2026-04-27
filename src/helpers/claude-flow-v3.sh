@@ -9,8 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CLAUDE_DIR="${PROJECT_ROOT}/.claude"
 HELPERS_DIR="${CLAUDE_DIR}/helpers"
-METRICS_DIR="${PROJECT_ROOT}/.claude-flow/metrics"
-SECURITY_DIR="${PROJECT_ROOT}/.claude-flow/security"
+METRICS_DIR="${PROJECT_ROOT}/.moflo/metrics"
+SECURITY_DIR="${PROJECT_ROOT}/.moflo/security"
 
 # Colors (ANSI)
 RED='\033[0;31m'

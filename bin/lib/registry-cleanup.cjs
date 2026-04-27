@@ -18,8 +18,8 @@ var childProcess = require('child_process');
  * @returns {number} count of processes killed
  */
 function killTrackedSync(projectDir) {
-  var pidFile = path.join(projectDir, '.claude-flow', 'background-pids.json');
-  var lockFile = path.join(projectDir, '.claude-flow', 'spawn.lock');
+  var pidFile = path.join(projectDir, '.moflo', 'background-pids.json');
+  var lockFile = path.join(projectDir, '.moflo', 'spawn.lock');
   var killed = 0;
 
   try {

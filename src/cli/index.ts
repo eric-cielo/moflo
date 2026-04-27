@@ -498,7 +498,7 @@ export class CLI {
     if (!existsSync(cliPath)) return;
 
     const projectRoot = process.cwd();
-    const stateDir = join(projectRoot, '.claude-flow');
+    const stateDir = join(projectRoot, '.moflo');
     if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
     const logFile = join(stateDir, 'daemon.log');
 

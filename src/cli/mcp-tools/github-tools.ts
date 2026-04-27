@@ -12,9 +12,9 @@
 import type { MCPTool } from './types.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
 
 // Storage paths
-const STORAGE_DIR = '.claude-flow';
 const GITHUB_DIR = 'github';
 const GITHUB_FILE = 'store.json';
 

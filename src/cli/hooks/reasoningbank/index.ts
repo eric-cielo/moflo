@@ -123,7 +123,7 @@ const DEFAULT_CONFIG: ReasoningBankConfig = {
   promotionThreshold: 3,
   qualityThreshold: 0.6,
   dedupThreshold: 0.95,
-  dbPath: '.claude-flow/memory.db',
+  dbPath: '.moflo/memory.db',
   useMockEmbeddings: false,
 };
 

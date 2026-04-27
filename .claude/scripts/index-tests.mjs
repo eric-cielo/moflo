@@ -71,7 +71,7 @@ const TEST_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs']);
 
 const EXCLUDE_DIRS = new Set([
   'node_modules', 'dist', 'build', '.next', 'coverage',
-  '.claude', '.swarm', '.claude-flow', '.git',
+  '.claude', '.swarm', '.moflo', '.git',
 ]);
 
 // ---------------------------------------------------------------------------

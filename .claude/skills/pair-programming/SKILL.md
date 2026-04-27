@@ -412,7 +412,7 @@ Features: Issue identification, root cause analysis, fix suggestions
 ### Configuration
 
 #### Basic Configuration
-Create `.claude-flow/pair-config.json`:
+Create `.moflo/pair-config.json`:
 
 ```json
 {

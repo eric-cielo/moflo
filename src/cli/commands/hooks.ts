@@ -3024,7 +3024,7 @@ const progressHookCommand: Command = {
 
         output.writeln();
         output.printSuccess(`Progress synced: ${result.progress}%`);
-        output.writeln(output.dim(`  Persisted to .claude-flow/metrics/v3-progress.json`));
+        output.writeln(output.dim(`  Persisted to .moflo/metrics/v3-progress.json`));
         output.writeln(output.dim(`  Last updated: ${result.lastUpdated}`));
         return { success: true, data: result };
       }
@@ -3309,8 +3309,8 @@ const statuslineCommand: Command = {
 
       // 1. Check learning.json for REAL intelligence metrics first
       const learningJsonPaths = [
-        path.join(process.cwd(), '.claude-flow', 'learning.json'),
-        path.join(process.cwd(), '.claude', '.claude-flow', 'learning.json'),
+        path.join(process.cwd(), '.moflo', 'learning.json'),
+        path.join(process.cwd(), '.claude', '.moflo', 'learning.json'),
         path.join(process.cwd(), '.swarm', 'learning.json'),
       ];
       for (const lPath of learningJsonPaths) {
@@ -3337,7 +3337,7 @@ const statuslineCommand: Command = {
         let maturityScore = 0;
         // Check for key project files/dirs
         if (fs.existsSync(path.join(process.cwd(), '.claude'))) maturityScore += 15;
-        if (fs.existsSync(path.join(process.cwd(), '.claude-flow'))) maturityScore += 15;
+        if (fs.existsSync(path.join(process.cwd(), '.moflo'))) maturityScore += 15;
         if (fs.existsSync(path.join(process.cwd(), 'CLAUDE.md'))) maturityScore += 10;
         if (fs.existsSync(path.join(process.cwd(), 'claude-flow.config.json'))) maturityScore += 10;
         if (fs.existsSync(path.join(process.cwd(), '.swarm'))) maturityScore += 10;
@@ -3461,12 +3461,12 @@ const statuslineCommand: Command = {
     // Check for direct database files first
     const dbPaths = [
       path.join(process.cwd(), '.swarm', 'memory.db'),
-      path.join(process.cwd(), '.claude-flow', 'memory.db'),
+      path.join(process.cwd(), '.moflo', 'memory.db'),
       path.join(process.cwd(), '.claude', 'memory.db'),
       path.join(process.cwd(), 'data', 'memory.db'),
       path.join(process.cwd(), 'memory.db'),
       path.join(process.cwd(), '.agentdb', 'memory.db'),
-      path.join(process.cwd(), '.claude-flow', 'memory', 'agentdb.db'),
+      path.join(process.cwd(), '.moflo', 'memory', 'agentdb.db'),
     ];
     for (const dbPath of dbPaths) {
       if (fs.existsSync(dbPath)) {
@@ -3483,7 +3483,7 @@ const statuslineCommand: Command = {
     // Check for AgentDB directories if no direct db found
     if (agentdbStats.vectorCount === 0) {
       const agentdbDirs = [
-        path.join(process.cwd(), '.claude-flow', 'agentdb'),
+        path.join(process.cwd(), '.moflo', 'agentdb'),
         path.join(process.cwd(), '.swarm', 'agentdb'),
         path.join(process.cwd(), 'data', 'agentdb'),
         path.join(process.cwd(), '.agentdb'),
@@ -3509,7 +3509,7 @@ const statuslineCommand: Command = {
 
     // Check for HNSW index files
     const hnswPaths = [
-      path.join(process.cwd(), '.claude-flow', 'hnsw'),
+      path.join(process.cwd(), '.moflo', 'hnsw'),
       path.join(process.cwd(), '.swarm', 'hnsw'),
       path.join(process.cwd(), 'data', 'hnsw'),
     ];
@@ -3530,7 +3530,7 @@ const statuslineCommand: Command = {
     }
 
     // Check for vectors.json file
-    const vectorsPath = path.join(process.cwd(), '.claude-flow', 'vectors.json');
+    const vectorsPath = path.join(process.cwd(), '.moflo', 'vectors.json');
     if (fs.existsSync(vectorsPath) && agentdbStats.vectorCount === 0) {
       try {
         const data = JSON.parse(fs.readFileSync(vectorsPath, 'utf-8'));

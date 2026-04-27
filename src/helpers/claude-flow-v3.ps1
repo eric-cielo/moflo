@@ -20,8 +20,8 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 $ClaudeDir = Join-Path $ProjectRoot ".claude"
 $HelpersDir = Join-Path $ClaudeDir "helpers"
-$MetricsDir = Join-Path $ProjectRoot ".claude-flow\metrics"
-$SecurityDir = Join-Path $ProjectRoot ".claude-flow\security"
+$MetricsDir = Join-Path $ProjectRoot ".moflo\metrics"
+$SecurityDir = Join-Path $ProjectRoot ".moflo\security"
 
 # Color functions for PowerShell
 function Write-ColoredOutput {

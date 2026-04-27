@@ -16,7 +16,7 @@ const DEFAULT_MAX_AGENTS = 15;
 
 // Check if project is initialized
 function isInitialized(cwd: string): boolean {
-  const configPath = path.join(cwd, '.claude-flow', 'config.yaml');
+  const configPath = path.join(cwd, '.moflo', 'config.yaml');
   return fs.existsSync(configPath);
 }
 
@@ -74,7 +74,7 @@ function parseSimpleYaml(content: string): Record<string, unknown> {
 
 // Load configuration
 function loadConfig(cwd: string): Record<string, unknown> | null {
-  const configPath = path.join(cwd, '.claude-flow', 'config.yaml');
+  const configPath = path.join(cwd, '.moflo', 'config.yaml');
   if (!fs.existsSync(configPath)) return null;
 
   try {
@@ -191,7 +191,7 @@ const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
       output.printInfo('Running in daemon mode. Use "claude-flow stop" to stop.');
 
       // Store PID for daemon management
-      const daemonPidPath = path.join(cwd, '.claude-flow', 'daemon.pid');
+      const daemonPidPath = path.join(cwd, '.moflo', 'daemon.pid');
       fs.writeFileSync(daemonPidPath, String(process.pid));
 
       // Detach from parent process for true daemon behavior
@@ -290,7 +290,7 @@ const stopCommand: Command = {
       // it's gone. There are no `mcp_stop` or `swarm_stop` MCP tools — the MCP
       // server is a stdio subprocess of the host (Claude Code) and the swarm
       // is in-memory orchestration with no separate process to terminate.
-      const daemonPidPath = path.join(ctx.cwd, '.claude-flow', 'daemon.pid');
+      const daemonPidPath = path.join(ctx.cwd, '.moflo', 'daemon.pid');
       const signal: NodeJS.Signals = force ? 'SIGKILL' : 'SIGTERM';
 
       let pidStr: string;

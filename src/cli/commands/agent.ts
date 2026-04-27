@@ -20,7 +20,7 @@ import * as path from 'path';
  */
 function syncSwarmAgentCount(absoluteCount: number): void {
   try {
-    const metricsDir = path.join(process.cwd(), '.claude-flow', 'metrics');
+    const metricsDir = path.join(process.cwd(), '.moflo', 'metrics');
     const activityPath = path.join(metricsDir, 'swarm-activity.json');
 
     let data: Record<string, unknown> = {
@@ -54,7 +54,7 @@ function syncSwarmAgentCount(absoluteCount: number): void {
  */
 function readSwarmAgentCount(): number {
   try {
-    const activityPath = path.join(process.cwd(), '.claude-flow', 'metrics', 'swarm-activity.json');
+    const activityPath = path.join(process.cwd(), '.moflo', 'metrics', 'swarm-activity.json');
     if (!fs.existsSync(activityPath)) return 0;
     const data = JSON.parse(fs.readFileSync(activityPath, 'utf-8'));
     return Math.max(0, (data?.swarm?.agent_count as number) || 0);

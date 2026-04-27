@@ -123,7 +123,7 @@ async function defaultStartDaemon(projectRoot: string): Promise<boolean> {
 
   if (!existsSync(cliPath)) return false;
 
-  const stateDir = join(projectRoot, '.claude-flow');
+  const stateDir = join(projectRoot, '.moflo');
   mkdirSync(stateDir, { recursive: true });
 
   const logFile = join(stateDir, 'daemon.log');

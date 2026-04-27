@@ -11,6 +11,7 @@ import { spawn } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, readdirSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { migrateClaudeFlowToMoflo } from './lib/moflo-paths.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -29,6 +30,19 @@ function findProjectRoot() {
 }
 
 const projectRoot = findProjectRoot();
+
+// ── 0. LEGACY state migration (#699) ─────────────────────────────────────────
+// Consumers upgrading from older moflo builds (inherited from upstream Ruflo)
+// get a one-time auto-migration of LEGACY `.claude-flow/` → `.moflo/` so claim
+// files, daemon state, metrics, and the version stamp survive the rename.
+// The migration helper is idempotent — see bin/lib/moflo-paths.mjs for the
+// algorithm. LEGACY: no-ops once `.claude-flow/` is gone.
+try {
+  migrateClaudeFlowToMoflo(projectRoot);
+} catch {
+  // Non-fatal — anything left behind by the migration just means it runs
+  // again next session. Better to keep launching than to block on it.
+}
 
 // ── 1. Helper: fire-and-forget a background process ─────────────────────────
 function fireAndForget(cmd, args, label) {
@@ -82,7 +96,7 @@ try {
 
 try {
   const mofloPkgPath = resolve(projectRoot, 'node_modules/moflo/package.json');
-  const versionStampPath = resolve(projectRoot, '.claude-flow', 'moflo-version');
+  const versionStampPath = resolve(projectRoot, '.moflo', 'moflo-version');
   if (autoUpdateConfig.enabled && existsSync(mofloPkgPath)) {
     const installedVersion = JSON.parse(readFileSync(mofloPkgPath, 'utf-8')).version;
     let cachedVersion = '';
@@ -92,7 +106,7 @@ try {
     // when version stamp matches. Guards against out-of-band deletions (manual
     // rm, botched merges, dedup commits, etc.) that would otherwise silently
     // leave .claude/scripts/ incomplete until the next moflo upgrade.
-    const manifestPath = resolve(projectRoot, '.claude-flow', 'installed-files.json');
+    const manifestPath = resolve(projectRoot, '.moflo', 'installed-files.json');
     let manifestDrifted = false;
     try {
       const prev = JSON.parse(readFileSync(manifestPath, 'utf-8'));
@@ -236,7 +250,7 @@ try {
       // running, so replacing it with a current-code copy is the desired
       // behaviour regardless of that flag.
       try {
-        const lockFile = resolve(projectRoot, '.claude-flow', 'daemon.lock');
+        const lockFile = resolve(projectRoot, '.moflo', 'daemon.lock');
         if (existsSync(lockFile)) {
           let stalePid = null;
           try {
@@ -260,7 +274,7 @@ try {
 
       // Write updated manifest + version stamp
       try {
-        const cfDir = resolve(projectRoot, '.claude-flow');
+        const cfDir = resolve(projectRoot, '.moflo');
         if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
         writeFileSync(manifestPath, JSON.stringify(currentManifest, null, 2));
         writeFileSync(versionStampPath, installedVersion);
