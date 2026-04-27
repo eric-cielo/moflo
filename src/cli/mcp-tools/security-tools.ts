@@ -144,37 +144,33 @@ const aidefenceAnalyzeTool: MCPTool = {
       const defender = await getAIDefence();
       const result = await defender.detect(input);
 
+      // Mitigation lookups and similar-threat search share no data dependency,
+      // so fan them out together (#607).
+      const [mitigations, similar] = await Promise.all([
+        Promise.all(
+          result.threats.map(async (threat) => {
+            const mitigation = await defender.getBestMitigation(
+              threat.type as Parameters<typeof defender.getBestMitigation>[0]
+            );
+            return mitigation
+              ? { threatType: threat.type, strategy: mitigation.strategy, effectiveness: mitigation.effectiveness }
+              : null;
+          })
+        ),
+        searchSimilar ? defender.searchSimilarThreats(input, { k }) : Promise.resolve([]),
+      ]);
+
       const analysis: Record<string, unknown> = {
         detection: {
           safe: result.safe,
           threats: result.threats,
           piiFound: result.piiFound,
         },
-        mitigations: [] as Array<{ threatType: string; strategy: string; effectiveness: number }>,
-        similarPatterns: [] as Array<unknown>,
+        mitigations: mitigations.filter((m): m is NonNullable<typeof m> => m !== null),
+        similarPatterns: searchSimilar
+          ? similar.map(p => ({ pattern: p.pattern, type: p.type, effectiveness: p.effectiveness }))
+          : [],
       };
-
-      // Get mitigations for detected threats
-      for (const threat of result.threats) {
-        const mitigation = await defender.getBestMitigation(threat.type as Parameters<typeof defender.getBestMitigation>[0]);
-        if (mitigation) {
-          (analysis.mitigations as Array<unknown>).push({
-            threatType: threat.type,
-            strategy: mitigation.strategy,
-            effectiveness: mitigation.effectiveness,
-          });
-        }
-      }
-
-      // Search similar patterns
-      if (searchSimilar) {
-        const similar = await defender.searchSimilarThreats(input, { k });
-        analysis.similarPatterns = similar.map(p => ({
-          pattern: p.pattern,
-          type: p.type,
-          effectiveness: p.effectiveness,
-        }));
-      }
 
       return {
         content: [{
