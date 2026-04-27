@@ -205,6 +205,7 @@ interface PoolEntry {
 interface QueueEntry {
   workerType: HeadlessWorkerType;
   config?: Partial<HeadlessOptions>;
+  signal?: AbortSignal;
   resolve: (result: HeadlessExecutionResult) => void;
   reject: (error: Error) => void;
   queuedAt: Date;
@@ -699,10 +700,15 @@ export class HeadlessWorkerExecutor extends EventEmitter {
 
   /**
    * Execute a headless worker
+   *
+   * `signal` aborts the spawned Claude Code child on .abort() so a worker
+   * disabled or timed-out mid-flight stops consuming CPU + tokens instead
+   * of running to natural completion (#669).
    */
   async execute(
     workerType: HeadlessWorkerType,
-    configOverrides?: Partial<HeadlessOptions>
+    configOverrides?: Partial<HeadlessOptions>,
+    signal?: AbortSignal,
   ): Promise<HeadlessExecutionResult> {
     const baseConfig = HEADLESS_WORKER_CONFIGS[workerType];
     if (!baseConfig) {
@@ -724,11 +730,20 @@ export class HeadlessWorkerExecutor extends EventEmitter {
     if (this.processPool.size >= this.config.maxConcurrent) {
       // Queue the request
       return new Promise((resolve, reject) => {
+        // Wrap resolve/reject so we always remove the abort listener once the
+        // entry settles — without this, a long-lived caller signal accumulates
+        // one listener per dispatched run.
+        let onAbort: (() => void) | null = null;
+        const detach = () => {
+          if (onAbort && signal) signal.removeEventListener('abort', onAbort);
+          onAbort = null;
+        };
         const entry: QueueEntry = {
           workerType,
           config: configOverrides,
-          resolve,
-          reject,
+          signal,
+          resolve: (r) => { detach(); resolve(r); },
+          reject: (e) => { detach(); reject(e); },
           queuedAt: new Date(),
         };
         this.pendingQueue.push(entry);
@@ -736,11 +751,22 @@ export class HeadlessWorkerExecutor extends EventEmitter {
           workerType,
           queuePosition: this.pendingQueue.length,
         });
+
+        // Drop from queue immediately if aborted before a slot opens.
+        if (signal) {
+          onAbort = () => {
+            const idx = this.pendingQueue.indexOf(entry);
+            if (idx >= 0) this.pendingQueue.splice(idx, 1);
+            entry.reject(new Error('Headless execution aborted while queued'));
+          };
+          if (signal.aborted) onAbort();
+          else signal.addEventListener('abort', onAbort, { once: true });
+        }
       });
     }
 
     // Execute immediately
-    return this.executeInternal(workerType, configOverrides);
+    return this.executeInternal(workerType, configOverrides, signal);
   }
 
   /**
@@ -853,6 +879,18 @@ export class HeadlessWorkerExecutor extends EventEmitter {
   // ============================================
 
   /**
+   * SIGTERM the child, then SIGKILL after 5s if it hasn't exited. Used by
+   * both the per-execution timeout and the abort-signal handler so the kill
+   * escalation lives in one place.
+   */
+  private killChildWithGracePeriod(child: import('child_process').ChildProcess): void {
+    child.kill('SIGTERM');
+    setTimeout(() => {
+      if (!child.killed) child.kill('SIGKILL');
+    }, 5000);
+  }
+
+  /**
    * Ensure log directory exists
    */
   private ensureLogDir(): void {
@@ -870,7 +908,8 @@ export class HeadlessWorkerExecutor extends EventEmitter {
    */
   private async executeInternal(
     workerType: HeadlessWorkerType,
-    configOverrides?: Partial<HeadlessOptions>
+    configOverrides?: Partial<HeadlessOptions>,
+    signal?: AbortSignal,
   ): Promise<HeadlessExecutionResult> {
     const baseConfig = HEADLESS_WORKER_CONFIGS[workerType];
     const headless = { ...baseConfig.headless!, ...configOverrides };
@@ -897,6 +936,7 @@ export class HeadlessWorkerExecutor extends EventEmitter {
         timeoutMs: headless.timeoutMs || this.config.defaultTimeoutMs,
         executionId,
         workerType,
+        signal,
       });
 
       // Parse output based on format
@@ -953,7 +993,7 @@ export class HeadlessWorkerExecutor extends EventEmitter {
       const next = this.pendingQueue.shift();
       if (!next) break;
 
-      this.executeInternal(next.workerType, next.config)
+      this.executeInternal(next.workerType, next.config, next.signal)
         .then(next.resolve)
         .catch(next.reject);
     }
@@ -1152,6 +1192,7 @@ Analyze the above codebase context and provide your response following the forma
       timeoutMs: number;
       executionId: string;
       workerType: HeadlessWorkerType;
+      signal?: AbortSignal;
     }
   ): Promise<{ success: boolean; output: string; tokensUsed?: number; error?: string }> {
     return new Promise((resolve) => {
@@ -1175,13 +1216,7 @@ Analyze the above codebase context and provide your response following the forma
       // Setup timeout
       const timeoutHandle = setTimeout(() => {
         if (this.processPool.has(options.executionId)) {
-          child.kill('SIGTERM');
-          // Give it a moment to terminate gracefully
-          setTimeout(() => {
-            if (!child.killed) {
-              child.kill('SIGKILL');
-            }
-          }, 5000);
+          this.killChildWithGracePeriod(child);
         }
       }, options.timeoutMs);
 
@@ -1247,6 +1282,35 @@ Analyze the above codebase context and provide your response following the forma
           error: error.message,
         });
       });
+
+      // Kill the child process if the caller aborts (e.g. setWorkerEnabled(false)
+      // mid-flight, or runWithTimeout firing in WorkerDaemon). Without this the
+      // child runs to natural completion, holding handles + burning tokens for
+      // up to its own internal timeout (#669).
+      if (options.signal) {
+        const signal = options.signal;
+        const onAbort = () => {
+          if (resolved) return;
+          resolved = true;
+          this.killChildWithGracePeriod(child);
+          cleanup();
+          resolve({
+            success: false,
+            output: stdout || stderr,
+            error: 'Execution aborted',
+          });
+        };
+        if (signal.aborted) {
+          onAbort();
+        } else {
+          signal.addEventListener('abort', onAbort, { once: true });
+          // Drop the listener on normal completion so a long-lived caller
+          // signal (e.g. a swarm-wide cancel token) doesn't accumulate one
+          // listener per dispatched run.
+          child.once('close', () => signal.removeEventListener('abort', onAbort));
+          child.once('error', () => signal.removeEventListener('abort', onAbort));
+        }
+      }
 
       // Handle timeout
       setTimeout(() => {

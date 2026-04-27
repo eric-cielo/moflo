@@ -62,6 +62,10 @@ interface WorkerState {
   lastDurationMs?: number;
   consecutiveOverruns: number;
   disabledByOverrun?: boolean;
+  // Set while the worker is in-flight so setWorkerEnabled(false) and the
+  // workerTimeout in runWithTimeout can interrupt the run instead of letting
+  // it consume CPU/tokens to natural completion (#669).
+  abortController?: AbortController;
 }
 
 interface WorkerResult {
@@ -725,7 +729,11 @@ export class WorkerDaemon extends EventEmitter {
     const workerId = `${workerConfig.type}_${Date.now()}`;
     const startTime = Date.now();
 
-    // Track running worker
+    // The controller is parked on shared state so setWorkerEnabled(false) can
+    // interrupt this in-flight run; runWithTimeout also aborts it on timeout
+    // so the headless child gets killed instead of running to completion (#669).
+    const controller = new AbortController();
+    state.abortController = controller;
     this.runningWorkers.add(workerConfig.type);
     state.isRunning = true;
     this.emit('worker:start', { workerId, type: workerConfig.type });
@@ -734,9 +742,10 @@ export class WorkerDaemon extends EventEmitter {
     try {
       // Execute worker logic with timeout (P1 fix)
       const output = await this.runWithTimeout(
-        () => this.runWorkerLogic(workerConfig),
+        (signal) => this.runWorkerLogic(workerConfig, signal),
         this.config.workerTimeoutMs,
-        `Worker ${workerConfig.type} timed out after ${this.config.workerTimeoutMs / 1000}s`
+        `Worker ${workerConfig.type} timed out after ${this.config.workerTimeoutMs / 1000}s`,
+        controller,
       );
       const durationMs = Date.now() - startTime;
 
@@ -787,25 +796,30 @@ export class WorkerDaemon extends EventEmitter {
       return result;
     } finally {
       // Remove from running set and process queue
+      state.abortController = undefined;
       this.runningWorkers.delete(workerConfig.type);
       this.processPendingWorkers();
     }
   }
 
   /**
-   * Run a function with timeout (P1 fix)
+   * Run a function with timeout (P1 fix). Aborts `controller` on timeout so
+   * the underlying work — headless child process in particular — actually
+   * stops instead of running to natural completion after we reject (#669).
    */
   private async runWithTimeout<T>(
-    fn: () => Promise<T>,
+    fn: (signal: AbortSignal) => Promise<T>,
     timeoutMs: number,
-    timeoutMessage: string
+    timeoutMessage: string,
+    controller: AbortController,
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
+        controller.abort();
         reject(new Error(timeoutMessage));
       }, timeoutMs);
 
-      fn()
+      fn(controller.signal)
         .then((result) => {
           clearTimeout(timer);
           resolve(result);
@@ -818,14 +832,16 @@ export class WorkerDaemon extends EventEmitter {
   }
 
   /**
-   * Run the actual worker logic
+   * Run the actual worker logic. `signal` is propagated to the headless
+   * executor so an abort kills the spawned Claude Code child (#669); local
+   * fallbacks ignore it — they're cheap and wall-bounded already.
    */
-  private async runWorkerLogic(workerConfig: WorkerConfig): Promise<unknown> {
+  private async runWorkerLogic(workerConfig: WorkerConfig, signal?: AbortSignal): Promise<unknown> {
     // Check if this is a headless worker type and headless execution is available
     if (isHeadlessWorker(workerConfig.type) && this.headlessAvailable && this.headlessExecutor) {
       try {
         this.log('info', `Running ${workerConfig.type} in headless mode (Claude Code AI)`);
-        const result = await this.headlessExecutor.execute(workerConfig.type as HeadlessWorkerType);
+        const result = await this.headlessExecutor.execute(workerConfig.type as HeadlessWorkerType, undefined, signal);
         return {
           mode: 'headless',
           ...result,
@@ -1129,6 +1145,10 @@ export class WorkerDaemon extends EventEmitter {
           clearTimeout(timer);
           this.timers.delete(type);
         }
+        // Interrupt any in-flight run so disable means "stop now" instead of
+        // "stop after this run finishes naturally" (up to workerTimeoutMs of
+        // continued CPU + tokens for headless workers — #669).
+        this.workers.get(type)?.abortController?.abort();
       }
 
       this.saveState();
@@ -1143,14 +1163,18 @@ export class WorkerDaemon extends EventEmitter {
       running: this.running,
       startedAt: this.startedAt?.toISOString(),
       workers: Object.fromEntries(
-        Array.from(this.workers.entries()).map(([type, state]) => [
-          type,
-          {
-            ...state,
-            lastRun: state.lastRun?.toISOString(),
-            nextRun: state.nextRun?.toISOString(),
-          }
-        ])
+        Array.from(this.workers.entries()).map(([type, state]) => {
+          // abortController is a runtime handle — drop from serialized state.
+          const { abortController: _ac, ...persisted } = state;
+          return [
+            type,
+            {
+              ...persisted,
+              lastRun: state.lastRun?.toISOString(),
+              nextRun: state.nextRun?.toISOString(),
+            },
+          ];
+        })
       ),
       config: {
         ...this.config,
