@@ -29,7 +29,7 @@ import {
 const TEST_PROJECT_ROOT = path.join(os.tmpdir(), 'claude-flow-test-' + Date.now());
 
 async function setupTestDir(): Promise<void> {
-  await fs.mkdir(path.join(TEST_PROJECT_ROOT, '.claude-flow', 'metrics'), { recursive: true });
+  await fs.mkdir(path.join(TEST_PROJECT_ROOT, '.moflo', 'metrics'), { recursive: true });
 }
 
 async function cleanupTestDir(): Promise<void> {
@@ -474,7 +474,7 @@ describe('Statusline Integration', () => {
   it('should export statusline to file', async () => {
     await manager.exportStatusline();
 
-    const statuslinePath = path.join(TEST_PROJECT_ROOT, '.claude-flow', 'metrics', 'statusline.json');
+    const statuslinePath = path.join(TEST_PROJECT_ROOT, '.moflo', 'metrics', 'statusline.json');
     const content = await fs.readFile(statuslinePath, 'utf-8');
     const data = JSON.parse(content);
 
@@ -502,7 +502,7 @@ describe('Persistence', () => {
   it('should save state to disk', async () => {
     await manager.saveState();
 
-    const statePath = path.join(TEST_PROJECT_ROOT, '.claude-flow', 'metrics', 'workers-state.json');
+    const statePath = path.join(TEST_PROJECT_ROOT, '.moflo', 'metrics', 'workers-state.json');
     const content = await fs.readFile(statePath, 'utf-8');
     const state = JSON.parse(content);
 
@@ -512,7 +512,7 @@ describe('Persistence', () => {
 
   it('should load state from disk', async () => {
     // Manually create state file
-    const statePath = path.join(TEST_PROJECT_ROOT, '.claude-flow', 'metrics', 'workers-state.json');
+    const statePath = path.join(TEST_PROJECT_ROOT, '.moflo', 'metrics', 'workers-state.json');
     const state = {
       version: '1.0.0',
       lastSaved: new Date().toISOString(),
@@ -564,7 +564,7 @@ describe('Security', () => {
   it('should limit file size when loading state', async () => {
     // This is tested internally by safeReadFile
     // Create a large file
-    const statePath = path.join(TEST_PROJECT_ROOT, '.claude-flow', 'metrics', 'workers-state.json');
+    const statePath = path.join(TEST_PROJECT_ROOT, '.moflo', 'metrics', 'workers-state.json');
     const largeContent = 'x'.repeat(11 * 1024 * 1024); // 11MB
 
     await fs.writeFile(statePath, largeContent);

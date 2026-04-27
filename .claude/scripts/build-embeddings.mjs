@@ -177,7 +177,7 @@ function writeVectorStatsCache(stats, nsCount) {
   try {
     const dbSizeKB = Math.floor(readFileSync(DB_PATH).length / 1024);
     const hnswExists = existsSync(resolve(projectRoot, '.swarm', 'hnsw.index'))
-      || existsSync(resolve(projectRoot, '.claude-flow', 'hnsw.index'));
+      || existsSync(resolve(projectRoot, '.moflo', 'hnsw.index'));
     const cacheData = {
       vectorCount: stats.withEmbeddings,
       dbSizeKB,
@@ -185,7 +185,7 @@ function writeVectorStatsCache(stats, nsCount) {
       hasHnsw: hnswExists,
       updatedAt: Date.now(),
     };
-    for (const cacheDir of [resolve(projectRoot, '.claude-flow'), resolve(projectRoot, '.swarm')]) {
+    for (const cacheDir of [resolve(projectRoot, '.moflo'), resolve(projectRoot, '.swarm')]) {
       if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
       writeFileSync(resolve(cacheDir, 'vector-stats.json'), JSON.stringify(cacheData));
     }

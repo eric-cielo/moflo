@@ -7,9 +7,9 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { MCPTool } from './types.js';
+import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
 
 // Storage paths
-const STORAGE_DIR = '.claude-flow';
 const SESSION_DIR = 'sessions';
 
 interface SessionRecord {

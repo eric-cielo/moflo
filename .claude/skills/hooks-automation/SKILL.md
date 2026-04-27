@@ -1112,7 +1112,7 @@ export CLAUDE_FLOW_DEBUG=true
 npx claude-flow hook pre-edit --file "test.js" --debug
 
 # Check hook execution logs
-cat .claude-flow/logs/hooks-$(date +%Y-%m-%d).log
+cat .moflo/logs/hooks-$(date +%Y-%m-%d).log
 
 # Validate configuration
 npx claude-flow hook validate-config

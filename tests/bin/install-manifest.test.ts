@@ -13,7 +13,7 @@ import { resolve, join } from 'path';
 
 function makeTempRoot(): string {
   const root = resolve(__dirname, '../../.testoutput/.test-manifest-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
-  mkdirSync(resolve(root, '.claude-flow'), { recursive: true });
+  mkdirSync(resolve(root, '.moflo'), { recursive: true });
   mkdirSync(resolve(root, '.claude/scripts'), { recursive: true });
   mkdirSync(resolve(root, '.claude/helpers'), { recursive: true });
   return root;
@@ -29,7 +29,7 @@ describe('install manifest cleanup', () => {
   afterEach(() => { cleanTempRoot(root); });
 
   it('old manifest files not in new manifest are deleted', () => {
-    const manifestPath = join(root, '.claude-flow', 'installed-files.json');
+    const manifestPath = join(root, '.moflo', 'installed-files.json');
 
     // Simulate old manifest with a file that is no longer shipped
     const oldManifest = [
@@ -72,7 +72,7 @@ describe('install manifest cleanup', () => {
   });
 
   it('user-created files are never deleted', () => {
-    const manifestPath = join(root, '.claude-flow', 'installed-files.json');
+    const manifestPath = join(root, '.moflo', 'installed-files.json');
 
     // Old manifest only knows about moflo-installed files
     const oldManifest = ['.claude/scripts/hooks.mjs'];
@@ -107,7 +107,7 @@ describe('install manifest cleanup', () => {
 
   it('first install with no previous manifest does not delete anything', () => {
     // No previous manifest exists — first install
-    const manifestPath = join(root, '.claude-flow', 'installed-files.json');
+    const manifestPath = join(root, '.moflo', 'installed-files.json');
     expect(existsSync(manifestPath)).toBe(false);
 
     // User has pre-existing files
@@ -137,18 +137,18 @@ describe('install manifest cleanup', () => {
     expect(existsSync(join(root, '.claude/scripts/hooks.mjs'))).toBe(true);
   });
 
-  it('runtime-generated files in .claude-flow/ are safe', () => {
-    const manifestPath = join(root, '.claude-flow', 'installed-files.json');
+  it('runtime-generated files in .moflo/ are safe', () => {
+    const manifestPath = join(root, '.moflo', 'installed-files.json');
 
     // Manifest only has script files
     const oldManifest = ['.claude/scripts/hooks.mjs'];
     writeFileSync(manifestPath, JSON.stringify(oldManifest));
     writeFileSync(join(root, '.claude/scripts/hooks.mjs'), 'content');
 
-    // Runtime-generated files in .claude-flow/
-    writeFileSync(join(root, '.claude-flow', 'background-pids.json'), '[]');
-    writeFileSync(join(root, '.claude-flow', 'spawn.lock'), String(Date.now()));
-    writeFileSync(join(root, '.claude-flow', 'moflo-version'), '4.8.10');
+    // Runtime-generated files in .moflo/
+    writeFileSync(join(root, '.moflo', 'background-pids.json'), '[]');
+    writeFileSync(join(root, '.moflo', 'spawn.lock'), String(Date.now()));
+    writeFileSync(join(root, '.moflo', 'moflo-version'), '4.8.10');
 
     // Upgrade with same manifest
     const newManifest = ['.claude/scripts/hooks.mjs'];
@@ -162,8 +162,8 @@ describe('install manifest cleanup', () => {
     }
 
     // Runtime files are untouched
-    expect(existsSync(join(root, '.claude-flow', 'background-pids.json'))).toBe(true);
-    expect(existsSync(join(root, '.claude-flow', 'spawn.lock'))).toBe(true);
-    expect(existsSync(join(root, '.claude-flow', 'moflo-version'))).toBe(true);
+    expect(existsSync(join(root, '.moflo', 'background-pids.json'))).toBe(true);
+    expect(existsSync(join(root, '.moflo', 'spawn.lock'))).toBe(true);
+    expect(existsSync(join(root, '.moflo', 'moflo-version'))).toBe(true);
   });
 });

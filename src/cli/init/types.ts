@@ -24,7 +24,7 @@ export interface InitComponents {
   statusline: boolean;
   /** Create MCP configuration */
   mcp: boolean;
-  /** Create .claude-flow/ directory (V3 runtime) */
+  /** Create .moflo/ directory (V3 runtime) */
   runtime: boolean;
   /** Create CLAUDE.md with swarm guidance */
   claudeMd: boolean;
@@ -163,7 +163,7 @@ export interface MCPConfig {
 }
 
 /**
- * Runtime configuration (.claude-flow/)
+ * Runtime configuration (.moflo/)
  */
 export interface RuntimeConfig {
   /** Swarm topology */

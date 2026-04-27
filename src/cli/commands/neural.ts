@@ -790,7 +790,7 @@ const optimizeCommand: Command = {
       const stats = getIntelligenceStats();
 
       // Get actual pattern storage size
-      const patternDir = path.join(process.cwd(), '.claude-flow', 'neural');
+      const patternDir = path.join(process.cwd(), '.moflo', 'neural');
       let beforeSize = 0;
       try {
         const patternFile = path.join(patternDir, 'patterns.json');
@@ -986,7 +986,7 @@ const exportCommand: Command = {
       };
 
       // Load patterns from local storage
-      const memoryDir = path.join(process.cwd(), '.claude-flow', 'memory');
+      const memoryDir = path.join(process.cwd(), '.moflo', 'memory');
       const patternsFile = path.join(memoryDir, 'patterns.json');
 
       if (fs.existsSync(patternsFile)) {
@@ -1469,7 +1469,7 @@ const importCommand: Command = {
       }
 
       // Save to local memory
-      const memoryDir = path.join(process.cwd(), '.claude-flow', 'memory');
+      const memoryDir = path.join(process.cwd(), '.moflo', 'memory');
       if (!fs.existsSync(memoryDir)) {
         fs.mkdirSync(memoryDir, { recursive: true });
       }

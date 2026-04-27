@@ -298,8 +298,8 @@ function testConfigShow(): DiagTest {
       const { existsSync, readFileSync } = await import('fs');
       const yamlPaths = [
         'moflo.yaml',
-        '.claude-flow/config.yaml',
-        '.claude-flow/config.yml',
+        '.moflo/config.yaml',
+        '.moflo/config.yml',
       ];
       for (const p of yamlPaths) {
         if (existsSync(p)) {
@@ -310,7 +310,7 @@ function testConfigShow(): DiagTest {
         }
       }
       const jsonPaths = [
-        '.claude-flow/config.json',
+        '.moflo/config.json',
         'claude-flow.config.json',
       ];
       for (const p of jsonPaths) {

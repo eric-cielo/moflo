@@ -13,7 +13,7 @@ import { resolve, join } from 'path';
 
 function makeTempRoot(): string {
   const root = resolve(__dirname, '../../.testoutput/.test-lib-sync-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
-  mkdirSync(resolve(root, '.claude-flow'), { recursive: true });
+  mkdirSync(resolve(root, '.moflo'), { recursive: true });
   mkdirSync(resolve(root, '.claude/scripts'), { recursive: true });
   return root;
 }

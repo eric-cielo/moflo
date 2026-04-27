@@ -53,7 +53,7 @@ const pretrainCommand: Command = {
 
       // Save to file if requested
       if (saveFile) {
-        const resultsDir = join(process.cwd(), '.claude-flow', 'benchmarks');
+        const resultsDir = join(process.cwd(), '.moflo', 'benchmarks');
         if (!existsSync(resultsDir)) {
           mkdirSync(resultsDir, { recursive: true });
         }
@@ -445,7 +445,7 @@ const allCommand: Command = {
     // Save if requested
     const saveFile = ctx.flags.save as string | undefined;
     if (saveFile) {
-      const resultsDir = join(process.cwd(), '.claude-flow', 'benchmarks');
+      const resultsDir = join(process.cwd(), '.moflo', 'benchmarks');
       if (!existsSync(resultsDir)) {
         mkdirSync(resultsDir, { recursive: true });
       }

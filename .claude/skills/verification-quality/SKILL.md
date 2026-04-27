@@ -87,7 +87,7 @@ npx claude-flow@alpha truth --format html --export report.html
 npx claude-flow@alpha truth --watch
 
 # Export metrics automatically
-npx claude-flow@alpha truth --export .claude-flow/metrics/truth-$(date +%Y%m%d).json
+npx claude-flow@alpha truth --export .moflo/metrics/truth-$(date +%Y%m%d).json
 ```
 
 #### Truth Score Dashboard
@@ -353,7 +353,7 @@ npx claude-flow@alpha verify dashboard --refresh 5s
 
 #### Default Configuration
 
-Set verification preferences in `.claude-flow/config.json`:
+Set verification preferences in `.moflo/config.json`:
 
 ```json
 {
@@ -381,7 +381,7 @@ Set verification preferences in `.claude-flow/config.json`:
     "criticalThreshold": 0.75,
     "autoExport": {
       "enabled": true,
-      "path": ".claude-flow/metrics/truth-daily.json"
+      "path": ".moflo/metrics/truth-daily.json"
     }
   }
 }

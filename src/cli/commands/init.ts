@@ -21,7 +21,7 @@ import {
 // Check if project is already initialized
 function isInitialized(cwd: string): { claude: boolean; claudeFlow: boolean } {
   const claudePath = path.join(cwd, '.claude', 'settings.json');
-  const claudeFlowPath = path.join(cwd, '.claude-flow', 'config.yaml');
+  const claudeFlowPath = path.join(cwd, '.moflo', 'config.yaml');
   return {
     claude: fs.existsSync(claudePath),
     claudeFlow: fs.existsSync(claudeFlowPath),
@@ -71,7 +71,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
   if (hasExisting && !force) {
     output.printInfo('MoFlo is already initialized — updating configuration');
     if (initialized.claude) output.printInfo('  Found: .claude/settings.json');
-    if (initialized.claudeFlow) output.printInfo('  Found: .claude-flow/config.yaml');
+    if (initialized.claudeFlow) output.printInfo('  Found: .moflo/config.yaml');
   }
 
   output.writeln();
@@ -162,10 +162,10 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
     if (options.components.runtime) {
       output.printBox(
         [
-          `Config:      .claude-flow/config.yaml`,
-          `Data:        .claude-flow/data/`,
-          `Logs:        .claude-flow/logs/`,
-          `Sessions:    .claude-flow/sessions/`,
+          `Config:      .moflo/config.yaml`,
+          `Data:        .moflo/data/`,
+          `Logs:        .moflo/logs/`,
+          `Sessions:    .moflo/sessions/`,
         ].join('\n'),
         'V3 Runtime'
       );
@@ -365,7 +365,7 @@ const wizardCommand: Command = {
             { value: 'helpers', label: 'Helpers', hint: 'Utility scripts in .claude/helpers/', selected: true },
             { value: 'statusline', label: 'Statusline', hint: 'Shell statusline integration', selected: false },
             { value: 'mcp', label: 'MCP', hint: '.mcp.json for MCP server configuration', selected: true },
-            { value: 'runtime', label: 'Runtime', hint: '.claude-flow/ directory for V3 runtime', selected: true },
+            { value: 'runtime', label: 'Runtime', hint: '.moflo/ directory for V3 runtime', selected: true },
           ],
         });
 
@@ -585,7 +585,7 @@ const checkCommand: Command = {
       claudeFlow: initialized.claudeFlow,
       paths: {
         claudeSettings: initialized.claude ? path.join(ctx.cwd, '.claude', 'settings.json') : null,
-        claudeFlowConfig: initialized.claudeFlow ? path.join(ctx.cwd, '.claude-flow', 'config.yaml') : null,
+        claudeFlowConfig: initialized.claudeFlow ? path.join(ctx.cwd, '.moflo', 'config.yaml') : null,
       },
     };
 
@@ -600,7 +600,7 @@ const checkCommand: Command = {
         output.printInfo(`  Claude Code: .claude/settings.json`);
       }
       if (initialized.claudeFlow) {
-        output.printInfo(`  V3 Runtime: .claude-flow/config.yaml`);
+        output.printInfo(`  V3 Runtime: .moflo/config.yaml`);
       }
     } else {
       output.printWarning('MoFlo is not initialized in this directory');

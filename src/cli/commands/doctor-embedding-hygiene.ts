@@ -157,7 +157,7 @@ export async function checkEmbeddingHygiene(): Promise<HealthCheck> {
 function resolveMemoryDb(): string | null {
   const candidates = [
     join(process.cwd(), '.swarm', 'memory.db'),
-    join(process.cwd(), '.claude-flow', 'memory.db'),
+    join(process.cwd(), '.moflo', 'memory.db'),
     join(process.cwd(), 'data', 'memory.db'),
   ];
   for (const p of candidates) {

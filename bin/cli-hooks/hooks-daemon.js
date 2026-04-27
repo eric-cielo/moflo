@@ -25,12 +25,12 @@ const args = process.argv.slice(2);
 const command = args[0] || 'status';
 
 // State file for daemon persistence
-const STATE_FILE = join(process.cwd(), '.claude-flow', 'hooks-daemon.json');
+const STATE_FILE = join(process.cwd(), '.moflo', 'hooks-daemon.json');
 
 async function main() {
   const daemonManager = new DaemonManager({
-    pidDirectory: join(process.cwd(), '.claude-flow', 'pids'),
-    logDirectory: join(process.cwd(), '.claude-flow', 'logs'),
+    pidDirectory: join(process.cwd(), '.moflo', 'pids'),
+    logDirectory: join(process.cwd(), '.moflo', 'logs'),
     autoRestart: true,
     maxRestartAttempts: 3,
     daemons: [],

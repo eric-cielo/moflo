@@ -91,7 +91,7 @@ const checkCommand: Command = {
     try {
       // Check for claims config file
       const claimsConfigPaths = [
-        path.resolve('.claude-flow/claims.json'),
+        path.resolve('.moflo/claims.json'),
         path.resolve('claude-flow.claims.json'),
         path.resolve(os.homedir(), '.config/claude-flow/claims.json'),
       ];

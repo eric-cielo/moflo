@@ -149,7 +149,7 @@ async function embedText(text: string): Promise<Float32Array> {
 // ── Runtime routing outcome persistence ──────────────────────────────
 // Closes the learning loop: post-task records outcomes → route loads them.
 
-const ROUTING_OUTCOMES_PATH = join(resolve('.'), '.claude-flow/routing-outcomes.json');
+const ROUTING_OUTCOMES_PATH = join(resolve('.'), '.moflo/routing-outcomes.json');
 
 const ROUTING_STOPWORDS = new Set([
   'the','a','an','is','are','was','were','be','been','being','have','has','had',
@@ -410,7 +410,7 @@ interface MemoryStore {
   version: string;
 }
 
-const MEMORY_DIR = '.claude-flow/memory';
+const MEMORY_DIR = '.moflo/memory';
 const MEMORY_FILE = 'store.json';
 
 function getMemoryPath(): string {

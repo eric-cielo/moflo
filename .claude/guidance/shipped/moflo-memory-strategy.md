@@ -45,7 +45,7 @@ Search layer ---------- Three access paths:
 |------|---------|
 | `.swarm/memory.db` | SQLite database with all entries, embeddings, metadata |
 | `.swarm/code-map-hash.txt` | SHA-256 hash for incremental code map skip |
-| `.claude-flow/neural/patterns.json` | ReasoningBank learned patterns |
+| `.moflo/neural/patterns.json` | ReasoningBank learned patterns |
 | `bin/build-embeddings.mjs` | Generates 384-dim embeddings |
 | `bin/index-guidance.mjs` | Indexes guidance files with RAG linking |
 | `bin/generate-code-map.mjs` | Generates structural code map (projects, dirs, types, interfaces) |

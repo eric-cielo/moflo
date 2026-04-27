@@ -205,6 +205,75 @@ describe('published-package drift guard (issue #585)', () => {
     ).toEqual([]);
   });
 
+  it('no `.claude-flow` paths re-enter source, scripts, bin, or shipped guidance (#699)', () => {
+    // Issue #699: moflo owns its runtime state under `.moflo/`. The upstream
+    // Ruflo `.claude-flow/` path is migration-only — every reintroduction in
+    // production code is a regression that would split state between two
+    // dirs on consumer machines. Catches mechanical sweeps that miss spots
+    // and resurrected copy-paste from upstream.
+    //
+    // Scope: production-relevant trees only. Test fixtures inside __tests__/
+    // are excluded — those create temp dirs and don't ship.
+    //
+    // `.claude/scripts/` is intentionally NOT scanned: it's a runtime sync
+    // target for bin/ scripts (refreshed by session-start-launcher.mjs on
+    // version drift) and not part of the published package. Stale copies
+    // there auto-resolve on the next moflo upgrade.
+    const SCAN_ROOTS = [
+      join(REPO_ROOT, 'src', 'cli'),
+      join(REPO_ROOT, 'bin'),
+      join(REPO_ROOT, 'scripts'),
+      join(REPO_ROOT, '.claude', 'guidance', 'shipped'),
+      join(REPO_ROOT, '.claude', 'skills'),
+    ];
+    const CLAUDE_FLOW_RE = /\.claude-flow/;
+    // Lines that intentionally reference `.claude-flow` for migration or
+    // legacy-fallback reasons must carry one of these explicit markers. Vague
+    // word-soup ("legacy" alone, "migration") is intentionally NOT allowed —
+    // exemption must be a deliberate token an author types on purpose.
+    const ALLOWED_MARKERS = /\bLEGACY(?:-CONFIG|-V2|:)?\b|pre-#699|upstream Ruflo|claude-flow-backup-/;
+    // The migration helpers themselves must talk about `.claude-flow` —
+    // that's their entire purpose. Skip the files outright so we don't have
+    // to sprinkle markers on every line.
+    const MIGRATION_FILES = new Set([
+      'src/cli/services/moflo-paths.ts',
+      'bin/lib/moflo-paths.mjs',
+    ]);
+
+    const offenders: string[] = [];
+    for (const root of SCAN_ROOTS) {
+      if (!existsSync(root)) continue;
+      for (const file of walkAll(root)) {
+        // Skip the drift guard itself (talks about both names) and the
+        // __tests__ tree (test fixtures may create .claude-flow temp dirs
+        // intentionally, e.g. to assert the migration runs).
+        if (file.endsWith('published-package-drift-guard.test.ts')) continue;
+        if (file.endsWith('moflo-paths-migration.test.ts')) continue;
+        if (/[/\\]__tests__[/\\]/.test(file)) continue;
+        if (file.endsWith('.db') || file.endsWith('.bin') || file.endsWith('.wasm')) continue;
+        const rel = relative(REPO_ROOT, file).replace(/\\/g, '/');
+        if (MIGRATION_FILES.has(rel)) continue;
+        const text = readFileSync(file, 'utf8');
+        if (!CLAUDE_FLOW_RE.test(text)) continue;
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          if (!CLAUDE_FLOW_RE.test(lines[i])) continue;
+          if (ALLOWED_MARKERS.test(lines[i])) continue;
+          offenders.push(`${rel}:${i + 1}`);
+        }
+      }
+    }
+    expect(
+      offenders,
+      `Stale .claude-flow paths detected (issue #699 migrated runtime state to .moflo).\n` +
+        `If a reference is intentional (legacy fallback, migration code), add one of these\n` +
+        `explicit markers to the same line: LEGACY, LEGACY-CONFIG, LEGACY-V2, pre-#699,\n` +
+        `"upstream Ruflo", or "claude-flow-backup-". For migration helpers, add the\n` +
+        `path to MIGRATION_FILES in this file.\n` +
+        `Offenders:\n  ${offenders.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
   it('no `npm install @moflo/<pkg>` strings remain in source or shipped guidance', () => {
     // Issue #661: moflo publishes as a single npm package called `moflo`. Any
     // `npm install @moflo/cli` (or @moflo/neural, @moflo/memory, …) string in

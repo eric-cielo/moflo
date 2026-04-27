@@ -27,13 +27,20 @@ export interface LoadedConfig {
 }
 
 /**
- * Configuration file names to search for
+ * Configuration file names to search for. Canonical names come first;
+ * `claude-flow.*` names are kept as legacy fallback so consumers upgrading
+ * from older moflo builds (which inherited the upstream Ruflo filenames)
+ * keep loading their existing config without a manual rename.
  */
 const CONFIG_FILE_NAMES = [
-  'claude-flow.config.json',
-  'claude-flow.config.js',
-  'claude-flow.json',
-  '.claude-flow.json',
+  'moflo.config.json',
+  'moflo.config.js',
+  'moflo.json',
+  '.moflo.json',
+  'claude-flow.config.json', // LEGACY-CONFIG: pre-#699 fallback
+  'claude-flow.config.js',   // LEGACY-CONFIG: pre-#699 fallback
+  'claude-flow.json',        // LEGACY-CONFIG: pre-#699 fallback
+  '.claude-flow.json',       // LEGACY-CONFIG: pre-#699 fallback
 ];
 
 /**
@@ -140,7 +147,8 @@ export class ConfigLoader {
     this.searchPaths = [
       process.cwd(),
       resolve(process.cwd(), '..'),
-      resolve(os.homedir(), '.claude-flow'),
+      resolve(os.homedir(), '.moflo'),
+      resolve(os.homedir(), '.claude-flow'), // LEGACY: pre-#699 fallback
     ];
 
     if (additionalPaths) {

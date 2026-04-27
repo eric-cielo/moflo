@@ -45,7 +45,7 @@ describe('doctor command structure', () => {
 
 describe('embeddings health check via vector-stats.json', () => {
   const testDir = join(process.cwd(), '.testoutput', '.test-doctor-tmp');
-  const cfDir = join(testDir, '.claude-flow');
+  const cfDir = join(testDir, '.moflo');
   const statsPath = join(cfDir, 'vector-stats.json');
 
   beforeEach(() => {

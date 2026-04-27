@@ -41,7 +41,7 @@ function writeVectorStatsCache(
     let hasHnsw = false;
     for (const p of [
       path.join(dbDir, 'hnsw.index'),
-      path.join(projectDir, '.claude-flow', 'hnsw.index'),
+      path.join(projectDir, '.moflo', 'hnsw.index'),
     ]) {
       try { fs.statSync(p); hasHnsw = true; break; } catch { /* nope */ }
     }
@@ -1061,7 +1061,7 @@ export async function checkAndMigrateLegacy(options: {
     path.join(process.cwd(), 'memory.db'),
     path.join(process.cwd(), '.claude/memory.db'),
     path.join(process.cwd(), 'data/memory.db'),
-    path.join(process.cwd(), '.claude-flow/memory.db')
+    path.join(process.cwd(), '.moflo/memory.db')
   ];
 
   for (const legacyPath of legacyPaths) {

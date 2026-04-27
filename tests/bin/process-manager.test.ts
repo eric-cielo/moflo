@@ -18,7 +18,7 @@ const PM_PATH = resolve(BIN_LIB, 'process-manager.mjs');
 /** Create an isolated temp project root for each test. */
 function makeTempRoot(): string {
   const root = resolve(__dirname, '../../.testoutput/.test-pm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
-  mkdirSync(resolve(root, '.claude-flow'), { recursive: true });
+  mkdirSync(resolve(root, '.moflo'), { recursive: true });
   return root;
 }
 
@@ -77,7 +77,7 @@ describe('spawn()', () => {
     expect(result.skipped).toBe(false);
 
     // Verify registry
-    const registry = JSON.parse(readFileSync(join(root, '.claude-flow', 'background-pids.json'), 'utf-8'));
+    const registry = JSON.parse(readFileSync(join(root, '.moflo', 'background-pids.json'), 'utf-8'));
     expect(registry).toHaveLength(1);
     expect(registry[0].label).toBe('test-sleep');
     expect(registry[0].pid).toBe(result.pid);
@@ -145,7 +145,7 @@ describe('killAll()', () => {
       return true;
     `);
 
-    const regBefore = JSON.parse(readFileSync(join(root, '.claude-flow', 'background-pids.json'), 'utf-8'));
+    const regBefore = JSON.parse(readFileSync(join(root, '.moflo', 'background-pids.json'), 'utf-8'));
     expect(regBefore).toHaveLength(2);
 
     // Kill all
@@ -153,7 +153,7 @@ describe('killAll()', () => {
     expect(result.killed).toBe(2);
 
     // Registry should be empty
-    const regAfter = JSON.parse(readFileSync(join(root, '.claude-flow', 'background-pids.json'), 'utf-8'));
+    const regAfter = JSON.parse(readFileSync(join(root, '.moflo', 'background-pids.json'), 'utf-8'));
     expect(regAfter).toHaveLength(0);
   });
 });
@@ -193,7 +193,7 @@ describe('getActive() and prune()', () => {
   it('prune removes dead entries', () => {
     // Seed registry with a fake dead PID
     writeFileSync(
-      join(root, '.claude-flow', 'background-pids.json'),
+      join(root, '.moflo', 'background-pids.json'),
       JSON.stringify([{ pid: 99999999, label: 'ghost', cmd: 'node -e ...', startedAt: new Date().toISOString() }]),
     );
 
@@ -205,7 +205,7 @@ describe('getActive() and prune()', () => {
   it('getActive auto-prunes the file when stale entries are present (#634)', () => {
     // Seed registry with two dead PIDs and one live PID.
     writeFileSync(
-      join(root, '.claude-flow', 'background-pids.json'),
+      join(root, '.moflo', 'background-pids.json'),
       JSON.stringify([
         { pid: 99999998, label: 'ghost-a', cmd: 'node -e ...', startedAt: new Date().toISOString() },
         { pid: process.pid, label: 'parent-test', cmd: 'vitest', startedAt: new Date().toISOString() },
@@ -220,7 +220,7 @@ describe('getActive() and prune()', () => {
     // Critical assertion: the file on disk was rewritten with the live subset.
     // This proves we're not leaving stale entries to accumulate across sessions
     // when session-end didn't fire (abnormal termination).
-    const onDisk = JSON.parse(readFileSync(join(root, '.claude-flow', 'background-pids.json'), 'utf-8'));
+    const onDisk = JSON.parse(readFileSync(join(root, '.moflo', 'background-pids.json'), 'utf-8'));
     expect(onDisk).toHaveLength(1);
     expect(onDisk[0].label).toBe('parent-test');
   });
@@ -244,7 +244,7 @@ describe('lock guard', () => {
 
   it('lock expires after TTL (simulated by backdating mtime)', () => {
     // Write a lock file, then backdate its mtime by 60s
-    const lockFile = join(root, '.claude-flow', 'spawn.lock');
+    const lockFile = join(root, '.moflo', 'spawn.lock');
     writeFileSync(lockFile, String(Date.now()));
     const past = new Date(Date.now() - 60000);
     utimesSync(lockFile, past, past);
@@ -255,9 +255,9 @@ describe('lock guard', () => {
 
   it('killAll releases the lock', () => {
     runPM(root, `pm.acquireLock(); return true;`);
-    expect(existsSync(join(root, '.claude-flow', 'spawn.lock'))).toBe(true);
+    expect(existsSync(join(root, '.moflo', 'spawn.lock'))).toBe(true);
 
     runPM(root, `pm.killAll(); return true;`);
-    expect(existsSync(join(root, '.claude-flow', 'spawn.lock'))).toBe(false);
+    expect(existsSync(join(root, '.moflo', 'spawn.lock'))).toBe(false);
   });
 });

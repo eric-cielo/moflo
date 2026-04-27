@@ -10,8 +10,8 @@
  *   getActive()              — list currently alive tracked processes
  *   prune()                  — remove dead entries from registry
  *
- * Registry: .claude-flow/background-pids.json
- * Lock:     .claude-flow/spawn.lock  (30 s TTL — prevents thundering-herd)
+ * Registry: .moflo/background-pids.json
+ * Lock:     .moflo/spawn.lock  (30 s TTL — prevents thundering-herd)
  */
 
 import { spawn, execFileSync } from 'child_process';
@@ -31,7 +31,7 @@ function defaultRoot() {
   return resolve(__dirname, '../..');
 }
 
-/** Ensure .claude-flow/ directory exists. */
+/** Ensure .moflo/ directory exists. */
 function ensureDir(dir) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
@@ -49,11 +49,11 @@ function isAlive(pid) {
 // ── Registry I/O ────────────────────────────────────────────────────────────
 
 function registryPath(root) {
-  return resolve(root, '.claude-flow', 'background-pids.json');
+  return resolve(root, '.moflo', 'background-pids.json');
 }
 
 function lockPath(root) {
-  return resolve(root, '.claude-flow', 'spawn.lock');
+  return resolve(root, '.moflo', 'spawn.lock');
 }
 
 /** Raw read — returns whatever's on disk without filtering or rewriting. */

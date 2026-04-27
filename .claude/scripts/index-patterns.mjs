@@ -60,7 +60,7 @@ function debug(msg) { if (verbose) console.log(`[index-patterns]   ${msg}`); }
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.py', '.go', '.rs']);
 const EXCLUDE_DIRS = new Set([
   'node_modules', 'dist', 'build', '.next', 'coverage',
-  '.claude', '.swarm', '.claude-flow', '.git', 'template',
+  '.claude', '.swarm', '.moflo', '.git', 'template',
 ]);
 
 // ---------------------------------------------------------------------------

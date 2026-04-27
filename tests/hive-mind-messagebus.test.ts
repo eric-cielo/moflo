@@ -534,7 +534,7 @@ describe('Hive-Mind Tools — MessageBus Backend (Story #121)', () => {
     // This test verifies the core requirement: no file I/O for hive state
     const fs = await import('node:fs');
     const path = await import('node:path');
-    const statePath = path.join(process.cwd(), '.claude-flow', 'hive-mind', 'state.json');
+    const statePath = path.join(process.cwd(), '.moflo', 'hive-mind', 'state.json');
 
     // Clean up any leftover state file
     try { fs.unlinkSync(statePath); } catch { /* ignore */ }

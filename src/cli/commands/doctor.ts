@@ -92,11 +92,15 @@ async function checkNpmVersion(): Promise<HealthCheck> {
 
 // Check config file
 async function checkConfigFile(): Promise<HealthCheck> {
-  // JSON configs (parse-validated)
+  // JSON configs (parse-validated). LEGACY-CONFIG: `.claude-flow.json` and
+  // `claude-flow.config.json` filenames are still recognised so consumers
+  // upgrading from pre-#699 moflo builds (upstream Ruflo) keep working
+  // without manual rename. Drift guard exempts these via LEGACY-CONFIG marker.
   const jsonPaths = [
-    '.claude-flow/config.json',
-    'claude-flow.config.json',
-    '.claude-flow.json'
+    '.moflo/config.json',
+    'moflo.config.json',
+    'claude-flow.config.json', // LEGACY-CONFIG: pre-#699 fallback
+    '.claude-flow.json',       // LEGACY-CONFIG: pre-#699 fallback
   ];
 
   for (const configPath of jsonPaths) {
@@ -111,11 +115,12 @@ async function checkConfigFile(): Promise<HealthCheck> {
     }
   }
 
-  // YAML configs (existence-checked only — no heavy yaml parser dependency)
+  // YAML configs (existence-checked only — no heavy yaml parser dependency).
   const yamlPaths = [
-    '.claude-flow/config.yaml',
-    '.claude-flow/config.yml',
-    'claude-flow.config.yaml'
+    '.moflo/config.yaml',
+    '.moflo/config.yml',
+    'moflo.config.yaml',
+    'claude-flow.config.yaml', // LEGACY-CONFIG: pre-#699 fallback
   ];
 
   for (const configPath of yamlPaths) {
@@ -171,16 +176,16 @@ async function checkDaemonStatus(): Promise<HealthCheck> {
     }
 
     // getDaemonLockHolder auto-cleans stale locks, but check for legacy PID file
-    const lockFile = '.claude-flow/daemon.lock';
+    const lockFile = '.moflo/daemon.lock';
     if (existsSync(lockFile)) {
       // Lock exists but holder is null — getDaemonLockHolder already cleaned it,
       // but if it persists it means cleanup failed (permissions, etc.)
-      return { name: 'Daemon Status', status: 'warn', message: 'Stale lock file', fix: 'rm .claude-flow/daemon.lock && claude-flow daemon start' };
+      return { name: 'Daemon Status', status: 'warn', message: 'Stale lock file', fix: 'rm .moflo/daemon.lock && claude-flow daemon start' };
     }
     // Also check legacy PID file
-    const pidFile = '.claude-flow/daemon.pid';
+    const pidFile = '.moflo/daemon.pid';
     if (existsSync(pidFile)) {
-      return { name: 'Daemon Status', status: 'warn', message: 'Legacy PID file found', fix: 'rm .claude-flow/daemon.pid && claude-flow daemon start' };
+      return { name: 'Daemon Status', status: 'warn', message: 'Legacy PID file found', fix: 'rm .moflo/daemon.pid && claude-flow daemon start' };
     }
     return { name: 'Daemon Status', status: 'warn', message: 'Not running', fix: 'claude-flow daemon start' };
   } catch {
@@ -191,7 +196,7 @@ async function checkDaemonStatus(): Promise<HealthCheck> {
 // Check memory database
 async function checkMemoryDatabase(): Promise<HealthCheck> {
   const dbPaths = [
-    '.claude-flow/memory.db',
+    '.moflo/memory.db',
     '.swarm/memory.db',
     'data/memory.db'
   ];
@@ -475,12 +480,12 @@ async function installClaudeCode(): Promise<boolean> {
 async function checkEmbeddings(): Promise<HealthCheck> {
   const dbPaths = [
     join(process.cwd(), '.swarm', 'memory.db'),
-    join(process.cwd(), '.claude-flow', 'memory.db'),
+    join(process.cwd(), '.moflo', 'memory.db'),
     join(process.cwd(), 'data', 'memory.db'),
   ];
 
   // 1. Fast path: read cached vector-stats.json if available
-  const statsPath = join(process.cwd(), '.claude-flow', 'vector-stats.json');
+  const statsPath = join(process.cwd(), '.moflo', 'vector-stats.json');
   try {
     if (existsSync(statsPath)) {
       const stats = JSON.parse(readFileSync(statsPath, 'utf8'));
@@ -605,7 +610,7 @@ async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     },
     'Config File': async () => {
       try {
-        const cfDir = join(process.cwd(), '.claude-flow');
+        const cfDir = join(process.cwd(), '.moflo');
         if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
         return runFixCommand('npx moflo config init');
       } catch {
@@ -614,8 +619,8 @@ async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     },
     'Daemon Status': async () => {
       // Clean stale locks, then try to start daemon
-      const lockFile = join(process.cwd(), '.claude-flow', 'daemon.lock');
-      const pidFile = join(process.cwd(), '.claude-flow', 'daemon.pid');
+      const lockFile = join(process.cwd(), '.moflo', 'daemon.lock');
+      const pidFile = join(process.cwd(), '.moflo', 'daemon.pid');
       try {
         if (existsSync(lockFile)) {
           const { unlinkSync } = await import('fs');
@@ -1038,8 +1043,8 @@ function isProcessAlive(pid: number): boolean {
 // Fast path: kill processes tracked in the shared ProcessManager registry.
 // This avoids the expensive OS-level process scan for known background tasks.
 function killTrackedProcesses(): number {
-  const registryFile = join(process.cwd(), '.claude-flow', 'background-pids.json');
-  const lockFile = join(process.cwd(), '.claude-flow', 'spawn.lock');
+  const registryFile = join(process.cwd(), '.moflo', 'background-pids.json');
+  const lockFile = join(process.cwd(), '.moflo', 'spawn.lock');
   let killed = 0;
   try {
     if (existsSync(registryFile)) {

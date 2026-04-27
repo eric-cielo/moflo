@@ -109,13 +109,13 @@ const DIRECTORIES = {
     '.claude/helpers',
   ],
   runtime: [
-    '.claude-flow',
-    '.claude-flow/data',
-    '.claude-flow/logs',
-    '.claude-flow/sessions',
-    '.claude-flow/hooks',
-    '.claude-flow/agents',
-    '.claude-flow/workflows',
+    '.moflo',
+    '.moflo/data',
+    '.moflo/logs',
+    '.moflo/sessions',
+    '.moflo/hooks',
+    '.moflo/agents',
+    '.moflo/workflows',
   ],
 };
 
@@ -388,9 +388,9 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
     // Ensure required directories exist
     const dirs = [
       '.claude/helpers',
-      '.claude-flow/metrics',
-      '.claude-flow/security',
-      '.claude-flow/learning',
+      '.moflo/metrics',
+      '.moflo/security',
+      '.moflo/learning',
     ];
 
     for (const dir of dirs) {
@@ -545,7 +545,7 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
     await writeEnvrc(targetDir, envrcAdapter);
 
     // 1d. Build manifest of files we're installing, clean up stale ones
-    const manifestPath = path.join(targetDir, '.claude-flow', 'installed-files.json');
+    const manifestPath = path.join(targetDir, '.moflo', 'installed-files.json');
     let previousManifest: string[] = [];
     try { previousManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')); } catch { /* ok */ }
     const currentManifest: string[] = [];
@@ -554,14 +554,14 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
     for (const entry of [...result.created, ...result.updated]) {
       // Strip annotations like " (removed, obsolete)" — keep only clean paths
       const clean = entry.replace(/\s*\(.*\)$/, '');
-      if (clean.startsWith('.claude/') || clean.startsWith('.claude-flow/')) {
+      if (clean.startsWith('.claude/') || clean.startsWith('.moflo/')) {
         currentManifest.push(clean);
       }
     }
 
     // 2. Create MISSING metrics files only (preserve existing data)
-    const metricsDir = path.join(targetDir, '.claude-flow', 'metrics');
-    const securityDir = path.join(targetDir, '.claude-flow', 'security');
+    const metricsDir = path.join(targetDir, '.moflo', 'metrics');
+    const securityDir = path.join(targetDir, '.moflo', 'security');
 
     // v3-progress.json
     const progressPath = path.join(metricsDir, 'v3-progress.json');
@@ -576,9 +576,9 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
         _note: 'Metrics will update as you use Claude Flow'
       };
       fs.writeFileSync(progressPath, JSON.stringify(progress, null, 2), 'utf-8');
-      result.created.push('.claude-flow/metrics/v3-progress.json');
+      result.created.push('.moflo/metrics/v3-progress.json');
     } else {
-      result.preserved.push('.claude-flow/metrics/v3-progress.json');
+      result.preserved.push('.moflo/metrics/v3-progress.json');
     }
 
     // swarm-activity.json
@@ -592,9 +592,9 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
         _initialized: true
       };
       fs.writeFileSync(activityPath, JSON.stringify(activity, null, 2), 'utf-8');
-      result.created.push('.claude-flow/metrics/swarm-activity.json');
+      result.created.push('.moflo/metrics/swarm-activity.json');
     } else {
-      result.preserved.push('.claude-flow/metrics/swarm-activity.json');
+      result.preserved.push('.moflo/metrics/swarm-activity.json');
     }
 
     // learning.json
@@ -608,9 +608,9 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
         _note: 'Intelligence grows as you use Claude Flow'
       };
       fs.writeFileSync(learningPath, JSON.stringify(learning, null, 2), 'utf-8');
-      result.created.push('.claude-flow/metrics/learning.json');
+      result.created.push('.moflo/metrics/learning.json');
     } else {
-      result.preserved.push('.claude-flow/metrics/learning.json');
+      result.preserved.push('.moflo/metrics/learning.json');
     }
 
     // audit-status.json
@@ -625,9 +625,9 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
         _note: 'Run: npx moflo security scan'
       };
       fs.writeFileSync(auditPath, JSON.stringify(audit, null, 2), 'utf-8');
-      result.created.push('.claude-flow/security/audit-status.json');
+      result.created.push('.moflo/security/audit-status.json');
     } else {
-      result.preserved.push('.claude-flow/security/audit-status.json');
+      result.preserved.push('.moflo/security/audit-status.json');
     }
 
     // 3. Fix .mcp.json — replace stale @moflo/cli references with moflo
@@ -705,7 +705,7 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
     // Re-scan result arrays since metrics/security files were added after initial collection
     for (const entry of [...result.created, ...result.updated]) {
       const clean = entry.replace(/\s*\(.*\)$/, '');
-      if ((clean.startsWith('.claude/') || clean.startsWith('.claude-flow/')) && !currentManifest.includes(clean)) {
+      if ((clean.startsWith('.claude/') || clean.startsWith('.moflo/')) && !currentManifest.includes(clean)) {
         currentManifest.push(clean);
       }
     }
@@ -729,7 +729,7 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
 
     // Write manifest for next upgrade
     try {
-      const cfDir = path.join(targetDir, '.claude-flow');
+      const cfDir = path.join(targetDir, '.moflo');
       if (!fs.existsSync(cfDir)) fs.mkdirSync(cfDir, { recursive: true });
       fs.writeFileSync(manifestPath, JSON.stringify(currentManifest, null, 2), 'utf-8');
     } catch { /* non-fatal */ }
@@ -1384,17 +1384,17 @@ async function writeStatusline(
 }
 
 /**
- * Write runtime configuration (.claude-flow/)
+ * Write runtime configuration (.moflo/)
  */
 async function writeRuntimeConfig(
   targetDir: string,
   options: InitOptions,
   result: InitResult
 ): Promise<void> {
-  const configPath = path.join(targetDir, '.claude-flow', 'config.yaml');
+  const configPath = path.join(targetDir, '.moflo', 'config.yaml');
 
   if (fs.existsSync(configPath) && !options.force) {
-    result.skipped.push('.claude-flow/config.yaml');
+    result.skipped.push('.moflo/config.yaml');
     return;
   }
 
@@ -1412,7 +1412,7 @@ swarm:
 memory:
   backend: ${options.runtime.memoryBackend}
   enableHNSW: ${options.runtime.enableHNSW}
-  persistPath: .claude-flow/data
+  persistPath: .moflo/data
   cacheSize: 100
   # ADR-049: Self-Learning Memory
   learningBridge:
@@ -1432,7 +1432,7 @@ memory:
 
 neural:
   enabled: ${options.runtime.enableNeural}
-  modelPath: .claude-flow/neural
+  modelPath: .moflo/neural
 
 hooks:
   enabled: true
@@ -1444,10 +1444,10 @@ mcp:
 `;
 
   fs.writeFileSync(configPath, config, 'utf-8');
-  result.created.files.push('.claude-flow/config.yaml');
+  result.created.files.push('.moflo/config.yaml');
 
   // Write .gitignore
-  const gitignorePath = path.join(targetDir, '.claude-flow', '.gitignore');
+  const gitignorePath = path.join(targetDir, '.moflo', '.gitignore');
   const gitignore = `# Claude Flow runtime files
 data/
 logs/
@@ -1459,7 +1459,7 @@ neural/
 
   if (!fs.existsSync(gitignorePath) || options.force) {
     fs.writeFileSync(gitignorePath, gitignore, 'utf-8');
-    result.created.files.push('.claude-flow/.gitignore');
+    result.created.files.push('.moflo/.gitignore');
   }
 
   // Write CAPABILITIES.md with full system overview
@@ -1475,9 +1475,9 @@ async function writeInitialMetrics(
   options: InitOptions,
   result: InitResult
 ): Promise<void> {
-  const metricsDir = path.join(targetDir, '.claude-flow', 'metrics');
-  const learningDir = path.join(targetDir, '.claude-flow', 'learning');
-  const securityDir = path.join(targetDir, '.claude-flow', 'security');
+  const metricsDir = path.join(targetDir, '.moflo', 'metrics');
+  const learningDir = path.join(targetDir, '.moflo', 'learning');
+  const securityDir = path.join(targetDir, '.moflo', 'security');
 
   // Ensure directories exist
   for (const dir of [metricsDir, learningDir, securityDir]) {
@@ -1516,7 +1516,7 @@ async function writeInitialMetrics(
       _note: 'Metrics will update as you use Claude Flow. Run: npx moflo daemon start'
     };
     fs.writeFileSync(progressPath, JSON.stringify(progress, null, 2), 'utf-8');
-    result.created.files.push('.claude-flow/metrics/v3-progress.json');
+    result.created.files.push('.moflo/metrics/v3-progress.json');
   }
 
   // Create initial swarm-activity.json
@@ -1541,7 +1541,7 @@ async function writeInitialMetrics(
       _initialized: true
     };
     fs.writeFileSync(activityPath, JSON.stringify(activity, null, 2), 'utf-8');
-    result.created.files.push('.claude-flow/metrics/swarm-activity.json');
+    result.created.files.push('.moflo/metrics/swarm-activity.json');
   }
 
   // Create initial learning.json
@@ -1565,7 +1565,7 @@ async function writeInitialMetrics(
       _note: 'Intelligence grows as you use Claude Flow'
     };
     fs.writeFileSync(learningPath, JSON.stringify(learning, null, 2), 'utf-8');
-    result.created.files.push('.claude-flow/metrics/learning.json');
+    result.created.files.push('.moflo/metrics/learning.json');
   }
 
   // Create initial audit-status.json
@@ -1580,7 +1580,7 @@ async function writeInitialMetrics(
       _note: 'Run: npx moflo security scan'
     };
     fs.writeFileSync(auditPath, JSON.stringify(audit, null, 2), 'utf-8');
-    result.created.files.push('.claude-flow/security/audit-status.json');
+    result.created.files.push('.moflo/security/audit-status.json');
   }
 }
 
@@ -1592,10 +1592,10 @@ async function writeCapabilitiesDoc(
   options: InitOptions,
   result: InitResult
 ): Promise<void> {
-  const capabilitiesPath = path.join(targetDir, '.claude-flow', 'CAPABILITIES.md');
+  const capabilitiesPath = path.join(targetDir, '.moflo', 'CAPABILITIES.md');
 
   if (fs.existsSync(capabilitiesPath) && !options.force) {
-    result.skipped.push('.claude-flow/CAPABILITIES.md');
+    result.skipped.push('.moflo/CAPABILITIES.md');
     return;
   }
 
@@ -1979,7 +1979,7 @@ npx moflo hooks worker dispatch --trigger optimize
 
 ### File Structure
 \`\`\`
-.claude-flow/
+.moflo/
 ├── config.yaml      # Runtime configuration
 ├── CAPABILITIES.md  # This file
 ├── data/            # Memory storage
@@ -1997,7 +1997,7 @@ npx moflo hooks worker dispatch --trigger optimize
 `;
 
   fs.writeFileSync(capabilitiesPath, capabilities, 'utf-8');
-  result.created.files.push('.claude-flow/CAPABILITIES.md');
+  result.created.files.push('.moflo/CAPABILITIES.md');
 }
 
 /**

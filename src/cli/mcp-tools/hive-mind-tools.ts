@@ -190,7 +190,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 function loadAgentStore(): { agents: Record<string, unknown> } {
-  const storePath = join(process.cwd(), '.claude-flow', 'agents.json');
+  const storePath = join(process.cwd(), '.moflo', 'agents.json');
   try {
     if (existsSync(storePath)) {
       return JSON.parse(readFileSync(storePath, 'utf-8'));
@@ -200,7 +200,7 @@ function loadAgentStore(): { agents: Record<string, unknown> } {
 }
 
 function saveAgentStore(store: { agents: Record<string, unknown> }): void {
-  const storeDir = join(process.cwd(), '.claude-flow');
+  const storeDir = join(process.cwd(), '.moflo');
   if (!existsSync(storeDir)) {
     mkdirSync(storeDir, { recursive: true });
   }

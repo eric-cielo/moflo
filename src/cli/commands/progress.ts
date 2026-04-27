@@ -121,7 +121,7 @@ const syncCommand: Command = {
 
       output.writeln();
       output.printSuccess(`Progress synced: ${result.progress}%`);
-      output.writeln(output.dim(`  Persisted to .claude-flow/metrics/v3-progress.json`));
+      output.writeln(output.dim(`  Persisted to .moflo/metrics/v3-progress.json`));
       output.writeln(output.dim(`  Last updated: ${result.lastUpdated}`));
 
       return { success: true, data: result };

@@ -58,7 +58,7 @@ beforeEach(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'moflo-bridge-entries-'));
   fs.mkdirSync(path.join(tmpDir, '.swarm'), { recursive: true });
   // Bridge resolves project root from cwd for ancillary paths
-  // (.claude-flow/vector-stats.json). Isolate so tests don't clobber the
+  // (.moflo/vector-stats.json). Isolate so tests don't clobber the
   // host project's stats cache.
   process.chdir(tmpDir);
   // Bridge caches project root at module level — reset so it picks up tmpDir.
@@ -183,7 +183,7 @@ describe('refreshVectorStatsCache — missing counter (#649)', () => {
     const { refreshVectorStatsCache } = await import('../memory/bridge-core.js');
     refreshVectorStatsCache(dbPath);
 
-    const statsPath = path.join(tmpDir, '.claude-flow', 'vector-stats.json');
+    const statsPath = path.join(tmpDir, '.moflo', 'vector-stats.json');
     expect(fs.existsSync(statsPath)).toBe(true);
     const stats = JSON.parse(fs.readFileSync(statsPath, 'utf-8'));
     expect(stats.vectorCount).toBe(1);

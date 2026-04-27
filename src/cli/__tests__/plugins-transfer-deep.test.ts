@@ -113,7 +113,7 @@ describe('PluginManager', () => {
   });
 
   it('should return correct plugins dir and manifest path', () => {
-    expect(manager.getPluginsDir()).toMatch(/\.claude-flow[/\\]plugins/);
+    expect(manager.getPluginsDir()).toMatch(/\.moflo[/\\]plugins/);
     expect(manager.getManifestPath()).toContain('installed.json');
   });
 

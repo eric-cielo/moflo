@@ -23,7 +23,7 @@ describe('daemon-lock', () => {
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'daemon-lock-test-'));
-    mkdirSync(join(tempDir, '.claude-flow'), { recursive: true });
+    mkdirSync(join(tempDir, '.moflo'), { recursive: true });
   });
 
   afterEach(() => {
@@ -209,13 +209,13 @@ describe('daemon-lock', () => {
   // State directory creation
   // =========================================================================
   describe('state directory handling', () => {
-    it('should create .claude-flow directory if missing', () => {
+    it('should create .moflo directory if missing', () => {
       const freshDir = mkdtempSync(join(tmpdir(), 'daemon-lock-fresh-'));
 
       try {
         const result = acquireDaemonLock(freshDir);
         expect(result.acquired).toBe(true);
-        expect(existsSync(join(freshDir, '.claude-flow', 'daemon.lock'))).toBe(true);
+        expect(existsSync(join(freshDir, '.moflo', 'daemon.lock'))).toBe(true);
       } finally {
         rmSync(freshDir, { recursive: true, force: true });
       }

@@ -77,7 +77,7 @@ const initCommand: Command = {
     };
 
     output.writeln(output.dim('  Creating claude-flow.config.json...'));
-    output.writeln(output.dim('  Creating .claude-flow/ directory...'));
+    output.writeln(output.dim('  Creating .moflo/ directory...'));
 
     if (sparc) {
       output.writeln(output.dim('  Initializing SPARC methodology...'));

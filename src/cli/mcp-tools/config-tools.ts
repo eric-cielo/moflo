@@ -7,9 +7,9 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { MCPTool } from './types.js';
+import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
 
 // Storage paths
-const STORAGE_DIR = '.claude-flow';
 const CONFIG_FILE = 'config.json';
 
 interface ConfigStore {

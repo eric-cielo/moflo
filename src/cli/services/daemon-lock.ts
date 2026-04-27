@@ -24,7 +24,7 @@ const LOCK_LABEL = 'moflo-daemon';
 
 /** Resolve the lock file path for a project root. */
 export function lockPath(projectRoot: string): string {
-  return join(projectRoot, '.claude-flow', LOCK_FILENAME);
+  return join(projectRoot, '.moflo', LOCK_FILENAME);
 }
 
 /**
@@ -38,7 +38,7 @@ export function acquireDaemonLock(
   pid: number = process.pid,
 ): { acquired: true } | { acquired: false; holder: number } {
   const lock = lockPath(projectRoot);
-  const stateDir = join(projectRoot, '.claude-flow');
+  const stateDir = join(projectRoot, '.moflo');
 
   // Ensure state directory exists
   if (!fs.existsSync(stateDir)) {

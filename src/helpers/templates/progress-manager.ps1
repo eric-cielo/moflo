@@ -8,13 +8,13 @@ param(
     [string]$Value
 )
 
-$MetricsDir = Join-Path ${env:PROJECT_ROOT} ".claude-flow\metrics"
-$SecurityDir = Join-Path ${env:PROJECT_ROOT} ".claude-flow\security"
+$MetricsDir = Join-Path ${env:PROJECT_ROOT} ".moflo\metrics"
+$SecurityDir = Join-Path ${env:PROJECT_ROOT} ".moflo\security"
 
 # Fallback if PROJECT_ROOT not set
 if ([string]::IsNullOrEmpty(${env:PROJECT_ROOT})) {
-    $MetricsDir = ".claude-flow\metrics"
-    $SecurityDir = ".claude-flow\security"
+    $MetricsDir = ".moflo\metrics"
+    $SecurityDir = ".moflo\security"
 }
 
 function Log-Success { param([string]$Message) Write-Host "✅ $Message" -ForegroundColor Green }

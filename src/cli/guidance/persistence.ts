@@ -28,7 +28,7 @@ import type { RunEvent } from './types.js';
  * Configuration for the persistent ledger
  */
 export interface PersistenceConfig {
-  /** Directory path for storage files (default: '.claude-flow/guidance') */
+  /** Directory path for storage files (default: '.moflo/guidance') */
   storagePath: string;
   /** Maximum events to keep; oldest evicted on compact (default: 10000) */
   maxEvents: number;
@@ -71,7 +71,7 @@ interface StorageIndex {
 // ============================================================================
 
 const DEFAULT_PERSISTENCE_CONFIG: PersistenceConfig = {
-  storagePath: '.claude-flow/guidance',
+  storagePath: '.moflo/guidance',
   maxEvents: 10_000,
   compactIntervalMs: 60 * 60 * 1000, // 1 hour
   enableWAL: true,

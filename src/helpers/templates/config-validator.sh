@@ -24,7 +24,7 @@ echo ""
 
 # Check required directories
 echo "📁 Checking Directory Structure..."
-required_dirs=(".claude" ".claude/helpers" ".claude-flow/metrics" ".claude-flow/security")
+required_dirs=(".claude" ".claude/helpers" ".moflo/metrics" ".moflo/security")
 
 for dir in "${required_dirs[@]}"; do
     if [ -d "$dir" ]; then
@@ -37,7 +37,7 @@ done
 # Check required files
 echo ""
 echo "📄 Checking Required Files..."
-required_files=(".claude-flow/metrics/v3-progress.json" ".claude-flow/metrics/performance.json" ".claude-flow/security/audit-status.json")
+required_files=(".moflo/metrics/v3-progress.json" ".moflo/metrics/performance.json" ".moflo/security/audit-status.json")
 
 for file in "${required_files[@]}"; do
     if [ -f "$file" ]; then

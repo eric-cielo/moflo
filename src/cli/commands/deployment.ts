@@ -60,7 +60,7 @@ const deployCommand: Command = {
       `Version: ${version}`,
       `Status: ${output.success('Deployed')}`,
       ``,
-      `URL: https://${env === 'prod' ? 'api' : env}.claude-flow.io`,
+      `URL: https://${env === 'prod' ? 'api' : env}.moflo.io`,
       `Deployed at: ${new Date().toISOString()}`,
       `Duration: 12.4s`,
     ].join('\n'), 'Deployment Complete');
@@ -224,10 +224,10 @@ const environmentsCommand: Command = {
         { key: 'protected', header: 'Protected', width: 12 },
       ],
       data: [
-        { name: 'production', url: 'https://api.claude-flow.io', auto: output.error('No'), protected: output.success('Yes') },
-        { name: 'staging', url: 'https://staging.claude-flow.io', auto: output.success('Yes'), protected: output.error('No') },
-        { name: 'development', url: 'https://dev.claude-flow.io', auto: output.success('Yes'), protected: output.error('No') },
-        { name: 'preview/*', url: 'https://pr-*.claude-flow.io', auto: output.success('Yes'), protected: output.error('No') },
+        { name: 'production', url: 'https://api.moflo.io', auto: output.error('No'), protected: output.success('Yes') },
+        { name: 'staging', url: 'https://staging.moflo.io', auto: output.success('Yes'), protected: output.error('No') },
+        { name: 'development', url: 'https://dev.moflo.io', auto: output.success('Yes'), protected: output.error('No') },
+        { name: 'preview/*', url: 'https://pr-*.moflo.io', auto: output.success('Yes'), protected: output.error('No') },
       ],
     });
 

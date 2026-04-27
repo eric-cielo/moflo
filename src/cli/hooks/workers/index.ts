@@ -413,7 +413,7 @@ export class WorkerManager extends EventEmitter {
   constructor(projectRoot?: string) {
     super();
     this.projectRoot = projectRoot || process.cwd();
-    this.metricsDir = path.join(this.projectRoot, '.claude-flow', 'metrics');
+    this.metricsDir = path.join(this.projectRoot, '.moflo', 'metrics');
     this.persistPath = path.join(this.metricsDir, 'workers-state.json');
     this.statuslinePath = path.join(this.metricsDir, 'statusline.json');
     this.initializeMetrics();
@@ -1071,7 +1071,7 @@ export function createSwarmWorker(projectRoot: string): WorkerHandler {
     const startTime = Date.now();
 
     // Check for swarm activity file
-    const activityPath = path.join(projectRoot, '.claude-flow', 'metrics', 'swarm-activity.json');
+    const activityPath = path.join(projectRoot, '.moflo', 'metrics', 'swarm-activity.json');
     let swarmData: Record<string, unknown> = {};
 
     try {
@@ -1082,7 +1082,7 @@ export function createSwarmWorker(projectRoot: string): WorkerHandler {
     }
 
     // Check for queue messages
-    const queuePath = path.join(projectRoot, '.claude-flow', 'swarm', 'queue');
+    const queuePath = path.join(projectRoot, '.moflo', 'swarm', 'queue');
     let queueCount = 0;
     try {
       const files = await fs.readdir(queuePath);
@@ -1152,7 +1152,7 @@ export function createLearningWorker(projectRoot: string): WorkerHandler {
   return async (): Promise<WorkerResult> => {
     const startTime = Date.now();
 
-    const patternsDbPath = path.join(projectRoot, '.claude-flow', 'learning', 'patterns.db');
+    const patternsDbPath = path.join(projectRoot, '.moflo', 'learning', 'patterns.db');
     let learningData: Record<string, unknown> = {
       patternsDb: false,
       shortTerm: 0,
@@ -1165,7 +1165,7 @@ export function createLearningWorker(projectRoot: string): WorkerHandler {
       learningData.patternsDb = true;
 
       // Read learning metrics if available
-      const metricsPath = path.join(projectRoot, '.claude-flow', 'metrics', 'learning.json');
+      const metricsPath = path.join(projectRoot, '.moflo', 'metrics', 'learning.json');
       try {
         const content = await fs.readFile(metricsPath, 'utf-8');
         const metrics = safeJsonParse<Record<string, unknown>>(content);
@@ -1248,7 +1248,7 @@ export function createSecurityWorker(projectRoot: string): WorkerHandler {
 
     // Save results
     try {
-      const outputPath = path.join(projectRoot, '.claude-flow', 'security', 'scan-results.json');
+      const outputPath = path.join(projectRoot, '.moflo', 'security', 'scan-results.json');
       await fs.mkdir(path.dirname(outputPath), { recursive: true });
       await fs.writeFile(outputPath, JSON.stringify({
         timestamp: new Date().toISOString(),
@@ -1284,7 +1284,7 @@ export function createPatternsWorker(projectRoot: string): WorkerHandler {
   return async (): Promise<WorkerResult> => {
     const startTime = Date.now();
 
-    const learningDir = path.join(projectRoot, '.claude-flow', 'learning');
+    const learningDir = path.join(projectRoot, '.moflo', 'learning');
     let patternsData: Record<string, unknown> = {
       shortTerm: 0,
       longTerm: 0,
@@ -1323,7 +1323,7 @@ export function createPatternsWorker(projectRoot: string): WorkerHandler {
       };
 
       // Write consolidated metrics
-      const metricsPath = path.join(projectRoot, '.claude-flow', 'metrics', 'patterns.json');
+      const metricsPath = path.join(projectRoot, '.moflo', 'metrics', 'patterns.json');
       await fs.writeFile(metricsPath, JSON.stringify({
         timestamp: new Date().toISOString(),
         ...patternsData,
@@ -1350,10 +1350,10 @@ export function createCacheWorker(projectRoot: string): WorkerHandler {
     let cleaned = 0;
     let freedBytes = 0;
 
-    // Only clean directories within .claude-flow (safe)
+    // Only clean directories within .moflo (safe)
     const safeCleanDirs = [
-      '.claude-flow/cache',
-      '.claude-flow/temp',
+      '.moflo/cache',
+      '.moflo/temp',
     ];
 
     const maxAgeMs = 7 * 24 * 60 * 60 * 1000; // 7 days

@@ -392,7 +392,7 @@ export class StatuslineGenerator {
     }
 
     // Try to read from metrics file
-    const metricsPath = join(this.projectRoot, '.claude-flow', 'metrics', 'v3-progress.json');
+    const metricsPath = join(this.projectRoot, '.moflo', 'metrics', 'v3-progress.json');
     try {
       if (existsSync(metricsPath)) {
         const data = JSON.parse(readFileSync(metricsPath, 'utf-8'));
@@ -429,7 +429,7 @@ export class StatuslineGenerator {
     }
 
     // Try to read from audit file
-    const auditPath = join(this.projectRoot, '.claude-flow', 'security', 'audit-status.json');
+    const auditPath = join(this.projectRoot, '.moflo', 'security', 'audit-status.json');
     try {
       if (existsSync(auditPath)) {
         const data = JSON.parse(readFileSync(auditPath, 'utf-8'));
@@ -481,7 +481,7 @@ export class StatuslineGenerator {
     }
 
     // Also check swarm activity file
-    const activityPath = join(this.projectRoot, '.claude-flow', 'metrics', 'swarm-activity.json');
+    const activityPath = join(this.projectRoot, '.moflo', 'metrics', 'swarm-activity.json');
     try {
       if (existsSync(activityPath)) {
         const data = JSON.parse(readFileSync(activityPath, 'utf-8'));
@@ -585,7 +585,7 @@ export class StatuslineGenerator {
 
     // Intelligence score from patterns
     let intelligencePct = 10;
-    const patternsPath = join(this.projectRoot, '.claude-flow', 'learning', 'patterns.db');
+    const patternsPath = join(this.projectRoot, '.moflo', 'learning', 'patterns.db');
     try {
       if (existsSync(patternsPath)) {
         // Estimate based on file size

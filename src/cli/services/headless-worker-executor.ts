@@ -484,7 +484,7 @@ Provide preload suggestions as JSON:
       sandbox: 'strict',
       model: 'haiku',
       outputFormat: 'json',
-      contextPatterns: ['.claude-flow/metrics/*.json'],
+      contextPatterns: ['.moflo/metrics/*.json'],
       timeoutMs: 2 * 60 * 1000,
     },
   },
@@ -626,7 +626,7 @@ export class HeadlessWorkerExecutor extends EventEmitter {
       defaultTimeoutMs: options?.defaultTimeoutMs ?? 5 * 60 * 1000,
       maxContextFiles: options?.maxContextFiles ?? 20,
       maxCharsPerFile: options?.maxCharsPerFile ?? 5000,
-      logDir: options?.logDir ?? join(projectRoot, '.claude-flow', 'logs', 'headless'),
+      logDir: options?.logDir ?? join(projectRoot, '.moflo', 'logs', 'headless'),
       cacheContext: options?.cacheContext ?? true,
       cacheTtlMs: options?.cacheTtlMs ?? 60000, // 1 minute default
     };

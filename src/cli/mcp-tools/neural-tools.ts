@@ -14,6 +14,7 @@ import type { MCPTool } from './types.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createEmbeddingServiceAsync } from '../embeddings/index.js';
+import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
 
 let realEmbeddings: { embed: (text: string) => Promise<number[]> } | null = null;
 let embeddingServiceName: string = 'none';
@@ -35,7 +36,6 @@ try {
 }
 
 // Storage paths
-const STORAGE_DIR = '.claude-flow';
 const NEURAL_DIR = 'neural';
 const MODELS_FILE = 'models.json';
 const PATTERNS_FILE = 'patterns.json';

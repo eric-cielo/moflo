@@ -265,7 +265,7 @@ Each pipeline execution provides:
 
 ## Custom Pipeline Definitions
 
-Define reusable pipelines in `.claude-flow/config.json`:
+Define reusable pipelines in `.moflo/config.json`:
 
 ### Configuration Format
 
@@ -444,7 +444,7 @@ claude-flow stream-chain run \
   "Design architecture" \
   --verbose
 
-# Results stored in .claude-flow/memory/stream-chain/
+# Results stored in .moflo/memory/stream-chain/
 ```
 
 ### Neural Pattern Training
@@ -484,7 +484,7 @@ Verify pipeline name and custom definitions:
 
 ```bash
 # Check available pipelines
-cat .claude-flow/config.json | grep -A 10 "streamChain"
+cat .moflo/config.json | grep -A 10 "streamChain"
 ```
 
 ---
