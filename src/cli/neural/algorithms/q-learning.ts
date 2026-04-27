@@ -8,7 +8,6 @@
  * - Experience replay
  *
  * Suitable for smaller state spaces or discretized environments.
- * Performance Target: <1ms per update
  */
 
 import type { Trajectory, RLConfig } from '../types.js';
@@ -87,8 +86,6 @@ export class QLearning {
    * Update Q-values from trajectory
    */
   update(trajectory: Trajectory): { tdError: number } {
-    const startTime = performance.now();
-
     if (trajectory.steps.length === 0) {
       return { tdError: 0 };
     }
@@ -155,11 +152,6 @@ export class QLearning {
 
     this.updateCount++;
     this.avgTDError = totalTDError / trajectory.steps.length;
-
-    const elapsed = performance.now() - startTime;
-    if (elapsed > 1) {
-      console.warn(`Q-learning update exceeded target: ${elapsed.toFixed(2)}ms > 1ms`);
-    }
 
     return { tdError: this.avgTDError };
   }

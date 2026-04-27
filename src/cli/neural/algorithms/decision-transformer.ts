@@ -6,8 +6,6 @@
  * - Return-conditioned generation
  * - Causal transformer attention
  * - Offline RL from trajectories
- *
- * Performance Target: <10ms per forward pass
  */
 
 import type {
@@ -125,11 +123,8 @@ export class DecisionTransformer {
 
   /**
    * Train on buffered trajectories
-   * Target: <10ms per batch
    */
   train(): { loss: number; accuracy: number } {
-    const startTime = performance.now();
-
     if (this.trajectoryBuffer.length === 0) {
       return { loss: 0, accuracy: 0 };
     }
@@ -179,11 +174,6 @@ export class DecisionTransformer {
 
     this.updateCount++;
     this.avgLoss = total > 0 ? totalLoss / total : 0;
-
-    const elapsed = performance.now() - startTime;
-    if (elapsed > 10) {
-      console.warn(`DT training exceeded target: ${elapsed.toFixed(2)}ms > 10ms`);
-    }
 
     return {
       loss: this.avgLoss,

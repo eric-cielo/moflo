@@ -8,12 +8,6 @@
  * - Pattern consolidation with deduplication and pruning
  *
  * Based on Algorithm 3 & 4 from ReasoningBank paper.
- *
- * Performance Targets:
- * - Pattern retrieval: <5ms
- * - Verdict judgment: <10ms
- * - Memory distillation: <50ms
- * - Consolidation: <100ms
  */
 
 import type {

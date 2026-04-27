@@ -6,8 +6,6 @@
  * - Random Network Distillation (RND)
  * - Forward and inverse dynamics models
  * - Exploration bonus generation
- *
- * Performance Target: <5ms per forward pass
  */
 
 import type { CuriosityConfig, Trajectory, TrajectoryStep } from '../types.js';
@@ -116,8 +114,6 @@ export class CuriosityModule {
     action: string,
     nextState: Float32Array
   ): number {
-    const startTime = performance.now();
-
     // Encode states to features
     const stateFeature = this.encodeState(state);
     const nextStateFeature = this.encodeState(nextState);
@@ -135,11 +131,6 @@ export class CuriosityModule {
     // Normalize intrinsic reward
     const intrinsic = this.normalizeIntrinsic(error);
 
-    const elapsed = performance.now() - startTime;
-    if (elapsed > 5) {
-      console.warn(`ICM reward exceeded target: ${elapsed.toFixed(2)}ms > 5ms`);
-    }
-
     return intrinsic * this.config.intrinsicCoef;
   }
 
@@ -147,8 +138,6 @@ export class CuriosityModule {
    * Compute RND-based intrinsic reward
    */
   computeRNDReward(state: Float32Array): number {
-    const startTime = performance.now();
-
     // Target network output (fixed random features)
     const targetOutput = this.rndForward(state, this.rndTarget);
 
@@ -164,11 +153,6 @@ export class CuriosityModule {
     // Normalize
     const intrinsic = this.normalizeIntrinsic(error);
 
-    const elapsed = performance.now() - startTime;
-    if (elapsed > 5) {
-      console.warn(`RND reward exceeded target: ${elapsed.toFixed(2)}ms > 5ms`);
-    }
-
     return intrinsic * this.config.intrinsicCoef;
   }
 
@@ -176,8 +160,6 @@ export class CuriosityModule {
    * Update curiosity models from trajectory
    */
   update(trajectory: Trajectory): { forwardLoss: number; inverseLoss: number } {
-    const startTime = performance.now();
-
     if (trajectory.steps.length < 2) {
       return { forwardLoss: 0, inverseLoss: 0 };
     }
@@ -213,11 +195,6 @@ export class CuriosityModule {
     this.updateCount++;
     this.avgForwardLoss = count > 0 ? totalForwardLoss / count : 0;
     this.avgInverseLoss = count > 0 ? totalInverseLoss / count : 0;
-
-    const elapsed = performance.now() - startTime;
-    if (elapsed > 10) {
-      console.warn(`Curiosity update exceeded target: ${elapsed.toFixed(2)}ms > 10ms`);
-    }
 
     return {
       forwardLoss: this.avgForwardLoss,

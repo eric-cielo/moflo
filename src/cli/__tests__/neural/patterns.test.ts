@@ -6,8 +6,6 @@
  * - Memory distillation (4-step pipeline)
  * - Trajectory tracking and judgment
  * - Pattern evolution and consolidation
- *
- * Performance target: <10ms for learning operations
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';

@@ -57,7 +57,6 @@ export class RealTimeMode extends BaseModeImplementation {
 
   /**
    * Find patterns using cached similarity search
-   * Target: <1ms for k=3
    */
   async findPatterns(
     embedding: Float32Array,
@@ -118,7 +117,6 @@ export class RealTimeMode extends BaseModeImplementation {
 
   /**
    * Fast learning using Micro-LoRA updates
-   * Target: <10ms per batch
    */
   async learn(
     trajectories: Trajectory[],
@@ -151,7 +149,6 @@ export class RealTimeMode extends BaseModeImplementation {
 
   /**
    * Apply LoRA with minimal overhead
-   * Target: <0.05ms
    */
   async applyLoRA(
     input: Float32Array,

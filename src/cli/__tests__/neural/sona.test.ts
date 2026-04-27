@@ -2,12 +2,7 @@
  * SONA Learning Engine Tests
  *
  * Tests for SONA integration with pure TypeScript SonaEngine.
- * Covers initialization, learning, adaptation, mode switching, and performance.
- *
- * Performance targets:
- * - learn(): <0.05ms
- * - adapt(): <0.1ms
- * - Full learning cycle: <10ms
+ * Covers initialization, learning, adaptation, and mode switching.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -155,7 +150,7 @@ describe('SONALearningEngine', () => {
       await expect(engine.learn(trajectory)).resolves.not.toThrow();
     });
 
-    it('should complete learning under performance target', async () => {
+    it('should complete learning within 50ms (smoke check)', async () => {
       const trajectory: Trajectory = {
         trajectoryId: 'perf-test',
         context: 'Performance test',
@@ -237,7 +232,7 @@ describe('SONALearningEngine', () => {
       expect(result.confidence).toBeLessThanOrEqual(1);
     });
 
-    it('should complete adaptation under performance target', async () => {
+    it('should complete adaptation within 50ms (smoke check)', async () => {
       const context: Context = {
         domain: 'code',
         queryEmbedding: new Float32Array(768).fill(0.5),

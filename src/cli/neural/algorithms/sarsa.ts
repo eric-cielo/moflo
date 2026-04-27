@@ -6,8 +6,6 @@
  * - State hashing for continuous states
  * - Expected SARSA variant (optional)
  * - Eligibility traces (SARSA-lambda)
- *
- * Performance Target: <1ms per update
  */
 
 import type { Trajectory, RLConfig } from '../types.js';
@@ -88,8 +86,6 @@ export class SARSAAlgorithm {
    * Update Q-values from trajectory using SARSA
    */
   update(trajectory: Trajectory): { tdError: number } {
-    const startTime = performance.now();
-
     if (trajectory.steps.length < 2) {
       return { tdError: 0 };
     }
@@ -166,11 +162,6 @@ export class SARSAAlgorithm {
 
     this.updateCount++;
     this.avgTDError = totalTDError / trajectory.steps.length;
-
-    const elapsed = performance.now() - startTime;
-    if (elapsed > 1) {
-      console.warn(`SARSA update exceeded target: ${elapsed.toFixed(2)}ms > 1ms`);
-    }
 
     return { tdError: this.avgTDError };
   }

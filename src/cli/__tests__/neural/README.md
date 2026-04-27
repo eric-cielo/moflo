@@ -16,14 +16,14 @@ Tests for SONA Learning Engine (pure TypeScript implementation):
 
 **Learning from Trajectories (5 tests)**
 - Learning from complete trajectory
-- Performance target validation (<0.05ms)
+- Learning completion smoke check
 - Handling empty trajectories
 - Multi-step trajectory learning
 - Learning time tracking
 
 **Adaptation (6 tests)**
 - Behavior adaptation based on context
-- Performance target validation (<0.1ms)
+- Adaptation completion smoke check
 - Finding similar patterns
 - Route inference from patterns
 - Handling no patterns found
@@ -51,7 +51,7 @@ Tests for reinforcement learning algorithms:
 #### Q-Learning (8 tests)
 - Initialization
 - Q-value updates from trajectory
-- Performance target (<1ms)
+- Update completion smoke check
 - Exploration rate decay
 - Epsilon-greedy action selection
 - Q-value retrieval
@@ -73,7 +73,7 @@ Tests for reinforcement learning algorithms:
 - Initialization
 - Experience replay buffer
 - DQN update mechanism
-- Performance target (<10ms)
+- Update completion smoke check
 - Double DQN support
 - Epsilon-greedy action selection
 - Q-value retrieval
@@ -84,7 +84,7 @@ Tests for reinforcement learning algorithms:
 - Initialization
 - Experience collection
 - PPO update with clipping
-- Performance target (<10ms for small batches)
+- Update completion smoke check
 - GAE advantage computation
 - Policy action sampling
 - Multiple training epochs
@@ -95,7 +95,7 @@ Tests for reinforcement learning algorithms:
 - Trajectory buffer management
 - Incomplete trajectory handling
 - Training on buffered trajectories
-- Performance target (<10ms per batch)
+- Training completion smoke check
 - Return-conditioned action generation
 - Causal attention masking
 - Bounded trajectory buffer
@@ -159,22 +159,6 @@ Tests for pattern learning and ReasoningBank:
 - Pattern evolution event emission
 
 ---
-
-## Performance Targets
-
-All tests validate against these performance targets:
-
-| Operation | Target | Test Coverage |
-|-----------|--------|---------------|
-| SONA learn() | <0.05ms | ✓ |
-| SONA adapt() | <0.1ms | ✓ |
-| Q-Learning update | <1ms | ✓ |
-| SARSA update | <1ms | ✓ |
-| DQN update | <10ms | ✓ |
-| PPO update | <10ms | ✓ |
-| Decision Transformer train | <10ms | ✓ |
-| ReasoningBank retrieval | <10ms | ✓ |
-| ReasoningBank distillation | <10ms | ✓ |
 
 ## Running Tests
 
