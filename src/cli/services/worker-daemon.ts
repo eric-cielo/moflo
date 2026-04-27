@@ -27,6 +27,9 @@ import type {
   SpellScheduler,
   SchedulerEvent,
 } from '../spells/scheduler/scheduler.js';
+import { withTimeout } from '../shared/resilience/retry.js';
+import { calculateDelay } from '../production/retry.js';
+import { CircuitBreaker } from '../production/circuit-breaker.js';
 
 // Worker types matching hooks-tools.ts
 export type WorkerType =
@@ -63,7 +66,7 @@ interface WorkerState {
   consecutiveOverruns: number;
   disabledByOverrun?: boolean;
   // Set while the worker is in-flight so setWorkerEnabled(false) and the
-  // workerTimeout in runWithTimeout can interrupt the run instead of letting
+  // workerTimeout in withTimeout can interrupt the run instead of letting
   // it consume CPU/tokens to natural completion (#669).
   abortController?: AbortController;
 }
@@ -149,6 +152,12 @@ export class WorkerDaemon extends EventEmitter {
 
   private scheduler: SpellScheduler | null = null;
   private unsubScheduler: (() => void) | null = null;
+
+  // Per-worker circuit breaker tracking consecutive overruns. Wired so
+  // exceeding maxConsecutiveOverruns trips the breaker, which fires
+  // handleOverrunDisable to mark the worker disabled. State is mirrored to
+  // WorkerState.consecutiveOverruns / disabledByOverrun for persistence.
+  private overrunBreakers: Map<WorkerType, CircuitBreaker> = new Map();
 
   // Preserve the original constructor config so we can detect explicit overrides
   // during state restoration (R1: constructor config takes priority over stale state)
@@ -454,6 +463,13 @@ export class WorkerDaemon extends EventEmitter {
               // already be false, but be defensive in case state was hand-edited.
               const workerConfig = this.config.workers.find(w => w.type === type);
               if (workerConfig) workerConfig.enabled = false;
+            } else if (restoredState.consecutiveOverruns > 0) {
+              // Seed the breaker so the next overrun continues counting from
+              // where the previous daemon left off, instead of resetting to 1.
+              const breaker = this.getOrCreateOverrunBreaker(type as WorkerType);
+              for (let i = 0; i < restoredState.consecutiveOverruns; i++) {
+                breaker.recordFailure();
+              }
             }
             this.workers.set(type as WorkerType, restoredState);
           }
@@ -658,8 +674,54 @@ export class WorkerDaemon extends EventEmitter {
 
   private computeNextDelay(workerConfig: WorkerConfig, state: WorkerState): number {
     if (state.consecutiveOverruns <= 0) return workerConfig.intervalMs;
-    const extra = state.consecutiveOverruns * workerConfig.intervalMs;
-    return Math.min(workerConfig.intervalMs + extra, MAX_OVERRUN_BACKOFF_MS);
+    // Linear backoff: intervalMs × (1 + consecutiveOverruns), capped at MAX_OVERRUN_BACKOFF_MS.
+    return calculateDelay(
+      state.consecutiveOverruns + 1,
+      { initialDelayMs: workerConfig.intervalMs, maxDelayMs: MAX_OVERRUN_BACKOFF_MS, jitter: 0 },
+      'linear',
+    );
+  }
+
+  /**
+   * Lazily create the per-worker circuit breaker that tracks overruns.
+   *
+   * Configured for "consecutive failures, manual re-enable" semantics:
+   * - failureWindowMs is huge, so failures aren't time-evicted (a success
+   *   in closed state still resets failures, giving us consecutive counting).
+   * - resetTimeoutMs is huge, so the breaker never auto-transitions to
+   *   half-open; only setWorkerEnabled(type, true) clears the disable.
+   */
+  private getOrCreateOverrunBreaker(type: WorkerType): CircuitBreaker {
+    let breaker = this.overrunBreakers.get(type);
+    if (!breaker) {
+      breaker = new CircuitBreaker({
+        failureThreshold: this.config.maxConsecutiveOverruns,
+        failureWindowMs: Number.MAX_SAFE_INTEGER,
+        resetTimeoutMs: Number.MAX_SAFE_INTEGER,
+        successThreshold: 1,
+        halfOpenRequestPercentage: 0,
+        onOpen: (failures) => this.handleOverrunDisable(type, failures),
+      });
+      this.overrunBreakers.set(type, breaker);
+    }
+    return breaker;
+  }
+
+  private handleOverrunDisable(type: WorkerType, failures: number): void {
+    const state = this.workers.get(type);
+    if (!state) return;
+    state.consecutiveOverruns = failures;
+    state.disabledByOverrun = true;
+    this.setWorkerEnabled(type, false);
+    this.log(
+      'error',
+      `Worker ${type} auto-disabled after ${failures} consecutive overruns; manual re-enable required`,
+    );
+    this.emit('worker:disabled-overrun', {
+      type,
+      consecutiveOverruns: failures,
+      lastDurationMs: state.lastDurationMs,
+    });
   }
 
   private evaluateOverrun(
@@ -670,31 +732,25 @@ export class WorkerDaemon extends EventEmitter {
     state.lastDurationMs = durationMs;
     if (state.disabledByOverrun) return;
 
+    const breaker = this.getOrCreateOverrunBreaker(workerConfig.type);
     const overrunBudget = workerConfig.intervalMs * this.config.overrunMultiplier;
+
     if (durationMs <= overrunBudget) {
+      breaker.recordSuccess();
       state.consecutiveOverruns = 0;
       return;
     }
 
-    state.consecutiveOverruns++;
+    breaker.recordFailure();
+    // Mirror the breaker's failure count for persistence + telemetry. If the
+    // breaker just tripped, handleOverrunDisable already wrote this value;
+    // re-mirroring here is harmless.
+    state.consecutiveOverruns = breaker.getStats().failures;
+
     this.log(
       'warn',
       `Worker ${workerConfig.type} overran: ${durationMs}ms > ${overrunBudget}ms (${state.consecutiveOverruns}/${this.config.maxConsecutiveOverruns} consecutive)`,
     );
-
-    if (state.consecutiveOverruns >= this.config.maxConsecutiveOverruns) {
-      state.disabledByOverrun = true;
-      this.setWorkerEnabled(workerConfig.type, false);
-      this.log(
-        'error',
-        `Worker ${workerConfig.type} auto-disabled after ${state.consecutiveOverruns} consecutive overruns; manual re-enable required`,
-      );
-      this.emit('worker:disabled-overrun', {
-        type: workerConfig.type,
-        consecutiveOverruns: state.consecutiveOverruns,
-        lastDurationMs: durationMs,
-      });
-    }
   }
 
   /**
@@ -740,12 +796,16 @@ export class WorkerDaemon extends EventEmitter {
     this.log('info', `Starting worker: ${workerConfig.type} (${this.runningWorkers.size}/${this.config.maxConcurrent} concurrent)`);
 
     try {
-      // Execute worker logic with timeout (P1 fix)
-      const output = await this.runWithTimeout(
-        (signal) => this.runWorkerLogic(workerConfig, signal),
+      // Execute worker logic with timeout (P1 fix); withTimeout aborts the
+      // controller on timeout so the headless child gets killed instead of
+      // running to natural completion (#669).
+      const output = await withTimeout(
+        this.runWorkerLogic(workerConfig, controller.signal),
         this.config.workerTimeoutMs,
-        `Worker ${workerConfig.type} timed out after ${this.config.workerTimeoutMs / 1000}s`,
-        controller,
+        {
+          message: `Worker ${workerConfig.type} timed out after ${this.config.workerTimeoutMs / 1000}s`,
+          controller,
+        },
       );
       const durationMs = Date.now() - startTime;
 
@@ -800,35 +860,6 @@ export class WorkerDaemon extends EventEmitter {
       this.runningWorkers.delete(workerConfig.type);
       this.processPendingWorkers();
     }
-  }
-
-  /**
-   * Run a function with timeout (P1 fix). Aborts `controller` on timeout so
-   * the underlying work — headless child process in particular — actually
-   * stops instead of running to natural completion after we reject (#669).
-   */
-  private async runWithTimeout<T>(
-    fn: (signal: AbortSignal) => Promise<T>,
-    timeoutMs: number,
-    timeoutMessage: string,
-    controller: AbortController,
-  ): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        controller.abort();
-        reject(new Error(timeoutMessage));
-      }, timeoutMs);
-
-      fn(controller.signal)
-        .then((result) => {
-          clearTimeout(timer);
-          resolve(result);
-        })
-        .catch((error) => {
-          clearTimeout(timer);
-          reject(error);
-        });
-    });
   }
 
   /**
@@ -1137,9 +1168,20 @@ export class WorkerDaemon extends EventEmitter {
     if (workerConfig) {
       workerConfig.enabled = enabled;
 
-      if (enabled && this.running) {
-        this.scheduleWorker(workerConfig);
-      } else if (!enabled) {
+      if (enabled) {
+        // Manual re-enable clears any prior auto-disable so future overruns
+        // are tracked again. Without this, evaluateOverrun would short-circuit
+        // forever after the first auto-disable cycle.
+        const state = this.workers.get(type);
+        if (state?.disabledByOverrun) {
+          state.disabledByOverrun = false;
+          state.consecutiveOverruns = 0;
+          this.overrunBreakers.get(type)?.reset();
+        }
+        if (this.running) {
+          this.scheduleWorker(workerConfig);
+        }
+      } else {
         const timer = this.timers.get(type);
         if (timer) {
           clearTimeout(timer);

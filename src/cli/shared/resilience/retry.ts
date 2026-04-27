@@ -103,7 +103,9 @@ export async function retry<T>(
   for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
     try {
       // Execute with timeout
-      const result = await withTimeout(fn(), opts.timeout, attempt);
+      const result = await withTimeout(fn(), opts.timeout, {
+        message: `Attempt ${attempt} timed out after ${opts.timeout}ms`,
+      });
 
       return {
         success: true,
@@ -171,16 +173,49 @@ export function withRetry<T extends (...args: unknown[]) => Promise<unknown>>(
 }
 
 /**
- * Execute with timeout
+ * Options for {@link withTimeout}.
  */
-async function withTimeout<T>(promise: Promise<T>, timeout: number, attempt: number): Promise<T> {
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
-      reject(new Error(`Attempt ${attempt} timed out after ${timeout}ms`));
-    }, timeout);
-  });
+export interface WithTimeoutOptions {
+  /** Custom message for the rejection error (default: `Operation timed out after Nms`). */
+  message?: string;
+  /**
+   * Optional controller. When the timeout fires, `controller.abort()` is
+   * called BEFORE the promise rejects, giving the underlying work a chance
+   * to cancel itself (e.g. kill a child process) instead of running to
+   * completion after the caller has moved on.
+   */
+  controller?: AbortController;
+}
 
-  return Promise.race([promise, timeoutPromise]);
+/**
+ * Execute a promise with a timeout. On timeout the returned promise rejects
+ * with a custom error and — if a controller is supplied — aborts it so the
+ * underlying work can stop instead of running to natural completion.
+ *
+ * Single source of truth for "promise + timeout + optional cancellation"
+ * across the codebase.
+ */
+export function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  options: WithTimeoutOptions = {}
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      options.controller?.abort();
+      reject(new Error(options.message ?? `Operation timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    promise
+      .then((result) => {
+        clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
 }
 
 /**
