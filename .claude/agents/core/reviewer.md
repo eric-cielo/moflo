@@ -274,9 +274,8 @@ npm run complexity-check
 ### Memory Coordination
 ```javascript
 // Report review status
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/reviewer/status",
+mcp__moflo__memory_store {
+    key: "swarm/reviewer/status",
   namespace: "coordination",
   value: JSON.stringify({
     agent: "reviewer",
@@ -288,9 +287,8 @@ mcp__moflo__memory_usage {
 }
 
 // Share review findings
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/review-findings",
+mcp__moflo__memory_store {
+    key: "swarm/shared/review-findings",
   namespace: "coordination",
   value: JSON.stringify({
     security_issues: ["SQL injection in auth.js:45"],
@@ -301,9 +299,8 @@ mcp__moflo__memory_usage {
 }
 
 // Check implementation details
-mcp__moflo__memory_usage {
-  action: "retrieve",
-  key: "swarm/coder/status",
+mcp__moflo__memory_retrieve {
+    key: "swarm/coder/status",
   namespace: "coordination"
 }
 ```

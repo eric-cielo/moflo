@@ -19,9 +19,6 @@ tools:
   - mcp__github__create_issue
   - mcp__moflo__swarm_init
   - mcp__moflo__agent_spawn
-  - mcp__moflo__task_orchestrate
-  - mcp__moflo__parallel_execute
-  - mcp__moflo__load_balance
 hooks:
   pre_task: |
     echo "🐝 Initializing release swarm coordination..."

@@ -14,9 +14,8 @@ You are a Scout Explorer, the eyes and sensors of the hive mind. Your mission is
 
 ```javascript
 // DEPLOY - Signal exploration start
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/scout-[ID]/status",
+mcp__moflo__memory_store {
+    key: "swarm/scout-[ID]/status",
   namespace: "coordination",
   value: JSON.stringify({
     agent: "scout-[ID]",
@@ -28,9 +27,8 @@ mcp__moflo__memory_usage {
 }
 
 // DISCOVER - Report findings in real-time
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/discovery-[timestamp]",
+mcp__moflo__memory_store {
+    key: "swarm/shared/discovery-[timestamp]",
   namespace: "coordination",
   value: JSON.stringify({
     type: "discovery",
@@ -49,9 +47,8 @@ mcp__moflo__memory_usage {
 #### Codebase Scout
 ```javascript
 // Map codebase structure
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/codebase-map",
+mcp__moflo__memory_store {
+    key: "swarm/shared/codebase-map",
   namespace: "coordination",
   value: JSON.stringify({
     type: "map",
@@ -71,9 +68,8 @@ mcp__moflo__memory_usage {
 #### Dependency Scout  
 ```javascript
 // Analyze external dependencies
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/dependency-analysis",
+mcp__moflo__memory_store {
+    key: "swarm/shared/dependency-analysis",
   namespace: "coordination",
   value: JSON.stringify({
     type: "dependencies",
@@ -90,9 +86,8 @@ mcp__moflo__memory_usage {
 #### Performance Scout
 ```javascript
 // Identify performance bottlenecks
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/performance-bottlenecks",
+mcp__moflo__memory_store {
+    key: "swarm/shared/performance-bottlenecks",
   namespace: "coordination",
   value: JSON.stringify({
     type: "performance",
@@ -113,9 +108,8 @@ mcp__moflo__memory_usage {
 ### 3. Threat Detection
 ```javascript
 // ALERT - Report threats immediately
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/threat-alert",
+mcp__moflo__memory_store {
+    key: "swarm/shared/threat-alert",
   namespace: "coordination",
   value: JSON.stringify({
     type: "threat",
@@ -132,9 +126,8 @@ mcp__moflo__memory_usage {
 ### 4. Opportunity Identification
 ```javascript
 // OPPORTUNITY - Report improvement possibilities
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/opportunity",
+mcp__moflo__memory_store {
+    key: "swarm/shared/opportunity",
   namespace: "coordination",
   value: JSON.stringify({
     type: "opportunity",
@@ -151,9 +144,8 @@ mcp__moflo__memory_usage {
 ### 5. Environmental Scanning
 ```javascript
 // ENVIRONMENT - Monitor system state
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/scout-[ID]/environment",
+mcp__moflo__memory_store {
+    key: "swarm/scout-[ID]/environment",
   namespace: "coordination",
   value: JSON.stringify({
     system_resources: {
@@ -226,9 +218,8 @@ mcp__moflo__memory_usage {
 ## Performance Metrics
 ```javascript
 // Track exploration efficiency
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/scout-[ID]/metrics",
+mcp__moflo__memory_store {
+    key: "swarm/scout-[ID]/metrics",
   namespace: "coordination",
   value: JSON.stringify({
     areas_explored: 25,

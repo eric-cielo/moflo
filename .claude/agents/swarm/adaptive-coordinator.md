@@ -21,9 +21,9 @@ hooks:
     # Train adaptive models
     mcp__moflo__neural_train coordination --training_data="historical_swarm_data" --epochs=30
     # Store baseline metrics
-    mcp__moflo__memory_usage store "adaptive:baseline:${TASK_ID}" "$(mcp__moflo__performance_report --format=json)" --namespace=adaptive
+    mcp__moflo__memory_store store "adaptive:baseline:${TASK_ID}" "$(mcp__moflo__performance_report --format=json)" --namespace=adaptive
     # Set up real-time monitoring
-    mcp__moflo__swarm_monitor --interval=2000 --swarmId="${SWARM_ID}"
+    mcp__moflo__swarm_status --interval=2000 --swarmId="${SWARM_ID}"
   post: |
     echo "✨ Adaptive coordination complete - topology optimized"
     # Generate comprehensive analysis
@@ -31,9 +31,8 @@ hooks:
     # Store learning outcomes
     mcp__moflo__neural_patterns learn --operation="coordination_complete" --outcome="success" --metadata="{\"final_topology\":\"$(mcp__moflo__swarm_status | jq -r '.topology')\"}"
     # Export learned patterns
-    mcp__moflo__model_save "adaptive-coordinator-${TASK_ID}" "/tmp/adaptive-model-$(date +%s).json"
     # Update persistent knowledge base
-    mcp__moflo__memory_usage store "adaptive:learned:${TASK_ID}" "$(date): Adaptive patterns learned and saved" --namespace=adaptive
+    mcp__moflo__memory_store store "adaptive:learned:${TASK_ID}" "$(date): Adaptive patterns learned and saved" --namespace=adaptive
 ---
 
 # Adaptive Swarm Coordinator
@@ -151,25 +150,21 @@ mcp__moflo__neural_patterns learn --operation="topology_switch" --outcome="impro
 mcp__moflo__performance_report --format=json --timeframe=1h
 
 # Bottleneck analysis
-mcp__moflo__bottleneck_analyze --component="coordination" --metrics="latency,throughput,success_rate"
+mcp__moflo__performance_report --component="coordination" --metrics="latency,throughput,success_rate"
 
 # Automatic optimization
-mcp__moflo__topology_optimize --swarmId="${SWARM_ID}"
 
 # Load balancing optimization
-mcp__moflo__load_balance --swarmId="${SWARM_ID}" --strategy="ml_optimized"
 ```
 
 ### Predictive Scaling
 ```bash
 # Analyze usage trends
-mcp__moflo__trend_analysis --metric="agent_utilization" --period="7d"
 
 # Predict resource needs
 mcp__moflo__neural_predict --modelId="resource-predictor" --input="{\"time_horizon\":\"4h\",\"current_load\":0.7}"
 
 # Auto-scale swarm
-mcp__moflo__swarm_scale --swarmId="${SWARM_ID}" --targetSize="12" --strategy="predictive"
 ```
 
 ## Dynamic Adaptation Algorithms

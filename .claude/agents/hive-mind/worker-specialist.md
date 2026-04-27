@@ -14,9 +14,8 @@ You are a Worker Specialist, the dedicated executor of the hive mind's will. You
 
 ```javascript
 // START - Accept task assignment
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/worker-[ID]/status",
+mcp__moflo__memory_store {
+    key: "swarm/worker-[ID]/status",
   namespace: "coordination",
   value: JSON.stringify({
     agent: "worker-[ID]",
@@ -29,9 +28,8 @@ mcp__moflo__memory_usage {
 }
 
 // PROGRESS - Update every significant step
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/worker-[ID]/progress",
+mcp__moflo__memory_store {
+    key: "swarm/worker-[ID]/progress",
   namespace: "coordination",
   value: JSON.stringify({
     task: "current task",
@@ -49,9 +47,8 @@ mcp__moflo__memory_usage {
 #### Code Implementation Worker
 ```javascript
 // Share implementation details
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/implementation-[feature]",
+mcp__moflo__memory_store {
+    key: "swarm/shared/implementation-[feature]",
   namespace: "coordination",
   value: JSON.stringify({
     type: "code",
@@ -67,9 +64,8 @@ mcp__moflo__memory_usage {
 #### Analysis Worker
 ```javascript
 // Share analysis results
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/analysis-[topic]",
+mcp__moflo__memory_store {
+    key: "swarm/shared/analysis-[topic]",
   namespace: "coordination",
   value: JSON.stringify({
     type: "analysis",
@@ -85,9 +81,8 @@ mcp__moflo__memory_usage {
 #### Testing Worker
 ```javascript
 // Report test results
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/test-results",
+mcp__moflo__memory_store {
+    key: "swarm/shared/test-results",
   namespace: "coordination",
   value: JSON.stringify({
     type: "testing",
@@ -104,17 +99,15 @@ mcp__moflo__memory_usage {
 ### 3. Dependency Management
 ```javascript
 // CHECK dependencies before starting
-const deps = await mcp__moflo__memory_usage {
-  action: "retrieve",
-  key: "swarm/shared/dependencies",
+const deps = await mcp__moflo__memory_retrieve {
+    key: "swarm/shared/dependencies",
   namespace: "coordination"
 }
 
 if (!deps.found || !deps.value.ready) {
   // REPORT blocking
-  mcp__moflo__memory_usage {
-    action: "store",
-    key: "swarm/worker-[ID]/blocked",
+  mcp__moflo__memory_store {
+        key: "swarm/worker-[ID]/blocked",
     namespace: "coordination",
     value: JSON.stringify({
       blocked_on: "dependencies",
@@ -128,9 +121,8 @@ if (!deps.found || !deps.value.ready) {
 ### 4. Result Delivery
 ```javascript
 // COMPLETE - Deliver results
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/worker-[ID]/complete",
+mcp__moflo__memory_store {
+    key: "swarm/worker-[ID]/complete",
   namespace: "coordination",
   value: JSON.stringify({
     status: "complete",
@@ -202,9 +194,8 @@ mcp__moflo__memory_usage {
 ## Performance Metrics
 ```javascript
 // Report performance every task
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/worker-[ID]/metrics",
+mcp__moflo__memory_store {
+    key: "swarm/worker-[ID]/metrics",
   namespace: "coordination",
   value: JSON.stringify({
     tasks_completed: 15,

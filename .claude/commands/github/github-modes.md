@@ -143,5 +143,4 @@ mcp__moflo__agent_spawn { type: "reviewer", name: "Code Reviewer" }
 mcp__moflo__agent_spawn { type: "tester", name: "QA Agent" }
 
 // Execute GitHub workflow with coordination
-mcp__moflo__task_orchestrate { task: "GitHub workflow", strategy: "parallel" }
 ```

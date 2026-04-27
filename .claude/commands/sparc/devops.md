@@ -47,16 +47,6 @@ Return `attempt_completion` with:
 ## Usage
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "devops",
-  task_description: "deploy to AWS Lambda",
-  options: {
-    namespace: "devops",
-    non_interactive: false
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -84,9 +74,8 @@ npx claude-flow sparc run devops "your task" --non-interactive
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "devops_context",
+mcp__moflo__memory_store {
+    key: "devops_context",
   value: "important decisions",
   namespace: "devops"
 }

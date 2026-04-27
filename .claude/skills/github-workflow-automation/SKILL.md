@@ -549,11 +549,6 @@ mcp__moflo__agent_spawn { type: "tester", name: "QA Agent" }
 mcp__moflo__agent_spawn { type: "analyst", name: "Security Analyst" }
 
 // Step 3: Orchestrate GitHub workflow
-mcp__moflo__task_orchestrate {
-  task: "Complete PR review and merge workflow",
-  strategy: "parallel",
-  priority: "high"
-}
 ```
 
 #### GitHub Hooks Integration

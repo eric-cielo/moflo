@@ -23,21 +23,18 @@ hooks:
   pre: |
     echo "Memory Specialist initializing V3 memory system"
     # Initialize hybrid memory backend
-    mcp__moflo__memory_namespace --namespace="${NAMESPACE:-default}" --action="init"
     # Check HNSW index status
-    mcp__moflo__memory_analytics --timeframe="1h"
+    mcp__moflo__memory_stats --timeframe="1h"
     # Store initialization event
-    mcp__moflo__memory_usage --action="store" --namespace="swarm" --key="memory-specialist:init:${TASK_ID}" --value="$(date -Iseconds): Memory specialist session started"
+    mcp__moflo__memory_store --action="store" --namespace="swarm" --key="memory-specialist:init:${TASK_ID}" --value="$(date -Iseconds): Memory specialist session started"
   post: |
     echo "Memory optimization complete"
     # Persist memory state
-    mcp__moflo__memory_persist --sessionId="${SESSION_ID}"
     # Compress and optimize namespaces
-    mcp__moflo__memory_compress --namespace="${NAMESPACE:-default}"
     # Generate memory analytics report
-    mcp__moflo__memory_analytics --timeframe="24h"
+    mcp__moflo__memory_stats --timeframe="24h"
     # Store completion metrics
-    mcp__moflo__memory_usage --action="store" --namespace="swarm" --key="memory-specialist:complete:${TASK_ID}" --value="$(date -Iseconds): Memory optimization completed"
+    mcp__moflo__memory_store --action="store" --namespace="swarm" --key="memory-specialist:complete:${TASK_ID}" --value="$(date -Iseconds): Memory optimization completed"
 ---
 
 # V3 Memory Specialist Agent
@@ -884,28 +881,23 @@ class PatternDistiller {
 
 ```bash
 # Store with HNSW indexing
-mcp__moflo__memory_usage --action="store" --namespace="patterns" --key="auth:jwt-strategy" --value='{"pattern": "jwt-auth", "embedding": [...]}' --ttl=604800000
+mcp__moflo__memory_store --action="store" --namespace="patterns" --key="auth:jwt-strategy" --value='{"pattern": "jwt-auth", "embedding": [...]}' --ttl=604800000
 
 # Semantic search with HNSW
 mcp__moflo__memory_search --pattern="authentication strategies" --namespace="patterns" --limit=10
 
 # Namespace management
-mcp__moflo__memory_namespace --namespace="project:myapp" --action="create"
 
 # Memory analytics
-mcp__moflo__memory_analytics --timeframe="7d"
+mcp__moflo__memory_stats --timeframe="7d"
 
 # Memory compression
-mcp__moflo__memory_compress --namespace="default"
 
 # Cross-session persistence
-mcp__moflo__memory_persist --sessionId="session-12345"
 
 # Memory backup
-mcp__moflo__memory_backup --path="./backups/memory-$(date +%Y%m%d).bak"
 
 # Distributed sync
-mcp__moflo__memory_sync --target="peer-agent-1"
 ```
 
 ### CLI Commands

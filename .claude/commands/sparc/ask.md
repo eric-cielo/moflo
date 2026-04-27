@@ -35,16 +35,6 @@ Help users craft `new_task` messages to delegate effectively, and always remind 
 ## Usage
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "ask",
-  task_description: "help me choose the right mode",
-  options: {
-    namespace: "ask",
-    non_interactive: false
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -72,9 +62,8 @@ npx claude-flow sparc run ask "your task" --non-interactive
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "ask_context",
+mcp__moflo__memory_store {
+    key: "ask_context",
   value: "important decisions",
   namespace: "ask"
 }

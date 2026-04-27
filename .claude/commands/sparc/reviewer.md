@@ -6,16 +6,6 @@ Code review using batch file analysis for comprehensive reviews.
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "reviewer",
-  task_description: "review pull request #123",
-  options: {
-    security_check: true,
-    performance_check: true
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

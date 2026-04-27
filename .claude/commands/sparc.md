@@ -44,23 +44,10 @@ Use `new_task` to assign:
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
 ```javascript
 // Run SPARC orchestrator (default)
-mcp__moflo__sparc_mode {
-  mode: "sparc",
-  task_description: "build complete authentication system"
-}
 
 // Run a specific mode
-mcp__moflo__sparc_mode {
-  mode: "architect",
-  task_description: "design API structure"
-}
 
 // TDD workflow
-mcp__moflo__sparc_mode {
-  mode: "tdd",
-  task_description: "implement user authentication",
-  options: {workflow: "full"}
-}
 ```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
@@ -102,17 +89,15 @@ npx claude-flow@alpha sparc run <mode> "your task"
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store specifications
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "spec_auth",
+mcp__moflo__memory_store {
+    key: "spec_auth",
   value: "OAuth2 + JWT requirements",
   namespace: "spec"
 }
 
 // Store architectural decisions
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "arch_decisions",
+mcp__moflo__memory_store {
+    key: "arch_decisions",
   value: "Microservices with API Gateway",
   namespace: "architecture"
 }

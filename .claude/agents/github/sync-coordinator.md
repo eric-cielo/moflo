@@ -12,10 +12,8 @@ tools:
   - mcp__github__list_repositories
   - mcp__moflo__swarm_init
   - mcp__moflo__agent_spawn
-  - mcp__moflo__task_orchestrate
-  - mcp__moflo__memory_usage
+  - mcp__moflo__memory_store
   - mcp__moflo__coordination_sync
-  - mcp__moflo__load_balance
   - TodoWrite
   - TodoRead
   - Bash
@@ -83,11 +81,6 @@ Bash(`gh api repos/:owner/:repo/contents/claude-code-flow/claude-code-flow/packa
   -f sha="$(gh api repos/:owner/:repo/contents/claude-code-flow/claude-code-flow/package.json?ref=sync/package-alignment --jq '.sha')")`)
 
 // Orchestrate validation
-mcp__moflo__task_orchestrate {
-  task: "Validate package synchronization and run integration tests",
-  strategy: "parallel",
-  priority: "high"
-}
 ```
 
 ### 2. Documentation Synchronization
@@ -109,9 +102,8 @@ Bash(`gh api repos/:owner/:repo/contents/claude-code-flow/claude-code-flow/CLAUD
   -f sha="$(gh api repos/:owner/:repo/contents/claude-code-flow/claude-code-flow/CLAUDE.md?ref=sync/documentation --jq '.sha' 2>/dev/null || echo '')")`)
 
 // Store sync state in memory
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "sync/documentation/status",
+mcp__moflo__memory_store {
+    key: "sync/documentation/status",
   value: { timestamp: Date.now(), status: "synchronized", files: ["CLAUDE.md"] }
 }
 ```
@@ -222,9 +214,8 @@ This integration uses ruv-swarm agents for:
   ]}
   
   // Store comprehensive sync state
-  mcp__moflo__memory_usage {
-    action: "store",
-    key: "sync/complete/status",
+  mcp__moflo__memory_store {
+        key: "sync/complete/status",
     value: {
       timestamp: Date.now(),
       packages_synced: ["claude-code-flow", "ruv-swarm"],
@@ -336,23 +327,8 @@ mcp__moflo__agent_spawn { type: "reviewer", name: "Quality Assurance" }
 mcp__moflo__agent_spawn { type: "monitor", name: "Sync Monitor" }
 
 # Orchestrate complex synchronization workflow
-mcp__moflo__task_orchestrate {
-  task: "Execute comprehensive multi-repository synchronization with validation",
-  strategy: "adaptive",
-  priority: "critical",
-  dependencies: ["version_analysis", "dependency_resolution", "integration_testing"]
-}
 
 # Load balance synchronization tasks across agents
-mcp__moflo__load_balance {
-  swarmId: "sync-coordination-swarm",
-  tasks: [
-    "package_json_sync",
-    "documentation_alignment", 
-    "version_compatibility_check",
-    "integration_test_execution"
-  ]
-}
 ```
 
 ### Intelligent Conflict Resolution
@@ -390,9 +366,8 @@ const syncConflictResolver = async (conflicts) => {
 ### Comprehensive Synchronization Metrics
 ```bash
 # Store detailed synchronization metrics
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "sync/metrics/session",
+mcp__moflo__memory_store {
+    key: "sync/metrics/session",
   value: {
     packages_synchronized: ["claude-code-flow", "ruv-swarm"],
     version_alignment_score: 98.5,
@@ -424,9 +399,8 @@ mcp__moflo__agent_spawn { type: "coder", name: "Recovery Developer" }
 mcp__moflo__coordination_sync { swarmId: "error-recovery-swarm" }
 
 # Store recovery state
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "sync/recovery/state",
+mcp__moflo__memory_store {
+    key: "sync/recovery/state",
   value: {
     error_type: "version_conflict",
     recovery_strategy: "incremental_rollback",

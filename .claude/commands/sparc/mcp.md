@@ -55,16 +55,6 @@ For accessing MCP resources, use `access_mcp_resource` with proper URI:
 ## Usage
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "mcp",
-  task_description: "integrate with external API",
-  options: {
-    namespace: "mcp",
-    non_interactive: false
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -92,9 +82,8 @@ npx claude-flow sparc run mcp "your task" --non-interactive
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "mcp_context",
+mcp__moflo__memory_store {
+    key: "mcp_context",
   value: "important decisions",
   namespace: "mcp"
 }

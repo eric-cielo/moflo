@@ -6,16 +6,6 @@ Deep research with parallel WebSearch/WebFetch and Memory coordination.
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "researcher",
-  task_description: "research AI trends 2024",
-  options: {
-    depth: "comprehensive",
-    sources: ["academic", "industry", "news"]
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

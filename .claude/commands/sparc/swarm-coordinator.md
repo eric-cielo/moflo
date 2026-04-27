@@ -6,16 +6,6 @@ Specialized swarm management with batch coordination capabilities.
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "swarm-coordinator",
-  task_description: "manage development swarm",
-  options: {
-    topology: "hierarchical",
-    max_agents: 10
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

@@ -172,12 +172,6 @@ gh release create $(npm pkg get version) \
   Bash("gh api repos/:owner/:repo/git/refs --method POST -f ref='refs/heads/release/v2.0.0' -f sha=$(gh api repos/:owner/:repo/git/refs/heads/main --jq '.object.sha')")
 
   // Orchestrate release preparation
-  mcp__moflo__task_orchestrate {
-    task: "Prepare release v2.0.0 with comprehensive testing and validation",
-    strategy: "sequential",
-    priority: "critical",
-    maxAgents: 6
-  }
 
   // Update all release files
   Write("package.json", "[updated version]")
@@ -204,9 +198,8 @@ gh release create $(npm pkg get version) \
   ]}
 
   // Store release state
-  mcp__moflo__memory_usage {
-    action: "store",
-    key: "release/v2.0.0/status",
+  mcp__moflo__memory_store {
+        key: "release/v2.0.0/status",
     value: JSON.stringify({
       version: "2.0.0",
       stage: "validation_complete",
@@ -408,7 +401,7 @@ npx claude-flow github multi-release \
   Bash("gh api repos/org/cli/dispatches --method POST -f event_type='release' -F client_payload[version]=v1.5.0")
 
   // Monitor all releases
-  mcp__moflo__swarm_monitor { interval: 5, duration: 300 }
+  mcp__moflo__swarm_status { interval: 5, duration: 300 }
 ```
 
 ### Hotfix Emergency Procedures

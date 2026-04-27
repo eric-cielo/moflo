@@ -27,16 +27,6 @@ Write modular code using clean architecture principles. Never hardcode secrets o
 ## Usage
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "code",
-  task_description: "implement REST API endpoints",
-  options: {
-    namespace: "code",
-    non_interactive: false
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -64,9 +54,8 @@ npx claude-flow sparc run code "your task" --non-interactive
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "code_context",
+mcp__moflo__memory_store {
+    key: "code_context",
   value: "important decisions",
   namespace: "code"
 }

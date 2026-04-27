@@ -21,15 +21,15 @@ See `.claude/guidance/shipped/moflo-spell-sandboxing.md` for the full Execution 
 
 ## Running a Spell via MCP Tools
 
-**Use `mcp__moflo__spell_run` to execute a spell from a YAML/JSON file.** The bridge layer handles parsing, validation, and runner lifecycle automatically.
+**Use `mcp__moflo__spell_cast` to execute a spell from a YAML/JSON file.** The bridge layer handles parsing, validation, and runner lifecycle automatically.
 
 | MCP Tool | Purpose |
 |----------|---------|
-| `mcp__moflo__spell_run` | Run spell from file content (YAML/JSON) |
+| `mcp__moflo__spell_cast` | Run spell from file content (YAML/JSON) |
 | `mcp__moflo__spell_execute` | Execute a spell definition object directly |
 | `mcp__moflo__spell_cancel` | Cancel a running spell by ID |
 | `mcp__moflo__spell_status` | Check if a spell is currently running |
-| `mcp__moflo__spell_pause` | Pause a running spell for later resumption |
+| `mcp__moflo__spell_suspend` | Pause a running spell for later resumption |
 | `mcp__moflo__spell_resume` | Resume a previously paused spell |
 
 **Dry-run mode validates without executing.** Pass `dryRun: true` to check definition validity, argument resolution, and step config schemas before committing to execution.
@@ -491,7 +491,7 @@ if (!result.success) {
 }
 ```
 
-Via MCP: pass `dryRun: true` to `mcp__moflo__spell_run`.
+Via MCP: pass `dryRun: true` to `mcp__moflo__spell_cast`.
 
 ---
 

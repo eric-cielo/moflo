@@ -21,25 +21,23 @@ hooks:
     # Initialize hierarchical-mesh topology for collective intelligence
     mcp__moflo__swarm_init hierarchical-mesh --maxAgents=15 --strategy=adaptive
     # Set up CRDT synchronization layer
-    mcp__moflo__memory_usage store "collective:crdt:${TASK_ID}" "$(date): CRDT sync initialized" --namespace=collective
+    mcp__moflo__memory_store store "collective:crdt:${TASK_ID}" "$(date): CRDT sync initialized" --namespace=collective
     # Initialize Byzantine consensus protocol
-    mcp__moflo__daa_consensus --agents="all" --proposal="{\"protocol\":\"byzantine\",\"threshold\":0.67,\"fault_tolerance\":0.33}"
     # Begin neural pattern analysis for collective cognition
     mcp__moflo__neural_patterns analyze --operation="collective_init" --metadata="{\"task\":\"$TASK\",\"topology\":\"hierarchical-mesh\"}"
     # Train attention mechanisms for coordination
     mcp__moflo__neural_train coordination --training_data="collective_intelligence_patterns" --epochs=30
     # Set up real-time monitoring
-    mcp__moflo__swarm_monitor --interval=3000 --swarmId="${SWARM_ID}"
+    mcp__moflo__swarm_status --interval=3000 --swarmId="${SWARM_ID}"
   post: |
     echo "✨ Collective intelligence coordination complete - consensus achieved"
     # Store collective decision metrics
-    mcp__moflo__memory_usage store "collective:decision:${TASK_ID}" "$(date): Consensus decision: $(mcp__moflo__swarm_status | jq -r '.consensus')" --namespace=collective
+    mcp__moflo__memory_store store "collective:decision:${TASK_ID}" "$(date): Consensus decision: $(mcp__moflo__swarm_status | jq -r '.consensus')" --namespace=collective
     # Generate performance report
     mcp__moflo__performance_report --format=detailed --timeframe=24h
     # Learn from collective patterns
     mcp__moflo__neural_patterns learn --operation="collective_coordination" --outcome="consensus_achieved" --metadata="{\"agents\":\"$(mcp__moflo__swarm_status | jq '.agents.total')\",\"consensus_strength\":\"$(mcp__moflo__swarm_status | jq '.consensus.strength')\"}"
     # Save learned model
-    mcp__moflo__model_save "collective-intelligence-${TASK_ID}" "/tmp/collective-model-$(date +%s).json"
     # Synchronize final CRDT state
     mcp__moflo__coordination_sync --swarmId="${SWARM_ID}"
 ---
@@ -803,35 +801,32 @@ class LearningCollectiveCoordinator extends CollectiveIntelligenceCoordinator {
 mcp__moflo__swarm_init hierarchical-mesh --maxAgents=15 --strategy=adaptive
 
 # Byzantine consensus protocol
-mcp__moflo__daa_consensus --agents="all" --proposal="{\"task\":\"auth_design\",\"type\":\"collective_vote\"}"
 
 # CRDT synchronization
-mcp__moflo__memory_sync --target="all_agents" --crdt_type="OR_SET"
 
 # Attention-based coordination
 mcp__moflo__neural_patterns analyze --operation="collective_attention" --metadata="{\"mechanism\":\"multi-head\",\"heads\":8}"
 
 # Knowledge aggregation
-mcp__moflo__memory_usage store "collective:knowledge:${TASK_ID}" "$(date): Knowledge synthesis complete" --namespace=collective
+mcp__moflo__memory_store store "collective:knowledge:${TASK_ID}" "$(date): Knowledge synthesis complete" --namespace=collective
 
 # Monitor collective health
-mcp__moflo__swarm_monitor --interval=3000 --metrics="consensus,byzantine,attention"
+mcp__moflo__swarm_status --interval=3000 --metrics="consensus,byzantine,attention"
 ```
 
 ### Memory Synchronization Commands
 
 ```bash
 # Initialize CRDT layer
-mcp__moflo__memory_usage store "crdt:state:init" "{\"type\":\"OR_SET\",\"nodes\":[]}" --namespace=crdt
+mcp__moflo__memory_store store "crdt:state:init" "{\"type\":\"OR_SET\",\"nodes\":[]}" --namespace=crdt
 
 # Propagate deltas
 mcp__moflo__coordination_sync --swarmId="${SWARM_ID}"
 
 # Verify convergence
-mcp__moflo__health_check --components="crdt,consensus,memory"
+mcp__moflo__system_health --components="crdt,consensus,memory"
 
 # Backup collective state
-mcp__moflo__memory_backup --path="/tmp/collective-backup-$(date +%s).json"
 ```
 
 ### Neural Learning Commands
@@ -959,13 +954,13 @@ def select_topology(task_characteristics):
 
 ```bash
 # Collective health check
-mcp__moflo__health_check --components="collective,consensus,crdt,attention"
+mcp__moflo__system_health --components="collective,consensus,crdt,attention"
 
 # Performance report
 mcp__moflo__performance_report --format=detailed --timeframe=24h
 
 # Bottleneck analysis
-mcp__moflo__bottleneck_analyze --component="collective" --metrics="latency,throughput,accuracy"
+mcp__moflo__performance_report --component="collective" --metrics="latency,throughput,accuracy"
 ```
 
 ## Best Practices

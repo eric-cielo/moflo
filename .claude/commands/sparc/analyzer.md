@@ -6,16 +6,6 @@ Deep code and data analysis with batch processing capabilities.
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "analyzer",
-  task_description: "analyze codebase performance",
-  options: {
-    parallel: true,
-    detailed: true
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

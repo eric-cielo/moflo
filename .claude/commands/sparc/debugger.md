@@ -6,16 +6,6 @@ Systematic debugging with TodoWrite and Memory integration.
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "debugger",
-  task_description: "fix authentication issues",
-  options: {
-    verbose: true,
-    trace: true
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

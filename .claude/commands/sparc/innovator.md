@@ -6,16 +6,6 @@ Creative problem solving with WebSearch and Memory integration.
 ## Activation
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "innovator",
-  task_description: "innovative solutions for scaling",
-  options: {
-    research_depth: "comprehensive",
-    creativity_level: "high"
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash

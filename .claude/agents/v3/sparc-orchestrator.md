@@ -25,7 +25,7 @@ hooks:
     echo "⚡ SPARC Orchestrator initializing methodology workflow"
     # Store SPARC session start
     SESSION_ID="sparc-$(date +%s)"
-    mcp__moflo__memory_usage --action="store" --namespace="sparc" --key="session:$SESSION_ID" --value="$(date -Iseconds): SPARC workflow initiated for: $TASK"
+    mcp__moflo__memory_store --action="store" --namespace="sparc" --key="session:$SESSION_ID" --value="$(date -Iseconds): SPARC workflow initiated for: $TASK"
     # Search for similar SPARC patterns
     mcp__moflo__memory_search --pattern="sparc:success:*" --namespace="patterns" --limit=5
     # Initialize trajectory tracking
@@ -33,7 +33,7 @@ hooks:
   post: |
     echo "✅ SPARC workflow complete"
     # Store completion
-    mcp__moflo__memory_usage --action="store" --namespace="sparc" --key="complete:$SESSION_ID" --value="$(date -Iseconds): SPARC workflow completed"
+    mcp__moflo__memory_store --action="store" --namespace="sparc" --key="complete:$SESSION_ID" --value="$(date -Iseconds): SPARC workflow completed"
     # Train on successful pattern
     npx claude-flow@v3alpha hooks intelligence trajectory-end --session-id "$SESSION_ID" --verdict "success"
 ---
@@ -167,7 +167,7 @@ The orchestrator learns from each workflow:
 
 ```bash
 # Store successful pattern
-mcp__moflo__memory_usage --action="store" --namespace="patterns" \
+mcp__moflo__memory_store --action="store" --namespace="patterns" \
   --key="sparc:success:$(date +%s)" --value="$WORKFLOW_SUMMARY"
 
 # Search for similar patterns

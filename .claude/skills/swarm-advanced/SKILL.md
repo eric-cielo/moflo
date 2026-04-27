@@ -31,7 +31,6 @@ mcp__moflo__swarm_init({ topology: "mesh", maxAgents: 6 })
 mcp__moflo__agent_spawn({ type: "researcher", name: "swarm-advanced" })
 
 // 3. Orchestrate tasks
-mcp__moflo__task_orchestrate({ task: "...", strategy: "parallel" })
 ```
 
 ## Core Concepts
@@ -123,29 +122,8 @@ researchAgents.forEach(agent => {
 #### Phase 1: Information Gathering
 ```javascript
 // Parallel information collection
-mcp__moflo__parallel_execute({
-  "tasks": [
-    {
-      "id": "web-search",
-      "command": "search recent publications and articles"
-    },
-    {
-      "id": "academic-search",
-      "command": "search academic databases and papers"
-    },
-    {
-      "id": "data-collection",
-      "command": "gather relevant datasets and statistics"
-    },
-    {
-      "id": "expert-search",
-      "command": "identify domain experts and thought leaders"
-    }
-  ]
-})
-
 // Store research findings in memory
-mcp__moflo__memory_usage({
+mcp__moflo__memory_store({
   "action": "store",
   "key": "research-findings-" + Date.now(),
   "value": JSON.stringify(findings),
@@ -157,22 +135,17 @@ mcp__moflo__memory_usage({
 #### Phase 2: Analysis and Validation
 ```javascript
 // Pattern recognition in findings
-mcp__moflo__pattern_recognize({
+mcp__moflo__neural_patterns({
   "data": researchData,
   "patterns": ["trend", "correlation", "outlier", "emerging-pattern"]
 })
 
 // Cognitive analysis
-mcp__moflo__cognitive_analyze({
+mcp__moflo__neural_predict({
   "behavior": "research-synthesis"
 })
 
 // Quality assessment
-mcp__moflo__quality_assess({
-  "target": "research-sources",
-  "criteria": ["credibility", "relevance", "recency", "authority"]
-})
-
 // Cross-reference validation
 mcp__moflo__neural_patterns({
   "action": "analyze",
@@ -202,7 +175,7 @@ mcp__moflo__neural_patterns({
 })
 
 // Store connections for future use
-mcp__moflo__memory_usage({
+mcp__moflo__memory_store({
   "action": "store",
   "key": "knowledge-graph-X",
   "value": JSON.stringify(knowledgeGraph),
@@ -214,13 +187,6 @@ mcp__moflo__memory_usage({
 #### Phase 4: Report Generation
 ```javascript
 // Orchestrate report generation
-mcp__moflo__task_orchestrate({
-  "task": "generate comprehensive research report",
-  "strategy": "sequential",
-  "priority": "high",
-  "dependencies": ["gather", "analyze", "validate", "synthesize"]
-})
-
 // Monitor research progress
 mcp__moflo__swarm_status({
   "swarmId": "research-swarm"
@@ -290,15 +256,8 @@ devTeam.forEach(member => {
 #### Phase 1: Architecture and Design
 ```javascript
 // System architecture design
-mcp__moflo__task_orchestrate({
-  "task": "design system architecture for REST API",
-  "strategy": "sequential",
-  "priority": "critical",
-  "assignTo": "System Architect"
-})
-
 // Store architecture decisions
-mcp__moflo__memory_usage({
+mcp__moflo__memory_store({
   "action": "store",
   "key": "architecture-decisions",
   "value": JSON.stringify(architectureDoc),
@@ -309,33 +268,8 @@ mcp__moflo__memory_usage({
 #### Phase 2: Parallel Implementation
 ```javascript
 // Parallel development tasks
-mcp__moflo__parallel_execute({
-  "tasks": [
-    {
-      "id": "backend-api",
-      "command": "implement REST API endpoints",
-      "assignTo": "Backend Developer"
-    },
-    {
-      "id": "frontend-ui",
-      "command": "build user interface components",
-      "assignTo": "Frontend Developer"
-    },
-    {
-      "id": "database-schema",
-      "command": "design and implement database schema",
-      "assignTo": "Database Engineer"
-    },
-    {
-      "id": "api-documentation",
-      "command": "create API documentation",
-      "assignTo": "Technical Writer"
-    }
-  ]
-})
-
 // Monitor development progress
-mcp__moflo__swarm_monitor({
+mcp__moflo__swarm_status({
   "swarmId": "dev-swarm",
   "interval": 5000
 })
@@ -344,21 +278,7 @@ mcp__moflo__swarm_monitor({
 #### Phase 3: Testing and Validation
 ```javascript
 // Comprehensive testing
-mcp__moflo__batch_process({
-  "items": [
-    { type: "unit", target: "all-modules" },
-    { type: "integration", target: "api-endpoints" },
-    { type: "e2e", target: "user-flows" },
-    { type: "performance", target: "critical-paths" }
-  ],
-  "operation": "execute-tests"
-})
-
 // Quality assessment
-mcp__moflo__quality_assess({
-  "target": "codebase",
-  "criteria": ["coverage", "complexity", "maintainability", "security"]
-})
 ```
 
 #### Phase 4: Review and Deployment
@@ -373,12 +293,6 @@ mcp__moflo__spell_cast({
 })
 
 // CI/CD pipeline
-mcp__moflo__pipeline_create({
-  "config": {
-    "stages": ["build", "test", "security-scan", "deploy"],
-    "environment": "production"
-  }
-})
 ```
 
 ### CLI Fallback
@@ -460,18 +374,8 @@ testingTeam.forEach(tester => {
 #### Phase 1: Test Planning
 ```javascript
 // Analyze test coverage requirements
-mcp__moflo__quality_assess({
-  "target": "test-coverage",
-  "criteria": [
-    "line-coverage",
-    "branch-coverage",
-    "function-coverage",
-    "edge-cases"
-  ]
-})
-
 // Identify test scenarios
-mcp__moflo__pattern_recognize({
+mcp__moflo__neural_patterns({
   "data": testScenarios,
   "patterns": [
     "edge-case",
@@ -482,7 +386,7 @@ mcp__moflo__pattern_recognize({
 })
 
 // Store test plan
-mcp__moflo__memory_usage({
+mcp__moflo__memory_store({
   "action": "store",
   "key": "test-plan-" + Date.now(),
   "value": JSON.stringify(testPlan),
@@ -493,72 +397,35 @@ mcp__moflo__memory_usage({
 #### Phase 2: Parallel Test Execution
 ```javascript
 // Execute all test suites in parallel
-mcp__moflo__parallel_execute({
-  "tasks": [
-    {
-      "id": "unit-tests",
-      "command": "npm run test:unit",
-      "assignTo": "Unit Test Coordinator"
-    },
-    {
-      "id": "integration-tests",
-      "command": "npm run test:integration",
-      "assignTo": "Integration Tester"
-    },
-    {
-      "id": "e2e-tests",
-      "command": "npm run test:e2e",
-      "assignTo": "E2E Tester"
-    },
-    {
-      "id": "performance-tests",
-      "command": "npm run test:performance",
-      "assignTo": "Performance Tester"
-    },
-    {
-      "id": "security-tests",
-      "command": "npm run test:security",
-      "assignTo": "Security Tester"
-    }
-  ]
-})
-
 // Batch process test suites
-mcp__moflo__batch_process({
-  "items": testSuites,
-  "operation": "execute-test-suite"
-})
 ```
 
 #### Phase 3: Performance and Security
 ```javascript
 // Run performance benchmarks
-mcp__moflo__benchmark_run({
+mcp__moflo__performance_benchmark({
   "suite": "comprehensive-performance"
 })
 
 // Bottleneck analysis
-mcp__moflo__bottleneck_analyze({
+mcp__moflo__performance_report({
   "component": "application",
   "metrics": ["response-time", "throughput", "memory", "cpu"]
 })
 
 // Security scanning
-mcp__moflo__security_scan({
+mcp__moflo__aidefence_scan({
   "target": "application",
   "depth": "comprehensive"
 })
 
 // Vulnerability analysis
-mcp__moflo__error_analysis({
-  "logs": securityScanLogs
-})
 ```
 
 #### Phase 4: Monitoring and Reporting
 ```javascript
 // Real-time test monitoring
-mcp__moflo__swarm_monitor({
+mcp__moflo__swarm_status({
   "swarmId": "testing-swarm",
   "interval": 2000
 })
@@ -570,15 +437,11 @@ mcp__moflo__performance_report({
 })
 
 // Get test results
-mcp__moflo__task_results({
+mcp__moflo__task_status({
   "taskId": "test-execution-001"
 })
 
 // Trend analysis
-mcp__moflo__trend_analysis({
-  "metric": "test-coverage",
-  "period": "30d"
-})
 ```
 
 ### CLI Fallback
@@ -647,15 +510,6 @@ analysisTeam.forEach(analyst => {
 ### Analysis Workflow
 ```javascript
 // Parallel analysis execution
-mcp__moflo__parallel_execute({
-  "tasks": [
-    { "id": "analyze-code", "command": "analyze codebase structure and quality" },
-    { "id": "analyze-security", "command": "scan for security vulnerabilities" },
-    { "id": "analyze-performance", "command": "identify performance bottlenecks" },
-    { "id": "analyze-architecture", "command": "assess architectural patterns" }
-  ]
-})
-
 // Generate comprehensive analysis report
 mcp__moflo__performance_report({
   "format": "detailed",
@@ -663,9 +517,6 @@ mcp__moflo__performance_report({
 })
 
 // Cost analysis
-mcp__moflo__cost_analysis({
-  "timeframe": "30d"
-})
 ```
 
 ## Advanced Techniques
@@ -674,34 +525,16 @@ mcp__moflo__cost_analysis({
 
 ```javascript
 // Setup fault tolerance for all agents
-mcp__moflo__daa_fault_tolerance({
-  "agentId": "all",
-  "strategy": "auto-recovery"
-})
-
 // Error handling pattern
 try {
-  await mcp__moflo__task_orchestrate({
-    "task": "complex operation",
-    "strategy": "parallel",
-    "priority": "high"
-  })
 } catch (error) {
   // Check swarm health
   const status = await mcp__moflo__swarm_status({})
 
   // Analyze error patterns
-  await mcp__moflo__error_analysis({
-    "logs": [error.message]
-  })
-
-  // Auto-recovery attempt
+// Auto-recovery attempt
   if (status.healthy) {
-    await mcp__moflo__task_orchestrate({
-      "task": "retry failed operation",
-      "strategy": "sequential"
-    })
-  }
+}
 }
 ```
 
@@ -709,30 +542,10 @@ try {
 
 ```javascript
 // Cross-session persistence
-mcp__moflo__memory_persist({
-  "sessionId": "swarm-session-001"
-})
-
 // Namespace management for different swarms
-mcp__moflo__memory_namespace({
-  "namespace": "research-swarm",
-  "action": "create"
-})
-
 // Create state snapshot
-mcp__moflo__state_snapshot({
-  "name": "development-checkpoint-1"
-})
-
 // Restore from snapshot if needed
-mcp__moflo__context_restore({
-  "snapshotId": "development-checkpoint-1"
-})
-
 // Backup memory stores
-mcp__moflo__memory_backup({
-  "path": "/workspaces/claude-code-flow/backups/swarm-memory.json"
-})
 ```
 
 ### Neural Pattern Learning
@@ -746,17 +559,8 @@ mcp__moflo__neural_train({
 })
 
 // Adaptive learning from experience
-mcp__moflo__learning_adapt({
-  "experience": {
-    "workflow": "research-to-report",
-    "success": true,
-    "duration": 3600,
-    "quality": 0.95
-  }
-})
-
 // Pattern recognition for optimization
-mcp__moflo__pattern_recognize({
+mcp__moflo__neural_patterns({
   "data": workflowMetrics,
   "patterns": ["bottleneck", "optimization-opportunity", "efficiency-gain"]
 })
@@ -779,82 +583,39 @@ mcp__moflo__spell_create({
 })
 
 // Setup automation rules
-mcp__moflo__automation_setup({
-  "rules": [
-    {
-      "trigger": "file-changed",
-      "pattern": "*.js",
-      "action": "run-tests"
-    },
-    {
-      "trigger": "PR-created",
-      "action": "code-review-swarm"
-    }
-  ]
-})
-
 // Event-driven triggers
-mcp__moflo__trigger_setup({
-  "events": ["code-commit", "PR-merge", "deployment"],
-  "actions": ["test", "analyze", "document"]
-})
 ```
 
 ### Performance Optimization
 
 ```javascript
 // Topology optimization
-mcp__moflo__topology_optimize({
-  "swarmId": "current-swarm"
-})
-
 // Load balancing
-mcp__moflo__load_balance({
-  "swarmId": "development-swarm",
-  "tasks": taskQueue
-})
-
 // Agent coordination sync
 mcp__moflo__coordination_sync({
   "swarmId": "development-swarm"
 })
 
 // Auto-scaling
-mcp__moflo__swarm_scale({
-  "swarmId": "development-swarm",
-  "targetSize": 12
-})
 ```
 
 ### Monitoring and Metrics
 
 ```javascript
 // Real-time swarm monitoring
-mcp__moflo__swarm_monitor({
+mcp__moflo__swarm_status({
   "swarmId": "active-swarm",
   "interval": 3000
 })
 
 // Collect comprehensive metrics
-mcp__moflo__metrics_collect({
-  "components": ["agents", "tasks", "memory", "performance"]
-})
-
 // Health monitoring
-mcp__moflo__health_check({
+mcp__moflo__system_health({
   "components": ["swarm", "agents", "neural", "memory"]
 })
 
 // Usage statistics
-mcp__moflo__usage_stats({
-  "component": "swarm-orchestration"
-})
-
 // Trend analysis
-mcp__moflo__trend_analysis({
-  "metric": "agent-performance",
-  "period": "7d"
-})
 ```
 
 ## Best Practices

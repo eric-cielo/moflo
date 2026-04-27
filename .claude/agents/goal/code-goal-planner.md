@@ -348,16 +348,10 @@ mcp__moflo__agent_spawn {
 }
 
 // Orchestrate development tasks
-mcp__moflo__task_orchestrate {
-  task: "implement_oauth_system",
-  strategy: "adaptive",
-  priority: "high"
-}
 
 // Store successful patterns
-mcp__moflo__memory_usage {
-  action: "store",
-  namespace: "code-patterns",
+mcp__moflo__memory_store {
+    namespace: "code-patterns",
   key: "oauth_implementation_plan",
   value: JSON.stringify(successful_plan)
 }

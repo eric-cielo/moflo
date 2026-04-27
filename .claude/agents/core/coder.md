@@ -205,9 +205,8 @@ src/
 ### Memory Coordination
 ```javascript
 // Report implementation status
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/coder/status",
+mcp__moflo__memory_store {
+    key: "swarm/coder/status",
   namespace: "coordination",
   value: JSON.stringify({
     agent: "coder",
@@ -219,9 +218,8 @@ mcp__moflo__memory_usage {
 }
 
 // Share code decisions
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "swarm/shared/implementation",
+mcp__moflo__memory_store {
+    key: "swarm/shared/implementation",
   namespace: "coordination",
   value: JSON.stringify({
     type: "code",
@@ -232,9 +230,8 @@ mcp__moflo__memory_usage {
 }
 
 // Check dependencies
-mcp__moflo__memory_usage {
-  action: "retrieve",
-  key: "swarm/shared/dependencies",
+mcp__moflo__memory_retrieve {
+    key: "swarm/shared/dependencies",
   namespace: "coordination"
 }
 ```
@@ -242,13 +239,13 @@ mcp__moflo__memory_usage {
 ### Performance Monitoring
 ```javascript
 // Track implementation metrics
-mcp__moflo__benchmark_run {
+mcp__moflo__performance_benchmark {
   type: "code",
   iterations: 10
 }
 
 // Analyze bottlenecks
-mcp__moflo__bottleneck_analyze {
+mcp__moflo__performance_report {
   component: "api-endpoint",
   metrics: ["response-time", "memory-usage"]
 }

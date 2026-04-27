@@ -18,16 +18,6 @@ Only work in .md files. Use sections, examples, and headings. Keep each file und
 ## Usage
 
 ### Option 1: Using MCP Tools (Preferred in Claude Code)
-```javascript
-mcp__moflo__sparc_mode {
-  mode: "docs-writer",
-  task_description: "create API documentation",
-  options: {
-    namespace: "docs-writer",
-    non_interactive: false
-  }
-}
-```
 
 ### Option 2: Using NPX CLI (Fallback when MCP not available)
 ```bash
@@ -55,9 +45,8 @@ npx claude-flow sparc run docs-writer "your task" --non-interactive
 ### Using MCP Tools (Preferred)
 ```javascript
 // Store mode-specific context
-mcp__moflo__memory_usage {
-  action: "store",
-  key: "docs-writer_context",
+mcp__moflo__memory_store {
+    key: "docs-writer_context",
   value: "important decisions",
   namespace: "docs-writer"
 }
