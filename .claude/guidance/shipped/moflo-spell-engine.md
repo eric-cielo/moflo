@@ -366,7 +366,7 @@ The loader reads `package.json` for a `moflo.stepCommand` field pointing to the 
 **Pass `stepDirs` and `projectRoot` to `createRunner()` to enable pluggable step discovery.**
 
 ```typescript
-import { createRunner } from '@moflo/workflows';
+import { createRunner } from 'moflo/dist/src/cli/spells/index.js';
 
 const runner = createRunner({
   stepDirs: ['workflows/steps/', '.claude/workflows/steps/'],
@@ -391,7 +391,7 @@ const runner = createRunner({
 
 ### How Layering Works
 
-1. `loadWorkflowDefinitions()` loads shipped definitions first
+1. `loadSpellDefinitions()` loads shipped definitions first
 2. Then loads user definitions from configured directories
 3. If a user definition has the same `name` as a shipped one, the user version wins
 4. New names in user directories are additive (they extend, not replace, the set)
@@ -399,20 +399,20 @@ const runner = createRunner({
 ### Loading Definitions Programmatically
 
 ```typescript
-import { loadWorkflowDefinitions, loadWorkflowByName } from '@moflo/workflows';
+import { loadSpellDefinitions, loadSpellByName } from 'moflo/dist/src/cli/spells/index.js';
 
-const { workflows, errors } = loadWorkflowDefinitions({
+const { spells, errors } = loadSpellDefinitions({
   shippedDir: 'node_modules/moflo/workflows/shipped',
   userDirs: ['.claude/workflows', 'workflows/'],
 });
-const result = loadWorkflowByName('deploy-staging', { /* same options */ });
+const result = loadSpellByName('deploy-staging', { /* same options */ });
 ```
 
 ---
 
 ## Error Handling and Rollback
 
-**The runner collects errors without throwing.** `WorkflowResult` always returns — check `result.success` and `result.errors`.
+**The runner collects errors without throwing.** `SpellResult` always returns — check `result.success` and `result.errors`.
 
 | Error Code | Meaning |
 |------------|---------|
@@ -427,7 +427,7 @@ const result = loadWorkflowByName('deploy-staging', { /* same options */ });
 | `PAUSED_STATE_NOT_FOUND` | No paused state for spell ID on resume |
 | `PAUSED_STATE_EXPIRED` | Paused state exceeded stale timeout |
 | `ROLLBACK_FAILED` | Rollback of completed steps failed |
-| `WORKFLOW_CANCELLED` | Entire spell was cancelled |
+| `SPELL_CANCELLED` | Entire spell was cancelled |
 
 ### continueOnError
 
@@ -440,14 +440,14 @@ const result = loadWorkflowByName('deploy-staging', { /* same options */ });
 **Pause serializes spell state to memory. Resume reconstructs and continues from where it left off.**
 
 ```typescript
-import { buildPausedState, persistPausedState, resumeWorkflow } from '@moflo/workflows';
+import { buildPausedState, persistPausedState, resumeSpell } from 'moflo/dist/src/cli/spells/index.js';
 
 // Pause after step 2 of 5
-const state = buildPausedState(workflowId, definition, 2, variables, completedResults, args);
+const state = buildPausedState(spellId, definition, 2, variables, completedResults, args);
 await persistPausedState(state, memory);
 
 // Later: resume from step 3
-const result = await resumeWorkflow(workflowId, { memory, variables: { override: 'value' } });
+const result = await resumeSpell(spellId, { memory, variables: { override: 'value' } });
 ```
 
 **Stale timeout is 24 hours by default.** Paused state older than this is rejected on resume and cleaned up. Use `cleanupStalePaused(memory)` to sweep expired entries.
@@ -483,9 +483,9 @@ const result = await resumeWorkflow(workflowId, { memory, variables: { override:
 **Always dry-run before executing a new or modified spell.** Dry-run validates the definition, resolves arguments, and checks step configs without executing anything.
 
 ```typescript
-import { runWorkflowFromContent } from '@moflo/workflows';
+import { runSpellFromContent } from 'moflo/dist/src/cli/spells/index.js';
 
-const result = await runWorkflowFromContent(yamlContent, 'my-workflow.yaml', { dryRun: true });
+const result = await runSpellFromContent(yamlContent, 'my-spell.yaml', { dryRun: true });
 if (!result.success) {
   console.error('Validation errors:', result.errors);
 }

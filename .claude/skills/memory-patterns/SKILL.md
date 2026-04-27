@@ -125,7 +125,7 @@ This is the same fan-out the `/flo` spell does — cheap (HNSW, parallel) and re
 ## Persistence & Indexing
 
 - File: `.swarm/memory.db` at project root (sql.js).
-- Embeddings: built by cli's embeddings module; indexed with HNSW from `@moflo/memory`.
+- Embeddings: built by cli's embeddings module; indexed with HNSW from `src/cli/memory/`.
 - Cold-start cost: ~5 seconds to initialize HNSW. Tests should share a single instance (`beforeAll`, not `beforeEach`).
 - Namespace isolation: each namespace is a logical partition, but the HNSW index spans the table. Query time scales with `limit` and `threshold`, not total row count.
 

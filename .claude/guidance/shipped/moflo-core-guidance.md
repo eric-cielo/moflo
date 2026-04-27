@@ -485,7 +485,7 @@ Configure `.mcp.json` in the project root:
 ### Alternative: Global MCP Registration
 
 ```bash
-claude mcp add moflo -- npx @moflo/cli@alpha
+claude mcp add moflo -- npx moflo@alpha
 npx flo daemon start
 npx flo doctor --fix
 ```

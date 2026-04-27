@@ -33,8 +33,8 @@ Doctor should have an integration check that:
 # Confirm the mock pattern exists
 grep -n "real implementation would execute" src/cli/mcp-tools/workflow-tools.ts
 
-# Confirm no engine imports in MCP tools
-grep -c "WorkflowRunner\|runner-bridge\|runner-factory\|@moflo/workflows" src/cli/mcp-tools/workflow-tools.ts
+# Confirm no engine imports in MCP tools (post-collapse: spells engine lives at src/cli/spells/)
+grep -c "WorkflowRunner\|runner-bridge\|runner-factory\|spells/runner\|spells/core" src/cli/mcp-tools/workflow-tools.ts
 # Expected: 0
 
 # Confirm deep check only tests engine directly, not MCP layer
