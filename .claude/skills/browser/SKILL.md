@@ -180,19 +180,19 @@ All browser operations are available as MCP tools with `browser/` prefix:
 ### Memory Integration
 ```bash
 # Store successful patterns
-npx @moflo/cli memory store --namespace browser-patterns --key "login-flow" --value "snapshot->fill->click->wait"
+npx moflo memory store --namespace browser-patterns --key "login-flow" --value "snapshot->fill->click->wait"
 
 # Retrieve before similar task
-npx @moflo/cli memory search --query "login automation"
+npx moflo memory search --query "login automation"
 ```
 
 ### Hooks
 ```bash
 # Pre-browse hook (get context)
-npx @moflo/cli hooks pre-edit --file "browser-task.ts"
+npx moflo hooks pre-edit --file "browser-task.ts"
 
 # Post-browse hook (record success)
-npx @moflo/cli hooks post-task --task-id "browse-1" --success true
+npx moflo hooks post-task --task-id "browse-1" --success true
 ```
 
 ## Tips

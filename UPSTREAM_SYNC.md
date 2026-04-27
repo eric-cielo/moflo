@@ -50,7 +50,7 @@ Tracks which Ruflo/Claude Flow upstream commits have been reviewed and their dis
 - Added `process.exit(0)` for clean hook exit
 
 ### From ruvector WASM integration (#1374) — partial
-> **Note:** All @ruvector dependencies have since been fully replaced by in-house pure TypeScript/WASM implementations in `@moflo/neural` and `@moflo/embeddings`.
+> **Note:** All @ruvector dependencies have since been fully replaced by in-house pure TypeScript/WASM implementations in `src/cli/neural/` and `src/cli/embeddings/` (per [ADR-0001](docs/adr/0001-collapse-moflo-workspace-packages.md), the former `@moflo/neural` / `@moflo/embeddings` workspace packages were inlined).
 - Added `@ruvector/learning-wasm` as a direct dependency (was missing, blocking MicroLoRA)
 - SONA and EWC++ were already wired in via `agentic-flow` → `@ruvector/sona`
 - Did NOT adopt the multi-provider embedding abstraction — our simplified pipeline (Transformers.js direct) works with same precision
