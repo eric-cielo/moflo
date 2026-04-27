@@ -1,33 +1,16 @@
 /**
  * System MCP Tools for CLI
  *
- * V2 Compatibility - System monitoring tools: status, metrics, health
+ * Lightweight system health probe used by guidance / monitoring callers.
  *
- * ✅ Uses REAL system metrics via Node.js APIs:
- * - process.memoryUsage() for real memory stats
- * - process.cpuUsage() for real CPU stats
- * - os module for system information
+ * Uses REAL metrics:
+ * - process.memoryUsage() for memory stats
+ * - os.loadavg() for CPU load
  */
 
 import type { MCPTool } from './types.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import * as os from 'node:os';
-
-// Read version dynamically from package.json
-function getPackageVersion(): string {
-  try {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-    const pkgPath = join(__dirname, '..', '..', 'package.json');
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-    return pkg.version || '3.0.0';
-  } catch {
-    return '3.0.0';
-  }
-}
-const PKG_VERSION = getPackageVersion();
+import { join } from 'node:path';
 
 // Storage paths
 const STORAGE_DIR = '.claude-flow';
@@ -90,123 +73,6 @@ function saveMetrics(metrics: SystemMetrics): void {
 }
 
 export const systemTools: MCPTool[] = [
-  {
-    name: 'system_status',
-    description: 'Get overall system status',
-    category: 'system',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        verbose: { type: 'boolean', description: 'Include detailed information' },
-        components: { type: 'array', items: { type: 'string' }, description: 'Specific components to check' },
-      },
-    },
-    handler: async (input) => {
-      const metrics = loadMetrics();
-      const uptime = Date.now() - new Date(metrics.startTime).getTime();
-
-      const status = {
-        status: metrics.health >= 0.8 ? 'healthy' : metrics.health >= 0.5 ? 'degraded' : 'unhealthy',
-        uptime,
-        uptimeFormatted: `${Math.floor(uptime / 3600000)}h ${Math.floor((uptime % 3600000) / 60000)}m`,
-        version: PKG_VERSION,
-        components: {
-          swarm: { status: 'running', health: metrics.health },
-          memory: { status: 'running', health: 0.95 },
-          neural: { status: 'running', health: 0.90 },
-          mcp: { status: 'running', health: 1.0 },
-        },
-        lastCheck: new Date().toISOString(),
-      };
-
-      if (input.verbose) {
-        return {
-          ...status,
-          metrics: {
-            cpu: metrics.cpu,
-            memory: metrics.memory,
-            agents: metrics.agents,
-            tasks: metrics.tasks,
-          },
-        };
-      }
-
-      return status;
-    },
-  },
-  {
-    name: 'system_metrics',
-    description: 'Get system metrics and performance data',
-    category: 'system',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        category: { type: 'string', enum: ['all', 'cpu', 'memory', 'agents', 'tasks', 'requests'], description: 'Metrics category' },
-        timeRange: { type: 'string', description: 'Time range (e.g., 1h, 24h, 7d)' },
-        format: { type: 'string', enum: ['json', 'table', 'summary'], description: 'Output format' },
-      },
-    },
-    handler: async (input) => {
-      const store = loadMetrics();
-      const category = (input.category as string) || 'all';
-
-      // Get REAL system metrics via Node.js APIs
-      const memUsage = process.memoryUsage();
-      const loadAvg = os.loadavg();
-      const cpus = os.cpus();
-      const totalMem = os.totalmem();
-      const freeMem = os.freemem();
-
-      const currentMetrics: SystemMetrics = {
-        ...store,
-        cpu: loadAvg[0] * 100 / cpus.length, // Real CPU load percentage
-        memory: {
-          used: Math.round((totalMem - freeMem) / 1024 / 1024), // Real MB used
-          total: Math.round(totalMem / 1024 / 1024), // Real total MB
-        },
-        uptime: Date.now() - new Date(store.startTime).getTime(),
-        lastCheck: new Date().toISOString(),
-      };
-
-      saveMetrics(currentMetrics);
-
-      if (category === 'all') {
-        return {
-          ...currentMetrics,
-          _real: true, // Flag indicating real metrics
-          heap: {
-            used: Math.round(memUsage.heapUsed / 1024 / 1024),
-            total: Math.round(memUsage.heapTotal / 1024 / 1024),
-            external: Math.round(memUsage.external / 1024 / 1024),
-          },
-          loadAverage: loadAvg,
-          cpuCores: cpus.length,
-        };
-      }
-
-      const categoryMap: Record<string, unknown> = {
-        cpu: {
-          usage: currentMetrics.cpu,
-          cores: cpus.length,
-          load: loadAvg,
-          model: cpus[0]?.model,
-          _real: true,
-        },
-        memory: {
-          ...currentMetrics.memory,
-          heap: Math.round(memUsage.heapUsed / 1024 / 1024),
-          heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
-          free: Math.round(freeMem / 1024 / 1024),
-          _real: true,
-        },
-        agents: currentMetrics.agents,
-        tasks: currentMetrics.tasks,
-        requests: currentMetrics.requests,
-      };
-
-      return categoryMap[category] || currentMetrics;
-    },
-  },
   {
     name: 'system_health',
     description: 'Perform system health check',
@@ -288,133 +154,6 @@ export const systemTools: MCPTool[] = [
           status: c.status,
           suggestion: `Check ${c.name} component configuration`,
         })),
-      };
-    },
-  },
-  {
-    name: 'system_info',
-    description: 'Get system information',
-    category: 'system',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        include: { type: 'array', items: { type: 'string' }, description: 'Information to include' },
-      },
-    },
-    handler: async () => {
-      return {
-        version: PKG_VERSION,
-        nodeVersion: process.version,
-        platform: process.platform,
-        arch: process.arch,
-        pid: process.pid,
-        cwd: process.cwd(),
-        env: process.env.NODE_ENV || 'development',
-        features: {
-          swarm: true,
-          memory: true,
-          neural: true,
-          hnsw: true,
-          quantization: true,
-          flashAttention: false,
-        },
-        limits: {
-          maxAgents: 100,
-          maxTasks: 1000,
-          maxMemory: '4GB',
-        },
-      };
-    },
-  },
-  {
-    name: 'system_reset',
-    description: 'Reset system state',
-    category: 'system',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        component: { type: 'string', description: 'Component to reset (all, metrics, agents, tasks)' },
-        confirm: { type: 'boolean', description: 'Confirm reset' },
-      },
-      required: ['confirm'],
-    },
-    handler: async (input) => {
-      if (!input.confirm) {
-        return { success: false, error: 'Reset requires confirmation' };
-      }
-
-      const component = (input.component as string) || 'metrics';
-
-      // Reset metrics to defaults
-      const defaultMetrics: SystemMetrics = {
-        startTime: new Date().toISOString(),
-        lastCheck: new Date().toISOString(),
-        uptime: 0,
-        health: 1.0,
-        cpu: 25,
-        memory: { used: 256, total: 1024 },
-        agents: { active: 0, total: 0 },
-        tasks: { pending: 0, completed: 0, failed: 0 },
-        requests: { total: 0, success: 0, errors: 0 },
-      };
-
-      saveMetrics(defaultMetrics);
-
-      return {
-        success: true,
-        component,
-        resetAt: new Date().toISOString(),
-        message: `System ${component} has been reset`,
-      };
-    },
-  },
-  {
-    name: 'mcp_status',
-    description: 'Get MCP server status, including stdio mode detection',
-    category: 'system',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-    },
-    handler: async () => {
-      // Only stdio transport is supported. When Claude Code launches us via
-      // `claude mcp add`, stdin is piped (not a TTY) and the process IS the
-      // MCP server, so it is running.
-      return {
-        running: true,
-        pid: process.pid,
-        transport: 'stdio',
-      };
-    },
-  },
-  {
-    name: 'task_summary',
-    description: 'Get a summary of all tasks by status',
-    category: 'task',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-    },
-    handler: async () => {
-      // Read from the task store file
-      const storePath = join(process.cwd(), '.claude-flow', 'tasks', 'store.json');
-      let tasks: Array<{ status: string }> = [];
-      try {
-        if (existsSync(storePath)) {
-          const data = readFileSync(storePath, 'utf-8');
-          const store = JSON.parse(data);
-          tasks = Object.values(store.tasks || {});
-        }
-      } catch {
-        // empty store
-      }
-
-      return {
-        total: tasks.length,
-        pending: tasks.filter(t => t.status === 'pending').length,
-        running: tasks.filter(t => t.status === 'in_progress').length,
-        completed: tasks.filter(t => t.status === 'completed').length,
-        failed: tasks.filter(t => t.status === 'failed').length,
       };
     },
   },

@@ -124,7 +124,17 @@ MCP tools are the preferred way for Claude to interact with moflo. `flo init` cr
 }
 ```
 
-This gives Claude access to 200+ MCP tools (`mcp__moflo__memory_*`, `mcp__moflo__hooks_*`, `mcp__moflo__swarm_*`, etc.) without any global installation.
+This gives Claude access to ~125 MCP tools (`mcp__moflo__memory_*`, `mcp__moflo__hooks_*`, `mcp__moflo__swarm_*`, `mcp__moflo__moflodb_*`, etc.) without any global installation.
+
+### Policy: every shipped MCP tool must have a real consumer (#693)
+
+We do not ship speculative tools. Every tool registered in `src/cli/mcp-tools/` must satisfy at least one of these:
+
+1. Referenced as `mcp__moflo__<name>` in a skill, agent file, doc, or guidance .md
+2. Called via `callMCPTool('<name>')` from CLI command code
+3. On the explicit allowlist in `src/cli/__tests__/mcp-tools-drift-guard.test.ts` with a justification (e.g. "expert API for `moflodb_*` controllers" or "advertised in `moflo-init.ts` CLAUDE.md fragment")
+
+The drift-guard test fails CI if a new tool is registered with no consumer and no allowlist entry. If you ship a tool, ship a real call site for it (or document why it has none).
 
 ---
 
