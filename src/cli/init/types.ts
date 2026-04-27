@@ -62,18 +62,12 @@ export interface HooksConfig {
  * Skills configuration
  */
 export interface SkillsConfig {
-  /** Include core skills (swarm, memory, sparc) */
+  /** Include core skills (swarm, memory, sparc, reasoningbank) */
   core: boolean;
-  /** Include AgentDB skills */
-  agentdb: boolean;
   /** Include GitHub integration skills */
   github: boolean;
-  /** Include Flow Nexus skills */
-  flowNexus: boolean;
   /** Include browser automation skills (agent-browser) */
   browser: boolean;
-  /** Include V3 implementation skills */
-  v3: boolean;
   /** Include all available skills */
   all: boolean;
 }
@@ -336,11 +330,8 @@ export const DEFAULT_INIT_OPTIONS: InitOptions = {
   },
   skills: {
     core: true,
-    agentdb: true,
     github: true,
-    flowNexus: false,
     browser: true,
-    v3: true,
     all: false,
   },
   commands: {
@@ -430,11 +421,8 @@ export const MINIMAL_INIT_OPTIONS: InitOptions = {
   },
   skills: {
     core: true,
-    agentdb: false,
     github: false,
-    flowNexus: false,
     browser: false,
-    v3: false,
     all: false,
   },
   agents: {
@@ -490,11 +478,8 @@ export const FULL_INIT_OPTIONS: InitOptions = {
   },
   skills: {
     core: true,
-    agentdb: true,
     github: true,
-    flowNexus: true,
     browser: true,
-    v3: true,
     all: true,
   },
   commands: {
