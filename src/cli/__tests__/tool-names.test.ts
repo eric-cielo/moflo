@@ -43,11 +43,6 @@ describe('MCP Tool Name Constants', () => {
     expect(toolNames.TOOL_HIVE_MIND_MEMORY).toBe('hive-mind_memory');
   });
 
-  it('exports infrastructure tool names', () => {
-    expect(toolNames.TOOL_MCP_STOP).toBe('mcp_stop');
-    expect(toolNames.TOOL_SWARM_STOP).toBe('swarm_stop');
-  });
-
   it('all exports are strings', () => {
     for (const [key, value] of Object.entries(toolNames)) {
       expect(typeof value).toBe('string');

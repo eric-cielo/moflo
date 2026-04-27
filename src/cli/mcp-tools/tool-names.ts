@@ -36,7 +36,3 @@ export const TOOL_HIVE_MIND_MEMORY = 'hive-mind_memory' as const;
 // Hooks tools
 export const TOOL_HOOKS_INTELLIGENCE_RESET = 'hooks_intelligence-reset' as const;
 export const TOOL_HOOKS_MODEL_OUTCOME = 'hooks_model-outcome' as const;
-
-// Infrastructure tools
-export const TOOL_MCP_STOP = 'mcp_stop' as const;
-export const TOOL_SWARM_STOP = 'swarm_stop' as const;
