@@ -12,7 +12,8 @@
 import { existsSync, appendFileSync, readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { execFileSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
+import { platform } from 'os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -86,24 +87,64 @@ function isIndexEnabled(key) {
   return _autoIndexFlags[key] !== false;
 }
 
+// Kill a child process tree, hard. On Windows, child.kill('SIGTERM') only
+// signals the immediate child — node subprocesses spawned by it (the fastembed
+// model loader, for instance) survive. taskkill /T walks the tree. On POSIX,
+// killing the negative PID hits the whole process group we created with
+// detached:true. See #744 — execFileSync's own `timeout` does NOT do this and
+// orphaned a 2 GB build-embeddings process for 30+ minutes in the wild.
+function killProcessTree(child) {
+  if (!child || child.killed || child.exitCode !== null) return;
+  if (platform() === 'win32') {
+    try {
+      // /F = force, /T = include child processes
+      spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true });
+    } catch {
+      try { child.kill('SIGKILL'); } catch { /* already gone */ }
+    }
+  } else {
+    try { process.kill(-child.pid, 'SIGKILL'); } catch {
+      try { child.kill('SIGKILL'); } catch { /* already gone */ }
+    }
+  }
+}
+
 function runStep(label, cmd, args, timeoutMs = 120_000) {
-  const start = Date.now();
-  log(`START ${label}`);
-  try {
-    execFileSync(cmd, args, {
+  return new Promise((resolveStep) => {
+    const start = Date.now();
+    log(`START ${label}`);
+    const child = spawn(cmd, args, {
       cwd: projectRoot,
-      timeout: timeoutMs,
       stdio: 'ignore',
       windowsHide: true,
+      detached: platform() !== 'win32', // POSIX: own process group for tree-kill
     });
-    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-    log(`DONE  ${label} (${elapsed}s)`);
-    return true;
-  } catch (err) {
-    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-    log(`FAIL  ${label} (${elapsed}s): ${err.message?.split('\n')[0] || 'unknown'}`);
-    return false;
-  }
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killProcessTree(child);
+    }, timeoutMs);
+    child.once('exit', (code, signal) => {
+      clearTimeout(timer);
+      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+      if (timedOut) {
+        log(`FAIL  ${label} (${elapsed}s): timed out after ${timeoutMs}ms, child killed`);
+        resolveStep(false);
+      } else if (code === 0) {
+        log(`DONE  ${label} (${elapsed}s)`);
+        resolveStep(true);
+      } else {
+        log(`FAIL  ${label} (${elapsed}s): exit code ${code}${signal ? ` (signal ${signal})` : ''}`);
+        resolveStep(false);
+      }
+    });
+    child.once('error', (err) => {
+      clearTimeout(timer);
+      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+      log(`FAIL  ${label} (${elapsed}s): ${err.message?.split('\n')[0] || 'unknown'}`);
+      resolveStep(false);
+    });
+  });
 }
 
 async function main() {
@@ -114,7 +155,7 @@ async function main() {
   if (isIndexEnabled('guidance')) {
     const guidanceScript = resolveBin('flo-index', 'index-guidance.mjs');
     if (guidanceScript) {
-      runStep('guidance-index', 'node', [guidanceScript, '--no-embeddings']);
+      await runStep('guidance-index', 'node', [guidanceScript, '--no-embeddings']);
     } else {
       log('SKIP  guidance-index (script not found)');
     }
@@ -126,7 +167,7 @@ async function main() {
   if (isIndexEnabled('code_map')) {
     const codeMapScript = resolveBin('flo-codemap', 'generate-code-map.mjs');
     if (codeMapScript) {
-      runStep('code-map', 'node', [codeMapScript, '--no-embeddings'], 180_000);
+      await runStep('code-map', 'node', [codeMapScript, '--no-embeddings'], 180_000);
     } else {
       log('SKIP  code-map (script not found)');
     }
@@ -138,7 +179,7 @@ async function main() {
   if (isIndexEnabled('tests')) {
     const testScript = resolveBin('flo-testmap', 'index-tests.mjs');
     if (testScript) {
-      runStep('test-index', 'node', [testScript, '--no-embeddings']);
+      await runStep('test-index', 'node', [testScript, '--no-embeddings']);
     } else {
       log('SKIP  test-index (script not found)');
     }
@@ -150,7 +191,7 @@ async function main() {
   if (isIndexEnabled('patterns')) {
     const patternsScript = resolveBin('flo-patterns', 'index-patterns.mjs');
     if (patternsScript) {
-      runStep('patterns-index', 'node', [patternsScript]);
+      await runStep('patterns-index', 'node', [patternsScript]);
     } else {
       log('SKIP  patterns-index (script not found)');
     }
@@ -161,7 +202,7 @@ async function main() {
   // 5. Pretrain (extracts patterns from repository)
   const localCli = getLocalCliPath();
   if (localCli) {
-    runStep('pretrain', 'node', [localCli, 'hooks', 'pretrain']);
+    await runStep('pretrain', 'node', [localCli, 'hooks', 'pretrain']);
   } else {
     log('SKIP  pretrain (CLI not found)');
   }
@@ -171,14 +212,14 @@ async function main() {
   //    embedding spawns that race with this chain (sql.js last-write-wins).
   const embeddingsScript = resolveBin('flo-embeddings', 'build-embeddings.mjs');
   if (embeddingsScript) {
-    runStep('build-embeddings', 'node', [embeddingsScript], 300_000);
+    await runStep('build-embeddings', 'node', [embeddingsScript], 300_000);
   } else {
     log('SKIP  build-embeddings (script not found)');
   }
 
   // 7. HNSW rebuild — MUST run last, after all writes are committed (#81)
   if (localCli) {
-    runStep('hnsw-rebuild', 'node', [localCli, 'memory', 'rebuild', '--force']);
+    await runStep('hnsw-rebuild', 'node', [localCli, 'memory', 'rebuild', '--force']);
   } else {
     log('SKIP  hnsw-rebuild (CLI not found)');
   }

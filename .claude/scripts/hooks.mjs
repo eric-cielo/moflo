@@ -276,12 +276,19 @@ async function main() {
       case 'session-start': {
         // Start daemon quietly in background (no DB writes)
         runDaemonStartBackground();
-        // Initialize embeddings engine (must run before indexers that generate embeddings)
-        runEmbeddingsInitBackground();
         // Run all DB-writing indexers SEQUENTIALLY in a single background process.
         // This avoids sql.js last-write-wins concurrency (#78) and ensures
         // HNSW rebuild runs after all indexers finish (#81).
-        // Chain: guidance → code-map → tests → patterns → pretrain → HNSW rebuild.
+        // Chain: guidance → code-map → tests → patterns → pretrain → build-embeddings → HNSW rebuild.
+        //
+        // The chain's pretrain + build-embeddings steps load and exercise the
+        // fastembed model — that is the embeddings-engine warmup. We do NOT
+        // also fire `cli embeddings init` here: its action runs a full
+        // safelyRunEmbeddingsMigration() which writes to .moflo/moflo.db via
+        // sql.js whole-file flush, racing build-embeddings.mjs in this same
+        // chain and producing the sqlite_autoindex corruption that #743 had
+        // to repair on subsequent sessions. The launcher's foreground §3e
+        // migration is the canonical migration site. See #744.
         spawnWindowless('node', [resolve(__dirname, 'index-all.mjs')], 'sequential indexing chain');
         // Neural patterns now loaded by moflo core routing — no external patching.
         break;
@@ -589,18 +596,6 @@ function runDaemonStartBackground() {
   touchSpawnStamp();
 
   spawnWindowless('node', [localCli, 'daemon', 'start', '--quiet'], 'daemon');
-}
-
-
-// Initialize embeddings ONNX engine on session start (non-blocking)
-function runEmbeddingsInitBackground() {
-  const localCli = getLocalCliPath();
-  if (!localCli) {
-    log('warn', 'Local CLI not found, skipping embeddings init');
-    return;
-  }
-
-  spawnWindowless('node', [localCli, 'embeddings', 'init'], 'embeddings init');
 }
 
 
