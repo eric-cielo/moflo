@@ -16,11 +16,13 @@
  *   flo-embeddings --namespace guidance                       # scope to one namespace
  */
 
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { mofloResolveURL, mofloInternalURL } from './lib/moflo-resolve.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 const FASTEMBED_INLINE = 'dist/src/cli/embeddings/fastembed-inline/index.js';
+const BRIDGE_CORE = 'dist/src/cli/memory/bridge-core.js';
+const { writeVectorStatsJson } = await import(mofloInternalURL(BRIDGE_CORE));
 
 function findProjectRoot() {
   let dir = process.cwd();
@@ -173,21 +175,23 @@ function getEmbeddingStats(db) {
   };
 }
 
-function writeVectorStatsCache(stats, nsCount) {
+// Thin wrapper around bridge-core's writeVectorStatsJson — keeps the on-disk
+// payload shape (including the `missing` field doctor reads in #639) in lockstep
+// with the bridge writer. Aggregates `missing` from namespace stats so doctor's
+// stale-vector-stats check still sees a populated count after this script runs.
+function writeVectorStatsCache(stats, nsStats) {
   try {
     const dbSizeKB = Math.floor(readFileSync(DB_PATH).length / 1024);
-    const hnswExists = existsSync(resolve(projectRoot, '.swarm', 'hnsw.index'))
+    const hasHnsw = existsSync(resolve(projectRoot, '.swarm', 'hnsw.index'))
       || existsSync(resolve(projectRoot, '.moflo', 'hnsw.index'));
-    const cacheData = {
+    const missing = nsStats.reduce((sum, ns) => sum + (ns.missing || 0), 0);
+    writeVectorStatsJson(projectRoot, {
       vectorCount: stats.withEmbeddings,
+      missing,
       dbSizeKB,
-      namespaces: nsCount,
-      hasHnsw: hnswExists,
-      updatedAt: Date.now(),
-    };
-    const cacheDir = resolve(projectRoot, '.moflo');
-    if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
-    writeFileSync(resolve(cacheDir, 'vector-stats.json'), JSON.stringify(cacheData));
+      namespaces: nsStats.length,
+      hasHnsw,
+    });
   } catch (err) {
     debug(`vector-stats cache write failed (non-fatal): ${err.message}`);
   }
@@ -211,7 +215,7 @@ async function main() {
     log('All entries already have embeddings');
     const stats = getEmbeddingStats(db);
     log(`Total: ${stats.withEmbeddings}/${stats.total} entries embedded`);
-    writeVectorStatsCache(stats, getNamespaceStats(db).length);
+    writeVectorStatsCache(stats, getNamespaceStats(db));
     db.close();
     return;
   }
@@ -315,7 +319,7 @@ async function main() {
   }
   log('═══════════════════════════════════════════════════════════');
 
-  writeVectorStatsCache(stats, nsStats.length);
+  writeVectorStatsCache(stats, nsStats);
   db.close();
 }
 

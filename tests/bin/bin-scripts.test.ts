@@ -83,6 +83,18 @@ describe('bin/build-embeddings.mjs', () => {
     const result = syntaxCheck(file);
     expect(result.ok).toBe(true);
   });
+
+  // #719 — vector-stats.json payload must stay in lockstep with the bridge
+  // writer. Routing through writeVectorStatsJson is the only way the doctor's
+  // `missing` field (#639) survives a build-embeddings run.
+  it('routes vector-stats writes through bridge-core writeVectorStatsJson', async () => {
+    const { readFileSync } = await import('fs');
+    const src = readFileSync(file, 'utf-8');
+    expect(src).toMatch(/writeVectorStatsJson/);
+    expect(src).toMatch(/dist\/src\/cli\/memory\/bridge-core\.js/);
+    // No bypass via direct write to vector-stats.json
+    expect(src).not.toMatch(/vector-stats\.json['"]\s*,\s*JSON\.stringify/);
+  });
 });
 
 describe('bin/index-guidance.mjs', () => {
