@@ -1,0 +1,158 @@
+// Statusline upgrade-notice tests (#636) — covers TTL + render across the
+// .moflo/upgrade-notice.json sidecar that session-start writes after an upgrade.
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+
+const STATUSLINE = resolve(__dirname, '../../../.claude/helpers/statusline.cjs');
+const REPO_ROOT = resolve(__dirname, '../../..');
+
+interface RunResult {
+  stdout: string;
+  stderr: string;
+  status: number | null;
+}
+
+function makeTempRoot(): string {
+  const root = resolve(
+    REPO_ROOT,
+    '.testoutput',
+    '.test-statusline-notice-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+  );
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'sl-test', version: '0.0.0' }));
+  return root;
+}
+
+function cleanTempRoot(root: string) {
+  try {
+    rmSync(root, { recursive: true, force: true });
+  } catch {
+    /* Windows occasionally holds handles — non-fatal */
+  }
+}
+
+function runStatusline(cwd: string, args: string[] = ['--json-compact']): RunResult {
+  const result = spawnSync('node', [STATUSLINE, ...args], {
+    cwd,
+    encoding: 'utf-8',
+    timeout: 15_000,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: cwd, CI: '1' },
+    input: '',
+  });
+  return {
+    stdout: result.stdout || '',
+    stderr: result.stderr || '',
+    status: result.status,
+  };
+}
+
+function writeNotice(root: string, body: unknown) {
+  const dir = join(root, '.moflo');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'upgrade-notice.json'), JSON.stringify(body, null, 2));
+}
+
+describe('statusline upgrade-notice (#636)', () => {
+  let root: string;
+  beforeEach(() => {
+    root = makeTempRoot();
+  });
+  afterEach(() => {
+    cleanTempRoot(root);
+  });
+
+  it('exposes an active notice within TTL via JSON output', () => {
+    const now = Date.now();
+    writeNotice(root, {
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      at: new Date(now - 60_000).toISOString(),
+      expiresAt: new Date(now + 30 * 60_000).toISOString(),
+      changes: 3,
+    });
+
+    const { stdout, status } = runStatusline(root);
+    expect(status).toBe(0);
+    const json = JSON.parse(stdout);
+    expect(json.upgradeNotice).toEqual({
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      changes: 3,
+    });
+  });
+
+  it('omits an expired notice (past expiresAt)', () => {
+    const now = Date.now();
+    writeNotice(root, {
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      at: new Date(now - 2 * 60 * 60_000).toISOString(),
+      expiresAt: new Date(now - 60 * 60_000).toISOString(),
+      changes: 3,
+    });
+
+    const { stdout } = runStatusline(root);
+    const json = JSON.parse(stdout);
+    expect(json.upgradeNotice).toBeNull();
+  });
+
+  it('omits the segment when no notice file exists (fast path)', () => {
+    const { stdout } = runStatusline(root);
+    const json = JSON.parse(stdout);
+    expect(json.upgradeNotice).toBeNull();
+  });
+
+  it('tolerates a malformed notice file without crashing', () => {
+    const dir = join(root, '.moflo');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'upgrade-notice.json'), '{ this is not json');
+
+    const { stdout, status } = runStatusline(root);
+    expect(status).toBe(0);
+    const json = JSON.parse(stdout);
+    expect(json.upgradeNotice).toBeNull();
+  });
+
+  it('renders a leading segment with version delta in compact-dashboard output', () => {
+    const now = Date.now();
+    writeNotice(root, {
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      at: new Date(now).toISOString(),
+      expiresAt: new Date(now + 30 * 60_000).toISOString(),
+      changes: 3,
+    });
+
+    const { stdout } = runStatusline(root, ['--compact']);
+    // ANSI escapes are present — strip them before asserting.
+    // eslint-disable-next-line no-control-regex
+    const plain = stdout.replace(/\x1B\[[0-9;]*m/g, '');
+    expect(plain).toContain('4.8.79 → 4.8.80');
+    expect(plain).toContain('3 changes');
+  });
+
+  it('renders a "repair" notice with the expected wording', () => {
+    const now = Date.now();
+    writeNotice(root, {
+      kind: 'repair',
+      from: '4.8.80',
+      to: '4.8.80',
+      at: new Date(now).toISOString(),
+      expiresAt: new Date(now + 30 * 60_000).toISOString(),
+      changes: 1,
+    });
+
+    const { stdout } = runStatusline(root, ['--compact']);
+    // eslint-disable-next-line no-control-regex
+    const plain = stdout.replace(/\x1B\[[0-9;]*m/g, '');
+    expect(plain).toContain('install repaired');
+    expect(plain).toContain('1 change');
+    expect(plain).not.toContain('1 changes');
+  });
+});

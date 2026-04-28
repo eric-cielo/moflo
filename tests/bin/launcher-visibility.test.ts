@@ -1,11 +1,13 @@
 /**
- * Tests for the SessionStart launcher's visible-mutation reporting (#716).
+ * Tests for the SessionStart launcher's visible-mutation reporting (#716)
+ * and the user-visible upgrade-notice surface (#636).
  *
  * The launcher does several mutating operations on session start (legacy
  * runtime-state migration, settings.json rewrites, moflo.yaml section append,
  * stale-file cleanup, daemon recycle, …). After PR #711 the embeddings
  * migration writes a user-visible one-liner to stdout; #716 extends that
- * pattern to every other mutation surface.
+ * pattern to every other mutation surface; #636 adds a `.moflo/upgrade-notice.json`
+ * sidecar that the statusline reads to show a leading UI segment.
  *
  * These tests spawn the actual launcher in an isolated temp directory and
  * assert stdout. Each scenario stages just enough state to trigger one
@@ -19,7 +21,7 @@
  * exact behavior we want to verify.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { resolve, join } from 'path';
 
@@ -212,5 +214,97 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
       // `moflo: <action>` minimum, optional ` (<details>)` suffix
       expect(line).toMatch(/^moflo: [^()][^(]*( \([^)]+\))?$/);
     }
+  });
+
+  it('emits closing "starting background tasks" line only when something fired', () => {
+    // Bare temp project — silent fast-path, no tasks line.
+    const silent = runLauncher(root);
+    expect(silent.stdout).not.toContain('moflo: starting background tasks');
+
+    // Stage a real mutation so the launcher fires at least once.
+    mkdirSync(join(root, '.swarm'), { recursive: true });
+    writeFileSync(join(root, '.swarm', 'vector-stats.json'), '{}');
+
+    const noisy = runLauncher(root);
+    expect(noisy.stdout).toContain('moflo: starting background tasks');
+    // The line is informational framing — must not match the mutation regex
+    // because it explains what's about to start, not what just happened.
+    expect(
+      noisy.stdout
+        .split('\n')
+        .find((l) => l.startsWith('moflo: starting background tasks')),
+    ).toContain('CPU may briefly spike');
+  });
+
+  it('writes .moflo/upgrade-notice.json with kind=upgrade on a version bump (#636)', () => {
+    // Stage `node_modules/moflo/package.json` at v9.9.9 and a prior cached
+    // version at v9.9.8 so the launcher takes the version-bump branch.
+    mkdirSync(join(root, 'node_modules', 'moflo'), { recursive: true });
+    writeFileSync(
+      join(root, 'node_modules', 'moflo', 'package.json'),
+      JSON.stringify({ name: 'moflo', version: '9.9.9' }),
+    );
+    mkdirSync(join(root, '.moflo'), { recursive: true });
+    writeFileSync(join(root, '.moflo', 'moflo-version'), '9.9.8');
+
+    const { stdout } = runLauncher(root);
+    expect(stdout).toContain('moflo: upgraded (9.9.8 → 9.9.9)');
+
+    const noticePath = join(root, '.moflo', 'upgrade-notice.json');
+    expect(existsSync(noticePath)).toBe(true);
+
+    const notice = JSON.parse(readFileSync(noticePath, 'utf-8'));
+    expect(notice.kind).toBe('upgrade');
+    expect(notice.from).toBe('9.9.8');
+    expect(notice.to).toBe('9.9.9');
+    expect(typeof notice.at).toBe('string');
+    expect(typeof notice.expiresAt).toBe('string');
+    expect(new Date(notice.expiresAt).getTime()).toBeGreaterThan(
+      new Date(notice.at).getTime(),
+    );
+    expect(notice.changes).toBeGreaterThan(0);
+  });
+
+  it('does NOT write upgrade-notice.json on the silent fast-path', () => {
+    // No node_modules/moflo, no version mismatch, no mutations — the notice
+    // must not be created.
+    const noticePath = join(root, '.moflo', 'upgrade-notice.json');
+    expect(existsSync(noticePath)).toBe(false);
+
+    runLauncher(root);
+    expect(existsSync(noticePath)).toBe(false);
+  });
+
+  it('overwrites a stale upgrade-notice.json on a subsequent upgrade', () => {
+    // Pre-seed with a notice from a prior upgrade.
+    mkdirSync(join(root, '.moflo'), { recursive: true });
+    const noticePath = join(root, '.moflo', 'upgrade-notice.json');
+    writeFileSync(
+      noticePath,
+      JSON.stringify({
+        kind: 'upgrade',
+        from: '1.0.0',
+        to: '1.0.1',
+        at: '2020-01-01T00:00:00.000Z',
+        expiresAt: '2020-01-01T01:00:00.000Z',
+        changes: 99,
+      }),
+    );
+
+    // Now stage a fresh upgrade that the launcher should record.
+    mkdirSync(join(root, 'node_modules', 'moflo'), { recursive: true });
+    writeFileSync(
+      join(root, 'node_modules', 'moflo', 'package.json'),
+      JSON.stringify({ name: 'moflo', version: '9.9.9' }),
+    );
+    writeFileSync(join(root, '.moflo', 'moflo-version'), '9.9.8');
+
+    runLauncher(root);
+
+    const updated = JSON.parse(readFileSync(noticePath, 'utf-8'));
+    expect(updated.from).toBe('9.9.8');
+    expect(updated.to).toBe('9.9.9');
+    expect(updated.changes).toBeGreaterThan(0);
+    expect(updated.changes).not.toBe(99);
   });
 });
