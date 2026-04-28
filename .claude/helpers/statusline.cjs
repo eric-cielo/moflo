@@ -599,6 +599,34 @@ function getIntegrationStatus() {
   return { mcpServers, hasDatabase, hasApi };
 }
 
+// Upgrade notice (#636) — written by the session-start launcher; null when missing, expired, or malformed.
+function getUpgradeNotice() {
+  const data = readJSON(path.join(CWD, '.moflo', 'upgrade-notice.json'));
+  if (!data || typeof data !== 'object') return null;
+  const expiresAt = data.expiresAt ? new Date(data.expiresAt).getTime() : 0;
+  if (!expiresAt || Date.now() > expiresAt) return null;
+  return {
+    kind: data.kind === 'repair' ? 'repair' : 'upgrade',
+    from: typeof data.from === 'string' ? data.from : '',
+    to: typeof data.to === 'string' ? data.to : '',
+    changes: typeof data.changes === 'number' && data.changes > 0 ? data.changes : 0,
+  };
+}
+
+function formatUpgradeNoticeSegment(notice) {
+  if (!notice) return '';
+  const changesPart = notice.changes > 0
+    ? ` ${c.dim}(${notice.changes} ${notice.changes === 1 ? 'change' : 'changes'})${c.reset}`
+    : '';
+  if (notice.kind === 'repair') {
+    return `${c.brightYellow}📦 install repaired${c.reset}${changesPart}`;
+  }
+  const versions = notice.from && notice.to
+    ? `${notice.from} → ${notice.to}`
+    : (notice.to || 'upgraded');
+  return `${c.brightYellow}📦 ${versions}${c.reset}${changesPart}`;
+}
+
 // Session stats (pure file reads)
 function getSessionStats() {
   for (const p of ['.moflo/session.json', '.claude/session.json']) {
@@ -621,6 +649,11 @@ function progressBar(current, total) {
   return '[' + '\u25CF'.repeat(filled) + '\u25CB'.repeat(width - filled) + ']';
 }
 
+function pushUpgradeNoticeSegment(target) {
+  const notice = getUpgradeNotice();
+  if (notice) target.push(formatUpgradeNoticeSegment(notice));
+}
+
 // Single-line statusline for Claude Code's status bar
 function generateStatusline() {
   const git = getGitInfo();
@@ -637,6 +670,8 @@ function generateStatusline() {
 
   // Branding (always shown when enabled)
   parts.push(`${c.bold}${c.brightPurple}\u258A ${SL_CONFIG.branding}${c.reset}`);
+
+  pushUpgradeNoticeSegment(parts);
 
   // User + swarm indicator
   const dot = swarm.coordinationActive ? `${c.brightGreen}\u25CF${c.reset}` : `${c.brightCyan}\u25CF${c.reset}`;
@@ -721,6 +756,7 @@ function generateDashboard() {
     header += `  ${c.dim}\u2502${c.reset}  ${c.cyan}\u23F1 ${session.duration}${c.reset}`;
   }
   lines.push(header);
+  pushUpgradeNoticeSegment(lines);
 
   // Separator
   lines.push(`${c.dim}${'─'.repeat(53)}${c.reset}`);
@@ -796,6 +832,7 @@ function generateCompactDashboard() {
     header += `  ${c.dim}\u2502${c.reset}  ${c.cyan}\u23F1 ${session.duration}${c.reset}`;
   }
   lines.push(header);
+  pushUpgradeNoticeSegment(lines);
 
   // Combined swarm + agentdb + mcp line
   const segments = [];
@@ -845,6 +882,7 @@ function generateJSON() {
     agentdb: getAgentDBStats(),
     tests: getTestStats(),
     git: { modified: git.modified, untracked: git.untracked, staged: git.staged, ahead: git.ahead, behind: git.behind },
+    upgradeNotice: getUpgradeNotice(),
     lastUpdated: new Date().toISOString(),
   };
 }
