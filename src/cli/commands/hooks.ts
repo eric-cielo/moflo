@@ -3304,7 +3304,7 @@ const statuslineCommand: Command = {
         // Ignore
       }
 
-      // Calculate intelligence from multiple sources (matching statusline-generator.ts)
+      // Calculate intelligence from multiple sources (matching .claude/helpers/statusline.cjs)
       let intelligencePct = 0;
 
       // 1. Check learning.json for REAL intelligence metrics first
@@ -3455,7 +3455,7 @@ const statuslineCommand: Command = {
       } catch { /* ignore */ }
     }
 
-    // Get AgentDB stats (matching statusline-generator.ts paths)
+    // Get AgentDB stats (matching .claude/helpers/statusline.cjs paths)
     const agentdbStats = { vectorCount: 0, dbSizeKB: 0, hasHnsw: false };
 
     // Check for direct database files first

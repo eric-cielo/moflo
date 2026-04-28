@@ -17,7 +17,6 @@ import type { InitOptions, InitResult, PlatformInfo } from './types.js';
 import { detectPlatform, DEFAULT_INIT_OPTIONS } from './types.js';
 import { generateSettingsJson, generateSettings } from './settings-generator.js';
 import { generateMCPJson } from './mcp-generator.js';
-import { generateStatuslineScript, generateStatuslineHook } from './statusline-generator.js';
 import {
   generatePreCommitHook,
   generatePostCommitHook,
@@ -439,34 +438,15 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
     }
 
     // 1. ALWAYS update statusline helper (force overwrite)
-    // Prefer the shipped file (supports single-line mode + moflo.yaml config)
+    // Reuse the lookup from step 0 — findSourceHelpersDir walks package-
+    // resolution candidates and is the most expensive call in this function.
     const statuslinePath = path.join(targetDir, '.claude', 'helpers', 'statusline.cjs');
-    const sourceHelpersForStatusline = findSourceHelpersDir();
-    const shippedStatusline = sourceHelpersForStatusline
-      ? path.join(sourceHelpersForStatusline, 'statusline.cjs')
-      : null;
-
     if (fs.existsSync(statuslinePath)) {
       result.updated.push('.claude/helpers/statusline.cjs');
     } else {
       result.created.push('.claude/helpers/statusline.cjs');
     }
-
-    if (shippedStatusline && fs.existsSync(shippedStatusline)) {
-      fs.copyFileSync(shippedStatusline, statuslinePath);
-    } else {
-      // Fallback: generate if shipped file not available
-      const upgradeOptions: InitOptions = {
-        ...DEFAULT_INIT_OPTIONS,
-        targetDir,
-        force: true,
-        statusline: {
-          ...DEFAULT_INIT_OPTIONS.statusline,
-          refreshInterval: 5000,
-        },
-      };
-      fs.writeFileSync(statuslinePath, generateStatuslineScript(upgradeOptions), 'utf-8');
-    }
+    fs.copyFileSync(requireShippedStatusline(sourceHelpersForUpgrade, 'upgrade'), statuslinePath);
 
     // 1b. ALWAYS sync .claude/scripts/ from moflo bin/ (derived files, not user-edited)
     // Scripts contain critical daemon guards, hook logic, etc. that must stay in sync.
@@ -1121,6 +1101,24 @@ async function copyAgents(
  * Validates that the directory contains hook-handler.cjs to avoid
  * returning the target directory or an incomplete source.
  */
+/**
+ * Validate the package shipped its statusline.cjs and return the path. Throws
+ * with a remediation hint if the file is absent — the cure is `npm install`,
+ * not silently regenerating a stale copy (#715).
+ */
+function requireShippedStatusline(
+  sourceHelpersDir: string | null,
+  cmd: 'init' | 'upgrade',
+): string {
+  const shipped = sourceHelpersDir ? path.join(sourceHelpersDir, 'statusline.cjs') : null;
+  if (!shipped || !fs.existsSync(shipped)) {
+    throw new Error(
+      `moflo ${cmd}: shipped statusline.cjs not found. The package install is broken — try \`npm install moflo\` to repair.`,
+    );
+  }
+  return shipped;
+}
+
 function findSourceHelpersDir(sourceBaseDir?: string): string | null {
   const possiblePaths: string[] = [];
   const SENTINEL_FILE = 'hook-handler.cjs'; // Must exist in valid source
@@ -1364,22 +1362,12 @@ async function writeStatusline(
     }
   }
 
-  // Prefer the shipped statusline.cjs from the package (supports single-line
-  // mode, moflo.yaml config, and stdin session data). Only fall back to the
-  // generated version if the shipped file is not found.
+  // Copy the shipped statusline.cjs from the package — it is the single source
+  // of truth (#715). The generator-fallback was retired because (a) it could
+  // only ever drift, and (b) `.claude/helpers/**` is shipped in package.json
+  // `files`, so missing it means the install itself is broken.
   const statuslinePath = path.join(helpersDir, 'statusline.cjs');
-  const sourceHelpersDir = findSourceHelpersDir();
-  const shippedStatusline = sourceHelpersDir
-    ? path.join(sourceHelpersDir, 'statusline.cjs')
-    : null;
-
-  if (shippedStatusline && fs.existsSync(shippedStatusline)) {
-    fs.copyFileSync(shippedStatusline, statuslinePath);
-  } else {
-    // Fallback: generate statusline if shipped file not available
-    const statuslineScript = generateStatuslineScript(options);
-    fs.writeFileSync(statuslinePath, statuslineScript, 'utf-8');
-  }
+  fs.copyFileSync(requireShippedStatusline(findSourceHelpersDir(), 'init'), statuslinePath);
   result.created.files.push('.claude/helpers/statusline.cjs');
 }
 

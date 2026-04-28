@@ -4,7 +4,6 @@
  */
 
 import type { InitOptions } from './types.js';
-import { generateStatuslineScript } from './statusline-generator.js';
 
 /**
  * Generate pre-commit hook script
@@ -196,9 +195,9 @@ export function generateHelpers(options: InitOptions): Record<string, string> {
     helpers['hook-handler.cjs'] = generateHookHandlerScript();
   }
 
-  if (options.components.statusline) {
-    helpers['statusline.cjs'] = generateStatuslineScript(options);
-  }
+  // statusline.cjs is intentionally NOT generated here — it is shipped as a
+  // static file in `.claude/helpers/statusline.cjs` and copied during init/
+  // upgrade by executor.writeStatusline (#715). One source of truth.
 
   return helpers;
 }
