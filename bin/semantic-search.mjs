@@ -20,6 +20,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { mofloResolveURL, mofloInternalURL } from './lib/moflo-resolve.mjs';
+import { memoryDbPath } from './lib/moflo-paths.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 const FASTEMBED_INLINE = 'dist/src/cli/embeddings/fastembed-inline/index.js';
 
@@ -34,7 +35,7 @@ function findProjectRoot() {
 }
 
 const projectRoot = findProjectRoot();
-const DB_PATH = resolve(projectRoot, '.swarm/memory.db');
+const DB_PATH = memoryDbPath(projectRoot);
 
 const EMBEDDING_MODEL = 'fast-all-MiniLM-L6-v2';
 const EMBEDDING_DIMS = 384;

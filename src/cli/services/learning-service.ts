@@ -6,7 +6,7 @@
  * promotion, deduplication, and consolidation.
  *
  * Features:
- * - Pattern storage/search with sql.js backend (.swarm/memory.db)
+ * - Pattern storage/search with sql.js backend (.moflo/moflo.db)
  * - Short-term -> long-term pattern promotion (promote after 3 uses)
  * - Quality thresholds: minimum quality 0.6, dedup threshold 0.95
  * - Consolidation: max 500 short-term, 2000 long-term, prune after 30 days
@@ -14,9 +14,10 @@
  */
 
 import { existsSync, mkdirSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { mofloImport } from './moflo-require.js';
 import { atomicWriteFileSync } from './atomic-file-write.js';
+import { memoryDbPath } from './moflo-paths.js';
 import {
   createNeuralEmbeddingProvider,
   type NeuralEmbeddingProvider,
@@ -362,13 +363,10 @@ export class LearningService {
   private longTermIndex = new HNSWIndex();
   private dirty = false;
   private dbPath: string;
-  private dataDir: string;
   private embedderPromise: Promise<NeuralEmbeddingProvider> | null = null;
 
   constructor(projectRoot?: string, embedder?: NeuralEmbeddingProvider) {
-    const root = projectRoot || process.cwd();
-    this.dataDir = join(root, '.swarm');
-    this.dbPath = join(this.dataDir, 'memory.db');
+    this.dbPath = memoryDbPath(projectRoot || process.cwd());
     if (embedder) this.embedderPromise = Promise.resolve(embedder);
   }
 
@@ -383,8 +381,9 @@ export class LearningService {
   async initialize(): Promise<void> {
     if (this.db) return;
 
-    if (!existsSync(this.dataDir)) {
-      mkdirSync(this.dataDir, { recursive: true });
+    const dataDir = dirname(this.dbPath);
+    if (!existsSync(dataDir)) {
+      mkdirSync(dataDir, { recursive: true });
     }
 
     const SQL = await loadSqlJs();

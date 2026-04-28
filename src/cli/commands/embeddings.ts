@@ -17,7 +17,10 @@ import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { mofloImport } from '../services/moflo-require.js';
 import { runEmbeddingsMigrationIfNeeded } from '../services/embeddings-migration.js';
+import { memoryDbPath, MEMORY_DB_FILE, MOFLO_DIR } from '../services/moflo-paths.js';
 import * as embeddings from '../embeddings/index.js';
+
+const DEFAULT_DB_PATH_FLAG = `${MOFLO_DIR}/${MEMORY_DB_FILE}`;
 
 // Generate subcommand - REAL implementation
 const generateCommand: Command = {
@@ -110,7 +113,7 @@ const searchCommand: Command = {
     { name: 'collection', short: 'c', type: 'string', description: 'Namespace to search', default: 'default' },
     { name: 'limit', short: 'l', type: 'number', description: 'Max results', default: '10' },
     { name: 'threshold', short: 't', type: 'number', description: 'Similarity threshold (0-1)', default: '0.5' },
-    { name: 'db-path', type: 'string', description: 'Database path', default: '.swarm/memory.db' },
+    { name: 'db-path', type: 'string', description: 'Database path', default: DEFAULT_DB_PATH_FLAG },
   ],
   examples: [
     { command: 'claude-flow embeddings search -q "error handling"', description: 'Search for similar' },
@@ -121,7 +124,7 @@ const searchCommand: Command = {
     const namespace = ctx.flags.collection as string || 'default';
     const limit = parseInt(ctx.flags.limit as string || '10', 10);
     const threshold = parseFloat(ctx.flags.threshold as string || '0.5');
-    const dbPath = ctx.flags['db-path'] as string || '.swarm/memory.db';
+    const dbPath = ctx.flags['db-path'] as string || memoryDbPath(process.cwd());
 
     if (!query) {
       output.printError('Query is required');
@@ -399,7 +402,7 @@ const collectionsCommand: Command = {
   options: [
     { name: 'action', short: 'a', type: 'string', description: 'Action: list, stats', default: 'list' },
     { name: 'name', short: 'n', type: 'string', description: 'Namespace name' },
-    { name: 'db-path', type: 'string', description: 'Database path', default: '.swarm/memory.db' },
+    { name: 'db-path', type: 'string', description: 'Database path', default: DEFAULT_DB_PATH_FLAG },
   ],
   examples: [
     { command: 'claude-flow embeddings collections', description: 'List collections' },
@@ -407,7 +410,7 @@ const collectionsCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const action = ctx.flags.action as string || 'list';
-    const dbPath = ctx.flags['db-path'] as string || '.swarm/memory.db';
+    const dbPath = ctx.flags['db-path'] as string || memoryDbPath(process.cwd());
 
     output.writeln();
     output.writeln(output.bold('Embedding Collections (Namespaces)'));
@@ -1658,16 +1661,16 @@ const migrateCommand: Command = {
   description:
     'Re-embed existing vectors using the current neural model (runs automatically on session start if needed)',
   options: [
-    { name: 'db', short: 'd', type: 'string', description: 'Path to memory DB', default: '.swarm/memory.db' },
+    { name: 'db', short: 'd', type: 'string', description: 'Path to memory DB', default: DEFAULT_DB_PATH_FLAG },
     { name: 'batch-size', short: 'b', type: 'number', description: 'Batch size', default: '128' },
     { name: 'verbose', short: 'v', type: 'boolean', description: 'Verbose output', default: 'false' },
   ],
   examples: [
-    { command: 'claude-flow embeddings migrate', description: 'Migrate .swarm/memory.db to current version' },
+    { command: 'claude-flow embeddings migrate', description: `Migrate ${DEFAULT_DB_PATH_FLAG} to current version` },
     { command: 'claude-flow embeddings migrate -d .custom/mem.db', description: 'Migrate a custom DB' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const dbPath = (ctx.flags.db as string) || '.swarm/memory.db';
+    const dbPath = (ctx.flags.db as string) || memoryDbPath(process.cwd());
     try {
       const ran = await runEmbeddingsMigrationIfNeeded({ dbPath });
       return { success: true, data: { ran } };

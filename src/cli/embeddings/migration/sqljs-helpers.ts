@@ -9,7 +9,7 @@
  *
  *   2. An `embeddings_migration_cursor` table that persists the resume
  *      cursor per-store (so multiple stores sharing a DB file — e.g.
- *      `.swarm/memory.db` with both `memory_entries` and `patterns` —
+ *      `.moflo/moflo.db` with both `memory_entries` and `patterns` —
  *      each get their own row).
  *
  * The helpers are framework-agnostic: they accept a minimal `SqlJsDatabase`

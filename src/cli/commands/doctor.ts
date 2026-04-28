@@ -27,6 +27,11 @@ import {
 } from './doctor-checks-deep.js';
 import { checkEmbeddingHygiene } from './doctor-embedding-hygiene.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
+import {
+  legacyMemoryDbPath,
+  memoryDbCandidatePaths,
+  memoryDbPath,
+} from '../services/moflo-paths.js';
 
 // Promisified exec with proper shell and env inheritance for cross-platform support
 const execAsync = promisify(exec);
@@ -195,22 +200,31 @@ async function checkDaemonStatus(): Promise<HealthCheck> {
 
 // Check memory database
 async function checkMemoryDatabase(): Promise<HealthCheck> {
-  const dbPaths = [
-    '.moflo/memory.db',
-    '.swarm/memory.db',
-    'data/memory.db'
-  ];
+  const root = process.cwd();
+  const canonical = memoryDbPath(root);
 
-  for (const dbPath of dbPaths) {
-    if (existsSync(dbPath)) {
-      try {
-        const stats = statSync(dbPath);
-        const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
-        return { name: 'Memory Database', status: 'pass', message: `${dbPath} (${sizeMB} MB)` };
-      } catch {
-        return { name: 'Memory Database', status: 'warn', message: `${dbPath} (unable to stat)` };
+  for (const dbPath of memoryDbCandidatePaths(root)) {
+    let stats;
+    try { stats = statSync(dbPath); } catch { continue; }
+    const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
+
+    if (dbPath === canonical) {
+      let message = `.moflo/moflo.db (${sizeMB} MB)`;
+      // Unfinished migration tail: source still present means the launcher's
+      // rename-to-.bak step failed (Windows lock most often). Flag so the user
+      // knows to clear the stale source.
+      if (existsSync(legacyMemoryDbPath(root))) {
+        message += ' — legacy .swarm/memory.db still present (delete it after confirming canonical is healthy)';
       }
+      return { name: 'Memory Database', status: 'pass', message };
     }
+
+    return {
+      name: 'Memory Database',
+      status: 'warn',
+      message: `${dbPath} (${sizeMB} MB) — legacy location, will migrate to .moflo/moflo.db on next session start`,
+      fix: 'restart claude code session',
+    };
   }
 
   return { name: 'Memory Database', status: 'warn', message: 'Not initialized', fix: 'claude-flow memory configure --backend hybrid' };
@@ -511,13 +525,7 @@ const VECTOR_STATS_SKEW_WARN_THRESHOLD = 0.2;
 // Check embeddings / vector index health.
 // Exported so the #639 stale-cache regression test can invoke it directly.
 export async function checkEmbeddings(): Promise<HealthCheck> {
-  const dbPaths = [
-    join(process.cwd(), '.swarm', 'memory.db'),
-    join(process.cwd(), '.moflo', 'memory.db'),
-    join(process.cwd(), 'data', 'memory.db'),
-  ];
-
-  const liveDbPath = dbPaths.find((p) => existsSync(p));
+  const liveDbPath = memoryDbCandidatePaths(process.cwd()).find((p) => existsSync(p));
 
   // 1. Fast path: read cached vector-stats.json if available
   const statsPath = join(process.cwd(), '.moflo', 'vector-stats.json');

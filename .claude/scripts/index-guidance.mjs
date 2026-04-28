@@ -26,6 +26,7 @@ import { existsSync, readdirSync, readFileSync, statSync, mkdirSync, writeFileSy
 import { resolve, relative, dirname, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
+import { memoryDbPath } from './lib/moflo-paths.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 
@@ -47,7 +48,7 @@ const projectRoot = findProjectRoot();
 const mofloRoot = resolve(__dirname, '..');
 
 const NAMESPACE = 'guidance';
-const DB_PATH = resolve(projectRoot, '.swarm/memory.db');
+const DB_PATH = memoryDbPath(projectRoot);
 
 // ============================================================================
 // Load guidance directories from moflo.yaml, falling back to defaults
@@ -883,7 +884,7 @@ if (!skipEmbeddings && needsEmbeddings) {
     const embeddingArgs = ['--namespace', NAMESPACE];
 
     // Create log file for background process output
-    const logDir = resolve(projectRoot, '.swarm/logs');
+    const logDir = resolve(projectRoot, '.moflo/logs');
     if (!existsSync(logDir)) {
       mkdirSync(logDir, { recursive: true });
     }
@@ -902,7 +903,7 @@ if (!skipEmbeddings && needsEmbeddings) {
     proc.unref();  // Allow parent to exit independently
 
     log(`Background embedding started (PID: ${proc.pid})`);
-    log(`Log file: .swarm/logs/embeddings.log`);
+    log(`Log file: .moflo/logs/embeddings.log`);
   } else {
     log('⚠️  Embedding script not found, skipping embedding generation');
   }
