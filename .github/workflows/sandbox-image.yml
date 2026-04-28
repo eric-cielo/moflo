@@ -15,6 +15,11 @@ on:
 
 env:
   IMAGE: ghcr.io/eric-cielo/moflo-sandbox
+  # Forces bundled JS actions (checkout, etc.) to run on Node 24 instead of
+  # their pinned Node 20 runtime. Silences the Node 20 deprecation warning
+  # ahead of the 2026-06-02 forced cutover.
+  # See: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # Don't cancel in-flight publishes — a mid-push abort can leave partial manifests
 # on the registry. ci.yml uses cancel-in-progress: true because PR builds are
