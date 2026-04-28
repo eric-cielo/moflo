@@ -11,14 +11,8 @@
  */
 
 import type { MCPTool } from './types.js';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
 import * as os from 'node:os';
-import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
-
-// Storage paths
-const PERF_DIR = 'performance';
-const METRICS_FILE = 'metrics.json';
+import { createJsonStore } from './json-store.js';
 
 interface PerfMetrics {
   timestamp: string;
@@ -48,37 +42,11 @@ interface PerfStore {
   version: string;
 }
 
-function getPerfDir(): string {
-  return join(process.cwd(), STORAGE_DIR, PERF_DIR);
-}
-
-function getPerfPath(): string {
-  return join(getPerfDir(), METRICS_FILE);
-}
-
-function ensurePerfDir(): void {
-  const dir = getPerfDir();
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-}
-
-function loadPerfStore(): PerfStore {
-  try {
-    const path = getPerfPath();
-    if (existsSync(path)) {
-      return JSON.parse(readFileSync(path, 'utf-8'));
-    }
-  } catch {
-    // Return empty store
-  }
-  return { metrics: [], benchmarks: {}, version: '3.0.0' };
-}
-
-function savePerfStore(store: PerfStore): void {
-  ensurePerfDir();
-  writeFileSync(getPerfPath(), JSON.stringify(store, null, 2), 'utf-8');
-}
+const store = createJsonStore<PerfStore>({
+  subdir: 'performance',
+  file: 'metrics.json',
+  defaults: () => ({ metrics: [], benchmarks: {}, version: '3.0.0' }),
+});
 
 export const performanceTools: MCPTool[] = [
   {
@@ -94,7 +62,7 @@ export const performanceTools: MCPTool[] = [
       },
     },
     handler: async (input) => {
-      const store = loadPerfStore();
+      const state = store.load();
       const format = (input.format as string) || 'summary';
 
       // Get REAL system metrics via Node.js APIs
@@ -117,24 +85,24 @@ export const performanceTools: MCPTool[] = [
           heap: Math.round(memUsage.heapUsed / 1024 / 1024),
         },
         latency: {
-          avg: store.metrics.length > 0 ? store.metrics.slice(-10).reduce((s, m) => s + m.latency.avg, 0) / Math.min(store.metrics.length, 10) : 50,
-          p50: store.metrics.length > 0 ? store.metrics.slice(-10).reduce((s, m) => s + m.latency.p50, 0) / Math.min(store.metrics.length, 10) : 40,
-          p95: store.metrics.length > 0 ? store.metrics.slice(-10).reduce((s, m) => s + m.latency.p95, 0) / Math.min(store.metrics.length, 10) : 100,
-          p99: store.metrics.length > 0 ? store.metrics.slice(-10).reduce((s, m) => s + m.latency.p99, 0) / Math.min(store.metrics.length, 10) : 200,
+          avg: state.metrics.length > 0 ? state.metrics.slice(-10).reduce((s, m) => s + m.latency.avg, 0) / Math.min(state.metrics.length, 10) : 50,
+          p50: state.metrics.length > 0 ? state.metrics.slice(-10).reduce((s, m) => s + m.latency.p50, 0) / Math.min(state.metrics.length, 10) : 40,
+          p95: state.metrics.length > 0 ? state.metrics.slice(-10).reduce((s, m) => s + m.latency.p95, 0) / Math.min(state.metrics.length, 10) : 100,
+          p99: state.metrics.length > 0 ? state.metrics.slice(-10).reduce((s, m) => s + m.latency.p99, 0) / Math.min(state.metrics.length, 10) : 200,
         },
         throughput: {
-          requests: store.metrics.length > 0 ? store.metrics[store.metrics.length - 1].throughput.requests + 1 : 1,
-          operations: store.metrics.length > 0 ? store.metrics[store.metrics.length - 1].throughput.operations + 10 : 10,
+          requests: state.metrics.length > 0 ? state.metrics[state.metrics.length - 1].throughput.requests + 1 : 1,
+          operations: state.metrics.length > 0 ? state.metrics[state.metrics.length - 1].throughput.operations + 10 : 10,
         },
         errors: { count: 0, rate: 0 },
       };
 
-      store.metrics.push(currentMetrics);
+      state.metrics.push(currentMetrics);
       // Keep last 100 metrics
-      if (store.metrics.length > 100) {
-        store.metrics = store.metrics.slice(-100);
+      if (state.metrics.length > 100) {
+        state.metrics = state.metrics.slice(-100);
       }
-      savePerfStore(store);
+      store.save(state);
 
       if (format === 'summary') {
         return {
@@ -151,7 +119,7 @@ export const performanceTools: MCPTool[] = [
       }
 
       // Calculate trends from history
-      const history = store.metrics.slice(-10);
+      const history = state.metrics.slice(-10);
       const cpuTrend = history.length >= 2
         ? (history[history.length - 1].cpu.usage > history[0].cpu.usage ? 'increasing' : 'stable')
         : 'stable';
@@ -196,7 +164,7 @@ export const performanceTools: MCPTool[] = [
       },
     },
     handler: async (input) => {
-      const store = loadPerfStore();
+      const state = store.load();
       const suite = (input.suite as string) || 'all';
       const iterations = (input.iterations as number) || 100;
       const warmup = input.warmup !== false;
@@ -277,7 +245,7 @@ export const performanceTools: MCPTool[] = [
             createdAt: new Date().toISOString(),
           };
 
-          store.benchmarks[id] = result;
+          state.benchmarks[id] = result;
 
           results.push({
             name: suiteName,
@@ -289,10 +257,10 @@ export const performanceTools: MCPTool[] = [
         }
       }
 
-      savePerfStore(store);
+      store.save(state);
 
       // Calculate comparison vs previous benchmarks
-      const allBenchmarks = Object.values(store.benchmarks);
+      const allBenchmarks = Object.values(state.benchmarks);
       const previousBenchmarks = allBenchmarks
         .filter(b => suitesToRun.includes(b.name) && b.createdAt < results[0]?.name)
         .slice(-suitesToRun.length);

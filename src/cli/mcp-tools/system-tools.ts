@@ -9,13 +9,7 @@
  */
 
 import type { MCPTool } from './types.js';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
-
-// Storage paths
-const SYSTEM_DIR = 'system';
-const METRICS_FILE = 'metrics.json';
+import { createJsonStore } from './json-store.js';
 
 interface SystemMetrics {
   startTime: string;
@@ -29,31 +23,10 @@ interface SystemMetrics {
   requests: { total: number; success: number; errors: number };
 }
 
-function getSystemDir(): string {
-  return join(process.cwd(), STORAGE_DIR, SYSTEM_DIR);
-}
-
-function getMetricsPath(): string {
-  return join(getSystemDir(), METRICS_FILE);
-}
-
-function ensureSystemDir(): void {
-  const dir = getSystemDir();
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-}
-
-function loadMetrics(): SystemMetrics {
-  try {
-    const path = getMetricsPath();
-    if (existsSync(path)) {
-      return JSON.parse(readFileSync(path, 'utf-8'));
-    }
-  } catch {
-    // Return default metrics
-  }
-  return {
+const store = createJsonStore<SystemMetrics>({
+  subdir: 'system',
+  file: 'metrics.json',
+  defaults: () => ({
     startTime: new Date().toISOString(),
     lastCheck: new Date().toISOString(),
     uptime: 0,
@@ -63,14 +36,8 @@ function loadMetrics(): SystemMetrics {
     agents: { active: 0, total: 0 },
     tasks: { pending: 0, completed: 0, failed: 0 },
     requests: { total: 0, success: 0, errors: 0 },
-  };
-}
-
-function saveMetrics(metrics: SystemMetrics): void {
-  ensureSystemDir();
-  metrics.lastCheck = new Date().toISOString();
-  writeFileSync(getMetricsPath(), JSON.stringify(metrics, null, 2), 'utf-8');
-}
+  }),
+});
 
 export const systemTools: MCPTool[] = [
   {
@@ -86,7 +53,7 @@ export const systemTools: MCPTool[] = [
       },
     },
     handler: async (input) => {
-      const metrics = loadMetrics();
+      const metrics = store.load();
       const checks: Array<{ name: string; status: string; latency: number; message?: string }> = [];
 
       // Core checks
@@ -140,7 +107,8 @@ export const systemTools: MCPTool[] = [
 
       // Update metrics
       metrics.health = overallHealth;
-      saveMetrics(metrics);
+      metrics.lastCheck = new Date().toISOString();
+      store.save(metrics);
 
       return {
         overall: overallHealth >= 0.8 ? 'healthy' : overallHealth >= 0.5 ? 'degraded' : 'unhealthy',
