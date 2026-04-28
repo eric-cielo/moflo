@@ -13,26 +13,45 @@
 import type { MCPTool } from './types.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { createEmbeddingServiceAsync } from '../embeddings/index.js';
 import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
 
-let realEmbeddings: { embed: (text: string) => Promise<number[]> } | null = null;
+// Lazily resolved fastembed-backed embedder. The previous top-level `await`
+// blocked module evaluation on the fastembed model load (~1–3 s + model
+// download on first run), which anchored every importer of this file under
+// the same wait — extremely costly under vitest's transform/isolation
+// pipeline. We now defer until a tool handler actually needs embeddings.
+type RealEmbeddings = { embed: (text: string) => Promise<number[]> } | null;
+let realEmbeddings: RealEmbeddings | undefined = undefined;
 let embeddingServiceName: string = 'none';
-try {
-  const service = await createEmbeddingServiceAsync({
-    provider: 'fastembed',
-  });
-  realEmbeddings = {
-    embed: async (text: string) => {
-      const result = await service.embed(text);
-      return Array.from(result.embedding);
-    },
-  };
-  embeddingServiceName = service.provider;
-} catch (err) {
-  process.stderr.write(
-    `[neural-tools] embeddings load failed: ${err instanceof Error ? err.message : String(err)}\n`,
-  );
+let embeddingsInitPromise: Promise<RealEmbeddings> | null = null;
+
+async function getRealEmbeddings(): Promise<RealEmbeddings> {
+  if (realEmbeddings !== undefined) return realEmbeddings;
+  if (embeddingsInitPromise) return embeddingsInitPromise;
+
+  embeddingsInitPromise = (async (): Promise<RealEmbeddings> => {
+    try {
+      const { createEmbeddingServiceAsync } = await import('../embeddings/embedding-service.js');
+      const service = await createEmbeddingServiceAsync({
+        provider: 'fastembed',
+      });
+      realEmbeddings = {
+        embed: async (text: string) => {
+          const result = await service.embed(text);
+          return Array.from(result.embedding);
+        },
+      };
+      embeddingServiceName = service.provider;
+    } catch (err) {
+      process.stderr.write(
+        `[neural-tools] embeddings load failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      realEmbeddings = null;
+    }
+    return realEmbeddings;
+  })();
+
+  return embeddingsInitPromise;
 }
 
 // Storage paths
@@ -102,11 +121,14 @@ function saveNeuralStore(store: NeuralStore): void {
 // Generate embedding - uses real embeddings if available, falls back to hash-based
 async function generateEmbedding(text?: string, dims: number = 384): Promise<number[]> {
   // If real embeddings available and text provided, use them
-  if (realEmbeddings && text) {
-    try {
-      return await realEmbeddings.embed(text);
-    } catch {
-      // Fall back to hash-based
+  if (text) {
+    const real = await getRealEmbeddings();
+    if (real) {
+      try {
+        return await real.embed(text);
+      } catch {
+        // Fall back to hash-based
+      }
     }
   }
 
@@ -396,10 +418,14 @@ export const neuralTools: MCPTool[] = [
 
       const models = Object.values(store.models);
       const patterns = Object.values(store.patterns);
+      // Resolve embeddings before reporting status — neural_status is a
+      // diagnostic surface, so eating the one-time fastembed load here is
+      // expected and keeps the reported flags accurate.
+      const real = await getRealEmbeddings();
 
       return {
-        _realEmbeddings: !!realEmbeddings,
-        embeddingProvider: realEmbeddings ? `cli/embeddings (${embeddingServiceName})` : 'hash-based (deterministic)',
+        _realEmbeddings: !!real,
+        embeddingProvider: real ? `cli/embeddings (${embeddingServiceName})` : 'hash-based (deterministic)',
         models: {
           total: models.length,
           ready: models.filter(m => m.status === 'ready').length,

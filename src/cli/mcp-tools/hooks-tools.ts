@@ -6,7 +6,6 @@
 import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync, readdirSync } from 'fs';
 import { dirname, join, resolve, extname } from 'path';
 import type { MCPTool } from './types.js';
-import { createEmbeddingService } from '../embeddings/index.js';
 
 // Real vector search functions - lazy loaded to avoid circular imports
 let searchEntriesFn: ((options: {
@@ -119,15 +118,20 @@ let routerBackend: 'pure-js' | 'none' = 'none';
 const TASK_PATTERN_EMBEDDINGS: Map<string, Float32Array> = new Map();
 
 // Lazy neural embedding service — ADR-EMB-001 forbids hash fallbacks, so
-// routing and attention handlers embed through fastembed. The service boots
-// once per process; first call pays the ~1–3 s model-load cost, later calls
-// are sub-ms cached lookups.
-let embeddingService: ReturnType<typeof createEmbeddingService> | null = null;
+// routing and attention handlers embed through fastembed. Deferred behind a
+// dynamic import (see getSONAOptimizer above) so module-eval doesn't drag
+// the embeddings stack through vitest's transform pipeline. Cache the
+// init promise — not the resolved value — so concurrent callers all wait
+// on the same `createEmbeddingService` rather than racing duplicates.
+let embeddingServicePromise: Promise<ReturnType<typeof import('../embeddings/embedding-service.js').createEmbeddingService>> | null = null;
 function getEmbeddingService() {
-  if (!embeddingService) {
-    embeddingService = createEmbeddingService({ provider: 'fastembed' });
+  if (!embeddingServicePromise) {
+    embeddingServicePromise = (async () => {
+      const { createEmbeddingService } = await import('../embeddings/embedding-service.js');
+      return createEmbeddingService({ provider: 'fastembed' });
+    })();
   }
-  return embeddingService;
+  return embeddingServicePromise;
 }
 
 function toFloat32(vec: Float32Array | number[]): Float32Array {
@@ -135,13 +139,13 @@ function toFloat32(vec: Float32Array | number[]): Float32Array {
 }
 
 async function embedTexts(texts: string[]): Promise<Float32Array[]> {
-  const svc = getEmbeddingService();
+  const svc = await getEmbeddingService();
   const { embeddings } = await svc.embedBatch(texts);
   return embeddings.map(toFloat32);
 }
 
 async function embedText(text: string): Promise<Float32Array> {
-  const svc = getEmbeddingService();
+  const svc = await getEmbeddingService();
   const { embedding } = await svc.embed(text);
   return toFloat32(embedding);
 }

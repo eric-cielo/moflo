@@ -14,7 +14,6 @@ import * as path from 'path';
 import { mofloImport } from '../services/moflo-require.js';
 import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 import { formatEmbeddingError } from './embedding-errors.js';
-import { createEmbeddingService } from '../embeddings/index.js';
 import { HnswLite } from './hnsw-lite.js';
 import { EMBEDDING_MODEL_OPT_OUT } from './bridge-embedder.js';
 import { writeVectorStatsJson } from './bridge-core.js';
@@ -1550,6 +1549,7 @@ export async function loadEmbeddingModel(options?: {
     console.log('Preparing neural embedding runtime (fastembed / all-MiniLM-L6-v2)...');
   }
 
+  const { createEmbeddingService } = await import('../embeddings/embedding-service.js');
   const service = createEmbeddingService({
     provider: 'fastembed',
     dimensions: 384,

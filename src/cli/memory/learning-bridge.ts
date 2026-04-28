@@ -13,8 +13,8 @@ import { EventEmitter } from 'node:events';
 import type { IMemoryBackend, MemoryEntry, SONAMode } from './types.js';
 import type { MemoryInsight, InsightCategory } from './auto-memory-bridge.js';
 import type { ControllerSpec } from './controller-spec.js';
-import { createEmbeddingService } from '../embeddings/index.js';
-import { NeuralLearningSystem } from '../neural/index.js';
+// `createEmbeddingService` and `NeuralLearningSystem` loaded lazily in their
+// init helpers below — see hooks-tools.ts.
 
 // ===== Types =====
 
@@ -418,6 +418,7 @@ export class LearningBridge extends EventEmitter {
         this.neural = await this.config.neuralLoader();
         return;
       }
+      const { NeuralLearningSystem } = await import('../neural/index.js');
       const instance = new NeuralLearningSystem(this.config.sonaMode);
       await instance.initialize();
       this.neural = instance;
@@ -470,6 +471,7 @@ export class LearningBridge extends EventEmitter {
       }
 
       try {
+        const { createEmbeddingService } = await import('../embeddings/embedding-service.js');
         this.embeddingService = createEmbeddingService({
           provider: 'fastembed',
           dimensions: 384,
