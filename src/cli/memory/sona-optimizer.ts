@@ -5,7 +5,7 @@
  * Integrates with Q-learning router and persistence layer.
  *
  * Features:
- * - Processes trajectory outcomes from hooksTrajectoryEnd
+ * - Processes trajectory outcomes from the spell-engine trajectory pipeline
  * - Extracts keywords from tasks for pattern matching
  * - Maintains learned routing patterns with confidence scoring
  * - Persists patterns to .swarm/sona-patterns.json
@@ -239,8 +239,7 @@ export class SONAOptimizer {
   }
 
   /**
-   * Process a trajectory outcome and learn from it
-   * Called by hooksTrajectoryEnd
+   * Process a trajectory outcome and learn from it.
    */
   processTrajectoryOutcome(outcome: TrajectoryOutcome): {
     learned: boolean;

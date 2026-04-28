@@ -315,45 +315,4 @@ export const sessionTools: MCPTool[] = [
       };
     },
   },
-  {
-    name: 'session_info',
-    description: 'Get detailed session information',
-    category: 'session',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        sessionId: { type: 'string', description: 'Session ID' },
-      },
-      required: ['sessionId'],
-    },
-    handler: async (input) => {
-      const sessionId = input.sessionId as string;
-      const session = loadSession(sessionId);
-
-      if (session) {
-        const path = getSessionPath(sessionId);
-        const stat = statSync(path);
-
-        return {
-          sessionId: session.sessionId,
-          name: session.name,
-          description: session.description,
-          savedAt: session.savedAt,
-          stats: session.stats,
-          fileSize: stat.size,
-          path,
-          hasData: {
-            memory: !!session.data?.memory,
-            tasks: !!session.data?.tasks,
-            agents: !!session.data?.agents,
-          },
-        };
-      }
-
-      return {
-        sessionId,
-        error: 'Session not found',
-      };
-    },
-  },
 ];

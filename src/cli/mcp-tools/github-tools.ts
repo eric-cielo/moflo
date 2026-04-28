@@ -314,67 +314,6 @@ export const githubTools: MCPTool[] = [
     },
   },
   {
-    name: 'github_workflow',
-    description: 'Manage GitHub Actions workflows',
-    category: 'github',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        action: { type: 'string', enum: ['list', 'trigger', 'status', 'cancel'], description: 'Action to perform' },
-        owner: { type: 'string', description: 'Repository owner' },
-        repo: { type: 'string', description: 'Repository name' },
-        workflowId: { type: 'string', description: 'Workflow ID or name' },
-        ref: { type: 'string', description: 'Branch or tag ref' },
-      },
-    },
-    handler: async (input) => {
-      const action = (input.action as string) || 'list';
-
-      if (action === 'list') {
-        return {
-          success: true,
-          workflows: [
-            { id: 'ci.yml', name: 'CI', status: 'active', lastRun: new Date().toISOString() },
-            { id: 'release.yml', name: 'Release', status: 'active', lastRun: new Date().toISOString() },
-            { id: 'test.yml', name: 'Tests', status: 'active', lastRun: new Date().toISOString() },
-          ],
-        };
-      }
-
-      if (action === 'trigger') {
-        return {
-          success: true,
-          action: 'triggered',
-          workflowId: input.workflowId,
-          ref: input.ref || 'main',
-          runId: `run-${Date.now()}`,
-          triggeredAt: new Date().toISOString(),
-        };
-      }
-
-      if (action === 'status') {
-        return {
-          success: true,
-          workflowId: input.workflowId,
-          status: 'completed',
-          conclusion: 'success',
-          duration: '2m 35s',
-        };
-      }
-
-      if (action === 'cancel') {
-        return {
-          success: true,
-          action: 'cancelled',
-          workflowId: input.workflowId,
-          cancelledAt: new Date().toISOString(),
-        };
-      }
-
-      return { success: false, error: 'Unknown action' };
-    },
-  },
-  {
     name: 'github_metrics',
     description: 'Get repository metrics and statistics',
     category: 'github',

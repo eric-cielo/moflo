@@ -4,25 +4,24 @@
  * Every registered MCP tool must have at least one real consumer outside its
  * own definition file. A "real consumer" is any of:
  *
- *   1. `mcp__moflo__<tool_name>` token in any file outside the tool's owner module
- *   2. `callMCPTool('<tool_name>')` or `callMCPTool("<tool_name>")` in any source file
+ *   1. `mcp__moflo__<tool_name>` token in a skill / agent / doc / settings file
+ *   2. `callMCPTool('<name>')` / `callMCPTool("<name>")` literal call site
+ *   3. `callMCPTool(TOOL_X, …)` indirect call, where `TOOL_X` is exported from
+ *      `src/cli/mcp-tools/tool-names.ts` as a literal-typed string constant.
+ *      Form #3 was added in #700 after `spell_template` shipped broken because
+ *      the literal-string scan missed its constant-mediated callsite.
  *
  * The roundtrip test in `mcp-tools-deep.test.ts` does NOT count — it's a
  * registration smoke test, not a real consumer.
  *
- * Tools wrap real, exercised infrastructure but lack MCP-side consumers
- * intentionally (e.g. `moflodb_*` is a lower-level controller surface;
- * `aidefence_*` is wired into the security stack via direct imports). Those
- * live in ALLOWLIST below with per-entry justifications.
- *
- * The TIER_3_FOLLOWUP set parks individual orphaned tools inside otherwise-
- * live families (e.g. `agent_terminate` inside agent_*) — these are known
- * dead and slated for a follow-up cleanup PR but were out of scope for the
- * conservative Tier-1 + Tier-2 cut in #693.
+ * Tools that wrap real, exercised infrastructure but legitimately lack MCP-
+ * side consumers (e.g. `moflodb_*` is a lower-level controller surface;
+ * `aidefence_*` is wired into the security stack via direct imports) live in
+ * ALLOWLIST below with per-entry justifications.
  *
  * Failure mode: someone adds a new MCP tool with no consumer. They must
- * either (a) wire a real call site, or (b) add the tool to ALLOWLIST or
- * TIER_3_FOLLOWUP. Mirrors the SKILLS_MAP-integrity pattern from #690.
+ * either wire a real call site or add the tool to ALLOWLIST with a
+ * justification. Mirrors the SKILLS_MAP-integrity pattern from #690.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -73,43 +72,18 @@ const ALLOWLIST: Record<string, string> = {
   'hooks_route': 'advertised in moflo-init.ts CLAUDE.md fragment as consumer API',
   'hooks_pre-task': 'advertised in moflo-init.ts CLAUDE.md fragment as consumer API',
   'hooks_post-task': 'advertised in moflo-init.ts CLAUDE.md fragment as consumer API',
-};
 
-// Tier-3 follow-up: individual tools inside otherwise-live families with no
-// MCP consumer. The conservative scope of #693 was Tier 1 + Tier 2 only;
-// these were left for a follow-up. Each entry should either gain a consumer
-// or be removed in that PR.
-const TIER_3_FOLLOWUP: ReadonlySet<string> = new Set([
-  // agent_* family alive; these singletons orphaned
-  'agent_terminate', 'agent_pool', 'agent_health', 'agent_update',
-  // swarm_* family alive
-  'swarm_shutdown', 'swarm_health',
-  // task_* family alive
-  'task_list', 'task_update', 'task_assign', 'task_cancel',
-  // config_* — duplicated by `flo config <action>` CLI
-  'config_get', 'config_set', 'config_list', 'config_reset', 'config_export', 'config_import',
-  // session_* — duplicated by `flo session <action>` CLI
-  'session_save', 'session_restore', 'session_list', 'session_delete', 'session_info',
-  // hooks_* singletons — wrap the live HookRegistry but no MCP consumer
-  'hooks_pre-edit', 'hooks_pre-command', 'hooks_post-command',
-  'hooks_metrics', 'hooks_list', 'hooks_explain',
-  'hooks_pretrain', 'hooks_build-agents', 'hooks_transfer',
-  'hooks_session-restore', 'hooks_notify', 'hooks_init',
-  'hooks_intelligence_trajectory-start', 'hooks_intelligence_trajectory-step',
-  'hooks_intelligence_trajectory-end', 'hooks_intelligence_pattern-search',
-  'hooks_intelligence_stats', 'hooks_intelligence_learn',
-  'hooks_intelligence_attention',
-  'hooks_worker-list', 'hooks_worker-status', 'hooks_worker-detect', 'hooks_worker-cancel',
-  'hooks_model-route', 'hooks_model-outcome', 'hooks_model-stats',
-  // neural_* — wraps neural module
-  'neural_compress', 'neural_status', 'neural_optimize',
-  // spell_* — wraps spell engine; spell_cast/create/list/etc are consumed
-  'spell_template', 'spell_accept', 'spell_delete',
-  // hive-mind_* — wraps the live hive-mind subsystem
-  'hive-mind_spawn', 'hive-mind_shutdown',
-  // singletons in otherwise-live families
-  'memory_migrate', 'github_workflow',
-]);
+  // Internal callers reach the tool via direct module import (lazy-load to
+  // keep the diagnostic command-line fast) rather than through callMCPTool.
+  // Consumers are real, just below the regex's radar.
+  'hooks_intelligence_pattern-search': 'consumed by src/cli/commands/doctor.ts via direct hooks-tools import',
+  'neural_status': 'consumed by src/cli/commands/diagnose.ts via direct neural-tools import',
+
+  // Spell engine surface advertised to Claude as the permission-acceptance
+  // entry point — runner.ts:146 prints "ask Claude to accept it, or call the
+  // spell_accept tool with name X" so this IS the documented call site.
+  'spell_accept': 'advertised in spell runner permission-acceptance flow',
+};
 
 interface RegisteredTool {
   name: string;
@@ -180,10 +154,8 @@ function buildCorpus(): CorpusEntry[] {
         if (!/\.(ts|js|mjs|cjs|md|json|yaml|yml)$/i.test(full)) continue;
         let content: string;
         try { content = readFileSync(full, 'utf8'); } catch { continue; }
-        // Pre-filter: keep only files that contain at least one of the
-        // consumer markers. Most repo files don't reference MCP tools at all,
-        // so this rejects the bulk before the per-tool inner loop.
-        if (!content.includes('mcp__moflo__') && !content.includes('callMCPTool(')) continue;
+        // Pre-filter: most repo files mention neither marker.
+        if (!content.includes('mcp__moflo__') && !content.includes('callMCPTool')) continue;
         entries.push({ path: full, content });
       }
     }
@@ -197,18 +169,68 @@ function getCorpus(): CorpusEntry[] {
   return _corpus ??= buildCorpus();
 }
 
-function findConsumers(tool: RegisteredTool): string[] {
-  const consumers: string[] = [];
-  const t1 = `mcp__moflo__${tool.name}`;
-  const t2 = `callMCPTool('${tool.name}'`;
-  const t3 = `callMCPTool("${tool.name}"`;
-  for (const entry of getCorpus()) {
-    if (entry.path === tool.ownerFile) continue;
-    if (entry.content.includes(t1) || entry.content.includes(t2) || entry.content.includes(t3)) {
-      consumers.push(entry.path);
+/**
+ * Read tool-name constants from `src/cli/mcp-tools/tool-names.ts` so that
+ * `callMCPTool(TOOL_FOO, ...)` indirections resolve to the underlying string.
+ * Without this, deletion of a tool only consumed via its constant alias
+ * (e.g. spell_template via TOOL_SPELL_TEMPLATE) ships a runtime "tool not
+ * found" because the substring scan never sees the literal name.
+ */
+function loadToolNameConstants(): Map<string, string> {
+  const path = join(TOOLS_DIR, 'tool-names.ts');
+  const map = new Map<string, string>();
+  let src: string;
+  try { src = readFileSync(path, 'utf8'); } catch { return map; }
+  const re = /export\s+const\s+(\w+)\s*=\s*['"]([\w-]+)['"]\s+as\s+const/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src))) map.set(m[1], m[2]);
+  return map;
+}
+
+interface ConsumerIndex {
+  /** tool name → set of files that reference it */
+  byTool: Map<string, Set<string>>;
+}
+
+/**
+ * One-pass scan: for each corpus file, harvest every `mcp__moflo__<name>` and
+ * `callMCPTool(...'name'|CONST_NAME...)` reference and record (toolName, file).
+ *
+ * Single regex sweep per file replaces the previous O(tools × corpus) per-tool
+ * scan. Exact-name matching via `Set.has` also fixes the substring bug where
+ * `mcp__moflo__hooks_intelligence` falsely matched
+ * `mcp__moflo__hooks_intelligence_pattern-store`.
+ */
+function buildConsumerIndex(corpus: CorpusEntry[]): ConsumerIndex {
+  const constants = loadToolNameConstants();
+  const tokenRe = /mcp__moflo__([a-z][a-z0-9_-]+)/g;
+  // First capture: quoted literal. Second: SCREAMING_CONSTANT identifier.
+  const callRe = /callMCPTool\b[^(]*\(\s*(?:['"]([\w-]+)['"]|([A-Z][A-Z0-9_]+))/g;
+  const byTool = new Map<string, Set<string>>();
+  const record = (name: string, path: string): void => {
+    let files = byTool.get(name);
+    if (!files) byTool.set(name, files = new Set());
+    files.add(path);
+  };
+  for (const entry of corpus) {
+    for (const m of entry.content.matchAll(tokenRe)) record(m[1], entry.path);
+    for (const m of entry.content.matchAll(callRe)) {
+      const name = m[1] ?? constants.get(m[2]!);
+      if (name) record(name, entry.path);
     }
   }
-  return consumers;
+  return { byTool };
+}
+
+let _index: ConsumerIndex | null = null;
+function getConsumerIndex(): ConsumerIndex {
+  return _index ??= buildConsumerIndex(getCorpus());
+}
+
+function findConsumers(tool: RegisteredTool): string[] {
+  const files = getConsumerIndex().byTool.get(tool.name);
+  if (!files) return [];
+  return [...files].filter(f => f !== tool.ownerFile);
 }
 
 describe('MCP Tools Drift Guard (#693)', () => {
@@ -219,7 +241,6 @@ describe('MCP Tools Drift Guard (#693)', () => {
     const orphaned: Array<{ name: string; ownerFile: string }> = [];
     for (const tool of tools) {
       if (tool.name in ALLOWLIST) continue;
-      if (TIER_3_FOLLOWUP.has(tool.name)) continue;
       const consumers = findConsumers(tool);
       if (consumers.length === 0) {
         orphaned.push({ name: tool.name, ownerFile: tool.ownerFile });
@@ -230,22 +251,16 @@ describe('MCP Tools Drift Guard (#693)', () => {
       const message = orphaned
         .map(o => `  - ${o.name} (defined in ${o.ownerFile.split(/[\\/]/).slice(-3).join('/')})`)
         .join('\n');
-      const hint = `\n\n${orphaned.length} MCP tool(s) registered with no consumer:\n${message}\n\nFix: either wire a real call site (mcp__moflo__<name> in a skill/agent .md, or callMCPTool('<name>') in CLI code), add to ALLOWLIST with a justification, or add to TIER_3_FOLLOWUP if it's a known orphan.`;
+      const hint = `\n\n${orphaned.length} MCP tool(s) registered with no consumer:\n${message}\n\nFix: either wire a real call site (mcp__moflo__<name> in a skill/agent .md, or callMCPTool('<name>') / callMCPTool(TOOL_X, ...) in CLI code), or add to ALLOWLIST with a justification.`;
       expect(orphaned, hint).toEqual([]);
     }
   });
 
-  it('no allowlist or follow-up entry references a tool that does not exist', () => {
+  it('no allowlist entry references a tool that does not exist', () => {
     const tools = collectRegisteredTools();
     const registeredNames = new Set(tools.map(t => t.name));
-    const stale: string[] = [];
-    for (const name of Object.keys(ALLOWLIST)) {
-      if (!registeredNames.has(name)) stale.push(name);
-    }
-    for (const name of TIER_3_FOLLOWUP) {
-      if (!registeredNames.has(name)) stale.push(name);
-    }
-    expect(stale, `Allowlist/follow-up references unknown tools: ${stale.join(', ')}`).toEqual([]);
+    const stale = Object.keys(ALLOWLIST).filter(name => !registeredNames.has(name));
+    expect(stale, `Allowlist references unknown tools: ${stale.join(', ')}`).toEqual([]);
   });
 
   it('every allowlist entry has a non-empty justification', () => {

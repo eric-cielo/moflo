@@ -541,46 +541,4 @@ export const memoryTools: MCPTool[] = [
       }
     },
   },
-  {
-    name: 'memory_migrate',
-    description: 'Manually trigger migration from legacy JSON store to sql.js',
-    category: 'memory',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        force: { type: 'boolean', description: 'Force re-migration even if already done' },
-      },
-    },
-    handler: async (input) => {
-      const force = input.force as boolean;
-
-      // Remove migration marker if forcing
-      if (force) {
-        const markerPath = getMigrationMarkerPath();
-        if (existsSync(markerPath)) {
-          unlinkSync(markerPath);
-        }
-      }
-
-      // Check for legacy data
-      const legacyStore = loadLegacyStore();
-      if (!legacyStore || Object.keys(legacyStore.entries).length === 0) {
-        return {
-          success: true,
-          message: 'No legacy data to migrate',
-          migrated: 0,
-        };
-      }
-
-      // Run migration via ensureInitialized
-      await ensureInitialized();
-
-      return {
-        success: true,
-        message: 'Migration completed',
-        migrated: Object.keys(legacyStore.entries).length,
-        backend: 'sql.js + HNSW',
-      };
-    },
-  },
 ];

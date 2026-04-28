@@ -129,26 +129,6 @@ vi.mock('../mcp-tools/memory-tools.js', () => ({
   ]
 }));
 
-vi.mock('../mcp-tools/config-tools.js', () => ({
-  configTools: [
-    {
-      name: 'config/get',
-      description: 'Get configuration value',
-      category: 'config',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          key: { type: 'string' }
-        }
-      },
-      handler: vi.fn(async (input) => ({
-        key: input.key,
-        value: 'test-value'
-      }))
-    }
-  ]
-}));
-
 describe('MCP Client', () => {
   describe('callMCPTool', () => {
     it('should call agent/spawn tool successfully', async () => {
@@ -218,17 +198,6 @@ describe('MCP Client', () => {
         stored: true
       });
       expect(result.timestamp).toBeDefined();
-    });
-
-    it('should call config/get tool successfully', async () => {
-      const result = await callMCPTool('config/get', {
-        key: 'swarm.topology'
-      });
-
-      expect(result).toMatchObject({
-        key: 'swarm.topology',
-        value: 'test-value'
-      });
     });
 
     it('should throw MCPClientError for non-existent tool', async () => {
@@ -377,7 +346,6 @@ describe('MCP Client', () => {
       expect(categories).toContain('agent');
       expect(categories).toContain('swarm');
       expect(categories).toContain('memory');
-      expect(categories).toContain('config');
     });
 
     it('should return sorted categories', () => {
