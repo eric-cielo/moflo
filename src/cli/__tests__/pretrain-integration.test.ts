@@ -54,6 +54,16 @@ describe('pretrain handler fileTypes parameter', () => {
     try {
       const mod = await import('../mcp-tools/hooks-tools.js');
       hooksPretrain = mod.hooksPretrain;
+      // Warm the handler's lazy import chain so the first `it` doesn't pay the
+      // cold-start cost. Under full-suite parallel load this initialization
+      // can balloon past the per-test 5s budget; warming once in beforeAll
+      // amortizes it. Args mirror the first test so the same code path is
+      // exercised. (#716 — was the only remaining full-suite flake.)
+      await hooksPretrain.handler({
+        path: '/tmp/nonexistent',
+        depth: 'shallow',
+        fileTypes: ['ts'],
+      });
     } catch {
       // Module may fail to fully load in test env — that's ok,
       // the unit tests above cover the logic extraction

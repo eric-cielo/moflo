@@ -162,28 +162,34 @@ describe('checkPreflights', () => {
   });
 
   it('runs checks in parallel', async () => {
+    // Verify parallelism by observing concurrent in-flight execution rather
+    // than wall-clock timing. Wall-clock `total < 2x sequential` assertions
+    // were flaky on Windows under full-suite parallel-worker contention,
+    // where event-loop scheduling can stretch a 40ms timeout past 75ms even
+    // when the checks did run concurrently.
     const registry = new StepCommandRegistry();
-    const delays: number[] = [];
-    const makeSlow = (name: string, ms: number): PreflightCheck => ({
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const makeChecker = (name: string): PreflightCheck => ({
       name,
       check: async () => {
-        const started = Date.now();
-        await new Promise(r => setTimeout(r, ms));
-        delays.push(Date.now() - started);
+        inFlight++;
+        peakInFlight = Math.max(peakInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
         return { passed: true };
       },
     });
-    registry.register(makeCommand('github', [makeSlow('a', 40), makeSlow('b', 40)]));
+    registry.register(makeCommand('github', [makeChecker('a'), makeChecker('b'), makeChecker('c')]));
 
     const spell: SpellDefinition = {
       name: 'test',
       steps: [step('s1', 'github', {})],
     };
-    const start = Date.now();
     await checkPreflights(collectPreflights(spell, registry, { args: {} }));
-    const total = Date.now() - start;
-    // Sequential would be ~80ms, parallel ~40ms. Allow slack.
-    expect(total).toBeLessThan(75);
+    // If checks ran sequentially the peak would be 1; parallel execution
+    // requires at least 2 simultaneously in-flight.
+    expect(peakInFlight).toBeGreaterThan(1);
   });
 });
 
