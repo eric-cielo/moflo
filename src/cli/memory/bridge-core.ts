@@ -85,10 +85,28 @@ function logBridgeError(context: string, err: unknown): void {
   console.error(`[moflo] ${context}: ${msg}`);
 }
 
-function getDbPath(customPath?: string): string {
-  const root = getProjectRoot();
+/**
+ * Resolve the on-disk DB path the bridge should read/write.
+ *
+ * Default to `.moflo/moflo.db`, but during the post-#727 migration window —
+ * after a consumer upgrades but before the next session-start launcher fires
+ * — prefer `.swarm/memory.db` if only the legacy file exists. Without this
+ * preference, any CLI command (e.g. `moflo doctor`) that opens the bridge
+ * before the launcher runs would create an empty canonical, defeating the
+ * launcher's `target-exists` short-circuit and stranding the user's data in
+ * `.swarm/memory.db`.
+ *
+ * Exported for test access; production callers go through the no-arg
+ * `getDbPath()` wrapper below.
+ */
+export function resolveBridgeDbPath(root: string, customPath?: string): string {
   const canonical = memoryDbPath(root);
-  if (!customPath) return canonical;
+  if (!customPath) {
+    if (!fs.existsSync(canonical) && fs.existsSync(legacyMemoryDbPath(root))) {
+      return legacyMemoryDbPath(root);
+    }
+    return canonical;
+  }
   if (customPath === ':memory:') return ':memory:';
   const resolved = path.resolve(customPath);
   const rel = path.relative(root, resolved);
@@ -98,6 +116,10 @@ function getDbPath(customPath?: string): string {
     return canonical;
   }
   return resolved;
+}
+
+function getDbPath(customPath?: string): string {
+  return resolveBridgeDbPath(getProjectRoot(), customPath);
 }
 
 export function generateId(prefix: string): string {
@@ -185,9 +207,11 @@ export function execRows(db: any, sql: string, params?: unknown[]): Record<strin
  * when the process exits, which breaks store→retrieve across CLI commands.
  */
 export function persistBridgeDb(db: any, dbPath?: string): void {
-  const target = dbPath
-    ? path.resolve(dbPath)
-    : memoryDbPath(getProjectRoot());
+  // Mirror the read-side resolution so writes land where reads come from.
+  // Important during the migration window (#727): if we read from
+  // `.swarm/memory.db` because the canonical doesn't exist yet, writing back
+  // there keeps the legacy file fresh until the launcher relocates it.
+  const target = dbPath ? path.resolve(dbPath) : getDbPath();
   if (target === ':memory:') return;
   try {
     fs.mkdirSync(path.dirname(target), { recursive: true });

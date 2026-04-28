@@ -96,3 +96,65 @@ describe('bridge-core error surfacing', () => {
     expect(calls.some(m => m.includes('quiet-error'))).toBe(false);
   });
 });
+
+describe('resolveBridgeDbPath — #727 migration-window guard', () => {
+  // Regression for the doctor-creates-empty-canonical bug: any CLI command
+  // that opens the bridge between `npm install` and the next session-start
+  // would create an empty `.moflo/moflo.db`, defeating the launcher's
+  // `target-exists` short-circuit and stranding real data in `.swarm/memory.db`.
+  const { mkdirSync, mkdtempSync, rmSync, writeFileSync } = require('node:fs') as typeof import('node:fs');
+  const { tmpdir } = require('node:os') as typeof import('node:os');
+  const { join } = require('node:path') as typeof import('node:path');
+
+  function mkRoot(): string {
+    return mkdtempSync(join(tmpdir(), 'moflo-bridge-resolve-'));
+  }
+  function makeFakeSqliteFile(filePath: string, payload: string): void {
+    mkdirSync(join(filePath, '..'), { recursive: true });
+    writeFileSync(filePath, Buffer.concat([Buffer.from('SQLite format 3\0', 'utf8'), Buffer.from(payload, 'utf8')]));
+  }
+
+  it('prefers .swarm/memory.db when only legacy exists (migration window)', async () => {
+    const { resolveBridgeDbPath } = await import('../memory/bridge-core.js');
+    const root = mkRoot();
+    try {
+      makeFakeSqliteFile(join(root, '.swarm', 'memory.db'), 'legacy-data');
+      expect(resolveBridgeDbPath(root)).toBe(join(root, '.swarm', 'memory.db'));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns canonical when only canonical exists (post-migration steady state)', async () => {
+    const { resolveBridgeDbPath } = await import('../memory/bridge-core.js');
+    const root = mkRoot();
+    try {
+      makeFakeSqliteFile(join(root, '.moflo', 'moflo.db'), 'new-data');
+      expect(resolveBridgeDbPath(root)).toBe(join(root, '.moflo', 'moflo.db'));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns canonical when neither exists (fresh consumer)', async () => {
+    const { resolveBridgeDbPath } = await import('../memory/bridge-core.js');
+    const root = mkRoot();
+    try {
+      expect(resolveBridgeDbPath(root)).toBe(join(root, '.moflo', 'moflo.db'));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('prefers canonical when both exist (post-migration with leftover .bak rename failure)', async () => {
+    const { resolveBridgeDbPath } = await import('../memory/bridge-core.js');
+    const root = mkRoot();
+    try {
+      makeFakeSqliteFile(join(root, '.swarm', 'memory.db'), 'legacy');
+      makeFakeSqliteFile(join(root, '.moflo', 'moflo.db'), 'new');
+      expect(resolveBridgeDbPath(root)).toBe(join(root, '.moflo', 'moflo.db'));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
