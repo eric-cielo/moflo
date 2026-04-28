@@ -53,7 +53,7 @@ async function runCommand(command: string, timeoutMs: number = 5000): Promise<st
   return out;
 }
 
-interface HealthCheck {
+export interface HealthCheck {
   name: string;
   status: 'pass' | 'warn' | 'fail';
   message: string;
@@ -476,13 +476,48 @@ async function installClaudeCode(): Promise<boolean> {
   }
 }
 
-// Check embeddings / vector index health
-async function checkEmbeddings(): Promise<HealthCheck> {
+/**
+ * Open `dbPath` via moflo's bundled sql.js and return the count of memory_entries
+ * rows that have an embedding. Returns null if sql.js can't be loaded, the file
+ * isn't a v3 schema, or the query fails — every error is treated as "unknown
+ * truth", letting the caller fall back to the cached stats rather than masking
+ * a healthy DB as broken.
+ */
+async function countEmbeddedRowsFromDb(dbPath: string): Promise<number | null> {
+  try {
+    const { mofloImport } = await import('../services/moflo-require.js');
+    const initSqlJs = (await mofloImport('sql.js'))?.default;
+    if (!initSqlJs) return null;
+    const SQL = await initSqlJs();
+    const buffer = readFileSync(dbPath);
+    const db = new SQL.Database(buffer);
+    try {
+      const res = db.exec(
+        "SELECT COUNT(*) FROM memory_entries WHERE embedding IS NOT NULL AND embedding != ''",
+      );
+      const cell = res?.[0]?.values?.[0]?.[0];
+      return typeof cell === 'number' ? cell : Number(cell ?? 0);
+    } finally {
+      db.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+/** Skew (cached / live count delta) above which the cache is treated as stale. */
+const VECTOR_STATS_SKEW_WARN_THRESHOLD = 0.2;
+
+// Check embeddings / vector index health.
+// Exported so the #639 stale-cache regression test can invoke it directly.
+export async function checkEmbeddings(): Promise<HealthCheck> {
   const dbPaths = [
     join(process.cwd(), '.swarm', 'memory.db'),
     join(process.cwd(), '.moflo', 'memory.db'),
     join(process.cwd(), 'data', 'memory.db'),
   ];
+
+  const liveDbPath = dbPaths.find((p) => existsSync(p));
 
   // 1. Fast path: read cached vector-stats.json if available
   const statsPath = join(process.cwd(), '.moflo', 'vector-stats.json');
@@ -490,8 +525,42 @@ async function checkEmbeddings(): Promise<HealthCheck> {
     if (existsSync(statsPath)) {
       const stats = JSON.parse(readFileSync(statsPath, 'utf8'));
       const count = stats.vectorCount ?? 0;
+      const updatedAt = typeof stats.updatedAt === 'number' ? stats.updatedAt : 0;
       const hasHnsw = stats.hasHnsw ?? false;
       const dbSizeKB = stats.dbSizeKB ?? 0;
+
+      // Skew check (#639): the cache can drift out of sync with the live DB
+      // when a writer clobbers it with zeros (#639) or when an external tool
+      // mutates memory.db without going through the bridge. Cross-check the
+      // cached vectorCount against the actual DB; if they differ by more than
+      // VECTOR_STATS_SKEW_WARN_THRESHOLD, surface a stale-cache warning rather
+      // than displaying a wrong number on the statusline.
+      //
+      // Cheap signals first — opening memory.db via sql.js loads the whole
+      // file. Skip the open when the cache was clearly written after the last
+      // DB mutation (mtime check) AND the cached count is non-zero. The
+      // count===0 case keeps the open because that's the observed #639 failure
+      // mode (cache silently clobbered to zero).
+      let dbMtimeMs = 0;
+      if (liveDbPath) {
+        try { dbMtimeMs = statSync(liveDbPath).mtimeMs; } catch { /* missing — handled below */ }
+      }
+      const cacheNewerThanDb = updatedAt > 0 && dbMtimeMs > 0 && updatedAt >= dbMtimeMs;
+      if (liveDbPath && (count === 0 || !cacheNewerThanDb)) {
+        const liveCount = await countEmbeddedRowsFromDb(liveDbPath);
+        if (liveCount !== null) {
+          const denom = Math.max(liveCount, 1);
+          const skew = Math.abs(liveCount - count) / denom;
+          if (skew > VECTOR_STATS_SKEW_WARN_THRESHOLD) {
+            return {
+              name: 'Embeddings',
+              status: 'warn',
+              message: `vector-stats cache is stale (cached ${count}, DB has ${liveCount} embedded rows — ${Math.round(skew * 100)}% skew)`,
+              fix: 'node node_modules/moflo/bin/build-embeddings.mjs',
+            };
+          }
+        }
+      }
 
       if (count === 0) {
         return {
@@ -513,11 +582,8 @@ async function checkEmbeddings(): Promise<HealthCheck> {
     // Stats file unreadable — fall through to DB check
   }
 
-  // 2. Check if memory DB file exists at all
-  let foundDbPath: string | null = null;
-  for (const p of dbPaths) {
-    if (existsSync(p)) { foundDbPath = p; break; }
-  }
+  // 2. Check if memory DB file exists at all (reuse liveDbPath from above)
+  const foundDbPath = liveDbPath ?? null;
 
   if (!foundDbPath) {
     return {

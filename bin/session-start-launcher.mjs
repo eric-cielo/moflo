@@ -8,7 +8,7 @@
  */
 
 import { spawn } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, readdirSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { migrateClaudeFlowToMoflo } from './lib/moflo-paths.mjs';
@@ -57,6 +57,36 @@ function fireAndForget(cmd, args, label) {
     proc.unref();           // Let this process exit without waiting
   } catch {
     // If spawn fails (e.g. node not found), don't block startup
+  }
+}
+
+// Stop the daemon recorded in `lockFile` (if any) and start a fresh one. Used
+// from two recycle paths in this launcher: (a) the version-bump branch when
+// installed moflo just changed, and (b) the stale-daemon branch when the
+// running daemon predates the current install by a meaningful margin.
+//
+// Reads the lock, SIGTERMs the recorded PID, removes the lock, and fires a
+// `daemon start --quiet` against `node_modules/moflo/bin/cli.js`. Every
+// failure mode (no lock, dead PID, missing CLI) is silently absorbed — the
+// recycle is best-effort and must never block session start.
+function recycleDaemon(lockFile, label) {
+  if (!existsSync(lockFile)) return;
+  let stalePid = null;
+  try {
+    const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
+    if (typeof lock?.pid === 'number' && lock.pid > 0) stalePid = lock.pid;
+  } catch { /* malformed lock — fall through to unlink */ }
+  if (stalePid !== null) {
+    try { process.kill(stalePid, 'SIGTERM'); } catch { /* already dead */ }
+  }
+  try { unlinkSync(lockFile); } catch { /* non-fatal */ }
+  // Respawn only if a live daemon was actually recorded — no point starting
+  // one when there wasn't one before.
+  if (stalePid !== null) {
+    const localCliPath = resolve(projectRoot, 'node_modules/moflo/bin/cli.js');
+    if (existsSync(localCliPath)) {
+      fireAndForget('node', [localCliPath, 'daemon', 'start', '--quiet'], label);
+    }
   }
 }
 
@@ -243,33 +273,11 @@ try {
       // emitted by pre-#592 collapse code that no longer exists in source)
       // and means freshly-disabled workers keep running.
       //
-      // Recycle = stop old + start new. We kill the lock-recorded PID,
-      // remove the lock, then fire a fresh daemon so the user keeps the
-      // functionality they had. `daemon.autoStart` only governs the
-      // cold-start case (no daemon existed); here a daemon was actually
-      // running, so replacing it with a current-code copy is the desired
-      // behaviour regardless of that flag.
+      // `daemon.autoStart` only governs the cold-start case (no daemon
+      // existed); here a daemon was actually running, so replacing it with a
+      // current-code copy is the desired behaviour regardless of that flag.
       try {
-        const lockFile = resolve(projectRoot, '.moflo', 'daemon.lock');
-        if (existsSync(lockFile)) {
-          let stalePid = null;
-          try {
-            const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
-            if (typeof lock?.pid === 'number' && lock.pid > 0) stalePid = lock.pid;
-          } catch { /* malformed lock — fall through to unlink */ }
-          if (stalePid !== null) {
-            try { process.kill(stalePid, 'SIGTERM'); } catch { /* already dead */ }
-          }
-          try { unlinkSync(lockFile); } catch { /* non-fatal */ }
-          // Respawn only if a live daemon was actually recorded — no point
-          // starting one when there wasn't one before.
-          if (stalePid !== null) {
-            const localCliPath = resolve(binDir, 'cli.js');
-            if (existsSync(localCliPath)) {
-              fireAndForget('node', [localCliPath, 'daemon', 'start', '--quiet'], 'daemon-recycle');
-            }
-          }
-        }
+        recycleDaemon(resolve(projectRoot, '.moflo', 'daemon.lock'), 'daemon-recycle');
       } catch { /* non-fatal — daemon recycle is best-effort */ }
 
       // Write updated manifest + version stamp
@@ -284,6 +292,47 @@ try {
 } catch {
   // Non-fatal — scripts will still work, just may be stale
 }
+
+// ── 3a-pre. Recycle daemons started before the current moflo install ────────
+// The version-bump block above only fires when `installedVersion !== cachedVersion`.
+// That misses the common case where a user upgraded moflo, ran ONE session
+// (which bumped the stamp + recycled the daemon), then on a subsequent session
+// the version stamp matches but the daemon they started long-ago is still
+// holding stale module cache from a pre-collapse moflo image. The
+// `[neural-tools] @moflo/embeddings not resolvable` spam (#639) is the
+// observable symptom of exactly this: a daemon running pre-#592 code that no
+// longer exists in source, calling a require helper that prints the warning
+// every time `neural_predict` / `neural_patterns` fires.
+//
+// Fix: compare the daemon-lock's `startedAt` against `node_modules/moflo/`'s
+// install mtime. If the daemon predates the current install, recycle it. The
+// install mtime is a stable proxy because npm rewrites the package.json on
+// every `npm install`, even when the resolved version is unchanged.
+//
+// Margin absorbs clock skew between npm's mtime write and the daemon-lock
+// `startedAt` clock — within this window the daemon is likely the post-install
+// daemon, not a stale predecessor.
+const STALE_DAEMON_MTIME_SKEW_MS = 5_000;
+try {
+  const mofloPkgPathForRecycle = resolve(projectRoot, 'node_modules/moflo/package.json');
+  const lockFile = resolve(projectRoot, '.moflo', 'daemon.lock');
+  // Cheap stat first — if the daemon-lock or package.json is gone we're done.
+  // statSync throws ENOENT on a missing file; the outer catch absorbs it.
+  const installedAt = statSync(mofloPkgPathForRecycle).mtimeMs;
+  const lockMtime = statSync(lockFile).mtimeMs;
+  // Quick reject: if the lock file itself is younger than the install, the
+  // daemon was started after install — no read of lock contents needed.
+  if (installedAt - lockMtime > STALE_DAEMON_MTIME_SKEW_MS) {
+    let daemonStartedAt = 0;
+    try {
+      const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
+      if (typeof lock?.startedAt === 'number') daemonStartedAt = lock.startedAt;
+    } catch { /* corrupt lock — fall through, recycleDaemon will unlink it */ }
+    if (daemonStartedAt > 0 && (installedAt - daemonStartedAt) > STALE_DAEMON_MTIME_SKEW_MS) {
+      recycleDaemon(lockFile, 'daemon-stale-recycle');
+    }
+  }
+} catch { /* non-fatal — best-effort stale-daemon detection */ }
 
 // ── 3a. Auto-migrate settings.json (npx flo → node helpers, PATH setup) ────
 // Existing users may have stale settings.json with `npx flo` hooks that break
@@ -455,6 +504,12 @@ try {
 // status lines reach the user. Returns fast when no DB exists, the schema
 // predates v3, or the stored version is already current — so the happy-path
 // cost on every session start is a few ms of probe work.
+//
+// `onMigrationStart` / `onMigrationComplete` write to stdout because Claude
+// Code's SessionStart hook captures stdout as `additionalContext` (a system
+// reminder Claude sees and can surface to the user). The renderer keeps using
+// stderr for the rich TTY bar — both paths fire so terminal-attached users
+// AND Claude both get a visible signal that memory was being migrated (#639).
 try {
   const migrationPaths = [
     resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/embeddings-migration.js'),
@@ -467,6 +522,20 @@ try {
       await mod.runEmbeddingsMigrationIfNeeded({
         out: process.stderr,
         isTTY: Boolean(process.stderr.isTTY),
+        onMigrationStart: () => {
+          try {
+            process.stdout.write(
+              'moflo: re-indexing memory store (this may take 30-60s on first run after upgrade)...\n',
+            );
+          } catch { /* writing must never throw */ }
+        },
+        onMigrationComplete: (rowsEmbedded) => {
+          try {
+            process.stdout.write(
+              `moflo: memory re-indexed (${rowsEmbedded} rows re-embedded). Search is back.\n`,
+            );
+          } catch { /* writing must never throw */ }
+        },
       });
     }
   }

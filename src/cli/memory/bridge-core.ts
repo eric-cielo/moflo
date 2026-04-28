@@ -329,6 +329,18 @@ function detectHnswIndex(rootDir: string): boolean {
 }
 
 /**
+ * Read the existing on-disk vector-stats cache. Returns null when missing
+ * or unparseable — callers treat that as "no prior cache to preserve".
+ */
+function readExistingVectorStats(rootDir: string): { vectorCount?: number; updatedAt?: number } | null {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(rootDir, '.moflo', 'vector-stats.json'), 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Write vector-stats.json cache file used by the statusline. Runs
  * synchronously — only fires when the registry is already resolved, so
  * no await is needed on the store/delete hot path.
@@ -341,10 +353,37 @@ export function refreshVectorStatsCache(dbPathOverride?: string): void {
     const ctx = getDb(registry);
     if (!ctx?.db) return;
 
+    const root = getProjectRoot();
+    const dbFile = dbPathOverride || getDbPath();
+    const existing = readExistingVectorStats(root);
+
+    // Mtime short-circuit (#639 perf): refreshVectorStatsCache fires on every
+    // bridge store/delete. When the on-disk DB hasn't changed since we last
+    // wrote the cache (the common case mid-session — bridge writes don't
+    // touch the file until persist), running 3 COUNT queries is wasted work.
+    // Skip the rest entirely.
+    let dbMtimeMs = 0;
+    let dbSizeKB = 0;
+    try {
+      const stat = fs.statSync(dbFile);
+      dbMtimeMs = stat.mtimeMs;
+      dbSizeKB = Math.floor(stat.size / 1024);
+    } catch { /* file may not exist */ }
+    if (
+      existing &&
+      typeof existing.updatedAt === 'number' &&
+      typeof existing.vectorCount === 'number' &&
+      existing.vectorCount > 0 &&
+      dbMtimeMs > 0 &&
+      existing.updatedAt >= dbMtimeMs
+    ) {
+      return;
+    }
+
     let vectorCount = 0;
     let namespaces = 0;
-    let dbSizeKB = 0;
     let missing = 0;
+    let queriesSucceeded = false;
 
     try {
       // sql.js Statement.get() returns positional arrays — read with execRows()
@@ -369,17 +408,27 @@ export function refreshVectorStatsCache(dbPathOverride?: string): void {
         "SELECT COUNT(*) as c FROM memory_entries WHERE status = 'active' AND embedding IS NULL",
       );
       missing = Number(missingRow?.c ?? 0);
+      queriesSucceeded = true;
     } catch {
-      // Table may not exist yet
+      // Table may not exist yet — leave queriesSucceeded=false so the
+      // anti-clobber guard below skips the write.
     }
 
-    const dbFile = dbPathOverride || getDbPath();
-    try {
-      const stat = fs.statSync(dbFile);
-      dbSizeKB = Math.floor(stat.size / 1024);
-    } catch { /* file may not exist */ }
+    // Anti-clobber guard (#639): if our queries failed OR returned all-zero
+    // counts but a previous cache reports populated counts, leave the cache
+    // alone. The registry's DB context is sometimes a freshly-opened or
+    // partially-initialized handle that doesn't reflect the on-disk truth —
+    // overwriting a known-good cache with zeros makes the statusline show
+    // `Vectors ●0` even though the DB has thousands of embedded rows. The
+    // legitimate "DB became empty" case is rare enough that requiring a
+    // successful explicit write from the bin/build-embeddings.mjs path is
+    // acceptable.
+    if (!queriesSucceeded || (vectorCount === 0 && namespaces === 0 && missing === 0)) {
+      if (existing && typeof existing.vectorCount === 'number' && existing.vectorCount > 0) {
+        return;
+      }
+    }
 
-    const root = getProjectRoot();
     writeVectorStatsJson(root, {
       vectorCount,
       missing,

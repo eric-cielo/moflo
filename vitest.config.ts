@@ -76,10 +76,18 @@ export const isolationTests = [
   // forks because cwd is process-global and the registry singleton is
   // module-shared.
   'src/cli/__tests__/bridge-entries.test.ts',
+  // process.chdir per-test, same singleton/cwd contention as bridge-entries.
+  'src/cli/__tests__/bridge-vector-stats-anti-clobber.test.ts',
   // performance/timing assertions (initialize<500ms, shutdown<100ms, access
   // overhead<threshold) bust under Windows parallel-fork contention; whole
   // file passes <200ms in isolation.
   'src/cli/memory/controller-registry.test.ts',
+  // Both files load real fastembed via runEmbeddingsMigrationIfNeeded; the
+  // ONNX model is lazy-loaded on first use and re-loading per fork under
+  // maxForks=2 contention pushes the runUpgrade tests past their timeout.
+  // Pass cleanly in isolation in <2 s.
+  'src/cli/__tests__/services/embeddings-migration.test.ts',
+  'src/cli/__tests__/services/embeddings-migration-callbacks.test.ts',
 ];
 
 export default defineConfig({

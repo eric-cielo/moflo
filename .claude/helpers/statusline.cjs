@@ -260,7 +260,7 @@ function formatModelName(modelId) {
 function getLearningStats() {
   const memoryPaths = [
     path.join(CWD, '.swarm', 'memory.db'),
-    path.join(CWD, '.claude-flow', 'memory.db'),
+    path.join(CWD, '.moflo', 'memory.db'),
     path.join(CWD, '.claude', 'memory.db'),
     path.join(CWD, 'data', 'memory.db'),
     path.join(CWD, '.agentdb', 'memory.db'),
@@ -319,7 +319,7 @@ function getV3Progress() {
 // Security status (pure file reads)
 function getSecurityStatus() {
   const totalCves = 3;
-  const auditData = readJSON(path.join(CWD, '.claude-flow', 'security', 'audit-status.json'));
+  const auditData = readJSON(path.join(CWD, '.moflo', 'security', 'audit-status.json'));
   if (auditData) {
     return {
       status: auditData.status || 'PENDING',
@@ -349,7 +349,7 @@ function getSwarmStatus() {
   const STALE_MS = 5 * 60_000;
   const now = Date.now();
 
-  const activityData = readJSON(path.join(CWD, '.claude-flow', 'metrics', 'swarm-activity.json'));
+  const activityData = readJSON(path.join(CWD, '.moflo', 'metrics', 'swarm-activity.json'));
   if (activityData?.swarm) {
     const ts = activityData.timestamp ? new Date(activityData.timestamp).getTime() : 0;
     const stale = (now - ts) > STALE_MS;
@@ -361,7 +361,7 @@ function getSwarmStatus() {
     };
   }
 
-  const progressData = readJSON(path.join(CWD, '.claude-flow', 'metrics', 'v3-progress.json'));
+  const progressData = readJSON(path.join(CWD, '.moflo', 'metrics', 'v3-progress.json'));
   if (progressData?.swarm) {
     const ts = progressData.timestamp ? new Date(progressData.timestamp).getTime() : 0;
     const stale = (now - ts) > STALE_MS;
@@ -384,7 +384,7 @@ function getSystemMetrics() {
   const agentdb = getAgentDBStats();
 
   // Intelligence from learning.json
-  const learningData = readJSON(path.join(CWD, '.claude-flow', 'metrics', 'learning.json'));
+  const learningData = readJSON(path.join(CWD, '.moflo', 'metrics', 'learning.json'));
   let intelligencePct = 0;
   let contextPct = 0;
 
@@ -417,7 +417,7 @@ function getSystemMetrics() {
 
   // Sub-agents from file metrics (no ps aux)
   let subAgents = 0;
-  const activityData = readJSON(path.join(CWD, '.claude-flow', 'metrics', 'swarm-activity.json'));
+  const activityData = readJSON(path.join(CWD, '.moflo', 'metrics', 'swarm-activity.json'));
   if (activityData?.processes?.estimated_agents) {
     subAgents = activityData.processes.estimated_agents;
   }
@@ -427,7 +427,7 @@ function getSystemMetrics() {
 
 // ADR status (count files only — don't read contents)
 function getADRStatus() {
-  const complianceData = readJSON(path.join(CWD, '.claude-flow', 'metrics', 'adr-compliance.json'));
+  const complianceData = readJSON(path.join(CWD, '.moflo', 'metrics', 'adr-compliance.json'));
   if (complianceData) {
     const checks = complianceData.checks || {};
     const total = Object.keys(checks).length;
@@ -439,7 +439,7 @@ function getADRStatus() {
   const adrPaths = [
     path.join(CWD, 'v3', 'implementation', 'adrs'),
     path.join(CWD, 'docs', 'adrs'),
-    path.join(CWD, '.claude-flow', 'adrs'),
+    path.join(CWD, '.moflo', 'adrs'),
   ];
 
   for (const adrPath of adrPaths) {
@@ -491,9 +491,12 @@ function getAgentDBStats() {
   let namespaces = 0;
   let hasHnsw = false;
 
-  // Read cached stats (written by memory store/embed/rebuild commands)
+  // Read cached stats (written by memory store/embed/rebuild commands).
+  // `.moflo/` is the canonical post-#699 location; `.swarm/` is a parallel
+  // copy that build-embeddings.mjs writes for legacy compatibility. First
+  // valid read wins — order is post-rename canonical first, then legacy.
   const cachePaths = [
-    path.join(CWD, '.claude-flow', 'vector-stats.json'),
+    path.join(CWD, '.moflo', 'vector-stats.json'),
     path.join(CWD, '.swarm', 'vector-stats.json'),
   ];
   for (const cp of cachePaths) {
@@ -510,7 +513,7 @@ function getAgentDBStats() {
   // Fallback: estimate from DB file size (no subprocess)
   const dbFiles = [
     path.join(CWD, '.swarm', 'memory.db'),
-    path.join(CWD, '.claude-flow', 'memory.db'),
+    path.join(CWD, '.moflo', 'memory.db'),
     path.join(CWD, '.claude', 'memory.db'),
     path.join(CWD, 'data', 'memory.db'),
   ];
@@ -526,7 +529,7 @@ function getAgentDBStats() {
 
   const hnswPaths = [
     path.join(CWD, '.swarm', 'hnsw.index'),
-    path.join(CWD, '.claude-flow', 'hnsw.index'),
+    path.join(CWD, '.moflo', 'hnsw.index'),
   ];
   for (const p of hnswPaths) {
     if (safeStat(p)) {
@@ -593,7 +596,7 @@ function getIntegrationStatus() {
     }
   }
 
-  const hasDatabase = ['.swarm/memory.db', '.claude-flow/memory.db', 'data/memory.db']
+  const hasDatabase = ['.swarm/memory.db', '.moflo/memory.db', 'data/memory.db']
     .some(p => fs.existsSync(path.join(CWD, p)));
   const hasApi = !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
 
@@ -602,7 +605,7 @@ function getIntegrationStatus() {
 
 // Session stats (pure file reads)
 function getSessionStats() {
-  for (const p of ['.claude-flow/session.json', '.claude/session.json']) {
+  for (const p of ['.moflo/session.json', '.claude/session.json']) {
     const data = readJSON(path.join(CWD, p));
     if (data?.startTime) {
       const diffMs = Date.now() - new Date(data.startTime).getTime();

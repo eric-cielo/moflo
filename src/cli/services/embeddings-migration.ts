@@ -34,6 +34,20 @@ export interface RunEmbeddingsMigrationOptions {
   out?: NodeJS.WritableStream & { isTTY?: boolean };
   /** Force TTY mode regardless of `out.isTTY`. */
   isTTY?: boolean;
+  /**
+   * Called once it's confirmed migration WILL run (probe passed) but before
+   * the embedder loads. Gives the SessionStart hook a chance to write a
+   * user-visible "migration starting" message to stdout — Claude Code surfaces
+   * SessionStart hook stdout as `additionalContext`, so the renderer's stderr
+   * progress UI alone is invisible to the user (#639).
+   */
+  onMigrationStart?: () => void;
+  /**
+   * Called when the migration finishes successfully, with the number of rows
+   * that were re-embedded. Lets the launcher emit a final "migration done"
+   * stdout line after the renderer's TTY bar has cleared.
+   */
+  onMigrationComplete?: (rowsEmbedded: number) => void;
 }
 
 /**
@@ -97,6 +111,11 @@ export async function runEmbeddingsMigrationIfNeeded(
       if (!(await store.hasIneligibleRows())) return false;
     }
 
+    // Probe passed — migration WILL run. Notify the caller before the heavy
+    // imports so a session-start launcher can put a user-visible message on
+    // stdout while we load fastembed (which can take a few seconds).
+    options.onMigrationStart?.();
+
     const { createEmbeddingService, runUpgrade } = await import('../embeddings/index.js');
     const service = createEmbeddingService({
       provider: 'fastembed',
@@ -132,6 +151,7 @@ export async function runEmbeddingsMigrationIfNeeded(
       // so no Buffer.from() copy. Atomic temp-file + rename so SIGINT mid-write
       // cannot truncate memory.db — see atomic-file-write.ts.
       atomicWriteFileSync(dbPath, db.export());
+      options.onMigrationComplete?.(summary.totalItemsMigrated);
       return true;
     }
 
