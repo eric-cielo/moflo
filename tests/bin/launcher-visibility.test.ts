@@ -22,7 +22,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { resolve, join } from 'path';
 
 const LAUNCHER = resolve(__dirname, '../../bin/session-start-launcher.mjs');
@@ -236,19 +236,22 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     ).toContain('CPU may briefly spike');
   });
 
-  it('clears upgrade-notice.json after completing a version-bump upgrade (#636, #738)', () => {
+  it('clears upgrade-notice.json + commits version stamp after a version-bump upgrade (#636, #738, #730)', () => {
     // Stage `node_modules/moflo/package.json` at v9.9.9 and a prior cached
     // version at v9.9.8 so the launcher takes the version-bump branch.
     // The launcher writes an in-progress notice while upgrade work is running
     // and DELETES the file when work completes — so the badge disappears once
-    // the user is unblocked instead of lingering for an hour (#738).
+    // the user is unblocked instead of lingering for an hour (#738). After
+    // every other upgrade-work block runs the launcher commits the version
+    // stamp last (#730), so post-run state is: stamp = new version, notice gone.
     mkdirSync(join(root, 'node_modules', 'moflo'), { recursive: true });
     writeFileSync(
       join(root, 'node_modules', 'moflo', 'package.json'),
       JSON.stringify({ name: 'moflo', version: '9.9.9' }),
     );
     mkdirSync(join(root, '.moflo'), { recursive: true });
-    writeFileSync(join(root, '.moflo', 'moflo-version'), '9.9.8');
+    const stampPath = join(root, '.moflo', 'moflo-version');
+    writeFileSync(stampPath, '9.9.8');
 
     const { stdout } = runLauncher(root);
     expect(stdout).toContain('moflo: upgraded (9.9.8 → 9.9.9)');
@@ -256,6 +259,9 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     // After the launcher exits, the notice file must be GONE (#738 AC).
     const noticePath = join(root, '.moflo', 'upgrade-notice.json');
     expect(existsSync(noticePath)).toBe(false);
+
+    // And the version stamp must reflect the new version (#730 AC).
+    expect(readFileSync(stampPath, 'utf-8').trim()).toBe('9.9.9');
   });
 
   it('does NOT write upgrade-notice.json on the silent fast-path', () => {
@@ -266,6 +272,61 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
 
     runLauncher(root);
     expect(existsSync(noticePath)).toBe(false);
+  });
+
+  it('aborted launcher leaves the version stamp unchanged so next run re-detects the upgrade (#730)', async () => {
+    // Stage v9.9.8 → v9.9.9 so the launcher takes the version-bump branch.
+    mkdirSync(join(root, 'node_modules', 'moflo'), { recursive: true });
+    writeFileSync(
+      join(root, 'node_modules', 'moflo', 'package.json'),
+      JSON.stringify({ name: 'moflo', version: '9.9.9' }),
+    );
+    mkdirSync(join(root, '.moflo'), { recursive: true });
+    const stampPath = join(root, '.moflo', 'moflo-version');
+    writeFileSync(stampPath, '9.9.8');
+
+    // Stage a hanging embeddings-migration so the launcher gets stuck on the
+    // `await mod.runEmbeddingsMigrationIfNeeded(...)` call. The setInterval
+    // keeps the event loop busy so Node won't bail out via "unsettled top-level
+    // await" — we want to verify the SIGKILL path that mirrors a libuv-style
+    // crash mid-upgrade (the original failure shape from #726 task G).
+    const servicesDir = join(root, 'node_modules', 'moflo', 'dist', 'src', 'cli', 'services');
+    mkdirSync(servicesDir, { recursive: true });
+    const migrationFile = join(servicesDir, 'embeddings-migration.js');
+    writeFileSync(
+      migrationFile,
+      'export const runEmbeddingsMigrationIfNeeded = () => new Promise(() => { setInterval(() => {}, 1000); });\n',
+    );
+
+    // Spawn + SIGKILL after enough time for ESM imports + the synchronous
+    // upgrade-work blocks to reach the hanging migration. Cross-platform:
+    // Node maps SIGKILL → TerminateProcess on Windows.
+    await new Promise<void>((resolveExit) => {
+      const child = spawn('node', [LAUNCHER], { cwd: root });
+      const killTimer = setTimeout(() => child.kill('SIGKILL'), 800);
+      child.on('exit', () => {
+        clearTimeout(killTimer);
+        resolveExit();
+      });
+    });
+
+    // Stamp must STILL be the old version — the launcher never reached the
+    // post-notice-clear commit point because it was killed mid-flight.
+    expect(readFileSync(stampPath, 'utf-8').trim()).toBe('9.9.8');
+
+    // Drop the hanging fixture so the second run can complete.
+    writeFileSync(
+      migrationFile,
+      'export const runEmbeddingsMigrationIfNeeded = () => Promise.resolve();\n',
+    );
+
+    // Next launcher detects the same upgrade and completes it cleanly: stamp
+    // bumped, notice cleared. This is the AC: "leaves the system without the
+    // new stamp, so the next launcher re-runs the upgrade detection".
+    const second = runLauncher(root);
+    expect(second.stdout).toContain('moflo: upgraded (9.9.8 → 9.9.9)');
+    expect(readFileSync(stampPath, 'utf-8').trim()).toBe('9.9.9');
+    expect(existsSync(join(root, '.moflo', 'upgrade-notice.json'))).toBe(false);
   });
 
   it('clears a stale upgrade-notice.json on a subsequent upgrade (#738)', () => {
