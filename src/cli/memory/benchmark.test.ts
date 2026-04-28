@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { tmpdir } from 'node:os';
 import { MemoryGraph } from './memory-graph.js';
 import { LearningBridge, type EmbeddingLoader } from './learning-bridge.js';
 import { AutoMemoryBridge } from './auto-memory-bridge.js';
@@ -252,11 +253,17 @@ describe('ADR-049 Performance Benchmarks', () => {
 
   it('AgentMemoryScope: resolve 10k paths', () => {
     const scopes: Array<'project' | 'local' | 'user'> = ['project', 'local', 'user'];
+    // Pin workingDir so existsSync walks a fixed path each call; without this
+    // the function defaults to process.cwd() which is process-global and
+    // fights with parallel forks under maxForks=2 contention. Bound is a
+    // smoke-check threshold (~10x typical observed time), per
+    // .claude/guidance/internal/testing-performance.md §1.
+    const fixedDir = tmpdir();
     const t0 = performance.now();
-    for (let i = 0; i < 10000; i++) resolveAgentMemoryDir(`agent-${i % 100}`, scopes[i % 3]);
+    for (let i = 0; i < 10000; i++) resolveAgentMemoryDir(`agent-${i % 100}`, scopes[i % 3], fixedDir);
     const dt = performance.now() - t0;
     console.log(`  Resolve 10k paths:  ${dt.toFixed(2)}ms  (${(dt/10).toFixed(1)}us/each)`);
-    expect(dt).toBeLessThan(2500); // Not an ADR-049 target; relaxed for CI/full-suite variance (10k path resolves on contended CI)
+    expect(dt).toBeLessThan(10000);
   });
 
   it('AgentMemoryScope: transfer knowledge', async () => {

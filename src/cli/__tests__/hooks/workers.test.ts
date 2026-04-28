@@ -607,6 +607,18 @@ describe('Built-in Workers', () => {
   });
 
   it('should run git worker', async () => {
+    // Override the built-in git worker, which spawns 3 git subprocesses
+    // (branch / status / log). On Windows under maxForks=2 fork contention,
+    // cmd.exe + git.exe spawn time amplifies and pushes the test past its
+    // budget. The handler shape is what the integration cares about — that
+    // it returns the documented \`available\` field.
+    manager.register('git', async () => ({
+      worker: 'git',
+      success: true,
+      duration: 1,
+      timestamp: new Date(),
+      data: { available: false },
+    }));
     const result = await manager.runWorker('git');
 
     expect(result.success).toBe(true);

@@ -4,16 +4,36 @@
  * Covers: spawn, dedup, killAll, getActive, prune, lock guard.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { existsSync, readFileSync, writeFileSync, utimesSync, mkdirSync, rmSync } from 'fs';
 import { resolve, join } from 'path';
 import { pathToFileURL } from 'url';
-import { execFileSync } from 'child_process';
 
-// We test via a small Node script that imports the ESM module,
-// since vitest may run in CJS mode and can't directly import .mjs.
 const BIN_LIB = resolve(__dirname, '../../bin/lib');
 const PM_PATH = resolve(BIN_LIB, 'process-manager.mjs');
+
+// Loaded once via dynamic import in beforeAll; previously every test wrapped
+// each operation in `execFileSync('node', '--input-type=module', ...)`, which
+// under Windows maxForks=2 fork contention couldn't reliably get a child Node
+// process within the per-test budget (each test cost 1-3 outer subprocess
+// spawns of 5+ s each). The module is side-effect-free at the top level so a
+// dynamic import is equivalent.
+type CreateProcessManager = (root: string) => {
+  spawn(cmd: string, args: string[], label: string): { pid: number | null; skipped: boolean };
+  killAll(): { killed: number; total: number };
+  getActive(): Array<{ pid: number; label: string; cmd: string; startedAt: string }>;
+  prune(): { pruned: number; remaining: number };
+  isLocked(): boolean;
+  acquireLock(): void;
+  releaseLock(): void;
+  readonly root: string;
+};
+let createProcessManager: CreateProcessManager;
+
+beforeAll(async () => {
+  const mod = await import(pathToFileURL(PM_PATH).href);
+  createProcessManager = mod.createProcessManager as CreateProcessManager;
+});
 
 /** Create an isolated temp project root for each test. */
 function makeTempRoot(): string {
@@ -26,37 +46,18 @@ function cleanTempRoot(root: string) {
   try { rmSync(root, { recursive: true, force: true }); } catch { /* ok */ }
 }
 
-/** Run a snippet that imports process-manager.mjs and returns JSON output.
- *  Pass `timeout` when the snippet polls or otherwise needs more than 10s. */
-function runPM(root: string, code: string, timeout = 10000): any {
-  const pmURL = pathToFileURL(PM_PATH).href;
-  const script = `
-    import { createProcessManager } from '${pmURL}';
-    const pm = createProcessManager('${root.replace(/\\/g, '/')}');
-    const result = await (async () => { ${code} })();
-    process.stdout.write(JSON.stringify(result));
-  `;
-  const out = execFileSync('node', ['--input-type=module', '-e', script], {
-    encoding: 'utf-8',
-    timeout,
-    cwd: root,
-  });
-  return JSON.parse(out.trim());
-}
+/** Sleep helper for polling loops below. */
+const sleep = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
 
 describe('process-manager.mjs', () => {
   it('exists on disk', () => {
     expect(existsSync(PM_PATH)).toBe(true);
   });
 
-  it('parses as valid ESM', async () => {
-    // In-process import — far faster + more reliable than `execFileSync('node',
-    // ['--check', ...])`, which under Windows maxForks contention couldn't
-    // reliably spawn a child Node process within the 5 s timeout. The module
-    // has side-effect-free top-level (imports + function defs only), so a
-    // dynamic import is a clean parse check.
-    const mod = await import(pathToFileURL(PM_PATH).href);
-    expect(typeof mod.createProcessManager).toBe('function');
+  it('parses as valid ESM', () => {
+    // beforeAll already imported the module; reaching here means the dynamic
+    // import succeeded. Assert the documented export shape.
+    expect(typeof createProcessManager).toBe('function');
   });
 });
 
@@ -66,68 +67,53 @@ describe('spawn()', () => {
   afterEach(() => { cleanTempRoot(root); });
 
   it('spawns a process and tracks PID in registry', () => {
-    // Spawn a long-running sleep process
-    const result = runPM(root, `
-      const r = pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'test-sleep');
-      return { pid: r.pid, skipped: r.skipped };
-    `);
-    expect(result.pid).toBeGreaterThan(0);
-    expect(result.skipped).toBe(false);
+    const pm = createProcessManager(root);
+    const r = pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'test-sleep');
+    expect(r.pid).toBeGreaterThan(0);
+    expect(r.skipped).toBe(false);
 
     // Verify registry
     const registry = JSON.parse(readFileSync(join(root, '.moflo', 'background-pids.json'), 'utf-8'));
     expect(registry).toHaveLength(1);
     expect(registry[0].label).toBe('test-sleep');
-    expect(registry[0].pid).toBe(result.pid);
+    expect(registry[0].pid).toBe(r.pid);
 
     // Cleanup: kill the spawned process
-    try { process.kill(result.pid, 'SIGTERM'); } catch { /* ok */ }
+    try { process.kill(r.pid!, 'SIGTERM'); } catch { /* ok */ }
   });
 
   it('deduplicates by label when process is still alive', () => {
-    // Spawn first
-    const r1 = runPM(root, `
-      const r = pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'dedup-test');
-      return { pid: r.pid, skipped: r.skipped };
-    `);
+    const pm = createProcessManager(root);
+    const r1 = pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'dedup-test');
     expect(r1.skipped).toBe(false);
 
     // Spawn again with same label — should be skipped
-    const r2 = runPM(root, `
-      const r = pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'dedup-test');
-      return { pid: r.pid, skipped: r.skipped };
-    `);
+    const r2 = pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'dedup-test');
     expect(r2.skipped).toBe(true);
     expect(r2.pid).toBe(r1.pid);
 
     // Cleanup
-    try { process.kill(r1.pid, 'SIGTERM'); } catch { /* ok */ }
+    try { process.kill(r1.pid!, 'SIGTERM'); } catch { /* ok */ }
   });
 
-  it('allows respawn after previous process dies', () => {
-    // Spawn a process that exits immediately
-    const r1 = runPM(root, `
-      const r = pm.spawn('node', ['-e', 'process.exit(0)'], 'short-lived');
-      return { pid: r.pid };
-    `);
+  it('allows respawn after previous process dies', async () => {
+    const pm = createProcessManager(root);
+    const r1 = pm.spawn('node', ['-e', 'process.exit(0)'], 'short-lived');
 
     // Poll getActive until the OS reaper clears the previous PID, then respawn.
-    // Same fix as the `getActive returns only alive processes` test above —
+    // Same fix as the `getActive returns only alive processes` test below —
     // any fixed sleep is wrong by construction (#672 leaked at 500 ms and 2 s).
-    const r2 = runPM(root, `
-      const deadline = Date.now() + 20000;
-      while (pm.getActive().some((p) => p.label === 'short-lived') && Date.now() < deadline) {
-        await new Promise((res) => setTimeout(res, 100));
-      }
-      const r = pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'short-lived');
-      return { pid: r.pid, skipped: r.skipped };
-    `, 30000);
+    const deadline = Date.now() + 20000;
+    while (pm.getActive().some(p => p.label === 'short-lived') && Date.now() < deadline) {
+      await sleep(100);
+    }
+    const r2 = pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'short-lived');
     expect(r2.skipped).toBe(false);
     expect(r2.pid).not.toBe(r1.pid);
 
     // Cleanup
-    try { process.kill(r2.pid, 'SIGTERM'); } catch { /* ok */ }
-  });
+    try { process.kill(r2.pid!, 'SIGTERM'); } catch { /* ok */ }
+  }, 30000);
 });
 
 describe('killAll()', () => {
@@ -136,18 +122,14 @@ describe('killAll()', () => {
   afterEach(() => { cleanTempRoot(root); });
 
   it('kills all tracked processes and clears registry', () => {
-    // Spawn two processes
-    runPM(root, `
-      pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'kill-a');
-      pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'kill-b');
-      return true;
-    `);
+    const pm = createProcessManager(root);
+    pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'kill-a');
+    pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'kill-b');
 
     const regBefore = JSON.parse(readFileSync(join(root, '.moflo', 'background-pids.json'), 'utf-8'));
     expect(regBefore).toHaveLength(2);
 
-    // Kill all
-    const result = runPM(root, `return pm.killAll();`);
+    const result = pm.killAll();
     expect(result.killed).toBe(2);
 
     // Registry should be empty
@@ -161,32 +143,26 @@ describe('getActive() and prune()', () => {
   beforeEach(() => { root = makeTempRoot(); });
   afterEach(() => { cleanTempRoot(root); });
 
-  it('getActive returns only alive processes', () => {
-    // Spawn one that stays alive and one that exits
-    runPM(root, `
-      pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'alive');
-      pm.spawn('node', ['-e', 'process.exit(0)'], 'dead');
-      return true;
-    `);
+  it('getActive returns only alive processes', async () => {
+    const pm = createProcessManager(root);
+    pm.spawn('node', ['-e', 'setTimeout(()=>{},60000)'], 'alive');
+    pm.spawn('node', ['-e', 'process.exit(0)'], 'dead');
 
     // The OS reaper finishes whenever it finishes — on Windows under
     // isolation-batch load it can lag arbitrarily, so any fixed sleep
     // (#672 leaked at both 500 ms and 2 s) is wrong by construction.
-    const active = runPM(root, `
-      const deadline = Date.now() + 20000;
-      let active = pm.getActive();
-      while (active.some((p) => p.label === 'dead') && Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 100));
-        active = pm.getActive();
-      }
-      return active;
-    `, 30000);
+    const deadline = Date.now() + 20000;
+    let active = pm.getActive();
+    while (active.some(p => p.label === 'dead') && Date.now() < deadline) {
+      await sleep(100);
+      active = pm.getActive();
+    }
     expect(active.length).toBe(1);
     expect(active[0].label).toBe('alive');
 
     // Cleanup
     try { process.kill(active[0].pid, 'SIGTERM'); } catch { /* ok */ }
-  });
+  }, 30000);
 
   it('prune removes dead entries', () => {
     // Seed registry with a fake dead PID
@@ -195,7 +171,8 @@ describe('getActive() and prune()', () => {
       JSON.stringify([{ pid: 99999999, label: 'ghost', cmd: 'node -e ...', startedAt: new Date().toISOString() }]),
     );
 
-    const result = runPM(root, `return pm.prune();`);
+    const pm = createProcessManager(root);
+    const result = pm.prune();
     expect(result.pruned).toBe(1);
     expect(result.remaining).toBe(0);
   });
@@ -211,7 +188,8 @@ describe('getActive() and prune()', () => {
       ]),
     );
 
-    const active = runPM(root, `return pm.getActive();`);
+    const pm = createProcessManager(root);
+    const active = pm.getActive();
     expect(active.length).toBe(1);
     expect(active[0].label).toBe('parent-test');
 
@@ -230,14 +208,12 @@ describe('lock guard', () => {
   afterEach(() => { cleanTempRoot(root); });
 
   it('acquires and checks lock', () => {
-    const r1 = runPM(root, `
-      const before = pm.isLocked();
-      pm.acquireLock();
-      const after = pm.isLocked();
-      return { before, after };
-    `);
-    expect(r1.before).toBe(false);
-    expect(r1.after).toBe(true);
+    const pm = createProcessManager(root);
+    const before = pm.isLocked();
+    pm.acquireLock();
+    const after = pm.isLocked();
+    expect(before).toBe(false);
+    expect(after).toBe(true);
   });
 
   it('lock expires after TTL (simulated by backdating mtime)', () => {
@@ -247,15 +223,16 @@ describe('lock guard', () => {
     const past = new Date(Date.now() - 60000);
     utimesSync(lockFile, past, past);
 
-    const result = runPM(root, `return pm.isLocked();`);
-    expect(result).toBe(false);
+    const pm = createProcessManager(root);
+    expect(pm.isLocked()).toBe(false);
   });
 
   it('killAll releases the lock', () => {
-    runPM(root, `pm.acquireLock(); return true;`);
+    const pm = createProcessManager(root);
+    pm.acquireLock();
     expect(existsSync(join(root, '.moflo', 'spawn.lock'))).toBe(true);
 
-    runPM(root, `pm.killAll(); return true;`);
+    pm.killAll();
     expect(existsSync(join(root, '.moflo', 'spawn.lock'))).toBe(false);
   });
 });
