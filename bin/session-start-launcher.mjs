@@ -451,6 +451,16 @@ try {
   }
 } catch { /* non-fatal */ }
 
+// ── 3b-714. Retire legacy `.swarm/vector-stats.json` parallel write (#714) ─
+// `.moflo/vector-stats.json` is canonical post-#699; pre-#714 builds also
+// wrote a copy under `.swarm/` for a "legacy compatibility" reader that no
+// longer exists. The leftover file can only ever be stale, so delete it on
+// session start. Unconditional unlink — the catch absorbs ENOENT once the
+// file is gone, so this is idempotent without a stat probe.
+try {
+  unlinkSync(resolve(projectRoot, '.swarm', 'vector-stats.json'));
+} catch { /* non-fatal — ENOENT once removed, EACCES on Windows AV holds */ }
+
 // ── 3c. Clean up double-prefixed guidance files from pre-4.8.45 upgrade ─────
 // Before 4.8.45, session-start dynamically prepended "moflo-" to shipped filenames.
 // When upgrading to 4.8.45+ (where files already have the prefix), the old in-memory
