@@ -80,10 +80,10 @@ describe('bin/index-tests.mjs', () => {
     expect(content).toContain('reverseMap');
   });
 
-  it('supports incremental indexing via hash', () => {
+  it('supports incremental indexing via content hash (#746)', () => {
     const content = readFileSync(SCRIPT, 'utf-8');
     expect(content).toContain('tests-hash.txt');
-    expect(content).toContain('computeFileListHash');
+    expect(content).toContain('computeContentListHash');
     expect(content).toContain('isUnchanged');
   });
 

@@ -22,7 +22,14 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { applyIncrementalChunks, loadExistingContent } from '../../bin/lib/incremental-write.mjs';
+import {
+  applyIncrementalChunks,
+  computeContentListHash,
+  loadExistingContent,
+} from '../../bin/lib/incremental-write.mjs';
+import { mkdtempSync, writeFileSync, utimesSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 const BIN = resolve(__dirname, '../../bin');
 
@@ -193,6 +200,103 @@ describe('applyIncrementalChunks (#745)', () => {
     expect(map.get('k1')).toBe('C1');
     db.close();
   });
+});
+
+describe('computeContentListHash (#746)', () => {
+  // Each test gets its own tmpdir so file ops don't leak across cases.
+  let dir: string;
+  let cleanup: string[] = [];
+
+  function tmpFile(name: string, content: string) {
+    const p = join(dir, name);
+    writeFileSync(p, content);
+    cleanup.push(p);
+    return p;
+  }
+
+  function setup() {
+    dir = mkdtempSync(join(tmpdir(), 'moflo-hash-'));
+  }
+
+  function teardown() {
+    rmSync(dir, { recursive: true, force: true });
+    cleanup = [];
+  }
+
+  it('same files + same content → same hash', () => {
+    setup();
+    const a = tmpFile('a.ts', 'export const A = 1;');
+    const b = tmpFile('b.ts', 'export const B = 2;');
+    expect(computeContentListHash([a, b])).toBe(computeContentListHash([a, b]));
+    teardown();
+  });
+
+  it('content edit changes the hash', () => {
+    setup();
+    const a = tmpFile('a.ts', 'export const A = 1;');
+    const before = computeContentListHash([a]);
+    writeFileSync(a, 'export const A = 2;');
+    const after = computeContentListHash([a]);
+    expect(after).not.toBe(before);
+    teardown();
+  });
+
+  it('mtime change without content change does NOT change the hash', () => {
+    // This is the whole point: git checkout / npm install / IDE save-on-focus
+    // bump mtime without touching content. Pre-#746 patterns indexer used
+    // mtime in its hash and re-extracted on every spurious bump.
+    setup();
+    const a = tmpFile('a.ts', 'export const A = 1;');
+    const before = computeContentListHash([a]);
+    // Push mtime + atime far into the future.
+    const future = new Date(Date.now() + 60_000);
+    utimesSync(a, future, future);
+    expect(computeContentListHash([a])).toBe(before);
+    teardown();
+  });
+
+  it('adding a file changes the hash', () => {
+    setup();
+    const a = tmpFile('a.ts', 'X');
+    const before = computeContentListHash([a]);
+    const b = tmpFile('b.ts', 'Y');
+    expect(computeContentListHash([a, b])).not.toBe(before);
+    teardown();
+  });
+
+  it('walk order does not affect the hash', () => {
+    setup();
+    const a = tmpFile('a.ts', 'A');
+    const b = tmpFile('b.ts', 'B');
+    expect(computeContentListHash([a, b])).toBe(computeContentListHash([b, a]));
+    teardown();
+  });
+
+  it('missing files still contribute their path to the hash', () => {
+    setup();
+    const present = tmpFile('present.ts', 'P');
+    const ghost = join(dir, 'never-existed.ts');
+    const h1 = computeContentListHash([present, ghost]);
+    const h2 = computeContentListHash([present]);
+    // Ghost path joins the digest even though the file is unreadable, so
+    // dropping it must change the hash.
+    expect(h1).not.toBe(h2);
+    teardown();
+  });
+});
+
+describe('indexer source uses content-hash gate (#746)', () => {
+  for (const file of ['index-patterns.mjs', 'generate-code-map.mjs', 'index-tests.mjs']) {
+    it(`${file} imports computeContentListHash and dropped the mtime/size hash`, () => {
+      const src = readFileSync(resolve(BIN, file), 'utf-8');
+      // Helper imported and called.
+      expect(src).toMatch(/computeContentListHash\b/);
+      // Old gates are gone.
+      expect(src).not.toMatch(/statSync\([^)]*\)\.mtimeMs/);
+      expect(src).not.toMatch(/statSync\([^)]*\)\.size/);
+      expect(src).not.toMatch(/^\s*function\s+computeFileListHash\s*\(/m);
+    });
+  }
 });
 
 describe('indexer source no longer wipes namespace before reinsert (#745)', () => {

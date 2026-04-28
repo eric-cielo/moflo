@@ -21,11 +21,48 @@
  * indexer — `metadata` and `tags` are stored as JSON strings. Callers that
  * passed in objects/arrays continue to do so via the optional `serialize`
  * flag; the helper handles the JSON.stringify call.
+ *
+ * Also exports `computeContentListHash` — the file-list early-exit gate used
+ * by every indexer. Content-based (not mtime/size-based) so spurious mtime
+ * bumps from git checkout, npm install, IDE save-on-focus, lint --fix etc.
+ * no longer trigger a full re-extract. See #746.
  */
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
+import { readFileSync } from 'fs';
 
 function generateId() {
   return `mem_${Date.now()}_${randomBytes(5).toString('hex')}`;
+}
+
+/**
+ * SHA-256 over every file's path and content. Used as the indexer's outer
+ * gate: matches stored hash → no source file actually changed → skip the
+ * whole extract+write pipeline.
+ *
+ * Reading every source file on a typical repo is ~50-200ms on SSD (and the
+ * OS file cache makes the second read essentially free), which is the
+ * tradeoff for byte-accurate change detection. mtime-based gates fire on
+ * every `git checkout` / `npm install` / IDE save-on-focus and force a full
+ * re-extract; size-only gates miss any same-size content edit. See #746.
+ *
+ * @param {string[]} files - absolute paths
+ * @returns {string} hex sha256
+ */
+export function computeContentListHash(files) {
+  const hasher = createHash('sha256');
+  // Sort so directory walk order doesn't perturb the hash.
+  const sorted = [...files].sort();
+  for (const f of sorted) {
+    hasher.update(f);
+    hasher.update('\0');
+    try {
+      hasher.update(readFileSync(f));
+    } catch {
+      // Missing file → still hash the path so add/remove flips the hash.
+    }
+    hasher.update('\n');
+  }
+  return hasher.digest('hex');
 }
 
 /**

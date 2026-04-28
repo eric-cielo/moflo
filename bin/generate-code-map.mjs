@@ -28,11 +28,10 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
 import { resolve, dirname, relative, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
-import { createHash } from 'crypto';
 import { execSync, execFileSync, spawn } from 'child_process';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, MOFLO_DIR } from './lib/moflo-paths.mjs';
-import { applyIncrementalChunks } from './lib/incremental-write.mjs';
+import { applyIncrementalChunks, computeContentListHash } from './lib/incremental-write.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 
@@ -283,11 +282,6 @@ function getSourceFiles() {
   }
 
   return files;
-}
-
-function computeFileListHash(files) {
-  const sorted = [...files].sort();
-  return createHash('sha256').update(sorted.join('\n')).digest('hex');
 }
 
 function isUnchanged(currentHash) {
@@ -812,7 +806,7 @@ async function main() {
   }
 
   // 2. Check hash for incremental skip
-  const currentHash = computeFileListHash(files);
+  const currentHash = computeContentListHash(files);
 
   if (statsOnly) {
     const db = await getDb();

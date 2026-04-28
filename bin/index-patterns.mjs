@@ -24,14 +24,13 @@
  *   flo-patterns                                           # Via PATH
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
 import { resolve, dirname, relative, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
-import { createHash } from 'crypto';
 import { spawn } from 'child_process';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, MOFLO_DIR } from './lib/moflo-paths.mjs';
-import { applyIncrementalChunks } from './lib/incremental-write.mjs';
+import { applyIncrementalChunks, computeContentListHash } from './lib/incremental-write.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -290,11 +289,10 @@ async function main() {
     return;
   }
 
-  // Hash check for incremental
-  const hashInput = files.map(f => {
-    try { return `${f}:${statSync(f).mtimeMs}`; } catch { return f; }
-  }).join('\n');
-  const currentHash = createHash('sha256').update(hashInput).digest('hex');
+  // Hash check for incremental — content-based (#746). Spurious mtime drift
+  // from git checkout / npm install / IDE save-on-focus no longer forces a
+  // re-extract; only real content edits invalidate the cache.
+  const currentHash = computeContentListHash(files);
 
   if (!force && existsSync(HASH_CACHE_PATH)) {
     const cached = readFileSync(HASH_CACHE_PATH, 'utf-8').trim();
