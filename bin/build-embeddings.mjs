@@ -19,6 +19,7 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { mofloResolveURL, mofloInternalURL } from './lib/moflo-resolve.mjs';
+import { memoryDbPath, hnswIndexPath } from './lib/moflo-paths.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 const FASTEMBED_INLINE = 'dist/src/cli/embeddings/fastembed-inline/index.js';
 const BRIDGE_CORE = 'dist/src/cli/memory/bridge-core.js';
@@ -35,7 +36,7 @@ function findProjectRoot() {
 }
 
 const projectRoot = findProjectRoot();
-const DB_PATH = resolve(projectRoot, '.swarm/memory.db');
+const DB_PATH = memoryDbPath(projectRoot);
 
 // Canonical model name emitted into `memory_entries.embedding_model`. The
 // semantic-search bin script accepts this plus a short set of legacy aliases
@@ -182,8 +183,7 @@ function getEmbeddingStats(db) {
 function writeVectorStatsCache(stats, nsStats) {
   try {
     const dbSizeKB = Math.floor(readFileSync(DB_PATH).length / 1024);
-    const hasHnsw = existsSync(resolve(projectRoot, '.swarm', 'hnsw.index'))
-      || existsSync(resolve(projectRoot, '.moflo', 'hnsw.index'));
+    const hasHnsw = existsSync(hnswIndexPath(projectRoot));
     const missing = nsStats.reduce((sum, ns) => sum + (ns.missing || 0), 0);
     writeVectorStatsJson(projectRoot, {
       vectorCount: stats.withEmbeddings,
@@ -263,8 +263,8 @@ async function main() {
   if (embedded > 0) {
     saveDb(db);
     for (const p of [
-      resolve(projectRoot, '.swarm/hnsw.index'),
-      resolve(projectRoot, '.swarm/hnsw.metadata.json'),
+      hnswIndexPath(projectRoot),
+      resolve(projectRoot, '.moflo', 'hnsw.metadata.json'),
     ]) {
       if (existsSync(p)) {
         unlinkSync(p);

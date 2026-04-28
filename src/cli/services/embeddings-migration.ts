@@ -1,5 +1,5 @@
 /**
- * Idempotent embeddings-version migration for moflo's memory.db.
+ * Idempotent embeddings-version migration for moflo's memory DB (`.moflo/moflo.db`).
  *
  * Runs the story-2 driver (`runUpgrade`) with the story-3 UX on any DB whose
  * stored `embeddings_version` is below the current runtime version OR whose
@@ -19,6 +19,7 @@
 
 import { mofloImport } from './moflo-require.js';
 import { atomicWriteFileSync } from './atomic-file-write.js';
+import { memoryDbPath } from './moflo-paths.js';
 // EMBEDDINGS_VERSION is a number constant in a leaf types module — pulling it
 // eagerly is cheap. The heavy imports (fastembed wrapper, upgrade renderer,
 // etc.) stay deferred behind the early returns so session-start stays fast.
@@ -28,7 +29,7 @@ import {
 } from '../embeddings/migration/types.js';
 
 export interface RunEmbeddingsMigrationOptions {
-  /** Path to the memory DB. Defaults to `<cwd>/.swarm/memory.db`. */
+  /** Path to the memory DB. Defaults to `<cwd>/.moflo/moflo.db`. */
   dbPath?: string;
   /** Output stream for the renderer. Defaults to `process.stderr`. */
   out?: NodeJS.WritableStream & { isTTY?: boolean };
@@ -65,9 +66,7 @@ export async function runEmbeddingsMigrationIfNeeded(
   const fs = await import('fs');
   const path = await import('path');
 
-  const dbPath = path.resolve(
-    options.dbPath ?? path.join(process.cwd(), '.swarm', 'memory.db'),
-  );
+  const dbPath = path.resolve(options.dbPath ?? memoryDbPath(process.cwd()));
   if (!fs.existsSync(dbPath)) return false;
 
   const initSqlJs = (await mofloImport('sql.js'))?.default;
@@ -149,7 +148,7 @@ export async function runEmbeddingsMigrationIfNeeded(
     if (summary.status === 'completed') {
       // `db.export()` returns a Uint8Array; `writeFileSync` accepts it directly,
       // so no Buffer.from() copy. Atomic temp-file + rename so SIGINT mid-write
-      // cannot truncate memory.db — see atomic-file-write.ts.
+      // cannot truncate moflo.db — see atomic-file-write.ts.
       atomicWriteFileSync(dbPath, db.export());
       options.onMigrationComplete?.(summary.totalItemsMigrated);
       return true;

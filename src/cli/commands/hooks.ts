@@ -9,6 +9,7 @@ import { formatStatus } from '../services/cli-formatters.js';
 import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { storeCommand } from './transfer-store.js';
+import { memoryDbCandidatePaths } from '../services/moflo-paths.js';
 
 // Hook types
 const HOOK_TYPES = [
@@ -3189,10 +3190,7 @@ const statuslineCommand: Command = {
 
     // Get learning stats from memory database
     function getLearningStats() {
-      const memoryPaths = [
-        path.join(process.cwd(), '.swarm', 'memory.db'),
-        path.join(process.cwd(), '.claude', 'memory.db'),
-      ];
+      const memoryPaths = memoryDbCandidatePaths(process.cwd());
 
       let patterns = 0;
       let sessions = 0;
@@ -3458,12 +3456,9 @@ const statuslineCommand: Command = {
     // Get AgentDB stats (matching .claude/helpers/statusline.cjs paths)
     const agentdbStats = { vectorCount: 0, dbSizeKB: 0, hasHnsw: false };
 
-    // Check for direct database files first
+    // Check for direct database files first. Canonical first, legacies after.
     const dbPaths = [
-      path.join(process.cwd(), '.swarm', 'memory.db'),
-      path.join(process.cwd(), '.moflo', 'memory.db'),
-      path.join(process.cwd(), '.claude', 'memory.db'),
-      path.join(process.cwd(), 'data', 'memory.db'),
+      ...memoryDbCandidatePaths(process.cwd()),
       path.join(process.cwd(), 'memory.db'),
       path.join(process.cwd(), '.agentdb', 'memory.db'),
       path.join(process.cwd(), '.moflo', 'memory', 'agentdb.db'),

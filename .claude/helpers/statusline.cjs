@@ -256,13 +256,15 @@ function formatModelName(modelId) {
   return 'Claude Code';
 }
 
-// Get learning stats from memory database (pure stat calls)
+// Get learning stats from memory database (pure stat calls).
+// Canonical first (post-#727), then legacy paths. Keep in lockstep with
+// `memoryDbCandidatePaths` in src/cli/services/moflo-paths.ts.
 function getLearningStats() {
   const memoryPaths = [
+    path.join(CWD, '.moflo', 'moflo.db'),
     path.join(CWD, '.swarm', 'memory.db'),
-    path.join(CWD, '.moflo', 'memory.db'),
-    path.join(CWD, '.claude', 'memory.db'),
     path.join(CWD, 'data', 'memory.db'),
+    path.join(CWD, '.claude', 'memory.db'),
     path.join(CWD, '.agentdb', 'memory.db'),
   ];
 
@@ -506,12 +508,13 @@ function getAgentDBStats() {
     return { vectorCount, dbSizeKB, namespaces, hasHnsw };
   }
 
-  // Fallback: estimate from DB file size (no subprocess)
+  // Fallback: estimate from DB file size (no subprocess). Same probe order
+  // as `getLearningStats` above — see comment there.
   const dbFiles = [
+    path.join(CWD, '.moflo', 'moflo.db'),
     path.join(CWD, '.swarm', 'memory.db'),
-    path.join(CWD, '.moflo', 'memory.db'),
-    path.join(CWD, '.claude', 'memory.db'),
     path.join(CWD, 'data', 'memory.db'),
+    path.join(CWD, '.claude', 'memory.db'),
   ];
   for (const f of dbFiles) {
     const stat = safeStat(f);
@@ -524,8 +527,8 @@ function getAgentDBStats() {
   }
 
   const hnswPaths = [
-    path.join(CWD, '.swarm', 'hnsw.index'),
     path.join(CWD, '.moflo', 'hnsw.index'),
+    path.join(CWD, '.swarm', 'hnsw.index'), // legacy pre-#727
   ];
   for (const p of hnswPaths) {
     if (safeStat(p)) {
@@ -592,7 +595,7 @@ function getIntegrationStatus() {
     }
   }
 
-  const hasDatabase = ['.swarm/memory.db', '.moflo/memory.db', 'data/memory.db']
+  const hasDatabase = ['.moflo/moflo.db', '.swarm/memory.db', 'data/memory.db']
     .some(p => fs.existsSync(path.join(CWD, p)));
   const hasApi = !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
 

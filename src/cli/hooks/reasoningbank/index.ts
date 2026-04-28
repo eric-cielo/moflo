@@ -17,6 +17,7 @@ import { EventEmitter } from 'node:events';
 import type { HookContext, HookEvent } from '../types.js';
 import type { IEmbeddingService } from './embedding-service-types.js';
 import { TestDeterministicEmbedding } from './__mocks__/test-embedding-service.js';
+import { MEMORY_DB_FILE, MOFLO_DIR } from '../../services/moflo-paths.js';
 
 // Dynamic imports for optional dependencies
 let MofloDbAdapter: any = null;
@@ -123,7 +124,7 @@ const DEFAULT_CONFIG: ReasoningBankConfig = {
   promotionThreshold: 3,
   qualityThreshold: 0.6,
   dedupThreshold: 0.95,
-  dbPath: '.moflo/memory.db',
+  dbPath: `${MOFLO_DIR}/${MEMORY_DB_FILE}`,
   useMockEmbeddings: false,
 };
 

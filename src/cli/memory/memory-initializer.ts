@@ -18,6 +18,12 @@ import { HnswLite } from './hnsw-lite.js';
 import { EMBEDDING_MODEL_OPT_OUT, getBridgeEmbedder } from './bridge-embedder.js';
 import { toFloat32 } from './controllers/_shared.js';
 import { writeVectorStatsJson } from './bridge-core.js';
+import {
+  MOFLO_DIR,
+  hnswIndexPath,
+  legacyMemoryDbPath,
+  memoryDbPath,
+} from '../services/moflo-paths.js';
 
 /**
  * Write vector-stats.json cache for the statusline (no subprocess needed).
@@ -37,14 +43,10 @@ function writeVectorStatsCache(
     const { vectorCount, namespaces, missing = 0 } = stats;
 
     const dbDir = path.dirname(dbPath);
-    const projectDir = path.dirname(dbDir); // .swarm -> project root
+    const projectDir = path.dirname(dbDir); // .moflo (or legacy .swarm) -> project root
     let hasHnsw = false;
-    for (const p of [
-      path.join(dbDir, 'hnsw.index'),
-      path.join(projectDir, '.moflo', 'hnsw.index'),
-    ]) {
-      try { fs.statSync(p); hasHnsw = true; break; } catch { /* nope */ }
-    }
+    try { fs.statSync(hnswIndexPath(projectDir)); hasHnsw = true; }
+    catch { /* nope */ }
 
     writeVectorStatsJson(projectDir, { vectorCount, missing, dbSizeKB, namespaces, hasHnsw });
   } catch { /* Non-fatal */ }
@@ -411,13 +413,13 @@ export async function getHNSWIndex(options?: {
   try {
     // Use HnswLite pure TS implementation (no native dependencies).
 
-    // Persistent storage paths
-    const swarmDir = path.join(process.cwd(), '.swarm');
-    if (!fs.existsSync(swarmDir)) {
-      fs.mkdirSync(swarmDir, { recursive: true });
+    // Persistent storage paths — colocated with the canonical memory DB.
+    const dbPath = options?.dbPath || memoryDbPath(process.cwd());
+    const dbDir = path.dirname(dbPath);
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
     }
-    const metadataPath = path.join(swarmDir, 'hnsw.metadata.json');
-    const dbPath = options?.dbPath || path.join(swarmDir, 'memory.db');
+    const metadataPath = path.join(dbDir, 'hnsw.metadata.json');
 
     // Create HnswLite index and wrap it with the expected db interface
     const hnsw = new HnswLite(dimensions, 16, 200, 'cosine');
@@ -515,8 +517,7 @@ function saveHNSWMetadata(): void {
   if (!hnswIndex?.entries) return;
 
   try {
-    const swarmDir = path.join(process.cwd(), '.swarm');
-    const metadataPath = path.join(swarmDir, 'hnsw.metadata.json');
+    const metadataPath = path.join(path.dirname(memoryDbPath(process.cwd())), 'hnsw.metadata.json');
     const metadata = Array.from(hnswIndex.entries.entries());
     fs.writeFileSync(metadataPath, JSON.stringify(metadata));
   } catch {
@@ -1056,12 +1057,17 @@ export async function checkAndMigrateLegacy(options: {
 }> {
   const { dbPath, verbose = false } = options;
 
-  // Check for legacy locations
+  // Check for legacy locations. `.swarm/memory.db` is the pre-#727 layout
+  // primarily handled by the launcher's copy-verify-delete migration; this
+  // probe still catches consumers whose launcher migration deferred. The
+  // bare `memory.db` and `.claude/memory.db`/`data/memory.db` entries are
+  // older still.
   const legacyPaths = [
+    legacyMemoryDbPath(process.cwd()),
+    path.join(process.cwd(), MOFLO_DIR, 'memory.db'),
     path.join(process.cwd(), 'memory.db'),
-    path.join(process.cwd(), '.claude/memory.db'),
-    path.join(process.cwd(), 'data/memory.db'),
-    path.join(process.cwd(), '.moflo/memory.db')
+    path.join(process.cwd(), '.claude', 'memory.db'),
+    path.join(process.cwd(), 'data', 'memory.db'),
   ];
 
   for (const legacyPath of legacyPaths) {
@@ -1172,8 +1178,7 @@ export async function initializeMemoryDatabase(options: {
     migrate = true
   } = options;
 
-  const swarmDir = path.join(process.cwd(), '.swarm');
-  const dbPath = customPath || path.join(swarmDir, 'memory.db');
+  const dbPath = customPath || memoryDbPath(process.cwd());
   const dbDir = path.dirname(dbPath);
 
   try {
@@ -1380,8 +1385,7 @@ export async function checkMemoryInitialization(dbPath?: string): Promise<{
   };
   tables?: string[];
 }> {
-  const swarmDir = path.join(process.cwd(), '.swarm');
-  const path_ = dbPath || path.join(swarmDir, 'memory.db');
+  const path_ = dbPath || memoryDbPath(process.cwd());
 
   if (!fs.existsSync(path_)) {
     return { initialized: false };
@@ -1440,8 +1444,7 @@ export async function applyTemporalDecay(dbPath?: string): Promise<{
   patternsDecayed: number;
   error?: string;
 }> {
-  const swarmDir = path.join(process.cwd(), '.swarm');
-  const path_ = dbPath || path.join(swarmDir, 'memory.db');
+  const path_ = dbPath || memoryDbPath(process.cwd());
 
   try {
     const initSqlJs = (await mofloImport('sql.js')).default;
@@ -1933,8 +1936,7 @@ export async function storeEntry(options: {
     upsert = false
   } = options;
 
-  const swarmDir = path.join(process.cwd(), '.swarm');
-  const dbPath = customPath || path.join(swarmDir, 'memory.db');
+  const dbPath = customPath || memoryDbPath(process.cwd());
 
   try {
     if (!fs.existsSync(dbPath)) {
@@ -2122,8 +2124,7 @@ export async function searchEntries(options: {
     dbPath: customPath
   } = options;
 
-  const swarmDir = path.join(process.cwd(), '.swarm');
-  const dbPath = customPath || path.join(swarmDir, 'memory.db');
+  const dbPath = customPath || memoryDbPath(process.cwd());
   const startTime = Date.now();
 
   try {
@@ -2284,8 +2285,7 @@ export async function listEntries(options: {
     dbPath: customPath
   } = options;
 
-  const swarmDir = path.join(process.cwd(), '.swarm');
-  const dbPath = customPath || path.join(swarmDir, 'memory.db');
+  const dbPath = customPath || memoryDbPath(process.cwd());
 
   try {
     if (!fs.existsSync(dbPath)) {
@@ -2399,8 +2399,7 @@ export async function getEntry(options: {
     dbPath: customPath
   } = options;
 
-  const swarmDir = path.join(process.cwd(), '.swarm');
-  const dbPath = customPath || path.join(swarmDir, 'memory.db');
+  const dbPath = customPath || memoryDbPath(process.cwd());
 
   try {
     if (!fs.existsSync(dbPath)) {
@@ -2509,8 +2508,7 @@ export async function deleteEntry(options: {
     dbPath: customPath
   } = options;
 
-  const swarmDir = path.join(process.cwd(), '.swarm');
-  const dbPath = customPath || path.join(swarmDir, 'memory.db');
+  const dbPath = customPath || memoryDbPath(process.cwd());
 
   try {
     if (!fs.existsSync(dbPath)) {
@@ -2601,8 +2599,7 @@ export async function getNamespaceCounts(dbPath?: string): Promise<{
   namespaces: Record<string, number>;
   total: number;
 }> {
-  const swarmDir = path.join(process.cwd(), '.swarm');
-  const resolvedPath = dbPath || path.join(swarmDir, 'memory.db');
+  const resolvedPath = dbPath || memoryDbPath(process.cwd());
 
   try {
     if (!fs.existsSync(resolvedPath)) {

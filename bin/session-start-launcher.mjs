@@ -11,7 +11,7 @@ import { spawn } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { migrateClaudeFlowToMoflo } from './lib/moflo-paths.mjs';
+import { migrateClaudeFlowToMoflo, migrateMemoryDbToMoflo } from './lib/moflo-paths.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -70,6 +70,25 @@ try {
 } catch {
   // Non-fatal — anything left behind by the migration just means it runs
   // again next session. Better to keep launching than to block on it.
+}
+
+// ── 0b. LEGACY memory DB relocation (#727) ──────────────────────────────────
+// Run BEFORE long-lived sql.js consumers (MCP server, daemon) — see the
+// `migrateMemoryDbToMoflo` JSDoc for the copy-verify-delete contract and
+// the sql.js write-back hazard.
+try {
+  const dbMigration = migrateMemoryDbToMoflo(projectRoot);
+  if (dbMigration?.migrated) {
+    const detail = dbMigration.hnswMoved
+      ? '.swarm/memory.db → .moflo/moflo.db (with hnsw.index)'
+      : '.swarm/memory.db → .moflo/moflo.db';
+    emitMutation('relocated memory db', detail);
+    if (dbMigration.reason === 'rename-failed') {
+      emitMutation('legacy .swarm/memory.db remains', 'rename to .bak failed — flo doctor will warn');
+    }
+  }
+} catch {
+  // Non-fatal — failed migration leaves both DBs in place; next session retries.
 }
 
 // ── 1. Helper: fire-and-forget a background process ─────────────────────────

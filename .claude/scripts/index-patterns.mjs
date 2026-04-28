@@ -30,6 +30,7 @@ import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 import { spawn } from 'child_process';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
+import { memoryDbPath, MOFLO_DIR } from './lib/moflo-paths.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -46,8 +47,8 @@ function findProjectRoot() {
 
 const projectRoot = findProjectRoot();
 const NAMESPACE = 'patterns';
-const DB_PATH = resolve(projectRoot, '.swarm/memory.db');
-const HASH_CACHE_PATH = resolve(projectRoot, '.swarm/patterns-hash.txt');
+const DB_PATH = memoryDbPath(projectRoot);
+const HASH_CACHE_PATH = resolve(projectRoot, MOFLO_DIR, 'patterns-hash.txt');
 
 const args = process.argv.slice(2);
 const force = args.includes('--force');

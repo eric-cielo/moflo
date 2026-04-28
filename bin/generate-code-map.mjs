@@ -2,7 +2,7 @@
 /**
  * Generate structural code map for a monorepo or project.
  *
- * Produces five chunk types stored in the `code-map` namespace of .swarm/memory.db:
+ * Produces five chunk types stored in the `code-map` namespace of .moflo/moflo.db:
  *   1. project:    — one per top-level project directory (bird's-eye overview)
  *   2. dir:        — one per directory with 2+ exported types (drill-down detail)
  *   3. iface-map:  — batched interface-to-implementation mappings
@@ -31,6 +31,7 @@ import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 import { execSync, execFileSync, spawn } from 'child_process';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
+import { memoryDbPath, MOFLO_DIR } from './lib/moflo-paths.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 
@@ -49,8 +50,8 @@ function findProjectRoot() {
 
 const projectRoot = findProjectRoot();
 const NAMESPACE = 'code-map';
-const DB_PATH = resolve(projectRoot, '.swarm/memory.db');
-const HASH_CACHE_PATH = resolve(projectRoot, '.swarm/code-map-hash.txt');
+const DB_PATH = memoryDbPath(projectRoot);
+const HASH_CACHE_PATH = resolve(projectRoot, MOFLO_DIR, 'code-map-hash.txt');
 
 // Directories to exclude from indexing
 const EXCLUDE_DIRS = [

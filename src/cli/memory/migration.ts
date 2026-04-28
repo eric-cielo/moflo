@@ -262,6 +262,7 @@ export class MemoryMigrator extends EventEmitter {
     // For now, try to load from common paths
     const possiblePaths = [
       './memory/memory-store.json',
+      './.moflo/moflo.db',
       './.swarm/memory.db',
       './memory.json',
     ];

@@ -9,15 +9,13 @@ import { select, confirm, multiSelect } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { memoryDbCandidatePaths } from '../services/moflo-paths.js';
 
 // Get dynamic swarm status from memory/session files
 function getSwarmStatus(swarmId?: string) {
   const swarmDir = path.join(process.cwd(), '.swarm');
   const sessionDir = path.join(process.cwd(), '.claude', 'sessions');
-  const memoryPaths = [
-    path.join(process.cwd(), '.swarm', 'memory.db'),
-    path.join(process.cwd(), '.claude', 'memory.db'),
-  ];
+  const memoryPaths = memoryDbCandidatePaths(process.cwd());
 
   // Check for active swarm state file
   const swarmStateFile = path.join(swarmDir, 'state.json');

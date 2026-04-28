@@ -9,6 +9,11 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { atomicWriteFileSync } from '../services/atomic-file-write.js';
+import {
+  legacyMemoryDbPath,
+  memoryDbPath,
+  MOFLO_DIR,
+} from '../services/moflo-paths.js';
 
 // When run via npx, CWD may be node_modules/moflo — walk up to find actual project
 let _projectRoot: string | undefined;
@@ -31,7 +36,10 @@ function getProjectRoot(): string {
   let dir = process.cwd();
   const root = path.parse(dir).root;
   while (dir !== root) {
-    if (fs.existsSync(path.join(dir, '.swarm', 'memory.db'))) {
+    // `.moflo/moflo.db` is the canonical post-#727 marker. Older consumers
+    // mid-migration may still only have `.swarm/memory.db`; recognise both
+    // so the bridge can find the project root either way.
+    if (fs.existsSync(memoryDbPath(dir)) || fs.existsSync(legacyMemoryDbPath(dir))) {
       _projectRoot = dir;
       return _projectRoot;
     }
@@ -78,16 +86,16 @@ function logBridgeError(context: string, err: unknown): void {
 }
 
 function getDbPath(customPath?: string): string {
-  const swarmDir = path.resolve(getProjectRoot(), '.swarm');
-  if (!customPath) return path.join(swarmDir, 'memory.db');
+  const root = getProjectRoot();
+  const canonical = memoryDbPath(root);
+  if (!customPath) return canonical;
   if (customPath === ':memory:') return ':memory:';
   const resolved = path.resolve(customPath);
-  const root = getProjectRoot();
   const rel = path.relative(root, resolved);
   // Reject anything that escapes the project root or is an absolute path
   // outside it (path.relative returns an absolute path on different drives).
   if (rel.startsWith('..') || path.isAbsolute(rel)) {
-    return path.join(swarmDir, 'memory.db');
+    return canonical;
   }
   return resolved;
 }
@@ -179,7 +187,7 @@ export function execRows(db: any, sql: string, params?: unknown[]): Record<strin
 export function persistBridgeDb(db: any, dbPath?: string): void {
   const target = dbPath
     ? path.resolve(dbPath)
-    : path.join(getProjectRoot(), '.swarm', 'memory.db');
+    : memoryDbPath(getProjectRoot());
   if (target === ':memory:') return;
   try {
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -317,15 +325,10 @@ export function writeVectorStatsJson(rootDir: string, stats: VectorStatsPayload)
   );
 }
 
-/** Probe both legacy locations for an HNSW index sidecar file. */
+/** Probe for the HNSW index sidecar at its canonical post-#727 location. */
 function detectHnswIndex(rootDir: string): boolean {
-  for (const p of [
-    path.join(rootDir, '.swarm', 'hnsw.index'),
-    path.join(rootDir, '.moflo', 'hnsw.index'),
-  ]) {
-    try { fs.statSync(p); return true; } catch { /* nope */ }
-  }
-  return false;
+  try { fs.statSync(path.join(rootDir, MOFLO_DIR, 'hnsw.index')); return true; }
+  catch { return false; }
 }
 
 /**

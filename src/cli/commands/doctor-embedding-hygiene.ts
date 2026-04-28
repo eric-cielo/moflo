@@ -24,10 +24,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { existsSync } from 'fs';
-import { join } from 'path';
 
 import { CANONICAL_EMBEDDING_MODEL } from '../embeddings/migration/types.js';
 import { mofloImport } from '../services/moflo-require.js';
+import { memoryDbCandidatePaths } from '../services/moflo-paths.js';
 
 export interface HealthCheck {
   name: string;
@@ -155,15 +155,7 @@ export async function checkEmbeddingHygiene(): Promise<HealthCheck> {
 }
 
 function resolveMemoryDb(): string | null {
-  const candidates = [
-    join(process.cwd(), '.swarm', 'memory.db'),
-    join(process.cwd(), '.moflo', 'memory.db'),
-    join(process.cwd(), 'data', 'memory.db'),
-  ];
-  for (const p of candidates) {
-    if (existsSync(p)) return p;
-  }
-  return null;
+  return memoryDbCandidatePaths(process.cwd()).find((p) => existsSync(p)) ?? null;
 }
 
 async function loadModelGroups(dbPath: string): Promise<ModelGroup[] | null> {
