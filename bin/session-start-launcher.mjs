@@ -9,9 +9,9 @@
 
 import { spawn } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
-import { resolve, dirname } from 'path';
+import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { migrateClaudeFlowToMoflo, migrateMemoryDbToMoflo } from './lib/moflo-paths.mjs';
+import { migrateClaudeFlowToMoflo, migrateMemoryDbToMoflo, mofloDir } from './lib/moflo-paths.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -55,6 +55,36 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // Captured inside the upgrade/drift branch so the post-spawn notice writer
 // can persist `.moflo/upgrade-notice.json` for the statusline (#636).
 let upgradeNoticeContext = null;
+
+// 5-min TTL is a safety net for zombie launchers (statusline ignores past-TTL
+// files). The launcher deletes the notice when upgrade work finishes — no
+// "complete" state lingers, see #738.
+const UPGRADE_NOTICE_INPROGRESS_TTL_MS = 5 * 60 * 1000;
+const UPGRADE_NOTICE_PATH = () => join(mofloDir(projectRoot), 'upgrade-notice.json');
+
+function writeInProgressUpgradeNotice() {
+  if (!upgradeNoticeContext) return;
+  try {
+    mkdirSync(mofloDir(projectRoot), { recursive: true });
+    const now = Date.now();
+    const notice = {
+      status: 'in-progress',
+      kind: upgradeNoticeContext.kind,
+      from: upgradeNoticeContext.from,
+      to: upgradeNoticeContext.to,
+      at: new Date(now).toISOString(),
+      expiresAt: new Date(now + UPGRADE_NOTICE_INPROGRESS_TTL_MS).toISOString(),
+      changes: 0,
+    };
+    writeFileSync(UPGRADE_NOTICE_PATH(), JSON.stringify(notice, null, 2));
+  } catch { /* non-fatal — statusline just won't show the segment */ }
+}
+
+function clearUpgradeNotice() {
+  try {
+    unlinkSync(UPGRADE_NOTICE_PATH());
+  } catch { /* non-fatal — already gone or never existed */ }
+}
 
 // ── 0. LEGACY state migration (#699) ─────────────────────────────────────────
 // Consumers upgrading from older moflo builds (inherited from upstream Ruflo)
@@ -213,6 +243,11 @@ try {
         };
         emitMutation('repaired stale install', 'manifest drift detected');
       }
+      // Surface a transient "(updating…)" badge in the statusline before the
+      // long-running upgrade work (manifest sync, daemon recycle, embeddings
+      // migration). See #738 — the launcher clears this file after work
+      // completes, so the badge naturally disappears once the user is unblocked.
+      writeInProgressUpgradeNotice();
       const binDir = resolve(projectRoot, 'node_modules/moflo/bin');
 
       // ── Manifest-based auto-update ──────────────────────────────────────
@@ -695,37 +730,12 @@ try {
   } catch { /* writing the failure itself must not throw */ }
 }
 
-// ── 3f. Persist upgrade notice for statusline (#636) ────────────────────────
-// When this session bumped the version stamp or repaired manifest drift, write
-// a transient `.moflo/upgrade-notice.json` so the statusline can show a
-// leading user-visible segment (`📦 vX → vY (N changes)`). The file expires
-// via TTL — statusline silently ignores it after `expiresAt`. The next
-// upgrade overwrites the file, so no manual cleanup is needed.
-//
-// Stdout emits go to Claude's `additionalContext` (collapsed by default in
-// the system reminder); this notice surfaces the same information directly
-// in the user's UI. Together they close the "Claude appears hung and CPU
-// spikes" gap from #629 — the user always knows when an upgrade procedure
-// just ran.
-const UPGRADE_NOTICE_TTL_MS = 60 * 60 * 1000; // 1 hour
-if (upgradeNoticeContext && mutationCount > 0) {
-  try {
-    const cfDir = resolve(projectRoot, '.moflo');
-    if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
-    const now = Date.now();
-    const notice = {
-      kind: upgradeNoticeContext.kind,
-      from: upgradeNoticeContext.from,
-      to: upgradeNoticeContext.to,
-      at: new Date(now).toISOString(),
-      expiresAt: new Date(now + UPGRADE_NOTICE_TTL_MS).toISOString(),
-      changes: mutationCount,
-    };
-    writeFileSync(
-      resolve(cfDir, 'upgrade-notice.json'),
-      JSON.stringify(notice, null, 2),
-    );
-  } catch { /* non-fatal — statusline just won't show the segment */ }
+// ── 3f. Clear the in-progress upgrade notice (#636, #738) ───────────────────
+// Upgrade work is finished; drop the notice so the statusline badge disappears
+// immediately. Change summary is already in stdout emits (Claude's
+// `additionalContext`); a lingering "you upgraded a while ago" badge is noise.
+if (upgradeNoticeContext) {
+  clearUpgradeNotice();
 }
 
 // Bypasses emitMutation — framing, not a mutation, so it must not inflate the count.

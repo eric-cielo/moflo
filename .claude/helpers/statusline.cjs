@@ -602,13 +602,18 @@ function getIntegrationStatus() {
   return { mcpServers, hasDatabase, hasApi };
 }
 
-// Upgrade notice (#636) — written by the session-start launcher; null when missing, expired, or malformed.
+// Upgrade notice (#636, #738) — written by the session-start launcher; null
+// when missing, expired, or malformed. The launcher writes status='in-progress'
+// while upgrade work is running, then deletes the file when done — so a
+// 'complete' status only ever shows up here for legacy notice files left by
+// pre-#738 launchers.
 function getUpgradeNotice() {
   const data = readJSON(path.join(CWD, '.moflo', 'upgrade-notice.json'));
   if (!data || typeof data !== 'object') return null;
   const expiresAt = data.expiresAt ? new Date(data.expiresAt).getTime() : 0;
   if (!expiresAt || Date.now() > expiresAt) return null;
   return {
+    status: data.status === 'in-progress' ? 'in-progress' : 'complete',
     kind: data.kind === 'repair' ? 'repair' : 'upgrade',
     from: typeof data.from === 'string' ? data.from : '',
     to: typeof data.to === 'string' ? data.to : '',
@@ -618,16 +623,19 @@ function getUpgradeNotice() {
 
 function formatUpgradeNoticeSegment(notice) {
   if (!notice) return '';
-  const changesPart = notice.changes > 0
-    ? ` ${c.dim}(${notice.changes} ${notice.changes === 1 ? 'change' : 'changes'})${c.reset}`
-    : '';
+  let suffix = '';
+  if (notice.status === 'in-progress') {
+    suffix = ` ${c.dim}(updating…)${c.reset}`;
+  } else if (notice.changes > 0) {
+    suffix = ` ${c.dim}(${notice.changes} ${notice.changes === 1 ? 'change' : 'changes'})${c.reset}`;
+  }
   if (notice.kind === 'repair') {
-    return `${c.brightYellow}📦 install repaired${c.reset}${changesPart}`;
+    return `${c.brightYellow}📦 install repaired${c.reset}${suffix}`;
   }
   const versions = notice.from && notice.to
     ? `${notice.from} → ${notice.to}`
     : (notice.to || 'upgraded');
-  return `${c.brightYellow}📦 ${versions}${c.reset}${changesPart}`;
+  return `${c.brightYellow}📦 ${versions}${c.reset}${suffix}`;
 }
 
 // Session stats (pure file reads)
@@ -671,10 +679,13 @@ function generateStatusline() {
 
   const parts = [];
 
+  // Upgrade notice \u2014 leading position so it reads as a transient banner
+  // rather than a permanent column (#738). Only renders during the upgrade
+  // window; the launcher deletes the notice file after work completes.
+  pushUpgradeNoticeSegment(parts);
+
   // Branding (always shown when enabled)
   parts.push(`${c.bold}${c.brightPurple}\u258A ${SL_CONFIG.branding}${c.reset}`);
-
-  pushUpgradeNoticeSegment(parts);
 
   // User + swarm indicator
   const dot = swarm.coordinationActive ? `${c.brightGreen}\u25CF${c.reset}` : `${c.brightCyan}\u25CF${c.reset}`;
@@ -758,8 +769,9 @@ function generateDashboard() {
   if (SL_CONFIG.show_session && session.duration) {
     header += `  ${c.dim}\u2502${c.reset}  ${c.cyan}\u23F1 ${session.duration}${c.reset}`;
   }
-  lines.push(header);
+  // Upgrade notice \u2014 leading line so it reads as a transient banner (#738).
   pushUpgradeNoticeSegment(lines);
+  lines.push(header);
 
   // Separator
   lines.push(`${c.dim}${'─'.repeat(53)}${c.reset}`);
@@ -834,8 +846,9 @@ function generateCompactDashboard() {
   if (SL_CONFIG.show_session && session.duration) {
     header += `  ${c.dim}\u2502${c.reset}  ${c.cyan}\u23F1 ${session.duration}${c.reset}`;
   }
-  lines.push(header);
+  // Upgrade notice \u2014 leading line so it reads as a transient banner (#738).
   pushUpgradeNoticeSegment(lines);
+  lines.push(header);
 
   // Combined swarm + agentdb + mcp line
   const segments = [];

@@ -236,9 +236,12 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     ).toContain('CPU may briefly spike');
   });
 
-  it('writes .moflo/upgrade-notice.json with kind=upgrade on a version bump (#636)', () => {
+  it('clears upgrade-notice.json after completing a version-bump upgrade (#636, #738)', () => {
     // Stage `node_modules/moflo/package.json` at v9.9.9 and a prior cached
     // version at v9.9.8 so the launcher takes the version-bump branch.
+    // The launcher writes an in-progress notice while upgrade work is running
+    // and DELETES the file when work completes — so the badge disappears once
+    // the user is unblocked instead of lingering for an hour (#738).
     mkdirSync(join(root, 'node_modules', 'moflo'), { recursive: true });
     writeFileSync(
       join(root, 'node_modules', 'moflo', 'package.json'),
@@ -250,19 +253,9 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     const { stdout } = runLauncher(root);
     expect(stdout).toContain('moflo: upgraded (9.9.8 → 9.9.9)');
 
+    // After the launcher exits, the notice file must be GONE (#738 AC).
     const noticePath = join(root, '.moflo', 'upgrade-notice.json');
-    expect(existsSync(noticePath)).toBe(true);
-
-    const notice = JSON.parse(readFileSync(noticePath, 'utf-8'));
-    expect(notice.kind).toBe('upgrade');
-    expect(notice.from).toBe('9.9.8');
-    expect(notice.to).toBe('9.9.9');
-    expect(typeof notice.at).toBe('string');
-    expect(typeof notice.expiresAt).toBe('string');
-    expect(new Date(notice.expiresAt).getTime()).toBeGreaterThan(
-      new Date(notice.at).getTime(),
-    );
-    expect(notice.changes).toBeGreaterThan(0);
+    expect(existsSync(noticePath)).toBe(false);
   });
 
   it('does NOT write upgrade-notice.json on the silent fast-path', () => {
@@ -275,8 +268,9 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     expect(existsSync(noticePath)).toBe(false);
   });
 
-  it('overwrites a stale upgrade-notice.json on a subsequent upgrade', () => {
-    // Pre-seed with a notice from a prior upgrade.
+  it('clears a stale upgrade-notice.json on a subsequent upgrade (#738)', () => {
+    // Pre-seed with a stale notice from a prior upgrade. After this session's
+    // upgrade work completes the launcher must delete it — no lingering badge.
     mkdirSync(join(root, '.moflo'), { recursive: true });
     const noticePath = join(root, '.moflo', 'upgrade-notice.json');
     writeFileSync(
@@ -291,7 +285,7 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
       }),
     );
 
-    // Now stage a fresh upgrade that the launcher should record.
+    // Stage a fresh upgrade that the launcher should process and clean up.
     mkdirSync(join(root, 'node_modules', 'moflo'), { recursive: true });
     writeFileSync(
       join(root, 'node_modules', 'moflo', 'package.json'),
@@ -301,10 +295,6 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
 
     runLauncher(root);
 
-    const updated = JSON.parse(readFileSync(noticePath, 'utf-8'));
-    expect(updated.from).toBe('9.9.8');
-    expect(updated.to).toBe('9.9.9');
-    expect(updated.changes).toBeGreaterThan(0);
-    expect(updated.changes).not.toBe(99);
+    expect(existsSync(noticePath)).toBe(false);
   });
 });
