@@ -46,6 +46,7 @@ export {
   bridgeListEntries,
   bridgeSearchEntries,
   bridgeStoreEntry,
+  bridgeStoreEntries,
 } from './bridge-entries.js';
 
 // ===== Embedding bridge =====

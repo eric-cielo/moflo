@@ -15,7 +15,8 @@ import { mofloImport } from '../services/moflo-require.js';
 import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 import { formatEmbeddingError } from './embedding-errors.js';
 import { HnswLite } from './hnsw-lite.js';
-import { EMBEDDING_MODEL_OPT_OUT } from './bridge-embedder.js';
+import { EMBEDDING_MODEL_OPT_OUT, getBridgeEmbedder } from './bridge-embedder.js';
+import { toFloat32 } from './controllers/_shared.js';
 import { writeVectorStatsJson } from './bridge-core.js';
 
 /**
@@ -1899,6 +1900,7 @@ export async function storeEntry(options: {
   value: string;
   namespace?: string;
   generateEmbeddingFlag?: boolean;
+  precomputedEmbedding?: Float32Array | number[];
   tags?: string[];
   ttl?: number;
   dbPath?: string;
@@ -1960,10 +1962,19 @@ export async function storeEntry(options: {
     let embeddingModel: string = EMBEDDING_MODEL_OPT_OUT;
 
     if (generateEmbeddingFlag && value.length > 0) {
-      const embResult = await generateEmbedding(value);
-      embeddingJson = JSON.stringify(embResult.embedding);
-      embeddingDimensions = embResult.dimensions;
-      embeddingModel = embResult.model;
+      if (options.precomputedEmbedding) {
+        // Tag with the bridge embedder's canonical model so precomputed rows
+        // are indistinguishable from live single-embed rows downstream.
+        const vec = toFloat32(options.precomputedEmbedding);
+        embeddingJson = JSON.stringify(Array.from(vec));
+        embeddingDimensions = vec.length;
+        embeddingModel = getBridgeEmbedder().model;
+      } else {
+        const embResult = await generateEmbedding(value);
+        embeddingJson = JSON.stringify(embResult.embedding);
+        embeddingDimensions = embResult.dimensions;
+        embeddingModel = embResult.model;
+      }
     }
 
     // Insert or update entry (upsert mode uses REPLACE)
@@ -2037,6 +2048,40 @@ export async function storeEntry(options: {
       error: error instanceof Error ? error.message : String(error)
     };
   }
+}
+
+/**
+ * Bulk-store entries — batches writes through the bridge in a single
+ * persist-once transaction. Falls back to sequential `storeEntry()` calls
+ * (each persisting independently) when the bridge is unavailable.
+ */
+export async function storeEntries(items: Array<{
+  key: string;
+  value: string;
+  namespace?: string;
+  generateEmbeddingFlag?: boolean;
+  precomputedEmbedding?: Float32Array | number[];
+  tags?: string[];
+  ttl?: number;
+  upsert?: boolean;
+}>, dbPath?: string): Promise<Array<{
+  success: boolean;
+  id: string;
+  embedding?: { dimensions: number; model: string };
+  error?: string;
+}>> {
+  if (items.length === 0) return [];
+  const bridge = await getBridge();
+  if (bridge && typeof bridge.bridgeStoreEntries === 'function') {
+    const bridgeResult = await bridge.bridgeStoreEntries(items, dbPath);
+    if (bridgeResult) return bridgeResult;
+  }
+  // Fallback: sequential single-entry writes (each persists). Slow but correct.
+  const out: Array<{ success: boolean; id: string; embedding?: { dimensions: number; model: string }; error?: string }> = [];
+  for (const item of items) {
+    out.push(await storeEntry({ ...item, dbPath }));
+  }
+  return out;
 }
 
 /**
@@ -2599,6 +2644,7 @@ export default {
   generateEmbedding,
   verifyMemoryInit,
   storeEntry,
+  storeEntries,
   searchEntries,
   listEntries,
   getEntry,

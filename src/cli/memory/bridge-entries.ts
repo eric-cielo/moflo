@@ -9,7 +9,7 @@
  */
 
 import { cosineSim, execRows, generateId, persistBridgeDb, refreshVectorStatsCache, withDb } from './bridge-core.js';
-import { EMBEDDING_MODEL_OPT_OUT, getBridgeEmbedder } from './bridge-embedder.js';
+import { resolveBridgeEmbedding } from './bridge-embedder.js';
 
 function makeEntryCacheKey(namespace: string, key: string): string {
   const safeNs = String(namespace).replace(/:/g, '_');
@@ -87,10 +87,11 @@ async function guardValidate(
   registry: any,
   operation: string,
   params: Record<string, unknown>,
+  options?: { bypassDedupe?: boolean },
 ): Promise<{ allowed: boolean; reason?: string }> {
   const guard = registry.get('mutationGuard');
   if (!guard) return { allowed: true };
-  const result = guard.validate({ operation, params, timestamp: Date.now() });
+  const result = guard.validate({ operation, params, timestamp: Date.now(), bypassDedupe: options?.bypassDedupe });
   return { allowed: result?.allowed === true, reason: result?.reason };
 }
 
@@ -111,12 +112,17 @@ async function logAttestation(
 
 /**
  * Store an entry. Returns null to signal fallback to sql.js.
+ *
+ * `precomputedEmbedding`: skip the live `embedder.embed()` and use a vector
+ * the caller already computed. Still labelled with the live embedder's
+ * `model` so downstream consumers can't tell the difference.
  */
 export async function bridgeStoreEntry(options: {
   key: string;
   value: string;
   namespace?: string;
   generateEmbeddingFlag?: boolean;
+  precomputedEmbedding?: Float32Array | number[];
   tags?: string[];
   ttl?: number;
   dbPath?: string;
@@ -140,23 +146,13 @@ export async function bridgeStoreEntry(options: {
       return { success: false, id, error: `MutationGuard rejected: ${guardResult.reason}` };
     }
 
-    let embeddingJson: string | null = null;
-    let dimensions = 0;
-    let model: string = EMBEDDING_MODEL_OPT_OUT;
-
-    const wantsEmbedding = options.generateEmbeddingFlag !== false && value.length > 0;
-    if (wantsEmbedding) {
-      const embedder = getBridgeEmbedder();
-      try {
-        const vector = await embedder.embed(value);
-        embeddingJson = JSON.stringify(Array.from(vector));
-        dimensions = vector.length;
-        model = embedder.model;
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        return { success: false, id, error: `embedding generation failed: ${reason}` };
-      }
+    const resolved = await resolveBridgeEmbedding(value, options.precomputedEmbedding, options.generateEmbeddingFlag);
+    if (!resolved.ok) {
+      return { success: false, id, error: `embedding generation failed: ${resolved.reason}` };
     }
+    const embeddingJson = resolved.json;
+    const dimensions = resolved.dimensions;
+    const model = resolved.model;
 
     const insertSql = options.upsert
       ? `INSERT OR REPLACE INTO memory_entries (
@@ -197,6 +193,119 @@ export async function bridgeStoreEntry(options: {
       cached: true,
       attested: true,
     };
+  });
+}
+
+/**
+ * Bulk-store entries inside a single bridge session and persist the DB once
+ * at the end. Per-item failures are reported in the returned array; one bad
+ * item never aborts the rest. Returns null when the bridge is unavailable.
+ */
+export async function bridgeStoreEntries(items: Array<{
+  key: string;
+  value: string;
+  namespace?: string;
+  generateEmbeddingFlag?: boolean;
+  precomputedEmbedding?: Float32Array | number[];
+  tags?: string[];
+  ttl?: number;
+  upsert?: boolean;
+}>, dbPath?: string): Promise<Array<{
+  success: boolean;
+  id: string;
+  embedding?: { dimensions: number; model: string };
+  error?: string;
+}> | null> {
+  if (items.length === 0) return [];
+  return withDb(dbPath, async (ctx, registry) => {
+    const results: Array<{ success: boolean; id: string; embedding?: { dimensions: number; model: string }; error?: string }> = [];
+    const bookkeeping: Promise<void>[] = [];
+    let anyEmbedded = false;
+    let anyWritten = false;
+
+    // Validate the batch once as a single 'bulk-store' mutation. Per-item
+    // 'store' validation would burn the 50/s rate budget on what the caller
+    // intends as one operation — pretrain's 56 patterns would trip the limit
+    // halfway through. Upsert batches set bypassDedupe because identical
+    // back-to-back upserts are intentional refresh, not accidental dups.
+    const totalSize = items.reduce((acc, it) => acc + it.value.length, 0);
+    const allUpsert = items.every(it => it.upsert === true);
+    const guardResult = await guardValidate(
+      registry,
+      'bulk-store',
+      {
+        count: items.length,
+        size: totalSize,
+        namespaces: Array.from(new Set(items.map(it => it.namespace ?? 'default'))),
+      },
+      { bypassDedupe: allUpsert },
+    );
+    if (!guardResult.allowed) {
+      const reason = `MutationGuard rejected bulk-store: ${guardResult.reason}`;
+      return items.map(() => ({ success: false, id: generateId('entry'), error: reason }));
+    }
+
+    for (const opts of items) {
+      const { key, value, namespace = 'default', tags = [], ttl } = opts;
+      const id = generateId('entry');
+      const now = Date.now();
+
+      const resolved = await resolveBridgeEmbedding(value, opts.precomputedEmbedding, opts.generateEmbeddingFlag);
+      if (!resolved.ok) {
+        results.push({ success: false, id, error: `embedding generation failed: ${resolved.reason}` });
+        continue;
+      }
+      const { json: embeddingJson, dimensions, model } = resolved;
+
+      const insertSql = opts.upsert
+        ? `INSERT OR REPLACE INTO memory_entries (
+            id, key, namespace, content, type,
+            embedding, embedding_dimensions, embedding_model,
+            tags, metadata, created_at, updated_at, expires_at, status
+          ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, ?, ?, ?, 'active')`
+        : `INSERT INTO memory_entries (
+            id, key, namespace, content, type,
+            embedding, embedding_dimensions, embedding_model,
+            tags, metadata, created_at, updated_at, expires_at, status
+          ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, ?, ?, ?, 'active')`;
+
+      try {
+        const stmt = ctx.db.prepare(insertSql);
+        stmt.run([
+          id, key, namespace, value,
+          embeddingJson, dimensions || null, model,
+          tags.length > 0 ? JSON.stringify(tags) : null,
+          '{}',
+          now, now,
+          ttl ? now + (ttl * 1000) : null,
+        ]);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        results.push({ success: false, id, error: `insert failed: ${reason}` });
+        continue;
+      }
+      anyWritten = true;
+      if (embeddingJson) anyEmbedded = true;
+
+      const cacheKey = makeEntryCacheKey(namespace, key);
+      bookkeeping.push(cacheSet(registry, cacheKey, { id, key, namespace, content: value, embedding: embeddingJson }));
+      bookkeeping.push(logAttestation(registry, 'store', id, { key, namespace, hasEmbedding: !!embeddingJson }));
+
+      results.push({
+        success: true,
+        id,
+        embedding: embeddingJson ? { dimensions, model } : undefined,
+      });
+    }
+
+    // Cache writes and attestation logs are independent post-hoc bookkeeping —
+    // overlap them while the final persist runs. SQL inserts above stayed
+    // sequential because sql.js is single-threaded.
+    await Promise.all(bookkeeping);
+    if (anyWritten) persistBridgeDb(ctx.db, dbPath);
+    if (anyEmbedded) refreshVectorStatsCache();
+
+    return results;
   });
 }
 

@@ -24,6 +24,7 @@ import {
   CANONICAL_EMBEDDING_DIMENSIONS,
   CANONICAL_EMBEDDING_MODEL,
 } from '../embeddings/migration/types.js';
+import { toFloat32 } from './controllers/_shared.js';
 
 /**
  * Canonical model label written into `memory_entries.embedding_model`.
@@ -56,11 +57,16 @@ export const EMBEDDING_MODEL_LEGACY_DEFAULT = 'local';
  * Minimal contract the bridge needs from an embedder. Tests inject a stub
  * via `setBridgeEmbedderForTest`. `embed()` MUST throw on failure — silent
  * `null` returns are what story #649 is fixing.
+ *
+ * `embedBatch()` is optional so existing test stubs that only implement
+ * `embed()` keep working — callers fall back to N x embed() when absent
+ * (see `bridgeEmbedAll()` below).
  */
 export interface BridgeEmbedder {
   readonly model: string;
   readonly dimensions: number;
   embed(text: string): Promise<Float32Array>;
+  embedBatch?(texts: string[]): Promise<Float32Array[]>;
 }
 
 let cachedEmbedder: BridgeEmbedder | null = null;
@@ -90,15 +96,99 @@ class LazyFastembedBridgeEmbedder implements BridgeEmbedder {
   async embed(text: string): Promise<Float32Array> {
     const service = await this.getService();
     const result = await service.embed(text);
-    const raw = (result as { embedding: Float32Array | number[] }).embedding;
-    const vector = raw instanceof Float32Array ? raw : new Float32Array(raw);
+    return this.assertDim(toFloat32((result as { embedding: Float32Array | number[] }).embedding));
+  }
+
+  async embedBatch(texts: string[]): Promise<Float32Array[]> {
+    if (texts.length === 0) return [];
+    const service = await this.getService();
+    const result = await service.embedBatch(texts);
+    const raws = (result as { embeddings: Array<Float32Array | number[]> }).embeddings;
+    return raws.map((raw, idx) => this.assertDim(toFloat32(raw), idx));
+  }
+
+  private assertDim(vector: Float32Array, idx?: number): Float32Array {
     if (vector.length !== this.dimensions) {
+      const where = idx === undefined ? '' : ` at index ${idx}`;
       throw new Error(
-        `bridge embedder produced ${vector.length}-dim vector, expected ${this.dimensions}`,
+        `bridge embedder produced ${vector.length}-dim vector${where}, expected ${this.dimensions}`,
       );
     }
     return vector;
   }
+}
+
+/**
+ * Resolve the row's embedding fields from either a precomputed vector or a
+ * live `embedder.embed()` call. Returns `{ ok: false }` on embedder failure
+ * so callers can translate the error into their own result shape — bridge
+ * stores return from the function, bulk stores push to a results array.
+ */
+export type ResolvedEmbedding =
+  | { ok: true; json: string; dimensions: number; model: string }
+  | { ok: true; json: null; dimensions: 0; model: string }
+  | { ok: false; reason: string };
+
+export async function resolveBridgeEmbedding(
+  value: string,
+  precomputed: Float32Array | number[] | undefined,
+  generateEmbeddingFlag: boolean | undefined,
+): Promise<ResolvedEmbedding> {
+  const wantsEmbedding = generateEmbeddingFlag !== false && value.length > 0;
+  if (!wantsEmbedding) {
+    return { ok: true, json: null, dimensions: 0, model: EMBEDDING_MODEL_OPT_OUT };
+  }
+  const embedder = getBridgeEmbedder();
+  if (precomputed) {
+    const vector = toFloat32(precomputed);
+    return { ok: true, json: JSON.stringify(Array.from(vector)), dimensions: vector.length, model: embedder.model };
+  }
+  try {
+    const vector = await embedder.embed(value);
+    return { ok: true, json: JSON.stringify(Array.from(vector)), dimensions: vector.length, model: embedder.model };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Default chunk size for {@link bridgeEmbedAll}. fastembed processes a batch
+ * serially under the hood, so the only thing a giant single call buys is
+ * higher peak memory and worse error granularity. 256 keeps peak memory at
+ * ~256 x 384 floats x 4B = 384 KiB while staying well above per-call overhead.
+ */
+export const BRIDGE_EMBED_CHUNK_SIZE = 256;
+
+/**
+ * Embed a batch of texts using the active bridge embedder. Internally chunks
+ * to {@link BRIDGE_EMBED_CHUNK_SIZE} so callers don't have to think about
+ * batch limits — pretrain (~50 texts) does one chunk; a hypothetical 10k
+ * caller does 40 chunks with bounded peak memory.
+ *
+ * Uses `embedBatch()` when the embedder implements it (one model call per
+ * chunk), otherwise falls back to N sequential `embed()` calls so test stubs
+ * without batch support still work.
+ */
+export async function bridgeEmbedAll(
+  texts: string[],
+  chunkSize: number = BRIDGE_EMBED_CHUNK_SIZE,
+): Promise<Float32Array[]> {
+  if (texts.length === 0) return [];
+  const embedder = getBridgeEmbedder();
+  const size = Math.max(1, chunkSize);
+  const out: Float32Array[] = new Array(texts.length);
+
+  if (typeof embedder.embedBatch === 'function') {
+    for (let start = 0; start < texts.length; start += size) {
+      const chunk = texts.slice(start, start + size);
+      const vecs = await embedder.embedBatch(chunk);
+      for (let i = 0; i < vecs.length; i++) out[start + i] = vecs[i];
+    }
+    return out;
+  }
+
+  for (let i = 0; i < texts.length; i++) out[i] = await embedder.embed(texts[i]);
+  return out;
 }
 
 /**
