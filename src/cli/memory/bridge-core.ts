@@ -241,7 +241,7 @@ const MEMORY_ENTRIES_DDL = `CREATE TABLE IF NOT EXISTS memory_entries (
   expires_at INTEGER,
   last_accessed_at INTEGER,
   access_count INTEGER DEFAULT 0,
-  status TEXT DEFAULT 'active' CHECK(status IN ('active', 'archived', 'deleted')),
+  status TEXT DEFAULT 'active' CHECK(status IN ('active', 'archived')),
   UNIQUE(namespace, key)
 )`;
 

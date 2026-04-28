@@ -382,7 +382,6 @@ export class HybridMemoryRepository implements IMemoryRepository {
     let totalSize = 0;
     let activeCount = 0;
     let archivedCount = 0;
-    let deletedCount = 0;
 
     for (const entry of entries) {
       // Count by namespace
@@ -403,9 +402,6 @@ export class HybridMemoryRepository implements IMemoryRepository {
         case 'archived':
           archivedCount++;
           break;
-        case 'deleted':
-          deletedCount++;
-          break;
       }
     }
 
@@ -418,7 +414,6 @@ export class HybridMemoryRepository implements IMemoryRepository {
       totalEntries: entries.length,
       activeEntries: activeCount,
       archivedEntries: archivedCount,
-      deletedEntries: deletedCount,
       totalSize,
       entriesByNamespace,
       entriesByType,

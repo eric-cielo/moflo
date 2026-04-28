@@ -59,7 +59,6 @@ export interface MemoryStatistics {
   totalEntries: number;
   activeEntries: number;
   archivedEntries: number;
-  deletedEntries: number;
   totalSize: number;
   entriesByNamespace: Record<string, number>;
   entriesByType: Record<MemoryType, number>;

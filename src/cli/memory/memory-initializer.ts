@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS memory_entries (
   access_count INTEGER DEFAULT 0,
 
   -- Status
-  status TEXT DEFAULT 'active' CHECK(status IN ('active', 'archived', 'deleted')),
+  status TEXT DEFAULT 'active' CHECK(status IN ('active', 'archived')),
 
   UNIQUE(namespace, key)
 );
@@ -2555,14 +2555,13 @@ export async function deleteEntry(options: {
       };
     }
 
-    // Delete the entry (soft delete by setting status to 'deleted')
-    db.run(`
-      UPDATE memory_entries
-      SET status = 'deleted', updated_at = strftime('%s', 'now') * 1000
-      WHERE key = '${key.replace(/'/g, "''")}'
-        AND namespace = '${namespace.replace(/'/g, "''")}'
-        AND status = 'active'
-    `);
+    // Hard-delete the entry. Soft-delete was retired in story #728: tombstones
+    // were write-only (no code ever restored from status='deleted') and bloated
+    // the DB indefinitely.
+    db.run(
+      `DELETE FROM memory_entries WHERE key = ? AND namespace = ? AND status = 'active'`,
+      [key, namespace],
+    );
 
     // Get remaining count
     const countResult = db.exec(`SELECT COUNT(*) FROM memory_entries WHERE status = 'active'`);
