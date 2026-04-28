@@ -21,7 +21,7 @@ import type {
   EwcRecord,
   TrajectoryRecord,
 } from './rvf-learning-store.js';
-import { createEmbeddingService } from '../embeddings/index.js';
+// `createEmbeddingService` loaded lazily in initEmbeddings() — see hooks-tools.ts.
 
 // ===== Types =====
 
@@ -446,6 +446,7 @@ export class PersistentSonaCoordinator {
       }
 
       try {
+        const { createEmbeddingService } = await import('../embeddings/embedding-service.js');
         this.embeddingService = createEmbeddingService({
           provider: 'fastembed',
           dimensions: 384,

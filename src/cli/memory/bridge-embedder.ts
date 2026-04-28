@@ -18,7 +18,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { createEmbeddingService } from '../embeddings/index.js';
+// `createEmbeddingService` loaded lazily in getService() — see hooks-tools.ts.
 import type { IEmbeddingService } from '../embeddings/types.js';
 import {
   CANONICAL_EMBEDDING_DIMENSIONS,
@@ -70,20 +70,26 @@ class LazyFastembedBridgeEmbedder implements BridgeEmbedder {
   readonly model = BRIDGE_EMBEDDING_MODEL;
   readonly dimensions = BRIDGE_EMBEDDING_DIMENSIONS;
 
-  private service: IEmbeddingService | null = null;
+  // Cache the init promise so concurrent embed() callers all await the same
+  // createEmbeddingService rather than racing duplicate instances.
+  private servicePromise: Promise<IEmbeddingService> | null = null;
 
-  private getService(): IEmbeddingService {
-    if (!this.service) {
-      this.service = createEmbeddingService({
-        provider: 'fastembed',
-        dimensions: BRIDGE_EMBEDDING_DIMENSIONS,
-      });
+  private getService(): Promise<IEmbeddingService> {
+    if (!this.servicePromise) {
+      this.servicePromise = (async () => {
+        const { createEmbeddingService } = await import('../embeddings/embedding-service.js');
+        return createEmbeddingService({
+          provider: 'fastembed',
+          dimensions: BRIDGE_EMBEDDING_DIMENSIONS,
+        });
+      })();
     }
-    return this.service;
+    return this.servicePromise;
   }
 
   async embed(text: string): Promise<Float32Array> {
-    const result = await this.getService().embed(text);
+    const service = await this.getService();
+    const result = await service.embed(text);
     const raw = (result as { embedding: Float32Array | number[] }).embedding;
     const vector = raw instanceof Float32Array ? raw : new Float32Array(raw);
     if (vector.length !== this.dimensions) {

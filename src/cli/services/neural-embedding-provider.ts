@@ -7,7 +7,7 @@
  * (see epic #527).
  */
 
-import { createEmbeddingService } from '../embeddings/index.js';
+// `createEmbeddingService` loaded lazily in getService() — see hooks-tools.ts.
 
 // Keeping the shape minimal avoids a build-time coupling on the
 // guidance retriever type definition from this loader.
@@ -22,28 +22,33 @@ interface EmbeddingServiceLike {
 }
 
 class FastembedBackedProvider implements NeuralEmbeddingProvider {
-  private service: EmbeddingServiceLike | null = null;
+  // Cache the init promise so concurrent embed/batchEmbed callers all await
+  // the same createEmbeddingService rather than racing duplicates.
+  private servicePromise: Promise<EmbeddingServiceLike> | null = null;
 
   async embed(text: string): Promise<Float32Array> {
-    const svc = this.getService();
+    const svc = await this.getService();
     const result = await svc.embed(text);
     return toFloat32(result.embedding);
   }
 
   async batchEmbed(texts: string[]): Promise<Float32Array[]> {
-    const svc = this.getService();
+    const svc = await this.getService();
     const result = await svc.embedBatch(texts);
     return result.embeddings.map(toFloat32);
   }
 
-  private getService(): EmbeddingServiceLike {
-    if (!this.service) {
-      this.service = createEmbeddingService({
-        provider: 'fastembed',
-        dimensions: 384,
-      }) as EmbeddingServiceLike;
+  private getService(): Promise<EmbeddingServiceLike> {
+    if (!this.servicePromise) {
+      this.servicePromise = (async () => {
+        const { createEmbeddingService } = await import('../embeddings/embedding-service.js');
+        return createEmbeddingService({
+          provider: 'fastembed',
+          dimensions: 384,
+        }) as EmbeddingServiceLike;
+      })();
     }
-    return this.service;
+    return this.servicePromise;
   }
 }
 
