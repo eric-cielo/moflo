@@ -513,7 +513,10 @@ describe('Decision Transformer', () => {
     expect(result.accuracy).toBeLessThanOrEqual(1);
   });
 
-  it('should complete training within 100ms (smoke check)', () => {
+  it('should complete training within 500ms (smoke check)', () => {
+    // 500ms — same generous smoke bound as the DQN test above. Catches
+    // catastrophic regressions (10s+ training) without flaking under
+    // Windows maxForks=2 fork contention. See commit e18e56b15.
     for (let i = 0; i < 3; i++) {
       dt.addTrajectory(createTestTrajectory(5));
     }
@@ -522,7 +525,7 @@ describe('Decision Transformer', () => {
     dt.train();
     const elapsed = performance.now() - startTime;
 
-    expect(elapsed).toBeLessThan(100);
+    expect(elapsed).toBeLessThan(500);
   });
 
   it('should get action conditioned on target return', () => {
