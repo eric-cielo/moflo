@@ -1,6 +1,6 @@
 {
   "name": "moflo",
-  "version": "4.9.0-rc.1",
+  "version": "4.9.0-rc.2",
   "description": "MoFlo — AI agent orchestration for Claude Code. Forked from ruflo/claude-flow with patches applied to source, plus feature-level orchestration.",
   "main": "dist/src/cli/index.js",
   "type": "module",
