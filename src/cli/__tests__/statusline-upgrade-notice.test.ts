@@ -63,7 +63,9 @@ describe('statusline upgrade-notice (#636)', () => {
     cleanTempRoot(root);
   });
 
-  it('exposes an active notice within TTL via JSON output', () => {
+  it('exposes a legacy "complete" notice within TTL via JSON output', () => {
+    // No `status` field — exercises the legacy fall-through path so a stale
+    // notice from a pre-#738 launcher still renders sensibly until it expires.
     const now = Date.now();
     writeNotice(root, {
       kind: 'upgrade',
@@ -78,11 +80,60 @@ describe('statusline upgrade-notice (#636)', () => {
     expect(status).toBe(0);
     const json = JSON.parse(stdout);
     expect(json.upgradeNotice).toEqual({
+      status: 'complete',
       kind: 'upgrade',
       from: '4.8.79',
       to: '4.8.80',
       changes: 3,
     });
+  });
+
+  it('exposes an in-progress notice with an updating… indicator', () => {
+    const now = Date.now();
+    writeNotice(root, {
+      status: 'in-progress',
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      at: new Date(now - 5_000).toISOString(),
+      expiresAt: new Date(now + 5 * 60_000).toISOString(),
+      changes: 0,
+    });
+
+    const { stdout, status } = runStatusline(root);
+    expect(status).toBe(0);
+    const json = JSON.parse(stdout);
+    expect(json.upgradeNotice).toEqual({
+      status: 'in-progress',
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      changes: 0,
+    });
+
+    const compact = runStatusline(root, ['--compact']);
+    // eslint-disable-next-line no-control-regex
+    const plain = compact.stdout.replace(/\x1B\[[0-9;]*m/g, '');
+    expect(plain).toContain('4.8.79 → 4.8.80');
+    expect(plain).toContain('updating');
+    expect(plain).not.toContain('changes');
+  });
+
+  it('omits an in-progress notice past its TTL (zombie launcher safety)', () => {
+    const now = Date.now();
+    writeNotice(root, {
+      status: 'in-progress',
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      at: new Date(now - 10 * 60_000).toISOString(),
+      expiresAt: new Date(now - 5 * 60_000).toISOString(),
+      changes: 0,
+    });
+
+    const { stdout } = runStatusline(root);
+    const json = JSON.parse(stdout);
+    expect(json.upgradeNotice).toBeNull();
   });
 
   it('omits an expired notice (past expiresAt)', () => {
