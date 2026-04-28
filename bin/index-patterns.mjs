@@ -31,6 +31,7 @@ import { createHash } from 'crypto';
 import { spawn } from 'child_process';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, MOFLO_DIR } from './lib/moflo-paths.mjs';
+import { applyIncrementalChunks } from './lib/incremental-write.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -113,24 +114,6 @@ async function getDb() {
 function saveDb(db) {
   const data = db.export();
   writeFileSync(DB_PATH, Buffer.from(data));
-}
-
-function generateId() {
-  return `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
-
-function storeEntry(db, key, content, tags = []) {
-  const now = Date.now();
-  const id = generateId();
-  db.run(`
-    INSERT OR REPLACE INTO memory_entries
-    (id, key, namespace, content, metadata, tags, created_at, updated_at, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
-  `, [id, key, NAMESPACE, content, '{}', JSON.stringify(tags), now, now]);
-}
-
-function deleteNamespace(db) {
-  db.run(`DELETE FROM memory_entries WHERE namespace = ?`, [NAMESPACE]);
 }
 
 function countNamespace(db) {
@@ -338,16 +321,22 @@ async function main() {
 
   log(`Extracted ${allPatterns.length} pattern chunks from ${filesWithPatterns} files`);
 
-  // Write to database
+  // Write to database — content-aware diff so unchanged rows keep their
+  // embeddings (#745). Wipe-and-rebuild used to null every row's embedding
+  // and force build-embeddings to re-vectorise the whole namespace each
+  // session.
   const db = await getDb();
-  deleteNamespace(db);
+  const counts = applyIncrementalChunks(db, NAMESPACE, allPatterns);
 
-  for (const p of allPatterns) {
-    storeEntry(db, p.key, p.content, p.tags);
+  if (counts.inserted + counts.updated + counts.removed > 0) {
+    saveDb(db);
   }
-
-  saveDb(db);
   db.close();
+
+  log(
+    `Diff: ${counts.inserted} new, ${counts.updated} updated, ` +
+    `${counts.unchanged} unchanged, ${counts.removed} removed`,
+  );
 
   // Save hash
   writeFileSync(HASH_CACHE_PATH, currentHash, 'utf-8');

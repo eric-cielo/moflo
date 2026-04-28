@@ -9,9 +9,10 @@
 
 import { spawn } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
-import { resolve, dirname } from 'path';
+import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { migrateClaudeFlowToMoflo, migrateMemoryDbToMoflo } from './lib/moflo-paths.mjs';
+import { migrateClaudeFlowToMoflo, migrateMemoryDbToMoflo, mofloDir } from './lib/moflo-paths.mjs';
+import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -56,6 +57,55 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // can persist `.moflo/upgrade-notice.json` for the statusline (#636).
 let upgradeNoticeContext = null;
 
+// Deferred so we commit it AFTER every upgrade-work block (see 3g). The stamp
+// is the "launcher fully completed" signal — writing it mid-flight lets an
+// aborted launcher strand consumers on a half-applied upgrade (#730).
+let pendingVersionStampWrite = null;
+
+// 5-min TTL is a safety net for zombie launchers (statusline ignores past-TTL
+// files). The launcher deletes the notice when upgrade work finishes — no
+// "complete" state lingers, see #738.
+const UPGRADE_NOTICE_INPROGRESS_TTL_MS = 5 * 60 * 1000;
+const UPGRADE_NOTICE_PATH = () => join(mofloDir(projectRoot), 'upgrade-notice.json');
+
+function writeInProgressUpgradeNotice() {
+  if (!upgradeNoticeContext) return;
+  try {
+    mkdirSync(mofloDir(projectRoot), { recursive: true });
+    const now = Date.now();
+    const notice = {
+      status: 'in-progress',
+      kind: upgradeNoticeContext.kind,
+      from: upgradeNoticeContext.from,
+      to: upgradeNoticeContext.to,
+      at: new Date(now).toISOString(),
+      expiresAt: new Date(now + UPGRADE_NOTICE_INPROGRESS_TTL_MS).toISOString(),
+      changes: 0,
+    };
+    writeFileSync(UPGRADE_NOTICE_PATH(), JSON.stringify(notice, null, 2));
+  } catch { /* non-fatal — statusline just won't show the segment */ }
+}
+
+function clearUpgradeNotice() {
+  try {
+    unlinkSync(UPGRADE_NOTICE_PATH());
+  } catch { /* non-fatal — already gone or never existed */ }
+}
+
+// ── 0-pre. Drop any stale upgrade notice (#738, #743) ───────────────────────
+// `upgrade-notice.json` is a transient handshake between launcher and
+// statusline — it should never survive past the launcher run that wrote it.
+// Pre-#738 launchers wrote a 1-hour-TTL "complete" notice after upgrade work
+// finished; with the #738 contract that file can only be a leftover, but the
+// statusline still rendered it for the rest of the hour. Unconditionally
+// removing it here makes the contract self-healing — any future zombie
+// notice (legacy file, aborted launcher, future writer mistake) gets dropped
+// before the statusline can see it. The in-progress notice for THIS session,
+// if any, is written later in section 3 and cleared in section 3f.
+try {
+  unlinkSync(join(mofloDir(projectRoot), 'upgrade-notice.json'));
+} catch { /* non-fatal — file usually doesn't exist */ }
+
 // ── 0. LEGACY state migration (#699) ─────────────────────────────────────────
 // Consumers upgrading from older moflo builds (inherited from upstream Ruflo)
 // get a one-time auto-migration of LEGACY `.claude-flow/` → `.moflo/` so claim
@@ -89,6 +139,38 @@ try {
   }
 } catch {
   // Non-fatal — failed migration leaves both DBs in place; next session retries.
+}
+
+// ── 0c. Memory DB index repair (#743) ───────────────────────────────────────
+// The .moflo/moflo.db SQLite file accumulates index corruption ("row N missing
+// from sqlite_autoindex_memory_entries_1") when sql.js's whole-file flush
+// races with concurrent writes. Symptom is silent: indexers fail mid-write,
+// the ephemeral-namespace purge (#729) silently no-ops, vector counts inflate.
+//
+// Probe + REINDEX in place. Must run BEFORE any sql.js consumer (the
+// embeddings migration in 3e, the soft-delete + ephemeral purges in 3e-728/
+// 3e-729, and the long-lived MCP server / daemon spawned in section 4) — all
+// of those swallow corruption errors and silently drop work on the floor.
+//
+// Awaited because every downstream sql.js touch this session depends on a
+// healthy index. Cost on the happy path is one PRAGMA check (~10ms).
+try {
+  const repair = await repairMemoryDbIfCorrupt(projectRoot);
+  if (repair?.repaired) {
+    emitMutation(
+      'repaired memory db index',
+      `${plural(repair.errors, 'index error')} fixed via REINDEX`,
+    );
+  } else if (repair?.persistent) {
+    // Surface to stderr — Claude additionalContext + the user both see this.
+    // Manual `flo memory rebuild-index` is the next step.
+    process.stderr.write(
+      `moflo: memory db has ${plural(repair.errors, 'index error')} REINDEX could not fix — run 'flo memory rebuild-index'\n`,
+    );
+  }
+} catch {
+  // Non-fatal — repair is best-effort; downstream code paths report their
+  // own errors if the DB is still broken.
 }
 
 // ── 1. Helper: fire-and-forget a background process ─────────────────────────
@@ -213,6 +295,11 @@ try {
         };
         emitMutation('repaired stale install', 'manifest drift detected');
       }
+      // Surface a transient "(updating…)" badge in the statusline before the
+      // long-running upgrade work (manifest sync, daemon recycle, embeddings
+      // migration). See #738 — the launcher clears this file after work
+      // completes, so the badge naturally disappears once the user is unblocked.
+      writeInProgressUpgradeNotice();
       const binDir = resolve(projectRoot, 'node_modules/moflo/bin');
 
       // ── Manifest-based auto-update ──────────────────────────────────────
@@ -358,12 +445,13 @@ try {
         }
       } catch { /* non-fatal — daemon recycle is best-effort */ }
 
-      // Write updated manifest + version stamp
+      // Manifest reflects synced files immediately; version stamp is deferred
+      // to 3g so an aborted launcher re-runs upgrade detection (#730).
       try {
         const cfDir = resolve(projectRoot, '.moflo');
         if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
         writeFileSync(manifestPath, JSON.stringify(currentManifest, null, 2));
-        writeFileSync(versionStampPath, installedVersion);
+        pendingVersionStampWrite = { path: versionStampPath, version: installedVersion };
       } catch {}
     }
   }
@@ -665,37 +753,83 @@ try {
   } catch { /* writing the failure itself must not throw */ }
 }
 
-// ── 3f. Persist upgrade notice for statusline (#636) ────────────────────────
-// When this session bumped the version stamp or repaired manifest drift, write
-// a transient `.moflo/upgrade-notice.json` so the statusline can show a
-// leading user-visible segment (`📦 vX → vY (N changes)`). The file expires
-// via TTL — statusline silently ignores it after `expiresAt`. The next
-// upgrade overwrites the file, so no manual cleanup is needed.
-//
-// Stdout emits go to Claude's `additionalContext` (collapsed by default in
-// the system reminder); this notice surfaces the same information directly
-// in the user's UI. Together they close the "Claude appears hung and CPU
-// spikes" gap from #629 — the user always knows when an upgrade procedure
-// just ran.
-const UPGRADE_NOTICE_TTL_MS = 60 * 60 * 1000; // 1 hour
-if (upgradeNoticeContext && mutationCount > 0) {
+// ── 3e-728. Hard-delete leftover soft-delete tombstones (#728) ─────────────
+// Soft-delete was retired in story #728 — `status='deleted'` rows are now
+// unrecoverable bloat from prior moflo versions. Purge any stragglers and
+// VACUUM. Idempotent: returns `purged: 0` once the DB is clean. Runs BEFORE
+// background MCP/daemon spawn (per #727's clobber-hazard analysis) so the
+// foreground sql.js write isn't overwritten by a concurrent flush.
+try {
+  const purgePaths = [
+    resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/soft-delete-purge.js'),
+    resolve(projectRoot, 'dist/src/cli/services/soft-delete-purge.js'),
+  ];
+  const purgePath = purgePaths.find((p) => existsSync(p));
+  if (purgePath) {
+    const { purgeSoftDeletedEntries } = await import(`file://${purgePath.replace(/\\/g, '/')}`);
+    const result = await purgeSoftDeletedEntries();
+    if (result?.purged > 0) {
+      emitMutation(
+        'reclaimed soft-deleted memory entries',
+        `${plural(result.purged, 'tombstone')} purged + VACUUM`,
+      );
+    }
+  }
+} catch (err) {
+  // Non-fatal — leftover tombstones just sit until the next session retries.
   try {
-    const cfDir = resolve(projectRoot, '.moflo');
-    if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
-    const now = Date.now();
-    const notice = {
-      kind: upgradeNoticeContext.kind,
-      from: upgradeNoticeContext.from,
-      to: upgradeNoticeContext.to,
-      at: new Date(now).toISOString(),
-      expiresAt: new Date(now + UPGRADE_NOTICE_TTL_MS).toISOString(),
-      changes: mutationCount,
-    };
-    writeFileSync(
-      resolve(cfDir, 'upgrade-notice.json'),
-      JSON.stringify(notice, null, 2),
-    );
-  } catch { /* non-fatal — statusline just won't show the segment */ }
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`soft-delete purge skipped: ${msg}\n`);
+  } catch { /* writing the failure itself must not throw */ }
+}
+
+// ── 3e-729. Purge ephemeral-namespace rows (#729) ───────────────────────────
+// Four namespaces (hive-mind, tasklist, epic-state, test-bridge-fix) store
+// internal moflo run-tracking — never user knowledge — and were polluting the
+// embeddings index. Going forward, writes to those namespaces skip embedding
+// generation (see EPHEMERAL_NAMESPACES in memory/bridge-embedder.ts); existing
+// rows from prior versions get hard-deleted here. Idempotent — returns
+// `purged: 0` once the DB is clean. Runs BEFORE background MCP/daemon spawn
+// so the foreground sql.js write isn't overwritten by a concurrent flush.
+try {
+  const purgePaths = [
+    resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/ephemeral-namespace-purge.js'),
+    resolve(projectRoot, 'dist/src/cli/services/ephemeral-namespace-purge.js'),
+  ];
+  const purgePath = purgePaths.find((p) => existsSync(p));
+  if (purgePath) {
+    const { purgeEphemeralNamespaces } = await import(`file://${purgePath.replace(/\\/g, '/')}`);
+    const result = await purgeEphemeralNamespaces();
+    if (result?.purged > 0) {
+      emitMutation(
+        'pruned ephemeral namespace rows',
+        `${plural(result.purged, 'row')} from internal run-tracking`,
+      );
+    }
+  }
+} catch (err) {
+  // Non-fatal — leftover rows just sit until the next session retries.
+  try {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`ephemeral-namespace purge skipped: ${msg}\n`);
+  } catch { /* writing the failure itself must not throw */ }
+}
+
+// ── 3f. Clear the in-progress upgrade notice (#636, #738) ───────────────────
+// Upgrade work is finished; drop the notice so the statusline badge disappears
+// immediately. Change summary is already in stdout emits (Claude's
+// `additionalContext`); a lingering "you upgraded a while ago" badge is noise.
+if (upgradeNoticeContext) {
+  clearUpgradeNotice();
+}
+
+// ── 3g. Commit deferred version stamp (#730) ────────────────────────────────
+// Written LAST so an abort above leaves the stamp unchanged and the next
+// launcher re-detects the upgrade.
+if (pendingVersionStampWrite) {
+  try {
+    writeFileSync(pendingVersionStampWrite.path, pendingVersionStampWrite.version);
+  } catch { /* non-fatal — next launcher re-detects + retries the upgrade */ }
 }
 
 // Bypasses emitMutation — framing, not a mutation, so it must not inflate the count.

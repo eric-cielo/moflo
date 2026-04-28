@@ -29,6 +29,7 @@ import { createHash } from 'crypto';
 import { execSync, execFileSync, spawn } from 'child_process';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, MOFLO_DIR } from './lib/moflo-paths.mjs';
+import { applyIncrementalChunks } from './lib/incremental-write.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -125,24 +126,6 @@ async function getDb() {
 function saveDb(db) {
   const data = db.export();
   writeFileSync(DB_PATH, Buffer.from(data));
-}
-
-function generateId() {
-  return `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
-
-function storeEntry(db, key, content, metadata = {}, tags = []) {
-  const now = Date.now();
-  const id = generateId();
-  db.run(`
-    INSERT OR REPLACE INTO memory_entries
-    (id, key, namespace, content, metadata, tags, created_at, updated_at, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
-  `, [id, key, NAMESPACE, content, JSON.stringify(metadata), JSON.stringify(tags), now, now]);
-}
-
-function deleteNamespace(db) {
-  db.run(`DELETE FROM memory_entries WHERE namespace = ?`, [NAMESPACE]);
 }
 
 function countNamespace(db) {
@@ -681,17 +664,21 @@ async function main() {
   log(`  Reverse maps:        ${mapChunks.length} (source → test files)`);
   log(`  Directory summaries: ${dirChunks.length}`);
 
-  // 5. Write to database
+  // 5. Write to database — content-aware diff so unchanged rows keep their
+  // embeddings (#745). Wipe-and-rebuild used to null every row's embedding
+  // and force build-embeddings to re-vectorise the whole namespace each
+  // session.
   log('Writing to memory database...');
   const db = await getDb();
-  deleteNamespace(db);
-
-  for (const chunk of allChunks) {
-    storeEntry(db, chunk.key, chunk.content, chunk.metadata, chunk.tags);
+  const counts = applyIncrementalChunks(db, NAMESPACE, allChunks);
+  if (counts.inserted + counts.updated + counts.removed > 0) {
+    saveDb(db);
   }
-
-  saveDb(db);
   db.close();
+  log(
+    `Diff: ${counts.inserted} new, ${counts.updated} updated, ` +
+    `${counts.unchanged} unchanged, ${counts.removed} removed`,
+  );
 
   // 6. Save hash for incremental caching
   writeFileSync(HASH_CACHE_PATH, currentHash, 'utf-8');
