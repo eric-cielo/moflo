@@ -54,6 +54,28 @@ export const EMBEDDING_MODEL_OPT_OUT = 'none';
 export const EMBEDDING_MODEL_LEGACY_DEFAULT = 'local';
 
 /**
+ * Namespaces that store internal moflo run-tracking, never user knowledge.
+ * Writes here skip embedding generation entirely — both `embedding` and
+ * `embedding_model` land as NULL, distinct from the opt-out path which still
+ * tags rows with `'none'`. Existing rows in these namespaces are hard-deleted
+ * on upgrade by `services/ephemeral-namespace-purge.ts`.
+ *
+ * Members:
+ * - `hive-mind`     — MCP broadcast traffic (msg:*, agent_join, consensus_propose)
+ * - `tasklist`      — Spell run records (sp-*) written by spells/core/runner.ts + daemon-dashboard.ts
+ * - `epic-state`    — Epic progress (epic-N, story-M) written by commands/epic.ts
+ * - `test-bridge-fix` — Single 2026-04-23 row left over from a one-off test
+ *
+ * See story #729 for the source-trace and rationale.
+ */
+export const EPHEMERAL_NAMESPACES: ReadonlySet<string> = new Set([
+  'hive-mind',
+  'tasklist',
+  'epic-state',
+  'test-bridge-fix',
+]);
+
+/**
  * Minimal contract the bridge needs from an embedder. Tests inject a stub
  * via `setBridgeEmbedderForTest`. `embed()` MUST throw on failure — silent
  * `null` returns are what story #649 is fixing.
@@ -126,14 +148,35 @@ class LazyFastembedBridgeEmbedder implements BridgeEmbedder {
  */
 export type ResolvedEmbedding =
   | { ok: true; json: string; dimensions: number; model: string }
-  | { ok: true; json: null; dimensions: 0; model: string }
+  | { ok: true; json: null; dimensions: 0; model: string | null }
   | { ok: false; reason: string };
+
+/**
+ * Build the `embedding` field of a store-entry response from a resolved
+ * embedding. Returns `undefined` for skip paths (opt-out and ephemeral) so
+ * the caller can pass it straight through.
+ */
+export function embeddingResponseFrom(
+  resolved: Extract<ResolvedEmbedding, { ok: true }>,
+): { dimensions: number; model: string } | undefined {
+  // json !== null narrows to the embedded variant where model is `string`.
+  return resolved.json !== null
+    ? { dimensions: resolved.dimensions, model: resolved.model }
+    : undefined;
+}
 
 export async function resolveBridgeEmbedding(
   value: string,
   precomputed: Float32Array | number[] | undefined,
   generateEmbeddingFlag: boolean | undefined,
+  namespace?: string,
 ): Promise<ResolvedEmbedding> {
+  // Ephemeral namespaces (run-tracking, never user knowledge) skip embeddings
+  // unconditionally — even precomputed vectors are dropped. Result row has
+  // `embedding IS NULL` and `embedding_model IS NULL`. See #729.
+  if (namespace && EPHEMERAL_NAMESPACES.has(namespace)) {
+    return { ok: true, json: null, dimensions: 0, model: null };
+  }
   const wantsEmbedding = generateEmbeddingFlag !== false && value.length > 0;
   if (!wantsEmbedding) {
     return { ok: true, json: null, dimensions: 0, model: EMBEDDING_MODEL_OPT_OUT };

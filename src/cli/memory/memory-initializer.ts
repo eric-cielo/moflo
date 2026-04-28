@@ -15,7 +15,7 @@ import { mofloImport } from '../services/moflo-require.js';
 import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 import { formatEmbeddingError } from './embedding-errors.js';
 import { HnswLite } from './hnsw-lite.js';
-import { EMBEDDING_MODEL_OPT_OUT, getBridgeEmbedder } from './bridge-embedder.js';
+import { EMBEDDING_MODEL_OPT_OUT, EPHEMERAL_NAMESPACES, getBridgeEmbedder } from './bridge-embedder.js';
 import { toFloat32 } from './controllers/_shared.js';
 import { writeVectorStatsJson } from './bridge-core.js';
 import {
@@ -1959,11 +1959,15 @@ export async function storeEntry(options: {
     // success:false rather than inserting a null-embedded row. Opt-out rows
     // (generateEmbeddingFlag=false) are tagged EMBEDDING_MODEL_OPT_OUT — see
     // the constant's docstring in bridge-embedder.ts for the rationale.
+    // Ephemeral namespaces (#729) skip embedding entirely AND tag model NULL.
     let embeddingJson: string | null = null;
     let embeddingDimensions: number | null = null;
-    let embeddingModel: string = EMBEDDING_MODEL_OPT_OUT;
+    let embeddingModel: string | null = EMBEDDING_MODEL_OPT_OUT;
 
-    if (generateEmbeddingFlag && value.length > 0) {
+    const isEphemeralNs = EPHEMERAL_NAMESPACES.has(namespace);
+    if (isEphemeralNs) {
+      embeddingModel = null;
+    } else if (generateEmbeddingFlag && value.length > 0) {
       if (options.precomputedEmbedding) {
         // Tag with the bridge embedder's canonical model so precomputed rows
         // are indistinguishable from live single-embed rows downstream.

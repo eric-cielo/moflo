@@ -9,7 +9,7 @@
  */
 
 import { cosineSim, execRows, generateId, persistBridgeDb, refreshVectorStatsCache, withDb } from './bridge-core.js';
-import { resolveBridgeEmbedding } from './bridge-embedder.js';
+import { embeddingResponseFrom, resolveBridgeEmbedding } from './bridge-embedder.js';
 
 function makeEntryCacheKey(namespace: string, key: string): string {
   const safeNs = String(namespace).replace(/:/g, '_');
@@ -146,13 +146,12 @@ export async function bridgeStoreEntry(options: {
       return { success: false, id, error: `MutationGuard rejected: ${guardResult.reason}` };
     }
 
-    const resolved = await resolveBridgeEmbedding(value, options.precomputedEmbedding, options.generateEmbeddingFlag);
+    const resolved = await resolveBridgeEmbedding(value, options.precomputedEmbedding, options.generateEmbeddingFlag, namespace);
     if (!resolved.ok) {
       return { success: false, id, error: `embedding generation failed: ${resolved.reason}` };
     }
-    const embeddingJson = resolved.json;
-    const dimensions = resolved.dimensions;
-    const model = resolved.model;
+    const { json: embeddingJson, dimensions, model } = resolved;
+    const embeddingResponse = embeddingResponseFrom(resolved);
 
     const insertSql = options.upsert
       ? `INSERT OR REPLACE INTO memory_entries (
@@ -188,7 +187,7 @@ export async function bridgeStoreEntry(options: {
     return {
       success: true,
       id,
-      embedding: embeddingJson ? { dimensions, model } : undefined,
+      embedding: embeddingResponse,
       guarded: true,
       cached: true,
       attested: true,
@@ -250,12 +249,13 @@ export async function bridgeStoreEntries(items: Array<{
       const id = generateId('entry');
       const now = Date.now();
 
-      const resolved = await resolveBridgeEmbedding(value, opts.precomputedEmbedding, opts.generateEmbeddingFlag);
+      const resolved = await resolveBridgeEmbedding(value, opts.precomputedEmbedding, opts.generateEmbeddingFlag, namespace);
       if (!resolved.ok) {
         results.push({ success: false, id, error: `embedding generation failed: ${resolved.reason}` });
         continue;
       }
       const { json: embeddingJson, dimensions, model } = resolved;
+      const embeddingResponse = embeddingResponseFrom(resolved);
 
       const insertSql = opts.upsert
         ? `INSERT OR REPLACE INTO memory_entries (
@@ -294,7 +294,7 @@ export async function bridgeStoreEntries(items: Array<{
       results.push({
         success: true,
         id,
-        embedding: embeddingJson ? { dimensions, model } : undefined,
+        embedding: embeddingResponse,
       });
     }
 

@@ -48,12 +48,21 @@ export function getGCSConfig(): GCSConfig | null {
   };
 }
 
+// Bound the subprocess so a slow / hung gcloud spawn doesn't stretch test
+// timeouts (or session-start probes) indefinitely. gcloud responds in ~100ms
+// when present; 5s is generous for a contended CI runner.
+const GCLOUD_PROBE_TIMEOUT_MS = 5_000;
+
 /**
  * Check if gcloud CLI is available
  */
 export function isGCloudAvailable(): boolean {
   try {
-    execSync('gcloud --version', { stdio: 'pipe', windowsHide: true });
+    execSync('gcloud --version', {
+      stdio: 'pipe',
+      windowsHide: true,
+      timeout: GCLOUD_PROBE_TIMEOUT_MS,
+    });
     return true;
   } catch {
     return false;
@@ -65,7 +74,11 @@ export function isGCloudAvailable(): boolean {
  */
 export async function isGCloudAuthenticated(): Promise<boolean> {
   try {
-    execSync('gcloud auth print-access-token', { stdio: 'pipe', windowsHide: true });
+    execSync('gcloud auth print-access-token', {
+      stdio: 'pipe',
+      windowsHide: true,
+      timeout: GCLOUD_PROBE_TIMEOUT_MS,
+    });
     return true;
   } catch {
     return false;
