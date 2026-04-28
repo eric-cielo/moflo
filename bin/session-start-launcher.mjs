@@ -12,6 +12,7 @@ import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, read
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { migrateClaudeFlowToMoflo, migrateMemoryDbToMoflo, mofloDir } from './lib/moflo-paths.mjs';
+import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -91,6 +92,20 @@ function clearUpgradeNotice() {
   } catch { /* non-fatal — already gone or never existed */ }
 }
 
+// ── 0-pre. Drop any stale upgrade notice (#738, #743) ───────────────────────
+// `upgrade-notice.json` is a transient handshake between launcher and
+// statusline — it should never survive past the launcher run that wrote it.
+// Pre-#738 launchers wrote a 1-hour-TTL "complete" notice after upgrade work
+// finished; with the #738 contract that file can only be a leftover, but the
+// statusline still rendered it for the rest of the hour. Unconditionally
+// removing it here makes the contract self-healing — any future zombie
+// notice (legacy file, aborted launcher, future writer mistake) gets dropped
+// before the statusline can see it. The in-progress notice for THIS session,
+// if any, is written later in section 3 and cleared in section 3f.
+try {
+  unlinkSync(join(mofloDir(projectRoot), 'upgrade-notice.json'));
+} catch { /* non-fatal — file usually doesn't exist */ }
+
 // ── 0. LEGACY state migration (#699) ─────────────────────────────────────────
 // Consumers upgrading from older moflo builds (inherited from upstream Ruflo)
 // get a one-time auto-migration of LEGACY `.claude-flow/` → `.moflo/` so claim
@@ -124,6 +139,38 @@ try {
   }
 } catch {
   // Non-fatal — failed migration leaves both DBs in place; next session retries.
+}
+
+// ── 0c. Memory DB index repair (#743) ───────────────────────────────────────
+// The .moflo/moflo.db SQLite file accumulates index corruption ("row N missing
+// from sqlite_autoindex_memory_entries_1") when sql.js's whole-file flush
+// races with concurrent writes. Symptom is silent: indexers fail mid-write,
+// the ephemeral-namespace purge (#729) silently no-ops, vector counts inflate.
+//
+// Probe + REINDEX in place. Must run BEFORE any sql.js consumer (the
+// embeddings migration in 3e, the soft-delete + ephemeral purges in 3e-728/
+// 3e-729, and the long-lived MCP server / daemon spawned in section 4) — all
+// of those swallow corruption errors and silently drop work on the floor.
+//
+// Awaited because every downstream sql.js touch this session depends on a
+// healthy index. Cost on the happy path is one PRAGMA check (~10ms).
+try {
+  const repair = await repairMemoryDbIfCorrupt(projectRoot);
+  if (repair?.repaired) {
+    emitMutation(
+      'repaired memory db index',
+      `${plural(repair.errors, 'index error')} fixed via REINDEX`,
+    );
+  } else if (repair?.persistent) {
+    // Surface to stderr — Claude additionalContext + the user both see this.
+    // Manual `flo memory rebuild-index` is the next step.
+    process.stderr.write(
+      `moflo: memory db has ${plural(repair.errors, 'index error')} REINDEX could not fix — run 'flo memory rebuild-index'\n`,
+    );
+  }
+} catch {
+  // Non-fatal — repair is best-effort; downstream code paths report their
+  // own errors if the DB is still broken.
 }
 
 // ── 1. Helper: fire-and-forget a background process ─────────────────────────

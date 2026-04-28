@@ -602,33 +602,29 @@ function getIntegrationStatus() {
   return { mcpServers, hasDatabase, hasApi };
 }
 
-// Upgrade notice (#636, #738) — written by the session-start launcher; null
-// when missing, expired, or malformed. The launcher writes status='in-progress'
-// while upgrade work is running, then deletes the file when done — so a
-// 'complete' status only ever shows up here for legacy notice files left by
-// pre-#738 launchers.
+// Upgrade notice (#636, #738, #743) — written by the session-start launcher
+// ONLY while upgrade work is in flight; the launcher deletes the file when
+// work completes. We render it strictly for status='in-progress' so a stale
+// notice (legacy "complete" file from pre-#738 launchers, zombie write from
+// an aborted launcher, future writer mistakes) cannot turn the statusline
+// segment into a permanent column. The launcher's section 0-pre also drops
+// any leftover file at session start as a second line of defence.
 function getUpgradeNotice() {
   const data = readJSON(path.join(CWD, '.moflo', 'upgrade-notice.json'));
   if (!data || typeof data !== 'object') return null;
+  if (data.status !== 'in-progress') return null;
   const expiresAt = data.expiresAt ? new Date(data.expiresAt).getTime() : 0;
   if (!expiresAt || Date.now() > expiresAt) return null;
   return {
-    status: data.status === 'in-progress' ? 'in-progress' : 'complete',
     kind: data.kind === 'repair' ? 'repair' : 'upgrade',
     from: typeof data.from === 'string' ? data.from : '',
     to: typeof data.to === 'string' ? data.to : '',
-    changes: typeof data.changes === 'number' && data.changes > 0 ? data.changes : 0,
   };
 }
 
 function formatUpgradeNoticeSegment(notice) {
   if (!notice) return '';
-  let suffix = '';
-  if (notice.status === 'in-progress') {
-    suffix = ` ${c.dim}(updating…)${c.reset}`;
-  } else if (notice.changes > 0) {
-    suffix = ` ${c.dim}(${notice.changes} ${notice.changes === 1 ? 'change' : 'changes'})${c.reset}`;
-  }
+  const suffix = ` ${c.dim}(updating…)${c.reset}`;
   if (notice.kind === 'repair') {
     return `${c.brightYellow}📦 install repaired${c.reset}${suffix}`;
   }

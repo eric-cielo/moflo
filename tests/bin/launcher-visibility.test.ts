@@ -358,4 +358,33 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
 
     expect(existsSync(noticePath)).toBe(false);
   });
+
+  it('clears a stale upgrade-notice.json even when no upgrade fires this session (#743)', () => {
+    // The user-observed bug: rc.2's launcher wrote a 1-hour-TTL "complete"
+    // notice. After upgrading to rc.3 the launcher correctly handled THAT
+    // session, but on every subsequent session (no upgrade, fast-path) the
+    // legacy file lingered for the full hour and the statusline rendered it
+    // as a permanent column. Fix: launcher's section 0-pre unconditionally
+    // drops any pre-existing notice file at session start, before any other
+    // work — independent of whether an upgrade fires this session.
+    mkdirSync(join(root, '.moflo'), { recursive: true });
+    const noticePath = join(root, '.moflo', 'upgrade-notice.json');
+    writeFileSync(
+      noticePath,
+      JSON.stringify({
+        kind: 'upgrade',
+        from: '1.0.0',
+        to: '1.0.1',
+        at: new Date(Date.now() - 60_000).toISOString(),
+        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+        changes: 4,
+      }),
+    );
+
+    // No node_modules/moflo, no version stamp mismatch — launcher should
+    // take the silent fast-path and STILL drop the stale notice.
+    runLauncher(root);
+
+    expect(existsSync(noticePath)).toBe(false);
+  });
 });
