@@ -17,7 +17,7 @@ export type MemoryType = 'semantic' | 'episodic' | 'procedural' | 'working';
 /**
  * Memory entry status
  */
-export type MemoryStatus = 'active' | 'archived' | 'deleted';
+export type MemoryStatus = 'active' | 'archived';
 
 /**
  * Memory entry properties
@@ -205,14 +205,6 @@ export class MemoryEntry {
       this._status = 'active';
       this._updatedAt = new Date();
     }
-  }
-
-  /**
-   * Mark as deleted (soft delete)
-   */
-  delete(): void {
-    this._status = 'deleted';
-    this._updatedAt = new Date();
   }
 
   /**

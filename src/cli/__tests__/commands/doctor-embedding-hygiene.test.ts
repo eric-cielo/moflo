@@ -169,14 +169,16 @@ describe('checkEmbeddingHygiene (#651)', () => {
     expect(result.status).toBe('pass');
   });
 
-  it('ignores soft-deleted rows (status != active)', async () => {
+  it('ignores archived rows (status != active)', async () => {
     seedDb((db) => {
       insert(db, 'a', CANONICAL_EMBEDDING_MODEL, true);
-      // Banned row, but soft-deleted — should not trigger warning.
+      // Banned row, but archived — should not trigger warning. (Soft-delete
+      // 'deleted' status was retired in #728; 'archived' is the remaining
+      // non-active status that hygiene must skip.)
       db.run(
         `INSERT INTO memory_entries (id, key, content, embedding, embedding_model, status)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        ['banned-deleted', 'k-banned', 'c', JSON.stringify([0.1]), 'domain-aware-hash-v1', 'deleted'],
+        ['banned-archived', 'k-banned', 'c', JSON.stringify([0.1]), 'domain-aware-hash-v1', 'archived'],
       );
     });
 

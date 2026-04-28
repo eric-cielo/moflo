@@ -1,8 +1,10 @@
 /**
  * Delete Memory Command - Application Layer (CQRS)
  *
- * Command for deleting memory entries.
- * Supports soft delete and hard delete.
+ * Hard-deletes memory entries. Soft-delete was retired in story #728 because
+ * tombstones were write-only (no code path ever restored a `status='deleted'`
+ * row) and bloated the DB indefinitely. The legitimate "keep but hide" case
+ * is `archived` — see `MemoryEntry.archive()` / `restore()`.
  *
  * @module v3/memory/application/commands
  */
@@ -16,7 +18,6 @@ export interface DeleteMemoryInput {
   id?: string;
   namespace?: string;
   key?: string;
-  hardDelete?: boolean;
 }
 
 /**
@@ -26,7 +27,6 @@ export interface DeleteMemoryResult {
   success: boolean;
   deleted: boolean;
   entryId?: string;
-  wasHardDelete: boolean;
 }
 
 /**
@@ -47,43 +47,11 @@ export class DeleteMemoryCommandHandler {
     }
 
     if (!entryId) {
-      return {
-        success: false,
-        deleted: false,
-        wasHardDelete: false,
-      };
+      return { success: false, deleted: false };
     }
 
-    if (input.hardDelete) {
-      // Hard delete - remove from database
-      const deleted = await this.repository.delete(entryId);
-      return {
-        success: true,
-        deleted,
-        entryId,
-        wasHardDelete: true,
-      };
-    } else {
-      // Soft delete - mark as deleted
-      const entry = await this.repository.findById(entryId);
-      if (entry) {
-        entry.delete();
-        await this.repository.save(entry);
-        return {
-          success: true,
-          deleted: true,
-          entryId,
-          wasHardDelete: false,
-        };
-      }
-    }
-
-    return {
-      success: false,
-      deleted: false,
-      entryId,
-      wasHardDelete: false,
-    };
+    const deleted = await this.repository.delete(entryId);
+    return { success: true, deleted, entryId };
   }
 }
 
@@ -94,7 +62,6 @@ export interface BulkDeleteMemoryInput {
   ids?: string[];
   namespace?: string;
   olderThan?: Date;
-  hardDelete?: boolean;
 }
 
 /**
@@ -126,47 +93,15 @@ export class BulkDeleteMemoryCommandHandler {
     }
 
     if (idsToDelete.length === 0) {
-      return {
-        success: true,
-        deletedCount: 0,
-        failedCount: 0,
-        errors: [],
-      };
+      return { success: true, deletedCount: 0, failedCount: 0, errors: [] };
     }
 
-    if (input.hardDelete) {
-      const result = await this.repository.deleteMany(idsToDelete);
-      return {
-        success: result.failed === 0,
-        deletedCount: result.success,
-        failedCount: result.failed,
-        errors: result.errors,
-      };
-    } else {
-      // Soft delete
-      const entries = await this.repository.findByIds(idsToDelete);
-      let deletedCount = 0;
-      const errors: Array<{ id: string; error: string }> = [];
-
-      for (const entry of entries) {
-        try {
-          entry.delete();
-          await this.repository.save(entry);
-          deletedCount++;
-        } catch (error) {
-          errors.push({
-            id: entry.id,
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
-        }
-      }
-
-      return {
-        success: errors.length === 0,
-        deletedCount,
-        failedCount: errors.length,
-        errors,
-      };
-    }
+    const result = await this.repository.deleteMany(idsToDelete);
+    return {
+      success: result.failed === 0,
+      deletedCount: result.success,
+      failedCount: result.failed,
+      errors: result.errors,
+    };
   }
 }

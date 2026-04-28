@@ -665,6 +665,36 @@ try {
   } catch { /* writing the failure itself must not throw */ }
 }
 
+// ── 3e-728. Hard-delete leftover soft-delete tombstones (#728) ─────────────
+// Soft-delete was retired in story #728 — `status='deleted'` rows are now
+// unrecoverable bloat from prior moflo versions. Purge any stragglers and
+// VACUUM. Idempotent: returns `purged: 0` once the DB is clean. Runs BEFORE
+// background MCP/daemon spawn (per #727's clobber-hazard analysis) so the
+// foreground sql.js write isn't overwritten by a concurrent flush.
+try {
+  const purgePaths = [
+    resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/soft-delete-purge.js'),
+    resolve(projectRoot, 'dist/src/cli/services/soft-delete-purge.js'),
+  ];
+  const purgePath = purgePaths.find((p) => existsSync(p));
+  if (purgePath) {
+    const { purgeSoftDeletedEntries } = await import(`file://${purgePath.replace(/\\/g, '/')}`);
+    const result = await purgeSoftDeletedEntries();
+    if (result?.purged > 0) {
+      emitMutation(
+        'reclaimed soft-deleted memory entries',
+        `${plural(result.purged, 'tombstone')} purged + VACUUM`,
+      );
+    }
+  }
+} catch (err) {
+  // Non-fatal — leftover tombstones just sit until the next session retries.
+  try {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`soft-delete purge skipped: ${msg}\n`);
+  } catch { /* writing the failure itself must not throw */ }
+}
+
 // ── 3f. Persist upgrade notice for statusline (#636) ────────────────────────
 // When this session bumped the version stamp or repaired manifest drift, write
 // a transient `.moflo/upgrade-notice.json` so the statusline can show a

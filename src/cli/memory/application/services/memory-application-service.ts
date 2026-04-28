@@ -131,27 +131,26 @@ export class MemoryApplicationService {
   /**
    * Delete a memory entry by namespace and key
    */
-  async delete(namespace: string, key: string, hardDelete = false): Promise<boolean> {
-    const result = await this.deleteHandler.execute({ namespace, key, hardDelete });
+  async delete(namespace: string, key: string): Promise<boolean> {
+    const result = await this.deleteHandler.execute({ namespace, key });
     return result.deleted;
   }
 
   /**
    * Delete a memory entry by ID
    */
-  async deleteById(id: string, hardDelete = false): Promise<boolean> {
-    const result = await this.deleteHandler.execute({ id, hardDelete });
+  async deleteById(id: string): Promise<boolean> {
+    const result = await this.deleteHandler.execute({ id });
     return result.deleted;
   }
 
   /**
    * Delete all entries in a namespace
    */
-  async deleteNamespace(namespace: string, hardDelete = false): Promise<number> {
+  async deleteNamespace(namespace: string): Promise<number> {
     const entries = await this.repository.findByNamespace(namespace);
     const result = await this.bulkDeleteHandler.execute({
       ids: entries.map((e) => e.id),
-      hardDelete,
     });
     return result.deletedCount;
   }

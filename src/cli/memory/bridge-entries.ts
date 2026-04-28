@@ -611,10 +611,9 @@ export async function bridgeDeleteEntry(options: {
     let changes = 0;
     try {
       ctx.db.prepare(`
-        UPDATE memory_entries
-        SET status = 'deleted', updated_at = ?
+        DELETE FROM memory_entries
         WHERE key = ? AND namespace = ? AND status = 'active'
-      `).run([Date.now(), key, namespace]);
+      `).run([key, namespace]);
       // sql.js Statement.run returns true/false, not { changes }. Use
       // db.getRowsModified() to read the row count from the last statement.
       changes = ctx.db.getRowsModified?.() ?? 0;

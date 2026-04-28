@@ -200,8 +200,11 @@ describe('bashCommand', () => {
 
   it('should timeout long commands', async () => {
     const ctx = createContext();
+    // Use a pure-bash busy loop instead of `sleep` — some Git Bash installs
+    // on Windows ship without `/usr/bin/sleep`, which would make the command
+    // exit (127, command-not-found) before the timeout fires.
     const output = await bashCommand.execute(
-      { command: 'sleep 30', timeout: 500, failOnError: true },
+      { command: 'while :; do :; done', timeout: 500, failOnError: true },
       ctx,
     );
     expect(output.success).toBe(false);
