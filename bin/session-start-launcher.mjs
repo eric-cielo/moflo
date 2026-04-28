@@ -730,6 +730,38 @@ try {
   } catch { /* writing the failure itself must not throw */ }
 }
 
+// ── 3e-729. Purge ephemeral-namespace rows (#729) ───────────────────────────
+// Four namespaces (hive-mind, tasklist, epic-state, test-bridge-fix) store
+// internal moflo run-tracking — never user knowledge — and were polluting the
+// embeddings index. Going forward, writes to those namespaces skip embedding
+// generation (see EPHEMERAL_NAMESPACES in memory/bridge-embedder.ts); existing
+// rows from prior versions get hard-deleted here. Idempotent — returns
+// `purged: 0` once the DB is clean. Runs BEFORE background MCP/daemon spawn
+// so the foreground sql.js write isn't overwritten by a concurrent flush.
+try {
+  const purgePaths = [
+    resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/ephemeral-namespace-purge.js'),
+    resolve(projectRoot, 'dist/src/cli/services/ephemeral-namespace-purge.js'),
+  ];
+  const purgePath = purgePaths.find((p) => existsSync(p));
+  if (purgePath) {
+    const { purgeEphemeralNamespaces } = await import(`file://${purgePath.replace(/\\/g, '/')}`);
+    const result = await purgeEphemeralNamespaces();
+    if (result?.purged > 0) {
+      emitMutation(
+        'pruned ephemeral namespace rows',
+        `${plural(result.purged, 'row')} from internal run-tracking`,
+      );
+    }
+  }
+} catch (err) {
+  // Non-fatal — leftover rows just sit until the next session retries.
+  try {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`ephemeral-namespace purge skipped: ${msg}\n`);
+  } catch { /* writing the failure itself must not throw */ }
+}
+
 // ── 3f. Clear the in-progress upgrade notice (#636, #738) ───────────────────
 // Upgrade work is finished; drop the notice so the statusline badge disappears
 // immediately. Change summary is already in stdout emits (Claude's

@@ -163,6 +163,82 @@ describe('bridgeStoreEntry — opt-out path (#649)', () => {
   });
 });
 
+describe('bridgeStoreEntry — ephemeral namespace skip (#729)', () => {
+  it.each([
+    ['hive-mind'],
+    ['tasklist'],
+    ['epic-state'],
+    ['test-bridge-fix'],
+  ])("namespace=%s — writes embedding=NULL and embedding_model=NULL even when generateEmbeddingFlag is true", async (namespace) => {
+    // Stub embedder is installed but must NOT be called for ephemeral writes.
+    const embedSpy = vi.fn(async () => new Float32Array(384).fill(0.1));
+    setBridgeEmbedderForTest({
+      model: 'should-not-be-used',
+      dimensions: 384,
+      embed: embedSpy,
+    });
+
+    const result = await bridgeStoreEntry({
+      key: 'k-ephemeral',
+      value: 'run-tracking content',
+      namespace,
+      dbPath,
+    });
+
+    expect(result?.success).toBe(true);
+    expect(result?.embedding).toBeUndefined();
+    expect(embedSpy).not.toHaveBeenCalled();
+
+    const rows = await readRows(
+      'SELECT embedding, embedding_model, embedding_dimensions FROM memory_entries WHERE key = ?',
+      ['k-ephemeral'],
+    );
+    expect(rows[0]?.embedding).toBeNull();
+    expect(rows[0]?.embedding_model).toBeNull();
+    expect(rows[0]?.embedding_dimensions).toBeNull();
+  });
+
+  it('drops precomputed embeddings for ephemeral namespaces (no smuggling)', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'fast-all-MiniLM-L6-v2' }));
+
+    const result = await bridgeStoreEntry({
+      key: 'k-precomp',
+      value: 'spell record',
+      namespace: 'tasklist',
+      precomputedEmbedding: new Float32Array(384).fill(0.42),
+      dbPath,
+    });
+
+    expect(result?.success).toBe(true);
+    const rows = await readRows(
+      'SELECT embedding, embedding_model FROM memory_entries WHERE key = ?',
+      ['k-precomp'],
+    );
+    expect(rows[0]?.embedding).toBeNull();
+    expect(rows[0]?.embedding_model).toBeNull();
+  });
+
+  it('non-ephemeral namespaces still get embedded normally', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'fast-all-MiniLM-L6-v2' }));
+
+    const result = await bridgeStoreEntry({
+      key: 'k-knowledge',
+      value: 'a real knowledge entry',
+      namespace: 'knowledge',
+      dbPath,
+    });
+
+    expect(result?.success).toBe(true);
+    expect(result?.embedding?.model).toBe('fast-all-MiniLM-L6-v2');
+    const rows = await readRows(
+      'SELECT embedding, embedding_model FROM memory_entries WHERE key = ?',
+      ['k-knowledge'],
+    );
+    expect(rows[0]?.embedding).not.toBeNull();
+    expect(rows[0]?.embedding_model).toBe('fast-all-MiniLM-L6-v2');
+  });
+});
+
 describe('refreshVectorStatsCache — missing counter (#649)', () => {
   it('writes a `missing` field for active rows with NULL embedding', async () => {
     setBridgeEmbedderForTest(new StubEmbedder({ model: 'fast-all-MiniLM-L6-v2' }));
