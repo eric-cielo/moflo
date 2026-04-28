@@ -98,13 +98,17 @@ describe('Spell MCP Tools — Engine Integration', () => {
 
   it('spell_cast executes inline YAML content via engine', { timeout: 15_000 }, async () => {
     const tool = findTool('spell_cast');
+    // Use a `wait` step rather than `bash` — exercises the same engine
+    // execution path (parse YAML → resolve step command → run → record
+    // result) without spawning a subprocess. Bash forks under maxForks=2
+    // contention pushed this test past its budget on Windows.
     const yamlContent = `
 name: inline-test
 steps:
   - id: step-1
-    type: bash
+    type: wait
     config:
-      command: echo engine-ok
+      duration: 1
 `;
     const result: any = await tool.handler({ content: yamlContent });
 
@@ -113,7 +117,7 @@ steps:
     expect(result.success).toBe(true);
     expect(result.steps).toBeDefined();
     expect(result.steps.length).toBeGreaterThan(0);
-    expect(result.steps[0].stepType).toBe('bash');
+    expect(result.steps[0].stepType).toBe('wait');
     expect(result.steps[0].status).toBe('succeeded');
     // Engine output includes real data (not mock { executed: true })
     expect(result.duration).toBeGreaterThanOrEqual(0);

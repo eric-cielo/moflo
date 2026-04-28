@@ -12,6 +12,31 @@
 import { describe, it, expect } from 'vitest';
 
 /**
+ * Build a StatuslineGenerator with stub data sources so generateData() never
+ * fires the 6 execSync calls (gh, git x2, tasklist, powershell) it would
+ * otherwise use to populate user/swarm/system metrics. The collision-zone
+ * tests only exercise layout logic — fetching real data is irrelevant and
+ * makes the test flaky under maxForks=2 fork contention.
+ */
+async function makeStubbedGenerator() {
+  const { StatuslineGenerator } = await import('../../../hooks/statusline/index.js');
+  const generator = new StatuslineGenerator();
+  // Plausible but obviously-test values — these tests assert layout/collision
+  // properties, not data correctness, so the exact numbers don't matter as
+  // long as each field is populated.
+  generator.registerDataSources({
+    getV3Progress: () => ({ domainsCompleted: 1, totalDomains: 1, dddProgress: 50, modulesCount: 1, filesCount: 1, linesCount: 1 }),
+    getSecurityStatus: () => ({ status: 'CLEAN', cvesFixed: 1, totalCves: 1 }),
+    getSwarmActivity: () => ({ activeAgents: 0, maxAgents: 1, coordinationActive: false }),
+    getHooksMetrics: () => ({ status: 'ACTIVE', patternsLearned: 0, routingAccuracy: 0, totalOperations: 0 }),
+    getPerformanceTargets: () => ({ flashAttentionTarget: 'TEST', searchImprovement: 'TEST', memoryReduction: 'TEST' }),
+    getSystemMetrics: () => ({ memoryMB: 0, contextPct: 0, intelligencePct: 0, subAgents: 0 }),
+    getUserInfo: () => ({ name: 'test-user', gitBranch: 'test', modelName: 'test' }),
+  });
+  return generator;
+}
+
+/**
  * Strip ANSI escape codes from a string
  */
 function stripAnsi(str: string): string {
@@ -78,10 +103,7 @@ function isCollisionZoneClear(line: string): boolean {
 
 describe('Statusline Collision Zone Avoidance', () => {
   it('should have clear collision zone in safe multi-line output', async () => {
-    // Import dynamically to avoid build issues
-    const { StatuslineGenerator } = await import('../../../hooks/statusline/index.js');
-
-    const generator = new StatuslineGenerator();
+    const generator = await makeStubbedGenerator();
     const output = generator.generateSafeStatusline();
 
     if (!output) {
@@ -100,9 +122,7 @@ describe('Statusline Collision Zone Avoidance', () => {
   });
 
   it('should produce single-line output when requested', async () => {
-    const { StatuslineGenerator } = await import('../../../hooks/statusline/index.js');
-
-    const generator = new StatuslineGenerator();
+    const generator = await makeStubbedGenerator();
     const output = generator.generateSingleLine();
 
     if (!output) {
@@ -114,9 +134,7 @@ describe('Statusline Collision Zone Avoidance', () => {
   });
 
   it('should have padding in the collision line', async () => {
-    const { StatuslineGenerator } = await import('../../../hooks/statusline/index.js');
-
-    const generator = new StatuslineGenerator();
+    const generator = await makeStubbedGenerator();
     const output = generator.generateSafeStatusline();
 
     if (!output) {
@@ -145,9 +163,7 @@ describe('Statusline Collision Zone Avoidance', () => {
 
 describe('Statusline Output Modes', () => {
   it('should support all output modes', async () => {
-    const { StatuslineGenerator } = await import('../../../hooks/statusline/index.js');
-
-    const generator = new StatuslineGenerator();
+    const generator = await makeStubbedGenerator();
 
     // Regular statusline
     const regular = generator.generateStatusline();

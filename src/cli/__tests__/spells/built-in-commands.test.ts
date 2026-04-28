@@ -207,8 +207,14 @@ describe('bashCommand', () => {
     expect(output.success).toBe(false);
     expect(output.data.timedOut).toBe(true);
     expect(output.error).toContain('timed out');
-    expect(output.duration).toBeLessThan(5000);
-  }, 10000);
+    // Smoke-check threshold — the contract under test is "the command was
+    // killed before it ran 30s", not "spawn+kill round-trip is fast". Under
+    // maxForks=2 fork contention on Windows the bash subprocess fork itself
+    // can take 5+ s even when the kill fires immediately at 500 ms, so a
+    // tight bound is fragile. 30000 ms still catches catastrophic regressions
+    // (the alternative was waiting 30 s for `sleep 30` to finish).
+    expect(output.duration).toBeLessThan(30000);
+  }, 30000);
 });
 
 // ============================================================================

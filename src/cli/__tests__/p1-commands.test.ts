@@ -9,6 +9,12 @@ import { startCommand } from '../commands/start.js';
 import { statusCommand } from '../commands/status.js';
 import { taskCommand } from '../commands/task.js';
 import { sessionCommand } from '../commands/session.js';
+// Static import of the barrel — previously a dynamic `await import()` inside
+// the test body, which under maxForks=2 contention exceeded the 15 s budget
+// because the barrel re-exports every command module. Loading once at module
+// init folds the cost into the test file's collection time, where it's
+// shared across all tests.
+import * as commandsBarrel from '../commands/index.js';
 import type { CommandContext } from '../types.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1143,8 +1149,8 @@ describe('Session Command', () => {
 });
 
 describe('Command Index Exports', () => {
-  it('should export all P1 commands', async () => {
-    const { commands, initCommand: init, startCommand: start, statusCommand: status, taskCommand: task, sessionCommand: session } = await import('../commands/index.js');
+  it('should export all P1 commands', () => {
+    const { commands, initCommand: init, startCommand: start, statusCommand: status, taskCommand: task, sessionCommand: session } = commandsBarrel;
 
     expect(init).toBeDefined();
     expect(start).toBeDefined();
@@ -1157,5 +1163,5 @@ describe('Command Index Exports', () => {
     expect(commands).toContain(status);
     expect(commands).toContain(task);
     expect(commands).toContain(session);
-  }, 15_000);
+  });
 });

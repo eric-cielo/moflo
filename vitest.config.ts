@@ -13,7 +13,6 @@ export const isolationTests = [
   'src/cli/memory/database-provider.test.ts',
   'src/cli/__tests__/spells/sandbox-tier-integration.test.ts',
   'src/cli/__tests__/spells/spell-sandboxing.test.ts',
-  'src/cli/__tests__/hooks/statusline/statusline-collision.test.ts',
   'src/cli/__tests__/spells/integration/permission-system-e2e.test.ts',
   'src/cli/__tests__/spells/integration/spell-engine-e2e.test.ts',
   'tests/system/pluggable-steps-system.test.ts',
@@ -27,9 +26,7 @@ export const isolationTests = [
   // intermittently exceed their per-test timeouts under full-suite load
   // (maxForks=2 + Windows fork contention). Confirmed green in isolation.
   'src/cli/__tests__/doctor-checks-deep.test.ts',
-  'src/cli/__tests__/p1-commands.test.ts',
   'src/cli/__tests__/services/worker-daemon-resource-thresholds.test.ts',
-  'src/cli/__tests__/spell-tools-engine.test.ts',
   'src/cli/__tests__/spells/connector-lifecycle.test.ts',
   // prerequisites.test.ts split into 4 files (#522) — all share the same
   // dynamic-import load profile, so all four stay on the isolation list.
@@ -38,10 +35,6 @@ export const isolationTests = [
   'src/cli/__tests__/spells/prerequisites-resolve.test.ts',
   'src/cli/__tests__/spells/prerequisites-integration.test.ts',
   'tests/bin/gate-helpers.test.ts',
-  // Spawn/kill timing sensitive — `getActive returns only alive processes`
-  // intermittently observes the child before it's reaped on Windows maxForks=2.
-  // Passes in isolation; add here rather than retry-in-place.
-  'tests/bin/process-manager.test.ts',
   // First-run downloads the 25 MB ONNX model from GCS and runs real ORT
   // inference — competes for CPU/network with parallel benchmarks under
   // maxForks=2 and pushes neighboring tests over their timeouts. Cached
@@ -58,9 +51,7 @@ export const isolationTests = [
   'src/cli/__tests__/mcp-tools-deep.test.ts',
   'src/cli/__tests__/services/moflo-require.test.ts',
   'src/cli/__tests__/guidance/persistence.test.ts',
-  'src/cli/__tests__/hooks/workers.test.ts',
   'src/cli/shared/hooks/verify-exports.test.ts',
-  'src/cli/__tests__/spells/built-in-commands.test.ts',
   'src/cli/__tests__/spells/moflo-levels.test.ts',
   'src/cli/__tests__/spells/parallel-integration.test.ts',
   'src/cli/__tests__/spells/pause-resume.test.ts',
