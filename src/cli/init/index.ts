@@ -36,11 +36,6 @@ export {
 } from './mcp-generator.js';
 
 export {
-  generateStatuslineScript,
-  generateStatuslineHook,
-} from './statusline-generator.js';
-
-export {
   generatePreCommitHook,
   generatePostCommitHook,
   generateAutoMemoryHook,
