@@ -39,11 +39,6 @@ const LIST_SOURCE = {
   ALL: 'all',
 } as const;
 
-const TEMPLATE_ACTION = {
-  LIST: 'list',
-  INFO: 'info',
-} as const;
-
 // ============================================================================
 // In-memory result tracking (for status queries between runs)
 // ============================================================================
@@ -604,38 +599,9 @@ export const spellTools: MCPTool[] = [
   },
 
   // --------------------------------------------------------------------------
-  // spell_delete — Remove a tracked spell record from memory
-  // --------------------------------------------------------------------------
-  {
-    name: 'spell_delete',
-    description: 'Delete a tracked spell casting record',
-    category: 'spell',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        spellId: { type: 'string', description: 'Spell invocation ID' },
-      },
-      required: ['spellId'],
-    },
-    handler: async (input) => {
-      const spellId = input.spellId as string;
-
-      // Only check engine if already loaded (avoid unnecessary dynamic import)
-      if (getCachedEngine()?.bridgeIsRunning(spellId)) {
-        return { spellId, error: 'Cannot delete an active spell — dispel it first' };
-      }
-
-      const existed = trackedSpells.delete(spellId);
-      return {
-        spellId,
-        deleted: existed,
-        deletedAt: existed ? new Date().toISOString() : undefined,
-      };
-    },
-  },
-
-  // --------------------------------------------------------------------------
-  // spell_template — Browse spell templates from the grimoire
+  // spell_template — Browse spell templates from the grimoire.
+  // Consumed by `flo spell template` / `flo spell grimoire` via
+  // TOOL_SPELL_TEMPLATE constant in commands/spell.ts.
   // --------------------------------------------------------------------------
   {
     name: 'spell_template',
@@ -652,31 +618,23 @@ export const spellTools: MCPTool[] = [
     handler: async (input) => {
       const action = input.action as string;
 
-      if (action === TEMPLATE_ACTION.LIST) {
+      if (action === 'list') {
         try {
           const registry = await getRegistry();
           const entries = registry.list();
-          return {
-            action,
-            templates: entries,
-            total: entries.length,
-          };
+          return { action, templates: entries, total: entries.length };
         } catch (err) {
           return { action, error: errorMsg(err) };
         }
       }
 
-      if (action === TEMPLATE_ACTION.INFO) {
+      if (action === 'info') {
         const query = input.query as string;
-        if (!query) {
-          return { action, error: 'Query required for info action' };
-        }
+        if (!query) return { action, error: 'Query required for info action' };
         try {
           const registry = await getRegistry();
           const info = registry.info(query);
-          if (!info) {
-            return { action, error: `Spell not found in grimoire: ${query}` };
-          }
+          if (!info) return { action, error: `Spell not found in grimoire: ${query}` };
           return { action, ...info };
         } catch (err) {
           return { action, error: errorMsg(err) };

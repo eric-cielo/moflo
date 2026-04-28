@@ -256,57 +256,6 @@ export const taskTools: MCPTool[] = [
     },
   },
   {
-    name: 'task_update',
-    description: 'Update task status or progress',
-    category: 'task',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        taskId: { type: 'string', description: 'Task ID' },
-        status: { type: 'string', description: 'New status' },
-        progress: { type: 'number', description: 'Progress percentage (0-100)' },
-        assignTo: { type: 'array', items: { type: 'string' }, description: 'Agent IDs to assign' },
-      },
-      required: ['taskId'],
-    },
-    handler: async (input) => {
-      const store = loadTaskStore();
-      const taskId = input.taskId as string;
-      const task = store.tasks[taskId];
-
-      if (task) {
-        if (input.status) {
-          const newStatus = input.status as TaskRecord['status'];
-          task.status = newStatus;
-          if (newStatus === 'in_progress' && !task.startedAt) {
-            task.startedAt = new Date().toISOString();
-          }
-        }
-        if (typeof input.progress === 'number') {
-          task.progress = Math.min(100, Math.max(0, input.progress as number));
-        }
-        if (input.assignTo) {
-          task.assignedTo = input.assignTo as string[];
-        }
-        saveTaskStore(store);
-
-        return {
-          success: true,
-          taskId: task.taskId,
-          status: task.status,
-          progress: task.progress,
-          assignedTo: task.assignedTo,
-        };
-      }
-
-      return {
-        success: false,
-        taskId,
-        error: 'Task not found',
-      };
-    },
-  },
-  {
     name: 'task_assign',
     description: 'Assign a task to one or more agents',
     category: 'task',

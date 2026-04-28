@@ -14,7 +14,6 @@ import type { MCPTool } from './mcp-tools/types.js';
 import { agentTools } from './mcp-tools/agent-tools.js';
 import { swarmTools } from './mcp-tools/swarm-tools.js';
 import { memoryTools } from './mcp-tools/memory-tools.js';
-import { configTools } from './mcp-tools/config-tools.js';
 import { hooksTools } from './mcp-tools/hooks-tools.js';
 import { taskTools } from './mcp-tools/task-tools.js';
 import { sessionTools } from './mcp-tools/session-tools.js';
@@ -46,7 +45,6 @@ registerTools([
   ...agentTools,
   ...swarmTools,
   ...memoryTools,
-  ...configTools,
   ...hooksTools,
   ...taskTools,
   ...sessionTools,

@@ -31,15 +31,14 @@ describe('Spell MCP Tools — Engine Integration', () => {
   // Tool registration
   // -------------------------------------------------------------------------
 
-  it('exports exactly 11 spell tools', () => {
-    expect(spellTools).toHaveLength(11);
+  it('exports exactly 10 spell tools', () => {
+    expect(spellTools).toHaveLength(10);
     const names = spellTools.map(t => t.name).sort();
     expect(names).toEqual([
       'spell_accept',
       'spell_cancel',
       'spell_cast',
       'spell_create',
-      'spell_delete',
       'spell_execute',
       'spell_list',
       'spell_resume',
@@ -216,16 +215,6 @@ steps:
     const tool = findTool('spell_cancel');
     const result: any = await tool.handler({ spellId: 'nonexistent' });
     expect(result.error).toMatch(/not found/i);
-  });
-
-  // -------------------------------------------------------------------------
-  // spell_delete — removes from tracked map
-  // -------------------------------------------------------------------------
-
-  it('spell_delete returns deleted=false for unknown ID', async () => {
-    const tool = findTool('spell_delete');
-    const result: any = await tool.handler({ spellId: 'nonexistent' });
-    expect(result.deleted).toBe(false);
   });
 
   // -------------------------------------------------------------------------

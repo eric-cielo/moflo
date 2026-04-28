@@ -373,42 +373,6 @@ export const neuralTools: MCPTool[] = [
     },
   },
   {
-    name: 'neural_compress',
-    description: 'Compress neural model or embeddings',
-    category: 'neural',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        modelId: { type: 'string', description: 'Model ID to compress' },
-        method: { type: 'string', enum: ['quantize', 'prune', 'distill'], description: 'Compression method' },
-        targetSize: { type: 'number', description: 'Target size reduction (0-1)' },
-      },
-    },
-    handler: async (input) => {
-      const method = (input.method as string) || 'quantize';
-      const targetSize = (input.targetSize as number) || 0.25;
-
-      const compressionResults = {
-        quantize: { ratio: 3.92, method: 'Int8', memory: '75% reduction' },
-        prune: { ratio: 2.5, method: 'Magnitude pruning', memory: '60% reduction' },
-        distill: { ratio: 4.0, method: 'Knowledge distillation', memory: '75% reduction' },
-      };
-
-      const result = compressionResults[method as keyof typeof compressionResults] || compressionResults.quantize;
-
-      return {
-        success: true,
-        method,
-        originalSize: '1536 dims',
-        compressedSize: `${Math.floor(1536 * targetSize)} dims`,
-        compressionRatio: result.ratio,
-        memoryReduction: result.memory,
-        qualityRetention: 0.98,
-        latencyImprovement: '2.5x faster',
-      };
-    },
-  },
-  {
     name: 'neural_status',
     description: 'Get neural system status',
     category: 'neural',
@@ -458,51 +422,6 @@ export const neuralTools: MCPTool[] = [
           flashAttention: false,
           reasoningBank: true,
         },
-      };
-    },
-  },
-  {
-    name: 'neural_optimize',
-    description: 'Optimize neural model performance',
-    category: 'neural',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        modelId: { type: 'string', description: 'Model ID to optimize' },
-        target: { type: 'string', enum: ['speed', 'memory', 'accuracy', 'balanced'], description: 'Optimization target' },
-      },
-    },
-    handler: async (input) => {
-      const target = (input.target as string) || 'balanced';
-
-      const optimizations: Record<string, { applied: string[]; improvement: string }> = {
-        speed: {
-          applied: ['Flash Attention', 'Batch processing', 'SIMD vectorization'],
-          improvement: '2.49x-7.47x faster inference',
-        },
-        memory: {
-          applied: ['Int8 quantization', 'Gradient checkpointing', 'Memory pooling'],
-          improvement: '50-75% memory reduction',
-        },
-        accuracy: {
-          applied: ['EWC++ regularization', 'Ensemble averaging', 'Data augmentation'],
-          improvement: '3-5% accuracy boost',
-        },
-        balanced: {
-          applied: ['HNSW indexing', 'Smart caching', 'Adaptive batch size'],
-          improvement: 'Balanced 30% improvement across metrics',
-        },
-      };
-
-      const result = optimizations[target] || optimizations.balanced;
-
-      return {
-        success: true,
-        target,
-        optimizations: result.applied,
-        improvement: result.improvement,
-        status: 'applied',
-        timestamp: new Date().toISOString(),
       };
     },
   },

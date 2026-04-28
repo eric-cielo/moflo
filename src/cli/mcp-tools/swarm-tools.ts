@@ -60,25 +60,6 @@ export const swarmTools: MCPTool[] = [
     },
   },
   {
-    name: 'swarm_shutdown',
-    description: 'Shutdown a swarm',
-    category: 'swarm',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        swarmId: { type: 'string', description: 'Swarm ID' },
-        graceful: { type: 'boolean', description: 'Graceful shutdown' },
-      },
-    },
-    handler: async (input) => {
-      return {
-        success: true,
-        swarmId: input.swarmId,
-        terminated: true,
-      };
-    },
-  },
-  {
     name: 'swarm_health',
     description: 'Check swarm health status',
     category: 'swarm',

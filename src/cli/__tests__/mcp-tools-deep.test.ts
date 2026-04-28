@@ -144,7 +144,6 @@ vi.mock('../mcp-tools/auto-install.js', () => ({
 
 import { agentTools } from '../mcp-tools/agent-tools.js';
 import { moflodbTools } from '../mcp-tools/moflodb-tools.js';
-import { configTools } from '../mcp-tools/config-tools.js';
 import { coordinationTools } from '../mcp-tools/coordination-tools.js';
 import { githubTools } from '../mcp-tools/github-tools.js';
 import { hiveMindTools } from '../mcp-tools/hive-mind-tools.js';
@@ -173,7 +172,6 @@ interface ToolModule {
 const ALL_MODULES: ToolModule[] = [
   { name: 'agent-tools', tools: agentTools },
   { name: 'moflodb-tools', tools: moflodbTools },
-  { name: 'config-tools', tools: configTools },
   { name: 'coordination-tools', tools: coordinationTools },
   { name: 'github-tools', tools: githubTools },
   { name: 'hive-mind-tools', tools: hiveMindTools },
@@ -222,21 +220,22 @@ describe('MCP Tools Deep Test Suite', () => {
     });
 
     it('should register expected tool counts per module', () => {
+      // Counts reflect post-#700 Tier-3 cleanup. Increments require re-running
+      // the audit-700.mjs corpus check before adding to ALL_MODULES.
       const minCounts: Record<string, number> = {
-        'agent-tools': 7,
+        'agent-tools': 6,
         'moflodb-tools': 15,
-        'config-tools': 6,
         'coordination-tools': 1,
-        'github-tools': 5,
+        'github-tools': 4,
         'hive-mind-tools': 9,
-        'memory-tools': 7,
-        'neural-tools': 6,
+        'memory-tools': 6,
+        'neural-tools': 4,
         'performance-tools': 2,
         'security-tools': 6,
-        'session-tools': 5,
-        'swarm-tools': 4,
+        'session-tools': 4,
+        'swarm-tools': 3,
         'system-tools': 1,
-        'task-tools': 7,
+        'task-tools': 6,
         'spell-tools': 10,
       };
 
@@ -421,11 +420,6 @@ describe('MCP Tools Deep Test Suite', () => {
       expect(result.overall).toBeDefined();
     });
 
-    it('agent_update returns error for unknown agent', async () => {
-      const tool = agentTools.find(t => t.name === 'agent_update')!;
-      const result: any = await tool.handler({ agentId: 'nonexistent' });
-      expect(result.success).toBe(false);
-    });
   });
 
   // --------------------------------------------------------------------------
@@ -437,49 +431,6 @@ describe('MCP Tools Deep Test Suite', () => {
       const result: any = await tool.handler({});
       expect(result.overall).toBeDefined();
       expect(result.checks).toBeDefined();
-    });
-  });
-
-  // --------------------------------------------------------------------------
-  // 7. Handler Invocation - Config Tools
-  // --------------------------------------------------------------------------
-  describe('Config Tools - Handler Invocation', () => {
-    it('config_get returns value for known key', async () => {
-      const tool = configTools.find(t => t.name === 'config_get')!;
-      const result: any = await tool.handler({ key: 'logging.level' });
-      expect(result.key).toBe('logging.level');
-      expect(result.exists).toBeDefined();
-    });
-
-    it('config_set stores a value', async () => {
-      const tool = configTools.find(t => t.name === 'config_set')!;
-      const result: any = await tool.handler({ key: 'test.key', value: 'test-value' });
-      expect(result.success).toBe(true);
-    });
-
-    it('config_list returns configurations', async () => {
-      const tool = configTools.find(t => t.name === 'config_list')!;
-      const result: any = await tool.handler({});
-      expect(result.configs).toBeDefined();
-      expect(Array.isArray(result.configs)).toBe(true);
-    });
-
-    it('config_reset returns success', async () => {
-      const tool = configTools.find(t => t.name === 'config_reset')!;
-      const result: any = await tool.handler({});
-      expect(result.success).toBe(true);
-    });
-
-    it('config_export returns config data', async () => {
-      const tool = configTools.find(t => t.name === 'config_export')!;
-      const result: any = await tool.handler({});
-      expect(result.config).toBeDefined();
-    });
-
-    it('config_import returns success', async () => {
-      const tool = configTools.find(t => t.name === 'config_import')!;
-      const result: any = await tool.handler({ config: { 'test.k': 'v' } });
-      expect(result.success).toBe(true);
     });
   });
 
@@ -498,12 +449,6 @@ describe('MCP Tools Deep Test Suite', () => {
       const tool = swarmTools.find(t => t.name === 'swarm_status')!;
       const result: any = await tool.handler({});
       expect(result.status).toBe('running');
-    });
-
-    it('swarm_shutdown returns success', async () => {
-      const tool = swarmTools.find(t => t.name === 'swarm_shutdown')!;
-      const result: any = await tool.handler({});
-      expect(result.success).toBe(true);
     });
 
     it('swarm_health returns healthy checks', async () => {
@@ -733,7 +678,6 @@ describe('MCP Tools Deep Test Suite', () => {
     it('tools handle empty input gracefully', async () => {
       const toolsToTest = [
         agentTools.find(t => t.name === 'agent_list')!,
-        configTools.find(t => t.name === 'config_list')!,
         swarmTools.find(t => t.name === 'swarm_status')!,
         taskTools.find(t => t.name === 'task_list')!,
         coordinationTools.find(t => t.name === 'coordination_sync')!,
@@ -808,12 +752,6 @@ describe('MCP Tools Deep Test Suite', () => {
     it('agent_spawn returns success field', async () => {
       const tool = agentTools.find(t => t.name === 'agent_spawn')!;
       const result: any = await tool.handler({ agentType: 'coder' });
-      expect(typeof result.success).toBe('boolean');
-    });
-
-    it('config tools return success field', async () => {
-      const setTool = configTools.find(t => t.name === 'config_set')!;
-      const result: any = await setTool.handler({ key: 'test', value: 'v' });
       expect(typeof result.success).toBe('boolean');
     });
 
