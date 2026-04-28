@@ -185,10 +185,9 @@ function writeVectorStatsCache(stats, nsCount) {
       hasHnsw: hnswExists,
       updatedAt: Date.now(),
     };
-    for (const cacheDir of [resolve(projectRoot, '.moflo'), resolve(projectRoot, '.swarm')]) {
-      if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
-      writeFileSync(resolve(cacheDir, 'vector-stats.json'), JSON.stringify(cacheData));
-    }
+    const cacheDir = resolve(projectRoot, '.moflo');
+    if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(resolve(cacheDir, 'vector-stats.json'), JSON.stringify(cacheData));
   } catch (err) {
     debug(`vector-stats cache write failed (non-fatal): ${err.message}`);
   }

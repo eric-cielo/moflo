@@ -492,22 +492,18 @@ function getAgentDBStats() {
   let hasHnsw = false;
 
   // Read cached stats (written by memory store/embed/rebuild commands).
-  // `.moflo/` is the canonical post-#699 location; `.swarm/` is a parallel
-  // copy that build-embeddings.mjs writes for legacy compatibility. First
-  // valid read wins — order is post-rename canonical first, then legacy.
-  const cachePaths = [
-    path.join(CWD, '.moflo', 'vector-stats.json'),
-    path.join(CWD, '.swarm', 'vector-stats.json'),
-  ];
-  for (const cp of cachePaths) {
-    const cached = readJSON(cp);
-    if (cached && typeof cached.vectorCount === 'number') {
-      vectorCount = cached.vectorCount;
-      dbSizeKB = cached.dbSizeKB || 0;
-      namespaces = cached.namespaces || 0;
-      hasHnsw = cached.hasHnsw || false;
-      return { vectorCount, dbSizeKB, namespaces, hasHnsw };
-    }
+  // `.moflo/` is the canonical location post-#699; the `.swarm/` parallel
+  // write was retired in #714 because every writer (bridge-core,
+  // memory-initializer, build-embeddings) now writes here, so the legacy
+  // fallback can only ever be stale — exactly the divergence trap that
+  // produced #639.
+  const cached = readJSON(path.join(CWD, '.moflo', 'vector-stats.json'));
+  if (cached && typeof cached.vectorCount === 'number') {
+    vectorCount = cached.vectorCount;
+    dbSizeKB = cached.dbSizeKB || 0;
+    namespaces = cached.namespaces || 0;
+    hasHnsw = cached.hasHnsw || false;
+    return { vectorCount, dbSizeKB, namespaces, hasHnsw };
   }
 
   // Fallback: estimate from DB file size (no subprocess)
