@@ -42,26 +42,39 @@ describe('#74 — CLI version sync', () => {
 
 describe('#75 — session-start auto-pretrain', () => {
   it('session-start handler calls pretrain when restoredPatterns is 0', async () => {
-    // Import the handler (heavy import tree — needs extended timeout under full suite)
     const { hooksSessionStart } = await import(
       '../src/cli/mcp-tools/hooks-tools.js'
     );
 
-    // Run with daemon disabled to keep test fast
-    const result = await hooksSessionStart.handler({
-      sessionId: 'test-session',
-      restoreLatest: false,
-      startDaemon: false,
-    });
+    // hooksSessionStart's auto-pretrain hard-codes `path: process.cwd()` and
+    // walks every .ts/.js/.py/.md file there, embedding each extracted pattern
+    // via fastembed (100-500 ms each). Running from the moflo repo root the
+    // handler takes 10-15 s — well past every reasonable test budget. Chdir
+    // to an empty tempdir so the file walk finds 0 files → 0 patterns → 0
+    // embeddings → handler completes in <1 s.
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const originalCwd = process.cwd();
+    const testCwd = mkdtempSync(join(tmpdir(), 'moflo-issue75-'));
+    process.chdir(testCwd);
+    try {
+      const result = await hooksSessionStart.handler({
+        sessionId: 'test-session',
+        restoreLatest: false,
+        startDaemon: false,
+      });
 
-    // Should have pretrain field in result
-    expect(result).toHaveProperty('pretrain');
-    expect(result.pretrain).toHaveProperty('ran');
-    // When no patterns restored, pretrain should have run
-    if (result.sessionMemory.restoredPatterns === 0) {
-      expect(result.pretrain.ran).toBe(true);
+      expect(result).toHaveProperty('pretrain');
+      expect(result.pretrain).toHaveProperty('ran');
+      if (result.sessionMemory.restoredPatterns === 0) {
+        expect(result.pretrain.ran).toBe(true);
+      }
+    } finally {
+      process.chdir(originalCwd);
+      try { rmSync(testCwd, { recursive: true, force: true }); } catch { /* ignore */ }
     }
-  }, 30_000);
+  });
 });
 
 describe('#77 — createSONALearningEngine default args', () => {

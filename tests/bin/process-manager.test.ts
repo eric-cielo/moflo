@@ -49,16 +49,14 @@ describe('process-manager.mjs', () => {
     expect(existsSync(PM_PATH)).toBe(true);
   });
 
-  it('parses as valid ESM', () => {
-    try {
-      execFileSync('node', ['--check', PM_PATH], {
-        encoding: 'utf-8',
-        timeout: 5000,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-    } catch (err: any) {
-      throw new Error(`Syntax error: ${err.stderr || err.message}`);
-    }
+  it('parses as valid ESM', async () => {
+    // In-process import — far faster + more reliable than `execFileSync('node',
+    // ['--check', ...])`, which under Windows maxForks contention couldn't
+    // reliably spawn a child Node process within the 5 s timeout. The module
+    // has side-effect-free top-level (imports + function defs only), so a
+    // dynamic import is a clean parse check.
+    const mod = await import(pathToFileURL(PM_PATH).href);
+    expect(typeof mod.createProcessManager).toBe('function');
   });
 });
 
