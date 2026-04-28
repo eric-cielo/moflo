@@ -56,6 +56,11 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // can persist `.moflo/upgrade-notice.json` for the statusline (#636).
 let upgradeNoticeContext = null;
 
+// Deferred so we commit it AFTER every upgrade-work block (see 3g). The stamp
+// is the "launcher fully completed" signal — writing it mid-flight lets an
+// aborted launcher strand consumers on a half-applied upgrade (#730).
+let pendingVersionStampWrite = null;
+
 // 5-min TTL is a safety net for zombie launchers (statusline ignores past-TTL
 // files). The launcher deletes the notice when upgrade work finishes — no
 // "complete" state lingers, see #738.
@@ -393,12 +398,13 @@ try {
         }
       } catch { /* non-fatal — daemon recycle is best-effort */ }
 
-      // Write updated manifest + version stamp
+      // Manifest reflects synced files immediately; version stamp is deferred
+      // to 3g so an aborted launcher re-runs upgrade detection (#730).
       try {
         const cfDir = resolve(projectRoot, '.moflo');
         if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
         writeFileSync(manifestPath, JSON.stringify(currentManifest, null, 2));
-        writeFileSync(versionStampPath, installedVersion);
+        pendingVersionStampWrite = { path: versionStampPath, version: installedVersion };
       } catch {}
     }
   }
@@ -768,6 +774,15 @@ try {
 // `additionalContext`); a lingering "you upgraded a while ago" badge is noise.
 if (upgradeNoticeContext) {
   clearUpgradeNotice();
+}
+
+// ── 3g. Commit deferred version stamp (#730) ────────────────────────────────
+// Written LAST so an abort above leaves the stamp unchanged and the next
+// launcher re-detects the upgrade.
+if (pendingVersionStampWrite) {
+  try {
+    writeFileSync(pendingVersionStampWrite.path, pendingVersionStampWrite.version);
+  } catch { /* non-fatal — next launcher re-detects + retries the upgrade */ }
 }
 
 // Bypasses emitMutation — framing, not a mutation, so it must not inflate the count.
