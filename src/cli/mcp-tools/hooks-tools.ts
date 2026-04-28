@@ -39,6 +39,7 @@ let storeEntryFn: ((options: {
   value: string;
   namespace?: string;
   generateEmbeddingFlag?: boolean;
+  precomputedEmbedding?: Float32Array | number[];
   tags?: string[];
   ttl?: number;
   upsert?: boolean;
@@ -60,6 +61,36 @@ async function getRealStoreFunction() {
     }
   }
   return storeEntryFn;
+}
+
+// Bulk-store function — lazy loaded so module-eval doesn't drag the memory
+// stack through vitest. Returns null on load failure; callers fall back.
+let storeEntriesFn: ((items: Array<{
+  key: string;
+  value: string;
+  namespace?: string;
+  generateEmbeddingFlag?: boolean;
+  precomputedEmbedding?: Float32Array | number[];
+  tags?: string[];
+  ttl?: number;
+  upsert?: boolean;
+}>) => Promise<Array<{
+  success: boolean;
+  id: string;
+  embedding?: { dimensions: number; model: string };
+  error?: string;
+}>>) | null = null;
+
+async function getRealStoreEntriesFunction() {
+  if (!storeEntriesFn) {
+    try {
+      const { storeEntries } = await import('../memory/memory-initializer.js');
+      storeEntriesFn = storeEntries;
+    } catch {
+      storeEntriesFn = null;
+    }
+  }
+  return storeEntriesFn;
 }
 
 // =============================================================================
@@ -1679,30 +1710,71 @@ export const hooksPretrain: MCPTool = {
     let patternsStored = 0;
     let storageErrors = 0;
     const storeFn = await getRealStoreFunction();
-    if (storeFn) {
-      for (const pattern of patterns) {
-        const hash = simpleHash(`${pattern.type}:${pattern.value}`);
+    const storeManyFn = await getRealStoreEntriesFunction();
+    if (storeFn && patterns.length > 0) {
+      // One `extractedAt` per pretrain run so the bytes embedded in the batch
+      // match the bytes stored in the row exactly. Pretrain keys are
+      // deterministic content hashes — re-running must refresh, not throw
+      // UNIQUE(namespace, key) (#658), hence upsert.
+      const extractedAt = new Date().toISOString();
+      const texts: string[] = new Array(patterns.length);
+      const items: Array<{
+        key: string; value: string; namespace: string;
+        generateEmbeddingFlag: boolean; tags: string[]; upsert: boolean;
+        precomputedEmbedding?: Float32Array;
+      }> = new Array(patterns.length);
+      for (let i = 0; i < patterns.length; i++) {
+        const pattern = patterns[i];
+        const value = JSON.stringify({
+          type: pattern.type,
+          value: pattern.value,
+          count: pattern.count,
+          examples: pattern.examples,
+          filesAnalyzed: files.length,
+          extractedAt,
+        });
+        texts[i] = value;
+        items[i] = {
+          key: `pattern-${pattern.type}-${simpleHash(`${pattern.type}:${pattern.value}`)}`,
+          value,
+          namespace: 'patterns',
+          generateEmbeddingFlag: true,
+          tags: [pattern.type, 'pretrain', `depth-${depth}`],
+          upsert: true,
+        };
+      }
+
+      // Batch embed first — collapses N×fastembed (~200ms each) into one
+      // chunked call. On failure, storeFn embeds per-item as a fallback.
+      try {
+        const { bridgeEmbedAll } = await import('../memory/bridge-embedder.js');
+        const precomputed = await bridgeEmbedAll(texts);
+        for (let i = 0; i < items.length; i++) items[i].precomputedEmbedding = precomputed[i];
+      } catch {
+        // Leave precomputedEmbedding undefined — storeFn embeds per-item.
+      }
+
+      // Prefer the bulk-store path; it persists the sql.js DB once instead
+      // of N times. Fall back to per-entry calls when storeEntries is missing
+      // (test stubs that only mocked storeEntry).
+      if (storeManyFn) {
         try {
-          await storeFn({
-            key: `pattern-${pattern.type}-${hash}`,
-            value: JSON.stringify({
-              type: pattern.type,
-              value: pattern.value,
-              count: pattern.count,
-              examples: pattern.examples,
-              filesAnalyzed: files.length,
-              extractedAt: new Date().toISOString(),
-            }),
-            namespace: 'patterns',
-            generateEmbeddingFlag: true,
-            tags: [pattern.type, 'pretrain', `depth-${depth}`],
-            // Pretrain keys are deterministic content hashes — re-running on a
-            // seeded DB must refresh, not throw UNIQUE(namespace, key) (#658).
-            upsert: true,
-          });
-          patternsStored++;
+          const results = await storeManyFn(items);
+          for (const r of results) {
+            if (r.success) patternsStored++;
+            else storageErrors++;
+          }
         } catch {
-          storageErrors++;
+          storageErrors += items.length;
+        }
+      } else {
+        for (const item of items) {
+          try {
+            await storeFn(item);
+            patternsStored++;
+          } catch {
+            storageErrors++;
+          }
         }
       }
     }

@@ -11,6 +11,12 @@ export interface ValidateInput {
   operation: string;
   params?: Record<string, unknown>;
   timestamp?: number;
+  /**
+   * Skip the dedupe-window check while still applying rate limiting and
+   * minValueLength. Use for operations whose semantics are intentionally
+   * idempotent (e.g. upsert batches refreshing the same content).
+   */
+  bypassDedupe?: boolean;
 }
 
 export interface ValidateResult {
@@ -79,7 +85,7 @@ export class MutationGuard {
     }
 
     const hash = hashParams(op, input.params);
-    if (entries.some((e) => e.hash === hash)) {
+    if (!input.bypassDedupe && entries.some((e) => e.hash === hash)) {
       return { allowed: false, reason: 'duplicate mutation within dedupe window' };
     }
 
