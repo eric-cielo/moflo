@@ -31,6 +31,21 @@ function findProjectRoot() {
 
 const projectRoot = findProjectRoot();
 
+// Visible mutation reporter (#716). Claude Code's SessionStart hook captures
+// stdout as `additionalContext`, so each line here surfaces to Claude — and
+// through it to the user — explaining what the launcher just changed. Keep
+// silent fast-path: only call this when something actually mutated.
+function emitMutation(action, details) {
+  try {
+    const tail = details ? ` (${details})` : '';
+    process.stdout.write(`moflo: ${action}${tail}\n`);
+  } catch {
+    // Writing must never throw — a broken stdout would block session start.
+  }
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
 // ── 0. LEGACY state migration (#699) ─────────────────────────────────────────
 // Consumers upgrading from older moflo builds (inherited from upstream Ruflo)
 // get a one-time auto-migration of LEGACY `.claude-flow/` → `.moflo/` so claim
@@ -38,7 +53,10 @@ const projectRoot = findProjectRoot();
 // The migration helper is idempotent — see bin/lib/moflo-paths.mjs for the
 // algorithm. LEGACY: no-ops once `.claude-flow/` is gone.
 try {
-  migrateClaudeFlowToMoflo(projectRoot);
+  const cfMigration = migrateClaudeFlowToMoflo(projectRoot);
+  if (cfMigration?.migrated) {
+    emitMutation('migrated runtime state to .moflo/', 'from legacy .claude-flow/'); // LEGACY
+  }
 } catch {
   // Non-fatal — anything left behind by the migration just means it runs
   // again next session. Better to keep launching than to block on it.
@@ -70,7 +88,7 @@ function fireAndForget(cmd, args, label) {
 // failure mode (no lock, dead PID, missing CLI) is silently absorbed — the
 // recycle is best-effort and must never block session start.
 function recycleDaemon(lockFile, label) {
-  if (!existsSync(lockFile)) return;
+  if (!existsSync(lockFile)) return false;
   let stalePid = null;
   try {
     const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
@@ -87,7 +105,9 @@ function recycleDaemon(lockFile, label) {
     if (existsSync(localCliPath)) {
       fireAndForget('node', [localCliPath, 'daemon', 'start', '--quiet'], label);
     }
+    return true;
   }
+  return false;
 }
 
 // ── 2. Reset workflow state for new session ──────────────────────────────────
@@ -146,6 +166,14 @@ try {
     } catch { /* no manifest yet — version check handles first install */ }
 
     if (installedVersion !== cachedVersion || manifestDrifted) {
+      if (installedVersion !== cachedVersion) {
+        emitMutation(
+          'upgraded',
+          cachedVersion ? `${cachedVersion} → ${installedVersion}` : `installed ${installedVersion}`,
+        );
+      } else {
+        emitMutation('repaired stale install', 'manifest drift detected');
+      }
       const binDir = resolve(projectRoot, 'node_modules/moflo/bin');
 
       // ── Manifest-based auto-update ──────────────────────────────────────
@@ -256,14 +284,23 @@ try {
       // ── Clean up files we installed previously but no longer ship ──
       // Only remove files that are in the OLD manifest but NOT in the new one.
       // This ensures we never delete user-created or runtime-generated files.
+      let removedFiles = 0;
       if (previousManifest.length > 0) {
         const currentSet = new Set(currentManifest);
         for (const rel of previousManifest) {
           if (!currentSet.has(rel)) {
             const abs = resolve(projectRoot, rel);
-            try { if (existsSync(abs)) unlinkSync(abs); } catch { /* non-fatal */ }
+            try {
+              if (existsSync(abs)) {
+                unlinkSync(abs);
+                removedFiles++;
+              }
+            } catch { /* non-fatal */ }
           }
         }
+      }
+      if (removedFiles > 0) {
+        emitMutation('cleaned up retired files', `${removedFiles} removed`);
       }
 
       // Recycle the running daemon — its in-process module cache holds the
@@ -277,7 +314,9 @@ try {
       // existed); here a daemon was actually running, so replacing it with a
       // current-code copy is the desired behaviour regardless of that flag.
       try {
-        recycleDaemon(resolve(projectRoot, '.moflo', 'daemon.lock'), 'daemon-recycle');
+        if (recycleDaemon(resolve(projectRoot, '.moflo', 'daemon.lock'), 'daemon-recycle')) {
+          emitMutation('recycled daemon', 'load fresh moflo code');
+        }
       } catch { /* non-fatal — daemon recycle is best-effort */ }
 
       // Write updated manifest + version stamp
@@ -329,7 +368,9 @@ try {
       if (typeof lock?.startedAt === 'number') daemonStartedAt = lock.startedAt;
     } catch { /* corrupt lock — fall through, recycleDaemon will unlink it */ }
     if (daemonStartedAt > 0 && (installedAt - daemonStartedAt) > STALE_DAEMON_MTIME_SKEW_MS) {
-      recycleDaemon(lockFile, 'daemon-stale-recycle');
+      if (recycleDaemon(lockFile, 'daemon-stale-recycle')) {
+        emitMutation('recycled stale daemon', 'predates current install');
+      }
     }
   }
 } catch { /* non-fatal — best-effort stale-daemon detection */ }
@@ -343,6 +384,7 @@ try {
   if (existsSync(settingsPath)) {
     const raw = readFileSync(settingsPath, 'utf-8');
     let dirty = false;
+    const settingsChanges = [];
     const settings = JSON.parse(raw);
 
     // 3a-i. Remove stale PATH override (${PATH} isn't expanded by Claude Code,
@@ -351,6 +393,7 @@ try {
     if (settings.env.PATH) {
       delete settings.env.PATH;
       dirty = true;
+      settingsChanges.push('removed stale PATH override');
     }
 
     // 3a-ii. Replace npx flo hook commands with direct node helper invocations
@@ -382,6 +425,7 @@ try {
 
     const migrationMap = new Map(hookMigrations.map(m => [m.from, m.to]));
 
+    let migratedHookCount = 0;
     function migrateHooks(hookGroups) {
       if (!Array.isArray(hookGroups)) return;
       for (const group of hookGroups) {
@@ -390,6 +434,7 @@ try {
           if (hook.command && migrationMap.has(hook.command)) {
             hook.command = migrationMap.get(hook.command);
             dirty = true;
+            migratedHookCount++;
           }
         }
       }
@@ -400,6 +445,9 @@ try {
         migrateHooks(settings.hooks[eventName]);
       }
     }
+    if (migratedHookCount > 0) {
+      settingsChanges.push(`rewrote ${plural(migratedHookCount, 'npx hook command')}`);
+    }
 
     // 3a-iii. Ensure statusLine is wired (statusline.cjs is synced by step 3
     // but settings.json may lack the config block, so the status line never appears)
@@ -409,6 +457,7 @@ try {
         command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/statusline.cjs" --compact',
       };
       dirty = true;
+      settingsChanges.push('added statusLine');
     }
 
     // 3a-iv. Repair missing required hook wirings (same logic as doctor --fix
@@ -422,12 +471,16 @@ try {
       if (hwPath) {
         const { repairHookWiring } = await import(`file://${hwPath.replace(/\\/g, '/')}`);
         const { repaired } = repairHookWiring(settings);
-        if (repaired.length > 0) dirty = true;
+        if (repaired.length > 0) {
+          dirty = true;
+          settingsChanges.push(`repaired ${plural(repaired.length, 'hook wiring')}`);
+        }
       }
     } catch { /* non-fatal — doctor can still fix later */ }
 
     if (dirty) {
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+      emitMutation('updated .claude/settings.json', settingsChanges.join(', '));
     }
   }
 } catch { /* non-fatal — stale hooks won't block session, just emit warnings */ }
@@ -438,6 +491,7 @@ try {
   const guidanceDir = resolve(projectRoot, '.claude/guidance');
   const shippedDir = resolve(projectRoot, 'node_modules/moflo/.claude/guidance/shipped');
   if (existsSync(shippedDir)) {
+    let restoredGuidance = 0;
     const shippedFiles = readdirSync(shippedDir).filter(f => f.endsWith('.md'));
     for (const file of shippedFiles) {
       const dest = resolve(guidanceDir, file);
@@ -446,7 +500,11 @@ try {
         const header = `<!-- AUTO-GENERATED by moflo session-start. Do not edit — changes will be overwritten. -->\n<!-- Source: node_modules/moflo/.claude/guidance/shipped/${file} -->\n\n`;
         const content = readFileSync(resolve(shippedDir, file), 'utf-8');
         writeFileSync(dest, header + content);
+        restoredGuidance++;
       }
+    }
+    if (restoredGuidance > 0) {
+      emitMutation('restored missing guidance files', `${restoredGuidance} restored`);
     }
   }
 } catch { /* non-fatal */ }
@@ -455,10 +513,12 @@ try {
 // `.moflo/vector-stats.json` is canonical post-#699; pre-#714 builds also
 // wrote a copy under `.swarm/` for a "legacy compatibility" reader that no
 // longer exists. The leftover file can only ever be stale, so delete it on
-// session start. Unconditional unlink — the catch absorbs ENOENT once the
-// file is gone, so this is idempotent without a stat probe.
+// session start. Unconditional unlinkSync — ENOENT (the hot path) lands in
+// catch and stays silent, while a successful unlink reaches the emit on the
+// rare cleanup path (#716). Avoids an extra existsSync stat per session.
 try {
   unlinkSync(resolve(projectRoot, '.swarm', 'vector-stats.json'));
+  emitMutation('removed legacy .swarm/vector-stats.json');
 } catch { /* non-fatal — ENOENT once removed, EACCES on Windows AV holds */ }
 
 // ── 3c. Clean up double-prefixed guidance files from pre-4.8.45 upgrade ─────
@@ -468,10 +528,17 @@ try {
 try {
   const guidanceDir = resolve(projectRoot, '.claude/guidance');
   if (existsSync(guidanceDir)) {
+    let removedDoubles = 0;
     for (const file of readdirSync(guidanceDir)) {
       if ((file.startsWith('moflo-moflo-') || file === 'moflo-moflo.md' || file === 'moflo.md') && file.endsWith('.md')) {
-        try { unlinkSync(resolve(guidanceDir, file)); } catch { /* non-fatal */ }
+        try {
+          unlinkSync(resolve(guidanceDir, file));
+          removedDoubles++;
+        } catch { /* non-fatal */ }
       }
+    }
+    if (removedDoubles > 0) {
+      emitMutation('removed legacy double-prefixed guidance files', `${removedDoubles} removed`);
     }
   }
 } catch { /* non-fatal */ }
@@ -491,7 +558,13 @@ try {
   const mofloYaml = resolve(projectRoot, 'moflo.yaml');
   if (upgraderPath && existsSync(mofloYaml)) {
     const { ensureYamlSections } = await import(`file://${upgraderPath.replace(/\\/g, '/')}`);
-    ensureYamlSections(mofloYaml);
+    const appended = ensureYamlSections(mofloYaml);
+    if (Array.isArray(appended) && appended.length > 0) {
+      emitMutation(
+        'updated moflo.yaml',
+        `appended ${plural(appended.length, 'section')}: ${appended.join(', ')}`,
+      );
+    }
   }
 } catch { /* non-fatal — yaml stays as-is, user can still edit manually */ }
 
@@ -504,7 +577,10 @@ try {
   const shimPath = existsSync(shimLib) ? shimLib : existsSync(localShimLib) ? localShimLib : null;
   if (shimPath) {
     const { installGlobalShim } = await import(`file://${shimPath.replace(/\\/g, '/')}`);
-    installGlobalShim({ silent: true });
+    const shimResult = installGlobalShim({ silent: true });
+    if (shimResult?.installed) {
+      emitMutation('installed global flo shim', 'bare `flo` now resolves to project install');
+    }
   }
 } catch { /* non-fatal — flo still works via npx */ }
 
@@ -533,18 +609,10 @@ try {
         out: process.stderr,
         isTTY: Boolean(process.stderr.isTTY),
         onMigrationStart: () => {
-          try {
-            process.stdout.write(
-              'moflo: re-indexing memory store (this may take 30-60s on first run after upgrade)...\n',
-            );
-          } catch { /* writing must never throw */ }
+          emitMutation('re-indexing memory store', 'this may take 30-60s on first run after upgrade');
         },
         onMigrationComplete: (rowsEmbedded) => {
-          try {
-            process.stdout.write(
-              `moflo: memory re-indexed (${rowsEmbedded} rows re-embedded). Search is back.\n`,
-            );
-          } catch { /* writing must never throw */ }
+          emitMutation('memory re-indexed', `${plural(rowsEmbedded, 'row')} re-embedded — search is back`);
         },
       });
     }
