@@ -9,7 +9,7 @@ Semantic search over your own documents, backed by moflo's HNSW index in `.swarm
 
 ## When to Use This vs `memory-patterns`
 
-- **`memory-patterns`** — structured, namespaced memory you own (sessions, knowledge, patterns). Keys matter. Entries are conceptual units.
+- **`memory-patterns`** — structured, namespaced memory you own (sessions, learnings, patterns). Keys matter. Entries are conceptual units.
 - **This skill (`vector-search`)** — search over documents you've ingested for retrieval. Entries are content chunks. Keys are just stable IDs for dedupe.
 
 Both use the same index; the difference is how you chunk and what you put in the `value` field.

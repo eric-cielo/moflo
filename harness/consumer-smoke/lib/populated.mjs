@@ -29,6 +29,7 @@ import {
   hnswIndexPath,
   legacyHnswIndexPath,
 } from '../../../bin/lib/moflo-paths.mjs';
+import { MIGRATED_FROM_KNOWLEDGE } from '../../../bin/migrations/lib/markers.mjs';
 
 const ACTIVE_NAMESPACES = ['guidance', 'patterns', 'code-map', 'tests', 'knowledge', 'learnings', 'default'];
 const EPHEMERAL_NAMESPACES = ['hive-mind', 'tasklist', 'epic-state', 'test-bridge-fix'];
@@ -210,7 +211,7 @@ function inspectPostStateDb(consumerDir) {
 const { readFileSync } = await import('node:fs');
 const SQL = await sqlInit();
 const db = new SQL.Database(readFileSync(${JSON.stringify(dbPath)}));
-const out = { byNamespaceStatus: {}, integrity: null, ids: [], hasEmbedding: 0 };
+const out = { byNamespaceStatus: {}, integrity: null, ids: [], hasEmbedding: 0, migratedLearnings: { byStatus: {}, withEmbedding: 0, sampleKeys: [] } };
 const res = db.exec("SELECT namespace, status, COUNT(*) FROM memory_entries GROUP BY namespace, status");
 if (res[0]) {
   for (const row of res[0].values) out.byNamespaceStatus[row[0]+'/'+row[1]] = row[2];
@@ -221,6 +222,15 @@ const embRes = db.exec("SELECT COUNT(*) FROM memory_entries WHERE embedding IS N
 if (embRes[0]) out.hasEmbedding = embRes[0].values[0][0];
 const intRes = db.exec("PRAGMA integrity_check");
 if (intRes[0]) out.integrity = intRes[0].values[0][0];
+const migMarker = ${JSON.stringify(`%${MIGRATED_FROM_KNOWLEDGE}%`)};
+const migRes = db.exec("SELECT status, COUNT(*) FROM memory_entries WHERE namespace='learnings' AND tags LIKE '" + migMarker + "' GROUP BY status");
+if (migRes[0]) {
+  for (const row of migRes[0].values) out.migratedLearnings.byStatus[row[0]] = row[1];
+}
+const migEmbRes = db.exec("SELECT COUNT(*) FROM memory_entries WHERE namespace='learnings' AND tags LIKE '" + migMarker + "' AND embedding IS NOT NULL AND embedding != ''");
+if (migEmbRes[0]) out.migratedLearnings.withEmbedding = migEmbRes[0].values[0][0];
+const sampleRes = db.exec("SELECT key FROM memory_entries WHERE namespace='learnings' AND tags LIKE '" + migMarker + "' LIMIT 5");
+if (sampleRes[0]) out.migratedLearnings.sampleKeys = sampleRes[0].values.map(r => r[0]);
 db.close();
 emit(out);
 `);
@@ -245,7 +255,12 @@ function inspectInstalledEphemeralNamespaces(consumerDir) {
 }
 
 function assertActiveRowsPreserved(snapshot, expectedRows) {
-  const expected = expectedRows.filter(r => r.status === 'active' && ACTIVE_NAMESPACES.includes(r.namespace));
+  // `knowledge` is excluded — story #750 hard-deletes those rows after copying
+  // them to `learnings`. Survival is asserted on the migrated counterpart in
+  // assertKnowledgeMigratedToLearnings instead.
+  const expected = expectedRows.filter(
+    r => r.status === 'active' && ACTIVE_NAMESPACES.includes(r.namespace) && r.namespace !== 'knowledge',
+  );
   const presentIds = new Set(snapshot.ids);
   const missing = expected.filter(r => !presentIds.has(r.id));
   if (missing.length === 0) {
@@ -260,13 +275,50 @@ function assertActiveRowsPreserved(snapshot, expectedRows) {
   );
 }
 
-function assertArchivedRowsPreserved(snapshot) {
-  const archivedCount = snapshot.byNamespaceStatus['knowledge/archived'] ?? 0;
-  if (archivedCount >= ARCHIVED_ROW_COUNT) {
-    record('populated:archived-preserved', 'pass', `${archivedCount} archived rows survive`);
-  } else {
-    record('populated:archived-preserved', 'fail', `expected ≥ ${ARCHIVED_ROW_COUNT} archived rows, got ${archivedCount}`);
+function assertKnowledgePurged(snapshot) {
+  // Story #750: every active+archived knowledge row should be hard-deleted
+  // after the consolidation→purge migration pipeline.
+  const offenders = [];
+  for (const status of ['active', 'archived']) {
+    const count = snapshot.byNamespaceStatus[`knowledge/${status}`] ?? 0;
+    if (count > 0) offenders.push(`${status}=${count}`);
   }
+  if (offenders.length === 0) {
+    record('populated:knowledge-purged', 'pass', 'no legacy knowledge rows remain (#750)');
+  } else {
+    record('populated:knowledge-purged', 'fail', `legacy knowledge rows leaked through #750 purge: ${offenders.join(', ')}`);
+  }
+}
+
+function assertKnowledgeMigratedToLearnings(snapshot) {
+  // Every knowledge row should re-surface as a `learnings` row carrying the
+  // `migratedFrom:knowledge` tag with status preserved (active stays active,
+  // archived stays archived) and its embedding intact.
+  const expectedActive = ROWS_PER_ACTIVE_NAMESPACE; // 20 from buildSeedPlan
+  const expectedArchived = ARCHIVED_ROW_COUNT; // 3
+  const expectedTotal = expectedActive + expectedArchived;
+  const got = snapshot.migratedLearnings ?? { byStatus: {}, withEmbedding: 0, sampleKeys: [] };
+  const gotActive = got.byStatus.active ?? 0;
+  const gotArchived = got.byStatus.archived ?? 0;
+  const gotTotal = gotActive + gotArchived;
+
+  if (gotTotal < expectedTotal) {
+    record('populated:knowledge-migrated', 'fail',
+      `expected ≥ ${expectedTotal} migratedFrom:knowledge learnings rows, got ${gotTotal} (active=${gotActive}, archived=${gotArchived})`);
+    return;
+  }
+  if (gotArchived < expectedArchived) {
+    record('populated:knowledge-migrated', 'fail',
+      `archived status not preserved on migrated rows: expected ≥ ${expectedArchived}, got ${gotArchived}`);
+    return;
+  }
+  if (got.withEmbedding < expectedTotal) {
+    record('populated:knowledge-migrated', 'fail',
+      `embeddings dropped on migrated rows: ${got.withEmbedding}/${expectedTotal} retained`);
+    return;
+  }
+  record('populated:knowledge-migrated', 'pass',
+    `${gotTotal} learnings rows tagged migratedFrom:knowledge (active=${gotActive}, archived=${gotArchived}, with-embedding=${got.withEmbedding})`);
 }
 
 function assertDeletedRowsPurged(snapshot) {
@@ -381,6 +433,8 @@ function assertLauncherAnnouncements(stdout) {
     { fragment: 'relocated memory db', label: 'announce-db-relocation' },
     { fragment: 'soft-deleted', label: 'announce-softdelete-purge' },
     { fragment: 'ephemeral namespace', label: 'announce-ephemeral-purge' },
+    { fragment: 'consolidated knowledge', label: 'announce-knowledge-consolidation' },
+    { fragment: 'removed legacy knowledge', label: 'announce-knowledge-purge' },
   ];
   for (const e of expected) {
     if (stdout.includes(e.fragment)) {
@@ -576,7 +630,8 @@ export async function runPopulatedConsumerProfile(consumerDir) {
     record('populated:post-state-snapshot', 'fail', `${MOFLO_DIR}/${MEMORY_DB_FILE} inspect probe failed`);
   } else {
     assertActiveRowsPreserved(snapshot, rows);
-    assertArchivedRowsPreserved(snapshot);
+    assertKnowledgePurged(snapshot);
+    assertKnowledgeMigratedToLearnings(snapshot);
     assertDeletedRowsPurged(snapshot);
     assertEphemeralRowsPurged(snapshot);
     assertIntegrity(snapshot);

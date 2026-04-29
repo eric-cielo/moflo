@@ -1,10 +1,11 @@
 /**
- * Migration: copy every active row from the deprecated `knowledge` namespace
- * into `learnings`, tagging with `source:user`, `locked`, `migratedFrom:knowledge`
- * so future decay/prune leaves them alone.
+ * Migration: copy every row (active + archived) from the deprecated `knowledge`
+ * namespace into `learnings`, tagging with `source:user`, `locked`,
+ * `migratedFrom:knowledge` so future decay/prune leaves them alone. Archived
+ * rows preserve their `status='archived'` on the learnings side.
  *
- * Original `knowledge` rows are preserved (the standing rule against renaming
- * core namespaces forbids deletion); they're just no longer the canonical home.
+ * Source `knowledge` rows are preserved here; the follow-on `knowledge-purge`
+ * migration hard-deletes them once their counterpart is confirmed.
  *
  * @module bin/migrations/knowledge-to-learnings
  */
@@ -14,8 +15,7 @@ import { writeFileSync } from 'fs';
 import { randomBytes } from 'crypto';
 import { mofloResolveURL } from '../lib/moflo-resolve.mjs';
 import { memoryDbPath } from '../lib/moflo-paths.mjs';
-
-const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
+import { MIGRATED_FROM_KNOWLEDGE } from './lib/markers.mjs';
 
 export const name = 'knowledge-to-learnings';
 
@@ -24,7 +24,7 @@ function generateId() {
 }
 
 function mergeTags(originalJson) {
-  const additions = ['source:user', 'locked', 'migratedFrom:knowledge'];
+  const additions = ['source:user', 'locked', MIGRATED_FROM_KNOWLEDGE];
   let original = [];
   try {
     const parsed = JSON.parse(originalJson || '[]');
@@ -38,20 +38,25 @@ function mergeTags(originalJson) {
 /**
  * @param {string} projectRoot
  * @returns {Promise<{rowsMigrated:number, rowsSkipped:number}>}
+ *   `rowsMigrated` counts both active and archived inserts. `rowsSkipped`
+ *   counts (key, status) pairs that already had a learnings counterpart.
  */
 export async function run(projectRoot) {
   const dbPath = memoryDbPath(projectRoot);
   if (!existsSync(dbPath)) return { rowsMigrated: 0, rowsSkipped: 0 };
 
+  // Lazy-load sql.js — top-level await would pay ~30ms WASM init even on the
+  // no-op fast-path where the manifest already records this migration as done.
+  const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
   const SQL = await initSqlJs();
   const db = new SQL.Database(readFileSync(dbPath));
 
   const sourceStmt = db.prepare(
     `SELECT id, key, content, type, metadata, tags, embedding, embedding_dimensions,
             embedding_model, owner_id, created_at, updated_at, expires_at,
-            last_accessed_at, access_count
+            last_accessed_at, access_count, status
      FROM memory_entries
-     WHERE namespace = 'knowledge' AND status = 'active'`,
+     WHERE namespace = 'knowledge' AND status IN ('active','archived')`,
   );
   const rows = [];
   while (sourceStmt.step()) rows.push(sourceStmt.getAsObject());
@@ -63,10 +68,15 @@ export async function run(projectRoot) {
   }
 
   const existingStmt = db.prepare(
-    `SELECT key FROM memory_entries WHERE namespace = 'learnings' AND status = 'active'`,
+    `SELECT key, status FROM memory_entries WHERE namespace = 'learnings' AND status IN ('active','archived')`,
   );
-  const existingKeys = new Set();
-  while (existingStmt.step()) existingKeys.add(String(existingStmt.getAsObject().key));
+  // key|status pairs — a knowledge row's archived counterpart shouldn't block
+  // copying its active version (and vice-versa) so we key by both fields.
+  const existingPairs = new Set();
+  while (existingStmt.step()) {
+    const r = existingStmt.getAsObject();
+    existingPairs.add(`${String(r.key)}|${String(r.status)}`);
+  }
   existingStmt.free();
 
   const insertStmt = db.prepare(`
@@ -74,7 +84,7 @@ export async function run(projectRoot) {
       (id, key, namespace, content, type, embedding, embedding_model, embedding_dimensions,
        tags, metadata, owner_id, created_at, updated_at, expires_at,
        last_accessed_at, access_count, status)
-    VALUES (?, ?, 'learnings', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+    VALUES (?, ?, 'learnings', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let migrated = 0;
@@ -82,7 +92,8 @@ export async function run(projectRoot) {
   try {
     for (const row of rows) {
       const key = String(row.key);
-      if (existingKeys.has(key)) { skipped++; continue; }
+      const status = String(row.status ?? 'active');
+      if (existingPairs.has(`${key}|${status}`)) { skipped++; continue; }
 
       insertStmt.run([
         generateId(),
@@ -100,6 +111,7 @@ export async function run(projectRoot) {
         row.expires_at ?? null,
         row.last_accessed_at ?? null,
         row.access_count ?? 0,
+        status,
       ]);
       migrated++;
     }

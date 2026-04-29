@@ -158,11 +158,11 @@ const decision = await hiveMind.buildConsensus(
 await memory.store('api-patterns', {
   rest: { pros: [...], cons: [...] },
   graphql: { pros: [...], cons: [...] }
-}, 'knowledge', { confidence: 0.95 });
+}, 'learnings', { confidence: 0.95 });
 ```
 
 **Memory Types**
-- `knowledge`: Permanent insights (no TTL)
+- `learnings`: Permanent insights (no TTL) — `knowledge` is a deprecated alias
 - `context`: Session context (1 hour TTL)
 - `task`: Task-specific data (30 min TTL)
 - `result`: Execution results (permanent, compressed)
@@ -176,7 +176,7 @@ await memory.store('api-patterns', {
 ```javascript
 // Search memory by pattern
 const results = await memory.search('api*', {
-  type: 'knowledge',
+  type: 'learnings',
   minConfidence: 0.8,
   limit: 50
 });
@@ -404,7 +404,7 @@ await memory.store('auth-pattern', {
   pros: ['Stateless', 'Scalable'],
   cons: ['Token size', 'Revocation complexity'],
   implementation: {...}
-}, 'knowledge', { confidence: 0.95 });
+}, 'learnings', { confidence: 0.95 });
 ```
 
 **Build Associations**
