@@ -465,7 +465,7 @@ export function processGateCommand(command: string, env: Record<string, string |
         console.log('Pre-Compact Guidance:');
         console.log('IMPORTANT: Before compacting, preserve key context:');
         console.log('   - Check CLAUDE.md for project rules and architecture');
-        console.log('   - Memory namespaces: guidance, code-map, patterns, knowledge');
+        console.log('   - Memory namespaces: guidance, code-map, patterns, learnings');
         console.log('   - Use memory search to recover context after compact');
         console.log('   - Batch all operations in single messages (GOLDEN RULE)');
         process.exit(0);

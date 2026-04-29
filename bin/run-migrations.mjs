@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Migration runner — consults the per-project manifest and runs only
- * migrations that haven't already been recorded. Fast-paths to a no-op (~5ms)
- * when nothing is unmet, so it's safe to fire on every session start.
+ * migrations that haven't already been recorded. Fast-paths to a no-op when
+ * nothing is unmet (cost = node startup + ESM graph; sub-100ms on warm fs),
+ * so it's safe to fire on every session start.
  *
  * Migrations live under `bin/migrations/` and each module exports:
  *   export const name = '<unique-id>';
@@ -77,6 +78,16 @@ async function loadMigrations() {
       debug(`SKIP ${f} — load error: ${err.message}`);
     }
   }
+  // Stable order: by `order` (default 0) ascending, then by `name`. A
+  // migration that depends on another should `export const order = N` with N
+  // larger than the dep's. readdirSync is filesystem-dependent across OSes,
+  // so explicit ordering is the only portable way to express dependencies.
+  loaded.sort((a, b) => {
+    const ao = typeof a.order === 'number' ? a.order : 0;
+    const bo = typeof b.order === 'number' ? b.order : 0;
+    if (ao !== bo) return ao - bo;
+    return a.name.localeCompare(b.name);
+  });
   return loaded;
 }
 

@@ -21,7 +21,7 @@ Three things to know:
 
 2. **CLI** — `flo-search "<query>" --namespace <ns>` for quick semantic lookup from the shell.
 
-3. **Namespaces** — namespace + key is the unique identity. Default namespaces shipped by moflo: `knowledge`, `patterns`, `guidance`, `code-map`. Create your own for application memory (e.g. `app:sessions`, `app:users`).
+3. **Namespaces** — namespace + key is the unique identity. Default namespaces shipped by moflo: `learnings`, `patterns`, `guidance`, `code-map`. (`knowledge` is a deprecated alias — writes are transparently redirected to `learnings`.) Create your own for application memory (e.g. `app:sessions`, `app:users`).
 
 ## Pattern 1: Session Memory
 
@@ -50,7 +50,7 @@ Facts that should survive any session and be findable by meaning, not exact key:
 
 ```typescript
 await mcp.memory_store({
-  namespace: 'knowledge',
+  namespace: 'learnings',
   key: 'auth:session-token-rotation',
   value: 'Session tokens are rotated every 15 minutes by the auth middleware. Refresh happens transparently on the client.',
   tags: ['auth', 'security'],
@@ -59,7 +59,7 @@ await mcp.memory_store({
 
 // Retrieval: semantic, not keyword
 const hits = await mcp.memory_search({
-  namespace: 'knowledge',
+  namespace: 'learnings',
   query: 'how do auth tokens refresh?',
   limit: 5,
   threshold: 0.4,

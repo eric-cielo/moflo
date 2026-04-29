@@ -30,7 +30,7 @@ This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted d
 
 ### FIRST ACTION ON EVERY PROMPT: Search Memory
 
-MUST call `mcp__moflo__memory_search` BEFORE any Glob/Grep/Read/file exploration. Namespaces: `guidance`+`patterns` every prompt; `code-map` when navigating code. When the user says "remember this": `mcp__moflo__memory_store` with namespace `knowledge`.
+MUST call `mcp__moflo__memory_search` BEFORE any Glob/Grep/Read/file exploration. Namespaces: `guidance`+`patterns`+`learnings` every prompt; `code-map` when navigating code. When the user says "remember this": `mcp__moflo__memory_store` with namespace `learnings`.
 
 ### Spell Gates (enforced automatically)
 
