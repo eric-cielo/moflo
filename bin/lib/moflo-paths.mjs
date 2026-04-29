@@ -21,6 +21,7 @@ import {
   rmdirSync,
   statSync,
   unlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -74,7 +75,9 @@ export function memoryDbCandidatePaths(projectRoot) {
  * One-time migration of `.claude-flow/` → `.moflo/`. Idempotent — safe to call
  * on every session start. See moflo-paths.ts for the full contract.
  *
- * Returns `{ migrated, reason? }`.
+ * Returns `{ migrated, reason?, movedCount?, collisions? }`. The launcher
+ * uses `movedCount` for the "migrated N files" message and `collisions` to
+ * warn about subdirs (e.g. models/) that exist in both locations.
  */
 export function migrateClaudeFlowToMoflo(projectRoot) {
   const legacy = legacyClaudeFlowDir(projectRoot);
@@ -83,8 +86,11 @@ export function migrateClaudeFlowToMoflo(projectRoot) {
   if (!existsSync(legacy)) return { migrated: false, reason: 'no-legacy' };
 
   if (!existsSync(target)) {
+    let movedCount = 0;
+    try { movedCount = readdirSync(legacy).length; } catch { /* count is cosmetic */ }
     renameSync(legacy, target);
-    return { migrated: true };
+    rewriteEmbeddingsModelPath(projectRoot);
+    return { migrated: true, movedCount };
   }
 
   let entries;
@@ -95,12 +101,18 @@ export function migrateClaudeFlowToMoflo(projectRoot) {
   }
 
   let moved = 0;
+  let modelsMoved = false;
+  const collisions = [];
   for (const name of entries) {
     const dst = join(target, name);
-    if (existsSync(dst)) continue;
+    if (existsSync(dst)) {
+      collisions.push(name);
+      continue;
+    }
     try {
       renameSync(join(legacy, name), dst);
       moved++;
+      if (name === 'models') modelsMoved = true;
     } catch {
       // Best-effort — single failed move shouldn't abort the rest.
     }
@@ -112,7 +124,44 @@ export function migrateClaudeFlowToMoflo(projectRoot) {
     // Non-fatal — leftover legacy dir means migration runs next time.
   }
 
-  return moved > 0 ? { migrated: true } : { migrated: false, reason: 'merged-nothing' };
+  if (modelsMoved) rewriteEmbeddingsModelPath(projectRoot);
+
+  if (moved === 0) {
+    return { migrated: false, reason: 'merged-nothing', movedCount: 0, collisions };
+  }
+  return { migrated: true, movedCount: moved, collisions };
+}
+
+/**
+ * Rewrite `.moflo/embeddings.json:modelPath` if it still references the
+ * legacy `.claude-flow/` location (#735). Best-effort: file-not-present,
+ * malformed JSON, missing field, or already-correct path → silent no-op.
+ * Mirrors the TS twin in src/cli/services/moflo-paths.ts. Uses tmp+rename
+ * so SIGINT mid-flush can't leave embeddings.json truncated.
+ */
+export function rewriteEmbeddingsModelPath(projectRoot) {
+  const cfgPath = join(projectRoot, MOFLO_DIR, 'embeddings.json');
+
+  let raw;
+  try { raw = readFileSync(cfgPath, 'utf8'); } catch { return false; }
+
+  let cfg;
+  try { cfg = JSON.parse(raw); } catch { return false; }
+
+  if (typeof cfg.modelPath !== 'string') return false;
+  if (!cfg.modelPath.includes(LEGACY_CLAUDE_FLOW_DIR)) return false;
+
+  cfg.modelPath = cfg.modelPath.split(LEGACY_CLAUDE_FLOW_DIR).join(MOFLO_DIR);
+
+  const tmpPath = `${cfgPath}.tmp.${process.pid}.${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    writeFileSync(tmpPath, JSON.stringify(cfg, null, 2));
+    renameSync(tmpPath, cfgPath);
+    return true;
+  } catch {
+    try { unlinkSync(tmpPath); } catch { /* best-effort cleanup */ }
+    return false;
+  }
 }
 
 const SQLITE_MAGIC_HEADER = Buffer.from('SQLite format 3\0', 'utf8');

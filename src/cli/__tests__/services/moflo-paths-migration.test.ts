@@ -28,6 +28,7 @@ import {
   migrateClaudeFlowToMoflo,
   migrateMemoryDbToMoflo,
   mofloDir,
+  rewriteEmbeddingsModelPath,
 } from '../../services/moflo-paths.js';
 
 // SQLite header magic — `migrateMemoryDbToMoflo` rejects copies that don't
@@ -71,6 +72,8 @@ describe('migrateClaudeFlowToMoflo (#699)', () => {
       const result = migrateClaudeFlowToMoflo(root);
 
       expect(result.migrated).toBe(true);
+      // Top-level entries: claims/ + daemon.lock = 2
+      expect(result.movedCount).toBe(2);
       expect(existsSync(legacy)).toBe(false);
       expect(readFileSync(join(mofloDir(root), 'claims', 'claim.json'), 'utf8')).toBe('{"id":"abc"}');
       expect(readFileSync(join(mofloDir(root), 'daemon.lock'), 'utf8')).toBe('{"pid":123}');
@@ -151,10 +154,170 @@ describe('migrateClaudeFlowToMoflo (#699)', () => {
       writeFileSync(join(legacy, 'collide.json'), 'old');
       writeFileSync(join(target, 'collide.json'), 'new');
 
-      migrateClaudeFlowToMoflo(root);
+      const result = migrateClaudeFlowToMoflo(root);
 
       expect(existsSync(legacy)).toBe(true);
       expect(readdirSync(legacy)).toEqual(['collide.json']);
+      // #735: surface collisions so the launcher can warn the user instead
+      // of silently choosing one side.
+      expect(result.collisions).toEqual(['collide.json']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // #735: model cache must survive migration so consumers don't re-download
+  // multi-MB ONNX bytes over a slow connection.
+  it('preserves .claude-flow/models/ as .moflo/models/ via merge path', () => {
+    const root = mkRoot();
+    try {
+      const legacy = legacyClaudeFlowDir(root);
+      const target = mofloDir(root);
+      // Pre-existing target forces the merge path (not the wholesale rename).
+      mkdirSync(target);
+      writeFileSync(join(target, 'placeholder'), 'x');
+      mkdirSync(join(legacy, 'models'), { recursive: true });
+      writeFileSync(join(legacy, 'models', 'model.onnx'), 'fake-onnx-bytes');
+
+      const result = migrateClaudeFlowToMoflo(root);
+
+      expect(result.migrated).toBe(true);
+      expect(result.collisions).toEqual([]);
+      expect(readFileSync(join(target, 'models', 'model.onnx'), 'utf8')).toBe('fake-onnx-bytes');
+      expect(existsSync(join(legacy, 'models'))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // #735: when models/ exists in BOTH locations, never silently choose —
+  // surface the collision so the user can manually decide.
+  it('warns via collisions when models/ exists in both .claude-flow/ and .moflo/', () => {
+    const root = mkRoot();
+    try {
+      const legacy = legacyClaudeFlowDir(root);
+      const target = mofloDir(root);
+      mkdirSync(join(legacy, 'models'), { recursive: true });
+      writeFileSync(join(legacy, 'models', 'old.onnx'), 'old-bytes');
+      mkdirSync(join(target, 'models'), { recursive: true });
+      writeFileSync(join(target, 'models', 'new.onnx'), 'new-bytes');
+
+      const result = migrateClaudeFlowToMoflo(root);
+
+      expect(result.collisions).toContain('models');
+      // Both copies preserved — neither side touched.
+      expect(readFileSync(join(legacy, 'models', 'old.onnx'), 'utf8')).toBe('old-bytes');
+      expect(readFileSync(join(target, 'models', 'new.onnx'), 'utf8')).toBe('new-bytes');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // #735: when models/ relocates, the embeddings.json modelPath baked in
+  // pre-migration must be rewritten to point at the new location.
+  it('rewrites embeddings.json:modelPath when models/ moves via wholesale rename', () => {
+    const root = mkRoot();
+    try {
+      const legacy = legacyClaudeFlowDir(root);
+      mkdirSync(join(legacy, 'models'), { recursive: true });
+      writeFileSync(join(legacy, 'models', 'model.onnx'), 'bytes');
+      // Pre-migration embeddings.json lives inside the legacy dir, so the
+      // wholesale rename brings it along with a stale modelPath baked in.
+      writeFileSync(
+        join(legacy, 'embeddings.json'),
+        JSON.stringify({ modelPath: `/abs/path/${LEGACY_CLAUDE_FLOW_DIR}/models/model.onnx` }),
+      );
+
+      const result = migrateClaudeFlowToMoflo(root);
+      expect(result.migrated).toBe(true);
+
+      const cfg = JSON.parse(readFileSync(join(mofloDir(root), 'embeddings.json'), 'utf8'));
+      expect(cfg.modelPath).toBe(`/abs/path/${MOFLO_DIR}/models/model.onnx`);
+      expect(cfg.modelPath).not.toContain(LEGACY_CLAUDE_FLOW_DIR);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rewrites embeddings.json:modelPath when models/ moves via merge path', () => {
+    const root = mkRoot();
+    try {
+      const legacy = legacyClaudeFlowDir(root);
+      const target = mofloDir(root);
+      mkdirSync(target);
+      // Stale config already at canonical location pointing at legacy.
+      writeFileSync(
+        join(target, 'embeddings.json'),
+        JSON.stringify({ modelPath: `C:\\\\proj\\\\${LEGACY_CLAUDE_FLOW_DIR}\\\\models` }),
+      );
+      mkdirSync(join(legacy, 'models'), { recursive: true });
+      writeFileSync(join(legacy, 'models', 'model.onnx'), 'bytes');
+
+      migrateClaudeFlowToMoflo(root);
+
+      const cfg = JSON.parse(readFileSync(join(target, 'embeddings.json'), 'utf8'));
+      expect(cfg.modelPath).not.toContain(LEGACY_CLAUDE_FLOW_DIR);
+      expect(cfg.modelPath).toContain(MOFLO_DIR);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('rewriteEmbeddingsModelPath (#735)', () => {
+  it('returns false when embeddings.json does not exist', () => {
+    const root = mkRoot();
+    try {
+      expect(rewriteEmbeddingsModelPath(root)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns false when modelPath does not reference legacy', () => {
+    const root = mkRoot();
+    try {
+      mkdirSync(mofloDir(root), { recursive: true });
+      writeFileSync(
+        join(mofloDir(root), 'embeddings.json'),
+        JSON.stringify({ modelPath: '/already/correct/.moflo/models' }),
+      );
+      expect(rewriteEmbeddingsModelPath(root)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('survives malformed JSON without throwing', () => {
+    const root = mkRoot();
+    try {
+      mkdirSync(mofloDir(root), { recursive: true });
+      writeFileSync(join(mofloDir(root), 'embeddings.json'), '{ not valid json');
+      expect(rewriteEmbeddingsModelPath(root)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves other fields when rewriting modelPath', () => {
+    const root = mkRoot();
+    try {
+      mkdirSync(mofloDir(root), { recursive: true });
+      writeFileSync(
+        join(mofloDir(root), 'embeddings.json'),
+        JSON.stringify({
+          modelPath: `/x/${LEGACY_CLAUDE_FLOW_DIR}/models`,
+          dimensions: 384,
+          provider: 'fastembed',
+        }),
+      );
+
+      expect(rewriteEmbeddingsModelPath(root)).toBe(true);
+
+      const cfg = JSON.parse(readFileSync(join(mofloDir(root), 'embeddings.json'), 'utf8'));
+      expect(cfg.modelPath).toBe(`/x/${MOFLO_DIR}/models`);
+      expect(cfg.dimensions).toBe(384);
+      expect(cfg.provider).toBe('fastembed');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

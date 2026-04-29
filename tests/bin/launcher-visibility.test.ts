@@ -85,10 +85,41 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     const { stdout } = runLauncher(root);
     const lines = mutationLines(stdout);
 
-    expect(lines).toContain('moflo: migrated runtime state to .moflo/ (from legacy .claude-flow/)');
+    // #735: message includes entry count instead of opaque "runtime state".
+    expect(lines).toContain('moflo: migrated 1 entry from legacy .claude-flow/');
     // The migration actually moved the file
     expect(existsSync(join(root, '.moflo', 'metrics.json'))).toBe(true);
     expect(existsSync(join(root, '.claude-flow', 'metrics.json'))).toBe(false);
+  });
+
+  it('warns about collisions when both .claude-flow/ and .moflo/ have the same subdir (#735)', () => {
+    // Pre-existing target forces the merge path. `models/` collision is the
+    // motivating case from #735 — never silently choose, surface to user.
+    mkdirSync(join(root, '.moflo', 'models'), { recursive: true });
+    writeFileSync(join(root, '.moflo', 'models', 'new.onnx'), 'new');
+    mkdirSync(join(root, '.claude-flow', 'models'), { recursive: true });
+    writeFileSync(join(root, '.claude-flow', 'models', 'old.onnx'), 'old');
+
+    const { stdout } = runLauncher(root);
+    const lines = mutationLines(stdout);
+
+    const collisionLine = lines.find((l) =>
+      l.startsWith('moflo: kept legacy .claude-flow/ entries to avoid clobbering .moflo/'),
+    );
+    expect(collisionLine).toBeDefined();
+    expect(collisionLine).toContain('models');
+    // Both copies preserved.
+    expect(existsSync(join(root, '.claude-flow', 'models', 'old.onnx'))).toBe(true);
+    expect(existsSync(join(root, '.moflo', 'models', 'new.onnx'))).toBe(true);
+  });
+
+  it('does not emit a migration line on the silent fast-path when .claude-flow/ is absent (#735)', () => {
+    // No .claude-flow/ present — every migration-related line MUST stay quiet
+    // so it stops inflating mutationCount on every session-start.
+    const { stdout } = runLauncher(root);
+    const lines = mutationLines(stdout);
+    expect(lines.find((l) => l.includes('migrated') && l.includes('.claude-flow/'))).toBeUndefined();
+    expect(lines.find((l) => l.includes('kept legacy .claude-flow/'))).toBeUndefined();
   });
 
   it('reports legacy `.swarm/vector-stats.json` removal exactly once', () => {
