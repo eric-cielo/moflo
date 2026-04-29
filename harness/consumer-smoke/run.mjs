@@ -78,6 +78,7 @@ function main() {
       () => check.memoryInit(consumerDir),
       () => check.memoryCrud(consumerDir),
       () => check.spellList(consumerDir),
+      () => check.spellScheduleStrictCron(consumerDir),
       () => check.mcpTools(consumerDir),
       () => check.moflodbBridge(consumerDir),
       () => check.floSearch(consumerDir),

@@ -431,6 +431,53 @@ export function memoryCrud(consumerDir) {
   recordExit('memory-delete', flo(consumerDir, ['memory', 'delete', '-k', key, '--namespace', 'smoke']));
 }
 
+/**
+ * Issue #756: `flo spell schedule create --cron <invalid>` must fail strict
+ * validation in a consumer install. Regression catches the
+ * fixed-depth-`../../../../spells/dist/...` import that silently fell back to
+ * a permissive regex when the path resolved to nothing in node_modules layouts.
+ *
+ * "Strict" here means the cron-parser is actually loaded and rejects garbage
+ * — not just that the timing-options arity check trips first. We assert
+ * non-zero exit AND a clear error message, but we DO NOT assert "Invalid
+ * schedule" verbatim because output formatting is allowed to evolve.
+ */
+export function spellScheduleStrictCron(consumerDir) {
+  section('Spell schedule strict cron validation (issue #756)');
+
+  const r = flo(
+    consumerDir,
+    ['spell', 'schedule', 'create', '-n', 'smoke-756', '--cron', 'a b c d e'],
+    { timeout: 60_000 },
+  );
+
+  if (r.code === 0) {
+    record(
+      'spell-schedule-strict-cron',
+      'fail',
+      `garbage cron 'a b c d e' was accepted (exit 0) — strict validator is not loading; ` +
+        `stdout: ${r.stdout.trim().slice(0, 200)}`,
+    );
+    return;
+  }
+
+  // Confirm the rejection mentions the cron field, not e.g. a missing-name
+  // error or some unrelated crash. Both stdout and stderr are scanned because
+  // `output.printError` writes to either depending on TTY detection.
+  const combined = `${r.stdout}\n${r.stderr}`;
+  if (!/cron|Invalid schedule/i.test(combined)) {
+    record(
+      'spell-schedule-strict-cron',
+      'fail',
+      `non-zero exit ${r.code} but no cron-rejection message; ` +
+        `output: ${combined.trim().slice(0, 200)}`,
+    );
+    return;
+  }
+
+  record('spell-schedule-strict-cron', 'pass', `rejected with exit ${r.code}`);
+}
+
 export function spellList(consumerDir) {
   section('Spell engine');
   // Issue #755: shipped grimoire must contain the epic spells out of the box.
