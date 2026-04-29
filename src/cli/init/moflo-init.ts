@@ -419,7 +419,6 @@ status_line:
   show_git: true
   show_session: true
   show_swarm: true
-  show_agentdb: true
   show_mcp: true
 
 # Model preferences (haiku, sonnet, opus)
