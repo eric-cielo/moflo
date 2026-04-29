@@ -10,8 +10,7 @@ import {
   extractStories,
   extractUncheckedStories,
 } from '../src/cli/epic/detection.js';
-import { resolveExecutionOrder } from '../src/cli/epic/execution-order.js';
-import type { GitHubIssue, StoryDefinition } from '../src/cli/epic/types.js';
+import type { GitHubIssue } from '../src/cli/epic/types.js';
 
 // ============================================================================
 // Helpers
@@ -143,75 +142,5 @@ describe('extractUncheckedStories', () => {
   it('returns empty for all checked', () => {
     const issue = makeIssue({ body: '- [x] #1\n- [x] #2' });
     expect(extractUncheckedStories(issue)).toEqual([]);
-  });
-});
-
-// ============================================================================
-// resolveExecutionOrder
-// ============================================================================
-
-describe('resolveExecutionOrder', () => {
-  it('returns sequential order for independent stories', () => {
-    const stories: StoryDefinition[] = [
-      { id: 'a', name: 'A', issue: 1 },
-      { id: 'b', name: 'B', issue: 2 },
-      { id: 'c', name: 'C', issue: 3 },
-    ];
-    const plan = resolveExecutionOrder(stories);
-    expect(plan.order).toEqual(['a', 'b', 'c']);
-    expect(plan.independent_groups).toEqual([['a', 'b', 'c']]);
-  });
-
-  it('respects dependencies', () => {
-    const stories: StoryDefinition[] = [
-      { id: 'a', name: 'A', issue: 1 },
-      { id: 'b', name: 'B', issue: 2, depends_on: ['a'] },
-      { id: 'c', name: 'C', issue: 3, depends_on: ['b'] },
-    ];
-    const plan = resolveExecutionOrder(stories);
-    expect(plan.order).toEqual(['a', 'b', 'c']);
-    expect(plan.independent_groups).toEqual([['a'], ['b'], ['c']]);
-  });
-
-  it('groups independent stories at same level', () => {
-    const stories: StoryDefinition[] = [
-      { id: 'a', name: 'A', issue: 1 },
-      { id: 'b', name: 'B', issue: 2 },
-      { id: 'c', name: 'C', issue: 3, depends_on: ['a', 'b'] },
-    ];
-    const plan = resolveExecutionOrder(stories);
-    expect(plan.order).toEqual(['a', 'b', 'c']);
-    expect(plan.independent_groups).toHaveLength(2);
-    expect(plan.independent_groups[0]).toEqual(['a', 'b']);
-    expect(plan.independent_groups[1]).toEqual(['c']);
-  });
-
-  it('detects circular dependencies', () => {
-    const stories: StoryDefinition[] = [
-      { id: 'a', name: 'A', issue: 1, depends_on: ['b'] },
-      { id: 'b', name: 'B', issue: 2, depends_on: ['a'] },
-    ];
-    expect(() => resolveExecutionOrder(stories)).toThrow('Circular dependency');
-  });
-
-  it('handles diamond dependencies', () => {
-    const stories: StoryDefinition[] = [
-      { id: 'a', name: 'A', issue: 1 },
-      { id: 'b', name: 'B', issue: 2, depends_on: ['a'] },
-      { id: 'c', name: 'C', issue: 3, depends_on: ['a'] },
-      { id: 'd', name: 'D', issue: 4, depends_on: ['b', 'c'] },
-    ];
-    const plan = resolveExecutionOrder(stories);
-    expect(plan.order[0]).toBe('a');
-    expect(plan.order[plan.order.length - 1]).toBe('d');
-    expect(plan.independent_groups[0]).toEqual(['a']);
-    expect(plan.independent_groups[1]).toContain('b');
-    expect(plan.independent_groups[1]).toContain('c');
-  });
-
-  it('handles empty input', () => {
-    const plan = resolveExecutionOrder([]);
-    expect(plan.order).toEqual([]);
-    expect(plan.independent_groups).toEqual([]);
   });
 });

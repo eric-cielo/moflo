@@ -23,7 +23,6 @@ import {
   fetchEpicIssue,
   extractStories,
   enrichStoryNames,
-  resolveExecutionOrder,
 } from '../epic/index.js';
 import type { EpicStrategy } from '../epic/types.js';
 import {
@@ -84,22 +83,19 @@ async function runEpic(
     };
   }
 
-  // 2. Extract and order stories
+  // 2. Extract stories
   const stories = extractStories(issue);
   if (stories.length === 0) {
     return { success: false, message: `No stories found in epic #${issueNumber}` };
   }
 
   await enrichStoryNames(stories);
-  const plan = resolveExecutionOrder(stories);
-  const storyById = new Map(stories.map(s => [s.id, s]));
 
   console.log(`[epic] ${issue.title}`);
   console.log(`[epic] Strategy: ${strategy}`);
   console.log(`[epic] Stories (${stories.length}):`);
-  for (const id of plan.order) {
-    const s = storyById.get(id);
-    if (s) console.log(`  ${s.issue}: ${s.name}`);
+  for (const s of stories) {
+    console.log(`  ${s.issue}: ${s.name}`);
   }
   console.log('');
 
@@ -171,9 +167,7 @@ async function runEpic(
 
   // 5. Load spell template and execute
   const yaml = loadSpellTemplate(strategy);
-  const allStoryNumbers = plan.order
-    .map(id => storyById.get(id)?.issue)
-    .filter((n): n is number => n != null);
+  const allStoryNumbers = stories.map(s => s.issue);
   const storyNumbers = allStoryNumbers.filter(n => !completedStories.has(n));
 
   if (storyNumbers.length === 0) {
