@@ -161,6 +161,19 @@ describe('spell schedule command', () => {
       expect(result.success).toBe(false);
     });
 
+    // Issue #756: if this fails, the fixed-depth-import regression is back —
+    // the strict cron-parser is no longer loading and validation has fallen
+    // through to the old permissive shape-only check.
+    it('should reject 5-field garbage cron via strict parser', async () => {
+      const result = await createCmd().action!(makeCtx({
+        flags: { _: [], name: 'audit', cron: 'a b c d e' },
+      })) as CommandResult;
+
+      expect(result.success).toBe(false);
+      // mcp_memory_store must NOT have been called for an invalid cron.
+      expect(mockCallMCP).not.toHaveBeenCalled();
+    });
+
     it('should reject invalid interval format', async () => {
       const result = await createCmd().action!(makeCtx({
         flags: { _: [], name: 'audit', interval: 'bad' },

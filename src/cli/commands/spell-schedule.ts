@@ -17,25 +17,9 @@ import { callMCPTool } from '../mcp-client.js';
 import { TOOL_MEMORY_STORE, TOOL_MEMORY_LIST, TOOL_MEMORY_RETRIEVE } from '../mcp-tools/tool-names.js';
 import { handleMCPError } from '../services/cli-formatters.js';
 import { ensureDaemonForScheduling } from '../services/daemon-readiness.js';
+import { validateSchedule, computeNextRun } from '../spells/scheduler/cron-parser.js';
 
 const NAMESPACE_SCHEDULES = 'scheduled-spells';
-
-// Cached scheduler utils — resolved once on first call
-let _schedulerUtils: Record<string, Function> | null | undefined;
-
-async function getSchedulerUtils() {
-  if (_schedulerUtils !== undefined) return _schedulerUtils;
-  try {
-    const { dirname, join } = await import('path');
-    const { fileURLToPath, pathToFileURL } = await import('url');
-    const here = dirname(fileURLToPath(import.meta.url));
-    const cronParserPath = join(here, '..', '..', '..', '..', 'spells', 'dist', 'scheduler', 'cron-parser.js');
-    _schedulerUtils = await import(pathToFileURL(cronParserPath).href);
-  } catch {
-    _schedulerUtils = null;
-  }
-  return _schedulerUtils;
-}
 
 // ── Schedule Create ───────────────────────────────────────────────────────────
 
@@ -74,47 +58,18 @@ const createCommand: Command = {
       return { success: false, exitCode: 1 };
     }
 
-    const utils = await getSchedulerUtils();
     const now = Date.now();
-    let nextRunAt: number;
-
-    if (utils) {
-      const validation = utils.validateSchedule({ cron, interval, at });
-      if (!validation.valid) {
-        output.printError(`Invalid schedule: ${validation.errors.map((e: { message: string }) => e.message).join(', ')}`);
-        return { success: false, exitCode: 1 };
-      }
-      const computed = utils.computeNextRun({ cron, interval, at }, now);
-      if (computed === null) {
-        output.printError('Could not compute next run time from the provided schedule');
-        return { success: false, exitCode: 1 };
-      }
-      nextRunAt = computed;
-    } else {
-      // Fallback: basic validation if spells package unavailable
-      if (cron && !/^\S+\s+\S+\s+\S+\s+\S+\s+\S+$/.test(cron.trim())) {
-        output.printError('Invalid cron expression: must be 5 fields (minute hour day month weekday)');
-        return { success: false, exitCode: 1 };
-      }
-      if (interval && !/^\d+[smhd]$/.test(interval.trim())) {
-        output.printError('Invalid interval: use format like "30m", "6h", "1d", "90s"');
-        return { success: false, exitCode: 1 };
-      }
-      if (at && isNaN(Date.parse(at))) {
-        output.printError('Invalid datetime: use ISO 8601 format (e.g., 2026-04-01T09:00:00Z)');
-        return { success: false, exitCode: 1 };
-      }
-      // Approximate next run for fallback path
-      if (interval) {
-        const match = interval.trim().match(/^(\d+)([smhd])$/)!;
-        const mult: Record<string, number> = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
-        nextRunAt = now + (Number(match[1]) * mult[match[2]]);
-      } else if (at) {
-        nextRunAt = Date.parse(at);
-      } else {
-        nextRunAt = now + 60_000;
-      }
+    const validation = validateSchedule({ cron, interval, at }, 'schedule');
+    if (validation.length > 0) {
+      output.printError(`Invalid schedule: ${validation.map(e => e.message).join(', ')}`);
+      return { success: false, exitCode: 1 };
     }
+    const computed = computeNextRun({ cron, interval, at }, now);
+    if (computed === null) {
+      output.printError('Could not compute next run time from the provided schedule');
+      return { success: false, exitCode: 1 };
+    }
+    const nextRunAt = computed;
 
     // Daemon readiness check (lazy — only on schedule creation)
     const projectRoot = ctx.cwd || process.cwd();
