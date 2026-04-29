@@ -306,8 +306,10 @@ switch (command) {
   }
   case 'record-memory-searched': {
     var s = readState();
-    s.memorySearched = true;
-    writeState(s);
+    if (!s.memorySearched) {
+      s.memorySearched = true;
+      writeState(s);
+    }
     break;
   }
   case 'check-bash-memory': {
@@ -327,8 +329,10 @@ switch (command) {
   }
   case 'record-learnings-stored': {
     var s = readState();
-    s.learningsStored = true;
-    writeState(s);
+    if (!s.learningsStored) {
+      s.learningsStored = true;
+      writeState(s);
+    }
     break;
   }
   case 'record-test-run': {
@@ -364,7 +368,7 @@ switch (command) {
   }
   case 'check-before-pr': {
     var cmd = process.env.TOOL_INPUT_command || '';
-    if (!/(?:^|&&\\s*|\\|\\|\\s*|;\\s*)\\s*gh\\s+pr\\s+create\\b/.test(cmd)) break;
+    if (!/(?:^|&&\\s*|\\|\\|\\s*|;\\s*)\\s*(?:[A-Z_][A-Z0-9_]*=\\S+\\s+)*gh\\s+pr\\s+create\\b/.test(cmd)) break;
     var s = readState();
     var missing = [];
     if (config.testing_gate && !s.testsRun) missing.push('tests have not run since the last code edit (run npm test, vitest, jest, pytest, or similar)');

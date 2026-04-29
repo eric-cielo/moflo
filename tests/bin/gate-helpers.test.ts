@@ -1077,8 +1077,7 @@ describe('end-to-end: spell lifecycle', () => {
   });
 
   describe('PR gates (check-before-pr)', () => {
-    function fullySatisfied(env: Record<string, string>): void {
-      // Mark all three gates satisfied so check-before-pr passes.
+    function fullySatisfied(): void {
       writeState(tmpDir, {
         testsRun: true,
         simplifyRun: true,
@@ -1127,11 +1126,29 @@ describe('end-to-end: spell lifecycle', () => {
 
     it('allows PR when all three gates are satisfied', () => {
       const env = baseEnv(tmpDir);
-      fullySatisfied(env);
+      fullySatisfied();
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
       const r = runGate('check-before-pr', env);
       expect(r.exitCode).toBe(0);
       expect(r.stderr).not.toContain('BLOCKED');
+    });
+
+    it('blocks env-prefixed gh pr create (e.g. GH_TOKEN=x gh pr create)', () => {
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { testsRun: false, simplifyRun: true, learningsStored: true });
+      env.TOOL_INPUT_command = 'GH_TOKEN=secret gh pr create --title test';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('tests have not run');
+    });
+
+    it('blocks gh pr create with multiple env-var prefixes', () => {
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { testsRun: true, simplifyRun: true, learningsStored: false });
+      env.TOOL_INPUT_command = 'GH_TOKEN=x BUILD_ID=1 gh pr create --title test';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('learnings have not been stored');
     });
 
     it('does not block non-PR bash commands', () => {
