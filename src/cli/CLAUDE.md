@@ -15,7 +15,7 @@ Root CLAUDE.md rules apply here. After epic #586 / story #602, this directory ho
 - `hooks/` — HookRegistry, executor, daemons, ReasoningBank, statusline, workers (ex-`@moflo/hooks`) — see [docs/modules/hooks.md](../../docs/modules/hooks.md)
 - `embeddings/`, `shared/`, `spells/`, `guidance/`, `aidefence/` — other inlined ex-packages from epic #586
 - `__tests__/` — vitest test tree
-- `agents/`, `data/`, `scripts/`, `epic/spells/` — non-TS assets shipped with the package
+- `agents/`, `data/`, `scripts/`, `spells/definitions/` — non-TS assets shipped with the package (`spells/definitions/` is the canonical home for shipped spell YAMLs the grimoire scans)
 
 ## Key Rules
 

@@ -16,8 +16,7 @@
 
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
-import { join, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import {
   isEpicIssue,
@@ -32,17 +31,29 @@ import {
   type PreflightWarning,
   type PreflightWarningDecision,
 } from '../epic/runner-adapter.js';
+import { locateMofloModulePath } from '../services/moflo-require.js';
 import { select } from '../prompt.js';
 
 // ============================================================================
 // Spell Template Loader
 // ============================================================================
-
-const SPELLS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'epic', 'spells');
+//
+// Epic spells live in the canonical shipped directory (`src/cli/spells/definitions/`)
+// alongside any other future shipped spells, so `flo spell grimoire list` discovers
+// them through the standard resolution path used by `grimoire-builder.ts`. This is
+// not a bespoke `import.meta.url` walkup — same locator as every other shipped
+// asset. (Issue #755.)
 
 function loadSpellTemplate(strategy: EpicStrategy): string {
-  const filename = strategy === 'auto-merge' ? 'auto-merge.yaml' : 'single-branch.yaml';
-  return readFileSync(join(SPELLS_DIR, filename), 'utf-8');
+  const shippedDir = locateMofloModulePath('cli', 'spells/definitions');
+  if (!shippedDir) {
+    throw new Error(
+      'Cannot locate shipped spell definitions directory (src/cli/spells/definitions/). ' +
+        'This indicates a broken moflo install — the directory is in package.json files but missing from the tarball.',
+    );
+  }
+  const filename = strategy === 'auto-merge' ? 'epic-auto-merge.yaml' : 'epic-single-branch.yaml';
+  return readFileSync(join(shippedDir, filename), 'utf-8');
 }
 
 // ============================================================================

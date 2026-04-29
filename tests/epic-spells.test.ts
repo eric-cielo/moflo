@@ -17,10 +17,10 @@ import type { SpellDefinition } from '../src/cli/spells/types/spell-definition.t
 // Helpers
 // ============================================================================
 
-const WORKFLOWS_DIR = join(__dirname, '..', 'src', 'cli', 'epic', 'spells');
+const SPELLS_DIR = join(__dirname, '..', 'src', 'cli', 'spells', 'definitions');
 
 function loadYaml(filename: string): SpellDefinition {
-  const content = readFileSync(join(WORKFLOWS_DIR, filename), 'utf-8');
+  const content = readFileSync(join(SPELLS_DIR, filename), 'utf-8');
   const parsed = parseYaml(content, filename);
   return parsed.definition;
 }
@@ -29,22 +29,22 @@ function loadYaml(filename: string): SpellDefinition {
 // Single-Branch Template
 // ============================================================================
 
-describe('single-branch.yaml', () => {
+describe('epic-single-branch.yaml', () => {
   let def: SpellDefinition;
 
   it('parses without error', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     expect(def).toBeDefined();
   });
 
   it('has correct name and abbreviation', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     expect(def.name).toBe('epic-single-branch');
     expect(def.abbreviation).toBe('esb');
   });
 
   it('declares required arguments', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     expect(def.arguments).toBeDefined();
     expect(def.arguments!.epic_number).toBeDefined();
     expect(def.arguments!.epic_number.required).toBe(true);
@@ -53,24 +53,24 @@ describe('single-branch.yaml', () => {
   });
 
   it('has optional arguments with defaults', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     expect(def.arguments!.base_branch.default).toBe('main');
   });
 
   it('has expected step sequence', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const stepIds = def.steps.map(s => s.id);
     expect(stepIds).toEqual(['init-state', 'create-branch', 'process-stories', 'push-branch', 'build-closes-list', 'create-pr', 'finalize-state']);
   });
 
   it('uses correct step types', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const stepTypes = def.steps.map(s => s.type);
     expect(stepTypes).toEqual(['memory', 'bash', 'loop', 'bash', 'bash', 'github', 'memory']);
   });
 
   it('declares preflight checks on create-branch', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const createBranch = def.steps.find(s => s.id === 'create-branch');
     expect(createBranch?.preflight).toBeDefined();
     const names = createBranch!.preflight!.map(p => p.name);
@@ -81,14 +81,14 @@ describe('single-branch.yaml', () => {
   });
 
   it('declares preflight on push-branch to verify origin remote', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const pushBranch = def.steps.find(s => s.id === 'push-branch');
     expect(pushBranch?.preflight).toBeDefined();
     expect(pushBranch!.preflight!.some(p => p.name === 'origin remote configured')).toBe(true);
   });
 
   it('preflight shell commands are non-empty strings', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     for (const step of def.steps) {
       if (!step.preflight) continue;
       for (const pf of step.preflight) {
@@ -101,7 +101,7 @@ describe('single-branch.yaml', () => {
   });
 
   it('initializes and finalizes epic state in memory', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const initStep = def.steps.find(s => s.id === 'init-state');
     const finalStep = def.steps.find(s => s.id === 'finalize-state');
     expect(initStep?.type).toBe('memory');
@@ -109,21 +109,21 @@ describe('single-branch.yaml', () => {
   });
 
   it('has loop with nested steps', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const loopStep = def.steps.find(s => s.id === 'process-stories');
     expect(loopStep?.steps).toBeDefined();
     expect(loopStep!.steps!.length).toBeGreaterThanOrEqual(2);
   });
 
   it('creates consolidated PR at the end', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const prStep = def.steps.find(s => s.id === 'create-pr');
     expect(prStep?.type).toBe('github');
     expect((prStep?.config as Record<string, unknown>).action).toBe('pr-create');
   });
 
   it('PR body references build-closes-list output so stories auto-close on merge', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const prStep = def.steps.find(s => s.id === 'create-pr');
     const body = (prStep!.config as Record<string, unknown>).body as string;
     expect(body).toContain('{build-closes-list.stdout}');
@@ -131,7 +131,7 @@ describe('single-branch.yaml', () => {
   });
 
   it('build-closes-list emits a bash step that precedes create-pr', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const ids = def.steps.map(s => s.id);
     expect(ids.indexOf('build-closes-list')).toBeLessThan(ids.indexOf('create-pr'));
     const step = def.steps.find(s => s.id === 'build-closes-list');
@@ -139,7 +139,7 @@ describe('single-branch.yaml', () => {
   });
 
   it('loop flips checkboxes and closes issues (not just a comment)', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const loop = def.steps.find(s => s.id === 'process-stories')!;
     const checkOff = loop.steps!.find(s => s.id === 'check-off-story');
     const closeStory = loop.steps!.find(s => s.id === 'close-story');
@@ -163,7 +163,7 @@ describe('single-branch.yaml', () => {
     // tightened to identifier-shape content; this test guards the contract
     // at the spell level. Bash `${VAR}` pass-through is covered separately
     // in interpolation.test.ts.
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const loop = def.steps.find(s => s.id === 'process-stories')!;
     const checkOff = loop.steps!.find(s => s.id === 'check-off-story')!;
     const cmd = (checkOff.config as Record<string, unknown>).command as string;
@@ -185,7 +185,7 @@ describe('single-branch.yaml', () => {
     // escapes like `\[` and `\b` inside the embedded JS, making the
     // replacement a no-op. Guard: the JS body must contain zero backslashes
     // so there's nothing for Cygwin to eat.
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const loop = def.steps.find(s => s.id === 'process-stories')!;
     const checkOff = loop.steps!.find(s => s.id === 'check-off-story')!;
     const cmd = (checkOff.config as Record<string, unknown>).command as string;
@@ -201,7 +201,7 @@ describe('single-branch.yaml', () => {
     // execution environment and the loop failed on iteration 0. Enumerate
     // every bash step's command and assert no GNU coreutils text-processing
     // tool is invoked — the canonical portable substitute is `node -e`.
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     const bashSteps: { id: string; cmd: string }[] = [];
     function collectBash(steps: typeof def.steps) {
       for (const s of steps) {
@@ -224,7 +224,7 @@ describe('single-branch.yaml', () => {
   });
 
   it('sets mofloLevel to hooks', () => {
-    def = loadYaml('single-branch.yaml');
+    def = loadYaml('epic-single-branch.yaml');
     expect(def.mofloLevel).toBe('hooks');
   });
 });
@@ -233,34 +233,34 @@ describe('single-branch.yaml', () => {
 // Auto-Merge Template
 // ============================================================================
 
-describe('auto-merge.yaml', () => {
+describe('epic-auto-merge.yaml', () => {
   let def: SpellDefinition;
 
   it('parses without error', () => {
-    def = loadYaml('auto-merge.yaml');
+    def = loadYaml('epic-auto-merge.yaml');
     expect(def).toBeDefined();
   });
 
   it('has correct name and abbreviation', () => {
-    def = loadYaml('auto-merge.yaml');
+    def = loadYaml('epic-auto-merge.yaml');
     expect(def.name).toBe('epic-auto-merge');
     expect(def.abbreviation).toBe('eam');
   });
 
   it('declares required arguments', () => {
-    def = loadYaml('auto-merge.yaml');
+    def = loadYaml('epic-auto-merge.yaml');
     expect(def.arguments!.epic_number.required).toBe(true);
     expect(def.arguments!.stories.required).toBe(true);
   });
 
   it('has merge method argument', () => {
-    def = loadYaml('auto-merge.yaml');
+    def = loadYaml('epic-auto-merge.yaml');
     expect(def.arguments!.merge_method).toBeDefined();
     expect(def.arguments!.merge_method.default).toBe('squash');
   });
 
   it('has init-state, loop, and finalize-state as top-level steps', () => {
-    def = loadYaml('auto-merge.yaml');
+    def = loadYaml('epic-auto-merge.yaml');
     expect(def.steps).toHaveLength(3);
     expect(def.steps[0].id).toBe('init-state');
     expect(def.steps[0].type).toBe('memory');
@@ -271,7 +271,7 @@ describe('auto-merge.yaml', () => {
   });
 
   it('declares preflight checks on checkout-base step', () => {
-    def = loadYaml('auto-merge.yaml');
+    def = loadYaml('epic-auto-merge.yaml');
     const loop = def.steps.find(s => s.id === 'process-stories')!;
     const checkoutBase = loop.steps!.find(s => s.id === 'checkout-base');
     expect(checkoutBase?.preflight).toBeDefined();
@@ -282,7 +282,7 @@ describe('auto-merge.yaml', () => {
   });
 
   it('loop contains checkout, implement, find, merge, pull, comment, record', () => {
-    def = loadYaml('auto-merge.yaml');
+    def = loadYaml('epic-auto-merge.yaml');
     const loopStep = def.steps.find(s => s.id === 'process-stories')!;
     const loopSteps = loopStep.steps!;
     expect(loopSteps.length).toBeGreaterThanOrEqual(5);
@@ -293,7 +293,7 @@ describe('auto-merge.yaml', () => {
   });
 
   it('includes pr-merge step with admin option', () => {
-    def = loadYaml('auto-merge.yaml');
+    def = loadYaml('epic-auto-merge.yaml');
     const loopStep = def.steps.find(s => s.id === 'process-stories')!;
     const mergeStep = loopStep.steps!.find(s => s.id === 'merge-story-pr');
     expect(mergeStep).toBeDefined();
@@ -301,7 +301,7 @@ describe('auto-merge.yaml', () => {
   });
 
   it('sets mofloLevel to hooks', () => {
-    def = loadYaml('auto-merge.yaml');
+    def = loadYaml('epic-auto-merge.yaml');
     expect(def.mofloLevel).toBe('hooks');
   });
 });
@@ -322,7 +322,7 @@ describe('epic spell preflight integration', () => {
   }
 
   it('collectPreflights picks up every declared YAML preflight in single-branch', () => {
-    const def = loadYaml('single-branch.yaml');
+    const def = loadYaml('epic-single-branch.yaml');
     const preflights = collectPreflights(def, buildRegistry(), { args: {} });
     const names = preflights.map(p => p.name);
     // working tree + gh auth + unmerged files + origin remote
@@ -334,7 +334,7 @@ describe('epic spell preflight integration', () => {
   });
 
   it('preflights are bound to the correct step ids', () => {
-    const def = loadYaml('single-branch.yaml');
+    const def = loadYaml('epic-single-branch.yaml');
     const preflights = collectPreflights(def, buildRegistry(), { args: {} });
     const byStep = new Map<string, string[]>();
     for (const p of preflights) {
@@ -346,7 +346,7 @@ describe('epic spell preflight integration', () => {
   });
 
   it('collectPreflights recurses into loop-nested steps (auto-merge)', () => {
-    const def = loadYaml('auto-merge.yaml');
+    const def = loadYaml('epic-auto-merge.yaml');
     const preflights = collectPreflights(def, buildRegistry(), { args: {} });
     // checkout-base is inside the loop; its preflights must still be collected
     const checkoutBasePf = preflights.filter(p => p.stepId === 'checkout-base');
