@@ -662,7 +662,7 @@ async function safelyRunEmbeddingsMigration(dbPath?: string): Promise<boolean> {
 }
 
 // Init subcommand - Initialize ONNX models and hyperbolic config
-const initCommand: Command = {
+export const initCommand: Command = {
   name: 'init',
   description: 'Initialize embedding subsystem with ONNX model and hyperbolic config',
   options: [
@@ -683,7 +683,6 @@ const initCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const model = ctx.flags.model as string || 'all-MiniLM-L6-v2';
     const hyperbolic = ctx.flags.hyperbolic !== false;
-    const download = ctx.flags.download !== false;
     const force = ctx.flags.force === true;
 
     // Parse curvature - handle both kebab-case and direct value
@@ -702,9 +701,7 @@ const initCommand: Command = {
       const fs = await import('fs');
       const path = await import('path');
 
-      // Create directories
       const configDir = path.join(process.cwd(), '.moflo');
-      const modelDir = path.join(configDir, 'models');
       const configPath = path.join(configDir, 'embeddings.json');
 
       // Second-session path: config already exists. Skip download / rewrite,
@@ -728,24 +725,15 @@ const initCommand: Command = {
       if (!fs.existsSync(configDir)) {
         fs.mkdirSync(configDir, { recursive: true });
       }
-      if (!fs.existsSync(modelDir)) {
-        fs.mkdirSync(modelDir, { recursive: true });
-      }
 
-      // Download model if requested
-      if (download) {
-        spinner.setText(`Downloading ONNX model: ${model}...`);
-        await embeddings.downloadEmbeddingModel(model, modelDir, (p) => {
-          spinner.setText(`Downloading ${model}... ${p.percent.toFixed(0)}%`);
-        });
-      }
-
-      // Write embeddings config
+      // The fastembed-inline runtime fetches the model on first use, so the
+      // legacy explicit-download step has been removed. The `--download` /
+      // `--no-download` flag is still accepted for back-compat with existing
+      // callers (e.g. `npx moflo embeddings init --no-download` in init.ts).
       spinner.setText('Writing configuration...');
       const dimension = model.includes('mpnet') ? 768 : 384;
       const config = {
         model,
-        modelPath: modelDir,
         dimension,
         cacheSize,
         hyperbolic: {
@@ -783,7 +771,7 @@ const initCommand: Command = {
           { setting: 'Cache Size', value: String(cacheSize) + ' entries' },
           { setting: 'Hyperbolic', value: hyperbolic ? `${output.success('Enabled')} (c=${curvature})` : output.dim('Disabled') },
           { setting: 'Neural Substrate', value: output.success('Enabled') },
-          { setting: 'Model Path', value: modelDir },
+          { setting: 'Model Cache', value: output.dim('managed by fastembed-inline') },
           { setting: 'Config', value: configPath },
         ],
       });
@@ -1214,7 +1202,7 @@ const neuralCommand: Command = {
 };
 
 // Models subcommand
-const modelsCommand: Command = {
+export const modelsCommand: Command = {
   name: 'models',
   description: 'List and download embedding models',
   options: [
@@ -1233,18 +1221,12 @@ const modelsCommand: Command = {
     output.writeln(output.dim('─'.repeat(60)));
 
     if (download) {
-      const spinner = output.createSpinner({ text: `Downloading ${download}...`, spinner: 'dots' });
-      spinner.start();
-
-      try {
-        await embeddings.downloadEmbeddingModel(download, '.models', (p) => {
-          spinner.setText(`Downloading ${download}... ${p.percent.toFixed(1)}%`);
-        });
-        spinner.succeed(`Downloaded ${download}`);
-      } catch (err) {
-        spinner.fail(`Failed to download: ${err}`);
-        return { success: false, exitCode: 1 };
-      }
+      // fastembed-inline auto-fetches on first use; explicit downloads are a
+      // no-op in the current build. Keep the flag working as documented but
+      // avoid surfacing a false-positive error.
+      output.printInfo(
+        `Model "${download}" will be fetched on first use (fastembed-inline runtime).`,
+      );
       return { success: true };
     }
 
