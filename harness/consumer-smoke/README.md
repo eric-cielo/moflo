@@ -12,9 +12,21 @@ npm run test:smoke              # from repo root — full run
 npm run test:smoke -- --keep    # keep .work for inspection
 npm run test:smoke -- --verbose # stream subprocess stdout/stderr
 npm run test:smoke -- --json    # JSON summary for CI ingestion
+
+# Populated-consumer profile (issue #736) — safety gate for #727/#728/#729/#735
+npm run test:smoke:populated
 ```
 
 Takes ~30–60 seconds; most of it is `npm install` in the scratch consumer.
+
+## Profiles
+
+The harness has two entry points sharing the same pack/install pipeline:
+
+| Profile | Entry | Verifies |
+|---------|-------|----------|
+| Clean install | `run.mjs` | Pack, install, bare-specifier resolution, dep hygiene, MCP/CLI surface |
+| Populated consumer | `run-populated.mjs` | Upgrade-path data preservation: rows survive, models/data move from `.claude-flow/` → `.moflo/`, embeddings.json modelPath rewritten, soft-delete tombstones purged (#728), ephemeral-namespace rows purged (#729), legacy DB retained as `.bak`, MCP-clobber regression check |
 
 ## What it checks
 
