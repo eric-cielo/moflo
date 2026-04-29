@@ -900,12 +900,20 @@ describe('hook-handler.cjs', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('prompt-hook.mjs: namespace hints', () => {
-  it('hints "knowledge" for recall prompts', async () => {
+  it('hints "learnings" for recall prompts', async () => {
     const r = await runEsmWithStdin(PROMPT_HOOK, [], {
       user_prompt: 'do you remember what we decided about auth?',
     }, baseEnv(tmpDir));
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('knowledge');
+    expect(r.stdout).toContain('learnings');
+  });
+
+  it('hints "tests" for test/coverage prompts', async () => {
+    const r = await runEsmWithStdin(PROMPT_HOOK, [], {
+      user_prompt: 'where are the tests for the auth middleware?',
+    }, baseEnv(tmpDir));
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain('tests');
   });
 
   it('hints "patterns" for convention prompts', async () => {
