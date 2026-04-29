@@ -35,7 +35,17 @@ export type EpicSpellResult = Pick<
 export interface EpicRunOptions {
   args?: Record<string, unknown>;
   dryRun?: boolean;
-  onStepComplete?: (step: { stepId: string; status: string; duration: number; error?: string }, index: number, total: number) => void;
+  onStepComplete?: (
+    step: {
+      stepId: string;
+      status: string;
+      duration: number;
+      error?: string;
+      output?: { success: boolean; data: Record<string, unknown>; error?: string; duration?: number };
+    },
+    index: number,
+    total: number,
+  ) => void;
   /** Called when one or more warning-severity preflights fail. */
   onPreflightWarnings?: (warnings: readonly PreflightWarning[]) => Promise<readonly PreflightWarningDecision[]>;
 }
