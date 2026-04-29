@@ -24,7 +24,6 @@
 **/*.db-shm
 **/*.db-wal
 **/hnsw.index
-**/hnsw.metadata.json
 
 # IDE/Editor
 .vscode/
