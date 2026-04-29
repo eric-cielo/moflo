@@ -433,8 +433,26 @@ export function memoryCrud(consumerDir) {
 
 export function spellList(consumerDir) {
   section('Spell engine');
-  // spell list may exit 1 if no spells are registered yet; either is acceptable.
-  recordExit('spell-list', flo(consumerDir, ['spell', 'list'], { timeout: 60_000 }), { okCodes: [0, 1] });
+  // Issue #755: shipped grimoire must contain the epic spells out of the box.
+  // Both spells live in `src/cli/spells/definitions/` and are published via the
+  // package.json files entry of the same name. A clean install must list them.
+  const r = flo(consumerDir, ['spell', 'list'], { timeout: 60_000 });
+  if (r.code !== 0) {
+    record('spell-list', 'fail', `exit ${r.code}: ${r.stderr.trim().slice(0, 200)}`);
+    return;
+  }
+  record('spell-list', 'pass');
+  const out = r.stdout;
+  if (!/\bepic-single-branch\b/.test(out)) {
+    record('spell-list:epic-single-branch', 'fail', 'epic-single-branch missing from shipped grimoire');
+  } else {
+    record('spell-list:epic-single-branch', 'pass');
+  }
+  if (!/\bepic-auto-merge\b/.test(out)) {
+    record('spell-list:epic-auto-merge', 'fail', 'epic-auto-merge missing from shipped grimoire');
+  } else {
+    record('spell-list:epic-auto-merge', 'pass');
+  }
 }
 
 export function mcpTools(consumerDir) {

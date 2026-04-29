@@ -26,6 +26,7 @@
     "!dist/**/*.map",
     "src/cli/agents/**",
     "src/cli/data/**",
+    "src/cli/spells/definitions/**/*.yaml",
     "!**/*.test.js",
     "!**/*.spec.js",
     "!**/__tests__/**",
@@ -36,7 +37,6 @@
     ".claude/skills/**/*.md",
     "!.claude/**/*.db",
     "!.claude/**/*.map",
-    "spells/shipped/**",
     "README.md",
     "LICENSE",
     "scripts/prune-native-binaries.mjs"
@@ -44,7 +44,7 @@
   "scripts": {
     "dev": "tsx watch src/cli/index.ts",
     "prebuild": "node scripts/sync-version.mjs && node scripts/clean-dist.mjs",
-    "build": "tsc && node -e \"const{cpSync}=require('fs');cpSync('src/cli/epic/spells','dist/src/cli/epic/spells',{recursive:true})\"",
+    "build": "tsc",
     "prepublishOnly": "npm run build",
     "postinstall": "node scripts/prune-native-binaries.mjs",
     "test": "node scripts/test-runner.mjs",
