@@ -91,6 +91,19 @@ describe('bin/index-all.mjs runStep timeout (#744)', () => {
   });
 });
 
+describe('bin/index-all.mjs hnsw-rebuild subcommand (#731)', () => {
+  const file = resolve(BIN, 'index-all.mjs');
+  const src = readFileSync(file, 'utf-8');
+
+  it('invokes `memory rebuild-index`, not the non-existent `memory rebuild`', () => {
+    // The CLI registers `rebuild-index`. Passing `rebuild` prints help and
+    // exits 0, so the chain reports DONE while no rebuild happens — silent
+    // failure on every session-start.
+    expect(src).toMatch(/['"]memory['"]\s*,\s*['"]rebuild-index['"]/);
+    expect(src).not.toMatch(/['"]memory['"]\s*,\s*['"]rebuild['"]\s*,/);
+  });
+});
+
 describe('runStep behavioural smoke — kills slow children on timeout', () => {
   // Fabricate a tiny child script that sleeps longer than the timeout, run
   // it through a stripped-down clone of runStep, and assert the child PID is

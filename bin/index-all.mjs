@@ -219,7 +219,7 @@ async function main() {
 
   // 7. HNSW rebuild — MUST run last, after all writes are committed (#81)
   if (localCli) {
-    await runStep('hnsw-rebuild', 'node', [localCli, 'memory', 'rebuild', '--force']);
+    await runStep('hnsw-rebuild', 'node', [localCli, 'memory', 'rebuild-index', '--force']);
   } else {
     log('SKIP  hnsw-rebuild (CLI not found)');
   }
