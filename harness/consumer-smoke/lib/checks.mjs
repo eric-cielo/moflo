@@ -445,9 +445,11 @@ export function memoryCrud(consumerDir) {
 export function spellScheduleStrictCron(consumerDir) {
   section('Spell schedule strict cron validation (issue #756)');
 
+  // Use --name long form: deeply-nested subcommands' short flags don't
+  // scope correctly under lazy-loaded commands (see follow-up issue).
   const r = flo(
     consumerDir,
-    ['spell', 'schedule', 'create', '-n', 'smoke-756', '--cron', 'a b c d e'],
+    ['spell', 'schedule', 'create', '--name', 'smoke-756', '--cron', 'a b c d e'],
     { timeout: 60_000 },
   );
 
