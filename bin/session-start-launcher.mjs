@@ -337,7 +337,7 @@ try {
           'hooks.mjs', 'session-start-launcher.mjs', 'index-guidance.mjs',
           'build-embeddings.mjs', 'generate-code-map.mjs', 'semantic-search.mjs',
           'index-tests.mjs', 'index-patterns.mjs', 'index-all.mjs',
-          'setup-project.mjs',
+          'setup-project.mjs', 'run-migrations.mjs',
         ];
         for (const file of scriptFiles) {
           syncFile(resolve(binDir, file), resolve(scriptsDir, file), `.claude/scripts/${file}`);
@@ -352,6 +352,18 @@ try {
           if (!existsSync(libDestDir)) mkdirSync(libDestDir, { recursive: true });
           for (const file of readdirSync(libSrcDir)) {
             syncFile(resolve(libSrcDir, file), resolve(libDestDir, file), `.claude/scripts/lib/${file}`);
+          }
+        }
+
+        // Sync migrations/ subdirectory. run-migrations.mjs imports each
+        // module by directory walk — without this the runner finds no
+        // migrations on a script-synced consumer.
+        const migrationsSrcDir = resolve(binDir, 'migrations');
+        const migrationsDestDir = resolve(scriptsDir, 'migrations');
+        if (existsSync(migrationsSrcDir)) {
+          if (!existsSync(migrationsDestDir)) mkdirSync(migrationsDestDir, { recursive: true });
+          for (const file of readdirSync(migrationsSrcDir)) {
+            syncFile(resolve(migrationsSrcDir, file), resolve(migrationsDestDir, file), `.claude/scripts/migrations/${file}`);
           }
         }
       }
@@ -849,6 +861,19 @@ const hasLocalCli = existsSync(localCli);
 const hooksScript = resolve(projectRoot, '.claude/scripts/hooks.mjs');
 if (existsSync(hooksScript)) {
   fireAndForget('node', [hooksScript, 'session-start'], 'hooks session-start');
+}
+
+// Migration runner — consults `.moflo/migrations.json` and runs only
+// migrations that haven't been recorded. Single spawn, fast-paths to a
+// no-op when the manifest is current, so safe to fire every session.
+//
+// Prefer the npm-package path so first-install consumers run unmet
+// migrations without waiting for a script-sync round-trip.
+const runMigrationsPkg = resolve(projectRoot, 'node_modules/moflo/bin/run-migrations.mjs');
+const runMigrationsMirror = resolve(projectRoot, '.claude/scripts/run-migrations.mjs');
+const runMigrations = existsSync(runMigrationsPkg) ? runMigrationsPkg : runMigrationsMirror;
+if (existsSync(runMigrations)) {
+  fireAndForget('node', [runMigrations], 'migration runner');
 }
 
 // Patches are now baked into moflo@4.0.0 source — no runtime patching needed.

@@ -8,17 +8,21 @@
 
 **Before reading any files or exploring code, search memory for guidance relevant to your task.**
 
-### Three namespaces to search:
+### Namespaces to search:
 
 | Namespace | When to search | What it returns |
 |-----------|---------------|-----------------|
-| `guidance` | Understanding patterns, rules, conventions | Guidance docs, coding rules, domain context |
-| `code-map` | Finding where code lives (files, types, services) | Project overviews, directory contents, type-to-file mappings |
-| `patterns` | Prior solutions, gotchas, implementation patterns | Learned patterns from previous task execution |
+| `guidance` | always | Guidance docs, coding rules, domain context |
+| `patterns` | always | Learned patterns from previous task execution |
+| `learnings` | always | User-directed decisions + distilled insights (post-mortems, gotchas, lessons learned) |
+| `code-map` | navigating code | Project overviews, directory contents, type-to-file mappings |
+| `tests` | test/coverage queries | Indexed test inventory — pinpoint specs and coverage for a given function/module |
 
-**Always search `patterns` alongside `guidance`.** It contains solutions to problems already solved — skipping it means repeating past mistakes or re-discovering known approaches.
+**Always search `patterns` and `learnings` alongside `guidance`.** Patterns hold solutions to already-solved problems; learnings hold incident insights and user-stated decisions. Skipping either means repeating past mistakes or violating standing decisions.
 
 **Search `code-map` BEFORE using Glob/Grep for navigation.** It's faster and returns structured results including file-level type mappings.
+
+**Search `tests` when looking for test coverage** of a function, module, or behavior — it indexes the test tree separately so you can pinpoint specs without grepping the whole repo.
 
 ### Option A: MCP Tools (Preferred)
 
@@ -38,14 +42,16 @@ npx flo memory search --query "[describe your task]" --namespace guidance --limi
 
 | Your task involves... | Search namespace | Example query |
 |-----------------------|------------------|---------------|
-| Database/entities | `guidance` + `patterns` | `"database entity migration"` |
-| Frontend components | `guidance` + `patterns` | `"React frontend component"` |
-| API endpoints | `guidance` + `patterns` | `"API route endpoint pattern"` |
-| Authentication | `guidance` + `patterns` | `"auth middleware JWT"` |
-| Unit tests | `guidance` + `patterns` | `"test mock vitest"` |
-| Prior solutions/gotchas | `patterns` | `"audit log service pattern"` |
+| Database/entities | `guidance` + `patterns` + `learnings` | `"database entity migration"` |
+| Frontend components | `guidance` + `patterns` + `learnings` | `"React frontend component"` |
+| API endpoints | `guidance` + `patterns` + `learnings` | `"API route endpoint pattern"` |
+| Authentication | `guidance` + `patterns` + `learnings` | `"auth middleware JWT"` |
+| Prior solutions/gotchas | `patterns` + `learnings` | `"audit log service pattern"` |
+| Past incident/lesson | `learnings` | `"windows postinstall file locks"` |
 | Where is a file/type? | `code-map` | `"CompanyEntity file location"` |
 | What's in a directory? | `code-map` | `"back-office api routes"` |
+| Tests for a function | `tests` | `"audit log service tests"` |
+| Coverage for a module | `tests` | `"auth middleware test cases"` |
 
 Use results with score > 0.3. If no good results, fall back to reading project guidance docs.
 
@@ -65,7 +71,7 @@ Project-specific guidance always takes precedence over generic MoFlo guidance.
 - Search memory before exploring files
 - Store discoveries back to memory when done
 - Use `patterns` namespace for solutions and gotchas
-- Use `knowledge` namespace for architectural choices and user-requested knowledge
+- Use `learnings` namespace for architectural choices, user-requested decisions, and distilled insights (`knowledge` is a deprecated alias — writes are auto-redirected)
 
 ### Git/Branches
 - Use conventional commit prefixes: `feat:`, `fix:`, `refactor:`, `test:`, `chore:`

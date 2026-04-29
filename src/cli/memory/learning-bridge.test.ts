@@ -555,6 +555,29 @@ describe('LearningBridge', () => {
       await bridge.decayConfidences('learnings');
       expect(bridge.getStats().totalDecays).toBe(1);
     });
+
+    it('should skip entries tagged "locked" (user-forced, exempt from decay)', async () => {
+      const old = Date.now() - 5 * 3_600_000;
+      const lockedEntry = createTestEntry({
+        id: 'user-decision',
+        updatedAt: old,
+        tags: ['source:user', 'locked'],
+        metadata: { confidence: 0.9 },
+      });
+      const unlockedEntry = createTestEntry({
+        id: 'auto-insight',
+        updatedAt: old,
+        tags: ['insight', 'debugging'],
+        metadata: { confidence: 0.9 },
+      });
+      (backend.query as any).mockResolvedValueOnce([lockedEntry, unlockedEntry]);
+
+      const count = await bridge.decayConfidences('learnings');
+
+      expect(count).toBe(1); // only the unlocked entry decayed
+      expect(backend.update).toHaveBeenCalledTimes(1);
+      expect((backend.update as any).mock.calls[0][0]).toBe('auto-insight');
+    });
   });
 
   // ===== findSimilarPatterns =====

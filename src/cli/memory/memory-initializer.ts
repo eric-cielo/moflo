@@ -1914,6 +1914,19 @@ export async function storeEntry(options: {
   embedding?: { dimensions: number; model: string };
   error?: string;
 }> {
+  // Soft-redirect: `knowledge` is a deprecated alias for `learnings`. Writes
+  // are accepted but routed to learnings with provenance tags so future
+  // decay/prune treats user-forced entries as locked. Old consumer DBs that
+  // still have raw `knowledge` rows are migrated by
+  // bin/migrate-knowledge-to-learnings.mjs at session start.
+  if (options.namespace === 'knowledge') {
+    const incoming = options.tags ?? [];
+    const merged = new Set<string>(incoming);
+    merged.add('source:user');
+    merged.add('locked');
+    options = { ...options, namespace: 'learnings', tags: [...merged] };
+  }
+
   // ADR-053: Try AgentDB v3 bridge first. The bridge calls
   // refreshVectorStatsCache() itself (bridge-entries.ts:191) — a second
   // write here was redundant and previously clobbered the correct count

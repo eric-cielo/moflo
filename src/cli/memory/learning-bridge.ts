@@ -304,6 +304,12 @@ export class LearningBridge extends EventEmitter {
     let decayed = 0;
 
     for (const entry of entries) {
+      // User-forced entries (e.g. migrated from the deprecated `knowledge`
+      // namespace, or stored as standing decisions) carry the `locked` tag
+      // and are exempt from decay — they represent durable guidance, not
+      // time-bounded observations.
+      if (Array.isArray(entry.tags) && entry.tags.includes('locked')) continue;
+
       const hoursSinceUpdate = (now - entry.updatedAt) / MS_PER_HOUR;
       if (hoursSinceUpdate < 1) continue;
 

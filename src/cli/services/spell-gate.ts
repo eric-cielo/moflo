@@ -230,7 +230,7 @@ export class GateService {
     if (now - lastBlocked > 2000) {
       state.lastBlockedAt = new Date(now).toISOString();
       this.writeState(state);
-      message = 'BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search with namespace "code-map", "patterns", "knowledge", or "guidance".';
+      message = 'BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search with namespace "guidance", "patterns", "learnings", "code-map", or "tests".';
     }
 
     return { allowed: false, message };

@@ -710,11 +710,11 @@ This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted d
 Your first tool call for every new user prompt MUST be a memory search. Do this BEFORE Glob, Grep, Read, or any file exploration.
 
 \`\`\`
-mcp__moflo__memory_search — query: "<task description>", namespace: "guidance" or "patterns" or "code-map"
+mcp__moflo__memory_search — query: "<task description>", namespace: "guidance" or "patterns" or "learnings" or "code-map" or "tests"
 \`\`\`
 
-Search \`guidance\` and \`patterns\` namespaces on every prompt. Search \`code-map\` when navigating the codebase.
-When the user asks you to remember something: \`mcp__moflo__memory_store\` with namespace \`knowledge\`.
+Search \`guidance\`, \`patterns\`, and \`learnings\` namespaces on every prompt. Search \`code-map\` when navigating the codebase, \`tests\` when looking for test inventory or coverage.
+When the user asks you to remember something: \`mcp__moflo__memory_store\` with namespace \`learnings\`.
 
 ### Spell Gates (enforced automatically)
 

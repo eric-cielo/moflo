@@ -482,7 +482,8 @@ try {
 // Classify prompt for namespace hint
 var lower = userPrompt.toLowerCase();
 
-var KNOWLEDGE_ONLY = /\\b(knowledge|remember|recall)\\b|we (decid|agree|chose|said)/;
+var LEARNINGS_HINTS = /\\b(remember|recall|insight|lesson learned|gotcha|post.?mortem)\\b|we (decid|agree|chose|said)/;
+var TEST_HINTS = /\\b(test|spec|coverage|tested|test case|test cases|tests for|spec for)\\b/;
 var EXPLICIT_NS = [
   { pattern: /\\b(pattern|convention|best practice|style|coding rule)\\b/, ns: 'patterns', label: 'code patterns and conventions' },
   { pattern: /\\b(code.?map|file structure|project structure|directory)\\b/, ns: 'code-map', label: 'codebase navigation' },
@@ -499,14 +500,16 @@ var NAV_PATTERNS = [
 ];
 
 var nsHint = '';
-if (KNOWLEDGE_ONLY.test(lower)) {
-  nsHint = 'Memory namespace hint: use "knowledge" for user-directed project decisions.';
+if (TEST_HINTS.test(lower)) {
+  nsHint = 'Memory namespace hint: use "tests" for test inventory and coverage lookups.';
+} else if (LEARNINGS_HINTS.test(lower)) {
+  nsHint = 'Memory namespace hint: use "learnings" for user-directed decisions and distilled insights.';
 } else {
   var found = EXPLICIT_NS.find(function(e) { return e.pattern.test(lower); });
   if (found) {
     nsHint = 'Memory namespace hint: use "' + found.ns + '" for ' + found.label + '.';
   } else if (DOMAIN_HINTS.some(function(p) { return p.test(lower); })) {
-    nsHint = 'Memory namespace hint: search "guidance" and "knowledge" for domain rules and project decisions.';
+    nsHint = 'Memory namespace hint: search "guidance" and "learnings" for domain rules and project decisions.';
   } else if (PATTERN_HINTS.some(function(p) { return p.test(lower); })) {
     nsHint = 'Memory namespace hint: use "patterns" for code patterns and conventions.';
   } else if (NAV_PATTERNS.some(function(p) { return p.test(lower); })) {
