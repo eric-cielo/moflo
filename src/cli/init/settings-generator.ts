@@ -266,7 +266,10 @@ function generateHooksConfig(config: HooksConfig): object {
     hooks.PostToolUse = [
       {
         matcher: '^(Write|Edit|MultiEdit)$',
-        hooks: [{ type: 'command', command: hookHandlerCmd('post-edit'), timeout: 5000 }],
+        hooks: [
+          { type: 'command', command: hookHandlerCmd('post-edit'), timeout: 5000 },
+          { type: 'command', command: gateHookCmd('reset-edit-gates'), timeout: 2000 },
+        ],
       },
       {
         matcher: '^Agent$',
@@ -280,7 +283,14 @@ function generateHooksConfig(config: HooksConfig): object {
       },
       {
         matcher: '^Bash$',
-        hooks: [{ type: 'command', command: gateHookCmd('check-bash-memory'), timeout: 2000 }],
+        hooks: [
+          { type: 'command', command: gateHookCmd('check-bash-memory'), timeout: 2000 },
+          { type: 'command', command: gateHookCmd('record-test-run'), timeout: 2000 },
+        ],
+      },
+      {
+        matcher: '^Skill$',
+        hooks: [{ type: 'command', command: gateHookCmd('record-skill-run'), timeout: 2000 }],
       },
       {
         // Simplified matcher — anchored regex with parens doesn't match MCP tool names reliably

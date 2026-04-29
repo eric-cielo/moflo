@@ -674,6 +674,7 @@ describe('gate.cjs: session-reset', () => {
     writeState(tmpDir, {
       tasksCreated: true, taskCount: 5, memorySearched: true,
       memoryRequired: false, interactionCount: 42,
+      learningsStored: true, testsRun: true, simplifyRun: true,
     });
     runGate('session-reset', baseEnv(tmpDir));
     const s = readState(tmpDir);
@@ -682,6 +683,9 @@ describe('gate.cjs: session-reset', () => {
     expect(s.memorySearched).toBe(false);
     expect(s.memoryRequired).toBe(true);
     expect(s.interactionCount).toBe(0);
+    expect(s.learningsStored).toBe(false);
+    expect(s.testsRun).toBe(false);
+    expect(s.simplifyRun).toBe(false);
     expect(s.sessionStart).toBeTruthy();
   });
 });
@@ -1072,60 +1076,132 @@ describe('end-to-end: spell lifecycle', () => {
     });
   });
 
-  describe('learnings gate (check-before-pr)', () => {
-    it('emits advisory for long sessions without learnings stored', () => {
+  describe('PR gates (check-before-pr)', () => {
+    function fullySatisfied(): void {
+      writeState(tmpDir, {
+        testsRun: true,
+        simplifyRun: true,
+        learningsStored: true,
+      });
+    }
+
+    it('blocks PR when learnings have not been stored', () => {
       const env = baseEnv(tmpDir);
-
-      // Simulate 6+ interactions — substantial session
-      for (const prompt of ['implement feature', 'fix tests', 'refactor module', 'add validation', 'update docs', 'create pr']) {
-        env.CLAUDE_USER_PROMPT = prompt;
-        runGate('prompt-reminder', env);
-      }
-      runGate('record-memory-searched', env);
-
+      writeState(tmpDir, { testsRun: true, simplifyRun: true, learningsStored: false });
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
       const r = runGate('check-before-pr', env);
-      expect(r.exitCode).toBe(0); // advisory, not a block
-      expect(r.stdout).toContain('ADVISORY');
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('BLOCKED');
+      expect(r.stderr).toContain('learnings have not been stored');
     });
 
-    it('no advisory for short sessions without learnings', () => {
+    it('blocks PR when tests have not run', () => {
       const env = baseEnv(tmpDir);
-
-      // Only 1 interaction — trivial session
-      env.CLAUDE_USER_PROMPT = 'bump version and pr';
-      runGate('prompt-reminder', env);
-      runGate('record-memory-searched', env);
-
-      env.TOOL_INPUT_command = 'gh pr create --title "chore: bump version"';
+      writeState(tmpDir, { testsRun: false, simplifyRun: true, learningsStored: true });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
       const r = runGate('check-before-pr', env);
-      expect(r.exitCode).toBe(0);
-      expect(r.stdout).not.toContain('ADVISORY');
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('tests have not run');
     });
 
-    it('no advisory when learnings stored in long session', () => {
+    it('blocks PR when /simplify has not run', () => {
       const env = baseEnv(tmpDir);
+      writeState(tmpDir, { testsRun: true, simplifyRun: false, learningsStored: true });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('/simplify has not run');
+    });
 
-      for (const prompt of ['implement feature', 'fix edge case', 'add tests', 'refactor', 'update config', 'create pr']) {
-        env.CLAUDE_USER_PROMPT = prompt;
-        runGate('prompt-reminder', env);
-      }
-      runGate('record-memory-searched', env);
-      runGate('record-learnings-stored', env);
+    it('lists every missing gate when more than one is unsatisfied', () => {
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { testsRun: false, simplifyRun: false, learningsStored: false });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('tests have not run');
+      expect(r.stderr).toContain('/simplify has not run');
+      expect(r.stderr).toContain('learnings have not been stored');
+    });
 
+    it('allows PR when all three gates are satisfied', () => {
+      const env = baseEnv(tmpDir);
+      fullySatisfied();
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
       const r = runGate('check-before-pr', env);
       expect(r.exitCode).toBe(0);
-      expect(r.stdout).not.toContain('ADVISORY');
+      expect(r.stderr).not.toContain('BLOCKED');
+    });
+
+    it('blocks env-prefixed gh pr create (e.g. GH_TOKEN=x gh pr create)', () => {
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { testsRun: false, simplifyRun: true, learningsStored: true });
+      env.TOOL_INPUT_command = 'GH_TOKEN=secret gh pr create --title test';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('tests have not run');
+    });
+
+    it('blocks gh pr create with multiple env-var prefixes', () => {
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { testsRun: true, simplifyRun: true, learningsStored: false });
+      env.TOOL_INPUT_command = 'GH_TOKEN=x BUILD_ID=1 gh pr create --title test';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('learnings have not been stored');
     });
 
     it('does not block non-PR bash commands', () => {
       const env = baseEnv(tmpDir);
-
-      env.CLAUDE_USER_PROMPT = 'run tests';
-      runGate('prompt-reminder', env);
-
+      // Even with all gates unsatisfied, non-PR commands pass through.
+      writeState(tmpDir, { testsRun: false, simplifyRun: false, learningsStored: false });
       env.TOOL_INPUT_command = 'npm test';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('does not match "gh pr create" appearing inside a quoted heredoc body', () => {
+      // Regression: regex must be anchored to command-start, not match the
+      // string anywhere — `git commit -m "...gh pr create..."` is common.
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { testsRun: false, simplifyRun: false, learningsStored: false });
+      env.TOOL_INPUT_command = `git commit -m "promotes check-before-pr to block gh pr create until ready"`;
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('blocks chained gh pr create (after && or ;)', () => {
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { testsRun: false, simplifyRun: true, learningsStored: true });
+      env.TOOL_INPUT_command = 'git push -u origin feature/x && gh pr create --title test';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('tests have not run');
+    });
+
+    it('respects testing_gate: false in moflo.yaml', () => {
+      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  testing_gate: false\n');
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { testsRun: false, simplifyRun: true, learningsStored: true });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('respects simplify_gate: false in moflo.yaml', () => {
+      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  simplify_gate: false\n');
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { testsRun: true, simplifyRun: false, learningsStored: true });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
+      const r = runGate('check-before-pr', env);
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('respects learnings_gate: false in moflo.yaml', () => {
+      writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  learnings_gate: false\n');
+      const env = baseEnv(tmpDir);
+      writeState(tmpDir, { testsRun: true, simplifyRun: true, learningsStored: false });
+      env.TOOL_INPUT_command = 'gh pr create --title "test"';
       const r = runGate('check-before-pr', env);
       expect(r.exitCode).toBe(0);
     });
@@ -1144,6 +1220,167 @@ describe('end-to-end: spell lifecycle', () => {
       runGate('prompt-reminder', env);
       s = readState(tmpDir);
       expect(s.learningsStored).toBe(true);
+    });
+  });
+
+  describe('record-test-run', () => {
+    function expectTestsRecognised(cmd: string) {
+      writeState(tmpDir, { testsRun: false });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_command = cmd;
+      runGate('record-test-run', env);
+      expect(readState(tmpDir).testsRun, `should recognise: ${cmd}`).toBe(true);
+    }
+
+    function expectTestsNotRecognised(cmd: string) {
+      writeState(tmpDir, { testsRun: false });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_command = cmd;
+      runGate('record-test-run', env);
+      expect(readState(tmpDir).testsRun, `should not recognise: ${cmd}`).toBe(false);
+    }
+
+    it('recognises common test runners', () => {
+      [
+        'npm test',
+        'npm run test',
+        'npm run test:unit',
+        'yarn test',
+        'pnpm test',
+        'pnpm t',
+        'npx vitest run',
+        'npx jest',
+        'vitest run --reporter=verbose',
+        'jest --coverage',
+        'pytest -x',
+        'cargo test',
+        'go test ./...',
+        'deno test',
+        'dotnet test',
+        'mvn test',
+        'gradle test',
+        './gradlew test',
+      ].forEach(expectTestsRecognised);
+    });
+
+    it('does not recognise unrelated bash commands', () => {
+      [
+        'git status',
+        'ls -la',
+        'npm install',
+        'echo testing',
+        'grep test src/',
+        // Common false-positive shapes — runner name appears as an argument,
+        // dependency, search target, or commit message but no tests run.
+        'npm install jest',
+        'npm install --save-dev vitest',
+        'pnpm add -D pytest',
+        'grep -r vitest src/',
+        'git commit -m "add jest config"',
+        'echo "running pytest"',
+        'cat package.json | grep jest',
+      ].forEach(expectTestsNotRecognised);
+    });
+
+    it('always exits 0 (never blocks)', () => {
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_command = 'rm -rf /';
+      const r = runGate('record-test-run', env);
+      expect(r.exitCode).toBe(0);
+    });
+  });
+
+  describe('record-skill-run', () => {
+    it('sets simplifyRun=true when /simplify is invoked', () => {
+      writeState(tmpDir, { simplifyRun: false });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_skill = 'simplify';
+      runGate('record-skill-run', env);
+      expect(readState(tmpDir).simplifyRun).toBe(true);
+    });
+
+    it('does not set simplifyRun for other skills', () => {
+      writeState(tmpDir, { simplifyRun: false });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_skill = 'github-code-review';
+      runGate('record-skill-run', env);
+      expect(readState(tmpDir).simplifyRun).toBe(false);
+    });
+
+    it('always exits 0 (never blocks)', () => {
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_skill = 'simplify';
+      const r = runGate('record-skill-run', env);
+      expect(r.exitCode).toBe(0);
+    });
+  });
+
+  describe('reset-edit-gates', () => {
+    it('resets testsRun and simplifyRun on source edits', () => {
+      writeState(tmpDir, { testsRun: true, simplifyRun: true });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_file_path = '/project/src/index.ts';
+      runGate('reset-edit-gates', env);
+      const s = readState(tmpDir);
+      expect(s.testsRun).toBe(false);
+      expect(s.simplifyRun).toBe(false);
+    });
+
+    it('does not reset for markdown edits', () => {
+      writeState(tmpDir, { testsRun: true, simplifyRun: true });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_file_path = '/project/README.md';
+      runGate('reset-edit-gates', env);
+      const s = readState(tmpDir);
+      expect(s.testsRun).toBe(true);
+      expect(s.simplifyRun).toBe(true);
+    });
+
+    it('does not reset for inert files (lockfiles, .gitignore, CHANGELOG, .env.example)', () => {
+      const env = baseEnv(tmpDir);
+      for (const fp of [
+        '/project/package-lock.json',
+        '/project/.gitignore',
+        '/project/CHANGELOG.md',
+        '/project/.env.example',
+      ]) {
+        writeState(tmpDir, { testsRun: true, simplifyRun: true });
+        env.TOOL_INPUT_file_path = fp;
+        runGate('reset-edit-gates', env);
+        const s = readState(tmpDir);
+        expect(s.testsRun, `should not reset for ${fp}`).toBe(true);
+        expect(s.simplifyRun, `should not reset for ${fp}`).toBe(true);
+      }
+    });
+
+    it('DOES reset for package.json and moflo.yaml edits', () => {
+      // These ARE source files — editing them changes runtime behavior, so
+      // tests/simplify must rerun before opening a PR.
+      const env = baseEnv(tmpDir);
+      for (const fp of ['/project/package.json', '/project/moflo.yaml', '/project/tsconfig.json']) {
+        writeState(tmpDir, { testsRun: true, simplifyRun: true });
+        env.TOOL_INPUT_file_path = fp;
+        runGate('reset-edit-gates', env);
+        const s = readState(tmpDir);
+        expect(s.testsRun, `should reset for ${fp}`).toBe(false);
+        expect(s.simplifyRun, `should reset for ${fp}`).toBe(false);
+      }
+    });
+
+    it('always exits 0 (never blocks)', () => {
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_file_path = '/project/src/index.ts';
+      const r = runGate('reset-edit-gates', env);
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('is a no-op when both flags already false', () => {
+      writeState(tmpDir, { testsRun: false, simplifyRun: false, taskCount: 5 });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_file_path = '/project/src/index.ts';
+      runGate('reset-edit-gates', env);
+      const s = readState(tmpDir);
+      expect(s.taskCount).toBe(5); // other state preserved
     });
   });
 });
@@ -1203,5 +1440,40 @@ describe('settings.json: PostToolUse matcher coverage', () => {
       const cmds = entry.hooks.map(h => h.command);
       expect(cmds.some(c => c.includes('record-memory-searched'))).toBe(false);
     }
+  });
+
+  it('Bash matches record-test-run hook', () => {
+    const entry = findMatchingEntry('Bash');
+    expect(entry).toBeDefined();
+    const cmds = entry!.hooks.map(h => h.command);
+    expect(cmds.some(c => c.includes('record-test-run'))).toBe(true);
+  });
+
+  it('Skill matches record-skill-run hook', () => {
+    const entry = findMatchingEntry('Skill');
+    expect(entry).toBeDefined();
+    const cmds = entry!.hooks.map(h => h.command);
+    expect(cmds.some(c => c.includes('record-skill-run'))).toBe(true);
+  });
+
+  it('Write matches reset-edit-gates hook', () => {
+    const entry = findMatchingEntry('Write');
+    expect(entry).toBeDefined();
+    const cmds = entry!.hooks.map(h => h.command);
+    expect(cmds.some(c => c.includes('reset-edit-gates'))).toBe(true);
+  });
+
+  it('Edit matches reset-edit-gates hook', () => {
+    const entry = findMatchingEntry('Edit');
+    expect(entry).toBeDefined();
+    const cmds = entry!.hooks.map(h => h.command);
+    expect(cmds.some(c => c.includes('reset-edit-gates'))).toBe(true);
+  });
+
+  it('MultiEdit matches reset-edit-gates hook', () => {
+    const entry = findMatchingEntry('MultiEdit');
+    expect(entry).toBeDefined();
+    const cmds = entry!.hooks.map(h => h.command);
+    expect(cmds.some(c => c.includes('reset-edit-gates'))).toBe(true);
   });
 });

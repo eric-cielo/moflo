@@ -1,48 +1,48 @@
 # Execution Mode Details
 
-Execution mode determines HOW work is carried out across all phases. Mode is chosen via flag: `-s/--swarm`, `-h/--hive`, or `-n/--normal` (default).
+The execution mode chooses how work is carried out across the phases. Pass `-s/--swarm`, `-h/--hive`, or `-n/--normal` (default).
 
-## SWARM Mode (-s, --swarm)
+## SWARM mode (`-s`, `--swarm`)
 
-When swarm is requested, you MUST use the Task tool to spawn agents. No exceptions.
+Swarm mode spawns agents via the Task tool.
 
-**Swarm spawns these agents via Task tool:**
-- `researcher` - Analyzes issue, searches memory, finds patterns
-- `coder` - Implements changes following plan
-- `tester` - Writes and runs tests
-- `/simplify` - Built-in command that reviews changed code before PR
-- `reviewer` - Reviews code before PR
+Roles:
+- `researcher` — analyzes the issue, searches memory, finds patterns
+- `coder` — implements changes following the plan
+- `tester` — writes and runs tests
+- `/simplify` — built-in command that reviews changed code before PR
+- `reviewer` — reviews code before PR
 
-**Swarm execution pattern:**
+Pattern:
 ```javascript
-// 1. Create task list FIRST
+// 1. Create the task list first
 TaskCreate({ subject: "Research issue #123", ... })
 TaskCreate({ subject: "Implement changes", ... })
 TaskCreate({ subject: "Test implementation", ... })
 TaskCreate({ subject: "Run /simplify on changed files", ... })
 TaskCreate({ subject: "Review and PR", ... })
 
-// 2. Init swarm
+// 2. Init the swarm
 Bash("flo swarm init --topology hierarchical --max-agents 8 --strategy specialized")
 
-// 3. Spawn agents with Task tool (run_in_background: true)
+// 3. Spawn agents (run_in_background: true)
 Task({ prompt: "...", subagent_type: "researcher", run_in_background: true })
 Task({ prompt: "...", subagent_type: "coder", run_in_background: true })
 
 // 4. Wait for results, synthesize, continue
 ```
 
-## HIVE-MIND Mode (-h, --hive)
+## HIVE-MIND mode (`-h`, `--hive`)
 
 Use for consensus-based decisions:
 - Architecture choices
 - Approach tradeoffs
 - Design decisions with multiple valid options
 
-## NORMAL Mode (Default)
+## NORMAL mode (default)
 
 Single Claude execution without spawning sub-agents.
-- Still uses Task tool for tracking
+- Still uses the Task tool for tracking
 - Still creates tasks for visibility
 - Post-task neural learning hooks still fire
-- Just doesn't spawn multiple agents
+- No agent spawning

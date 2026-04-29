@@ -1,98 +1,88 @@
 # Workflow Phases
 
-Core phase-by-phase instructions for the full `/flo <issue>` run. Phase 2 (Ticket) lives in `./ticket.md`.
+Phase-by-phase notes for the full `/flo <issue>` run. Phase 2 (Ticket) lives in `./ticket.md`.
 
-## Phase 1: Research (-r or default first step)
+## Phase 1: Research (also `-r`)
 
-### 1.1 Fetch Issue Details
+### 1.1 Fetch the issue
 ```bash
 gh issue view <issue-number> --json number,title,body,labels,state,assignees,comments,milestone
 ```
 
-### 1.2 Check Ticket Status
-Look for `## Acceptance Criteria` marker in issue body.
-- **If present**: Ticket already enhanced, skip to execute or confirm
-- **If absent**: Proceed with research and ticket update
+### 1.2 Check ticket status
+Look for the `## Acceptance Criteria` heading in the body.
+- Present → ticket already enhanced; skip ahead to execute.
+- Absent → continue with research and enhance the ticket.
 
-### 1.3 Search Memory FIRST
-ALWAYS search memory BEFORE reading guidance or docs files.
-Memory has file paths, context, and patterns - often all you need.
-Only read guidance files if memory search returns zero relevant results.
+### 1.3 Search memory first
+Search memory before reading guidance docs or scanning files. Memory often has the file paths, context, and patterns you need.
 
 ```bash
 flo memory search --query "<issue title keywords>" --namespace patterns
 flo memory search --query "<domain keywords>" --namespace guidance
 ```
 
-Or via MCP: `mcp__moflo__memory_search`
+Or via MCP: `mcp__moflo__memory_search`.
 
-### 1.4 Read Guidance Docs (ONLY if memory insufficient)
-**Only if memory search returned < 3 relevant results**, read guidance files:
-- Bug -> testing patterns, error handling
-- Feature -> domain model, architecture
-- UI -> frontend patterns, components
+### 1.4 Read guidance docs (only if memory was thin)
+If memory returned fewer than three relevant results, read guidance:
+- Bug → testing patterns, error handling
+- Feature → domain model, architecture
+- UI → frontend patterns, components
 
-### 1.5 Research Codebase
-Use Task tool with Explore agent to find:
+### 1.5 Survey the codebase
+Use the Task tool with the Explore agent to find:
 - Affected files and their current state
 - Related code and dependencies
 - Existing patterns to follow
 - Test coverage gaps
 
-## Phase 3: Execute (default, runs automatically after ticket)
+## Phase 3: Execute
 
-### 3.1 Assign Issue and Update Status
+### 3.1 Assign the issue and mark in-progress
 ```bash
 gh issue edit <issue-number> --add-assignee @me
 gh issue edit <issue-number> --add-label "in-progress"
 ```
 
-### 3.2 Create Branch
+### 3.2 Create the branch
 
-**If `--epic-branch <branch>` was passed** (epic mode):
-Skip branch creation entirely. The epic orchestrator has already created and checked out the shared epic branch. Just verify you're on it:
+If `--epic-branch <branch>` is set, the epic orchestrator already created and checked out the shared branch. Just confirm:
 ```bash
-git branch --show-current  # Should match the epic branch name
+git branch --show-current  # should match the epic branch name
 ```
 
-**Otherwise** (normal mode):
+Otherwise:
 ```bash
 git checkout main && git pull origin main
 git checkout -b <type>/<issue-number>-<short-desc>
 ```
-Types: `feature/`, `fix/`, `refactor/`, `docs/`
+Types: `feature/`, `fix/`, `refactor/`, `docs/`.
 
 ### 3.3 Implement
-Follow the implementation plan from the ticket. No prompts - execute all steps.
+Follow the plan from the ticket.
 
-## Phase 4: Testing (MANDATORY GATE)
+## Phase 4: Tests
 
-This is NOT optional. ALL applicable test types must pass for the change type.
-WORKFLOW STOPS HERE until tests pass. No shortcuts. No exceptions.
+Run unit, integration, and E2E tests appropriate for the change. Follow the project's existing style and runner. If the project has no tests yet, pick what fits the language and stack and stays compatible with existing dependencies.
 
-### 4.1 Write and Run Tests
-Write unit, integration, and E2E tests as appropriate for the change type.
-Follow the project's established test style, runner, and patterns. If no existing tests or test guidance is present, choose the best options for the project's language and stack, taking compatibility with existing dependencies into account.
+If tests fail, enter the auto-fix loop (max 3 retries or 10 minutes):
+1. Run tests.
+2. If all pass → continue to simplify.
+3. If any fail, analyze, fix, retry.
+4. If retries are exhausted, stop and report.
 
-### 4.2 Test Auto-Fix Loop
-If any tests fail, enter the auto-fix loop (max 3 retries OR 10 minutes):
-1. Run all tests
-2. If ALL pass -> proceed to simplification
-3. If ANY fail: analyze failure, fix test or implementation code, retry
-4. If retries exhausted -> STOP and report to user
+The `check-before-pr` gate blocks `gh pr create` until a recognised test runner has executed since the last code edit. The bash heuristic recognises `npm/yarn/pnpm test`, `vitest`, `jest`, `pytest`, `mocha`, `cargo test`, `go test`, and similar.
 
-## Phase 4.5: Code Simplification (MANDATORY)
+## Phase 4.5: Simplify
 
-The built-in /simplify command reviews ALL changed code for:
-- Reuse opportunities and code quality
-- Efficiency improvements
-- Consistency with existing codebase patterns
-- Preserves ALL functionality - no behavior changes
+The built-in `/simplify` command reviews changed code for reuse, quality, and efficiency, preserving behavior.
 
-If /simplify makes changes -> re-run tests to confirm nothing broke.
-If re-tests fail -> revert changes, proceed with original code.
+If `/simplify` edits anything, rerun the tests. If those re-tests fail, revert the simplification and continue with the original code.
 
-## Phase 5: Commit and PR (only after tests pass)
+The `check-before-pr` gate blocks `gh pr create` until `/simplify` has run since the last code edit.
+
+## Phase 5: Commit and PR
 
 ### 5.1 Commit
 ```bash
@@ -101,34 +91,27 @@ git commit -m "type(scope): description
 
 Closes #<issue-number>
 
-Co-Authored-By: Claude <noreply@anthropic.com>"
+Co-Authored-By: moflo <noreply@motailz.com>"
 ```
 
-### 5.2 Store Learnings (REQUIRED — gate blocks PR creation until this runs)
-
-Before creating a PR, store what was learned using `mcp__moflo__memory_store`.
-The `check-before-pr` gate will **block** `gh pr create` if this step is skipped.
+### 5.2 Store learnings
+Before opening the PR, call `mcp__moflo__memory_store` with what was learned. The `check-before-pr` gate blocks `gh pr create` until this has run.
 
 ```
 mcp__moflo__memory_store:
   key: "pattern:<topic>"
   namespace: "patterns"
-  value: "<what was learned: files changed, patterns used, decisions made>"
+  value: "<files changed, patterns used, decisions made>"
   tags: ["<relevant-tags>"]
 ```
 
-This must happen BEFORE `gh pr create` — not after.
+This step happens before `gh pr create`, not after.
 
-### 5.3 Create PR
+### 5.3 Create the PR
 
-**If `--epic-branch` was passed** (epic mode):
-**SKIP PR creation entirely.** The commit from 5.1 (with `Closes #<issue-number>`) is sufficient.
-The epic orchestrator will create a single consolidated PR after all stories complete.
-Also skip pushing — the epic orchestrator handles the final push.
+In epic mode (`--epic-branch` set): skip the PR. The commit from 5.1 (with `Closes #<issue-number>`) is enough; the epic orchestrator handles the consolidated PR and final push. Skip pushing too.
 
-Proceed directly to 5.4 (update issue status only).
-
-**Otherwise** (normal mode):
+Otherwise:
 ```bash
 git push -u origin <branch-name>
 gh pr create --title "type(scope): description" --body "## Summary
@@ -146,7 +129,7 @@ gh pr create --title "type(scope): description" --body "## Summary
 Closes #<issue-number>"
 ```
 
-### 5.4 Update Issue Status
+### 5.4 Update issue status
 ```bash
 gh issue edit <issue-number> --remove-label "in-progress" --add-label "ready-for-review"
 gh issue comment <issue-number> --body "PR created: <pr-url>"
