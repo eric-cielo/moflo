@@ -140,18 +140,3 @@ export async function listEmbeddingModels(): Promise<Array<{
   ];
 }
 
-/**
- * The old `downloadModel` path (via `agentic-flow/embeddings`) is no longer
- * available. Neural models are fetched on-demand by `FastembedEmbeddingService`
- * through the upstream `fastembed` package itself.
- */
-export async function downloadEmbeddingModel(
-  _modelId: string,
-  _targetDir?: string,
-  _onProgress?: (progress: { percent: number; bytesDownloaded: number; totalBytes: number }) => void,
-): Promise<string> {
-  throw new Error(
-    'Explicit model downloads are not supported in this build. The ' +
-      'fastembed runtime fetches its model automatically on first use.',
-  );
-}
