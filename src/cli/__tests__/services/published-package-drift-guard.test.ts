@@ -224,6 +224,7 @@ describe('published-package drift guard (issue #585)', () => {
       join(REPO_ROOT, 'bin'),
       join(REPO_ROOT, 'scripts'),
       join(REPO_ROOT, '.claude', 'guidance', 'shipped'),
+      join(REPO_ROOT, '.claude', 'helpers'), // shipped (#735): writers here re-create `.claude-flow/`
       join(REPO_ROOT, '.claude', 'skills'),
     ];
     const CLAUDE_FLOW_RE = /\.claude-flow/;

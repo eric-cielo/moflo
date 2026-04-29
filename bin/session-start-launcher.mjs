@@ -106,16 +106,32 @@ try {
   unlinkSync(join(mofloDir(projectRoot), 'upgrade-notice.json'));
 } catch { /* non-fatal — file usually doesn't exist */ }
 
-// ── 0. LEGACY state migration (#699) ─────────────────────────────────────────
+// ── 0. LEGACY state migration (#699, #735) ──────────────────────────────────
 // Consumers upgrading from older moflo builds (inherited from upstream Ruflo)
 // get a one-time auto-migration of LEGACY `.claude-flow/` → `.moflo/` so claim
-// files, daemon state, metrics, and the version stamp survive the rename.
+// files, models cache, metrics, and the version stamp survive the rename.
 // The migration helper is idempotent — see bin/lib/moflo-paths.mjs for the
-// algorithm. LEGACY: no-ops once `.claude-flow/` is gone.
+// algorithm.
+//
+// Staged removal contract (#735):
+//   1. THIS release ships Phase 1 (writers redirected to `.moflo/`) + Phase 2 // LEGACY
+//      (this migration call moves stragglers + warns on collisions).
+//   2. The release AFTER Phase 1 is steady-state should hard-delete any
+//      remaining empty `.claude-flow/` directory — until then, the helper // LEGACY
+//      drops the dir naturally once everything's been moved.
+// LEGACY: every emit below stops firing once `.claude-flow/` is gone.
 try {
   const cfMigration = migrateClaudeFlowToMoflo(projectRoot);
   if (cfMigration?.migrated) {
-    emitMutation('migrated runtime state to .moflo/', 'from legacy .claude-flow/'); // LEGACY
+    const count = cfMigration.movedCount ?? 0;
+    emitMutation(`migrated ${plural(count, 'entry')} from legacy .claude-flow/`); // LEGACY
+  }
+  // Surface collisions so users notice that BOTH locations now hold the same
+  // subdir name (most often `models/` after a partial pre-#735 migration).
+  // Manual cleanup is needed — moflo refuses to silently choose.
+  if ((cfMigration?.collisions?.length ?? 0) > 0) {
+    const collisionMsg = 'kept legacy .claude-flow/ entries to avoid clobbering .moflo/'; // LEGACY
+    emitMutation(collisionMsg, `collisions: ${cfMigration.collisions.join(', ')}`);
   }
 } catch {
   // Non-fatal — anything left behind by the migration just means it runs

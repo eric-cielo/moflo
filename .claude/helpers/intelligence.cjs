@@ -11,11 +11,11 @@ const path = require('path');
 const os = require('os');
 
 const PROJECT_ROOT = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
-const DATA_DIR = path.join(PROJECT_ROOT, '.claude-flow', 'data');
+const DATA_DIR = path.join(PROJECT_ROOT, '.moflo', 'data');
 const STORE_PATH = path.join(DATA_DIR, 'auto-memory-store.json');
 const RANKED_PATH = path.join(DATA_DIR, 'ranked-context.json');
 const PENDING_PATH = path.join(DATA_DIR, 'pending-insights.jsonl');
-const SESSION_DIR = path.join(PROJECT_ROOT, '.claude-flow', 'sessions');
+const SESSION_DIR = path.join(PROJECT_ROOT, '.moflo', 'sessions');
 const SESSION_FILE = path.join(SESSION_DIR, 'current.json');
 
 function ensureDir(dir) {
@@ -55,7 +55,7 @@ function bootstrapFromMemoryFiles() {
   var entries = [];
   var candidates = [
     path.join(os.homedir(), ".claude", "projects"),
-    path.join(PROJECT_ROOT, ".claude-flow", "memory"),
+    path.join(PROJECT_ROOT, ".moflo", "memory"),
     path.join(PROJECT_ROOT, ".claude", "memory"),
   ];
   for (var i = 0; i < candidates.length; i++) {

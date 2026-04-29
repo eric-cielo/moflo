@@ -31,6 +31,7 @@ import {
   unlinkSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 
 export const MOFLO_DIR = '.moflo';
 /** Canonical memory DB filename (post-#727). Lives at `<root>/.moflo/moflo.db`. */
@@ -104,6 +105,14 @@ export interface MigrationResult {
   migrated: boolean;
   /** Diagnostic string for "why didn't this migrate" — `no-legacy`, `legacy-unreadable`, `merged-nothing`. Absent on success. */
   reason?: string;
+  /** Number of legacy entries actually relocated to `.moflo/` this call. */
+  movedCount?: number;
+  /**
+   * Names left behind in `.claude-flow/` because the same name already
+   * existed in `.moflo/`. Surfaced so the launcher can warn the user that
+   * BOTH copies exist (per #735: never silently choose).
+   */
+  collisions?: string[];
 }
 
 /**
@@ -112,8 +121,13 @@ export interface MigrationResult {
  * - Legacy missing → no-op (the steady state after first run).
  * - Legacy present + target missing → atomic rename (preserves mtimes).
  * - Both present → merge: target wins on collision, leaving the colliding
- *   entry behind in legacy/ so a future run can retry. Drops the legacy dir
- *   if everything moved cleanly.
+ *   entry behind in legacy/ so the launcher can warn and a future run can
+ *   retry. Drops the legacy dir if everything moved cleanly.
+ *
+ * When the models cache moves (legacy `.claude-flow/models/` lands at
+ * `.moflo/models/`), `.moflo/embeddings.json:modelPath` is rewritten in the
+ * same call so the next embedder run finds the relocated ONNX bytes instead
+ * of re-downloading multi-MB binaries (#735).
  *
  * Idempotent and safe to call from session start.
  */
@@ -124,8 +138,13 @@ export function migrateClaudeFlowToMoflo(projectRoot: string): MigrationResult {
   if (!existsSync(legacy)) return { migrated: false, reason: 'no-legacy' };
 
   if (!existsSync(target)) {
+    // Wholesale rename — count what's about to move so the launcher can
+    // report `migrated N files` instead of opaque "migrated runtime state".
+    let movedCount = 0;
+    try { movedCount = readdirSync(legacy).length; } catch { /* count is cosmetic */ }
     renameSync(legacy, target);
-    return { migrated: true };
+    rewriteEmbeddingsModelPath(projectRoot);
+    return { migrated: true, movedCount };
   }
 
   let entries: string[];
@@ -136,12 +155,18 @@ export function migrateClaudeFlowToMoflo(projectRoot: string): MigrationResult {
   }
 
   let moved = 0;
+  let modelsMoved = false;
+  const collisions: string[] = [];
   for (const name of entries) {
     const dst = join(target, name);
-    if (existsSync(dst)) continue; // target wins — newer state preferred
+    if (existsSync(dst)) {
+      collisions.push(name); // target wins — but the launcher must warn
+      continue;
+    }
     try {
       renameSync(join(legacy, name), dst);
       moved++;
+      if (name === 'models') modelsMoved = true;
     } catch {
       // Best-effort merge — a failed move on one entry shouldn't abort the rest.
     }
@@ -154,7 +179,46 @@ export function migrateClaudeFlowToMoflo(projectRoot: string): MigrationResult {
     // Non-fatal — leftover legacy dir just means migration runs next time.
   }
 
-  return moved > 0 ? { migrated: true } : { migrated: false, reason: 'merged-nothing' };
+  if (modelsMoved) rewriteEmbeddingsModelPath(projectRoot);
+
+  if (moved === 0) {
+    return { migrated: false, reason: 'merged-nothing', movedCount: 0, collisions };
+  }
+  return { migrated: true, movedCount: moved, collisions };
+}
+
+/**
+ * Rewrite `.moflo/embeddings.json:modelPath` if it still references the
+ * legacy `.claude-flow/` location. Called after a models/ relocation so the
+ * stale path doesn't force a multi-MB re-download (#735).
+ *
+ * Best-effort: file-not-present, malformed JSON, missing `modelPath`, or
+ * already-correct path are all silent no-ops. Returns true only when the
+ * file was actually rewritten. Uses atomicWriteFileSync so a SIGINT mid-flush
+ * can't truncate embeddings.json and break every subsequent embedder run.
+ */
+export function rewriteEmbeddingsModelPath(projectRoot: string): boolean {
+  const cfgPath = join(projectRoot, MOFLO_DIR, 'embeddings.json');
+
+  let raw: string;
+  try { raw = readFileSync(cfgPath, 'utf8'); } catch { return false; }
+
+  let cfg: { modelPath?: string };
+  try { cfg = JSON.parse(raw); } catch { return false; }
+
+  if (typeof cfg.modelPath !== 'string') return false;
+  if (!cfg.modelPath.includes(LEGACY_CLAUDE_FLOW_DIR)) return false;
+
+  // split-join handles every occurrence and works with both `/` and `\\`
+  // (escaped) forms in JSON-encoded Windows paths.
+  cfg.modelPath = cfg.modelPath.split(LEGACY_CLAUDE_FLOW_DIR).join(MOFLO_DIR);
+
+  try {
+    atomicWriteFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export interface DbMigrationResult {
