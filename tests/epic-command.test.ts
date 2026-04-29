@@ -61,6 +61,33 @@ describe('epic command structure', () => {
     expect(result.message).toContain('Usage');
     logSpy.mockRestore();
   });
+
+  it('rejects --no-merge combined with --strategy auto-merge (#754)', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const result = await epicCommand.action({
+      args: ['run', '42'],
+      flags: { 'no-merge': true, strategy: 'auto-merge' },
+    });
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('--no-merge cannot be combined with --strategy auto-merge');
+    logSpy.mockRestore();
+  });
+
+  it('lists --no-merge and --verbose in help output (#754)', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const result = await epicCommand.action({ args: [], flags: {} });
+    expect(result.success).toBe(true);
+    const output = logSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(output).toContain('--no-merge');
+    expect(output).toContain('--verbose');
+    logSpy.mockRestore();
+  });
+
+  it('exposes --no-merge and --verbose examples (#754)', () => {
+    const examples = epicCommand.examples.map((e: any) => e.command);
+    expect(examples).toContainEqual(expect.stringContaining('--no-merge'));
+    expect(examples).toContainEqual(expect.stringContaining('--verbose'));
+  });
 });
 
 describe('makeEpicBranchName', () => {

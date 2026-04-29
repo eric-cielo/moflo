@@ -8,6 +8,8 @@
  *   flo epic run 42                          Execute an epic from GitHub
  *   flo epic run 42 --dry-run                Show execution plan
  *   flo epic run 42 --strategy auto-merge    Use per-story PR strategy
+ *   flo epic run 42 --no-merge               Force single-branch (alias for --strategy single-branch)
+ *   flo epic run 42 --verbose                Echo each step's stdout/stderr after it completes
  *   flo epic status <epic-number>            Check progress via memory
  *   flo epic reset <epic-number>             Clear epic memory state
  */
@@ -51,6 +53,7 @@ async function runEpic(
   source: string,
   strategy: EpicStrategy,
   dryRun: boolean,
+  verbose: boolean,
 ): Promise<CommandResult> {
   const issueNumber = parseInt(source, 10);
   if (isNaN(issueNumber)) {
@@ -226,6 +229,21 @@ async function runEpic(
         console.log(`[epic] Step ${stepCount}/${total}: ${status} ${stepResult.stepId} (${stepResult.duration}ms)`);
         if (stepResult.status === 'failed' && stepResult.error) {
           console.log(`[epic]   └─ ${stepResult.error}`);
+        }
+        // --verbose: echo captured bash stdout/stderr after the step completes.
+        // (Not real-time streaming — the spell engine captures stdio.)
+        if (verbose) {
+          const data = stepResult.output?.data as { stdout?: string; stderr?: string } | undefined;
+          if (data?.stdout) {
+            for (const line of data.stdout.split(/\r?\n/)) {
+              if (line) console.log(`[epic]   │ ${line}`);
+            }
+          }
+          if (data?.stderr) {
+            for (const line of data.stderr.split(/\r?\n/)) {
+              if (line) console.log(`[epic]   │ (stderr) ${line}`);
+            }
+          }
         }
       },
       onPreflightWarnings: isInteractive() ? resolvePreflightWarningsInteractively : undefined,
@@ -477,6 +495,8 @@ const epicCommand: Command = {
   examples: [
     { command: 'flo epic 42', description: 'Execute epic (default: run with single-branch strategy)' },
     { command: 'flo epic 42 --strategy auto-merge', description: 'Execute with per-story PRs and auto-merge' },
+    { command: 'flo epic 42 --no-merge', description: 'Force single-branch strategy (alias for --strategy single-branch)' },
+    { command: 'flo epic 42 --verbose', description: 'Echo each step\'s captured stdout/stderr after it completes' },
     { command: 'flo epic 42 --dry-run', description: 'Show execution plan' },
     { command: 'flo epic run 42', description: 'Explicit run subcommand (same as above)' },
     { command: 'flo epic status 42', description: 'Check epic progress' },
@@ -497,6 +517,8 @@ const epicCommand: Command = {
       console.log('');
       console.log('Flags:');
       console.log('  --strategy <name>        single-branch (default) or auto-merge');
+      console.log('  --no-merge               Force single-branch (alias for --strategy single-branch)');
+      console.log('  --verbose                Echo each step\'s captured stdout/stderr after it completes');
       console.log('  --dry-run                Show plan without executing');
       return { success: true };
     }
@@ -510,9 +532,11 @@ const epicCommand: Command = {
       case 'run': {
         const source = commandArgs[0];
         if (!source) {
-          return { success: false, message: 'Usage: flo epic <issue-number> [--strategy] [--dry-run]' };
+          return { success: false, message: 'Usage: flo epic <issue-number> [--strategy] [--no-merge] [--verbose] [--dry-run]' };
         }
         const dryRun = ctx.flags['dry-run'] === true || ctx.flags['dryRun'] === true;
+        const noMerge = ctx.flags['no-merge'] === true || ctx.flags['noMerge'] === true;
+        const verbose = ctx.flags['verbose'] === true;
         const strategyFlag = ctx.flags['strategy'] as string | undefined;
         let strategy: EpicStrategy = 'single-branch';
         if (strategyFlag) {
@@ -521,7 +545,17 @@ const epicCommand: Command = {
           }
           strategy = strategyFlag;
         }
-        return runEpic(source, strategy, dryRun);
+        // --no-merge is an alias for single-branch. Reject when paired with auto-merge.
+        if (noMerge) {
+          if (strategyFlag === 'auto-merge') {
+            return {
+              success: false,
+              message: '--no-merge cannot be combined with --strategy auto-merge. --no-merge is an alias for --strategy single-branch.',
+            };
+          }
+          strategy = 'single-branch';
+        }
+        return runEpic(source, strategy, dryRun, verbose);
       }
 
       case 'status':
