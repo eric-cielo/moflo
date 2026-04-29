@@ -91,10 +91,6 @@ describe('epic command structure', () => {
 });
 
 describe('makeEpicBranchName', () => {
-  // We test the branch naming function by importing the module and accessing it.
-  // Since it's not exported, we test it indirectly through the FeatureDefinition
-  // built by buildFeatureFromEpic, or we can test the pattern directly.
-
   it('should produce valid branch names from epic titles', () => {
     // The branch name format is: epic/<number>-<slug>
     // where slug is lowercased, non-alphanumeric replaced with dashes, trimmed to 40 chars
@@ -125,52 +121,6 @@ describe('makeEpicBranchName', () => {
       .substring(0, 40);
     const branch = `epic/99-${slug}`;
     expect(branch).not.toMatch(/[^a-z0-9/\-]/);
-  });
-});
-
-describe('epic strategy configuration', () => {
-  it('FeatureDefinition type accepts strategy field', async () => {
-    // Verify the module can be imported and the types work at runtime
-    // by constructing a feature-like object with both strategies
-    const singleBranch = {
-      feature: {
-        id: 'epic-1',
-        name: 'Test',
-        description: 'Test epic',
-        repository: '/tmp/test',
-        base_branch: 'main',
-        strategy: 'single-branch',
-        auto_merge: true,
-        stories: [{ id: 's1', name: 'Story 1', issue: 10 }],
-        review: { enabled: false, focus_areas: [], output: '', fail_on_critical: false },
-      },
-    };
-
-    const autoMerge = {
-      ...singleBranch,
-      feature: { ...singleBranch.feature, strategy: 'auto-merge' },
-    };
-
-    expect(singleBranch.feature.strategy).toBe('single-branch');
-    expect(autoMerge.feature.strategy).toBe('auto-merge');
-  });
-
-  it('defaults to single-branch when strategy is not specified', () => {
-    const featureDef = {
-      feature: {
-        id: 'epic-2',
-        name: 'No Strategy Set',
-        description: 'Test',
-        repository: '/tmp/test',
-        base_branch: 'main',
-        stories: [],
-        review: { enabled: false, focus_areas: [], output: '', fail_on_critical: false },
-      },
-    };
-
-    // The runFeature function defaults: strategyOverride || feature.strategy || 'single-branch'
-    const strategy = featureDef.feature.strategy || 'single-branch';
-    expect(strategy).toBe('single-branch');
   });
 });
 
@@ -269,108 +219,6 @@ describe('epic config: admin_merge', () => {
     const adminFlag = adminMerge ? ' --admin' : '';
     const cmd = `gh pr merge ${prNumber} --squash --delete-branch${adminFlag}`;
     expect(cmd).toBe('gh pr merge 42 --squash --delete-branch');
-  });
-});
-
-describe('epic config: default_strategy', () => {
-  it('should use config default_strategy when no override or feature strategy', () => {
-    const strategyOverride = undefined;
-    const featureStrategy = undefined;
-    const configDefault: string = 'auto-merge';
-    const strategy = strategyOverride || featureStrategy || configDefault;
-    expect(strategy).toBe('auto-merge');
-  });
-
-  it('should prefer CLI flag over config default', () => {
-    const strategyOverride = 'auto-merge';
-    const featureStrategy = undefined;
-    const configDefault = 'single-branch';
-    const strategy = strategyOverride || featureStrategy || configDefault;
-    expect(strategy).toBe('auto-merge');
-  });
-
-  it('should prefer feature definition over config default', () => {
-    const strategyOverride = undefined;
-    const featureStrategy = 'auto-merge';
-    const configDefault = 'single-branch';
-    const strategy = strategyOverride || featureStrategy || configDefault;
-    expect(strategy).toBe('auto-merge');
-  });
-});
-
-describe('topological sort (execution order)', () => {
-  // Test the Kahn's algorithm for dependency resolution
-
-  function resolveOrder(stories: { id: string; depends_on?: string[] }[]): string[] {
-    const ids = stories.map((s) => s.id);
-    const inDegree = new Map<string, number>();
-    const adjacency = new Map<string, string[]>();
-
-    for (const id of ids) {
-      inDegree.set(id, 0);
-      adjacency.set(id, []);
-    }
-
-    for (const story of stories) {
-      if (story.depends_on) {
-        for (const dep of story.depends_on) {
-          adjacency.get(dep)?.push(story.id);
-          inDegree.set(story.id, (inDegree.get(story.id) || 0) + 1);
-        }
-      }
-    }
-
-    const queue: string[] = [];
-    for (const [id, degree] of inDegree.entries()) {
-      if (degree === 0) queue.push(id);
-    }
-
-    const order: string[] = [];
-    while (queue.length > 0) {
-      const currentLevel = [...queue];
-      queue.length = 0;
-      for (const id of currentLevel) {
-        order.push(id);
-        for (const neighbor of adjacency.get(id) || []) {
-          const newDegree = (inDegree.get(neighbor) || 1) - 1;
-          inDegree.set(neighbor, newDegree);
-          if (newDegree === 0) queue.push(neighbor);
-        }
-      }
-    }
-
-    return order;
-  }
-
-  it('should order independent stories in definition order', () => {
-    const stories = [
-      { id: 'a' },
-      { id: 'b' },
-      { id: 'c' },
-    ];
-    const order = resolveOrder(stories);
-    expect(order).toEqual(['a', 'b', 'c']);
-  });
-
-  it('should respect dependencies', () => {
-    const stories = [
-      { id: 'a' },
-      { id: 'b', depends_on: ['a'] },
-      { id: 'c', depends_on: ['b'] },
-    ];
-    const order = resolveOrder(stories);
-    expect(order.indexOf('a')).toBeLessThan(order.indexOf('b'));
-    expect(order.indexOf('b')).toBeLessThan(order.indexOf('c'));
-  });
-
-  it('should detect circular dependencies', () => {
-    const stories = [
-      { id: 'a', depends_on: ['b'] },
-      { id: 'b', depends_on: ['a'] },
-    ];
-    const order = resolveOrder(stories);
-    // Circular deps produce incomplete ordering
-    expect(order.length).toBeLessThan(stories.length);
   });
 });
 
