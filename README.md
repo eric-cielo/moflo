@@ -6,8 +6,6 @@
 
 **A standalone, opinionated AI agent orchestration toolkit for Claude Code, optimized for local development.**
 
-MoFlo originally started from [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) and has since **fully diverged** — there is no active fork relationship, no upstream sync, and no plans for one. Some CLI aliases (`claude-flow`) and config keys (`claudeFlow.*`) are vestigial compatibility shims preserved so existing installations don't break on upgrade.
-
 ## TL;DR
 
 MoFlo makes your AI coding assistant remember what it learns, check what it knows before exploring files, and get smarter over time — all automatically. Install it, run `flo init`, restart your AI client, and everything just works: your docs and code are indexed on session start so the AI can search them instantly, gates prevent the AI from wasting tokens on blind exploration, task outcomes feed back into routing so it picks the right agent type next time, and context depletion warnings tell you when to start a fresh session. No configuration, no API keys, no cloud services — it all runs locally on your machine.
@@ -30,25 +28,25 @@ To verify everything is running, ask Claude to run `flo doctor` with full diagno
 MoFlo makes deliberate choices so you don't have to:
 
 - **Fully self-contained** — No external services, no cloud dependencies, no API keys. Everything runs locally on your machine.
-- **Minimal dependencies** — small runtime dep set (8 packages): `onnxruntime-node` + `@anush008/tokenizers` for in-tree fastembed-style embeddings, `sql.js` for memory, plus `js-yaml`, `lru-cache`, `semver`, `tar`, and `valibot`. No native compilation on install — `onnxruntime-node` ships prebuilt binaries, and `sql.js` is WASM.
+- **Minimal dependencies** — small runtime dep set, all WASM or prebuilt binaries. No native compilation, no `node-gyp`, no platform-specific build steps.
 - **Node.js runtime** — Targets Node.js specifically. All scripts, hooks, and tooling are JavaScript/TypeScript. No Python, no Rust binaries, no native compilation.
 - **sql.js (WASM)** — The memory database uses sql.js, a pure WebAssembly build of SQLite. No native `better-sqlite3` bindings to compile, no platform-specific build steps. Works identically on Windows, macOS, and Linux.
-- **Neural embeddings by default** — 384-dimensional embeddings via in-tree fastembed-style runtime (`onnxruntime-node` + `@anush008/tokenizers`) using `all-MiniLM-L6-v2`. No hash fallback, no peer-optional setup, no install prompts — real semantic search works out of the box. A `postinstall` script (`scripts/prune-native-binaries.mjs`) trims `onnxruntime-node` to the current platform's binaries and strips GPU-only provider libraries that the embedding runtime never loads — reclaiming roughly 340 MB on Linux and 150 MB on Windows from a fresh install. The prune is scoped to ORT copies moflo actually owns and never touches foreign installs (e.g. an Electron cross-compile packager pulling its own ORT); set `MOFLO_NO_PRUNE=1` to disable pruning entirely, or `ONNXRUNTIME_NODE_INSTALL_CUDA=true` to keep the prune but re-enable the CUDA GPU provider. See [ADR-EMB-001](docs/adr/ADR-EMB-001-neural-embeddings-mandatory.md).
-- **Full learning stack wired up OOTB** — The following are all configured and functional from `flo init`, no manual setup:
-  - **SONA** (Self-Optimizing Neural Architecture) — learns from task trajectories via pure TypeScript SONA implementation in `src/cli/neural/`
-  - **MicroLoRA** — rank-2 LoRA weight adaptations at ~1µs per adapt via pure TypeScript MicroLoRA in `src/cli/neural/`
+- **Neural embeddings by default** — 384-dimensional embeddings using `all-MiniLM-L6-v2`. No hash fallback, no peer-optional setup, no install prompts — real semantic search works out of the box. A `postinstall` step trims the embedding runtime to your platform and strips GPU-only libraries the runtime never loads, reclaiming roughly 340 MB on Linux and 150 MB on Windows from a fresh install. Set `MOFLO_NO_PRUNE=1` to skip the trim, or `ONNXRUNTIME_NODE_INSTALL_CUDA=true` to keep CUDA GPU support.
+- **Full learning stack wired up OOTB** — All configured and functional from `flo init`, no manual setup:
+  - **SONA** (Self-Optimizing Neural Architecture) — learns from task trajectories
+  - **MicroLoRA** — fast rank-2 weight adaptations (~1µs per adapt)
   - **EWC++** (Elastic Weight Consolidation) — prevents catastrophic forgetting across sessions
-  - **HNSW Vector Search** — fast nearest-neighbor search via HNSW indexing with sql.js (WASM SQLite)
-  - **Semantic Routing** — maps tasks to agents via learned routing in `src/cli/neural/` (ReasoningBank)
-  - **Trajectory Persistence** — outcomes stored in `.moflo/routing-outcomes.json`, survive across sessions
-  - All pure TypeScript/WASM-based, no GPU, no API keys, no external services.
+  - **HNSW Vector Search** — fast nearest-neighbor search over your knowledge base
+  - **Semantic Routing** — maps tasks to the right agent via learned patterns (ReasoningBank)
+  - **Trajectory Persistence** — outcomes survive across sessions
+  - All local, no GPU, no API keys, no external services.
 - **Memory-first** — Claude must search what it already knows before exploring files. Enforced by hooks, not just instructions.
 - **Task registration before agents** — Sub-agents can't spawn until work is tracked. Prevents runaway agent proliferation.
 - **Learned routing** — Task outcomes feed back into the routing system automatically. No manual configuration needed — it gets smarter with use.
 - **Incremental indexing** — Guidance and code map indexes run on every session start but skip unchanged files. Fast after the first run.
 - **Built for Claude Code, works with others** — We develop and test exclusively with Claude Code. The MCP tools, memory system, and hooks are client-independent and should work with any MCP-capable AI client, but Claude Code is the only tested target.
 - **GitHub-oriented** — The `/flo` skill, PR automation, and issue tracking are built around GitHub. With Claude's help, you can adapt them to your own issue tracker and source control system.
-- **Cross-platform** — Forward-slash path normalization, no `sh -c` shell commands, `windowsHide` on all spawn calls.
+- **Cross-platform** — Works identically on macOS, Linux, and Windows.
 
 ## Features
 
@@ -539,7 +537,7 @@ flo diagnose --json              # JSON output for CI/automation
 | **Daemon Status** | Background daemon running (checks PID, cleans stale locks) |
 | **Memory Database** | SQLite memory DB exists and is accessible |
 | **Embeddings** | Vectors indexed in memory DB, HNSW index present |
-| **Embedding Hygiene** | Indexer writes preserve embeddings (regression guard for #729) |
+| **Embedding Hygiene** | Indexer writes preserve existing embeddings instead of clobbering them |
 | **Test Directories** | Test dirs from `moflo.yaml` exist on disk, reports auto-index status |
 | **MCP Servers** | `moflo` MCP server configured in `.mcp.json` |
 | **Disk Space** | Sufficient free disk space (warns at 80%, fails at 90%) |
@@ -716,7 +714,7 @@ When you route a task (`flo hooks route --task "..."` or via MCP), MoFlo runs se
 
 **The routing gets smarter over time.** Every time a task completes successfully, MoFlo's post-task hook records the outcome — the full task description, which agent handled it, and whether it succeeded. These learned patterns are combined with the built-in seeds on every future route call. Because learned patterns contain rich task descriptions (not just short keywords), they discriminate better as they accumulate.
 
-Routing outcomes are stored in `.moflo/routing-outcomes.json` and persist across sessions. You can inspect them with `flo hooks patterns` or transfer them between projects with `flo hooks transfer`.
+Routing outcomes persist across sessions. You can inspect them with `flo hooks patterns` or transfer them between projects with `flo hooks transfer`.
 
 ### Memory & Knowledge Storage
 
@@ -731,7 +729,7 @@ MoFlo uses a SQLite database (via sql.js/WASM — no native deps) to store three
 
 **Semantic search** uses cosine similarity on neural embeddings (MiniLM-L6-v2, 384 dimensions). When Claude searches memory, it gets the most relevant chunks ranked by semantic similarity — not keyword matching.
 
-**Session start indexing** — Four background processes run on every session start: the guidance indexer, the code map generator, the test mapper, and the learning service. All four are incremental (unchanged files are skipped) and run in parallel so they don't block the session.
+**Session start indexing** — Background indexers (guidance, code map, tests) run on every session start. They're incremental — unchanged files are skipped — and run in parallel so they don't block the session.
 
 **Cross-session persistence** — Everything stored in the database survives across sessions. Patterns learned on Monday are available on Friday. The stop hook exports session metrics, and the session-restore hook loads prior state.
 
@@ -853,15 +851,7 @@ model_routing:
 
 ## Relationship to Ruflo / Claude Flow
 
-MoFlo started from [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) but is now an independent project. The two share roots and a few namespace conventions, but the codebases, package layout, runtime, and design priorities have fully diverged.
-
-Concretely, today's MoFlo:
-
-- Ships as a single npm package (`moflo`) with 8 runtime dependencies and zero native bindings — pure JavaScript/TypeScript plus WASM
-- Runs an in-tree fastembed-style embedding runtime (no `fastembed` npm dependency) and sql.js + HNSW for memory
-- Owns its own architecture: workspace collapse, spell engine, daemon-driven scheduling, gates, the `/flo` issue-execution skill
-
-The vestigial CLI alias `claude-flow` and config keys like `claudeFlow.*` are preserved purely so existing installations don't break on upgrade. New installs should use `flo` and the `moflo.yaml` config keys exclusively.
+MoFlo started from [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) but is now an independent project. The two share roots and a few namespace conventions, but the codebases, runtime, and design priorities have fully diverged. MoFlo is shipped as a single npm package — install `moflo`, run `flo init`, and that's it.
 
 ## Why I Made This
 
