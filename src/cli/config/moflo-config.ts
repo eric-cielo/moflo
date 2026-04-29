@@ -122,7 +122,6 @@ export interface MofloConfig {
     show_mcp: boolean;
     show_security: boolean;
     show_adrs: boolean;
-    show_agentdb: boolean;
     show_tests: boolean;
     mode: 'single-line' | 'dashboard';
   };
@@ -221,7 +220,6 @@ const DEFAULT_CONFIG: MofloConfig = {
     show_mcp: true,
     show_security: true,
     show_adrs: true,
-    show_agentdb: true,
     show_tests: true,
     mode: 'single-line',
   },
@@ -370,7 +368,6 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
       show_mcp: raw.status_line?.show_mcp ?? raw.statusLine?.showMcp ?? DEFAULT_CONFIG.status_line.show_mcp,
       show_security: raw.status_line?.show_security ?? raw.statusLine?.showSecurity ?? DEFAULT_CONFIG.status_line.show_security,
       show_adrs: raw.status_line?.show_adrs ?? raw.statusLine?.showAdrs ?? DEFAULT_CONFIG.status_line.show_adrs,
-      show_agentdb: raw.status_line?.show_agentdb ?? raw.statusLine?.showAgentdb ?? DEFAULT_CONFIG.status_line.show_agentdb,
       show_tests: raw.status_line?.show_tests ?? raw.statusLine?.showTests ?? DEFAULT_CONFIG.status_line.show_tests,
       mode: raw.status_line?.mode ?? raw.statusLine?.mode ?? DEFAULT_CONFIG.status_line.mode,
     },
@@ -569,7 +566,6 @@ status_line:
   show_mcp: true                  # MCP server count
   show_security: true             # CVE/security status (dashboard only)
   show_adrs: true                 # ADR compliance (dashboard only)
-  show_agentdb: true              # AgentDB vectors/size (dashboard only)
   show_tests: true                # Test file count (dashboard only)
   mode: single-line              # single-line (default) or dashboard (multi-line)
 `;

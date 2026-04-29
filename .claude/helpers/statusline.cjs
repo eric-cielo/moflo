@@ -51,7 +51,6 @@ function loadStatusLineConfig() {
     show_mcp: true,
     show_security: true,
     show_adrs: true,
-    show_agentdb: true,
     show_tests: true,
     mode: 'compact',
   };
@@ -785,28 +784,18 @@ function generateDashboard() {
     );
   }
 
-  // AgentDB + MCP line (if either enabled)
-  if (SL_CONFIG.show_agentdb || SL_CONFIG.show_mcp) {
+  // MCP line
+  if (SL_CONFIG.show_mcp) {
     const parts = [];
-    if (SL_CONFIG.show_agentdb) {
-      const agentdb = getAgentDBStats();
-      const hnswInd = agentdb.hasHnsw ? `${c.brightGreen}\u26A1${c.reset}` : '';
-      const sizeDisp = agentdb.dbSizeKB >= 1024 ? `${(agentdb.dbSizeKB / 1024).toFixed(1)}MB` : `${agentdb.dbSizeKB}KB`;
-      const vectorColor = agentdb.vectorCount > 0 ? c.brightGreen : c.dim;
-      parts.push(`${c.cyan}Vectors${c.reset} ${vectorColor}\u25CF${agentdb.vectorCount}${hnswInd}${c.reset}`);
-      parts.push(`${c.cyan}Size${c.reset} ${c.brightWhite}${sizeDisp}${c.reset}`);
+    const integration = getIntegrationStatus();
+    if (integration.mcpServers.total > 0) {
+      const mcpCol = integration.mcpServers.enabled === integration.mcpServers.total ? c.brightGreen :
+                     integration.mcpServers.enabled > 0 ? c.brightYellow : c.red;
+      parts.push(`${c.cyan}MCP${c.reset} ${mcpCol}\u25CF${integration.mcpServers.enabled}/${integration.mcpServers.total}${c.reset}`);
     }
-    if (SL_CONFIG.show_mcp) {
-      const integration = getIntegrationStatus();
-      if (integration.mcpServers.total > 0) {
-        const mcpCol = integration.mcpServers.enabled === integration.mcpServers.total ? c.brightGreen :
-                       integration.mcpServers.enabled > 0 ? c.brightYellow : c.red;
-        parts.push(`${c.cyan}MCP${c.reset} ${mcpCol}\u25CF${integration.mcpServers.enabled}/${integration.mcpServers.total}${c.reset}`);
-      }
-      if (integration.hasDatabase) parts.push(`${c.brightGreen}\u25C6${c.reset}DB`);
-    }
+    if (integration.hasDatabase) parts.push(`${c.brightGreen}\u25C6${c.reset}DB`);
     if (parts.length > 0) {
-      lines.push(`${c.brightCyan}\uD83D\uDCCA AgentDB${c.reset}    ${parts.join(`  ${c.dim}\u2502${c.reset}  `)}`);
+      lines.push(`${c.brightCyan}\uD83D\uDCCA MCP${c.reset}  ${parts.join(`  ${c.dim}\u2502${c.reset}  `)}`);
     }
   }
 
@@ -846,7 +835,7 @@ function generateCompactDashboard() {
   pushUpgradeNoticeSegment(lines);
   lines.push(header);
 
-  // Combined swarm + agentdb + mcp line
+  // Combined swarm + mcp line
   const segments = [];
   if (SL_CONFIG.show_swarm) {
     const swarm = getSwarmStatus();
@@ -854,15 +843,6 @@ function generateCompactDashboard() {
     const agentsColor = swarm.activeAgents > 0 ? c.brightGreen : c.red;
     segments.push(
       `${c.brightYellow}\uD83E\uDD16${c.reset} ${swarmInd}[${agentsColor}${swarm.activeAgents}${c.reset}/${c.brightWhite}${swarm.maxAgents}${c.reset}]`
-    );
-  }
-  if (SL_CONFIG.show_agentdb) {
-    const agentdb = getAgentDBStats();
-    const hnswInd = agentdb.hasHnsw ? `\u26A1` : '';
-    const sizeDisp = agentdb.dbSizeKB >= 1024 ? `${(agentdb.dbSizeKB / 1024).toFixed(1)}MB` : `${agentdb.dbSizeKB}KB`;
-    const vectorColor = agentdb.vectorCount > 0 ? c.brightGreen : c.dim;
-    segments.push(
-      `${c.brightCyan}\uD83D\uDCCA${c.reset} ${vectorColor}${agentdb.vectorCount}${hnswInd}${c.reset} ${c.dim}(${sizeDisp})${c.reset}`
     );
   }
   if (SL_CONFIG.show_mcp) {
