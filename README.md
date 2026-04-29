@@ -290,53 +290,24 @@ For simple epics with independent stories, `/flo <epic>` is all you need. For co
 
 ### Feature Orchestration (`flo epic`)
 
-`flo epic` is the robust epic runner — it adds persistent state, resume from failure, and auto-merge between stories on top of `/flo`. It accepts either a GitHub issue number or a YAML file:
+`flo epic` is the robust epic runner — it adds persistent state, resume from failure, and per-story auto-merge on top of `/flo`. It takes a GitHub epic issue number:
 
 ```bash
-# From a GitHub epic (auto-detects stories)
-flo epic run 42                        # Fetch epic #42, run all stories sequentially
-flo epic run 42 --dry-run              # Preview execution plan without running
-flo epic run 42 --no-merge             # Skip auto-merge between stories
-
-# From a YAML definition (explicit dependencies)
-flo epic run feature.yaml              # Execute stories in dependency order
-flo epic run feature.yaml --dry-run    # Show execution plan
-flo epic run feature.yaml --verbose    # Stream Claude output to terminal
-
-# State management
-flo epic status epic-42                # Check progress (which stories passed/failed)
-flo epic reset epic-42                 # Reset state for re-run
+flo epic run 42                            # Fetch epic #42, run all stories sequentially
+flo epic run 42 --dry-run                  # Preview execution plan without running
+flo epic run 42 --strategy auto-merge      # Per-story PRs with auto-merge between stories
+flo epic status 42                         # Check progress (which stories passed/failed)
+flo epic reset 42                          # Reset state for re-run
 ```
 
-When given an issue number, `flo epic` fetches the epic from GitHub, extracts child stories from checklists and numbered references, then runs each through `/flo` with state tracking. If a story fails, you can fix the issue and `flo epic run 42` again — it resumes from where it left off, skipping already-passed stories.
-
-For features with inter-story dependencies (story B requires story A to be merged first), use a YAML definition:
-
-```yaml
-feature:
-  id: my-feature
-  name: "My Feature"
-  repository: /path/to/project
-  base_branch: main
-
-  stories:
-    - id: story-1
-      name: "Entity and service"
-      issue: 101
-
-    - id: story-2
-      name: "Routes and tests"
-      issue: 102
-      depends_on: [story-1]
-```
+`flo epic` fetches the epic from GitHub, extracts child stories from checklists, numbered references, and `## Stories` / `## Tasks` sections, then runs each through `/flo` with state tracking. If a story fails, you can fix the issue and `flo epic run 42` again — it resumes from where it left off, skipping already-passed stories.
 
 | | `/flo <epic>` | `flo epic run <epic>` |
 |---|---|---|
 | **State tracking** | No | Yes (`epic-state` memory namespace) |
 | **Resume from failure** | No | Yes (skips passed stories) |
-| **Auto-merge PRs** | No | Yes (between stories) |
+| **Auto-merge PRs** | No | Yes (`--strategy auto-merge`) |
 | **Dry-run preview** | No | Yes |
-| **Dependency ordering** | No (top-to-bottom) | Yes (YAML only, topological sort) |
 
 ## Spells
 
@@ -474,7 +445,7 @@ flo epic status 42                       # Check progress
 flo epic reset 42                        # Reset state for re-run
 ```
 
-For features with inter-story dependencies, define them in a YAML file with `depends_on` fields for topological ordering. See the [Epic handling](#epic-handling) section above for detection criteria and the full comparison between `/flo <epic>` and `flo epic run`.
+See the [Epic handling](#epic-handling) section above for detection criteria and the comparison between `/flo <epic>` and `flo epic run`.
 
 ## Commands
 
