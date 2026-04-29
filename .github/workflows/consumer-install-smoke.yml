@@ -70,3 +70,10 @@ jobs:
 
       - name: Run consumer smoke harness
         run: npm run test:smoke
+
+      # Issue #736 — safety gate for stories #727/#728/#729/#735. Reuses the
+      # tarball that test:smoke just packed (skip-pack) so we don't pay
+      # `npm pack` twice. The previous step keeps `.work/` because pack-only
+      # cleanup happens at the end of each run.
+      - name: Run populated-consumer smoke harness
+        run: npm run test:smoke:populated -- --skip-pack
