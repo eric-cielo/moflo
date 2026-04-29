@@ -2162,6 +2162,28 @@ const rebuildIndexCommand: Command = {
     while (stmt.step()) entries.push(stmt.getAsObject() as any);
     stmt.free();
 
+    // Atomic write + post-condition check shared by both code paths below
+    // (no-work-needed early return and post-embedding completion). Throws
+    // are caught here to surface a clean CommandResult; the index-all.mjs
+    // hnsw-rebuild step relies on the non-zero exit when this fails.
+    const writeSidecarOrFail = async (showBytes: boolean): Promise<CommandResult | null> => {
+      const { buildAndWriteHnswSidecar } = await import('../memory/hnsw-persistence.js');
+      try {
+        const result = await buildAndWriteHnswSidecar(dbPath, cwd);
+        const tail = showBytes ? ` (${(result.bytes / 1024).toFixed(1)} KB)` : '';
+        output.writeln(`  HNSW sidecar:    ${result.vectorCount} vectors → ${result.sidecarPath}${tail}`);
+        if (!fs.existsSync(result.sidecarPath)) {
+          output.printError(`HNSW sidecar missing after write: ${result.sidecarPath}`);
+          return { success: false, exitCode: 1 };
+        }
+        return null;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        output.printError(`HNSW sidecar write failed: ${msg}`);
+        return { success: false, exitCode: 1 };
+      }
+    };
+
     if (entries.length === 0) {
       // Show stats
       const totalStmt = db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE status = 'active'`);
@@ -2174,6 +2196,15 @@ const rebuildIndexCommand: Command = {
 
       output.printSuccess(`All entries already have embeddings (${withEmbed}/${total})`);
       db.close();
+
+      // Refresh the HNSW sidecar even on the no-work path so a consumer
+      // that upgrades to this release with embeddings already current
+      // still gets the cold-start speedup.
+      if (withEmbed > 0) {
+        const fail = await writeSidecarOrFail(false);
+        if (fail) return fail;
+      }
+
       return { success: true };
     }
 
@@ -2236,6 +2267,14 @@ const rebuildIndexCommand: Command = {
     output.writeln(`  Failed:          ${failed} entries`);
     output.writeln(`  Time:            ${totalTime}s`);
     output.writeln(`  Total coverage:  ${withEmbed2}/${total2} entries`);
+
+    // Build + persist the HNSW sidecar so cold-start memory searches
+    // skip the full SQL→graph rebuild. Failure is fatal — bin/index-all.mjs
+    // and any caller of this command depend on the sidecar landing on disk.
+    if (withEmbed2 > 0) {
+      const fail = await writeSidecarOrFail(true);
+      if (fail) return fail;
+    }
 
     return { success: failed === 0, exitCode: failed > 0 ? 1 : 0 };
   }

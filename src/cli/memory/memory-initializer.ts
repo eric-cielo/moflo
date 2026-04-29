@@ -15,8 +15,9 @@ import { mofloImport } from '../services/moflo-require.js';
 import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 import { formatEmbeddingError } from './embedding-errors.js';
 import { HnswLite } from './hnsw-lite.js';
+import { tryLoadHnswSidecar } from './hnsw-persistence.js';
 import { EMBEDDING_MODEL_OPT_OUT, EPHEMERAL_NAMESPACES, getBridgeEmbedder } from './bridge-embedder.js';
-import { toFloat32 } from './controllers/_shared.js';
+import { parseEmbeddingJson, toFloat32 } from './controllers/_shared.js';
 import { writeVectorStatsJson } from './bridge-core.js';
 import {
   MOFLO_DIR,
@@ -419,10 +420,15 @@ export async function getHNSWIndex(options?: {
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
     }
-    const metadataPath = path.join(dbDir, 'hnsw.metadata.json');
+    const projectRoot = path.dirname(dbDir);
 
-    // Create HnswLite index and wrap it with the expected db interface
-    const hnsw = new HnswLite(dimensions, 16, 200, 'cosine');
+    // Try the binary sidecar first — graph + neighbors round-trip exactly,
+    // so the cold-start cost drops to one readFileSync + slice. Fall back
+    // to SQL-rebuild only when the sidecar is missing or malformed.
+    const loadedFromSidecar = options?.forceRebuild ? null : tryLoadHnswSidecar(projectRoot);
+    const hnsw = loadedFromSidecar ?? new HnswLite(dimensions, 16, 200, 'cosine');
+    const sidecarLoaded = loadedFromSidecar !== null;
+
     const db = {
       insert: async (entry: { id: string; vector: Float32Array }) => {
         hnsw.add(entry.id, entry.vector);
@@ -433,19 +439,7 @@ export async function getHNSWIndex(options?: {
       len: async () => hnsw.size,
     };
 
-    // Load metadata (entry info) if exists
     const entries = new Map<string, HNSWEntry>();
-    if (fs.existsSync(metadataPath)) {
-      try {
-        const metadataJson = fs.readFileSync(metadataPath, 'utf-8');
-        const metadata = JSON.parse(metadataJson) as Array<[string, HNSWEntry]>;
-        for (const [key, value] of metadata) {
-          entries.set(key, value);
-        }
-      } catch {
-        // Metadata load failed, will rebuild
-      }
-    }
 
     hnswIndex = {
       db,
@@ -454,6 +448,14 @@ export async function getHNSWIndex(options?: {
       initialized: false
     };
 
+    // Always populate the entries metadata from SQL — `key/namespace/content`
+    // is the source of truth there, and the sidecar only stores vectors +
+    // adjacency. When the sidecar IS loaded we skip the per-row JSON.parse
+    // of the embedding column, which is the expensive part on a populated
+    // consumer DB.
+    const SELECT_WITH_EMBEDDING = `id, key, namespace, content, embedding`;
+    const SELECT_METADATA_ONLY = `id, key, namespace, content`;
+
     if (fs.existsSync(dbPath)) {
       try {
         const initSqlJs = (await mofloImport('sql.js')).default;
@@ -461,72 +463,61 @@ export async function getHNSWIndex(options?: {
         const fileBuffer = fs.readFileSync(dbPath);
         const sqlDb = new SQL.Database(fileBuffer);
 
-        // Load all entries with embeddings
+        const cols = sidecarLoaded ? SELECT_METADATA_ONLY : SELECT_WITH_EMBEDDING;
         const result = sqlDb.exec(`
-          SELECT id, key, namespace, content, embedding
+          SELECT ${cols}
           FROM memory_entries
           WHERE status = 'active' AND embedding IS NOT NULL
           LIMIT 10000
         `);
 
+        let parseSkipped = 0;
         if (result[0]?.values) {
           for (const row of result[0].values) {
-            const [id, key, ns, content, embeddingJson] = row as [string, string, string, string, string];
-            if (embeddingJson) {
-              try {
-                const embedding = JSON.parse(embeddingJson) as number[];
-                const vector = new Float32Array(embedding);
+            const [id, key, ns, content, embeddingJson] = row as [string, string, string, string, string?];
 
-                await db.insert({
-                  id: String(id),
-                  vector
-                });
-
-                hnswIndex.entries.set(String(id), {
-                  id: String(id),
-                  key: key || String(id),
-                  namespace: ns || 'default',
-                  content: content || ''
-                });
-              } catch {
-                // Skip invalid embeddings
+            if (!sidecarLoaded) {
+              const vec = parseEmbeddingJson(embeddingJson);
+              if (!vec) {
+                parseSkipped++;
+                continue;
               }
+              await db.insert({ id: String(id), vector: vec });
             }
+
+            hnswIndex.entries.set(String(id), {
+              id: String(id),
+              key: key || String(id),
+              namespace: ns || 'default',
+              content: content || ''
+            });
           }
+        }
+        if (parseSkipped > 0) {
+          console.warn(`[memory-initializer] skipped ${parseSkipped} rows with malformed embeddings`);
         }
 
         sqlDb.close();
-      } catch {
-        // SQLite load failed, start with empty index
+      } catch (err) {
+        console.warn(`[memory-initializer] SQL load failed, starting empty: ${(err as Error).message}`);
       }
     }
 
     hnswIndex.initialized = true;
     hnswInitializing = false;
     return hnswIndex;
-  } catch {
+  } catch (err) {
+    console.warn(`[memory-initializer] getHNSWIndex failed: ${(err as Error).message}`);
     hnswInitializing = false;
     return null;
   }
 }
 
 /**
- * Save HNSW metadata to disk for persistence
- */
-function saveHNSWMetadata(): void {
-  if (!hnswIndex?.entries) return;
-
-  try {
-    const metadataPath = path.join(path.dirname(memoryDbPath(process.cwd())), 'hnsw.metadata.json');
-    const metadata = Array.from(hnswIndex.entries.entries());
-    fs.writeFileSync(metadataPath, JSON.stringify(metadata));
-  } catch {
-    // Silently fail - metadata save is best-effort
-  }
-}
-
-/**
- * Add entry to HNSW index (with automatic persistence)
+ * Add entry to HNSW index. Live-adds stay in-memory until the next
+ * `memory rebuild-index` run rebuilds the binary sidecar at
+ * `.moflo/hnsw.index`. The sql.js `embedding` column is the source of
+ * truth across process boundaries.
  */
 export async function addToHNSWIndex(
   id: string,
@@ -550,9 +541,6 @@ export async function addToHNSWIndex(
       vector
     });
     index.entries.set(id, entry);
-
-    // Save metadata for persistence (debounced would be better for high-volume)
-    saveHNSWMetadata();
     return true;
   } catch {
     return false;

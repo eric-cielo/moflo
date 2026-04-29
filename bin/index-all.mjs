@@ -14,6 +14,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, spawnSync } from 'child_process';
 import { platform } from 'os';
+import { hnswIndexPath } from './lib/moflo-paths.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -217,15 +218,32 @@ async function main() {
     log('SKIP  build-embeddings (script not found)');
   }
 
-  // 7. HNSW rebuild — MUST run last, after all writes are committed (#81)
+  // 7. HNSW rebuild — MUST run last, after all writes are committed (#81).
+  //    rebuild-index now also writes the binary HNSW sidecar at
+  //    .moflo/hnsw.index, which can take longer than the default 120s on a
+  //    populated consumer DB — match build-embeddings' 300s budget.
+  let hnswOk = true;
   if (localCli) {
-    await runStep('hnsw-rebuild', 'node', [localCli, 'memory', 'rebuild-index', '--force']);
+    const ok = await runStep('hnsw-rebuild', 'node', [localCli, 'memory', 'rebuild-index', '--force'], 300_000);
+    if (ok) {
+      const sidecar = hnswIndexPath(projectRoot);
+      if (!existsSync(sidecar)) {
+        // Loud failure: missing sidecar means cold-start memory search
+        // silently rebuilds from SQL on every consumer process — the exact
+        // regression this guard exists to surface.
+        log(`FAIL  hnsw-rebuild post-check: sidecar missing at ${sidecar}`);
+        hnswOk = false;
+      }
+    } else {
+      hnswOk = false;
+    }
   } else {
     log('SKIP  hnsw-rebuild (CLI not found)');
   }
 
   const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   log(`Sequential indexing chain complete (${totalElapsed}s)`);
+  if (!hnswOk) process.exit(1);
 }
 
 main().catch(err => {

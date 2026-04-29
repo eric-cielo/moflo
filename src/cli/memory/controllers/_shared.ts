@@ -18,6 +18,24 @@ export function toFloat32(vec: Float32Array | number[]): Float32Array {
 }
 
 /**
+ * Parse a JSON-serialised number[] from the legacy `memory_entries.embedding`
+ * TEXT column (as written by the sql.js path) into a Float32Array. Returns
+ * null on missing/empty input or any parse failure — the source-of-truth
+ * dance happens elsewhere; this helper just normalises the read.
+ */
+export function parseEmbeddingJson(value: unknown): Float32Array | null {
+  if (typeof value !== 'string' || value === '') return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  return Float32Array.from(parsed as number[]);
+}
+
+/**
  * Serialize a vector to a BLOB suitable for sql.js storage. Returns null
  * when no vector is supplied so callers can persist `NULL`.
  */

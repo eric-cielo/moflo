@@ -16,14 +16,16 @@
  *   flo-embeddings --namespace guidance                       # scope to one namespace
  */
 
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { mofloResolveURL, mofloInternalURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, hnswIndexPath } from './lib/moflo-paths.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 const FASTEMBED_INLINE = 'dist/src/cli/embeddings/fastembed-inline/index.js';
 const BRIDGE_CORE = 'dist/src/cli/memory/bridge-core.js';
+const HNSW_PERSISTENCE = 'dist/src/cli/memory/hnsw-persistence.js';
 const { writeVectorStatsJson } = await import(mofloInternalURL(BRIDGE_CORE));
+const { buildAndWriteHnswSidecar } = await import(mofloInternalURL(HNSW_PERSISTENCE));
 
 function findProjectRoot() {
   let dir = process.cwd();
@@ -262,15 +264,6 @@ async function main() {
 
   if (embedded > 0) {
     saveDb(db);
-    for (const p of [
-      hnswIndexPath(projectRoot),
-      resolve(projectRoot, '.moflo', 'hnsw.metadata.json'),
-    ]) {
-      if (existsSync(p)) {
-        unlinkSync(p);
-        log(`Deleted stale HNSW index: ${p}`);
-      }
-    }
   }
 
   const stats = getEmbeddingStats(db);
@@ -321,6 +314,20 @@ async function main() {
 
   writeVectorStatsCache(stats, nsStats);
   db.close();
+
+  // Rebuild + persist the HNSW sidecar so cold-start memory searches skip
+  // the SQL→graph rebuild. Failure here exits non-zero — index-all.mjs and
+  // any caller of this script depend on the sidecar landing on disk.
+  if (stats.withEmbeddings > 0) {
+    log('Building HNSW sidecar...');
+    const result = await buildAndWriteHnswSidecar(DB_PATH, projectRoot, {
+      dimensions: EMBEDDING_DIMS,
+    });
+    log(`HNSW sidecar: ${result.vectorCount} vectors → ${result.sidecarPath} (${(result.bytes / 1024).toFixed(1)} KB)`);
+    if (!existsSync(result.sidecarPath)) {
+      throw new Error(`HNSW sidecar missing after write: ${result.sidecarPath}`);
+    }
+  }
 }
 
 main().catch(err => {
