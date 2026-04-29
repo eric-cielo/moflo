@@ -4,7 +4,9 @@
 
 # MoFlo
 
-**An opinionated fork of [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo), optimized for local development.**
+**A standalone, opinionated AI agent orchestration toolkit for Claude Code, optimized for local development.**
+
+MoFlo originally started from [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) and has since **fully diverged** — there is no active fork relationship, no upstream sync, and no plans for one. Some CLI aliases (`claude-flow`) and config keys (`claudeFlow.*`) are vestigial compatibility shims preserved so existing installations don't break on upgrade.
 
 ## TL;DR
 
@@ -28,17 +30,17 @@ To verify everything is running, ask Claude to run `flo doctor` with full diagno
 MoFlo makes deliberate choices so you don't have to:
 
 - **Fully self-contained** — No external services, no cloud dependencies, no API keys. Everything runs locally on your machine.
-- **Minimal dependencies** — small runtime dep set (`fastembed` for embeddings, plus `js-yaml`, `semver`, `sql.js`, `valibot`). The upstream Ruflo/Claude Flow packages pull in multiple internal scoped packages (`@claude-flow/cli`, `@claude-flow/mcp`, `@claude-flow/shared`) plus native crypto libraries. MoFlo consolidates everything into a single package with no native compilation on install — `fastembed`'s `onnxruntime-node` ships prebuilt binaries, and `sql.js` is WASM.
+- **Minimal dependencies** — small runtime dep set (8 packages): `onnxruntime-node` + `@anush008/tokenizers` for in-tree fastembed-style embeddings, `sql.js` for memory, plus `js-yaml`, `lru-cache`, `semver`, `tar`, and `valibot`. No native compilation on install — `onnxruntime-node` ships prebuilt binaries, and `sql.js` is WASM.
 - **Node.js runtime** — Targets Node.js specifically. All scripts, hooks, and tooling are JavaScript/TypeScript. No Python, no Rust binaries, no native compilation.
 - **sql.js (WASM)** — The memory database uses sql.js, a pure WebAssembly build of SQLite. No native `better-sqlite3` bindings to compile, no platform-specific build steps. Works identically on Windows, macOS, and Linux.
-- **Neural embeddings by default** — 384-dimensional embeddings via [`fastembed`](https://www.npmjs.com/package/fastembed) (Qdrant's embeddings-only ONNX client) with `all-MiniLM-L6-v2`. No hash fallback, no peer-optional setup, no install prompts — real semantic search works out of the box. Install footprint: **~60–100 MB** post-prune (a `postinstall` script trims `onnxruntime-node` to the current platform's binaries and strips GPU-only provider libraries that fastembed never loads; unpruned it would be ~430 MB on Linux). The prune is scoped to ORT copies moflo actually owns and never touches foreign installs (e.g. an Electron cross-compile packager pulling its own ORT); set `MOFLO_NO_PRUNE=1` to disable pruning entirely, or `ONNXRUNTIME_NODE_INSTALL_CUDA=true` to keep the prune but re-enable the CUDA GPU provider. For context, the upstream Ruflo default install is ~1.1 GB. See [ADR-EMB-001](docs/adr/ADR-EMB-001-neural-embeddings-mandatory.md).
+- **Neural embeddings by default** — 384-dimensional embeddings via in-tree fastembed-style runtime (`onnxruntime-node` + `@anush008/tokenizers`) using `all-MiniLM-L6-v2`. No hash fallback, no peer-optional setup, no install prompts — real semantic search works out of the box. A `postinstall` script (`scripts/prune-native-binaries.mjs`) trims `onnxruntime-node` to the current platform's binaries and strips GPU-only provider libraries that the embedding runtime never loads — reclaiming roughly 340 MB on Linux and 150 MB on Windows from a fresh install. The prune is scoped to ORT copies moflo actually owns and never touches foreign installs (e.g. an Electron cross-compile packager pulling its own ORT); set `MOFLO_NO_PRUNE=1` to disable pruning entirely, or `ONNXRUNTIME_NODE_INSTALL_CUDA=true` to keep the prune but re-enable the CUDA GPU provider. See [ADR-EMB-001](docs/adr/ADR-EMB-001-neural-embeddings-mandatory.md).
 - **Full learning stack wired up OOTB** — The following are all configured and functional from `flo init`, no manual setup:
   - **SONA** (Self-Optimizing Neural Architecture) — learns from task trajectories via pure TypeScript SONA implementation in `src/cli/neural/`
   - **MicroLoRA** — rank-2 LoRA weight adaptations at ~1µs per adapt via pure TypeScript MicroLoRA in `src/cli/neural/`
   - **EWC++** (Elastic Weight Consolidation) — prevents catastrophic forgetting across sessions
   - **HNSW Vector Search** — fast nearest-neighbor search via HNSW indexing with sql.js (WASM SQLite)
-  - **Semantic Routing** — maps tasks to agents via learned routing in `cli/src/hooks` (ReasoningBank)
-  - **Trajectory Persistence** — outcomes stored in `routing-outcomes.json`, survive across sessions
+  - **Semantic Routing** — maps tasks to agents via learned routing in `src/cli/neural/` (ReasoningBank)
+  - **Trajectory Persistence** — outcomes stored in `.moflo/routing-outcomes.json`, survive across sessions
   - All pure TypeScript/WASM-based, no GPU, no API keys, no external services.
 - **Memory-first** — Claude must search what it already knows before exploring files. Enforced by hooks, not just instructions.
 - **Task registration before agents** — Sub-agents can't spawn until work is tracked. Prevents runaway agent proliferation.
@@ -332,7 +334,7 @@ feature:
 
 | | `/flo <epic>` | `flo epic run <epic>` |
 |---|---|---|
-| **State tracking** | No | Yes (`.claude-epic/state.json`) |
+| **State tracking** | No | Yes (`epic-state` memory namespace) |
 | **Resume from failure** | No | Yes (skips passed stories) |
 | **Auto-merge PRs** | No | Yes (between stories) |
 | **Dry-run preview** | No | Yes |
@@ -349,7 +351,7 @@ Spells are declarative YAML automations composed of pluggable step commands. The
 Each cast goes through the same lifecycle:
 
 1. **Parse & validate** — YAML is parsed and every step's `config` is checked against its command's schema.
-2. **Resolve capabilities** — every step declares what it needs (`shell`, `network`, `fs:read`, `fs:write`, `memory`, `credentials`, `browser`, `agent`). Undeclared access is rejected before execution.
+2. **Resolve capabilities** — every step declares what it needs (`shell`, `net`, `fs:read`, `fs:write`, `memory`, `credentials`, `browser`, `agent`). Undeclared access is rejected before execution.
 3. **Execute the step graph** — steps run sequentially by default, or in parallel groups, with `depends_on` for ordering and `condition`/`loop` for flow control.
 4. **Outputs flow forward** — any step can reference a prior step's output as `{stepId.field}`, so later steps can consume earlier results.
 5. **Persistence** — memory writes, artifacts, and per-step logs persist between runs; pause/resume and dry-run are supported.
@@ -377,11 +379,11 @@ steps:
     depends_on: [lint, test]
 ```
 
-Steps support shell (`bash`), agent spawns, memory reads/writes, conditionals, loops, parallel groups, HTTP/IMAP/Slack/MCP connectors, and more. See [docs/SPELLS.md](docs/SPELLS.md) for the full schema.
+Steps support shell (`bash`), agent spawns, memory reads/writes, conditionals, loops, parallel groups, browser automation, GitHub/IMAP/Outlook/Slack/MCP integrations, prompts, waits, graphs, and composite steps. See [docs/SPELLS.md](docs/SPELLS.md) for the full schema.
 
 ### Sandboxing and security
 
-Spells run with **least-privilege access**. Each step command declares the capabilities it needs (`shell`, `net`, `fs:read`, `fs:write`, `memory`, `credentials`, `browser`, `agent`), and the runner blocks any undeclared access. Spell authors can further restrict capabilities per step — e.g. `fs:read: ["./config/"]` or `shell: ["cat", "jq"]` — but never expand them.
+Spells run with **least-privilege access**. Each step command declares the capabilities it needs (`shell`, `net`, `fs:read`, `fs:write`, `memory`, `credentials`, `browser`, `browser:evaluate`, `agent`), and the runner blocks any undeclared access. Spell authors can further restrict capabilities per step — e.g. `fs:read: ["./config/"]` or `shell: ["cat", "jq"]` — but never expand them.
 
 Bash steps also run inside an OS sandbox when one is available. MoFlo auto-selects the best tier installed on your machine:
 
@@ -522,7 +524,7 @@ flo diagnose --json              # JSON output for CI/automation
 
 #### `flo doctor` — Health Check
 
-`flo doctor` runs 26 parallel health checks against your environment and reports pass/warn/fail for each:
+`flo doctor` runs 28 parallel health checks against your environment and reports pass/warn/fail for each:
 
 | Check | What it verifies |
 |-------|-----------------|
@@ -532,16 +534,16 @@ flo diagnose --json              # JSON output for CI/automation
 | **Claude Code CLI** | `claude` command available |
 | **Git** | Git installed |
 | **Git Repository** | Project is inside a git repository |
-| **Config File** | Valid `moflo.yaml` or `.claude-flow/config.yaml` exists |
+| **Config File** | Valid `moflo.yaml` exists |
 | **Status Line** | `statusLine` config wired in `.claude/settings.json` (auto-fixes when missing) |
 | **Daemon Status** | Background daemon running (checks PID, cleans stale locks) |
 | **Memory Database** | SQLite memory DB exists and is accessible |
 | **Embeddings** | Vectors indexed in memory DB, HNSW index present |
+| **Embedding Hygiene** | Indexer writes preserve embeddings (regression guard for #729) |
 | **Test Directories** | Test dirs from `moflo.yaml` exist on disk, reports auto-index status |
 | **MCP Servers** | `moflo` MCP server configured in `.mcp.json` |
 | **Disk Space** | Sufficient free disk space (warns at 80%, fails at 90%) |
 | **TypeScript** | TypeScript compiler available |
-| **agentic-flow** | Optional agentic-flow package installed (for enhanced embeddings/routing) |
 | **Semantic Quality** | Semantic search returns relevant, varied results with acceptable similarity scores |
 | **Intelligence** | SONA, ReasoningBank, PatternLearner, LoRA, EWC++, and RL subsystems are loaded |
 | **Spell Engine** | Core spell modules, step commands, loaders, and index are present |
@@ -552,6 +554,8 @@ flo diagnose --json              # JSON output for CI/automation
 | **MCP Spell Integration** | Bridge between MCP tools and spell engine functions correctly |
 | **Hook Execution** | Hook executor is functional and can fire hooks |
 | **Gate Health** | All gate cases, hook bindings, and state file are intact |
+| **MofloDb Bridge** | Memory DB adapter (sql.js + HNSW) is wired and routable |
+| **Sandbox Tier** | Detects which sandbox backend is available (Docker / bwrap / sandbox-exec / none) |
 
 **Auto-fix mode** (`flo doctor --fix`) attempts to repair each failing check automatically:
 
@@ -561,7 +565,7 @@ flo diagnose --json              # JSON output for CI/automation
 | Embeddings not initialized | Initializes memory DB and runs `embeddings init` |
 | Missing config file | Runs `config init` to generate defaults |
 | Status line not wired | Adds `statusLine` config block to `.claude/settings.json` |
-| Stale daemon lock | Removes stale `.claude-flow/daemon.lock` and restarts daemon |
+| Stale daemon lock | Removes stale `.moflo/daemon.lock` and restarts daemon |
 | MCP server not configured | Runs `claude mcp add moflo` to register the server |
 | Claude Code CLI missing | Installs `@anthropic-ai/claude-code` globally |
 | Zombie processes | Kills orphaned MoFlo processes (tracked + OS-level scan) |
@@ -610,7 +614,7 @@ flo --version                    # Show version
 
 ### Hooks (enabled OOTB)
 
-Hooks are shell commands that Claude Code runs automatically at specific points in its lifecycle. MoFlo installs 21 hook bindings across 8 lifecycle events. You don't invoke these — they fire automatically.
+Hooks are shell commands that Claude Code runs automatically at specific points in its lifecycle. MoFlo installs 20 hook bindings across 8 lifecycle events. You don't invoke these — they fire automatically.
 
 | Hook Event | What fires | What it does | Enabled OOTB |
 |------------|-----------|-------------|:---:|
@@ -626,7 +630,7 @@ Hooks are shell commands that Claude Code runs automatically at specific points 
 | **PostToolUse: memory_search** | `flo gate record-memory-searched` | Records that memory was searched (clears memory-first gate) | Yes |
 | **PostToolUse: TaskUpdate** | `flo gate check-task-transition` | Validates task state transitions (prevents skipping states) | Yes |
 | **PostToolUse: memory_store** | `flo gate record-learnings-stored` | Records that learnings were persisted to memory | Yes |
-| **UserPromptSubmit** | `flo hooks prompt` + `flo gate prompt-reminder` | Resets per-prompt gate state, tracks context bracket, routes task to agent | Yes |
+| **UserPromptSubmit** | `prompt-hook.mjs` | Resets per-prompt gate state, tracks context bracket, routes task to agent | Yes |
 | **SubagentStart** | `subagent-start` | Injects context and guidance into spawned sub-agents | Yes |
 | **SessionStart** | `session-start-launcher.mjs` | Launches auto-indexers (guidance, code map, tests), restores session state | Yes |
 | **SessionStart** | `auto-memory-hook.mjs` | Imports auto-memory entries from Claude's persistent memory | Yes |
@@ -648,14 +652,14 @@ These are the backend systems that hooks and commands interact with.
 | **Test Indexing** | Maps test files to their source targets based on naming patterns | The AI can answer "what tests cover X?" and identify untested code | Yes |
 | **Gates** | Hook-based enforcement of memory-first and task-registration patterns | Prevents the AI from wasting tokens on blind exploration and untracked agent spawns | Yes |
 | **Context Tracking** | Interaction counter with bracket classification (FRESH/MODERATE/DEPLETED/CRITICAL) | Warns before context quality degrades, suggests when to checkpoint or start fresh | Yes |
-| **Semantic Routing** | Matches task descriptions to agent types using vector similarity against 17 built-in patterns | Routes work to the right specialist (security-architect, tester, coder, etc.) automatically | Yes |
+| **Semantic Routing** | Matches task descriptions to agent types using vector similarity against 12 built-in patterns | Routes work to the right specialist (security-architect, tester, coder, etc.) automatically | Yes |
 | **Learned Routing** | Records task outcomes (agent type + success/failure) and feeds them back into routing | Routing gets smarter over time — successful patterns are weighted higher in future recommendations | Yes |
 | **SONA Learning** | Self-Optimizing Neural Architecture that learns from task trajectories | Adapts routing weights based on actual outcomes, not just keyword matching | Yes |
 | **MicroLoRA Adaptation** | Rank-2 LoRA weight updates from successful patterns (~1µs per adapt) | Fine-grained model adaptation without full retraining | Yes |
 | **EWC++ Consolidation** | Elastic Weight Consolidation that prevents catastrophic forgetting | New learning doesn't overwrite patterns from earlier sessions | Yes |
 | **Session Persistence** | Stop hook exports session metrics; SessionStart hook restores prior state | Patterns learned on Monday are available on Friday | Yes |
 | **Status Line** | Live dashboard showing git branch, session state, memory stats, MCP status | At-a-glance visibility into what MoFlo is doing | Yes |
-| **MCP Tool Server** | 140+ MCP tools for memory, hooks, coordination, etc. (schemas deferred by default) | Enables AI clients to interact with MoFlo programmatically | Yes (deferred) |
+| **MCP Tool Server** | 100+ MCP tools for memory, hooks, coordination, spells, swarm, etc. (schemas deferred by default) | Enables AI clients to interact with MoFlo programmatically | Yes (deferred) |
 
 ### Systems (available but off by default)
 
@@ -663,7 +667,7 @@ These are the backend systems that hooks and commands interact with.
 |--------|-------------|---------------|
 | **Model Routing** | Auto-selects haiku/sonnet/opus per task based on complexity analysis | `model_routing.enabled: true` in `moflo.yaml` |
 | **MCP Auto-Start** | Starts MCP server automatically on session begin | `mcp.auto_start: true` in `moflo.yaml` |
-| **Tool Schema Eager Loading** | Loads all 140+ MCP tool schemas at startup (instead of on-demand) | `mcp.tool_defer: false` in `moflo.yaml` |
+| **Tool Schema Eager Loading** | Loads all MCP tool schemas (100+) at startup (instead of on-demand) | `mcp.tool_defer: false` in `moflo.yaml` |
 
 ## The Two-Layer Task System
 
@@ -696,7 +700,7 @@ The `/flo` skill ties both systems together for GitHub issues — driving the fu
 
 ### Intelligent Agent Routing
 
-MoFlo ships with 17 built-in task patterns that map common work to the right agent type:
+MoFlo ships with 12 built-in task patterns that map common work to the right agent type:
 
 | Pattern | Keywords | Primary Agent |
 |---------|----------|---------------|
@@ -706,13 +710,13 @@ MoFlo ships with 17 built-in task patterns that map common work to the right age
 | feature-task | implement, add, create, build | architect → coder |
 | bugfix-task | bug, fix, error, crash, debug | coder |
 | api-task | endpoint, REST, route, handler | architect → coder |
-| ... | | *(17 patterns total)* |
+| ... | | *(12 patterns total)* |
 
 When you route a task (`flo hooks route --task "..."` or via MCP), MoFlo runs semantic similarity against these patterns using HNSW vector search and returns a ranked recommendation with confidence scores.
 
 **The routing gets smarter over time.** Every time a task completes successfully, MoFlo's post-task hook records the outcome — the full task description, which agent handled it, and whether it succeeded. These learned patterns are combined with the built-in seeds on every future route call. Because learned patterns contain rich task descriptions (not just short keywords), they discriminate better as they accumulate.
 
-Routing outcomes are stored in `.claude-flow/routing-outcomes.json` and persist across sessions. You can inspect them with `flo hooks patterns` or transfer them between projects with `flo hooks transfer`.
+Routing outcomes are stored in `.moflo/routing-outcomes.json` and persist across sessions. You can inspect them with `flo hooks patterns` or transfer them between projects with `flo hooks transfer`.
 
 ### Memory & Knowledge Storage
 
@@ -775,7 +779,7 @@ auto_index:
   tests: true                        # Auto-index test files on session start
 
 mcp:
-  tool_defer: true                   # Defer 140+ tool schemas; loaded on demand via ToolSearch
+  tool_defer: true                   # Defer MCP tool schemas (100+); loaded on demand via ToolSearch
   auto_start: false                  # Auto-start MCP server on session begin
 
 hooks:
@@ -808,13 +812,12 @@ status_line:
   show_git: true
   show_session: true
   show_swarm: true
-  show_agentdb: true
   show_mcp: true
 ```
 
 ### Tool Deferral
 
-By default, `tool_defer` is `true`. MoFlo exposes 140+ MCP tools — loading all their schemas at conversation start consumes significant context. With deferral enabled, only tool **names** are listed at startup (compact), and full schemas are fetched on demand via `ToolSearch` when actually needed. Hooks and CLI commands continue to work normally since they call the daemon directly, not through MCP tool schemas.
+By default, `tool_defer` is `true`. MoFlo exposes 100+ MCP tools — loading all their schemas at conversation start consumes significant context. With deferral enabled, only tool **names** are listed at startup (compact), and full schemas are fetched on demand via `ToolSearch` when actually needed. Hooks and CLI commands continue to work normally since they call the daemon directly, not through MCP tool schemas.
 
 Set `tool_defer: false` if you want all tool schemas available immediately (useful for offline/air-gapped environments where `ToolSearch` may not work).
 
@@ -848,22 +851,28 @@ model_routing:
 - **Project config system**: `moflo.yaml` for per-project settings
 - **One-stop init**: `flo init` generates everything needed for OOTB operation
 
-## Ruflo / Claude Flow
+## Relationship to Ruflo / Claude Flow
 
-MoFlo originated as a fork of [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) and has since diverged significantly. The upstream project distributes functionality across multiple scoped packages (`@claude-flow/cli`, `@claude-flow/mcp`, `@claude-flow/shared`) with native crypto dependencies. MoFlo consolidates everything into a single package with 4 runtime dependencies and zero native bindings — the entire stack runs on pure JavaScript/TypeScript and WASM.
+MoFlo started from [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) but is now an independent project. The two share roots and a few namespace conventions, but the codebases, package layout, runtime, and design priorities have fully diverged.
 
-For documentation on the underlying capabilities that both projects share — swarm topologies, hive-mind consensus, HNSW vector search, neural routing, MCP server internals — see the [Ruflo repository](https://github.com/ruvnet/ruflo).
+Concretely, today's MoFlo:
+
+- Ships as a single npm package (`moflo`) with 8 runtime dependencies and zero native bindings — pure JavaScript/TypeScript plus WASM
+- Runs an in-tree fastembed-style embedding runtime (no `fastembed` npm dependency) and sql.js + HNSW for memory
+- Owns its own architecture: workspace collapse, spell engine, daemon-driven scheduling, gates, the `/flo` issue-execution skill
+
+The vestigial CLI alias `claude-flow` and config keys like `claudeFlow.*` are preserved purely so existing installations don't break on upgrade. New installs should use `flo` and the `moflo.yaml` config keys exclusively.
 
 ## Why I Made This
 
-[Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) is an incredible piece of work. The engineering that [rUv](https://github.com/ruvnet) and the contributors have put into it — swarm topologies, hive-mind consensus, HNSW vector search, neural routing, and so much more — makes it one of the most comprehensive agent orchestration frameworks available. It's a massive, versatile toolbox built to support a wide range of scenarios: distributed systems, multi-agent swarms, enterprise orchestration, research workflows, and beyond.
+[Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) is an incredible piece of work. The engineering that [rUv](https://github.com/ruvnet) and the contributors put into the original — swarm topologies, hive-mind consensus, HNSW vector search, neural routing, and so much more — made it one of the most comprehensive agent orchestration frameworks available. It was built to support a wide range of scenarios: distributed systems, multi-agent swarms, enterprise orchestration, research workflows, and beyond.
 
-My use case was just one of those many scenarios: day-to-day local coding, enhancing my normal Claude Code experience on a single project. Claude Flow absolutely supports this — it's all in there — but because the project serves so many different needs, I found myself spending time configuring and tailoring things for my specific setup each time I pulled in updates. That's not a shortcoming of the project; it's the natural trade-off of a tool designed to be that flexible and powerful.
+My use case was just one of those many scenarios: day-to-day local coding, enhancing my normal Claude Code experience on a single project. The original supported this — it was all in there — but because the project served so many different needs, I found myself configuring and tailoring things for my specific setup each time I pulled in updates. That isn't a shortcoming of the original; it's the natural trade-off of a tool designed to be that flexible and powerful.
 
-So I forked the excellent foundation and narrowed the focus to my particular corner of it. I baked in the defaults I kept setting manually, added automatic indexing and memory gating at session start, and tuned the out-of-box experience so that `npm install` and `flo init` gets you straight to coding.
+So I started from that foundation and narrowed the focus to my particular corner of it. I baked in the defaults I kept setting manually, added automatic indexing and memory gating at session start, and tuned the out-of-box experience so that `npm install` and `flo init` gets you straight to coding. Over time MoFlo grew its own architecture (workspace collapse, in-tree fastembed runtime, sql.js + HNSW memory layer, spell engine, daemon-driven scheduling) and the two projects fully diverged.
 
-If you're exploring the full breadth of what agent orchestration can do, go use [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) directly — it's the real deal. But if your needs are similar to mine — a focused, opinionated local dev setup that just works — then hopefully MoFlo saves you the same configuration time it saves me.
+If you're exploring the full breadth of agent orchestration, go look at [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo) — it's the real deal. If your needs are similar to mine — a focused, opinionated local dev setup that just works — MoFlo is for you.
 
 ## License
 
-MIT (inherited from [Ruflo/Claude Flow](https://github.com/ruvnet/ruflo))
+MIT
