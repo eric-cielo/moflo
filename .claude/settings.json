@@ -55,6 +55,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/hook-handler.cjs\" post-edit",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" reset-edit-gates",
+            "timeout": 2000
           }
         ]
       },
@@ -84,6 +89,21 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" check-bash-memory",
+            "timeout": 2000
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" record-test-run",
+            "timeout": 2000
+          }
+        ]
+      },
+      {
+        "matcher": "^Skill$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" record-skill-run",
             "timeout": 2000
           }
         ]

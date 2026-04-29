@@ -6,7 +6,7 @@ var path = require('path');
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, learningsStored: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null };
 
 function readState() {
   try {
@@ -29,7 +29,7 @@ function writeState(s) {
 
 // Load moflo.yaml gate config (defaults: all enabled)
 function loadGateConfig() {
-  var defaults = { memory_first: true, task_create_first: true, context_tracking: true };
+  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true };
   try {
     var yamlPath = path.join(PROJECT_DIR, 'moflo.yaml');
     if (fs.existsSync(yamlPath)) {
@@ -37,6 +37,9 @@ function loadGateConfig() {
       if (/memory_first:\s*false/i.test(content)) defaults.memory_first = false;
       if (/task_create_first:\s*false/i.test(content)) defaults.task_create_first = false;
       if (/context_tracking:\s*false/i.test(content)) defaults.context_tracking = false;
+      if (/testing_gate:\s*false/i.test(content)) defaults.testing_gate = false;
+      if (/simplify_gate:\s*false/i.test(content)) defaults.simplify_gate = false;
+      if (/learnings_gate:\s*false/i.test(content)) defaults.learnings_gate = false;
     }
   } catch (e) { /* use defaults */ }
   return defaults;
@@ -49,6 +52,13 @@ var EXEMPT = ['.claude/', '.claude\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state
 var DANGEROUS = ['rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
 var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\b/i;
 var TASK_RE = /\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\b/i;
+// Match npm/yarn/pnpm/bun test, npx vitest|jest|..., bare runners at command-start only,
+// and language-native test commands. The bare-runner arm is anchored so that
+// `npm install jest`, `grep -r vitest src/`, and similar don't false-positive.
+var TEST_RUNNER_RE = /(?:^|[^a-z])(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?(?:test|t)(?:[:\s]|$)|\b(?:npx|pnpx)\s+(?:vitest|jest|mocha|ava|tap|jasmine|pytest)\b|(?:^|;|&&|\|\|)\s*(?:vitest|jest|pytest|mocha|jasmine|tap|ava)\s|\b(?:cargo|go|deno|dotnet|mvn)\s+test\b|\bgradle\w*\s+test\b/i;
+// Edits to these don't change runtime behaviour, so they don't invalidate prior test/simplify runs.
+// Lock files and .gitignore are tracked but inert; package.json/*.yaml ARE source — they reset.
+var EDIT_RESET_SKIP_RE = /\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^|[\\\/])(CHANGELOG(?:\.md)?|\.env\.example|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb)$/i;
 
 switch (command) {
   case 'check-before-agent': {
@@ -117,16 +127,56 @@ switch (command) {
     writeState(s);
     break;
   }
-  case 'check-before-pr': {
+  case 'record-test-run': {
     var cmd = process.env.TOOL_INPUT_command || '';
-    if (/gh\s+pr\s+create/.test(cmd)) {
+    if (TEST_RUNNER_RE.test(cmd)) {
       var s = readState();
-      if (!s.learningsStored && (s.interactionCount || 0) > 5) {
-        // Advisory for long sessions — remind but don't block
-        process.stdout.write('ADVISORY: Consider storing learnings (mcp__moflo__memory_store) before creating a PR — this was a substantial session.\n');
+      if (!s.testsRun) {
+        s.testsRun = true;
+        writeState(s);
       }
     }
     break;
+  }
+  case 'record-skill-run': {
+    if ((process.env.TOOL_INPUT_skill || '') === 'simplify') {
+      var s = readState();
+      if (!s.simplifyRun) {
+        s.simplifyRun = true;
+        writeState(s);
+      }
+    }
+    break;
+  }
+  case 'reset-edit-gates': {
+    var fp = process.env.TOOL_INPUT_file_path || '';
+    if (fp && EDIT_RESET_SKIP_RE.test(fp)) break;
+    var s = readState();
+    if (!s.testsRun && !s.simplifyRun) break;
+    s.testsRun = false;
+    s.simplifyRun = false;
+    writeState(s);
+    break;
+  }
+  case 'check-before-pr': {
+    // Anchor to command-start (or chained via && / || / ;) so heredoc bodies
+    // and quoted strings that contain the literal "gh pr create" don't trip
+    // the gate during regular `git commit -m "...gh pr create..."` flows.
+    var cmd = process.env.TOOL_INPUT_command || '';
+    if (!/(?:^|&&\s*|\|\|\s*|;\s*)\s*gh\s+pr\s+create\b/.test(cmd)) break;
+    var s = readState();
+    var missing = [];
+    if (config.testing_gate && !s.testsRun) missing.push('tests have not run since the last code edit (run npm test, vitest, jest, pytest, or similar)');
+    if (config.simplify_gate && !s.simplifyRun) missing.push('/simplify has not run since the last code edit');
+    if (config.learnings_gate && !s.learningsStored) missing.push('learnings have not been stored (call mcp__moflo__memory_store)');
+    if (missing.length === 0) break;
+    process.stderr.write('BLOCKED: gh pr create requires the following before opening a PR:\n');
+    for (var i = 0; i < missing.length; i++) {
+      process.stderr.write('  - ' + missing[i] + '\n');
+    }
+    process.stderr.write('Disable per-gate via moflo.yaml:\n');
+    process.stderr.write('  gates:\n    testing_gate: false\n    simplify_gate: false\n    learnings_gate: false\n');
+    process.exit(2);
   }
   case 'check-dangerous-command': {
     var cmd = (process.env.TOOL_INPUT_command || '').toLowerCase();
@@ -163,7 +213,7 @@ switch (command) {
     break;
   }
   case 'session-reset': {
-    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, learningsStored: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null });
+    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null });
     break;
   }
   default:

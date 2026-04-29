@@ -509,13 +509,19 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
       },
       {
         "matcher": "^Bash$",
-        "hooks": [{ "type": "command", "command": gateHook('check-dangerous-command'), "timeout": 2000 }]
+        "hooks": [
+          { "type": "command", "command": gateHook('check-dangerous-command'), "timeout": 2000 },
+          { "type": "command", "command": gateHook('check-before-pr'), "timeout": 2000 }
+        ]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "^(Write|Edit|MultiEdit)$",
-        "hooks": [{ "type": "command", "command": handler('post-edit'), "timeout": 5000 }]
+        "hooks": [
+          { "type": "command", "command": handler('post-edit'), "timeout": 5000 },
+          { "type": "command", "command": gateHook('reset-edit-gates'), "timeout": 2000 }
+        ]
       },
       {
         "matcher": "^Agent$",
@@ -527,11 +533,22 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
       },
       {
         "matcher": "^Bash$",
-        "hooks": [{ "type": "command", "command": gateHook('check-bash-memory'), "timeout": 2000 }]
+        "hooks": [
+          { "type": "command", "command": gateHook('check-bash-memory'), "timeout": 2000 },
+          { "type": "command", "command": gateHook('record-test-run'), "timeout": 2000 }
+        ]
+      },
+      {
+        "matcher": "^Skill$",
+        "hooks": [{ "type": "command", "command": gateHook('record-skill-run'), "timeout": 2000 }]
       },
       {
         "matcher": "mcp__moflo__memory_",
         "hooks": [{ "type": "command", "command": gate('record-memory-searched'), "timeout": 3000 }]
+      },
+      {
+        "matcher": "^mcp__moflo__memory_store$",
+        "hooks": [{ "type": "command", "command": gate('record-learnings-stored'), "timeout": 2000 }]
       }
     ],
     "UserPromptSubmit": [

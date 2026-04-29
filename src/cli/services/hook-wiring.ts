@@ -36,6 +36,9 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   { event: 'PostToolUse', pattern: 'check-task-transition' },
   { event: 'PostToolUse', pattern: 'record-learnings-stored' },
   { event: 'PostToolUse', pattern: 'check-bash-memory' },
+  { event: 'PostToolUse', pattern: 'record-test-run' },
+  { event: 'PostToolUse', pattern: 'record-skill-run' },
+  { event: 'PostToolUse', pattern: 'reset-edit-gates' },
   { event: 'UserPromptSubmit', pattern: 'prompt-reminder' },
 ];
 
@@ -53,6 +56,9 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   'check-task-transition':    { event: 'PostToolUse',      matcher: '^TaskUpdate$',               hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-task-transition', timeout: 2000 } },
   'record-learnings-stored':  { event: 'PostToolUse',      matcher: '^mcp__moflo__memory_store$', hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-learnings-stored', timeout: 2000 } },
   'check-bash-memory':        { event: 'PostToolUse',      matcher: '^Bash$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-bash-memory', timeout: 2000 } },
+  'record-test-run':          { event: 'PostToolUse',      matcher: '^Bash$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-test-run', timeout: 2000 } },
+  'record-skill-run':         { event: 'PostToolUse',      matcher: '^Skill$',                    hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-skill-run', timeout: 2000 } },
+  'reset-edit-gates':         { event: 'PostToolUse',      matcher: '^(Write|Edit|MultiEdit)$',   hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" reset-edit-gates', timeout: 2000 } },
   'prompt-reminder':          { event: 'UserPromptSubmit', matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" prompt-reminder', timeout: 3000 } },
 };
 
