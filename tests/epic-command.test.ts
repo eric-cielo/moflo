@@ -4,6 +4,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const REPO_ROOT = resolve(__dirname, '..');
 
 describe('epic command structure', () => {
   let epicCommand: any;
@@ -373,5 +377,21 @@ describe('epic resume support', () => {
       }
     }
     expect(completed).toEqual(new Set([10, 11]));
+  });
+});
+
+describe('README accuracy: YAML-driven epic execution (#753)', () => {
+  // #753: runEpic rejects non-numeric input, so README must not advertise YAML-driven mode.
+
+  const README = readFileSync(resolve(REPO_ROOT, 'README.md'), 'utf-8');
+
+  it('does not advertise `flo epic run <file>.yaml`', () => {
+    expect(README).not.toMatch(/flo epic run [^\s`]+\.ya?ml/i);
+  });
+
+  it('does not claim a YAML-driven dependency-ordering capability', () => {
+    // extractStories() never populates depends_on, so the topological-sort
+    // / dependency-ordering pitch is currently false in any phrasing.
+    expect(README).not.toMatch(/YAML[^.\n]{0,40}(topological|dependency ordering)/i);
   });
 });

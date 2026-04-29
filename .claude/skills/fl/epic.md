@@ -25,15 +25,14 @@ Detection uses `isEpicIssue()` from `src/cli/epic/detection.ts`.
 
 Strategy is determined by (in priority order):
 1. CLI flag: `--strategy auto-merge`
-2. Feature definition: `strategy` field in YAML
-3. Config: `epic.default_strategy` in `moflo.yaml`
-4. Default: `single-branch`
+2. Config: `epic.default_strategy` in `moflo.yaml`
+3. Default: `single-branch`
 
 ## How It Works
 
 The `flo epic run` command:
 1. Fetches the epic issue and validates it
-2. Extracts and orders stories (topological sort for dependencies)
+2. Extracts stories from the issue body (checklists, numbered refs, `## Stories` / `## Tasks` sections) in document order
 3. Loads the appropriate spell YAML template
 4. Runs via the spell engine (SpellRunner)
 5. The spell template handles branch creation, story iteration, PR creation, and checklist tracking
