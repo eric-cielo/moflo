@@ -434,6 +434,7 @@ const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
   'Git Repository',
   'Gate Health',      // .claude/ not initialised in fresh fixture (warn since #784)
   'Semantic Quality', // empty DB, no patterns yet
+  'Disk Space',       // macOS GitHub runner is constantly >80% used (warn threshold)
 ];
 
 export function doctor(consumerDir) {
