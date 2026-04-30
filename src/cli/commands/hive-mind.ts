@@ -14,6 +14,7 @@ import { attachSignalHandlers } from '../shared/resilience/signal-handlers.js';
 import { spawn as childSpawn, execSync } from 'child_process';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { errorDetail } from '../shared/utils/error-detail.js';
 // Inline permission resolver to avoid cross-package runtime import
 // (cli rootDir:"." produces dist/src/ which breaks relative paths to spells/)
 const PERM_TOOLS: Record<string, readonly string[]> = {
@@ -358,7 +359,7 @@ async function spawnClaudeCodeInstance(
     }
   } catch (error) {
     spinner.fail('Failed to prepare Claude Code coordination');
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = errorDetail(error);
     output.printError(`Error: ${errorMessage}`);
 
     // Try to save prompt as fallback

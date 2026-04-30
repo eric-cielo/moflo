@@ -17,6 +17,7 @@ import { parseSpell } from '../schema/parser.js';
 import { validateSpellDefinition } from '../schema/validator.js';
 import { SpellConnectorRegistry } from '../registry/connector-registry.js';
 import { loadSandboxConfigFromProject } from '../core/platform-sandbox.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 // ============================================================================
 // Types
@@ -93,7 +94,7 @@ export async function runSpellFromContent(
       success: false,
       steps: [],
       outputs: {},
-      errors: [{ code: 'DEFINITION_VALIDATION_FAILED', message: `Parse error: ${err instanceof Error ? err.message : String(err)}` }],
+      errors: [{ code: 'DEFINITION_VALIDATION_FAILED', message: `Parse error: ${errorDetail(err)}` }],
       duration: 0,
       cancelled: false,
     };

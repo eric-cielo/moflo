@@ -12,6 +12,7 @@ import type { WorkerDaemon } from './worker-daemon.js';
 import type { MemoryAccessor } from '../spells/types/step-command.types.js';
 import type { FloRunContext } from '../spells/types/runner.types.js';
 import type { SchedulerErrorCode } from '../spells/scheduler/scheduler.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // ============================================================================
 // Types
@@ -393,7 +394,7 @@ async function handleRequest(
       sendJson(res, 404, { error: 'Not found' });
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorDetail(err);
     sendJson(res, 500, { error: 'Internal server error', message });
   }
 }
@@ -438,13 +439,13 @@ async function handleScheduleAction(
     // verb === 'run' — execute asynchronously so the response returns fast;
     // the UI polls history for completion.
     scheduler.runScheduleNow(scheduleId).catch(err => {
-      console.warn(`[dashboard] runScheduleNow(${scheduleId}) failed: ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(`[dashboard] runScheduleNow(${scheduleId}) failed: ${errorDetail(err)}`);
     });
     sendJson(res, 202, { ok: true, id: scheduleId, accepted: true });
   } catch (err) {
     const code = getSchedulerErrorCode(err);
     const status = code === 'busy' ? 409 : code ? 404 : 500;
-    sendJson(res, status, { error: err instanceof Error ? err.message : String(err) });
+    sendJson(res, status, { error: errorDetail(err) });
   }
 }
 

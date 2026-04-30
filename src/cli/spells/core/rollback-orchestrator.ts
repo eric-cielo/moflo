@@ -14,6 +14,7 @@ import type {
 } from '../types/runner.types.js';
 import type { StepDefinition } from '../types/spell-definition.types.js';
 import type { StepCommandRegistry } from './step-command-registry.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 export interface CompletedStep {
   step: StepDefinition;
@@ -49,7 +50,7 @@ export async function rollbackSteps(
         stepResults[idx] = {
           ...stepResults[idx],
           rollbackAttempted: true,
-          rollbackError: err instanceof Error ? err.message : String(err),
+          rollbackError: errorDetail(err),
         };
       }
     }

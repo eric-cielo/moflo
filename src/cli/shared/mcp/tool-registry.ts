@@ -15,6 +15,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { errorDetail } from '../utils/error-detail.js';
 import {
   MCPTool,
   JSONSchema,
@@ -403,7 +404,7 @@ export class ToolRegistry extends EventEmitter {
       return {
         content: [{
           type: 'text',
-          text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          text: `Error: ${errorDetail(error)}`,
         }],
         isError: true,
       };

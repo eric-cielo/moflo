@@ -14,6 +14,7 @@ import type {
   DaemonStatus,
   DaemonManagerConfig,
 } from '../types.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 /**
  * Daemon instance
@@ -99,7 +100,7 @@ export class DaemonManager {
       await this.executeDaemonTask(name);
     } catch (error) {
       daemon.state.status = 'error';
-      daemon.state.error = error instanceof Error ? error.message : String(error);
+      daemon.state.error = errorDetail(error);
       throw error;
     }
   }
@@ -254,7 +255,7 @@ export class DaemonManager {
       this.restartCounts.set(name, 0);
     } catch (error) {
       daemon.state.failureCount++;
-      daemon.state.error = error instanceof Error ? error.message : String(error);
+      daemon.state.error = errorDetail(error);
 
       // Handle auto-restart
       if (this.config.autoRestart) {

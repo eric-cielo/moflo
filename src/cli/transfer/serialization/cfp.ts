@@ -5,6 +5,7 @@
 
 import type { CFPFormat, SerializationFormat, PatternCollection } from '../types.js';
 import * as crypto from 'crypto';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 // Version info
 const CFP_VERSION = '1.0.0';
@@ -145,7 +146,7 @@ export function deserializeCFP(data: string | Buffer): CFPFormat {
   try {
     parsed = JSON.parse(str);
   } catch (e) {
-    throw new Error(`Invalid CFP file: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(`Invalid CFP file: ${errorDetail(e)}`);
   }
 
   // Validate magic bytes

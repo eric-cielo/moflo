@@ -8,6 +8,7 @@ import { output } from '../output.js';
 import { confirm, select, multiSelect, input } from '../prompt.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { errorDetail } from '../shared/utils/error-detail.js';
 import {
   executeInit,
   executeUpgrade,
@@ -60,7 +61,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
     }
     output.writeln();
   } catch (e) {
-    output.printWarning(`MoFlo setup: ${e instanceof Error ? e.message : String(e)}`);
+    output.printWarning(`MoFlo setup: ${errorDetail(e)}`);
   }
   // ── End MoFlo Setup ────────────────────────────────────────────────
 
@@ -316,7 +317,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
     return { success: true, data: result };
   } catch (error) {
     spinner.fail('Initialization failed');
-    output.printError(`Failed to initialize: ${error instanceof Error ? error.message : String(error)}`);
+    output.printError(`Failed to initialize: ${errorDetail(error)}`);
     return { success: false, exitCode: 1 };
   }
 };
@@ -878,7 +879,7 @@ const upgradeCommand: Command = {
       return { success: true, data: result };
     } catch (error) {
       spinner.fail('Upgrade failed');
-      output.printError(`Failed to upgrade: ${error instanceof Error ? error.message : String(error)}`);
+      output.printError(`Failed to upgrade: ${errorDetail(error)}`);
       return { success: false, exitCode: 1 };
     }
   },

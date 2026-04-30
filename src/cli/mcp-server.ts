@@ -25,6 +25,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { errorDetail } from './shared/utils/error-detail.js';
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -343,7 +344,7 @@ export class MCPServerManager extends EventEmitter {
           } catch (error) {
             console.error(
               `[${new Date().toISOString()}] ERROR [claude-flow-mcp] Failed to parse message:`,
-              error instanceof Error ? error.message : String(error)
+              errorDetail(error)
             );
           }
         }

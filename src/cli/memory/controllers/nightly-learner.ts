@@ -19,6 +19,7 @@ import type { Reflexion } from './reflexion.js';
 import type { Skills } from './skills.js';
 import type { ControllerSpec } from '../controller-spec.js';
 import { hasMethod } from './_shared.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 export interface NightlyReport {
   consolidation?: ConsolidationReport;
@@ -74,7 +75,7 @@ export class NightlyLearner {
           memoriesForgotten: 0,
           workingPromoted: 0,
           timestamp: Date.now(),
-          error: err instanceof Error ? err.message : String(err),
+          error: errorDetail(err),
         };
       }
     }

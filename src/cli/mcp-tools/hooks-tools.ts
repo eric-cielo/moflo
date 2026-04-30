@@ -6,6 +6,7 @@
 import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync, readdirSync } from 'fs';
 import { dirname, join, resolve, extname } from 'path';
 import type { MCPTool } from './types.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Real vector search functions - lazy loaded to avoid circular imports
 let searchEntriesFn: ((options: {
@@ -26,7 +27,7 @@ async function getRealSearchFunction() {
       const { searchEntries } = await import('../memory/memory-initializer.js');
       searchEntriesFn = searchEntries;
     } catch (err) {
-      console.error('[hooks-tools] Failed to load memory-initializer searchEntries:', err instanceof Error ? err.message : String(err));
+      console.error('[hooks-tools] Failed to load memory-initializer searchEntries:', errorDetail(err));
       searchEntriesFn = null;
     }
   }
@@ -56,7 +57,7 @@ async function getRealStoreFunction() {
       const { storeEntry } = await import('../memory/memory-initializer.js');
       storeEntryFn = storeEntry;
     } catch (err) {
-      console.error('[hooks-tools] Failed to load memory-initializer storeEntry:', err instanceof Error ? err.message : String(err));
+      console.error('[hooks-tools] Failed to load memory-initializer storeEntry:', errorDetail(err));
       storeEntryFn = null;
     }
   }
@@ -1991,7 +1992,7 @@ export const hooksSessionStart: MCPTool = {
       } catch (error) {
         daemonStatus = {
           started: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorDetail(error),
         };
       }
     }
@@ -2337,7 +2338,7 @@ export const hooksPatternStore: MCPTool = {
             tags: [type, `confidence-${Math.round(confidence * 100)}`, 'reasoning-pattern'],
           });
         } catch (error) {
-          storeResult = { success: false, error: error instanceof Error ? error.message : String(error) };
+          storeResult = { success: false, error: errorDetail(error) };
         }
       }
     }

@@ -14,6 +14,7 @@
 
 import { createLoRAAdapter, type LoRAAdapter } from '../movector/lora-adapter.js';
 import { FlashAttention as PureTSFlashAttention } from '../movector/flash-attention.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 import {
   AdamWOptimizer,
   InfoNceLoss,
@@ -173,7 +174,7 @@ export async function initializeTraining(config: TrainingConfig = {}): Promise<{
     return {
       success: false,
       features,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorDetail(error),
     };
   }
 }

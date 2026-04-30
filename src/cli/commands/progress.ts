@@ -9,6 +9,7 @@
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 function progressBar(percent: number, width: number = 20): string {
   const filled = Math.round((percent / 100) * width);
@@ -203,7 +204,7 @@ const watchCommand: Command = {
           process.stdout.write(`\r${progressBar(currentProgress, 20)} ${output.dim(new Date().toLocaleTimeString())}`);
         }
       } catch (error) {
-        output.printError(`Check failed: ${error instanceof Error ? error.message : String(error)}`);
+        output.printError(`Check failed: ${errorDetail(error)}`);
       }
     };
 

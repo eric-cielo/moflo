@@ -9,6 +9,7 @@ import { confirm, select } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Default configuration
 const DEFAULT_TOPOLOGY = 'hierarchical-mesh';
@@ -358,7 +359,7 @@ const stopCommand: Command = {
       };
     } catch (error) {
       spinner.fail('Stop failed');
-      output.printError(`Failed to stop: ${error instanceof Error ? error.message : String(error)}`);
+      output.printError(`Failed to stop: ${errorDetail(error)}`);
       return { success: false, exitCode: 1 };
     }
   }

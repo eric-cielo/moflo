@@ -23,6 +23,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // ============================================================================
 // Types
@@ -355,7 +356,7 @@ export class EWCConsolidator {
 
       return result;
     } catch (error) {
-      result.error = error instanceof Error ? error.message : String(error);
+      result.error = errorDetail(error);
       result.duration = performance.now() - startTime;
       return result;
     }

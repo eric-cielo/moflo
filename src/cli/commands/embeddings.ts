@@ -19,6 +19,7 @@ import { mofloImport } from '../services/moflo-require.js';
 import { runEmbeddingsMigrationIfNeeded } from '../services/embeddings-migration.js';
 import { memoryDbPath, MEMORY_DB_FILE, MOFLO_DIR } from '../services/moflo-paths.js';
 import * as embeddings from '../embeddings/index.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 const DEFAULT_DB_PATH_FLAG = `${MOFLO_DIR}/${MEMORY_DB_FILE}`;
 
@@ -98,7 +99,7 @@ const generateCommand: Command = {
       return { success: true, data: result };
     } catch (error) {
       spinner.fail('Embedding generation failed');
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -271,7 +272,7 @@ const searchCommand: Command = {
       return { success: true, data: topResults };
     } catch (error) {
       spinner.fail('Search failed');
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -389,7 +390,7 @@ const compareCommand: Command = {
       return { success: true, data: { similarity, metric, embedTime } };
     } catch (error) {
       spinner.fail('Comparison failed');
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -498,7 +499,7 @@ const collectionsCommand: Command = {
 
       return { success: true, data: collections };
     } catch (error) {
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -642,7 +643,7 @@ const indexCommand: Command = {
       output.printError(`Unknown action: ${action}`);
       return { success: false, exitCode: 1 };
     } catch (error) {
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -655,7 +656,7 @@ async function safelyRunEmbeddingsMigration(dbPath?: string): Promise<boolean> {
   try {
     return await runEmbeddingsMigrationIfNeeded(dbPath ? { dbPath } : {});
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorDetail(err);
     output.printWarning(`Embeddings migration check failed: ${msg}`);
     return false;
   }
@@ -796,7 +797,7 @@ export const initCommand: Command = {
 
       return { success: true, data: config };
     } catch (error) {
-      output.printError('Initialization failed: ' + (error instanceof Error ? error.message : String(error)));
+      output.printError('Initialization failed: ' + (errorDetail(error)));
       return { success: false, exitCode: 1 };
     }
   },
@@ -1472,7 +1473,7 @@ const warmupCommand: Command = {
       return { success: true, data: { loadTime, totalTime, dimensions: modelInfo.dimensions } };
     } catch (error) {
       spinner.fail('Warmup failed');
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -1627,7 +1628,7 @@ const benchmarkCommand: Command = {
 
       return { success: true, data: { results, avgWarm, coldTime } };
     } catch (error) {
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -1655,7 +1656,7 @@ const migrateCommand: Command = {
       const ran = await runEmbeddingsMigrationIfNeeded({ dbPath });
       return { success: true, data: { ran } };
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = errorDetail(error);
       output.printError(`Migration failed: ${msg}`);
       return { success: false, exitCode: 1 };
     }

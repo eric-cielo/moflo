@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -203,7 +204,7 @@ export class PluginManager {
 
       return { success: true, plugin };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = errorDetail(error);
       console.error(`[PluginManager] Failed to install ${packageName}:`, errorMsg);
       return { success: false, error: errorMsg };
     }
@@ -263,7 +264,7 @@ export class PluginManager {
 
       return { success: true, plugin };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = errorDetail(error);
       console.error(`[PluginManager] Failed to install from local:`, errorMsg);
       return { success: false, error: errorMsg };
     }
@@ -306,7 +307,7 @@ export class PluginManager {
 
       return { success: true };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = errorDetail(error);
       console.error(`[PluginManager] Failed to uninstall ${packageName}:`, errorMsg);
       return { success: false, error: errorMsg };
     }
@@ -471,7 +472,7 @@ export class PluginManager {
 
       return { success: true, plugin: existing };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = errorDetail(error);
       return { success: false, error: errorMsg };
     }
   }

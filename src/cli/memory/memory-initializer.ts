@@ -19,6 +19,7 @@ import { tryLoadHnswSidecar } from './hnsw-persistence.js';
 import { EMBEDDING_MODEL_OPT_OUT, EPHEMERAL_NAMESPACES, getBridgeEmbedder } from './bridge-embedder.js';
 import { parseEmbeddingJson, toFloat32 } from './controllers/_shared.js';
 import { writeVectorStatsJson } from './bridge-core.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 import {
   MOFLO_DIR,
   hnswIndexPath,
@@ -1025,7 +1026,7 @@ export async function ensureSchemaColumns(dbPath: string): Promise<{
     return {
       success: false,
       columnsAdded,
-      error: error instanceof Error ? error.message : String(error)
+      error: errorDetail(error)
     };
   }
 }
@@ -1354,7 +1355,7 @@ export async function initializeMemoryDatabase(options: {
         hnswIndexing: false,
         migrationTracking: false
       },
-      error: error instanceof Error ? error.message : String(error)
+      error: errorDetail(error)
     };
   }
 }
@@ -1468,7 +1469,7 @@ export async function applyTemporalDecay(dbPath?: string): Promise<{
     return {
       success: false,
       patternsDecayed: 0,
-      error: error instanceof Error ? error.message : String(error)
+      error: errorDetail(error)
     };
   }
 }
@@ -2052,7 +2053,7 @@ export async function storeEntry(options: {
     return {
       success: false,
       id: '',
-      error: error instanceof Error ? error.message : String(error)
+      error: errorDetail(error)
     };
   }
 }
@@ -2223,7 +2224,7 @@ export async function searchEntries(options: {
       success: false,
       results: [],
       searchTime: Date.now() - startTime,
-      error: error instanceof Error ? error.message : String(error)
+      error: errorDetail(error)
     };
   }
 }
@@ -2362,7 +2363,7 @@ export async function listEntries(options: {
       success: false,
       entries: [],
       total: 0,
-      error: error instanceof Error ? error.message : String(error)
+      error: errorDetail(error)
     };
   }
 }
@@ -2478,7 +2479,7 @@ export async function getEntry(options: {
     return {
       success: false,
       found: false,
-      error: error instanceof Error ? error.message : String(error)
+      error: errorDetail(error)
     };
   }
 }
@@ -2590,7 +2591,7 @@ export async function deleteEntry(options: {
       key,
       namespace,
       remainingEntries: 0,
-      error: error instanceof Error ? error.message : String(error)
+      error: errorDetail(error)
     };
   }
 }

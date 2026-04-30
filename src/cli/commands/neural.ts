@@ -8,6 +8,7 @@
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { mofloImport, mofloResolve } from '../services/moflo-require.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Train subcommand - REAL WASM training with MoVector
 const trainCommand: Command = {
@@ -382,7 +383,7 @@ const trainCommand: Command = {
       };
     } catch (error) {
       spinner.fail('Training failed');
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -544,7 +545,7 @@ const statusCommand: Command = {
       return { success: true, data: { stats, hnswStatus, adaptBench, modelInfo, trainingStats } };
     } catch (error) {
       spinner.fail('Failed to check neural systems');
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -751,7 +752,7 @@ const predictCommand: Command = {
       return { success: true, data: { matches, searchTime } };
     } catch (error) {
       spinner.fail('Prediction failed');
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -915,7 +916,7 @@ const optimizeCommand: Command = {
       return { success: true };
     } catch (error) {
       spinner.fail('Optimization failed');
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -1145,7 +1146,7 @@ const exportCommand: Command = {
 
       return { success: true };
     } catch (error) {
-      spinner.fail(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
+      spinner.fail(`Export failed: ${errorDetail(error)}`);
       return { success: false, exitCode: 1 };
     }
   },
@@ -1286,7 +1287,7 @@ const listCommand: Command = {
 
       return { success: true };
     } catch (error) {
-      spinner.fail(`Failed to list models: ${error instanceof Error ? error.message : String(error)}`);
+      spinner.fail(`Failed to list models: ${errorDetail(error)}`);
       return { success: false, exitCode: 1 };
     }
   },
@@ -1411,7 +1412,7 @@ const importCommand: Command = {
 
           output.writeln(output.success('Signature verified'));
         } catch (err) {
-          output.writeln(output.warning(`Signature verification skipped: ${err instanceof Error ? err.message : String(err)}`));
+          output.writeln(output.warning(`Signature verification skipped: ${errorDetail(err)}`));
         }
       }
 
@@ -1511,7 +1512,7 @@ const importCommand: Command = {
 
       return { success: true };
     } catch (error) {
-      spinner.fail(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
+      spinner.fail(`Import failed: ${errorDetail(error)}`);
       return { success: false, exitCode: 1 };
     }
   },
@@ -1640,7 +1641,7 @@ const benchmarkCommand: Command = {
       return { success: true, data: { results, loraAvg } };
     } catch (error) {
       spinner.fail('Benchmark failed');
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },

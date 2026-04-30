@@ -14,6 +14,7 @@ import { join, extname } from 'node:path';
 import { parseSpell } from '../schema/parser.js';
 import { validateSpellDefinition } from '../schema/validator.js';
 import type { SpellDefinition, ParsedSpell } from '../types/spell-definition.types.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 // ============================================================================
 // Types
@@ -136,7 +137,7 @@ function loadFromDirectory(
     } catch (err) {
       errors.push({
         file: filePath,
-        message: err instanceof Error ? err.message : String(err),
+        message: errorDetail(err),
       });
     }
   }

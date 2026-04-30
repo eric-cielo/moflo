@@ -17,6 +17,7 @@ import type { StepCommand } from '../types/step-command.types.js';
 
 const require = createRequire(import.meta.url);
 import { isYamlStepFile, loadYamlStep } from './yaml-step-loader.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 export interface DirectoryStepLoaderOptions {
   /** Directories to scan, in ascending priority order (last wins). */
@@ -101,7 +102,7 @@ function scanDirectory(
     } catch (err) {
       warnings.push({
         file: filePath,
-        message: err instanceof Error ? err.message : String(err),
+        message: errorDetail(err),
       });
     }
   }

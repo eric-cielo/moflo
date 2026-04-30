@@ -19,6 +19,7 @@
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { createClaimService, type Claimant, type ClaimStatus } from '../services/claim-service.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // ============================================================================
 // Subcommands
@@ -214,7 +215,7 @@ const releaseCommand: Command = {
       output.printSuccess(`Released claim on issue ${issueId}`);
       return { success: true };
     } catch (error) {
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -267,7 +268,7 @@ const handoffCommand: Command = {
       output.printSuccess(`Handoff requested for issue ${issueId}`);
       return { success: true };
     } catch (error) {
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -321,7 +322,7 @@ const statusCommand: Command = {
 
       return { success: true, data: claim };
     } catch (error) {
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },

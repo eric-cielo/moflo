@@ -12,6 +12,7 @@ import { output } from '../output.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // ============================================================================
 // Helpers
@@ -379,9 +380,9 @@ const settingsCommand: Command = {
           }
           applied.push(...batch.labels);
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
+          const msg = errorDetail(e, { firstLineOnly: true });
           for (const label of batch.labels) {
-            output.writeln(`  ${output.warning('⚠')} ${label} — ${msg.split(/\r?\n/)[0]}`);
+            output.writeln(`  ${output.warning('⚠')} ${label} — ${msg}`);
           }
           errors.push(...batch.labels);
         }
@@ -438,7 +439,7 @@ const settingsCommand: Command = {
           }
           applied.push(...protectionItems);
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
+          const msg = errorDetail(e);
           if (msg.includes('not found') || msg.includes('404')) {
             output.writeln(`  ${output.warning('⚠')} Branch protection requires GitHub Pro, Team, or Enterprise`);
           } else if (msg.includes('403')) {

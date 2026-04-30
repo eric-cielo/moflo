@@ -25,6 +25,7 @@ import {
   CANONICAL_EMBEDDING_MODEL,
 } from '../embeddings/migration/types.js';
 import { toFloat32 } from './controllers/_shared.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 /**
  * Canonical model label written into `memory_entries.embedding_model`.
@@ -190,7 +191,7 @@ export async function resolveBridgeEmbedding(
     const vector = await embedder.embed(value);
     return { ok: true, json: JSON.stringify(Array.from(vector)), dimensions: vector.length, model: embedder.model };
   } catch (err) {
-    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    return { ok: false, reason: errorDetail(err) };
   }
 }
 

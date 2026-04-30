@@ -6,6 +6,7 @@
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { signCommand, publishCommand, updateAppCommand } from './appliance-advanced.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 interface RvfaSection {
   id: string;
@@ -30,10 +31,6 @@ function fmtSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function errMsg(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 const fail = (msg: string, detail?: string): CommandResult => {
@@ -137,7 +134,7 @@ const buildCommand: Command = {
       output.printInfo(`Total size: ${output.bold(fmtSize(result.totalSize))}  Duration: ${duration}s`);
       return { success: true, data: result };
     } catch (err) {
-      return fail('Build failed', errMsg(err));
+      return fail('Build failed', errorDetail(err));
     }
   },
 };
@@ -211,7 +208,7 @@ const inspectCommand: Command = {
       }
       return { success: true, data: hdr };
     } catch (err) {
-      return fail('Failed to inspect appliance', errMsg(err));
+      return fail('Failed to inspect appliance', errorDetail(err));
     }
   },
 };
@@ -279,7 +276,7 @@ const verifyCommand: Command = {
            : output.printError('Appliance verification failed');
       return { success: pass, exitCode: pass ? 0 : 1 };
     } catch (err) {
-      return fail('Verification failed', errMsg(err));
+      return fail('Verification failed', errorDetail(err));
     }
   },
 };
@@ -345,7 +342,7 @@ const extractCommand: Command = {
       }
       return { success: true };
     } catch (err) {
-      return fail('Extraction failed', errMsg(err));
+      return fail('Extraction failed', errorDetail(err));
     }
   },
 };
@@ -393,7 +390,7 @@ const runCommand: Command = {
       if (result.pid) output.printInfo(`PID: ${result.pid}`);
       return { success: true, data: result };
     } catch (err) {
-      return fail('Boot failed', errMsg(err));
+      return fail('Boot failed', errorDetail(err));
     }
   },
 };

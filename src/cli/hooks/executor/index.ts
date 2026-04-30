@@ -14,6 +14,7 @@ import type {
   HookEntry,
 } from '../types.js';
 import { HookRegistry, defaultRegistry } from '../registry/index.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 /**
  * Default execution options
@@ -98,7 +99,7 @@ export class HookExecutor {
       } catch (error) {
         result = {
           success: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorDetail(error),
         };
       }
 

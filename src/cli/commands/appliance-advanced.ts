@@ -5,16 +5,13 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function errMsg(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 const fail = (msg: string, detail?: string): CommandResult => {
@@ -93,7 +90,7 @@ export const signCommand: Command = {
       output.printInfo(`Signature:   ${meta.signature.slice(0, 32)}...`);
       return { success: true, data: meta };
     } catch (err) {
-      return fail('Signing failed', errMsg(err));
+      return fail('Signing failed', errorDetail(err));
     }
   },
 };
@@ -131,7 +128,7 @@ export const publishCommand: Command = {
       output.printInfo(`Gateway: ${result.gatewayUrl}`);
       return { success: true, data: result };
     } catch (err) {
-      return fail('Publishing failed', errMsg(err));
+      return fail('Publishing failed', errorDetail(err));
     }
   },
 };
@@ -213,7 +210,7 @@ export const updateAppCommand: Command = {
       }
       return { success: result.success, exitCode: result.success ? 0 : 1, data: result };
     } catch (err) {
-      return fail('Update failed', errMsg(err));
+      return fail('Update failed', errorDetail(err));
     }
   },
 };
