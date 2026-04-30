@@ -371,15 +371,27 @@ try {
           }
         }
 
-        // Sync migrations/ subdirectory. run-migrations.mjs imports each
-        // module by directory walk — without this the runner finds no
-        // migrations on a script-synced consumer.
+        // Sync migrations/ subdirectory recursively. The migration scripts
+        // import shared helpers from `./lib/markers.mjs` — a flat readdir
+        // dropped that subdir, leaving consumers with broken imports (#777).
         const migrationsSrcDir = resolve(binDir, 'migrations');
         const migrationsDestDir = resolve(scriptsDir, 'migrations');
         if (existsSync(migrationsSrcDir)) {
           if (!existsSync(migrationsDestDir)) mkdirSync(migrationsDestDir, { recursive: true });
-          for (const file of readdirSync(migrationsSrcDir)) {
-            syncFile(resolve(migrationsSrcDir, file), resolve(migrationsDestDir, file), `.claude/scripts/migrations/${file}`);
+          let migrationEntries;
+          try {
+            migrationEntries = readdirSync(migrationsSrcDir, { recursive: true, withFileTypes: true });
+          } catch {
+            migrationEntries = [];
+          }
+          for (const entry of migrationEntries) {
+            if (!entry.isFile()) continue;
+            const parent = entry.parentPath || entry.path || migrationsSrcDir;
+            const absSrc = resolve(parent, entry.name);
+            const rel = absSrc.slice(migrationsSrcDir.length + 1).split(/[\\/]/).join('/');
+            const absDest = resolve(migrationsDestDir, rel);
+            try { mkdirSync(dirname(absDest), { recursive: true }); } catch { /* non-fatal */ }
+            syncFile(absSrc, absDest, `.claude/scripts/migrations/${rel}`);
           }
         }
       }

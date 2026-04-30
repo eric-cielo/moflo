@@ -454,6 +454,9 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
     if (!fs.existsSync(scriptsDir)) {
       fs.mkdirSync(scriptsDir, { recursive: true });
     }
+    // Must mirror the list in bin/session-start-launcher.mjs — divergence
+    // here means the launcher's drift-repair will delete files this upgrade
+    // didn't track, even though they ship in the package (#777).
     const UPGRADE_SCRIPT_MAP: Record<string, string> = {
       'hooks.mjs': 'hooks.mjs',
       'session-start-launcher.mjs': 'session-start-launcher.mjs',
@@ -461,6 +464,11 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
       'build-embeddings.mjs': 'build-embeddings.mjs',
       'generate-code-map.mjs': 'generate-code-map.mjs',
       'semantic-search.mjs': 'semantic-search.mjs',
+      'index-tests.mjs': 'index-tests.mjs',
+      'index-patterns.mjs': 'index-patterns.mjs',
+      'index-all.mjs': 'index-all.mjs',
+      'setup-project.mjs': 'setup-project.mjs',
+      'run-migrations.mjs': 'run-migrations.mjs',
     };
     const binDir = findMofloBinDir();
     if (binDir) {
@@ -471,49 +479,63 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
         try {
           const srcStat = fs.statSync(srcPath);
           const destExists = fs.existsSync(destPath);
-          // Always overwrite if source is newer or dest doesn't exist
+          // Always overwrite if source is newer or dest doesn't exist.
+          // Always record in created/updated so the manifest is complete —
+          // the previous "skip when dest newer" branch dropped the file
+          // from result.* and the launcher's manifest cleanup later
+          // deleted it as orphan residue (#777).
           if (!destExists || srcStat.mtimeMs > fs.statSync(destPath).mtimeMs) {
             fs.copyFileSync(srcPath, destPath);
-            if (destExists) {
-              result.updated.push(`.claude/scripts/${destName}`);
-            } else {
-              result.created.push(`.claude/scripts/${destName}`);
-            }
+          }
+          if (destExists) {
+            result.updated.push(`.claude/scripts/${destName}`);
+          } else {
+            result.created.push(`.claude/scripts/${destName}`);
           }
         } catch {
           // Non-fatal — skip individual script on error
         }
       }
 
-      // Sync lib/ subdirectory (process-manager.mjs, registry-cleanup.cjs, etc.)
-      // hooks.mjs imports ./lib/process-manager.mjs — without this, session-start
-      // silently fails and the daemon, indexer, and pretrain never run.
-      const libSrcDir = path.join(binDir, 'lib');
-      const libDestDir = path.join(scriptsDir, 'lib');
-      if (fs.existsSync(libSrcDir)) {
-        if (!fs.existsSync(libDestDir)) {
-          fs.mkdirSync(libDestDir, { recursive: true });
+      // Sync lib/ + migrations/ subdirectories recursively. hooks.mjs imports
+      // ./lib/process-manager.mjs and the migration scripts import shared
+      // helpers from ./migrations/lib/markers.mjs (#777) — flat readdir loops
+      // silently dropped subdirectories, leaving consumers with broken imports.
+      const syncTreeForUpgrade = (srcRoot: string, destRoot: string, manifestPrefix: string) => {
+        if (!fs.existsSync(srcRoot)) return;
+        let entries;
+        try {
+          entries = fs.readdirSync(srcRoot, { recursive: true, withFileTypes: true });
+        } catch {
+          return;
         }
-        for (const file of fs.readdirSync(libSrcDir)) {
-          const srcPath = path.join(libSrcDir, file);
-          const destPath = path.join(libDestDir, file);
+        for (const entry of entries) {
+          if (!entry.isFile()) continue;
+          const parent = (entry as fs.Dirent & { parentPath?: string }).parentPath
+            ?? (entry as fs.Dirent & { path?: string }).path
+            ?? srcRoot;
+          const absSrc = path.join(parent, entry.name);
+          const rel = path.relative(srcRoot, absSrc).split(path.sep).join('/');
+          const absDest = path.join(destRoot, rel);
           try {
-            const srcStat = fs.statSync(srcPath);
-            if (!srcStat.isFile()) continue;
-            const destExists = fs.existsSync(destPath);
-            if (!destExists || srcStat.mtimeMs > fs.statSync(destPath).mtimeMs) {
-              fs.copyFileSync(srcPath, destPath);
-              if (destExists) {
-                result.updated.push(`.claude/scripts/lib/${file}`);
-              } else {
-                result.created.push(`.claude/scripts/lib/${file}`);
-              }
+            fs.mkdirSync(path.dirname(absDest), { recursive: true });
+            const destExists = fs.existsSync(absDest);
+            const srcStat = fs.statSync(absSrc);
+            if (!destExists || srcStat.mtimeMs > fs.statSync(absDest).mtimeMs) {
+              fs.copyFileSync(absSrc, absDest);
+            }
+            if (destExists) {
+              result.updated.push(`${manifestPrefix}/${rel}`);
+            } else {
+              result.created.push(`${manifestPrefix}/${rel}`);
             }
           } catch {
-            // Non-fatal
+            // Non-fatal — skip individual file on error
           }
         }
-      }
+      };
+      syncTreeForUpgrade(path.join(binDir, 'lib'), path.join(scriptsDir, 'lib'), '.claude/scripts/lib');
+      syncTreeForUpgrade(path.join(binDir, 'migrations'), path.join(scriptsDir, 'migrations'), '.claude/scripts/migrations');
     }
 
     // 1c. Create/update .envrc for PATH setup (idempotent)

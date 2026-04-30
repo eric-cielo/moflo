@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 
 import { runNode, flo, IS_WIN, recordSample } from './proc.mjs';
 import { section, record, recordExit } from './report.mjs';
@@ -30,6 +30,48 @@ import {
   legacyHnswIndexPath,
 } from '../../../bin/lib/moflo-paths.mjs';
 import { MIGRATED_FROM_KNOWLEDGE } from '../../../bin/migrations/lib/markers.mjs';
+
+/**
+ * Kill every background process the launcher spawned so byte-stability
+ * assertions don't race the indexer chain's `saveDb` writes. The launcher
+ * tracks daemon + indexer PIDs in `.moflo/background-pids.json`; this
+ * walks the registry and tree-kills each entry, then waits for them to
+ * actually exit.
+ *
+ * Without this, `populated:active-rows-preserved` and
+ * `populated:clobber-mofloDb-untouched` are timing flakes — the indexer's
+ * orphan cleanup deletes seeded rows mid-assertion, and pretrain /
+ * build-embeddings rewrite `.moflo/moflo.db` between the byte captures.
+ */
+function quiesceLauncherBackground(consumerDir) {
+  const registry = join(consumerDir, MOFLO_DIR, 'background-pids.json');
+  if (!existsSync(registry)) return 0;
+  let entries;
+  try { entries = JSON.parse(readFileSync(registry, 'utf8')); }
+  catch { return 0; }
+  if (!Array.isArray(entries)) return 0;
+
+  let killed = 0;
+  for (const entry of entries) {
+    const pid = entry?.pid;
+    if (typeof pid !== 'number' || pid <= 0) continue;
+    try {
+      if (IS_WIN) {
+        execFileSync('taskkill', ['/F', '/T', '/PID', String(pid)],
+          { windowsHide: true, stdio: 'ignore', timeout: 5000 });
+      } else {
+        // detached:true at spawn → process group rooted at pid.
+        try { process.kill(-pid, 'SIGKILL'); }
+        catch { process.kill(pid, 'SIGKILL'); }
+      }
+      killed++;
+    } catch { /* already gone */ }
+  }
+  // Empty the registry so the next launcher's spawns don't dedup against
+  // dead entries and skip themselves.
+  try { writeFileSync(registry, '[]'); } catch { /* non-fatal */ }
+  return killed;
+}
 
 const ACTIVE_NAMESPACES = ['guidance', 'patterns', 'code-map', 'tests', 'knowledge', 'learnings', 'default'];
 const EPHEMERAL_NAMESPACES = ['hive-mind', 'tasklist', 'epic-state', 'test-bridge-fix'];
@@ -187,6 +229,25 @@ function seedFilesystemFixtures(consumerDir) {
     JSON.stringify({ modelPath: STALE_MODEL_PATH, model: 'fast-all-MiniLM-L6-v2' }, null, 2),
   );
 
+  // Disable indexers so the seeded `key-<ns>-N` rows don't get pruned by
+  // index-guidance.mjs's orphan cleanup (any `guidance` row whose key
+  // doesn't match `doc-*` / `chunk-*` is treated as residue from a deleted
+  // file and DELETE'd). Without this gate the populated profile is racing
+  // the launcher's fire-and-forget indexer chain — the test passed on main
+  // only because the chain hadn't reached its first saveDb by the time
+  // inspect ran. moflo.yaml's `auto_index` flags are honoured by
+  // bin/index-all.mjs and skip-spawn the four script-based indexers.
+  writeFileSync(join(consumerDir, 'moflo.yaml'),
+    [
+      'auto_index:',
+      '  guidance: false',
+      '  code_map: false',
+      '  tests: false',
+      '  patterns: false',
+      '',
+    ].join('\n'),
+  );
+
   record('populated:seed-fs', 'pass', `${LEGACY_CLAUDE_FLOW_DIR} + ${LEGACY_SWARM_DIR} + ${MOFLO_DIR} fixtures placed`);
 }
 
@@ -200,6 +261,12 @@ function runLauncher(consumerDir) {
   if (!recordExit('populated:launcher-exit', r)) {
     throw new Error('launcher exited non-zero');
   }
+  // Stop background tasks before any DB inspection. With `auto_index`
+  // disabled in moflo.yaml the indexer steps skip-spawn, but pretrain /
+  // build-embeddings / hnsw-rebuild still run sequentially after them and
+  // write to `.moflo/moflo.db`; if those land between assertion captures
+  // the byte-stability checks flap.
+  quiesceLauncherBackground(consumerDir);
   return r;
 }
 
@@ -553,7 +620,11 @@ try {
   // Quiesce the launcher's fire-and-forget daemon/indexer/pretrain tasks —
   // otherwise their concurrent writes to .moflo/moflo.db would race with the
   // long-lived flush and produce false-positive byte mismatches.
+  // `flo daemon stop` only kills the daemon process; the index-all chain
+  // (pretrain → build-embeddings → hnsw-rebuild) is a separate process
+  // tree, so we tree-kill everything in `.moflo/background-pids.json` too.
   flo(consumerDir, ['daemon', 'stop'], { timeout: 15_000 });
+  quiesceLauncherBackground(consumerDir);
 
   const mofloDb = memoryDbPath(consumerDir);
   let postLauncherBytes;
