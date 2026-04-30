@@ -164,8 +164,9 @@ export async function dryRunValidate(
     const report = await dryRunValidateStep(step, `steps[${i}]`, context, env);
     stepReports.push(report);
 
-    if (step.output && report.validationResult.valid) {
-      variables[step.output] = { _dryRun: true };
+    if (report.validationResult.valid) {
+      if (step.output) variables[step.output] = { _dryRun: true };
+      variables[step.id] = { _dryRun: true };
     }
 
     // Validate nested steps for parallel and loop blocks (#247, #252)

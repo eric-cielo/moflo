@@ -244,7 +244,34 @@ describe('dryRunValidate', () => {
 
     // After step 'a' with output 'stepAOutput', the variable should be set for step 'b'
     expect(capturedVars[1]).toHaveProperty('stepAOutput', { _dryRun: true });
+    // step.id is also registered so forward `{a.<deep>}` refs interpolate (#774)
+    expect(capturedVars[1]).toHaveProperty('a', { _dryRun: true });
     expect(result.valid).toBe(true);
+  });
+
+  it('should resolve forward step.id deep-path refs under dry-run (#774)', async () => {
+    // A 2-step spell where step 2 references `{step1.stdout}` — step 1 has
+    // no explicit `output:` field, mirroring the epic-single-branch.yaml
+    // case that broke `flo epic --dry-run`.
+    const registry = new StepCommandRegistry();
+    registry.register(makeCommand());
+
+    const definition = makeDefinition([
+      makeStep({ id: 'step1', config: { msg: 'hello' } }),
+      makeStep({ id: 'step2', config: { body: 'prefix {step1.stdout} suffix' } }),
+    ]);
+
+    const result = await dryRunValidate(
+      definition, {}, validDefResult, defaultOptions, registry, buildContextFactory(),
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.steps[1].validationResult.valid).toBe(true);
+    // The interpolated config should contain the dry-run placeholder string,
+    // not throw "Variable interpolation failed".
+    expect(result.steps[1].interpolatedConfig).toMatchObject({
+      body: expect.stringContaining('_dryRun_placeholder'),
+    });
   });
 
   it.each(['parallel', 'loop'] as const)(
