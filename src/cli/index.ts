@@ -80,8 +80,8 @@ export class CLI {
   async run(args: string[] = process.argv.slice(2)): Promise<void> {
     try {
       // Parse arguments
-      const parseResult = this.parser.parse(args);
-      const { command: commandPath, flags, positional } = parseResult;
+      let parseResult = this.parser.parse(args);
+      let { command: commandPath, flags, positional } = parseResult;
 
       // Handle global flags
       if (flags.version || flags.V) {
@@ -158,6 +158,17 @@ export class CLI {
       // If not found in sync registry, try lazy loading
       if (!command && hasCommand(commandName)) {
         command = await getCommandAsync(commandName);
+        if (command) {
+          // The first parse happened without knowledge of this command's
+          // subcommand tree, so scoped short-flag aliases for any nested
+          // subcommand options weren't applied — and a globally-registered
+          // command's `-x` would have hijacked the value. Register the
+          // newly-loaded command and re-parse so flags reflect the leaf
+          // command's options.
+          this.parser.registerCommand(command);
+          parseResult = this.parser.parse(args);
+          ({ command: commandPath, flags, positional } = parseResult);
+        }
       }
 
       if (!command) {

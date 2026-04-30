@@ -255,6 +255,32 @@ describe('CommandParser', () => {
       const result = parser.parse(['task', 'run', '-t', '5000']);
       expect(result.flags.timeout).toBe(5000);
     });
+
+    // 3-level subcommand short flags must be in scope: `spell schedule create -n foo`
+    // would otherwise alias `-n` to whichever globally-registered command claimed it.
+    // The sibling `guidance` command intentionally claims -n for --max-shards to
+    // exercise the real collision the original bug surfaced.
+    it('should resolve short flags from a 3-level nested subcommand', () => {
+      const leaf: Command = {
+        name: 'create',
+        description: 'Create',
+        options: [{ name: 'name', short: 'n', type: 'string', description: 'Name' }],
+      };
+      const mid: Command = { name: 'schedule', description: 'Schedule', subcommands: [leaf] };
+      const top: Command = { name: 'spell', description: 'Spell', subcommands: [mid] };
+      const sibling: Command = {
+        name: 'guidance',
+        description: 'Guidance',
+        options: [{ name: 'max-shards', short: 'n', type: 'number', description: 'Shards' }],
+      };
+      parser.registerCommand(top);
+      parser.registerCommand(sibling);
+
+      const result = parser.parse(['spell', 'schedule', 'create', '-n', 'audit']);
+      expect(result.flags.name).toBe('audit');
+      expect(result.flags.maxShards).toBeUndefined();
+      expect(result.command).toEqual(['spell', 'schedule', 'create']);
+    });
   });
 
   // -------------------------------------------------------------------------
