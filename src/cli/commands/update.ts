@@ -150,7 +150,7 @@ const allCommand: Command = {
         autoUpdate: {
           patch: true,
           minor: true,
-          major: flags['include-major'] as boolean || false,
+          major: flags.includeMajor as boolean || false,
         },
       };
 
@@ -175,19 +175,19 @@ const allCommand: Command = {
       const updateResults = await executeMultipleUpdates(
         results,
         installedPackages,
-        flags['dry-run'] as boolean
+        flags.dryRun as boolean
       );
 
       const successful = updateResults.filter((r) => r.success);
       const failed = updateResults.filter((r) => !r.success);
 
       output.writeln();
-      output.writeln(output.highlight(flags['dry-run'] ? '═══ Dry Run - Would Update ═══' : '═══ Update Results ═══'));
+      output.writeln(output.highlight(flags.dryRun ? '═══ Dry Run - Would Update ═══' : '═══ Update Results ═══'));
       output.writeln();
 
       if (successful.length > 0) {
         output.printSuccess(
-          `${successful.length} package(s) ${flags['dry-run'] ? 'would be ' : ''}updated:`
+          `${successful.length} package(s) ${flags.dryRun ? 'would be ' : ''}updated:`
         );
         for (const r of successful) {
           output.writeln(`  ${output.success('✓')} ${r.package}@${r.version}`);

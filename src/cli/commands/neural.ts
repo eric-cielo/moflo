@@ -36,8 +36,8 @@ const trainCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const patternType = ctx.flags.pattern as string || 'coordination';
     const epochs = parseInt(ctx.flags.epochs as string || '50', 10);
-    const learningRate = parseFloat(ctx.flags['learning-rate'] as string || '0.01');
-    const batchSize = parseInt(ctx.flags['batch-size'] as string || '32', 10);
+    const learningRate = parseFloat(ctx.flags.learningRate as string || '0.01');
+    const batchSize = parseInt(ctx.flags.batchSize as string || '32', 10);
     const dim = Math.min(parseInt(ctx.flags.dim as string || '256', 10), 256);
     const useWasm = ctx.flags.wasm !== false;
     const useFlash = ctx.flags.flash !== false;
@@ -942,7 +942,7 @@ const exportCommand: Command = {
     const outputFile = ctx.flags.output as string | undefined;
     const pinToIpfs = ctx.flags.ipfs as boolean;
     const signExport = ctx.flags.sign !== false;
-    const stripPii = ctx.flags['strip-pii'] !== false;
+    const stripPii = ctx.flags.stripPii !== false;
     const customName = ctx.flags.name as string;
 
     output.writeln();

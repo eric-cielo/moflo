@@ -89,8 +89,8 @@ const daemonCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const action = (ctx.flags?.action as string) || 'status';
     const port = (ctx.flags?.port as number) || 3847;
-    const pidFile = (ctx.flags?.['pid-file'] as string) || '.moflo/daemon.pid';
-    const logFile = (ctx.flags?.['log-file'] as string) || '.moflo/daemon.log';
+    const pidFile = (ctx.flags?.pidFile as string) || '.moflo/daemon.pid';
+    const logFile = (ctx.flags?.logFile as string) || '.moflo/daemon.log';
     const detach = ctx.flags?.detach !== false;
 
     // Check existing daemon state from PID file

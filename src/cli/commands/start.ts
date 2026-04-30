@@ -89,7 +89,7 @@ function loadConfig(cwd: string): Record<string, unknown> | null {
 const startAction = async (ctx: CommandContext): Promise<CommandResult> => {
   const daemon = ctx.flags.daemon as boolean;
   const topology = (ctx.flags.topology as string) || DEFAULT_TOPOLOGY;
-  const skipMcp = ctx.flags['skip-mcp'] as boolean;
+  const skipMcp = ctx.flags.skipMcp as boolean;
   const cwd = ctx.cwd;
 
   // Check initialization

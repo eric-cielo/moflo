@@ -708,9 +708,9 @@ const pretrainCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const repoPath = ctx.flags.path as string || '.';
     const depth = ctx.flags.depth as string || 'medium';
-    const withEmbeddings = ctx.flags['with-embeddings'] !== false && ctx.flags.withEmbeddings !== false;
-    const embeddingModel = (ctx.flags['embedding-model'] || ctx.flags.embeddingModel || 'all-MiniLM-L6-v2') as string;
-    const fileTypes = (ctx.flags['file-types'] || ctx.flags.fileTypes || 'ts,js,py,md,json') as string;
+    const withEmbeddings = ctx.flags.withEmbeddings !== false;
+    const embeddingModel = (ctx.flags.embeddingModel || 'all-MiniLM-L6-v2') as string;
+    const fileTypes = (ctx.flags.fileTypes || 'ts,js,py,md,json') as string;
 
     output.writeln();
     output.writeln(output.bold('Pretraining Intelligence (4-Step Pipeline + Embeddings)'));
@@ -2415,9 +2415,9 @@ const workerDetectCommand: Command = {
     { command: 'claude-flow hooks worker detect -p "security audit" --auto-dispatch', description: 'Detect and dispatch' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const prompt = ctx.flags['prompt'] as string;
-    const autoDispatch = ctx.flags['auto-dispatch'] as boolean;
-    const minConfidence = parseFloat(ctx.flags['min-confidence'] as string || '0.5');
+    const prompt = ctx.flags.prompt as string;
+    const autoDispatch = ctx.flags.autoDispatch as boolean;
+    const minConfidence = parseFloat(ctx.flags.minConfidence as string || '0.5');
 
     if (!prompt) {
       output.printError('--prompt is required');
@@ -2577,7 +2577,7 @@ const coverageRouteCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const task = ctx.args[0] || ctx.flags.task as string;
     const threshold = ctx.flags.threshold as number || 80;
-    const useNativeBackend = !ctx.flags['no-movector'];
+    const useNativeBackend = !ctx.flags.noMovector;
 
     if (!task) {
       output.printError('Task description is required. Use --task or -t flag.');
@@ -2843,8 +2843,8 @@ const coverageGapsCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const threshold = ctx.flags.threshold as number || 80;
-    const groupByAgent = ctx.flags['group-by-agent'] !== false;
-    const criticalOnly = ctx.flags['critical-only'] as boolean || false;
+    const groupByAgent = ctx.flags.groupByAgent !== false;
+    const criticalOnly = ctx.flags.criticalOnly as boolean || false;
 
     const spinner = output.createSpinner({ text: 'Analyzing project coverage gaps...' });
     spinner.start();
@@ -3411,7 +3411,7 @@ const statuslineCommand: Command = {
     }
 
     // Full colored output
-    const noColor = ctx.flags['no-color'] || ctx.flags.noColor;
+    const noColor = ctx.flags.noColor;
     const c = noColor ? {
       reset: '', bold: '', dim: '', red: '', green: '', yellow: '', blue: '',
       purple: '', cyan: '', brightRed: '', brightGreen: '', brightYellow: '',
@@ -3807,8 +3807,8 @@ const modelRouteCommand: Command = {
       }>('hooks_model-route', {
         task,
         context: ctx.flags.context,
-        preferCost: ctx.flags['prefer-cost'],
-        preferQuality: ctx.flags['prefer-quality'],
+        preferCost: ctx.flags.preferCost,
+        preferQuality: ctx.flags.preferQuality,
       });
 
       if (ctx.flags.format === 'json') {

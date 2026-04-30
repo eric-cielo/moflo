@@ -113,14 +113,25 @@ describe('CommandParser', () => {
   // normalizeKey (kebab-case to camelCase)
   // -------------------------------------------------------------------------
   describe('key normalization', () => {
-    it('should convert kebab-case keys to camelCase', () => {
+    // The kebab-undefined assertion (#787) is paired with the camelCase
+    // assertion: the parser stores ONE shape, not both. ~91 call-sites silently
+    // read the kebab form and got undefined — anything re-introducing a kebab
+    // key here would resurrect that bug class.
+    it('should convert kebab-case keys to camelCase and not store the kebab form', () => {
       const result = parser.parse(['--some-long-flag=yes']);
       expect(result.flags.someLongFlag).toBe('yes');
+      expect(result.flags['some-long-flag']).toBeUndefined();
     });
 
     it('should leave simple keys unchanged', () => {
       const result = parser.parse(['--simple=val']);
       expect(result.flags.simple).toBe('val');
+    });
+
+    it('should normalise --no-<kebab> to camelCase=false (#787)', () => {
+      const result = parser.parse(['--no-some-feature']);
+      expect(result.flags['no-some-feature']).toBeUndefined();
+      expect(result.flags.someFeature).toBe(false);
     });
   });
 

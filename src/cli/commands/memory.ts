@@ -298,7 +298,7 @@ const searchCommand: Command = {
     const limit = ctx.flags.limit as number || 10;
     const threshold = ctx.flags.threshold as number || 0.3;
     const searchType = ctx.flags.type as string || 'semantic';
-    const buildHnsw = (ctx.flags['build-hnsw'] || ctx.flags.buildHnsw) as boolean;
+    const buildHnsw = ctx.flags.buildHnsw as boolean;
 
     if (!query) {
       output.printError('Query is required. Use --query or -q');
@@ -1832,7 +1832,7 @@ const indexGuidanceCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const forceReindex = ctx.flags.force as boolean;
     const specificFile = ctx.flags.file as string | undefined;
-    const skipEmbeddings = ctx.flags['no-embeddings'] as boolean;
+    const skipEmbeddings = ctx.flags.noEmbeddings as boolean;
     const overlapPercent = (ctx.flags.overlap as number) || DEFAULT_OVERLAP_PERCENT;
     const NAMESPACE = 'guidance';
 
@@ -2448,7 +2448,7 @@ const codeMapCommand: Command = {
     const forceRegen = ctx.flags.force as boolean;
     const verbose = ctx.flags.verbose as boolean;
     const statsOnly = ctx.flags.stats as boolean;
-    const skipEmbeddings = ctx.flags['no-embeddings'] as boolean;
+    const skipEmbeddings = ctx.flags.noEmbeddings as boolean;
     const NAMESPACE = 'code-map';
 
     const fs = await import('fs');
@@ -2797,9 +2797,9 @@ const refreshCommand: Command = {
     { command: 'flo memory refresh --skip-code-map', description: 'Reindex guidance only + vacuum' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const skipGuidance = ctx.flags['skip-guidance'] as boolean;
-    const skipCodeMap = ctx.flags['skip-code-map'] as boolean;
-    const skipCleanup = ctx.flags['skip-cleanup'] as boolean;
+    const skipGuidance = ctx.flags.skipGuidance as boolean;
+    const skipCodeMap = ctx.flags.skipCodeMap as boolean;
+    const skipCleanup = ctx.flags.skipCleanup as boolean;
 
     output.writeln();
     output.writeln(output.bold('MoFlo Memory Refresh'));

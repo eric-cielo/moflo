@@ -66,7 +66,7 @@ describe('epic command structure', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const result = await epicCommand.action({
       args: ['run', '42'],
-      flags: { 'no-merge': true, strategy: 'auto-merge' },
+      flags: { noMerge: true, strategy: 'auto-merge' },
     });
     expect(result.success).toBe(false);
     expect(result.message).toContain('--no-merge cannot be combined with --strategy auto-merge');

@@ -93,7 +93,7 @@ const buildCommand: Command = {
     const outputPath = ctx.flags.output as string || 'ruflo.rvf';
     const arch = ctx.flags.arch as string || 'x86_64';
     const models = ctx.flags.models as string[] || [];
-    const apiKeysPath = ctx.flags['api-keys'] as string | undefined;
+    const apiKeysPath = ctx.flags.apiKeys as string | undefined;
 
     header('RVFA Appliance Builder');
     output.printInfo(`Profile:  ${output.highlight(profile)}`);

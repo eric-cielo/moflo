@@ -43,8 +43,8 @@ const startCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const quiet = ctx.flags.quiet as boolean;
     const foreground = ctx.flags.foreground as boolean;
-    const noDashboard = ctx.flags['no-dashboard'] as boolean;
-    const rawDashboardPort = ctx.flags['dashboard-port'] as string | undefined;
+    const noDashboard = ctx.flags.noDashboard as boolean;
+    const rawDashboardPort = ctx.flags.dashboardPort as string | undefined;
     const projectRoot = process.cwd();
     const isDaemonProcess = process.env.CLAUDE_FLOW_DAEMON === '1';
 
@@ -61,8 +61,8 @@ const startCommand: Command = {
 
     // Parse resource threshold overrides from CLI flags
     const config: Partial<DaemonConfig> = {};
-    const rawMaxCpu = ctx.flags['max-cpu-load'] as string | undefined;
-    const rawMinMem = ctx.flags['min-free-memory'] as string | undefined;
+    const rawMaxCpu = ctx.flags.maxCpuLoad as string | undefined;
+    const rawMinMem = ctx.flags.minFreeMemory as string | undefined;
 
     // Strict numeric pattern to prevent command injection when forwarding to subprocess (S1)
     const NUMERIC_RE = /^\d+(\.\d+)?$/;
@@ -549,7 +549,7 @@ const statusCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const verbose = ctx.flags.verbose as boolean;
-    const showModes = ctx.flags['show-modes'] as boolean;
+    const showModes = ctx.flags.showModes as boolean;
     const projectRoot = process.cwd();
 
     try {
