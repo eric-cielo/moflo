@@ -128,22 +128,24 @@ export class CommandParser {
       raw: [...args]
     };
 
-    // Pass 1: Identify command and subcommand (skip flags)
-    let resolvedCmd: Command | undefined;
-    let resolvedSub: Command | undefined;
+    // Pass 1: Walk positional args to resolve the command chain to its deepest
+    // matching node. The scoped-alias map needs to know the leaf command —
+    // otherwise short flags from arbitrarily deep subcommands collide with
+    // identically-named flags on shallower commands (e.g. spell→schedule→create
+    // -n vs guidance -n).
+    const chain: Command[] = [];
     for (const arg of args) {
       if (arg.startsWith('-')) continue;
-      if (!resolvedCmd && this.commands.has(arg)) {
-        resolvedCmd = this.commands.get(arg);
-      } else if (resolvedCmd && !resolvedSub && resolvedCmd.subcommands) {
-        resolvedSub = resolvedCmd.subcommands.find(sc => sc.name === arg || sc.aliases?.includes(arg));
-      }
+      const next = chain.length === 0
+        ? this.commands.get(arg)
+        : this.findSubcommand(chain[chain.length - 1], arg);
+      if (!next) break;
+      chain.push(next);
     }
 
-    // Pass 2: Build aliases scoped to the resolved subcommand
-    // Subcommand-specific aliases take priority over global ones
-    const aliases = this.buildScopedAliases(resolvedSub || resolvedCmd);
-    const booleanFlags = this.getScopedBooleanFlags(resolvedSub || resolvedCmd);
+    const deepestCmd = chain[chain.length - 1];
+    const aliases = this.buildScopedAliases(deepestCmd);
+    const booleanFlags = this.getScopedBooleanFlags(deepestCmd);
 
     let i = 0;
     let parsingFlags = true;
@@ -170,38 +172,16 @@ export class CommandParser {
 
       // Handle positional arguments
       if (result.command.length === 0 && this.commands.has(arg)) {
-        // This is a command
+        // This is a command — walk its subcommand chain greedily.
         result.command.push(arg);
-
-        // Check for subcommand (level 1)
-        const cmd = this.commands.get(arg);
-        if (cmd?.subcommands && i + 1 < args.length) {
+        let current: Command | undefined = this.commands.get(arg);
+        while (current && i + 1 < args.length) {
           const nextArg = args[i + 1];
-          const subCmd = cmd.subcommands.find(sc => sc.name === nextArg || sc.aliases?.includes(nextArg));
-          if (subCmd) {
-            result.command.push(nextArg);
-            i++;
-
-            // Check for nested subcommand (level 2)
-            if (subCmd.subcommands && i + 1 < args.length) {
-              const nestedArg = args[i + 1];
-              const nestedCmd = subCmd.subcommands.find(sc => sc.name === nestedArg || sc.aliases?.includes(nestedArg));
-              if (nestedCmd) {
-                result.command.push(nestedArg);
-                i++;
-
-                // Check for deeply nested subcommand (level 3)
-                if (nestedCmd.subcommands && i + 1 < args.length) {
-                  const deepArg = args[i + 1];
-                  const deepCmd = nestedCmd.subcommands.find(sc => sc.name === deepArg || sc.aliases?.includes(deepArg));
-                  if (deepCmd) {
-                    result.command.push(deepArg);
-                    i++;
-                  }
-                }
-              }
-            }
-          }
+          const sub = this.findSubcommand(current, nextArg);
+          if (!sub) break;
+          result.command.push(nextArg);
+          i++;
+          current = sub;
         }
       } else {
         // Positional argument
@@ -216,6 +196,10 @@ export class CommandParser {
     this.applyDefaults(result.flags);
 
     return result;
+  }
+
+  private findSubcommand(parent: Command | undefined, name: string): Command | undefined {
+    return parent?.subcommands?.find(sc => sc.name === name || sc.aliases?.includes(name));
   }
 
   private parseFlag(
