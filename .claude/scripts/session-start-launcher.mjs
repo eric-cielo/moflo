@@ -7,7 +7,7 @@
  * Invoked by: node .claude/scripts/session-start-launcher.mjs
  */
 
-import { spawn } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -106,16 +106,32 @@ try {
   unlinkSync(join(mofloDir(projectRoot), 'upgrade-notice.json'));
 } catch { /* non-fatal — file usually doesn't exist */ }
 
-// ── 0. LEGACY state migration (#699) ─────────────────────────────────────────
+// ── 0. LEGACY state migration (#699, #735) ──────────────────────────────────
 // Consumers upgrading from older moflo builds (inherited from upstream Ruflo)
 // get a one-time auto-migration of LEGACY `.claude-flow/` → `.moflo/` so claim
-// files, daemon state, metrics, and the version stamp survive the rename.
+// files, models cache, metrics, and the version stamp survive the rename.
 // The migration helper is idempotent — see bin/lib/moflo-paths.mjs for the
-// algorithm. LEGACY: no-ops once `.claude-flow/` is gone.
+// algorithm.
+//
+// Staged removal contract (#735):
+//   1. THIS release ships Phase 1 (writers redirected to `.moflo/`) + Phase 2 // LEGACY
+//      (this migration call moves stragglers + warns on collisions).
+//   2. The release AFTER Phase 1 is steady-state should hard-delete any
+//      remaining empty `.claude-flow/` directory — until then, the helper // LEGACY
+//      drops the dir naturally once everything's been moved.
+// LEGACY: every emit below stops firing once `.claude-flow/` is gone.
 try {
   const cfMigration = migrateClaudeFlowToMoflo(projectRoot);
   if (cfMigration?.migrated) {
-    emitMutation('migrated runtime state to .moflo/', 'from legacy .claude-flow/'); // LEGACY
+    const count = cfMigration.movedCount ?? 0;
+    emitMutation(`migrated ${plural(count, 'entry')} from legacy .claude-flow/`); // LEGACY
+  }
+  // Surface collisions so users notice that BOTH locations now hold the same
+  // subdir name (most often `models/` after a partial pre-#735 migration).
+  // Manual cleanup is needed — moflo refuses to silently choose.
+  if ((cfMigration?.collisions?.length ?? 0) > 0) {
+    const collisionMsg = 'kept legacy .claude-flow/ entries to avoid clobbering .moflo/'; // LEGACY
+    emitMutation(collisionMsg, `collisions: ${cfMigration.collisions.join(', ')}`);
   }
 } catch {
   // Non-fatal — anything left behind by the migration just means it runs
@@ -355,15 +371,27 @@ try {
           }
         }
 
-        // Sync migrations/ subdirectory. run-migrations.mjs imports each
-        // module by directory walk — without this the runner finds no
-        // migrations on a script-synced consumer.
+        // Sync migrations/ subdirectory recursively. The migration scripts
+        // import shared helpers from `./lib/markers.mjs` — a flat readdir
+        // dropped that subdir, leaving consumers with broken imports (#777).
         const migrationsSrcDir = resolve(binDir, 'migrations');
         const migrationsDestDir = resolve(scriptsDir, 'migrations');
         if (existsSync(migrationsSrcDir)) {
           if (!existsSync(migrationsDestDir)) mkdirSync(migrationsDestDir, { recursive: true });
-          for (const file of readdirSync(migrationsSrcDir)) {
-            syncFile(resolve(migrationsSrcDir, file), resolve(migrationsDestDir, file), `.claude/scripts/migrations/${file}`);
+          let migrationEntries;
+          try {
+            migrationEntries = readdirSync(migrationsSrcDir, { recursive: true, withFileTypes: true });
+          } catch {
+            migrationEntries = [];
+          }
+          for (const entry of migrationEntries) {
+            if (!entry.isFile()) continue;
+            const parent = entry.parentPath || entry.path || migrationsSrcDir;
+            const absSrc = resolve(parent, entry.name);
+            const rel = absSrc.slice(migrationsSrcDir.length + 1).split(/[\\/]/).join('/');
+            const absDest = resolve(migrationsDestDir, rel);
+            try { mkdirSync(dirname(absDest), { recursive: true }); } catch { /* non-fatal */ }
+            syncFile(absSrc, absDest, `.claude/scripts/migrations/${rel}`);
           }
         }
       }
@@ -864,16 +892,70 @@ if (existsSync(hooksScript)) {
 }
 
 // Migration runner — consults `.moflo/migrations.json` and runs only
-// migrations that haven't been recorded. Single spawn, fast-paths to a
-// no-op when the manifest is current, so safe to fire every session.
+// migrations that haven't been recorded. Fast-paths to a no-op when the
+// manifest is current; the runner module loads with lazy sql.js init in
+// each migration, so a stamped session pays only node startup + ESM graph.
 //
 // Prefer the npm-package path so first-install consumers run unmet
 // migrations without waiting for a script-sync round-trip.
+//
+// Run synchronously (capture stdout) so each completed migration surfaces
+// through emitMutation — Claude's session-start hook captures launcher
+// stdout and that's the only channel that reaches the user.
 const runMigrationsPkg = resolve(projectRoot, 'node_modules/moflo/bin/run-migrations.mjs');
 const runMigrationsMirror = resolve(projectRoot, '.claude/scripts/run-migrations.mjs');
 const runMigrations = existsSync(runMigrationsPkg) ? runMigrationsPkg : runMigrationsMirror;
 if (existsSync(runMigrations)) {
-  fireAndForget('node', [runMigrations], 'migration runner');
+  runMigrationsAndAnnounce(runMigrations);
+}
+
+function runMigrationsAndAnnounce(runnerPath) {
+  let raw;
+  try {
+    raw = execFileSync('node', [runnerPath], {
+      cwd: projectRoot,
+      timeout: 30_000,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'inherit'],
+    });
+  } catch (err) {
+    // Migrations are best-effort — a failure here must never block session
+    // start. But silent swallowing hides hangs (30s timeout) and corrupted
+    // DBs from the user, so leave a stderr crumb.
+    process.stderr.write(`moflo: migration runner failed (${err.code || err.message}); will retry next session\n`);
+    return;
+  }
+
+  const labels = {
+    'knowledge-to-learnings': 'consolidated knowledge → learnings',
+    'knowledge-purge': 'removed legacy knowledge namespace rows',
+  };
+
+  for (const line of raw.split('\n')) {
+    const m = line.match(/^\[migrations\]\s+([\w-]+):\s+done\s+in\s+\d+ms\s*(.*)$/);
+    if (!m) continue;
+    const migrationName = m[1];
+    let parsed = null;
+    try { parsed = m[2] ? JSON.parse(m[2]) : null; } catch { parsed = null; }
+
+    // Silent fast-path: don't announce zero-work runs (no point telling the
+    // user the launcher did nothing). If every numeric detail field is 0,
+    // skip the emit. Stamped migrations don't even reach this loop because
+    // the runner short-circuits via the manifest.
+    if (parsed) {
+      const nums = Object.values(parsed).filter((v) => typeof v === 'number');
+      if (nums.length > 0 && nums.every((v) => v === 0)) continue;
+    }
+
+    let detail = '';
+    if (parsed) {
+      if (typeof parsed.purged === 'number') detail = `${parsed.purged} ${parsed.purged === 1 ? 'row' : 'rows'}`;
+      else if (typeof parsed.rowsMigrated === 'number') detail = `${parsed.rowsMigrated} ${parsed.rowsMigrated === 1 ? 'entry' : 'entries'}`;
+    }
+
+    const label = labels[migrationName] || `migration ${migrationName}`;
+    emitMutation(label, detail);
+  }
 }
 
 // Patches are now baked into moflo@4.0.0 source — no runtime patching needed.
