@@ -20,30 +20,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { RECOMMENDED_DOCKER_IMAGE } from '../../spells/core/platform-sandbox.js';
+import { findRepoRoot } from '../_helpers/repo-walk.js';
 
 const EXPECTED_IMAGE_BASE = 'ghcr.io/eric-cielo/moflo-sandbox';
 
-// Walk up from this test file until we find the sandbox Dockerfile — that's
-// the moflo repo root. Self-describing marker: we're looking for repo-root
-// because repo-root holds the files this guard compares.
-function findRepoRoot(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 12; i++) {
-    if (existsSync(join(dir, 'docker', 'sandbox', 'Dockerfile'))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error(
-    'Could not locate moflo repo root (docker/sandbox/Dockerfile not found while walking up).',
-  );
-}
-
-const REPO_ROOT = findRepoRoot();
+const REPO_ROOT = findRepoRoot(import.meta.url);
 
 function stripTag(image: string): string {
   // Strip `:<tag>` but preserve `:` in a port like `registry:5000/...`.

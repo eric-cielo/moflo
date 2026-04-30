@@ -11,13 +11,13 @@
  * fetch on first use. These tests pin that behaviour.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import { initCommand, modelsCommand } from '../../commands/embeddings.js';
 import type { CommandContext, ParsedFlags } from '../../types.js';
+import { findRepoRoot, walkSource } from '../_helpers/repo-walk.js';
 
 function makeCtx(flags: ParsedFlags): CommandContext {
   return {
@@ -84,9 +84,9 @@ describe('downloadEmbeddingModel removed (#732 drift guard)', () => {
     // Pure-fs scan matching the established drift-guard pattern in
     // services/published-package-drift-guard.test.ts (no shell-out, no git
     // dependency, cross-platform).
-    const repoRoot = findRepoRoot();
+    const repoRoot = findRepoRoot(import.meta.url);
     const offenders: string[] = [];
-    for (const file of walkSrc(join(repoRoot, 'src'))) {
+    for (const file of walkSource(join(repoRoot, 'src'))) {
       const text = readFileSync(file, 'utf-8');
       if (text.includes('downloadEmbeddingModel')) {
         offenders.push(file.replace(repoRoot, '').replace(/\\/g, '/'));
@@ -95,32 +95,3 @@ describe('downloadEmbeddingModel removed (#732 drift guard)', () => {
     expect(offenders, 'downloadEmbeddingModel must have zero src references').toEqual([]);
   });
 });
-
-function findRepoRoot(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 12; i++) {
-    if (existsSync(join(dir, 'package.json')) && existsSync(join(dir, 'src', 'cli'))) {
-      return dir;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error('Could not locate moflo repo root from drift guard test.');
-}
-
-function* walkSrc(dir: string): Generator<string> {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '__tests__') continue;
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      yield* walkSrc(full);
-      continue;
-    }
-    if (!entry.isFile()) continue;
-    if (!/\.(m?ts|m?js)$/.test(entry.name)) continue;
-    if (entry.name.endsWith('.d.ts')) continue;
-    if (statSync(full).size > 5_000_000) continue;
-    yield full;
-  }
-}

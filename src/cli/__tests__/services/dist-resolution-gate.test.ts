@@ -3,9 +3,8 @@
  *
  * Static-analysis complement to the published-package drift guard. Crawls
  * every compiled `dist/src/cli/**\/*.js` file, extracts every computable
- * dynamic-import / `mofloPath()` / relative-`require` target, and asserts
- * that each target resolves to a file that exists on disk under the moflo
- * package root.
+ * dynamic-import / relative-`require` target, and asserts that each target
+ * resolves to a file that exists on disk under the moflo package root.
  *
  * The 4.9.0-rc.11 doctor bug is the canonical bug class this catches:
  *   await import(pathToFileURL(resolve(cliPkgRoot, '..', 'spells', 'dist',
@@ -27,11 +26,7 @@
  * What this catches:
  *   1. `await import('<string>')` / `import('<string>')` with relative-path
  *      literal arguments (`./foo.js`, `../bar.js`)
- *   2. `mofloPath(import.meta.url, '<seg>', '<seg>', ...)` with all-literal
- *      segments — the canonical post-#782 path-anchoring helper
- *   3. `path.join(mofloPackageRoot(...), '<seg>', ...)` and
- *      `path.resolve(mofloPackageRoot(...), '<seg>', ...)`
- *   4. `require('<string>')` / `require.resolve('<string>')` with relative
+ *   2. `require('<string>')` / `require.resolve('<string>')` with relative
  *      literal arguments
  *
  * What this does NOT catch:
@@ -53,44 +48,17 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { findRepoRoot } from '../_helpers/repo-walk.js';
 
-function findRepoRoot(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 12; i++) {
-    const pkgPath = join(dir, 'package.json');
-    if (existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { name?: string };
-        if (pkg.name === 'moflo' && existsSync(join(dir, 'src', 'cli'))) {
-          return dir;
-        }
-      } catch {
-        // Malformed package.json — keep walking. Genuinely invalid trees
-        // will eventually hit the throw below.
-      }
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error('Could not locate moflo repo root from dist-resolution-gate test.');
-}
-
-const REPO_ROOT = findRepoRoot();
+const REPO_ROOT = findRepoRoot(import.meta.url);
 const DIST_CLI_ROOT = join(REPO_ROOT, 'dist', 'src', 'cli');
 
 interface Target {
-  /** Absolute path the import/require/mofloPath call resolves to. */
   resolvedPath: string;
-  /** Source file (dist/.../*.js) where the call appears. */
   fromFile: string;
-  /** Line number in the source file (1-indexed). */
   fromLine: number;
-  /** Original literal text of the call (for error reporting). */
   raw: string;
-  /** Which extractor pattern fired. */
-  pattern: string;
+  pattern: 'import()' | 'require()';
 }
 
 function* walkJs(dir: string): Generator<string> {
@@ -123,14 +91,6 @@ function isBareSpecifier(spec: string): boolean {
 // `await import('<spec>')` / `import('<spec>')` — relative-path literals.
 const DYNAMIC_IMPORT_RE = /\bimport\s*\(\s*['"]([^'"`]+)['"]\s*\)/g;
 
-// `mofloPath(import.meta.url, '<seg>', '<seg>', ...)` — all-literal segments.
-const MOFLO_PATH_RE = /\bmofloPath\s*\(\s*import\.meta\.url\s*,\s*([^)]+)\)/g;
-
-// `path.join(mofloPackageRoot(import.meta.url), '<seg>', ...)` and
-// `path.resolve(mofloPackageRoot(import.meta.url), '<seg>', ...)`.
-const PATH_JOIN_FROM_ROOT_RE =
-  /\bpath\.(?:join|resolve)\s*\(\s*mofloPackageRoot\s*\(\s*import\.meta\.url\s*\)\s*,\s*([^)]+)\)/g;
-
 // `require('<spec>')` / `require.resolve('<spec>')` — relative literals only.
 const REQUIRE_RE = /\brequire(?:\.resolve)?\s*\(\s*['"]([^'"`]+)['"]\s*\)/g;
 
@@ -140,17 +100,6 @@ function lineOf(src: string, index: number): number {
     if (src.charCodeAt(i) === 10) line++;
   }
   return line;
-}
-
-function parseLiteralSegments(argList: string): string[] | null {
-  const tokens = argList.split(',').map((t) => t.trim()).filter(Boolean);
-  const segments: string[] = [];
-  for (const tok of tokens) {
-    const m = /^['"]([^'"]*)['"]$/.exec(tok);
-    if (!m) return null;
-    segments.push(m[1]);
-  }
-  return segments;
 }
 
 function extractTargets(filePath: string): Target[] {
@@ -176,35 +125,6 @@ function extractTargets(filePath: string): Target[] {
     }
   }
 
-  // Pattern 2: mofloPath(import.meta.url, '<seg>', ...)
-  MOFLO_PATH_RE.lastIndex = 0;
-  let m;
-  while ((m = MOFLO_PATH_RE.exec(src)) !== null) {
-    const segments = parseLiteralSegments(m[1]);
-    if (!segments) continue;
-    targets.push({
-      resolvedPath: resolve(REPO_ROOT, ...segments),
-      fromFile: filePath,
-      fromLine: lineOf(src, m.index),
-      raw: m[0],
-      pattern: 'mofloPath()',
-    });
-  }
-
-  // Pattern 3: path.join|resolve(mofloPackageRoot(...), '<seg>', ...)
-  PATH_JOIN_FROM_ROOT_RE.lastIndex = 0;
-  while ((m = PATH_JOIN_FROM_ROOT_RE.exec(src)) !== null) {
-    const segments = parseLiteralSegments(m[1]);
-    if (!segments) continue;
-    targets.push({
-      resolvedPath: resolve(REPO_ROOT, ...segments),
-      fromFile: filePath,
-      fromLine: lineOf(src, m.index),
-      raw: m[0],
-      pattern: 'path.{join,resolve}(mofloPackageRoot)',
-    });
-  }
-
   return targets;
 }
 
@@ -225,7 +145,7 @@ describe('dist resolution gate (issue #781 / #783)', () => {
     }
   });
 
-  it.skipIf(!hasBuild)('every dynamic-import / mofloPath target in dist/ resolves to an existing file', () => {
+  it.skipIf(!hasBuild)('every dynamic-import / require target in dist/ resolves to an existing file', () => {
     const offenders: string[] = [];
     for (const t of allTargets) {
       if (existsSync(t.resolvedPath)) continue;
@@ -236,11 +156,10 @@ describe('dist resolution gate (issue #781 / #783)', () => {
 
     expect(
       offenders,
-      `Dynamic-import / mofloPath targets in dist/ point to files that don't exist:\n  ${offenders.join('\n  ')}\n\n` +
+      `Dynamic-import / require targets in dist/ point to files that don't exist:\n  ${offenders.join('\n  ')}\n\n` +
         `These would throw ERR_MODULE_NOT_FOUND in a consumer install. Common causes:\n` +
         `  - File was renamed/moved/deleted but a caller still imports the old path\n` +
         `  - Path was computed against a sibling workspace package that doesn't exist (epic #586)\n` +
-        `  - mofloPath segments don't match the actual shipped layout\n` +
         `Fix the call site, run \`npm run build\`, and re-run this test.`,
     ).toEqual([]);
   });

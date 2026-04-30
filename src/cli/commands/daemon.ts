@@ -328,15 +328,14 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
     fs.mkdirSync(stateDir, { recursive: true });
   }
 
-  const { mofloPath } = await import('../shared/core/moflo-package-root.js');
-  const cliPath = mofloPath(import.meta.url, 'bin', 'cli.js');
-  validatePath(cliPath, 'CLI path');
+  const { locateMofloCliBin } = await import('../services/moflo-require.js');
+  const cliPath = locateMofloCliBin();
 
-  // Verify CLI path exists
-  if (!fs.existsSync(cliPath)) {
-    output.printError(`CLI not found at: ${cliPath}`);
+  if (!cliPath) {
+    output.printError('CLI not found in moflo package — broken install');
     return { success: false, exitCode: 1 };
   }
+  validatePath(cliPath, 'CLI path');
 
   // Platform-aware spawn flags
   const isWin = process.platform === 'win32';

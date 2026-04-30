@@ -501,10 +501,10 @@ export class CLI {
     const { spawn } = await import('child_process');
     const { join } = await import('path');
     const { existsSync, openSync, mkdirSync } = await import('fs');
-    const { mofloPath } = await import('./shared/core/moflo-package-root.js');
+    const { locateMofloCliBin } = await import('./services/moflo-require.js');
 
-    const cliPath = mofloPath(import.meta.url, 'bin', 'cli.js');
-    if (!existsSync(cliPath)) return;
+    const cliPath = locateMofloCliBin();
+    if (!cliPath) return;
 
     const projectRoot = process.cwd();
     const stateDir = join(projectRoot, '.moflo');

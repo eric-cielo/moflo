@@ -14,7 +14,7 @@ import { createHash } from 'crypto';
 import { dirname, join, resolve } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
-import { mofloPath } from '../shared/core/moflo-package-root.js';
+import { locateMofloCliBin } from './moflo-require.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -342,10 +342,16 @@ function isDaemonInstalledWindows(projectRoot: string): boolean {
 
 /**
  * Resolve CLI path from moflo's own package — anchors on moflo's package.json
- * via mofloPath() so file moves (workspace collapse, etc.) cannot break it.
+ * so file moves (workspace collapse, etc.) cannot break it. Throws when the
+ * binary is missing because every caller spawns it; failing here surfaces
+ * the broken install louder than a downstream ENOENT.
  */
 function resolveCliPath(): string {
-  return mofloPath(import.meta.url, 'bin', 'cli.js');
+  const cliPath = locateMofloCliBin();
+  if (!cliPath) {
+    throw new Error('moflo: bin/cli.js not found in installed package — broken install');
+  }
+  return cliPath;
 }
 
 /**
