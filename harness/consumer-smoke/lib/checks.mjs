@@ -446,6 +446,18 @@ export function doctor(consumerDir) {
     ['doctor', '--strict', '--allow-warn', SMOKE_ALLOWED_DOCTOR_WARNINGS.join(',')],
     { timeout: 60_000 },
   );
+  // recordExit truncates output to 200 chars; doctor failures need the full
+  // tail (especially the "warnings not allowlisted" list) to be debuggable
+  // from CI logs without a re-run.
+  if (r.code !== 0) {
+    log('--- doctor full output (exit non-zero) ---');
+    log(r.stdout);
+    if (r.stderr) {
+      log('--- doctor stderr ---');
+      log(r.stderr);
+    }
+    log('--- end doctor output ---');
+  }
   recordExit('doctor', r, { okCodes: [0] });
 }
 
