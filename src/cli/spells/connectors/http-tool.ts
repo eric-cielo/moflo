@@ -6,6 +6,7 @@
  */
 
 import type { SpellConnector, ConnectorAction, ConnectorOutput } from '../types/spell-connector.types.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 // ============================================================================
 // Types
@@ -173,7 +174,7 @@ export const httpConnector: SpellConnector = {
       return {
         success: false,
         data: {},
-        error: err instanceof Error ? err.message : String(err),
+        error: errorDetail(err),
         duration: Date.now() - start,
       };
     }

@@ -42,6 +42,7 @@ import {
   type MigrationProgress,
   type MigrationResult,
 } from './types.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 const DEFAULT_BATCH_SIZE = 32;
 const DEFAULT_MAX_RETRIES = 3;
@@ -280,7 +281,7 @@ async function attemptBatchOnce(ctx: CommitContext): Promise<AttemptOutcome> {
       throw inner;
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorDetail(err);
     return { ok: false, error: message };
   }
 }
@@ -297,7 +298,7 @@ async function safeRollback(
   try {
     await store.rollback();
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorDetail(err);
     errors.push(`[${store.storeId}] rollback failed: ${message}`);
   }
 }

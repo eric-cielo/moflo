@@ -19,6 +19,7 @@ import {
 } from '../services/engine-loader.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { buildGrimoire } from '../services/grimoire-builder.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 
 // ============================================================================
@@ -99,7 +100,7 @@ async function executeAndTrack(
   } catch (err) {
     tracked.status = SPELL_STATUS.FAILED;
     tracked.completedAt = new Date().toISOString();
-    return { spellId, error: errorMsg(err) };
+    return { spellId, error: errorDetail(err) };
   }
 }
 
@@ -135,11 +136,6 @@ export function invalidateRegistry(): void {
 // ============================================================================
 // Serialization helpers
 // ============================================================================
-
-/** Extract error message from an unknown catch value. */
-function errorMsg(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 /** Serialize a single step for MCP responses. */
 function serializeStep(s: SpellResult['steps'][number]) {
@@ -624,7 +620,7 @@ export const spellTools: MCPTool[] = [
           const entries = registry.list();
           return { action, templates: entries, total: entries.length };
         } catch (err) {
-          return { action, error: errorMsg(err) };
+          return { action, error: errorDetail(err) };
         }
       }
 
@@ -637,7 +633,7 @@ export const spellTools: MCPTool[] = [
           if (!info) return { action, error: `Spell not found in grimoire: ${query}` };
           return { action, ...info };
         } catch (err) {
-          return { action, error: errorMsg(err) };
+          return { action, error: errorDetail(err) };
         }
       }
 

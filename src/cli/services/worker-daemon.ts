@@ -32,6 +32,7 @@ import { withTimeout } from '../shared/resilience/retry.js';
 import { attachSignalHandlers } from '../shared/resilience/signal-handlers.js';
 import { calculateDelay } from '../production/retry.js';
 import { CircuitBreaker } from '../production/circuit-breaker.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Worker types matching hooks-tools.ts
 export type WorkerType =
@@ -574,7 +575,7 @@ export class WorkerDaemon extends EventEmitter {
         await this.scheduler.stop();
         this.log('info', 'Spell scheduler stopped');
       } catch (err) {
-        this.log('warn', `Scheduler stop error: ${err instanceof Error ? err.message : String(err)}`);
+        this.log('warn', `Scheduler stop error: ${errorDetail(err)}`);
       }
     }
 
@@ -643,7 +644,7 @@ export class WorkerDaemon extends EventEmitter {
       try {
         await this.scheduler.stop();
       } catch (err) {
-        this.log('warn', `Scheduler stop during detach failed: ${err instanceof Error ? err.message : String(err)}`);
+        this.log('warn', `Scheduler stop during detach failed: ${errorDetail(err)}`);
       }
       this.scheduler = null;
     }
@@ -890,7 +891,7 @@ export class WorkerDaemon extends EventEmitter {
         type: workerConfig.type,
         success: false,
         durationMs,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorDetail(error),
         timestamp: new Date(),
       };
 
@@ -926,7 +927,7 @@ export class WorkerDaemon extends EventEmitter {
         this.log('warn', `Headless execution failed for ${workerConfig.type}, falling back to local mode`);
         this.emit('headless:fallback', {
           type: workerConfig.type,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorDetail(error),
         });
         // Fall through to local execution
       }

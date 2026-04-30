@@ -15,6 +15,7 @@ import { dirname, join, resolve } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
 import { locateMofloCliBin } from './moflo-require.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -295,7 +296,7 @@ function installWindows(projectRoot: string, nodePath: string, cliPath: string):
     return {
       success: false,
       servicePath: null,
-      message: `Failed to create scheduled task: ${err instanceof Error ? err.message : String(err)}`,
+      message: `Failed to create scheduled task: ${errorDetail(err)}`,
     };
   }
 

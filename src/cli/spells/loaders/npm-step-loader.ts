@@ -20,6 +20,7 @@ import { join, resolve } from 'node:path';
 import type { StepCommand } from '../types/step-command.types.js';
 import type { DiscoveredStep, DirectoryLoadWarning } from './directory-step-loader.js';
 import { isStepCommand } from './directory-step-loader.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 const NPM_STEP_PREFIX = 'moflo-step-';
 
@@ -61,7 +62,7 @@ export function loadStepsFromNpm(projectRoot: string): NpmLoadResult {
     } catch (err) {
       warnings.push({
         file: pkgDir,
-        message: err instanceof Error ? err.message : String(err),
+        message: errorDetail(err),
       });
     }
   }

@@ -10,6 +10,7 @@
 
 import { cosineSim, execRows, generateId, persistBridgeDb, refreshVectorStatsCache, withDb } from './bridge-core.js';
 import { embeddingResponseFrom, resolveBridgeEmbedding } from './bridge-embedder.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 function makeEntryCacheKey(namespace: string, key: string): string {
   const safeNs = String(namespace).replace(/:/g, '_');
@@ -280,7 +281,7 @@ export async function bridgeStoreEntries(items: Array<{
           ttl ? now + (ttl * 1000) : null,
         ]);
       } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
+        const reason = errorDetail(err);
         results.push({ success: false, id, error: `insert failed: ${reason}` });
         continue;
       }

@@ -30,6 +30,7 @@ import { generateClaudeMd } from './claudemd-generator.js';
 import { writeEnvrc } from './envrc-generator.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 import { locateMofloRootPath } from '../services/moflo-require.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 /**
  * Skills to copy based on configuration. Exported for integrity tests.
@@ -213,7 +214,7 @@ export async function executeInit(options: InitOptions): Promise<InitResult> {
 
   } catch (error) {
     result.success = false;
-    result.errors.push(error instanceof Error ? error.message : String(error));
+    result.errors.push(errorDetail(error));
   }
 
   return result;
@@ -671,7 +672,7 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
             'statusLine',
           ];
         } catch (settingsError) {
-          result.errors.push(`Settings merge failed: ${settingsError instanceof Error ? settingsError.message : String(settingsError)}`);
+          result.errors.push(`Settings merge failed: ${errorDetail(settingsError)}`);
         }
       } else {
         // Create new settings.json with defaults
@@ -739,7 +740,7 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
 
   } catch (error) {
     result.success = false;
-    result.errors.push(error instanceof Error ? error.message : String(error));
+    result.errors.push(errorDetail(error));
   }
 
   return result;
@@ -848,7 +849,7 @@ export async function executeUpgradeWithMissing(targetDir: string, _upgradeSetti
     }
 
   } catch (error) {
-    result.errors.push(`Add missing failed: ${error instanceof Error ? error.message : String(error)}`);
+    result.errors.push(`Add missing failed: ${errorDetail(error)}`);
   }
 
   return result;

@@ -17,6 +17,7 @@ import type { SchedulerEvent } from '../spells/scheduler/scheduler.js';
 import { spawn, execFile, execFileSync } from 'child_process';
 import { join, resolve, isAbsolute } from 'path';
 import * as fs from 'fs';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Start daemon subcommand
 const startCommand: Command = {
@@ -201,7 +202,7 @@ const startCommand: Command = {
 
       return { success: true };
     } catch (error) {
-      output.printError(`Failed to start daemon: ${error instanceof Error ? error.message : String(error)}`);
+      output.printError(`Failed to start daemon: ${errorDetail(error)}`);
       return { success: false, exitCode: 1 };
     }
   },
@@ -227,7 +228,7 @@ async function attachDaemonServices(
   try {
     memory = await createDashboardMemoryAccessor();
   } catch (err) {
-    logWarn(`Memory accessor unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    logWarn(`Memory accessor unavailable: ${errorDetail(err)}`);
     return { dashboard: null, memory: null };
   }
 
@@ -243,7 +244,7 @@ async function attachDaemonServices(
       });
       if (opts.verbose) output.printSuccess(`Dashboard: http://localhost:${dashboard.port}`);
     } catch (err) {
-      logWarn(`Dashboard failed to start: ${err instanceof Error ? err.message : String(err)}`);
+      logWarn(`Dashboard failed to start: ${errorDetail(err)}`);
     }
   }
 
@@ -266,7 +267,7 @@ async function attachDaemonServices(
     });
     if (opts.verbose) output.printSuccess('Spell scheduler attached');
   } catch (err) {
-    logWarn(`Spell scheduler not started: ${err instanceof Error ? err.message : String(err)}`);
+    logWarn(`Spell scheduler not started: ${errorDetail(err)}`);
   }
 
   return { dashboard, memory };
@@ -463,7 +464,7 @@ const stopCommand: Command = {
 
       return { success: true };
     } catch (error) {
-      output.printError(`Failed to stop daemon: ${error instanceof Error ? error.message : String(error)}`);
+      output.printError(`Failed to stop daemon: ${errorDetail(error)}`);
       return { success: false, exitCode: 1 };
     }
   },
@@ -733,7 +734,7 @@ const triggerCommand: Command = {
 
       return { success: result.success, data: result };
     } catch (error) {
-      output.printError(`Failed to trigger worker: ${error instanceof Error ? error.message : String(error)}`);
+      output.printError(`Failed to trigger worker: ${errorDetail(error)}`);
       return { success: false, exitCode: 1 };
     }
   },
@@ -768,7 +769,7 @@ const enableCommand: Command = {
 
       return { success: true };
     } catch (error) {
-      output.printError(`Failed to ${disable ? 'disable' : 'enable'} worker: ${error instanceof Error ? error.message : String(error)}`);
+      output.printError(`Failed to ${disable ? 'disable' : 'enable'} worker: ${errorDetail(error)}`);
       return { success: false, exitCode: 1 };
     }
   },
@@ -803,7 +804,7 @@ const installCommand: Command = {
       return { success: result.success, exitCode: result.success ? 0 : 1 };
     } catch (error) {
       if (!quiet) {
-        output.printError(`Failed to install daemon service: ${error instanceof Error ? error.message : String(error)}`);
+        output.printError(`Failed to install daemon service: ${errorDetail(error)}`);
       }
       return { success: false, exitCode: 1 };
     }
@@ -838,7 +839,7 @@ const uninstallCommand: Command = {
       return { success: result.success, exitCode: result.success ? 0 : 1 };
     } catch (error) {
       if (!quiet) {
-        output.printError(`Failed to uninstall daemon service: ${error instanceof Error ? error.message : String(error)}`);
+        output.printError(`Failed to uninstall daemon service: ${errorDetail(error)}`);
       }
       return { success: false, exitCode: 1 };
     }

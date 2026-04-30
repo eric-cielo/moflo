@@ -13,6 +13,7 @@ import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { mofloImport } from '../services/moflo-require.js';
 import { atomicWriteFileSync } from '../services/atomic-file-write.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Memory backends
 const BACKENDS = [
@@ -1458,7 +1459,7 @@ const initMemoryCommand: Command = {
       };
     } catch (error) {
       spinner.fail('Initialization failed');
-      output.printError(`Failed to initialize memory: ${error instanceof Error ? error.message : String(error)}`);
+      output.printError(`Failed to initialize memory: ${errorDetail(error)}`);
       return { success: false, exitCode: 1 };
     }
   }
@@ -2178,7 +2179,7 @@ const rebuildIndexCommand: Command = {
         }
         return null;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errorDetail(err);
         output.printError(`HNSW sidecar write failed: ${msg}`);
         return { success: false, exitCode: 1 };
       }
@@ -2828,7 +2829,7 @@ const refreshCommand: Command = {
         output.writeln(`${icon} ${name} ${output.dim(`(${durStr})`)}`);
       } catch (err) {
         const dur = performance.now() - stepStart;
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errorDetail(err);
         steps.push({ name, status: 'fail', message: msg, duration: dur });
         output.writeln(`${output.error('✗')} ${name}: ${msg}`);
       }

@@ -58,6 +58,7 @@ function getProjectRoot(): string {
 }
 
 import { ControllerRegistry } from './controller-registry.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 let registryPromise: Promise<any | null> | null = null;
 // Sync handle populated once the promise resolves. Lets sync callers
@@ -81,7 +82,7 @@ export function getBridgeLastError(): Error | null {
 
 function logBridgeError(context: string, err: unknown): void {
   if (process.env.MOFLO_BRIDGE_QUIET) return;
-  const msg = err instanceof Error ? err.message : String(err);
+  const msg = errorDetail(err);
   console.error(`[moflo] ${context}: ${msg}`);
 }
 

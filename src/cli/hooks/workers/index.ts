@@ -9,6 +9,7 @@ import { EventEmitter } from 'events';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 // ============================================================================
 // Security Constants
@@ -893,7 +894,7 @@ export class WorkerManager extends EventEmitter {
         worker: name,
         success: false,
         duration,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorDetail(error),
         timestamp: new Date(),
       };
 

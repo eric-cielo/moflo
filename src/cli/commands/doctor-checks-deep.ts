@@ -135,7 +135,7 @@ export async function checkSubagentHealth(): Promise<HealthCheck> {
     const parts = ['spawn', statusOk ? 'status' : null, terminateOk ? 'terminate' : null].filter(Boolean);
     return { name: 'Subagent Health', status: 'pass', message: `Lifecycle OK (${parts.join(' → ')})` };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorDetail(err);
     return { name: 'Subagent Health', status: 'fail', message: `Agent lifecycle failed: ${msg}`, fix: 'npm run build' };
   }
 }
@@ -191,7 +191,7 @@ steps:
     const errMsg = result.errors?.map((e: { message: string }) => e.message).join('; ') || 'unknown error';
     return { name: 'Spell Execution', status: 'fail', message: `Probe failed: ${errMsg}`, fix: 'npm run build' };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorDetail(err);
     return { name: 'Spell Execution', status: 'fail', message: `Spell engine error: ${msg}`, fix: 'npm run build' };
   }
 }
@@ -219,7 +219,7 @@ export async function checkMcpToolInvocation(): Promise<HealthCheck> {
     } catch (importErr) {
       // MCP tools index may have circular init deps when loaded outside MCP server.
       // Module file exists — partial pass.
-      const msg = importErr instanceof Error ? importErr.message : String(importErr);
+      const msg = errorDetail(importErr);
       const short = msg.length > 80 ? msg.slice(0, 80) + '...' : msg;
       return { name: 'MCP Tool Invocation', status: 'warn', message: `Module found but import failed: ${short}`, fix: 'npm run build' };
     }
@@ -273,7 +273,7 @@ export async function checkMcpToolInvocation(): Promise<HealthCheck> {
       message: `${toolCount} tools loaded (${presentCategories.join(', ')})`,
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorDetail(err);
     return { name: 'MCP Tool Invocation', status: 'fail', message: `MCP tool loading failed: ${msg}`, fix: 'npm run build' };
   }
 }
@@ -301,7 +301,7 @@ export async function checkHookExecution(): Promise<HealthCheck> {
     } catch (importErr) {
       // Hooks module has deep dependency chain (swarm, memory, etc.) that may
       // not be fully compiled. Report partial success — module file exists.
-      const msg = importErr instanceof Error ? importErr.message : String(importErr);
+      const msg = errorDetail(importErr);
       const short = msg.length > 80 ? msg.slice(0, 80) + '...' : msg;
       return { name: 'Hook Execution', status: 'warn', message: `Module found but import failed: ${short}`, fix: 'npm run build' };
     }
@@ -337,7 +337,7 @@ export async function checkHookExecution(): Promise<HealthCheck> {
 
     return { name: 'Hook Execution', status: 'pass', message: parts.join(', ') };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorDetail(err);
     // Hook errors during doctor are non-fatal — the system may not have hooks configured
     if (msg.includes('No hooks registered') || msg.includes('not initialized')) {
       return { name: 'Hook Execution', status: 'pass', message: 'Executor loaded (no hooks registered)' };
@@ -412,7 +412,7 @@ export async function checkMcpSpellIntegration(): Promise<HealthCheck> {
       fix: 'Ensure spell-tools.ts imports from runner-bridge.ts',
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorDetail(err);
     return { name: 'MCP Spell Integration', status: 'fail', message: `MCP spell bridge error: ${msg}`, fix: 'npm run build' };
   }
 }
@@ -464,7 +464,7 @@ export async function checkMofloDbBridge(): Promise<HealthCheck> {
       message: `${controllers.length} controllers loaded`,
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message.split(/\r?\n/)[0] : String(err);
+    const msg = errorDetail(err, { firstLineOnly: true });
     return { name: 'MofloDb Bridge', status: 'fail', message: `check error: ${msg}`, fix: 'npm run build' };
   }
 }

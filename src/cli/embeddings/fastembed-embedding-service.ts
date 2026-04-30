@@ -19,6 +19,7 @@ import type {
   FastembedEmbeddingConfig,
 } from './types.js';
 import { BaseEmbeddingService } from './embedding-service.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 const DEFAULT_BATCH_SIZE = 32;
 
@@ -100,7 +101,7 @@ export class FastembedEmbeddingService extends BaseEmbeddingService {
         this.model = model;
         return model;
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = errorDetail(error);
         throw new Error(`Failed to initialize fastembed: ${message}`);
       } finally {
         this.initPromise = null;
@@ -139,7 +140,7 @@ export class FastembedEmbeddingService extends BaseEmbeddingService {
         latencyMs,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorDetail(error);
       this.emitEvent({ type: 'embed_error', text, error: message });
       throw new Error(`Fastembed embedding failed: ${message}`);
     }
@@ -174,7 +175,7 @@ export class FastembedEmbeddingService extends BaseEmbeddingService {
           }
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = errorDetail(error);
         throw new Error(`Fastembed batch embedding failed: ${message}`);
       }
 

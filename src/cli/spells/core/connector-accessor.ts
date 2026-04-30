@@ -8,6 +8,7 @@
 
 import type { ConnectorAccessor, ConnectorView, ConnectorOutput, ConnectorCapability } from '../types/spell-connector.types.js';
 import type { SpellConnectorRegistry } from '../registry/connector-registry.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 export class ConnectorAccessorImpl implements ConnectorAccessor {
   private readonly initialized = new Set<string>();
@@ -58,7 +59,7 @@ export class ConnectorAccessorImpl implements ConnectorAccessor {
         return {
           success: false,
           data: {},
-          error: `Connector "${connectorName}" failed to initialize: ${err instanceof Error ? err.message : String(err)}`,
+          error: `Connector "${connectorName}" failed to initialize: ${errorDetail(err)}`,
         };
       }
     }

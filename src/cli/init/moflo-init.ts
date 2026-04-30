@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { locateMofloRootPath } from '../services/moflo-require.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Directories that walkers should never recurse into when discovering project
 // structure. The runtime state dirs (.swarm, .moflo) and other generated/
@@ -1012,7 +1013,7 @@ function installGlobalFloShim(root: string): MofloInitResult['steps'][0] {
     }
     return { name: 'global flo shim', status: 'skipped', detail: 'Already up to date' };
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorDetail(err);
     return { name: 'global flo shim', status: 'error', detail: msg };
   }
 }

@@ -13,6 +13,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // ---------------------------------------------------------------------------
 // Test harness types
@@ -40,7 +41,7 @@ async function timed(name: string, fn: () => Promise<{ status: 'pass' | 'fail' |
     const r = await fn();
     return { name, ...r, duration: performance.now() - t0 };
   } catch (err) {
-    return { name, status: 'fail', message: err instanceof Error ? err.message : String(err), duration: performance.now() - t0 };
+    return { name, status: 'fail', message: errorDetail(err), duration: performance.now() - t0 };
   }
 }
 
@@ -187,7 +188,7 @@ function testSwarmLifecycle(): DiagTest {
 
       return { status: 'pass', message: `Swarm ${swarmId} — init/spawn/status/stop OK` };
     } catch (err) {
-      return { status: 'fail', message: err instanceof Error ? err.message : String(err) };
+      return { status: 'fail', message: errorDetail(err) };
     }
   });
 }
@@ -230,7 +231,7 @@ function testHiveMindLifecycle(): DiagTest {
 
       return { status: 'pass', message: `Hive ${hiveId} — init/spawn/status/shutdown OK` };
     } catch (err) {
-      return { status: 'fail', message: err instanceof Error ? err.message : String(err) };
+      return { status: 'fail', message: errorDetail(err) };
     }
   });
 }
@@ -262,7 +263,7 @@ function testTaskLifecycle(): DiagTest {
 
       return { status: 'pass', message: `Task ${taskId} — create/list OK` };
     } catch (err) {
-      return { status: 'fail', message: err instanceof Error ? err.message : String(err) };
+      return { status: 'fail', message: errorDetail(err) };
     }
   });
 }
@@ -287,7 +288,7 @@ function testHooksRouting(): DiagTest {
       if (!agent) return { status: 'fail', message: 'No agent recommendation returned' };
       return { status: 'pass', message: `Routed to ${agent} (${confidence}% confidence)` };
     } catch (err) {
-      return { status: 'fail', message: err instanceof Error ? err.message : String(err) };
+      return { status: 'fail', message: errorDetail(err) };
     }
   });
 }
@@ -321,7 +322,7 @@ function testConfigShow(): DiagTest {
       }
       return { status: 'fail', message: 'No config file found' };
     } catch (err) {
-      return { status: 'fail', message: err instanceof Error ? err.message : String(err) };
+      return { status: 'fail', message: errorDetail(err) };
     }
   });
 }
@@ -342,7 +343,7 @@ function testInitIdempotency(): DiagTest {
       }
       return { status: 'pass', message: `${expected.length} artifacts verified` };
     } catch (err) {
-      return { status: 'fail', message: err instanceof Error ? err.message : String(err) };
+      return { status: 'fail', message: errorDetail(err) };
     }
   });
 }
@@ -365,7 +366,7 @@ function testNeuralStatus(): DiagTest {
       return { status: 'pass', message: `${active.length}/${components.length} components active` };
     } catch (err) {
       // Neural is optional — don't fail the whole suite
-      return { status: 'skip', message: `Neural not available: ${err instanceof Error ? err.message : String(err)}` };
+      return { status: 'skip', message: `Neural not available: ${errorDetail(err)}` };
     }
   });
 }
@@ -382,7 +383,7 @@ function testMcpParity(): DiagTest {
       }
       return { status: 'pass', message: `${found.length} memory tools registered` };
     } catch (err) {
-      return { status: 'fail', message: err instanceof Error ? err.message : String(err) };
+      return { status: 'fail', message: errorDetail(err) };
     }
   });
 }

@@ -31,6 +31,7 @@ import type { HookRegistry } from '../hooks/index.js';
 import type { EnforcementGates } from './gates.js';
 import type { ShardRetriever } from './retriever.js';
 import type { RunLedger } from './ledger.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 import type {
   GateResult,
   GateDecision,
@@ -373,7 +374,7 @@ export class GuidanceHookProvider {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorDetail(error),
         message: 'Failed to retrieve guidance shards for task',
       };
     }
@@ -431,7 +432,7 @@ export class GuidanceHookProvider {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorDetail(error),
         message: `Failed to finalize run event for task "${taskId}"`,
       };
     }

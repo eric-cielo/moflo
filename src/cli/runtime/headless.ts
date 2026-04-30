@@ -18,6 +18,7 @@
 import { HeadlessWorkerExecutor, HEADLESS_WORKER_TYPES, type HeadlessWorkerType } from '../services/headless-worker-executor.js';
 import { WorkerDaemon, getDaemon, startDaemon, stopDaemon } from '../services/worker-daemon.js';
 import { attachSignalHandlers } from '../shared/resilience/signal-handlers.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 import {
   initializeIntelligence,
   benchmarkAdaptation,
@@ -334,7 +335,7 @@ async function main(): Promise<void> {
         break;
     }
   } catch (error) {
-    console.error('[Headless] Error:', error instanceof Error ? error.message : String(error));
+    console.error('[Headless] Error:', errorDetail(error));
     process.exit(1);
   }
 }

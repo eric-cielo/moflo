@@ -21,6 +21,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Dynamic import for AST analyzer
 async function getASTAnalyzer() {
@@ -646,7 +647,7 @@ const astCommand: Command = {
       return { success: true, data: { files: results, totals } };
     } catch (error) {
       spinner.stop();
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorDetail(error);
       output.printError(`AST analysis failed: ${message}`);
       return { success: false, exitCode: 1 };
     }
@@ -825,7 +826,7 @@ const complexityAstCommand: Command = {
       return { success: true, data: { files: results, flaggedCount } };
     } catch (error) {
       spinner.stop();
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorDetail(error);
       output.printError(`Complexity analysis failed: ${message}`);
       return { success: false, exitCode: 1 };
     }
@@ -990,7 +991,7 @@ const symbolsCommand: Command = {
       return { success: true, data: symbols };
     } catch (error) {
       spinner.stop();
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorDetail(error);
       output.printError(`Symbol extraction failed: ${message}`);
       return { success: false, exitCode: 1 };
     }
@@ -1152,7 +1153,7 @@ const importsCommand: Command = {
       return { success: true, data: { imports: sortedImports } };
     } catch (error) {
       spinner.stop();
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorDetail(error);
       output.printError(`Import analysis failed: ${message}`);
       return { success: false, exitCode: 1 };
     }
@@ -1491,7 +1492,7 @@ const boundariesCommand: Command = {
       return { success: true, data: result };
     } catch (error) {
       spinner.stop();
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorDetail(error);
       output.printError(`Analysis failed: ${message}`);
       return { success: false, exitCode: 1 };
     }
@@ -1646,7 +1647,7 @@ const modulesCommand: Command = {
       return { success: true, data: result };
     } catch (error) {
       spinner.stop();
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorDetail(error);
       output.printError(`Analysis failed: ${message}`);
       return { success: false, exitCode: 1 };
     }
@@ -1845,7 +1846,7 @@ const dependenciesCommand: Command = {
       return { success: true };
     } catch (error) {
       spinner.stop();
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorDetail(error);
       output.printError(`Analysis failed: ${message}`);
       return { success: false, exitCode: 1 };
     }
@@ -1983,7 +1984,7 @@ const circularCommand: Command = {
       return { success: true, data: { cycles: filtered } };
     } catch (error) {
       spinner.stop();
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorDetail(error);
       output.printError(`Analysis failed: ${message}`);
       return { success: false, exitCode: 1 };
     }

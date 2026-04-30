@@ -9,6 +9,7 @@
 
 import type { ClaudeFlowPlugin, PluginContext, PluginConfig } from '../types.js';
 import { HookEvent, HookPriority, type TaskInfo, type ErrorInfo } from '../../hooks/index.js';
+import { errorDetail } from '../../utils/error-detail.js';
 
 /**
  * Maestro configuration
@@ -213,7 +214,7 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
       spell.status = 'failed';
       errors.push({
         stepId: 'spell',
-        error: error instanceof Error ? error.message : String(error),
+        error: errorDetail(error),
       });
     } finally {
       this.activeSpells--;
@@ -414,7 +415,7 @@ export class MaestroPlugin implements ClaudeFlowPlugin {
       return { success: true, output: step.output };
     } catch (error) {
       step.status = 'failed';
-      step.error = error instanceof Error ? error.message : String(error);
+      step.error = errorDetail(error);
       step.completedAt = new Date();
 
       return { success: false, error: step.error };

@@ -753,7 +753,7 @@ async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       }
       return success;
     } catch (e) {
-      output.writeln(output.warning(`  Fix failed: ${e instanceof Error ? e.message : String(e)}`));
+      output.writeln(output.warning(`  Fix failed: ${errorDetail(e)}`));
       return false;
     }
   }
@@ -1531,7 +1531,7 @@ export const doctorCommand: Command = {
             name: 'Sandbox Tier',
             status: 'warn',
             message: `sandboxing enabled but not ready (${cap.platform})`,
-            fix: err instanceof Error ? err.message : String(err),
+            fix: errorDetail(err),
           };
         }
       } catch (err) {

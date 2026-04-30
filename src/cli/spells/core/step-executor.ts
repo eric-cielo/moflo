@@ -34,6 +34,7 @@ import {
 import { executeWithTimeout } from './timeout-executor.js';
 import { CapabilityGateway } from './capability-gateway.js';
 import { GatedConnectorAccessor } from './gated-connector-accessor.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 const DEFAULT_STEP_TIMEOUT = 300_000; // 5 minutes
 
@@ -101,7 +102,7 @@ export async function executeSingleStep(
     interpolatedConfig = interpolateConfig(step.config as Record<string, unknown>, context);
   } catch (err) {
     return { stepId: step.id, stepType: step.type, status: 'failed',
-      error: `Variable interpolation failed: ${err instanceof Error ? err.message : String(err)}`,
+      error: `Variable interpolation failed: ${errorDetail(err)}`,
       errorCode: 'STEP_EXECUTION_FAILED', duration: Date.now() - stepStart };
   }
 
@@ -152,7 +153,7 @@ export async function executeSingleStep(
     const isTimeout = err instanceof Error && err.message === 'Step timed out';
     return { stepId: step.id, stepType: step.type,
       status: isCancelled ? 'cancelled' : 'failed',
-      error: err instanceof Error ? err.message : String(err),
+      error: errorDetail(err),
       errorCode: isCancelled ? 'STEP_CANCELLED' : isTimeout ? 'STEP_TIMEOUT' : 'STEP_EXECUTION_FAILED',
       duration: Date.now() - stepStart };
   }
@@ -165,7 +166,7 @@ export async function executeSingleStep(
     if (command.rollback) {
       rollbackAttempted = true;
       try { await command.rollback(interpolatedConfig, context); }
-      catch (rbErr) { rollbackError = rbErr instanceof Error ? rbErr.message : String(rbErr); }
+      catch (rbErr) { rollbackError = errorDetail(rbErr); }
     }
     return { stepId: step.id, stepType: step.type, status: 'failed', output: maskedOutput,
       error: maskedOutput.error ?? 'Step execution returned failure',

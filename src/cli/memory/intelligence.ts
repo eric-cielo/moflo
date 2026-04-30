@@ -14,6 +14,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // ============================================================================
 // Persistence Configuration
@@ -562,7 +563,7 @@ export async function initializeIntelligence(config?: Partial<SonaConfig>): Prom
       success: false,
       sonaEnabled: false,
       reasoningBankEnabled: false,
-      error: error instanceof Error ? error.message : String(error)
+      error: errorDetail(error)
     };
   }
 }

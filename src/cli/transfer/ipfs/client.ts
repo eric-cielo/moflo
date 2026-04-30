@@ -10,6 +10,7 @@
  */
 
 import * as crypto from 'crypto';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 /**
  * Available IPFS gateways in priority order
@@ -113,7 +114,7 @@ export async function resolveIPNS(
         return cid;
       }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = errorDetail(error);
       console.warn(`[IPFS] Gateway ${gateway} failed: ${errorMsg}`);
       continue;
     }
@@ -168,7 +169,7 @@ export async function fetchFromIPFS<T>(
         console.warn(`[IPFS] Rate limited on ${gateway}, trying next...`);
       }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = errorDetail(error);
       console.warn(`[IPFS] Gateway ${gateway} failed: ${errorMsg}`);
       continue;
     }

@@ -16,6 +16,7 @@ import * as path from 'node:path';
 import type { IMemoryBackend } from './types.js';
 import { openSqlJsDatabase } from './sqljs-backend.js';
 import { CONTROLLER_SPECS } from './controller-specs.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 import type {
   ControllerName,
   ControllerSpec,
@@ -292,7 +293,7 @@ export class ControllerRegistry extends EventEmitter implements RegistryView {
       this.mofloDb = { database, close: async () => database.close() };
       this.emit('mofloDb:initialized');
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = errorDetail(error);
       this.emit('mofloDb:unavailable', { reason: msg.substring(0, 200) });
       this.mofloDb = null;
     }
@@ -349,7 +350,7 @@ export class ControllerRegistry extends EventEmitter implements RegistryView {
         });
       }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = errorDetail(error);
       const initTimeMs = performance.now() - startTime;
       this.controllers.set(spec.name, {
         name: spec.name,

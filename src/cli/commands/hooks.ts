@@ -10,6 +10,7 @@ import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { storeCommand } from './transfer-store.js';
 import { memoryDbCandidatePaths } from '../services/moflo-paths.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Hook types
 const HOOK_TYPES = [
@@ -1661,7 +1662,7 @@ const sessionEndCommand: Command = {
 
       return { success: true, data: result };
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = errorDetail(error);
       const isTimeout = msg.includes('timed out');
 
       if (isTimeout) {

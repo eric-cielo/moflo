@@ -20,6 +20,7 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import type { HeadlessWorkerType, HeadlessExecutionResult, WorkerPriority } from './headless-worker-executor.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // ============================================
 // Type Definitions
@@ -605,7 +606,7 @@ export class WorkerQueue extends EventEmitter {
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
         } catch (error) {
-          this.emit('error', { error: error instanceof Error ? error.message : String(error) });
+          this.emit('error', { error: errorDetail(error) });
           // Wait before retrying to avoid tight error loop
           await new Promise(resolve => setTimeout(resolve, 5000));
         }
@@ -614,7 +615,7 @@ export class WorkerQueue extends EventEmitter {
 
     // Start processing
     processLoop().catch(error => {
-      this.emit('error', { error: error instanceof Error ? error.message : String(error) });
+      this.emit('error', { error: errorDetail(error) });
     });
   }
 
@@ -629,7 +630,7 @@ export class WorkerQueue extends EventEmitter {
       const result = await handler(task);
       await this.complete(task.id, result);
     } catch (error) {
-      await this.fail(task.id, error instanceof Error ? error.message : String(error));
+      await this.fail(task.id, errorDetail(error));
     }
   }
 

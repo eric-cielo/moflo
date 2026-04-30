@@ -17,6 +17,7 @@ import type {
 import type { SpellResult, SpellErrorCode } from '../spells/types/runner.types.js';
 import type { SpellDefinition } from '../spells/types/spell-definition.types.js';
 import type { Grimoire } from '../spells/registry/spell-registry.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 import {
   loadSpellEngine,
   type EngineModule,
@@ -85,7 +86,7 @@ export class DaemonSpellExecutor implements SpellExecutor {
         // Cancellation is best-effort — the engine may have already finished.
         // Emit to stderr so daemon logs capture the case without disrupting
         // the poll loop or propagating the failure back to the scheduler.
-        console.warn(`[daemon-spell-executor] bridgeCancelSpell(${spellId}) failed: ${err instanceof Error ? err.message : String(err)}`);
+        console.warn(`[daemon-spell-executor] bridgeCancelSpell(${spellId}) failed: ${errorDetail(err)}`);
       }
     };
     if (signal?.aborted) onAbort();
@@ -104,7 +105,7 @@ export class DaemonSpellExecutor implements SpellExecutor {
       return failedResult(
         spellId,
         'STEP_EXECUTION_FAILED',
-        err instanceof Error ? err.message : String(err),
+        errorDetail(err),
       );
     } finally {
       signal?.removeEventListener('abort', onAbort);

@@ -9,6 +9,7 @@ import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // ============================================================================
 // Pretrain Benchmark Subcommand
@@ -70,7 +71,7 @@ const pretrainCommand: Command = {
           : `${results.results.filter(r => r.targetMet).length}/${results.results.length} targets met`,
       };
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorMsg = errorDetail(err);
       output.writeln(output.error(`Benchmark failed: ${errorMsg}`));
       return {
         success: false,
@@ -248,7 +249,7 @@ const neuralCommand: Command = {
       };
     } catch (err) {
       spinner.stop();
-      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorMsg = errorDetail(err);
       output.writeln(output.error(`Neural benchmark failed: ${errorMsg}`));
       return {
         success: false,
@@ -376,7 +377,7 @@ const memoryCommand: Command = {
       return { success: true, message: 'Memory benchmarks complete' };
     } catch (err) {
       spinner.stop();
-      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorMsg = errorDetail(err);
       output.writeln(output.error(`Memory benchmark failed: ${errorMsg}`));
       return {
         success: false,

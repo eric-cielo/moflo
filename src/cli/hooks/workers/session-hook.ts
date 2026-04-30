@@ -6,6 +6,7 @@
 
 import { WorkerManager, createWorkerManager } from './index.js';
 import * as path from 'path';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 // ============================================================================
 // Types
@@ -84,7 +85,7 @@ export async function onSessionStart(config: SessionHookConfig = {}): Promise<Se
     return {
       success: false,
       manager: createWorkerManager(projectRoot),
-      error: error instanceof Error ? error.message : String(error),
+      error: errorDetail(error),
     };
   }
 }

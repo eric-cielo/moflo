@@ -5,6 +5,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // compile subcommand
 const compileCommand: Command = {
@@ -79,7 +80,7 @@ const compileCommand: Command = {
 
       return { success: true, data: bundle };
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = errorDetail(error);
       output.writeln(output.error(`Compilation failed: ${msg}`));
       return { success: false, message: msg };
     }
@@ -178,7 +179,7 @@ const retrieveCommand: Command = {
 
       return { success: true, data: result };
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = errorDetail(error);
       output.writeln(output.error(`Retrieval failed: ${msg}`));
       return { success: false, message: msg };
     }
@@ -270,7 +271,7 @@ const gatesCommand: Command = {
 
       return { success: true, data: results };
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = errorDetail(error);
       output.writeln(output.error(`Gate evaluation failed: ${msg}`));
       return { success: false, message: msg };
     }
@@ -328,7 +329,7 @@ const statusCommand: Command = {
 
       return { success: true, data: statusData };
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = errorDetail(error);
       output.writeln(output.error(`Status check failed: ${msg}`));
       return { success: false, message: msg };
     }
@@ -447,7 +448,7 @@ const optimizeCommand: Command = {
 
       return { success: true, data: result };
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = errorDetail(error);
       output.writeln(output.error(`Optimization failed: ${msg}`));
       return { success: false, message: msg };
     }
@@ -569,7 +570,7 @@ const abTestCommand: Command = {
 
       return { success: true, data: report };
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = errorDetail(error);
       output.writeln(output.error(`A/B benchmark failed: ${msg}`));
       return { success: false, message: msg };
     }

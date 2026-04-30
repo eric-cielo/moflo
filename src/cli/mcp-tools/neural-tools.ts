@@ -14,6 +14,7 @@ import type { MCPTool } from './types.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Lazily resolved fastembed-backed embedder. The previous top-level `await`
 // blocked module evaluation on the fastembed model load (~1–3 s + model
@@ -44,7 +45,7 @@ async function getRealEmbeddings(): Promise<RealEmbeddings> {
       embeddingServiceName = service.provider;
     } catch (err) {
       process.stderr.write(
-        `[neural-tools] embeddings load failed: ${err instanceof Error ? err.message : String(err)}\n`,
+        `[neural-tools] embeddings load failed: ${errorDetail(err)}\n`,
       );
       realEmbeddings = null;
     }

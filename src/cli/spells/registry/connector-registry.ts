@@ -12,6 +12,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 import type {
   SpellConnector,
   ConnectorRegistryEntry,
@@ -183,7 +184,7 @@ export class SpellConnectorRegistry {
       } catch (err) {
         errors.push({
           file: candidate.file,
-          message: err instanceof Error ? err.message : String(err),
+          message: errorDetail(err),
         });
       }
     }
@@ -258,7 +259,7 @@ function discoverNpmConnectors(projectRoot: string): NpmConnectorDiscovery[] {
           ok: false,
           error: {
             file: pkgJsonPath,
-            message: err instanceof Error ? err.message : String(err),
+            message: errorDetail(err),
           },
         });
       }

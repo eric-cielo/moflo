@@ -26,6 +26,7 @@ import { performanceTools } from './mcp-tools/performance-tools.js';
 import { githubTools } from './mcp-tools/github-tools.js';
 import { coordinationTools } from './mcp-tools/coordination-tools.js';
 import { moflodbTools } from './mcp-tools/moflodb-tools.js';
+import { errorDetail } from './shared/utils/error-detail.js';
 
 /**
  * MCP Tool Registry
@@ -119,7 +120,7 @@ export async function callMCPTool<T = unknown>(
   } catch (error) {
     // Wrap and re-throw with context
     throw new MCPClientError(
-      `Failed to execute MCP tool '${toolName}': ${error instanceof Error ? error.message : String(error)}`,
+      `Failed to execute MCP tool '${toolName}': ${errorDetail(error)}`,
       toolName,
       error instanceof Error ? error : undefined
     );

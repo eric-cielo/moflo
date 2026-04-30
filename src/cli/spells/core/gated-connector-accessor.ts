@@ -8,6 +8,7 @@
 
 import type { ConnectorAccessor, ConnectorView, ConnectorOutput, ConnectorCapability } from '../types/spell-connector.types.js';
 import type { ICapabilityGateway } from './capability-gateway.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 export class GatedConnectorAccessor implements ConnectorAccessor {
   constructor(
@@ -35,7 +36,7 @@ export class GatedConnectorAccessor implements ConnectorAccessor {
       return {
         success: false,
         data: {},
-        error: `Connector "${connectorName}" blocked by capability gateway: ${err instanceof Error ? err.message : String(err)}`,
+        error: `Connector "${connectorName}" blocked by capability gateway: ${errorDetail(err)}`,
       };
     }
 

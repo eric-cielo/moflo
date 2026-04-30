@@ -20,6 +20,7 @@ import type {
 } from '../types/step-command.types.js';
 import type { YamlStepDefinition, YamlInputDef, YamlAction } from '../loaders/yaml-step-loader.js';
 import { shellEscapeValue } from '../core/interpolation.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 export interface CompositeStepConfig extends StepConfig {
   readonly [key: string]: unknown;
@@ -73,7 +74,7 @@ export function createCompositeCommand(def: YamlStepDefinition): StepCommand<Com
             };
           }
         } catch (err) {
-          const errorMsg = err instanceof Error ? err.message : String(err);
+          const errorMsg = errorDetail(err);
           results.push({
             index: i,
             tool: action.tool,

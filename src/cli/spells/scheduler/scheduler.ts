@@ -16,6 +16,7 @@ import type {
 } from './schedule.types.js';
 import { computeNextRun } from './cron-parser.js';
 import { compareMofloLevels } from '../core/capability-validator.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 // ============================================================================
 // Constants
@@ -505,7 +506,7 @@ export class SpellScheduler {
         ...initial,
         completedAt,
         success: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: errorDetail(err),
         duration: completedAt - now,
       };
       await this.memory.write(NAMESPACE_EXECUTIONS, executionId, finalRecord);

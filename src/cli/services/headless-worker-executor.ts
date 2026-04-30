@@ -24,6 +24,7 @@ import { EventEmitter } from 'events';
 import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'fs';
 import { join, relative } from 'path';
 import type { WorkerType } from './worker-daemon.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // ============================================
 // Type Definitions
@@ -967,7 +968,7 @@ export class HeadlessWorkerExecutor extends EventEmitter {
       this.emit('complete', executionResult);
       return executionResult;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = errorDetail(error);
       const executionResult = this.createErrorResult(workerType, errorMessage);
       executionResult.executionId = executionId;
       executionResult.durationMs = Date.now() - startTime;

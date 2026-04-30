@@ -33,6 +33,7 @@ import {
   type InboxEmail,
 } from './local-outlook.js';
 import { loadOptional } from './shared/optional-import.js';
+import { errorDetail } from '../../shared/utils/error-detail.js';
 
 const IMAP_INSTALL_MSG =
   "IMAP connector requires 'imapflow' and 'mailparser' to be installed. Run: npm i imapflow mailparser";
@@ -400,7 +401,7 @@ export function createImapConnector(): SpellConnector {
         return {
           success: false,
           data: {},
-          error: `imap: ${err instanceof Error ? err.message : String(err)}`,
+          error: `imap: ${errorDetail(err)}`,
           duration: Date.now() - start,
         };
       }

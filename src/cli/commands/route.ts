@@ -13,6 +13,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 import {
   createQLearningRouter,
   isMovectorAvailable,
@@ -235,7 +236,7 @@ const routeTaskCommand: Command = {
       return { success: true, data: { agentId: result.route, result } };
     } catch (error) {
       spinner.fail('Routing failed');
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -295,7 +296,7 @@ const listAgentsCommand: Command = {
 
       return { success: true, data: AGENT_TYPES };
     } catch (error) {
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -367,7 +368,7 @@ const statsCommand: Command = {
 
       return { success: true, data: { stats, backend: backendStatus } };
     } catch (error) {
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -450,7 +451,7 @@ const feedbackCommand: Command = {
 
       return { success: true, data: { tdError } };
     } catch (error) {
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -491,7 +492,7 @@ const resetCommand: Command = {
       output.printSuccess('Q-Learning router state has been reset');
       return { success: true };
     } catch (error) {
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -533,7 +534,7 @@ const exportCommand: Command = {
 
       return { success: true, data };
     } catch (error) {
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -575,7 +576,7 @@ const importCommand: Command = {
 
       return { success: true };
     } catch (error) {
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
@@ -802,7 +803,7 @@ const coverageRouteCommand: Command = {
       return { success: true, data: routeResult };
     } catch (error) {
       spinner.fail('Coverage analysis failed');
-      output.printError(error instanceof Error ? error.message : String(error));
+      output.printError(errorDetail(error));
       return { success: false, exitCode: 1 };
     }
   },
