@@ -9,14 +9,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { githubCliConnector, validateGitHubAction, VALID_ACTIONS } from '../../spells/connectors/github-cli.js';
 
 // ============================================================================
-// Mock child_process (exec + execFile for prerequisite-checker)
+// Mock child_process — exec + execFile
 // ============================================================================
 
 type ExecCallback = (error: Error | null, stdout: string, stderr: string) => void;
+type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
 
 let mockExecResult: { stdout: string; stderr: string; exitCode: number } = {
   stdout: '', stderr: '', exitCode: 0,
 };
+
+interface CapturedCall {
+  file: string;
+  args: string[];
+}
+const capturedExecFileCalls: CapturedCall[] = [];
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
@@ -36,11 +43,35 @@ vi.mock('node:child_process', async (importOriginal) => {
       });
       return child;
     },
+    // execFile has overloads with and without an `options` arg. The
+    // callback is always the last argument; everything before is positional.
+    execFile: (file: string, args: string[], optsOrCb: unknown, maybeCb?: ExecFileCallback) => {
+      const callback = (typeof optsOrCb === 'function' ? optsOrCb : maybeCb) as ExecFileCallback;
+      capturedExecFileCalls.push({ file, args: [...args] });
+      const child = {
+        exitCode: mockExecResult.exitCode,
+        kill: vi.fn(),
+      };
+      if (typeof callback === 'function') {
+        process.nextTick(() => {
+          callback(
+            mockExecResult.exitCode !== 0 ? new Error('command failed') : null,
+            mockExecResult.stdout,
+            mockExecResult.stderr,
+          );
+        });
+      }
+      return child;
+    },
   };
 });
 
 function setMockResult(stdout: string, exitCode = 0, stderr = '') {
   mockExecResult = { stdout, stderr, exitCode };
+}
+
+function lastExecFileCall(): CapturedCall | undefined {
+  return capturedExecFileCalls[capturedExecFileCalls.length - 1];
 }
 
 // ============================================================================
@@ -151,6 +182,7 @@ describe('githubCliConnector — validateGitHubAction', () => {
 describe('githubCliConnector — execute', () => {
   beforeEach(() => {
     setMockResult('', 0);
+    capturedExecFileCalls.length = 0;
   });
 
   afterEach(() => {
@@ -239,5 +271,64 @@ describe('githubCliConnector — execute', () => {
     const output = await githubCliConnector.execute('issue-fetch', {});
     expect(output.success).toBe(false);
     expect(output.error).toContain('issue number');
+  });
+});
+
+// ============================================================================
+// Multi-line bodies must pass through argv verbatim (no shell escaping)
+// ============================================================================
+
+describe('githubCliConnector — multi-line body integrity', () => {
+  beforeEach(() => {
+    setMockResult('', 0);
+    capturedExecFileCalls.length = 0;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const multiLineBody = '## Epic #287\n\nConsolidated PR for all stories.\n\nCloses #284 Closes #285 Closes #286 Closes #287';
+
+  it('pr-create passes multi-line body verbatim as a single argv element', async () => {
+    setMockResult('https://github.com/org/repo/pull/99');
+    await githubCliConnector.execute('pr-create', { title: 'feat: epic #287', body: multiLineBody });
+
+    const call = lastExecFileCall();
+    expect(call).toBeDefined();
+    expect(call!.file).toBe('gh');
+    const bodyIdx = call!.args.indexOf('--body');
+    expect(bodyIdx).toBeGreaterThan(-1);
+    expect(call!.args[bodyIdx + 1]).toBe(multiLineBody);
+  });
+
+  it('issue-edit passes multi-line body verbatim', async () => {
+    setMockResult('');
+    await githubCliConnector.execute('issue-edit', { issue: 287, body: multiLineBody });
+
+    const call = lastExecFileCall();
+    expect(call).toBeDefined();
+    const bodyIdx = call!.args.indexOf('--body');
+    expect(call!.args[bodyIdx + 1]).toBe(multiLineBody);
+  });
+
+  it('comment passes multi-line body verbatim', async () => {
+    setMockResult('');
+    await githubCliConnector.execute('comment', { issue: 287, body: multiLineBody });
+
+    const call = lastExecFileCall();
+    expect(call).toBeDefined();
+    const bodyIdx = call!.args.indexOf('--body');
+    expect(call!.args[bodyIdx + 1]).toBe(multiLineBody);
+  });
+
+  it('does not invoke a shell — arguments containing shell metacharacters are not interpreted', async () => {
+    setMockResult('https://github.com/org/repo/pull/100');
+    const trickyBody = 'line1\n& whoami\n| cat\n"quoted" $VAR `subshell`';
+    await githubCliConnector.execute('pr-create', { title: 'test', body: trickyBody });
+
+    const call = lastExecFileCall();
+    const bodyIdx = call!.args.indexOf('--body');
+    expect(call!.args[bodyIdx + 1]).toBe(trickyBody);
   });
 });

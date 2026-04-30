@@ -23,8 +23,7 @@ import type {
 import { interpolateString } from '../core/interpolation.js';
 import { commandExists } from '../core/prerequisite-checker.js';
 import {
-  execAsync,
-  escapeShellArg,
+  execFileAsync,
   validateGitHubAction,
   githubCliConnector,
   VALID_ACTIONS,
@@ -68,7 +67,7 @@ const githubPrerequisites: readonly Prerequisite[] = [
     name: 'gh-auth',
     check: async () => {
       try {
-        const result = await execAsync('gh auth status', 5000);
+        const result = await execFileAsync('gh', ['auth', 'status'], 5000);
         return result.exitCode === 0;
       } catch {
         return false;
@@ -91,7 +90,7 @@ const githubPreflights: readonly PreflightCheck<GitHubStepConfig>[] = [
       if (typeof config.issue !== 'number') return { passed: true };
       // Skip for create-type actions that don't require the issue to exist.
       if (config.action === 'issue-edit' || config.action === 'issue-fetch' || config.action === 'comment' || config.action === 'label') {
-        const result = await execAsync(`gh issue view ${config.issue} --json number`, 5000);
+        const result = await execFileAsync('gh', ['issue', 'view', String(config.issue), '--json', 'number'], 5000);
         if (result.exitCode === 0) return { passed: true };
         return { passed: false, reason: `issue #${config.issue} not found or not accessible` };
       }
@@ -103,7 +102,7 @@ const githubPreflights: readonly PreflightCheck<GitHubStepConfig>[] = [
     check: async (config) => {
       if (typeof config.pr !== 'number') return { passed: true };
       if (config.action === 'pr-merge' || config.action === 'pr-find') {
-        const result = await execAsync(`gh pr view ${config.pr} --json number`, 5000);
+        const result = await execFileAsync('gh', ['pr', 'view', String(config.pr), '--json', 'number'], 5000);
         if (result.exitCode === 0) return { passed: true };
         return { passed: false, reason: `PR #${config.pr} not found or not accessible` };
       }
@@ -210,7 +209,7 @@ export const githubCommand: StepCommand<GitHubStepConfig> = {
   async rollback(config: GitHubStepConfig): Promise<void> {
     if (config.action !== 'pr-create') return;
     if (config.head) {
-      await execAsync(`gh pr close ${escapeShellArg(config.head)}`);
+      await execFileAsync('gh', ['pr', 'close', config.head]);
     }
   },
 };
