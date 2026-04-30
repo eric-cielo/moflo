@@ -342,7 +342,31 @@ try {
       /** Copy src → dest if src exists, record in manifest. */
       function syncFile(src, dest, manifestKey) {
         if (existsSync(src)) {
-          try { copyFileSync(src, dest); currentManifest.push(manifestKey); } catch { /* non-fatal */ }
+          try {
+            mkdirSync(dirname(dest), { recursive: true });
+            copyFileSync(src, dest);
+            currentManifest.push(manifestKey);
+          } catch { /* non-fatal */ }
+        }
+      }
+
+      /** Recursively mirror srcRoot → destRoot, recording every file under
+       *  manifestPrefix. Subdirectories are created on demand. Used for
+       *  bin/lib, bin/migrations, and any other shipped tree that may grow
+       *  nested files (e.g. migrations/lib/markers.mjs — #777). */
+      function syncTree(srcRoot, destRoot, manifestPrefix) {
+        if (!existsSync(srcRoot)) return;
+        let entries;
+        try {
+          entries = readdirSync(srcRoot, { recursive: true, withFileTypes: true });
+        } catch { return; }
+        for (const entry of entries) {
+          if (!entry.isFile()) continue;
+          // Node ≥20: parentPath; older ABIs use path. Both are absolute.
+          const parent = entry.parentPath || entry.path || srcRoot;
+          const abs = resolve(parent, entry.name);
+          const rel = abs.slice(srcRoot.length + 1).split(/[\\/]/).join('/');
+          syncFile(abs, resolve(destRoot, rel), `${manifestPrefix}/${rel}`);
         }
       }
 
@@ -362,26 +386,13 @@ try {
         // Sync lib/ subdirectory (process-manager.mjs, registry-cleanup.cjs, etc.)
         // hooks.mjs imports ./lib/process-manager.mjs — without this, session-start
         // silently fails and the daemon, indexer, and pretrain never run.
-        const libSrcDir = resolve(binDir, 'lib');
-        const libDestDir = resolve(scriptsDir, 'lib');
-        if (existsSync(libSrcDir)) {
-          if (!existsSync(libDestDir)) mkdirSync(libDestDir, { recursive: true });
-          for (const file of readdirSync(libSrcDir)) {
-            syncFile(resolve(libSrcDir, file), resolve(libDestDir, file), `.claude/scripts/lib/${file}`);
-          }
-        }
+        syncTree(resolve(binDir, 'lib'), resolve(scriptsDir, 'lib'), '.claude/scripts/lib');
 
-        // Sync migrations/ subdirectory. run-migrations.mjs imports each
-        // module by directory walk — without this the runner finds no
-        // migrations on a script-synced consumer.
-        const migrationsSrcDir = resolve(binDir, 'migrations');
-        const migrationsDestDir = resolve(scriptsDir, 'migrations');
-        if (existsSync(migrationsSrcDir)) {
-          if (!existsSync(migrationsDestDir)) mkdirSync(migrationsDestDir, { recursive: true });
-          for (const file of readdirSync(migrationsSrcDir)) {
-            syncFile(resolve(migrationsSrcDir, file), resolve(migrationsDestDir, file), `.claude/scripts/migrations/${file}`);
-          }
-        }
+        // Sync migrations/ subdirectory recursively. The migrations import
+        // shared markers from ./lib/markers.mjs — a flat readdir loop here
+        // dropped that dependency, breaking run-migrations on every consumer
+        // (#777).
+        syncTree(resolve(binDir, 'migrations'), resolve(scriptsDir, 'migrations'), '.claude/scripts/migrations');
       }
 
       // Sync helpers from bin/ and source .claude/helpers/
