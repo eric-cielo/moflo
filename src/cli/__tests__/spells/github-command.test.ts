@@ -16,6 +16,7 @@ import { ALLOW_ALL_GATEWAY } from './helpers.js';
 // ============================================================================
 
 type ExecCallback = (error: Error | null, stdout: string, stderr: string) => void;
+type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
 
 let mockExecResult: { stdout: string; stderr: string; exitCode: number } = {
   stdout: '', stderr: '', exitCode: 0,
@@ -37,6 +38,23 @@ vi.mock('node:child_process', async (importOriginal) => {
           mockExecResult.stderr,
         );
       });
+      return child;
+    },
+    execFile: (_file: string, _args: string[], optsOrCb: unknown, maybeCb?: ExecFileCallback) => {
+      const callback = (typeof optsOrCb === 'function' ? optsOrCb : maybeCb) as ExecFileCallback;
+      const child = {
+        exitCode: mockExecResult.exitCode,
+        kill: vi.fn(),
+      };
+      if (typeof callback === 'function') {
+        process.nextTick(() => {
+          callback(
+            mockExecResult.exitCode !== 0 ? new Error('command failed') : null,
+            mockExecResult.stdout,
+            mockExecResult.stderr,
+          );
+        });
+      }
       return child;
     },
   };

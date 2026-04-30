@@ -11,10 +11,9 @@
 
 import type { SpellConnector, ConnectorAction, ConnectorOutput } from '../types/spell-connector.types.js';
 import { commandExists } from '../core/prerequisite-checker.js';
-import { execAsync, escapeShellArg } from '../core/shell.js';
+import { execFileAsync } from '../core/shell.js';
 
-// Re-export shell utilities for consumers that imported from here
-export { execAsync, escapeShellArg, type ExecResult } from '../core/shell.js';
+export { execFileAsync, type ExecResult } from '../core/shell.js';
 
 // ============================================================================
 // Types
@@ -44,30 +43,30 @@ const VALID_MERGE_METHODS = ['squash', 'merge', 'rebase'] as const;
 async function executeIssueFetch(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
   const issue = params.issue as number;
   const fields = (params.fields as string[])?.join(',') || 'number,title,body,labels,state,assignees';
-  const result = await execAsync(`gh issue view ${issue} --json ${fields}`);
+  const result = await execFileAsync('gh', ['issue', 'view', String(issue), '--json', fields]);
   if (result.exitCode !== 0) {
     return { success: false, data: {}, error: result.stderr || `Failed to fetch issue #${issue}`, duration: Date.now() - start };
   }
   return { success: true, data: JSON.parse(result.stdout), duration: Date.now() - start };
 }
 
-function appendLabelArgs(args: string[], labels: { add?: string[]; remove?: string[] } | undefined): void {
+function appendLabelArgv(argv: string[], labels: { add?: string[]; remove?: string[] } | undefined): void {
   if (labels?.add) {
-    for (const l of labels.add) args.push(`--add-label ${escapeShellArg(l)}`);
+    for (const l of labels.add) argv.push('--add-label', l);
   }
   if (labels?.remove) {
-    for (const l of labels.remove) args.push(`--remove-label ${escapeShellArg(l)}`);
+    for (const l of labels.remove) argv.push('--remove-label', l);
   }
 }
 
 async function executeIssueEdit(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
   const issue = params.issue as number;
-  const args: string[] = [`gh issue edit ${issue}`];
-  if (params.title) args.push(`--title ${escapeShellArg(params.title as string)}`);
-  if (params.body) args.push(`--body ${escapeShellArg(params.body as string)}`);
-  appendLabelArgs(args, params.labels as { add?: string[]; remove?: string[] } | undefined);
+  const argv: string[] = ['issue', 'edit', String(issue)];
+  if (params.title) argv.push('--title', params.title as string);
+  if (params.body) argv.push('--body', params.body as string);
+  appendLabelArgv(argv, params.labels as { add?: string[]; remove?: string[] } | undefined);
 
-  const result = await execAsync(args.join(' '));
+  const result = await execFileAsync('gh', argv);
   if (result.exitCode !== 0) {
     return { success: false, data: {}, error: result.stderr || `Failed to edit issue #${issue}`, duration: Date.now() - start };
   }
@@ -75,22 +74,21 @@ async function executeIssueEdit(params: Record<string, unknown>, start: number):
 }
 
 async function executePrCreate(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
-  const args: string[] = ['gh pr create'];
-  args.push(`--title ${escapeShellArg(params.title as string)}`);
-  if (params.body) args.push(`--body ${escapeShellArg(params.body as string)}`);
-  if (params.base) args.push(`--base ${escapeShellArg(params.base as string)}`);
-  if (params.head) args.push(`--head ${escapeShellArg(params.head as string)}`);
+  const argv: string[] = ['pr', 'create', '--title', params.title as string];
+  if (params.body) argv.push('--body', params.body as string);
+  if (params.base) argv.push('--base', params.base as string);
+  if (params.head) argv.push('--head', params.head as string);
   const labels = params.labels as { add?: string[] } | undefined;
   if (labels?.add) {
-    for (const l of labels.add) args.push(`--label ${escapeShellArg(l)}`);
+    for (const l of labels.add) argv.push('--label', l);
   }
 
-  const result = await execAsync(args.join(' '), 60000);
+  const result = await execFileAsync('gh', argv, 60000);
   if (result.exitCode !== 0) {
     return { success: false, data: {}, error: result.stderr || 'Failed to create PR', duration: Date.now() - start };
   }
 
-  const prUrl = result.stdout.trim();
+  const prUrl = result.stdout;
   const prNumber = parseInt(prUrl.match(/\/pull\/(\d+)/)?.[1] ?? '0', 10);
   return { success: true, data: { prUrl, prNumber }, duration: Date.now() - start };
 }
@@ -98,12 +96,11 @@ async function executePrCreate(params: Record<string, unknown>, start: number): 
 async function executePrMerge(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
   const prRef = (params.pr ?? params.issue) as number;
   const mergeMethod = (params.mergeMethod as string) ?? 'squash';
-  const args: string[] = [`gh pr merge ${prRef}`];
-  args.push(`--${mergeMethod}`);
-  if (params.deleteBranch !== false) args.push('--delete-branch');
-  if (params.admin) args.push('--admin');
+  const argv: string[] = ['pr', 'merge', String(prRef), `--${mergeMethod}`];
+  if (params.deleteBranch !== false) argv.push('--delete-branch');
+  if (params.admin) argv.push('--admin');
 
-  const result = await execAsync(args.join(' '), 60000);
+  const result = await execFileAsync('gh', argv, 60000);
   if (result.exitCode !== 0) {
     return { success: false, data: {}, error: result.stderr || `Failed to merge PR #${prRef}`, duration: Date.now() - start };
   }
@@ -111,14 +108,14 @@ async function executePrMerge(params: Record<string, unknown>, start: number): P
 }
 
 async function executePrFind(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
-  let cmd: string;
+  const argv: string[] = ['pr', 'list'];
   if (params.head) {
-    cmd = `gh pr list --head ${escapeShellArg(params.head as string)} --json number,title,state,url --limit 1`;
+    argv.push('--head', params.head as string, '--json', 'number,title,state,url', '--limit', '1');
   } else {
-    cmd = `gh pr list --search ${escapeShellArg(params.search as string)} --json number,title,state,url --limit 10`;
+    argv.push('--search', params.search as string, '--json', 'number,title,state,url', '--limit', '10');
   }
 
-  const result = await execAsync(cmd);
+  const result = await execFileAsync('gh', argv);
   if (result.exitCode !== 0) {
     return { success: false, data: {}, error: result.stderr || 'Failed to find PR', duration: Date.now() - start };
   }
@@ -129,10 +126,10 @@ async function executePrFind(params: Record<string, unknown>, start: number): Pr
 
 async function executeLabel(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
   const ref = (params.issue ?? params.pr) as number;
-  const args: string[] = [`gh issue edit ${ref}`];
-  appendLabelArgs(args, params.labels as { add?: string[]; remove?: string[] } | undefined);
+  const argv: string[] = ['issue', 'edit', String(ref)];
+  appendLabelArgv(argv, params.labels as { add?: string[]; remove?: string[] } | undefined);
 
-  const result = await execAsync(args.join(' '));
+  const result = await execFileAsync('gh', argv);
   if (result.exitCode !== 0) {
     return { success: false, data: {}, error: result.stderr || `Failed to update labels for #${ref}`, duration: Date.now() - start };
   }
@@ -143,7 +140,7 @@ async function executeLabel(params: Record<string, unknown>, start: number): Pro
 async function executeComment(params: Record<string, unknown>, start: number): Promise<ConnectorOutput> {
   const ref = (params.issue ?? params.pr) as number;
   const body = params.body as string;
-  const result = await execAsync(`gh issue comment ${ref} --body ${escapeShellArg(body)}`);
+  const result = await execFileAsync('gh', ['issue', 'comment', String(ref), '--body', body]);
   if (result.exitCode !== 0) {
     return { success: false, data: {}, error: result.stderr || `Failed to comment on #${ref}`, duration: Date.now() - start };
   }
@@ -151,7 +148,7 @@ async function executeComment(params: Record<string, unknown>, start: number): P
 }
 
 async function executeRepoInfo(start: number): Promise<ConnectorOutput> {
-  const result = await execAsync('gh repo view --json name,owner,url,defaultBranchRef,description');
+  const result = await execFileAsync('gh', ['repo', 'view', '--json', 'name,owner,url,defaultBranchRef,description']);
   if (result.exitCode !== 0) {
     return { success: false, data: {}, error: result.stderr || 'Failed to get repo info', duration: Date.now() - start };
   }
@@ -329,7 +326,7 @@ export const githubCliConnector: SpellConnector = {
     if (!ghInstalled) {
       throw new Error('GitHub CLI (gh) is not installed. Install from https://cli.github.com');
     }
-    const authResult = await execAsync('gh auth status', 5000);
+    const authResult = await execFileAsync('gh', ['auth', 'status'], 5000);
     if (authResult.exitCode !== 0) {
       throw new Error('GitHub CLI is not authenticated. Run: gh auth login');
     }

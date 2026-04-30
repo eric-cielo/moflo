@@ -6,7 +6,7 @@
  * that need CLI execution.
  */
 
-import { exec } from 'node:child_process';
+import { exec, execFile } from 'node:child_process';
 
 // ============================================================================
 // Types
@@ -38,6 +38,34 @@ export function execAsync(command: string, timeout = 30000): Promise<ExecResult>
         exitCode: child.exitCode ?? (error ? 1 : 0),
       });
     });
+  });
+}
+
+/**
+ * Spawn a binary with an argv array — no shell, no escaping required.
+ * Use this whenever an argument may contain newlines, quotes, or other
+ * shell metacharacters. cmd.exe treats embedded `\n` in shell-mode
+ * strings as a command separator regardless of quoting, so any gh/git
+ * command that carries a multi-line body must go through this path.
+ */
+export function execFileAsync(
+  file: string,
+  args: readonly string[],
+  timeout = 30000,
+): Promise<ExecResult> {
+  return new Promise((resolve) => {
+    const child = execFile(
+      file,
+      args,
+      { timeout, windowsHide: true, encoding: 'utf8' },
+      (error, stdout, stderr) => {
+        resolve({
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          exitCode: child.exitCode ?? (error ? 1 : 0),
+        });
+      },
+    );
   });
 }
 
