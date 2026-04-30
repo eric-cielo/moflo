@@ -248,14 +248,14 @@ async function spawnClaudeCodeInstance(
       output.writeln(output.dim('Falling back to displaying instructions...'));
     }
 
-    const dryRun = flags.dryRun || flags['dry-run'];
+    const dryRun = flags.dryRun;
 
     if (claudeAvailable && !dryRun) {
       // Build arguments - flags first, then prompt
       const claudeArgs: string[] = [];
 
       // Check for non-interactive mode
-      const isNonInteractive = flags['non-interactive'] || flags.nonInteractive;
+      const isNonInteractive = flags.nonInteractive;
       if (isNonInteractive) {
         claudeArgs.push('-p'); // Print mode
         claudeArgs.push('--output-format', 'stream-json');
@@ -268,9 +268,9 @@ async function spawnClaudeCodeInstance(
       // explicitly set to 'autonomous' via flag. Non-interactive mode is
       // required for headless execution, so --dangerously-skip-permissions
       // is always included — but --allowedTools restricts the blast radius.
-      const noAutoPerms = flags['no-auto-permissions'];
+      const noAutoPerms = flags.noAutoPermissions;
       if (!noAutoPerms) {
-        const permLevel = (flags['permission-level'] as string) ?? 'elevated';
+        const permLevel = (flags.permissionLevel as string) ?? 'elevated';
         const resolved = resolvePermissions(permLevel);
         claudeArgs.push(...resolved.cliArgs);
       }
@@ -446,9 +446,9 @@ const initCommand: Command = {
     const config = {
       topology: topology || 'hierarchical-mesh',
       consensus: consensus || 'byzantine',
-      maxAgents: (ctx.flags.maxAgents ?? ctx.flags['max-agents']) as number || 15,
+      maxAgents: ctx.flags.maxAgents as number || 15,
       persist: ctx.flags.persist as boolean,
-      memoryBackend: (ctx.flags.memoryBackend ?? ctx.flags['memory-backend']) as string || 'hybrid'
+      memoryBackend: ctx.flags.memoryBackend as string || 'hybrid'
     };
 
     output.writeln();
@@ -1092,7 +1092,7 @@ const joinCommand: Command = {
     { name: 'role', short: 'r', description: 'Agent role (worker, specialist, scout)', type: 'string', default: 'worker' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const agentId = ctx.args[0] || ctx.flags['agent-id'] as string || ctx.flags.agentId as string;
+    const agentId = ctx.args[0] || ctx.flags.agentId as string;
     if (!agentId) {
       output.printError('Agent ID is required. Use --agent-id or -a flag, or provide as argument.');
       return { success: false, exitCode: 1 };
@@ -1112,7 +1112,7 @@ const leaveCommand: Command = {
   description: 'Remove an agent from the hive mind',
   options: [{ name: 'agent-id', short: 'a', description: 'Agent ID to remove', type: 'string' }],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const agentId = ctx.args[0] || ctx.flags['agent-id'] as string || ctx.flags.agentId as string;
+    const agentId = ctx.args[0] || ctx.flags.agentId as string;
     if (!agentId) { output.printError('Agent ID required.'); return { success: false, exitCode: 1 }; }
     try {
       const result = await callMCPTool<{ success: boolean; agentId: string; remainingWorkers: number; error?: string }>('hive-mind_leave', { agentId });

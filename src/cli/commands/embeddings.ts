@@ -124,7 +124,7 @@ const searchCommand: Command = {
     const namespace = ctx.flags.collection as string || 'default';
     const limit = parseInt(ctx.flags.limit as string || '10', 10);
     const threshold = parseFloat(ctx.flags.threshold as string || '0.5');
-    const dbPath = ctx.flags['db-path'] as string || memoryDbPath(process.cwd());
+    const dbPath = ctx.flags.dbPath as string || memoryDbPath(process.cwd());
 
     if (!query) {
       output.printError('Query is required');
@@ -410,7 +410,7 @@ const collectionsCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const action = ctx.flags.action as string || 'list';
-    const dbPath = ctx.flags['db-path'] as string || memoryDbPath(process.cwd());
+    const dbPath = ctx.flags.dbPath as string || memoryDbPath(process.cwd());
 
     output.writeln();
     output.writeln(output.bold('Embedding Collections (Namespaces)'));
@@ -531,7 +531,7 @@ const indexCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const action = ctx.flags.action as string || 'status';
     const collection = ctx.flags.collection as string;
-    const efConstruction = parseInt(ctx.flags['ef-construction'] as string || '200', 10);
+    const efConstruction = parseInt(ctx.flags.efConstruction as string || '200', 10);
     const m = parseInt(ctx.flags.m as string || '16', 10);
 
     output.writeln();
@@ -685,12 +685,10 @@ export const initCommand: Command = {
     const hyperbolic = ctx.flags.hyperbolic !== false;
     const force = ctx.flags.force === true;
 
-    // Parse curvature - handle both kebab-case and direct value
     const curvatureRaw = ctx.flags.curvature as string || '-1';
     const curvature = parseFloat(curvatureRaw);
 
-    // Parse cache-size - check both kebab-case and camelCase
-    const cacheSizeRaw = (ctx.flags['cache-size'] || ctx.flags.cacheSize || '256') as string;
+    const cacheSizeRaw = (ctx.flags.cacheSize || '256') as string;
     const cacheSize = parseInt(cacheSizeRaw, 10);
 
     output.writeln();
@@ -858,7 +856,7 @@ const chunkCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const text = ctx.flags.text as string || '';
-    const maxSize = parseInt(ctx.flags['max-size'] as string || '512', 10);
+    const maxSize = parseInt(ctx.flags.maxSize as string || '512', 10);
     const overlap = parseInt(ctx.flags.overlap as string || '50', 10);
     const strategy = ctx.flags.strategy as string || 'sentence';
 
@@ -1061,9 +1059,9 @@ const neuralCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const feature = ctx.flags.feature as string || 'all';
     const init = ctx.flags.init as boolean;
-    const driftThreshold = parseFloat((ctx.flags['drift-threshold'] || ctx.flags.driftThreshold || '0.3') as string);
-    const decayRate = parseFloat((ctx.flags['decay-rate'] || ctx.flags.decayRate || '0.01') as string);
-    const consolidationInterval = parseInt((ctx.flags['consolidation-interval'] || ctx.flags.consolidationInterval || '60000') as string, 10);
+    const driftThreshold = parseFloat((ctx.flags.driftThreshold || '0.3') as string);
+    const decayRate = parseFloat((ctx.flags.decayRate || '0.01') as string);
+    const consolidationInterval = parseInt((ctx.flags.consolidationInterval || '60000') as string, 10);
 
     output.writeln();
     output.writeln(output.bold('Neural Embedding Substrate (MoVector)'));
@@ -1275,7 +1273,7 @@ const cacheCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const action = ctx.flags.action as string || 'stats';
-    const dbPath = ctx.flags['db-path'] as string || '.cache/embeddings.db';
+    const dbPath = ctx.flags.dbPath as string || '.cache/embeddings.db';
 
     output.writeln();
     output.writeln(output.bold('Embedding Cache'));
@@ -1495,7 +1493,7 @@ const benchmarkCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const iterations = parseInt(ctx.flags.iterations as string || '10', 10);
-    const batchSize = parseInt(ctx.flags['batch-size'] as string || '5', 10);
+    const batchSize = parseInt(ctx.flags.batchSize as string || '5', 10);
     const full = ctx.flags.full === true;
 
     output.writeln();

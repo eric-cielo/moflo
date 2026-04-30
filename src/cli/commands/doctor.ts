@@ -1310,7 +1310,7 @@ export const doctorCommand: Command = {
     const autoInstall = ctx.flags.install as boolean;
     const component = ctx.flags.component as string;
     const verbose = ctx.flags.verbose as boolean;
-    const killZombies = ctx.flags['kill-zombies'] as boolean;
+    const killZombies = ctx.flags.killZombies as boolean;
     const strict = ctx.flags.strict as boolean;
     // Parser normalises kebab-case flag names to camelCase: `--allow-warn`
     // arrives as `ctx.flags.allowWarn`. Reading the dashed form returns

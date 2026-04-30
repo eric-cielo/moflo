@@ -9,6 +9,7 @@
  *   - Fixed-depth `../../../../modules/<pkg>/...` runtime/type paths (#575)
  *   - `path.resolve|join(<anchor>, '..', '..', ...)` traversal that bakes in
  *     fragile dist/source depth assumptions (#781 / #782 — use mofloPath())
+ *   - `ctx.flags['kebab-case']` reads — parser stores camelCase only (#787)
  *
  * Each rule cluster has its own selectors block — keep new clusters
  * similarly delineated so the file stays scannable.
@@ -171,6 +172,41 @@ const SILENT_WARN_CATCH_SELECTORS = [
   },
 ];
 
+// Issue #787: ban `ctx.flags['kebab-case']` (and bare `flags['kebab-case']`)
+// reads. The parser at src/cli/parser.ts normalises every flag name from
+// kebab-case to camelCase before storing in ctx.flags, so the dashed lookup
+// is always undefined — silently disabling the flag instead of failing loud.
+// Hit during epic #781 when `--allow-warn` did nothing across CI runs because
+// it was being read as `ctx.flags['allow-warn']` instead of `ctx.flags.allowWarn`.
+//
+// Selector matches a MemberExpression whose .property is a string literal
+// containing a hyphen (the kebab marker), and whose .object's .property name
+// is `flags`. That covers `ctx.flags['x-y']`, `result.flags['x-y']`, and the
+// destructured `const { flags } = ctx; flags['x-y']` form.
+//
+// Allowed: camelCase string-key access (`ctx.flags['someKey']`) — useful when
+// the flag name is dynamic or when reserved-word keys force bracket notation.
+const KEBAB_FLAG_READ_MESSAGE =
+  'ctx.flags["<kebab-case>"] is always undefined — the parser normalises ' +
+  'kebab-case flag names to camelCase before storing (#787). Read as ' +
+  'ctx.flags.<camelCase> instead (e.g. `ctx.flags.allowWarn`, not ' +
+  '`ctx.flags["allow-warn"]`).';
+
+const KEBAB_FLAG_READ_SELECTORS = [
+  {
+    selector:
+      `MemberExpression[computed=true][object.property.name='flags']` +
+      `[property.type='Literal'][property.value=/-/]`,
+    message: KEBAB_FLAG_READ_MESSAGE,
+  },
+  {
+    selector:
+      `MemberExpression[computed=true][object.name='flags']` +
+      `[property.type='Literal'][property.value=/-/]`,
+    message: KEBAB_FLAG_READ_MESSAGE,
+  },
+];
+
 // Structural guard: any function that both constructs a Float32Array AND
 // calls charCodeAt is a hash embedding regardless of method name. The
 // identifier ban above missed the inline implementations removed in #542
@@ -214,6 +250,7 @@ const bannedEmbeddingRules = {
     ...FIXED_DEPTH_MODULES_SELECTORS,
     ...PATH_TRAVERSAL_SELECTORS,
     ...SILENT_WARN_CATCH_SELECTORS,
+    ...KEBAB_FLAG_READ_SELECTORS,
   ],
   'no-restricted-imports': [
     'error',
@@ -311,6 +348,7 @@ module.exports = {
           ...FIXED_DEPTH_MODULES_SELECTORS,
           ...PATH_TRAVERSAL_SELECTORS,
           ...SILENT_WARN_CATCH_SELECTORS,
+          ...KEBAB_FLAG_READ_SELECTORS,
         ],
       },
     },
@@ -341,6 +379,7 @@ module.exports = {
           ...RAW_DB_WRITE_SELECTORS,
           ...FIXED_DEPTH_MODULES_SELECTORS,
           ...SILENT_WARN_CATCH_SELECTORS,
+          ...KEBAB_FLAG_READ_SELECTORS,
         ],
       },
     },

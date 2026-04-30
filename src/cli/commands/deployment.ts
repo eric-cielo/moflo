@@ -26,7 +26,7 @@ const deployCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const env = ctx.flags.env as string || 'staging';
     const version = ctx.flags.version as string || 'latest';
-    const dryRun = ctx.flags['dry-run'] as boolean;
+    const dryRun = ctx.flags.dryRun as boolean;
 
     output.writeln();
     output.writeln(output.bold(`Deployment: ${env.toUpperCase()}`));

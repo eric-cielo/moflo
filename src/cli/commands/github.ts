@@ -244,7 +244,7 @@ const ciCommand: Command = {
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const force = ctx.flags.force as boolean;
-    const dryRun = (ctx.flags['dry-run'] || ctx.flags.dryRun) as boolean;
+    const dryRun = ctx.flags.dryRun as boolean;
     const cwd = ctx.cwd;
 
     const config = readProjectConfig(cwd);
@@ -299,11 +299,11 @@ const settingsCommand: Command = {
     { command: 'flo github settings --skip-protection', description: 'Only apply repo-level settings' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const dryRun = (ctx.flags['dry-run'] || ctx.flags.dryRun) as boolean;
-    const skipProtection = (ctx.flags['skip-protection'] || ctx.flags.skipProtection) as boolean;
-    const skipRepo = (ctx.flags['skip-repo'] || ctx.flags.skipRepo) as boolean;
-    const requiredReviews = parseInt((ctx.flags['required-reviews'] || ctx.flags.requiredReviews) as string || '1', 10);
-    const requireCi = (ctx.flags['require-ci'] ?? ctx.flags.requireCi ?? true) as boolean;
+    const dryRun = ctx.flags.dryRun as boolean;
+    const skipProtection = ctx.flags.skipProtection as boolean;
+    const skipRepo = ctx.flags.skipRepo as boolean;
+    const requiredReviews = parseInt(ctx.flags.requiredReviews as string || '1', 10);
+    const requireCi = (ctx.flags.requireCi ?? true) as boolean;
     const cwd = ctx.cwd;
 
     if (!ghAvailable()) {
@@ -487,8 +487,8 @@ const setupCommand: Command = {
     { command: 'flo github setup --skip-ci', description: 'Only apply repo settings' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const dryRun = (ctx.flags['dry-run'] || ctx.flags.dryRun) as boolean;
-    const skipCi = (ctx.flags['skip-ci'] || ctx.flags.skipCi) as boolean;
+    const dryRun = ctx.flags.dryRun as boolean;
+    const skipCi = ctx.flags.skipCi as boolean;
 
     output.writeln();
     output.writeln(output.bold('GitHub Project Setup'));

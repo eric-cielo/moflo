@@ -529,7 +529,7 @@ describe('Start Command', () => {
     });
 
     it('should skip MCP server when requested', async () => {
-      ctx.flags = { 'skip-mcp': true, _: [] };
+      ctx.flags = { skipMcp: true, _: [] };
 
       const result = await startCommand.action!(ctx);
 
@@ -709,7 +709,7 @@ describe('Status Command', () => {
     });
 
     it('should perform health check', async () => { // Skip: requires live MCP context
-      ctx.flags = { 'health-check': true, _: [] };
+      ctx.flags = { healthCheck: true, _: [] };
 
       const result = await statusCommand.action!(ctx);
 

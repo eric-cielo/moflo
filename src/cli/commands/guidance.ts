@@ -106,7 +106,7 @@ const retrieveCommand: Command = {
     const task = ctx.flags.task as string;
     const rootPath = ctx.flags.root as string || './CLAUDE.md';
     const localPath = ctx.flags.local as string | undefined;
-    const maxShards = parseInt(ctx.flags['max-shards'] as string || '5', 10);
+    const maxShards = parseInt(ctx.flags.maxShards as string || '5', 10);
     const intentOverride = ctx.flags.intent as string | undefined;
     const jsonOutput = ctx.flags.json === true;
 
@@ -358,9 +358,9 @@ const optimizeCommand: Command = {
     const rootPath = ctx.flags.root as string || './CLAUDE.md';
     const localPath = ctx.flags.local as string | undefined;
     const applyChanges = ctx.flags.apply === true;
-    const contextSize = (ctx.flags['context-size'] as string || 'standard') as 'compact' | 'standard' | 'full';
-    const targetScore = parseInt(ctx.flags['target-score'] as string || '90', 10);
-    const maxIterations = parseInt(ctx.flags['max-iterations'] as string || '5', 10);
+    const contextSize = (ctx.flags.contextSize as string || 'standard') as 'compact' | 'standard' | 'full';
+    const targetScore = parseInt(ctx.flags.targetScore as string || '90', 10);
+    const maxIterations = parseInt(ctx.flags.maxIterations as string || '5', 10);
     const jsonOutput = ctx.flags.json === true;
 
     output.writeln();
@@ -472,10 +472,10 @@ const abTestCommand: Command = {
     { command: 'claude-flow guidance ab-test --json', description: 'Output full report as JSON' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const configAPath = ctx.flags['config-a'] as string | undefined;
-    const configBPath = ctx.flags['config-b'] as string || './CLAUDE.md';
+    const configAPath = ctx.flags.configA as string | undefined;
+    const configBPath = ctx.flags.configB as string || './CLAUDE.md';
     const tasksPath = ctx.flags.tasks as string | undefined;
-    const workDir = ctx.flags['work-dir'] as string | undefined;
+    const workDir = ctx.flags.workDir as string | undefined;
     const jsonOutput = ctx.flags.json === true;
 
     output.writeln();

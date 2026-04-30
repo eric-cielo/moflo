@@ -113,14 +113,22 @@ describe('CommandParser', () => {
   // normalizeKey (kebab-case to camelCase)
   // -------------------------------------------------------------------------
   describe('key normalization', () => {
-    it('should convert kebab-case keys to camelCase', () => {
+    // #787: parser stores camelCase only, never the kebab form.
+    it('should convert kebab-case keys to camelCase and not store the kebab form', () => {
       const result = parser.parse(['--some-long-flag=yes']);
       expect(result.flags.someLongFlag).toBe('yes');
+      expect(result.flags['some-long-flag']).toBeUndefined();
     });
 
     it('should leave simple keys unchanged', () => {
       const result = parser.parse(['--simple=val']);
       expect(result.flags.simple).toBe('val');
+    });
+
+    it('should normalise --no-<kebab> to camelCase=false (#787)', () => {
+      const result = parser.parse(['--no-some-feature']);
+      expect(result.flags['no-some-feature']).toBeUndefined();
+      expect(result.flags.someFeature).toBe(false);
     });
   });
 

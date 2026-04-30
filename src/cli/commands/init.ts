@@ -33,8 +33,8 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
   const force = ctx.flags.force as boolean;
   const minimal = ctx.flags.minimal as boolean;
   const full = ctx.flags.full as boolean;
-  const skipClaude = ctx.flags['skip-claude'] as boolean;
-  const onlyClaude = ctx.flags['only-claude'] as boolean;
+  const skipClaude = ctx.flags.skipClaude as boolean;
+  const onlyClaude = ctx.flags.onlyClaude as boolean;
   const cwd = ctx.cwd;
 
   // ── MoFlo Project Setup ────────────────────────────────────────────
@@ -179,8 +179,8 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
     }
 
     // Handle --start-all or --start-daemon
-    const startAll = ctx.flags['start-all'] || ctx.flags.startAll;
-    const startDaemon = ctx.flags['start-daemon'] || ctx.flags.startDaemon || startAll;
+    const startAll = ctx.flags.startAll;
+    const startDaemon = ctx.flags.startDaemon || startAll;
 
     if (startDaemon || startAll) {
       output.writeln();
@@ -278,8 +278,8 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
     }
 
     // Handle --with-embeddings
-    const withEmbeddings = ctx.flags['with-embeddings'] || ctx.flags.withEmbeddings;
-    const embeddingModel = (ctx.flags['embedding-model'] || ctx.flags.embeddingModel || 'all-MiniLM-L6-v2') as string;
+    const withEmbeddings = ctx.flags.withEmbeddings;
+    const embeddingModel = (ctx.flags.embeddingModel || 'all-MiniLM-L6-v2') as string;
 
     if (withEmbeddings) {
       output.writeln();
@@ -751,7 +751,7 @@ const upgradeCommand: Command = {
     },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const addMissing = (ctx.flags['add-missing'] || ctx.flags.addMissing) as boolean;
+    const addMissing = ctx.flags.addMissing as boolean;
     const upgradeSettings = (ctx.flags.settings) as boolean;
 
     output.writeln();

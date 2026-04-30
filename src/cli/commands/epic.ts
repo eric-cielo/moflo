@@ -574,8 +574,8 @@ const epicCommand: Command = {
         if (!source) {
           return { success: false, message: 'Usage: flo epic <issue-number> [--strategy] [--no-merge] [--verbose] [--dry-run]' };
         }
-        const dryRun = ctx.flags['dry-run'] === true || ctx.flags['dryRun'] === true;
-        const noMerge = ctx.flags['no-merge'] === true || ctx.flags['noMerge'] === true;
+        const dryRun = ctx.flags.dryRun === true;
+        const noMerge = ctx.flags.noMerge === true;
         const verbose = ctx.flags['verbose'] === true;
         const strategyFlag = ctx.flags['strategy'] as string | undefined;
         let strategy: EpicStrategy = 'single-branch';
