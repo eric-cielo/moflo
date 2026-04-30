@@ -19,6 +19,7 @@ import * as os from 'os';
 import { executeInit, DEFAULT_INIT_OPTIONS } from '../init/index.js';
 import { SKILLS_MAP, AGENTS_MAP } from '../init/executor.js';
 import type { InitOptions } from '../init/types.js';
+import { findRepoRoot } from './_helpers/repo-walk.js';
 
 // ============================================================================
 // Runtime: executeInit doesn't crash on missing map keys
@@ -189,3 +190,31 @@ describe.each(['agents', 'skills'])(
     });
   },
 );
+
+// SCRIPT_MAP divergence guard — the shipped-script list lives in 3 production
+// sites that must agree (#777, #84, feedback_scriptfiles_sync.md).
+describe('shipped script lists agree across all sync sites', () => {
+  const repoRoot = findRepoRoot(import.meta.url);
+
+  function extractScripts(source: string, varName: string): string[] {
+    const re = new RegExp(`const\\s+${varName}[^=]*=\\s*[\\[{]([\\s\\S]*?)[\\]}];`, 'm');
+    const block = source.match(re)?.[1] ?? '';
+    return [...block.matchAll(/['"]([\w.-]+\.mjs)['"]/g)].map(m => m[1]).sort();
+  }
+
+  it('moflo-init.ts SCRIPT_MAP, executor.ts UPGRADE_SCRIPT_MAP, and session-start-launcher.mjs scriptFiles all contain the same files', () => {
+    const initSrc = fs.readFileSync(path.join(repoRoot, 'src/cli/init/moflo-init.ts'), 'utf-8');
+    const executorSrc = fs.readFileSync(path.join(repoRoot, 'src/cli/init/executor.ts'), 'utf-8');
+    const launcherSrc = fs.readFileSync(path.join(repoRoot, 'bin/session-start-launcher.mjs'), 'utf-8');
+
+    const init = extractScripts(initSrc, 'SCRIPT_MAP');
+    const upgrade = extractScripts(executorSrc, 'UPGRADE_SCRIPT_MAP');
+    const launcher = extractScripts(launcherSrc, 'scriptFiles');
+
+    // Guard against a regex break that returns [] from all 3 — would silently
+    // pass the parity check and let real drift through.
+    expect(init.length).toBeGreaterThan(0);
+    expect(init).toEqual(upgrade);
+    expect(init).toEqual(launcher);
+  });
+});

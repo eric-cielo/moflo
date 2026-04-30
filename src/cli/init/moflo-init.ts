@@ -786,15 +786,23 @@ ${MOFLO_MARKER_END}
 // Always overwrite to keep them in sync with the installed moflo version.
 // ============================================================================
 
-const SCRIPT_MAP: Record<string, string> = {
-  'hooks.mjs': 'hooks.mjs',
-  'session-start-launcher.mjs': 'session-start-launcher.mjs',
-  'index-guidance.mjs': 'index-guidance.mjs',
-  'build-embeddings.mjs': 'build-embeddings.mjs',
-  'generate-code-map.mjs': 'generate-code-map.mjs',
-  'semantic-search.mjs': 'semantic-search.mjs',
-  'index-tests.mjs': 'index-tests.mjs',
-};
+// Must mirror UPGRADE_SCRIPT_MAP in src/cli/init/executor.ts and the
+// scriptFiles array in bin/session-start-launcher.mjs — first-init drops any
+// script missing here, and the launcher's manifest cleanup later treats it as
+// orphan residue and deletes it (#777, feedback_scriptfiles_sync.md).
+const SCRIPT_MAP: string[] = [
+  'hooks.mjs',
+  'session-start-launcher.mjs',
+  'index-guidance.mjs',
+  'build-embeddings.mjs',
+  'generate-code-map.mjs',
+  'semantic-search.mjs',
+  'index-tests.mjs',
+  'index-patterns.mjs',
+  'index-all.mjs',
+  'setup-project.mjs',
+  'run-migrations.mjs',
+];
 
 function syncScripts(root: string, force?: boolean): MofloInitResult['steps'][0] {
   const scriptsDir = path.join(root, '.claude', 'scripts');
@@ -815,9 +823,9 @@ function syncScripts(root: string, force?: boolean): MofloInitResult['steps'][0]
   }
 
   let copied = 0;
-  for (const [dest, src] of Object.entries(SCRIPT_MAP)) {
-    const srcPath = path.join(binDir, src);
-    const destPath = path.join(scriptsDir, dest);
+  for (const name of SCRIPT_MAP) {
+    const srcPath = path.join(binDir, name);
+    const destPath = path.join(scriptsDir, name);
 
     if (!fs.existsSync(srcPath)) continue;
 

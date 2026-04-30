@@ -67,7 +67,7 @@ describe('moflo-init.ts test directory support', () => {
     expect(content).toContain('discoverTestDirs(root)');
   });
 
-  it('SCRIPT_MAP includes index-tests.mjs', () => {
-    expect(content).toContain("'index-tests.mjs': 'index-tests.mjs'");
-  });
+  // SCRIPT_MAP membership is asserted strictly in init-copy-maps.test.ts
+  // ('shipped script lists agree across all sync sites'), which extracts the
+  // block and diffs all 3 sync sites — strictly stronger than a loose toContain.
 });
