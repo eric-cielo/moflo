@@ -459,24 +459,24 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
     // Must mirror the list in bin/session-start-launcher.mjs — divergence
     // here means the launcher's drift-repair will delete files this upgrade
     // didn't track, even though they ship in the package (#777).
-    const UPGRADE_SCRIPT_MAP: Record<string, string> = {
-      'hooks.mjs': 'hooks.mjs',
-      'session-start-launcher.mjs': 'session-start-launcher.mjs',
-      'index-guidance.mjs': 'index-guidance.mjs',
-      'build-embeddings.mjs': 'build-embeddings.mjs',
-      'generate-code-map.mjs': 'generate-code-map.mjs',
-      'semantic-search.mjs': 'semantic-search.mjs',
-      'index-tests.mjs': 'index-tests.mjs',
-      'index-patterns.mjs': 'index-patterns.mjs',
-      'index-all.mjs': 'index-all.mjs',
-      'setup-project.mjs': 'setup-project.mjs',
-      'run-migrations.mjs': 'run-migrations.mjs',
-    };
+    const UPGRADE_SCRIPT_MAP: string[] = [
+      'hooks.mjs',
+      'session-start-launcher.mjs',
+      'index-guidance.mjs',
+      'build-embeddings.mjs',
+      'generate-code-map.mjs',
+      'semantic-search.mjs',
+      'index-tests.mjs',
+      'index-patterns.mjs',
+      'index-all.mjs',
+      'setup-project.mjs',
+      'run-migrations.mjs',
+    ];
     const binDir = findMofloBinDir();
     if (binDir) {
-      for (const [destName, srcName] of Object.entries(UPGRADE_SCRIPT_MAP)) {
-        const srcPath = path.join(binDir, srcName);
-        const destPath = path.join(scriptsDir, destName);
+      for (const name of UPGRADE_SCRIPT_MAP) {
+        const srcPath = path.join(binDir, name);
+        const destPath = path.join(scriptsDir, name);
         if (!fs.existsSync(srcPath)) continue;
         try {
           const srcStat = fs.statSync(srcPath);
@@ -490,9 +490,9 @@ export async function executeUpgrade(targetDir: string, _upgradeSettings = false
             fs.copyFileSync(srcPath, destPath);
           }
           if (destExists) {
-            result.updated.push(`.claude/scripts/${destName}`);
+            result.updated.push(`.claude/scripts/${name}`);
           } else {
-            result.created.push(`.claude/scripts/${destName}`);
+            result.created.push(`.claude/scripts/${name}`);
           }
         } catch {
           // Non-fatal — skip individual script on error

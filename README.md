@@ -293,16 +293,16 @@ For simple epics with independent stories, `/flo <epic>` is all you need. For co
 `flo epic` is the robust epic runner — it adds persistent state, resume from failure, and per-story auto-merge on top of `/flo`. It takes a GitHub epic issue number:
 
 ```bash
-flo epic run 42                            # Fetch epic #42, run all stories sequentially
-flo epic run 42 --dry-run                  # Preview execution plan without running
-flo epic run 42 --strategy auto-merge      # Per-story PRs with auto-merge between stories
+flo epic 42                                # Fetch epic #42, run all stories sequentially
+flo epic 42 --dry-run                      # Preview execution plan without running
+flo epic 42 --strategy auto-merge          # Per-story PRs with auto-merge between stories
 flo epic status 42                         # Check progress (which stories passed/failed)
 flo epic reset 42                          # Reset state for re-run
 ```
 
-`flo epic` fetches the epic from GitHub, extracts child stories from checklists, numbered references, and `## Stories` / `## Tasks` sections, then runs each through `/flo` with state tracking. If a story fails, you can fix the issue and `flo epic run 42` again — it resumes from where it left off, skipping already-passed stories.
+`flo epic` fetches the epic from GitHub, extracts child stories from checklists, numbered references, and `## Stories` / `## Tasks` sections, then runs each through `/flo` with state tracking. If a story fails, you can fix the issue and re-run `flo epic 42` — it resumes from where it left off, skipping already-passed stories. (`flo epic run 42` is an explicit alias for the same shorthand.)
 
-| | `/flo <epic>` | `flo epic run <epic>` |
+| | `/flo <epic>` | `flo epic <epic>` |
 |---|---|---|
 | **State tracking** | No | Yes (`epic-state` memory namespace) |
 | **Resume from failure** | No | Yes (skips passed stories) |
@@ -583,7 +583,7 @@ flo --version                    # Show version
 
 ### Hooks (enabled OOTB)
 
-Hooks are shell commands that Claude Code runs automatically at specific points in its lifecycle. MoFlo installs 20 hook bindings across 8 lifecycle events. You don't invoke these — they fire automatically.
+Hooks are shell commands that Claude Code runs automatically at specific points in its lifecycle. MoFlo installs 23 hook bindings across 8 lifecycle events. You don't invoke these — they fire automatically.
 
 | Hook Event | What fires | What it does | Enabled OOTB |
 |------------|-----------|-------------|:---:|
@@ -593,9 +593,12 @@ Hooks are shell commands that Claude Code runs automatically at specific points 
 | **PreToolUse: Bash** | `flo gate check-dangerous-command` | Safety check on shell commands | Yes |
 | **PreToolUse: Bash** | `flo gate check-before-pr` | Validates PR readiness before `gh pr create` | Yes |
 | **PostToolUse: Write/Edit** | `flo hooks post-edit` | Records edit outcome, optionally trains neural patterns | Yes |
+| **PostToolUse: Write/Edit** | `flo gate reset-edit-gates` | Resets edit-related gate state after the write completes | Yes |
 | **PostToolUse: Agent** | `flo hooks post-task` | Records task completion, feeds outcome into routing learner | Yes |
 | **PostToolUse: TaskCreate** | `flo gate record-task-created` | Records that a task was registered (clears TaskCreate gate) | Yes |
 | **PostToolUse: Bash** | `flo gate check-bash-memory` | Detects memory search commands in Bash (clears memory gate) | Yes |
+| **PostToolUse: Bash** | `flo gate record-test-run` | Records test runs from Bash for the test-output gate | Yes |
+| **PostToolUse: Skill** | `flo gate record-skill-run` | Records that a skill was invoked (clears skill-related gates) | Yes |
 | **PostToolUse: memory_search** | `flo gate record-memory-searched` | Records that memory was searched (clears memory-first gate) | Yes |
 | **PostToolUse: TaskUpdate** | `flo gate check-task-transition` | Validates task state transitions (prevents skipping states) | Yes |
 | **PostToolUse: memory_store** | `flo gate record-learnings-stored` | Records that learnings were persisted to memory | Yes |
