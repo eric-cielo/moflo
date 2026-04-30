@@ -314,9 +314,17 @@ export class SpellCaster {
             step, result.output, state.variables, errors, state.options.signal,
             (nested, s) => this.runStep(nested, state, s),
           );
-          result = { ...result, duration: result.duration + (Date.now() - loopStart) };
+          // onStepComplete observers see only result.output.data — they cannot
+          // reach the variables map, so iterationOutputs must be embedded here
+          // or per-iteration output is invisible to verbose handlers.
+          const stepOut = result.output as StepOutput;
+          const loopData = { ...stepOut.data, iterationOutputs: loopResult.outputs };
+          result = {
+            ...result,
+            duration: result.duration + (Date.now() - loopStart),
+            output: { ...stepOut, data: loopData },
+          };
           stepResults[resultIdx] = result;
-          const loopData = { ...(result.output as StepOutput).data, iterationOutputs: loopResult.outputs };
           if (step.output) variables[step.output] = loopData;
           variables[step.id] = loopData;
 
@@ -333,9 +341,15 @@ export class SpellCaster {
             step, result.output as StepOutput, state.variables, errors, state.options.signal,
             (nested, s) => this.runStep(nested, state, s),
           );
-          result = { ...result, duration: result.duration + (Date.now() - parallelStart) };
+          // Same invariant as the loop branch above.
+          const stepOut = result.output as StepOutput;
+          const parallelData = { ...stepOut.data, stepOutputs: parallelResult.outputs };
+          result = {
+            ...result,
+            duration: result.duration + (Date.now() - parallelStart),
+            output: { ...stepOut, data: parallelData },
+          };
           stepResults[resultIdx] = result;
-          const parallelData = { ...(result.output as StepOutput).data, stepOutputs: parallelResult.outputs };
           if (step.output) variables[step.output] = parallelData;
           variables[step.id] = parallelData;
 

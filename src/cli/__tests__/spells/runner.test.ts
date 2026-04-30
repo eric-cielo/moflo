@@ -1176,6 +1176,44 @@ describe('SpellCaster — loop iteration', () => {
     // Duration must include iteration time (~100ms for 2 items x 50ms each)
     expect(loopStep.duration).toBeGreaterThanOrEqual(DELAY_MS * 2 * 0.8);
   });
+
+  // iterationOutputs must reach onStepComplete observers via result.output.data,
+  // not only via the variables map — observers don't have access to the latter.
+  it('should expose iterationOutputs on the loop step result.output.data via onStepComplete', async () => {
+    registry.register(createLoopCommand(['a', 'b']));
+    registry.register(createMockCommand({
+      type: 'nested',
+      execute: async (_config, ctx) => ({
+        success: true,
+        data: { stdout: `out-${ctx.variables['item']}`, stderr: '' },
+        duration: 1,
+      }),
+    }));
+
+    const definition = simpleSpell([
+      {
+        id: 'loop1', type: 'loop', config: {}, output: 'loop1',
+        steps: [{ id: 'nested', type: 'nested', config: {} }],
+      },
+    ]);
+
+    const observed: Array<Record<string, unknown> | undefined> = [];
+    await runner.run(definition, {}, {
+      onStepComplete: (sr) => {
+        if (sr.stepId === 'loop1') {
+          observed.push(sr.output?.data as Record<string, unknown> | undefined);
+        }
+      },
+    });
+
+    expect(observed).toHaveLength(1);
+    const data = observed[0]!;
+    const iterOutputs = data.iterationOutputs as Array<Record<string, unknown>>;
+    expect(iterOutputs).toBeDefined();
+    expect(iterOutputs).toHaveLength(2);
+    expect((iterOutputs[0].nested as Record<string, unknown>).stdout).toBe('out-a');
+    expect((iterOutputs[1].nested as Record<string, unknown>).stdout).toBe('out-b');
+  });
 });
 
 // ============================================================================
@@ -1221,5 +1259,43 @@ describe('SpellCaster — parallel step duration', () => {
     const parStep = result.steps.find(s => s.stepId === 'par1')!;
     // Parallel steps run concurrently, so duration >= one delay, not zero
     expect(parStep.duration).toBeGreaterThanOrEqual(DELAY_MS * 0.8);
+  });
+
+  // Same invariant as the loop test above — onStepComplete must see stepOutputs.
+  it('should expose stepOutputs on the parallel step result.output.data via onStepComplete', async () => {
+    registry.register(createParallelCommand());
+    registry.register(createMockCommand({
+      type: 'nested',
+      execute: async (config) => ({
+        success: true,
+        data: { stdout: `out-${(config as { tag?: string }).tag ?? '?'}`, stderr: '' },
+        duration: 1,
+      }),
+    }));
+
+    const definition = simpleSpell([
+      {
+        id: 'par1', type: 'parallel', config: {}, output: 'par1',
+        steps: [
+          { id: 'a', type: 'nested', config: { tag: 'a' } },
+          { id: 'b', type: 'nested', config: { tag: 'b' } },
+        ],
+      },
+    ]);
+
+    const observed: Array<Record<string, unknown> | undefined> = [];
+    await runner.run(definition, {}, {
+      onStepComplete: (sr) => {
+        if (sr.stepId === 'par1') {
+          observed.push(sr.output?.data as Record<string, unknown> | undefined);
+        }
+      },
+    });
+
+    expect(observed).toHaveLength(1);
+    const stepOutputs = observed[0]!.stepOutputs as Record<string, Record<string, unknown>>;
+    expect(stepOutputs).toBeDefined();
+    expect(stepOutputs.a.stdout).toBe('out-a');
+    expect(stepOutputs.b.stdout).toBe('out-b');
   });
 });
