@@ -13,6 +13,7 @@ import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { migrateClaudeFlowToMoflo, migrateMemoryDbToMoflo, mofloDir } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
+import { syncTree } from './lib/sync-tree.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -350,26 +351,6 @@ try {
         }
       }
 
-      /** Recursively mirror srcRoot → destRoot, recording every file under
-       *  manifestPrefix. Subdirectories are created on demand. Used for
-       *  bin/lib, bin/migrations, and any other shipped tree that may grow
-       *  nested files (e.g. migrations/lib/markers.mjs — #777). */
-      function syncTree(srcRoot, destRoot, manifestPrefix) {
-        if (!existsSync(srcRoot)) return;
-        let entries;
-        try {
-          entries = readdirSync(srcRoot, { recursive: true, withFileTypes: true });
-        } catch { return; }
-        for (const entry of entries) {
-          if (!entry.isFile()) continue;
-          // Node ≥20: parentPath; older ABIs use path. Both are absolute.
-          const parent = entry.parentPath || entry.path || srcRoot;
-          const abs = resolve(parent, entry.name);
-          const rel = abs.slice(srcRoot.length + 1).split(/[\\/]/).join('/');
-          syncFile(abs, resolve(destRoot, rel), `${manifestPrefix}/${rel}`);
-        }
-      }
-
       // Version changed — sync scripts from bin/
       if (autoUpdateConfig.scripts) {
         const scriptsDir = resolve(projectRoot, '.claude/scripts');
@@ -383,16 +364,11 @@ try {
           syncFile(resolve(binDir, file), resolve(scriptsDir, file), `.claude/scripts/${file}`);
         }
 
-        // Sync lib/ subdirectory (process-manager.mjs, registry-cleanup.cjs, etc.)
-        // hooks.mjs imports ./lib/process-manager.mjs — without this, session-start
-        // silently fails and the daemon, indexer, and pretrain never run.
-        syncTree(resolve(binDir, 'lib'), resolve(scriptsDir, 'lib'), '.claude/scripts/lib');
-
-        // Sync migrations/ subdirectory recursively. The migrations import
-        // shared markers from ./lib/markers.mjs — a flat readdir loop here
-        // dropped that dependency, breaking run-migrations on every consumer
-        // (#777).
-        syncTree(resolve(binDir, 'migrations'), resolve(scriptsDir, 'migrations'), '.claude/scripts/migrations');
+        // bin/lib (hooks.mjs imports ./lib/process-manager.mjs) and
+        // bin/migrations (knowledge-* migrations import ./lib/markers.mjs —
+        // dropped by a flat readdir loop in #777).
+        syncTree(resolve(binDir, 'lib'), resolve(scriptsDir, 'lib'), '.claude/scripts/lib', currentManifest);
+        syncTree(resolve(binDir, 'migrations'), resolve(scriptsDir, 'migrations'), '.claude/scripts/migrations', currentManifest);
       }
 
       // Sync helpers from bin/ and source .claude/helpers/
