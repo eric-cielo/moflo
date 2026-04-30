@@ -1,6 +1,6 @@
 {
   "name": "moflo",
-  "version": "4.9.0-rc.9",
+  "version": "4.9.0-rc.10",
   "description": "MoFlo — AI agent orchestration for Claude Code. A standalone, opinionated toolkit with semantic memory, learned routing, gates, spells, and the /flo issue-execution skill.",
   "main": "dist/src/cli/index.js",
   "type": "module",
