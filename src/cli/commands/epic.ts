@@ -238,17 +238,7 @@ async function runEpic(
         // --verbose: echo captured bash stdout/stderr after the step completes.
         // (Not real-time streaming — the spell engine captures stdio.)
         if (verbose) {
-          const data = stepResult.output?.data as { stdout?: string; stderr?: string } | undefined;
-          if (data?.stdout) {
-            for (const line of data.stdout.split(/\r?\n/)) {
-              if (line) console.log(`[epic]   │ ${line}`);
-            }
-          }
-          if (data?.stderr) {
-            for (const line of data.stderr.split(/\r?\n/)) {
-              if (line) console.log(`[epic]   │ (stderr) ${line}`);
-            }
-          }
+          echoStepOutput(stepResult.output?.data as Record<string, unknown> | undefined, '');
         }
       },
       onPreflightWarnings: isInteractive() ? resolvePreflightWarningsInteractively : undefined,
@@ -315,6 +305,51 @@ async function runEpic(
       console.error(error.stack);
     }
     return { success: false, message: buildFailureSummary(error.message) };
+  }
+}
+
+// ============================================================================
+// --verbose output echo
+// ============================================================================
+
+function echoStream(stream: string, indent: string, kind: 'stdout' | 'stderr'): void {
+  for (const line of stream.split(/\r?\n/)) {
+    if (line) {
+      const prefix = kind === 'stderr' ? '(stderr) ' : '';
+      console.log(`[epic] ${indent}│ ${prefix}${line}`);
+    }
+  }
+}
+
+function echoStepOutput(data: Record<string, unknown> | undefined, indent: string): void {
+  if (!data) return;
+
+  const stdout = typeof data.stdout === 'string' ? data.stdout : undefined;
+  const stderr = typeof data.stderr === 'string' ? data.stderr : undefined;
+  if (stdout) echoStream(stdout, indent, 'stdout');
+  if (stderr) echoStream(stderr, indent, 'stderr');
+
+  // Loop step: walk each iteration's nested-step outputs.
+  const iterationOutputs = data.iterationOutputs;
+  if (Array.isArray(iterationOutputs)) {
+    for (let i = 0; i < iterationOutputs.length; i++) {
+      const iter = iterationOutputs[i];
+      if (!iter || typeof iter !== 'object') continue;
+      console.log(`[epic] ${indent}├─ iteration ${i + 1}/${iterationOutputs.length}`);
+      for (const [stepId, stepData] of Object.entries(iter as Record<string, unknown>)) {
+        console.log(`[epic] ${indent}│  ├─ ${stepId}`);
+        echoStepOutput(stepData as Record<string, unknown> | undefined, indent + '│  │  ');
+      }
+    }
+  }
+
+  // Parallel step: walk each branch's output.
+  const stepOutputs = data.stepOutputs;
+  if (stepOutputs && typeof stepOutputs === 'object' && !Array.isArray(stepOutputs)) {
+    for (const [stepId, stepData] of Object.entries(stepOutputs as Record<string, unknown>)) {
+      console.log(`[epic] ${indent}├─ ${stepId}`);
+      echoStepOutput(stepData as Record<string, unknown> | undefined, indent + '│  ');
+    }
   }
 }
 
