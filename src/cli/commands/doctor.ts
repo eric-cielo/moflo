@@ -1317,20 +1317,20 @@ export const doctorCommand: Command = {
       ? allowWarnRaw.split(',').map((s) => s.trim()).filter(Boolean)
       : [];
 
-    // --allow-warn is meaningless without --strict; surfacing the misuse
-    // beats silently ignoring the list and letting a CI invocation pass
-    // when the operator thought they had configured an allowlist.
-    if (allowWarnList.length > 0 && !strict) {
-      output.writeln(output.warning(
-        '--allow-warn requires --strict; ignoring (warnings are tolerated by default).',
-      ));
-    }
-
     output.writeln();
     output.writeln(output.bold('MoFlo Doctor'));
     output.writeln(output.dim('System diagnostics and health check'));
     output.writeln(output.dim('─'.repeat(50)));
     output.writeln();
+
+    // --allow-warn is meaningless without --strict; surface the misuse
+    // under the banner so it reads as doctor output, not orphaned text.
+    if (allowWarnList.length > 0 && !strict) {
+      output.writeln(output.warning(
+        '--allow-warn requires --strict; ignoring (warnings are tolerated by default).',
+      ));
+      output.writeln();
+    }
 
     // Handle --kill-zombies early
     if (killZombies) {

@@ -1,14 +1,15 @@
 /**
  * Extract a human-readable detail string from an arbitrary thrown value.
  *
- * Repeats `e instanceof Error ? e.message : String(e)` lived inline at ~15
- * call sites before this helper landed. Centralising prevents subtle drift
- * (some sites also `.split('\n')[0]` to clip multiline messages, and
- * inconsistent use was masking which checks intentionally truncate).
+ * The `e instanceof Error ? e.message : String(e)` pattern (sometimes with
+ * a `.split('\n')[0]` clip) lives inline at ~170 call sites across `src/`.
+ * This helper is the canonical replacement; doctor.ts adopts it in epic
+ * #781, and the rest can migrate as touched.
  *
- * Issue #781 / #785 — required by the `no-restricted-syntax` rule that
- * forbids silent catches downgrading to `status: 'warn'` without including
- * the underlying error in the returned message.
+ * Issue #781 / #785 — the `no-restricted-syntax` rule that forbids silent
+ * catches downgrading to `status: 'warn'` requires the underlying error in
+ * the returned message; calling `errorDetail(e)` inside a template literal
+ * is the canonical satisfying shape.
  */
 export function errorDetail(
   e: unknown,

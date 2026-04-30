@@ -215,8 +215,10 @@ describe('dist resolution gate (issue #781 / #783)', () => {
 
   // Hoist the dist walk + extraction into beforeAll so test 1 + test 2 share
   // the same target list (saves a redundant filesystem walk + regex sweep).
+  // Reset inside beforeAll so watch-mode re-runs don't accumulate entries.
   let allTargets: Target[] = [];
   beforeAll(() => {
+    allTargets = [];
     if (!hasBuild) return;
     for (const file of walkJs(DIST_CLI_ROOT)) {
       allTargets.push(...extractTargets(file));

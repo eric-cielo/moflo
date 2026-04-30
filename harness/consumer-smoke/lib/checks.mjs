@@ -403,35 +403,29 @@ export function cliLoads(consumerDir) {
 // fresh consumer install in CI. These are the *only* warnings that don't
 // fail the smoke; every other warn is treated as a regression.
 //
-// Each entry must include a justification — if the underlying condition
-// becomes fixable, downgrade the check to status:'info' / 'pass' instead
-// of expanding this list. Story #785 will revisit several of these
-// (especially "Sandbox Tier") to distinguish "feature-not-available" from
-// "code-bug-swallowed-by-silent-catch", at which point the entries can
-// shrink.
+// Each entry must match an exact `name:` literal in src/cli/commands/doctor.ts
+// (or doctor-checks-deep.ts) — equality match in --strict mode rejects typos
+// silently otherwise. Verify with:
+//   grep -nE "name:\s*['\"][^'\"]+['\"]" src/cli/commands/doctor*.ts
 //
-//   - "Sandbox Tier"   — probes for Docker; macOS/Windows CI runners and
-//                        bare Linux runners don't have it.
-//   - "Claude Code"    — `claude` CLI not installed in a fresh fixture.
-//   - "Claude Code MCP" / "MCP Configuration" / "MCP Servers" —
-//                        depend on Claude Code CLI.
-//   - "Status Line" / "Hook Wiring" — wired by `moflo init`, which the
-//                        smoke fixture intentionally skips (it tests the
-//                        tarball, not the init flow).
-//   - "Daemon Status"  — daemon isn't running in a smoke fixture.
-//   - "Config File"    — no `.moflo/config.json` in a bare consumer.
-//   - "Memory Database" — not initialized yet (smoke runs `memory init`
-//                        as a separate later check).
+//   - "Sandbox Tier"     — probes for Docker; macOS/Windows CI runners and
+//                          bare Linux runners don't have it.
+//   - "Claude Code CLI"  — `claude` CLI not installed in a fresh fixture.
+//   - "MCP Servers"      — no Claude/MCP config in a bare fixture.
+//   - "Status Line"      — wired by `moflo init`, which the smoke fixture
+//                          intentionally skips (it tests the tarball, not
+//                          the init flow).
+//   - "Daemon Status"    — daemon isn't running in a smoke fixture.
+//   - "Config File"      — no `.moflo/config.yaml` in a bare consumer.
+//   - "Memory Database"  — not initialized yet (smoke runs `memory init`
+//                          as a separate later check).
 //   - "Test Directories" / "Git Repository" — fresh consumer fixture
-//                        isn't a real project repo.
+//                          isn't a real project repo.
 const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
   'Sandbox Tier',
-  'Claude Code',
-  'Claude Code MCP',
-  'MCP Configuration',
+  'Claude Code CLI',
   'MCP Servers',
   'Status Line',
-  'Hook Wiring',
   'Daemon Status',
   'Config File',
   'Memory Database',
