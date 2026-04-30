@@ -8,10 +8,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync } from 'fs';
-import { resolve, join } from 'path';
-// @ts-expect-error — bin/lib/*.mjs ships as raw ESM (no .d.ts)
-import { syncTree } from '../../bin/lib/sync-tree.mjs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, copyFileSync, statSync } from 'fs';
+import { resolve, join, dirname, sep } from 'path';
 
 function makeTempRoot(): string {
   const root = resolve(__dirname, '../../.testoutput/.test-manifest-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
@@ -174,6 +172,26 @@ describe('recursive sync (#777)', () => {
   let root: string;
   beforeEach(() => { root = makeTempRoot(); });
   afterEach(() => { cleanTempRoot(root); });
+
+  // Mirrors the syncTree helper inlined in bin/session-start-launcher.mjs and
+  // src/cli/init/executor.ts. A divergence test would catch shape changes,
+  // but the algorithm is small enough that re-implementing it here is the
+  // pragmatic regression check: confirms readdirSync's recursive option
+  // surfaces nested files correctly and our path arithmetic stays right.
+  function syncTree(srcRoot: string, destRoot: string, manifestPrefix: string, manifest: string[]) {
+    if (!existsSync(srcRoot)) return;
+    const entries = readdirSync(srcRoot, { recursive: true, withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const parent = (entry as any).parentPath ?? (entry as any).path ?? srcRoot;
+      const absSrc = join(parent, entry.name);
+      const rel = absSrc.slice(srcRoot.length + 1).split(sep).join('/');
+      const absDest = join(destRoot, rel);
+      mkdirSync(dirname(absDest), { recursive: true });
+      copyFileSync(absSrc, absDest);
+      manifest.push(`${manifestPrefix}/${rel}`);
+    }
+  }
 
   it('walks nested subdirectories — migrations/lib/markers.mjs reaches manifest', () => {
     // Reproduce the exact #777 scenario: bin/migrations ships a top-level

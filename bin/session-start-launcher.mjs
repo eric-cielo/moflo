@@ -13,7 +13,6 @@ import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { migrateClaudeFlowToMoflo, migrateMemoryDbToMoflo, mofloDir } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
-import { syncTree } from './lib/sync-tree.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -343,11 +342,7 @@ try {
       /** Copy src → dest if src exists, record in manifest. */
       function syncFile(src, dest, manifestKey) {
         if (existsSync(src)) {
-          try {
-            mkdirSync(dirname(dest), { recursive: true });
-            copyFileSync(src, dest);
-            currentManifest.push(manifestKey);
-          } catch { /* non-fatal */ }
+          try { copyFileSync(src, dest); currentManifest.push(manifestKey); } catch { /* non-fatal */ }
         }
       }
 
@@ -364,11 +359,41 @@ try {
           syncFile(resolve(binDir, file), resolve(scriptsDir, file), `.claude/scripts/${file}`);
         }
 
-        // bin/lib (hooks.mjs imports ./lib/process-manager.mjs) and
-        // bin/migrations (knowledge-* migrations import ./lib/markers.mjs —
-        // dropped by a flat readdir loop in #777).
-        syncTree(resolve(binDir, 'lib'), resolve(scriptsDir, 'lib'), '.claude/scripts/lib', currentManifest);
-        syncTree(resolve(binDir, 'migrations'), resolve(scriptsDir, 'migrations'), '.claude/scripts/migrations', currentManifest);
+        // Sync lib/ subdirectory (process-manager.mjs, registry-cleanup.cjs, etc.)
+        // hooks.mjs imports ./lib/process-manager.mjs — without this, session-start
+        // silently fails and the daemon, indexer, and pretrain never run.
+        const libSrcDir = resolve(binDir, 'lib');
+        const libDestDir = resolve(scriptsDir, 'lib');
+        if (existsSync(libSrcDir)) {
+          if (!existsSync(libDestDir)) mkdirSync(libDestDir, { recursive: true });
+          for (const file of readdirSync(libSrcDir)) {
+            syncFile(resolve(libSrcDir, file), resolve(libDestDir, file), `.claude/scripts/lib/${file}`);
+          }
+        }
+
+        // Sync migrations/ subdirectory recursively. The migration scripts
+        // import shared helpers from `./lib/markers.mjs` — a flat readdir
+        // dropped that subdir, leaving consumers with broken imports (#777).
+        const migrationsSrcDir = resolve(binDir, 'migrations');
+        const migrationsDestDir = resolve(scriptsDir, 'migrations');
+        if (existsSync(migrationsSrcDir)) {
+          if (!existsSync(migrationsDestDir)) mkdirSync(migrationsDestDir, { recursive: true });
+          let migrationEntries;
+          try {
+            migrationEntries = readdirSync(migrationsSrcDir, { recursive: true, withFileTypes: true });
+          } catch {
+            migrationEntries = [];
+          }
+          for (const entry of migrationEntries) {
+            if (!entry.isFile()) continue;
+            const parent = entry.parentPath || entry.path || migrationsSrcDir;
+            const absSrc = resolve(parent, entry.name);
+            const rel = absSrc.slice(migrationsSrcDir.length + 1).split(/[\\/]/).join('/');
+            const absDest = resolve(migrationsDestDir, rel);
+            try { mkdirSync(dirname(absDest), { recursive: true }); } catch { /* non-fatal */ }
+            syncFile(absSrc, absDest, `.claude/scripts/migrations/${rel}`);
+          }
+        }
       }
 
       // Sync helpers from bin/ and source .claude/helpers/
