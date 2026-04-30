@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
-import { fileURLToPath } from 'url';
+import { locateMofloRootPath } from '../services/moflo-require.js';
 
 // Directories that walkers should never recurse into when discovering project
 // structure. The runtime state dirs (.swarm, .moflo) and other generated/
@@ -53,6 +53,21 @@ export interface MofloInitResult {
 // ============================================================================
 // Init
 // ============================================================================
+
+/**
+ * Resolve `<moflo package root>/<rel>`, returning a single-element array if
+ * the file/dir exists or empty array otherwise. Wraps `locateMofloRootPath`
+ * (which already does the walk-up + cache + existence check) so candidate
+ * lists can splat the result and ignore the missing case without a guard.
+ *
+ * Replaces the fixed-depth `path.join(thisDir, '..', '..', '..', '..', ...)`
+ * walks that broke after workspace-collapse epic #586 changed source/dist
+ * depths (#781 / #782).
+ */
+function mofloRootJoin(...segments: string[]): string[] {
+  const hit = locateMofloRootPath(segments.join('/'));
+  return hit ? [hit] : [];
+}
 
 /**
  * Discover guidance directories by checking top-level candidates AND walking
@@ -633,20 +648,12 @@ function generateSkill(root: string, force?: boolean): MofloInitResult['steps'][
   // Copy static SKILL.md from moflo package instead of generating it
   let skillContent = '';
 
-  // Resolve this file's directory in ESM-safe way
-  let thisDir: string;
-  try {
-    thisDir = path.dirname(fileURLToPath(import.meta.url));
-  } catch {
-    // Fallback for CJS or environments where import.meta.url is unavailable
-    thisDir = typeof __dirname !== 'undefined' ? __dirname : '';
-  }
-
   const staticSkillCandidates = [
     // Installed via npm (most common)
     path.join(root, 'node_modules', 'moflo', '.claude', 'skills', 'flo', 'SKILL.md'),
-    // Running from moflo repo itself (dev)
-    ...(thisDir ? [path.join(thisDir, '..', '..', '..', '..', '.claude', 'skills', 'flo', 'SKILL.md')] : []),
+    // Anchor on moflo's own package root — covers both `node_modules/moflo/`
+    // and the dev source tree without depending on a fixed `..` depth (#782).
+    ...mofloRootJoin('.claude', 'skills', 'flo', 'SKILL.md'),
   ];
   for (const candidate of staticSkillCandidates) {
     try {
@@ -795,17 +802,10 @@ function syncScripts(root: string, force?: boolean): MofloInitResult['steps'][0]
   }
 
   // Find moflo bin/ directory
-  let syncThisDir: string;
-  try {
-    syncThisDir = path.dirname(fileURLToPath(import.meta.url));
-  } catch {
-    syncThisDir = typeof __dirname !== 'undefined' ? __dirname : '';
-  }
-
   const candidates = [
     path.join(root, 'node_modules', 'moflo', 'bin'),
-    // When running from moflo repo itself
-    ...(syncThisDir ? [path.join(syncThisDir, '..', '..', '..', '..', 'bin')] : []),
+    // Anchor on moflo's own package root (covers dev + installed; #782).
+    ...mofloRootJoin('bin'),
   ];
   const binDir = candidates.find(d => { try { return fs.existsSync(d); } catch { return false; } });
 
@@ -889,18 +889,10 @@ function syncBootstrapGuidance(root: string, force?: boolean): MofloInitResult['
   const guidanceDir = path.join(root, '.claude', 'guidance');
   const targetFile = path.join(guidanceDir, 'moflo-bootstrap.md');
 
-  // Find the source bootstrap file from the moflo package
-  let sourceDir: string;
-  try {
-    sourceDir = path.dirname(fileURLToPath(import.meta.url));
-  } catch {
-    sourceDir = typeof __dirname !== 'undefined' ? __dirname : '';
-  }
-
   const candidates = [
     path.join(root, 'node_modules', 'moflo', '.claude', 'guidance', 'shipped', 'moflo-subagents.md'),
-    // When running from moflo repo itself
-    ...(sourceDir ? [path.join(sourceDir, '..', '..', '..', '..', '.claude', 'guidance', 'shipped', 'moflo-subagents.md')] : []),
+    // Anchor on moflo's own package root (covers dev + installed; #782).
+    ...mofloRootJoin('.claude', 'guidance', 'shipped', 'moflo-subagents.md'),
   ];
   const sourceFile = candidates.find(f => { try { return fs.existsSync(f); } catch { return false; } });
 
@@ -938,17 +930,11 @@ function syncBootstrapGuidance(root: string, force?: boolean): MofloInitResult['
 function syncAllShippedGuidance(root: string, force?: boolean): MofloInitResult['steps'][0][] {
   const guidanceDir = path.join(root, '.claude', 'guidance');
 
-  let sourceDir: string;
-  try {
-    sourceDir = path.dirname(fileURLToPath(import.meta.url));
-  } catch {
-    sourceDir = typeof __dirname !== 'undefined' ? __dirname : '';
-  }
-
   // Find the shipped guidance directory
   const shippedCandidates = [
     path.join(root, 'node_modules', 'moflo', '.claude', 'guidance', 'shipped'),
-    ...(sourceDir ? [path.join(sourceDir, '..', '..', '..', '..', '.claude', 'guidance', 'shipped')] : []),
+    // Anchor on moflo's own package root (covers dev + installed; #782).
+    ...mofloRootJoin('.claude', 'guidance', 'shipped'),
   ];
   const shippedDir = shippedCandidates.find(d => { try { return fs.existsSync(d) && fs.statSync(d).isDirectory(); } catch { return false; } });
 

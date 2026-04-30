@@ -7,6 +7,8 @@
  *   - Hash-embedding identifiers + inline patterns (epic #527 / #545)
  *   - Raw `writeFileSync(path, db.export())` non-atomic DB writes (#564)
  *   - Fixed-depth `../../../../modules/<pkg>/...` runtime/type paths (#575)
+ *   - `path.resolve|join(<anchor>, '..', '..', ...)` traversal that bakes in
+ *     fragile dist/source depth assumptions (#781 / #782 — use mofloPath())
  *
  * Each rule cluster has its own selectors block — keep new clusters
  * similarly delineated so the file stays scannable.
@@ -85,6 +87,90 @@ const FIXED_DEPTH_MODULES_SELECTORS = [
   },
 ];
 
+// Issue #781 / #782: ban `path.resolve|join(<anchor>, '..', '..', ...)`. Two
+// or more adjacent `'..'` literal arguments means the call is walking *up*
+// past its own package directory — a depth assumption that broke half a
+// dozen times during workspace-collapse epic #586 because the math differs
+// between source (`src/cli/<file>.ts`) and dist (`dist/src/cli/<file>.js`).
+//
+// The sanctioned alternative is `mofloPath(import.meta.url, ...segments)`
+// from `shared/core/moflo-package-root.ts`, which walks up to the moflo
+// `package.json` regardless of layout.
+//
+// `:has(Literal + Literal)` matches any CallExpression whose argument list
+// contains two adjacent `'..'` Literals — covers `'..', '..'`, `'..', '..',
+// 'bin'`, `'..', '..', '..', '..'`, etc. Single `'..'` is allowed (sibling
+// lookups, relative-path utilities, fs.access existence probes).
+const PATH_TRAVERSAL_MESSAGE =
+  'Fixed-depth `..` traversal in path.resolve/join is banned (#781 / #782). ' +
+  'The depth differs between source and dist layouts — use ' +
+  '`mofloPath(import.meta.url, ...)` from `shared/core/moflo-package-root.ts` ' +
+  'to anchor on the moflo package root instead.';
+
+const ADJACENT_DOTDOT_HAS = `:has(Literal[value='..'] + Literal[value='..'])`;
+
+const PATH_TRAVERSAL_SELECTORS = [
+  // path.resolve(...) / path.join(...)
+  {
+    selector:
+      `CallExpression[callee.object.name='path']` +
+      `[callee.property.name=/^(resolve|join)$/]${ADJACENT_DOTDOT_HAS}`,
+    message: PATH_TRAVERSAL_MESSAGE,
+  },
+  // path.posix.resolve(...) / path.posix.join(...) — different shape
+  {
+    selector:
+      `CallExpression[callee.object.object.name='path']` +
+      `[callee.object.property.name='posix']` +
+      `[callee.property.name=/^(resolve|join)$/]${ADJACENT_DOTDOT_HAS}`,
+    message: PATH_TRAVERSAL_MESSAGE,
+  },
+  // resolve(...) / join(...) imported directly from 'path' / 'node:path'
+  {
+    selector:
+      `CallExpression[callee.type='Identifier']` +
+      `[callee.name=/^(resolve|join)$/]${ADJACENT_DOTDOT_HAS}`,
+    message: PATH_TRAVERSAL_MESSAGE,
+  },
+];
+
+// Issue #781 / #785: catch blocks that downgrade an error to a `status: 'warn'`
+// health-check result without surfacing the underlying cause. This is the exact
+// shape that hid the 4.9.0-rc.11 doctor bug for ~6 months — a thrown
+// `Cannot find module ../spells/dist/...` was wrapped in `try { ... } catch {
+// return { ..., status: 'warn', message: 'Unable to detect: ...' } }`, and the
+// real failure never reached stderr, telemetry, or the user-visible message.
+//
+// Acceptable shapes for a catch that returns `status: 'warn'`:
+//   1. Include the error in the returned message via a template literal:
+//      `} catch (e) { return { ..., status: 'warn', message: \`...: \${e}\` }; }`
+//   2. Log to stderr / a logger:
+//      `} catch (e) { console.error('X:', e); return { ..., status: 'warn' }; }`
+//   3. Re-throw with context (no warn return at all)
+//   4. Inline exemption: `// eslint-disable-next-line no-restricted-syntax -- <reason>`
+//
+// Selector matches a CatchClause whose body returns an object with the literal
+// property `status: 'warn'`, AND has no `console.*` / `logger.*` call, AND has
+// no TemplateLiteral anywhere in the body (heuristic for "the error is being
+// formatted into a message"). Without all three, the rule fires.
+const SILENT_WARN_CATCH_MESSAGE =
+  'Catch block downgrades an error to status:"warn" without surfacing the ' +
+  'underlying cause (#781 / #785). Include the error in the returned message ' +
+  '(template literal), log via console.error/logger, return status:"fail", ' +
+  'or re-throw. Hides the exact bug class that produced the 4.9.0-rc.11 ' +
+  'silent-catch regression.';
+
+const SILENT_WARN_CATCH_SELECTORS = [
+  {
+    selector:
+      `CatchClause` +
+      `:has(ReturnStatement Property[key.name='status'][value.type='Literal'][value.value='warn'])` +
+      `:not(:has(CallExpression[callee.object.name=/^(console|logger|log)$/]))` +
+      `:not(:has(TemplateLiteral))`,
+    message: SILENT_WARN_CATCH_MESSAGE,
+  },
+];
+
 // Structural guard: any function that both constructs a Float32Array AND
 // calls charCodeAt is a hash embedding regardless of method name. The
 // identifier ban above missed the inline implementations removed in #542
@@ -126,6 +212,8 @@ const bannedEmbeddingRules = {
     ...INLINE_HASH_EMBEDDING_SELECTORS,
     ...RAW_DB_WRITE_SELECTORS,
     ...FIXED_DEPTH_MODULES_SELECTORS,
+    ...PATH_TRAVERSAL_SELECTORS,
+    ...SILENT_WARN_CATCH_SELECTORS,
   ],
   'no-restricted-imports': [
     'error',
@@ -221,6 +309,38 @@ module.exports = {
           ...INLINE_HASH_EMBEDDING_SELECTORS,
           ...RAW_DB_WRITE_SELECTORS,
           ...FIXED_DEPTH_MODULES_SELECTORS,
+          ...PATH_TRAVERSAL_SELECTORS,
+          ...SILENT_WARN_CATCH_SELECTORS,
+        ],
+      },
+    },
+    {
+      // Issue #782: the canonical `mofloPath()` helper is itself the
+      // sanctioned escape hatch from the path-traversal rule. It does NOT
+      // use `'..', '..'` literals (it walks via `dirname()` until it finds
+      // the moflo package.json), so this exemption is defensive — keeps the
+      // rule from accidentally firing if the helper is ever rewritten.
+      files: ['src/cli/shared/core/moflo-package-root.ts'],
+      rules: {
+        'no-restricted-syntax': [
+          'error',
+          // Drop PATH_TRAVERSAL_SELECTORS only; keep every other guard.
+          {
+            selector: `Identifier[name=/${BANNED_IDENTIFIER_PATTERN}/]`,
+            message: BANNED_EMBEDDING_MESSAGE,
+          },
+          {
+            selector: `Literal[value=/${BANNED_LITERAL_PATTERN}/]`,
+            message: BANNED_EMBEDDING_MESSAGE,
+          },
+          {
+            selector: `TemplateElement[value.raw=/${BANNED_LITERAL_PATTERN}/]`,
+            message: BANNED_EMBEDDING_MESSAGE,
+          },
+          ...INLINE_HASH_EMBEDDING_SELECTORS,
+          ...RAW_DB_WRITE_SELECTORS,
+          ...FIXED_DEPTH_MODULES_SELECTORS,
+          ...SILENT_WARN_CATCH_SELECTORS,
         ],
       },
     },

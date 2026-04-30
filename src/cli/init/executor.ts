@@ -29,6 +29,7 @@ import {
 import { generateClaudeMd } from './claudemd-generator.js';
 import { writeEnvrc } from './envrc-generator.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
+import { locateMofloRootPath } from '../services/moflo-require.js';
 
 /**
  * Skills to copy based on configuration. Exported for integrity tests.
@@ -1160,10 +1161,9 @@ function findSourceHelpersDir(sourceBaseDir?: string): string | null {
     // Not installed as a package — skip
   }
 
-  // Strategy 2: __dirname-based (dist/src/init -> package root)
-  const packageRoot = path.resolve(__dirname, '..', '..', '..');
-  const packageHelpers = path.join(packageRoot, '.claude', 'helpers');
-  possiblePaths.push(packageHelpers);
+  // Strategy 2: anchor on the moflo package root (dev + installed; #782).
+  const packageHelpers = locateMofloRootPath('.claude/helpers');
+  if (packageHelpers) possiblePaths.push(packageHelpers);
 
   // Strategy 3: Walk up from __dirname looking for package root
   let currentDir = __dirname;
@@ -1175,13 +1175,15 @@ function findSourceHelpersDir(sourceBaseDir?: string): string | null {
     currentDir = parentDir;
   }
 
-  // Strategy 4: Check cwd-relative paths (for local dev)
-  const cwdBased = [
-    path.join(process.cwd(), '.claude', 'helpers'),
-    path.join(process.cwd(), '..', '.claude', 'helpers'),
-    path.join(process.cwd(), '..', '..', '.claude', 'helpers'),
-  ];
-  possiblePaths.push(...cwdBased);
+  // Strategy 4: Walk up from cwd looking for `.claude/helpers` (local dev,
+  // arbitrary depth — fixed `..` counts were brittle and tripped #782's rule).
+  let cwdWalk = process.cwd();
+  for (let i = 0; i < 10; i++) {
+    possiblePaths.push(path.join(cwdWalk, '.claude', 'helpers'));
+    const parent = path.dirname(cwdWalk);
+    if (parent === cwdWalk) break;
+    cwdWalk = parent;
+  }
 
   // Return first path that exists AND contains the sentinel file
   for (const p of possiblePaths) {
@@ -1208,8 +1210,9 @@ function findMofloBinDir(): string | null {
     possiblePaths.push(path.join(path.dirname(pkgJsonPath), 'bin'));
   } catch { /* not installed as package */ }
 
-  // Strategy 2: __dirname-based (dist/src/init -> package root -> bin)
-  possiblePaths.push(path.resolve(__dirname, '..', '..', '..', 'bin'));
+  // Strategy 2: anchor on the moflo package root (dev + installed; #782).
+  const packageBin = locateMofloRootPath('bin');
+  if (packageBin) possiblePaths.push(packageBin);
 
   // Strategy 3: Walk up from __dirname
   let currentDir = __dirname;
@@ -1316,15 +1319,14 @@ function findSourceClaudeDir(sourceBaseDir?: string): string | null {
     possiblePaths.push(path.join(sourceBaseDir, '.claude'));
   }
 
-  // IMPORTANT: Check the package's own .claude directory
-  // Go up 3 levels: dist/src/init -> dist/src -> dist -> root
-  const packageRoot = path.resolve(__dirname, '..', '..', '..');
-  const packageClaude = path.join(packageRoot, '.claude');
-  if (fs.existsSync(packageClaude)) {
-    possiblePaths.unshift(packageClaude); // Add to beginning (highest priority)
+  // IMPORTANT: Check the package's own .claude directory (highest priority,
+  // dev + installed; #782).
+  const packageClaude = locateMofloRootPath('.claude');
+  if (packageClaude) {
+    possiblePaths.unshift(packageClaude);
   }
 
-  // From dist/src/init -> go up to project root
+  // Walk up the filesystem looking for a `.claude` directory along the way.
   let currentDir = __dirname;
   for (let i = 0; i < 10; i++) {
     const parentDir = path.dirname(currentDir);
@@ -2045,21 +2047,15 @@ function findSourceDir(type: 'skills' | 'commands' | 'agents', sourceBaseDir?: s
     possiblePaths.push(path.join(sourceBaseDir, '.claude', type));
   }
 
-  // IMPORTANT: Check the package's own .claude directory first
-  // This is the primary path when running as an npm package
-  // __dirname is typically /path/to/node_modules/moflo/dist/src/init
-  // We need to go up 3 levels to reach the package root (dist/src/init -> dist/src -> dist -> root)
-  const packageRoot = path.resolve(__dirname, '..', '..', '..');
-  const packageDotClaude = path.join(packageRoot, '.claude', type);
-  if (fs.existsSync(packageDotClaude)) {
-    possiblePaths.unshift(packageDotClaude); // Add to beginning (highest priority)
+  // IMPORTANT: Check the package's own .claude directory first — primary
+  // path when running as an npm package (dev + installed; #782).
+  const packageDotClaude = locateMofloRootPath(`.claude/${type}`);
+  if (packageDotClaude) {
+    possiblePaths.unshift(packageDotClaude);
   }
 
-  // From dist/src/init -> go up to project root
-  const distPath = __dirname;
-
-  // Try to find the project root by looking for .claude directory
-  let currentDir = distPath;
+  // Walk up looking for a `.claude/<type>` directory along the way.
+  let currentDir = __dirname;
   for (let i = 0; i < 10; i++) {
     const parentDir = path.dirname(currentDir);
     const dotClaudePath = path.join(parentDir, '.claude', type);
@@ -2069,20 +2065,17 @@ function findSourceDir(type: 'skills' | 'commands' | 'agents', sourceBaseDir?: s
     currentDir = parentDir;
   }
 
-  // Also check relative to process.cwd() for development
-  const cwdBased = [
-    path.join(process.cwd(), '.claude', type),
-    path.join(process.cwd(), '..', '.claude', type),
-    path.join(process.cwd(), '..', '..', '.claude', type),
-  ];
-  possiblePaths.push(...cwdBased);
-
-  // Check v2 directory for agents
-  if (type === 'agents') {
-    possiblePaths.push(
-      path.join(process.cwd(), 'v2', '.claude', type),
-      path.join(process.cwd(), '..', 'v2', '.claude', type),
-    );
+  // Walk up from cwd for development (arbitrary depth — fixed `..` counts
+  // were brittle and tripped #782's rule).
+  let cwdWalk = process.cwd();
+  for (let i = 0; i < 10; i++) {
+    possiblePaths.push(path.join(cwdWalk, '.claude', type));
+    if (type === 'agents') {
+      possiblePaths.push(path.join(cwdWalk, 'v2', '.claude', type));
+    }
+    const parent = path.dirname(cwdWalk);
+    if (parent === cwdWalk) break;
+    cwdWalk = parent;
   }
 
   // Plugin directory
