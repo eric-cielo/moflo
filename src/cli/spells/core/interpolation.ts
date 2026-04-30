@@ -58,6 +58,13 @@ function resolveVariable(path: string, context: CastingContext): unknown {
       value = undefined;
       break;
     }
+    // Dry-run sentinel: dry-run-validator stores `{ _dryRun: true }` in
+    // place of unknown step outputs. Any further nested access (e.g.
+    // `{stepId.stdout}`) resolves to a placeholder so spells with forward
+    // step-output refs validate cleanly without runtime data.
+    if ((value as Record<string, unknown>)._dryRun === true) {
+      return '_dryRun_placeholder';
+    }
     value = (value as Record<string, unknown>)[segment];
   }
   if (value !== undefined) return value;
