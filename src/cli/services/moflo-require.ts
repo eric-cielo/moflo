@@ -248,6 +248,10 @@ export function locateMofloRootPath(rel: string): string | null {
   });
 }
 
+export function locateMofloCliBin(): string | null {
+  return locateMofloRootPath(join('bin', 'cli.js'));
+}
+
 // Test-only: reset the caches between unit tests that mutate the filesystem.
 export function _resetMofloMemoryCacheForTest(): void {
   moduleDistUrlCache.clear();

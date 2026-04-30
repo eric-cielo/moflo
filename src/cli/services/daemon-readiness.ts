@@ -8,11 +8,11 @@
  */
 
 import { join, resolve } from 'path';
-import { existsSync, mkdirSync, openSync, closeSync } from 'fs';
+import { mkdirSync, openSync, closeSync } from 'fs';
 import { spawn } from 'child_process';
 import { getDaemonLockHolder } from './daemon-lock.js';
 import { isDaemonInstalled, installDaemonService } from './daemon-service.js';
-import { mofloPath } from '../shared/core/moflo-package-root.js';
+import { locateMofloCliBin } from './moflo-require.js';
 
 export interface DaemonReadinessResult {
   /** Whether the daemon is currently running. */
@@ -116,9 +116,9 @@ async function defaultPromptConfirm(message: string): Promise<boolean> {
 }
 
 async function defaultStartDaemon(projectRoot: string): Promise<boolean> {
-  const cliPath = mofloPath(import.meta.url, 'bin', 'cli.js');
+  const cliPath = locateMofloCliBin();
 
-  if (!existsSync(cliPath)) return false;
+  if (!cliPath) return false;
 
   const stateDir = join(projectRoot, '.moflo');
   mkdirSync(stateDir, { recursive: true });

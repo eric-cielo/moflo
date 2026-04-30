@@ -12,23 +12,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import { existsSync, readdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { findRepoRoot } from './_helpers/repo-walk.js';
 
-function findRepoRoot(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 12; i++) {
-    if (existsSync(join(dir, 'package.json')) && existsSync(join(dir, 'src', 'cli'))) {
-      return dir;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error('Could not locate moflo repo root from drift guard test.');
-}
-
-const REPO_ROOT = findRepoRoot();
+const REPO_ROOT = findRepoRoot(import.meta.url);
 
 describe('statusline.cjs — single source of truth (#715)', () => {
   it('does not have any statusline generator under src/cli/init/', () => {

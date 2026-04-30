@@ -23,26 +23,10 @@
 
 import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, relative } from 'node:path';
+import { findRepoRoot } from '../_helpers/repo-walk.js';
 
-function findRepoRoot(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 12; i++) {
-    // Anchor on package.json + src/cli — survives the post-#602 layout
-    // (no more src/modules/ tree) and refuses to false-match consumer
-    // installs (which have no src/cli source tree).
-    if (existsSync(join(dir, 'package.json')) && existsSync(join(dir, 'src', 'cli'))) {
-      return dir;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error('Could not locate moflo repo root from drift guard test.');
-}
-
-const REPO_ROOT = findRepoRoot();
+const REPO_ROOT = findRepoRoot(import.meta.url);
 const SRC_ROOT = join(REPO_ROOT, 'src');
 
 // Auto-installed externals that intentionally aren't in moflo's `files` array.
