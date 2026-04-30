@@ -499,13 +499,11 @@ export class CLI {
 
     // Dynamically import to avoid circular deps and keep CLI startup fast
     const { spawn } = await import('child_process');
-    const { fileURLToPath } = await import('url');
-    const { dirname, join, resolve } = await import('path');
+    const { join } = await import('path');
     const { existsSync, openSync, mkdirSync } = await import('fs');
+    const { mofloPath } = await import('./shared/core/moflo-package-root.js');
 
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-    const cliPath = resolve(join(__dirname, '..', '..', 'bin', 'cli.js'));
+    const cliPath = mofloPath(import.meta.url, 'bin', 'cli.js');
     if (!existsSync(cliPath)) return;
 
     const projectRoot = process.cwd();

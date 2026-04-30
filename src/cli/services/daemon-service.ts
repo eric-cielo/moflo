@@ -13,8 +13,8 @@ import * as fs from 'fs';
 import { createHash } from 'crypto';
 import { dirname, join, resolve } from 'path';
 import { homedir } from 'os';
-import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
+import { mofloPath } from '../shared/core/moflo-package-root.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -341,13 +341,11 @@ function isDaemonInstalledWindows(projectRoot: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve CLI path from moflo's own package (using import.meta.url, not process.cwd()).
+ * Resolve CLI path from moflo's own package — anchors on moflo's package.json
+ * via mofloPath() so file moves (workspace collapse, etc.) cannot break it.
  */
 function resolveCliPath(): string {
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-  // dist/src/services -> dist/src -> dist -> package root -> bin/cli.js
-  return resolve(join(__dirname, '..', '..', '..', 'bin', 'cli.js'));
+  return mofloPath(import.meta.url, 'bin', 'cli.js');
 }
 
 /**

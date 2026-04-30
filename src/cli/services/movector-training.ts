@@ -150,23 +150,15 @@ export async function initializeTraining(config: TrainingConfig = {}): Promise<{
     hardMiner = new HardNegativeMiner(5, 'semi_hard');
     features.push('Hard Negative Mining');
 
-    // SONA — optional, dynamically imported from @moflo/neural
+    // SONA — optional, lazily imported from the inlined neural module
+    // (post-#586 workspace collapse: lives at src/cli/neural/, not a sibling package).
     if (config.useSona !== false) {
       try {
-        const { pathToFileURL } = await import('url');
-        const { dirname, resolve } = await import('path');
-        const { fileURLToPath } = await import('url');
-        const thisDir = dirname(fileURLToPath(import.meta.url));
-        const sonaPath = resolve(thisDir, '..', '..', '..', '..', 'neural', 'dist', 'sona-engine.js');
-        const sonaUrl = pathToFileURL(sonaPath).href;
-        const sona = await import(sonaUrl);
-        const SonaEngineCtor = sona.SonaEngine ?? sona.default?.SonaEngine;
-        if (SonaEngineCtor) {
-          const sonaRank = config.sonaRank || 4;
-          sonaEngine = new SonaEngineCtor(dim, sonaRank, alpha, lr) as SonaEngineInstance;
-          sonaAvailable = true;
-          features.push(`SONA (${dim}-dim, rank-${sonaRank})`);
-        }
+        const { SonaEngine: SonaEngineCtor } = await import('../neural/sona-engine.js');
+        const sonaRank = config.sonaRank || 4;
+        sonaEngine = new SonaEngineCtor(dim, sonaRank, alpha, lr) as SonaEngineInstance;
+        sonaAvailable = true;
+        features.push(`SONA (${dim}-dim, rank-${sonaRank})`);
       } catch (sonaError) {
         sonaAvailable = false;
         if (config.useSona === true) {

@@ -15,8 +15,7 @@ import { loadMofloConfig } from '../config/moflo-config.js';
 import type { MemoryAccessor } from '../spells/types/step-command.types.js';
 import type { SchedulerEvent } from '../spells/scheduler/scheduler.js';
 import { spawn, execFile, execFileSync } from 'child_process';
-import { fileURLToPath } from 'url';
-import { dirname, join, resolve, isAbsolute } from 'path';
+import { join, resolve, isAbsolute } from 'path';
 import * as fs from 'fs';
 
 // Start daemon subcommand
@@ -329,11 +328,8 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
     fs.mkdirSync(stateDir, { recursive: true });
   }
 
-  // Get path to CLI (from dist/src/commands/daemon.js -> bin/cli.js)
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-  // dist/src/commands -> dist/src -> dist -> package root -> bin/cli.js
-  const cliPath = resolve(join(__dirname, '..', '..', '..', 'bin', 'cli.js'));
+  const { mofloPath } = await import('../shared/core/moflo-package-root.js');
+  const cliPath = mofloPath(import.meta.url, 'bin', 'cli.js');
   validatePath(cliPath, 'CLI path');
 
   // Verify CLI path exists

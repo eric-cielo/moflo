@@ -9,7 +9,7 @@ import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, statSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { resolve } from 'path';
 import { execSync, exec } from 'child_process';
 import { promisify } from 'util';
@@ -1359,9 +1359,11 @@ export const doctorCommand: Command = {
           return { name: 'Spell Engine', status: 'warn', message: 'Could not locate moflo package root', fix: 'npm run build' };
         }
 
-        // Prefer compiled dist/, fall back to src/ in dev repo
-        const distDir = join(mofloRoot, 'src', 'modules', 'spells', 'dist');
-        const srcDir = join(mofloRoot, 'src', 'modules', 'spells', 'src');
+        // Post-#586 workspace collapse: spell engine lives at src/cli/spells/
+        // (source) and dist/src/cli/spells/ (compiled). The legacy
+        // src/modules/spells/{src,dist}/ tree was deleted.
+        const distDir = join(mofloRoot, 'dist', 'src', 'cli', 'spells');
+        const srcDir = join(mofloRoot, 'src', 'cli', 'spells');
         const hasDistDir = existsSync(distDir);
         const hasSrcDir = existsSync(srcDir);
 
@@ -1436,18 +1438,11 @@ export const doctorCommand: Command = {
     // actually start (e.g. Windows Docker image pulled and configured).
     async function checkSandboxTier(): Promise<HealthCheck> {
       try {
-        const __doctorDir = dirname(fileURLToPath(import.meta.url));
-        let cliPkgRoot = __doctorDir;
-        while (cliPkgRoot !== dirname(cliPkgRoot) && !existsSync(join(cliPkgRoot, 'package.json'))) {
-          cliPkgRoot = dirname(cliPkgRoot);
-        }
-        const sandboxPath = resolve(cliPkgRoot, '..', 'spells', 'dist', 'core', 'platform-sandbox.js');
-        const sandboxModule = await import(pathToFileURL(sandboxPath).href);
         const {
           detectSandboxCapability,
           loadSandboxConfigFromProject,
           resolveEffectiveSandbox,
-        } = sandboxModule;
+        } = await import('../spells/index.js');
 
         const cap = detectSandboxCapability();
         const config = await loadSandboxConfigFromProject(process.cwd());

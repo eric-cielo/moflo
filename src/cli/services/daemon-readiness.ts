@@ -7,12 +7,12 @@
  * Always creates the schedule regardless — the daemon picks it up on next start.
  */
 
-import { resolve, dirname, join } from 'path';
+import { join, resolve } from 'path';
 import { existsSync, mkdirSync, openSync, closeSync } from 'fs';
 import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
 import { getDaemonLockHolder } from './daemon-lock.js';
 import { isDaemonInstalled, installDaemonService } from './daemon-service.js';
+import { mofloPath } from '../shared/core/moflo-package-root.js';
 
 export interface DaemonReadinessResult {
   /** Whether the daemon is currently running. */
@@ -116,10 +116,7 @@ async function defaultPromptConfirm(message: string): Promise<boolean> {
 }
 
 async function defaultStartDaemon(projectRoot: string): Promise<boolean> {
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-  // dist/src/services -> dist/src -> dist -> package root -> bin/cli.js
-  const cliPath = resolve(join(__dirname, '..', '..', '..', 'bin', 'cli.js'));
+  const cliPath = mofloPath(import.meta.url, 'bin', 'cli.js');
 
   if (!existsSync(cliPath)) return false;
 
