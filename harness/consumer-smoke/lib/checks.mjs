@@ -428,9 +428,12 @@ const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
   'Status Line',
   'Daemon Status',
   'Config File',
-  'Memory Database',
+  'Memory Database',  // smoke runs `memory init` AFTER doctor
+  'Embeddings',       // depends on Memory Database
   'Test Directories',
   'Git Repository',
+  'Gate Health',      // .claude/ not initialised in fresh fixture (warn since #784)
+  'Semantic Quality', // empty DB, no patterns yet
 ];
 
 export function doctor(consumerDir) {

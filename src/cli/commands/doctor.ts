@@ -1312,7 +1312,11 @@ export const doctorCommand: Command = {
     const verbose = ctx.flags.verbose as boolean;
     const killZombies = ctx.flags['kill-zombies'] as boolean;
     const strict = ctx.flags.strict as boolean;
-    const allowWarnRaw = ctx.flags['allow-warn'] as string | undefined;
+    // Parser normalises kebab-case flag names to camelCase: `--allow-warn`
+    // arrives as `ctx.flags.allowWarn`. Reading the dashed form returns
+    // undefined and silently disables the allowlist (was the bug that made
+    // every smoke run fail until 4.9.0-rc.13).
+    const allowWarnRaw = ctx.flags.allowWarn as string | undefined;
     const allowWarnList = allowWarnRaw
       ? allowWarnRaw.split(',').map((s) => s.trim()).filter(Boolean)
       : [];

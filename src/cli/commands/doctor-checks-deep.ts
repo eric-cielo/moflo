@@ -19,6 +19,7 @@ import { join } from 'path';
 import { pathToFileURL } from 'url';
 import { findProjectRoot as findConsumerProjectDir } from '../services/project-root.js';
 import { findMofloPackageRoot } from '../services/moflo-require.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 export interface HealthCheck {
   name: string;
@@ -509,22 +510,31 @@ export async function checkGateHealth(): Promise<HealthCheck> {
   const issues: string[] = [];
   const warnings: string[] = [];
 
-  // 1. Check gate.cjs exists and has all required cases
+  // 1. Check gate.cjs exists and has all required cases. If neither
+  // gate.cjs nor settings.json exist, the project is uninitialised — that
+  // is a normal pre-init state for a fresh consumer fixture, not a broken
+  // install. Distinguish via warn (init required) vs fail (init was run
+  // but something is corrupt). Issue #784 — fresh consumer-install-smoke
+  // fixtures hit this branch every CI run.
   const helperGate = join(projectDir, '.claude', 'helpers', 'gate.cjs');
+  const settingsForInitProbe = join(projectDir, '.claude', 'settings.json');
   if (!existsSync(helperGate)) {
+    const uninitialised = !existsSync(settingsForInitProbe);
     return {
       name: 'Gate Health',
-      status: 'fail',
-      message: '.claude/helpers/gate.cjs not found',
-      fix: 'npx moflo init --fix',
+      status: uninitialised ? 'warn' : 'fail',
+      message: uninitialised
+        ? '.claude/ not initialised — gate.cjs + settings.json absent'
+        : '.claude/helpers/gate.cjs not found',
+      fix: 'npx moflo init',
     };
   }
 
   let gateContent: string;
   try {
     gateContent = readFileSync(helperGate, 'utf8');
-  } catch {
-    return { name: 'Gate Health', status: 'fail', message: 'Cannot read .claude/helpers/gate.cjs', fix: 'npx moflo init --fix' };
+  } catch (e) {
+    return { name: 'Gate Health', status: 'fail', message: `Cannot read .claude/helpers/gate.cjs: ${errorDetail(e)}`, fix: 'npx moflo init --fix' };
   }
 
   const missingCases = REQUIRED_GATE_CASES.filter(c => !gateContent.includes(`case '${c}'`));
@@ -549,7 +559,10 @@ export async function checkGateHealth(): Promise<HealthCheck> {
     } catch { /* non-fatal */ }
   }
 
-  // 3. Check settings.json hook wiring
+  // 3. Check settings.json hook wiring. Missing settings.json means
+  // `moflo init` has never run — that is "uninitialised", not "broken"
+  // (gate.cjs is auto-synced by session-start-launcher independent of
+  // init). Warn-not-fail so fresh consumer fixtures don't trip the gate.
   const settingsPath = join(projectDir, '.claude', 'settings.json');
   if (existsSync(settingsPath)) {
     try {
@@ -558,11 +571,11 @@ export async function checkGateHealth(): Promise<HealthCheck> {
       if (missingHooks.length > 0) {
         issues.push(`settings.json missing hook wiring: ${missingHooks.map(h => h.pattern).join(', ')}`);
       }
-    } catch {
-      warnings.push('Cannot parse .claude/settings.json');
+    } catch (e) {
+      warnings.push(`Cannot parse .claude/settings.json: ${errorDetail(e)}`);
     }
   } else {
-    issues.push('.claude/settings.json not found — no hooks configured');
+    warnings.push('.claude/settings.json not found — run `npx moflo init` to wire hooks');
   }
 
   // 4. Check workflow-state.json is valid (if exists)
