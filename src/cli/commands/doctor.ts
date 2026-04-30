@@ -32,6 +32,7 @@ import {
   memoryDbCandidatePaths,
   memoryDbPath,
 } from '../services/moflo-paths.js';
+import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Promisified exec with proper shell and env inheritance for cross-platform support
 const execAsync = promisify(exec);
@@ -193,8 +194,8 @@ async function checkDaemonStatus(): Promise<HealthCheck> {
       return { name: 'Daemon Status', status: 'warn', message: 'Legacy PID file found', fix: 'rm .moflo/daemon.pid && claude-flow daemon start' };
     }
     return { name: 'Daemon Status', status: 'warn', message: 'Not running', fix: 'claude-flow daemon start' };
-  } catch {
-    return { name: 'Daemon Status', status: 'warn', message: 'Unable to check', fix: 'claude-flow daemon status' };
+  } catch (e) {
+    return { name: 'Daemon Status', status: 'warn', message: `Unable to check: ${errorDetail(e)}`, fix: 'claude-flow daemon status' };
   }
 }
 
@@ -235,8 +236,8 @@ async function checkGit(): Promise<HealthCheck> {
   try {
     const version = await runCommand('git --version');
     return { name: 'Git', status: 'pass', message: version.replace('git version ', 'v') };
-  } catch {
-    return { name: 'Git', status: 'warn', message: 'Not installed', fix: 'Install git from https://git-scm.com' };
+  } catch (e) {
+    return { name: 'Git', status: 'warn', message: `Not installed (${errorDetail(e, { firstLineOnly: true })})`, fix: 'Install git from https://git-scm.com' };
   }
 }
 
@@ -245,8 +246,8 @@ async function checkGitRepo(): Promise<HealthCheck> {
   try {
     await runCommand('git rev-parse --git-dir');
     return { name: 'Git Repository', status: 'pass', message: 'In a git repository' };
-  } catch {
-    return { name: 'Git Repository', status: 'warn', message: 'Not a git repository', fix: 'git init' };
+  } catch (e) {
+    return { name: 'Git Repository', status: 'warn', message: `Not a git repository (${errorDetail(e, { firstLineOnly: true })})`, fix: 'git init' };
   }
 }
 
@@ -322,8 +323,8 @@ async function checkDiskSpace(): Promise<HealthCheck> {
       return { name: 'Disk Space', status: 'warn', message: `${available} available (${usePercent}% used)` };
     }
     return { name: 'Disk Space', status: 'pass', message: `${available} available` };
-  } catch {
-    return { name: 'Disk Space', status: 'warn', message: 'Unable to check' };
+  } catch (e) {
+    return { name: 'Disk Space', status: 'warn', message: `Unable to check: ${errorDetail(e, { firstLineOnly: true })}` };
   }
 }
 
@@ -335,8 +336,8 @@ async function checkBuildTools(): Promise<HealthCheck> {
       return { name: 'TypeScript', status: 'warn', message: 'Not installed locally', fix: 'npm install -D typescript' };
     }
     return { name: 'TypeScript', status: 'pass', message: tscVersion.replace('Version ', 'v') };
-  } catch {
-    return { name: 'TypeScript', status: 'warn', message: 'Not installed locally', fix: 'npm install -D typescript' };
+  } catch (e) {
+    return { name: 'TypeScript', status: 'warn', message: `Not installed locally (${errorDetail(e, { firstLineOnly: true })})`, fix: 'npm install -D typescript' };
   }
 }
 
@@ -390,12 +391,12 @@ async function checkVersionFreshness(): Promise<HealthCheck> {
     try {
       const npmInfo = await runCommand('npm view moflo version', 5000);
       latestVersion = npmInfo.trim();
-    } catch {
+    } catch (e) {
       // Can't reach npm registry - skip check
       return {
         name: 'Version Freshness',
         status: 'warn',
-        message: `v${currentVersion} (cannot check registry)`
+        message: `v${currentVersion} (cannot check registry: ${errorDetail(e, { firstLineOnly: true })})`
       };
     }
 
@@ -446,7 +447,7 @@ async function checkVersionFreshness(): Promise<HealthCheck> {
     return {
       name: 'Version Freshness',
       status: 'warn',
-      message: 'Unable to check version freshness'
+      message: `Unable to check version freshness: ${errorDetail(error)}`
     };
   }
 }
@@ -459,11 +460,11 @@ async function checkClaudeCode(): Promise<HealthCheck> {
     const versionMatch = version.match(/v?(\d+\.\d+\.\d+)/);
     const versionStr = versionMatch ? `v${versionMatch[1]}` : version;
     return { name: 'Claude Code CLI', status: 'pass', message: versionStr };
-  } catch {
+  } catch (e) {
     return {
       name: 'Claude Code CLI',
       status: 'warn',
-      message: 'Not installed',
+      message: `Not installed (${errorDetail(e, { firstLineOnly: true })})`,
       fix: 'npm install -g @anthropic-ai/claude-code'
     };
   }
@@ -628,19 +629,20 @@ export async function checkEmbeddings(): Promise<HealthCheck> {
       status: 'pass',
       message: `Memory DB initialized (v${info.version}, vectors enabled)`
     };
-  } catch {
+  } catch (sqlJsError) {
     // sql.js not available — fall back to file-size heuristic
+    const sqlDetail = errorDetail(sqlJsError);
     try {
       const stats = statSync(foundDbPath);
       const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
       return {
         name: 'Embeddings',
         status: 'warn',
-        message: `Memory DB exists (${sizeMB} MB) — cannot verify vectors (sql.js not available)`,
+        message: `Memory DB exists (${sizeMB} MB) — cannot verify vectors (sql.js not available: ${sqlDetail})`,
         fix: 'npm install sql.js && npx moflo embeddings init'
       };
-    } catch {
-      return { name: 'Embeddings', status: 'warn', message: 'Unable to check' };
+    } catch (statError) {
+      return { name: 'Embeddings', status: 'warn', message: `Unable to check: sql.js failed (${sqlDetail}), stat failed (${errorDetail(statError)})` };
     }
   }
 }
@@ -854,8 +856,8 @@ async function checkTestDirs(): Promise<HealthCheck> {
     }
 
     return { name: 'Test Directories', status: 'pass', message: `${existing.length} directories: ${existing.join(', ')} (${indexLabel})` };
-  } catch {
-    return { name: 'Test Directories', status: 'warn', message: 'Unable to parse moflo.yaml' };
+  } catch (e) {
+    return { name: 'Test Directories', status: 'warn', message: `Unable to parse moflo.yaml: ${errorDetail(e)}` };
   }
 }
 
@@ -1274,6 +1276,24 @@ export const doctorCommand: Command = {
       description: 'Find and kill orphaned moflo/claude-flow node processes',
       type: 'boolean',
       default: false
+    },
+    {
+      // Issue #784: fail on warnings. Used by consumer-install-smoke so a
+      // single regressed check (like the 4.9.0-rc.11 Sandbox-Tier silent
+      // warn) blocks merge instead of slipping into a published tarball.
+      name: 'strict',
+      description: 'Treat warnings as failures (non-zero exit). Used by CI.',
+      type: 'boolean',
+      default: false
+    },
+    {
+      // Companion to --strict. CI-legitimate warnings (e.g. "Sandbox Tier"
+      // on a runner without Docker) are explicitly allowlisted by name so
+      // the test owner's intent is on record. Comma-separated; matches the
+      // `name` field of each check (case-sensitive substring).
+      name: 'allow-warn',
+      description: 'In --strict mode, comma-separated check names whose warnings are tolerated.',
+      type: 'string'
     }
   ],
   examples: [
@@ -1282,7 +1302,8 @@ export const doctorCommand: Command = {
     { command: 'claude-flow doctor --install', description: 'Auto-install missing dependencies' },
     { command: 'claude-flow doctor --kill-zombies', description: 'Find and kill zombie processes' },
     { command: 'claude-flow doctor -c version', description: 'Check for stale npx cache' },
-    { command: 'claude-flow doctor -c claude', description: 'Check Claude Code CLI only' }
+    { command: 'claude-flow doctor -c claude', description: 'Check Claude Code CLI only' },
+    { command: 'claude-flow doctor --strict', description: 'Fail (exit 1) on any warning — used by CI' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const showFix = ctx.flags.fix as boolean;
@@ -1290,12 +1311,30 @@ export const doctorCommand: Command = {
     const component = ctx.flags.component as string;
     const verbose = ctx.flags.verbose as boolean;
     const killZombies = ctx.flags['kill-zombies'] as boolean;
+    const strict = ctx.flags.strict as boolean;
+    // Parser normalises kebab-case flag names to camelCase: `--allow-warn`
+    // arrives as `ctx.flags.allowWarn`. Reading the dashed form returns
+    // undefined and silently disables the allowlist (was the bug that made
+    // every smoke run fail until 4.9.0-rc.13).
+    const allowWarnRaw = ctx.flags.allowWarn as string | undefined;
+    const allowWarnList = allowWarnRaw
+      ? allowWarnRaw.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
 
     output.writeln();
     output.writeln(output.bold('MoFlo Doctor'));
     output.writeln(output.dim('System diagnostics and health check'));
     output.writeln(output.dim('─'.repeat(50)));
     output.writeln();
+
+    // --allow-warn is meaningless without --strict; surface the misuse
+    // under the banner so it reads as doctor output, not orphaned text.
+    if (allowWarnList.length > 0 && !strict) {
+      output.writeln(output.warning(
+        '--allow-warn requires --strict; ignoring (warnings are tolerated by default).',
+      ));
+      output.writeln();
+    }
 
     // Handle --kill-zombies early
     if (killZombies) {
@@ -1428,8 +1467,8 @@ export const doctorCommand: Command = {
           status: 'pass',
           message: parts.join(', '),
         };
-      } catch {
-        return { name: 'Spell Engine', status: 'warn', message: 'Unable to check spell engine' };
+      } catch (e) {
+        return { name: 'Spell Engine', status: 'warn', message: `Unable to check spell engine: ${errorDetail(e)}` };
       }
     }
 
@@ -1721,6 +1760,31 @@ export const doctorCommand: Command = {
       output.writeln(output.error('Some checks failed. Please address the issues above.'));
       return { success: false, exitCode: 1, data: { passed, warnings, failed, results } };
     } else if (warnings > 0) {
+      // Issue #784: in strict mode any non-allowlisted warning fails the run.
+      // Equality (not substring) match — an allowlist entry tolerates exactly
+      // that check, never accidentally suppresses neighboring checks like
+      // "Git" allowlisting "Git Repository".
+      if (strict) {
+        const warnResults = results.filter((r) => r.status === 'warn');
+        const allowSet = new Set(allowWarnList);
+        const offending = warnResults.filter((r) => !r.name || !allowSet.has(r.name));
+        if (offending.length > 0) {
+          output.writeln();
+          output.writeln(output.error(
+            `--strict: ${offending.length} warning${offending.length > 1 ? 's' : ''} not allowlisted ` +
+              `(use --allow-warn "<name>,<name>" to tolerate intentional warnings):`,
+          ));
+          for (const r of offending) {
+            output.writeln(output.error(`  ✗ ${r.name}: ${r.message ?? ''}`));
+          }
+          return { success: false, exitCode: 1, data: { passed, warnings, failed, results } };
+        }
+        output.writeln();
+        output.writeln(output.success(
+          `--strict: ${warnResults.length} warning${warnResults.length > 1 ? 's' : ''} all allowlisted (--allow-warn).`,
+        ));
+        return { success: true, data: { passed, warnings, failed, results } };
+      }
       output.writeln();
       output.writeln(output.warning('All checks passed with some warnings.'));
       return { success: true, data: { passed, warnings, failed, results } };

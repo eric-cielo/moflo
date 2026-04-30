@@ -399,11 +399,67 @@ export function cliLoads(consumerDir) {
   record('cli-version', 'pass', r.stdout.trim().slice(0, 60));
 }
 
+// Issue #784: warning-status checks that are legitimately allowed on a
+// fresh consumer install in CI. These are the *only* warnings that don't
+// fail the smoke; every other warn is treated as a regression.
+//
+// Each entry must match an exact `name:` literal in src/cli/commands/doctor.ts
+// (or doctor-checks-deep.ts) — equality match in --strict mode rejects typos
+// silently otherwise. Verify with:
+//   grep -nE "name:\s*['\"][^'\"]+['\"]" src/cli/commands/doctor*.ts
+//
+//   - "Sandbox Tier"     — probes for Docker; macOS/Windows CI runners and
+//                          bare Linux runners don't have it.
+//   - "Claude Code CLI"  — `claude` CLI not installed in a fresh fixture.
+//   - "MCP Servers"      — no Claude/MCP config in a bare fixture.
+//   - "Status Line"      — wired by `moflo init`, which the smoke fixture
+//                          intentionally skips (it tests the tarball, not
+//                          the init flow).
+//   - "Daemon Status"    — daemon isn't running in a smoke fixture.
+//   - "Config File"      — no `.moflo/config.yaml` in a bare consumer.
+//   - "Memory Database"  — not initialized yet (smoke runs `memory init`
+//                          as a separate later check).
+//   - "Test Directories" / "Git Repository" — fresh consumer fixture
+//                          isn't a real project repo.
+const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
+  'Sandbox Tier',
+  'Claude Code CLI',
+  'MCP Servers',
+  'Status Line',
+  'Daemon Status',
+  'Config File',
+  'Memory Database',  // smoke runs `memory init` AFTER doctor
+  'Embeddings',       // depends on Memory Database
+  'Test Directories',
+  'Git Repository',
+  'Gate Health',      // .claude/ not initialised in fresh fixture (warn since #784)
+  'Semantic Quality', // empty DB, no patterns yet
+  'Disk Space',       // macOS GitHub runner is constantly >80% used (warn threshold)
+];
+
 export function doctor(consumerDir) {
   section('Doctor');
-  // doctor exits 1 on warnings; both 0 and 1 are acceptable runs.
-  const r = flo(consumerDir, ['doctor', '--json'], { timeout: 60_000 });
-  recordExit('doctor', r, { okCodes: [0, 1] });
+  // Issue #784: --strict flips warns→exit 1. Allowlist above keeps known
+  // CI-environment warns from blocking the smoke; any unrecognised warn
+  // (like the 4.9.0-rc.11 Sandbox-Tier silent-catch case) fails the run.
+  const r = flo(
+    consumerDir,
+    ['doctor', '--strict', '--allow-warn', SMOKE_ALLOWED_DOCTOR_WARNINGS.join(',')],
+    { timeout: 60_000 },
+  );
+  // recordExit truncates output to 200 chars; doctor failures need the full
+  // tail (especially the "warnings not allowlisted" list) to be debuggable
+  // from CI logs without a re-run.
+  if (r.code !== 0) {
+    log('--- doctor full output (exit non-zero) ---');
+    log(r.stdout);
+    if (r.stderr) {
+      log('--- doctor stderr ---');
+      log(r.stderr);
+    }
+    log('--- end doctor output ---');
+  }
+  recordExit('doctor', r, { okCodes: [0] });
 }
 
 export function memoryInit(consumerDir) {
