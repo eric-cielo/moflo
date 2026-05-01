@@ -12,7 +12,14 @@
  * tarball through a unique temp path, so Windows file locks during extraction
  * never collide. The final model dir is the synchronization point.
  */
-import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -21,6 +28,15 @@ import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { x as tarExtract } from 'tar';
 
 const GCS_BASE_URL = 'https://storage.googleapis.com/qdrant-fastembed';
+
+/**
+ * Sentinel file written into the model directory only after the tarball has
+ * been fully downloaded AND extracted. Cache hits without it are treated as
+ * incomplete (interrupted download, partial extract, OS reboot mid-write) —
+ * the model dir is wiped and redownloaded. The `-v1` suffix lets us bump
+ * the format if the cache layout ever changes.
+ */
+export const COMPLETION_SENTINEL = '.moflo-fastembed-complete-v1';
 
 /**
  * Maps fastembed's on-disk model identifier to the GCS tarball slug. Most
@@ -88,8 +104,15 @@ async function downloadTarball(
 
 /**
  * Ensure the per-model directory exists in the cache. Returns the absolute
- * path. If already present, no network/disk work happens — this is the hot
- * path for every embed call after first run.
+ * path. If already present AND the completion sentinel is in place, no
+ * network/disk work happens — this is the hot path for every embed call
+ * after first run.
+ *
+ * If the directory exists without a sentinel, a prior download was
+ * interrupted (Ctrl+C, network drop, OS reboot during extract). The dir
+ * is wiped and redownloaded — otherwise truncated files like a 4.7 MB
+ * `model.onnx` (real is ~22 MB) silently slip through to ORT and blow up
+ * with an opaque "Protobuf parsing failed" at session-creation time.
  */
 export async function retrieveModel(
   model: string,
@@ -98,7 +121,15 @@ export async function retrieveModel(
   deps: DownloadDeps = {},
 ): Promise<string> {
   const modelDir = join(cacheDir, model);
-  if (existsSync(modelDir)) return modelDir;
+  if (existsSync(modelDir)) {
+    if (existsSync(join(modelDir, COMPLETION_SENTINEL))) return modelDir;
+    if (showProgress) {
+      process.stderr.write(
+        `fastembed: cached model at ${modelDir} is incomplete (no completion marker); redownloading.\n`,
+      );
+    }
+    rmSync(modelDir, { recursive: true, force: true });
+  }
 
   mkdirSync(cacheDir, { recursive: true });
   const tarballPath = join(cacheDir, `${model}.tar.gz`);
@@ -112,5 +143,6 @@ export async function retrieveModel(
   if (!existsSync(modelDir)) {
     throw new Error(`Model archive extracted but ${modelDir} is missing — corrupt tarball?`);
   }
+  writeFileSync(join(modelDir, COMPLETION_SENTINEL), '');
   return modelDir;
 }
