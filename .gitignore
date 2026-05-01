@@ -177,8 +177,9 @@ hive-mind-prompt-*.txt
 *.rvf
 .vitest-results.json
 
-# Local guidance docs (generated, not tracked)
-.claude/guidance/
+# Auto-generated top-level guidance mirror (session-start writes these from shipped/).
+# Use a precise glob — a bare `.claude/guidance/` would also swallow shipped/ + internal/.
+/.claude/guidance/*.md
 
 # MoFlo state (gitignored)
 .claude-epic/
