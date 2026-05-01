@@ -17,12 +17,8 @@ import {
   getAgentTool,
   getSwarmTool,
   getTaskTool,
+  spawnAgentForTest,
 } from '../../src/cli/__tests__/mcp-tools/_helpers.js';
-
-interface SpawnResult {
-  success: boolean;
-  agentId: string;
-}
 
 interface OrchestrateResult {
   success: boolean;
@@ -65,11 +61,11 @@ describe('System E2E — swarm restoration', () => {
     expect(init.success).toBe(true);
     expect(init.swarmId).toBeTruthy();
 
-    const a1 = (await getAgentTool('agent_spawn').handler({ agentType: 'coder' })) as SpawnResult;
-    const a2 = (await getAgentTool('agent_spawn').handler({ agentType: 'coder' })) as SpawnResult;
-    const a3 = (await getAgentTool('agent_spawn').handler({ agentType: 'coder' })) as SpawnResult;
-    expect([a1.success, a2.success, a3.success]).toEqual([true, true, true]);
-    const agentIds = [a1.agentId, a2.agentId, a3.agentId];
+    const agentIds = [
+      await spawnAgentForTest({ agentType: 'coder' }),
+      await spawnAgentForTest({ agentType: 'coder' }),
+      await spawnAgentForTest({ agentType: 'coder' }),
+    ];
 
     const orchestrate = (await getTaskTool('task_orchestrate').handler({
       tasks: Array.from({ length: 5 }, (_, i) => ({
@@ -89,10 +85,11 @@ describe('System E2E — swarm restoration', () => {
     for (const task of orchestrate.tasks) {
       const owner = task.assignedTo[0];
       if (!owner) continue;
-      if (!counts.has(owner)) {
+      const current = counts.get(owner);
+      if (current === undefined) {
         expect.fail(`task ${task.taskId} assigned to unknown agent ${owner}`);
       }
-      counts.set(owner, counts.get(owner)! + 1);
+      counts.set(owner, current + 1);
     }
     for (const [agent, count] of counts) {
       expect(count, `agent ${agent} got ${count} tasks (max 2)`).toBeLessThanOrEqual(2);
@@ -112,16 +109,16 @@ describe('System E2E — swarm restoration', () => {
   it('agent_terminate is reflected in swarm_status', async () => {
     await getSwarmTool('swarm_init').handler({ topology: 'mesh' });
 
-    const a1 = (await getAgentTool('agent_spawn').handler({ agentType: 'coder' })) as SpawnResult;
-    const a2 = (await getAgentTool('agent_spawn').handler({ agentType: 'coder' })) as SpawnResult;
-    const a3 = (await getAgentTool('agent_spawn').handler({ agentType: 'coder' })) as SpawnResult;
+    const a1 = await spawnAgentForTest({ agentType: 'coder' });
+    const a2 = await spawnAgentForTest({ agentType: 'coder' });
+    const a3 = await spawnAgentForTest({ agentType: 'coder' });
 
     const before = (await getSwarmTool('swarm_status').handler({})) as StatusResult;
     expect(before.agentSummary.total).toBe(3);
     expect(before.agentCount).toBe(3);
 
     const term = (await getAgentTool('agent_terminate').handler({
-      agentId: a2.agentId,
+      agentId: a2,
       force: true,
       reason: 'system-test',
     })) as TerminateResult;
@@ -139,7 +136,7 @@ describe('System E2E — swarm restoration', () => {
       status: 'idle',
     })) as AgentListResult;
     const survivors = list.agents.map(a => a.agentId).sort();
-    expect(survivors).toEqual([a1.agentId, a3.agentId].sort());
+    expect(survivors).toEqual([a1, a3].sort());
   });
 
   describe('MCP-server restart smoke', () => {
@@ -151,14 +148,8 @@ describe('System E2E — swarm restoration', () => {
     });
 
     it('spawn 2 → reset coordinator → agent_list returns both via persistence hydration', async () => {
-      const a1 = (await getAgentTool('agent_spawn').handler({
-        agentType: 'coder',
-      })) as SpawnResult;
-      const a2 = (await getAgentTool('agent_spawn').handler({
-        agentType: 'researcher',
-      })) as SpawnResult;
-      expect(a1.success).toBe(true);
-      expect(a2.success).toBe(true);
+      const a1 = await spawnAgentForTest({ agentType: 'coder' });
+      const a2 = await spawnAgentForTest({ agentType: 'researcher' });
 
       // Singleton reset is the test analogue of an MCP-server restart.
       await _resetSwarmCoordinatorForTest();
@@ -166,7 +157,7 @@ describe('System E2E — swarm restoration', () => {
       const list = (await getAgentTool('agent_list').handler({})) as AgentListResult;
       expect(list.total).toBe(2);
       const ids = list.agents.map(a => a.agentId).sort();
-      expect(ids).toEqual([a1.agentId, a2.agentId].sort());
+      expect(ids).toEqual([a1, a2].sort());
       const types = list.agents.map(a => a.agentType).sort();
       expect(types).toEqual(['coder', 'researcher']);
     });

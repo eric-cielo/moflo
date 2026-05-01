@@ -10,12 +10,12 @@
 
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { _resetSwarmCoordinatorForTest } from '../../src/cli/mcp-tools/swarm-coordinator-singleton.js';
 import { SUBAGENT_BOOTSTRAP_DIRECTIVE } from '../../src/cli/services/subagent-bootstrap.js';
 import { locateMofloRootPath } from '../../src/cli/services/moflo-require.js';
 import {
   getAgentTool,
   getHiveMindTool,
+  resetHiveAndSwarm,
 } from '../../src/cli/__tests__/mcp-tools/_helpers.js';
 
 interface SpawnAgentResult {
@@ -54,14 +54,7 @@ describe('System E2E — subagent bootstrap directive parity', () => {
     hookOutput = runHook();
   });
 
-  afterEach(async () => {
-    try {
-      await getHiveMindTool('hive-mind_shutdown').handler({ force: true });
-    } catch {
-      // hive may not be initialized in agent-only tests
-    }
-    await _resetSwarmCoordinatorForTest();
-  });
+  afterEach(resetHiveAndSwarm);
 
   it('SubagentStart hook emits additionalContext byte-for-byte equal to the canonical directive', () => {
     expect(hookOutput.hookSpecificOutput?.hookEventName).toBe('SubagentStart');

@@ -8,13 +8,11 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  _resetSwarmCoordinatorForTest,
-  getSwarmCoordinator,
-} from '../../src/cli/mcp-tools/swarm-coordinator-singleton.js';
+import { getSwarmCoordinator } from '../../src/cli/mcp-tools/swarm-coordinator-singleton.js';
 import {
   getAgentTool,
   getHiveMindTool,
+  resetHiveAndSwarm,
 } from '../../src/cli/__tests__/mcp-tools/_helpers.js';
 
 interface InitResult {
@@ -69,15 +67,7 @@ interface AgentListResult {
 }
 
 describe('System E2E — hive-mind', () => {
-  afterEach(async () => {
-    // Best-effort hive shutdown — short-circuits when state is already cleared.
-    try {
-      await getHiveMindTool('hive-mind_shutdown').handler({ force: true });
-    } catch {
-      // hive already torn down
-    }
-    await _resetSwarmCoordinatorForTest();
-  });
+  afterEach(resetHiveAndSwarm);
 
   it('init → spawn × 3 → workers visible via swarm agent_list', async () => {
     const init = (await getHiveMindTool('hive-mind_init').handler({ topology: 'mesh' })) as InitResult;

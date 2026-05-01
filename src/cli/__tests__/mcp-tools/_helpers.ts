@@ -7,6 +7,7 @@ import { hiveMindTools } from '../../mcp-tools/hive-mind-tools.js';
 import { swarmTools } from '../../mcp-tools/swarm-tools.js';
 import { taskTools } from '../../mcp-tools/task-tools.js';
 import type { MCPTool } from '../../mcp-tools/types.js';
+import { _resetSwarmCoordinatorForTest } from '../../mcp-tools/swarm-coordinator-singleton.js';
 
 export function getAgentTool(name: string): MCPTool {
   const tool = agentTools.find(t => t.name === name);
@@ -44,4 +45,14 @@ export async function spawnAgentForTest(
     throw new Error(`spawnAgentForTest failed: ${result.error ?? 'unknown'}`);
   }
   return result.agentId;
+}
+
+/**
+ * Standard system-test teardown: shutdown the hive-mind (returns
+ * `{success:false}` rather than throwing if not initialized) then drop the
+ * coordinator singleton so the next test boots fresh.
+ */
+export async function resetHiveAndSwarm(): Promise<void> {
+  await getHiveMindTool('hive-mind_shutdown').handler({ force: true });
+  await _resetSwarmCoordinatorForTest();
 }
