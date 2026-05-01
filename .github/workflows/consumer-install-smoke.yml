@@ -19,11 +19,6 @@ on:
 
 env:
   NODE_VERSION: '22'
-  # Forces bundled JS actions (checkout, setup-node, cache, etc.) to run on
-  # Node 24 instead of their pinned Node 20 runtime. Silences the GitHub-wide
-  # Node 20 deprecation warning ahead of the 2026-06-02 forced cutover.
-  # See: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # Cancel superseded PR runs but never cancel an in-flight push to main:
 # a half-finished smoke on main leaves the branch in an unverified state and
@@ -44,9 +39,9 @@ jobs:
     # so a stuck install can't hold the queue.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -57,7 +52,7 @@ jobs:
       # partial prefix matches could restore the wrong model's binary blobs
       # on a future model swap. See ADR-EMB-001 / epic #527.
       - name: Cache fastembed model
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/fastembed
           key: fastembed-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-fast-all-MiniLM-L6-v2
