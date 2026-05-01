@@ -56,8 +56,12 @@ describe('hive-mind ↔ coordinator continuity (story #807)', () => {
 
   afterEach(async () => {
     // Shutdown clears hive state singleton AND terminates coordinator agents,
-    // then reset the coordinator so the next test boots a fresh one.
-    try { await shutdown(); } catch { /* best-effort */ }
+    // then reset the coordinator so the next test boots a fresh one. Tests
+    // that already shut down (or error before init) make this a no-op; we
+    // surface the message so a real teardown bug isn't lost in the noise.
+    try { await shutdown(); } catch (err) {
+      process.stderr.write(`[test teardown] shutdown failed: ${(err as Error).message}\n`);
+    }
     await _resetSwarmCoordinatorForTest();
   });
 

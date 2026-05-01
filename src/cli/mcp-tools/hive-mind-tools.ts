@@ -9,6 +9,7 @@
  * write-through to Memory DB for configured namespaces.
  */
 
+import { randomBytes } from 'node:crypto';
 import type { MCPTool } from './types.js';
 import { MessageBus, WriteThroughAdapter } from '../swarm/message-bus/index.js';
 import { getSwarmCoordinator } from './swarm-coordinator-singleton.js';
@@ -245,25 +246,26 @@ export const hiveMindTools: MCPTool[] = [
         return { success: false, error: validation.error, agentType };
       }
 
-      const bus = await getMessageBus();
-      const coordinator = await getSwarmCoordinator();
+      const [bus, coordinator] = await Promise.all([getMessageBus(), getSwarmCoordinator()]);
       const agentStore = loadAgentStore();
 
       const spawnedWorkers: Array<{ agentId: string; role: string; joinedAt: string; bootstrap: string }> = [];
+      const joinBroadcasts: Promise<unknown>[] = [];
 
       for (let i = 0; i < count; i++) {
-        const agentId = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        // Story #801 found Math.random() ID collisions under burst spawns —
+        // use the same randomBytes pattern as agent_spawn.
+        const agentId = `${prefix}-${randomBytes(12).toString('hex')}`;
         const joinedAt = new Date().toISOString();
 
-        // Story #807: register with the shared coordinator first. If this
-        // fails we surface the error and skip both the legacy file record
-        // and the MessageBus join so the three views stay consistent.
+        // Coordinator first: a failure here aborts the legacy file-store
+        // and MessageBus writes so the three views can never disagree.
         try {
           await coordinator.spawnAgent({
             id: agentId,
             type: agentType as AgentType,
             name: agentId,
-            domain: 'hive-mind',
+            domain: HIVE_NS,
             metadata: {
               hiveRole: role,
               hiveId: hiveState.hiveId,
@@ -284,16 +286,15 @@ export const hiveMindTools: MCPTool[] = [
         agentStore.agents[agentId] = {
           agentId, agentType, status: 'idle', health: 1.0, taskCount: 0,
           config: { role, hiveRole: role, bootstrap: SUBAGENT_BOOTSTRAP_DIRECTIVE },
-          createdAt: joinedAt, domain: 'hive-mind',
+          createdAt: joinedAt, domain: HIVE_NS,
         };
 
-        // Track in hive state
         if (!hiveState.workers.includes(agentId)) {
           hiveState.workers.push(agentId);
         }
 
-        // Publish agent_join via MessageBus
-        await bus.sendUnified({
+        // Broadcasts are independent — collect and parallelize after the loop.
+        joinBroadcasts.push(bus.sendUnified({
           type: 'agent_join',
           from: agentId,
           to: '*',
@@ -302,11 +303,12 @@ export const hiveMindTools: MCPTool[] = [
           priority: 'normal',
           requiresAck: false,
           ttlMs: HIVE_TTL_MS,
-        });
+        }));
 
         spawnedWorkers.push({ agentId, role, joinedAt, bootstrap: SUBAGENT_BOOTSTRAP_DIRECTIVE });
       }
 
+      await Promise.all(joinBroadcasts);
       saveAgentStore(agentStore);
 
       return {
@@ -777,10 +779,18 @@ export const hiveMindTools: MCPTool[] = [
 
       // Story #807: terminate coordinator-side worker records before we
       // wipe the hive state so swarm agent_list reflects the shutdown.
+      // allSettled so one failed terminate doesn't strand the rest.
       try {
         const coordinator = await getSwarmCoordinator();
-        for (const workerId of hiveState.workers) {
-          await coordinator.terminateAgent(workerId, { reason: 'hive-mind_shutdown', force: true });
+        const results = await Promise.allSettled(
+          hiveState.workers.map(id =>
+            coordinator.terminateAgent(id, { reason: 'hive-mind_shutdown', force: true })
+          ),
+        );
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            process.stderr.write(`[hive-mind_shutdown] terminate failed: ${(r.reason as Error)?.message ?? r.reason}\n`);
+          }
         }
       } catch (err) {
         process.stderr.write(`[hive-mind_shutdown] coordinator cleanup failed: ${(err as Error).message}\n`);
