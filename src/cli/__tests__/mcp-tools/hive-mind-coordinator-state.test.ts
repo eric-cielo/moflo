@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 
 let fakeProjectRoot = '';
 vi.mock('../../services/project-root.js', () => ({
@@ -79,7 +79,7 @@ describe('hive-mind coordinator state', () => {
   });
 
   it('does not write .moflo/agents.json on spawn or shutdown', async () => {
-    const legacyPath = resolve(fakeProjectRoot, '.moflo', 'agents.json');
+    const legacyPath = join(fakeProjectRoot, '.moflo', 'agents.json');
 
     await initTool.handler({ topology: 'mesh' });
     await spawnTool.handler({ count: 2, agentType: 'worker' });
