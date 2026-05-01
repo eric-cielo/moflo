@@ -90,6 +90,9 @@ export {
   type RepairResult,
 } from './hook-wiring.js';
 
+// Subagent Bootstrap Directive (single-source for SubagentStart + agent_spawn surfaces)
+export { SUBAGENT_BOOTSTRAP_DIRECTIVE } from './subagent-bootstrap.js';
+
 // Re-export types
 export type { default as WorkerDaemonType, DaemonConfig } from './worker-daemon.js';
 export type { default as HeadlessWorkerExecutorType } from './headless-worker-executor.js';
