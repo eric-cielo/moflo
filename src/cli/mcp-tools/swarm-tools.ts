@@ -3,6 +3,7 @@
  *
  * `swarm_init`, `swarm_status`, `swarm_health` route through
  * UnifiedSwarmCoordinator (epic #798, story #803).
+ * `swarm_scale` lives in `./swarm-scale.ts` (epic #798, story #804).
  */
 
 import { existsSync } from 'node:fs';
@@ -12,6 +13,12 @@ import {
   getSwarmCoordinator,
   isSwarmCoordinatorInitialized,
 } from './swarm-coordinator-singleton.js';
+import {
+  scaleHandler,
+  SCALE_STRATEGIES,
+  TARGET_AGENTS_MIN,
+  TARGET_AGENTS_MAX,
+} from './swarm-scale.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { MOFLO_DIR } from '../services/moflo-paths.js';
 import type {
@@ -276,5 +283,37 @@ export const swarmTools: MCPTool[] = [
         checkedAt: new Date().toISOString(),
       };
     },
+  },
+  {
+    name: 'swarm_scale',
+    description: 'Scale swarm agents up or down with gradual / immediate / adaptive strategy',
+    category: 'swarm',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetAgents: {
+          type: 'number',
+          description: `Target number of non-terminated agents (${TARGET_AGENTS_MIN}-${TARGET_AGENTS_MAX})`,
+          minimum: TARGET_AGENTS_MIN,
+          maximum: TARGET_AGENTS_MAX,
+        },
+        scaleStrategy: {
+          type: 'string',
+          enum: [...SCALE_STRATEGIES],
+          description: 'Scaling strategy (default: gradual)',
+        },
+        agentTypes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Agent types to spawn (round-robin) and to restrict scale-down candidates to. Defaults to ["worker"].',
+        },
+        reason: {
+          type: 'string',
+          description: 'Reason for scaling (audit trail)',
+        },
+      },
+      required: ['targetAgents'],
+    },
+    handler: async (input) => scaleHandler(input),
   },
 ];
