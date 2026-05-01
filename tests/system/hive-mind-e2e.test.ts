@@ -14,6 +14,7 @@ import {
   getHiveMindTool,
   resetHiveAndSwarm,
 } from '../../src/cli/__tests__/mcp-tools/_helpers.js';
+import { checkHiveMindFunctional } from '../../src/cli/commands/doctor-checks-swarm.js';
 
 interface InitResult {
   success: boolean;
@@ -168,6 +169,19 @@ describe('System E2E — hive-mind', () => {
     expect(decided!.result).toBe('approved');
     expect(decided!.votes.for).toBe(2);
     expect(decided!.votes.against).toBe(0);
+  });
+
+  // Issue #818: gate the regression that triggered epic #798. The doctor
+  // check exercises hive-mind_init / spawn / broadcast / consensus / memory
+  // through MessageBus + WriteThroughAdapter + shared coordinator — if any
+  // handler stubs out, this fails before the bad install ships.
+  it('checkHiveMindFunctional passes against the live MessageBus + coordinator', { timeout: 30_000 }, async () => {
+    const result = await checkHiveMindFunctional();
+    if (result.status === 'warn' && /not built/i.test(result.message)) return;
+
+    const failures = (result.details ?? []).filter(d => d.status === 'fail');
+    expect(failures, `hive-mind doctor failures (epic #798 regression?): ${JSON.stringify(failures, null, 2)}`).toHaveLength(0);
+    expect(result.status).not.toBe('fail');
   });
 
   it('hive-mind_shutdown terminates coordinator-side records (workers leave swarm agent_list)', async () => {

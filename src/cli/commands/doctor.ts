@@ -26,6 +26,10 @@ import {
   getMofloRoot,
 } from './doctor-checks-deep.js';
 import { checkEmbeddingHygiene } from './doctor-embedding-hygiene.js';
+import {
+  checkSwarmFunctional,
+  checkHiveMindFunctional,
+} from './doctor-checks-swarm.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 import {
   legacyMemoryDbPath,
@@ -1260,7 +1264,7 @@ export const doctorCommand: Command = {
     {
       name: 'component',
       short: 'c',
-      description: 'Check specific component (version, node, npm, config, daemon, memory, embeddings, git, mcp, claude, disk, typescript, semantic, intelligence)',
+      description: 'Check specific component (version, node, npm, config, daemon, memory, embeddings, git, mcp, claude, disk, typescript, semantic, intelligence, swarm, hive-mind)',
       type: 'string'
     },
     {
@@ -1294,6 +1298,15 @@ export const doctorCommand: Command = {
       name: 'allow-warn',
       description: 'In --strict mode, comma-separated check names whose warnings are tolerated.',
       type: 'string'
+    },
+    {
+      // Issue #818: machine-readable output. Suppresses banner/spinner/auto-fix
+      // and emits a single JSON document so CI gates and smoke harnesses can
+      // consume per-check details (including FunctionalCheckDetail entries).
+      name: 'json',
+      description: 'Emit a single JSON document with per-check + per-subcheck details. Suppresses formatted output.',
+      type: 'boolean',
+      default: false
     }
   ],
   examples: [
@@ -1303,7 +1316,10 @@ export const doctorCommand: Command = {
     { command: 'claude-flow doctor --kill-zombies', description: 'Find and kill zombie processes' },
     { command: 'claude-flow doctor -c version', description: 'Check for stale npx cache' },
     { command: 'claude-flow doctor -c claude', description: 'Check Claude Code CLI only' },
-    { command: 'claude-flow doctor --strict', description: 'Fail (exit 1) on any warning — used by CI' }
+    { command: 'claude-flow doctor --strict', description: 'Fail (exit 1) on any warning — used by CI' },
+    { command: 'claude-flow doctor --json', description: 'Emit a single JSON doc with per-check + per-subcheck details (for CI/smoke gates)' },
+    { command: 'claude-flow doctor -c swarm', description: 'Run only the swarm + agent + task coordinator-path tripwire (epic #798)' },
+    { command: 'claude-flow doctor -c hive-mind', description: 'Run only the hive-mind MessageBus + shared-coordinator tripwire' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const showFix = ctx.flags.fix as boolean;
@@ -1320,16 +1336,19 @@ export const doctorCommand: Command = {
     const allowWarnList = allowWarnRaw
       ? allowWarnRaw.split(',').map((s) => s.trim()).filter(Boolean)
       : [];
+    const jsonOutput = ctx.flags.json as boolean;
 
-    output.writeln();
-    output.writeln(output.bold('MoFlo Doctor'));
-    output.writeln(output.dim('System diagnostics and health check'));
-    output.writeln(output.dim('─'.repeat(50)));
-    output.writeln();
+    if (!jsonOutput) {
+      output.writeln();
+      output.writeln(output.bold('MoFlo Doctor'));
+      output.writeln(output.dim('System diagnostics and health check'));
+      output.writeln(output.dim('─'.repeat(50)));
+      output.writeln();
+    }
 
     // --allow-warn is meaningless without --strict; surface the misuse
     // under the banner so it reads as doctor output, not orphaned text.
-    if (allowWarnList.length > 0 && !strict) {
+    if (allowWarnList.length > 0 && !strict && !jsonOutput) {
       output.writeln(output.warning(
         '--allow-warn requires --strict; ignoring (warnings are tolerated by default).',
       ));
@@ -1571,6 +1590,11 @@ export const doctorCommand: Command = {
       checkHookExecution,
       checkGateHealth,
       checkMofloDbBridge,
+      // Issue #818 / epic #798 — coordinator-path tripwires. They share the
+      // singleton coordinator with checkSubagentHealth above and assert by
+      // agent-id (not absolute counts) so they tolerate the parallel batch.
+      checkSwarmFunctional,
+      checkHiveMindFunctional,
       checkSandboxTier,
     ];
 
@@ -1611,6 +1635,11 @@ export const doctorCommand: Command = {
       'sandbox-tier': checkSandboxTier,
       'moflodb': checkMofloDbBridge,
       'bridge': checkMofloDbBridge,
+      'swarm': checkSwarmFunctional,
+      'swarm-functional': checkSwarmFunctional,
+      'hive': checkHiveMindFunctional,
+      'hive-mind': checkHiveMindFunctional,
+      'hive-mind-functional': checkHiveMindFunctional,
     };
 
     let checksToRun = allChecks;
@@ -1622,20 +1651,43 @@ export const doctorCommand: Command = {
     const fixes: string[] = [];
 
     // OPTIMIZATION: Run all checks in parallel for 3-5x faster execution
-    const spinner = output.createSpinner({ text: 'Running health checks in parallel...', spinner: 'dots' });
-    spinner.start();
+    const spinner = jsonOutput
+      ? null
+      : output.createSpinner({ text: 'Running health checks in parallel...', spinner: 'dots' });
+    spinner?.start();
+
+    // Issue #818: in --json mode, several deep checks (spell engine probe,
+    // mcp-spell bridge, etc.) write `[spell] ...` log lines straight to
+    // stdout — that breaks the single-JSON-document contract. Capture and
+    // discard stdout writes while checks run; restore in `finally` so a
+    // throw can't leave the process with a stubbed stdout.
+    const realStdoutWrite = process.stdout.write.bind(process.stdout);
+    const restoreStdout = () => {
+      if (jsonOutput) {
+        (process.stdout as unknown as { write: typeof realStdoutWrite }).write = realStdoutWrite;
+      }
+    };
+    if (jsonOutput) {
+      (process.stdout as unknown as { write: (...args: unknown[]) => boolean }).write =
+        (..._args: unknown[]) => true;
+    }
 
     try {
       // Execute all checks concurrently
-      const checkResults = await Promise.allSettled(checksToRun.map(check => check()));
-      spinner.stop();
+      let checkResults: PromiseSettledResult<HealthCheck>[];
+      try {
+        checkResults = await Promise.allSettled(checksToRun.map(check => check()));
+      } finally {
+        spinner?.stop();
+        restoreStdout();
+      }
 
       // Process results in order
       for (const settledResult of checkResults) {
         if (settledResult.status === 'fulfilled') {
           const result = settledResult.value;
           results.push(result);
-          output.writeln(formatCheck(result));
+          if (!jsonOutput) output.writeln(formatCheck(result));
 
           if (result.fix && (result.status === 'fail' || result.status === 'warn')) {
             fixes.push(`${result.name}: ${result.fix}`);
@@ -1647,12 +1699,39 @@ export const doctorCommand: Command = {
             message: settledResult.reason?.message || 'Unknown error'
           };
           results.push(errorResult);
-          output.writeln(formatCheck(errorResult));
+          if (!jsonOutput) output.writeln(formatCheck(errorResult));
         }
       }
     } catch (error) {
-      spinner.stop();
-      output.writeln(output.error('Failed to run health checks'));
+      spinner?.stop();
+      restoreStdout();
+      if (!jsonOutput) output.writeln(output.error('Failed to run health checks'));
+    }
+
+    // Issue #818: machine-readable output. Emits a single JSON document with
+    // per-check fields (and any FunctionalCheckDetail entries from the swarm/
+    // hive checks) and exits with the right code. Skips auto-fix entirely —
+    // --json is read-only by intent so CI gates can consume it without
+    // mutating the working tree.
+    if (jsonOutput) {
+      const passed = results.filter(r => r.status === 'pass').length;
+      const warnings = results.filter(r => r.status === 'warn').length;
+      const failed = results.filter(r => r.status === 'fail').length;
+
+      const allowSet = new Set(allowWarnList);
+      const strictWarningFailures = strict
+        ? results.filter(r => r.status === 'warn' && !allowSet.has(r.name)).map(r => r.name)
+        : [];
+
+      const exitCode = failed > 0 || strictWarningFailures.length > 0 ? 1 : 0;
+
+      process.stdout.write(JSON.stringify({
+        summary: { passed, warnings, failed },
+        strict: strict ? { strictMode: true, warningsTriggeringFail: strictWarningFailures } : { strictMode: false },
+        results,
+      }, null, 2) + '\n');
+
+      return { success: exitCode === 0, exitCode, data: { passed, warnings, failed, results } };
     }
 
     // Auto-install missing dependencies if requested
