@@ -16,5 +16,14 @@ export default defineConfig({
     maxForks: 1,
     minForks: 1,
     testTimeout: 30_000,
+    // Same worktree exclude as the parallel config — vitest treats CLI file
+    // paths as patterns, so a relative isolation path can match the same
+    // file inside a `.claude/worktrees/<id>/` git worktree.
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '.git/**',
+      '.claude/worktrees/**',
+    ],
   },
 });

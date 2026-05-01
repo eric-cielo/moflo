@@ -1,14 +1,20 @@
 /**
  * Agent MCP Tools for CLI
  *
- * Tool definitions for agent lifecycle management with file persistence.
- * Includes model routing integration for intelligent model selection.
+ * `agent_spawn` writes through the live UnifiedSwarmCoordinator. The other
+ * handlers still read from the JSON store — kept until they are migrated.
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { MCPTool } from './types.js';
 import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
+import { findProjectRoot } from '../services/project-root.js';
+import { SUBAGENT_BOOTSTRAP_DIRECTIVE } from '../services/subagent-bootstrap.js';
+import { getSwarmCoordinator } from './swarm-coordinator-singleton.js';
+import type { AgentType } from '../swarm/types.js';
+import type { AgentDomain } from '../swarm/unified-coordinator.js';
 
 // Storage paths
 const AGENT_DIR = 'agents';
@@ -36,7 +42,10 @@ interface AgentStore {
 }
 
 function getAgentDir(): string {
-  return join(process.cwd(), STORAGE_DIR, AGENT_DIR);
+  // findProjectRoot() walks up to the consumer's package.json/.git, so the
+  // MCP server still locates `<consumer>/.moflo/agents/` when launched from
+  // a working directory that diverges from the user's project root.
+  return join(findProjectRoot(), STORAGE_DIR, AGENT_DIR);
 }
 
 function getAgentPath(): string {
@@ -66,6 +75,70 @@ function loadAgentStore(): AgentStore {
 function saveAgentStore(store: AgentStore): void {
   ensureAgentDir();
   writeFileSync(getAgentPath(), JSON.stringify(store, null, 2), 'utf-8');
+}
+
+// Coordinator's `agentTypeToDomain` falls through to `core` for unknown
+// types, so this whitelist is the only gating layer. The slug regex blocks
+// typos and shell-injection chars; the Set check pins the surface area to
+// the canonical AgentType union plus the shipped `.claude/agents/` slugs.
+
+// Pinning the canonical-13 portion to AgentType makes a TS error fire if the
+// union ever drifts ahead of the whitelist.
+const CANONICAL_AGENT_TYPES = [
+  'coordinator', 'researcher', 'coder', 'analyst', 'architect',
+  'tester', 'reviewer', 'optimizer', 'documenter', 'monitor',
+  'specialist', 'queen', 'worker',
+] as const satisfies readonly AgentType[];
+
+const ALLOWED_AGENT_TYPES: ReadonlySet<string> = new Set<string>([
+  ...CANONICAL_AGENT_TYPES,
+  // Shipped Claude Code agent definitions (.claude/agents/**)
+  'adaptive-coordinator', 'adr-architect', 'aidefence-guardian',
+  'analyze-code-quality', 'api-docs', 'arch-system-design',
+  'backend-dev', 'base-template-generator', 'benchmark-suite',
+  'byzantine-coordinator', 'cicd-engineer', 'claims-authorizer',
+  'claude-code-guide', 'code-analyzer', 'code-goal-planner',
+  'code-review-swarm', 'collective-intelligence-coordinator',
+  'crdt-synchronizer', 'data-ml-model', 'ddd-domain-expert',
+  'dev-backend-api', 'docs-api-openapi', 'general-purpose',
+  'github-modes', 'goal-planner', 'gossip-coordinator',
+  'hierarchical-coordinator', 'injection-analyst', 'issue-tracker',
+  'load-balancer', 'memory-specialist', 'mesh-coordinator',
+  'ml-developer', 'mobile-dev', 'multi-repo-swarm',
+  'ops-cicd-github', 'performance-benchmarker', 'performance-engineer',
+  'performance-monitor', 'pii-detector', 'planner',
+  'pr-manager', 'production-validator', 'project-board-sync',
+  'pseudocode', 'quorum-manager', 'queen-coordinator',
+  'raft-manager', 'reasoningbank-learner', 'refinement',
+  'release-manager', 'release-swarm', 'repo-architect',
+  'resource-allocator', 'safla-neural', 'scout-explorer',
+  'security-architect', 'security-architect-aidefence',
+  'security-auditor', 'security-manager', 'sona-learning-optimizer',
+  'sparc-orchestrator', 'spec-mobile-react-native', 'specification',
+  'swarm-issue', 'swarm-memory-manager', 'swarm-pr',
+  'sync-coordinator', 'system-architect', 'tdd-london-swarm',
+  'test-long-runner', 'topology-optimizer', 'v3-integration-architect',
+  'workflow-automation', 'worker-specialist',
+]);
+
+const AGENT_TYPE_SLUG_RE = /^[a-z][a-z0-9-]*$/;
+
+interface AgentTypeValidation {
+  ok: boolean;
+  error?: string;
+}
+
+function validateAgentType(value: unknown): AgentTypeValidation {
+  if (typeof value !== 'string' || value.length === 0) {
+    return { ok: false, error: 'agentType must be a non-empty string' };
+  }
+  if (!AGENT_TYPE_SLUG_RE.test(value)) {
+    return { ok: false, error: `agentType "${value}" must match ${AGENT_TYPE_SLUG_RE}` };
+  }
+  if (!ALLOWED_AGENT_TYPES.has(value)) {
+    return { ok: false, error: `agentType "${value}" is not in the allowed agent-type whitelist` };
+  }
+  return { ok: true };
 }
 
 // Default model mappings for agent types (can be overridden)
@@ -196,54 +269,78 @@ export const agentTools: MCPTool[] = [
       required: ['agentType'],
     },
     handler: async (input) => {
-      const store = loadAgentStore();
-      const agentId = (input.agentId as string) || `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      // Validation must return a response, not throw — `mcp-tools-deep`
+      // exercises bad input by passing a number and asserts no throw.
+      const validation = validateAgentType(input.agentType);
+      if (!validation.ok) {
+        return {
+          success: false,
+          error: validation.error,
+          agentType: input.agentType,
+        };
+      }
       const agentType = input.agentType as string;
       const config = (input.config as Record<string, unknown>) || {};
 
-      // Add explicit model to config if provided
       if (input.model) {
         config.model = input.model;
       }
 
-      // Get task from either top-level or config (CLI passes it in config.task)
       const task = (input.task as string) || (config.task as string) || undefined;
 
-      // Determine model using ADR-026 3-tier routing logic
-      const routingResult = await determineAgentModel(
-        agentType,
-        config,
-        task
-      );
+      const routingResult = await determineAgentModel(agentType, config, task);
 
-      const agent: AgentRecord = {
-        agentId,
-        agentType,
-        status: 'idle',
-        health: 1.0,
-        taskCount: 0,
-        config,
-        createdAt: new Date().toISOString(),
-        domain: input.domain as string,
-        model: routingResult.model,
-        modelRoutedBy: routingResult.routedBy,
-      };
+      // 24 hex chars of kernel entropy — Math.random().toString(36) was
+      // observably colliding under burst spawns.
+      const agentId = `agent-${agentType}-${randomBytes(12).toString('hex')}`;
 
-      store.agents[agentId] = agent;
-      saveAgentStore(store);
+      const capabilities = Array.isArray(config.capabilities)
+        ? (config.capabilities as unknown[]).filter((c): c is string => typeof c === 'string')
+        : undefined;
 
-      // Include Agent Booster routing info if applicable
+      const coordinator = await getSwarmCoordinator();
+      let spawned: { agentId: string; domain: AgentDomain; status: string; spawned: boolean };
+      try {
+        spawned = await coordinator.spawnAgent({
+          id: agentId,
+          // ALLOWED_AGENT_TYPES already gated the slug; coordinator's
+          // agentTypeToDomain falls back to `core` for non-canonical names.
+          type: agentType as AgentType,
+          name: (config.name as string) || agentId,
+          capabilities,
+          domain: input.domain as AgentDomain | undefined,
+          metadata: {
+            ...(config as Record<string, unknown>),
+            model: routingResult.model,
+            modelRoutedBy: routingResult.routedBy,
+            bootstrap: SUBAGENT_BOOTSTRAP_DIRECTIVE,
+          },
+        });
+      } catch (err) {
+        return {
+          success: false,
+          agentId,
+          agentType,
+          error: (err as Error).message,
+        };
+      }
+
+      // `bootstrap` appears here AND in coordinator metadata: callers see it
+      // in the response, the coordinator persists it for downstream surfaces
+      // (hive-mind workers, etc.) that read AgentState directly.
       const response: Record<string, unknown> = {
         success: true,
-        agentId,
-        agentType: agent.agentType,
-        model: agent.model,
+        agentId: spawned.agentId,
+        agentType,
+        domain: spawned.domain,
+        status: spawned.status,
+        spawned: spawned.spawned,
+        model: routingResult.model,
         modelRoutedBy: routingResult.routedBy,
-        status: 'spawned',
-        createdAt: agent.createdAt,
+        bootstrap: SUBAGENT_BOOTSTRAP_DIRECTIVE,
+        createdAt: new Date().toISOString(),
       };
 
-      // Add Agent Booster info if task can skip LLM
       if (routingResult.canSkipLLM) {
         response.canSkipLLM = true;
         response.agentBoosterIntent = routingResult.agentBoosterIntent;
