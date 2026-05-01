@@ -154,10 +154,16 @@ function detectWindows(): SandboxCapability {
 // Helpers
 // ============================================================================
 
+// Detection runs once per process and is cached, so timeouts can be generous.
+// Cold-start `docker info` on Windows can take 5-10s on the named-pipe
+// handshake, so a tight budget would falsely report the daemon down.
+const BINARY_EXISTS_TIMEOUT_MS = 10_000;
+const DOCKER_DAEMON_TIMEOUT_MS = 15_000;
+
 function binaryExists(name: string): boolean {
   try {
     const cmd = platform() === 'win32' ? `where ${name}` : `which ${name}`;
-    execSync(cmd, { stdio: 'ignore', timeout: 5000 });
+    execSync(cmd, { stdio: 'ignore', timeout: BINARY_EXISTS_TIMEOUT_MS });
     return true;
   } catch {
     return false;
@@ -166,7 +172,7 @@ function binaryExists(name: string): boolean {
 
 function dockerDaemonRunning(): boolean {
   try {
-    execSync('docker info', { stdio: 'ignore', timeout: 4000 });
+    execSync('docker info', { stdio: 'ignore', timeout: DOCKER_DAEMON_TIMEOUT_MS });
     return true;
   } catch {
     return false;
@@ -319,7 +325,9 @@ function dockerImageExists(image: string): boolean {
   const cached = _imageExistsCache.get(image);
   if (cached !== undefined) return cached;
   try {
-    execSync(`docker image inspect ${escapeShellArg(image)}`, { stdio: 'ignore', timeout: 5000 });
+    // Same cold-start budget as `docker info` — both hit the Docker Desktop
+    // daemon over its named-pipe handshake. Result is cached per image.
+    execSync(`docker image inspect ${escapeShellArg(image)}`, { stdio: 'ignore', timeout: DOCKER_DAEMON_TIMEOUT_MS });
     _imageExistsCache.set(image, true);
     return true;
   } catch {
