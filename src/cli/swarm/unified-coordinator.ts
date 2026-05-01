@@ -297,7 +297,8 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
   // ===== AGENT MANAGEMENT =====
 
   async registerAgent(
-    agentData: Omit<AgentState, 'id'>
+    agentData: Omit<AgentState, 'id'>,
+    options?: { id?: string },
   ): Promise<string> {
     const startTime = performance.now();
 
@@ -305,9 +306,12 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
       throw new Error(`Maximum agents (${this.config.maxAgents}) reached`);
     }
 
+    // MCP-tool spawn surfaces supply a pre-generated id so callers can
+    // log/return it before awaiting registration; internal callers omit it
+    // and get the legacy `agent_<swarmId>_<counter>` form.
     this.agentCounter++;
     const agentId: AgentId = {
-      id: `agent_${this.state.id.id}_${this.agentCounter}`,
+      id: options?.id ?? `agent_${this.state.id.id}_${this.agentCounter}`,
       swarmId: this.state.id.id,
       type: agentData.type,
       instance: this.agentCounter,
@@ -1410,10 +1414,11 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
    */
   async registerAgentWithDomain(
     agentData: Omit<AgentState, 'id'>,
-    agentNumber: number
+    agentNumber: number,
+    options?: { id?: string },
   ): Promise<{ agentId: string; domain: AgentDomain }> {
     // First register the agent normally
-    const agentId = await this.registerAgent(agentData);
+    const agentId = await this.registerAgent(agentData, options);
 
     // Determine domain based on agent number
     const domain = this.getAgentDomain(agentNumber);
@@ -1573,6 +1578,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
    * @returns Spawned agent ID and details
    */
   async spawnAgent(options: {
+    id?: string;
     type: AgentType;
     name?: string;
     capabilities?: string[];
@@ -1607,7 +1613,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
 
     if (options.agentNumber) {
       // Use provided agent number to determine domain
-      const result = await this.registerAgentWithDomain(agentData, options.agentNumber);
+      const result = await this.registerAgentWithDomain(agentData, options.agentNumber, { id: options.id });
       agentId = result.agentId;
       domain = result.domain;
     } else if (options.domain) {
@@ -1617,13 +1623,13 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
         .filter(([, d]) => d === options.domain)
         .length;
       const nextNumber = config?.agentNumbers[existingAgents] || config?.agentNumbers[0] || 1;
-      const result = await this.registerAgentWithDomain(agentData, nextNumber);
+      const result = await this.registerAgentWithDomain(agentData, nextNumber, { id: options.id });
       agentId = result.agentId;
       domain = result.domain;
     } else {
       // Auto-assign to most appropriate domain based on type
       domain = this.agentTypeToDomain(options.type);
-      agentId = await this.registerAgent(agentData);
+      agentId = await this.registerAgent(agentData, { id: options.id });
       this.agentDomainMap.set(agentId, domain);
     }
 

@@ -725,7 +725,7 @@ export interface IUnifiedSwarmCoordinator {
   resume(): Promise<void>;
 
   // Agent management
-  registerAgent(agent: Omit<AgentState, 'id'>): Promise<string>;
+  registerAgent(agent: Omit<AgentState, 'id'>, options?: { id?: string }): Promise<string>;
   unregisterAgent(agentId: string): Promise<void>;
   getAgent(agentId: string): AgentState | undefined;
   getAllAgents(): AgentState[];
