@@ -99,7 +99,10 @@ export async function checkSubagentHealth(): Promise<HealthCheck> {
       metadata: { purpose: 'doctor-health-check' },
     }, {});
 
-    if (!spawnResult?.agentId || !['active', 'spawned'].includes(spawnResult.status)) {
+    // `idle` is the AgentState status returned by the live coordinator (post
+    // #801); `active`/`spawned` were the legacy literal returns. Accept all
+    // three — matches the status-check enum 13 lines below.
+    if (!spawnResult?.agentId || !['active', 'idle', 'spawned'].includes(spawnResult.status)) {
       return { name: 'Subagent Health', status: 'fail', message: `Spawn returned unexpected result: ${JSON.stringify(spawnResult)}` };
     }
 
