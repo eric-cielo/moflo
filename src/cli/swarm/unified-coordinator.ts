@@ -50,6 +50,7 @@ import { TopologyManager, createTopologyManager } from './topology-manager.js';
 import { MessageBus } from './message-bus.js';
 import { AgentPool, createAgentPool } from './agent-pool.js';
 import { ConsensusEngine, createConsensusEngine } from './consensus/index.js';
+import { SwarmPersistence, type PersistedAgent } from './swarm-persistence.js';
 
 // =============================================================================
 // Domain Types for 15-Agent Hierarchy
@@ -159,6 +160,10 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
   private heartbeatInterval?: NodeJS.Timeout;
   private healthCheckInterval?: NodeJS.Timeout;
   private metricsInterval?: NodeJS.Timeout;
+
+  // Optional write-through persistence; missing-backend safe.
+  private persistence?: SwarmPersistence;
+  private topologyPersistScheduled = false;
 
   constructor(config: Partial<CoordinatorConfig> = {}) {
     super();
@@ -298,7 +303,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
 
   async registerAgent(
     agentData: Omit<AgentState, 'id'>,
-    options?: { id?: string },
+    options?: { id?: string; skipPersist?: boolean },
   ): Promise<string> {
     const startTime = performance.now();
 
@@ -348,6 +353,9 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
       registrationDurationMs: duration,
     });
 
+    if (!options?.skipPersist) {
+      void this.syncAgentToPersistence(agentId.id);
+    }
     return agentId.id;
   }
 
@@ -370,6 +378,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
     // Remove from state
     this.state.agents.delete(agentId);
 
+    void this.removeAgentFromPersistence(agentId);
     this.emitEvent('agent.left', { agentId });
   }
 
@@ -801,28 +810,115 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
   }
 
   private setupEventForwarding(): void {
-    // Forward topology events
+    // All three topology events trigger the same persist; the microtask
+    // debounce in `scheduleTopologyPersist` collapses bursts (e.g. addNode +
+    // its conditional rebalance) into a single upsert.
     this.topologyManager.on('node.added', (data) => {
       this.emitEvent('topology.updated', { action: 'node_added', ...data });
+      this.scheduleTopologyPersist();
     });
 
     this.topologyManager.on('node.removed', (data) => {
       this.emitEvent('topology.updated', { action: 'node_removed', ...data });
+      this.scheduleTopologyPersist();
     });
 
     this.topologyManager.on('topology.rebalanced', (data) => {
       this.emitEvent('topology.rebalanced', data);
+      this.scheduleTopologyPersist();
     });
 
-    // Forward consensus events
     this.consensusEngine.on('consensus.achieved', (data) => {
       this.state.metrics.consensusSuccessRate =
         (this.state.metrics.consensusSuccessRate * 0.9) + (data.approved ? 0.1 : 0);
+      if (this.persistence && data && typeof data.proposalId === 'string') {
+        void this.persistence.persistConsensus(data);
+      }
     });
 
-    // Forward message bus events
     this.messageBus.on('message.delivered', (data) => {
       this.emitEvent('message.received', data);
+    });
+  }
+
+  // ===== Persistence integration (story #806) =====
+
+  attachPersistence(persistence: SwarmPersistence): void {
+    this.persistence = persistence;
+  }
+
+  /** Replay persisted agents + topology into the live coordinator. */
+  async hydrateFromPersistence(): Promise<{ agents: number; topology: boolean }> {
+    if (!this.persistence) return { agents: 0, topology: false };
+
+    let restoredAgents = 0;
+    const records = await this.persistence.loadAgents();
+    for (const record of records) {
+      // Skip ids already present so the hydrate is safe to call repeatedly.
+      if (this.state.agents.has(record.id)) continue;
+      try {
+        await this.restoreAgent(record);
+        restoredAgents++;
+      } catch {
+        // Drop unrecoverable records rather than failing the whole hydrate.
+      }
+    }
+
+    const topology = await this.persistence.loadTopology();
+    return { agents: restoredAgents, topology: topology !== undefined };
+  }
+
+  private async restoreAgent(record: PersistedAgent): Promise<void> {
+    const agentData: Omit<AgentState, 'id'> = {
+      name: record.name,
+      type: record.type,
+      status: record.status,
+      capabilities: record.capabilities,
+      metrics: {
+        ...record.metrics,
+        lastActivity: new Date(record.metrics.lastActivity),
+      },
+      workload: record.workload,
+      health: record.health,
+      lastHeartbeat: new Date(),
+      topologyRole: record.type === 'queen' ? 'queen' : 'worker',
+      connections: [],
+    };
+
+    // Re-issue with the original id so cross-restart references survive, and
+    // suppress persist (we already have the row).
+    await this.registerAgent(agentData, { id: record.id, skipPersist: true });
+    if (record.domain) {
+      this.agentDomainMap.set(record.id, record.domain);
+    }
+  }
+
+  private async syncAgentToPersistence(agentId: string): Promise<void> {
+    if (!this.persistence) return;
+    const agent = this.state.agents.get(agentId);
+    if (!agent) return;
+    await this.persistence.persistAgent(agent, this.agentDomainMap.get(agentId));
+  }
+
+  private async removeAgentFromPersistence(agentId: string): Promise<void> {
+    if (!this.persistence) return;
+    await this.persistence.removeAgent(agentId);
+  }
+
+  /**
+   * Topology events fire bursty (addNode → rebalance → emit, multiple per
+   * spawn). Collapse all writes within a microtask to a single upsert.
+   */
+  private scheduleTopologyPersist(): void {
+    if (!this.persistence || this.topologyPersistScheduled) return;
+    this.topologyPersistScheduled = true;
+    queueMicrotask(() => {
+      this.topologyPersistScheduled = false;
+      // Re-read locally — `attachPersistence(undefined)` or `shutdown()` could
+      // clear `this.persistence` between scheduling and flush.
+      const p = this.persistence;
+      if (!p) return;
+      void p.persistTopology(this.topologyManager.getState());
     });
   }
 
@@ -1490,16 +1586,13 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
     agentNumber: number,
     options?: { id?: string },
   ): Promise<{ agentId: string; domain: AgentDomain }> {
-    // First register the agent normally
-    const agentId = await this.registerAgent(agentData, options);
+    // Suppress the inner persistence write — we'll do one final sync after
+    // domain bookkeeping so the persisted record is single-shot per spawn.
+    const agentId = await this.registerAgent(agentData, { ...options, skipPersist: true });
 
-    // Determine domain based on agent number
     const domain = this.getAgentDomain(agentNumber);
-
-    // Add to domain tracking
     this.agentDomainMap.set(agentId, domain);
 
-    // Add to domain pool
     const pool = this.domainPools.get(domain);
     const agent = this.state.agents.get(agentId);
     if (pool && agent) {
@@ -1512,6 +1605,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
       domain,
     });
 
+    void this.syncAgentToPersistence(agentId);
     return { agentId, domain };
   }
 
@@ -1700,10 +1794,12 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
       agentId = result.agentId;
       domain = result.domain;
     } else {
-      // Auto-assign to most appropriate domain based on type
+      // Auto-assign to most appropriate domain based on type. Suppress the
+      // inner persist so we write once below with the final domain.
       domain = this.agentTypeToDomain(options.type);
-      agentId = await this.registerAgent(agentData, { id: options.id });
+      agentId = await this.registerAgent(agentData, { id: options.id, skipPersist: true });
       this.agentDomainMap.set(agentId, domain);
+      void this.syncAgentToPersistence(agentId);
     }
 
     const duration = performance.now() - startTime;
