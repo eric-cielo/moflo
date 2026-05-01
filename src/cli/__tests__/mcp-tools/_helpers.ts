@@ -47,11 +47,7 @@ export async function spawnAgentForTest(
   return result.agentId;
 }
 
-/**
- * Standard system-test teardown: shutdown the hive-mind (returns
- * `{success:false}` rather than throwing if not initialized) then drop the
- * coordinator singleton so the next test boots fresh.
- */
+/** Standard system-test teardown — shut down hive-mind and drop the coordinator singleton. */
 export async function resetHiveAndSwarm(): Promise<void> {
   await getHiveMindTool('hive-mind_shutdown').handler({ force: true });
   await _resetSwarmCoordinatorForTest();
