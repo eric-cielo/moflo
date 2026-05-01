@@ -1,10 +1,73 @@
 /**
  * Swarm MCP Tools for CLI
  *
- * Tool definitions for swarm coordination.
+ * `swarm_init`, `swarm_status`, `swarm_health` route through
+ * UnifiedSwarmCoordinator (epic #798, story #803).
  */
 
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type { MCPTool } from './types.js';
+import {
+  getSwarmCoordinator,
+  isSwarmCoordinatorInitialized,
+} from './swarm-coordinator-singleton.js';
+import { findProjectRoot } from '../services/project-root.js';
+import { MOFLO_DIR } from '../services/moflo-paths.js';
+import type {
+  ConsensusAlgorithm,
+  TopologyType,
+  CoordinatorConfig,
+} from '../swarm/types.js';
+
+// Inputs accepted by the MCP layer (covers Ruflo aliases). The coordinator's
+// TopologyType is narrower: 'mesh' | 'hierarchical' | 'centralized' | 'hybrid'.
+const TOPOLOGY_MAP: Record<string, TopologyType> = {
+  hierarchical: 'hierarchical',
+  centralized: 'centralized',
+  mesh: 'mesh',
+  collective: 'mesh',
+  adaptive: 'hybrid',
+  'hierarchical-mesh': 'hybrid',
+  hybrid: 'hybrid',
+};
+
+interface ConsensusMapping {
+  algorithm: ConsensusAlgorithm;
+  threshold: number;
+}
+
+// Ported from Ruflo v3/mcp/tools/swarm-tools.ts. `unanimous`/`weighted`/
+// `majority` are the user-facing aliases; the coordinator only speaks
+// `byzantine`/`raft`/`gossip`/`paxos`.
+const CONSENSUS_MAP: Record<string, ConsensusMapping> = {
+  unanimous: { algorithm: 'byzantine', threshold: 1.0 },
+  byzantine: { algorithm: 'byzantine', threshold: 1.0 },
+  weighted: { algorithm: 'raft', threshold: 0.66 },
+  raft: { algorithm: 'raft', threshold: 0.66 },
+  majority: { algorithm: 'gossip', threshold: 0.5 },
+  gossip: { algorithm: 'gossip', threshold: 0.5 },
+  paxos: { algorithm: 'paxos', threshold: 0.66 },
+};
+
+const DEFAULT_CONSENSUS: ConsensusMapping = { algorithm: 'raft', threshold: 0.66 };
+
+function mapConsensus(input: unknown): ConsensusMapping {
+  if (typeof input === 'string' && input in CONSENSUS_MAP) {
+    return CONSENSUS_MAP[input];
+  }
+  return DEFAULT_CONSENSUS;
+}
+
+// Existence-only probe. We never create the dir from a health check —
+// that's a write side-effect on a read-only operation.
+function probeMemoryBackend(): { ok: boolean; message: string } {
+  const dir = join(findProjectRoot(), MOFLO_DIR);
+  if (existsSync(dir)) {
+    return { ok: true, message: 'Memory backend reachable' };
+  }
+  return { ok: false, message: `Memory backend dir missing: ${dir}` };
+}
 
 export const swarmTools: MCPTool[] = [
   {
@@ -14,28 +77,65 @@ export const swarmTools: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        topology: { type: 'string', description: 'Swarm topology type' },
+        topology: {
+          type: 'string',
+          description: 'Swarm topology (hierarchical | mesh | adaptive | collective | hierarchical-mesh)',
+        },
         maxAgents: { type: 'number', description: 'Maximum number of agents' },
         config: { type: 'object', description: 'Swarm configuration' },
       },
     },
     handler: async (input) => {
-      const topology = input.topology || 'hierarchical-mesh';
-      const maxAgents = input.maxAgents || 15;
-      const config = (input.config || {}) as Record<string, unknown>;
+      const topologyInput = (input.topology as string) || 'hierarchical-mesh';
+      const maxAgents = (input.maxAgents as number) || 15;
+      const userConfig = (input.config || {}) as Record<string, unknown>;
+
+      if (!(topologyInput in TOPOLOGY_MAP)) {
+        return {
+          success: false,
+          error: `topology "${topologyInput}" is not in the allowed alias set (${Object.keys(TOPOLOGY_MAP).join(', ')})`,
+        };
+      }
+
+      const topology = TOPOLOGY_MAP[topologyInput];
+      const consensus = mapConsensus(userConfig.consensusMechanism ?? userConfig.consensus);
+
+      // Singleton honors `config` only on first call. Skip the config arg on
+      // subsequent calls so swarm_init is idempotent (returns existing swarmId).
+      const alreadyInit = isSwarmCoordinatorInitialized();
+      const coordinator = alreadyInit
+        ? await getSwarmCoordinator()
+        : await getSwarmCoordinator({
+            topology: { type: topology, maxAgents },
+            consensus: {
+              algorithm: consensus.algorithm,
+              threshold: consensus.threshold,
+              timeoutMs: 30000,
+              maxRounds: 10,
+              requireQuorum: true,
+            },
+            maxAgents,
+          } satisfies Partial<CoordinatorConfig>);
+
+      const state = coordinator.getState();
 
       return {
         success: true,
-        swarmId: `swarm-${Date.now()}`,
-        topology,
-        initializedAt: new Date().toISOString(),
+        swarmId: state.id.id,
+        topology: topologyInput,
+        topologyResolved: topology,
+        initializedAt: state.id.createdAt.toISOString(),
+        configApplied: !alreadyInit,
         config: {
-          topology,
+          topology: topologyInput,
           maxAgents,
-          currentAgents: 0,
-          communicationProtocol: (config.communicationProtocol as string) || 'message-bus',
-          autoScaling: (config.autoScaling as boolean) ?? true,
-          consensusMechanism: (config.consensusMechanism as string) || 'majority',
+          currentAgents: state.agents.size,
+          communicationProtocol: (userConfig.communicationProtocol as string) || 'message-bus',
+          autoScaling: (userConfig.autoScaling as boolean) ?? true,
+          consensusMechanism: (userConfig.consensusMechanism as string)
+            ?? coordinator.getConsensusAlgorithm(),
+          consensusAlgorithm: coordinator.getConsensusAlgorithm(),
+          consensusThreshold: consensus.threshold,
         },
       };
     },
@@ -48,15 +148,61 @@ export const swarmTools: MCPTool[] = [
       type: 'object',
       properties: {
         swarmId: { type: 'string', description: 'Swarm ID' },
+        includeAgents: { type: 'boolean', description: 'Include live agent list' },
+        includeMetrics: { type: 'boolean', description: 'Include coordinator metrics' },
+        includeTopology: { type: 'boolean', description: 'Include topology state' },
       },
     },
     handler: async (input) => {
-      return {
-        swarmId: input.swarmId,
-        status: 'running',
-        agentCount: 0,
-        taskCount: 0,
+      const coordinator = await getSwarmCoordinator();
+      const state = coordinator.getState();
+      const metrics = coordinator.getMetrics();
+      const allAgents = coordinator.getAllAgents();
+      const allTasks = coordinator.getAllTasks();
+
+      const busy = allAgents.filter(a => a.status === 'busy').length;
+      const agentSummary = {
+        total: allAgents.length,
+        // `active` is the legacy field name kept for `flo status` consumers;
+        // it equals `busy` (an agent is "active" iff it's executing a task).
+        active: busy,
+        idle: allAgents.filter(a => a.status === 'idle').length,
+        busy,
+        terminated: allAgents.filter(a => a.status === 'terminated').length,
       };
+
+      const response: Record<string, unknown> = {
+        swarmId: state.id.id,
+        status: state.status,
+        topology: coordinator.getTopology(),
+        agentCount: allAgents.length,
+        taskCount: allTasks.length,
+        agentSummary,
+        health: state.status === 'running' ? 'healthy' : 'degraded',
+        uptime: metrics.uptime,
+        startedAt: state.startedAt?.toISOString(),
+      };
+
+      if (input.includeAgents) {
+        response.agents = allAgents.map(a => ({
+          agentId: a.id.id,
+          name: a.name,
+          agentType: a.type,
+          status: a.status,
+          health: a.health,
+          workload: a.workload,
+        }));
+      }
+
+      if (input.includeMetrics) {
+        response.metrics = metrics;
+      }
+
+      if (input.includeTopology) {
+        response.topologyState = state.topology;
+      }
+
+      return response;
     },
   },
   {
@@ -70,15 +216,60 @@ export const swarmTools: MCPTool[] = [
       },
     },
     handler: async (input) => {
+      const coordinator = await getSwarmCoordinator();
+      const state = coordinator.getState();
+      const metrics = coordinator.getMetrics();
+      const agents = coordinator.getAllAgents();
+
+      const checks: Array<{ name: string; status: 'ok' | 'fail'; message: string }> = [];
+      const pushCheck = (name: string, ok: boolean, message: string) =>
+        checks.push({ name, status: ok ? 'ok' : 'fail', message });
+
+      const coordinatorOk = state.status === 'running';
+      pushCheck(
+        'coordinator',
+        coordinatorOk,
+        coordinatorOk ? 'Coordinator running' : `Coordinator status: ${state.status}`,
+      );
+
+      const avgHealth = agents.length === 0
+        ? 1.0
+        : agents.reduce((sum, a) => sum + a.health, 0) / agents.length;
+      const agentsOk = agents.length === 0 || avgHealth > 0.7;
+      pushCheck(
+        'agents',
+        agentsOk,
+        agents.length === 0
+          ? 'Agent pool empty'
+          : `Agent pool ${agentsOk ? 'healthy' : 'degraded'} (avg health ${avgHealth.toFixed(2)})`,
+      );
+
+      const memProbe = probeMemoryBackend();
+      pushCheck('memory', memProbe.ok, memProbe.message);
+
+      // `messagesPerSecond` is a numeric counter on `CoordinatorMetrics` —
+      // its presence proves the metrics interval and the bus underneath are
+      // both alive. `getMetrics()` itself is a synchronous, non-throwing
+      // accessor (verified in unified-coordinator.ts).
+      const messagingOk = typeof metrics.messagesPerSecond === 'number';
+      pushCheck(
+        'messaging',
+        messagingOk,
+        messagingOk
+          ? `Message bus active (${metrics.messagesPerSecond.toFixed(2)} msg/s)`
+          : 'Message bus metrics unavailable',
+      );
+
+      const overall: 'healthy' | 'degraded' | 'unhealthy' = !coordinatorOk
+        ? 'unhealthy'
+        : checks.some(c => c.status === 'fail')
+          ? 'degraded'
+          : 'healthy';
+
       return {
-        status: 'healthy' as const,
-        swarmId: input.swarmId || 'default',
-        checks: [
-          { name: 'coordinator', status: 'ok', message: 'Coordinator responding' },
-          { name: 'agents', status: 'ok', message: 'Agent pool healthy' },
-          { name: 'memory', status: 'ok', message: 'Memory backend connected' },
-          { name: 'messaging', status: 'ok', message: 'Message bus active' },
-        ],
+        status: overall,
+        swarmId: (input.swarmId as string) || state.id.id,
+        checks,
         checkedAt: new Date().toISOString(),
       };
     },

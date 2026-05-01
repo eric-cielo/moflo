@@ -52,6 +52,15 @@ export async function getSwarmCoordinator(
 }
 
 /**
+ * Whether a coordinator has already been bootstrapped in this process.
+ * Lets callers (e.g. `swarm_init`) decide whether to pass config or treat
+ * the call as idempotent without abusing the singleton's misuse-throw.
+ */
+export function isSwarmCoordinatorInitialized(): boolean {
+  return _coordinator !== null;
+}
+
+/**
  * Test-only reset hook. Awaits shutdown so timers and listeners are torn down
  * before the next test's coordinator boots — fire-and-forget would leak
  * intervals across the suite.

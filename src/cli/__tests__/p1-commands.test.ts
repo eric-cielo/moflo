@@ -50,7 +50,7 @@ vi.mock('../mcp-client.js', () => ({
       return {
         swarmId: 'swarm-mock-123',
         topology: 'hierarchical-mesh',
-        agents: { total: 5, active: 3, idle: 2, terminated: 0 },
+        agentSummary: { total: 5, active: 3, idle: 2, busy: 3, terminated: 0 },
         health: 'healthy',
         uptime: 3600000
       };

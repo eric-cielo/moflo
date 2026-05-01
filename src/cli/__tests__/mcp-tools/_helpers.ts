@@ -3,11 +3,18 @@
  */
 
 import { agentTools } from '../../mcp-tools/agent-tools.js';
+import { swarmTools } from '../../mcp-tools/swarm-tools.js';
 import type { MCPTool } from '../../mcp-tools/types.js';
 
 export function getAgentTool(name: string): MCPTool {
   const tool = agentTools.find(t => t.name === name);
   if (!tool) throw new Error(`agent tool "${name}" not registered`);
+  return tool;
+}
+
+export function getSwarmTool(name: string): MCPTool {
+  const tool = swarmTools.find(t => t.name === name);
+  if (!tool) throw new Error(`swarm tool "${name}" not registered`);
   return tool;
 }
 
