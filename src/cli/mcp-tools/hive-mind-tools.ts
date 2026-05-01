@@ -229,43 +229,6 @@ async function memoryList(): Promise<string[]> {
   }
 }
 
-// ===== Agent store (unchanged — still file-based for cross-process agent registry) =====
-
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { mofloDir } from '../services/moflo-paths.js';
-import { findProjectRoot } from '../services/project-root.js';
-
-// Anchor on findProjectRoot() so the MCP server resolves <consumer>/.moflo/
-// even when its cwd diverges from the user's project root. process.cwd()
-// silently drifted store writes outside the project (issue #825). Mirrors
-// agent-tools.ts.
-function getAgentStoreDir(): string {
-  return mofloDir(findProjectRoot());
-}
-
-function getAgentStorePath(): string {
-  return join(getAgentStoreDir(), 'agents.json');
-}
-
-function loadAgentStore(): { agents: Record<string, unknown> } {
-  const storePath = getAgentStorePath();
-  try {
-    if (existsSync(storePath)) {
-      return JSON.parse(readFileSync(storePath, 'utf-8'));
-    }
-  } catch { /* ignore */ }
-  return { agents: {} };
-}
-
-function saveAgentStore(store: { agents: Record<string, unknown> }): void {
-  const storeDir = getAgentStoreDir();
-  if (!existsSync(storeDir)) {
-    mkdirSync(storeDir, { recursive: true });
-  }
-  writeFileSync(getAgentStorePath(), JSON.stringify(store, null, 2), 'utf-8');
-}
-
 // ===== Tool definitions =====
 
 export const hiveMindTools: MCPTool[] = [
@@ -302,16 +265,13 @@ export const hiveMindTools: MCPTool[] = [
       const agentType = (input.agentType as string) || 'worker';
       const prefix = (input.prefix as string) || 'hive-worker';
 
-      // Story #807: hive workers are coordinator agents in the 'hive-mind'
-      // domain. Validating up-front so the legacy file-store and the
-      // coordinator never disagree on which spawns were accepted.
+      // Validate up-front so a bad agentType never reaches coordinator.spawnAgent.
       const validation = validateAgentType(agentType);
       if (!validation.ok) {
         return { success: false, error: validation.error, agentType };
       }
 
       const [bus, coordinator] = await Promise.all([getMessageBus(), getSwarmCoordinator()]);
-      const agentStore = loadAgentStore();
 
       const spawnedWorkers: Array<{ agentId: string; role: string; joinedAt: string; bootstrap: string }> = [];
       const joinBroadcasts: Promise<unknown>[] = [];
@@ -322,8 +282,6 @@ export const hiveMindTools: MCPTool[] = [
         const agentId = `${prefix}-${randomBytes(12).toString('hex')}`;
         const joinedAt = new Date().toISOString();
 
-        // Coordinator first: a failure here aborts the legacy file-store
-        // and MessageBus writes so the three views can never disagree.
         try {
           await coordinator.spawnAgent({
             id: agentId,
@@ -345,14 +303,6 @@ export const hiveMindTools: MCPTool[] = [
           };
         }
 
-        // Legacy file-store record kept in sync for agent_pool / agent_health
-        // tools that still read it (epic #798 leaves those for a later story).
-        agentStore.agents[agentId] = {
-          agentId, agentType, status: 'idle', health: 1.0, taskCount: 0,
-          config: { role, hiveRole: role, bootstrap: SUBAGENT_BOOTSTRAP_DIRECTIVE },
-          createdAt: joinedAt, domain: HIVE_NS,
-        };
-
         if (!hiveState.workers.includes(agentId)) {
           hiveState.workers.push(agentId);
         }
@@ -373,7 +323,6 @@ export const hiveMindTools: MCPTool[] = [
       }
 
       await Promise.all(joinBroadcasts);
-      saveAgentStore(agentStore);
 
       const cappedBy = requested > count ? hiveState.config.maxAgents : null;
       return {
@@ -894,15 +843,6 @@ export const hiveMindTools: MCPTool[] = [
       } catch (err) {
         process.stderr.write(`[hive-mind_shutdown] coordinator cleanup failed: ${(err as Error).message}\n`);
       }
-
-      // Clear workers from agent store
-      const agentStore = loadAgentStore();
-      for (const workerId of hiveState.workers) {
-        if (agentStore.agents[workerId]) {
-          delete agentStore.agents[workerId];
-        }
-      }
-      saveAgentStore(agentStore);
 
       // Clear write-through namespaces in Memory DB
       try {
