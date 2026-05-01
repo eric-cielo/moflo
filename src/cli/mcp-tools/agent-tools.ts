@@ -1,8 +1,9 @@
 /**
  * Agent MCP Tools for CLI
  *
- * `agent_spawn` writes through the live UnifiedSwarmCoordinator. The other
- * handlers still read from the JSON store — kept until they are migrated.
+ * `agent_spawn`, `agent_list`, `agent_terminate`, `agent_status` route through
+ * UnifiedSwarmCoordinator (epic #798, stories #801, #802).
+ * TODO(epic-#798): `agent_pool` + `agent_health` are still JSON-store-backed.
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -13,7 +14,7 @@ import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { SUBAGENT_BOOTSTRAP_DIRECTIVE } from '../services/subagent-bootstrap.js';
 import { getSwarmCoordinator } from './swarm-coordinator-singleton.js';
-import type { AgentType } from '../swarm/types.js';
+import type { AgentType, AgentStatus } from '../swarm/types.js';
 import type { AgentDomain } from '../swarm/unified-coordinator.js';
 
 // Storage paths
@@ -122,6 +123,12 @@ const ALLOWED_AGENT_TYPES: ReadonlySet<string> = new Set<string>([
 ]);
 
 const AGENT_TYPE_SLUG_RE = /^[a-z][a-z0-9-]*$/;
+
+function toNonNegativeInt<D extends number | undefined>(value: unknown, fallback: D): number | D {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.floor(n);
+}
 
 interface AgentTypeValidation {
   ok: boolean;
@@ -354,29 +361,40 @@ export const agentTools: MCPTool[] = [
       properties: {
         agentId: { type: 'string', description: 'ID of agent to terminate' },
         force: { type: 'boolean', description: 'Force immediate termination' },
+        reason: { type: 'string', description: 'Reason for termination (audit trail)' },
+        gracePeriodMs: { type: 'number', description: 'Grace period before forcing (ms)' },
       },
       required: ['agentId'],
     },
     handler: async (input) => {
-      const store = loadAgentStore();
       const agentId = input.agentId as string;
-
-      if (store.agents[agentId]) {
-        store.agents[agentId].status = 'terminated';
-        saveAgentStore(store);
-        return {
-          success: true,
-          agentId,
-          terminated: true,
-          terminatedAt: new Date().toISOString(),
-        };
+      if (typeof agentId !== 'string' || !agentId) {
+        return { success: false, agentId, error: 'agentId must be a non-empty string' };
       }
 
-      return {
-        success: false,
-        agentId,
-        error: 'Agent not found',
-      };
+      const coordinator = await getSwarmCoordinator();
+      try {
+        const result = await coordinator.terminateAgent(agentId, {
+          force: input.force as boolean | undefined,
+          reason: input.reason as string | undefined,
+          gracePeriodMs: input.gracePeriodMs as number | undefined,
+        });
+
+        if (!result.terminated) {
+          return { success: false, agentId, error: result.reason || 'Agent not found' };
+        }
+
+        return {
+          success: true,
+          agentId: result.agentId,
+          terminated: true,
+          tasksReassigned: result.tasksReassigned ?? 0,
+          reason: result.reason,
+          terminatedAt: new Date().toISOString(),
+        };
+      } catch (err) {
+        return { success: false, agentId, error: (err as Error).message };
+      }
     },
   },
   {
@@ -387,31 +405,52 @@ export const agentTools: MCPTool[] = [
       type: 'object',
       properties: {
         agentId: { type: 'string', description: 'ID of agent' },
+        includeMetrics: { type: 'boolean', description: 'Include AgentMetrics in response' },
+        includeHistory: { type: 'boolean', description: 'Include task counters from metrics' },
       },
       required: ['agentId'],
     },
     handler: async (input) => {
-      const store = loadAgentStore();
       const agentId = input.agentId as string;
-      const agent = store.agents[agentId];
+      if (typeof agentId !== 'string' || !agentId) {
+        return { agentId, status: 'not_found', error: 'agentId must be a non-empty string' };
+      }
 
-      if (agent) {
-        return {
-          agentId: agent.agentId,
-          agentType: agent.agentType,
-          status: agent.status,
-          health: agent.health,
-          taskCount: agent.taskCount,
-          createdAt: agent.createdAt,
-          domain: agent.domain,
+      const coordinator = await getSwarmCoordinator();
+      const agent = coordinator.getAgent(agentId);
+      if (!agent) {
+        return { agentId, status: 'not_found', error: 'Agent not found' };
+      }
+
+      const response: Record<string, unknown> = {
+        agentId: agent.id.id,
+        agentType: agent.type,
+        name: agent.name,
+        status: agent.status,
+        health: agent.health,
+        workload: agent.workload,
+        domain: coordinator.getDomainForAgent(agentId),
+        currentTask: agent.currentTask?.id,
+        lastHeartbeat: agent.lastHeartbeat.toISOString(),
+        taskCount: agent.metrics.tasksCompleted + agent.metrics.tasksFailed,
+      };
+
+      if (input.includeMetrics) {
+        response.metrics = {
+          ...agent.metrics,
+          lastActivity: agent.metrics.lastActivity.toISOString(),
         };
       }
 
-      return {
-        agentId,
-        status: 'not_found',
-        error: 'Agent not found',
-      };
+      if (input.includeHistory) {
+        response.history = {
+          tasksCompleted: agent.metrics.tasksCompleted,
+          tasksFailed: agent.metrics.tasksFailed,
+          successRate: agent.metrics.successRate,
+        };
+      }
+
+      return response;
     },
   },
   {
@@ -421,42 +460,38 @@ export const agentTools: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        status: { type: 'string', description: 'Filter by status' },
+        status: { type: 'string', description: 'Filter by status (idle/busy/...)' },
+        agentType: { type: 'string', description: 'Filter by agent type' },
         domain: { type: 'string', description: 'Filter by domain' },
-        includeTerminated: { type: 'boolean', description: 'Include terminated agents' },
+        limit: { type: 'number', description: 'Max results to return' },
+        offset: { type: 'number', description: 'Skip first N results' },
       },
     },
     handler: async (input) => {
-      const store = loadAgentStore();
-      let agents = Object.values(store.agents);
+      const coordinator = await getSwarmCoordinator();
+      const all = coordinator.listAgents({
+        status: input.status as AgentStatus | undefined,
+        type: input.agentType as AgentType | undefined,
+        domain: input.domain as AgentDomain | undefined,
+      });
 
-      // Filter by status
-      if (input.status) {
-        agents = agents.filter(a => a.status === input.status);
-      } else if (!input.includeTerminated) {
-        agents = agents.filter(a => a.status !== 'terminated');
-      }
+      const offset = toNonNegativeInt(input.offset, 0);
+      const limit = toNonNegativeInt(input.limit, undefined);
+      const sliced = limit === undefined ? all.slice(offset) : all.slice(offset, offset + limit);
 
-      // Filter by domain
-      if (input.domain) {
-        agents = agents.filter(a => a.domain === input.domain);
-      }
+      // Rename `type` → `agentType` so list/status/spawn share one field name.
+      const projected = sliced.map(({ type, ...rest }) => ({ ...rest, agentType: type }));
 
       return {
-        agents: agents.map(a => ({
-          agentId: a.agentId,
-          agentType: a.agentType,
-          status: a.status,
-          health: a.health,
-          taskCount: a.taskCount,
-          createdAt: a.createdAt,
-          domain: a.domain,
-        })),
-        total: agents.length,
+        agents: projected,
+        total: all.length,
+        returned: projected.length,
         filters: {
           status: input.status,
+          agentType: input.agentType,
           domain: input.domain,
-          includeTerminated: input.includeTerminated,
+          limit,
+          offset,
         },
       };
     },
