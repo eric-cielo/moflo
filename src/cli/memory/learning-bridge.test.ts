@@ -469,6 +469,7 @@ describe('LearningBridge', () => {
       const customBridge = new LearningBridge(backend, {
         consolidationThreshold: 2,
         neuralLoader: createNeuralLoader(neural),
+        embeddingLoader: createMockEmbeddingLoader(768),
       });
       neural.beginTask.mockReturnValueOnce('traj-1').mockReturnValueOnce('traj-2');
       await customBridge.onInsightRecorded(createTestInsight(), 'e-1');
@@ -745,7 +746,10 @@ describe('LearningBridge', () => {
   describe('neural initialization', () => {
     it('should only attempt neural load once', async () => {
       const loaderFn = vi.fn().mockResolvedValue(neural);
-      const b = new LearningBridge(backend, { neuralLoader: loaderFn });
+      const b = new LearningBridge(backend, {
+        neuralLoader: loaderFn,
+        embeddingLoader: createMockEmbeddingLoader(768),
+      });
 
       await b.onInsightRecorded(createTestInsight(), 'entry-1');
       await b.onInsightRecorded(createTestInsight({ summary: 'Second' }), 'entry-2');
