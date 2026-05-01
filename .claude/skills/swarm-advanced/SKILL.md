@@ -61,6 +61,55 @@ The tool returns `{ previousAgents, currentAgents, scalingStatus, addedAgents,
 removedAgents }` so callers can verify the swarm reached the target. Scale-down
 prefers idle agents first, then oldest by heartbeat.
 
+### Task Orchestration
+
+The `task_*` family talks to the same UnifiedSwarmCoordinator that
+`swarm_init` / `agent_spawn` use, so tasks created here flow through the
+same scoring scheduler that load-balances across idle agents.
+
+```javascript
+// Single task — coordinator picks the lowest-workload agent automatically
+mcp__moflo__task_create({
+  type: "coding",
+  description: "Implement OAuth refresh flow",
+  priority: "high"
+})
+
+// Direct dispatch to a known agent (skip the scheduler)
+mcp__moflo__task_assign({
+  taskId: "task_swarm-…_3",
+  agentId: "agent-coder-…"
+})
+
+// Domain-routed dispatch (queen / security / core / integration / support)
+mcp__moflo__task_assign({
+  taskId: "task_swarm-…_4",
+  domain: "security"
+})
+
+// Submit a batch — load-balanced across available agents in one call.
+// 5 tasks across 3 idle agents → no agent ends up with more than 2.
+mcp__moflo__task_orchestrate({
+  tasks: [
+    { type: "coding", description: "endpoint A" },
+    { type: "coding", description: "endpoint B" },
+    { type: "testing", description: "tests for A" },
+    { type: "testing", description: "tests for B" },
+    { type: "review",  description: "PR review" }
+  ]
+})
+
+// Mark a task done and record its outcome
+mcp__moflo__task_complete({
+  taskId: "task_swarm-…_3",
+  result: { ok: true, summary: "merged in PR #842" }
+})
+```
+
+`task_orchestrate` returns `{ submitted, assigned, queued, rejected, tasks,
+errors }` — `assigned` is the count whose agents accepted them on submit;
+the rest are queued and will be picked up as agents go idle.
+
 ## Core Concepts
 
 ### Swarm Topologies

@@ -471,11 +471,103 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
     }
 
     task.status = 'cancelled';
+    task.completedAt = new Date();
 
     this.emitEvent('task.failed', {
       taskId,
       reason: 'cancelled',
     });
+  }
+
+  /**
+   * Public companion to the bus-driven `handleTaskComplete` path: lets a
+   * caller without a reporting agent finalize a task. Idempotent on
+   * already-completed tasks.
+   */
+  async completeTask(
+    taskId: string,
+    output?: unknown,
+  ): Promise<{ completed: boolean; reason?: string }> {
+    const task = this.state.tasks.get(taskId);
+    if (!task) {
+      return { completed: false, reason: 'task_not_found' };
+    }
+    if (task.status === 'completed') {
+      return { completed: true, reason: 'already_completed' };
+    }
+
+    task.status = 'completed';
+    task.output = output;
+    task.completedAt = new Date();
+
+    if (task.assignedTo) {
+      const agent = this.state.agents.get(task.assignedTo.id);
+      if (agent) {
+        agent.status = 'idle';
+        agent.currentTask = undefined;
+        agent.metrics.tasksCompleted++;
+      }
+    }
+
+    this.state.metrics.completedTasks++;
+
+    if (task.startedAt) {
+      const duration = task.completedAt.getTime() - task.startedAt.getTime();
+      this.state.metrics.avgTaskDurationMs =
+        (this.state.metrics.avgTaskDurationMs * 0.9) + (duration * 0.1);
+    }
+
+    this.emitEvent('task.completed', {
+      taskId,
+      agentId: task.assignedTo?.id,
+      result: output,
+    });
+
+    return { completed: true };
+  }
+
+  /**
+   * Direct-target counterpart to the auto-scheduler `assignTask` and the
+   * domain-routed `assignTaskToDomain`: caller already knows the agent.
+   * Re-assignment releases the previously assigned agent if any.
+   */
+  async assignTaskToAgent(
+    taskId: string,
+    agentId: string,
+  ): Promise<{ assigned: boolean; reason?: string }> {
+    const task = this.state.tasks.get(taskId);
+    if (!task) return { assigned: false, reason: 'task_not_found' };
+
+    const agent = this.state.agents.get(agentId);
+    if (!agent) return { assigned: false, reason: 'agent_not_found' };
+    if (agent.status === 'terminated') return { assigned: false, reason: 'agent_terminated' };
+
+    if (task.assignedTo && task.assignedTo.id !== agentId) {
+      const previous = this.state.agents.get(task.assignedTo.id);
+      if (previous) {
+        previous.status = 'idle';
+        previous.currentTask = undefined;
+      }
+    }
+
+    task.assignedTo = agent.id;
+    task.status = 'assigned';
+    task.startedAt = task.startedAt ?? new Date();
+    agent.status = 'busy';
+    agent.currentTask = task.id;
+
+    await this.messageBus.send({
+      type: 'task_assign',
+      from: this.state.id.id,
+      to: agent.id.id,
+      payload: { task },
+      priority: this.mapTaskPriorityToMessagePriority(task.priority),
+      requiresAck: true,
+      ttlMs: this.config.taskTimeoutMs,
+    });
+
+    this.emitEvent('task.assigned', { taskId, agentId });
+    return { assigned: true };
   }
 
   getTask(taskId: string): TaskDefinition | undefined {
@@ -868,7 +960,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
 
     switch (message.type) {
       case 'task_complete':
-        this.handleTaskComplete(agentId, message.payload as { taskId: string; result: unknown });
+        void this.handleTaskComplete(agentId, message.payload as { taskId: string; result: unknown });
         break;
       case 'task_fail':
         this.handleTaskFail(agentId, message.payload as { taskId: string; error: string });
@@ -882,34 +974,14 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
     }
   }
 
-  private handleTaskComplete(agentId: string, data: { taskId: string; result: unknown }): void {
-    const task = this.state.tasks.get(data.taskId);
-    const agent = this.state.agents.get(agentId);
-
-    if (task && agent) {
-      task.status = 'completed';
-      task.output = data.result;
-      task.completedAt = new Date();
-
-      agent.status = 'idle';
-      agent.currentTask = undefined;
-      agent.metrics.tasksCompleted++;
-
-      this.state.metrics.completedTasks++;
-
-      // Update average task duration
-      if (task.startedAt) {
-        const duration = task.completedAt.getTime() - task.startedAt.getTime();
-        this.state.metrics.avgTaskDurationMs =
-          (this.state.metrics.avgTaskDurationMs * 0.9) + (duration * 0.1);
-      }
-
-      this.emitEvent('task.completed', {
-        taskId: data.taskId,
-        agentId,
-        result: data.result,
-      });
-    }
+  private async handleTaskComplete(
+    agentId: string,
+    data: { taskId: string; result: unknown },
+  ): Promise<void> {
+    // Bus path: only finalize if the reporting agent is known. `completeTask`
+    // is permissive (operates without an assigned agent), so guard here.
+    if (!this.state.agents.has(agentId)) return;
+    await this.completeTask(data.taskId, data.result);
   }
 
   private handleTaskFail(agentId: string, data: { taskId: string; error: string }): void {
