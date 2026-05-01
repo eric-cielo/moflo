@@ -377,6 +377,15 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
     return this.state.agents.get(agentId);
   }
 
+  /**
+   * Resolve the runtime domain for a spawned agent ID.
+   * Distinct from `getAgentDomain(agentNumber)` which maps the static
+   * 15-agent hierarchy slot.
+   */
+  getDomainForAgent(agentId: string): AgentDomain | undefined {
+    return this.agentDomainMap.get(agentId);
+  }
+
   getAllAgents(): AgentState[] {
     return Array.from(this.state.agents.values());
   }
