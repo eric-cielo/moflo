@@ -16,6 +16,7 @@ import { getSwarmCoordinator } from './swarm-coordinator-singleton.js';
 import { SUBAGENT_BOOTSTRAP_DIRECTIVE } from '../services/subagent-bootstrap.js';
 import { validateAgentType } from './agent-tools.js';
 import type { AgentType } from '../swarm/types.js';
+import { SWARM_CONSTANTS } from '../swarm/types.js';
 
 // Namespace constants — avoids hardcoded strings scattered across handlers
 const HIVE_NS = 'hive-mind' as const;
@@ -76,6 +77,16 @@ async function getWriteThroughAdapter(): Promise<WriteThroughAdapter> {
 
 // ===== In-memory hive state (replaces state.json) =====
 
+type ConsensusAlgorithm = 'byzantine' | 'raft' | 'gossip' | 'crdt' | 'quorum';
+type MemoryBackend = 'memory' | 'sqlite' | 'agentdb' | 'hybrid';
+
+const CONSENSUS_ALGORITHMS = ['byzantine', 'raft', 'gossip', 'crdt', 'quorum'] as const;
+const MEMORY_BACKENDS = ['memory', 'sqlite', 'agentdb', 'hybrid'] as const;
+const DEFAULT_CONSENSUS: ConsensusAlgorithm = 'byzantine';
+const DEFAULT_MEMORY_BACKEND: MemoryBackend = 'hybrid';
+const DEFAULT_MAX_AGENTS = 15;
+const HARD_MAX_AGENTS = SWARM_CONSTANTS.DEFAULT_MAX_AGENTS;
+
 interface HiveState {
   initialized: boolean;
   hiveId: string;
@@ -85,6 +96,12 @@ interface HiveState {
   consensus: {
     pending: ConsensusProposal[];
     history: ConsensusResult[];
+  };
+  config: {
+    consensus: ConsensusAlgorithm;
+    maxAgents: number;
+    persist: boolean;
+    memoryBackend: MemoryBackend;
   };
   createdAt: string;
 }
@@ -122,8 +139,31 @@ function createDefaultState(): HiveState {
     topology: 'mesh',
     workers: [],
     consensus: { pending: [], history: [] },
+    config: {
+      consensus: DEFAULT_CONSENSUS,
+      maxAgents: DEFAULT_MAX_AGENTS,
+      persist: true,
+      memoryBackend: DEFAULT_MEMORY_BACKEND,
+    },
     createdAt: new Date().toISOString(),
   };
+}
+
+function resolveConsensus(value: unknown): ConsensusAlgorithm {
+  return CONSENSUS_ALGORITHMS.includes(value as ConsensusAlgorithm)
+    ? (value as ConsensusAlgorithm)
+    : DEFAULT_CONSENSUS;
+}
+
+function resolveMemoryBackend(value: unknown): MemoryBackend {
+  return MEMORY_BACKENDS.includes(value as MemoryBackend)
+    ? (value as MemoryBackend)
+    : DEFAULT_MEMORY_BACKEND;
+}
+
+function resolveMaxAgents(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_MAX_AGENTS;
+  return Math.min(Math.max(1, Math.floor(value)), HARD_MAX_AGENTS);
 }
 
 // ===== Memory DB helpers for shared memory (hive-mind_memory tool) =====
@@ -247,7 +287,17 @@ export const hiveMindTools: MCPTool[] = [
         return { success: false, error: 'Hive-mind not initialized. Run hive-mind/init first.' };
       }
 
-      const count = Math.min(Math.max(1, (input.count as number) || 1), 20);
+      const remaining = Math.max(0, hiveState.config.maxAgents - hiveState.workers.length);
+      if (remaining <= 0) {
+        return {
+          success: false,
+          spawned: 0,
+          workers: [],
+          error: `Hive at capacity (maxAgents=${hiveState.config.maxAgents}, workers=${hiveState.workers.length})`,
+        };
+      }
+      const requested = Math.max(1, (input.count as number) || 1);
+      const count = Math.min(requested, remaining);
       const role = (input.role as string) || 'worker';
       const agentType = (input.agentType as string) || 'worker';
       const prefix = (input.prefix as string) || 'hive-worker';
@@ -325,13 +375,18 @@ export const hiveMindTools: MCPTool[] = [
       await Promise.all(joinBroadcasts);
       saveAgentStore(agentStore);
 
+      const cappedBy = requested > count ? hiveState.config.maxAgents : null;
       return {
         success: true,
         spawned: count,
+        requested,
+        cappedByMaxAgents: cappedBy,
         workers: spawnedWorkers,
         totalWorkers: hiveState.workers.length,
         hiveStatus: 'active',
-        message: `Spawned ${count} worker(s) and joined them to the hive-mind`,
+        message: cappedBy
+          ? `Spawned ${count}/${requested} worker(s); capped by maxAgents=${cappedBy}`
+          : `Spawned ${count} worker(s) and joined them to the hive-mind`,
       };
     },
   },
@@ -342,8 +397,32 @@ export const hiveMindTools: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        topology: { type: 'string', enum: ['mesh', 'hierarchical', 'ring', 'star'], description: 'Network topology' },
+        topology: { type: 'string', enum: ['mesh', 'hierarchical', 'ring', 'star'], description: 'Network topology', default: 'mesh' },
         queenId: { type: 'string', description: 'Initial queen agent ID' },
+        consensus: {
+          type: 'string',
+          enum: [...CONSENSUS_ALGORITHMS],
+          description: 'Consensus algorithm reported by hive-mind_status; recorded as the hive\'s configured algorithm',
+          default: 'byzantine',
+        },
+        maxAgents: {
+          type: 'number',
+          description: `Maximum workers the hive will accept via hive-mind_spawn (1-${HARD_MAX_AGENTS})`,
+          default: DEFAULT_MAX_AGENTS,
+          minimum: 1,
+          maximum: HARD_MAX_AGENTS,
+        },
+        persist: {
+          type: 'boolean',
+          description: 'Persist hive-mind shared memory through the write-through adapter',
+          default: true,
+        },
+        memoryBackend: {
+          type: 'string',
+          enum: [...MEMORY_BACKENDS],
+          description: 'Memory backend label round-tripped through hive-mind_status.config',
+          default: 'hybrid',
+        },
       },
     },
     handler: async (input) => {
@@ -354,6 +433,13 @@ export const hiveMindTools: MCPTool[] = [
       const hiveId = `hive-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const queenId = (input.queenId as string) || `queen-${Date.now()}`;
 
+      const config = {
+        consensus: resolveConsensus(input.consensus),
+        maxAgents: resolveMaxAgents(input.maxAgents),
+        persist: input.persist !== false,
+        memoryBackend: resolveMemoryBackend(input.memoryBackend),
+      };
+
       hiveState = {
         initialized: true,
         hiveId,
@@ -361,6 +447,7 @@ export const hiveMindTools: MCPTool[] = [
         queen: { agentId: queenId, electedAt: new Date().toISOString(), term: 1 },
         workers: [],
         consensus: { pending: [], history: [] },
+        config,
         createdAt: new Date().toISOString(),
       };
 
@@ -371,15 +458,12 @@ export const hiveMindTools: MCPTool[] = [
         success: true,
         hiveId,
         topology: hiveState.topology,
-        consensus: (input.consensus as string) || 'byzantine',
+        consensus: config.consensus,
         queenId,
         status: 'initialized',
         config: {
           topology: hiveState.topology,
-          consensus: input.consensus || 'byzantine',
-          maxAgents: input.maxAgents || 15,
-          persist: input.persist !== false,
-          memoryBackend: input.memoryBackend || 'hybrid',
+          ...config,
         },
         createdAt: hiveState.createdAt,
       };
@@ -417,7 +501,8 @@ export const hiveMindTools: MCPTool[] = [
         hiveId,
         status: hiveState.initialized ? 'active' : 'offline',
         topology: hiveState.topology,
-        consensus: 'byzantine',
+        consensus: hiveState.config.consensus,
+        config: { ...hiveState.config },
         queen: hiveState.queen ? {
           id: hiveState.queen.agentId,
           agentId: hiveState.queen.agentId,
