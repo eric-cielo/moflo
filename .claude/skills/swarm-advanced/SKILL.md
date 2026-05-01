@@ -33,6 +33,34 @@ mcp__moflo__agent_spawn({ type: "researcher", name: "swarm-advanced" })
 // 3. Orchestrate tasks
 ```
 
+### Dynamic Scaling
+Use `mcp__moflo__swarm_scale` to grow or shrink the agent pool to a target size
+without re-initializing the swarm. Three strategies are available:
+
+```javascript
+// Burst-spawn 8 workers all at once (load test, big batch)
+mcp__moflo__swarm_scale({
+  targetAgents: 8,
+  scaleStrategy: "immediate",
+  agentTypes: ["worker"],
+  reason: "load-test ramp"
+})
+
+// Rate-limited ramp (1 agent / 200ms) — gentler on the coordinator
+mcp__moflo__swarm_scale({
+  targetAgents: 12,
+  scaleStrategy: "gradual",
+  agentTypes: ["coder", "tester"]
+})
+
+// Adaptive: chunks scale with current coordinator load
+mcp__moflo__swarm_scale({ targetAgents: 4, scaleStrategy: "adaptive" })
+```
+
+The tool returns `{ previousAgents, currentAgents, scalingStatus, addedAgents,
+removedAgents }` so callers can verify the swarm reached the target. Scale-down
+prefers idle agents first, then oldest by heartbeat.
+
 ## Core Concepts
 
 ### Swarm Topologies

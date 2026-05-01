@@ -130,12 +130,12 @@ function toNonNegativeInt<D extends number | undefined>(value: unknown, fallback
   return Math.floor(n);
 }
 
-interface AgentTypeValidation {
+export interface AgentTypeValidation {
   ok: boolean;
   error?: string;
 }
 
-function validateAgentType(value: unknown): AgentTypeValidation {
+export function validateAgentType(value: unknown): AgentTypeValidation {
   if (typeof value !== 'string' || value.length === 0) {
     return { ok: false, error: 'agentType must be a non-empty string' };
   }
