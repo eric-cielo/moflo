@@ -17,59 +17,8 @@ import {
   SWARM_AGENTS_NS,
   SWARM_TOPOLOGY_NS,
   SwarmPersistence,
-  type SwarmMemoryFns,
 } from '../../swarm/swarm-persistence.js';
-
-interface FakeRow {
-  key: string;
-  namespace: string;
-  content: string;
-}
-
-/**
- * sql.js-free fake persistence backend. Captures every storeEntry/deleteEntry
- * call across coordinator boots so tests can assert the same writes that
- * would have hit moflo.db in production.
- */
-function createInMemoryFns(): { fns: SwarmMemoryFns; rows: Map<string, FakeRow> } {
-  const rows = new Map<string, FakeRow>();
-  const compositeKey = (namespace: string, key: string) => `${namespace}::${key}`;
-
-  const fns: SwarmMemoryFns = {
-    async storeEntry(opts) {
-      rows.set(compositeKey(opts.namespace, opts.key), {
-        key: opts.key,
-        namespace: opts.namespace,
-        content: opts.value,
-      });
-      return { success: true, id: `id_${rows.size}` };
-    },
-    async getEntry(opts) {
-      const ns = opts.namespace ?? 'default';
-      const row = rows.get(compositeKey(ns, opts.key));
-      if (!row) return { success: true, found: false };
-      return { success: true, found: true, entry: { content: row.content } };
-    },
-    async listEntries(opts) {
-      const ns = opts.namespace;
-      const entries = ns
-        ? Array.from(rows.values()).filter(r => r.namespace === ns)
-        : Array.from(rows.values());
-      return {
-        success: true,
-        entries: entries.map(r => ({ key: r.key })),
-        total: entries.length,
-      };
-    },
-    async deleteEntry(opts) {
-      const ns = opts.namespace ?? 'default';
-      const existed = rows.delete(compositeKey(ns, opts.key));
-      return { success: true, deleted: existed };
-    },
-  };
-
-  return { fns, rows };
-}
+import { createInMemoryPersistence } from './_in-memory-persistence.js';
 
 function getAgentTool(name: string) {
   const tool = agentTools.find(t => t.name === name);
@@ -78,10 +27,10 @@ function getAgentTool(name: string) {
 }
 
 describe('Swarm restart persistence (story #806)', () => {
-  let backend: ReturnType<typeof createInMemoryFns>;
+  let backend: ReturnType<typeof createInMemoryPersistence>;
 
   beforeEach(() => {
-    backend = createInMemoryFns();
+    backend = createInMemoryPersistence();
     _setSwarmPersistenceForTest(new SwarmPersistence(backend.fns));
   });
 

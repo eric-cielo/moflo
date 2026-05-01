@@ -80,7 +80,7 @@ function probeMemoryBackend(): { ok: boolean; message: string } {
 export const swarmTools: MCPTool[] = [
   {
     name: 'swarm_init',
-    description: 'Initialize a swarm',
+    description: 'Initialize the swarm coordinator (idempotent — returns the existing swarmId on re-init)',
     category: 'swarm',
     inputSchema: {
       type: 'object',
@@ -148,7 +148,7 @@ export const swarmTools: MCPTool[] = [
   },
   {
     name: 'swarm_status',
-    description: 'Get swarm status',
+    description: 'Get live swarm status from the coordinator (agent + task counts, topology, metrics)',
     category: 'swarm',
     inputSchema: {
       type: 'object',

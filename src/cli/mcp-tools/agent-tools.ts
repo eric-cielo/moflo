@@ -354,7 +354,7 @@ export const agentTools: MCPTool[] = [
   },
   {
     name: 'agent_terminate',
-    description: 'Terminate an agent',
+    description: 'Terminate an agent on the coordinator (force / grace-period supported; reassigns active tasks)',
     category: 'agent',
     inputSchema: {
       type: 'object',
@@ -399,7 +399,7 @@ export const agentTools: MCPTool[] = [
   },
   {
     name: 'agent_status',
-    description: 'Get agent status',
+    description: 'Get agent status from the coordinator (workload, health, last heartbeat, optional metrics)',
     category: 'agent',
     inputSchema: {
       type: 'object',
@@ -455,7 +455,7 @@ export const agentTools: MCPTool[] = [
   },
   {
     name: 'agent_list',
-    description: 'List all agents',
+    description: 'List coordinator-tracked agents (with status / type / domain filters and pagination)',
     category: 'agent',
     inputSchema: {
       type: 'object',
