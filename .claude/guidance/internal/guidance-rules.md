@@ -140,3 +140,19 @@ Use relative names (not absolute paths) so the links work across project context
 **All shipped guidance files in `.claude/guidance/shipped/` MUST begin with the `moflo-` prefix** (e.g., `moflo-subagents.md`, `moflo-memory-strategy.md`). This prevents name collisions when these files are synced into a consumer project's `.claude/guidance/` directory, where the project may have its own guidance files with generic names like `subagents.md` or `memory-strategy.md`.
 
 The prefix is applied statically at the source — the sync process copies files as-is without modifying names.
+
+---
+
+## 11. Ship-vs-Local Partitioning Contract
+
+**Three buckets, one ship boundary.** `package.json` `files` includes only `.claude/guidance/shipped/**`; everything else stays local.
+
+| Path | Tracked? | Ships? | Purpose |
+|------|----------|--------|---------|
+| `.claude/guidance/shipped/moflo-*.md` | yes | yes | Consumer-facing rules (CLI, swarm, memory, spells, sandboxing, icons, language, etc.) |
+| `.claude/guidance/internal/*.md` | yes | no | Dev-only (this file, dogfooding, testing, coding-style, upgrade-contract) |
+| `.claude/guidance/*.md` (top level) | no | no | Auto-generated mirror written by session-start launcher; consumers regenerate on install |
+
+**Gitignore must target only the top-level mirror.** Use `/.claude/guidance/*.md` — a bare `.claude/guidance/` will silently swallow `shipped/` and `internal/` too, and the failure is invisible because `npm pack` ships from the working tree (not git), so a fresh CI clone publishes an incomplete `shipped/` set.
+
+**CLAUDE.md cross-references should point to `shipped/` paths**, not the top-level mirror. The mirror only exists once session-start has run; `shipped/` is the durable source.

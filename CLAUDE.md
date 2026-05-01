@@ -37,7 +37,7 @@ MUST call `mcp__moflo__memory_search` BEFORE any Glob/Grep/Read/file exploration
 - **Memory-first**: Must search memory before Glob/Grep/Read
 - **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
 
-- **Task Icons**: `TaskCreate` MUST use ICON+[Role] format — see `.claude/guidance/moflo-task-icons.md`
+- **Task Icons**: `TaskCreate` MUST use ICON+[Role] format — see `.claude/guidance/shipped/moflo-task-icons.md`
 
 ### MCP Tools (preferred over CLI)
 
