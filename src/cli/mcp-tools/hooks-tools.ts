@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync, readdirSy
 import { dirname, join, resolve, extname } from 'path';
 import type { MCPTool } from './types.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { findProjectRoot } from '../services/project-root.js';
 
 // Real vector search functions - lazy loaded to avoid circular imports
 let searchEntriesFn: ((options: {
@@ -1983,7 +1984,7 @@ export const hooksSessionStart: MCPTool = {
       try {
         // Dynamic import to avoid circular dependencies
         const { startDaemon } = await import('../services/worker-daemon.js');
-        const daemon = await startDaemon(process.cwd());
+        const daemon = await startDaemon(findProjectRoot());
         const status = daemon.getStatus();
         daemonStatus = {
           started: true,
@@ -2021,7 +2022,7 @@ export const hooksSessionStart: MCPTool = {
     if (restoredCount === 0) {
       try {
         const result = await hooksPretrain.handler({
-          path: process.cwd(),
+          path: findProjectRoot(),
           depth: 'shallow',
         });
         const stats = (result as Record<string, unknown>)?.stats as { patternsStored?: number } | undefined;

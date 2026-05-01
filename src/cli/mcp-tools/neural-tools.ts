@@ -14,6 +14,7 @@ import type { MCPTool } from './types.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
+import { findProjectRoot } from '../services/project-root.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Lazily resolved fastembed-backed embedder. The previous top-level `await`
@@ -88,7 +89,7 @@ interface NeuralStore {
 }
 
 function getNeuralDir(): string {
-  return join(process.cwd(), STORAGE_DIR, NEURAL_DIR);
+  return join(findProjectRoot(), STORAGE_DIR, NEURAL_DIR);
 }
 
 function getNeuralPath(): string {

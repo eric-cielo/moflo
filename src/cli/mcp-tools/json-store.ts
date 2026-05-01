@@ -2,11 +2,13 @@
  * Tiny JSON-on-disk store shared by the trimmed MCP-tool surfaces
  * (`coordination-tools`, `system-tools`, `performance-tools`).
  *
- * Anchors files at `<cwd>/.moflo/<subdir>/<file>` via {@link mofloDir}. On a
- * missing file or syntactically-malformed JSON, `load()` falls back to
- * `defaults()` so first-run callers never crash. Any other I/O failure
- * (EACCES, EISDIR, etc.) is surfaced — silent recovery there would
- * masquerade as a clean first-run and discard real on-disk state.
+ * Anchors files at `<projectRoot>/.moflo/<subdir>/<file>` via {@link mofloDir},
+ * with the root resolved by {@link findProjectRoot} so an MCP server launched
+ * from a subdirectory still writes inside the consumer project. On a missing
+ * file or syntactically-malformed JSON, `load()` falls back to `defaults()` so
+ * first-run callers never crash. Any other I/O failure (EACCES, EISDIR, etc.)
+ * is surfaced — silent recovery there would masquerade as a clean first-run
+ * and discard real on-disk state.
  *
  * Intentionally minimal: no locking, no caching, no schema validation.
  * Each consumer keeps its own typed shape; this is just persistence.
@@ -14,6 +16,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { mofloDir } from '../services/moflo-paths.js';
+import { findProjectRoot } from '../services/project-root.js';
 
 export interface JsonStoreOptions<T> {
   subdir: string;
@@ -27,7 +30,7 @@ export interface JsonStore<T> {
 }
 
 export function createJsonStore<T>(opts: JsonStoreOptions<T>): JsonStore<T> {
-  const path = (): string => join(mofloDir(process.cwd()), opts.subdir, opts.file);
+  const path = (): string => join(mofloDir(findProjectRoot()), opts.subdir, opts.file);
 
   return {
     load(): T {
