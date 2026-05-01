@@ -166,8 +166,8 @@ describe('denylist override via allowDestructive', () => {
 // ============================================================================
 
 describe('platform detection returns correct results', () => {
-  it('returns a valid SandboxCapability shape', () => {
-    const cap = detectSandboxCapability();
+  it('returns a valid SandboxCapability shape', async () => {
+    const cap = await detectSandboxCapability();
     expect(cap).toHaveProperty('platform');
     expect(cap).toHaveProperty('available');
     expect(cap).toHaveProperty('tool');
@@ -176,13 +176,13 @@ describe('platform detection returns correct results', () => {
     expect(typeof cap.available).toBe('boolean');
   });
 
-  it('matches the current OS platform', () => {
-    const cap = detectSandboxCapability();
+  it('matches the current OS platform', async () => {
+    const cap = await detectSandboxCapability();
     expect(cap.platform).toBe(platform());
   });
 
-  it.skipIf(!IS_MACOS)('macOS: detects sandbox-exec', () => {
-    const cap = detectSandboxCapability();
+  it.skipIf(!IS_MACOS)('macOS: detects sandbox-exec', async () => {
+    const cap = await detectSandboxCapability();
     // sandbox-exec is always present on macOS
     expect(cap.platform).toBe('darwin');
     expect(cap.available).toBe(true);
@@ -190,8 +190,8 @@ describe('platform detection returns correct results', () => {
     expect(cap.overhead).toBe('low');
   });
 
-  it.skipIf(!IS_LINUX)('Linux: detects bwrap if installed', () => {
-    const cap = detectSandboxCapability();
+  it.skipIf(!IS_LINUX)('Linux: detects bwrap if installed', async () => {
+    const cap = await detectSandboxCapability();
     expect(cap.platform).toBe('linux');
     // bwrap may or may not be installed; just validate the shape
     if (cap.available) {
@@ -203,8 +203,8 @@ describe('platform detection returns correct results', () => {
     }
   });
 
-  it.skipIf(!IS_WINDOWS)('Windows: detects Docker if available', () => {
-    const cap = detectSandboxCapability();
+  it.skipIf(!IS_WINDOWS)('Windows: detects Docker if available', async () => {
+    const cap = await detectSandboxCapability();
     expect(cap.platform).toBe('win32');
     if (cap.available) {
       expect(cap.tool).toBe('docker');
@@ -215,18 +215,18 @@ describe('platform detection returns correct results', () => {
     }
   });
 
-  it('caches detection result', () => {
+  it('caches detection result', async () => {
     resetSandboxCache();
-    const first = detectSandboxCapability();
-    const second = detectSandboxCapability();
+    const first = await detectSandboxCapability();
+    const second = await detectSandboxCapability();
     expect(first).toBe(second); // Same reference
   });
 
-  it('resetSandboxCache allows re-detection', () => {
+  it('resetSandboxCache allows re-detection', async () => {
     resetSandboxCache();
-    const first = detectSandboxCapability();
+    const first = await detectSandboxCapability();
     resetSandboxCache();
-    const second = detectSandboxCapability();
+    const second = await detectSandboxCapability();
     // Equal values but fresh object
     expect(second).toEqual(first);
     expect(second).not.toBe(first);
@@ -331,8 +331,8 @@ describe('graceful fallback when OS sandbox is unavailable', () => {
     vi.restoreAllMocks();
   });
 
-  it('auto tier falls back to denylist-only when no OS sandbox detected', () => {
-    const effective = resolveEffectiveSandbox(
+  it('auto tier falls back to denylist-only when no OS sandbox detected', async () => {
+    const effective = await resolveEffectiveSandbox(
       { enabled: true, tier: 'auto' },
       UNAVAILABLE_CAPABILITY,
     );
@@ -340,20 +340,20 @@ describe('graceful fallback when OS sandbox is unavailable', () => {
     expect(effective.displayStatus).toContain('not available');
   });
 
-  it('full tier throws when no OS sandbox is available', () => {
-    expect(() =>
+  it('full tier throws when no OS sandbox is available', async () => {
+    await expect(
       resolveEffectiveSandbox({ enabled: true, tier: 'full' }, UNAVAILABLE_CAPABILITY),
-    ).toThrow(/Sandbox tier "full" requires an OS sandbox/);
+    ).rejects.toThrow(/Sandbox tier "full" requires an OS sandbox/);
   });
 
-  it('denylist-only tier always skips OS sandbox', () => {
-    const effective = resolveEffectiveSandbox({ enabled: true, tier: 'denylist-only' });
+  it('denylist-only tier always skips OS sandbox', async () => {
+    const effective = await resolveEffectiveSandbox({ enabled: true, tier: 'denylist-only' });
     expect(effective.useOsSandbox).toBe(false);
     expect(effective.displayStatus).toContain('disabled');
   });
 
-  it('enabled: false disables OS sandbox', () => {
-    const effective = resolveEffectiveSandbox({ enabled: false, tier: 'auto' });
+  it('enabled: false disables OS sandbox', async () => {
+    const effective = await resolveEffectiveSandbox({ enabled: false, tier: 'auto' });
     expect(effective.useOsSandbox).toBe(false);
     expect(effective.displayStatus).toContain('disabled');
   });
@@ -365,8 +365,8 @@ describe('graceful fallback when OS sandbox is unavailable', () => {
     expect(result.error).toContain('Command blocked');
   });
 
-  it('formatSandboxLog produces correct output for all states', () => {
-    const disabledEffective = resolveEffectiveSandbox({ enabled: false, tier: 'auto' });
+  it('formatSandboxLog produces correct output for all states', async () => {
+    const disabledEffective = await resolveEffectiveSandbox({ enabled: false, tier: 'auto' });
     const log = formatSandboxLog(disabledEffective);
     expect(log).toMatch(/^\[spell\] OS sandbox:/);
     expect(log).toContain('disabled');
@@ -457,7 +457,7 @@ describe('full pipeline: config through execution', () => {
     resetSandboxCache();
   });
 
-  it('resolveSandboxConfig → resolveEffectiveSandbox produces consistent state', () => {
+  it('resolveSandboxConfig → resolveEffectiveSandbox produces consistent state', async () => {
     // Pass explicit capabilities so this config-consistency test doesn't depend
     // on the host's real Docker/bwrap availability (Windows without Docker
     // Desktop running would otherwise hit the throw path).
@@ -469,18 +469,18 @@ describe('full pipeline: config through execution', () => {
     const availableCap = { platform: 'linux' as NodeJS.Platform, available: true, tool: 'bwrap', overhead: 'low' as const };
     const unavailableCap = { platform: 'linux' as NodeJS.Platform, available: false, tool: null, overhead: null };
 
-    const effectiveAvailable = resolveEffectiveSandbox(config, availableCap);
+    const effectiveAvailable = await resolveEffectiveSandbox(config, availableCap);
     expect(effectiveAvailable.config).toEqual(config);
     expect(effectiveAvailable.useOsSandbox).toBe(true);
 
-    const effectiveUnavailable = resolveEffectiveSandbox(config, unavailableCap);
+    const effectiveUnavailable = await resolveEffectiveSandbox(config, unavailableCap);
     expect(effectiveUnavailable.config).toEqual(config);
     expect(effectiveUnavailable.useOsSandbox).toBe(false);
   });
 
-  it('denylist-only config always results in useOsSandbox: false', () => {
+  it('denylist-only config always results in useOsSandbox: false', async () => {
     const config = resolveSandboxConfig({ enabled: true, tier: 'denylist-only' });
-    const effective = resolveEffectiveSandbox(config);
+    const effective = await resolveEffectiveSandbox(config);
     expect(effective.useOsSandbox).toBe(false);
   });
 

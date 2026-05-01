@@ -1483,7 +1483,7 @@ export const doctorCommand: Command = {
           resolveEffectiveSandbox,
         } = await import('../spells/index.js');
 
-        const cap = detectSandboxCapability();
+        const cap = await detectSandboxCapability();
         const config = await loadSandboxConfigFromProject(process.cwd());
 
         // If sandboxing isn't enabled in moflo.yaml, just report capability.
@@ -1512,7 +1512,7 @@ export const doctorCommand: Command = {
 
         // Sandboxing is enabled — run the real resolver and surface any error.
         try {
-          const effective = resolveEffectiveSandbox(config);
+          const effective = await resolveEffectiveSandbox(config);
           if (effective.useOsSandbox) {
             const imageHint = effective.config.dockerImage ? `, ${effective.config.dockerImage}` : '';
             return {

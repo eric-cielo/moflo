@@ -203,7 +203,7 @@ export class SpellCaster {
     let effectiveSandbox: EffectiveSandbox | undefined;
     try {
       const sandboxCfg = options.sandboxConfig ?? DEFAULT_SANDBOX_CONFIG;
-      effectiveSandbox = resolveEffectiveSandbox(sandboxCfg);
+      effectiveSandbox = await resolveEffectiveSandbox(sandboxCfg);
       console.log(formatSandboxLog(effectiveSandbox));
     } catch (err) {
       // tier: full but no sandbox available — fail the spell

@@ -24,8 +24,8 @@ describe('doctor sandbox tier diagnostic', { timeout: 15_000 }, () => {
     vi.restoreAllMocks();
   });
 
-  it('detectSandboxCapability returns a valid SandboxCapability', () => {
-    const cap = detectSandboxCapability();
+  it('detectSandboxCapability returns a valid SandboxCapability', async () => {
+    const cap = await detectSandboxCapability();
 
     expect(cap).toHaveProperty('platform');
     expect(cap).toHaveProperty('available');
@@ -34,26 +34,26 @@ describe('doctor sandbox tier diagnostic', { timeout: 15_000 }, () => {
     expect(typeof cap.available).toBe('boolean');
   });
 
-  it('returns cached result on subsequent calls', () => {
-    const first = detectSandboxCapability();
-    const second = detectSandboxCapability();
+  it('returns cached result on subsequent calls', async () => {
+    const first = await detectSandboxCapability();
+    const second = await detectSandboxCapability();
 
     // Same reference — cached
     expect(first).toBe(second);
   });
 
-  it('resetSandboxCache clears the cache', () => {
-    const first = detectSandboxCapability();
+  it('resetSandboxCache clears the cache', async () => {
+    const first = await detectSandboxCapability();
     resetSandboxCache();
-    const second = detectSandboxCapability();
+    const second = await detectSandboxCapability();
 
     // Different reference after cache reset (though values may be equal)
     expect(first).not.toBe(second);
     expect(first).toEqual(second);
   });
 
-  it('capability fields match expected doctor output format', () => {
-    const cap = detectSandboxCapability();
+  it('capability fields match expected doctor output format', async () => {
+    const cap = await detectSandboxCapability();
 
     // Doctor check formats: `${cap.tool} (${cap.platform})` or `denylist only (${cap.platform})`
     if (cap.available) {
@@ -68,8 +68,8 @@ describe('doctor sandbox tier diagnostic', { timeout: 15_000 }, () => {
     }
   });
 
-  it('platform matches current OS', () => {
-    const cap = detectSandboxCapability();
+  it('platform matches current OS', async () => {
+    const cap = await detectSandboxCapability();
     expect(cap.platform).toBe(process.platform);
   });
 });
