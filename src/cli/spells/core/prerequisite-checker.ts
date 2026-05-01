@@ -29,11 +29,16 @@ import { readLineFromStdin } from './stdin-reader.js';
 
 const execFileAsync = promisify(execFile);
 
-/** Check whether a CLI command is available on the system PATH. */
-export async function commandExists(cmd: string): Promise<boolean> {
+/**
+ * Check whether a CLI command is available on the system PATH.
+ *
+ * `timeoutMs` caps the lookup probe — important for callers that probe under
+ * fork/GC pressure where `where`/`which` can stall (see platform-sandbox).
+ */
+export async function commandExists(cmd: string, opts?: { timeoutMs?: number }): Promise<boolean> {
   try {
     const bin = process.platform === 'win32' ? 'where' : 'which';
-    await execFileAsync(bin, [cmd]);
+    await execFileAsync(bin, [cmd], opts?.timeoutMs ? { timeout: opts.timeoutMs } : undefined);
     return true;
   } catch {
     return false;

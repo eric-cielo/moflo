@@ -12,11 +12,12 @@
  * @see https://github.com/eric-cielo/moflo/issues/409
  */
 
-import { execSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { platform } from 'node:os';
 import { join } from 'node:path';
-import { escapeShellArg } from './shell.js';
+import { commandExists } from './prerequisite-checker.js';
+import { execFileAsync } from './shell.js';
 
 type YamlModule = { load: (s: string) => unknown; default?: { load: (s: string) => unknown } };
 
@@ -70,7 +71,16 @@ export const RECOMMENDED_DOCKER_IMAGE = 'ghcr.io/eric-cielo/moflo-sandbox:latest
 // Detection (cached)
 // ============================================================================
 
-let _cached: SandboxCapability | undefined;
+// Detection runs once per process and is cached, so timeouts can be generous.
+// Cold-start `docker info` on Windows can take 5-10s on the named-pipe
+// handshake, so a tight budget would falsely report the daemon down.
+const BINARY_EXISTS_TIMEOUT_MS = 10_000;
+const DOCKER_DAEMON_TIMEOUT_MS = 15_000;
+
+// Cache the in-flight Promise rather than the resolved value so concurrent
+// callers share one detection probe (avoids racing two `docker info` calls if
+// e.g. doctor and runner ask within the same tick).
+let _cachedDetection: Promise<SandboxCapability> | undefined;
 
 /**
  * Detect the available sandbox tool for the current platform.
@@ -78,19 +88,25 @@ let _cached: SandboxCapability | undefined;
  * Results are cached for the process lifetime — filesystem/daemon checks
  * are expensive and the answer doesn't change mid-process.
  */
-export function detectSandboxCapability(): SandboxCapability {
-  if (_cached) return _cached;
-  _cached = detectUncached();
-  return _cached;
+export function detectSandboxCapability(): Promise<SandboxCapability> {
+  if (!_cachedDetection) {
+    // Don't cache rejection — sticky failure across the process lifetime would
+    // be a hard-to-diagnose footgun if a caller ever surfaces an error.
+    _cachedDetection = detectUncached().catch((err) => {
+      _cachedDetection = undefined;
+      throw err;
+    });
+  }
+  return _cachedDetection;
 }
 
 /** Reset the cached result (for testing). */
 export function resetSandboxCache(): void {
-  _cached = undefined;
+  _cachedDetection = undefined;
   _imageExistsCache.clear();
 }
 
-function detectUncached(): SandboxCapability {
+async function detectUncached(): Promise<SandboxCapability> {
   const os = platform();
 
   if (os === 'darwin') {
@@ -121,8 +137,8 @@ function detectMacOS(): SandboxCapability {
 
 // ── Linux ──────────────────────────────────────────────────────────────
 
-function detectLinux(): SandboxCapability {
-  const available = binaryExists('bwrap');
+async function detectLinux(): Promise<SandboxCapability> {
+  const available = await commandExists('bwrap', { timeoutMs: BINARY_EXISTS_TIMEOUT_MS });
   return {
     platform: 'linux',
     available,
@@ -133,12 +149,12 @@ function detectLinux(): SandboxCapability {
 
 // ── Windows ────────────────────────────────────────────────────────────
 
-function detectWindows(): SandboxCapability {
-  if (!binaryExists('docker')) {
+async function detectWindows(): Promise<SandboxCapability> {
+  if (!(await commandExists('docker', { timeoutMs: BINARY_EXISTS_TIMEOUT_MS }))) {
     return { platform: 'win32', available: false, tool: null, overhead: null };
   }
 
-  if (!dockerDaemonRunning()) {
+  if (!(await dockerDaemonRunning())) {
     return { platform: 'win32', available: false, tool: null, overhead: null };
   }
 
@@ -154,30 +170,14 @@ function detectWindows(): SandboxCapability {
 // Helpers
 // ============================================================================
 
-// Detection runs once per process and is cached, so timeouts can be generous.
-// Cold-start `docker info` on Windows can take 5-10s on the named-pipe
-// handshake, so a tight budget would falsely report the daemon down.
-const BINARY_EXISTS_TIMEOUT_MS = 10_000;
-const DOCKER_DAEMON_TIMEOUT_MS = 15_000;
-
-function binaryExists(name: string): boolean {
-  try {
-    const cmd = platform() === 'win32' ? `where ${name}` : `which ${name}`;
-    execSync(cmd, { stdio: 'ignore', timeout: BINARY_EXISTS_TIMEOUT_MS });
-    return true;
-  } catch {
-    return false;
-  }
+// Single source of truth for docker probe outcome semantics — `execFileAsync`
+// from shell.ts never throws, so we branch on exitCode instead of try/catch.
+async function dockerProbe(args: readonly string[]): Promise<boolean> {
+  const { exitCode } = await execFileAsync('docker', args, DOCKER_DAEMON_TIMEOUT_MS);
+  return exitCode === 0;
 }
 
-function dockerDaemonRunning(): boolean {
-  try {
-    execSync('docker info', { stdio: 'ignore', timeout: DOCKER_DAEMON_TIMEOUT_MS });
-    return true;
-  } catch {
-    return false;
-  }
-}
+const dockerDaemonRunning = (): Promise<boolean> => dockerProbe(['info']);
 
 // ============================================================================
 // Config Resolution
@@ -258,17 +258,18 @@ export interface EffectiveSandbox {
  * @returns EffectiveSandbox — includes display status for spell-start logging.
  * @throws Error if tier is 'full' but no OS sandbox is available.
  */
-export function resolveEffectiveSandbox(
+export async function resolveEffectiveSandbox(
   config: SandboxConfig,
-  capability: SandboxCapability = detectSandboxCapability(),
-): EffectiveSandbox {
+  capability?: SandboxCapability,
+): Promise<EffectiveSandbox> {
+  const cap = capability ?? await detectSandboxCapability();
   let resolved = config;
 
   // Config disabled or tier is denylist-only => no OS sandbox
   if (!resolved.enabled || resolved.tier === 'denylist-only') {
     return {
       useOsSandbox: false,
-      capability,
+      capability: cap,
       config: resolved,
       displayStatus: `OS sandbox: disabled (denylist active)`,
     };
@@ -277,41 +278,41 @@ export function resolveEffectiveSandbox(
   // Windows: Docker is required for OS sandboxing. If Docker is available,
   // auto-default the image and auto-pull it on first use so the user doesn't
   // have to do manual setup. Only throw if Docker itself isn't installed/running.
-  if (capability.platform === 'win32') {
-    if (!capability.available) {
+  if (cap.platform === 'win32') {
+    if (!cap.available) {
       throw new Error(formatWindowsDockerNotReadyMessage());
     }
     const image = resolved.dockerImage || RECOMMENDED_DOCKER_IMAGE;
     if (!resolved.dockerImage) {
       resolved = { ...resolved, dockerImage: image };
     }
-    if (!dockerImageExists(image)) {
-      dockerPullImage(image);
+    if (!(await dockerImageExists(image))) {
+      await dockerPullImage(image);
     }
   }
 
   // tier: full — require OS sandbox on non-Windows platforms
-  if (resolved.tier === 'full' && !capability.available) {
+  if (resolved.tier === 'full' && !cap.available) {
     throw new Error(
-      `Sandbox tier "full" requires an OS sandbox but none was detected on ${capability.platform}. ` +
+      `Sandbox tier "full" requires an OS sandbox but none was detected on ${cap.platform}. ` +
       `Install bubblewrap (Linux) or set sandbox.tier to "auto".`,
     );
   }
 
-  if (!capability.available) {
+  if (!cap.available) {
     return {
       useOsSandbox: false,
-      capability,
+      capability: cap,
       config: resolved,
-      displayStatus: `OS sandbox: not available (${capability.platform})`,
+      displayStatus: `OS sandbox: not available (${cap.platform})`,
     };
   }
 
   return {
     useOsSandbox: true,
-    capability,
+    capability: cap,
     config: resolved,
-    displayStatus: `OS sandbox: ${capability.tool} (${capability.platform})`,
+    displayStatus: `OS sandbox: ${cap.tool} (${cap.platform})`,
   };
 }
 
@@ -321,39 +322,52 @@ const _imageExistsCache = new Map<string, boolean>();
  * Check whether a Docker image is available locally (already pulled).
  * Result is cached per image name for the process lifetime.
  */
-function dockerImageExists(image: string): boolean {
+async function dockerImageExists(image: string): Promise<boolean> {
   const cached = _imageExistsCache.get(image);
   if (cached !== undefined) return cached;
-  try {
-    // Same cold-start budget as `docker info` — both hit the Docker Desktop
-    // daemon over its named-pipe handshake. Result is cached per image.
-    execSync(`docker image inspect ${escapeShellArg(image)}`, { stdio: 'ignore', timeout: DOCKER_DAEMON_TIMEOUT_MS });
-    _imageExistsCache.set(image, true);
-    return true;
-  } catch {
-    return false;
-  }
+  // `dockerProbe` shares the cold-start timeout/error-swallow policy with
+  // `dockerDaemonRunning` — both hit the Docker Desktop named-pipe handshake.
+  // Only positive outcomes are cached: a missing image must re-probe after
+  // `dockerPullImage` populates the cache, so symmetric caching would break
+  // the pull-then-recheck flow.
+  const ok = await dockerProbe(['image', 'inspect', image]);
+  if (ok) _imageExistsCache.set(image, true);
+  return ok;
 }
 
 /**
  * Pull a Docker image, printing a one-time setup banner so the user knows
  * what's happening and why. Throws if the pull fails.
  */
-function dockerPullImage(image: string): void {
+async function dockerPullImage(image: string): Promise<void> {
   console.log(
     `[spell] One-time setup: pulling Docker image ${image} for sandboxing...\n` +
     `        This only happens once — Docker caches the image afterwards.`,
   );
+  // `spawn` (not execFileAsync) so the docker pull progress streams live to
+  // the user's terminal. execFileAsync buffers stdout, defeating the banner.
   try {
-    execSync(`docker pull ${escapeShellArg(image)}`, { stdio: 'inherit', timeout: 300_000 });
-    _imageExistsCache.set(image, true);
-    console.log(`[spell] Docker image ${image} is ready.`);
-  } catch {
+    await new Promise<void>((resolve, reject) => {
+      let timedOut = false;
+      const proc = spawn('docker', ['pull', image], { stdio: 'inherit' });
+      const timer = setTimeout(() => { timedOut = true; proc.kill('SIGTERM'); }, 300_000);
+      proc.on('error', (err) => { clearTimeout(timer); reject(err); });
+      proc.on('exit', (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve();
+        else if (timedOut) reject(new Error('docker pull timed out after 5 minutes'));
+        else reject(new Error(`docker pull exited with code ${code}`));
+      });
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `Failed to pull Docker image "${image}".\n\n` +
+      `Failed to pull Docker image "${image}": ${detail}\n\n` +
       'Make sure Docker Desktop is running and you have internet access, then try again.',
     );
   }
+  _imageExistsCache.set(image, true);
+  console.log(`[spell] Docker image ${image} is ready.`);
 }
 
 // ── Beginner-friendly setup messages (Windows) ──────────────────────────
