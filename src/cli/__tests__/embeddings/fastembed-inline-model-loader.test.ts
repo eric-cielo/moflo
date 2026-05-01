@@ -4,12 +4,16 @@
  * with a mock fetch + mock tar extractor. No network, no real disk model.
  */
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Readable } from 'node:stream';
 
-import { resolveCacheDir, retrieveModel } from '../../embeddings/fastembed-inline/model-loader.js';
+import {
+  COMPLETION_SENTINEL,
+  resolveCacheDir,
+  retrieveModel,
+} from '../../embeddings/fastembed-inline/model-loader.js';
 
 let tmp: string;
 
@@ -47,16 +51,57 @@ describe('resolveCacheDir', () => {
 });
 
 describe('retrieveModel', () => {
-  it('short-circuits when the model directory already exists', async () => {
+  it('short-circuits when the model directory and completion marker both exist', async () => {
     const cacheDir = join(tmp, 'cache');
     const modelDir = join(cacheDir, 'fast-all-MiniLM-L6-v2');
     mkdirSync(modelDir, { recursive: true });
+    writeFileSync(join(modelDir, COMPLETION_SENTINEL), '');
     const fetchImpl = vi.fn();
     const result = await retrieveModel('fast-all-MiniLM-L6-v2', cacheDir, false, {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     expect(result).toBe(modelDir);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('redownloads when the model directory exists but the completion marker is missing', async () => {
+    const cacheDir = join(tmp, 'cache');
+    const modelDir = join(cacheDir, 'fast-all-MiniLM-L6-v2');
+    // Simulate a partial extract: directory exists, model.onnx is truncated, no marker.
+    mkdirSync(modelDir, { recursive: true });
+    writeFileSync(join(modelDir, 'model.onnx'), 'truncated-bytes');
+
+    const fetchImpl = makeFetch(200, Buffer.from('fresh-tarball-content'));
+    const extract = vi.fn(async ({ cwd }: { file: string; cwd: string }) => {
+      mkdirSync(join(cwd, 'fast-all-MiniLM-L6-v2'), { recursive: true });
+      writeFileSync(join(cwd, 'fast-all-MiniLM-L6-v2', 'model.onnx'), 'full-good-bytes');
+    });
+
+    const result = await retrieveModel('fast-all-MiniLM-L6-v2', cacheDir, false, {
+      fetchImpl,
+      extract: extract as unknown as Parameters<typeof retrieveModel>[3]['extract'],
+    });
+
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(extract).toHaveBeenCalledOnce();
+    expect(result).toBe(modelDir);
+    expect(existsSync(join(modelDir, COMPLETION_SENTINEL))).toBe(true);
+  });
+
+  it('writes the completion marker after a successful download+extract', async () => {
+    const cacheDir = join(tmp, 'cache');
+    const fetchImpl = makeFetch(200, Buffer.from('fake-tarball-content'));
+    const extract = vi.fn(async ({ cwd }: { file: string; cwd: string }) => {
+      mkdirSync(join(cwd, 'fast-all-MiniLM-L6-v2'), { recursive: true });
+      writeFileSync(join(cwd, 'fast-all-MiniLM-L6-v2', 'model.onnx'), '');
+    });
+
+    const modelDir = await retrieveModel('fast-all-MiniLM-L6-v2', cacheDir, false, {
+      fetchImpl,
+      extract: extract as unknown as Parameters<typeof retrieveModel>[3]['extract'],
+    });
+
+    expect(existsSync(join(modelDir, COMPLETION_SENTINEL))).toBe(true);
   });
 
   it('downloads the AllMiniLM tarball from the sentence-transformers slug', async () => {
