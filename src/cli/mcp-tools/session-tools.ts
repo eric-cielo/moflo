@@ -8,9 +8,14 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlink
 import { join } from 'node:path';
 import type { MCPTool } from './types.js';
 import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
+import { findProjectRoot } from '../services/project-root.js';
 
 // Storage paths
 const SESSION_DIR = 'sessions';
+
+function storeDir(...parts: string[]): string {
+  return join(findProjectRoot(), STORAGE_DIR, ...parts);
+}
 
 interface SessionRecord {
   sessionId: string;
@@ -31,7 +36,7 @@ interface SessionRecord {
 }
 
 function getSessionDir(): string {
-  return join(process.cwd(), STORAGE_DIR, SESSION_DIR);
+  return storeDir(SESSION_DIR);
 }
 
 function getSessionPath(sessionId: string): string {
@@ -89,7 +94,7 @@ function loadRelatedStores(options: { includeMemory?: boolean; includeTasks?: bo
 
   if (options.includeMemory) {
     try {
-      const memoryPath = join(process.cwd(), STORAGE_DIR, 'memory', 'store.json');
+      const memoryPath = storeDir('memory', 'store.json');
       if (existsSync(memoryPath)) {
         data.memory = JSON.parse(readFileSync(memoryPath, 'utf-8'));
       }
@@ -98,7 +103,7 @@ function loadRelatedStores(options: { includeMemory?: boolean; includeTasks?: bo
 
   if (options.includeTasks) {
     try {
-      const taskPath = join(process.cwd(), STORAGE_DIR, 'tasks', 'store.json');
+      const taskPath = storeDir('tasks', 'store.json');
       if (existsSync(taskPath)) {
         data.tasks = JSON.parse(readFileSync(taskPath, 'utf-8'));
       }
@@ -107,7 +112,7 @@ function loadRelatedStores(options: { includeMemory?: boolean; includeTasks?: bo
 
   if (options.includeAgents) {
     try {
-      const agentPath = join(process.cwd(), STORAGE_DIR, 'agents', 'store.json');
+      const agentPath = storeDir('agents', 'store.json');
       if (existsSync(agentPath)) {
         data.agents = JSON.parse(readFileSync(agentPath, 'utf-8'));
       }
@@ -212,17 +217,17 @@ export const sessionTools: MCPTool[] = [
       if (session) {
         // Restore data to respective stores
         if (session.data?.memory) {
-          const memoryDir = join(process.cwd(), STORAGE_DIR, 'memory');
+          const memoryDir = storeDir('memory');
           if (!existsSync(memoryDir)) mkdirSync(memoryDir, { recursive: true });
           writeFileSync(join(memoryDir, 'store.json'), JSON.stringify(session.data.memory, null, 2), 'utf-8');
         }
         if (session.data?.tasks) {
-          const taskDir = join(process.cwd(), STORAGE_DIR, 'tasks');
+          const taskDir = storeDir('tasks');
           if (!existsSync(taskDir)) mkdirSync(taskDir, { recursive: true });
           writeFileSync(join(taskDir, 'store.json'), JSON.stringify(session.data.tasks, null, 2), 'utf-8');
         }
         if (session.data?.agents) {
-          const agentDir = join(process.cwd(), STORAGE_DIR, 'agents');
+          const agentDir = storeDir('agents');
           if (!existsSync(agentDir)) mkdirSync(agentDir, { recursive: true });
           writeFileSync(join(agentDir, 'store.json'), JSON.stringify(session.data.agents, null, 2), 'utf-8');
         }

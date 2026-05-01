@@ -24,6 +24,10 @@ describe('createJsonStore', () => {
   beforeEach(() => {
     originalCwd = process.cwd();
     tmp = mkdtempSync(join(tmpdir(), 'moflo-json-store-'));
+    // Drop a package.json marker so findProjectRoot() resolves to `tmp`
+    // regardless of any markers higher up the host filesystem (e.g. a stray
+    // .git in the user's home would otherwise win the walk-up search).
+    writeFileSync(join(tmp, 'package.json'), '{"name":"moflo-json-store-test"}');
     process.chdir(tmp);
     storePath = join(tmp, '.moflo', 'sample', 'data.json');
   });

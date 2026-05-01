@@ -13,6 +13,7 @@ import type { MCPTool } from './types.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
+import { findProjectRoot } from '../services/project-root.js';
 
 // Storage paths
 const GITHUB_DIR = 'github';
@@ -40,7 +41,7 @@ interface GitHubStore {
 }
 
 function getGitHubDir(): string {
-  return join(process.cwd(), STORAGE_DIR, GITHUB_DIR);
+  return join(findProjectRoot(), STORAGE_DIR, GITHUB_DIR);
 }
 
 function getGitHubPath(): string {
