@@ -345,7 +345,10 @@ export const memoryTools: MCPTool[] = [
       const query = input.query as string;
       const namespace = (input.namespace as string) || 'all';
       const limit = (input.limit as number) || 10;
-      const threshold = (input.threshold as number) || 0.3;
+      // Falsiness check would coerce a caller-supplied 0 to 0.3 and silently
+      // filter low-similarity matches; use a typeof guard so explicit zero
+      // means "no threshold" (#837).
+      const threshold = typeof input.threshold === 'number' ? input.threshold : 0.3;
 
       validateMemoryInput(undefined, undefined, query);
 
