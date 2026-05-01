@@ -19,6 +19,7 @@ import {
   getTaskTool,
   spawnAgentForTest,
 } from '../../src/cli/__tests__/mcp-tools/_helpers.js';
+import { checkSwarmFunctional } from '../../src/cli/commands/doctor-checks-swarm.js';
 
 interface OrchestrateResult {
   success: boolean;
@@ -137,6 +138,23 @@ describe('System E2E — swarm restoration', () => {
     })) as AgentListResult;
     const survivors = list.agents.map(a => a.agentId).sort();
     expect(survivors).toEqual([a1, a3].sort());
+  });
+
+  // Issue #818: gate the regression that triggered epic #798. The doctor
+  // check exercises the same MCP surface this file does — if a handler ever
+  // gets disconnected from the coordinator again, this test fails before
+  // ship, not after.
+  describe('Doctor regression tripwire', () => {
+    it('checkSwarmFunctional passes against the live coordinator', { timeout: 30_000 }, async () => {
+      const result = await checkSwarmFunctional();
+      // 'warn' is acceptable only when the dist isn't built — CI builds first
+      // (consumer-install-smoke + main test job both run `npm run build`).
+      if (result.status === 'warn' && /not built/i.test(result.message)) return;
+
+      const failures = (result.details ?? []).filter(d => d.status === 'fail');
+      expect(failures, `swarm doctor failures (epic #798 regression?): ${JSON.stringify(failures, null, 2)}`).toHaveLength(0);
+      expect(result.status).toBe('pass');
+    });
   });
 
   describe('MCP-server restart smoke', () => {

@@ -26,6 +26,10 @@ export const isolationTests = [
   // intermittently exceed their per-test timeouts under full-suite load
   // (maxForks=2 + Windows fork contention). Confirmed green in isolation.
   'src/cli/__tests__/doctor-checks-deep.test.ts',
+  // Issue #818 — doctor-checks-swarm dynamically imports dist mcp-tools and
+  // exercises the real UnifiedSwarmCoordinator end-to-end. Same dynamic-import
+  // load profile as doctor-checks-deep above; same isolation rationale.
+  'src/cli/__tests__/doctor-checks-swarm.test.ts',
   'src/cli/__tests__/services/worker-daemon-resource-thresholds.test.ts',
   'src/cli/__tests__/spells/connector-lifecycle.test.ts',
   // prerequisites.test.ts split into 4 files (#522) — all share the same

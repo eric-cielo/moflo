@@ -33,7 +33,7 @@ export interface HealthCheck {
 // ============================================================================
 
 /** Convert an absolute path to a file:// URL for dynamic import() on Windows. */
-function toImportUrl(absolutePath: string): string {
+export function toImportUrl(absolutePath: string): string {
   return pathToFileURL(absolutePath).href;
 }
 
@@ -49,7 +49,7 @@ export function getMofloRoot(): string | undefined {
 /**
  * Find the first existing .js module from paths relative to the moflo root.
  */
-function findModule(...relativePaths: string[]): string | undefined {
+export function findModule(...relativePaths: string[]): string | undefined {
   const root = getMofloRoot();
   if (!root) return undefined;
   for (const rel of relativePaths) {
