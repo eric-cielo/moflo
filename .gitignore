@@ -172,6 +172,7 @@ hive-mind-prompt-*.txt
 # Ephemeral / test artifacts
 .claude/projects/
 .claude/scheduled_tasks.lock
+.claude/worktrees/
 **/workflow-state.json
 *.rvf
 .vitest-results.json
