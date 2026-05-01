@@ -63,33 +63,34 @@ let upgradeNoticeContext = null;
 let pendingVersionStampWrite = null;
 
 // 5-min TTL is a safety net for zombie launchers (statusline ignores past-TTL
-// files). The launcher deletes the notice when upgrade work finishes — no
-// "complete" state lingers, see #738.
+// files). The 2-min "completed" TTL lets the user see the post-upgrade badge
+// briefly in the next session render (Claude Code renders the statusline only
+// AFTER the SessionStart hook returns, so the in-progress badge has effectively
+// zero visibility window). The next session-start's section 0-pre wipes any
+// leftover, so a stale completed notice can't linger past one session.
 const UPGRADE_NOTICE_INPROGRESS_TTL_MS = 5 * 60 * 1000;
+const UPGRADE_NOTICE_COMPLETED_TTL_MS = 2 * 60 * 1000;
 const UPGRADE_NOTICE_PATH = () => join(mofloDir(projectRoot), 'upgrade-notice.json');
 
-function writeInProgressUpgradeNotice() {
+function writeUpgradeNotice(status) {
   if (!upgradeNoticeContext) return;
+  const ttlMs = status === 'completed'
+    ? UPGRADE_NOTICE_COMPLETED_TTL_MS
+    : UPGRADE_NOTICE_INPROGRESS_TTL_MS;
   try {
     mkdirSync(mofloDir(projectRoot), { recursive: true });
     const now = Date.now();
     const notice = {
-      status: 'in-progress',
+      status,
       kind: upgradeNoticeContext.kind,
       from: upgradeNoticeContext.from,
       to: upgradeNoticeContext.to,
       at: new Date(now).toISOString(),
-      expiresAt: new Date(now + UPGRADE_NOTICE_INPROGRESS_TTL_MS).toISOString(),
+      expiresAt: new Date(now + ttlMs).toISOString(),
       changes: 0,
     };
     writeFileSync(UPGRADE_NOTICE_PATH(), JSON.stringify(notice, null, 2));
   } catch { /* non-fatal — statusline just won't show the segment */ }
-}
-
-function clearUpgradeNotice() {
-  try {
-    unlinkSync(UPGRADE_NOTICE_PATH());
-  } catch { /* non-fatal — already gone or never existed */ }
 }
 
 // ── 0-pre. Drop any stale upgrade notice (#738, #743) ───────────────────────
@@ -313,9 +314,9 @@ try {
       }
       // Surface a transient "(updating…)" badge in the statusline before the
       // long-running upgrade work (manifest sync, daemon recycle, embeddings
-      // migration). See #738 — the launcher clears this file after work
-      // completes, so the badge naturally disappears once the user is unblocked.
-      writeInProgressUpgradeNotice();
+      // migration). See #738 — section 3f flips this to a 2-min "completed"
+      // badge once work finishes (TTL rationale at the constants above).
+      writeUpgradeNotice('in-progress');
       const binDir = resolve(projectRoot, 'node_modules/moflo/bin');
 
       // ── Manifest-based auto-update ──────────────────────────────────────
@@ -855,12 +856,11 @@ try {
   } catch { /* writing the failure itself must not throw */ }
 }
 
-// ── 3f. Clear the in-progress upgrade notice (#636, #738) ───────────────────
-// Upgrade work is finished; drop the notice so the statusline badge disappears
-// immediately. Change summary is already in stdout emits (Claude's
-// `additionalContext`); a lingering "you upgraded a while ago" badge is noise.
+// ── 3f. Flip the upgrade notice to "completed" (#636, #738) ─────────────────
+// See the TTL rationale at the constants above for why we switch to a
+// short-TTL completed badge instead of clearing the file.
 if (upgradeNoticeContext) {
-  clearUpgradeNotice();
+  writeUpgradeNotice('completed');
 }
 
 // ── 3g. Commit deferred version stamp (#730) ────────────────────────────────

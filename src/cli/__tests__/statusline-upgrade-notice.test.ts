@@ -1,4 +1,4 @@
-// Statusline upgrade-notice tests (#636 → #738 → #743).
+// Statusline upgrade-notice tests (#636 → #738 → #743 → completed-state).
 //
 // Contract evolution:
 //   #636 — original feature: launcher writes notice after upgrade, statusline
@@ -6,13 +6,16 @@
 //   #738 — launcher writes status='in-progress' BEFORE upgrade work, deletes
 //          file when work completes; statusline still rendered legacy mode
 //          as a fallback.
-//   #743 — statusline now renders ONLY status='in-progress' notices. Stale
-//          legacy files (or any future bad writer) cannot turn the segment
-//          into a permanent column; the launcher's section 0-pre also drops
-//          any leftover file at session start as a second line of defence.
+//   #743 — statusline renders ONLY status='in-progress' notices. Stale legacy
+//          files cannot turn the segment into a permanent column.
+//   completed-state — section 3f writes status='completed' with 2-min TTL
+//          instead of deleting; gives the post-upgrade badge a real visibility
+//          window because Claude Code paints the statusline only AFTER the
+//          SessionStart hook returns. Section 0-pre still wipes any leftover
+//          at the next launcher run, capping lifetime at one session.
 //
-// These tests pin the #743 contract so a regression to "rendering complete
-// notices for an hour" can't slip back in unobserved.
+// These tests pin both the #743 stale-file rejection and the new completed
+// contract.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -118,6 +121,7 @@ describe('statusline upgrade-notice (#636 / #738 / #743)', () => {
     expect(status).toBe(0);
     const json = JSON.parse(stdout);
     expect(json.upgradeNotice).toEqual({
+      status: 'in-progress',
       kind: 'upgrade',
       from: '4.8.79',
       to: '4.8.80',
@@ -199,5 +203,70 @@ describe('statusline upgrade-notice (#636 / #738 / #743)', () => {
     const plain = stdout.replace(/\x1B\[[0-9;]*m/g, '');
     expect(plain).toContain('install repaired');
     expect(plain).toContain('updating');
+  });
+
+  it('renders a completed upgrade notice without the updating… indicator', () => {
+    const now = Date.now();
+    writeNotice(root, {
+      status: 'completed',
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      at: new Date(now - 1_000).toISOString(),
+      expiresAt: new Date(now + 2 * 60_000).toISOString(),
+      changes: 0,
+    });
+
+    const { stdout, status } = runStatusline(root);
+    expect(status).toBe(0);
+    const json = JSON.parse(stdout);
+    expect(json.upgradeNotice).toEqual({
+      status: 'completed',
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+    });
+
+    const compact = runStatusline(root, ['--compact']);
+    // eslint-disable-next-line no-control-regex
+    const plain = compact.stdout.replace(/\x1B\[[0-9;]*m/g, '');
+    expect(plain).toContain('upgraded to 4.8.80');
+    expect(plain).not.toContain('updating');
+  });
+
+  it('omits a completed notice past its TTL', () => {
+    const now = Date.now();
+    writeNotice(root, {
+      status: 'completed',
+      kind: 'upgrade',
+      from: '4.8.79',
+      to: '4.8.80',
+      at: new Date(now - 10 * 60_000).toISOString(),
+      expiresAt: new Date(now - 5 * 60_000).toISOString(),
+      changes: 0,
+    });
+
+    const { stdout } = runStatusline(root);
+    const json = JSON.parse(stdout);
+    expect(json.upgradeNotice).toBeNull();
+  });
+
+  it('renders a completed "repair" notice without the updating… indicator', () => {
+    const now = Date.now();
+    writeNotice(root, {
+      status: 'completed',
+      kind: 'repair',
+      from: '4.8.80',
+      to: '4.8.80',
+      at: new Date(now).toISOString(),
+      expiresAt: new Date(now + 2 * 60_000).toISOString(),
+      changes: 0,
+    });
+
+    const { stdout } = runStatusline(root, ['--compact']);
+    // eslint-disable-next-line no-control-regex
+    const plain = stdout.replace(/\x1B\[[0-9;]*m/g, '');
+    expect(plain).toContain('install repaired');
+    expect(plain).not.toContain('updating');
   });
 });
