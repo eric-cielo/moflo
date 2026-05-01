@@ -269,8 +269,6 @@ export const agentTools: MCPTool[] = [
       required: ['agentType'],
     },
     handler: async (input) => {
-      // Validation must return a response, not throw — `mcp-tools-deep`
-      // exercises bad input by passing a number and asserts no throw.
       const validation = validateAgentType(input.agentType);
       if (!validation.ok) {
         return {
@@ -290,8 +288,7 @@ export const agentTools: MCPTool[] = [
 
       const routingResult = await determineAgentModel(agentType, config, task);
 
-      // 24 hex chars of kernel entropy — Math.random().toString(36) was
-      // observably colliding under burst spawns.
+      // Math.random().toString(36) was observably colliding under burst spawns.
       const agentId = `agent-${agentType}-${randomBytes(12).toString('hex')}`;
 
       const capabilities = Array.isArray(config.capabilities)
@@ -303,8 +300,6 @@ export const agentTools: MCPTool[] = [
       try {
         spawned = await coordinator.spawnAgent({
           id: agentId,
-          // ALLOWED_AGENT_TYPES already gated the slug; coordinator's
-          // agentTypeToDomain falls back to `core` for non-canonical names.
           type: agentType as AgentType,
           name: (config.name as string) || agentId,
           capabilities,
@@ -325,9 +320,6 @@ export const agentTools: MCPTool[] = [
         };
       }
 
-      // `bootstrap` appears here AND in coordinator metadata: callers see it
-      // in the response, the coordinator persists it for downstream surfaces
-      // (hive-mind workers, etc.) that read AgentState directly.
       const response: Record<string, unknown> = {
         success: true,
         agentId: spawned.agentId,

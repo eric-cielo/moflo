@@ -1418,7 +1418,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
     options?: { id?: string },
   ): Promise<{ agentId: string; domain: AgentDomain }> {
     // First register the agent normally
-    const agentId = await this.registerAgent(agentData, { id: options?.id });
+    const agentId = await this.registerAgent(agentData, options);
 
     // Determine domain based on agent number
     const domain = this.getAgentDomain(agentNumber);
