@@ -1,17 +1,8 @@
 /**
- * Swarm Coordinator Singleton — lazy module-level instance for MCP tool handlers
+ * Lazy singleton for UnifiedSwarmCoordinator.
  *
- * Story #799 (epic #798): MCP tool handlers (`agent_*`, `swarm_*`, `task_*`) need a
- * shared `UnifiedSwarmCoordinator` to dispatch real lifecycle operations against.
- * Mirrors the hive-mind-tools.ts:24-70 pattern (lazy MessageBus singleton).
- *
- * Why lazy: coordinator init spins up TopologyManager + MessageBus + ConsensusEngine
- * + AgentPools (~tens of ms). If a session only calls memory_search, it should not
- * pay that cost. First swarm/agent/task tool call triggers init; subsequent calls
- * reuse the cached instance.
- *
- * Race-safety: an in-flight init promise is cached so concurrent callers share a
- * single bootstrap rather than racing two coordinator constructions.
+ * Init cost (~tens of ms — TopologyManager + MessageBus + ConsensusEngine + AgentPools)
+ * is only paid on the first swarm/agent/task tool call, not on memory-search-only sessions.
  */
 
 import {
@@ -26,15 +17,25 @@ let _initPromise: Promise<UnifiedSwarmCoordinator> | null = null;
 /**
  * Get the singleton swarm coordinator, lazy-initializing on first call.
  *
- * Concurrent callers receive the same in-flight initialization promise so that
- * exactly one coordinator is constructed regardless of how many handlers race.
+ * `config` is honored only on the very first call. Passing config after the
+ * coordinator is already initialized is a misuse — it would silently be
+ * ignored, so we throw to surface it.
  */
 export async function getSwarmCoordinator(
   config?: Partial<CoordinatorConfig>,
 ): Promise<UnifiedSwarmCoordinator> {
-  if (_coordinator) return _coordinator;
+  if (_coordinator) {
+    if (config !== undefined) {
+      throw new Error(
+        'getSwarmCoordinator(config) called after initialization — config is honored only on the first call. Reset via _resetSwarmCoordinatorForTest() if you need to re-initialize.',
+      );
+    }
+    return _coordinator;
+  }
   if (_initPromise) return _initPromise;
 
+  // In-flight promise cache so concurrent callers share a single bootstrap
+  // rather than racing two coordinator constructions.
   _initPromise = (async () => {
     const coord = createUnifiedSwarmCoordinator(config);
     await coord.initialize();
@@ -45,28 +46,25 @@ export async function getSwarmCoordinator(
   try {
     return await _initPromise;
   } finally {
-    // Clear the promise cache only once the result is settled. If init fails,
-    // the next call should be allowed to retry rather than re-await a failed promise.
-    if (!_coordinator) {
-      _initPromise = null;
-    }
+    // Always clear so a failed init lets the next call retry.
+    _initPromise = null;
   }
 }
 
 /**
- * Test-only reset hook. Resets the singleton state so each test gets a fresh
- * coordinator. Not exported from `index.ts`; only callable from test files
- * that import this module directly.
+ * Test-only reset hook. Awaits shutdown so timers and listeners are torn down
+ * before the next test's coordinator boots — fire-and-forget would leak
+ * intervals across the suite.
  */
-export function _resetSwarmCoordinatorForTest(): void {
-  if (_coordinator) {
-    // Best-effort shutdown so tests don't leak background timers.
-    try {
-      void _coordinator.shutdown();
-    } catch {
-      // Swallow — test is tearing down anyway.
-    }
-  }
+export async function _resetSwarmCoordinatorForTest(): Promise<void> {
+  const coord = _coordinator;
   _coordinator = null;
   _initPromise = null;
+  if (coord) {
+    try {
+      await coord.shutdown();
+    } catch {
+      // Swallow: test teardown should not fail because shutdown raced.
+    }
+  }
 }

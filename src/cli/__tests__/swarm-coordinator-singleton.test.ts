@@ -1,11 +1,5 @@
 /**
- * Tests for the lazy swarm coordinator singleton (Story #799 / epic #798).
- *
- * Validates:
- * - First call constructs and initializes a coordinator instance
- * - Subsequent calls return the same instance (memoization)
- * - Concurrent callers race-safe — share one in-flight init
- * - `_resetSwarmCoordinatorForTest()` clears state for the next test
+ * Tests for the lazy swarm coordinator singleton (#799 / epic #798).
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -15,8 +9,8 @@ import {
 } from '../mcp-tools/swarm-coordinator-singleton.js';
 
 describe('swarm-coordinator-singleton', () => {
-  afterEach(() => {
-    _resetSwarmCoordinatorForTest();
+  afterEach(async () => {
+    await _resetSwarmCoordinatorForTest();
   });
 
   it('returns the same instance across sequential calls', async () => {
@@ -27,7 +21,6 @@ describe('swarm-coordinator-singleton', () => {
 
   it('returns a coordinator that has been initialized', async () => {
     const coord = await getSwarmCoordinator();
-    // After initialize() the coordinator should respond to its public API.
     expect(typeof coord.shutdown).toBe('function');
     expect(typeof coord.getStatus).toBe('function');
   });
@@ -44,8 +37,14 @@ describe('swarm-coordinator-singleton', () => {
 
   it('reset hook produces a fresh instance on the next call', async () => {
     const first = await getSwarmCoordinator();
-    _resetSwarmCoordinatorForTest();
+    await _resetSwarmCoordinatorForTest();
     const second = await getSwarmCoordinator();
     expect(second).not.toBe(first);
+  });
+
+  it('throws when config is passed after initialization', async () => {
+    await getSwarmCoordinator();
+    await expect(getSwarmCoordinator({ topology: { type: 'mesh', maxAgents: 5 } } as never))
+      .rejects.toThrow(/config is honored only on the first call/);
   });
 });
