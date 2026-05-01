@@ -3,6 +3,7 @@
  */
 
 import { agentTools } from '../../mcp-tools/agent-tools.js';
+import { hiveMindTools } from '../../mcp-tools/hive-mind-tools.js';
 import { swarmTools } from '../../mcp-tools/swarm-tools.js';
 import { taskTools } from '../../mcp-tools/task-tools.js';
 import type { MCPTool } from '../../mcp-tools/types.js';
@@ -22,6 +23,12 @@ export function getSwarmTool(name: string): MCPTool {
 export function getTaskTool(name: string): MCPTool {
   const tool = taskTools.find(t => t.name === name);
   if (!tool) throw new Error(`task tool "${name}" not registered`);
+  return tool;
+}
+
+export function getHiveMindTool(name: string): MCPTool {
+  const tool = hiveMindTools.find(t => t.name === name);
+  if (!tool) throw new Error(`hive-mind tool "${name}" not registered`);
   return tool;
 }
 

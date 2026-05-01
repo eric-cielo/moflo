@@ -1,13 +1,10 @@
 /**
- * In-memory test fake for `SwarmMemoryFns` (story #806).
+ * In-memory test fake for `SwarmMemoryFns`.
  *
  * Lets persistence-using tests assert the same writes that would have hit
- * moflo.db in production, without touching sql.js. Imported by the unit-level
- * `swarm/persistence.test.ts` and the system-level `tests/system/swarm-*` E2E
- * tests so both layers exercise the same fake.
- *
- * Leading underscore signals "test fixture, not a test" — vitest's
- * `*.{test,spec}.ts` include glob skips it.
+ * moflo.db in production, without touching sql.js. Leading underscore signals
+ * "test fixture, not a test" — vitest's `*.{test,spec}.ts` include glob
+ * skips it.
  */
 
 import type { SwarmMemoryFns } from '../../swarm/swarm-persistence.js';

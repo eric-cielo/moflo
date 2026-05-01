@@ -1,38 +1,21 @@
 /**
- * System E2E: hive-mind end-to-end (epic #798, story #808).
+ * System E2E: hive-mind end-to-end.
  *
  * Drives every hive-mind MCP surface (init / spawn / broadcast / consensus /
- * shutdown) and cross-validates Story #807: hive workers spawned via
- * `hive-mind_spawn` MUST be visible to swarm `agent_list` because they are
- * registered with the same UnifiedSwarmCoordinator.
- *
- * Coverage:
- *   1. init → spawn × 3 → workers reachable from swarm agent_list (#807)
- *   2. broadcast publishes through MessageBus (recipients = worker count)
- *   3. consensus propose/vote tally crosses majority and flips status to
- *      `approved` — verifying real vote counting, not a stubbed result
- *   4. hive-mind_shutdown terminates the coordinator-side worker records
- *      so swarm agent_list no longer sees them
+ * shutdown) and verifies hive workers spawned via `hive-mind_spawn` are
+ * visible to swarm `agent_list` because they register with the same
+ * UnifiedSwarmCoordinator.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { agentTools } from '../../src/cli/mcp-tools/agent-tools.js';
-import { hiveMindTools } from '../../src/cli/mcp-tools/hive-mind-tools.js';
 import {
   _resetSwarmCoordinatorForTest,
   getSwarmCoordinator,
 } from '../../src/cli/mcp-tools/swarm-coordinator-singleton.js';
-
-// ===== helpers =====
-
-function tool<T extends { name: string; handler: (input: Record<string, unknown>) => Promise<unknown> }>(
-  set: readonly T[],
-  name: string,
-): T {
-  const found = set.find(t => t.name === name);
-  if (!found) throw new Error(`tool "${name}" not registered`);
-  return found;
-}
+import {
+  getAgentTool,
+  getHiveMindTool,
+} from '../../src/cli/__tests__/mcp-tools/_helpers.js';
 
 interface InitResult {
   success: boolean;
@@ -67,6 +50,14 @@ interface ConsensusVoteResult {
   votesAgainst: number;
 }
 
+interface ConsensusListResult {
+  recentHistory: Array<{
+    proposalId: string;
+    result: string;
+    votes: { for: number; against: number };
+  }>;
+}
+
 interface ShutdownResult {
   success: boolean;
   workersTerminated: number;
@@ -77,27 +68,24 @@ interface AgentListResult {
   total: number;
 }
 
-// ===== tests =====
-
-describe('System E2E — hive-mind (epic #798, story #807 cross-check)', () => {
+describe('System E2E — hive-mind', () => {
   afterEach(async () => {
-    // Best-effort hive shutdown — second one short-circuits when state is
-    // already cleared, which is what we want when a test left a live hive.
+    // Best-effort hive shutdown — short-circuits when state is already cleared.
     try {
-      await tool(hiveMindTools, 'hive-mind_shutdown').handler({ force: true });
+      await getHiveMindTool('hive-mind_shutdown').handler({ force: true });
     } catch {
-      // ignored — hive already torn down
+      // hive already torn down
     }
     await _resetSwarmCoordinatorForTest();
   });
 
-  it('init → spawn × 3 → workers visible via swarm agent_list (#807)', async () => {
-    const init = (await tool(hiveMindTools, 'hive-mind_init').handler({ topology: 'mesh' })) as InitResult;
+  it('init → spawn × 3 → workers visible via swarm agent_list', async () => {
+    const init = (await getHiveMindTool('hive-mind_init').handler({ topology: 'mesh' })) as InitResult;
     expect(init.success).toBe(true);
     expect(init.status).toBe('initialized');
     expect(init.hiveId).toBeTruthy();
 
-    const spawn = (await tool(hiveMindTools, 'hive-mind_spawn').handler({
+    const spawn = (await getHiveMindTool('hive-mind_spawn').handler({
       count: 3,
       role: 'worker',
       agentType: 'worker',
@@ -108,9 +96,8 @@ describe('System E2E — hive-mind (epic #798, story #807 cross-check)', () => {
     expect(spawn.workers).toHaveLength(3);
     expect(spawn.totalWorkers).toBe(3);
 
-    // Story #807: each spawned worker must be registered with the shared
-    // coordinator under the `hive-mind` domain — not just in the legacy
-    // file-store.
+    // Each spawned worker registers with the shared coordinator under the
+    // `hive-mind` domain — not just the legacy file-store.
     const coord = await getSwarmCoordinator();
     for (const worker of spawn.workers) {
       const live = coord.getAgent(worker.agentId);
@@ -118,7 +105,7 @@ describe('System E2E — hive-mind (epic #798, story #807 cross-check)', () => {
       expect(coord.getDomainForAgent(worker.agentId)).toBe('hive-mind');
     }
 
-    const list = (await tool(agentTools, 'agent_list').handler({ domain: 'hive-mind' })) as AgentListResult;
+    const list = (await getAgentTool('agent_list').handler({ domain: 'hive-mind' })) as AgentListResult;
     expect(list.total).toBe(3);
     const listIds = list.agents.map(a => a.agentId).sort();
     const spawnIds = spawn.workers.map(w => w.agentId).sort();
@@ -126,13 +113,13 @@ describe('System E2E — hive-mind (epic #798, story #807 cross-check)', () => {
   });
 
   it('broadcast reaches every spawned worker (recipients = worker count)', async () => {
-    await tool(hiveMindTools, 'hive-mind_init').handler({ topology: 'mesh' });
-    const spawn = (await tool(hiveMindTools, 'hive-mind_spawn').handler({
+    await getHiveMindTool('hive-mind_init').handler({ topology: 'mesh' });
+    const spawn = (await getHiveMindTool('hive-mind_spawn').handler({
       count: 3,
       agentType: 'worker',
     })) as SpawnResult;
 
-    const broadcast = (await tool(hiveMindTools, 'hive-mind_broadcast').handler({
+    const broadcast = (await getHiveMindTool('hive-mind_broadcast').handler({
       message: 'test-broadcast',
       priority: 'high',
     })) as BroadcastResult;
@@ -143,14 +130,14 @@ describe('System E2E — hive-mind (epic #798, story #807 cross-check)', () => {
   });
 
   it('consensus tallies real votes (not a stubbed approval)', async () => {
-    await tool(hiveMindTools, 'hive-mind_init').handler({ topology: 'mesh' });
-    const spawn = (await tool(hiveMindTools, 'hive-mind_spawn').handler({
+    await getHiveMindTool('hive-mind_init').handler({ topology: 'mesh' });
+    const spawn = (await getHiveMindTool('hive-mind_spawn').handler({
       count: 3,
       agentType: 'worker',
     })) as SpawnResult;
     const workerIds = spawn.workers.map(w => w.agentId);
 
-    const proposal = (await tool(hiveMindTools, 'hive-mind_consensus').handler({
+    const proposal = (await getHiveMindTool('hive-mind_consensus').handler({
       action: 'propose',
       type: 'test-decision',
       value: { proposed: true },
@@ -162,7 +149,7 @@ describe('System E2E — hive-mind (epic #798, story #807 cross-check)', () => {
     expect(proposal.requiredVotes).toBe(2);
 
     // First "for" vote — still pending, tally is 1/0.
-    const v1 = (await tool(hiveMindTools, 'hive-mind_consensus').handler({
+    const v1 = (await getHiveMindTool('hive-mind_consensus').handler({
       action: 'vote',
       proposalId: proposal.proposalId,
       vote: true,
@@ -173,7 +160,7 @@ describe('System E2E — hive-mind (epic #798, story #807 cross-check)', () => {
     expect(v1.status).toBe('pending');
 
     // Second "for" vote crosses majority — proposal flips to approved.
-    const v2 = (await tool(hiveMindTools, 'hive-mind_consensus').handler({
+    const v2 = (await getHiveMindTool('hive-mind_consensus').handler({
       action: 'vote',
       proposalId: proposal.proposalId,
       vote: true,
@@ -182,10 +169,10 @@ describe('System E2E — hive-mind (epic #798, story #807 cross-check)', () => {
     expect(v2.votesFor).toBe(2);
     expect(v2.status).toBe('approved');
 
-    // History must contain the resolved decision (not a stubbed `result: 'approved'`).
-    const list = (await tool(hiveMindTools, 'hive-mind_consensus').handler({
+    // History contains the resolved decision (not a stubbed `result: 'approved'`).
+    const list = (await getHiveMindTool('hive-mind_consensus').handler({
       action: 'list',
-    })) as { recentHistory: Array<{ proposalId: string; result: string; votes: { for: number; against: number } }> };
+    })) as ConsensusListResult;
     const decided = list.recentHistory.find(h => h.proposalId === proposal.proposalId);
     expect(decided).toBeDefined();
     expect(decided!.result).toBe('approved');
@@ -194,32 +181,30 @@ describe('System E2E — hive-mind (epic #798, story #807 cross-check)', () => {
   });
 
   it('hive-mind_shutdown terminates coordinator-side records (workers leave swarm agent_list)', async () => {
-    await tool(hiveMindTools, 'hive-mind_init').handler({ topology: 'mesh' });
-    const spawn = (await tool(hiveMindTools, 'hive-mind_spawn').handler({
+    await getHiveMindTool('hive-mind_init').handler({ topology: 'mesh' });
+    const spawn = (await getHiveMindTool('hive-mind_spawn').handler({
       count: 2,
       agentType: 'worker',
     })) as SpawnResult;
 
-    const beforeList = (await tool(agentTools, 'agent_list').handler({
+    const beforeList = (await getAgentTool('agent_list').handler({
       domain: 'hive-mind',
     })) as AgentListResult;
     expect(beforeList.total).toBe(2);
 
-    const shutdown = (await tool(hiveMindTools, 'hive-mind_shutdown').handler({
+    const shutdown = (await getHiveMindTool('hive-mind_shutdown').handler({
       force: true,
     })) as ShutdownResult;
     expect(shutdown.success).toBe(true);
     expect(shutdown.workersTerminated).toBe(2);
 
-    // Story #807: workers must be torn down on the coordinator too —
-    // `agent_list` filtered to the hive-mind domain returns nothing because
-    // `terminateAgent` removes them via `unregisterAgent` (state.agents.delete).
-    const afterList = (await tool(agentTools, 'agent_list').handler({
+    // `terminateAgent` calls `unregisterAgent` (state.agents.delete) — workers
+    // are removed entirely, not held with status='terminated'.
+    const afterList = (await getAgentTool('agent_list').handler({
       domain: 'hive-mind',
     })) as AgentListResult;
     expect(afterList.total).toBe(0);
 
-    // Belt-and-suspenders: getAgent returns undefined now — workers fully gone.
     const coord = await getSwarmCoordinator();
     for (const worker of spawn.workers) {
       expect(coord.getAgent(worker.agentId)).toBeUndefined();
