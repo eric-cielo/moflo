@@ -193,9 +193,23 @@ async function memoryList(): Promise<string[]> {
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { mofloDir } from '../services/moflo-paths.js';
+import { findProjectRoot } from '../services/project-root.js';
+
+// Anchor on findProjectRoot() so the MCP server resolves <consumer>/.moflo/
+// even when its cwd diverges from the user's project root. process.cwd()
+// silently drifted store writes outside the project (issue #825). Mirrors
+// agent-tools.ts.
+function getAgentStoreDir(): string {
+  return mofloDir(findProjectRoot());
+}
+
+function getAgentStorePath(): string {
+  return join(getAgentStoreDir(), 'agents.json');
+}
 
 function loadAgentStore(): { agents: Record<string, unknown> } {
-  const storePath = join(process.cwd(), '.moflo', 'agents.json');
+  const storePath = getAgentStorePath();
   try {
     if (existsSync(storePath)) {
       return JSON.parse(readFileSync(storePath, 'utf-8'));
@@ -205,11 +219,11 @@ function loadAgentStore(): { agents: Record<string, unknown> } {
 }
 
 function saveAgentStore(store: { agents: Record<string, unknown> }): void {
-  const storeDir = join(process.cwd(), '.moflo');
+  const storeDir = getAgentStoreDir();
   if (!existsSync(storeDir)) {
     mkdirSync(storeDir, { recursive: true });
   }
-  writeFileSync(join(storeDir, 'agents.json'), JSON.stringify(store, null, 2), 'utf-8');
+  writeFileSync(getAgentStorePath(), JSON.stringify(store, null, 2), 'utf-8');
 }
 
 // ===== Tool definitions =====
