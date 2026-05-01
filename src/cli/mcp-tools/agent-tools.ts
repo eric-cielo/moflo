@@ -124,7 +124,7 @@ const ALLOWED_AGENT_TYPES: ReadonlySet<string> = new Set<string>([
 
 const AGENT_TYPE_SLUG_RE = /^[a-z][a-z0-9-]*$/;
 
-function toNonNegativeInt<D extends number | undefined>(value: unknown, fallback: D): number | D {
+export function toNonNegativeInt<D extends number | undefined>(value: unknown, fallback: D): number | D {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 0) return fallback;
   return Math.floor(n);

@@ -465,10 +465,12 @@ describe('MCP Tools Deep Test Suite', () => {
   describe('Task Tools - Handler Invocation', () => {
     it('task_create creates a task', async () => {
       const tool = taskTools.find(t => t.name === 'task_create')!;
-      const result: any = await tool.handler({ type: 'feature', description: 'Test task' });
+      // `type` is the TaskType union; status is 'queued' (no idle agent)
+      // or 'assigned' (auto-scheduler picked one).
+      const result: any = await tool.handler({ type: 'coding', description: 'Test task' });
       expect(result.taskId).toBeDefined();
-      expect(result.type).toBe('feature');
-      expect(result.status).toBe('pending');
+      expect(result.type).toBe('coding');
+      expect(['queued', 'assigned']).toContain(result.status);
     });
 
     it('task_list returns tasks array', async () => {
@@ -757,10 +759,10 @@ describe('MCP Tools Deep Test Suite', () => {
 
     it('task_create returns taskId and status', async () => {
       const tool = taskTools.find(t => t.name === 'task_create')!;
-      const result: any = await tool.handler({ type: 'bugfix', description: 'Fix the bug' });
+      const result: any = await tool.handler({ type: 'coding', description: 'Fix the bug' });
       expect(result.taskId).toBeDefined();
       expect(typeof result.taskId).toBe('string');
-      expect(result.status).toBe('pending');
+      expect(['queued', 'assigned']).toContain(result.status);
     });
 
     it('swarm_init returns success and swarmId', async () => {
