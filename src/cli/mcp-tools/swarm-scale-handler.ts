@@ -16,8 +16,8 @@
 import { randomBytes } from 'node:crypto';
 import { getSwarmCoordinator } from './swarm-coordinator-singleton.js';
 import { validateAgentType } from './agent-tools.js';
+import { liveAgents, utilizationOf } from './coordinator-views.js';
 import type { AgentState, AgentType } from '../swarm/types.js';
-import type { UnifiedSwarmCoordinator } from '../swarm/unified-coordinator.js';
 
 export type ScaleStrategy = 'gradual' | 'immediate' | 'adaptive';
 
@@ -40,10 +40,6 @@ const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
 
 const isScaleStrategy = (value: unknown): value is ScaleStrategy =>
   typeof value === 'string' && (SCALE_STRATEGIES as readonly string[]).includes(value);
-
-function liveAgents(coordinator: UnifiedSwarmCoordinator): AgentState[] {
-  return coordinator.getAllAgents().filter(a => a.status !== 'terminated');
-}
 
 function pickAgentType(agentTypes: string[] | undefined, index: number): string {
   if (!agentTypes || agentTypes.length === 0) return 'worker';
@@ -68,17 +64,6 @@ function selectAgentsToTerminate(
     return a.lastHeartbeat.getTime() - b.lastHeartbeat.getTime();
   });
   return sorted.slice(0, count);
-}
-
-function utilizationOf(coordinator: UnifiedSwarmCoordinator): number {
-  let total = 0;
-  let busy = 0;
-  for (const agent of coordinator.getAllAgents()) {
-    if (agent.status === 'terminated') continue;
-    total++;
-    if (agent.status === 'busy') busy++;
-  }
-  return total === 0 ? 0 : busy / total;
 }
 
 async function executeWithStrategy(

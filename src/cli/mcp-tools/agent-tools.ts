@@ -1,81 +1,27 @@
 /**
- * Agent MCP Tools for CLI
- *
- * `agent_spawn`, `agent_list`, `agent_terminate`, `agent_status` route through
- * UnifiedSwarmCoordinator (epic #798, stories #801, #802).
- * TODO(epic-#798): `agent_pool` + `agent_health` are still JSON-store-backed.
+ * Agent MCP Tools for CLI — all handlers route through UnifiedSwarmCoordinator.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { join } from 'node:path';
 import type { MCPTool } from './types.js';
-import { MOFLO_DIR as STORAGE_DIR } from '../services/moflo-paths.js';
-import { findProjectRoot } from '../services/project-root.js';
 import { SUBAGENT_BOOTSTRAP_DIRECTIVE } from '../services/subagent-bootstrap.js';
 import { getSwarmCoordinator } from './swarm-coordinator-singleton.js';
+import { liveAgents } from './coordinator-views.js';
 import type { AgentType, AgentStatus } from '../swarm/types.js';
 import type { AgentDomain } from '../swarm/unified-coordinator.js';
-
-// Storage paths
-const AGENT_DIR = 'agents';
-const AGENT_FILE = 'store.json';
 
 // Model types matching Claude Agent SDK
 type ClaudeModel = 'haiku' | 'sonnet' | 'opus' | 'inherit';
 
-interface AgentRecord {
-  agentId: string;
-  agentType: string;
-  status: 'idle' | 'busy' | 'terminated';
-  health: number;
-  taskCount: number;
-  config: Record<string, unknown>;
-  createdAt: string;
-  domain?: string;
-  model?: ClaudeModel;  // Model assigned to this agent
-  modelRoutedBy?: 'explicit' | 'router' | 'agent-booster' | 'default';  // How model was determined (ADR-026)
-}
+// Below this floor, agents are reported as 'unhealthy' rather than 'degraded'.
+const DEGRADED_FLOOR = 0.3;
 
-interface AgentStore {
-  agents: Record<string, AgentRecord>;
-  version: string;
-}
+type HealthBucket = 'healthy' | 'degraded' | 'unhealthy';
 
-function getAgentDir(): string {
-  // findProjectRoot() walks up to the consumer's package.json/.git, so the
-  // MCP server still locates `<consumer>/.moflo/agents/` when launched from
-  // a working directory that diverges from the user's project root.
-  return join(findProjectRoot(), STORAGE_DIR, AGENT_DIR);
-}
-
-function getAgentPath(): string {
-  return join(getAgentDir(), AGENT_FILE);
-}
-
-function ensureAgentDir(): void {
-  const dir = getAgentDir();
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-}
-
-function loadAgentStore(): AgentStore {
-  try {
-    const path = getAgentPath();
-    if (existsSync(path)) {
-      const data = readFileSync(path, 'utf-8');
-      return JSON.parse(data);
-    }
-  } catch {
-    // Return empty store on error
-  }
-  return { agents: {}, version: '3.0.0' };
-}
-
-function saveAgentStore(store: AgentStore): void {
-  ensureAgentDir();
-  writeFileSync(getAgentPath(), JSON.stringify(store, null, 2), 'utf-8');
+function healthBucket(health: number, threshold: number): HealthBucket {
+  if (health >= threshold) return 'healthy';
+  if (health >= DEGRADED_FLOOR) return 'degraded';
+  return 'unhealthy';
 }
 
 // Coordinator's `agentTypeToDomain` falls through to `core` for unknown
@@ -506,107 +452,125 @@ export const agentTools: MCPTool[] = [
         action: { type: 'string', enum: ['status', 'scale', 'drain', 'fill'], description: 'Pool action' },
         targetSize: { type: 'number', description: 'Target pool size (for scale action)' },
         agentType: { type: 'string', description: 'Agent type filter' },
+        min: { type: 'number', description: 'Reported minimum pool size (status echo)' },
+        max: { type: 'number', description: 'Reported maximum pool size (status echo)' },
+        autoScale: { type: 'boolean', description: 'Reported auto-scale flag (status echo)' },
       },
       required: ['action'],
     },
     handler: async (input) => {
-      const store = loadAgentStore();
-      const agents = Object.values(store.agents).filter(a => a.status !== 'terminated');
-      const action = (input.action as string) || 'status';  // Default to status
+      const action = (input.action as string) || 'status';
+      const coordinator = await getSwarmCoordinator();
+      const live = liveAgents(coordinator);
 
       if (action === 'status') {
         const byType: Record<string, number> = {};
         const byStatus: Record<string, number> = {};
-        for (const agent of agents) {
-          byType[agent.agentType] = (byType[agent.agentType] || 0) + 1;
+        let busyCount = 0;
+        let healthSum = 0;
+        for (const agent of live) {
+          byType[agent.type] = (byType[agent.type] || 0) + 1;
           byStatus[agent.status] = (byStatus[agent.status] || 0) + 1;
+          if (agent.status === 'busy') busyCount++;
+          healthSum += agent.health;
         }
-        const idleAgents = agents.filter(a => a.status === 'idle').length;
-        const busyAgents = agents.filter(a => a.status === 'busy').length;
-        const utilization = agents.length > 0 ? busyAgents / agents.length : 0;
+        const utilization = live.length > 0 ? busyCount / live.length : 0;
         return {
           action,
-          // CLI expected fields
           poolId: 'agent-pool-default',
-          currentSize: agents.length,
-          minSize: (input.min as number) || 0,
-          maxSize: (input.max as number) || 100,
+          currentSize: live.length,
+          minSize: toNonNegativeInt(input.min, 0),
+          maxSize: toNonNegativeInt(input.max, 100),
           autoScale: (input.autoScale as boolean) ?? false,
           utilization,
-          agents: agents.map(a => ({
-            id: a.agentId,
-            type: a.agentType,
+          agents: live.map(a => ({
+            id: a.id.id,
+            type: a.type,
             status: a.status,
           })),
-          // Additional fields
           id: 'agent-pool-default',
-          size: agents.length,
-          totalAgents: agents.length,
+          size: live.length,
+          totalAgents: live.length,
           byType,
           byStatus,
-          avgHealth: agents.length > 0 ? agents.reduce((sum, a) => sum + a.health, 0) / agents.length : 0,
+          avgHealth: live.length > 0 ? healthSum / live.length : 0,
         };
       }
 
       if (action === 'scale') {
-        const targetSize = (input.targetSize as number) || 5;
-        const agentType = (input.agentType as string) || 'worker';
-        const currentSize = agents.filter(a => a.agentType === agentType).length;
-        const delta = targetSize - currentSize;
+        const agentTypeRaw = (input.agentType as string) || 'worker';
+        const validation = validateAgentType(agentTypeRaw);
+        if (!validation.ok) {
+          return { action, error: validation.error };
+        }
+        const agentType = agentTypeRaw as AgentType;
+        const targetSize = toNonNegativeInt(input.targetSize, 5);
+        const currentForType = live.filter(a => a.type === agentType);
+        const delta = targetSize - currentForType.length;
         const added: string[] = [];
         const removed: string[] = [];
 
+        // Sequential awaits — `coordinator.spawnAgent` reads `agentCounter` and
+        // `agentDomainMap` between awaits, so parallelizing with Promise.all
+        // produces duplicate names and racing domain-slot assignments.
         if (delta > 0) {
           for (let i = 0; i < delta; i++) {
-            const agentId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-            store.agents[agentId] = {
-              agentId,
-              agentType,
-              status: 'idle',
-              health: 1.0,
-              taskCount: 0,
-              config: {},
-              createdAt: new Date().toISOString(),
-            };
-            added.push(agentId);
+            try {
+              const result = await coordinator.spawnAgent({ type: agentType });
+              added.push(result.agentId);
+            } catch (err) {
+              const newSizeOnError = liveAgents(coordinator).filter(a => a.type === agentType).length;
+              return {
+                action,
+                agentType,
+                error: (err as Error).message,
+                previousSize: currentForType.length,
+                targetSize,
+                newSize: newSizeOnError,
+                added,
+                removed,
+              };
+            }
           }
         } else if (delta < 0) {
-          const toRemove = agents.filter(a => a.agentType === agentType && a.status === 'idle').slice(0, -delta);
-          for (const agent of toRemove) {
-            store.agents[agent.agentId].status = 'terminated';
-            removed.push(agent.agentId);
+          const idleOfType = currentForType
+            .filter(a => a.status === 'idle')
+            .slice(0, -delta);
+          for (const agent of idleOfType) {
+            const result = await coordinator.terminateAgent(agent.id.id);
+            if (result.terminated) removed.push(result.agentId);
           }
         }
 
-        saveAgentStore(store);
+        // Re-query so newSize reflects coordinator truth, not optimistic delta.
+        const newSize = liveAgents(coordinator).filter(a => a.type === agentType).length;
+
         return {
           action,
           agentType,
-          previousSize: currentSize,
+          previousSize: currentForType.length,
           targetSize,
-          newSize: currentSize + delta,
+          newSize,
           added,
           removed,
         };
       }
 
       if (action === 'drain') {
-        const agentType = input.agentType as string;
+        const agentTypeFilter = input.agentType as string | undefined;
+        const targets = live.filter(a =>
+          a.status === 'idle' && (!agentTypeFilter || a.type === agentTypeFilter),
+        );
         let drained = 0;
-        for (const agent of agents) {
-          if (!agentType || agent.agentType === agentType) {
-            if (agent.status === 'idle') {
-              store.agents[agent.agentId].status = 'terminated';
-              drained++;
-            }
-          }
+        for (const agent of targets) {
+          const result = await coordinator.terminateAgent(agent.id.id);
+          if (result.terminated) drained++;
         }
-        saveAgentStore(store);
         return {
           action,
-          agentType: agentType || 'all',
+          agentType: agentTypeFilter || 'all',
           drained,
-          remaining: agents.length - drained,
+          remaining: live.length - drained,
         };
       }
 
@@ -625,68 +589,88 @@ export const agentTools: MCPTool[] = [
       },
     },
     handler: async (input) => {
-      const store = loadAgentStore();
-      const agents = Object.values(store.agents).filter(a => a.status !== 'terminated');
-      const threshold = (input.threshold as number) || 0.5;
+      const coordinator = await getSwarmCoordinator();
+      const threshold = (input.threshold as number) ?? 0.5;
 
       if (input.agentId) {
-        const agent = store.agents[input.agentId as string];
-        if (agent) {
-          return {
-            agentId: agent.agentId,
-            health: agent.health,
-            status: agent.status,
-            healthy: agent.health >= threshold,
-            taskCount: agent.taskCount,
-            uptime: Date.now() - new Date(agent.createdAt).getTime(),
-          };
+        const agent = coordinator.getAgent(input.agentId as string);
+        if (!agent || agent.status === 'terminated') {
+          return { agentId: input.agentId, error: 'Agent not found' };
         }
-        return { agentId: input.agentId, error: 'Agent not found' };
+        return {
+          agentId: agent.id.id,
+          health: agent.health,
+          status: agent.status,
+          healthy: agent.health >= threshold,
+          taskCount: agent.metrics.tasksCompleted + agent.metrics.tasksFailed,
+          // lastActivity is initialized at spawn and tracked by the coordinator;
+          // the delta is the closest honest "uptime" we have without a separate
+          // spawnedAt field on AgentState.
+          uptime: Date.now() - agent.metrics.lastActivity.getTime(),
+        };
       }
 
-      const healthyAgents = agents.filter(a => a.health >= threshold);
-      const degradedAgents = agents.filter(a => a.health >= 0.3 && a.health < threshold);
-      const unhealthyAgents = agents.filter(a => a.health < 0.3);
-      const avgHealth = agents.length > 0 ? agents.reduce((sum, a) => sum + a.health, 0) / agents.length : 1;
-      const avgCpu = agents.length > 0 ? 35 + Math.random() * 30 : 0; // Simulated CPU
-      const avgMemory = avgHealth * 0.6; // Correlated with health
+      const live = liveAgents(coordinator);
+      let healthSum = 0;
+      let cpuSum = 0;
+      let memSum = 0;
+      let healthyCount = 0;
+      let degradedCount = 0;
+      let unhealthyCount = 0;
+      for (const a of live) {
+        healthSum += a.health;
+        cpuSum += a.metrics.cpuUsage;
+        memSum += a.metrics.memoryUsage;
+        const bucket = healthBucket(a.health, threshold);
+        if (bucket === 'healthy') healthyCount++;
+        else if (bucket === 'degraded') degradedCount++;
+        else unhealthyCount++;
+      }
+      const avgHealth = live.length > 0 ? healthSum / live.length : 1;
+      const avgCpu = live.length > 0 ? cpuSum / live.length : 0;
+      const avgMemory = live.length > 0 ? memSum / live.length : 0;
 
       return {
-        // CLI expected fields
-        agents: agents.map(a => {
-          const uptime = Date.now() - new Date(a.createdAt).getTime();
-          return {
-            id: a.agentId,
-            type: a.agentType,
-            health: a.health >= threshold ? 'healthy' : (a.health >= 0.3 ? 'degraded' : 'unhealthy'),
-            uptime,
-            memory: { used: Math.floor(256 * (1 - a.health * 0.3)), limit: 512 },
-            cpu: 20 + Math.floor(a.health * 40),
-            tasks: { active: a.taskCount > 0 ? 1 : 0, queued: 0, completed: a.taskCount, failed: 0 },
-            latency: { avg: 50 + Math.floor((1 - a.health) * 100), p99: 150 + Math.floor((1 - a.health) * 200) },
-            errors: { count: a.health < threshold ? 1 : 0 },
-          };
-        }),
+        agents: live.map(a => ({
+          id: a.id.id,
+          type: a.type,
+          health: healthBucket(a.health, threshold),
+          uptime: Date.now() - a.metrics.lastActivity.getTime(),
+          // Coordinator emits memoryUsage on a 0–100 scale, so anchoring
+          // limit at 100 makes the CLI's `used/limit*100` formatter render
+          // the percentage as-is — no fake limits.
+          memory: { used: a.metrics.memoryUsage, limit: 100 },
+          cpu: a.metrics.cpuUsage,
+          tasks: {
+            active: a.currentTask ? 1 : 0,
+            queued: 0,
+            completed: a.metrics.tasksCompleted,
+            failed: a.metrics.tasksFailed,
+          },
+          latency: { avg: a.metrics.responseTime, p99: a.metrics.responseTime },
+          errors: { count: a.metrics.tasksFailed },
+        })),
         overall: {
-          healthy: healthyAgents.length,
-          degraded: degradedAgents.length,
-          unhealthy: unhealthyAgents.length,
+          healthy: healthyCount,
+          degraded: degradedCount,
+          unhealthy: unhealthyCount,
           avgCpu,
           avgMemory,
           score: Math.round(avgHealth * 100),
-          issues: unhealthyAgents.length,
+          issues: unhealthyCount,
         },
-        // Additional fields
-        total: agents.length,
-        healthyCount: healthyAgents.length,
-        unhealthyCount: unhealthyAgents.length,
+        total: live.length,
+        healthyCount,
+        unhealthyCount,
         threshold,
         avgHealth,
-        unhealthyAgents: unhealthyAgents.map(a => ({
-          agentId: a.agentId,
-          health: a.health,
-          status: a.status,
-        })),
+        unhealthyAgents: live
+          .filter(a => healthBucket(a.health, threshold) === 'unhealthy')
+          .map(a => ({
+            agentId: a.id.id,
+            health: a.health,
+            status: a.status,
+          })),
       };
     },
   },

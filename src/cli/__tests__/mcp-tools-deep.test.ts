@@ -420,6 +420,54 @@ describe('MCP Tools Deep Test Suite', () => {
       expect(result.overall).toBeDefined();
     });
 
+    // Coverage for issue #827 — agent_pool / agent_health are coordinator-backed
+    it('agent_pool scale action spawns agents through the coordinator', async () => {
+      const pool = agentTools.find(t => t.name === 'agent_pool')!;
+      const list = agentTools.find(t => t.name === 'agent_list')!;
+
+      const before: any = await list.handler({ agentType: 'tester' });
+      const targetSize = (before.total ?? 0) + 2;
+
+      const scaled: any = await pool.handler({ action: 'scale', agentType: 'tester', targetSize });
+      expect(scaled.action).toBe('scale');
+      expect(scaled.added.length).toBeGreaterThanOrEqual(2);
+
+      const after: any = await list.handler({ agentType: 'tester' });
+      expect(after.total).toBeGreaterThanOrEqual(targetSize);
+      // Each spawned id should be visible to the coordinator's listAgents.
+      for (const id of scaled.added) {
+        expect(after.agents.some((a: any) => a.agentId === id)).toBe(true);
+      }
+    });
+
+    it('agent_pool scale rejects non-whitelisted agent types', async () => {
+      const pool = agentTools.find(t => t.name === 'agent_pool')!;
+      const result: any = await pool.handler({
+        action: 'scale',
+        agentType: 'definitely-not-a-real-type',
+        targetSize: 1,
+      });
+      expect(result.error).toBeDefined();
+    });
+
+    it('agent_health by agentId reports coordinator-backed status', async () => {
+      const spawn = agentTools.find(t => t.name === 'agent_spawn')!;
+      const health = agentTools.find(t => t.name === 'agent_health')!;
+      const spawned: any = await spawn.handler({ agentType: 'analyst' });
+      expect(spawned.success).toBe(true);
+
+      const result: any = await health.handler({ agentId: spawned.agentId });
+      expect(result.agentId).toBe(spawned.agentId);
+      expect(typeof result.health).toBe('number');
+      expect(result.error).toBeUndefined();
+    });
+
+    it('agent_health for unknown agent returns error', async () => {
+      const health = agentTools.find(t => t.name === 'agent_health')!;
+      const result: any = await health.handler({ agentId: 'nonexistent-agent-id' });
+      expect(result.error).toBe('Agent not found');
+    });
+
   });
 
   // --------------------------------------------------------------------------
