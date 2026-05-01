@@ -116,7 +116,7 @@ async function getSystemStatus(): Promise<{
     const swarmStatus = await callMCPTool<{
       swarmId: string;
       topology: string;
-      agents: { total: number; active: number; idle: number; terminated: number };
+      agentSummary: { total: number; active: number; idle: number; busy: number; terminated: number };
       health: string;
       uptime: number;
     }>('swarm_status', { includeMetrics: true });
@@ -157,9 +157,9 @@ async function getSystemStatus(): Promise<{
         id: swarmStatus.swarmId,
         topology: swarmStatus.topology,
         agents: {
-          total: swarmStatus.agents.total,
-          active: swarmStatus.agents.active,
-          idle: swarmStatus.agents.idle
+          total: swarmStatus.agentSummary.total,
+          active: swarmStatus.agentSummary.active,
+          idle: swarmStatus.agentSummary.idle
         },
         health: swarmStatus.health,
         uptime: swarmStatus.uptime
