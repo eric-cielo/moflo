@@ -412,7 +412,10 @@ describe('UnifiedSwarmCoordinator', () => {
       expect(hierarchy.get(5)?.domain).toBe('core');
 
       const status = coordinator.getStatus();
-      expect(status.domains).toHaveLength(5);
+      // 5 canonical 15-agent-hierarchy domains + 'hive-mind' (story #807,
+      // dynamic-roster, agentNumbers: [] — not spawned by spawnFullHierarchy).
+      expect(status.domains).toHaveLength(6);
+      expect(status.domains.map((d: { name: string }) => d.name)).toContain('hive-mind');
     });
   });
 

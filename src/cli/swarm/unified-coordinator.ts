@@ -56,7 +56,7 @@ import { SwarmPersistence, type PersistedAgent } from './swarm-persistence.js';
 // Domain Types for 15-Agent Hierarchy
 // =============================================================================
 
-export type AgentDomain = 'queen' | 'security' | 'core' | 'integration' | 'support';
+export type AgentDomain = 'queen' | 'security' | 'core' | 'integration' | 'support' | 'hive-mind';
 
 export interface DomainConfig {
   name: AgentDomain;
@@ -131,6 +131,19 @@ const DOMAIN_CONFIGS: DomainConfig[] = [
     priority: 4,
     capabilities: ['tdd-testing', 'performance-benchmarking', 'deployment', 'release-management'],
     description: 'Testing, performance optimization, and deployment',
+  },
+  // hive-mind workers don't share the canonical 1-15 numbering; they're
+  // collective-intelligence participants spawned dynamically by hive-mind_spawn.
+  // The empty agentNumbers array signals "auto-assign without a fixed slot" —
+  // spawnAgent's existingAgents lookup falls back to agentNumbers[0] which we
+  // keep undefined to avoid accidental collisions with the queen/security/core
+  // numbered agents.
+  {
+    name: 'hive-mind',
+    agentNumbers: [],
+    priority: 5,
+    capabilities: ['collective-intelligence', 'consensus-voting', 'hive-coordination'],
+    description: 'Hive-mind workers (collective intelligence; story #807)',
   },
 ];
 
@@ -776,11 +789,17 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
   private async initializeDomainPools(): Promise<void> {
     for (const [domain, config] of this.domainConfigs) {
       const agentType = this.domainToAgentType(domain);
+      // Dynamic-roster domains (agentNumbers: []) have no fixed slot count,
+      // so pool capacity falls back to the swarm-wide maxAgents — the
+      // coordinator's own ceiling stays the only cap.
+      const maxSize = config.agentNumbers.length === 0
+        ? this.config.maxAgents
+        : config.agentNumbers.length;
       const pool = createAgentPool({
         name: `${domain}-domain-pool`,
         type: agentType,
         minSize: 0,
-        maxSize: config.agentNumbers.length,
+        maxSize,
         scaleUpThreshold: 0.8,
         scaleDownThreshold: 0.2,
         cooldownMs: 30000,
@@ -1784,15 +1803,32 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
       agentId = result.agentId;
       domain = result.domain;
     } else if (options.domain) {
-      // Use provided domain, assign next available number in that domain
+      // Use provided domain, assign next available number in that domain.
+      // Dynamic-roster domains (e.g. hive-mind) declare agentNumbers: [] so
+      // hive workers don't collide with the canonical 1-15 slot map. For
+      // those we skip the numbered slot bookkeeping and store the domain
+      // mapping directly — getAgentDomain() can't be the source of truth
+      // when there is no fixed slot.
       const config = this.domainConfigs.get(options.domain);
-      const existingAgents = Array.from(this.agentDomainMap.entries())
-        .filter(([, d]) => d === options.domain)
-        .length;
-      const nextNumber = config?.agentNumbers[existingAgents] || config?.agentNumbers[0] || 1;
-      const result = await this.registerAgentWithDomain(agentData, nextNumber, { id: options.id });
-      agentId = result.agentId;
-      domain = result.domain;
+      if (config && config.agentNumbers.length === 0) {
+        agentId = await this.registerAgent(agentData, { id: options.id, skipPersist: true });
+        this.agentDomainMap.set(agentId, options.domain);
+        const pool = this.domainPools.get(options.domain);
+        const agent = this.state.agents.get(agentId);
+        if (pool && agent) {
+          await pool.add(agent);
+        }
+        void this.syncAgentToPersistence(agentId);
+        domain = options.domain;
+      } else {
+        const existingAgents = Array.from(this.agentDomainMap.entries())
+          .filter(([, d]) => d === options.domain)
+          .length;
+        const nextNumber = config?.agentNumbers[existingAgents] || config?.agentNumbers[0] || 1;
+        const result = await this.registerAgentWithDomain(agentData, nextNumber, { id: options.id });
+        agentId = result.agentId;
+        domain = result.domain;
+      }
     } else {
       // Auto-assign to most appropriate domain based on type. Suppress the
       // inner persist so we write once below with the final domain.

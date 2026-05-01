@@ -11,6 +11,10 @@
 
 import type { MCPTool } from './types.js';
 import { MessageBus, WriteThroughAdapter } from '../swarm/message-bus/index.js';
+import { getSwarmCoordinator } from './swarm-coordinator-singleton.js';
+import { SUBAGENT_BOOTSTRAP_DIRECTIVE } from '../services/subagent-bootstrap.js';
+import { validateAgentType } from './agent-tools.js';
+import type { AgentType } from '../swarm/types.js';
 
 // Namespace constants — avoids hardcoded strings scattered across handlers
 const HIVE_NS = 'hive-mind' as const;
@@ -228,23 +232,59 @@ export const hiveMindTools: MCPTool[] = [
         return { success: false, error: 'Hive-mind not initialized. Run hive-mind/init first.' };
       }
 
-      const bus = await getMessageBus();
       const count = Math.min(Math.max(1, (input.count as number) || 1), 20);
       const role = (input.role as string) || 'worker';
       const agentType = (input.agentType as string) || 'worker';
       const prefix = (input.prefix as string) || 'hive-worker';
+
+      // Story #807: hive workers are coordinator agents in the 'hive-mind'
+      // domain. Validating up-front so the legacy file-store and the
+      // coordinator never disagree on which spawns were accepted.
+      const validation = validateAgentType(agentType);
+      if (!validation.ok) {
+        return { success: false, error: validation.error, agentType };
+      }
+
+      const bus = await getMessageBus();
+      const coordinator = await getSwarmCoordinator();
       const agentStore = loadAgentStore();
 
-      const spawnedWorkers: Array<{ agentId: string; role: string; joinedAt: string }> = [];
+      const spawnedWorkers: Array<{ agentId: string; role: string; joinedAt: string; bootstrap: string }> = [];
 
       for (let i = 0; i < count; i++) {
         const agentId = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         const joinedAt = new Date().toISOString();
 
-        // Create agent record
+        // Story #807: register with the shared coordinator first. If this
+        // fails we surface the error and skip both the legacy file record
+        // and the MessageBus join so the three views stay consistent.
+        try {
+          await coordinator.spawnAgent({
+            id: agentId,
+            type: agentType as AgentType,
+            name: agentId,
+            domain: 'hive-mind',
+            metadata: {
+              hiveRole: role,
+              hiveId: hiveState.hiveId,
+              bootstrap: SUBAGENT_BOOTSTRAP_DIRECTIVE,
+            },
+          });
+        } catch (err) {
+          return {
+            success: false,
+            spawned: spawnedWorkers.length,
+            workers: spawnedWorkers,
+            error: `coordinator.spawnAgent failed for ${agentId}: ${(err as Error).message}`,
+          };
+        }
+
+        // Legacy file-store record kept in sync for agent_pool / agent_health
+        // tools that still read it (epic #798 leaves those for a later story).
         agentStore.agents[agentId] = {
           agentId, agentType, status: 'idle', health: 1.0, taskCount: 0,
-          config: { role, hiveRole: role }, createdAt: joinedAt, domain: 'hive-mind',
+          config: { role, hiveRole: role, bootstrap: SUBAGENT_BOOTSTRAP_DIRECTIVE },
+          createdAt: joinedAt, domain: 'hive-mind',
         };
 
         // Track in hive state
@@ -264,7 +304,7 @@ export const hiveMindTools: MCPTool[] = [
           ttlMs: HIVE_TTL_MS,
         });
 
-        spawnedWorkers.push({ agentId, role, joinedAt });
+        spawnedWorkers.push({ agentId, role, joinedAt, bootstrap: SUBAGENT_BOOTSTRAP_DIRECTIVE });
       }
 
       saveAgentStore(agentStore);
@@ -475,6 +515,17 @@ export const hiveMindTools: MCPTool[] = [
 
       if (index > -1) {
         hiveState.workers.splice(index, 1);
+
+        // Story #807: terminate the coordinator-side record so swarm
+        // agent_list / agent_status no longer see this worker. Best-effort —
+        // an agent that joined by ID alone (hive-mind_join) may not have a
+        // coordinator record, and that's fine.
+        try {
+          const coordinator = await getSwarmCoordinator();
+          await coordinator.terminateAgent(agentId, { reason: 'hive-mind_leave', force: true });
+        } catch (err) {
+          process.stderr.write(`[hive-mind_leave] coordinator.terminateAgent failed for ${agentId}: ${(err as Error).message}\n`);
+        }
 
         // Publish agent_leave via MessageBus
         const bus = await getMessageBus();
@@ -722,6 +773,17 @@ export const hiveMindTools: MCPTool[] = [
           pendingConsensus,
           workerCount,
         };
+      }
+
+      // Story #807: terminate coordinator-side worker records before we
+      // wipe the hive state so swarm agent_list reflects the shutdown.
+      try {
+        const coordinator = await getSwarmCoordinator();
+        for (const workerId of hiveState.workers) {
+          await coordinator.terminateAgent(workerId, { reason: 'hive-mind_shutdown', force: true });
+        }
+      } catch (err) {
+        process.stderr.write(`[hive-mind_shutdown] coordinator cleanup failed: ${(err as Error).message}\n`);
       }
 
       // Clear workers from agent store
