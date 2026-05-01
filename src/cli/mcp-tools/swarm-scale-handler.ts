@@ -1,6 +1,8 @@
 /**
- * `swarm_scale` MCP tool — strategy-aware scaling routed through
- * UnifiedSwarmCoordinator (epic #798, story #804).
+ * `swarm_scale` MCP tool handler — strategy-aware scaling routed through
+ * UnifiedSwarmCoordinator (epic #798, story #804). The MCPTool registration
+ * lives in `./swarm-tools.ts` so the drift-guard regex (#693) sees the
+ * `name: 'swarm_scale'` literal in the file `mcp-client.ts` imports.
  *
  * Three strategies:
  *   - `immediate`: sequential awaits with no inter-op delay
@@ -207,7 +209,7 @@ export async function scaleHandler(input: Record<string, unknown>): Promise<Scal
       scalingStatus: 'completed',
       scaleStrategy: strategy,
       scaledAt,
-      reason,
+      ...(reason !== undefined ? { reason } : {}),
     };
   }
 
@@ -242,14 +244,17 @@ export async function scaleHandler(input: Record<string, unknown>): Promise<Scal
   }
 
   // Roll back partial scale-up on failure: agents we just spawned are owners
-  // we silently leaked otherwise. Best-effort terminate; rollback errors are
-  // recorded but don't override the original opError.
+  // we silently leaked otherwise. Splice out so the result-shape spread below
+  // omits them — the contract is "rolled-back agents are reported as if they
+  // never existed", which matches scalingStatus: 'failed'.
   if (opError && delta > 0 && addedAgents.length > 0) {
-    for (const id of addedAgents.splice(0)) {
+    const toRollback = addedAgents.splice(0);
+    for (const id of toRollback) {
       try {
         await coordinator.terminateAgent(id, { reason: 'swarm_scale rollback', force: true });
       } catch {
-        // Rollback best-effort — surfacing the original error is more useful.
+        // Best-effort — surfacing the original error is more useful than
+        // a noisier composite.
       }
     }
   }
@@ -271,7 +276,7 @@ export async function scaleHandler(input: Record<string, unknown>): Promise<Scal
     scaledAt,
     ...(addedAgents.length > 0 ? { addedAgents } : {}),
     ...(removedAgents.length > 0 ? { removedAgents } : {}),
-    reason,
+    ...(reason !== undefined ? { reason } : {}),
     ...(opError ? { error: opError.message } : {}),
   };
 }

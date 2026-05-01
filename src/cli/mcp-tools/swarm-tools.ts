@@ -3,7 +3,8 @@
  *
  * `swarm_init`, `swarm_status`, `swarm_health` route through
  * UnifiedSwarmCoordinator (epic #798, story #803).
- * `swarm_scale` lives in `./swarm-scale.ts` (epic #798, story #804).
+ * `swarm_scale` handler logic lives in `./swarm-scale-handler.ts`
+ * (epic #798, story #804).
  */
 
 import { existsSync } from 'node:fs';
@@ -18,7 +19,7 @@ import {
   SCALE_STRATEGIES,
   TARGET_AGENTS_MIN,
   TARGET_AGENTS_MAX,
-} from './swarm-scale.js';
+} from './swarm-scale-handler.js';
 import { findProjectRoot } from '../services/project-root.js';
 import { MOFLO_DIR } from '../services/moflo-paths.js';
 import type {
