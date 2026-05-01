@@ -132,8 +132,6 @@ export const swarmTools: MCPTool[] = [
           currentAgents: state.agents.size,
           communicationProtocol: (userConfig.communicationProtocol as string) || 'message-bus',
           autoScaling: (userConfig.autoScaling as boolean) ?? true,
-          consensusMechanism: (userConfig.consensusMechanism as string)
-            ?? coordinator.getConsensusAlgorithm(),
           consensusAlgorithm: coordinator.getConsensusAlgorithm(),
           consensusThreshold: consensus.threshold,
         },
@@ -160,15 +158,20 @@ export const swarmTools: MCPTool[] = [
       const allAgents = coordinator.getAllAgents();
       const allTasks = coordinator.getAllTasks();
 
-      const busy = allAgents.filter(a => a.status === 'busy').length;
+      const counts = { idle: 0, busy: 0, terminated: 0 };
+      for (const a of allAgents) {
+        if (a.status === 'idle' || a.status === 'busy' || a.status === 'terminated') {
+          counts[a.status]++;
+        }
+      }
       const agentSummary = {
         total: allAgents.length,
         // `active` is the legacy field name kept for `flo status` consumers;
         // it equals `busy` (an agent is "active" iff it's executing a task).
-        active: busy,
-        idle: allAgents.filter(a => a.status === 'idle').length,
-        busy,
-        terminated: allAgents.filter(a => a.status === 'terminated').length,
+        active: counts.busy,
+        idle: counts.idle,
+        busy: counts.busy,
+        terminated: counts.terminated,
       };
 
       const response: Record<string, unknown> = {
