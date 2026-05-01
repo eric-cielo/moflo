@@ -1,11 +1,10 @@
 /**
- * `task_orchestrate` load-balanced multi-task distribution (story #805).
+ * `task_orchestrate` load-balanced multi-task distribution.
  *
- * Acceptance bar from issue #805: "Load balancing observable: 5 tasks across
- * 3 agents → no agent gets >2." That hinges on the coordinator's
- * `assignTask` scoring heuristic (workload-aware), not on this MCP shim.
- * These tests pin the contract so future scheduler refactors don't silently
- * regress fairness.
+ * Acceptance bar: "5 tasks across 3 agents → no agent gets more than 2."
+ * That hinges on the coordinator's `assignTask` scoring heuristic
+ * (workload-aware), not on this MCP shim. These tests pin the contract so
+ * future scheduler refactors don't silently regress fairness.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';

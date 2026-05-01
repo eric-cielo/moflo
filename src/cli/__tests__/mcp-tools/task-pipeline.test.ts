@@ -1,9 +1,7 @@
 /**
- * `task_*` family wired to UnifiedSwarmCoordinator (story #805).
- *
- * Covers the create → assign → status → complete → cancel pipeline. The
- * companion `task-orchestrate.test.ts` covers load-balanced multi-task
- * distribution across agents.
+ * `task_*` family backed by UnifiedSwarmCoordinator: create → assign →
+ * status → complete → cancel pipeline. Load-balanced batch dispatch is
+ * covered separately in `task-orchestrate.test.ts`.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';

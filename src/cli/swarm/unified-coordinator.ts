@@ -550,6 +550,17 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
       }
     }
 
+    await this.bindTaskToAgent(task, agent);
+    return { assigned: true };
+  }
+
+  /**
+   * Mutate task + agent into the 'assigned/busy' pair and notify the agent
+   * via the message bus. Shared by `assignTask` (auto-scheduler) and
+   * `assignTaskToAgent` (direct caller). Caller is responsible for any
+   * pre-checks (capacity, prior-agent release, domain bookkeeping).
+   */
+  private async bindTaskToAgent(task: TaskDefinition, agent: AgentState): Promise<void> {
     task.assignedTo = agent.id;
     task.status = 'assigned';
     task.startedAt = task.startedAt ?? new Date();
@@ -566,8 +577,10 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
       ttlMs: this.config.taskTimeoutMs,
     });
 
-    this.emitEvent('task.assigned', { taskId, agentId });
-    return { assigned: true };
+    this.emitEvent('task.assigned', {
+      taskId: task.id.id,
+      agentId: agent.id.id,
+    });
   }
 
   getTask(taskId: string): TaskDefinition | undefined {
@@ -865,28 +878,7 @@ export class UnifiedSwarmCoordinator extends EventEmitter implements IUnifiedSwa
       return undefined;
     }
 
-    // Assign task
-    task.assignedTo = bestAgent.id;
-    task.status = 'assigned';
-    bestAgent.status = 'busy';
-    bestAgent.currentTask = task.id;
-
-    // Notify agent via message bus
-    await this.messageBus.send({
-      type: 'task_assign',
-      from: this.state.id.id,
-      to: bestAgent.id.id,
-      payload: { task },
-      priority: this.mapTaskPriorityToMessagePriority(task.priority),
-      requiresAck: true,
-      ttlMs: this.config.taskTimeoutMs,
-    });
-
-    this.emitEvent('task.assigned', {
-      taskId: task.id.id,
-      agentId: bestAgent.id.id,
-    });
-
+    await this.bindTaskToAgent(task, bestAgent);
     return bestAgent;
   }
 
