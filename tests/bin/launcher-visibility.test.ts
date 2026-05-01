@@ -267,14 +267,16 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     ).toContain('CPU may briefly spike');
   });
 
-  it('clears upgrade-notice.json + commits version stamp after a version-bump upgrade (#636, #738, #730)', () => {
+  it('writes a completed upgrade notice + commits version stamp after a version-bump upgrade (#636, #738, #730)', () => {
     // Stage `node_modules/moflo/package.json` at v9.9.9 and a prior cached
-    // version at v9.9.8 so the launcher takes the version-bump branch.
-    // The launcher writes an in-progress notice while upgrade work is running
-    // and DELETES the file when work completes — so the badge disappears once
-    // the user is unblocked instead of lingering for an hour (#738). After
-    // every other upgrade-work block runs the launcher commits the version
-    // stamp last (#730), so post-run state is: stamp = new version, notice gone.
+    // version at v9.9.8 so the launcher takes the version-bump branch. The
+    // launcher writes an in-progress notice while upgrade work is running and
+    // a status='completed' notice with 2-min TTL when work finishes — Claude
+    // Code paints the statusline only AFTER the SessionStart hook returns, so
+    // the in-flight badge has zero visibility window; the completed notice is
+    // what the user actually sees on the next render. After every other
+    // upgrade-work block runs the launcher commits the version stamp last
+    // (#730). Post-run state: stamp = new version, notice = completed.
     mkdirSync(join(root, 'node_modules', 'moflo'), { recursive: true });
     writeFileSync(
       join(root, 'node_modules', 'moflo', 'package.json'),
@@ -287,9 +289,17 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     const { stdout } = runLauncher(root);
     expect(stdout).toContain('moflo: upgraded (9.9.8 → 9.9.9)');
 
-    // After the launcher exits, the notice file must be GONE (#738 AC).
+    // After the launcher exits the notice must be a completed handoff —
+    // not the in-progress version (work is done) and not deleted (else the
+    // user never sees the post-upgrade badge).
     const noticePath = join(root, '.moflo', 'upgrade-notice.json');
-    expect(existsSync(noticePath)).toBe(false);
+    expect(existsSync(noticePath)).toBe(true);
+    const notice = JSON.parse(readFileSync(noticePath, 'utf-8'));
+    expect(notice.status).toBe('completed');
+    expect(notice.kind).toBe('upgrade');
+    expect(notice.from).toBe('9.9.8');
+    expect(notice.to).toBe('9.9.9');
+    expect(new Date(notice.expiresAt).getTime()).toBeGreaterThan(Date.now());
 
     // And the version stamp must reflect the new version (#730 AC).
     expect(readFileSync(stampPath, 'utf-8').trim()).toBe('9.9.9');
@@ -352,17 +362,23 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     );
 
     // Next launcher detects the same upgrade and completes it cleanly: stamp
-    // bumped, notice cleared. This is the AC: "leaves the system without the
-    // new stamp, so the next launcher re-runs the upgrade detection".
+    // bumped, notice transitioned to status='completed'. This is the AC:
+    // "leaves the system without the new stamp, so the next launcher re-runs
+    // the upgrade detection".
     const second = runLauncher(root);
     expect(second.stdout).toContain('moflo: upgraded (9.9.8 → 9.9.9)');
     expect(readFileSync(stampPath, 'utf-8').trim()).toBe('9.9.9');
-    expect(existsSync(join(root, '.moflo', 'upgrade-notice.json'))).toBe(false);
+    const noticePath = join(root, '.moflo', 'upgrade-notice.json');
+    expect(existsSync(noticePath)).toBe(true);
+    const notice = JSON.parse(readFileSync(noticePath, 'utf-8'));
+    expect(notice.status).toBe('completed');
   });
 
-  it('clears a stale upgrade-notice.json on a subsequent upgrade (#738)', () => {
-    // Pre-seed with a stale notice from a prior upgrade. After this session's
-    // upgrade work completes the launcher must delete it — no lingering badge.
+  it('replaces a stale upgrade-notice.json with a fresh completed notice on a subsequent upgrade (#738)', () => {
+    // Pre-seed with a stale notice from a prior upgrade. Section 0-pre wipes
+    // it at session start; section 3f writes a fresh status='completed'
+    // notice for THIS session's upgrade. The pre-existing 1.0.0/1.0.1
+    // values must NOT survive — they'd point users at the wrong version.
     mkdirSync(join(root, '.moflo'), { recursive: true });
     const noticePath = join(root, '.moflo', 'upgrade-notice.json');
     writeFileSync(
@@ -387,7 +403,11 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
 
     runLauncher(root);
 
-    expect(existsSync(noticePath)).toBe(false);
+    expect(existsSync(noticePath)).toBe(true);
+    const notice = JSON.parse(readFileSync(noticePath, 'utf-8'));
+    expect(notice.status).toBe('completed');
+    expect(notice.from).toBe('9.9.8');
+    expect(notice.to).toBe('9.9.9');
   });
 
   it('clears a stale upgrade-notice.json even when no upgrade fires this session (#743)', () => {

@@ -382,7 +382,7 @@ function getSwarmStatus() {
 function getSystemMetrics() {
   const memoryMB = Math.floor(process.memoryUsage().heapUsed / 1024 / 1024);
   const learning = getLearningStats();
-  const agentdb = getAgentDBStats();
+  const embeddings = getEmbeddingsStats();
 
   // Intelligence from learning.json
   const learningData = readJSON(path.join(CWD, '.moflo', 'metrics', 'learning.json'));
@@ -393,7 +393,7 @@ function getSystemMetrics() {
     intelligencePct = Math.min(100, Math.floor(learningData.intelligence.score));
   } else {
     const fromPatterns = learning.patterns > 0 ? Math.min(100, Math.floor(learning.patterns / 10)) : 0;
-    const fromVectors = agentdb.vectorCount > 0 ? Math.min(100, Math.floor(agentdb.vectorCount / 100)) : 0;
+    const fromVectors = embeddings.vectorCount > 0 ? Math.min(100, Math.floor(embeddings.vectorCount / 100)) : 0;
     intelligencePct = Math.max(fromPatterns, fromVectors);
   }
 
@@ -423,7 +423,7 @@ function getSystemMetrics() {
     subAgents = activityData.processes.estimated_agents;
   }
 
-  return { memoryMB, contextPct, intelligencePct, subAgents };
+  return { memoryMB, contextPct, intelligencePct, subAgents, embeddings };
 }
 
 // ADR status (count files only — don't read contents)
@@ -484,9 +484,9 @@ function getHooksStatus() {
   return { enabled, total };
 }
 
-// AgentDB stats — reads from cache file written by embedding/memory operations.
+// Embeddings stats — reads from cache file written by embedding/memory ops.
 // No subprocess spawning. Falls back to DB file size estimate if cache is missing.
-function getAgentDBStats() {
+function getEmbeddingsStats() {
   let vectorCount = 0;
   let dbSizeKB = 0;
   let namespaces = 0;
@@ -601,20 +601,25 @@ function getIntegrationStatus() {
   return { mcpServers, hasDatabase, hasApi };
 }
 
-// Upgrade notice (#636, #738, #743) — written by the session-start launcher
-// ONLY while upgrade work is in flight; the launcher deletes the file when
-// work completes. We render it strictly for status='in-progress' so a stale
-// notice (legacy "complete" file from pre-#738 launchers, zombie write from
-// an aborted launcher, future writer mistakes) cannot turn the statusline
-// segment into a permanent column. The launcher's section 0-pre also drops
-// any leftover file at session start as a second line of defence.
+// Upgrade notice (#636, #738, #743) — written by the session-start launcher.
+//   status='in-progress' — work is running; rendered with "(updating…)".
+//   status='completed'   — work just finished; short-TTL post-upgrade badge so
+//                          the user sees something on the very next render
+//                          (Claude Code only paints the statusline AFTER the
+//                          SessionStart hook returns, so the in-progress badge
+//                          has effectively zero visibility window).
+// Anything else is dropped (legacy "complete" pre-#738 files, zombie writes,
+// future writer mistakes) so a stale notice can never turn the segment into a
+// permanent column. Section 0-pre of the launcher also wipes any leftover at
+// session start as a second line of defence.
 function getUpgradeNotice() {
   const data = readJSON(path.join(CWD, '.moflo', 'upgrade-notice.json'));
   if (!data || typeof data !== 'object') return null;
-  if (data.status !== 'in-progress') return null;
+  if (data.status !== 'in-progress' && data.status !== 'completed') return null;
   const expiresAt = data.expiresAt ? new Date(data.expiresAt).getTime() : 0;
   if (!expiresAt || Date.now() > expiresAt) return null;
   return {
+    status: data.status,
     kind: data.kind === 'repair' ? 'repair' : 'upgrade',
     from: typeof data.from === 'string' ? data.from : '',
     to: typeof data.to === 'string' ? data.to : '',
@@ -623,14 +628,20 @@ function getUpgradeNotice() {
 
 function formatUpgradeNoticeSegment(notice) {
   if (!notice) return '';
-  const suffix = ` ${c.dim}(updating…)${c.reset}`;
+  const inFlight = notice.status === 'in-progress';
+  const suffix = inFlight ? ` ${c.dim}(updating…)${c.reset}` : '';
+  // Pick body text: repair > in-flight version range > completed "upgraded to"
+  // > bare "upgraded" fallback when no version is known.
+  let body;
   if (notice.kind === 'repair') {
-    return `${c.brightYellow}📦 install repaired${c.reset}${suffix}`;
+    body = 'install repaired';
+  } else if (inFlight) {
+    body = notice.from && notice.to ? `${notice.from} → ${notice.to}` : (notice.to || 'upgraded');
+  } else {
+    const target = notice.to || notice.from || '';
+    body = target ? `upgraded to ${target}` : 'upgraded';
   }
-  const versions = notice.from && notice.to
-    ? `${notice.from} → ${notice.to}`
-    : (notice.to || 'upgraded');
-  return `${c.brightYellow}📦 ${versions}${c.reset}${suffix}`;
+  return `${c.brightYellow}📦 ${body}${c.reset}${suffix}`;
 }
 
 // Session stats (pure file reads)
@@ -784,6 +795,25 @@ function generateDashboard() {
     );
   }
 
+  // Embeddings line \u2014 vector store stats from .moflo/vector-stats.json.
+  // Reuses `system.embeddings` (already computed by getSystemMetrics()) instead
+  // of re-probing the cache file on every render.
+  {
+    const vec = system.embeddings;
+    if (vec.vectorCount > 0) {
+      const hnswInd = vec.hasHnsw ? `${c.brightGreen}\u26A1${c.reset}` : '';
+      const sizeDisp = vec.dbSizeKB >= 1024 ? `${(vec.dbSizeKB / 1024).toFixed(1)}MB` : `${vec.dbSizeKB}KB`;
+      const eParts = [
+        `${c.cyan}Vectors${c.reset} ${c.brightGreen}\u25CF${vec.vectorCount}${c.reset}${hnswInd}`,
+        `${c.cyan}Size${c.reset} ${c.brightWhite}${sizeDisp}${c.reset}`,
+      ];
+      if (vec.namespaces > 0) {
+        eParts.push(`${c.cyan}NS${c.reset} ${c.brightWhite}${vec.namespaces}${c.reset}`);
+      }
+      lines.push(`${c.brightCyan}\uD83D\uDCCA Embeddings${c.reset}  ${eParts.join(`  ${c.dim}\u2502${c.reset}  `)}`);
+    }
+  }
+
   // MCP line
   if (SL_CONFIG.show_mcp) {
     const parts = [];
@@ -795,7 +825,7 @@ function generateDashboard() {
     }
     if (integration.hasDatabase) parts.push(`${c.brightGreen}\u25C6${c.reset}DB`);
     if (parts.length > 0) {
-      lines.push(`${c.brightCyan}\uD83D\uDCCA MCP${c.reset}  ${parts.join(`  ${c.dim}\u2502${c.reset}  `)}`);
+      lines.push(`${c.brightCyan}\uD83D\uDD0C MCP${c.reset}  ${parts.join(`  ${c.dim}\u2502${c.reset}  `)}`);
     }
   }
 
@@ -835,7 +865,7 @@ function generateCompactDashboard() {
   pushUpgradeNoticeSegment(lines);
   lines.push(header);
 
-  // Combined swarm + mcp line
+  // Combined swarm + embeddings + mcp line
   const segments = [];
   if (SL_CONFIG.show_swarm) {
     const swarm = getSwarmStatus();
@@ -844,6 +874,18 @@ function generateCompactDashboard() {
     segments.push(
       `${c.brightYellow}\uD83E\uDD16${c.reset} ${swarmInd}[${agentsColor}${swarm.activeAgents}${c.reset}/${c.brightWhite}${swarm.maxAgents}${c.reset}]`
     );
+  }
+  // Embeddings \u2014 always-on when vectorCount > 0; self-hides on a fresh install.
+  // Compact doesn't call getSystemMetrics() so this is the only probe per render.
+  {
+    const vec = getEmbeddingsStats();
+    if (vec.vectorCount > 0) {
+      const hnswInd = vec.hasHnsw ? '\u26A1' : '';
+      const sizeDisp = vec.dbSizeKB >= 1024 ? `${(vec.dbSizeKB / 1024).toFixed(1)}MB` : `${vec.dbSizeKB}KB`;
+      segments.push(
+        `${c.brightCyan}\uD83D\uDCCA${c.reset} ${c.brightGreen}${vec.vectorCount}${hnswInd}${c.reset} ${c.dim}(${sizeDisp})${c.reset}`
+      );
+    }
   }
   if (SL_CONFIG.show_mcp) {
     const integration = getIntegrationStatus();
@@ -863,15 +905,16 @@ function generateCompactDashboard() {
 // JSON output
 function generateJSON() {
   const git = getGitInfo();
+  const system = getSystemMetrics();
   return {
     user: { name: git.name, gitBranch: git.gitBranch, modelName: getModelName() },
     v3Progress: getV3Progress(),
     security: getSecurityStatus(),
     swarm: getSwarmStatus(),
-    system: getSystemMetrics(),
+    system,
     adrs: getADRStatus(),
     hooks: getHooksStatus(),
-    agentdb: getAgentDBStats(),
+    embeddings: system.embeddings,
     tests: getTestStats(),
     git: { modified: git.modified, untracked: git.untracked, staged: git.staged, ahead: git.ahead, behind: git.behind },
     upgradeNotice: getUpgradeNotice(),
