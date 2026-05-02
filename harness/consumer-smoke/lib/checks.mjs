@@ -417,8 +417,13 @@ export function cliLoads(consumerDir) {
 //                          the init flow).
 //   - "Daemon Status"    — daemon isn't running in a smoke fixture.
 //   - "Config File"      — no `.moflo/config.yaml` in a bare consumer.
-//   - "Memory Database"  — not initialized yet (smoke runs `memory init`
-//                          as a separate later check).
+//   - "Memory Database"  — was unwarned because the DB didn't exist yet.
+//                          Doctor's Memory Access Functional check (#844)
+//                          now writes a probe row and auto-creates the DB,
+//                          so this line typically passes — kept on the
+//                          allowlist for the legacy "DB doesn't exist yet"
+//                          path that still surfaces if the new check is
+//                          disabled or its memory tools aren't built.
 //   - "Test Directories" / "Git Repository" — fresh consumer fixture
 //                          isn't a real project repo.
 const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
@@ -464,7 +469,12 @@ export function doctor(consumerDir) {
 
 export function memoryInit(consumerDir) {
   section('Memory initialization');
-  const r = flo(consumerDir, ['memory', 'init'], { timeout: 120_000 });
+  // --force: doctor's Memory Access Functional check (#844) writes a probe
+  // row and auto-creates the DB before this step runs. memory init refuses
+  // an existing DB without --force; passing it makes the smoke harness
+  // robust to ANY pre-existing DB state (doctor probe today, future
+  // background indexer tomorrow).
+  const r = flo(consumerDir, ['memory', 'init', '--force'], { timeout: 120_000 });
   if (!recordExit('memory-init', r)) throw new Error('memory init failed');
 }
 
