@@ -11,7 +11,7 @@ import { spawn, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { migrateClaudeFlowToMoflo, migrateMemoryDbToMoflo, mofloDir } from './lib/moflo-paths.mjs';
+import { mofloDir } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -116,56 +116,21 @@ try {
   unlinkSync(join(mofloDir(projectRoot), 'upgrade-notice.json'));
 } catch { /* non-fatal — file usually doesn't exist */ }
 
-// ── 0. LEGACY state migration (#699, #735) ──────────────────────────────────
-// Consumers upgrading from older moflo builds (inherited from upstream Ruflo)
-// get a one-time auto-migration of LEGACY `.claude-flow/` → `.moflo/` so claim
-// files, models cache, metrics, and the version stamp survive the rename.
-// The migration helper is idempotent — see bin/lib/moflo-paths.mjs for the
-// algorithm.
+// ── 0. Legacy whole-DB / directory migrations have been retired (#851) ─────
+// LEGACY-V2: Pre-#851 the launcher renamed `.claude-flow/` → `.moflo/` and
+// byte-copied `.swarm/memory.db` → `.moflo/moflo.db` on every session start.
+// Both blocks ran silently against a daemon that was still holding the old
+// paths in memory, leaving consumers with ghost runtime files reappearing
+// in legacy dirs and a `.gitignore` deletion that exposed 30+ daemon-state
+// files for commit. See docs/moflo-4.9.1-upgrade-experience-2026-05-02.md
+// for the full UX failure report.
 //
-// Staged removal contract (#735):
-//   1. THIS release ships Phase 1 (writers redirected to `.moflo/`) + Phase 2 // LEGACY
-//      (this migration call moves stragglers + warns on collisions).
-//   2. The release AFTER Phase 1 is steady-state should hard-delete any
-//      remaining empty `.claude-flow/` directory — until then, the helper // LEGACY
-//      drops the dir naturally once everything's been moved.
-// LEGACY: every emit below stops firing once `.claude-flow/` is gone.
-try {
-  const cfMigration = migrateClaudeFlowToMoflo(projectRoot);
-  if (cfMigration?.migrated) {
-    const count = cfMigration.movedCount ?? 0;
-    emitMutation(`migrated ${plural(count, 'entry')} from legacy .claude-flow/`); // LEGACY
-  }
-  // Surface collisions so users notice that BOTH locations now hold the same
-  // subdir name (most often `models/` after a partial pre-#735 migration).
-  // Manual cleanup is needed — moflo refuses to silently choose.
-  if ((cfMigration?.collisions?.length ?? 0) > 0) {
-    const collisionMsg = 'kept legacy .claude-flow/ entries to avoid clobbering .moflo/'; // LEGACY
-    emitMutation(collisionMsg, `collisions: ${cfMigration.collisions.join(', ')}`);
-  }
-} catch {
-  // Non-fatal — anything left behind by the migration just means it runs
-  // again next session. Better to keep launching than to block on it.
-}
-
-// ── 0b. LEGACY memory DB relocation (#727) ──────────────────────────────────
-// Run BEFORE long-lived sql.js consumers (MCP server, daemon) — see the
-// `migrateMemoryDbToMoflo` JSDoc for the copy-verify-delete contract and
-// the sql.js write-back hazard.
-try {
-  const dbMigration = migrateMemoryDbToMoflo(projectRoot);
-  if (dbMigration?.migrated) {
-    const detail = dbMigration.hnswMoved
-      ? '.swarm/memory.db → .moflo/moflo.db (with hnsw.index)'
-      : '.swarm/memory.db → .moflo/moflo.db';
-    emitMutation('relocated memory db', detail);
-    if (dbMigration.reason === 'rename-failed') {
-      emitMutation('legacy .swarm/memory.db remains', 'rename to .bak failed — flo doctor will warn');
-    }
-  }
-} catch {
-  // Non-fatal — failed migration leaves both DBs in place; next session retries.
-}
+// The version-bump-gated cherry-pick now lives inside section 3 (which is
+// already the gate on the `.moflo/moflo-version` stamp). It stops the daemon
+// first, then `INSERT OR IGNORE`s only the user-authored `learnings` /
+// `knowledge` namespaces — every other DB row is derived and rebuilds via
+// the indexers. LEGACY-V2 directories (`.swarm/`, `.claude-flow/`) are left
+// in place as recovery sources; users delete them at their leisure.
 
 // ── 0c. Memory DB index repair (#743) ───────────────────────────────────────
 // The .moflo/moflo.db SQLite file accumulates index corruption ("row N missing
@@ -215,16 +180,14 @@ function fireAndForget(cmd, args, label) {
   }
 }
 
-// Stop the daemon recorded in `lockFile` (if any) and start a fresh one. Used
-// from two recycle paths in this launcher: (a) the version-bump branch when
-// installed moflo just changed, and (b) the stale-daemon branch when the
-// running daemon predates the current install by a meaningful margin.
+// Stop the daemon recorded in `lockFile` (if any) without restarting. Used by
+// the upgrade flow before any DB work — the daemon must not be holding old
+// path resolution in memory, and a concurrent sql.js flush would clobber the
+// cherry-picked rows. Returns true when a live PID was actually killed.
 //
-// Reads the lock, SIGTERMs the recorded PID, removes the lock, and fires a
-// `daemon start --quiet` against `node_modules/moflo/bin/cli.js`. Every
-// failure mode (no lock, dead PID, missing CLI) is silently absorbed — the
-// recycle is best-effort and must never block session start.
-function recycleDaemon(lockFile, label) {
+// Section 4's `hooks.mjs session-start` spawn is responsible for starting a
+// fresh daemon under the current code; this function intentionally does not.
+function stopDaemon(lockFile) {
   if (!existsSync(lockFile)) return false;
   let stalePid = null;
   try {
@@ -235,16 +198,20 @@ function recycleDaemon(lockFile, label) {
     try { process.kill(stalePid, 'SIGTERM'); } catch { /* already dead */ }
   }
   try { unlinkSync(lockFile); } catch { /* non-fatal */ }
-  // Respawn only if a live daemon was actually recorded — no point starting
-  // one when there wasn't one before.
-  if (stalePid !== null) {
-    const localCliPath = resolve(projectRoot, 'node_modules/moflo/bin/cli.js');
-    if (existsSync(localCliPath)) {
-      fireAndForget('node', [localCliPath, 'daemon', 'start', '--quiet'], label);
-    }
-    return true;
+  return stalePid !== null;
+}
+
+// Stop-and-restart helper for the stale-daemon branch (section 3a-pre). The
+// version-bump branch uses stopDaemon directly + relies on section 4 for the
+// fresh start.
+function recycleDaemon(lockFile, label) {
+  const stopped = stopDaemon(lockFile);
+  if (!stopped) return false;
+  const localCliPath = resolve(projectRoot, 'node_modules/moflo/bin/cli.js');
+  if (existsSync(localCliPath)) {
+    fireAndForget('node', [localCliPath, 'daemon', 'start', '--quiet'], label);
   }
-  return false;
+  return true;
 }
 
 // ── 2. Reset workflow state for new session ──────────────────────────────────
@@ -326,6 +293,63 @@ try {
       // migration). See #738 — section 3f flips this to a 2-min "completed"
       // badge once work finishes (TTL rationale at the constants above).
       writeUpgradeNotice('in-progress');
+
+      // Stop the daemon BEFORE any DB writes (#851). It was started under the
+      // previous moflo image and holds old path resolution + module cache in
+      // memory; a concurrent sql.js flush would clobber the cherry-picked
+      // rows below, and old-path writes would resurrect ghost files in legacy
+      // dirs. Section 4's `hooks.mjs session-start` spawns a fresh daemon
+      // under the current code once 3g writes the version stamp.
+      const upgradeDaemonLock = resolve(projectRoot, '.moflo', 'daemon.lock');
+      if (stopDaemon(upgradeDaemonLock)) {
+        emitMutation('stopped daemon for upgrade', 'will restart fresh after upgrade work');
+      }
+
+      // Cherry-pick durable rows from any legacy DBs (#851). Replaces the
+      // pre-#851 full-DB byte-copy migration. The service is idempotent
+      // (INSERT OR IGNORE on UNIQUE(namespace, key)) so an aborted launcher
+      // re-runs cleanly without duplicate rows. Sources are read-only —
+      // .swarm/memory.db is preserved as a recovery source.
+      try {
+        const cherryPickPaths = [
+          resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/cherry-pick-learnings.js'),
+          resolve(projectRoot, 'dist/src/cli/services/cherry-pick-learnings.js'),
+        ];
+        const cherryPickPath = cherryPickPaths.find((p) => existsSync(p));
+        if (cherryPickPath) {
+          const mod = await import(`file://${cherryPickPath.replace(/\\/g, '/')}`);
+          if (typeof mod.cherryPickLearningsFromLegacy === 'function') {
+            const result = await mod.cherryPickLearningsFromLegacy({ projectRoot });
+            if (result.copied > 0) {
+              emitMutation(
+                'copied learnings forward',
+                `${plural(result.copied, 'learning/knowledge entry')} cherry-picked from legacy db`,
+              );
+            }
+            // LEGACY-V2: One-time hint that legacy dirs are recoverable.
+            // Only emit when the user actually has legacy state — silent
+            // fast-path for fresh installs and consumers who already cleaned
+            // up. The legacy dirs are intentionally never auto-deleted; they
+            // exist as recovery sources for the cherry-pick (#851).
+            const hasLegacy =
+              existsSync(resolve(projectRoot, '.swarm', 'memory.db')) || // LEGACY-V2
+              existsSync(resolve(projectRoot, '.swarm', 'memory.db.bak')) || // LEGACY-V2
+              existsSync(resolve(projectRoot, '.claude-flow')); // LEGACY-V2
+            if (hasLegacy) {
+              emitMutation(
+                'legacy .swarm/ + .claude-flow/ left in place', // LEGACY-V2
+                'safe to delete — derived data rebuilds on demand',
+              );
+            }
+          }
+        }
+      } catch (err) {
+        try {
+          const msg = err && err.message ? err.message : String(err);
+          process.stderr.write(`cherry-pick learnings skipped: ${msg}\n`);
+        } catch { /* stderr write must not throw */ }
+      }
+
       const binDir = resolve(projectRoot, 'node_modules/moflo/bin');
 
       // ── Manifest-based auto-update ──────────────────────────────────────
@@ -480,21 +504,10 @@ try {
         emitMutation('cleaned up retired files', `${removedFiles} removed`);
       }
 
-      // Recycle the running daemon — its in-process module cache holds the
-      // previous moflo image. After an upgrade that cache is stale, which
-      // shows up as warnings from removed code paths (e.g. the
-      // `[neural-tools] @moflo/embeddings not resolvable` spam from #639,
-      // emitted by pre-#592 collapse code that no longer exists in source)
-      // and means freshly-disabled workers keep running.
-      //
-      // `daemon.autoStart` only governs the cold-start case (no daemon
-      // existed); here a daemon was actually running, so replacing it with a
-      // current-code copy is the desired behaviour regardless of that flag.
-      try {
-        if (recycleDaemon(resolve(projectRoot, '.moflo', 'daemon.lock'), 'daemon-recycle')) {
-          emitMutation('recycled daemon', 'load fresh moflo code');
-        }
-      } catch { /* non-fatal — daemon recycle is best-effort */ }
+      // The daemon was already stopped above so the lock file is gone and
+      // there's no live PID to recycle here. Section 4's `hooks.mjs
+      // session-start` will spawn a fresh daemon under the current moflo
+      // image once 3g writes the version stamp.
 
       // Manifest reflects synced files immediately; version stamp is deferred
       // to 3g so an aborted launcher re-runs upgrade detection (#730).

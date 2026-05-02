@@ -321,25 +321,52 @@ function inspectInstalledEphemeralNamespaces(consumerDir) {
   }
 }
 
-function assertActiveRowsPreserved(snapshot, expectedRows) {
-  // `knowledge` is excluded — story #750 hard-deletes those rows after copying
-  // them to `learnings`. Survival is asserted on the migrated counterpart in
-  // assertKnowledgeMigratedToLearnings instead.
+function assertDurableRowsPreserved(snapshot, expectedRows) {
+  // #851 cherry-pick carries forward only the user-authored namespaces.
+  // Derived namespaces (guidance, patterns, code-map, tests, default) are
+  // discarded on upgrade and rebuilt by the indexers — losing them on
+  // purpose is the whole point of cherry-pick over byte-copy migration.
+  // `knowledge` is also excluded here — #750's knowledge→learnings
+  // migration hard-deletes them after copy; survival is asserted on the
+  // `learnings` counterpart in assertKnowledgeMigratedToLearnings.
+  const DURABLE_NAMESPACES = ['learnings'];
   const expected = expectedRows.filter(
-    r => r.status === 'active' && ACTIVE_NAMESPACES.includes(r.namespace) && r.namespace !== 'knowledge',
+    r => r.status === 'active' && DURABLE_NAMESPACES.includes(r.namespace),
   );
   const presentIds = new Set(snapshot.ids);
   const missing = expected.filter(r => !presentIds.has(r.id));
   if (missing.length === 0) {
-    record('populated:active-rows-preserved', 'pass', `${expected.length} rows survived migration`);
+    record('populated:durable-rows-preserved', 'pass',
+      `${expected.length} learnings rows survived cherry-pick`);
     return;
   }
   const sample = missing.slice(0, 3).map(r => r.id).join(', ');
   record(
-    'populated:active-rows-preserved',
+    'populated:durable-rows-preserved',
     'fail',
-    `${missing.length} active row(s) lost — sample: ${sample}`,
+    `${missing.length} learnings row(s) lost — sample: ${sample}`,
   );
+}
+
+function assertDerivedRowsRegenerable(snapshot) {
+  // #851 contract: derived namespaces (guidance, patterns, code-map, tests)
+  // do NOT survive cherry-pick, they regenerate from indexers. The harness
+  // disables auto_index for the populated profile (line ~244), so the post-
+  // launcher DB should have ZERO of these rows. Their absence is the
+  // positive signal that the cherry-pick is selective, not byte-copy.
+  const DERIVED_NAMESPACES = ['guidance', 'patterns', 'code-map', 'tests'];
+  const offenders = [];
+  for (const ns of DERIVED_NAMESPACES) {
+    const count = snapshot.byNamespaceStatus[`${ns}/active`] ?? 0;
+    if (count > 0) offenders.push(`${ns}=${count}`);
+  }
+  if (offenders.length === 0) {
+    record('populated:derived-rows-not-cherry-picked', 'pass',
+      'derived namespaces correctly excluded from cherry-pick');
+  } else {
+    record('populated:derived-rows-not-cherry-picked', 'fail',
+      `derived namespaces leaked through cherry-pick (regression — #851 should be selective): ${offenders.join(', ')}`);
+  }
 }
 
 function assertKnowledgePurged(snapshot) {
@@ -418,88 +445,80 @@ function assertIntegrity(snapshot) {
   }
 }
 
-function assertModelsRelocated(consumerDir) {
+// #851: legacy `.claude-flow/` and `.swarm/memory.db` are intentionally LEFT
+// in place — never moved or renamed by the launcher. The harness now asserts
+// the opposite of the pre-#851 contract: the legacy fixtures must survive
+// untouched as recovery sources.
+function assertModelsLeftInPlace(consumerDir) {
   const target = join(consumerDir, MOFLO_DIR, 'models', FIXTURE_FILENAME);
   const legacy = join(consumerDir, LEGACY_CLAUDE_FLOW_DIR, 'models', FIXTURE_FILENAME);
-  const targetOk = existsSync(target) &&
-    Buffer.compare(readFileSync(target), MODELS_FIXTURE_BYTES) === 0;
-  if (!targetOk) {
-    record('populated:models-relocated', 'fail', `${MOFLO_DIR}/models/${FIXTURE_FILENAME} missing or corrupted`);
+  const legacyOk = existsSync(legacy) &&
+    Buffer.compare(readFileSync(legacy), MODELS_FIXTURE_BYTES) === 0;
+  if (!legacyOk) {
+    record('populated:models-left-in-place', 'fail',
+      `${LEGACY_CLAUDE_FLOW_DIR}/models/${FIXTURE_FILENAME} missing or modified by launcher`);
     return;
   }
-  if (existsSync(legacy)) {
-    record('populated:models-relocated', 'fail', `${LEGACY_CLAUDE_FLOW_DIR}/models/${FIXTURE_FILENAME} still present after migration`);
+  if (existsSync(target)) {
+    record('populated:models-left-in-place', 'fail',
+      `${MOFLO_DIR}/models/${FIXTURE_FILENAME} present — launcher relocated it (regression: pre-#851 behavior)`);
     return;
   }
-  record('populated:models-relocated', 'pass', `${LEGACY_CLAUDE_FLOW_DIR}/models → ${MOFLO_DIR}/models clean`);
+  record('populated:models-left-in-place', 'pass',
+    `${LEGACY_CLAUDE_FLOW_DIR}/models/${FIXTURE_FILENAME} preserved`);
 }
 
-function assertDataRelocated(consumerDir) {
+function assertDataLeftInPlace(consumerDir) {
+  const legacy = join(consumerDir, LEGACY_CLAUDE_FLOW_DIR, 'data', 'foo.json');
   const target = join(consumerDir, MOFLO_DIR, 'data', 'foo.json');
-  if (!existsSync(target) || readFileSync(target, 'utf8') !== DATA_FIXTURE_JSON) {
-    record('populated:data-relocated', 'fail', `${MOFLO_DIR}/data/foo.json missing or corrupted`);
+  if (!existsSync(legacy) || readFileSync(legacy, 'utf8') !== DATA_FIXTURE_JSON) {
+    record('populated:data-left-in-place', 'fail',
+      `${LEGACY_CLAUDE_FLOW_DIR}/data/foo.json missing or modified`);
     return;
   }
-  record('populated:data-relocated', 'pass', `${LEGACY_CLAUDE_FLOW_DIR}/data → ${MOFLO_DIR}/data clean`);
+  if (existsSync(target)) {
+    record('populated:data-left-in-place', 'fail',
+      `${MOFLO_DIR}/data/foo.json present — launcher relocated it (regression: pre-#851 behavior)`);
+    return;
+  }
+  record('populated:data-left-in-place', 'pass',
+    `${LEGACY_CLAUDE_FLOW_DIR}/data/foo.json preserved`);
 }
 
-function assertEmbeddingsModelPathRewritten(consumerDir) {
-  const cfg = join(consumerDir, MOFLO_DIR, 'embeddings.json');
-  if (!existsSync(cfg)) {
-    record('populated:embeddings-modelpath', 'fail', `${MOFLO_DIR}/embeddings.json missing post-launcher`);
-    return;
-  }
-  let parsed;
-  try { parsed = JSON.parse(readFileSync(cfg, 'utf8')); }
-  catch (err) {
-    record('populated:embeddings-modelpath', 'fail', `embeddings.json malformed: ${err.message}`);
-    return;
-  }
-  if (typeof parsed.modelPath !== 'string') {
-    record('populated:embeddings-modelpath', 'fail', 'modelPath missing or non-string');
-    return;
-  }
-  if (parsed.modelPath.includes(LEGACY_CLAUDE_FLOW_DIR)) {
-    record('populated:embeddings-modelpath', 'fail', `stale modelPath survived rewrite: ${parsed.modelPath}`);
-    return;
-  }
-  record('populated:embeddings-modelpath', 'pass', `modelPath = ${parsed.modelPath}`);
-}
-
-function assertSwarmDbRetainedAsBak(consumerDir) {
+function assertSwarmDbLeftInPlace(consumerDir) {
   const live = legacyMemoryDbPath(consumerDir);
   const bak = legacyMemoryDbBakPath(consumerDir);
-  const liveGone = !existsSync(live);
-  const bakPresent = existsSync(bak) && statSync(bak).size > 0;
-  if (liveGone && bakPresent) {
-    record('populated:legacy-db-retained-as-bak', 'pass',
-      `${LEGACY_SWARM_DIR}/${LEGACY_MEMORY_DB_FILE}${LEGACY_MEMORY_DB_BAK_SUFFIX} present, live file removed`);
-  } else {
-    const detail = `live=${liveGone ? 'gone' : 'PRESENT'} bak=${bakPresent ? 'OK' : 'MISSING'}`;
-    record('populated:legacy-db-retained-as-bak', 'fail', detail);
+  if (!existsSync(live)) {
+    record('populated:legacy-db-left-in-place', 'fail',
+      `${LEGACY_SWARM_DIR}/${LEGACY_MEMORY_DB_FILE} missing — launcher renamed/moved it (regression: pre-#851 behavior)`);
+    return;
   }
+  if (existsSync(bak)) {
+    record('populated:legacy-db-left-in-place', 'fail',
+      `${LEGACY_SWARM_DIR}/${LEGACY_MEMORY_DB_FILE}${LEGACY_MEMORY_DB_BAK_SUFFIX} present — launcher renamed source (regression: pre-#851 behavior)`);
+    return;
+  }
+  record('populated:legacy-db-left-in-place', 'pass',
+    `${LEGACY_SWARM_DIR}/${LEGACY_MEMORY_DB_FILE} preserved as recovery source`);
 }
 
-function assertHnswRelocated(consumerDir) {
-  const hnsw = hnswIndexPath(consumerDir);
-  if (!existsSync(hnsw)) {
-    record('populated:hnsw-relocated', 'fail', `${MOFLO_DIR}/${HNSW_INDEX_FILE} missing`);
-    return;
+function assertCherryPickAnnouncement(stdout) {
+  // Populated profile seeds `learnings` + `knowledge` rows in the legacy DB.
+  // The launcher's #851 cherry-pick must announce its work so users can
+  // distinguish a real upgrade from a silent run.
+  if (stdout.includes('copied learnings forward')) {
+    record('populated:announce-cherry-pick', 'pass');
+  } else {
+    record('populated:announce-cherry-pick', 'fail',
+      `launcher stdout missing "copied learnings forward" — cherry-pick may not have fired`);
   }
-  const size = statSync(hnsw).size;
-  if (size === 0) {
-    record('populated:hnsw-relocated', 'fail', `${MOFLO_DIR}/${HNSW_INDEX_FILE} is zero bytes`);
-    return;
-  }
-  record('populated:hnsw-relocated', 'pass', `${MOFLO_DIR}/${HNSW_INDEX_FILE} = ${size} bytes`);
 }
 
 function assertLauncherAnnouncements(stdout) {
+  // The knowledge consolidation + legacy purge migrations run on `.moflo/moflo.db`
+  // AFTER cherry-pick. Cherry-pick copies `learnings` + `knowledge` rows
+  // forward, so those migrations have real work to announce on this profile.
   const expected = [
-    { fragment: 'migrated', label: 'announce-cf-migration' },
-    { fragment: 'relocated memory db', label: 'announce-db-relocation' },
-    { fragment: 'soft-deleted', label: 'announce-softdelete-purge' },
-    { fragment: 'ephemeral namespace', label: 'announce-ephemeral-purge' },
     { fragment: 'consolidated knowledge', label: 'announce-knowledge-consolidation' },
     { fragment: 'removed legacy knowledge', label: 'announce-knowledge-purge' },
   ];
@@ -508,6 +527,32 @@ function assertLauncherAnnouncements(stdout) {
       record(`populated:${e.label}`, 'pass');
     } else {
       record(`populated:${e.label}`, 'fail', `launcher stdout missing "${e.fragment}"`);
+    }
+  }
+
+  // The soft-delete + ephemeral-namespace purges (#728 / #729) run on
+  // `.moflo/moflo.db` too — but cherry-pick is selective, so neither
+  // `status='deleted'` rows nor ephemeral namespaces ever reach the target
+  // DB. Both purges correctly no-op for a fresh-install upgrade. The
+  // post-state assertions (`populated:deleted-purged`,
+  // `populated:ephemeral-purged`) confirm the rows are absent regardless;
+  // we don't expect a stdout banner because there was nothing to clean.
+  for (const fragment of ['soft-deleted', 'ephemeral namespace']) {
+    if (stdout.includes(fragment)) {
+      record(`populated:announce-no-legacy-purge-${fragment.replace(/\s+/g, '-')}`, 'fail',
+        `launcher emitted "${fragment}" — derived rows leaked into .moflo/moflo.db so a purge had work, regression of cherry-pick selectivity`);
+    } else {
+      record(`populated:announce-no-legacy-purge-${fragment.replace(/\s+/g, '-')}`, 'pass');
+    }
+  }
+
+  // Pre-#851 banners must NOT fire — they signal the byte-copy migration is back.
+  for (const fragment of ['migrated', 'relocated memory db']) {
+    if (stdout.split('\n').some((l) => l.startsWith('moflo:') && l.includes(fragment))) {
+      record(`populated:announce-no-legacy-${fragment.replace(/\s+/g, '-')}`, 'fail',
+        `launcher emitted pre-#851 "${fragment}" line — regression`);
+    } else {
+      record(`populated:announce-no-legacy-${fragment.replace(/\s+/g, '-')}`, 'pass');
     }
   }
 }
@@ -700,18 +745,19 @@ export async function runPopulatedConsumerProfile(consumerDir) {
   if (!snapshot) {
     record('populated:post-state-snapshot', 'fail', `${MOFLO_DIR}/${MEMORY_DB_FILE} inspect probe failed`);
   } else {
-    assertActiveRowsPreserved(snapshot, rows);
+    assertDurableRowsPreserved(snapshot, rows);
+    assertDerivedRowsRegenerable(snapshot);
     assertKnowledgePurged(snapshot);
     assertKnowledgeMigratedToLearnings(snapshot);
     assertDeletedRowsPurged(snapshot);
     assertEphemeralRowsPurged(snapshot);
     assertIntegrity(snapshot);
   }
-  assertModelsRelocated(consumerDir);
-  assertDataRelocated(consumerDir);
-  assertEmbeddingsModelPathRewritten(consumerDir);
-  assertSwarmDbRetainedAsBak(consumerDir);
-  assertHnswRelocated(consumerDir);
+  // #851: legacy state stays in place; launcher announces the cherry-pick.
+  assertModelsLeftInPlace(consumerDir);
+  assertDataLeftInPlace(consumerDir);
+  assertSwarmDbLeftInPlace(consumerDir);
+  assertCherryPickAnnouncement(launcherResult.stdout);
   assertLauncherAnnouncements(launcherResult.stdout);
 
   await runMcpClobberCheck(consumerDir, rows);
