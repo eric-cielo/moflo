@@ -83,6 +83,16 @@ export const isolationTests = [
   // Pass cleanly in isolation in <2 s.
   'src/cli/__tests__/services/embeddings-migration.test.ts',
   'src/cli/__tests__/services/embeddings-migration-callbacks.test.ts',
+  // 5 s per-test timeout vs ~6 s on Windows full-suite fork contention; the
+  // file shells out to ../helpers/statusline.cjs and waits on its stdout. All
+  // ten tests pass alone in <4 s total.
+  'src/cli/__tests__/statusline-upgrade-notice.test.ts',
+  // Issue #844 — same dynamic-import + real-coordinator load profile as
+  // doctor-checks-deep / doctor-checks-swarm (already on this list). Spawns
+  // swarm + hive-mind workers and runs three memory round-trips against the
+  // real subsystem; reliably fits in 10 s alone, can drift past full-suite
+  // per-test ceilings under fork contention.
+  'src/cli/__tests__/doctor-checks-memory-access.test.ts',
 ];
 
 export default defineConfig({

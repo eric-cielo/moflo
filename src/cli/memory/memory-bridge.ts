@@ -164,7 +164,9 @@ export async function bridgeSearchHNSW(
           const content = String(row.content || '');
           results.push({
             id: String(row.id).substring(0, 12),
-            key: String(row.key || row.id).substring(0, 15),
+            // The substring is a fallback id-prefix when key is missing —
+            // applying it to the full expression truncates valid keys (#845).
+            key: row.key ? String(row.key) : String(row.id).substring(0, 15),
             content: content.substring(0, 60) + (content.length > 60 ? '...' : ''),
             score,
             namespace: String(row.namespace || 'default'),

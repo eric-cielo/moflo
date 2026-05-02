@@ -30,6 +30,7 @@ import {
   checkSwarmFunctional,
   checkHiveMindFunctional,
 } from './doctor-checks-swarm.js';
+import { checkMemoryAccessFunctional } from './doctor-checks-memory-access.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 import {
   legacyMemoryDbPath,
@@ -1242,9 +1243,11 @@ function formatCheck(check: HealthCheck): string {
   return `${icon} ${check.name}: ${check.message}`;
 }
 
-// Main doctor command
+// Main doctor command. The `healer` alias plays into the spell/grimoire
+// theme — a wizardly healer diagnosing and mending the install.
 export const doctorCommand: Command = {
   name: 'doctor',
+  aliases: ['healer'],
   description: 'System diagnostics and health checks',
   options: [
     {
@@ -1595,6 +1598,12 @@ export const doctorCommand: Command = {
       // agent-id (not absolute counts) so they tolerate the parallel batch.
       checkSwarmFunctional,
       checkHiveMindFunctional,
+      // Issue #844 — memory_store + memory_search round-trip across subagent,
+      // swarm-agent, and hive-mind contexts. Catches the failure classes from
+      // #837 (threshold:0 ignored), #838/#842 (per-actor gating), and embedder
+      // wiring regressions (hash fallback) that the coordinator-only checks
+      // above would miss.
+      checkMemoryAccessFunctional,
       checkSandboxTier,
     ];
 
@@ -1640,6 +1649,8 @@ export const doctorCommand: Command = {
       'hive': checkHiveMindFunctional,
       'hive-mind': checkHiveMindFunctional,
       'hive-mind-functional': checkHiveMindFunctional,
+      'memory-access': checkMemoryAccessFunctional,
+      'memory-functional': checkMemoryAccessFunctional,
     };
 
     let checksToRun = allChecks;
