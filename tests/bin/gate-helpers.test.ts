@@ -1385,6 +1385,242 @@ describe('end-to-end: spell lifecycle', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// gate.cjs — per-actor memory-first enforcement (#838)
+// The legacy `memorySearched` boolean is session-wide and short-circuits the
+// gate for every actor as soon as the parent searches once. When the
+// gate-hook forwards Claude Code's session_id as HOOK_SESSION_ID, the gate
+// must enforce per-session: a fresh subagent (unknown session_id) gets
+// blocked even when the parent already satisfied its own gate.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('gate.cjs: per-actor memory-first (#838)', () => {
+  it('blocks scan for an unknown subagent session even when parent has searched', () => {
+    writeState(tmpDir, {
+      memoryRequired: true,
+      memorySearched: true,
+      memorySearchedBy: { 'parent-session-1': true },
+    });
+    const env = baseEnv(tmpDir);
+    env.HOOK_SESSION_ID = 'subagent-session-fresh';
+    env.TOOL_INPUT_pattern = '**/*.ts';
+    const r = runGate('check-before-scan', env);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('BLOCKED');
+  });
+
+  it('allows scan for a subagent session that has already searched', () => {
+    writeState(tmpDir, {
+      memoryRequired: true,
+      memorySearched: true,
+      memorySearchedBy: {
+        'parent-session-1': true,
+        'subagent-session-A': true,
+      },
+    });
+    const env = baseEnv(tmpDir);
+    env.HOOK_SESSION_ID = 'subagent-session-A';
+    env.TOOL_INPUT_pattern = '**/*.ts';
+    const r = runGate('check-before-scan', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('blocks read for an unknown subagent session', () => {
+    writeState(tmpDir, {
+      memoryRequired: true,
+      memorySearched: true,
+      memorySearchedBy: { 'parent-session-1': true },
+    });
+    const env = baseEnv(tmpDir);
+    env.HOOK_SESSION_ID = 'subagent-session-fresh';
+    env.TOOL_INPUT_file_path = '/project/src/index.ts';
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('BLOCKED');
+  });
+
+  it('allows read for a subagent session that is in the map', () => {
+    writeState(tmpDir, {
+      memoryRequired: true,
+      memorySearched: true,
+      memorySearchedBy: { 'subagent-session-B': true },
+    });
+    const env = baseEnv(tmpDir);
+    env.HOOK_SESSION_ID = 'subagent-session-B';
+    env.TOOL_INPUT_file_path = '/project/src/index.ts';
+    const r = runGate('check-before-read', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('record-memory-searched stamps the per-actor map when HOOK_SESSION_ID is set', () => {
+    writeState(tmpDir, { memorySearched: false, memorySearchedBy: {} });
+    const env = baseEnv(tmpDir);
+    env.HOOK_SESSION_ID = 'subagent-session-X';
+    runGate('record-memory-searched', env);
+    const s = readState(tmpDir) as { memorySearched: boolean; memorySearchedBy: Record<string, boolean> };
+    expect(s.memorySearched).toBe(true);
+    expect(s.memorySearchedBy['subagent-session-X']).toBe(true);
+  });
+
+  it('record-memory-searched without HOOK_SESSION_ID still updates the legacy bool only', () => {
+    writeState(tmpDir, { memorySearched: false, memorySearchedBy: {} });
+    runGate('record-memory-searched', baseEnv(tmpDir));
+    const s = readState(tmpDir) as { memorySearched: boolean; memorySearchedBy: Record<string, boolean> };
+    expect(s.memorySearched).toBe(true);
+    expect(Object.keys(s.memorySearchedBy)).toHaveLength(0);
+  });
+
+  it('check-bash-memory stamps the per-actor map when HOOK_SESSION_ID is set', () => {
+    writeState(tmpDir, { memorySearched: false, memorySearchedBy: {} });
+    const env = baseEnv(tmpDir);
+    env.HOOK_SESSION_ID = 'subagent-session-Y';
+    env.TOOL_INPUT_command = 'npx flo-search semantic-search "auth"';
+    runGate('check-bash-memory', env);
+    const s = readState(tmpDir) as { memorySearched: boolean; memorySearchedBy: Record<string, boolean> };
+    expect(s.memorySearched).toBe(true);
+    expect(s.memorySearchedBy['subagent-session-Y']).toBe(true);
+  });
+
+  it('check-bash-memory does not rewrite state when the actor is already marked', () => {
+    // Hot-path: a subagent that runs flo-search repeatedly should not fsync
+    // workflow-state.json on every invocation once it is already satisfied.
+    writeState(tmpDir, {
+      memorySearched: true,
+      memorySearchedBy: { 'subagent-session-Z': true },
+    });
+    const stateFile = join(tmpDir, '.claude', 'workflow-state.json');
+    const mtimeBefore = readState(tmpDir);
+    void mtimeBefore;
+    const before = readFileSync(stateFile, 'utf-8');
+    const env = baseEnv(tmpDir);
+    env.HOOK_SESSION_ID = 'subagent-session-Z';
+    env.TOOL_INPUT_command = 'npx flo-search semantic-search "auth"';
+    runGate('check-bash-memory', env);
+    const after = readFileSync(stateFile, 'utf-8');
+    expect(after).toBe(before);
+  });
+
+  it('prompt-reminder clears the per-actor map (new prompt = clean window)', () => {
+    writeState(tmpDir, {
+      memorySearched: true,
+      memorySearchedBy: { 'parent': true, 'subA': true },
+    });
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'fix the next bug please';
+    runGate('prompt-reminder', env);
+    const s = readState(tmpDir) as { memorySearched: boolean; memorySearchedBy: Record<string, boolean> };
+    expect(s.memorySearched).toBe(false);
+    expect(s.memorySearchedBy).toEqual({});
+  });
+
+  it('session-reset clears the per-actor map', () => {
+    writeState(tmpDir, {
+      memorySearched: true,
+      memorySearchedBy: { 'a': true, 'b': true },
+    });
+    runGate('session-reset', baseEnv(tmpDir));
+    const s = readState(tmpDir) as { memorySearchedBy: Record<string, boolean> };
+    expect(s.memorySearchedBy).toEqual({});
+  });
+
+  it('end-to-end: parent satisfies, subagent blocked, subagent searches, subagent allowed', () => {
+    writeState(tmpDir, { memoryRequired: true, memorySearched: false, memorySearchedBy: {} });
+
+    // 1. Parent searches memory (no HOOK_SESSION_ID forwarded for the parent
+    //    when the host is older / the parent's session_id is the default).
+    //    Even with a parent session id, this test focuses on the subagent path.
+    const parentEnv = baseEnv(tmpDir);
+    parentEnv.HOOK_SESSION_ID = 'parent-S';
+    runGate('record-memory-searched', parentEnv);
+
+    // 2. Fresh subagent attempts Grep — should BLOCK because its session_id
+    //    isn't in the map yet, even though `memorySearched` is true.
+    const subEnv = baseEnv(tmpDir);
+    subEnv.HOOK_SESSION_ID = 'sub-S-1';
+    subEnv.TOOL_INPUT_pattern = 'src/**/*.ts';
+    let r = runGate('check-before-scan', subEnv);
+    expect(r.exitCode).toBe(2);
+
+    // 3. Subagent does its own memory search.
+    runGate('record-memory-searched', subEnv);
+
+    // 4. Subagent retries Grep — now allowed.
+    r = runGate('check-before-scan', subEnv);
+    expect(r.exitCode).toBe(0);
+
+    // 5. A second subagent (different session_id) is still blocked until it
+    //    too searches — proving the map is per-actor, not per-session-once.
+    const sub2Env = baseEnv(tmpDir);
+    sub2Env.HOOK_SESSION_ID = 'sub-S-2';
+    sub2Env.TOOL_INPUT_pattern = 'src/**/*.ts';
+    r = runGate('check-before-scan', sub2Env);
+    expect(r.exitCode).toBe(2);
+  });
+
+  it('legacy callers (no HOOK_SESSION_ID) still see the old session-wide behavior', () => {
+    // Existing tests assume gate.cjs invocations without HOOK_SESSION_ID
+    // behave exactly like before — the bool drives the gate. Pin that.
+    writeState(tmpDir, { memoryRequired: true, memorySearched: true });
+    const env = baseEnv(tmpDir);
+    delete env.HOOK_SESSION_ID;
+    env.TOOL_INPUT_pattern = '**/*.ts';
+    const r = runGate('check-before-scan', env);
+    expect(r.exitCode).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// gate-hook.mjs — forwards stdin session_id as HOOK_SESSION_ID (#838)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('gate-hook.mjs: session_id forwarding (#838)', () => {
+  it('blocks a fresh subagent scan even when parent has already satisfied the gate', async () => {
+    // Parent has searched (legacy bool true) and is in the per-actor map.
+    // Fresh subagent comes in via stdin with a new session_id — should block.
+    writeState(tmpDir, {
+      memoryRequired: true,
+      memorySearched: true,
+      memorySearchedBy: { 'parent-session': true },
+    });
+    const r = await runEsmWithStdin(GATE_HOOK, ['check-before-scan'], {
+      session_id: 'fresh-subagent-session',
+      tool_name: 'Grep',
+      tool_input: { pattern: 'TODO', path: 'src/' },
+      hook_event_name: 'PreToolUse',
+    }, baseEnv(tmpDir));
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('BLOCKED');
+  });
+
+  it('allows the fresh subagent scan after it records its own memory search', async () => {
+    writeState(tmpDir, {
+      memoryRequired: true,
+      memorySearched: true,
+      memorySearchedBy: { 'parent-session': true, 'subagent-A': true },
+    });
+    const r = await runEsmWithStdin(GATE_HOOK, ['check-before-scan'], {
+      session_id: 'subagent-A',
+      tool_name: 'Grep',
+      tool_input: { pattern: 'TODO', path: 'src/' },
+      hook_event_name: 'PreToolUse',
+    }, baseEnv(tmpDir));
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('record-memory-searched via gate-hook stamps the map keyed on stdin session_id', async () => {
+    writeState(tmpDir, { memorySearched: false, memorySearchedBy: {} });
+    await runEsmWithStdin(GATE_HOOK, ['record-memory-searched'], {
+      session_id: 'subagent-Z',
+      tool_name: 'mcp__moflo__memory_search',
+      tool_input: { query: 'auth', namespace: 'guidance' },
+      hook_event_name: 'PostToolUse',
+    }, baseEnv(tmpDir));
+    const s = readState(tmpDir) as { memorySearched: boolean; memorySearchedBy: Record<string, boolean> };
+    expect(s.memorySearched).toBe(true);
+    expect(s.memorySearchedBy['subagent-Z']).toBe(true);
+  });
+});
+
 // ── Settings.json PostToolUse Matcher Validation ────────────────────────────
 // Verifies that the hook matchers in settings.json correctly match MCP tool names.
 // This catches the class of bug where a generic matcher is shadowed by a specific one.

@@ -25,6 +25,13 @@ try { if (stdinData.trim()) hookContext = JSON.parse(stdinData); } catch (e) {}
 // Pass tool info as env vars for gate.cjs
 var env = Object.assign({}, process.env);
 if (hookContext.tool_name) env.TOOL_NAME = hookContext.tool_name;
+// Forward Claude Code's session_id so gate.cjs can enforce memory-first
+// per-actor (#838) — each spawned subagent gets its own session_id, so a
+// shared workflow-state.json no longer lets one subagent's directive be
+// silently satisfied by the parent's earlier search.
+if (typeof hookContext.session_id === 'string' && hookContext.session_id) {
+  env.HOOK_SESSION_ID = hookContext.session_id;
+}
 if (hookContext.tool_input && typeof hookContext.tool_input === 'object') {
   Object.keys(hookContext.tool_input).forEach(function(key) {
     if (typeof hookContext.tool_input[key] === 'string') {
