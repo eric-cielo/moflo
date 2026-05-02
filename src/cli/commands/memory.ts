@@ -2932,11 +2932,77 @@ const refreshCommand: Command = {
   },
 };
 
+// Manual recovery for legacy DBs the launcher's auto cherry-pick can't reach
+// — schema mismatches that made the auto-run skip, an even older legacy DB
+// the candidate list doesn't include, or a friend's exported DB.
+const restoreLearningsCommand: Command = {
+  name: 'restore-learnings',
+  description: 'Cherry-pick learnings/knowledge entries from a legacy DB into .moflo/moflo.db',
+  options: [
+    {
+      name: 'from',
+      description: 'Path to the legacy DB to read from (e.g. .swarm/memory.db)',
+      type: 'string',
+      required: true,
+    },
+  ],
+  examples: [
+    { command: 'flo memory restore-learnings --from .swarm/memory.db', description: 'Recover from a legacy memory DB' },
+    { command: 'flo memory restore-learnings --from .swarm/memory.db.bak', description: 'Recover from a post-upgrade .bak' },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const from = ctx.flags.from as string;
+    if (!from) {
+      output.printError('Source DB path is required. Use --from <path>');
+      return { success: false, exitCode: 1 };
+    }
+    const sourcePath = pathModule.resolve(from);
+    if (!fs.existsSync(sourcePath)) {
+      output.printError(`Source DB not found: ${sourcePath}`);
+      return { success: false, exitCode: 1 };
+    }
+
+    try {
+      const { cherryPickLearningsFromLegacy, CHERRY_PICK_SKIP_REASONS } = await import(
+        '../services/cherry-pick-learnings.js'
+      );
+      const result = await cherryPickLearningsFromLegacy({
+        projectRoot: process.cwd(),
+        legacyPaths: [sourcePath],
+      });
+      const report = result.sources[0];
+      if (report?.reason === CHERRY_PICK_SKIP_REASONS.SCHEMA_MISMATCH) {
+        output.printWarning(`Source DB has no memory_entries table — nothing to copy: ${sourcePath}`);
+        return { success: true, data: result };
+      }
+      if (report?.reason === CHERRY_PICK_SKIP_REASONS.OPEN_FAILED) {
+        output.printError(`Could not open source DB: ${sourcePath}`);
+        return { success: false, exitCode: 1, data: result };
+      }
+      output.printSuccess(
+        `Cherry-picked ${result.copied} of ${result.considered} learning/knowledge entries from ${sourcePath}`,
+      );
+      if (result.copied < result.considered) {
+        output.printInfo(
+          `${result.considered - result.copied} duplicate row${result.considered - result.copied === 1 ? '' : 's'} skipped (INSERT OR IGNORE)`,
+        );
+      }
+      output.printInfo(`Target: ${result.target}`);
+      return { success: true, data: result };
+    } catch (error) {
+      output.printError(
+        `restore-learnings failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return { success: false, exitCode: 1 };
+    }
+  },
+};
+
 // Main memory command
 export const memoryCommand: Command = {
   name: 'memory',
   description: 'Memory management commands',
-  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand],
+  subcommands: [initMemoryCommand, storeCommand, retrieveCommand, searchCommand, listCommand, deleteCommand, statsCommand, configureCommand, cleanupCommand, compressCommand, exportCommand, importCommand, indexGuidanceCommand, rebuildIndexCommand, codeMapCommand, refreshCommand, restoreLearningsCommand],
   options: [],
   examples: [
     { command: 'claude-flow memory store -k "key" -v "value"', description: 'Store data' },
@@ -2966,7 +3032,8 @@ export const memoryCommand: Command = {
       `${output.highlight('index-guidance')}  - Index .claude/guidance/ files with RAG segments`,
       `${output.highlight('rebuild-index')}   - Regenerate embeddings for memory entries`,
       `${output.highlight('code-map')}        - Generate structural code map`,
-      `${output.highlight('refresh')}         - Reindex all content, rebuild embeddings, cleanup, and vacuum`
+      `${output.highlight('refresh')}         - Reindex all content, rebuild embeddings, cleanup, and vacuum`,
+      `${output.highlight('restore-learnings')} - Cherry-pick learnings/knowledge from a legacy DB`
     ]);
 
     return { success: true };

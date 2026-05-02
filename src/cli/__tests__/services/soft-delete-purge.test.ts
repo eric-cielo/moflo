@@ -15,6 +15,7 @@ import { join } from 'node:path';
 
 import { purgeSoftDeletedEntries } from '../../services/soft-delete-purge.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
+import { makeLegacyDb as makeLegacyMemoryDb } from '../_helpers/legacy-memory-db.js';
 
 type SqlJsDb = {
   run(sql: string, params?: unknown[]): void;
@@ -57,34 +58,16 @@ async function makeTmpDb(setup: (db: SqlJsDb) => void): Promise<string> {
 }
 
 /**
- * Older moflo schema permitted `status='deleted'`. To simulate a real upgrade
- * scenario we need to seed tombstones using the legacy CHECK constraint, since
- * the current schema rejects the value outright (which is exactly what we test
- * separately below).
+ * Older moflo schema permitted `status='deleted'`. The shared helper uses
+ * the same legacy CHECK constraint we need to seed tombstones with, since
+ * the live V3 schema rejects the value outright (which is exactly what we
+ * test separately in the schema-rejection assertion).
  */
 async function makeLegacyDb(setup: (db: SqlJsDb) => void): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'moflo-purge-legacy-'));
   tmpDirs.push(dir);
   const dbPath = join(dir, 'memory.db');
-  const db = new SQL.Database();
-  db.run(`
-    CREATE TABLE memory_entries (
-      id TEXT PRIMARY KEY,
-      key TEXT NOT NULL,
-      namespace TEXT DEFAULT 'default',
-      content TEXT NOT NULL,
-      embedding TEXT,
-      embedding_model TEXT,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
-      updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
-      status TEXT DEFAULT 'active' CHECK(status IN ('active', 'archived', 'deleted')),
-      UNIQUE(namespace, key)
-    );
-  `);
-  setup(db);
-  const bytes = db.export();
-  db.close();
-  await writeFile(dbPath, Buffer.from(bytes));
+  await makeLegacyMemoryDb(SQL, dbPath, setup);
   return dbPath;
 }
 
