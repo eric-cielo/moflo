@@ -21,7 +21,7 @@ Restart Claude Code (or your MCP client). That's it — memory, indexing, gates,
 
 Or — just ask Claude to install MoFlo into your project and initialize it!
 
-To verify everything is running, ask Claude to run `flo doctor` with full diagnostics after restarting. If anything fails, ask Claude to fix it with `flo doctor --fix`.
+To verify everything is running, ask Claude to run `flo healer` with full diagnostics after restarting. If anything fails, ask Claude to fix it with `flo healer --fix`. (`flo doctor` is still accepted as an alias.)
 
 ## Opinionated Defaults
 
@@ -97,7 +97,7 @@ In interactive mode (`flo init` without `--yes`), it shows what it found and let
 If `flo init` detects an existing `.claude/settings.json` or `.claude-flow/` directory (from a prior Claude Flow or Ruflo installation), it treats the project as already initialized and runs in **update mode** — merging MoFlo's hooks and configuration into your existing setup without overwriting your data. Specifically:
 
 - **Hooks** — If your `.claude/settings.json` already has MoFlo-style gate hooks (`flo gate`), the hooks step is skipped. Otherwise, MoFlo's hooks are written into the file (existing non-MoFlo hooks are not removed).
-- **MCP servers** — MoFlo registers itself as the `moflo` server in `.mcp.json`. If you had `claude-flow` or `ruflo` MCP servers configured previously, those entries remain untouched — you can remove them manually once you've verified MoFlo is working. The `flo doctor` command checks for the `moflo` server specifically.
+- **MCP servers** — MoFlo registers itself as the `moflo` server in `.mcp.json`. If you had `claude-flow` or `ruflo` MCP servers configured previously, those entries remain untouched — you can remove them manually once you've verified MoFlo is working. The `flo healer` command checks for the `moflo` server specifically.
 - **Config files** — `moflo.yaml`, `CLAUDE.md`, and `.claude/skills/flo/` follow the same skip-if-exists logic. Use `--force` to regenerate them.
 
 To force a clean re-initialization over an existing setup:
@@ -162,7 +162,7 @@ code_map:
 ```bash
 flo memory index-guidance    # Index your guidance docs
 flo memory code-map          # Index your code structure
-flo doctor                   # Verify everything works
+flo healer                   # Verify everything works (alias: flo doctor)
 ```
 
 Both indexes run automatically at session start after this, so you only need to run them manually on first setup or after major structural changes. The first index may take a minute or two on large codebases (1,000+ files) but runs in the background — you can start working immediately. Subsequent indexes are incremental and typically finish in under a second. To reindex everything at once:
@@ -484,16 +484,18 @@ flo gate session-reset           # Reset gate state
 ### Diagnostics
 
 ```bash
-flo doctor                       # Quick health check (environment, deps, config)
-flo doctor --fix                 # Auto-fix issues (memory DB, daemon, config, MCP, zombies)
+flo healer                       # Quick health check (environment, deps, config)
+flo healer --fix                 # Auto-fix issues (memory DB, daemon, config, MCP, zombies)
 flo diagnose                     # Full integration test (memory, swarm, hive, hooks, neural)
 flo diagnose --suite memory      # Run only memory tests
 flo diagnose --json              # JSON output for CI/automation
 ```
 
-#### `flo doctor` — Health Check
+`flo doctor` is still accepted as an alias for `flo healer` — every flag and subcommand below works under either name.
 
-`flo doctor` runs 28 parallel health checks against your environment and reports pass/warn/fail for each:
+#### `flo healer` — Health Check
+
+`flo healer` runs 28 parallel health checks against your environment and reports pass/warn/fail for each:
 
 | Check | What it verifies |
 |-------|-----------------|
@@ -526,7 +528,7 @@ flo diagnose --json              # JSON output for CI/automation
 | **MofloDb Bridge** | Memory DB adapter (sql.js + HNSW) is wired and routable |
 | **Sandbox Tier** | Detects which sandbox backend is available (Docker / bwrap / sandbox-exec / none) |
 
-**Auto-fix mode** (`flo doctor --fix`) attempts to repair each failing check automatically:
+**Auto-fix mode** (`flo healer --fix`) attempts to repair each failing check automatically:
 
 | Issue | What `--fix` does |
 |-------|------------------|
@@ -539,21 +541,21 @@ flo diagnose --json              # JSON output for CI/automation
 | Claude Code CLI missing | Installs `@anthropic-ai/claude-code` globally |
 | Zombie processes | Kills orphaned MoFlo processes (tracked + OS-level scan) |
 
-After auto-fixing, doctor re-runs all checks and shows the updated results. Issues that can't be fixed automatically are listed with manual fix commands.
+After auto-fixing, healer re-runs all checks and shows the updated results. Issues that can't be fixed automatically are listed with manual fix commands.
 
 Additional flags:
 
 ```bash
-flo doctor --install             # Auto-install missing Claude Code CLI
-flo doctor --kill-zombies        # Find and kill orphaned MoFlo processes
-flo doctor -c memory             # Check only a specific component
-flo doctor -c embeddings         # Check only embeddings health
-flo doctor --verbose             # Verbose output
+flo healer --install             # Auto-install missing Claude Code CLI
+flo healer --kill-zombies        # Find and kill orphaned MoFlo processes
+flo healer -c memory             # Check only a specific component
+flo healer -c embeddings         # Check only embeddings health
+flo healer --verbose             # Verbose output
 ```
 
 #### `flo diagnose` — Integration Tests
 
-While `doctor` checks your environment, `diagnose` exercises every subsystem end-to-end: memory CRUD, embedding generation, semantic search, swarm lifecycle, hive-mind consensus, task management, hooks, config, neural patterns, and init idempotency. All test data is cleaned up after each test — nothing is left behind.
+While `healer` checks your environment, `diagnose` exercises every subsystem end-to-end: memory CRUD, embedding generation, semantic search, swarm lifecycle, hive-mind consensus, task management, hooks, config, neural patterns, and init idempotency. All test data is cleaned up after each test — nothing is left behind.
 
 ### GitHub Repository Setup
 
