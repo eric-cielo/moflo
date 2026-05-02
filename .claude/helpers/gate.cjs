@@ -6,7 +6,37 @@ var path = require('path');
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null };
+
+// Per-actor memory-search tracking (#838). The legacy `memorySearched` boolean
+// is session-wide, so once the parent searches memory, every spawned subagent
+// inherits the satisfied flag and the directive's "WILL BLOCK" promise becomes
+// false. When gate-hook.mjs forwards Claude Code's stdin `session_id` as
+// HOOK_SESSION_ID, prefer the per-session map so each subagent must search
+// memory itself before its first Glob/Grep/Read. Falls back to the legacy
+// boolean when no session id is present (CLI invocations, tests, older hosts).
+function isMemorySearchedFor(state) {
+  var sid = process.env.HOOK_SESSION_ID || '';
+  if (sid) {
+    var map = state.memorySearchedBy || {};
+    return map[sid] === true;
+  }
+  return state.memorySearched === true;
+}
+
+// Stamp the legacy bool plus (when HOOK_SESSION_ID is set) the per-actor map.
+// Returns true if anything actually changed — callers gate writeState() on it
+// to avoid redundant fsyncs in tight bash-memory loops.
+function markMemorySearched(state) {
+  var sid = process.env.HOOK_SESSION_ID || '';
+  var changed = false;
+  if (state.memorySearched !== true) { state.memorySearched = true; changed = true; }
+  if (sid) {
+    if (!state.memorySearchedBy) state.memorySearchedBy = {};
+    if (state.memorySearchedBy[sid] !== true) { state.memorySearchedBy[sid] = true; changed = true; }
+  }
+  return changed;
+}
 
 function readState() {
   try {
@@ -77,7 +107,7 @@ switch (command) {
   case 'check-before-scan': {
     if (!config.memory_first) break;
     var s = readState();
-    if (s.memorySearched || !s.memoryRequired) break;
+    if (!s.memoryRequired || isMemorySearchedFor(s)) break;
     var target = (process.env.TOOL_INPUT_pattern || '') + ' ' + (process.env.TOOL_INPUT_path || '');
     if (EXEMPT.some(function(p) { return target.indexOf(p) >= 0; })) break;
     process.stderr.write('BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search.\n');
@@ -86,7 +116,7 @@ switch (command) {
   case 'check-before-read': {
     if (!config.memory_first) break;
     var s = readState();
-    if (s.memorySearched || !s.memoryRequired) break;
+    if (!s.memoryRequired || isMemorySearchedFor(s)) break;
     var fp = process.env.TOOL_INPUT_file_path || '';
     var isGuidance = fp.indexOf('.claude/guidance/') >= 0 || fp.indexOf('.claude\\guidance\\') >= 0;
     if (!isGuidance && EXEMPT.some(function(p) { return fp.indexOf(p) >= 0; })) break;
@@ -102,18 +132,14 @@ switch (command) {
   }
   case 'record-memory-searched': {
     var s = readState();
-    if (!s.memorySearched) {
-      s.memorySearched = true;
-      writeState(s);
-    }
+    if (markMemorySearched(s)) writeState(s);
     break;
   }
   case 'check-bash-memory': {
     var cmd = process.env.TOOL_INPUT_command || '';
     if (/semantic-search|memory search|memory retrieve|memory-search/.test(cmd)) {
       var s = readState();
-      s.memorySearched = true;
-      writeState(s);
+      if (markMemorySearched(s)) writeState(s);
     }
     break;
   }
@@ -196,6 +222,9 @@ switch (command) {
   case 'prompt-reminder': {
     var s = readState();
     s.memorySearched = false;
+    // Wipe per-actor memory tracking too — a new user prompt is a fresh window
+    // for both parent AND any subagents the parent may spawn during this turn.
+    s.memorySearchedBy = {};
     // learningsStored is session-scoped — once stored, it stays true until session reset.
     // Resetting per-prompt caused false blocks when PR creation was on a later prompt.
     var prompt = process.env.CLAUDE_USER_PROMPT || '';
@@ -218,7 +247,7 @@ switch (command) {
     break;
   }
   case 'session-reset': {
-    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null });
+    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null });
     break;
   }
   default:
