@@ -20,6 +20,7 @@ import { cherryPickLearningsFromLegacy } from '../../services/cherry-pick-learni
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
 import {
   makeLegacyDb as makeLegacyMemoryDb,
+  makeMemoryDb,
   type SqlJsLikeDb as SqlJsDb,
   type SqlJsLikeStatic as SqlJsStatic,
 } from '../_helpers/legacy-memory-db.js';
@@ -49,24 +50,12 @@ async function makeRoot(): Promise<string> {
   return dir;
 }
 
-async function makeLegacyDb(
-  setup: (db: SqlJsDb) => void,
-  dbPath: string,
-): Promise<void> {
-  await makeLegacyMemoryDb(SQL, dbPath, setup);
+// Local shims that close over `SQL` so individual cases stay readable.
+function makeLegacyDb(setup: (db: SqlJsDb) => void, dbPath: string): Promise<void> {
+  return makeLegacyMemoryDb(SQL, dbPath, setup);
 }
-
-async function makeV3Db(
-  setup: (db: SqlJsDb) => void,
-  dbPath: string,
-): Promise<void> {
-  await mkdir(dirname(dbPath), { recursive: true });
-  const db = new SQL.Database();
-  db.run(MEMORY_SCHEMA_V3);
-  setup(db);
-  const bytes = db.export();
-  db.close();
-  await writeFile(dbPath, Buffer.from(bytes));
+function makeV3Db(setup: (db: SqlJsDb) => void, dbPath: string): Promise<void> {
+  return makeMemoryDb(SQL, dbPath, MEMORY_SCHEMA_V3, setup);
 }
 
 function readNamespaceCounts(bytes: Uint8Array): Record<string, number> {

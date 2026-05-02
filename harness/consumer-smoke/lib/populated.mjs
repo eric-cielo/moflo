@@ -515,9 +515,10 @@ function assertCherryPickAnnouncement(stdout) {
 }
 
 function assertLauncherAnnouncements(stdout) {
+  // The knowledge consolidation + legacy purge migrations run on `.moflo/moflo.db`
+  // AFTER cherry-pick. Cherry-pick copies `learnings` + `knowledge` rows
+  // forward, so those migrations have real work to announce on this profile.
   const expected = [
-    { fragment: 'soft-deleted', label: 'announce-softdelete-purge' },
-    { fragment: 'ephemeral namespace', label: 'announce-ephemeral-purge' },
     { fragment: 'consolidated knowledge', label: 'announce-knowledge-consolidation' },
     { fragment: 'removed legacy knowledge', label: 'announce-knowledge-purge' },
   ];
@@ -528,6 +529,23 @@ function assertLauncherAnnouncements(stdout) {
       record(`populated:${e.label}`, 'fail', `launcher stdout missing "${e.fragment}"`);
     }
   }
+
+  // The soft-delete + ephemeral-namespace purges (#728 / #729) run on
+  // `.moflo/moflo.db` too — but cherry-pick is selective, so neither
+  // `status='deleted'` rows nor ephemeral namespaces ever reach the target
+  // DB. Both purges correctly no-op for a fresh-install upgrade. The
+  // post-state assertions (`populated:deleted-purged`,
+  // `populated:ephemeral-purged`) confirm the rows are absent regardless;
+  // we don't expect a stdout banner because there was nothing to clean.
+  for (const fragment of ['soft-deleted', 'ephemeral namespace']) {
+    if (stdout.includes(fragment)) {
+      record(`populated:announce-no-legacy-purge-${fragment.replace(/\s+/g, '-')}`, 'fail',
+        `launcher emitted "${fragment}" — derived rows leaked into .moflo/moflo.db so a purge had work, regression of cherry-pick selectivity`);
+    } else {
+      record(`populated:announce-no-legacy-purge-${fragment.replace(/\s+/g, '-')}`, 'pass');
+    }
+  }
+
   // Pre-#851 banners must NOT fire — they signal the byte-copy migration is back.
   for (const fragment of ['migrated', 'relocated memory db']) {
     if (stdout.split('\n').some((l) => l.startsWith('moflo:') && l.includes(fragment))) {

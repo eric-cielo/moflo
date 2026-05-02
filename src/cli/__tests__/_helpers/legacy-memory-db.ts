@@ -47,19 +47,29 @@ export interface SqlJsLikeStatic {
 }
 
 /**
- * Build an in-memory legacy DB, run `setup` against it, and write the bytes
- * to `dbPath`. Creates parent dirs as needed.
+ * Build an in-memory DB with `schema`, run `setup` against it, and write
+ * the bytes to `dbPath`. Creates parent dirs as needed.
  */
-export async function makeLegacyDb(
+export async function makeMemoryDb(
   SQL: SqlJsLikeStatic,
   dbPath: string,
+  schema: string,
   setup: (db: SqlJsLikeDb) => void,
 ): Promise<void> {
   await mkdir(dirname(dbPath), { recursive: true });
   const db = new SQL.Database();
-  db.run(LEGACY_MEMORY_SCHEMA);
+  db.run(schema);
   setup(db);
   const bytes = db.export();
   db.close();
   await writeFile(dbPath, Buffer.from(bytes));
+}
+
+/** Convenience wrapper using the legacy CHECK schema. */
+export function makeLegacyDb(
+  SQL: SqlJsLikeStatic,
+  dbPath: string,
+  setup: (db: SqlJsLikeDb) => void,
+): Promise<void> {
+  return makeMemoryDb(SQL, dbPath, LEGACY_MEMORY_SCHEMA, setup);
 }
