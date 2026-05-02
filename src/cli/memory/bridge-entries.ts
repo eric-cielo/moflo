@@ -9,7 +9,7 @@
  */
 
 import { cosineSim, execRows, generateId, persistBridgeDb, refreshVectorStatsCache, withDb } from './bridge-core.js';
-import { embeddingResponseFrom, resolveBridgeEmbedding } from './bridge-embedder.js';
+import { embeddingResponseFrom, getBridgeEmbedder, resolveBridgeEmbedding } from './bridge-embedder.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 
 function makeEntryCacheKey(namespace: string, key: string): string {
@@ -337,17 +337,6 @@ export async function bridgeSearchEntries(options: {
     const { query: queryStr, namespace = 'default', limit = 10, threshold = 0.3 } = options;
     const startTime = Date.now();
 
-    let queryEmbedding: number[] | null = null;
-    try {
-      const embedder = ctx.mofloDb.embedder;
-      if (embedder) {
-        const emb = await embedder.embed(queryStr);
-        queryEmbedding = Array.from(emb);
-      }
-    } catch {
-      // Fall back to keyword search
-    }
-
     const nsFilter = namespace !== 'all' ? `AND namespace = ?` : '';
 
     let rows: Record<string, unknown>[];
@@ -361,6 +350,26 @@ export async function bridgeSearchEntries(options: {
       rows = namespace !== 'all' ? execRows(ctx.db, sql, [namespace]) : execRows(ctx.db, sql);
     } catch {
       return null;
+    }
+
+    // Skip the embed call when there's nothing to score against — fastembed
+    // is the dominant cost in this function (~50–200ms cold).
+    if (rows.length === 0) {
+      return { success: true, results: [], searchTime: Date.now() - startTime };
+    }
+
+    // ctx.mofloDb only carries { database, close } — `embedder` was always
+    // undefined here, silently dropping search to BM25-only and missing
+    // semantically-related rows (#837). Use the bridge embedder directly so
+    // the read path mirrors the write path. Same fix #648 applied to
+    // bridgeGenerateEmbedding.
+    let queryEmbedding: number[] | null = null;
+    try {
+      const embedder = getBridgeEmbedder();
+      const emb = await embedder.embed(queryStr);
+      queryEmbedding = Array.from(emb);
+    } catch {
+      // Fall back to keyword search
     }
 
     const queryTerms = queryStr.toLowerCase().split(/\s+/).filter(t => t.length > 1);

@@ -17,7 +17,7 @@ import {
   _resetBridgeEmbedderCacheForTest,
   type BridgeEmbedder,
 } from '../memory/bridge-embedder.js';
-import { bridgeStoreEntry } from '../memory/bridge-entries.js';
+import { bridgeSearchEntries, bridgeStoreEntry } from '../memory/bridge-entries.js';
 import { _resetProjectRootForTest, execRows, getDb } from '../memory/bridge-core.js';
 import { shutdownBridge, getControllerRegistry } from '../memory/memory-bridge.js';
 
@@ -264,5 +264,79 @@ describe('refreshVectorStatsCache — missing counter (#649)', () => {
     const stats = JSON.parse(fs.readFileSync(statsPath, 'utf-8'));
     expect(stats.vectorCount).toBe(1);
     expect(stats.missing).toBe(2);
+  });
+});
+
+describe('bridgeSearchEntries — query embedder wiring (#837 Defect A)', () => {
+  it("uses the bridge embedder for the query, not the missing ctx.mofloDb.embedder", async () => {
+    const fixedVec = new Float32Array(384).fill(0.1);
+    const embedSpy = vi.fn(async () => fixedVec);
+    setBridgeEmbedderForTest({
+      model: 'fast-all-MiniLM-L6-v2',
+      dimensions: 384,
+      embed: embedSpy,
+    });
+
+    await bridgeStoreEntry({
+      key: 'probe',
+      value: 'subagent reaches MCP memory store path',
+      namespace: 'memdiag',
+      dbPath,
+    });
+
+    const writeCalls = embedSpy.mock.calls.length;
+
+    const result = await bridgeSearchEntries({
+      query: 'totally unrelated wording about banana logistics',
+      namespace: 'memdiag',
+      threshold: 0,
+      dbPath,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.success).toBe(true);
+    expect(embedSpy.mock.calls.length).toBe(writeCalls + 1);
+    expect(result?.searchMethod).toBe('hybrid-bm25-semantic');
+    expect(result?.results.length).toBeGreaterThan(0);
+    expect(result?.results[0]?.score).toBeGreaterThan(0.6);
+  });
+
+  it("threshold: 0 returns matches even when score is below the default 0.3", async () => {
+    // Orthogonal unit vectors with disjoint query terms keep total score
+    // below 0.3 regardless of weighting — exercises the threshold gate, not
+    // similarity ranking.
+    const storeVec = new Float32Array(384);
+    storeVec[0] = 1;
+    const queryVec = new Float32Array(384);
+    queryVec[1] = 1;
+
+    setBridgeEmbedderForTest({
+      model: 'fast-all-MiniLM-L6-v2',
+      dimensions: 384,
+      embed: vi.fn(async (text: string) => (text.includes('store-side') ? storeVec : queryVec)),
+    });
+
+    await bridgeStoreEntry({
+      key: 'low-sim',
+      value: 'store-side content with no overlap',
+      namespace: 'memdiag',
+      dbPath,
+    });
+
+    const filtered = await bridgeSearchEntries({
+      query: 'wholly different text',
+      namespace: 'memdiag',
+      dbPath,
+    });
+    expect(filtered?.results.length).toBe(0);
+
+    const unfiltered = await bridgeSearchEntries({
+      query: 'wholly different text',
+      namespace: 'memdiag',
+      threshold: 0,
+      dbPath,
+    });
+    expect(unfiltered?.results.length).toBe(1);
+    expect(unfiltered?.results[0]?.key).toBe('low-sim');
   });
 });
