@@ -24,7 +24,7 @@
  * justification. Mirrors the SKILLS_MAP-integrity pattern from #690.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -234,6 +234,13 @@ function findConsumers(tool: RegisteredTool): string[] {
 }
 
 describe('MCP Tools Drift Guard (#693)', () => {
+  // #847: warm the lazy corpus + consumer-index memos in beforeAll so the
+  // ~350ms-in-isolation / 5s+-under-load AST work doesn't burn the per-test
+  // 5s budget. Vitest's hookTimeout (10s) covers this comfortably.
+  beforeAll(() => {
+    getConsumerIndex(); // also triggers getCorpus() via buildConsumerIndex()
+  });
+
   it('every registered MCP tool has a real consumer, allowlist, or follow-up entry', () => {
     const tools = collectRegisteredTools();
     expect(tools.length).toBeGreaterThan(0);

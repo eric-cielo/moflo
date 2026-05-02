@@ -18,7 +18,12 @@ import {
   type SandboxCapability,
 } from '../spells/core/platform-sandbox.js';
 
-describe('doctor sandbox tier diagnostic', { timeout: 15_000 }, () => {
+// 30s per-test timeout: `resetSandboxCache clears the cache` makes TWO cold
+// detection calls back-to-back. On Windows under isolation-batch load each
+// call can hit BINARY_EXISTS_TIMEOUT_MS (10s) + DOCKER_DAEMON_TIMEOUT_MS (15s)
+// in platform-sandbox.ts, so 15s wasn't enough headroom. 30s is the project
+// ceiling for per-test timeouts (feedback_no_test_timeout_bumps).
+describe('doctor sandbox tier diagnostic', { timeout: 30_000 }, () => {
   afterEach(() => {
     resetSandboxCache();
     vi.restoreAllMocks();
