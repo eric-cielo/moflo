@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claude can slay dragons, but it needs the flo state</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --fg: #1f2328;
+      --fg-muted: #57606a;
+      --bg: #faf9f6;
+      --accent: #b91c1c;
+      --accent-hover: #7f1d1d;
+      --code-bg: #f1ece4;
+      --code-fg: #1f2328;
+      --rule: #e3dfd8;
+      --shadow: 0 1px 2px rgba(20, 20, 20, 0.04), 0 4px 16px rgba(20, 20, 20, 0.06);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.65;
+      color: var(--fg);
+      max-width: 740px;
+      margin: 3rem auto;
+      padding: 0 1.5rem 4rem;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    h1, h2, h3 {
+      font-weight: 700;
+      letter-spacing: -0.018em;
+      line-height: 1.22;
+      color: var(--fg);
+    }
+    h1 {
+      font-size: 2.25rem;
+      margin: 1.25rem 0 1rem;
+    }
+    h2 {
+      font-size: 1.45rem;
+      margin: 2.5rem 0 0.75rem;
+      padding-top: 0.25rem;
+    }
+    p {
+      margin: 0.95rem 0;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(185, 28, 28, 0.35);
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    a:hover {
+      color: var(--accent-hover);
+      border-bottom-color: var(--accent-hover);
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+    code {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      box-shadow: inset 0 0 0 1px rgba(31, 35, 40, 0.04);
+      margin: 1.25rem 0;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+    ul, ol {
+      padding-left: 1.5rem;
+      margin: 0.75rem 0;
+    }
+    li {
+      margin: 0.4rem 0;
+    }
+    li::marker {
+      color: var(--fg-muted);
+    }
+    em {
+      font-style: italic;
+      color: var(--fg);
+    }
+    strong {
+      font-weight: 600;
+      color: var(--fg);
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--rule);
+      margin: 2rem 0;
+    }
+    h1 + p em {
+      color: var(--fg-muted);
+    }
+    @media (max-width: 600px) {
+      body { font-size: 16px; margin: 1.5rem auto; }
+      h1 { font-size: 1.75rem; }
+      h2 { font-size: 1.25rem; }
+    }
+  </style>
+</head>
+<body>
+
+<p><img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/moflo_dragon_2.png" alt="MoFlo — Claude entering the flo state to battle dragons" /></p>
+
+<h1>Claude can slay dragons, but it needs the flo state</h1>
+
+<p><em>An update on what's new in <a href="https://github.com/eric-cielo/moflo">MoFlo</a> — the open-source npm package that upgrades Claude Code with full project knowledge, persistent memory, 
+  sandboxed automation, and a swarm of agents that actually stay wired together.</em></p>
+
+<hr />
+
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+
+<hr/>
+
+<p>Coding with Claude Code feels a lot like sending adventurers into a dungeon. On a good day, the dragon dies and you walk out with the loot.
+  On a bad day, your heroes forget the map between rooms, pick fights they can't win, and burn half their potions rediscovering a corridor they cleared yesterday.</p>
+
+<p><strong>MoFlo is the buff stack.</strong> It gives Claude:</p>
+<ul>
+  <li>Access to all of your project guidance, patterns, code, and intel, quickly</li>
+  <li>Memory that survives sessions</li>
+  <li>A party of specialist agents that coordinate instead of battling each other</li>
+  <li>Sandboxing so the dragon can't escape into your filesystem</li>
+</ul>
+
+<p>The last few releases have been a heavy refactor of the engine room. There was significant rework and, yes, some associated churn. Now we're stronger and lighter than ever, and it's worth showing what changed.</p>
+
+<h2>One database to rule them all: MoFlo DB</h2>
+
+<p>The biggest invisible upgrade is the storage layer. Memory, swarm coordination, hive-mind state, AIDefence threat patterns, learned routing outcomes — all of it now lives in a single
+  <code>sql.js + HNSW</code> store at <code>.moflo/moflo.db</code>.</p>
+
+<ul>
+  <li><strong>It consumes everything that matters</strong> — project guidance, reusable patterns, code maps (exports, classes, functions, types), test-to-source mappings, and a continuously updated stream of learnings from <em>both</em> Claude and the humans on the team. A correction you make once, a convention you write down, a routing decision that worked: all of it lands in the same index and shows up the next time it's relevant.</li>
+  <li><strong>HNSW vector indexing</strong> — semantic search runs 150x to 12,500x faster than brute-force cosine, depending on project size.</li>
+  <li><strong>Neural embeddings by default</strong> — <code>fastembed</code> with the <code>all-MiniLM-L6-v2</code> 384-dim model, ONNX runtime, native Rust tokenizer. Hash-based "fake" embeddings are gone. If a search returns a result, it's because the meaning matched, not because the bytes did.</li>
+  <li><strong>One store, many consumers</strong> — the embeddings cache, knowledge graph, RVF/SONA learning store, and the auto-memory bridge all share the same database file. Backups are a single <code>cp</code>.</li>
+</ul>
+
+<p>This matters because the entire MoFlo experience — the memory-first gates, the learned task routing, the "/flo" issue-to-PR workflow — sits on top of this index. 
+  Making it fast and unified is what lets the upper layers stop being clever and just be useful.</p>
+
+<h2>Swarm and hive-mind, rewritten from the ground up</h2>
+
+<p>The multi-agent layer has been rebuilt around a single canonical engine: <code>UnifiedSwarmCoordinator</code>. Every coordination MCP tool now routes through it, 
+  with a write-through persistence adapter so state survives crashes, restarts, and process boundaries.</p>
+
+<ul>
+  <li><code>agent_spawn</code>, <code>agent_list</code>, <code>agent_status</code>, <code>agent_terminate</code>, <code>agent_pool</code>, <code>agent_health</code> — all driven by the coordinator.</li>
+  <li><code>swarm_init</code>, <code>swarm_status</code>, <code>swarm_health</code>, <code>swarm_scale</code> — same engine, same source of truth.</li>
+  <li>A new <code>task_*</code> family (7 MCP tools) handles distribution, execution, cancellation, and status through the coordinator's task orchestrator.</li>
+  <li>Hive-mind sits on top: <code>hive-mind_*</code> routes through a MessageBus with a write-through adapter, and workers register against the shared coordinator. 
+    The Queen delegates, the workers swarm, every message is durable.</li>
+  <li>End-to-end system tests exercise the whole wired path, and <code>flo doctor</code> ships functional tripwires that fail loudly if any of it ever drifts.</li>
+</ul>
+
+<p>For a developer, the headline is simple: when you ask Claude to send a 5-agent party at a feature, the party shows up, divides the work, 
+  and reports back through a single coherent state machine — no parallel work stomping on shared files, no agents that quietly forgot what they were doing.</p>
+
+<h2>Spells: scripted automation with real sandboxing</h2>
+
+<p>MoFlo's automation primitive is a <strong>spell</strong> — a YAML or JSON file that composes step commands (<code>bash</code>, <code>github</code>, <code>browser</code>, <code>memory</code>, <code>agent</code>, <code>condition</code>, <code>loop</code>, <code>parallel</code>, IMAP, Slack, MCP) into a runnable workflow. Spells back the <code>/flo</code> issue runner, the epic orchestrator, scheduled jobs, and any custom automation you write.</p>
+
+<p>Because spells can run unattended, they ship with 3 independent layers of defense:</p>
+
+<ol>
+  <li><strong>Command denylist</strong> — catastrophic patterns (<code>rm -rf /</code>, <code>git push --force main</code>, <code>chmod -R 777</code>, fork bombs, <code>curl | sh</code>) are blocked before any step executes, on every platform.</li>
+  <li><strong>Capability gateway</strong> — every step declares the capabilities it needs (<code>fs:read</code>, <code>fs:write</code>, <code>net</code>, <code>shell</code>, <code>memory</code>, <code>credentials</code>, <code>browser</code>, <code>agent</code>). The runner blocks any I/O the step didn't declare. Spell authors can <em>narrow</em> a default but never expand it.</li>
+  <li><strong>OS-level process isolation</strong> — bash steps are wrapped automatically: <code>bwrap</code> on Linux, <code>sandbox-exec</code> on macOS, Docker on Windows. Read-only root, network blocked unless declared, PID isolation, writable mounts only on paths the step asked for.</li>
+</ol>
+
+<p>The contract for an agent running inside a spell is brutally simple: <em>do what the step says, nothing more.</em> A <code>CAPABILITY_DENIED</code> error is intentional, not a problem to engineer around. That's what makes a scheduled spell safe to deploy at 3 a.m.</p>
+
+<h2>AIDefence: a guard at the prompt boundary</h2>
+
+<p>AIDefence is now bundled in the same tarball, sharing the same MoFlo DB. It exposes 6 MCP tools (<code>aidefence_scan</code>, <code>aidefence_analyze</code>, <code>aidefence_stats</code>, <code>aidefence_learn</code>, <code>aidefence_is_safe</code>, <code>aidefence_has_pii</code>) with sub-millisecond detection on 50+ built-in patterns: prompt injection, jailbreak attempts, role-switching, encoding tricks, PII leaks (emails, SSNs, API keys, credit cards).</p>
+
+<p>It's self-learning. When you mark a detection accurate or note which mitigation worked, that feedback lands in the same HNSW store and tunes future detections. New threats become old patterns over time.</p>
+
+<h2>Lighter, leaner, fewer moving parts</h2>
+
+<p>Earlier MoFlo (and its upstream cousins) carried a workspace of <code>@moflo/*</code> packages and optional native dependencies — agentdb, agentic-flow, ruvector, ONNX, sharp — that quietly pulled in roughly a gigabyte of runtime when fully installed. That made sense once. It doesn't anymore.</p>
+
+<ul>
+  <li><strong>Workspace collapse (epic #586)</strong> folded <code>@moflo/aidefence</code>, <code>@moflo/embeddings</code>, <code>@moflo/memory</code>, <code>@moflo/swarm</code>, <code>@moflo/spells</code>, <code>@moflo/shared</code>, and <code>@moflo/guidance</code> into a single <code>moflo</code> tarball. One package, one version, one install.</li>
+  <li><strong>AgentDB and agentic-flow are out</strong> (shipped in 4.8.80, smoke-harness-enforced in CI). Their roles were absorbed by MoFlo DB.</li>
+  <li><strong>Install size</strong> dropped from ~1 GB of fully-functional runtime to <strong>~82 MB</strong>, with no functional regression. Embeddings are mandatory and <em>always work</em>; there is no peer-optional dance.</li>
+</ul>
+
+<p>The whole stack runs locally — Node.js 22+, WASM and Rust/NAPI bindings, no GPU required, no cloud calls except to Claude itself. It's a <code>devDependency</code>; you never install it globally.</p>
+
+<h2>What you actually do</h2>
+
+<pre><code>npm install --save-dev moflo
+flo init</code></pre>
+
+<p>Then restart Claude Code. <code>flo init</code> writes the config, installs hooks, and indexes your docs and source. From there, the upgrades land automatically — <code>flo doctor</code> verifies the install, and session-start auto-applies any pending migrations. There are no approval prompts to babysit.</p>
+
+<p>Inside a Claude session you'll mostly notice 3 things: it stops re-exploring files it already knows, it routes work to the right specialist, and when you say <code>/flo 42</code> it picks up GitHub issue 42 and drives it to a PR — sandboxed, tested, simplified, and tracked in the task list.</p>
+
+<h2>Why this update matters</h2>
+
+<p>The dragon metaphor isn't just whimsy. The biggest failures of agentic coding aren't the model being wrong — they're <em>orchestration failures</em>: forgotten context, parallel agents stepping on each other, automation that escapes its lane, dependencies that bloat the install until nobody trusts the upgrade button. Every change above is aimed at one of those.</p>
+
+<p>MoFlo is, and will stay, free and open source. If your Claude Code sessions feel like they're starting cold every morning, or your automated workflows feel one bad command away from disaster, this is the buff stack worth trying.</p>
+
+<p><strong>Ready to level up Claude? It's as simple as installing MoFlo.</strong>
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+</p>
+
+</body>
+</html>
