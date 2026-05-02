@@ -1243,8 +1243,7 @@ function formatCheck(check: HealthCheck): string {
   return `${icon} ${check.name}: ${check.message}`;
 }
 
-// Main doctor command. The `healer` alias plays into the spell/grimoire
-// theme — a wizardly healer diagnosing and mending the install.
+// Main doctor command
 export const doctorCommand: Command = {
   name: 'doctor',
   aliases: ['healer'],

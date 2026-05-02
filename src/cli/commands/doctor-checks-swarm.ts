@@ -12,29 +12,23 @@
  * the dev tree and in `node_modules/moflo/...` consumer installs.
  */
 
-import { errorDetail } from '../shared/utils/error-detail.js';
-import { findModule, toImportUrl, type HealthCheck } from './doctor-checks-deep.js';
+import {
+  type FunctionalCheckDetail,
+  type FunctionalHealthCheck,
+  type ToolHandler,
+  loadToolArrays,
+  getTool,
+  safeInvoke,
+  summarizeFunctional,
+} from './doctor-checks-functional-shared.js';
 
-export interface FunctionalCheckDetail {
-  id: string;
-  mcpTool: string;
-  status: 'pass' | 'warn' | 'fail';
-  observed?: unknown;
-  expected: string;
-  message?: string;
-}
-
-export interface FunctionalHealthCheck extends HealthCheck {
-  details?: FunctionalCheckDetail[];
-}
-
-interface ToolHandler {
-  name: string;
-  handler?: (input: Record<string, unknown>, ctx?: unknown) => Promise<unknown>;
-}
+// Re-exported for callers that imported these from doctor-checks-swarm.ts
+// (tests, other doctor checks) before the shared module was extracted.
+export type { FunctionalCheckDetail, FunctionalHealthCheck };
 
 const SWARM_FUNCTIONAL_CHECK = 'Swarm Functional';
 const HIVE_FUNCTIONAL_CHECK = 'Hive-Mind Functional';
+const SWARM_FAIL_FIX = 'Run `flo doctor --json` for per-subcheck details; investigate any handler that disconnected from UnifiedSwarmCoordinator (epic #798)';
 
 /**
  * Stub-sentinel pattern for the #798 regression:
@@ -45,99 +39,11 @@ const HIVE_FUNCTIONAL_CHECK = 'Hive-Mind Functional';
  */
 const STUB_SWARM_ID_PATTERN = /^swarm-\d+$/;
 
-async function loadToolArrays(rels: Record<string, string>): Promise<Record<string, ToolHandler[]> | null> {
-  const paths: Record<string, string> = {};
-  for (const [k, rel] of Object.entries(rels)) {
-    const p = findModule(rel);
-    if (!p) return null;
-    paths[k] = p;
-  }
-  const entries = await Promise.all(
-    Object.entries(paths).map(async ([k, p]) => [k, await import(toImportUrl(p))] as const),
-  );
-  const out: Record<string, ToolHandler[]> = {};
-  for (const [k, mod] of entries) {
-    const arrName = Object.keys(mod).find(name => Array.isArray(mod[name]) && mod[name].every((t: unknown) => typeof (t as ToolHandler)?.name === 'string'));
-    if (!arrName) return null;
-    out[k] = mod[arrName] as ToolHandler[];
-  }
-  return out;
-}
-
-function getTool(tools: ToolHandler[], name: string): ToolHandler | undefined {
-  return tools.find(t => t.name === name);
-}
-
-interface Expectation {
-  id: string;
-  mcpTool: string;
-  expected: string;
-  /** Return null on pass, or a failure-reason string. */
-  assert: (out: unknown) => string | null;
-  /** When set, return value triggers `warn` instead of `fail` (environmental, not a regression). */
-  softFailMessage?: (out: unknown) => string | null;
-}
-
-async function safeInvoke(
-  tools: ToolHandler[],
-  name: string,
-  input: Record<string, unknown>,
-  details: FunctionalCheckDetail[],
-  ex: Expectation,
-): Promise<unknown> {
-  const tool = getTool(tools, name);
-  if (!tool?.handler) {
-    details.push({
-      id: ex.id, mcpTool: ex.mcpTool, status: 'fail',
-      observed: { reason: 'tool-not-registered' }, expected: ex.expected,
-      message: `MCP tool "${name}" not registered in the loaded tool array`,
-    });
-    return undefined;
-  }
-  try {
-    const out = await tool.handler(input);
-    const softReason = ex.softFailMessage?.(out);
-    if (softReason) {
-      details.push({ id: ex.id, mcpTool: ex.mcpTool, status: 'warn', observed: out, expected: ex.expected, message: softReason });
-      return out;
-    }
-    const failReason = ex.assert(out);
-    details.push(failReason
-      ? { id: ex.id, mcpTool: ex.mcpTool, status: 'fail', observed: out, expected: ex.expected, message: failReason }
-      : { id: ex.id, mcpTool: ex.mcpTool, status: 'pass', observed: out, expected: ex.expected },
-    );
-    return out;
-  } catch (err) {
-    const detail = errorDetail(err, { firstLineOnly: true });
-    details.push({
-      id: ex.id, mcpTool: ex.mcpTool, status: 'fail',
-      observed: { error: detail }, expected: ex.expected,
-      message: `handler threw: ${detail}`,
-    });
-    return undefined;
-  }
-}
-
 function summarize(name: string, details: FunctionalCheckDetail[]): FunctionalHealthCheck {
-  const fails = details.filter(d => d.status === 'fail');
-  const warns = details.filter(d => d.status === 'warn');
-  if (fails.length > 0) {
-    const first = fails[0];
-    return {
-      name, status: 'fail',
-      message: `${fails.length}/${details.length} subcheck(s) failed (e.g. ${first.id} via ${first.mcpTool}: ${first.message ?? first.expected})`,
-      fix: 'Run `flo doctor --json` for per-subcheck details; investigate any handler that disconnected from UnifiedSwarmCoordinator (epic #798)',
-      details,
-    };
-  }
-  if (warns.length > 0) {
-    return {
-      name, status: 'warn',
-      message: `${details.length - warns.length}/${details.length} pass; ${warns.length} degraded (likely environment, not regression)`,
-      details,
-    };
-  }
-  return { name, status: 'pass', message: `${details.length} subchecks OK (coordinator path verified)`, details };
+  return summarizeFunctional(name, details, {
+    passSuffix: '(coordinator path verified)',
+    failFix: SWARM_FAIL_FIX,
+  });
 }
 
 // ============================================================================

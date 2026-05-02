@@ -24,51 +24,19 @@
  */
 
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { type HealthCheck } from './doctor-checks-deep.js';
 import {
-  findModule,
-  toImportUrl,
-  type HealthCheck,
-} from './doctor-checks-deep.js';
-import type {
-  FunctionalCheckDetail,
-  FunctionalHealthCheck,
-} from './doctor-checks-swarm.js';
-
-interface ToolHandler {
-  name: string;
-  handler?: (input: Record<string, unknown>, ctx?: unknown) => Promise<unknown>;
-}
+  type FunctionalCheckDetail,
+  type FunctionalHealthCheck,
+  type ToolHandler,
+  loadToolArrays,
+  getTool,
+  pushDetail,
+  summarizeFunctional,
+} from './doctor-checks-functional-shared.js';
 
 const MEMORY_ACCESS_CHECK = 'Memory Access Functional';
-
-async function loadToolArrays(
-  rels: Record<string, string>,
-): Promise<Record<string, ToolHandler[]> | null> {
-  const paths: Record<string, string> = {};
-  for (const [k, rel] of Object.entries(rels)) {
-    const p = findModule(rel);
-    if (!p) return null;
-    paths[k] = p;
-  }
-  const entries = await Promise.all(
-    Object.entries(paths).map(async ([k, p]) => [k, await import(toImportUrl(p))] as const),
-  );
-  const out: Record<string, ToolHandler[]> = {};
-  for (const [k, mod] of entries) {
-    const arrName = Object.keys(mod).find(
-      name =>
-        Array.isArray(mod[name]) &&
-        mod[name].every((t: unknown) => typeof (t as ToolHandler)?.name === 'string'),
-    );
-    if (!arrName) return null;
-    out[k] = mod[arrName] as ToolHandler[];
-  }
-  return out;
-}
-
-function getTool(tools: ToolHandler[], name: string): ToolHandler | undefined {
-  return tools.find(t => t.name === name);
-}
+const MEMORY_ACCESS_FAIL_FIX = 'Run `flo doctor --json` for per-subcheck details. Common fixes: ensure fastembed installed (memory_store.hasEmbedding=false), explicit threshold:0 honored (#837), or rebuild HNSW index (`flo memory rebuild-index`)';
 
 async function invokeOrThrow(
   tools: ToolHandler[],
@@ -117,7 +85,13 @@ async function runMemoryRoundTrip(ctx: RoundTripContext): Promise<{ key: string;
   const namespace = `doctor-memprobe-${ctx.persona}`;
   const sentinel = `memprobe-${ctx.persona}-${stamp}`;
 
-  // 1. memory_store — must come back with success=true and a real embedding.
+  // 1. memory_store — write must complete with a real embedding (catches
+  // hash-fallback) and an HNSW-backed index (catches plain sql.js fallback).
+  const storeMeta = {
+    id: `${ctx.idPrefix}.memory_store`,
+    mcpTool: 'memory_store',
+    expected: 'success=true, hasEmbedding=true, backend includes HNSW',
+  };
   let storeOut: StoreOut | undefined;
   try {
     storeOut = (await invokeOrThrow(ctx.memoryTools, 'memory_store', {
@@ -125,25 +99,12 @@ async function runMemoryRoundTrip(ctx: RoundTripContext): Promise<{ key: string;
       value: { sentinel, persona: ctx.persona },
       namespace,
     })) as StoreOut;
-    const failReason = (() => {
-      if (!storeOut?.success) return `memory_store returned success=false: ${storeOut?.error ?? JSON.stringify(storeOut)}`;
-      if (storeOut.hasEmbedding !== true) return 'hasEmbedding=false — embedder is not wired (likely missing fastembed) or fell back to hash embeddings';
-      if (typeof storeOut.embeddingDimensions !== 'number' || storeOut.embeddingDimensions <= 0) {
-        return `embeddingDimensions invalid (${storeOut.embeddingDimensions}) — embedder not producing real vectors`;
-      }
-      if (!storeOut.backend?.includes('HNSW')) return `backend "${storeOut.backend}" does not include HNSW — index may have fallen back to plain sql.js`;
-      return null;
-    })();
-    ctx.details.push(
-      failReason
-        ? { id: `${ctx.idPrefix}.memory_store`, mcpTool: 'memory_store', status: 'fail', observed: storeOut, expected: 'success=true, hasEmbedding=true, backend includes HNSW', message: failReason }
-        : { id: `${ctx.idPrefix}.memory_store`, mcpTool: 'memory_store', status: 'pass', observed: storeOut, expected: 'success=true, hasEmbedding=true, backend includes HNSW' },
-    );
+    pushDetail(ctx.details, storeMeta, storeOut, assertStore(storeOut));
   } catch (err) {
     const detail = errorDetail(err, { firstLineOnly: true });
     ctx.details.push({
-      id: `${ctx.idPrefix}.memory_store`, mcpTool: 'memory_store', status: 'fail',
-      observed: { error: detail }, expected: 'success=true with embedding', message: `handler threw: ${detail}`,
+      ...storeMeta, status: 'fail',
+      observed: { error: detail }, message: `handler threw: ${detail}`,
     });
     return { key, namespace };
   }
@@ -151,6 +112,11 @@ async function runMemoryRoundTrip(ctx: RoundTripContext): Promise<{ key: string;
   // 2. memory_search with threshold=0 — must find the row we just stored.
   // threshold=0 is the explicit "no threshold" value (#837); regressions
   // there silently filter out matches even when the row is in the index.
+  const searchMeta = {
+    id: `${ctx.idPrefix}.memory_search`,
+    mcpTool: 'memory_search',
+    expected: 'total>=1 with backend including HNSW',
+  };
   let searchOut: SearchOut | undefined;
   try {
     searchOut = (await invokeOrThrow(ctx.memoryTools, 'memory_search', {
@@ -159,105 +125,100 @@ async function runMemoryRoundTrip(ctx: RoundTripContext): Promise<{ key: string;
       threshold: 0,
       limit: 5,
     })) as SearchOut;
-    const failReason = (() => {
-      if (searchOut?.error) return `search returned error: ${searchOut.error}`;
-      if (!searchOut?.backend?.includes('HNSW')) return `backend "${searchOut?.backend}" does not include HNSW`;
-      if (typeof searchOut.total !== 'number') return 'total field missing';
-      if (searchOut.total === 0 || !searchOut.results || searchOut.results.length === 0) {
-        return 'search returned 0 results despite an explicit threshold=0 — bridge embedder may be unwired (#837) or the row never reached the HNSW index';
-      }
-      return null;
-    })();
-    ctx.details.push(
-      failReason
-        ? { id: `${ctx.idPrefix}.memory_search`, mcpTool: 'memory_search', status: 'fail', observed: searchOut, expected: 'total>=1 with backend including HNSW', message: failReason }
-        : { id: `${ctx.idPrefix}.memory_search`, mcpTool: 'memory_search', status: 'pass', observed: { total: searchOut.total, backend: searchOut.backend, topKey: searchOut.results?.[0]?.key }, expected: 'total>=1 with backend including HNSW' },
+    const failReason = assertSearch(searchOut);
+    pushDetail(
+      ctx.details,
+      searchMeta,
+      failReason ? searchOut : { total: searchOut?.total, backend: searchOut?.backend, topKey: searchOut?.results?.[0]?.key },
+      failReason,
     );
   } catch (err) {
     const detail = errorDetail(err, { firstLineOnly: true });
     ctx.details.push({
-      id: `${ctx.idPrefix}.memory_search`, mcpTool: 'memory_search', status: 'fail',
-      observed: { error: detail }, expected: 'total>=1', message: `handler threw: ${detail}`,
+      ...searchMeta, status: 'fail',
+      observed: { error: detail }, message: `handler threw: ${detail}`,
     });
     return { key, namespace };
   }
 
-  // 3. The just-stored row must come back at the top of search results so
-  // callers can find what they wrote. memory_search returns a content snippet
-  // (truncated to 60 chars), so it's not the right tool for full-value
-  // verification — that's `memory_retrieve` (next subcheck).
+  // 3. The just-stored row must come back from search so callers can find
+  // what they wrote. memory_search returns a 60-char content snippet, so
+  // full-value verification belongs in the retrieve subcheck below.
   const top = searchOut.results?.find(r => r.key === key);
-  const presenceFailReason = top
-    ? null
-    : `stored key ${key} not in results (got: ${searchOut?.results?.map(r => r.key).join(', ') ?? 'none'})`;
-  ctx.details.push(
-    presenceFailReason
-      ? { id: `${ctx.idPrefix}.search-finds-key`, mcpTool: 'memory_search', status: 'fail', observed: { topKey: top?.key, allKeys: searchOut.results?.map(r => r.key) }, expected: `result containing key=${key}`, message: presenceFailReason }
-      : { id: `${ctx.idPrefix}.search-finds-key`, mcpTool: 'memory_search', status: 'pass', observed: { topKey: top!.key, similarity: top!.similarity }, expected: `result containing key=${key}` },
+  pushDetail(
+    ctx.details,
+    { id: `${ctx.idPrefix}.search-finds-key`, mcpTool: 'memory_search', expected: `result containing key=${key}` },
+    top ? { topKey: top.key, similarity: top.similarity } : { allKeys: searchOut.results?.map(r => r.key) },
+    top ? null : `stored key ${key} not in results (got: ${searchOut?.results?.map(r => r.key).join(', ') ?? 'none'})`,
   );
 
-  // 4. memory_retrieve returns the full value (search content is truncated to
-  // a 60-char snippet, so we use the by-key retrieve to validate sentinel).
-  // Catches write clobber and namespace bleed — we get back exactly what we
-  // wrote, not someone else's row stored under the same key.
+  // 4. memory_retrieve returns the full value (search content is truncated
+  // to a 60-char snippet). Catches write clobber and namespace bleed — we
+  // get back exactly what we wrote, not someone else's row at the same key.
+  const retrieveMeta = {
+    id: `${ctx.idPrefix}.retrieve-roundtrip`,
+    mcpTool: 'memory_retrieve',
+    expected: `value.sentinel=${sentinel}`,
+  };
   try {
     const retrieveOut = (await invokeOrThrow(ctx.memoryTools, 'memory_retrieve', { key, namespace })) as {
       found?: boolean;
       value?: { sentinel?: string; persona?: string } | string | null;
     };
-    const failReason = (() => {
-      if (!retrieveOut?.found) return `retrieve returned found=false for key=${key} — write didn't persist`;
-      const v = retrieveOut.value;
-      const observedSentinel = typeof v === 'object' && v !== null ? v.sentinel : undefined;
-      if (observedSentinel !== sentinel) {
-        return `expected sentinel="${sentinel}", got ${JSON.stringify(observedSentinel)} — possible write clobber or namespace bleed`;
-      }
-      return null;
-    })();
-    ctx.details.push(
-      failReason
-        ? { id: `${ctx.idPrefix}.retrieve-roundtrip`, mcpTool: 'memory_retrieve', status: 'fail', observed: retrieveOut, expected: `value.sentinel=${sentinel}`, message: failReason }
-        : { id: `${ctx.idPrefix}.retrieve-roundtrip`, mcpTool: 'memory_retrieve', status: 'pass', observed: { found: true, sentinelMatched: true }, expected: `value.sentinel=${sentinel}` },
+    const failReason = assertRetrieve(retrieveOut, sentinel, key);
+    pushDetail(
+      ctx.details,
+      retrieveMeta,
+      failReason ? retrieveOut : { found: true, sentinelMatched: true },
+      failReason,
     );
   } catch (err) {
     const detail = errorDetail(err, { firstLineOnly: true });
     ctx.details.push({
-      id: `${ctx.idPrefix}.retrieve-roundtrip`, mcpTool: 'memory_retrieve', status: 'fail',
-      observed: { error: detail }, expected: `value.sentinel=${sentinel}`, message: `handler threw: ${detail}`,
+      ...retrieveMeta, status: 'fail',
+      observed: { error: detail }, message: `handler threw: ${detail}`,
     });
   }
 
   return { key, namespace };
 }
 
-async function safeDelete(memoryTools: ToolHandler[], key: string, namespace: string): Promise<void> {
-  try { await invokeOrThrow(memoryTools, 'memory_delete', { key, namespace }); } catch { /* best-effort */ }
+function assertStore(out: StoreOut | undefined): string | null {
+  if (!out?.success) return `memory_store returned success=false: ${out?.error ?? JSON.stringify(out)}`;
+  if (out.hasEmbedding !== true) return 'hasEmbedding=false — embedder is not wired (likely missing fastembed) or fell back to hash embeddings';
+  if (typeof out.embeddingDimensions !== 'number' || out.embeddingDimensions <= 0) {
+    return `embeddingDimensions invalid (${out.embeddingDimensions}) — embedder not producing real vectors`;
+  }
+  if (!out.backend?.includes('HNSW')) return `backend "${out.backend}" does not include HNSW — index may have fallen back to plain sql.js`;
+  return null;
 }
 
-function summarize(name: string, details: FunctionalCheckDetail[]): FunctionalHealthCheck {
-  const fails = details.filter(d => d.status === 'fail');
-  const warns = details.filter(d => d.status === 'warn');
-  if (fails.length > 0) {
-    const first = fails[0];
-    return {
-      name, status: 'fail',
-      message: `${fails.length}/${details.length} subcheck(s) failed (e.g. ${first.id} via ${first.mcpTool}: ${first.message ?? first.expected})`,
-      fix: 'Run `flo doctor --json` for per-subcheck details. Common fixes: ensure fastembed installed (memory_store.hasEmbedding=false), explicit threshold:0 honored (#837), or rebuild HNSW index (`flo memory rebuild-index`)',
-      details,
-    };
+function assertSearch(out: SearchOut | undefined): string | null {
+  if (out?.error) return `search returned error: ${out.error}`;
+  if (!out?.backend?.includes('HNSW')) return `backend "${out?.backend}" does not include HNSW`;
+  if (typeof out.total !== 'number') return 'total field missing';
+  if (out.total === 0 || !out.results || out.results.length === 0) {
+    return 'search returned 0 results despite an explicit threshold=0 — bridge embedder may be unwired (#837) or the row never reached the HNSW index';
   }
-  if (warns.length > 0) {
-    return {
-      name, status: 'warn',
-      message: `${details.length - warns.length}/${details.length} pass; ${warns.length} degraded`,
-      details,
-    };
+  return null;
+}
+
+function assertRetrieve(
+  out: { found?: boolean; value?: { sentinel?: string; persona?: string } | string | null } | undefined,
+  expectedSentinel: string,
+  key: string,
+): string | null {
+  if (!out?.found) return `retrieve returned found=false for key=${key} — write didn't persist`;
+  const v = out.value;
+  const observedSentinel = typeof v === 'object' && v !== null ? v.sentinel : undefined;
+  if (observedSentinel !== expectedSentinel) {
+    return `expected sentinel="${expectedSentinel}", got ${JSON.stringify(observedSentinel)} — possible write clobber or namespace bleed`;
   }
-  return {
-    name, status: 'pass',
-    message: `${details.length} subchecks OK (memory_store + memory_search round-trip verified across subagent, swarm-agent, and hive-mind contexts)`,
-    details,
-  };
+  return null;
+}
+
+async function safeDelete(memoryTools: ToolHandler[], key: string, namespace: string): Promise<void> {
+  try { await invokeOrThrow(memoryTools, 'memory_delete', { key, namespace }); } catch { /* best-effort */ }
 }
 
 export async function checkMemoryAccessFunctional(): Promise<FunctionalHealthCheck> {
@@ -376,11 +337,10 @@ export async function checkMemoryAccessFunctional(): Promise<FunctionalHealthChe
       });
     }
   } finally {
-    // Cleanup order: stored keys first, then agents, then hive. Each step is
-    // best-effort so a failure in one doesn't block the next.
-    for (const fn of cleanups) {
-      try { await fn(); } catch { /* ignore */ }
-    }
+    // Stored keys can clear in parallel; agent_terminate (which may release
+    // a writer lock) and hive shutdown still run after so they don't race
+    // the deletes.
+    await Promise.all(cleanups.map(fn => fn().catch(() => { /* ignore */ })));
     if (spawnedAgentId) {
       try {
         await invokeOrThrow(agentTools, 'agent_terminate', {
@@ -396,7 +356,10 @@ export async function checkMemoryAccessFunctional(): Promise<FunctionalHealthChe
     }
   }
 
-  return summarize(MEMORY_ACCESS_CHECK, details);
+  return summarizeFunctional(MEMORY_ACCESS_CHECK, details, {
+    passSuffix: '(memory_store + memory_search round-trip verified across subagent, swarm-agent, and hive-mind contexts)',
+    failFix: MEMORY_ACCESS_FAIL_FIX,
+  });
 }
 
 // Re-export for callers that want the plain HealthCheck shape.

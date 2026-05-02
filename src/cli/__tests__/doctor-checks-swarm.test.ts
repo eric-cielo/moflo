@@ -122,13 +122,19 @@ describe('doctor-checks-swarm', () => {
       // Same contract as doctor-checks-deep — no `process.cwd()` for module
       // resolution because that breaks when moflo is installed under
       // `node_modules/moflo/...` (see feedback_consumer_path_resolution.md).
-      // Path resolution is delegated to doctor-checks-deep's exported
-      // `findModule` + `toImportUrl`, which use `findMofloPackageRoot` under
-      // the hood — we just assert the import.
+      // Path resolution is delegated to the shared functional helpers, which
+      // in turn use doctor-checks-deep's `findMofloPackageRoot` — we assert
+      // the delegation chain and the absence of cwd usage.
       const cwdUsages = source.match(/process\.cwd\(\)/g) ?? [];
       expect(cwdUsages.length).toBe(0);
-      expect(source).toMatch(/from '\.\/doctor-checks-deep\.js'/);
-      expect(source).toMatch(/findModule|toImportUrl/);
+      expect(source).toMatch(/from '\.\/doctor-checks-functional-shared\.js'/);
+      const shared = readFileSync(
+        join(process.cwd(), 'src', 'cli', 'commands', 'doctor-checks-functional-shared.ts'),
+        'utf8',
+      );
+      expect(shared).toMatch(/from '\.\/doctor-checks-deep\.js'/);
+      expect(shared).toMatch(/findModule|toImportUrl/);
+      expect((shared.match(/process\.cwd\(\)/g) ?? []).length).toBe(0);
     });
   });
 });
