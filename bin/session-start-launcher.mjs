@@ -14,6 +14,17 @@ import { fileURLToPath } from 'url';
 import { mofloDir } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 
+// Headless skip (#860). The daemon's headless workers spawn `claude --print`
+// with CLAUDE_CODE_HEADLESS=true (see src/cli/services/headless-worker-
+// executor.ts). Each spawned Claude inherits SessionStart hooks, which
+// would re-enter this launcher and fork the indexer chain — bumping
+// memory.db mtime, invalidating the 4.9.7 fingerprint gate, and pegging
+// CPU on the daemon's 15-min worker cycle.
+if (process.env.CLAUDE_CODE_HEADLESS === 'true' || process.env.CLAUDE_CODE_HEADLESS === '1') {
+  emitWarning('session-start-launcher skipped (CLAUDE_CODE_HEADLESS=true)');
+  process.exit(0);
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Single source of truth for the launcher's guidance-mirror header. Section 3
