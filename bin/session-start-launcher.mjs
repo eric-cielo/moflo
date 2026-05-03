@@ -1106,11 +1106,20 @@ if (mutationCount > 0) {
 }
 
 // ── 4. Spawn background tasks ───────────────────────────────────────────────
-const localCli = resolve(projectRoot, 'node_modules/moflo/bin/cli.js');
-const hasLocalCli = existsSync(localCli);
 
-// hooks.mjs session-start (daemon, indexer, pretrain, HNSW, neural patterns)
-const hooksScript = resolve(projectRoot, '.claude/scripts/hooks.mjs');
+// hooks.mjs session-start (daemon, indexer, pretrain, HNSW, neural patterns).
+// Prefer the npm-bin copy over the `.claude/scripts/` mirror (#866). The mirror
+// is a derived sync that races the launcher's section-3 file copies during the
+// very upgrade session — spawning the still-stale `.claude/scripts/hooks.mjs`
+// then chaining `__dirname/index-all.mjs` produces an orphan running pre-
+// upgrade argv (e.g. `rebuild-index --force` after #859 had already dropped
+// it). The bin/ copy is updated atomically by `npm install moflo` (single-
+// step), so spawning from there guarantees the running hook code matches the
+// installed package. Falls back to the mirror only when the package copy is
+// unresolvable (development / symlinked installs).
+const hooksPkg = resolve(projectRoot, 'node_modules/moflo/bin/hooks.mjs');
+const hooksMirror = resolve(projectRoot, '.claude/scripts/hooks.mjs');
+const hooksScript = existsSync(hooksPkg) ? hooksPkg : hooksMirror;
 if (existsSync(hooksScript)) {
   fireAndForget('node', [hooksScript, 'session-start'], 'hooks session-start');
 }

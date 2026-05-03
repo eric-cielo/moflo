@@ -289,7 +289,20 @@ async function main() {
         // chain and producing the sqlite_autoindex corruption that #743 had
         // to repair on subsequent sessions. The launcher's foreground §3e
         // migration is the canonical migration site. See #744.
-        spawnWindowless('node', [resolve(__dirname, 'index-all.mjs')], 'sequential indexing chain');
+        // Prefer the npm-bin copy of index-all.mjs over __dirname resolution
+        // (#866). When this hooks.mjs is loaded from `.claude/scripts/` (e.g.
+        // an older launcher spawned us before the launcher's bin-anchor fix
+        // landed), `resolve(__dirname, 'index-all.mjs')` would point at the
+        // synced mirror — which the launcher's section 3 may still be in the
+        // middle of overwriting during an upgrade. resolveBinOrLocal's
+        // bin-first ordering guarantees the spawned chain matches the
+        // installed package even when the mirror is mid-sync.
+        const indexAllScript = resolveBinOrLocal('flo-index-all', 'index-all.mjs');
+        if (indexAllScript) {
+          spawnWindowless('node', [indexAllScript], 'sequential indexing chain');
+        } else {
+          log('warn', 'index-all.mjs not found (checked npm bin + .claude/scripts/)');
+        }
         // Neural patterns now loaded by moflo core routing — no external patching.
         break;
       }
