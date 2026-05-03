@@ -60,6 +60,48 @@ function emitMutation(action, details) {
   }
 }
 
+// Stderr counterpart to emitMutation for non-fatal failures (#854). Every
+// previously-bare `catch {}` in the upgrade flow is routed through here so
+// partial-migration regressions can never go silent again. The inner try
+// guards against a broken stderr pipe — writing the failure itself must
+// never throw, otherwise a fast session-end would surface as a crash.
+function emitWarning(message) {
+  try {
+    process.stderr.write(`moflo: ${message}\n`);
+  } catch { /* stderr write must not throw */ }
+}
+function errMessage(err) {
+  return err && err.message ? err.message : String(err);
+}
+
+// Manifest schema (#854 hardening). Originally `string[]`; now `{path,size}[]`
+// so the launcher can detect *content* drift, not just *missing-file* drift.
+// Reading accepts both forms — a legacy v1 manifest is reported via
+// `isLegacy=true` so the drift check forces one re-sync to migrate to v2,
+// closing the failure mode where a v4.9.2 launcher writes a stamp+manifest
+// in stage 1 of an upgrade and the v4.9.3 launcher (with this fix) sees
+// `installedVersion === cachedVersion` + no file-missing drift, then skips
+// section 3 leaving stale `gate.cjs` etc. stuck.
+function readInstallManifest(manifestPath) {
+  let raw;
+  try { raw = readFileSync(manifestPath, 'utf-8'); } catch { return { entries: [], isLegacy: false }; }
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { return { entries: [], isLegacy: false }; }
+  if (!Array.isArray(parsed)) return { entries: [], isLegacy: false };
+  let isLegacy = false;
+  const entries = [];
+  for (const item of parsed) {
+    if (typeof item === 'string') {
+      isLegacy = true;
+      entries.push({ path: item, size: null });
+    } else if (item && typeof item === 'object' && typeof item.path === 'string') {
+      entries.push({ path: item.path, size: typeof item.size === 'number' ? item.size : null });
+    }
+    // malformed entries are silently dropped — not surfaceable, never written by us
+  }
+  return { entries, isLegacy };
+}
+
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // Captured inside the upgrade/drift branch so the post-spawn notice writer
@@ -246,7 +288,11 @@ try {
     if (scriptsMatch) autoUpdateConfig.scripts = scriptsMatch[1] === 'true';
     if (helpersMatch) autoUpdateConfig.helpers = helpersMatch[1] === 'true';
   }
-} catch { /* non-fatal — use defaults (all true) */ }
+} catch (err) {
+  // Defaults (all true) keep the upgrade flow alive but the user should
+  // see when their moflo.yaml fails to parse (#854).
+  emitWarning(`moflo.yaml parse failed (${errMessage(err)}) — using defaults`);
+}
 
 try {
   const mofloPkgPath = resolve(projectRoot, 'node_modules/moflo/package.json');
@@ -256,18 +302,27 @@ try {
     let cachedVersion = '';
     try { cachedVersion = readFileSync(versionStampPath, 'utf-8').trim(); } catch {}
 
-    // Drift healing: re-sync if any previously-installed file is missing, even
-    // when version stamp matches. Guards against out-of-band deletions (manual
-    // rm, botched merges, dedup commits, etc.) that would otherwise silently
-    // leave .claude/scripts/ incomplete until the next moflo upgrade.
+    // Drift healing: re-sync if any previously-installed file is missing
+    // OR has drifted in size since we last wrote it. Guards against:
+    //   - out-of-band deletions (manual rm, botched merges, dedup commits)
+    //   - stale-content drift (a prior partial migration left the file at
+    //     pre-upgrade content even though it still exists — #854)
+    //   - legacy v1 manifests written by an older launcher (force one
+    //     re-sync to migrate to v2 so subsequent runs can size-check)
     const manifestPath = resolve(projectRoot, '.moflo', 'installed-files.json');
-    let manifestDrifted = false;
-    try {
-      const prev = JSON.parse(readFileSync(manifestPath, 'utf-8'));
-      if (Array.isArray(prev)) {
-        manifestDrifted = prev.some(f => !existsSync(resolve(projectRoot, f)));
+    const { entries: priorEntries, isLegacy: manifestIsLegacy } = readInstallManifest(manifestPath);
+    let manifestDrifted = manifestIsLegacy;
+    if (!manifestDrifted) {
+      for (const { path: rel, size } of priorEntries) {
+        const abs = resolve(projectRoot, rel);
+        if (!existsSync(abs)) { manifestDrifted = true; break; }
+        if (size !== null) {
+          try {
+            if (statSync(abs).size !== size) { manifestDrifted = true; break; }
+          } catch { manifestDrifted = true; break; }
+        }
       }
-    } catch { /* no manifest yet — version check handles first install */ }
+    }
 
     if (installedVersion !== cachedVersion || manifestDrifted) {
       if (installedVersion !== cachedVersion) {
@@ -366,23 +421,86 @@ try {
       //  3. That's it — cleanup is automatic on the next upgrade
       // ────────────────────────────────────────────────────────────────────
 
-      // Load the previous manifest so we can diff after syncing
-      let previousManifest = [];
-      try { previousManifest = JSON.parse(readFileSync(manifestPath, 'utf-8')); } catch { /* ok */ }
+      // Load the previous manifest so we can diff after syncing.
+      // Both v1 (string[]) and v2 ({path,size}[]) are normalized to entries
+      // by readInstallManifest — the cleanup loop only needs the path field.
+      const { entries: previousManifest } = readInstallManifest(manifestPath);
 
       // Track every file we install this round
       const currentManifest = [];
+      // Per-file copy failures used to be invisible (#854): a Windows file
+      // lock / AV real-time scan / concurrent helper invocation would EBUSY
+      // the copy, the bare catch swallowed it, and the file stayed at its
+      // pre-upgrade content forever because it was never recorded in the
+      // manifest. Surface failures on stderr — Claude Code captures
+      // session-start stderr as additionalContext so the user sees them too.
+      const syncFailures = [];
 
-      /** Copy src → dest if src exists, record in manifest. */
-      function syncFile(src, dest, manifestKey) {
-        if (existsSync(src)) {
-          try { copyFileSync(src, dest); currentManifest.push(manifestKey); } catch { /* non-fatal */ }
+      // Standard retry with exponential backoff + circuit breaker for the
+      // transient error class (EBUSY / EPERM / EACCES — Windows file lock,
+      // AV real-time scan, concurrent helper invocation). Hard errors
+      // (ENOENT, etc.) fall through immediately. Once 5 distinct files have
+      // exhausted retries the circuit opens and the tail of the sync runs
+      // with maxAttempts=1 so a sick host (AV mid-scan over node_modules)
+      // doesn't compound the wall-clock cost. Async setTimeout — never
+      // busy-wait in a session-start hook (CPU pinning during EBUSY backoff
+      // is the worst possible response when the OS is the bottleneck).
+      const TRANSIENT_CODES = new Set(['EBUSY', 'EPERM', 'EACCES']);
+      const RETRY_BACKOFF_MS = [50, 200, 800];
+      const CIRCUIT_BREAK_THRESHOLD = 5;
+      let circuitOpen = false;
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      async function syncWithRetry(operation) {
+        const maxAttempts = circuitOpen ? 1 : RETRY_BACKOFF_MS.length + 1;
+        let lastErr = null;
+        let lastCode = null;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          if (attempt > 0) await sleep(RETRY_BACKOFF_MS[attempt - 1]);
+          try {
+            operation();
+            return { ok: true };
+          } catch (err) {
+            lastErr = err;
+            lastCode = err && err.code ? err.code : null;
+            if (!TRANSIENT_CODES.has(lastCode)) break;
+          }
         }
+        if (!circuitOpen && syncFailures.length + 1 >= CIRCUIT_BREAK_THRESHOLD) {
+          circuitOpen = true;
+        }
+        return { ok: false, err: lastErr, code: lastCode };
+      }
+
+      /** Copy src → dest if src exists, record `{path, size}` in manifest.
+       * Retries the transient error class with backoff (#854); failures land
+       * in syncFailures for the post-block stderr summary. The recorded size
+       * is read from the just-written destination so a subsequent launcher
+       * can detect content drift via size mismatch. */
+      function recordManifestEntry(manifestKey, dest) {
+        let size = null;
+        try { size = statSync(dest).size; } catch { /* size left null — drift check still works on file-existence */ }
+        currentManifest.push({ path: manifestKey, size });
+      }
+      async function syncFile(src, dest, manifestKey) {
+        if (!existsSync(src)) return;
+        const result = await syncWithRetry(() => copyFileSync(src, dest));
+        if (result.ok) {
+          recordManifestEntry(manifestKey, dest);
+          return;
+        }
+        const tail = TRANSIENT_CODES.has(result.code)
+          ? ` (retried ${RETRY_BACKOFF_MS.length}× after ${result.code}${circuitOpen ? '; circuit open' : ''})`
+          : '';
+        syncFailures.push({ key: manifestKey, message: `${errMessage(result.err)}${tail}` });
       }
 
       // Version changed — sync scripts from bin/
       if (autoUpdateConfig.scripts) {
         const scriptsDir = resolve(projectRoot, '.claude/scripts');
+        // Ensure the destination dir exists — first-install consumers may
+        // not have it yet, in which case every copyFileSync below would
+        // silently ENOENT (#854).
+        if (!existsSync(scriptsDir)) mkdirSync(scriptsDir, { recursive: true });
         const scriptFiles = [
           'hooks.mjs', 'session-start-launcher.mjs', 'index-guidance.mjs',
           'build-embeddings.mjs', 'generate-code-map.mjs', 'semantic-search.mjs',
@@ -390,7 +508,7 @@ try {
           'setup-project.mjs', 'run-migrations.mjs',
         ];
         for (const file of scriptFiles) {
-          syncFile(resolve(binDir, file), resolve(scriptsDir, file), `.claude/scripts/${file}`);
+          await syncFile(resolve(binDir, file), resolve(scriptsDir, file), `.claude/scripts/${file}`);
         }
 
         // Sync lib/ subdirectory (process-manager.mjs, registry-cleanup.cjs, etc.)
@@ -401,7 +519,7 @@ try {
         if (existsSync(libSrcDir)) {
           if (!existsSync(libDestDir)) mkdirSync(libDestDir, { recursive: true });
           for (const file of readdirSync(libSrcDir)) {
-            syncFile(resolve(libSrcDir, file), resolve(libDestDir, file), `.claude/scripts/lib/${file}`);
+            await syncFile(resolve(libSrcDir, file), resolve(libDestDir, file), `.claude/scripts/lib/${file}`);
           }
         }
 
@@ -415,7 +533,8 @@ try {
           let migrationEntries;
           try {
             migrationEntries = readdirSync(migrationsSrcDir, { recursive: true, withFileTypes: true });
-          } catch {
+          } catch (err) {
+            emitWarning(`migrations source readdir failed (${errMessage(err)})`);
             migrationEntries = [];
           }
           for (const entry of migrationEntries) {
@@ -424,8 +543,10 @@ try {
             const absSrc = resolve(parent, entry.name);
             const rel = absSrc.slice(migrationsSrcDir.length + 1).split(/[\\/]/).join('/');
             const absDest = resolve(migrationsDestDir, rel);
-            try { mkdirSync(dirname(absDest), { recursive: true }); } catch { /* non-fatal */ }
-            syncFile(absSrc, absDest, `.claude/scripts/migrations/${rel}`);
+            try { mkdirSync(dirname(absDest), { recursive: true }); } catch (err) {
+              emitWarning(`migrations subdir mkdir failed for ${rel} (${errMessage(err)})`);
+            }
+            await syncFile(absSrc, absDest, `.claude/scripts/migrations/${rel}`);
           }
         }
       }
@@ -440,7 +561,7 @@ try {
           'gate.cjs', 'gate-hook.mjs', 'prompt-hook.mjs', 'hook-handler.cjs',
         ];
         for (const file of binHelperFiles) {
-          syncFile(resolve(binDir, file), resolve(helpersDir, file), `.claude/helpers/${file}`);
+          await syncFile(resolve(binDir, file), resolve(helpersDir, file), `.claude/helpers/${file}`);
         }
 
         // Other helpers from .claude/helpers/ and CLI .claude/helpers/
@@ -458,7 +579,19 @@ try {
           for (const srcDir of helperSources) {
             const src = resolve(srcDir, file);
             if (existsSync(src)) {
-              try { copyFileSync(src, dest); currentManifest.push(`.claude/helpers/${file}`); } catch { /* non-fatal */ }
+              const inlineResult = await syncWithRetry(() => copyFileSync(src, dest));
+              if (inlineResult.ok) {
+                recordManifestEntry(`.claude/helpers/${file}`, dest);
+              } else {
+                const code = inlineResult.code;
+                const tail = TRANSIENT_CODES.has(code)
+                  ? ` (retried ${RETRY_BACKOFF_MS.length}× after ${code}${circuitOpen ? '; circuit open' : ''})`
+                  : '';
+                syncFailures.push({
+                  key: `.claude/helpers/${file}`,
+                  message: `${errMessage(inlineResult.err)}${tail}`,
+                });
+              }
               break; // first source wins
             }
           }
@@ -477,26 +610,31 @@ try {
             const dest = resolve(guidanceDir, file);
             const content = readFileSync(src, 'utf-8');
             writeFileSync(dest, sessionStartMirrorHeader(file) + content);
-            currentManifest.push(`.claude/guidance/${file}`);
+            recordManifestEntry(`.claude/guidance/${file}`, dest);
           }
-        } catch { /* non-fatal */ }
+        } catch (err) {
+          emitWarning(`shipped guidance sync failed (${errMessage(err)})`);
+        }
       }
 
       // ── Clean up files we installed previously but no longer ship ──
       // Only remove files that are in the OLD manifest but NOT in the new one.
       // This ensures we never delete user-created or runtime-generated files.
+      // Both v1 (string) and v2 ({path,size}) old entries are normalized to
+      // entries by readInstallManifest; we only need the path for cleanup.
       let removedFiles = 0;
       if (previousManifest.length > 0) {
-        const currentSet = new Set(currentManifest);
-        for (const rel of previousManifest) {
-          if (!currentSet.has(rel)) {
-            const abs = resolve(projectRoot, rel);
-            try {
-              if (existsSync(abs)) {
-                unlinkSync(abs);
-                removedFiles++;
-              }
-            } catch { /* non-fatal */ }
+        const currentSet = new Set(currentManifest.map((e) => e.path));
+        for (const { path: rel } of previousManifest) {
+          if (currentSet.has(rel)) continue;
+          const abs = resolve(projectRoot, rel);
+          try {
+            if (existsSync(abs)) {
+              unlinkSync(abs);
+              removedFiles++;
+            }
+          } catch (err) {
+            emitWarning(`cleanup unlink failed for ${rel} (${errMessage(err)})`);
           }
         }
       }
@@ -509,6 +647,18 @@ try {
       // session-start` will spawn a fresh daemon under the current moflo
       // image once 3g writes the version stamp.
 
+      // Surface per-file copy failures so the user / Claude can see what
+      // didn't sync (#854). The file isn't in the manifest either, so the
+      // next-upgrade cleanup pass can never reconcile it on its own —
+      // direct the user at `flo doctor --fix` as the compensating healer.
+      if (syncFailures.length > 0) {
+        const sample = syncFailures.slice(0, 5).map((f) => `  - ${f.key}: ${f.message}`).join('\n');
+        const more = syncFailures.length > 5 ? `\n  …and ${syncFailures.length - 5} more` : '';
+        emitWarning(
+          `${plural(syncFailures.length, 'file')} failed to sync during upgrade — run 'flo doctor --fix' to repair:\n${sample}${more}`,
+        );
+      }
+
       // Manifest reflects synced files immediately; version stamp is deferred
       // to 3g so an aborted launcher re-runs upgrade detection (#730).
       try {
@@ -516,11 +666,19 @@ try {
         if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
         writeFileSync(manifestPath, JSON.stringify(currentManifest, null, 2));
         pendingVersionStampWrite = { path: versionStampPath, version: installedVersion };
-      } catch {}
+      } catch (err) {
+        // #854: manifest write must surface — without it the next launcher
+        // can't tell what was installed and the version stamp never gets
+        // queued for 3g.
+        emitWarning(`manifest write failed (${errMessage(err)})`);
+      }
     }
   }
-} catch {
-  // Non-fatal — scripts will still work, just may be stale
+} catch (err) {
+  // #854: bare catches here hid upgrade regressions across multiple 4.8.x
+  // bumps. We keep the catch so a single throw doesn't crash the launcher,
+  // but we never silence it.
+  emitWarning(`upgrade section failed (${errMessage(err)})`);
 }
 
 // ── 3a-pre. Recycle daemons started before the current moflo install ────────
@@ -667,14 +825,19 @@ try {
           settingsChanges.push(`repaired ${plural(repaired.length, 'hook wiring')}`);
         }
       }
-    } catch { /* non-fatal — doctor can still fix later */ }
+    } catch (err) {
+      emitWarning(`hook-wiring repair skipped (${errMessage(err)})`);
+    }
 
     if (dirty) {
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
       emitMutation('updated .claude/settings.json', settingsChanges.join(', '));
     }
   }
-} catch { /* non-fatal — stale hooks won't block session, just emit warnings */ }
+} catch (err) {
+  // #854: silent fail-loop hid hook breakage — surface so the user can act.
+  emitWarning(`settings.json migration failed (${errMessage(err)})`);
+}
 
 // ── 3b. Ensure shipped guidance files exist (even without version change) ──
 // Subagents need these files on disk for direct reads without memory search.
@@ -719,7 +882,9 @@ try {
       }
     }
   }
-} catch { /* non-fatal */ }
+} catch (err) {
+  emitWarning(`shipped guidance restore failed (${errMessage(err)})`);
+}
 
 // ── 3b-714. Retire legacy `.swarm/vector-stats.json` parallel write (#714) ─
 // `.moflo/vector-stats.json` is canonical post-#699; pre-#714 builds also
@@ -909,11 +1074,15 @@ if (upgradeNoticeContext) {
 
 // ── 3g. Commit deferred version stamp (#730) ────────────────────────────────
 // Written LAST so an abort above leaves the stamp unchanged and the next
-// launcher re-detects the upgrade.
+// launcher re-detects the upgrade. Failure here is surfaced (#854) so a
+// permanently-broken stamp write (filesystem permissions, AV holds) doesn't
+// silently strand consumers in re-detect-on-every-session loops.
 if (pendingVersionStampWrite) {
   try {
     writeFileSync(pendingVersionStampWrite.path, pendingVersionStampWrite.version);
-  } catch { /* non-fatal — next launcher re-detects + retries the upgrade */ }
+  } catch (err) {
+    emitWarning(`version stamp write failed (${errMessage(err)}) — next launcher will re-detect the upgrade`);
+  }
 }
 
 // Bypasses emitMutation — framing, not a mutation, so it must not inflate the count.
