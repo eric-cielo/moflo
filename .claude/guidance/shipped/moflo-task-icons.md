@@ -61,3 +61,12 @@ The spinner is the primary visual feedback during agent execution. Without icons
 - What type of agent is working
 - Whether the right specialist was chosen
 - When agent types change during multi-step workflows
+
+---
+
+## See Also
+
+- `.claude/guidance/shipped/moflo-subagents.md` — Subagent protocol; `TaskCreate`/`Agent` icon rule is enforced as part of the spawning checklist
+- `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md` — How task lists and swarms cooperate; icons distinguish swarm-spawned vs single-agent work
+- `.claude/guidance/shipped/moflo-user-facing-language.md` — Companion UX rule for any text shown to end users
+- `.claude/guidance/shipped/moflo-core-guidance.md` — Spell Gate that enforces icon format on `TaskCreate`

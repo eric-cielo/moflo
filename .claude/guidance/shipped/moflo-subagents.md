@@ -138,3 +138,13 @@ npx flo memory store --namespace patterns --key "brief-descriptive-key" --value 
 1. Report findings to coordinator
 2. Store learnings if you discovered something new
 3. Coordinator will mark your task as completed
+
+---
+
+## See Also
+
+- `.claude/guidance/shipped/moflo-task-icons.md` — Mandatory ICON + [Role] format for every `TaskCreate` and `Agent` description spawned by a coordinator
+- `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md` — How task lists and swarm coordinators cooperate when subagents are spawned in batches
+- `.claude/guidance/shipped/moflo-memory-strategy.md` — The memory-search-first rule this protocol enforces, with namespace-selection guidance
+- `.claude/guidance/shipped/moflo-memorydb-maintenance.md` — How the memory namespaces are populated and refreshed; required reading when search returns no results
+- `.claude/guidance/shipped/moflo-core-guidance.md` — Full CLI/MCP reference including the spell gates that block subagent spawn before memory is searched

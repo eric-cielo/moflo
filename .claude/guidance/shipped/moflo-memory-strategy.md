@@ -261,3 +261,4 @@ npx flo memory search --query "your domain query" --namespace guidance  # Verify
 - `moflo-subagents.md` — Subagents guide
 - `moflo-claude-swarm-cohesion.md` — Task & swarm coordination
 - `moflo-core-guidance.md` — Full CLI/MCP reference
+- Internal-only: `internal/guidance-sync.md` — Mechanics of how shipped guidance reaches the DB and the search index, including cleanup paths for stale content

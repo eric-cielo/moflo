@@ -50,3 +50,15 @@ MoFlo is a diverged fork of Ruflo/Claude Flow. See `UPSTREAM_SYNC.md` for the ch
 - Exclude `flakey` and `local-only` tagged tests from CI
 - Run `npx vitest run` before publishing
 - Pre-existing flaky tests: `agentic-flow-agent.test.ts` (timing), `worker-daemon-resource-thresholds.test.ts` (heap OOM on Windows)
+
+---
+
+## See Also
+
+- `.claude/guidance/internal/upgrade-contract.md` — The "user never re-runs init" invariant that dogfooding stress-tests on every dev session
+- `.claude/guidance/internal/guidance-rules.md` — Authoring rules for shipped vs internal docs (rule #11 has the partitioning contract)
+- `.claude/guidance/internal/testing-performance.md` — The "no flaky tests" standing decision; dogfooding catches flakes before they reach consumers
+- `.claude/guidance/internal/consumer-project-paths.md` — Why `bin/` scripts must use `findProjectRoot()` — dogfooding catches the path-resolution bugs first
+- `.claude/guidance/shipped/moflo-session-start.md` — Consumer-facing view of what runs on every session start (dogfood = we are the consumer)
+- `.claude/guidance/shipped/moflo-settings-injection.md` — The settings.json self-heal contract dogfooding exercises
+- `.claude/guidance/internal/guidance-sync.md` — Three-layer pipeline (filesystem → DB → HNSW) for shipped guidance; dogfooding catches sync regressions on every reindex

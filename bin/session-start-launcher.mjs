@@ -838,8 +838,11 @@ try {
       settingsChanges.push('added statusLine');
     }
 
-    // 3a-iv. Repair missing required hook wirings (same logic as doctor --fix
-    // and moflo upgrade — shared via hook-wiring.js to stay DRY)
+    // 3a-iv. Repair missing required hook wirings AND rewrite known-bad
+    // wirings from older moflo versions (#879 — record-memory-searched
+    // wired to gate.cjs directly skips session_id forwarding and deadlocks
+    // the per-actor gate). Both passes share hook-wiring.js so doctor --fix,
+    // upgrade-merge, and the launcher stay DRY.
     try {
       const hwPaths = [
         resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/hook-wiring.js'),
@@ -847,11 +850,21 @@ try {
       ];
       const hwPath = hwPaths.find(p => existsSync(p));
       if (hwPath) {
-        const { repairHookWiring } = await import(`file://${hwPath.replace(/\\/g, '/')}`);
-        const { repaired } = repairHookWiring(settings);
-        if (repaired.length > 0) {
-          dirty = true;
-          settingsChanges.push(`repaired ${plural(repaired.length, 'hook wiring')}`);
+        const mod = await import(`file://${hwPath.replace(/\\/g, '/')}`);
+        if (typeof mod.rewriteIncorrectHookWiring === 'function') {
+          const { rewrites } = mod.rewriteIncorrectHookWiring(settings);
+          if (rewrites.length > 0) {
+            dirty = true;
+            const total = rewrites.reduce((n, r) => n + r.count, 0);
+            settingsChanges.push(`rewrote ${plural(total, 'stale hook wiring')}`);
+          }
+        }
+        if (typeof mod.repairHookWiring === 'function') {
+          const { repaired } = mod.repairHookWiring(settings);
+          if (repaired.length > 0) {
+            dirty = true;
+            settingsChanges.push(`repaired ${plural(repaired.length, 'hook wiring')}`);
+          }
         }
       }
     } catch (err) {

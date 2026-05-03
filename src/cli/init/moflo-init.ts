@@ -559,8 +559,13 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
         "hooks": [{ "type": "command", "command": gateHook('record-skill-run'), "timeout": 2000 }]
       },
       {
+        // Use gateHook (not gate) so the wrapper forwards Claude Code's session_id as
+        // HOOK_SESSION_ID — record-memory-searched needs this to mark the per-actor map
+        // (memorySearchedBy[sid]) that check-before-read consults under #838's per-actor gating.
+        // Without it, the legacy boolean is set but the per-actor map stays empty, and the gate
+        // blocks every Read forever within the turn (issue #879).
         "matcher": "mcp__moflo__memory_",
-        "hooks": [{ "type": "command", "command": gate('record-memory-searched'), "timeout": 3000 }]
+        "hooks": [{ "type": "command", "command": gateHook('record-memory-searched'), "timeout": 3000 }]
       },
       {
         "matcher": "^mcp__moflo__memory_store$",
@@ -571,6 +576,14 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
       {
         "hooks": [
           { "type": "command", "command": `node "$CLAUDE_PROJECT_DIR/.claude/helpers/prompt-hook.mjs"`, "timeout": 3000 }
+        ]
+      },
+      {
+        // prompt-reminder is REQUIRED to reset memorySearched/memorySearchedBy on each
+        // new prompt and reclassify memoryRequired. Without it, gate state leaks across
+        // prompts. Separate hook entry so a prompt-hook.mjs exception doesn't skip the reset.
+        "hooks": [
+          { "type": "command", "command": gateHook('prompt-reminder'), "timeout": 3000 }
         ]
       }
     ],

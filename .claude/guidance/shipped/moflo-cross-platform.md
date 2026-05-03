@@ -72,10 +72,29 @@ const mod = await import(`file://${absolutePath}`);
 | Find executable | `which` | `where` |
 | Null device | `/dev/null` | `NUL` |
 | Shell | `/bin/sh` | `cmd.exe` |
-| Kill process | `kill <pid>` | `taskkill /PID <pid>` |
+| Kill process | `kill <pid>` | `taskkill /F /PID <pid>` |
 | List processes | `ps -eo pid,command` | `tasklist` |
+| Inspect a PID's command line | `/proc/<pid>/cmdline` (Linux) or `ps -p <pid>` (macOS) | PowerShell `Get-CimInstance Win32_Process -Filter "ProcessId=<pid>"` |
+
+**Background process spawning differs by platform.** Use `detached: !isWin` for backgrounded children on POSIX; on Windows use `{ shell: true, windowsHide: true }` instead — `detached` does not behave the same way and the `windowsHide` flag prevents flashing console windows.
 
 **Shell escape functions MUST match the target shell.** POSIX single-quote escaping (`'arg'`) does not work in `cmd.exe`. If you select `cmd.exe` as the shell on Windows, escape with `"` or `^`.
+
+**Never assume `bash` is on PATH.** Use `child_process.spawn` with explicit args instead of building a shell string the user's shell will re-parse. On Windows, even with `shell: true`, the default is `cmd.exe` — POSIX-isms in the command string will fail.
+
+---
+
+## Signals and Process Lifecycle
+
+**SIGHUP and SIGTERM are POSIX-only.** On Windows, `process.kill(pid, 'SIGHUP')` is a best-effort emulation that often just terminates the process. To stop a process portably, prefer `taskkill /F /PID <pid>` on Windows and `process.kill(pid, 'SIGTERM')` on POSIX, with explicit branching.
+
+**Windows recycles PIDs aggressively.** A PID that was alive a few minutes ago may now belong to an unrelated process. Anywhere we do "is this PID still mine?" the check MUST verify the process command line (or another stable marker), not just PID liveness — otherwise we'll send signals to whoever inherited the PID.
+
+---
+
+## Cross-Platform File Locking
+
+**Use `fs.writeFileSync(path, data, { flag: 'wx' })` for atomic locks.** The `wx` flag fails if the file already exists, giving an atomic create-or-fail primitive that works the same on Windows, macOS, and Linux. Don't reach for `flock`, `fcntl`, or shelling out to `lockfile` — those are POSIX-only or platform-fragile.
 
 ---
 

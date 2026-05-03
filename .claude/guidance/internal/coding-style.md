@@ -90,5 +90,9 @@ Search broadly — the codebase has utilities scattered across packages. Use `Gr
 
 ## See Also
 
-- `.claude/guidance/internal/guidance-rules.md` — Rules for writing guidance docs
+- `.claude/guidance/internal/guidance-rules.md` — Rules for writing guidance docs (style rules for prose vs code)
+- `.claude/guidance/internal/testing-performance.md` — Decomposition + DRY tie directly into test-performance: monolithic files cause slow imports under fork contention
+- `.claude/guidance/shipped/moflo-source-hygiene.md` — Consumer-facing view of file organisation, canonical locations, and the no-stale-artifacts rule
+- `.claude/guidance/shipped/moflo-error-handling.md` — Imperative-vs-defensive coding style, paired with this doc's naming/decomposition rules
+- `.claude/guidance/shipped/moflo-cross-platform.md` — Cross-platform constraints that often dictate decomposition (e.g., separating Windows-only branches into their own modules)
 - `CLAUDE.md` — Project architecture and file organization rules

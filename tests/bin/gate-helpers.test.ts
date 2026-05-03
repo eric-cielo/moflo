@@ -1637,79 +1637,162 @@ describe('settings.json: PostToolUse matcher coverage', () => {
     postToolUseMatchers = [];
   }
 
-  function findMatchingEntry(toolName: string) {
-    return postToolUseMatchers.find(entry => new RegExp(entry.matcher).test(toolName));
+  // Claude Code fires ALL matching entries for a tool, not just the first.
+  // Gather every entry whose matcher regex matches the tool name; assertions
+  // then look across the union of their hook commands.
+  function findAllMatchingEntries(toolName: string) {
+    return postToolUseMatchers.filter(entry => new RegExp(entry.matcher).test(toolName));
+  }
+  function allCommandsFor(toolName: string): string[] {
+    return findAllMatchingEntries(toolName).flatMap(e => e.hooks.map(h => h.command));
   }
 
   it('mcp__moflo__memory_search matches record-memory-searched hook', () => {
-    const entry = findMatchingEntry('mcp__moflo__memory_search');
-    expect(entry).toBeDefined();
-    const cmds = entry!.hooks.map(h => h.command);
+    const cmds = allCommandsFor('mcp__moflo__memory_search');
     expect(cmds.some(c => c.includes('record-memory-searched'))).toBe(true);
   });
 
   it('mcp__moflo__memory_retrieve matches record-memory-searched hook', () => {
-    const entry = findMatchingEntry('mcp__moflo__memory_retrieve');
-    expect(entry).toBeDefined();
-    const cmds = entry!.hooks.map(h => h.command);
+    const cmds = allCommandsFor('mcp__moflo__memory_retrieve');
     expect(cmds.some(c => c.includes('record-memory-searched'))).toBe(true);
   });
 
   it('mcp__moflo__memory_store matches record-learnings-stored hook', () => {
-    const entry = findMatchingEntry('mcp__moflo__memory_store');
-    expect(entry).toBeDefined();
-    const cmds = entry!.hooks.map(h => h.command);
+    const cmds = allCommandsFor('mcp__moflo__memory_store');
     expect(cmds.some(c => c.includes('record-learnings-stored'))).toBe(true);
   });
 
   it('mcp__moflo__memory_store also matches record-memory-searched hook', () => {
-    const entry = findMatchingEntry('mcp__moflo__memory_store');
-    expect(entry).toBeDefined();
-    const cmds = entry!.hooks.map(h => h.command);
+    const cmds = allCommandsFor('mcp__moflo__memory_store');
     expect(cmds.some(c => c.includes('record-memory-searched'))).toBe(true);
   });
 
   it('non-memory MCP tools do not match memory matchers', () => {
-    const entry = findMatchingEntry('mcp__moflo__spell_cast');
-    // Should either not match or not trigger memory-related hooks
-    if (entry) {
-      const cmds = entry.hooks.map(h => h.command);
-      expect(cmds.some(c => c.includes('record-memory-searched'))).toBe(false);
-    }
+    const cmds = allCommandsFor('mcp__moflo__spell_cast');
+    expect(cmds.some(c => c.includes('record-memory-searched'))).toBe(false);
+    expect(cmds.some(c => c.includes('record-learnings-stored'))).toBe(false);
   });
 
   it('Bash matches record-test-run hook', () => {
-    const entry = findMatchingEntry('Bash');
-    expect(entry).toBeDefined();
-    const cmds = entry!.hooks.map(h => h.command);
+    const cmds = allCommandsFor('Bash');
     expect(cmds.some(c => c.includes('record-test-run'))).toBe(true);
   });
 
   it('Skill matches record-skill-run hook', () => {
-    const entry = findMatchingEntry('Skill');
-    expect(entry).toBeDefined();
-    const cmds = entry!.hooks.map(h => h.command);
+    const cmds = allCommandsFor('Skill');
     expect(cmds.some(c => c.includes('record-skill-run'))).toBe(true);
   });
 
   it('Write matches reset-edit-gates hook', () => {
-    const entry = findMatchingEntry('Write');
-    expect(entry).toBeDefined();
-    const cmds = entry!.hooks.map(h => h.command);
+    const cmds = allCommandsFor('Write');
     expect(cmds.some(c => c.includes('reset-edit-gates'))).toBe(true);
   });
 
   it('Edit matches reset-edit-gates hook', () => {
-    const entry = findMatchingEntry('Edit');
-    expect(entry).toBeDefined();
-    const cmds = entry!.hooks.map(h => h.command);
+    const cmds = allCommandsFor('Edit');
     expect(cmds.some(c => c.includes('reset-edit-gates'))).toBe(true);
   });
 
   it('MultiEdit matches reset-edit-gates hook', () => {
-    const entry = findMatchingEntry('MultiEdit');
-    expect(entry).toBeDefined();
-    const cmds = entry!.hooks.map(h => h.command);
+    const cmds = allCommandsFor('MultiEdit');
     expect(cmds.some(c => c.includes('reset-edit-gates'))).toBe(true);
+  });
+
+  // ── Issue #879 — wiring: session_id-dependent hooks must use gate-hook.mjs ──
+  // Calling gate.cjs directly skips the stdin-reading wrapper that forwards
+  // Claude Code's session_id as HOOK_SESSION_ID. Without it, the per-actor
+  // map (memorySearchedBy[sid]) stays empty and the gate blocks every Read.
+  function commandFor(tool: string, action: string): string | undefined {
+    return allCommandsFor(tool).find(c => c.includes(action));
+  }
+
+  it('record-memory-searched is wired through gate-hook.mjs (#879)', () => {
+    const cmd = commandFor('mcp__moflo__memory_search', 'record-memory-searched');
+    expect(cmd).toBeDefined();
+    expect(cmd).toContain('gate-hook.mjs');
+    expect(cmd).not.toMatch(/gate\.cjs"\s+record-memory-searched/);
+  });
+
+  it('check-bash-memory is wired through gate-hook.mjs (#879)', () => {
+    const cmd = commandFor('Bash', 'check-bash-memory');
+    expect(cmd).toBeDefined();
+    expect(cmd).toContain('gate-hook.mjs');
+    expect(cmd).not.toMatch(/gate\.cjs"\s+check-bash-memory/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #879 — production round-trip: record→check across the wrapper boundary
+// Simulates exactly what Claude Code does: post-hook for memory_search via
+// gate-hook.mjs (which forwards stdin session_id), then pre-hook for Read via
+// gate-hook.mjs (same session_id). The per-actor map must be stamped by the
+// post-hook so the pre-hook doesn't block.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('production round-trip: record-memory-searched → check-before-read (#879)', () => {
+  it('parent searches memory via gate-hook then reads — must NOT block', async () => {
+    writeState(tmpDir, {
+      memoryRequired: true,
+      memorySearched: false,
+      memorySearchedBy: {},
+    });
+
+    // 1. Post-hook fires after mcp__moflo__memory_search — gate-hook.mjs reads
+    //    stdin session_id and forwards it as HOOK_SESSION_ID to gate.cjs.
+    const searchCtx = {
+      session_id: 'parent-roundtrip',
+      tool_name: 'mcp__moflo__memory_search',
+      tool_input: { query: 'auth', namespace: 'guidance' },
+      hook_event_name: 'PostToolUse',
+    };
+    const postR = await runEsmWithStdin(GATE_HOOK, ['record-memory-searched'], searchCtx, baseEnv(tmpDir));
+    expect(postR.exitCode).toBe(0);
+
+    // 2. State must reflect the per-actor stamp.
+    const after = readState(tmpDir) as { memorySearched: boolean; memorySearchedBy: Record<string, boolean> };
+    expect(after.memorySearched).toBe(true);
+    expect(after.memorySearchedBy['parent-roundtrip']).toBe(true);
+
+    // 3. Pre-hook fires before Read — same session_id forwarded — must allow.
+    const readCtx = {
+      session_id: 'parent-roundtrip',
+      tool_name: 'Read',
+      tool_input: { file_path: '/project/src/index.ts' },
+      hook_event_name: 'PreToolUse',
+    };
+    const preR = await runEsmWithStdin(GATE_HOOK, ['check-before-read'], readCtx, baseEnv(tmpDir));
+    expect(preR.exitCode).toBe(0);
+  });
+
+  it('regression: record via gate.cjs DIRECTLY leaves the per-actor map empty', async () => {
+    // This documents the failure mode the fix prevents: when the post-hook is
+    // wired to gate.cjs directly (no wrapper), HOOK_SESSION_ID isn't forwarded,
+    // so markMemorySearched only updates the legacy bool — and the pre-hook
+    // (which DOES go through gate-hook.mjs) blocks because the map is empty.
+    writeState(tmpDir, {
+      memoryRequired: true,
+      memorySearched: false,
+      memorySearchedBy: {},
+    });
+
+    // Direct gate.cjs call — no wrapper, no HOOK_SESSION_ID.
+    const env = baseEnv(tmpDir);
+    delete env.HOOK_SESSION_ID;
+    runGate('record-memory-searched', env);
+
+    const after = readState(tmpDir) as { memorySearched: boolean; memorySearchedBy: Record<string, boolean> };
+    expect(after.memorySearched).toBe(true);          // legacy bool was set
+    expect(Object.keys(after.memorySearchedBy)).toHaveLength(0); // but the map is empty
+
+    // Pre-hook through gate-hook.mjs WITH session_id — sees empty map, blocks.
+    const readCtx = {
+      session_id: 'parent-roundtrip',
+      tool_name: 'Read',
+      tool_input: { file_path: '/project/src/index.ts' },
+      hook_event_name: 'PreToolUse',
+    };
+    const preR = await runEsmWithStdin(GATE_HOOK, ['check-before-read'], readCtx, baseEnv(tmpDir));
+    expect(preR.exitCode).toBe(2);
+    expect(preR.stderr).toContain('BLOCKED');
   });
 });
