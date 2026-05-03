@@ -14,15 +14,16 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import { locateMofloRootPath } from '../services/moflo-require.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import {
+  discoverGuidanceDirs,
+  discoverSrcDirs,
+  discoverTestDirs,
+  detectExtensions,
+  renderMofloYaml,
+  type MofloYamlConfig,
+} from './moflo-yaml-template.js';
 
-// Directories that walkers should never recurse into when discovering project
-// structure. The runtime state dirs (.swarm, .moflo) and other generated/
-// tooling trees would only produce noise. Hoisted from three identical inline
-// copies in this file's discover* helpers.
-const WALK_SKIP_DIRS = new Set([
-  'node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.reports',
-  '.swarm', '.moflo', 'packages',
-]);
+export { discoverTestDirs };
 
 // ============================================================================
 // Types
@@ -68,116 +69,6 @@ export interface MofloInitResult {
 function mofloRootJoin(...segments: string[]): string[] {
   const hit = locateMofloRootPath(segments.join('/'));
   return hit ? [hit] : [];
-}
-
-/**
- * Discover guidance directories by checking top-level candidates AND walking
- * the project tree for subproject .claude/guidance dirs (monorepo support).
- */
-function discoverGuidanceDirs(root: string): string[] {
-  const TOP_LEVEL = ['.claude/guidance', 'docs/guides', 'docs', 'architecture', 'adr', '.cursor/rules'];
-  const found = TOP_LEVEL.filter(d => fs.existsSync(path.join(root, d)));
-
-  // Walk up to 3 levels deep looking for .claude/guidance in subprojects
-  function walk(dir: string, depth: number) {
-    if (depth > 3) return;
-    try {
-      const entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true });
-      for (const entry of entries) {
-        if (!entry.isDirectory() || WALK_SKIP_DIRS.has(entry.name)) continue;
-        const rel = dir ? `${dir}/${entry.name}` : entry.name;
-        const guidancePath = `${rel}/.claude/guidance`;
-        if (fs.existsSync(path.join(root, guidancePath))) {
-          // Verify it has .md files
-          try {
-            const files = fs.readdirSync(path.join(root, guidancePath));
-            if (files.some(f => f.endsWith('.md'))) found.push(guidancePath);
-          } catch { /* skip unreadable */ }
-        } else {
-          walk(rel, depth + 1);
-        }
-      }
-    } catch { /* skip unreadable directories */ }
-  }
-
-  walk('', 0);
-  return found;
-}
-
-/**
- * Discover test directories by checking common locations and walking for
- * colocated __tests__ dirs. Returns relative paths.
- */
-export function discoverTestDirs(root: string): string[] {
-  const TOP_LEVEL = ['tests', 'test', '__tests__', 'spec', 'e2e'];
-  const found = TOP_LEVEL.filter(d => fs.existsSync(path.join(root, d)));
-
-  // Walk up to 3 levels deep looking for __tests__ dirs inside src
-  function walk(dir: string, depth: number) {
-    if (depth > 3) return;
-    try {
-      const entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true });
-      for (const entry of entries) {
-        if (!entry.isDirectory() || WALK_SKIP_DIRS.has(entry.name)) continue;
-        const rel = dir ? `${dir}/${entry.name}` : entry.name;
-        if (entry.name === '__tests__') {
-          found.push(rel);
-        } else {
-          walk(rel, depth + 1);
-        }
-      }
-    } catch { /* skip unreadable directories */ }
-  }
-
-  walk('', 0);
-  return found;
-}
-
-/**
- * Discover source directories by walking the project tree.
- * Finds directories named 'src' (or top-level 'packages', 'lib', etc.)
- * that contain .ts/.tsx/.js/.jsx files. Skips node_modules, dist, etc.
- */
-function discoverSrcDirs(root: string): string[] {
-  // Top-level candidates that are always source roots if they exist
-  const TOP_LEVEL = ['packages', 'lib', 'app', 'apps', 'services', 'server', 'client'];
-  const found: string[] = [];
-
-  // Add top-level candidates first
-  for (const d of TOP_LEVEL) {
-    if (fs.existsSync(path.join(root, d))) found.push(d);
-  }
-
-  // Walk up to 3 levels deep looking for 'src' and 'migrations' directories
-  const SRC_NAMES = new Set(['src', 'migrations']);
-  function walk(dir: string, depth: number) {
-    if (depth > 3) return;
-    try {
-      const entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true });
-      for (const entry of entries) {
-        if (!entry.isDirectory() || WALK_SKIP_DIRS.has(entry.name)) continue;
-        const rel = dir ? `${dir}/${entry.name}` : entry.name;
-        if (SRC_NAMES.has(entry.name)) {
-          // Check it actually has source files
-          try {
-            const files = fs.readdirSync(path.join(root, rel));
-            const hasSource = files.some(f => /\.(ts|tsx|js|jsx)$/.test(f));
-            if (hasSource) found.push(rel);
-          } catch { /* skip unreadable */ }
-        } else {
-          walk(rel, depth + 1);
-        }
-      }
-    } catch { /* skip unreadable directories */ }
-  }
-
-  walk('', 0);
-
-  // Deduplicate: if 'packages' is found, don't also include 'packages/foo/src'
-  // since the code-map walker handles subdirs
-  return found.filter(d => {
-    return !found.some(other => other !== d && d.startsWith(other + '/'));
-  });
 }
 
 /**
@@ -331,152 +222,26 @@ function generateConfig(root: string, force?: boolean, answers?: MofloInitAnswer
     return { name: 'moflo.yaml', status: 'skipped', detail: 'Already exists (use --force to overwrite)' };
   }
 
-  const projectName = path.basename(root);
-  const guidanceDirs = answers?.guidanceDirs ?? ['.claude/guidance'];
   const srcDirs = answers?.srcDirs ?? ['src'];
-  const testDirs = answers?.testDirs ?? ['tests'];
-  const gatesEnabled = answers?.gates ?? true;
+  const config: MofloYamlConfig = {
+    projectName: path.basename(root),
+    guidanceDirs: answers?.guidanceDirs ?? ['.claude/guidance'],
+    srcDirs,
+    testDirs: answers?.testDirs ?? ['tests'],
+    detectedExts: detectExtensions(root, srcDirs),
+    guidance: answers?.guidance ?? true,
+    codeMap: answers?.codeMap ?? true,
+    tests: answers?.tests ?? true,
+    gates: answers?.gates ?? true,
+    stopHook: answers?.stopHook ?? true,
+  };
 
-  // Detect languages
-  const extensions = new Set<string>();
-  for (const dir of srcDirs) {
-    const fullDir = path.join(root, dir);
-    if (fs.existsSync(fullDir)) {
-      try {
-        scanExtensions(fullDir, extensions, 0, 3);
-      } catch { /* skip */ }
-    }
-  }
-  const detectedExts = extensions.size > 0
-    ? [...extensions].sort()
-    : ['.ts', '.tsx', '.js', '.jsx'];
-
-  const yaml = `# MoFlo — Project Configuration
-# Generated by: moflo init
-# Docs: https://github.com/eric-cielo/moflo
-
-project:
-  name: "${projectName}"
-
-# Guidance/knowledge docs to index for semantic search
-guidance:
-  directories:
-${guidanceDirs.map(d => `    - ${d}`).join('\n')}
-  namespace: guidance
-
-# Source directories for code navigation map
-code_map:
-  directories:
-${srcDirs.map(d => `    - ${d}`).join('\n')}
-  extensions: [${detectedExts.map(e => `"${e}"`).join(', ')}]
-  exclude: [node_modules, dist, .next, coverage, build, __pycache__, target, .git]
-  namespace: code-map
-
-# Test file discovery and indexing
-tests:
-  directories:
-${testDirs.map(d => `    - ${d}`).join('\n')}
-  patterns: ["*.test.*", "*.spec.*", "*.test-*"]
-  extensions: [".ts", ".tsx", ".js", ".jsx"]
-  exclude: [node_modules, coverage, dist]
-  namespace: tests
-
-# Spell gates (enforced via Claude Code hooks)
-gates:
-  memory_first: ${gatesEnabled}
-  task_create_first: ${gatesEnabled}
-  context_tracking: ${gatesEnabled}
-
-# Auto-index on session start
-auto_index:
-  guidance: ${answers?.guidance ?? true}
-  code_map: ${answers?.codeMap ?? true}
-  tests: ${answers?.tests ?? true}
-
-# Memory backend
-memory:
-  backend: sql.js
-  embedding_model: Xenova/all-MiniLM-L6-v2
-  namespace: default
-
-# Hook toggles (all on by default — disable to slim down)
-hooks:
-  pre_edit: true               # Track file edits for learning
-  post_edit: true              # Record edit outcomes, train neural patterns
-  pre_task: true               # Get agent routing before task spawn
-  post_task: true              # Record task results for learning
-  gate: ${gatesEnabled}                   # Spell gate enforcement (memory-first, task-create-first)
-  route: true                  # Intelligent task routing on each prompt
-  stop_hook: ${answers?.stopHook ?? true}              # Session-end persistence and metric export
-  session_restore: true        # Restore session state on start
-  notification: true           # Hook into Claude Code notifications
-
-# MCP server options
-mcp:
-  tool_defer: deferred           # Defer 150+ tool schemas; loaded on demand via ToolSearch
-  auto_start: false              # Auto-start MCP server on session begin
-
-# Spell step sandboxing (OS-level process isolation for bash steps)
-# Platform support: macOS (sandbox-exec), Linux/WSL (bwrap). Windows has no OS sandbox.
-# Tiers:
-#   auto          — Use best available sandbox for this platform (recommended when enabled)
-#   denylist-only — Layer 1 only: block catastrophic commands, no OS isolation
-#   full          — Require full OS isolation; throws if the sandbox tool is unavailable
-sandbox:
-  enabled: false                 # Set to true to wrap bash steps in an OS sandbox
-  tier: auto                     # auto | denylist-only | full
-
-# Status line display (shown at bottom of Claude Code)
-# mode: "compact" (default), "single-line", or "dashboard" (full multi-line)
-status_line:
-  enabled: true
-  mode: compact
-  branding: "MoFlo V4"
-  show_git: true
-  show_session: true
-  show_swarm: true
-  show_mcp: true
-
-# Model preferences (haiku, sonnet, opus)
-# These are static fallbacks. When model_routing.enabled is true (default),
-# the dynamic router takes precedence based on task complexity.
-models:
-  default: opus        # Model for general tasks (kept high for unknowns)
-  research: sonnet     # Model for research/exploration agents
-  review: sonnet       # Code review never needs opus reasoning
-  test: sonnet         # Model for test-writing agents
-
-# Intelligent model routing (auto-selects haiku/sonnet/opus per task)
-# When enabled, overrides the static model preferences above
-# by analyzing task complexity and routing to the cheapest capable model.
-model_routing:
-  enabled: true                    # Set to false to pin to the static models above
-  confidence_threshold: 0.85       # Min confidence before escalating to a more capable model
-  cost_optimization: true          # Prefer cheaper models when confidence is high
-  circuit_breaker: true            # Penalize models that fail repeatedly
-  # Per-agent overrides (set to "inherit" to use routing, or a specific model to pin)
-  # agent_overrides:
-  #   security-architect: opus     # Always use opus for security
-  #   researcher: sonnet           # Pin research to sonnet
-`;
-
-  fs.writeFileSync(configPath, yaml, 'utf-8');
-  return { name: 'moflo.yaml', status: 'created', detail: `Detected: ${srcDirs.join(', ')} | ${detectedExts.join(', ')}` };
-}
-
-function scanExtensions(dir: string, extensions: Set<string>, depth: number, maxDepth: number): void {
-  if (depth > maxDepth) return;
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries.slice(0, 100)) {
-    if (entry.isDirectory() && !['node_modules', '.git', 'dist', 'build'].includes(entry.name)) {
-      scanExtensions(path.join(dir, entry.name), extensions, depth + 1, maxDepth);
-    } else if (entry.isFile()) {
-      const ext = path.extname(entry.name);
-      if (['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java', '.kt', '.swift', '.rb', '.cs'].includes(ext)) {
-        extensions.add(ext);
-      }
-    }
-  }
+  fs.writeFileSync(configPath, renderMofloYaml(config), 'utf-8');
+  return {
+    name: 'moflo.yaml',
+    status: 'created',
+    detail: `Detected: ${config.srcDirs.join(', ')} | ${config.detectedExts.join(', ')}`,
+  };
 }
 
 // ============================================================================

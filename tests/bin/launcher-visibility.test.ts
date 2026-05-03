@@ -146,6 +146,49 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     expect(lines.find((l) => l.startsWith('moflo: updated moflo.yaml'))).toContain('sandbox');
   });
 
+  // Files the §3d-yaml-create launcher block dynamically imports, plus their
+  // transitive deps inside the moflo dist tree. The test stages each one
+  // under a temp root so the launcher's `resolve(projectRoot, 'dist/...')`
+  // probe resolves and the `import` chain doesn't ENOENT on a sibling.
+  const STAGED_DIST_FILES = [
+    'dist/src/cli/init/moflo-yaml-template.js',
+    'dist/src/cli/shared/utils/atomic-file-write.js',
+  ];
+  function stageMofloDist(target: string): void {
+    for (const rel of STAGED_DIST_FILES) {
+      mkdirSync(join(target, rel.replace(/\/[^/]+$/, '')), { recursive: true });
+      copyFileSync(resolve(REPO_ROOT, rel), join(target, rel));
+    }
+  }
+
+  it('creates moflo.yaml when missing (#895)', () => {
+    stageMofloDist(root);
+    expect(existsSync(join(root, 'moflo.yaml'))).toBe(false);
+
+    const { stdout } = runLauncher(root);
+    const lines = mutationLines(stdout);
+
+    expect(lines.some((l) => l.startsWith('moflo: created moflo.yaml'))).toBe(true);
+    expect(existsSync(join(root, 'moflo.yaml'))).toBe(true);
+
+    const written = readFileSync(join(root, 'moflo.yaml'), 'utf-8');
+    expect(written).toContain('project:');
+    expect(written).toContain('model_routing:');
+    expect(written).toContain('sandbox:');
+  });
+
+  it('does not create moflo.yaml when one already exists (#895 idempotent)', () => {
+    stageMofloDist(root);
+    const sentinel = '# user wrote this\nproject:\n  name: keep-me\n';
+    writeFileSync(join(root, 'moflo.yaml'), sentinel);
+
+    const { stdout } = runLauncher(root);
+    const lines = mutationLines(stdout);
+
+    expect(lines.some((l) => l.startsWith('moflo: created moflo.yaml'))).toBe(false);
+    expect(readFileSync(join(root, 'moflo.yaml'), 'utf-8')).toBe(sentinel);
+  });
+
   it('reports settings.json mutations when stale entries are rewritten', () => {
     const claudeDir = join(root, '.claude');
     mkdirSync(claudeDir, { recursive: true });

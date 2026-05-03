@@ -813,6 +813,58 @@ async function fixGateHealthHooks(): Promise<boolean> {
   }
 }
 
+// Check moflo.yaml exists and contains all required top-level sections (#895).
+// Catches three failure modes:
+//   1. File missing — session-start should have created it; warn user that
+//      defaults are invisible/untunable.
+//   2. File empty / unreadable — corrupted by half-write or filesystem error.
+//   3. Top-level sections missing — partial yaml from manual edit or stale
+//      copy from a moflo version that didn't ship a section yet. The
+//      session-start yaml-upgrader would normally backfill these, but the
+//      diagnostic surfaces it for users who never restarted.
+//
+// Exported so tests can exercise it end-to-end against a temp project root
+// without mutating process.cwd() (which fights vitest's parallel test runner).
+export async function checkMofloYamlCompliance(cwd: string = process.cwd()): Promise<HealthCheck> {
+  const yamlPath = join(cwd, 'moflo.yaml');
+
+  // Lazy-import the validator so doctor doesn't pull in fs walks on the
+  // happy path of unrelated checks.
+  const { validateMofloYaml } = await import('../init/moflo-yaml-template.js');
+  const result = validateMofloYaml(yamlPath);
+
+  if (!result.exists) {
+    return {
+      name: 'moflo.yaml',
+      status: 'warn',
+      message: 'moflo.yaml not found — defaults are in effect but not visible/tunable',
+      fix: 'Restart Claude Code (session-start auto-creates) or run `npx moflo init`',
+    };
+  }
+
+  if (result.valid) {
+    return { name: 'moflo.yaml', status: 'pass', message: `Compliant (${yamlPath})` };
+  }
+
+  const parseIssue = result.issues.find((i) => i.kind !== 'missing-section');
+  if (parseIssue) {
+    return {
+      name: 'moflo.yaml',
+      status: 'fail',
+      message: `${parseIssue.kind}: ${parseIssue.detail}`,
+      fix: 'Inspect/repair moflo.yaml, or `mv moflo.yaml moflo.yaml.bak && npx moflo init`',
+    };
+  }
+
+  // Missing sections — recoverable on next session-start via yaml-upgrader.
+  return {
+    name: 'moflo.yaml',
+    status: 'warn',
+    message: `Missing sections: ${result.missingSections.join(', ')}`,
+    fix: 'Restart Claude Code (yaml-upgrader auto-appends) or `npx moflo init --force`',
+  };
+}
+
 // Check test directories configured in moflo.yaml
 async function checkTestDirs(): Promise<HealthCheck> {
   const yamlPath = join(process.cwd(), 'moflo.yaml');
@@ -1600,6 +1652,7 @@ export const doctorCommand: Command = {
       checkGit,
       checkGitRepo,
       checkConfigFile,
+      checkMofloYamlCompliance,
       checkStatusLine,
       checkDaemonStatus,
       checkMemoryDatabase,
@@ -1642,6 +1695,8 @@ export const doctorCommand: Command = {
       'npm': checkNpmVersion,
       'claude': checkClaudeCode,
       'config': checkConfigFile,
+      'yaml': checkMofloYamlCompliance,
+      'moflo-yaml': checkMofloYamlCompliance,
       'statusline': checkStatusLine,
       'status-line': checkStatusLine,
       'daemon': checkDaemonStatus,

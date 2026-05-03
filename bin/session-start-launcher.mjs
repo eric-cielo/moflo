@@ -1102,6 +1102,40 @@ try {
   }
 } catch { /* non-fatal */ }
 
+// ── 3d-yaml-create. Create moflo.yaml if missing (#895) ────────────────────
+// Sibling self-heal to 3d-yaml: that block APPENDS new sections to existing
+// yaml; this block CREATES the file from the canonical template when no yaml
+// exists at all. Without it, consumers picking up new defaults via npm-install
+// (e.g. PR #894 flipped model_routing.enabled to true) have no surface to
+// see/tune them — the DEFAULT_CONFIG fallback is invisible.
+//
+// Runs BEFORE 3d-yaml so the appender has a file to work with on the same
+// session. Steady-state hot path: the existsSync check below short-circuits
+// before any module load, so consumers with an existing yaml pay one stat call.
+try {
+  if (!existsSync(resolve(projectRoot, 'moflo.yaml'))) {
+    const tplPaths = [
+      resolve(projectRoot, 'node_modules/moflo/dist/src/cli/init/moflo-yaml-template.js'),
+      resolve(projectRoot, 'dist/src/cli/init/moflo-yaml-template.js'),
+    ];
+    const tplPath = tplPaths.find((p) => existsSync(p));
+    if (tplPath) {
+      const { ensureMofloYamlExists } = await import(pathToFileURL(tplPath).href);
+      const result = ensureMofloYamlExists(projectRoot);
+      if (result?.created) {
+        emitMutation(
+          'created moflo.yaml',
+          'review defaults — model routing, sandbox, gates, hooks',
+        );
+      }
+    }
+  }
+} catch (err) {
+  // Non-fatal — DEFAULT_CONFIG fallback still gives correct behavior; user
+  // just loses the visible/tunable surface until next session retries (#854).
+  emitWarning(`moflo.yaml create skipped (${errMessage(err)})`);
+}
+
 // ── 3d-yaml. Append missing top-level sections to moflo.yaml ───────────────
 // Users must never be required to re-run `moflo init` after a version bump.
 // When moflo ships a new top-level config section (e.g. sandbox:), append it
