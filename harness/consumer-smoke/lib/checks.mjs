@@ -419,6 +419,9 @@ export function cliLoads(consumerDir) {
 //                          the init flow).
 //   - "Daemon Status"    — daemon isn't running in a smoke fixture.
 //   - "Config File"      — no `.moflo/config.yaml` in a bare consumer.
+//   - "moflo.yaml"       — auto-created by session-start launcher (#895),
+//                          which the smoke fixture skips. Same posture as
+//                          "Status Line" / "Config File".
 //   - "Memory Database"  — was unwarned because the DB didn't exist yet.
 //                          Doctor's Memory Access Functional check (#844)
 //                          now writes a probe row and auto-creates the DB,
@@ -435,6 +438,7 @@ const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
   'Status Line',
   'Daemon Status',
   'Config File',
+  'moflo.yaml',       // session-start auto-create not exercised in smoke (#895)
   'Memory Database',  // smoke runs `memory init` AFTER doctor
   'Embeddings',       // depends on Memory Database
   'Test Directories',
