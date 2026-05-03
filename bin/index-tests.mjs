@@ -28,6 +28,7 @@ import { fileURLToPath } from 'url';
 import { execSync, execFileSync, spawn } from 'child_process';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, MOFLO_DIR } from './lib/moflo-paths.mjs';
+import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyIncrementalChunks, computeContentListHash } from './lib/incremental-write.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
@@ -687,11 +688,9 @@ async function main() {
 }
 
 async function runEmbeddings() {
-  const embedCandidates = [
-    resolve(dirname(fileURLToPath(import.meta.url)), 'build-embeddings.mjs'),
-    resolve(projectRoot, '.claude/scripts/build-embeddings.mjs'),
-  ];
-  const embedScript = embedCandidates.find(p => existsSync(p));
+  const embedScript = resolveMofloBin(
+    projectRoot, 'flo-embeddings', 'build-embeddings.mjs', { includeDevFallback: true },
+  );
   if (!embedScript) return;
 
   log('Generating embeddings for tests...');

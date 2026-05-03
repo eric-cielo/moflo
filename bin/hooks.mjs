@@ -25,6 +25,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { createProcessManager } from './lib/process-manager.mjs';
 import { shouldDaemonAutoStart } from './lib/daemon-config.mjs';
+import { resolveMofloBin } from './lib/resolve-bin.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -449,21 +450,10 @@ function spawnWindowless(cmd, args, description) {
   return result;
 }
 
-// Resolve a moflo npm bin script, falling back to local .claude/scripts/ copy
+// Resolve a moflo bin script via the shared helper (bin/lib/resolve-bin.mjs).
+// Bin-first ordering — see #866 / #869.
 function resolveBinOrLocal(binName, localScript) {
-  // 1. npm bin from moflo package (always up to date with published version)
-  const mofloScript = resolve(projectRoot, 'node_modules/moflo/bin', localScript);
-  if (existsSync(mofloScript)) return mofloScript;
-
-  // 2. npm bin from .bin (symlinked by npm install)
-  const npmBin = resolve(projectRoot, 'node_modules/.bin', binName);
-  if (existsSync(npmBin)) return npmBin;
-
-  // 3. Local .claude/scripts/ copy (may be stale but better than nothing)
-  const localPath = resolve(projectRoot, '.claude/scripts', localScript);
-  if (existsSync(localPath)) return localPath;
-
-  return null;
+  return resolveMofloBin(projectRoot, binName, localScript);
 }
 
 // Run the guidance indexer in background (non-blocking - used for session start and file changes)

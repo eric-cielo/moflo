@@ -31,14 +31,12 @@ describe('bin/session-start-launcher.mjs §4 — anchor hooks.mjs spawn on npm b
   const file = resolve(BIN, 'session-start-launcher.mjs');
   const src = readFileSync(file, 'utf-8');
 
-  it('prefers node_modules/moflo/bin/hooks.mjs over the .claude/scripts/ mirror', () => {
-    // The `hooksPkg`/`hooksMirror` pair must exist and the spawn target must
-    // be the existsSync-gated preference of pkg over mirror. Mirrors the
-    // existing `runMigrationsPkg`/`runMigrationsMirror` pattern immediately
-    // below in the same section.
-    expect(src).toMatch(/const\s+hooksPkg\s*=\s*resolve\(projectRoot,\s*['"]node_modules\/moflo\/bin\/hooks\.mjs['"]\)/);
-    expect(src).toMatch(/const\s+hooksMirror\s*=\s*resolve\(projectRoot,\s*['"]\.claude\/scripts\/hooks\.mjs['"]\)/);
-    expect(src).toMatch(/const\s+hooksScript\s*=\s*existsSync\(hooksPkg\)\s*\?\s*hooksPkg\s*:\s*hooksMirror/);
+  it('resolves hooks.mjs via the shared resolveMofloBin helper (bin-first by construction)', () => {
+    // Post-#869: the inline pkg/mirror/script triple was lifted into
+    // `bin/lib/resolve-bin.mjs`. The helper itself pins the bin-first
+    // ordering — see tests/bin/resolve-bin.test.ts. Here we just assert the
+    // launcher delegates to it for hooks.mjs.
+    expect(src).toMatch(/const\s+hooksScript\s*=\s*resolveMofloBin\(\s*projectRoot\s*,\s*null\s*,\s*['"]hooks\.mjs['"]\s*\)/);
   });
 
   it('does NOT spawn hooks.mjs directly from the .claude/scripts mirror without a bin-pref guard', () => {
@@ -85,18 +83,13 @@ describe('bin/hooks.mjs session-start — anchor index-all.mjs spawn on npm bin 
     expect(sessionStart![1]).toMatch(/log\s*\(\s*['"]warn['"]\s*,\s*['"][^'"]*index-all\.mjs not found/);
   });
 
-  it('resolveBinOrLocal still checks node_modules/moflo/bin before .claude/scripts', () => {
-    // The helper itself is the load-bearing piece. Pin its bin-first ordering
-    // so a future refactor can't silently flip the priority and reintroduce
-    // the stale-mirror race.
+  it('resolveBinOrLocal delegates to the shared resolveMofloBin helper', () => {
+    // Post-#869: the per-file helper is now a thin wrapper that routes to
+    // `bin/lib/resolve-bin.mjs`. Source-invariant pinning of the bin-first
+    // ordering moved to tests/bin/resolve-bin.test.ts so it's tested once
+    // at the load-bearing site, not duplicated per-callsite.
     const helper = src.match(/function\s+resolveBinOrLocal\s*\([^)]*\)\s*\{[\s\S]*?\n\}/);
     expect(helper, 'resolveBinOrLocal helper must exist').toBeTruthy();
-    const body = helper![0];
-
-    const mofloIdx = body.indexOf("'node_modules/moflo/bin'");
-    const mirrorIdx = body.indexOf("'.claude/scripts'");
-    expect(mofloIdx).toBeGreaterThan(-1);
-    expect(mirrorIdx).toBeGreaterThan(-1);
-    expect(mofloIdx).toBeLessThan(mirrorIdx);
+    expect(helper![0]).toMatch(/return\s+resolveMofloBin\s*\(\s*projectRoot\s*,\s*binName\s*,\s*localScript\s*\)/);
   });
 });
