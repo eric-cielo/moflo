@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'child_process';
+import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 // Read stdin JSON from Claude Code
@@ -70,6 +71,19 @@ if (TEST_HINTS.test(lower)) {
   }
 }
 
-var parts = [output.trim(), nsHint].filter(Boolean);
-if (parts.length) process.stdout.write(parts.join('\n') + '\n');
+// #867 — surface post-install restart notice. File is written by
+// scripts/post-install-notice.mjs and cleared by the SessionStart launcher
+// once the running moflo matches the file's version, so the file's
+// existence at prompt-time is itself the "still needs restart" signal.
+var restartNotice = '';
+try {
+  var pendingPath = resolve(projectDir, '.moflo', 'restart-pending.json');
+  var pending = JSON.parse(readFileSync(pendingPath, 'utf-8'));
+  if (pending && typeof pending.message === 'string' && pending.message.length > 0) {
+    restartNotice = pending.message;
+  }
+} catch (e) { /* ENOENT or malformed — silent fast-path */ }
+
+var parts = [restartNotice, output.trim(), nsHint].filter(Boolean);
+if (parts.length) process.stdout.write(parts.join('\n\n') + '\n');
 process.exit(0);

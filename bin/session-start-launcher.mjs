@@ -217,6 +217,23 @@ try {
   // own errors if the DB is still broken.
 }
 
+// ── 0d. Clear post-install restart notice when version is current (#867) ───
+// scripts/post-install-notice.mjs drops `.moflo/restart-pending.json` on every
+// `npm install moflo`. The UserPromptSubmit hook surfaces it on every prompt
+// until cleared, so this session only sees the message between install and
+// the FIRST restart that actually picks up the new bits.
+try {
+  const pendingPath = join(mofloDir(projectRoot), 'restart-pending.json');
+  const pkgPath = resolve(projectRoot, 'node_modules/moflo/package.json');
+  const pending = JSON.parse(readFileSync(pendingPath, 'utf-8'));
+  const installedVersion = JSON.parse(readFileSync(pkgPath, 'utf-8')).version;
+  if (pending && typeof pending.version === 'string' && pending.version === installedVersion) {
+    unlinkSync(pendingPath);
+    try { unlinkSync(join(mofloDir(projectRoot), 'last-install-banner.json')); } catch { /* tracker may not exist */ }
+    emitMutation('cleared post-install restart notice', `${installedVersion} now running`);
+  }
+} catch { /* file missing or malformed — silent fast-path */ }
+
 // ── 1. Helper: fire-and-forget a background process ─────────────────────────
 function fireAndForget(cmd, args, label) {
   try {
