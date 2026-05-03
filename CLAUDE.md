@@ -87,15 +87,19 @@ After running `npm install moflo@*` (or `npm install` that touches moflo), check
 - **CLI, hooks, swarm, memory, moflo.yaml:** `.claude/guidance/shipped/moflo-core-guidance.md`
 <!-- MOFLO:INJECTED:END -->
 
-## ⚠ Writing or editing guidance — guidance-rules.md is mandatory
+## ⚠ Writing or editing guidance — both rule sets are mandatory
 
-**Whenever you create, rewrite, or edit any `.claude/guidance/**/*.md` file, `.claude/guidance/internal/guidance-rules.md` MUST be followed.** That file is the single source of truth for guidance authoring: required `**Purpose:**` line, imperative voice, decision tables, concrete examples, 500-line cap, specific H2 headings, mandatory `## See Also` section, the shipped/internal partition, and the `moflo-` filename prefix on shipped docs.
+**Whenever you create, rewrite, or edit any `.claude/guidance/**/*.md` file, BOTH rule sets MUST be followed:**
+
+1. **`.claude/guidance/shipped/moflo-guidance-rules.md`** — Universal writing rules (#1–#9): required `**Purpose:**` line, imperative voice, decision tables, concrete examples, 500-line cap, specific H2 headings, anti-patterns, RAG chunking, mandatory `## See Also` section.
+2. **`.claude/guidance/internal/guidance-rules.md`** — Moflo-only extensions (#1–#3): the `moflo-` prefix on shipped files, the shipped/internal partitioning contract, and the decision rules for which bucket new docs go in.
 
 This applies to:
+
 - New shipped guidance (`.claude/guidance/shipped/moflo-*.md`)
 - New internal guidance (`.claude/guidance/internal/*.md`)
-- Edits to existing guidance — drive-by edits must not introduce drift from the rules
-- Auto-memory files under `~/.claude/projects/.../memory/` (same structural rules apply where they make sense)
+- Edits to existing guidance — drive-by edits must not introduce drift from either rule set
+- Auto-memory files under `~/.claude/projects/.../memory/` (the universal rules apply where they make sense)
 
 If you find yourself writing prose preambles, generic headings, hedged "should/might" language, or omitting See Also — stop and re-read the rules.
 

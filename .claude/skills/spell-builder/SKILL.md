@@ -356,7 +356,7 @@ Write the updated YAML back to the original file (or a new path if requested).
 
 **Runtime source:** `src/cli/spells/commands/` — each step is a TypeScript file registered in `index.ts`.
 
-**Adding a new step:** Create a directory under `steps/<name>/` with a `README.md`. Follow `.claude/guidance/internal/guidance-rules.md` and use existing step READMEs as templates. The step command source goes in `src/cli/spells/commands/` and is registered in `index.ts`. No changes to this SKILL.md needed.
+**Adding a new step:** Create a directory under `steps/<name>/` with a `README.md`. Follow `.claude/guidance/shipped/moflo-guidance-rules.md` and use existing step READMEs as templates. The step command source goes in `src/cli/spells/commands/` and is registered in `index.ts`. No changes to this SKILL.md needed.
 
 ### Connectors
 
@@ -371,7 +371,7 @@ Write the updated YAML back to the original file (or a new path if requested).
 
 **Runtime source:** `src/cli/spells/connectors/` — each connector is a TypeScript file registered in `index.ts`.
 
-**Adding a new connector:** Create a directory under `connectors/<name>/` with a `README.md`. Follow `.claude/guidance/internal/guidance-rules.md` and use existing connector READMEs as templates. The connector source goes in `src/cli/spells/connectors/` and is registered in `index.ts`. No changes to this SKILL.md needed.
+**Adding a new connector:** Create a directory under `connectors/<name>/` with a `README.md`. Follow `.claude/guidance/shipped/moflo-guidance-rules.md` and use existing connector READMEs as templates. The connector source goes in `src/cli/spells/connectors/` and is registered in `index.ts`. No changes to this SKILL.md needed.
 
 **When to create a new connector vs composing existing ones:** See [architecture.md](architecture.md) for the decision tree.
 

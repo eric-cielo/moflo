@@ -53,7 +53,7 @@ Moflo ships to N consumers via `npm install moflo`. Every change runs from their
 | Runtime imports of moflo internals use `import.meta.url` via `mofloPath()`/`mofloUrl()`, not `process.cwd()` | Consumer's `cwd` is their project root, not moflo's | `feedback_consumer_path_resolution` + lint smoke stderr scan |
 | Helper scripts ship as static files in `bin/`, not generated at runtime | Static-files rule from `moflo-core-guidance.md` § Session Start Automation | Manual review |
 | New `bin/` script is added to the `scriptFiles` array in `session-start-launcher.mjs` AND in `init/moflo-init.ts`'s sync helper AND any third sync site | Missing entries cause silent sync drift (#777) | `feedback_scriptfiles_sync` |
-| New shipped guidance file is in `.claude/guidance/shipped/` with `moflo-` prefix | Filename collisions in consumer projects + auto-discovery requires the prefix | `internal/guidance-rules.md` rules #10–#11 |
+| New shipped guidance file is in `.claude/guidance/shipped/` with `moflo-` prefix | Filename collisions in consumer projects + auto-discovery requires the prefix | `internal/guidance-rules.md` rules #1–#2 |
 | `package.json` `files` glob covers any new shipped file class | Otherwise the file ships nowhere; npm install grabs zero copies | Inspect `npm pack --dry-run` output |
 
 **Verification**: run the smoke harness (Gate 5) — it packs, installs, and exercises the consumer surface end-to-end. If you've changed any path-resolution code, run `npm run test:smoke` BEFORE you commit.

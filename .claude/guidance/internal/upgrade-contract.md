@@ -91,6 +91,7 @@ Before merging any PR that touches config, ask:
 - `shipped/moflo-settings-injection.md` — consumer-facing contract on settings.json self-heal.
 - `internal/dogfooding.md` — how the moflo repo eats its own dog food (which is why broken upgrades break us first).
 - `internal/consumer-project-paths.md` — `findProjectRoot()` rule for `bin/` scripts; the launcher's path-resolution depends on this contract holding.
-- `internal/guidance-rules.md` — shipped-vs-internal partition contract (rule #11) and the `moflo-` prefix requirement for shipped docs.
+- `internal/guidance-rules.md` — shipped-vs-internal partition contract (rule #2) and the `moflo-` prefix requirement for shipped docs (rule #1).
+- `shipped/moflo-guidance-rules.md` — universal writing rules every guidance file follows (consumer-facing companion).
 - `internal/testing-sandboxing.md` — pattern for end-to-end probe tests; same posture is needed for upgrade-contract regressions (e.g. issue #879's record/check asymmetry).
 - `internal/guidance-sync.md` — How shipped guidance reaches consumer search through three sync layers; the cleanup paths the contract relies on for stale-content removal.

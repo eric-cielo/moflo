@@ -147,7 +147,8 @@ If chunks remain after deletion, `cleanStaleEntries` did not run (likely `--file
 
 - `.claude/guidance/internal/upgrade-contract.md` — the larger upgrade contract this sync sits inside; "user must never re-run init" depends on these three layers cooperating
 - `.claude/guidance/internal/dogfooding.md` — why a sync regression bites moflo developers first (we are our own first consumer)
-- `.claude/guidance/internal/guidance-rules.md` — how to write guidance docs that index well; chunk shape decisions feed Layer 2's chunking heuristics
+- `.claude/guidance/shipped/moflo-guidance-rules.md` — universal writing rules; chunk shape decisions feed Layer 2's chunking heuristics
+- `.claude/guidance/internal/guidance-rules.md` — moflo-specific bucket rules (`moflo-` prefix, shipped/internal partition)
 - `.claude/guidance/shipped/moflo-memorydb-maintenance.md` — consumer-facing recovery commands (purge namespace, force reindex, restore from `.bak`)
 - `.claude/guidance/shipped/moflo-memory-strategy.md` — namespace conventions and search query patterns the synced data feeds
 - `.claude/guidance/shipped/moflo-session-start.md` — every launcher stage in execution order, including stages 3 and 3b documented above

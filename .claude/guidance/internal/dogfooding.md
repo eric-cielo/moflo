@@ -56,7 +56,8 @@ MoFlo is a diverged fork of Ruflo/Claude Flow. See `UPSTREAM_SYNC.md` for the ch
 ## See Also
 
 - `.claude/guidance/internal/upgrade-contract.md` — The "user never re-runs init" invariant that dogfooding stress-tests on every dev session
-- `.claude/guidance/internal/guidance-rules.md` — Authoring rules for shipped vs internal docs (rule #11 has the partitioning contract)
+- `.claude/guidance/shipped/moflo-guidance-rules.md` — Universal writing rules every guidance file follows
+- `.claude/guidance/internal/guidance-rules.md` — Moflo-only extensions: `moflo-` prefix, shipped/internal partition, decision rules
 - `.claude/guidance/internal/testing-performance.md` — The "no flaky tests" standing decision; dogfooding catches flakes before they reach consumers
 - `.claude/guidance/internal/consumer-project-paths.md` — Why `bin/` scripts must use `findProjectRoot()` — dogfooding catches the path-resolution bugs first
 - `.claude/guidance/shipped/moflo-session-start.md` — Consumer-facing view of what runs on every session start (dogfood = we are the consumer)

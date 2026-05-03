@@ -153,7 +153,7 @@ steps:
 
 ## Documentation Rules for New Components
 
-**Every new step, connector, or spell MUST include a README.md.** Apply the rules in `.claude/guidance/internal/guidance-rules.md` automatically — do not wait for the user to ask. Use existing READMEs in `steps/` and `connectors/` as templates.
+**Every new step, connector, or spell MUST include a README.md.** Apply the rules in `.claude/guidance/shipped/moflo-guidance-rules.md` automatically — do not wait for the user to ask. Use existing READMEs in `steps/` and `connectors/` as templates.
 
 **Where to put the README:**
 - Steps: `.claude/skills/spell-builder/steps/<name>/README.md`
