@@ -218,11 +218,20 @@ function buildStepPlan() {
 
   // HNSW MUST run last (after all DB writes are committed, #81). Same thread
   // cap — rebuild-index loads fastembed for stats lookups.
+  //
+  // No `--force`: the embeddings-migration service (run by the launcher
+  // before this chain) handles model bumps, and `build-embeddings` above
+  // fills any rows that lack embeddings. So `rebuild-index` finds nothing
+  // to embed in steady state and takes the no-work path, which still
+  // refreshes the HNSW sidecar via `writeSidecarOrFail` and is followed by
+  // the existsSync post-check below. `--force` only added a 4000-row
+  // re-embed that the fingerprint gate (#858) is specifically trying to
+  // avoid (#859).
   if (localCli) {
     plan.push({
       name: 'hnsw-rebuild',
       cmd: 'node',
-      args: [localCli, 'memory', 'rebuild-index', '--force'],
+      args: [localCli, 'memory', 'rebuild-index'],
       timeoutMs: 300_000,
       env: ONNX_THREAD_CAP,
     });
