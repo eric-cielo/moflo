@@ -90,6 +90,23 @@ export {
   type RepairResult,
 } from './hook-wiring.js';
 
+// Hook Block Drift Detection (#881 — hash-based reconciliation)
+export {
+  computeHookBlockHash,
+  computeHookBlockDrift,
+  formatDriftReport,
+  getReferenceHookBlock,
+  normaliseHooks,
+  isHookBlockLocked,
+  applyAdditiveRegeneration,
+  DRIFT_MODES,
+  type HookDriftReport,
+  type HookDriftEntry,
+  type DriftMode,
+  type HooksTree,
+  type RegenerationResult,
+} from './hook-block-hash.js';
+
 // Subagent Bootstrap Directive (single-source for SubagentStart + agent_spawn surfaces)
 export { SUBAGENT_BOOTSTRAP_DIRECTIVE } from './subagent-bootstrap.js';
 

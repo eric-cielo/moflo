@@ -22,6 +22,7 @@ import {
   checkHookExecution,
   checkMcpSpellIntegration,
   checkGateHealth,
+  checkHookBlockDrift,
   checkMofloDbBridge,
   getMofloRoot,
 } from './doctor-checks-deep.js';
@@ -1618,6 +1619,7 @@ export const doctorCommand: Command = {
       checkMcpSpellIntegration,
       checkHookExecution,
       checkGateHealth,
+      checkHookBlockDrift,
       checkMofloDbBridge,
       // Issue #818 / epic #798 — coordinator-path tripwires. They share the
       // singleton coordinator with checkSubagentHealth above and assert by
@@ -1666,6 +1668,8 @@ export const doctorCommand: Command = {
       'hooks': checkHookExecution,
       'gates': checkGateHealth,
       'gate': checkGateHealth,
+      'hook-drift': checkHookBlockDrift,
+      'drift': checkHookBlockDrift,
       'sandbox': checkSandboxTier,
       'sandbox-tier': checkSandboxTier,
       'moflodb': checkMofloDbBridge,
