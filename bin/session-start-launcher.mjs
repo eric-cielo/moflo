@@ -74,6 +74,34 @@ function errMessage(err) {
   return err && err.message ? err.message : String(err);
 }
 
+// Manifest schema (#854 hardening). Originally `string[]`; now `{path,size}[]`
+// so the launcher can detect *content* drift, not just *missing-file* drift.
+// Reading accepts both forms — a legacy v1 manifest is reported via
+// `isLegacy=true` so the drift check forces one re-sync to migrate to v2,
+// closing the failure mode where a v4.9.2 launcher writes a stamp+manifest
+// in stage 1 of an upgrade and the v4.9.3 launcher (with this fix) sees
+// `installedVersion === cachedVersion` + no file-missing drift, then skips
+// section 3 leaving stale `gate.cjs` etc. stuck.
+function readInstallManifest(manifestPath) {
+  let raw;
+  try { raw = readFileSync(manifestPath, 'utf-8'); } catch { return { entries: [], isLegacy: false }; }
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { return { entries: [], isLegacy: false }; }
+  if (!Array.isArray(parsed)) return { entries: [], isLegacy: false };
+  let isLegacy = false;
+  const entries = [];
+  for (const item of parsed) {
+    if (typeof item === 'string') {
+      isLegacy = true;
+      entries.push({ path: item, size: null });
+    } else if (item && typeof item === 'object' && typeof item.path === 'string') {
+      entries.push({ path: item.path, size: typeof item.size === 'number' ? item.size : null });
+    }
+    // malformed entries are silently dropped — not surfaceable, never written by us
+  }
+  return { entries, isLegacy };
+}
+
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // Captured inside the upgrade/drift branch so the post-spawn notice writer
@@ -274,18 +302,27 @@ try {
     let cachedVersion = '';
     try { cachedVersion = readFileSync(versionStampPath, 'utf-8').trim(); } catch {}
 
-    // Drift healing: re-sync if any previously-installed file is missing, even
-    // when version stamp matches. Guards against out-of-band deletions (manual
-    // rm, botched merges, dedup commits, etc.) that would otherwise silently
-    // leave .claude/scripts/ incomplete until the next moflo upgrade.
+    // Drift healing: re-sync if any previously-installed file is missing
+    // OR has drifted in size since we last wrote it. Guards against:
+    //   - out-of-band deletions (manual rm, botched merges, dedup commits)
+    //   - stale-content drift (a prior partial migration left the file at
+    //     pre-upgrade content even though it still exists — #854)
+    //   - legacy v1 manifests written by an older launcher (force one
+    //     re-sync to migrate to v2 so subsequent runs can size-check)
     const manifestPath = resolve(projectRoot, '.moflo', 'installed-files.json');
-    let manifestDrifted = false;
-    try {
-      const prev = JSON.parse(readFileSync(manifestPath, 'utf-8'));
-      if (Array.isArray(prev)) {
-        manifestDrifted = prev.some(f => !existsSync(resolve(projectRoot, f)));
+    const { entries: priorEntries, isLegacy: manifestIsLegacy } = readInstallManifest(manifestPath);
+    let manifestDrifted = manifestIsLegacy;
+    if (!manifestDrifted) {
+      for (const { path: rel, size } of priorEntries) {
+        const abs = resolve(projectRoot, rel);
+        if (!existsSync(abs)) { manifestDrifted = true; break; }
+        if (size !== null) {
+          try {
+            if (statSync(abs).size !== size) { manifestDrifted = true; break; }
+          } catch { manifestDrifted = true; break; }
+        }
       }
-    } catch { /* no manifest yet — version check handles first install */ }
+    }
 
     if (installedVersion !== cachedVersion || manifestDrifted) {
       if (installedVersion !== cachedVersion) {
@@ -384,9 +421,10 @@ try {
       //  3. That's it — cleanup is automatic on the next upgrade
       // ────────────────────────────────────────────────────────────────────
 
-      // Load the previous manifest so we can diff after syncing
-      let previousManifest = [];
-      try { previousManifest = JSON.parse(readFileSync(manifestPath, 'utf-8')); } catch { /* ok */ }
+      // Load the previous manifest so we can diff after syncing.
+      // Both v1 (string[]) and v2 ({path,size}[]) are normalized to entries
+      // by readInstallManifest — the cleanup loop only needs the path field.
+      const { entries: previousManifest } = readInstallManifest(manifestPath);
 
       // Track every file we install this round
       const currentManifest = [];
@@ -433,14 +471,21 @@ try {
         return { ok: false, err: lastErr, code: lastCode };
       }
 
-      /** Copy src → dest if src exists, record in manifest. Retries the
-       * transient error class with backoff (#854); failures land in
-       * syncFailures for the post-block stderr summary. */
+      /** Copy src → dest if src exists, record `{path, size}` in manifest.
+       * Retries the transient error class with backoff (#854); failures land
+       * in syncFailures for the post-block stderr summary. The recorded size
+       * is read from the just-written destination so a subsequent launcher
+       * can detect content drift via size mismatch. */
+      function recordManifestEntry(manifestKey, dest) {
+        let size = null;
+        try { size = statSync(dest).size; } catch { /* size left null — drift check still works on file-existence */ }
+        currentManifest.push({ path: manifestKey, size });
+      }
       async function syncFile(src, dest, manifestKey) {
         if (!existsSync(src)) return;
         const result = await syncWithRetry(() => copyFileSync(src, dest));
         if (result.ok) {
-          currentManifest.push(manifestKey);
+          recordManifestEntry(manifestKey, dest);
           return;
         }
         const tail = TRANSIENT_CODES.has(result.code)
@@ -536,7 +581,7 @@ try {
             if (existsSync(src)) {
               const inlineResult = await syncWithRetry(() => copyFileSync(src, dest));
               if (inlineResult.ok) {
-                currentManifest.push(`.claude/helpers/${file}`);
+                recordManifestEntry(`.claude/helpers/${file}`, dest);
               } else {
                 const code = inlineResult.code;
                 const tail = TRANSIENT_CODES.has(code)
@@ -565,7 +610,7 @@ try {
             const dest = resolve(guidanceDir, file);
             const content = readFileSync(src, 'utf-8');
             writeFileSync(dest, sessionStartMirrorHeader(file) + content);
-            currentManifest.push(`.claude/guidance/${file}`);
+            recordManifestEntry(`.claude/guidance/${file}`, dest);
           }
         } catch (err) {
           emitWarning(`shipped guidance sync failed (${errMessage(err)})`);
@@ -575,18 +620,21 @@ try {
       // ── Clean up files we installed previously but no longer ship ──
       // Only remove files that are in the OLD manifest but NOT in the new one.
       // This ensures we never delete user-created or runtime-generated files.
+      // Both v1 (string) and v2 ({path,size}) old entries are normalized to
+      // entries by readInstallManifest; we only need the path for cleanup.
       let removedFiles = 0;
       if (previousManifest.length > 0) {
-        const currentSet = new Set(currentManifest);
-        for (const rel of previousManifest) {
-          if (!currentSet.has(rel)) {
-            const abs = resolve(projectRoot, rel);
-            try {
-              if (existsSync(abs)) {
-                unlinkSync(abs);
-                removedFiles++;
-              }
-            } catch { /* non-fatal */ }
+        const currentSet = new Set(currentManifest.map((e) => e.path));
+        for (const { path: rel } of previousManifest) {
+          if (currentSet.has(rel)) continue;
+          const abs = resolve(projectRoot, rel);
+          try {
+            if (existsSync(abs)) {
+              unlinkSync(abs);
+              removedFiles++;
+            }
+          } catch (err) {
+            emitWarning(`cleanup unlink failed for ${rel} (${errMessage(err)})`);
           }
         }
       }
