@@ -1,3 +1,26 @@
+## ⚠ MoFlo is a library shipped to other projects — READ FIRST, every change
+
+**This is an open-source library.** The package is installed as a `devDependency` into consumer projects to make Claude Code more effective in those projects. It is NOT a standalone application — every change you make ships to N consumers via `npm install moflo` and runs from their `node_modules/moflo/...` on their machines.
+
+**Before writing any code or opening any PR**, articulate three things to yourself (and to the user, if non-trivial):
+
+1. **Consumer surface touched** — which file class is this? `bin/`, `src/cli/`, `.claude/scripts/`, `mcp-tools/`, hook handlers, init/, settings-generator, `claudemd-generator.ts`, anything synced to `node_modules/moflo/`. Editing a test or internal helper has near-zero blast radius. Editing the launcher, a hook, or anything `flo init` writes touches every consumer.
+2. **Failure mode for the on-the-current-version consumer** — what breaks for someone on `moflo@<previous>` who picks this change up via `npm install moflo@<latest>`? Is there a migration? Does the consumer need to do anything? Will their existing `.moflo/` state still parse? Their hooks still wire?
+3. **Round-trip cost** — does this require *publish-then-reinstall* before it takes effect (most runtime fixes do — see the dogfood note below), or does the source edit alone suffice (build/test/internal code)?
+
+**Concrete examples of what "consumer impact" looks like in practice:**
+
+- **#860** — missing `CLAUDE_CODE_HEADLESS` guard in the launcher → daemon-spawned headless Claude in *every* consumer triggered the indexer chain, pegging CPU on a 15-min loop. Cost: a stale-since-shipped guard fired in N consumer environments before anyone noticed.
+- **#854** — silent `catch {}` in launcher upgrade flow → consumers stuck across moflo 4.8.x → 4.9.2 with partial migrations and no diagnostic crumbs. Cost: 4+ versions worth of consumer-invisible breakage.
+- **#586 / collapse epic** — workspace renamed `@claude-flow/*` → `@moflo/*` → every consumer with bare imports needed coordinated migration; 5-invariant drift guard now blocks regressions.
+- **#798** — MCP swarm/agent handlers stubbed out as a "simplification" → headline product surface broke in every consumer; 10-story epic to repair.
+
+If you can't name the consumer surface and failure mode for a non-trivial change, **stop and re-scope** before writing code. "I'll just clean this up while I'm here" is the antipattern that produced every bullet above.
+
+See `feedback_consumer_blast_radius.md` (auto-memory) for the full posture.
+
+---
+
 ## ⚠ This repo dogfoods MoFlo — read before any diagnostic
 
 **MoFlo IS the project AND the installed devDependency that drives the editor.** Two layers exist and they routinely diverge:
