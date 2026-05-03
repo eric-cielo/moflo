@@ -175,11 +175,11 @@ const DEFAULT_CONFIG: MofloConfig = {
   models: {
     default: 'opus',
     research: 'sonnet',
-    review: 'opus',
+    review: 'sonnet',
     test: 'sonnet',
   },
   model_routing: {
-    enabled: false,
+    enabled: true,
     confidence_threshold: 0.85,
     cost_optimization: true,
     circuit_breaker: true,
@@ -526,7 +526,7 @@ models:
 # When enabled, overrides the static model preferences above
 # by analyzing task complexity and routing to the cheapest capable model.
 model_routing:
-  enabled: false                   # Set to true to enable dynamic routing
+  enabled: true                    # Set to false to pin to the static models above
   confidence_threshold: 0.85       # Min confidence before escalating to a more capable model
   cost_optimization: true          # Prefer cheaper models when confidence is high
   circuit_breaker: true            # Penalize models that fail repeatedly
