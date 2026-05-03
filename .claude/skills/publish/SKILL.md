@@ -21,6 +21,14 @@ Automated release pipeline for moflo. Bumps version, commits, builds, tests, run
 /publish patch        # explicit patch bump
 ```
 
+## Pre-Publish Gate — REQUIRED
+
+**Before Step 1, walk the full pre-flight checklist in `.claude/guidance/internal/pre-publish-rules.md`.** That document is the authoritative ruleset for every publish — the seven layered gates (lint, build, tests, doctor, smoke, populated smoke, manifest sanity) plus the cross-platform and consumer-install posture checks. Do not paraphrase or shortcut the rules here; read them and confirm every item.
+
+If you cannot confirm all ten checklist items at the bottom of `pre-publish-rules.md`, STOP. Fix the failing gate first and only then resume from Step 1 below. Skipping the gate to "just get this small change out" is the antipattern that produced the historical incidents named in the rules doc.
+
+---
+
 ## Step-by-Step Procedure
 
 Follow docs/BUILD.md exactly. Every step must succeed before proceeding to the next.
@@ -162,3 +170,11 @@ Installed:  moflo@<new-version> (devDependency)
 - Never install moflo globally — it is always a local devDependency
 - If any step fails, stop and fix the issue before proceeding — do not skip steps
 - The `prepublishOnly` script in package.json runs `npm run build` automatically, so npm publish will fail-fast on any TypeScript or asset-bundling error
+- Pre-publish rules live in `.claude/guidance/internal/pre-publish-rules.md` — never duplicate or paraphrase them in this skill; reference and follow
+
+## See Also
+
+- `.claude/guidance/internal/pre-publish-rules.md` — Mandatory cross-platform + consumer-install gates that gate every publish
+- `docs/BUILD.md` — Step-by-step build/publish process this skill mirrors
+- `.claude/guidance/internal/dogfooding.md` — Why we catch consumer-facing regressions first as our own dependency
+- `harness/consumer-smoke/README.md` — Smoke harness profiles (clean + populated) that prove a consumer install works
