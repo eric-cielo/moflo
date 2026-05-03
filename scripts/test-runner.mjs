@@ -93,13 +93,23 @@ async function main() {
   // pure startup overhead across the list. A single invocation with
   // maxForks:1 gives us the same one-at-a-time execution with a single
   // cold-boot, typically cutting Pass 2 wall time in half.
+  //
+  // Dev escape hatch: MOFLO_TEST_SKIP_ISOLATION=1 skips Pass 2 entirely for
+  // rapid iteration. Pre-publish, /publish runs the unflagged suite — so
+  // this never lets a bad isolation test slip into a release.
+  const skipIsolation = process.env.MOFLO_TEST_SKIP_ISOLATION === '1';
   const presentIsolationTests = isolationTests.filter((t) => {
     if (existsSync(resolve(root, t))) return true;
     console.log(`  ⚠ skipped (not found): ${t}`);
     return false;
   });
 
-  if (presentIsolationTests.length > 0) {
+  if (skipIsolation && presentIsolationTests.length > 0) {
+    console.log(
+      `\n⚠ Skipping Pass 2: ${presentIsolationTests.length} isolation test file(s) ` +
+      `(MOFLO_TEST_SKIP_ISOLATION=1 — dev only, do not use pre-publish)`
+    );
+  } else if (presentIsolationTests.length > 0) {
     console.log(`\n━━ Pass 2: Isolation tests (${presentIsolationTests.length} files, single batch) ━━\n`);
 
     const result = await runVitest([

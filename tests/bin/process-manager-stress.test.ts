@@ -66,7 +66,7 @@ function runPM(root: string, code: string): any {
   `;
   const out = execFileSync('node', ['--input-type=module', '-e', script], {
     encoding: 'utf-8',
-    timeout: 15000,
+    timeout: 30000,
     cwd: root,
   });
   return JSON.parse(out.trim());

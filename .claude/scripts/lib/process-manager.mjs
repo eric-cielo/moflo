@@ -217,12 +217,17 @@ export function createProcessManager(root) {
         if (!isAlive(entry.pid)) continue;
         try {
           if (process.platform === 'win32') {
-            execFileSync('taskkill', ['/T', '/F', '/PID', String(entry.pid)], { windowsHide: true, timeout: 5000 });
+            execFileSync('taskkill', ['/T', '/F', '/PID', String(entry.pid)], { windowsHide: true, timeout: 10000 });
           } else {
             process.kill(entry.pid, 'SIGTERM');
           }
           killed++;
-        } catch { /* already gone */ }
+        } catch {
+          // Wrapper call threw (e.g. taskkill exceeded its timeout under load).
+          // The process itself may still have been terminated — count it as
+          // killed if it is no longer alive.
+          if (!isAlive(entry.pid)) killed++;
+        }
       }
 
       // Clear registry and lock

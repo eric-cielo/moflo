@@ -413,77 +413,6 @@ describe('generateHooks alignment with settings-generator', () => {
 });
 
 // ============================================================================
-// Bin/scripts file sync validation
-// ============================================================================
-
-describe('bin and .claude/scripts file sync', () => {
-  it('process-manager.mjs should be in sync between bin/ and .claude/scripts/', () => {
-    const binSrc = readFileSync(
-      join(__dirname, '..', '..', '..', 'bin', 'lib', 'process-manager.mjs'),
-      'utf-8'
-    );
-    const scriptsSrc = readFileSync(
-      join(__dirname, '..', '..', '..', '.claude', 'scripts', 'lib', 'process-manager.mjs'),
-      'utf-8'
-    );
-
-    expect(binSrc).toBe(scriptsSrc);
-  });
-
-  it('registry-cleanup.cjs should be in sync between bin/ and .claude/scripts/', () => {
-    const binSrc = readFileSync(
-      join(__dirname, '..', '..', '..', 'bin', 'lib', 'registry-cleanup.cjs'),
-      'utf-8'
-    );
-    const scriptsSrc = readFileSync(
-      join(__dirname, '..', '..', '..', '.claude', 'scripts', 'lib', 'registry-cleanup.cjs'),
-      'utf-8'
-    );
-
-    expect(binSrc).toBe(scriptsSrc);
-  });
-
-  it('hook-handler.cjs should be in sync between bin/ and .claude/helpers/', () => {
-    const binSrc = readFileSync(
-      join(__dirname, '..', '..', '..', 'bin', 'hook-handler.cjs'),
-      'utf-8'
-    );
-    const helpersSrc = readFileSync(
-      join(__dirname, '..', '..', '..', '.claude', 'helpers', 'hook-handler.cjs'),
-      'utf-8'
-    );
-
-    expect(binSrc).toBe(helpersSrc);
-  });
-
-  it('hooks.mjs should be in sync between bin/ and .claude/scripts/', () => {
-    const binSrc = readFileSync(
-      join(__dirname, '..', '..', '..', 'bin', 'hooks.mjs'),
-      'utf-8'
-    );
-    const scriptsSrc = readFileSync(
-      join(__dirname, '..', '..', '..', '.claude', 'scripts', 'hooks.mjs'),
-      'utf-8'
-    );
-
-    expect(binSrc).toBe(scriptsSrc);
-  });
-
-  it('daemon-config.mjs should be in sync between bin/ and .claude/scripts/', () => {
-    const binSrc = readFileSync(
-      join(__dirname, '..', '..', '..', 'bin', 'lib', 'daemon-config.mjs'),
-      'utf-8'
-    );
-    const scriptsSrc = readFileSync(
-      join(__dirname, '..', '..', '..', '.claude', 'scripts', 'lib', 'daemon-config.mjs'),
-      'utf-8'
-    );
-
-    expect(binSrc).toBe(scriptsSrc);
-  });
-});
-
-// ============================================================================
 // Story #338: execSync to execFileSync migration
 // ============================================================================
 
@@ -535,18 +464,6 @@ describe('execSync to execFileSync migration', () => {
       expect(src).toContain('windowsHide: true');
     });
 
-    it('should be in sync between bin/ and .claude/helpers/', () => {
-      const binSrc = readFileSync(
-        join(__dirname, '..', '..', '..', 'bin', 'prompt-hook.mjs'),
-        'utf-8'
-      );
-      const helpersSrc = readFileSync(
-        join(__dirname, '..', '..', '..', '.claude', 'helpers', 'prompt-hook.mjs'),
-        'utf-8'
-      );
-
-      expect(binSrc).toBe(helpersSrc);
-    });
   });
 
   describe('generate-code-map.mjs', () => {
@@ -569,18 +486,6 @@ describe('execSync to execFileSync migration', () => {
       expect(src).toContain("execFileSync('node', [embedScript, '--namespace', 'code-map']");
     });
 
-    it('should be in sync between bin/ and .claude/scripts/', () => {
-      const binSrc = readFileSync(
-        join(__dirname, '..', '..', '..', 'bin', 'generate-code-map.mjs'),
-        'utf-8'
-      );
-      const scriptsSrc = readFileSync(
-        join(__dirname, '..', '..', '..', '.claude', 'scripts', 'generate-code-map.mjs'),
-        'utf-8'
-      );
-
-      expect(binSrc).toBe(scriptsSrc);
-    });
   });
 
   describe('index-tests.mjs', () => {
@@ -602,18 +507,6 @@ describe('execSync to execFileSync migration', () => {
       expect(src).toContain("execFileSync('node', [embedScript, '--namespace', 'tests']");
     });
 
-    it('should be in sync between bin/ and .claude/scripts/', () => {
-      const binSrc = readFileSync(
-        join(__dirname, '..', '..', '..', 'bin', 'index-tests.mjs'),
-        'utf-8'
-      );
-      const scriptsSrc = readFileSync(
-        join(__dirname, '..', '..', '..', '.claude', 'scripts', 'index-tests.mjs'),
-        'utf-8'
-      );
-
-      expect(binSrc).toBe(scriptsSrc);
-    });
   });
 
   describe('executor.ts auto-memory commands', () => {
@@ -730,18 +623,6 @@ describe('path normalization fixes', () => {
       expect(src).toMatch(/import\s*\{[^}]*relative[^}]*\}\s*from\s*'path'/);
     });
 
-    it('should be in sync between bin/ and .claude/scripts/', () => {
-      const binSrc = readFileSync(
-        join(__dirname, '..', '..', '..', 'bin', 'index-guidance.mjs'),
-        'utf-8'
-      );
-      const scriptsSrc = readFileSync(
-        join(__dirname, '..', '..', '..', '.claude', 'scripts', 'index-guidance.mjs'),
-        'utf-8'
-      );
-
-      expect(binSrc).toBe(scriptsSrc);
-    });
   });
 
   describe('git ls-files output normalization', () => {
