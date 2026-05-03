@@ -409,7 +409,7 @@ try {
         ];
         const cherryPickPath = cherryPickPaths.find((p) => existsSync(p));
         if (cherryPickPath) {
-          const mod = await import(`file://${cherryPickPath.replace(/\\/g, '/')}`);
+          const mod = await import(pathToFileURL(cherryPickPath).href);
           if (typeof mod.cherryPickLearningsFromLegacy === 'function') {
             const result = await mod.cherryPickLearningsFromLegacy({ projectRoot });
             if (result.copied > 0) {
@@ -858,7 +858,7 @@ try {
       ];
       const hwPath = hwPaths.find(p => existsSync(p));
       if (hwPath) {
-        const mod = await import(`file://${hwPath.replace(/\\/g, '/')}`);
+        const mod = await import(pathToFileURL(hwPath).href);
         if (typeof mod.rewriteIncorrectHookWiring === 'function') {
           const { rewrites } = mod.rewriteIncorrectHookWiring(settings);
           if (rewrites.length > 0) {
@@ -1116,7 +1116,7 @@ try {
   const upgraderPath = upgraderPaths.find((p) => existsSync(p));
   const mofloYaml = resolve(projectRoot, 'moflo.yaml');
   if (upgraderPath && existsSync(mofloYaml)) {
-    const { ensureYamlSections } = await import(`file://${upgraderPath.replace(/\\/g, '/')}`);
+    const { ensureYamlSections } = await import(pathToFileURL(upgraderPath).href);
     const appended = ensureYamlSections(mofloYaml);
     if (Array.isArray(appended) && appended.length > 0) {
       emitMutation(
@@ -1135,7 +1135,7 @@ try {
   const localShimLib = resolve(projectRoot, 'bin/lib/install-global-shim.mjs');
   const shimPath = existsSync(shimLib) ? shimLib : existsSync(localShimLib) ? localShimLib : null;
   if (shimPath) {
-    const { installGlobalShim } = await import(`file://${shimPath.replace(/\\/g, '/')}`);
+    const { installGlobalShim } = await import(pathToFileURL(shimPath).href);
     const shimResult = installGlobalShim({ silent: true });
     if (shimResult?.installed) {
       emitMutation('installed global flo shim', 'bare `flo` now resolves to project install');
@@ -1162,7 +1162,7 @@ try {
   ];
   const migrationPath = migrationPaths.find((p) => existsSync(p));
   if (migrationPath) {
-    const mod = await import(`file://${migrationPath.replace(/\\/g, '/')}`);
+    const mod = await import(pathToFileURL(migrationPath).href);
     if (typeof mod.runEmbeddingsMigrationIfNeeded === 'function') {
       await mod.runEmbeddingsMigrationIfNeeded({
         out: process.stderr,
@@ -1198,7 +1198,7 @@ try {
   ];
   const purgePath = purgePaths.find((p) => existsSync(p));
   if (purgePath) {
-    const { purgeSoftDeletedEntries } = await import(`file://${purgePath.replace(/\\/g, '/')}`);
+    const { purgeSoftDeletedEntries } = await import(pathToFileURL(purgePath).href);
     const result = await purgeSoftDeletedEntries();
     if (result?.purged > 0) {
       emitMutation(
@@ -1230,7 +1230,7 @@ try {
   ];
   const purgePath = purgePaths.find((p) => existsSync(p));
   if (purgePath) {
-    const { purgeEphemeralNamespaces } = await import(`file://${purgePath.replace(/\\/g, '/')}`);
+    const { purgeEphemeralNamespaces } = await import(pathToFileURL(purgePath).href);
     const result = await purgeEphemeralNamespaces();
     if (result?.purged > 0) {
       emitMutation(
