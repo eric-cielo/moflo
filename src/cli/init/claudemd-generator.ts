@@ -50,7 +50,7 @@ flo doctor --fix                             # Health check
 
 ### After upgrading MoFlo
 
-When \`npm install moflo@*\` runs, MoFlo's postinstall prints an upgrade banner directly to the user's terminal AND drops \`.moflo/restart-pending.json\` as a fallback. If you see that banner (or notice the file), tell the user that hooks/MCP tools/launcher only load at session-start — they need to restart Claude Code. The launcher self-reconciles \`restart-pending.json\` on the next session start (deletes it once the new version is running), so you do not need to clean it up manually.
+After running \`npm install moflo@*\` (or \`npm install\` that touches moflo), check \`.moflo/restart-pending.json\`. If it exists, surface the \`message\` field to the user verbatim (Claude Code can't pick up new hooks/MCP tools/launcher mid-session — they're only loaded at session-start), then delete the file.
 
 ### Full Reference
 
