@@ -36,9 +36,10 @@
  * Failure posture: never blocks an install. Errors are swallowed; exit 0.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, openSync, writeSync, closeSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { platform } from 'node:os';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 
@@ -97,12 +98,49 @@ function buildMessage(version) {
   ].join('\n');
 }
 
-function printBanner(version, message) {
-  // Stdout fallback for --foreground-scripts users. With npm's default
-  // config this output is captured and never seen — that's why the notice
-  // file exists. Kept anyway because it costs nothing.
+function ttyDevicePath() {
+  // Direct TTY write reaches the user's terminal even when npm 7+ captures
+  // stdout into log files (#867). POSIX has /dev/tty; Windows has the CON
+  // device. If neither resolves, the helper silently no-ops.
+  return platform() === 'win32' ? '\\\\.\\CON' : '/dev/tty';
+}
+
+function writeToTty(text) {
+  // Best-effort terminal write. Returns true on success so the caller knows
+  // not to also fall back to stdout (avoids double-printing when both work).
+  // CI / piped npm output / no-controlling-terminal cases trip the catch
+  // and return false — postinstall MUST never block install over a missing
+  // TTY, so all errors are swallowed.
+  let fd = null;
+  try {
+    fd = openSync(ttyDevicePath(), 'w');
+    writeSync(fd, text);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== null) {
+      try { closeSync(fd); } catch { /* fd already closed or failed to open */ }
+    }
+  }
+}
+
+function bannerText(version, message) {
   const border = '═'.repeat(67);
-  process.stdout.write(`\n${border}\n  MoFlo ${version} installed.\n\n  ⚠ ${message.split('\n')[2]}\n${border}\n\n`);
+  return `\n${border}\n  MoFlo ${version} installed.\n\n  ⚠ ${message.split('\n')[2]}\n${border}\n\n`;
+}
+
+function printBanner(version, message) {
+  // Two-channel print: TTY-direct first (works around npm's stdio capture
+  // in v7+ default `foreground-scripts: false` mode), stdout second as the
+  // belt-and-braces fallback for `--foreground-scripts` users and CI logs.
+  // Pre-#867 only stdout was attempted, which npm captured into log files
+  // the user never sees — the notice file existed solely to compensate.
+  const text = bannerText(version, message);
+  const ttyOk = writeToTty(text);
+  if (!ttyOk) {
+    try { process.stdout.write(text); } catch { /* stdout broken — give up silently */ }
+  }
 }
 
 function run() {
