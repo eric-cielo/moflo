@@ -112,10 +112,11 @@ describe('bin/session-start-launcher.mjs — headless skip end-to-end (#860)', (
   it('honors CLAUDE_CODE_HEADLESS=1 (numeric form)', () => {
     const root = makeProject();
     try {
+      const beforeFiles = snapshotMoflo(root);
       const result = runLauncher({ CLAUDE_CODE_HEADLESS: '1' }, root);
       expect(result.status).toBe(0);
       expect(result.stderr).toContain('session-start-launcher skipped');
-      expect(snapshotMoflo(root)).toEqual([]);
+      expect(snapshotMoflo(root)).toEqual(beforeFiles);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
