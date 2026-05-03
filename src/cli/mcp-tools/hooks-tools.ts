@@ -3018,6 +3018,8 @@ export const hooksModelRoute: MCPTool = {
   },
   handler: async (params: Record<string, unknown>) => {
     const task = params.task as string;
+    const preferCost = params.preferCost as boolean | undefined;
+    const preferSpeed = params.preferSpeed as boolean | undefined;
     const router = await getModelRouterInstance();
 
     if (!router) {
@@ -3032,7 +3034,7 @@ export const hooksModelRoute: MCPTool = {
       };
     }
 
-    const result = await router.route(task);
+    const result = await router.route(task, { preferCost, preferSpeed });
     return {
       model: result.model,
       confidence: result.confidence,

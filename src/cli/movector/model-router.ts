@@ -108,6 +108,24 @@ export interface ModelRouterConfig {
 }
 
 /**
+ * Per-call routing preferences
+ */
+export interface RouteOptions {
+  /** When true, prefer the cheapest model whose score is competitive with the best */
+  preferCost?: boolean;
+  /** When true, prefer the fastest model whose score is competitive with the best */
+  preferSpeed?: boolean;
+  /** Optional embedding for richer complexity analysis */
+  embedding?: number[];
+}
+
+/**
+ * Score window (absolute score units) within which a model is considered
+ * "competitive" with the best — used by preferCost/preferSpeed tie-breaking.
+ */
+const COMPETITIVE_SCORE_WINDOW = 0.1;
+
+/**
  * Routing decision result
  */
 export interface ModelRoutingResult {
@@ -208,13 +226,23 @@ export class ModelRouter {
   }
 
   /**
-   * Route a task to the optimal model
+   * Route a task to the optimal model.
+   *
+   * Accepts `RouteOptions` (preferCost / preferSpeed / embedding) — the legacy
+   * `number[]` second-arg form is still accepted and treated as `embedding`.
    */
-  async route(task: string, embedding?: number[]): Promise<ModelRoutingResult> {
+  async route(
+    task: string,
+    optionsOrEmbedding?: RouteOptions | number[]
+  ): Promise<ModelRoutingResult> {
+    const options: RouteOptions = Array.isArray(optionsOrEmbedding)
+      ? { embedding: optionsOrEmbedding }
+      : (optionsOrEmbedding ?? {});
+
     const startTime = performance.now();
 
     // Analyze task complexity
-    const complexity = this.analyzeComplexity(task, embedding);
+    const complexity = this.analyzeComplexity(task, options.embedding);
 
     // Compute base model scores
     const scores = this.computeModelScores(complexity);
@@ -223,7 +251,11 @@ export class ModelRouter {
     const adjustedScores = this.applyCircuitBreaker(scores);
 
     // Select best model
-    const { model, confidence, uncertainty } = this.selectModel(adjustedScores, complexity.score);
+    const { model, confidence, uncertainty } = this.selectModel(
+      adjustedScores,
+      complexity,
+      options
+    );
 
     const inferenceTimeUs = (performance.now() - startTime) * 1000;
 
@@ -332,10 +364,12 @@ export class ModelRouter {
    * Compute task scope from content analysis
    */
   private computeTaskScope(task: string, words: string[]): number {
-    // Multi-file indicators
+    // Multi-file / multi-system indicators
     const multiFilePatterns = [
       /multiple files?/i, /across.*modules?/i, /refactor.*codebase/i,
       /all.*files/i, /entire.*project/i, /system.*wide/i,
+      /across\s+\S+\s*(services?|systems?|modules?|packages?|microservices?)/i,
+      /\b\d+\s+(services?|systems?|modules?|packages?|microservices?)\b/i,
     ];
     const hasMultiFile = multiFilePatterns.some(p => p.test(task)) ? 0.4 : 0;
 
@@ -405,35 +439,76 @@ export class ModelRouter {
   }
 
   /**
-   * Select the best model from scores
+   * Select the best model from scores.
+   *
+   * Selection rules (in order):
+   *   1. If `preferCost`: among models within COMPETITIVE_SCORE_WINDOW of the
+   *      best score, return the cheapest by `costMultiplier`.
+   *   2. If `preferSpeed`: same window, return the fastest by `speedMultiplier`.
+   *   3. Otherwise: return the highest-scoring model. Escalate one tier ONLY
+   *      when there are 2+ high-complexity indicators (real architecture
+   *      signal) — single-keyword tasks like "review" or "audit X" do not
+   *      force a more expensive model.
+   *
+   * Note: prior versions force-escalated `sonnet → opus` whenever
+   * `uncertainty > maxUncertainty (0.15)`, which fired on essentially every
+   * code-review-shaped task and defeated the cost-saving point of the router.
    */
   private selectModel(
     scores: Record<ClaudeModel, number>,
-    complexityScore: number
+    complexity: ComplexityAnalysis,
+    options: RouteOptions = {}
   ): { model: ClaudeModel; confidence: number; uncertainty: number } {
-    // Get sorted models by score
     const sorted = (Object.entries(scores) as [ClaudeModel, number][])
       .filter(([m]) => m !== 'inherit')
       .sort((a, b) => b[1] - a[1]);
 
     const [bestModel, bestScore] = sorted[0];
-    const [secondModel, secondScore] = sorted[1] || ['sonnet', 0];
+    const secondScore = sorted[1]?.[1] ?? 0;
 
-    // Confidence is how much better the best is vs second
-    const confidence = bestScore > 0 ? Math.min(1, bestScore / (bestScore + secondScore + 0.01)) : 0.5;
-
-    // Uncertainty based on score spread and complexity
+    const confidence = bestScore > 0
+      ? Math.min(1, bestScore / (bestScore + secondScore + 0.01))
+      : 0.5;
     const scoreSpread = bestScore - secondScore;
     const uncertainty = Math.max(0, 1 - scoreSpread - confidence * 0.5);
 
-    // Escalate if uncertainty is too high
-    let model = bestModel;
-    if (uncertainty > this.config.maxUncertainty && bestModel !== 'opus') {
-      // Escalate to more capable model
-      model = bestModel === 'haiku' ? 'sonnet' : 'opus';
+    if (options.preferCost) {
+      const threshold = bestScore - COMPETITIVE_SCORE_WINDOW;
+      const competitive = sorted
+        .filter(([, s]) => s >= threshold)
+        .sort(
+          (a, b) =>
+            MODEL_CAPABILITIES[a[0]].costMultiplier -
+            MODEL_CAPABILITIES[b[0]].costMultiplier
+        );
+      return { model: competitive[0][0], confidence, uncertainty };
     }
 
-    return { model, confidence, uncertainty };
+    if (options.preferSpeed) {
+      const threshold = bestScore - COMPETITIVE_SCORE_WINDOW;
+      const competitive = sorted
+        .filter(([, s]) => s >= threshold)
+        .sort(
+          (a, b) =>
+            MODEL_CAPABILITIES[b[0]].speedMultiplier -
+            MODEL_CAPABILITIES[a[0]].speedMultiplier
+        );
+      return { model: competitive[0][0], confidence, uncertainty };
+    }
+
+    // Real-architecture escalation: multiple high-complexity indicators
+    // (e.g. "architect" + "system", "design" + "distributed") signal work
+    // that's worth a more capable model even if the score curve favours sonnet.
+    const hasArchitectureSignal = complexity.indicators.high.length >= 2;
+    if (hasArchitectureSignal && bestModel !== 'opus') {
+      return {
+        model: bestModel === 'haiku' ? 'sonnet' : 'opus',
+        confidence,
+        uncertainty,
+      };
+    }
+
+    return { model: bestModel, confidence, uncertainty };
   }
 
   /**
@@ -652,10 +727,10 @@ export async function routeToModel(task: string): Promise<ClaudeModel> {
  */
 export async function routeToModelFull(
   task: string,
-  embedding?: number[]
+  embeddingOrOptions?: number[] | RouteOptions
 ): Promise<ModelRoutingResult> {
   const router = getModelRouter();
-  return router.route(task, embedding);
+  return router.route(task, embeddingOrOptions);
 }
 
 /**
