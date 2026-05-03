@@ -438,17 +438,19 @@ status_line:
   show_mcp: true
 
 # Model preferences (haiku, sonnet, opus)
+# These are static fallbacks. When model_routing.enabled is true (default),
+# the dynamic router takes precedence based on task complexity.
 models:
-  default: opus        # Model for general tasks
+  default: opus        # Model for general tasks (kept high for unknowns)
   research: sonnet     # Model for research/exploration agents
-  review: opus         # Model for code review agents
+  review: sonnet       # Code review never needs opus reasoning
   test: sonnet         # Model for test-writing agents
 
 # Intelligent model routing (auto-selects haiku/sonnet/opus per task)
 # When enabled, overrides the static model preferences above
 # by analyzing task complexity and routing to the cheapest capable model.
 model_routing:
-  enabled: false                   # Set to true to enable dynamic routing
+  enabled: true                    # Set to false to pin to the static models above
   confidence_threshold: 0.85       # Min confidence before escalating to a more capable model
   cost_optimization: true          # Prefer cheaper models when confidence is high
   circuit_breaker: true            # Penalize models that fail repeatedly
