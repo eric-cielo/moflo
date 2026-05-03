@@ -7,7 +7,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { repairHookWiring, HOOK_ENTRY_MAP } from '../../services/hook-wiring.js';
+import {
+  repairHookWiring,
+  rewriteIncorrectHookWiring,
+  HOOK_ENTRY_MAP,
+  HOOK_REWRITE_RULES,
+} from '../../services/hook-wiring.js';
 import { REQUIRED_HOOK_WIRING } from '../../commands/doctor-checks-deep.js';
 
 /** Build a minimal settings object that contains ALL required hooks. */
@@ -130,5 +135,172 @@ describe('repairHookWiring', () => {
     for (const { pattern } of REQUIRED_HOOK_WIRING) {
       expect(HOOK_ENTRY_MAP[pattern]).toBeDefined();
     }
+  });
+
+  it('record-memory-searched maps to gate-hook.mjs (not gate.cjs) — #879', () => {
+    const entry = HOOK_ENTRY_MAP['record-memory-searched'];
+    expect(entry).toBeDefined();
+    expect(entry.hook.command).toContain('gate-hook.mjs');
+    expect(entry.hook.command).not.toMatch(/gate\.cjs"\s+record-memory-searched/);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// rewriteIncorrectHookWiring — the surgical auto-heal pass that fixes
+// existing-but-wrong hook commands in consumer settings.json. Issue #879
+// regression coverage: every consumer that upgrades through this version
+// should have their stale `gate.cjs record-memory-searched` rewritten to
+// `gate-hook.mjs record-memory-searched` on next session start.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('rewriteIncorrectHookWiring (#879)', () => {
+  /** Build a settings.json with the OLD buggy wiring (gate.cjs direct). */
+  function settingsWithBuggyWiring(): Record<string, unknown> {
+    return {
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: '^mcp__moflo__memory_(search|retrieve|list|stats)$',
+            hooks: [
+              {
+                type: 'command',
+                command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-memory-searched',
+                timeout: 3000,
+              },
+            ],
+          },
+          {
+            matcher: '^Bash$',
+            hooks: [
+              {
+                type: 'command',
+                command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-bash-memory',
+                timeout: 2000,
+              },
+            ],
+          },
+        ],
+      },
+    };
+  }
+
+  function commandsFor(settings: Record<string, unknown>, action: string): string[] {
+    const out: string[] = [];
+    const events = (settings.hooks ?? {}) as Record<string, unknown>;
+    for (const ev of Object.values(events)) {
+      if (!Array.isArray(ev)) continue;
+      for (const block of ev as Array<Record<string, unknown>>) {
+        const hooks = block.hooks;
+        if (!Array.isArray(hooks)) continue;
+        for (const h of hooks as Array<{ command?: string }>) {
+          if (typeof h.command === 'string' && h.command.includes(action)) out.push(h.command);
+        }
+      }
+    }
+    return out;
+  }
+
+  it('rewrites stale gate.cjs record-memory-searched → gate-hook.mjs', () => {
+    const settings = settingsWithBuggyWiring();
+    const { rewrites, settings: patched } = rewriteIncorrectHookWiring(settings);
+
+    expect(rewrites.length).toBeGreaterThan(0);
+    const cmds = commandsFor(patched, 'record-memory-searched');
+    expect(cmds.length).toBeGreaterThan(0);
+    for (const cmd of cmds) {
+      expect(cmd).toContain('gate-hook.mjs');
+      expect(cmd).not.toMatch(/gate\.cjs[^/]*record-memory-searched/);
+    }
+  });
+
+  it('rewrites stale gate.cjs check-bash-memory → gate-hook.mjs', () => {
+    const settings = settingsWithBuggyWiring();
+    const { rewrites, settings: patched } = rewriteIncorrectHookWiring(settings);
+
+    expect(rewrites.some(r => r.name.includes('check-bash-memory'))).toBe(true);
+    const cmds = commandsFor(patched, 'check-bash-memory');
+    expect(cmds.length).toBeGreaterThan(0);
+    for (const cmd of cmds) {
+      expect(cmd).toContain('gate-hook.mjs');
+      expect(cmd).not.toMatch(/gate\.cjs[^/]*check-bash-memory/);
+    }
+  });
+
+  it('is idempotent — second pass over already-correct settings makes no changes', () => {
+    const settings = settingsWithBuggyWiring();
+    rewriteIncorrectHookWiring(settings); // first pass fixes everything
+    const before = JSON.stringify(settings);
+    const { rewrites } = rewriteIncorrectHookWiring(settings);
+    expect(rewrites).toEqual([]);
+    expect(JSON.stringify(settings)).toBe(before);
+  });
+
+  it('returns empty rewrites when settings has no offending commands', () => {
+    const settings: Record<string, unknown> = {
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: 'mcp__moflo__memory_',
+            hooks: [
+              {
+                type: 'command',
+                command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-memory-searched',
+                timeout: 3000,
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const { rewrites } = rewriteIncorrectHookWiring(settings);
+    expect(rewrites).toEqual([]);
+  });
+
+  it('handles malformed hooks gracefully (no throw on missing keys)', () => {
+    const settings: Record<string, unknown> = {
+      hooks: {
+        PostToolUse: [
+          { /* no hooks key */ },
+          { hooks: 'not-an-array' as unknown as never },
+          { hooks: [{ /* no command key */ } as Record<string, unknown>] },
+        ],
+      },
+    };
+    expect(() => rewriteIncorrectHookWiring(settings)).not.toThrow();
+  });
+
+  it('preserves unrelated hook commands and surrounding settings', () => {
+    const settings: Record<string, unknown> = {
+      env: { FOO: 'bar' },
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: '^mcp__moflo__memory_search$',
+            hooks: [
+              {
+                type: 'command',
+                command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-memory-searched',
+                timeout: 3000,
+              },
+              // Unrelated extra hook the user added — must survive untouched.
+              {
+                type: 'command',
+                command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/my-custom-logger.mjs"',
+                timeout: 1000,
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const { settings: patched } = rewriteIncorrectHookWiring(settings);
+    expect(patched.env).toEqual({ FOO: 'bar' });
+    const cmds = ((patched.hooks as Record<string, unknown[]>).PostToolUse as Array<{ hooks: Array<{ command: string }> }>)[0].hooks.map(h => h.command);
+    expect(cmds[0]).toContain('gate-hook.mjs');
+    expect(cmds[1]).toContain('my-custom-logger.mjs');
+  });
+
+  it('HOOK_REWRITE_RULES has at least one rule for #879', () => {
+    expect(HOOK_REWRITE_RULES.some(r => r.name.includes('#879') && r.from.includes('record-memory-searched'))).toBe(true);
   });
 });

@@ -410,6 +410,73 @@ describe('generateHooks alignment with settings-generator', () => {
       expect(initSrc).toContain(`"${event}"`);
     }
   });
+
+  // Issue #879 regression — session_id-dependent commands MUST be wired through
+  // gate-hook.mjs, not gate.cjs directly. The wrapper is what reads stdin and
+  // forwards Claude Code's session_id as HOOK_SESSION_ID; calling gate.cjs
+  // directly skips the env var, leaves the per-actor map empty, and the gate
+  // blocks every Read forever within the turn.
+  describe('session_id-dependent commands use gate-hook.mjs (#879)', () => {
+    // These four gate.cjs commands read or write state.memorySearchedBy[session_id].
+    // Any wiring that calls them via gate.cjs directly (instead of gate-hook.mjs)
+    // is a bug — see gate.cjs::isMemorySearchedFor / markMemorySearched.
+    const SESSION_ID_DEPENDENT = [
+      'check-before-scan',
+      'check-before-read',
+      'record-memory-searched',
+      'check-bash-memory',
+    ];
+
+    function extractGenerateHooks(filename: string): string {
+      const src = readFileSync(join(__dirname, '..', 'init', filename), 'utf-8');
+      const funcStart = src.indexOf('function generateHooks');
+      // settings-generator.ts has helper functions after generateHooks, so we use
+      // a sentinel comment / next function declaration as the end. The
+      // alignment test above uses `\n// =====`; settings-generator uses
+      // `function generateSettingsJson` instead.
+      const candidates = [
+        src.indexOf('\n// =====', funcStart + 1),
+        src.indexOf('\nexport function generateSettingsJson', funcStart + 1),
+        src.indexOf('\nfunction generateStatusLineConfig', funcStart + 1),
+      ].filter(i => i > funcStart);
+      const funcEnd = candidates.length ? Math.min(...candidates) : src.length;
+      return src.slice(funcStart, funcEnd);
+    }
+
+    for (const cmd of SESSION_ID_DEPENDENT) {
+      it(`moflo-init.ts wires ${cmd} via gate-hook.mjs`, () => {
+        const body = extractGenerateHooks('moflo-init.ts');
+        // Must mention the command...
+        expect(body).toContain(cmd);
+        // ...AND the call site must use gateHook(...) (not gate(...) directly).
+        // moflo-init.ts uses local helpers `gate` and `gateHook`.
+        const directGateCall = new RegExp(`\\bgate\\(['"]${cmd}['"]\\)`);
+        const gateHookCall = new RegExp(`\\bgateHook\\(['"]${cmd}['"]\\)`);
+        expect(body).not.toMatch(directGateCall);
+        expect(body).toMatch(gateHookCall);
+      });
+
+      it(`settings-generator.ts wires ${cmd} via gate-hook.mjs`, () => {
+        const body = extractGenerateHooks('settings-generator.ts');
+        expect(body).toContain(cmd);
+        // settings-generator.ts uses `gateCmd` and `gateHookCmd`.
+        const directGateCall = new RegExp(`\\bgateCmd\\(['"]${cmd}['"]\\)`);
+        const gateHookCall = new RegExp(`\\bgateHookCmd\\(['"]${cmd}['"]\\)`);
+        expect(body).not.toMatch(directGateCall);
+        expect(body).toMatch(gateHookCall);
+      });
+    }
+
+    it('moflo-init.ts wires prompt-reminder in UserPromptSubmit', () => {
+      const body = extractGenerateHooks('moflo-init.ts');
+      expect(body).toMatch(/gateHook\(['"]prompt-reminder['"]\)/);
+    });
+
+    it('settings-generator.ts wires prompt-reminder in UserPromptSubmit', () => {
+      const body = extractGenerateHooks('settings-generator.ts');
+      expect(body).toMatch(/gateHookCmd\(['"]prompt-reminder['"]\)/);
+    });
+  });
 });
 
 // ============================================================================

@@ -1,5 +1,9 @@
 # Consumer-Project Path Resolution (bin/ scripts)
 
+**Purpose:** Path-resolution rules for `bin/*.mjs` scripts that get auto-synced into consumer projects' `.claude/scripts/`. These scripts run from different directory depths in dev vs. installed contexts — `__dirname`-relative project-root resolution silently breaks the consumer install. Reference this whenever you write or review a `bin/` script.
+
+---
+
 ## The Problem
 
 MoFlo scripts live in two locations:
@@ -82,3 +86,13 @@ Before merging any new `bin/*.mjs` script:
 - `bin/session-start-launcher.mjs` — was `resolve(__dirname, '../..')`
 - `bin/hooks.mjs` — was `resolve(__dirname, '../..')`
 - `bin/index-patterns.mjs` — hardcoded `node_modules/moflo/bin/` embedding path
+
+---
+
+## See Also
+
+- `.claude/guidance/internal/upgrade-contract.md` — Why these path rules matter: the session-start launcher relies on `findProjectRoot()` to honor the "user never re-runs init" invariant
+- `.claude/guidance/shipped/moflo-session-start.md` — How `bin/*.mjs` files get synced to `.claude/scripts/` on every version change (consumer perspective)
+- `.claude/guidance/shipped/moflo-settings-injection.md` — The contract for what moflo writes into `.claude/`, including the path-resolution rules that scripts must honor
+- `.claude/guidance/shipped/moflo-cross-platform.md` — Cross-platform path rules (`path.join`, no hardcoded separators) — companion to the project-root-resolution rule here
+- `.claude/guidance/shipped/moflo-core-guidance.md` (Helper Script Auto-Sync section) — File lists for what `session-start-launcher.mjs` syncs and where it puts each file

@@ -122,7 +122,7 @@ steps:
 
 ## Step Command Types
 
-**Nine built-in step types are registered automatically.** Each implements `execute()`, `validate()`, `describeOutputs()`, and optional `rollback()`. Additional step types can be added via [pluggable step discovery](#pluggable-step-commands).
+**Nine built-in step types are registered automatically.** Each implements `execute()`, `validate()`, `describeOutputs()`, and optional `rollback()`. Additional step types can be added via pluggable step discovery — see `moflo-spell-custom-steps.md` for the JS/TS, YAML, and npm-package extension paths.
 
 ### bash — Run a Shell Command
 
@@ -276,107 +276,9 @@ Supports 8 actions: `create-issue`, `create-pr`, `add-label`, `remove-label`, `c
 
 ---
 
-## Pluggable Step Commands
+## Custom Step Commands
 
-**Drop JS/TS or YAML files into a step directory to extend the spell engine with custom step types.** User-defined steps are auto-discovered and registered alongside built-in commands.
-
-### Discovery Sources (Priority Order)
-
-| Priority | Source | Path |
-|----------|--------|------|
-| Lowest | npm packages | `node_modules/moflo-step-*` |
-| Medium | Built-in | Registered by `createRunner()` |
-| Highest | User directories | `workflows/steps/` or `.claude/workflows/steps/` |
-
-**Later sources override earlier ones by step type name.** A user step named `bash` replaces the built-in `bash` command.
-
-### JS/TS Step Files
-
-**Export a `StepCommand` object as the default export, or as `stepCommand` or `command` named export.**
-
-```javascript
-// workflows/steps/file-stats.js
-module.exports = {
-  type: 'file-stats',
-  description: 'Report file statistics',
-  configSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
-  capabilities: [{ type: 'fs:read' }],
-  validate(config) {
-    const errors = [];
-    if (!config.path) errors.push({ path: 'path', message: 'path is required' });
-    return { valid: errors.length === 0, errors };
-  },
-  async execute(config) {
-    const { readFileSync, statSync } = require('node:fs');
-    const content = readFileSync(config.path, 'utf-8');
-    return { success: true, data: { lines: content.split('\n').length, bytes: statSync(config.path).size } };
-  },
-  describeOutputs() { return [{ name: 'lines', type: 'number' }, { name: 'bytes', type: 'number' }]; },
-};
-```
-
-See `examples/spell-steps/file-stats.js` for a complete, well-commented example.
-
-### YAML Composite Steps
-
-**YAML files define reusable composite spell steps with declared inputs, tool dependencies, and sequential actions.**
-
-```yaml
-# workflows/steps/notify.yaml
-name: notify
-description: Log a formatted notification message
-inputs:
-  level:
-    type: string
-    required: false
-    default: "info"
-  message:
-    type: string
-    required: true
-actions:
-  - command: "echo [${inputs.level}] ${inputs.message}"
-```
-
-| YAML Field | Required | Description |
-|------------|----------|-------------|
-| `name` | Yes | Step type name (used as `type` in spell definitions) |
-| `description` | No | Human-readable description |
-| `tool` | No | Declares tool dependency (maps to `net` capability and prerequisites) |
-| `inputs` | No | Input schema with `type`, `required`, `default`, `description` per field |
-| `actions` | Yes | Sequential actions to execute; each has `tool`/`action`/`command` + `params` |
-
-**Use `${inputs.X}` in action params for input interpolation.** Required inputs are validated before execution.
-
-### npm Package Discovery
-
-**Install a package named `moflo-step-*` and its exported StepCommand is auto-discovered.**
-
-The loader reads `package.json` for a `moflo.stepCommand` field pointing to the entry file. Falls back to the package's `main` field if absent.
-
-```json
-{
-  "name": "moflo-step-slack-notify",
-  "main": "index.js",
-  "moflo": { "stepCommand": "lib/step.js" }
-}
-```
-
-### Configuring Step Discovery in createRunner
-
-**Pass `stepDirs` and `projectRoot` to `createRunner()` to enable pluggable step discovery.**
-
-```typescript
-import { createRunner } from 'moflo/dist/src/cli/spells/index.js';
-
-const runner = createRunner({
-  stepDirs: ['workflows/steps/', '.claude/workflows/steps/'],
-  projectRoot: process.cwd(),  // Enables npm moflo-step-* discovery
-});
-```
-
-### Invalid Files Are Warnings, Not Errors
-
-**Files that don't export a valid StepCommand are skipped with a warning.** This prevents one bad file from breaking all step discovery. Invalid conditions: missing exports, wrong interface shape, syntax errors, malformed YAML.
+**To register custom step types, see `moflo-spell-custom-steps.md`.** That doc covers the three extension paths (JS/TS step files, YAML composite steps, `moflo-step-*` npm packages), priority ordering, and how to configure `createRunner()` for discovery.
 
 ---
 
@@ -505,6 +407,7 @@ Credential values listed in `RunnerOptions.credentialValues` are automatically r
 
 ## See Also
 
+- `.claude/guidance/shipped/moflo-spell-custom-steps.md` — Pluggable step commands: JS/TS, YAML, and `moflo-step-*` npm packages
 - `.claude/guidance/shipped/moflo-spell-connectors.md` — Connectors: resource adapters, registry, step-vs-connector decision
 - `.claude/guidance/shipped/moflo-spell-sandboxing.md` — Capability-based security for steps
 - `.claude/guidance/shipped/moflo-spell-engine-architecture.md` — Architecture decisions for Epic #100

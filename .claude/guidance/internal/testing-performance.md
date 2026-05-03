@@ -47,3 +47,14 @@ We don't have "known flaky tests" in moflo. Either a test is fixed or it's not i
 1. Run the test in isolation. If it passes alone but fails under load, the suite has cumulative pressure — find the slow contributor and trim it.
 2. If a per-test budget is the limit, the budget is a symptom, not the diagnosis. Find what's slow and reduce it.
 3. Re-running until green is *never* the answer. If you can't find the root cause, leave the failure visible until you do.
+
+---
+
+## See Also
+
+- `.claude/guidance/internal/testing-sandboxing.md` — Sibling test-discipline doc: sandbox tests have their own three-layer verification rule. Same posture: unit tests are not enough.
+- `.claude/guidance/internal/coding-style.md` — Decomposition rules feed test performance: monolithic files cause slow imports under fork contention (item #1 above)
+- `.claude/guidance/internal/dogfooding.md` — The "no known flaky tests" standing decision, plus the pre-existing-flake list this doc supersedes
+- `.claude/guidance/internal/upgrade-contract.md` — Pattern for tests that guard the "user never re-runs init" invariant (alignment guards, drift detectors)
+- `.claude/guidance/shipped/moflo-cross-platform.md` — Cross-platform test constraints (Windows fork contention is the dominant flake source)
+- `tests/bin/gate-helpers.test.ts` — Reference for end-to-end production-round-trip tests (gate scripts spawned as Claude Code does)

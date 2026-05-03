@@ -156,3 +156,14 @@ The prefix is applied statically at the source — the sync process copies files
 **Gitignore must target only the top-level mirror.** Use `/.claude/guidance/*.md` — a bare `.claude/guidance/` will silently swallow `shipped/` and `internal/` too, and the failure is invisible because `npm pack` ships from the working tree (not git), so a fresh CI clone publishes an incomplete `shipped/` set.
 
 **CLAUDE.md cross-references should point to `shipped/` paths**, not the top-level mirror. The mirror only exists once session-start has run; `shipped/` is the durable source.
+
+---
+
+## See Also
+
+- `.claude/guidance/internal/dogfooding.md` — The shipped-vs-internal partition this doc enforces, framed from the dogfood loop's perspective
+- `.claude/guidance/internal/upgrade-contract.md` — Where the "user never re-runs init" invariant for guidance sync is defined
+- `.claude/guidance/internal/coding-style.md` — Sibling style rules but for source code; both files share the imperative/concrete/specific posture
+- `.claude/guidance/shipped/moflo-memory-strategy.md` — Companion shipped doc on writing guidance that indexes well for RAG (consumer audience)
+- `.claude/guidance/shipped/moflo-session-start.md` — Where shipped guidance gets synced to consumer projects (and why the `moflo-` prefix matters there)
+- `.claude/guidance/internal/guidance-sync.md` — Three-layer sync pipeline (filesystem → DB → HNSW); the chunking decisions in this doc shape Layer 2's behavior

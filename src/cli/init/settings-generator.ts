@@ -293,9 +293,14 @@ function generateHooksConfig(config: HooksConfig): object {
         hooks: [{ type: 'command', command: gateHookCmd('record-skill-run'), timeout: 2000 }],
       },
       {
-        // Simplified matcher — anchored regex with parens doesn't match MCP tool names reliably
+        // Simplified matcher — anchored regex with parens doesn't match MCP tool names reliably.
+        // Use gateHookCmd (not gateCmd) so the wrapper forwards Claude Code's session_id as
+        // HOOK_SESSION_ID — record-memory-searched needs this to mark the per-actor map
+        // (memorySearchedBy[sid]) that check-before-read consults under #838's per-actor gating.
+        // Without it, the legacy boolean is set but the per-actor map stays empty, and the gate
+        // blocks every Read forever within the turn (issue #879).
         matcher: 'mcp__moflo__memory_',
-        hooks: [{ type: 'command', command: gateCmd('record-memory-searched'), timeout: 3000 }],
+        hooks: [{ type: 'command', command: gateHookCmd('record-memory-searched'), timeout: 3000 }],
       },
       {
         matcher: '^TaskUpdate$',
@@ -308,12 +313,22 @@ function generateHooksConfig(config: HooksConfig): object {
     ];
   }
 
-  // UserPromptSubmit — gate reminders + intelligent task routing
+  // UserPromptSubmit — gate reminders + intelligent task routing.
+  // The prompt-reminder hook is REQUIRED — it resets memorySearched / memorySearchedBy
+  // and reclassifies memoryRequired from the new prompt. Without it, gate state leaks
+  // across prompts: a previous turn's "satisfied" state survives, OR a previous turn's
+  // "armed" state never clears. Two separate hook entries (not chained) so an exception
+  // in prompt-hook.mjs doesn't skip the reset.
   if (config.userPromptSubmit) {
     hooks.UserPromptSubmit = [
       {
         hooks: [
           { type: 'command', command: promptHookCmd(), timeout: 3000 },
+        ],
+      },
+      {
+        hooks: [
+          { type: 'command', command: gateHookCmd('prompt-reminder'), timeout: 3000 },
         ],
       },
     ];

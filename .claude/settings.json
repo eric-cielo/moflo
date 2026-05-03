@@ -109,11 +109,11 @@
         ]
       },
       {
-        "matcher": "^mcp__moflo__memory_(search|retrieve|list|stats)$",
+        "matcher": "mcp__moflo__memory_",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs\" record-memory-searched",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" record-memory-searched",
             "timeout": 3000
           }
         ]
@@ -131,11 +131,6 @@
       {
         "matcher": "^mcp__moflo__memory_store$",
         "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs\" record-memory-searched",
-            "timeout": 3000
-          },
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs\" record-learnings-stored",

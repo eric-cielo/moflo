@@ -115,7 +115,10 @@ Without all five, the functional probe cannot prove anything. macOS uses `sandbo
 
 ## See Also
 
-- `.claude/guidance/moflo-spell-sandboxing.md` — User-facing sandbox documentation
+- `.claude/guidance/shipped/moflo-spell-sandboxing.md` — User-facing sandbox documentation (consumer perspective on what `sandbox.tier` does)
+- `.claude/guidance/internal/testing-performance.md` — Sibling test-discipline doc; same "unit tests are not enough" posture for the broader suite
+- `.claude/guidance/internal/upgrade-contract.md` — `moflo.yaml` sandbox-block append-on-upgrade pattern (the historical sandbox violation)
+- `.claude/guidance/internal/dogfooding.md` — Why we run sandbox probes locally before publish (catch consumer-blocking sandbox bugs first)
 - `src/cli/spells/core/bwrap-sandbox.ts` — Linux sandbox wrapper
 - `src/cli/spells/core/platform-sandbox.ts` — Detection + config resolution
 - `scripts/verify-bwrap-wsl.mjs` — Args-level isolation probe (5 capability scenarios)

@@ -87,6 +87,20 @@ After running `npm install moflo@*` (or `npm install` that touches moflo), check
 - **CLI, hooks, swarm, memory, moflo.yaml:** `.claude/guidance/shipped/moflo-core-guidance.md`
 <!-- MOFLO:INJECTED:END -->
 
+## ⚠ Writing or editing guidance — guidance-rules.md is mandatory
+
+**Whenever you create, rewrite, or edit any `.claude/guidance/**/*.md` file, `.claude/guidance/internal/guidance-rules.md` MUST be followed.** That file is the single source of truth for guidance authoring: required `**Purpose:**` line, imperative voice, decision tables, concrete examples, 500-line cap, specific H2 headings, mandatory `## See Also` section, the shipped/internal partition, and the `moflo-` filename prefix on shipped docs.
+
+This applies to:
+- New shipped guidance (`.claude/guidance/shipped/moflo-*.md`)
+- New internal guidance (`.claude/guidance/internal/*.md`)
+- Edits to existing guidance — drive-by edits must not introduce drift from the rules
+- Auto-memory files under `~/.claude/projects/.../memory/` (same structural rules apply where they make sense)
+
+If you find yourself writing prose preambles, generic headings, hedged "should/might" language, or omitting See Also — stop and re-read the rules.
+
+---
+
 ## Broken Window Theory (mandatory — moflo repo only)
 
 Zero tolerance for unresolved failures. Every failing test, every warning, every bug gets fixed before moving on — no exceptions by severity, no "probably flaky" without individual re-verification. If a test fails in the full suite, retest individually to distinguish real failures from flaky ones. If flaky, fix the flakiness itself (tight timeouts, resource contention, etc.) — don't just re-run and move on. A red signal is never acceptable as background noise.
