@@ -392,11 +392,27 @@ async function checkVersionFreshness(): Promise<HealthCheck> {
                   process.env.npm_execpath?.includes('npx') ||
                   process.cwd().includes('_npx');
 
-    // Query npm for latest version (using alpha tag since that's what we publish to)
+    // Direct fetch — `npm view` shells out to npm-cli.js, which is briefly
+    // orphaned on Windows after its parent chain reaps and gets flagged by
+    // findZombieProcesses' "moflo" regex.
+    //
+    // Manual AbortController (NOT AbortSignal.timeout): the latter leaves
+    // a libuv timer alive past process exit on Node 24 / Windows and trips
+    // an `!(handle->flags & UV_HANDLE_CLOSING)` assertion in src/win/async.c.
     let latestVersion = currentVersion;
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), REGISTRY_FETCH_TIMEOUT_MS);
     try {
-      const npmInfo = await runCommand('npm view moflo version', 5000);
-      latestVersion = npmInfo.trim();
+      const response = await fetch('https://registry.npmjs.org/moflo/latest', {
+        headers: { Accept: 'application/json' },
+        signal: ac.signal,
+      });
+      if (!response.ok) throw new Error(`registry HTTP ${response.status}`);
+      const info = (await response.json()) as { version?: string };
+      if (typeof info.version !== 'string' || !info.version) {
+        throw new Error('registry response missing version');
+      }
+      latestVersion = info.version;
     } catch (e) {
       // Can't reach npm registry - skip check
       return {
@@ -404,6 +420,8 @@ async function checkVersionFreshness(): Promise<HealthCheck> {
         status: 'warn',
         message: `v${currentVersion} (cannot check registry: ${errorDetail(e, { firstLineOnly: true })})`
       };
+    } finally {
+      clearTimeout(timer);
     }
 
     // Parse version numbers for comparison (handle prerelease like 3.0.0-alpha.84)
@@ -723,7 +741,7 @@ async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     },
     'Zombie Processes': async () => {
       const result = await findZombieProcesses(true);
-      return result.killed > 0 || result.found === 0;
+      return result.killed > 0 || result.details.length === 0;
     },
     'Gate Health': async () => {
       return fixGateHealthHooks();
@@ -1227,92 +1245,126 @@ function readTrackedBackgroundPids(): Set<number> {
   return result;
 }
 
+// Cmdline capture/display caps + scan timeouts. Hoisted so the values
+// used to size buffers and format messages are visible in one place.
+const ZOMBIE_CMDLINE_CAPTURE_LEN = 200;
+const ZOMBIE_CMDLINE_DISPLAY_LEN = 100;
+const ZOMBIE_SCAN_TIMEOUT_MS_WIN = 10_000;
+const ZOMBIE_SCAN_TIMEOUT_MS_POSIX = 5_000;
+const ZOMBIE_KILL_TIMEOUT_MS = 5_000;
+// Cold-connect TLS+DNS can eat most of npm's old 5s budget when doctor's
+// parallel checks saturate the event loop, hence 10s.
+const REGISTRY_FETCH_TIMEOUT_MS = 10_000;
+const NODE_PREFIX_RE = /^"?[^"\s]*node(?:\.exe)?"?\s+/i;
+
+function formatCmdline(raw: string): string {
+  const cleaned = raw.replace(NODE_PREFIX_RE, '').trim();
+  return cleaned.length > ZOMBIE_CMDLINE_DISPLAY_LEN
+    ? cleaned.slice(0, ZOMBIE_CMDLINE_DISPLAY_LEN - 1) + '…'
+    : cleaned;
+}
+
+export interface ZombieDetail {
+  pid: number;
+  ppid: number;
+  cmdline: string;
+}
+
+function formatZombieDetail(d: ZombieDetail): string {
+  return `pid=${d.pid} ppid=${d.ppid} cmd=${formatCmdline(d.cmdline)}`;
+}
+
+interface ZombieScanResult {
+  killed: number;
+  details: ZombieDetail[];
+}
+
 // Find and optionally kill orphaned moflo/claude-flow node processes.
-// A process is only "orphaned" if its parent is no longer alive — meaning
-// nothing will clean it up. MCP servers spawned by a live Claude Code session
-// have a live parent (claude.exe) and must not be flagged.
-async function findZombieProcesses(kill = false): Promise<{ found: number; killed: number; pids: number[] }> {
+// "Orphaned" means the parent is no longer alive — nothing will clean it up.
+// MCP servers spawned by a live Claude Code session have a live parent
+// (claude.exe) and must not be flagged.
+async function findZombieProcesses(kill = false): Promise<ZombieScanResult> {
   const legitimatePid = getDaemonLockHolder(process.cwd());
   const trackedPids = readTrackedBackgroundPids();
   const currentPid = process.pid;
   const parentPid = process.ppid;
-  const found: number[] = [];
+  const details: ZombieDetail[] = [];
   let killed = 0;
 
-  // Collect candidates as { pid, ppid } so we can check parent liveness
-  const candidates: { pid: number; ppid: number }[] = [];
+  const candidates: ZombieDetail[] = [];
 
   try {
     if (process.platform === 'win32') {
-      // Windows: include ParentProcessId so we can verify orphan status
+      // CSV output preserves full CommandLine; Format-Table truncates to console width.
       const result = execSync(
-        'powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name=\'node.exe\'\\" | Select-Object ProcessId,ParentProcessId,CommandLine | Format-Table -AutoSize -Wrap"',
-        { encoding: 'utf-8', timeout: 10000, windowsHide: true },
+        'powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name=\'node.exe\'\\" | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Csv -NoTypeInformation"',
+        { encoding: 'utf-8', timeout: ZOMBIE_SCAN_TIMEOUT_MS_WIN, windowsHide: true },
       );
       const lines = result.split(/\r?\n/);
       for (const line of lines) {
-        if (/moflo|claude-flow|flo\s+(hooks|gate|mcp|daemon)/i.test(line)) {
-          // Format-Table columns: ProcessId  ParentProcessId  CommandLine...
-          const match = line.match(/^\s*(\d+)\s+(\d+)/);
-          if (match) {
-            candidates.push({ pid: parseInt(match[1], 10), ppid: parseInt(match[2], 10) });
-          }
+        if (!/moflo|claude-flow|flo\s+(hooks|gate|mcp|daemon)/i.test(line)) continue;
+        const m = line.match(/^"(\d+)","(\d+)","?(.*?)"?$/);
+        if (m) {
+          candidates.push({
+            pid: parseInt(m[1], 10),
+            ppid: parseInt(m[2], 10),
+            cmdline: m[3].replace(/""/g, '"').slice(0, ZOMBIE_CMDLINE_CAPTURE_LEN),
+          });
         }
       }
     } else {
-      // Unix/macOS: use ps with explicit PID+PPID columns for reliable parsing
+      // ps -ww disables width truncation so cmdline is captured intact.
       const result = execSync(
-        'ps -eo pid,ppid,command | grep -E "node.*(moflo|claude-flow)" | grep -v grep',
-        { encoding: 'utf-8', timeout: 5000 },
+        'ps -ww -eo pid,ppid,command | grep -E "node.*(moflo|claude-flow)" | grep -v grep',
+        { encoding: 'utf-8', timeout: ZOMBIE_SCAN_TIMEOUT_MS_POSIX },
       );
       const lines = result.trim().split(/\r?\n/);
       for (const line of lines) {
-        const match = line.trim().match(/^(\d+)\s+(\d+)/);
-        if (match) {
-          candidates.push({ pid: parseInt(match[1], 10), ppid: parseInt(match[2], 10) });
+        const m = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
+        if (m) {
+          candidates.push({
+            pid: parseInt(m[1], 10),
+            ppid: parseInt(m[2], 10),
+            cmdline: m[3].slice(0, ZOMBIE_CMDLINE_CAPTURE_LEN),
+          });
         }
       }
     }
   } catch {
-    // No matches found (grep exits non-zero) or command failed
+    // No matches (grep exits non-zero) or scan command failed.
   }
 
-  // Filter: skip known-good PIDs and processes whose parent is still alive.
-  // A live parent (e.g. claude.exe for MCP servers) means the process is managed, not orphaned.
-  for (const { pid, ppid } of candidates) {
+  for (const cand of candidates) {
+    const { pid, ppid } = cand;
     if (pid === currentPid || pid === parentPid || pid === legitimatePid) continue;
-    // Tracked background tasks (indexer chain, etc.) are detached:true so their
-    // parent is dead by design. The ProcessManager registry tells us they are
-    // legitimate, not orphaned.
     if (trackedPids.has(pid)) continue;
     if (isProcessAlive(ppid)) continue;
-    // Defense-in-depth: detached daemons have dead parents by design.
-    // Even if the lock file is missing/corrupted, don't kill a running daemon.
+    // Defense-in-depth: detached daemons have dead parents by design even
+    // when the lock file is missing/corrupted.
     if (isDaemonProcess(pid)) continue;
-    found.push(pid);
+    details.push(cand);
   }
 
-  if (kill && found.length > 0) {
-    for (const pid of found) {
+  if (kill && details.length > 0) {
+    for (const { pid } of details) {
       try {
         if (process.platform === 'win32') {
-          execSync(`taskkill /F /PID ${pid}`, { timeout: 5000, windowsHide: true });
+          execSync(`taskkill /F /PID ${pid}`, { timeout: ZOMBIE_KILL_TIMEOUT_MS, windowsHide: true });
         } else {
           process.kill(pid, 'SIGKILL');
         }
         killed++;
       } catch {
-        // Process may have already exited
+        // Already exited.
       }
     }
 
-    // Clean up stale daemon lock if we killed the holder
-    if (legitimatePid && found.includes(legitimatePid)) {
+    if (legitimatePid && details.some(d => d.pid === legitimatePid)) {
       releaseDaemonLock(process.cwd(), legitimatePid, true);
     }
   }
 
-  return { found: found.length, killed, pids: found };
+  return { killed, details };
 }
 
 // Format health check result
@@ -1448,23 +1500,24 @@ export const doctorCommand: Command = {
         output.writeln(output.success(`  Killed ${registryKilled} tracked background process(es) from registry`));
       }
 
-      // Slow path: OS-level scan for any remaining orphans
-      const scan = await findZombieProcesses(false);
+      // Single OS-level scan + kill — the previous flow scanned twice.
+      const result = await findZombieProcesses(true);
+      const found = result.details.length;
 
-      if (scan.found === 0) {
+      if (found === 0) {
         if (registryKilled === 0) {
           output.writeln(output.success('  No orphaned moflo processes found'));
         }
       } else {
-        output.writeln(output.warning(`  Found ${scan.found} additional orphaned process(es): PIDs ${scan.pids.join(', ')}`));
-
-        // Kill them
-        const result = await findZombieProcesses(true);
+        output.writeln(output.warning(`  Found ${found} additional orphaned process(es):`));
+        for (const d of result.details) {
+          output.writeln(output.dim(`    ${formatZombieDetail(d)}`));
+        }
         if (result.killed > 0) {
           output.writeln(output.success(`  Killed ${result.killed} zombie process(es)`));
         }
-        if (result.killed < result.found) {
-          output.writeln(output.warning(`  ${result.found - result.killed} process(es) could not be killed`));
+        if (result.killed < found) {
+          output.writeln(output.warning(`  ${found - result.killed} process(es) could not be killed`));
         }
       }
 
@@ -1476,13 +1529,16 @@ export const doctorCommand: Command = {
     const checkZombieProcesses = async (): Promise<HealthCheck> => {
       try {
         const scan = await findZombieProcesses(false);
-        if (scan.found === 0) {
+        if (scan.details.length === 0) {
           return { name: 'Zombie Processes', status: 'pass', message: 'No orphaned processes' };
         }
+        // Include each orphan's cmdline so spawn-discipline regressions are
+        // diagnosable from a single doctor run.
+        const detail = scan.details.map(formatZombieDetail).join(' | ');
         return {
           name: 'Zombie Processes',
           status: 'warn',
-          message: `${scan.found} orphaned process(es) (PIDs: ${scan.pids.join(', ')})`,
+          message: `${scan.details.length} orphaned process(es): ${detail}`,
           fix: 'moflo doctor --kill-zombies'
         };
       } catch {

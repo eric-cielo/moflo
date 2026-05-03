@@ -451,12 +451,9 @@ const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
 
 export function doctor(consumerDir) {
   section('Doctor');
-  // Issue #903: harness setup probes spawn moflo subprocesses (auto-start
-  // daemon, spell engine bash probes, etc.) that detach long enough to be
-  // flagged as orphans by `flo doctor --strict`. Clear the harness's own
-  // pre-probe debris with --kill-zombies before the strict check — this does
-  // NOT mask production zombie detection in consumer projects, it only
-  // sweeps state introduced by the harness itself between probes.
+  // Defence-in-depth: sweep any host-level orphans introduced by the
+  // harness's own probes before --strict runs. Does NOT mask production
+  // zombie detection — only the harness's pre-probe state.
   flo(consumerDir, ['healer', '--kill-zombies'], { timeout: 30_000 });
   // Issue #784: --strict flips warns→exit 1. Allowlist above keeps known
   // CI-environment warns from blocking the smoke; any unrecognised warn
