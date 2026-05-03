@@ -36,9 +36,10 @@
  * Failure posture: never blocks an install. Errors are swallowed; exit 0.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, openSync, writeSync, closeSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { platform } from 'node:os';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 
@@ -97,12 +98,38 @@ function buildMessage(version) {
   ].join('\n');
 }
 
-function printBanner(version, message) {
-  // Stdout fallback for --foreground-scripts users. With npm's default
-  // config this output is captured and never seen — that's why the notice
-  // file exists. Kept anyway because it costs nothing.
+function ttyDevicePath() {
+  return platform() === 'win32' ? '\\\\.\\CON' : '/dev/tty';
+}
+
+function writeToTty(text) {
+  // Bypasses npm 7+ stdio capture (#867). Errors (no TTY in CI/piped) must
+  // never block install — caller falls back to stdout when this returns false.
+  let fd = null;
+  try {
+    fd = openSync(ttyDevicePath(), 'w');
+    writeSync(fd, text);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== null) {
+      try { closeSync(fd); } catch { /* fd already closed */ }
+    }
+  }
+}
+
+function bannerText(version, message) {
   const border = '═'.repeat(67);
-  process.stdout.write(`\n${border}\n  MoFlo ${version} installed.\n\n  ⚠ ${message.split('\n')[2]}\n${border}\n\n`);
+  return `\n${border}\n  MoFlo ${version} installed.\n\n  ⚠ ${message.split('\n')[2]}\n${border}\n\n`;
+}
+
+function printBanner(version, message) {
+  // TTY-direct first (#867); stdout as fallback for --foreground-scripts users.
+  const text = bannerText(version, message);
+  if (!writeToTty(text)) {
+    try { process.stdout.write(text); } catch { /* stdout broken — give up */ }
+  }
 }
 
 function run() {
