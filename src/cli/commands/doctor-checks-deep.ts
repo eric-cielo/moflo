@@ -667,6 +667,19 @@ export async function checkHookBlockDrift(): Promise<HealthCheck> {
       message: 'drift check skipped — claudeFlow.hooks.locked: true',
     };
   }
+  // #896: respect `auto_update.hook_block_drift: off` — opt-out for consumers
+  // who explicitly don't want drift surfaced (mirrors the launcher's behaviour).
+  try {
+    const { loadMofloConfig } = await import('../config/moflo-config.js');
+    const cfg = loadMofloConfig(projectDir);
+    if (cfg.auto_update.hook_block_drift === 'off') {
+      return {
+        name: 'Hook Block Drift',
+        status: 'pass',
+        message: 'drift check skipped — auto_update.hook_block_drift: off',
+      };
+    }
+  } catch { /* config read failure — fall through to drift check */ }
   const report = computeHookBlockDrift(settings.hooks ?? {});
 
   if (!report.drifted) {

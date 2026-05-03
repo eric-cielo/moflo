@@ -958,8 +958,28 @@ async function runHookBlockDriftCheck() {
 
   if (report.drifted) {
     const wantRegenerate = autoUpdateConfig.hookBlockDrift === 'regenerate';
-    const safeToRegenerate = wantRegenerate && report.extra.length === 0;
-    if (safeToRegenerate && typeof mod.applyAdditiveRegeneration === 'function') {
+    // #896: regenerate is wholesale when available — the additive variant
+    // can't drop stale extras (e.g. the `gate.cjs session-reset` SessionStart
+    // hook removed in #842), which is the very case consumers hit. Older
+    // moflo installs without `applyWholesaleRegeneration` fall back to the
+    // additive path, which still heals purely-additive drift.
+    const wholesale = wantRegenerate && typeof mod.applyWholesaleRegeneration === 'function';
+    const additiveSafe = wantRegenerate && !wholesale &&
+      report.extra.length === 0 && typeof mod.applyAdditiveRegeneration === 'function';
+    if (wholesale) {
+      const { added, removed } = mod.applyWholesaleRegeneration(settings, report);
+      if (added > 0 || removed > 0) {
+        writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+        regenerated = true;
+        const parts = [];
+        if (added > 0) parts.push(`added ${plural(added, 'missing entry')}`);
+        if (removed > 0) parts.push(`removed ${plural(removed, 'stale entry')}`);
+        emitMutation(
+          'regenerated hook block',
+          `${parts.join(', ')} (drift ${report.consumerHash} → ${report.referenceHash})`,
+        );
+      }
+    } else if (additiveSafe) {
       const { added } = mod.applyAdditiveRegeneration(settings, report);
       if (added > 0) {
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
