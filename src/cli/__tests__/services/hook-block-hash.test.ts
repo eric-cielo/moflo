@@ -12,6 +12,9 @@ import {
   computeHookBlockDrift,
   formatDriftReport,
   getReferenceHookBlock,
+  applyWholesaleRegeneration,
+  applyAdditiveRegeneration,
+  isHookBlockLocked,
 } from '../../services/hook-block-hash.js';
 import { generateSettings } from '../../init/settings-generator.js';
 import { DEFAULT_INIT_OPTIONS } from '../../init/types.js';
@@ -182,6 +185,103 @@ describe('computeHookBlockDrift — AC test cases', () => {
     expect(report.drifted).toBe(true);
     expect(report.missing.length).toBeGreaterThan(0);
     expect(report.extra.length).toBe(0);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Wholesale regeneration (#896) — heals stale extras the additive variant
+// cannot drop. Covers the AC that exposes the gap that triggered #896.
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('applyWholesaleRegeneration (#896)', () => {
+  it('replaces hooks block wholesale — drops extras AND adds missing in one pass', () => {
+    // Simulates the #896 repro: consumer settings carry a stale SessionStart
+    // hook from before #842 (an extra) plus a partial canonical block (missing entries).
+    const settings: Record<string, unknown> = {
+      permissions: { allow: ['Bash(npm:*)'] },
+      hooks: {
+        PreToolUse: [
+          { matcher: '^Read$', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-read', timeout: 3000 }] },
+        ],
+        SessionStart: [
+          { hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" session-reset', timeout: 2000 }] },
+        ],
+      },
+    };
+    const report = computeHookBlockDrift(settings.hooks);
+    expect(report.drifted).toBe(true);
+    expect(report.extra.length).toBeGreaterThan(0);
+    expect(report.missing.length).toBeGreaterThan(0);
+
+    const result = applyWholesaleRegeneration(settings, report);
+    expect(result.added).toBe(report.missing.length);
+    expect(result.removed).toBe(report.extra.length);
+
+    // Post-regeneration, the hook block must match the canonical reference.
+    const post = computeHookBlockDrift(settings.hooks);
+    expect(post.drifted).toBe(false);
+    expect(post.missing).toEqual([]);
+    expect(post.extra).toEqual([]);
+
+    // Non-hooks fields (permissions, etc.) survive untouched — wholesale only
+    // replaces the `hooks` field.
+    expect(settings.permissions).toEqual({ allow: ['Bash(npm:*)'] });
+  });
+
+  it('is a no-op when not drifted', () => {
+    const settings: Record<string, unknown> = { hooks: getReferenceHookBlock() };
+    const report = computeHookBlockDrift(settings.hooks);
+    const result = applyWholesaleRegeneration(settings, report);
+    expect(result.added).toBe(0);
+    expect(result.removed).toBe(0);
+  });
+
+  it('does not corrupt the cached reference (returns a deep clone)', () => {
+    // Defence-in-depth: if a future caller mutates settings.hooks after
+    // wholesale regen, the cached reference used by computeHookBlockDrift
+    // must not see those mutations on the next call.
+    const a: Record<string, unknown> = { hooks: { PreToolUse: [{ matcher: '^Read$', hooks: [{ command: 'wrong', timeout: 1 }] }] } };
+    applyWholesaleRegeneration(a, computeHookBlockDrift(a.hooks));
+    const aHooks = a.hooks as Record<string, Array<{ matcher?: string; hooks: unknown[] }>>;
+    aHooks.PreToolUse.push({ matcher: '^Custom$', hooks: [{ command: 'mut', timeout: 1 }] });
+
+    // A fresh consumer, drifted, run through the same call should not see
+    // the previous test's mutation in its own regenerated block.
+    const b: Record<string, unknown> = { hooks: { PreToolUse: [{ matcher: '^Read$', hooks: [{ command: 'wrong', timeout: 1 }] }] } };
+    applyWholesaleRegeneration(b, computeHookBlockDrift(b.hooks));
+    const bHooks = b.hooks as Record<string, Array<{ matcher?: string }>>;
+    expect(bHooks.PreToolUse.some((blk) => blk.matcher === '^Custom$')).toBe(false);
+  });
+});
+
+describe('isHookBlockLocked', () => {
+  it('returns true when claudeFlow.hooks.locked === true', () => {
+    expect(isHookBlockLocked({ claudeFlow: { hooks: { locked: true } } })).toBe(true);
+  });
+
+  it('returns false on missing/falsy/non-object input', () => {
+    expect(isHookBlockLocked({})).toBe(false);
+    expect(isHookBlockLocked(null)).toBe(false);
+    expect(isHookBlockLocked({ claudeFlow: {} })).toBe(false);
+    expect(isHookBlockLocked({ claudeFlow: { hooks: { locked: false } } })).toBe(false);
+  });
+});
+
+describe('applyAdditiveRegeneration — kept for fallback path', () => {
+  it('still adds missing entries without touching extras (regression guard)', () => {
+    // The launcher uses additive only when wholesale isn't exported (older
+    // moflo install). Pin the legacy contract so we don't accidentally drop
+    // both code paths in a future cleanup.
+    const settings: Record<string, unknown> = {
+      hooks: {
+        PreToolUse: [
+          { matcher: '^Read$', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-read', timeout: 3000 }] },
+        ],
+      },
+    };
+    const report = computeHookBlockDrift(settings.hooks);
+    const result = applyAdditiveRegeneration(settings, report);
+    expect(result.added).toBeGreaterThan(0);
   });
 });
 

@@ -60,6 +60,8 @@ export interface RegenerationResult {
   settings: Record<string, unknown>;
   /** Number of missing hook entries that were added back. */
   added: number;
+  /** Number of extra hook entries that were removed (additive: always 0). */
+  removed: number;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -327,7 +329,7 @@ export function applyAdditiveRegeneration(
   settings: Record<string, unknown>,
   report: HookDriftReport,
 ): RegenerationResult {
-  if (report.missing.length === 0) return { settings, added: 0 };
+  if (report.missing.length === 0) return { settings, added: 0, removed: 0 };
   const ref = getCachedReference().tree;
   const hooks = (settings.hooks ?? {}) as Record<string, HookBlock[]>;
   let added = 0;
@@ -353,7 +355,31 @@ export function applyAdditiveRegeneration(
   }
 
   if (added > 0) settings.hooks = hooks;
-  return { settings, added };
+  return { settings, added, removed: 0 };
+}
+
+/**
+ * Wholesale regeneration: replace `settings.hooks` with the canonical reference
+ * block. Drops extras (stale entries from previous moflo versions, e.g. the
+ * `gate.cjs session-reset` SessionStart hook removed in #842) AND adds missing
+ * entries — the additive variant only does the latter.
+ *
+ * The caller MUST check `isHookBlockLocked(settings)` first; if locked, the
+ * user has opted out and this function should not be called. Non-hooks fields
+ * on `settings` (permissions, env, claudeFlow.*, etc.) are preserved.
+ *
+ * Mutates `settings` in place; caller is responsible for writing the file.
+ */
+export function applyWholesaleRegeneration(
+  settings: Record<string, unknown>,
+  report: HookDriftReport,
+): RegenerationResult {
+  if (!report.drifted) return { settings, added: 0, removed: 0 };
+  // Clone the cached reference so a later mutation of settings.hooks (by the
+  // launcher's settings.json migrations, doctor --fix, etc.) cannot corrupt
+  // the cached tree shared across `computeHookBlockDrift` calls in this process.
+  settings.hooks = structuredClone(getCachedReference().tree);
+  return { settings, added: report.missing.length, removed: report.extra.length };
 }
 
 /**

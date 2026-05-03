@@ -73,6 +73,9 @@ export const isolationTests = [
   'src/cli/__tests__/bridge-entries.test.ts',
   // process.chdir per-test, same singleton/cwd contention as bridge-entries.
   'src/cli/__tests__/bridge-vector-stats-anti-clobber.test.ts',
+  // #896 — process.chdir per-test to redirect findProjectRoot at the doctor
+  // check; cwd-global means parallel forks would step on each other.
+  'src/cli/__tests__/doctor-hook-drift-off-mode.test.ts',
   // performance/timing assertions (initialize<500ms, shutdown<100ms, access
   // overhead<threshold) bust under Windows parallel-fork contention; whole
   // file passes <200ms in isolation.
