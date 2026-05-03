@@ -203,6 +203,29 @@ function writeVectorStatsCache(stats, nsStats) {
 // Main
 // ============================================================================
 
+// Build (or skip) the HNSW sidecar — shared between the all-embedded fast path
+// and the post-embedding finalize path. Issue #854: the early-return path used
+// to skip this entirely, leaving consumers with `hasHnsw: false` permanently
+// after the embeddings migration deleted the stale sidecar without rebuilding.
+// `stats` is passed in by both call sites so we don't redundantly run the
+// COUNT aggregate the caller already executed. `alwaysRebuild` is set by the
+// post-embedding path because newly-embedded rows always invalidate the
+// existing sidecar.
+async function ensureHnswSidecar(stats, { alwaysRebuild = false } = {}) {
+  if (stats.withEmbeddings <= 0) return false;
+  const sidecarExists = existsSync(hnswIndexPath(projectRoot));
+  if (sidecarExists && !force && !alwaysRebuild) return false;
+  log(sidecarExists ? 'Rebuilding HNSW sidecar...' : 'Building HNSW sidecar...');
+  const result = await buildAndWriteHnswSidecar(DB_PATH, projectRoot, {
+    dimensions: EMBEDDING_DIMS,
+  });
+  log(`HNSW sidecar: ${result.vectorCount} vectors → ${result.sidecarPath} (${(result.bytes / 1024).toFixed(1)} KB)`);
+  if (!existsSync(result.sidecarPath)) {
+    throw new Error(`HNSW sidecar missing after write: ${result.sidecarPath}`);
+  }
+  return true;
+}
+
 async function main() {
   console.log('');
   log('═══════════════════════════════════════════════════════════');
@@ -217,6 +240,8 @@ async function main() {
     log('All entries already have embeddings');
     const stats = getEmbeddingStats(db);
     log(`Total: ${stats.withEmbeddings}/${stats.total} entries embedded`);
+    // HNSW first so vector-stats reports the post-rebuild `hasHnsw` (#854).
+    await ensureHnswSidecar(stats);
     writeVectorStatsCache(stats, getNamespaceStats(db));
     db.close();
     return;
@@ -312,22 +337,14 @@ async function main() {
   }
   log('═══════════════════════════════════════════════════════════');
 
+  // Rebuild the HNSW sidecar before vector-stats so `hasHnsw` reflects the
+  // post-rebuild state in the same session (#854). Newly-embedded rows
+  // invalidate the existing sidecar, so we force the rebuild here even
+  // when the sidecar already exists.
+  await ensureHnswSidecar(stats, { alwaysRebuild: true });
+
   writeVectorStatsCache(stats, nsStats);
   db.close();
-
-  // Rebuild + persist the HNSW sidecar so cold-start memory searches skip
-  // the SQL→graph rebuild. Failure here exits non-zero — index-all.mjs and
-  // any caller of this script depend on the sidecar landing on disk.
-  if (stats.withEmbeddings > 0) {
-    log('Building HNSW sidecar...');
-    const result = await buildAndWriteHnswSidecar(DB_PATH, projectRoot, {
-      dimensions: EMBEDDING_DIMS,
-    });
-    log(`HNSW sidecar: ${result.vectorCount} vectors → ${result.sidecarPath} (${(result.bytes / 1024).toFixed(1)} KB)`);
-    if (!existsSync(result.sidecarPath)) {
-      throw new Error(`HNSW sidecar missing after write: ${result.sidecarPath}`);
-    }
-  }
 }
 
 main().catch(err => {

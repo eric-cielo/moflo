@@ -43,6 +43,31 @@
 
 ---
 
+## Transient Errors Must Use Retry + Circuit Breaker
+
+**Wrap every transient-failure-capable operation in a retry helper with exponential backoff and a circuit breaker.** One-shot try-and-log on a transient class strands users in partial-state loops (#854: Windows file-lock + AV scan race left stale `.claude/helpers/gate.cjs` across 8+ moflo bumps).
+
+| Element | Default |
+|---------|---------|
+| Retryable codes | `EBUSY`, `EPERM`, `EACCES`, `EAGAIN`, `ETIMEDOUT`, `ECONNRESET`; HTTP 5xx/429/408 |
+| Hard codes (no retry) | `ENOENT`, `EISDIR`, `EEXIST`, validation errors |
+| Backoff (filesystem) | `[50, 200, 800]ms` — 3 retries |
+| Circuit breaker | Open after 5 distinct failures; tail runs with `maxAttempts=1` |
+| Exhaustion handling | Log error AND name the healer (e.g. `run 'flo doctor --fix' to repair`) |
+
+**Reference implementation:** `syncWithRetry` in `bin/session-start-launcher.mjs`. Use it; do not invent ad-hoc retries.
+
+```js
+// FORBIDDEN
+try { copyFileSync(src, dest); } catch (err) { console.warn(err.message); }
+
+// CORRECT
+const result = await syncWithRetry(() => copyFileSync(src, dest));
+if (!result.ok) syncFailures.push({ key, message: `${errMessage(result.err)} (retried after ${result.code})` });
+```
+
+---
+
 ## See Also
 
 - `.claude/guidance/shipped/moflo-source-hygiene.md` — General source code standards
