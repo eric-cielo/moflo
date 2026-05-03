@@ -6,7 +6,7 @@
  * 2. Exercise subsystem lifecycles end-to-end
  * 3. Degrade gracefully when modules are unavailable
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 
 // Import the checks under test
 import {
@@ -17,6 +17,7 @@ import {
   checkHookExecution,
   checkGateHealth,
   REQUIRED_HOOK_WIRING,
+  type HealthCheck,
 } from '../commands/doctor-checks-deep.js';
 
 describe('doctor-checks-deep', () => {
@@ -36,20 +37,24 @@ describe('doctor-checks-deep', () => {
   });
 
   describe('checkSpellExecution', () => {
-    // 30s timeout: this probe runs a real spell end-to-end (subprocess + spell
-    // engine + step execution). 15s was OK alone but flaked under full-suite
-    // load after the parallel batch had spun up the system. The check itself
-    // typically runs in ~7s; the headroom absorbs noisy CI / loaded-host runs.
-    it('should return a HealthCheck object', { timeout: 30_000 }, async () => {
-      const result = await checkSpellExecution();
+    // Single shared probe: the check spawns a real bash subprocess via the
+    // spell engine (~7 s alone, more under load). Two consecutive calls put
+    // the suite at ~15 s baseline + tail risk under maxForks=2 fork
+    // contention (issue #864). One call, two assertions — same coverage,
+    // half the engine work.
+    let result: HealthCheck;
+    beforeAll(async () => {
+      result = await checkSpellExecution();
+    }, 30_000);
+
+    it('should return a HealthCheck object', () => {
       expect(result).toHaveProperty('name', 'Spell Execution');
       expect(result).toHaveProperty('status');
       expect(result).toHaveProperty('message');
       expect(['pass', 'warn', 'fail']).toContain(result.status);
     });
 
-    it('should pass when spell engine is built', { timeout: 30_000 }, async () => {
-      const result = await checkSpellExecution();
+    it('should pass when spell engine is built', () => {
       // In the dev repo with a successful build, this should pass
       if (result.status === 'pass') {
         expect(result.message).toContain('Probe OK');
