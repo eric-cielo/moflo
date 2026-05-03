@@ -1152,12 +1152,35 @@ function killTrackedProcesses(): number {
   return killed;
 }
 
+// Read the set of moflo background PIDs registered with the shared
+// ProcessManager (.moflo/background-pids.json). These are legitimate tracked
+// background tasks (sequential indexer chain, daemon, MCP servers spawned by
+// session-start) — they are detached:true by design so their parents have
+// already exited, but they are NOT orphans. Without this allow-set,
+// findZombieProcesses() flags every running indexer step as a zombie.
+function readTrackedBackgroundPids(): Set<number> {
+  const result = new Set<number>();
+  const registryFile = join(process.cwd(), '.moflo', 'background-pids.json');
+  try {
+    if (!existsSync(registryFile)) return result;
+    const entries = JSON.parse(readFileSync(registryFile, 'utf-8'));
+    if (!Array.isArray(entries)) return result;
+    for (const entry of entries) {
+      if (entry && typeof entry.pid === 'number' && entry.pid > 0) {
+        result.add(entry.pid);
+      }
+    }
+  } catch { /* malformed or unreadable — treat as empty */ }
+  return result;
+}
+
 // Find and optionally kill orphaned moflo/claude-flow node processes.
 // A process is only "orphaned" if its parent is no longer alive — meaning
 // nothing will clean it up. MCP servers spawned by a live Claude Code session
 // have a live parent (claude.exe) and must not be flagged.
 async function findZombieProcesses(kill = false): Promise<{ found: number; killed: number; pids: number[] }> {
   const legitimatePid = getDaemonLockHolder(process.cwd());
+  const trackedPids = readTrackedBackgroundPids();
   const currentPid = process.pid;
   const parentPid = process.ppid;
   const found: number[] = [];
@@ -1205,6 +1228,10 @@ async function findZombieProcesses(kill = false): Promise<{ found: number; kille
   // A live parent (e.g. claude.exe for MCP servers) means the process is managed, not orphaned.
   for (const { pid, ppid } of candidates) {
     if (pid === currentPid || pid === parentPid || pid === legitimatePid) continue;
+    // Tracked background tasks (indexer chain, etc.) are detached:true so their
+    // parent is dead by design. The ProcessManager registry tells us they are
+    // legitimate, not orphaned.
+    if (trackedPids.has(pid)) continue;
     if (isProcessAlive(ppid)) continue;
     // Defense-in-depth: detached daemons have dead parents by design.
     // Even if the lock file is missing/corrupted, don't kill a running daemon.

@@ -13,6 +13,7 @@ import { suggestCommand } from './suggest.js';
 import { runStartupUpdateCheck } from './update/index.js';
 import { loadMofloConfig } from './config/moflo-config.js';
 import { getDaemonLockHolder } from './services/daemon-lock.js';
+import { registerBackgroundPid } from './services/process-registry.js';
 import { VERSION } from './version.js';
 
 export { VERSION };
@@ -528,6 +529,23 @@ export class CLI {
         });
 
     child.unref();
+
+    // Register the spawned daemon PID with the shared ProcessManager so that
+    // pm.killAll() (called by the session-end hook) can reap it, AND doctor's
+    // zombie scan recognises it as a tracked process rather than an orphan.
+    // Without this, every consumer's first `flo doctor` after a CLI command
+    // sees the auto-started daemon as a "zombie" because its parent (this
+    // CLI process) has already exited. SYNCHRONOUS — must complete before any
+    // concurrent doctor scan runs the registry read.
+    if (child.pid) {
+      try {
+        registerBackgroundPid(projectRoot, child.pid, 'daemon', spawnArgs.slice(1).join(' '));
+      } catch {
+        // Registration is non-essential — daemon still works, just not visible
+        // to PM-aware tooling. Stay silent to keep maybeAutoStartDaemon a
+        // fire-and-forget helper.
+      }
+    }
   }
 
   /**

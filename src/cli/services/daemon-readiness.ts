@@ -13,6 +13,7 @@ import { spawn } from 'child_process';
 import { getDaemonLockHolder } from './daemon-lock.js';
 import { isDaemonInstalled, installDaemonService } from './daemon-service.js';
 import { locateMofloCliBin } from './moflo-require.js';
+import { registerBackgroundPid } from './process-registry.js';
 
 export interface DaemonReadinessResult {
   /** Whether the daemon is currently running. */
@@ -157,6 +158,17 @@ async function defaultStartDaemon(projectRoot: string): Promise<boolean> {
         });
 
     child.unref();
+
+    // Register the spawned daemon PID with the shared ProcessManager (parity
+    // with src/cli/index.ts maybeAutoStartDaemon). Without this, doctor's
+    // zombie scan flags this detached process as orphaned because its parent
+    // (this CLI invocation) exits as soon as ensureDaemonForScheduling
+    // resolves.
+    if (child.pid) {
+      try {
+        registerBackgroundPid(projectRoot, child.pid, 'daemon', spawnArgs.slice(1).join(' '));
+      } catch { /* registration is non-essential */ }
+    }
 
     // Poll for daemon lock acquisition (up to 2s, checking every 200ms)
     for (let i = 0; i < 10; i++) {

@@ -60,15 +60,18 @@ async function main() {
     report.log(`\nHarness aborted: ${err.message}`);
     report.printSummary();
     if (consumerDir) check.stopConsumerDaemon(consumerDir);
-    check.cleanupWorkDir(workDir, { keep: opts.keep });
+    await check.cleanupWorkDir(workDir, { keep: opts.keep });
     process.exit(2);
   }
 
   if (consumerDir) check.stopConsumerDaemon(consumerDir);
-  check.cleanupWorkDir(workDir, { keep: opts.keep });
+  await check.cleanupWorkDir(workDir, { keep: opts.keep });
   report.printSummary();
   const failed = report.getResults().filter(r => r.status === 'fail').length;
   process.exit(failed > 0 ? 1 : 0);
 }
 
-main();
+main().catch(err => {
+  report.log(`\nHarness crashed: ${err?.stack || err?.message || err}`);
+  process.exit(2);
+});

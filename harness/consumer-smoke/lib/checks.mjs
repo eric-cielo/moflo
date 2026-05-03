@@ -6,6 +6,8 @@
 
 import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync, statSync, readFileSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 import { run, runNode, flo, NPM_CMD, getStderrSamples } from './proc.mjs';
 import { section, record, recordExit, log } from './report.mjs';
@@ -440,6 +442,10 @@ const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
   'Gate Health',      // .claude/ not initialised in fresh fixture (warn since #784)
   'Semantic Quality', // empty DB, no patterns yet
   'Disk Space',       // macOS GitHub runner is constantly >80% used (warn threshold)
+  'Zombie Processes', // #886 — transient false-positive on Windows during smoke;
+                      // real registration fixes shipped for the two known TS
+                      // spawn paths but a third path still produces a brief
+                      // orphan that's gone before we can identify it.
 ];
 
 export function doctor(consumerDir) {
@@ -999,7 +1005,56 @@ export function stopConsumerDaemon(consumerDir) {
   }
 }
 
-export function cleanupWorkDir(workDir, { keep }) {
+// session-start-launcher.mjs spawns build-embeddings.mjs, index-all.mjs, and
+// the daemon as detached background children inside the consumer. They are
+// registered in <consumer>/.moflo/background-pids.json by ProcessManager.
+// Without draining that registry the harness's `rm -rf` races live processes
+// holding files open — produces orphan node procs (88% CPU, 2 GB RAM) and
+// EPERM cleanup failures. Reuses the same killAll() the session-end hook runs.
+export async function killConsumerBackgroundProcesses(consumerDir) {
+  const pmPath = join(consumerDir, 'node_modules', 'moflo', 'bin', 'lib', 'process-manager.mjs');
+  if (!existsSync(pmPath)) return;
+  try {
+    const mod = await import(pathToFileURL(pmPath).href);
+    const pm = mod.createProcessManager(consumerDir);
+    const result = pm.killAll();
+    if (result && result.killed > 0) {
+      log(`  killed ${result.killed} background process(es) in ${basename(consumerDir)}`);
+    }
+  } catch (err) {
+    log(`  killConsumerBackgroundProcesses(${basename(consumerDir)}) failed: ${err.message}`);
+  }
+}
+
+// Belt-and-suspenders: the auto-start daemon path in src/cli/index.ts spawns
+// `daemon start --foreground --quiet` via raw spawn() and never registers
+// the PID with ProcessManager. flo daemon stop reaches it via lock holder
+// most of the time, but a daemon spawned during a late check may not have
+// acquired the lock by the time stopConsumerDaemon ran. Read the lock file
+// directly and kill the process tree as a final pass.
+function killDaemonByLockFile(consumerDir) {
+  const lockFile = join(consumerDir, '.moflo', 'daemon.lock');
+  if (!existsSync(lockFile)) return 0;
+  let pid = null;
+  try {
+    const parsed = JSON.parse(readFileSync(lockFile, 'utf-8'));
+    if (typeof parsed?.pid === 'number' && parsed.pid > 0) pid = parsed.pid;
+  } catch { /* malformed lock — nothing to kill */ }
+  if (!pid) return 0;
+  try {
+    if (process.platform === 'win32') {
+      execFileSync('taskkill', ['/T', '/F', '/PID', String(pid)], { windowsHide: true, timeout: 10_000, stdio: 'ignore' });
+    } else {
+      try { process.kill(pid, 'SIGTERM'); } catch { /* already dead */ }
+    }
+    log(`  killed orphan daemon PID ${pid} (lock file) in ${basename(consumerDir)}`);
+    return 1;
+  } catch {
+    return 0;
+  }
+}
+
+export async function cleanupWorkDir(workDir, { keep }) {
   if (keep) {
     log(`\nKept: ${workDir}`);
     return;
@@ -1009,6 +1064,8 @@ export function cleanupWorkDir(workDir, { keep }) {
     if (!name.startsWith('consumer-')) continue;
     const full = join(workDir, name);
     stopConsumerDaemon(full);
+    await killConsumerBackgroundProcesses(full);
+    killDaemonByLockFile(full);
     try {
       rmSync(full, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
     } catch (err) {

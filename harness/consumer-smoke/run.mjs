@@ -56,7 +56,7 @@ if (tIdx !== -1 && argv[tIdx + 1]) opts.tarball = resolve(argv[tIdx + 1]);
 report.configure({ json: opts.json });
 proc.configure({ verbose: opts.verbose });
 
-function main() {
+async function main() {
   let consumerDir;
 
   try {
@@ -102,14 +102,17 @@ function main() {
   } catch (err) {
     report.log(`\nHarness aborted: ${err.message}`);
     report.printSummary();
-    check.cleanupWorkDir(workDir, { keep: opts.keep });
+    await check.cleanupWorkDir(workDir, { keep: opts.keep });
     process.exit(2);
   }
 
-  check.cleanupWorkDir(workDir, { keep: opts.keep });
+  await check.cleanupWorkDir(workDir, { keep: opts.keep });
   report.printSummary();
   const failed = report.getResults().filter(r => r.status === 'fail').length;
   process.exit(failed > 0 ? 1 : 0);
 }
 
-main();
+main().catch(err => {
+  report.log(`\nHarness crashed: ${err?.stack || err?.message || err}`);
+  process.exit(2);
+});
