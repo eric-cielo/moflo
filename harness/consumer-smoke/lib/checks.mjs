@@ -443,10 +443,6 @@ const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
   'Hook Block Drift', // settings.json not found in fresh fixture (warn since #888)
   'Semantic Quality', // empty DB, no patterns yet
   'Disk Space',       // macOS GitHub runner is constantly >80% used (warn threshold)
-  'Zombie Processes', // #886 — transient false-positive on Windows during smoke;
-                      // real registration fixes shipped for the two known TS
-                      // spawn paths but a third path still produces a brief
-                      // orphan that's gone before we can identify it.
 ];
 
 export function doctor(consumerDir) {

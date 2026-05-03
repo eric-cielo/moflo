@@ -28,6 +28,7 @@ import { fileURLToPath } from 'url';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath } from './lib/moflo-paths.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
+import { createProcessManager } from './lib/process-manager.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 
@@ -872,36 +873,25 @@ if (!skipEmbeddings && needsEmbeddings) {
   console.log('');
   log('Spawning embedding generation in background...');
 
-  const { spawn } = await import('child_process');
-
   const embeddingScript = resolveMofloBin(
     projectRoot, 'flo-embeddings', 'build-embeddings.mjs', { includeDevFallback: true },
   );
 
   if (embeddingScript) {
-    const embeddingArgs = ['--namespace', NAMESPACE];
-
-    // Create log file for background process output
-    const logDir = resolve(projectRoot, '.moflo/logs');
-    if (!existsSync(logDir)) {
-      mkdirSync(logDir, { recursive: true });
+    // Register the spawn with the shared ProcessManager (#886). Stdout/stderr
+    // route through `.swarm/background.log` (pm.spawn default) instead of the
+    // bespoke `.moflo/logs/embeddings.log` so the registry, dedup, and
+    // session-end drain stay consistent with every other tracked spawn.
+    const pm = createProcessManager(projectRoot);
+    const result = pm.spawn('node', [embeddingScript, '--namespace', NAMESPACE], `build-embeddings-${NAMESPACE}`);
+    if (result.skipped) {
+      log(`Background embedding already running (PID: ${result.pid})`);
+    } else if (result.pid) {
+      log(`Background embedding started (PID: ${result.pid})`);
+      log(`Log file: .swarm/background.log`);
+    } else {
+      log('⚠️  Failed to spawn background embedding');
     }
-    const logFile = resolve(logDir, 'embeddings.log');
-    const { openSync } = await import('fs');
-    const out = openSync(logFile, 'a');
-    const err = openSync(logFile, 'a');
-
-    // Spawn in background - don't wait for completion
-    const proc = spawn('node', [embeddingScript, ...embeddingArgs], {
-      stdio: ['ignore', out, err],
-      cwd: projectRoot,
-      detached: true,
-      windowsHide: true  // Suppress command windows on Windows
-    });
-    proc.unref();  // Allow parent to exit independently
-
-    log(`Background embedding started (PID: ${proc.pid})`);
-    log(`Log file: .moflo/logs/embeddings.log`);
   } else {
     log('⚠️  Embedding script not found, skipping embedding generation');
   }
