@@ -60,12 +60,9 @@ describe('bin/hooks.mjs session-start — anchor index-all.mjs spawn on npm bin 
   const src = readFileSync(file, 'utf-8');
 
   it('uses resolveBinOrLocal for the index-all.mjs spawn, not raw __dirname', () => {
-    // Locate the session-start case body and assert on its spawn target.
-    // Anchor on the case|default|close-brace boundary so this test can't
-    // silently no-op if `session-start` ever becomes the last case.
-    // Anchor on the `break;` that exits the case (rather than the next `case`
-    // or any close brace) — `}` would match nested if/else closures, and the
-    // next `case` would silently no-op if `session-start` ever became last.
+    // Anchor on the `break;` that exits the case — `}` would match nested
+    // if/else closures inside the case, and `case '...'` would silently
+    // no-op this test if `session-start` ever became the last case.
     const sessionStart = src.match(/case 'session-start':\s*\{([\s\S]*?\n\s+break;)/);
     expect(sessionStart, 'session-start case must exist in hooks.mjs').toBeTruthy();
     const body = sessionStart![1];
