@@ -6,6 +6,8 @@
  * @module v3/shared/plugins
  */
 
+export const MODULE_ID = '@moflo/plugins';
+
 // Types
 export type {
   PluginConfig,
