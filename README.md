@@ -431,6 +431,18 @@ Inside your AI client, use the `/spell-builder` skill to create, edit, and valid
 /spell-builder                           # Start the spell builder
 ```
 
+### Other AI-client skills shipped with MoFlo
+
+Beyond `/flo`, `/spell-builder`, and `/eldar`, MoFlo ships a handful of focused slash-command skills that work in any consumer project once you `flo init`:
+
+| Skill | Purpose |
+|-------|---------|
+| `/guidance` | Author and audit guidance docs in `.claude/guidance/`. Default mode walks you through one doc; `/guidance -a` audits every doc against the universal guidance rules (Purpose lines, See Also, line counts, hedged language). |
+| `/simplify` | Adaptive code review on the current diff. Tier-based fan-out — trivial edits get a self-review, small diffs get one routed agent, cross-cutting refactors get three parallel agents. Routes through the moflo model router for cost-aware execution. |
+| `/spell-schedule` | Schedule a spell on the local moflo daemon (cron, interval, or one-time) without leaving the chat. For remote Anthropic-cloud agents on a schedule, use Claude Code's built-in `/schedule` instead. |
+
+Run any of them with no arguments to see full usage, or browse the source in `.claude/skills/` (each skill is a single `SKILL.md` file).
+
 ### Epics
 
 Epics are a specialized process for handling GitHub issues that contain multiple child stories. When you pass a GitHub issue to `/flo` and it's detected as an epic, MoFlo processes each child story sequentially through the full `/flo` process (research → implement → test → PR).
@@ -552,6 +564,19 @@ flo healer -c memory             # Check only a specific component
 flo healer -c embeddings         # Check only embeddings health
 flo healer --verbose             # Verbose output
 ```
+
+#### `/eldar` — Consult the Eldar (project setup audit + wizard)
+
+Where the Healer checks your moflo install, `/eldar` audits how Claude is set up to *use* the project — guidance, CLAUDE.md, memory namespaces, hook/MCP wiring, model routing, and stack-aware guidance gaps — then walks you through fixing whichever findings you pick. Use it when starting in a new project, when Claude feels lost or inefficient, or as a periodic health check.
+
+```
+/eldar                           # Read-only audit; categorized report + top-3 ranked recommendation
+/eldar --fix                     # Audit, then interactive triage menu — pick which findings to address
+```
+
+The Eldar **consult** the Healer (they call `flo healer --json` as one of the audit checks) — they don't replace it. Categories audited include setup health, index freshness, version skew, model/token routing, CLAUDE.md size + reference integrity, guidance content + structure, memory health, hook/MCP wiring, settings sanity, spell + subagent inventory, **stack → guidance cross-reference** (detects tech from package.json/pyproject.toml/Cargo.toml/go.mod and flags every detected technology with no matching guidance doc — the highest-leverage finding for new adopters), and best-effort anti-pattern detection from history.
+
+In `--fix` mode, each chosen finding drives the appropriate sub-flow: Healer for setup repair, the `/guidance` skill for guidance authoring (wizard, never autogen), a stack-aware scaffold for missing CLAUDE.md, `flo init --upgrade` for hook/MCP wiring. Every write is confirmed before it lands.
 
 #### `flo diagnose` — Integration Tests
 
