@@ -144,17 +144,19 @@ describe('yaml-upgrader', () => {
 
   describe('init template parity', () => {
     it('init template contains a sandbox block identical in intent to the registry', () => {
-      // The two sources of truth must stay in sync: moflo-init.ts template emits
-      // the same block for new projects that yaml-upgrader appends to existing ones.
-      const initPath = resolve(__dirname, '../../src/cli/init/moflo-init.ts');
-      const initSource = readFileSync(initPath, 'utf-8');
+      // The two sources of truth must stay in sync: the canonical YAML template
+      // (moflo-yaml-template.ts, used by both `flo init` and the session-start
+      // self-heal in #895) emits the same block for new projects that
+      // yaml-upgrader appends to existing ones.
+      const tplPath = resolve(__dirname, '../../src/cli/init/moflo-yaml-template.ts');
+      const tplSource = readFileSync(tplPath, 'utf-8');
       const sandboxEntry = REQUIRED_SECTIONS.find((s: any) => s.key === 'sandbox');
       expect(sandboxEntry).toBeTruthy();
 
       // The template must define sandbox and share the key config lines
-      expect(initSource).toContain('sandbox:');
-      expect(initSource).toContain('enabled: false');
-      expect(initSource).toContain('tier: auto');
+      expect(tplSource).toContain('sandbox:');
+      expect(tplSource).toContain('enabled: false');
+      expect(tplSource).toContain('tier: auto');
     });
   });
 });
