@@ -63,27 +63,36 @@ describe('bin/session-start-launcher.mjs §0d — clear notice when version matc
     mkdirSync(join(root, 'node_modules', 'moflo'), { recursive: true });
     writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'launcher-867-clear', version: '0.0.0' }));
     writeFileSync(join(root, 'node_modules', 'moflo', 'package.json'), JSON.stringify({ name: 'moflo', version: '4.9.9' }));
+    // Pre-stamp the version so section 3 (upgrade work) short-circuits — we're
+    // testing §0d's silent-cleanup behaviour, not the upgrade path.
+    writeFileSync(join(root, '.moflo', 'moflo-version'), '4.9.9');
+    writeFileSync(join(root, '.moflo', 'installed-files.json'), '[]');
   });
   afterEach(() => {
     try { rmSync(root, { recursive: true, force: true }); } catch { /* Windows handle */ }
   });
 
-  function runLauncher(): string {
+  function runLauncher(): { stdout: string; stderr: string } {
     const result = spawnSync('node', [LAUNCHER], { cwd: root, encoding: 'utf-8', timeout: 30_000 });
-    return result.stdout || '';
+    return { stdout: result.stdout || '', stderr: result.stderr || '' };
   }
 
-  it('deletes restart-pending.json + last-install-banner.json when versions match', () => {
+  it('silently deletes restart-pending.json + last-install-banner.json when versions match (#887)', () => {
     const noticePath = join(root, '.moflo', 'restart-pending.json');
     const trackerPath = join(root, '.moflo', 'last-install-banner.json');
     writeFileSync(noticePath, JSON.stringify({ version: '4.9.9', message: 'restart please' }));
     writeFileSync(trackerPath, JSON.stringify({ version: '4.9.9' }));
 
-    const stdout = runLauncher();
+    const { stdout, stderr } = runLauncher();
 
     expect(existsSync(noticePath)).toBe(false);
     expect(existsSync(trackerPath)).toBe(false);
-    expect(stdout).toMatch(/cleared post-install restart notice/);
+    // Cleanup must be silent — surfacing it inflates mutationCount and triggers
+    // the closing "starting background tasks" framing, both noise on a clean
+    // post-restart session (#887).
+    expect(stdout).not.toMatch(/cleared post-install restart notice/);
+    expect(stdout).not.toMatch(/starting background tasks/);
+    expect(stderr).not.toMatch(/cleared post-install restart notice/);
   });
 
   it('leaves restart-pending.json in place when the file version differs', () => {
@@ -96,6 +105,7 @@ describe('bin/session-start-launcher.mjs §0d — clear notice when version matc
   });
 
   it('is silent when no notice file exists', () => {
-    expect(runLauncher()).not.toMatch(/cleared post-install restart notice/);
+    const { stdout } = runLauncher();
+    expect(stdout).not.toMatch(/cleared post-install restart notice/);
   });
 });
