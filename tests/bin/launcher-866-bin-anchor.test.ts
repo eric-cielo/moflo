@@ -81,9 +81,6 @@ describe('bin/hooks.mjs session-start — anchor index-all.mjs spawn on npm bin 
   it('logs a warning when index-all.mjs is unresolvable rather than silently no-op', () => {
     // log+advise: a missing chain script must surface (#854 posture). Prevents
     // a "session-start indexer never ran" silent failure.
-    // Anchor on the `break;` that exits the case (rather than the next `case`
-    // or any close brace) — `}` would match nested if/else closures, and the
-    // next `case` would silently no-op if `session-start` ever became last.
     const sessionStart = src.match(/case 'session-start':\s*\{([\s\S]*?\n\s+break;)/);
     expect(sessionStart![1]).toMatch(/log\s*\(\s*['"]warn['"]\s*,\s*['"][^'"]*index-all\.mjs not found/);
   });
