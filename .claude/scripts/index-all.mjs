@@ -25,6 +25,7 @@ import {
   saveStepFingerprint,
   cleanupLegacyFingerprint,
 } from './lib/index-fingerprint.mjs';
+import { resolveMofloBin } from './lib/resolve-bin.mjs';
 
 // Cap fastembed/ONNX thread count when spawning the heavy steps. Without
 // this, ONNX defaults to one thread per CPU core (22+ on a modern dev box),
@@ -61,16 +62,7 @@ function log(msg) {
 }
 
 function resolveBin(binName, localScript) {
-  const mofloScript = resolve(projectRoot, 'node_modules/moflo/bin', localScript);
-  if (existsSync(mofloScript)) return mofloScript;
-  const npmBin = resolve(projectRoot, 'node_modules/.bin', binName);
-  if (existsSync(npmBin)) return npmBin;
-  const localPath = resolve(projectRoot, '.claude/scripts', localScript);
-  if (existsSync(localPath)) return localPath;
-  // Also check bin/ directory (for development use)
-  const binPath = resolve(projectRoot, 'bin', localScript);
-  if (existsSync(binPath)) return binPath;
-  return null;
+  return resolveMofloBin(projectRoot, binName, localScript, { includeDevFallback: true });
 }
 
 function getLocalCliPath() {

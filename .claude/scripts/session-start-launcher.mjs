@@ -13,6 +13,7 @@ import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { mofloDir } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
+import { resolveMofloBin } from './lib/resolve-bin.mjs';
 
 // Headless skip (#860). The daemon's headless workers spawn `claude --print`
 // with CLAUDE_CODE_HEADLESS=true (see src/cli/services/headless-worker-
@@ -1125,19 +1126,15 @@ if (mutationCount > 0) {
 // ── 4. Spawn background tasks ───────────────────────────────────────────────
 
 // hooks.mjs session-start (daemon, indexer, pretrain, HNSW, neural patterns).
-// Prefer the npm-bin copy over the `.claude/scripts/` mirror (#866). The mirror
-// is a derived sync that races the launcher's section-3 file copies during the
-// very upgrade session — spawning the still-stale `.claude/scripts/hooks.mjs`
-// then chaining `__dirname/index-all.mjs` produces an orphan running pre-
-// upgrade argv (e.g. `rebuild-index --force` after #859 had already dropped
-// it). The bin/ copy is updated atomically by `npm install moflo` (single-
-// step), so spawning from there guarantees the running hook code matches the
-// installed package. Falls back to the mirror only when the package copy is
-// unresolvable (development / symlinked installs).
-const hooksPkg = resolve(projectRoot, 'node_modules/moflo/bin/hooks.mjs');
-const hooksMirror = resolve(projectRoot, '.claude/scripts/hooks.mjs');
-const hooksScript = existsSync(hooksPkg) ? hooksPkg : hooksMirror;
-if (existsSync(hooksScript)) {
+// Bin-first ordering via resolveMofloBin — prefers the npm-package copy over
+// the `.claude/scripts/` mirror (#866). The mirror is a derived sync that
+// races the launcher's section-3 file copies during the very upgrade session;
+// spawning the still-stale mirror produces an orphan running pre-upgrade argv
+// (e.g. `rebuild-index --force` after #859 had already dropped it). The pkg
+// copy is updated atomically by `npm install moflo`, so spawning from there
+// guarantees the running hook code matches the installed package.
+const hooksScript = resolveMofloBin(projectRoot, null, 'hooks.mjs');
+if (hooksScript) {
   fireAndForget('node', [hooksScript, 'session-start'], 'hooks session-start');
 }
 
@@ -1152,10 +1149,8 @@ if (existsSync(hooksScript)) {
 // Run synchronously (capture stdout) so each completed migration surfaces
 // through emitMutation — Claude's session-start hook captures launcher
 // stdout and that's the only channel that reaches the user.
-const runMigrationsPkg = resolve(projectRoot, 'node_modules/moflo/bin/run-migrations.mjs');
-const runMigrationsMirror = resolve(projectRoot, '.claude/scripts/run-migrations.mjs');
-const runMigrations = existsSync(runMigrationsPkg) ? runMigrationsPkg : runMigrationsMirror;
-if (existsSync(runMigrations)) {
+const runMigrations = resolveMofloBin(projectRoot, null, 'run-migrations.mjs');
+if (runMigrations) {
   runMigrationsAndAnnounce(runMigrations);
 }
 

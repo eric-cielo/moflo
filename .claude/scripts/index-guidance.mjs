@@ -27,6 +27,7 @@ import { resolve, relative, dirname, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath } from './lib/moflo-paths.mjs';
+import { resolveMofloBin } from './lib/resolve-bin.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 
@@ -873,14 +874,11 @@ if (!skipEmbeddings && needsEmbeddings) {
 
   const { spawn } = await import('child_process');
 
-  // Look for build-embeddings script in multiple locations:
-  // 1. Shipped with moflo (node_modules/moflo/bin/)
-  // 2. Project-local (.claude/scripts/)
-  const mofloScript = resolve(__dirname, 'build-embeddings.mjs');
-  const projectLocalScript = resolve(projectRoot, '.claude/scripts/build-embeddings.mjs');
-  const embeddingScript = existsSync(mofloScript) ? mofloScript : projectLocalScript;
+  const embeddingScript = resolveMofloBin(
+    projectRoot, 'flo-embeddings', 'build-embeddings.mjs', { includeDevFallback: true },
+  );
 
-  if (existsSync(embeddingScript)) {
+  if (embeddingScript) {
     const embeddingArgs = ['--namespace', NAMESPACE];
 
     // Create log file for background process output
