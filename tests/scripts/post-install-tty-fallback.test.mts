@@ -30,12 +30,12 @@ describe('scripts/post-install-notice.mjs — TTY-direct fallback (#867)', () =>
   });
 
   it('uses the platform-correct TTY device path (/dev/tty on POSIX, \\\\.\\CON on Windows)', () => {
-    // Single source of truth function so the win32 vs POSIX choice can't
-    // drift. ttyDevicePath() returns '\\\\.\\CON' on win32 and '/dev/tty' elsewhere.
     expect(src).toMatch(/function\s+ttyDevicePath\s*\(/);
     expect(src).toMatch(/platform\(\)\s*===\s*['"]win32['"]/);
-    expect(src).toMatch(/['"]\\\\\\\\\.\\\\CON['"]/); // matches '\\\\.\\CON' literal in source
-    expect(src).toMatch(/['"]\/dev\/tty['"]/);
+    // Source contains the literal four-backslash escape '\\\\.\\CON' for the Windows
+    // device path; testing via toContain on the raw source keeps the assertion legible.
+    expect(src).toContain("'\\\\\\\\.\\\\CON'");
+    expect(src).toContain("'/dev/tty'");
   });
 
   it('opens / writes / closes the fd through node:fs primitives', () => {
@@ -56,13 +56,12 @@ describe('scripts/post-install-notice.mjs — TTY-direct fallback (#867)', () =>
   });
 
   it('falls back to process.stdout only when TTY write fails (no double print)', () => {
-    // printBanner must attempt TTY first and skip stdout when ttyOk is true,
+    // printBanner must attempt TTY first and skip stdout when it succeeds —
     // otherwise --foreground-scripts users would see two banners.
     const fnMatch = src.match(/function\s+printBanner\s*\([^)]*\)\s*\{[\s\S]*?\n\}/);
     expect(fnMatch, 'printBanner must be in source').toBeTruthy();
     const body = fnMatch![0];
-    expect(body).toMatch(/const\s+ttyOk\s*=\s*writeToTty\s*\(/);
-    expect(body).toMatch(/if\s*\(\s*!\s*ttyOk\s*\)/);
+    expect(body).toMatch(/!\s*writeToTty\s*\(/);
     expect(body).toMatch(/process\.stdout\.write\s*\(/);
   });
 });

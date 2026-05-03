@@ -99,18 +99,12 @@ function buildMessage(version) {
 }
 
 function ttyDevicePath() {
-  // Direct TTY write reaches the user's terminal even when npm 7+ captures
-  // stdout into log files (#867). POSIX has /dev/tty; Windows has the CON
-  // device. If neither resolves, the helper silently no-ops.
   return platform() === 'win32' ? '\\\\.\\CON' : '/dev/tty';
 }
 
 function writeToTty(text) {
-  // Best-effort terminal write. Returns true on success so the caller knows
-  // not to also fall back to stdout (avoids double-printing when both work).
-  // CI / piped npm output / no-controlling-terminal cases trip the catch
-  // and return false — postinstall MUST never block install over a missing
-  // TTY, so all errors are swallowed.
+  // Bypasses npm 7+ stdio capture (#867). Errors (no TTY in CI/piped) must
+  // never block install — caller falls back to stdout when this returns false.
   let fd = null;
   try {
     fd = openSync(ttyDevicePath(), 'w');
@@ -120,7 +114,7 @@ function writeToTty(text) {
     return false;
   } finally {
     if (fd !== null) {
-      try { closeSync(fd); } catch { /* fd already closed or failed to open */ }
+      try { closeSync(fd); } catch { /* fd already closed */ }
     }
   }
 }
@@ -131,15 +125,10 @@ function bannerText(version, message) {
 }
 
 function printBanner(version, message) {
-  // Two-channel print: TTY-direct first (works around npm's stdio capture
-  // in v7+ default `foreground-scripts: false` mode), stdout second as the
-  // belt-and-braces fallback for `--foreground-scripts` users and CI logs.
-  // Pre-#867 only stdout was attempted, which npm captured into log files
-  // the user never sees — the notice file existed solely to compensate.
+  // TTY-direct first (#867); stdout as fallback for --foreground-scripts users.
   const text = bannerText(version, message);
-  const ttyOk = writeToTty(text);
-  if (!ttyOk) {
-    try { process.stdout.write(text); } catch { /* stdout broken — give up silently */ }
+  if (!writeToTty(text)) {
+    try { process.stdout.write(text); } catch { /* stdout broken — give up */ }
   }
 }
 

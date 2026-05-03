@@ -45,10 +45,11 @@ describe('bin/session-start-launcher.mjs §0d — reconcile post-install notice 
   });
 
   it('re-emits the message when running bits are older than the notice (cmp > 0 path)', () => {
-    // The branch must write to stdout per-line so Claude additionalContext
-    // shows it. A regression that quietly dropped this branch would leave
-    // the file orphaned with no user-visible signal.
-    expect(src).toMatch(/process\.stdout\.write\(`moflo:\s*\$\{line\}\\n`\)/);
+    // The branch must write the message to stdout (Claude additionalContext);
+    // a regression that quietly dropped it would leave the file orphaned with
+    // no user-visible signal. Behavioural test below covers actual output.
+    expect(src).toMatch(/cmp\s*>\s*0/);
+    expect(src).toMatch(/payload\.message/);
   });
 
   it('runs BEFORE the section 4 hooks.mjs spawn so additionalContext reaches the user', () => {

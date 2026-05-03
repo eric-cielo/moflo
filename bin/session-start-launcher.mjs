@@ -218,37 +218,16 @@ try {
 }
 
 // ── 0d. Reconcile post-install notice files (#867) ─────────────────────────
-// scripts/post-install-notice.mjs writes `.moflo/restart-pending.json` and
-// `.moflo/last-install-banner.json` on every `npm install moflo` that runs
-// inside Claude Code. Both are version-stamped. Pre-#867 nothing ever
-// cleaned them up: the assistant was supposed to surface the message
-// verbatim and `unlinkSync` it, but the contract relied on the assistant
-// remembering — which failed often enough (see issue body) to leave the
-// files accumulating across upgrades.
-//
-// This block makes the cleanup self-healing:
-//   • notice.version === installed → upgrade has been picked up; unlink.
-//   • notice.version >  installed  → user is still on the older bits;
-//                                    re-emit the message via launcher
-//                                    stdout (Claude additionalContext) and
-//                                    leave the file in place so the next
-//                                    restart attempt also sees it.
-//   • notice.version <  installed  → file is stale (predates the running
-//                                    moflo); unlink silently.
-//
-// `last-install-banner.json` is the postinstall dedup tracker. It carries
-// no message, so the equality logic is the same minus the re-emit.
-//
-// Runs early — before section 3's upgrade detection — so the user / Claude
-// see "moflo: cleared post-install restart notice" alongside the upgrade
-// mutation lines (or, in the older-running-bits branch, sees the banner
-// before any mutation work).
+// scripts/post-install-notice.mjs drops `.moflo/restart-pending.json` (+ a
+// dedup tracker) on every `npm install moflo` inside Claude Code. Pre-#867
+// nothing cleaned them up — the contract relied on the assistant
+// remembering to surface + unlink, which often failed. Three branches:
+//   notice.version === installed → unlink (upgrade is live)
+//   notice.version >  installed  → re-emit message via stdout, keep file
+//   notice.version <  installed  → unlink as stale
 function compareSemverParts(a, b) {
-  // Pure numeric semver compare (X.Y.Z…). Returns -1/0/1. Trailing pre-
-  // release tags (4.9.8-beta) get split by the regex; non-numeric segments
-  // fall through to a string compare so something silly like "next" sorts
-  // deterministically rather than throwing. Good enough for the only
-  // version pair this block ever sees: moflo's package.json semver.
+  // Numeric semver compare (X.Y.Z…). Non-numeric segments fall through to
+  // string compare so pre-release tags sort deterministically.
   const parse = (v) => String(v).replace(/^v/, '').split(/[.+-]/);
   const aParts = parse(a);
   const bParts = parse(b);
@@ -267,55 +246,60 @@ function compareSemverParts(a, b) {
   return 0;
 }
 
+function readJsonOrNull(path) {
+  // Fast-path read that swallows ENOENT (common case). Other read/parse
+  // errors return null and are treated as "malformed" by the caller, which
+  // falls back to the delete branch.
+  try { return JSON.parse(readFileSync(path, 'utf-8')); }
+  catch { return null; }
+}
+function tryUnlink(path) {
+  try { unlinkSync(path); return true; }
+  catch (err) {
+    if (err && err.code === 'ENOENT') return false;
+    emitWarning(`failed to remove ${path} (${errMessage(err)})`);
+    return false;
+  }
+}
+
 try {
   const mofloPkgPath = resolve(projectRoot, 'node_modules/moflo/package.json');
-  if (existsSync(mofloPkgPath)) {
-    const installedVersion = JSON.parse(readFileSync(mofloPkgPath, 'utf-8')).version;
+  const pkg = readJsonOrNull(mofloPkgPath);
+  const installedVersion = pkg && typeof pkg.version === 'string' ? pkg.version : null;
+  if (installedVersion) {
     const noticePath = join(mofloDir(projectRoot), 'restart-pending.json');
     const trackerPath = join(mofloDir(projectRoot), 'last-install-banner.json');
+    const payload = readJsonOrNull(noticePath);
 
-    if (installedVersion && existsSync(noticePath)) {
-      let payload = null;
-      try { payload = JSON.parse(readFileSync(noticePath, 'utf-8')); } catch { /* malformed — fall through to delete */ }
-      const noticeVersion = payload && typeof payload.version === 'string' ? payload.version : null;
-
-      if (!noticeVersion) {
-        // Malformed or missing version field — file can't be load-bearing.
-        try { unlinkSync(noticePath); } catch (err) { emitWarning(`failed to remove malformed restart-pending.json (${errMessage(err)})`); }
+    if (payload && typeof payload.version === 'string') {
+      const cmp = compareSemverParts(payload.version, installedVersion);
+      if (cmp === 0) {
+        if (tryUnlink(noticePath)) emitMutation('cleared post-install restart notice', `${payload.version} now running`);
+        tryUnlink(trackerPath);
+      } else if (cmp > 0) {
+        const message = typeof payload.message === 'string' && payload.message.length > 0
+          ? payload.message
+          : `MoFlo ${payload.version} installed but session is running ${installedVersion} — please restart Claude Code.`;
+        try {
+          for (const line of message.split('\n')) {
+            if (line === '') continue;
+            process.stdout.write(`moflo: ${line}\n`);
+          }
+          mutationCount++;
+        } catch { /* stdout broken — emitWarning would also fail */ }
       } else {
-        const cmp = compareSemverParts(noticeVersion, installedVersion);
-        if (cmp === 0) {
-          // Notice already applied — drop both files together.
-          try { unlinkSync(noticePath); emitMutation('cleared post-install restart notice', `${noticeVersion} now running`); } catch (err) { emitWarning(`failed to remove restart-pending.json (${errMessage(err)})`); }
-          try { unlinkSync(trackerPath); } catch { /* non-fatal — tracker may not exist */ }
-        } else if (cmp > 0) {
-          // Running bits are older than the file — this session still needs
-          // a restart onto installedVersion's predecessor. Re-emit so Claude
-          // additionalContext shows the message; leave the file in place.
-          const message = typeof payload.message === 'string' && payload.message.length > 0
-            ? payload.message
-            : `MoFlo ${noticeVersion} installed but session is running ${installedVersion} — please restart Claude Code.`;
-          try {
-            for (const line of message.split('\n')) {
-              if (line === '') continue; // collapse blank separators in the multi-line payload
-              process.stdout.write(`moflo: ${line}\n`);
-            }
-            mutationCount++;
-          } catch { /* stdout broken — no recovery */ }
-        } else {
-          // Notice predates the running moflo — pure stale, just unlink.
-          try { unlinkSync(noticePath); } catch (err) { emitWarning(`failed to remove stale restart-pending.json (${errMessage(err)})`); }
-          try { unlinkSync(trackerPath); } catch { /* non-fatal */ }
-        }
+        tryUnlink(noticePath);
+        tryUnlink(trackerPath);
       }
-    } else if (installedVersion && existsSync(trackerPath)) {
-      // Orphan tracker (no notice file) — reconcile by version. The tracker
-      // is purely a postinstall memo; once the running moflo has reached
-      // (or passed) its stamped version, it can go.
-      let trackerVersion = null;
-      try { trackerVersion = JSON.parse(readFileSync(trackerPath, 'utf-8'))?.version || null; } catch { /* malformed */ }
-      if (!trackerVersion || compareSemverParts(trackerVersion, installedVersion) <= 0) {
-        try { unlinkSync(trackerPath); } catch { /* non-fatal */ }
+    } else if (existsSync(noticePath)) {
+      // Notice exists but is malformed/missing version — can't be load-bearing.
+      tryUnlink(noticePath);
+    } else {
+      // No notice file. Reconcile a possible orphan tracker.
+      const tracker = readJsonOrNull(trackerPath);
+      const trackerVersion = tracker && typeof tracker.version === 'string' ? tracker.version : null;
+      if (tracker && (!trackerVersion || compareSemverParts(trackerVersion, installedVersion) <= 0)) {
+        tryUnlink(trackerPath);
       }
     }
   }
