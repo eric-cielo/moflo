@@ -53,6 +53,10 @@ flo-search "[query]" --namespace guidance   # Semantic search
 flo doctor --fix                             # Health check
 ```
 
+### After upgrading MoFlo
+
+After running `npm install moflo@*` (or `npm install` that touches moflo), check `.moflo/restart-pending.json`. If it exists, surface the `message` field to the user verbatim (Claude Code can't pick up new hooks/MCP tools/launcher mid-session — they're only loaded at session-start), then delete the file.
+
 ### Full Reference
 
 - **Subagents protocol:** `.claude/guidance/shipped/moflo-subagents.md`

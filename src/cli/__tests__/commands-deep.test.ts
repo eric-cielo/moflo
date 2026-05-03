@@ -1558,6 +1558,15 @@ describe('Init System', () => {
       expect(md).toContain('.claude/guidance/shipped/moflo-core-guidance.md');
     });
 
+    it('should instruct Claude to read .moflo/restart-pending.json after upgrading', () => {
+      // #856 — npm suppresses postinstall stdout, so the running session can't
+      // hear the banner. Claude reads a file dropped by the postinstall script
+      // and surfaces it to the user.
+      const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
+      expect(md).toContain('restart-pending.json');
+      expect(md).toContain('npm install moflo');
+    });
+
     it('all templates should produce identical output', () => {
       const minimal = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'minimal');
       const standard = generateClaudeMd(DEFAULT_INIT_OPTIONS, 'standard');

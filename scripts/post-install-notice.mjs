@@ -1,25 +1,37 @@
 #!/usr/bin/env node
 /**
- * Postinstall restart-nudge banner.
+ * Postinstall restart-nudge — drops a notice file Claude reads after upgrade.
  *
- * When `npm install` runs inside Claude Code (typically because the user
- * asked Claude to upgrade moflo), the just-installed bits are sitting on
- * disk but the running session still has the OLD launcher, hooks, MCP
- * server, and statusline loaded. The session-start launcher only re-reads
- * them on the NEXT session-start — so the upgrade is inert until the user
- * exits and reopens Claude Code.
+ * Problem this solves:
+ *   When `npm install` runs inside Claude Code (typically because the user
+ *   asked Claude to upgrade moflo), the just-installed bits are on disk but
+ *   the running session still has the OLD launcher, hooks, MCP server, and
+ *   statusline loaded. The launcher only re-reads them on the NEXT
+ *   session-start — the upgrade is inert until the user restarts.
  *
- * This script prints a banner that npm relays back to Claude as the install
- * stdout. The phrasing names Claude Code explicitly so the assistant
- * surfaces it to the user as a restart prompt.
+ *   The original v4.9.4 design printed a banner to stdout, expecting npm to
+ *   relay it. It does not: npm 7+ defaults to `foreground-scripts: false`
+ *   and captures install-script stdout/stderr into log files. The banner
+ *   never reached Claude. (#856.)
+ *
+ * Fix:
+ *   This script drops `<project>/.moflo/restart-pending.json` on every
+ *   relevant install. Claude is instructed (via the moflo CLAUDE.md
+ *   injection) to read + surface + delete the file after running
+ *   `npm install moflo@*`. No reliance on npm cooperating with stdout.
+ *
+ *   The banner is still printed to stdout for the rare `--foreground-scripts`
+ *   user, and the dedup tracker is preserved so repeat postinstalls of the
+ *   same version don't double-write the notice.
+ *
+ * Files written:
+ *   - .moflo/restart-pending.json       (the payload Claude reads)
+ *   - .moflo/last-install-banner.json   (dedup tracker, version-stamped)
  *
  * Gating:
- *   - Only prints when CLAUDE_PROJECT_DIR or CLAUDECODE is set (avoids
- *     noise on CI and non-Claude installs).
- *   - Dedupes by version: only prints once per (consumer-project, version)
- *     pair, so unrelated `npm install` runs that re-trigger postinstall
- *     don't re-spam the banner. Tracker lives at
- *     `<project>/.moflo/last-install-banner.json`.
+ *   - Only fires when CLAUDE_PROJECT_DIR or CLAUDECODE is set; non-Claude
+ *     installs and CI stay silent.
+ *   - Dedupes by version: same (project, version) pair won't re-write.
  *
  * Failure posture: never blocks an install. Errors are swallowed; exit 0.
  */
@@ -52,7 +64,7 @@ function installedVersion() {
   }
 }
 
-function readLastBanner(trackerPath) {
+function readTrackedVersion(trackerPath) {
   if (!existsSync(trackerPath)) return null;
   try {
     return JSON.parse(readFileSync(trackerPath, 'utf-8')).version || null;
@@ -61,33 +73,36 @@ function readLastBanner(trackerPath) {
   }
 }
 
-function writeLastBanner(trackerPath, version) {
+function writeJson(filePath, payload) {
   try {
-    mkdirSync(dirname(trackerPath), { recursive: true });
-    writeFileSync(trackerPath, JSON.stringify({
-      version,
-      shownAt: new Date().toISOString(),
-    }, null, 2));
-  } catch { /* non-fatal */ }
+    mkdirSync(dirname(filePath), { recursive: true });
+    writeFileSync(filePath, JSON.stringify(payload, null, 2));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-function printBanner(version) {
-  // Phrased to name Claude Code by name so the assistant surfaces it as a
-  // restart instruction rather than a generic install log line.
-  const lines = [
+function buildMessage(version) {
+  // Plain-text payload Claude relays verbatim. Names Claude Code explicitly
+  // so the assistant frames it as a restart instruction, not a log line.
+  return [
+    `MoFlo ${version} installed.`,
     '',
-    '═══════════════════════════════════════════════════════════════════',
-    `  MoFlo ${version} installed.`,
+    'Please restart Claude Code to load the new MoFlo.',
     '',
-    '  ⚠ Claude Code: please restart your session to load the new MoFlo.',
-    '',
-    '  Hooks, MCP tools, statusline, and the session-start launcher are',
-    '  loaded once at session-start — the running session is still on',
-    '  the previous moflo until you exit and reopen Claude Code.',
-    '═══════════════════════════════════════════════════════════════════',
-    '',
-  ];
-  process.stdout.write(lines.join('\n'));
+    'Hooks, MCP tools, statusline, and the session-start launcher are',
+    'loaded once at session-start — the running session is still on the',
+    'previous moflo until you exit and reopen Claude Code.',
+  ].join('\n');
+}
+
+function printBanner(version, message) {
+  // Stdout fallback for --foreground-scripts users. With npm's default
+  // config this output is captured and never seen — that's why the notice
+  // file exists. Kept anyway because it costs nothing.
+  const border = '═'.repeat(67);
+  process.stdout.write(`\n${border}\n  MoFlo ${version} installed.\n\n  ⚠ ${message.split('\n')[2]}\n${border}\n\n`);
 }
 
 function run() {
@@ -98,12 +113,19 @@ function run() {
 
   const projectRoot = consumerProjectRoot();
   const trackerPath = join(projectRoot, '.moflo', 'last-install-banner.json');
-  const lastShown = readLastBanner(trackerPath);
+  const noticePath = join(projectRoot, '.moflo', 'restart-pending.json');
+
+  const lastShown = readTrackedVersion(trackerPath);
   if (lastShown === version) return { fired: false, reason: 'already-shown' };
 
-  printBanner(version);
-  writeLastBanner(trackerPath, version);
-  return { fired: true, version };
+  const writtenAt = new Date().toISOString();
+  const message = buildMessage(version);
+
+  writeJson(noticePath, { version, writtenAt, message });
+  writeJson(trackerPath, { version, shownAt: writtenAt });
+
+  printBanner(version, message);
+  return { fired: true, version, noticePath };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
