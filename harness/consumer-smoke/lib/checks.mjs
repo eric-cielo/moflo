@@ -440,6 +440,7 @@ const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
   'Test Directories',
   'Git Repository',
   'Gate Health',      // .claude/ not initialised in fresh fixture (warn since #784)
+  'Hook Block Drift', // settings.json not found in fresh fixture (warn since #888)
   'Semantic Quality', // empty DB, no patterns yet
   'Disk Space',       // macOS GitHub runner is constantly >80% used (warn threshold)
   'Zombie Processes', // #886 — transient false-positive on Windows during smoke;
