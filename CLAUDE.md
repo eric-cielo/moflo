@@ -21,28 +21,9 @@ See `feedback_consumer_blast_radius.md` (auto-memory) for the full posture.
 
 ---
 
-## ⚠ This repo dogfoods MoFlo — read before any diagnostic
+## ⚠ Diagnosing runtime symptoms — read this first
 
-**MoFlo IS the project AND the installed devDependency that drives the editor.** Two layers exist and they routinely diverge:
-
-| Layer | Location | Role |
-|-------|----------|------|
-| **Source** | `src/cli/...`, `bin/...` (working tree) | What's being edited |
-| **Installed** | `node_modules/moflo/...` | What's actually running — Claude Code's SessionStart hooks, daemon, statusline, indexers, embeddings migration all execute from here |
-
-When diagnosing any "X is broken" symptom (statusline numbers, daemon spam, missing upgrade UI, indexer behavior, hook output, anything observable in the editor) the symptom is produced by the **installed** bits — NOT by the source. Diagnostic instinct of "open the source file and read the code" is wrong here unless the install was just refreshed.
-
-**Before opening issues for runtime symptoms, verify the install state:**
-
-```bash
-node -p "require('./node_modules/moflo/package.json').version"  # what's running
-node -p "require('./package.json').version"                     # source version
-git log --oneline -5                                            # what's in source not yet shipped
-```
-
-If installed lags source, **publish + reinstall first** (use `/publish`), then re-test. Most "the code is buggy" symptoms turn out to be stale-install artifacts in this repo specifically because of the dogfood loop.
-
-**Corollary:** features must work from `node_modules/moflo/...` paths (consumer perspective), not from source paths anchored on `process.cwd()`. See `feedback_consumer_path_resolution.md`.
+Before opening any issue or "fixing" anything observable in the editor (statusline, daemon, hooks, indexer, upgrade UI), MUST read `.claude/guidance/internal/dogfooding.md` § Runtime Symptom Diagnosis. MoFlo dogfoods itself; runtime symptoms come from `node_modules/moflo/...`, not source. Skip this and you'll waste a session debugging code that isn't even running.
 
 ---
 
@@ -87,21 +68,14 @@ After running `npm install moflo@*` (or `npm install` that touches moflo), check
 - **CLI, hooks, swarm, memory, moflo.yaml:** `.claude/guidance/shipped/moflo-core-guidance.md`
 <!-- MOFLO:INJECTED:END -->
 
-## ⚠ Writing or editing guidance — both rule sets are mandatory
+## ⚠ Editing guidance — read both rule sets first
 
-**Whenever you create, rewrite, or edit any `.claude/guidance/**/*.md` file, BOTH rule sets MUST be followed:**
+Before creating, rewriting, or editing any `.claude/guidance/**/*.md` file, MUST read both:
 
-1. **`.claude/guidance/shipped/moflo-guidance-rules.md`** — Universal writing rules (#1–#9): required `**Purpose:**` line, imperative voice, decision tables, concrete examples, 500-line cap, specific H2 headings, anti-patterns, RAG chunking, mandatory `## See Also` section.
-2. **`.claude/guidance/internal/guidance-rules.md`** — Moflo-only extensions (#1–#3): the `moflo-` prefix on shipped files, the shipped/internal partitioning contract, and the decision rules for which bucket new docs go in.
+1. `.claude/guidance/shipped/moflo-guidance-rules.md` — universal writing rules (Purpose line, imperative voice, decision tables, concrete examples, 500-line cap, specific H2 headings, anti-patterns, RAG chunking, See Also).
+2. `.claude/guidance/internal/guidance-rules.md` — moflo-only extensions (`moflo-` prefix on shipped files, shipped/internal partition contract, bucket-decision rules).
 
-This applies to:
-
-- New shipped guidance (`.claude/guidance/shipped/moflo-*.md`)
-- New internal guidance (`.claude/guidance/internal/*.md`)
-- Edits to existing guidance — drive-by edits must not introduce drift from either rule set
-- Auto-memory files under `~/.claude/projects/.../memory/` (the universal rules apply where they make sense)
-
-If you find yourself writing prose preambles, generic headings, hedged "should/might" language, or omitting See Also — stop and re-read the rules.
+Drive-by edits count too. Auto-memory files under `~/.claude/projects/.../memory/` follow the universal rules where they apply.
 
 ---
 

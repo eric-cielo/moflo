@@ -53,6 +53,38 @@ MoFlo is a diverged fork of Ruflo/Claude Flow. See `UPSTREAM_SYNC.md` for the ch
 
 ---
 
+## Runtime Symptom Diagnosis
+
+**MoFlo IS the project AND the installed devDependency that drives the editor.** Two layers exist and they routinely diverge:
+
+| Layer | Location | Role |
+|-------|----------|------|
+| **Source** | `src/cli/...`, `bin/...` (working tree) | What's being edited |
+| **Installed** | `node_modules/moflo/...` | What's actually running — Claude Code's SessionStart hooks, daemon, statusline, indexers, embeddings migration all execute from here |
+
+When diagnosing any "X is broken" symptom (statusline numbers, daemon spam, missing upgrade UI, indexer behavior, hook output, anything observable in the editor) the symptom is produced by the **installed** bits — NOT by the source. The instinct of "open the source file and read the code" is wrong here unless the install was just refreshed.
+
+### Verify install state before opening an issue
+
+```bash
+node -p "require('./node_modules/moflo/package.json').version"  # what's running
+node -p "require('./package.json').version"                     # source version
+git log --oneline -5                                            # what's in source not yet shipped
+```
+
+If installed lags source, **publish + reinstall first** (use `/publish`), then re-test. Most "the code is buggy" symptoms turn out to be stale-install artifacts in this repo specifically because of the dogfood loop.
+
+### Anti-pattern: source-first diagnosis
+
+❌ **Wrong:** symptom appears → open `src/cli/<file>.ts` → read code → file an issue claiming the code is broken.
+✅ **Right:** symptom appears → check installed-vs-source version → if lagging, publish/reinstall → if symptom persists from `node_modules/moflo/...`, *then* open the issue with both versions logged.
+
+### Corollary: code must run from `node_modules/moflo/...` paths
+
+Features must work from the installed location (consumer perspective), not from source paths anchored on `process.cwd()`. Hand-rolled `__dirname` or `process.cwd()` resolution that "works in dev" silently breaks for every consumer because their `node_modules/moflo/` lives at a different relative depth. See `feedback_consumer_path_resolution.md` (auto-memory) and `consumer-project-paths.md`.
+
+---
+
 ## See Also
 
 - `.claude/guidance/internal/upgrade-contract.md` — The "user never re-runs init" invariant that dogfooding stress-tests on every dev session
