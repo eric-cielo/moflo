@@ -10,7 +10,7 @@
 import { spawn, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { mofloDir } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
@@ -218,11 +218,17 @@ try {
   // own errors if the DB is still broken.
 }
 
-// ── 0d. Clear post-install restart notice when version is current (#867) ───
+// ── 0d. Silently clear post-install restart notice when version is current (#867, #887) ─
 // scripts/post-install-notice.mjs drops `.moflo/restart-pending.json` on every
 // `npm install moflo`. The UserPromptSubmit hook surfaces it on every prompt
 // until cleared, so this session only sees the message between install and
 // the FIRST restart that actually picks up the new bits.
+//
+// Cleanup is silent (#887): the user already saw + acted on the restart prompt
+// — surfacing a "cleared notice" line on the very next session reads like an
+// error in additionalContext and inflates mutationCount, which would also fire
+// the closing "starting background tasks" framing. Both are noise on a
+// successful post-restart session.
 try {
   const pendingPath = join(mofloDir(projectRoot), 'restart-pending.json');
   const pkgPath = resolve(projectRoot, 'node_modules/moflo/package.json');
@@ -231,7 +237,6 @@ try {
   if (pending && typeof pending.version === 'string' && pending.version === installedVersion) {
     unlinkSync(pendingPath);
     try { unlinkSync(join(mofloDir(projectRoot), 'last-install-banner.json')); } catch { /* tracker may not exist */ }
-    emitMutation('cleared post-install restart notice', `${installedVersion} now running`);
   }
 } catch { /* file missing or malformed — silent fast-path */ }
 
@@ -304,7 +309,7 @@ try {
 // Controlled by `auto_update.enabled` in moflo.yaml (default: true).
 // When moflo is upgraded (npm install), scripts and helpers may be stale.
 // Detect version change and sync from source before running hooks.
-let autoUpdateConfig = { enabled: true, scripts: true, helpers: true };
+let autoUpdateConfig = { enabled: true, scripts: true, helpers: true, hookBlockDrift: 'warn' };
 try {
   const mofloYaml = resolve(projectRoot, 'moflo.yaml');
   if (existsSync(mofloYaml)) {
@@ -313,9 +318,12 @@ try {
     const enabledMatch = yamlContent.match(/auto_update:\s*\n\s+enabled:\s*(true|false)/);
     const scriptsMatch = yamlContent.match(/auto_update:\s*\n(?:\s+\w+:.*\n)*?\s+scripts:\s*(true|false)/);
     const helpersMatch = yamlContent.match(/auto_update:\s*\n(?:\s+\w+:.*\n)*?\s+helpers:\s*(true|false)/);
+    // #881: hook-block drift detector (warn | regenerate | off; default warn)
+    const driftMatch = yamlContent.match(/auto_update:\s*\n(?:\s+\w+:.*\n)*?\s+hook_block_drift:\s*(warn|regenerate|off)/);
     if (enabledMatch) autoUpdateConfig.enabled = enabledMatch[1] === 'true';
     if (scriptsMatch) autoUpdateConfig.scripts = scriptsMatch[1] === 'true';
     if (helpersMatch) autoUpdateConfig.helpers = helpersMatch[1] === 'true';
+    if (driftMatch) autoUpdateConfig.hookBlockDrift = driftMatch[1];
   }
 } catch (err) {
   // Defaults (all true) keep the upgrade flow alive but the user should
@@ -879,6 +887,138 @@ try {
 } catch (err) {
   // #854: silent fail-loop hid hook breakage — surface so the user can act.
   emitWarning(`settings.json migration failed (${errMessage(err)})`);
+}
+
+// ── 3a-vi. Hook-block drift detection (#881) ───────────────────────────────
+// Hash the consumer's settings.json hook block against the reference block
+// `generateHooksConfig()` would produce for this moflo version. Catches
+// drift the per-bug `repairHookWiring` / `rewriteIncorrectHookWiring` rules
+// don't cover (future hook events, partial migrations, hand-edited commands).
+// Runs every session under `auto_update.enabled`, not only on version change.
+//
+// Modes (`auto_update.hook_block_drift` in moflo.yaml):
+//   warn        — print a one-line summary + diff to stdout (default)
+//   regenerate  — additively add missing hooks; falls back to warn when the
+//                 consumer has extra (custom) hooks, to avoid clobbering
+//   off         — skip entirely
+//
+// Also respects a `claudeFlow.hooks.locked: true` sentinel in settings.json
+// — if set, the user has explicitly opted out of drift surfacing.
+// Fast-path: `.moflo/hook-drift-cache.json` records the last clean run. If
+// settings.json + the dist module both still match the cached mtimes and the
+// cached check was clean (consumerHash === referenceHash), skip readFile +
+// JSON.parse + dynamic import entirely. This block runs every session; the
+// cache makes it ~free in the steady state.
+//
+// Returns the values to persist on the slow path, or null when skipped
+// (cache hit, no settings.json, no dist module, locked, etc.). Pulled out
+// to keep the guard chain flat — the original inline form was 9 levels deep.
+async function runHookBlockDriftCheck() {
+  const settingsPath = resolve(projectRoot, '.claude', 'settings.json');
+  let settingsStat;
+  try { settingsStat = statSync(settingsPath); } catch { return null; }
+
+  // statSync each candidate doubles as existence check + provides the mtime
+  // we need for the cache key, avoiding the existsSync→import TOCTOU pattern.
+  const hbhCandidates = [
+    resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/hook-block-hash.js'),
+    resolve(projectRoot, 'dist/src/cli/services/hook-block-hash.js'),
+  ];
+  let hbhPath = null;
+  let hbhStat = null;
+  for (const p of hbhCandidates) {
+    try { hbhStat = statSync(p); hbhPath = p; break; } catch { /* try next */ }
+  }
+  if (!hbhPath) return null;
+
+  // Fast-path requires consumerHash === referenceHash (a previously *clean*
+  // run). A drifted-but-cached state still needs to re-emit the warning each
+  // session, so we always re-do the work in that case.
+  const cachePath = join(mofloDir(projectRoot), 'hook-drift-cache.json');
+  let cached = null;
+  try { cached = JSON.parse(readFileSync(cachePath, 'utf-8')); } catch { /* missing or corrupt */ }
+  if (
+    cached &&
+    cached.settingsMtimeMs === settingsStat.mtimeMs &&
+    cached.moduleMtimeMs === hbhStat.mtimeMs &&
+    cached.consumerHash === cached.referenceHash
+  ) return null;
+
+  // Try-catch around the dynamic import handles the file disappearing
+  // between statSync and import (TOCTOU); module-load errors fall through.
+  let mod = null;
+  try { mod = await import(pathToFileURL(hbhPath).href); } catch { /* TOCTOU or load error — skip */ return null; }
+  if (typeof mod.computeHookBlockDrift !== 'function') return null;
+
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+  if (typeof mod.isHookBlockLocked === 'function' && mod.isHookBlockLocked(settings)) return null;
+
+  const report = mod.computeHookBlockDrift(settings.hooks || {});
+  let regenerated = false;
+
+  if (report.drifted) {
+    const wantRegenerate = autoUpdateConfig.hookBlockDrift === 'regenerate';
+    const safeToRegenerate = wantRegenerate && report.extra.length === 0;
+    if (safeToRegenerate && typeof mod.applyAdditiveRegeneration === 'function') {
+      const { added } = mod.applyAdditiveRegeneration(settings, report);
+      if (added > 0) {
+        writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+        regenerated = true;
+        emitMutation(
+          'regenerated hook block',
+          `added ${plural(added, 'missing hook entry')} (drift ${report.consumerHash} → ${report.referenceHash})`,
+        );
+      }
+    } else {
+      const parts = [];
+      if (report.missing.length > 0) parts.push(plural(report.missing.length, 'missing entry'));
+      if (report.extra.length > 0) parts.push(`${plural(report.extra.length, 'custom hook')} preserved`);
+      const reason = parts.join(', ') || 'reordered';
+      // stdout (not stderr) so Claude sees this in `additionalContext` and
+      // surfaces it to the user — not a mutation since we didn't change anything.
+      try {
+        process.stdout.write(
+          `moflo: hook block drift (${reason}); run \`flo doctor hook-drift\` or set auto_update.hook_block_drift: regenerate in moflo.yaml\n`,
+        );
+      } catch { /* broken stdout — non-fatal */ }
+    }
+  }
+
+  // Regeneration mutated settings.json — re-stat for the fresh mtime so next
+  // session's fast-path matches; otherwise reuse the stat we already have.
+  let finalSettingsMtime = settingsStat.mtimeMs;
+  if (regenerated) {
+    try { finalSettingsMtime = statSync(settingsPath).mtimeMs; } catch { /* keep prior */ }
+  }
+  // After successful regeneration consumerHash matches referenceHash by construction.
+  const finalConsumerHash = regenerated ? report.referenceHash : report.consumerHash;
+
+  return {
+    cachePath,
+    settingsMtimeMs: finalSettingsMtime,
+    moduleMtimeMs: hbhStat.mtimeMs,
+    consumerHash: finalConsumerHash,
+    referenceHash: report.referenceHash,
+  };
+}
+
+try {
+  if (autoUpdateConfig.enabled && autoUpdateConfig.hookBlockDrift !== 'off') {
+    const result = await runHookBlockDriftCheck();
+    if (result) {
+      try {
+        mkdirSync(mofloDir(projectRoot), { recursive: true });
+        writeFileSync(result.cachePath, JSON.stringify({
+          settingsMtimeMs: result.settingsMtimeMs,
+          moduleMtimeMs: result.moduleMtimeMs,
+          consumerHash: result.consumerHash,
+          referenceHash: result.referenceHash,
+        }));
+      } catch { /* cache is opportunistic — non-fatal */ }
+    }
+  }
+} catch (err) {
+  emitWarning(`hook-block drift check skipped (${errMessage(err)})`);
 }
 
 // ── 3b. Ensure shipped guidance files exist (even without version change) ──
