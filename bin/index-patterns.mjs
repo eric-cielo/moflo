@@ -31,7 +31,6 @@ import { spawn } from 'child_process';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, MOFLO_DIR } from './lib/moflo-paths.mjs';
 import { applyIncrementalChunks, computeContentListHash } from './lib/incremental-write.mjs';
-const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -75,6 +74,9 @@ function ensureDbDir() {
 
 async function getDb() {
   ensureDbDir();
+  // Lazy: hash-cache-match and no-source-files early-exits in main() never
+  // reach this, and the sql.js wasm cold-load is ~400ms otherwise wasted.
+  const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
   const SQL = await initSqlJs();
   let db;
   if (existsSync(DB_PATH)) {
