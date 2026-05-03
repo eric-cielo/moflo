@@ -2,9 +2,13 @@
 /**
  * Sequential indexer chain for session-start.
  *
- * Runs all DB-writing indexers one at a time to avoid sql.js last-write-wins
- * concurrency issues (#78), then triggers HNSW rebuild once everything is
- * committed (#81).
+ * Each step is gated independently — see `lib/index-fingerprint.mjs`. The
+ * orchestrator just walks the plan, asks the gate per step, runs the
+ * survivors, and saves the post-run fingerprint when each succeeds.
+ *
+ * Steps run sequentially (DB-writing) to avoid sql.js last-write-wins
+ * concurrency issues (#78). HNSW rebuild is last, after every other step
+ * has committed (#81).
  *
  * Spawned as a single detached background process by hooks.mjs session-start.
  */
@@ -15,7 +19,12 @@ import { fileURLToPath } from 'url';
 import { spawn, spawnSync } from 'child_process';
 import { platform } from 'os';
 import { hnswIndexPath } from './lib/moflo-paths.mjs';
-import { decideIndexGate, saveFingerprint } from './lib/index-fingerprint.mjs';
+import {
+  decideStepGate,
+  computeStepFingerprint,
+  saveStepFingerprint,
+  cleanupLegacyFingerprint,
+} from './lib/index-fingerprint.mjs';
 
 // Cap fastembed/ONNX thread count when spawning the heavy steps. Without
 // this, ONNX defaults to one thread per CPU core (22+ on a modern dev box),
@@ -66,7 +75,6 @@ function resolveBin(binName, localScript) {
 
 function getLocalCliPath() {
   const paths = [
-    resolve(projectRoot, 'node_modules/moflo/bin/cli.js'),
     resolve(projectRoot, 'node_modules/moflo/bin/cli.js'),
     resolve(projectRoot, 'node_modules/.bin/flo'),
     // Development: local CLI
@@ -159,127 +167,130 @@ function runStep(label, cmd, args, timeoutMs = 120_000, extraEnv = null) {
   });
 }
 
-async function main() {
-  const startTime = Date.now();
-
-  // ── Fingerprint gate ─────────────────────────────────────────────────────
-  // Skip the entire chain when none of {memory.db, moflo pkg, moflo.yaml,
-  // .claude/guidance/} have changed since the last successful run. Without
-  // this gate the chain re-embeds + rebuilds HNSW on every Claude session-
-  // start even when nothing changed — the customer-visible CPU peg this
-  // module exists to fix. Override with FLO_FORCE_INDEX=1.
-  const gate = decideIndexGate(projectRoot);
-  if (gate.skip) {
-    log(`SKIP  full chain — ${gate.reason} (no inputs changed since last run)`);
-    return;
-  }
-  log(`Sequential indexing chain started (gate: ${gate.reason})`);
-
-  // 1. Guidance indexer
-  if (isIndexEnabled('guidance')) {
-    const guidanceScript = resolveBin('flo-index', 'index-guidance.mjs');
-    if (guidanceScript) {
-      await runStep('guidance-index', 'node', [guidanceScript, '--no-embeddings']);
-    } else {
-      log('SKIP  guidance-index (script not found)');
-    }
-  } else {
-    log('SKIP  guidance-index (disabled in moflo.yaml)');
-  }
-
-  // 2. Code map generator (the big one — ~22s)
-  if (isIndexEnabled('code_map')) {
-    const codeMapScript = resolveBin('flo-codemap', 'generate-code-map.mjs');
-    if (codeMapScript) {
-      await runStep('code-map', 'node', [codeMapScript, '--no-embeddings'], 180_000);
-    } else {
-      log('SKIP  code-map (script not found)');
-    }
-  } else {
-    log('SKIP  code-map (disabled in moflo.yaml)');
-  }
-
-  // 3. Test indexer
-  if (isIndexEnabled('tests')) {
-    const testScript = resolveBin('flo-testmap', 'index-tests.mjs');
-    if (testScript) {
-      await runStep('test-index', 'node', [testScript, '--no-embeddings']);
-    } else {
-      log('SKIP  test-index (script not found)');
-    }
-  } else {
-    log('SKIP  test-index (disabled in moflo.yaml)');
-  }
-
-  // 4. Patterns indexer
-  if (isIndexEnabled('patterns')) {
-    const patternsScript = resolveBin('flo-patterns', 'index-patterns.mjs');
-    if (patternsScript) {
-      await runStep('patterns-index', 'node', [patternsScript]);
-    } else {
-      log('SKIP  patterns-index (script not found)');
-    }
-  } else {
-    log('SKIP  patterns-index (disabled in moflo.yaml)');
-  }
-
-  // 5. Pretrain (extracts patterns from repository)
+/**
+ * Build the ordered step plan. Each entry is `{ name, cmd, args, timeoutMs, env? }`.
+ * Steps disabled in moflo.yaml or whose script can't be located are filtered
+ * out here so the run loop only sees runnable steps.
+ */
+function buildStepPlan() {
+  const plan = [];
   const localCli = getLocalCliPath();
+
+  const consider = (name, cfgKey, scriptName, binName, args, timeoutMs = 120_000, env = null) => {
+    if (cfgKey && !isIndexEnabled(cfgKey)) {
+      log(`SKIP  ${name} (disabled in moflo.yaml)`);
+      return;
+    }
+    const script = scriptName ? resolveBin(binName, scriptName) : null;
+    if (scriptName && !script) {
+      log(`SKIP  ${name} (script not found)`);
+      return;
+    }
+    plan.push({
+      name,
+      cmd: 'node',
+      args: scriptName ? [script, ...args] : args,
+      timeoutMs,
+      env,
+    });
+  };
+
+  consider('guidance-index', 'guidance', 'index-guidance.mjs', 'flo-index',   ['--no-embeddings']);
+  consider('code-map',       'code_map', 'generate-code-map.mjs', 'flo-codemap', ['--no-embeddings'], 180_000);
+  consider('test-index',     'tests',    'index-tests.mjs',    'flo-testmap', ['--no-embeddings']);
+  consider('patterns-index', 'patterns', 'index-patterns.mjs', 'flo-patterns', []);
+
+  // Pretrain extracts patterns from the repo via the CLI subcommand. No
+  // direct script — invoke through the local flo binary.
   if (localCli) {
-    await runStep('pretrain', 'node', [localCli, 'hooks', 'pretrain']);
+    plan.push({
+      name: 'pretrain',
+      cmd: 'node',
+      args: [localCli, 'hooks', 'pretrain'],
+      timeoutMs: 120_000,
+    });
   } else {
     log('SKIP  pretrain (CLI not found)');
   }
 
-  // 6. Build embeddings — single pass for ALL namespaces, after all indexers finish.
-  //    Individual indexers are called with --no-embeddings to prevent background
-  //    embedding spawns that race with this chain (sql.js last-write-wins).
-  //    Thread-capped: fastembed/ONNX would otherwise pin every CPU core.
-  const embeddingsScript = resolveBin('flo-embeddings', 'build-embeddings.mjs');
-  if (embeddingsScript) {
-    await runStep('build-embeddings', 'node', [embeddingsScript], 300_000, ONNX_THREAD_CAP);
-  } else {
-    log('SKIP  build-embeddings (script not found)');
-  }
+  // build-embeddings runs fastembed → thread-capped to keep CPU usable.
+  consider('build-embeddings', null, 'build-embeddings.mjs', 'flo-embeddings', [], 300_000, ONNX_THREAD_CAP);
 
-  // 7. HNSW rebuild — MUST run last, after all writes are committed (#81).
-  //    rebuild-index now also writes the binary HNSW sidecar at
-  //    .moflo/hnsw.index, which can take longer than the default 120s on a
-  //    populated consumer DB — match build-embeddings' 300s budget.
-  //    Thread-capped: same fastembed CPU-peg risk as build-embeddings.
-  let hnswOk = true;
+  // HNSW MUST run last (after all DB writes are committed, #81). Same thread
+  // cap — rebuild-index loads fastembed for stats lookups.
   if (localCli) {
-    const ok = await runStep('hnsw-rebuild', 'node', [localCli, 'memory', 'rebuild-index', '--force'], 300_000, ONNX_THREAD_CAP);
-    if (ok) {
-      const sidecar = hnswIndexPath(projectRoot);
-      if (!existsSync(sidecar)) {
-        // Loud failure: missing sidecar means cold-start memory search
-        // silently rebuilds from SQL on every consumer process — the exact
-        // regression this guard exists to surface.
-        log(`FAIL  hnsw-rebuild post-check: sidecar missing at ${sidecar}`);
-        hnswOk = false;
-      }
-    } else {
-      hnswOk = false;
-    }
+    plan.push({
+      name: 'hnsw-rebuild',
+      cmd: 'node',
+      args: [localCli, 'memory', 'rebuild-index', '--force'],
+      timeoutMs: 300_000,
+      env: ONNX_THREAD_CAP,
+    });
   } else {
     log('SKIP  hnsw-rebuild (CLI not found)');
   }
 
-  const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  log(`Sequential indexing chain complete (${totalElapsed}s)`);
+  return plan;
+}
 
-  // Save the fingerprint AFTER a successful chain run. If hnsw failed, we
-  // intentionally don't save — the next session-start will retry. Save
-  // failures are non-fatal (next run will recompute and just re-run the
-  // chain, no correctness hazard).
-  if (hnswOk) {
-    if (saveFingerprint(projectRoot, gate.current)) {
-      log('Saved index-all fingerprint for next-session gate');
-    } else {
-      log('WARN  fingerprint save failed (next session will re-run chain)');
+async function main() {
+  const startTime = Date.now();
+  const plan = buildStepPlan();
+
+  let ranAny = false;
+  let hnswAttempted = false;
+  let hnswOk = true;
+
+  for (const step of plan) {
+    const gate = decideStepGate(step.name, projectRoot);
+    if (gate.skip) {
+      log(`SKIP  ${step.name} (${gate.reason})`);
+      continue;
+    }
+    log(`RUN   ${step.name} (${gate.reason})`);
+    if (step.name === 'hnsw-rebuild') hnswAttempted = true;
+    const ok = await runStep(step.name, step.cmd, step.args, step.timeoutMs, step.env || null);
+    if (ok) {
+      // POST-run fingerprint: re-compute to capture any state mutated by
+      // this step (e.g. build-embeddings bumping memory.db mtime). Saving
+      // the POST value lets next session correctly compare against the
+      // stable post-step state.
+      try {
+        const post = computeStepFingerprint(step.name, projectRoot);
+        if (!saveStepFingerprint(step.name, projectRoot, post)) {
+          log(`WARN  ${step.name} fingerprint save failed (next session will re-run)`);
+        }
+      } catch (err) {
+        const msg = (err && err.message ? err.message.split('\n')[0] : 'unknown');
+        log(`WARN  ${step.name} fingerprint compute failed: ${msg}`);
+      }
+      ranAny = true;
+    } else if (step.name === 'hnsw-rebuild') {
+      hnswOk = false;
     }
   }
+
+  // hnsw-rebuild post-check: sidecar must physically exist after the step
+  // ran successfully. Missing sidecar means cold-start memory search will
+  // silently rebuild from SQL on every consumer process — the regression
+  // this guard exists to surface (#854). Only meaningful when we actually
+  // tried to rebuild.
+  if (hnswAttempted && hnswOk) {
+    const sidecar = hnswIndexPath(projectRoot);
+    if (!existsSync(sidecar)) {
+      log(`FAIL  hnsw-rebuild post-check: sidecar missing at ${sidecar}`);
+      hnswOk = false;
+    }
+  }
+
+  // Always tidy up the v1 fingerprint file from 4.9.7 — even on all-skip
+  // sessions, otherwise the orphan survives indefinitely.
+  cleanupLegacyFingerprint(projectRoot);
+
+  const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  log(ranAny
+    ? `Sequential indexing chain complete (${totalElapsed}s)`
+    : `Sequential indexing chain skipped — all steps gated unchanged (${totalElapsed}s)`);
 
   if (!hnswOk) process.exit(1);
 }

@@ -1,20 +1,15 @@
 /**
- * Fingerprint gate tests for the session-start indexer chain.
+ * Per-step fingerprint gate tests for the session-start indexer chain (#858).
  *
- * The chain pegs CPU when run unconditionally on every session-start (the
- * "full reindex on every login" antipattern). The gate prevents that by
- * skipping when none of the load-bearing inputs have changed.
+ * The 4.9.7 global gate fixed the CPU peg only when nothing changed. As soon
+ * as memory.db mtime bumped (every memory_store call) the entire chain re-ran
+ * — including pretrain + HNSW rebuild — even though only build-embeddings had
+ * actual work. Per-step gates fix that: each step gates on its own inputs.
  *
- * These tests construct synthetic consumer trees and assert each scenario:
- *   - Fresh install (no fingerprint)        → run
- *   - Unchanged                              → skip
- *   - memory.db touched                      → run
- *   - .claude/guidance/ file edited          → run
- *   - moflo upgrade (node_modules pkg)       → run
- *   - moflo.yaml edited                      → run
- *   - FLO_FORCE_INDEX env override           → run
- *   - Corrupt fingerprint file               → run (safe fallback)
- *   - Saved fingerprint version mismatch     → run (graceful invalidation)
+ * Tests construct a synthetic consumer tree and assert each gate decision in
+ * isolation. Step computers that depend on `git ls-files` stub git by setting
+ * a non-repo cwd — the helper returns null, which the gate treats as
+ * "input changed" (safe fallback).
  */
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
@@ -24,6 +19,8 @@ import {
   rmSync,
   writeFileSync,
   utimesSync,
+  existsSync,
+  readFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -31,8 +28,6 @@ import { findRepoRoot } from './_helpers/repo-walk.js';
 
 const REPO_ROOT = findRepoRoot(import.meta.url);
 
-// Dynamic import — the module is .mjs in bin/lib/, vitest can resolve it
-// via file URL.
 async function loadGate() {
   const url = new URL(
     `file:///${join(REPO_ROOT, 'bin/lib/index-fingerprint.mjs').replace(/\\/g, '/').replace(/^\/+/, '')}`,
@@ -44,28 +39,27 @@ interface ConsumerTree {
   root: string;
   memoryDb: string;
   mofloPkg: string;
-  mofloYaml: string;
   guidanceFile: string;
+  hnswSidecar: string;
 }
 
 function makeConsumer(): ConsumerTree {
-  const root = mkdtempSync(join(tmpdir(), 'moflo-fp-'));
+  const root = mkdtempSync(join(tmpdir(), 'moflo-fp-step-'));
 
   const memoryDb = join(root, '.moflo/moflo.db');
   const mofloPkg = join(root, 'node_modules/moflo/package.json');
-  const mofloYaml = join(root, 'moflo.yaml');
   const guidanceFile = join(root, '.claude/guidance/sample.md');
+  const hnswSidecar = join(root, '.moflo/hnsw.index');
 
   mkdirSync(join(root, '.moflo'), { recursive: true });
   mkdirSync(join(root, 'node_modules/moflo'), { recursive: true });
   mkdirSync(join(root, '.claude/guidance'), { recursive: true });
 
   writeFileSync(memoryDb, 'fake-sqlite');
-  writeFileSync(mofloPkg, JSON.stringify({ name: 'moflo', version: '4.9.6' }));
-  writeFileSync(mofloYaml, 'auto_index:\n  guidance: true\n');
+  writeFileSync(mofloPkg, JSON.stringify({ name: 'moflo', version: '4.9.7' }));
   writeFileSync(guidanceFile, '# sample\n');
 
-  return { root, memoryDb, mofloPkg, mofloYaml, guidanceFile };
+  return { root, memoryDb, mofloPkg, guidanceFile, hnswSidecar };
 }
 
 function bumpMtime(path: string, secondsAhead = 5) {
@@ -73,7 +67,16 @@ function bumpMtime(path: string, secondsAhead = 5) {
   utimesSync(path, future, future);
 }
 
-describe('index-fingerprint — session-start gate', () => {
+// Steps whose fingerprint depends only on the filesystem, not on git ls-files.
+// We can drive these deterministically in a temp dir.
+const FS_ONLY_STEPS = ['guidance-index', 'build-embeddings', 'hnsw-rebuild'] as const;
+
+// Steps backed by git ls-files. In a fresh tmpdir the git call returns null,
+// so the fingerprint object is `{ <key>: null }`. The gate still works:
+// equality comparisons of the same null fingerprint match → skip.
+const GIT_BACKED_STEPS = ['code-map', 'test-index', 'patterns-index', 'pretrain'] as const;
+
+describe('index-fingerprint — per-step gate (#858)', () => {
   let tree: ConsumerTree;
 
   beforeEach(() => {
@@ -84,121 +87,198 @@ describe('index-fingerprint — session-start gate', () => {
     rmSync(tree.root, { recursive: true, force: true });
   });
 
-  it('runs the chain on a fresh consumer (no saved fingerprint)', async () => {
-    const { decideIndexGate } = await loadGate();
-    const decision = decideIndexGate(tree.root, {});
-    expect(decision.skip).toBe(false);
-    expect(decision.reason).toBe('no-saved-fingerprint');
-    expect(decision.current).toBeDefined();
+  it('STEP_NAMES covers every computer registered (no orphans)', async () => {
+    const { STEP_NAMES, computeStepFingerprint } = await loadGate();
+    expect(STEP_NAMES).toEqual([
+      'guidance-index', 'code-map', 'test-index', 'patterns-index',
+      'pretrain', 'build-embeddings', 'hnsw-rebuild',
+    ]);
+    // Every name resolves to a working computer (no missing entries).
+    for (const name of STEP_NAMES) {
+      expect(() => computeStepFingerprint(name, tree.root)).not.toThrow();
+    }
   });
 
-  it('skips when fingerprint matches (back-to-back runs)', async () => {
-    const { decideIndexGate, saveFingerprint } = await loadGate();
-    const first = decideIndexGate(tree.root, {});
-    saveFingerprint(tree.root, first.current);
-
-    const second = decideIndexGate(tree.root, {});
-    expect(second.skip).toBe(true);
-    expect(second.reason).toBe('unchanged');
+  it('rejects unknown step names with a clear error', async () => {
+    const { computeStepFingerprint } = await loadGate();
+    expect(() => computeStepFingerprint('not-a-step', tree.root)).toThrow(/Unknown step/);
   });
 
-  it('runs when memory.db mtime changes', async () => {
-    const { decideIndexGate, saveFingerprint } = await loadGate();
-    const first = decideIndexGate(tree.root, {});
-    saveFingerprint(tree.root, first.current);
+  describe.each(FS_ONLY_STEPS)('%s — fresh / unchanged / changed', (stepName) => {
+    it(`runs on a fresh consumer (no saved fingerprint)`, async () => {
+      const { decideStepGate } = await loadGate();
+      const decision = decideStepGate(stepName, tree.root, {});
+      expect(decision.skip).toBe(false);
+      expect(decision.reason).toBe('no-saved-fingerprint');
+    });
 
-    bumpMtime(tree.memoryDb);
+    it(`skips when fingerprint matches`, async () => {
+      const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+      const fp = computeStepFingerprint(stepName, tree.root);
+      saveStepFingerprint(stepName, tree.root, fp);
+      const decision = decideStepGate(stepName, tree.root, {});
+      expect(decision.skip).toBe(true);
+      expect(decision.reason).toBe('unchanged');
+    });
 
-    const decision = decideIndexGate(tree.root, {});
-    expect(decision.skip).toBe(false);
-    expect(decision.reason).toBe('inputs-changed');
+    it(`runs when FLO_FORCE_INDEX is set`, async () => {
+      const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+      const fp = computeStepFingerprint(stepName, tree.root);
+      saveStepFingerprint(stepName, tree.root, fp);
+      const decision = decideStepGate(stepName, tree.root, { FLO_FORCE_INDEX: '1' });
+      expect(decision.skip).toBe(false);
+      expect(decision.reason).toBe('forced');
+    });
   });
 
-  it('runs when a .claude/guidance/ file is edited', async () => {
-    const { decideIndexGate, saveFingerprint } = await loadGate();
-    const first = decideIndexGate(tree.root, {});
-    saveFingerprint(tree.root, first.current);
-
+  it('guidance-index runs when .claude/guidance/* is touched', async () => {
+    const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+    saveStepFingerprint('guidance-index', tree.root, computeStepFingerprint('guidance-index', tree.root));
     bumpMtime(tree.guidanceFile);
-
-    const decision = decideIndexGate(tree.root, {});
+    const decision = decideStepGate('guidance-index', tree.root, {});
     expect(decision.skip).toBe(false);
     expect(decision.reason).toBe('inputs-changed');
   });
 
-  it('runs when node_modules/moflo/package.json bumps (upgrade)', async () => {
-    const { decideIndexGate, saveFingerprint } = await loadGate();
-    const first = decideIndexGate(tree.root, {});
-    saveFingerprint(tree.root, first.current);
-
+  it('guidance-index runs after a moflo upgrade (package.json bump)', async () => {
+    const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+    saveStepFingerprint('guidance-index', tree.root, computeStepFingerprint('guidance-index', tree.root));
     bumpMtime(tree.mofloPkg);
-
-    const decision = decideIndexGate(tree.root, {});
+    const decision = decideStepGate('guidance-index', tree.root, {});
     expect(decision.skip).toBe(false);
     expect(decision.reason).toBe('inputs-changed');
   });
 
-  it('runs when moflo.yaml is edited', async () => {
-    const { decideIndexGate, saveFingerprint } = await loadGate();
-    const first = decideIndexGate(tree.root, {});
-    saveFingerprint(tree.root, first.current);
-
-    bumpMtime(tree.mofloYaml);
-
-    const decision = decideIndexGate(tree.root, {});
+  it('build-embeddings runs when memory.db mtime bumps', async () => {
+    const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+    saveStepFingerprint('build-embeddings', tree.root, computeStepFingerprint('build-embeddings', tree.root));
+    bumpMtime(tree.memoryDb);
+    const decision = decideStepGate('build-embeddings', tree.root, {});
     expect(decision.skip).toBe(false);
     expect(decision.reason).toBe('inputs-changed');
   });
 
-  it('runs when FLO_FORCE_INDEX env is set, even with matching fingerprint', async () => {
-    const { decideIndexGate, saveFingerprint } = await loadGate();
-    const first = decideIndexGate(tree.root, {});
-    saveFingerprint(tree.root, first.current);
-
-    const decision = decideIndexGate(tree.root, { FLO_FORCE_INDEX: '1' });
-    expect(decision.skip).toBe(false);
-    expect(decision.reason).toBe('forced');
+  it('build-embeddings does NOT run on guidance edits — the key #858 win', async () => {
+    const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+    saveStepFingerprint('build-embeddings', tree.root, computeStepFingerprint('build-embeddings', tree.root));
+    bumpMtime(tree.guidanceFile);
+    const decision = decideStepGate('build-embeddings', tree.root, {});
+    expect(decision.skip).toBe(true);
   });
 
-  it('runs (safe fallback) when fingerprint file is corrupt JSON', async () => {
-    const { decideIndexGate } = await loadGate();
-    writeFileSync(join(tree.root, '.moflo/index-all-fingerprint.json'), '{not valid json');
-    const decision = decideIndexGate(tree.root, {});
+  it('guidance-index does NOT run on memory writes — the other #858 win', async () => {
+    const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+    saveStepFingerprint('guidance-index', tree.root, computeStepFingerprint('guidance-index', tree.root));
+    bumpMtime(tree.memoryDb);
+    const decision = decideStepGate('guidance-index', tree.root, {});
+    expect(decision.skip).toBe(true);
+  });
+
+  it('hnsw-rebuild runs when sidecar is missing', async () => {
+    const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+    // Simulate a successful prior run with the sidecar present, then delete it.
+    writeFileSync(tree.hnswSidecar, 'fake-sidecar');
+    saveStepFingerprint('hnsw-rebuild', tree.root, computeStepFingerprint('hnsw-rebuild', tree.root));
+    rmSync(tree.hnswSidecar);
+    const decision = decideStepGate('hnsw-rebuild', tree.root, {});
+    expect(decision.skip).toBe(false);
+    expect(decision.reason).toBe('inputs-changed');
+  });
+
+  it('hnsw-rebuild runs when memory.db is newer than the sidecar', async () => {
+    const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+    writeFileSync(tree.hnswSidecar, 'fake-sidecar');
+    saveStepFingerprint('hnsw-rebuild', tree.root, computeStepFingerprint('hnsw-rebuild', tree.root));
+    bumpMtime(tree.memoryDb);
+    const decision = decideStepGate('hnsw-rebuild', tree.root, {});
+    expect(decision.skip).toBe(false);
+    expect(decision.reason).toBe('inputs-changed');
+  });
+
+  it('saved fingerprints persist per-step in a single file (round-trip)', async () => {
+    const {
+      computeStepFingerprint,
+      saveStepFingerprint,
+      readSavedStepFingerprint,
+      FINGERPRINT_FILE_REL,
+      FINGERPRINT_VERSION,
+    } = await loadGate();
+
+    const fp1 = computeStepFingerprint('guidance-index', tree.root);
+    const fp2 = computeStepFingerprint('build-embeddings', tree.root);
+    expect(saveStepFingerprint('guidance-index', tree.root, fp1)).toBe(true);
+    expect(saveStepFingerprint('build-embeddings', tree.root, fp2)).toBe(true);
+
+    expect(readSavedStepFingerprint('guidance-index', tree.root)).toEqual(fp1);
+    expect(readSavedStepFingerprint('build-embeddings', tree.root)).toEqual(fp2);
+
+    const fpFile = join(tree.root, FINGERPRINT_FILE_REL);
+    const payload = JSON.parse(readFileSync(fpFile, 'utf8'));
+    expect(payload.version).toBe(FINGERPRINT_VERSION);
+    expect(Object.keys(payload.steps).sort()).toEqual(['build-embeddings', 'guidance-index']);
+  });
+
+  it('returns no-saved-fingerprint when payload is corrupt JSON', async () => {
+    const { decideStepGate, FINGERPRINT_FILE_REL } = await loadGate();
+    writeFileSync(join(tree.root, FINGERPRINT_FILE_REL), '{not valid json');
+    const decision = decideStepGate('guidance-index', tree.root, {});
     expect(decision.skip).toBe(false);
     expect(decision.reason).toBe('no-saved-fingerprint');
   });
 
-  it('runs when saved fingerprint version is older than current FINGERPRINT_VERSION', async () => {
-    const { decideIndexGate, FINGERPRINT_VERSION } = await loadGate();
+  it('returns no-saved-fingerprint when version doesn\'t match', async () => {
+    const { decideStepGate, FINGERPRINT_FILE_REL, FINGERPRINT_VERSION } = await loadGate();
     writeFileSync(
-      join(tree.root, '.moflo/index-all-fingerprint.json'),
-      JSON.stringify({ version: FINGERPRINT_VERSION - 1, savedAt: '', fingerprint: {} }),
+      join(tree.root, FINGERPRINT_FILE_REL),
+      JSON.stringify({ version: FINGERPRINT_VERSION - 1, steps: { 'guidance-index': {} } }),
     );
-    const decision = decideIndexGate(tree.root, {});
+    const decision = decideStepGate('guidance-index', tree.root, {});
     expect(decision.skip).toBe(false);
     expect(decision.reason).toBe('no-saved-fingerprint');
   });
 
-  it('saveFingerprint persists a versioned payload that round-trips', async () => {
-    const { computeFingerprint, saveFingerprint, readSavedFingerprint, FINGERPRINT_VERSION } = await loadGate();
-    const fp = computeFingerprint(tree.root);
-    expect(saveFingerprint(tree.root, fp)).toBe(true);
-    const round = readSavedFingerprint(tree.root);
-    expect(round).toEqual(fp);
-
-    // Corrupted version → null
-    writeFileSync(
-      join(tree.root, '.moflo/index-all-fingerprint.json'),
-      JSON.stringify({ version: FINGERPRINT_VERSION + 1, fingerprint: fp }),
-    );
-    expect(readSavedFingerprint(tree.root)).toBeNull();
+  it('returns no-saved-fingerprint for a step missing from the saved payload', async () => {
+    const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+    // Save guidance but not build-embeddings
+    saveStepFingerprint('guidance-index', tree.root, computeStepFingerprint('guidance-index', tree.root));
+    const decision = decideStepGate('build-embeddings', tree.root, {});
+    expect(decision.skip).toBe(false);
+    expect(decision.reason).toBe('no-saved-fingerprint');
   });
 
-  it('fingerprintsEqual returns false on null inputs (forces a run)', async () => {
-    const { fingerprintsEqual, computeFingerprint } = await loadGate();
-    const fp = computeFingerprint(tree.root);
-    expect(fingerprintsEqual(null, fp)).toBe(false);
-    expect(fingerprintsEqual(fp, null)).toBe(false);
-    expect(fingerprintsEqual(null, null)).toBe(false);
+  it('cleanupLegacyFingerprint removes the v1 file from 4.9.7', async () => {
+    const { cleanupLegacyFingerprint, LEGACY_FINGERPRINT_FILE_REL } = await loadGate();
+    const legacy = join(tree.root, LEGACY_FINGERPRINT_FILE_REL);
+    writeFileSync(legacy, '{"version":1}');
+    expect(existsSync(legacy)).toBe(true);
+    cleanupLegacyFingerprint(tree.root);
+    expect(existsSync(legacy)).toBe(false);
+  });
+
+  it('cleanupLegacyFingerprint is a no-op when the file is absent', async () => {
+    const { cleanupLegacyFingerprint } = await loadGate();
+    expect(() => cleanupLegacyFingerprint(tree.root)).not.toThrow();
+  });
+
+  it('git-backed steps return a deterministic fingerprint when git is unavailable', async () => {
+    const { computeStepFingerprint } = await loadGate();
+    // tmpdir is not a git repo → git ls-files fails → null hash
+    for (const stepName of GIT_BACKED_STEPS) {
+      const fp = computeStepFingerprint(stepName, tree.root);
+      const values = Object.values(fp);
+      expect(values).toHaveLength(1);
+      expect(values[0]).toBeNull();
+    }
+  });
+
+  it('git-backed steps skip when null fingerprint round-trips', async () => {
+    const { decideStepGate, computeStepFingerprint, saveStepFingerprint } = await loadGate();
+    // Even with null hashes, equality of the same null pair → skip. This
+    // matters in tmpdirs / non-repo consumers where git is absent: we don't
+    // want to thrash the chain on a tree that genuinely has nothing to scan.
+    saveStepFingerprint('code-map', tree.root, computeStepFingerprint('code-map', tree.root));
+    const decision = decideStepGate('code-map', tree.root, {});
+    expect(decision.skip).toBe(true);
+    expect(decision.reason).toBe('unchanged');
   });
 });
