@@ -623,3 +623,69 @@ export async function checkGateHealth(): Promise<HealthCheck> {
     message: `${caseCount} gate cases, ${hookCount} hook bindings, state file OK`,
   };
 }
+
+/**
+ * Hash-based hook-block drift check (#881). Complements `checkGateHealth`'s
+ * required-pattern probe by detecting drift in *any* direction — missing
+ * events, modified commands, future hook events not yet covered by
+ * `REQUIRED_HOOK_WIRING`. Uses the self-contained `hook-block-hash` module so
+ * the same logic runs in `flo doctor`, the launcher, and unit tests.
+ *
+ * Reports `pass` when no drift, `warn` with a count summary when drift exists.
+ * Never `fail` — drift is informational; the user (or `regenerate` mode) is
+ * responsible for deciding what to do.
+ */
+export async function checkHookBlockDrift(): Promise<HealthCheck> {
+  const projectDir = findConsumerProjectDir();
+  const settingsPath = join(projectDir, '.claude', 'settings.json');
+
+  if (!existsSync(settingsPath)) {
+    return {
+      name: 'Hook Block Drift',
+      status: 'warn',
+      message: '.claude/settings.json not found',
+      fix: 'npx moflo init',
+    };
+  }
+
+  let settings: Record<string, unknown>;
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+  } catch (e) {
+    return {
+      name: 'Hook Block Drift',
+      status: 'warn',
+      message: `cannot parse .claude/settings.json: ${errorDetail(e)}`,
+    };
+  }
+
+  const { computeHookBlockDrift, isHookBlockLocked } = await import('../services/hook-block-hash.js');
+  if (isHookBlockLocked(settings)) {
+    return {
+      name: 'Hook Block Drift',
+      status: 'pass',
+      message: 'drift check skipped — claudeFlow.hooks.locked: true',
+    };
+  }
+  const report = computeHookBlockDrift(settings.hooks ?? {});
+
+  if (!report.drifted) {
+    return {
+      name: 'Hook Block Drift',
+      status: 'pass',
+      message: `hook block matches reference (${report.consumerHash})`,
+    };
+  }
+
+  const parts: string[] = [];
+  parts.push(`drift ${report.consumerHash} vs ${report.referenceHash}`);
+  if (report.missing.length > 0) parts.push(`${report.missing.length} missing`);
+  if (report.extra.length > 0) parts.push(`${report.extra.length} custom`);
+
+  return {
+    name: 'Hook Block Drift',
+    status: 'warn',
+    message: parts.join(', '),
+    fix: 'set auto_update.hook_block_drift: regenerate in moflo.yaml, or claudeFlow.hooks.locked: true to suppress',
+  };
+}

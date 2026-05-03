@@ -93,6 +93,8 @@ export interface MofloConfig {
     enabled: boolean;
     scripts: boolean;
     helpers: boolean;
+    /** #881 — hash-based hook-block drift detection mode. */
+    hook_block_drift: 'warn' | 'regenerate' | 'off';
   };
 
   sandbox: {
@@ -196,6 +198,7 @@ const DEFAULT_CONFIG: MofloConfig = {
     enabled: true,
     scripts: true,
     helpers: true,
+    hook_block_drift: 'warn',
   },
   sandbox: {
     enabled: false,
@@ -333,6 +336,12 @@ function mergeConfig(raw: Record<string, any>, root: string): MofloConfig {
       enabled: raw.auto_update?.enabled ?? raw.autoUpdate?.enabled ?? DEFAULT_CONFIG.auto_update.enabled,
       scripts: raw.auto_update?.scripts ?? raw.autoUpdate?.scripts ?? DEFAULT_CONFIG.auto_update.scripts,
       helpers: raw.auto_update?.helpers ?? raw.autoUpdate?.helpers ?? DEFAULT_CONFIG.auto_update.helpers,
+      hook_block_drift: (() => {
+        const v = raw.auto_update?.hook_block_drift ?? raw.autoUpdate?.hookBlockDrift;
+        return v === 'regenerate' || v === 'off' || v === 'warn'
+          ? v
+          : DEFAULT_CONFIG.auto_update.hook_block_drift;
+      })(),
     },
     sandbox: {
       enabled: raw.sandbox?.enabled ?? DEFAULT_CONFIG.sandbox.enabled,
@@ -530,6 +539,10 @@ auto_update:
   enabled: true                  # Master toggle for version-change auto-sync
   scripts: true                  # Sync .claude/scripts/ from moflo bin/
   helpers: true                  # Sync .claude/helpers/ from moflo source
+  hook_block_drift: warn         # warn | regenerate | off
+                                 # warn = print drift summary on session start (default)
+                                 # regenerate = auto-add missing hooks (only when no customisations)
+                                 # off = skip detection entirely
 
 # OS-level sandbox for spell bash steps
 # Denylist always runs regardless of this setting
