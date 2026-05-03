@@ -15,6 +15,16 @@ import { fileURLToPath } from 'url';
 import { spawn, spawnSync } from 'child_process';
 import { platform } from 'os';
 import { hnswIndexPath } from './lib/moflo-paths.mjs';
+import { decideIndexGate, saveFingerprint } from './lib/index-fingerprint.mjs';
+
+// Cap fastembed/ONNX thread count when spawning the heavy steps. Without
+// this, ONNX defaults to one thread per CPU core (22+ on a modern dev box),
+// pegging the entire machine while the indexer runs. 2 threads keeps
+// re-embedding throughput acceptable while leaving the box usable.
+const ONNX_THREAD_CAP = {
+  OMP_NUM_THREADS: '2',
+  ONNXRUNTIME_INTRA_OP_NUM_THREADS: '2',
+};
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -110,7 +120,7 @@ function killProcessTree(child) {
   }
 }
 
-function runStep(label, cmd, args, timeoutMs = 120_000) {
+function runStep(label, cmd, args, timeoutMs = 120_000, extraEnv = null) {
   return new Promise((resolveStep) => {
     const start = Date.now();
     log(`START ${label}`);
@@ -119,6 +129,7 @@ function runStep(label, cmd, args, timeoutMs = 120_000) {
       stdio: 'ignore',
       windowsHide: true,
       detached: platform() !== 'win32', // POSIX: own process group for tree-kill
+      env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
     });
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -150,7 +161,19 @@ function runStep(label, cmd, args, timeoutMs = 120_000) {
 
 async function main() {
   const startTime = Date.now();
-  log('Sequential indexing chain started');
+
+  // ── Fingerprint gate ─────────────────────────────────────────────────────
+  // Skip the entire chain when none of {memory.db, moflo pkg, moflo.yaml,
+  // .claude/guidance/} have changed since the last successful run. Without
+  // this gate the chain re-embeds + rebuilds HNSW on every Claude session-
+  // start even when nothing changed — the customer-visible CPU peg this
+  // module exists to fix. Override with FLO_FORCE_INDEX=1.
+  const gate = decideIndexGate(projectRoot);
+  if (gate.skip) {
+    log(`SKIP  full chain — ${gate.reason} (no inputs changed since last run)`);
+    return;
+  }
+  log(`Sequential indexing chain started (gate: ${gate.reason})`);
 
   // 1. Guidance indexer
   if (isIndexEnabled('guidance')) {
@@ -211,9 +234,10 @@ async function main() {
   // 6. Build embeddings — single pass for ALL namespaces, after all indexers finish.
   //    Individual indexers are called with --no-embeddings to prevent background
   //    embedding spawns that race with this chain (sql.js last-write-wins).
+  //    Thread-capped: fastembed/ONNX would otherwise pin every CPU core.
   const embeddingsScript = resolveBin('flo-embeddings', 'build-embeddings.mjs');
   if (embeddingsScript) {
-    await runStep('build-embeddings', 'node', [embeddingsScript], 300_000);
+    await runStep('build-embeddings', 'node', [embeddingsScript], 300_000, ONNX_THREAD_CAP);
   } else {
     log('SKIP  build-embeddings (script not found)');
   }
@@ -222,9 +246,10 @@ async function main() {
   //    rebuild-index now also writes the binary HNSW sidecar at
   //    .moflo/hnsw.index, which can take longer than the default 120s on a
   //    populated consumer DB — match build-embeddings' 300s budget.
+  //    Thread-capped: same fastembed CPU-peg risk as build-embeddings.
   let hnswOk = true;
   if (localCli) {
-    const ok = await runStep('hnsw-rebuild', 'node', [localCli, 'memory', 'rebuild-index', '--force'], 300_000);
+    const ok = await runStep('hnsw-rebuild', 'node', [localCli, 'memory', 'rebuild-index', '--force'], 300_000, ONNX_THREAD_CAP);
     if (ok) {
       const sidecar = hnswIndexPath(projectRoot);
       if (!existsSync(sidecar)) {
@@ -243,6 +268,19 @@ async function main() {
 
   const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   log(`Sequential indexing chain complete (${totalElapsed}s)`);
+
+  // Save the fingerprint AFTER a successful chain run. If hnsw failed, we
+  // intentionally don't save — the next session-start will retry. Save
+  // failures are non-fatal (next run will recompute and just re-run the
+  // chain, no correctness hazard).
+  if (hnswOk) {
+    if (saveFingerprint(projectRoot, gate.current)) {
+      log('Saved index-all fingerprint for next-session gate');
+    } else {
+      log('WARN  fingerprint save failed (next session will re-run chain)');
+    }
+  }
+
   if (!hnswOk) process.exit(1);
 }
 
