@@ -39,14 +39,15 @@
     "!.claude/**/*.map",
     "README.md",
     "LICENSE",
-    "scripts/prune-native-binaries.mjs"
+    "scripts/prune-native-binaries.mjs",
+    "scripts/post-install-notice.mjs"
   ],
   "scripts": {
     "dev": "tsx watch src/cli/index.ts",
     "prebuild": "node scripts/sync-version.mjs && node scripts/clean-dist.mjs",
     "build": "tsc",
     "prepublishOnly": "npm run build",
-    "postinstall": "node scripts/prune-native-binaries.mjs",
+    "postinstall": "node scripts/prune-native-binaries.mjs && node scripts/post-install-notice.mjs",
     "test": "node scripts/test-runner.mjs",
     "test:ui": "vitest --ui",
     "test:smoke": "node harness/consumer-smoke/run.mjs",
