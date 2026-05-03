@@ -28,6 +28,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 
 import { resolve, dirname, relative, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, MOFLO_DIR } from './lib/moflo-paths.mjs';
 import { applyIncrementalChunks, computeContentListHash } from './lib/incremental-write.mjs';
@@ -343,14 +344,9 @@ async function main() {
 
   // Trigger embedding generation in background
   try {
-    // Check __dirname first (works in both dev bin/ and consumer .claude/scripts/),
-    // then fall back to node_modules/moflo/bin/ for consumer projects
-    const candidates = [
-      resolve(__dirname, 'build-embeddings.mjs'),
-      resolve(projectRoot, 'node_modules/moflo/bin/build-embeddings.mjs'),
-      resolve(projectRoot, '.claude/scripts/build-embeddings.mjs'),
-    ];
-    const embeddingScript = candidates.find(p => existsSync(p));
+    const embeddingScript = resolveMofloBin(
+      projectRoot, 'flo-embeddings', 'build-embeddings.mjs', { includeDevFallback: true },
+    );
     if (embeddingScript) {
       const child = spawn('node', [embeddingScript, '--namespace', NAMESPACE], {
         cwd: projectRoot,
