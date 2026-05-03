@@ -35,47 +35,66 @@ describe('hooks.mjs indexing integration', () => {
     expect(sessionStart).toContain('sequential indexing chain');
   });
 
-  // ── index-all.mjs runs all indexers sequentially ──────────────────
+  // ── index-all.mjs registers all indexers via consider() ──────────────
+  // After #862 each step is registered through `consider(name, cfgKey,
+  // scriptName, binName, args, ...)` and dispatched through a single
+  // `runStep(step.name, ...)` call inside the plan loop. These tests pin
+  // the registration shape rather than the dispatcher call site.
 
-  it('index-all.mjs runs guidance indexer', () => {
-    expect(indexAllContent).toContain("resolveBin('flo-index', 'index-guidance.mjs')");
-    expect(indexAllContent).toContain("runStep('guidance-index'");
+  it('index-all.mjs registers guidance indexer', () => {
+    expect(indexAllContent).toMatch(
+      /consider\(\s*'guidance-index'\s*,\s*'guidance'\s*,\s*'index-guidance\.mjs'\s*,\s*'flo-index'/,
+    );
   });
 
-  it('index-all.mjs runs code map generator', () => {
-    expect(indexAllContent).toContain("resolveBin('flo-codemap', 'generate-code-map.mjs')");
-    expect(indexAllContent).toContain("runStep('code-map'");
+  it('index-all.mjs registers code map generator', () => {
+    expect(indexAllContent).toMatch(
+      /consider\(\s*'code-map'\s*,\s*'code_map'\s*,\s*'generate-code-map\.mjs'\s*,\s*'flo-codemap'/,
+    );
   });
 
-  it('index-all.mjs runs test indexer', () => {
-    expect(indexAllContent).toContain("resolveBin('flo-testmap', 'index-tests.mjs')");
-    expect(indexAllContent).toContain("runStep('test-index'");
+  it('index-all.mjs registers test indexer', () => {
+    expect(indexAllContent).toMatch(
+      /consider\(\s*'test-index'\s*,\s*'tests'\s*,\s*'index-tests\.mjs'\s*,\s*'flo-testmap'/,
+    );
   });
 
-  it('index-all.mjs runs patterns indexer', () => {
-    expect(indexAllContent).toContain("resolveBin('flo-patterns', 'index-patterns.mjs')");
-    expect(indexAllContent).toContain("runStep('patterns-index'");
+  it('index-all.mjs registers patterns indexer', () => {
+    expect(indexAllContent).toMatch(
+      /consider\(\s*'patterns-index'\s*,\s*'patterns'\s*,\s*'index-patterns\.mjs'\s*,\s*'flo-patterns'/,
+    );
   });
 
-  it('index-all.mjs runs pretrain', () => {
-    expect(indexAllContent).toContain("runStep('pretrain'");
+  it('index-all.mjs registers pretrain step', () => {
+    expect(indexAllContent).toMatch(/name:\s*'pretrain'/);
+    expect(indexAllContent).toContain("'hooks', 'pretrain'");
   });
 
-  it('index-all.mjs runs HNSW rebuild as final step', () => {
-    expect(indexAllContent).toContain("runStep('hnsw-rebuild'");
-    // HNSW rebuild must appear after all other runStep calls
-    const lastIndexer = indexAllContent.lastIndexOf("runStep('pretrain'");
-    const hnswRebuild = indexAllContent.indexOf("runStep('hnsw-rebuild'");
-    expect(hnswRebuild).toBeGreaterThan(lastIndexer);
+  it('index-all.mjs registers HNSW rebuild as final step', () => {
+    expect(indexAllContent).toMatch(/name:\s*'hnsw-rebuild'/);
+    // HNSW rebuild's plan entry must appear after every other `consider(`
+    // call so the sequential loop runs it last.
+    const lastConsider = indexAllContent.lastIndexOf('consider(');
+    const hnswRebuild = indexAllContent.indexOf("name: 'hnsw-rebuild'");
+    expect(hnswRebuild).toBeGreaterThan(lastConsider);
   });
 
   // ── auto_index flag support ───────────────────────────────────────
+  // `consider()` consults `isIndexEnabled(cfgKey)` for steps that take a
+  // moflo.yaml flag. Pin the helper + the four registered keys.
 
-  it('index-all.mjs checks auto_index flags via isIndexEnabled', () => {
-    expect(indexAllContent).toContain("isIndexEnabled('guidance')");
-    expect(indexAllContent).toContain("isIndexEnabled('code_map')");
-    expect(indexAllContent).toContain("isIndexEnabled('tests')");
-    expect(indexAllContent).toContain("isIndexEnabled('patterns')");
+  it('index-all.mjs gates registration via isIndexEnabled', () => {
+    expect(indexAllContent).toMatch(/isIndexEnabled\(\s*cfgKey\s*\)/);
+  });
+
+  it('index-all.mjs registers all four auto_index keys', () => {
+    // The cfgKey arg of each consider() call.
+    const keys = ['guidance', 'code_map', 'tests', 'patterns'];
+    for (const k of keys) {
+      expect(indexAllContent).toMatch(
+        new RegExp(`consider\\(\\s*'[^']+'\\s*,\\s*'${k}'`),
+      );
+    }
   });
 
   it('isIndexEnabled reads moflo.yaml and respects false flag', () => {

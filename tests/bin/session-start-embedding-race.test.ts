@@ -91,7 +91,7 @@ describe('bin/index-all.mjs runStep timeout (#744)', () => {
   });
 });
 
-describe('bin/index-all.mjs hnsw-rebuild subcommand (#731)', () => {
+describe('bin/index-all.mjs hnsw-rebuild subcommand (#731, #859)', () => {
   const file = resolve(BIN, 'index-all.mjs');
   const src = readFileSync(file, 'utf-8');
 
@@ -101,6 +101,20 @@ describe('bin/index-all.mjs hnsw-rebuild subcommand (#731)', () => {
     // failure on every session-start.
     expect(src).toMatch(/['"]memory['"]\s*,\s*['"]rebuild-index['"]/);
     expect(src).not.toMatch(/['"]memory['"]\s*,\s*['"]rebuild['"]\s*,/);
+  });
+
+  it('does NOT pass --force to rebuild-index (#859)', () => {
+    // The launcher's embeddings-migration handles model bumps, and the
+    // earlier `build-embeddings` step fills missing rows + refreshes the
+    // sidecar. `rebuild-index` is the safety-net sidecar refresh — it must
+    // take the cheap no-work path on a healthy consumer, not re-embed
+    // every row. The no-work path still calls writeSidecarOrFail, and the
+    // existsSync post-check below the step catches a missing sidecar.
+    const hnswStep = src.match(/name:\s*'hnsw-rebuild'[\s\S]*?args:\s*\[([^\]]+)\]/);
+    expect(hnswStep, 'hnsw-rebuild step must exist with an args array').toBeTruthy();
+    const argsLiteral = hnswStep![1];
+    expect(argsLiteral).not.toMatch(/['"]--force['"]/);
+    expect(argsLiteral).not.toMatch(/['"]-f['"]/);
   });
 });
 
