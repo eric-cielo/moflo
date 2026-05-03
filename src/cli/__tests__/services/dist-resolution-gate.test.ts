@@ -136,6 +136,11 @@ describe('dist resolution gate (issue #781 / #783)', () => {
   // Hoist the dist walk + extraction into beforeAll so test 1 + test 2 share
   // the same target list (saves a redundant filesystem walk + regex sweep).
   // Reset inside beforeAll so watch-mode re-runs don't accumulate entries.
+  //
+  // 30 s hook timeout: the dist tree is ~560 files / 19 MB and the sync
+  // readFile + regex sweep runs in ~1.5 s alone. Under maxForks=2 Windows
+  // fork contention the file-level setup window has flaked out under the
+  // default 10 s, manifesting as "test file failed to import" (issue #864).
   let allTargets: Target[] = [];
   beforeAll(() => {
     allTargets = [];
@@ -143,7 +148,7 @@ describe('dist resolution gate (issue #781 / #783)', () => {
     for (const file of walkJs(DIST_CLI_ROOT)) {
       allTargets.push(...extractTargets(file));
     }
-  });
+  }, 30_000);
 
   it.skipIf(!hasBuild)('every dynamic-import / require target in dist/ resolves to an existing file', () => {
     const offenders: string[] = [];

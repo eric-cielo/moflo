@@ -19,7 +19,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 
 const STATUSLINE = resolve(__dirname, '../../../.claude/helpers/statusline.cjs');
 const REPO_ROOT = resolve(__dirname, '../../..');
@@ -50,11 +50,32 @@ function cleanTempRoot(root: string) {
 }
 
 function runStatusline(cwd: string, args: string[] = ['--json-compact']): RunResult {
+  // Two issue #864 mitigations layered here:
+  //
+  // 1. GIT_CEILING_DIRECTORIES — temp roots live under <repo>/.testoutput/,
+  //    inside the real moflo git tree. Without this, the statusline's git
+  //    execs walk upward, find moflo's .git, and run `git status` /
+  //    `git rev-list` against the live working tree — the dominant cost
+  //    under maxForks=2 fork contention. Capping the walk at the tempRoot's
+  //    parent makes every git exec exit immediately with "not a git
+  //    repository", saving ~1–3 s per spawn on Windows.
+  //
+  // 2. 25 s spawn timeout (was 15 s) — even with git short-circuited, the
+  //    cumulative cost of `generateJSON()` (file probes, FS walks, node
+  //    startup) intermittently crosses 15 s under heavy fork contention,
+  //    yielding empty stdout and a JSON.parse failure. 25 s sits 5 s under
+  //    the vitest 30 s testTimeout, so the test still fails cleanly if the
+  //    spawn truly hangs rather than masking a real bug.
   const result = spawnSync('node', [STATUSLINE, ...args], {
     cwd,
     encoding: 'utf-8',
-    timeout: 15_000,
-    env: { ...process.env, CLAUDE_PROJECT_DIR: cwd, CI: '1' },
+    timeout: 25_000,
+    env: {
+      ...process.env,
+      CLAUDE_PROJECT_DIR: cwd,
+      CI: '1',
+      GIT_CEILING_DIRECTORIES: dirname(cwd),
+    },
     input: '',
   });
   return {
