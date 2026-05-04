@@ -133,9 +133,11 @@ describe('#79 — extractPatterns produces granular patterns', () => {
 });
 
 describe('#80 — Doctor ReasoningBank uses distill() lifecycle', () => {
-  it('doctor.ts uses distill() instead of retrieve()', () => {
+  it('doctor checkIntelligence uses distill() instead of retrieve()', () => {
+    // After #906 doctor.ts decomposition, the intelligence probe lives in
+    // doctor-checks-intelligence.ts (was inline in doctor.ts pre-#906).
     const content = readFileSync(
-      resolve(__dirname, '../src/cli/commands/doctor.ts'),
+      resolve(__dirname, '../src/cli/commands/doctor-checks-intelligence.ts'),
       'utf-8'
     );
     // Should use distill() which populates memories, not retrieve() which reads from empty map

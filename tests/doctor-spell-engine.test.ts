@@ -1,26 +1,33 @@
 /**
- * Tests for doctor.ts spell engine health check
+ * Tests for doctor.ts spell engine health check.
+ *
+ * After the doctor.ts decomposition (#906), the implementation lives in
+ * doctor-checks-platform.ts and the registry wiring lives in
+ * doctor-registry.ts.
  *
  * Verifies:
- * - checkSpellEngine function exists in doctor command
+ * - checkSpellEngine function exists in doctor-checks-platform.ts
  * - Validates core spell modules (runner, step-executor, registry, etc.)
  * - Checks built output existence
  * - Checks step commands and loaders directories
- * - Included in allChecks array and componentMap
+ * - Included in allChecks array and componentMap (registry)
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 
-const DOCTOR_FILE = resolve(__dirname, '../src/cli/commands/doctor.ts');
+const CHECKS_FILE = resolve(__dirname, '../src/cli/commands/doctor-checks-platform.ts');
+const REGISTRY_FILE = resolve(__dirname, '../src/cli/commands/doctor-registry.ts');
 const WORKFLOWS_SRC = resolve(__dirname, '../src/cli/spells');
 
 describe('doctor.ts spell engine check', () => {
   let content: string;
+  let registry: string;
 
   beforeAll(() => {
-    content = readFileSync(DOCTOR_FILE, 'utf-8');
+    content = readFileSync(CHECKS_FILE, 'utf-8');
+    registry = readFileSync(REGISTRY_FILE, 'utf-8');
   });
 
   it('defines checkSpellEngine function', () => {
@@ -54,15 +61,15 @@ describe('doctor.ts spell engine check', () => {
   });
 
   it('is included in allChecks array', () => {
-    expect(content).toContain('checkSpellEngine,');
+    expect(registry).toContain('checkSpellEngine,');
   });
 
   it('is accessible via "spells" component flag', () => {
-    expect(content).toContain("'workflows': checkSpellEngine");
+    expect(registry).toContain("'workflows': checkSpellEngine");
   });
 
   it('is accessible via "spell" component flag', () => {
-    expect(content).toContain("'workflow': checkSpellEngine");
+    expect(registry).toContain("'workflow': checkSpellEngine");
   });
 
   it('reports missing modules with fix suggestion', () => {

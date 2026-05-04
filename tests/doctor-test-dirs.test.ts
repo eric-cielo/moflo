@@ -1,25 +1,31 @@
 /**
- * Tests for doctor.ts test directory health check
+ * Tests for doctor.ts test directory health check.
+ *
+ * After the doctor.ts decomposition (#906), the implementation lives in
+ * doctor-checks-config.ts and the registry wiring lives in doctor-registry.ts.
  *
  * Verifies:
- * - checkTestDirs function exists in doctor command
+ * - checkTestDirs function exists in doctor-checks-config.ts
  * - Checks for tests section in moflo.yaml
  * - Validates configured test directories exist
  * - Warns on missing test directories
- * - Included in allChecks array and componentMap
+ * - Included in allChecks array and componentMap (registry)
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-const DOCTOR_FILE = resolve(__dirname, '../src/cli/commands/doctor.ts');
+const CHECKS_FILE = resolve(__dirname, '../src/cli/commands/doctor-checks-config.ts');
+const REGISTRY_FILE = resolve(__dirname, '../src/cli/commands/doctor-registry.ts');
 
 describe('doctor.ts test directory check', () => {
   let content: string;
+  let registry: string;
 
   beforeAll(() => {
-    content = readFileSync(DOCTOR_FILE, 'utf-8');
+    content = readFileSync(CHECKS_FILE, 'utf-8');
+    registry = readFileSync(REGISTRY_FILE, 'utf-8');
   });
 
   it('defines checkTestDirs function', () => {
@@ -44,10 +50,10 @@ describe('doctor.ts test directory check', () => {
   });
 
   it('is included in allChecks array', () => {
-    expect(content).toContain('checkTestDirs,');
+    expect(registry).toContain('checkTestDirs,');
   });
 
   it('is accessible via component flag', () => {
-    expect(content).toContain("'tests': checkTestDirs");
+    expect(registry).toContain("'tests': checkTestDirs");
   });
 });

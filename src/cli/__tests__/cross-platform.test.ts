@@ -604,9 +604,12 @@ describe('execSync to execFileSync migration', () => {
 // ============================================================================
 
 describe('doctor cross-platform fixes', () => {
+  // After #906 doctor.ts decomposition, the platform-specific branches live in
+  // doctor-version.ts (npx cache fix), doctor-checks-runtime.ts (drive letter),
+  // and doctor-checks-config.ts (APPDATA MCP search).
   it('should have platform-aware npx cache fix suggestion', () => {
     const src = readFileSync(
-      join(__dirname, '..', 'commands', 'doctor.ts'),
+      join(__dirname, '..', 'commands', 'doctor-version.ts'),
       'utf-8'
     );
 
@@ -619,7 +622,7 @@ describe('doctor cross-platform fixes', () => {
 
   it('should detect drive letter from cwd for PowerShell disk check', () => {
     const src = readFileSync(
-      join(__dirname, '..', 'commands', 'doctor.ts'),
+      join(__dirname, '..', 'commands', 'doctor-checks-runtime.ts'),
       'utf-8'
     );
 
@@ -631,7 +634,7 @@ describe('doctor cross-platform fixes', () => {
 
   it('should search %APPDATA%\\Claude\\ for MCP config on Windows', () => {
     const src = readFileSync(
-      join(__dirname, '..', 'commands', 'doctor.ts'),
+      join(__dirname, '..', 'commands', 'doctor-checks-config.ts'),
       'utf-8'
     );
 
@@ -641,7 +644,7 @@ describe('doctor cross-platform fixes', () => {
 
   it('should still search ~/.claude/ for MCP config (cross-platform)', () => {
     const src = readFileSync(
-      join(__dirname, '..', 'commands', 'doctor.ts'),
+      join(__dirname, '..', 'commands', 'doctor-checks-config.ts'),
       'utf-8'
     );
 

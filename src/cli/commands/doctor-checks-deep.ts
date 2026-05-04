@@ -20,13 +20,12 @@ import { pathToFileURL } from 'url';
 import { findProjectRoot as findConsumerProjectDir } from '../services/project-root.js';
 import { findMofloPackageRoot } from '../services/moflo-require.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import type { HealthCheck } from './doctor-types.js';
 
-export interface HealthCheck {
-  name: string;
-  status: 'pass' | 'warn' | 'fail';
-  message: string;
-  fix?: string;
-}
+// Re-exported so existing consumers (`doctor-checks-memory-access.ts`,
+// `doctor-checks-functional-shared.ts`) keep their import paths working
+// while the type lives in one canonical place.
+export type { HealthCheck };
 
 // ============================================================================
 // Path Resolution
