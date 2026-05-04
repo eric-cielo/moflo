@@ -5,7 +5,7 @@ description: |
   Use when the user wants to schedule, automate, or recurringly run one of THEIR spells locally —
   e.g. "schedule the oap spell every hour", "run my audit spell every weekday at 9am", "fire X once tomorrow morning".
   This is the LOCAL daemon path. For remote Anthropic-cloud agents, use /schedule instead.
-arguments: "[spell-name-or-alias]"
+arguments: "<spell-name-or-alias>"
 ---
 
 # /spell-schedule — Schedule a Local Spell

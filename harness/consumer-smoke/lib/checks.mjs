@@ -699,6 +699,75 @@ export function floSkillPackaged(consumerDir) {
   record('flo-skill', 'pass', relative(consumerDir, skill));
 }
 
+/**
+ * Every shipped `.claude/skills/<name>/SKILL.md` whose frontmatter has an
+ * `arguments:` field must be safe to load by Claude Code's slash-command
+ * harness. The harness compiles that field as a JS regex; any `[...]`
+ * segment containing a hyphen between alphabetically-descending letters
+ * (e.g. `[topic-or-path]` → `r-p`, `[spell-name-or-alias]` → `n-a`)
+ * raises `SyntaxError: Range out of order in character class` and the
+ * skill never loads.
+ *
+ * Both bugs shipped — guidance/SKILL.md and spell-schedule/SKILL.md —
+ * before this check existed. Any regression now fails the smoke run.
+ */
+export function verifyShippedSkillArguments(consumerDir) {
+  section('Shipped SKILL.md `arguments:` field is regex-safe');
+  const skillsDir = join(consumerDir, 'node_modules', 'moflo', '.claude', 'skills');
+  if (!existsSync(skillsDir)) {
+    record('skill-arguments-regex-safe', 'fail', '.claude/skills/ missing in installed moflo');
+    return;
+  }
+
+  const offenders = [];
+  let scanned = 0;
+  for (const skillFile of walkSkillFiles(skillsDir)) {
+    scanned++;
+    let text;
+    try { text = readFileSync(skillFile, 'utf8'); }
+    catch { continue; }
+    const fmMatch = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!fmMatch) continue;
+    const fm = fmMatch[1];
+    const argLine = fm.split(/\r?\n/).find(l => /^arguments:/.test(l));
+    if (!argLine) continue;
+    const value = argLine.replace(/^arguments:\s*/, '').replace(/^['"]|['"]$/g, '');
+    const classes = value.match(/\[[^\]]*\]/g) || [];
+    for (const cls of classes) {
+      try { new RegExp(cls); }
+      catch (err) {
+        offenders.push({
+          file: relative(consumerDir, skillFile),
+          segment: cls,
+          error: err.message.replace(/^Invalid regular expression: /, ''),
+        });
+      }
+    }
+  }
+
+  if (offenders.length > 0) {
+    const preview = offenders.slice(0, 3)
+      .map(o => `${o.file} → \`${o.segment}\` (${o.error})`)
+      .join(' | ');
+    const suffix = offenders.length > 3 ? ` (+${offenders.length - 3} more)` : '';
+    record('skill-arguments-regex-safe', 'fail',
+      `${offenders.length} SKILL.md(s) with regex-poison \`arguments:\` field — ${preview}${suffix}`);
+    return;
+  }
+  record('skill-arguments-regex-safe', 'pass', `${scanned} SKILL.md(s) scanned, all clean`);
+}
+
+function* walkSkillFiles(dir) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); }
+  catch { return; }
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) { yield* walkSkillFiles(full); continue; }
+    if (entry.isFile() && entry.name === 'SKILL.md') yield full;
+  }
+}
+
 export function consumerInvariants(consumerDir) {
   section('Consumer invariants');
 
