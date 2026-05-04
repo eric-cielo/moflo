@@ -23,6 +23,8 @@
  *   node harness/consumer-smoke/run.mjs --keep         # keep .work for inspection
  *   node harness/consumer-smoke/run.mjs --verbose      # stream subprocess output
  *   node harness/consumer-smoke/run.mjs --json         # machine-readable summary
+ *   node harness/consumer-smoke/run.mjs --summary      # suppress PASS rows; failures + tail only (auto-on when stdout is non-TTY)
+ *   node harness/consumer-smoke/run.mjs --no-summary   # force verbose output even when piped
  *   node harness/consumer-smoke/run.mjs --tarball PATH # use an existing tarball
  *
  * Exit codes:
@@ -48,12 +50,13 @@ const opts = {
   keep: argv.includes('--keep'),
   verbose: argv.includes('--verbose') || argv.includes('-v'),
   json: argv.includes('--json'),
+  summary: report.resolveSummaryMode(argv),
   tarball: null,
 };
 const tIdx = argv.indexOf('--tarball');
 if (tIdx !== -1 && argv[tIdx + 1]) opts.tarball = resolve(argv[tIdx + 1]);
 
-report.configure({ json: opts.json });
+report.configure({ json: opts.json, summary: opts.summary });
 proc.configure({ verbose: opts.verbose });
 
 async function main() {
