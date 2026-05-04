@@ -440,21 +440,21 @@ describe('Plugin Manager NPM Injection', () => {
 // ============================================================================
 describe('Doctor Command Safety', () => {
   it('should use hardcoded commands only (no user input in shell)', () => {
-    // doctor.ts runs system commands but they should all be hardcoded
-    const doctorPath = path.join(__dirname, '..', 'commands', 'doctor.ts');
-    const content = fs.readFileSync(doctorPath, 'utf-8');
+    // After #906 doctor.ts decomposition, runCommand invocations live in
+    // doctor-checks-runtime.ts (the basic env probes that shell out to git,
+    // npm, claude, tsc, df, PowerShell).
+    const runtimePath = path.join(__dirname, '..', 'commands', 'doctor-checks-runtime.ts');
+    const content = fs.readFileSync(runtimePath, 'utf-8');
 
     // Find actual invocations of runCommand (not the function definition)
-    // The function is defined as: async function runCommand(command: string, ...)
-    // Invocations look like: runCommand('npm --version') or await runCommand('...')
-    const invocations = content.match(/(?:await\s+)?runCommand\(['"][^'"]+['"]/g) || [];
+    const invocations = content.match(/(?:await\s+)?runCommand\(['"`][^'"`]+['"`]/g) || [];
 
     // There should be invocations (doctor calls npm, git, etc.)
     expect(invocations.length).toBeGreaterThan(0);
 
     // Each invocation should use a string literal
     for (const call of invocations) {
-      expect(call).toMatch(/runCommand\(['"]/);
+      expect(call).toMatch(/runCommand\(['"`]/);
     }
   });
 });

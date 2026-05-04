@@ -8,12 +8,17 @@
 
 **Always decompose modules into focused, single-responsibility files.** Despite what you see in the legacy codebase, large monolithic files are tech debt we are actively paying down. New code and refactored code must follow separation of concerns.
 
+**No single giant scripts.** A 1,000+ line file is never the answer — it's a signal that the file holds multiple responsibilities that belong in separate modules. Every read of an oversized file pays a token cost across every future session that touches it; every structural review (e.g. spotting an unsafe shell-out among 30+ inline checks) is harder than it should be.
+
 | Rule | Threshold | Action |
 |------|-----------|--------|
 | File line count | > 300 lines | Strongly consider splitting |
 | File line count | > 500 lines | MUST split — no exceptions for new code |
+| File line count | > 1000 lines | Hard-block — refuse to extend; decompose first |
 | Class with 3+ concerns | Any size | Extract into separate files |
 | Data structures + business logic | Same file | Separate data structures into their own module |
+
+**Case study (#906):** `src/cli/commands/doctor.ts` grew to 2,030 lines (4× the cap) holding command definition, ~25 health-check implementations, zombie-process scanning, version-freshness fetching, auto-fix dispatch, and rendering — every one of which is a separate concern. The fix split it into 9 focused modules under `commands/doctor*.ts` (zombies, version, runtime, config, platform, memory, intelligence, fixes, registry, render), each under 300 lines. The orchestration `doctor.ts` came down to ~235 lines. **Don't let this happen again** — split at the threshold, not after the file is unreadable.
 
 ---
 

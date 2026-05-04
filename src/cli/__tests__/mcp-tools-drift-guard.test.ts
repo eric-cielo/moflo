@@ -76,7 +76,7 @@ const ALLOWLIST: Record<string, string> = {
   // Internal callers reach the tool via direct module import (lazy-load to
   // keep the diagnostic command-line fast) rather than through callMCPTool.
   // Consumers are real, just below the regex's radar.
-  'hooks_intelligence_pattern-search': 'consumed by src/cli/commands/doctor.ts via direct hooks-tools import',
+  'hooks_intelligence_pattern-search': 'consumed by src/cli/commands/doctor-checks-intelligence.ts via direct hooks-tools import',
   'neural_status': 'consumed by src/cli/commands/diagnose.ts via direct neural-tools import',
 
   // Spell engine surface advertised to Claude as the permission-acceptance
