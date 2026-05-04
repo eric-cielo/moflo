@@ -16,9 +16,13 @@ import {
   checkMcpSpellIntegration,
   checkHookExecution,
   checkGateHealth,
+  isExpectedPrePublishDrift,
   REQUIRED_HOOK_WIRING,
   type HealthCheck,
 } from '../commands/doctor-checks-deep.js';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 describe('doctor-checks-deep', () => {
   describe('checkSubagentHealth', () => {
@@ -141,6 +145,57 @@ describe('doctor-checks-deep', () => {
       expect(result).toHaveProperty('status');
       expect(result).toHaveProperty('message');
       expect(['pass', 'warn', 'fail']).toContain(result.status);
+    });
+  });
+
+  // #913 — distinguish "expected pre-publish drift" (helper matches installed
+  // bin, source bin is ahead) from genuine helper drift. The first state is
+  // the moflo dogfood steady state between PR-landing and `npm install
+  // moflo@<new>`; surfacing it as `fail` triggered a false-success
+  // "Auto-fixed 1 issue" log line because the auto-fix path was a no-op for
+  // content drift.
+  describe('isExpectedPrePublishDrift (#913)', () => {
+    let tmp: string;
+    let installedBinGate: string;
+
+    beforeEach(() => {
+      tmp = mkdtempSync(join(tmpdir(), 'moflo-913-'));
+      const installedBinDir = join(tmp, 'node_modules', 'moflo', 'bin');
+      mkdirSync(installedBinDir, { recursive: true });
+      installedBinGate = join(installedBinDir, 'gate.cjs');
+    });
+
+    afterEach(() => {
+      rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('returns true when helper matches installed bin and source bin is ahead', () => {
+      writeFileSync(installedBinGate, 'INSTALLED_4_9_13', 'utf8');
+      // helper === installed (correctly synced), source bin is the newer content
+      expect(isExpectedPrePublishDrift(installedBinGate, 'INSTALLED_4_9_13', 'SOURCE_AHEAD')).toBe(true);
+    });
+
+    it('returns false when helper matches source bin (no drift to call out)', () => {
+      writeFileSync(installedBinGate, 'INSTALLED_4_9_13', 'utf8');
+      expect(isExpectedPrePublishDrift(installedBinGate, 'SAME', 'SAME')).toBe(false);
+    });
+
+    it('returns false when helper differs from installed (genuine helper corruption)', () => {
+      writeFileSync(installedBinGate, 'INSTALLED_4_9_13', 'utf8');
+      // Helper drifted from BOTH source and installed → real fail, not pre-publish
+      expect(isExpectedPrePublishDrift(installedBinGate, 'CORRUPTED_HELPER', 'SOURCE_AHEAD')).toBe(false);
+    });
+
+    it('returns false when node_modules/moflo/bin/gate.cjs is missing', () => {
+      // Installed bin not present (consumer never installed moflo, or unusual
+      // path) — fall back to existing drift handling instead of guessing.
+      expect(isExpectedPrePublishDrift(installedBinGate, 'A', 'B')).toBe(false);
+    });
+
+    it('returns false when source bin and installed bin are identical', () => {
+      // No source-vs-installed drift means we're not in the pre-publish window.
+      writeFileSync(installedBinGate, 'PUBLISHED', 'utf8');
+      expect(isExpectedPrePublishDrift(installedBinGate, 'PUBLISHED', 'PUBLISHED')).toBe(false);
     });
   });
 

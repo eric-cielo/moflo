@@ -501,6 +501,35 @@ import { REQUIRED_HOOK_WIRING } from '../services/hook-wiring.js';
 export { REQUIRED_HOOK_WIRING };
 
 /**
+ * Detect "expected pre-publish drift" — source `bin/gate.cjs` is ahead of the
+ * installed `node_modules/moflo/bin/gate.cjs`, but the deployed
+ * `.claude/helpers/gate.cjs` still matches the installed version. This is the
+ * steady state in the moflo dogfood repo while a PR has landed but no
+ * `npm install moflo@<new>` has rotated the package.
+ *
+ * Returns true only when both are true:
+ *   - helper content equals installed bin content (helper is correctly synced
+ *     to what's installed)
+ *   - installed bin content differs from source bin content (source is ahead)
+ *
+ * If `node_modules/moflo/bin/gate.cjs` is missing (consumer never installed
+ * moflo, or path is unusual) we conservatively return false so other drift
+ * detection still applies.
+ */
+export function isExpectedPrePublishDrift(
+  installedBinGate: string,
+  helperContent: string,
+  sourceBinContent: string,
+): boolean {
+  try {
+    const installedContent = readFileSync(installedBinGate, 'utf8');
+    return installedContent === helperContent && installedContent !== sourceBinContent;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Verify gate infrastructure health:
  * 1. gate.cjs exists and contains all required cases
  * 2. settings.json hooks reference all required gates
@@ -545,14 +574,28 @@ export async function checkGateHealth(): Promise<HealthCheck> {
   }
 
   // 2. Check bin/gate.cjs sync
+  //
+  // The launcher syncs `node_modules/moflo/bin/gate.cjs` → `.claude/helpers/gate.cjs`
+  // on version change. Source `bin/gate.cjs` is only present in the moflo dogfood
+  // repo. During the dogfood publish window — between a PR landing and the next
+  // `npm install moflo@<new>` — source bin/ legitimately moves ahead of the
+  // installed bin/, while the helper continues to mirror the installed version.
+  // That's the expected steady state, not a bug; downgrade it to `warn` and skip
+  // the `fix` field so `--fix` doesn't paint a false success (#913).
   const binGate = join(projectDir, 'bin', 'gate.cjs');
+  const installedBinGate = join(projectDir, 'node_modules', 'moflo', 'bin', 'gate.cjs');
   if (existsSync(binGate)) {
     try {
       const binContent = readFileSync(binGate, 'utf8');
       if (binContent !== gateContent) {
-        // Check if it's a size difference (likely out of sync) vs whitespace
         const sizeDiff = Math.abs(binContent.length - gateContent.length);
-        if (sizeDiff > 10) {
+        const prePublishDrift = isExpectedPrePublishDrift(installedBinGate, gateContent, binContent);
+        if (prePublishDrift) {
+          warnings.push(
+            `source bin/gate.cjs is ${sizeDiff} chars ahead of node_modules/moflo/bin/gate.cjs ` +
+            '(expected pre-publish drift; resolves on next `npm install moflo@<new>`)'
+          );
+        } else if (sizeDiff > 10) {
           issues.push(`bin/gate.cjs out of sync with .claude/helpers/gate.cjs (${sizeDiff} chars differ)`);
         } else {
           warnings.push('bin/gate.cjs minor drift from .claude/helpers/gate.cjs');
