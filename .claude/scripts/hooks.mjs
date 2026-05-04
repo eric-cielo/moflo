@@ -22,7 +22,7 @@
 import { spawn } from 'child_process';
 import { existsSync, appendFileSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { createProcessManager } from './lib/process-manager.mjs';
 import { shouldDaemonAutoStart } from './lib/daemon-config.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
@@ -520,7 +520,7 @@ let _getDaemonLockHolder = null;
 try {
   const daemonLockPath = resolve(__dirname, '..', 'src', '@claude-flow', 'cli', 'dist', 'src', 'services', 'daemon-lock.js');
   if (existsSync(daemonLockPath)) {
-    const mod = await import('file://' + daemonLockPath.replace(/\\/g, '/'));
+    const mod = await import(pathToFileURL(daemonLockPath).href);
     _getDaemonLockHolder = mod.getDaemonLockHolder;
   }
 } catch { /* fallback below */ }

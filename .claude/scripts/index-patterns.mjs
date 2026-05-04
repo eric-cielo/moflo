@@ -27,11 +27,11 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
 import { resolve, dirname, relative, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, MOFLO_DIR } from './lib/moflo-paths.mjs';
 import { applyIncrementalChunks, computeContentListHash } from './lib/incremental-write.mjs';
+import { createProcessManager } from './lib/process-manager.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -342,20 +342,23 @@ async function main() {
   // Save hash
   writeFileSync(HASH_CACHE_PATH, currentHash, 'utf-8');
 
-  // Trigger embedding generation in background
+  // Trigger embedding generation in background. Register with the shared
+  // ProcessManager (#886) so doctor's zombie scan allowlists it and the
+  // session-end / smoke-teardown drain reaps it. Stable label dedupes against
+  // the index-all chain's later `build-embeddings` step when both run within
+  // the same lock window.
   try {
     const embeddingScript = resolveMofloBin(
       projectRoot, 'flo-embeddings', 'build-embeddings.mjs', { includeDevFallback: true },
     );
     if (embeddingScript) {
-      const child = spawn('node', [embeddingScript, '--namespace', NAMESPACE], {
-        cwd: projectRoot,
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      });
-      child.unref();
-      debug('Embedding generation started in background');
+      const pm = createProcessManager(projectRoot);
+      const result = pm.spawn('node', [embeddingScript, '--namespace', NAMESPACE], `build-embeddings-${NAMESPACE}`);
+      if (result.skipped) {
+        debug(`Embedding generation already running (PID: ${result.pid})`);
+      } else if (result.pid) {
+        debug(`Embedding generation started in background (PID: ${result.pid})`);
+      }
     }
   } catch { /* ignore */ }
 
