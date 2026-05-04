@@ -41,7 +41,7 @@ description: "ICON [Role] Brief description"
 | performance-* | ⚡ | `⚡ [Perf] Profile query bottleneck` |
 | general-purpose | 🤖 | `🤖 [Agent] Execute multi-step task` |
 
-## Examples
+## Wrong vs Right Examples
 
 ### TaskCreate
 

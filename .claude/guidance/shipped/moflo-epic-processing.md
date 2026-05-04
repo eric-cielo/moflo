@@ -4,7 +4,7 @@
 
 ---
 
-## Configuration (moflo.yaml)
+## moflo.yaml epic Section
 
 **Add an `epic` section to `moflo.yaml` to control epic behavior.** All settings have sensible defaults.
 
