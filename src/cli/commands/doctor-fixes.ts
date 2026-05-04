@@ -26,26 +26,73 @@ async function runFixCommand(cmd: string): Promise<boolean> {
 }
 
 /**
- * Fix missing hook wiring in settings.json by patching in entries for any
- * REQUIRED_HOOK_WIRING patterns that aren't present. Delegates to shared
- * repairHookWiring() to stay DRY with the upgrade path.
+ * Fix Gate Health failures: bin/.claude-helpers gate.cjs drift AND missing
+ * settings.json hook wiring. The check has three independent failure modes
+ * and the prior fix only handled hook wiring — leaving bin/helper drift
+ * unresolved while still claiming success (the "Auto-fixed 1 issue" lie that
+ * surfaced when #920 mirrored the docs-only PR exemption into only one of
+ * the two gate.cjs files).
+ *
+ * Sync direction is decided by which source file is "ahead" of its installed
+ * counterpart in `node_modules/moflo/`:
+ *   - If only source `bin/gate.cjs` differs from installed bin → mirror bin → helper.
+ *   - If only source `.claude/helpers/gate.cjs` differs from installed helper → mirror helper → bin.
+ *   - If both are ahead with different content (genuine ambiguity) → bail
+ *     and let the caller report failure; refuse to silently pick a side.
+ *   - If `node_modules/moflo/` is missing entirely (consumer never installed,
+ *     unusual layout) → bail.
  */
 async function fixGateHealthHooks(): Promise<boolean> {
-  const settingsPath = join(process.cwd(), '.claude', 'settings.json');
-  if (!existsSync(settingsPath)) return false;
+  const cwd = process.cwd();
+  let driftFixed = true; // true means "no drift to fix or drift resolved"
 
-  try {
-    const raw = readFileSync(settingsPath, 'utf8');
-    const settings = JSON.parse(raw) as Record<string, unknown>;
+  const binGate = join(cwd, 'bin', 'gate.cjs');
+  const helperGate = join(cwd, '.claude', 'helpers', 'gate.cjs');
+  const installedBin = join(cwd, 'node_modules', 'moflo', 'bin', 'gate.cjs');
+  const installedHelper = join(cwd, 'node_modules', 'moflo', '.claude', 'helpers', 'gate.cjs');
 
-    const { repaired } = repairHookWiring(settings);
-    if (repaired.length === 0) return true; // nothing to fix
+  if (existsSync(binGate) && existsSync(helperGate)) {
+    try {
+      const binContent = readFileSync(binGate, 'utf8');
+      const helperContent = readFileSync(helperGate, 'utf8');
+      if (binContent !== helperContent) {
+        const installedBinContent = existsSync(installedBin) ? readFileSync(installedBin, 'utf8') : null;
+        const installedHelperContent = existsSync(installedHelper) ? readFileSync(installedHelper, 'utf8') : null;
+        const binAhead = installedBinContent !== null && binContent !== installedBinContent;
+        const helperAhead = installedHelperContent !== null && helperContent !== installedHelperContent;
 
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-    return true;
-  } catch {
-    return false;
+        if (binAhead && !helperAhead) {
+          writeFileSync(helperGate, binContent, 'utf-8');
+        } else if (helperAhead && !binAhead) {
+          writeFileSync(binGate, helperContent, 'utf-8');
+        } else {
+          // Both ahead with different content, OR neither ahead (no install
+          // to anchor on). Refuse to pick a side — surface the failure.
+          driftFixed = false;
+        }
+      }
+    } catch {
+      driftFixed = false;
+    }
   }
+
+  // Hook-wiring repair (separate failure mode that this fixer also owns).
+  const settingsPath = join(cwd, '.claude', 'settings.json');
+  let wiringFixed = true;
+  if (existsSync(settingsPath)) {
+    try {
+      const raw = readFileSync(settingsPath, 'utf8');
+      const settings = JSON.parse(raw) as Record<string, unknown>;
+      const { repaired } = repairHookWiring(settings);
+      if (repaired.length > 0) {
+        writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+      }
+    } catch {
+      wiringFixed = false;
+    }
+  }
+
+  return driftFixed && wiringFixed;
 }
 
 /**

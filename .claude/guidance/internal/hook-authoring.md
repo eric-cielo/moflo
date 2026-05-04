@@ -22,6 +22,8 @@
 
 **Two-layer design (gate-hook.mjs + gate.cjs):** the `.mjs` entry parses Claude Code's stdin JSON and forwards via env vars; the `.cjs` does the actual decision logic. Keep this split — mixing JSON parsing into the decision layer makes both harder to test.
 
+**Mirror requirement — `gate.cjs` ships in two places.** `bin/gate.cjs` (invoked by `flo gate ...` from the CLI surface) and `.claude/helpers/gate.cjs` (invoked by `gate-hook.mjs` from Claude Code's hook block). Both are listed in `package.json#files` and both ship to consumers. **Every edit to one MUST also edit the other in the same PR.** `flo doctor`'s `Gate Health` check fails (publish-blocker) when they drift; `flo doctor --fix` resolves drift by mirroring the source file that's "ahead" of its installed counterpart in `node_modules/moflo/` onto the other (helper-ahead → bin, bin-ahead → helper). If both source files are ahead with different content the fixer refuses to pick a side — split the PR or reconcile the two intentions manually. See Section 9's trap row.
+
 ---
 
 ## 2. Hook Event → Settings.json Wiring
@@ -175,6 +177,7 @@ Hook regressions are silent. The user notices "Claude is acting weird" days late
 | Adding cwd-relative path | Works in dev, breaks for consumers | Always anchor on `$CLAUDE_PROJECT_DIR` |
 | Adding a network call to `PreToolUse` | Pegs every tool invocation under flaky network | Hooks are local-only — defer net to the daemon |
 | Forgetting `windowsHide: true` on spawn | Flash console window on Windows | Add it |
+| Editing only one of `bin/gate.cjs` or `.claude/helpers/gate.cjs` | The two ship side-by-side; one updated, the other stale → in-source drift, doctor `Gate Health` fails (#920 shipped a docs-only-PR exemption to the helper but missed bin) | Edit BOTH in the same change; verify with `flo doctor` (or `flo doctor --fix` to mirror automatically) before committing |
 
 **Run the dogfood loop before merging:** the hook lives in `.claude/helpers/` *and* gets synced into `node_modules/moflo/.claude/helpers/`. After local edit, the running session is still on the previously installed version (`feedback_dogfood_install_vs_source`). Publish a build or use `npm pack` + reinstall to actually exercise the change.
 
