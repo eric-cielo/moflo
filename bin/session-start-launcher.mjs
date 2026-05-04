@@ -595,7 +595,7 @@ try {
 
         // Gate and hook helpers — shipped as static files in bin/
         const binHelperFiles = [
-          'gate.cjs', 'gate-hook.mjs', 'prompt-hook.mjs', 'hook-handler.cjs',
+          'gate.cjs', 'gate-hook.mjs', 'prompt-hook.mjs', 'hook-handler.cjs', 'simplify-classify.cjs',
         ];
         for (const file of binHelperFiles) {
           await syncFile(resolve(binDir, file), resolve(helpersDir, file), `.claude/helpers/${file}`);
