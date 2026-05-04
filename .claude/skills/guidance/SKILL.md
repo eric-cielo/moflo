@@ -1,7 +1,7 @@
 ---
 name: guidance
 description: Add, edit, or audit guidance docs in this project's .claude/guidance/ directory following moflo's universal guidance rules. Default mode walks the user through one doc (creating or improving it); the -a flag audits every doc in the directory and offers per-file improvements.
-arguments: "[-a] [<topic-or-path>]"
+arguments: "[-a] <topic-or-path>"
 ---
 
 # /guidance — Author and audit project guidance

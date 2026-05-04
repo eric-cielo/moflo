@@ -87,6 +87,7 @@ async function main() {
       () => check.floSearch(consumerDir),
       () => check.hooks(consumerDir),
       () => check.floSkillPackaged(consumerDir),
+      () => check.verifyShippedSkillArguments(consumerDir),
       () => check.consumerInvariants(consumerDir),
       () => check.installSurface(consumerDir),
       () => check.verifyPrunedBinaries(consumerDir),

@@ -92,15 +92,18 @@ Count `.md` files under `.claude/guidance/` (recursive). Severity table:
 
 ### 1g. Guidance Structure (only if 1f found ≥1 file)
 
-Apply the universal rules from `.claude/guidance/shipped/moflo-guidance-rules.md`. For each `.md` file, check:
+Invoke `/guidance -a` via the `Skill` tool to run the structural audit. The /guidance skill enforces the universal rules from `.claude/guidance/shipped/moflo-guidance-rules.md` (Purpose lines, See Also, generic H2s, hedged language, 500-line cap, RAG chunking) and is the single source of truth for those checks — never re-implement them here.
 
-- Has `**Purpose:**` line right after H1
-- Has `## See Also` at end
-- Under 500 lines
-- H2 headings are specific (not "Overview", "Configuration", "Examples")
-- No hedged language in rule contexts (`should`, `might`, `consider`)
+Fold the result into the Eldar report under the "Guidance structure" row:
 
-Do **not** duplicate `/guidance -a`'s logic verbatim — just produce a one-line summary per file (`<file>: <N issues>`). The Eldar surface gaps; `/guidance -a` does the deep audit.
+| Outcome of `/guidance -a` | Eldar row severity |
+|---------------------------|--------------------|
+| 0 files with issues       | ok                 |
+| 1–2 files with issues     | info               |
+| 3+ files with issues      | warn               |
+| `/guidance` itself errors | warn — quote the error verbatim so the user can fix the offending file before re-running |
+
+When the user is in `--fix` mode and chooses guidance fixes from the triage menu (3b), the same /guidance skill is the handoff target — so the audit and the fix flow share one implementation.
 
 ### 1h. Memory Health
 
@@ -204,7 +207,9 @@ TOP 3 RECOMMENDATIONS
 2. Add Drizzle conventions guidance (info — high leverage)
    You use Drizzle ORM but have no DB-conventions doc. This is the
    single highest-leverage gap for getting Claude to write idiomatic
-   queries and migrations in your codebase.
+   queries and migrations in your codebase. /guidance -a (run inline
+   in step 1g) flagged 3 existing docs with structural issues; pick
+   one to fix alongside this new one.
    See: .claude/guidance/shipped/moflo-guidance-rules.md
 
 3. Run `flo healer --fix` (warn)
