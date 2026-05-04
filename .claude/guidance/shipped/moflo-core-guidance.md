@@ -307,3 +307,4 @@ See `moflo-memory-strategy.md` for memory-specific troubleshooting.
 - `.claude/guidance/shipped/moflo-session-start.md` — Complete session-start lifecycle (DB heal, sync, migrations, daemon)
 - `.claude/guidance/shipped/moflo-settings-injection.md` — What moflo writes into `.claude/` and how surgical self-heal works
 - `.claude/guidance/shipped/moflo-cross-platform.md` — Windows/macOS/Linux portability rules for any code change
+- `.claude/guidance/shipped/moflo-verbose-command-filtering.md` — Filter long verbose commands at the source; never tee-then-grep
