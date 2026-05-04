@@ -15,7 +15,30 @@ Treat the union of staged + unstaged + committed-since-base as the diff to revie
 
 Also note: was `/simplify` already run on this branch in this session? If yes, you're in a **validation pass** (Phase 2.5 below) — most of the heavy lifting is done.
 
-## Phase 2: Classify the diff
+## Phase 2: Classify the diff (deterministic — call the classifier)
+
+**Call the classifier first, follow its decision.** Do not eyeball the diff and pick a tier in prose — that's the failure mode that costs ~230K tokens per run on mechanical decompositions (issue #908). The classifier reads the same diff Claude would, applies the rules below, and returns a JSON dispatch decision:
+
+```bash
+node .claude/helpers/simplify-classify.cjs --base main
+```
+
+(In the moflo source repo, equivalent is `node bin/simplify-classify.cjs --base main`. The launcher syncs `bin/simplify-classify.cjs` → `.claude/helpers/simplify-classify.cjs` in consumer projects.)
+
+Output:
+```json
+{
+  "tier": "TRIVIAL" | "SMALL" | "NORMAL",
+  "model": "sonnet",
+  "agentCount": 0 | 1 | 3,
+  "reasoning": ["..."],
+  "stats": { "added": ..., "deleted": ..., "declAdded": ..., "declRemoved": ..., "netDecls": ..., "fileCount": ..., "securityHit": ... }
+}
+```
+
+If `bin/simplify-classify.cjs` is missing (older moflo install), fall back to the prose rules below — but on a current install the classifier IS the source of truth. Default behavior: **single Sonnet agent** unless the diff signals genuinely warrant escalation.
+
+Tier definitions the classifier encodes (for reference, not for re-derivation):
 
 Pick the **smallest tier** the diff genuinely fits. When in doubt, escalate one step (not two).
 
@@ -40,13 +63,14 @@ This is the default tier for **most real diffs**, including changes to critical 
 
 Examples that qualify: extracting a constant, inlining a one-liner, swapping a `for` for a `forEach`, adding one early-return, refactoring a single function within a file, adding a cache fast-path inside an existing block.
 
-### NORMAL — three parallel agents
-Reserved for **genuinely cross-cutting** changes. ANY of these triggers NORMAL:
-- 3+ files changed
-- >200 net LOC changed
-- Adds/removes/renames a public API
-- Introduces or removes a dependency
-- Cross-cutting refactor (touches the same pattern in multiple modules)
+### NORMAL — three parallel agents (high bar)
+Reserved for **genuinely cross-cutting** changes that single-agent review can't cover. The classifier escalates to NORMAL only when ANY of:
+- `>500 LOC changed` (real volume, not just "more than 200")
+- `5+ files AND ≥3 net new declarations` (broad new surface, not relocation)
+- `security-sensitive path AND netDecls > 0` (aidefence/, swarm/consensus/, hooks gate, daemon-lock, launcher — only when adding logic, not on a 1-line touch)
+- `3+ new files AND ≥5 new declarations` (genuinely new subsystem)
+
+**Mechanical relocation is NOT NORMAL** even with many files / many lines. If `declAdded` and `declRemoved` are both ≥2 and `netDecls` is small (within 30% of total declarations touched), it's a structural move — SMALL, single agent. This is the #906/#908 case: ~330 LOC across 6 files of pure decomposition was costing 230K tokens via three-agent fan-out when it needed one Sonnet agent.
 
 Three agents exist to cover orthogonal axes (Reuse / Quality / Efficiency) when the change is broad enough that one agent's tool-call budget can't survey it all. For single-file edits, one focused agent always covers all three axes — three is duplication, not coverage.
 
@@ -62,48 +86,11 @@ Escalate one tier (self-review → SMALL agent) only if the fix introduced any o
 
 Do **not** escalate to NORMAL on a validation pass. If the fix is so structural that NORMAL is warranted, treat it as a fresh diff and start over from Phase 1.
 
-## Phase 2.7: Route the model (before any Agent spawn)
+## Phase 2.7: Model selection
 
-For every tier that spawns an Agent (SMALL / NORMAL — TRIVIAL self-review skips this), call the moflo router to pick the cheapest model that fits the task **before** invoking Agent:
+**Use the model the classifier returned** — always `sonnet` for `/simplify`. Opus is never correct here; the classifier enforces this. No router call needed; the classifier IS the router for this skill.
 
-```
-mcp__moflo__hooks_model-route — {
-  task: "<diff summary — see wording rules below>",
-  preferCost: true
-}
-```
-
-### Wording the task description
-
-The router's complexity score is keyword-sensitive. Words like `refactor`, `architect`, `audit`, `system`, `redesign`, `migrate` flip a high-complexity flag and force opus *even when scoring suggests sonnet*. For `/simplify` you are **always doing code review**, never genuine architecture, so frame the task accordingly:
-
-- ✅ Good: `"Review 110-line single-file change in bin/session-start-launcher.mjs for reuse, quality, efficiency."`
-- ❌ Bad: `"Review refactor that adds mtime-cache fast-path and architects new caching layer."`
-
-Drop the trigger words. State LOC count, file count, and "review for reuse, quality, efficiency". That's enough signal.
-
-### Applying the result
-
-The router returns `{ model: 'haiku' | 'sonnet' | 'opus', complexity, reasoning, alternatives, ... }`.
-
-**Hard rule for `/simplify`: opus is never correct.** Code review does not require Opus-tier reasoning even on critical surface. If the router returns `opus`:
-
-1. Look at `alternatives` — if `sonnet` scores higher than the selected model's confidence, downgrade to sonnet.
-2. Otherwise, downgrade to sonnet anyway (treat opus as "router was uncertain — pick the safer middle").
-
-Pass the final model verbatim to the Agent's `model` parameter (Agent accepts `'haiku' | 'sonnet' | 'opus'`). On router failure (MCP call errors), default to `'sonnet'`.
-
-In practice: comment trims and pure formatting → haiku; everything else for `/simplify` → sonnet.
-
-### Feed back the outcome
-
-After the agent completes, record the outcome so the router learns:
-
-```
-mcp__moflo__hooks_model-outcome — { task: "<same wording as route call>", model: "<chosen>", outcome: "success" | "failure" | "escalated" }
-```
-
-`escalated` = the agent missed something a higher-tier pass would have caught. That signal teaches the router to bias similar tasks upward next time. Don't fake `escalated` to retroactively justify opus — only record it when a *real* miss happened.
+If you fell back to prose rules in Phase 2 (no classifier available), use `sonnet` unconditionally. Pass the model verbatim to Agent's `model` parameter.
 
 ## Phase 3: Run the appropriate review
 

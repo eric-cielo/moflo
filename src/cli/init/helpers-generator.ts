@@ -289,7 +289,11 @@ var DANGEROUS = ['rm -rf /', 'format c:', 'del /s /q c:\\\\', ':(){:|:&};:', 'mk
 var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\\b/i;
 var TASK_RE = /\\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\\b/i;
 var TEST_RUNNER_RE = /(?:^|[^a-z])(?:npm|yarn|pnpm|bun)\\s+(?:run\\s+)?(?:test|t)(?:[:\\s]|$)|\\b(?:npx|pnpx)\\s+(?:vitest|jest|mocha|ava|tap|jasmine|pytest)\\b|(?:^|;|&&|\\|\\|)\\s*(?:vitest|jest|pytest|mocha|jasmine|tap|ava)\\s|\\b(?:cargo|go|deno|dotnet|mvn)\\s+test\\b|\\bgradle\\w*\\s+test\\b/i;
-var EDIT_RESET_SKIP_RE = /\\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^|[\\\\\\/])(CHANGELOG(?:\\.md)?|\\.env\\.example|package-lock\\.json|pnpm-lock\\.yaml|yarn\\.lock|bun\\.lockb)$/i;
+var EDIT_RESET_SKIP_BOTH_RE = /\\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^|[\\\\\\/])(CHANGELOG(?:\\.md)?|\\.env\\.example|package-lock\\.json|pnpm-lock\\.yaml|yarn\\.lock|bun\\.lockb)$/i;
+// Test files: invalidate testsRun but preserve simplifyRun (#908) — /simplify
+// already reviewed the production code, touching tests/fixtures doesn't expose
+// new untested surface for code review.
+var EDIT_RESET_SKIP_SIMPLIFY_ONLY_RE = /(?:^|[\\\\\\/])(__tests__|__mocks__|tests?|spec|specs|cypress|e2e|fixtures?)[\\\\\\/]|\\.(test|spec)\\.[mc]?[jt]sx?$|\\.fixture\\.[mc]?[jt]sx?$/i;
 
 switch (command) {
   case 'check-before-agent': {
@@ -380,11 +384,20 @@ switch (command) {
   }
   case 'reset-edit-gates': {
     var fp = process.env.TOOL_INPUT_file_path || '';
-    if (fp && EDIT_RESET_SKIP_RE.test(fp)) break;
+    // Inert files (markdown, lockfiles, CHANGELOG, .env.example): no gate reset.
+    if (fp && EDIT_RESET_SKIP_BOTH_RE.test(fp)) break;
     var s = readState();
-    if (!s.testsRun && !s.simplifyRun) break;
-    s.testsRun = false;
-    s.simplifyRun = false;
+    // Test-only edits invalidate testsRun but preserve simplifyRun (#908).
+    var isTestOnly = fp && EDIT_RESET_SKIP_SIMPLIFY_ONLY_RE.test(fp);
+    var resetTests = s.testsRun;
+    var resetSimplify = s.simplifyRun && !isTestOnly;
+    if (!resetTests && !resetSimplify) break;
+    var gates = [];
+    if (resetTests) { s.testsRun = false; gates.push('tests'); }
+    if (resetSimplify) { s.simplifyRun = false; gates.push('simplify'); }
+    if (fp) {
+      s.lastResetBy = { file: fp, at: new Date().toISOString(), gates: gates };
+    }
     writeState(s);
     break;
   }
@@ -400,6 +413,9 @@ switch (command) {
     process.stderr.write('BLOCKED: gh pr create requires the following before opening a PR:\\n');
     for (var i = 0; i < missing.length; i++) {
       process.stderr.write('  - ' + missing[i] + '\\n');
+    }
+    if (s.lastResetBy && s.lastResetBy.file) {
+      process.stderr.write('Last gate reset: ' + s.lastResetBy.file + ' (' + (s.lastResetBy.gates || []).join(', ') + ')\\n');
     }
     process.stderr.write('Disable per-gate via moflo.yaml:\\n');
     process.stderr.write('  gates:\\n    testing_gate: false\\n    simplify_gate: false\\n    learnings_gate: false\\n');

@@ -73,6 +73,7 @@ export const BIN_HELPER_FILES = [
   'gate-hook.mjs',
   'prompt-hook.mjs',
   'hook-handler.cjs',
+  'simplify-classify.cjs',
 ];
 
 export const SOURCE_HELPER_FILES = [
