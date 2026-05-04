@@ -15,7 +15,7 @@ Help the user write, edit, or audit guidance files in their `.claude/guidance/` 
 | Mode | Trigger | What it does |
 |------|---------|--------------|
 | Single-doc | no flag, optional `<topic-or-path>` arg | Walk the user through creating one new doc OR improving one existing doc |
-| Audit | `-a` flag | Scan every `.md` in `.claude/guidance/` (recursively), score each against the rules, present a triage report, then offer to fix per-file or in batch |
+| Audit | `-a` flag | Two passes over `.claude/guidance/`: (1) **structural audit** scoring each existing doc against the universal rules, (2) **gap analysis** scanning the codebase to identify high-leverage topics that *should* have a guidance doc but don't. Both feed one combined triage report. |
 
 ## Step 0 — Memory First
 
@@ -101,7 +101,11 @@ Then propose edits as concrete diffs — never rewrite the whole file unless the
 
 ## Step 3 — Audit Mode (`-a`)
 
-When `-a` is passed, scan the guidance directory and produce a triage report. Walk the directory yourself with `Glob` and `Read`; do not delegate to a subagent for the audit itself unless the user has 30+ files.
+Audit mode runs **two passes**, then merges them into one triage report. Both passes are mandatory — never skip one to save tokens. The user typed `-a` because they want both signals.
+
+### 3a. Structural audit (existing-doc rule conformance)
+
+Scan the guidance directory and score each `.md` against the universal rules. Walk the directory yourself with `Glob` and `Read`; do not delegate to a subagent for the audit itself unless the user has 30+ files.
 
 For each `.md` file:
 
@@ -112,11 +116,49 @@ For each `.md` file:
 5. Look for hedged language: `\b(should|might|consider|may want to)\b` in rule contexts
 6. Detect prose preambles (>3 paragraphs between H1 and first H2 rule)
 
-Render the report as a sortable table with one row per file, columns: file, lines, has-purpose, has-see-also, generic-headings count, hedged count. Highlight the worst offenders first.
+Render a sortable table with one row per file, columns: file, lines, has-purpose, has-see-also, generic-headings count, hedged count. Highlight the worst offenders first.
 
-After the table, list the **top 3–5 priority fixes** in plain English (not table format). For each, explain WHY (rule citation) and propose either a per-file fix or a batch fix.
+**Note on `**Purpose:**` and `## See Also` regex:** ripgrep / Grep tool treats `**` as a glob escape and may return zero matches even when the markers are present. Use a plain string check (`Select-String` on Windows, `grep -F` elsewhere) or read the file and string-match in JS — never trust a zero count from a wildcard-ambiguous pattern without spot-checking one file.
 
-Ask the user which to apply, then walk through the chosen fixes one at a time. **Never apply audit fixes without explicit per-file confirmation** — guidance is high-leverage; silent edits are dangerous.
+### 3b. Gap analysis (what topics are missing)
+
+Now look at *what isn't there*. Scan the codebase for high-leverage areas that lack a corresponding guidance doc, so Claude has nothing to follow when working in those areas.
+
+**Detection sources** (read each that exists):
+
+| Signal | What to learn |
+|--------|---------------|
+| `package.json` deps + devDeps | Frameworks/libraries the project relies on (React, Drizzle, Vitest, etc.) |
+| `pyproject.toml` / `requirements.txt` / `Cargo.toml` / `go.mod` / `Gemfile` | Same idea, other ecosystems |
+| Top-level source layout (`src/**`, `bin/**`, `scripts/**`, etc.) | Architectural concerns (e.g. a `daemon/` directory implies daemon architecture is a concern) |
+| `.claude/helpers/`, `.claude/scripts/`, `.claude/hooks/` | Hook + helper authoring is in scope |
+| MCP tool source (`mcp-tools/**`, `mcp-server/**`) | MCP tool authoring |
+| Test directories | Testing conventions (load-bearing if specific patterns exist — e.g. golden-file tests, snapshot conventions) |
+| `.github/workflows/` | CI/CD conventions |
+| Recent `git log` for files repeatedly edited together | Cross-cutting concerns that need explicit guidance |
+
+**Cross-reference:** for each detected concern, grep the existing `.claude/guidance/` corpus for keyword coverage. A topic is a **gap** if (a) the concern shows up in code (not just transitive deps) and (b) no existing guidance doc names it in the title or first H2.
+
+**Severity table:**
+
+| Concern type | Severity if unmatched |
+|--------------|------------------------|
+| Direct dep used pervasively (>10 files import it) | warn |
+| Architectural directory with >5 files | warn |
+| Direct dep used in 1–10 files | info |
+| Helper/hook/MCP authoring surface with custom code | warn |
+| CI/CD workflows beyond the standard ones | info |
+| Cross-cutting concern from git-history co-change | info |
+
+**Render gaps as a separate table** with columns: detected concern, evidence (file count or representative path), suggested doc filename, severity. Lead with the warns.
+
+**Don't auto-write any new doc.** Surface the gap, name the concern, propose a filename — then ask the user which gaps (if any) they want to fill. The single-doc mode (Step 2) handles authoring once they pick.
+
+### 3c. Combined triage and fixes
+
+After both 3a and 3b, list the **top 3–5 priority items** across both passes in plain English. Mix them — a structural fix to an existing doc and a missing-doc gap can both make the top list. For each, explain WHY (rule citation for structural; concern + evidence for gaps) and propose either a per-file fix (3a) or a per-doc authoring flow (3b).
+
+Ask the user which to apply, then walk through chosen items one at a time. **Never apply audit fixes without explicit per-file confirmation** — guidance is high-leverage; silent edits are dangerous. **Never auto-create gap docs** — every new doc starts as a single-doc mode session with the user.
 
 ## Step 4 — After Editing
 

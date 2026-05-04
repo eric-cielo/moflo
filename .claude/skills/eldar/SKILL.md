@@ -90,9 +90,13 @@ Count `.md` files under `.claude/guidance/` (recursive). Severity table:
 | 3–10 | info |
 | 11+ | info |
 
-### 1g. Guidance Structure (only if 1f found ≥1 file)
+### 1g. Guidance Structure — MANDATORY when guidance docs exist
 
-Invoke `/guidance -a` via the `Skill` tool to run the structural audit. The /guidance skill enforces the universal rules from `.claude/guidance/shipped/moflo-guidance-rules.md` (Purpose lines, See Also, generic H2s, hedged language, 500-line cap, RAG chunking) and is the single source of truth for those checks — never re-implement them here.
+**This step is not optional.** If 1f found ≥1 guidance file, you MUST invoke `/guidance -a` via the `Skill` tool *inline, during this audit run, before rendering the report.* Do not defer it ("rerun separately if you want"), do not skip it because the corpus is large, do not substitute a hand-rolled grep pass — that defeats the single-source-of-truth contract.
+
+The /guidance skill enforces the universal rules from `.claude/guidance/shipped/moflo-guidance-rules.md` (Purpose lines, See Also, generic H2s, hedged language, 500-line cap, RAG chunking) and is the single source of truth for those checks — never re-implement them here.
+
+If `/guidance -a` is genuinely too expensive (50+ files AND user explicitly asks for a fast read), skip it only after asking and surface the skip explicitly in the report (`Guidance structure | skipped at user request | warn`). Default behaviour is always to run it.
 
 Fold the result into the Eldar report under the "Guidance structure" row:
 
@@ -153,21 +157,13 @@ Glob — { pattern: ".claude/agents/**/*.md" }
 
 Count the result. `info` if 0 (no project-specific subagents — user is relying entirely on built-ins).
 
-### 1m. Stack → Guidance Cross-Reference (highest leverage)
+### 1m. Stack → Guidance Cross-Reference (delegated to /guidance)
 
-Detect the project's stack from manifests:
+Gap analysis (which codebase concerns lack a guidance doc) is the **/guidance skill's** responsibility — step 3b of `/guidance -a`. Since 1g already runs `/guidance -a` inline, do **not** re-implement gap detection here. Instead, fold the gap findings from /guidance's output into the Eldar report under the same "Stack → guidance" category.
 
-| Manifest | Detected stack |
-|----------|----------------|
-| `package.json` deps | Node — inspect for React, Next, Drizzle, Prisma, Express, NestJS, Vite, etc. |
-| `pyproject.toml` / `requirements.txt` | Python — Django, FastAPI, SQLAlchemy, etc. |
-| `Cargo.toml` | Rust — axum, tokio, sqlx, etc. |
-| `go.mod` | Go — gin, sqlc, gorm, etc. |
-| `Gemfile` | Ruby — Rails, Sidekiq, etc. |
+Each gap finding from /guidance becomes one row in the Eldar report. Severity carries through from /guidance (warn/info per its severity table).
 
-For each detected technology, check whether `.claude/guidance/` mentions it (Grep for the technology name across the directory). Each `(detected stack item, no guidance match)` pair becomes one `info` finding: "uses Drizzle ORM but no DB-conventions guidance — high-leverage gap".
-
-This is the **highest-impact finding** for new adopters. Lead with it in the recommendation.
+**Why delegated:** keeping a single source of truth — /guidance owns both the structural rule audit and the gap analysis, /eldar surfaces the results in its broader project audit. If /eldar duplicated gap detection, the two would drift.
 
 ### 1n. Anti-Pattern from History (best-effort, optional)
 
@@ -300,6 +296,7 @@ Never leave the user without a clear next step.
 - **Portable only.** This skill ships to consumers via `.claude/skills/**/*.md` in the package files array. Never assume moflo source paths or moflo-internal state.
 - **No kitchen sink.** The audit checklist is locked at the categories above. New checks require a specific portable benefit and an issue to discuss them.
 - **Read-only by default.** `/eldar` (no flag) never writes. Only `--fix` writes, and only with per-finding confirmation.
+- **Step 1g is mandatory, not optional.** Whenever `.claude/guidance/` has at least one file, `/guidance -a` runs inline as part of every audit. Saying "rerun /guidance -a separately if you want a structural pass" is a defect, not a feature — the user already asked for the structural pass by typing /eldar.
 - **Hand off to specialists.** `/guidance` for guidance authoring, `flo healer --fix` for setup repair, `flo init --upgrade` for wiring. The Eldar route, they don't reimplement.
 
 ## See Also
