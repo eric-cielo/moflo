@@ -2,6 +2,7 @@
 'use strict';
 var fs = require('fs');
 var path = require('path');
+var cp = require('child_process');
 
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
@@ -93,6 +94,36 @@ var EDIT_RESET_SKIP_BOTH_RE = /\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^
 // but NOT the simplify gate — /simplify already reviewed the production code; touching
 // a test file or fixture doesn't expose new untested surface for code review (#908).
 var EDIT_RESET_SKIP_SIMPLIFY_ONLY_RE = /(?:^|[\\\/])(__tests__|__mocks__|tests?|spec|specs|cypress|e2e|fixtures?)[\\\/]|\.(test|spec)\.[mc]?[jt]sx?$|\.fixture\.[mc]?[jt]sx?$/i;
+// Docs-only PR exemption: text/markup/image extensions that cannot change runtime behaviour.
+// If EVERY file in the PR diff matches this, skip testing/simplify/learnings gates.
+// Anchored to end-of-path so e.g. `foo.md.js` does not match. Excludes lock files / configs
+// on purpose — those are inert for edit-reset (above) but not "documentation".
+var DOCS_ONLY_RE = /\.(md|markdown|txt|rst|adoc|html?|pdf|png|jpe?g|gif|svg|webp|ico|bmp)$/i;
+
+// Get the file list changed on the current branch vs the merge-base with origin/main
+// (falling back to local main). Returns an array of repo-relative paths, or null on
+// failure — in which case callers MUST fall through to the standard gate (fail-safe).
+function getChangedFilesVsBase() {
+  var bases = ['origin/main', 'main', 'origin/master', 'master'];
+  var base = null;
+  for (var i = 0; i < bases.length; i++) {
+    try {
+      base = cp.execFileSync('git', ['merge-base', 'HEAD', bases[i]], {
+        cwd: PROJECT_DIR, encoding: 'utf-8', timeout: 2000, windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim();
+      if (base) break;
+    } catch (e) { /* try next */ }
+  }
+  if (!base) return null;
+  try {
+    var out = cp.execFileSync('git', ['diff', '--name-only', base + '...HEAD'], {
+      cwd: PROJECT_DIR, encoding: 'utf-8', timeout: 2000, windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore']
+    });
+    return out.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+  } catch (e) { return null; }
+}
 
 switch (command) {
   case 'check-before-agent': {
@@ -208,6 +239,15 @@ switch (command) {
     // optional ENV=val prefix segment catches `GH_TOKEN=x gh pr create`.
     var cmd = process.env.TOOL_INPUT_command || '';
     if (!/(?:^|&&\s*|\|\|\s*|;\s*)\s*(?:[A-Z_][A-Z0-9_]*=\S+\s+)*gh\s+pr\s+create\b/.test(cmd)) break;
+    // Docs-only exemption: if every file changed vs the merge-base is a docs/image
+    // file (no runtime-behaviour surface), skip the testing/simplify/learnings gates
+    // and surface a one-line transparency note. Falls through to the standard gate
+    // on any failure (no base, no diff, exec error) — fail-safe by design.
+    var changed = getChangedFilesVsBase();
+    if (changed && changed.length > 0 && changed.every(function(f) { return DOCS_ONLY_RE.test(f); })) {
+      process.stdout.write('Docs-only PR (' + changed.length + ' file' + (changed.length === 1 ? '' : 's') + ') — skipping testing/simplify/learnings gates.\n');
+      break;
+    }
     var s = readState();
     var missing = [];
     if (config.testing_gate && !s.testsRun) missing.push('tests have not run since the last code edit (run npm test, vitest, jest, pytest, or similar)');
