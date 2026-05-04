@@ -77,7 +77,7 @@ export const swarmTools: MCPTool[] = [
 | `inputSchema` | yes | Inline JSONSchema; document every property |
 | `handler` | yes | `async (input) => result`; validate `input` defensively (cast unknown to typed via guards) |
 
-**Idempotent operations should say so in the description and prove it in the handler.** `swarm_init` is the canonical example: re-init returns the existing swarmId rather than creating a new swarm.
+**Idempotent operations MUST say so in the description and prove it in the handler.** `swarm_init` is the canonical example: re-init returns the existing swarmId rather than creating a new swarm.
 
 ---
 
