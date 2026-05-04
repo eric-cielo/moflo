@@ -4,10 +4,26 @@ Phase-by-phase notes for the full `/flo <issue>` run. Phase 2 (Ticket) lives in 
 
 ## Phase 1: Research (also `-r`)
 
-### 1.1 Fetch the issue
+### 1.1 Fetch the issue + history (cheap, before any file exploration)
+
+Run these BEFORE any `Glob` / `Grep` / `Read` of source files. The goal is to catch "this is already (partially) fixed" in two commands rather than 10K tokens of file scanning.
+
 ```bash
-gh issue view <issue-number> --json number,title,body,labels,state,assignees,comments,milestone
+# Issue + closing PRs (one call, one new field vs. before).
+gh issue view <issue-number> --json number,title,body,labels,state,assignees,comments,milestone,closedByPullRequestsReferences
+
+# Commits that reference the issue. Silently no-ops outside a git work tree —
+# consumers without git, fresh `npx moflo` shells, non-git VCS all skip cleanly.
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git log --all --grep="\b<issue-number>\b\|#<issue-number>" --oneline -30 || true
+fi
 ```
+
+**Surface what you find and proceed — never pause to ask.** `/flo` is fire-and-forget; a prompt that blocks for 30 minutes waiting on a yes/no is a worse failure than re-doing already-shipped work. Specifically:
+
+- **Issue is CLOSED with non-empty `closedByPullRequestsReferences`** → read the closing PR body and merge commit as primary context. Treat the run as "look for any remaining work or follow-up" and continue. Do not stop.
+- **Commits reference the issue but it's still open** → those are partial fixes. Summarise them in one line (`partial fix already shipped: <sha> <subject>`), then `git show <sha>` if you need the diff, scope the implementation around what's still missing, and continue. Do not stop.
+- **No history found / scan skipped** → proceed silently to memory + code exploration as before.
 
 ### 1.2 Check ticket status
 Look for the `## Acceptance Criteria` heading in the body.
