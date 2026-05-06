@@ -47,7 +47,6 @@ export const SKILLS_MAP: Record<string, string[]> = {
     'guidance',
     'flo-simplify',
     'reasoningbank-intelligence',
-    'skill-builder',
   ],
   memory: [
     'memory-patterns',
