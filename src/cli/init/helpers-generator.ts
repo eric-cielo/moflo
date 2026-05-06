@@ -217,7 +217,7 @@ var path = require('path');
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\\/([a-z])\\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '' };
 
 function readState() {
   try {
@@ -288,6 +288,60 @@ var EXEMPT = ['.claude/', '.claude\\\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-sta
 var DANGEROUS = ['rm -rf /', 'format c:', 'del /s /q c:\\\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
 var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\\b/i;
 var TASK_RE = /\\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\\b/i;
+
+// Namespace classification (#931). Hint stored on workflow-state and emitted
+// once by check-before-agent at Agent-spawn time — was emitted on every prompt
+// before, costing ~40 tokens × every prompt × every consumer.
+//
+// SYNC: these regexes + classifyNamespaceHint + applyPromptStateReset are
+// duplicated verbatim in bin/gate.cjs (canonical, synced to consumer
+// .claude/helpers/gate.cjs by post-install-bootstrap). Any edit MUST be
+// applied to both — this template is the fallback for the flo-init path
+// where source helpers cannot be located, so it must keep parity.
+var NS_LEARNINGS_RE = /\\b(remember|recall|insight|lesson learned|gotcha|post.?mortem)\\b|we (decid|agree|chose|said)/;
+var NS_TEST_RE = /\\b(test|spec|coverage|tested|test case|test cases|tests for|spec for)\\b/;
+var NS_EXPLICIT = [
+  { pattern: /\\b(pattern|convention|best practice|style|coding rule)\\b/, ns: 'patterns', label: 'code patterns and conventions' },
+  { pattern: /\\b(code.?map|file structure|project structure|directory)\\b/, ns: 'code-map', label: 'codebase navigation' },
+];
+var NS_PATTERN_RES = [/\\b(template|example|similar to|how do we|how should)\\b/];
+var NS_DOMAIN_RES = [
+  /\\b(guidance|guide|docs|documentation|rules|how-to)\\b/,
+  /\\b(architecture|design|domain|tenant|migrat|schema|deploy)/,
+  /\\b(rule|requirement|constraint|compliance)\\b/,
+];
+var NS_NAV_RES = [
+  /\\b(find|where|which file|look up|locate|endpoint|route|url|path)\\b/,
+  /\\b(class|function|method|component|service|entity|module)\\b/,
+];
+
+function classifyNamespaceHint(promptText) {
+  var lower = (promptText || '').toLowerCase();
+  if (NS_TEST_RE.test(lower)) return 'Memory namespace hint: use "tests" for test inventory and coverage lookups.';
+  if (NS_LEARNINGS_RE.test(lower)) return 'Memory namespace hint: use "learnings" for user-directed decisions and distilled insights.';
+  for (var i = 0; i < NS_EXPLICIT.length; i++) {
+    if (NS_EXPLICIT[i].pattern.test(lower)) return 'Memory namespace hint: use "' + NS_EXPLICIT[i].ns + '" for ' + NS_EXPLICIT[i].label + '.';
+  }
+  for (var j = 0; j < NS_DOMAIN_RES.length; j++) {
+    if (NS_DOMAIN_RES[j].test(lower)) return 'Memory namespace hint: search "guidance" and "learnings" for domain rules and project decisions.';
+  }
+  for (var k = 0; k < NS_PATTERN_RES.length; k++) {
+    if (NS_PATTERN_RES[k].test(lower)) return 'Memory namespace hint: use "patterns" for code patterns and conventions.';
+  }
+  for (var m = 0; m < NS_NAV_RES.length; m++) {
+    if (NS_NAV_RES[m].test(lower)) return 'Memory namespace hint: use "code-map" for codebase navigation.';
+  }
+  return '';
+}
+
+function applyPromptStateReset(state, promptText) {
+  state.memorySearched = false;
+  state.memorySearchedBy = {};
+  var DIRECTIVE_MAX_LEN = 20;
+  var escaped = /^@@\\s*/.test(promptText || '');
+  state.memoryRequired = !escaped && (promptText || '').length >= 4 && (TASK_RE.test(promptText || '') || (promptText || '').length > DIRECTIVE_MAX_LEN);
+  state.lastNamespaceHint = classifyNamespaceHint(promptText);
+}
 var TEST_RUNNER_RE = /(?:^|[^a-z])(?:npm|yarn|pnpm|bun)\\s+(?:run\\s+)?(?:test|t)(?:[:\\s]|$)|\\b(?:npx|pnpx)\\s+(?:vitest|jest|mocha|ava|tap|jasmine|pytest)\\b|(?:^|;|&&|\\|\\|)\\s*(?:vitest|jest|pytest|mocha|jasmine|tap|ava)\\s|\\b(?:cargo|go|deno|dotnet|mvn)\\s+test\\b|\\bgradle\\w*\\s+test\\b/i;
 var EDIT_RESET_SKIP_BOTH_RE = /\\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^|[\\\\\\/])(CHANGELOG(?:\\.md)?|\\.env\\.example|package-lock\\.json|pnpm-lock\\.yaml|yarn\\.lock|bun\\.lockb)$/i;
 // Test files: invalidate testsRun but preserve simplifyRun (#908) — /simplify
@@ -300,12 +354,19 @@ switch (command) {
     // Advisory only — agent spawning is never blocked.
     // Memory-first enforcement happens at the scan/read gate layer.
     // SubagentStart hook injects guidance directive into subagent context.
+    // #931 — TaskCreate REMINDER + namespace hint moved here from
+    // prompt-reminder so they emit only when Claude is about to spawn an Agent.
     var s = readState();
     if (config.task_create_first && !s.tasksCreated) {
       process.stdout.write('REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.\\n');
     }
     if (config.memory_first && s.memoryRequired && !s.memorySearched) {
       process.stdout.write('REMINDER: Search memory (mcp__moflo__memory_search) before spawning agents.\\n');
+    }
+    if (s.lastNamespaceHint) {
+      process.stdout.write(s.lastNamespaceHint + '\\n');
+      s.lastNamespaceHint = '';
+      writeState(s);
     }
     break;
   }
@@ -432,18 +493,14 @@ switch (command) {
     break;
   }
   case 'prompt-reminder': {
+    // Full per-prompt reset (first UserPromptSubmit hook via prompt-hook.mjs).
+    // Owns interactionCount + Context warnings. TaskCreate REMINDER and
+    // namespace hint moved to check-before-agent (#931).
     var s = readState();
-    s.memorySearched = false;
-    // Wipe per-actor memory tracking too — a new user prompt is a fresh window
-    // for both parent AND any subagents the parent may spawn during this turn.
-    s.memorySearchedBy = {};
-    // learningsStored is session-scoped — once stored, it stays true until session reset.
-    // Resetting per-prompt caused false blocks when PR creation was on a later prompt.
     var prompt = process.env.CLAUDE_USER_PROMPT || '';
-    s.memoryRequired = prompt.length >= 4 && !DIRECTIVE_RE.test(prompt) && (TASK_RE.test(prompt) || prompt.length > 80);
+    applyPromptStateReset(s, prompt);
     s.interactionCount = (s.interactionCount || 0) + 1;
     writeState(s);
-    if (!s.tasksCreated) console.log('REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.');
     if (config.context_tracking) {
       var ic = s.interactionCount;
       if (ic > 30) console.log('Context: CRITICAL. Commit, store learnings, suggest new session.');
@@ -452,12 +509,25 @@ switch (command) {
     }
     break;
   }
+  case 'prompt-state-reset': {
+    // Defensive safety-net (second UserPromptSubmit hook). Idempotent state
+    // reset only — no interactionCount increment, no emission. Ensures the
+    // per-prompt reset still happens if prompt-hook.mjs throws (#931). Skip
+    // the disk write when prompt-reminder already wrote the byte-identical
+    // post-reset state (the normal no-exception path).
+    var s = readState();
+    var prompt = process.env.CLAUDE_USER_PROMPT || '';
+    var before = JSON.stringify(s);
+    applyPromptStateReset(s, prompt);
+    if (JSON.stringify(s) !== before) writeState(s);
+    break;
+  }
   case 'compact-guidance': {
     console.log('Pre-Compact: Check CLAUDE.md for rules. Use memory search to recover context after compact.');
     break;
   }
   case 'session-reset': {
-    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null });
+    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null, lastNamespaceHint: '' });
     break;
   }
   default:
@@ -572,45 +642,9 @@ try {
   });
 } catch (err) { output = (err && err.stdout) || ''; }
 
-// Classify prompt for namespace hint
-var lower = userPrompt.toLowerCase();
-
-var LEARNINGS_HINTS = /\\b(remember|recall|insight|lesson learned|gotcha|post.?mortem)\\b|we (decid|agree|chose|said)/;
-var TEST_HINTS = /\\b(test|spec|coverage|tested|test case|test cases|tests for|spec for)\\b/;
-var EXPLICIT_NS = [
-  { pattern: /\\b(pattern|convention|best practice|style|coding rule)\\b/, ns: 'patterns', label: 'code patterns and conventions' },
-  { pattern: /\\b(code.?map|file structure|project structure|directory)\\b/, ns: 'code-map', label: 'codebase navigation' },
-];
-var PATTERN_HINTS = [/\\b(template|example|similar to|how do we|how should)\\b/];
-var DOMAIN_HINTS = [
-  /\\b(guidance|guide|docs|documentation|rules|how-to)\\b/,
-  /\\b(architecture|design|domain|tenant|migrat|schema|deploy)/,
-  /\\b(rule|requirement|constraint|compliance)\\b/,
-];
-var NAV_PATTERNS = [
-  /\\b(find|where|which file|look up|locate|endpoint|route|url|path)\\b/,
-  /\\b(class|function|method|component|service|entity|module)\\b/,
-];
-
-var nsHint = '';
-if (TEST_HINTS.test(lower)) {
-  nsHint = 'Memory namespace hint: use "tests" for test inventory and coverage lookups.';
-} else if (LEARNINGS_HINTS.test(lower)) {
-  nsHint = 'Memory namespace hint: use "learnings" for user-directed decisions and distilled insights.';
-} else {
-  var found = EXPLICIT_NS.find(function(e) { return e.pattern.test(lower); });
-  if (found) {
-    nsHint = 'Memory namespace hint: use "' + found.ns + '" for ' + found.label + '.';
-  } else if (DOMAIN_HINTS.some(function(p) { return p.test(lower); })) {
-    nsHint = 'Memory namespace hint: search "guidance" and "learnings" for domain rules and project decisions.';
-  } else if (PATTERN_HINTS.some(function(p) { return p.test(lower); })) {
-    nsHint = 'Memory namespace hint: use "patterns" for code patterns and conventions.';
-  } else if (NAV_PATTERNS.some(function(p) { return p.test(lower); })) {
-    nsHint = 'Memory namespace hint: use "code-map" for codebase navigation.';
-  }
-}
-
-var parts = [output.trim(), nsHint].filter(Boolean);
+// #931 — Namespace hint classification moved into gate.cjs (computed by
+// prompt-reminder, stored on workflow-state, emitted once by check-before-agent).
+var parts = [output.trim()].filter(Boolean);
 if (parts.length) process.stdout.write(parts.join('\\n') + '\\n');
 process.exit(0);
 `;

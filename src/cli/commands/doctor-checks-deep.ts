@@ -491,6 +491,10 @@ const REQUIRED_GATE_CASES = [
   'check-before-pr',
   'check-dangerous-command',
   'prompt-reminder',
+  // #931 — Defensive safety-net for the second UserPromptSubmit hook. State
+  // reset only, no emission. doctor warns if a consumer's gate.cjs is too old
+  // to handle it.
+  'prompt-state-reset',
   'session-reset',
 ];
 

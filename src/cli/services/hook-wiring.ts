@@ -31,6 +31,9 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   { event: 'PreToolUse', pattern: 'check-before-read' },
   { event: 'PreToolUse', pattern: 'check-dangerous-command' },
   { event: 'PreToolUse', pattern: 'check-before-pr' },
+  // #931 — TaskCreate REMINDER + namespace hint emit only at Agent spawn now,
+  // not on every prompt. Saves ~90 tokens × every prompt × every consumer.
+  { event: 'PreToolUse', pattern: 'check-before-agent' },
   { event: 'PostToolUse', pattern: 'record-task-created' },
   { event: 'PostToolUse', pattern: 'record-memory-searched' },
   { event: 'PostToolUse', pattern: 'check-task-transition' },
@@ -39,7 +42,14 @@ export const REQUIRED_HOOK_WIRING: ReadonlyArray<{ event: string; pattern: strin
   { event: 'PostToolUse', pattern: 'record-test-run' },
   { event: 'PostToolUse', pattern: 'record-skill-run' },
   { event: 'PostToolUse', pattern: 'reset-edit-gates' },
-  { event: 'UserPromptSubmit', pattern: 'prompt-reminder' },
+  // First UserPromptSubmit hook (prompt-hook.mjs internally calls
+  // `gate.cjs prompt-reminder`). Substring check tolerates either the
+  // shipped helper-script command or an inlined gate call.
+  { event: 'UserPromptSubmit', pattern: 'prompt-hook.mjs' },
+  // Second (defensive) UserPromptSubmit hook — state reset only. Replaced
+  // the duplicate `prompt-reminder` wiring that was emitting the TaskCreate
+  // REMINDER twice per prompt (#931).
+  { event: 'UserPromptSubmit', pattern: 'prompt-state-reset' },
 ];
 
 /**
@@ -66,7 +76,16 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   'record-test-run':          { event: 'PostToolUse',      matcher: '^Bash$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-test-run', timeout: 2000 } },
   'record-skill-run':         { event: 'PostToolUse',      matcher: '^Skill$',                    hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-skill-run', timeout: 2000 } },
   'reset-edit-gates':         { event: 'PostToolUse',      matcher: '^(Write|Edit|MultiEdit)$',   hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" reset-edit-gates', timeout: 2000 } },
-  'prompt-reminder':          { event: 'UserPromptSubmit', matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" prompt-reminder', timeout: 3000 } },
+  // #931 — Agent-time advisory; never blocks. Pulled the TaskCreate REMINDER
+  // and namespace hint out of prompt-reminder so they fire only when Claude is
+  // actually about to spawn an Agent.
+  'check-before-agent':       { event: 'PreToolUse',       matcher: '^Agent$',                    hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-before-agent', timeout: 2000 } },
+  // Re-add the prompt-hook.mjs wiring as its own bare UserPromptSubmit block
+  // when missing. Empty matcher = bare block, like settings-generator emits.
+  'prompt-hook.mjs':          { event: 'UserPromptSubmit', matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/prompt-hook.mjs"', timeout: 3000 } },
+  // Defensive safety-net — runs gate.cjs `prompt-state-reset` if prompt-hook.mjs
+  // throws before completing the per-prompt state reset. State-only, no emission.
+  'prompt-state-reset':       { event: 'UserPromptSubmit', matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" prompt-state-reset', timeout: 3000 } },
 };
 
 export interface RepairResult {
@@ -158,6 +177,18 @@ export const HOOK_REWRITE_RULES: ReadonlyArray<HookRewriteRule> = [
     name: '#879: check-bash-memory → gate-hook.mjs',
     from: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-bash-memory',
     to:   'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-bash-memory',
+  },
+  // Issue #931 — the second UserPromptSubmit hook used to invoke
+  // gate-hook.mjs `prompt-reminder`, which (a) duplicated the first hook's
+  // emission of `REMINDER: Use TaskCreate...` per prompt and (b) double-
+  // incremented `interactionCount`. The first hook (prompt-hook.mjs) still
+  // calls gate.cjs `prompt-reminder` internally for the full reset + Context
+  // warnings; the safety-net hook now runs `prompt-state-reset` instead —
+  // idempotent state reset, no emission, no increment.
+  {
+    name: '#931: dedupe UserPromptSubmit prompt-reminder → prompt-state-reset',
+    from: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" prompt-reminder',
+    to:   'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" prompt-state-reset',
   },
 ];
 

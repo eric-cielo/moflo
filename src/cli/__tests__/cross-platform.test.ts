@@ -467,14 +467,30 @@ describe('generateHooks alignment with settings-generator', () => {
       });
     }
 
-    it('moflo-init.ts wires prompt-reminder in UserPromptSubmit', () => {
+    // #931 — Both UserPromptSubmit hooks dedupe-fixed. The first hook runs
+    // prompt-hook.mjs (which calls gate.cjs `prompt-reminder` internally). The
+    // second hook is the defensive safety-net `prompt-state-reset` — state
+    // reset only, no emission, no interactionCount increment.
+    it('moflo-init.ts wires prompt-state-reset in UserPromptSubmit (#931)', () => {
       const body = extractGenerateHooks('moflo-init.ts');
-      expect(body).toMatch(/gateHook\(['"]prompt-reminder['"]\)/);
+      expect(body).toMatch(/gateHook\(['"]prompt-state-reset['"]\)/);
+      expect(body).not.toMatch(/gateHook\(['"]prompt-reminder['"]\)/);
     });
 
-    it('settings-generator.ts wires prompt-reminder in UserPromptSubmit', () => {
+    it('settings-generator.ts wires prompt-state-reset in UserPromptSubmit (#931)', () => {
       const body = extractGenerateHooks('settings-generator.ts');
-      expect(body).toMatch(/gateHookCmd\(['"]prompt-reminder['"]\)/);
+      expect(body).toMatch(/gateHookCmd\(['"]prompt-state-reset['"]\)/);
+      expect(body).not.toMatch(/gateHookCmd\(['"]prompt-reminder['"]\)/);
+    });
+
+    it('moflo-init.ts wires check-before-agent in PreToolUse:^Agent$ (#931)', () => {
+      const body = extractGenerateHooks('moflo-init.ts');
+      expect(body).toMatch(/gate\(['"]check-before-agent['"]\)/);
+    });
+
+    it('settings-generator.ts wires check-before-agent in PreToolUse:^Agent$ (#931)', () => {
+      const body = extractGenerateHooks('settings-generator.ts');
+      expect(body).toMatch(/gateCmd\(['"]check-before-agent['"]\)/);
     });
   });
 });

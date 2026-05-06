@@ -7,7 +7,7 @@ var cp = require('child_process');
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, simplifySnapshotSha: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, simplifySnapshotSha: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '' };
 
 // Per-actor memory-search tracking (#838). The legacy `memorySearched` boolean
 // is session-wide, so once the parent searches memory, every spawned subagent
@@ -83,6 +83,73 @@ var EXEMPT = ['.claude/', '.claude\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state
 var DANGEROUS = ['rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
 var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\b/i;
 var TASK_RE = /\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\b/i;
+
+// Namespace classification (#931). The hint used to be emitted on every prompt
+// by prompt-hook.mjs which cost ~40 tokens × every prompt × every consumer.
+// Now we classify here, store on workflow-state, and let check-before-agent
+// emit it once when Claude is actually about to spawn an agent.
+//
+// SYNC: these regexes + classifyNamespaceHint + applyPromptStateReset are
+// duplicated verbatim in src/cli/init/helpers-generator.ts (the embedded
+// gate.cjs fallback used by `flo init` when source helpers can't be located).
+// Any edit to either copy MUST be applied to both — there is no shared module
+// because helpers-generator emits a self-contained string template.
+var NS_LEARNINGS_RE = /\b(remember|recall|insight|lesson learned|gotcha|post.?mortem)\b|we (decid|agree|chose|said)/;
+var NS_TEST_RE = /\b(test|spec|coverage|tested|test case|test cases|tests for|spec for)\b/;
+var NS_EXPLICIT = [
+  { pattern: /\b(pattern|convention|best practice|style|coding rule)\b/, ns: 'patterns', label: 'code patterns and conventions' },
+  { pattern: /\b(code.?map|file structure|project structure|directory)\b/, ns: 'code-map', label: 'codebase navigation' },
+];
+var NS_PATTERN_RES = [/\b(template|example|similar to|how do we|how should)\b/];
+var NS_DOMAIN_RES = [
+  /\b(guidance|guide|docs|documentation|rules|how-to)\b/,
+  /\b(architecture|design|domain|tenant|migrat|schema|deploy)/,
+  /\b(rule|requirement|constraint|compliance)\b/,
+];
+var NS_NAV_RES = [
+  /\b(find|where|which file|look up|locate|endpoint|route|url|path)\b/,
+  /\b(class|function|method|component|service|entity|module)\b/,
+];
+
+function classifyNamespaceHint(promptText) {
+  var lower = (promptText || '').toLowerCase();
+  if (NS_TEST_RE.test(lower)) return 'Memory namespace hint: use "tests" for test inventory and coverage lookups.';
+  if (NS_LEARNINGS_RE.test(lower)) return 'Memory namespace hint: use "learnings" for user-directed decisions and distilled insights.';
+  for (var i = 0; i < NS_EXPLICIT.length; i++) {
+    if (NS_EXPLICIT[i].pattern.test(lower)) return 'Memory namespace hint: use "' + NS_EXPLICIT[i].ns + '" for ' + NS_EXPLICIT[i].label + '.';
+  }
+  for (var j = 0; j < NS_DOMAIN_RES.length; j++) {
+    if (NS_DOMAIN_RES[j].test(lower)) return 'Memory namespace hint: search "guidance" and "learnings" for domain rules and project decisions.';
+  }
+  for (var k = 0; k < NS_PATTERN_RES.length; k++) {
+    if (NS_PATTERN_RES[k].test(lower)) return 'Memory namespace hint: use "patterns" for code patterns and conventions.';
+  }
+  for (var m = 0; m < NS_NAV_RES.length; m++) {
+    if (NS_NAV_RES[m].test(lower)) return 'Memory namespace hint: use "code-map" for codebase navigation.';
+  }
+  return '';
+}
+
+// Apply per-prompt state reset shared by `prompt-reminder` (full) and
+// `prompt-state-reset` (defensive safety-net, no emission). Idempotent — both
+// UserPromptSubmit hooks can run it without compounding any field. Caller
+// owns interactionCount and the user-visible REMINDER/Context emissions, so
+// this helper stays silent.
+function applyPromptStateReset(state, promptText) {
+  state.memorySearched = false;
+  // Wipe per-actor memory tracking too — a new user prompt is a fresh window
+  // for both parent AND any subagents the parent may spawn during this turn.
+  state.memorySearchedBy = {};
+  // learningsStored is session-scoped — once stored, it stays true until session reset.
+  // Resetting per-prompt caused false blocks when PR creation was on a later prompt.
+  var DIRECTIVE_MAX_LEN = 20;
+  var escaped = /^@@\s*/.test(promptText || '');
+  state.memoryRequired = !escaped && (promptText || '').length >= 4 && (TASK_RE.test(promptText || '') || (promptText || '').length > DIRECTIVE_MAX_LEN);
+  // Stash namespace hint for check-before-agent to emit when Claude actually
+  // spawns an Agent (#931). Empty string when nothing matched — overwriting
+  // any stale value from the previous prompt.
+  state.lastNamespaceHint = classifyNamespaceHint(promptText);
+}
 // Match npm/yarn/pnpm/bun test, npx vitest|jest|..., bare runners at command-start only,
 // and language-native test commands. The bare-runner arm is anchored so that
 // `npm install jest`, `grep -r vitest src/`, and similar don't false-positive.
@@ -203,12 +270,25 @@ switch (command) {
     // Advisory only — agent spawning is never blocked.
     // Memory-first enforcement happens at the scan/read gate layer.
     // SubagentStart hook injects guidance directive into subagent context.
+    //
+    // #931 — TaskCreate REMINDER and the namespace hint moved here from
+    // prompt-reminder. They only matter when Claude is actually about to spawn
+    // an Agent; emitting per-prompt cost ~90 tokens × every prompt × every
+    // consumer.
     var s = readState();
     if (config.task_create_first && !s.tasksCreated) {
       process.stdout.write('REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.\n');
     }
     if (config.memory_first && s.memoryRequired && !s.memorySearched) {
       process.stdout.write('REMINDER: Search memory (mcp__moflo__memory_search) before spawning agents.\n');
+    }
+    if (s.lastNamespaceHint) {
+      process.stdout.write(s.lastNamespaceHint + '\n');
+      // Single-shot per prompt: clear after emission so a follow-up Agent spawn
+      // in the same turn doesn't re-emit. The hint is recomputed on the next
+      // user prompt by prompt-reminder / prompt-state-reset.
+      s.lastNamespaceHint = '';
+      writeState(s);
     }
     break;
   }
@@ -371,20 +451,16 @@ switch (command) {
     break;
   }
   case 'prompt-reminder': {
+    // Full per-prompt reset. Wired as the first UserPromptSubmit hook (via
+    // prompt-hook.mjs). Owns interactionCount + Context warnings; the
+    // TaskCreate REMINDER and namespace hint moved to check-before-agent
+    // (#931) so they only fire when Claude is actually about to spawn an
+    // Agent.
     var s = readState();
-    s.memorySearched = false;
-    // Wipe per-actor memory tracking too — a new user prompt is a fresh window
-    // for both parent AND any subagents the parent may spawn during this turn.
-    s.memorySearchedBy = {};
-    // learningsStored is session-scoped — once stored, it stays true until session reset.
-    // Resetting per-prompt caused false blocks when PR creation was on a later prompt.
     var prompt = process.env.CLAUDE_USER_PROMPT || '';
-    var DIRECTIVE_MAX_LEN = 20;
-    var escaped = /^@@\s*/.test(prompt);
-    s.memoryRequired = !escaped && prompt.length >= 4 && (TASK_RE.test(prompt) || prompt.length > DIRECTIVE_MAX_LEN);
+    applyPromptStateReset(s, prompt);
     s.interactionCount = (s.interactionCount || 0) + 1;
     writeState(s);
-    if (!s.tasksCreated) console.log('REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.');
     if (config.context_tracking) {
       var ic = s.interactionCount;
       if (ic > 30) console.log('Context: CRITICAL. Commit, store learnings, suggest new session.');
@@ -393,12 +469,30 @@ switch (command) {
     }
     break;
   }
+  case 'prompt-state-reset': {
+    // Defensive safety-net hook (#931 dedupe). Wired as the second
+    // UserPromptSubmit hook so an exception in prompt-hook.mjs doesn't skip
+    // the per-prompt state reset. Idempotent — applyPromptStateReset only
+    // sets fields to derived values, and we deliberately do NOT increment
+    // interactionCount or emit anything (that's prompt-reminder's job).
+    //
+    // Skip the disk write on the normal path: prompt-reminder runs first and
+    // already wrote the byte-identical post-reset state. Only writeState when
+    // the reset actually changed something (i.e., prompt-reminder was skipped
+    // because prompt-hook.mjs threw before invoking it).
+    var s = readState();
+    var prompt = process.env.CLAUDE_USER_PROMPT || '';
+    var before = JSON.stringify(s);
+    applyPromptStateReset(s, prompt);
+    if (JSON.stringify(s) !== before) writeState(s);
+    break;
+  }
   case 'compact-guidance': {
     console.log('Pre-Compact: Check CLAUDE.md for rules. Use memory search to recover context after compact.');
     break;
   }
   case 'session-reset': {
-    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null });
+    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null, lastNamespaceHint: '' });
     break;
   }
   default:
