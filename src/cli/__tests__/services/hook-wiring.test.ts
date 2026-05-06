@@ -113,22 +113,30 @@ describe('repairHookWiring', () => {
     expect(settings.statusLine).toEqual({ type: 'command', command: 'echo hi' });
   });
 
-  it('creates prompt-reminder without a matcher (UserPromptSubmit)', () => {
+  it('creates UserPromptSubmit blocks without a matcher (#931 — prompt-hook.mjs + prompt-state-reset)', () => {
     const settings: Record<string, unknown> = {};
     repairHookWiring(settings);
 
     const hooks = settings.hooks as Record<string, unknown[]>;
     const upsBlocks = hooks.UserPromptSubmit as Array<Record<string, unknown>>;
     expect(upsBlocks).toBeDefined();
-    expect(upsBlocks.length).toBeGreaterThanOrEqual(1);
+    expect(upsBlocks.length).toBeGreaterThanOrEqual(2);
 
-    // The prompt-reminder block should have no matcher key
-    const reminderBlock = upsBlocks.find(b => {
+    // Both UserPromptSubmit hooks must be bare-block (no matcher key) so
+    // Claude Code fires them on every prompt regardless of tool name.
+    const promptHookBlock = upsBlocks.find(b => {
       const blockHooks = b.hooks as Array<{ command?: string }>;
-      return blockHooks.some(h => h.command?.includes('prompt-reminder'));
+      return blockHooks.some(h => h.command?.includes('prompt-hook.mjs'));
     });
-    expect(reminderBlock).toBeDefined();
-    expect(reminderBlock!.matcher).toBeUndefined();
+    expect(promptHookBlock).toBeDefined();
+    expect(promptHookBlock!.matcher).toBeUndefined();
+
+    const safetyNetBlock = upsBlocks.find(b => {
+      const blockHooks = b.hooks as Array<{ command?: string }>;
+      return blockHooks.some(h => h.command?.includes('prompt-state-reset'));
+    });
+    expect(safetyNetBlock).toBeDefined();
+    expect(safetyNetBlock!.matcher).toBeUndefined();
   });
 
   it('HOOK_ENTRY_MAP covers every REQUIRED_HOOK_WIRING pattern', () => {

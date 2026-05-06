@@ -258,6 +258,18 @@ function generateHooksConfig(config: HooksConfig): object {
           { type: 'command', command: gateHookCmd('check-before-pr'), timeout: 2000 },
         ],
       },
+      // #931 — TaskCreate REMINDER + namespace hint moved here from
+      // UserPromptSubmit. They only matter when Claude is about to spawn an
+      // Agent; emitting per-prompt cost ~90 tokens × every prompt × every
+      // consumer. Advisory only — never blocks. Routed through gate-hook.mjs
+      // so Claude Code's session_id is forwarded as HOOK_SESSION_ID — the
+      // namespace hint emission tracks per-actor (mirror of #879's fix for
+      // record-memory-searched), so subagents that spawn their own agents
+      // still get the hint on their first check.
+      {
+        matcher: '^Agent$',
+        hooks: [{ type: 'command', command: gateHookCmd('check-before-agent'), timeout: 2000 }],
+      },
     ];
   }
 
@@ -316,12 +328,15 @@ function generateHooksConfig(config: HooksConfig): object {
     ];
   }
 
-  // UserPromptSubmit — gate reminders + intelligent task routing.
-  // The prompt-reminder hook is REQUIRED — it resets memorySearched / memorySearchedBy
-  // and reclassifies memoryRequired from the new prompt. Without it, gate state leaks
-  // across prompts: a previous turn's "satisfied" state survives, OR a previous turn's
-  // "armed" state never clears. Two separate hook entries (not chained) so an exception
-  // in prompt-hook.mjs doesn't skip the reset.
+  // UserPromptSubmit — per-prompt state reset + Context warnings.
+  // Two separate hook entries (not chained) so an exception in prompt-hook.mjs
+  // doesn't skip the reset. The first hook runs prompt-hook.mjs which invokes
+  // gate.cjs `prompt-reminder` (full reset + interactionCount + Context
+  // warnings). The second hook runs `prompt-state-reset` — a defensive
+  // safety-net that re-applies the idempotent state reset (memorySearched,
+  // memorySearchedBy, memoryRequired, lastNamespaceHint) without
+  // double-incrementing interactionCount or duplicating any user-visible
+  // emission (#931).
   if (config.userPromptSubmit) {
     hooks.UserPromptSubmit = [
       {
@@ -331,7 +346,7 @@ function generateHooksConfig(config: HooksConfig): object {
       },
       {
         hooks: [
-          { type: 'command', command: gateHookCmd('prompt-reminder'), timeout: 3000 },
+          { type: 'command', command: gateHookCmd('prompt-state-reset'), timeout: 3000 },
         ],
       },
     ];

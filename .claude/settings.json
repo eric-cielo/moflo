@@ -45,6 +45,16 @@
             "timeout": 2000
           }
         ]
+      },
+      {
+        "matcher": "^Agent$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" check-before-agent",
+            "timeout": 2000
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -153,7 +163,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" prompt-reminder",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" prompt-state-reset",
             "timeout": 3000
           }
         ]

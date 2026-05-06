@@ -108,6 +108,10 @@ export function getReferenceHookBlock(): HooksTree {
         matcher: '^Bash$',
         hooks: [gateHook('check-dangerous-command', 2000), gateHook('check-before-pr', 2000)],
       },
+      // #931 — TaskCreate REMINDER + namespace hint advisory at Agent-spawn time.
+      // Routed via gate-hook.mjs so HOOK_SESSION_ID is forwarded for per-actor
+      // single-shot emission of the namespace hint.
+      { matcher: '^Agent$',                   hooks: [gateHook('check-before-agent', 2000)] },
     ],
     PostToolUse: [
       {
@@ -127,7 +131,8 @@ export function getReferenceHookBlock(): HooksTree {
     ],
     UserPromptSubmit: [
       { hooks: [helperHook('prompt-hook.mjs', '', 3000)] },
-      { hooks: [gateHook('prompt-reminder', 3000)] },
+      // #931 — Defensive safety-net hook. State reset only, no emission.
+      { hooks: [gateHook('prompt-state-reset', 3000)] },
     ],
     SubagentStart: [
       { hooks: [helperHook('subagent-start.cjs', '', 2000)] },

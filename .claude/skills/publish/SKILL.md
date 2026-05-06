@@ -1,7 +1,7 @@
 ---
 name: publish
 description: Bump version, build, test, publish to npm, and install locally
-arguments: "[patch|minor|major] [-rc] [--check|-ch]"
+arguments: "<patch|minor|major> <-rc> <--check|-ch>"
 ---
 
 # /publish - Version Bump, Build, Test & Publish

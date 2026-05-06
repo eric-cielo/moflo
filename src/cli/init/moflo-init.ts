@@ -296,6 +296,16 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
           { "type": "command", "command": gateHook('check-dangerous-command'), "timeout": 2000 },
           { "type": "command", "command": gateHook('check-before-pr'), "timeout": 2000 }
         ]
+      },
+      {
+        // #931 — Advisory only; never blocks. TaskCreate REMINDER and the
+        // namespace hint moved here from UserPromptSubmit so they emit only
+        // when Claude is about to spawn an Agent — saves ~90 tokens × every
+        // prompt × every consumer. Routed via gate-hook.mjs so Claude Code's
+        // session_id is forwarded as HOOK_SESSION_ID, enabling per-actor
+        // single-shot emission (mirror of #879's record-memory-searched fix).
+        "matcher": "^Agent$",
+        "hooks": [{ "type": "command", "command": gateHook('check-before-agent'), "timeout": 2000 }]
       }
     ],
     "PostToolUse": [
@@ -350,11 +360,13 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
         ]
       },
       {
-        // prompt-reminder is REQUIRED to reset memorySearched/memorySearchedBy on each
-        // new prompt and reclassify memoryRequired. Without it, gate state leaks across
-        // prompts. Separate hook entry so a prompt-hook.mjs exception doesn't skip the reset.
+        // prompt-state-reset is REQUIRED to reset memorySearched/memorySearchedBy on
+        // each new prompt and reclassify memoryRequired. Without it, gate state leaks
+        // across prompts. Separate hook entry so a prompt-hook.mjs exception doesn't
+        // skip the reset. Idempotent state reset only — no emission, no
+        // interactionCount increment (#931 dedupe).
         "hooks": [
-          { "type": "command", "command": gateHook('prompt-reminder'), "timeout": 3000 }
+          { "type": "command", "command": gateHook('prompt-state-reset'), "timeout": 3000 }
         ]
       }
     ],

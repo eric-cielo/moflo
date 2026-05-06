@@ -48,6 +48,10 @@ function baseEnv(projectDir: string): Record<string, string> {
     TOOL_INPUT_path: '',
     TOOL_INPUT_file_path: '',
     CLAUDE_USER_PROMPT: '',
+    // Default to no session_id so per-actor tests are explicit about which
+    // bucket they target (#931). Tests that exercise per-session emission
+    // override HOOK_SESSION_ID after building env.
+    HOOK_SESSION_ID: '',
   };
 }
 
@@ -903,75 +907,202 @@ describe('hook-handler.cjs', () => {
 // prompt-hook.mjs — prompt classification + namespace hints
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('prompt-hook.mjs: namespace hints', () => {
-  it('hints "learnings" for recall prompts', async () => {
-    const r = await runEsmWithStdin(PROMPT_HOOK, [], {
-      user_prompt: 'do you remember what we decided about auth?',
-    }, baseEnv(tmpDir));
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('learnings');
+// ─────────────────────────────────────────────────────────────────────────────
+// #931 — Namespace hints
+//
+// Before #931 the hint emitted on every prompt from prompt-hook.mjs (~40 tokens
+// × every prompt × every consumer). Now prompt-hook.mjs runs gate.cjs
+// `prompt-reminder` which CLASSIFIES the prompt and stores the result on
+// workflow-state.json — and check-before-agent emits it once at Agent-spawn
+// time, then clears. Two-step flow keeps per-prompt overhead at zero for
+// non-Agent turns.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('namespace hints (#931): prompt-reminder stores; check-before-agent emits', () => {
+  function expectStoredHint(prompt: string, expectedNs: string) {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = prompt;
+    runGate('prompt-reminder', env);
+    const state = readState(tmpDir);
+    expect(state.lastNamespaceHint, `expected hint for: ${prompt}`).toContain(expectedNs);
+  }
+
+  it('classifies "learnings" for recall prompts', () => {
+    expectStoredHint('do you remember what we decided about auth?', 'learnings');
   });
 
-  it('hints "tests" for test/coverage prompts', async () => {
-    const r = await runEsmWithStdin(PROMPT_HOOK, [], {
-      user_prompt: 'where are the tests for the auth middleware?',
-    }, baseEnv(tmpDir));
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('tests');
+  it('classifies "tests" for test/coverage prompts', () => {
+    expectStoredHint('where are the tests for the auth middleware?', 'tests');
   });
 
-  it('hints "patterns" for convention prompts', async () => {
-    const r = await runEsmWithStdin(PROMPT_HOOK, [], {
-      user_prompt: 'what is our best practice for error handling?',
-    }, baseEnv(tmpDir));
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('patterns');
+  it('classifies "patterns" for convention prompts', () => {
+    expectStoredHint('what is our best practice for error handling?', 'patterns');
   });
 
-  it('hints "code-map" for file structure prompts', async () => {
-    const r = await runEsmWithStdin(PROMPT_HOOK, [], {
-      user_prompt: 'show me the project structure',
-    }, baseEnv(tmpDir));
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('code-map');
+  it('classifies "code-map" for file structure prompts', () => {
+    expectStoredHint('show me the project structure', 'code-map');
   });
 
-  it('hints "guidance" for architecture prompts', async () => {
-    const r = await runEsmWithStdin(PROMPT_HOOK, [], {
-      user_prompt: 'explain the architecture design for the API',
-    }, baseEnv(tmpDir));
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('guidance');
+  it('classifies "guidance" for architecture prompts', () => {
+    expectStoredHint('explain the architecture design for the API', 'guidance');
   });
 
-  it('hints "code-map" for navigation prompts', async () => {
+  it('classifies "code-map" for navigation prompts', () => {
+    expectStoredHint('where is the endpoint for user login?', 'code-map');
+  });
+
+  it('classifies "patterns" for template prompts', () => {
+    expectStoredHint('show me an example of how we handle pagination', 'patterns');
+  });
+
+  it('stores empty hint for simple directives (no false positives)', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'yes';
+    runGate('prompt-reminder', env);
+    expect(readState(tmpDir).lastNamespaceHint).toBe('');
+  });
+
+  it('check-before-agent emits the hint once per session_id (per-actor single-shot)', () => {
+    writeState(tmpDir, { tasksCreated: true, memorySearched: true, lastNamespaceHint: 'Memory namespace hint: use "tests" for test inventory and coverage lookups.' });
+    const env = baseEnv(tmpDir);
+    env.HOOK_SESSION_ID = 'parent-session';
+    const r1 = runGate('check-before-agent', env);
+    expect(r1.stdout).toContain('Memory namespace hint');
+    expect(r1.stdout).toContain('tests');
+    // Same session, second Agent spawn — already emitted to this actor.
+    const r2 = runGate('check-before-agent', env);
+    expect(r2.stdout).not.toContain('Memory namespace hint');
+    // Hint itself is preserved — a different actor (subagent) is still entitled
+    // to its own first emission.
+    expect(readState(tmpDir).lastNamespaceHint).toContain('tests');
+  });
+
+  it('check-before-agent emits the hint to a different session_id (subagent gets its own first-shot)', () => {
+    writeState(tmpDir, { tasksCreated: true, memorySearched: true, lastNamespaceHint: 'Memory namespace hint: use "code-map" for codebase navigation.' });
+    const parentEnv = baseEnv(tmpDir);
+    parentEnv.HOOK_SESSION_ID = 'parent-session';
+    const r1 = runGate('check-before-agent', parentEnv);
+    expect(r1.stdout).toContain('code-map');
+    // A subagent (different session_id) spawning its own agent is a new actor;
+    // the per-session bucket lets it see the hint exactly once too.
+    const subagentEnv = baseEnv(tmpDir);
+    subagentEnv.HOOK_SESSION_ID = 'subagent-session-1';
+    const r2 = runGate('check-before-agent', subagentEnv);
+    expect(r2.stdout).toContain('code-map');
+    // Same subagent, second spawn → already emitted to this actor.
+    const r3 = runGate('check-before-agent', subagentEnv);
+    expect(r3.stdout).not.toContain('code-map');
+  });
+
+  it('check-before-agent without HOOK_SESSION_ID emits once via _legacy_ bucket', () => {
+    writeState(tmpDir, { tasksCreated: true, memorySearched: true, lastNamespaceHint: 'Memory namespace hint: use "tests" for test inventory and coverage lookups.' });
+    // Older Claude Code hosts / direct CLI invocation — no session_id forwarded.
+    const r1 = runGate('check-before-agent', baseEnv(tmpDir));
+    expect(r1.stdout).toContain('Memory namespace hint');
+    const r2 = runGate('check-before-agent', baseEnv(tmpDir));
+    expect(r2.stdout).not.toContain('Memory namespace hint');
+  });
+
+  it('new prompt resets lastNamespaceHintEmittedBy → all actors get the new hint', () => {
+    // Parent saw last prompt's hint already.
+    writeState(tmpDir, { lastNamespaceHint: 'old hint', lastNamespaceHintEmittedBy: { 'parent': true, 'sub-1': true } });
+    // New prompt classifies a different namespace; reset clears the bucket.
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'where is the login route defined?';
+    runGate('prompt-reminder', env);
+    const s = readState(tmpDir);
+    expect(s.lastNamespaceHintEmittedBy).toEqual({});
+    expect(s.lastNamespaceHint).toContain('code-map');
+  });
+
+  it('check-before-agent emits nothing namespace-related when no hint stored', () => {
+    writeState(tmpDir, { tasksCreated: true, memorySearched: true, lastNamespaceHint: '' });
+    const r = runGate('check-before-agent', baseEnv(tmpDir));
+    expect(r.stdout).not.toContain('Memory namespace hint');
+  });
+
+  it('end-to-end: prompt-hook.mjs (no inline emission) → state stored → check-before-agent emits', async () => {
     const r = await runEsmWithStdin(PROMPT_HOOK, [], {
       user_prompt: 'where is the endpoint for user login?',
     }, baseEnv(tmpDir));
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('code-map');
-  });
-
-  it('hints "patterns" for template prompts', async () => {
-    const r = await runEsmWithStdin(PROMPT_HOOK, [], {
-      user_prompt: 'show me an example of how we handle pagination',
-    }, baseEnv(tmpDir));
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('patterns');
-  });
-
-  it('no hint for simple directives', async () => {
-    const r = await runEsmWithStdin(PROMPT_HOOK, [], {
-      user_prompt: 'yes',
-    }, baseEnv(tmpDir));
-    expect(r.exitCode).toBe(0);
-    // Should not have namespace hint (directive)
-    expect(r.stdout).not.toContain('namespace hint');
+    // prompt-hook.mjs no longer emits the hint inline — it lives on state now.
+    expect(r.stdout).not.toContain('Memory namespace hint');
+    expect(readState(tmpDir).lastNamespaceHint).toContain('code-map');
+    const r2 = runGate('check-before-agent', baseEnv(tmpDir));
+    expect(r2.stdout).toContain('code-map');
   });
 
   it('handles empty prompt gracefully', async () => {
     const r = await runEsmWithStdin(PROMPT_HOOK, [], {}, baseEnv(tmpDir));
     expect(r.exitCode).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #931 — prompt-state-reset (defensive safety-net for the second
+// UserPromptSubmit hook). Idempotent state reset only — no emission, no
+// interactionCount increment. Wired alongside prompt-hook.mjs so an exception
+// in prompt-hook.mjs still resets per-actor memory tracking.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('gate.cjs: prompt-state-reset (#931 dedupe safety-net)', () => {
+  it('resets memorySearched + memorySearchedBy + reclassifies memoryRequired', () => {
+    writeState(tmpDir, { memorySearched: true, memorySearchedBy: { 's-1': true }, memoryRequired: false });
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'fix the auth bug in the login flow';
+    runGate('prompt-state-reset', env);
+    const s = readState(tmpDir);
+    expect(s.memorySearched).toBe(false);
+    expect(s.memorySearchedBy).toEqual({});
+    expect(s.memoryRequired).toBe(true);
+  });
+
+  it('emits nothing on stdout', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'implement user auth';
+    const r = runGate('prompt-state-reset', env);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.trim()).toBe('');
+  });
+
+  it('does NOT increment interactionCount (only prompt-reminder does)', () => {
+    writeState(tmpDir, { interactionCount: 7 });
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'implement the feature';
+    runGate('prompt-state-reset', env);
+    expect(readState(tmpDir).interactionCount).toBe(7);
+  });
+
+  it('stores the same lastNamespaceHint as prompt-reminder', () => {
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'where is the login route defined?';
+    runGate('prompt-state-reset', env);
+    const s = readState(tmpDir);
+    expect(s.lastNamespaceHint).toContain('code-map');
+  });
+
+  it('is idempotent: running prompt-reminder then prompt-state-reset increments interactionCount exactly once', () => {
+    writeState(tmpDir, { interactionCount: 0 });
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'implement user auth';
+    runGate('prompt-reminder', env);
+    runGate('prompt-state-reset', env);
+    expect(readState(tmpDir).interactionCount).toBe(1);
+  });
+
+  it('full UserPromptSubmit dedupe — neither hook emits the TaskCreate REMINDER per prompt', () => {
+    writeState(tmpDir, { tasksCreated: false, interactionCount: 0 });
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'implement user auth';
+    const r1 = runGate('prompt-reminder', env);
+    const r2 = runGate('prompt-state-reset', env);
+    // Per-prompt token leak fix — REMINDER no longer fires from either hook.
+    expect(r1.stdout).not.toContain('REMINDER: Use TaskCreate');
+    expect(r2.stdout).not.toContain('REMINDER: Use TaskCreate');
+    // ...but the gate still arms it for check-before-agent at Agent-spawn time.
+    const r3 = runGate('check-before-agent', env);
+    expect(r3.stdout).toContain('REMINDER: Use TaskCreate');
   });
 });
 
