@@ -87,7 +87,7 @@ If the trigger set is empty AND `--check=false`: the manual walk is skipped enti
 |-------|------------------|--------------------|
 | `bin/` scripts use `findProjectRoot()` for project root, not `__dirname`-relative `..` | `__dirname` resolves differently in `bin/` vs synced `.claude/scripts/` | `internal/consumer-project-paths.md` rule + lint |
 | Runtime imports of moflo internals use `import.meta.url` via `mofloPath()`/`mofloUrl()`, not `process.cwd()` | Consumer's `cwd` is their project root, not moflo's | `feedback_consumer_path_resolution` + lint smoke stderr scan |
-| Helper scripts ship as static files in `bin/`, not generated at runtime | Static-files rule from `moflo-core-guidance.md` § Session Start Automation | Manual review |
+| Helper scripts ship as static files in `bin/`, not generated at runtime | Static-files rule from `internal/session-start.md` § Adding a new helper script | Manual review |
 | New `bin/` script is added to the `scriptFiles` array in `session-start-launcher.mjs` AND in `init/moflo-init.ts`'s sync helper AND any third sync site | Missing entries cause silent sync drift (#777) | `feedback_scriptfiles_sync` |
 | New shipped guidance file is in `.claude/guidance/shipped/` with `moflo-` prefix | Filename collisions in consumer projects + auto-discovery requires the prefix | `internal/guidance-rules.md` rules #1–#2 |
 | `package.json` `files` glob covers any new shipped file class | Otherwise the file ships nowhere; npm install grabs zero copies | Inspect `npm pack --dry-run` output |

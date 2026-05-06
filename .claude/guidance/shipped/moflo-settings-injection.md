@@ -118,7 +118,5 @@ Future versions may add hook-block-level locking to suppress drift detection who
 
 ## See Also
 
-- `moflo-core-guidance.md` (Helper Script Auto-Sync section) — file lists and the static-files rule.
-- `moflo-cross-platform.md` — why hook commands always use `node "$CLAUDE_PROJECT_DIR/..."` paths.
-- Internal-only: `internal/upgrade-contract.md` documents the contract from a moflo-developer perspective, including the historical violations (sandbox, settings.json drift) that motivated the self-heal mechanism.
-- Internal-only: `internal/guidance-sync.md` — Sibling self-heal mechanism for shipped guidance content (this doc covers settings.json; that one covers the guidance pipeline).
+- `.claude/guidance/moflo-core-guidance.md` — Session-start cost expectations and what the launcher syncs into `.claude/`.
+- `.claude/guidance/moflo-cross-platform.md` — Why hook commands always use `node "$CLAUDE_PROJECT_DIR/..."` paths.

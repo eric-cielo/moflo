@@ -1,35 +1,23 @@
 # MoFlo–Claude Swarm Cohesion
 
-**Purpose:** Integrate native Claude Code tasks with MoFlo swarm coordination for visible progress tracking and structured agent orchestration.
+**Purpose:** Integrate native Claude Code tasks with MoFlo swarm coordination so that agent work is visible to the user, dependency-tracked, and routed through MoFlo's coordinator. Reference whenever you spawn an agent (with or without swarm).
 
 ---
 
 ## Architecture Overview
 
-```
-+-----------------------------------------------------------------+
-|  NATIVE TASKS (User-Visible Layer)                              |
-|  TaskCreate -> TaskList -> TaskUpdate -> TaskGet                |
-|  Shows: what needs doing, status, dependencies, progress        |
-+-------------------------------+---------------------------------+
-                                | coordinates
-+-------------------------------v---------------------------------+
-|  MOFLO (Orchestration Layer)                                    |
-|  Swarm/Hive-Mind spawns agents, routes tasks, coordinates       |
-|  Memory stores patterns for cross-session learning              |
-+-----------------------------------------------------------------+
-```
-
 | Layer | System | Purpose |
 |-------|--------|---------|
-| **What** | Native Tasks | Track work items, dependencies, status, visible to user |
-| **How** | Moflo | Agent coordination, memory, consensus, routing |
+| **What** (user-visible) | Native Tasks (`TaskCreate`/`TaskList`/`TaskUpdate`/`TaskGet`) | Track work items, dependencies, status |
+| **How** (orchestration) | MoFlo (swarm/hive-mind, memory, consensus, routing) | Spawn agents, coordinate, persist learnings |
+
+Tasks let the user *see* what's happening; MoFlo is what coordinates. The two layers are independent — you can use TaskCreate without a swarm and a swarm without TaskCreate, but both together is the productive pattern.
 
 ---
 
 ## Agent Role Icons
 
-Use these icons in `subject` and `activeForm` when creating tasks so the user can visually identify which agent is doing what. This is required for all TaskCreate calls tied to agent work.
+Use these icons in `subject` and `activeForm` when creating tasks so the user can visually identify which agent is doing what. Required for all `TaskCreate` calls tied to agent work.
 
 | Icon | Agent Role | activeForm Example |
 |------|------------|-------------------|
@@ -45,228 +33,100 @@ Use these icons in `subject` and `activeForm` when creating tasks so the user ca
 | 🤝 | consensus (hive-mind) | 🤝 Evaluating tradeoffs |
 | 🔬 | analyzer | 🔬 Analyzing code |
 
+See `.claude/guidance/moflo-task-icons.md` for the full ICON + [Role] format and how it applies to the `Agent` tool's `description` field.
+
 ---
 
 ## Integration Protocol
 
-### Step 0: Pre-Swarm Validation (Soft Check)
+### Step 0: Pre-Swarm Validation
 
-**Before initializing swarm/hive-mind, verify tasks exist for the current work:**
+Before initializing swarm or hive-mind, verify tasks exist for the current work:
 
-```javascript
-TaskList()  // Check current task state
-```
-
-| TaskList Result | Action |
-|-----------------|--------|
+| `TaskList` Result | Action |
+|-------------------|--------|
 | Empty | Create task list (Step 1) before proceeding |
 | Has unrelated/stale tasks | Create new tasks for current work |
-| Has relevant tasks for current work | Proceed to swarm init (Step 3) |
+| Has relevant tasks | Proceed to swarm init (Step 3) |
 
-This is a **soft reminder**, not a hard blocker. The goal is user visibility into swarm progress.
-
----
+This is a soft reminder, not a hard blocker — the goal is user visibility into swarm progress.
 
 ### Step 1: Create Task List BEFORE Spawning Agents
 
-When initializing swarm or hive-mind, create the task structure first:
+Create a coordinator task plus one subtask per agent role, with role icons. Send all `TaskCreate` calls in a single message for parallel creation.
 
 ```javascript
-// 1. Create parent/coordinator task
-TaskCreate({
-  subject: "Implement [feature/fix description]",
-  description: "Coordinating work for [task]. Subtasks track agent progress.",
-  activeForm: "Coordinating implementation"
-})
-
-// 2. Create subtasks for each agent role (in same message for parallel creation)
-//    Use role icons so the user can visually track agent progress at a glance.
-TaskCreate({
-  subject: "🔍 Research requirements and codebase patterns",
-  description: "Researcher agent: Analyze requirements, find relevant code, document patterns.",
-  activeForm: "🔍 Researching codebase"
-})
-TaskCreate({
-  subject: "🏗️ Design implementation approach",
-  description: "Architect agent: Design solution, document decisions.",
-  activeForm: "🏗️ Designing architecture"
-})
-TaskCreate({
-  subject: "💻 Implement the solution",
-  description: "Coder agent: Write code following patterns and standards.",
-  activeForm: "💻 Writing code"
-})
-TaskCreate({
-  subject: "🧪 Write unit tests",
-  description: "Tester agent: Create tests that verify the implementation.",
-  activeForm: "🧪 Writing tests"
-})
-TaskCreate({
-  subject: "👀 Review code quality and security",
-  description: "Reviewer agent: Check for issues, security, best practices.",
-  activeForm: "👀 Reviewing code"
-})
+TaskCreate({ subject: "Implement [feature]", activeForm: "Coordinating implementation" })
+TaskCreate({ subject: "🔍 Research requirements", activeForm: "🔍 Researching codebase" })
+TaskCreate({ subject: "🏗️ Design implementation", activeForm: "🏗️ Designing architecture" })
+TaskCreate({ subject: "💻 Implement solution", activeForm: "💻 Writing code" })
+TaskCreate({ subject: "🧪 Write tests", activeForm: "🧪 Writing tests" })
+TaskCreate({ subject: "👀 Review code", activeForm: "👀 Reviewing code" })
 ```
 
 ### Step 2: Set Up Dependencies
 
-After creating tasks, establish the execution order:
+After `TaskCreate`, establish execution order with `TaskUpdate(addBlockedBy: [...])`:
 
 ```javascript
-// Get task IDs from TaskList
-TaskList()
-
-// Set dependencies (research blocks architecture, architecture blocks coding, etc.)
 TaskUpdate({ taskId: "2", addBlockedBy: ["1"] })  // Architect blocked by Researcher
 TaskUpdate({ taskId: "3", addBlockedBy: ["2"] })  // Coder blocked by Architect
 TaskUpdate({ taskId: "4", addBlockedBy: ["3"] })  // Tester blocked by Coder
 TaskUpdate({ taskId: "5", addBlockedBy: ["3"] })  // Reviewer blocked by Coder
-TaskUpdate({ taskId: "0", addBlockedBy: ["4", "5"] })  // Coordinator blocked by Tester & Reviewer
+TaskUpdate({ taskId: "0", addBlockedBy: ["4", "5"] })  // Coordinator blocked by Tester + Reviewer
 ```
 
-### Step 3: Initialize Moflo Coordination
+### Step 3: Initialize Coordination
 
-**MCP (Preferred):**
-- Swarm: `mcp__moflo__swarm_init` (`topology: "hierarchical", maxAgents: 8, strategy: "specialized"`)
-- Hive-mind: `mcp__moflo__hive-mind_init` (`topology: "hierarchical-mesh", consensus: "byzantine"`)
+**MCP (preferred):**
+- Swarm: `mcp__moflo__swarm_init` — `topology: "hierarchical"`, `maxAgents: 8`, `strategy: "specialized"`
+- Hive-mind: `mcp__moflo__hive-mind_init` — `topology: "hierarchical-mesh"`, `consensus: "byzantine"`
 
-**CLI Fallback:**
+**CLI fallback:**
 ```bash
 npx flo swarm init --topology hierarchical --max-agents 8 --strategy specialized
 npx flo hive-mind init --topology hierarchical-mesh --consensus byzantine
 ```
 
-### Step 4: Spawn Agents with Task References
+### Step 4: Spawn Agents With Task References
 
-Include task IDs in agent prompts so they update status.
-TaskCreate was already called in Step 1 — tasks are visible before agents spawn.
-The `SubagentStart` hook automatically injects the subagent protocol directive — no need to include it in prompts.
+Include task IDs in agent prompts. The `SubagentStart` hook automatically injects the subagent protocol directive — don't repeat it.
 
 ```javascript
-// TaskCreate already done in Step 1 above
+TaskUpdate({ taskId: "1", status: "in_progress" })
 Task({
   prompt: `YOUR TASK (ID: 1): Research requirements and codebase patterns
 - Analyze feature requirements
 - Search codebase for relevant patterns
 - Document findings in memory
 
-WHEN STARTING: The coordinator has marked your task in_progress.
 WHEN COMPLETE: Report findings. Coordinator will mark task completed.`,
   subagent_type: "researcher",
-  description: "🔍 Research phase",
+  description: "🔍 [Researcher] Research phase",
   run_in_background: true
 })
 ```
 
 ### Step 5: Update Tasks as Agents Progress
 
-The coordinator (Claude Code) updates task status based on agent activity:
-
 ```javascript
-// When spawning an agent, mark its task in_progress
-TaskUpdate({ taskId: "1", status: "in_progress" })
-
-// When agent returns results, mark completed
 TaskUpdate({ taskId: "1", status: "completed" })
-
-// Check what's unblocked and proceed
-TaskList()  // Shows task 2 is now unblocked
+TaskList()  // Shows what's now unblocked
+TaskUpdate({ taskId: "2", status: "in_progress" })  // Next agent starts
 ```
-
----
-
-## Task Templates by Work Type
-
-### Bug Fix (4-5 tasks)
-
-| Task | Agent | Dependencies |
-|------|-------|--------------|
-| 🔍 Investigate bug and root cause | researcher | - |
-| 💻 Implement fix | coder | researcher |
-| 🧪 Write regression tests | tester | coder |
-| 👀 Review fix | reviewer | coder |
-
-### Feature Implementation (5-6 tasks)
-
-| Task | Agent | Dependencies |
-|------|-------|--------------|
-| 🔍 Research requirements | researcher | - |
-| 🏗️ Design implementation | system-architect | researcher |
-| 💻 Implement feature | coder | architect |
-| 🧪 Write unit tests | tester | coder |
-| 👀 Review code | reviewer | coder |
-| 🧪 Integration testing | tester | reviewer |
-
-### Architectural Decision (Hive-Mind) (3-4 tasks)
-
-| Task | Agent | Dependencies |
-|------|-------|--------------|
-| 🔍 Analyze options | researcher | - |
-| 🤝 Evaluate tradeoffs | multiple (consensus) | researcher |
-| 📚 Document decision | api-docs | consensus |
-| 📋 Create implementation plan | planner | decision |
 
 ---
 
 ## Coordinator Responsibilities
 
-The coordinator (Claude Code main process) must:
-
-1. **Create tasks before spawning agents** - Tasks provide the visible work breakdown
-2. **Update status when agents start** - Mark `in_progress` when spawning
-3. **Update status when agents complete** - Mark `completed` when results return
-4. **Monitor dependencies** - Use `TaskList` to see what's unblocked
-5. **Synthesize results** - Review all agent outputs before proceeding
-6. **Store learnings** - After completion, store patterns in memory
-
----
-
-## Example: Full Integration Flow
-
-```javascript
-// USER: Work on feature X with swarm
-
-// STEP 1: Create task structure (role icons for visual tracking)
-TaskCreate({ subject: "Implement feature X", description: "...", activeForm: "Coordinating" })
-TaskCreate({ subject: "🔍 Research patterns", description: "...", activeForm: "🔍 Researching" })
-TaskCreate({ subject: "💻 Implement solution", description: "...", activeForm: "💻 Implementing" })
-TaskCreate({ subject: "🧪 Write unit tests", description: "...", activeForm: "🧪 Writing tests" })
-TaskCreate({ subject: "👀 Review changes", description: "...", activeForm: "👀 Reviewing" })
-
-// STEP 2: Set dependencies
-TaskUpdate({ taskId: "2", addBlockedBy: ["1"] })
-TaskUpdate({ taskId: "3", addBlockedBy: ["2"] })
-TaskUpdate({ taskId: "4", addBlockedBy: ["2"] })
-TaskUpdate({ taskId: "0", addBlockedBy: ["3", "4"] })
-
-// STEP 3: Initialize swarm (MCP preferred, CLI fallback)
-// MCP: mcp__moflo__swarm_init (topology: "hierarchical", maxAgents: 8, strategy: "specialized")
-Bash("npx flo swarm init --topology hierarchical --max-agents 8 --strategy specialized")
-
-// STEP 4: Spawn agents (mark tasks in_progress as spawned)
-TaskUpdate({ taskId: "1", status: "in_progress" })
-Task({ prompt: "...", subagent_type: "researcher", run_in_background: true })
-
-// ... agents work ...
-
-// STEP 5: As agents return, update tasks
-TaskUpdate({ taskId: "1", status: "completed" })
-TaskUpdate({ taskId: "2", status: "in_progress" })
-// ... continue workflow
-```
-
----
-
-## Benefits
-
-| Benefit | Description |
-|---------|-------------|
-| **Visibility** | User sees clear task breakdown and progress |
-| **Dependencies** | Blocked tasks show what's waiting |
-| **Traceability** | Each task maps to an agent's work |
-| **Persistence** | Task state survives conversation turns |
-| **Coordination** | Moflo handles agent orchestration |
-| **Learning** | Memory stores patterns for future tasks |
+| # | Responsibility |
+|---|----------------|
+| 1 | Create tasks before spawning agents (visible work breakdown) |
+| 2 | Mark `in_progress` when spawning |
+| 3 | Mark `completed` when results return |
+| 4 | Use `TaskList` to monitor what's unblocked |
+| 5 | Synthesize all agent outputs before proceeding |
+| 6 | Store learnings in memory after completion |
 
 ---
 
@@ -281,7 +141,7 @@ Before spawning any agent via `Task`, run through this checklist:
 | 1 | Is this a swarm / hive-mind? | **TaskCreate required** — full integration protocol (Steps 1-5 above) |
 | 2 | Are you spawning 2+ background agents? | **TaskCreate required** — one per agent, with role icons |
 | 3 | Is this a single background agent (`run_in_background: true`)? | **TaskCreate required** — user needs visibility while it runs |
-| 4 | Will the agent touch 3+ files or take multiple steps? | **TaskCreate required** — even if foreground, the user benefits from status tracking |
+| 4 | Will the agent touch 3+ files or take multiple steps? | **TaskCreate required** — even foreground, the user benefits from status tracking |
 | 5 | Is this a single foreground agent for a focused task? | **TaskCreate optional** — user is already waiting inline for the result |
 | 6 | Is this a quick research/exploration agent? | **Skip TaskCreate** — result returns fast, no tracking needed |
 
@@ -295,7 +155,6 @@ Before spawning any agent via `Task`, run through this checklist:
 ### Non-Swarm Example (2 background agents, no swarm init)
 
 ```javascript
-// Create visible tasks FIRST
 TaskCreate({
   subject: "🔍 Investigate failing tests",
   description: "Research agent: find root cause of test failures",
@@ -307,17 +166,16 @@ TaskCreate({
   activeForm: "💻 Fixing auth endpoint"
 })
 
-// Then spawn agents
 Task({
   prompt: "Investigate why booking-public-routes tests are failing...",
   subagent_type: "researcher",
-  description: "🔍 Investigate test failures",
+  description: "🔍 [Researcher] Investigate test failures",
   run_in_background: true
 })
 Task({
   prompt: "Fix the authentication endpoint based on research findings...",
   subagent_type: "coder",
-  description: "💻 Fix auth endpoint",
+  description: "💻 [Coder] Fix auth endpoint",
   run_in_background: true
 })
 ```
@@ -334,7 +192,7 @@ TaskCreate({
 Task({
   prompt: "Write comprehensive tests for booking-public-routes...",
   subagent_type: "tester",
-  description: "🧪 Write booking tests",
+  description: "🧪 [Tester] Write booking tests",
   run_in_background: true
 })
 ```
@@ -342,11 +200,10 @@ Task({
 ### Foreground Agent (TaskCreate optional — skip for simple tasks)
 
 ```javascript
-// Simple lookup — no TaskCreate needed
 Task({
   prompt: "Find all files that import the AuthService",
   subagent_type: "Explore",
-  description: "🔍 Find AuthService imports"
+  description: "🔍 [Explorer] Find AuthService imports"
 })
 ```
 
@@ -354,95 +211,46 @@ Task({
 
 ## Anti-Drift Configuration
 
-**Use these settings to prevent agent drift:**
+Use these `swarm_init` settings to prevent agent drift:
 
-**MCP (Preferred):** `mcp__moflo__swarm_init`
-- Small teams: `topology: "hierarchical", maxAgents: 8, strategy: "specialized"`
-- Large teams: `topology: "hierarchical-mesh", maxAgents: 15, strategy: "specialized"`
+| Team Size | Topology | maxAgents | Strategy |
+|-----------|----------|-----------|----------|
+| Small | `hierarchical` (queen → workers) | 6–8 | `specialized` |
+| Large (10+) | `hierarchical-mesh` (queen + peer comms) | 15 | `specialized` |
 
-**CLI Fallback:**
-```bash
-npx flo swarm init --topology hierarchical --max-agents 8 --strategy specialized
-npx flo swarm init --topology hierarchical-mesh --max-agents 15 --strategy specialized
-```
-
-**Valid Topologies:**
-- `hierarchical` - Queen controls workers directly (anti-drift for small teams)
-- `hierarchical-mesh` - Queen + peer communication (recommended for 10+ agents)
-- `mesh` - Fully connected peer network
-- `ring` - Circular communication pattern
-- `star` - Central coordinator with spokes
-- `hybrid` - Dynamic topology switching
-
-**Anti-Drift Guidelines:**
-- **hierarchical**: Coordinator catches divergence
-- **max-agents 6-8**: Smaller team = less drift
-- **specialized**: Clear roles, no overlap
-- **consensus**: raft (leader maintains state)
-
----
-
-## Subagent Context Rules
-
-**Subagents automatically receive guidance via the `SubagentStart` hook.** When any subagent spawns, the hook injects a directive telling it to read `.claude/guidance/moflo-subagents.md` before doing any work. This is centralized — no per-agent configuration needed.
-
-**What subagents receive automatically:**
-- `SubagentStart` hook directive to read subagent protocol guidance
-- CLAUDE.md context (inherited from project)
-- MCP tool access (`mcp__moflo__*`) when configured
-- Project `.claude/guidance/*.md` files
-
-**Memory-first enforcement for subagents:**
-- Agent spawning is never blocked — the `SubagentStart` hook is advisory
-- When a subagent tries to use Glob, Grep, or Read, the scan/read gates enforce memory-first at the work layer
-- This prevents cascading failures from nested agent spawns
-
-**Best practices for subagent prompts:**
-- Include relevant context (file paths, error messages, specific requirements)
-- Provide specific paths if known, don't let agents guess with broad globs
-- Don't repeat the subagent protocol — the `SubagentStart` hook handles it
-
-**MCP Tools Available to Subagents:**
-- `mcp__moflo__memory_search` - Semantic search
-- `mcp__moflo__memory_store` - Pattern storage
-- `mcp__moflo__hooks_route` - Task routing
+Other valid topologies: `mesh` (fully connected peers), `ring`, `star`, `hybrid` (dynamic switching). For most work, prefer `hierarchical` — the coordinator catches divergence early. See `.claude/guidance/moflo-cli-reference.md` for the full topology catalog.
 
 ---
 
 ## Critical Execution Rules
 
-### CLI + Task Tool in SAME Message
-**When spawning swarm, Claude Code MUST in ONE message:**
-1. Call CLI tools via Bash to initialize coordination
-2. **IMMEDIATELY** call Task tool to spawn agents
-3. Both CLI and Task calls must be in the SAME response
+### CLI + Task Tool in the Same Message
 
-**CLI coordinates, Task tool agents do the actual work!**
+When spawning a swarm:
 
-### Spawn and Wait Pattern
+1. Call MCP/CLI to initialize coordination
+2. **Immediately** in the same response, call the `Task` tool to spawn agents
+3. Both calls go in **one** assistant message
 
-**After spawning background agents:**
-1. **TELL USER** - "I've spawned X agents working in parallel on: [list tasks]"
-2. **STOP** - Do not continue with more tool calls
-3. **WAIT** - Let the background agents complete their work
-4. **RESPOND** - When agents return results, review and synthesize
+CLI/MCP coordinates; the `Task` tool runs the agents that do the actual work.
 
-### DO NOT:
-- Continuously check swarm status
-- Poll TaskOutput repeatedly
-- Add more tool calls after spawning
-- Ask "should I check on the agents?"
+### Spawn-and-Wait Pattern
 
-### DO:
-- Spawn all agents in ONE message
-- Tell user what's happening
-- Wait for agent results to arrive
-- Synthesize results when they return
+After spawning background agents:
+
+| Do | Don't |
+|----|-------|
+| Tell the user "I've spawned X agents working in parallel on: [list]" | Continuously poll swarm status |
+| Stop further tool calls and let agents run | Repeatedly call `TaskOutput` |
+| Wait for agent results to arrive (you'll be notified) | Add more tool calls after spawning |
+| Synthesize results when they return | Ask "should I check on the agents?" |
 
 ---
 
 ## See Also
 
-- `.claude/guidance/moflo-subagents.md` - Subagents guide
-- `.claude/guidance/moflo-memory-strategy.md` - Memory architecture and search
-- `.claude/guidance/moflo-core-guidance.md` - Full CLI/MCP reference
+- `.claude/guidance/moflo-task-icons.md` — Full ICON + [Role] convention for `TaskCreate` and the `Agent` tool's `description` field
+- `.claude/guidance/moflo-subagents.md` — Subagent memory-first protocol (auto-injected via the `SubagentStart` hook)
+- `.claude/guidance/moflo-memory-strategy.md` — Memory architecture, namespaces, search patterns
+- `.claude/guidance/moflo-core-guidance.md` — CLI/MCP reference and Auto-Learning protocol
+- `.claude/guidance/moflo-cli-reference.md` — Topology catalog, consensus types, hive-mind details

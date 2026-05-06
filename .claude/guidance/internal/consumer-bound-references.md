@@ -52,7 +52,6 @@ The bug is invisible inside moflo's own dogfooding repo because the source `ship
 A handful of shipped docs reference `shipped/` deliberately as descriptive context — they describe moflo's package layout to the consumer rather than telling Claude to read a file. Keep these:
 
 - `shipped/moflo-settings-injection.md` — describes the read-only `.claude/guidance/shipped/**` directory inside `node_modules/moflo`.
-- `shipped/moflo-session-start.md` — explains the launcher copies from `node_modules/moflo/.claude/guidance/shipped/` to the consumer's `.claude/guidance/`.
 - `shipped/moflo-source-hygiene.md` — moflo-developer guidance about where to place new shipped files (debatable whether this should ship at all, but the path it references is correct as-is).
 
 The distinguishing test: **does the path follow the word "see", "read", "reference", or appear in a See Also bullet?** Then it's a directive Claude will try to resolve, and it must be the consumer path. If it's inside descriptive prose explaining "moflo lays out its source tree this way", `shipped/` is fine.

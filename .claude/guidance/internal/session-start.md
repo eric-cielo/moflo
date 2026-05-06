@@ -63,7 +63,7 @@ Even when the version hasn't changed, the daemon-lock's `startedAt` is compared 
 
 ### 3a. Settings.json migration and self-heal
 
-See `moflo-settings-injection.md` for the full mechanism. The launcher applies, in order:
+See `shipped/moflo-settings-injection.md` for the full mechanism. The launcher applies, in order:
 
 1. **Drop stale `PATH` override** — pre-4.x settings injected `${PATH}` which Claude Code didn't expand, breaking node resolution.
 2. **Replace `npx flo` hook commands with direct `node "$CLAUDE_PROJECT_DIR/..."` invocations** — saves 2–5 s of `npx` cold-start per hook.
@@ -145,10 +145,22 @@ Full ordering rules and historical violations live in `internal/upgrade-contract
 
 ---
 
+## Adding a new helper script (static-files rule)
+
+Helper scripts (`bin/*.mjs`, `bin/*.cjs`, hook handlers, statusline, auto-memory) ship as **pre-built static files**, not generated at runtime. The launcher copies them verbatim into the consumer's `.claude/scripts/` and `.claude/helpers/` during stage 3.
+
+| Rule | Why |
+|------|-----|
+| If the script has no per-project interpolation, save it as a static file under `bin/` | Dynamic generation at runtime adds fragile moving parts (background `init --upgrade`, race conditions with session-start exit) and produces stale scripts when the sync list is incomplete |
+| Add the script to the appropriate sync list in `bin/session-start-launcher.mjs` AND `src/cli/init/moflo-init.ts` | Otherwise the file ships to `node_modules/` but never reaches the consumer's `.claude/`. See feedback memory `feedback_scriptfiles_sync` |
+| Per-source destination is fixed by the launcher's section 3 sub-step ("Sync scripts" vs "Sync helpers") | Consumers expect specific files at specific paths; moving destinations between releases breaks downstream tooling |
+
+---
+
 ## See Also
 
-- `moflo-settings-injection.md` — the contract for what moflo writes into `.claude/settings.json` and how the surgical self-heal works.
-- `moflo-core-guidance.md` (Helper Script Auto-Sync) — the file lists for stage 3.
-- `moflo-memorydb-maintenance.md` — what runs against `.moflo/moflo.db` (embeddings, soft-delete, ephemeral purge).
-- Internal-only: `internal/upgrade-contract.md` — the "user must never re-run init" invariant the launcher enforces, with historical violations to learn from.
-- Internal-only: `internal/guidance-sync.md` — Stages 3 and 3b documented end-to-end as part of the three-layer guidance sync (filesystem → DB → HNSW).
+- `shipped/moflo-settings-injection.md` — the contract for what moflo writes into `.claude/settings.json` and how the surgical self-heal works.
+- `shipped/moflo-core-guidance.md` § Session-Start Cost Expectations — consumer-facing summary of session-start timing.
+- `shipped/moflo-memorydb-maintenance.md` — what runs against `.moflo/moflo.db` (embeddings, soft-delete, ephemeral purge).
+- `internal/upgrade-contract.md` — the "user must never re-run init" invariant the launcher enforces, with historical violations to learn from.
+- `internal/guidance-sync.md` — Stages 3 and 3b documented end-to-end as part of the three-layer guidance sync (filesystem → DB → HNSW).

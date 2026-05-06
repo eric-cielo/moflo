@@ -8,7 +8,7 @@ This is a CRITICAL invariant. Every PR that adds or changes a config surface MUS
 
 **Consumer-facing companions.** Two shipped docs explain the runtime contract from the consumer's side — link them from any PR description that touches the launcher or settings:
 
-- `shipped/moflo-session-start.md` — overview of every stage the launcher runs on session start, in execution order, with cost expectations and diagnostic guidance.
+- `internal/session-start.md` — overview of every stage the launcher runs on session start, in execution order, with cost expectations and diagnostic guidance.
 - `shipped/moflo-settings-injection.md` — what moflo writes into `.claude/`, the three sync mechanisms (static copy, generator output, surgical patch), and the self-heal contract for `.claude/settings.json`.
 
 If a consumer-facing change to the launcher or settings flow doesn't update one of those, it's incomplete.
@@ -87,7 +87,7 @@ Before merging any PR that touches config, ask:
 
 ## See Also
 
-- `shipped/moflo-session-start.md` — consumer-facing tour of session-start lifecycle.
+- `internal/session-start.md` — moflo-developer tour of session-start lifecycle (stages 0–4, daemon recycling, embeddings migrations).
 - `shipped/moflo-settings-injection.md` — consumer-facing contract on settings.json self-heal.
 - `internal/dogfooding.md` — how the moflo repo eats its own dog food (which is why broken upgrades break us first).
 - `internal/consumer-project-paths.md` — `findProjectRoot()` rule for `bin/` scripts; the launcher's path-resolution depends on this contract holding.

@@ -130,4 +130,3 @@ If you do need one:
 
 - `.claude/guidance/moflo-spell-sandboxing.md` — CapabilityGateway and enforcement rules
 - `.claude/guidance/moflo-spell-engine.md` — Running spells, step command types
-- `.claude/guidance/moflo-spell-engine-architecture.md` — Architecture decisions
