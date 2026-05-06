@@ -43,8 +43,12 @@ function listSkillDirs(): string[] {
     .filter((name) => {
       try {
         return statSync(join(SKILLS_DIR, name)).isDirectory();
-      } catch {
-        return false;
+      } catch (err) {
+        // Tolerate the readdir/stat race (entry removed between calls — e.g.
+        // a parallel test cleanup). Surface anything else so an unexpected
+        // FS error doesn't silently mask a real classification miss.
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        throw err;
       }
     })
     .sort();
