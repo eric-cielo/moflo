@@ -25,55 +25,23 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { mofloInternalURL } from './lib/moflo-resolve.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+// Resolve moflo's installed package root via Node module resolution so the script
+// works identically from bin/ (canonical) or from .claude/scripts/ (synced copy).
+const mofloRoot = dirname(fileURLToPath(mofloInternalURL('package.json')));
 
-// Find the installed moflo package root regardless of where this script runs from.
-// Two valid locations:
-//   1. <moflo>/bin/setup-project.mjs           — moflo source repo or `npm bin` resolution
-//   2. <consumer>/.claude/scripts/setup-project.mjs — synced copy from session-start
-// Strategy: walk up from this file looking for a package.json with name="moflo",
-// then fall back to Node's module resolution.
-function findMofloRoot() {
-  let dir = __dirname;
-  for (let i = 0; i < 6; i++) {
-    const pkg = join(dir, 'package.json');
-    if (existsSync(pkg)) {
-      try {
-        const data = JSON.parse(readFileSync(pkg, 'utf-8'));
-        if (data.name === 'moflo') return dir;
-      } catch { /* not parseable, keep walking */ }
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  try {
-    const require = createRequire(import.meta.url);
-    return dirname(require.resolve('moflo/package.json'));
-  } catch {
-    return null;
-  }
-}
-
-const mofloRoot = findMofloRoot();
-if (!mofloRoot) {
-  console.error('[flo-setup] ❌ Could not locate moflo package root');
-  process.exit(1);
-}
-
-const claudeMdGenUrl = pathToFileURL(
-  join(mofloRoot, 'dist/src/cli/init/claudemd-generator.js')
-).href;
+// Single source of truth: claudemd-generator.ts owns the section content.
+// Use the shared mofloInternalURL helper so the script works identically when
+// invoked from bin/ (canonical) or from .claude/scripts/ (synced copy).
 const {
   generateClaudeMd,
   MARKER_START,
   MARKER_END,
   LEGACY_MARKER_STARTS,
   LEGACY_MARKER_ENDS,
-} = await import(claudeMdGenUrl);
+} = await import(mofloInternalURL('dist/src/cli/init/claudemd-generator.js'));
 
 const args = process.argv.slice(2);
 const updateOnly = args.includes('--update');
@@ -82,8 +50,6 @@ const checkOnly = args.includes('--check');
 // Canonical section content (owned by claudemd-generator.ts). Trim the trailing newline
 // that generateClaudeMd appends so the marker-replace logic below stays exact.
 const CLAUDE_MD_SECTION = generateClaudeMd({}).trimEnd();
-const LEGACY_STARTS = [...LEGACY_MARKER_STARTS];
-const LEGACY_ENDS = [...LEGACY_MARKER_ENDS];
 
 function log(msg) {
   console.log(`[flo-setup] ${msg}`);
@@ -174,8 +140,8 @@ function updateClaudeMd(projectRoot) {
   const content = readFileSync(claudeMdPath, 'utf-8');
 
   // Check for current or legacy markers and replace
-  const allStarts = [MARKER_START, ...LEGACY_STARTS];
-  const allEnds = [MARKER_END, ...LEGACY_ENDS];
+  const allStarts = [MARKER_START, ...LEGACY_MARKER_STARTS];
+  const allEnds = [MARKER_END, ...LEGACY_MARKER_ENDS];
 
   for (let i = 0; i < allStarts.length; i++) {
     if (content.includes(allStarts[i])) {

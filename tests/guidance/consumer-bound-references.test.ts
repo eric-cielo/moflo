@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 
 const ROOT = resolve(__dirname, '../..');
@@ -49,19 +49,17 @@ const TEXT_EXTENSIONS = ['.md', '.json', '.ts', '.tsx', '.mts', '.cts', '.js', '
 
 function walkText(dir: string): string[] {
   const out: string[] = [];
-  let entries: string[];
+  let entries;
   try {
-    entries = readdirSync(dir);
+    entries = readdirSync(dir, { withFileTypes: true });
   } catch {
     return out;
   }
-  for (const name of entries) {
-    const abs = join(dir, name);
-    let st;
-    try { st = statSync(abs); } catch { continue; }
-    if (st.isDirectory()) {
+  for (const entry of entries) {
+    const abs = join(dir, entry.name);
+    if (entry.isDirectory()) {
       out.push(...walkText(abs));
-    } else if (TEXT_EXTENSIONS.some(ext => name.endsWith(ext))) {
+    } else if (entry.isFile() && TEXT_EXTENSIONS.some(ext => entry.name.endsWith(ext))) {
       out.push(abs);
     }
   }
@@ -82,6 +80,9 @@ function findViolations(absFile: string): Violation[] {
   } catch {
     return violations;
   }
+  // Fast path: skip files that don't contain the banned substring at all.
+  // The vast majority of scanned files have zero matches.
+  if (!content.includes('.claude/guidance/shipped/moflo-')) return violations;
   const lines = content.split(/\r?\n/);
   const rel = absFile.startsWith(ROOT + sep)
     ? absFile.slice(ROOT.length + 1).split(sep).join('/')
