@@ -332,4 +332,4 @@ steps:
 
 ### Related Skills
 
-- [/connector-builder](../connector-builder/) (#238) — scaffold new connectors and step commands when the spell needs a component that doesn't exist yet
+- [/connector-builder](../connector-builder/) — scaffold new connectors and step commands when the spell needs a component that doesn't exist yet

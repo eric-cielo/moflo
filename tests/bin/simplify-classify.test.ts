@@ -1,21 +1,22 @@
 /**
- * System tests for bin/simplify-classify.cjs (issue #908 part 2).
+ * System tests for bin/simplify-classify.cjs.
  *
  * Drives the *real* classifier as a subprocess, piping synthetic diffs over
  * stdin. Asserts on the dispatch decision (tier, agentCount, model). This
- * directly verifies the cost-control behavior the issue cares about:
+ * directly verifies the cost-control behavior:
  *
- *   - #906-shape (mechanical decomposition)  → SMALL / 1 agent / sonnet
- *   - tiny diff                              → TRIVIAL / 0 agents
- *   - small logic edit                       → SMALL / 1 agent
- *   - large diff with new logic              → NORMAL / 3 agents
- *   - security-path + new logic              → NORMAL / 3 agents
- *   - never returns opus                     → ALL cases
+ *   - mechanical decomposition  → SMALL / 1 agent / haiku
+ *   - tiny diff                 → TRIVIAL / 0 agents
+ *   - small logic edit          → SMALL / 1 agent
+ *   - large diff with new logic → NORMAL / 3 agents
+ *   - security-path + new logic → NORMAL / 3 agents
+ *   - never returns opus        → ALL cases
+ *   - default-branch detection  → consumer's actual default branch, not hardcoded 'main'
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { execFileSync } from 'child_process';
 import { resolve } from 'path';
-import { parseDiff, decide, classifyDiff } from '../../bin/simplify-classify.cjs';
+import { parseDiff, decide, classifyDiff, detectDefaultBranch } from '../../bin/simplify-classify.cjs';
 
 const CLASSIFIER = resolve(__dirname, '../../bin/simplify-classify.cjs');
 
@@ -324,5 +325,99 @@ describe('simplify-classify: end-to-end CLI invocation', () => {
     const decision = runClassifier(largeNewLogicDiff());
     expect(decision.tier).toBe('NORMAL');
     expect(decision.agentCount).toBe(3);
+  });
+});
+
+describe('simplify-classify: default-branch detection', () => {
+  // Hardcoded 'main' silently miscalibrates classification on consumers using
+  // 'master', 'develop', or any other default branch — empty diff → TRIVIAL →
+  // gate stamps clean without any real review. detectDefaultBranch must read
+  // the consumer's actual default.
+  const { mkdtempSync, rmSync, writeFileSync } = require('fs');
+  const { tmpdir } = require('os');
+  const { join } = require('path');
+  const { execSync } = require('child_process');
+
+  function makeRepo(opts: { defaultBranch?: string; setOriginHead?: boolean } = {}): string {
+    const dir = mkdtempSync(join(tmpdir(), 'simplify-classify-'));
+    const branch = opts.defaultBranch ?? 'main';
+    // Use separate execSync calls (no shell) to keep cross-platform behavior consistent
+    execSync(`git init -b ${branch} -q`, { cwd: dir });
+    execSync('git config user.email t@e.com', { cwd: dir });
+    execSync('git config user.name T', { cwd: dir });
+    execSync('git config commit.gpgsign false', { cwd: dir });
+    writeFileSync(join(dir, 'README.md'), '# t\n');
+    execSync('git add README.md', { cwd: dir });
+    execSync('git commit -m init -q', { cwd: dir });
+    if (opts.setOriginHead) {
+      // Simulate a remote HEAD without a real remote: create the remote-tracking
+      // branch ref first so symbolic-ref --short resolves cleanly.
+      execSync(`git update-ref refs/remotes/origin/${branch} HEAD`, { cwd: dir });
+      execSync(`git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/${branch}`, { cwd: dir });
+    }
+    return dir;
+  }
+
+  function runClassifierIn(cwd: string): any {
+    const stdout = execFileSync('node', [CLASSIFIER], { cwd, encoding: 'utf-8', timeout: 15000 });
+    return JSON.parse(stdout);
+  }
+
+  const tempRepos: string[] = [];
+  afterEach(() => {
+    for (const d of tempRepos.splice(0)) {
+      try { rmSync(d, { recursive: true, force: true }); } catch {}
+    }
+  });
+
+  it('picks up origin/HEAD when set (non-main default branch)', () => {
+    const dir = makeRepo({ defaultBranch: 'develop', setOriginHead: true });
+    tempRepos.push(dir);
+    // Direct probe: invoke detection with the tmp repo as cwd by spawning a tiny inline script
+    const probe = execFileSync(
+      'node',
+      ['-e', `process.chdir(${JSON.stringify(dir)}); const m = require(${JSON.stringify(CLASSIFIER)}); process.stdout.write(m.detectDefaultBranch());`],
+      { encoding: 'utf-8', timeout: 10000 },
+    );
+    expect(probe).toBe('develop');
+  });
+
+  it('falls back to init.defaultBranch when origin/HEAD is missing', () => {
+    const dir = makeRepo({ defaultBranch: 'trunk', setOriginHead: false });
+    tempRepos.push(dir);
+    // Set init.defaultBranch in this repo (overrides global)
+    execSync('git config init.defaultBranch trunk', { cwd: dir });
+    const probe = execFileSync(
+      'node',
+      ['-e', `process.chdir(${JSON.stringify(dir)}); const m = require(${JSON.stringify(CLASSIFIER)}); process.stdout.write(m.detectDefaultBranch());`],
+      { encoding: 'utf-8', timeout: 10000 },
+    );
+    expect(probe).toBe('trunk');
+  });
+
+  it('falls back to "main" when no signals available', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'simplify-classify-bare-'));
+    tempRepos.push(dir);
+    // Not even a git repo — both git calls fail, fallback is 'main'
+    const probe = execFileSync(
+      'node',
+      ['-e', `process.chdir(${JSON.stringify(dir)}); const m = require(${JSON.stringify(CLASSIFIER)}); process.stdout.write(m.detectDefaultBranch());`],
+      { encoding: 'utf-8', timeout: 10000 },
+    );
+    expect(probe).toBe('main');
+  });
+
+  it('CLI invocation in a non-main repo classifies against the right base', () => {
+    // End-to-end: classifier invoked with no --base on a develop-default repo
+    // should not silently see "empty diff → TRIVIAL" because it hardcoded main.
+    const dir = makeRepo({ defaultBranch: 'develop', setOriginHead: true });
+    tempRepos.push(dir);
+    // Make a working-tree change so the diff is non-empty
+    writeFileSync(join(dir, 'README.md'), '# t\nadded line\nadded line 2\nadded line 3\n');
+    const decision = runClassifierIn(dir);
+    // The diff has 3 added lines, no declarations — should be TRIVIAL or SMALL,
+    // but never crash and never return an empty stats object.
+    expect(decision.stats).toBeDefined();
+    expect(decision.stats.added).toBeGreaterThanOrEqual(3);
   });
 });

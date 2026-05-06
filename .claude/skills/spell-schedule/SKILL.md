@@ -143,7 +143,7 @@ If the user asks to **run now** without altering the cadence:
 - **Catch-up window** (default 1h, `scheduler.catchUpWindowMs` in `moflo.yaml`): if the daemon was offline when a run was due, runs within the window still fire on the next poll. Older missed runs are skipped with a `schedule:skipped` event.
 - **maxConcurrent** (default 2): caps the number of scheduled spells running concurrently. Same-schedule overlap is never allowed.
 - **No update CLI yet**: `flo spell schedule` exposes create/list/cancel only. To change a cadence, cancel + recreate.
-- **Spell-required sandboxing** (#878): when that ships, scheduled runs honor it just like manual casts — a missing sandbox skips the run with a `schedule:skipped` event.
+- **Spell-required sandboxing**: when sandbox-required spells become enforced, scheduled runs will honor it just like manual casts — a missing sandbox skips the run with a `schedule:skipped` event.
 
 ## Output
 
@@ -163,5 +163,4 @@ Daemon:      running | needs-start
 
 ## Reference
 
-- Full daemon scheduler docs: https://github.com/eric-cielo/moflo/blob/main/docs/SPELLS.md#scheduling
-- Tracking issue: https://github.com/eric-cielo/moflo/issues/877
+- Full daemon scheduler docs: see `docs/SPELLS.md#scheduling` in the moflo source tree

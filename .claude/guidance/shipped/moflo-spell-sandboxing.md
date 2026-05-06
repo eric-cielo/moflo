@@ -135,14 +135,14 @@ Each method calls `enforceScope()` internally. If the resource is outside the st
 | `bash` | `checkShell()` | **Enforced** |
 | `browser` | `checkBrowserEvaluate()`, `checkNet()` | **Enforced** |
 | `memory` | `checkMemory()` | **Enforced** |
-| `agent` | `checkAgent()` | **Enforced** (#258) |
-| `github` | `checkShell()` | **Enforced** (#258) |
-| Connectors | `checkNet()` via `GatedConnectorAccessor` | **Enforced** (#265) |
-| Credentials | `checkCredentials()` | **Enforced** (#268) |
+| `agent` | `checkAgent()` | **Enforced** |
+| `github` | `checkShell()` | **Enforced** |
+| Connectors | `checkNet()` via `GatedConnectorAccessor` | **Enforced** |
+| Credentials | `checkCredentials()` | **Enforced** |
 | Control flow (`condition`, `loop`, `parallel`, `composite`) | N/A | No I/O — child steps individually checked |
 | `wait`, `prompt` | N/A | No dangerous capabilities |
 
-**Gateway is non-optional** (#266): `WorkflowContext.gateway` is required. A `DenyAllGateway` is the default — any code path that reaches a gateway check without going through `step-executor` (which installs a properly-scoped gateway) will fail loudly rather than silently skipping enforcement.
+**Gateway is non-optional**: `WorkflowContext.gateway` is required. A `DenyAllGateway` is the default — any code path that reaches a gateway check without going through `step-executor` (which installs a properly-scoped gateway) will fail loudly rather than silently skipping enforcement.
 
 ---
 

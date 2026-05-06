@@ -66,7 +66,7 @@ A rewrite rule looks like:
 
 ```ts
 {
-  name: '#879: record-memory-searched → gate-hook.mjs',
+  name: 'record-memory-searched → gate-hook.mjs',
   from: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-memory-searched',
   to:   'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-memory-searched',
 }
@@ -100,19 +100,19 @@ Failures land on stderr and similarly surface to the agent. If something silentl
 | Customise a hook command moflo doesn't manage | Add it to a separate matcher block in `.claude/settings.json` — surgical rewrites only touch the specific `from` strings on the rule list |
 | Disable a moflo gate | Edit the matching block in `moflo.yaml` (e.g., `gates.memory_first: false`); the gate scripts honor these flags |
 
-Future versions may add hook-block-level locking to suppress drift detection wholesale — track [#881](https://github.com/eric-cielo/moflo/issues/881) for that umbrella.
+Future versions may add hook-block-level locking to suppress drift detection wholesale.
 
 ---
 
 ## Troubleshooting
 
-**"My `.claude/settings.json` was modified after a session restart."** — Look at the launcher's stdout in the session-start additionalContext. The line beginning `moflo: updated .claude/settings.json` lists every change in plain English. If you don't recognise a rewrite, check the moflo issue tracker for the rule name (each `HOOK_REWRITE_RULES` entry includes the issue number, e.g. `#879`).
+**"My `.claude/settings.json` was modified after a session restart."** — Look at the launcher's stdout in the session-start additionalContext. The line beginning `moflo: updated .claude/settings.json` lists every change in plain English. If you don't recognise a rewrite, the rule name in the launcher source (`HOOK_REWRITE_RULES`) describes what each fix does.
 
 **"Helper scripts disappeared from `.claude/helpers/`."** — The launcher tracks installed files via `.moflo/installed-files.json` and re-syncs missing ones on every start. Open and close a Claude Code session; if the file doesn't come back, check `.moflo/manifest` write permissions or run `flo doctor --fix`.
 
-**"Hooks ran but the gate isn't reset on new prompts."** — Verify `UserPromptSubmit` includes a hook calling `gate-hook.mjs prompt-reminder`. If missing, `repairHookWiring()` adds it on next session start. If still missing after restart, the gate may be running through `gate.cjs` directly — see issue [#879](https://github.com/eric-cielo/moflo/issues/879) for the wrapper-vs-direct distinction.
+**"Hooks ran but the gate isn't reset on new prompts."** — Verify `UserPromptSubmit` includes a hook calling `gate-hook.mjs prompt-reminder`. If missing, `repairHookWiring()` adds it on next session start. If still missing after restart, the gate may be running through `gate.cjs` directly — `gate-hook.mjs` is the wrapper that adds prompt-submit reset behavior; `gate.cjs` direct calls bypass it.
 
-**"I want to inspect what would be rewritten without actually changing my settings."** — The current launcher applies rewrites on every start. Manual dry-run isn't yet exposed; track [#881](https://github.com/eric-cielo/moflo/issues/881) for the planned drift-detection mode that surfaces diffs without applying them.
+**"I want to inspect what would be rewritten without actually changing my settings."** — The current launcher applies rewrites on every start. A manual dry-run mode is planned but not yet exposed.
 
 ---
 

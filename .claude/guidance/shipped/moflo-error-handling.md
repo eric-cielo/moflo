@@ -45,7 +45,7 @@
 
 ## Transient Errors Must Use Retry + Circuit Breaker
 
-**Wrap every transient-failure-capable operation in a retry helper with exponential backoff and a circuit breaker.** One-shot try-and-log on a transient class strands users in partial-state loops (#854: Windows file-lock + AV scan race left stale `.claude/helpers/gate.cjs` across 8+ moflo bumps).
+**Wrap every transient-failure-capable operation in a retry helper with exponential backoff and a circuit breaker.** One-shot try-and-log on a transient class strands users in partial-state loops — a representative incident: a Windows file-lock + AV scan race left stale `.claude/helpers/gate.cjs` across 8+ moflo bumps because each per-version sync swallowed the EBUSY without retrying.
 
 | Element | Default |
 |---------|---------|

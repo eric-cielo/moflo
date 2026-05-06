@@ -16,7 +16,7 @@
 
 **Do NOT create a connector for each external service.** Instead, compose the built-in connectors in spell steps. A Slack integration is an `http` connector call with the Slack API URL and token — not a `slack` connector.
 
-This design was established in issues #233–#259: the original per-service connector approach (Slack, OneDrive, Gmail, Google Drive — #234–#237) was superseded by generalized wrappers with capability enforcement (#254, #257, #258, #259).
+This design replaced an earlier per-service connector approach (Slack, OneDrive, Gmail, Google Drive) with generalized wrappers backed by capability enforcement.
 
 ---
 

@@ -6,10 +6,10 @@
 
 ## Database Location
 
-- **Path:** `.moflo/moflo.db` — canonical post-#727 location
+- **Path:** `.moflo/moflo.db` — canonical location
 - **Engine:** sql.js (WASM-based SQLite — no native binaries needed)
 - **Single table:** `memory_entries` — stores content, embeddings, and metadata in one table
-- **Legacy path:** `.swarm/memory.db` — pre-#727 consumers may still have this. The launcher migrates it to `.moflo/moflo.db` automatically on session start. After migration the legacy file is renamed `.swarm/memory.db.bak` and is safe to delete once you've verified the canonical DB is healthy (`flo doctor`).
+- **Legacy path:** `.swarm/memory.db` — older consumers may still have this. The launcher migrates it to `.moflo/moflo.db` automatically on session start. After migration the legacy file is renamed `.swarm/memory.db.bak` and is safe to delete once you've verified the canonical DB is healthy (`flo doctor`).
 
 ## Schema
 

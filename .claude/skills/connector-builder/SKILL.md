@@ -209,4 +209,4 @@ steps:
 
 ### Related Skills
 
-- [/spell-builder](../spell-builder/) (#240) — composes connectors and steps into spell definitions; references this skill when a needed connector doesn't exist
+- [/spell-builder](../spell-builder/) — composes connectors and steps into spell definitions; references this skill when a needed connector doesn't exist
