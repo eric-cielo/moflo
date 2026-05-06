@@ -32,6 +32,7 @@ export type SpellErrorCode =
   | 'PAUSED_STATE_EXPIRED'
   | 'PREREQUISITES_FAILED'
   | 'PREFLIGHT_FAILED'
+  | 'MISSING_CREDENTIAL'
   | 'SPELL_CANCELLED';
 
 // ============================================================================

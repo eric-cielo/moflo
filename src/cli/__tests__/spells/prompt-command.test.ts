@@ -18,7 +18,7 @@ import {
   registerTTYPauser,
   _resetTTYLockForTest,
 } from '../../spells/core/tty-lock.js';
-import { createMockContext } from './helpers.js';
+import { createMockContext, makeCredentials } from './helpers.js';
 
 describe('resolveDefault', () => {
   const now = Date.parse('2026-04-17T12:00:00Z');
@@ -215,6 +215,118 @@ describe('promptCommand', () => {
         _resetTTYLockForTest();
       }
       expect(events).toEqual(['pause', 'resume']);
+    });
+  });
+
+  // ==========================================================================
+  // Story #924 — saveAs credential persistence
+  // ==========================================================================
+
+  describe('saveAs (credential persistence)', () => {
+    it('rejects saveAs when not a string', () => {
+      const result = promptCommand.validate(
+        { message: 'Token?', saveAs: 42 as never },
+        createMockContext(),
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].path).toBe('saveAs');
+    });
+
+    it('rejects empty saveAs', () => {
+      const result = promptCommand.validate(
+        { message: 'Token?', saveAs: '   ' },
+        createMockContext(),
+      );
+      expect(result.valid).toBe(false);
+    });
+
+    it('returns stored value without prompting when store has it', async () => {
+      const credentials = makeCredentials({ GRAPH_TOKEN: 'pre-existing-secret' });
+      const ctx = createMockContext({ credentials });
+      // Even though TTY is "interactive", the store hit short-circuits
+      Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+
+      const output = await promptCommand.execute(
+        { message: 'Token?', saveAs: 'GRAPH_TOKEN' },
+        ctx,
+      );
+
+      expect(output.data.response).toBe('pre-existing-secret');
+      expect(output.data.interactive).toBe(false);
+      expect(output.data.fromStore).toBe(true);
+    });
+
+    it('prompts and persists answer when store is empty (TTY)', async () => {
+      const credentials = makeCredentials();
+      const ctx = createMockContext({ credentials });
+      scriptedAnswer = 'fresh-secret';
+      Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+
+      const output = await promptCommand.execute(
+        { message: 'Token?', saveAs: 'GRAPH_TOKEN' },
+        ctx,
+      );
+
+      expect(output.data.response).toBe('fresh-secret');
+      expect(output.data.fromStore).toBe(false);
+      expect(output.data.interactive).toBe(true);
+      expect(credentials.snapshot.GRAPH_TOKEN).toBe('fresh-secret');
+    });
+
+    it('does NOT save when non-TTY (no real prompt happened)', async () => {
+      const credentials = makeCredentials();
+      const ctx = createMockContext({ credentials });
+
+      const output = await promptCommand.execute(
+        { message: 'Token?', saveAs: 'GRAPH_TOKEN', default: 'fallback' },
+        ctx,
+      );
+
+      expect(output.data.response).toBe('fallback');
+      expect(output.data.interactive).toBe(false);
+      expect(credentials.snapshot.GRAPH_TOKEN).toBeUndefined();
+    });
+
+    it('saveAs unset → no store interaction, behaviour unchanged', async () => {
+      const credentials = makeCredentials({ SHOULD_NOT_BE_READ: 'x' });
+      const ctx = createMockContext({ credentials });
+
+      const output = await promptCommand.execute(
+        { message: 'Continue?', default: 'yes' },
+        ctx,
+      );
+
+      expect(output.data.response).toBe('yes');
+      expect((output.data as { fromStore?: boolean }).fromStore).toBe(false);
+    });
+
+    it('does not crash when credentials.store rejects after a prompt', async () => {
+      const ctx = createMockContext({
+        credentials: {
+          async get() { return undefined; },
+          async has() { return false; },
+          async store() { throw new Error('disk full'); },
+        },
+      });
+      scriptedAnswer = 'answer';
+      Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+      const warns: string[] = [];
+      const origWarn = console.warn;
+      console.warn = (msg: string) => { warns.push(msg); };
+      try {
+        const output = await promptCommand.execute(
+          { message: 'Token?', saveAs: 'GRAPH_TOKEN' },
+          ctx,
+        );
+        expect(output.success).toBe(true);
+        expect(output.data.response).toBe('answer');
+        expect(warns.some(w => w.includes('disk full'))).toBe(true);
+      } finally {
+        console.warn = origWarn;
+      }
     });
   });
 });

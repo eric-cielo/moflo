@@ -80,6 +80,11 @@ export interface OutputDescriptor {
 export interface CredentialAccessor {
   get(name: string): Promise<string | undefined>;
   has(name: string): Promise<boolean>;
+  /**
+   * Persist a credential by name. Read-only accessors (e.g. fixture mocks)
+   * may make this a no-op; callers should not assume durability.
+   */
+  store(name: string, value: string): Promise<void>;
 }
 
 export interface MemoryAccessor {

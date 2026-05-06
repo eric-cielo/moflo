@@ -41,6 +41,13 @@ export interface PromptStepConfig extends StepConfig {
    * this many days in the past. Useful for first-run date prompts.
    */
   readonly fallbackDaysAgo?: number;
+  /**
+   * Persist the response to the credential store under this name. When set,
+   * a stored value short-circuits the prompt; a successful TTY answer is
+   * persisted so future casts skip the prompt. Use for secrets — the store
+   * encrypts at rest.
+   */
+  readonly saveAs?: string;
 }
 
 /**
@@ -81,6 +88,10 @@ export const promptCommand: StepCommand<PromptStepConfig> = {
         type: 'number',
         description: 'Used when default resolves to empty/null — produces ISO timestamp N days ago',
       },
+      saveAs: {
+        type: 'string',
+        description: 'Persist the response under this name in the credential store; later casts read it back without prompting',
+      },
     },
     required: ['message'],
   } satisfies JSONSchema,
@@ -101,12 +112,42 @@ export const promptCommand: StepCommand<PromptStepConfig> = {
     if (config.fallbackDaysAgo !== undefined && typeof config.fallbackDaysAgo !== 'number') {
       errors.push({ path: 'fallbackDaysAgo', message: 'fallbackDaysAgo must be a number' });
     }
+    if (config.saveAs !== undefined && typeof config.saveAs !== 'string') {
+      errors.push({ path: 'saveAs', message: 'saveAs must be a string' });
+    }
+    if (typeof config.saveAs === 'string' && config.saveAs.trim().length === 0) {
+      errors.push({ path: 'saveAs', message: 'saveAs cannot be empty' });
+    }
     return { valid: errors.length === 0, errors };
   },
 
   async execute(config: PromptStepConfig, context: CastingContext): Promise<StepOutput> {
     const start = Date.now();
     const message = interpolateString(config.message, context);
+    const saveAs = config.saveAs?.trim();
+
+    if (saveAs) {
+      try {
+        const stored = await context.credentials.get(saveAs);
+        if (typeof stored === 'string' && stored.length > 0) {
+          return {
+            success: true,
+            data: {
+              message,
+              options: config.options ?? null,
+              outputVar: config.outputVar ?? 'response',
+              response: stored,
+              default: '',
+              interactive: false,
+              fromStore: true,
+            },
+            duration: Date.now() - start,
+          };
+        }
+      } catch {
+        // Store unavailable — fall through to normal prompt path.
+      }
+    }
 
     // Interpolate default — pure-ref interpolation may yield null; tolerate it.
     let interpolatedDefault: string | null = null;
@@ -136,6 +177,15 @@ export const promptCommand: StepCommand<PromptStepConfig> = {
       }
     }
 
+    // Best-effort persist — a failed save shouldn't fail a cast that already has a working answer.
+    if (saveAs && interactive && response) {
+      try {
+        await context.credentials.store(saveAs, response);
+      } catch (err) {
+        console.warn(`[moflo:credentials] could not persist "${saveAs}": ${(err as Error).message}`);
+      }
+    }
+
     return {
       success: true,
       data: {
@@ -145,6 +195,7 @@ export const promptCommand: StepCommand<PromptStepConfig> = {
         response,
         default: effectiveDefault,
         interactive,
+        fromStore: false,
       },
       duration: Date.now() - start,
     };
@@ -157,6 +208,7 @@ export const promptCommand: StepCommand<PromptStepConfig> = {
       { name: 'outputVar', type: 'string' },
       { name: 'default', type: 'string', description: 'Effective default after fallback chain' },
       { name: 'interactive', type: 'boolean', description: 'Whether the user was actually prompted' },
+      { name: 'fromStore', type: 'boolean', description: 'True when the response was returned from the credential store' },
     ];
   },
 };

@@ -17,7 +17,7 @@
 import { execFile } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { promisify } from 'node:util';
-import type { StepCommand, Prerequisite, PrerequisiteResult } from '../types/step-command.types.js';
+import type { StepCommand, Prerequisite, PrerequisiteResult, CredentialAccessor } from '../types/step-command.types.js';
 import type {
   SpellDefinition,
   StepDefinition,
@@ -181,10 +181,20 @@ export function formatPrerequisiteErrors(results: readonly PrerequisiteResult[])
 
   const lines = ['Missing prerequisites:'];
   for (const f of failed) {
-    lines.push(`  - ${f.name}: ${f.installHint}`);
-    if (f.url) lines.push(`    ${f.url}`);
+    appendPrereqLine(lines, f.name, f.installHint, f.url);
   }
   return lines.join('\n');
+}
+
+function appendPrereqLine(
+  lines: string[],
+  name: string,
+  hint: string | undefined,
+  url: string | undefined,
+): void {
+  const hintSuffix = hint ? `: ${hint}` : '';
+  lines.push(`  - ${name}${hintSuffix}`);
+  if (url) lines.push(`    ${url}`);
 }
 
 // ============================================================================
@@ -202,21 +212,41 @@ export interface ResolvePrerequisitesOptions {
   readonly promptLine?: PromptLineFn;
   /** Sink for preflight UI output. Defaults to console.log. */
   readonly log?: (line: string) => void;
+  /**
+   * Credential accessor consulted before prompting. When present and
+   * `credentials.has(envKey)` is true, the resolver populates
+   * `process.env[envKey]` from the store and skips the prompt.
+   * When a TTY prompt produces an answer, it's persisted via
+   * `credentials.store(envKey, answer)` so the next cast doesn't prompt.
+   */
+  readonly credentials?: CredentialAccessor;
 }
 
 export interface ResolvePrerequisitesResult {
   readonly ok: boolean;
   /** Present when ok === false. Suitable for surfacing as a SpellError message. */
   readonly message?: string;
-  /** Names of prereqs that were prompted and resolved this call. */
+  /** Names of prereqs satisfied this call (from the store and/or prompt). */
   readonly resolvedNames: readonly string[];
+  /**
+   * `'MISSING_CREDENTIAL'` distinguishes "spell can't run unattended yet"
+   * from generic preflight failure so the runner can surface a more
+   * actionable error to schedulers.
+   */
+  readonly errorCode?: 'MISSING_CREDENTIAL';
+  /** Env keys that were missing for the `MISSING_CREDENTIAL` path. */
+  readonly missingCredentials?: readonly string[];
 }
 
 /**
- * Evaluate all prereqs. On a TTY, prompts the user for unmet env-type prereqs
- * whose spec opted into `promptOnMissing`, writes answers into process.env,
- * then re-checks. Non-TTY calls and non-promptable unmet prereqs short-circuit
- * to a single formatted failure report.
+ * Evaluate all prereqs. Resolution chain for env-type prereqs:
+ *   1. process.env[key] already set → satisfied.
+ *   2. credentials.get(key) returns a value → write to process.env, satisfied.
+ *   3. TTY interactive → prompt → write to process.env AND credentials.store.
+ *   4. Non-TTY or no credentials → fail fast with `errorCode: 'MISSING_CREDENTIAL'`.
+ *
+ * Non-env prereqs (`command`, `file`) bypass the credential chain and surface
+ * through the standard "Missing prerequisites" path.
  */
 export async function resolveUnmetPrerequisites(
   prerequisites: readonly Prerequisite[],
@@ -229,29 +259,67 @@ export async function resolveUnmetPrerequisites(
   const interactive = options.interactive
     ?? Boolean(process.stdin.isTTY && process.stdout.isTTY);
   const log = options.log ?? ((line: string) => console.log(line));
+  const credentials = options.credentials;
 
   const initial = await checkPrerequisites(prerequisites);
-  const unmet = prerequisites.filter((_, i) => !initial[i].satisfied);
-  if (unmet.length === 0) {
+  const unmetIndices = initial.flatMap((r, i) => r.satisfied ? [] : [i]);
+  if (unmetIndices.length === 0) {
     return { ok: true, resolvedNames: [] };
   }
 
-  const promptable = unmet.filter(
+  // Pull env-type prereqs from the store in parallel — each resolved index
+  // lets us skip a re-check of the cheap env detector.
+  const resolvedFromStoreNames: string[] = [];
+  const storeResolved = new Set<number>();
+  if (credentials) {
+    await Promise.all(unmetIndices.map(async (i) => {
+      const prereq = prerequisites[i];
+      if (!prereq.envKey) return;
+      const stored = await credentials.get(prereq.envKey);
+      if (typeof stored === 'string' && stored.length > 0) {
+        process.env[prereq.envKey] = stored;
+        storeResolved.add(i);
+        resolvedFromStoreNames.push(prereq.name);
+      }
+    }));
+  }
+
+  const stillUnmetIdx = unmetIndices.filter(i => !storeResolved.has(i));
+  if (stillUnmetIdx.length === 0) {
+    return { ok: true, resolvedNames: resolvedFromStoreNames };
+  }
+
+  const stillUnmet = stillUnmetIdx.map(i => prerequisites[i]);
+  const promptable = stillUnmet.filter(
     p => interactive && p.promptOnMissing === true && typeof p.envKey === 'string',
   );
 
   if (!interactive || promptable.length === 0) {
+    const promptableEnvKeys = stillUnmet
+      .filter(p => p.promptOnMissing === true && typeof p.envKey === 'string')
+      .map(p => p.envKey!);
+
+    if (promptableEnvKeys.length > 0) {
+      return {
+        ok: false,
+        message: formatMissingCredentialMessage(promptableEnvKeys, stillUnmet),
+        resolvedNames: resolvedFromStoreNames,
+        errorCode: 'MISSING_CREDENTIAL',
+        missingCredentials: promptableEnvKeys,
+      };
+    }
     return {
       ok: false,
-      message: formatPrerequisiteErrors(initial),
-      resolvedNames: [],
+      message: formatPrerequisiteErrors(stillUnmetIdx.map(i => initial[i])),
+      resolvedNames: resolvedFromStoreNames,
     };
   }
 
-  printPreflightBanner(log, unmet.length);
+  printPreflightBanner(log, stillUnmet.length);
 
   const promptLine = options.promptLine ?? readLineFromStdin;
-  const resolvedNames: string[] = [];
+  const promptedNames: string[] = [];
+  const promptableSet = new Set(promptable);
   const lock = acquireTTYLock();
   try {
     for (const prereq of promptable) {
@@ -259,7 +327,7 @@ export async function resolveUnmetPrerequisites(
         return {
           ok: false,
           message: 'Prerequisite resolution aborted',
-          resolvedNames,
+          resolvedNames: [...resolvedFromStoreNames, ...promptedNames],
         };
       }
       if (prereq.description) log(prereq.description);
@@ -272,37 +340,59 @@ export async function resolveUnmetPrerequisites(
         return {
           ok: false,
           message: `Prerequisite "${prereq.name}" prompt failed: ${(err as Error).message}`,
-          resolvedNames,
+          resolvedNames: [...resolvedFromStoreNames, ...promptedNames],
         };
       }
       if (!answer || answer.length === 0) {
         return {
           ok: false,
           message: `Prerequisite "${prereq.name}" was not provided`,
-          resolvedNames,
+          resolvedNames: [...resolvedFromStoreNames, ...promptedNames],
         };
       }
       if (prereq.envKey) {
         process.env[prereq.envKey] = answer;
+        if (credentials) {
+          try {
+            await credentials.store(prereq.envKey, answer);
+          } catch (err) {
+            log(`  (could not persist credential "${prereq.envKey}": ${(err as Error).message})`);
+          }
+        }
       }
-      resolvedNames.push(prereq.name);
+      promptedNames.push(prereq.name);
     }
   } finally {
     lock.release();
   }
 
-  // Re-check everything — any still unmet (e.g. command/file prereqs that
-  // couldn't be resolved via prompt) fail now with the up-to-date report.
-  const rerun = await checkPrerequisites(prerequisites);
-  const stillUnmet = rerun.filter(r => !r.satisfied);
-  if (stillUnmet.length > 0) {
+  // Anything in stillUnmet that wasn't promptable (typically command/file
+  // prereqs) is still broken — carry forward the initial detector result.
+  const unfixableIdx = stillUnmetIdx.filter(i => !promptableSet.has(prerequisites[i]));
+  if (unfixableIdx.length > 0) {
     return {
       ok: false,
-      message: formatPrerequisiteErrors(rerun),
-      resolvedNames,
+      message: formatPrerequisiteErrors(unfixableIdx.map(i => initial[i])),
+      resolvedNames: [...resolvedFromStoreNames, ...promptedNames],
     };
   }
-  return { ok: true, resolvedNames };
+  return { ok: true, resolvedNames: [...resolvedFromStoreNames, ...promptedNames] };
+}
+
+function formatMissingCredentialMessage(
+  envKeys: readonly string[],
+  prereqs: readonly Prerequisite[],
+): string {
+  const lines = ['Missing credentials (cannot prompt — non-interactive run):'];
+  for (const key of envKeys) {
+    const prereq = prereqs.find(p => p.envKey === key);
+    const label = `${prereq?.name ?? key} (${key})`;
+    appendPrereqLine(lines, label, prereq?.installHint, prereq?.url);
+  }
+  lines.push('');
+  lines.push('Prime these by casting the spell once interactively, or run:');
+  lines.push('  flo spell credentials set <name>');
+  return lines.join('\n');
 }
 
 function printPreflightBanner(log: (line: string) => void, unmetCount: number): void {

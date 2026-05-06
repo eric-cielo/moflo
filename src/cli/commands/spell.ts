@@ -30,6 +30,7 @@ import {
 } from '../mcp-tools/tool-names.js';
 import { formatStatus, handleMCPError } from '../services/cli-formatters.js';
 import { scheduleCommand } from './spell-schedule.js';
+import { spellCredentialsCommand } from './spell-credentials.js';
 import { loadSpellEngine } from '../services/engine-loader.js';
 
 // Re-export formatStatus as formatStageStatus for table column references
@@ -670,7 +671,7 @@ export const spellCommand: Command = {
   name: 'spell',
   aliases: ['workflow'],
   description: 'Spell casting and management',
-  subcommands: [castCommand, validateCommand, listCommand, statusCommand, stopCommand, templateCommand, scheduleCommand],
+  subcommands: [castCommand, validateCommand, listCommand, statusCommand, stopCommand, templateCommand, scheduleCommand, spellCredentialsCommand],
   options: [],
   examples: [
     { command: 'moflo spell cast -n development', description: 'Cast spell by name' },
@@ -692,8 +693,9 @@ export const spellCommand: Command = {
       `${output.highlight('list')}      - List spells (grimoire + casts)`,
       `${output.highlight('status')}    - Show spell status`,
       `${output.highlight('stop')}      - Dispel a running spell`,
-      `${output.highlight('template')}  - Browse grimoire templates`,
-      `${output.highlight('schedule')}  - Manage scheduled spells`,
+      `${output.highlight('template')}    - Browse grimoire templates`,
+      `${output.highlight('schedule')}    - Manage scheduled spells`,
+      `${output.highlight('credentials')} - Manage stored secrets for unattended casts`,
     ]);
     output.writeln();
     output.writeln('Run "moflo spell <subcommand> --help" for more info');

@@ -14,6 +14,7 @@ import type { CredentialAccessor, MemoryAccessor } from '../types/step-command.t
 import type { SandboxConfig } from '../core/platform-sandbox.js';
 import { loadSandboxConfigFromProject } from '../core/platform-sandbox.js';
 import { createRunner, runSpellFromContent } from './runner-factory.js';
+import { getDefaultCredentialStore } from '../credentials/default-store.js';
 
 /**
  * Resolve sandbox config: prefer caller-supplied; fall back to auto-loading
@@ -51,13 +52,14 @@ export async function bridgeRunSpell(
 
   try {
     const sandboxConfig = await resolveSandbox(options.sandboxConfig, options.projectRoot);
+    const credentials = options.credentials ?? getDefaultCredentialStore();
     const result = await runSpellFromContent(content, sourceFile, {
       spellId,
       args,
       dryRun: options.dryRun,
       signal: controller.signal,
       memory: options.memory,
-      credentials: options.credentials,
+      credentials,
       ...(options.projectRoot ? { projectRoot: options.projectRoot } : {}),
       ...(sandboxConfig ? { sandboxConfig } : {}),
     });
@@ -81,7 +83,8 @@ export async function bridgeExecuteSpell(
 
   try {
     const sandboxConfig = await resolveSandbox(options.sandboxConfig, options.projectRoot);
-    const runner = createRunner({ memory: options.memory, credentials: options.credentials });
+    const credentials = options.credentials ?? getDefaultCredentialStore();
+    const runner = createRunner({ memory: options.memory, credentials });
     return await runner.run(definition, args, {
       spellId,
       signal: controller.signal,

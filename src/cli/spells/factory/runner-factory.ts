@@ -18,6 +18,7 @@ import { validateSpellDefinition } from '../schema/validator.js';
 import { SpellConnectorRegistry } from '../registry/connector-registry.js';
 import { loadSandboxConfigFromProject } from '../core/platform-sandbox.js';
 import { errorDetail } from '../../shared/utils/error-detail.js';
+import { getDefaultCredentialStore } from '../credentials/default-store.js';
 
 // ============================================================================
 // Types
@@ -61,7 +62,7 @@ export function createRunner(options: RunnerFactoryOptions = {}): SpellCaster {
     registry.loadFromDirectories(options.stepDirs);
   }
 
-  const credentials = options.credentials ?? noopCredentials;
+  const credentials = options.credentials ?? getDefaultCredentialStore();
   const memory = options.memory ?? noopMemory;
 
   // Auto-register shipped connectors into the connector registry
@@ -132,9 +133,10 @@ export async function runSpellFromContent(
 // Noop Accessors (for standalone usage without full CLI context)
 // ============================================================================
 
-const noopCredentials: CredentialAccessor = {
+export const noopCredentials: CredentialAccessor = {
   async get() { return undefined; },
   async has() { return false; },
+  async store() { /* no-op */ },
 };
 
 export const noopMemory: MemoryAccessor = {

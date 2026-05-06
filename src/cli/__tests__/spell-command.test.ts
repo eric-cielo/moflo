@@ -24,7 +24,7 @@ describe('Spell CLI Command', () => {
 
   it('has expected subcommands', () => {
     const subNames = spellCommand.subcommands!.map(s => s.name).sort();
-    expect(subNames).toEqual(['cast', 'list', 'schedule', 'status', 'stop', 'template', 'validate']);
+    expect(subNames).toEqual(['cast', 'credentials', 'list', 'schedule', 'status', 'stop', 'template', 'validate']);
   });
 
   it('cast subcommand has "run" alias for backwards compat', () => {
