@@ -42,13 +42,8 @@ Tier definitions the classifier encodes (for reference, not for re-derivation):
 
 Pick the **smallest tier** the diff genuinely fits. When in doubt, escalate one step (not two).
 
-### TRIVIAL — self-review, no agent spawn
-ALL of these must hold:
-- ≤10 net LOC changed (insertions + deletions, excluding pure whitespace)
-- Single file
-- No logic changes — only comments, formatting, renames of local vars, JSDoc, or string-literal edits
-- No new imports, no new exports, no new function/class declarations
-- No removed safety checks, error handlers, or guards
+### TRIVIAL — gate stamp, no review
+The classifier already proved the diff is below the threshold where review provides value (≤10 net LOC, single file, no declaration/import/export changes, no removed guards). **Stamp the gate with one line of confirmation and exit immediately.** Do not walk the three-category check yourself — the classifier IS the review at this tier, and at the gate level the classifier-aware skip (`bin/gate.cjs:classifyForGateSkip`) often satisfies the gate without invoking this skill at all.
 
 Examples that qualify: trimming a comment, fixing a typo in a log message, renaming a private helper, reformatting a single block.
 Examples that DON'T qualify: changing an `if` condition, reordering function args, deleting a try/catch.
@@ -88,14 +83,21 @@ Do **not** escalate to NORMAL on a validation pass. If the fix is so structural 
 
 ## Phase 2.7: Model selection
 
-**Use the model the classifier returned** — always `sonnet` for `/simplify`. Opus is never correct here; the classifier enforces this. No router call needed; the classifier IS the router for this skill.
+**Use the model the classifier returned.** The classifier IS the router for this skill — no separate router call needed. Possible outputs:
 
-If you fell back to prose rules in Phase 2 (no classifier available), use `sonnet` unconditionally. Pass the model verbatim to Agent's `model` parameter.
+- `sonnet` (default) — real logic changes, single agent or three-agent fan-out.
+- `haiku` — mostly-relocation diffs (mechanical moves where pattern-matching beats deep reasoning, ~5x cheaper).
+- `opus` — never. Code review is breadth-bound, not depth-bound; the three-agent fan-out at sonnet is the high-effort tier.
+
+If you fell back to prose rules in Phase 2 (no classifier available), use `sonnet` unconditionally. Pass the classifier's `model` field verbatim to Agent's `model` parameter.
 
 ## Phase 3: Run the appropriate review
 
-### TRIVIAL / Validation: self-review
-Run the same three category checks (reuse / quality / efficiency) yourself, in one pass, against the diff. Most TRIVIAL and validation diffs will be clean — the goal is to confirm, not to fan out. If you find an issue, fix it; otherwise stamp clean. Total budget: ~30 seconds, no Agent calls. No router call needed.
+### TRIVIAL: stamp and exit
+The classifier proved the diff is below the review-value threshold. Print one confirmation line (e.g. `simplify: TRIVIAL — N LOC, 1 file — stamped`) and exit. **Do not** walk the three-category check; the classifier already concluded the answer is "clean." Budget: <5 seconds, no Agent calls.
+
+### Validation pass: confirm clean
+Run the three category checks (reuse / quality / efficiency) yourself, in one pass, against the post-fix diff. Most validation passes are clean — the goal is to confirm fixes didn't introduce new concerns, not to fan out. Budget: ~30 seconds, no Agent calls.
 
 ### SMALL: one agent (model from router)
 Launch a SINGLE Agent with subagent_type `reviewer`, passing the model returned by Phase 2.7's router call. Cap the agent's tool budget by being explicit:

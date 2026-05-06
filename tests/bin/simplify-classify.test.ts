@@ -183,11 +183,13 @@ index abc..def 100644
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('simplify-classify: pure logic via require()', () => {
-  it('mechanical decomposition (#906-shape) → SMALL, 1 agent, sonnet', () => {
+  it('mechanical decomposition (#906-shape) → SMALL, 1 agent, haiku', () => {
+    // Relocations get haiku: pattern-matching review beats deep reasoning,
+    // ~5x cheaper than sonnet, negligible miss rate.
     const decision = classifyDiff(mechanicalDecompositionDiff());
     expect(decision.tier).toBe('SMALL');
     expect(decision.agentCount).toBe(1);
-    expect(decision.model).toBe('sonnet');
+    expect(decision.model).toBe('haiku');
     expect(decision.reasoning.join(' ')).toMatch(/relocation/i);
     expect(decision.stats.fileCount).toBeGreaterThanOrEqual(5);
   });
@@ -228,6 +230,8 @@ describe('simplify-classify: pure logic via require()', () => {
   });
 
   it('never returns opus, regardless of input', () => {
+    // Code review is breadth-bound, not depth-bound — opus is never the right
+    // model. Sonnet (default) and haiku (mechanical relocations) are valid.
     for (const fixture of [
       mechanicalDecompositionDiff(),
       trivialTypoDiff(),
@@ -237,7 +241,7 @@ describe('simplify-classify: pure logic via require()', () => {
     ]) {
       const decision = classifyDiff(fixture);
       expect(decision.model).not.toBe('opus');
-      expect(decision.model).toBe('sonnet');
+      expect(['sonnet', 'haiku']).toContain(decision.model);
     }
   });
 });
@@ -304,7 +308,7 @@ describe('simplify-classify: end-to-end CLI invocation', () => {
     expect(decision).toMatchObject({
       tier: 'SMALL',
       agentCount: 1,
-      model: 'sonnet',
+      model: 'haiku',
     });
     expect(Array.isArray(decision.reasoning)).toBe(true);
     expect(decision.stats).toBeDefined();

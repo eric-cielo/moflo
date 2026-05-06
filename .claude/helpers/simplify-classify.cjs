@@ -159,7 +159,10 @@ function decide(stats) {
     reasoning.push(
       `mostly relocation: ${stats.declAdded} decls added, ${stats.declRemoved} removed, net ${stats.netDecls >= 0 ? '+' : ''}${stats.netDecls}`,
     );
-    return { tier: 'SMALL', model: 'sonnet', agentCount: 1, reasoning, stats };
+    // Haiku is sufficient for mechanical moves: code already existed and worked,
+    // so review reduces to copy-paste-divergence / dead-after-move pattern checks
+    // — exactly haiku's strength. ~5x cheaper than sonnet on relocation-shape diffs.
+    return { tier: 'SMALL', model: 'haiku', agentCount: 1, reasoning, stats };
   }
 
   // Escalation triggers — any one trips NORMAL (3 agents).
