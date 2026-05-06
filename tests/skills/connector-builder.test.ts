@@ -150,14 +150,28 @@ describe('connector-builder skill', () => {
   });
 
   describe('test generation', () => {
-    it('includes connector test template', () => {
-      expect(content).toMatch(/Generate Connector Test/i);
-      expect(content).toContain('vitest');
+    // Templates were extracted to companion files in templates/. SKILL.md
+    // points at them; the actual scaffolding lives in those companions.
+    const SKILL_DIR = path.dirname(SKILL_PATH);
+
+    it('includes connector test template (in companion file)', () => {
+      const tmpl = fs.readFileSync(
+        path.join(SKILL_DIR, 'templates/connector.md'),
+        'utf-8',
+      );
+      expect(tmpl).toMatch(/Test Template/i);
+      expect(tmpl).toContain('vitest');
+      expect(content).toContain('templates/connector.md');
     });
 
-    it('includes step command test template', () => {
-      expect(content).toMatch(/Generate Step Command Test/i);
-      expect(content).toContain('mockContext');
+    it('includes step command test template (in companion file)', () => {
+      const tmpl = fs.readFileSync(
+        path.join(SKILL_DIR, 'templates/step-command.md'),
+        'utf-8',
+      );
+      expect(tmpl).toMatch(/Test Template/i);
+      expect(tmpl).toContain('mockContext');
+      expect(content).toContain('templates/step-command.md');
     });
   });
 

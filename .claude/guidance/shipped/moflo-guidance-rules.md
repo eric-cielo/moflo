@@ -74,13 +74,23 @@ TaskCreate({
 
 ## 5. Keep Files Under 500 Lines
 
-Long guidance files lose effectiveness because:
+**The 500-line cap applies to every `.claude/guidance/**/*.md` file AND every `.claude/skills/*/SKILL.md` entry file.** The same RAG/attention math applies to both:
 
-- RAG chunking splits them, and chunks lose cross-section context
+- RAG chunking splits long files, and chunks lose cross-section context
 - Claude deprioritizes content deep in a long document
 - Competing chunks from the same file dilute search relevance
+- For SKILL.md, the **entire file is loaded into context on every invocation** — every extra line is a per-invocation token cost across all consumers
 
-If a doc exceeds 500 lines, split by concern into separate files. Each file should cover one topic thoroughly rather than many topics shallowly.
+If a doc exceeds 500 lines, split by concern. Two patterns:
+
+| Pattern | Where it fits | Example |
+|---------|---------------|---------|
+| **Sibling files** (guidance) | Topical split — each file owns one concern | `moflo-spell-engine.md` + `moflo-spell-runner.md` + `moflo-spell-troubleshooting.md` |
+| **Progressive disclosure** (skills) | Entry SKILL.md links to companions in the same skill directory | `spell-builder/SKILL.md` (entry) + `architecture.md` + `permissions.md` + `preflight.md` (companions) |
+
+Companion files are NOT auto-loaded — Claude reads them only when the SKILL.md entry directs it to. This keeps the per-invocation cost low while preserving the depth.
+
+A gating test (`skill-and-guidance-size-drift.test.ts`) enforces the cap and will fail CI if a guidance doc or SKILL.md entry exceeds 500 lines. Companion files inside a skill directory are exempt because they only load on demand.
 
 ---
 
