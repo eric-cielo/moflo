@@ -83,6 +83,16 @@ const ALLOWLIST: Record<string, string> = {
   // entry point — runner.ts:146 prints "ask Claude to accept it, or call the
   // spell_accept tool with name X" so this IS the documented call site.
   'spell_accept': 'advertised in spell runner permission-acceptance flow',
+
+  // Swarm + task coordination — protected critical surface per CLAUDE.md.
+  // Consumers reach these via object-property access in agent .md files
+  // (`this.mcpTools.task_orchestrate(...)`, `mcp.swarm_scale(...)`) which
+  // doesn't match the `mcp__moflo__<name>` regex but IS a real call site.
+  // See .claude/agents/consensus/quorum-manager.md (task_orchestrate) and
+  // .claude/agents/optimization/{resource-allocator,topology-optimizer}.md
+  // (swarm_scale).
+  'swarm_scale': 'consumed via object-property access in agent .md files (resource-allocator, topology-optimizer)',
+  'task_orchestrate': 'consumed via object-property access in agent .md files (quorum-manager)',
 };
 
 interface RegisteredTool {

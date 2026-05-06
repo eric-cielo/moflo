@@ -70,8 +70,8 @@ export const SKILLS_MAP: Record<string, string[]> = {
 export const INTERNAL_SKILLS: string[] = [
   'publish',              // moflo's own /publish workflow — not consumer-relevant
   'reset-epic',           // moflo's own epic test-data reset — would torch a consumer's repo
-  'hive-mind-advanced',   // stale upstream cruft (references `npx claude-flow` CLI consumers don't have); moflo capability is via mcp__moflo__hive-mind_*
-  'performance-analysis', // stale upstream cruft (references `npx claude-flow`); moflo capability is via mcp__moflo__performance_*
+  'hive-mind-advanced',   // stale upstream cruft (references `npx claude-flow` CLI consumers don't have); moflo capability is via the hive-mind MCP tool family
+  'performance-analysis', // stale upstream cruft (references `npx claude-flow`); moflo capability is via the performance MCP tool family
   'worker-integration',   // wrong product — references `npx agentic-flow`
   'worker-benchmarks',    // wrong product — references `npx agentic-flow`
 ];
