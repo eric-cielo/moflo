@@ -372,7 +372,8 @@ switch (command) {
     break;
   }
   case 'record-skill-run': {
-    if ((process.env.TOOL_INPUT_skill || '') === 'simplify') {
+    var skName = (process.env.TOOL_INPUT_skill || '');
+    if (skName === 'simplify' || skName === 'flo-simplify') {
       var s = readState();
       var changed = false;
       if (!s.simplifyRun) { s.simplifyRun = true; changed = true; }
@@ -441,7 +442,7 @@ switch (command) {
     }
     var missing = [];
     if (config.testing_gate && !s.testsRun) missing.push('tests have not run since the last code edit (run npm test, vitest, jest, pytest, or similar)');
-    if (config.simplify_gate && !s.simplifyRun) missing.push('/simplify has not run since the last code edit');
+    if (config.simplify_gate && !s.simplifyRun) missing.push('/flo-simplify has not run since the last code edit');
     if (config.learnings_gate && !s.learningsStored) missing.push('learnings have not been stored (call mcp__moflo__memory_store)');
     if (missing.length === 0) break;
     process.stderr.write('BLOCKED: gh pr create requires the following before opening a PR:\n');

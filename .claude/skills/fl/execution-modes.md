@@ -10,7 +10,7 @@ Roles:
 - `researcher` — analyzes the issue, searches memory, finds patterns
 - `coder` — implements changes following the plan
 - `tester` — writes and runs tests
-- `/simplify` — built-in command that reviews changed code before PR
+- `/flo-simplify` — moflo's adaptive code review skill (sized to diff, parallel agents on big changes)
 - `reviewer` — reviews code before PR
 
 Pattern:
@@ -19,7 +19,7 @@ Pattern:
 TaskCreate({ subject: "Research issue #123", ... })
 TaskCreate({ subject: "Implement changes", ... })
 TaskCreate({ subject: "Test implementation", ... })
-TaskCreate({ subject: "Run /simplify on changed files", ... })
+TaskCreate({ subject: "Run /flo-simplify on changed files", ... })
 TaskCreate({ subject: "Review and PR", ... })
 
 // 2. Init the swarm

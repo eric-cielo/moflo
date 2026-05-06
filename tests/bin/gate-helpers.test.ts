@@ -1235,13 +1235,13 @@ describe('end-to-end: spell lifecycle', () => {
       expect(r.stderr).toContain('tests have not run');
     });
 
-    it('blocks PR when /simplify has not run', () => {
+    it('blocks PR when /flo-simplify has not run', () => {
       const env = baseEnv(tmpDir);
       writeState(tmpDir, { testsRun: true, simplifyRun: false, learningsStored: true });
       env.TOOL_INPUT_command = 'gh pr create --title "test"';
       const r = runGate('check-before-pr', env);
       expect(r.exitCode).toBe(2);
-      expect(r.stderr).toContain('/simplify has not run');
+      expect(r.stderr).toContain('/flo-simplify has not run');
     });
 
     it('lists every missing gate when more than one is unsatisfied', () => {
@@ -1251,7 +1251,7 @@ describe('end-to-end: spell lifecycle', () => {
       const r = runGate('check-before-pr', env);
       expect(r.exitCode).toBe(2);
       expect(r.stderr).toContain('tests have not run');
-      expect(r.stderr).toContain('/simplify has not run');
+      expect(r.stderr).toContain('/flo-simplify has not run');
       expect(r.stderr).toContain('learnings have not been stored');
     });
 
@@ -1422,7 +1422,7 @@ describe('end-to-end: spell lifecycle', () => {
   });
 
   describe('record-skill-run', () => {
-    it('sets simplifyRun=true when /simplify is invoked', () => {
+    it('sets simplifyRun=true when /simplify is invoked (built-in or legacy name — backward compat)', () => {
       writeState(tmpDir, { simplifyRun: false });
       const env = baseEnv(tmpDir);
       env.TOOL_INPUT_skill = 'simplify';
@@ -1430,10 +1430,18 @@ describe('end-to-end: spell lifecycle', () => {
       expect(readState(tmpDir).simplifyRun).toBe(true);
     });
 
+    it('sets simplifyRun=true when /flo-simplify is invoked (renamed moflo skill)', () => {
+      writeState(tmpDir, { simplifyRun: false });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_skill = 'flo-simplify';
+      runGate('record-skill-run', env);
+      expect(readState(tmpDir).simplifyRun).toBe(true);
+    });
+
     it('does not set simplifyRun for other skills', () => {
       writeState(tmpDir, { simplifyRun: false });
       const env = baseEnv(tmpDir);
-      env.TOOL_INPUT_skill = 'github-code-review';
+      env.TOOL_INPUT_skill = 'eldar';
       runGate('record-skill-run', env);
       expect(readState(tmpDir).simplifyRun).toBe(false);
     });

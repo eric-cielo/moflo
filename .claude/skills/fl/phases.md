@@ -92,11 +92,11 @@ The `check-before-pr` gate blocks `gh pr create` until a recognised test runner 
 
 ## Phase 4.5: Simplify
 
-The built-in `/simplify` command reviews changed code for reuse, quality, and efficiency, preserving behavior.
+The `/flo-simplify` skill reviews changed code for reuse, quality, and efficiency, preserving behavior.
 
-If `/simplify` edits anything, rerun the tests. If those re-tests fail, revert the simplification and continue with the original code.
+If `/flo-simplify` edits anything, rerun the tests. If those re-tests fail, revert the simplification and continue with the original code.
 
-The `check-before-pr` gate blocks `gh pr create` until `/simplify` has run since the last code edit.
+The `check-before-pr` gate blocks `gh pr create` until `/flo-simplify` has run since the last code edit.
 
 ## Phase 5: Commit and PR
 
