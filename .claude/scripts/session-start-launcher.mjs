@@ -63,6 +63,12 @@ const projectRoot = findProjectRoot();
 // NOT node_modules/moflo/package.json. Defaults to false on any read/parse
 // error so a corrupt package.json never silently disables drift heal in a
 // real consumer.
+//
+// Workspace caveat: findProjectRoot() walks up to the nearest package.json,
+// so in a workspace child (packages/foo/) the read sees the child package
+// (name !== "moflo") and the guard stays false. moflo isn't a workspace
+// today; if it ever becomes one, run sessions from the repo root or extend
+// this check to walk further up.
 let isMofloDogfood = false;
 try {
   const projectPkgPath = resolve(projectRoot, 'package.json');
@@ -70,8 +76,11 @@ try {
     const projectPkg = JSON.parse(readFileSync(projectPkgPath, 'utf-8'));
     isMofloDogfood = projectPkg?.name === 'moflo';
   }
-} catch {
-  // Defaults to false — safer than accidentally disabling drift heal.
+} catch (err) {
+  // Defaults to false — safer than accidentally disabling drift heal in a
+  // real consumer. Surface the failure so a corrupt project package.json
+  // doesn't silently change launcher behavior (per feedback_no_silent_failures).
+  process.stderr.write(`[moflo] dogfood-guard package.json read failed: ${err && err.message ? err.message : String(err)}\n`);
 }
 
 // Visible mutation reporter (#716). Claude Code's SessionStart hook captures
