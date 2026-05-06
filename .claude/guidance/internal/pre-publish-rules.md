@@ -25,6 +25,42 @@ Moflo ships to N consumers via `npm install moflo`. Every change runs from their
 
 ---
 
+## Trigger-Based Gating (`/publish` default mode)
+
+The `/publish` skill takes a presence-only `--check` / `-ch` flag. **Default behavior is `--check=false`** because most publishes happen right after a green PR where CI has already run lint, build, tests, and smoke (clean + populated, on three OSes). Re-running them locally pays for a CI workflow that already passed.
+
+| Gate | Default mode (no flag) | `--check` mode | Rationale for default |
+|------|------------------------|----------------|----------------------|
+| Lint | skip | run | `ci.yml` runs `npm run lint` on every PR with `max-warnings 0` |
+| Build | **always run** | run | Confirms the deliverables on disk match the new version; `prepublishOnly` would catch it but earlier is better |
+| Tests | skip | run | `ci.yml` runs `npm test` on every PR |
+| Doctor | **always run** (`--fix`) | run (`--strict`) | Only check with no CI equivalent — local-only state (daemon, embeddings, vector-stats) |
+| Smoke (clean) | skip | run | `consumer-install-smoke.yml` runs on PR + push to main, three OSes |
+| Smoke (populated) | skip | run | Same workflow as above |
+| Manual gate walk (rows below) | **trigger-based** | run all | A cheap bash fingerprint computes which gates the diff actually touches |
+
+The trigger fingerprint is `.claude/skills/publish/fingerprint.sh`. It diffs `HEAD` against the most recent `chore: install moflo@*` commit and pattern-matches the file list against the manual-gate triggers. Output is one block (~50 tokens), then Claude only walks the gates whose triggers fired.
+
+| Trigger flag | Manual check | Diff signal |
+|--------------|--------------|-------------|
+| `split-newlines` | Gate 1 — `.split(/\r?\n/)` | TS/JS file containing `readFile`/`fs.read*` was changed |
+| `homedir-tmpdir` | Gate 1 — `os.homedir()`/`os.tmpdir()` | Code touches `process.env.HOME`/`TMPDIR`/`TMP`/`TEMP` or `'/tmp/'` literal |
+| `bwrap-permissions` | Gate 1 — `permissionLevel: elevated` for net | Spell YAML or spell bash step changed |
+| `posix-only-spell-bash` | Gate 1 — no `mkdir`/`rm`/`cp` in spell bash | Spell bash step changed |
+| `bin-scriptfiles-sync` | Gate 2 — `scriptFiles` array (3 sites) | New file added to `bin/` |
+| `helper-static-files` | Gate 2 — helpers ship as static files | `bin/` or `init/` script-gen logic changed |
+| `shipped-guidance-prefix` | Gate 2 — `moflo-` prefix + shipped/internal partition | New file added to `.claude/guidance/shipped/` |
+| `files-glob-coverage` | Gate 6 — `npm pack --dry-run` review | New file class under `.claude/{skills,guidance/shipped,scripts,hooks}/` |
+| `info-loss-audit` | Gate 6 — bullet-by-bullet destination check | Any file deleted or renamed |
+
+If the trigger set is empty AND `--check=false`: the manual walk is skipped entirely, with explicit "Triggered manual checks: none" in the publish summary.
+
+**When to use `--check=true`:** publishes that didn't go through a green PR, broad refactors, infrastructure surface changes, or belt-and-suspenders for risky releases. The flag forces the full ten-item TL;DR walk regardless of triggers.
+
+**Why "errs toward triggering":** the fingerprint script prefers false positives (one extra cheap manual check) over false negatives (a real bug class slipping). The trigger map is the source of truth — whenever a manual-check row is added to a gate below, the matching trigger MUST be added to `fingerprint.sh` in the same commit.
+
+---
+
 ## Gate 1 — Cross-Platform Compatibility
 
 **Every code change MUST work on Windows + macOS + Linux.** The full rule set lives in `shipped/moflo-cross-platform.md`. Pre-publish, verify:
@@ -136,20 +172,30 @@ When you split, rename, or remove a shipped file, the consumer cleanup must work
 
 ## TL;DR — The Pre-Flight Checklist
 
-Before invoking `/publish`, confirm in order:
+Before invoking `/publish`, the gates run in two layers depending on the `--check` flag.
 
-1. [ ] `npm run lint` — exits 0, max-warnings 0
-2. [ ] `npm run build` — exits 0
-3. [ ] `npm test` — 0 failed test files; flakes investigated individually
-4. [ ] `npx moflo doctor --strict` — exits 0
-5. [ ] `npm run test:smoke` — green
-6. [ ] `npm run test:smoke:populated` — green
-7. [ ] Cross-platform diff walk — no `\\`, no chained `'..'`, no string `file://`, no `.split('\n')` on file content
-8. [ ] Consumer-install posture — `bin/` scripts use `findProjectRoot()`, runtime imports anchor on `import.meta.url`
-9. [ ] Manifest sanity — `npm pack --dry-run` includes new shipped files; removed files trace through guidance-sync layers cleanly
-10. [ ] Information-loss audit on any split/move — bullet-by-bullet destination check
+### Default mode (`/publish`, no flag) — runs always
 
-Only when ALL ten are green: invoke `/publish`.
+1. [ ] `npm run build` — exits 0 (Step 2 of the skill, never skippable)
+2. [ ] `npx moflo doctor --fix` — exits 0 (only check with no CI equivalent)
+3. [ ] Trigger fingerprint computed; manual walk performed only on triggered gates
+
+The default mode trusts CI for items 4–7 below. Use it when publishing right after a merged green PR — the common case.
+
+### Full mode (`/publish --check` or `-ch`) — runs everything
+
+In addition to the three above:
+
+4. [ ] `npm run lint` — exits 0, max-warnings 0
+5. [ ] `npm test` — 0 failed test files; flakes investigated individually
+6. [ ] `npm run test:smoke` — green
+7. [ ] `npm run test:smoke:populated` — green
+8. [ ] Cross-platform diff walk — no `\\`, no chained `'..'`, no string `file://`, no `.split('\n')` on file content
+9. [ ] Consumer-install posture — `bin/` scripts use `findProjectRoot()`, runtime imports anchor on `import.meta.url`
+10. [ ] Manifest sanity — `npm pack --dry-run` includes new shipped files; removed files trace through guidance-sync layers cleanly
+11. [ ] Information-loss audit on any split/move — bullet-by-bullet destination check
+
+Use `--check` when the publish didn't go through a green PR, when the change is risky (broad refactor, packaging, infrastructure), or for belt-and-suspenders.
 
 ---
 
@@ -163,5 +209,8 @@ Only when ALL ten are green: invoke `/publish`.
 - `.claude/guidance/internal/dogfooding.md` — Why moflo's dogfood loop catches consumer regressions first
 - `.claude/guidance/shipped/moflo-source-hygiene.md` — Source-code hygiene rules consumed at lint time (Gate 7)
 - `.claude/skills/publish/SKILL.md` — The `/publish` skill that references this doc
+- `.claude/skills/publish/fingerprint.sh` — Trigger-fingerprint script that drives default-mode gating
 - `harness/consumer-smoke/README.md` — Smoke harness profiles + checks (Gate 5)
 - `docs/BUILD.md` — Step-by-step build/publish process the `/publish` skill follows
+- `.github/workflows/ci.yml` — Lint/build/test gates default mode skips
+- `.github/workflows/consumer-install-smoke.yml` — Smoke gates default mode skips
