@@ -7,7 +7,7 @@ var cp = require('child_process');
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, simplifySnapshotSha: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null };
 
 // Per-actor memory-search tracking (#838). The legacy `memorySearched` boolean
 // is session-wide, so once the parent searches memory, every spawned subagent
@@ -99,6 +99,79 @@ var EDIT_RESET_SKIP_SIMPLIFY_ONLY_RE = /(?:^|[\\\/])(__tests__|__mocks__|tests?|
 // Anchored to end-of-path so e.g. `foo.md.js` does not match. Excludes lock files / configs
 // on purpose — those are inert for edit-reset (above) but not "documentation".
 var DOCS_ONLY_RE = /\.(md|markdown|txt|rst|adoc|html?|pdf|png|jpe?g|gif|svg|webp|ico|bmp)$/i;
+
+// Classifier-aware simplify gate skip. Returns a string reason if the gate
+// can be auto-passed, or null if /simplify must run. Uses simplify-classify.cjs
+// so the gate's "trivial" definition matches the skill's exactly.
+//
+// Two paths:
+//   1. snapshot path — /simplify ran earlier on this branch. Classify the diff
+//      between simplifySnapshotSha and current HEAD/working-tree. If TRIVIAL,
+//      the prior review still covers the branch — no re-run needed.
+//   2. baseline path — no snapshot (first time). Classify the entire branch
+//      diff vs merge-base. If TRIVIAL, the whole PR is below the threshold
+//      where /simplify provides value — auto-pass without ever invoking it.
+//
+// Fail-safe: any error (no classifier, no git, no merge-base) returns null,
+// which forces /simplify to run as today.
+function classifyForGateSkip(state) {
+  var classify;
+  try {
+    classify = require('./simplify-classify.cjs').classifyDiff;
+  } catch (e) { return null; }
+  if (typeof classify !== 'function') return null;
+
+  function tryClassify(diffText, label) {
+    try {
+      var dec = classify(diffText);
+      if (dec.tier === 'TRIVIAL') {
+        var loc = (dec.stats.added || 0) + (dec.stats.deleted || 0);
+        return label + ' is TRIVIAL (' + loc + ' LOC, ' + (dec.stats.fileCount || 0) + ' file(s))';
+      }
+    } catch (e) { /* fall through */ }
+    return null;
+  }
+
+  function gitDiff(args) {
+    try {
+      return cp.execFileSync('git', args, {
+        cwd: PROJECT_DIR, encoding: 'utf-8', timeout: 5000, windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 8 * 1024 * 1024
+      });
+    } catch (e) { return null; }
+  }
+
+  // Snapshot path: classify everything since /simplify last ran.
+  if (state.simplifySnapshotSha) {
+    var snapDiff = gitDiff(['diff', state.simplifySnapshotSha + '...HEAD']);
+    var workTreeA = gitDiff(['diff', 'HEAD']) || '';
+    if (snapDiff !== null) {
+      var combined = snapDiff + (workTreeA ? '\n' + workTreeA : '');
+      var hit = tryClassify(combined, 'delta since last /simplify');
+      if (hit) return hit;
+    }
+  }
+
+  // Baseline path: classify the whole branch vs merge-base.
+  var bases = ['origin/main', 'main', 'origin/master', 'master'];
+  for (var i = 0; i < bases.length; i++) {
+    var base;
+    try {
+      base = cp.execFileSync('git', ['merge-base', 'HEAD', bases[i]], {
+        cwd: PROJECT_DIR, encoding: 'utf-8', timeout: 2000, windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim();
+    } catch (e) { continue; }
+    if (!base) continue;
+    var branchDiff = gitDiff(['diff', base + '...HEAD']);
+    var workTreeB = gitDiff(['diff', 'HEAD']) || '';
+    if (branchDiff !== null) {
+      return tryClassify(branchDiff + (workTreeB ? '\n' + workTreeB : ''), 'branch diff');
+    }
+    break;
+  }
+  return null;
+}
 
 // Get the file list changed on the current branch vs the merge-base with origin/main
 // (falling back to local main). Returns an array of repo-relative paths, or null on
@@ -206,10 +279,19 @@ switch (command) {
   case 'record-skill-run': {
     if ((process.env.TOOL_INPUT_skill || '') === 'simplify') {
       var s = readState();
-      if (!s.simplifyRun) {
-        s.simplifyRun = true;
-        writeState(s);
-      }
+      var changed = false;
+      if (!s.simplifyRun) { s.simplifyRun = true; changed = true; }
+      // Snapshot HEAD so check-before-pr can classify delta-since-simplify and
+      // skip a redundant /simplify re-run when only trivial fixes followed.
+      // Non-fatal — gate falls through to current behaviour without the snapshot.
+      try {
+        var sha = cp.execFileSync('git', ['rev-parse', 'HEAD'], {
+          cwd: PROJECT_DIR, encoding: 'utf-8', timeout: 2000, windowsHide: true,
+          stdio: ['ignore', 'pipe', 'ignore']
+        }).trim();
+        if (sha && s.simplifySnapshotSha !== sha) { s.simplifySnapshotSha = sha; changed = true; }
+      } catch (e) { /* no git or detached state — skip snapshot, gate still works */ }
+      if (changed) writeState(s);
     }
     break;
   }
@@ -249,6 +331,19 @@ switch (command) {
       break;
     }
     var s = readState();
+    // Classifier-aware skip: if delta-since-snapshot or whole-branch diff is
+    // TRIVIAL, satisfy the simplify gate silently. Reuses the same classifier
+    // the skill uses — same "trivial" definition, no drift. Same threshold that
+    // already maps to TRIVIAL=0 agents inside /simplify, so trusting it at the
+    // gate level is the same trust profile, just one decision earlier.
+    if (config.simplify_gate && !s.simplifyRun) {
+      var skipReason = classifyForGateSkip(s);
+      if (skipReason) {
+        s.simplifyRun = true;
+        writeState(s);
+        process.stdout.write('Simplify gate auto-passed: ' + skipReason + '\n');
+      }
+    }
     var missing = [];
     if (config.testing_gate && !s.testsRun) missing.push('tests have not run since the last code edit (run npm test, vitest, jest, pytest, or similar)');
     if (config.simplify_gate && !s.simplifyRun) missing.push('/simplify has not run since the last code edit');

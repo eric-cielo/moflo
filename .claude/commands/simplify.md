@@ -34,20 +34,15 @@ Pick the smallest tier the diff genuinely fits.
 
 Critical-surface files (launcher, hooks, MCP wiring) raise the *care* of the agent prompt — sharper checklist, blast-radius framing — they do **not** automatically escalate to NORMAL. Risk-weighted ≠ headcount-weighted.
 
-## Phase 3: Route the model (skip for TRIVIAL)
+## Phase 3: Use the classifier's model (skip for TRIVIAL)
 
-Before spawning any Agent, ask the moflo router which model to use:
+The classifier returns the right model for the tier — no separate router call needed:
 
-```
-mcp__moflo__hooks_model-route — {
-  task: "Review N-line change in <files> for reuse, quality, efficiency",
-  preferCost: true
-}
-```
+- `sonnet` (default) — real logic edits, single agent or 3-agent fan-out.
+- `haiku` — mostly-relocation diffs (mechanical moves; pattern-matching beats deep reasoning).
+- `opus` — never returned. Code review is breadth-bound, not depth-bound; sonnet 3-way IS the high-effort tier.
 
-**Wording rules:** the router's complexity score is keyword-sensitive. Avoid `refactor`, `architect`, `audit`, `system`, `redesign`, `migrate` — those force opus even when scoring suggests sonnet. State LOC count, file count, and "review for reuse, quality, efficiency". Nothing more.
-
-**Hard rule for `/simplify`: opus is never correct.** Code review never needs Opus reasoning, even on critical surface. If the router returns `opus`, downgrade to `sonnet`. On router failure, default to `sonnet`. Comment trims and pure formatting → `haiku`.
+Pass the classifier's `model` field verbatim to Agent's `model` parameter. If you fell back to prose rules in Phase 2 (no classifier), default to `sonnet`.
 
 ## Phase 4: Validation pass (re-run after fixes from a prior simplify)
 
@@ -57,8 +52,11 @@ Escalate one tier (self-review → SMALL agent) only if the fix introduced a new
 
 ## Phase 5: Run the appropriate review
 
-### TRIVIAL / Validation
-Run the three category checks (reuse / quality / efficiency) yourself in one pass against the diff. Most TRIVIAL diffs are clean — confirm and exit. Budget: ~30 seconds, no Agent.
+### TRIVIAL
+Print one confirmation line (`simplify: TRIVIAL — N LOC, 1 file — stamped`) and exit. **Do not** walk the three-category check; the classifier already concluded the diff is below the review-value threshold. Budget: <5 seconds, no Agent.
+
+### Validation pass
+Run the three category checks against the post-fix diff in one pass. Most are clean — confirm and exit. Budget: ~30 seconds, no Agent.
 
 ### SMALL — one agent
 ```
