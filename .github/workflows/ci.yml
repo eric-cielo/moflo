@@ -26,6 +26,10 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      # See test job for context — postinstall clobber workaround.
+      - name: Restore source after postinstall clobber
+        run: git checkout -- .claude/helpers/ .claude/scripts/
+
       - name: Build all packages
         run: npm run build
 
@@ -66,6 +70,16 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      # Pre-#937: the published moflo's postinstall bootstrapper clobbers
+      # source .claude/helpers/* and .claude/scripts/* with stale published
+      # artifacts when run as a devDependency. The fix in this PR
+      # (scripts/post-install-bootstrap.mjs detecting
+      # `consumerProjectRoot/package.json` name === "moflo") only takes effect
+      # once a moflo with that fix is published and pinned. Until then,
+      # restore source files from git after install.
+      - name: Restore source after postinstall clobber
+        run: git checkout -- .claude/helpers/ .claude/scripts/
+
       - name: Build all packages (tests import compiled output)
         run: npm run build
 
@@ -92,6 +106,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
+
+      # See test job for context — postinstall clobber workaround.
+      - name: Restore source after postinstall clobber
+        run: git checkout -- .claude/helpers/ .claude/scripts/
 
       - name: Lint
         run: npm run lint
