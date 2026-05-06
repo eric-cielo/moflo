@@ -62,18 +62,13 @@ export const SKILLS_MAP: Record<string, string[]> = {
 };
 
 // Skills that ship in the npm tarball (under `node_modules/moflo/.claude/skills/`)
-// but are deliberately NOT copied into consumer projects by `flo init`. Either
-// moflo-internal dev tooling, or upstream cruft kept around pending modernization
-// or removal. The drift-guard test asserts every dir under `.claude/skills/`
-// is classified in either SKILLS_MAP or INTERNAL_SKILLS (plus the special
-// `flo` + `fl` install path handled in moflo-init.ts).
+// but are deliberately NOT copied into consumer projects by `flo init`. Strictly
+// moflo-internal dev tooling. The drift-guard test asserts every dir under
+// `.claude/skills/` is classified in either SKILLS_MAP or INTERNAL_SKILLS (plus
+// the special `flo` + `fl` install path handled in moflo-init.ts).
 export const INTERNAL_SKILLS: string[] = [
-  'publish',              // moflo's own /publish workflow — not consumer-relevant
-  'reset-epic',           // moflo's own epic test-data reset — would torch a consumer's repo
-  'hive-mind-advanced',   // stale upstream cruft (references `npx claude-flow` CLI consumers don't have); moflo capability is via the hive-mind MCP tool family
-  'performance-analysis', // stale upstream cruft (references `npx claude-flow`); moflo capability is via the performance MCP tool family
-  'worker-integration',   // wrong product — references `npx agentic-flow`
-  'worker-benchmarks',    // wrong product — references `npx agentic-flow`
+  'publish',    // moflo's own /publish workflow — not consumer-relevant
+  'reset-epic', // moflo's own epic test-data reset — would torch a consumer's repo
 ];
 
 /**

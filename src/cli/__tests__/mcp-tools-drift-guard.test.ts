@@ -85,14 +85,13 @@ const ALLOWLIST: Record<string, string> = {
   'spell_accept': 'advertised in spell runner permission-acceptance flow',
 
   // Swarm + task coordination — protected critical surface per CLAUDE.md.
-  // Consumers reach these via object-property access in agent .md files
-  // (`this.mcpTools.task_orchestrate(...)`, `mcp.swarm_scale(...)`) which
-  // doesn't match the `mcp__moflo__<name>` regex but IS a real call site.
-  // See .claude/agents/consensus/quorum-manager.md (task_orchestrate) and
-  // .claude/agents/optimization/{resource-allocator,topology-optimizer}.md
-  // (swarm_scale).
-  'swarm_scale': 'consumed via object-property access in agent .md files (resource-allocator, topology-optimizer)',
-  'task_orchestrate': 'consumed via object-property access in agent .md files (quorum-manager)',
+  // Both have live integration tests that exercise the registered handlers
+  // (real consumers, not stubs); some agent .md files also call them via
+  // `mcp.swarm_scale(...)` / `this.mcpTools.task_orchestrate(...)` syntax that
+  // the corpus regex doesn't match. The integration tests are sufficient to
+  // prove the tools work; the agent body modernization tracks separately.
+  'swarm_scale': 'exercised by src/cli/__tests__/mcp-tools/swarm-scale.test.ts (live coordinator-backed integration test)',
+  'task_orchestrate': 'exercised by src/cli/__tests__/mcp-tools/task-orchestrate.test.ts and tests/system/swarm-restoration-e2e.test.ts',
 };
 
 interface RegisteredTool {
