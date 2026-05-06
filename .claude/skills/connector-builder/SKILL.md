@@ -83,7 +83,7 @@ Use the full scaffold in [templates/connector.md](templates/connector.md). It im
 - Per-action validation function
 - Vitest test file with mocks
 
-The generated test file lives at `tests/packages/spells/connectors/<name>.test.ts`.
+The generated test file lives at `src/cli/__tests__/spells/<name>.test.ts`.
 
 ### Step 4: Register the Connector
 

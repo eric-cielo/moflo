@@ -102,7 +102,7 @@ export const <name>Connector: SpellConnector = {
 
 ## Test Template
 
-Place at `tests/packages/spells/connectors/<name>.test.ts`:
+Place at `src/cli/__tests__/spells/<name>.test.ts`:
 
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest';

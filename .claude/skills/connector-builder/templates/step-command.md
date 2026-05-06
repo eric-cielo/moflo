@@ -86,7 +86,7 @@ Alternatively, use the `createStepCommand()` factory from `src/cli/spells/comman
 
 ## Test Template
 
-Place at `tests/packages/spells/commands/<type>-command.test.ts`:
+Place at `src/cli/__tests__/spells/<type>-command.test.ts`:
 
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
