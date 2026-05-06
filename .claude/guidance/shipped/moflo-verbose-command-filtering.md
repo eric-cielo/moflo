@@ -35,7 +35,7 @@ npm run build -- --verbose 2>&1 | grep -E "error TS|Failed|Cannot find"
 
 ## Why It Matters
 
-Case study: issue #903 burned ~25K tokens across 5 tee-then-grep round-trips where a single grep-at-source would have surfaced the same signal once. Filtering at source is not an optimization — it is the default shape for any verbose command whose full output you do not need in your context.
+A representative incident burned ~25K tokens across 5 tee-then-grep round-trips where a single grep-at-source would have surfaced the same signal once. Filtering at source is not an optimization — it is the default shape for any verbose command whose full output you do not need in your context.
 
 ---
 

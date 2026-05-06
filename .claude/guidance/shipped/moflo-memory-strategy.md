@@ -44,7 +44,7 @@ Namespaces are independent indexes. Search defaults to `all`; pass `namespace: "
 
 **Model:** `fast-all-MiniLM-L6-v2` via `fastembed` (Qdrant's ONNX client). 384-dim, L2-normalized vectors. ~3 s for 1000 entries.
 
-**Mandatory.** Hash-based fallback was removed in epic #527 (ADR-EMB-001) — if `fastembed` cannot load, memory operations fail loudly rather than silently degrading. Model auto-downloads to `~/.cache/fastembed` on first use; for offline / sandboxed runs pre-populate the cache or set `FASTEMBED_CACHE`.
+**Mandatory.** Hash-based fallback was removed (ADR-EMB-001) — if `fastembed` cannot load, memory operations fail loudly rather than silently degrading. Model auto-downloads to `~/.cache/fastembed` on first use; for offline / sandboxed runs pre-populate the cache or set `FASTEMBED_CACHE`.
 
 **Legacy aliases.** Entries embedded by earlier moflo versions may be tagged `Xenova/all-MiniLM-L6-v2` or `onnx`. They share the same vector space and are treated as compatible at search time (`semantic-search.mjs` `COMPATIBLE_MODELS`).
 

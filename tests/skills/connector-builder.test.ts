@@ -199,9 +199,14 @@ describe('connector-builder skill', () => {
       expect(content).toContain('memory-command');
     });
 
-    it('references the spell-builder skill (#240)', () => {
+    it('references the spell-builder skill', () => {
       expect(content).toContain('spell-builder');
-      expect(content).toContain('#240');
+    });
+
+    it('does not leak moflo-internal issue refs (#940)', () => {
+      // Consumers can't open #NNN links from their own repo's gh tool.
+      expect(content).not.toMatch(/#\d{3,4}/);
+      expect(content).not.toContain('github.com/eric-cielo/moflo/issues');
     });
   });
 });

@@ -112,7 +112,7 @@ Scan the guidance directory and score each `.md` against the universal rules. Wa
 Aggregate skipped files into a single rollup line in the report (count only, not actionable). Format:
 
 ```
-moflo-managed synced files: <N> skipped (auto-generated; rule violations belong upstream — file at https://github.com/eric-cielo/moflo/issues)
+moflo-managed synced files: <N> skipped (auto-generated; rule violations belong upstream — file an issue against the moflo package)
 ```
 
 Then for each remaining (user-authored) `.md` file:

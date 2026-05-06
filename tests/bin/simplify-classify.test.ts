@@ -1,21 +1,24 @@
 /**
- * System tests for bin/simplify-classify.cjs (issue #908 part 2).
+ * System tests for bin/simplify-classify.cjs.
  *
  * Drives the *real* classifier as a subprocess, piping synthetic diffs over
  * stdin. Asserts on the dispatch decision (tier, agentCount, model). This
- * directly verifies the cost-control behavior the issue cares about:
+ * directly verifies the cost-control behavior:
  *
- *   - #906-shape (mechanical decomposition)  → SMALL / 1 agent / sonnet
- *   - tiny diff                              → TRIVIAL / 0 agents
- *   - small logic edit                       → SMALL / 1 agent
- *   - large diff with new logic              → NORMAL / 3 agents
- *   - security-path + new logic              → NORMAL / 3 agents
- *   - never returns opus                     → ALL cases
+ *   - mechanical decomposition  → SMALL / 1 agent / haiku
+ *   - tiny diff                 → TRIVIAL / 0 agents
+ *   - small logic edit          → SMALL / 1 agent
+ *   - large diff with new logic → NORMAL / 3 agents
+ *   - security-path + new logic → NORMAL / 3 agents
+ *   - never returns opus        → ALL cases
+ *   - default-branch detection  → consumer's actual default branch, not hardcoded 'main'
  */
-import { describe, it, expect } from 'vitest';
-import { execFileSync } from 'child_process';
-import { resolve } from 'path';
-import { parseDiff, decide, classifyDiff } from '../../bin/simplify-classify.cjs';
+import { describe, it, expect, afterEach } from 'vitest';
+import { execFileSync, execSync } from 'child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join, resolve } from 'path';
+import { parseDiff, decide, classifyDiff, detectDefaultBranch } from '../../bin/simplify-classify.cjs';
 
 const CLASSIFIER = resolve(__dirname, '../../bin/simplify-classify.cjs');
 
@@ -324,5 +327,100 @@ describe('simplify-classify: end-to-end CLI invocation', () => {
     const decision = runClassifier(largeNewLogicDiff());
     expect(decision.tier).toBe('NORMAL');
     expect(decision.agentCount).toBe(3);
+  });
+});
+
+describe('simplify-classify: default-branch detection', () => {
+  // Hardcoded 'main' silently miscalibrates classification on consumers using
+  // 'master', 'develop', or any other default branch — empty diff → TRIVIAL →
+  // gate stamps clean without any real review. detectDefaultBranch must read
+  // the consumer's actual default.
+  const tempRepos: string[] = [];
+
+  function newTempDir(prefix: string): string {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    tempRepos.push(dir); // register before any throwable work
+    return dir;
+  }
+
+  function makeRepo(opts: { defaultBranch?: string; setOriginHead?: boolean } = {}): string {
+    const dir = newTempDir('simplify-classify-');
+    const branch = opts.defaultBranch ?? 'main';
+    // Use separate execSync calls (no shell) to keep cross-platform behavior consistent
+    execSync(`git init -b ${branch} -q`, { cwd: dir });
+    execSync('git config user.email t@e.com', { cwd: dir });
+    execSync('git config user.name T', { cwd: dir });
+    execSync('git config commit.gpgsign false', { cwd: dir });
+    writeFileSync(join(dir, 'README.md'), '# t\n');
+    execSync('git add README.md', { cwd: dir });
+    execSync('git commit -m init -q', { cwd: dir });
+    if (opts.setOriginHead) {
+      // Simulate a remote HEAD without a real remote: create the remote-tracking
+      // branch ref first so symbolic-ref --short resolves cleanly.
+      execSync(`git update-ref refs/remotes/origin/${branch} HEAD`, { cwd: dir });
+      execSync(`git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/${branch}`, { cwd: dir });
+    }
+    return dir;
+  }
+
+  // Spawn a fresh Node subprocess in `cwd` so each probe gets an unprimed module
+  // (the classifier memoizes detectDefaultBranch within a single process).
+  function probeDefaultBranch(cwd: string): string {
+    return execFileSync(
+      'node',
+      ['-e', `process.chdir(${JSON.stringify(cwd)}); const m = require(${JSON.stringify(CLASSIFIER)}); process.stdout.write(m.detectDefaultBranch());`],
+      { encoding: 'utf-8', timeout: 10000 },
+    );
+  }
+
+  function runClassifierIn(cwd: string): any {
+    const stdout = execFileSync('node', [CLASSIFIER], { cwd, encoding: 'utf-8', timeout: 15000 });
+    return JSON.parse(stdout);
+  }
+
+  afterEach(() => {
+    for (const d of tempRepos.splice(0)) {
+      try { rmSync(d, { recursive: true, force: true }); } catch {}
+    }
+  });
+
+  it('picks up origin/HEAD when set (non-main default branch)', () => {
+    const dir = makeRepo({ defaultBranch: 'develop', setOriginHead: true });
+    expect(probeDefaultBranch(dir)).toBe('develop');
+  });
+
+  it('falls back to init.defaultBranch when origin/HEAD is missing', () => {
+    const dir = makeRepo({ defaultBranch: 'trunk', setOriginHead: false });
+    execSync('git config init.defaultBranch trunk', { cwd: dir });
+    expect(probeDefaultBranch(dir)).toBe('trunk');
+  });
+
+  it('falls back to "main" when no signals available', () => {
+    // Not even a git repo — both git calls fail, fallback is 'main'
+    const dir = newTempDir('simplify-classify-bare-');
+    expect(probeDefaultBranch(dir)).toBe('main');
+  });
+
+  it('CLI uses the detected branch as merge base, not hardcoded "main"', () => {
+    // The discriminator: commit a change ON `develop`, with NO working-tree
+    // changes. A correct implementation diffs against `develop` (sees the
+    // commit). A hardcoded-`main` implementation diffs against a non-existent
+    // ref (`git diff main...HEAD` errors → safeExec returns ''), so committed
+    // diff is invisible and `stats.added` would be 0.
+    //
+    // Scenario: branch off develop, add commits on the branch, classifier
+    // invoked from the branch tip with no --base.
+    const dir = makeRepo({ defaultBranch: 'develop', setOriginHead: true });
+    execSync('git checkout -q -b feature', { cwd: dir });
+    writeFileSync(join(dir, 'README.md'), '# t\nadded line 1\nadded line 2\nadded line 3\nadded line 4\n');
+    execSync('git add README.md', { cwd: dir });
+    execSync('git commit -m feat -q', { cwd: dir });
+
+    const decision = runClassifierIn(dir);
+    expect(decision.stats).toBeDefined();
+    // 4 added lines committed since the develop merge-base. If the classifier
+    // hardcoded 'main', `git diff main...HEAD` would error and committed diff
+    // would be empty (working tree is clean too) — stats.added would be 0.
+    expect(decision.stats.added).toBeGreaterThanOrEqual(4);
   });
 });

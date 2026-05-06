@@ -13,14 +13,14 @@ Fully resets an epic so it can be re-tested from scratch.
 ## Usage
 
 ```
-/reset-epic 287       # Reset epic #287 for retesting
+/reset-epic <epic-number>     # e.g. /reset-epic 287, to reset that epic for retesting
 ```
 
 ## What It Does
 
 Given an epic issue number, perform ALL of the following:
 
-1. **Identify stories**: Parse the epic body for linked issue numbers (e.g., `#284`, `#285`, `#286`)
+1. **Identify stories**: Parse the epic body for linked issue numbers
 2. **Close open PRs**: Find all open PRs referencing any story number or the epic number. Close them.
 3. **Delete remote branches**: Find and delete any remote branches related to the epic (e.g., `epic/<number>-*`, `feat/<story>-*`, `revert/epic-<number>-*`)
 4. **Delete local branches**: Delete any local branches matching the same patterns (skip the current branch)

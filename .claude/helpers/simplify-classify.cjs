@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * /simplify diff classifier — issue #908.
+ * /flo-simplify diff classifier.
  *
  * Decides which review tier the current diff warrants and returns a JSON
- * dispatch decision. The /simplify skill MUST call this first so routing is
+ * dispatch decision. The /flo-simplify skill MUST call this first so routing is
  * deterministic and unit-testable instead of a prose decision Claude makes
  * over and over per run.
  *
- * Rule (per user direction): default to single-agent Sonnet review. Only
- * escalate to a 3-agent fan-out when diff signals genuinely warrant it.
- * Opus is never selected — the existing skill already documents that.
+ * Rule: default to single-agent Sonnet review. Only escalate to a 3-agent
+ * fan-out when diff signals genuinely warrant it. Opus is never selected —
+ * the existing skill already documents that.
  *
  * Outputs JSON:
  *   {
@@ -21,7 +21,8 @@
  *   }
  *
  * Usage:
- *   node bin/simplify-classify.cjs [--base main]
+ *   node bin/simplify-classify.cjs                  # auto-detects default branch
+ *   node bin/simplify-classify.cjs --base develop   # explicit override
  *   node bin/simplify-classify.cjs --diff <unified-diff-on-stdin>
  *
  * The --diff stdin form exists so unit tests can drive the classifier
@@ -31,7 +32,7 @@
 
 const { execSync } = require('child_process');
 
-// Paths where new logic warrants the 3-agent fan-out (issue #908).
+// Paths where new logic warrants the 3-agent fan-out.
 // Mechanical edits inside these paths are still SMALL; only adding/removing
 // declarations triggers escalation.
 const SECURITY_PATHS = [
@@ -47,6 +48,25 @@ const SECURITY_PATHS = [
 function safeExec(cmd) {
   try { return execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }); }
   catch { return ''; }
+}
+
+// Detect the consumer's default branch. Hardcoding 'main' silently miscalibrates
+// classification on repos that use 'master', 'develop', etc. — empty diff →
+// TRIVIAL → gate stamps clean without any real review.
+let _cachedDefaultBranch = null;
+function detectDefaultBranch() {
+  if (_cachedDefaultBranch !== null) return _cachedDefaultBranch;
+
+  // Preferred: origin/HEAD points to whatever the remote considers default.
+  const symbolic = safeExec('git symbolic-ref --short refs/remotes/origin/HEAD').trim();
+  if (symbolic.startsWith('origin/')) return (_cachedDefaultBranch = symbolic.slice('origin/'.length));
+
+  // Fallback: local init.defaultBranch (set by `git init -b <name>` or config).
+  const configured = safeExec('git config --get init.defaultBranch').trim();
+  if (configured) return (_cachedDefaultBranch = configured);
+
+  // Last resort: 'main' (most common modern default).
+  return (_cachedDefaultBranch = 'main');
 }
 
 function readDiffFromGit(base) {
@@ -186,14 +206,15 @@ function classifyDiff(diffText) {
   return decide(parseDiff(diffText));
 }
 
-function classifyFromGit(base = 'main') {
-  return classifyDiff(readDiffFromGit(base));
+function classifyFromGit(base) {
+  const resolved = base || detectDefaultBranch();
+  return classifyDiff(readDiffFromGit(resolved));
 }
 
 if (require.main === module) {
   const args = process.argv.slice(2);
   const baseIdx = args.indexOf('--base');
-  const base = baseIdx >= 0 ? args[baseIdx + 1] : 'main';
+  const base = baseIdx >= 0 ? args[baseIdx + 1] : detectDefaultBranch();
   const stdinDiff = args.includes('--diff') || args.includes('--stdin');
 
   let result;
@@ -211,4 +232,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { parseDiff, decide, classifyDiff, classifyFromGit };
+module.exports = { parseDiff, decide, classifyDiff, classifyFromGit, detectDefaultBranch };

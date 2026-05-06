@@ -17,13 +17,13 @@ Also note: was `/flo-simplify` already run on this branch in this session? If ye
 
 ## Phase 2: Classify the diff (deterministic — call the classifier)
 
-**Call the classifier first, follow its decision.** Do not eyeball the diff and pick a tier in prose — that's the failure mode that costs ~230K tokens per run on mechanical decompositions (issue #908). The classifier reads the same diff Claude would, applies the rules below, and returns a JSON dispatch decision:
+**Call the classifier first, follow its decision.** Do not eyeball the diff and pick a tier in prose — that's the failure mode where the three-agent fan-out runs against a mechanical-relocation diff that one agent would cover fine and burns disproportionate tokens. The classifier reads the same diff Claude would, applies the rules below, and returns a JSON dispatch decision:
 
 ```bash
-node .claude/helpers/simplify-classify.cjs --base main
+node .claude/helpers/simplify-classify.cjs
 ```
 
-(In the moflo source repo, equivalent is `node bin/simplify-classify.cjs --base main`. The launcher syncs `bin/simplify-classify.cjs` → `.claude/helpers/simplify-classify.cjs` in consumer projects.)
+The classifier auto-detects the repo's default branch (origin/HEAD, then `init.defaultBranch`, then `main`). Pass `--base <branch>` to override. (In the moflo source repo, equivalent is `node bin/simplify-classify.cjs`. The launcher syncs `bin/simplify-classify.cjs` → `.claude/helpers/simplify-classify.cjs` in consumer projects.)
 
 Output:
 ```json
@@ -65,7 +65,7 @@ Reserved for **genuinely cross-cutting** changes that single-agent review can't 
 - `security-sensitive path AND netDecls > 0` (aidefence/, swarm/consensus/, hooks gate, daemon-lock, launcher — only when adding logic, not on a 1-line touch)
 - `3+ new files AND ≥5 new declarations` (genuinely new subsystem)
 
-**Mechanical relocation is NOT NORMAL** even with many files / many lines. If `declAdded` and `declRemoved` are both ≥2 and `netDecls` is small (within 30% of total declarations touched), it's a structural move — SMALL, single agent. This is the #906/#908 case: ~330 LOC across 6 files of pure decomposition was costing 230K tokens via three-agent fan-out when it needed one Sonnet agent.
+**Mechanical relocation is NOT NORMAL** even with many files / many lines. If `declAdded` and `declRemoved` are both ≥2 and `netDecls` is small (within 30% of total declarations touched), it's a structural move — SMALL, single agent. The pattern this guards against: ~330 LOC across 6 files of pure decomposition triggers three-agent NORMAL when SMALL was correct, and the agents duplicate each other's work and burn tokens.
 
 Three agents exist to cover orthogonal axes (Reuse / Quality / Efficiency) when the change is broad enough that one agent's tool-call budget can't survey it all. For single-file edits, one focused agent always covers all three axes — three is duplication, not coverage.
 

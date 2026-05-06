@@ -16,7 +16,7 @@ Roles:
 Pattern:
 ```javascript
 // 1. Create the task list first
-TaskCreate({ subject: "Research issue #123", ... })
+TaskCreate({ subject: "Research issue", ... })
 TaskCreate({ subject: "Implement changes", ... })
 TaskCreate({ subject: "Test implementation", ... })
 TaskCreate({ subject: "Run /flo-simplify on changed files", ... })
