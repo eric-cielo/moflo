@@ -53,6 +53,36 @@ function findProjectRoot() {
 
 const projectRoot = findProjectRoot();
 
+// Dogfood guard (#928). When this launcher runs inside the moflo repo itself,
+// .claude/scripts/, .claude/helpers/, and .claude/guidance/ are committed git
+// files — they ARE moflo's source of truth, not destinations to be re-synced
+// from node_modules. Drift heal would silently revert any post-publish edit
+// to one of those files (e.g. story #927's gate.cjs got reverted overnight
+// because manifest.size still pointed at the previously-published version).
+// Detection is `package.json#name === "moflo"` — the project's own package.json,
+// NOT node_modules/moflo/package.json. Defaults to false on any read/parse
+// error so a corrupt package.json never silently disables drift heal in a
+// real consumer.
+//
+// Workspace caveat: findProjectRoot() walks up to the nearest package.json,
+// so in a workspace child (packages/foo/) the read sees the child package
+// (name !== "moflo") and the guard stays false. moflo isn't a workspace
+// today; if it ever becomes one, run sessions from the repo root or extend
+// this check to walk further up.
+let isMofloDogfood = false;
+try {
+  const projectPkgPath = resolve(projectRoot, 'package.json');
+  if (existsSync(projectPkgPath)) {
+    const projectPkg = JSON.parse(readFileSync(projectPkgPath, 'utf-8'));
+    isMofloDogfood = projectPkg?.name === 'moflo';
+  }
+} catch (err) {
+  // Defaults to false — safer than accidentally disabling drift heal in a
+  // real consumer. Surface the failure so a corrupt project package.json
+  // doesn't silently change launcher behavior (per feedback_no_silent_failures).
+  process.stderr.write(`[moflo] dogfood-guard package.json read failed: ${err && err.message ? err.message : String(err)}\n`);
+}
+
 // Visible mutation reporter (#716). Claude Code's SessionStart hook captures
 // stdout as `additionalContext`, so each line here surfaces to Claude — and
 // through it to the user — explaining what the launcher just changed. Keep
@@ -360,6 +390,8 @@ try {
         }
       }
     }
+    // Dogfood (#928): never drift-heal moflo's own committed copies.
+    if (isMofloDogfood) manifestDrifted = false;
 
     if (installedVersion !== cachedVersion || manifestDrifted) {
       if (installedVersion !== cachedVersion) {
@@ -443,6 +475,20 @@ try {
       }
 
       const binDir = resolve(projectRoot, 'node_modules/moflo/bin');
+
+      // Dogfood (#928): in moflo's own repo, the destinations under
+      // .claude/scripts/, .claude/helpers/, .claude/guidance/ are committed
+      // git files — copying node_modules/moflo content over them clobbers
+      // in-flight work (the same bug that silently reverted #927 between
+      // commit and publish). Skip the sync, cleanup, and manifest write
+      // entirely; queue the version-stamp write so we don't re-enter this
+      // branch on every subsequent session. Daemon recycle still happens
+      // (the stopDaemon call earlier handled this) and 3a-pre will spawn a
+      // fresh daemon under the new code.
+      if (isMofloDogfood) {
+        pendingVersionStampWrite = { path: versionStampPath, version: installedVersion };
+        emitMutation('skipped file-sync', 'moflo dogfood — committed dogfood copies preserved');
+      } else {
 
       // ── Manifest-based auto-update ──────────────────────────────────────
       //
@@ -709,6 +755,7 @@ try {
         // queued for 3g.
         emitWarning(`manifest write failed (${errMessage(err)})`);
       }
+      } // end !isMofloDogfood file-sync branch (#928)
     }
   }
 } catch (err) {
