@@ -191,5 +191,5 @@ Hook regressions are silent. The user notices "Claude is acting weird" days late
 - `.claude/guidance/internal/consumer-project-paths.md` — Why `$CLAUDE_PROJECT_DIR`, never `process.cwd()`
 - `.claude/guidance/internal/dogfooding.md` — Why hook edits don't take effect until the next session/install
 - `.claude/guidance/shipped/moflo-cross-platform.md` — Cross-platform constraints applied to hook authoring
-- `.claude/guidance/shipped/moflo-session-start.md` — SessionStart event wiring and the launcher contract
+- `.claude/guidance/internal/session-start.md` — SessionStart event wiring and the launcher contract
 - `.claude/guidance/shipped/moflo-error-handling.md` — No silent catches; this is a hook-critical rule

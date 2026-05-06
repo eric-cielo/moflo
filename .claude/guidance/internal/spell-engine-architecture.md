@@ -140,6 +140,7 @@ Stories #101-#108, #105, #117 have no dependency on Epic #110.
 
 ## See Also
 
-- `.claude/guidance/moflo-core-guidance.md` — CLI, hooks, swarm, memory reference
-- `.claude/guidance/moflo-claude-swarm-cohesion.md` — Task & swarm coordination
-- `.claude/guidance/moflo-subagents.md` — Subagents protocol
+- `.claude/guidance/shipped/moflo-spell-engine.md` — Consumer-facing spell engine reference (step types, definitions, runner)
+- `.claude/guidance/shipped/moflo-spell-sandboxing.md` — Capability declarations and enforcement layers (consumer-facing)
+- `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md` — Task & swarm coordination context for `full`/`recursive` integration tiers
+- `.claude/skills/spell-builder/architecture.md` — Three-layer model (spell → step command → connector) the consumer skill uses

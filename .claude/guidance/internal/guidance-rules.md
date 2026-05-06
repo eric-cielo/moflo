@@ -89,6 +89,6 @@ This is rarer and riskier — only do it when you're sure no consumer relies on 
 - `.claude/guidance/internal/coding-style.md` — Sibling style rules but for source code; both files share the imperative/concrete/specific posture
 - `.claude/guidance/internal/consumer-bound-references.md` — Operational rule for path-bearing strings in shipped content (See Also links, injected templates, runtime directives) — required reading before editing any cross-reference
 - `.claude/guidance/shipped/moflo-memory-strategy.md` — Companion shipped doc on writing guidance that indexes well for RAG (consumer audience)
-- `.claude/guidance/shipped/moflo-session-start.md` — Where shipped guidance gets synced to consumer projects (and why the `moflo-` prefix matters there)
+- `.claude/guidance/internal/session-start.md` — Where shipped guidance gets synced to consumer projects (and why the `moflo-` prefix matters there)
 - `.claude/guidance/internal/guidance-sync.md` — Three-layer sync pipeline (filesystem → DB → HNSW); the chunking decisions in the universal rules feed Layer 2's behavior
 - `.claude/skills/guidance/SKILL.md` — `/guidance` skill that exercises the universal rules in consumer projects (uses only the shipped doc, not this internal one)

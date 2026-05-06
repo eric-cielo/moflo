@@ -92,7 +92,7 @@ Before merging any new `bin/*.mjs` script:
 ## See Also
 
 - `.claude/guidance/internal/upgrade-contract.md` — Why these path rules matter: the session-start launcher relies on `findProjectRoot()` to honor the "user never re-runs init" invariant
-- `.claude/guidance/shipped/moflo-session-start.md` — How `bin/*.mjs` files get synced to `.claude/scripts/` on every version change (consumer perspective)
+- `.claude/guidance/internal/session-start.md` — How `bin/*.mjs` files get synced to `.claude/scripts/` on every version change
 - `.claude/guidance/shipped/moflo-settings-injection.md` — The contract for what moflo writes into `.claude/`, including the path-resolution rules that scripts must honor
 - `.claude/guidance/shipped/moflo-cross-platform.md` — Cross-platform path rules (`path.join`, no hardcoded separators) — companion to the project-root-resolution rule here
-- `.claude/guidance/shipped/moflo-core-guidance.md` (Helper Script Auto-Sync section) — File lists for what `session-start-launcher.mjs` syncs and where it puts each file
+- `.claude/guidance/internal/session-start.md` § Stage 3 — Per-source file lists for what `session-start-launcher.mjs` syncs and where it puts each file

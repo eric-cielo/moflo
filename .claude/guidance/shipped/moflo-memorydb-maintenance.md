@@ -109,7 +109,7 @@ node bin/build-embeddings.mjs
 
 ## Auto-Reindex on Session Start
 
-`hooks.mjs` spawns `index-all.mjs` on session start, which runs the full chain. This only works if `index-all.mjs` is in the `scriptFiles` array in `session-start-launcher.mjs` (see `moflo-session-start.md` § "Helper script sync").
+`hooks.mjs` spawns `index-all.mjs` on session start, which runs the full chain. The session-start launcher syncs the indexer scripts into `.claude/scripts/` on every version change so the chain always points at current code.
 
 ## Recovering From a Legacy DB
 
@@ -133,6 +133,4 @@ flo memory restore-learnings --from .swarm/memory.db.bak
 
 - `.claude/guidance/moflo-memory-strategy.md` — When to use which namespace; semantic search query patterns
 - `.claude/guidance/moflo-core-guidance.md` — `flo memory` CLI subcommands and `flo doctor` output
-- `.claude/guidance/moflo-session-start.md` — Where the auto-reindex chain runs in the launcher lifecycle
 - `.claude/guidance/moflo-subagents.md` — Memory-first protocol that depends on these indexes being healthy
-- `.claude/guidance/internal/guidance-sync.md` — Internal: how guidance content actually flows from `shipped/` into the DB and out to search (three-layer pipeline + cleanup paths)

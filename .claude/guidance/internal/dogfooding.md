@@ -92,6 +92,6 @@ Features must work from the installed location (consumer perspective), not from 
 - `.claude/guidance/internal/guidance-rules.md` — Moflo-only extensions: `moflo-` prefix, shipped/internal partition, decision rules
 - `.claude/guidance/internal/testing-performance.md` — The "no flaky tests" standing decision; dogfooding catches flakes before they reach consumers
 - `.claude/guidance/internal/consumer-project-paths.md` — Why `bin/` scripts must use `findProjectRoot()` — dogfooding catches the path-resolution bugs first
-- `.claude/guidance/shipped/moflo-session-start.md` — Consumer-facing view of what runs on every session start (dogfood = we are the consumer)
+- `.claude/guidance/internal/session-start.md` — Detailed view of what runs on every session start (dogfood = we are the consumer)
 - `.claude/guidance/shipped/moflo-settings-injection.md` — The settings.json self-heal contract dogfooding exercises
 - `.claude/guidance/internal/guidance-sync.md` — Three-layer pipeline (filesystem → DB → HNSW) for shipped guidance; dogfooding catches sync regressions on every reindex

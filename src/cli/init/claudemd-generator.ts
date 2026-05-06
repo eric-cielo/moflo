@@ -51,7 +51,8 @@ After \`npm install\` touches moflo, check \`.moflo/restart-pending.json\` — i
 
 ### Full Reference
 
-- Subagents protocol: \`.claude/guidance/moflo-subagents.md\`
+- Universal agent rules (memory protocol, git/PR conventions, file org, build/test): \`.claude/guidance/moflo-agent-rules.md\`
+- Subagent spawn protocol: \`.claude/guidance/moflo-subagents.md\`
 - Task + swarm coordination: \`.claude/guidance/moflo-claude-swarm-cohesion.md\`
 - CLI, hooks, swarm, memory, moflo.yaml: \`.claude/guidance/moflo-core-guidance.md\`
 ${MARKER_END}`;

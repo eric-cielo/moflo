@@ -24,7 +24,7 @@ Two stages run, both inside `bin/session-start-launcher.mjs`:
 
 **Section 3 (full sync, runs only on version change or manifest drift)** — copies every `*.md` in `node_modules/moflo/.claude/guidance/shipped/` into the consumer's `.claude/guidance/` (top-level mirror) and records each path in `currentManifest`. Then it diffs `previousManifest` (from `.moflo/installed-files.json`) against `currentManifest` and `unlinkSync`s anything that was installed last time but is no longer shipped. This is the authoritative removal path.
 
-**Section 3b (restore + prune, runs every session)** — restores any missing top-level mirror that should exist (e.g., a user accidentally deleted one) and prunes any top-level `*.md` whose source no longer exists in `shipped/` AND whose first line begins with the `<!-- MOFLO:SESSION-START-MIRROR ` marker. The marker check protects user-authored files and the `moflo-bootstrap.md` (which uses a distinct `moflo init` marker).
+**Section 3b (restore + prune, runs every session)** — restores any missing top-level mirror that should exist (e.g., a user accidentally deleted one) and prunes any top-level `*.md` whose source no longer exists in `shipped/` AND whose first line begins with the `<!-- MOFLO:SESSION-START-MIRROR ` marker. The marker check protects user-authored files. (Pre-#939 `moflo-bootstrap.md` is handled separately by section 3c-939, which removes it on first session-start after upgrade.)
 
 | Change to `shipped/` | Section 3 effect | Section 3b effect |
 |---------------------|------------------|-------------------|
@@ -151,7 +151,7 @@ If chunks remain after deletion, `cleanStaleEntries` did not run (likely `--file
 - `.claude/guidance/internal/guidance-rules.md` — moflo-specific bucket rules (`moflo-` prefix, shipped/internal partition)
 - `.claude/guidance/shipped/moflo-memorydb-maintenance.md` — consumer-facing recovery commands (purge namespace, force reindex, restore from `.bak`)
 - `.claude/guidance/shipped/moflo-memory-strategy.md` — namespace conventions and search query patterns the synced data feeds
-- `.claude/guidance/shipped/moflo-session-start.md` — every launcher stage in execution order, including stages 3 and 3b documented above
+- `.claude/guidance/internal/session-start.md` — every launcher stage in execution order, including stages 3 and 3b documented above
 - `.claude/guidance/shipped/moflo-settings-injection.md` — sibling self-heal contract for `.claude/settings.json` (analogous mechanism, different surface)
 - `bin/session-start-launcher.mjs` — sections 3 and 3b implementation
 - `bin/index-guidance.mjs` — `indexFile`, `cleanStaleEntries`, `deleteByPrefix`
