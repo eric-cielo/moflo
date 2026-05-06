@@ -222,7 +222,12 @@ describe('spell-builder skill', () => {
   describe('cross-references', () => {
     it('references /connector-builder skill', () => {
       expect(content).toContain('/connector-builder');
-      expect(content).toContain('#238');
+    });
+
+    it('does not leak moflo-internal issue refs (#940)', () => {
+      // Consumers can't open #NNN links from their own repo's gh tool.
+      expect(content).not.toMatch(/#\d{3,4}/);
+      expect(content).not.toContain('github.com/eric-cielo/moflo/issues');
     });
 
     it('references MCP spell_create tool', () => {
