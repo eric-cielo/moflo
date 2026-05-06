@@ -41,5 +41,5 @@ Case study: issue #903 burned ~25K tokens across 5 tee-then-grep round-trips whe
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-core-guidance.md` — Hub for moflo's CLI/MCP surface and runtime conventions
-- `.claude/guidance/shipped/moflo-memory-strategy.md` — Companion rules on RAG indexing and context discipline
+- `.claude/guidance/moflo-core-guidance.md` — Hub for moflo's CLI/MCP surface and runtime conventions
+- `.claude/guidance/moflo-memory-strategy.md` — Companion rules on RAG indexing and context discipline

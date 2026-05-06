@@ -120,7 +120,7 @@ const runner = createRunner({
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-spell-engine.md` — Built-in step types, spell definition format, runner lifecycle, error codes
-- `.claude/guidance/shipped/moflo-spell-sandboxing.md` — Capability declarations a custom step must include and how the sandbox enforces them
-- `.claude/guidance/shipped/moflo-spell-connectors.md` — When to write a connector instead of a custom step (resource-shaped vs. action-shaped extension)
-- `.claude/guidance/shipped/moflo-spell-engine-architecture.md` — Architecture decisions for the pluggable step loader
+- `.claude/guidance/moflo-spell-engine.md` — Built-in step types, spell definition format, runner lifecycle, error codes
+- `.claude/guidance/moflo-spell-sandboxing.md` — Capability declarations a custom step must include and how the sandbox enforces them
+- `.claude/guidance/moflo-spell-connectors.md` — When to write a connector instead of a custom step (resource-shaped vs. action-shaped extension)
+- `.claude/guidance/moflo-spell-engine-architecture.md` — Architecture decisions for the pluggable step loader

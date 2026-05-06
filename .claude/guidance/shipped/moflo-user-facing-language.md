@@ -37,6 +37,6 @@
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-task-icons.md` — Companion UX rule: spinner text must use ICON + [Role] so non-technical users can identify the working agent
-- `.claude/guidance/shipped/moflo-spell-sandboxing.md` — Permission disclosure output where this language rule has the largest user-visible surface
-- `.claude/guidance/shipped/moflo-error-handling.md` — Sibling rule for what error messages must contain; this doc governs how those messages are phrased
+- `.claude/guidance/moflo-task-icons.md` — Companion UX rule: spinner text must use ICON + [Role] so non-technical users can identify the working agent
+- `.claude/guidance/moflo-spell-sandboxing.md` — Permission disclosure output where this language rule has the largest user-visible surface
+- `.claude/guidance/moflo-error-handling.md` — Sibling rule for what error messages must contain; this doc governs how those messages are phrased

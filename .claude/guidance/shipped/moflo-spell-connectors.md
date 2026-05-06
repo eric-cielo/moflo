@@ -128,6 +128,6 @@ If you do need one:
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-spell-sandboxing.md` — CapabilityGateway and enforcement rules
-- `.claude/guidance/shipped/moflo-spell-engine.md` — Running spells, step command types
-- `.claude/guidance/shipped/moflo-spell-engine-architecture.md` — Architecture decisions
+- `.claude/guidance/moflo-spell-sandboxing.md` — CapabilityGateway and enforcement rules
+- `.claude/guidance/moflo-spell-engine.md` — Running spells, step command types
+- `.claude/guidance/moflo-spell-engine-architecture.md` — Architecture decisions

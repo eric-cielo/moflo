@@ -137,8 +137,8 @@ Use relative names (not absolute paths) so the links work across project context
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-memory-strategy.md` — Companion rules on namespaces, RAG indexing, and search patterns the data feeds
-- `.claude/guidance/shipped/moflo-task-icons.md` — UX rule for `TaskCreate` and `Agent` description fields (ICON + [Role])
-- `.claude/guidance/shipped/moflo-user-facing-language.md` — How to phrase any text shown to end users (plain risk-level language, no jargon)
-- `.claude/guidance/shipped/moflo-subagents.md` — Memory-first protocol any guidance you write should reinforce
+- `.claude/guidance/moflo-memory-strategy.md` — Companion rules on namespaces, RAG indexing, and search patterns the data feeds
+- `.claude/guidance/moflo-task-icons.md` — UX rule for `TaskCreate` and `Agent` description fields (ICON + [Role])
+- `.claude/guidance/moflo-user-facing-language.md` — How to phrase any text shown to end users (plain risk-level language, no jargon)
+- `.claude/guidance/moflo-subagents.md` — Memory-first protocol any guidance you write should reinforce
 - `.claude/skills/guidance/SKILL.md` — `/guidance` skill that helps you author or audit guidance against these rules

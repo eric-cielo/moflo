@@ -98,6 +98,6 @@ Before creating any new source file, verify:
 ## See Also
 
 - `CLAUDE.md` — Project-wide rules, consumer project checklist
-- `.claude/guidance/shipped/moflo-guidance-rules.md` — Rules for writing guidance docs
+- `.claude/guidance/moflo-guidance-rules.md` — Rules for writing guidance docs
 - `docs/BUILD.md` — Build and publish process
 - `docs/adr/0001-collapse-moflo-workspace-packages.md` — The ADR that documents the collapse

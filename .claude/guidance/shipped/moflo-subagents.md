@@ -106,7 +106,7 @@ This applies to ALL `gh` commands that target a repo: `pr create`, `pr merge`, `
 
 ### Task Icons (MANDATORY)
 - `TaskCreate` MUST use **ICON + [Role]** in `subject` and `activeForm`
-- Full icon map: `.claude/guidance/shipped/moflo-task-icons.md`
+- Full icon map: `.claude/guidance/moflo-task-icons.md`
 - Example: `🧪 [Tester] Run unit tests` / activeForm: `🧪 Running unit tests`
 
 ---
@@ -143,8 +143,8 @@ npx flo memory store --namespace patterns --key "brief-descriptive-key" --value 
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-task-icons.md` — Mandatory ICON + [Role] format for every `TaskCreate` and `Agent` description spawned by a coordinator
-- `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md` — How task lists and swarm coordinators cooperate when subagents are spawned in batches
-- `.claude/guidance/shipped/moflo-memory-strategy.md` — The memory-search-first rule this protocol enforces, with namespace-selection guidance
-- `.claude/guidance/shipped/moflo-memorydb-maintenance.md` — How the memory namespaces are populated and refreshed; required reading when search returns no results
-- `.claude/guidance/shipped/moflo-core-guidance.md` — Full CLI/MCP reference including the spell gates that block subagent spawn before memory is searched
+- `.claude/guidance/moflo-task-icons.md` — Mandatory ICON + [Role] format for every `TaskCreate` and `Agent` description spawned by a coordinator
+- `.claude/guidance/moflo-claude-swarm-cohesion.md` — How task lists and swarm coordinators cooperate when subagents are spawned in batches
+- `.claude/guidance/moflo-memory-strategy.md` — The memory-search-first rule this protocol enforces, with namespace-selection guidance
+- `.claude/guidance/moflo-memorydb-maintenance.md` — How the memory namespaces are populated and refreshed; required reading when search returns no results
+- `.claude/guidance/moflo-core-guidance.md` — Full CLI/MCP reference including the spell gates that block subagent spawn before memory is searched

@@ -3,7 +3,7 @@
  *
  * Generates ONLY the MoFlo section to inject into a project's CLAUDE.md.
  * This must be minimal — just enough for Claude to work with moflo.
- * All detailed docs live in .claude/guidance/shipped/moflo-core-guidance.md (copied at install).
+ * All detailed docs live in .claude/guidance/moflo-core-guidance.md on consumer projects (synced from .claude/guidance/shipped/ inside node_modules/moflo).
  *
  * Principle: we are guests in the user's CLAUDE.md. Keep it small.
  */
@@ -13,56 +13,53 @@ import type { InitOptions, ClaudeMdTemplate } from './types.js';
 const MARKER_START = '<!-- MOFLO:INJECTED:START -->';
 const MARKER_END = '<!-- MOFLO:INJECTED:END -->';
 
+// Legacy markers from earlier moflo versions — detected and replaced on re-injection.
+// Single source of truth so moflo-init.ts and bin/setup-project.mjs stay in sync.
+const LEGACY_MARKER_STARTS = [
+  '<!-- MOFLO:START -->',
+  '<!-- MOFLO:SUBAGENT-PROTOCOL:START -->',
+] as const;
+const LEGACY_MARKER_ENDS = [
+  '<!-- MOFLO:END -->',
+  '<!-- MOFLO:SUBAGENT-PROTOCOL:END -->',
+] as const;
+
 /**
  * The single moflo section injected into CLAUDE.md.
- * ~40 lines. Points to moflo-core-guidance.md for everything else.
+ * ~22 lines. Points to moflo-core-guidance.md for everything else.
  */
 function mofloSection(): string {
   return `${MARKER_START}
 ## MoFlo — AI Agent Orchestration
 
-This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted development spells.
-
 ### FIRST ACTION ON EVERY PROMPT: Search Memory
 
-MUST call \`mcp__moflo__memory_search\` BEFORE any Glob/Grep/Read/file exploration. Namespaces: \`guidance\`+\`patterns\`+\`learnings\` every prompt; \`code-map\` when navigating code; \`tests\` when looking for test inventory or coverage. When the user says "remember this": \`mcp__moflo__memory_store\` with namespace \`learnings\`.
+Your first tool call MUST be \`mcp__moflo__memory_search\` — before any Glob/Grep/Read. Search \`guidance\`, \`patterns\`, and \`learnings\` every prompt; add \`code-map\` when navigating code, \`tests\` when looking for test inventory or coverage. When the user says "remember this", call \`mcp__moflo__memory_store\` with namespace \`learnings\`.
 
-### Spell Gates (enforced automatically)
+### Auto-enforced gates
 
-- **Memory-first**: Must search memory before Glob/Grep/Read
-- **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
+- **TaskCreate-first**: Call \`TaskCreate\` before spawning the Agent tool
+- **Task Icons**: \`TaskCreate\` entries MUST use ICON+[Role] format — see \`.claude/guidance/moflo-task-icons.md\`
 
-- **Task Icons**: \`TaskCreate\` MUST use ICON+[Role] format — see \`.claude/guidance/moflo-task-icons.md\`
+### Tools
 
-### MCP Tools (preferred over CLI)
-
-| Tool | Purpose |
-|------|---------|
-| \`mcp__moflo__memory_search\` | Semantic search across indexed knowledge |
-| \`mcp__moflo__memory_store\` | Store patterns and decisions |
-
-### CLI Fallback
-
-\`\`\`bash
-flo-search "[query]" --namespace guidance   # Semantic search
-flo doctor --fix                             # Health check
-\`\`\`
+Prefer MCP (\`mcp__moflo__*\` — memory, swarm, agent, task, hooks, hive-mind, neural) over the CLI. CLI binaries: \`flo\` (main), \`flo-search\` (semantic search), \`flo doctor --fix\` (heal). Full catalog: \`.claude/guidance/moflo-core-guidance.md\`.
 
 ### After upgrading MoFlo
 
-After running \`npm install moflo@*\` (or \`npm install\` that touches moflo), check \`.moflo/restart-pending.json\`. If it exists, surface the \`message\` field to the user verbatim (Claude Code can't pick up new hooks/MCP tools/launcher mid-session — they're only loaded at session-start), then delete the file.
+After \`npm install\` touches moflo, check \`.moflo/restart-pending.json\` — if present, surface its \`message\` field to the user verbatim, then delete the file. (Claude Code only loads new hooks/MCP/launcher at session start.)
 
 ### Full Reference
 
-- **Subagents protocol:** \`.claude/guidance/shipped/moflo-subagents.md\`
-- **Task + swarm coordination:** \`.claude/guidance/shipped/moflo-claude-swarm-cohesion.md\`
-- **CLI, hooks, swarm, memory, moflo.yaml:** \`.claude/guidance/shipped/moflo-core-guidance.md\`
+- Subagents protocol: \`.claude/guidance/moflo-subagents.md\`
+- Task + swarm coordination: \`.claude/guidance/moflo-claude-swarm-cohesion.md\`
+- CLI, hooks, swarm, memory, moflo.yaml: \`.claude/guidance/moflo-core-guidance.md\`
 ${MARKER_END}`;
 }
 
 // --- Public API ---
 
-export { MARKER_START, MARKER_END };
+export { MARKER_START, MARKER_END, LEGACY_MARKER_STARTS, LEGACY_MARKER_ENDS };
 
 /**
  * Generate the MoFlo section to inject into CLAUDE.md.
@@ -82,12 +79,12 @@ export function generateMinimalClaudeMd(options: InitOptions): string {
 
 /** Available template names for CLI wizard (kept for backward compat, all produce same output) */
 export const CLAUDE_MD_TEMPLATES: Array<{ name: ClaudeMdTemplate; description: string }> = [
-  { name: 'minimal', description: 'Recommended — memory search, spell gates, MCP tools (~40 lines injected)' },
-  { name: 'standard', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },
-  { name: 'full', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },
-  { name: 'security', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },
-  { name: 'performance', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },
-  { name: 'solo', description: 'Same as minimal (detailed docs in .claude/guidance/shipped/moflo-core-guidance.md)' },
+  { name: 'minimal', description: 'Recommended — memory search, gates, tools, upgrade hint (~22 lines injected)' },
+  { name: 'standard', description: 'Same as minimal (detailed docs in .claude/guidance/moflo-core-guidance.md)' },
+  { name: 'full', description: 'Same as minimal (detailed docs in .claude/guidance/moflo-core-guidance.md)' },
+  { name: 'security', description: 'Same as minimal (detailed docs in .claude/guidance/moflo-core-guidance.md)' },
+  { name: 'performance', description: 'Same as minimal (detailed docs in .claude/guidance/moflo-core-guidance.md)' },
+  { name: 'solo', description: 'Same as minimal (detailed docs in .claude/guidance/moflo-core-guidance.md)' },
 ];
 
 export default generateClaudeMd;

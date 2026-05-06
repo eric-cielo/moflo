@@ -30,42 +30,28 @@ Before opening any issue or "fixing" anything observable in the editor (statusli
 <!-- MOFLO:INJECTED:START -->
 ## MoFlo — AI Agent Orchestration
 
-This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted development spells.
-
 ### FIRST ACTION ON EVERY PROMPT: Search Memory
 
-MUST call `mcp__moflo__memory_search` BEFORE any Glob/Grep/Read/file exploration. Namespaces: `guidance`+`patterns`+`learnings` every prompt; `code-map` when navigating code. When the user says "remember this": `mcp__moflo__memory_store` with namespace `learnings`.
+Your first tool call MUST be `mcp__moflo__memory_search` — before any Glob/Grep/Read. Search `guidance`, `patterns`, and `learnings` every prompt; add `code-map` when navigating code, `tests` when looking for test inventory or coverage. When the user says "remember this", call `mcp__moflo__memory_store` with namespace `learnings`.
 
-### Spell Gates (enforced automatically)
+### Auto-enforced gates
 
-- **Memory-first**: Must search memory before Glob/Grep/Read
-- **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
+- **TaskCreate-first**: Call `TaskCreate` before spawning the Agent tool
+- **Task Icons**: `TaskCreate` entries MUST use ICON+[Role] format — see `.claude/guidance/moflo-task-icons.md`
 
-- **Task Icons**: `TaskCreate` MUST use ICON+[Role] format — see `.claude/guidance/shipped/moflo-task-icons.md`
+### Tools
 
-### MCP Tools (preferred over CLI)
-
-| Tool | Purpose |
-|------|---------|
-| `mcp__moflo__memory_search` | Semantic search across indexed knowledge |
-| `mcp__moflo__memory_store` | Store patterns and decisions |
-
-### CLI Fallback
-
-```bash
-flo-search "[query]" --namespace guidance   # Semantic search
-flo doctor --fix                             # Health check
-```
+Prefer MCP (`mcp__moflo__*` — memory, swarm, agent, task, hooks, hive-mind, neural) over the CLI. CLI binaries: `flo` (main), `flo-search` (semantic search), `flo doctor --fix` (heal). Full catalog: `.claude/guidance/moflo-core-guidance.md`.
 
 ### After upgrading MoFlo
 
-After running `npm install moflo@*` (or `npm install` that touches moflo), check `.moflo/restart-pending.json`. If it exists, surface the `message` field to the user verbatim (Claude Code can't pick up new hooks/MCP tools/launcher mid-session — they're only loaded at session-start), then delete the file.
+After `npm install` touches moflo, check `.moflo/restart-pending.json` — if present, surface its `message` field to the user verbatim, then delete the file. (Claude Code only loads new hooks/MCP/launcher at session start.)
 
 ### Full Reference
 
-- **Subagents protocol:** `.claude/guidance/shipped/moflo-subagents.md`
-- **Task + swarm coordination:** `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md`
-- **CLI, hooks, swarm, memory, moflo.yaml:** `.claude/guidance/shipped/moflo-core-guidance.md`
+- Subagents protocol: `.claude/guidance/moflo-subagents.md`
+- Task + swarm coordination: `.claude/guidance/moflo-claude-swarm-cohesion.md`
+- CLI, hooks, swarm, memory, moflo.yaml: `.claude/guidance/moflo-core-guidance.md`
 <!-- MOFLO:INJECTED:END -->
 
 ## ⚠ Editing guidance — read both rule sets first

@@ -133,4 +133,4 @@ This is the same fan-out the `/flo` spell does — cheap (HNSW, parallel) and re
 
 - `vector-search` skill — RAG patterns over your own documents
 - `memory-optimization` skill — HNSW tuning, quantization, batch ops
-- `.claude/guidance/shipped/moflo-core-guidance.md` — CLI/MCP reference
+- `.claude/guidance/moflo-core-guidance.md` — CLI/MCP reference

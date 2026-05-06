@@ -6,7 +6,7 @@ arguments: "[-a] <topic-or-path>"
 
 # /guidance — Author and audit project guidance
 
-Help the user write, edit, or audit guidance files in their `.claude/guidance/` directory so Claude actually follows the rules they wrote. The skill applies the universal rules from `.claude/guidance/shipped/moflo-guidance-rules.md` — that doc is the single source of truth, do not paraphrase or duplicate it here.
+Help the user write, edit, or audit guidance files in their `.claude/guidance/` directory so Claude actually follows the rules they wrote. The skill applies the universal rules from `.claude/guidance/moflo-guidance-rules.md` — that doc is the single source of truth, do not paraphrase or duplicate it here.
 
 **Arguments:** $ARGUMENTS
 
@@ -43,7 +43,7 @@ If single-doc and the file already exists, briefly summarize what it contains (o
 
 ## Step 2 — Single-Doc Mode
 
-Apply the universal rules from `.claude/guidance/shipped/moflo-guidance-rules.md`. The rules cover (do not paraphrase — read the source):
+Apply the universal rules from `.claude/guidance/moflo-guidance-rules.md`. The rules cover (do not paraphrase — read the source):
 
 1. Lead with `**Purpose:**` line after the H1
 2. Be imperative, not descriptive
@@ -170,7 +170,7 @@ Once the user confirms the doc looks right:
 
 ## Cheatsheet — Universal Rules Recap
 
-The full rules live in `.claude/guidance/shipped/moflo-guidance-rules.md`. Quick recap:
+The full rules live in `.claude/guidance/moflo-guidance-rules.md`. Quick recap:
 
 | # | Rule | One-line |
 |---|------|----------|
@@ -187,14 +187,14 @@ The full rules live in `.claude/guidance/shipped/moflo-guidance-rules.md`. Quick
 ## Important
 
 - **Memory-first is mandatory.** Always run `mcp__moflo__memory_search` in step 0 — the gate blocks reads otherwise.
-- **Never duplicate the rules in this skill.** Reference `.claude/guidance/shipped/moflo-guidance-rules.md` and ask the user to read it if they want depth.
+- **Never duplicate the rules in this skill.** Reference `.claude/guidance/moflo-guidance-rules.md` and ask the user to read it if they want depth.
 - **Never auto-write opinionated content.** Guidance is the user's project policy; ask before injecting your own opinions.
 - **Confirm per file in audit mode.** Bulk edits to the user's guidance directory are high-blast-radius — confirm each one.
 - **The `moflo-` filename prefix is moflo-only.** Consumer projects writing their own guidance do not need it; it exists to avoid collisions when moflo's shipped guidance syncs into a consumer's directory.
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-guidance-rules.md` — Universal writing rules this skill enforces
-- `.claude/guidance/shipped/moflo-memory-strategy.md` — How well-written guidance feeds the RAG index
-- `.claude/guidance/shipped/moflo-task-icons.md` — UX rule the skill checks for any TaskCreate examples in the user's guidance
-- `.claude/guidance/shipped/moflo-user-facing-language.md` — Companion rule for any user-visible text the user's guidance discusses
+- `.claude/guidance/moflo-guidance-rules.md` — Universal writing rules this skill enforces
+- `.claude/guidance/moflo-memory-strategy.md` — How well-written guidance feeds the RAG index
+- `.claude/guidance/moflo-task-icons.md` — UX rule the skill checks for any TaskCreate examples in the user's guidance
+- `.claude/guidance/moflo-user-facing-language.md` — Companion rule for any user-visible text the user's guidance discusses

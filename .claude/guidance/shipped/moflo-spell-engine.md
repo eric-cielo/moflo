@@ -15,7 +15,7 @@
 | `CAPABILITY_DENIED` means stop | Do not attempt workarounds — report the denial and halt the step |
 | No improvisation between steps | Do not perform actions outside of step boundaries, even if "obvious" (e.g., do not auto-fix a failing step's output before passing it to the next step unless the spell defines a step for that) |
 
-See `.claude/guidance/shipped/moflo-spell-sandboxing.md` for the full Execution Constraint Principle and capability type reference.
+See `.claude/guidance/moflo-spell-sandboxing.md` for the full Execution Constraint Principle and capability type reference.
 
 ---
 
@@ -407,9 +407,9 @@ Credential values listed in `RunnerOptions.credentialValues` are automatically r
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-spell-custom-steps.md` — Pluggable step commands: JS/TS, YAML, and `moflo-step-*` npm packages
-- `.claude/guidance/shipped/moflo-spell-connectors.md` — Connectors: resource adapters, registry, step-vs-connector decision
-- `.claude/guidance/shipped/moflo-spell-sandboxing.md` — Capability-based security for steps
-- `.claude/guidance/shipped/moflo-spell-engine-architecture.md` — Architecture decisions for Epic #100
-- `.claude/guidance/shipped/moflo-core-guidance.md` — CLI, hooks, swarm, memory reference
-- `.claude/guidance/shipped/moflo-subagents.md` — Subagents protocol
+- `.claude/guidance/moflo-spell-custom-steps.md` — Pluggable step commands: JS/TS, YAML, and `moflo-step-*` npm packages
+- `.claude/guidance/moflo-spell-connectors.md` — Connectors: resource adapters, registry, step-vs-connector decision
+- `.claude/guidance/moflo-spell-sandboxing.md` — Capability-based security for steps
+- `.claude/guidance/moflo-spell-engine-architecture.md` — Architecture decisions for Epic #100
+- `.claude/guidance/moflo-core-guidance.md` — CLI, hooks, swarm, memory reference
+- `.claude/guidance/moflo-subagents.md` — Subagents protocol

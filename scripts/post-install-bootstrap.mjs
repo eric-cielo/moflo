@@ -41,6 +41,7 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   statSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -175,9 +176,27 @@ export async function runBootstrap({
   // The source repo's .claude/ IS the truth source — we'd be copying
   // the very files we just built ON TOP of themselves, which on Windows
   // hits the same file-lock issues we're trying to avoid.
+  //
+  // Two paths can hit this branch:
+  //   1. The source's own postinstall: mofloRoot === projectRoot (path equality).
+  //   2. The DEPENDENCY's postinstall on `npm ci` of the moflo source repo:
+  //      mofloRoot = <src>/node_modules/moflo/, projectRoot = <src>/. Path
+  //      equality fails — moflo-as-its-own-devDep would clobber the source
+  //      .claude/helpers/ with the OLDER published artifacts, breaking CI
+  //      against any in-flight fixes. Detect by reading projectRoot's
+  //      package.json name and bailing whenever it's "moflo".
   if (resolve(projectRoot) === resolve(mofloRoot)) {
     return { ran: false, reason: 'moflo-self-install' };
   }
+  try {
+    const projectPkgPath = resolve(projectRoot, 'package.json');
+    if (existsSync(projectPkgPath)) {
+      const projectPkg = JSON.parse(readFileSync(projectPkgPath, 'utf-8'));
+      if (projectPkg.name === 'moflo') {
+        return { ran: false, reason: 'moflo-self-dev-install' };
+      }
+    }
+  } catch { /* unparseable package.json — fall through, treat as consumer */ }
 
   const binDir = resolve(mofloRoot, 'bin');
   if (!existsSync(binDir)) {

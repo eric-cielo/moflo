@@ -163,4 +163,4 @@ Before submitting any code change, verify:
 ## See Also
 
 - `CLAUDE.md` — Consumer project checklist, build rules
-- `.claude/guidance/shipped/moflo-source-hygiene.md` — Source code hygiene rules
+- `.claude/guidance/moflo-source-hygiene.md` — Source code hygiene rules

@@ -140,7 +140,7 @@ These are non-negotiable framing rules. Even if their original incident is years
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-memory-strategy.md` — Architecture of moflo's *project* memory system (different from the user's auto-memory, but related)
-- `.claude/guidance/shipped/moflo-guidance-rules.md` — Universal rules for writing any guidance file; memory entries follow similar imperative-voice + concrete-example posture
-- `.claude/guidance/shipped/moflo-session-start.md` — Where the `auto-memory-hook.mjs` lives and how it loads MEMORY.md every prompt
-- `.claude/guidance/shipped/moflo-core-guidance.md` — Hub doc that links to this file from its memory section
+- `.claude/guidance/moflo-memory-strategy.md` — Architecture of moflo's *project* memory system (different from the user's auto-memory, but related)
+- `.claude/guidance/moflo-guidance-rules.md` — Universal rules for writing any guidance file; memory entries follow similar imperative-voice + concrete-example posture
+- `.claude/guidance/moflo-session-start.md` — Where the `auto-memory-hook.mjs` lives and how it loads MEMORY.md every prompt
+- `.claude/guidance/moflo-core-guidance.md` — Hub doc that links to this file from its memory section
