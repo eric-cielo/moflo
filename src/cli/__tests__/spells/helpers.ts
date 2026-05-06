@@ -42,10 +42,21 @@ export function makeCommand(overrides: Partial<StepCommand> = {}): StepCommand {
   };
 }
 
-export function makeCredentials(store: Record<string, string> = {}): CredentialAccessor {
+export function makeCredentials(initial: Record<string, string> = {}): CredentialAccessor & {
+  readonly snapshot: Record<string, string>;
+  readonly storeCalls: ReadonlyArray<readonly [string, string]>;
+} {
+  const data = { ...initial };
+  const storeCalls: Array<[string, string]> = [];
   return {
-    async get(name: string) { return store[name]; },
-    async has(name: string) { return name in store; },
+    async get(name: string) { return data[name]; },
+    async has(name: string) { return name in data; },
+    async store(name: string, value: string) {
+      storeCalls.push([name, value]);
+      data[name] = value;
+    },
+    snapshot: data,
+    storeCalls,
   };
 }
 

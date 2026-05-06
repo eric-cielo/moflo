@@ -19,6 +19,7 @@
  * `cli/services/cherry-pick-learnings.ts` and is dynamically imported from
  * the compiled `dist/` by the launcher.
  */
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 export const MOFLO_DIR = '.moflo';
@@ -41,6 +42,11 @@ export const LEGACY_MEMORY_DB_BAK_SUFFIX = '.bak';
 
 export function mofloDir(projectRoot: string): string {
   return join(projectRoot, MOFLO_DIR);
+}
+
+/** User-scope MoFlo state dir: `~/.moflo`. Holds credentials and other per-machine state. */
+export function mofloHomeDir(): string {
+  return join(homedir(), MOFLO_DIR);
 }
 
 export function legacyClaudeFlowDir(projectRoot: string): string {

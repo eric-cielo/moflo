@@ -152,17 +152,18 @@ export class SpellCaster {
       }
     }
 
-    // Pre-flight prerequisite checks — walks YAML + step-command sources,
-    // prompts on a TTY for unmet env-type prereqs (issue #460).
+    // Pre-flight prerequisite checks (issue #460) — walks YAML + step-command
+    // sources, pulls from credential store, prompts on TTY, persists answers.
     if (!options.dryRun) {
       const prerequisites = collectPrerequisites(definition, this.registry);
       if (prerequisites.length > 0) {
         const resolution = await resolveUnmetPrerequisites(prerequisites, {
           abortSignal: options.signal,
+          credentials: this.credentials,
         });
         if (!resolution.ok) {
           return this.failureResult(spellId, startTime, [{
-            code: 'PREREQUISITES_FAILED',
+            code: resolution.errorCode ?? 'PREREQUISITES_FAILED',
             message: resolution.message ?? 'Prerequisites failed',
           }], definition.name);
         }

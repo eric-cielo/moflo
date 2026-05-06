@@ -15,6 +15,7 @@ import {
 import type { Prerequisite } from '../../spells/types/step-command.types.js';
 import type { PrerequisiteSpec } from '../../spells/types/spell-definition.types.js';
 import { makePrereq } from './helpers/prereq-fixtures.js';
+import { makeCredentials } from './helpers.js';
 
 describe('resolveUnmetPrerequisites', () => {
   const ENV_KEY = 'FLO_RESOLVE_TEST_460';
@@ -141,5 +142,139 @@ describe('resolveUnmetPrerequisites', () => {
       log: () => {},
     });
     expect(result.ok).toBe(false);
+  });
+
+  // ==========================================================================
+  // Story #923 — credential store integration
+  // ==========================================================================
+
+  describe('credential store resolution chain (story #923)', () => {
+    const KEY = 'CRED_STORE_TEST_923';
+    beforeEach(() => { delete process.env[KEY]; });
+
+    it('pulls value from store when env is unset — no prompt, no save', async () => {
+      const prereq = compilePrerequisiteSpec({
+        name: 'TOKEN',
+        detect: { type: 'env', key: KEY },
+      });
+      const credentials = makeCredentials({ [KEY]: 'value-from-store' });
+      const promptLine = vi.fn<PromptLineFn>(async () => 'should-not-be-called');
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: true,
+        promptLine,
+        log: () => {},
+        credentials,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.resolvedNames).toEqual(['TOKEN']);
+      expect(process.env[KEY]).toBe('value-from-store');
+      expect(promptLine).not.toHaveBeenCalled();
+      expect(credentials.storeCalls).toEqual([]);
+    });
+
+    it('persists prompt answer to the store after a successful TTY prompt', async () => {
+      const prereq = compilePrerequisiteSpec({
+        name: 'TOKEN',
+        detect: { type: 'env', key: KEY },
+      });
+      const credentials = makeCredentials({});
+      const promptLine = vi.fn<PromptLineFn>(async () => 'fresh-answer');
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: true,
+        promptLine,
+        log: () => {},
+        credentials,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(process.env[KEY]).toBe('fresh-answer');
+      expect(credentials.storeCalls).toEqual([[KEY, 'fresh-answer']]);
+    });
+
+    it('non-TTY + missing + no store → fails with MISSING_CREDENTIAL errorCode', async () => {
+      const prereq = compilePrerequisiteSpec({
+        name: 'TOKEN',
+        docsUrl: 'https://docs.example/token',
+        detect: { type: 'env', key: KEY },
+      });
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: false,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.errorCode).toBe('MISSING_CREDENTIAL');
+      expect(result.missingCredentials).toEqual([KEY]);
+      expect(result.message).toContain('Missing credentials');
+      expect(result.message).toContain(KEY);
+      expect(result.message).toContain('https://docs.example/token');
+      expect(result.message).toContain('flo spell credentials set');
+    });
+
+    it('non-TTY + store has the value → satisfies without errorCode', async () => {
+      const prereq = compilePrerequisiteSpec({
+        name: 'TOKEN',
+        detect: { type: 'env', key: KEY },
+      });
+      const credentials = makeCredentials({ [KEY]: 'unattended-value' });
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: false,
+        credentials,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.errorCode).toBeUndefined();
+      expect(process.env[KEY]).toBe('unattended-value');
+    });
+
+    it('non-env unmet prereq (command) on non-TTY → falls through to standard error path, no MISSING_CREDENTIAL', async () => {
+      const envPrereq = compilePrerequisiteSpec({
+        name: 'TOKEN',
+        promptOnMissing: false, // explicit opt-out so it's not "promptable"
+        detect: { type: 'env', key: KEY },
+      });
+      const cmdPrereq = compilePrerequisiteSpec({
+        name: 'UNICORN_CLI',
+        detect: { type: 'command', command: 'this-command-does-not-exist-xyz-923' },
+      });
+
+      const result = await resolveUnmetPrerequisites([envPrereq, cmdPrereq], {
+        interactive: false,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.errorCode).toBeUndefined();
+      expect(result.message).toContain('Missing prerequisites');
+      expect(result.message).toContain('UNICORN_CLI');
+    });
+
+    it('credentials.store rejection is logged but does not abort the cast', async () => {
+      const prereq = compilePrerequisiteSpec({
+        name: 'TOKEN',
+        detect: { type: 'env', key: KEY },
+      });
+      const credentials: import('../../spells/types/step-command.types.js').CredentialAccessor = {
+        async get() { return undefined; },
+        async has() { return false; },
+        async store() { throw new Error('disk full'); },
+      };
+      const promptLine = vi.fn<PromptLineFn>(async () => 'answer');
+      const logged: string[] = [];
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: true,
+        promptLine,
+        log: (l) => logged.push(l),
+        credentials,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(process.env[KEY]).toBe('answer');
+      expect(logged.some(l => l.includes('disk full'))).toBe(true);
+    });
   });
 });

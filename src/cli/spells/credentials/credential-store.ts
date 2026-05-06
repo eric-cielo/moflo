@@ -63,6 +63,9 @@ const KEY_BYTES = 32;
 const PBKDF2_ITERATIONS = 100_000;
 const PBKDF2_DIGEST = 'sha512';
 
+/** User-typeable floor for any passphrase that protects the store. */
+export const MIN_PASSPHRASE_LENGTH = 8;
+
 // ============================================================================
 // Encryption Helpers
 // ============================================================================
@@ -116,8 +119,11 @@ export class CredentialStore implements CredentialAccessor {
    * Derives the encryption key and loads existing data.
    */
   unlock(passphrase: string): void {
-    if (passphrase.length < 8) {
-      throw new CredentialStoreError('Passphrase must be at least 8 characters', 'WEAK_PASSPHRASE');
+    if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
+      throw new CredentialStoreError(
+        `Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters`,
+        'WEAK_PASSPHRASE',
+      );
     }
     this.data = this.readFile();
     const salt = Buffer.from(this.data.salt, 'hex');
@@ -194,6 +200,20 @@ export class CredentialStore implements CredentialAccessor {
   }
 
   /**
+   * Remove every credential in a single write — preferred over a delete loop
+   * because each `delete()` rewrites the entire encrypted file.
+   * Returns the number of credentials removed.
+   */
+  async clear(): Promise<number> {
+    this.ensureUnlocked();
+    const count = Object.keys(this.data!.credentials).length;
+    if (count === 0) return 0;
+    this.data!.credentials = {};
+    this.writeFile(this.data!);
+    return count;
+  }
+
+  /**
    * List credential metadata (names + descriptions, never values).
    */
   async list(): Promise<readonly CredentialMeta[]> {
@@ -230,8 +250,11 @@ export class CredentialStore implements CredentialAccessor {
    * and derived key, re-encrypts everything, and writes atomically.
    */
   async rotate(oldPassphrase: string, newPassphrase: string): Promise<void> {
-    if (newPassphrase.length < 8) {
-      throw new CredentialStoreError('Passphrase must be at least 8 characters', 'WEAK_PASSPHRASE');
+    if (newPassphrase.length < MIN_PASSPHRASE_LENGTH) {
+      throw new CredentialStoreError(
+        `Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters`,
+        'WEAK_PASSPHRASE',
+      );
     }
 
     // Verify old passphrase by unlocking with it

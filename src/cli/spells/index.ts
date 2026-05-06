@@ -257,10 +257,14 @@ export {
 export {
   CredentialStore,
   CredentialStoreError,
+  getDefaultCredentialStore,
+  resetDefaultCredentialStore,
+  lockedNoopAccessor,
   type CredentialMeta,
   type CredentialStoreOptions,
   type CredentialStoreErrorCode,
-} from './credentials/credential-store.js';
+  type DefaultCredentialStoreOptions,
+} from './credentials/index.js';
 
 // ============================================================================
 // Spell Registry (abbreviation lookup + list/info)
