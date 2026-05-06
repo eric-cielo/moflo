@@ -193,9 +193,9 @@ npx flo daemon start
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-core-guidance.md` — Hub: getting started, MCP setup, troubleshooting, comparison table
-- `.claude/guidance/shipped/moflo-yaml-reference.md` — `moflo.yaml` schema and runtime env-var overrides for the surfaces listed here
-- `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md` — How TaskCreate + swarm coordinators cooperate (uses the agent codes above)
-- `.claude/guidance/shipped/moflo-subagents.md` — Subagent memory-first protocol and store-back rules
-- `.claude/guidance/shipped/moflo-memory-strategy.md` — Memory namespaces, RAG linking, and search query patterns
-- `.claude/guidance/shipped/moflo-memorydb-maintenance.md` — How the namespaces above are populated and refreshed
+- `.claude/guidance/moflo-core-guidance.md` — Hub: getting started, MCP setup, troubleshooting, comparison table
+- `.claude/guidance/moflo-yaml-reference.md` — `moflo.yaml` schema and runtime env-var overrides for the surfaces listed here
+- `.claude/guidance/moflo-claude-swarm-cohesion.md` — How TaskCreate + swarm coordinators cooperate (uses the agent codes above)
+- `.claude/guidance/moflo-subagents.md` — Subagent memory-first protocol and store-back rules
+- `.claude/guidance/moflo-memory-strategy.md` — Memory namespaces, RAG linking, and search query patterns
+- `.claude/guidance/moflo-memorydb-maintenance.md` — How the namespaces above are populated and refreshed

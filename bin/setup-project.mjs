@@ -11,78 +11,79 @@
  *   flo-setup --check    # Check if setup is current
  *
  * What it does:
- *   1. Copies .claude/guidance/shipped/moflo-subagents.md → project's .claude/guidance/moflo-bootstrap.md
+ *   1. Copies moflo/.claude/guidance/shipped/moflo-subagents.md → project's .claude/guidance/moflo-bootstrap.md
  *   2. Appends a subagent protocol section to CLAUDE.md (idempotent, with markers)
  *
  * The project can layer its own guidance files on top for
  * project-specific rules (companyId, entity templates, etc.).
+ *
+ * The CLAUDE.md content is owned by `src/cli/init/claudemd-generator.ts` (compiled to
+ * `dist/src/cli/init/claudemd-generator.js`). This script is a thin wrapper so consumers
+ * always get byte-identical output regardless of which entry point they use
+ * (`flo init` vs `flo-setup`).
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const mofloRoot = resolve(__dirname, '..');
+
+// Find the installed moflo package root regardless of where this script runs from.
+// Two valid locations:
+//   1. <moflo>/bin/setup-project.mjs           — moflo source repo or `npm bin` resolution
+//   2. <consumer>/.claude/scripts/setup-project.mjs — synced copy from session-start
+// Strategy: walk up from this file looking for a package.json with name="moflo",
+// then fall back to Node's module resolution.
+function findMofloRoot() {
+  let dir = __dirname;
+  for (let i = 0; i < 6; i++) {
+    const pkg = join(dir, 'package.json');
+    if (existsSync(pkg)) {
+      try {
+        const data = JSON.parse(readFileSync(pkg, 'utf-8'));
+        if (data.name === 'moflo') return dir;
+      } catch { /* not parseable, keep walking */ }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  try {
+    const require = createRequire(import.meta.url);
+    return dirname(require.resolve('moflo/package.json'));
+  } catch {
+    return null;
+  }
+}
+
+const mofloRoot = findMofloRoot();
+if (!mofloRoot) {
+  console.error('[flo-setup] ❌ Could not locate moflo package root');
+  process.exit(1);
+}
+
+const claudeMdGenUrl = pathToFileURL(
+  join(mofloRoot, 'dist/src/cli/init/claudemd-generator.js')
+).href;
+const {
+  generateClaudeMd,
+  MARKER_START,
+  MARKER_END,
+  LEGACY_MARKER_STARTS,
+  LEGACY_MARKER_ENDS,
+} = await import(claudeMdGenUrl);
 
 const args = process.argv.slice(2);
 const updateOnly = args.includes('--update');
 const checkOnly = args.includes('--check');
 
-// Markers for idempotent CLAUDE.md updates — keep in sync with claudemd-generator.ts
-const MARKER_START = '<!-- MOFLO:INJECTED:START -->';
-const MARKER_END = '<!-- MOFLO:INJECTED:END -->';
-// Legacy markers to detect and replace
-const LEGACY_STARTS = ['<!-- MOFLO:SUBAGENT-PROTOCOL:START -->', '<!-- MOFLO:START -->'];
-const LEGACY_ENDS = ['<!-- MOFLO:SUBAGENT-PROTOCOL:END -->', '<!-- MOFLO:END -->'];
-
-// Minimal injection — just enough for Claude to work with moflo.
-// All detailed docs live in .claude/guidance/shipped/moflo-core-guidance.md.
-const CLAUDE_MD_SECTION = `${MARKER_START}
-## MoFlo — AI Agent Orchestration
-
-This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted development workflows.
-
-### FIRST ACTION ON EVERY PROMPT: Search Memory
-
-Your first tool call for every new user prompt MUST be a memory search. Do this BEFORE Glob, Grep, Read, or any file exploration.
-
-\`\`\`
-mcp__moflo__memory_search — query: "<task description>", namespace: "guidance" or "patterns" or "learnings" or "code-map" or "tests"
-\`\`\`
-
-Search \`guidance\`, \`patterns\`, and \`learnings\` namespaces on every prompt. Search \`code-map\` when navigating the codebase, \`tests\` when looking for test inventory or coverage.
-When the user asks you to remember something: \`mcp__moflo__memory_store\` with namespace \`learnings\`.
-
-### Workflow Gates (enforced automatically)
-
-- **Memory-first**: Must search memory before Glob/Grep/Read
-- **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
-
-- **Task Icons**: \`TaskCreate\` MUST use ICON+[Role] format — see \`.claude/guidance/moflo-task-icons.md\`
-
-### MCP Tools (preferred over CLI)
-
-| Tool | Purpose |
-|------|---------|
-| \`mcp__moflo__memory_search\` | Semantic search across indexed knowledge |
-| \`mcp__moflo__memory_store\` | Store patterns and decisions |
-| \`mcp__moflo__hooks_route\` | Route task to optimal agent type |
-| \`mcp__moflo__hooks_pre-task\` | Record task start |
-| \`mcp__moflo__hooks_post-task\` | Record task completion for learning |
-
-### CLI Fallback
-
-\`\`\`bash
-flo-search "[query]" --namespace guidance   # Semantic search
-flo doctor --fix                             # Health check
-\`\`\`
-
-### Full Reference
-
-For CLI commands, hooks, agents, swarm config, memory commands, and moflo.yaml options, see:
-\`.claude/guidance/shipped/moflo-core-guidance.md\`
-${MARKER_END}`;
+// Canonical section content (owned by claudemd-generator.ts). Trim the trailing newline
+// that generateClaudeMd appends so the marker-replace logic below stays exact.
+const CLAUDE_MD_SECTION = generateClaudeMd({}).trimEnd();
+const LEGACY_STARTS = [...LEGACY_MARKER_STARTS];
+const LEGACY_ENDS = [...LEGACY_MARKER_ENDS];
 
 function log(msg) {
   console.log(`[flo-setup] ${msg}`);

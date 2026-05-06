@@ -65,7 +65,7 @@ Compute minor-version delta. Warn if behind by ≥3 minors; info if behind by 1�
 mcp__moflo__hooks_model-stats — {}
 ```
 
-If recent sonnet→opus escalation rate exceeds ~30%, flag as `info`: "router escalating frequently — see `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md` for tuning". If stats unavailable (no history), skip silently.
+If recent sonnet→opus escalation rate exceeds ~30%, flag as `info`: "router escalating frequently — see `.claude/guidance/moflo-claude-swarm-cohesion.md` for tuning". If stats unavailable (no history), skip silently.
 
 ### 1e. CLAUDE.md
 
@@ -94,7 +94,7 @@ Count `.md` files under `.claude/guidance/` (recursive). Severity table:
 
 **This step is not optional.** If 1f found ≥1 guidance file, you MUST invoke `/guidance -a` via the `Skill` tool *inline, during this audit run, before rendering the report.* Do not defer it ("rerun separately if you want"), do not skip it because the corpus is large, do not substitute a hand-rolled grep pass — that defeats the single-source-of-truth contract.
 
-The /guidance skill enforces the universal rules from `.claude/guidance/shipped/moflo-guidance-rules.md` (Purpose lines, See Also, generic H2s, hedged language, 500-line cap, RAG chunking) and is the single source of truth for those checks — never re-implement them here.
+The /guidance skill enforces the universal rules from `.claude/guidance/moflo-guidance-rules.md` (Purpose lines, See Also, generic H2s, hedged language, 500-line cap, RAG chunking) and is the single source of truth for those checks — never re-implement them here.
 
 If `/guidance -a` is genuinely too expensive (50+ files AND user explicitly asks for a fast read), skip it only after asking and surface the skip explicitly in the report (`Guidance structure | skipped at user request | warn`). Default behaviour is always to run it.
 
@@ -206,7 +206,7 @@ TOP 3 RECOMMENDATIONS
    queries and migrations in your codebase. /guidance -a (run inline
    in step 1g) flagged 3 existing docs with structural issues; pick
    one to fix alongside this new one.
-   See: .claude/guidance/shipped/moflo-guidance-rules.md
+   See: .claude/guidance/moflo-guidance-rules.md
 
 3. Run `flo healer --fix` (warn)
    One auto-fixable warning. Run via `/eldar --fix` and select Healer.
@@ -301,7 +301,7 @@ Never leave the user without a clear next step.
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-guidance-rules.md` — Universal guidance writing rules used by `/guidance` and surfaced in 1g
+- `.claude/guidance/moflo-guidance-rules.md` — Universal guidance writing rules used by `/guidance` and surfaced in 1g
 - `.claude/skills/guidance/SKILL.md` — The skill `/eldar --fix` hands off to for guidance authoring
-- `.claude/guidance/shipped/moflo-core-guidance.md` — moflo CLI / hooks / memory reference; useful when explaining wiring findings
-- `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md` — Subagent + task coordination reference cited in routing findings
+- `.claude/guidance/moflo-core-guidance.md` — moflo CLI / hooks / memory reference; useful when explaining wiring findings
+- `.claude/guidance/moflo-claude-swarm-cohesion.md` — Subagent + task coordination reference cited in routing findings

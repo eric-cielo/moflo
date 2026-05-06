@@ -298,14 +298,14 @@ See `moflo-memory-strategy.md` for memory-specific troubleshooting.
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-cli-reference.md` — CLI commands, agents, hooks, hive-mind, RuVector
-- `.claude/guidance/shipped/moflo-yaml-reference.md` — `moflo.yaml` schema, environment variables, `.mcp.json` setup
-- `.claude/guidance/shipped/moflo-subagents.md` — Subagents memory-first protocol and store patterns
-- `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md` — Task & swarm coordination with TaskCreate/TaskUpdate
-- `.claude/guidance/shipped/moflo-memory-strategy.md` — Database schema, namespaces, search commands, RAG linking
-- `.claude/guidance/shipped/moflo-memorydb-maintenance.md` — Reindexing, namespace purging, recovery
-- `.claude/guidance/shipped/moflo-memory-hygiene.md` — When and how to retire stale auto-memory entries (every entry costs per-prompt tokens)
-- `.claude/guidance/shipped/moflo-session-start.md` — Complete session-start lifecycle (DB heal, sync, migrations, daemon)
-- `.claude/guidance/shipped/moflo-settings-injection.md` — What moflo writes into `.claude/` and how surgical self-heal works
-- `.claude/guidance/shipped/moflo-cross-platform.md` — Windows/macOS/Linux portability rules for any code change
-- `.claude/guidance/shipped/moflo-verbose-command-filtering.md` — Filter long verbose commands at the source; never tee-then-grep
+- `.claude/guidance/moflo-cli-reference.md` — CLI commands, agents, hooks, hive-mind, RuVector
+- `.claude/guidance/moflo-yaml-reference.md` — `moflo.yaml` schema, environment variables, `.mcp.json` setup
+- `.claude/guidance/moflo-subagents.md` — Subagents memory-first protocol and store patterns
+- `.claude/guidance/moflo-claude-swarm-cohesion.md` — Task & swarm coordination with TaskCreate/TaskUpdate
+- `.claude/guidance/moflo-memory-strategy.md` — Database schema, namespaces, search commands, RAG linking
+- `.claude/guidance/moflo-memorydb-maintenance.md` — Reindexing, namespace purging, recovery
+- `.claude/guidance/moflo-memory-hygiene.md` — When and how to retire stale auto-memory entries (every entry costs per-prompt tokens)
+- `.claude/guidance/moflo-session-start.md` — Complete session-start lifecycle (DB heal, sync, migrations, daemon)
+- `.claude/guidance/moflo-settings-injection.md` — What moflo writes into `.claude/` and how surgical self-heal works
+- `.claude/guidance/moflo-cross-platform.md` — Windows/macOS/Linux portability rules for any code change
+- `.claude/guidance/moflo-verbose-command-filtering.md` — Filter long verbose commands at the source; never tee-then-grep

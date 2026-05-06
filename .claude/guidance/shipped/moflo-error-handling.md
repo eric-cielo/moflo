@@ -70,5 +70,5 @@ if (!result.ok) syncFailures.push({ key, message: `${errMessage(result.err)} (re
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-source-hygiene.md` — General source code standards
-- `.claude/guidance/shipped/moflo-cross-platform.md` — Cross-platform rules
+- `.claude/guidance/moflo-source-hygiene.md` — General source code standards
+- `.claude/guidance/moflo-cross-platform.md` — Cross-platform rules

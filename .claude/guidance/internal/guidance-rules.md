@@ -28,7 +28,7 @@ Consumer projects writing their OWN guidance do NOT use this prefix; the prefix 
 
 **Gitignore must target only the top-level mirror.** Use `/.claude/guidance/*.md` — a bare `.claude/guidance/` will silently swallow `shipped/` and `internal/` too, and the failure is invisible because `npm pack` ships from the working tree (not git), so a fresh CI clone publishes an incomplete `shipped/` set.
 
-**CLAUDE.md cross-references should point to `shipped/` paths**, not the top-level mirror. The mirror only exists once session-start has run; `shipped/` is the durable source.
+**Consumer-bound cross-references must use the top-level mirror path** — `.claude/guidance/<file>.md`, not `.claude/guidance/shipped/<file>.md`. The `shipped/` segment only exists at the moflo source root and inside `node_modules/moflo/`; it is never created as a destination directory on a consumer project, so a `shipped/`-prefixed path 404s for every consumer. This applies to injected CLAUDE.md templates, See Also sections in shipped guidance, shipped skill SKILL.md files, and the runtime subagent directive. Internal docs (`.claude/guidance/internal/**`) MAY continue to use `shipped/` paths because they only execute inside moflo's own repo. See `internal/consumer-bound-references.md` for the full rule, exceptions list, and authoring checklist.
 
 ---
 
@@ -87,6 +87,7 @@ This is rarer and riskier — only do it when you're sure no consumer relies on 
 - `.claude/guidance/internal/dogfooding.md` — The shipped-vs-internal partition this doc enforces, framed from the dogfood loop's perspective
 - `.claude/guidance/internal/upgrade-contract.md` — Where the "user never re-runs init" invariant for guidance sync is defined
 - `.claude/guidance/internal/coding-style.md` — Sibling style rules but for source code; both files share the imperative/concrete/specific posture
+- `.claude/guidance/internal/consumer-bound-references.md` — Operational rule for path-bearing strings in shipped content (See Also links, injected templates, runtime directives) — required reading before editing any cross-reference
 - `.claude/guidance/shipped/moflo-memory-strategy.md` — Companion shipped doc on writing guidance that indexes well for RAG (consumer audience)
 - `.claude/guidance/shipped/moflo-session-start.md` — Where shipped guidance gets synced to consumer projects (and why the `moflo-` prefix matters there)
 - `.claude/guidance/internal/guidance-sync.md` — Three-layer sync pipeline (filesystem → DB → HNSW); the chunking decisions in the universal rules feed Layer 2's behavior

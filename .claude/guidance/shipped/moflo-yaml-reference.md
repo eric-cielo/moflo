@@ -184,8 +184,8 @@ Global registration is useful for ad-hoc projects where you don't want to commit
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-core-guidance.md` — Hub: getting started, anti-drift defaults, troubleshooting
-- `.claude/guidance/shipped/moflo-cli-reference.md` — Commands, agents, hooks, hive-mind, ruvector — the surfaces this config gates
-- `.claude/guidance/shipped/moflo-spell-sandboxing.md` — What `sandbox:` actually does at the bash-step boundary, with capability/permission interaction
-- `.claude/guidance/shipped/moflo-session-start.md` — Where these config fields are read and applied during session start
-- `.claude/guidance/shipped/moflo-settings-injection.md` — What moflo writes into `.claude/settings.json` (the hook wiring; complementary to `moflo.yaml` toggles)
+- `.claude/guidance/moflo-core-guidance.md` — Hub: getting started, anti-drift defaults, troubleshooting
+- `.claude/guidance/moflo-cli-reference.md` — Commands, agents, hooks, hive-mind, ruvector — the surfaces this config gates
+- `.claude/guidance/moflo-spell-sandboxing.md` — What `sandbox:` actually does at the bash-step boundary, with capability/permission interaction
+- `.claude/guidance/moflo-session-start.md` — Where these config fields are read and applied during session start
+- `.claude/guidance/moflo-settings-injection.md` — What moflo writes into `.claude/settings.json` (the hook wiring; complementary to `moflo.yaml` toggles)

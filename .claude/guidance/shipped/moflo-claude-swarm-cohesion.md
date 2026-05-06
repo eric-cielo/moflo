@@ -384,7 +384,7 @@ npx flo swarm init --topology hierarchical-mesh --max-agents 15 --strategy speci
 
 ## Subagent Context Rules
 
-**Subagents automatically receive guidance via the `SubagentStart` hook.** When any subagent spawns, the hook injects a directive telling it to read `.claude/guidance/shipped/moflo-subagents.md` before doing any work. This is centralized — no per-agent configuration needed.
+**Subagents automatically receive guidance via the `SubagentStart` hook.** When any subagent spawns, the hook injects a directive telling it to read `.claude/guidance/moflo-subagents.md` before doing any work. This is centralized — no per-agent configuration needed.
 
 **What subagents receive automatically:**
 - `SubagentStart` hook directive to read subagent protocol guidance

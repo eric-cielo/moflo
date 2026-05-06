@@ -22,6 +22,14 @@ import {
   renderMofloYaml,
   type MofloYamlConfig,
 } from './moflo-yaml-template.js';
+import {
+  generateClaudeMd as generateMofloSection,
+  MARKER_START,
+  MARKER_END,
+  LEGACY_MARKER_STARTS,
+  LEGACY_MARKER_ENDS,
+} from './claudemd-generator.js';
+import { DEFAULT_INIT_OPTIONS } from './types.js';
 
 export { discoverTestDirs };
 
@@ -486,28 +494,19 @@ function generateSkill(root: string, force?: boolean): MofloInitResult['steps'][
 // Step 4: CLAUDE.md MoFlo section
 // ============================================================================
 
-// Markers for idempotent CLAUDE.md injection — keep in sync with claudemd-generator.ts
-const MOFLO_MARKER = '<!-- MOFLO:INJECTED:START -->';
-const MOFLO_MARKER_END = '<!-- MOFLO:INJECTED:END -->';
-// Also detect legacy markers so we can replace them
-const LEGACY_MARKERS = ['<!-- MOFLO:START -->', '<!-- MOFLO:SUBAGENT-PROTOCOL:START -->'];
-const LEGACY_MARKERS_END = ['<!-- MOFLO:END -->', '<!-- MOFLO:SUBAGENT-PROTOCOL:END -->'];
-
-function generateClaudeMd(root: string, force?: boolean): MofloInitResult['steps'][0] {
+function generateClaudeMd(root: string, _force?: boolean): MofloInitResult['steps'][0] {
   const claudeMdPath = path.join(root, 'CLAUDE.md');
   let existing = '';
 
   if (fs.existsSync(claudeMdPath)) {
     existing = fs.readFileSync(claudeMdPath, 'utf-8');
 
-    // Check for current or legacy markers
-    const allStartMarkers = [MOFLO_MARKER, ...LEGACY_MARKERS];
-    const allEndMarkers = [MOFLO_MARKER_END, ...LEGACY_MARKERS_END];
+    // Strip current or legacy MoFlo block so we can re-inject the latest content.
+    const allStartMarkers = [MARKER_START, ...LEGACY_MARKER_STARTS];
+    const allEndMarkers = [MARKER_END, ...LEGACY_MARKER_ENDS];
 
     for (let i = 0; i < allStartMarkers.length; i++) {
       if (existing.includes(allStartMarkers[i])) {
-        // Always strip the existing section so we can re-inject the latest version.
-        // This ensures CLAUDE.md stays current when moflo updates its injected content.
         const startIdx = existing.indexOf(allStartMarkers[i]);
         const endIdx = existing.indexOf(allEndMarkers[i]);
         if (endIdx > startIdx) {
@@ -517,62 +516,15 @@ function generateClaudeMd(root: string, force?: boolean): MofloInitResult['steps
     }
   }
 
-  // Minimal injection — just enough for Claude to work with moflo.
-  // All detailed docs live in .claude/guidance/shipped/moflo-core-guidance.md.
-  const mofloSection = `
-${MOFLO_MARKER}
-## MoFlo — AI Agent Orchestration
-
-This project uses [MoFlo](https://github.com/eric-cielo/moflo) for AI-assisted development spells.
-
-### FIRST ACTION ON EVERY PROMPT: Search Memory
-
-Your first tool call for every new user prompt MUST be a memory search. Do this BEFORE Glob, Grep, Read, or any file exploration.
-
-\`\`\`
-mcp__moflo__memory_search — query: "<task description>", namespace: "guidance" or "patterns" or "learnings" or "code-map" or "tests"
-\`\`\`
-
-Search \`guidance\`, \`patterns\`, and \`learnings\` namespaces on every prompt. Search \`code-map\` when navigating the codebase, \`tests\` when looking for test inventory or coverage.
-When the user asks you to remember something: \`mcp__moflo__memory_store\` with namespace \`learnings\`.
-
-### Spell Gates (enforced automatically)
-
-- **Memory-first**: Must search memory before Glob/Grep/Read
-- **TaskCreate-first**: Must call TaskCreate before spawning Agent tool
-- **Task Icons**: \`TaskCreate\` MUST use ICON+[Role] format — see \`.claude/guidance/moflo-task-icons.md\`
-
-### MCP Tools (preferred over CLI)
-
-| Tool | Purpose |
-|------|---------|
-| \`mcp__moflo__memory_search\` | Semantic search across indexed knowledge |
-| \`mcp__moflo__memory_store\` | Store patterns and decisions |
-| \`mcp__moflo__hooks_route\` | Route task to optimal agent type |
-| \`mcp__moflo__hooks_pre-task\` | Record task start |
-| \`mcp__moflo__hooks_post-task\` | Record task completion for learning |
-
-### CLI Fallback
-
-\`\`\`bash
-flo-search "[query]" --namespace guidance   # Semantic search
-flo doctor --fix                             # Health check
-\`\`\`
-
-### Full Reference
-
-For CLI commands, hooks, agents, swarm config, memory commands, and moflo.yaml options, see:
-\`.claude/guidance/shipped/moflo-core-guidance.md\`
-${MOFLO_MARKER_END}
-`;
-
-  const finalContent = existing.trimEnd() + '\n' + mofloSection;
+  // Single source of truth: claudemd-generator.ts owns the section content.
+  const canonical = generateMofloSection(DEFAULT_INIT_OPTIONS);
+  const finalContent = existing.trimEnd() + '\n\n' + canonical;
   fs.writeFileSync(claudeMdPath, finalContent, 'utf-8');
 
   return {
     name: 'CLAUDE.md',
     status: existing ? 'updated' : 'created',
-    detail: 'MoFlo section injected (~35 lines)',
+    detail: 'MoFlo section injected (~22 lines)',
   };
 }
 

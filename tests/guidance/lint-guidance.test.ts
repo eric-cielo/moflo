@@ -399,7 +399,18 @@ describe('Guidance Compliance Linter', () => {
 
     it('CLAUDE.md references full docs in guidance', () => {
       const content = readFile('CLAUDE.md');
-      expect(content).toContain('.claude/guidance/shipped/moflo-core-guidance.md');
+      // Consumer-bound mirror path — see internal/consumer-bound-references.md.
+      // The injected block must NOT use `shipped/` because consumers don't have that subdir.
+      expect(content).toContain('.claude/guidance/moflo-core-guidance.md');
+      // Carve-out: prose outside the MOFLO:INJECTED block may still cite `shipped/`
+      // (moflo dogfoods, so both paths resolve in this repo). The test only fails
+      // if the injected block itself regresses.
+      const start = content.indexOf('<!-- MOFLO:INJECTED:START -->');
+      const end = content.indexOf('<!-- MOFLO:INJECTED:END -->');
+      if (start >= 0 && end > start) {
+        const injected = content.slice(start, end);
+        expect(injected).not.toContain('.claude/guidance/shipped/');
+      }
     });
   });
 });

@@ -32,7 +32,7 @@ Ask the user:
 
 **Important:** Simple service integrations (Slack webhook, S3 upload, Jira comment) should compose existing connectors (`http`, `github-cli`, `playwright`) in spell YAML — no dedicated connector needed. However, platforms requiring complex multi-step browser interaction (like Outlook.com web UI) DO warrant a dedicated connector. See `.claude/skills/spell-builder/architecture.md` for the decision tree.
 
-**Documentation requirement:** When creating any new step command or connector, you MUST also create a README.md following `.claude/guidance/shipped/moflo-guidance-rules.md`. Use existing READMEs in `.claude/skills/spell-builder/steps/` or `connectors/` as templates. Apply automatically — the user should never need to ask.
+**Documentation requirement:** When creating any new step command or connector, you MUST also create a README.md following `.claude/guidance/moflo-guidance-rules.md`. Use existing READMEs in `.claude/skills/spell-builder/steps/` or `connectors/` as templates. Apply automatically — the user should never need to ask.
 
 Then follow the appropriate section below.
 

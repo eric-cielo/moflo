@@ -140,6 +140,6 @@ Stories #101-#108, #105, #117 have no dependency on Epic #110.
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-core-guidance.md` — CLI, hooks, swarm, memory reference
-- `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md` — Task & swarm coordination
-- `.claude/guidance/shipped/moflo-subagents.md` — Subagents protocol
+- `.claude/guidance/moflo-core-guidance.md` — CLI, hooks, swarm, memory reference
+- `.claude/guidance/moflo-claude-swarm-cohesion.md` — Task & swarm coordination
+- `.claude/guidance/moflo-subagents.md` — Subagents protocol

@@ -1537,14 +1537,17 @@ describe('Init System', () => {
       expect(md).toContain('mcp__moflo__memory_search');
     });
 
-    it('should contain spell gates', () => {
+    it('should contain auto-enforced gates section', () => {
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
-      expect(md).toContain('Spell Gates');
+      expect(md).toContain('Auto-enforced gates');
+      expect(md).toContain('TaskCreate-first');
     });
 
-    it('should contain MCP tools table', () => {
+    it('should reference MCP tools and the CLI', () => {
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
-      expect(md).toContain('MCP Tools');
+      // Tools section names the MCP namespace + CLI binaries (compact form, no table).
+      expect(md).toContain('mcp__moflo__*');
+      expect(md).toContain('flo doctor --fix');
     });
 
     it('should contain injection markers', () => {
@@ -1555,7 +1558,10 @@ describe('Init System', () => {
 
     it('should reference full docs in guidance', () => {
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
-      expect(md).toContain('.claude/guidance/shipped/moflo-core-guidance.md');
+      // Consumer-bound path — must be the mirror, not the source `shipped/`.
+      // See .claude/guidance/internal/consumer-bound-references.md.
+      expect(md).toContain('.claude/guidance/moflo-core-guidance.md');
+      expect(md).not.toContain('.claude/guidance/shipped/');
     });
 
     it('should instruct Claude to read .moflo/restart-pending.json after upgrading', () => {
@@ -1564,7 +1570,7 @@ describe('Init System', () => {
       // and surfaces it to the user.
       const md = generateClaudeMd(DEFAULT_INIT_OPTIONS);
       expect(md).toContain('restart-pending.json');
-      expect(md).toContain('npm install moflo');
+      expect(md).toMatch(/npm install.*moflo|moflo.*npm install/);
     });
 
     it('all templates should produce identical output', () => {

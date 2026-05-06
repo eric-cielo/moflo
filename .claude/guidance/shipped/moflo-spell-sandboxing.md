@@ -300,10 +300,10 @@ Or declare the `net` capability explicitly if the step doesn't need the full `el
 
 ## See Also
 
-- `.claude/guidance/shipped/moflo-spell-engine.md` — Spell engine usage and YAML format
-- `.claude/guidance/shipped/moflo-spell-connectors.md` — Optional resource adapters (not the enforcement layer)
-- `.claude/guidance/shipped/moflo-spell-engine-architecture.md` — Engine architecture and messaging
-- `.claude/guidance/shipped/moflo-core-guidance.md` — Full CLI/MCP reference
+- `.claude/guidance/moflo-spell-engine.md` — Spell engine usage and YAML format
+- `.claude/guidance/moflo-spell-connectors.md` — Optional resource adapters (not the enforcement layer)
+- `.claude/guidance/moflo-spell-engine-architecture.md` — Engine architecture and messaging
+- `.claude/guidance/moflo-core-guidance.md` — Full CLI/MCP reference
 - `src/cli/spells/core/permission-resolver.ts` — Capability → permission level derivation
 - `src/cli/spells/core/permission-disclosure.ts` — Risk classification and reporting
 - `src/cli/spells/core/permission-acceptance.ts` — Acceptance storage and gate
