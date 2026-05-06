@@ -55,7 +55,11 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   // record-memory-searched MUST go through gate-hook.mjs (not gate.cjs directly)
   // — the wrapper forwards Claude Code's session_id as HOOK_SESSION_ID, which
   // markMemorySearched needs to stamp the per-actor map (#879).
-  'record-memory-searched':   { event: 'PostToolUse',      matcher: 'mcp__moflo__memory_',        hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-memory-searched', timeout: 3000 } },
+  // Matcher MUST be a fully-anchored regex: Claude Code anchors hook matchers
+  // (`^...$` semantics), so a bare `mcp__moflo__memory_` never fires for any
+  // tool name (#929 regression — the hook silently no-ops, leaving every
+  // memory_search uncounted by the gate).
+  'record-memory-searched':   { event: 'PostToolUse',      matcher: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$', hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-memory-searched', timeout: 3000 } },
   'check-task-transition':    { event: 'PostToolUse',      matcher: '^TaskUpdate$',               hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-task-transition', timeout: 2000 } },
   'record-learnings-stored':  { event: 'PostToolUse',      matcher: '^mcp__moflo__memory_store$', hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" record-learnings-stored', timeout: 2000 } },
   'check-bash-memory':        { event: 'PostToolUse',      matcher: '^Bash$',                     hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-bash-memory', timeout: 2000 } },
@@ -157,6 +161,42 @@ export const HOOK_REWRITE_RULES: ReadonlyArray<HookRewriteRule> = [
   },
 ];
 
+// ────────────────────────────────────────────────────────────────────────────
+// Matcher rewrite rules — fix existing-but-wrong block-level `matcher` strings.
+//
+// HOOK_REWRITE_RULES rewrites hook command substrings; this rewrites the
+// outer block matcher itself. Each rule fires only when a block has the exact
+// `from` matcher AND contains a hook command matching `cmdContains` — that
+// guard prevents an accidental rewrite of an unrelated user-customised block
+// that happens to share the matcher string.
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface MatcherRewriteRule {
+  /** Diagnostic name surfaced when the rewrite fires */
+  name: string;
+  /** Exact matcher string to find on `block.matcher` */
+  from: string;
+  /** Replacement matcher string */
+  to: string;
+  /** Hook command must contain this substring for the rewrite to fire — guards
+   *  against rewriting an unrelated user-customised block. */
+  cmdContains: string;
+}
+
+export const MATCHER_REWRITE_RULES: ReadonlyArray<MatcherRewriteRule> = [
+  // Issue #929 — Claude Code anchors hook matchers (`^…$` semantics), so a
+  // bare `mcp__moflo__memory_` never matches any real MCP tool name and the
+  // record-memory-searched stamp silently no-ops on every memory_search.
+  // The fix is anchored alternation. Existing consumers that upgrade through
+  // this version self-heal here without needing `flo doctor --fix`.
+  {
+    name: '#929: anchor record-memory-searched matcher',
+    from: 'mcp__moflo__memory_',
+    to: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$',
+    cmdContains: 'record-memory-searched',
+  },
+];
+
 export interface RewriteResult {
   /** The (mutated) settings */
   settings: Record<string, unknown>;
@@ -190,6 +230,26 @@ export function rewriteIncorrectHookWiring(
             count++;
           }
         }
+      }
+    }
+    if (count > 0) rewrites.push({ name: rule.name, count });
+  }
+
+  for (const rule of MATCHER_REWRITE_RULES) {
+    let count = 0;
+    for (const eventName of Object.keys(hooks)) {
+      const eventArray = hooks[eventName];
+      if (!Array.isArray(eventArray)) continue;
+      for (const block of eventArray as Array<Record<string, unknown>>) {
+        if (block.matcher !== rule.from) continue;
+        const blockHooks = block.hooks;
+        if (!Array.isArray(blockHooks)) continue;
+        const hasMatchingCmd = (blockHooks as Array<Record<string, unknown>>).some(
+          (h) => typeof h.command === 'string' && h.command.includes(rule.cmdContains),
+        );
+        if (!hasMatchingCmd) continue;
+        block.matcher = rule.to;
+        count++;
       }
     }
     if (count > 0) rewrites.push({ name: rule.name, count });

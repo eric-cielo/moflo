@@ -109,7 +109,7 @@
         ]
       },
       {
-        "matcher": "mcp__moflo__memory_",
+        "matcher": "^mcp__moflo__memory_(search|retrieve|list|stats|store)$",
         "hooks": [
           {
             "type": "command",

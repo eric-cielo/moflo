@@ -1637,11 +1637,19 @@ describe('settings.json: PostToolUse matcher coverage', () => {
     postToolUseMatchers = [];
   }
 
-  // Claude Code fires ALL matching entries for a tool, not just the first.
-  // Gather every entry whose matcher regex matches the tool name; assertions
-  // then look across the union of their hook commands.
+  // Claude Code fires ALL matching entries for a tool, not just the first —
+  // and it requires the matcher regex to match the WHOLE tool name (anchored
+  // semantics). A bare `new RegExp(matcher).test(name)` partial-matches, which
+  // would let an unanchored matcher like `mcp__moflo__memory_` falsely appear
+  // to match `mcp__moflo__memory_search` and hide regressions like #929 where
+  // the hook never fires in production. Compare the captured match against
+  // the full input to enforce full-match without double-anchoring matchers
+  // that already start with `^` / end with `$`.
   function findAllMatchingEntries(toolName: string) {
-    return postToolUseMatchers.filter(entry => new RegExp(entry.matcher).test(toolName));
+    return postToolUseMatchers.filter(entry => {
+      const m = toolName.match(new RegExp(entry.matcher));
+      return m !== null && m[0] === toolName;
+    });
   }
   function allCommandsFor(toolName: string): string[] {
     return findAllMatchingEntries(toolName).flatMap(e => e.hooks.map(h => h.command));

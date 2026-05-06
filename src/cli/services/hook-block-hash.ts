@@ -121,7 +121,7 @@ export function getReferenceHookBlock(): HooksTree {
         hooks: [gateHook('check-bash-memory', 2000), gateHook('record-test-run', 2000)],
       },
       { matcher: '^Skill$',                       hooks: [gateHook('record-skill-run', 2000)] },
-      { matcher: 'mcp__moflo__memory_',           hooks: [gateHook('record-memory-searched', 3000)] },
+      { matcher: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$', hooks: [gateHook('record-memory-searched', 3000)] },
       { matcher: '^TaskUpdate$',                  hooks: [gateCjs('check-task-transition', 2000)] },
       { matcher: '^mcp__moflo__memory_store$',    hooks: [gateCjs('record-learnings-stored', 2000)] },
     ],
