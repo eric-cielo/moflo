@@ -326,12 +326,16 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
         "hooks": [{ "type": "command", "command": gateHook('record-skill-run'), "timeout": 2000 }]
       },
       {
+        // Anchored alternation — Claude Code anchors hook matchers (`^…$` semantics),
+        // so a bare `mcp__moflo__memory_` never matches any real MCP tool name and the
+        // hook silently no-ops (#929 regression). The explicit suffix list keeps the
+        // matcher narrow while catching every memory_* tool we ship.
         // Use gateHook (not gate) so the wrapper forwards Claude Code's session_id as
         // HOOK_SESSION_ID — record-memory-searched needs this to mark the per-actor map
         // (memorySearchedBy[sid]) that check-before-read consults under #838's per-actor gating.
         // Without it, the legacy boolean is set but the per-actor map stays empty, and the gate
         // blocks every Read forever within the turn (issue #879).
-        "matcher": "mcp__moflo__memory_",
+        "matcher": "^mcp__moflo__memory_(search|retrieve|list|stats|store)$",
         "hooks": [{ "type": "command", "command": gateHook('record-memory-searched'), "timeout": 3000 }]
       },
       {

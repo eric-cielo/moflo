@@ -240,7 +240,7 @@ describe('rewriteIncorrectHookWiring (#879)', () => {
       hooks: {
         PostToolUse: [
           {
-            matcher: 'mcp__moflo__memory_',
+            matcher: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$',
             hooks: [
               {
                 type: 'command',
@@ -254,6 +254,85 @@ describe('rewriteIncorrectHookWiring (#879)', () => {
     };
     const { rewrites } = rewriteIncorrectHookWiring(settings);
     expect(rewrites).toEqual([]);
+  });
+
+  // ── Issue #929 — matcher rewrite for the per-actor memory gate ──────────────
+  // Claude Code anchors hook matchers (`^…$` semantics), so the bare
+  // `mcp__moflo__memory_` matcher introduced by #882's #879 fix never fires
+  // for any real MCP tool name. The launcher must rewrite this in-place so
+  // existing consumers self-heal on session start without `flo doctor --fix`.
+
+  it('rewrites broken `mcp__moflo__memory_` matcher to anchored alternation (#929)', () => {
+    const settings: Record<string, unknown> = {
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: 'mcp__moflo__memory_',
+            hooks: [
+              {
+                type: 'command',
+                command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-memory-searched',
+                timeout: 3000,
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const { rewrites, settings: patched } = rewriteIncorrectHookWiring(settings);
+
+    expect(rewrites.some(r => r.name.includes('#929'))).toBe(true);
+    const block = ((patched.hooks as Record<string, unknown[]>).PostToolUse as Array<{ matcher: string }>)[0];
+    expect(block.matcher).toBe('^mcp__moflo__memory_(search|retrieve|list|stats|store)$');
+  });
+
+  it('matcher rewrite is idempotent — no second-pass changes', () => {
+    const settings: Record<string, unknown> = {
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: 'mcp__moflo__memory_',
+            hooks: [
+              {
+                type: 'command',
+                command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" record-memory-searched',
+                timeout: 3000,
+              },
+            ],
+          },
+        ],
+      },
+    };
+    rewriteIncorrectHookWiring(settings);
+    const before = JSON.stringify(settings);
+    const { rewrites } = rewriteIncorrectHookWiring(settings);
+    expect(rewrites).toEqual([]);
+    expect(JSON.stringify(settings)).toBe(before);
+  });
+
+  it('matcher rewrite skips blocks whose hook command does not match the gating substring', () => {
+    // A user-customised block that happens to share the broken matcher but
+    // wires a different action — must NOT be rewritten.
+    const settings: Record<string, unknown> = {
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: 'mcp__moflo__memory_',
+            hooks: [
+              {
+                type: 'command',
+                command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/my-custom-logger.mjs"',
+                timeout: 1000,
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const { rewrites, settings: patched } = rewriteIncorrectHookWiring(settings);
+    expect(rewrites.some(r => r.name.includes('#929'))).toBe(false);
+    const block = ((patched.hooks as Record<string, unknown[]>).PostToolUse as Array<{ matcher: string }>)[0];
+    expect(block.matcher).toBe('mcp__moflo__memory_');
   });
 
   it('handles malformed hooks gracefully (no throw on missing keys)', () => {
