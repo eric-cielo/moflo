@@ -2,7 +2,7 @@
 description: Review changed code for reuse, quality, and efficiency, then fix any issues found. Sizes review effort to the diff and routes the cheapest model that fits.
 ---
 
-# /simplify — Adaptive Gate-Compliant Code Review
+# /flo-simplify — Adaptive Gate-Compliant Code Review
 
 Review changed code for reuse, quality, and efficiency. **Effort scales with diff size; model is routed for cost.** A 5-line comment trim does not get 3 Opus agents.
 
@@ -20,7 +20,7 @@ git diff HEAD          # working tree
 git diff main...HEAD   # committed since branch base
 ```
 
-Treat the union as the diff. Note whether `/simplify` already ran on this branch in this session — if so, you are in a **validation pass** (Phase 4 below).
+Treat the union as the diff. Note whether `/flo-simplify` already ran on this branch in this session — if so, you are in a **validation pass** (Phase 4 below).
 
 ## Phase 2: Classify the diff
 
@@ -46,7 +46,7 @@ Pass the classifier's `model` field verbatim to Agent's `model` parameter. If yo
 
 ## Phase 4: Validation pass (re-run after fixes from a prior simplify)
 
-If `/simplify` already ran on this branch in this session AND the only edits since are fixes the prior pass surfaced, **default to TRIVIAL self-review** regardless of LOC count. The fan-out happened; the fix is small relative to the already-reviewed diff.
+If `/flo-simplify` already ran on this branch in this session AND the only edits since are fixes the prior pass surfaced, **default to TRIVIAL self-review** regardless of LOC count. The fan-out happened; the fix is small relative to the already-reviewed diff.
 
 Escalate one tier (self-review → SMALL agent) only if the fix introduced a new file, a new exported symbol, a new dependency, or a control-flow change not covered by the original findings. Never escalate a validation pass to NORMAL.
 
@@ -84,7 +84,7 @@ Aggregate findings. Fix each issue directly that's worth fixing. False positives
 
 If fixes were made, re-run tests to confirm nothing broke. If tests fail after a fix, revert it.
 
-After fixes: the next `/simplify` invocation is a **validation pass** (Phase 4). Bundle related fixes into one batch so a single validation pass covers them — don't re-fan-out for cosmetic micro-corrections.
+After fixes: the next `/flo-simplify` invocation is a **validation pass** (Phase 4). Bundle related fixes into one batch so a single validation pass covers them — don't re-fan-out for cosmetic micro-corrections.
 
 ## Phase 7: Optional — record routing outcome
 

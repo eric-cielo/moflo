@@ -56,7 +56,7 @@ research → ticket → execute → tests → simplify → learnings → pr
 | Ticket | Enhance/create the GitHub issue with description, AC, test cases |
 | Execute | Assign issue, create branch, implement |
 | Tests | Run unit + integration + E2E |
-| Simplify | Run `/simplify` on changed code |
+| Simplify | Run `/flo-simplify` on changed code |
 | Learnings | Call `mcp__moflo__memory_store` with what was learned |
 | PR | Open the PR, update issue status |
 
@@ -138,7 +138,7 @@ Full mode runs end-to-end without further prompts.
 2. Enhance the issue with description, AC, test cases — `./ticket.md`
 3. Assign issue to self, add `in-progress` label — `./phases.md` Phase 3
 4. Create branch, implement, write tests — `./phases.md` Phases 3–4
-5. Run `/simplify` on changed code; rerun tests if it edits — `./phases.md` Phase 4.5
+5. Run `/flo-simplify` on changed code; rerun tests if it edits — `./phases.md` Phase 4.5
 6. Commit — `./phases.md` Phase 5.1
 7. Store learnings via `mcp__moflo__memory_store` — `./phases.md` Phase 5.2
 8. Open PR, update issue status — `./phases.md` Phases 5.3–5.4

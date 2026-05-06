@@ -173,7 +173,7 @@ describe('gate snapshot path — TRIVIAL delta-since-simplify auto-passes', () =
     env.TOOL_INPUT_command = 'gh pr create --title "feat"';
     const r = runGate('check-before-pr', env);
     expect(r.exitCode, 'non-trivial delta should still block').toBe(2);
-    expect(r.stderr).toContain('/simplify has not run');
+    expect(r.stderr).toContain('/flo-simplify has not run');
   });
 });
 
@@ -209,7 +209,7 @@ describe('gate baseline path — TRIVIAL whole-branch diff auto-passes', () => {
     env.TOOL_INPUT_command = 'gh pr create --title "feat"';
     const r = runGate('check-before-pr', env);
     expect(r.exitCode, 'non-trivial branch should block').toBe(2);
-    expect(r.stderr).toContain('/simplify has not run');
+    expect(r.stderr).toContain('/flo-simplify has not run');
   });
 });
 

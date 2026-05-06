@@ -1,9 +1,9 @@
 ---
-name: simplify
-description: Review changed code for reuse, quality, and efficiency, then fix any issues found. Sizes review effort to the diff — trivial edits get a self-review, substantial edits get parallel agents.
+name: flo-simplify
+description: Review changed code for reuse, quality, and efficiency, then fix any issues found. Sizes review effort to the diff — trivial edits get a self-review, substantial edits get parallel agents. Renamed from /simplify to avoid collision with Claude Code's built-in simplify skill.
 ---
 
-# /simplify — Adaptive Code Review
+# /flo-simplify — Adaptive Code Review
 
 Review changed code for reuse opportunities, quality issues, and efficiency improvements. **Effort scales with diff size and reuses prior context** — a 5-line comment trim doesn't get the same treatment as a 500-line refactor, and a re-run after fixing pass-1 findings doesn't re-pay for a fresh fan-out.
 
@@ -13,7 +13,7 @@ Run `git diff HEAD` (working tree) and `git diff main...HEAD` (committed) to get
 
 Treat the union of staged + unstaged + committed-since-base as the diff to review.
 
-Also note: was `/simplify` already run on this branch in this session? If yes, you're in a **validation pass** (Phase 2.5 below) — most of the heavy lifting is done.
+Also note: was `/flo-simplify` already run on this branch in this session? If yes, you're in a **validation pass** (Phase 2.5 below) — most of the heavy lifting is done.
 
 ## Phase 2: Classify the diff (deterministic — call the classifier)
 
@@ -71,7 +71,7 @@ Three agents exist to cover orthogonal axes (Reuse / Quality / Efficiency) when 
 
 ## Phase 2.5: Validation pass (re-run after fixes)
 
-If `/simplify` already ran on this branch in this session AND the only edits since are fixes driven by the prior pass's findings, default to **self-review tier** regardless of LOC count. The fan-out already happened; the fix is small relative to the diff that was already reviewed.
+If `/flo-simplify` already ran on this branch in this session AND the only edits since are fixes driven by the prior pass's findings, default to **self-review tier** regardless of LOC count. The fan-out already happened; the fix is small relative to the diff that was already reviewed.
 
 Escalate one tier (self-review → SMALL agent) only if the fix introduced any of:
 - A new file
@@ -129,11 +129,11 @@ Aggregate findings. Fix each one directly. False positives or not-worth-fixing �
 
 If fixes were made, re-run tests to confirm nothing broke. If tests fail after a fix, revert it.
 
-After fixes: the next `/simplify` invocation is a **validation pass** (Phase 2.5). Do not re-fan-out unless the fix added genuinely new concerns — bundle related fixes into one batch so a single validation pass covers them.
+After fixes: the next `/flo-simplify` invocation is a **validation pass** (Phase 2.5). Do not re-fan-out unless the fix added genuinely new concerns — bundle related fixes into one batch so a single validation pass covers them.
 
 ## Phase 5: Stamp the gate
 
-Whatever tier ran, the gate (`check-before-pr`) registers /simplify as having executed. The skill is satisfied. Self-review counts.
+Whatever tier ran, the gate (`check-before-pr`) registers /flo-simplify as having executed. The skill is satisfied. Self-review counts.
 
 ## Briefly summarize
 

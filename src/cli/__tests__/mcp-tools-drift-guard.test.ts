@@ -83,6 +83,15 @@ const ALLOWLIST: Record<string, string> = {
   // entry point — runner.ts:146 prints "ask Claude to accept it, or call the
   // spell_accept tool with name X" so this IS the documented call site.
   'spell_accept': 'advertised in spell runner permission-acceptance flow',
+
+  // Swarm + task coordination — protected critical surface per CLAUDE.md.
+  // Both have live integration tests that exercise the registered handlers
+  // (real consumers, not stubs); some agent .md files also call them via
+  // `mcp.swarm_scale(...)` / `this.mcpTools.task_orchestrate(...)` syntax that
+  // the corpus regex doesn't match. The integration tests are sufficient to
+  // prove the tools work; the agent body modernization tracks separately.
+  'swarm_scale': 'exercised by src/cli/__tests__/mcp-tools/swarm-scale.test.ts (live coordinator-backed integration test)',
+  'task_orchestrate': 'exercised by src/cli/__tests__/mcp-tools/task-orchestrate.test.ts and tests/system/swarm-restoration-e2e.test.ts',
 };
 
 interface RegisteredTool {

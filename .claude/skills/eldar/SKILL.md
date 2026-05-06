@@ -167,7 +167,7 @@ Each gap finding from /guidance becomes one row in the Eldar report. Severity ca
 
 ### 1n. Anti-Pattern from History (best-effort, optional)
 
-If recent transcripts/commits are accessible, scan them for repeated manual work that an existing spell or agent already covers (e.g., 5+ separate `git status`/`git diff`/run-tests sequences in a session that `/simplify` would have handled). Surface as `info`: "consider /simplify for review loops". If unavailable, skip silently — never block the audit on this.
+If recent transcripts/commits are accessible, scan them for repeated manual work that an existing spell or agent already covers (e.g., 5+ separate `git status`/`git diff`/run-tests sequences in a session that `/flo-simplify` would have handled). Surface as `info`: "consider /flo-simplify for review loops". If unavailable, skip silently — never block the audit on this.
 
 ## Step 2 — Render the Report
 

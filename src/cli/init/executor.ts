@@ -35,33 +35,47 @@ import { errorDetail } from '../shared/utils/error-detail.js';
 /**
  * Skills to copy based on configuration. Exported for integrity tests.
  */
+// Skills installed into a consumer's `<root>/.claude/skills/` by `flo init`.
+// Every entry must be a moflo-quality, consumer-runnable skill — verified to
+// reference moflo CLI/MCP tools (not upstream `claude-flow` / `agentic-flow`
+// cruft). New additions MUST pass the same audit, otherwise the drift-guard
+// test (skills-classification-drift.test.ts) fails. See INTERNAL_SKILLS for
+// skills that ship in the tarball but are deliberately NOT installed.
 export const SKILLS_MAP: Record<string, string[]> = {
   core: [
-    'swarm-orchestration',
-    'swarm-advanced',
-    'sparc-methodology',
-    'hooks-automation',
-    'pair-programming',
-    'verification-quality',
-    'stream-chain',
-    'skill-builder',
+    'eldar',
+    'guidance',
+    'flo-simplify',
     'reasoningbank-intelligence',
+    'skill-builder',
   ],
-  browser: ['browser'],
-  github: [
-    'github-code-review',
-    'github-multi-repo',
-    'github-project-management',
-    'github-release-management',
-    'github-workflow-automation',
+  memory: [
+    'memory-patterns',
+    'memory-optimization',
+    'vector-search',
+  ],
+  spells: [
+    'spell-builder',
+    'spell-schedule',
+    'connector-builder',
   ],
 };
+
+// Skills that ship in the npm tarball (under `node_modules/moflo/.claude/skills/`)
+// but are deliberately NOT copied into consumer projects by `flo init`. Strictly
+// moflo-internal dev tooling. The drift-guard test asserts every dir under
+// `.claude/skills/` is classified in either SKILLS_MAP or INTERNAL_SKILLS (plus
+// the special `flo` + `fl` install path handled in moflo-init.ts).
+export const INTERNAL_SKILLS: string[] = [
+  'publish',    // moflo's own /publish workflow — not consumer-relevant
+  'reset-epic', // moflo's own epic test-data reset — would torch a consumer's repo
+];
 
 /**
  * Commands to copy based on configuration
  */
 const COMMANDS_MAP: Record<string, string[]> = {
-  core: ['claude-flow-help.md', 'claude-flow-swarm.md', 'claude-flow-memory.md', 'simplify.md'],
+  core: ['claude-flow-help.md', 'claude-flow-swarm.md', 'claude-flow-memory.md', 'flo-simplify.md'],
   analysis: [],
   automation: [],
   github: ['github'],
