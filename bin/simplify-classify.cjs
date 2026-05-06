@@ -53,17 +53,20 @@ function safeExec(cmd) {
 // Detect the consumer's default branch. Hardcoding 'main' silently miscalibrates
 // classification on repos that use 'master', 'develop', etc. — empty diff →
 // TRIVIAL → gate stamps clean without any real review.
+let _cachedDefaultBranch = null;
 function detectDefaultBranch() {
+  if (_cachedDefaultBranch !== null) return _cachedDefaultBranch;
+
   // Preferred: origin/HEAD points to whatever the remote considers default.
   const symbolic = safeExec('git symbolic-ref --short refs/remotes/origin/HEAD').trim();
-  if (symbolic.startsWith('origin/')) return symbolic.slice('origin/'.length);
+  if (symbolic.startsWith('origin/')) return (_cachedDefaultBranch = symbolic.slice('origin/'.length));
 
   // Fallback: local init.defaultBranch (set by `git init -b <name>` or config).
   const configured = safeExec('git config --get init.defaultBranch').trim();
-  if (configured) return configured;
+  if (configured) return (_cachedDefaultBranch = configured);
 
   // Last resort: 'main' (most common modern default).
-  return 'main';
+  return (_cachedDefaultBranch = 'main');
 }
 
 function readDiffFromGit(base) {
