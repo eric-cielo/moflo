@@ -48,6 +48,10 @@ function baseEnv(projectDir: string): Record<string, string> {
     TOOL_INPUT_path: '',
     TOOL_INPUT_file_path: '',
     CLAUDE_USER_PROMPT: '',
+    // Default to no session_id so per-actor tests are explicit about which
+    // bucket they target (#931). Tests that exercise per-session emission
+    // override HOOK_SESSION_ID after building env.
+    HOOK_SESSION_ID: '',
   };
 }
 
@@ -958,15 +962,57 @@ describe('namespace hints (#931): prompt-reminder stores; check-before-agent emi
     expect(readState(tmpDir).lastNamespaceHint).toBe('');
   });
 
-  it('check-before-agent emits the stored hint, then clears it (single-shot per prompt)', () => {
+  it('check-before-agent emits the hint once per session_id (per-actor single-shot)', () => {
     writeState(tmpDir, { tasksCreated: true, memorySearched: true, lastNamespaceHint: 'Memory namespace hint: use "tests" for test inventory and coverage lookups.' });
-    const r1 = runGate('check-before-agent', baseEnv(tmpDir));
+    const env = baseEnv(tmpDir);
+    env.HOOK_SESSION_ID = 'parent-session';
+    const r1 = runGate('check-before-agent', env);
     expect(r1.stdout).toContain('Memory namespace hint');
     expect(r1.stdout).toContain('tests');
-    // Cleared — second Agent spawn in the same turn does not re-emit.
-    expect(readState(tmpDir).lastNamespaceHint).toBe('');
+    // Same session, second Agent spawn — already emitted to this actor.
+    const r2 = runGate('check-before-agent', env);
+    expect(r2.stdout).not.toContain('Memory namespace hint');
+    // Hint itself is preserved — a different actor (subagent) is still entitled
+    // to its own first emission.
+    expect(readState(tmpDir).lastNamespaceHint).toContain('tests');
+  });
+
+  it('check-before-agent emits the hint to a different session_id (subagent gets its own first-shot)', () => {
+    writeState(tmpDir, { tasksCreated: true, memorySearched: true, lastNamespaceHint: 'Memory namespace hint: use "code-map" for codebase navigation.' });
+    const parentEnv = baseEnv(tmpDir);
+    parentEnv.HOOK_SESSION_ID = 'parent-session';
+    const r1 = runGate('check-before-agent', parentEnv);
+    expect(r1.stdout).toContain('code-map');
+    // A subagent (different session_id) spawning its own agent is a new actor;
+    // the per-session bucket lets it see the hint exactly once too.
+    const subagentEnv = baseEnv(tmpDir);
+    subagentEnv.HOOK_SESSION_ID = 'subagent-session-1';
+    const r2 = runGate('check-before-agent', subagentEnv);
+    expect(r2.stdout).toContain('code-map');
+    // Same subagent, second spawn → already emitted to this actor.
+    const r3 = runGate('check-before-agent', subagentEnv);
+    expect(r3.stdout).not.toContain('code-map');
+  });
+
+  it('check-before-agent without HOOK_SESSION_ID emits once via _legacy_ bucket', () => {
+    writeState(tmpDir, { tasksCreated: true, memorySearched: true, lastNamespaceHint: 'Memory namespace hint: use "tests" for test inventory and coverage lookups.' });
+    // Older Claude Code hosts / direct CLI invocation — no session_id forwarded.
+    const r1 = runGate('check-before-agent', baseEnv(tmpDir));
+    expect(r1.stdout).toContain('Memory namespace hint');
     const r2 = runGate('check-before-agent', baseEnv(tmpDir));
     expect(r2.stdout).not.toContain('Memory namespace hint');
+  });
+
+  it('new prompt resets lastNamespaceHintEmittedBy → all actors get the new hint', () => {
+    // Parent saw last prompt's hint already.
+    writeState(tmpDir, { lastNamespaceHint: 'old hint', lastNamespaceHintEmittedBy: { 'parent': true, 'sub-1': true } });
+    // New prompt classifies a different namespace; reset clears the bucket.
+    const env = baseEnv(tmpDir);
+    env.CLAUDE_USER_PROMPT = 'where is the login route defined?';
+    runGate('prompt-reminder', env);
+    const s = readState(tmpDir);
+    expect(s.lastNamespaceHintEmittedBy).toEqual({});
+    expect(s.lastNamespaceHint).toContain('code-map');
   });
 
   it('check-before-agent emits nothing namespace-related when no hint stored', () => {

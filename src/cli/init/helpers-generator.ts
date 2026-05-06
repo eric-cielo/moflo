@@ -217,7 +217,7 @@ var path = require('path');
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\\/([a-z])\\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '' };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {} };
 
 function readState() {
   try {
@@ -341,6 +341,9 @@ function applyPromptStateReset(state, promptText) {
   var escaped = /^@@\\s*/.test(promptText || '');
   state.memoryRequired = !escaped && (promptText || '').length >= 4 && (TASK_RE.test(promptText || '') || (promptText || '').length > DIRECTIVE_MAX_LEN);
   state.lastNamespaceHint = classifyNamespaceHint(promptText);
+  // Per-actor emission tracking — fresh window each prompt so subagents that
+  // spawn their own agents still see the hint on their first check-before-agent.
+  state.lastNamespaceHintEmittedBy = {};
 }
 var TEST_RUNNER_RE = /(?:^|[^a-z])(?:npm|yarn|pnpm|bun)\\s+(?:run\\s+)?(?:test|t)(?:[:\\s]|$)|\\b(?:npx|pnpx)\\s+(?:vitest|jest|mocha|ava|tap|jasmine|pytest)\\b|(?:^|;|&&|\\|\\|)\\s*(?:vitest|jest|pytest|mocha|jasmine|tap|ava)\\s|\\b(?:cargo|go|deno|dotnet|mvn)\\s+test\\b|\\bgradle\\w*\\s+test\\b/i;
 var EDIT_RESET_SKIP_BOTH_RE = /\\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^|[\\\\\\/])(CHANGELOG(?:\\.md)?|\\.env\\.example|package-lock\\.json|pnpm-lock\\.yaml|yarn\\.lock|bun\\.lockb)$/i;
@@ -364,9 +367,21 @@ switch (command) {
       process.stdout.write('REMINDER: Search memory (mcp__moflo__memory_search) before spawning agents.\\n');
     }
     if (s.lastNamespaceHint) {
-      process.stdout.write(s.lastNamespaceHint + '\\n');
-      s.lastNamespaceHint = '';
-      writeState(s);
+      // Per-actor single-shot — each session_id emits the hint at most once
+      // per prompt. Subagents that spawn their own agents still see it on
+      // their first check-before-agent because their session_id is its own
+      // bucket. Falls back to a _legacy_ bucket when HOOK_SESSION_ID is
+      // missing (older Claude Code, direct CLI). The map clears on every
+      // new prompt via applyPromptStateReset.
+      var sid = process.env.HOOK_SESSION_ID || '';
+      var emittedBy = s.lastNamespaceHintEmittedBy || {};
+      var bucket = sid || '_legacy_';
+      if (!emittedBy[bucket]) {
+        process.stdout.write(s.lastNamespaceHint + '\\n');
+        emittedBy[bucket] = true;
+        s.lastNamespaceHintEmittedBy = emittedBy;
+        writeState(s);
+      }
     }
     break;
   }
@@ -527,7 +542,7 @@ switch (command) {
     break;
   }
   case 'session-reset': {
-    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null, lastNamespaceHint: '' });
+    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {} });
     break;
   }
   default:

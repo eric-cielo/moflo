@@ -301,9 +301,11 @@ function generateHooks(root: string, force?: boolean, answers?: MofloInitAnswers
         // #931 — Advisory only; never blocks. TaskCreate REMINDER and the
         // namespace hint moved here from UserPromptSubmit so they emit only
         // when Claude is about to spawn an Agent — saves ~90 tokens × every
-        // prompt × every consumer.
+        // prompt × every consumer. Routed via gate-hook.mjs so Claude Code's
+        // session_id is forwarded as HOOK_SESSION_ID, enabling per-actor
+        // single-shot emission (mirror of #879's record-memory-searched fix).
         "matcher": "^Agent$",
-        "hooks": [{ "type": "command", "command": gate('check-before-agent'), "timeout": 2000 }]
+        "hooks": [{ "type": "command", "command": gateHook('check-before-agent'), "timeout": 2000 }]
       }
     ],
     "PostToolUse": [

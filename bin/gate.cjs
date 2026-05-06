@@ -7,7 +7,7 @@ var cp = require('child_process');
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\/([a-z])\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, simplifySnapshotSha: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '' };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, simplifySnapshotSha: null, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {} };
 
 // Per-actor memory-search tracking (#838). The legacy `memorySearched` boolean
 // is session-wide, so once the parent searches memory, every spawned subagent
@@ -149,6 +149,11 @@ function applyPromptStateReset(state, promptText) {
   // spawns an Agent (#931). Empty string when nothing matched — overwriting
   // any stale value from the previous prompt.
   state.lastNamespaceHint = classifyNamespaceHint(promptText);
+  // Per-actor emission tracking — each subagent's session gets the hint at
+  // most once per prompt, but a fresh prompt resets every actor's window so
+  // subsequent agents (parent + subagents that spawn their own agents) all
+  // see the new classification on their first check-before-agent.
+  state.lastNamespaceHintEmittedBy = {};
 }
 // Match npm/yarn/pnpm/bun test, npx vitest|jest|..., bare runners at command-start only,
 // and language-native test commands. The bare-runner arm is anchored so that
@@ -283,12 +288,22 @@ switch (command) {
       process.stdout.write('REMINDER: Search memory (mcp__moflo__memory_search) before spawning agents.\n');
     }
     if (s.lastNamespaceHint) {
-      process.stdout.write(s.lastNamespaceHint + '\n');
-      // Single-shot per prompt: clear after emission so a follow-up Agent spawn
-      // in the same turn doesn't re-emit. The hint is recomputed on the next
-      // user prompt by prompt-reminder / prompt-state-reset.
-      s.lastNamespaceHint = '';
-      writeState(s);
+      // Per-actor single-shot. Each session_id gets the hint at most once per
+      // prompt, but the hint itself stays available for other actors (e.g.
+      // a subagent that spawns its own agent has its own session_id and is
+      // entitled to a fresh emission). Falls back to a `_legacy_` bucket when
+      // Claude Code didn't forward a session_id (older host or direct CLI
+      // invocation), preserving the old "emit once globally" behavior. The
+      // map is wiped by applyPromptStateReset on every new prompt.
+      var sid = process.env.HOOK_SESSION_ID || '';
+      var emittedBy = s.lastNamespaceHintEmittedBy || {};
+      var bucket = sid || '_legacy_';
+      if (!emittedBy[bucket]) {
+        process.stdout.write(s.lastNamespaceHint + '\n');
+        emittedBy[bucket] = true;
+        s.lastNamespaceHintEmittedBy = emittedBy;
+        writeState(s);
+      }
     }
     break;
   }
@@ -492,7 +507,7 @@ switch (command) {
     break;
   }
   case 'session-reset': {
-    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null, lastNamespaceHint: '' });
+    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {} });
     break;
   }
   default:

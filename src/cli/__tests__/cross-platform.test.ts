@@ -483,14 +483,18 @@ describe('generateHooks alignment with settings-generator', () => {
       expect(body).not.toMatch(/gateHookCmd\(['"]prompt-reminder['"]\)/);
     });
 
-    it('moflo-init.ts wires check-before-agent in PreToolUse:^Agent$ (#931)', () => {
+    // #931 — Routed through gate-hook.mjs (not gate.cjs directly) so Claude
+    // Code's session_id is forwarded as HOOK_SESSION_ID. Without the wrapper,
+    // the per-actor namespace-hint emission falls back to a single global
+    // bucket and a subagent spawning its own agent silently misses the hint.
+    it('moflo-init.ts wires check-before-agent through gate-hook.mjs (#931)', () => {
       const body = extractGenerateHooks('moflo-init.ts');
-      expect(body).toMatch(/gate\(['"]check-before-agent['"]\)/);
+      expect(body).toMatch(/gateHook\(['"]check-before-agent['"]\)/);
     });
 
-    it('settings-generator.ts wires check-before-agent in PreToolUse:^Agent$ (#931)', () => {
+    it('settings-generator.ts wires check-before-agent through gateHookCmd (#931)', () => {
       const body = extractGenerateHooks('settings-generator.ts');
-      expect(body).toMatch(/gateCmd\(['"]check-before-agent['"]\)/);
+      expect(body).toMatch(/gateHookCmd\(['"]check-before-agent['"]\)/);
     });
   });
 });

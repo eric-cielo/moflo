@@ -78,8 +78,10 @@ export const HOOK_ENTRY_MAP: Record<string, HookEntryMapping> = {
   'reset-edit-gates':         { event: 'PostToolUse',      matcher: '^(Write|Edit|MultiEdit)$',   hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" reset-edit-gates', timeout: 2000 } },
   // #931 — Agent-time advisory; never blocks. Pulled the TaskCreate REMINDER
   // and namespace hint out of prompt-reminder so they fire only when Claude is
-  // actually about to spawn an Agent.
-  'check-before-agent':       { event: 'PreToolUse',       matcher: '^Agent$',                    hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-before-agent', timeout: 2000 } },
+  // actually about to spawn an Agent. Routed via gate-hook.mjs so Claude Code's
+  // session_id is forwarded as HOOK_SESSION_ID — the namespace hint emission
+  // is per-actor single-shot (mirror of #879's record-memory-searched fix).
+  'check-before-agent':       { event: 'PreToolUse',       matcher: '^Agent$',                    hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-agent', timeout: 2000 } },
   // Re-add the prompt-hook.mjs wiring as its own bare UserPromptSubmit block
   // when missing. Empty matcher = bare block, like settings-generator emits.
   'prompt-hook.mjs':          { event: 'UserPromptSubmit', matcher: '',                           hook: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/prompt-hook.mjs"', timeout: 3000 } },
@@ -189,6 +191,17 @@ export const HOOK_REWRITE_RULES: ReadonlyArray<HookRewriteRule> = [
     name: '#931: dedupe UserPromptSubmit prompt-reminder → prompt-state-reset',
     from: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" prompt-reminder',
     to:   'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" prompt-state-reset',
+  },
+  // Issue #931 — `check-before-agent` was first wired through gate.cjs
+  // directly (no stdin parsing). Without HOOK_SESSION_ID the namespace hint's
+  // per-actor tracking falls back to a single `_legacy_` bucket, so a
+  // subagent spawning its own agent would silently miss the hint after the
+  // parent already consumed it. Route through gate-hook.mjs (the same wrapper
+  // that fixed #879) so each session_id gets its own single-shot.
+  {
+    name: '#931: route check-before-agent → gate-hook.mjs (forwards HOOK_SESSION_ID)',
+    from: 'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs" check-before-agent',
+    to:   'node "$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs" check-before-agent',
   },
 ];
 

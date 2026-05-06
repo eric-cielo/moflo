@@ -109,7 +109,9 @@ export function getReferenceHookBlock(): HooksTree {
         hooks: [gateHook('check-dangerous-command', 2000), gateHook('check-before-pr', 2000)],
       },
       // #931 — TaskCreate REMINDER + namespace hint advisory at Agent-spawn time.
-      { matcher: '^Agent$',                   hooks: [gateCjs('check-before-agent', 2000)] },
+      // Routed via gate-hook.mjs so HOOK_SESSION_ID is forwarded for per-actor
+      // single-shot emission of the namespace hint.
+      { matcher: '^Agent$',                   hooks: [gateHook('check-before-agent', 2000)] },
     ],
     PostToolUse: [
       {

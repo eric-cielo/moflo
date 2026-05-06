@@ -261,10 +261,14 @@ function generateHooksConfig(config: HooksConfig): object {
       // #931 — TaskCreate REMINDER + namespace hint moved here from
       // UserPromptSubmit. They only matter when Claude is about to spawn an
       // Agent; emitting per-prompt cost ~90 tokens × every prompt × every
-      // consumer. Advisory only — never blocks.
+      // consumer. Advisory only — never blocks. Routed through gate-hook.mjs
+      // so Claude Code's session_id is forwarded as HOOK_SESSION_ID — the
+      // namespace hint emission tracks per-actor (mirror of #879's fix for
+      // record-memory-searched), so subagents that spawn their own agents
+      // still get the hint on their first check.
       {
         matcher: '^Agent$',
-        hooks: [{ type: 'command', command: gateCmd('check-before-agent'), timeout: 2000 }],
+        hooks: [{ type: 'command', command: gateHookCmd('check-before-agent'), timeout: 2000 }],
       },
     ];
   }
