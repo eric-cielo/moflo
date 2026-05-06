@@ -61,7 +61,7 @@ Diff range: <last-publish-sha>..HEAD
 Changed files: 7
 ```
 
-`Triggered manual checks: none` means gates 7/8/10 don't apply to this diff — skip them entirely.
+`Triggered manual checks: none` means gates 1/2/6 don't apply to this diff — skip them entirely.
 
 This step costs ~50 tokens and is the cornerstone of token-efficient default mode.
 

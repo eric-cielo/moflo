@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Publish-skill fingerprint: pattern-matches the diff since last publish
-# against the manual-check triggers from pre-publish-rules.md (gates 7/8/10).
+# against the manual-check triggers from pre-publish-rules.md (gates 1/2/6).
 # Prints `Triggered manual checks: ...` (or `none`) on stdout. Pure shell —
 # no Claude tokens. Errs toward triggering on ambiguity.
 #
@@ -27,29 +27,29 @@ DELETED=$(git diff --name-only --diff-filter=DR "$LAST_PUBLISH..HEAD" || true)
 
 triggered=()
 
-# Gate 7 — TS/JS files reading file content → check `.split(/\r?\n/)` review.
+# Gate 1 — TS/JS files reading file content → check `.split(/\r?\n/)` review.
 if echo "$CHANGED" | grep -qE '\.(ts|tsx|js|mjs|cjs)$'; then
-  TS_FILES=$(echo "$CHANGED" | grep -E '\.(ts|tsx|js|mjs|cjs)$' | tr '\n' ' ')
-  # Restrict to files that actually exist (the diff includes deletes too).
-  EXISTING=""
-  for f in $TS_FILES; do
-    [ -f "$f" ] && EXISTING="$EXISTING $f"
-  done
-  if [ -n "$EXISTING" ] && grep -lE 'readFile|readFileSync|fs\.read' $EXISTING >/dev/null 2>&1; then
+  # Build EXISTING as an array so paths with spaces survive (consumer projects
+  # may live under "C:\Users\Some Name\..." on Windows).
+  EXISTING=()
+  while IFS= read -r f; do
+    [ -f "$f" ] && EXISTING+=("$f")
+  done < <(echo "$CHANGED" | grep -E '\.(ts|tsx|js|mjs|cjs)$')
+  if [ "${#EXISTING[@]}" -gt 0 ] && grep -lE 'readFile|readFileSync|fs\.read' "${EXISTING[@]}" >/dev/null 2>&1; then
     triggered+=("split-newlines")
   fi
-  # Gate 7 — `os.homedir()` / `os.tmpdir()` review when env-var literals appear.
-  if [ -n "$EXISTING" ] && grep -lE "process\.env\.(HOME|TMPDIR|TMP|TEMP)|['\"]\\/tmp\\/" $EXISTING >/dev/null 2>&1; then
+  # Gate 1 — `os.homedir()` / `os.tmpdir()` review when env-var literals appear.
+  if [ "${#EXISTING[@]}" -gt 0 ] && grep -lE "process\.env\.(HOME|TMPDIR|TMP|TEMP)|['\"]\\/tmp\\/" "${EXISTING[@]}" >/dev/null 2>&1; then
     triggered+=("homedir-tmpdir")
   fi
 fi
 
-# Gate 7 — spell yaml or spell bash steps changed.
+# Gate 1 — spell yaml or spell bash steps changed.
 if echo "$CHANGED" | grep -qE '(^spells/|spells/.*\.(ya?ml|sh|bash)$|\.spell\.ya?ml$)'; then
   triggered+=("bwrap-permissions" "posix-only-spell-bash")
 fi
 
-# Gate 8 — new file added under bin/ (only adds, not modifications, count for
+# Gate 2 — new file added under bin/ (only adds, not modifications, count for
 # scriptFiles sync). Guard the `--diff-filter=A` lookup separately from the
 # generic CHANGED set so a touched-but-not-added file doesn't fire it.
 ADDED=$(git diff --name-only --diff-filter=A "$LAST_PUBLISH..HEAD" || true)
@@ -57,24 +57,24 @@ if echo "$ADDED" | grep -q '^bin/'; then
   triggered+=("bin-scriptfiles-sync")
 fi
 
-# Gate 8 — anything in bin/ or init/ script-generation logic changed.
+# Gate 2 — anything in bin/ or init/ script-generation logic changed.
 if echo "$CHANGED" | grep -qE '^(bin/|init/|src/cli/init/)'; then
   triggered+=("helper-static-files")
 fi
 
-# Gate 8 — new file added under .claude/guidance/shipped/ (prefix + partition).
+# Gate 2 — new file added under .claude/guidance/shipped/ (prefix + partition).
 if echo "$ADDED" | grep -q '^\.claude/guidance/shipped/'; then
   triggered+=("shipped-guidance-prefix")
 fi
 
-# Gate 9 — new shipped file class. Conservative trigger: any new top-level
+# Gate 6 — new shipped file class. Conservative trigger: any new top-level
 # directory under .claude/ or any new pattern under shipped/. We approximate
 # "new file class" as "any added file the existing files-glob might miss".
 if echo "$ADDED" | grep -qE '^\.claude/(skills|guidance/shipped|scripts|hooks)/'; then
   triggered+=("files-glob-coverage")
 fi
 
-# Gate 10 — any file deleted or renamed → information-loss audit.
+# Gate 6 — any file deleted or renamed → information-loss audit.
 if [ -n "$DELETED" ]; then
   triggered+=("info-loss-audit")
 fi
