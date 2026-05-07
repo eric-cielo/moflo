@@ -5,8 +5,14 @@ name: File-sync smoke (#976)
 # WSL DrvFs — Windows-mounted volumes accessed from WSL inherit NTFS lock
 # semantics and can return success codes from a partial write. The native
 # Windows / Ubuntu / macOS legs catch each platform's per-OS quirks (NTFS file
-# locks, APFS clone semantics, ext4 rename behavior); the WSL leg is the
-# specific reproduction of the venue that produced #975.
+# locks, APFS clone semantics, ext4 rename behavior).
+#
+# WSL DrvFs leg deferred: hosted windows-latest moved to Server 2025, which
+# doesn't ship the WSL feature by default — Vampire/setup-wsl can't find
+# wsl.exe and fails with EACCES on a WindowsApps reparse point. Reinstating
+# the leg requires either (a) pinning to windows-2022 (deprecating), (b)
+# Enable-WindowsOptionalFeature + reboot on Server 2025, or (c) a self-hosted
+# WSL runner. Tracked as a follow-up.
 #
 # Tests exercised on every leg:
 #   - file-sync-helper.test.ts        — atomicCopy, hash-skip, EVERIFY,
@@ -90,69 +96,3 @@ jobs:
           src/cli/__tests__/bootstrap-sentinel-promotion.test.ts
           src/cli/__tests__/post-install-bootstrap-drift-guard.test.ts
           tests/bin/launcher-854-fixes.test.ts
-
-  # WSL DrvFs (the actual #975 failure venue): Ubuntu running on
-  # windows-latest with the working directory under /mnt/c/... so file
-  # operations go through DrvFs — Windows file system reflected into WSL
-  # via 9P/Plan9 protocol, with NTFS lock semantics carrying through.
-  #
-  # This is the leg most likely to catch a real torn-write or partial-copy
-  # scenario; the native legs above can't reproduce DrvFs lock timing.
-  wsl-drvfs:
-    name: wsl-drvfs (windows-latest /mnt/c)
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up WSL Ubuntu
-        uses: Vampire/setup-wsl@v7
-        with:
-          distribution: Ubuntu-22.04
-          additional-packages: |
-            curl
-            ca-certificates
-            xz-utils
-
-      - name: Install Node ${{ env.NODE_VERSION }} inside WSL
-        shell: wsl-bash {0}
-        run: |
-          set -euo pipefail
-          curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-          sudo apt-get install -y nodejs
-          node --version
-          npm --version
-
-      # GITHUB_WORKSPACE on Windows is e.g. D:\a\moflo\moflo. Inside WSL it's
-      # reflected at /mnt/d/a/moflo/moflo through DrvFs — exactly the mount
-      # layer that produced #975. We deliberately do NOT copy the checkout
-      # into the WSL native filesystem (~/) because that would bypass the
-      # very behavior we're trying to test. wslpath is always available
-      # under setup-wsl.
-      - name: Install dependencies (DrvFs)
-        shell: wsl-bash {0}
-        run: |
-          set -euo pipefail
-          DRV="$(wslpath -u "$GITHUB_WORKSPACE")"
-          echo "DrvFs path: $DRV"
-          cd "$DRV"
-          npm ci --legacy-peer-deps
-
-      - name: Build (DrvFs)
-        shell: wsl-bash {0}
-        run: |
-          set -euo pipefail
-          DRV="$(wslpath -u "$GITHUB_WORKSPACE")"
-          cd "$DRV"
-          npm run build
-
-      - name: Run file-sync smoke tests (DrvFs)
-        shell: wsl-bash {0}
-        run: |
-          set -euo pipefail
-          DRV="$(wslpath -u "$GITHUB_WORKSPACE")"
-          cd "$DRV"
-          npx vitest run --reporter=default \
-            src/cli/__tests__/file-sync-helper.test.ts \
-            src/cli/__tests__/post-install-bootstrap.test.ts \
-            src/cli/__tests__/bootstrap-sentinel-promotion.test.ts
