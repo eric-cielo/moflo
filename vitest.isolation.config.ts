@@ -9,10 +9,6 @@ import { defineConfig } from 'vitest/config';
  * finish in 1–2 s alone can still take 10–15 s under cumulative fork
  * pressure (transform cache, dynamic imports, GC). The default 5 s is not
  * enough.
- *
- * hookTimeout matters for files like mcp-tools-drift-guard.test.ts whose
- * beforeAll primes a corpus/AST scan — fast alone, but late-batch fork
- * heap pressure pushes it past the default 10 s.
  */
 export default defineConfig({
   test: {

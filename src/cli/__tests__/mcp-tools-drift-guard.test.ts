@@ -166,7 +166,10 @@ function buildCorpus(): CorpusEntry[] {
       if (st.isDirectory()) {
         // tmp/ holds one-shot audit scripts (e.g. .claude/tmp/audit-693-*) that
         // intentionally enumerate stale tool names — exclude from drift guard.
-        if (e === 'node_modules' || e === 'dist' || e === '.git' || e === 'tmp') continue;
+        // worktrees/ holds parallel-agent git worktrees, each a full clone of
+        // .claude/. Without this skip the walker reads every guidance/agent
+        // file 1+N times (#955 — fork heap pressure pushed beforeAll past 30s).
+        if (e === 'node_modules' || e === 'dist' || e === '.git' || e === 'tmp' || e === 'worktrees') continue;
         walk(full);
       } else if (st.isFile()) {
         if (SKIP_BASENAMES.has(e)) continue;
@@ -256,9 +259,9 @@ function findConsumers(tool: RegisteredTool): string[] {
 }
 
 describe('MCP Tools Drift Guard (#693)', () => {
-  // #847: warm the lazy corpus + consumer-index memos in beforeAll so the
-  // ~350ms-in-isolation / 5s+-under-load AST work doesn't burn the per-test
-  // 5s budget. Vitest's hookTimeout (10s) covers this comfortably.
+  // #847/#955: warm the lazy corpus + consumer-index memos in beforeAll so
+  // the walker work (~100 ms cold post-#955) doesn't land inside any single
+  // test's per-test budget. Defense-in-depth — it's costless when fast.
   beforeAll(() => {
     getConsumerIndex(); // also triggers getCorpus() via buildConsumerIndex()
   });
