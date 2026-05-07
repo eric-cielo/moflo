@@ -1,3 +1,7 @@
+// ADR-049 perf-threshold suite. Run with `npm run bench` — this file is
+// .perf.ts so it sits outside the vitest test-include glob and doesn't
+// gate `npm test` (#956: hard thresholds were tripping under Windows
+// maxForks=2 fork CPU contention even though the code wasn't regressing).
 import { describe, it, expect, vi } from 'vitest';
 import { tmpdir } from 'node:os';
 import { MemoryGraph } from './memory-graph.js';

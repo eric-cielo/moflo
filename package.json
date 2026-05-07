@@ -54,6 +54,7 @@
     "test:ui": "vitest --ui",
     "test:smoke": "node harness/consumer-smoke/run.mjs",
     "test:smoke:populated": "node harness/consumer-smoke/run-populated.mjs",
+    "bench": "vitest run --config vitest.bench.config.ts",
     "lint": "eslint src/ bin/ .claude/scripts/ --ext .ts,.tsx,.mts,.cts,.js,.mjs,.cjs --max-warnings 0",
     "security:audit": "npm audit --omit=dev --audit-level high",
     "security:fix": "npm audit fix",
