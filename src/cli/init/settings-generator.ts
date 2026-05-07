@@ -325,6 +325,18 @@ function generateHooksConfig(config: HooksConfig): object {
         matcher: '^mcp__moflo__memory_store$',
         hooks: [{ type: 'command', command: gateCmd('record-learnings-stored'), timeout: 2000 }],
       },
+      {
+        // #952 — when /fl is invoked with -s/--swarm, the gate blocks Agent
+        // spawns until mcp__moflo__swarm_init runs. Record the call here so
+        // the hard block in check-before-agent passes for legitimate /fl runs.
+        matcher: '^mcp__moflo__swarm_init$',
+        hooks: [{ type: 'command', command: gateCmd('record-swarm-init'), timeout: 2000 }],
+      },
+      {
+        // #952 — symmetric record for /fl -h/--hive runs.
+        matcher: '^mcp__moflo__hive-mind_init$',
+        hooks: [{ type: 'command', command: gateCmd('record-hive-init'), timeout: 2000 }],
+      },
     ];
   }
 
