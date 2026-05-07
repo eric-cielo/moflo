@@ -393,8 +393,11 @@ module.exports = {
       //  - `__mocks__/` — vitest manual mock dirs (incl. production-adjacent
       //    mock-provider modules imported from prod via `useMockEmbeddings`)
       //  - `tests/` — package-level alt layout (e.g. guidance package)
-      //  - `benchmarks/` — microbenchmarks that simulate hash embeddings
-      //    intentionally to measure vector-math throughput
+      //  - `benchmarks/`, `*.bench.ts`, `*.perf.ts` — microbenchmarks /
+      //    perf-threshold suites that simulate hash embeddings intentionally
+      //    to measure vector-math throughput. `*.perf.ts` runs via
+      //    `npm run bench` (#956); excluded from npm publish via package.json
+      //    `!**/*.perf.js`, so this allowlist is dev-only — never ships.
       files: [
         'src/**/__tests__/**',
         'src/**/__mocks__/**',
@@ -403,6 +406,7 @@ module.exports = {
         'src/**/*.test.ts',
         'src/**/*.test.js',
         'src/**/*.bench.ts',
+        'src/**/*.perf.ts',
         'src/**/*.spec.ts',
         'src/**/*.spec.js',
         'src/__tests__/**',
