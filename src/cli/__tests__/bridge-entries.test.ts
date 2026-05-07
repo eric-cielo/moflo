@@ -17,7 +17,7 @@ import {
   _resetBridgeEmbedderCacheForTest,
   type BridgeEmbedder,
 } from '../memory/bridge-embedder.js';
-import { bridgeSearchEntries, bridgeStoreEntry } from '../memory/bridge-entries.js';
+import { bridgeDeleteEntry, bridgeListEntries, bridgeSearchEntries, bridgeStoreEntry } from '../memory/bridge-entries.js';
 import { _resetProjectRootForTest, execRows, getDb } from '../memory/bridge-core.js';
 import { shutdownBridge, getControllerRegistry } from '../memory/memory-bridge.js';
 
@@ -396,5 +396,74 @@ describe('bridgeSearchEntries — query embedder wiring (#837 Defect A)', () => 
     });
     expect(unfiltered?.results.length).toBe(1);
     expect(unfiltered?.results[0]?.key).toBe('low-sim');
+  });
+});
+
+describe('bridgeDeleteEntry — error surfacing (#963)', () => {
+  it('successfully deletes an existing entry and removes it from list', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    await bridgeStoreEntry({
+      key: 'k-delete-me',
+      value: 'goodbye',
+      namespace: 'scheduled-spells',
+      dbPath,
+    });
+
+    const before = await bridgeListEntries({ namespace: 'scheduled-spells', dbPath });
+    expect(before?.entries.find(e => e.key === 'k-delete-me')).toBeDefined();
+
+    const result = await bridgeDeleteEntry({
+      key: 'k-delete-me',
+      namespace: 'scheduled-spells',
+      dbPath,
+    });
+
+    expect(result?.success).toBe(true);
+    expect(result?.deleted).toBe(true);
+    expect(result?.error).toBeUndefined();
+
+    const after = await bridgeListEntries({ namespace: 'scheduled-spells', dbPath });
+    expect(after?.entries.find(e => e.key === 'k-delete-me')).toBeUndefined();
+  });
+
+  it('returns success:false with a key-not-found error when the key does not exist', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    const result = await bridgeDeleteEntry({
+      key: 'never-existed',
+      namespace: 'scheduled-spells',
+      dbPath,
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.deleted).toBe(false);
+    expect(result?.error).toBe("Key 'never-existed' not found in namespace 'scheduled-spells'");
+  });
+
+  it('returns success:false with a key-not-found error when the namespace is wrong', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    await bridgeStoreEntry({
+      key: 'k-ns-test',
+      value: 'in-correct-ns',
+      namespace: 'correct-ns',
+      dbPath,
+    });
+
+    const result = await bridgeDeleteEntry({
+      key: 'k-ns-test',
+      namespace: 'wrong-ns',
+      dbPath,
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.deleted).toBe(false);
+    expect(result?.error).toContain('not found in namespace');
+    expect(result?.error).toContain('wrong-ns');
+
+    // Original entry still in correct namespace
+    const list = await bridgeListEntries({ namespace: 'correct-ns', dbPath });
+    expect(list?.entries.find(e => e.key === 'k-ns-test')).toBeDefined();
   });
 });

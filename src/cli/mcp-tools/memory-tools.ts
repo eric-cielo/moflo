@@ -424,12 +424,22 @@ export const memoryTools: MCPTool[] = [
       try {
         const result = await deleteEntry({ key, namespace });
 
+        // Issue #963: surface the underlying reason when delete fails.
+        // `result.success` reflects whether the call itself succeeded; we
+        // require `deleted === true` for the MCP-level success boolean,
+        // and pass `result.error` through whenever the delete didn't take.
+        const deleted = result.deleted === true;
+        const errorReason = !deleted
+          ? (result.error ?? `No entry deleted (key='${key}', namespace='${namespace}'); reason not reported by storage layer`)
+          : undefined;
+
         return {
-          success: result.deleted,
+          success: result.success === true && deleted,
           key,
           namespace,
-          deleted: result.deleted,
+          deleted,
           backend: 'sql.js + HNSW',
+          ...(errorReason ? { error: errorReason } : {}),
         };
       } catch (error) {
         return {
