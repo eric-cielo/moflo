@@ -168,9 +168,9 @@ export class LearningDomainService {
       review: 'reviewer',
       plan: 'planner',
       research: 'researcher',
-      security: 'security-architect',
-      performance: 'performance-engineer',
-      memory: 'memory-specialist',
+      security: 'security-auditor',
+      performance: 'reviewer',
+      memory: 'researcher',
     };
 
     for (const [keyword, role] of Object.entries(keywordMap)) {

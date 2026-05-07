@@ -74,23 +74,23 @@ TaskCreate({
 
 ## 5. Keep Files Under 500 Lines
 
-**The 500-line cap applies to every `.claude/guidance/**/*.md` file AND every `.claude/skills/*/SKILL.md` entry file.** The same RAG/attention math applies to both:
+**The 500-line cap applies to every `.claude/guidance/**/*.md` file AND every `.claude/skills/*/SKILL.md` entry file AND every `.claude/agents/**/*.md` entry file.** The same RAG/attention math applies to all three:
 
 - RAG chunking splits long files, and chunks lose cross-section context
 - Claude deprioritizes content deep in a long document
 - Competing chunks from the same file dilute search relevance
-- For SKILL.md, the **entire file is loaded into context on every invocation** — every extra line is a per-invocation token cost across all consumers
+- For SKILL.md and agent .md, the **entire file is loaded into context on every invocation** (or on every `Agent({subagent_type})` spawn) — every extra line is a per-invocation token cost across all consumers
 
 If a doc exceeds 500 lines, split by concern. Two patterns:
 
 | Pattern | Where it fits | Example |
 |---------|---------------|---------|
 | **Sibling files** (guidance) | Topical split — each file owns one concern | `moflo-spell-engine.md` + `moflo-spell-runner.md` + `moflo-spell-troubleshooting.md` |
-| **Progressive disclosure** (skills) | Entry SKILL.md links to companions in the same skill directory | `spell-builder/SKILL.md` (entry) + `architecture.md` + `permissions.md` + `preflight.md` (companions) |
+| **Progressive disclosure** (skills, agents) | Entry SKILL.md or agent .md links to companions in the same directory | `spell-builder/SKILL.md` (entry) + `architecture.md` + `permissions.md` + `preflight.md` (companions); `agents/<cat>/<name>.md` (entry, has frontmatter) + `<name>-protocols.md` (companion, no frontmatter) |
 
-Companion files are NOT auto-loaded — Claude reads them only when the SKILL.md entry directs it to. This keeps the per-invocation cost low while preserving the depth.
+Companion files are NOT auto-loaded — Claude reads them only when the entry directs it to. This keeps the per-invocation cost low while preserving the depth.
 
-A gating test (`skill-and-guidance-size-drift.test.ts`) enforces the cap and will fail CI if a guidance doc or SKILL.md entry exceeds 500 lines. Companion files inside a skill directory are exempt because they only load on demand.
+A gating test (`skill-and-guidance-size-drift.test.ts`) enforces the cap and will fail CI if a guidance doc, SKILL.md entry, or agent entry exceeds 500 lines. Companion files (agent .md without YAML frontmatter, or any .md inside a skill directory other than SKILL.md) are exempt because they only load on demand.
 
 ---
 

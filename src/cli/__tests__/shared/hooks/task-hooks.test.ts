@@ -44,7 +44,7 @@ describe('TaskHooksManager', () => {
       expect(result.suggestedAgents![0].confidence).toBeGreaterThan(0);
     });
 
-    it('should suggest security-architect for security tasks', async () => {
+    it('should suggest security-auditor for security tasks', async () => {
       const result = await taskManager.executePreTask(
         'task-456',
         'Fix security vulnerability in authentication'
@@ -52,7 +52,7 @@ describe('TaskHooksManager', () => {
 
       expect(result.success).toBe(true);
       expect(result.suggestedAgents).toBeDefined();
-      const securityAgent = result.suggestedAgents!.find(a => a.type === 'security-architect');
+      const securityAgent = result.suggestedAgents!.find(a => a.type === 'security-auditor');
       expect(securityAgent).toBeDefined();
     });
 

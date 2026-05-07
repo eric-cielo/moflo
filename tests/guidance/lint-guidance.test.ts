@@ -45,13 +45,9 @@ const ROLE_ICONS: Record<string, string> = {
   coder: '💻',
   tester: '🧪',
   reviewer: '👀',
-  'security-architect': '🛡️',
   'security-auditor': '🛡️',
-  'performance-engineer': '⚡',
-  'perf-engineer': '⚡',
   'api-docs': '📚',
   planner: '📋',
-  consensus: '🤝',
   analyzer: '🔬',
   'code-analyzer': '🔬',
 };

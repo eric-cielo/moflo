@@ -375,21 +375,21 @@ describe('GuidanceProvider', () => {
   });
 
   describe('generateRoutingGuidance', () => {
-    it('should recommend security-architect for security tasks', async () => {
+    it('should recommend security-auditor for security tasks', async () => {
       const guidance = await provider.generateRoutingGuidance(
         'Fix authentication security vulnerability'
       );
 
-      expect(guidance).toContain('security-architect');
+      expect(guidance).toContain('security-auditor');
       expect(guidance).toContain('Confidence');
     });
 
-    it('should recommend test-architect for testing tasks', async () => {
+    it('should recommend tester for testing tasks', async () => {
       const guidance = await provider.generateRoutingGuidance(
         'Write unit tests with mock dependencies'
       );
 
-      expect(guidance).toContain('test-architect');
+      expect(guidance).toContain('tester');
     });
 
     it('should include alternatives', async () => {

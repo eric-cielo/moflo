@@ -1,9 +1,7 @@
 ---
 name: test-long-runner
 description: Test agent that can run for 30+ minutes on complex tasks
-category: custom
 ---
-
 # Test Long-Running Agent
 
 You are a specialized test agent designed to handle long-running tasks that may take 30 minutes or more to complete.

@@ -73,13 +73,8 @@ const AGENT_TYPES = [
   { value: 'coordinator', label: 'Coordinator', hint: 'Multi-agent orchestration and spell management' },
   { value: 'analyst', label: 'Analyst', hint: 'Performance analysis and optimization' },
   { value: 'optimizer', label: 'Optimizer', hint: 'Performance optimization and bottleneck analysis' },
-  { value: 'security-architect', label: 'Security Architect', hint: 'Security architecture and threat modeling' },
   { value: 'security-auditor', label: 'Security Auditor', hint: 'CVE remediation and security testing' },
-  { value: 'memory-specialist', label: 'Memory Specialist', hint: 'AgentDB unification (150x-12,500x faster)' },
-  { value: 'swarm-specialist', label: 'Swarm Specialist', hint: 'Unified coordination engine' },
-  { value: 'performance-engineer', label: 'Performance Engineer', hint: '2.49x-7.47x optimization targets' },
-  { value: 'core-architect', label: 'Core Architect', hint: 'Domain-driven design restructure' },
-  { value: 'test-architect', label: 'Test Architect', hint: 'TDD London School methodology' }
+  { value: 'planner', label: 'Planner', hint: 'Task planning and breakdown' },
 ];
 
 // Agent spawn subcommand
@@ -982,9 +977,8 @@ function getAgentCapabilities(type: string): string[] {
     reviewer: ['code-review', 'security-audit', 'quality-check', 'documentation'],
     architect: ['system-design', 'pattern-analysis', 'scalability', 'documentation'],
     coordinator: ['task-orchestration', 'agent-management', 'spell-control'],
-    'security-architect': ['threat-modeling', 'security-patterns', 'compliance', 'audit'],
-    'memory-specialist': ['vector-search', 'agentdb', 'caching', 'optimization'],
-    'performance-engineer': ['benchmarking', 'profiling', 'optimization', 'monitoring']
+    'security-auditor': ['threat-modeling', 'security-patterns', 'compliance', 'audit', 'vulnerability-scan'],
+    planner: ['task-breakdown', 'sequencing', 'estimation'],
   };
 
   return capabilities[type] || ['general'];

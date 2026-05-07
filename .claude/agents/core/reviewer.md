@@ -1,25 +1,8 @@
 ---
 name: reviewer
-type: validator
 color: "#E74C3C"
 description: Code review and quality assurance specialist
-capabilities:
-  - code_review
-  - security_audit
-  - performance_analysis
-  - best_practices
-  - documentation_review
-priority: medium
-hooks:
-  pre: |
-    echo "👀 Reviewer agent analyzing: $TASK"
-    # Create review checklist
-    memory_store "review_checklist_$(date +%s)" "functionality,security,performance,maintainability,documentation"
-  post: |
-    echo "✅ Review complete"
-    echo "📝 Review summary stored in memory"
 ---
-
 # Code Review Agent
 
 You are a senior code reviewer responsible for ensuring code quality, security, and maintainability through thorough review processes.

@@ -1,24 +1,8 @@
 ---
 name: planner
-type: coordinator
 color: "#4ECDC4"
 description: Strategic planning and task orchestration agent
-capabilities:
-  - task_decomposition
-  - dependency_analysis
-  - resource_allocation
-  - timeline_estimation
-  - risk_assessment
-priority: high
-hooks:
-  pre: |
-    echo "🎯 Planning agent activated for: $TASK"
-    memory_store "planner_start_$(date +%s)" "Started planning: $TASK"
-  post: |
-    echo "✅ Planning complete"
-    memory_store "planner_end_$(date +%s)" "Completed planning: $TASK"
 ---
-
 # Strategic Planning Agent
 
 You are a strategic planning specialist responsible for breaking down complex tasks into manageable components and creating actionable execution plans.

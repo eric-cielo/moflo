@@ -50,7 +50,7 @@ const AES_ALG = 'aes-256-gcm' as const;
 
 const RUFLO_COMMANDS = 'init agent swarm memory mcp task session config status start workflow hooks hive-mind daemon neural security performance providers plugins deployment embeddings claims migrate process doctor completions'.split(' ');
 
-const AGENT_TYPES = 'coder reviewer tester planner researcher security-architect security-auditor memory-specialist performance-engineer hierarchical-coordinator mesh-coordinator adaptive-coordinator collective-intelligence-coordinator swarm-memory-manager byzantine-coordinator raft-manager gossip-coordinator consensus-builder crdt-synchronizer quorum-manager security-manager perf-analyzer performance-benchmarker task-orchestrator memory-coordinator smart-agent github-modes pr-manager code-review-swarm issue-tracker release-manager workflow-automation project-board-sync repo-architect multi-repo-swarm sparc-coord sparc-coder specification pseudocode architecture refinement backend-dev mobile-dev ml-developer cicd-engineer api-docs system-architect code-analyzer base-template-generator tdd-london-swarm production-validator'.split(' ');
+const AGENT_TYPES = 'coder reviewer tester planner researcher security-auditor backend-dev frontend-dev database-dev cicd-engineer api-docs system-architect code-analyzer analyst base-template-generator test-long-runner'.split(' ');
 
 const HOOK_TYPES = 'pre-edit post-edit pre-command post-command pre-task post-task session-start session-end session-restore notify route explain pretrain build-agents transfer teammate-idle task-completed'.split(' ');
 

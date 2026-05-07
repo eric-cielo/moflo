@@ -129,15 +129,15 @@ const DEFAULT_CONFIG: ReasoningBankConfig = {
 };
 
 /**
- * Agent mapping for routing
+ * Agent mapping for routing — keys must match agents shipped in .claude/agents/
+ * (or the canonical AgentType union).
  */
 const AGENT_PATTERNS: Record<string, RegExp> = {
-  'security-architect': /security|auth|cve|vuln|encrypt|password|token/i,
-  'test-architect': /test|spec|mock|coverage|tdd|assert/i,
-  'performance-engineer': /perf|optim|fast|memory|cache|speed|slow/i,
-  'core-architect': /architect|design|ddd|domain|refactor|struct/i,
-  'swarm-specialist': /swarm|agent|coordinate|orchestrat|parallel/i,
-  'memory-specialist': /memory|agentdb|hnsw|vector|embedding/i,
+  'security-auditor': /security|auth|cve|vuln|encrypt|password|token/i,
+  'tester': /test|spec|mock|coverage|tdd|assert/i,
+  'architect': /architect|design|ddd|domain|refactor|struct|perf|optim|fast|memory|cache|speed|slow/i,
+  'coordinator': /swarm|agent|coordinate|orchestrat|parallel|hive/i,
+  'researcher': /memory|agentdb|hnsw|vector|embedding|recall|persist/i,
   'coder': /fix|bug|implement|create|add|build|error|code/i,
   'reviewer': /review|quality|lint|check|audit/i,
 };

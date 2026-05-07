@@ -273,7 +273,7 @@ function learnedPatternsFromOutcomes(): Record<string, { keywords: string[]; age
 const TASK_PATTERNS: Record<string, { keywords: string[]; agents: string[] }> = {
   'security-task': {
     keywords: ['authentication', 'security', 'auth', 'password', 'encryption', 'vulnerability', 'cve', 'audit'],
-    agents: ['security-architect', 'security-auditor', 'reviewer'],
+    agents: ['security-auditor', 'reviewer'],
   },
   'testing-task': {
     keywords: ['test', 'testing', 'spec', 'coverage', 'unit test', 'integration test', 'e2e'],
@@ -285,7 +285,7 @@ const TASK_PATTERNS: Record<string, { keywords: string[]; agents: string[] }> = 
   },
   'performance-task': {
     keywords: ['performance', 'optimize', 'speed', 'memory', 'benchmark', 'profiling', 'bottleneck'],
-    agents: ['performance-engineer', 'coder', 'tester'],
+    agents: ['reviewer', 'coder', 'tester'],
   },
   'refactor-task': {
     keywords: ['refactor', 'restructure', 'clean', 'organize', 'modular', 'decouple'],
@@ -301,23 +301,25 @@ const TASK_PATTERNS: Record<string, { keywords: string[]; agents: string[] }> = 
   },
   'database-task': {
     keywords: ['database', 'sql', 'query', 'schema', 'migration', 'orm'],
-    agents: ['architect', 'coder', 'tester'],
+    agents: ['database-dev', 'coder', 'tester'],
   },
   'frontend-task': {
-    keywords: ['frontend', 'ui', 'component', 'react', 'css', 'style', 'layout'],
-    agents: ['coder', 'reviewer', 'tester'],
+    keywords: ['frontend', 'ui', 'component', 'react', 'vue', 'svelte', 'css', 'tailwind', 'style', 'layout', 'accessibility'],
+    agents: ['frontend-dev', 'reviewer', 'tester'],
   },
   'devops-task': {
     keywords: ['deploy', 'ci', 'cd', 'pipeline', 'docker', 'kubernetes', 'infrastructure'],
-    agents: ['devops', 'coder', 'tester'],
+    agents: ['cicd-engineer', 'coder', 'tester'],
   },
+  // (github-task intent removed — github work routes to generic coder/reviewer
+  // with the gh CLI; specialized github-* agents were retired in #932)
   'swarm-task': {
     keywords: ['swarm', 'agent', 'coordinator', 'hive', 'mesh', 'topology'],
-    agents: ['swarm-specialist', 'coordinator', 'architect'],
+    agents: ['coordinator', 'architect'],
   },
   'memory-task': {
     keywords: ['memory', 'cache', 'store', 'vector', 'embedding', 'persistence'],
-    agents: ['memory-specialist', 'architect', 'coder'],
+    agents: ['researcher', 'architect', 'coder'],
   },
 };
 
@@ -545,7 +547,7 @@ const AGENT_PATTERNS: Record<string, string[]> = {
   '.yaml': ['coder', 'devops'],
   '.yml': ['coder', 'devops'],
   '.sh': ['devops', 'coder'],
-  '.py': ['coder', 'ml-developer', 'researcher'],
+  '.py': ['coder', 'researcher'],
   '.sql': ['coder', 'architect'],
   '.css': ['coder', 'designer'],
   '.scss': ['coder', 'designer'],
@@ -553,23 +555,23 @@ const AGENT_PATTERNS: Record<string, string[]> = {
 
 // Keyword patterns for fallback routing (when semantic routing doesn't match)
 const KEYWORD_PATTERNS: Record<string, { agents: string[]; confidence: number }> = {
-  'authentication': { agents: ['security-architect', 'coder', 'tester'], confidence: 0.9 },
-  'auth': { agents: ['security-architect', 'coder', 'tester'], confidence: 0.85 },
+  'authentication': { agents: ['security-auditor', 'coder', 'tester'], confidence: 0.9 },
+  'auth': { agents: ['security-auditor', 'coder', 'tester'], confidence: 0.85 },
   'api': { agents: ['architect', 'coder', 'tester'], confidence: 0.85 },
   'test': { agents: ['tester', 'reviewer'], confidence: 0.95 },
   'refactor': { agents: ['architect', 'coder', 'reviewer'], confidence: 0.9 },
-  'performance': { agents: ['performance-engineer', 'coder', 'tester'], confidence: 0.88 },
-  'security': { agents: ['security-architect', 'security-auditor', 'reviewer'], confidence: 0.92 },
-  'database': { agents: ['architect', 'coder', 'tester'], confidence: 0.85 },
-  'frontend': { agents: ['coder', 'designer', 'tester'], confidence: 0.82 },
-  'backend': { agents: ['architect', 'coder', 'tester'], confidence: 0.85 },
+  'performance': { agents: ['reviewer', 'coder', 'tester'], confidence: 0.88 },
+  'security': { agents: ['security-auditor', 'reviewer'], confidence: 0.92 },
+  'database': { agents: ['database-dev', 'coder', 'tester'], confidence: 0.9 },
+  'frontend': { agents: ['frontend-dev', 'reviewer', 'tester'], confidence: 0.9 },
+  'backend': { agents: ['backend-dev', 'architect', 'coder', 'tester'], confidence: 0.9 },
   'bug': { agents: ['coder', 'tester', 'reviewer'], confidence: 0.88 },
   'fix': { agents: ['coder', 'tester', 'reviewer'], confidence: 0.85 },
   'feature': { agents: ['architect', 'coder', 'tester'], confidence: 0.8 },
-  'swarm': { agents: ['swarm-specialist', 'coordinator', 'architect'], confidence: 0.9 },
-  'memory': { agents: ['memory-specialist', 'architect', 'coder'], confidence: 0.88 },
-  'deploy': { agents: ['devops', 'coder', 'tester'], confidence: 0.85 },
-  'ci/cd': { agents: ['devops', 'coder'], confidence: 0.9 },
+  'swarm': { agents: ['coordinator', 'architect'], confidence: 0.9 },
+  'memory': { agents: ['researcher', 'architect', 'coder'], confidence: 0.88 },
+  'deploy': { agents: ['cicd-engineer', 'coder', 'tester'], confidence: 0.85 },
+  'ci/cd': { agents: ['cicd-engineer', 'coder'], confidence: 0.9 },
 };
 
 function getFileExtension(filePath: string): string {
@@ -1837,7 +1839,7 @@ export const hooksBuildAgents: MCPTool = {
       { type: 'coder', configFile: join(outputDir, `coder.${format}`), capabilities: ['code-generation', 'refactoring', 'debugging'], optimizations: ['flash-attention', 'token-reduction'] },
       { type: 'architect', configFile: join(outputDir, `architect.${format}`), capabilities: ['system-design', 'api-design', 'documentation'], optimizations: ['context-caching', 'memory-persistence'] },
       { type: 'tester', configFile: join(outputDir, `tester.${format}`), capabilities: ['unit-testing', 'integration-testing', 'coverage'], optimizations: ['parallel-execution'] },
-      { type: 'security-architect', configFile: join(outputDir, `security-architect.${format}`), capabilities: ['threat-modeling', 'vulnerability-analysis', 'security-review'], optimizations: ['pattern-matching'] },
+      { type: 'security-auditor', configFile: join(outputDir, `security-auditor.${format}`), capabilities: ['threat-modeling', 'vulnerability-analysis', 'security-review'], optimizations: ['pattern-matching'] },
       { type: 'reviewer', configFile: join(outputDir, `reviewer.${format}`), capabilities: ['code-review', 'quality-analysis', 'best-practices'], optimizations: ['incremental-analysis'] },
     ];
 
