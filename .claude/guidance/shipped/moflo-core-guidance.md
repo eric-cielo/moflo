@@ -126,8 +126,6 @@ For the full `moflo.yaml` schema, gate toggles, model routing, and sandbox confi
 |---------|--------|---------|
 | After major refactor | `optimize` | Performance optimization |
 | After adding features | `testgaps` | Find missing test coverage |
-| After security changes | `audit` | Security analysis |
-| After API changes | `document` | Update documentation |
 | Every 5+ file changes | `map` | Update codebase map |
 | Complex debugging | `deepdive` | Deep code analysis |
 

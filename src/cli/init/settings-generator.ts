@@ -116,9 +116,11 @@ export function generateSettings(options: InitOptions): object {
     daemon: {
       autoStart: true,
       // Note: this list is documentation for the user — the daemon's actual
-      // worker registry lives in src/cli/services/worker-daemon.ts DEFAULT_WORKERS.
-      // 'audit' is intentionally absent here because it's default-disabled
-      // pending the perf fix in #631.
+      // worker registry lives in src/cli/services/worker-daemon.ts
+      // DEFAULT_WORKERS. The `audit`/`predict`/`document` workers were
+      // removed in #970 (no surfacing layer for findings + dashboard
+      // pollution); restore them as opt-in `flo doctor` one-shots if their
+      // value is ever re-established.
       workers: [
         'map',           // Codebase mapping
         'optimize',      // Performance optimization (high priority)
@@ -126,15 +128,12 @@ export function generateSettings(options: InitOptions): object {
         'testgaps',      // Test coverage gaps
         'ultralearn',    // Deep knowledge acquisition
         'deepdive',      // Deep code analysis
-        'document',      // Auto-documentation for ADRs
         'refactor',      // Refactoring suggestions (DDD alignment)
         'benchmark',     // Performance benchmarking
       ],
       schedules: {
-        audit: { interval: '1h', priority: 'critical' },
         optimize: { interval: '30m', priority: 'high' },
         consolidate: { interval: '2h', priority: 'low' },
-        document: { interval: '1h', priority: 'normal', triggers: ['adr-update', 'api-change'] },
         deepdive: { interval: '4h', priority: 'normal', triggers: ['complex-change'] },
         ultralearn: { interval: '1h', priority: 'normal' },
       },

@@ -102,7 +102,7 @@ function makeMockDaemon(overrides: Record<string, unknown> = {}, scheduler: any 
         failureCount: 1,
         averageDurationMs: 1200,
       }],
-      ['audit', {
+      ['testgaps', {
         isRunning: true,
         lastRun: new Date('2026-03-31T10:08:00Z'),
         nextRun: null,
@@ -118,8 +118,8 @@ function makeMockDaemon(overrides: Record<string, unknown> = {}, scheduler: any 
       resourceThresholds: { maxCpuLoad: 4.0, minFreeMemoryPercent: 10 },
       workers: [
         { type: 'map', intervalMs: 900000, priority: 'normal', description: 'Codebase mapping', enabled: true },
-        { type: 'audit', intervalMs: 600000, priority: 'critical', description: 'Security analysis', enabled: true },
-        { type: 'predict', intervalMs: 600000, priority: 'low', description: 'Predictive preloading', enabled: false },
+        { type: 'testgaps', intervalMs: 600000, priority: 'normal', description: 'Test coverage analysis', enabled: true },
+        { type: 'refactor', intervalMs: 600000, priority: 'low', description: 'Refactoring suggestions', enabled: false },
       ],
     },
     ...overrides,
@@ -244,7 +244,7 @@ describe('DaemonDashboard', () => {
     expect(data.workers[0].type).toBe('map');
     expect(data.workers[0].runCount).toBe(5);
     expect(data.workers[0].successCount).toBe(4);
-    expect(data.workers[1].type).toBe('audit');
+    expect(data.workers[1].type).toBe('testgaps');
     expect(data.workers[1].isRunning).toBe(true);
   });
 
@@ -253,13 +253,12 @@ describe('DaemonDashboard', () => {
     dashboard = await startDashboard(daemon, { port: testPort });
     const res = await fetchDashboard(testPort, '/api/status');
     const data = JSON.parse(res.body);
-    // map + audit are enabled in the default mock; predict is disabled.
-    // (predict isn't in workers Map by default, so add a workers entry would
-    // be needed — instead just verify the join logic emits the flag for
-    // listed workers.)
+    // map + testgaps are enabled in the default mock; refactor is disabled
+    // (config-only — not in workers Map). Verify the join logic emits the
+    // flag for listed workers.
     const byType = Object.fromEntries(data.workers.map((w: { type: string; enabled: boolean }) => [w.type, w.enabled]));
     expect(byType.map).toBe(true);
-    expect(byType.audit).toBe(true);
+    expect(byType.testgaps).toBe(true);
   });
 
   it('returns schedules at GET /api/schedules', async () => {

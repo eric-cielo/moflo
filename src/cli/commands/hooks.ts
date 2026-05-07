@@ -2199,14 +2199,14 @@ const workerDispatchCommand: Command = {
   name: 'dispatch',
   description: 'Dispatch a background worker for analysis/optimization',
   options: [
-    { name: 'trigger', short: 't', type: 'string', description: 'Worker type (ultralearn, optimize, audit, map, etc.)', required: true },
+    { name: 'trigger', short: 't', type: 'string', description: 'Worker type (ultralearn, optimize, map, testgaps, etc.)', required: true },
     { name: 'context', short: 'c', type: 'string', description: 'Context for the worker (file path, topic)' },
     { name: 'priority', short: 'p', type: 'string', description: 'Priority (low, normal, high, critical)' },
     { name: 'sync', short: 's', type: 'boolean', description: 'Wait for completion (synchronous)' },
   ],
   examples: [
     { command: 'claude-flow hooks worker dispatch -t optimize -c src/', description: 'Dispatch optimize worker' },
-    { command: 'claude-flow hooks worker dispatch -t audit -p critical', description: 'Security audit with critical priority' },
+    { command: 'claude-flow hooks worker dispatch -t deepdive -p high', description: 'Deep code analysis with high priority' },
     { command: 'claude-flow hooks worker dispatch -t testgaps --sync', description: 'Test coverage analysis (sync)' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
@@ -2217,7 +2217,7 @@ const workerDispatchCommand: Command = {
 
     if (!trigger) {
       output.printError('--trigger is required');
-      output.writeln('Available triggers: ultralearn, optimize, consolidate, predict, audit, map, preload, deepdive, document, refactor, benchmark, testgaps');
+      output.writeln('Available triggers: ultralearn, optimize, consolidate, map, preload, deepdive, refactor, benchmark, testgaps');
       return { success: false, exitCode: 1 };
     }
 
@@ -3127,12 +3127,9 @@ const workerCommand: Command = {
       `${output.highlight('ultralearn')}   - Deep knowledge acquisition`,
       `${output.highlight('optimize')}     - Performance optimization`,
       `${output.highlight('consolidate')} - Memory consolidation`,
-      `${output.highlight('predict')}      - Predictive preloading`,
-      `${output.highlight('audit')}        - Security analysis (critical)`,
       `${output.highlight('map')}          - Codebase mapping`,
       `${output.highlight('preload')}      - Resource preloading`,
       `${output.highlight('deepdive')}     - Deep code analysis`,
-      `${output.highlight('document')}     - Auto-documentation`,
       `${output.highlight('refactor')}     - Refactoring suggestions`,
       `${output.highlight('benchmark')}    - Performance benchmarks`,
       `${output.highlight('testgaps')}     - Test coverage analysis`,

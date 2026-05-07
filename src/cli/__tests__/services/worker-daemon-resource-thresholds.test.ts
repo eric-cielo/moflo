@@ -352,7 +352,7 @@ describe('WorkerDaemon resource thresholds', () => {
       });
 
       const pendingWorkers = (daemon as any).pendingWorkers as string[];
-      pendingWorkers.push('audit');
+      pendingWorkers.push('optimize');
 
       // Ensure no workers are currently running
       expect((daemon as any).runningWorkers.size).toBe(0);

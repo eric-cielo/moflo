@@ -59,7 +59,7 @@ describe('WorkerDaemon', () => {
       autoStart: false,
       workers: [
         { type: 'map', intervalMs: 60000, priority: 'normal', description: 'Codebase mapping', enabled: true },
-        { type: 'audit', intervalMs: 120000, priority: 'critical', description: 'Security analysis', enabled: false },
+        { type: 'refactor', intervalMs: 120000, priority: 'normal', description: 'Refactoring suggestions', enabled: false },
       ],
     });
   });
@@ -81,15 +81,16 @@ describe('WorkerDaemon', () => {
       expect(typeof daemon.emit).toBe('function');
     });
 
-    it('default registry has audit worker disabled (#633)', () => {
+    it('default registry no longer ships audit/predict/document (#970)', () => {
       // No explicit workers config — falls through to DEFAULT_WORKERS
       const defaultDaemon = new WorkerDaemon('/tmp/test-default', { autoStart: false });
-      const audit = defaultDaemon.getStatus().config.workers.find(w => w.type === 'audit');
-      expect(audit).toBeDefined();
-      expect(audit?.enabled).toBe(false);
+      const workers = defaultDaemon.getStatus().config.workers;
+      for (const removed of ['audit', 'predict', 'document'] as const) {
+        expect(workers.find(w => w.type === removed as never)).toBeUndefined();
+      }
     });
 
-    it('default registry keeps non-audit workers enabled', () => {
+    it('default registry keeps the four scheduled workers enabled', () => {
       const defaultDaemon = new WorkerDaemon('/tmp/test-default-others', { autoStart: false });
       const workers = defaultDaemon.getStatus().config.workers;
       const map = workers.find(w => w.type === 'map');
@@ -178,7 +179,7 @@ describe('WorkerDaemon', () => {
     it('should include all configured worker types', () => {
       const status = daemon.getStatus();
       expect(status.workers.has('map')).toBe(true);
-      expect(status.workers.has('audit')).toBe(true);
+      expect(status.workers.has('refactor')).toBe(true);
     });
 
     it('should initialize worker states with zero counts', () => {
@@ -197,6 +198,48 @@ describe('WorkerDaemon', () => {
   describe('headless', () => {
     it('should report headless as unavailable when Claude Code is not present', () => {
       expect(daemon.isHeadlessAvailable()).toBe(false);
+    });
+  });
+
+  // ===========================================================================
+  // State migration on upgrade (#970)
+  // ===========================================================================
+  describe('initializeWorkerStates — unknown-type drop (#970)', () => {
+    it('silently drops daemon-state entries for worker types no longer in the union', async () => {
+      const fs = await import('fs');
+      const stateFile = '/tmp/test-stale-workers/daemon-state.json';
+      const staleState = {
+        running: false,
+        workers: {
+          // Pre-#970 workers no longer in the WorkerType union
+          audit:    { runCount: 7, successCount: 7, failureCount: 0, averageDurationMs: 1000, consecutiveOverruns: 0 },
+          predict:  { runCount: 3, successCount: 0, failureCount: 3, averageDurationMs: 500,  consecutiveOverruns: 2 },
+          document: { runCount: 1, successCount: 1, failureCount: 0, averageDurationMs: 200,  consecutiveOverruns: 0 },
+          // Survivor — should be restored
+          map:      { runCount: 5, successCount: 5, failureCount: 0, averageDurationMs: 800,  consecutiveOverruns: 0 },
+        },
+        config: { workers: [{ type: 'map', enabled: true }] },
+        savedAt: '2026-04-01T00:00:00.000Z',
+      };
+      // Path-aware override: the constructor reads config.json BEFORE
+      // daemon-state.json, so a one-shot mock would intercept the wrong file.
+      vi.mocked(fs.readFileSync).mockImplementation((filePath) => {
+        const p = String(filePath);
+        if (p.includes('daemon-state.json')) return JSON.stringify(staleState);
+        if (p.includes('config.json')) return '{}';
+        throw new Error('ENOENT');
+      });
+
+      const upgraded = new WorkerDaemon('/tmp/test-stale-workers', { autoStart: false, stateFile });
+      const workers = upgraded.getStatus().workers;
+
+      // Stale entries are dropped — no orphan keys, no crash
+      expect(workers.has('audit' as never)).toBe(false);
+      expect(workers.has('predict' as never)).toBe(false);
+      expect(workers.has('document' as never)).toBe(false);
+      // Survivor's runtime stats are restored
+      expect(workers.get('map')?.runCount).toBe(5);
+      expect(workers.get('map')?.successCount).toBe(5);
     });
   });
 });

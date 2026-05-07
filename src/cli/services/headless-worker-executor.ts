@@ -2,21 +2,14 @@
  * Headless Worker Executor
  * Enables workers to invoke Claude Code in headless mode with configurable sandbox profiles.
  *
- * ADR-020: Headless Worker Integration Architecture
+ * ADR-020: Headless Worker Integration Architecture (#970 dropped the
+ * `audit`/`document`/`predict` workers — those entries from the original
+ * ADR are superseded; the rest still applies).
  * - Integrates with CLAUDE_CODE_HEADLESS and CLAUDE_CODE_SANDBOX_MODE environment variables
  * - Provides process pool for concurrent execution
  * - Builds context from file glob patterns
  * - Supports prompt templates and output parsing
  * - Implements timeout and graceful error handling
- *
- * Key Features:
- * - Process pool with configurable maxConcurrent
- * - Context building from file glob patterns with caching
- * - Prompt template system with context injection
- * - Output parsing (text, json, markdown)
- * - Timeout handling with graceful termination
- * - Execution logging for debugging
- * - Event emission for monitoring
  */
 
 import { spawn, execSync, type ChildProcess } from 'child_process';
@@ -31,17 +24,15 @@ import { errorDetail } from '../shared/utils/error-detail.js';
 // ============================================
 
 /**
- * Headless worker types - workers that use Claude Code AI
+ * Headless worker types - workers that use Claude Code AI.
+ * `audit`/`document`/`predict` removed in #970.
  */
 export type HeadlessWorkerType =
-  | 'audit'
   | 'optimize'
   | 'testgaps'
-  | 'document'
   | 'ultralearn'
   | 'refactor'
-  | 'deepdive'
-  | 'predict';
+  | 'deepdive';
 
 /**
  * Local worker types - workers that run locally without AI
@@ -246,17 +237,14 @@ export interface PoolStatus {
 // ============================================
 
 /**
- * Array of headless worker types for runtime checking
+ * Array of headless worker types for runtime checking.
  */
 export const HEADLESS_WORKER_TYPES: HeadlessWorkerType[] = [
-  'audit',
   'optimize',
   'testgaps',
-  'document',
   'ultralearn',
   'refactor',
   'deepdive',
-  'predict',
 ];
 
 /**
@@ -279,38 +267,11 @@ const MODEL_IDS: Record<ModelType, string> = {
 };
 
 /**
- * Default headless worker configurations based on ADR-020
+ * Default headless worker configurations based on ADR-020 (the
+ * `audit`/`document`/`predict` entries from the original ADR were dropped
+ * in #970 — see worker-daemon.ts header for rationale).
  */
 export const HEADLESS_WORKER_CONFIGS: Record<HeadlessWorkerType, HeadlessWorkerConfig> = {
-  audit: {
-    type: 'audit',
-    mode: 'headless',
-    intervalMs: 30 * 60 * 1000,
-    priority: 'critical',
-    description: 'AI-powered security analysis',
-    enabled: true,
-    headless: {
-      promptTemplate: `Analyze this codebase for security vulnerabilities:
-- Check for hardcoded secrets (API keys, passwords)
-- Identify SQL injection risks
-- Find XSS vulnerabilities
-- Check for insecure dependencies
-- Identify authentication/authorization issues
-
-Provide a JSON report with:
-{
-  "vulnerabilities": [{ "severity": "high|medium|low", "file": "...", "line": N, "description": "..." }],
-  "riskScore": 0-100,
-  "recommendations": ["..."]
-}`,
-      sandbox: 'strict',
-      model: 'haiku',
-      outputFormat: 'json',
-      contextPatterns: ['**/*.ts', '**/*.js', '**/.env*', '**/package.json'],
-      timeoutMs: 5 * 60 * 1000,
-    },
-  },
-
   optimize: {
     type: 'optimize',
     mode: 'headless',
@@ -355,30 +316,6 @@ For each gap, provide a test skeleton.`,
       model: 'sonnet',
       outputFormat: 'markdown',
       contextPatterns: ['src/**/*.ts', 'tests/**/*.ts', '__tests__/**/*.ts'],
-      timeoutMs: 10 * 60 * 1000,
-    },
-  },
-
-  document: {
-    type: 'document',
-    mode: 'headless',
-    intervalMs: 120 * 60 * 1000,
-    priority: 'low',
-    description: 'AI documentation generation',
-    enabled: false,
-    headless: {
-      promptTemplate: `Generate documentation for undocumented code:
-- Add JSDoc comments to functions
-- Create README sections for modules
-- Document API endpoints
-- Add inline comments for complex logic
-- Generate usage examples
-
-Focus on public APIs and exported functions.`,
-      sandbox: 'permissive',
-      model: 'haiku',
-      outputFormat: 'markdown',
-      contextPatterns: ['src/**/*.ts'],
       timeoutMs: 10 * 60 * 1000,
     },
   },
@@ -461,34 +398,6 @@ Provide comprehensive report.`,
     },
   },
 
-  predict: {
-    type: 'predict',
-    mode: 'headless',
-    intervalMs: 10 * 60 * 1000,
-    priority: 'low',
-    description: 'Predictive preloading',
-    enabled: false,
-    headless: {
-      promptTemplate: `Based on recent activity, predict what the developer needs:
-- Files likely to be edited next
-- Tests that should be run
-- Documentation to reference
-- Dependencies to check
-
-Provide preload suggestions as JSON:
-{
-  "filesToPreload": ["..."],
-  "testsToRun": ["..."],
-  "docsToReference": ["..."],
-  "confidence": 0.0-1.0
-}`,
-      sandbox: 'strict',
-      model: 'haiku',
-      outputFormat: 'json',
-      contextPatterns: ['.moflo/metrics/*.json'],
-      timeoutMs: 2 * 60 * 1000,
-    },
-  },
 };
 
 /**
