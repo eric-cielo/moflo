@@ -20,6 +20,44 @@ import { ensureDaemonForScheduling } from '../services/daemon-readiness.js';
 import { validateSchedule, computeNextRun } from '../spells/scheduler/cron-parser.js';
 
 const NAMESPACE_SCHEDULES = 'scheduled-spells';
+const NAMESPACE_EXECUTIONS = 'schedule-executions';
+const DEFAULT_EXECUTIONS_LIMIT = 10;
+const MAX_NAMESPACE_FETCH = 1000;
+
+interface MemoryListEntry {
+  readonly key: string;
+  readonly namespace: string;
+}
+
+interface MemoryRetrieveResult {
+  readonly value: unknown;
+  readonly found?: boolean;
+}
+
+async function loadNamespaceValues<T>(namespace: string, limit = MAX_NAMESPACE_FETCH): Promise<T[]> {
+  const listResult = await callMCPTool<{ entries?: MemoryListEntry[] }>(TOOL_MEMORY_LIST, {
+    namespace,
+    limit,
+  });
+
+  const values: T[] = [];
+  for (const entry of listResult.entries ?? []) {
+    try {
+      const fetched = await callMCPTool<MemoryRetrieveResult>(TOOL_MEMORY_RETRIEVE, {
+        namespace,
+        key: entry.key,
+      });
+      if (fetched.value === null || fetched.value === undefined) continue;
+      const parsed = typeof fetched.value === 'string'
+        ? JSON.parse(fetched.value)
+        : fetched.value;
+      values.push(parsed as T);
+    } catch {
+      output.printWarning(`Skipped malformed entry: ${entry.key}`);
+    }
+  }
+  return values;
+}
 
 // ── Schedule Create ───────────────────────────────────────────────────────────
 
@@ -147,53 +185,151 @@ const scheduleListCommand: Command = {
   aliases: ['ls'],
   description: 'List all scheduled spells',
   action: async (ctx: CommandContext): Promise<CommandResult> => {
+    let raw: Array<Record<string, unknown>>;
     try {
-      const result = await callMCPTool<{ results: Array<{ key: string; value: string }> }>(TOOL_MEMORY_LIST, {
-        namespace: NAMESPACE_SCHEDULES,
-      });
-
-      // Single-pass: parse + transform for display
-      const schedules: Array<Record<string, unknown>> = [];
-      for (const r of result.results ?? []) {
-        try {
-          const parsed = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
-          if (parsed) {
-            schedules.push({
-              id: parsed.id,
-              spellName: parsed.spellName,
-              timing: parsed.cron || parsed.interval || parsed.at || '-',
-              nextRun: parsed.nextRunAt ? new Date(parsed.nextRunAt as number).toLocaleString() : '-',
-              enabled: parsed.enabled,
-            });
-          }
-        } catch {
-          output.printWarning(`Skipped malformed schedule record: ${r.key}`);
-        }
-      }
-
-      if (ctx.flags.format === 'json') {
-        output.printJson(schedules);
-        return { success: true, data: schedules };
-      }
-
-      if (schedules.length === 0) {
-        output.writeln();
-        output.printInfo('No scheduled spells');
-        return { success: true, data: [] };
-      }
-
-      output.writeln();
-      output.writeln(output.bold('Scheduled Spells'));
-      output.writeln();
-      output.printTable({ columns: SCHEDULE_COLUMNS, data: schedules });
-
-      output.writeln();
-      output.printInfo(`Total: ${schedules.length} schedule(s)`);
-
-      return { success: true, data: schedules };
+      raw = await loadNamespaceValues<Record<string, unknown>>(NAMESPACE_SCHEDULES);
     } catch (error) {
       return handleMCPError(error, 'list schedules');
     }
+
+    const schedules = raw.map(parsed => ({
+      id: parsed.id,
+      spellName: parsed.spellName,
+      timing: parsed.cron || parsed.interval || parsed.at || '-',
+      nextRun: parsed.nextRunAt ? new Date(parsed.nextRunAt as number).toLocaleString() : '-',
+      enabled: parsed.enabled,
+    }));
+
+    if (ctx.flags.format === 'json') {
+      output.printJson(schedules);
+      return { success: true, data: schedules };
+    }
+
+    if (schedules.length === 0) {
+      output.writeln();
+      output.printInfo('No scheduled spells');
+      return { success: true, data: [] };
+    }
+
+    output.writeln();
+    output.writeln(output.bold('Scheduled Spells'));
+    output.writeln();
+    output.printTable({ columns: SCHEDULE_COLUMNS, data: schedules });
+
+    output.writeln();
+    output.printInfo(`Total: ${schedules.length} schedule(s)`);
+
+    return { success: true, data: schedules };
+  },
+};
+
+// ── Schedule Executions ───────────────────────────────────────────────────────
+
+const EXECUTION_COLUMNS = [
+  { key: 'startedAt', header: 'Started', width: 22 },
+  { key: 'spellName', header: 'Spell', width: 20 },
+  { key: 'status', header: 'Status', width: 10 },
+  { key: 'duration', header: 'Duration', width: 10 },
+  { key: 'manualRun', header: 'Manual', width: 7 },
+  { key: 'scheduleId', header: 'Schedule', width: 30 },
+];
+
+interface ExecutionRow extends Record<string, unknown> {
+  id: string;
+  scheduleId: string;
+  spellName: string;
+  startedAt: string;
+  status: string;
+  duration: string;
+  manualRun: string;
+}
+
+function formatExecutionRow(parsed: Record<string, unknown>): ExecutionRow {
+  const completed = typeof parsed.completedAt === 'number';
+  let status: string;
+  if (!completed) {
+    status = output.warning('running');
+  } else if (parsed.success === true) {
+    status = output.success('success');
+  } else {
+    status = output.error('failed');
+  }
+  return {
+    id: String(parsed.id ?? ''),
+    scheduleId: String(parsed.scheduleId ?? ''),
+    spellName: String(parsed.spellName ?? ''),
+    startedAt: typeof parsed.startedAt === 'number'
+      ? new Date(parsed.startedAt).toLocaleString()
+      : '-',
+    status,
+    duration: typeof parsed.duration === 'number' ? `${parsed.duration}ms` : '-',
+    manualRun: parsed.manualRun === true ? 'yes' : '',
+  };
+}
+
+const executionsCommand: Command = {
+  name: 'executions',
+  aliases: ['exec', 'history'],
+  description: 'Show recent scheduled spell executions',
+  options: [
+    { name: 'schedule', short: 's', description: 'Filter by schedule ID', type: 'string' },
+    { name: 'limit', short: 'l', description: `Max rows to return (default ${DEFAULT_EXECUTIONS_LIMIT})`, type: 'number' },
+  ],
+  examples: [
+    { command: 'moflo spell schedule executions', description: 'Most recent executions across all schedules' },
+    { command: 'moflo spell schedule executions --schedule sched-adhoc-123', description: 'Filter by schedule ID' },
+    { command: 'moflo spell schedule executions --limit 25', description: 'Show last 25 executions' },
+  ],
+  action: async (ctx: CommandContext): Promise<CommandResult> => {
+    const scheduleFilter = ctx.flags.schedule as string | undefined;
+    const rawLimit = ctx.flags.limit;
+    const limit = typeof rawLimit === 'number' && rawLimit > 0
+      ? Math.floor(rawLimit)
+      : DEFAULT_EXECUTIONS_LIMIT;
+
+    let raw: Array<Record<string, unknown>>;
+    try {
+      raw = await loadNamespaceValues<Record<string, unknown>>(NAMESPACE_EXECUTIONS);
+    } catch (error) {
+      return handleMCPError(error, 'list executions');
+    }
+
+    const parsed = raw.filter(v => typeof v.startedAt === 'number');
+
+    const filtered = scheduleFilter
+      ? parsed.filter(e => e.scheduleId === scheduleFilter)
+      : parsed;
+    filtered.sort((a, b) => (b.startedAt as number) - (a.startedAt as number));
+    const truncated = filtered.slice(0, limit);
+
+    if (ctx.flags.format === 'json') {
+      output.printJson(truncated);
+      return { success: true, data: truncated };
+    }
+
+    if (truncated.length === 0) {
+      output.writeln();
+      output.printInfo(scheduleFilter
+        ? `No executions for schedule ${scheduleFilter}`
+        : 'No scheduled spell executions yet');
+      return { success: true, data: [] };
+    }
+
+    const rows = truncated.map(formatExecutionRow);
+
+    output.writeln();
+    output.writeln(output.bold(scheduleFilter
+      ? `Executions for ${scheduleFilter}`
+      : 'Recent Scheduled Executions'));
+    output.writeln();
+    output.printTable({ columns: EXECUTION_COLUMNS, data: rows });
+
+    output.writeln();
+    output.printInfo(filtered.length > truncated.length
+      ? `Showing ${truncated.length} of ${filtered.length} execution(s)`
+      : `Total: ${truncated.length} execution(s)`);
+
+    return { success: true, data: truncated };
   },
 };
 
@@ -249,10 +385,11 @@ const SCHEDULE_DOCS_URL = 'https://github.com/eric-cielo/moflo/blob/main/docs/SP
 export const scheduleCommand: Command = {
   name: 'schedule',
   description: `Manage scheduled spells (full reference: ${SCHEDULE_DOCS_URL})`,
-  subcommands: [createCommand, scheduleListCommand, cancelCommand],
+  subcommands: [createCommand, scheduleListCommand, executionsCommand, cancelCommand],
   examples: [
     { command: 'moflo spell schedule create -n audit --cron "0 9 * * *"', description: 'Schedule daily audit' },
     { command: 'moflo spell schedule list', description: 'List all schedules' },
+    { command: 'moflo spell schedule executions --schedule <id>', description: 'Show execution audit trail' },
     { command: 'moflo spell schedule cancel <id>', description: 'Cancel a schedule' },
   ],
   action: async (): Promise<CommandResult> => {
@@ -263,9 +400,10 @@ export const scheduleCommand: Command = {
     output.writeln();
     output.writeln('Subcommands:');
     output.printList([
-      `${output.highlight('create')}  - Create a scheduled spell`,
-      `${output.highlight('list')}    - List all scheduled spells`,
-      `${output.highlight('cancel')}  - Cancel (disable) a schedule`,
+      `${output.highlight('create')}      - Create a scheduled spell`,
+      `${output.highlight('list')}        - List all scheduled spells`,
+      `${output.highlight('executions')}  - Show recent execution history`,
+      `${output.highlight('cancel')}      - Cancel (disable) a schedule`,
     ]);
     output.writeln();
     output.writeln(`Full reference: ${SCHEDULE_DOCS_URL}`);

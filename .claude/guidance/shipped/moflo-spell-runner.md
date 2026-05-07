@@ -128,6 +128,7 @@ Credential values listed in `RunnerOptions.credentialValues` are automatically r
 
 - `.claude/guidance/moflo-spell-engine.md` — Definition format, step types, variable interpolation
 - `.claude/guidance/moflo-spell-sandboxing.md` — Capability-based security and permission levels
+- `.claude/guidance/moflo-spell-scheduling.md` — Cron / interval / one-time scheduling, daemon lifecycle, catch-up window, `schedule-executions` audit trail
 - `.claude/guidance/moflo-spell-troubleshooting.md` — Common failure modes when running spells
 - `.claude/guidance/moflo-spell-custom-steps.md` — Pluggable step commands
 - `.claude/guidance/moflo-spell-connectors.md` — Resource connectors and the registry

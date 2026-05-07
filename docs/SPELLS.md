@@ -1019,9 +1019,13 @@ flo spell schedule create -n health-check --interval 30m
 # One-time — ISO 8601 datetime
 flo spell schedule create -n migration --at 2026-04-15T09:00:00Z
 
-flo spell schedule list                   # all schedules
-flo spell schedule cancel <schedule-id>   # disable a schedule
+flo spell schedule list                              # all schedules (definitions)
+flo spell schedule executions                        # recent execution audit trail
+flo spell schedule executions --schedule <id>        # filter to one schedule
+flo spell schedule cancel <schedule-id>              # disable a schedule
 ```
+
+**`list` shows what should fire. `executions` shows what did fire.** When verifying that a fresh schedule actually ran, read `executions` — `list` only proves the record was written.
 
 ### Definition-embedded schedules
 

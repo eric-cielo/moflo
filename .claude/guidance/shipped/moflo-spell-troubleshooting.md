@@ -144,6 +144,7 @@ A step appears to run (`exitCode: 0`), produces no output, and downstream steps 
 - `.claude/guidance/moflo-spell-sandboxing.md` — Capability types, enforcement layers, permission levels (the model these failures exercise)
 - `.claude/guidance/moflo-spell-engine.md` — Step definition format and types
 - `.claude/guidance/moflo-spell-runner.md` — Dry-run validation, error codes, pause/resume
+- `.claude/guidance/moflo-spell-scheduling.md` — Scheduled-spell-specific failure modes (catch-up window, overlap, missing spell auto-disable, daemon-down)
 - `.claude/guidance/moflo-yaml-reference.md` — `sandbox:` block in `moflo.yaml` (master toggle, tier selection)
 - `src/cli/spells/core/bwrap-sandbox.ts` — Source for `--unshare-net` and namespace setup
 - `src/cli/spells/core/permission-resolver.ts` — Capability → permission level derivation

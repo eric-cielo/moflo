@@ -58,9 +58,9 @@ describe('Spell Schedule Subcommand', () => {
     expect(scheduleCommand.name).toBe('schedule');
   });
 
-  it('has create, list, cancel subcommands', () => {
+  it('has create, list, executions, cancel subcommands', () => {
     const subNames = scheduleCommand.subcommands!.map(s => s.name).sort();
-    expect(subNames).toEqual(['cancel', 'create', 'list']);
+    expect(subNames).toEqual(['cancel', 'create', 'executions', 'list']);
   });
 
   it('examples use "moflo spell schedule"', () => {
