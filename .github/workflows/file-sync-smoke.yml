@@ -1,0 +1,158 @@
+name: File-sync smoke (#976)
+
+# Issue #976: cross-platform validation for the postinstall bootstrap +
+# session-start launcher's file-sync layer. The original failure (#975) was on
+# WSL DrvFs — Windows-mounted volumes accessed from WSL inherit NTFS lock
+# semantics and can return success codes from a partial write. The native
+# Windows / Ubuntu / macOS legs catch each platform's per-OS quirks (NTFS file
+# locks, APFS clone semantics, ext4 rename behavior); the WSL leg is the
+# specific reproduction of the venue that produced #975.
+#
+# Tests exercised on every leg:
+#   - file-sync-helper.test.ts        — atomicCopy, hash-skip, EVERIFY,
+#                                       circuit breaker, .tmp breadcrumb
+#   - post-install-bootstrap.test.ts  — bootstrap end-to-end including
+#                                       sentinel write + hash-skip mtime
+#   - bootstrap-sentinel-promotion.test.ts — launcher §0/§3h sentinel +
+#                                            upgrade-notice round-trip
+#
+# These three together cover the six #976 acceptance behaviors:
+#   B1 hash-skip preserves mtime
+#   B2 no .tmp stragglers on success
+#   B3 .tmp breadcrumb on rename failure
+#   B4 EVERIFY on truncated tmp + retry recovery
+#   B5 sentinel write/read/clear
+#   B6 upgrade-notice round-trip (in-progress → completed)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bin/lib/file-sync.mjs'
+      - 'bin/session-start-launcher.mjs'
+      - 'scripts/post-install-bootstrap.mjs'
+      - 'src/cli/__tests__/file-sync-helper.test.ts'
+      - 'src/cli/__tests__/post-install-bootstrap.test.ts'
+      - 'src/cli/__tests__/bootstrap-sentinel-promotion.test.ts'
+      - '.github/workflows/file-sync-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'bin/lib/file-sync.mjs'
+      - 'bin/session-start-launcher.mjs'
+      - 'scripts/post-install-bootstrap.mjs'
+      - 'src/cli/__tests__/file-sync-helper.test.ts'
+      - 'src/cli/__tests__/post-install-bootstrap.test.ts'
+      - 'src/cli/__tests__/bootstrap-sentinel-promotion.test.ts'
+      - '.github/workflows/file-sync-smoke.yml'
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '22'
+
+# Don't cancel in-flight pushes to main — partial validation leaves the
+# branch in an unverified state. PR runs are cancellable.
+concurrency:
+  group: file-sync-smoke-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Native: NTFS / APFS / ext4 each have their own lock + rename semantics.
+  # Bug #975's failure venue was DrvFs (covered separately below) but the
+  # other native filesystems have caught a long tail of platform-specific
+  # rename behavior, so we keep all three on every change.
+  native:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build (tsc only — tests need the source helpers under bin/lib/)
+        run: npm run build
+
+      - name: Run file-sync smoke tests
+        run: npx vitest run --reporter=default
+          src/cli/__tests__/file-sync-helper.test.ts
+          src/cli/__tests__/post-install-bootstrap.test.ts
+          src/cli/__tests__/bootstrap-sentinel-promotion.test.ts
+          src/cli/__tests__/post-install-bootstrap-drift-guard.test.ts
+          tests/bin/launcher-854-fixes.test.ts
+
+  # WSL DrvFs (the actual #975 failure venue): Ubuntu running on
+  # windows-latest with the working directory under /mnt/c/... so file
+  # operations go through DrvFs — Windows file system reflected into WSL
+  # via 9P/Plan9 protocol, with NTFS lock semantics carrying through.
+  #
+  # This is the leg most likely to catch a real torn-write or partial-copy
+  # scenario; the native legs above can't reproduce DrvFs lock timing.
+  wsl-drvfs:
+    name: wsl-drvfs (windows-latest /mnt/c)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up WSL Ubuntu
+        uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Ubuntu-22.04
+          additional-packages: |
+            curl
+            ca-certificates
+            xz-utils
+
+      - name: Install Node ${{ env.NODE_VERSION }} inside WSL
+        shell: wsl-bash {0}
+        run: |
+          set -euo pipefail
+          curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+          node --version
+          npm --version
+
+      # GITHUB_WORKSPACE on Windows is e.g. D:\a\moflo\moflo. Inside WSL it's
+      # reflected at /mnt/d/a/moflo/moflo through DrvFs — exactly the mount
+      # layer that produced #975. We deliberately do NOT copy the checkout
+      # into the WSL native filesystem (~/) because that would bypass the
+      # very behavior we're trying to test. wslpath is always available
+      # under setup-wsl.
+      - name: Install dependencies (DrvFs)
+        shell: wsl-bash {0}
+        run: |
+          set -euo pipefail
+          DRV="$(wslpath -u "$GITHUB_WORKSPACE")"
+          echo "DrvFs path: $DRV"
+          cd "$DRV"
+          npm ci --legacy-peer-deps
+
+      - name: Build (DrvFs)
+        shell: wsl-bash {0}
+        run: |
+          set -euo pipefail
+          DRV="$(wslpath -u "$GITHUB_WORKSPACE")"
+          cd "$DRV"
+          npm run build
+
+      - name: Run file-sync smoke tests (DrvFs)
+        shell: wsl-bash {0}
+        run: |
+          set -euo pipefail
+          DRV="$(wslpath -u "$GITHUB_WORKSPACE")"
+          cd "$DRV"
+          npx vitest run --reporter=default \
+            src/cli/__tests__/file-sync-helper.test.ts \
+            src/cli/__tests__/post-install-bootstrap.test.ts \
+            src/cli/__tests__/bootstrap-sentinel-promotion.test.ts

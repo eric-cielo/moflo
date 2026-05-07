@@ -30,15 +30,23 @@ const BIN = resolve(__dirname, '../../bin');
 describe('bin/session-start-launcher.mjs — partial-migration visibility (#854)', () => {
   const file = resolve(BIN, 'session-start-launcher.mjs');
   const src = readFileSync(file, 'utf-8');
+  // Retry/breaker + atomic copy live in the shared helper since #975 — the
+  // launcher imports makeSyncer from there, so the invariants below have to
+  // be asserted against this file rather than the launcher source.
+  const helperFile = resolve(BIN, 'lib/file-sync.mjs');
+  const helperSrc = readFileSync(helperFile, 'utf-8');
 
   it('syncFile records per-file copy failures instead of swallowing them', () => {
     // Pre-#854: the bare `catch { /* non-fatal */ }` meant a Windows file
     // lock / AV race / EBUSY on a single file disappeared silently and the
     // file stayed at its pre-upgrade content forever. The fix records
     // failures so they can be surfaced.
-    expect(src).toMatch(/const\s+syncFailures\s*=\s*\[\]/);
-    expect(src).toMatch(/syncFailures\.push/);
-    // No bare "non-fatal" sync swallow remains in the helper sync block.
+    //
+    // Post-#975: the launcher destructures `failures: syncFailures` from the
+    // shared makeSyncer factory; the helper does the actual `failures.push`.
+    expect(src).toMatch(/failures:\s*syncFailures/);
+    expect(helperSrc).toMatch(/failures\.push/);
+    // No bare "non-fatal" sync swallow remains in the launcher's helper sync block.
     const helperBlock = src.match(/binHelperFiles[\s\S]{0,1500}?sourceHelperFiles/);
     expect(helperBlock, 'helper sync block must exist').toBeTruthy();
     expect(helperBlock![0]).not.toMatch(/catch\s*\{\s*\/\*\s*non-fatal\s*\*\/\s*\}/);
@@ -48,20 +56,26 @@ describe('bin/session-start-launcher.mjs — partial-migration visibility (#854)
     // Per the codified rule (`.claude/guidance/shipped/moflo-error-handling.md`):
     // any transient-error op MUST use standard retry with exponential backoff
     // and a circuit breaker. One-shot retries are forbidden.
-    expect(src).toMatch(/syncWithRetry\s*\(/);
-    expect(src).toMatch(/RETRY_BACKOFF_MS\s*=\s*\[\s*50\s*,\s*200\s*,\s*800/);
-    expect(src).toMatch(/TRANSIENT_CODES\s*=\s*new\s+Set\(\s*\[\s*['"]EBUSY['"]/);
-    expect(src).toMatch(/CIRCUIT_BREAK_THRESHOLD/);
-    expect(src).toMatch(/circuitOpen\b/);
+    //
+    // Post-#975: implementation lives in `bin/lib/file-sync.mjs` and is shared
+    // with `scripts/post-install-bootstrap.mjs`. Launcher imports makeSyncer
+    // from there.
+    expect(src).toMatch(/from\s+['"]\.\/lib\/file-sync\.mjs['"]/);
+    expect(src).toMatch(/makeSyncer\s*\(/);
+    expect(helperSrc).toMatch(/syncWithRetry\s*\(/);
+    expect(helperSrc).toMatch(/RETRY_BACKOFF_MS\s*=\s*\[\s*50\s*,\s*200\s*,\s*800/);
+    expect(helperSrc).toMatch(/TRANSIENT_CODES\s*=\s*new\s+Set\(\s*\[\s*['"]EBUSY['"]/);
+    expect(helperSrc).toMatch(/CIRCUIT_BREAK_THRESHOLD/);
+    expect(helperSrc).toMatch(/circuitOpen\b/);
   });
 
   it('syncWithRetry is async — never busy-waits', () => {
     // Sync busy-waits in async ESM are forbidden — pin the async shape
     // so a future "simplification" can't accidentally convert it back.
-    expect(src).toMatch(/async\s+function\s+syncWithRetry\s*\(/);
-    expect(src).toMatch(/await\s+sleep\s*\(/);
+    expect(helperSrc).toMatch(/async\s+function\s+syncWithRetry\s*\(/);
+    expect(helperSrc).toMatch(/await\s+sleep\s*\(/);
     // The original `delaySync` busy-wait pattern must not creep back.
-    expect(src).not.toMatch(/while\s*\(\s*Date\.now\(\)\s*<\s*end\s*\)/);
+    expect(helperSrc).not.toMatch(/while\s*\(\s*Date\.now\(\)\s*<\s*end\s*\)/);
   });
 
   it('surfaces accumulated sync failures to stderr with a healer pointer', () => {
@@ -223,13 +237,16 @@ describe('bin/session-start-launcher.mjs — manifest v2 size-aware drift (#854)
   });
 
   it('syncFile records manifest entry as {path, size} via recordManifestEntry', () => {
+    // Post-#975: the launcher passes recordManifestEntry as the makeSyncer
+    // onSuccess callback so the helper records manifests on both copy and
+    // hash-skip paths (a hash-skip session needs the manifest entry too,
+    // otherwise the next-session retired-files cleanup pass treats the
+    // unchanged file as removed).
     expect(src).toMatch(/function\s+recordManifestEntry\s*\(/);
-    expect(src).toMatch(/recordManifestEntry\([^)]*manifestKey/);
-    // The post-success branch in syncFile must use it (no more bare path push)
-    const syncFile = src.match(/async\s+function\s+syncFile\s*\([^)]*\)\s*\{[\s\S]*?\n\s+\}/);
-    expect(syncFile, 'syncFile must exist').toBeTruthy();
-    expect(syncFile![0]).toMatch(/recordManifestEntry/);
-    expect(syncFile![0]).not.toMatch(/currentManifest\.push\(\s*manifestKey\s*\)/);
+    const launcher = readFileSync(pathResolve(__dirname, '../../bin/session-start-launcher.mjs'), 'utf-8');
+    expect(launcher).toMatch(/onSuccess:\s*\([^)]*\)\s*=>\s*recordManifestEntry/);
+    // No more bare path push (was a #854 regression vector).
+    expect(launcher).not.toMatch(/currentManifest\.push\(\s*manifestKey\s*\)/);
   });
 
   it('cleanup loop pulls path field from v2 entries (Set + destructuring)', () => {

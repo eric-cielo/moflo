@@ -23,6 +23,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -100,6 +101,79 @@ describe('post-install-bootstrap (#857) — stuck-state recovery', () => {
     const expected = join(TMP, '.claude/scripts/migrations/lib/markers.mjs');
     if (existsSync(join(BIN_DIR, 'migrations/lib/markers.mjs'))) {
       expect(existsSync(expected)).toBe(true);
+    }
+  });
+});
+
+describe('post-install-bootstrap (#975) — resilient copy + sentinel', () => {
+  it('hash-skip: byte-identical dest is not rewritten', async () => {
+    const tmp = makeTempConsumer();
+    try {
+      const scripts = join(tmp, '.claude/scripts');
+      mkdirSync(scripts, { recursive: true });
+      // Pre-populate launcher dest with EXACT shipped content so the bootstrap's
+      // hash-equal check should short-circuit the write entirely.
+      const shipped = readFileSync(join(BIN_DIR, 'session-start-launcher.mjs'), 'utf-8');
+      const destPath = join(scripts, 'session-start-launcher.mjs');
+      writeFileSync(destPath, shipped);
+      // Capture mtime, sleep enough to detect a write, then run.
+      const beforeMtime = statSync(destPath).mtimeMs;
+      await new Promise((r) => setTimeout(r, 25));
+      const { runBootstrap } = await loadBootstrap();
+      const result = await runBootstrap({ projectRoot: tmp, mofloRoot: REPO_ROOT, log: () => {} });
+      expect(result.ran).toBe(true);
+      const afterMtime = statSync(destPath).mtimeMs;
+      // If hash-skip is working, mtime is unchanged. If the launcher was
+      // rewritten despite identical content, mtime would advance.
+      expect(afterMtime).toBe(beforeMtime);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('does NOT write sentinel when bootstrap completes with zero failures', async () => {
+    const tmp = makeTempConsumer();
+    try {
+      mkdirSync(join(tmp, '.claude/scripts'), { recursive: true });
+      mkdirSync(join(tmp, '.claude/helpers'), { recursive: true });
+      const { runBootstrap } = await loadBootstrap();
+      const result = await runBootstrap({ projectRoot: tmp, mofloRoot: REPO_ROOT, log: () => {} });
+      expect(result.failed).toBe(0);
+      expect(existsSync(join(tmp, '.moflo/bootstrap-failed.json'))).toBe(false);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('writes sentinel with expected shape when a copy fails', async () => {
+    const tmp = makeTempConsumer();
+    try {
+      mkdirSync(join(tmp, '.claude/scripts'), { recursive: true });
+      mkdirSync(join(tmp, '.claude/helpers'), { recursive: true });
+      // Force one copy to fail by pre-creating gate.cjs's destination as a
+      // DIRECTORY — atomicCopy's rename(tmp, dest) cannot replace a directory
+      // with a file on any platform. Other files still copy fine, so we get a
+      // partial-failure scenario which is exactly what the sentinel exists for.
+      mkdirSync(join(tmp, '.claude/helpers/gate.cjs'));
+      const { runBootstrap } = await loadBootstrap();
+      const result = await runBootstrap({ projectRoot: tmp, mofloRoot: REPO_ROOT, log: () => {} });
+      expect(result.ran).toBe(true);
+      expect(result.failed).toBeGreaterThan(0);
+
+      const sentinelPath = join(tmp, '.moflo/bootstrap-failed.json');
+      expect(existsSync(sentinelPath)).toBe(true);
+      const sentinel = JSON.parse(readFileSync(sentinelPath, 'utf-8'));
+      expect(typeof sentinel.timestamp).toBe('string');
+      expect(typeof sentinel.mofloVersion).toBe('string');
+      expect(Array.isArray(sentinel.failures)).toBe(true);
+      expect(sentinel.failures.length).toBeGreaterThan(0);
+      // Each failure entry includes enough info for session-start to verify.
+      for (const f of sentinel.failures) {
+        expect(typeof f.key).toBe('string');
+        expect(typeof f.message).toBe('string');
+      }
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
     }
   });
 });
