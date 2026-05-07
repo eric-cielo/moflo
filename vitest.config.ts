@@ -96,11 +96,6 @@ export const isolationTests = [
   // real subsystem; reliably fits in 10 s alone, can drift past full-suite
   // per-test ceilings under fork contention.
   'src/cli/__tests__/doctor-checks-memory-access.test.ts',
-  // Recursively walks the entire repo (skills/agents/docs/settings + every
-  // src/.claude/scripts file) cross-referencing MCP tool names — heavy I/O
-  // hits the suite-hook setup window first and fails as a file-level error
-  // under maxForks=2 Windows contention. Passes alone in ~540 ms (4 tests).
-  'src/cli/__tests__/mcp-tools-drift-guard.test.ts',
 ];
 
 export default defineConfig({
