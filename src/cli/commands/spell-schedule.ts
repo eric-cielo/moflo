@@ -18,6 +18,7 @@ import { TOOL_MEMORY_STORE, TOOL_MEMORY_LIST, TOOL_MEMORY_RETRIEVE } from '../mc
 import { handleMCPError } from '../services/cli-formatters.js';
 import { ensureDaemonForScheduling } from '../services/daemon-readiness.js';
 import { reconcileDaemonAutostart } from '../services/daemon-autostart-lifecycle.js';
+import { isDaemonInstalled } from '../services/daemon-service.js';
 import { validateSchedule, computeNextRun } from '../spells/scheduler/cron-parser.js';
 
 const NAMESPACE_SCHEDULES = 'scheduled-spells';
@@ -41,23 +42,26 @@ async function loadNamespaceValues<T>(namespace: string, limit = MAX_NAMESPACE_F
     limit,
   });
 
-  const values: T[] = [];
-  for (const entry of listResult.entries ?? []) {
+  const entries = listResult.entries ?? [];
+  // Parallelize retrieves — serial-await over N entries was the cost the
+  // reconcile-after-mutation path was paying on every create/cancel.
+  const fetched: Array<T | null> = await Promise.all(entries.map(async entry => {
     try {
-      const fetched = await callMCPTool<MemoryRetrieveResult>(TOOL_MEMORY_RETRIEVE, {
+      const result = await callMCPTool<MemoryRetrieveResult>(TOOL_MEMORY_RETRIEVE, {
         namespace,
         key: entry.key,
       });
-      if (fetched.value === null || fetched.value === undefined) continue;
-      const parsed = typeof fetched.value === 'string'
-        ? JSON.parse(fetched.value)
-        : fetched.value;
-      values.push(parsed as T);
+      if (result.value === null || result.value === undefined) return null;
+      const parsed = typeof result.value === 'string'
+        ? JSON.parse(result.value)
+        : result.value;
+      return parsed as T;
     } catch {
       output.printWarning(`Skipped malformed entry: ${entry.key}`);
+      return null;
     }
-  }
-  return values;
+  }));
+  return fetched.filter((v): v is T => v !== null);
 }
 
 /**
@@ -172,16 +176,24 @@ const createCommand: Command = {
 
     // Reconcile OS-native autostart against the new enabled-schedule count.
     // 0→1 installs the login service; 1→2/2→3/etc. is a no-op (idempotent).
+    // Short-circuit: a fresh create can only ever trigger an install (count
+    // just went up). If the service is already installed, the reconcile is a
+    // guaranteed noop — skip the count fetch entirely.
     // Note: parser normalises --no-autostart to ctx.flags.noAutostart (#787).
     const skipAutostart = ctx.flags.noAutostart === true;
-    const reconcile = reconcileDaemonAutostart({
-      projectRoot,
-      enabledScheduleCount: await countEnabledSchedules(),
-      skip: skipAutostart,
-    });
-    emitReconcileResult(reconcile);
+    const alreadyInstalled = readiness.daemonInstalled;
+    let reconcileTransition: 'installed' | 'uninstalled' | 'noop' = 'noop';
+    if (!skipAutostart && !alreadyInstalled) {
+      const reconcile = reconcileDaemonAutostart({
+        projectRoot,
+        enabledScheduleCount: await countEnabledSchedules(),
+        skip: false,
+      });
+      emitReconcileResult(reconcile);
+      reconcileTransition = reconcile.transition;
+    }
 
-    const serviceState = reconcile.transition === 'installed' || readiness.daemonInstalled
+    const serviceState = reconcileTransition === 'installed' || alreadyInstalled
       ? 'installed'
       : 'not installed';
 
@@ -432,15 +444,20 @@ const cancelCommand: Command = {
 
     // Reconcile OS-native autostart against the new enabled-schedule count.
     // 1→0 uninstalls the login service; everything else is a no-op.
+    // Short-circuit: a fresh cancel can only ever trigger an uninstall (count
+    // just went down). If the service isn't currently installed, the reconcile
+    // is a guaranteed noop — skip the count fetch entirely.
     // Note: parser normalises --keep-autostart to ctx.flags.keepAutostart (#787).
     const projectRoot = ctx.cwd || process.cwd();
     const skipAutostart = ctx.flags.keepAutostart === true;
-    const reconcile = reconcileDaemonAutostart({
-      projectRoot,
-      enabledScheduleCount: await countEnabledSchedules(),
-      skip: skipAutostart,
-    });
-    emitReconcileResult(reconcile);
+    if (!skipAutostart && isDaemonInstalled(projectRoot)) {
+      const reconcile = reconcileDaemonAutostart({
+        projectRoot,
+        enabledScheduleCount: await countEnabledSchedules(),
+        skip: false,
+      });
+      emitReconcileResult(reconcile);
+    }
 
     return { success: true, data: updated };
   },
