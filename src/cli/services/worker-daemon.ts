@@ -1,13 +1,21 @@
 /**
  * Worker Daemon Service
- * Node.js-based background worker system that auto-runs like shell daemons
+ * Node.js-based background worker system that auto-runs like shell daemons.
  *
- * Workers:
- * - map: Codebase mapping (5 min interval)
- * - audit: Security analysis (10 min interval)
+ * Default workers:
+ * - map: Codebase mapping (15 min interval)
  * - optimize: Performance optimization (15 min interval)
  * - consolidate: Memory consolidation (30 min interval)
  * - testgaps: Test coverage analysis (20 min interval)
+ *
+ * Manual-trigger-only workers (disabled by default, no scheduled run):
+ * ultralearn, refactor, deepdive, benchmark, preload.
+ *
+ * The `audit`, `predict`, and `document` workers were removed in #970 —
+ * they were default-disabled with no surfacing layer for findings, and the
+ * dashboard rendered them as "disabled" rows that read as broken. If a
+ * security or doc scan returns it should land as an opt-in `flo doctor`
+ * one-shot with a real findings UI, not as a recurring background worker.
  */
 
 import { EventEmitter } from 'events';
@@ -34,20 +42,42 @@ import { calculateDelay } from '../production/retry.js';
 import { CircuitBreaker } from '../production/circuit-breaker.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 
-// Worker types matching hooks-tools.ts
+// Worker types matching hooks-tools.ts. `audit`, `predict`, `document`
+// were removed in #970 — the WorkerType union is the source of truth for
+// `daemon-state.json` validation, so dropping them here is what makes the
+// state loader silently drop stale entries (see `initializeWorkerStates`).
 export type WorkerType =
   | 'ultralearn'
   | 'optimize'
   | 'consolidate'
-  | 'predict'
-  | 'audit'
   | 'map'
   | 'preload'
   | 'deepdive'
-  | 'document'
   | 'refactor'
   | 'benchmark'
   | 'testgaps';
+
+/**
+ * Runtime allow-list of known {@link WorkerType} values. Used by
+ * `initializeWorkerStates` to silently drop entries from a stale
+ * `daemon-state.json` after a worker is removed from the union (#970).
+ * Keep in sync with the `WorkerType` definition above.
+ */
+const KNOWN_WORKER_TYPES: ReadonlySet<WorkerType> = new Set<WorkerType>([
+  'ultralearn',
+  'optimize',
+  'consolidate',
+  'map',
+  'preload',
+  'deepdive',
+  'refactor',
+  'benchmark',
+  'testgaps',
+]);
+
+function isKnownWorkerType(value: unknown): value is WorkerType {
+  return typeof value === 'string' && KNOWN_WORKER_TYPES.has(value as WorkerType);
+}
 
 interface WorkerConfig {
   type: WorkerType;
@@ -115,15 +145,9 @@ interface WorkerConfigInternal extends WorkerConfig {
 // Default worker configurations with improved intervals (P0 fix: map 5min -> 15min)
 const DEFAULT_WORKERS: WorkerConfigInternal[] = [
   { type: 'map', intervalMs: 15 * 60 * 1000, offsetMs: 0, priority: 'normal', description: 'Codebase mapping', enabled: true },
-  // Default-disabled until the perf regression in #631 is remediated. The
-  // worker averages 238 s/run on real installs, saturating cores back-to-back
-  // when scheduled at the 10-minute interval. Re-enable here when #631 ships.
-  { type: 'audit', intervalMs: 10 * 60 * 1000, offsetMs: 2 * 60 * 1000, priority: 'critical', description: 'Security analysis', enabled: false },
   { type: 'optimize', intervalMs: 15 * 60 * 1000, offsetMs: 4 * 60 * 1000, priority: 'high', description: 'Performance optimization', enabled: true },
   { type: 'consolidate', intervalMs: 30 * 60 * 1000, offsetMs: 6 * 60 * 1000, priority: 'low', description: 'Memory consolidation', enabled: true },
   { type: 'testgaps', intervalMs: 20 * 60 * 1000, offsetMs: 8 * 60 * 1000, priority: 'normal', description: 'Test coverage analysis', enabled: true },
-  { type: 'predict', intervalMs: 10 * 60 * 1000, offsetMs: 0, priority: 'low', description: 'Predictive preloading', enabled: false },
-  { type: 'document', intervalMs: 60 * 60 * 1000, offsetMs: 0, priority: 'low', description: 'Auto-documentation', enabled: false },
 ];
 
 // Worker timeout (5 minutes max per worker)
@@ -454,9 +478,15 @@ export class WorkerDaemon extends EventEmitter {
           this.config.workerTimeoutMs = saved.config.workerTimeoutMs;
         }
 
-        // Restore worker runtime states (runCount, successCount, etc.)
+        // Restore worker runtime states (runCount, successCount, etc.).
+        // Unknown worker types (left over from a prior moflo version where
+        // `audit`/`predict`/`document` existed) are silently dropped — see
+        // KNOWN_WORKER_TYPES + #970 — so consumers upgrading don't crash on
+        // stale state, and the orphan entries don't get re-persisted on the
+        // next saveState.
         if (saved.workers) {
           for (const [type, state] of Object.entries(saved.workers)) {
+            if (!isKnownWorkerType(type)) continue;
             const savedState = state as Record<string, unknown>;
             const lastRunValue = savedState.lastRun;
             const restoredState: WorkerState = {
@@ -937,18 +967,12 @@ export class WorkerDaemon extends EventEmitter {
     switch (workerConfig.type) {
       case 'map':
         return this.runMapWorker();
-      case 'audit':
-        return this.runAuditWorkerLocal();
       case 'optimize':
         return this.runOptimizeWorkerLocal();
       case 'consolidate':
         return this.runConsolidateWorker();
       case 'testgaps':
         return this.runTestGapsWorkerLocal();
-      case 'predict':
-        return this.runPredictWorkerLocal();
-      case 'document':
-        return this.runDocumentWorkerLocal();
       case 'ultralearn':
         return this.runUltralearnWorkerLocal();
       case 'refactor':
@@ -989,35 +1013,6 @@ export class WorkerDaemon extends EventEmitter {
 
     writeFileSync(metricsFile, JSON.stringify(map, null, 2));
     return map;
-  }
-
-  /**
-   * Local audit worker (fallback when headless unavailable)
-   */
-  private async runAuditWorkerLocal(): Promise<unknown> {
-    // Basic security checks
-    const auditFile = join(this.projectRoot, '.moflo', 'metrics', 'security-audit.json');
-    const metricsDir = join(this.projectRoot, '.moflo', 'metrics');
-
-    if (!existsSync(metricsDir)) {
-      mkdirSync(metricsDir, { recursive: true });
-    }
-
-    const audit = {
-      timestamp: new Date().toISOString(),
-      mode: 'local',
-      checks: {
-        envFilesProtected: !existsSync(join(this.projectRoot, '.env.local')),
-        gitIgnoreExists: existsSync(join(this.projectRoot, '.gitignore')),
-        noHardcodedSecrets: true, // Would need actual scanning
-      },
-      riskLevel: 'low',
-      recommendations: [],
-      note: 'Install Claude Code CLI for AI-powered security analysis',
-    };
-
-    writeFileSync(auditFile, JSON.stringify(audit, null, 2));
-    return audit;
   }
 
   /**
@@ -1091,32 +1086,6 @@ export class WorkerDaemon extends EventEmitter {
 
     writeFileSync(testGapsFile, JSON.stringify(result, null, 2));
     return result;
-  }
-
-  /**
-   * Local predict worker (fallback when headless unavailable)
-   */
-  private async runPredictWorkerLocal(): Promise<unknown> {
-    return {
-      timestamp: new Date().toISOString(),
-      mode: 'local',
-      predictions: [],
-      preloaded: [],
-      note: 'Install Claude Code CLI for AI-powered predictions',
-    };
-  }
-
-  /**
-   * Local document worker (fallback when headless unavailable)
-   */
-  private async runDocumentWorkerLocal(): Promise<unknown> {
-    return {
-      timestamp: new Date().toISOString(),
-      mode: 'local',
-      filesDocumented: 0,
-      suggestedDocs: [],
-      note: 'Install Claude Code CLI for AI-powered documentation generation',
-    };
   }
 
   /**

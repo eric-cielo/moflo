@@ -130,22 +130,25 @@ npx flo daemon start
 | `coverage-suggest` | Suggest coverage improvements            | `--path`                                    |
 | `coverage-gaps`    | List coverage gaps with priorities       | `--format`, `--limit`                       |
 
-### 12 Background Workers
+### Background Workers
 
-| Worker        | Priority | Description                |
-|---------------|----------|----------------------------|
-| `ultralearn`  | normal   | Deep knowledge acquisition |
-| `optimize`    | high     | Performance optimization   |
-| `consolidate` | low      | Memory consolidation       |
-| `predict`     | normal   | Predictive preloading      |
-| `audit`       | critical | Security analysis          |
-| `map`         | normal   | Codebase mapping           |
-| `preload`     | low      | Resource preloading        |
-| `deepdive`    | normal   | Deep code analysis         |
-| `document`    | normal   | Auto-documentation         |
-| `refactor`    | normal   | Refactoring suggestions    |
-| `benchmark`   | normal   | Performance benchmarking   |
-| `testgaps`    | normal   | Test coverage analysis     |
+The daemon ships nine workers — four scheduled by default plus five
+manual-trigger only. The pre-#970 `audit`, `predict`, and `document`
+workers were removed because they ran without a surfacing layer for
+findings; if AI-driven security scanning returns it should be an opt-in
+`flo doctor` one-shot, not a recurring background task.
+
+| Worker        | Priority | Default       | Description                |
+|---------------|----------|---------------|----------------------------|
+| `map`         | normal   | scheduled 15m | Codebase mapping           |
+| `optimize`    | high     | scheduled 15m | Performance optimization   |
+| `consolidate` | low      | scheduled 30m | Memory consolidation       |
+| `testgaps`    | normal   | scheduled 20m | Test coverage analysis     |
+| `ultralearn`  | normal   | manual        | Deep knowledge acquisition |
+| `refactor`    | normal   | manual        | Refactoring suggestions    |
+| `deepdive`    | normal   | manual        | Deep code analysis         |
+| `benchmark`   | normal   | manual        | Performance benchmarking   |
+| `preload`     | low      | manual        | Resource preloading        |
 
 ### Essential Hook Commands (MCP Preferred)
 

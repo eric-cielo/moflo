@@ -478,7 +478,7 @@ describe('HeadlessWorkerExecutor', () => {
     it('should emit output events during execution', async () => {
       const config: HeadlessWorkerConfig = {
         workerId: 'test-2',
-        workerType: 'audit',
+        workerType: 'optimize',
         prompt: 'Security audit',
       };
 
@@ -563,7 +563,7 @@ describe('HeadlessWorkerExecutor', () => {
     it('should pass sandbox option to claude', async () => {
       const config: HeadlessWorkerConfig = {
         workerId: 'test-6',
-        workerType: 'audit',
+        workerType: 'optimize',
         prompt: 'Security scan',
         sandbox: 'strict',
       };
@@ -877,7 +877,7 @@ describe('HeadlessWorkerExecutor', () => {
 
       const config: HeadlessWorkerConfig = {
         workerId: 'error-emit-test',
-        workerType: 'audit',
+        workerType: 'optimize',
         prompt: 'Audit',
       };
 
@@ -950,7 +950,7 @@ describe('HeadlessWorkerExecutor', () => {
 
       const config: HeadlessWorkerConfig = {
         workerId: 'error-emit',
-        workerType: 'audit',
+        workerType: 'optimize',
         prompt: 'Test',
       };
 
@@ -1140,26 +1140,26 @@ describe('HeadlessWorkerExecutor', () => {
       );
     });
 
-    it('should execute audit worker with strict sandbox', async () => {
+    it('should execute optimize worker with strict sandbox', async () => {
       (glob as Mock).mockResolvedValue([]);
 
       const config: HeadlessWorkerConfig = {
-        workerId: 'audit-001',
-        workerType: 'audit',
-        prompt: 'Perform security audit',
+        workerId: 'optimize-001',
+        workerType: 'optimize',
+        prompt: 'Perform optimization analysis',
         sandbox: 'strict',
         outputFormat: 'markdown',
       };
 
       setTimeout(() => {
-        mockChildProcess.stdout?.emit('data', Buffer.from('# Security Audit\n\nNo issues found.'));
+        mockChildProcess.stdout?.emit('data', Buffer.from('# Optimization Report\n\nNo issues found.'));
         mockChildProcess.emit('close', 0);
       }, 10);
 
       const result = await executor.execute(config);
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain('Security Audit');
+      expect(result.output).toContain('Optimization Report');
       expect(spawn).toHaveBeenCalledWith(
         expect.any(String),
         expect.arrayContaining(['--sandbox', 'strict']),
@@ -1172,7 +1172,7 @@ describe('HeadlessWorkerExecutor', () => {
 
       const configs: HeadlessWorkerConfig[] = [
         { workerId: 'concurrent-1', workerType: 'map', prompt: 'Task 1' },
-        { workerId: 'concurrent-2', workerType: 'audit', prompt: 'Task 2' },
+        { workerId: 'concurrent-2', workerType: 'optimize', prompt: 'Task 2' },
         { workerId: 'concurrent-3', workerType: 'optimize', prompt: 'Task 3' },
       ];
 

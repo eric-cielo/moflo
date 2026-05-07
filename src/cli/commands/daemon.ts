@@ -24,7 +24,7 @@ const startCommand: Command = {
   name: 'start',
   description: 'Start the worker daemon with all enabled background workers',
   options: [
-    { name: 'workers', short: 'w', type: 'string', description: 'Comma-separated list of workers to enable (default: map,audit,optimize,consolidate,testgaps)' },
+    { name: 'workers', short: 'w', type: 'string', description: 'Comma-separated list of workers to enable (default: map,optimize,consolidate,testgaps)' },
     { name: 'quiet', short: 'Q', type: 'boolean', description: 'Suppress output' },
     { name: 'background', short: 'b', type: 'boolean', description: 'Run daemon in background (detached process)', default: true },
     { name: 'foreground', short: 'f', type: 'boolean', description: 'Run daemon in foreground (blocks terminal)' },
@@ -38,7 +38,7 @@ const startCommand: Command = {
   examples: [
     { command: 'claude-flow daemon start', description: 'Start daemon in background (default)' },
     { command: 'claude-flow daemon start --foreground', description: 'Start in foreground (blocks terminal)' },
-    { command: 'claude-flow daemon start -w map,audit,optimize', description: 'Start with specific workers' },
+    { command: 'claude-flow daemon start -w map,optimize', description: 'Start with specific workers' },
     { command: 'claude-flow daemon start --headless --sandbox strict', description: 'Start with headless workers in strict sandbox' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
@@ -699,8 +699,7 @@ const triggerCommand: Command = {
   ],
   examples: [
     { command: 'claude-flow daemon trigger -w map', description: 'Trigger the map worker' },
-    { command: 'claude-flow daemon trigger -w audit', description: 'Trigger security audit' },
-    { command: 'claude-flow daemon trigger -w audit --headless', description: 'Trigger audit in headless sandbox' },
+    { command: 'claude-flow daemon trigger -w optimize --headless', description: 'Trigger optimize in headless sandbox' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const workerType = ctx.flags.worker as WorkerType;
@@ -708,7 +707,7 @@ const triggerCommand: Command = {
     if (!workerType) {
       output.printError('Worker type is required. Use --worker or -w flag.');
       output.writeln();
-      output.writeln('Available workers: map, audit, optimize, consolidate, testgaps, predict, document, ultralearn, refactor, benchmark, deepdive, preload');
+      output.writeln('Available workers: map, optimize, consolidate, testgaps, ultralearn, refactor, benchmark, deepdive, preload');
       return { success: false, exitCode: 1 };
     }
 
@@ -749,8 +748,8 @@ const enableCommand: Command = {
     { name: 'disable', short: 'd', type: 'boolean', description: 'Disable instead of enable' },
   ],
   examples: [
-    { command: 'claude-flow daemon enable -w predict', description: 'Enable predict worker' },
-    { command: 'claude-flow daemon enable -w document --disable', description: 'Disable document worker' },
+    { command: 'claude-flow daemon enable -w testgaps', description: 'Enable testgaps worker' },
+    { command: 'claude-flow daemon enable -w refactor --disable', description: 'Disable refactor worker' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const workerType = ctx.flags.worker as WorkerType;
@@ -885,7 +884,7 @@ export const daemonCommand: Command = {
     { command: 'claude-flow daemon start --headless', description: 'Start with headless workers (E2B sandbox)' },
     { command: 'claude-flow daemon status', description: 'Check daemon status' },
     { command: 'claude-flow daemon stop', description: 'Stop the daemon' },
-    { command: 'claude-flow daemon trigger -w audit', description: 'Run security audit' },
+    { command: 'claude-flow daemon trigger -w optimize', description: 'Run the optimize worker' },
     { command: 'claude-flow daemon install', description: 'Register as OS login service' },
     { command: 'claude-flow daemon uninstall', description: 'Remove OS login service' },
   ],
@@ -894,7 +893,7 @@ export const daemonCommand: Command = {
     output.writeln(output.bold('MoFlo Daemon - Background Task Management'));
     output.writeln();
     output.writeln('Node.js-based background worker system that auto-runs like shell daemons.');
-    output.writeln('Manages 12 specialized workers for continuous optimization and monitoring.');
+    output.writeln('Manages 9 specialized workers for continuous optimization and monitoring.');
     output.writeln();
     output.writeln(output.bold('Headless Mode'));
     output.writeln('Workers can run in headless mode using E2B sandboxes for isolated execution.');
@@ -903,13 +902,10 @@ export const daemonCommand: Command = {
 
     output.writeln(output.bold('Available Workers'));
     output.printList([
-      `${output.highlight('map')}         - Codebase mapping (5 min interval)`,
-      `${output.highlight('audit')}       - Security analysis (10 min interval)`,
+      `${output.highlight('map')}         - Codebase mapping (15 min interval)`,
       `${output.highlight('optimize')}    - Performance optimization (15 min interval)`,
       `${output.highlight('consolidate')} - Memory consolidation (30 min interval)`,
       `${output.highlight('testgaps')}    - Test coverage analysis (20 min interval)`,
-      `${output.highlight('predict')}     - Predictive preloading (2 min, disabled by default)`,
-      `${output.highlight('document')}    - Auto-documentation (60 min, disabled by default)`,
       `${output.highlight('ultralearn')}  - Deep knowledge acquisition (manual trigger)`,
       `${output.highlight('refactor')}    - Code refactoring suggestions (manual trigger)`,
       `${output.highlight('benchmark')}   - Performance benchmarking (manual trigger)`,
