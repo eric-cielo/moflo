@@ -1,7 +1,7 @@
 /**
- * The Arcane Console — Lightweight localhost HTTP server
+ * The Luminarium — Lightweight localhost HTTP server
  *
- * Serves the moflo Arcane Console (read-only daemon view) for status,
+ * Serves the moflo Luminarium (read-only daemon view) for status,
  * scheduled spells, executions, and memory stats. Binds to 127.0.0.1
  * only (no auth needed).
  *
@@ -630,10 +630,10 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>The Arcane Console</title>
-  <meta name="description" content="The Arcane Console — moflo daemon, scheduled spells, and live event stream">
-  <meta property="og:title" content="The Arcane Console">
-  <meta property="og:description" content="The Arcane Console — moflo daemon, scheduled spells, and live event stream">
+  <title>The Luminarium</title>
+  <meta name="description" content="The Luminarium — moflo daemon, scheduled spells, and live event stream">
+  <meta property="og:title" content="The Luminarium">
+  <meta property="og:description" content="The Luminarium — moflo daemon, scheduled spells, and live event stream">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&display=swap" rel="stylesheet">
@@ -645,13 +645,18 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
        title still reads "arcane" if the user is offline or behind a font-CDN
        block (Georgia ships everywhere; serif is the universal fallback). */
     h1 { font-family: 'Cinzel Decorative', 'Cinzel', 'Trajan Pro', 'Palatino Linotype', 'Book Antiqua', Georgia, serif; font-weight: 900; letter-spacing: 0.04em; margin-bottom: 4px; font-size: 1.85rem; }
-    /* Per-word arcane palette. Hues chosen at L≈45-50%, S≈60-70% so they read on
-       both #0d1117 (dark) and #ffffff (light) — WCAG-AA at large-text size on
-       both. Each word's shadow matches its own hue so the glow doesn't bleed
-       a single color across all three. */
-    h1 .w-the     { color: #8b5cf6; text-shadow: 0 0 18px rgba(139, 92, 246, 0.18); }
-    h1 .w-arcane  { color: #2563eb; text-shadow: 0 0 18px rgba(37, 99, 235, 0.18); }
-    h1 .w-console { color: #059669; text-shadow: 0 0 18px rgba(5, 150, 105, 0.18); }
+    /* Luminous gradient flowing across the whole title (amber → pale gold → pale
+       cyan). background-clip: text paints the gradient through the glyphs;
+       color: transparent reveals it. text-shadow doesn't paint on transparent
+       text, so the glow uses filter: drop-shadow which respects rendered
+       glyph shape. Mid-gradient hue chosen for the glow tint. */
+    h1 .luminarium-title {
+      background: linear-gradient(90deg, #f59e0b 0%, #fde68a 50%, #67e8f4 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      filter: drop-shadow(0 0 14px rgba(253, 230, 138, 0.22));
+    }
     h2 { color: #8b949e; font-size: 1.1rem; margin: 16px 0 12px; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
     .header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
     .subtitle { color: #8b949e; font-size: 0.85rem; }
@@ -699,7 +704,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 </head>
 <body>
   <div class="header">
-    <h1><span class="w-the">The</span> <span class="w-arcane">Arcane</span> <span class="w-console">Console</span></h1>
+    <h1><span class="luminarium-title">The Luminarium</span></h1>
     <span class="subtitle">moflo daemon &bull; localhost</span>
   </div>
   <div id="status-bar" class="status-bar"><div class="empty">Loading...</div></div>

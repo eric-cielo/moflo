@@ -125,7 +125,7 @@ npx flo spell schedule executions --schedule <schedule-id> 2>&1
 
 `executions` reads from the daemon-written `schedule-executions` namespace and shows started time, status (success/failed/running), duration, and whether the run was manual. This is the only command that proves a schedule actually fired — `flo spell schedule list` only shows the schedule definition.
 
-If the user wants to wait for the first fire (interval ≤ 5m), poll `flo spell schedule executions --schedule <id>` or watch The Arcane Console (the daemon's localhost UI). Otherwise, summarize and exit:
+If the user wants to wait for the first fire (interval ≤ 5m), poll `flo spell schedule executions --schedule <id>` or watch The Luminarium (the daemon's localhost UI). Otherwise, summarize and exit:
 
 ```
 Scheduled: <schedule-id>

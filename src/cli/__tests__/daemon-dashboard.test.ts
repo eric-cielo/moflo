@@ -1,5 +1,5 @@
 /**
- * The Arcane Console (daemon dashboard) Tests
+ * The Luminarium (daemon dashboard) Tests
  *
  * Tests the dashboard HTTP server, API routes, and HTML serving.
  */
@@ -205,24 +205,24 @@ describe('DaemonDashboard', () => {
     const res = await fetchDashboard(testPort, '/');
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
-    expect(res.body).toContain('The Arcane Console');
+    expect(res.body).toContain('The Luminarium');
     expect(res.body).toContain('<!DOCTYPE html>');
     expect(res.body).toContain('switchTab');
   });
 
-  it('renders the title with a wizardy font and per-word color spans (#968)', async () => {
+  it('renders the title with a wizardy font and a flowing gradient (#973)', async () => {
     const daemon = makeMockDaemon();
     dashboard = await startDashboard(daemon, { port: testPort });
     const res = await fetchDashboard(testPort, '/');
-    // Three-word colored title with wizardy font family
-    expect(res.body).toContain('<span class="w-the">The</span>');
-    expect(res.body).toContain('<span class="w-arcane">Arcane</span>');
-    expect(res.body).toContain('<span class="w-console">Console</span>');
+    // Single-span title wrapped in the gradient class, wizardy font family
+    expect(res.body).toContain('<span class="luminarium-title">The Luminarium</span>');
     expect(res.body).toContain('Cinzel Decorative');
-    // Each word has a distinct color
-    expect(res.body).toMatch(/\.w-the\s*\{\s*color:\s*#8b5cf6/);
-    expect(res.body).toMatch(/\.w-arcane\s*\{\s*color:\s*#2563eb/);
-    expect(res.body).toMatch(/\.w-console\s*\{\s*color:\s*#059669/);
+    // Luminous gradient (amber → pale gold → pale cyan), painted via background-clip: text
+    expect(res.body).toMatch(/\.luminarium-title\s*\{[^}]*linear-gradient\(\s*90deg\s*,\s*#f59e0b\s+0%\s*,\s*#fde68a\s+50%\s*,\s*#67e8f4\s+100%\s*\)/);
+    expect(res.body).toMatch(/\.luminarium-title\s*\{[^}]*background-clip:\s*text/);
+    expect(res.body).toMatch(/\.luminarium-title\s*\{[^}]*color:\s*transparent/);
+    // Glow uses drop-shadow (text-shadow doesn't paint on transparent text)
+    expect(res.body).toMatch(/\.luminarium-title\s*\{[^}]*filter:\s*drop-shadow/);
   });
 
   it('returns daemon status at GET /api/status', async () => {

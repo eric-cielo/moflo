@@ -144,7 +144,7 @@ const startCommand: Command = {
             `Max Concurrent: ${status.config.maxConcurrent}`,
             `Max CPU Load: ${status.config.resourceThresholds.maxCpuLoad}`,
             `Min Free Memory: ${status.config.resourceThresholds.minFreeMemoryPercent}%`,
-            ...(dashboard ? [`The Arcane Console: http://localhost:${dashboard.port}`] : []),
+            ...(dashboard ? [`The Luminarium: http://localhost:${dashboard.port}`] : []),
           ].join('\n'),
           'Daemon Status'
         );
@@ -242,9 +242,9 @@ async function attachDaemonServices(
         memory,
         schedulerEnabledInConfig: schedulerConfig.enabled,
       });
-      if (opts.verbose) output.printSuccess(`The Arcane Console: http://localhost:${dashboard.port}`);
+      if (opts.verbose) output.printSuccess(`The Luminarium: http://localhost:${dashboard.port}`);
     } catch (err) {
-      logWarn(`The Arcane Console failed to start: ${errorDetail(err)}`);
+      logWarn(`The Luminarium failed to start: ${errorDetail(err)}`);
     }
   }
 
@@ -422,7 +422,7 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
   if (!quiet) {
     output.printSuccess(`Daemon started in background (PID: ${pid})`);
     if (!noDashboard) {
-      output.printInfo(`The Arcane Console: http://localhost:${dashboardPort ?? DEFAULT_DASHBOARD_PORT}`);
+      output.printInfo(`The Luminarium: http://localhost:${dashboardPort ?? DEFAULT_DASHBOARD_PORT}`);
     }
     output.printInfo(`Logs: ${logFile}`);
     output.printInfo(`Stop with: claude-flow daemon stop`);

@@ -4,7 +4,7 @@ Phase-by-phase notes for the full `/flo <issue>` run. Phase 2 (Ticket) lives in 
 
 ## Phase 0: Record run start (Flo Runs dashboard)
 
-Before research, write a row to the `tasklist` namespace so the Arcane Console "Flo Runs" tab shows this run live and after the next session restart (#968). Skip this phase ONLY when `--epic-branch` is set — the epic orchestrator owns the parent record and the per-story spell engine writes its own row.
+Before research, write a row to the `tasklist` namespace so the Luminarium "Flo Runs" tab shows this run live and after the next session restart (#968). Skip this phase ONLY when `--epic-branch` is set — the epic orchestrator owns the parent record and the per-story spell engine writes its own row.
 
 Compute and **remember** for Phase 5:
 - `runId` — `flo-<issue-number-or-"new">-<startedAt-ms>` (sortable, unique).

@@ -419,7 +419,7 @@ flo daemon status    # shows whether the service is registered AND running
 
 `flo spell schedule create` warns when the daemon isn't installed so you don't quietly miss runs.
 
-**Monitoring.** **The Arcane Console** (the moflo daemon's localhost UI) surfaces live schedules, recent executions, and per-schedule controls (disable / re-enable / run now). It starts alongside the daemon at `http://localhost:3117` (override with `--dashboard-port` or disable with `--no-dashboard`).
+**Monitoring.** **The Luminarium** (the moflo daemon's localhost UI) surfaces live schedules, recent executions, and per-schedule controls (disable / re-enable / run now). It starts alongside the daemon at `http://localhost:3117` (override with `--dashboard-port` or disable with `--no-dashboard`).
 
 For full configuration (`scheduler:` block in `moflo.yaml`), event types, and the catch-up window after restarts, see [docs/SPELLS.md#scheduling](docs/SPELLS.md#scheduling).
 
