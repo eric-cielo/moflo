@@ -209,6 +209,66 @@ emit({ rows: rows.length, bytes: buf.length });
   return dbPath;
 }
 
+/**
+ * Pre-populate `.moflo/moflo.db` with the `tasklist` rows the harness expects
+ * to survive the launcher (#968 retention contract). SpellCaster.storeProgress
+ * writes here in steady state, so to test the trim semantics we have to seed
+ * THIS db — not `.swarm/memory.db`. The cherry-pick (`learnings`/`knowledge`
+ * only) doesn't carry tasklist forward from legacy, by design.
+ *
+ * Schema-compatible with `MEMORY_SCHEMA_V3` for the columns the launcher's
+ * trim query touches (id, key, namespace, content, status, created_at). The
+ * cherry-pick's `CREATE TABLE IF NOT EXISTS` is a no-op when our table is
+ * already there.
+ */
+function seedMofloDb(consumerDir, tasklistRows) {
+  const mofloDir = join(consumerDir, MOFLO_DIR);
+  mkdirSync(mofloDir, { recursive: true });
+  const dbPath = memoryDbPath(consumerDir);
+
+  const result = runSqlJsProbe(consumerDir, 'seed-moflo-db', `
+const SQL = await sqlInit();
+const db = new SQL.Database();
+db.exec(\`CREATE TABLE memory_entries (
+  id TEXT PRIMARY KEY,
+  key TEXT NOT NULL,
+  namespace TEXT DEFAULT 'default',
+  content TEXT NOT NULL,
+  type TEXT DEFAULT 'semantic',
+  embedding TEXT,
+  embedding_model TEXT DEFAULT 'local',
+  embedding_dimensions INTEGER,
+  tags TEXT,
+  metadata TEXT,
+  owner_id TEXT,
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')*1000),
+  updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')*1000),
+  expires_at INTEGER,
+  last_accessed_at INTEGER,
+  access_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'active' CHECK(status IN ('active','archived','deleted')),
+  UNIQUE(namespace, key)
+)\`);
+db.exec('CREATE INDEX idx_bridge_ns ON memory_entries(namespace)');
+db.exec('CREATE INDEX idx_bridge_status ON memory_entries(status)');
+const stmt = db.prepare('INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?,?,?,?,?)');
+const rows = ${JSON.stringify(tasklistRows)};
+for (const r of rows) {
+  stmt.run([r.id, r.key, r.namespace, r.content, r.status]);
+}
+stmt.free();
+const { writeFileSync } = await import('node:fs');
+const buf = Buffer.from(db.export());
+db.close();
+writeFileSync(${JSON.stringify(dbPath)}, buf);
+emit({ rows: rows.length, bytes: buf.length });
+`);
+
+  if (!result) throw new Error('seed moflo db failed');
+  record('populated:seed-moflo-db', 'pass', `${result.rows} tasklist rows / ${result.bytes} bytes`);
+  return dbPath;
+}
+
 function seedFilesystemFixtures(consumerDir) {
   const claudeFlow = join(consumerDir, LEGACY_CLAUDE_FLOW_DIR);
   const swarmDir = join(consumerDir, LEGACY_SWARM_DIR);
@@ -752,6 +812,12 @@ export async function runPopulatedConsumerProfile(consumerDir) {
   section('Populated: pre-state seed');
   const rows = buildSeedPlan();
   seedSwarmDb(consumerDir, rows);
+  // #968 trim semantics: SpellCaster writes tasklist into `.moflo/moflo.db`,
+  // not the legacy `.swarm/memory.db`, so to test "tasklist survives the
+  // launcher" we have to seed the canonical db directly. The launcher's
+  // §3e-729 trim runs there and (with N=5 < 200 cap) keeps every row.
+  const tasklistRows = rows.filter((r) => r.namespace === 'tasklist');
+  seedMofloDb(consumerDir, tasklistRows);
   seedFilesystemFixtures(consumerDir);
 
   section('Populated: launcher run');
