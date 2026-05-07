@@ -3,7 +3,7 @@
  * whenever the delete fails, instead of silently returning
  * { success: false, deleted: false }.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MCPTool } from '../mcp-tools/types.js';
 
 const deleteSpy = vi.fn();
@@ -24,9 +24,6 @@ vi.mock('../services/spell-gate.js', () => ({
 
 beforeEach(() => {
   deleteSpy.mockReset();
-});
-afterEach(() => {
-  vi.restoreAllMocks();
 });
 
 async function getDeleteTool(): Promise<MCPTool> {

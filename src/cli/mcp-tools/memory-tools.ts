@@ -429,10 +429,9 @@ export const memoryTools: MCPTool[] = [
         // require `deleted === true` for the MCP-level success boolean,
         // and pass `result.error` through whenever the delete didn't take.
         const deleted = result.deleted === true;
-        const errorReason = result.error
-          ?? (deleted
-            ? undefined
-            : `No entry deleted (key='${key}', namespace='${namespace}'); reason not reported by storage layer`);
+        const errorReason = !deleted
+          ? (result.error ?? `No entry deleted (key='${key}', namespace='${namespace}'); reason not reported by storage layer`)
+          : undefined;
 
         return {
           success: result.success === true && deleted,

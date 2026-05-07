@@ -618,10 +618,12 @@ export async function bridgeDeleteEntry(options: {
 } | null> {
   return withDb(options.dbPath, async (ctx, registry) => {
     const { key, namespace = 'default' } = options;
+    const deleteFail = (error: string) =>
+      ({ success: false, deleted: false, key, namespace, remainingEntries: 0, error } as const);
 
     const guardResult = await guardValidate(registry, 'delete', { key, namespace });
     if (!guardResult.allowed) {
-      return { success: false, deleted: false, key, namespace, remainingEntries: 0, error: `MutationGuard rejected: ${guardResult.reason}` };
+      return deleteFail(`MutationGuard rejected: ${guardResult.reason}`);
     }
 
     let existed = false;
@@ -633,25 +635,11 @@ export async function bridgeDeleteEntry(options: {
       );
       existed = existsRows.length > 0;
     } catch (err) {
-      return {
-        success: false,
-        deleted: false,
-        key,
-        namespace,
-        remainingEntries: 0,
-        error: `DB read failed during delete pre-check: ${errorDetail(err)}`,
-      };
+      return deleteFail(`DB read failed during delete pre-check: ${errorDetail(err)}`);
     }
 
     if (!existed) {
-      return {
-        success: false,
-        deleted: false,
-        key,
-        namespace,
-        remainingEntries: 0,
-        error: `Key '${key}' not found in namespace '${namespace}'`,
-      };
+      return deleteFail(`Key '${key}' not found in namespace '${namespace}'`);
     }
 
     let changes = 0;
@@ -664,28 +652,16 @@ export async function bridgeDeleteEntry(options: {
       // db.getRowsModified() to read the row count from the last statement.
       changes = ctx.db.getRowsModified?.() ?? 0;
     } catch (err) {
-      return {
-        success: false,
-        deleted: false,
-        key,
-        namespace,
-        remainingEntries: 0,
-        error: `DELETE failed: ${errorDetail(err)}`,
-      };
+      return deleteFail(`DELETE failed: ${errorDetail(err)}`);
     }
 
     if (changes === 0) {
       // SELECT found the row but DELETE removed nothing. Most likely cause:
       // bridge holds an in-memory snapshot that diverged from disk
       // (sql.js writeback semantics — see feedback_sqljs_writeback_clobber.md).
-      return {
-        success: false,
-        deleted: false,
-        key,
-        namespace,
-        remainingEntries: 0,
-        error: `Internal inconsistency: row matched SELECT but DELETE removed 0 rows (key='${key}', namespace='${namespace}'). Possible bridge cache staleness — restart the daemon and retry.`,
-      };
+      return deleteFail(
+        `Internal inconsistency: row matched SELECT but DELETE removed 0 rows (key='${key}', namespace='${namespace}'). Possible bridge cache staleness — restart the daemon and retry.`,
+      );
     }
 
     persistBridgeDb(ctx.db, options.dbPath);
@@ -694,8 +670,8 @@ export async function bridgeDeleteEntry(options: {
 
     let remaining = 0;
     try {
-      const result = ctx.db.exec(`SELECT COUNT(*) as cnt FROM memory_entries WHERE status = 'active'`);
-      remaining = result[0]?.values?.[0]?.[0] ?? 0;
+      const countRows = execRows(ctx.db, `SELECT COUNT(*) as cnt FROM memory_entries WHERE status = 'active'`);
+      remaining = Number(countRows[0]?.cnt ?? 0);
     } catch {
       // Non-fatal — count is informational
     }
