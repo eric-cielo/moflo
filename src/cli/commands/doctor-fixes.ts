@@ -6,7 +6,6 @@
  * if it looks like an `npx`/`npm`/`claude` command.
  */
 
-import { execSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { output } from '../output.js';
@@ -169,26 +168,6 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     },
     'Claude Code CLI': async () => {
       return installClaudeCode();
-    },
-    // Pass-through to Claude Code's own diagnostic. We don't own its CLI surface
-    // and most Claude-side findings (auth, IDE reload, settings drift) need
-    // user gestures, so the "fix" here is just to re-run with inherited stdio
-    // and let the user act on what they see.
-    'Claude Code Doctor': async () => {
-      try {
-        execSync('claude doctor', {
-          encoding: 'utf8',
-          stdio: 'inherit',
-          windowsHide: true,
-          timeout: 60000,
-        });
-        return true;
-      } catch {
-        // Non-zero exit is informational here — user has seen the output and
-        // can act on it. Don't claim success, but don't claim failure of OUR
-        // healer either; flag as "needs manual action".
-        return false;
-      }
     },
     'Zombie Processes': async () => {
       const result = await findZombieProcesses(true);

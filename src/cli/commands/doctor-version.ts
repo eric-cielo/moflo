@@ -75,11 +75,11 @@ function isOutdated(current: ParsedVersion, latest: ParsedVersion): boolean {
 // Manual AbortController (NOT AbortSignal.timeout): the latter leaves
 // a libuv timer alive past process exit on Node 24 / Windows and trips
 // an `!(handle->flags & UV_HANDLE_CLOSING)` assertion in src/win/async.c.
-async function fetchLatestVersion(): Promise<string> {
+export async function fetchLatestNpmVersion(pkg: string): Promise<string> {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), REGISTRY_FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch('https://registry.npmjs.org/moflo/latest', {
+    const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg)}/latest`, {
       headers: { Accept: 'application/json' },
       signal: ac.signal,
     });
@@ -92,6 +92,11 @@ async function fetchLatestVersion(): Promise<string> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+export { parseVersion, isOutdated };
+async function fetchLatestVersion(): Promise<string> {
+  return fetchLatestNpmVersion('moflo');
 }
 
 export async function checkVersionFreshness(): Promise<HealthCheck> {

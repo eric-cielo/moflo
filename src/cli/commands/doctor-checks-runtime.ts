@@ -11,6 +11,7 @@ import { execSync, exec } from 'child_process';
 import { promisify } from 'util';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { output } from '../output.js';
+import { fetchLatestNpmVersion, parseVersion, isOutdated } from './doctor-version.js';
 import type { HealthCheck } from './doctor-types.js';
 
 const execAsync = promisify(exec);
@@ -138,11 +139,9 @@ export async function checkBuildTools(): Promise<HealthCheck> {
 }
 
 export async function checkClaudeCode(): Promise<HealthCheck> {
+  let installedRaw: string;
   try {
-    const version = await runCommand('claude --version');
-    const versionMatch = version.match(/v?(\d+\.\d+\.\d+)/);
-    const versionStr = versionMatch ? `v${versionMatch[1]}` : version;
-    return { name: 'Claude Code CLI', status: 'pass', message: versionStr };
+    installedRaw = await runCommand('claude --version');
   } catch (e) {
     return {
       name: 'Claude Code CLI',
@@ -151,94 +150,41 @@ export async function checkClaudeCode(): Promise<HealthCheck> {
       fix: 'npm install -g @anthropic-ai/claude-code',
     };
   }
-}
 
-/**
- * Delegate diagnostics to Claude Code's own `claude doctor` command and surface
- * the result. Catches Claude-side issues (settings drift, MCP/auth, IDE/extension
- * state, update channel) that moflo's own checks can't see — since `claude` is
- * not a moflo-owned binary we don't try to parse its output structurally; we
- * just report exit code + a short tail. Skip silently when `claude` isn't
- * installed — `checkClaudeCode` already covers that condition.
- */
-export async function checkClaudeCodeDoctor(): Promise<HealthCheck> {
+  const versionMatch = installedRaw.match(/v?(\d+\.\d+\.\d+)/);
+  const installedClean = versionMatch ? versionMatch[1] : installedRaw.trim();
+  const installedDisplay = versionMatch ? `v${installedClean}` : installedRaw.trim();
+
+  // Compare against the latest published @anthropic-ai/claude-code on npm.
+  // Replaces the old `claude doctor` delegate (which became a TUI in CC 2.1.x
+  // and could not be parsed from a non-TTY child). Freshness was the only
+  // user-actionable signal that delegate produced; the auto-updater state +
+  // .mcp.json server health it also covered are already verified by the
+  // existing daemon and `MCP Servers` checks.
+  let latest: string;
   try {
-    await runCommand('claude --version', 3000);
-  } catch {
+    latest = await fetchLatestNpmVersion('@anthropic-ai/claude-code');
+  } catch (e) {
     return {
-      name: 'Claude Code Doctor',
+      name: 'Claude Code CLI',
       status: 'pass',
-      message: 'Skipped (claude CLI not installed — see Claude Code CLI check)',
+      message: `${installedDisplay} (registry unreachable: ${errorDetail(e, { firstLineOnly: true })})`,
     };
   }
 
-  // Capture both streams + exit code without throwing. `claude doctor` exits
-  // non-zero on findings, so a try/catch over execAsync would lose the body.
-  const result: { code: number | null; stdout: string; stderr: string } = await new Promise((resolve) => {
-    const child = exec(
-      'claude doctor',
-      {
-        encoding: 'utf8',
-        timeout: 30000,
-        shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
-        env: { ...process.env },
-        windowsHide: true,
-      },
-      (err, stdout, stderr) => {
-        resolve({
-          code: err && typeof (err as NodeJS.ErrnoException).code === 'number'
-            ? ((err as unknown as { code: number }).code)
-            : (err ? 1 : 0),
-          stdout: (stdout || '').toString().trim(),
-          stderr: (stderr || '').toString().trim(),
-        });
-      },
-    );
-    child.on('error', () => resolve({ code: 1, stdout: '', stderr: '' }));
-  });
-
-  // claude doctor not recognised → some Claude versions don't ship the
-  // subcommand. Surface as a pass-skip rather than a failure so older Claude
-  // installs aren't penalised.
-  const combined = `${result.stdout}\n${result.stderr}`.toLowerCase();
-  if (
-    /unknown command|command not found|usage:.*claude/.test(combined) &&
-    !combined.includes('check')
-  ) {
+  if (versionMatch && isOutdated(parseVersion(installedClean), parseVersion(latest))) {
     return {
-      name: 'Claude Code Doctor',
-      status: 'pass',
-      message: 'Skipped (this Claude version does not expose `claude doctor`)',
+      name: 'Claude Code CLI',
+      status: 'warn',
+      message: `${installedDisplay} (latest: v${latest})`,
+      fix: 'npm install -g @anthropic-ai/claude-code@latest',
     };
   }
 
-  if (result.code === 0) {
-    const firstLine = result.stdout.split(/\r?\n/).find((l) => l.trim()) || 'No issues reported';
-    return { name: 'Claude Code Doctor', status: 'pass', message: firstLine.slice(0, 120) };
-  }
-
-  // Non-zero with zero output → `claude doctor` is interactive in current
-  // Claude Code releases (verified on 2.1.132): it opens a TUI and produces
-  // nothing on a non-TTY child stdout, then our exec timeout kills it. Treat
-  // as a skip — the check can't observe the TUI from here, and warning would
-  // fire on every machine running the same Claude version.
-  if (!result.stdout && !result.stderr) {
-    return {
-      name: 'Claude Code Doctor',
-      status: 'pass',
-      message: 'Skipped (claude doctor is interactive — run manually to see findings)',
-    };
-  }
-
-  // Non-zero — surface the tail so the user has a hint, and point to the
-  // interactive command for the full report. Don't try to fix from here:
-  // Claude-side fixes (re-auth, settings repair, IDE reload) need user gestures.
-  const tailLines = result.stdout.split(/\r?\n/).filter((l) => l.trim()).slice(-3).join(' | ');
   return {
-    name: 'Claude Code Doctor',
-    status: 'warn',
-    message: `claude doctor reported issues: ${tailLines.slice(0, 200)}`,
-    fix: 'Run `claude doctor` interactively for full report and follow its instructions',
+    name: 'Claude Code CLI',
+    status: 'pass',
+    message: `${installedDisplay} (up to date)`,
   };
 }
 
