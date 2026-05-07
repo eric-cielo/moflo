@@ -213,15 +213,25 @@ describe('bin/lib/file-sync.mjs (#975)', () => {
       // verified by the makeSyncer contract test below.
     });
 
-    it('TRANSIENT_CODES treatment includes EVERIFY (verified via syncFile retry)', async () => {
+    it('TRANSIENT_CODES treatment includes VERIFY_FAIL_CODE (exported, retried as transient)', async () => {
       // syncFile catches the throw and inspects err.code to decide whether
-      // to retry. EVERIFY must be classified as transient — pinned by the
-      // syncWithRetry source check `lastCode === 'EVERIFY'`.
+      // to retry. VERIFY_FAIL_CODE must be classified as transient. Verified
+      // here by exercising the helper directly: the retry recovery test
+      // above proves the syncFile branch retries on it; this one pins the
+      // exported constant + the syncWithRetry uses it (no magic string).
+      const { VERIFY_FAIL_CODE } = await loadHelper();
+      expect(VERIFY_FAIL_CODE).toBe('EVERIFY');
       const helperUrl = new URL(
         `file:///${join(REPO_ROOT, 'bin/lib/file-sync.mjs').replace(/\\/g, '/').replace(/^\/+/, '')}`,
       ).href;
       const helperSrc = readFileSync(new URL(helperUrl), 'utf-8');
-      expect(helperSrc).toMatch(/lastCode\s*===\s*['"]EVERIFY['"]/);
+      expect(helperSrc).toMatch(/lastCode\s*===\s*VERIFY_FAIL_CODE/);
+      // No remaining magic-string occurrences in retry/breaker paths.
+      const transientCheck = helperSrc.match(/transient\s*=\s*TRANSIENT_CODES[^;]+/g) || [];
+      for (const m of transientCheck) {
+        expect(m).not.toMatch(/'EVERIFY'/);
+        expect(m).not.toMatch(/"EVERIFY"/);
+      }
     });
 
     it('leaves .tmp sidecar in place when rename fails', async () => {

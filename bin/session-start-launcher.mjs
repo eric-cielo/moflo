@@ -15,7 +15,7 @@ import { mofloDir } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune } from './lib/retired-files.mjs';
-import { makeSyncer } from './lib/file-sync.mjs';
+import { makeSyncer, contentEqual } from './lib/file-sync.mjs';
 
 // Headless skip (#860). The daemon's headless workers spawn `claude --print`
 // with CLAUDE_CODE_HEADLESS=true (see src/cli/services/headless-worker-
@@ -167,8 +167,12 @@ const UPGRADE_NOTICE_INPROGRESS_TTL_MS = 5 * 60 * 1000;
 const UPGRADE_NOTICE_COMPLETED_TTL_MS = 2 * 60 * 1000;
 const UPGRADE_NOTICE_PATH = () => join(mofloDir(projectRoot), 'upgrade-notice.json');
 
-function writeUpgradeNotice(status) {
-  if (!upgradeNoticeContext) return;
+// Single-source-of-truth notice writer. Reused by writeUpgradeNotice (the
+// version-bump / drift-heal path) and the §0-bootstrap-sentinel + §3h paths
+// (#975 statusline-channel promotion). Keeps the JSON shape colocated with
+// the TTL constants instead of letting it drift across two inline copies.
+function buildAndWriteNotice(context, status) {
+  if (!context) return;
   const ttlMs = status === 'completed'
     ? UPGRADE_NOTICE_COMPLETED_TTL_MS
     : UPGRADE_NOTICE_INPROGRESS_TTL_MS;
@@ -177,15 +181,19 @@ function writeUpgradeNotice(status) {
     const now = Date.now();
     const notice = {
       status,
-      kind: upgradeNoticeContext.kind,
-      from: upgradeNoticeContext.from,
-      to: upgradeNoticeContext.to,
+      kind: context.kind,
+      from: context.from,
+      to: context.to,
       at: new Date(now).toISOString(),
       expiresAt: new Date(now + ttlMs).toISOString(),
       changes: 0,
     };
     writeFileSync(UPGRADE_NOTICE_PATH(), JSON.stringify(notice, null, 2));
   } catch { /* non-fatal — statusline just won't show the segment */ }
+}
+
+function writeUpgradeNotice(status) {
+  buildAndWriteNotice(upgradeNoticeContext, status);
 }
 
 // ── 0-pre. Drop any stale upgrade notice (#738, #743) ───────────────────────
@@ -228,23 +236,7 @@ try {
       `Upgrade detected ${count} unfinished install step(s) from npm install (moflo@${sentinelVersion}). Run /healer --fix to repair.`,
     );
     bootstrapNoticeContext = { kind: 'repair', from: sentinelVersion, to: sentinelVersion };
-    try {
-      mkdirSync(mofloDir(projectRoot), { recursive: true });
-      const now = Date.now();
-      const ttlMs = 5 * 60 * 1000; // matches UPGRADE_NOTICE_INPROGRESS_TTL_MS
-      writeFileSync(
-        join(mofloDir(projectRoot), 'upgrade-notice.json'),
-        JSON.stringify({
-          status: 'in-progress',
-          kind: 'repair',
-          from: sentinelVersion,
-          to: sentinelVersion,
-          at: new Date(now).toISOString(),
-          expiresAt: new Date(now + ttlMs).toISOString(),
-          changes: 0,
-        }, null, 2),
-      );
-    } catch { /* non-fatal — emitWarning above already surfaced the prompt */ }
+    buildAndWriteNotice(bootstrapNoticeContext, 'in-progress');
   }
 } catch (err) {
   // Unreadable sentinel — leave it; healer will catch the underlying issue.
@@ -1512,13 +1504,11 @@ if (bootstrapSentinelData?.failures?.length > 0) {
   try {
     const allRepaired = bootstrapSentinelData.failures.every((f) => {
       if (!f?.src || !f?.dest) return false;
-      if (!existsSync(f.src) || !existsSync(f.dest)) return false;
-      try {
-        const srcBuf = readFileSync(f.src);
-        const destBuf = readFileSync(f.dest);
-        if (srcBuf.length !== destBuf.length) return false;
-        return srcBuf.equals(destBuf);
-      } catch { return false; }
+      // contentEqual already does the size short-circuit + SHA-1 hash and
+      // is the same predicate the §3 sync used to decide whether to skip
+      // the copy in the first place — reusing it here keeps "the sentinel
+      // is clearable when bytes match" consistent across both code paths.
+      return contentEqual(f.src, f.dest);
     });
     if (allRepaired) {
       unlinkSync(BOOTSTRAP_SENTINEL_PATH);
@@ -1529,22 +1519,7 @@ if (bootstrapSentinelData?.failures?.length > 0) {
       // — that path runs the §3f writer with its own kind/version and we
       // shouldn't clobber it from here.
       if (bootstrapNoticeContext && !upgradeNoticeContext) {
-        try {
-          const now = Date.now();
-          const ttlMs = 2 * 60 * 1000; // matches UPGRADE_NOTICE_COMPLETED_TTL_MS
-          writeFileSync(
-            join(mofloDir(projectRoot), 'upgrade-notice.json'),
-            JSON.stringify({
-              status: 'completed',
-              kind: bootstrapNoticeContext.kind,
-              from: bootstrapNoticeContext.from,
-              to: bootstrapNoticeContext.to,
-              at: new Date(now).toISOString(),
-              expiresAt: new Date(now + ttlMs).toISOString(),
-              changes: 0,
-            }, null, 2),
-          );
-        } catch { /* non-fatal */ }
+        buildAndWriteNotice(bootstrapNoticeContext, 'completed');
       }
     }
   } catch (err) {

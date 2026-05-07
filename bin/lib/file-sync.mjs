@@ -40,6 +40,11 @@ export const TRANSIENT_CODES = new Set(['EBUSY', 'EPERM', 'EACCES']);
 export const RETRY_BACKOFF_MS = [50, 200, 800];
 export const CIRCUIT_BREAK_THRESHOLD = 5;
 
+// Code attached to the post-write size-verify failure. Treated as transient by
+// syncWithRetry so torn writes from AV mid-stream / partial DrvFs writes get a
+// retry instead of immediately surfacing as a hard failure.
+export const VERIFY_FAIL_CODE = 'EVERIFY';
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function fileHash(path) {
@@ -52,6 +57,18 @@ export function fileHash(path) {
 
 export function contentEqual(srcPath, destPath) {
   if (!existsSync(destPath)) return false;
+  // Size check first — skips the SHA-1 pass on every mis-sized pair without
+  // any I/O on the file body. For the bootstrap's small file set the SHA-1
+  // is cheap, but this fires on every file on every session-start with
+  // version drift, and under load (AV lock + retries) the reads compound.
+  let srcSize, destSize;
+  try {
+    srcSize = statSync(srcPath).size;
+    destSize = statSync(destPath).size;
+  } catch {
+    return false;
+  }
+  if (srcSize !== destSize) return false;
   const srcHash = fileHash(srcPath);
   if (!srcHash) return false;
   const destHash = fileHash(destPath);
@@ -90,7 +107,7 @@ export function atomicCopy(src, dest, deps = {}) {
   } catch (statErr) {
     try { _unlink(tmp); } catch { /* best-effort cleanup */ }
     const err = new Error(`atomicCopy verify stat failed: ${statErr.message || statErr}`);
-    err.code = statErr.code || 'EVERIFY';
+    err.code = statErr.code || VERIFY_FAIL_CODE;
     throw err;
   }
   if (srcSize !== tmpSize) {
@@ -98,7 +115,7 @@ export function atomicCopy(src, dest, deps = {}) {
     const err = new Error(
       `atomicCopy size mismatch (src=${srcSize} tmp=${tmpSize}) for ${dest}`,
     );
-    err.code = 'EVERIFY';
+    err.code = VERIFY_FAIL_CODE;
     throw err;
   }
   _rename(tmp, dest);
@@ -140,7 +157,7 @@ export function makeSyncer({ onSuccess } = {}) {
       } catch (err) {
         lastErr = err;
         lastCode = err && err.code ? err.code : null;
-        const transient = TRANSIENT_CODES.has(lastCode) || lastCode === 'EVERIFY';
+        const transient = TRANSIENT_CODES.has(lastCode) || lastCode === VERIFY_FAIL_CODE;
         if (!transient) break;
       }
     }
@@ -167,7 +184,7 @@ export function makeSyncer({ onSuccess } = {}) {
       try { onSuccess?.(key, dest); } catch { /* non-fatal */ }
       return { ok: true };
     }
-    const transient = TRANSIENT_CODES.has(result.code) || result.code === 'EVERIFY';
+    const transient = TRANSIENT_CODES.has(result.code) || result.code === VERIFY_FAIL_CODE;
     const tail = transient
       ? ` (retried ${RETRY_BACKOFF_MS.length}× after ${result.code}${circuitOpen ? '; circuit open' : ''})`
       : '';
