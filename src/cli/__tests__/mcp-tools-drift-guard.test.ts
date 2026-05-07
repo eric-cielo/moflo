@@ -92,6 +92,19 @@ const ALLOWLIST: Record<string, string> = {
   // prove the tools work; the agent body modernization tracks separately.
   'swarm_scale': 'exercised by src/cli/__tests__/mcp-tools/swarm-scale.test.ts (live coordinator-backed integration test)',
   'task_orchestrate': 'exercised by src/cli/__tests__/mcp-tools/task-orchestrate.test.ts and tests/system/swarm-restoration-e2e.test.ts',
+
+  // Tools whose agent-side consumers were retired by #932/#945 (the
+  // ruflo-aspirational agent purge) but whose handlers remain real,
+  // exercised infrastructure callable directly from Claude Code via
+  // `mcp__moflo__<name>` user-facing tool calls. The MCP registration IS
+  // the public surface — users invoke these from their own prompts/skills,
+  // outside this repo's corpus. Re-wiring shipped consumers would mean
+  // restoring the very agents #932 deleted.
+  'neural_predict': 'public neural API: registered MCP tool callable from user prompts (consumers in retired #932 agents)',
+  'github_pr_manage': 'public GitHub API: registered MCP tool for PR ops (consumers in retired #932 agents)',
+  'github_issue_track': 'public GitHub API: registered MCP tool for issue tracking (consumers in retired #932 agents)',
+  'github_metrics': 'public GitHub API: registered MCP tool for repo metrics (consumers in retired #932 agents)',
+  'coordination_sync': 'public coordination API: registered MCP tool for swarm/hive sync (consumers in retired #932 agents)',
 };
 
 interface RegisteredTool {

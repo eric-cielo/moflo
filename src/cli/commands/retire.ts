@@ -88,9 +88,12 @@ export const retireCommand: Command = {
       return { success: false, message: 'seed script missing', exitCode: 1 };
     }
 
+    // Parser normalises kebab-case flag names to camelCase before storing
+    // (#787). Read as ctx.flags.<camelCase> — bracket-with-kebab is always
+    // undefined and ESLint blocks that pattern.
     const args = ['--add', path];
-    if (ctx.flags['retired-by']) args.push('--retired-by', String(ctx.flags['retired-by']));
-    if (ctx.flags['retired-in']) args.push('--retired-in', String(ctx.flags['retired-in']));
+    if (ctx.flags.retiredBy) args.push('--retired-by', String(ctx.flags.retiredBy));
+    if (ctx.flags.retiredIn) args.push('--retired-in', String(ctx.flags.retiredIn));
     if (ctx.flags.hashes) args.push('--hashes', String(ctx.flags.hashes));
 
     const result = spawnSync('node', [scriptPath, ...args], {
