@@ -131,6 +131,18 @@ function loadGuidanceDirs() {
   // 3. CLAUDE.md files are NOT indexed — Claude loads them into context automatically.
   //    Indexing them wastes vectors and creates duplicate keys across subprojects.
 
+  // 4. Project skills — index .claude/skills/<name>/SKILL.md
+  const projectSkillsDir = resolve(projectRoot, '.claude/skills');
+  if (existsSync(projectSkillsDir)) {
+    dirs.push({ path: '.claude/skills', prefix: 'skill', fileFilter: ['SKILL.md'], kind: 'skill' });
+  }
+
+  // 5. Bundled moflo skills — gated by isSelfRef to prevent double-indexing
+  const bundledSkillsDir = resolve(mofloRoot, '.claude/skills');
+  if (!isSelfRef && existsSync(bundledSkillsDir) && resolve(bundledSkillsDir) !== resolve(projectSkillsDir)) {
+    dirs.push({ path: bundledSkillsDir, prefix: 'skill-bundled', fileFilter: ['SKILL.md'], kind: 'skill', absolute: true });
+  }
+
   return dirs;
 }
 
@@ -513,10 +525,12 @@ function buildHierarchy(chunks, chunkPrefix) {
   return hierarchy;
 }
 
-function indexFile(db, filePath, keyPrefix) {
-  const fileName = basename(filePath, extname(filePath));
+function indexFile(db, filePath, keyPrefix, options = {}) {
+  const fileName = options.nameOverride || basename(filePath, extname(filePath));
   const docKey = `doc-${keyPrefix}-${fileName}`;
   const chunkPrefix = `chunk-${keyPrefix}-${fileName}`;
+  const extraMetadata = options.extraMetadata || {};
+  const extraTags = options.extraTags || [];
 
   try {
     const content = readFileSync(filePath, 'utf-8');
@@ -538,6 +552,7 @@ function indexFile(db, filePath, keyPrefix) {
 
     // 1. Store full document
     const docMetadata = {
+      ...extraMetadata,
       type: 'document',
       filePath: relativePath,
       fileSize: stats.size,
@@ -547,7 +562,7 @@ function indexFile(db, filePath, keyPrefix) {
       ragVersion: '2.0',  // Mark as full RAG indexed
     };
 
-    storeEntry(db, docKey, content, docMetadata, [keyPrefix, 'document']);
+    storeEntry(db, docKey, content, docMetadata, [keyPrefix, 'document', ...extraTags]);
     debug(`Stored document: ${docKey}`);
 
     // 2. Chunk and store semantic pieces with full RAG linking
@@ -567,7 +582,7 @@ function indexFile(db, filePath, keyPrefix) {
       children: siblings,
       chunkCount: chunks.length,
     };
-    storeEntry(db, docKey, content, docChildrenMeta, [keyPrefix, 'document']);
+    storeEntry(db, docKey, content, docChildrenMeta, [keyPrefix, 'document', ...extraTags]);
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -589,6 +604,7 @@ function indexFile(db, filePath, keyPrefix) {
       const hierInfo = hierarchy[chunkKey];
 
       const chunkMetadata = {
+        ...extraMetadata,
         type: 'chunk',
         ragVersion: '2.0',
 
@@ -647,7 +663,7 @@ function indexFile(db, filePath, keyPrefix) {
         chunkKey,
         searchableContent,
         chunkMetadata,
-        [keyPrefix, 'chunk', `level-${chunk.level}`, chunk.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')]
+        [keyPrefix, 'chunk', `level-${chunk.level}`, chunk.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'), ...extraTags]
       );
 
       debug(`  Stored chunk ${i}: ${chunk.title} (${chunk.content.length} chars, prev=${!!prevChunk}, next=${!!nextChunk})`);
@@ -699,7 +715,17 @@ function indexDirectory(db, dirConfig) {
     : allMdFiles;
 
   for (const filePath of filtered) {
-    const result = indexFile(db, filePath, dirConfig.prefix);
+    let options = {};
+    if (dirConfig.kind === 'skill') {
+      // kind: 'skill' — key by parent dir name (skill folder), not SKILL.md
+      const skillName = basename(dirname(filePath));
+      options = {
+        nameOverride: skillName,
+        extraMetadata: { kind: 'skill', skill_name: skillName },
+        extraTags: ['skill', `skill-${skillName}`],
+      };
+    }
+    const result = indexFile(db, filePath, dirConfig.prefix, options);
     results.push(result);
   }
 
