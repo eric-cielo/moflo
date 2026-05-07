@@ -502,26 +502,31 @@ function handleSchedulesEventStream(
   // the first scheduler event arrives (which may be minutes away).
   res.write(`event: ready\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`);
 
-  const unsubscribe = scheduler.on((event) => {
-    try {
-      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-    } catch {
-      // Socket may have torn down between event emission and write — close
-      // path below will run; nothing to do here.
-    }
-  });
-
-  const heartbeat = setInterval(() => {
-    try { res.write(`: ping ${Date.now()}\n\n`); } catch { /* close path handles it */ }
-  }, SSE_HEARTBEAT_MS);
-  // Don't keep the event loop alive solely for heartbeats.
-  if (typeof heartbeat.unref === 'function') heartbeat.unref();
-
+  let cleaned = false;
   const cleanup = (): void => {
+    if (cleaned) return;
+    cleaned = true;
     clearInterval(heartbeat);
     unsubscribe();
     try { res.end(); } catch { /* already ended */ }
   };
+
+  const unsubscribe = scheduler.on((event) => {
+    try {
+      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    } catch {
+      // Half-open socket: the request may never emit 'close'. Defer cleanup
+      // to the next microtask so we don't splice the listeners array we are
+      // currently being iterated from inside.
+      queueMicrotask(cleanup);
+    }
+  });
+
+  const heartbeat = setInterval(() => {
+    try { res.write(`: ping ${Date.now()}\n\n`); } catch { queueMicrotask(cleanup); }
+  }, SSE_HEARTBEAT_MS);
+  if (typeof heartbeat.unref === 'function') heartbeat.unref();
+
   req.on('close', cleanup);
   req.on('error', cleanup);
 }
@@ -679,7 +684,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   <div id="status-bar" class="status-bar"><div class="empty">Loading...</div></div>
   <div class="nav" id="nav"></div>
   <div id="panel-workers" class="panel"></div>
-  <div id="panel-schedules" class="panel" style="display:none"></div>
+  <div id="panel-schedules" class="panel" style="display:none"><div id="schedules-active"></div><div id="schedules-events"></div></div>
   <div id="panel-executions" class="panel" style="display:none"></div>
   <div id="panel-memory" class="panel" style="display:none"></div>
   <div id="poll-indicator" class="poll-indicator"></div>
@@ -785,26 +790,23 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     window.__schedAction = scheduleAction;
 
     function renderSchedules(sc) {
-      const el = document.getElementById('panel-schedules');
+      const el = document.getElementById('schedules-active');
       if (!sc) { el.innerHTML = '<div class="empty">Loading...</div>'; return; }
 
       if (sc.disabledInConfig) {
         el.innerHTML = '<h2>Scheduled Spells</h2>' +
           '<div class="empty">Scheduler disabled in moflo.yaml (scheduler.enabled: false)</div>';
-        appendEventsTail(el);
         return;
       }
       if (!sc.schedulerAttached && !sc.available) {
         el.innerHTML = '<h2>Scheduled Spells</h2>' +
           '<div class="empty">Scheduler not attached — start the daemon to activate</div>';
-        appendEventsTail(el);
         return;
       }
       if (!sc.schedules || sc.schedules.length === 0) {
         el.innerHTML = '<h2>Scheduled Spells</h2>' +
           '<div class="empty">No active schedules &middot; create one with <code>moflo spell schedule create</code></div>';
         if (sc.history && sc.history.length) renderSchedulesHistory(el, sc.history, /*append*/ true);
-        appendEventsTail(el);
         return;
       }
       const canControl = !!sc.schedulerAttached;
@@ -827,27 +829,29 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         '<tbody>' + rows + '</tbody></table>';
 
       if (sc.history && sc.history.length) renderSchedulesHistory(el, sc.history, /*append*/ true);
-      appendEventsTail(el);
     }
 
     // Live events tail (Server-Sent Events from /api/schedules/events).
-    // Schedules-panel re-renders wholesale every poll, so we keep the tail
-    // in a JS-side ring buffer and re-paint it after each poll.
+    // The events div lives outside renderSchedules' write target so polled
+    // re-renders of the schedules panel don't touch it; pushSchedEvent is
+    // the only writer. Single source of truth for known event types + their
+    // badge color — adding a new schedule:* type means one entry here.
+    const SCHED_EVENT_BADGES = {
+      'schedule:due': 'gray',
+      'schedule:started': 'gray',
+      'schedule:completed': 'green',
+      'schedule:failed': 'red',
+      'schedule:skipped': 'yellow',
+      'schedule:disabled': 'yellow',
+      'schedule:catchup': 'yellow',
+    };
+    const SCHED_EVENT_TYPES = Object.keys(SCHED_EVENT_BADGES);
     const SCHED_EVENTS_MAX = 50;
     const schedEvents = [];
-    function pushSchedEvent(ev) {
-      schedEvents.unshift(ev);
-      if (schedEvents.length > SCHED_EVENTS_MAX) schedEvents.length = SCHED_EVENTS_MAX;
+
+    function renderEventsTail() {
       const el = document.getElementById('schedules-events');
-      if (el) renderEventsTailInto(el);
-    }
-    function eventBadgeClass(t) {
-      if (t === 'schedule:catchup' || t === 'schedule:skipped' || t === 'schedule:disabled') return 'yellow';
-      if (t === 'schedule:failed') return 'red';
-      if (t === 'schedule:completed') return 'green';
-      return 'gray';
-    }
-    function renderEventsTailInto(el) {
+      if (!el) return;
       if (schedEvents.length === 0) {
         el.innerHTML = '<h2>Live Events</h2><div class="empty">Waiting for scheduler activity…</div>';
         return;
@@ -856,7 +860,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         const t = e.type || '?';
         const short = String(t).replace('schedule:', '');
         return '<tr><td>' + new Date(e.timestamp || Date.now()).toLocaleTimeString() + '</td>' +
-          '<td>' + badge(short, eventBadgeClass(t)) + '</td>' +
+          '<td>' + badge(short, SCHED_EVENT_BADGES[t] || 'gray') + '</td>' +
           '<td>' + esc(e.spellName || '-') + '</td>' +
           '<td>' + esc(e.message || '') + '</td></tr>';
       }).join('');
@@ -864,14 +868,15 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         '<table><thead><tr><th>Time</th><th>Event</th><th>Spell</th><th>Detail</th></tr></thead>' +
         '<tbody>' + rows + '</tbody></table>';
     }
-    function appendEventsTail(panelEl) {
-      panelEl.innerHTML += '<div id="schedules-events"></div>';
-      renderEventsTailInto(panelEl.querySelector('#schedules-events'));
+    function pushSchedEvent(ev) {
+      schedEvents.unshift(ev);
+      if (schedEvents.length > SCHED_EVENTS_MAX) schedEvents.length = SCHED_EVENTS_MAX;
+      renderEventsTail();
     }
+    renderEventsTail(); // Initial empty-state paint.
 
     // Subscribe via EventSource. Browser handles auto-reconnect with backoff.
     let evtSource = null;
-    const SCHED_EVENT_TYPES = ['schedule:due','schedule:started','schedule:completed','schedule:failed','schedule:skipped','schedule:disabled','schedule:catchup'];
     function connectEventStream() {
       try { if (evtSource) evtSource.close(); } catch (e) { /* ignore */ }
       try {
@@ -881,7 +886,6 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
             try { pushSchedEvent(JSON.parse(ev.data)); } catch (e) { /* malformed frame */ }
           });
         });
-        // 'ready' frame just confirms the channel is live; no UI update needed.
       } catch (e) {
         console.warn('Event stream unavailable:', e);
       }

@@ -592,8 +592,12 @@ describe('DaemonDashboard', () => {
       req.setTimeout(3000, () => { req.destroy(); reject(new Error('timeout')); });
     });
 
-    // Allow the server's 'close' handler to run before asserting.
-    await new Promise(r => setTimeout(r, 50));
+    // Poll the listener count rather than sleeping — slow CI machines need
+    // more than a fixed 50ms wall-clock for the close handler to fire.
+    const deadline = Date.now() + 2000;
+    while (scheduler.__listenerCount() > 0 && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 10));
+    }
     expect(scheduler.__listenerCount()).toBe(0);
   });
 });
