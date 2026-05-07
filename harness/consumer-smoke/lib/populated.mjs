@@ -219,7 +219,13 @@ emit({ rows: rows.length, bytes: buf.length });
  * Schema-compatible with `MEMORY_SCHEMA_V3` for the columns the launcher's
  * trim query touches (id, key, namespace, content, status, created_at). The
  * cherry-pick's `CREATE TABLE IF NOT EXISTS` is a no-op when our table is
- * already there.
+ * already there. Critically, the `status` CHECK constraint here matches V3
+ * (only `'active'` and `'archived'` allowed) — NOT the legacy pre-#728
+ * schema in `seedSwarmDb` which still permits `'deleted'`. If we used the
+ * loose constraint, the cherry-pick would smuggle the harness's 3
+ * deleted-knowledge rows into `.moflo/moflo.db` and `populated:announce-no-
+ * legacy-purge-soft-deleted` would (correctly) fail on the resulting
+ * §3e-728 cleanup banner.
  */
 function seedMofloDb(consumerDir, tasklistRows) {
   const mofloDir = join(consumerDir, MOFLO_DIR);
@@ -246,7 +252,7 @@ db.exec(\`CREATE TABLE memory_entries (
   expires_at INTEGER,
   last_accessed_at INTEGER,
   access_count INTEGER DEFAULT 0,
-  status TEXT DEFAULT 'active' CHECK(status IN ('active','archived','deleted')),
+  status TEXT DEFAULT 'active' CHECK(status IN ('active','archived')),
   UNIQUE(namespace, key)
 )\`);
 db.exec('CREATE INDEX idx_bridge_ns ON memory_entries(namespace)');
