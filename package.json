@@ -29,6 +29,7 @@
     "src/cli/spells/definitions/**/*.yaml",
     "!**/*.test.js",
     "!**/*.spec.js",
+    "!**/*.perf.js",
     "!**/__tests__/**",
     ".claude/commands/**/*.md",
     ".claude/agents/**/*.md",
