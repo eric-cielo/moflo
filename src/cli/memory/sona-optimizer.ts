@@ -140,8 +140,8 @@ const AGENT_TYPES = [
   'optimizer',
   'debugger',
   'documenter',
-  'security-architect',
-  'performance-engineer',
+  'security-auditor',
+  'planner',
 ];
 
 /**
@@ -180,13 +180,13 @@ const KEYWORD_CATEGORIES: Record<string, string[]> = {
     'document', 'docs', 'readme', 'comment', 'explain', 'guide',
     'tutorial', 'api-docs', 'specification', 'jsdoc',
   ],
-  'security-architect': [
+  'security-auditor': [
     'security', 'auth', 'authentication', 'authorization', 'encrypt',
     'vulnerability', 'cve', 'secure', 'permission', 'role',
   ],
-  'performance-engineer': [
-    'profiling', 'bottleneck', 'latency', 'throughput', 'cache',
-    'scale', 'load', 'stress', 'concurrent', 'parallel',
+  planner: [
+    'plan', 'breakdown', 'sequencing', 'estimate', 'milestone', 'roadmap',
+    'task', 'dependency', 'goal',
   ],
 };
 

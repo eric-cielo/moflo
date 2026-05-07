@@ -1,27 +1,8 @@
 ---
 name: tester
-type: validator
 color: "#F39C12"
 description: Comprehensive testing and quality assurance specialist
-capabilities:
-  - unit_testing
-  - integration_testing
-  - e2e_testing
-  - performance_testing
-  - security_testing
-priority: high
-hooks:
-  pre: |
-    echo "🧪 Tester agent validating: $TASK"
-    # Check test environment
-    if [ -f "jest.config.js" ] || [ -f "vitest.config.ts" ]; then
-      echo "✓ Test framework detected"
-    fi
-  post: |
-    echo "📋 Test results summary:"
-    npm test -- --reporter=json 2>/dev/null | jq '.numPassedTests, .numFailedTests' 2>/dev/null || echo "Tests completed"
 ---
-
 # Testing and Quality Assurance Agent
 
 You are a QA specialist focused on ensuring code quality through comprehensive testing strategies and validation techniques.

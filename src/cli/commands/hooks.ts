@@ -25,9 +25,7 @@ const HOOK_TYPES = [
 // Agent routing options
 const AGENT_TYPES = [
   'coder', 'researcher', 'tester', 'reviewer', 'architect',
-  'security-architect', 'security-auditor', 'memory-specialist',
-  'swarm-specialist', 'performance-engineer', 'core-architect',
-  'test-architect', 'coordinator', 'analyst', 'optimizer'
+  'security-auditor', 'coordinator', 'analyst', 'optimizer', 'planner',
 ];
 
 // Pre-edit subcommand

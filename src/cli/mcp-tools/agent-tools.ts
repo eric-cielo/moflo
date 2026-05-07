@@ -39,33 +39,16 @@ const CANONICAL_AGENT_TYPES = [
 
 const ALLOWED_AGENT_TYPES: ReadonlySet<string> = new Set<string>([
   ...CANONICAL_AGENT_TYPES,
-  // Shipped Claude Code agent definitions (.claude/agents/**)
-  'adaptive-coordinator', 'adr-architect', 'aidefence-guardian',
+  // Claude Code built-ins
+  'claude-code-guide', 'general-purpose',
+  // Shipped Claude Code agent definitions (.claude/agents/**) — both the
+  // canonical `name:` slug and the file basename are accepted.
   'analyze-code-quality', 'api-docs', 'arch-system-design',
-  'backend-dev', 'base-template-generator', 'benchmark-suite',
-  'byzantine-coordinator', 'cicd-engineer', 'claims-authorizer',
-  'claude-code-guide', 'code-analyzer', 'code-goal-planner',
-  'code-review-swarm', 'collective-intelligence-coordinator',
-  'crdt-synchronizer', 'data-ml-model', 'ddd-domain-expert',
-  'dev-backend-api', 'docs-api-openapi', 'general-purpose',
-  'github-modes', 'goal-planner', 'gossip-coordinator',
-  'hierarchical-coordinator', 'injection-analyst', 'issue-tracker',
-  'load-balancer', 'memory-specialist', 'mesh-coordinator',
-  'ml-developer', 'mobile-dev', 'multi-repo-swarm',
-  'ops-cicd-github', 'performance-benchmarker', 'performance-engineer',
-  'performance-monitor', 'pii-detector', 'planner',
-  'pr-manager', 'production-validator', 'project-board-sync',
-  'pseudocode', 'quorum-manager', 'queen-coordinator',
-  'raft-manager', 'reasoningbank-learner', 'refinement',
-  'release-manager', 'release-swarm', 'repo-architect',
-  'resource-allocator', 'safla-neural', 'scout-explorer',
-  'security-architect', 'security-architect-aidefence',
-  'security-auditor', 'security-manager', 'sona-learning-optimizer',
-  'sparc-orchestrator', 'spec-mobile-react-native', 'specification',
-  'swarm-issue', 'swarm-memory-manager', 'swarm-pr',
-  'sync-coordinator', 'system-architect', 'tdd-london-swarm',
-  'test-long-runner', 'topology-optimizer', 'v3-integration-architect',
-  'workflow-automation', 'worker-specialist',
+  'backend-dev', 'base-template-generator', 'cicd-engineer',
+  'code-analyzer', 'database-dev', 'dev-backend-api',
+  'dev-database', 'dev-frontend', 'docs-api-openapi',
+  'frontend-dev', 'ops-cicd-github', 'planner',
+  'security-auditor', 'system-architect', 'test-long-runner',
 ]);
 
 const AGENT_TYPE_SLUG_RE = /^[a-z][a-z0-9-]*$/;
@@ -98,7 +81,6 @@ export function validateAgentType(value: unknown): AgentTypeValidation {
 const AGENT_TYPE_MODEL_DEFAULTS: Record<string, ClaudeModel> = {
   // Complex agents → opus
   'architect': 'opus',
-  'security-architect': 'opus',
   'system-architect': 'opus',
   'core-architect': 'opus',
   // Medium complexity → sonnet

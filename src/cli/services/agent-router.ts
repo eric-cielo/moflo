@@ -28,9 +28,7 @@ export type AgentType =
   | 'backend-dev'
   | 'frontend-dev'
   | 'devops'
-  | 'security-architect'
   | 'security-auditor'
-  | 'memory-specialist'
   | 'coordinator'
   | 'analyst'
   | 'optimizer';
@@ -48,9 +46,7 @@ export const AGENT_CAPABILITIES: Record<string, string[]> = {
   'backend-dev': ['api', 'database', 'server', 'authentication'],
   'frontend-dev': ['ui', 'react', 'css', 'components'],
   devops: ['ci-cd', 'docker', 'deployment', 'infrastructure'],
-  'security-architect': ['security-design', 'threat-modeling', 'auth-flow'],
-  'security-auditor': ['vulnerability-scan', 'dependency-audit', 'compliance'],
-  'memory-specialist': ['memory-management', 'caching', 'persistence'],
+  'security-auditor': ['security-design', 'threat-modeling', 'auth-flow', 'vulnerability-scan', 'dependency-audit', 'compliance'],
   coordinator: ['task-distribution', 'orchestration', 'scheduling'],
   analyst: ['data-analysis', 'metrics', 'reporting', 'monitoring'],
   optimizer: ['performance', 'profiling', 'optimization', 'benchmarking'],
@@ -74,8 +70,7 @@ const TASK_PATTERNS: Array<{ regex: RegExp; agentType: string }> = [
   { regex: /deploy|docker|ci|cd|pipeline|infrastructure/i, agentType: 'devops' },
 
   // Specialized patterns
-  { regex: /security|auth|permission|rbac|oauth/i, agentType: 'security-architect' },
-  { regex: /vulnerability|cve|dependency.*update|npm audit/i, agentType: 'security-auditor' },
+  { regex: /security|auth|permission|rbac|oauth|vulnerability|cve|dependency.*update|npm audit/i, agentType: 'security-auditor' },
   { regex: /performance|optimize|profile|benchmark|speed/i, agentType: 'optimizer' },
   { regex: /analyz|metric|report|monitor|dashboard/i, agentType: 'analyst' },
 ];

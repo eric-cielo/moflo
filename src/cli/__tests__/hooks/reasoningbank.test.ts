@@ -109,7 +109,7 @@ describe('ReasoningBank', () => {
       const result = await reasoningBank.storePattern(
         'Use HNSW for fast vector search',
         'performance',
-        { agent: 'memory-specialist', confidence: 0.95 }
+        { agent: 'researcher', confidence: 0.95 }
       );
 
       expect(result.action).toBe('created');
@@ -117,7 +117,7 @@ describe('ReasoningBank', () => {
       // Search and verify metadata is preserved
       const patterns = await reasoningBank.searchPatterns('HNSW vector search', 1);
       expect(patterns.length).toBe(1);
-      expect(patterns[0].pattern.metadata.agent).toBe('memory-specialist');
+      expect(patterns[0].pattern.metadata.agent).toBe('researcher');
     });
   });
 
@@ -219,24 +219,25 @@ describe('ReasoningBank', () => {
       await reasoningBank.initialize();
     });
 
-    it('should route security tasks to security-architect', async () => {
+    it('should route security tasks to security-auditor', async () => {
       const result = await reasoningBank.routeTask('Fix authentication vulnerability CVE-2024');
 
-      expect(result.agent).toBe('security-architect');
+      expect(result.agent).toBe('security-auditor');
       expect(result.confidence).toBeGreaterThan(80);
     });
 
-    it('should route testing tasks to test-architect', async () => {
+    it('should route testing tasks to tester', async () => {
       const result = await reasoningBank.routeTask('Write unit tests with mocks');
 
-      expect(result.agent).toBe('test-architect');
+      expect(result.agent).toBe('tester');
       expect(result.confidence).toBeGreaterThan(80);
     });
 
-    it('should route performance tasks to performance-engineer', async () => {
+    it('should route performance tasks to architect', async () => {
       const result = await reasoningBank.routeTask('Optimize memory usage and cache');
 
-      expect(result.agent).toBe('performance-engineer');
+      // Performance work routes to architect (perf is a design concern in moflo)
+      expect(result.agent).toBe('architect');
       expect(result.confidence).toBeGreaterThan(80);
     });
 

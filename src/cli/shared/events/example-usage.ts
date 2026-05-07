@@ -63,27 +63,27 @@ async function main() {
   // =========================================================================
   console.log('3. Recording Agent Lifecycle Events...');
 
-  // Agent 1: Queen Coordinator
+  // Agent 1: Coordinator
   await eventStore.append(
-    createAgentSpawnedEvent('agent-1', 'queen-coordinator', 'coordination', [
+    createAgentSpawnedEvent('agent-1', 'coordinator', 'coordination', [
       'orchestration',
       'task-assignment',
     ])
   );
   await eventStore.append(createAgentStartedEvent('agent-1'));
 
-  // Agent 2: Security Architect
+  // Agent 2: Security Auditor
   await eventStore.append(
-    createAgentSpawnedEvent('agent-2', 'security-architect', 'security', [
+    createAgentSpawnedEvent('agent-2', 'security-auditor', 'security', [
       'threat-modeling',
       'security-design',
     ])
   );
   await eventStore.append(createAgentStartedEvent('agent-2'));
 
-  // Agent 3: Core Architect
+  // Agent 3: Architect
   await eventStore.append(
-    createAgentSpawnedEvent('agent-3', 'core-architect', 'core', ['ddd-design', 'architecture'])
+    createAgentSpawnedEvent('agent-3', 'architect', 'core', ['ddd-design', 'architecture'])
   );
   await eventStore.append(createAgentStartedEvent('agent-3'));
 

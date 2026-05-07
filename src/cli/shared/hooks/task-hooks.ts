@@ -301,27 +301,27 @@ export class TaskHooksManager {
       },
       {
         keywords: ['security', 'vulnerability', 'cve', 'threat'],
-        agent: 'security-architect',
+        agent: 'security-auditor',
         capabilities: ['security-analysis', 'vulnerability-detection', 'threat-modeling'],
       },
       {
-        keywords: ['performance', 'optimize', 'speed', 'memory'],
-        agent: 'performance-engineer',
+        keywords: ['performance', 'optimize', 'speed', 'memory', 'profile', 'benchmark'],
+        agent: 'reviewer',
         capabilities: ['performance-optimization', 'profiling', 'benchmarking'],
       },
       {
         keywords: ['architect', 'design', 'structure', 'pattern'],
-        agent: 'core-architect',
+        agent: 'architect',
         capabilities: ['architecture-design', 'pattern-application', 'system-design'],
       },
       {
-        keywords: ['memory', 'storage', 'database', 'cache'],
-        agent: 'memory-specialist',
+        keywords: ['storage', 'database', 'cache', 'persistence'],
+        agent: 'researcher',
         capabilities: ['memory-management', 'data-persistence', 'caching'],
       },
       {
-        keywords: ['swarm', 'coordinate', 'orchestrate', 'agent'],
-        agent: 'swarm-specialist',
+        keywords: ['swarm', 'coordinate', 'orchestrate', 'agent', 'hive'],
+        agent: 'coordinator',
         capabilities: ['swarm-coordination', 'agent-orchestration', 'distributed-systems'],
       },
     ];
