@@ -107,17 +107,20 @@ Capture the schedule ID from output and surface it to the user along with the ne
 
 ### Step 5 — Verify the wiring
 
-Tail the schedule executions for the first fire so the user can confirm the daemon actually picks it up:
+Tail the actual execution history for this schedule so the user can confirm the daemon picked it up:
 
 ```bash
-npx flo spell schedule list 2>&1
+npx flo spell schedule executions --schedule <schedule-id> 2>&1
 ```
 
-If the user wants to wait for the first fire (interval ≤ 5m), poll `flo spell schedule list` or the daemon dashboard. Otherwise, summarize and exit:
+`executions` reads from the daemon-written `schedule-executions` namespace and shows started time, status (success/failed/running), duration, and whether the run was manual. This is the only command that proves a schedule actually fired — `flo spell schedule list` only shows the schedule definition.
+
+If the user wants to wait for the first fire (interval ≤ 5m), poll `flo spell schedule executions --schedule <id>` or watch the daemon dashboard. Otherwise, summarize and exit:
 
 ```
 Scheduled: <schedule-id>
 Next run:  <ISO datetime UTC> (<local-equivalent>)
+Verify:    npx flo spell schedule executions --schedule <schedule-id>
 Cancel:    npx flo spell schedule cancel <schedule-id>
 ```
 

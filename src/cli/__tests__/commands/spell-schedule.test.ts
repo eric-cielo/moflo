@@ -83,10 +83,11 @@ describe('spell schedule command', () => {
 
   // ── Structure ─────────────────────────────────────────────────────────────
 
-  it('should have create, list, and cancel subcommands', () => {
+  it('should have create, list, executions, and cancel subcommands', () => {
     const names = scheduleCommand.subcommands!.map(c => c.name);
     expect(names).toContain('create');
     expect(names).toContain('list');
+    expect(names).toContain('executions');
     expect(names).toContain('cancel');
   });
 
@@ -214,33 +215,170 @@ describe('spell schedule command', () => {
     const listCmd = () => findSub('list');
 
     it('should list schedules', async () => {
-      mockCallMCP.mockResolvedValue({
-        results: [
-          {
-            key: 'sched-adhoc-123',
-            value: JSON.stringify({
-              id: 'sched-adhoc-123',
-              spellName: 'audit',
-              cron: '0 9 * * *',
-              nextRunAt: Date.now() + 60000,
-              enabled: true,
-            }),
-          },
-        ],
-      });
+      const scheduleValue = {
+        id: 'sched-adhoc-123',
+        spellName: 'audit',
+        cron: '0 9 * * *',
+        nextRunAt: Date.now() + 60000,
+        enabled: true,
+      };
+      mockCallMCP
+        .mockResolvedValueOnce({ entries: [{ key: 'sched-adhoc-123', namespace: 'scheduled-spells' }] })
+        .mockResolvedValueOnce({ value: scheduleValue, found: true });
 
       const result = await listCmd().action!(makeCtx()) as CommandResult;
       expect(result.success).toBe(true);
-      expect(mockCallMCP).toHaveBeenCalledWith('memory_list', expect.objectContaining({
+      expect(mockCallMCP).toHaveBeenNthCalledWith(1, 'memory_list', expect.objectContaining({
         namespace: 'scheduled-spells',
       }));
+      expect(mockCallMCP).toHaveBeenNthCalledWith(2, 'memory_retrieve', expect.objectContaining({
+        namespace: 'scheduled-spells',
+        key: 'sched-adhoc-123',
+      }));
+      const data = result.data as Array<{ id: string }>;
+      expect(data).toHaveLength(1);
+      expect(data[0].id).toBe('sched-adhoc-123');
     });
 
     it('should show empty message when no schedules', async () => {
-      mockCallMCP.mockResolvedValue({ results: [] });
+      mockCallMCP.mockResolvedValue({ entries: [] });
 
       const result = await listCmd().action!(makeCtx()) as CommandResult;
       expect(result.success).toBe(true);
+    });
+  });
+
+  // ── Executions ────────────────────────────────────────────────────────────
+
+  describe('executions', () => {
+    const execCmd = () => findSub('executions');
+
+    function makeExec(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'exec-sched-1-1700000000000',
+        scheduleId: 'sched-1',
+        spellName: 'audit',
+        startedAt: 1700000000000,
+        completedAt: 1700000001000,
+        success: true,
+        spellId: 'spell-1',
+        duration: 1000,
+        ...overrides,
+      };
+    }
+
+    function mockNamespaceFetch(values: Record<string, unknown>[]) {
+      mockCallMCP.mockImplementation(async (tool: string, input: Record<string, unknown>) => {
+        if (tool === 'memory_list') {
+          return {
+            entries: values.map(v => ({ key: String(v.id), namespace: input.namespace as string })),
+          };
+        }
+        if (tool === 'memory_retrieve') {
+          const value = values.find(v => v.id === input.key);
+          return { value, found: value !== undefined };
+        }
+        return {};
+      });
+    }
+
+    it('shows empty message when no executions exist', async () => {
+      mockCallMCP.mockResolvedValue({ entries: [] });
+
+      const result = await execCmd().action!(makeCtx()) as CommandResult;
+      expect(result.success).toBe(true);
+      expect(mockCallMCP).toHaveBeenCalledWith('memory_list', expect.objectContaining({
+        namespace: 'schedule-executions',
+      }));
+    });
+
+    it('lists all executions sorted by startedAt desc', async () => {
+      mockNamespaceFetch([
+        makeExec({ id: 'exec-old', startedAt: 1700000000000 }),
+        makeExec({ id: 'exec-new', startedAt: 1700000060000 }),
+      ]);
+
+      const result = await execCmd().action!(makeCtx()) as CommandResult;
+      expect(result.success).toBe(true);
+      const data = result.data as Array<{ id: string }>;
+      expect(data[0].id).toBe('exec-new');
+      expect(data[1].id).toBe('exec-old');
+    });
+
+    it('filters by --schedule', async () => {
+      mockNamespaceFetch([
+        makeExec({ id: 'a', scheduleId: 'sched-1' }),
+        makeExec({ id: 'b', scheduleId: 'sched-2' }),
+      ]);
+
+      const result = await execCmd().action!(makeCtx({
+        flags: { _: [], schedule: 'sched-2' },
+      })) as CommandResult;
+      const data = result.data as Array<{ id: string }>;
+      expect(data).toHaveLength(1);
+      expect(data[0].id).toBe('b');
+    });
+
+    it('truncates to --limit', async () => {
+      mockNamespaceFetch(
+        Array.from({ length: 5 }, (_, i) => makeExec({ id: `e${i}`, startedAt: 1700000000000 + i })),
+      );
+
+      const result = await execCmd().action!(makeCtx({
+        flags: { _: [], limit: 2 },
+      })) as CommandResult;
+      const data = result.data as unknown[];
+      expect(data).toHaveLength(2);
+    });
+
+    it('defaults to limit 10', async () => {
+      mockNamespaceFetch(
+        Array.from({ length: 15 }, (_, i) => makeExec({ id: `e${i}`, startedAt: 1700000000000 + i })),
+      );
+
+      const result = await execCmd().action!(makeCtx()) as CommandResult;
+      const data = result.data as unknown[];
+      expect(data).toHaveLength(10);
+    });
+
+    it('drops records missing startedAt', async () => {
+      mockNamespaceFetch([
+        makeExec({ id: 'good' }),
+        { id: 'no-startedAt' },
+      ]);
+
+      const result = await execCmd().action!(makeCtx()) as CommandResult;
+      expect(result.success).toBe(true);
+      const data = result.data as Array<{ id: string }>;
+      expect(data).toHaveLength(1);
+      expect(data[0].id).toBe('good');
+    });
+
+    it('returns raw execution objects when --format json', async () => {
+      const exec = makeExec({ id: 'a' });
+      mockNamespaceFetch([exec]);
+
+      const result = await execCmd().action!(makeCtx({
+        flags: { _: [], format: 'json' },
+      })) as CommandResult;
+      expect(result.success).toBe(true);
+      const data = result.data as Array<Record<string, unknown>>;
+      expect(data).toHaveLength(1);
+      expect(data[0]).toMatchObject({
+        id: 'a',
+        scheduleId: 'sched-1',
+        spellName: 'audit',
+        success: true,
+        duration: 1000,
+      });
+    });
+
+    it('returns success with empty data when MCP returns no entries', async () => {
+      mockCallMCP.mockResolvedValue({});
+
+      const result = await execCmd().action!(makeCtx()) as CommandResult;
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([]);
     });
   });
 
