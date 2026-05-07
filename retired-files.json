@@ -1062,6 +1062,561 @@
       "retiredIn": "4.8.12"
     },
     {
+      "path": ".claude/commands/claude-flow-help.md",
+      "knownContentHashes": [
+        "sha256:8aec600952cb0bac9855e766c69c1af5ccef56dc877f81536306b7aefc479375",
+        "sha256:c25c9650b3cd752dd5c92fe078e6132bb48269f6c72edb5a29d4f963dd8e9eb5"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/claude-flow-memory.md",
+      "knownContentHashes": [
+        "sha256:b327dbf88290be3cf1370f6b6a9b3617f37855f9c8b97fb3bb66404fbfaf08be",
+        "sha256:fc117a3dee82c429d5b3a52de49e1ddf0f8c41cc8a483341c53209e292050527"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/claude-flow-swarm.md",
+      "knownContentHashes": [
+        "sha256:2119249384887c8fd90be203304114757177356bb8ddbe8e8bebcb1b8c4f9d43",
+        "sha256:88ea9327172b5c9ea5ae3297dfc11f9f0de009ebeb4882f6221fd097efb15b0c"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/flo-simplify.md",
+      "knownContentHashes": [
+        "sha256:417ccf85fea9356034d8f6ab8606c960856a2c06c6cb9ec81b25a8a9c100571e"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/code-review-swarm.md",
+      "knownContentHashes": [
+        "sha256:9e00b9eb6de5cc4683494850ae43cabe33408a75ede2bd9d12e0d7c7008ab974",
+        "sha256:28ae69a0e31e1669bf230f20e4fa36967972c71dfcf4a5e59a1a1d5241553efb"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/code-review.md",
+      "knownContentHashes": [
+        "sha256:c1bc7608b43aa1ee100d29795d369bef0df6cac114d94c30b42c206038c84be2"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/github-modes.md",
+      "knownContentHashes": [
+        "sha256:622955b84aa0784980fa2d97fe6494f46fe7b4dd7c3515d1e164be9ed6d999aa",
+        "sha256:dfd656675b15c6f2eb0687896c071e868e5ed3353ed3287f09fd233232a39a6f",
+        "sha256:764da5769b73f25db125ab2ef6dcb2367628c0f34e6739551eccd5150991f0a8"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/github-swarm.md",
+      "knownContentHashes": [
+        "sha256:70c3f0f6feaed900fd7c19338dbc5b3fd254e72853ffcbac90aa1eba09ebe4f3"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/issue-tracker.md",
+      "knownContentHashes": [
+        "sha256:e703cc1b48242262dec4f16ff032f70b320b1ca930252c4027ed6b42856cbb3e",
+        "sha256:edd19819fc486b19095c664be60fb8ff79e5b09829561266c32ef8c845429f03",
+        "sha256:c2ae3f91e77ff8f64f991a30bd538a6a22c2d33281e1daba1aaf737d75d94d40"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/issue-triage.md",
+      "knownContentHashes": [
+        "sha256:c0d647e0dfe4d16a746a295bde36ff2f6ebef3931387393c9a461c741b90aef0"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/multi-repo-swarm.md",
+      "knownContentHashes": [
+        "sha256:df285d1a6eb107e7e22f4bebbcae61d70743b972a47b60041bac331608b1e2f0",
+        "sha256:ce800b98b86626a90554916d2d663cb66f4c34fb9bb4da7a36b077f8e6c3e3e0"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/pr-enhance.md",
+      "knownContentHashes": [
+        "sha256:b295761f0a6f2eff72c27d66803c534b7e3ad4f4e6482bd516cd6065f8c6eff4"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/pr-manager.md",
+      "knownContentHashes": [
+        "sha256:2857dfbb9a47ff573edbbcca3838ced824a9d0122d675a6b0cc4659175f9aee1",
+        "sha256:b4e5236851e52460804dca161d87fc6fb2caa1541d47173eb28e56697673c4f2",
+        "sha256:d3ab6b4e577607f1eee992caec3508dd7deef7bd06c30aeff279f683be12110b"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/project-board-sync.md",
+      "knownContentHashes": [
+        "sha256:7109a7b4e54f5af8a547e336b25092e3d6d82ff5b1ff92758b6d2aa54ce835b1",
+        "sha256:f815db07830b3463dd9eb1036d8ce43eb5d3b55d22bdebc4c79d5a1fb606ee4f"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/README.md",
+      "knownContentHashes": [
+        "sha256:4fb6c4348f6f8c2d5c252203115942a770743e5e7eb4c696e2d359916050948c"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/release-manager.md",
+      "knownContentHashes": [
+        "sha256:33420566fedc1ba07a72727c56962f34e24f101aa4571be04251f9a843b48209",
+        "sha256:4324c9e132a6be3a0e8d95f61e723d68d8f1a202a7b95222a9a3ab950d218287",
+        "sha256:f8a4201155da7be10a3ebf1f600f073ac074d4ac8653faaf3196e89966b0e28c"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/release-swarm.md",
+      "knownContentHashes": [
+        "sha256:a73dc4999756f9cb92a319acdaa2c4cd22b2993aca627b7fe4b130467f7a79b2",
+        "sha256:2b4ada68166cd7060e49fce8ab4dc3281f9aa98ce988fb176496e80727523b24"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/repo-analyze.md",
+      "knownContentHashes": [
+        "sha256:7c57c22d09ee9a7eea693a606e189a4f2d04e00f5f92120b73afdeb8e95e2f11"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/repo-architect.md",
+      "knownContentHashes": [
+        "sha256:9a16e5515f5c66a5d6a75ec5518b8bdc9242334237cc7074330bf5211054f8e2",
+        "sha256:c7508266ae896b33a0caa3b5f44ef3e9968e6a5dffe80863322152e273ff2ae8",
+        "sha256:8c6bb22bfdaba4b9970e800dd1789df3c2da8be403ea9d2f399056c694616d6c"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/swarm-issue.md",
+      "knownContentHashes": [
+        "sha256:38ce94624385c31f509a258639775c3ca27c352b7b4a37ff7dd0c00ecee3042d",
+        "sha256:2b4b02d0eb5e636a7ef2dd158cacfd7dd6cab38deb21bc6e4a9160b43a3c003b"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/swarm-pr.md",
+      "knownContentHashes": [
+        "sha256:9f364ea2a6b6007ff321575a7432379d1f4560df714c88401784cc599fd99d57",
+        "sha256:cfc91e470bc1bf5381a9bc638cd01a5faaf7dd5866ef9c25b715cf420d50fe23"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/sync-coordinator.md",
+      "knownContentHashes": [
+        "sha256:197e5b633bd2d8163e2ad70c53f3a32cfab7ed4185d6d1f1ad60d9902ef62732",
+        "sha256:9eb218475d8eccf76cce68adb3d24a68e700f52987f5a920faa38dcf915855b0",
+        "sha256:1dffdbc1a537427065a0b93389cfb093d696dd2b2c60ec48f71b6703e8ad9b14"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/github/workflow-automation.md",
+      "knownContentHashes": [
+        "sha256:2b3e378864110ed6457ee68a336c3ce7d61ceaed845b73684ec58e808ff633e1",
+        "sha256:20ae9b1ad7dcd3e9292a1a10219103e94724fa16e50c40b216cbf871788980c7"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/hooks/overview.md",
+      "knownContentHashes": [
+        "sha256:d2343edebcb3b785c25bb82e8ca12042d0726c73e1a16fe099cdc16d1754c138",
+        "sha256:cd211de3589a0ad3d5b472cb333a87ae22e1faf29b3f705eddad699e3f9152db",
+        "sha256:756650fe0751e8976f5efcf027a02cd79361924c8df147c882c9687374fddb65"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/hooks/post-edit.md",
+      "knownContentHashes": [
+        "sha256:d4cc912712e413c7fa613f1f681dbadede8a75a1df8012c25b703fa9be339307"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/hooks/post-task.md",
+      "knownContentHashes": [
+        "sha256:1859b9ed7ae42ddfc74bf0ff73e2f22e86489d7d4287097598c5d73966d3e6e4"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/hooks/pre-edit.md",
+      "knownContentHashes": [
+        "sha256:43d0a4f70b4ad32a86f7c584469197bcd678b2c2e51443a4284a7c0617e60bd1"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/hooks/pre-task.md",
+      "knownContentHashes": [
+        "sha256:93597737b83efcfe086c26ed9f1cb5131563ad5a0e24ae042a53f30e9087fa4a"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/hooks/README.md",
+      "knownContentHashes": [
+        "sha256:d9812b07a1884271dbb1615642f3047d3624c879fb997455869e75220a31feb9"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/hooks/session-end.md",
+      "knownContentHashes": [
+        "sha256:6b34a5b3d63d0b097867d4705087753f28d32507977c0df9b64729356263e3d5"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/hooks/setup.md",
+      "knownContentHashes": [
+        "sha256:d24b951e66c23cfb3d3ec230b1c80983f093d84eb80a5bff89ebaedb148ce90c"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc.md",
+      "knownContentHashes": [
+        "sha256:aded34ee83b9e3a6391bad19143cd4a63cd4e5f70ae3b04d0adb73cee0be992f",
+        "sha256:2f92b6b7cd113b9c54ad2c65e3ed44dcd36d6b0c65887535a65ccd6f050b5050"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/analyzer.md",
+      "knownContentHashes": [
+        "sha256:f298c877f96c16a7c0cbc69e9242f19e2fbc00d6b7ca33d66d6527e9cbf995d7"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/architect.md",
+      "knownContentHashes": [
+        "sha256:3f8cffbd46c65e4f3f47c16f86e7f0160593661f1abcb2b6e8b203d00c45dc92"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/ask.md",
+      "knownContentHashes": [
+        "sha256:10679f2203d68268f962b5bcb949b6519d38c0a022251f59d8427c3a7e3b8701",
+        "sha256:d1c0b7d91c3208aeeeadd6604aa7029b250c23ae6bf6523e7f80c7fa306b4ad1"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/batch-executor.md",
+      "knownContentHashes": [
+        "sha256:2ca99433401bed3e84cae09f22732f329385d2f364f9163289a003967e61af55"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/code.md",
+      "knownContentHashes": [
+        "sha256:27cf408075e4b996c8e2d31cfe112f533d7741eb3989a505a75ed5ad817b6bef",
+        "sha256:0fe06bd975385fb84b4f38f1e475667ece1ab002e974be27657ce28654404632"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/coder.md",
+      "knownContentHashes": [
+        "sha256:0a8106daaa7c1e38db03dcc8bbbb80fedc8123a88ce88cec6943871990e3df43"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/debug.md",
+      "knownContentHashes": [
+        "sha256:0b1c50bd42a9e81a7a5dccdd7b840277682a1facae791879eae2b400fc1bd356",
+        "sha256:41807356b4bb9cc5d267054dc23bdb66ef41b4de51e0002643b61bad05d36adc"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/debugger.md",
+      "knownContentHashes": [
+        "sha256:5ff93b9c01cd02bf18544dded5c6cacd83ae3aeff6176312370ed5acedee7737"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/designer.md",
+      "knownContentHashes": [
+        "sha256:eb28eecf8ff1acc3ad1a01250eb4e92c2af3d0c7fe02685d7324480334e21fb9"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/devops.md",
+      "knownContentHashes": [
+        "sha256:ccf99931a7b26415c77368e325ea033e4f90d3daeee1fd88ed51a646c426d26e",
+        "sha256:8cf8dd5e21e046f733e2be704fdecfda667ac0240189fa9591b6e81f559e5a9a"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/docs-writer.md",
+      "knownContentHashes": [
+        "sha256:ad60af959149a625ca4c30e750e3b69da623f3364c54e0e0ddc5564e58aee2d3",
+        "sha256:3084023de13ea063e304093fa191aad703249f919cbf5f724317875bf457875a"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/documenter.md",
+      "knownContentHashes": [
+        "sha256:99a99a92bcb08da5eae745f04c0f92adeaf0ebe4a0bb0984f63675381ee98dd6"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/innovator.md",
+      "knownContentHashes": [
+        "sha256:c14926cb93c01efb4729a66d5beea568d4fc5ddfb6bb89a03aff2c0307fa4b49"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/integration.md",
+      "knownContentHashes": [
+        "sha256:cc2d296b5697e5856609a9c9f49af9c64337df4c9a9b4449b15cce8850821b13",
+        "sha256:454c452af3f047cc3ee59df6332c9c431ea4e3256f94107eb11360cae53ccb3a"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/mcp.md",
+      "knownContentHashes": [
+        "sha256:d223c67c374b5e5e64b5bb9b9982744d53e94ac8197f9ecdabf9bf729308ce21",
+        "sha256:595bf2a5750fcdf0afb57a5c1a4b454dbe44a44d84b86272dd29617ec53eaa14"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/memory-manager.md",
+      "knownContentHashes": [
+        "sha256:6988dfe36ab12c7eccc15e6db3e7ab84baa563c56ce114b24df170d43ef96f32"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/optimizer.md",
+      "knownContentHashes": [
+        "sha256:be2faedd089f40d02c323e7967cccefe69859ed84105b7bbc01258a029598053"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/orchestrator.md",
+      "knownContentHashes": [
+        "sha256:29fab62338b6172e5d42f51918b1abfee89afbcf909668190c767521ed82f9ef",
+        "sha256:77b6be60207087df541ccdff83604eee6a11b7fef1090cd7241a6e6d25dc2a82",
+        "sha256:c119e6bb44452bdb20e21e5f521deb42f0d229a92e5d290c5d2b525313ddd5fa"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/post-deployment-monitoring-mode.md",
+      "knownContentHashes": [
+        "sha256:779f6c07030f3ba4ec8eaf22a00e0071c39f1ce3f4fb423ffa452f0750b247f5",
+        "sha256:f5203da206529af2e6dff3cf4fab82456dd4ca1779405934013f912e3f3d48e9"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/refinement-optimization-mode.md",
+      "knownContentHashes": [
+        "sha256:91493e6125f5bea9678947e32309914c637f321b72e1377b283e35b155b8ef71",
+        "sha256:2a3a04f8a31058a74cc33acca217a9157411fbcc2ef1a69bb279fd55536e2c4e"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/researcher.md",
+      "knownContentHashes": [
+        "sha256:98c4701808fda2dfa4ccb8ed54dfe0a6f6ac69c267fc2bcd9e06ab559234a94b"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/reviewer.md",
+      "knownContentHashes": [
+        "sha256:ba9fe9274e4520b372b087a3b17b3fd866b62b81a80efda384fd628b658a0b49"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/security-review.md",
+      "knownContentHashes": [
+        "sha256:bca82aa4869935cacc1f8d3d5d9026895d1e1ef17fd18e40c9bd0bda71d40452",
+        "sha256:52a56bda29eead4590d44acb00c4eeed939e6498c33da8da5e515005be48b406"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/sparc-modes.md",
+      "knownContentHashes": [
+        "sha256:2c740231aeed49a427b2695629e437cd7fd980ddb25b3a4411820f9888ac24de",
+        "sha256:d7d90b3c478aa4fbbdeabceeed6435144b379b46ab216eb55d1683a1b1025a79",
+        "sha256:c447a4ecdf4055d982da2bc07cf96207c2c94c9ec19155d5d5e4d20a87c23541"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/sparc.md",
+      "knownContentHashes": [
+        "sha256:21458b6efb8c25d33c06f1112ce7098f7bb9c28b1f5b96d1d350e8e09a794691",
+        "sha256:6e65a8e9a20693e01d3a1e8ca8faadb6493ad6baee0fe7e79f82cc71cf94ae36"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/spec-pseudocode.md",
+      "knownContentHashes": [
+        "sha256:ab68f3add86100bc743627c2614bb85222542f158363ac58ddbe739c42e08b5c",
+        "sha256:f77df57e245587769b255fec73c720a0a7f53bda765aa3887f8cb39afee965ce"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/spell-manager.md",
+      "knownContentHashes": [
+        "sha256:791cd3f0d27e6f0d91ebf5aa624e4c2554fa2d20fcfcab5a93a79ced7adeb677"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/supabase-admin.md",
+      "knownContentHashes": [
+        "sha256:fe2ade97ec48383966f096326b5943826cd03359b0c0c7689df8971fc7a65f70",
+        "sha256:26fc79426d0a63d088120012256abed1ece6406b68172455dff7ea931c140c96"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/swarm-coordinator.md",
+      "knownContentHashes": [
+        "sha256:2bdaf09720259efe69950dc54923a03d30eeb5ddac7169bd3f18bf4e20b35893"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/tdd.md",
+      "knownContentHashes": [
+        "sha256:a6985a7ce321abc2389de4bc03e80270c76fb778b90fe3cf481681f4a8ce4d49"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/tester.md",
+      "knownContentHashes": [
+        "sha256:1538ec27c9570dc1ab812e0bb37e385f04ea5b1d000941dbdd04014706bc38b1"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
+      "path": ".claude/commands/sparc/tutorial.md",
+      "knownContentHashes": [
+        "sha256:418a3d07198bcfd6a2df57704274706c4cc8ee58254b6ad19815a6cfbd4b29c2",
+        "sha256:e8f7541bdfc1df027ab8392d9f37428f404294b9cd9800c953ed5ca023e02de5"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#949"
+    },
+    {
       "path": ".claude/skills/agentdb-advanced/SKILL.md",
       "knownContentHashes": [
         "sha256:a8b29cf938060485d5c83d9571fad601b06a398a7e66e1224537d274bb792d94",

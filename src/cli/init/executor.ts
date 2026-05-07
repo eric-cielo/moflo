@@ -73,16 +73,12 @@ export const INTERNAL_SKILLS: string[] = [
 /**
  * Commands to copy based on configuration
  */
-const COMMANDS_MAP: Record<string, string[]> = {
-  core: ['claude-flow-help.md', 'claude-flow-swarm.md', 'claude-flow-memory.md', 'flo-simplify.md'],
-  analysis: [],
-  automation: [],
-  github: ['github'],
-  hooks: ['hooks'],
-  monitoring: [],
-  optimization: [],
-  sparc: ['sparc'],
-};
+// Empty after #949 retired the last shipped slash commands. moflo's user-facing
+// functionality now lives entirely in `.claude/skills/` (canonical) and
+// `.claude/agents/` (subagent surface). Kept as an empty-record placeholder
+// because callers iterate `Object.entries(COMMANDS_MAP)` to gate per-category
+// install — see init-copy-maps.test.ts for the iteration contract.
+const COMMANDS_MAP: Record<string, string[]> = {};
 
 /**
  * Agents to copy based on configuration. Exported for integrity tests.

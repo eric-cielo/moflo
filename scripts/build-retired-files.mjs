@@ -35,7 +35,7 @@ const repoRoot = resolve(__dirname, '..');
 const manifestPath = resolve(repoRoot, 'retired-files.json');
 
 const MAX_HASHES_DEFAULT = 3;
-const TARGET_PREFIXES = ['.claude/agents/', '.claude/skills/'];
+const TARGET_PREFIXES = ['.claude/agents/', '.claude/skills/', '.claude/commands/'];
 
 function gitOk(args) {
   return execFileSync('git', args, { cwd: repoRoot, encoding: 'utf-8' });
