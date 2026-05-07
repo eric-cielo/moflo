@@ -217,7 +217,7 @@ var path = require('path');
 var PROJECT_DIR = (process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/^\\/([a-z])\\//i, '$1:/');
 var STATE_FILE = path.join(PROJECT_DIR, '.claude', 'workflow-state.json');
 
-var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {} };
+var STATE_DEFAULTS = { tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: null, lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {}, flMode: null, swarmInitialized: false, hiveInitialized: false };
 
 function readState() {
   try {
@@ -265,7 +265,7 @@ function writeState(s) {
 
 // Load moflo.yaml gate config (defaults: all enabled)
 function loadGateConfig() {
-  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true };
+  var defaults = { memory_first: true, task_create_first: true, context_tracking: true, testing_gate: true, simplify_gate: true, learnings_gate: true, swarm_invocation_gate: true };
   try {
     var yamlPath = path.join(PROJECT_DIR, 'moflo.yaml');
     if (fs.existsSync(yamlPath)) {
@@ -276,6 +276,7 @@ function loadGateConfig() {
       if (/testing_gate:\\s*false/i.test(content)) defaults.testing_gate = false;
       if (/simplify_gate:\\s*false/i.test(content)) defaults.simplify_gate = false;
       if (/learnings_gate:\\s*false/i.test(content)) defaults.learnings_gate = false;
+      if (/swarm_invocation_gate:\\s*false/i.test(content)) defaults.swarm_invocation_gate = false;
     }
   } catch (e) { /* use defaults */ }
   return defaults;
@@ -315,6 +316,21 @@ var NS_NAV_RES = [
   /\\b(class|function|method|component|service|entity|module)\\b/,
 ];
 
+// Detect whether the current prompt invoked /fl or /flo with a swarm/hive flag
+// (#952). When set, check-before-agent BLOCKS the Agent spawn until the matching
+// MCP init has been recorded — the user explicitly opted in to the protected
+// coordination surface, so falling back to raw Agent dispatch silently regresses
+// headline moflo product capability.
+//
+// SYNC: duplicated verbatim in bin/gate.cjs.
+function detectFlMode(promptText) {
+  var p = promptText || '';
+  if (!/^\\s*\\/(?:fl|flo)\\b/i.test(p)) return null;
+  if (/(?:^|\\s)(?:-s|--swarm)\\b/.test(p)) return 'swarm';
+  if (/(?:^|\\s)(?:-h|--hive)\\b/.test(p)) return 'hive';
+  return null;
+}
+
 function classifyNamespaceHint(promptText) {
   var lower = (promptText || '').toLowerCase();
   if (NS_TEST_RE.test(lower)) return 'Memory namespace hint: use "tests" for test inventory and coverage lookups.';
@@ -344,6 +360,11 @@ function applyPromptStateReset(state, promptText) {
   // Per-actor emission tracking — fresh window each prompt so subagents that
   // spawn their own agents still see the hint on their first check-before-agent.
   state.lastNamespaceHintEmittedBy = {};
+  // #952 — derive flMode from the user prompt and reset the matching init
+  // flag. Each /fl invocation must call its protected MCP init.
+  state.flMode = detectFlMode(promptText);
+  state.swarmInitialized = false;
+  state.hiveInitialized = false;
 }
 var TEST_RUNNER_RE = /(?:^|[^a-z])(?:npm|yarn|pnpm|bun)\\s+(?:run\\s+)?(?:test|t)(?:[:\\s]|$)|\\b(?:npx|pnpx)\\s+(?:vitest|jest|mocha|ava|tap|jasmine|pytest)\\b|(?:^|;|&&|\\|\\|)\\s*(?:vitest|jest|pytest|mocha|jasmine|tap|ava)\\s|\\b(?:cargo|go|deno|dotnet|mvn)\\s+test\\b|\\bgradle\\w*\\s+test\\b/i;
 var EDIT_RESET_SKIP_BOTH_RE = /\\.(md|markdown|txt|rst|adoc|lock|gitignore)$|(?:^|[\\\\\\/])(CHANGELOG(?:\\.md)?|\\.env\\.example|package-lock\\.json|pnpm-lock\\.yaml|yarn\\.lock|bun\\.lockb)$/i;
@@ -382,6 +403,46 @@ switch (command) {
         s.lastNamespaceHintEmittedBy = emittedBy;
         writeState(s);
       }
+    }
+    // #952 — when /fl was invoked with -s/-h, the protected MCP init must run
+    // BEFORE any Agent spawn. Hard block: the user explicitly opted in to
+    // moflo's coordination surface, so silently dispatching Agent calls
+    // without mcp__moflo__swarm_init / mcp__moflo__hive-mind_init is the
+    // failure mode this gate exists to prevent (CLAUDE.md "⛔ Protected
+    // functionality"). Other Agent uses remain advisory.
+    if (config.swarm_invocation_gate) {
+      if (s.flMode === 'swarm' && !s.swarmInitialized) {
+        process.stderr.write('BLOCKED: /fl was invoked with -s/--swarm but mcp__moflo__swarm_init has not been called.\\n');
+        process.stderr.write('Run mcp__moflo__swarm_init first, then mcp__moflo__agent_spawn for each role, then dispatch Agent.\\n');
+        process.stderr.write('See .claude/skills/fl/execution-modes.md "SWARM mode" and CLAUDE.md "⛔ Protected functionality".\\n');
+        process.stderr.write('Disable via moflo.yaml: gates: swarm_invocation_gate: false\\n');
+        process.exit(2);
+      }
+      if (s.flMode === 'hive' && !s.hiveInitialized) {
+        process.stderr.write('BLOCKED: /fl was invoked with -h/--hive but mcp__moflo__hive-mind_init has not been called.\\n');
+        process.stderr.write('Run mcp__moflo__hive-mind_init first, then dispatch Agent or hive-mind workers.\\n');
+        process.stderr.write('See .claude/skills/fl/execution-modes.md "HIVE-MIND mode" and CLAUDE.md "⛔ Protected functionality".\\n');
+        process.stderr.write('Disable via moflo.yaml: gates: swarm_invocation_gate: false\\n');
+        process.exit(2);
+      }
+    }
+    break;
+  }
+  case 'record-swarm-init': {
+    // #952 — wired to mcp__moflo__swarm_init PostToolUse.
+    var s = readState();
+    if (!s.swarmInitialized) {
+      s.swarmInitialized = true;
+      writeState(s);
+    }
+    break;
+  }
+  case 'record-hive-init': {
+    // #952 — wired to mcp__moflo__hive-mind_init PostToolUse.
+    var s = readState();
+    if (!s.hiveInitialized) {
+      s.hiveInitialized = true;
+      writeState(s);
     }
     break;
   }
@@ -543,7 +604,9 @@ switch (command) {
     break;
   }
   case 'session-reset': {
-    writeState({ tasksCreated: false, taskCount: 0, memorySearched: false, memorySearchedBy: {}, memoryRequired: true, learningsStored: false, testsRun: false, simplifyRun: false, interactionCount: 0, sessionStart: new Date().toISOString(), lastBlockedAt: null, lastNamespaceHint: '', lastNamespaceHintEmittedBy: {} });
+    // Derive from STATE_DEFAULTS so adding a new state field requires only one
+    // edit (the defaults object).
+    writeState(Object.assign({}, STATE_DEFAULTS, { sessionStart: new Date().toISOString() }));
     break;
   }
   default:

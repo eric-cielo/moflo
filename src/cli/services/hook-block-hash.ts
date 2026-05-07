@@ -128,6 +128,10 @@ export function getReferenceHookBlock(): HooksTree {
       { matcher: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$', hooks: [gateHook('record-memory-searched', 3000)] },
       { matcher: '^TaskUpdate$',                  hooks: [gateCjs('check-task-transition', 2000)] },
       { matcher: '^mcp__moflo__memory_store$',    hooks: [gateCjs('record-learnings-stored', 2000)] },
+      // #952 — wired so /fl -s/--swarm and /fl -h/--hive runs satisfy the
+      // check-before-agent gate after the protected MCP init has been called.
+      { matcher: '^mcp__moflo__swarm_init$',      hooks: [gateCjs('record-swarm-init', 2000)] },
+      { matcher: '^mcp__moflo__hive-mind_init$',  hooks: [gateCjs('record-hive-init', 2000)] },
     ],
     UserPromptSubmit: [
       { hooks: [helperHook('prompt-hook.mjs', '', 3000)] },

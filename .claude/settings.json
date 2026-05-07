@@ -147,6 +147,26 @@
             "timeout": 2000
           }
         ]
+      },
+      {
+        "matcher": "^mcp__moflo__swarm_init$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs\" record-swarm-init",
+            "timeout": 2000
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__moflo__hive-mind_init$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate.cjs\" record-hive-init",
+            "timeout": 2000
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
