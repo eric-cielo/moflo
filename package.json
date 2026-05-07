@@ -39,6 +39,7 @@
     "!.claude/**/*.map",
     "README.md",
     "LICENSE",
+    "retired-files.json",
     "scripts/prune-native-binaries.mjs",
     "scripts/post-install-notice.mjs",
     "scripts/post-install-bootstrap.mjs"

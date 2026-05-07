@@ -63,6 +63,8 @@ const commandLoaders: Record<string, CommandLoader> = {
   issues: () => import('./issues.js'),
   // Auto-update System (ADR-025)
   update: () => import('./update.js'),
+  // Retired-files manifest helper (#948 — moflo dev only)
+  retire: () => import('./retire.js'),
   // Full integration diagnostics
   diagnose: () => import('./diagnose.js'),
   // Benchmark Suite (Pre-training, Neural, Memory)

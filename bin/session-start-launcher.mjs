@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { mofloDir } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
+import { applyRetiredPrune } from './lib/retired-files.mjs';
 
 // Headless skip (#860). The daemon's headless workers spawn `claude --print`
 // with CLAUDE_CODE_HEADLESS=true (see src/cli/services/headless-worker-
@@ -681,6 +682,56 @@ try {
         }
       }
 
+      // ── Sync .claude/agents/ + .claude/skills/ recursively (#948) ──────
+      // Pre-#948, agents and skills weren't manifest-tracked at all, so any
+      // file moflo retired (e.g. the 49 ruflo-aspirational agents in #932 or
+      // skill-builder in #945) would linger forever in consumer projects —
+      // Claude Code kept loading them on every prompt, paying the per-prompt
+      // roster tokens we just spent #932 fixing. Walking these dirs through
+      // syncFile() puts every shipped file in `currentManifest`, which lets
+      // the cleanup loop below auto-prune retired files going forward.
+      //
+      // Limitation: this only catches retirements that happen AFTER #948.
+      // For files retired BEFORE #948 (#932 + #945), see the retired-files.json
+      // hash-gated prune block further down — it ships a static list with
+      // content hashes so we only delete files the consumer didn't customize.
+      //
+      // User-authored files at custom paths (.claude/agents/custom/foo.md,
+      // .claude/skills/<custom>/SKILL.md) are NEVER passed through syncFile()
+      // because they don't exist in node_modules/moflo/, so they never enter
+      // the manifest and never get pruned — same proven safety story as
+      // scripts/helpers above.
+      async function syncDirRecursive(srcDir, destPrefix) {
+        if (!existsSync(srcDir)) return;
+        let entries;
+        try {
+          entries = readdirSync(srcDir, { recursive: true, withFileTypes: true });
+        } catch (err) {
+          emitWarning(`${destPrefix} readdir failed (${errMessage(err)})`);
+          return;
+        }
+        for (const entry of entries) {
+          if (!entry.isFile()) continue;
+          if (!entry.name.toLowerCase().endsWith('.md')) continue;
+          const parent = entry.parentPath || entry.path || srcDir;
+          const absSrc = resolve(parent, entry.name);
+          const rel = absSrc.slice(srcDir.length + 1).split(/[\\/]/).join('/');
+          const absDest = resolve(projectRoot, destPrefix, rel);
+          try { mkdirSync(dirname(absDest), { recursive: true }); } catch (err) {
+            emitWarning(`${destPrefix} subdir mkdir failed for ${rel} (${errMessage(err)})`);
+          }
+          await syncFile(absSrc, absDest, `${destPrefix}/${rel}`);
+        }
+      }
+      await syncDirRecursive(
+        resolve(projectRoot, 'node_modules/moflo/.claude/agents'),
+        '.claude/agents',
+      );
+      await syncDirRecursive(
+        resolve(projectRoot, 'node_modules/moflo/.claude/skills'),
+        '.claude/skills',
+      );
+
       // Sync all shipped guidance files from node_modules/moflo/.claude/guidance/shipped/
       const guidanceDir = resolve(projectRoot, '.claude/guidance');
       const shippedDir = resolve(projectRoot, 'node_modules/moflo/.claude/guidance/shipped');
@@ -723,6 +774,56 @@ try {
       }
       if (removedFiles > 0) {
         emitMutation('cleaned up retired files', `${removedFiles} removed`);
+      }
+
+      // ── Hash-gated prune of pre-#948 retirements (Mechanism B) ─────────
+      // The manifest cleanup above only knows about files moflo previously
+      // synced. Agents and skills retired BEFORE #948 (#932's 49 agents and
+      // #945's skill-builder, plus older retirements) were never in any
+      // manifest — they exist on disk in consumer projects only because
+      // earlier moflo versions shipped them via the npm tarball + flo init.
+      // `retired-files.json` is the explicit, reviewable static list that
+      // closes that gap. Each entry pairs a path with the sha256 hashes of
+      // every content version moflo previously shipped, so we only auto-
+      // prune when the consumer's file matches a known-shipped hash —
+      // customized files (different hash) get preserved with a one-line
+      // notice the user can act on.
+      try {
+        const retiredManifestPath = resolve(
+          projectRoot,
+          'node_modules/moflo/retired-files.json',
+        );
+        const report = applyRetiredPrune(projectRoot, retiredManifestPath);
+        if (report.pruned.length > 0) {
+          emitMutation(
+            'pruned retired shipped files',
+            `${plural(report.pruned.length, 'file')} matching known-shipped content removed`,
+          );
+        }
+        if (report.preserved.length > 0) {
+          // stdout (not stderr) so Claude sees this in `additionalContext`
+          // and can surface to the user — these aren't failures, just
+          // consumer-customized files we deliberately left alone.
+          const sample = report.preserved.slice(0, 5).map((p) => `  - ${p}`).join('\n');
+          const more = report.preserved.length > 5
+            ? `\n  …and ${report.preserved.length - 5} more`
+            : '';
+          try {
+            process.stdout.write(
+              `moflo: retained ${plural(report.preserved.length, 'customized retired file')} (delete manually if unwanted):\n${sample}${more}\n`,
+            );
+          } catch { /* non-fatal */ }
+        }
+        if (report.failed.length > 0) {
+          const sample = report.failed.slice(0, 3)
+            .map((f) => `  - ${f.path}: ${f.message}`).join('\n');
+          emitWarning(`${plural(report.failed.length, 'retired file')} failed to prune:\n${sample}`);
+        }
+      } catch (err) {
+        // Non-fatal — the consumer just doesn't get the prune this session.
+        // Next session retries; manifest-cleanup above still works for
+        // future retirements regardless.
+        emitWarning(`retired-files prune skipped (${errMessage(err)})`);
       }
 
       // The daemon was already stopped above so the lock file is gone and

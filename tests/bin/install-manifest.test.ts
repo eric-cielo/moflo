@@ -252,3 +252,113 @@ describe('recursive sync (#777)', () => {
     expect(statSync(join(binMigrationsLib, 'markers.mjs')).size).toBeGreaterThan(0);
   });
 });
+
+describe('agents + skills manifest tracking (#948)', () => {
+  let root: string;
+  beforeEach(() => { root = makeTempRoot(); });
+  afterEach(() => { cleanTempRoot(root); });
+
+  // Mirrors the syncDirRecursive helper inlined in section 3 of
+  // bin/session-start-launcher.mjs. Same algorithm as the migrations walk.
+  function syncDirRecursive(srcDir: string, projectRoot: string, destPrefix: string, manifest: string[]) {
+    if (!existsSync(srcDir)) return;
+    const entries = readdirSync(srcDir, { recursive: true, withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!entry.name.toLowerCase().endsWith('.md')) continue;
+      const parent = (entry as any).parentPath ?? (entry as any).path ?? srcDir;
+      const absSrc = join(parent, entry.name);
+      const rel = absSrc.slice(srcDir.length + 1).split(sep).join('/');
+      const absDest = join(projectRoot, destPrefix, rel);
+      mkdirSync(dirname(absDest), { recursive: true });
+      copyFileSync(absSrc, absDest);
+      manifest.push(`${destPrefix}/${rel}`);
+    }
+  }
+
+  it('agents walk records nested *.md files with forward-slash paths', () => {
+    const srcAgents = join(root, 'node_modules/moflo/.claude/agents');
+    mkdirSync(join(srcAgents, 'v3'), { recursive: true });
+    mkdirSync(join(srcAgents, 'github'), { recursive: true });
+    writeFileSync(join(srcAgents, 'v3', 'security-architect.md'), '# arch');
+    writeFileSync(join(srcAgents, 'github', 'pr-manager.md'), '# pr');
+    // Non-md files (e.g. yaml stubs) should be skipped — only *.md ships
+    writeFileSync(join(srcAgents, 'v3', 'index.yaml'), 'list:');
+
+    const manifest: string[] = [];
+    syncDirRecursive(srcAgents, root, '.claude/agents', manifest);
+
+    expect(manifest.sort()).toEqual([
+      '.claude/agents/github/pr-manager.md',
+      '.claude/agents/v3/security-architect.md',
+    ]);
+    expect(existsSync(join(root, '.claude/agents/v3/security-architect.md'))).toBe(true);
+    expect(existsSync(join(root, '.claude/agents/github/pr-manager.md'))).toBe(true);
+  });
+
+  it('skills walk records SKILL.md files', () => {
+    const srcSkills = join(root, 'node_modules/moflo/.claude/skills');
+    mkdirSync(join(srcSkills, 'fl'), { recursive: true });
+    mkdirSync(join(srcSkills, 'eldar'), { recursive: true });
+    writeFileSync(join(srcSkills, 'fl', 'SKILL.md'), '# fl');
+    writeFileSync(join(srcSkills, 'eldar', 'SKILL.md'), '# eldar');
+
+    const manifest: string[] = [];
+    syncDirRecursive(srcSkills, root, '.claude/skills', manifest);
+
+    expect(manifest.sort()).toEqual([
+      '.claude/skills/eldar/SKILL.md',
+      '.claude/skills/fl/SKILL.md',
+    ]);
+  });
+
+  it('user-authored .claude/agents/custom/<name>.md never enters the manifest', () => {
+    // Custom path is NOT under node_modules/moflo, so the walk never sees it.
+    const srcAgents = join(root, 'node_modules/moflo/.claude/agents');
+    mkdirSync(join(srcAgents, 'v3'), { recursive: true });
+    writeFileSync(join(srcAgents, 'v3', 'shipped.md'), '# shipped');
+
+    // User has their own custom agent in their consumer-side agents/
+    mkdirSync(join(root, '.claude/agents/custom'), { recursive: true });
+    writeFileSync(join(root, '.claude/agents/custom/my-agent.md'), '# user-authored');
+
+    const manifest: string[] = [];
+    syncDirRecursive(srcAgents, root, '.claude/agents', manifest);
+
+    expect(manifest).toEqual(['.claude/agents/v3/shipped.md']);
+    // Custom file untouched
+    expect(existsSync(join(root, '.claude/agents/custom/my-agent.md'))).toBe(true);
+  });
+
+  it('cleanup loop removes a previously-shipped agent absent from the new manifest', () => {
+    // Pre-#948 + first session under #948: agents weren't tracked, so the
+    // OLD manifest is empty. Run a sync that records two agents, then
+    // simulate next-version sync where one was retired.
+    const srcAgents = join(root, 'node_modules/moflo/.claude/agents');
+    mkdirSync(join(srcAgents, 'v3'), { recursive: true });
+    writeFileSync(join(srcAgents, 'v3', 'a.md'), 'a');
+    writeFileSync(join(srcAgents, 'v3', 'b.md'), 'b');
+
+    const firstManifest: string[] = [];
+    syncDirRecursive(srcAgents, root, '.claude/agents', firstManifest);
+    expect(existsSync(join(root, '.claude/agents/v3/a.md'))).toBe(true);
+    expect(existsSync(join(root, '.claude/agents/v3/b.md'))).toBe(true);
+
+    // Next moflo version retires v3/b.md — only a.md is in the new tarball
+    rmSync(join(srcAgents, 'v3', 'b.md'));
+    const secondManifest: string[] = [];
+    syncDirRecursive(srcAgents, root, '.claude/agents', secondManifest);
+
+    // Cleanup loop: items in firstManifest but not in secondManifest get unlinked
+    const newSet = new Set(secondManifest);
+    for (const rel of firstManifest) {
+      if (!newSet.has(rel)) {
+        const abs = join(root, rel);
+        try { if (existsSync(abs)) rmSync(abs); } catch { /* non-fatal */ }
+      }
+    }
+
+    expect(existsSync(join(root, '.claude/agents/v3/a.md'))).toBe(true);
+    expect(existsSync(join(root, '.claude/agents/v3/b.md'))).toBe(false);
+  });
+});

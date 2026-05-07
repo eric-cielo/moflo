@@ -1,0 +1,1434 @@
+{
+  "version": 1,
+  "retired": [
+    {
+      "path": ".claude/agents/analysis/code-analyzer.md",
+      "knownContentHashes": [
+        "sha256:259bd298e1f6cf297ab5354e4701bec9cf0020bc22a66bba96c09cc580af47f0"
+      ],
+      "retiredIn": "2.0.0-alpha.121"
+    },
+    {
+      "path": ".claude/agents/analysis/code-review/analyze-code-quality.md",
+      "knownContentHashes": [
+        "sha256:b865110a1694598fcfa9c1eb319014eb87461df35aaaaa6c820a41a5535346ad",
+        "sha256:468851022f67047982c5abb8a2a74a5fb0fe330fe0821f7c91c859697d72162e"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/agents/architecture/system-design/arch-system-design.md",
+      "knownContentHashes": [
+        "sha256:7330ff870b23d2d6c05a415fdd9cc7ee6ff49a2cc48a33eb1962b830106abf3b"
+      ],
+      "retiredIn": "3.0.0-alpha.1"
+    },
+    {
+      "path": ".claude/agents/base-template-generator.md",
+      "knownContentHashes": [
+        "sha256:4b957343021823020828d6d213126243bad177f29984fc09545814b88fcfa87a"
+      ],
+      "retiredIn": "2.0.0-alpha.121"
+    },
+    {
+      "path": ".claude/agents/consensus/byzantine-coordinator.md",
+      "knownContentHashes": [
+        "sha256:5c1dab70fccda87e6fdc2fbd221258e8a51530db3c78833c24cebeb19687c4d2"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/consensus/crdt-synchronizer.md",
+      "knownContentHashes": [
+        "sha256:b0ca8c4f4237d0f1bd3d81ac5db859857906ca34ab210d6964f332733c030fa5"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/consensus/gossip-coordinator.md",
+      "knownContentHashes": [
+        "sha256:946d66b6f530ae6eaed102e5d677ab5c3bd2806b6d2b274c17343c77de70cc40"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/consensus/performance-benchmarker.md",
+      "knownContentHashes": [
+        "sha256:7084eeadbde4f080ee4babb4d6b58abd23845b021eadf6feae68aa0addf97ff6"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/consensus/quorum-manager.md",
+      "knownContentHashes": [
+        "sha256:9902ac56027d24895b8439f54cc0f8baba8bad331cf5f99e2922c781c6c6ffb0"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/consensus/raft-manager.md",
+      "knownContentHashes": [
+        "sha256:fbf05a0e1d8bccc39ed8751449b805d151e8b5d85069a9ed90028b7631b7dfa5"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/consensus/README.md",
+      "knownContentHashes": [
+        "sha256:229907de38b07d3f39af5a2210830776a2e94ef210523792491bb97a8ccac956",
+        "sha256:0bcb3d8202635786da5bd0205b89302f465245e8f5e2bddab88368e655f3810a",
+        "sha256:2a1a1c8c495e81e107001760179968591ab24641f3834e92dd739e198e4d7e2d"
+      ],
+      "retiredIn": "3.1.0-alpha.32"
+    },
+    {
+      "path": ".claude/agents/consensus/security-manager.md",
+      "knownContentHashes": [
+        "sha256:368a57778c93da14e2581ae9835a03458d3db50659694078a213d3f25b87747c"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/core/coder.md",
+      "knownContentHashes": [
+        "sha256:fd11f4cf99f74e7db021947e0ecc10f8fd3e5afb357433bcf68058905abf0116"
+      ],
+      "retiredIn": "2.0.0-alpha.121"
+    },
+    {
+      "path": ".claude/agents/core/planner.md",
+      "knownContentHashes": [
+        "sha256:1ea85a5cf770f62e7e40e612be9fc5d779dd265f77fa942ee6f8d1c3950127c3"
+      ],
+      "retiredIn": "2.0.0-alpha.121"
+    },
+    {
+      "path": ".claude/agents/core/researcher.md",
+      "knownContentHashes": [
+        "sha256:e486075522aef212f49ab79659130521fe362779daf0919fac17f2d1f16576a6"
+      ],
+      "retiredIn": "2.0.0-alpha.121"
+    },
+    {
+      "path": ".claude/agents/core/reviewer.md",
+      "knownContentHashes": [
+        "sha256:664518900259644124b28d4b0e92be3ca139fa391920fc0e97b309649bc093fd"
+      ],
+      "retiredIn": "2.0.0-alpha.121"
+    },
+    {
+      "path": ".claude/agents/core/tester.md",
+      "knownContentHashes": [
+        "sha256:26f05967316ebbda9b96b7262fe80500d158fcd2f75f1adba1d28c99d882f6e7"
+      ],
+      "retiredIn": "2.0.0-alpha.121"
+    },
+    {
+      "path": ".claude/agents/data/ml/data-ml-model.md",
+      "knownContentHashes": [
+        "sha256:8c1fb32efa0398db5eb760f777f681b37aeb1eff4f1d8bf4878d3510688dff37",
+        "sha256:ff626fee1a53fce1c58187a44c4e0f3c2c664d74f4c61626ddfe3852532ac8cf",
+        "sha256:dfcd3745237c80daa26a9f819cc58f2396e3863c1add36da727e1a526097b014"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/development/backend/dev-backend-api.md",
+      "knownContentHashes": [
+        "sha256:3f537db3650f3916c31b124d5c5acab9dedc92eecc051093a7c6995536eac53f",
+        "sha256:7d29d81a99cead6b28c81971ec3f6abb3b8f1d93aec8539b116e56382a8f661e",
+        "sha256:c636bb38b48e714c12d00c7869b11ce8e39a21db8e1aa451c2f5013638fdedab"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/agents/devops/ci-cd/ops-cicd-github.md",
+      "knownContentHashes": [
+        "sha256:daa1ca3b2e116167dd4d057b64d96bd40c00bfd1d6a3ad3c607dd9129db7a032"
+      ],
+      "retiredIn": "3.0.0-alpha.1"
+    },
+    {
+      "path": ".claude/agents/documentation/api-docs/docs-api-openapi.md",
+      "knownContentHashes": [
+        "sha256:0cec8892de681a157cb3d56af8e336020dae58ec4a51c0e1dcaf6cfd90c61cd7",
+        "sha256:0a24f98cd97229b746a2f89f2cdfe09fac0ee8dcd757073017fee91e951b7f7f"
+      ],
+      "retiredIn": "3.0.0-alpha.1"
+    },
+    {
+      "path": ".claude/agents/dual-mode/codex-coordinator.md",
+      "knownContentHashes": [
+        "sha256:df733dcb403267621a70d684a0629da34c06208959749a3559bd64b0c84ef24e",
+        "sha256:774e1580d697f7bfefaffc31147ef6cdce28aa25288cf6c4f2d9ebc184ab28c5"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/dual-mode/codex-worker.md",
+      "knownContentHashes": [
+        "sha256:19aada2fca51224833cbcff023562e33dc88f43a17dee162723b17b8f4c82362",
+        "sha256:0e9dfc874d6cdbdf2937c3cafd53daf90027f1a89dc21ac89ef5768cd1248881"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/dual-mode/dual-orchestrator.md",
+      "knownContentHashes": [
+        "sha256:632490fca3ea03545446dcad413e375dc05fc64b3d3fe1951e5eb52b55f7a22a",
+        "sha256:6e55f65fdb784415e2ce0f2d820befd0f65ac4018ce555089d3f4934d77f9a08"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/dual-mode/README.md",
+      "knownContentHashes": [
+        "sha256:f4e58c138781684df1d260d03e3b2952e02134abe8ff1c56a83f7f6ee68567f6",
+        "sha256:f96a5859b4ba5e2f3af17813691c55b271b9daa17905a2b29dc2bd6b2e508fe8"
+      ],
+      "retiredIn": "3.1.0-alpha.32"
+    },
+    {
+      "path": ".claude/agents/example-agent.md",
+      "knownContentHashes": [
+        "sha256:2b381f03aebf914fd43ea6d92320f268d8e30bb801b2fbe5eaae0cdbf4e1bc1e"
+      ],
+      "retiredIn": "3.0.0-alpha.1"
+    },
+    {
+      "path": ".claude/agents/flow-nexus/app-store.md",
+      "knownContentHashes": [
+        "sha256:a3d2b5239dd6e8f6f574eef49be9757d762b2210bb81025b534251837b5cc9ca"
+      ],
+      "retiredIn": "4.8.52-rc.12"
+    },
+    {
+      "path": ".claude/agents/flow-nexus/authentication.md",
+      "knownContentHashes": [
+        "sha256:e1f457036f82f0534b09e65fa98e8de0890465977a956a5098404680ecd89b42"
+      ],
+      "retiredIn": "4.8.52-rc.12"
+    },
+    {
+      "path": ".claude/agents/flow-nexus/challenges.md",
+      "knownContentHashes": [
+        "sha256:25612f97449d7951026f7620f256d3d99a64633a37efa345d1ee52700b44277c"
+      ],
+      "retiredIn": "4.8.52-rc.12"
+    },
+    {
+      "path": ".claude/agents/flow-nexus/neural-network.md",
+      "knownContentHashes": [
+        "sha256:f42ae96a533eae7f876661dc602376d6f08bdf4e2009fd85508b5ad03f39bf80"
+      ],
+      "retiredIn": "4.8.52-rc.12"
+    },
+    {
+      "path": ".claude/agents/flow-nexus/payments.md",
+      "knownContentHashes": [
+        "sha256:abab0c52b6f204d211d74e1c74612db897d1641657059776f7d66c89206ad50b"
+      ],
+      "retiredIn": "4.8.52-rc.12"
+    },
+    {
+      "path": ".claude/agents/flow-nexus/sandbox.md",
+      "knownContentHashes": [
+        "sha256:b06be9d3e2507096a82a06caf83e151966dae1a456e83150082c42d5b0e97138"
+      ],
+      "retiredIn": "4.8.52-rc.12"
+    },
+    {
+      "path": ".claude/agents/flow-nexus/swarm.md",
+      "knownContentHashes": [
+        "sha256:71f2cca54559ad1d815b98dac1acdae199ce2e6155324708a2d0eae336592b6a"
+      ],
+      "retiredIn": "4.8.52-rc.12"
+    },
+    {
+      "path": ".claude/agents/flow-nexus/user-tools.md",
+      "knownContentHashes": [
+        "sha256:1a27f961e7736ef2bf22cc34dfedb919dbc2ebcf6fd788fc749a3c0a9c29ddcd"
+      ],
+      "retiredIn": "4.8.52-rc.12"
+    },
+    {
+      "path": ".claude/agents/flow-nexus/workflow.md",
+      "knownContentHashes": [
+        "sha256:89547ceaa0f78b6eda1fe82c1b78e82251c47ec53f645a8675cb00a4154f7ec4"
+      ],
+      "retiredIn": "4.8.52-rc.12"
+    },
+    {
+      "path": ".claude/agents/github/code-review-swarm.md",
+      "knownContentHashes": [
+        "sha256:67e5d852bd6e697181e8a8005b79aeea6a9134719205ea5a5f1db871301fcf38",
+        "sha256:70ec07b51620e1f5e4e0bf2387da156aabea180b5311b7db452d9ba08e0dfc2e",
+        "sha256:01f64a4f7c9f1ddeb66ac5a3ecd0c3e1442543a33359e4a6414e8bd3c5bf418e"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/github/github-modes.md",
+      "knownContentHashes": [
+        "sha256:2640c10081fbcf319851b6c21fe017c9dcd1e91927e186d78ce529ef3378af53",
+        "sha256:5c844867cad1bbcbe740755874b88addc4c5ccd365c482a0952af0f299763d3b",
+        "sha256:f2773710f476d949ee6ce84f6d24608b23246973f4f6f89e8b19d23cf6c9c2ed"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/github/issue-tracker.md",
+      "knownContentHashes": [
+        "sha256:4f0aafcc24b782609f1ed884b3f11e67f56b4330b11c9261a81ca36024f6ad93",
+        "sha256:afa40d32dbf9007578efd60379adb6648d7e2636f3383939f4f975dd014f36ed",
+        "sha256:023029df2961b7ff44561fbee2edd93d12fb515e40cc15748c7ac72d0295f791"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/github/multi-repo-swarm.md",
+      "knownContentHashes": [
+        "sha256:ad97b07503626a5d18a2b501654a6861bcea32e6a4f3420b793b0515256f56ab",
+        "sha256:c4f89cb2acc2408ac5ec4dbaedf15d23def290b0b4c1919d49d55dff9eef9638",
+        "sha256:12794b13e45f8e7993f8aaf8cfc21bcc4fa5c9677d01d145e04e2f672348a61e"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/github/pr-manager.md",
+      "knownContentHashes": [
+        "sha256:76cbd4516ad348be7d5858069742609b02181f87ca61e3d0dba10c2b1e86ed31",
+        "sha256:00f024a5e80a22bea9d3b7935ebca6842f04ce819d285daa419811ef9c16ed9e",
+        "sha256:e3263adeedfa410288d9e017843e208dc4b0a0a4a6f6cd2d4a6424db2e1de933"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/github/project-board-sync.md",
+      "knownContentHashes": [
+        "sha256:11bddc3cf40ea4ad31aa143af76fd1e33aad29fdfe6f322db85da95209bdb156",
+        "sha256:30521905f9214d1eeef22a1706b9b33d3616e8264d4c1f1d6f003eb096c82362",
+        "sha256:8c193dfc5ba49833e60be8ba73dd989358aafe5eda0084dda6ab3ecb308e4975"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/github/release-manager.md",
+      "knownContentHashes": [
+        "sha256:ad58b0baa5d1afa0cad030d4c41ade44bb5068352912caedd2d4af411151c4ea",
+        "sha256:2525519dd022c9bfbfc64a4ba52aa3a2ed4157ee4c09731a8b029422bc5cf4f8",
+        "sha256:b37341dc6cbe756a3f48b633bc672a0cb9513cdc6e5dd6a07e93e27d5d15b9e8"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/github/release-swarm.md",
+      "knownContentHashes": [
+        "sha256:465ac946bf8e29af35231180389c6a1b5f0ada36328d53cbe1ed92718726cb4b",
+        "sha256:adfcbee204c328f591942bf0d66ead1d95d1f2e52be76a1b1f380d580c8dc40e",
+        "sha256:1d2c900bb67910eff050c0e1f9035a9b1bb4b22c6153fb0a12c0f9908896ab1c"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/github/repo-architect.md",
+      "knownContentHashes": [
+        "sha256:6dfbf90adda13ffe1cdde9e51cce765ed0ac0cad47e7060345e1b77d2dec93dd",
+        "sha256:dddd7b6d7700f6bf1e8b308deb5e11f15e064dec53fcde5dabc1743b45127f9c",
+        "sha256:73aec6626468ade107328bb564d6ab6a75f322beba917159d0bc4e780932290a"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/github/swarm-issue.md",
+      "knownContentHashes": [
+        "sha256:8ffcffce17a6010df2837c6672698d7181c71fafb5b03233d981a6d4d9f87a3f",
+        "sha256:0ce4472558470af59054bc8da7a9045eba3506d974d6a35fea1392e32fb8475e",
+        "sha256:bab0ac6581db887166a6cfc919973d5d965fa644d03df2d9bc7c8110b270156c"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/github/swarm-pr.md",
+      "knownContentHashes": [
+        "sha256:43f699ef0cf9fec369b4a1fb323a0476b6847034d515e6f75c51d656cd302c2a",
+        "sha256:5a7096fbfe9d910cef1e7f3a972ee4ced4242ef589c27fa40a9a19abd1781bd7",
+        "sha256:9d3a755f3db0c3d3c3e7a0e35e2cb412b7552a68d1512868a46a1d44978692d9"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/github/sync-coordinator.md",
+      "knownContentHashes": [
+        "sha256:36bc5d88b80311ff797c49fa19f2c99fd57b0e60fde49a7da759a6a8fe118f37",
+        "sha256:d8c4cf3a1b679393710d2cfa587a0a28fccdc4e121ae3c1314471575893dc3af",
+        "sha256:695a258db94bc3ec25093fe41a4815f33e610e12ad571747a75d4808e5fb913c"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/github/workflow-automation.md",
+      "knownContentHashes": [
+        "sha256:682564eb0893e54a1f8c01ddd611f408ac6e747c2fc9b5b3d86570617bf7f674",
+        "sha256:b1a214fbd5c949829033bc66233ee5b8c538b59f014ff17589eb732cb2b8b3c7",
+        "sha256:f4845edf977ddc1f0f0a448df86e9b70969ce93853618173b6a634f52f294b32"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/goal/agent.md",
+      "knownContentHashes": [
+        "sha256:25ccabfed94ae8f70d6ab2f4b42e171edb5b3d232c02f5bf7cf0044f8b944127",
+        "sha256:9d8a8539a3ce78e4403eb018ec090680fd76d48a966694e6fce1cb5729a5db0a"
+      ],
+      "retiredIn": "4.8.87",
+      "retiredBy": "#695"
+    },
+    {
+      "path": ".claude/agents/goal/code-goal-planner.md",
+      "knownContentHashes": [
+        "sha256:90b05b3acd76eb5bca0e50ea26f408f0a2b4be0f0c4c8a1f9361ef85d1eca364",
+        "sha256:ec1872af996bad470435dead96015c3e2f523c8e820639b4bede89e3d12486fe",
+        "sha256:6923711f4630073b9de7314f2aa9a94993c4f40bf29dfa728995e7dc14a497ac"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/goal/goal-planner.md",
+      "knownContentHashes": [
+        "sha256:d075440c59a499e568f08e70a4e082df49ac964d0429f5f85351cb12b8f6c8b4",
+        "sha256:00704c3a39d72536933e76c2fe13a8194abd2643d22e10f2282343ef755bdb36"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/hive-mind/collective-intelligence-coordinator.md",
+      "knownContentHashes": [
+        "sha256:1986cc1c6d77f2828002fd153640bbfafceca8cab5046d579a942c5b6efd36d3",
+        "sha256:ce0f72fc796a703e408034de49b834028723acf47b33d34413f14ca7cc41bda4",
+        "sha256:69847acd12863a46c659a25ae0c39fd9c39e72a2732cec79da262ff52d5e6610"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/hive-mind/consensus-builder.md",
+      "knownContentHashes": [
+        "sha256:b809aa0460311b209522ac3ff6e47caca43e35c0e32a3eac834b2970799fb267"
+      ],
+      "retiredIn": "2.0.0-alpha.89"
+    },
+    {
+      "path": ".claude/agents/hive-mind/queen-coordinator.md",
+      "knownContentHashes": [
+        "sha256:a87c8bc1ae465a9544f1431abb0e119d3c6ae5fef548fb1178e2b06f1b848c90",
+        "sha256:3d85fc33d58ee261bc073b3200c9b8df514341ecce3e3eeec5f8f52aa133d797",
+        "sha256:86e0fdfe74b24924b6b4bf0b964d3fcb38cd0dd98cd990b1963ad999a130a06c"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/hive-mind/scout-explorer.md",
+      "knownContentHashes": [
+        "sha256:6098f4acbe38c5709f92b2260859737e9726589dd5c1e0e8bb1942570467a816",
+        "sha256:c081fc38c94543575eb4818c10bc13234bef1d917082138f033baafd7535217d",
+        "sha256:19508626bb1c15a20a24b9681ba1cc476f25273fe4e4e4642a4a33cb7469ce46"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/hive-mind/swarm-memory-manager.md",
+      "knownContentHashes": [
+        "sha256:c2dc50176fb1b484dd2b4490094a2e5c52949fdc93e62bb0ee6560ef6b3c0c9c",
+        "sha256:17f6832ea4d73c004232c562c7394105673a08382dab3e706acb5192032213c9",
+        "sha256:892051cdbba5cd4a3cb3ab5c26638a2396ee3b8a800da343cb307e7f23ac5277"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/hive-mind/worker-specialist.md",
+      "knownContentHashes": [
+        "sha256:35a1c136aae40d96403e41371f9f8313379a1191dd0dd7e9f3920b16a04ccc8b",
+        "sha256:1d677b04c4313d2fcea62ae0d805105eb89e51f2b0d45870c8892260977ffeca",
+        "sha256:30afec7a567b1220a9361988ad8c67744e39dca98c776f7ee42d1805c62ad77e"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/MIGRATION_SUMMARY.md",
+      "knownContentHashes": [
+        "sha256:b9dc5108c3c06d63bf0166c55881ae7855d67c4e65c91e44c3bdda566137f05d",
+        "sha256:6e2957f0ce40600229f592c5df69b81ffac162aaee526d600aa04addd83d6239",
+        "sha256:d31dcdba94756ed3d0e57e74d6534ddcac4d13cbd161b80e1e969611e399b594"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/agents/neural/README.md",
+      "knownContentHashes": [
+        "sha256:eaf741078453172cd8a3a5c25a90a6b827ae2312ba27a867247604a1e2020430"
+      ],
+      "retiredIn": "2.0.0-alpha.110"
+    },
+    {
+      "path": ".claude/agents/neural/safla-neural.md",
+      "knownContentHashes": [
+        "sha256:f712f0f3225f7c9a1c341c5454b7dc2376679686329dce97eda47672a9a8d647",
+        "sha256:aff2f640346db7f6f2b51cbc112886d27bec590e48e6c4259cf75f193d31bb66",
+        "sha256:2806af6f9ae819c48668e30d3cb3ed75c9237d6d01b363df3c5c98bc9ece6ea1"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/optimization/benchmark-suite.md",
+      "knownContentHashes": [
+        "sha256:5c333b36ea2dd336f77d0095c677a25fe1b1092dc0f82a2b8d36dd3579348a28",
+        "sha256:3178a6fc9f4957c5b0cbb52e7eb1f0e0c6ffc1d4033735ce48170470548301c7",
+        "sha256:43f92ab26091425f0c2c6b66c6baf6025b5a9b01d594fa648751a7b4e7e7161b"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/optimization/load-balancer.md",
+      "knownContentHashes": [
+        "sha256:630a3388862f0e11fef1a6d09ae5a1d5da826059905670b775d4f480ecc4ac45",
+        "sha256:5b5e295ebf273c6ce58e55a9de91154a325b590b1cde8470ee0cc015e76e17a4",
+        "sha256:2dad5e0b70df64383cb1a1392b9d778f3d9dff88e723fbe14c3b7c24c9a628d8"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/optimization/performance-monitor.md",
+      "knownContentHashes": [
+        "sha256:2be55d0e639aee0df81d9b76c79d8952af35064a0749eafa4d12a021613345cf",
+        "sha256:b8fb11ebc7dfa2388df2ed5f81abc0570c1917912ffb89e8dbab4a45a238fa2e",
+        "sha256:e32b0078e099426410bd1e0bad1dabc57f52c721363defe96292945ed97d084f"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/optimization/README.md",
+      "knownContentHashes": [
+        "sha256:0d09ff7361830a3f8bd6054148339a40265bc31836803dacbd5d9770a0949a24",
+        "sha256:df5f049cc42857f7481e5701801d7dffd514c473223dd02de4588660112456fb",
+        "sha256:8c19211c0ffb49f7df48d98cdebe5381c645eacbe3beafb5a7eb54887f7e508a"
+      ],
+      "retiredIn": "3.1.0-alpha.32"
+    },
+    {
+      "path": ".claude/agents/optimization/resource-allocator.md",
+      "knownContentHashes": [
+        "sha256:b617890e5d6fcae097874aba70bfeeee0867dbb0d75661b1d5ee2f17398c24fe",
+        "sha256:76d92d529388e9a9dca176d4e6626a212d3fdb2b27fd03e6586a3c2acccba43b",
+        "sha256:f9590ea579eb31661b25915977f49cda0e87f793898ba0560168e23acf66974e"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/optimization/topology-optimizer.md",
+      "knownContentHashes": [
+        "sha256:7c6c635c78a6bf57c4a131386cfe0d5c6f1aa93ba449346563bef48b0e8a65c7",
+        "sha256:ede598ced1f5b4f10f98c734c90d0657696dabfa18778149225ced56786b41c2",
+        "sha256:01c08cfe8edf9424640ec6df44171cac31aee665d6716a4d2a97c82f04f2956f"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/payments/agentic-payments.md",
+      "knownContentHashes": [
+        "sha256:d2b5b54b7f538f3f8c04893f8c0d878605f69b227d73aff71e2e67b121f46ab2"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/README.md",
+      "knownContentHashes": [
+        "sha256:73d42cceae3afca28e2871a29aabe6e024367870c05994ffa3de59b32a103073",
+        "sha256:36e026cb3f10761d54f184eca0bf12c2c7ea362c011f69bdec8a1f25bf502ec5",
+        "sha256:9cdc0cdf772b6a7f15a4f4fa418ae2f5cb3c325046f27e470dada96516a11b91"
+      ],
+      "retiredIn": "3.1.0-alpha.32"
+    },
+    {
+      "path": ".claude/agents/reasoning/agent.md",
+      "knownContentHashes": [
+        "sha256:25ccabfed94ae8f70d6ab2f4b42e171edb5b3d232c02f5bf7cf0044f8b944127",
+        "sha256:9d8a8539a3ce78e4403eb018ec090680fd76d48a966694e6fce1cb5729a5db0a"
+      ],
+      "retiredIn": "4.8.87",
+      "retiredBy": "#695"
+    },
+    {
+      "path": ".claude/agents/reasoning/goal-planner.md",
+      "knownContentHashes": [
+        "sha256:5066f1be50bb097b4849f187cee22802c14c6c1a3fb380fbfb038d716d432772",
+        "sha256:8f2a2e8be3eb2fae68938db105e8b48560a4050e283d702bdf56871c1bde2176",
+        "sha256:d075440c59a499e568f08e70a4e082df49ac964d0429f5f85351cb12b8f6c8b4"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/sona/sona-learning-optimizer.md",
+      "knownContentHashes": [
+        "sha256:3b51506956b66b834dc09adff0e245bc8aada778831a45a22f6ad524cc2e48dd",
+        "sha256:5a6a19e697026a73f033a6ea780faf4d18749505091f1ceaf810a10deda2f606",
+        "sha256:8af5871c91d2563f8aa7dbc09d77161396feb97e3638bd93710ef6d36367778a"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/sparc/architecture.md",
+      "knownContentHashes": [
+        "sha256:59263ab4b8919f974feb893b768faca84412de07812d71262335854d81ba438b"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/sparc/pseudocode.md",
+      "knownContentHashes": [
+        "sha256:428447d6a67d396f704e8ba7fdbba3c719f7c5840052b54dccb5763022a2953a",
+        "sha256:ff270cf431c0f062fb053fdaaab612aa612772c0970f7d3fec257d3b490a376d"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/sparc/refinement.md",
+      "knownContentHashes": [
+        "sha256:dae546273f899c40c3c76554b56572bf071d0d43743db66e6cb63f2923678e8e"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/sparc/specification.md",
+      "knownContentHashes": [
+        "sha256:57bbdfa8b058a1fccffbe8a99a59570b4bad955a669cf7b22ee77e292b7a56e2"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/specialized/mobile/spec-mobile-react-native.md",
+      "knownContentHashes": [
+        "sha256:42ff01c39ef5eed2d99ce98400e412897f31e02291bd7cf363703bdc96f7565f",
+        "sha256:5cc5d5e6c9cb1279c32cdfb2daa32c06ee7171e82032ee887a9b4aa521747d99"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/sublinear/consciousness-evolution-agent.md",
+      "knownContentHashes": [
+        "sha256:7d9410f24b92483cdd1821c29bfb0c32213964d38e68467c9cc643f7afa54480"
+      ],
+      "retiredIn": "2.0.0"
+    },
+    {
+      "path": ".claude/agents/sublinear/consensus-coordinator.md",
+      "knownContentHashes": [
+        "sha256:7fa2a1ad51ad687e511b3fccc43ee3c9f3deae649436d52304e20f00ba36891d"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/sublinear/matrix-optimizer.md",
+      "knownContentHashes": [
+        "sha256:ee115c000f31da3e6c678abe9eec7a07f64d5705deac11ba12e8ff9acc72ba5f"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/sublinear/matrix-solver-agent.md",
+      "knownContentHashes": [
+        "sha256:08594fe08bf542791c9b45a351d2b0272910cde0e256691a8bc55d3d47a9ea00"
+      ],
+      "retiredIn": "2.0.0"
+    },
+    {
+      "path": ".claude/agents/sublinear/nanosecond-scheduler-agent.md",
+      "knownContentHashes": [
+        "sha256:8043f33701b0fd345fa67a63310a839ffc62df2a68c3ad6e3251bba2f620f397"
+      ],
+      "retiredIn": "2.0.0"
+    },
+    {
+      "path": ".claude/agents/sublinear/pagerank-agent.md",
+      "knownContentHashes": [
+        "sha256:d0ee86703b8f074a80e83ec099f6588df5306ce5d55913dd21b035f26380852d"
+      ],
+      "retiredIn": "2.0.0"
+    },
+    {
+      "path": ".claude/agents/sublinear/pagerank-analyzer.md",
+      "knownContentHashes": [
+        "sha256:99fb156ddf139b68e582a72e5e36e427e55f417798b39647ad93ac48d09d99e1"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/sublinear/performance-optimizer.md",
+      "knownContentHashes": [
+        "sha256:99bcd7f3605226f2a8b51b391e8388c7080e1c4723c47ca8c7dc0962df852206"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/sublinear/phi-calculator-agent.md",
+      "knownContentHashes": [
+        "sha256:e0afaa8902e220c01d54b5138108258c0bd40f49075645a44ffd1e3f2c57f476"
+      ],
+      "retiredIn": "2.0.0"
+    },
+    {
+      "path": ".claude/agents/sublinear/psycho-symbolic-agent.md",
+      "knownContentHashes": [
+        "sha256:b3ac33dfa3764761a3ca80aee7c7b5cb49daf527d35df2eb72d5ae1dd87b2294"
+      ],
+      "retiredIn": "2.0.0"
+    },
+    {
+      "path": ".claude/agents/sublinear/sublinear.md",
+      "knownContentHashes": [
+        "sha256:9d8a8539a3ce78e4403eb018ec090680fd76d48a966694e6fce1cb5729a5db0a"
+      ],
+      "retiredIn": "2.0.0"
+    },
+    {
+      "path": ".claude/agents/sublinear/temporal-advantage-agent.md",
+      "knownContentHashes": [
+        "sha256:9eab57fd4a580746b8b202a126d61909e274e30908bd15431f4f58da987df981"
+      ],
+      "retiredIn": "2.0.0"
+    },
+    {
+      "path": ".claude/agents/sublinear/trading-predictor.md",
+      "knownContentHashes": [
+        "sha256:16c9270fde6fc845fc992328af3faf1ab6ac074f313e13eb8d608e119507156a"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/swarm/adaptive-coordinator.md",
+      "knownContentHashes": [
+        "sha256:66a0e018b528c166df319782c191930da9b27c5346dbcf1e92782d7765f8488b",
+        "sha256:b11cd043043bfe140c724cf34c3612eb9f743fa1906dc6f33cc1caf1d908707a",
+        "sha256:5af255cfb3b1df29d8072dbf539f3d186333ecbd27d548cd5222d3330f314db0"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/swarm/hierarchical-coordinator.md",
+      "knownContentHashes": [
+        "sha256:92a0ae205f0fe06ce1ef0beabb9a2d4f4aa3fc5aa6f3f7c7a23f3807c8a17052",
+        "sha256:69404f429b94ed3a78e21ef2265b36885f6ed4980c76394094c3482e9fff2d25",
+        "sha256:43fd50c3eb2c2ff17d26744a948dbd111fcbea53e083d71045872007a8d62ee3"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/swarm/mesh-coordinator.md",
+      "knownContentHashes": [
+        "sha256:70207b48ac6df8fcd3c9a0b5f62e87f382e5fd9fc1d15ae984ae426cc760b7b1",
+        "sha256:f188dedb6a0e1d499fb214f4e557258631712cf6b8e44b46f02ebf26dccf8f99",
+        "sha256:02c2b797aff9717da48ba377ea0e98efab7e0ae411af6509bf906f87ea3944ae"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/swarm/README.md",
+      "knownContentHashes": [
+        "sha256:7001923298d3afac63a9d8d5a7fb550ed9c81fef49b5000d8ee3d75153132bd6",
+        "sha256:ce7eb7c460d2de5675e07e9153afd0611e1552fb0638411ad70e2ed5b4358d61",
+        "sha256:e71d76b0eb3f465c85c8446d8204352516b5eac7b02f485262da7bd5634d8f96"
+      ],
+      "retiredIn": "3.1.0-alpha.32"
+    },
+    {
+      "path": ".claude/agents/templates/automation-smart-agent.md",
+      "knownContentHashes": [
+        "sha256:51be95aec74dbf48091e24949c52164596dd3be86b2e64240df62d9ad4e7de27"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/templates/coordinator-swarm-init.md",
+      "knownContentHashes": [
+        "sha256:421637362dff0cb718b59789d034abbecab885b9748991f37f717a2ba4e7effe",
+        "sha256:ab58b07178243eb099e14eb9e2ab2f8d42b7887819c3aa8b9a350fa6874b14a0",
+        "sha256:6b28e224c3ed520eb911e3cf54101a9cf91e81411215c041cca16b7334aca770"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/templates/github-pr-manager.md",
+      "knownContentHashes": [
+        "sha256:6fdc7f9fb9b96ae659ef3fe03168f4ff769517e1acf467d1a130739f23914b04"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/templates/implementer-sparc-coder.md",
+      "knownContentHashes": [
+        "sha256:557129b56ec9569d55cfac9432a9288c5debd0b0f354640a19dacf14b4bc9e4e"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/templates/memory-coordinator.md",
+      "knownContentHashes": [
+        "sha256:8aeb10fad6f517a3cd0f6b2d48012880df1a6366f2e5a16db1ff9457385d169a"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/templates/migration-plan.md",
+      "knownContentHashes": [
+        "sha256:4e7bbd95b2685f79388d8d1a589da20159270ce7473b2b77fae79c50ad19ecb3",
+        "sha256:1e618f2c87a5c3ffe8d381786d7844382359e22f232a5d8d3299ac8d59464a4b"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/templates/orchestrator-task.md",
+      "knownContentHashes": [
+        "sha256:4af1f8472260fb40d63c15638ed004c0c702349c0c2f1a949eceb05061731157"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/templates/performance-analyzer.md",
+      "knownContentHashes": [
+        "sha256:97e3cff2daf0fc27f193533e6234a9b987a885418c21934069b9076b36959022"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/templates/sparc-coordinator.md",
+      "knownContentHashes": [
+        "sha256:41a8ed5dde643fc07123902e0555f1089a4cdab711f484b95092d5e4cf7f62fd"
+      ],
+      "retiredIn": "4.8.50"
+    },
+    {
+      "path": ".claude/agents/test-neural.md",
+      "knownContentHashes": [
+        "sha256:95362e605ea8ed284e8a9b4c0cd079c720d51be903e4d10504a6cf0cd8819216"
+      ],
+      "retiredIn": "3.0.0-alpha.1"
+    },
+    {
+      "path": ".claude/agents/testing/production-validator.md",
+      "knownContentHashes": [
+        "sha256:2290d706d92b5248ccdb8c656e928d3f8edb213c9ffbe05d3f0e645b44280925"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/testing/tdd-london-swarm.md",
+      "knownContentHashes": [
+        "sha256:1157ccd19576639d09be1192f0762a4b81429b92f774a7ebfaef7fdb65415f9c"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/testing/unit/tdd-london-swarm.md",
+      "knownContentHashes": [
+        "sha256:1157ccd19576639d09be1192f0762a4b81429b92f774a7ebfaef7fdb65415f9c"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/agents/testing/validation/production-validator.md",
+      "knownContentHashes": [
+        "sha256:2290d706d92b5248ccdb8c656e928d3f8edb213c9ffbe05d3f0e645b44280925"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/agents/v3/adr-architect.md",
+      "knownContentHashes": [
+        "sha256:1f23e5e2b05ad2a8e0f3894d0647688d656f9b1ad90c7c738d7fa9f2f986b238",
+        "sha256:d935664a8fb6a3b3207496c3a157e2ad5239984facb9d90c2e91997e55e3945a"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/aidefence-guardian.md",
+      "knownContentHashes": [
+        "sha256:af55732985dc4090dd187ee8449c31936f5d38144ceac177bb76432ba02cc027",
+        "sha256:ec1a05db48500d8b5817e1981ed538e618926a9cbc2879d8ccbe82924d4ebad2",
+        "sha256:0fa27c783880ea059594ba7ba52671f8574cb10d62bdea731fe96dc29a661582"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/claims-authorizer.md",
+      "knownContentHashes": [
+        "sha256:d307cbb251c994c2789331434b8e15b1ea29b6bf702f75e918f36a214dd11283",
+        "sha256:ddf6884514eba2e4aa2a1ddc6bf4b0db8bc872d603d49b80dd75429c7e448216"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/collective-intelligence-coordinator.md",
+      "knownContentHashes": [
+        "sha256:9ceaae544d52b8674887000cd9933a149589fc1a525cab5b3b17666231addb4b",
+        "sha256:0b191b81d5209c51d3ab0f51628a1323092af383cd7d9c39adce581a8d37dc7f"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/ddd-domain-expert.md",
+      "knownContentHashes": [
+        "sha256:7ef3eedbf78357243d74001a7f86bc9aba30a0549df460b15ae7fb69f0db1455",
+        "sha256:f5c7a04b26b3a73b3d8743d03c6b67cd17cdc71f0840bf72e01be96010eb7eb5"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/injection-analyst.md",
+      "knownContentHashes": [
+        "sha256:855acf61616b6fe895df57cc49e955061dc3a0ed2a604e35157e8c51c97125ca",
+        "sha256:ff071b86e2e8c74a08e4754cb5cf265f6d7049a6fba515e791c3a82a5e60c281",
+        "sha256:3446df8a0d551e8de90a6878a0ed0f8771d140913fb0391ecfc8c2941fb01694"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/memory-specialist.md",
+      "knownContentHashes": [
+        "sha256:36e451dbe8aad645f13c24cff31734f5dc664ce24409797fc5e01279201b53a1",
+        "sha256:b175d8100636af0669d0c7be49f87f9d6ca5c31a4fdd3f6ab34da6b32883a05f"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/performance-engineer.md",
+      "knownContentHashes": [
+        "sha256:459e0c2a873b193e9aca110791afaaa139e00f2048894b327f4a84e7e1abd526",
+        "sha256:a56ff8ce7658be3757d508e8da799391c4bfdc4713b4e34f5fabde22ca4df032"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/pii-detector.md",
+      "knownContentHashes": [
+        "sha256:7ca2a2c525280523c89133fae34848f83c964b3c8ab3d425f28e87860d268740",
+        "sha256:e1a8c17318b275ee1e56524e98a50564ebab2e0e8aa5b4da3a95acc98648280d",
+        "sha256:59fc86325c14cd6878f1a691bfeec3a4ce26808168024e2502947fa8771578ac"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/reasoningbank-learner.md",
+      "knownContentHashes": [
+        "sha256:788da4b172e6ab74e7b2ed7addf6e3cc6dbf2a8b75ad56dd12fd0e9d8ca2e8b7",
+        "sha256:b39c1783af3da6f2044549c8807f579766bd1b34418602bddc24c747b5aa53be"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/security-architect-aidefence.md",
+      "knownContentHashes": [
+        "sha256:2c1ace4fd4532fac45d277fc7a85fbb27a23ba4a693e2f08f36d145f01f5bc88",
+        "sha256:ebc4077e502b4887967e7019cb48a369cefd8e3ba2efb67f198af4e30ec12d22"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/security-architect.md",
+      "knownContentHashes": [
+        "sha256:acce4570c33e6132d567edc7ad3800c9e1260ecdab6efa946d50c2b4741b537b",
+        "sha256:a18bd4d63462c20e05fb6bfc18f565c5d187969c158aa7331b1012b383edc329"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/security-auditor.md",
+      "knownContentHashes": [
+        "sha256:063a86e41474998cff943af46a7f42b3b2629288f85ae2a67ca08e2017ee5010"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/sparc-orchestrator.md",
+      "knownContentHashes": [
+        "sha256:5ae4353cc994b40dc3cf8cf17df2508732437dcbe47773ebdf8546ac964b15e5",
+        "sha256:5ca4f44ebe22675cd2783e83e7d6d4a05791d1f45b674e16b70994cdcb7b2aee"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/swarm-memory-manager.md",
+      "knownContentHashes": [
+        "sha256:4abf5222a51dfc1d27e0db18dffeb153bb7219860b33432467bef90ab672713f",
+        "sha256:54c72a1be3a7c1bf674a1ec0ca7335a68fedef86c6c90becf2ea07dfd569df75"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/v3-integration-architect.md",
+      "knownContentHashes": [
+        "sha256:291d18522db18b962ca54b43563658c69bed054d4a46ba2c7d0126555b376342",
+        "sha256:0b07e8c29f0622299e8f620f93829fb1b8b5d69eae07e479d932bebc810354cc",
+        "sha256:840f06394149fe2695656bc35f96bab31a6ccbdc72f3f869775543466bec4c67"
+      ],
+      "retiredIn": "4.9.21",
+      "retiredBy": "#932"
+    },
+    {
+      "path": ".claude/agents/v3/v3-memory-specialist.md",
+      "knownContentHashes": [
+        "sha256:dfa2bfa3fc29a8ed8459ada68a9e3008b8e1ac7ac8490c2f9bdc303edce65f72"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/agents/v3/v3-performance-engineer.md",
+      "knownContentHashes": [
+        "sha256:be8bbc98cd408dce852007fddfd54171d3cb0f90d3c4a7c58942894dafaeaddd"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/agents/v3/v3-queen-coordinator.md",
+      "knownContentHashes": [
+        "sha256:e270bf8307a94b8fa9dfc737ca1d115595dec842ab777e1fdada2732c86301cb"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/agents/v3/v3-security-architect.md",
+      "knownContentHashes": [
+        "sha256:a7b6df7fa6702f4201e516755f10f9dae24b06b808b3f824356ce45abba4406b"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/skills/agentdb-advanced/SKILL.md",
+      "knownContentHashes": [
+        "sha256:a8b29cf938060485d5c83d9571fad601b06a398a7e66e1224537d274bb792d94",
+        "sha256:e5524686b1e900b8c890c665747752cf5df5732dc1e217f9cf3514fc5e89efd3"
+      ],
+      "retiredIn": "4.8.80-rc.7",
+      "retiredBy": "#500"
+    },
+    {
+      "path": ".claude/skills/agentdb-learning/SKILL.md",
+      "knownContentHashes": [
+        "sha256:c19cf1e691665b30a3af88bc2dd972b5a4cde056c033abfdf20ef7b83580dd8f",
+        "sha256:5e52ac69d8804930e420302fff517cfba81a0ff0b8f54ba77fb366f412998232"
+      ],
+      "retiredIn": "4.8.80-rc.7",
+      "retiredBy": "#500"
+    },
+    {
+      "path": ".claude/skills/agentdb-memory-patterns/SKILL.md",
+      "knownContentHashes": [
+        "sha256:f50a2110ed8e822be488d6b3fb3289c8701b6f03603027c3e34d31284baf4352",
+        "sha256:516a5357177cc65909277b639af151b393388e5f5eaaa3fc9d29cff6526b0cf7",
+        "sha256:ae711f5d9d97bc2f1d7c1b0cba2f64547c3a45fc6bafcd98b7219989663cf227"
+      ],
+      "retiredIn": "4.8.80-rc.7",
+      "retiredBy": "#500"
+    },
+    {
+      "path": ".claude/skills/agentdb-optimization/SKILL.md",
+      "knownContentHashes": [
+        "sha256:0f27ff01f3e664e581c2fdeb48bde51aeae83bf813669e43f1517680f3d308a8",
+        "sha256:0438ee74207accce878f510cfd1699aaf1a267b6e7d5a6571a27dfbd7d2009e9"
+      ],
+      "retiredIn": "4.8.80-rc.7",
+      "retiredBy": "#500"
+    },
+    {
+      "path": ".claude/skills/agentdb-vector-search/SKILL.md",
+      "knownContentHashes": [
+        "sha256:a4b996e0fe1f4f72881b152819830b8415d0f0d483becb5e0004429f06e5854f",
+        "sha256:beecdac71c19e0ed3506737d5cb8704e6ceeb7dfa6052b425607cda0c548a5af",
+        "sha256:88bf7c0ccb279b751acded6764aa7be5775bed14cae2a3b6fdd88c95f4785ff4"
+      ],
+      "retiredIn": "4.8.80-rc.7",
+      "retiredBy": "#500"
+    },
+    {
+      "path": ".claude/skills/agentic-jujutsu/SKILL.md",
+      "knownContentHashes": [
+        "sha256:6620d4deac6310788656c2dc2fb3a3cc34cd4e2f6137dff1ffe00b98d4be82e5"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/skills/browser/SKILL.md",
+      "knownContentHashes": [
+        "sha256:ec2b4d557692047b8d287f0d17e53a3594d0357fe9ec4569ac2d5f0e0035329e",
+        "sha256:315c1b8a8580954d4dce3dffaf9944a3f16adde504a8decac235e349fe6c8050",
+        "sha256:fe216d9664f5218c2b0d4618d17dd6c49820e866fafbc0c9197b7d8104f49271"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/dual-mode/dual-collect.md",
+      "knownContentHashes": [
+        "sha256:4750af91d6e781851e4cc7a5631737a7862c023de0e990d38a0f2aed0bfeb1dd"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/skills/dual-mode/dual-coordinate.md",
+      "knownContentHashes": [
+        "sha256:a8dcfb1c1242afb2f626d55e1b3360a4569f8611a7b03087457b761b7b8d2410"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/skills/dual-mode/dual-spawn.md",
+      "knownContentHashes": [
+        "sha256:a18bde7871bdc19f18a8cfa5aa1fcdc20750ceb877ecfcebf2a525198785847a"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/skills/dual-mode/README.md",
+      "knownContentHashes": [
+        "sha256:47a0ea719a73071e8ecad002835d6390517e79064128af7ac94e4cbff0968a55",
+        "sha256:6e82c1b5350de367540d088b9e858c54dff0dffd593bab29ac5864eedd4fcf04"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/skills/flow-nexus-neural/SKILL.md",
+      "knownContentHashes": [
+        "sha256:e9d5946f4e0949fc96667d6fc7730e9697ef2fb023c9fe02adbfb42cd1c091d4"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/skills/flow-nexus-platform/SKILL.md",
+      "knownContentHashes": [
+        "sha256:39f2b25462a2b4a2af575fdcc299789c5d4eaf64341257cddd58bdbe69517c17"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/skills/flow-nexus-swarm/SKILL.md",
+      "knownContentHashes": [
+        "sha256:e9c93887da6add6a1ef42c3646e423904c09cd10770987a6058a8e6bb90325d0"
+      ],
+      "retiredIn": "4.8.12"
+    },
+    {
+      "path": ".claude/skills/github-code-review/SKILL.md",
+      "knownContentHashes": [
+        "sha256:e1da663bd23908bdf8bdf142a38751a6734fc9188f6d868dbf6835a65bb8414d",
+        "sha256:8a11934efa1a95f6677f6f50af1e32d846e6d7bac95fa04170a55fbbd9573c16",
+        "sha256:3b8cad151d42cb825bd2659a53278bd14eafa996cf5e62e2c57ab0985225c1b1"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/github-multi-repo/SKILL.md",
+      "knownContentHashes": [
+        "sha256:ca393938fdf2ab9b2bd67488fa98e74d4f8ecfecb1bc5d208e17a24f1d3a9355",
+        "sha256:5dd8ac82d911e80efd20d5c673bfec79911560653910235d47579f72ba82ae99",
+        "sha256:e4ae9caba61215cb36db6642092c3bb2b9631f8fa7e3de72f1b14be690f52c89"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/github-project-management/SKILL.md",
+      "knownContentHashes": [
+        "sha256:1dbaf3454479374451f7feb149b56e17b36cbaf9c32983927930b521f298957a",
+        "sha256:3df3e9a822fa0024553ca8b09e5bac95f1d4cc6dba6e78a5bb8658df3a266a1b",
+        "sha256:1d5724bc579a91567eb35e107d075f9749ab4f4a85278e725071207a603afd7d"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/github-release-management/SKILL.md",
+      "knownContentHashes": [
+        "sha256:03a9d40f749281cc99bcf7f256398a4e5ab77bd42af614659053638edb79b2bd",
+        "sha256:ad403bce6aa1ea88125f7fe2062cfa8f9cd1e0becf37d22022e4902a44da72ae",
+        "sha256:320c66c14e39c82f0211254842509195951fe00f2d7f3b1b0c7aceb5e8b07efa"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/github-workflow-automation/SKILL.md",
+      "knownContentHashes": [
+        "sha256:02d2ebf8b55cea17d1068c0768a5389af42826f1df3f72bce1bc88b12842c8ce",
+        "sha256:6eeeb7b56d3e307b9ff2bd249e6e8ea124c653aae4fa219c675132511c5c0eb1",
+        "sha256:1748ced9ee3bf55f1d5945e2b49af7ebf010c2fa1f0d259fbe3da8ddf927c8dc"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/hive-mind-advanced/SKILL.md",
+      "knownContentHashes": [
+        "sha256:a69a3c5b75d5e53c6229d720bf8e040f8bf014ac011d9d17a44325b9983d87df",
+        "sha256:af60099076e5734afb3e65ebaae8e8dbdf912c57a6f1eb4f579f48f79f342260",
+        "sha256:bf2ce27366423ada1b5741d92fd28bad0e582c1adb287755ee706d67f4d5c5be"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/hooks-automation/SKILL.md",
+      "knownContentHashes": [
+        "sha256:fd298069779428a3f1891f3b533991438eee3a03cba1cbe8ac9b70a77c0de01a",
+        "sha256:85c9c1aa4ae6a462db1fa68eb3bab0a280145e163840f07c38610c11d71064fa",
+        "sha256:5efc6a54f41847e805f68dc773a5024f32e3928223b7df5e9d89bdf25db323e2"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/pair-programming/SKILL.md",
+      "knownContentHashes": [
+        "sha256:32ef344d86f63817fefbadc949ecafee891fc91ab1de97c21031e7540bb61108",
+        "sha256:0a7c511edf28f4319c1dd4570e018f0f1b89505a9d5a2c2133731d5b7e3a5339"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/performance-analysis/SKILL.md",
+      "knownContentHashes": [
+        "sha256:96ff7461c628d985d9ab4a923a2037205009d4a62874e7868238acc91e55f570",
+        "sha256:8abfbf82f41a74397a30c428331d55475f652882faee9bb0c8a98ddbc00eaf02",
+        "sha256:438bdb02203c06d6a9803e3fb5ea3bb50cb76ebb7567ecc8cf1c68c799e48cb0"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/reasoningbank-agentdb/SKILL.md",
+      "knownContentHashes": [
+        "sha256:c3f9a613b5f573a5f2d7d9986f1ebeee728e1b178a93522ff936886cd8ce43bf",
+        "sha256:d60a616ad0bbe90ce3907ea1047731ca45fb33704f4359a22f6723022b9ea255"
+      ],
+      "retiredIn": "4.8.80-rc.7",
+      "retiredBy": "#500"
+    },
+    {
+      "path": ".claude/skills/skill-builder/SKILL.md",
+      "knownContentHashes": [
+        "sha256:21daedbca4923b492df4e80747990b5b25acd3591aa9506a03a8750a84cf7e49",
+        "sha256:3ebb2c70e4d816c24ce7ac03c762b0bba1afaa34505e3aaa3c04f65ed8270297"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#933"
+    },
+    {
+      "path": ".claude/skills/sparc-methodology/SKILL.md",
+      "knownContentHashes": [
+        "sha256:c322cfefb05ea854d80286a4c146bb5629daf53cbbbfdf68a43ee87002b57ef1",
+        "sha256:ee0c7b5d62d5412488fb35002054e6705afc1521a8791e8fa7e978ff9e98d985",
+        "sha256:6a451cf41530dc6db89fe6c65b4b2367e94a13bddcb658888361b830e1d8d986"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/stream-chain/SKILL.md",
+      "knownContentHashes": [
+        "sha256:e99eba73905765f99b65fc743f748bf1b279ca40c2e33c6f3dfef2604ce81aaf",
+        "sha256:371ab7c109816051874de908e9a971209db31a7285e24d01c84e55cd210165de",
+        "sha256:e13ae734425a98330a01439f2c56b99da5a7bfb352de12bfa057725f23991c32"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/swarm-advanced/SKILL.md",
+      "knownContentHashes": [
+        "sha256:7cf6214ab46da1489b25c65ddf887f56e039577626aea742cdff2acc3e793c54",
+        "sha256:16d46e3e1481079f4e9c6492271a3df346b762935831559b74fb676e15c60621",
+        "sha256:c382a589148141a97747b78b391870413657c39917557c23d762f4245c389467"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/swarm-orchestration/SKILL.md",
+      "knownContentHashes": [
+        "sha256:1b43d57224e94730689c687cd55036b2e5df785a0e4324ad2b10923e20c2e5d2",
+        "sha256:9f0bc14c44ec5c11eb753c02afa843b6ace5043d44b23da25fbca73e8098857a"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/v3-cli-modernization/SKILL.md",
+      "knownContentHashes": [
+        "sha256:73d3fff016626ecd675a7ae6b87ad87193c396cbe6440885683b675089f873fc",
+        "sha256:48421bd61a8aff27e0b217e7136a3e410ab0842b42cb4a588d23f279cc755956",
+        "sha256:dd0f0ee4cd6f6a4ce621df5abf511274a37c9b3b5ce54bef2626a84fa0807c87"
+      ],
+      "retiredIn": "4.8.87",
+      "retiredBy": "#692"
+    },
+    {
+      "path": ".claude/skills/v3-core-implementation/SKILL.md",
+      "knownContentHashes": [
+        "sha256:9eb11363e80417b89daf3926b906ab2078e65530ab43538f40fae9c3fded9f31",
+        "sha256:c4d6622a7d7def892334af71c0daeed027544b006d621e7b3972b2ab7ec5c0b8"
+      ],
+      "retiredIn": "4.8.87",
+      "retiredBy": "#692"
+    },
+    {
+      "path": ".claude/skills/v3-ddd-architecture/SKILL.md",
+      "knownContentHashes": [
+        "sha256:da84eb1ab34910fd93aba575b44717151f1b78427af53488c18f034eb1fa4b5a",
+        "sha256:130d6b67a9df61fabfad7de57a1ef91a4537285c1fa9916f2819ee28777412fc"
+      ],
+      "retiredIn": "4.8.87",
+      "retiredBy": "#692"
+    },
+    {
+      "path": ".claude/skills/v3-integration-deep/SKILL.md",
+      "knownContentHashes": [
+        "sha256:4e835f83bae334ce91966216ff82a7dfc82e91534c4e104f0870c93150c7aaf7",
+        "sha256:0eee4cdbd46799ca2924a47ad409b4b0215e5b33011dc6ba3fb9503ed6ede6ac"
+      ],
+      "retiredIn": "4.8.87",
+      "retiredBy": "#692"
+    },
+    {
+      "path": ".claude/skills/v3-mcp-optimization/SKILL.md",
+      "knownContentHashes": [
+        "sha256:309969c33ee3a256e03159d064c0ddcca4de7d83bab0715a5eee8eb96f29ef49",
+        "sha256:ef1e0461bc7c733afc92543cdc6eb00a63a6774d9b1fdc038e537710fe2bf216"
+      ],
+      "retiredIn": "4.8.87",
+      "retiredBy": "#692"
+    },
+    {
+      "path": ".claude/skills/v3-memory-unification/SKILL.md",
+      "knownContentHashes": [
+        "sha256:4853ec2fec84a07772f804f7eb53599df347d2325fdf0b221392548791ca61f5",
+        "sha256:00e74685fdd49c4e7ebe57117716ca2abbf5b355813c299164eb70a493d23f5f"
+      ],
+      "retiredIn": "4.8.87",
+      "retiredBy": "#692"
+    },
+    {
+      "path": ".claude/skills/v3-performance-optimization/SKILL.md",
+      "knownContentHashes": [
+        "sha256:25858e4c4325f0d3db1227c657ff81ba62281566301c03ed4b4238e18a3aa177",
+        "sha256:627c607788b8e87a4b57875fecb03f7e87bbe5a94d3d45b0f9a22a95a0f58678"
+      ],
+      "retiredIn": "4.8.87",
+      "retiredBy": "#692"
+    },
+    {
+      "path": ".claude/skills/v3-security-overhaul/SKILL.md",
+      "knownContentHashes": [
+        "sha256:4123b78d5a2d68ae912991a56f18a058806db68a01f42d0872b0188fc74dcdca",
+        "sha256:952f82f07c0c42d267b1a31363685d51cece4151e6a54fb91522730f443b8275",
+        "sha256:98598fef0bf16ce435a52a0a6ddae20d17df570402f0803623fd75690daa9d95"
+      ],
+      "retiredIn": "4.8.87",
+      "retiredBy": "#692"
+    },
+    {
+      "path": ".claude/skills/v3-swarm-coordination/SKILL.md",
+      "knownContentHashes": [
+        "sha256:5edfd5e1e6755ef437832e0457e166856546146e991a6f411722909a80bb1c60",
+        "sha256:5110a6317d0d9348345360274f768c4b32d0d1df6b0cd82269073e8e6ba063e5"
+      ],
+      "retiredIn": "4.8.87",
+      "retiredBy": "#692"
+    },
+    {
+      "path": ".claude/skills/verification-quality/SKILL.md",
+      "knownContentHashes": [
+        "sha256:58499712324c4ff6cf56414dc65484480ce0c602f12278cf0180cf6777be16e8",
+        "sha256:44ded411c6c08f7a9a1ac9244979bb42f9e08de09b18213e41dd820304aee270",
+        "sha256:afde8a69eb5735ef5250d21bcc2d6aafc8ac9f203e84d2d7f2e8fcbcdc0c1abe"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/worker-benchmarks/skill.md",
+      "knownContentHashes": [
+        "sha256:04678e3abaf6d49b155084a7b7b50171caacb01387d59c5c1caa0f5d1d5c396b"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    },
+    {
+      "path": ".claude/skills/worker-integration/skill.md",
+      "knownContentHashes": [
+        "sha256:7ad8be92c9b6a1e59c73069a9edcca1e9c8ad3cc00c3401dd1c4b53878aa8db3"
+      ],
+      "retiredIn": "4.9.20",
+      "retiredBy": "#938"
+    }
+  ]
+}
