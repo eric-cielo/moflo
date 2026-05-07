@@ -597,7 +597,11 @@ export async function bridgeGetEntry(options: {
 }
 
 /**
- * Soft-delete an entry. Guarded, cache-invalidated, attested.
+ * Hard-delete an entry. Guarded, cache-invalidated, attested.
+ *
+ * Failure modes (issue #963): every non-success path now carries a
+ * human-readable `error` so MCP callers can surface the reason instead
+ * of seeing a silent `{ deleted: false }`.
  */
 export async function bridgeDeleteEntry(options: {
   key: string;
@@ -620,6 +624,36 @@ export async function bridgeDeleteEntry(options: {
       return { success: false, deleted: false, key, namespace, remainingEntries: 0, error: `MutationGuard rejected: ${guardResult.reason}` };
     }
 
+    let existed = false;
+    try {
+      const existsRows = execRows(
+        ctx.db,
+        `SELECT 1 as found FROM memory_entries WHERE key = ? AND namespace = ? AND status = 'active' LIMIT 1`,
+        [key, namespace],
+      );
+      existed = existsRows.length > 0;
+    } catch (err) {
+      return {
+        success: false,
+        deleted: false,
+        key,
+        namespace,
+        remainingEntries: 0,
+        error: `DB read failed during delete pre-check: ${errorDetail(err)}`,
+      };
+    }
+
+    if (!existed) {
+      return {
+        success: false,
+        deleted: false,
+        key,
+        namespace,
+        remainingEntries: 0,
+        error: `Key '${key}' not found in namespace '${namespace}'`,
+      };
+    }
+
     let changes = 0;
     try {
       ctx.db.prepare(`
@@ -629,31 +663,48 @@ export async function bridgeDeleteEntry(options: {
       // sql.js Statement.run returns true/false, not { changes }. Use
       // db.getRowsModified() to read the row count from the last statement.
       changes = ctx.db.getRowsModified?.() ?? 0;
-    } catch {
-      return null;
+    } catch (err) {
+      return {
+        success: false,
+        deleted: false,
+        key,
+        namespace,
+        remainingEntries: 0,
+        error: `DELETE failed: ${errorDetail(err)}`,
+      };
     }
 
-    if (changes > 0) persistBridgeDb(ctx.db, options.dbPath);
+    if (changes === 0) {
+      // SELECT found the row but DELETE removed nothing. Most likely cause:
+      // bridge holds an in-memory snapshot that diverged from disk
+      // (sql.js writeback semantics — see feedback_sqljs_writeback_clobber.md).
+      return {
+        success: false,
+        deleted: false,
+        key,
+        namespace,
+        remainingEntries: 0,
+        error: `Internal inconsistency: row matched SELECT but DELETE removed 0 rows (key='${key}', namespace='${namespace}'). Possible bridge cache staleness — restart the daemon and retry.`,
+      };
+    }
 
+    persistBridgeDb(ctx.db, options.dbPath);
     await cacheInvalidate(registry, makeEntryCacheKey(namespace, key));
-
-    if (changes > 0) {
-      await logAttestation(registry, 'delete', key, { namespace });
-    }
+    await logAttestation(registry, 'delete', key, { namespace });
 
     let remaining = 0;
     try {
       const result = ctx.db.exec(`SELECT COUNT(*) as cnt FROM memory_entries WHERE status = 'active'`);
       remaining = result[0]?.values?.[0]?.[0] ?? 0;
     } catch {
-      // Non-fatal
+      // Non-fatal — count is informational
     }
 
-    if (changes > 0) refreshVectorStatsCache();
+    refreshVectorStatsCache();
 
     return {
       success: true,
-      deleted: changes > 0,
+      deleted: true,
       key,
       namespace,
       remainingEntries: remaining,
