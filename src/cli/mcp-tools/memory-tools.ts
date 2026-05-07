@@ -193,7 +193,7 @@ async function ensureInitialized(): Promise<void> {
 export const memoryTools: MCPTool[] = [
   {
     name: 'memory_store',
-    description: 'Store a value in memory with vector embedding for semantic search (sql.js + HNSW backend). Use upsert=true to update existing keys.',
+    description: 'Store a value in memory with vector embedding for semantic search (sql.js + HNSW backend). Upserts by default — pass upsert:false to fail on duplicate keys.',
     category: 'memory',
     inputSchema: {
       type: 'object',
@@ -207,7 +207,7 @@ export const memoryTools: MCPTool[] = [
           description: 'Optional tags for filtering',
         },
         ttl: { type: 'number', description: 'Time-to-live in seconds (optional)' },
-        upsert: { type: 'boolean', description: 'If true, update existing key instead of failing (default: false)' },
+        upsert: { type: 'boolean', description: 'If false, fail on duplicate keys instead of replacing (default: true)' },
       },
       required: ['key', 'value'],
     },
@@ -220,7 +220,9 @@ export const memoryTools: MCPTool[] = [
       const value = typeof input.value === 'string' ? input.value : JSON.stringify(input.value);
       const tags = (input.tags as string[]) || [];
       const ttl = input.ttl as number | undefined;
-      const upsert = (input.upsert as boolean) || false;
+      // #962: default upsert=true — silent UNIQUE-constraint failures on update
+      // were dropping schedule cancels and similar updates on the floor.
+      const upsert = input.upsert === false ? false : true;
 
       validateMemoryInput(key, value);
 

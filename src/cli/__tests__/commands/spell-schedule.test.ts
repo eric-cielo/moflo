@@ -24,6 +24,12 @@ vi.mock('../../services/daemon-readiness.js', () => ({
   ensureDaemonForScheduling: vi.fn(),
 }));
 
+// Mock the autostart lifecycle reconciler — we assert against it directly
+// for the create/cancel transition tests below.
+vi.mock('../../services/daemon-autostart-lifecycle.js', () => ({
+  reconcileDaemonAutostart: vi.fn().mockReturnValue({ transition: 'noop', message: null, warning: null }),
+}));
+
 // Mock output (suppress console output in tests)
 vi.mock('../../output.js', () => {
   const noopFmt = (s: unknown) => String(s ?? '');
@@ -51,10 +57,12 @@ vi.mock('../../output.js', () => {
 
 import { callMCPTool } from '../../mcp-client.js';
 import { ensureDaemonForScheduling } from '../../services/daemon-readiness.js';
+import { reconcileDaemonAutostart } from '../../services/daemon-autostart-lifecycle.js';
 import { scheduleCommand } from '../../commands/spell-schedule.js';
 
 const mockCallMCP = vi.mocked(callMCPTool);
 const mockEnsureDaemon = vi.mocked(ensureDaemonForScheduling);
+const mockReconcile = vi.mocked(reconcileDaemonAutostart);
 
 // Helper to find a subcommand
 function findSub(name: string) {
@@ -79,6 +87,7 @@ describe('spell schedule command', () => {
       daemonInstalled: true,
       warnings: [],
     });
+    mockReconcile.mockReturnValue({ transition: 'noop', message: null, warning: null });
   });
 
   // ── Structure ─────────────────────────────────────────────────────────────
@@ -388,21 +397,27 @@ describe('spell schedule command', () => {
     const cancelCmd = () => findSub('cancel');
 
     it('should cancel a schedule by ID', async () => {
-      mockCallMCP.mockResolvedValueOnce({
-        value: JSON.stringify({
-          id: 'sched-adhoc-123',
-          spellName: 'audit',
-          enabled: true,
-        }),
-      }).mockResolvedValueOnce({});
+      mockCallMCP
+        .mockResolvedValueOnce({
+          value: JSON.stringify({
+            id: 'sched-adhoc-123',
+            spellName: 'audit',
+            enabled: true,
+          }),
+        })
+        .mockResolvedValueOnce({ success: true })
+        // countEnabledSchedules: list returns no remaining schedules
+        .mockResolvedValueOnce({ entries: [] });
 
       const result = await cancelCmd().action!(makeCtx({
         args: ['sched-adhoc-123'],
       })) as CommandResult;
 
       expect(result.success).toBe(true);
-      // Second call should write the updated (disabled) record
-      expect(mockCallMCP).toHaveBeenCalledTimes(2);
+      // The disabled record write must use upsert: true (#962)
+      const storeCall = mockCallMCP.mock.calls.find(c => c[0] === 'memory_store');
+      expect(storeCall).toBeDefined();
+      expect(storeCall![1]).toMatchObject({ upsert: true });
     });
 
     it('should error when schedule ID not provided', async () => {
@@ -418,6 +433,109 @@ describe('spell schedule command', () => {
       })) as CommandResult;
 
       expect(result.success).toBe(false);
+    });
+
+    // ── #962: surface storage errors ─────────────────────────────────────────
+
+    it('returns failure (not silent OK) when memory_store rejects the disable write', async () => {
+      // First retrieve succeeds, second call (the store) reports success: false.
+      // Historic bug: this would print "[OK] Schedule cancelled" and exit 0.
+      mockCallMCP
+        .mockResolvedValueOnce({
+          value: JSON.stringify({ id: 'sched-1', spellName: 'audit', enabled: true }),
+        })
+        .mockResolvedValueOnce({ success: false, error: 'UNIQUE constraint failed: memory_entries.namespace, memory_entries.key' });
+
+      const result = await cancelCmd().action!(makeCtx({
+        args: ['sched-1'],
+      })) as CommandResult;
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
+      // Reconcile must NOT have been called — the schedule write failed.
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+
+    // ── #960/#961: autostart reconcile on cancel ─────────────────────────────
+
+    it('reconciles autostart with the remaining-enabled count after cancel', async () => {
+      mockCallMCP
+        .mockResolvedValueOnce({
+          value: JSON.stringify({ id: 'sched-1', spellName: 'audit', enabled: true }),
+        })
+        .mockResolvedValueOnce({ success: true })
+        .mockResolvedValueOnce({ entries: [] });  // no other schedules remain
+
+      await cancelCmd().action!(makeCtx({ args: ['sched-1'] })) as CommandResult;
+
+      expect(mockReconcile).toHaveBeenCalledTimes(1);
+      expect(mockReconcile).toHaveBeenCalledWith(expect.objectContaining({
+        enabledScheduleCount: 0,
+        skip: false,
+      }));
+    });
+
+    it('passes skip=true when --keep-autostart is set', async () => {
+      mockCallMCP
+        .mockResolvedValueOnce({
+          value: JSON.stringify({ id: 'sched-1', spellName: 'audit', enabled: true }),
+        })
+        .mockResolvedValueOnce({ success: true })
+        .mockResolvedValueOnce({ entries: [] });
+
+      await cancelCmd().action!(makeCtx({
+        args: ['sched-1'],
+        flags: { _: [], keepAutostart: true },
+      })) as CommandResult;
+
+      expect(mockReconcile).toHaveBeenCalledWith(expect.objectContaining({ skip: true }));
+    });
+  });
+
+  // ── #960: autostart reconcile on create ──────────────────────────────────
+
+  describe('create + autostart', () => {
+    const createCmd = () => scheduleCommand.subcommands!.find(c => c.name === 'create')!;
+
+    it('reconciles autostart with the new enabled-schedule count after create', async () => {
+      // memory_store (the new record) → memory_list (count) returns 1 entry → memory_retrieve for that entry.
+      mockCallMCP
+        .mockImplementationOnce(async () => ({ success: true }))  // store
+        .mockImplementationOnce(async () => ({ entries: [{ key: 'k1', namespace: 'scheduled-spells' }] }))  // list
+        .mockImplementationOnce(async () => ({ value: { id: 'k1', enabled: true }, found: true }));  // retrieve
+
+      await createCmd().action!(makeCtx({
+        flags: { _: [], name: 'audit', cron: '0 9 * * *' },
+      })) as CommandResult;
+
+      expect(mockReconcile).toHaveBeenCalledTimes(1);
+      expect(mockReconcile).toHaveBeenCalledWith(expect.objectContaining({
+        enabledScheduleCount: 1,
+        skip: false,
+      }));
+    });
+
+    it('passes skip=true when --no-autostart is set', async () => {
+      mockCallMCP
+        .mockImplementationOnce(async () => ({ success: true }))
+        .mockImplementationOnce(async () => ({ entries: [] }));
+
+      await createCmd().action!(makeCtx({
+        flags: { _: [], name: 'audit', cron: '0 9 * * *', noAutostart: true },
+      })) as CommandResult;
+
+      expect(mockReconcile).toHaveBeenCalledWith(expect.objectContaining({ skip: true }));
+    });
+
+    it('returns failure when memory_store rejects the create write (#962)', async () => {
+      mockCallMCP.mockResolvedValueOnce({ success: false, error: 'bridge unavailable' });
+
+      const result = await createCmd().action!(makeCtx({
+        flags: { _: [], name: 'audit', cron: '0 9 * * *' },
+      })) as CommandResult;
+
+      expect(result.success).toBe(false);
+      expect(mockReconcile).not.toHaveBeenCalled();
     });
   });
 });

@@ -17,6 +17,7 @@ import { callMCPTool } from '../mcp-client.js';
 import { TOOL_MEMORY_STORE, TOOL_MEMORY_LIST, TOOL_MEMORY_RETRIEVE } from '../mcp-tools/tool-names.js';
 import { handleMCPError } from '../services/cli-formatters.js';
 import { ensureDaemonForScheduling } from '../services/daemon-readiness.js';
+import { reconcileDaemonAutostart } from '../services/daemon-autostart-lifecycle.js';
 import { validateSchedule, computeNextRun } from '../spells/scheduler/cron-parser.js';
 
 const NAMESPACE_SCHEDULES = 'scheduled-spells';
@@ -59,6 +60,23 @@ async function loadNamespaceValues<T>(namespace: string, limit = MAX_NAMESPACE_F
   return values;
 }
 
+/**
+ * Count enabled schedules in the `scheduled-spells` namespace. Drives the
+ * autostart reconcile after a create/cancel — see #960/#961.
+ */
+async function countEnabledSchedules(): Promise<number> {
+  const records = await loadNamespaceValues<{ enabled?: boolean }>(NAMESPACE_SCHEDULES);
+  return records.filter(r => r.enabled === true).length;
+}
+
+/**
+ * Run the autostart reconcile and surface its message/warning to the user.
+ */
+function emitReconcileResult(result: ReturnType<typeof reconcileDaemonAutostart>): void {
+  if (result.message) output.printInfo(result.message);
+  if (result.warning) output.printWarning(result.warning);
+}
+
 // ── Schedule Create ───────────────────────────────────────────────────────────
 
 const createCommand: Command = {
@@ -69,11 +87,13 @@ const createCommand: Command = {
     { name: 'cron', short: 'c', description: 'Cron expression (5-field)', type: 'string' },
     { name: 'interval', short: 'i', description: 'Interval (e.g., "6h", "30m", "1d")', type: 'string' },
     { name: 'at', short: 'a', description: 'One-time ISO 8601 datetime', type: 'string' },
+    { name: 'no-autostart', description: 'Do not register the daemon as an OS login service', type: 'boolean' },
   ],
   examples: [
     { command: 'moflo spell schedule create -n audit --cron "0 9 * * *"', description: 'Daily at 9am' },
     { command: 'moflo spell schedule create -n security-audit --interval 6h', description: 'Every 6 hours' },
     { command: 'moflo spell schedule create -n report --at 2026-04-01T09:00:00Z', description: 'One-time cast' },
+    { command: 'moflo spell schedule create -n audit --interval 6h --no-autostart', description: 'Skip OS login service registration (e.g., container/CI)' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = (ctx.flags.name as string) || ctx.args[0];
@@ -136,14 +156,34 @@ const createCommand: Command = {
     };
 
     try {
-      await callMCPTool(TOOL_MEMORY_STORE, {
+      const storeResult = await callMCPTool<{ success?: boolean; error?: string }>(TOOL_MEMORY_STORE, {
         namespace: NAMESPACE_SCHEDULES,
         key: id,
         value: JSON.stringify(record),
+        upsert: true,
       });
+      if (storeResult.success === false) {
+        output.printError(`Failed to save schedule: ${storeResult.error ?? 'unknown error'}`);
+        return { success: false, exitCode: 1 };
+      }
     } catch (error) {
       return handleMCPError(error, 'save schedule');
     }
+
+    // Reconcile OS-native autostart against the new enabled-schedule count.
+    // 0→1 installs the login service; 1→2/2→3/etc. is a no-op (idempotent).
+    // Note: parser normalises --no-autostart to ctx.flags.noAutostart (#787).
+    const skipAutostart = ctx.flags.noAutostart === true;
+    const reconcile = reconcileDaemonAutostart({
+      projectRoot,
+      enabledScheduleCount: await countEnabledSchedules(),
+      skip: skipAutostart,
+    });
+    emitReconcileResult(reconcile);
+
+    const serviceState = reconcile.transition === 'installed' || readiness.daemonInstalled
+      ? 'installed'
+      : 'not installed';
 
     if (ctx.flags.format === 'json') {
       output.printJson(record);
@@ -161,7 +201,7 @@ const createCommand: Command = {
         at ? `At: ${at}` : null,
         `Next Cast: ${new Date(nextRunAt).toLocaleString()}`,
         `Daemon: ${readiness.daemonRunning ? 'running' : 'not running'}`,
-        `Service: ${readiness.daemonInstalled ? 'installed' : 'not installed'}`,
+        `Service: ${serviceState}`,
       ].filter(Boolean).join('\n'),
       'Scheduled Spell',
     );
@@ -338,6 +378,13 @@ const executionsCommand: Command = {
 const cancelCommand: Command = {
   name: 'cancel',
   description: 'Cancel (disable) a scheduled spell',
+  options: [
+    { name: 'keep-autostart', description: 'Keep the OS login service registered even if no schedules remain', type: 'boolean' },
+  ],
+  examples: [
+    { command: 'moflo spell schedule cancel sched-adhoc-123', description: 'Cancel and auto-uninstall daemon service if no schedules remain' },
+    { command: 'moflo spell schedule cancel sched-adhoc-123 --keep-autostart', description: 'Cancel but keep the OS login service registered' },
+  ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const scheduleId = ctx.args[0];
 
@@ -346,6 +393,7 @@ const cancelCommand: Command = {
       return { success: false, exitCode: 1 };
     }
 
+    let updated: Record<string, unknown>;
     try {
       // Fetch the current schedule
       const fetchResult = await callMCPTool<{ value: string | null }>(TOOL_MEMORY_RETRIEVE, {
@@ -362,19 +410,39 @@ const cancelCommand: Command = {
         ? JSON.parse(fetchResult.value)
         : fetchResult.value;
 
-      // Disable it
-      const updated = { ...schedule, enabled: false };
-      await callMCPTool(TOOL_MEMORY_STORE, {
+      // Disable it. upsert:true is critical — the cancel writes back to an
+      // existing key, and the historic default (insert-only) silently failed
+      // with a UNIQUE constraint violation on (namespace, key) — see #962.
+      updated = { ...schedule, enabled: false };
+      const storeResult = await callMCPTool<{ success?: boolean; error?: string }>(TOOL_MEMORY_STORE, {
         namespace: NAMESPACE_SCHEDULES,
         key: scheduleId,
         value: JSON.stringify(updated),
+        upsert: true,
       });
-
-      output.printSuccess(`Schedule ${scheduleId} cancelled`);
-      return { success: true, data: updated };
+      if (storeResult.success === false) {
+        output.printError(`Failed to cancel schedule: ${storeResult.error ?? 'unknown error'}`);
+        return { success: false, exitCode: 1 };
+      }
     } catch (error) {
       return handleMCPError(error, 'cancel schedule');
     }
+
+    output.printSuccess(`Schedule ${scheduleId} cancelled`);
+
+    // Reconcile OS-native autostart against the new enabled-schedule count.
+    // 1→0 uninstalls the login service; everything else is a no-op.
+    // Note: parser normalises --keep-autostart to ctx.flags.keepAutostart (#787).
+    const projectRoot = ctx.cwd || process.cwd();
+    const skipAutostart = ctx.flags.keepAutostart === true;
+    const reconcile = reconcileDaemonAutostart({
+      projectRoot,
+      enabledScheduleCount: await countEnabledSchedules(),
+      skip: skipAutostart,
+    });
+    emitReconcileResult(reconcile);
+
+    return { success: true, data: updated };
   },
 };
 
