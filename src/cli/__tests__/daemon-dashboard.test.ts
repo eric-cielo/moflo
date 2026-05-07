@@ -1,5 +1,5 @@
 /**
- * Daemon Dashboard Tests
+ * The Arcane Console (daemon dashboard) Tests
  *
  * Tests the dashboard HTTP server, API routes, and HTML serving.
  */
@@ -33,6 +33,7 @@ function makeMockScheduler(opts: {
   const schedules = new Map<string, Record<string, unknown>>();
   for (const s of opts.schedules ?? []) schedules.set(s.id as string, { ...s });
   const history = { ...(opts.history ?? {}) };
+  const listeners: Array<(ev: Record<string, unknown>) => void> = [];
 
   const scheduler = {
     listSchedules: vi.fn().mockImplementation(async () => [...schedules.values()]),
@@ -69,6 +70,19 @@ function makeMockScheduler(opts: {
       history[id] = [...(history[id] ?? []), exec];
       return exec;
     }),
+    on: vi.fn().mockImplementation((listener: (ev: Record<string, unknown>) => void) => {
+      listeners.push(listener);
+      return () => {
+        const idx = listeners.indexOf(listener);
+        if (idx >= 0) listeners.splice(idx, 1);
+      };
+    }),
+    /** Test helper: synthesize an event to all subscribers. */
+    __emit: (ev: Record<string, unknown>) => {
+      for (const l of listeners) l(ev);
+    },
+    /** Test helper: number of currently attached listeners. */
+    __listenerCount: () => listeners.length,
   };
   return { scheduler, schedules, history };
 }
@@ -191,7 +205,7 @@ describe('DaemonDashboard', () => {
     const res = await fetchDashboard(testPort, '/');
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
-    expect(res.body).toContain('MoFlo Dashboard');
+    expect(res.body).toContain('The Arcane Console');
     expect(res.body).toContain('<!DOCTYPE html>');
     expect(res.body).toContain('switchTab');
   });
@@ -494,6 +508,97 @@ describe('DaemonDashboard', () => {
     expect(data.executions[0].context).toEqual(context);
     expect(data.executions[0].context.type).toBe('ticket');
     expect(data.executions[0].context.label).toContain('#350');
+  });
+
+  it('GET /api/schedules/events returns 503 when scheduler is not attached', async () => {
+    const daemon = makeMockDaemon({}, /*scheduler*/ null);
+    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+
+    const res = await fetchDashboard(testPort, '/api/schedules/events');
+    expect(res.status).toBe(503);
+    const data = JSON.parse(res.body);
+    expect(data.error).toContain('Scheduler not attached');
+  });
+
+  it('GET /api/schedules/events streams scheduler events as SSE frames', async () => {
+    const { scheduler } = makeMockScheduler({ schedules: [] });
+    const daemon = makeMockDaemon({}, scheduler);
+    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+
+    // Open the SSE stream and collect frames as they arrive
+    const frames: string[] = await new Promise((resolve, reject) => {
+      const collected: string[] = [];
+      const req = http.get(`http://127.0.0.1:${testPort}/api/schedules/events`, (res) => {
+        expect(res.statusCode).toBe(200);
+        expect(res.headers['content-type']).toContain('text/event-stream');
+        res.setEncoding('utf8');
+        let buf = '';
+        res.on('data', (chunk: string) => {
+          buf += chunk;
+          // SSE frames end with \n\n; emit completed frames
+          let idx;
+          while ((idx = buf.indexOf('\n\n')) >= 0) {
+            collected.push(buf.slice(0, idx));
+            buf = buf.slice(idx + 2);
+            if (collected.length >= 2) {
+              req.destroy();
+              resolve(collected);
+              return;
+            }
+          }
+        });
+        res.on('error', reject);
+        res.on('close', () => { if (collected.length > 0) resolve(collected); });
+      });
+      req.on('error', reject);
+      req.setTimeout(3000, () => { req.destroy(); reject(new Error('timeout')); });
+
+      // Emit a synthetic event after a short delay so the listener is attached
+      setTimeout(() => {
+        scheduler.__emit({
+          type: 'schedule:catchup',
+          scheduleId: 'sched-x',
+          spellName: 'demo',
+          message: 'Catching up after restart',
+          timestamp: Date.now(),
+        });
+      }, 30);
+    });
+
+    // Frame 0 should be the 'ready' announcement; frame 1 the catchup event
+    expect(frames[0]).toContain('event: ready');
+    expect(frames[1]).toContain('event: schedule:catchup');
+    expect(frames[1]).toContain('"spellName":"demo"');
+  });
+
+  it('SSE listener is detached when client disconnects', async () => {
+    const { scheduler } = makeMockScheduler({ schedules: [] });
+    const daemon = makeMockDaemon({}, scheduler);
+    dashboard = await startDashboard(daemon, { port: testPort, schedulerEnabledInConfig: true });
+
+    expect(scheduler.__listenerCount()).toBe(0);
+
+    // Open the stream long enough to register the listener, then bail out.
+    await new Promise<void>((resolve, reject) => {
+      const req = http.get(`http://127.0.0.1:${testPort}/api/schedules/events`, (res) => {
+        res.on('data', () => {
+          // Any byte means the handler ran scheduler.on() \u2014 close the stream now.
+          req.destroy();
+          resolve();
+        });
+        res.on('error', reject);
+      });
+      req.on('error', () => resolve());
+      req.setTimeout(3000, () => { req.destroy(); reject(new Error('timeout')); });
+    });
+
+    // Poll the listener count rather than sleeping — slow CI machines need
+    // more than a fixed 50ms wall-clock for the close handler to fire.
+    const deadline = Date.now() + 2000;
+    while (scheduler.__listenerCount() > 0 && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 10));
+    }
+    expect(scheduler.__listenerCount()).toBe(0);
   });
 });
 

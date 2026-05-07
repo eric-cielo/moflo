@@ -94,7 +94,7 @@ Practical floors:
 | Namespace | Contents | Written by | Read by |
 |-----------|----------|------------|---------|
 | `scheduled-spells` | `SpellSchedule` records (id, spellName, timing, nextRunAt, enabled, args) | `flo spell schedule create`, definition load | Scheduler poll loop, `flo spell schedule list` |
-| `schedule-executions` | `ScheduleExecution` audit records (startedAt, completedAt, success, error, duration, manualRun) | Scheduler at execute-start and execute-end | Daemon dashboard, `flo spell schedule executions` |
+| `schedule-executions` | `ScheduleExecution` audit records (startedAt, completedAt, success, error, duration, manualRun) | Scheduler at execute-start and execute-end | The Arcane Console, `flo spell schedule executions` |
 
 When debugging "did my schedule fire?", read `schedule-executions` directly via `mcp__moflo__memory_list namespace=schedule-executions` if the CLI is unavailable.
 

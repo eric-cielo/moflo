@@ -1,8 +1,14 @@
 /**
- * Daemon Dashboard — Lightweight localhost HTTP server
+ * The Arcane Console — Lightweight localhost HTTP server
  *
- * Serves a read-only VanJS dashboard for daemon status, spell logs,
- * and memory stats. Binds to 127.0.0.1 only (no auth needed).
+ * Serves the moflo Arcane Console (read-only daemon view) for status,
+ * scheduled spells, executions, and memory stats. Binds to 127.0.0.1
+ * only (no auth needed).
+ *
+ * Internal/code identifiers retain the term "dashboard" (CLI flags
+ * `--dashboard-port` / `--no-dashboard`, internal port constant) for
+ * stability with existing consumer scripts; only user-facing surface
+ * is rebranded.
  *
  * @module daemon-dashboard
  */
@@ -386,6 +392,8 @@ async function handleRequest(
       sendJson(res, 200, handleStatus(daemon));
     } else if (url === '/api/schedules') {
       sendJson(res, 200, await handleSchedules(daemon, opts));
+    } else if (url === '/api/schedules/events') {
+      handleSchedulesEventStream(req, res, daemon);
     } else if (url === '/api/spells') {
       sendJson(res, 200, await handleSpells(opts.memory));
     } else if (url === '/api/memory/stats') {
@@ -456,6 +464,71 @@ function getSchedulerErrorCode(err: unknown): SchedulerErrorCode | null {
     if (code === 'not-found' || code === 'spell-missing' || code === 'busy') return code;
   }
   return null;
+}
+
+/** Heartbeat interval for the schedule-event SSE stream (keeps proxies + idle clients alive). */
+const SSE_HEARTBEAT_MS = 25_000;
+
+/**
+ * Stream `schedule:*` events to the client via Server-Sent Events.
+ *
+ * Subscribes to `scheduler.on(listener)` and forwards each event as an SSE
+ * frame (`event: <type>\ndata: <JSON>\n\n`). Sends an initial `ready` frame
+ * so the client can distinguish "connected, waiting" from "scheduler down",
+ * plus a comment heartbeat every 25s. Cleans up on client disconnect.
+ *
+ * Returns 503 when the scheduler is not attached so the client can fall back
+ * to polling. Reuses duck-typing via `daemon.getScheduler()` — no new types
+ * exported from this module.
+ */
+function handleSchedulesEventStream(
+  req: IncomingMessage,
+  res: ServerResponse,
+  daemon: WorkerDaemon,
+): void {
+  const scheduler = daemon.getScheduler();
+  if (!scheduler) {
+    sendJson(res, 503, { error: 'Scheduler not attached' });
+    return;
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  // Initial frame so the client knows the channel is live even before
+  // the first scheduler event arrives (which may be minutes away).
+  res.write(`event: ready\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`);
+
+  let cleaned = false;
+  const cleanup = (): void => {
+    if (cleaned) return;
+    cleaned = true;
+    clearInterval(heartbeat);
+    unsubscribe();
+    try { res.end(); } catch { /* already ended */ }
+  };
+
+  const unsubscribe = scheduler.on((event) => {
+    try {
+      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    } catch {
+      // Half-open socket: the request may never emit 'close'. Defer cleanup
+      // to the next microtask so we don't splice the listeners array we are
+      // currently being iterated from inside.
+      queueMicrotask(cleanup);
+    }
+  });
+
+  const heartbeat = setInterval(() => {
+    try { res.write(`: ping ${Date.now()}\n\n`); } catch { queueMicrotask(cleanup); }
+  }, SSE_HEARTBEAT_MS);
+  if (typeof heartbeat.unref === 'function') heartbeat.unref();
+
+  req.on('close', cleanup);
+  req.on('error', cleanup);
 }
 
 // ============================================================================
@@ -550,7 +623,10 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MoFlo Dashboard</title>
+  <title>The Arcane Console</title>
+  <meta name="description" content="The Arcane Console — moflo daemon, scheduled spells, and live event stream">
+  <meta property="og:title" content="The Arcane Console">
+  <meta property="og:description" content="The Arcane Console — moflo daemon, scheduled spells, and live event stream">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 20px; }
@@ -602,13 +678,13 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 </head>
 <body>
   <div class="header">
-    <h1>MoFlo Dashboard</h1>
-    <span class="subtitle">read-only &bull; localhost</span>
+    <h1>The Arcane Console</h1>
+    <span class="subtitle">moflo daemon &bull; localhost</span>
   </div>
   <div id="status-bar" class="status-bar"><div class="empty">Loading...</div></div>
   <div class="nav" id="nav"></div>
   <div id="panel-workers" class="panel"></div>
-  <div id="panel-schedules" class="panel" style="display:none"></div>
+  <div id="panel-schedules" class="panel" style="display:none"><div id="schedules-active"></div><div id="schedules-events"></div></div>
   <div id="panel-executions" class="panel" style="display:none"></div>
   <div id="panel-memory" class="panel" style="display:none"></div>
   <div id="poll-indicator" class="poll-indicator"></div>
@@ -714,7 +790,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     window.__schedAction = scheduleAction;
 
     function renderSchedules(sc) {
-      const el = document.getElementById('panel-schedules');
+      const el = document.getElementById('schedules-active');
       if (!sc) { el.innerHTML = '<div class="empty">Loading...</div>'; return; }
 
       if (sc.disabledInConfig) {
@@ -754,6 +830,67 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 
       if (sc.history && sc.history.length) renderSchedulesHistory(el, sc.history, /*append*/ true);
     }
+
+    // Live events tail (Server-Sent Events from /api/schedules/events).
+    // The events div lives outside renderSchedules' write target so polled
+    // re-renders of the schedules panel don't touch it; pushSchedEvent is
+    // the only writer. Single source of truth for known event types + their
+    // badge color — adding a new schedule:* type means one entry here.
+    const SCHED_EVENT_BADGES = {
+      'schedule:due': 'gray',
+      'schedule:started': 'gray',
+      'schedule:completed': 'green',
+      'schedule:failed': 'red',
+      'schedule:skipped': 'yellow',
+      'schedule:disabled': 'yellow',
+      'schedule:catchup': 'yellow',
+    };
+    const SCHED_EVENT_TYPES = Object.keys(SCHED_EVENT_BADGES);
+    const SCHED_EVENTS_MAX = 50;
+    const schedEvents = [];
+
+    function renderEventsTail() {
+      const el = document.getElementById('schedules-events');
+      if (!el) return;
+      if (schedEvents.length === 0) {
+        el.innerHTML = '<h2>Live Events</h2><div class="empty">Waiting for scheduler activity…</div>';
+        return;
+      }
+      const rows = schedEvents.map(e => {
+        const t = e.type || '?';
+        const short = String(t).replace('schedule:', '');
+        return '<tr><td>' + new Date(e.timestamp || Date.now()).toLocaleTimeString() + '</td>' +
+          '<td>' + badge(short, SCHED_EVENT_BADGES[t] || 'gray') + '</td>' +
+          '<td>' + esc(e.spellName || '-') + '</td>' +
+          '<td>' + esc(e.message || '') + '</td></tr>';
+      }).join('');
+      el.innerHTML = '<h2>Live Events</h2>' +
+        '<table><thead><tr><th>Time</th><th>Event</th><th>Spell</th><th>Detail</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>';
+    }
+    function pushSchedEvent(ev) {
+      schedEvents.unshift(ev);
+      if (schedEvents.length > SCHED_EVENTS_MAX) schedEvents.length = SCHED_EVENTS_MAX;
+      renderEventsTail();
+    }
+    renderEventsTail(); // Initial empty-state paint.
+
+    // Subscribe via EventSource. Browser handles auto-reconnect with backoff.
+    let evtSource = null;
+    function connectEventStream() {
+      try { if (evtSource) evtSource.close(); } catch (e) { /* ignore */ }
+      try {
+        evtSource = new EventSource('/api/schedules/events');
+        SCHED_EVENT_TYPES.forEach(t => {
+          evtSource.addEventListener(t, ev => {
+            try { pushSchedEvent(JSON.parse(ev.data)); } catch (e) { /* malformed frame */ }
+          });
+        });
+      } catch (e) {
+        console.warn('Event stream unavailable:', e);
+      }
+    }
+    connectEventStream();
 
     function renderSchedulesHistory(el, history, append) {
       const rows = history.map(h => {
