@@ -1,18 +1,13 @@
 name: File-sync smoke (#976)
 
 # Issue #976: cross-platform validation for the postinstall bootstrap +
-# session-start launcher's file-sync layer. The original failure (#975) was on
-# WSL DrvFs — Windows-mounted volumes accessed from WSL inherit NTFS lock
-# semantics and can return success codes from a partial write. The native
-# Windows / Ubuntu / macOS legs catch each platform's per-OS quirks (NTFS file
-# locks, APFS clone semantics, ext4 rename behavior).
+# session-start launcher's file-sync layer. The matrix covers the three
+# supported runtime hosts:
 #
-# WSL DrvFs leg deferred: hosted windows-latest moved to Server 2025, which
-# doesn't ship the WSL feature by default — Vampire/setup-wsl can't find
-# wsl.exe and fails with EACCES on a WindowsApps reparse point. Reinstating
-# the leg requires either (a) pinning to windows-2022 (deprecating), (b)
-# Enable-WindowsOptionalFeature + reboot on Server 2025, or (c) a self-hosted
-# WSL runner. Tracked as a follow-up.
+#   ubuntu-latest  — Linux native (ext4 rename behavior)
+#   macos-latest   — APFS clone + rename semantics
+#   windows-latest — NTFS file locks, AV real-time scan, Windows file
+#                    sharing modes (the dominant failure class for #854/#975)
 #
 # Tests exercised on every leg:
 #   - file-sync-helper.test.ts        — atomicCopy, hash-skip, EVERIFY,
