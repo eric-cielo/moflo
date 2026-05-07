@@ -99,6 +99,14 @@ const startCommand: Command = {
 
     // Foreground mode: run in current process (blocks terminal)
     try {
+      // #981 — mark this process as the daemon BEFORE memory-initializer is
+      // first imported. The daemon-write-client checks this env var to skip
+      // routing storeEntry/deleteEntry back through HTTP to itself (which
+      // would recurse infinitely). Setting it here covers both direct
+      // `flo daemon start --foreground` and the background spawn (whose
+      // daemonEnv already propagates this — see startBackgroundDaemon below).
+      process.env.MOFLO_IS_DAEMON = '1';
+
       // Acquire atomic daemon lock (prevents duplicate daemons).
       // Always acquire here — even when spawned as a child (CLAUDE_FLOW_DAEMON=1)
       // because on Windows the parent's child.pid is the shell PID (cmd.exe),
@@ -365,6 +373,8 @@ async function startBackgroundDaemon(projectRoot: string, quiet: boolean, maxCpu
   const daemonEnv = {
     ...process.env,
     CLAUDE_FLOW_DAEMON: '1',
+    // #981 — daemon process must skip its own write-routing client.
+    MOFLO_IS_DAEMON: '1',
     // Prevent macOS SIGHUP kill when terminal closes
     ...(process.platform === 'darwin' ? { NOHUP: '1' } : {}),
   };
