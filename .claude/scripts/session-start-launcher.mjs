@@ -1316,14 +1316,15 @@ try {
   } catch { /* writing the failure itself must not throw */ }
 }
 
-// ── 3e-729. Purge ephemeral-namespace rows (#729) ───────────────────────────
-// Four namespaces (hive-mind, tasklist, epic-state, test-bridge-fix) store
-// internal moflo run-tracking — never user knowledge — and were polluting the
-// embeddings index. Going forward, writes to those namespaces skip embedding
-// generation (see EPHEMERAL_NAMESPACES in memory/bridge-embedder.ts); existing
-// rows from prior versions get hard-deleted here. Idempotent — returns
-// `purged: 0` once the DB is clean. Runs BEFORE background MCP/daemon spawn
-// so the foreground sql.js write isn't overwritten by a concurrent flush.
+// ── 3e-729. Purge ephemeral-namespace rows + trim tasklist (#729, #968) ─────
+// Three namespaces (hive-mind, epic-state, test-bridge-fix) store internal
+// run-tracking and get hard-deleted on every session start. The fourth
+// embedding-skipped namespace, `tasklist`, backs the dashboard's Flo Runs
+// tab — it's *trimmed* to a retention cap instead of purged so prior runs
+// survive a session restart (#968). Idempotent: returns
+// `{ purged: 0, trimmed: 0 }` when nothing needs cleaning. Runs BEFORE the
+// background MCP/daemon spawn so the foreground sql.js write isn't
+// overwritten by a concurrent flush.
 try {
   const purgePaths = [
     resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/ephemeral-namespace-purge.js'),
@@ -1337,6 +1338,12 @@ try {
       emitMutation(
         'pruned ephemeral namespace rows',
         `${plural(result.purged, 'row')} from internal run-tracking`,
+      );
+    }
+    if (result?.trimmed > 0) {
+      emitMutation(
+        'trimmed flo run history',
+        `${plural(result.trimmed, 'old row')} beyond retention cap`,
       );
     }
   }

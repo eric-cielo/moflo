@@ -91,10 +91,11 @@ Best-effort install of a shim into npm's global bin so bare `flo` resolves to th
 
 `runEmbeddingsMigrationIfNeeded` checks `.moflo/moflo.db` for embeddings-version drift and, if needed, re-embeds rows in chunks. Runs synchronously with piped stdio so the renderer's progress bar reaches the user. Returns fast (~ms) when no migration is needed.
 
-### 3e-728, 3e-729. Hard-purge legacy memory rows
+### 3e-728, 3e-729, 3e-968. Hard-purge legacy + trim flo-run history
 
 - Soft-deleted tombstones (status='deleted' rows from pre-#728 builds) are hard-deleted and the DB is VACUUMed.
-- Ephemeral-namespace rows (`hive-mind`, `tasklist`, `epic-state`, `test-bridge-fix`) accumulated by pre-#729 builds are hard-deleted; going forward, writes to those namespaces skip embedding generation entirely.
+- Ephemeral-namespace rows in `hive-mind`, `epic-state`, and `test-bridge-fix` are hard-deleted on every session start. Writes to all four embedding-skipped namespaces (those three plus `tasklist`) bypass embedding generation entirely.
+- `tasklist` is **not** purged — those rows back the dashboard's "Flo Runs" tab and need to outlive the session. The launcher trims tasklist to the most recent `TASKLIST_RETENTION_CAP` rows (default: 200), so the table stays bounded without losing recent history ([#968](https://github.com/eric-cielo/moflo/issues/968)).
 
 Both run **before** the daemon is restarted in stage 4 so a concurrent sql.js flush can't clobber the foreground purge.
 

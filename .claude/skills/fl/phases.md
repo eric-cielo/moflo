@@ -2,6 +2,47 @@
 
 Phase-by-phase notes for the full `/flo <issue>` run. Phase 2 (Ticket) lives in `./ticket.md`.
 
+## Phase 0: Record run start (Flo Runs dashboard)
+
+Before research, write a row to the `tasklist` namespace so the Arcane Console "Flo Runs" tab shows this run live and after the next session restart (#968). Skip this phase ONLY when `--epic-branch` is set — the epic orchestrator owns the parent record and the per-story spell engine writes its own row.
+
+Compute and **remember** for Phase 5:
+- `runId` — `flo-<issue-number-or-"new">-<startedAt-ms>` (sortable, unique).
+- `startedAt` — `Date.now()` snapshot (ms since epoch).
+
+Pick the matching `context.type`:
+| Mode | type | label format |
+|------|------|--------------|
+| Full / ticket on existing issue | `ticket` | `#<n> — <title>` |
+| `-r` research | `research` | `#<n> — Research` |
+| `-t` with title (no issue # yet) | `new-ticket` | `New: <title>` |
+| Epic detected | `epic` | `Epic #<n> — <title> (0/<total> stories)` |
+| `-wf <spell>` | `spell` | `<spell-name> → <args>` |
+
+Then call once:
+
+```
+mcp__moflo__memory_store
+  namespace: "tasklist"
+  key: "<runId>"
+  upsert: true
+  value: {
+    "status": "running",
+    "context": {
+      "type": "<ticket|research|new-ticket|epic|spell>",
+      "label": "<computed label>",
+      "issueNumber": <n | omit>,
+      "issueTitle": "<title | omit>",
+      "execMode": "<normal|swarm|hive>"
+    },
+    "spellName": "<same as label>",
+    "startedAt": <startedAt>,
+    "updatedAt": "<new Date().toISOString()>"
+  }
+```
+
+The schema mirrors `storeFloRunRecord` in `src/cli/services/daemon-dashboard.ts` — keep it in sync if you ever change one. The session-start launcher retains the most recent ~200 tasklist rows so this record outlives the session and renders in the Flo Runs tab on subsequent restarts.
+
 ## Phase 1: Research (also `-r`)
 
 ### 1.1 Fetch the issue + history (cheap, before any file exploration)
@@ -150,3 +191,29 @@ Closes #<issue-number>"
 gh issue edit <issue-number> --remove-label "in-progress" --add-label "ready-for-review"
 gh issue comment <issue-number> --body "PR created: <pr-url>"
 ```
+
+### 5.5 Finalize run record (Flo Runs dashboard)
+
+Update the tasklist row written in Phase 0 with the terminal status. Same `runId`, `upsert: true`. On success:
+
+```
+mcp__moflo__memory_store
+  namespace: "tasklist"
+  key: "<runId>"          # same key from Phase 0
+  upsert: true
+  value: {
+    "status": "completed",
+    "success": true,
+    "context": <same context object as Phase 0>,
+    "spellName": "<same label as Phase 0>",
+    "startedAt": <startedAt from Phase 0>,
+    "duration": <Date.now() - startedAt>,
+    "updatedAt": "<new Date().toISOString()>"
+  }
+```
+
+On failure (tests still red after retries, or any aborting error): same shape with `"status": "failed"`, `"success": false`, and an `"error": "<short summary>"` field.
+
+This finalize call MUST also fire if the run aborts *before* reaching Phase 5 (early failure during research, ticket, or implement) — otherwise the dashboard shows a permanently "running" row for a dead run.
+
+Skip this when `--epic-branch` is set — the epic orchestrator records its own outcome.

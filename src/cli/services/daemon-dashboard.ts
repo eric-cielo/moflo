@@ -112,10 +112,17 @@ function tryParseSafe(s: string): unknown {
 
 function handleStatus(daemon: WorkerDaemon): object {
   const status = daemon.getStatus();
+  // Index config rows by worker type so the row renderer can show a
+  // "disabled" badge instead of "Last run: never" for default-off workers
+  // (audit, predict, document — see #968 user feedback).
+  const configByType = new Map<string, { enabled: boolean }>();
+  for (const w of status.config.workers) configByType.set(w.type, { enabled: w.enabled });
+
   const workers: Record<string, unknown>[] = [];
   for (const [type, state] of status.workers) {
     workers.push({
       type,
+      enabled: configByType.get(type)?.enabled ?? true,
       isRunning: state.isRunning,
       lastRun: state.lastRun?.toISOString() ?? null,
       nextRun: state.nextRun?.toISOString() ?? null,
@@ -627,10 +634,24 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   <meta name="description" content="The Arcane Console — moflo daemon, scheduled spells, and live event stream">
   <meta property="og:title" content="The Arcane Console">
   <meta property="og:description" content="The Arcane Console — moflo daemon, scheduled spells, and live event stream">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 20px; }
-    h1 { color: #58a6ff; margin-bottom: 4px; font-size: 1.5rem; }
+    /* Wizardy chain — Cinzel Decorative is the Google Font; the rest are
+       the most likely system serifs across macOS / Windows / Linux so the
+       title still reads "arcane" if the user is offline or behind a font-CDN
+       block (Georgia ships everywhere; serif is the universal fallback). */
+    h1 { font-family: 'Cinzel Decorative', 'Cinzel', 'Trajan Pro', 'Palatino Linotype', 'Book Antiqua', Georgia, serif; font-weight: 900; letter-spacing: 0.04em; margin-bottom: 4px; font-size: 1.85rem; }
+    /* Per-word arcane palette. Hues chosen at L≈45-50%, S≈60-70% so they read on
+       both #0d1117 (dark) and #ffffff (light) — WCAG-AA at large-text size on
+       both. Each word's shadow matches its own hue so the glow doesn't bleed
+       a single color across all three. */
+    h1 .w-the     { color: #8b5cf6; text-shadow: 0 0 18px rgba(139, 92, 246, 0.18); }
+    h1 .w-arcane  { color: #2563eb; text-shadow: 0 0 18px rgba(37, 99, 235, 0.18); }
+    h1 .w-console { color: #059669; text-shadow: 0 0 18px rgba(5, 150, 105, 0.18); }
     h2 { color: #8b949e; font-size: 1.1rem; margin: 16px 0 12px; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
     .header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
     .subtitle { color: #8b949e; font-size: 0.85rem; }
@@ -678,7 +699,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 </head>
 <body>
   <div class="header">
-    <h1>The Arcane Console</h1>
+    <h1><span class="w-the">The</span> <span class="w-arcane">Arcane</span> <span class="w-console">Console</span></h1>
     <span class="subtitle">moflo daemon &bull; localhost</span>
   </div>
   <div id="status-bar" class="status-bar"><div class="empty">Loading...</div></div>
@@ -760,15 +781,25 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 
     function renderWorkers(s) {
       if (!s) return;
-      const rows = s.workers.map(w =>
-        '<tr><td>' + esc(w.type) + '</td>' +
-        '<td>' + (w.isRunning ? badge('running','yellow') : badge('idle','gray')) + '</td>' +
-        '<td>' + w.runCount + '</td>' +
-        '<td>' + pct(w.successCount, w.failureCount) + '</td>' +
-        '<td>' + fmtDuration(w.averageDurationMs) + '</td>' +
-        '<td>' + fmtTimeAgo(w.lastRun) + '</td>' +
-        '<td>' + (w.nextRun ? fmtTime(w.nextRun) : '-') + '</td></tr>'
-      ).join('');
+      // Disabled workers show a clear "disabled" badge and dim "—" cells
+      // instead of "idle"/"never" — those terms imply the worker is healthy
+      // but quiet, which misled users into thinking audit/predict/document
+      // were broken (#968).
+      const rows = s.workers.map(w => {
+        const statusBadge = w.enabled === false
+          ? badge('disabled', 'gray')
+          : (w.isRunning ? badge('running', 'yellow') : badge('idle', 'gray'));
+        const dim = '<span class="dim">—</span>';
+        const lastRun = w.enabled === false && !w.lastRun ? dim : fmtTimeAgo(w.lastRun);
+        const nextRun = w.enabled === false ? dim : (w.nextRun ? fmtTime(w.nextRun) : '-');
+        return '<tr><td>' + esc(w.type) + '</td>' +
+          '<td>' + statusBadge + '</td>' +
+          '<td>' + w.runCount + '</td>' +
+          '<td>' + pct(w.successCount, w.failureCount) + '</td>' +
+          '<td>' + fmtDuration(w.averageDurationMs) + '</td>' +
+          '<td>' + lastRun + '</td>' +
+          '<td>' + nextRun + '</td></tr>';
+      }).join('');
       document.getElementById('panel-workers').innerHTML =
         '<h2>Worker Status</h2>' +
         '<table><thead><tr><th>Worker</th><th>Status</th><th>Runs</th><th>Success</th><th>Avg</th><th>Last Run</th><th>Next Run</th></tr></thead>' +

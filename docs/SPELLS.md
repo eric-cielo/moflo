@@ -1116,12 +1116,13 @@ flo daemon status    # shows whether the service is registered AND the process i
 
 ### Storage namespaces
 
-| Namespace | Contents |
-|-----------|----------|
-| `scheduled-spells` | One record per `SpellSchedule` (`id`, `spellName`, timing, `nextRunAt`, `enabled`, `args`, etc.) |
-| `schedule-executions` | One record per `ScheduleExecution` — the audit trail surfaced by the dashboard |
+| Namespace | Contents | Retention |
+|-----------|----------|-----------|
+| `scheduled-spells` | One record per `SpellSchedule` (`id`, `spellName`, timing, `nextRunAt`, `enabled`, `args`, etc.) | Survives session restarts; user removes via `flo spell schedule cancel` |
+| `schedule-executions` | One record per `ScheduleExecution` — the audit trail surfaced by the Arcane Console | Survives session restarts; not pruned by the launcher |
+| `tasklist` | One record per `/flo` run + per spell-engine run, surfaced as the "Flo Runs" tab on the Arcane Console | Survives session restarts; trimmed to `TASKLIST_RETENTION_CAP` (200) by the session-start launcher (#968) |
 
-Both namespaces are scoped to the project's memory database, so schedules and history don't leak across projects.
+All three namespaces are scoped to the project's memory database, so schedules, history, and run records don't leak across projects.
 
 ## Further Reading
 
