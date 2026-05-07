@@ -75,6 +75,26 @@ export function validateArguments(
   }
 }
 
+/**
+ * Validate the optional `sandbox` block on a spell definition.
+ * Accepts: missing, `{}`, `{ required: boolean }`.
+ * Rejects: non-object value, non-boolean `required`.
+ */
+export function validateSandbox(def: SpellDefinition, errors: ValidationError[]): void {
+  const sandbox = (def as { sandbox?: unknown }).sandbox;
+  if (sandbox === undefined) return;
+
+  if (sandbox === null || typeof sandbox !== 'object' || Array.isArray(sandbox)) {
+    errors.push({ path: 'sandbox', message: 'sandbox must be an object' });
+    return;
+  }
+
+  const { required } = sandbox as { required?: unknown };
+  if (required !== undefined && typeof required !== 'boolean') {
+    errors.push({ path: 'sandbox.required', message: 'sandbox.required must be a boolean' });
+  }
+}
+
 /** Check whether a value matches a declared ArgumentType. */
 export function matchesArgumentType(value: unknown, type: ArgumentType): boolean {
   switch (type) {
