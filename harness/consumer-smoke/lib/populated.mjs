@@ -74,7 +74,12 @@ function quiesceLauncherBackground(consumerDir) {
 }
 
 const ACTIVE_NAMESPACES = ['guidance', 'patterns', 'code-map', 'tests', 'knowledge', 'learnings', 'default'];
+// Skip-embedding set (matches EPHEMERAL_NAMESPACES in src/cli/memory/bridge-embedder.ts).
 const EPHEMERAL_NAMESPACES = ['hive-mind', 'tasklist', 'epic-state', 'test-bridge-fix'];
+// Hard-purge set (matches PURGE_ON_SESSION_START_NAMESPACES). #968: tasklist
+// is in EPHEMERAL_NAMESPACES (skip-embed) but NOT here — those rows back the
+// dashboard Flo Runs tab and survive across session restarts.
+const PURGED_NAMESPACES = ['hive-mind', 'epic-state', 'test-bridge-fix'];
 const ROWS_PER_ACTIVE_NAMESPACE = 20;
 const ROWS_PER_EPHEMERAL_NAMESPACE = 5;
 const ARCHIVED_ROW_COUNT = 3;
@@ -310,14 +315,17 @@ function inspectInstalledEphemeralNamespaces(consumerDir) {
     return;
   }
   // Loading via dynamic import would also drag in fastembed transitives; a
-  // text scan is sufficient because EPHEMERAL_NAMESPACES is a static literal.
+  // text scan is sufficient because both namespace sets are static literals.
   const source = readFileSync(sourcePath, 'utf8');
-  const missing = EPHEMERAL_NAMESPACES.filter(ns => !source.includes(`'${ns}'`));
+  const missing = [
+    ...EPHEMERAL_NAMESPACES.filter(ns => !source.includes(`'${ns}'`)),
+    ...PURGED_NAMESPACES.filter(ns => !source.includes(`'${ns}'`)),
+  ];
   if (missing.length === 0) {
     record('populated:ephemeral-namespace-parity', 'pass', `harness list matches installed dist`);
   } else {
     record('populated:ephemeral-namespace-parity', 'fail',
-      `harness list drift — installed dist missing: ${missing.join(', ')} (update harness or check #729 regression)`);
+      `harness list drift — installed dist missing: ${missing.join(', ')} (update harness or check #729/#968 regression)`);
   }
 }
 
@@ -426,14 +434,27 @@ function assertDeletedRowsPurged(snapshot) {
 
 function assertEphemeralRowsPurged(snapshot) {
   const offenders = [];
-  for (const ns of EPHEMERAL_NAMESPACES) {
+  for (const ns of PURGED_NAMESPACES) {
     const active = snapshot.byNamespaceStatus[`${ns}/active`] ?? 0;
     if (active > 0) offenders.push(`${ns}=${active}`);
   }
   if (offenders.length === 0) {
-    record('populated:ephemeral-purged', 'pass', 'no ephemeral-namespace rows remain (#729)');
+    record('populated:ephemeral-purged', 'pass', 'no purgeable namespace rows remain (#729)');
   } else {
-    record('populated:ephemeral-purged', 'fail', `ephemeral rows leaked through #729 purge: ${offenders.join(', ')}`);
+    record('populated:ephemeral-purged', 'fail', `purgeable rows leaked through #729 purge: ${offenders.join(', ')}`);
+  }
+
+  // #968: tasklist is the dashboard's Flo Runs data source. The seeded rows
+  // must SURVIVE the session-start launcher (it trims to retention cap, not
+  // bulk-purges). With ROWS_PER_EPHEMERAL_NAMESPACE=5 well under the 200-row
+  // cap, every seeded row is expected to remain.
+  const tasklistActive = snapshot.byNamespaceStatus['tasklist/active'] ?? 0;
+  if (tasklistActive >= ROWS_PER_EPHEMERAL_NAMESPACE) {
+    record('populated:tasklist-retained', 'pass',
+      `${tasklistActive} tasklist rows survived the launcher (#968 retention)`);
+  } else {
+    record('populated:tasklist-retained', 'fail',
+      `expected ≥${ROWS_PER_EPHEMERAL_NAMESPACE} tasklist rows after launcher, got ${tasklistActive} (regression on #968 — Flo Runs tab will be empty)`);
   }
 }
 

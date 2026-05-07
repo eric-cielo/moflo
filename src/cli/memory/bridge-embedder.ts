@@ -55,11 +55,9 @@ export const EMBEDDING_MODEL_OPT_OUT = 'none';
 export const EMBEDDING_MODEL_LEGACY_DEFAULT = 'local';
 
 /**
- * Namespaces that store internal moflo run-tracking, never user knowledge.
- * Writes here skip embedding generation entirely — both `embedding` and
- * `embedding_model` land as NULL, distinct from the opt-out path which still
- * tags rows with `'none'`. Existing rows in these namespaces are hard-deleted
- * on upgrade by `services/ephemeral-namespace-purge.ts`.
+ * Namespaces that skip embedding generation in the bridge write path. Rows
+ * land with both `embedding` and `embedding_model` NULL (distinct from the
+ * opt-out path which still tags rows with `'none'`).
  *
  * Members:
  * - `hive-mind`     — MCP broadcast traffic (msg:*, agent_join, consensus_propose)
@@ -67,7 +65,11 @@ export const EMBEDDING_MODEL_LEGACY_DEFAULT = 'local';
  * - `epic-state`    — Epic progress (epic-N, story-M) written by commands/epic.ts
  * - `test-bridge-fix` — Single 2026-04-23 row left over from a one-off test
  *
- * See story #729 for the source-trace and rationale.
+ * See story #729 for the source-trace and rationale. The session-start
+ * launcher only purges {@link PURGE_ON_SESSION_START_NAMESPACES} — a strict
+ * subset that *excludes* `tasklist`, because the dashboard's Flo Runs tab
+ * (`daemon-dashboard.ts handleSpells`) reads tasklist; purging it on every
+ * session would empty the tab between sessions (#968).
  */
 export const EPHEMERAL_NAMESPACES: ReadonlySet<string> = new Set([
   'hive-mind',
@@ -75,6 +77,26 @@ export const EPHEMERAL_NAMESPACES: ReadonlySet<string> = new Set([
   'epic-state',
   'test-bridge-fix',
 ]);
+
+/**
+ * Subset of {@link EPHEMERAL_NAMESPACES} that the session-start launcher
+ * hard-purges via `services/ephemeral-namespace-purge.ts`. Excludes
+ * `tasklist` — those rows back the dashboard's "Flo Runs" tab and are
+ * trimmed by row-count retention instead of bulk purge (#968).
+ */
+export const PURGE_ON_SESSION_START_NAMESPACES: ReadonlySet<string> = new Set([
+  'hive-mind',
+  'epic-state',
+  'test-bridge-fix',
+]);
+
+/**
+ * Maximum number of `tasklist` rows kept across session restarts. The
+ * session-start retention pass deletes oldest rows beyond this cap, so the
+ * dashboard's "Flo Runs" tab shows recent history without unbounded growth
+ * (#968). Sized for ~2 weeks of /flo activity at typical use.
+ */
+export const TASKLIST_RETENTION_CAP = 200;
 
 /**
  * Minimal contract the bridge needs from an embedder. Tests inject a stub

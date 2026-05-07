@@ -1,24 +1,27 @@
 /**
- * Idempotent ephemeral-namespace purge for moflo's memory DB (`.moflo/moflo.db`).
+ * Idempotent session-start memory cleanup for moflo's memory DB
+ * (`.moflo/moflo.db`).
  *
- * Story #729 retired four namespaces from the persistent memory layer because
- * they store internal moflo run-tracking — not user knowledge — and embedding
- * them polluted the search index:
+ * Two passes run in a single sql.js open:
  *
- *  - `hive-mind`        (MCP broadcast traffic)
- *  - `tasklist`         (spell run records)
- *  - `epic-state`       (epic progress tracking)
- *  - `test-bridge-fix`  (single-row leftover from a one-off test)
+ * 1. **Hard-purge** namespaces in {@link PURGE_ON_SESSION_START_NAMESPACES} —
+ *    `hive-mind`, `epic-state`, `test-bridge-fix`. These store internal
+ *    run-tracking that does not need to survive a session restart. (#729)
  *
- * This service hard-deletes any rows in those namespaces left over from prior
- * moflo versions, then VACUUMs to reclaim disk. Future writes to these
- * namespaces still land in the DB — but skip embedding generation entirely
- * (see {@link EPHEMERAL_NAMESPACES} in `memory/bridge-embedder.ts`).
+ * 2. **Retention trim** the `tasklist` namespace down to the most recent
+ *    {@link TASKLIST_RETENTION_CAP} rows. `tasklist` is the dashboard's
+ *    "Flo Runs" tab data source (`daemon-dashboard.ts handleSpells`); the
+ *    pre-#968 contract hard-purged it on every session start, leaving the tab
+ *    permanently empty. Trim instead so users see recent history without
+ *    unbounded growth.
+ *
+ * Both passes share the file open + final VACUUM + atomic write, so disk I/O
+ * is the same as before. Writes back to disk only when something changed.
  *
  * Lives in `services/` so it has no dependency on the CLI command machinery.
- * That lets `bin/session-start-launcher.mjs` dynamic-import it and run the
- * purge in foreground BEFORE long-lived sql.js consumers (MCP server, daemon)
- * open the DB — sql.js dumps the whole snapshot on every flush and would
+ * That lets `bin/session-start-launcher.mjs` dynamic-import it and run in
+ * foreground BEFORE long-lived sql.js consumers (MCP server, daemon) open
+ * the DB — sql.js dumps the whole snapshot on every flush and would
  * otherwise clobber our cleanup (see #727's clobber-hazard analysis).
  *
  * @module cli/services/ephemeral-namespace-purge
@@ -26,7 +29,10 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { EPHEMERAL_NAMESPACES } from '../memory/bridge-embedder.js';
+import {
+  PURGE_ON_SESSION_START_NAMESPACES,
+  TASKLIST_RETENTION_CAP,
+} from '../memory/bridge-embedder.js';
 import { mofloImport } from './moflo-require.js';
 import { atomicWriteFileSync } from './atomic-file-write.js';
 import { memoryDbPath } from './moflo-paths.js';
@@ -34,19 +40,28 @@ import { memoryDbPath } from './moflo-paths.js';
 export interface PurgeEphemeralNamespacesOptions {
   /** Path to the memory DB. Defaults to `<cwd>/.moflo/moflo.db`. */
   dbPath?: string;
+  /**
+   * Override the tasklist retention cap. Defaults to
+   * {@link TASKLIST_RETENTION_CAP}. Tests use this to drive the trim path
+   * without seeding hundreds of rows.
+   */
+  tasklistRetentionCap?: number;
 }
 
 export interface PurgeEphemeralNamespacesResult {
-  /** Number of rows hard-deleted across all ephemeral namespaces. 0 when nothing to purge. */
+  /** Number of rows hard-deleted from {@link PURGE_ON_SESSION_START_NAMESPACES}. */
   purged: number;
+  /** Number of `tasklist` rows trimmed by the retention pass. */
+  trimmed: number;
 }
 
 /**
- * Hard-delete every row whose namespace is in {@link EPHEMERAL_NAMESPACES}
- * and VACUUM. Returns `{ purged: 0 }` on the happy path: no DB, sql.js
- * unavailable, schema lacks `memory_entries`, or no ephemeral rows present.
- * Errors propagate to the caller (the launcher absorbs them so a failed
- * purge never blocks session start).
+ * Hard-delete rows in {@link PURGE_ON_SESSION_START_NAMESPACES} and trim the
+ * `tasklist` namespace to its retention cap, then VACUUM. Returns
+ * `{ purged: 0, trimmed: 0 }` on the happy path: no DB, sql.js unavailable,
+ * schema lacks `memory_entries`, or nothing to clean. Errors propagate to
+ * the caller (the launcher absorbs them so a failed purge never blocks
+ * session start).
  */
 export async function purgeEphemeralNamespaces(
   options: PurgeEphemeralNamespacesOptions = {},
@@ -55,10 +70,10 @@ export async function purgeEphemeralNamespaces(
   const path = await import('path');
 
   const dbPath = path.resolve(options.dbPath ?? memoryDbPath(process.cwd()));
-  if (!fs.existsSync(dbPath)) return { purged: 0 };
+  if (!fs.existsSync(dbPath)) return { purged: 0, trimmed: 0 };
 
   const initSqlJs = (await mofloImport('sql.js'))?.default;
-  if (!initSqlJs) return { purged: 0 };
+  if (!initSqlJs) return { purged: 0, trimmed: 0 };
 
   const SQL = await initSqlJs();
   const buffer = fs.readFileSync(dbPath);
@@ -70,27 +85,59 @@ export async function purgeEphemeralNamespaces(
     const probe = db.exec(
       `SELECT name FROM sqlite_master WHERE type='table' AND name='memory_entries' LIMIT 1`,
     );
-    if (!probe[0]?.values?.[0]) return { purged: 0 };
+    if (!probe[0]?.values?.[0]) return { purged: 0, trimmed: 0 };
 
-    const namespaces = Array.from(EPHEMERAL_NAMESPACES);
+    // Single COUNT pass to gate both DELETEs — a clean DB is the steady
+    // state and we don't want two no-op DELETEs (with their query-planner
+    // overhead) on every session start.
+    const namespaces = Array.from(PURGE_ON_SESSION_START_NAMESPACES);
+    const cap = options.tasklistRetentionCap ?? TASKLIST_RETENTION_CAP;
     const placeholders = namespaces.map(() => '?').join(', ');
-
-    // Single-scan delete + rowsModified: skips a redundant COUNT pass on dirty
-    // DBs and avoids the prepare/bind/step/free overhead on clean ones. VACUUM
-    // (and the disk write) only run when something was actually deleted.
-    db.run(
-      `DELETE FROM memory_entries WHERE namespace IN (${placeholders})`,
+    const countRows = db.exec(
+      `SELECT
+         (SELECT COUNT(*) FROM memory_entries WHERE namespace IN (${placeholders})) AS purgeable,
+         (SELECT COUNT(*) FROM memory_entries WHERE namespace = 'tasklist') AS tasklistTotal`,
       namespaces,
     );
-    const purged = db.getRowsModified?.() ?? 0;
-    if (purged === 0) return { purged: 0 };
+    const counts = countRows[0]?.values?.[0] ?? [0, 0];
+    const purgeable = Number(counts[0] ?? 0);
+    const tasklistTotal = Number(counts[1] ?? 0);
+
+    let purged = 0;
+    if (purgeable > 0) {
+      db.run(
+        `DELETE FROM memory_entries WHERE namespace IN (${placeholders})`,
+        namespaces,
+      );
+      purged = db.getRowsModified?.() ?? 0;
+    }
+
+    let trimmed = 0;
+    if (tasklistTotal > cap) {
+      // Keep the newest `cap` rows by created_at, falling back to `id DESC`
+      // for legacy rows that predate the created_at-not-null schema (#728-era).
+      db.run(
+        `DELETE FROM memory_entries
+         WHERE namespace = 'tasklist'
+           AND id NOT IN (
+             SELECT id FROM memory_entries
+             WHERE namespace = 'tasklist'
+             ORDER BY created_at DESC, id DESC
+             LIMIT ?
+           )`,
+        [cap],
+      );
+      trimmed = db.getRowsModified?.() ?? 0;
+    }
+
+    if (purged === 0 && trimmed === 0) return { purged: 0, trimmed: 0 };
 
     // VACUUM has to run outside any open transaction; sql.js auto-commits
     // each `db.run`, so this is safe to chain.
     db.run('VACUUM');
 
     atomicWriteFileSync(dbPath, db.export());
-    return { purged };
+    return { purged, trimmed };
   } finally {
     db.close();
   }
