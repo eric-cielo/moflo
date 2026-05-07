@@ -1,0 +1,93 @@
+name: File-sync smoke (#976)
+
+# Issue #976: cross-platform validation for the postinstall bootstrap +
+# session-start launcher's file-sync layer. The matrix covers the three
+# supported runtime hosts:
+#
+#   ubuntu-latest  — Linux native (ext4 rename behavior)
+#   macos-latest   — APFS clone + rename semantics
+#   windows-latest — NTFS file locks, AV real-time scan, Windows file
+#                    sharing modes (the dominant failure class for #854/#975)
+#
+# Tests exercised on every leg:
+#   - file-sync-helper.test.ts        — atomicCopy, hash-skip, EVERIFY,
+#                                       circuit breaker, .tmp breadcrumb
+#   - post-install-bootstrap.test.ts  — bootstrap end-to-end including
+#                                       sentinel write + hash-skip mtime
+#   - bootstrap-sentinel-promotion.test.ts — launcher §0/§3h sentinel +
+#                                            upgrade-notice round-trip
+#
+# These three together cover the six #976 acceptance behaviors:
+#   B1 hash-skip preserves mtime
+#   B2 no .tmp stragglers on success
+#   B3 .tmp breadcrumb on rename failure
+#   B4 EVERIFY on truncated tmp + retry recovery
+#   B5 sentinel write/read/clear
+#   B6 upgrade-notice round-trip (in-progress → completed)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bin/lib/file-sync.mjs'
+      - 'bin/session-start-launcher.mjs'
+      - 'scripts/post-install-bootstrap.mjs'
+      - 'src/cli/__tests__/file-sync-helper.test.ts'
+      - 'src/cli/__tests__/post-install-bootstrap.test.ts'
+      - 'src/cli/__tests__/bootstrap-sentinel-promotion.test.ts'
+      - '.github/workflows/file-sync-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'bin/lib/file-sync.mjs'
+      - 'bin/session-start-launcher.mjs'
+      - 'scripts/post-install-bootstrap.mjs'
+      - 'src/cli/__tests__/file-sync-helper.test.ts'
+      - 'src/cli/__tests__/post-install-bootstrap.test.ts'
+      - 'src/cli/__tests__/bootstrap-sentinel-promotion.test.ts'
+      - '.github/workflows/file-sync-smoke.yml'
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '22'
+
+# Don't cancel in-flight pushes to main — partial validation leaves the
+# branch in an unverified state. PR runs are cancellable.
+concurrency:
+  group: file-sync-smoke-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Native: NTFS / APFS / ext4 each have their own lock + rename semantics.
+  # Bug #975's failure venue was DrvFs (covered separately below) but the
+  # other native filesystems have caught a long tail of platform-specific
+  # rename behavior, so we keep all three on every change.
+  native:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build (tsc only — tests need the source helpers under bin/lib/)
+        run: npm run build
+
+      - name: Run file-sync smoke tests
+        run: npx vitest run --reporter=default
+          src/cli/__tests__/file-sync-helper.test.ts
+          src/cli/__tests__/post-install-bootstrap.test.ts
+          src/cli/__tests__/bootstrap-sentinel-promotion.test.ts
+          src/cli/__tests__/post-install-bootstrap-drift-guard.test.ts
+          tests/bin/launcher-854-fixes.test.ts

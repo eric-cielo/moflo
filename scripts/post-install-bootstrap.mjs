@@ -37,15 +37,16 @@
  */
 
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   statSync,
+  writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { errMessage, makeSyncer } from '../bin/lib/file-sync.mjs';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const MOFLO_ROOT = resolve(dirname(SCRIPT_PATH), '..');
@@ -87,68 +88,12 @@ export const SOURCE_HELPER_FILES = [
   'post-commit',
 ];
 
-// ── Retry + circuit breaker (#854 contract) ──────────────────────────────────
+// ── Retry + atomic copy + circuit breaker (#854 / #975) ─────────────────────
 //
-// Mirrors the launcher's syncWithRetry. Backoff [50,200,800]ms covers Windows
-// EBUSY windows from concurrent helper invocation + AV real-time scan. The
-// breaker opens after 5 distinct files exhaust retries so a sick host
-// (AV mid-scan over node_modules) doesn't compound wall-clock cost.
-
-const TRANSIENT_CODES = new Set(['EBUSY', 'EPERM', 'EACCES']);
-const RETRY_BACKOFF_MS = [50, 200, 800];
-const CIRCUIT_BREAK_THRESHOLD = 5;
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function makeSyncer() {
-  let circuitOpen = false;
-  const failures = [];
-
-  async function syncWithRetry(operation) {
-    const maxAttempts = circuitOpen ? 1 : RETRY_BACKOFF_MS.length + 1;
-    let lastErr = null;
-    let lastCode = null;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      if (attempt > 0) await sleep(RETRY_BACKOFF_MS[attempt - 1]);
-      try {
-        operation();
-        return { ok: true };
-      } catch (err) {
-        lastErr = err;
-        lastCode = err && err.code ? err.code : null;
-        if (!TRANSIENT_CODES.has(lastCode)) break;
-      }
-    }
-    if (!circuitOpen && failures.length + 1 >= CIRCUIT_BREAK_THRESHOLD) {
-      circuitOpen = true;
-    }
-    return { ok: false, err: lastErr, code: lastCode };
-  }
-
-  async function syncFile(src, dest, manifestKey) {
-    if (!existsSync(src)) return { skipped: true };
-    try {
-      mkdirSync(dirname(dest), { recursive: true });
-    } catch (err) {
-      failures.push({ key: manifestKey, message: errMessage(err) });
-      return { ok: false };
-    }
-    const result = await syncWithRetry(() => copyFileSync(src, dest));
-    if (result.ok) return { ok: true };
-    const tail = TRANSIENT_CODES.has(result.code)
-      ? ` (retried ${RETRY_BACKOFF_MS.length}× after ${result.code}${circuitOpen ? '; circuit open' : ''})`
-      : '';
-    failures.push({ key: manifestKey, message: `${errMessage(result.err)}${tail}` });
-    return { ok: false };
-  }
-
-  return { syncFile, failures };
-}
-
-function errMessage(err) {
-  if (!err) return 'unknown error';
-  return err.code ? `${err.code} ${err.message || ''}`.trim() : (err.message || String(err));
-}
+// Implementation lives in `bin/lib/file-sync.mjs` so the launcher's section 3
+// shares the same hash-skip + atomic + verify path. Backoff [50,200,800]ms
+// covers Windows EBUSY windows from concurrent helper invocation + AV scan;
+// breaker opens after 5 distinct exhausted-retry failures.
 
 // ── Project root discovery ──────────────────────────────────────────────────
 //
@@ -294,6 +239,37 @@ export async function runBootstrap({
     log(
       `moflo: postinstall bootstrap left ${failures.length} file(s) unsynced — run 'flo doctor --fix' to repair:\n${sample}${more}`,
     );
+
+    // #975: write a sentinel that session-start picks up so the user gets a
+    // visible "upgrade left work undone" prompt instead of a silent stale
+    // launcher. The bootstrap's stderr alone is buried in `npm install`
+    // output noise. Best-effort write — we never block install on this.
+    try {
+      const mofloDir = resolve(projectRoot, '.moflo');
+      mkdirSync(mofloDir, { recursive: true });
+      let mofloVersion = 'unknown';
+      try {
+        const pkgPath = resolve(mofloRoot, 'package.json');
+        if (existsSync(pkgPath)) {
+          mofloVersion = JSON.parse(readFileSync(pkgPath, 'utf-8')).version || 'unknown';
+        }
+      } catch { /* version is informational only */ }
+      const sentinel = {
+        timestamp: new Date().toISOString(),
+        mofloVersion,
+        failures: failures.map((f) => ({
+          key: f.key,
+          message: f.message,
+          src: f.src,
+          dest: f.dest,
+        })),
+      };
+      writeFileSync(
+        resolve(mofloDir, 'bootstrap-failed.json'),
+        JSON.stringify(sentinel, null, 2),
+        'utf-8',
+      );
+    } catch { /* sentinel write must not block install */ }
   }
 
   return { ran: true, synced, failed: failures.length, failures };

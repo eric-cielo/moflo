@@ -45,6 +45,7 @@ export const SKILLS_MAP: Record<string, string[]> = {
   core: [
     'eldar',
     'guidance',
+    'healer',
     'flo-simplify',
     'reasoningbank-intelligence',
   ],

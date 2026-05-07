@@ -153,6 +153,82 @@ export async function checkClaudeCode(): Promise<HealthCheck> {
   }
 }
 
+/**
+ * Delegate diagnostics to Claude Code's own `claude doctor` command and surface
+ * the result. Catches Claude-side issues (settings drift, MCP/auth, IDE/extension
+ * state, update channel) that moflo's own checks can't see — since `claude` is
+ * not a moflo-owned binary we don't try to parse its output structurally; we
+ * just report exit code + a short tail. Skip silently when `claude` isn't
+ * installed — `checkClaudeCode` already covers that condition.
+ */
+export async function checkClaudeCodeDoctor(): Promise<HealthCheck> {
+  try {
+    await runCommand('claude --version', 3000);
+  } catch {
+    return {
+      name: 'Claude Code Doctor',
+      status: 'pass',
+      message: 'Skipped (claude CLI not installed — see Claude Code CLI check)',
+    };
+  }
+
+  // Capture both streams + exit code without throwing. `claude doctor` exits
+  // non-zero on findings, so a try/catch over execAsync would lose the body.
+  const result: { code: number | null; stdout: string; stderr: string } = await new Promise((resolve) => {
+    const child = exec(
+      'claude doctor',
+      {
+        encoding: 'utf8',
+        timeout: 30000,
+        shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
+        env: { ...process.env },
+        windowsHide: true,
+      },
+      (err, stdout, stderr) => {
+        resolve({
+          code: err && typeof (err as NodeJS.ErrnoException).code === 'number'
+            ? ((err as unknown as { code: number }).code)
+            : (err ? 1 : 0),
+          stdout: (stdout || '').toString().trim(),
+          stderr: (stderr || '').toString().trim(),
+        });
+      },
+    );
+    child.on('error', () => resolve({ code: 1, stdout: '', stderr: '' }));
+  });
+
+  // claude doctor not recognised → some Claude versions don't ship the
+  // subcommand. Surface as a pass-skip rather than a failure so older Claude
+  // installs aren't penalised.
+  const combined = `${result.stdout}\n${result.stderr}`.toLowerCase();
+  if (
+    /unknown command|command not found|usage:.*claude/.test(combined) &&
+    !combined.includes('check')
+  ) {
+    return {
+      name: 'Claude Code Doctor',
+      status: 'pass',
+      message: 'Skipped (this Claude version does not expose `claude doctor`)',
+    };
+  }
+
+  if (result.code === 0) {
+    const firstLine = result.stdout.split(/\r?\n/).find((l) => l.trim()) || 'No issues reported';
+    return { name: 'Claude Code Doctor', status: 'pass', message: firstLine.slice(0, 120) };
+  }
+
+  // Non-zero — surface the tail so the user has a hint, and point to the
+  // interactive command for the full report. Don't try to fix from here:
+  // Claude-side fixes (re-auth, settings repair, IDE reload) need user gestures.
+  const tailLines = result.stdout.split(/\r?\n/).filter((l) => l.trim()).slice(-3).join(' | ');
+  return {
+    name: 'Claude Code Doctor',
+    status: 'warn',
+    message: tailLines ? `claude doctor reported issues: ${tailLines.slice(0, 200)}` : 'claude doctor exited non-zero (no output captured)',
+    fix: 'Run `claude doctor` interactively for full report and follow its instructions',
+  };
+}
+
 export async function installClaudeCode(): Promise<boolean> {
   try {
     output.writeln();

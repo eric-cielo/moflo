@@ -8,13 +8,14 @@
  */
 
 import { spawn, execFileSync } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { mofloDir } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune } from './lib/retired-files.mjs';
+import { makeSyncer, contentEqual } from './lib/file-sync.mjs';
 
 // Headless skip (#860). The daemon's headless workers spawn `claude --print`
 // with CLAUDE_CODE_HEADLESS=true (see src/cli/services/headless-worker-
@@ -166,8 +167,12 @@ const UPGRADE_NOTICE_INPROGRESS_TTL_MS = 5 * 60 * 1000;
 const UPGRADE_NOTICE_COMPLETED_TTL_MS = 2 * 60 * 1000;
 const UPGRADE_NOTICE_PATH = () => join(mofloDir(projectRoot), 'upgrade-notice.json');
 
-function writeUpgradeNotice(status) {
-  if (!upgradeNoticeContext) return;
+// Single-source-of-truth notice writer. Reused by writeUpgradeNotice (the
+// version-bump / drift-heal path) and the §0-bootstrap-sentinel + §3h paths
+// (#975 statusline-channel promotion). Keeps the JSON shape colocated with
+// the TTL constants instead of letting it drift across two inline copies.
+function buildAndWriteNotice(context, status) {
+  if (!context) return;
   const ttlMs = status === 'completed'
     ? UPGRADE_NOTICE_COMPLETED_TTL_MS
     : UPGRADE_NOTICE_INPROGRESS_TTL_MS;
@@ -176,15 +181,19 @@ function writeUpgradeNotice(status) {
     const now = Date.now();
     const notice = {
       status,
-      kind: upgradeNoticeContext.kind,
-      from: upgradeNoticeContext.from,
-      to: upgradeNoticeContext.to,
+      kind: context.kind,
+      from: context.from,
+      to: context.to,
       at: new Date(now).toISOString(),
       expiresAt: new Date(now + ttlMs).toISOString(),
       changes: 0,
     };
     writeFileSync(UPGRADE_NOTICE_PATH(), JSON.stringify(notice, null, 2));
   } catch { /* non-fatal — statusline just won't show the segment */ }
+}
+
+function writeUpgradeNotice(status) {
+  buildAndWriteNotice(upgradeNoticeContext, status);
 }
 
 // ── 0-pre. Drop any stale upgrade notice (#738, #743) ───────────────────────
@@ -200,6 +209,39 @@ function writeUpgradeNotice(status) {
 try {
   unlinkSync(join(mofloDir(projectRoot), 'upgrade-notice.json'));
 } catch { /* non-fatal — file usually doesn't exist */ }
+
+// ── 0-bootstrap-sentinel. Surface partial-bootstrap failures (#975) ─────────
+// `scripts/post-install-bootstrap.mjs` writes `.moflo/bootstrap-failed.json`
+// when its file-sync left some helpers unwritten (WSL DrvFs lock, EBUSY race,
+// breaker open, …). Without this block the user has no in-session signal
+// that the upgrade was incomplete — the launcher itself ran fine, but it's
+// running from STALE files. Emit a high-visibility line pointing them at
+// the healer so the silent failure mode that produced #975 can't recur.
+// Section 3h below clears the sentinel after a clean re-sync.
+//
+// Also write a `kind: 'repair'` upgrade-notice so the statusline surfaces
+// the prompt persistently — emitWarning lands on stderr only and Claude Code
+// relays it once on session start; the statusline keeps the indicator in
+// front of the user until §3h flips it to `completed` (sync resolved) or
+// the 5-min in-progress TTL expires (visibility cap, statusline tests).
+let bootstrapSentinelData = null;
+const BOOTSTRAP_SENTINEL_PATH = resolve(mofloDir(projectRoot), 'bootstrap-failed.json');
+let bootstrapNoticeContext = null;
+try {
+  if (existsSync(BOOTSTRAP_SENTINEL_PATH)) {
+    bootstrapSentinelData = JSON.parse(readFileSync(BOOTSTRAP_SENTINEL_PATH, 'utf-8'));
+    const count = Array.isArray(bootstrapSentinelData?.failures) ? bootstrapSentinelData.failures.length : 0;
+    const sentinelVersion = bootstrapSentinelData?.mofloVersion || 'unknown';
+    emitWarning(
+      `Upgrade detected ${count} unfinished install step(s) from npm install (moflo@${sentinelVersion}). Run /healer --fix to repair.`,
+    );
+    bootstrapNoticeContext = { kind: 'repair', from: sentinelVersion, to: sentinelVersion };
+    buildAndWriteNotice(bootstrapNoticeContext, 'in-progress');
+  }
+} catch (err) {
+  // Unreadable sentinel — leave it; healer will catch the underlying issue.
+  emitWarning(`bootstrap sentinel read skipped (${errMessage(err)})`);
+}
 
 // ── 0. Legacy whole-DB / directory migrations have been retired (#851) ─────
 // LEGACY-V2: Pre-#851 the launcher renamed `.claude-flow/` → `.moflo/` and
@@ -518,65 +560,21 @@ try {
       // pre-upgrade content forever because it was never recorded in the
       // manifest. Surface failures on stderr — Claude Code captures
       // session-start stderr as additionalContext so the user sees them too.
-      const syncFailures = [];
-
-      // Standard retry with exponential backoff + circuit breaker for the
-      // transient error class (EBUSY / EPERM / EACCES — Windows file lock,
-      // AV real-time scan, concurrent helper invocation). Hard errors
-      // (ENOENT, etc.) fall through immediately. Once 5 distinct files have
-      // exhausted retries the circuit opens and the tail of the sync runs
-      // with maxAttempts=1 so a sick host (AV mid-scan over node_modules)
-      // doesn't compound the wall-clock cost. Async setTimeout — never
-      // busy-wait in a session-start hook (CPU pinning during EBUSY backoff
-      // is the worst possible response when the OS is the bottleneck).
-      const TRANSIENT_CODES = new Set(['EBUSY', 'EPERM', 'EACCES']);
-      const RETRY_BACKOFF_MS = [50, 200, 800];
-      const CIRCUIT_BREAK_THRESHOLD = 5;
-      let circuitOpen = false;
-      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-      async function syncWithRetry(operation) {
-        const maxAttempts = circuitOpen ? 1 : RETRY_BACKOFF_MS.length + 1;
-        let lastErr = null;
-        let lastCode = null;
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          if (attempt > 0) await sleep(RETRY_BACKOFF_MS[attempt - 1]);
-          try {
-            operation();
-            return { ok: true };
-          } catch (err) {
-            lastErr = err;
-            lastCode = err && err.code ? err.code : null;
-            if (!TRANSIENT_CODES.has(lastCode)) break;
-          }
-        }
-        if (!circuitOpen && syncFailures.length + 1 >= CIRCUIT_BREAK_THRESHOLD) {
-          circuitOpen = true;
-        }
-        return { ok: false, err: lastErr, code: lastCode };
-      }
-
-      /** Copy src → dest if src exists, record `{path, size}` in manifest.
-       * Retries the transient error class with backoff (#854); failures land
-       * in syncFailures for the post-block stderr summary. The recorded size
-       * is read from the just-written destination so a subsequent launcher
-       * can detect content drift via size mismatch. */
+      //
+      // Retry/breaker semantics (#854) + hash-skip + atomic tmp+rename + post-
+      // write verify (#975) live in `./lib/file-sync.mjs`, shared with
+      // `scripts/post-install-bootstrap.mjs` so the npm-install path and the
+      // session-start path can't drift. The launcher records manifest entries
+      // on success via the onSuccess callback so currentManifest stays the
+      // single source of truth for next-session retired-file cleanup.
       function recordManifestEntry(manifestKey, dest) {
         let size = null;
         try { size = statSync(dest).size; } catch { /* size left null — drift check still works on file-existence */ }
         currentManifest.push({ path: manifestKey, size });
       }
-      async function syncFile(src, dest, manifestKey) {
-        if (!existsSync(src)) return;
-        const result = await syncWithRetry(() => copyFileSync(src, dest));
-        if (result.ok) {
-          recordManifestEntry(manifestKey, dest);
-          return;
-        }
-        const tail = TRANSIENT_CODES.has(result.code)
-          ? ` (retried ${RETRY_BACKOFF_MS.length}× after ${result.code}${circuitOpen ? '; circuit open' : ''})`
-          : '';
-        syncFailures.push({ key: manifestKey, message: `${errMessage(result.err)}${tail}` });
-      }
+      const { syncFile, failures: syncFailures } = makeSyncer({
+        onSuccess: (key, dest) => recordManifestEntry(key, dest),
+      });
 
       // Version changed — sync scripts from bin/
       if (autoUpdateConfig.scripts) {
@@ -663,20 +661,11 @@ try {
           for (const srcDir of helperSources) {
             const src = resolve(srcDir, file);
             if (existsSync(src)) {
-              const inlineResult = await syncWithRetry(() => copyFileSync(src, dest));
-              if (inlineResult.ok) {
-                recordManifestEntry(`.claude/helpers/${file}`, dest);
-              } else {
-                const code = inlineResult.code;
-                const tail = TRANSIENT_CODES.has(code)
-                  ? ` (retried ${RETRY_BACKOFF_MS.length}× after ${code}${circuitOpen ? '; circuit open' : ''})`
-                  : '';
-                syncFailures.push({
-                  key: `.claude/helpers/${file}`,
-                  message: `${errMessage(inlineResult.err)}${tail}`,
-                });
-              }
-              break; // first source wins
+              // First existing source wins — same semantics as before. The
+              // shared syncFile records manifest + collects failures the
+              // same way the rest of section 3 does.
+              await syncFile(src, dest, `.claude/helpers/${file}`);
+              break;
             }
           }
         }
@@ -1314,6 +1303,15 @@ try {
           'review defaults — model routing, sandbox, gates, hooks',
         );
       }
+    } else {
+      // Previously a silent skip — masked the actual reason consumers didn't
+      // get a yaml after upgrading from pre-#895 versions. If neither template
+      // path resolves the install is incomplete (partial extract, prune ate
+      // the file, dogfood without a built dist/). Surface a healer hint so
+      // the user can repair instead of staring at a missing yaml.
+      emitWarning(
+        `moflo.yaml create skipped — template not found at ${tplPaths.join(' or ')}; run 'flo doctor --fix' to repair`,
+      );
     }
   }
 } catch (err) {
@@ -1491,6 +1489,41 @@ if (pendingVersionStampWrite) {
     writeFileSync(pendingVersionStampWrite.path, pendingVersionStampWrite.version);
   } catch (err) {
     emitWarning(`version stamp write failed (${errMessage(err)}) — next launcher will re-detect the upgrade`);
+  }
+}
+
+// ── 3h. Clear bootstrap sentinel if section-3 sync resolved it (#975) ───────
+// Section 3 above re-attempts the same file copies the bootstrap was supposed
+// to do, with the launcher's own retry logic. If after section 3 every file
+// the bootstrap reported as failed is now byte-identical to its source, the
+// previously-unfinished work is done — drop the sentinel so the warning at
+// section 0-bootstrap-sentinel doesn't fire on the next session. If anything
+// is still mismatched, leave the sentinel in place; healer / next session
+// will re-attempt.
+if (bootstrapSentinelData?.failures?.length > 0) {
+  try {
+    const allRepaired = bootstrapSentinelData.failures.every((f) => {
+      if (!f?.src || !f?.dest) return false;
+      // contentEqual already does the size short-circuit + SHA-1 hash and
+      // is the same predicate the §3 sync used to decide whether to skip
+      // the copy in the first place — reusing it here keeps "the sentinel
+      // is clearable when bytes match" consistent across both code paths.
+      return contentEqual(f.src, f.dest);
+    });
+    if (allRepaired) {
+      unlinkSync(BOOTSTRAP_SENTINEL_PATH);
+      emitMutation('cleared bootstrap-failed sentinel', 'previously-failed copies are now in sync');
+      // Flip the §0-bootstrap-sentinel "in-progress" repair notice to
+      // "completed" so the statusline shows the post-repair badge. Skip when
+      // §3 already wrote its own upgradeNoticeContext (version bump / drift)
+      // — that path runs the §3f writer with its own kind/version and we
+      // shouldn't clobber it from here.
+      if (bootstrapNoticeContext && !upgradeNoticeContext) {
+        buildAndWriteNotice(bootstrapNoticeContext, 'completed');
+      }
+    }
+  } catch (err) {
+    emitWarning(`bootstrap sentinel verify skipped (${errMessage(err)})`);
   }
 }
 
