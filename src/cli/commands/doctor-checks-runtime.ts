@@ -217,6 +217,19 @@ export async function checkClaudeCodeDoctor(): Promise<HealthCheck> {
     return { name: 'Claude Code Doctor', status: 'pass', message: firstLine.slice(0, 120) };
   }
 
+  // Non-zero with zero output → `claude doctor` is interactive in current
+  // Claude Code releases (verified on 2.1.132): it opens a TUI and produces
+  // nothing on a non-TTY child stdout, then our exec timeout kills it. Treat
+  // as a skip — the check can't observe the TUI from here, and warning would
+  // fire on every machine running the same Claude version.
+  if (!result.stdout && !result.stderr) {
+    return {
+      name: 'Claude Code Doctor',
+      status: 'pass',
+      message: 'Skipped (claude doctor is interactive — run manually to see findings)',
+    };
+  }
+
   // Non-zero — surface the tail so the user has a hint, and point to the
   // interactive command for the full report. Don't try to fix from here:
   // Claude-side fixes (re-auth, settings repair, IDE reload) need user gestures.
@@ -224,7 +237,7 @@ export async function checkClaudeCodeDoctor(): Promise<HealthCheck> {
   return {
     name: 'Claude Code Doctor',
     status: 'warn',
-    message: tailLines ? `claude doctor reported issues: ${tailLines.slice(0, 200)}` : 'claude doctor exited non-zero (no output captured)',
+    message: `claude doctor reported issues: ${tailLines.slice(0, 200)}`,
     fix: 'Run `claude doctor` interactively for full report and follow its instructions',
   };
 }

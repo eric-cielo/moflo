@@ -93,19 +93,15 @@ Skipped by default — `ci.yml` runs the full test suite on every PR. Run when `
 
 **Must have 0 test file failures.** If any test files fail, retest them individually to distinguish real failures from flaky ones (per broken window theory). Fix all real failures before proceeding.
 
-### Step 5: Doctor (always)
+### Step 5: Doctor (always — strict, no repair)
 
-Default mode:
-```bash
-npx moflo doctor --fix
-```
-
-Check mode (`CHECK_MODE=true`):
 ```bash
 npx moflo doctor --strict
 ```
 
-Doctor is the only check with no CI equivalent — it inspects local state (daemon lock, embeddings hygiene, sandbox tier, vector-stats freshness) that CI cannot validate for you. Always runs.
+Doctor is the only check with no CI equivalent — it inspects local state (daemon lock, embeddings hygiene, sandbox tier, vector-stats freshness) that CI cannot validate for you. Always runs in `--strict` mode regardless of `CHECK_MODE`.
+
+**Never `--fix` on the publish path.** A release pipeline must fail fast on broken local state, not silently repair it; a doctor that auto-repairs masks the very signal we want — "something is off, stop and investigate before shipping." If `doctor --strict` fails, stop and run `flo healer --fix` (or `npx moflo doctor --fix`) interactively, verify the repair, then retry the publish.
 
 ### Step 6: Smoke Tests (only if `CHECK_MODE=true`)
 
