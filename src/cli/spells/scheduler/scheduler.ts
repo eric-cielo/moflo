@@ -491,15 +491,29 @@ export class SpellScheduler {
       };
       await this.memory.write(NAMESPACE_EXECUTIONS, executionId, finalRecord);
 
-      this.emit({
-        type: result.success ? 'schedule:completed' : 'schedule:failed',
-        scheduleId: schedule.id,
-        spellName: schedule.spellName,
-        message: result.success
-          ? `Completed in ${finalRecord.duration}ms`
-          : `Failed: ${finalRecord.error}`,
-        timestamp: completedAt,
-      });
+      // SANDBOX_REQUIRED (#878) is a configuration mismatch, not a runtime
+      // failure — surface it as a skip so dashboards/oncall don't page on a
+      // missing sandbox the user can resolve in moflo.yaml.
+      const sandboxRequiredErr = result.errors.find(e => e.code === 'SANDBOX_REQUIRED');
+      if (!result.success && sandboxRequiredErr) {
+        this.emit({
+          type: 'schedule:skipped',
+          scheduleId: schedule.id,
+          spellName: schedule.spellName,
+          message: sandboxRequiredErr.message,
+          timestamp: completedAt,
+        });
+      } else {
+        this.emit({
+          type: result.success ? 'schedule:completed' : 'schedule:failed',
+          scheduleId: schedule.id,
+          spellName: schedule.spellName,
+          message: result.success
+            ? `Completed in ${finalRecord.duration}ms`
+            : `Failed: ${finalRecord.error}`,
+          timestamp: completedAt,
+        });
+      }
     } catch (err) {
       const completedAt = Date.now();
       finalRecord = {

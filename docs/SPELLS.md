@@ -847,6 +847,28 @@ This is what makes spells safe for unattended and scheduled execution. You can r
 
 For full details on the sandboxing tiers, restriction rules, and how to declare capabilities on custom step commands, see [Spell Sandboxing](SPELL-SANDBOXING.md).
 
+### Per-spell `sandbox.required`
+
+A spell can declare that it MUST run inside an OS sandbox. This is useful for spells that handle untrusted input, talk to third-party APIs, or write outside the project root — the spell author gets to encode "don't even try without isolation," independent of the consumer's `moflo.yaml` settings.
+
+```yaml
+name: outlook-attachment-processor
+sandbox:
+  required: true       # default false
+steps:
+  - ...
+```
+
+The two settings — global `sandbox.enabled`/`sandbox.tier` in `moflo.yaml` and per-spell `sandbox.required` — compose under **more strict wins**: either source can opt in to sandboxing; neither can opt out of what the other requires.
+
+| Global `sandbox.enabled` | Spell `sandbox.required` | Result |
+|--------------------------|--------------------------|--------|
+| on  | (any) | sandboxed |
+| off | true  | runner refuses to cast — `SANDBOX_REQUIRED` |
+| off | false / unset | not sandboxed (existing default) |
+
+When a spell with `sandbox.required: true` is cast and no OS sandbox is active, the runner fails fast with `SANDBOX_REQUIRED`, naming the spell and pointing at the `moflo.yaml` knobs to flip. The same happens for scheduled casts via the spell scheduler — the requirement violation surfaces as a `schedule:skipped` event (not `schedule:failed`), since it's a configuration mismatch the user can resolve. `nextRunAt` still advances so cron pacing continues.
+
 ## Dry Run
 
 Dry-run mode validates everything without executing anything. It checks:

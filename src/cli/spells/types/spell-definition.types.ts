@@ -154,6 +154,25 @@ export interface PreflightSpec {
 }
 
 // ============================================================================
+// Sandbox Requirement
+// ============================================================================
+
+/**
+ * Per-spell sandboxing requirement. Composes with the global `sandbox` block
+ * in `moflo.yaml` under "more strict wins": either source can opt in to OS
+ * sandboxing, neither can opt out of what the other requires.
+ *
+ * @see https://github.com/eric-cielo/moflo/issues/878
+ */
+export interface SandboxRequirement {
+  /**
+   * When true, the runner refuses to cast this spell unless the effective
+   * sandbox is active (`useOsSandbox: true`). Default: false.
+   */
+  readonly required?: boolean;
+}
+
+// ============================================================================
 // Spell Definition
 // ============================================================================
 
@@ -174,6 +193,12 @@ export interface SpellDefinition {
    * interactive prompt. See `PrerequisiteSpec` for detector details.
    */
   readonly prerequisites?: readonly PrerequisiteSpec[];
+  /**
+   * Per-spell sandbox requirement. When `sandbox.required` is true, the runner
+   * refuses to cast unless the effective sandbox is active. Composes with the
+   * global `sandbox` config in `moflo.yaml` under "more strict wins".
+   */
+  readonly sandbox?: SandboxRequirement;
 }
 
 // ============================================================================

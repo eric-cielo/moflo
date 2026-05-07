@@ -214,6 +214,20 @@ export class SpellCaster {
       }], definition.name);
     }
 
+    // Per-spell sandbox requirement (#878) — "more strict wins": the spell
+    // can opt in to sandboxing even when the global config is off, and the
+    // runner refuses to cast if no OS sandbox is active.
+    if (definition.sandbox?.required === true && !effectiveSandbox.useOsSandbox) {
+      return this.failureResult(spellId, startTime, [{
+        code: 'SANDBOX_REQUIRED',
+        message:
+          `Spell "${definition.name}" requires an OS sandbox but none is active ` +
+          `(${effectiveSandbox.displayStatus}). Enable sandboxing by setting ` +
+          `\`sandbox.enabled: true\` in moflo.yaml (and \`sandbox.tier: auto\` ` +
+          `or \`full\`), or remove \`sandbox.required: true\` from the spell.`,
+      }], definition.name);
+    }
+
     return this.executeSteps(definition, resolvedArgs, spellId, options, startTime, effectiveSandbox);
   }
 

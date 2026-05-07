@@ -33,6 +33,7 @@ export type SpellErrorCode =
   | 'PREREQUISITES_FAILED'
   | 'PREFLIGHT_FAILED'
   | 'MISSING_CREDENTIAL'
+  | 'SANDBOX_REQUIRED'
   | 'SPELL_CANCELLED';
 
 // ============================================================================

@@ -22,7 +22,7 @@ import type {
 import { isValidMofloLevel } from '../core/capability-validator.js';
 import { MOFLO_LEVEL_ORDER } from '../types/step-command.types.js';
 import { validateSchedule } from '../scheduler/cron-parser.js';
-import { validateTopLevel, validateArguments, matchesArgumentType } from './validators/top-level.js';
+import { validateTopLevel, validateArguments, matchesArgumentType, validateSandbox } from './validators/top-level.js';
 import { validateSteps } from './validators/steps.js';
 import { validatePrerequisites } from './validators/prerequisites.js';
 import { validateVariableReferences } from './validators/references.js';
@@ -43,6 +43,7 @@ export function validateSpellDefinition(
   const errors: ValidationError[] = [];
 
   validateTopLevel(def, errors);
+  validateSandbox(def, errors);
 
   if (def.mofloLevel !== undefined && !isValidMofloLevel(def.mofloLevel)) {
     errors.push({
