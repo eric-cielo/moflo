@@ -138,6 +138,64 @@ describe('bridgeStoreEntry — model name passthrough (#649)', () => {
   });
 });
 
+describe('bridgeStoreEntry — UPSERT contract (#962)', () => {
+  it('overwrites the existing row when upsert=true is passed for an existing (namespace,key)', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    const first = await bridgeStoreEntry({
+      key: 'k-upsert',
+      value: 'first',
+      namespace: 'test',
+      upsert: true,
+      dbPath,
+    });
+    expect(first?.success).toBe(true);
+
+    const second = await bridgeStoreEntry({
+      key: 'k-upsert',
+      value: 'second',
+      namespace: 'test',
+      upsert: true,
+      dbPath,
+    });
+    expect(second?.success).toBe(true);
+
+    const rows = await readRows('SELECT content FROM memory_entries WHERE key = ?', ['k-upsert']);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.content).toBe('second');
+  });
+
+  it('does NOT overwrite the existing row when upsert=false collides with an existing key', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    const first = await bridgeStoreEntry({
+      key: 'k-collide',
+      value: 'first',
+      namespace: 'test',
+      upsert: false,
+      dbPath,
+    });
+    expect(first?.success).toBe(true);
+
+    // The default-INSERT path on a duplicate key trips a UNIQUE constraint
+    // in sql.js. The bridge surfaces this via withDb (returns null + stderr
+    // log) rather than throwing — what matters is the existing row stays
+    // intact. Silent overwrite would mask the schedule-cancel bug pattern
+    // even with upsert=false explicitly set.
+    await bridgeStoreEntry({
+      key: 'k-collide',
+      value: 'second',
+      namespace: 'test',
+      upsert: false,
+      dbPath,
+    });
+
+    const rows = await readRows('SELECT content FROM memory_entries WHERE key = ?', ['k-collide']);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.content).toBe('first');
+  });
+});
+
 describe('bridgeStoreEntry — opt-out path (#649)', () => {
   it("tags rows with 'none' when caller passes generateEmbeddingFlag=false", async () => {
     setBridgeEmbedderForTest(new StubEmbedder()); // present but won't be called

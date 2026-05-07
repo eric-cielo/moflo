@@ -1,17 +1,21 @@
 /**
  * Daemon Readiness Check for Scheduled Spells
  *
- * Lazy three-state flow: only triggered when creating schedules.
- * 1. Is daemon running? If not, prompt to start it.
- * 2. Is daemon installed as OS service? If not, prompt to install.
- * Always creates the schedule regardless — the daemon picks it up on next start.
+ * Confirms the daemon is currently running so a freshly-created schedule
+ * actually fires. Prompts the user to start it interactively, or warns
+ * non-interactively. Always returns regardless of state — the caller still
+ * writes the schedule, and the daemon picks it up on next start.
+ *
+ * OS-autostart install/uninstall is no longer handled here — see
+ * `daemon-autostart-lifecycle.ts`. That side effect is now driven by the
+ * count of enabled schedules, not a per-create prompt.
  */
 
 import { join, resolve } from 'path';
 import { mkdirSync, openSync, closeSync } from 'fs';
 import { spawn } from 'child_process';
 import { getDaemonLockHolder } from './daemon-lock.js';
-import { isDaemonInstalled, installDaemonService } from './daemon-service.js';
+import { isDaemonInstalled } from './daemon-service.js';
 import { locateMofloCliBin } from './moflo-require.js';
 import { registerBackgroundPid } from './process-registry.js';
 
@@ -33,14 +37,18 @@ export interface DaemonReadinessOptions {
   promptConfirm?: (message: string) => Promise<boolean>;
   /** Start the daemon in the background. Injected for testability. */
   startDaemon?: (projectRoot: string) => Promise<boolean>;
+  /** Inspect OS install state. Injected for testability. */
+  isDaemonInstalledFn?: (projectRoot: string) => boolean;
 }
 
 /**
  * Ensure the daemon is ready for scheduled spell execution.
  *
- * Checks daemon state and prompts the user to start/install as needed.
- * Always returns — never throws. The caller should create the schedule
- * regardless of the result, since the daemon can pick it up later.
+ * Checks daemon state and prompts the user to start it as needed. Always
+ * returns — never throws. The caller should create the schedule regardless
+ * of the result, since the daemon can pick it up later. OS-autostart is
+ * reconciled separately by the create/cancel paths via
+ * `reconcileDaemonAutostart`.
  */
 export async function ensureDaemonForScheduling(
   options: DaemonReadinessOptions,
@@ -48,6 +56,7 @@ export async function ensureDaemonForScheduling(
   const resolvedRoot = resolve(options.projectRoot);
   const promptFn = options.promptConfirm ?? defaultPromptConfirm;
   const startFn = options.startDaemon ?? defaultStartDaemon;
+  const installedFn = options.isDaemonInstalledFn ?? isDaemonInstalled;
 
   const result: DaemonReadinessResult = {
     daemonRunning: false,
@@ -78,34 +87,10 @@ export async function ensureDaemonForScheduling(
     }
   }
 
-  // Step 2: Check if daemon is installed as OS autostart service. This
-  // check is independent of the running state — a user with the daemon
-  // currently down still needs the autostart warning so their new schedule
-  // survives the next reboot.
-  result.daemonInstalled = isDaemonInstalled(resolvedRoot);
-
-  if (!result.daemonInstalled) {
-    if (options.interactive && result.daemonRunning) {
-      const shouldInstall = await promptFn(
-        'Register the daemon as a login service so schedules survive reboots?',
-      );
-      if (shouldInstall) {
-        const installResult = installDaemonService(resolvedRoot);
-        result.daemonInstalled = installResult.success;
-        if (!installResult.success) {
-          result.warnings.push(`Failed to install daemon service: ${installResult.message}`);
-        }
-      } else {
-        result.warnings.push(
-          "Daemon is not set to autostart. Run 'moflo daemon install' so this schedule survives reboot.",
-        );
-      }
-    } else {
-      result.warnings.push(
-        "Daemon is not set to autostart. Run 'moflo daemon install' so this schedule survives reboot.",
-      );
-    }
-  }
+  // Surface OS install state purely informationally — no prompts. The
+  // create/cancel commands reconcile install/uninstall via
+  // reconcileDaemonAutostart, driven by the enabled-schedule count.
+  result.daemonInstalled = installedFn(resolvedRoot);
 
   return result;
 }

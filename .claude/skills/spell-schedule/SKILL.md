@@ -39,8 +39,18 @@ npx flo doctor 2>&1 | grep -i daemon
 
 If the daemon is not running, prompt the user:
 - "The moflo daemon isn't running. Schedules only fire while the daemon is up. Start it now?"
-- If yes: `npx flo daemon start` (or instruct them to enable OS autostart for survival across reboots).
+- If yes: `npx flo daemon start`.
 - If they decline, warn the user that the schedule will be created but won't fire until the daemon is started.
+
+OS-native autostart (launchd / systemd / Task Scheduler) is **automatic**: the
+first `flo spell schedule create` registers the daemon as a login service so
+schedules survive reboot, and the cancel that takes the enabled-schedule count
+to 0 unregisters it. Users only need to think about it in two cases:
+
+- `--no-autostart` on `create` — skip registration (use in containers/CI where
+  the daemon is already managed externally).
+- `--keep-autostart` on `cancel` — keep the login service registered through a
+  cancel-then-recreate dance.
 
 ### Step 2 — Identify the target spell
 
@@ -142,7 +152,7 @@ If the user asks to **run now** without altering the cadence:
 
 ## Important — gotchas
 
-- **Daemon prerequisite**: schedules only fire while the daemon is running. Tell the user this explicitly. For survival across reboots, `flo daemon install` registers the OS-level autostart service.
+- **Daemon prerequisite**: schedules only fire while the daemon is running. Tell the user this explicitly. OS autostart for reboot survival is now wired automatically — see Step 1.
 - **Catch-up window** (default 1h, `scheduler.catchUpWindowMs` in `moflo.yaml`): if the daemon was offline when a run was due, runs within the window still fire on the next poll. Older missed runs are skipped with a `schedule:skipped` event.
 - **maxConcurrent** (default 2): caps the number of scheduled spells running concurrently. Same-schedule overlap is never allowed.
 - **No update CLI yet**: `flo spell schedule` exposes create/list/cancel only. To change a cadence, cancel + recreate.

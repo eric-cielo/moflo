@@ -24,6 +24,17 @@ vi.mock('../../services/daemon-readiness.js', () => ({
   ensureDaemonForScheduling: vi.fn(),
 }));
 
+// Mock the autostart lifecycle reconciler — we assert against it directly
+// for the create/cancel transition tests below.
+vi.mock('../../services/daemon-autostart-lifecycle.js', () => ({
+  reconcileDaemonAutostart: vi.fn().mockReturnValue({ transition: 'noop', message: null, warning: null }),
+}));
+
+// The cancel path consults isDaemonInstalled for the autostart short-circuit.
+vi.mock('../../services/daemon-service.js', () => ({
+  isDaemonInstalled: vi.fn().mockReturnValue(false),
+}));
+
 // Mock output (suppress console output in tests)
 vi.mock('../../output.js', () => {
   const noopFmt = (s: unknown) => String(s ?? '');
@@ -51,10 +62,14 @@ vi.mock('../../output.js', () => {
 
 import { callMCPTool } from '../../mcp-client.js';
 import { ensureDaemonForScheduling } from '../../services/daemon-readiness.js';
+import { reconcileDaemonAutostart } from '../../services/daemon-autostart-lifecycle.js';
+import { isDaemonInstalled } from '../../services/daemon-service.js';
 import { scheduleCommand } from '../../commands/spell-schedule.js';
 
 const mockCallMCP = vi.mocked(callMCPTool);
 const mockEnsureDaemon = vi.mocked(ensureDaemonForScheduling);
+const mockReconcile = vi.mocked(reconcileDaemonAutostart);
+const mockIsInstalled = vi.mocked(isDaemonInstalled);
 
 // Helper to find a subcommand
 function findSub(name: string) {
@@ -79,6 +94,8 @@ describe('spell schedule command', () => {
       daemonInstalled: true,
       warnings: [],
     });
+    mockReconcile.mockReturnValue({ transition: 'noop', message: null, warning: null });
+    mockIsInstalled.mockReturnValue(false);
   });
 
   // ── Structure ─────────────────────────────────────────────────────────────
@@ -388,21 +405,27 @@ describe('spell schedule command', () => {
     const cancelCmd = () => findSub('cancel');
 
     it('should cancel a schedule by ID', async () => {
-      mockCallMCP.mockResolvedValueOnce({
-        value: JSON.stringify({
-          id: 'sched-adhoc-123',
-          spellName: 'audit',
-          enabled: true,
-        }),
-      }).mockResolvedValueOnce({});
+      mockCallMCP
+        .mockResolvedValueOnce({
+          value: JSON.stringify({
+            id: 'sched-adhoc-123',
+            spellName: 'audit',
+            enabled: true,
+          }),
+        })
+        .mockResolvedValueOnce({ success: true })
+        // countEnabledSchedules: list returns no remaining schedules
+        .mockResolvedValueOnce({ entries: [] });
 
       const result = await cancelCmd().action!(makeCtx({
         args: ['sched-adhoc-123'],
       })) as CommandResult;
 
       expect(result.success).toBe(true);
-      // Second call should write the updated (disabled) record
-      expect(mockCallMCP).toHaveBeenCalledTimes(2);
+      // The disabled record write must use upsert: true (#962)
+      const storeCall = mockCallMCP.mock.calls.find(c => c[0] === 'memory_store');
+      expect(storeCall).toBeDefined();
+      expect(storeCall![1]).toMatchObject({ upsert: true });
     });
 
     it('should error when schedule ID not provided', async () => {
@@ -418,6 +441,151 @@ describe('spell schedule command', () => {
       })) as CommandResult;
 
       expect(result.success).toBe(false);
+    });
+
+    // ── #962: surface storage errors ─────────────────────────────────────────
+
+    it('returns failure (not silent OK) when memory_store rejects the disable write', async () => {
+      // First retrieve succeeds, second call (the store) reports success: false.
+      // Historic bug: this would print "[OK] Schedule cancelled" and exit 0.
+      mockCallMCP
+        .mockResolvedValueOnce({
+          value: JSON.stringify({ id: 'sched-1', spellName: 'audit', enabled: true }),
+        })
+        .mockResolvedValueOnce({ success: false, error: 'UNIQUE constraint failed: memory_entries.namespace, memory_entries.key' });
+
+      const result = await cancelCmd().action!(makeCtx({
+        args: ['sched-1'],
+      })) as CommandResult;
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
+      // Reconcile must NOT have been called — the schedule write failed.
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+
+    // ── #960/#961: autostart reconcile on cancel ─────────────────────────────
+
+    it('reconciles autostart with the remaining-enabled count after cancel when service is installed', async () => {
+      mockIsInstalled.mockReturnValue(true);  // cancel only reconciles when service is installed
+      mockCallMCP
+        .mockResolvedValueOnce({
+          value: JSON.stringify({ id: 'sched-1', spellName: 'audit', enabled: true }),
+        })
+        .mockResolvedValueOnce({ success: true })
+        .mockResolvedValueOnce({ entries: [] });  // no other schedules remain
+
+      await cancelCmd().action!(makeCtx({ args: ['sched-1'] })) as CommandResult;
+
+      expect(mockReconcile).toHaveBeenCalledTimes(1);
+      expect(mockReconcile).toHaveBeenCalledWith(expect.objectContaining({
+        enabledScheduleCount: 0,
+        skip: false,
+      }));
+    });
+
+    it('short-circuits the count fetch when service is not installed (cancel can never trigger uninstall)', async () => {
+      mockIsInstalled.mockReturnValue(false);
+      mockCallMCP
+        .mockResolvedValueOnce({
+          value: JSON.stringify({ id: 'sched-1', spellName: 'audit', enabled: true }),
+        })
+        .mockResolvedValueOnce({ success: true });
+
+      await cancelCmd().action!(makeCtx({ args: ['sched-1'] })) as CommandResult;
+
+      // Reconcile is skipped entirely — no count fetch, no helper call.
+      expect(mockReconcile).not.toHaveBeenCalled();
+      // Only the retrieve + store calls fired — no memory_list for the count.
+      const listCalls = mockCallMCP.mock.calls.filter(c => c[0] === 'memory_list');
+      expect(listCalls).toHaveLength(0);
+    });
+
+    it('skips reconcile when --keep-autostart is set even if service is installed', async () => {
+      mockIsInstalled.mockReturnValue(true);
+      mockCallMCP
+        .mockResolvedValueOnce({
+          value: JSON.stringify({ id: 'sched-1', spellName: 'audit', enabled: true }),
+        })
+        .mockResolvedValueOnce({ success: true });
+
+      await cancelCmd().action!(makeCtx({
+        args: ['sched-1'],
+        flags: { _: [], keepAutostart: true },
+      })) as CommandResult;
+
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── #960: autostart reconcile on create ──────────────────────────────────
+
+  describe('create + autostart', () => {
+    const createCmd = () => scheduleCommand.subcommands!.find(c => c.name === 'create')!;
+
+    it('reconciles autostart when service is not yet installed', async () => {
+      mockEnsureDaemon.mockResolvedValue({
+        daemonRunning: true,
+        daemonInstalled: false,  // 0→1 install path
+        warnings: [],
+      });
+      mockCallMCP
+        .mockImplementationOnce(async () => ({ success: true }))  // store
+        .mockImplementationOnce(async () => ({ entries: [{ key: 'k1', namespace: 'scheduled-spells' }] }))  // list
+        .mockImplementationOnce(async () => ({ value: { id: 'k1', enabled: true }, found: true }));  // retrieve
+
+      await createCmd().action!(makeCtx({
+        flags: { _: [], name: 'audit', cron: '0 9 * * *' },
+      })) as CommandResult;
+
+      expect(mockReconcile).toHaveBeenCalledTimes(1);
+      expect(mockReconcile).toHaveBeenCalledWith(expect.objectContaining({
+        enabledScheduleCount: 1,
+        skip: false,
+      }));
+    });
+
+    it('short-circuits the count fetch when service is already installed (create can never trigger install)', async () => {
+      mockEnsureDaemon.mockResolvedValue({
+        daemonRunning: true,
+        daemonInstalled: true,  // already installed — reconcile would be a guaranteed noop
+        warnings: [],
+      });
+      mockCallMCP.mockImplementationOnce(async () => ({ success: true }));  // just the store
+
+      await createCmd().action!(makeCtx({
+        flags: { _: [], name: 'audit', cron: '0 9 * * *' },
+      })) as CommandResult;
+
+      expect(mockReconcile).not.toHaveBeenCalled();
+      const listCalls = mockCallMCP.mock.calls.filter(c => c[0] === 'memory_list');
+      expect(listCalls).toHaveLength(0);
+    });
+
+    it('skips reconcile when --no-autostart is set', async () => {
+      mockEnsureDaemon.mockResolvedValue({
+        daemonRunning: true,
+        daemonInstalled: false,
+        warnings: [],
+      });
+      mockCallMCP.mockImplementationOnce(async () => ({ success: true }));
+
+      await createCmd().action!(makeCtx({
+        flags: { _: [], name: 'audit', cron: '0 9 * * *', noAutostart: true },
+      })) as CommandResult;
+
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+
+    it('returns failure when memory_store rejects the create write (#962)', async () => {
+      mockCallMCP.mockResolvedValueOnce({ success: false, error: 'bridge unavailable' });
+
+      const result = await createCmd().action!(makeCtx({
+        flags: { _: [], name: 'audit', cron: '0 9 * * *' },
+      })) as CommandResult;
+
+      expect(result.success).toBe(false);
+      expect(mockReconcile).not.toHaveBeenCalled();
     });
   });
 });
