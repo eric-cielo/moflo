@@ -9,14 +9,18 @@
  * adapter is the seam where the bridge is plugged in. Arbitrary values are
  * JSON-serialised into the bridge's `content` field; namespaces are prefixed
  * with `aidefence:` to isolate from general memory entries.
+ *
+ * #981 / #986 — writes funnel through `storeEntry` / `deleteEntry` so the
+ * single-writer daemon-routing preamble (memory-initializer.ts) covers them.
+ * Calling the bridge directly here would bypass the daemon and resurrect
+ * the multi-process clobber.
  */
 import {
-  bridgeStoreEntry,
   bridgeSearchEntries,
   bridgeGetEntry,
-  bridgeDeleteEntry,
   isBridgeAvailable,
 } from '../memory/memory-bridge.js';
+import { storeEntry, deleteEntry } from '../memory/memory-initializer.js';
 
 const NS_PREFIX = 'aidefence:';
 
@@ -45,7 +49,7 @@ export class MofloDbAIDefenceStore {
     embedding?: number[];
     ttl?: number;
   }): Promise<void> {
-    await bridgeStoreEntry({
+    await storeEntry({
       namespace: prefixNs(params.namespace),
       key: params.key,
       value: JSON.stringify(params.value),
@@ -89,7 +93,7 @@ export class MofloDbAIDefenceStore {
   }
 
   async delete(namespace: string, key: string): Promise<void> {
-    await bridgeDeleteEntry({
+    await deleteEntry({
       namespace: prefixNs(namespace),
       key,
     });

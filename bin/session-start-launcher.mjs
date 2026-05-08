@@ -447,6 +447,24 @@ try {
           'upgraded',
           cachedVersion ? `${cachedVersion} → ${installedVersion}` : `installed ${installedVersion}`,
         );
+        // #981 / #987 — one-time architecture notice. Single-writer routing
+        // means daemon must be running for safe multi-process writes. Sentinel
+        // file ensures the notice fires once per consumer (across upgrades),
+        // not on every version bump. `flo doctor` surfaces the runtime warning
+        // when the daemon is disabled with MCP configured.
+        try {
+          const noticeSentinel = join(mofloDir(projectRoot), 'single-writer-notice-shown');
+          if (cachedVersion && !existsSync(noticeSentinel)) {
+            emitMutation(
+              'single-writer write architecture active',
+              'memory writes route through the daemon (#981) — keep daemon.auto_start: true to prevent multi-process clobber',
+            );
+            try {
+              mkdirSync(mofloDir(projectRoot), { recursive: true });
+              writeFileSync(noticeSentinel, new Date().toISOString());
+            } catch { /* sentinel best-effort — re-emit next session if write fails */ }
+          }
+        } catch { /* never block the upgrade flow on the notice */ }
       } else {
         upgradeNoticeContext = {
           kind: 'repair',

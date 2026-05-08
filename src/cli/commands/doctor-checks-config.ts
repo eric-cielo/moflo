@@ -145,18 +145,43 @@ export async function checkMemoryDatabase(): Promise<HealthCheck> {
   return { name: 'Memory Database', status: 'warn', message: 'Not initialized', fix: 'claude-flow memory configure --backend hybrid' };
 }
 
-export async function checkMcpServers(): Promise<HealthCheck> {
-  const mcpConfigPaths = [
+/**
+ * Standard MCP-config search paths: home (Claude Desktop on macOS/Linux),
+ * XDG config dir, project-local `.mcp.json`, and APPDATA on Windows.
+ *
+ * Shared by `checkMcpServers` (which inspects the FIRST config it finds and
+ * reports on flo presence) and `checkDaemonWriteRouting` (which COUNTS
+ * servers across all paths to detect the multi-process-clobber hazard).
+ */
+function mcpConfigSearchPaths(cwd: string): string[] {
+  return [
     join(os.homedir(), '.claude/claude_desktop_config.json'),
     join(os.homedir(), '.config/claude/mcp.json'),
-    '.mcp.json',
-    // Windows: Claude Desktop stores config under %APPDATA%\Claude\
+    join(cwd, '.mcp.json'),
     ...(process.platform === 'win32' && process.env.APPDATA
       ? [join(process.env.APPDATA, 'Claude', 'claude_desktop_config.json')]
       : []),
   ];
+}
 
-  for (const configPath of mcpConfigPaths) {
+/** Sum MCP servers across every reachable config. Malformed configs counted as 0. */
+function countMcpServers(cwd: string): number {
+  let total = 0;
+  for (const configPath of mcpConfigSearchPaths(cwd)) {
+    if (!existsSync(configPath)) continue;
+    try {
+      const content = JSON.parse(readFileSync(configPath, 'utf8'));
+      const servers = content.mcpServers || content.servers || {};
+      total += Object.keys(servers).length;
+    } catch {
+      // Skip unreadable / malformed config — checkMcpServers reports it.
+    }
+  }
+  return total;
+}
+
+export async function checkMcpServers(): Promise<HealthCheck> {
+  for (const configPath of mcpConfigSearchPaths(process.cwd())) {
     if (existsSync(configPath)) {
       try {
         const content = JSON.parse(readFileSync(configPath, 'utf8'));
@@ -221,6 +246,64 @@ export async function checkMofloYamlCompliance(cwd: string = process.cwd()): Pro
     status: 'warn',
     message: `Missing sections: ${result.missingSections.join(', ')}`,
     fix: 'Restart Claude Code (yaml-upgrader auto-appends) or `npx moflo init --force`',
+  };
+}
+
+/**
+ * #981 / #987 — surfaces the single-writer-architecture safety net.
+ *
+ * When `daemon.auto_start: false` is set in moflo.yaml AND the consumer has
+ * an MCP server configured, every MCP-process write hits sql.js directly
+ * (no daemon-RPC routing). Pre-#981 multi-process clobber + reader-staleness
+ * hazards reappear in that configuration. Warn — never fail — because
+ * disabling the daemon is a legitimate consumer choice and the config
+ * itself isn't broken.
+ *
+ * Pass: daemon enabled (default) → routing protection active.
+ * Pass: daemon disabled but no MCP server detected → no multi-writer hazard.
+ * Warn: daemon disabled AND MCP server detected → hazard window open.
+ */
+export async function checkDaemonWriteRouting(cwd: string = process.cwd()): Promise<HealthCheck> {
+  const name = 'Daemon Write Routing';
+
+  let daemonEnabled = true; // default-on — matches moflo.yaml default
+  try {
+    const { loadMofloConfig } = await import('../config/moflo-config.js');
+    const config = loadMofloConfig(cwd);
+    daemonEnabled = config?.daemon?.auto_start !== false;
+  } catch {
+    // Unreadable config — assume daemon-enabled and let other checks flag
+    // the config error.
+    daemonEnabled = true;
+  }
+
+  if (daemonEnabled) {
+    return {
+      name,
+      status: 'pass',
+      message: 'Daemon enabled — multi-process writes route through single writer (#981 protection active)',
+    };
+  }
+
+  // Daemon disabled — count MCP servers across every reachable config.
+  const mcpServerCount = countMcpServers(cwd);
+
+  if (mcpServerCount === 0) {
+    return {
+      name,
+      status: 'pass',
+      message: 'Daemon disabled and no MCP server configured — no multi-writer hazard',
+    };
+  }
+
+  return {
+    name,
+    status: 'warn',
+    message:
+      `Daemon disabled (moflo.yaml) and ${mcpServerCount} MCP server(s) configured — ` +
+      `multi-process sql.js writes can clobber each other (#981). ` +
+      `Set daemon.auto_start: true to restore single-writer protection.`,
+    fix: 'Edit moflo.yaml: daemon.auto_start: true',
   };
 }
 

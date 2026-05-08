@@ -100,6 +100,8 @@ export const isolationTests = [
 
 export default defineConfig({
   test: {
+    // #981 — disable daemon-routing preamble during tests (see vitest.setup.ts).
+    setupFiles: ['./vitest.setup.ts'],
     // Use forks to prevent segfaults from native modules (agentdb/sql.js)
     pool: 'forks',
     // Increase heap limit for worker forks — prevents OOM crashes on

@@ -19,6 +19,12 @@ import type { MemoryAccessor } from '../spells/types/step-command.types.js';
 import type { FloRunContext } from '../spells/types/runner.types.js';
 import type { SchedulerErrorCode } from '../spells/scheduler/scheduler.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import {
+  handleMemoryStore,
+  handleMemoryDelete,
+  handleMemoryBatch,
+  matchMemoryRpcRoute,
+} from './daemon-memory-rpc.js';
 
 // ============================================================================
 // Types
@@ -377,7 +383,8 @@ async function handleRequest(
   const method = req.method ?? 'GET';
 
   try {
-    // POST: schedule actions (disable / enable / run). Only 127.0.0.1 traffic
+    // POST: schedule actions (disable / enable / run) and memory write RPC
+    // (#981 single-writer architecture — Story #983). Only 127.0.0.1 traffic
     // reaches here (server.listen bind), so no CSRF layer is needed. Any
     // other POST falls through to the read-only 405 below.
     if (method === 'POST') {
@@ -386,9 +393,20 @@ async function handleRequest(
         await handleScheduleAction(res, daemon, action.id, action.verb);
         return;
       }
+      const memoryRoute = matchMemoryRpcRoute(url);
+      if (memoryRoute === 'store') { await handleMemoryStore(req, res, opts.memory); return; }
+      if (memoryRoute === 'delete') { await handleMemoryDelete(req, res, opts.memory); return; }
+      if (memoryRoute === 'batch') { await handleMemoryBatch(req, res, opts.memory); return; }
     }
 
     if (method !== 'GET') {
+      sendJson(res, 405, { error: 'Method not allowed' });
+      return;
+    }
+
+    // Memory RPC endpoints are POST-only; return 405 (not 404) on GET so
+    // clients distinguish "wrong method" from "no such endpoint".
+    if (matchMemoryRpcRoute(url)) {
       sendJson(res, 405, { error: 'Method not allowed' });
       return;
     }

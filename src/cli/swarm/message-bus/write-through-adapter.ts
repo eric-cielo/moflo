@@ -70,6 +70,16 @@ export class WriteThroughAdapter {
   private attached = false;
   private boundHandler?: (event: UnifiedMessageEvent) => void;
   private stats = { written: 0, errors: 0, reaped: 0 };
+  /**
+   * #981 — track in-flight fire-and-forget writes so `clearNamespace` (and
+   * any future shutdown waiter) can await them before listing/deleting.
+   * Without this, a unified message that hits the bus shortly before
+   * shutdown's clearNamespace() races the listEntries query — its write
+   * lands AFTER list and survives the shutdown's deletes. Pre-#981 this
+   * race was hidden by sql.js multi-process clobber; under single-writer
+   * routing the write deterministically persists.
+   */
+  private pendingWrites = new Set<Promise<unknown>>();
 
   constructor(
     bus: MessageBus,
@@ -141,6 +151,11 @@ export class WriteThroughAdapter {
   async clearNamespace(namespace: string): Promise<void> {
     if (!this.listEntries || !this.deleteEntry) return;
 
+    // #981 — drain in-flight writes before listing. Without this the list
+    // can return BEFORE a queued write completes; the deletes that follow
+    // skip that row, and it survives the shutdown.
+    await this.drainPendingWrites();
+
     try {
       const result = await this.listEntries({ namespace, limit: 1000 });
       for (const entry of result.entries) {
@@ -151,6 +166,17 @@ export class WriteThroughAdapter {
     }
   }
 
+  /**
+   * Wait for every fire-and-forget write currently in flight to settle.
+   * No-op when no writes are queued. Bounded by `Promise.allSettled` so a
+   * single hung write can't block forever (each individual write has its
+   * own daemon-write-client timeout).
+   */
+  async drainPendingWrites(): Promise<void> {
+    if (this.pendingWrites.size === 0) return;
+    await Promise.allSettled([...this.pendingWrites]);
+  }
+
   private onUnifiedMessage(event: UnifiedMessageEvent): void {
     if (!event.namespace || !this.enabledNamespaces.has(event.namespace)) {
       return;
@@ -158,8 +184,9 @@ export class WriteThroughAdapter {
 
     const ttlSeconds = event.ttlMs ? Math.ceil(event.ttlMs / 1000) : undefined;
 
-    // Fire-and-forget write to Memory DB
-    this.storeEntry({
+    // Fire-and-forget write to Memory DB. The promise is tracked in
+    // `pendingWrites` so `clearNamespace`/`drainPendingWrites` can await it.
+    const writePromise = this.storeEntry({
       key: `msg:${event.messageId}`,
       value: JSON.stringify({
         id: event.messageId,
@@ -181,6 +208,8 @@ export class WriteThroughAdapter {
     }).catch(() => {
       this.stats.errors++;
     });
+    this.pendingWrites.add(writePromise);
+    writePromise.finally(() => { this.pendingWrites.delete(writePromise); });
   }
 
   /**

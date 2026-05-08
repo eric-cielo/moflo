@@ -26,6 +26,20 @@ import {
   legacyMemoryDbPath,
   memoryDbPath,
 } from '../services/moflo-paths.js';
+import { tryDaemonStore, tryDaemonDelete } from './daemon-write-client.js';
+
+// #981 — daemon-write-client throws are a contract violation (it's documented
+// as never-throw). When a throw escapes anyway, log to stderr ONCE per process
+// and fall through to the direct-write path. Silent swallow would hide bugs;
+// per-call logging would spam.
+let _routingFaultLogged = false;
+function logRoutingFault(err: unknown): void {
+  if (_routingFaultLogged) return;
+  _routingFaultLogged = true;
+  process.stderr.write(
+    `moflo: daemon-write-client routing fault (#981, falling back to direct write): ${errorDetail(err)}\n`,
+  );
+}
 
 /**
  * Write vector-stats.json cache for the statusline (no subprocess needed).
@@ -1916,6 +1930,32 @@ export async function storeEntry(options: {
     options = { ...options, namespace: 'learnings', tags: [...merged] };
   }
 
+  // #981 — single-writer routing. When an external daemon is reachable AND
+  // we're not the daemon ourselves AND no custom dbPath was supplied, route
+  // the write through the daemon's HTTP RPC so its in-memory sql.js handle
+  // stays authoritative. Any failure path falls through to the existing
+  // bridge / raw-sql.js logic below — byte-identical behaviour to today.
+  if (
+    !options.dbPath
+    && process.env.MOFLO_IS_DAEMON !== '1'
+    && process.env.MOFLO_DISABLE_DAEMON_ROUTING !== '1'
+  ) {
+    try {
+      const routed = await tryDaemonStore({
+        namespace: options.namespace ?? 'default',
+        key: options.key,
+        value: options.value,
+        tags: options.tags,
+        ttl: options.ttl,
+      });
+      if (routed.routed && routed.ok) {
+        return { success: true, id: routed.id ?? '' };
+      }
+    } catch (err) {
+      logRoutingFault(err);
+    }
+  }
+
   // ADR-053: Try AgentDB v3 bridge first. The bridge calls
   // refreshVectorStatsCache() itself (bridge-entries.ts:191) — a second
   // write here was redundant and previously clobbered the correct count
@@ -2500,6 +2540,36 @@ export async function deleteEntry(options: {
   remainingEntries: number;
   error?: string;
 }> {
+  // #981 — single-writer routing for deletes. Same gates as storeEntry:
+  // not the daemon, no custom dbPath, routing not opted out. Failure paths
+  // fall through to the existing bridge / raw-sql.js logic below.
+  if (
+    !options.dbPath
+    && process.env.MOFLO_IS_DAEMON !== '1'
+    && process.env.MOFLO_DISABLE_DAEMON_ROUTING !== '1'
+  ) {
+    try {
+      const routed = await tryDaemonDelete({
+        namespace: options.namespace ?? 'default',
+        key: options.key,
+      });
+      if (routed.routed && routed.ok) {
+        return {
+          success: true,
+          deleted: routed.deleted ?? true,
+          key: options.key,
+          namespace: options.namespace ?? 'default',
+          // Daemon doesn't surface remainingEntries; callers that depend on
+          // this value (the `flo memory delete` CLI) read it from a
+          // subsequent stat query, not this return shape.
+          remainingEntries: 0,
+        };
+      }
+    } catch (err) {
+      logRoutingFault(err);
+    }
+  }
+
   // ADR-053: Try AgentDB v3 bridge first
   const bridge = await getBridge();
   if (bridge) {
