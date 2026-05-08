@@ -101,7 +101,7 @@ steps:
         hint: "You have uncommitted changes to tracked files. If you want them carried onto the epic branch, pick 'Stash and carry over'."
         resolutions:
           - label: "Stash changes and carry them onto the epic branch"
-            command: "git stash push --include-untracked --message 'moflo-epic-autostash'"
+            command: "git stash push --include-untracked --message 'moflo-epic-{args.epic_number}-autostash'"
           - label: "Commit changes to the current branch first, then continue"
             command: "git commit -am 'wip: pre-epic snapshot'"
       - name: "working tree clean (staged changes)"
@@ -110,7 +110,7 @@ steps:
         hint: "You have staged changes that aren't committed. If you want them carried onto the epic branch, pick 'Stash and carry over'."
         resolutions:
           - label: "Stash staged changes and carry them onto the epic branch"
-            command: "git stash push --include-untracked --message 'moflo-epic-autostash'"
+            command: "git stash push --include-untracked --message 'moflo-epic-{args.epic_number}-autostash'"
           - label: "Commit staged changes to the current branch first, then continue"
             command: "git commit -m 'wip: pre-epic snapshot'"
       - name: "gh cli authenticated"
@@ -137,8 +137,13 @@ steps:
         else
           git checkout -b "$BRANCH"
         fi
+        # Scope the marker by epic_number so a stale autostash from an
+        # abandoned previous run of a DIFFERENT epic doesn't get popped onto
+        # this branch unintentionally. Same-epic re-runs still carry over,
+        # which is the intended recovery path.
+        EXPECTED_STASH_TAG="moflo-epic-{args.epic_number}-autostash"
         TOP_MSG=$(git stash list --format='%s' -1)
-        if [[ "$TOP_MSG" == *"moflo-epic-autostash"* ]]; then
+        if [[ "$TOP_MSG" == *"$EXPECTED_STASH_TAG"* ]]; then
           if ! git stash pop -q; then
             echo "[epic] carrying-over stash conflicted on $BRANCH — resolve unmerged paths and re-run the spell" >&2
             exit 1

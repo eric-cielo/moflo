@@ -101,7 +101,7 @@ steps:
             hint: "You have uncommitted changes to tracked files. If you want them carried onto the epic branch, pick 'Stash and carry over'."
             resolutions:
               - label: "Stash changes and carry them onto the epic branch"
-                command: "git stash push --include-untracked --message 'moflo-epic-autostash'"
+                command: "git stash push --include-untracked --message 'moflo-epic-{args.epic_number}-autostash'"
               - label: "Commit changes to the current branch first, then continue"
                 command: "git commit -am 'wip: pre-epic snapshot'"
           - name: "working tree clean (staged changes)"
@@ -110,7 +110,7 @@ steps:
             hint: "You have staged changes that aren't committed. If you want them carried onto the epic branch, pick 'Stash and carry over'."
             resolutions:
               - label: "Stash staged changes and carry them onto the epic branch"
-                command: "git stash push --include-untracked --message 'moflo-epic-autostash'"
+                command: "git stash push --include-untracked --message 'moflo-epic-{args.epic_number}-autostash'"
               - label: "Commit staged changes to the current branch first, then continue"
                 command: "git commit -m 'wip: pre-epic snapshot'"
           - name: "gh cli authenticated"
@@ -132,8 +132,11 @@ steps:
             set -e
             git checkout {args.base_branch}
             git pull origin {args.base_branch}
+            # Scoped by epic_number to prevent a stale autostash from an
+            # unrelated abandoned run getting popped here.
+            EXPECTED_STASH_TAG="moflo-epic-{args.epic_number}-autostash"
             TOP_MSG=$(git stash list --format='%s' -1)
-            if [[ "$TOP_MSG" == *"moflo-epic-autostash"* ]]; then
+            if [[ "$TOP_MSG" == *"$EXPECTED_STASH_TAG"* ]]; then
               if ! git stash pop -q; then
                 echo "[epic] carrying-over stash conflicted on {args.base_branch} — resolve unmerged paths and re-run the spell" >&2
                 exit 1
@@ -175,13 +178,15 @@ steps:
         permissionLevel: elevated
         config:
           # set -e: fail fast if checkout/pull fails (see checkout-base).
-          # No in-step stash; pop only the preflight's autostash marker.
+          # No in-step stash; pop only the preflight's autostash marker
+          # (scoped by epic_number — see checkout-base).
           command: |
             set -e
             git checkout {args.base_branch}
             git pull origin {args.base_branch}
+            EXPECTED_STASH_TAG="moflo-epic-{args.epic_number}-autostash"
             TOP_MSG=$(git stash list --format='%s' -1)
-            if [[ "$TOP_MSG" == *"moflo-epic-autostash"* ]]; then
+            if [[ "$TOP_MSG" == *"$EXPECTED_STASH_TAG"* ]]; then
               if ! git stash pop -q; then
                 echo "[epic] carrying-over stash conflicted on {args.base_branch} — resolve unmerged paths and re-run the spell" >&2
                 exit 1
