@@ -2025,6 +2025,39 @@ export async function storeEntry(options: {
       }
     }
 
+    // Idempotency guard. By the time we reach the raw-sql.js fallback, an
+    // earlier write attempt — daemon route via `tryDaemonStore`, or bridge
+    // via `bridgeStoreEntry` — may have already persisted this exact row to
+    // disk. If a post-persist throw escaped the bridge's inner guards (#994,
+    // #982), `bridgeStoreEntry` returned null and we landed here. Re-running
+    // a plain INSERT would then trip the UNIQUE constraint on `(namespace,
+    // key)` and surface as `exit 1` even though the data is durable on disk
+    // — exactly the cascade described in `bridge-entries.ts:205`. If the
+    // existing row matches the value the caller asked us to write, treat
+    // this as a successful no-op and propagate the existing id instead of
+    // re-inserting. If the content differs, fall through to INSERT — the
+    // UNIQUE error is then a real "key already taken with other content"
+    // signal that the caller deserves to see.
+    if (!upsert) {
+      const probe = db.prepare(
+        `SELECT id, content FROM memory_entries WHERE namespace = ? AND key = ? AND status = 'active' LIMIT 1`,
+      );
+      probe.bind([namespace, key]);
+      const found = probe.step();
+      const existingRow = found ? probe.getAsObject() as { id: string; content: string } : null;
+      probe.free();
+      if (existingRow && existingRow.content === value) {
+        db.close();
+        return {
+          success: true,
+          id: String(existingRow.id),
+          embedding: embeddingJson
+            ? { dimensions: embeddingDimensions!, model: embeddingModel! }
+            : undefined,
+        };
+      }
+    }
+
     // Insert or update entry (upsert mode uses REPLACE)
     const insertSql = upsert
       ? `INSERT OR REPLACE INTO memory_entries (
