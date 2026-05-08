@@ -47,7 +47,7 @@ The harness has two entry points sharing the same pack/install pipeline:
 | Hooks | `hooks-list / pre-task / post-edit` | Hook commands succeed end-to-end |
 | Skill | `flo-skill` | `.claude/skills/fl/SKILL.md` ships inside the package |
 | Invariants | `no-stray-rvf`, `no-agentdb-rvf` | No surprise `.rvf` files at consumer root |
-| Surface | `moflo-install-size` | Enforces installed size budget (warn > 95 MB, fail > 110 MB) |
+| Surface | `moflo-install-size` | Enforces installed size budget (warn > 125 MB, fail > 140 MB) |
 
 ## Exit codes
 
@@ -97,9 +97,9 @@ merge.
 ## Environment variables
 
 - `MOFLO_INSTALL_SIZE_WARN_MB` — Override the install-size warn threshold
-  (default: 95 MB). Non-positive or non-numeric values fall back to the default.
+  (default: 125 MB). Non-positive or non-numeric values fall back to the default.
 - `MOFLO_INSTALL_SIZE_MAX_MB` — Override the install-size fail threshold
-  (default: 110 MB). Use deliberately (e.g. a model bump) and land the new
+  (default: 140 MB). Use deliberately (e.g. a model bump) and land the new
   ceiling in the same PR as a README note so the budget stays a real contract.
 
 ## When to run

@@ -159,6 +159,31 @@ export async function bridgeStoreEntry(options: {
 
     const guardResult = await guardValidate(registry, 'store', { key, namespace, size: value.length });
     if (!guardResult.allowed) {
+      // Dedupe rejection means the same `(op, params)` write just succeeded
+      // — the caller's data is already durable. Look up the existing row so
+      // we can return its id with success:true; this matches what the
+      // dedupe semantically means (a no-op, not a failure). Other rejection
+      // reasons (rate limit, etc.) remain real failures. Match the literal
+      // reason string rather than a substring regex so a future rejection
+      // worded with "duplicate mutation" but different semantics doesn't
+      // get silently swallowed.
+      if (guardResult.reason === 'duplicate mutation within dedupe window') {
+        let existingId: string | null = null;
+        const probe = ctx.db.prepare(
+          `SELECT id FROM memory_entries WHERE namespace = ? AND key = ? AND status = 'active' LIMIT 1`,
+        );
+        try {
+          probe.bind([namespace, key]);
+          if (probe.step()) {
+            existingId = String((probe.getAsObject() as { id: string }).id);
+          }
+        } finally {
+          probe.free();
+        }
+        if (existingId) {
+          return { success: true, id: existingId };
+        }
+      }
       return { success: false, id, error: `MutationGuard rejected: ${guardResult.reason}` };
     }
 

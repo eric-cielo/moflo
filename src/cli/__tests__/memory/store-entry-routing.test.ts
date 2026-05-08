@@ -213,6 +213,45 @@ describe('memory-initializer routing preamble (#985)', () => {
     expect(typeof result.success).toBe('boolean');
   });
 
+  // ==========================================================================
+  // Idempotency guard for the daemon→bridge→fallback cascade
+  // ==========================================================================
+  //
+  // Repro: a `memory store` for a key whose row is already on disk (e.g.
+  // because the daemon route just persisted it but the client missed the
+  // ack, or the bridge wrote then threw post-persist) used to cascade
+  // through bridge UNIQUE → withDb null → raw-sql.js UNIQUE → exit 1.
+  // The fix in `storeEntry`'s fallback short-circuits to success when the
+  // existing row's content matches the caller's value (and `upsert` is
+  // false — upsert callers want REPLACE semantics either way).
+
+  it('storeEntry returns success when the row is already present with matching content', async () => {
+    // No daemon running — keep routing out of this test entirely.
+    process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
+    const dbPath = tempDbPath();
+
+    const first = await storeEntry({
+      key: 'idem-key',
+      value: 'same-value',
+      namespace: 'idem-ns',
+      dbPath,
+    });
+    expect(first.success).toBe(true);
+
+    const second = await storeEntry({
+      key: 'idem-key',
+      value: 'same-value',
+      namespace: 'idem-ns',
+      dbPath,
+    });
+    expect(second.success).toBe(true);
+    // The fix's intent is to return the *existing* row's id rather than
+    // insert a fresh one. Without this assertion, a regression that wrote
+    // a new row alongside the old (possible only if probes silently no-op'd)
+    // would still pass the success check.
+    expect(second.id).toBe(first.id);
+  });
+
   it('deleteEntry routes through daemon when daemon is reachable', async () => {
     fake = await startFakeDaemon();
     process.env.MOFLO_DAEMON_PORT = String(fake.port);
