@@ -145,18 +145,43 @@ export async function checkMemoryDatabase(): Promise<HealthCheck> {
   return { name: 'Memory Database', status: 'warn', message: 'Not initialized', fix: 'claude-flow memory configure --backend hybrid' };
 }
 
-export async function checkMcpServers(): Promise<HealthCheck> {
-  const mcpConfigPaths = [
+/**
+ * Standard MCP-config search paths: home (Claude Desktop on macOS/Linux),
+ * XDG config dir, project-local `.mcp.json`, and APPDATA on Windows.
+ *
+ * Shared by `checkMcpServers` (which inspects the FIRST config it finds and
+ * reports on flo presence) and `checkDaemonWriteRouting` (which COUNTS
+ * servers across all paths to detect the multi-process-clobber hazard).
+ */
+function mcpConfigSearchPaths(cwd: string): string[] {
+  return [
     join(os.homedir(), '.claude/claude_desktop_config.json'),
     join(os.homedir(), '.config/claude/mcp.json'),
-    '.mcp.json',
-    // Windows: Claude Desktop stores config under %APPDATA%\Claude\
+    join(cwd, '.mcp.json'),
     ...(process.platform === 'win32' && process.env.APPDATA
       ? [join(process.env.APPDATA, 'Claude', 'claude_desktop_config.json')]
       : []),
   ];
+}
 
-  for (const configPath of mcpConfigPaths) {
+/** Sum MCP servers across every reachable config. Malformed configs counted as 0. */
+function countMcpServers(cwd: string): number {
+  let total = 0;
+  for (const configPath of mcpConfigSearchPaths(cwd)) {
+    if (!existsSync(configPath)) continue;
+    try {
+      const content = JSON.parse(readFileSync(configPath, 'utf8'));
+      const servers = content.mcpServers || content.servers || {};
+      total += Object.keys(servers).length;
+    } catch {
+      // Skip unreadable / malformed config — checkMcpServers reports it.
+    }
+  }
+  return total;
+}
+
+export async function checkMcpServers(): Promise<HealthCheck> {
+  for (const configPath of mcpConfigSearchPaths(process.cwd())) {
     if (existsSync(configPath)) {
       try {
         const content = JSON.parse(readFileSync(configPath, 'utf8'));
@@ -260,27 +285,8 @@ export async function checkDaemonWriteRouting(cwd: string = process.cwd()): Prom
     };
   }
 
-  // Daemon disabled — check whether any MCP server is configured.
-  const mcpConfigPaths = [
-    join(os.homedir(), '.claude/claude_desktop_config.json'),
-    join(os.homedir(), '.config/claude/mcp.json'),
-    join(cwd, '.mcp.json'),
-    ...(process.platform === 'win32' && process.env.APPDATA
-      ? [join(process.env.APPDATA, 'Claude', 'claude_desktop_config.json')]
-      : []),
-  ];
-
-  let mcpServerCount = 0;
-  for (const configPath of mcpConfigPaths) {
-    if (!existsSync(configPath)) continue;
-    try {
-      const content = JSON.parse(readFileSync(configPath, 'utf8'));
-      const servers = content.mcpServers || content.servers || {};
-      mcpServerCount += Object.keys(servers).length;
-    } catch {
-      // Skip unreadable / malformed config — checkMcpServers reports it.
-    }
-  }
+  // Daemon disabled — count MCP servers across every reachable config.
+  const mcpServerCount = countMcpServers(cwd);
 
   if (mcpServerCount === 0) {
     return {

@@ -26,6 +26,20 @@ import {
   legacyMemoryDbPath,
   memoryDbPath,
 } from '../services/moflo-paths.js';
+import { tryDaemonStore, tryDaemonDelete } from './daemon-write-client.js';
+
+// #981 — daemon-write-client throws are a contract violation (it's documented
+// as never-throw). When a throw escapes anyway, log to stderr ONCE per process
+// and fall through to the direct-write path. Silent swallow would hide bugs;
+// per-call logging would spam.
+let _routingFaultLogged = false;
+function logRoutingFault(err: unknown): void {
+  if (_routingFaultLogged) return;
+  _routingFaultLogged = true;
+  process.stderr.write(
+    `moflo: daemon-write-client routing fault (#981, falling back to direct write): ${errorDetail(err)}\n`,
+  );
+}
 
 /**
  * Write vector-stats.json cache for the statusline (no subprocess needed).
@@ -1927,7 +1941,6 @@ export async function storeEntry(options: {
     && process.env.MOFLO_DISABLE_DAEMON_ROUTING !== '1'
   ) {
     try {
-      const { tryDaemonStore } = await import('./daemon-write-client.js');
       const routed = await tryDaemonStore({
         namespace: options.namespace ?? 'default',
         key: options.key,
@@ -1938,8 +1951,8 @@ export async function storeEntry(options: {
       if (routed.routed && routed.ok) {
         return { success: true, id: routed.id ?? '' };
       }
-    } catch {
-      // Never let routing fault break the local write path
+    } catch (err) {
+      logRoutingFault(err);
     }
   }
 
@@ -2536,7 +2549,6 @@ export async function deleteEntry(options: {
     && process.env.MOFLO_DISABLE_DAEMON_ROUTING !== '1'
   ) {
     try {
-      const { tryDaemonDelete } = await import('./daemon-write-client.js');
       const routed = await tryDaemonDelete({
         namespace: options.namespace ?? 'default',
         key: options.key,
@@ -2553,8 +2565,8 @@ export async function deleteEntry(options: {
           remainingEntries: 0,
         };
       }
-    } catch {
-      // Never let routing fault break the local delete path
+    } catch (err) {
+      logRoutingFault(err);
     }
   }
 

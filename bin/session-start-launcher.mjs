@@ -453,8 +453,8 @@ try {
         // not on every version bump. `flo doctor` surfaces the runtime warning
         // when the daemon is disabled with MCP configured.
         try {
-          const noticeSentinel = resolve(projectRoot, '.moflo', 'single-writer-notice-shown');
-          if (!existsSync(noticeSentinel) && cachedVersion) {
+          const noticeSentinel = join(mofloDir(projectRoot), 'single-writer-notice-shown');
+          if (cachedVersion && !existsSync(noticeSentinel)) {
             emitMutation(
               'single-writer write architecture active',
               'memory writes route through the daemon (#981) — keep daemon.auto_start: true to prevent multi-process clobber',

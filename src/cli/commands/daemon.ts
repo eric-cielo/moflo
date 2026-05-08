@@ -99,12 +99,15 @@ const startCommand: Command = {
 
     // Foreground mode: run in current process (blocks terminal)
     try {
-      // #981 — mark this process as the daemon BEFORE memory-initializer is
-      // first imported. The daemon-write-client checks this env var to skip
-      // routing storeEntry/deleteEntry back through HTTP to itself (which
-      // would recurse infinitely). Setting it here covers both direct
-      // `flo daemon start --foreground` and the background spawn (whose
-      // daemonEnv already propagates this — see startBackgroundDaemon below).
+      // #981 — mark this process as the daemon BEFORE any storeEntry /
+      // deleteEntry call runs in this process. The routing preamble in
+      // memory-initializer reads `process.env.MOFLO_IS_DAEMON` per-call (not
+      // at module-load time) and skips routing when set, breaking the loop
+      // that would otherwise recurse: storeEntry → HTTP → daemon RPC →
+      // storeEntry → HTTP. Setting it here covers both direct `flo daemon
+      // start --foreground` and the background spawn (whose daemonEnv
+      // propagates this via process inheritance — see startBackgroundDaemon
+      // below).
       process.env.MOFLO_IS_DAEMON = '1';
 
       // Acquire atomic daemon lock (prevents duplicate daemons).
