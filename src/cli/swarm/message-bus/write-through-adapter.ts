@@ -166,15 +166,16 @@ export class WriteThroughAdapter {
     }
   }
 
-  /**
-   * Wait for every fire-and-forget write currently in flight to settle.
-   * No-op when no writes are queued. Bounded by `Promise.allSettled` so a
-   * single hung write can't block forever (each individual write has its
-   * own daemon-write-client timeout).
-   */
+  // #1003 — yield to the microtask queue and re-check until pendingWrites
+  // settles. The single-snapshot pattern lost a race on fast hosts (Ubuntu CI)
+  // where a caller's awaited bus.sendUnified resolved before its `.then()`
+  // chain registered the write-through promise.
   async drainPendingWrites(): Promise<void> {
-    if (this.pendingWrites.size === 0) return;
-    await Promise.allSettled([...this.pendingWrites]);
+    for (let i = 0; i < 5; i++) {
+      await Promise.resolve();
+      if (this.pendingWrites.size === 0) return;
+      await Promise.allSettled([...this.pendingWrites]);
+    }
   }
 
   private onUnifiedMessage(event: UnifiedMessageEvent): void {
