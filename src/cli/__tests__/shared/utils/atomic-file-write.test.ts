@@ -23,6 +23,8 @@ import {
   writeFileSync,
   renameSync,
   unlinkSync,
+  openSync,
+  closeSync,
   rmSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -86,6 +88,24 @@ describe('atomicWriteFileSync (real fs)', () => {
     expect(read.length).toBe(4);
     expect(read[0]).toBe(0xde);
     expect(read[3]).toBe(0xef);
+  });
+
+  it('leaves the target immediately readable after return (#1015)', () => {
+    // After atomicWriteFileSync returns, openSync(target, 'r') must succeed
+    // *now* — no retry needed. On Windows this is what closes the AV-settle
+    // race. On POSIX it's a no-op assertion (rename was already atomic).
+    const dir = makeTmpDir();
+    const target = join(dir, 'data.bin');
+
+    atomicWriteFileSync(target, Buffer.from('settled'));
+
+    const fd = openSync(target, 'r');
+    try {
+      // No-op — the open succeeding is the signal.
+    } finally {
+      closeSync(fd);
+    }
+    expect(readFileSync(target, 'utf8')).toBe('settled');
   });
 
   it('uses a process-unique temp path so concurrent writers cannot clobber tmp', async () => {
@@ -204,3 +224,61 @@ describe('atomicWriteFileSync (injected fs)', () => {
     );
   });
 });
+
+describe.runIf(process.platform === 'win32')(
+  'atomicWriteFileSync — Windows post-rename verify (#1015)',
+  () => {
+    it('tolerates one transient EBUSY in the post-rename open probe', () => {
+      // Simulate the AV-scan window: the first open after rename throws EBUSY,
+      // the second succeeds. The helper must absorb this transparently — no
+      // throw, target intact with new content.
+      const dir = makeTmpDir();
+      const target = join(dir, 'data.bin');
+
+      let openAttempts = 0;
+      const fs: AtomicWriteFs = {
+        writeFileSync,
+        renameSync,
+        unlinkSync,
+        openSync: ((path: Parameters<typeof openSync>[0], flags: Parameters<typeof openSync>[1]) => {
+          openAttempts++;
+          if (openAttempts === 1) throw new Error('EBUSY: resource busy or locked');
+          return openSync(path, flags);
+        }) as typeof openSync,
+        closeSync,
+      };
+
+      atomicWriteFileSync(target, Buffer.from('settled'), fs);
+
+      expect(openAttempts).toBeGreaterThanOrEqual(2);
+      expect(readFileSync(target, 'utf8')).toBe('settled');
+    });
+
+    it('returns (does not throw) when the verify deadline elapses', () => {
+      // If the AV window outlasts our budget, the rename DID succeed — the
+      // data is on disk and the next reader will eventually see it. The
+      // helper must not throw on verify timeout, only log+return.
+      const dir = makeTmpDir();
+      const target = join(dir, 'data.bin');
+
+      let openAttempts = 0;
+      const fs: AtomicWriteFs = {
+        writeFileSync,
+        renameSync,
+        unlinkSync,
+        openSync: (() => {
+          openAttempts++;
+          throw new Error('EBUSY: resource busy or locked');
+        }) as typeof openSync,
+        closeSync,
+      };
+
+      expect(() => atomicWriteFileSync(target, Buffer.from('settled'), fs)).not.toThrow();
+      // The loop actually retried — proves the deadline gating worked rather
+      // than the function returning after one failed probe.
+      expect(openAttempts).toBeGreaterThan(1);
+      // Rename still happened — the file is on disk via the real renameSync.
+      expect(readFileSync(target, 'utf8')).toBe('settled');
+    });
+  },
+);
