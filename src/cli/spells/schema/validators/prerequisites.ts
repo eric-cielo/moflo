@@ -83,5 +83,14 @@ export function validatePrerequisites(
         errors.push({ path: `${pPath}.detect.path`, message: 'detect.path is required for file detector' });
       }
     }
+
+    // `format` only applies to stored env values — silently ignoring it on
+    // command/file detectors would mask author mistakes.
+    if (p.format !== undefined && detect.type !== 'env') {
+      errors.push({
+        path: `${pPath}.format`,
+        message: 'format is only valid on env-type prerequisites',
+      });
+    }
   });
 }

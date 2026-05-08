@@ -558,6 +558,50 @@ describe('validateSpellDefinition — prerequisites', () => {
     expect(result.errors.some(e => e.message.includes('detect.path is required'))).toBe(true);
   });
 
+  it('accepts format: jwt on an env-detect prerequisite', () => {
+    const result = validateSpellDefinition({
+      name: 'x',
+      prerequisites: [{
+        name: 'TOKEN',
+        detect: { type: 'env', key: 'TOKEN' },
+        format: 'jwt',
+      }],
+      steps: [minimalStep],
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects unknown format value', () => {
+    const result = validateSpellDefinition({
+      name: 'x',
+      prerequisites: [{
+        name: 'TOKEN',
+        detect: { type: 'env', key: 'TOKEN' },
+        // @ts-expect-error intentionally wrong
+        format: 'magic',
+      }],
+      steps: [minimalStep],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.path.endsWith('.format'))).toBe(true);
+  });
+
+  it('rejects format on a non-env detector', () => {
+    const result = validateSpellDefinition({
+      name: 'x',
+      prerequisites: [{
+        name: 'TOKEN',
+        detect: { type: 'command', command: 'gh' },
+        format: 'jwt',
+      }],
+      steps: [minimalStep],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e =>
+      e.message.includes('format is only valid on env-type prerequisites'),
+    )).toBe(true);
+  });
+
   it('validates step-level prerequisites under step path', () => {
     const result = validateSpellDefinition({
       name: 'x',
