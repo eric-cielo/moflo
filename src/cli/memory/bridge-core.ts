@@ -80,8 +80,15 @@ export function getBridgeLastError(): Error | null {
   return lastBridgeError;
 }
 
-function logBridgeError(context: string, err: unknown): void {
-  if (process.env.MOFLO_BRIDGE_QUIET) return;
+/**
+ * Log a bridge error. By default `MOFLO_BRIDGE_QUIET` suppresses the line
+ * to keep test output clean for read-path noise. Pass `{ alwaysLog: true }`
+ * for write-path errors that mean data did NOT reach disk — those MUST
+ * always log, since the quiet env var is for read-path noise control,
+ * not for masking data loss (#982 / #854 / #962 anti-pattern).
+ */
+function logBridgeError(context: string, err: unknown, opts?: { alwaysLog?: boolean }): void {
+  if (process.env.MOFLO_BRIDGE_QUIET && !opts?.alwaysLog) return;
   const msg = errorDetail(err);
   console.error(`[moflo] ${context}: ${msg}`);
 }
@@ -206,6 +213,17 @@ export function execRows(db: any, sql: string, params?: unknown[]): Record<strin
  * Persist the in-memory sql.js DB back to disk. sql.js is purely in-memory —
  * without an explicit export+writeFileSync after each mutation, writes vanish
  * when the process exits, which breaks store→retrieve across CLI commands.
+ *
+ * Throws on failure (#982). Callers that issued a mutation MUST treat a
+ * persist throw as the mutation having failed: the in-memory DB still has
+ * the new row, but it never reached disk and dies with the process.
+ *
+ * Pre-#982 this swallowed silently and logged once to stderr — the
+ * `bridgeStoreEntry` path then returned `{ success: true }` despite the
+ * data being lost, the success-lie pattern that cost #854 and #962 too.
+ *
+ * Use {@link tryPersistBridgeDb} for the rare best-effort caller (cache
+ * invalidation, idempotent maintenance) that genuinely doesn't care.
  */
 export function persistBridgeDb(db: any, dbPath?: string): void {
   // Mirror the read-side resolution so writes land where reads come from.
@@ -218,7 +236,27 @@ export function persistBridgeDb(db: any, dbPath?: string): void {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     atomicWriteFileSync(target, db.export());
   } catch (err) {
-    logBridgeError('bridge persist failed', err);
+    logBridgeError('bridge persist failed', err, { alwaysLog: true });
+    throw err;
+  }
+}
+
+/**
+ * Best-effort variant of {@link persistBridgeDb}. Returns `{ ok: false }`
+ * on failure instead of throwing. Reserve for callers where a missed
+ * persist is genuinely acceptable (e.g. cache invalidation that the next
+ * mutation will redo). Always-log policy still applies — write failures
+ * cannot be silenced.
+ */
+export function tryPersistBridgeDb(
+  db: any,
+  dbPath?: string,
+): { ok: true } | { ok: false; error: Error } {
+  try {
+    persistBridgeDb(db, dbPath);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err : new Error(String(err)) };
   }
 }
 
