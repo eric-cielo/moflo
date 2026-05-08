@@ -245,7 +245,11 @@ describe('memory-initializer routing preamble (#985)', () => {
       dbPath,
     });
     expect(second.success).toBe(true);
-    expect(second.id).toBeTruthy();
+    // The fix's intent is to return the *existing* row's id rather than
+    // insert a fresh one. Without this assertion, a regression that wrote
+    // a new row alongside the old (possible only if probes silently no-op'd)
+    // would still pass the success check.
+    expect(second.id).toBe(first.id);
   });
 
   it('deleteEntry routes through daemon when daemon is reachable', async () => {

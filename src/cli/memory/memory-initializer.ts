@@ -2039,13 +2039,18 @@ export async function storeEntry(options: {
     // UNIQUE error is then a real "key already taken with other content"
     // signal that the caller deserves to see.
     if (!upsert) {
+      let existingRow: { id: string; content: string } | null = null;
       const probe = db.prepare(
         `SELECT id, content FROM memory_entries WHERE namespace = ? AND key = ? AND status = 'active' LIMIT 1`,
       );
-      probe.bind([namespace, key]);
-      const found = probe.step();
-      const existingRow = found ? probe.getAsObject() as { id: string; content: string } : null;
-      probe.free();
+      try {
+        probe.bind([namespace, key]);
+        if (probe.step()) {
+          existingRow = probe.getAsObject() as { id: string; content: string };
+        }
+      } finally {
+        probe.free();
+      }
       if (existingRow && existingRow.content === value) {
         db.close();
         return {
