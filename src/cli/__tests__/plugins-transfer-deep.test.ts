@@ -18,6 +18,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as crypto from 'crypto';
+import * as os from 'os';
+import * as path from 'path';
 
 // ============================================================================
 // 1. Plugin Manager
@@ -107,7 +109,8 @@ describe('PluginManager', () => {
 
   it('should fail installFromLocal with nonexistent path', async () => {
     await manager.initialize();
-    const result = await manager.installFromLocal('/nonexistent/path');
+    const phantomPath = path.join(os.tmpdir(), `nonexistent-${crypto.randomUUID()}`);
+    const result = await manager.installFromLocal(phantomPath);
     expect(result.success).toBe(false);
     expect(result.error).toContain('does not exist');
   });
