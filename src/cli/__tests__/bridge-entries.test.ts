@@ -605,3 +605,93 @@ describe('#982 — persist failures surface as success:false', () => {
     }
   });
 });
+
+// ===========================================================================
+// #994 — post-persist bookkeeping failures must NOT downgrade success.
+//
+// `bridgeStoreEntry` runs `tryPersist()` first (atomic write → disk), then
+// performs observability steps: cache warm, attestation log, statusline
+// stats. Pre-#994 a throw in any of those propagated through `withDb`'s
+// catch and made the bridge return `null`, prompting `storeEntry` to fall
+// back to raw sql.js. The fallback then collided with the bridge's already-
+// persisted row on UNIQUE constraint and the CLI exited 1 — even though
+// `memory retrieve` could find the value moments later. The Ubuntu signature
+// of issue #994 in CI.
+// ===========================================================================
+describe('#994 — post-persist bookkeeping failures stay non-fatal', () => {
+  /**
+   * Stub the tieredCache controller's `set` to throw. Mirrors the production
+   * failure mode: a post-persist `cacheSet` raises, the row is already on
+   * disk, but the throw used to propagate.
+   */
+  async function injectCacheSetFailure(err: Error): Promise<() => void> {
+    const reg = await getControllerRegistry(dbPath);
+    if (!reg) throw new Error('test bridge registry unavailable');
+    const cache = reg.get('tieredCache');
+    if (!cache) throw new Error('test bridge tieredCache unavailable');
+    const origSet = cache.set.bind(cache);
+    cache.set = async () => { throw err; };
+    return () => { cache.set = origSet; };
+  }
+
+  it('bridgeStoreEntry still returns success:true when cacheSet throws after persist', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    // Warm the bridge so the registry + tieredCache are resolved
+    const warm = await bridgeStoreEntry({ key: 'warm', value: 'baseline', namespace: 'test', dbPath });
+    expect(warm?.success).toBe(true);
+
+    const restore = await injectCacheSetFailure(new Error('synthetic cache write failure'));
+    try {
+      const result = await bridgeStoreEntry({
+        key: 'k-bookkeeping-fail',
+        value: 'data IS on disk',
+        namespace: 'test',
+        dbPath,
+      });
+      expect(result?.success).toBe(true);
+      expect(result?.cached).toBe(false);
+
+      // The retrieve-equivalent: the row is on disk and queryable. This is
+      // the exact invariant Ubuntu CI proved (memory-retrieve passed) but
+      // the CLI's exit code lied because the bookkeeping throw cascaded.
+      const rows = await readRows('SELECT content FROM memory_entries WHERE key = ?', ['k-bookkeeping-fail']);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.content).toBe('data IS on disk');
+    } finally {
+      restore();
+    }
+  });
+
+  it('bridgeStoreEntries reports per-row success when batch bookkeeping throws after persist', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    // Warm-up entry so registry is fully initialized
+    const warm = await bridgeStoreEntry({ key: 'warm', value: 'x', namespace: 'test', dbPath });
+    expect(warm?.success).toBe(true);
+
+    const restore = await injectCacheSetFailure(new Error('synthetic batch cache failure'));
+    try {
+      const results = await bridgeStoreEntries(
+        [
+          { key: 'batch-a', value: '1', namespace: 'test' },
+          { key: 'batch-b', value: '2', namespace: 'test' },
+        ],
+        dbPath,
+      );
+      expect(results).not.toBeNull();
+      expect(results).toHaveLength(2);
+      for (const r of results!) {
+        expect(r.success).toBe(true);
+      }
+
+      // All rows reached disk; durable storage must be observable.
+      const rows = await readRows(
+        "SELECT key FROM memory_entries WHERE namespace = 'test' AND key LIKE 'batch-%' ORDER BY key",
+      );
+      expect(rows.map(r => r.key)).toEqual(['batch-a', 'batch-b']);
+    } finally {
+      restore();
+    }
+  });
+});

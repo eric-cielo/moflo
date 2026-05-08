@@ -489,17 +489,51 @@ export function memoryInit(consumerDir) {
   if (!recordExit('memory-init', r)) throw new Error('memory init failed');
 }
 
+/**
+ * Issue #994: dump full stdout + stderr for a memory-CRUD subprocess so a
+ * future flake gives us the actual error, not a 200-char tail. recordExit's
+ * built-in truncation hid the real failure on Ubuntu (the onnxruntime
+ * GetPciBusId warning consumed the entire visible window).
+ */
+function dumpFullCrudOutput(label, res) {
+  log(`--- ${label} full output (failure dump) ---`);
+  log(`exit ${res.code}`);
+  if (res.stdout) {
+    log('--- stdout ---');
+    log(res.stdout);
+  }
+  if (res.stderr) {
+    log('--- stderr ---');
+    log(res.stderr);
+  }
+  log(`--- end ${label} ---`);
+}
+
 export function memoryCrud(consumerDir) {
   section('Memory CRUD round-trip');
   const key = `smoke-${Date.now()}`;
   const value = 'smoke-harness-sentinel';
 
-  recordExit('memory-store', flo(consumerDir, ['memory', 'store', '-k', key, '-v', value, '--namespace', 'smoke']));
+  const store = flo(consumerDir, ['memory', 'store', '-k', key, '-v', value, '--namespace', 'smoke']);
+  if (!recordExit('memory-store', store)) dumpFullCrudOutput('memory-store', store);
 
-  const get = flo(consumerDir, ['memory', 'retrieve', '-k', key, '--namespace', 'smoke']);
-  const ok = get.code === 0 && get.stdout.includes(value);
+  // Issue #994: use --format=json so the round-trip check parses a structured
+  // payload instead of grepping the ASCII printBox output. The box rendering
+  // intermittently dropped its content rows on Windows CI (top/bottom borders
+  // landed in captured stdout, the inner `| Namespace: ... |` lines didn't —
+  // looked like a writeback race in the harness output but turned out to be
+  // a stdout-flush issue downstream of printBox). JSON output goes through
+  // a single console.log call and is what callers should rely on anyway.
+  const get = flo(consumerDir, ['memory', 'retrieve', '-k', key, '--namespace', 'smoke', '--format', 'json']);
+  let parsedContent = null;
+  if (get.code === 0) {
+    try { parsedContent = JSON.parse(get.stdout.trim())?.content ?? null; }
+    catch { /* fall through to fail with the raw exit/stdout */ }
+  }
+  const ok = parsedContent === value;
   record('memory-retrieve', ok ? 'pass' : 'fail',
-    ok ? 'value round-trips' : `exit ${get.code}, value missing from output`);
+    ok ? 'value round-trips' : `exit ${get.code}, content=${JSON.stringify(parsedContent)}`);
+  if (!ok) dumpFullCrudOutput('memory-retrieve', get);
 
   recordExit('memory-search', flo(consumerDir, ['memory', 'search', '-q', 'smoke', '--namespace', 'smoke', '--limit', '5']));
 
