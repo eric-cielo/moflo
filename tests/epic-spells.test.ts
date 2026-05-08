@@ -227,6 +227,47 @@ describe('epic-single-branch.yaml', () => {
     def = loadYaml('epic-single-branch.yaml');
     expect(def.mofloLevel).toBe('hooks');
   });
+
+  it("'no unmerged files' preflight uses git diff --quiet (regression #287)", () => {
+    // Regression: `git diff --name-only --diff-filter=U` always exits 0
+    // (it just lists paths), so with expectExitCode: 0 the preflight
+    // never caught a half-merged index. `--quiet` exits 1 on unmerged
+    // paths, which is what we actually need here.
+    def = loadYaml('epic-single-branch.yaml');
+    const createBranch = def.steps.find(s => s.id === 'create-branch')!;
+    const check = createBranch.preflight!.find(p => p.name === 'no unmerged files')!;
+    expect(check.command).toBe('git diff --quiet --diff-filter=U');
+  });
+
+  it('create-branch does not silently mask stash-pop conflicts (regression #287)', () => {
+    // Regression: `git stash pop -q 2>/dev/null || true` swallowed real
+    // conflict failures and left the index unmerged. The next step's
+    // `git checkout` then died with "you need to resolve your current
+    // index first". The fix: only pop when the preflight autostash
+    // marker (scoped by epic_number) sits at the top of the stash list,
+    // and surface conflicts with exit 1 + an actionable hint.
+    def = loadYaml('epic-single-branch.yaml');
+    const createBranch = def.steps.find(s => s.id === 'create-branch')!;
+    const cmd = (createBranch.config as Record<string, unknown>).command as string;
+    expect(cmd).not.toMatch(/git stash pop[^\n]*\|\|\s*true/);
+    expect(cmd).toContain('moflo-epic-{args.epic_number}-autostash');
+    expect(cmd).toMatch(/exit\s+1/);
+  });
+
+  it("preflight stash-and-carry resolution scopes the marker by epic_number (regression #287)", () => {
+    // Stale `moflo-epic-autostash` entries from an abandoned previous run of
+    // a DIFFERENT epic must not be auto-popped onto this run. Scoping the
+    // marker by epic_number narrows the pop to the same epic only.
+    def = loadYaml('epic-single-branch.yaml');
+    const createBranch = def.steps.find(s => s.id === 'create-branch')!;
+    const stashResolutions = (createBranch.preflight ?? [])
+      .flatMap(p => p.resolutions ?? [])
+      .filter(r => typeof r.command === 'string' && r.command!.includes('git stash push'));
+    expect(stashResolutions.length).toBeGreaterThan(0);
+    for (const r of stashResolutions) {
+      expect(r.command).toContain('moflo-epic-{args.epic_number}-autostash');
+    }
+  });
 });
 
 // ============================================================================
@@ -303,6 +344,39 @@ describe('epic-auto-merge.yaml', () => {
   it('sets mofloLevel to hooks', () => {
     def = loadYaml('epic-auto-merge.yaml');
     expect(def.mofloLevel).toBe('hooks');
+  });
+
+  it("'no unmerged files' preflight uses git diff --quiet (regression #287)", () => {
+    def = loadYaml('epic-auto-merge.yaml');
+    const loop = def.steps.find(s => s.id === 'process-stories')!;
+    const checkoutBase = loop.steps!.find(s => s.id === 'checkout-base')!;
+    const check = checkoutBase.preflight!.find(p => p.name === 'no unmerged files')!;
+    expect(check.command).toBe('git diff --quiet --diff-filter=U');
+  });
+
+  it('checkout-base and pull-merged do not silently mask stash-pop conflicts (regression #287)', () => {
+    def = loadYaml('epic-auto-merge.yaml');
+    const loop = def.steps.find(s => s.id === 'process-stories')!;
+    for (const id of ['checkout-base', 'pull-merged']) {
+      const step = loop.steps!.find(s => s.id === id)!;
+      const cmd = (step.config as Record<string, unknown>).command as string;
+      expect(cmd, `${id}: stash-pop conflict must not be masked`).not.toMatch(/git stash pop[^\n]*\|\|\s*true/);
+      expect(cmd, `${id}: must scope marker by epic_number`).toContain('moflo-epic-{args.epic_number}-autostash');
+      expect(cmd, `${id}: must surface stash-pop conflict as exit 1`).toMatch(/exit\s+1/);
+    }
+  });
+
+  it('preflight stash-and-carry resolution scopes the marker by epic_number (regression #287)', () => {
+    def = loadYaml('epic-auto-merge.yaml');
+    const loop = def.steps.find(s => s.id === 'process-stories')!;
+    const checkoutBase = loop.steps!.find(s => s.id === 'checkout-base')!;
+    const stashResolutions = (checkoutBase.preflight ?? [])
+      .flatMap(p => p.resolutions ?? [])
+      .filter(r => typeof r.command === 'string' && r.command!.includes('git stash push'));
+    expect(stashResolutions.length).toBeGreaterThan(0);
+    for (const r of stashResolutions) {
+      expect(r.command).toContain('moflo-epic-{args.epic_number}-autostash');
+    }
   });
 });
 

@@ -87,8 +87,12 @@ steps:
     # has working network.
     permissionLevel: elevated
     preflight:
+      # `git diff --name-only --diff-filter=U` always exits 0 — it just lists
+      # paths. Use `--quiet`, which exits 1 when any unmerged path exists, so
+      # the preflight actually catches a half-merged index left by an earlier
+      # failed run (e.g. a stash-pop conflict).
       - name: "no unmerged files"
-        command: "git diff --name-only --diff-filter=U"
+        command: "git diff --quiet --diff-filter=U"
         expectExitCode: 0
         hint: "You have unresolved merge conflicts. Resolve them and commit before running this spell."
       - name: "working tree clean (tracked changes)"
@@ -97,7 +101,7 @@ steps:
         hint: "You have uncommitted changes to tracked files. If you want them carried onto the epic branch, pick 'Stash and carry over'."
         resolutions:
           - label: "Stash changes and carry them onto the epic branch"
-            command: "git stash push --include-untracked --message 'moflo-epic-autostash'"
+            command: "git stash push --include-untracked --message 'moflo-epic-{args.epic_number}-autostash'"
           - label: "Commit changes to the current branch first, then continue"
             command: "git commit -am 'wip: pre-epic snapshot'"
       - name: "working tree clean (staged changes)"
@@ -106,18 +110,45 @@ steps:
         hint: "You have staged changes that aren't committed. If you want them carried onto the epic branch, pick 'Stash and carry over'."
         resolutions:
           - label: "Stash staged changes and carry them onto the epic branch"
-            command: "git stash push --include-untracked --message 'moflo-epic-autostash'"
+            command: "git stash push --include-untracked --message 'moflo-epic-{args.epic_number}-autostash'"
           - label: "Commit staged changes to the current branch first, then continue"
             command: "git commit -m 'wip: pre-epic snapshot'"
       - name: "gh cli authenticated"
         command: "gh auth status"
         hint: "The GitHub CLI isn't signed in. Run: gh auth login"
     config:
-      # set -e: any failing step aborts the whole command. Without it, the
-      # trailing `git stash pop ... || true` would swallow real failures
-      # (e.g., checkout/pull/branch-create errors) and report success,
-      # leaving later steps to crash when the epic branch isn't there.
-      command: "set -e; git stash --include-untracked -q 2>/dev/null || true; git checkout {args.base_branch}; git pull origin {args.base_branch}; BRANCH=\"epic/{args.epic_number}-{args.epic_slug}\"; if git show-ref --verify --quiet \"refs/heads/$BRANCH\"; then git checkout \"$BRANCH\"; else git checkout -b \"$BRANCH\"; fi; git stash pop -q 2>/dev/null || true"
+      # set -e: any failing step aborts the whole command.
+      #
+      # We deliberately do NOT auto-stash here. Preflight has already enforced
+      # a clean tree (or run the user-chosen stash-and-carry resolution), so
+      # the only stash we should ever pop is the preflight's `moflo-epic-autostash`
+      # marker. Popping the unconditionally-top stash (the previous design)
+      # was the source of #287's stash-pop conflict that left the index
+      # half-merged — `git stash pop ... || true` masked the conflict
+      # failure and the next step's `git checkout` then died with
+      # "you need to resolve your current index first".
+      command: |
+        set -e
+        git checkout {args.base_branch}
+        git pull origin {args.base_branch}
+        BRANCH="epic/{args.epic_number}-{args.epic_slug}"
+        if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+          git checkout "$BRANCH"
+        else
+          git checkout -b "$BRANCH"
+        fi
+        # Scope the marker by epic_number so a stale autostash from an
+        # abandoned previous run of a DIFFERENT epic doesn't get popped onto
+        # this branch unintentionally. Same-epic re-runs still carry over,
+        # which is the intended recovery path.
+        EXPECTED_STASH_TAG="moflo-epic-{args.epic_number}-autostash"
+        TOP_MSG=$(git stash list --format='%s' -1)
+        if [[ "$TOP_MSG" == *"$EXPECTED_STASH_TAG"* ]]; then
+          if ! git stash pop -q; then
+            echo "[epic] carrying-over stash conflicted on $BRANCH — resolve unmerged paths and re-run the spell" >&2
+            exit 1
+          fi
+        fi
       timeout: 120000
       failOnError: true
 
