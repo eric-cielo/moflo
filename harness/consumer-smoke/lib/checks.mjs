@@ -517,10 +517,22 @@ export function memoryCrud(consumerDir) {
   const store = flo(consumerDir, ['memory', 'store', '-k', key, '-v', value, '--namespace', 'smoke']);
   if (!recordExit('memory-store', store)) dumpFullCrudOutput('memory-store', store);
 
-  const get = flo(consumerDir, ['memory', 'retrieve', '-k', key, '--namespace', 'smoke']);
-  const ok = get.code === 0 && get.stdout.includes(value);
+  // Issue #994: use --format=json so the round-trip check parses a structured
+  // payload instead of grepping the ASCII printBox output. The box rendering
+  // intermittently dropped its content rows on Windows CI (top/bottom borders
+  // landed in captured stdout, the inner `| Namespace: ... |` lines didn't —
+  // looked like a writeback race in the harness output but turned out to be
+  // a stdout-flush issue downstream of printBox). JSON output goes through
+  // a single console.log call and is what callers should rely on anyway.
+  const get = flo(consumerDir, ['memory', 'retrieve', '-k', key, '--namespace', 'smoke', '--format', 'json']);
+  let parsedContent = null;
+  if (get.code === 0) {
+    try { parsedContent = JSON.parse(get.stdout.trim())?.content ?? null; }
+    catch { /* fall through to fail with the raw exit/stdout */ }
+  }
+  const ok = parsedContent === value;
   record('memory-retrieve', ok ? 'pass' : 'fail',
-    ok ? 'value round-trips' : `exit ${get.code}, value missing from output`);
+    ok ? 'value round-trips' : `exit ${get.code}, content=${JSON.stringify(parsedContent)}`);
   if (!ok) dumpFullCrudOutput('memory-retrieve', get);
 
   recordExit('memory-search', flo(consumerDir, ['memory', 'search', '-q', 'smoke', '--namespace', 'smoke', '--limit', '5']));
