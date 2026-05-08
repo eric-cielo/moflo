@@ -21,9 +21,51 @@ export { VERSION };
 const LONG_RUNNING_COMMANDS = ['mcp', 'daemon'];
 
 /**
- * Flush stdout/stderr, shut down the memory bridge if it was initialized,
+ * Wait for a writable's userspace buffer to drain, then issue an empty write
+ * whose callback fires after libuv has committed the now-front-of-queue write.
+ *
+ * Issue #996: on Windows async pipes, the empty-write trick alone fires before
+ * prior multi-line writes (e.g. `printBox`) have left libuv's buffer, racing
+ * `process.exit` and either dropping content rows or tripping the libuv
+ * `UV_HANDLE_CLOSING` assertion in `src/win/async.c`.
+ *
+ * Two-stage wait: first await `'drain'` if the userspace buffer is full, then
+ * the empty-write callback for the libuv-level commit. A 250 ms unref'd safety
+ * timeout covers broken pipes where `'drain'` never fires.
+ */
+export function drainStream(stream: NodeJS.WriteStream): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (!stream.writable || stream.destroyed) return resolve();
+
+    const finalize = () => {
+      try {
+        stream.write('', () => resolve());
+      } catch {
+        resolve();
+      }
+    };
+
+    if (stream.writableNeedDrain) {
+      const onDrain = () => {
+        clearTimeout(timer);
+        finalize();
+      };
+      stream.once('drain', onDrain);
+      const timer = setTimeout(() => {
+        stream.removeListener('drain', onDrain);
+        resolve();
+      }, 250);
+      timer.unref();
+    } else {
+      finalize();
+    }
+  });
+}
+
+/**
+ * Drain stdout/stderr, shut down the memory bridge if it was initialized,
  * then `process.exit(code)`. Prevents the libuv `uv_async_send` assertion
- * on Windows when stdout is an async pipe (issue #504).
+ * on Windows when stdout is an async pipe (issues #504, #996).
  */
 async function drainAndExit(code: number): Promise<void> {
   try {
@@ -33,13 +75,8 @@ async function drainAndExit(code: number): Promise<void> {
     // Bridge may not have been loaded — that's fine
   }
 
-  const flush = (stream: NodeJS.WriteStream) =>
-    new Promise<void>((resolve) => {
-      if (!stream.writable) return resolve();
-      stream.write('', () => resolve());
-    });
-
-  await Promise.all([flush(process.stdout), flush(process.stderr)]);
+  process.exitCode = code;
+  await Promise.all([drainStream(process.stdout), drainStream(process.stderr)]);
   process.exit(code);
 }
 
