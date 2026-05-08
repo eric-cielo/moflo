@@ -8,7 +8,7 @@
  * @module v3/cli/bridge-entries
  */
 
-import { cosineSim, execRows, generateId, persistBridgeDb, refreshVectorStatsCache, withDb } from './bridge-core.js';
+import { cosineSim, execRows, generateId, logBridgeError, persistBridgeDb, refreshVectorStatsCache, withDb } from './bridge-core.js';
 import { embeddingResponseFrom, getBridgeEmbedder, resolveBridgeEmbedding } from './bridge-embedder.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 
@@ -202,19 +202,42 @@ export async function bridgeStoreEntry(options: {
       return { success: false, id, error: persisted.error };
     }
 
+    // Post-persist bookkeeping (#994). The row is durable on disk; cache
+    // warming, attestation, and statusline stats are observability only.
+    // A throw here MUST NOT propagate — withDb would catch it, return null,
+    // and storeEntry would fall back to raw sql.js, which then fails with
+    // UNIQUE constraint (the bridge already wrote the row) and reports
+    // exit 1 even though `memory retrieve` finds the value moments later.
+    // Same #982 invariant in the inverse direction.
     const cacheKey = makeEntryCacheKey(namespace, key);
-    await cacheSet(registry, cacheKey, { id, key, namespace, content: value, embedding: embeddingJson });
+    let cached = true;
+    try {
+      await cacheSet(registry, cacheKey, { id, key, namespace, content: value, embedding: embeddingJson });
+    } catch (err) {
+      cached = false;
+      logBridgeError('post-persist cache set failed', err);
+    }
 
-    await logAttestation(registry, 'store', id, { key, namespace, hasEmbedding: !!embeddingJson });
+    // logAttestation already swallows internally; the await catches any
+    // pre-call registry-resolution throw too. Logged so a recurring failure
+    // is visible without crashing the write path.
+    try {
+      await logAttestation(registry, 'store', id, { key, namespace, hasEmbedding: !!embeddingJson });
+    } catch (err) {
+      logBridgeError('post-persist attestation failed', err);
+    }
 
-    if (embeddingJson) refreshVectorStatsCache();
+    if (embeddingJson) {
+      try { refreshVectorStatsCache(); }
+      catch (err) { logBridgeError('post-persist stats refresh failed', err); }
+    }
 
     return {
       success: true,
       id,
       embedding: embeddingResponse,
       guarded: true,
-      cached: true,
+      cached,
       attested: true,
     };
   });
@@ -353,13 +376,25 @@ export async function bridgeStoreEntries(items: Array<{
     }
 
     // Persist succeeded — fire deferred bookkeeping in parallel.
-    await Promise.all(
-      deferredBookkeeping.flatMap(b => [
-        cacheSet(registry, b.cacheKey, b.cacheValue),
-        logAttestation(registry, 'store', b.entryId, { key: b.entryKey, namespace: b.namespace, hasEmbedding: b.hasEmbedding }),
-      ]),
-    );
-    if (anyEmbedded) refreshVectorStatsCache();
+    // Wrapped in try/catch (#994): rows are already durable, so a cache or
+    // attestation throw must not propagate to withDb's catch and downgrade
+    // every successful row to a fallback retry that fails on UNIQUE.
+    // Promise.all short-circuits, so partial bookkeeping is silently lost
+    // on a throw — log so a recurring failure is debuggable.
+    try {
+      await Promise.all(
+        deferredBookkeeping.flatMap(b => [
+          cacheSet(registry, b.cacheKey, b.cacheValue),
+          logAttestation(registry, 'store', b.entryId, { key: b.entryKey, namespace: b.namespace, hasEmbedding: b.hasEmbedding }),
+        ]),
+      );
+    } catch (err) {
+      logBridgeError('post-persist batch bookkeeping failed', err);
+    }
+    if (anyEmbedded) {
+      try { refreshVectorStatsCache(); }
+      catch (err) { logBridgeError('post-persist stats refresh failed', err); }
+    }
 
     return results;
   });

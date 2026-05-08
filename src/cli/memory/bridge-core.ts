@@ -87,7 +87,7 @@ export function getBridgeLastError(): Error | null {
  * always log, since the quiet env var is for read-path noise control,
  * not for masking data loss (#982 / #854 / #962 anti-pattern).
  */
-function logBridgeError(context: string, err: unknown, opts?: { alwaysLog?: boolean }): void {
+export function logBridgeError(context: string, err: unknown, opts?: { alwaysLog?: boolean }): void {
   if (process.env.MOFLO_BRIDGE_QUIET && !opts?.alwaysLog) return;
   const msg = errorDetail(err);
   console.error(`[moflo] ${context}: ${msg}`);

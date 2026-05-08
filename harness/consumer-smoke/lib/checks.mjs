@@ -489,17 +489,39 @@ export function memoryInit(consumerDir) {
   if (!recordExit('memory-init', r)) throw new Error('memory init failed');
 }
 
+/**
+ * Issue #994: dump full stdout + stderr for a memory-CRUD subprocess so a
+ * future flake gives us the actual error, not a 200-char tail. recordExit's
+ * built-in truncation hid the real failure on Ubuntu (the onnxruntime
+ * GetPciBusId warning consumed the entire visible window).
+ */
+function dumpFullCrudOutput(label, res) {
+  log(`--- ${label} full output (failure dump) ---`);
+  log(`exit ${res.code}`);
+  if (res.stdout) {
+    log('--- stdout ---');
+    log(res.stdout);
+  }
+  if (res.stderr) {
+    log('--- stderr ---');
+    log(res.stderr);
+  }
+  log(`--- end ${label} ---`);
+}
+
 export function memoryCrud(consumerDir) {
   section('Memory CRUD round-trip');
   const key = `smoke-${Date.now()}`;
   const value = 'smoke-harness-sentinel';
 
-  recordExit('memory-store', flo(consumerDir, ['memory', 'store', '-k', key, '-v', value, '--namespace', 'smoke']));
+  const store = flo(consumerDir, ['memory', 'store', '-k', key, '-v', value, '--namespace', 'smoke']);
+  if (!recordExit('memory-store', store)) dumpFullCrudOutput('memory-store', store);
 
   const get = flo(consumerDir, ['memory', 'retrieve', '-k', key, '--namespace', 'smoke']);
   const ok = get.code === 0 && get.stdout.includes(value);
   record('memory-retrieve', ok ? 'pass' : 'fail',
     ok ? 'value round-trips' : `exit ${get.code}, value missing from output`);
+  if (!ok) dumpFullCrudOutput('memory-retrieve', get);
 
   recordExit('memory-search', flo(consumerDir, ['memory', 'search', '-q', 'smoke', '--namespace', 'smoke', '--limit', '5']));
 
