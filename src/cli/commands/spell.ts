@@ -32,6 +32,9 @@ import { formatStatus, handleMCPError } from '../services/cli-formatters.js';
 import { scheduleCommand } from './spell-schedule.js';
 import { spellCredentialsCommand } from './spell-credentials.js';
 import { loadSpellEngine } from '../services/engine-loader.js';
+import { readFile, writeFile } from 'node:fs/promises';
+import { basename } from 'node:path';
+import { updateYamlArgDefaults } from '../spells/core/yaml-defaults-writer.js';
 
 // Re-export formatStatus as formatStageStatus for table column references
 const formatStageStatus = formatStatus;
@@ -297,6 +300,26 @@ export const castCommand: Command = {
 
       printSpellErrors(result.errors);
 
+      // #1003 — offer to persist --arg values back into the spell YAML.
+      // CLI-interactive only; MCP/headless callers skip by design.
+      if (
+        result.success
+        && !dryRun
+        && ctx.interactive
+        && Object.keys(args).length > 0
+        && result.sourceFile
+      ) {
+        if (result.tier === 'shipped') {
+          const hint = name || basename(result.sourceFile).replace(/\.[^.]+$/, '');
+          output.writeln();
+          output.printInfo(
+            `Shipped spell — copy to spells/dev/${hint}.yaml first to persist defaults.`,
+          );
+        } else {
+          await offerArgWriteback(result.sourceFile, args);
+        }
+      }
+
       return { success: result.success, data: result };
     } catch (error) {
       spinner.fail('Spell failed');
@@ -306,6 +329,48 @@ export const castCommand: Command = {
     }
   },
 };
+
+async function offerArgWriteback(
+  sourceFile: string,
+  userArgs: Record<string, unknown>,
+): Promise<void> {
+  const keys = Object.keys(userArgs);
+  output.writeln();
+  const noun = keys.length === 1 ? 'argument' : 'arguments';
+  const accepted = await confirm({
+    message: `Save ${keys.length} ${noun} (${keys.join(', ')}) as the spell's defaults?`,
+    default: false,
+  });
+  if (!accepted) return;
+
+  let original: string;
+  try {
+    original = await readFile(sourceFile, 'utf-8');
+  } catch (err) {
+    output.printError(`Could not read spell YAML: ${(err as Error).message}`);
+    return;
+  }
+
+  const result = updateYamlArgDefaults(original, userArgs);
+
+  if (result.updated.length > 0) {
+    try {
+      await writeFile(sourceFile, result.content, 'utf-8');
+      output.printSuccess(
+        `Saved ${result.updated.length} default${result.updated.length === 1 ? '' : 's'}: ${result.updated.join(', ')}`,
+      );
+    } catch (err) {
+      output.printError(`Could not write spell YAML: ${(err as Error).message}`);
+      return;
+    }
+  }
+
+  if (result.skipped.length > 0) {
+    output.printWarning(
+      `Skipped ${result.skipped.length} (not declared in arguments:): ${result.skipped.join(', ')}`,
+    );
+  }
+}
 
 // Validate subcommand
 const validateCommand: Command = {

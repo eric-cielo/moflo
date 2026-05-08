@@ -20,6 +20,7 @@ import {
 import { findProjectRoot } from '../services/project-root.js';
 import { buildGrimoire } from '../services/grimoire-builder.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { inferSpellTier, type SpellTier } from '../spells/core/spell-tier.js';
 
 
 // ============================================================================
@@ -88,7 +89,11 @@ async function executeAndTrack(
   engine: EngineModule,
   definition: SpellDefinition,
   args: Record<string, unknown>,
-  options: { forceCredentialReprompt?: boolean } = {},
+  options: {
+    forceCredentialReprompt?: boolean;
+    sourceFile?: string;
+    tier?: SpellTier;
+  } = {},
 ): Promise<Record<string, unknown>> {
   const spellId = `sp-${Date.now()}`;
   const tracked = trackStart(spellId, definition.name, definition.description);
@@ -101,12 +106,23 @@ async function executeAndTrack(
       forceCredentialReprompt: options.forceCredentialReprompt,
     });
     trackResult(tracked, result);
-    return serializeResult(result);
+    return withSpellSource(serializeResult(result), options.sourceFile, options.tier);
   } catch (err) {
     tracked.status = SPELL_STATUS.FAILED;
     tracked.completedAt = new Date().toISOString();
     return { spellId, error: errorDetail(err) };
   }
+}
+
+/** Attach sourceFile + tier metadata to a serialized cast response. (#1003) */
+function withSpellSource(
+  base: Record<string, unknown>,
+  sourceFile: string | undefined,
+  tier: SpellTier | undefined,
+): Record<string, unknown> {
+  if (sourceFile) base.sourceFile = sourceFile;
+  if (tier) base.tier = tier;
+  return base;
 }
 
 // ============================================================================
@@ -217,7 +233,11 @@ export const spellTools: MCPTool[] = [
           return { error: `Spell not found in grimoire: ${input.name}` };
         }
         const engine = await loadSpellEngine();
-        return executeAndTrack(engine, loaded.definition, args, { forceCredentialReprompt });
+        return executeAndTrack(engine, loaded.definition, args, {
+          forceCredentialReprompt,
+          sourceFile: loaded.sourceFile,
+          tier: loaded.tier as SpellTier,
+        });
       }
 
       // Determine raw content source
@@ -249,7 +269,11 @@ export const spellTools: MCPTool[] = [
       });
       const tracked = trackStart(result.spellId, spellName);
       trackResult(tracked, result);
-      return serializeResult(result);
+      return withSpellSource(
+        serializeResult(result),
+        sourceFile,
+        sourceFile ? inferSpellTier(sourceFile) : undefined,
+      );
     },
   },
 

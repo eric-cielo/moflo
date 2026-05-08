@@ -123,6 +123,34 @@ steps:
     expect(result.duration).toBeGreaterThanOrEqual(0);
   });
 
+  it('spell_cast with file path surfaces sourceFile + tier on the response (#1003)', { timeout: 15_000 }, async () => {
+    const { writeFileSync, mkdtempSync, rmSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+    const dir = mkdtempSync(join(tmpdir(), 'moflo-cast-source-'));
+    const path = join(dir, 'sample.yaml');
+    writeFileSync(path, 'name: src\nsteps:\n  - id: s1\n    type: wait\n    config:\n      duration: 1\n');
+    try {
+      const tool = findTool('spell_cast');
+      const result: any = await tool.handler({ file: path });
+      expect(result.success).toBe(true);
+      expect(result.sourceFile).toBe(path);
+      expect(result.tier).toBe('user');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('spell_cast with inline content omits sourceFile + tier (#1003)', { timeout: 15_000 }, async () => {
+    const tool = findTool('spell_cast');
+    const result: any = await tool.handler({
+      content: 'name: inline\nsteps:\n  - id: s1\n    type: wait\n    config:\n      duration: 1\n',
+    });
+    expect(result.success).toBe(true);
+    expect(result.sourceFile).toBeUndefined();
+    expect(result.tier).toBeUndefined();
+  });
+
   it('spell_cast dry-run validates without executing', async () => {
     const tool = findTool('spell_cast');
     const yamlContent = `

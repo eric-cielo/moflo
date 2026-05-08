@@ -21,6 +21,10 @@ export interface SpellRunResponse {
   outputs: Record<string, unknown>;
   errors: SpellErrorResponse[];
   error?: string;
+  /** Absolute path of the spell's source YAML/JSON, if known. (#1003) */
+  sourceFile?: string;
+  /** Whether the source is shipped (read-only) or user-owned. (#1003) */
+  tier?: 'shipped' | 'user';
 }
 
 /** Serialized step in a spell MCP response. */
