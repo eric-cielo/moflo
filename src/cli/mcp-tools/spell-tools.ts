@@ -94,21 +94,23 @@ function trackResult(tracked: TrackedSpell, result: SpellResult): void {
 // the missing link.
 // ============================================================================
 
-let memoryAccessor: MemoryAccessor | null = null;
-let memoryInitFailed = false;
+// Promise-memoized so two concurrent first-casts share a single init —
+// otherwise both would open their own DB handle and the loser's accessor
+// would leak.
+let memoryAccessorPromise: Promise<MemoryAccessor | null> | null = null;
 
-async function getMemoryAccessor(): Promise<MemoryAccessor | null> {
-  if (memoryAccessor) return memoryAccessor;
-  if (memoryInitFailed) return null;
-  try {
-    memoryAccessor = await createDashboardMemoryAccessor();
-    return memoryAccessor;
-  } catch (err) {
-    memoryInitFailed = true;
-    console.warn(`[spell-tools] memory accessor unavailable: ${(err as Error).message ?? err}`);
-    console.warn('[spell-tools] spell runs will NOT appear in The Luminarium');
-    return null;
-  }
+function getMemoryAccessor(): Promise<MemoryAccessor | null> {
+  if (memoryAccessorPromise) return memoryAccessorPromise;
+  memoryAccessorPromise = (async () => {
+    try {
+      return await createDashboardMemoryAccessor();
+    } catch (err) {
+      console.warn(`[spell-tools] memory accessor unavailable: ${(err as Error).message ?? err}`);
+      console.warn('[spell-tools] spell runs will NOT appear in The Luminarium');
+      return null;
+    }
+  })();
+  return memoryAccessorPromise;
 }
 
 /** Execute a definition via the engine with tracking and error handling. */
