@@ -11,6 +11,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 describe('doctor zombie scan sequencing (#992)', () => {
   it('checkZombieProcesses is not part of the parallel allChecks batch', async () => {
@@ -31,5 +34,15 @@ describe('doctor zombie scan sequencing (#992)', () => {
     const registry = await import('../src/cli/commands/doctor-registry.js');
     const runtime = await import('../src/cli/commands/doctor-checks-runtime.js');
     expect(registry.allChecks).toContain(runtime.checkBuildTools);
+  });
+
+  it('doctor.ts orchestrator imports and invokes zombieScanCheck', () => {
+    // Catches the inverse failure mode: the registry-side guard above passes
+    // even if someone removes the sequential block from doctor.ts. Read the
+    // source directly to lock the orchestration invariant.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const doctorTs = readFileSync(join(here, '..', 'src', 'cli', 'commands', 'doctor.ts'), 'utf8');
+    expect(doctorTs).toMatch(/import\s+\{[^}]*\bzombieScanCheck\b[^}]*\}\s+from\s+['"]\.\/doctor-registry/);
+    expect(doctorTs).toMatch(/zombieScanCheck\s*\(\s*\)/);
   });
 });

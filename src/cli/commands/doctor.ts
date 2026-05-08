@@ -189,8 +189,11 @@ export const doctorCommand: Command = {
         // the zombie scan would otherwise flag as a real leak. Skip in
         // single-component (`-c`) runs since those are targeted diagnostics.
         if (!component) {
-          const zombieSettled = await Promise.allSettled([zombieScanCheck()]);
-          checkResults.push(zombieSettled[0]);
+          try {
+            checkResults.push({ status: 'fulfilled', value: await zombieScanCheck() });
+          } catch (reason) {
+            checkResults.push({ status: 'rejected', reason });
+          }
         }
       } finally {
         spinner?.stop();
