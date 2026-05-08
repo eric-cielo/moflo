@@ -43,12 +43,24 @@ export interface EngineModule {
     content: string,
     sourceFile: string | undefined,
     args: Record<string, unknown>,
-    options?: { dryRun?: boolean; projectRoot?: string; memory?: unknown; sandboxConfig?: SandboxConfig },
+    options?: {
+      dryRun?: boolean;
+      projectRoot?: string;
+      memory?: unknown;
+      sandboxConfig?: SandboxConfig;
+      forceCredentialReprompt?: boolean;
+    },
   ) => Promise<SpellResult>;
   bridgeExecuteSpell: (
     definition: SpellDefinition,
     args: Record<string, unknown>,
-    options?: { spellId?: string; projectRoot?: string; memory?: unknown; sandboxConfig?: SandboxConfig },
+    options?: {
+      spellId?: string;
+      projectRoot?: string;
+      memory?: unknown;
+      sandboxConfig?: SandboxConfig;
+      forceCredentialReprompt?: boolean;
+    },
   ) => Promise<SpellResult>;
   bridgeCancelSpell: (spellId: string) => boolean;
   bridgeIsRunning: (spellId: string) => boolean;

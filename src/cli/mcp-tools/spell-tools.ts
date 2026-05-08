@@ -88,13 +88,18 @@ async function executeAndTrack(
   engine: EngineModule,
   definition: SpellDefinition,
   args: Record<string, unknown>,
+  options: { forceCredentialReprompt?: boolean } = {},
 ): Promise<Record<string, unknown>> {
   const spellId = `sp-${Date.now()}`;
   const tracked = trackStart(spellId, definition.name, definition.description);
 
   try {
     const sandboxConfig = await engine.loadSandboxConfigFromProject(findProjectRoot());
-    const result = await engine.bridgeExecuteSpell(definition, args, { spellId, sandboxConfig });
+    const result = await engine.bridgeExecuteSpell(definition, args, {
+      spellId,
+      sandboxConfig,
+      forceCredentialReprompt: options.forceCredentialReprompt,
+    });
     trackResult(tracked, result);
     return serializeResult(result);
   } catch (err) {
@@ -193,11 +198,16 @@ export const spellTools: MCPTool[] = [
         content: { type: 'string', description: 'Inline YAML/JSON spell incantation' },
         args: { type: 'object', description: 'Reagents (arguments) to pass to the spell' },
         dryRun: { type: 'boolean', description: 'Preview the spell without casting' },
+        forceCredentialReprompt: {
+          type: 'boolean',
+          description: 'Force re-prompting for env-type prereqs even when the credential store has a stored value (used to rotate or correct stored secrets)',
+        },
       },
     },
     handler: async (input) => {
       const args = (input.args as Record<string, unknown>) ?? {};
       const dryRun = input.dryRun as boolean | undefined;
+      const forceCredentialReprompt = input.forceCredentialReprompt as boolean | undefined;
 
       if (input.name) {
         // Resolve via registry and execute the parsed definition directly
@@ -207,7 +217,7 @@ export const spellTools: MCPTool[] = [
           return { error: `Spell not found in grimoire: ${input.name}` };
         }
         const engine = await loadSpellEngine();
-        return executeAndTrack(engine, loaded.definition, args);
+        return executeAndTrack(engine, loaded.definition, args, { forceCredentialReprompt });
       }
 
       // Determine raw content source
@@ -234,7 +244,9 @@ export const spellTools: MCPTool[] = [
       // Run from raw content via bridge
       const engine = await loadSpellEngine();
       const sandboxConfig = await engine.loadSandboxConfigFromProject(findProjectRoot());
-      const result = await engine.bridgeRunSpell(content, sourceFile, args, { dryRun, sandboxConfig });
+      const result = await engine.bridgeRunSpell(content, sourceFile, args, {
+        dryRun, sandboxConfig, forceCredentialReprompt,
+      });
       const tracked = trackStart(result.spellId, spellName);
       trackResult(tracked, result);
       return serializeResult(result);

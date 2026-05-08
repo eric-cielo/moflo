@@ -160,6 +160,7 @@ export class SpellCaster {
         const resolution = await resolveUnmetPrerequisites(prerequisites, {
           abortSignal: options.signal,
           credentials: this.credentials,
+          forceCredentialReprompt: options.forceCredentialReprompt,
         });
         if (!resolution.ok) {
           return this.failureResult(spellId, startTime, [{

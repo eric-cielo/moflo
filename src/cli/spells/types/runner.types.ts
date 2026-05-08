@@ -199,6 +199,15 @@ export interface RunnerOptions {
    * non-interactive contexts like CI, daemons, and scheduled spells).
    */
   readonly onPreflightWarnings?: PreflightWarningHandler;
+
+  /**
+   * Force re-prompting for every env-type prereq instead of pulling values
+   * from the credential store. Used to rotate or correct stored secrets
+   * (e.g. expired Graph token) without manually editing the store. After
+   * the prompt loop, the standard Y/n save offer covers persistence.
+   * Story #1002.
+   */
+  readonly forceCredentialReprompt?: boolean;
 }
 
 // ============================================================================

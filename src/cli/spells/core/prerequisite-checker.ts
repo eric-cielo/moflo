@@ -216,10 +216,18 @@ export interface ResolvePrerequisitesOptions {
    * Credential accessor consulted before prompting. When present and
    * `credentials.has(envKey)` is true, the resolver populates
    * `process.env[envKey]` from the store and skips the prompt.
-   * When a TTY prompt produces an answer, it's persisted via
-   * `credentials.store(envKey, answer)` so the next cast doesn't prompt.
+   * When a TTY prompt produces answers, the resolver asks ONCE at the
+   * end whether to persist them all to the store (default Y); on Y
+   * each `envKey` is written via `credentials.store(envKey, value)`.
    */
   readonly credentials?: CredentialAccessor;
+  /**
+   * When true, skip the `credentials.get(envKey)` resolution step so every
+   * env-type prereq goes through the interactive prompt — even when the
+   * store already holds a value. Used to rotate or correct stored
+   * credentials without manually deleting them first. Story #1002.
+   */
+  readonly forceCredentialReprompt?: boolean;
 }
 
 export interface ResolvePrerequisitesResult {
@@ -242,7 +250,9 @@ export interface ResolvePrerequisitesResult {
  * Evaluate all prereqs. Resolution chain for env-type prereqs:
  *   1. process.env[key] already set → satisfied.
  *   2. credentials.get(key) returns a value → write to process.env, satisfied.
- *   3. TTY interactive → prompt → write to process.env AND credentials.store.
+ *   3. TTY interactive → prompt → write to process.env. After ALL prompts,
+ *      one Y/n offer asks whether to persist the collected answers to the
+ *      credential store as a batch (default Y). Story #1002.
  *   4. Non-TTY or no credentials → fail fast with `errorCode: 'MISSING_CREDENTIAL'`.
  *
  * Non-env prereqs (`command`, `file`) bypass the credential chain and surface
@@ -269,9 +279,11 @@ export async function resolveUnmetPrerequisites(
 
   // Pull env-type prereqs from the store in parallel — each resolved index
   // lets us skip a re-check of the cheap env detector.
+  // `forceCredentialReprompt` bypasses this step so users can rotate or
+  // correct stored credentials by re-running through the prompt path.
   const resolvedFromStoreNames: string[] = [];
   const storeResolved = new Set<number>();
-  if (credentials) {
+  if (credentials && !options.forceCredentialReprompt) {
     await Promise.all(unmetIndices.map(async (i) => {
       const prereq = prerequisites[i];
       if (!prereq.envKey) return;
@@ -320,7 +332,9 @@ export async function resolveUnmetPrerequisites(
   const promptLine = options.promptLine ?? readLineFromStdin;
   const promptedNames: string[] = [];
   const promptableSet = new Set(promptable);
+  const pendingSaves: Array<{ envKey: string; value: string }> = [];
   const lock = acquireTTYLock();
+  let shouldSave = false;
   try {
     for (const prereq of promptable) {
       if (options.abortSignal?.aborted) {
@@ -352,18 +366,32 @@ export async function resolveUnmetPrerequisites(
       }
       if (prereq.envKey) {
         process.env[prereq.envKey] = answer;
-        if (credentials) {
-          try {
-            await credentials.store(prereq.envKey, answer);
-          } catch (err) {
-            log(`  (could not persist credential "${prereq.envKey}": ${(err as Error).message})`);
-          }
-        }
+        if (credentials) pendingSaves.push({ envKey: prereq.envKey, value: answer });
       }
       promptedNames.push(prereq.name);
     }
+
+    // One batched save offer covers every collected answer — issuing N
+    // confirmations would be repetitive when most users want all-or-nothing.
+    if (credentials && pendingSaves.length > 0) {
+      shouldSave = await promptSaveCredentialsConfirmation(
+        promptLine, pendingSaves.length, options.abortSignal,
+      );
+    }
   } finally {
     lock.release();
+  }
+
+  // Persist outside the TTY lock so slow disk/keychain writes don't block
+  // concurrent stdin readers waiting on the same lock.
+  if (credentials && shouldSave) {
+    for (const { envKey, value } of pendingSaves) {
+      try {
+        await credentials.store(envKey, value);
+      } catch (err) {
+        log(`  (could not persist credential "${envKey}": ${(err as Error).message})`);
+      }
+    }
   }
 
   // Anything in stillUnmet that wasn't promptable (typically command/file
@@ -393,6 +421,29 @@ function formatMissingCredentialMessage(
   lines.push('Prime these by casting the spell once interactively, or run:');
   lines.push('  flo spell credentials set <name>');
   return lines.join('\n');
+}
+
+/**
+ * Ask once whether to persist every collected prereq answer to the
+ * credential store. Empty input or `y/yes` → true (default Y); `n/no` →
+ * false. A failed prompt (e.g. abort) silently declines so the cast
+ * still proceeds with the in-memory env values.
+ */
+async function promptSaveCredentialsConfirmation(
+  promptLine: PromptLineFn,
+  count: number,
+  abortSignal: AbortSignal | undefined,
+): Promise<boolean> {
+  const noun = count === 1 ? 'credential' : 'credentials';
+  const prompt = `  Save ${count} ${noun} to the encrypted credential store for future runs? [Y/n] `;
+  let answer: string;
+  try {
+    answer = await promptLine(prompt, abortSignal);
+  } catch {
+    return false;
+  }
+  const trimmed = answer.trim().toLowerCase();
+  return trimmed === '' || trimmed === 'y' || trimmed === 'yes';
 }
 
 function printPreflightBanner(log: (line: string) => void, unmetCount: number): void {
