@@ -33,6 +33,7 @@ prerequisites:
       type: env
       key: GRAPH_ACCESS_TOKEN
     promptOnMissing: true
+    format: jwt
 
   - name: SLACK_WEBHOOK_URL
     description: >

@@ -10,6 +10,7 @@ import type { ValidationError } from '../../types/step-command.types.js';
 import type { PrerequisiteSpec } from '../../types/spell-definition.types.js';
 
 const VALID_DETECT_TYPES = ['env', 'command', 'file'] as const;
+const VALID_FORMATS = ['jwt'] as const;
 
 export function validatePrerequisites(
   prereqs: readonly PrerequisiteSpec[],
@@ -47,6 +48,15 @@ export function validatePrerequisites(
     if (p.promptOnMissing !== undefined && typeof p.promptOnMissing !== 'boolean') {
       errors.push({ path: `${pPath}.promptOnMissing`, message: 'promptOnMissing must be a boolean' });
     }
+    if (
+      p.format !== undefined
+      && !VALID_FORMATS.includes(p.format as typeof VALID_FORMATS[number])
+    ) {
+      errors.push({
+        path: `${pPath}.format`,
+        message: `format must be one of: ${VALID_FORMATS.join(', ')}`,
+      });
+    }
 
     const detect = p.detect as PrerequisiteSpec['detect'] | undefined;
     if (!detect || typeof detect !== 'object') {
@@ -72,6 +82,15 @@ export function validatePrerequisites(
       if (typeof detect.path !== 'string' || detect.path.length === 0) {
         errors.push({ path: `${pPath}.detect.path`, message: 'detect.path is required for file detector' });
       }
+    }
+
+    // `format` only applies to stored env values — silently ignoring it on
+    // command/file detectors would mask author mistakes.
+    if (p.format !== undefined && detect.type !== 'env') {
+      errors.push({
+        path: `${pPath}.format`,
+        message: 'format is only valid on env-type prerequisites',
+      });
     }
   });
 }

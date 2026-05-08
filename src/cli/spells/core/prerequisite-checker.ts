@@ -83,6 +83,7 @@ export function compilePrerequisiteSpec(spec: PrerequisiteSpec): Prerequisite {
     description: spec.description,
     promptOnMissing,
     envKey,
+    format: spec.format,
   };
 }
 
@@ -294,7 +295,7 @@ export async function resolveUnmetPrerequisites(
       if (!prereq.envKey) return;
       const stored = await credentials.get(prereq.envKey);
       if (typeof stored !== 'string' || stored.length === 0) return;
-      const validation = validateStoredCredential(prereq.envKey, stored);
+      const validation = validateStoredCredential(prereq.envKey, stored, prereq.format);
       if (!validation.valid) {
         rejectedFromStore.push({ envKey: prereq.envKey, reason: validation.reason });
         return;

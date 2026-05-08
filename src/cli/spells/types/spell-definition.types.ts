@@ -111,6 +111,20 @@ export type PrerequisiteDetect =
   /** Satisfied when `path` exists on disk. */
   | { readonly type: 'file'; readonly path: string };
 
+/**
+ * Expected value format for a stored credential. Lets the resolver shape-check
+ * the value pulled from the credential store before promoting it to
+ * `process.env`, so a malformed value re-prompts instead of being silently
+ * fed to the spell.
+ *
+ *   - `'jwt'`: must be three non-empty base64url segments separated by `.`,
+ *     and (if an `exp` claim is present) not expired.
+ *
+ * Story #1009: extends #1007 to catch values that aren't even JWT-shaped
+ * (e.g. opaque strings stored under a key that requires a JWT).
+ */
+export type PrerequisiteFormat = 'jwt';
+
 /** YAML-declared prerequisite on a spell or step. */
 export interface PrerequisiteSpec {
   /** Stable name used for dedupe across spell + step + built-in sources. */
@@ -129,6 +143,15 @@ export interface PrerequisiteSpec {
    * Defaults to `true`.
    */
   readonly promptOnMissing?: boolean;
+  /**
+   * Declared format for env-type values. When set, stored values pulled from
+   * the credential store must match the declared shape or the resolver
+   * rejects them and re-prompts. Authors set this on prereqs whose API
+   * contract is unambiguous (e.g. Microsoft Graph `_ACCESS_TOKEN` is always
+   * a JWT). Without it, validation falls back to the conservative shape
+   * heuristics in `validateStoredCredential`.
+   */
+  readonly format?: PrerequisiteFormat;
 }
 
 /** Declarative preflight check in a step definition. */

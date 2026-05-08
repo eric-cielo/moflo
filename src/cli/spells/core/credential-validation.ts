@@ -1,22 +1,28 @@
 /**
  * Credential Validation
  *
- * Lightweight, no-config shape checks applied to values pulled from the
- * encrypted credential store before they are promoted to `process.env`.
+ * Shape checks applied to values pulled from the encrypted credential store
+ * before they are promoted to `process.env`. Two layers:
  *
- * Two heuristics, both conservative — only invalidate when there is
- * positive evidence the stored value is bad. Anything we can't classify
- * passes through unchanged.
+ *   1. **Author-declared format** (preferred): the YAML prereq sets
+ *      `format: jwt`, and the validator enforces JWT shape + expiry. Any
+ *      non-JWT value (e.g. a value with no dots) is rejected outright,
+ *      catching the failure mode where a stored value isn't even a JWT
+ *      and the spell would otherwise fail mid-cast with a 401.
  *
- *   - JWT-shaped values (3 base64url segments) get their `exp` claim
- *     parsed and compared to "now". An expired JWT is reported as such.
- *   - Env keys ending in `_URL` must parse via the WHATWG `URL`
- *     constructor and have a non-empty host.
+ *   2. **Conservative heuristics** (fallback when no format is declared):
+ *        - JWT-shaped values (3 base64url segments) get their `exp` claim
+ *          parsed and rejected when expired.
+ *        - Env keys ending in `_URL` must parse via the WHATWG `URL`
+ *          constructor and have a non-empty host.
+ *      Anything else passes through.
  *
- * Story #1007: avoid silently reusing stale stored credentials (e.g.
- * Microsoft Graph access tokens, which expire in ~1h) so the resolver
- * can fall through to the prompt path and the user understands why.
+ * Story #1007: catch expired JWTs that survived past their TTL.
+ * Story #1009: extend to catch values that aren't even JWT-shaped when
+ * the prereq has declared `format: jwt`.
  */
+
+import type { PrerequisiteFormat } from '../types/spell-definition.types.js';
 
 const VALID_JWT_SEGMENT = /^[A-Za-z0-9_-]+$/;
 
@@ -27,7 +33,11 @@ export type StoredCredentialValidation =
 export function validateStoredCredential(
   envKey: string,
   value: string,
+  format?: PrerequisiteFormat,
 ): StoredCredentialValidation {
+  if (format === 'jwt') {
+    return validateJwtFormat(value);
+  }
   if (envKey.endsWith('_URL')) {
     return validateUrlValue(value);
   }
@@ -35,6 +45,16 @@ export function validateStoredCredential(
     return validateJwtExpiry(value);
   }
   return { valid: true };
+}
+
+function validateJwtFormat(value: string): StoredCredentialValidation {
+  if (!looksLikeJwt(value)) {
+    return {
+      valid: false,
+      reason: 'stored value is not a JWT (expected three base64url segments separated by ".")',
+    };
+  }
+  return validateJwtExpiry(value);
 }
 
 function validateUrlValue(value: string): StoredCredentialValidation {
