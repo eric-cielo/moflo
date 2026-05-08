@@ -2,7 +2,7 @@
  * Spell Step Command Type Definitions
  */
 
-import type { PreflightSeverity, PreflightResolution } from './spell-definition.types.js';
+import type { PreflightSeverity, PreflightResolution, PrerequisiteFormat } from './spell-definition.types.js';
 
 // ============================================================================
 // Validation
@@ -196,6 +196,12 @@ export interface Prerequisite {
    * is what makes a prereq resolvable via prompt.
    */
   readonly envKey?: string;
+  /**
+   * Declared shape for stored values (e.g. `'jwt'`). Forwarded to
+   * `validateStoredCredential` so a malformed stored value re-prompts
+   * instead of silently feeding garbage to downstream steps.
+   */
+  readonly format?: PrerequisiteFormat;
 }
 
 /** Result of checking a single prerequisite. */

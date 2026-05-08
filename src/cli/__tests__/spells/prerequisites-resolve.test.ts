@@ -469,6 +469,60 @@ describe('resolveUnmetPrerequisites', () => {
       expect(promptLine).not.toHaveBeenCalled();
     });
 
+    // ==========================================================================
+    // Story #1009 — author-declared format: 'jwt' rejects non-JWT stored values
+    // ==========================================================================
+
+    it('rejects a non-JWT stored value when format=jwt is declared (no dots)', async () => {
+      const KEY_FMT = 'CRED_FORMAT_JWT_1009';
+      delete process.env[KEY_FMT];
+
+      const prereq = compilePrerequisiteSpec({
+        name: 'GRAPH_ACCESS_TOKEN',
+        detect: { type: 'env', key: KEY_FMT },
+        format: 'jwt',
+      });
+      const credentials = makeCredentials({ [KEY_FMT]: 'opaque-no-dots' });
+      const responses = ['fresh.jwt.token', 'n'];
+      const promptLine = vi.fn<PromptLineFn>(async () => responses.shift() ?? '');
+      const logged: string[] = [];
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: true,
+        promptLine,
+        log: (l) => logged.push(l),
+        credentials,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(process.env[KEY_FMT]).toBe('fresh.jwt.token');
+      expect(logged.some(l => l.includes(`Stored ${KEY_FMT} rejected`))).toBe(true);
+      expect(logged.some(l => l.includes('not a JWT'))).toBe(true);
+    });
+
+    it('non-TTY + format=jwt non-JWT stored value → MISSING_CREDENTIAL', async () => {
+      const KEY_FMT_NI = 'CRED_FORMAT_JWT_NI_1009';
+      delete process.env[KEY_FMT_NI];
+
+      const prereq = compilePrerequisiteSpec({
+        name: 'GRAPH_ACCESS_TOKEN',
+        detect: { type: 'env', key: KEY_FMT_NI },
+        format: 'jwt',
+      });
+      const credentials = makeCredentials({ [KEY_FMT_NI]: 'opaque-no-dots' });
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: false,
+        credentials,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.errorCode).toBe('MISSING_CREDENTIAL');
+      expect(result.message).toContain('Stored value(s) rejected');
+      expect(result.message).toContain(KEY_FMT_NI);
+      expect(result.message).toContain('not a JWT');
+    });
+
     it('credentials.store rejection is logged but does not abort the cast', async () => {
       const prereq = compilePrerequisiteSpec({
         name: 'TOKEN',

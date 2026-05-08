@@ -100,6 +100,15 @@ describe('compilePrerequisiteSpec', () => {
     });
     expect(compiled.promptOnMissing).toBe(false);
   });
+
+  it("forwards declared format to the compiled prereq", () => {
+    const compiled = compilePrerequisiteSpec({
+      name: 'GRAPH_ACCESS_TOKEN',
+      detect: { type: 'env', key: 'GRAPH_ACCESS_TOKEN' },
+      format: 'jwt',
+    });
+    expect(compiled.format).toBe('jwt');
+  });
 });
 
 describe('collectPrerequisites — YAML walker', () => {

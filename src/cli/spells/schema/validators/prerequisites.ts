@@ -10,6 +10,7 @@ import type { ValidationError } from '../../types/step-command.types.js';
 import type { PrerequisiteSpec } from '../../types/spell-definition.types.js';
 
 const VALID_DETECT_TYPES = ['env', 'command', 'file'] as const;
+const VALID_FORMATS = ['jwt'] as const;
 
 export function validatePrerequisites(
   prereqs: readonly PrerequisiteSpec[],
@@ -46,6 +47,15 @@ export function validatePrerequisites(
     }
     if (p.promptOnMissing !== undefined && typeof p.promptOnMissing !== 'boolean') {
       errors.push({ path: `${pPath}.promptOnMissing`, message: 'promptOnMissing must be a boolean' });
+    }
+    if (
+      p.format !== undefined
+      && !VALID_FORMATS.includes(p.format as typeof VALID_FORMATS[number])
+    ) {
+      errors.push({
+        path: `${pPath}.format`,
+        message: `format must be one of: ${VALID_FORMATS.join(', ')}`,
+      });
     }
 
     const detect = p.detect as PrerequisiteSpec['detect'] | undefined;

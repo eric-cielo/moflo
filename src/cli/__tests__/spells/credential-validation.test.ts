@@ -76,6 +76,55 @@ describe('validateStoredCredential', () => {
     });
   });
 
+  describe("declared format: 'jwt'", () => {
+    it('rejects a value with no dots even though the heuristic would pass it', () => {
+      const result = validateStoredCredential('GRAPH_ACCESS_TOKEN', 'opaque-no-dots', 'jwt');
+      expect(result.valid).toBe(false);
+      if (!result.valid) {
+        expect(result.reason).toMatch(/not a JWT/);
+        expect(result.reason).toMatch(/three base64url segments/);
+      }
+    });
+
+    it('rejects a value with two dots that is not base64url', () => {
+      const result = validateStoredCredential('GRAPH_ACCESS_TOKEN', 'foo.bar.baz!', 'jwt');
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects a value with one dot (not 3 segments)', () => {
+      const result = validateStoredCredential('GRAPH_ACCESS_TOKEN', 'header.payload', 'jwt');
+      expect(result.valid).toBe(false);
+    });
+
+    it('accepts a JWT-shaped value with no exp claim', () => {
+      const token = makeJwt({ sub: 'user' });
+      expect(validateStoredCredential('GRAPH_ACCESS_TOKEN', token, 'jwt'))
+        .toEqual({ valid: true });
+    });
+
+    it('rejects a JWT-shaped value with an expired exp claim', () => {
+      const pastExp = Math.floor(Date.now() / 1000) - 7200;
+      const token = makeJwt({ sub: 'user', exp: pastExp });
+      const result = validateStoredCredential('GRAPH_ACCESS_TOKEN', token, 'jwt');
+      expect(result.valid).toBe(false);
+      if (!result.valid) expect(result.reason).toMatch(/JWT expired/);
+    });
+
+    it('accepts a JWT-shaped value with a future exp claim', () => {
+      const futureExp = Math.floor(Date.now() / 1000) + 3600;
+      const token = makeJwt({ sub: 'user', exp: futureExp });
+      expect(validateStoredCredential('GRAPH_ACCESS_TOKEN', token, 'jwt'))
+        .toEqual({ valid: true });
+    });
+
+    it('takes precedence over the _URL heuristic when both could apply', () => {
+      // Hypothetical key ending in _URL but declared as jwt — format wins.
+      const result = validateStoredCredential('SOMETHING_URL', 'not-a-jwt', 'jwt');
+      expect(result.valid).toBe(false);
+      if (!result.valid) expect(result.reason).toMatch(/not a JWT/);
+    });
+  });
+
   describe('_URL keys', () => {
     it('passes a valid https webhook URL', () => {
       expect(validateStoredCredential(
