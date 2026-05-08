@@ -174,6 +174,11 @@ export class FlagEmbedding {
       // confuses users into thinking moflo is broken. 0=verbose, 1=info,
       // 2=warning (default), 3=error, 4=fatal — error is the right level
       // because session bring-up genuine failures still surface.
+      //
+      // Re-audit when bumping fastembed or onnxruntime-node: ORT
+      // occasionally promotes deprecation / model-compatibility notices to
+      // WARNING that would now be hidden. If a model upgrade ever lands
+      // alongside this suppression, drop to 2 once to scan the output.
       logSeverityLevel: 3,
     });
     return new FlagEmbedding(tokenizer, session);

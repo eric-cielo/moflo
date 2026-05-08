@@ -200,6 +200,16 @@ export async function bridgeStoreEntry(options: {
     // a plain INSERT would trip UNIQUE and surface as `[moflo] bridge
     // operation failed:` stderr noise even though the data is durable.
     // Probe first so withDb never sees the throw.
+    //
+    // Limitations carried forward: only `content` is compared, not `tags`
+    // or `ttl`. The targeted scenario is the same caller's request being
+    // processed twice (daemon write + client retry), where every option is
+    // identical by definition — a different caller varying `tags` after a
+    // missed-ack would still see this as an idempotent no-op rather than
+    // an update. `cached: false, attested: false` because the prior writer
+    // already ran post-persist bookkeeping; this process's in-memory cache
+    // stays cold for one retrieve until the read path warms it (perf only,
+    // not correctness).
     if (!options.upsert) {
       let existingId: string | null = null;
       let existingContent: string | null = null;
