@@ -12,6 +12,21 @@ import { cosineSim, execRows, generateId, persistBridgeDb, refreshVectorStatsCac
 import { embeddingResponseFrom, getBridgeEmbedder, resolveBridgeEmbedding } from './bridge-embedder.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 
+/**
+ * Run `persistBridgeDb` and convert any throw into a `persist failed:`
+ * error string for the caller. Centralises the #982 single-store /
+ * bulk-store / delete pattern so the failure shape can never drift
+ * across the three call sites.
+ */
+function tryPersist(db: any, dbPath?: string): { ok: true } | { ok: false; error: string } {
+  try {
+    persistBridgeDb(db, dbPath);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: `persist failed: ${errorDetail(err)}` };
+  }
+}
+
 function makeEntryCacheKey(namespace: string, key: string): string {
   const safeNs = String(namespace).replace(/:/g, '_');
   const safeKey = String(key).replace(/:/g, '_');
@@ -176,7 +191,16 @@ export async function bridgeStoreEntry(options: {
       now, now,
       ttl ? now + (ttl * 1000) : null,
     ]);
-    persistBridgeDb(ctx.db, options.dbPath);
+
+    // Honest persist (#982). If atomicWriteFileSync throws (Windows EBUSY
+    // on a daemon-held file, ENOSPC, perm denied, antivirus rename block),
+    // surface it as `success: false` instead of returning a lying success.
+    // Skip post-persist bookkeeping so cache + attestation cannot diverge
+    // from on-disk state.
+    const persisted = tryPersist(ctx.db, options.dbPath);
+    if (!persisted.ok) {
+      return { success: false, id, error: persisted.error };
+    }
 
     const cacheKey = makeEntryCacheKey(namespace, key);
     await cacheSet(registry, cacheKey, { id, key, namespace, content: value, embedding: embeddingJson });
@@ -219,7 +243,13 @@ export async function bridgeStoreEntries(items: Array<{
   if (items.length === 0) return [];
   return withDb(dbPath, async (ctx, registry) => {
     const results: Array<{ success: boolean; id: string; embedding?: { dimensions: number; model: string }; error?: string }> = [];
-    const bookkeeping: Promise<void>[] = [];
+    /**
+     * Per-item bookkeeping fired AFTER persist succeeds (#982). If we
+     * fired cache/attestation during the loop and then persist threw,
+     * the cache would be warm with rows that never reached disk — the
+     * exact divergence #982 is fixing in the single-store path. Defer.
+     */
+    const deferredBookkeeping: Array<{ cacheKey: string; cacheValue: unknown; entryId: string; entryKey: string; namespace: string; hasEmbedding: boolean }> = [];
     let anyEmbedded = false;
     let anyWritten = false;
 
@@ -288,9 +318,14 @@ export async function bridgeStoreEntries(items: Array<{
       anyWritten = true;
       if (embeddingJson) anyEmbedded = true;
 
-      const cacheKey = makeEntryCacheKey(namespace, key);
-      bookkeeping.push(cacheSet(registry, cacheKey, { id, key, namespace, content: value, embedding: embeddingJson }));
-      bookkeeping.push(logAttestation(registry, 'store', id, { key, namespace, hasEmbedding: !!embeddingJson }));
+      deferredBookkeeping.push({
+        cacheKey: makeEntryCacheKey(namespace, key),
+        cacheValue: { id, key, namespace, content: value, embedding: embeddingJson },
+        entryId: id,
+        entryKey: key,
+        namespace,
+        hasEmbedding: !!embeddingJson,
+      });
 
       results.push({
         success: true,
@@ -299,11 +334,31 @@ export async function bridgeStoreEntries(items: Array<{
       });
     }
 
-    // Cache writes and attestation logs are independent post-hoc bookkeeping —
-    // overlap them while the final persist runs. SQL inserts above stayed
-    // sequential because sql.js is single-threaded.
-    await Promise.all(bookkeeping);
-    if (anyWritten) persistBridgeDb(ctx.db, dbPath);
+    // Honest persist (#982). The whole batch shares one persist call: if it
+    // throws, NONE of the rows reached disk, so flip every successful entry
+    // to a failure with the same error. Per-row partial success is impossible
+    // — sql.js dumps the entire DB snapshot atomically. Bookkeeping (cache
+    // + attestation) is deferred until AFTER persist succeeds so the cache
+    // cannot warm rows that never reached disk.
+    if (anyWritten) {
+      const persisted = tryPersist(ctx.db, dbPath);
+      if (!persisted.ok) {
+        for (let i = 0; i < results.length; i++) {
+          if (results[i].success) {
+            results[i] = { success: false, id: results[i].id, error: persisted.error };
+          }
+        }
+        return results;
+      }
+    }
+
+    // Persist succeeded — fire deferred bookkeeping in parallel.
+    await Promise.all(
+      deferredBookkeeping.flatMap(b => [
+        cacheSet(registry, b.cacheKey, b.cacheValue),
+        logAttestation(registry, 'store', b.entryId, { key: b.entryKey, namespace: b.namespace, hasEmbedding: b.hasEmbedding }),
+      ]),
+    );
     if (anyEmbedded) refreshVectorStatsCache();
 
     return results;
@@ -664,7 +719,13 @@ export async function bridgeDeleteEntry(options: {
       );
     }
 
-    persistBridgeDb(ctx.db, options.dbPath);
+    // Honest persist (#982). If the persist throws, the DELETE didn't reach
+    // disk — the row will reappear on next process load. Surface as a failure
+    // and skip cache invalidation so the cache stays consistent with disk.
+    const persisted = tryPersist(ctx.db, options.dbPath);
+    if (!persisted.ok) {
+      return deleteFail(persisted.error);
+    }
     await cacheInvalidate(registry, makeEntryCacheKey(namespace, key));
     await logAttestation(registry, 'delete', key, { namespace });
 

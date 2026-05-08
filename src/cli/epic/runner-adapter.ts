@@ -16,6 +16,30 @@ import {
   type PreflightWarningDecision,
 } from '../services/engine-loader.js';
 import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
+import type { MemoryAccessor } from '../spells/types/step-command.types.js';
+
+/**
+ * Wrap a MemoryAccessor with a write-failure counter so the [epic] summary
+ * can warn when spell progress didn't reach disk (#982). Without this, a
+ * persist failure surfaces only as a `[spell] storeProgress(...) failed`
+ * line buried mid-run, easily missed in shell scrollback.
+ */
+function trackPersistFailures(inner: MemoryAccessor): MemoryAccessor & { failedWrites: number } {
+  const tracker = {
+    failedWrites: 0,
+    async read(ns: string, key: string) { return inner.read(ns, key); },
+    async write(ns: string, key: string, value: unknown) {
+      try {
+        await inner.write(ns, key, value);
+      } catch (err) {
+        tracker.failedWrites++;
+        throw err;
+      }
+    },
+    async search(ns: string, query: string) { return inner.search(ns, query); },
+  };
+  return tracker;
+}
 
 /** Minimal spell result shape matching SpellResult from the inlined spell engine. */
 export type EpicSpellResult = Pick<
@@ -53,7 +77,7 @@ export interface EpicRunOptions {
 export type { PreflightWarning, PreflightWarningDecision };
 
 /** Cached memory accessor — created once per process. */
-let memoryAccessor: Awaited<ReturnType<typeof createDashboardMemoryAccessor>> | null = null;
+let memoryAccessor: ReturnType<typeof trackPersistFailures> | null = null;
 
 /** Prompt the user to accept or decline spell permissions. */
 async function promptAcceptPermissions(): Promise<boolean> {
@@ -84,7 +108,8 @@ export async function runEpicSpell(
   // are persisted and visible in the dashboard.
   if (!memoryAccessor) {
     try {
-      memoryAccessor = await createDashboardMemoryAccessor();
+      const inner = await createDashboardMemoryAccessor();
+      memoryAccessor = trackPersistFailures(inner);
       console.log('[epic] Memory accessor ready — spell progress will be persisted');
     } catch (err) {
       console.warn(`[epic] ⚠ Dashboard memory unavailable: ${(err as Error).message ?? err}`);
@@ -92,9 +117,27 @@ export async function runEpicSpell(
     }
   }
 
+  // memoryAccessor is module-cached, so `failedWrites` is cumulative across
+  // every spell run in this process. Capturing the count BEFORE this run
+  // and computing the delta below isolates "this run's failures" from any
+  // prior run's. Spell runs are sequential per process, so no race.
+  const failuresBefore = memoryAccessor?.failedWrites ?? 0;
   const runOpts = { ...options, projectRoot: process.cwd(), ...(memoryAccessor ? { memory: memoryAccessor } : {}) };
 
-  const result = await engine.runSpellFromContent(
+  // Print the persist-failure summary on every return path. Without this,
+  // a #982-style failure surfaces only as scattered `[spell] storeProgress
+  // failed` lines mid-run that get lost in scrollback. The summary line is
+  // the user's signal that the dashboard / Luminarium will show empty
+  // history despite a successful-looking spell run.
+  const reportPersistFailures = (): void => {
+    if (!memoryAccessor) return;
+    const failed = memoryAccessor.failedWrites - failuresBefore;
+    if (failed > 0) {
+      console.warn(`[epic] ⚠ Spell progress was not fully persisted (${failed} write${failed === 1 ? '' : 's'} failed) — run history may be missing from the dashboard.`);
+    }
+  };
+
+  let result = await engine.runSpellFromContent(
     yamlContent, undefined, runOpts,
   ) as EpicSpellResult;
 
@@ -107,6 +150,7 @@ export async function runEpicSpell(
   if (hasAcceptanceError) {
     const accepted = await promptAcceptPermissions();
     if (!accepted) {
+      reportPersistFailures();
       return result;
     }
 
@@ -133,10 +177,11 @@ export async function runEpicSpell(
     await recordAcceptance(projectRoot, parsed.definition.name, report.permissionHash);
     console.log(`[epic] Permissions accepted for "${parsed.definition.name}" — retrying...\n`);
 
-    return engine.runSpellFromContent(
+    result = await engine.runSpellFromContent(
       yamlContent, undefined, runOpts,
-    ) as Promise<EpicSpellResult>;
+    ) as EpicSpellResult;
   }
 
+  reportPersistFailures();
   return result;
 }

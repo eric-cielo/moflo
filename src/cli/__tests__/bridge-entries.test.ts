@@ -17,8 +17,8 @@ import {
   _resetBridgeEmbedderCacheForTest,
   type BridgeEmbedder,
 } from '../memory/bridge-embedder.js';
-import { bridgeDeleteEntry, bridgeListEntries, bridgeSearchEntries, bridgeStoreEntry } from '../memory/bridge-entries.js';
-import { _resetProjectRootForTest, execRows, getDb } from '../memory/bridge-core.js';
+import { bridgeDeleteEntry, bridgeListEntries, bridgeSearchEntries, bridgeStoreEntries, bridgeStoreEntry } from '../memory/bridge-entries.js';
+import { _resetProjectRootForTest, execRows, getDb, persistBridgeDb, tryPersistBridgeDb } from '../memory/bridge-core.js';
 import { shutdownBridge, getControllerRegistry } from '../memory/memory-bridge.js';
 
 let tmpDir: string;
@@ -465,5 +465,143 @@ describe('bridgeDeleteEntry — error surfacing (#963)', () => {
     // Original entry still in correct namespace
     const list = await bridgeListEntries({ namespace: 'correct-ns', dbPath });
     expect(list?.entries.find(e => e.key === 'k-ns-test')).toBeDefined();
+  });
+});
+
+// ===========================================================================
+// #982 — bridge persist failures must NOT be silently swallowed.
+//
+// Repros the silent-data-loss pattern: pre-#982 the inner sql.js insert
+// succeeded but `atomicWriteFileSync` threw (EBUSY on Windows when another
+// process held the dbfile open, ENOSPC, perm denied), the throw was logged
+// once to stderr, and `bridgeStoreEntry` returned `{ success: true }`. Every
+// caller upstream (memory-initializer.storeEntry, dashboard accessor,
+// runner.storeProgress) trusted the success and the data died with the
+// process. Same pattern in `bridgeStoreEntries` and `bridgeDeleteEntry`.
+// ===========================================================================
+describe('#982 — persist failures surface as success:false', () => {
+  /** Inject EBUSY into the rename leg of atomicWriteFileSync. */
+  function makeRenameThrow(): NodeJS.ErrnoException {
+    const err: NodeJS.ErrnoException = new Error('EBUSY: resource busy or locked, rename');
+    err.code = 'EBUSY';
+    return err;
+  }
+
+  it('persistBridgeDb rethrows the underlying error (no silent swallow)', () => {
+    const fakeDb = { export: () => { throw makeRenameThrow(); } };
+    expect(() => persistBridgeDb(fakeDb, dbPath)).toThrow(/EBUSY/);
+  });
+
+  it('tryPersistBridgeDb returns ok:false instead of throwing', () => {
+    const fakeDb = { export: () => { throw makeRenameThrow(); } };
+    const result = tryPersistBridgeDb(fakeDb, dbPath);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBeInstanceOf(Error);
+      expect(result.error.message).toMatch(/EBUSY/);
+    }
+  });
+
+  /**
+   * Override the bridge db's `.export()` to throw the given error. Returns
+   * a restore function. We can't `vi.spyOn(fs, 'renameSync')` because ESM
+   * namespaces aren't configurable; intercepting `db.export()` exercises
+   * the same code path because `atomicWriteFileSync(target, db.export())`
+   * evaluates `export()` first, and `persistBridgeDb`'s try/catch wraps
+   * the whole call.
+   */
+  async function injectPersistFailure(err: Error): Promise<() => void> {
+    const reg = await getControllerRegistry(dbPath);
+    if (!reg) throw new Error('test bridge registry unavailable');
+    const ctx = getDb(reg);
+    if (!ctx) throw new Error('test bridge db ctx unavailable');
+    const orig = ctx.db.export.bind(ctx.db);
+    ctx.db.export = () => { throw err; };
+    return () => { ctx.db.export = orig; };
+  }
+
+  it('bridgeStoreEntry returns success:false with persist failed when atomic-write throws', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    // Land one successful row first so the bridge is fully initialized
+    // (registry + embedder cache warm) before we inject the failure. This
+    // mirrors the real-world reproduction: short-lived `flo epic` runs
+    // start with a healthy DB, then hit EBUSY on a later persist.
+    const ok = await bridgeStoreEntry({ key: 'pre-fail', value: 'baseline', namespace: 'tasklist', dbPath });
+    expect(ok?.success).toBe(true);
+
+    const restore = await injectPersistFailure(makeRenameThrow());
+    try {
+      const result = await bridgeStoreEntry({
+        key: 'should-fail',
+        value: 'data that never reaches disk',
+        namespace: 'tasklist',
+        dbPath,
+      });
+      expect(result?.success).toBe(false);
+      expect(result?.error).toContain('persist failed');
+      expect(result?.error).toMatch(/EBUSY/);
+    } finally {
+      restore();
+    }
+  });
+
+  it('bridgeStoreEntries flips ALL successful results to failed when the final persist throws', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    // Warm the bridge with a successful baseline write
+    const ok = await bridgeStoreEntry({ key: 'warm-up', value: 'x', namespace: 'tasklist', dbPath });
+    expect(ok?.success).toBe(true);
+
+    const restore = await injectPersistFailure(makeRenameThrow());
+    try {
+      const results = await bridgeStoreEntries(
+        [
+          { key: 'batch-1', value: 'a', namespace: 'tasklist' },
+          { key: 'batch-2', value: 'b', namespace: 'tasklist' },
+          { key: 'batch-3', value: 'c', namespace: 'tasklist' },
+        ],
+        dbPath,
+      );
+      expect(results).not.toBeNull();
+      expect(results).toHaveLength(3);
+      // sql.js dumps the entire DB snapshot in one persist call, so a single
+      // throw means NONE of the batch reached disk — every entry must report
+      // persist failed, regardless of how its inserts went in RAM.
+      for (const r of results!) {
+        expect(r.success).toBe(false);
+        expect(r.error).toContain('persist failed');
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it('bridgeDeleteEntry returns success:false with persist failed when atomic-write throws', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    // Insert the row to be deleted
+    const inserted = await bridgeStoreEntry({
+      key: 'k-to-delete',
+      value: 'doomed',
+      namespace: 'scheduled-spells',
+      dbPath,
+    });
+    expect(inserted?.success).toBe(true);
+
+    const restore = await injectPersistFailure(makeRenameThrow());
+    try {
+      const result = await bridgeDeleteEntry({
+        key: 'k-to-delete',
+        namespace: 'scheduled-spells',
+        dbPath,
+      });
+      expect(result?.success).toBe(false);
+      expect(result?.deleted).toBe(false);
+      expect(result?.error).toContain('persist failed');
+      expect(result?.error).toMatch(/EBUSY/);
+    } finally {
+      restore();
+    }
   });
 });

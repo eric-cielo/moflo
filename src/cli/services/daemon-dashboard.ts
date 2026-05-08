@@ -75,7 +75,12 @@ export async function createDashboardMemoryAccessor(): Promise<MemoryAccessor> {
     async write(namespace: string, key: string, value: unknown): Promise<void> {
       const result = await storeEntry({ key, value: typeof value === 'string' ? value : JSON.stringify(value), namespace, upsert: true });
       if (!result.success) {
-        console.warn(`[dashboard] memory.write(${namespace}, ${key}) failed: ${result.error ?? 'unknown'}`);
+        // #982 — surface the failure to callers (runner.storeProgress wraps
+        // this in a try/catch + console.warn). Pre-#982 we just warned and
+        // returned cleanly, which let the spell engine claim success on a
+        // run whose progress writes never reached disk.
+        const err = `memory.write(${namespace}, ${key}) failed: ${result.error ?? 'unknown'}`;
+        throw new Error(err);
       }
     },
     async search(namespace: string, query: string): Promise<Array<{ key: string; value: unknown; score: number }>> {
