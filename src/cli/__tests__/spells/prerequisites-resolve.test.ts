@@ -17,6 +17,19 @@ import type { PrerequisiteSpec } from '../../spells/types/spell-definition.types
 import { makePrereq } from './helpers/prereq-fixtures.js';
 import { makeCredentials } from './helpers.js';
 
+function base64url(input: string): string {
+  return Buffer.from(input, 'utf-8').toString('base64')
+    .replace(/=+$/, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+function makeExpiredJwt(): string {
+  const header = base64url(JSON.stringify({ alg: 'none', typ: 'JWT' }));
+  const payload = base64url(JSON.stringify({ exp: Math.floor(Date.now() / 1000) - 7200 }));
+  return `${header}.${payload}.signature-placeholder`;
+}
+
 describe('resolveUnmetPrerequisites', () => {
   const ENV_KEY = 'FLO_RESOLVE_TEST_460';
 
@@ -350,6 +363,110 @@ describe('resolveUnmetPrerequisites', () => {
       expect(result.errorCode).toBeUndefined();
       expect(result.message).toContain('Missing prerequisites');
       expect(result.message).toContain('UNICORN_CLI');
+    });
+
+    // ==========================================================================
+    // Story #1007 — auto-reject stale stored credentials (JWT-exp + URL shape)
+    // ==========================================================================
+
+    it('rejects an expired stored JWT and falls through to the prompt path', async () => {
+      const KEY_EXP = 'CRED_EXPIRED_JWT_1007';
+      delete process.env[KEY_EXP];
+
+      const expiredJwt = makeExpiredJwt();
+      const prereq = compilePrerequisiteSpec({
+        name: 'GRAPH_ACCESS_TOKEN',
+        detect: { type: 'env', key: KEY_EXP },
+      });
+      const credentials = makeCredentials({ [KEY_EXP]: expiredJwt });
+      const responses = ['fresh-token', 'n']; // n = decline save offer
+      const promptLine = vi.fn<PromptLineFn>(async () => responses.shift() ?? '');
+      const logged: string[] = [];
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: true,
+        promptLine,
+        log: (l) => logged.push(l),
+        credentials,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(process.env[KEY_EXP]).toBe('fresh-token');
+      // Banner explains why the stored value was rejected
+      expect(logged.some(l => l.includes(`Stored ${KEY_EXP} rejected`))).toBe(true);
+      expect(logged.some(l => l.includes('JWT expired'))).toBe(true);
+    });
+
+    it('rejects a malformed _URL stored value and falls through to the prompt path', async () => {
+      const KEY_URL = 'CRED_BAD_1007_URL';
+      delete process.env[KEY_URL];
+
+      const prereq = compilePrerequisiteSpec({
+        name: 'WEBHOOK',
+        detect: { type: 'env', key: KEY_URL },
+      });
+      const credentials = makeCredentials({ [KEY_URL]: 'not-a-url' });
+      const responses = ['https://hooks.example.com/x', 'n'];
+      const promptLine = vi.fn<PromptLineFn>(async () => responses.shift() ?? '');
+      const logged: string[] = [];
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: true,
+        promptLine,
+        log: (l) => logged.push(l),
+        credentials,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(process.env[KEY_URL]).toBe('https://hooks.example.com/x');
+      expect(logged.some(l => l.includes(`Stored ${KEY_URL} rejected`))).toBe(true);
+      expect(logged.some(l => l.includes('not a valid URL'))).toBe(true);
+    });
+
+    it('non-TTY + expired stored JWT → MISSING_CREDENTIAL with rejection reason in the message', async () => {
+      const KEY_EXP_NI = 'CRED_EXPIRED_JWT_NI_1007';
+      delete process.env[KEY_EXP_NI];
+
+      const expiredJwt = makeExpiredJwt();
+      const prereq = compilePrerequisiteSpec({
+        name: 'TOKEN',
+        detect: { type: 'env', key: KEY_EXP_NI },
+      });
+      const credentials = makeCredentials({ [KEY_EXP_NI]: expiredJwt });
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: false,
+        credentials,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.errorCode).toBe('MISSING_CREDENTIAL');
+      expect(result.message).toContain('Stored value(s) rejected');
+      expect(result.message).toContain(KEY_EXP_NI);
+      expect(result.message).toContain('JWT expired');
+    });
+
+    it('does NOT reject an opaque (non-JWT, non-URL) stored value — passes through unchanged', async () => {
+      const KEY_OPAQUE = 'CRED_OPAQUE_1007';
+      delete process.env[KEY_OPAQUE];
+
+      const prereq = compilePrerequisiteSpec({
+        name: 'API_KEY',
+        detect: { type: 'env', key: KEY_OPAQUE },
+      });
+      const credentials = makeCredentials({ [KEY_OPAQUE]: 'sk_live_abc123' });
+      const promptLine = vi.fn<PromptLineFn>(async () => 'should-not-be-called');
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: true,
+        promptLine,
+        log: () => {},
+        credentials,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(process.env[KEY_OPAQUE]).toBe('sk_live_abc123');
+      expect(promptLine).not.toHaveBeenCalled();
     });
 
     it('credentials.store rejection is logged but does not abort the cast', async () => {

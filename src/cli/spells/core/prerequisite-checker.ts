@@ -26,6 +26,7 @@ import type {
 import type { StepCommandRegistry } from './step-command-registry.js';
 import { acquireTTYLock } from './tty-lock.js';
 import { readLineFromStdin } from './stdin-reader.js';
+import { validateStoredCredential } from './credential-validation.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -281,18 +282,26 @@ export async function resolveUnmetPrerequisites(
   // lets us skip a re-check of the cheap env detector.
   // `forceCredentialReprompt` bypasses this step so users can rotate or
   // correct stored credentials by re-running through the prompt path.
+  // Stored values are shape-validated (#1007): expired JWTs and malformed
+  // _URL values are rejected and surface in the preflight banner, so the
+  // resolver re-prompts instead of silently feeding garbage to the spell.
   const resolvedFromStoreNames: string[] = [];
   const storeResolved = new Set<number>();
+  const rejectedFromStore: Array<{ envKey: string; reason: string }> = [];
   if (credentials && !options.forceCredentialReprompt) {
     await Promise.all(unmetIndices.map(async (i) => {
       const prereq = prerequisites[i];
       if (!prereq.envKey) return;
       const stored = await credentials.get(prereq.envKey);
-      if (typeof stored === 'string' && stored.length > 0) {
-        process.env[prereq.envKey] = stored;
-        storeResolved.add(i);
-        resolvedFromStoreNames.push(prereq.name);
+      if (typeof stored !== 'string' || stored.length === 0) return;
+      const validation = validateStoredCredential(prereq.envKey, stored);
+      if (!validation.valid) {
+        rejectedFromStore.push({ envKey: prereq.envKey, reason: validation.reason });
+        return;
       }
+      process.env[prereq.envKey] = stored;
+      storeResolved.add(i);
+      resolvedFromStoreNames.push(prereq.name);
     }));
   }
 
@@ -314,7 +323,7 @@ export async function resolveUnmetPrerequisites(
     if (promptableEnvKeys.length > 0) {
       return {
         ok: false,
-        message: formatMissingCredentialMessage(promptableEnvKeys, stillUnmet),
+        message: formatMissingCredentialMessage(promptableEnvKeys, stillUnmet, rejectedFromStore),
         resolvedNames: resolvedFromStoreNames,
         errorCode: 'MISSING_CREDENTIAL',
         missingCredentials: promptableEnvKeys,
@@ -328,6 +337,12 @@ export async function resolveUnmetPrerequisites(
   }
 
   printPreflightBanner(log, stillUnmet.length);
+  if (rejectedFromStore.length > 0) {
+    for (const r of rejectedFromStore) {
+      log(`  Stored ${r.envKey} rejected — ${r.reason}. Re-enter below.`);
+    }
+    log('');
+  }
 
   const promptLine = options.promptLine ?? readLineFromStdin;
   const promptedNames: string[] = [];
@@ -410,12 +425,20 @@ export async function resolveUnmetPrerequisites(
 function formatMissingCredentialMessage(
   envKeys: readonly string[],
   prereqs: readonly Prerequisite[],
+  rejectedFromStore: ReadonlyArray<{ readonly envKey: string; readonly reason: string }>,
 ): string {
   const lines = ['Missing credentials (cannot prompt — non-interactive run):'];
   for (const key of envKeys) {
     const prereq = prereqs.find(p => p.envKey === key);
     const label = `${prereq?.name ?? key} (${key})`;
     appendPrereqLine(lines, label, prereq?.installHint, prereq?.url);
+  }
+  if (rejectedFromStore.length > 0) {
+    lines.push('');
+    lines.push('Stored value(s) rejected as stale or invalid:');
+    for (const r of rejectedFromStore) {
+      lines.push(`  - ${r.envKey}: ${r.reason}`);
+    }
   }
   lines.push('');
   lines.push('Prime these by casting the spell once interactively, or run:');
