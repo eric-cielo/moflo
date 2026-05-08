@@ -194,6 +194,40 @@ export async function bridgeStoreEntry(options: {
     const { json: embeddingJson, dimensions, model } = resolved;
     const embeddingResponse = embeddingResponseFrom(resolved);
 
+    // Idempotency guard, mirrors the one in `memory-initializer.ts`'s raw-
+    // sql.js fallback. When the daemon route just wrote this exact row but
+    // the client missed the ack, we land here with the row already on disk;
+    // a plain INSERT would trip UNIQUE and surface as `[moflo] bridge
+    // operation failed:` stderr noise even though the data is durable.
+    // Probe first so withDb never sees the throw.
+    if (!options.upsert) {
+      let existingId: string | null = null;
+      let existingContent: string | null = null;
+      const probe = ctx.db.prepare(
+        `SELECT id, content FROM memory_entries WHERE namespace = ? AND key = ? AND status = 'active' LIMIT 1`,
+      );
+      try {
+        probe.bind([namespace, key]);
+        if (probe.step()) {
+          const row = probe.getAsObject() as { id: string; content: string };
+          existingId = String(row.id);
+          existingContent = row.content;
+        }
+      } finally {
+        probe.free();
+      }
+      if (existingId && existingContent === value) {
+        return {
+          success: true,
+          id: existingId,
+          embedding: embeddingResponse,
+          guarded: true,
+          cached: false,
+          attested: false,
+        };
+      }
+    }
+
     const insertSql = options.upsert
       ? `INSERT OR REPLACE INTO memory_entries (
           id, key, namespace, content, type,

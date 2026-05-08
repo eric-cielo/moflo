@@ -166,6 +166,15 @@ export class FlagEmbedding {
     const session = await InferenceSession.create(modelPath, {
       executionProviders: ['cpu'],
       graphOptimizationLevel: 'all',
+      // Suppress ORT's WARNING-level chatter on session bring-up. ORT 1.26.0
+      // emits a `[W:onnxruntime ... GetPciBusId] Skipping pci_bus_id` line on
+      // Linux Azure VMs whose `/sys/devices/...` filenames don't match the
+      // `[0-9a-f]+:[0-9a-f]+:[0-9a-f]+.[0-9a-f]+` PCI pattern; the warning
+      // is harmless (we run on the CPU EP only) but leaks to stderr and
+      // confuses users into thinking moflo is broken. 0=verbose, 1=info,
+      // 2=warning (default), 3=error, 4=fatal — error is the right level
+      // because session bring-up genuine failures still surface.
+      logSeverityLevel: 3,
     });
     return new FlagEmbedding(tokenizer, session);
   }
