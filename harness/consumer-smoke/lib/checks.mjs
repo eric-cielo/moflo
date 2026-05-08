@@ -833,7 +833,8 @@ export function consumerInvariants(consumerDir) {
 // stays meaningful on every platform rather than only the smallest one.
 // Headroom ≈ +9% warn, +22% fail — enough room for the next ORT minor,
 // not so loose that quiet creep goes unflagged.
-// Prior baseline was 95/110 anchored to Windows ~83 MB (#605, epic #586).
+// Prior baseline was 95/110 anchored to Windows ~83 MB (post-workspace-
+// collapse #605, epic #586) — same headroom ratios, smaller anchor.
 // Override via MOFLO_INSTALL_SIZE_{WARN,MAX}_MB (see harness README).
 const INSTALL_SIZE_WARN_MB_DEFAULT = 125;
 const INSTALL_SIZE_MAX_MB_DEFAULT = 140;
