@@ -334,6 +334,7 @@ export async function resolveUnmetPrerequisites(
   const promptableSet = new Set(promptable);
   const pendingSaves: Array<{ envKey: string; value: string }> = [];
   const lock = acquireTTYLock();
+  let shouldSave = false;
   try {
     for (const prereq of promptable) {
       if (options.abortSignal?.aborted) {
@@ -373,21 +374,24 @@ export async function resolveUnmetPrerequisites(
     // One batched save offer covers every collected answer — issuing N
     // confirmations would be repetitive when most users want all-or-nothing.
     if (credentials && pendingSaves.length > 0) {
-      const shouldSave = await promptSaveCredentialsConfirmation(
+      shouldSave = await promptSaveCredentialsConfirmation(
         promptLine, pendingSaves.length, options.abortSignal,
       );
-      if (shouldSave) {
-        for (const { envKey, value } of pendingSaves) {
-          try {
-            await credentials.store(envKey, value);
-          } catch (err) {
-            log(`  (could not persist credential "${envKey}": ${(err as Error).message})`);
-          }
-        }
-      }
     }
   } finally {
     lock.release();
+  }
+
+  // Persist outside the TTY lock so slow disk/keychain writes don't block
+  // concurrent stdin readers waiting on the same lock.
+  if (credentials && shouldSave) {
+    for (const { envKey, value } of pendingSaves) {
+      try {
+        await credentials.store(envKey, value);
+      } catch (err) {
+        log(`  (could not persist credential "${envKey}": ${(err as Error).message})`);
+      }
+    }
   }
 
   // Anything in stillUnmet that wasn't promptable (typically command/file

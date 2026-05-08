@@ -289,6 +289,9 @@ describe('resolveUnmetPrerequisites', () => {
       expect(result.ok).toBe(true);
       expect(process.env[KEY]).toBe('rotated-value');
       expect(credentials.storeCalls).toEqual([[KEY, 'rotated-value']]);
+      // Two calls (value + save-offer) prove the store-lookup path was bypassed —
+      // without forceCredentialReprompt, the cached value would have suppressed the prompt.
+      expect(promptLine).toHaveBeenCalledTimes(2);
     });
 
     it('non-TTY + missing + no store → fails with MISSING_CREDENTIAL errorCode', async () => {
