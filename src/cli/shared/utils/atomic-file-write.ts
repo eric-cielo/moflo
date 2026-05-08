@@ -18,6 +18,15 @@
  * On any failure, the temp file is best-effort removed and the original
  * `target` stays intact. The underlying error is always re-thrown.
  *
+ * Windows-only post-rename verify (#1015): on NTFS with antivirus / Defender
+ * scanning the freshly-renamed file, a sub-process opening the same path
+ * within ~1s can briefly see stale or unreadable data. After a successful
+ * rename we poll-open the target until it's readable (or a 250 ms deadline
+ * passes) so the next reader doesn't race the AV settle window. The rename
+ * itself already succeeded, so the verify is best-effort: a timeout logs and
+ * returns rather than throwing — the data IS on disk, the next reader will
+ * just briefly hit the same lock anyway.
+ *
  * `fs` is injectable so the interrupt-mid-write paths can be exercised in
  * unit tests without depending on ESM-unfriendly module spies.
  *
@@ -30,7 +39,16 @@ export interface AtomicWriteFs {
   writeFileSync: typeof realFs.writeFileSync;
   renameSync: typeof realFs.renameSync;
   unlinkSync: typeof realFs.unlinkSync;
+  // Optional — used only by the Windows post-rename verify path. Real callers
+  // never pass these; tests inject them to simulate AV-induced transient
+  // EBUSY without depending on a real Windows host.
+  openSync?: typeof realFs.openSync;
+  closeSync?: typeof realFs.closeSync;
 }
+
+const IS_WIN32 = process.platform === 'win32';
+const VERIFY_DEADLINE_MS = 250;
+const VERIFY_STEP_MS = 10;
 
 export function atomicWriteFileSync(
   targetPath: string,
@@ -49,4 +67,32 @@ export function atomicWriteFileSync(
     }
     throw err;
   }
+  if (IS_WIN32) verifyReadableAfterRename(targetPath, fs);
+}
+
+/**
+ * Poll-open the target until a reader can succeed, or the deadline passes.
+ * Closes the AV-scan settle window on NTFS (#1015). No-op everywhere else.
+ *
+ * Yields the thread between probes via `Atomics.wait` so we don't pin a CPU
+ * during the very contention we're waiting out (`feedback_async_by_default`).
+ */
+function verifyReadableAfterRename(targetPath: string, fs: AtomicWriteFs): void {
+  const openSync = fs.openSync ?? realFs.openSync;
+  const closeSync = fs.closeSync ?? realFs.closeSync;
+  const deadline = Date.now() + VERIFY_DEADLINE_MS;
+  while (true) {
+    try {
+      closeSync(openSync(targetPath, 'r'));
+      return;
+    } catch {
+      if (Date.now() >= deadline) return;
+      sleepSyncMs(VERIFY_STEP_MS);
+    }
+  }
+}
+
+const SLEEP_BUF = new Int32Array(new SharedArrayBuffer(4));
+function sleepSyncMs(ms: number): void {
+  Atomics.wait(SLEEP_BUF, 0, 0, ms);
 }
