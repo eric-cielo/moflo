@@ -12,6 +12,8 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   test: {
+    // #981 — disable daemon-routing preamble during tests (see vitest.setup.ts).
+    setupFiles: ['./vitest.setup.ts'],
     pool: 'forks',
     execArgv: ['--max-old-space-size=12288'],
     maxForks: 1,
