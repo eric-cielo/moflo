@@ -826,14 +826,17 @@ export function consumerInvariants(consumerDir) {
   }
 }
 
-// Re-baselined post-workspace-collapse (#605, epic #586): consumer install
-// measured at ~83 MB on Windows (moflo pkg 10 MB + ORT/tokenizers/sql.js).
-// Warn ≈ +15% headroom, fail ≈ +33% headroom — same ratios as the prior
-// 100/120 budget held against an ~80 MB anchor, just tightened to the
-// current floor so a regression is caught before the budget creeps.
+// Re-baselined for ORT 1.26.0 (issue #1011): the darwin/arm64 ORT binary
+// alone is 72.4 MB after pruning, putting the macOS consumer install at
+// ~115 MB. Windows install on the same release is ~82 MB (smaller native
+// binaries). Anchoring the budget to the macOS measurement so the cap
+// stays meaningful on every platform rather than only the smallest one.
+// Headroom ≈ +9% warn, +22% fail — enough room for the next ORT minor,
+// not so loose that quiet creep goes unflagged.
+// Prior baseline was 95/110 anchored to Windows ~83 MB (#605, epic #586).
 // Override via MOFLO_INSTALL_SIZE_{WARN,MAX}_MB (see harness README).
-const INSTALL_SIZE_WARN_MB_DEFAULT = 95;
-const INSTALL_SIZE_MAX_MB_DEFAULT = 110;
+const INSTALL_SIZE_WARN_MB_DEFAULT = 125;
+const INSTALL_SIZE_MAX_MB_DEFAULT = 140;
 
 function readEnvMb(name, fallback) {
   const raw = process.env[name];
