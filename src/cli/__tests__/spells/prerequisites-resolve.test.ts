@@ -174,13 +174,15 @@ describe('resolveUnmetPrerequisites', () => {
       expect(credentials.storeCalls).toEqual([]);
     });
 
-    it('persists prompt answer to the store after a successful TTY prompt', async () => {
+    it('persists prompt answer to the store when user accepts the save offer (default Y)', async () => {
       const prereq = compilePrerequisiteSpec({
         name: 'TOKEN',
         detect: { type: 'env', key: KEY },
       });
       const credentials = makeCredentials({});
-      const promptLine = vi.fn<PromptLineFn>(async () => 'fresh-answer');
+      // First call: prereq value. Second call: save-offer answer (empty = default Y).
+      const responses = ['fresh-answer', ''];
+      const promptLine = vi.fn<PromptLineFn>(async () => responses.shift() ?? '');
 
       const result = await resolveUnmetPrerequisites([prereq], {
         interactive: true,
@@ -192,6 +194,101 @@ describe('resolveUnmetPrerequisites', () => {
       expect(result.ok).toBe(true);
       expect(process.env[KEY]).toBe('fresh-answer');
       expect(credentials.storeCalls).toEqual([[KEY, 'fresh-answer']]);
+      expect(promptLine).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not persist when user declines the save offer (n)', async () => {
+      const prereq = compilePrerequisiteSpec({
+        name: 'TOKEN',
+        detect: { type: 'env', key: KEY },
+      });
+      const credentials = makeCredentials({});
+      const responses = ['fresh-answer', 'n'];
+      const promptLine = vi.fn<PromptLineFn>(async () => responses.shift() ?? '');
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: true,
+        promptLine,
+        log: () => {},
+        credentials,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(process.env[KEY]).toBe('fresh-answer');
+      expect(credentials.storeCalls).toEqual([]);
+    });
+
+    it('batches the save offer when multiple prereqs are prompted', async () => {
+      const KEY_A = 'CRED_BATCH_A_1002';
+      const KEY_B = 'CRED_BATCH_B_1002';
+      delete process.env[KEY_A];
+      delete process.env[KEY_B];
+
+      const prereqA = compilePrerequisiteSpec({ name: 'A', detect: { type: 'env', key: KEY_A } });
+      const prereqB = compilePrerequisiteSpec({ name: 'B', detect: { type: 'env', key: KEY_B } });
+      const credentials = makeCredentials({});
+      const responses = ['answer-a', 'answer-b', 'y'];
+      const promptLine = vi.fn<PromptLineFn>(async () => responses.shift() ?? '');
+      const logged: string[] = [];
+
+      const result = await resolveUnmetPrerequisites([prereqA, prereqB], {
+        interactive: true,
+        promptLine,
+        log: (l) => logged.push(l),
+        credentials,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(promptLine).toHaveBeenCalledTimes(3);
+      expect(credentials.storeCalls).toEqual([
+        [KEY_A, 'answer-a'],
+        [KEY_B, 'answer-b'],
+      ]);
+      // The save-offer prompt mentions the count, not each name individually.
+      const savePromptCall = promptLine.mock.calls[2][0];
+      expect(savePromptCall).toMatch(/Save 2 credentials/);
+    });
+
+    it('does not show the save offer when no prereqs were prompted (all from store)', async () => {
+      const prereq = compilePrerequisiteSpec({
+        name: 'TOKEN',
+        detect: { type: 'env', key: KEY },
+      });
+      const credentials = makeCredentials({ [KEY]: 'cached' });
+      const promptLine = vi.fn<PromptLineFn>(async () => 'should-not-fire');
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: true,
+        promptLine,
+        log: () => {},
+        credentials,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(promptLine).not.toHaveBeenCalled();
+      expect(credentials.storeCalls).toEqual([]);
+    });
+
+    it('forceCredentialReprompt skips store lookup and prompts even when value is cached', async () => {
+      const prereq = compilePrerequisiteSpec({
+        name: 'TOKEN',
+        detect: { type: 'env', key: KEY },
+      });
+      const credentials = makeCredentials({ [KEY]: 'old-stale-value' });
+      const responses = ['rotated-value', 'y'];
+      const promptLine = vi.fn<PromptLineFn>(async () => responses.shift() ?? '');
+
+      const result = await resolveUnmetPrerequisites([prereq], {
+        interactive: true,
+        promptLine,
+        log: () => {},
+        credentials,
+        forceCredentialReprompt: true,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(process.env[KEY]).toBe('rotated-value');
+      expect(credentials.storeCalls).toEqual([[KEY, 'rotated-value']]);
     });
 
     it('non-TTY + missing + no store → fails with MISSING_CREDENTIAL errorCode', async () => {
@@ -262,7 +359,9 @@ describe('resolveUnmetPrerequisites', () => {
         async has() { return false; },
         async store() { throw new Error('disk full'); },
       };
-      const promptLine = vi.fn<PromptLineFn>(async () => 'answer');
+      // First call: prereq value. Second call: save-offer answer (default Y triggers the failing store).
+      const responses = ['answer', ''];
+      const promptLine = vi.fn<PromptLineFn>(async () => responses.shift() ?? '');
       const logged: string[] = [];
 
       const result = await resolveUnmetPrerequisites([prereq], {

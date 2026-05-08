@@ -163,6 +163,12 @@ export const castCommand: Command = {
       description: 'Single key=value spell argument (repeatable). Numeric/boolean strings are coerced.',
       type: 'array',
     },
+    {
+      name: 'reprompt-creds',
+      description: 'Force re-prompting for env-type prereqs (rotate or correct stored credentials)',
+      type: 'boolean',
+      default: false,
+    },
   ],
   examples: [
     { command: 'moflo spell cast -n development', description: 'Cast spell by name' },
@@ -170,6 +176,7 @@ export const castCommand: Command = {
     { command: 'moflo spell cast -n sa --dry-run', description: 'Validate via abbreviation' },
     { command: "moflo spell cast -n oap --args '{\"maxEmails\":50}'", description: 'Pass spell arguments as JSON' },
     { command: 'moflo spell cast -n oap --arg headless=false --arg maxEmails=50', description: 'Pass arguments as key=value pairs' },
+    { command: 'moflo spell cast -n oap --reprompt-creds', description: 'Re-prompt for credentials (rotate stored secrets)' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const name = (ctx.flags.name as string) || ctx.args[0];
@@ -252,6 +259,7 @@ export const castCommand: Command = {
         file: file || undefined,
         args,
         dryRun,
+        forceCredentialReprompt: ctx.flags.repromptCreds as boolean | undefined,
       });
 
       if (result.error) {
