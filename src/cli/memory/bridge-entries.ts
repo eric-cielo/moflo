@@ -647,8 +647,10 @@ export async function bridgeGetEntry(options: {
       // Use getAsObject to read columns by name downstream. Bindings are
       // passed as a single array — varargs are silently ignored.
       row = stmt.getAsObject([key, namespace]);
-      // getAsObject returns {} when no row matches; treat as null.
-      if (!row || Object.keys(row).length === 0) row = null;
+      // #998: sql.js `getAsObject` zips SELECT column names with their values
+      // even on a no-row result, so the returned object always has keys —
+      // check the TEXT-NOT-NULL primary key to detect a real row.
+      if (!row || row.id == null) row = null;
     } catch {
       return null;
     }

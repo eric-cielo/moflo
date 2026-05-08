@@ -17,7 +17,7 @@ import {
   _resetBridgeEmbedderCacheForTest,
   type BridgeEmbedder,
 } from '../memory/bridge-embedder.js';
-import { bridgeDeleteEntry, bridgeListEntries, bridgeSearchEntries, bridgeStoreEntries, bridgeStoreEntry } from '../memory/bridge-entries.js';
+import { bridgeDeleteEntry, bridgeGetEntry, bridgeListEntries, bridgeSearchEntries, bridgeStoreEntries, bridgeStoreEntry } from '../memory/bridge-entries.js';
 import { _resetProjectRootForTest, execRows, getDb, persistBridgeDb, tryPersistBridgeDb } from '../memory/bridge-core.js';
 import { shutdownBridge, getControllerRegistry } from '../memory/memory-bridge.js';
 
@@ -693,5 +693,70 @@ describe('#994 — post-persist bookkeeping failures stay non-fatal', () => {
     } finally {
       restore();
     }
+  });
+});
+
+describe('bridgeGetEntry — no-row detection (#998)', () => {
+  it('returns found:false when the (namespace,key) pair does not exist', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    // Seed one unrelated row so the table exists and the SELECT actually
+    // executes — the bug we're guarding is "SELECT returns no row but
+    // bridgeGetEntry treats it as found", not "table is empty".
+    await bridgeStoreEntry({ key: 'present', value: 'v', namespace: 'test', dbPath });
+
+    const result = await bridgeGetEntry({
+      key: 'absent-key',
+      namespace: 'test',
+      dbPath,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.success).toBe(true);
+    expect(result?.found).toBe(false);
+    expect(result?.entry).toBeUndefined();
+  });
+
+  it('never returns an entry whose id or key is the literal string "undefined"', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    // Cross-namespace miss: row exists for namespace 'test' but caller queries
+    // 'other'. Pre-fix this returned a synthetic { id: "undefined", key:
+    // "undefined", namespace: "default", content: "", accessCount: 1 } per the
+    // smoke-harness failure dump in #998.
+    await bridgeStoreEntry({ key: 'k1', value: 'v1', namespace: 'test', dbPath });
+
+    const result = await bridgeGetEntry({
+      key: 'k1',
+      namespace: 'other',
+      dbPath,
+    });
+
+    expect(result?.found).toBe(false);
+    expect(result?.entry).toBeUndefined();
+  });
+
+  it('returns the real row when the (namespace,key) pair exists', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    await bridgeStoreEntry({
+      key: 'present-key',
+      value: 'present-value',
+      namespace: 'test',
+      dbPath,
+    });
+
+    const result = await bridgeGetEntry({
+      key: 'present-key',
+      namespace: 'test',
+      dbPath,
+    });
+
+    expect(result?.success).toBe(true);
+    expect(result?.found).toBe(true);
+    expect(result?.entry?.key).toBe('present-key');
+    expect(result?.entry?.content).toBe('present-value');
+    expect(result?.entry?.namespace).toBe('test');
+    expect(result?.entry?.id).not.toBe('undefined');
   });
 });
