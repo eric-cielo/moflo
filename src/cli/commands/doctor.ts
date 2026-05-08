@@ -13,7 +13,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
-import { allChecks, componentMap } from './doctor-registry.js';
+import { allChecks, componentMap, zombieScanCheck } from './doctor-registry.js';
 import type { HealthCheck } from './doctor-types.js';
 import {
   emitJsonOutput,
@@ -182,6 +182,16 @@ export const doctorCommand: Command = {
       let checkResults: PromiseSettledResult<HealthCheck>[];
       try {
         checkResults = await Promise.allSettled(checksToRun.map(check => check()));
+        // Issue #992: zombie scan must follow the parallel batch, not race it.
+        // Several parallel checks spawn short-lived subprocesses (notably
+        // `checkBuildTools` running `npx tsc --version`); on Windows the npx
+        // shim exits before its tsc child, leaving a transient orphan that
+        // the zombie scan would otherwise flag as a real leak. Skip in
+        // single-component (`-c`) runs since those are targeted diagnostics.
+        if (!component) {
+          const zombieSettled = await Promise.allSettled([zombieScanCheck()]);
+          checkResults.push(zombieSettled[0]);
+        }
       } finally {
         spinner?.stop();
         restoreStdout();

@@ -52,7 +52,13 @@ import type { CheckFn, HealthCheck } from './doctor-types.js';
 
 export type { CheckFn, HealthCheck };
 
-/** Order matters — top entries surface first under the spinner. */
+/** Order matters — top entries surface first under the spinner.
+ * `checkZombieProcesses` is intentionally NOT in this list — it must run AFTER
+ * the parallel batch settles (see `zombieScanCheck` below and #992). Otherwise
+ * doctor's own subprocess probes (e.g. `checkBuildTools` running `npx tsc
+ * --version`) can be flagged as their own zombies on Windows, where the npx
+ * shim exits before its tsc child finishes.
+ */
 export const allChecks: CheckFn[] = [
   checkVersionFreshness,
   checkNodeVersion,
@@ -75,7 +81,6 @@ export const allChecks: CheckFn[] = [
   checkSemanticQuality,
   checkIntelligence,
   checkSpellEngine,
-  checkZombieProcesses,
   checkSubagentHealth,
   checkSpellExecution,
   checkMcpToolInvocation,
@@ -94,6 +99,9 @@ export const allChecks: CheckFn[] = [
   checkMemoryAccessFunctional,
   checkSandboxTier,
 ];
+
+/** Sequenced check that runs AFTER `allChecks` settles. Issue #992. */
+export const zombieScanCheck: CheckFn = checkZombieProcesses;
 
 /** Lookup table for `flo doctor -c <name>`. */
 export const componentMap: Record<string, CheckFn> = {
