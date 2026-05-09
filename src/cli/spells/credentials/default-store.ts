@@ -140,4 +140,5 @@ export const lockedNoopAccessor: CredentialAccessor = {
   async get() { return undefined; },
   async has() { return false; },
   async store() { /* no-op */ },
+  async delete() { return false; },
 };

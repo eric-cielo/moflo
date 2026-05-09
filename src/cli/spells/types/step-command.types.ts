@@ -85,6 +85,13 @@ export interface CredentialAccessor {
    * may make this a no-op; callers should not assume durability.
    */
   store(name: string, value: string): Promise<void>;
+  /**
+   * Remove a credential. Returns true when an entry was deleted, false when
+   * no entry by that name existed. Optional — read-only accessors may omit
+   * it; the runner's auth-error recovery path (#1042) checks for presence
+   * before invoking.
+   */
+  delete?(name: string): Promise<boolean>;
 }
 
 export interface MemoryAccessor {

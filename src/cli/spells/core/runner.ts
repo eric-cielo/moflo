@@ -30,6 +30,10 @@ import { rollbackSteps, type CompletedStep } from './rollback-orchestrator.js';
 import { buildCredentialPatterns, addCredentialPattern, collectCredentialNames } from './credential-masker.js';
 import { executeSingleStep, type StepExecutionState } from './step-executor.js';
 import { collectPrerequisites, resolveUnmetPrerequisites } from './prerequisite-checker.js';
+import { classifyAuthError, type AuthErrorMatch } from './auth-error-classifier.js';
+import { readLineFromStdin } from './stdin-reader.js';
+import { acquireTTYLock } from './tty-lock.js';
+import type { Prerequisite } from '../types/step-command.types.js';
 import {
   collectPreflights,
   checkPreflights,
@@ -319,6 +323,19 @@ export class SpellCaster {
       const resultIdx = stepResults.length;
       stepResults.push(result);
 
+      // Auth-error recovery (issue #1042): if a step fails with an upstream
+      // auth-shaped signal AND the spell declares credential prereqs, offer
+      // (TTY) or surface (non-TTY) the chance to clear + re-prompt + retry
+      // once. The recovery returns a new result (success or marked failure)
+      // that replaces the original; null means no recovery happened.
+      if (result.status === 'failed') {
+        const recovered = await this.tryAuthErrorRecovery(definition, step, state, i, result);
+        if (recovered) {
+          result = recovered;
+          stepResults[resultIdx] = result;
+        }
+      }
+
       if (result.status === 'succeeded' && result.output) {
         if (step.output) variables[step.output] = result.output.data;
         variables[step.id] = result.output.data;
@@ -506,6 +523,189 @@ export class SpellCaster {
     const ctxBuilder = (v: Record<string, unknown>, a: Record<string, unknown>, sid: string, si: number, sig?: AbortSignal) =>
       this.buildContext(v, a, sid, si, sig, state.effectiveSandbox);
     return executeSingleStep(step, state, index, this.registry, ctxBuilder);
+  }
+
+  /**
+   * Issue #1042 — react to upstream auth-shaped errors at step-failure time.
+   *
+   * The runner already validates credentials at preflight (#1007/#1009), but
+   * preflight can't know whether a value the upstream accepts today still
+   * works tomorrow. When a step fails with output that matches the auth
+   * pattern table AND the spell has env-typed credential prereqs, we offer
+   * (TTY) or surface (non-TTY) clearing + re-prompt + a single retry.
+   *
+   * Returns a replacement {@link StepResult} when recovery ran (success on
+   * retry, or a `CREDENTIAL_LIKELY_STALE`-coded failure when non-TTY or when
+   * the retry hits the same auth-shape — second-failure short-circuit). Null
+   * means recovery did not run; the caller should fall through to the
+   * normal failure path with the original result intact.
+   */
+  private async tryAuthErrorRecovery(
+    definition: SpellDefinition,
+    step: import('../types/spell-definition.types.js').StepDefinition,
+    state: StepExecutionState,
+    stepIndex: number,
+    result: StepResult,
+  ): Promise<StepResult | null> {
+    const errorText = this.collectStepErrorText(result);
+    const match = classifyAuthError(errorText);
+    if (!match) return null;
+
+    const credPrereqs = collectPrerequisites(definition, this.registry)
+      .filter((p): p is Prerequisite & { envKey: string } => typeof p.envKey === 'string' && p.envKey.length > 0);
+    if (credPrereqs.length === 0) return null;
+
+    const credKeys = credPrereqs.map(p => p.envKey);
+
+    // Low-confidence patterns (HTTP 403, bare "Unauthorized") are too noisy
+    // to drive destructive credential clearing — a 403 typically means
+    // "wrong scope" not "expired token", and "Unauthorized" appears in many
+    // unrelated 4xx responses. Surface a hint and fall through to the
+    // normal failure path so the user sees the real error.
+    if (match.pattern.confidence === 'low') {
+      console.log(`[spell] Step "${step.id}" failed with a possible auth signal (${match.pattern.reason}).`);
+      console.log(`[spell] If "${credKeys.join(', ')}" is stale, run \`flo spell credentials unset ${credKeys[0]}\` and re-cast.`);
+      return null;
+    }
+
+    const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+    const externalConfirm = state.options.authErrorConfirm;
+
+    if (!interactive && !externalConfirm) {
+      // Non-TTY (cron, headless, daemon spawn) with no host-supplied prompt
+      // hook: surface a dedicated error code so schedulers can route this
+      // to "stale credential, needs human" instead of generic step failure.
+      return this.markCredentialLikelyStale(result, match, credKeys, /* afterReprompt */ false);
+    }
+
+    // TTY path (or test/host-injected confirm). With a single credential
+    // the default is Y (per #1042 issue body); with multiple credentials we
+    // flip the default to N so a single typo doesn't trash a working
+    // credential alongside a stale one. The injected hook fully replaces
+    // both detection and the readline call.
+    const defaultYes = credKeys.length === 1;
+    let confirmed: boolean;
+    if (externalConfirm) {
+      try {
+        confirmed = await externalConfirm({
+          stepId: step.id,
+          pattern: match.pattern.name,
+          reason: match.pattern.reason,
+          credKeys,
+        });
+      } catch {
+        return null;
+      }
+    } else {
+      const lock = acquireTTYLock();
+      try {
+        console.log('');
+        console.log(`[spell] Step "${step.id}" failed with what looks like a credential error.`);
+        console.log(`[spell] Detected: ${match.pattern.reason}`);
+        console.log(`[spell] Stored credential${credKeys.length === 1 ? '' : 's'}: ${credKeys.join(', ')}`);
+        if (!defaultYes) {
+          console.log(`[spell] Multiple credentials in scope — only confirm if you want ALL of them re-prompted.`);
+        }
+        const noun = credKeys.length === 1 ? 'this credential' : 'these credentials';
+        const promptSuffix = defaultYes ? '[Y/n]' : '[y/N]';
+        const prompt = `Clear ${noun} and re-prompt? ${promptSuffix} `;
+        let answer = '';
+        try {
+          answer = await readLineFromStdin(prompt, state.options.signal);
+        } catch {
+          // Abort or stdin closed → carry forward the original failure.
+          return null;
+        }
+        const trimmed = answer.trim().toLowerCase();
+        const isYes = trimmed === 'y' || trimmed === 'yes';
+        confirmed = isYes || (defaultYes && trimmed === '');
+      } finally {
+        lock.release();
+      }
+    }
+    if (!confirmed) return null;
+
+    // Clear store + process.env so the resolver re-prompts. `delete` is
+    // optional on the accessor — read-only fixtures may omit it.
+    for (const key of credKeys) {
+      if (typeof this.credentials.delete === 'function') {
+        try { await this.credentials.delete(key); } catch { /* surface as re-prompt fallthrough */ }
+      }
+      delete process.env[key];
+    }
+
+    // Don't force re-prompt here — we just deleted the value from the store
+    // and process.env, so the standard resolution chain naturally falls
+    // through to the TTY prompt (or, in test mode, lets the host inject a
+    // replacement via the credentials accessor's get() method).
+    const resolution = await resolveUnmetPrerequisites(credPrereqs, {
+      abortSignal: state.options.signal,
+      credentials: this.credentials,
+    });
+    if (!resolution.ok) {
+      return this.markCredentialLikelyStale(result, match, credKeys, /* afterReprompt */ true);
+    }
+
+    // Refresh resolvedCredentials + credential masking patterns so the retry
+    // sees the new value the same way the first attempt did.
+    for (const key of credKeys) {
+      try {
+        const fresh = await this.credentials.get(key);
+        if (fresh !== undefined) {
+          state.resolvedCredentials[key] = fresh;
+          addCredentialPattern(state.credentialPatterns, fresh);
+        }
+      } catch { /* keep going — the env var is set, that's the load-bearing path */ }
+    }
+
+    console.log(`[spell] Retrying "${step.id}" with refreshed credentials...`);
+    const retried = await this.runStep(step, state, stepIndex);
+    if (retried.status === 'failed') {
+      const retryErrorText = this.collectStepErrorText(retried);
+      if (classifyAuthError(retryErrorText)) {
+        // Second auth-shape failure — short-circuit so we don't loop.
+        return this.markCredentialLikelyStale(retried, match, credKeys, /* afterReprompt */ true);
+      }
+    }
+    return retried;
+  }
+
+  private collectStepErrorText(result: StepResult): string {
+    const parts: string[] = [];
+    if (result.error) parts.push(result.error);
+    const out = result.output;
+    if (out && typeof out === 'object') {
+      if (typeof out.error === 'string') parts.push(out.error);
+      // Step outputs frequently embed the upstream payload under data.{stderr,error,message}.
+      const data = (out as { data?: unknown }).data;
+      if (data && typeof data === 'object') {
+        for (const key of ['stderr', 'error', 'message', 'body']) {
+          const v = (data as Record<string, unknown>)[key];
+          if (typeof v === 'string') parts.push(v);
+        }
+      }
+    }
+    return parts.join('\n');
+  }
+
+  private markCredentialLikelyStale(
+    result: StepResult,
+    match: AuthErrorMatch,
+    credKeys: readonly string[],
+    afterReprompt: boolean,
+  ): StepResult {
+    const keyLabel = credKeys.join(', ');
+    const suffix = afterReprompt
+      ? ` Re-prompt accepted but the upstream still rejected the credential — manual intervention required.`
+      : ` Run \`flo spell credentials unset ${credKeys[0]}\` (or any key above) and re-cast on a TTY.`;
+    const prefix = `CREDENTIAL_LIKELY_STALE [${match.pattern.name}: ${match.pattern.reason}] for ${keyLabel}.`;
+    const original = result.error ? ` Underlying error: ${result.error}` : '';
+    return {
+      ...result,
+      status: 'failed',
+      errorCode: 'CREDENTIAL_LIKELY_STALE',
+      error: `${prefix}${suffix}${original}`,
+    };
   }
 
   private async doRollback(completed: CompletedStep[], state: StepExecutionState, results: StepResult[]) {

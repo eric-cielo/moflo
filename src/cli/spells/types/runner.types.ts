@@ -33,6 +33,7 @@ export type SpellErrorCode =
   | 'PREREQUISITES_FAILED'
   | 'PREFLIGHT_FAILED'
   | 'MISSING_CREDENTIAL'
+  | 'CREDENTIAL_LIKELY_STALE'
   | 'SANDBOX_REQUIRED'
   | 'SPELL_CANCELLED';
 
@@ -208,6 +209,22 @@ export interface RunnerOptions {
    * Story #1002.
    */
   readonly forceCredentialReprompt?: boolean;
+
+  /**
+   * Override the auth-error recovery confirm prompt (issue #1042). When
+   * provided, the runner skips TTY detection and the stdin readline call
+   * and uses the returned boolean to decide whether to clear + re-prompt
+   * + retry. Returning true triggers the recovery path even in non-TTY
+   * environments. Returning false carries forward the original failure.
+   * Used by integration tests and by hosts that want to drive the prompt
+   * through their own UI (e.g. dashboard, MCP, daemon).
+   */
+  readonly authErrorConfirm?: (info: {
+    stepId: string;
+    pattern: string;
+    reason: string;
+    credKeys: readonly string[];
+  }) => Promise<boolean>;
 }
 
 // ============================================================================
