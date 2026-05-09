@@ -25,6 +25,7 @@ import {
   handleMemoryBatch,
   matchMemoryRpcRoute,
 } from './daemon-memory-rpc.js';
+import { aggregateClaudeStats, emptyClaudeStatsShape } from './claude-stats.js';
 
 // ============================================================================
 // Types
@@ -287,6 +288,23 @@ async function handleMemoryStats(): Promise<object> {
   }
 }
 
+/**
+ * Build the `/api/claude-stats` response (#1044).
+ *
+ * Reads `~/.claude/projects/<encoded-cwd>/*.jsonl` for the daemon's CWD
+ * and returns the aggregated shape consumed by the Claude Stats tab.
+ * Failures degrade to an empty shape rather than 500ing — the dashboard
+ * is read-only context, never the user's primary workflow.
+ */
+async function handleClaudeStats(): Promise<object> {
+  try {
+    return await aggregateClaudeStats(process.cwd());
+  } catch (err) {
+    console.warn(`[dashboard] claude-stats failed: ${(err as Error).message ?? err}`);
+    return emptyClaudeStatsShape();
+  }
+}
+
 // ============================================================================
 // Flo Run Context — build and store human-readable run metadata
 // ============================================================================
@@ -469,6 +487,8 @@ async function handleRequest(
       sendJson(res, 200, await handleSpells(opts.memory));
     } else if (url === '/api/memory/stats') {
       sendJson(res, 200, await handleMemoryStats());
+    } else if (url === '/api/claude-stats') {
+      sendJson(res, 200, await handleClaudeStats());
     } else {
       sendJson(res, 404, { error: 'Not found' });
     }
@@ -777,14 +797,16 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   <div id="panel-schedules" class="panel" style="display:none"><div id="schedules-active"></div><div id="schedules-events"></div></div>
   <div id="panel-executions" class="panel" style="display:none"></div>
   <div id="panel-memory" class="panel" style="display:none"></div>
+  <div id="panel-claude-stats" class="panel" style="display:none"></div>
   <div id="poll-indicator" class="poll-indicator"></div>
   <script>
     // Tab navigation — plain DOM, no framework
-    const tabIds = ['workers', 'schedules', 'executions', 'memory'];
-    const tabLabels = ['Workers', 'Schedules', 'Flo Runs', 'Memory'];
+    const tabIds = ['workers', 'schedules', 'executions', 'memory', 'claude-stats'];
+    const tabLabels = ['Workers', 'Schedules', 'Flo Runs', 'Memory', 'Claude Stats'];
     let activeTab = 'workers';
 
     function switchTab(id) {
+      const prev = activeTab;
       activeTab = id;
       tabIds.forEach(t => {
         document.getElementById('panel-' + t).style.display = t === id ? '' : 'none';
@@ -792,6 +814,12 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       document.querySelectorAll('.nav-tab').forEach(el => {
         el.classList.toggle('active', el.dataset.tab === id);
       });
+      // Tabs whose data is fetched lazily (currently only Claude Stats)
+      // need an immediate poll on entry — otherwise the user waits up to
+      // the 5s polling interval for first paint.
+      if (id === 'claude-stats' && prev !== id && typeof poll === 'function') {
+        poll();
+      }
     }
 
     // Build nav tabs
@@ -1087,20 +1115,132 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         '<table><thead><tr><th>Namespace</th><th>Entries</th></tr></thead><tbody>' + rows + '</tbody></table>';
     }
 
+    // Format: 1234567 → "1.23M", 5432 → "5.43K"
+    const fmtCount = (n) => {
+      if (n == null) return '-';
+      if (n < 1000) return String(n);
+      if (n < 1_000_000) return (n / 1000).toFixed(2) + 'K';
+      if (n < 1_000_000_000) return (n / 1_000_000).toFixed(2) + 'M';
+      return (n / 1_000_000_000).toFixed(2) + 'B';
+    };
+    // USD with two decimals; sub-cent renders as "<$0.01".
+    const fmtUsd = (n) => {
+      if (n == null) return '-';
+      if (n === 0) return '$0.00';
+      if (n < 0.01) return '<$0.01';
+      return '$' + n.toFixed(2);
+    };
+
+    function renderClaudeStats(cs) {
+      const el = document.getElementById('panel-claude-stats');
+      if (!cs) { el.innerHTML = '<div class="empty">Loading...</div>'; return; }
+
+      // Always-visible disclaimer banner — kept verbatim per the issue's
+      // wording so the user understands the scope and limits at a glance.
+      const disclaimer =
+        '<div style="background:#161b22;border:1px solid #30363d;border-left:3px solid #d29922;border-radius:6px;padding:10px 14px;margin-bottom:16px;color:#c9d1d9;font-size:0.85rem;line-height:1.5">' +
+        '<strong>Local stats only.</strong> Counts what Claude Code wrote to disk for THIS project on THIS machine. ' +
+        'Doesn\\'t include claude.ai web sessions, other projects, other devices, or your account-level plan quota. ' +
+        'Cost is a local estimate using current public model rates.' +
+        '</div>';
+
+      if (!cs.available) {
+        el.innerHTML = disclaimer +
+          '<div class="empty">No Claude Code sessions found in this project' +
+          (cs.projectDir ? ' (looked in <code style="color:#8b949e">' + esc(cs.projectDir) + '</code>)' : '') +
+          '</div>';
+        return;
+      }
+
+      const w = cs.windows;
+
+      // Summary windows (today / 7d / 30d / lifetime).
+      const winRow = (label, win) => {
+        return '<tr><td style="font-weight:600">' + label + '</td>' +
+          '<td>' + fmtCount(win.sessions) + '</td>' +
+          '<td>' + fmtCount(win.tokens.total) + '</td>' +
+          '<td>' + fmtCount(win.tokens.input) + '</td>' +
+          '<td>' + fmtCount(win.tokens.output) + '</td>' +
+          '<td>' + fmtCount(win.tokens.cacheCreate) + '</td>' +
+          '<td>' + fmtCount(win.tokens.cacheRead) + '</td>' +
+          '<td>' + fmtUsd(win.costUsd) + '</td></tr>';
+      };
+      const winTable =
+        '<h2>Sessions, Tokens, Cost</h2>' +
+        '<table><thead><tr>' +
+          '<th>Window</th><th>Sessions</th><th>Total Tokens</th>' +
+          '<th>Input</th><th>Output</th><th>Cache Create</th><th>Cache Read</th><th>Est. Cost</th>' +
+        '</tr></thead><tbody>' +
+        winRow('Today', w.today) +
+        winRow('Last 7 days', w.last7d) +
+        winRow('Last 30 days', w.last30d) +
+        winRow('Lifetime', w.lifetime) +
+        '</tbody></table>';
+
+      // Model distribution.
+      const modelRows = (cs.models && cs.models.length)
+        ? cs.models.map(m => '<tr><td>' + esc(m.model) + '</td>' +
+            '<td>' + fmtCount(m.messages) + '</td>' +
+            '<td>' + fmtCount(m.tokens) + '</td></tr>').join('')
+        : '<tr><td colspan="3" class="empty">No model data</td></tr>';
+      const modelsTable =
+        '<h2>Models Used</h2>' +
+        '<table><thead><tr><th>Model</th><th>Messages</th><th>Total Tokens</th></tr></thead>' +
+        '<tbody>' + modelRows + '</tbody></table>';
+
+      // Top-10 tools.
+      const toolRows = (cs.tools && cs.tools.length)
+        ? cs.tools.map(t => '<tr><td>' + esc(t.name) + '</td><td>' + fmtCount(t.count) + '</td></tr>').join('')
+        : '<tr><td colspan="2" class="empty">No tool calls recorded</td></tr>';
+      const toolsTable =
+        '<h2>Top Tools</h2>' +
+        '<table><thead><tr><th>Tool</th><th>Calls</th></tr></thead>' +
+        '<tbody>' + toolRows + '</tbody></table>';
+
+      // Headline cards.
+      const cards =
+        '<div class="grid">' +
+        '<div class="stat-card"><div class="label">Total Sessions</div><div class="value">' + fmtCount(cs.totalSessions) + '</div></div>' +
+        '<div class="stat-card"><div class="label">Sessions w/ Errors</div><div class="value">' + fmtCount(cs.errorSessions) + '</div></div>' +
+        '<div class="stat-card"><div class="label">Median Duration</div><div class="value">' + fmtDuration(cs.sessionDurationMs.median) + '</div></div>' +
+        '<div class="stat-card"><div class="label">p95 Duration</div><div class="value">' + fmtDuration(cs.sessionDurationMs.p95) + '</div></div>' +
+        '</div>';
+
+      // Footer note linking to the rate-table source comment.
+      const footer =
+        '<div class="dim" style="margin-top:12px">' +
+        'Cost estimate uses rates from <code>src/cli/services/claude-model-rates.ts</code> ' +
+        '(USD/1M tokens, list price). Aggregation took ' + fmtDuration(cs.elapsedMs) +
+        (cs.parseErrors ? ' &middot; ' + cs.parseErrors + ' lines skipped (parse error)' : '') +
+        '</div>';
+
+      el.innerHTML = disclaimer + cards + winTable + modelsTable + toolsTable + footer;
+    }
+
     // Polling
     const poll = async () => {
       try {
-        const [s, sc, w, m] = await Promise.all([
+        // Claude Stats aggregation walks the user's transcript dir — only
+        // pull it when the tab is visible so steady-state polling stays
+        // four lightweight endpoints. Switching to the tab triggers an
+        // immediate poll so the user doesn't wait up to 5s for first paint.
+        const wantClaudeStats = activeTab === 'claude-stats';
+        const fetches = [
           fetch('/api/status').then(r => r.json()),
           fetch('/api/schedules').then(r => r.json()),
           fetch('/api/spells').then(r => r.json()),
           fetch('/api/memory/stats').then(r => r.json()),
-        ]);
+          wantClaudeStats
+            ? fetch('/api/claude-stats').then(r => r.json()).catch(() => null)
+            : Promise.resolve(null),
+        ];
+        const [s, sc, w, m, cs] = await Promise.all(fetches);
         renderStatus(s);
         renderWorkers(s);
         renderSchedules(sc);
         renderExecutions(w);
         renderMemory(m);
+        if (wantClaudeStats) renderClaudeStats(cs);
         document.getElementById('poll-indicator').textContent = 'Last poll: ' + new Date().toLocaleTimeString();
       } catch (e) {
         console.error('Poll failed:', e);
