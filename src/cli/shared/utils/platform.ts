@@ -2,6 +2,8 @@
  * Cross-platform utilities for shell commands and path handling.
  */
 
+export const PLATFORM_AUDIT_DATE = '2026-04-01';
+
 /** True when running on Windows */
 export const IS_WINDOWS = process.platform === 'win32';
 
