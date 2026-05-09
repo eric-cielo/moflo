@@ -2,9 +2,9 @@
  * Tests for the Claude Stats aggregator (#1044).
  *
  * Drive the JSONL streaming aggregator against a real on-disk tmpdir of
- * fixture transcripts. The cost computation, time-bucketing, and tool/error
- * extraction logic is what's at risk of regression — exercise each
- * end-to-end rather than mocking out fs and re-implementing the loop.
+ * fixture transcripts. The time-bucketing, model canonicalisation, and
+ * tool/error extraction logic is what's at risk of regression — exercise
+ * each end-to-end rather than mocking out fs and re-implementing the loop.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -14,14 +14,9 @@ import { join } from 'node:path';
 import {
   _resetClaudeStatsCache,
   aggregateClaudeStats,
+  canonicalModelKey,
   encodeCwdForClaudeProjects,
 } from '../../services/claude-stats.js';
-import {
-  CLAUDE_RATES,
-  canonicalModelKey,
-  costFromUsage,
-  rateForModel,
-} from '../../services/claude-model-rates.js';
 
 // ============================================================================
 // Helpers
@@ -93,10 +88,10 @@ describe('encodeCwdForClaudeProjects', () => {
 });
 
 // ============================================================================
-// Rate table + canonicalisation
+// Model name canonicalisation
 // ============================================================================
 
-describe('claude-model-rates', () => {
+describe('canonicalModelKey', () => {
   it('maps dated/dotted model names to canonical keys', () => {
     expect(canonicalModelKey('claude-opus-4-7')).toBe('opus');
     expect(canonicalModelKey('claude-3-5-sonnet-20241022')).toBe('sonnet');
@@ -104,17 +99,6 @@ describe('claude-model-rates', () => {
     expect(canonicalModelKey('Opus')).toBe('opus');
     expect(canonicalModelKey('made-up-model')).toBe('unknown');
     expect(canonicalModelKey(undefined)).toBe('unknown');
-  });
-
-  it('computes USD cost per million tokens correctly', () => {
-    const rate = CLAUDE_RATES.sonnet;
-    // 1M input tokens at $3 + 0.5M output at $15 = $3 + $7.50 = $10.50.
-    const cost = costFromUsage(rate, { input: 1_000_000, output: 500_000 });
-    expect(cost).toBeCloseTo(10.5, 5);
-  });
-
-  it('rateForModel falls back to unknown for unrecognised', () => {
-    expect(rateForModel('vapor-ai-7')).toEqual(CLAUDE_RATES.unknown);
   });
 });
 
@@ -128,7 +112,6 @@ describe('aggregateClaudeStats', () => {
     expect(stats.available).toBe(false);
     expect(stats.totalSessions).toBe(0);
     expect(stats.windows.lifetime.tokens.total).toBe(0);
-    expect(stats.windows.lifetime.costUsd).toBe(0);
   });
 
   it('returns the all-zero unavailable shape when the dir does not exist', async () => {
@@ -136,7 +119,7 @@ describe('aggregateClaudeStats', () => {
     expect(stats.available).toBe(false);
   });
 
-  it('parses a single assistant line and surfaces token + cost totals', async () => {
+  it('parses a single assistant line and surfaces token totals', async () => {
     writeFileSync(
       join(dir, 'session-a.jsonl'),
       assistantLine({
@@ -164,11 +147,6 @@ describe('aggregateClaudeStats', () => {
     expect(stats.windows.lifetime.tokens.cacheCreate).toBe(1000);
     expect(stats.windows.lifetime.tokens.cacheRead).toBe(500);
     expect(stats.windows.lifetime.tokens.total).toBe(1650);
-
-    // Hand-computed: 100 * 15 + 50 * 75 + 1000 * 18.75 + 500 * 1.5
-    //              = 1500 + 3750 + 18750 + 750 = 24750 (per-1M units).
-    // Divide by 1e6 → 0.02475
-    expect(stats.windows.lifetime.costUsd).toBeCloseTo(0.0248, 3);
   });
 
   it('buckets tokens correctly across today / 7d / 30d / lifetime', async () => {

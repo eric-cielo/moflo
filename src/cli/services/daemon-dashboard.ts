@@ -1123,25 +1123,19 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       if (n < 1_000_000_000) return (n / 1_000_000).toFixed(2) + 'M';
       return (n / 1_000_000_000).toFixed(2) + 'B';
     };
-    // USD with two decimals; sub-cent renders as "<$0.01".
-    const fmtUsd = (n) => {
-      if (n == null) return '-';
-      if (n === 0) return '$0.00';
-      if (n < 0.01) return '<$0.01';
-      return '$' + n.toFixed(2);
-    };
-
     function renderClaudeStats(cs) {
       const el = document.getElementById('panel-claude-stats');
       if (!cs) { el.innerHTML = '<div class="empty">Loading...</div>'; return; }
 
-      // Always-visible disclaimer banner — kept verbatim per the issue's
-      // wording so the user understands the scope and limits at a glance.
+      // Always-visible disclaimer banner — keeps the scope and limits in
+      // view so the numbers aren't read as account-wide truth.
       const disclaimer =
         '<div style="background:#161b22;border:1px solid #30363d;border-left:3px solid #d29922;border-radius:6px;padding:10px 14px;margin-bottom:16px;color:#c9d1d9;font-size:0.85rem;line-height:1.5">' +
-        '<strong>Local stats only.</strong> Counts what Claude Code wrote to disk for THIS project on THIS machine. ' +
-        'Doesn\\'t include claude.ai web sessions, other projects, other devices, or your account-level plan quota. ' +
-        'Cost is a local estimate using current public model rates.' +
+        '<strong>Local primary-session stats only.</strong> Counts what Claude Code wrote to disk for THIS project on THIS machine. ' +
+        '<strong>Excludes sub-sessions spawned by Task-tool agents</strong> ' +
+        '(e.g. <code>/simplify</code>, <code>/ultrareview</code>, Explore) — their Sonnet/Haiku usage is stored in per-session ' +
+        '<code>subagents/</code> transcripts the dashboard doesn\\'t yet read, so totals here skew toward the primary model. ' +
+        'Also excludes claude.ai web sessions, other projects, other devices, and your account-level plan quota.' +
         '</div>';
 
       if (!cs.available) {
@@ -1162,14 +1156,13 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
           '<td>' + fmtCount(win.tokens.input) + '</td>' +
           '<td>' + fmtCount(win.tokens.output) + '</td>' +
           '<td>' + fmtCount(win.tokens.cacheCreate) + '</td>' +
-          '<td>' + fmtCount(win.tokens.cacheRead) + '</td>' +
-          '<td>' + fmtUsd(win.costUsd) + '</td></tr>';
+          '<td>' + fmtCount(win.tokens.cacheRead) + '</td></tr>';
       };
       const winTable =
-        '<h2>Sessions, Tokens, Cost</h2>' +
+        '<h2>Sessions and Tokens</h2>' +
         '<table><thead><tr>' +
           '<th>Window</th><th>Sessions</th><th>Total Tokens</th>' +
-          '<th>Input</th><th>Output</th><th>Cache Create</th><th>Cache Read</th><th>Est. Cost</th>' +
+          '<th>Input</th><th>Output</th><th>Cache Create</th><th>Cache Read</th>' +
         '</tr></thead><tbody>' +
         winRow('Today', w.today) +
         winRow('Last 7 days', w.last7d) +
@@ -1184,7 +1177,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
             '<td>' + fmtCount(m.tokens) + '</td></tr>').join('')
         : '<tr><td colspan="3" class="empty">No model data</td></tr>';
       const modelsTable =
-        '<h2>Models Used</h2>' +
+        '<h2>Models Used (primary sessions)</h2>' +
         '<table><thead><tr><th>Model</th><th>Messages</th><th>Total Tokens</th></tr></thead>' +
         '<tbody>' + modelRows + '</tbody></table>';
 
@@ -1206,11 +1199,9 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         '<div class="stat-card"><div class="label">p95 Duration</div><div class="value">' + fmtDuration(cs.sessionDurationMs.p95) + '</div></div>' +
         '</div>';
 
-      // Footer note linking to the rate-table source comment.
       const footer =
         '<div class="dim" style="margin-top:12px">' +
-        'Cost estimate uses rates from <code>src/cli/services/claude-model-rates.ts</code> ' +
-        '(USD/1M tokens, list price). Aggregation took ' + fmtDuration(cs.elapsedMs) +
+        'Aggregation took ' + fmtDuration(cs.elapsedMs) +
         (cs.parseErrors ? ' &middot; ' + cs.parseErrors + ' lines skipped (parse error)' : '') +
         '</div>';
 

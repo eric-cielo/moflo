@@ -5,6 +5,12 @@
  * the JSON shape consumed by The Luminarium's "Claude Stats" tab. Pure I/O
  * + reduce; no persistent storage, no network.
  *
+ * Scope: primary-session transcripts only (top-level `*.jsonl`). Per-session
+ * `<id>/subagents/agent-*.jsonl` files (Task-tool spawns) are NOT walked, so
+ * Sonnet/Haiku usage from /simplify, /ultrareview, etc. is missing from the
+ * model distribution. Tracked as a follow-up — when wiring it up, recurse
+ * into `subagents/` and roll the subagent mtimes/sizes into the cache key.
+ *
  * Performance posture:
  *   - Streaming readline (not `readFileSync().split('\n')`) — transcripts
  *     can grow to tens of MB and we don't want to balloon dashboard memory.
@@ -20,7 +26,21 @@ import { stat, readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { canonicalModelKey, costFromUsage, rateForModel } from './claude-model-rates.js';
+
+/**
+ * Map a transcript model name to a stable display key. Recognises bare family
+ * names ("opus", "sonnet", "haiku"), dated/dotted variants
+ * ("claude-opus-4-7", "claude-3-5-sonnet-20241022"), and is case-insensitive.
+ * Anything else falls through to `'unknown'`.
+ */
+export function canonicalModelKey(model: string | null | undefined): string {
+  if (!model || typeof model !== 'string') return 'unknown';
+  const lower = model.toLowerCase();
+  if (lower.includes('opus')) return 'opus';
+  if (lower.includes('sonnet')) return 'sonnet';
+  if (lower.includes('haiku')) return 'haiku';
+  return 'unknown';
+}
 
 // ============================================================================
 // Public types
@@ -35,7 +55,6 @@ export interface ClaudeStatsWindow {
     readonly cacheRead: number;
     readonly total: number;
   };
-  readonly costUsd: number;
 }
 
 export interface ModelDistribution {
@@ -120,11 +139,10 @@ interface MutableWindow {
   output: number;
   cacheCreate: number;
   cacheRead: number;
-  costUsd: number;
 }
 
 function emptyWindow(): MutableWindow {
-  return { sessions: new Set(), input: 0, output: 0, cacheCreate: 0, cacheRead: 0, costUsd: 0 };
+  return { sessions: new Set(), input: 0, output: 0, cacheCreate: 0, cacheRead: 0 };
 }
 
 function freezeWindow(w: MutableWindow): ClaudeStatsWindow {
@@ -138,12 +156,7 @@ function freezeWindow(w: MutableWindow): ClaudeStatsWindow {
       cacheRead: w.cacheRead,
       total,
     },
-    costUsd: round4(w.costUsd),
   };
-}
-
-function round4(n: number): number {
-  return Math.round(n * 10_000) / 10_000;
 }
 
 interface SessionMeta {
@@ -240,21 +253,18 @@ function consumeLine(agg: Aggregator, line: JsonlLine, now: number): void {
   const totalThisLine = input + output + cc + cr;
 
   const modelKey = canonicalModelKey(line.message?.model);
-  const rate = rateForModel(line.message?.model);
-  const cost = costFromUsage(rate, { input, output, cacheCreate: cc, cacheRead: cr });
-
   agg.modelMessages.set(modelKey, (agg.modelMessages.get(modelKey) ?? 0) + 1);
   agg.modelTokens.set(modelKey, (agg.modelTokens.get(modelKey) ?? 0) + totalThisLine);
 
   // Lifetime always.
-  bump(agg.lifetime, sessionId, input, output, cc, cr, cost);
+  bump(agg.lifetime, sessionId, input, output, cc, cr);
 
   // Bucketed windows — only when we have a usable timestamp.
   if (Number.isFinite(ts)) {
     const ageMs = now - ts;
-    if (ageMs >= 0 && ageMs < DAY_MS) bump(agg.today, sessionId, input, output, cc, cr, cost);
-    if (ageMs >= 0 && ageMs < 7 * DAY_MS) bump(agg.last7d, sessionId, input, output, cc, cr, cost);
-    if (ageMs >= 0 && ageMs < 30 * DAY_MS) bump(agg.last30d, sessionId, input, output, cc, cr, cost);
+    if (ageMs >= 0 && ageMs < DAY_MS) bump(agg.today, sessionId, input, output, cc, cr);
+    if (ageMs >= 0 && ageMs < 7 * DAY_MS) bump(agg.last7d, sessionId, input, output, cc, cr);
+    if (ageMs >= 0 && ageMs < 30 * DAY_MS) bump(agg.last30d, sessionId, input, output, cc, cr);
   }
 }
 
@@ -265,14 +275,12 @@ function bump(
   output: number,
   cc: number,
   cr: number,
-  cost: number,
 ): void {
   if (sessionId) w.sessions.add(sessionId);
   w.input += input;
   w.output += output;
   w.cacheCreate += cc;
   w.cacheRead += cr;
-  w.costUsd += cost;
 }
 
 // ============================================================================
