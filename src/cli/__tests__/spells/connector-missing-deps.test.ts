@@ -1,10 +1,12 @@
 /**
  * Lazy-load error paths for optional-dependency connectors (issue #442).
  *
- * `imapflow`, `mailparser`, and `@modelcontextprotocol/sdk` are declared as
- * optionalDependencies and loaded via `await import()` on first use. When
- * they're absent, each connector must throw a single actionable message with
- * the exact install command rather than a cryptic MODULE_NOT_FOUND.
+ * `imapflow` and `mailparser` are declared as `peerDependenciesMeta.optional`;
+ * `@modelcontextprotocol/sdk` is a hard dependency. All three are loaded via
+ * `await import()` on first use. When they're absent (a corrupted install or
+ * a consumer that hasn't opted into the IMAP peers), each connector must
+ * throw a single actionable message with the exact install command rather
+ * than a cryptic MODULE_NOT_FOUND.
  *
  * Simulates a missing module by mocking the specifier with a getter that
  * raises ERR_MODULE_NOT_FOUND on first property access — which is what the

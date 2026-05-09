@@ -163,4 +163,97 @@ describe('retrieveModel', () => {
       }),
     ).rejects.toThrow(/extracted but .* is missing/);
   });
+
+  it('retries on transient 5xx then succeeds (issue #1021 cold-fetch)', async () => {
+    const cacheDir = join(tmp, 'cache');
+    let calls = 0;
+    const fetchImpl = vi.fn(async () => {
+      calls++;
+      if (calls < 3) {
+        return {
+          ok: false,
+          status: 503,
+          statusText: 'Service Unavailable',
+          body: null,
+          headers: { get: () => null },
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        body: Readable.toWeb(Readable.from(Buffer.from('ok'))) as ReadableStream<Uint8Array>,
+        headers: { get: () => null },
+      };
+    }) as unknown as typeof fetch;
+    const extract = vi.fn(async ({ cwd }: { file: string; cwd: string }) => {
+      mkdirSync(join(cwd, 'fast-all-MiniLM-L6-v2'), { recursive: true });
+    });
+
+    const modelDir = await retrieveModel('fast-all-MiniLM-L6-v2', cacheDir, false, {
+      fetchImpl,
+      extract: extract as unknown as Parameters<typeof retrieveModel>[3]['extract'],
+    });
+
+    expect(calls).toBe(3);
+    expect(existsSync(join(modelDir, COMPLETION_SENTINEL))).toBe(true);
+  });
+
+  it('does NOT retry on a 4xx (deterministic, retry would be wasted)', async () => {
+    const cacheDir = join(tmp, 'cache');
+    const fetchImpl = vi.fn(async () => ({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      body: null,
+      headers: { get: () => null },
+    })) as unknown as typeof fetch;
+
+    await expect(
+      retrieveModel('fast-all-MiniLM-L6-v2', cacheDir, false, { fetchImpl }),
+    ).rejects.toThrow(/404/);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('serializes concurrent retrievers — only one process performs the download', async () => {
+    const cacheDir = join(tmp, 'cache');
+    let extractCalls = 0;
+    let fetchCalls = 0;
+    const fetchImpl = vi.fn(async () => {
+      fetchCalls++;
+      // Stretch the response so concurrent callers definitely overlap.
+      await new Promise(r => setTimeout(r, 50));
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        body: Readable.toWeb(Readable.from(Buffer.from('tarball'))) as ReadableStream<Uint8Array>,
+        headers: { get: () => null },
+      };
+    }) as unknown as typeof fetch;
+    const extract = vi.fn(async ({ cwd }: { file: string; cwd: string }) => {
+      extractCalls++;
+      mkdirSync(join(cwd, 'fast-all-MiniLM-L6-v2'), { recursive: true });
+    });
+
+    const results = await Promise.all([
+      retrieveModel('fast-all-MiniLM-L6-v2', cacheDir, false, {
+        fetchImpl,
+        extract: extract as unknown as Parameters<typeof retrieveModel>[3]['extract'],
+      }),
+      retrieveModel('fast-all-MiniLM-L6-v2', cacheDir, false, {
+        fetchImpl,
+        extract: extract as unknown as Parameters<typeof retrieveModel>[3]['extract'],
+      }),
+      retrieveModel('fast-all-MiniLM-L6-v2', cacheDir, false, {
+        fetchImpl,
+        extract: extract as unknown as Parameters<typeof retrieveModel>[3]['extract'],
+      }),
+    ]);
+
+    expect(results.every(r => r === results[0])).toBe(true);
+    expect(fetchCalls).toBe(1);
+    expect(extractCalls).toBe(1);
+    expect(existsSync(join(results[0], COMPLETION_SENTINEL))).toBe(true);
+  });
 });

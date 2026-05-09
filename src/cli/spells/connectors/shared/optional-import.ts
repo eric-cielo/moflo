@@ -1,11 +1,18 @@
 /**
  * Lazy loader for optional SDK dependencies.
  *
- * Connectors wrapping heavy SDKs (imapflow, mailparser, @modelcontextprotocol/sdk)
- * declare them as optionalDependencies so consumers that don't use the connector
- * don't need to install them. This helper centralizes the lazy-import +
- * MODULE_NOT_FOUND translation + module-scope memoization that each connector
- * would otherwise re-implement.
+ * Connectors wrapping truly optional SDKs (imapflow, mailparser) declare them
+ * as `peerDependenciesMeta.optional` so consumers that don't use the connector
+ * don't need to install them. The `@modelcontextprotocol/sdk` is a hard
+ * `dependency` because the MCP connector is a headline feature, but it is still
+ * routed through this helper so a corrupted install still yields an actionable
+ * message instead of a raw MODULE_NOT_FOUND.
+ *
+ * Every specifier passed to `loadOptional()` MUST be declared in package.json
+ * (dependencies, optionalDependencies, or peerDependenciesMeta). The drift
+ * guard at `src/cli/__tests__/spells/connectors/optional-import-declared.test.ts`
+ * enforces this — it walks shipped connectors, extracts every specifier, and
+ * fails the build if one is undeclared.
  */
 
 const moduleCache = new Map<string, Promise<unknown>>();

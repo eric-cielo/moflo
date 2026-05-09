@@ -46,16 +46,20 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      # Caches the fastembed model (~90 MB). Key includes the lockfile hash
-      # so a fastembed bump invalidates automatically, and the model name so
-      # swapping models never reuses a stale vector space. No restore-keys —
-      # partial prefix matches could restore the wrong model's binary blobs
-      # on a future model swap. See ADR-EMB-001 / epic #527.
+      # Caches the fastembed model (~90 MB). Key is keyed off the in-tree
+      # model loader source (the only thing that can change the cache layout
+      # or model URL) plus the model name. Was keyed off the lockfile hash,
+      # but fastembed is a vendored in-tree module — lockfile changes don't
+      # affect it, so keying on the lockfile invalidated the cache on every
+      # routine dependency bump and forced a cold-fetch race on Windows
+      # runners (issue #1021). No restore-keys — partial prefix matches could
+      # restore the wrong model's binary blobs on a future model swap.
+      # See ADR-EMB-001 / epic #527.
       - name: Cache fastembed model
         uses: actions/cache@v5
         with:
           path: ~/.cache/fastembed
-          key: fastembed-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-fast-all-MiniLM-L6-v2
+          key: fastembed-${{ runner.os }}-${{ hashFiles('src/cli/embeddings/fastembed-inline/**/*.ts') }}-fast-all-MiniLM-L6-v2
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps

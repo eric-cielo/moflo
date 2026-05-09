@@ -721,11 +721,12 @@ your-project/
 
 The connector registry scans for `.js`, `.ts`, `.mjs`, and `.mts` files.
 
-> **Heavy-SDK connectors** — the bundled `imap` and `mcp` connectors declare
-> `imapflow`, `mailparser`, and `@modelcontextprotocol/sdk` as
-> `optionalDependencies`. If your spell uses those connectors, install the
-> peers: `npm i imapflow mailparser @modelcontextprotocol/sdk`. Connectors
-> that only use `fetch` (like `slack` and `graph`) need no extra installs.
+> **Heavy-SDK connectors** — `@modelcontextprotocol/sdk` is a hard dependency
+> of moflo (MCP is a headline integration), so the bundled `mcp` connector
+> works out of the box. The bundled `imap` connector declares `imapflow` and
+> `mailparser` as `peerDependenciesMeta.optional`; install them only if your
+> spell uses the IMAP connector: `npm i imapflow mailparser`. Connectors that
+> only use `fetch` (like `slack` and `graph`) need no extra installs.
 
 ### When to Create a Connector vs a Step
 
