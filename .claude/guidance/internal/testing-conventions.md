@@ -160,7 +160,39 @@ The smoke harness is also a path-safety enforcement point — see `feedback_path
 
 ---
 
-## 11. Diagnosing a Failure — Re-Verify Individually
+## 11. Test What You Change — Real-Functionality Coverage Is Mandatory
+
+**Any changed functionality must be tested to the degree it can be tested.** A bug fix or feature without a test is incomplete — even when CI is green and the unit tests still pass, "no test for the new path" means you don't know if the change actually does what you think. Default posture: **add the test before declaring done.**
+
+The standard scales with what's testable, not with how much effort feels appropriate:
+
+| Surface | Standard test to add |
+|---------|----------------------|
+| Pure function (classifier, parser, serializer) | Unit test — happy path + each branch + each negative case |
+| Module-level integration (runner ↔ checker, hook ↔ executor) | Integration test exercising the real wiring with fakes only at the I/O boundary |
+| Cross-module / system behavior (full spell cast, MCP handler lifecycle) | System E2E in `tests/system/` driving the real coordinator (see §5) |
+| Behavior that depends on TTY / network / OS state that the runner can't simulate cleanly | Inject the dependency through an option (e.g. `RunnerOptions.authErrorConfirm` from #1042); test against the injected hook; document the live-machine smoke step the maintainer must run |
+
+**No exceptions for "I can't easily mock this."** If the production code is hard to test, that's design feedback — refactor to an inject-the-dependency shape so the test surface is reachable. The runner's `authErrorConfirm` hook and the prereq resolver's `promptLine` injection are the canonical examples.
+
+### Smoke tests: reliable or not at all
+
+**Smoke tests catch what unit tests can't and pay for themselves only when they're reliable.** A flaky smoke test trains everyone to ignore the smoke signal — the next *real* break gets ignored too (Broken Window applies here as forcefully as anywhere). Before adding a smoke test:
+
+| Constraint | Required answer |
+|------------|-----------------|
+| Run time | Bounded — under 30s per case, under 2 min for a full smoke pass |
+| Determinism | No timing races, no network reachability assumptions, no flakiness on cold cache |
+| Failure mode | A red signal means a real bug, not "machine was slow today" |
+| Maintenance cost | Lower than the cost of catching the bug class some other way |
+
+If the smoke test can't satisfy all four, **don't add it** — find the unit / integration / system-E2E shape that does, or document the live-machine validation as part of the merge gate (per the AC pattern in #1042: "Real-scenario verification (mandatory before merge)" with explicit step-by-step the maintainer runs).
+
+The consumer-smoke harness (§10) is the existing canonical reliable smoke — if you're adding more smoke surface, model it on that one, not on a one-off shell script that depends on environmental coincidence.
+
+---
+
+## 12. Diagnosing a Failure — Re-Verify Individually
 
 **A test that fails in the full suite is either a real failure or a flake; the way to tell is to re-run it alone.** Per the Broken Window rule:
 
