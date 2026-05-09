@@ -21,8 +21,7 @@ import { findProjectRoot } from '../services/project-root.js';
 import { buildGrimoire } from '../services/grimoire-builder.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { inferSpellTier, type SpellTier } from '../spells/core/spell-tier.js';
-import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
-import type { MemoryAccessor } from '../spells/types/step-command.types.js';
+import { getSharedMemoryAccessor } from '../services/daemon-dashboard.js';
 
 
 // ============================================================================
@@ -86,32 +85,11 @@ function trackResult(tracked: TrackedSpell, result: SpellResult): void {
   tracked.completedAt = new Date().toISOString();
 }
 
-// ============================================================================
-// Memory accessor (lazy, cached) — #1016
-// Without this, runner.storeProgress() writes go to noopMemory and the
-// Luminarium's "Flo Runs" tab never sees flo run / spell_cast invocations.
-// Epic runs already wire this via runner-adapter.ts; MCP spell tools were
-// the missing link.
-// ============================================================================
-
-// Promise-memoized so two concurrent first-casts share a single init —
-// otherwise both would open their own DB handle and the loser's accessor
-// would leak.
-let memoryAccessorPromise: Promise<MemoryAccessor | null> | null = null;
-
-function getMemoryAccessor(): Promise<MemoryAccessor | null> {
-  if (memoryAccessorPromise) return memoryAccessorPromise;
-  memoryAccessorPromise = (async () => {
-    try {
-      return await createDashboardMemoryAccessor();
-    } catch (err) {
-      console.warn(`[spell-tools] memory accessor unavailable: ${(err as Error).message ?? err}`);
-      console.warn('[spell-tools] spell runs will NOT appear in The Luminarium');
-      return null;
-    }
-  })();
-  return memoryAccessorPromise;
-}
+// Memory accessor wiring (#1016): without `getSharedMemoryAccessor()`,
+// runner.storeProgress() writes go to noopMemory and The Luminarium's
+// "Flo Runs" tab never sees flo run / spell_cast invocations. The shared
+// accessor is the same singleton runner-adapter.ts uses for `flo epic`
+// (one cold init per process — see #1020).
 
 /** Execute a definition via the engine with tracking and error handling. */
 async function executeAndTrack(
@@ -129,7 +107,7 @@ async function executeAndTrack(
 
   try {
     const sandboxConfig = await engine.loadSandboxConfigFromProject(findProjectRoot());
-    const memory = await getMemoryAccessor();
+    const memory = await getSharedMemoryAccessor();
     const result = await engine.bridgeExecuteSpell(definition, args, {
       spellId,
       sandboxConfig,

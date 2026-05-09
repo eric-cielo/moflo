@@ -55,6 +55,47 @@ export interface DashboardHandle {
 export const DEFAULT_DASHBOARD_PORT = 3117;
 
 /**
+ * Process-wide promise for the shared MemoryAccessor. Memoized as a *promise*
+ * (not the resolved value) so concurrent first-callers share a single init
+ * — without this, two near-simultaneous calls would each kick off their own
+ * `createDashboardMemoryAccessor()` chain and the loser's accessor would
+ * leak. The race fix originated in #1016 inside `mcp-tools/spell-tools.ts`;
+ * #1020 lifted it into this shared helper so `epic/runner-adapter.ts` (which
+ * had the same latent race) and any future caller benefit from one cold
+ * init per process.
+ */
+let _sharedAccessorPromise: Promise<MemoryAccessor | null> | null = null;
+
+/**
+ * Return the process-wide MemoryAccessor, lazy-initialized on first call and
+ * cached as a promise thereafter. Returns `null` (with a warn log) if init
+ * fails so callers can degrade gracefully — the spell still runs, the user
+ * just doesn't see the run in The Luminarium.
+ */
+export function getSharedMemoryAccessor(): Promise<MemoryAccessor | null> {
+  if (_sharedAccessorPromise) return _sharedAccessorPromise;
+  _sharedAccessorPromise = (async () => {
+    try {
+      return await createDashboardMemoryAccessor();
+    } catch (err) {
+      console.warn(`[memory] dashboard accessor unavailable: ${(err as Error).message ?? err}`);
+      console.warn('[memory] runs will NOT appear in The Luminarium');
+      return null;
+    }
+  })();
+  return _sharedAccessorPromise;
+}
+
+/**
+ * Test-only: reset the cached promise so a subsequent call re-runs init.
+ * Production code MUST NOT call this — leaks the previous accessor's DB
+ * handle if the prior init succeeded.
+ */
+export function _resetSharedMemoryAccessorForTest(): void {
+  _sharedAccessorPromise = null;
+}
+
+/**
  * Create a MemoryAccessor backed by the sql.js/HNSW memory database.
  * Lazy-loads memory-initializer to avoid circular deps.
  */
