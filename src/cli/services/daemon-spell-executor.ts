@@ -57,6 +57,11 @@ export class DaemonSpellExecutor implements SpellExecutor {
   }
 
   exists(spellName: string): boolean {
+    // Invalidate before resolve so newly-added yamls are visible to the
+    // poll loop. Without this, stale-false from exists() causes the
+    // scheduler to auto-disable schedules whose spell was added on disk
+    // after daemon boot (#1034).
+    this.registry.invalidate();
     return this.registry.resolve(spellName) !== undefined;
   }
 
@@ -66,6 +71,9 @@ export class DaemonSpellExecutor implements SpellExecutor {
     signal?: AbortSignal,
     mofloLevel?: MofloLevel,
   ): Promise<SpellResult> {
+    // Invalidate before resolve so yaml edits on disk reach the next fire
+    // without needing a daemon restart (#1034).
+    this.registry.invalidate();
     const loaded = this.registry.resolve(spellName);
     if (!loaded) {
       return failedResult(
