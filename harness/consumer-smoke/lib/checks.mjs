@@ -1175,12 +1175,15 @@ function killDaemonByLockFile(consumerDir) {
  * noise. Other failures (EPERM, EACCES, ENOENT, *anything* on POSIX) are
  * still real signals worth surfacing.
  *
+ * Matches against `err.code` (the canonical, locale-proof Node SystemError
+ * field) rather than the human-readable `err.message` text.
+ *
  * Exported so the classifier can be unit-tested without standing up a real
  * workdir + daemon. `platform` is a parameter so tests can exercise the
  * POSIX branch on Windows hosts and vice-versa.
  */
 export function isKnownWindowsCleanupQuirk(err, platform) {
-  return platform === 'win32' && /\bEBUSY\b/.test(err?.message ?? '');
+  return platform === 'win32' && err?.code === 'EBUSY';
 }
 
 export async function cleanupWorkDir(workDir, { keep }) {
