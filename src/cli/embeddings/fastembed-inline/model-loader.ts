@@ -8,9 +8,13 @@
  * For `fast-all-MiniLM-L6-v2`, the URL slug is `sentence-transformers-all-MiniLM-L6-v2`
  * but the on-disk directory keeps the `fast-` prefix — verbatim from upstream.
  *
- * Concurrency: parallel callers downloading the same model atomic-rename the
- * tarball through a unique temp path, so Windows file locks during extraction
- * never collide. The final model dir is the synchronization point.
+ * Concurrency: a per-model file lock (`<cacheDir>/.<model>.download.lock`,
+ * created with `wx`) serializes the download/extract for any number of
+ * parallel processes — only one process performs the work, the rest poll for
+ * the completion sentinel. This was issue #1021's secondary failure mode:
+ * the smoke harness spawns ~12 parallel doctor + memory probes on a cold
+ * cache, and Windows file locking exposed the race when the in-tree
+ * "synchronization point" was just a shared directory write.
  */
 import {
   createWriteStream,
@@ -24,10 +28,21 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { x as tarExtract } from 'tar';
 
 const GCS_BASE_URL = 'https://storage.googleapis.com/qdrant-fastembed';
+
+// Lock-poll: how long a non-holder waits for the holder to finish before
+// concluding the holder crashed. Cold-fetch is ~90 MB on slow CI runners, so
+// a generous timeout avoids false takeovers under network back-pressure.
+const LOCK_TIMEOUT_MS = 120_000;
+const LOCK_POLL_INTERVAL_MS = 250;
+
+// Standard transient-error retry per feedback_transient_retry_circuit_breaker.md:
+// 50/200/800ms backoff, only on network errors and 5xx (4xx is deterministic).
+const HTTP_BACKOFF_MS = [50, 200, 800] as const;
 
 /**
  * Sentinel file written into the model directory only after the tarball has
@@ -68,11 +83,21 @@ export interface DownloadDeps {
   extract?: typeof tarExtract;
 }
 
+class TransientHttpError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TransientHttpError';
+  }
+}
+
 /**
  * Stream the tarball to a unique temp path, then atomic-rename to the final
- * tarball path before extracting. The temp suffix prevents two concurrent
- * downloads from clobbering each other's write stream — extraction itself is
- * the slow step on Windows where file-lock contention shows up.
+ * tarball path before extracting. The temp suffix prevents the in-flight
+ * write stream from being observed at the final path — extraction always
+ * sees a complete file.
+ *
+ * Throws `TransientHttpError` on 5xx / network failure (caller retries) and
+ * a plain Error on 4xx (caller fails fast — retrying won't help).
  */
 async function downloadTarball(
   url: string,
@@ -84,9 +109,16 @@ async function downloadTarball(
   const tmpPath = `${destPath}.${process.pid}.tmp`;
   mkdirSync(dirname(destPath), { recursive: true });
 
-  const res = await fetchFn(url);
+  let res: Awaited<ReturnType<typeof fetch>>;
+  try {
+    res = await fetchFn(url);
+  } catch (err) {
+    throw new TransientHttpError(`Model download failed: GET ${url} → ${(err as Error).message}`);
+  }
   if (!res.ok || !res.body) {
-    throw new Error(`Model download failed: GET ${url} → ${res.status} ${res.statusText}`);
+    const msg = `Model download failed: GET ${url} → ${res.status} ${res.statusText}`;
+    if (res.status >= 500) throw new TransientHttpError(msg);
+    throw new Error(msg);
   }
 
   if (showProgress) {
@@ -95,11 +127,95 @@ async function downloadTarball(
     process.stderr.write(`fastembed: downloading ${totalMb} MB from ${url}\n`);
   }
 
-  await pipeline(
-    Readable.fromWeb(res.body as WebReadableStream<Uint8Array>),
-    createWriteStream(tmpPath),
-  );
+  try {
+    await pipeline(
+      Readable.fromWeb(res.body as WebReadableStream<Uint8Array>),
+      createWriteStream(tmpPath),
+    );
+  } catch (err) {
+    rmSync(tmpPath, { force: true });
+    throw new TransientHttpError(
+      `Model download stream failed mid-transfer (${url}): ${(err as Error).message}`,
+    );
+  }
   renameSync(tmpPath, destPath);
+}
+
+async function downloadTarballWithRetry(
+  url: string,
+  destPath: string,
+  showProgress: boolean,
+  deps: DownloadDeps,
+): Promise<void> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= HTTP_BACKOFF_MS.length; attempt++) {
+    try {
+      await downloadTarball(url, destPath, showProgress, deps);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (!(err instanceof TransientHttpError) || attempt === HTTP_BACKOFF_MS.length) break;
+      if (showProgress) {
+        process.stderr.write(
+          `fastembed: download attempt ${attempt + 1} failed (${(err as Error).message}); retrying in ${HTTP_BACKOFF_MS[attempt]}ms.\n`,
+        );
+      }
+      await delay(HTTP_BACKOFF_MS[attempt]);
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Cross-process serialization for the download/extract step. Lock holder runs
+ * `work`; non-holders poll for the completion sentinel and return as soon as
+ * it appears. If the lock holder crashes (lockfile remains but no sentinel
+ * after the timeout), the next caller cleans up and retries — preventing a
+ * permanently-stuck cache after a Ctrl+C mid-download.
+ */
+async function withModelLock(
+  lockPath: string,
+  completionPath: string,
+  work: () => Promise<void>,
+): Promise<void> {
+  try {
+    writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    await waitForCompletionOrTakeover(lockPath, completionPath, work);
+    return;
+  }
+  try {
+    await work();
+  } finally {
+    try { rmSync(lockPath, { force: true }); } catch { /* best effort */ }
+  }
+}
+
+async function waitForCompletionOrTakeover(
+  lockPath: string,
+  completionPath: string,
+  work: () => Promise<void>,
+): Promise<void> {
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (existsSync(completionPath)) return;
+    if (!existsSync(lockPath)) {
+      // Holder finished without writing the sentinel (crashed). Try to take
+      // over the lock ourselves.
+      await withModelLock(lockPath, completionPath, work);
+      return;
+    }
+    await delay(LOCK_POLL_INTERVAL_MS);
+  }
+  // Stale lock — clear it and let the next caller (or our own retry above)
+  // pick up the work. Force unlinking is safer than leaving the cache
+  // permanently wedged.
+  try { rmSync(lockPath, { force: true }); } catch { /* best effort */ }
+  throw new Error(
+    `fastembed: timed out after ${LOCK_TIMEOUT_MS}ms waiting for ${lockPath}. ` +
+    `Stale lock cleared — retry the operation.`,
+  );
 }
 
 /**
@@ -121,28 +237,40 @@ export async function retrieveModel(
   deps: DownloadDeps = {},
 ): Promise<string> {
   const modelDir = join(cacheDir, model);
-  if (existsSync(modelDir)) {
-    if (existsSync(join(modelDir, COMPLETION_SENTINEL))) return modelDir;
-    if (showProgress) {
-      process.stderr.write(
-        `fastembed: cached model at ${modelDir} is incomplete (no completion marker); redownloading.\n`,
-      );
-    }
-    rmSync(modelDir, { recursive: true, force: true });
-  }
+  const completionPath = join(modelDir, COMPLETION_SENTINEL);
+
+  // Fast path: complete cache hit needs no lock, no fs writes.
+  if (existsSync(completionPath)) return modelDir;
 
   mkdirSync(cacheDir, { recursive: true });
+  const lockPath = join(cacheDir, `.${model}.download.lock`);
   const tarballPath = join(cacheDir, `${model}.tar.gz`);
   const url = `${GCS_BASE_URL}/${gcsSlugFor(model)}.tar.gz`;
 
-  await downloadTarball(url, tarballPath, showProgress, deps);
-  const extract = deps.extract ?? tarExtract;
-  await extract({ file: tarballPath, cwd: cacheDir });
-  rmSync(tarballPath, { force: true });
+  await withModelLock(lockPath, completionPath, async () => {
+    // Re-check inside the lock — another process may have completed the
+    // download between our fast-path check and our lock acquisition.
+    if (existsSync(completionPath)) return;
 
-  if (!existsSync(modelDir)) {
-    throw new Error(`Model archive extracted but ${modelDir} is missing — corrupt tarball?`);
-  }
-  writeFileSync(join(modelDir, COMPLETION_SENTINEL), '');
+    if (existsSync(modelDir)) {
+      if (showProgress) {
+        process.stderr.write(
+          `fastembed: cached model at ${modelDir} is incomplete (no completion marker); redownloading.\n`,
+        );
+      }
+      rmSync(modelDir, { recursive: true, force: true });
+    }
+
+    await downloadTarballWithRetry(url, tarballPath, showProgress, deps);
+    const extract = deps.extract ?? tarExtract;
+    await extract({ file: tarballPath, cwd: cacheDir });
+    rmSync(tarballPath, { force: true });
+
+    if (!existsSync(modelDir)) {
+      throw new Error(`Model archive extracted but ${modelDir} is missing — corrupt tarball?`);
+    }
+    writeFileSync(completionPath, '');
+  });
+
   return modelDir;
 }
