@@ -130,6 +130,64 @@ describe('WriteThroughAdapter.drainPendingWrites — race fix (#1003)', () => {
     expect(true).toBe(true);
   });
 
+  it('detached adapter ignores subsequent bus events during clearNamespace (#1017)', async () => {
+    // Models hive-mind_shutdown's fixed order: detach FIRST, then clearNamespace.
+    // Without detach, a bus event fired between drainPendingWrites and listEntries
+    // (or any later step) would register a fresh storeEntry that survives clear.
+    const { adapter, bus, stored } = makeAdapter();
+
+    bus.emitUnified({
+      messageId: 'before-detach',
+      namespace: 'hive-mind',
+      type: 'broadcast',
+      from: 'a',
+      to: '*',
+      payload: {},
+      priority: 'normal',
+      ttlMs: 60_000,
+    });
+
+    // Confirm the pre-detach event registered a write — otherwise the
+    // post-clear `stored.length === 0` assertion below would pass for the
+    // wrong reason (no write ever happened).
+    await adapter.drainPendingWrites();
+    expect(stored).toHaveLength(1);
+
+    // Detach BEFORE clearNamespace — the fix.
+    adapter.detach();
+
+    // Late-arriving bus events (e.g. terminateAgent's coordinator broadcast,
+    // bus tick processing in-flight messages). With detach already in effect,
+    // these MUST NOT trigger fresh storeEntry calls.
+    bus.emitUnified({
+      messageId: 'after-detach-1',
+      namespace: 'hive-mind',
+      type: 'broadcast',
+      from: 'a',
+      to: '*',
+      payload: {},
+      priority: 'normal',
+      ttlMs: 60_000,
+    });
+    bus.emitUnified({
+      messageId: 'after-detach-2',
+      namespace: 'hive-mind',
+      type: 'broadcast',
+      from: 'a',
+      to: '*',
+      payload: {},
+      priority: 'normal',
+      ttlMs: 60_000,
+    });
+
+    await adapter.clearNamespace('hive-mind');
+
+    // The first event was queued before detach and gets cleared.
+    // The two post-detach events were dropped on the floor by the listener.
+    // Net: zero rows survive.
+    expect(stored).toHaveLength(0);
+  });
+
   it('drainPendingWrites works under fake timers (no setImmediate)', async () => {
     vi.useFakeTimers();
     try {

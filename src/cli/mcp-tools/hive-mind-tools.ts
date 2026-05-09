@@ -844,23 +844,32 @@ export const hiveMindTools: MCPTool[] = [
         process.stderr.write(`[hive-mind_shutdown] coordinator cleanup failed: ${(err as Error).message}\n`);
       }
 
-      // Clear write-through namespaces in Memory DB
-      try {
-        const adapter = await getWriteThroughAdapter();
-        await adapter.clearNamespace(HIVE_NS);
-        await adapter.clearNamespace(HIVE_MEMORY_NS);
-      } catch {
-        // Best-effort cleanup
+      // #1017 — detach BEFORE clearNamespace. clearNamespace itself drains
+      // pendingWrites then list+deletes, but the bus's `processingIntervalMs`
+      // tick keeps emitting `message.unified` events for queued messages
+      // (terminateAgent broadcasts, in-flight consensus). With the adapter
+      // still attached, those events register fresh fire-and-forget storeEntry
+      // calls between drain and listEntries — surviving 1–5 rows on Linux/
+      // macOS where the bus tick is fast enough to land them in that window.
+      // Detached first, no new writes can be registered while we clear.
+      const adapter = _writeThroughAdapter;
+      if (adapter) {
+        adapter.detach();
+        // Null the singleton immediately so a concurrent shutdown can't grab
+        // the same adapter and race the clear loop below.
+        _writeThroughAdapter = null;
+        try {
+          await adapter.clearNamespace(HIVE_NS);
+          await adapter.clearNamespace(HIVE_MEMORY_NS);
+        } catch {
+          // Best-effort cleanup
+        }
       }
 
       // Shutdown MessageBus for hive-mind
       try {
         const bus = await getMessageBus();
         bus.unsubscribe('hive-mind-system');
-        if (_writeThroughAdapter) {
-          _writeThroughAdapter.detach();
-          _writeThroughAdapter = null;
-        }
       } catch {
         // Bus may not be initialized
       }
