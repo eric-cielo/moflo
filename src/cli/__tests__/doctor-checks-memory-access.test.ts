@@ -5,13 +5,87 @@
  * states) and the end-to-end behavior against the real memory subsystem +
  * coordinator. The memory round-trip is exercised through the actual
  * memory_store / memory_search MCP tool handlers — no mocks.
+ *
+ * Isolation note (#1022): the probe's bridge writes through `atomicWriteFileSync`
+ * targeting `<projectRoot>/.moflo/moflo.db`. Under `npm test` an earlier suite
+ * may have triggered the auto-started daemon, which holds the canonical DB
+ * open with a non-shareable handle on Windows — and the probe's rename then
+ * fails with EPERM. We redirect `CLAUDE_PROJECT_DIR` to a per-suite temp dir
+ * so the probe never collides with the live daemon's DB. No production code
+ * change — the runtime contract ("daemon owns the canonical DB") is honored;
+ * only the test environment moves out of the way.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeAll, afterAll } from 'vitest';
+import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   checkMemoryAccessFunctional,
 } from '../commands/doctor-checks-memory-access.js';
 import type { FunctionalHealthCheck } from '../commands/doctor-checks-swarm.js';
+import { findMofloPackageRoot } from '../services/moflo-require.js';
+
+let tempProjectDir: string | undefined;
+let originalProjectDir: string | undefined;
+let originalDisableRouting: string | undefined;
+
+/**
+ * Reset the dist bridge-core module's cached project root and registry so
+ * the env var change takes effect. The probe's MCP tool handlers load from
+ * `dist/`, so we must reset the same module instance — not the source
+ * import. Best-effort: skipped if dist isn't built (the suite degrades to
+ * the "not built" warn path anyway).
+ */
+async function resetDistBridgeState(): Promise<void> {
+  const root = findMofloPackageRoot();
+  if (!root) return;
+  const bridgeCorePath = join(root, 'dist/src/cli/memory/bridge-core.js');
+  if (!existsSync(bridgeCorePath)) return;
+  const bc = await import(pathToFileURL(bridgeCorePath).href) as {
+    shutdownBridge?: () => Promise<void>;
+    _resetProjectRootForTest?: () => void;
+  };
+  if (bc.shutdownBridge) await bc.shutdownBridge();
+  bc._resetProjectRootForTest?.();
+}
+
+beforeAll(async () => {
+  tempProjectDir = mkdtempSync(join(tmpdir(), 'doctor-memprobe-'));
+  // `.moflo/` is created by `persistBridgeDb` on first write; no pre-seed needed.
+  // Bridge resolves project root from CLAUDE_PROJECT_DIR directly — no marker
+  // file lookup happens when the env var is set.
+
+  originalProjectDir = process.env.CLAUDE_PROJECT_DIR;
+  originalDisableRouting = process.env.MOFLO_DISABLE_DAEMON_ROUTING;
+  process.env.CLAUDE_PROJECT_DIR = tempProjectDir;
+  // Belt: even if the daemon is up, we want every write to go through
+  // the bridge into the temp DB — never the live daemon's canonical one.
+  process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
+
+  // Symmetric with afterAll: a genuine dist load error shouldn't abort the
+  // entire suite with an opaque message — let the test bodies surface the
+  // real problem (e.g. via the "not built" warn path).
+  await resetDistBridgeState().catch(() => { /* best-effort */ });
+});
+
+afterAll(async () => {
+  // Reset again so subsequent tests in the same vitest worker don't see
+  // a cached registry pointing at the deleted temp dir.
+  await resetDistBridgeState().catch(() => { /* best-effort */ });
+
+  if (originalProjectDir === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+  else process.env.CLAUDE_PROJECT_DIR = originalProjectDir;
+
+  if (originalDisableRouting === undefined) delete process.env.MOFLO_DISABLE_DAEMON_ROUTING;
+  else process.env.MOFLO_DISABLE_DAEMON_ROUTING = originalDisableRouting;
+
+  if (tempProjectDir) {
+    try { rmSync(tempProjectDir, { recursive: true, force: true }); }
+    catch { /* Windows EBUSY at process teardown is benign — see #1018 */ }
+  }
+});
 
 function expectFunctionalShape(result: FunctionalHealthCheck) {
   expect(result.name).toBe('Memory Access Functional');
