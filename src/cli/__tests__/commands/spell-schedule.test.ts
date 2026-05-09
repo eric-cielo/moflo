@@ -24,6 +24,11 @@ vi.mock('../../services/daemon-readiness.js', () => ({
   ensureDaemonForScheduling: vi.fn(),
 }));
 
+// Mock acceptance check — exercised explicitly in the new #1037 tests.
+vi.mock('../../services/schedule-acceptance-check.js', () => ({
+  checkScheduleAcceptance: vi.fn(),
+}));
+
 // Mock the autostart lifecycle reconciler — we assert against it directly
 // for the create/cancel transition tests below.
 vi.mock('../../services/daemon-autostart-lifecycle.js', () => ({
@@ -64,12 +69,16 @@ import { callMCPTool } from '../../mcp-client.js';
 import { ensureDaemonForScheduling } from '../../services/daemon-readiness.js';
 import { reconcileDaemonAutostart } from '../../services/daemon-autostart-lifecycle.js';
 import { isDaemonInstalled } from '../../services/daemon-service.js';
+import { checkScheduleAcceptance } from '../../services/schedule-acceptance-check.js';
+import { output } from '../../output.js';
 import { scheduleCommand } from '../../commands/spell-schedule.js';
 
 const mockCallMCP = vi.mocked(callMCPTool);
 const mockEnsureDaemon = vi.mocked(ensureDaemonForScheduling);
 const mockReconcile = vi.mocked(reconcileDaemonAutostart);
 const mockIsInstalled = vi.mocked(isDaemonInstalled);
+const mockCheckAcceptance = vi.mocked(checkScheduleAcceptance);
+const mockPrintWarning = vi.mocked(output.printWarning);
 
 // Helper to find a subcommand
 function findSub(name: string) {
@@ -96,6 +105,7 @@ describe('spell schedule command', () => {
     });
     mockReconcile.mockReturnValue({ transition: 'noop', message: null, warning: null });
     mockIsInstalled.mockReturnValue(false);
+    mockCheckAcceptance.mockResolvedValue({ state: 'accepted', message: '' });
   });
 
   // ── Structure ─────────────────────────────────────────────────────────────
@@ -221,6 +231,77 @@ describe('spell schedule command', () => {
       })) as CommandResult;
 
       // Schedule is always created regardless of daemon state
+      expect(result.success).toBe(true);
+      expect(mockCallMCP).toHaveBeenCalledWith('memory_store', expect.anything());
+    });
+
+    // ── #1037 — permission acceptance warning at create time ──────────────
+
+    it('warns when the spell has no acceptance record yet (#1037)', async () => {
+      mockCallMCP.mockResolvedValue({});
+      mockCheckAcceptance.mockResolvedValue({
+        state: 'never-accepted',
+        message: 'Spell "audit" has not been accepted yet. Run `flo spell cast -n audit` once to accept permissions.',
+      });
+
+      const result = await createCmd().action!(makeCtx({
+        flags: { _: [], name: 'audit', interval: '6h' },
+      })) as CommandResult;
+
+      // Schedule is still created — warn-then-proceed contract.
+      expect(result.success).toBe(true);
+      expect(mockCallMCP).toHaveBeenCalledWith('memory_store', expect.anything());
+      expect(mockPrintWarning).toHaveBeenCalledWith(
+        expect.stringContaining('has not been accepted yet'),
+      );
+    });
+
+    it('warns when the accepted permission hash is stale (#1037)', async () => {
+      mockCallMCP.mockResolvedValue({});
+      mockCheckAcceptance.mockResolvedValue({
+        state: 'hash-mismatch',
+        message: 'Spell "audit" permissions have changed since you last accepted them.',
+      });
+
+      const result = await createCmd().action!(makeCtx({
+        flags: { _: [], name: 'audit', interval: '6h' },
+      })) as CommandResult;
+
+      expect(result.success).toBe(true);
+      expect(mockPrintWarning).toHaveBeenCalledWith(
+        expect.stringContaining('permissions have changed'),
+      );
+    });
+
+    it('does not warn when acceptance is current (#1037)', async () => {
+      mockCallMCP.mockResolvedValue({});
+      mockCheckAcceptance.mockResolvedValue({ state: 'accepted', message: '' });
+
+      const result = await createCmd().action!(makeCtx({
+        flags: { _: [], name: 'audit', interval: '6h' },
+      })) as CommandResult;
+
+      expect(result.success).toBe(true);
+      // No acceptance warning emitted. Daemon-readiness warnings can still
+      // fire on a separate code path; assert specifically that nothing
+      // matching the acceptance vocabulary was printed.
+      expect(mockPrintWarning).not.toHaveBeenCalledWith(
+        expect.stringContaining('not been accepted'),
+      );
+      expect(mockPrintWarning).not.toHaveBeenCalledWith(
+        expect.stringContaining('permissions have changed'),
+      );
+    });
+
+    it('still creates the schedule when the acceptance check fails (#1037)', async () => {
+      // A grimoire-load or analysis error must NEVER block schedule creation.
+      mockCallMCP.mockResolvedValue({});
+      mockCheckAcceptance.mockResolvedValue({ state: 'check-failed', message: '' });
+
+      const result = await createCmd().action!(makeCtx({
+        flags: { _: [], name: 'audit', interval: '6h' },
+      })) as CommandResult;
+
       expect(result.success).toBe(true);
       expect(mockCallMCP).toHaveBeenCalledWith('memory_store', expect.anything());
     });

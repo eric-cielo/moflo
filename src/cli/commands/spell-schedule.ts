@@ -17,6 +17,7 @@ import { callMCPTool } from '../mcp-client.js';
 import { TOOL_MEMORY_STORE, TOOL_MEMORY_LIST, TOOL_MEMORY_RETRIEVE } from '../mcp-tools/tool-names.js';
 import { handleMCPError } from '../services/cli-formatters.js';
 import { ensureDaemonForScheduling } from '../services/daemon-readiness.js';
+import { checkScheduleAcceptance } from '../services/schedule-acceptance-check.js';
 import { reconcileDaemonAutostart } from '../services/daemon-autostart-lifecycle.js';
 import { isDaemonInstalled } from '../services/daemon-service.js';
 import { validateSchedule, computeNextRun } from '../spells/scheduler/cron-parser.js';
@@ -142,6 +143,17 @@ const createCommand: Command = {
 
     for (const warning of readiness.warnings) {
       output.printWarning(warning);
+    }
+
+    // Permission-acceptance check (#1037): scheduled fires run in the daemon's
+    // non-interactive context and have no way to prompt for permissions. If
+    // this spell hasn't been manually cast yet, the user needs to know NOW so
+    // they can run `flo spell cast -n <name>` once before relying on the
+    // schedule. This is a warning, never a block — the user may have a legit
+    // reason (about to cast, scripted setup, etc.).
+    const acceptance = await checkScheduleAcceptance(projectRoot, name);
+    if (acceptance.message) {
+      output.printWarning(acceptance.message);
     }
 
     // Always create the schedule, regardless of daemon state
