@@ -138,7 +138,7 @@
 
 <p><img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/Luminarium.png" alt="MoFlo — three wizards conjuring the Luminarium, a dome of light and runes" /></p>
 
-<h1>Need insights into MoFlo? Conjure the Luminarium</h1>
+<h1>Need insights into Claude &amp; MoFlo? Conjure the Luminarium</h1>
 
 <p><em>An update on what's new in <a href="https://github.com/eric-cielo/moflo">MoFlo</a> — the open-source npm package that upgrades Claude Code with full project knowledge, persistent memory,
   sandboxed automation, and a swarm of agents that actually stay wired together.</em></p>
@@ -152,7 +152,7 @@
 
 <hr />
 
-<p><strong>Behold — we have conjured the Luminarium, a great orb of scrying through which all the workings of MoFlo are laid bare!</strong></p>
+<p><strong>Behold — we have conjured the Luminarium, a great orb of scrying through which all the workings of Claude and MoFlo are laid bare!</strong></p>
 
 <p>OK, fine. It's a dashboard. But it's a really nice dashboard, and once you've used it for ten minutes you start wondering how you were supposed to trust an AI agent without one.</p>
 
@@ -230,7 +230,9 @@
 <p>If a namespace looks suspiciously thin, that's almost always a configuration story — and one you can fix in a few minutes once you can see it.</p>
 
 <h2>Claude Stats — what has Claude been up to in this project?</h2>
-
+<figure>
+  <img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/Luminarium_Claude.png" alt="The Luminarium's Flo Runs tab — recent epic-single-branch and epic-resume-check runs broken down step by step with type, status, duration, and error columns" />
+</figure>
 <p>The newest tab steps outside MoFlo's own internals and reads what <strong>Claude Code</strong> itself has been doing on your machine, for this project specifically. Every Claude Code session leaves a JSONL transcript in <code>~/.claude/projects/&lt;project&gt;/</code>; the Luminarium aggregates them locally and surfaces the totals across <strong>today / 7 days / 30 days / lifetime</strong> windows: sessions, input/output/cache tokens, the model distribution, top tool calls, error-tagged sessions, and median session duration.</p>
 
 <p>It's the only tab that crosses the boundary between MoFlo and Claude. Everywhere else you're looking at MoFlo's own state. Here you're looking at what Claude has accomplished locally, with MoFlo as the lens — and like every other tab, the data never leaves your machine.</p>
@@ -245,7 +247,7 @@
 
 <p>What it's actually useful for: spotting whether your sessions are mostly clean or mostly error-laden, seeing which tools you're hammering on (<code>Read</code>, <code>Grep</code>, <code>Bash</code> usually top the list), and watching your token mix shift week over week as the team's habits change. It's a candid little usage mirror, scoped to one project, sitting next to MoFlo's own machinery — so the question "is something off today?" can be answered for both halves of the system in the same tab strip.</p>
 
-<h2>How to summon it</h2>
+<h2>How to conjure it</h2>
 
 <p>You don't, really. The daemon starts with your project — and the daemon starts the Luminarium with it. As long as your daemon is up:</p>
 
