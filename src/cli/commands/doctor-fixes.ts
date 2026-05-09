@@ -11,6 +11,7 @@ import { join } from 'path';
 import { output } from '../output.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
+import { getDaemonLockHolder } from '../services/daemon-lock.js';
 import { findZombieProcesses } from './doctor-zombies.js';
 import { installClaudeCode, runCommand } from './doctor-checks-runtime.js';
 import type { HealthCheck } from './doctor-types.js';
@@ -175,6 +176,40 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     },
     'Gate Health': async () => {
       return fixGateHealthHooks();
+    },
+    'Embedding hygiene': async () => {
+      // The session-start launcher already runs the same migration BEFORE
+      // daemon/MCP boot — that's where consumer autoheal happens. Running
+      // it here mid-session is unsafe because any long-lived moflo writer
+      // (daemon, MCP server) holds its own sql.js in-memory snapshot from
+      // before we'd repair, and on its next flush dumps the stale buffer
+      // back to disk, clobbering the repair. Pre-#1046 we shelled out to
+      // `npx moflo embeddings init` here and falsely reported success
+      // when the writeback clobber was about to undo it.
+      // `getDaemonLockHolder` validates both PID liveness AND
+      // that the process is actually a moflo daemon (Windows PID
+      // recycling is real — see daemon-lock.ts:isDaemonProcess).
+      if (getDaemonLockHolder(process.cwd()) !== null) {
+        output.writeln(output.dim(
+          '  Embedding hygiene is repaired automatically by the session-start launcher.',
+        ));
+        output.writeln(output.dim(
+          '  Restart Claude Code (or run `flo daemon stop` first) to apply.',
+        ));
+        return false;
+      }
+      // No daemon — safe to run the migration in-process. In-process is
+      // preferred over `runFixCommand` because the migration's TTY/stderr
+      // progress UI is then visible to the user, and any thrown error
+      // surfaces in the autoFixCheck try/catch instead of being swallowed
+      // by a child-process exit code.
+      try {
+        const { runEmbeddingsMigrationIfNeeded } = await import('../services/embeddings-migration.js');
+        return await runEmbeddingsMigrationIfNeeded();
+      } catch (e) {
+        output.writeln(output.warning(`  Embeddings migration failed: ${errorDetail(e)}`));
+        return false;
+      }
     },
     'Status Line': async () => {
       const settingsPath = join(process.cwd(), '.claude', 'settings.json');
