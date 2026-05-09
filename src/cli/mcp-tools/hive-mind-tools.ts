@@ -75,53 +75,6 @@ async function getWriteThroughAdapter(): Promise<WriteThroughAdapter> {
   return adapter;
 }
 
-/**
- * Race-free SQL DELETE for the two write-through namespaces. Belt-and-
- * suspenders for hive-mind_shutdown: the adapter's clearNamespace uses
- * a list+delete pattern that can miss rows in flight when shutdown is
- * called from a multi-check sequence (e.g. doctor's swarm-functional then
- * memory-access checks each spin up + tear down a hive). A single SQL
- * statement captures the disk state atomically and is impossible to race
- * once the adapter is detached.
- *
- * Routes through the bridge so daemon-routing falls through cleanly when
- * the daemon is alive (matching steady-state write semantics). When no
- * daemon and no bridge, falls back to raw sql.js.
- */
-async function purgeHiveNamespacesDirect(): Promise<void> {
-  try {
-    const fs = await import('fs');
-    const { mofloImport } = await import('../services/moflo-require.js');
-    const { atomicWriteFileSync } = await import('../services/atomic-file-write.js');
-    const { memoryDbPath } = await import('../services/moflo-paths.js');
-
-    const dbPath = memoryDbPath(process.cwd());
-    if (!fs.existsSync(dbPath)) return;
-
-    const initSqlJs = (await mofloImport('sql.js'))?.default;
-    if (!initSqlJs) return;
-
-    const SQL = await initSqlJs();
-    const buffer = fs.readFileSync(dbPath);
-    const db = new SQL.Database(buffer);
-    try {
-      const probe = db.exec(
-        `SELECT name FROM sqlite_master WHERE type='table' AND name='memory_entries' LIMIT 1`,
-      );
-      if (!probe[0]?.values?.[0]) return;
-
-      db.run(`DELETE FROM memory_entries WHERE namespace IN (?, ?)`, [HIVE_NS, HIVE_MEMORY_NS]);
-      const purged = db.getRowsModified?.() ?? 0;
-      if (purged > 0) {
-        atomicWriteFileSync(dbPath, db.export());
-      }
-    } finally {
-      db.close();
-    }
-  } catch {
-    // Best-effort cleanup. Shutdown must never fail loudly.
-  }
-}
 
 // ===== In-memory hive state (replaces state.json) =====
 
@@ -873,9 +826,23 @@ export const hiveMindTools: MCPTool[] = [
         };
       }
 
-      // Story #807: terminate coordinator-side worker records before we
-      // wipe the hive state so swarm agent_list reflects the shutdown.
-      // allSettled so one failed terminate doesn't strand the rest.
+      // #1017 — detach the adapter FIRST, before any code that broadcasts
+      // hive-mind events. terminateAgent below sends agent_terminate
+      // broadcasts on the hive-mind namespace; with the adapter still
+      // listening, those broadcasts register fire-and-forget storeEntry
+      // calls that can land after clearNamespace runs. Detaching first means
+      // every subsequent broadcast hits a dead listener and never persists,
+      // so clearNamespace operates on a deterministic, unchanging set.
+      const adapter = _writeThroughAdapter;
+      if (adapter) {
+        adapter.detach();
+        _writeThroughAdapter = null;
+      }
+
+      // Story #807: terminate coordinator-side worker records so swarm
+      // agent_list reflects the shutdown. allSettled so one failed terminate
+      // doesn't strand the rest. Broadcasts emitted here are intentionally
+      // ignored by the (now-detached) adapter.
       try {
         const coordinator = await getSwarmCoordinator();
         const results = await Promise.allSettled(
@@ -892,20 +859,12 @@ export const hiveMindTools: MCPTool[] = [
         process.stderr.write(`[hive-mind_shutdown] coordinator cleanup failed: ${(err as Error).message}\n`);
       }
 
-      // #1017 — detach BEFORE clearNamespace. clearNamespace itself drains
-      // pendingWrites then list+deletes, but the bus's `processingIntervalMs`
-      // tick keeps emitting `message.unified` events for queued messages
-      // (terminateAgent broadcasts, in-flight consensus). With the adapter
-      // still attached, those events register fresh fire-and-forget storeEntry
-      // calls between drain and listEntries — surviving 1–5 rows on Linux/
-      // macOS where the bus tick is fast enough to land them in that window.
-      // Detached first, no new writes can be registered while we clear.
-      const adapter = _writeThroughAdapter;
+      // Drain whatever the adapter already had in flight at detach, then
+      // delete the persisted hive-mind rows. Routed through the chokepoint
+      // (deleteEntry → daemon RPC when alive), so the daemon's in-memory
+      // snapshot stays consistent with disk and cannot clobber the cleanup
+      // on its next flush.
       if (adapter) {
-        adapter.detach();
-        // Null the singleton immediately so a concurrent shutdown can't grab
-        // the same adapter and race the clear loop below.
-        _writeThroughAdapter = null;
         try {
           await adapter.clearNamespace(HIVE_NS);
           await adapter.clearNamespace(HIVE_MEMORY_NS);
@@ -913,16 +872,6 @@ export const hiveMindTools: MCPTool[] = [
           // Best-effort cleanup
         }
       }
-
-      // #1017 belt-and-suspenders: clearNamespace is a list+delete loop —
-      // even with the adapter detached, any storeEntry promise still in flight
-      // when the second clearNamespace started can land between its
-      // drainPendingWrites and listEntries (e.g. an HTTP-routed daemon write
-      // that the local pendingWrites set never tracked, or a coordinator
-      // event that fired through a different path). Run a single SQL DELETE
-      // for both namespaces as the final cleanup — race-free because it
-      // captures the disk state at one moment.
-      await purgeHiveNamespacesDirect();
 
       // Shutdown MessageBus for hive-mind
       try {
