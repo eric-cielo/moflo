@@ -1166,6 +1166,23 @@ function killDaemonByLockFile(consumerDir) {
   }
 }
 
+/**
+ * #1018: After cleanupWorkDir's 2.5s retry budget, a Windows EBUSY on rmSync
+ * is a known platform quirk — AV scans, Windows indexer, and OS handle
+ * release latency can keep the dir locked past our patience. CI runners are
+ * ephemeral and the next run uses a fresh `consumer-<timestamp>` dir, so the
+ * leftover dir doesn't poison subsequent tests. The warning was pure log
+ * noise. Other failures (EPERM, EACCES, ENOENT, *anything* on POSIX) are
+ * still real signals worth surfacing.
+ *
+ * Exported so the classifier can be unit-tested without standing up a real
+ * workdir + daemon. `platform` is a parameter so tests can exercise the
+ * POSIX branch on Windows hosts and vice-versa.
+ */
+export function isKnownWindowsCleanupQuirk(err, platform) {
+  return platform === 'win32' && /\bEBUSY\b/.test(err?.message ?? '');
+}
+
 export async function cleanupWorkDir(workDir, { keep }) {
   if (keep) {
     log(`\nKept: ${workDir}`);
@@ -1181,7 +1198,9 @@ export async function cleanupWorkDir(workDir, { keep }) {
     try {
       rmSync(full, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
     } catch (err) {
-      log(`  warning: could not remove ${name}: ${err.message}`);
+      if (!isKnownWindowsCleanupQuirk(err, process.platform)) {
+        log(`  warning: could not remove ${name}: ${err.message}`);
+      }
     }
   }
 }
