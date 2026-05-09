@@ -410,4 +410,71 @@ describe('CredentialStore', () => {
     );
     store.lock();
   });
+
+  // --------------------------------------------------------------------------
+  // #1035 — long-lived instance picks up external writes (mtime reload)
+  // --------------------------------------------------------------------------
+
+  it('picks up writes from another instance without re-construction (#1035)', async () => {
+    // Simulates the daemon scenario: process A holds an unlocked
+    // CredentialStore, process B (CLI subprocess) writes a new credential
+    // to the same file. A.get() must return the freshly-stored value.
+    //
+    // Pre-create the file so reader + writer share a salt (the real-world
+    // scenario — the daemon and CLI subprocesses both unlock against an
+    // existing credentials.json that was initialised on first use).
+    const primer = new CredentialStore({ filePath, passphrase: 'shared-pass' });
+    await primer.store('priming', 'init');
+    primer.lock();
+
+    const reader = new CredentialStore({ filePath, passphrase: 'shared-pass' });
+    expect(await reader.get('graph-token')).toBeUndefined();
+
+    const writer = new CredentialStore({ filePath, passphrase: 'shared-pass' });
+    await writer.store('graph-token', 'EwBYBMl6opaque');
+    writer.lock();
+
+    // Force a stat-detectable mtime difference on filesystems with coarse
+    // mtime resolution (Windows ~10ms). On a fast machine, the writer's
+    // writeFile and the reader's next get can land in the same tick, which
+    // would mask the regression in test even though it can't in real use.
+    await new Promise(r => setTimeout(r, 20));
+
+    expect(await reader.get('graph-token')).toBe('EwBYBMl6opaque');
+    reader.lock();
+  });
+
+  it('picks up updates to an existing credential without re-construction (#1035)', async () => {
+    const reader = new CredentialStore({ filePath, passphrase: 'shared-pass' });
+    await reader.store('api-key', 'v1');
+    expect(await reader.get('api-key')).toBe('v1');
+
+    // Mutate via a separate instance — mirrors the CLI-writes / daemon-reads split.
+    const writer = new CredentialStore({ filePath, passphrase: 'shared-pass' });
+    await writer.store('api-key', 'v2');
+    writer.lock();
+
+    await new Promise(r => setTimeout(r, 20));
+
+    expect(await reader.get('api-key')).toBe('v2');
+    reader.lock();
+  });
+
+  it('picks up clears from another instance (#1035)', async () => {
+    const reader = new CredentialStore({ filePath, passphrase: 'shared-pass' });
+    await reader.store('a', '1');
+    await reader.store('b', '2');
+    expect((await reader.list()).length).toBe(2);
+
+    const writer = new CredentialStore({ filePath, passphrase: 'shared-pass' });
+    expect(await writer.clear()).toBe(2);
+    writer.lock();
+
+    await new Promise(r => setTimeout(r, 20));
+
+    expect((await reader.list()).length).toBe(0);
+    expect(await reader.has('a')).toBe(false);
+    reader.lock();
+  });
+
 });
