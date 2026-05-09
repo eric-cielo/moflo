@@ -28,12 +28,13 @@ prerequisites:
       Microsoft Graph access token for reading your Outlook/Microsoft 365 inbox.
       Get one (expires in ~1h): open Graph Explorer, sign in with the account
       whose mailbox you want to scan, click the "Access token" tab, copy the token.
+      Personal MS accounts return opaque tokens; work/school accounts return JWTs —
+      both are accepted, so no `format` is declared here.
     docsUrl: https://developer.microsoft.com/en-us/graph/graph-explorer
     detect:
       type: env
       key: GRAPH_ACCESS_TOKEN
     promptOnMissing: true
-    format: jwt
 
   - name: SLACK_WEBHOOK_URL
     description: >
