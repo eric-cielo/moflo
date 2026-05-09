@@ -60,6 +60,37 @@ If step 6 yields a fix smaller and simpler than the existing patches, **delete t
 
 ---
 
+## Code Serves the Specification, Not the Test
+
+**Periodically ask: "Am I solving an actual problem, or am I flailing to satisfy a flawed test?"** When several attempted fixes haven't moved the needle, the test framework is a likely suspect — but the response is never to degrade production code to make the test pass.
+
+**Never introduce substandard code to satisfy shortcomings of the testing infrastructure.** Production code expresses the runtime contract. Tests verify the contract. When they disagree:
+
+| Disagreement | Correct response | Wrong response |
+|--------------|------------------|----------------|
+| Test asserts behavior the runtime never promised | Fix the test to match the contract | Add code to satisfy the test's stricter assertion |
+| Test uses an unrealistic environment (mocks the wrong layer, races a SIGKILL'd daemon, single-session asserts on a multi-session contract) | Fix the test environment | Add retry / sleep / workaround in production code |
+| Test framework can't observe a legitimate runtime path | Add a test hook (`_resetForTest`, `getStateForTest`) that doesn't change runtime behavior | Restructure runtime to make the test framework's observation easier |
+| Test is flaky on one platform but the runtime works | Identify why the test, not the runtime, is sensitive | Bump timeouts / retries / sleeps in production paths |
+
+**Code purity check before any "make the test pass" change:** would you ship this change if the test didn't exist? If no, you're degrading the code to satisfy the test. Stop. Fix the test.
+
+**Signals you're flailing for the test, not solving the bug:**
+
+| Signal | What it actually says |
+|--------|----------------------|
+| You've tried 3+ fixes and nothing has moved the needle | The diagnosis is wrong; investigate before patching again |
+| Each fix gets narrower / more defensive without removing the prior layer | You're piling on, not solving |
+| The runtime works fine in real-world usage but the test fails | The test's spec doesn't match the contract — that's the bug |
+| You'd need to add a sleep, retry, lock, or platform-special-case to make the test happy | Production code is paying for a test-environment limitation |
+| Removing the test makes the bug "go away" | The test was right but the fix is wrong, OR the test was the bug — diagnose which |
+
+The user said it directly: **"we never want to introduce substandard code to satisfy shortcomings of our testing infrastructure."** Tests serve the code; the code does not serve the tests.
+
+When you find that the test is the actual problem: change the test, document why in the commit message, and (if the change weakens an invariant) add a separate test that captures the invariant the original was *trying* to encode without the false strictness.
+
+---
+
 ## Concrete Example: #1017 Hive-Mind Shutdown
 
 This is the canonical case study for this guidance — and it has a second-order lesson that makes it even more useful.
