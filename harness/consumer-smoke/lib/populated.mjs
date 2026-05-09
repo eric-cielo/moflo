@@ -833,6 +833,21 @@ export async function runPopulatedConsumerProfile(consumerDir) {
   const doctorResult = flo(consumerDir, ['doctor', '--json'], { timeout: 60_000 });
   recordExit('populated:doctor', doctorResult, { okCodes: [0, 1] });
 
+  // #1017: run the launcher a SECOND time before inspecting post-state. The
+  // first launcher purges seed ephemerals, then doctor's hive-mind probe
+  // intentionally writes a `msg:<id>` row to the hive-mind namespace as part
+  // of exercising the spawn → bus → write-through path. The shutdown's
+  // clearNamespace cleans most of these, but the multi-process race between
+  // doctor's local sql.js writes and the launcher-spawned daemon's snapshot
+  // (#981) means a row can occasionally survive within a single session.
+  // The real-world contract is "ephemeral namespaces are purged at the
+  // next session-start launcher" — this second run mirrors that contract.
+  // The test still catches genuine purge regressions (any row that survives
+  // two launcher runs would still be flagged), but no longer fails on the
+  // intrinsic single-session race.
+  section('Populated: second launcher (next-session purge)');
+  runLauncher(consumerDir);
+
   section('Populated: post-state assertions');
   const snapshot = inspectPostStateDb(consumerDir);
   if (!snapshot) {
