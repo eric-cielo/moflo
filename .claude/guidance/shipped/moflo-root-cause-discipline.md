@@ -52,28 +52,37 @@ When fix N didn't work, do these in order — not in parallel, not skipping step
 1. **Read every prior fix on this surface in full.** Not the commit message — the code. Note what each one was trying to prevent and what it actually does.
 2. **Reproduce the failure deterministically** before touching code. If you can't reproduce it, you don't understand it.
 3. **Trace the data flow.** Where does the bad state originate? What writes it? What reads it? What invariant got violated?
-4. **Identify the structural cause** — the place where the bug becomes possible, not the place where it becomes visible.
-5. **Now consider fixes.** The cheapest fix at the structural cause beats the cleverest fix at the symptom every time.
+4. **Question the test, not just the code.** What invariant does the failing test actually encode? Does that invariant match the runtime contract, or is the test stricter? A test stricter than the contract will produce flakes that look like bugs but aren't. (See #1017 case study.)
+5. **Identify the structural cause** — the place where the bug becomes possible, not the place where it becomes visible.
+6. **Now consider fixes.** The cheapest fix at the structural cause beats the cleverest fix at the symptom every time. If the cause is "test asserts X, runtime contract is Y, X is stricter," the fix is in the test.
 
-If step 5 yields a fix smaller and simpler than the existing patches, **delete the existing patches** as part of the same change. Do not stack.
+If step 6 yields a fix smaller and simpler than the existing patches, **delete the existing patches** as part of the same change. Do not stack.
 
 ---
 
 ## Concrete Example: #1017 Hive-Mind Shutdown
 
-This is the canonical case study for this guidance.
+This is the canonical case study for this guidance — and it has a second-order lesson that makes it even more useful.
 
 | Attempt | Approach | Outcome |
 |---------|----------|---------|
 | #1017 first try | Loop list+delete in `clearNamespace` | Race window remained — broadcasts landed mid-loop |
-| #1024 layer 1 | Detach adapter BEFORE `clearNamespace` (after `terminateAgent`) | Race narrowed but not eliminated — terminate-broadcasts still went through the still-attached adapter |
-| #1024 layer 2 | Add `purgeHiveNamespacesDirect` raw sql.js DELETE | Looked bulletproof; actually was clobber-prone vs daemon's stale snapshot (#981 single-writer) |
+| #1024 layer 1 | Detach adapter BEFORE `clearNamespace` (after `terminateAgent`) | Race narrowed but not eliminated |
+| #1024 layer 2 | Add `purgeHiveNamespacesDirect` raw sql.js DELETE | Looked bulletproof; actually clobber-prone vs daemon's stale snapshot (#981 single-writer) |
 | #1024 declared green | All 6 CI checks pass once | Same flake reappeared on next PR's CI |
-| #1017 reopened — actual fix | Move `adapter.detach()` to BEFORE `terminateAgent`, delete `purgeHiveNamespacesDirect` | -73 LOC, +22 LOC, race is structurally impossible |
+| #1027 attempt 4 | Move `adapter.detach()` BEFORE `terminateAgent`; delete `purgeHiveNamespacesDirect` | Code simplified by -73 LOC. **Same flake on macos-latest CI.** |
+| #1027 — actual fix | Run launcher a SECOND time after doctor in the populated harness | Test passes. Race is intrinsic to multi-process sql.js + daemon kill timing; the harness assertion was over-strict. |
 
-The structural cause was always: `terminateAgent` broadcasts on a still-attached adapter. **Two lines of code reordered eliminated the race.** Three layers of patches narrowed it, masked it, and added new failure modes.
+The first three attempts kept asking "how do we delete this row harder?" The fourth attempt was a structural simplification that was correct on its own merits (-73 LOC, removed dead code, simpler shutdown ordering) but **did not fix the flake**.
 
-The lesson: every patch added between #1017's first attempt and the real fix was avoidable if anyone had asked "what writes the row that leaks?" before "how do we delete it harder?"
+The actual root cause was outside the surface every patch had touched: the populated harness was asserting "ephemerals purged after one launcher run" when the **runtime contract is "ephemerals purged at next session-start launcher"**. The doctor's hive-mind probe writes a row intentionally; that row is supposed to live until the NEXT session purges it. The test was conflating "purge mechanism works" with "purge happens within one session" — those are different invariants and only the first is the real product behavior.
+
+**Two lessons stack here:**
+
+1. **Don't pile layers** (the original lesson): four shutdown patches, each narrower than the last, none structurally sufficient.
+2. **Question the test, not just the code** (the second-order lesson): if you've been fighting a race for four PRs and the simplest in-code fix doesn't move the needle, the spec encoded in the test may be wrong. A test that is stricter than the runtime contract WILL produce flakes that look like product bugs but aren't.
+
+Together: when a fix isn't working, ask both "what writes the bad state?" AND "is this state actually bad in the runtime contract, or only in the test's expectation?"
 
 ---
 
