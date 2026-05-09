@@ -511,35 +511,67 @@ function dumpFullCrudOutput(label, res) {
 
 export function memoryCrud(consumerDir) {
   section('Memory CRUD round-trip');
-  const key = `smoke-${Date.now()}`;
-  const value = 'smoke-harness-sentinel';
 
-  const store = flo(consumerDir, ['memory', 'store', '-k', key, '-v', value, '--namespace', 'smoke']);
-  if (!recordExit('memory-store', store)) dumpFullCrudOutput('memory-store', store);
+  // Issue #1028: confine the round-trip to the bridge-direct path. The
+  // runtime contract for cross-process memory visibility is daemon-
+  // coordinated, but `flo memory retrieve` has no daemon-routed read — so a
+  // daemon-up CRUD round-trip races the daemon's flush against the harness's
+  // bridge-direct read. Mirroring #1029 (#1022): move the test environment
+  // out of the daemon's territory by disabling daemon auto-start in the
+  // consumer and stopping any daemon prior checks may have started. With
+  // auto-start off the next `flo memory <op>` falls through `storeEntry` to
+  // `bridgeStoreEntry` in-process, sequential subprocesses + atomicWrite
+  // (fsync → rename → Win post-rename verify) make the round-trip
+  // deterministic. Daemon-coordinated CRUD has dedicated coverage at
+  // src/cli/__tests__/memory/store-entry-routing.test.ts and
+  // src/cli/__tests__/services/daemon-memory-rpc.test.ts.
+  //
+  // Localized to memoryCrud: try/finally restores any prior moflo.yaml so
+  // downstream checks see the same environment they would have without the
+  // intervention (the smoke fixture intentionally ships without one — see
+  // SMOKE_ALLOWED_DOCTOR_WARNINGS).
+  const yamlPath = join(consumerDir, 'moflo.yaml');
+  const priorYaml = existsSync(yamlPath) ? readFileSync(yamlPath, 'utf8') : null;
+  writeFileSync(yamlPath, 'daemon:\n  auto_start: false\n');
+  stopConsumerDaemon(consumerDir);
 
-  // Issue #994: use --format=json so the round-trip check parses a structured
-  // payload instead of grepping the ASCII printBox output. The box rendering
-  // intermittently dropped its content rows on Windows CI (top/bottom borders
-  // landed in captured stdout, the inner `| Namespace: ... |` lines didn't —
-  // looked like a writeback race in the harness output but turned out to be
-  // a stdout-flush issue downstream of printBox). JSON output goes through
-  // a single console.log call and is what callers should rely on anyway.
-  const get = flo(consumerDir, ['memory', 'retrieve', '-k', key, '--namespace', 'smoke', '--format', 'json']);
-  let parsedContent = null;
-  if (get.code === 0) {
-    try { parsedContent = JSON.parse(get.stdout.trim())?.content ?? null; }
-    catch { /* fall through to fail with the raw exit/stdout */ }
+  try {
+    const key = `smoke-${Date.now()}`;
+    const value = 'smoke-harness-sentinel';
+
+    const store = flo(consumerDir, ['memory', 'store', '-k', key, '-v', value, '--namespace', 'smoke']);
+    if (!recordExit('memory-store', store)) dumpFullCrudOutput('memory-store', store);
+
+    // Issue #994: use --format=json so the round-trip check parses a structured
+    // payload instead of grepping the ASCII printBox output. The box rendering
+    // intermittently dropped its content rows on Windows CI (top/bottom borders
+    // landed in captured stdout, the inner `| Namespace: ... |` lines didn't —
+    // looked like a writeback race in the harness output but turned out to be
+    // a stdout-flush issue downstream of printBox). JSON output goes through
+    // a single console.log call and is what callers should rely on anyway.
+    const get = flo(consumerDir, ['memory', 'retrieve', '-k', key, '--namespace', 'smoke', '--format', 'json']);
+    let parsedContent = null;
+    if (get.code === 0) {
+      try { parsedContent = JSON.parse(get.stdout.trim())?.content ?? null; }
+      catch { /* fall through to fail with the raw exit/stdout */ }
+    }
+    const ok = parsedContent === value;
+    record('memory-retrieve', ok ? 'pass' : 'fail',
+      ok ? 'value round-trips' : `exit ${get.code}, content=${JSON.stringify(parsedContent)}`);
+    if (!ok) dumpFullCrudOutput('memory-retrieve', get);
+
+    recordExit('memory-search', flo(consumerDir, ['memory', 'search', '-q', 'smoke', '--namespace', 'smoke', '--limit', '5']));
+
+    recordExit('memory-list', flo(consumerDir, ['memory', 'list', '--namespace', 'smoke']));
+
+    recordExit('memory-delete', flo(consumerDir, ['memory', 'delete', '-k', key, '--namespace', 'smoke']));
+  } finally {
+    if (priorYaml !== null) writeFileSync(yamlPath, priorYaml);
+    else {
+      try { rmSync(yamlPath); }
+      catch { /* benign — file may have been removed by a subprocess */ }
+    }
   }
-  const ok = parsedContent === value;
-  record('memory-retrieve', ok ? 'pass' : 'fail',
-    ok ? 'value round-trips' : `exit ${get.code}, content=${JSON.stringify(parsedContent)}`);
-  if (!ok) dumpFullCrudOutput('memory-retrieve', get);
-
-  recordExit('memory-search', flo(consumerDir, ['memory', 'search', '-q', 'smoke', '--namespace', 'smoke', '--limit', '5']));
-
-  recordExit('memory-list', flo(consumerDir, ['memory', 'list', '--namespace', 'smoke']));
-
-  recordExit('memory-delete', flo(consumerDir, ['memory', 'delete', '-k', key, '--namespace', 'smoke']));
 }
 
 /**
