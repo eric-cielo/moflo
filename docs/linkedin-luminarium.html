@@ -158,7 +158,9 @@
 
 <p>MoFlo runs a lot of moving parts in the background: a daemon, a fleet of workers indexing your repo and consolidating memory, a scheduler firing off spells on cron triggers, a runner driving issues from <code>/flo</code> to PRs, and a memory database that quietly accumulates everything the team learns. Most of that machinery is invisible by design — it's supposed to <em>just work</em>. But "just works" without observability is faith, not engineering. The Luminarium gives you the receipts.</p>
 
-<p>It's a small, read-only HTTP server that ships with the daemon. Open <a href="http://localhost:3117"><code>http://localhost:3117</code></a> in your browser and you're looking at the live state of MoFlo on your machine. No login, no cloud, no telemetry — it binds to <code>127.0.0.1</code> only. The daemon serves it; nothing leaves the box.</p>
+<p>It's a small, read-only HTTP server that ships with the daemon. Open <a href="http://localhost:3117"><code>http://localhost:3117</code></a> in your browser and you're looking at the live state of MoFlo on your machine — workers, schedules, memory, spell runs — <em>and</em> what Claude itself has been doing for this project locally. No login, no cloud, no telemetry — it binds to <code>127.0.0.1</code> only. The daemon serves it; nothing leaves the box.</p>
+
+<p>Most of the tabs answer "what is MoFlo up to?" The newest one answers "what has Claude been up to?" Both views, same dashboard, same privacy posture.</p>
 
 <h2>The status strip — is the daemon actually doing anything?</h2>
 
@@ -226,6 +228,22 @@
 </ul>
 
 <p>If a namespace looks suspiciously thin, that's almost always a configuration story — and one you can fix in a few minutes once you can see it.</p>
+
+<h2>Claude Stats — what has Claude been up to in this project?</h2>
+
+<p>The newest tab steps outside MoFlo's own internals and reads what <strong>Claude Code</strong> itself has been doing on your machine, for this project specifically. Every Claude Code session leaves a JSONL transcript in <code>~/.claude/projects/&lt;project&gt;/</code>; the Luminarium aggregates them locally and surfaces the totals across <strong>today / 7 days / 30 days / lifetime</strong> windows: sessions, input/output/cache tokens, the model distribution, top tool calls, error-tagged sessions, and median session duration.</p>
+
+<p>It's the only tab that crosses the boundary between MoFlo and Claude. Everywhere else you're looking at MoFlo's own state. Here you're looking at what Claude has accomplished locally, with MoFlo as the lens — and like every other tab, the data never leaves your machine.</p>
+
+<p>A few honest caveats baked into the banner at the top so the numbers don't get misread:</p>
+
+<ul>
+  <li><strong>Local primary-session stats only.</strong> Counts what Claude Code wrote to disk for this project on this machine. Not your account-level usage, not other devices, not <code>claude.ai</code> web chats.</li>
+  <li><strong>Excludes sub-sessions spawned by Task-tool agents</strong> (<code>/simplify</code>, <code>/ultrareview</code>, Explore, and so on). Those run in their own per-session <code>subagents/</code> transcripts that the dashboard doesn't yet walk, so the model distribution skews toward the primary model and the totals undercount real Sonnet and Haiku traffic. Closing that gap is on the roadmap.</li>
+  <li><strong>No estimated cost.</strong> Pricing varies wildly by subscription tier and any account-level discounts, so rather than render a number that risks misleading you, we just don't. Token totals are the honest signal.</li>
+</ul>
+
+<p>What it's actually useful for: spotting whether your sessions are mostly clean or mostly error-laden, seeing which tools you're hammering on (<code>Read</code>, <code>Grep</code>, <code>Bash</code> usually top the list), and watching your token mix shift week over week as the team's habits change. It's a candid little usage mirror, scoped to one project, sitting next to MoFlo's own machinery — so the question "is something off today?" can be answered for both halves of the system in the same tab strip.</p>
 
 <h2>How to summon it</h2>
 
