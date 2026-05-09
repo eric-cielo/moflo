@@ -15,7 +15,7 @@ import {
   type PreflightWarning,
   type PreflightWarningDecision,
 } from '../services/engine-loader.js';
-import { createDashboardMemoryAccessor } from '../services/daemon-dashboard.js';
+import { getSharedMemoryAccessor } from '../services/daemon-dashboard.js';
 import type { MemoryAccessor } from '../spells/types/step-command.types.js';
 
 /**
@@ -104,16 +104,21 @@ export async function runEpicSpell(
 ): Promise<EpicSpellResult> {
   const engine = await loadSpellEngine();
 
-  // Lazily initialize a real memory accessor so execution records
-  // are persisted and visible in the dashboard.
+  // Lazily wrap the process-wide shared accessor (#1020) so execution
+  // records are persisted and visible in the dashboard. The shared helper
+  // owns the warn-and-return-null degradation; we only attach the
+  // failed-write counter on top of a successful inner accessor.
   if (!memoryAccessor) {
-    try {
-      const inner = await createDashboardMemoryAccessor();
+    const inner = await getSharedMemoryAccessor();
+    if (inner) {
       memoryAccessor = trackPersistFailures(inner);
       console.log('[epic] Memory accessor ready — spell progress will be persisted');
-    } catch (err) {
-      console.warn(`[epic] ⚠ Dashboard memory unavailable: ${(err as Error).message ?? err}`);
-      console.warn('[epic] ⚠ Spell executions will NOT appear in the dashboard');
+    } else {
+      // The shared helper already emitted `[memory]`-prefixed warns. Add an
+      // `[epic]`-tagged note so a user running `flo epic` can correlate the
+      // missing dashboard history with this command without scanning for a
+      // `[memory]` line elsewhere in the output.
+      console.warn('[epic] ⚠ Memory unavailable — this run will not appear in the dashboard');
     }
   }
 
