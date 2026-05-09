@@ -5,8 +5,10 @@
  * lifecycle. This connector adds server-pool management, lazy spawning, tool
  * discovery caching, and the SpellConnector interface adapter.
  *
- * The SDK is an optionalDependency and is loaded lazily on first use so
- * consumers that don't use the MCP connector don't need it installed.
+ * The SDK is a hard `dependency` (MCP is a headline integration), but it is
+ * loaded lazily on first use so spells that don't use the MCP connector don't
+ * pay its startup cost. The lazy-load also yields an actionable install hint
+ * if a corrupted install lost the package.
  */
 
 import type {
