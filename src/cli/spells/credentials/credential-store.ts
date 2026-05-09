@@ -14,7 +14,7 @@ import {
   randomBytes,
   pbkdf2Sync,
 } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { CredentialAccessor } from '../types/step-command.types.js';
 
@@ -106,6 +106,11 @@ export class CredentialStore implements CredentialAccessor {
   private readonly filePath: string;
   private derivedKey: Buffer | null = null;
   private data: StoreData | null = null;
+  // Tracks the file mtime that produced `this.data`. `null` means the file
+  // didn't exist when we last read. refreshIfStale() compares against the
+  // current mtime to detect external writes (e.g. CLI subprocesses calling
+  // `flo spell credentials set` while the daemon's instance is alive — #1035).
+  private lastReadMtimeMs: number | null = null;
 
   constructor(options: CredentialStoreOptions) {
     this.filePath = options.filePath;
@@ -126,6 +131,7 @@ export class CredentialStore implements CredentialAccessor {
       );
     }
     this.data = this.readFile();
+    this.lastReadMtimeMs = this.fileMtimeMs();
     const salt = Buffer.from(this.data.salt, 'hex');
     this.derivedKey = deriveKey(passphrase, salt);
   }
@@ -143,9 +149,17 @@ export class CredentialStore implements CredentialAccessor {
 
   /**
    * Store an encrypted credential.
+   *
+   * The refreshIfStale() call rebases on the latest on-disk state so we don't
+   * write back a snapshot that's missing concurrent additions. It is NOT a
+   * mutual-exclusion primitive: two processes calling store() on the same key
+   * concurrently still race, and the last writer wins. Cross-process locking
+   * is out of scope; the file write is small and the typical layout (one
+   * daemon reader + occasional CLI writers) makes the race window vanishing.
    */
   async store(name: string, value: string, description?: string): Promise<void> {
     this.ensureUnlocked();
+    this.refreshIfStale();
     const now = new Date().toISOString();
     const encrypted = encrypt(value, this.derivedKey!);
 
@@ -166,6 +180,7 @@ export class CredentialStore implements CredentialAccessor {
    */
   async get(name: string): Promise<string | undefined> {
     this.ensureUnlocked();
+    this.refreshIfStale();
     const entry = this.data!.credentials[name];
     if (!entry) return undefined;
 
@@ -185,6 +200,7 @@ export class CredentialStore implements CredentialAccessor {
    */
   async has(name: string): Promise<boolean> {
     this.ensureUnlocked();
+    this.refreshIfStale();
     return name in this.data!.credentials;
   }
 
@@ -193,6 +209,7 @@ export class CredentialStore implements CredentialAccessor {
    */
   async delete(name: string): Promise<boolean> {
     this.ensureUnlocked();
+    this.refreshIfStale();
     if (!(name in this.data!.credentials)) return false;
     delete this.data!.credentials[name];
     this.writeFile(this.data!);
@@ -206,6 +223,7 @@ export class CredentialStore implements CredentialAccessor {
    */
   async clear(): Promise<number> {
     this.ensureUnlocked();
+    this.refreshIfStale();
     const count = Object.keys(this.data!.credentials).length;
     if (count === 0) return 0;
     this.data!.credentials = {};
@@ -218,6 +236,7 @@ export class CredentialStore implements CredentialAccessor {
    */
   async list(): Promise<readonly CredentialMeta[]> {
     this.ensureUnlocked();
+    this.refreshIfStale();
     return Object.entries(this.data!.credentials).map(([name, entry]) => ({
       name,
       description: entry.description,
@@ -232,6 +251,7 @@ export class CredentialStore implements CredentialAccessor {
    */
   async allValues(): Promise<readonly string[]> {
     this.ensureUnlocked();
+    this.refreshIfStale();
     const values: string[] = [];
     for (const entry of Object.values(this.data!.credentials)) {
       try {
@@ -357,6 +377,48 @@ export class CredentialStore implements CredentialAccessor {
   private writeFile(data: StoreData): void {
     mkdirSync(dirname(this.filePath), { recursive: true });
     writeFileSync(this.filePath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 });
+    // Adopt the just-written mtime so refreshIfStale() doesn't trigger an
+    // unnecessary re-read on the next operation through this instance.
+    this.lastReadMtimeMs = this.fileMtimeMs();
+  }
+
+  /**
+   * Return the file's mtime in ms, or null when the file doesn't exist.
+   * Other errors (permissions, etc.) are surfaced — they signal a real problem
+   * worth raising rather than silently treating as "no file".
+   */
+  private fileMtimeMs(): number | null {
+    try {
+      return statSync(this.filePath).mtimeMs;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw err;
+    }
+  }
+
+  /**
+   * Reload `this.data` from disk when the file's mtime differs from what we
+   * last read. This is the per-call hook that keeps long-lived instances
+   * (the daemon's singleton CredentialStore — see #1035) consistent with
+   * writes made by CLI subprocesses.
+   *
+   * Limitations:
+   * - If another process rotated the passphrase, the salt in the reloaded
+   *   data will mismatch our derivedKey. Subsequent decrypt() calls throw
+   *   DECRYPTION_FAILED, which the resolver treats as missing — same UX as
+   *   today's stale-daemon failure mode and only resolved by daemon restart.
+   *   Rotation-aware reload would need the new passphrase, which we don't
+   *   have post-construction; out of scope here.
+   * - Designed for local filesystems. Network mounts (NFS/SMB) can return
+   *   coarse or stale mtimes via client caching, which would weaken the
+   *   detection. The credentials file lives at `~/.moflo/credentials.json`
+   *   and is expected to be local; network-mounted homedirs aren't supported.
+   */
+  private refreshIfStale(): void {
+    const current = this.fileMtimeMs();
+    if (current === this.lastReadMtimeMs) return;
+    this.data = this.readFile();
+    this.lastReadMtimeMs = current;
   }
 }
 
