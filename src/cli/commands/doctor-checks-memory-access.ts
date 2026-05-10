@@ -23,7 +23,10 @@
  * agents/hive workers.
  */
 
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { mofloImport } from '../services/moflo-require.js';
+import { memoryDbPath } from '../services/moflo-paths.js';
 import { type HealthCheck } from './doctor-checks-deep.js';
 import {
   type FunctionalCheckDetail,
@@ -221,6 +224,186 @@ async function safeDelete(memoryTools: ToolHandler[], key: string, namespace: st
   try { await invokeOrThrow(memoryTools, 'memory_delete', { key, namespace }); } catch { /* best-effort */ }
 }
 
+interface NeighborsResult {
+  success?: boolean;
+  total?: number;
+  neighbors?: Array<{ key: string; navigation?: { parentDoc?: string; chunkTitle?: string } | null }>;
+  error?: string;
+}
+
+/**
+ * #1053 S2: probe `memory_get_neighbors` round-trip.
+ *
+ * Same #798 protected-functionality posture as the swarm/agent/task probes:
+ * if a future refactor stubs the handler to literals (or unwires it from
+ * the metadata-passthrough plumbing in S1), this probe fails BEFORE the
+ * stub ships to consumers.
+ *
+ * Three chunks are stored via memory_store, then their `metadata` columns
+ * are written directly via sql.js to inject chunk-shaped nav fields
+ * (memory_store always sets metadata to '{}', so the chunker write path is
+ * the only producer in steady state — bypass it here for an in-process
+ * probe). The middle chunk's neighbors are then fetched and verified to
+ * carry navigation back, proving S1 + S2 + the metadata column passthrough
+ * survive end-to-end.
+ */
+async function probeMemoryGetNeighbors(
+  memoryTools: ToolHandler[],
+  details: FunctionalCheckDetail[],
+): Promise<{ key: string; namespace: string; chunkKeys: string[] } | null> {
+  const tool = getTool(memoryTools, 'memory_get_neighbors');
+  if (!tool?.handler) {
+    details.push({
+      id: 'neighbors.registered',
+      mcpTool: 'memory_get_neighbors',
+      status: 'fail',
+      observed: { registered: false },
+      expected: 'memory_get_neighbors registered in MCP tool surface (#1053 S2)',
+      message: 'memory_get_neighbors is not registered — has the tool been removed or its name changed?',
+    });
+    return null;
+  }
+  details.push({
+    id: 'neighbors.registered',
+    mcpTool: 'memory_get_neighbors',
+    status: 'pass',
+    observed: { registered: true },
+    expected: 'memory_get_neighbors registered',
+  });
+
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const namespace = `doctor-neighbors-${stamp}`;
+  const prefix = `chunk-doctor-neighbors-${stamp}`;
+  const chunkKeys = [`${prefix}-0`, `${prefix}-1`, `${prefix}-2`];
+  const middleKey = chunkKeys[1];
+
+  // Seed three chunks via DIRECT sql.js write (skipping memory_store).
+  // Going through memory_store would warm the bridge's TieredCache with
+  // metadata='{}', and a follow-up direct UPDATE would race the bridge's
+  // writeback (sql.js dump-on-flush hazard, see
+  // feedback_sqljs_writeback_clobber.md). Writing straight to disk before
+  // the bridge ever sees these keys means memory_get_neighbors → getEntry
+  // hits fresh disk state and our injected metadata is what comes back.
+  const dbPath = memoryDbPath(process.cwd());
+  if (!existsSync(dbPath)) {
+    details.push({
+      id: 'neighbors.seed',
+      mcpTool: 'memory_get_neighbors',
+      status: 'warn',
+      observed: { dbPath, exists: false },
+      expected: 'memory.db present so the neighbors probe can seed chunks',
+      message: 'memory.db missing — skip the neighbors probe (run `flo memory init` first)',
+    });
+    return { key: middleKey, namespace, chunkKeys };
+  }
+  try {
+    const initSqlJs = (await mofloImport('sql.js') as { default: () => Promise<unknown> }).default;
+    const SQL = await initSqlJs() as { Database: new (buf: Buffer) => { prepare: (sql: string) => { run: (args: unknown[]) => void; free: () => void }; export: () => Uint8Array; close: () => void } };
+    const db = new SQL.Database(readFileSync(dbPath));
+    const insert = db.prepare(
+      `INSERT OR REPLACE INTO memory_entries
+        (id, key, namespace, content, type, tags, metadata, created_at, updated_at, status)
+       VALUES (?, ?, ?, ?, 'semantic', '[]', ?, ?, ?, 'active')`,
+    );
+    const now = Date.now();
+    for (let i = 0; i < chunkKeys.length; i++) {
+      const meta = {
+        type: 'chunk',
+        parentDoc: 'doc-doctor-neighbors',
+        parentPath: '/doctor-neighbors.md',
+        chunkIndex: i,
+        totalChunks: chunkKeys.length,
+        prevChunk: i > 0 ? chunkKeys[i - 1] : null,
+        nextChunk: i < chunkKeys.length - 1 ? chunkKeys[i + 1] : null,
+        siblings: chunkKeys,
+        hierarchicalParent: null,
+        hierarchicalChildren: null,
+        chunkTitle: `Doctor Probe Chunk ${i}`,
+        headerLevel: 2,
+        docContentHash: stamp,
+      };
+      insert.run([
+        `memprobe-neighbors-${stamp}-${i}`,
+        chunkKeys[i],
+        namespace,
+        `chunk body ${i}`,
+        JSON.stringify(meta),
+        now, now,
+      ]);
+    }
+    insert.free();
+    writeFileSync(dbPath, Buffer.from(db.export()));
+    db.close();
+  } catch (err) {
+    const msg = errorDetail(err, { firstLineOnly: true });
+    details.push({
+      id: 'neighbors.seed',
+      mcpTool: 'memory_get_neighbors',
+      status: 'fail',
+      observed: { error: msg },
+      expected: 'three chunk rows seeded with chunk-shaped metadata',
+      message: `seed failed: ${msg}`,
+    });
+    return { key: middleKey, namespace, chunkKeys };
+  }
+
+  // 3. The probe itself — fetch prev + next of the middle chunk.
+  let result: NeighborsResult | undefined;
+  try {
+    result = (await invokeOrThrow(memoryTools, 'memory_get_neighbors', {
+      key: middleKey,
+      namespace,
+    })) as NeighborsResult;
+  } catch (err) {
+    const msg = errorDetail(err, { firstLineOnly: true });
+    details.push({
+      id: 'neighbors.roundtrip',
+      mcpTool: 'memory_get_neighbors',
+      status: 'fail',
+      observed: { error: msg },
+      expected: 'memory_get_neighbors returns success=true with prev + next',
+      message: `handler threw: ${msg}`,
+    });
+    return { key: middleKey, namespace, chunkKeys };
+  }
+
+  const failReason = assertNeighbors(result, [chunkKeys[0], chunkKeys[2]]);
+  pushDetail(
+    details,
+    {
+      id: 'neighbors.roundtrip',
+      mcpTool: 'memory_get_neighbors',
+      expected: `success=true, total=2, neighbors include ${chunkKeys[0]} + ${chunkKeys[2]} with navigation`,
+    },
+    failReason ? result : { total: result.total, neighborKeys: result.neighbors?.map(n => n.key) },
+    failReason,
+  );
+
+  return { key: middleKey, namespace, chunkKeys };
+}
+
+function assertNeighbors(result: NeighborsResult | undefined, expectedKeys: string[]): string | null {
+  if (!result?.success) {
+    return `success=${result?.success} (error: ${result?.error ?? 'unknown'}) — handler did not return success`;
+  }
+  if (result.total !== expectedKeys.length) {
+    return `expected total=${expectedKeys.length}, got ${result.total} — neighbors traversal returned wrong count`;
+  }
+  const got = (result.neighbors ?? []).map(n => n.key).sort();
+  const want = [...expectedKeys].sort();
+  if (JSON.stringify(got) !== JSON.stringify(want)) {
+    return `expected neighbor keys ${JSON.stringify(want)}, got ${JSON.stringify(got)} — wrong neighbors returned`;
+  }
+  // Every neighbor must carry navigation (S1 metadata passthrough). A stub
+  // that returns shaped envelopes but null nav would pass the count check;
+  // this catches it.
+  const missingNav = (result.neighbors ?? []).filter(n => !n.navigation);
+  if (missingNav.length > 0) {
+    return `${missingNav.length} neighbor(s) returned with navigation=null — S1 metadata passthrough may be broken`;
+  }
+  return null;
+}
+
 export async function checkMemoryAccessFunctional(): Promise<FunctionalHealthCheck> {
   const details: FunctionalCheckDetail[] = [];
 
@@ -246,6 +429,25 @@ export async function checkMemoryAccessFunctional(): Promise<FunctionalHealthChe
   let hiveInitialized = false;
 
   try {
+    // ── Probe 0: memory_get_neighbors (#1053 S2) ──────────────────────────
+    // MUST RUN FIRST — before any memory_store call warms the bridge's
+    // in-memory sql.js snapshot. The probe injects chunk metadata via a
+    // direct file write to .moflo/moflo.db; once the bridge has loaded the
+    // DB into memory and done its first persist, external file writes are
+    // clobbered (sql.js dump-on-flush hazard, see
+    // feedback_sqljs_writeback_clobber.md). Running this probe first means
+    // the bridge instantiates AFTER our seed lands — its initial disk read
+    // sees our rows.
+    {
+      const probeResult = await probeMemoryGetNeighbors(memoryTools, details);
+      if (probeResult) {
+        const { namespace, chunkKeys } = probeResult;
+        for (const key of chunkKeys) {
+          cleanups.push(() => safeDelete(memoryTools, key, namespace));
+        }
+      }
+    }
+
     // ── Probe 1: subagent context ─────────────────────────────────────────
     // The "subagent" path is what Claude's Task tool ends up calling: direct
     // MCP tools with no surrounding coordinator state. Failures here indicate

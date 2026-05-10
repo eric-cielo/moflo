@@ -1605,6 +1605,8 @@ function runMigrationsAndAnnounce(runnerPath) {
   const labels = {
     'knowledge-to-learnings': 'consolidated knowledge → learnings',
     'knowledge-purge': 'removed legacy knowledge namespace rows',
+    'purge-doc-entries': 'pruned legacy doc-* rows (chunk-only RAG, #1053)',
+    'strip-context-preambles': 'stripped chunk preambles; embeddings will rebuild on next index pass (#1053)',
   };
 
   for (const line of raw.split('\n')) {

@@ -387,6 +387,7 @@ interface HNSWEntry {
   key: string;
   namespace: string;
   content: string;
+  metadata?: string; // JSON string from memory_entries.metadata column (RAG nav fields for chunks)
 }
 
 interface HNSWIndex {
@@ -468,8 +469,8 @@ export async function getHNSWIndex(options?: {
     // adjacency. When the sidecar IS loaded we skip the per-row JSON.parse
     // of the embedding column, which is the expensive part on a populated
     // consumer DB.
-    const SELECT_WITH_EMBEDDING = `id, key, namespace, content, embedding`;
-    const SELECT_METADATA_ONLY = `id, key, namespace, content`;
+    const SELECT_WITH_EMBEDDING = `id, key, namespace, content, metadata, embedding`;
+    const SELECT_METADATA_ONLY = `id, key, namespace, content, metadata`;
 
     if (fs.existsSync(dbPath)) {
       try {
@@ -489,7 +490,11 @@ export async function getHNSWIndex(options?: {
         let parseSkipped = 0;
         if (result[0]?.values) {
           for (const row of result[0].values) {
-            const [id, key, ns, content, embeddingJson] = row as [string, string, string, string, string?];
+            // Column order matches SELECT_WITH_EMBEDDING / SELECT_METADATA_ONLY.
+            // When sidecar is loaded, embeddingJson is undefined (column absent).
+            const [id, key, ns, content, metadataJson, embeddingJson] = row as [
+              string, string, string, string, string | null, string?
+            ];
 
             if (!sidecarLoaded) {
               const vec = parseEmbeddingJson(embeddingJson);
@@ -504,7 +509,8 @@ export async function getHNSWIndex(options?: {
               id: String(id),
               key: key || String(id),
               namespace: ns || 'default',
-              content: content || ''
+              content: content || '',
+              metadata: metadataJson || undefined
             });
           }
         }
@@ -572,7 +578,7 @@ export async function searchHNSWIndex(
     k?: number;
     namespace?: string;
   }
-): Promise<Array<{ id: string; key: string; content: string; score: number; namespace: string }> | null> {
+): Promise<Array<{ id: string; key: string; content: string; score: number; namespace: string; metadata?: string }> | null> {
   // ADR-053: Try AgentDB v3 bridge first
   const bridge = await getBridge();
   if (bridge) {
@@ -590,7 +596,7 @@ export async function searchHNSWIndex(
     // HNSW search returns results with cosine distance (lower = more similar)
     const results = await index.db.search({ vector, k: k * 2 }); // Get extra for filtering
 
-    const filtered: Array<{ id: string; key: string; content: string; score: number; namespace: string }> = [];
+    const filtered: Array<{ id: string; key: string; content: string; score: number; namespace: string; metadata?: string }> = [];
 
     for (const result of results) {
       const entry = index.entries.get(result.id);
@@ -610,7 +616,8 @@ export async function searchHNSWIndex(
         key: entry.key || entry.id.substring(0, 15),
         content: entry.content.substring(0, 60) + (entry.content.length > 60 ? '...' : ''),
         score,
-        namespace: entry.namespace
+        namespace: entry.namespace,
+        metadata: entry.metadata
       });
 
       if (filtered.length >= k) break;
@@ -2188,6 +2195,7 @@ export async function searchEntries(options: {
     content: string;
     score: number;
     namespace: string;
+    metadata?: string;
   }[];
   searchTime: number;
   error?: string;
@@ -2244,18 +2252,20 @@ export async function searchEntries(options: {
 
     // Get entries with embeddings
     const entries = db.exec(`
-      SELECT id, key, namespace, content, embedding
+      SELECT id, key, namespace, content, metadata, embedding
       FROM memory_entries
       WHERE status = 'active'
         ${namespace !== 'all' ? `AND namespace = '${namespace.replace(/'/g, "''")}'` : ''}
       LIMIT 1000
     `);
 
-    const results: { id: string; key: string; content: string; score: number; namespace: string }[] = [];
+    const results: { id: string; key: string; content: string; score: number; namespace: string; metadata?: string }[] = [];
 
     if (entries[0]?.values) {
       for (const row of entries[0].values) {
-        const [id, key, ns, content, embeddingJson] = row as [string, string, string, string, string | null];
+        const [id, key, ns, content, metadataJson, embeddingJson] = row as [
+          string, string, string, string, string | null, string | null
+        ];
 
         let score = 0;
 
@@ -2281,7 +2291,8 @@ export async function searchEntries(options: {
             key: key || id.substring(0, 15),
             content: (content || '').substring(0, 60) + ((content || '').length > 60 ? '...' : ''),
             score,
-            namespace: ns || 'default'
+            namespace: ns || 'default',
+            metadata: metadataJson || undefined
           });
         }
       }
@@ -2466,6 +2477,7 @@ export async function getEntry(options: {
     updatedAt: string;
     hasEmbedding: boolean;
     tags: string[];
+    metadata?: string;
   };
   error?: string;
 }> {
@@ -2501,7 +2513,7 @@ export async function getEntry(options: {
 
     // Find entry by key
     const result = db.exec(`
-      SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at, tags
+      SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at, tags, metadata
       FROM memory_entries
       WHERE status = 'active'
         AND key = '${key.replace(/'/g, "''")}'
@@ -2514,8 +2526,8 @@ export async function getEntry(options: {
       return { success: true, found: false };
     }
 
-    const [id, entryKey, ns, content, embedding, accessCount, createdAt, updatedAt, tagsJson] = result[0].values[0] as [
-      string, string, string, string, string | null, number, string, string, string | null
+    const [id, entryKey, ns, content, embedding, accessCount, createdAt, updatedAt, tagsJson, metadataJson] = result[0].values[0] as [
+      string, string, string, string, string | null, number, string, string, string | null, string | null
     ];
 
     // Update access count
@@ -2550,7 +2562,8 @@ export async function getEntry(options: {
         createdAt: createdAt || new Date().toISOString(),
         updatedAt: updatedAt || new Date().toISOString(),
         hasEmbedding: !!embedding && embedding.length > 10,
-        tags
+        tags,
+        metadata: metadataJson || undefined
       }
     };
   } catch (error) {

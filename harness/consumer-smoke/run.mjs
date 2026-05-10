@@ -83,6 +83,7 @@ async function main() {
       () => check.spellList(consumerDir),
       () => check.spellScheduleStrictCron(consumerDir),
       () => check.mcpTools(consumerDir),
+      () => check.memoryTraversalProtocol(consumerDir),
       () => check.moflodbBridge(consumerDir),
       () => check.floSearch(consumerDir),
       () => check.hooks(consumerDir),

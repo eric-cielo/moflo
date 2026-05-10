@@ -227,10 +227,39 @@ emit({ rows: rows.length, bytes: buf.length });
  * legacy-purge-soft-deleted` would (correctly) fail on the resulting
  * §3e-728 cleanup banner.
  */
+// #1053: legacy doc-* + chunk-with-preamble fixtures so the populated
+// harness can prove the migrations actually do their work — not just
+// vacuously pass against an empty fixture. purge-doc-entries should remove
+// LEGACY_DOC_KEYS; strip-context-preambles should clean LEGACY_CHUNK_KEYS.
+const LEGACY_DOC_KEYS = ['doc-guidance-legacy-foo', 'doc-guidance-legacy-bar'];
+const LEGACY_CHUNK_KEYS = ['chunk-guidance-legacy-foo-0', 'chunk-guidance-legacy-foo-1'];
+const LEGACY_PREAMBLE_CONTENT =
+  '# Legacy Section\n\n[Context from previous section:]\nold prior text\n\n---\n\nreal chunk content\n\n---\n\n[Context from next section:]\nold next text';
+
+function buildLegacyEpic1053Rows() {
+  // Use a non-canonical namespace so the seed doesn't collide with the
+  // cherry-pick assertion (assertDerivedRowsRegenerable expects 0 active
+  // rows in `guidance` after launcher). The migrations purge/strip by KEY
+  // prefix, namespace-agnostic — so this still exercises both migrations.
+  const ns = 'epic-1053-fixture';
+  const rows = [];
+  for (const key of LEGACY_DOC_KEYS) {
+    rows.push({ id: `legacy-${key}`, key, namespace: ns, content: 'legacy doc body', status: 'active' });
+  }
+  for (const key of LEGACY_CHUNK_KEYS) {
+    rows.push({ id: `legacy-${key}`, key, namespace: ns, content: LEGACY_PREAMBLE_CONTENT, status: 'active' });
+  }
+  return rows;
+}
+
 function seedMofloDb(consumerDir, tasklistRows) {
   const mofloDir = join(consumerDir, MOFLO_DIR);
   mkdirSync(mofloDir, { recursive: true });
   const dbPath = memoryDbPath(consumerDir);
+
+  // #1053: seed both tasklist (existing #968 retention test) and the legacy
+  // doc-*/chunk-w-preamble fixtures the new migrations should clean up.
+  const allRows = [...tasklistRows, ...buildLegacyEpic1053Rows()];
 
   const result = runSqlJsProbe(consumerDir, 'seed-moflo-db', `
 const SQL = await sqlInit();
@@ -258,7 +287,7 @@ db.exec(\`CREATE TABLE memory_entries (
 db.exec('CREATE INDEX idx_bridge_ns ON memory_entries(namespace)');
 db.exec('CREATE INDEX idx_bridge_status ON memory_entries(status)');
 const stmt = db.prepare('INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?,?,?,?,?)');
-const rows = ${JSON.stringify(tasklistRows)};
+const rows = ${JSON.stringify(allRows)};
 for (const r of rows) {
   stmt.run([r.id, r.key, r.namespace, r.content, r.status]);
 }
@@ -271,7 +300,8 @@ emit({ rows: rows.length, bytes: buf.length });
 `);
 
   if (!result) throw new Error('seed moflo db failed');
-  record('populated:seed-moflo-db', 'pass', `${result.rows} tasklist rows / ${result.bytes} bytes`);
+  record('populated:seed-moflo-db', 'pass',
+    `${result.rows} rows / ${result.bytes} bytes (incl. ${LEGACY_DOC_KEYS.length} doc-* + ${LEGACY_CHUNK_KEYS.length} chunk-w-preamble)`);
   return dbPath;
 }
 
@@ -349,7 +379,7 @@ function inspectPostStateDb(consumerDir) {
 const { readFileSync } = await import('node:fs');
 const SQL = await sqlInit();
 const db = new SQL.Database(readFileSync(${JSON.stringify(dbPath)}));
-const out = { byNamespaceStatus: {}, integrity: null, ids: [], hasEmbedding: 0, migratedLearnings: { byStatus: {}, withEmbedding: 0, sampleKeys: [] } };
+const out = { byNamespaceStatus: {}, integrity: null, ids: [], hasEmbedding: 0, migratedLearnings: { byStatus: {}, withEmbedding: 0, sampleKeys: [] }, epic1053: { docCount: 0, preambleChunkCount: 0 } };
 const res = db.exec("SELECT namespace, status, COUNT(*) FROM memory_entries GROUP BY namespace, status");
 if (res[0]) {
   for (const row of res[0].values) out.byNamespaceStatus[row[0]+'/'+row[1]] = row[2];
@@ -369,9 +399,28 @@ const migEmbRes = db.exec("SELECT COUNT(*) FROM memory_entries WHERE namespace='
 if (migEmbRes[0]) out.migratedLearnings.withEmbedding = migEmbRes[0].values[0][0];
 const sampleRes = db.exec("SELECT key FROM memory_entries WHERE namespace='learnings' AND tags LIKE '" + migMarker + "' LIMIT 5");
 if (sampleRes[0]) out.migratedLearnings.sampleKeys = sampleRes[0].values.map(r => r[0]);
+// #1053 S4 + S5: doc-* purge + preamble strip results.
+const docRes = db.exec("SELECT COUNT(*) FROM memory_entries WHERE key LIKE 'doc-%'");
+if (docRes[0]) out.epic1053.docCount = docRes[0].values[0][0];
+const preambleRes = db.exec("SELECT COUNT(*) FROM memory_entries WHERE key LIKE 'chunk-%' AND (content LIKE '%[Context from previous section:]%' OR content LIKE '%[Context from next section:]%')");
+if (preambleRes[0]) out.epic1053.preambleChunkCount = preambleRes[0].values[0][0];
 db.close();
 emit(out);
 `);
+}
+
+function assertEpic1053MigrationsFired(snapshot) {
+  // Seed planted 2 doc-* + 2 chunk-with-preamble rows (see buildLegacyEpic1053Rows).
+  // After the launcher fires the run-migrations chain, both should be 0.
+  const docCount = snapshot.epic1053?.docCount ?? -1;
+  const preambleCount = snapshot.epic1053?.preambleChunkCount ?? -1;
+  if (docCount === 0 && preambleCount === 0) {
+    record('populated:epic1053-migrations', 'pass',
+      'doc-* purged + chunk preambles stripped (#1053 S4+S5)');
+    return;
+  }
+  record('populated:epic1053-migrations', 'fail',
+    `expected 0/0, got doc-*=${docCount}, preamble-chunks=${preambleCount} — migrations didn't fire or didn't clean (S4+S5)`);
 }
 
 function inspectInstalledEphemeralNamespaces(consumerDir) {
@@ -859,6 +908,7 @@ export async function runPopulatedConsumerProfile(consumerDir) {
     assertKnowledgeMigratedToLearnings(snapshot);
     assertDeletedRowsPurged(snapshot);
     assertEphemeralRowsPurged(snapshot);
+    assertEpic1053MigrationsFired(snapshot);
     assertIntegrity(snapshot);
   }
   // #851: legacy state stays in place; launcher announces the cherry-pick.

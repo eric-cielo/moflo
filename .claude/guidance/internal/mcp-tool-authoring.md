@@ -180,3 +180,4 @@ Before opening a PR that adds an MCP tool:
 - `.claude/guidance/internal/consumer-project-paths.md` — Why `findProjectRoot()` not `process.cwd()`
 - `.claude/guidance/shipped/moflo-claude-swarm-cohesion.md` — Consumer-facing description of the swarm/agent/task surface this doc authors
 - `.claude/guidance/shipped/moflo-error-handling.md` — Imperative-vs-defensive style applied to handler bodies
+- `.claude/guidance/internal/memory-traversal-architecture.md` — Memory tool surface design; relevant when adding/changing `memory_*` MCP tools

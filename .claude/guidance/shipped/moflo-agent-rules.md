@@ -24,6 +24,18 @@
 
 **Search `tests` when looking for test coverage** of a function, module, or behavior — it indexes the test tree separately so you can pinpoint specs without grepping the whole repo.
 
+### Traverse Chunks, Don't Bulk-Retrieve
+
+Search returns chunked guidance with a compact `navigation` crumb (`parentDoc`, `prevChunk`, `nextChunk`, `chunkTitle`). Use it:
+
+| Want | Use |
+|------|-----|
+| Adjacent / sibling / hierarchical context | `mcp__moflo__memory_get_neighbors` |
+| Full content of one chunk | `mcp__moflo__memory_retrieve` (returns full nav for further traversal) |
+| Whole source doc | `Read` `parentPath` from any chunk's nav |
+
+Full protocol: `.claude/guidance/moflo-memory-protocol.md`. Don't retrieve every search hit blindly.
+
 ### Tool Selection (MCP-first)
 
 | Tool | Purpose |

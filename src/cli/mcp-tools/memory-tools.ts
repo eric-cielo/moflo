@@ -76,6 +76,126 @@ const MAX_KEY_LENGTH = 1024;
 const MAX_VALUE_SIZE = 1024 * 1024; // 1MB
 const MAX_QUERY_LENGTH = 4096;
 
+/**
+ * RAG navigation surface for chunked guidance entries (#1053).
+ *
+ * The chunker (`bin/index-guidance.mjs`) writes per-chunk metadata
+ * including parentDoc, parentPath, prevChunk, nextChunk, siblings,
+ * hierarchical{Parent,Children}, chunkIndex, totalChunks, chunkTitle,
+ * headerLevel. These were stored but never returned by memory_search /
+ * memory_retrieve, so callers had no way to traverse — they retrieved
+ * blindly. Now surfaced so the chunking architecture is callable.
+ *
+ * Non-chunk entries (manual stores, learnings, patterns, doc-* documents)
+ * yield `null` — explicit "not navigable" signal.
+ */
+type NavigationFull = {
+  parentDoc?: string;
+  parentPath?: string;
+  prevChunk: string | null;
+  nextChunk: string | null;
+  siblings?: string[];
+  chunkIndex?: number;
+  totalChunks?: number;
+  hierarchicalParent?: string | null;
+  hierarchicalChildren?: string[] | null;
+  chunkTitle?: string;
+  headerLevel?: number;
+};
+
+type NavigationCompact = {
+  parentDoc?: string;
+  prevChunk: string | null;
+  nextChunk: string | null;
+  chunkTitle?: string;
+};
+
+interface MemoryEntryWithMeta {
+  id: string;
+  key: string;
+  namespace: string;
+  content: string;
+  accessCount: number;
+  createdAt: string;
+  updatedAt: string;
+  hasEmbedding: boolean;
+  tags: string[];
+  metadata?: string;
+}
+
+interface RetrievedEntry {
+  key: string;
+  namespace: string;
+  value: unknown;
+  tags: string[];
+  storedAt: string;
+  updatedAt: string;
+  accessCount: number;
+  hasEmbedding: boolean;
+  navigation: NavigationFull | null;
+  found: boolean;
+  backend: string;
+}
+
+function parseNavigation(metadataJson: string | undefined, mode: 'full'): NavigationFull | null;
+function parseNavigation(metadataJson: string | undefined, mode: 'compact'): NavigationCompact | null;
+function parseNavigation(
+  metadataJson: string | undefined,
+  mode: 'full' | 'compact',
+): NavigationFull | NavigationCompact | null {
+  if (!metadataJson) return null;
+  let meta: Record<string, unknown>;
+  try {
+    meta = JSON.parse(metadataJson);
+  } catch {
+    return null;
+  }
+  if (!meta || typeof meta !== 'object') return null;
+  // Discriminator: only `type === 'chunk'` entries carry the nav fields.
+  if (meta.type !== 'chunk') return null;
+
+  if (mode === 'compact') {
+    return {
+      parentDoc: meta.parentDoc as string | undefined,
+      prevChunk: (meta.prevChunk as string | null | undefined) ?? null,
+      nextChunk: (meta.nextChunk as string | null | undefined) ?? null,
+      chunkTitle: meta.chunkTitle as string | undefined,
+    };
+  }
+
+  return {
+    parentDoc: meta.parentDoc as string | undefined,
+    parentPath: meta.parentPath as string | undefined,
+    prevChunk: (meta.prevChunk as string | null | undefined) ?? null,
+    nextChunk: (meta.nextChunk as string | null | undefined) ?? null,
+    siblings: meta.siblings as string[] | undefined,
+    chunkIndex: meta.chunkIndex as number | undefined,
+    totalChunks: meta.totalChunks as number | undefined,
+    hierarchicalParent: (meta.hierarchicalParent as string | null | undefined) ?? null,
+    hierarchicalChildren: (meta.hierarchicalChildren as string[] | null | undefined) ?? null,
+    chunkTitle: meta.chunkTitle as string | undefined,
+    headerLevel: meta.headerLevel as number | undefined,
+  };
+}
+
+function shapeRetrievedEntry(entry: MemoryEntryWithMeta): RetrievedEntry {
+  let value: unknown = entry.content;
+  try { value = JSON.parse(entry.content); } catch { /* keep string */ }
+  return {
+    key: entry.key,
+    namespace: entry.namespace,
+    value,
+    tags: entry.tags,
+    storedAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+    accessCount: entry.accessCount,
+    hasEmbedding: entry.hasEmbedding,
+    navigation: parseNavigation(entry.metadata, 'full'),
+    found: true,
+    backend: 'sql.js + HNSW',
+  };
+}
+
 function validateMemoryInput(key?: string, value?: string, query?: string): void {
   if (key && key.length > MAX_KEY_LENGTH) {
     throw new Error(`Key exceeds maximum length of ${MAX_KEY_LENGTH} characters`);
@@ -264,7 +384,7 @@ export const memoryTools: MCPTool[] = [
   },
   {
     name: 'memory_retrieve',
-    description: 'Retrieve a value from memory by key',
+    description: 'Retrieve a value from memory by key. Chunk entries also return a full `navigation` object — use it with memory_get_neighbors for traversal instead of bulk-retrieving every search hit.',
     category: 'memory',
     inputSchema: {
       type: 'object',
@@ -285,28 +405,9 @@ export const memoryTools: MCPTool[] = [
         const result = await getEntry({ key, namespace });
 
         if (result.found && result.entry) {
-          // Try to parse JSON value
-          let value: unknown = result.entry.content;
-          try {
-            value = JSON.parse(result.entry.content);
-          } catch {
-            // Keep as string
-          }
-
           notifyMemoryGate();
-
-          return {
-            key,
-            namespace,
-            value,
-            tags: result.entry.tags,
-            storedAt: result.entry.createdAt,
-            updatedAt: result.entry.updatedAt,
-            accessCount: result.entry.accessCount,
-            hasEmbedding: result.entry.hasEmbedding,
-            found: true,
-            backend: 'sql.js + HNSW',
-          };
+          // #1053 S1: surface RAG navigation for chunked guidance entries.
+          return shapeRetrievedEntry(result.entry as MemoryEntryWithMeta);
         }
 
         return {
@@ -328,15 +429,15 @@ export const memoryTools: MCPTool[] = [
   },
   {
     name: 'memory_search',
-    description: 'Semantic vector search using HNSW index (150x-12,500x faster than keyword search)',
+    description: 'Semantic vector search using HNSW index (150x-12,500x faster than keyword search). Results include a compact `navigation` crumb on chunk hits — traverse via memory_get_neighbors rather than retrieving every hit.',
     category: 'memory',
     inputSchema: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Search query (semantic similarity)' },
         namespace: { type: 'string', description: 'Namespace to search (default: all namespaces)' },
-        limit: { type: 'number', description: 'Maximum results (default: 10)' },
-        threshold: { type: 'number', description: 'Minimum similarity threshold 0-1 (default: 0.3)' },
+        limit: { type: 'number', description: 'Maximum results (default: 8)' },
+        threshold: { type: 'number', description: 'Minimum similarity threshold 0-1 (default: 0.5)' },
       },
       required: ['query'],
     },
@@ -346,15 +447,14 @@ export const memoryTools: MCPTool[] = [
 
       const query = input.query as string;
       const namespace = (input.namespace as string) || 'all';
-      const limit = (input.limit as number) || 10;
-      // Falsiness check would coerce a caller-supplied 0 to 0.3 and silently
+      // #1053 S6: tighter defaults — fewer hits, higher relevance bar.
+      const limit = (input.limit as number) || 8;
+      // Falsiness check would coerce a caller-supplied 0 to default and silently
       // filter low-similarity matches; use a typeof guard so explicit zero
       // means "no threshold" (#837).
-      const threshold = typeof input.threshold === 'number' ? input.threshold : 0.3;
+      const threshold = typeof input.threshold === 'number' ? input.threshold : 0.5;
 
       validateMemoryInput(undefined, undefined, query);
-
-      const startTime = performance.now();
 
       try {
         const result = await searchEntries({
@@ -363,8 +463,6 @@ export const memoryTools: MCPTool[] = [
           limit,
           threshold,
         });
-
-        const duration = performance.now() - startTime;
 
         // Parse JSON values in results
         const results = result.results.map(r => {
@@ -375,21 +473,30 @@ export const memoryTools: MCPTool[] = [
             // Keep as string
           }
 
+          // #1053 S1: compact RAG navigation crumb per result.
+          // Compact subset is small enough to always include — keeps the
+          // result envelope navigable without ballooning per-hit size.
+          const navigation = parseNavigation((r as { metadata?: string }).metadata, 'compact');
+
           return {
             key: r.key,
             namespace: r.namespace,
             value,
-            similarity: r.score,
+            // #1053 S6: 2dp keeps signal, drops noise (8-decimal floats add ~6
+            // bytes per hit and don't help any caller).
+            similarity: Math.round(r.score * 100) / 100,
+            navigation,
           };
         });
 
         notifyMemoryGate();
 
+        // #1053 S6: searchTime dropped from MCP envelope (CLI keeps it for
+        // human reading); `backend` retained — doctor reads it (#1053 epic).
         return {
           query,
           results,
           total: results.length,
-          searchTime: `${duration.toFixed(2)}ms`,
           backend: 'HNSW + sql.js',
         };
       } catch (error) {
@@ -397,6 +504,102 @@ export const memoryTools: MCPTool[] = [
           query,
           results: [],
           total: 0,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    },
+  },
+  {
+    name: 'memory_get_neighbors',
+    description: 'Traverse the chunk graph in one call: fetch the requested neighbors (prev/next/siblings/parent/children) of a chunk key. Returns success:false if the source is not a chunk.',
+    category: 'memory',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: 'Source chunk key (must be a chunk-* entry)' },
+        namespace: { type: 'string', description: 'Namespace (default: "default")' },
+        include: {
+          type: 'array',
+          items: { type: 'string', enum: ['prev', 'next', 'siblings', 'parent', 'children'] },
+          description: "Which neighbors to fetch. Default: ['prev','next']. parent/children = hierarchical (h2→h3) chunk neighbors; siblings = same-doc chunk peers.",
+        },
+      },
+      required: ['key'],
+    },
+    handler: async (input) => {
+      await ensureInitialized();
+      const { getEntry } = await getMemoryFunctions();
+
+      const key = input.key as string;
+      const namespace = (input.namespace as string) || 'default';
+      const includeRaw = input.include as string[] | undefined;
+      const include = Array.isArray(includeRaw) && includeRaw.length > 0 ? includeRaw : ['prev', 'next'];
+
+      validateMemoryInput(key);
+
+      try {
+        const sourceResult = await getEntry({ key, namespace });
+        if (!sourceResult.found || !sourceResult.entry) {
+          return {
+            success: false,
+            key,
+            namespace,
+            error: `Source key '${key}' not found in namespace '${namespace}'`,
+          };
+        }
+
+        const sourceMeta = (sourceResult.entry as { metadata?: string }).metadata;
+        const nav = parseNavigation(sourceMeta, 'full');
+        if (!nav) {
+          return {
+            success: false,
+            key,
+            namespace,
+            error: `Source key '${key}' has no chunk metadata; only chunk-* entries are navigable`,
+          };
+        }
+
+        // Resolve requested neighbor keys, dedup, exclude the source key itself.
+        const neighborKeys = new Set<string>();
+        const addIfChunkKey = (k: string | null | undefined): void => {
+          if (k && k !== key) neighborKeys.add(k);
+        };
+        for (const inc of include) {
+          if (inc === 'prev') addIfChunkKey(nav.prevChunk);
+          else if (inc === 'next') addIfChunkKey(nav.nextChunk);
+          else if (inc === 'siblings') (nav.siblings ?? []).forEach(addIfChunkKey);
+          else if (inc === 'parent') addIfChunkKey(nav.hierarchicalParent);
+          else if (inc === 'children') (nav.hierarchicalChildren ?? []).forEach(addIfChunkKey);
+        }
+
+        // Parallel fetch — one round-trip from the caller's perspective.
+        // Missing neighbors (deleted/renamed) are silently skipped rather
+        // than failing the whole call; the response.total reflects what
+        // we actually returned.
+        const fetched = await Promise.all(
+          Array.from(neighborKeys).map(async k => {
+            const res = await getEntry({ key: k, namespace });
+            return res.found && res.entry ? shapeRetrievedEntry(res.entry as MemoryEntryWithMeta) : null;
+          }),
+        );
+
+        notifyMemoryGate();
+
+        const neighbors = fetched.filter((e): e is RetrievedEntry => e !== null);
+
+        return {
+          success: true,
+          source: { key, namespace },
+          include,
+          neighbors,
+          total: neighbors.length,
+          backend: 'sql.js + HNSW',
+        };
+      } catch (error) {
+        return {
+          success: false,
+          key,
+          namespace,
           error: error instanceof Error ? error.message : 'Unknown error',
         };
       }

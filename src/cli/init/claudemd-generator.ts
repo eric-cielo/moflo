@@ -36,6 +36,10 @@ function mofloSection(): string {
 
 Your first tool call MUST be \`mcp__moflo__memory_search\` — before any Glob/Grep/Read. Search \`guidance\`, \`patterns\`, and \`learnings\` every prompt; add \`code-map\` when navigating code, \`tests\` when looking for test inventory or coverage. When the user says "remember this", call \`mcp__moflo__memory_store\` with namespace \`learnings\`.
 
+### Traverse chunks, don't bulk-retrieve
+
+Search results carry a compact \`navigation\` crumb (parentDoc, prev/next, chunkTitle). For adjacent/sibling/hierarchical context use \`mcp__moflo__memory_get_neighbors\`; for full chunk content use \`mcp__moflo__memory_retrieve\`; \`Read\` the source doc only via \`parentPath\` when truly needed. Full protocol: \`.claude/guidance/moflo-memory-protocol.md\`.
+
 ### Auto-enforced gates
 
 - **TaskCreate-first**: Call \`TaskCreate\` before spawning the Agent tool

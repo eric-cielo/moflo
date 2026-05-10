@@ -164,6 +164,7 @@ async function semanticSearch(queryText, options = {}) {
         preview: entry.content.substring(0, 150).replace(/\n/g, ' '),
         type: metadata.type || 'unknown',
         parentDoc: metadata.parentDoc || null,
+        parentPath: metadata.parentPath || null,
         chunkTitle: metadata.chunkTitle || null,
       });
     } catch (err) {
@@ -262,7 +263,9 @@ async function main() {
     console.log(`  Key: ${top.key}`);
     console.log(`  Score: ${top.score.toFixed(4)}`);
     if (top.chunkTitle) console.log(`  Section: ${top.chunkTitle}`);
-    if (top.parentDoc) console.log(`  Parent: ${top.parentDoc}`);
+    // #1053 S4: doc-* retired — parentPath is the actionable source location.
+    if (top.parentPath) console.log(`  Parent: ${top.parentPath}`);
+    else if (top.parentDoc) console.log(`  Parent: ${top.parentDoc}`);
     console.log(`  Preview: ${top.preview}...`);
   } catch (err) {
     console.error(`[semantic-search] Error: ${err.message}`);

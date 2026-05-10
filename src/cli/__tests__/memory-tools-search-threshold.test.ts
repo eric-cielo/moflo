@@ -44,12 +44,12 @@ describe('memory_search MCP handler — threshold passthrough (#837)', () => {
     expect(searchSpy.mock.calls[0]?.[0]?.threshold).toBe(0);
   });
 
-  it('uses 0.3 when threshold is omitted (backwards compatible default)', async () => {
+  it('uses 0.5 when threshold is omitted (#1053 S6 default)', async () => {
     const tool = await getMemorySearchTool();
     await tool.handler({ query: 'q' });
 
     expect(searchSpy).toHaveBeenCalledTimes(1);
-    expect(searchSpy.mock.calls[0]?.[0]?.threshold).toBe(0.3);
+    expect(searchSpy.mock.calls[0]?.[0]?.threshold).toBe(0.5);
   });
 
   it('passes other explicit thresholds through unchanged', async () => {

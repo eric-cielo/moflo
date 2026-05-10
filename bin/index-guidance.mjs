@@ -272,6 +272,22 @@ function getEntryHash(db, key) {
   return null;
 }
 
+// #1053 S4: doc-* entries retired. Doc-level skip check now reads
+// docContentHash off chunk-0 (every chunk carries it).
+function getDocHashFromChunkZero(db, chunkPrefix) {
+  const stmt = db.prepare('SELECT metadata FROM memory_entries WHERE key = ? AND namespace = ?');
+  stmt.bind([`${chunkPrefix}-0`, NAMESPACE]);
+  const entry = stmt.step() ? stmt.getAsObject() : null;
+  stmt.free();
+  if (entry?.metadata) {
+    try {
+      const meta = JSON.parse(entry.metadata);
+      return meta.docContentHash;
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
 /**
  * Extract overlapping context from adjacent text
  * @param {string} text - The text to extract from
@@ -536,9 +552,10 @@ function indexFile(db, filePath, keyPrefix, options = {}) {
     const content = readFileSync(filePath, 'utf-8');
     const contentHash = hashContent(content);
 
-    // Check if content changed (skip if same hash unless --force)
+    // Check if content changed (skip if same hash unless --force).
+    // #1053 S4: doc-* retired — read docContentHash off chunk-0 instead.
     if (!force) {
-      const existingHash = getEntryHash(db, docKey);
+      const existingHash = getDocHashFromChunkZero(db, chunkPrefix);
       if (existingHash === contentHash) {
         return { docKey, status: 'unchanged', chunks: 0 };
       }
@@ -547,25 +564,19 @@ function indexFile(db, filePath, keyPrefix, options = {}) {
     const stats = statSync(filePath);
     const relativePath = '/' + relative(projectRoot, filePath).replace(/\\/g, '/');
 
-    // Delete old chunks for this file before re-indexing
+    // Delete old chunks for this file before re-indexing.
+    // #1053 S4: also delete any legacy doc-* row (one-time cleanup if a
+    // pre-S4 install left one behind for this prefix).
     deleteByPrefix(db, chunkPrefix);
+    db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key = ?`, [NAMESPACE, docKey]);
 
-    // 1. Store full document
-    const docMetadata = {
-      ...extraMetadata,
-      type: 'document',
-      filePath: relativePath,
-      fileSize: stats.size,
-      lastModified: stats.mtime.toISOString(),
-      contentHash,
-      indexedAt: new Date().toISOString(),
-      ragVersion: '2.0',  // Mark as full RAG indexed
-    };
+    // #1053 S4: Chunker no longer writes doc-* entries. Audit found zero
+    // production readers — they duplicated chunk semantic territory and
+    // ate ~13% of search slots without unique signal. parentDoc on chunks
+    // remains as an identifier/grouping label; callers needing the source
+    // file Read parentPath, per shipped/moflo-memory-protocol.md.
 
-    storeEntry(db, docKey, content, docMetadata, [keyPrefix, 'document', ...extraTags]);
-    debug(`Stored document: ${docKey}`);
-
-    // 2. Chunk and store semantic pieces with full RAG linking
+    // Chunk and store semantic pieces with full RAG linking
     const chunks = chunkMarkdown(content, fileName);
 
     if (chunks.length === 0) {
@@ -576,14 +587,6 @@ function indexFile(db, filePath, keyPrefix, options = {}) {
     const hierarchy = buildHierarchy(chunks, chunkPrefix);
     const siblings = chunks.map((_, i) => `${chunkPrefix}-${i}`);
 
-    // Update document with children references
-    const docChildrenMeta = {
-      ...docMetadata,
-      children: siblings,
-      chunkCount: chunks.length,
-    };
-    storeEntry(db, docKey, content, docChildrenMeta, [keyPrefix, 'document', ...extraTags]);
-
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       const chunkKey = `${chunkPrefix}-${i}`;
@@ -592,13 +595,11 @@ function indexFile(db, filePath, keyPrefix, options = {}) {
       const prevChunk = i > 0 ? `${chunkPrefix}-${i - 1}` : null;
       const nextChunk = i < chunks.length - 1 ? `${chunkPrefix}-${i + 1}` : null;
 
-      // Extract overlapping context from adjacent chunks
-      const contextBefore = i > 0
-        ? extractOverlapContext(chunks[i - 1].content, overlapPercent, 'end')
-        : null;
-      const contextAfter = i < chunks.length - 1
-        ? extractOverlapContext(chunks[i + 1].content, overlapPercent, 'start')
-        : null;
+      // #1053 S5: dropped extractOverlapContext + preamble wrapping. The
+      // preambles were a workaround for missing traversal — once memory_get_neighbors
+      // is wired (S2), prevChunk/nextChunk metadata + a real call is the
+      // alternative path. Saved ~25-30% bloat per chunk on disk and in
+      // embeddings.
 
       // Get hierarchical relationships
       const hierInfo = hierarchy[chunkKey];
@@ -608,9 +609,13 @@ function indexFile(db, filePath, keyPrefix, options = {}) {
         type: 'chunk',
         ragVersion: '2.0',
 
-        // Document relationship
+        // Document relationship — parentDoc is an identifier/grouping label
+        // only after #1053 S4; the actual source doc is at parentPath.
+        // docContentHash is the file-level hash, used by the skip-if-unchanged
+        // check (the chunker reads it off chunk-0 to decide whether to re-index).
         parentDoc: docKey,
         parentPath: relativePath,
+        docContentHash: contentHash,
 
         // Sequential navigation (forward/backward links)
         chunkIndex: i,
@@ -632,30 +637,14 @@ function indexFile(db, filePath, keyPrefix, options = {}) {
         isPart: chunk.isPart || false,
         partNum: chunk.partNum || null,
 
-        // Overlapping context for continuity
-        contextOverlapPercent: overlapPercent,
-        hasContextBefore: !!contextBefore,
-        hasContextAfter: !!contextAfter,
-
         // Content metadata
         contentLength: chunk.content.length,
         contentHash: hashContent(chunk.content),
         indexedAt: new Date().toISOString(),
       };
 
-      // Build searchable content with title context
-      // Include overlap context for better retrieval
-      let searchableContent = `# ${chunk.title}\n\n`;
-
-      if (contextBefore) {
-        searchableContent += `[Context from previous section:]\n${contextBefore}\n\n---\n\n`;
-      }
-
-      searchableContent += chunk.content;
-
-      if (contextAfter) {
-        searchableContent += `\n\n---\n\n[Context from next section:]\n${contextAfter}`;
-      }
+      // #1053 S5: title heading + chunk body. No prev/next preamble.
+      const searchableContent = `# ${chunk.title}\n\n${chunk.content}`;
 
       // Store chunk with full metadata
       storeEntry(

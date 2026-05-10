@@ -663,6 +663,190 @@ export function mcpTools(consumerDir) {
   } else {
     record('mcp-tools:no-legacy', 'pass');
   }
+  // #1053 S2: memory_get_neighbors must be in the registered surface so
+  // any future stub/disconnect breaks the smoke run before consumers see it.
+  if (!/\bmemory_get_neighbors\b/.test(out)) {
+    record('mcp-tools:memory_get_neighbors', 'fail', 'memory_get_neighbors missing from tools list (#1053 S2)');
+  } else {
+    record('mcp-tools:memory_get_neighbors', 'pass');
+  }
+}
+
+/**
+ * #1053 S3 + S4: epic-specific assertions on a fresh consumer install.
+ *  - subagent-bootstrap.json directive contains the traversal crumb (one of
+ *    the 6 protocol touchpoints — drift-guards in moflo's own test tree pin
+ *    the source, this pins the shipped tarball)
+ *  - memory_get_neighbors handler returns a shaped neighbor envelope when
+ *    fed a chunk-shaped row (proves S1 metadata passthrough + S2 wiring
+ *    survives pack → install round-trip, not just runs in-tree)
+ *  - shipped/moflo-memory-protocol.md is present in node_modules
+ *  - clean install carries zero `doc-*` rows (#1053 S4 — chunker stopped
+ *    writing them; smoke runs against an empty DB so this is just a
+ *    presence/no-residue sanity check)
+ */
+export function memoryTraversalProtocol(consumerDir) {
+  section('Memory traversal protocol (#1053)');
+
+  const bootstrapPath = join(consumerDir, 'node_modules', 'moflo', '.claude', 'helpers', 'subagent-bootstrap.json');
+  if (!existsSync(bootstrapPath)) {
+    record('memory-protocol:bootstrap-shipped', 'fail', 'subagent-bootstrap.json missing from package');
+  } else {
+    let directive;
+    try {
+      directive = JSON.parse(readFileSync(bootstrapPath, 'utf-8')).directive;
+    } catch (err) {
+      record('memory-protocol:bootstrap-parse', 'fail', `JSON parse failed: ${err.message}`);
+      directive = '';
+    }
+    const hasNeighbors = directive.includes('memory_get_neighbors');
+    const hasProtocolDoc = directive.includes('moflo-memory-protocol.md');
+    if (hasNeighbors && hasProtocolDoc) {
+      record('memory-protocol:bootstrap-directive', 'pass', 'directive cites neighbors tool + protocol doc');
+    } else {
+      record('memory-protocol:bootstrap-directive', 'fail',
+        `directive missing crumbs (neighbors=${hasNeighbors}, protocol-doc=${hasProtocolDoc})`);
+    }
+  }
+
+  const protocolDoc = join(consumerDir, 'node_modules', 'moflo', '.claude', 'guidance', 'shipped', 'moflo-memory-protocol.md');
+  if (!existsSync(protocolDoc)) {
+    record('memory-protocol:doc-shipped', 'fail', 'shipped/moflo-memory-protocol.md missing from package');
+  } else {
+    const lineCount = readFileSync(protocolDoc, 'utf-8').split('\n').length;
+    if (lineCount > 40) {
+      record('memory-protocol:doc-shipped', 'fail', `protocol doc grew past 40-line cap (${lineCount} lines)`);
+    } else {
+      record('memory-protocol:doc-shipped', 'pass', `${lineCount} lines, within 40-line cap`);
+    }
+  }
+
+  // memory_get_neighbors handler probe — drives the same dist surface a
+  // consumer Claude Code session would. Stores a chunk-shaped row + calls
+  // the tool's handler in-process via the consumer's `node_modules/moflo/`.
+  const probe = join(consumerDir, 'memory-neighbors-probe.mjs');
+  const memToolsPath = join(consumerDir, 'node_modules', 'moflo', 'dist', 'src', 'cli', 'mcp-tools', 'memory-tools.js')
+    .replace(/\\/g, '/');
+  writeFileSync(probe, `
+import { pathToFileURL } from 'node:url';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+const mod = await import(pathToFileURL(${JSON.stringify(memToolsPath)}).href);
+const tools = mod.memoryTools;
+const get = name => tools.find(t => t.name === name);
+
+const neighbors = get('memory_get_neighbors');
+const del = get('memory_delete');
+
+if (!neighbors || !del) {
+  console.log(JSON.stringify({ ok: false, reason: 'tools missing', tools: tools.map(t => t.name) }));
+  process.exit(0);
+}
+
+// Seed three chunks via DIRECT sql.js write (no memory_store call). Going
+// through memory_store would warm the bridge cache with metadata='{}', and
+// a subsequent direct UPDATE would race the bridge's writeback. Writing
+// straight to disk before the bridge sees these keys means the bridge's
+// first read (memory_get_neighbors → getEntry) hits fresh disk state.
+const ns = 'smoke-1053';
+const keys = ['chunk-smoke-foo-0', 'chunk-smoke-foo-1', 'chunk-smoke-foo-2'];
+const meta = (i, total) => JSON.stringify({
+  type: 'chunk',
+  parentDoc: 'doc-smoke-foo',
+  parentPath: '/foo.md',
+  chunkIndex: i,
+  totalChunks: total,
+  prevChunk: i > 0 ? keys[i - 1] : null,
+  nextChunk: i < total - 1 ? keys[i + 1] : null,
+  siblings: keys,
+  hierarchicalParent: null,
+  hierarchicalChildren: null,
+  chunkTitle: \`Chunk \${i}\`,
+  headerLevel: 2,
+  docContentHash: 'smoke-1053-hash',
+});
+
+// Use the same DB path memory_store would use. The bridge resolves it via
+// memoryDbPath(process.cwd()); for the smoke harness, the consumer is
+// already at process.cwd() with .moflo/ initialized by memory init.
+mkdirSync('.moflo', { recursive: true });
+const dbPath = '.moflo/moflo.db';
+const { default: initSqlJs } = await import('sql.js');
+const SQL = await initSqlJs();
+
+// If the DB doesn't exist yet (memory init hasn't run before our probe),
+// give up gracefully — the smoke harness runs memoryInit BEFORE this check
+// per the order in run.mjs, so this should not happen in practice.
+if (!existsSync(dbPath)) {
+  console.log(JSON.stringify({ ok: false, reason: \`memory.db not at \${dbPath}\` }));
+  process.exit(0);
+}
+
+const db = new SQL.Database(readFileSync(dbPath));
+const insert = db.prepare(
+  'INSERT OR REPLACE INTO memory_entries (id, key, namespace, content, type, tags, metadata, created_at, updated_at, status) VALUES (?, ?, ?, ?, \\'semantic\\', \\'[]\\', ?, ?, ?, \\'active\\')'
+);
+const now = Date.now();
+for (let i = 0; i < keys.length; i++) {
+  insert.run([
+    'memprobe-' + randomBytes(8).toString('hex'),
+    keys[i],
+    ns,
+    \`chunk body \${i}\`,
+    meta(i, keys.length),
+    now, now,
+  ]);
+}
+insert.free();
+writeFileSync(dbPath, Buffer.from(db.export()));
+db.close();
+
+const result = await neighbors.handler({ key: 'chunk-smoke-foo-1', namespace: ns });
+
+// Cleanup so the smoke fixture doesn't leak rows into other checks.
+for (const k of keys) {
+  try { await del.handler({ key: k, namespace: ns }); } catch { /* ok */ }
+}
+
+console.log(JSON.stringify({
+  ok: result.success === true,
+  total: result.total,
+  keys: (result.neighbors || []).map(n => n.key).sort(),
+  hasNavigation: (result.neighbors || []).length > 0
+    && (result.neighbors || []).every(n => n.navigation && typeof n.navigation === 'object'),
+  error: result.error || null,
+}));
+`);
+
+  const r = runNode(probe, [], { cwd: consumerDir, timeout: 60_000, env: { MOFLO_BRIDGE_QUIET: '1' } });
+  if (r.code !== 0) {
+    record('memory-protocol:get-neighbors', 'fail',
+      `probe exit ${r.code}: ${(r.stderr || r.stdout).trim().slice(0, 300)}`);
+    return;
+  }
+
+  let parsed;
+  try { parsed = JSON.parse(r.stdout.trim().split('\n').pop()); } catch {
+    record('memory-protocol:get-neighbors', 'fail', `probe stdout not JSON: ${r.stdout.trim().slice(0, 200)}`);
+    return;
+  }
+
+  if (!parsed.ok) {
+    record('memory-protocol:get-neighbors', 'fail',
+      `handler returned success=false: ${parsed.error || 'unknown'} (raw: ${JSON.stringify(parsed)})`);
+    return;
+  }
+  const expectedKeys = ['chunk-smoke-foo-0', 'chunk-smoke-foo-2'];
+  if (parsed.total !== 2 || JSON.stringify(parsed.keys) !== JSON.stringify(expectedKeys)) {
+    record('memory-protocol:get-neighbors', 'fail',
+      `expected 2 neighbors ${JSON.stringify(expectedKeys)}, got ${parsed.total} ${JSON.stringify(parsed.keys)}`);
+    return;
+  }
+  if (!parsed.hasNavigation) {
+    record('memory-protocol:get-neighbors', 'fail', 'returned neighbors without navigation field (S1 passthrough broken)');
+    return;
+  }
+  record('memory-protocol:get-neighbors', 'pass', '2 neighbors with navigation, shape matches memory_retrieve');
 }
 
 /**

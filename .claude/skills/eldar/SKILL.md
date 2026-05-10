@@ -121,6 +121,14 @@ mcp__moflo__memory_stats — { namespace: "learnings" }
 
 Flag empty `learnings` as `info` (project hasn't accumulated decisions yet — fine for new projects). Flag empty `guidance` as `warn` (no indexed guidance means semantic search is degraded).
 
+**Legacy `doc-*` residue (#1053 S4)** — moflo retired whole-document indexing in favor of chunk-only RAG. The `purge-doc-entries` migration runs on session-start; if any `doc-*` rows linger, the migration didn't fire (ran with no DB, errored, or the install is below the migration's introduction).
+
+```
+mcp__moflo__memory_search — { query: "doc-", namespace: "guidance", threshold: 0, limit: 5 }
+```
+
+If any returned `key` starts with `doc-`, flag `info`: "legacy doc-* rows present — `purge-doc-entries` migration did not run; fixable via `flo healer --fix` or manual `node node_modules/moflo/bin/run-migrations.mjs`".
+
 ### 1i. Hooks & MCP Wiring
 
 Read `.claude/settings.json`. Check:

@@ -18,6 +18,10 @@ CLI fallback when MCP is unavailable: `npx flo memory search --query "..." --nam
 
 The full namespace reference, query examples by domain, and tool catalog live in `.claude/guidance/moflo-agent-rules.md` § Memory-First Protocol — read that next.
 
+### Traverse, don't bulk-retrieve
+
+Search hits carry a compact `navigation` crumb. For adjacent/sibling/hierarchical context, call `mcp__moflo__memory_get_neighbors` (one round-trip) instead of retrieving every hit. Full protocol: `.claude/guidance/moflo-memory-protocol.md`.
+
 ---
 
 ## Step 2: Apply Universal Agent Rules

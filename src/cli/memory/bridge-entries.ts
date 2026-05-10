@@ -487,6 +487,7 @@ export async function bridgeSearchEntries(options: {
     score: number;
     namespace: string;
     provenance?: string;
+    metadata?: string;
   }[];
   searchTime: number;
   searchMethod?: string;
@@ -501,7 +502,7 @@ export async function bridgeSearchEntries(options: {
     let rows: Record<string, unknown>[];
     try {
       const sql = `
-        SELECT id, key, namespace, content, embedding
+        SELECT id, key, namespace, content, metadata, embedding
         FROM memory_entries
         WHERE status = 'active' ${nsFilter}
         LIMIT 1000
@@ -535,7 +536,7 @@ export async function bridgeSearchEntries(options: {
     const { termDocFreqs, avgDocLength } = computeTermDocFreqs(queryTerms, rows);
     const docCount = rows.length;
 
-    const results: { id: string; key: string; content: string; score: number; namespace: string; provenance?: string }[] = [];
+    const results: { id: string; key: string; content: string; score: number; namespace: string; provenance?: string; metadata?: string }[] = [];
 
     for (const row of rows) {
       let semanticScore = 0;
@@ -564,6 +565,8 @@ export async function bridgeSearchEntries(options: {
           ? `semantic:${semanticScore.toFixed(3)}+bm25:${bm25ScoreVal.toFixed(3)}`
           : `bm25:${bm25ScoreVal.toFixed(3)}`;
 
+        const metadataStr = row.metadata != null ? String(row.metadata) : undefined;
+
         results.push({
           id: String(row.id).substring(0, 12),
           // The substring is a fallback id-prefix when key is missing —
@@ -573,6 +576,7 @@ export async function bridgeSearchEntries(options: {
           score,
           namespace: String(row.namespace || 'default'),
           provenance,
+          metadata: metadataStr,
         });
       }
     }
@@ -676,6 +680,7 @@ export async function bridgeGetEntry(options: {
     updatedAt: string;
     hasEmbedding: boolean;
     tags: string[];
+    metadata?: string;
   };
   cacheHit?: boolean;
   error?: string;
@@ -700,6 +705,7 @@ export async function bridgeGetEntry(options: {
           updatedAt: cached.updatedAt || new Date().toISOString(),
           hasEmbedding: !!cached.embedding,
           tags: cached.tags || [],
+          metadata: cached.metadata || undefined,
         },
       };
     }
@@ -707,7 +713,7 @@ export async function bridgeGetEntry(options: {
     let row: any;
     try {
       const stmt = ctx.db.prepare(`
-        SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at, tags
+        SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at, tags, metadata
         FROM memory_entries
         WHERE status = 'active' AND key = ? AND namespace = ?
         LIMIT 1
@@ -749,6 +755,7 @@ export async function bridgeGetEntry(options: {
       updatedAt: row.updated_at || new Date().toISOString(),
       hasEmbedding: !!(row.embedding && String(row.embedding).length > 10),
       tags,
+      metadata: row.metadata != null ? String(row.metadata) : undefined,
     };
 
     await cacheSet(registry, cacheKey, entry);

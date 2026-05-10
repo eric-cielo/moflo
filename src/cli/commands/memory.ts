@@ -271,7 +271,7 @@ const searchCommand: Command = {
       name: 'threshold',
       description: 'Similarity threshold (0-1)',
       type: 'number',
-      default: 0.7
+      default: 0.5
     },
     {
       name: 'type',
@@ -297,7 +297,8 @@ const searchCommand: Command = {
     const query = ctx.flags.query as string || ctx.args[0];
     const namespace = ctx.flags.namespace as string || 'all';
     const limit = ctx.flags.limit as number || 10;
-    const threshold = ctx.flags.threshold as number || 0.3;
+    // #1053 S6: align with MCP default — was 0.3 here vs 0.7 in option block.
+    const threshold = ctx.flags.threshold as number || 0.5;
     const searchType = ctx.flags.type as string || 'semantic';
     const buildHnsw = ctx.flags.buildHnsw as boolean;
 
@@ -1862,16 +1863,16 @@ const indexGuidanceCommand: Command = {
         const content = fs.readFileSync(filePath, 'utf-8');
         const contentHash_ = hashContent(content);
 
-        // Check if content changed
+        // #1053 S4: doc-* retired — read docContentHash off chunk-0 instead.
         if (!forceReindex) {
           const stmt = db.prepare('SELECT metadata FROM memory_entries WHERE key = ? AND namespace = ?');
-          stmt.bind([docKey, NAMESPACE]);
+          stmt.bind([`${chunkPrefix}-0`, NAMESPACE]);
           const entry = stmt.step() ? stmt.getAsObject() : null;
           stmt.free();
           if (entry?.metadata) {
             try {
               const meta = JSON.parse(entry.metadata as string);
-              if (meta.contentHash === contentHash_) {
+              if (meta.docContentHash === contentHash_) {
                 return { docKey, status: 'unchanged' as const, chunks: 0 };
               }
             } catch { /* ignore */ }
@@ -1881,21 +1882,13 @@ const indexGuidanceCommand: Command = {
         const stats = fs.statSync(filePath);
         const relativePath = filePath.replace(cwd, '').replace(/\\/g, '/');
 
-        // Delete old chunks
+        // Delete old chunks. Also delete any legacy doc-* row (#1053 S4).
         db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key LIKE ?`, [NAMESPACE, `${chunkPrefix}%`]);
+        db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key = ?`, [NAMESPACE, docKey]);
 
-        // Store full document
-        const docMetadata = {
-          type: 'document',
-          filePath: relativePath,
-          fileSize: stats.size,
-          lastModified: stats.mtime.toISOString(),
-          contentHash: contentHash_,
-          indexedAt: new Date().toISOString(),
-          ragVersion: '2.0',
-        };
-
-        batchStoreEntry(db, docKey, NAMESPACE, content, docMetadata, [keyPrefix, 'document']);
+        // #1053 S4: doc-* entries no longer written. parentDoc on chunks
+        // remains as an identifier label; callers Read parentPath when
+        // they need the source file (see shipped/moflo-memory-protocol.md).
 
         // Chunk content
         const chunks = chunkMarkdown(content, fileName);
@@ -1906,30 +1899,27 @@ const indexGuidanceCommand: Command = {
         const hierarchy = buildHierarchy(chunks, chunkPrefix);
         const siblings = chunks.map((_, i) => `${chunkPrefix}-${i}`);
 
-        // Update doc with children refs
-        const docChildrenMeta = { ...docMetadata, children: siblings, chunkCount: chunks.length };
-        batchStoreEntry(db, docKey, NAMESPACE, content, docChildrenMeta, [keyPrefix, 'document']);
-
         for (let i = 0; i < chunks.length; i++) {
           const chunk = chunks[i];
           const chunkKey = `${chunkPrefix}-${i}`;
           const prevChunk = i > 0 ? `${chunkPrefix}-${i - 1}` : null;
           const nextChunk = i < chunks.length - 1 ? `${chunkPrefix}-${i + 1}` : null;
 
-          const contextBefore = i > 0
-            ? extractOverlapContext(chunks[i - 1].content, overlapPercent, 'end')
-            : null;
-          const contextAfter = i < chunks.length - 1
-            ? extractOverlapContext(chunks[i + 1].content, overlapPercent, 'start')
-            : null;
+          // #1053 S5: dropped prev/next preamble wrapping. Traversal happens
+          // via memory_get_neighbors now (S2).
 
           const hierInfo = hierarchy[chunkKey];
 
           const chunkMetadata = {
             type: 'chunk',
             ragVersion: '2.0',
+            // #1053 S4: parentDoc is an identifier label (target row no
+            // longer exists); use parentPath for the actual source file.
+            // docContentHash on every chunk lets the skip-if-unchanged
+            // check read it off chunk-0.
             parentDoc: docKey,
             parentPath: relativePath,
+            docContentHash: contentHash_,
             chunkIndex: i,
             totalChunks: chunks.length,
             prevChunk,
@@ -1942,22 +1932,13 @@ const indexGuidanceCommand: Command = {
             headerLine: chunk.headerLine,
             isPart: chunk.isPart || false,
             partNum: chunk.partNum || null,
-            contextOverlapPercent: overlapPercent,
-            hasContextBefore: !!contextBefore,
-            hasContextAfter: !!contextAfter,
             contentLength: chunk.content.length,
             contentHash: hashContent(chunk.content),
             indexedAt: new Date().toISOString(),
           };
 
-          let searchableContent = `# ${chunk.title}\n\n`;
-          if (contextBefore) {
-            searchableContent += `[Context from previous section:]\n${contextBefore}\n\n---\n\n`;
-          }
-          searchableContent += chunk.content;
-          if (contextAfter) {
-            searchableContent += `\n\n---\n\n[Context from next section:]\n${contextAfter}`;
-          }
+          // #1053 S5: title heading + chunk body. No prev/next preamble.
+          const searchableContent = `# ${chunk.title}\n\n${chunk.content}`;
 
           batchStoreEntry(
             db,
@@ -2016,23 +1997,31 @@ const indexGuidanceCommand: Command = {
         }
       }
 
-      // Clean stale entries for deleted files
-      const docsStmt = db.prepare(
-        `SELECT DISTINCT key FROM memory_entries WHERE namespace = ? AND key LIKE 'doc-%'`
+      // #1053 S4: Clean stale chunks for deleted files.
+      // doc-* markers are gone — derive prefixes from chunk keys directly.
+      // Chunk key shape: chunk-guidance-<filename>-<index>; group by stripping
+      // the trailing -<index>.
+      const chunksStmt = db.prepare(
+        `SELECT DISTINCT key FROM memory_entries WHERE namespace = ? AND key LIKE 'chunk-guidance-%'`
       );
-      docsStmt.bind([NAMESPACE]);
-      const docs: Array<{ key: string }> = [];
-      while (docsStmt.step()) docs.push(docsStmt.getAsObject() as { key: string });
-      docsStmt.free();
+      chunksStmt.bind([NAMESPACE]);
+      const seenPrefixes = new Set<string>();
+      while (chunksStmt.step()) {
+        const { key } = chunksStmt.getAsObject() as { key: string };
+        const prefix = key.replace(/-\d+$/, '');
+        seenPrefixes.add(prefix);
+      }
+      chunksStmt.free();
 
-      for (const { key } of docs) {
-        if (!key.startsWith('doc-guidance-')) continue;
-        const checkPath = pathModule.resolve(cwd, '.claude/guidance', key.replace('doc-guidance-', '') + '.md');
+      for (const prefix of seenPrefixes) {
+        const filename = prefix.replace('chunk-guidance-', '') + '.md';
+        const checkPath = pathModule.resolve(cwd, '.claude/guidance', filename);
         if (!fs.existsSync(checkPath)) {
-          const cp = key.replace('doc-', 'chunk-');
-          db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key LIKE ?`, [NAMESPACE, `${cp}%`]);
-          db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key = ?`, [NAMESPACE, key]);
-          output.writeln(output.dim(`  Removed stale: ${key}`));
+          db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key LIKE ?`, [NAMESPACE, `${prefix}-%`]);
+          // Also sweep any legacy doc-* row for this prefix (one-time tidy).
+          const legacyDocKey = prefix.replace('chunk-', 'doc-');
+          db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key = ?`, [NAMESPACE, legacyDocKey]);
+          output.writeln(output.dim(`  Removed stale: ${prefix}-* (file ${filename} not found)`));
         }
       }
     }

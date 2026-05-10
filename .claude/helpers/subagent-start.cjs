@@ -22,7 +22,7 @@ const path = require('path');
 // Defense-in-depth copy of the canonical directive in subagent-bootstrap.json.
 // Kept as a single-line literal so the parity test in tests/bin/subagent-start.test.ts
 // can verify it matches the JSON via plain substring containment.
-const FALLBACK_DIRECTIVE = 'MANDATORY FIRST ACTION: Your very first tool call MUST be mcp__moflo__memory_search (any query, any namespace). The memory-first gate WILL BLOCK all Glob, Grep, and Read calls until you do this. After memory search, follow `.claude/guidance/moflo-subagents.md` protocol.';
+const FALLBACK_DIRECTIVE = 'MANDATORY FIRST ACTION: Your very first tool call MUST be mcp__moflo__memory_search (any query, any namespace). The memory-first gate WILL BLOCK all Glob, Grep, and Read calls until you do this. After memory search, follow `.claude/guidance/moflo-subagents.md` protocol. When search returns chunk hits, traverse via mcp__moflo__memory_get_neighbors before retrieving — see `.claude/guidance/moflo-memory-protocol.md`.';
 
 function loadDirective() {
   const jsonPath = path.join(__dirname, 'subagent-bootstrap.json');
