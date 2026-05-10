@@ -1,0 +1,262 @@
+{
+  "$comment": "Canonical writer audit whitelist for moflo.db. Every file:line that mutates .moflo/moflo.db MUST appear here. See docs/internal/1054-writer-audit.md. Three terminal classifications: in-daemon (writes from inside the daemon process), daemon-rpc (cross-process writers routing via daemon-write-client), daemon-offline (launcher stops daemon before invoking).",
+  "patterns": {
+    "$comment": "Source-text patterns that trigger an audit hit. Lint test (tests/system/moflo-db-writer-audit.test.ts) greps these and fails on any unmatched hit. Patterns are JavaScript regex source strings.",
+    "regex": [
+      "\\.export\\(\\)\\s*\\)",
+      "writeFileSync\\([^)]*Buffer\\.from\\([^)]*\\.export\\(\\)",
+      "atomicWriteFileSync\\([^)]*\\.export\\(\\)",
+      "\\bdb\\.run\\(",
+      "\\bdb\\.exec\\(",
+      "INSERT\\s+OR\\s+REPLACE",
+      "UPDATE\\s+memory_entries"
+    ]
+  },
+  "scope": {
+    "$comment": "Path globs the lint test scans. Excludes test fixtures, type-only files, and pure documentation.",
+    "include": [
+      "src/cli/**/*.ts",
+      "bin/**/*.mjs",
+      "bin/**/*.cjs"
+    ],
+    "exclude": [
+      "src/cli/__tests__/**",
+      "src/cli/**/*.test.ts",
+      "src/cli/**/*.d.ts",
+      "**/node_modules/**"
+    ]
+  },
+  "writers": [
+    {
+      "file": "src/cli/memory/memory-initializer.ts",
+      "classification": "in-daemon",
+      "notes": "Chokepoint (storeEntry/deleteEntry/storeEntries) — #981/#985"
+    },
+    {
+      "file": "src/cli/memory/sqljs-backend.ts",
+      "classification": "in-daemon",
+      "notes": "Underlying sql.js backend used by chokepoint"
+    },
+    {
+      "file": "src/cli/memory/bridge-core.ts",
+      "classification": "in-daemon",
+      "notes": "Bridge-internal atomic write; single-process by construction"
+    },
+    {
+      "file": "src/cli/mcp-tools/aidefence-moflodb-store.ts",
+      "classification": "daemon-rpc",
+      "notes": "MCP-server process; routes via chokepoint post-#986"
+    },
+    {
+      "file": "src/cli/mcp-tools/memory-tools.ts",
+      "classification": "daemon-rpc",
+      "notes": "MCP handlers funnel through chokepoint"
+    },
+    {
+      "file": "src/cli/swarm/swarm-persistence.ts",
+      "classification": "daemon-rpc",
+      "notes": "Cross-process; DI'd through chokepoint"
+    },
+    {
+      "file": "src/cli/swarm/message-bus/write-through-adapter.ts",
+      "classification": "daemon-rpc",
+      "notes": "WriteThroughAdapter DI'd through chokepoint"
+    },
+    {
+      "file": "src/cli/commands/memory.ts",
+      "classification": "daemon-rpc",
+      "notes": "flo memory CLI subprocess funnels via chokepoint"
+    },
+    {
+      "file": "src/cli/commands/doctor-checks-memory-access.ts",
+      "classification": "daemon-rpc",
+      "notes": "POST-S3: probe seed routes via daemon-write-client (eliminates #1053/#1054 raw db.export() bypass)",
+      "pending_fix": "S3 #1057"
+    },
+    {
+      "file": "src/cli/commands/doctor-checks-memory.ts",
+      "classification": "daemon-rpc",
+      "notes": "Doctor memory checks run in-session; mutations route via chokepoint"
+    },
+    {
+      "file": "src/cli/commands/doctor-embedding-hygiene.ts",
+      "classification": "daemon-rpc",
+      "notes": "Doctor embedding hygiene check; routes via chokepoint when mutating"
+    },
+    {
+      "file": "src/cli/commands/embeddings.ts",
+      "classification": "daemon-rpc",
+      "notes": "flo embeddings CLI subprocess funnels via chokepoint"
+    },
+    {
+      "file": "src/cli/embeddings/migration/sqljs-helpers.ts",
+      "classification": "daemon-offline",
+      "notes": "One-time embedding migration helpers — #981 Layer 4, runs pre-boot"
+    },
+    {
+      "file": "src/cli/memory/bridge-entries.ts",
+      "classification": "in-daemon",
+      "notes": "Bridge-internal writers — #981 Layer 3 (bridge runs in single host process, not cross-process)"
+    },
+    {
+      "file": "src/cli/memory/memory-bridge.ts",
+      "classification": "in-daemon",
+      "notes": "Bridge core — #981 Layer 3 (bridge-internal, not a cross-process writer)"
+    },
+    {
+      "file": "src/cli/memory/controllers/attestation-log.ts",
+      "classification": "in-daemon",
+      "notes": "MofloDb controller — runs inside the memory subsystem's host process, funnels via bridge"
+    },
+    {
+      "file": "src/cli/memory/controllers/batch-operations.ts",
+      "classification": "in-daemon",
+      "notes": "MofloDb batch controller — bridge-internal, in-process"
+    },
+    {
+      "file": "src/cli/memory/controllers/causal-graph.ts",
+      "classification": "in-daemon",
+      "notes": "MofloDb causal-graph controller — bridge-internal"
+    },
+    {
+      "file": "src/cli/memory/controllers/hierarchical-memory.ts",
+      "classification": "in-daemon",
+      "notes": "MofloDb hierarchical controller — bridge-internal"
+    },
+    {
+      "file": "src/cli/memory/controllers/learning-system.ts",
+      "classification": "in-daemon",
+      "notes": "MofloDb learning-system controller — bridge-internal"
+    },
+    {
+      "file": "src/cli/memory/controllers/reflexion.ts",
+      "classification": "in-daemon",
+      "notes": "MofloDb reflexion controller — bridge-internal"
+    },
+    {
+      "file": "src/cli/memory/controllers/skills.ts",
+      "classification": "in-daemon",
+      "notes": "MofloDb skills controller — bridge-internal"
+    },
+    {
+      "file": "src/cli/memory/rvf-migration.ts",
+      "classification": "daemon-offline",
+      "notes": "One-time RVF schema migration — runs pre-boot via launcher"
+    },
+    {
+      "file": "src/cli/services/sqljs-migration-store.ts",
+      "classification": "daemon-offline",
+      "notes": "One-time DB schema migration — #981 Layer 4, runs pre-boot"
+    },
+    {
+      "file": "src/cli/commands/route.ts",
+      "classification": "in-daemon",
+      "notes": "Q-learning router export — not a moflo.db write; classified for completeness"
+    },
+    {
+      "file": "src/cli/movector/q-learning-router.ts",
+      "classification": "in-daemon",
+      "notes": "Q-learning serialization — not moflo.db; classified for completeness"
+    },
+    {
+      "file": "src/cli/services/embeddings-migration.ts",
+      "classification": "daemon-offline",
+      "notes": "Launcher pre-boot via runEmbeddingsMigrationIfNeeded — S2 guarantees no stale daemon during this phase"
+    },
+    {
+      "file": "src/cli/services/ephemeral-namespace-purge.ts",
+      "classification": "daemon-offline",
+      "notes": "Launcher pre-boot (#727/#968)"
+    },
+    {
+      "file": "src/cli/services/soft-delete-purge.ts",
+      "classification": "daemon-offline",
+      "notes": "Launcher pre-boot periodic purge"
+    },
+    {
+      "file": "src/cli/services/cherry-pick-learnings.ts",
+      "classification": "daemon-offline",
+      "notes": "One-time launcher pre-boot cherry-pick"
+    },
+    {
+      "file": "src/cli/services/learning-service.ts",
+      "classification": "daemon-offline",
+      "notes": "Hooks library save() — S3 verifies caller context and confirms classification"
+    },
+    {
+      "file": "src/cli/embeddings/persistent-cache.ts",
+      "classification": "separate-db",
+      "notes": "Writes .cache/embeddings.db — NOT moflo.db. Out of scope for this audit."
+    },
+    {
+      "file": "src/cli/shared/events/event-store.ts",
+      "classification": "separate-db",
+      "notes": "Event store separate file — NOT moflo.db"
+    },
+    {
+      "file": "src/cli/memory/hnsw-persistence.ts",
+      "classification": "separate-db",
+      "notes": "Writes .moflo/hnsw.index — separate file from moflo.db"
+    },
+    {
+      "file": "src/cli/guidance/ruvbot-integration.ts",
+      "classification": "in-daemon",
+      "notes": "chain.export() is in-memory serialization, not DB write"
+    },
+    {
+      "file": "bin/migrations/strip-context-preambles.mjs",
+      "classification": "daemon-offline",
+      "notes": "Launcher pre-boot — S3 wraps invocation with explicit daemon-stop/start"
+    },
+    {
+      "file": "bin/migrations/purge-doc-entries.mjs",
+      "classification": "daemon-offline",
+      "notes": "Launcher pre-boot — S3 wraps invocation"
+    },
+    {
+      "file": "bin/migrations/knowledge-purge.mjs",
+      "classification": "daemon-offline",
+      "notes": "Launcher pre-boot — S3 wraps invocation"
+    },
+    {
+      "file": "bin/migrations/knowledge-to-learnings.mjs",
+      "classification": "daemon-offline",
+      "notes": "Launcher pre-boot — S3 wraps invocation"
+    },
+    {
+      "file": "bin/build-embeddings.mjs",
+      "classification": "daemon-offline",
+      "notes": "Launcher / healer — S3 wraps invocation with explicit daemon-stop"
+    },
+    {
+      "file": "bin/index-guidance.mjs",
+      "classification": "daemon-offline",
+      "notes": "Daemon worker subprocess — S3 adds content-diff before INSERT OR REPLACE per feedback_indexer_preserve_embeddings"
+    },
+    {
+      "file": "bin/index-tests.mjs",
+      "classification": "daemon-offline",
+      "notes": "Daemon worker subprocess — S3 adds content-diff"
+    },
+    {
+      "file": "bin/index-patterns.mjs",
+      "classification": "daemon-offline",
+      "notes": "Daemon worker subprocess — S3 adds content-diff"
+    },
+    {
+      "file": "bin/generate-code-map.mjs",
+      "classification": "daemon-offline",
+      "notes": "Daemon worker subprocess — S3 adds content-diff"
+    },
+    {
+      "file": "bin/lib/db-repair.mjs",
+      "classification": "daemon-offline",
+      "notes": "Launcher repair path — S3 verifies daemon-stop wrapper"
+    },
+    {
+      "file": "bin/lib/incremental-write.mjs",
+      "classification": "daemon-offline",
+      "notes": "Helper used by indexers — content-diff already implemented (#745)"
+    }
+  ]
+}
