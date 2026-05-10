@@ -20,6 +20,7 @@ import {
   type DashboardHandle,
 } from '../../services/daemon-dashboard.js';
 import { _resetClaudeStatsCache } from '../../services/claude-stats.js';
+import { encodeCwdForClaudeProjects } from '../../shared/utils/claude-projects-path.js';
 
 let tmpRoot: string;
 let savedHome: string | undefined;
@@ -105,7 +106,7 @@ describe('GET /api/claude-stats', () => {
 
   it('returns aggregated stats when transcripts exist for the CWD', async () => {
     const cwd = process.cwd();
-    const encoded = cwd.replace(/[\\/:]/g, '-');
+    const encoded = encodeCwdForClaudeProjects(cwd);
     const projDir = join(tmpRoot, '.claude', 'projects', encoded);
     mkdirSync(projDir, { recursive: true });
     writeFileSync(
