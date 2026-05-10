@@ -26,23 +26,13 @@ import { existsSync, readdirSync, readFileSync, statSync, mkdirSync, writeFileSy
 import { resolve, relative, dirname, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
-import { memoryDbPath } from './lib/moflo-paths.mjs';
+import { memoryDbPath, findProjectRoot } from './lib/moflo-paths.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { createProcessManager } from './lib/process-manager.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
 
 const projectRoot = findProjectRoot();
 

@@ -11,7 +11,7 @@ import { spawn, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { mofloDir } from './lib/moflo-paths.mjs';
+import { mofloDir, findProjectRoot } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune } from './lib/retired-files.mjs';
@@ -39,20 +39,13 @@ function sessionStartMirrorHeader(file) {
   return `${SESSION_START_MIRROR_MARKER} Do not edit — changes will be overwritten. -->\n<!-- Source: node_modules/moflo/.claude/guidance/shipped/${file} -->\n\n`;
 }
 
-// Detect project root by walking up from cwd to find package.json.
 // IMPORTANT: Do NOT use resolve(__dirname, '..') or '../..' — this script lives
 // in bin/ during development but gets synced to .claude/scripts/ in consumer
-// projects, so __dirname-relative paths break. findProjectRoot() works everywhere.
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
-
+// projects, so __dirname-relative paths break. findProjectRoot() (lib/moflo-
+// paths.mjs) resolves identically to the TS bridge (#1057): CLAUDE_PROJECT_DIR
+// first, then walk up for .moflo/moflo.db / .swarm/memory.db / CLAUDE.md+pkg /
+// package.json / .git. Inline walks here have caused N writers to land on
+// different DBs than the bridge reads from — never reintroduce one.
 const projectRoot = findProjectRoot();
 
 // Dogfood guard (#928). When this launcher runs inside the moflo repo itself,

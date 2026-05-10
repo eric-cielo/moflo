@@ -18,21 +18,10 @@
  */
 
 import { existsSync, readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
 import { mofloResolveURL, mofloInternalURL } from './lib/moflo-resolve.mjs';
-import { memoryDbPath } from './lib/moflo-paths.mjs';
+import { memoryDbPath, findProjectRoot } from './lib/moflo-paths.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 const FASTEMBED_INLINE = 'dist/src/cli/embeddings/fastembed-inline/index.js';
-
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
 
 const projectRoot = findProjectRoot();
 const DB_PATH = memoryDbPath(projectRoot);

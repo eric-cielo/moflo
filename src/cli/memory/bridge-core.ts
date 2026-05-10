@@ -14,6 +14,7 @@ import {
   memoryDbPath,
   MOFLO_DIR,
 } from '../services/moflo-paths.js';
+import { findProjectRoot } from '../services/project-root.js';
 
 // When run via npx, CWD may be node_modules/moflo — walk up to find actual project
 let _projectRoot: string | undefined;
@@ -40,33 +41,20 @@ export function _getBridgeCoherenceCursorForTest(): number | null {
   return lastSeenMtimeMs;
 }
 
+/**
+ * Resolve the bridge's project root.
+ *
+ * Delegates to the canonical resolver in `src/cli/services/project-root.ts`
+ * (twin: `bin/lib/moflo-paths.mjs:findProjectRoot()`). The bridge keeps a
+ * module-level cache so the hot path (every withDb call) doesn't redo the
+ * stat sweep. Tests reset via {@link _resetProjectRootForTest}.
+ *
+ * If you find yourself wanting to inline a custom walk here, STOP — every
+ * divergent walk creates a new path-mismatch bug class (see #1057 / #1058).
+ */
 function getProjectRoot(): string {
   if (_projectRoot) return _projectRoot;
-  if (process.env.CLAUDE_PROJECT_DIR) {
-    _projectRoot = process.env.CLAUDE_PROJECT_DIR;
-    return _projectRoot;
-  }
-  let dir = process.cwd();
-  const root = path.parse(dir).root;
-  while (dir !== root) {
-    // `.moflo/moflo.db` is the canonical post-#727 marker. Older consumers
-    // mid-migration may still only have `.swarm/memory.db`; recognise both
-    // so the bridge can find the project root either way.
-    if (fs.existsSync(memoryDbPath(dir)) || fs.existsSync(legacyMemoryDbPath(dir))) {
-      _projectRoot = dir;
-      return _projectRoot;
-    }
-    if (fs.existsSync(path.join(dir, 'CLAUDE.md')) && fs.existsSync(path.join(dir, 'package.json'))) {
-      _projectRoot = dir;
-      return _projectRoot;
-    }
-    if (path.basename(dir) === 'node_modules') {
-      dir = path.dirname(dir);
-      continue;
-    }
-    dir = path.dirname(dir);
-  }
-  _projectRoot = process.cwd();
+  _projectRoot = findProjectRoot();
   return _projectRoot;
 }
 
