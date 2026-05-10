@@ -19,6 +19,7 @@ import {
   pruneTopicFile,
   hasSummaryLine,
 } from './auto-memory-bridge.js';
+import { encodeCwdForClaudeProjects } from '../shared/utils/claude-projects-path.js';
 import type {
   MemoryInsight,
 } from './auto-memory-bridge.js';
@@ -101,6 +102,23 @@ describe('resolveAutoMemoryDir', () => {
     const a = resolveAutoMemoryDir('/workspaces/my-project');
     const b = resolveAutoMemoryDir('/workspaces/my-project');
     expect(a).toBe(b);
+  });
+
+  // Issue #1048 — every non-alphanumeric character in the working directory
+  // must collapse to `-`, matching Claude Code's own directory naming.
+  it('should replace underscores and dots with dashes', () => {
+    const result = resolveAutoMemoryDir('/Users/me/dev/some_project.v2');
+    expect(result).toContain(`${path.sep}-Users-me-dev-some-project-v2${path.sep}memory`);
+  });
+
+  // Drift guard: resolveAutoMemoryDir must produce the same encoded suffix
+  // as encodeCwdForClaudeProjects so both consumers of `~/.claude/projects/`
+  // agree on which directory belongs to a given cwd.
+  it('produces the same encoded segment as encodeCwdForClaudeProjects', () => {
+    const cwd = '/Users/me/dev/some_project.v2';
+    const memoryDir = resolveAutoMemoryDir(cwd);
+    const expectedSegment = encodeCwdForClaudeProjects(cwd);
+    expect(memoryDir).toContain(`${path.sep}${expectedSegment}${path.sep}memory`);
   });
 });
 

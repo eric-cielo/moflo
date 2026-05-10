@@ -23,9 +23,14 @@
 
 import { createReadStream } from 'node:fs';
 import { stat, readdir } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import {
+  claudeProjectDirFor,
+  encodeCwdForClaudeProjects,
+} from '../shared/utils/claude-projects-path.js';
+
+export { claudeProjectDirFor, encodeCwdForClaudeProjects };
 
 /**
  * Map a transcript model name to a stable display key. Recognises bare family
@@ -89,24 +94,6 @@ export interface ClaudeStatsShape {
   readonly parseErrors: number;
   /** Aggregation wall-clock duration in ms — populated when computed. */
   readonly elapsedMs: number;
-}
-
-// ============================================================================
-// Path resolution
-// ============================================================================
-
-/**
- * Encode a CWD the same way Claude Code does for `~/.claude/projects/<dir>`.
- * Replaces `\`, `/`, and `:` with `-` so `C:\Users\eric\Projects\moflo` →
- * `C--Users-eric-Projects-moflo`.
- */
-export function encodeCwdForClaudeProjects(cwd: string): string {
-  return cwd.replace(/[\\/:]/g, '-');
-}
-
-/** Absolute path to `~/.claude/projects/<encoded-cwd>` for the given CWD. */
-export function claudeProjectDirFor(cwd: string): string {
-  return join(homedir(), '.claude', 'projects', encodeCwdForClaudeProjects(cwd));
 }
 
 // ============================================================================
