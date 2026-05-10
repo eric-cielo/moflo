@@ -85,6 +85,23 @@ describe('encodeCwdForClaudeProjects', () => {
     expect(encodeCwdForClaudeProjects('/Users/alice/proj/moflo'))
       .toBe('-Users-alice-proj-moflo');
   });
+
+  // Issue #1048: every non-alphanumeric character in the cwd must collapse
+  // to a dash, matching Claude Code's own directory naming.
+  it('replaces underscores, dots, plus, and spaces with dashes', () => {
+    expect(encodeCwdForClaudeProjects('/Users/me/dev/some_project'))
+      .toBe('-Users-me-dev-some-project');
+    expect(encodeCwdForClaudeProjects('C:\\Users\\me\\foo.bar'))
+      .toBe('C--Users-me-foo-bar');
+    expect(encodeCwdForClaudeProjects('/var/lib/app+v2'))
+      .toBe('-var-lib-app-v2');
+    expect(encodeCwdForClaudeProjects('/path with space/x'))
+      .toBe('-path-with-space-x');
+  });
+
+  it('leaves an all-alphanumeric CWD untouched', () => {
+    expect(encodeCwdForClaudeProjects('alphaOnly42')).toBe('alphaOnly42');
+  });
 });
 
 // ============================================================================

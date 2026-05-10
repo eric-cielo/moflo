@@ -13,11 +13,11 @@
  */
 
 import { createHash } from 'node:crypto';
-import { homedir } from 'node:os';
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs/promises';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import * as path from 'node:path';
+import { claudeProjectDirFor } from '../shared/utils/claude-projects-path.js';
 import {
   createDefaultEntry,
   type IMemoryBackend,
@@ -747,28 +747,17 @@ export class AutoMemoryBridge extends EventEmitter {
 
 /**
  * Resolve the auto memory directory for a given working directory.
- * Mirrors Claude Code's path derivation from git root.
+ *
+ * The git root is preferred over the raw cwd so a session in
+ * `<repo>/packages/foo` resolves to the repo's auto-memory store, matching
+ * Claude Code's own behaviour. The encoded suffix is produced by the shared
+ * `claudeProjectDirFor` helper so this bridge cannot drift away from the
+ * Claude Code directory naming convention (issue #1048).
  */
 export function resolveAutoMemoryDir(workingDir: string): string {
   const gitRoot = findGitRoot(workingDir);
   const basePath = gitRoot || workingDir;
-
-  // Claude Code normalizes to forward slashes then replaces with dashes
-  // The leading dash IS preserved (e.g. /workspaces/foo -> -workspaces-foo)
-  // On Windows, strip drive letter prefix (C:) for cleaner keys
-  let normalized = basePath.split(path.sep).join('/');
-  if (process.platform === 'win32') {
-    normalized = normalized.replace(/^[A-Za-z]:/, '');
-  }
-  const projectKey = normalized.replace(/\//g, '-');
-
-  return path.join(
-    homedir(),
-    '.claude',
-    'projects',
-    projectKey,
-    'memory',
-  );
+  return path.join(claudeProjectDirFor(basePath), 'memory');
 }
 
 /**
