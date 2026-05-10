@@ -536,7 +536,7 @@ function generateClaudeMd(root: string, _force?: boolean): MofloInitResult['step
 // scriptFiles array in bin/session-start-launcher.mjs — first-init drops any
 // script missing here, and the launcher's manifest cleanup later treats it as
 // orphan residue and deletes it (#777, feedback_scriptfiles_sync.md).
-const SCRIPT_MAP: string[] = [
+export const SCRIPT_MAP: string[] = [
   'hooks.mjs',
   'session-start-launcher.mjs',
   'index-guidance.mjs',
@@ -600,17 +600,26 @@ function isStale(srcPath: string, destPath: string): boolean {
 // Step 6: .gitignore
 // ============================================================================
 
-function updateGitignore(root: string): MofloInitResult['steps'][0] {
+export function updateGitignore(root: string): MofloInitResult['steps'][0] {
   const gitignorePath = path.join(root, '.gitignore');
   const entries = [
     '.claude-epic/',
     '.moflo/',
     '.swarm/',
-    '.moflo/',
     '.claude/settings.local.json',
     '.claude/scheduled_tasks.lock',
     '**/workflow-state.json',
+    // Leading `/` anchors to gitignore root — bare `.claude/guidance/` once
+    // swallowed shipped/internal subdirs and broke `npm pack`
+    // (guidance-gitignore-shipped-trap).
+    '/.claude/guidance/moflo-*.md',
+    ...SCRIPT_MAP.map(name => `/.claude/scripts/${name}`),
   ];
+
+  // Treat `/.foo` and `.foo` as the same rule when checking for prior presence
+  // — both forms anchor at gitignore root, so a consumer who wrote either
+  // shouldn't get a duplicate appended.
+  const normalize = (s: string) => s.replace(/^\//, '');
 
   if (!fs.existsSync(gitignorePath)) {
     const defaultEntries = ['node_modules/', 'dist/', '.env', '.env.*', ''];
@@ -621,9 +630,9 @@ function updateGitignore(root: string): MofloInitResult['steps'][0] {
 
   const existing = fs.readFileSync(gitignorePath, 'utf-8');
   const existingLines = new Set(
-    existing.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#')),
+    existing.split(/\r?\n/).map(l => normalize(l.trim())).filter(l => l && !l.startsWith('#')),
   );
-  const toAdd = entries.filter(e => !existingLines.has(e));
+  const toAdd = entries.filter(e => !existingLines.has(normalize(e)));
 
   if (toAdd.length === 0) {
     return { name: '.gitignore', status: 'skipped', detail: 'Entries already present' };
