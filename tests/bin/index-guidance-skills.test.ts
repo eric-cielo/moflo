@@ -167,10 +167,13 @@ describe('bin/index-guidance.mjs — skills (#942)', () => {
     const dbPath = join(root, '.moflo', 'moflo.db');
     expect(existsSync(dbPath)).toBe(true);
 
-    const rows = await readMemoryRows(dbPath, 'doc-skill-foo');
-    expect(rows.length).toBe(1);
+    // Post-#1053-S4 the chunker stopped writing `doc-*` rows (audit found
+    // zero production readers; they duplicated chunk semantic territory).
+    // The skill-level metadata lives on each chunk's `metadata` blob instead.
+    const chunks = await readMemoryRows(dbPath, 'chunk-skill-foo-%');
+    expect(chunks.length).toBeGreaterThanOrEqual(1);
 
-    const meta = JSON.parse(rows[0].metadata || '{}');
+    const meta = JSON.parse(chunks[0].metadata || '{}');
     expect(meta.kind).toBe('skill');
     expect(meta.skill_name).toBe('foo');
   });
@@ -183,17 +186,25 @@ describe('bin/index-guidance.mjs — skills (#942)', () => {
     expect(result.status).toBe(0);
 
     const dbPath = join(root, '.moflo', 'moflo.db');
-    const fooDoc = await readMemoryRows(dbPath, 'doc-skill-foo');
-    const barDoc = await readMemoryRows(dbPath, 'doc-skill-bar');
+    // Compare chunk rows since doc-* entries are no longer written
+    // (#1053 S4). Per-skill content must remain distinct in chunk content
+    // and metadata.skill_name.
+    const fooChunks = await readMemoryRows(dbPath, 'chunk-skill-foo-%');
+    const barChunks = await readMemoryRows(dbPath, 'chunk-skill-bar-%');
 
-    expect(fooDoc.length).toBe(1);
-    expect(barDoc.length).toBe(1);
-    expect(fooDoc[0].content).not.toBe(barDoc[0].content);
-    expect(fooDoc[0].content).toContain('foo-only-A');
-    expect(barDoc[0].content).toContain('bar-only-A');
+    expect(fooChunks.length).toBeGreaterThanOrEqual(1);
+    expect(barChunks.length).toBeGreaterThanOrEqual(1);
 
-    const fooMeta = JSON.parse(fooDoc[0].metadata || '{}');
-    const barMeta = JSON.parse(barDoc[0].metadata || '{}');
+    // Concatenate content so the assertion isn't sensitive to which chunk a
+    // given suffix landed in (the chunker splits at H2 boundaries).
+    const fooContent = fooChunks.map(r => r.content).join('\n');
+    const barContent = barChunks.map(r => r.content).join('\n');
+    expect(fooContent).not.toBe(barContent);
+    expect(fooContent).toContain('foo-only-A');
+    expect(barContent).toContain('bar-only-A');
+
+    const fooMeta = JSON.parse(fooChunks[0].metadata || '{}');
+    const barMeta = JSON.parse(barChunks[0].metadata || '{}');
     expect(fooMeta.skill_name).toBe('foo');
     expect(barMeta.skill_name).toBe('bar');
   });
@@ -205,7 +216,9 @@ describe('bin/index-guidance.mjs — skills (#942)', () => {
     expect(first.status).toBe(0);
 
     const dbPath = join(root, '.moflo', 'moflo.db');
-    const before = await readMemoryRows(dbPath, 'doc-skill-foo');
+    // The skip-if-unchanged check reads docContentHash off `chunk-skill-foo-0`
+    // (post-#1053-S4), so chunk-0 is the load-bearing fixture for idempotency.
+    const before = await readMemoryRows(dbPath, 'chunk-skill-foo-0');
     expect(before.length).toBe(1);
     const idBefore = before[0].id;
 
@@ -217,7 +230,7 @@ describe('bin/index-guidance.mjs — skills (#942)', () => {
     // The summary line `Documents indexed: 0` corroborates: nothing was re-written.
     expect(second.stdout).toMatch(/Documents indexed:\s*0/);
 
-    const after = await readMemoryRows(dbPath, 'doc-skill-foo');
+    const after = await readMemoryRows(dbPath, 'chunk-skill-foo-0');
     expect(after.length).toBe(1);
     expect(after[0].id).toBe(idBefore);
   });

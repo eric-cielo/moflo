@@ -26,7 +26,7 @@ import {
   legacyMemoryDbPath,
   memoryDbPath,
 } from '../services/moflo-paths.js';
-import { tryDaemonStore, tryDaemonDelete } from './daemon-write-client.js';
+import { tryDaemonStore, tryDaemonDelete, tryDaemonGet, tryDaemonSearch, tryDaemonList } from './daemon-write-client.js';
 
 // #981 — daemon-write-client throws are a contract violation (it's documented
 // as never-throw). When a throw escapes anyway, log to stderr ONCE per process
@@ -2200,6 +2200,36 @@ export async function searchEntries(options: {
   searchTime: number;
   error?: string;
 }> {
+  // #1058 — read-side routing preamble. When a daemon is reachable AND we're
+  // not the daemon ourselves AND no custom dbPath was supplied, route the
+  // search through the daemon's HTTP RPC so callers see its authoritative,
+  // up-to-the-write state. Without this, a non-daemon process queries its
+  // own bridge's sql.js snapshot loaded at process-start and never sees
+  // anything the daemon has written since (epic #1054 silent-drop).
+  if (
+    !options.dbPath
+    && process.env.MOFLO_IS_DAEMON !== '1'
+    && process.env.MOFLO_DISABLE_DAEMON_ROUTING !== '1'
+  ) {
+    try {
+      const routed = await tryDaemonSearch({
+        query: options.query,
+        namespace: options.namespace,
+        limit: options.limit,
+        threshold: options.threshold,
+      });
+      if (routed.routed && routed.data) {
+        return {
+          success: true,
+          results: routed.data.results,
+          searchTime: routed.data.searchTime ?? 0,
+        };
+      }
+    } catch (err) {
+      logRoutingFault(err);
+    }
+  }
+
   // ADR-053: Try AgentDB v3 bridge first
   const bridge = await getBridge();
   if (bridge) {
@@ -2365,6 +2395,26 @@ export async function listEntries(options: {
   total: number;
   error?: string;
 }> {
+  // #1058 — read-side routing preamble (mirrors searchEntries/getEntry).
+  if (
+    !options.dbPath
+    && process.env.MOFLO_IS_DAEMON !== '1'
+    && process.env.MOFLO_DISABLE_DAEMON_ROUTING !== '1'
+  ) {
+    try {
+      const routed = await tryDaemonList({
+        namespace: options.namespace,
+        limit: options.limit,
+        offset: options.offset,
+      });
+      if (routed.routed && routed.data) {
+        return { success: true, entries: routed.data.entries, total: routed.data.total };
+      }
+    } catch (err) {
+      logRoutingFault(err);
+    }
+  }
+
   // ADR-053: Try AgentDB v3 bridge first
   const bridge = await getBridge();
   if (bridge) {
@@ -2481,6 +2531,25 @@ export async function getEntry(options: {
   };
   error?: string;
 }> {
+  // #1058 — read-side routing preamble (mirrors searchEntries/listEntries).
+  if (
+    !options.dbPath
+    && process.env.MOFLO_IS_DAEMON !== '1'
+    && process.env.MOFLO_DISABLE_DAEMON_ROUTING !== '1'
+  ) {
+    try {
+      const routed = await tryDaemonGet({
+        namespace: options.namespace ?? 'default',
+        key: options.key,
+      });
+      if (routed.routed && routed.data) {
+        return { success: true, found: routed.data.found, entry: routed.data.entry };
+      }
+    } catch (err) {
+      logRoutingFault(err);
+    }
+  }
+
   // ADR-053: Try AgentDB v3 bridge first
   const bridge = await getBridge();
   if (bridge) {
@@ -2530,14 +2599,15 @@ export async function getEntry(options: {
       string, string, string, string, string | null, number, string, string, string | null, string | null
     ];
 
-    // Update access count
-    db.run(`
-      UPDATE memory_entries
-      SET access_count = access_count + 1, last_accessed_at = strftime('%s', 'now') * 1000
-      WHERE id = '${String(id).replace(/'/g, "''")}'
-    `);
-
-    atomicWriteFileSync(dbPath, db.export());
+    // #1058: previously this path issued `UPDATE memory_entries SET access_count = ...`
+    // followed by `atomicWriteFileSync(dbPath, db.export())` — a read that
+    // dumped the entire DB snapshot back to disk just to bump access_count.
+    // Any write by another process between this function's readFileSync and
+    // the writeback was clobbered (read-side writeback-clobber). Access_count
+    // is observability, not correctness — drop the writeback. The caller's
+    // return value reports the in-memory incremented count so existing
+    // surfaces aren't disturbed; persistence of the counter is deferred to a
+    // future controller-table refactor (out of scope).
 
     db.close();
 

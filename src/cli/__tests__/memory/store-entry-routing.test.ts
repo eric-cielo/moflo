@@ -34,19 +34,38 @@ vi.mock('../../config/moflo-config.js', () => ({
 // daemon-write-client.
 
 import { _resetForTest } from '../../memory/daemon-write-client.js';
-import { storeEntry, deleteEntry } from '../../memory/memory-initializer.js';
+import {
+  storeEntry,
+  deleteEntry,
+  getEntry,
+  searchEntries,
+  listEntries,
+} from '../../memory/memory-initializer.js';
 
 interface FakeDaemon {
   port: number;
   server: http.Server;
   storeRequests: Array<Record<string, unknown>>;
   deleteRequests: Array<Record<string, unknown>>;
+  getRequests: Array<Record<string, unknown>>;
+  searchRequests: Array<Record<string, unknown>>;
+  listRequests: Array<Record<string, unknown>>;
+  /** Override get response per-test (default: ok+found:false). */
+  setGetResponse(body: Record<string, unknown>): void;
+  setSearchResponse(body: Record<string, unknown>): void;
+  setListResponse(body: Record<string, unknown>): void;
   stop(): Promise<void>;
 }
 
 async function startFakeDaemon(): Promise<FakeDaemon> {
   const storeRequests: Array<Record<string, unknown>> = [];
   const deleteRequests: Array<Record<string, unknown>> = [];
+  const getRequests: Array<Record<string, unknown>> = [];
+  const searchRequests: Array<Record<string, unknown>> = [];
+  const listRequests: Array<Record<string, unknown>> = [];
+  let getResponse: Record<string, unknown> = { ok: true, found: false };
+  let searchResponse: Record<string, unknown> = { ok: true, results: [], searchTime: 0 };
+  let listResponse: Record<string, unknown> = { ok: true, entries: [], total: 0 };
 
   const server = http.createServer((req, res) => {
     let buf = '';
@@ -69,6 +88,24 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
         res.end(JSON.stringify({ ok: true, deleted: true }));
         return;
       }
+      if (req.url === '/api/memory/get' && req.method === 'POST') {
+        try { getRequests.push(JSON.parse(buf)); } catch { /* malformed */ }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(getResponse));
+        return;
+      }
+      if (req.url === '/api/memory/search' && req.method === 'POST') {
+        try { searchRequests.push(JSON.parse(buf)); } catch { /* malformed */ }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(searchResponse));
+        return;
+      }
+      if (req.url === '/api/memory/list' && req.method === 'POST') {
+        try { listRequests.push(JSON.parse(buf)); } catch { /* malformed */ }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(listResponse));
+        return;
+      }
       res.writeHead(404);
       res.end();
     });
@@ -85,6 +122,12 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
     server,
     storeRequests,
     deleteRequests,
+    getRequests,
+    searchRequests,
+    listRequests,
+    setGetResponse(body) { getResponse = body; },
+    setSearchResponse(body) { searchResponse = body; },
+    setListResponse(body) { listResponse = body; },
     async stop() {
       server.closeAllConnections?.();
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -271,5 +314,136 @@ describe('memory-initializer routing preamble (#985)', () => {
 
     await deleteEntry({ key: 'k', namespace: 'ns', dbPath: tempDbPath() });
     expect(fake.deleteRequests.length).toBe(0);
+  });
+
+  // ==========================================================================
+  // Read-side routing preamble (#1058 / epic #1054)
+  // ==========================================================================
+  //
+  // Read-symmetry with the write fix from #985. Without it, a non-daemon
+  // process (MCP server, CLI subprocess) reads from its own per-process
+  // bridge snapshot loaded at start time — sql.js never re-reads disk, so
+  // anything the daemon has written since is invisible. The preamble routes
+  // reads through the daemon's HTTP RPC so callers see the authoritative
+  // state.
+
+  it('getEntry routes through daemon when daemon is reachable', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setGetResponse({
+      ok: true,
+      found: true,
+      entry: {
+        id: 'e1', key: 'k', namespace: 'ns', content: 'daemon-served',
+        accessCount: 7, createdAt: '2026-01-01', updatedAt: '2026-01-02',
+        hasEmbedding: true, tags: [],
+      },
+    });
+
+    const result = await getEntry({ key: 'k', namespace: 'ns' });
+    expect(result.success).toBe(true);
+    expect(result.found).toBe(true);
+    expect(result.entry?.content).toBe('daemon-served');
+    expect(fake.getRequests.length).toBe(1);
+    expect(fake.getRequests[0].key).toBe('k');
+    expect(fake.getRequests[0].namespace).toBe('ns');
+  });
+
+  it('getEntry skips routing when MOFLO_IS_DAEMON=1', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    process.env.MOFLO_IS_DAEMON = '1';
+
+    await getEntry({ key: 'k', namespace: 'ns', dbPath: tempDbPath() });
+    expect(fake.getRequests.length).toBe(0);
+  });
+
+  it('getEntry skips routing when MOFLO_DISABLE_DAEMON_ROUTING=1', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
+
+    await getEntry({ key: 'k', namespace: 'ns', dbPath: tempDbPath() });
+    expect(fake.getRequests.length).toBe(0);
+  });
+
+  it('getEntry skips routing when a custom dbPath is supplied', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+
+    await getEntry({ key: 'k', namespace: 'ns', dbPath: tempDbPath() });
+    expect(fake.getRequests.length).toBe(0);
+  });
+
+  it('searchEntries routes through daemon when daemon is reachable', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setSearchResponse({
+      ok: true,
+      results: [
+        { id: 'r1', key: 'k1', content: 'c1', score: 0.92, namespace: 'ns' },
+      ],
+      searchTime: 7,
+    });
+
+    const result = await searchEntries({ query: 'hello', namespace: 'ns', limit: 5 });
+    expect(result.success).toBe(true);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].score).toBe(0.92);
+    expect(result.searchTime).toBe(7);
+    expect(fake.searchRequests.length).toBe(1);
+    expect(fake.searchRequests[0].query).toBe('hello');
+  });
+
+  it('searchEntries skips routing when MOFLO_IS_DAEMON=1', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    process.env.MOFLO_IS_DAEMON = '1';
+
+    await searchEntries({ query: 'q', dbPath: tempDbPath() });
+    expect(fake.searchRequests.length).toBe(0);
+  });
+
+  it('listEntries routes through daemon when daemon is reachable', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setListResponse({
+      ok: true,
+      entries: [
+        { id: 'a', key: 'k1', namespace: 'ns', size: 10, accessCount: 0, createdAt: '', updatedAt: '', hasEmbedding: false },
+      ],
+      total: 99,
+    });
+
+    const result = await listEntries({ namespace: 'ns', limit: 50 });
+    expect(result.success).toBe(true);
+    expect(result.entries).toHaveLength(1);
+    expect(result.total).toBe(99);
+    expect(fake.listRequests.length).toBe(1);
+    expect(fake.listRequests[0].namespace).toBe('ns');
+  });
+
+  it('listEntries skips routing when MOFLO_IS_DAEMON=1', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    process.env.MOFLO_IS_DAEMON = '1';
+
+    await listEntries({ namespace: 'ns', dbPath: tempDbPath() });
+    expect(fake.listRequests.length).toBe(0);
+  });
+
+  it('read functions fall back to direct path when daemon is unreachable', async () => {
+    // No fake started.
+    process.env.MOFLO_DAEMON_PORT = String(40000 + Math.floor(Math.random() * 10000));
+    const dbPath = tempDbPath();
+    // Seed a row directly so the local-bridge / raw-sql.js fallback has data
+    // to find. dbPath bypasses routing for the seed AND for the read.
+    await storeEntry({ key: 'k', value: 'v', namespace: 'ns', dbPath });
+    const read = await getEntry({ key: 'k', namespace: 'ns', dbPath });
+    // The fallback path must produce a well-formed response (the routing
+    // failure must not poison the call). dbPath bypasses routing anyway, so
+    // this test mostly proves "no throw on daemon-down".
+    expect(read).toBeDefined();
+    expect(typeof read.success).toBe('boolean');
   });
 });

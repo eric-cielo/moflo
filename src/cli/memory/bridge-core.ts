@@ -22,9 +22,22 @@ let _projectRoot: string | undefined;
  * Reset the cached project root. Tests that change `process.cwd()` or
  * `process.env.CLAUDE_PROJECT_DIR` between cases must call this to avoid
  * leaking state across tests.
+ *
+ * Also drops the bridge-coherence cursor (#1058) so a test that re-points the
+ * project root doesn't inherit a stale mtime anchor from the previous root.
  */
 export function _resetProjectRootForTest(): void {
   _projectRoot = undefined;
+  lastSeenMtimeMs = null;
+}
+
+/**
+ * Test seam (#1058): peek at the bridge-coherence cursor. Production callers
+ * never invoke this; tests assert that own writes update the anchor and that
+ * another writer's mtime bump triggers reload.
+ */
+export function _getBridgeCoherenceCursorForTest(): number | null {
+  return lastSeenMtimeMs;
 }
 
 function getProjectRoot(): string {
@@ -66,6 +79,21 @@ let registryPromise: Promise<any | null> | null = null;
 let resolvedRegistry: any | null = null;
 let lastBridgeError: Error | null = null;
 const schemaInitialized = new WeakSet<object>();
+
+/**
+ * Last-known disk mtime for the bridge's dbPath. Anchors the bridge-coherence
+ * check (story #1058 / epic #1054): when another process writes to disk, its
+ * persist bumps mtime past this value; the next withDb call shuts the bridge
+ * down so getRegistry re-reads fresh from disk.
+ *
+ * Set after every successful persist (own writes; no self-invalidation) and
+ * after every successful registry init (anchor to load-time disk state).
+ * Reset to null when the bridge is shut down so the next init re-anchors.
+ *
+ * Module-level because the bridge itself is process-wide singleton state —
+ * matches the existing `registryPromise` lifecycle.
+ */
+let lastSeenMtimeMs: number | null = null;
 
 /** Controllers every moflodb_* MCP tool assumes are present when the bridge is available. */
 export const REQUIRED_BRIDGE_CONTROLLERS = Object.freeze([
@@ -235,6 +263,11 @@ export function persistBridgeDb(db: any, dbPath?: string): void {
   try {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     atomicWriteFileSync(target, db.export());
+    // Anchor the bridge-coherence cursor to the post-persist mtime so our own
+    // write doesn't trigger a self-invalidation on the next withDb call.
+    // Best-effort: if the stat fails, the worst case is one redundant reload.
+    try { lastSeenMtimeMs = fs.statSync(target).mtimeMs; }
+    catch { /* tolerate; coherence check re-anchors on next read */ }
   } catch (err) {
     logBridgeError('bridge persist failed', err, { alwaysLog: true });
     throw err;
@@ -306,18 +339,81 @@ export function getDb(registry: any): BridgeDbContext | null {
 }
 
 /**
+ * Bridge coherence check (story #1058 / epic #1054 — read-side symmetry to
+ * #981 single-writer). sql.js holds an in-memory DB snapshot per process and
+ * never re-reads disk after init, so a non-daemon long-lived process (the
+ * MCP server when `daemon.auto_start: false`, or any consumer where the
+ * daemon is intentionally off) returns stale rows when another process has
+ * written since this process loaded.
+ *
+ * Solution: stat the dbPath before every bridge op; if the mtime has advanced
+ * past our last-known value, another writer has touched the file — drop the
+ * bridge so `getRegistry` re-loads from disk on the next call.
+ *
+ * Daemon process short-circuits because it owns the file (its own persists
+ * are the only writer; `persistBridgeDb` anchors `lastSeenMtimeMs` to suppress
+ * self-invalidation). Daemon-mode non-daemon callers route reads via HTTP RPC
+ * (in `memory-initializer.ts` preamble) and never reach the bridge at all,
+ * so this guard is effectively a daemon-off correctness primitive.
+ */
+async function checkBridgeCoherence(dbPath: string | undefined): Promise<void> {
+  // Daemon is the only writer — its own persists already update the cursor.
+  if (process.env.MOFLO_IS_DAEMON === '1') return;
+  // No registry yet → nothing to invalidate; first init will anchor the cursor.
+  if (!registryPromise) return;
+  const target = dbPath ? path.resolve(dbPath) : getDbPath();
+  if (target === ':memory:') return;
+  let mtimeMs: number;
+  try {
+    mtimeMs = fs.statSync(target).mtimeMs;
+  } catch {
+    // File missing or unreadable — fall through. Downstream withDb surfaces
+    // the error; we don't synthesize a coherence event from a stat failure.
+    return;
+  }
+  if (lastSeenMtimeMs == null) {
+    // First op after init — anchor and proceed.
+    lastSeenMtimeMs = mtimeMs;
+    return;
+  }
+  if (mtimeMs > lastSeenMtimeMs) {
+    // Another process wrote since we loaded. Drop the bridge so the next
+    // `getRegistry` call re-initializes from fresh disk. Reset the cursor;
+    // the post-reload anchor (after `getRegistry` succeeds) re-sets it.
+    await shutdownBridge();
+    lastSeenMtimeMs = null;
+  }
+}
+
+/**
  * Resolve registry + db, run fn, return null on any unexpected failure so
  * the caller falls back to raw sql.js. Errors are logged to stderr —
  * silently swallowing them previously masked real bugs in bridge-entries.ts.
+ *
+ * Bridge coherence (#1058): every entry through this gate checks whether the
+ * dbPath's mtime has advanced past our last-known value; if so, the bridge is
+ * torn down so the next op reads fresh disk state. Daemon process is exempt.
  */
 export async function withDb<T>(
   dbPath: string | undefined,
   fn: (ctx: BridgeDbContext, registry: any) => Promise<T | null>,
 ): Promise<T | null> {
+  await checkBridgeCoherence(dbPath);
   const registry = await getRegistry(dbPath);
   if (!registry) return null;
   const ctx = getDb(registry);
   if (!ctx) return null;
+  // Anchor the coherence cursor to load-time disk state once the registry is
+  // resolved. The post-init read of `mofloDb.database` reflects the bytes
+  // that were on disk when `openSqlJsDatabase` ran; pin the matching mtime so
+  // a subsequent unrelated process write triggers reload, not a self-fire.
+  if (lastSeenMtimeMs == null) {
+    const target = dbPath ? path.resolve(dbPath) : getDbPath();
+    if (target !== ':memory:') {
+      try { lastSeenMtimeMs = fs.statSync(target).mtimeMs; }
+      catch { /* file may not exist yet — first persist will anchor */ }
+    }
+  }
   try {
     return await fn(ctx, registry);
   } catch (err) {
@@ -340,6 +436,9 @@ export async function shutdownBridge(): Promise<void> {
   const registry = await registryPromise;
   registryPromise = null;
   resolvedRegistry = null;
+  // Drop the coherence cursor too — the next init will re-anchor against
+  // whatever's on disk by then.
+  lastSeenMtimeMs = null;
   if (registry) {
     try {
       await registry.shutdown();

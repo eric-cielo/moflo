@@ -1,13 +1,18 @@
 /**
- * Daemon HTTP RPC for memory writes (#981 — single-writer architecture).
+ * Daemon HTTP RPC for memory writes + reads (#981 / #1058 — single-writer
+ * architecture and its read-side symmetry).
  *
- * Adds POST /api/memory/{store,delete,batch} to the existing daemon HTTP
- * server. The daemon process becomes the single authoritative writer when
- * these endpoints are called; other processes (CLI, MCP server) route
- * writes here via the daemon-write-client (Story #984).
+ * Adds POST /api/memory/{store,delete,batch,get,search,list} to the existing
+ * daemon HTTP server. The daemon becomes the single authoritative writer AND
+ * the single source-of-truth for reads when reachable; other processes (CLI,
+ * MCP server) route through the daemon-write-client (Story #984 / #1058) so
+ * they never serve stale rows from a per-process sql.js snapshot.
  *
- * Story #983 ships these endpoints purely additively — nothing in the
- * codebase calls them yet. Stories #985 / #986 wire consumer callers.
+ * Read endpoints (#1058): bridgeGetEntry/Search/List in a non-daemon process
+ * queries the bridge's in-memory snapshot loaded at process start. sql.js
+ * never re-reads disk, so any write by the daemon is invisible to that
+ * process until restart. Routing reads here lets every process see the
+ * daemon's authoritative state in real time.
  *
  * Loopback-only: the parent server binds 127.0.0.1, so no auth/CSRF.
  *
@@ -55,6 +60,24 @@ interface DeleteOp {
   op?: 'delete';
   namespace: string;
   key: string;
+}
+
+interface GetOp {
+  namespace: string;
+  key: string;
+}
+
+interface SearchOp {
+  query: string;
+  namespace?: string;
+  limit?: number;
+  threshold?: number;
+}
+
+interface ListOp {
+  namespace?: string;
+  limit?: number;
+  offset?: number;
 }
 
 type BatchOp =
@@ -152,6 +175,66 @@ function validateDeletePayload(body: unknown): { ok: true; op: DeleteOp } | { ok
   return { ok: true, op: { namespace: b.namespace, key: b.key } };
 }
 
+function validateGetPayload(body: unknown): { ok: true; op: GetOp } | { ok: false; error: string } {
+  // Get takes the same shape as delete.
+  return validateDeletePayload(body) as { ok: true; op: GetOp } | { ok: false; error: string };
+}
+
+/** Max query length for /api/memory/search — matches the existing memory_search MCP tool bound. */
+const MAX_SEARCH_QUERY_LENGTH = 4096;
+
+function validateSearchPayload(body: unknown): { ok: true; op: SearchOp } | { ok: false; error: string } {
+  if (typeof body !== 'object' || body === null) return { ok: false, error: 'body must be a JSON object' };
+  const b = body as Record<string, unknown>;
+  if (typeof b.query !== 'string' || b.query.length === 0) {
+    return { ok: false, error: 'query must be a non-empty string' };
+  }
+  if (b.query.length > MAX_SEARCH_QUERY_LENGTH) {
+    return { ok: false, error: `query exceeds ${MAX_SEARCH_QUERY_LENGTH} chars` };
+  }
+  // Namespace is optional; when provided must validate (allow 'all' for cross-NS search).
+  if (b.namespace !== undefined && b.namespace !== 'all' && !isNamespace(b.namespace)) {
+    return { ok: false, error: `invalid namespace (must match ${NAMESPACE_PATTERN}, 'all', or omitted)` };
+  }
+  if (b.limit !== undefined && (typeof b.limit !== 'number' || !Number.isInteger(b.limit) || b.limit <= 0 || b.limit > 1000)) {
+    return { ok: false, error: 'limit must be a positive integer ≤1000' };
+  }
+  if (b.threshold !== undefined && (typeof b.threshold !== 'number' || b.threshold < 0 || b.threshold > 1)) {
+    return { ok: false, error: 'threshold must be a number in [0, 1]' };
+  }
+  return {
+    ok: true,
+    op: {
+      query: b.query,
+      namespace: b.namespace as string | undefined,
+      limit: b.limit as number | undefined,
+      threshold: b.threshold as number | undefined,
+    },
+  };
+}
+
+function validateListPayload(body: unknown): { ok: true; op: ListOp } | { ok: false; error: string } {
+  // body may be empty for list-all; coerce null → {}.
+  const b: Record<string, unknown> = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+  if (b.namespace !== undefined && !isNamespace(b.namespace)) {
+    return { ok: false, error: `invalid namespace (must match ${NAMESPACE_PATTERN} or be omitted)` };
+  }
+  if (b.limit !== undefined && (typeof b.limit !== 'number' || !Number.isInteger(b.limit) || b.limit <= 0 || b.limit > 10_000)) {
+    return { ok: false, error: 'limit must be a positive integer ≤10000' };
+  }
+  if (b.offset !== undefined && (typeof b.offset !== 'number' || !Number.isInteger(b.offset) || b.offset < 0)) {
+    return { ok: false, error: 'offset must be a non-negative integer' };
+  }
+  return {
+    ok: true,
+    op: {
+      namespace: b.namespace as string | undefined,
+      limit: b.limit as number | undefined,
+      offset: b.offset as number | undefined,
+    },
+  };
+}
+
 function validateBatchPayload(body: unknown):
   | { ok: true; ops: BatchOp[] }
   | { ok: false; error: string; index?: number } {
@@ -210,9 +293,18 @@ function valueToString(value: unknown): string {
 async function getMemoryFns(): Promise<{
   storeEntry: typeof import('../memory/memory-initializer.js').storeEntry;
   deleteEntry: typeof import('../memory/memory-initializer.js').deleteEntry;
+  getEntry: typeof import('../memory/memory-initializer.js').getEntry;
+  searchEntries: typeof import('../memory/memory-initializer.js').searchEntries;
+  listEntries: typeof import('../memory/memory-initializer.js').listEntries;
 }> {
   const mod = await import('../memory/memory-initializer.js');
-  return { storeEntry: mod.storeEntry, deleteEntry: mod.deleteEntry };
+  return {
+    storeEntry: mod.storeEntry,
+    deleteEntry: mod.deleteEntry,
+    getEntry: mod.getEntry,
+    searchEntries: mod.searchEntries,
+    listEntries: mod.listEntries,
+  };
 }
 
 /**
@@ -363,11 +455,139 @@ export async function handleMemoryBatch(
   sendJson(res, anyFailed ? 207 : 200, { ok: !anyFailed, results });
 }
 
+/**
+ * POST /api/memory/get — retrieve a single entry from the daemon's
+ * authoritative bridge. In a non-daemon process the bridge holds a stale
+ * sql.js snapshot from process-start time (#1058); routing the read here
+ * lets the daemon serve the up-to-date row.
+ */
+export async function handleMemoryGet(
+  req: IncomingMessage,
+  res: ServerResponse,
+  memory: MemoryAccessor | undefined,
+): Promise<void> {
+  if (!memory) {
+    sendJson(res, 503, { error: 'Memory accessor not attached' });
+    return;
+  }
+  const body = await readJsonBody(req);
+  if (body === null) {
+    sendJson(res, 400, { error: 'Invalid or oversized JSON body' });
+    return;
+  }
+  const v = validateGetPayload(body);
+  if (!v.ok) {
+    sendJson(res, 400, { error: 'Invalid get request', message: v.error });
+    return;
+  }
+  try {
+    const { getEntry } = await getMemoryFns();
+    const result = await getEntry({ key: v.op.key, namespace: v.op.namespace });
+    if (!result.success) {
+      sendJson(res, 500, { error: 'Get failed', message: result.error ?? 'unknown' });
+      return;
+    }
+    sendJson(res, 200, { ok: true, found: result.found, entry: result.entry });
+  } catch (err) {
+    sendJson(res, 500, { error: 'Internal error', message: errorDetail(err) });
+  }
+}
+
+/**
+ * POST /api/memory/search — semantic vector search routed through the
+ * daemon's authoritative bridge.
+ */
+export async function handleMemorySearch(
+  req: IncomingMessage,
+  res: ServerResponse,
+  memory: MemoryAccessor | undefined,
+): Promise<void> {
+  if (!memory) {
+    sendJson(res, 503, { error: 'Memory accessor not attached' });
+    return;
+  }
+  const body = await readJsonBody(req);
+  if (body === null) {
+    sendJson(res, 400, { error: 'Invalid or oversized JSON body' });
+    return;
+  }
+  const v = validateSearchPayload(body);
+  if (!v.ok) {
+    sendJson(res, 400, { error: 'Invalid search request', message: v.error });
+    return;
+  }
+  try {
+    const { searchEntries } = await getMemoryFns();
+    const result = await searchEntries({
+      query: v.op.query,
+      namespace: v.op.namespace,
+      limit: v.op.limit,
+      threshold: v.op.threshold,
+    });
+    if (!result.success) {
+      sendJson(res, 500, { error: 'Search failed', message: result.error ?? 'unknown' });
+      return;
+    }
+    sendJson(res, 200, { ok: true, results: result.results, searchTime: result.searchTime });
+  } catch (err) {
+    sendJson(res, 500, { error: 'Internal error', message: errorDetail(err) });
+  }
+}
+
+/**
+ * POST /api/memory/list — list entries via the daemon's bridge with optional
+ * namespace filter and pagination.
+ */
+export async function handleMemoryList(
+  req: IncomingMessage,
+  res: ServerResponse,
+  memory: MemoryAccessor | undefined,
+): Promise<void> {
+  if (!memory) {
+    sendJson(res, 503, { error: 'Memory accessor not attached' });
+    return;
+  }
+  const body = await readJsonBody(req);
+  // List allows an empty body (list-all default); a JSON-parse failure on a
+  // non-empty body is still a 400, but a literal empty body coerces to {}.
+  let parsed: unknown = body;
+  if (body === null) {
+    // Distinguish "empty body" from "invalid JSON" — readJsonBody returns null
+    // for both, so probe content-length to tell them apart.
+    const contentLength = parseInt(req.headers['content-length'] ?? '0', 10);
+    if (contentLength > 0) {
+      sendJson(res, 400, { error: 'Invalid or oversized JSON body' });
+      return;
+    }
+    parsed = {};
+  }
+  const v = validateListPayload(parsed);
+  if (!v.ok) {
+    sendJson(res, 400, { error: 'Invalid list request', message: v.error });
+    return;
+  }
+  try {
+    const { listEntries } = await getMemoryFns();
+    const result = await listEntries({
+      namespace: v.op.namespace,
+      limit: v.op.limit,
+      offset: v.op.offset,
+    });
+    if (!result.success) {
+      sendJson(res, 500, { error: 'List failed', message: result.error ?? 'unknown' });
+      return;
+    }
+    sendJson(res, 200, { ok: true, entries: result.entries, total: result.total });
+  } catch (err) {
+    sendJson(res, 500, { error: 'Internal error', message: errorDetail(err) });
+  }
+}
+
 // ============================================================================
 // URL match — tight whitelist; any other /api/memory/* falls through.
 // ============================================================================
 
-export type MemoryRpcRoute = 'store' | 'delete' | 'batch';
+export type MemoryRpcRoute = 'store' | 'delete' | 'batch' | 'get' | 'search' | 'list';
 
 export function matchMemoryRpcRoute(url: string | undefined): MemoryRpcRoute | null {
   if (!url) return null;
@@ -375,5 +595,8 @@ export function matchMemoryRpcRoute(url: string | undefined): MemoryRpcRoute | n
   if (path === '/api/memory/store') return 'store';
   if (path === '/api/memory/delete') return 'delete';
   if (path === '/api/memory/batch') return 'batch';
+  if (path === '/api/memory/get') return 'get';
+  if (path === '/api/memory/search') return 'search';
+  if (path === '/api/memory/list') return 'list';
   return null;
 }

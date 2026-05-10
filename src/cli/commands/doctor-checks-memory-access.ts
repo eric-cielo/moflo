@@ -284,7 +284,15 @@ async function probeMemoryGetNeighbors(
   // feedback_sqljs_writeback_clobber.md). Writing straight to disk before
   // the bridge ever sees these keys means memory_get_neighbors → getEntry
   // hits fresh disk state and our injected metadata is what comes back.
-  const dbPath = memoryDbPath(process.cwd());
+  //
+  // Match the bridge's project-root resolution (`bridge-core.ts:getProjectRoot`)
+  // so the seed writes to the SAME `.moflo/moflo.db` the bridge reads from.
+  // Pre-#1058 this used `process.cwd()` unconditionally, which broke the
+  // doctor test under vitest where `CLAUDE_PROJECT_DIR` redirects the bridge
+  // to a temp dir while cwd stays at the repo root — the seed wrote to the
+  // wrong file and the read found nothing.
+  const seedRoot = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+  const dbPath = memoryDbPath(seedRoot);
   if (!existsSync(dbPath)) {
     details.push({
       id: 'neighbors.seed',
