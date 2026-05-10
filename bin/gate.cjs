@@ -307,7 +307,7 @@ switch (command) {
       process.stdout.write('REMINDER: Use TaskCreate before spawning agents. Task tool is blocked until then.\n');
     }
     if (config.memory_first && s.memoryRequired && !s.memorySearched) {
-      process.stdout.write('REMINDER: Search memory (mcp__moflo__memory_search) before spawning agents.\n');
+      process.stdout.write('REMINDER: Search memory (mcp__moflo__memory_search) before spawning agents. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n');
     }
     if (s.lastNamespaceHint) {
       // Per-actor single-shot. Each session_id gets the hint at most once per
@@ -376,7 +376,7 @@ switch (command) {
     if (!s.memoryRequired || isMemorySearchedFor(s)) break;
     var target = (process.env.TOOL_INPUT_pattern || '') + ' ' + (process.env.TOOL_INPUT_path || '');
     if (EXEMPT.some(function(p) { return target.indexOf(p) >= 0; })) break;
-    process.stderr.write('BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search.\n');
+    process.stderr.write('BLOCKED: Search memory before exploring files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n');
     process.exit(2);
   }
   case 'check-before-read': {
@@ -386,7 +386,7 @@ switch (command) {
     var fp = process.env.TOOL_INPUT_file_path || '';
     var isGuidance = fp.indexOf('.claude/guidance/') >= 0 || fp.indexOf('.claude\\guidance\\') >= 0;
     if (!isGuidance && EXEMPT.some(function(p) { return fp.indexOf(p) >= 0; })) break;
-    process.stderr.write('BLOCKED: Search memory before reading files. Use mcp__moflo__memory_search.\n');
+    process.stderr.write('BLOCKED: Search memory before reading files. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n');
     process.exit(2);
   }
   case 'record-task-created': {
