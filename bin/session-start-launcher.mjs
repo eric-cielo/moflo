@@ -884,37 +884,42 @@ try {
 // longer exists in source, calling a require helper that prints the warning
 // every time `neural_predict` / `neural_patterns` fires.
 //
-// Fix: compare the daemon-lock's `startedAt` against `node_modules/moflo/`'s
-// install mtime. If the daemon predates the current install, recycle it. The
-// install mtime is a stable proxy because npm rewrites the package.json on
-// every `npm install`, even when the resolved version is unchanged.
+// Fix (epic #1054): compare the daemon-lock's reported moflo `version` against
+// the installed `node_modules/moflo/package.json` version. If they differ —
+// or the lock predates #1054 and has no `version` field at all — recycle the
+// daemon. This is exact (not a heuristic margin like the prior mtime-based
+// check) and named explicitly so the doctor's Daemon Version Skew check
+// (#1059) can share the diagnosis.
 //
-// Margin absorbs clock skew between npm's mtime write and the daemon-lock
-// `startedAt` clock — within this window the daemon is likely the post-install
-// daemon, not a stale predecessor.
-const STALE_DAEMON_MTIME_SKEW_MS = 5_000;
+// Pre-#1054 daemons have no `version` in their lock payload — treated as a
+// mismatch by definition because by construction they were launched before
+// version publishing existed.
 try {
   const mofloPkgPathForRecycle = resolve(projectRoot, 'node_modules/moflo/package.json');
   const lockFile = resolve(projectRoot, '.moflo', 'daemon.lock');
-  // Cheap stat first — if the daemon-lock or package.json is gone we're done.
-  // statSync throws ENOENT on a missing file; the outer catch absorbs it.
-  const installedAt = statSync(mofloPkgPathForRecycle).mtimeMs;
-  const lockMtime = statSync(lockFile).mtimeMs;
-  // Quick reject: if the lock file itself is younger than the install, the
-  // daemon was started after install — no read of lock contents needed.
-  if (installedAt - lockMtime > STALE_DAEMON_MTIME_SKEW_MS) {
-    let daemonStartedAt = 0;
+  // Cheap stat first — if either file is gone, no skew check is possible.
+  if (existsSync(mofloPkgPathForRecycle) && existsSync(lockFile)) {
+    const installedVersion = JSON.parse(readFileSync(mofloPkgPathForRecycle, 'utf-8')).version;
+    let daemonVersion;
     try {
       const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
-      if (typeof lock?.startedAt === 'number') daemonStartedAt = lock.startedAt;
-    } catch { /* corrupt lock — fall through, recycleDaemon will unlink it */ }
-    if (daemonStartedAt > 0 && (installedAt - daemonStartedAt) > STALE_DAEMON_MTIME_SKEW_MS) {
-      if (recycleDaemon(lockFile, 'daemon-stale-recycle')) {
-        emitMutation('recycled stale daemon', 'predates current install');
+      if (typeof lock?.version === 'string') daemonVersion = lock.version;
+    } catch { /* corrupt lock — recycleDaemon will unlink it */ }
+    if (daemonVersion !== installedVersion) {
+      if (recycleDaemon(lockFile, 'daemon-version-skew')) {
+        const observed = daemonVersion ?? '<pre-1054 / unknown>';
+        emitMutation(
+          'recycled stale daemon',
+          `version skew: installed ${installedVersion}, daemon ${observed}`,
+        );
       }
     }
   }
-} catch { /* non-fatal — best-effort stale-daemon detection */ }
+} catch (err) {
+  // Non-fatal; surface via emitWarning per feedback_no_layered_workarounds —
+  // no silent catch on the upgrade path (#854).
+  emitWarning(`daemon version-skew check failed: ${errMessage(err)}`);
+}
 
 // ── 3a. Auto-migrate settings.json (npx flo → node helpers, PATH setup) ────
 // Existing users may have stale settings.json with `npx flo` hooks that break
