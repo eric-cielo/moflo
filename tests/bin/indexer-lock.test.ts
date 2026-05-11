@@ -13,8 +13,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, utimesSync } from 'fs';
-import { resolve, join } from 'path';
-import { tmpdir } from 'os';
+import { join } from 'path';
 import {
   acquireIndexerLock,
   releaseIndexerLock,
@@ -22,18 +21,17 @@ import {
   indexerLockPath,
   // @ts-expect-error — pure JS module, no ambient types
 } from '../../bin/lib/indexer-lock.mjs';
-
-const TMP_ROOT = resolve(tmpdir(), 'moflo-indexer-lock-test-' + Date.now());
+import { makeTempRoot, cleanTempRoot } from './_helpers';
 
 let projectRoot: string;
 
 beforeEach(() => {
-  projectRoot = resolve(TMP_ROOT, `proj-${Math.random().toString(36).slice(2, 8)}`);
+  projectRoot = makeTempRoot('indexer-lock');
   mkdirSync(join(projectRoot, '.moflo'), { recursive: true });
 });
 
 afterEach(() => {
-  try { rmSync(projectRoot, { recursive: true, force: true }); } catch { /* ok */ }
+  cleanTempRoot(projectRoot);
 });
 
 describe('acquireIndexerLock', () => {

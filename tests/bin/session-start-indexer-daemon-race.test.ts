@@ -87,10 +87,11 @@ describe('bin/index-all.mjs (#1061)', () => {
   it('registers exit + signal handlers that release the lock', () => {
     // The handlers cover normal exit + SIGINT (ctrl+C from the user) +
     // SIGTERM (parent kill). Without these, a crash leaves the lock
-    // dangling until the 10-min stale check clears it.
-    expect(src).toMatch(/process\.on\s*\(\s*['"]exit['"]/);
-    expect(src).toMatch(/process\.on\s*\(\s*['"]SIGINT['"]/);
-    expect(src).toMatch(/process\.on\s*\(\s*['"]SIGTERM['"]/);
+    // dangling until the 10-min stale check clears it. `on` or `once`
+    // both satisfy the contract — releaseIndexerLock is itself idempotent.
+    expect(src).toMatch(/process\.(on|once)\s*\(\s*['"]exit['"]/);
+    expect(src).toMatch(/process\.(on|once)\s*\(\s*['"]SIGINT['"]/);
+    expect(src).toMatch(/process\.(on|once)\s*\(\s*['"]SIGTERM['"]/);
     expect(src).toMatch(/releaseIndexerLock\s*\(/);
   });
 

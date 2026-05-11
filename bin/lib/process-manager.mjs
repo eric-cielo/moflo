@@ -36,13 +36,24 @@ function ensureDir(dir) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
-/** Check if a PID is alive (cross-platform). */
-function isAlive(pid) {
+/**
+ * Check if a PID is alive (cross-platform).
+ *
+ * Exported so other bin/lib helpers (e.g. indexer-lock.mjs) reuse the same
+ * cross-platform implementation instead of redefining it.
+ *
+ * EPERM (we lack permission to signal the target pid — e.g. pid 1 / system
+ * processes / containerized contexts) is treated as alive: the process
+ * demonstrably exists; the only reason we can't signal it is permissions.
+ * ESRCH is the "truly gone" code.
+ */
+export function isAlive(pid) {
+  if (typeof pid !== 'number' || pid <= 0) return false;
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    return err && err.code === 'EPERM';
   }
 }
 

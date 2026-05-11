@@ -28,6 +28,7 @@ import {
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { acquireIndexerLock, releaseIndexerLock } from './lib/indexer-lock.mjs';
 import { shouldDaemonAutoStart } from './lib/daemon-config.mjs';
+import { createProcessManager } from './lib/process-manager.mjs';
 
 // Cap fastembed/ONNX thread count when spawning the heavy steps. Without
 // this, ONNX defaults to one thread per CPU core (22+ on a modern dev box),
@@ -57,7 +58,11 @@ function resolveBin(binName, localScript) {
   return resolveMofloBin(projectRoot, binName, localScript, { includeDevFallback: true });
 }
 
+// Memoize — called twice (buildStepPlan + spawnDaemonAfterChain). Both
+// paths probe the same 3 candidates via existsSync.
+let _localCliPathCache;
 function getLocalCliPath() {
+  if (_localCliPathCache !== undefined) return _localCliPathCache;
   const paths = [
     resolve(projectRoot, 'node_modules/moflo/bin/cli.js'),
     resolve(projectRoot, 'node_modules/.bin/flo'),
@@ -65,9 +70,9 @@ function getLocalCliPath() {
     resolve(projectRoot, 'bin/cli.js'),
   ];
   for (const p of paths) {
-    if (existsSync(p)) return p;
+    if (existsSync(p)) return (_localCliPathCache = p);
   }
-  return null;
+  return (_localCliPathCache = null);
 }
 
 /** Read moflo.yaml once and cache auto_index flags. */
@@ -229,8 +234,9 @@ function buildStepPlan() {
 // After the indexer chain finishes (success OR fail), the daemon needs to
 // come up against the now-stable on-disk DB. hooks.mjs session-start no
 // longer races us in — daemon-start checks isIndexerLockHeld() and defers
-// while we hold the lock (#1061), so we own the wakeup. Idempotent: the
-// daemon CLI itself is a no-op when a live daemon lock is already held.
+// while we hold the lock (#1061), so we own the wakeup. Routed through the
+// shared ProcessManager so the spawn gets label-dedup, PID tracking, and
+// .swarm/background.log capture — same surface every other bin/ spawn uses.
 function spawnDaemonAfterChain() {
   // Honor the same opt-out hooks.mjs's runDaemonStartBackground checks —
   // .claude/settings.json claudeFlow.daemon.autoStart. Without this gate,
@@ -245,19 +251,14 @@ function spawnDaemonAfterChain() {
     log('SKIP  daemon-start (CLI not found)');
     return;
   }
-  try {
-    const child = spawn('node', [localCli, 'daemon', 'start', '--quiet'], {
-      cwd: projectRoot,
-      stdio: 'ignore',
-      windowsHide: true,
-      detached: platform() !== 'win32',
-      env: process.env,
-    });
-    if (platform() !== 'win32') child.unref();
-    log(`DONE  daemon-start (pid=${child.pid ?? 'n/a'})`);
-  } catch (err) {
-    const msg = (err && err.message) ? err.message.split('\n')[0] : 'unknown';
-    log(`FAIL  daemon-start: ${msg}`);
+  const pm = createProcessManager(projectRoot);
+  const result = pm.spawn('node', [localCli, 'daemon', 'start', '--quiet'], 'daemon');
+  if (result.skipped) {
+    log(`SKIP  daemon-start (already running, pid=${result.pid})`);
+  } else if (result.pid) {
+    log(`DONE  daemon-start (pid=${result.pid})`);
+  } else {
+    log('FAIL  daemon-start (spawn returned no pid)');
   }
 }
 
@@ -274,15 +275,12 @@ async function main() {
   // Release on every exit path. The `exit` listener catches normal returns;
   // signal handlers cover ctrl+C / SIGTERM from the parent (#744 tree-kill
   // path applies to OUR children, not to us — these handlers cover us).
-  let released = false;
-  const release = () => {
-    if (released) return;
-    released = true;
-    try { releaseIndexerLock(projectRoot); } catch { /* non-fatal */ }
-  };
-  process.on('exit', release);
-  process.on('SIGINT', () => { release(); process.exit(130); });
-  process.on('SIGTERM', () => { release(); process.exit(143); });
+  // releaseIndexerLock is itself idempotent (re-entry sees the file gone or
+  // owned by another pid and bails), so once-listeners are sufficient.
+  const release = () => { try { releaseIndexerLock(projectRoot); } catch { /* non-fatal */ } };
+  process.once('exit', release);
+  process.once('SIGINT', () => { release(); process.exit(130); });
+  process.once('SIGTERM', () => { release(); process.exit(143); });
 
   const plan = buildStepPlan();
 

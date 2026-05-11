@@ -25,26 +25,22 @@
  */
 import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { isAlive } from './process-manager.mjs';
 
 const LOCK_FILENAME = 'indexer.lock';
 
-/** Max age before a lock is treated as stale (10 min — covers cold-install indexer + slack). */
+/**
+ * Max age before a lock is treated as stale. Picked to match the indexer
+ * chain's absolute worst-case wall clock: `build-embeddings` (5 min timeout
+ * in index-all.mjs:199) + `hnsw-rebuild` (5 min timeout, line 217) = 10 min.
+ * There is intentionally zero slack — the pid-liveness check is the primary
+ * staleness signal; mtime is the backstop for a crashed-without-cleanup
+ * indexer whose pid was already recycled by the OS.
+ */
 const MAX_LOCK_AGE_MS = 10 * 60 * 1000;
 
 export function indexerLockPath(projectRoot) {
   return join(projectRoot, '.moflo', LOCK_FILENAME);
-}
-
-function isPidAlive(pid) {
-  if (typeof pid !== 'number' || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    // EPERM means the pid exists but we lack permission to signal it — still
-    // counts as "alive". ESRCH means it's truly gone.
-    return err && err.code === 'EPERM';
-  }
 }
 
 function readLock(lockPath) {
@@ -72,7 +68,7 @@ export function isIndexerLockHeld(projectRoot) {
 
   const lock = readLock(lockPath);
   if (!lock) return false;
-  return isPidAlive(lock.pid);
+  return isAlive(lock.pid);
 }
 
 /**
@@ -80,19 +76,23 @@ export function isIndexerLockHeld(projectRoot) {
  * another live indexer holds it. Stale locks (dead pid or old mtime) are
  * silently overwritten.
  *
- * FS errors are non-fatal — returns true so the indexer chain still runs
- * even if .moflo/ is unwritable; the indexer's own writes will then fail
- * loudly with a clearer error than "lock acquire failed".
+ * FS errors: returns true so the indexer chain still runs — the chain's own
+ * writes will fail loudly with a clearer error than "lock acquire failed".
+ * Trade-off: the unwritable-`.moflo/` scenario also means the lock can't be
+ * read by hooks.mjs, so daemon-start won't see a held lock and will fork in
+ * parallel — re-introducing the race. That window is identical to "no fix
+ * at all" and only opens when `.moflo/` is unwritable; we accept it rather
+ * than failing the entire indexer chain over a lock-FS error.
  */
 export function acquireIndexerLock(projectRoot) {
   const lockPath = indexerLockPath(projectRoot);
   try {
     if (isIndexerLockHeld(projectRoot)) {
-      // Another live indexer is running — bail.
       return false;
     }
-    const dir = dirname(lockPath);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    // mkdirSync({recursive:true}) is a no-op when the dir already exists —
+    // no need for an existsSync precheck.
+    mkdirSync(dirname(lockPath), { recursive: true });
     writeFileSync(lockPath, JSON.stringify({
       pid: process.pid,
       startedAt: new Date().toISOString(),
@@ -106,6 +106,10 @@ export function acquireIndexerLock(projectRoot) {
 /**
  * Release the lock IF this process owns it. Mismatched-pid locks are not
  * touched (someone else owns them). Missing lock is a no-op.
+ *
+ * Precondition: caller MUST have successfully called acquireIndexerLock
+ * earlier in the same process. Calling release without a matching acquire
+ * is a no-op (mismatched pid path).
  *
  * Safe to call multiple times (exit + signal handlers both call it).
  */
