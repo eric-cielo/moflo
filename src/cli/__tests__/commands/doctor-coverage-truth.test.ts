@@ -120,4 +120,14 @@ describe('checkEmbeddingCoverageTruth (#1059)', () => {
     expect(result.message).toContain('10');
     expect(result.fix).toBeDefined();
   });
+
+  it('passes when DB is empty and no cache exists (cold-boot fresh install)', async () => {
+    // Fresh consumer install: memory DB initialised, zero rows, no
+    // vector-stats.json yet. The check is about coverage drift; empty isn't
+    // drift, so this must not warn (smoke harness runs in --strict).
+    seedDb(0);
+    const result = await checkEmbeddingCoverageTruth(tmpDir);
+    expect(result.status).toBe('pass');
+    expect(result.message).toMatch(/nothing to reconcile/);
+  });
 });

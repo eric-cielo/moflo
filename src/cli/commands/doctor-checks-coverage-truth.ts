@@ -105,6 +105,11 @@ export async function checkEmbeddingCoverageTruth(cwd: string = process.cwd()): 
     }
 
     if (cached === null && live !== null) {
+      if (live === 0) {
+        // Cold-boot fresh-install state — no rows to vectorise, no cache to
+        // diverge from. The check is about coverage DRIFT; empty isn't drift.
+        return { name, status: 'pass', message: 'No embedded rows yet — nothing to reconcile' };
+      }
       return {
         name,
         status: 'warn',
