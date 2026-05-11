@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
-import initSqlJs, { Database } from 'sql.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../daemon-backend.js';
 import { HierarchicalMemory } from './hierarchical-memory.js';
 import { MemoryConsolidation } from './memory-consolidation.js';
 import { Reflexion } from './reflexion.js';
@@ -7,14 +7,8 @@ import { Skills } from './skills.js';
 import { NightlyLearner } from './nightly-learner.js';
 import { deterministicTestEmbedder } from './_test-embedder.js';
 
-let SQL: any;
-
-beforeAll(async () => {
-  SQL = await initSqlJs();
-});
-
 describe('NightlyLearner', () => {
-  let db: Database;
+  let db: SqlJsLikeDatabase;
   let hm: HierarchicalMemory;
   let mc: MemoryConsolidation;
   let reflexion: Reflexion;
@@ -22,7 +16,7 @@ describe('NightlyLearner', () => {
   let nightly: NightlyLearner;
 
   beforeEach(() => {
-    db = new SQL.Database();
+    db = openDaemonDatabase(':memory:');
     hm = new HierarchicalMemory(db as any, { embedder: deterministicTestEmbedder });
     mc = new MemoryConsolidation(hm, { workingTtlMs: 0 });
     reflexion = new Reflexion(db as any, { embedder: deterministicTestEmbedder });

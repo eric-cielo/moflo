@@ -1,19 +1,13 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
-import initSqlJs, { Database } from 'sql.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../daemon-backend.js';
 import { BatchOperations } from './batch-operations.js';
 
-let SQL: any;
-
-beforeAll(async () => {
-  SQL = await initSqlJs();
-});
-
 describe('BatchOperations', () => {
-  let db: Database;
+  let db: SqlJsLikeDatabase;
   let bo: BatchOperations;
 
   beforeEach(() => {
-    db = new SQL.Database();
+    db = openDaemonDatabase(':memory:');
     bo = new BatchOperations(db as any);
   });
 
@@ -110,7 +104,7 @@ describe('BatchOperations', () => {
   });
 });
 
-function rowCount(db: Database, table: string): number {
+function rowCount(db: SqlJsLikeDatabase, table: string): number {
   const stmt = db.prepare(`SELECT COUNT(*) AS n FROM ${table}`);
   stmt.step();
   const n = Number(stmt.getAsObject().n ?? 0);
@@ -118,7 +112,7 @@ function rowCount(db: Database, table: string): number {
   return n;
 }
 
-function queryOne(db: Database, sql: string, params: any[]): Record<string, any> {
+function queryOne(db: SqlJsLikeDatabase, sql: string, params: any[]): Record<string, any> {
   const stmt = db.prepare(sql);
   stmt.bind(params);
   stmt.step();

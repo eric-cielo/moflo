@@ -1,22 +1,16 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
-import initSqlJs, { Database } from 'sql.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../daemon-backend.js';
 import { HierarchicalMemory } from './hierarchical-memory.js';
 import { MemoryConsolidation } from './memory-consolidation.js';
 import { deterministicTestEmbedder } from './_test-embedder.js';
 
-let SQL: any;
-
-beforeAll(async () => {
-  SQL = await initSqlJs();
-});
-
 describe('MemoryConsolidation', () => {
-  let db: Database;
+  let db: SqlJsLikeDatabase;
   let hm: HierarchicalMemory;
   let mc: MemoryConsolidation;
 
   beforeEach(() => {
-    db = new SQL.Database();
+    db = openDaemonDatabase(':memory:');
     hm = new HierarchicalMemory(db as any, { embedder: deterministicTestEmbedder });
     // Zero TTLs so the first consolidate() fires all rules deterministically.
     mc = new MemoryConsolidation(hm, {

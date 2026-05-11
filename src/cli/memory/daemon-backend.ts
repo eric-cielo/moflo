@@ -236,17 +236,43 @@ export function _resetDaemonNetworkFsWarnings(): void {
   _networkFsWarnedPaths.clear();
 }
 
+/**
+ * Heuristic: SQL is multi-statement if there's a `;` followed by anything
+ * substantive. node:sqlite's `db.prepare()` does NOT throw on multi-statement
+ * input — it silently parses only the first statement and discards the rest,
+ * which is the worst possible failure mode for DDL batches like
+ * `CREATE TABLE a; CREATE INDEX i; CREATE TABLE b;`. Detect explicitly and
+ * route multi-stmt SQL to `db.exec()` (which runs every statement).
+ *
+ * The bridge + controller schema strings don't embed literal `;` inside
+ * string literals, so the naive index-of check is sound. If that ever
+ * changes, this needs a real tokeniser.
+ */
+function isMultiStatement(sql: string): boolean {
+  const trimmed = sql.trimEnd();
+  const semi = trimmed.indexOf(';');
+  if (semi === -1) return false;
+  return /\S/.test(trimmed.slice(semi + 1));
+}
+
 function execAsRowsNodeSqlite(
   db: DatabaseSync,
   sql: string,
   params?: unknown,
 ): Array<{ columns: string[]; values: unknown[][] }> {
+  // Multi-statement DDL: route to db.exec() so every statement runs.
+  // (sql.js's exec() runs every statement and returns row sets from any
+  // that produce rows; the bridge code only reads [0]?.values, so DDL
+  // batches correctly return []. Match that contract.)
+  if (isMultiStatement(sql)) {
+    db.exec(sql);
+    return [];
+  }
   let stmt: StatementSync;
   try {
     stmt = db.prepare(sql);
   } catch {
-    // Non-SELECT statements (CREATE/INSERT batches separated by `;`) don't
-    // prepare cleanly. Fall back to raw exec so DDL strings still go through.
+    // Last resort for any single-statement SQL that prepare rejects.
     db.exec(sql);
     return [];
   }

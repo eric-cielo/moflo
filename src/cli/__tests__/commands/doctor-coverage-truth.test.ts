@@ -6,28 +6,16 @@
  * clobber to keep saying "100% coverage" while the live DB had dropped 1262
  * rows under the daemon-tick clobber.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { checkEmbeddingCoverageTruth } from '../../commands/doctor-checks-coverage-truth.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
+import { openDaemonDatabase } from '../../memory/daemon-backend.js';
 
-type SqlJsDb = {
-  run(sql: string, params?: unknown[]): void;
-  export(): Uint8Array;
-  close(): void;
-};
-type SqlJsStatic = { Database: new (data?: Uint8Array) => SqlJsDb };
-
-let SQL: SqlJsStatic;
 let tmpDir: string;
-
-beforeAll(async () => {
-  const initSqlJs = (await import('sql.js')).default;
-  SQL = (await initSqlJs()) as SqlJsStatic;
-});
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'moflo-coverage-truth-'));
@@ -40,7 +28,9 @@ afterEach(() => {
 });
 
 function seedDb(embeddedRows: number, dbDir = '.moflo', dbName = 'moflo.db'): void {
-  const db = new SQL.Database();
+  const dir = join(tmpDir, dbDir);
+  mkdirSync(dir, { recursive: true });
+  const db = openDaemonDatabase(join(dir, dbName));
   db.run(MEMORY_SCHEMA_V3);
   for (let i = 0; i < embeddedRows; i++) {
     db.run(
@@ -49,11 +39,7 @@ function seedDb(embeddedRows: number, dbDir = '.moflo', dbName = 'moflo.db'): vo
       [`row-${i}`, `key-${i}`, `content ${i}`, JSON.stringify([0.1, 0.2]), 2, 'fast-all-MiniLM-L6-v2'],
     );
   }
-  const bytes = db.export();
   db.close();
-  const dir = join(tmpDir, dbDir);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, dbName), Buffer.from(bytes));
 }
 
 function writeStatsCache(stats: Record<string, unknown>): void {

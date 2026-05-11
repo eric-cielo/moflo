@@ -208,24 +208,38 @@ function wrapNodeSqlite(db, dbPath) {
 }
 
 /**
+ * Heuristic match for multi-statement SQL: `;` followed by anything
+ * substantive. node:sqlite's `db.prepare()` does NOT throw on multi-statement
+ * input — it silently parses the first statement only and drops the rest,
+ * which is the worst possible failure mode for DDL batches like
+ * `CREATE TABLE a; CREATE INDEX i; CREATE TABLE b;`. Detect and route
+ * multi-stmt SQL to `db.exec()` (which runs every statement).
+ */
+function isMultiStatement(sql) {
+  const trimmed = sql.trimEnd();
+  const semi = trimmed.indexOf(';');
+  if (semi === -1) return false;
+  return /\S/.test(trimmed.slice(semi + 1));
+}
+
+/**
  * Adapt node:sqlite to sql.js's `db.exec(sql)` return shape:
  * `[{ columns: string[], values: any[][] }]`. The bin scripts use this for
  * single-statement queries that return rows (`PRAGMA integrity_check` in
- * `db-repair.mjs`, `SELECT COUNT(*)` in `index-guidance.mjs`).
- *
- * The catch ONLY wraps `db.prepare()` — multi-statement SQL is the one shape
- * that fails preparation but is accepted by `db.exec()`. Errors thrown by
- * `stmt.all()` (constraint violations, runtime SQL errors) propagate up so
- * the caller never silently swallows them OR re-executes side-effecting DDL.
+ * `db-repair.mjs`, `SELECT COUNT(*)` in `index-guidance.mjs`) and for
+ * multi-statement DDL batches (controller `ensureSchema`).
  */
 function execAsRowsNodeSqlite(db, sql) {
+  // Multi-statement DDL: db.exec() runs every statement. Matches sql.js's
+  // exec() contract — DDL batches return `[]` (no row results to surface).
+  if (isMultiStatement(sql)) {
+    db.exec(sql);
+    return [];
+  }
   let stmt;
   try {
     stmt = db.prepare(sql);
   } catch {
-    // Multi-statement SQL — node:sqlite's prepare rejects it. Fall back to
-    // exec which discards rows (caller of multi-statement exec doesn't read
-    // the return value; matches sql.js for DDL).
     db.exec(sql);
     return [];
   }

@@ -12,8 +12,8 @@
  *  - Returns zero counts when the DB does not exist
  */
 
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -24,21 +24,7 @@ import {
   TASKLIST_RETENTION_CAP,
 } from '../../memory/bridge-embedder.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
-
-type SqlJsDb = {
-  run(sql: string, params?: unknown[]): void;
-  exec(sql: string): Array<{ values: unknown[][] }>;
-  export(): Uint8Array;
-  close(): void;
-};
-type SqlJsStatic = { Database: new (data?: Uint8Array) => SqlJsDb };
-
-let SQL: SqlJsStatic;
-
-beforeAll(async () => {
-  const initSqlJs = (await import('sql.js')).default;
-  SQL = (await initSqlJs()) as SqlJsStatic;
-});
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../../memory/daemon-backend.js';
 
 const tmpDirs: string[] = [];
 afterEach(async () => {
@@ -52,21 +38,19 @@ afterEach(async () => {
   }
 });
 
-async function makeTmpDb(setup: (db: SqlJsDb) => void): Promise<string> {
+async function makeTmpDb(setup: (db: SqlJsLikeDatabase) => void): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'moflo-eph-purge-'));
   tmpDirs.push(dir);
   const dbPath = join(dir, 'memory.db');
-  const db = new SQL.Database();
+  const db = openDaemonDatabase(dbPath);
   db.run(MEMORY_SCHEMA_V3);
   setup(db);
-  const bytes = db.export();
   db.close();
-  await writeFile(dbPath, Buffer.from(bytes));
   return dbPath;
 }
 
-function countByNamespace(dbBytes: Uint8Array, namespace: string): number {
-  const db = new SQL.Database(dbBytes);
+function countByNamespace(dbPath: string, namespace: string): number {
+  const db = openDaemonDatabase(dbPath);
   try {
     const stmt = `SELECT COUNT(*) FROM memory_entries WHERE namespace = '${namespace}'`;
     const rows = db.exec(stmt);
@@ -113,15 +97,14 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     expect(result.purged).toBe(PURGE_ON_SESSION_START_NAMESPACES.size * 2);
     expect(result.trimmed).toBe(0); // 3 < cap, no trim
 
-    const after = await readFile(dbPath);
     for (const ns of PURGE_ON_SESSION_START_NAMESPACES) {
-      expect(countByNamespace(after, ns)).toBe(0);
+      expect(countByNamespace(dbPath, ns)).toBe(0);
     }
     // #968: tasklist must survive
-    expect(countByNamespace(after, 'tasklist')).toBe(3);
-    expect(countByNamespace(after, 'knowledge')).toBe(1);
-    expect(countByNamespace(after, 'patterns')).toBe(1);
-    expect(countByNamespace(after, 'guidance')).toBe(1);
+    expect(countByNamespace(dbPath, 'tasklist')).toBe(3);
+    expect(countByNamespace(dbPath, 'knowledge')).toBe(1);
+    expect(countByNamespace(dbPath, 'patterns')).toBe(1);
+    expect(countByNamespace(dbPath, 'guidance')).toBe(1);
   });
 
   it('trims tasklist beyond retention cap, keeping the most recent rows (#968)', async () => {
@@ -140,11 +123,10 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     expect(result.purged).toBe(0);
     expect(result.trimmed).toBe(4); // 7 - 3 = 4 oldest deleted
 
-    const after = await readFile(dbPath);
-    expect(countByNamespace(after, 'tasklist')).toBe(3);
+    expect(countByNamespace(dbPath, 'tasklist')).toBe(3);
 
     // The three most recent (tl-4, tl-5, tl-6) should be the survivors.
-    const db = new SQL.Database(after);
+    const db = openDaemonDatabase(dbPath);
     try {
       const rows = db.exec(`SELECT id FROM memory_entries WHERE namespace = 'tasklist' ORDER BY created_at ASC`);
       const ids = (rows[0]?.values ?? []).map(r => r[0]);
@@ -154,7 +136,7 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     }
   });
 
-  it('is idempotent: a clean DB returns zero counts without writing', async () => {
+  it('is idempotent: a clean DB returns zero counts and preserves rows', async () => {
     const dbPath = await makeTmpDb((db) => {
       db.run(
         `INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?, ?, ?, ?, 'active')`,
@@ -162,13 +144,14 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
       );
     });
 
-    const before = await readFile(dbPath);
     const result = await purgeEphemeralNamespaces({ dbPath });
     expect(result).toEqual({ purged: 0, trimmed: 0 });
 
-    // No write means the file bytes are unchanged.
-    const after = await readFile(dbPath);
-    expect(Buffer.compare(before, after)).toBe(0);
+    // Pre-WAL the test verified byte-equality of the file, but the daemon
+    // factory rewrites journal_mode pragma bytes in the header on every open
+    // (Phase 5 / #1084) — even read-only probes touch the file. Switch to a
+    // semantic invariant: the surviving row count is unchanged.
+    expect(countByNamespace(dbPath, 'patterns')).toBe(1);
   });
 
   it('running twice in succession is a no-op on the second pass', async () => {
@@ -195,11 +178,9 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     const dir = await mkdtemp(join(tmpdir(), 'moflo-eph-purge-other-'));
     tmpDirs.push(dir);
     const dbPath = join(dir, 'something.db');
-    const db = new SQL.Database();
+    const db = openDaemonDatabase(dbPath);
     db.run(`CREATE TABLE other_table (id TEXT PRIMARY KEY);`);
-    const bytes = db.export();
     db.close();
-    await writeFile(dbPath, Buffer.from(bytes));
 
     const result = await purgeEphemeralNamespaces({ dbPath });
     expect(result).toEqual({ purged: 0, trimmed: 0 });

@@ -10,7 +10,7 @@
  * so schema drift is caught at test time.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import {
   EMBEDDINGS_VERSION,
@@ -20,41 +20,17 @@ import { CANONICAL_EMBEDDING_MODEL } from '../../embeddings/migration/types.js';
 import { MockBatchEmbedder } from '../../embeddings/__tests__/migration/mock-batch-embedder.js';
 import { SqlJsMemoryEntriesStore } from '../../services/sqljs-migration-store.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../../memory/daemon-backend.js';
 
-// ── sql.js bootstrap ────────────────────────────────────────────────────────
-type SqlJsStatic = {
-  Database: new (data?: Uint8Array) => SqlJsDb;
-};
-type SqlJsDb = {
-  prepare(sql: string): {
-    bind(params: unknown[]): boolean;
-    step(): boolean;
-    get(): unknown[];
-    getAsObject(): Record<string, unknown>;
-    free(): void;
-    run(params?: unknown[]): void;
-  };
-  run(sql: string, params?: unknown[]): void;
-  exec(sql: string): Array<{ columns: string[]; values: unknown[][] }>;
-  close(): void;
-};
-
-let SQL: SqlJsStatic;
-
-beforeAll(async () => {
-  const initSqlJs = (await import('sql.js')).default;
-  SQL = (await initSqlJs()) as SqlJsStatic;
-});
-
-function freshV3Db(): SqlJsDb {
-  const db = new SQL.Database();
-  // Apply the real production schema. If this DDL ever changes in a way that
-  // breaks the migration store, this test fails loud.
+function freshV3Db(): SqlJsLikeDatabase {
+  // node:sqlite via daemon-backend factory (Phase 5 / #1084). Apply the real
+  // production schema — drift here is caught loud rather than silently passing.
+  const db = openDaemonDatabase(':memory:');
   db.run(MEMORY_SCHEMA_V3);
   return db;
 }
 
-function insertEntry(db: SqlJsDb, id: string, content: string): void {
+function insertEntry(db: SqlJsLikeDatabase, id: string, content: string): void {
   db.run(
     `INSERT INTO memory_entries (id, key, content) VALUES (?, ?, ?)`,
     [id, `k-${id}`, content],
@@ -62,7 +38,7 @@ function insertEntry(db: SqlJsDb, id: string, content: string): void {
 }
 
 function selectEmbeddingRow(
-  db: SqlJsDb,
+  db: SqlJsLikeDatabase,
   id: string,
 ): { embedding: string | null; dims: number | null } {
   const res = db.exec(

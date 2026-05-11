@@ -1,21 +1,15 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
-import initSqlJs, { Database } from 'sql.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../daemon-backend.js';
 import { CausalGraph } from './causal-graph.js';
 import { CausalRecall } from './causal-recall.js';
 
-let SQL: any;
-
-beforeAll(async () => {
-  SQL = await initSqlJs();
-});
-
 describe('CausalRecall', () => {
-  let db: Database;
+  let db: SqlJsLikeDatabase;
   let graph: CausalGraph;
   let recall: CausalRecall;
 
   beforeEach(() => {
-    db = new SQL.Database();
+    db = openDaemonDatabase(':memory:');
     graph = new CausalGraph(db as any);
     recall = new CausalRecall(graph);
   });
@@ -96,7 +90,7 @@ describe('CausalRecall', () => {
 
 describe('CausalRecall benchmark', () => {
   it('3-hop query < 200ms on 1000-edge graph', () => {
-    const db = new SQL.Database();
+    const db = openDaemonDatabase(':memory:');
     const graph = new CausalGraph(db as any);
     const recall = new CausalRecall(graph);
     // Generate a random DAG-ish graph: 500 nodes, 1000 edges.

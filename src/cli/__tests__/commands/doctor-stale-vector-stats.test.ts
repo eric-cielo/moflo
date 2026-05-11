@@ -4,29 +4,17 @@
  * `vectorCount: 0`) but the live `.swarm/memory.db` actually has thousands of
  * embedded rows — the case that produced `Vectors ●0` on the statusline.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { checkEmbeddings } from '../../commands/doctor.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
+import { openDaemonDatabase } from '../../memory/daemon-backend.js';
 
-type SqlJsDb = {
-  run(sql: string, params?: unknown[]): void;
-  export(): Uint8Array;
-  close(): void;
-};
-type SqlJsStatic = { Database: new (data?: Uint8Array) => SqlJsDb };
-
-let SQL: SqlJsStatic;
 let originalCwd: string;
 let tmpDir: string;
-
-beforeAll(async () => {
-  const initSqlJs = (await import('sql.js')).default;
-  SQL = (await initSqlJs()) as SqlJsStatic;
-});
 
 beforeEach(() => {
   originalCwd = process.cwd();
@@ -42,7 +30,9 @@ afterEach(() => {
 });
 
 function seedDb(rowsWithEmbedding: number): void {
-  const db = new SQL.Database();
+  const swarmDir = join(tmpDir, '.swarm');
+  mkdirSync(swarmDir, { recursive: true });
+  const db = openDaemonDatabase(join(swarmDir, 'memory.db'));
   db.run(MEMORY_SCHEMA_V3);
   for (let i = 0; i < rowsWithEmbedding; i++) {
     db.run(
@@ -51,11 +41,7 @@ function seedDb(rowsWithEmbedding: number): void {
       [`row-${i}`, `key-${i}`, `content ${i}`, JSON.stringify([0.1, 0.2]), 2, 'fast-all-MiniLM-L6-v2'],
     );
   }
-  const bytes = db.export();
   db.close();
-  const swarmDir = join(tmpDir, '.swarm');
-  mkdirSync(swarmDir, { recursive: true });
-  writeFileSync(join(swarmDir, 'memory.db'), Buffer.from(bytes));
 }
 
 function writeStatsCache(stats: Record<string, unknown>): void {

@@ -10,27 +10,13 @@
  * SessionStart hook.
  */
 
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { runEmbeddingsMigrationIfNeeded } from '../../services/embeddings-migration.js';
-
-type SqlJsDb = {
-  run(sql: string, params?: unknown[]): void;
-  exec(sql: string): unknown;
-  export(): Uint8Array;
-  close(): void;
-};
-type SqlJsStatic = { Database: new (data?: Uint8Array) => SqlJsDb };
-
-let SQL: SqlJsStatic;
-
-beforeAll(async () => {
-  const initSqlJs = (await import('sql.js')).default;
-  SQL = (await initSqlJs()) as SqlJsStatic;
-});
+import { openDaemonDatabase } from '../../memory/daemon-backend.js';
 
 const tmpDirs: string[] = [];
 afterEach(async () => {
@@ -49,11 +35,9 @@ async function makeV3Db(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'moflo-migration-cb-'));
   tmpDirs.push(dir);
   const dbPath = join(dir, 'memory.db');
-  const db = new SQL.Database();
+  const db = openDaemonDatabase(dbPath);
   db.run(MEMORY_SCHEMA_V3);
-  const bytes = db.export();
   db.close();
-  await writeFile(dbPath, Buffer.from(bytes));
   return dbPath;
 }
 
