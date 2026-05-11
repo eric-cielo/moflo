@@ -173,4 +173,47 @@ describe('bridge mtime-coherence (#1058)', () => {
     // No mtime change → no reload → cursor stays put.
     expect(cursor2).toBe(cursor1);
   });
+
+  // #1073 / smoke regression gate. Pre-fix, the daemon was exempted from
+  // mtime-coherence under "daemon is sole writer", but `bin/index-guidance.mjs`
+  // and the consumer-smoke memory-protocol probe both write directly to disk
+  // while the daemon is up. With the exemption in place, daemon-routed reads
+  // returned the pre-init snapshot indefinitely. This test pins the daemon
+  // path through the same coherence guard the non-daemon case uses.
+  it('daemon process (MOFLO_IS_DAEMON=1) also detects external writes', async () => {
+    const originalIsDaemon = process.env.MOFLO_IS_DAEMON;
+    process.env.MOFLO_IS_DAEMON = '1';
+    try {
+      // Anchor the daemon's bridge against its own first op.
+      await storeEntry({ key: 'daemon-own', value: 'own-content', namespace: 'ns' });
+      const cursorAfterOwn = _getBridgeCoherenceCursorForTest();
+      expect(cursorAfterOwn).not.toBeNull();
+
+      // External writer (simulating the indexer) bumps mtime past the anchor.
+      const initSqlJs = (await import('sql.js')).default;
+      const SQL = await initSqlJs();
+      const buf = fs.readFileSync(dbPath);
+      const otherDb = new SQL.Database(new Uint8Array(buf));
+      otherDb.run(
+        `INSERT INTO memory_entries (id, key, namespace, content, type, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'semantic', 'active', ?, ?)`,
+        [`entry_indexer_${Date.now()}`, 'indexer-written-key', 'ns', 'indexer-content', Date.now(), Date.now()],
+      );
+      await new Promise(r => setTimeout(r, 1100));
+      fs.writeFileSync(dbPath, Buffer.from(otherDb.export()));
+      otherDb.close();
+
+      // Daemon's next read must reload from disk and see the external row.
+      const result = await getEntry({ key: 'indexer-written-key', namespace: 'ns' });
+      expect(result.found).toBe(true);
+      expect(result.entry?.content).toBe('indexer-content');
+
+      const cursorAfterReload = _getBridgeCoherenceCursorForTest();
+      expect(cursorAfterReload).not.toBeNull();
+      expect(cursorAfterReload!).toBeGreaterThan(cursorAfterOwn!);
+    } finally {
+      if (originalIsDaemon === undefined) delete process.env.MOFLO_IS_DAEMON;
+      else process.env.MOFLO_IS_DAEMON = originalIsDaemon;
+    }
+  });
 });

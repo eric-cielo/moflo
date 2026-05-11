@@ -329,24 +329,29 @@ export function getDb(registry: any): BridgeDbContext | null {
 /**
  * Bridge coherence check (story #1058 / epic #1054 — read-side symmetry to
  * #981 single-writer). sql.js holds an in-memory DB snapshot per process and
- * never re-reads disk after init, so a non-daemon long-lived process (the
- * MCP server when `daemon.auto_start: false`, or any consumer where the
- * daemon is intentionally off) returns stale rows when another process has
- * written since this process loaded.
+ * never re-reads disk after init, so any long-lived process — daemon or
+ * not — returns stale rows when another writer has touched the file since
+ * this process loaded its snapshot.
  *
  * Solution: stat the dbPath before every bridge op; if the mtime has advanced
  * past our last-known value, another writer has touched the file — drop the
  * bridge so `getRegistry` re-loads from disk on the next call.
  *
- * Daemon process short-circuits because it owns the file (its own persists
- * are the only writer; `persistBridgeDb` anchors `lastSeenMtimeMs` to suppress
- * self-invalidation). Daemon-mode non-daemon callers route reads via HTTP RPC
- * (in `memory-initializer.ts` preamble) and never reach the bridge at all,
- * so this guard is effectively a daemon-off correctness primitive.
+ * The daemon participates in this check too. #1058 originally exempted the
+ * daemon under "daemon is the sole writer", but that assumption breaks every
+ * session-start: `bin/index-guidance.mjs`, migration runners, and repair
+ * tools all write directly to `.moflo/moflo.db` while the daemon is up
+ * (epic #1057 calls these out as in-scope writers to coordinate). Without
+ * the daemon doing the check, daemon-routed MCP reads served the pre-init
+ * snapshot indefinitely, hiding the indexer's chunks from `memory_search` /
+ * `memory_get_neighbors` until the daemon process restarted (#1073, smoke).
+ *
+ * Self-invalidation is still suppressed: `persistBridgeDb` anchors
+ * `lastSeenMtimeMs` to the post-write mtime, so the daemon's own writes never
+ * trip the reload. External writers — whose touches advance mtime past the
+ * anchor — do.
  */
 async function checkBridgeCoherence(dbPath: string | undefined): Promise<void> {
-  // Daemon is the only writer — its own persists already update the cursor.
-  if (process.env.MOFLO_IS_DAEMON === '1') return;
   // No registry yet → nothing to invalidate; first init will anchor the cursor.
   if (!registryPromise) return;
   const target = dbPath ? path.resolve(dbPath) : getDbPath();
