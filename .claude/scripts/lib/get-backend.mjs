@@ -31,6 +31,13 @@ import { dirname } from 'node:path';
 import { Buffer } from 'node:buffer';
 import { mofloResolveURL } from './moflo-resolve.mjs';
 import { memoryDbPath } from './moflo-paths.mjs';
+import {
+  resolveShadow,
+  shadowDbPath,
+  seedShadowFile,
+  shadowStrictMode,
+  wrapShadow,
+} from './shadow-backend.mjs';
 
 export const BACKEND_SQLJS = 'sql.js';
 export const BACKEND_NODE_SQLITE = 'node-sqlite';
@@ -62,12 +69,19 @@ function ensureDir(filePath) {
  * `projectRoot`; pass `opts.dbPath` to point at a different file (used by
  * migrations that touch sibling DBs).
  *
+ * When shadow-read is on (epic #1078 Phase 3 / issue #1082) the primary
+ * engine opens normally and the shadow engine (the other one) opens
+ * against a sibling `.moflo/moflo.shadow.db` seeded from the primary at
+ * open time. The returned handle mirrors every write to both engines and
+ * compares results on reads — see `bin/lib/shadow-backend.mjs`.
+ *
  * @param {string} projectRoot
  * @param {{
  *   backend?: 'sql.js'|'node-sqlite',
  *   create?: boolean,
  *   readOnly?: boolean,
  *   dbPath?: string,
+ *   shadow?: boolean,
  * }} [opts]
  * @returns {Promise<object>} backend handle (see module doc)
  */
@@ -75,8 +89,28 @@ export async function openBackend(projectRoot, opts = {}) {
   const dbPath = opts.dbPath || memoryDbPath(projectRoot);
   const kind = resolveBackend(opts);
   ensureDir(dbPath);
+  if (resolveShadow(projectRoot, opts) && !opts.dbPath) {
+    return openWithShadow(projectRoot, kind, dbPath, opts);
+  }
+  return openOne(kind, dbPath, opts);
+}
+
+async function openOne(kind, dbPath, opts) {
   if (kind === BACKEND_NODE_SQLITE) return openNodeSqlite(dbPath, opts);
   return openSqlJs(dbPath, opts);
+}
+
+async function openWithShadow(projectRoot, primaryKind, primaryPath, opts) {
+  const shadowKind = primaryKind === BACKEND_SQLJS ? BACKEND_NODE_SQLITE : BACKEND_SQLJS;
+  const shadowPath = shadowDbPath(projectRoot);
+  ensureDir(shadowPath);
+  seedShadowFile(primaryPath, shadowPath);
+  const primary = await openOne(primaryKind, primaryPath, opts);
+  const shadow = await openOne(shadowKind, shadowPath, opts);
+  return wrapShadow(primary, shadow, {
+    projectRoot,
+    strict: shadowStrictMode(),
+  });
 }
 
 // ---------------------------------------------------------------------------
