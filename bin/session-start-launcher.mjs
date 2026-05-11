@@ -1530,7 +1530,7 @@ function runMigrationsAndAnnounce(runnerPath) {
     'strip-context-preambles': 'stripped chunk preambles; embeddings will rebuild on next index pass (#1053)',
   };
 
-  for (const line of raw.split('\n')) {
+  for (const line of raw.split(/\r?\n/)) {
     const m = line.match(/^\[migrations\]\s+([\w-]+):\s+done\s+in\s+\d+ms\s*(.*)$/);
     if (!m) continue;
     const migrationName = m[1];
