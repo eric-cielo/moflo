@@ -22,6 +22,7 @@ vi.mock('../../services/project-root.js', () => ({
 
 import { hiveMindTools } from '../../mcp-tools/hive-mind-tools.js';
 import { _resetSwarmCoordinatorForTest } from '../../mcp-tools/swarm-coordinator-singleton.js';
+import { shutdownBridge } from '../../memory/bridge-core.js';
 
 const initTool = hiveMindTools.find(t => t.name === 'hive-mind_init')!;
 const statusTool = hiveMindTools.find(t => t.name === 'hive-mind_status')!;
@@ -71,7 +72,12 @@ describe('hive-mind_init — schema drift (issue #826)', () => {
   afterEach(async () => {
     await shutdownTool.handler({ force: true }).catch(() => undefined);
     await _resetSwarmCoordinatorForTest();
-    rmSync(fakeProjectRoot, { recursive: true, force: true });
+    // Phase 4 (#1083): the swarm coordinator's persistence layer opens
+    // .moflo/moflo.db via the bridge's node:sqlite handle (WAL mode).
+    // The DB connection MUST be closed before rmSync — Windows refuses
+    // to delete a directory with open file handles.
+    await shutdownBridge().catch(() => undefined);
+    rmSync(fakeProjectRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     fakeProjectRoot = '';
   });
 

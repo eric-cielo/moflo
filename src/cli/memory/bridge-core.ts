@@ -250,7 +250,17 @@ export function persistBridgeDb(db: any, dbPath?: string): void {
   if (target === ':memory:') return;
   try {
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    atomicWriteFileSync(target, db.export());
+    // Phase 4 (#1083) — node:sqlite-backed handles persist incrementally via
+    // WAL; `save()` on the factory adapter is a no-op for them. Doing the
+    // sql.js-style `export()` + `atomicWriteFileSync` against a node:sqlite
+    // handle would CLOBBER the WAL writes (the catastrophic case the epic
+    // was killing). Route through `save()` when the handle is the factory
+    // shape; only fall back to the legacy export-and-write for raw sql.js.
+    if (db && db.kind === 'node-sqlite' && typeof db.save === 'function') {
+      db.save();
+    } else {
+      atomicWriteFileSync(target, db.export());
+    }
     // Anchor the bridge-coherence cursor to the post-persist mtime so our own
     // write doesn't trigger a self-invalidation on the next withDb call.
     // Best-effort: if the stat fails, the worst case is one redundant reload.
@@ -519,9 +529,12 @@ export function refreshVectorStatsCache(dbPathOverride?: string): void {
 
     // Mtime short-circuit (#639 perf): refreshVectorStatsCache fires on every
     // bridge store/delete. When the on-disk DB hasn't changed since we last
-    // wrote the cache (the common case mid-session — bridge writes don't
-    // touch the file until persist), running 3 COUNT queries is wasted work.
-    // Skip the rest entirely.
+    // wrote the cache, running 3 COUNT queries is wasted work — skip the rest.
+    //
+    // Phase 4 (#1083) flipped the engine to node:sqlite + WAL: every commit
+    // lands in the `-wal` sidecar (mtime advances there), not the main file.
+    // Stat both so a write to either invalidates the cache. The `-shm` file
+    // is not load-bearing — it tracks WAL readers, not committed writes.
     let dbMtimeMs = 0;
     let dbSizeKB = 0;
     try {
@@ -529,6 +542,10 @@ export function refreshVectorStatsCache(dbPathOverride?: string): void {
       dbMtimeMs = stat.mtimeMs;
       dbSizeKB = Math.floor(stat.size / 1024);
     } catch { /* file may not exist */ }
+    try {
+      const walStat = fs.statSync(`${dbFile}-wal`);
+      if (walStat.mtimeMs > dbMtimeMs) dbMtimeMs = walStat.mtimeMs;
+    } catch { /* no WAL sidecar — fine, dbMtimeMs already covers it */ }
     if (
       existing &&
       typeof existing.updatedAt === 'number' &&

@@ -503,21 +503,31 @@ describe('#982 — persist failures surface as success:false', () => {
   });
 
   /**
-   * Override the bridge db's `.export()` to throw the given error. Returns
-   * a restore function. We can't `vi.spyOn(fs, 'renameSync')` because ESM
-   * namespaces aren't configurable; intercepting `db.export()` exercises
-   * the same code path because `atomicWriteFileSync(target, db.export())`
-   * evaluates `export()` first, and `persistBridgeDb`'s try/catch wraps
-   * the whole call.
+   * Override the bridge db's persist call to throw. Returns a restore fn.
+   *
+   * Under sql.js the persist path is `atomicWriteFileSync(target, db.export())`
+   * so injecting on `.export()` covers it. Under node:sqlite + WAL (Phase 4
+   * default) persistBridgeDb routes to `db.save()` instead — patch both so
+   * the contract test stays engine-agnostic.
+   *
+   * Direct method assignment (not vi.spyOn) because ESM namespace bindings
+   * aren't configurable and the bridge db is plain object-with-methods.
    */
   async function injectPersistFailure(err: Error): Promise<() => void> {
     const reg = await getControllerRegistry(dbPath);
     if (!reg) throw new Error('test bridge registry unavailable');
     const ctx = getDb(reg);
     if (!ctx) throw new Error('test bridge db ctx unavailable');
-    const orig = ctx.db.export.bind(ctx.db);
-    ctx.db.export = () => { throw err; };
-    return () => { ctx.db.export = orig; };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = ctx.db;
+    const origExport = typeof db.export === 'function' ? db.export.bind(db) : null;
+    const origSave = typeof db.save === 'function' ? db.save.bind(db) : null;
+    if (origExport) db.export = () => { throw err; };
+    if (origSave) db.save = () => { throw err; };
+    return () => {
+      if (origExport) db.export = origExport;
+      if (origSave) db.save = origSave;
+    };
   }
 
   it('bridgeStoreEntry returns success:false with persist failed when atomic-write throws', async () => {

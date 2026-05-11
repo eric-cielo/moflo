@@ -9,6 +9,16 @@
  */
 
 import type { Database as SqlJsDatabase } from 'sql.js';
+import type { SqlJsLikeDatabase } from './daemon-backend.js';
+
+/**
+ * Phase 4 (#1083) flipped the daemon's DB engine from sql.js to node:sqlite.
+ * The controller-spec surface had to stop pinning the concrete sql.js type
+ * since the new factory adapter is shape-compatible but not the same class.
+ * Controllers only use the Statement API exposed by both, so a structural
+ * union keeps types honest without touching every controller signature.
+ */
+export type MofloDbHandle = SqlJsDatabase | SqlJsLikeDatabase;
 import type {
   IMemoryBackend,
   EmbeddingGenerator,
@@ -46,9 +56,9 @@ export type ControllerName = MofloDbControllerName | CLIControllerName;
 /** Registry-owned resource a spec can declare as a prerequisite. */
 export type ResourceName = 'sqljs' | 'backend';
 
-/** Minimal wrapper holding the sql.js Database handle. */
+/** Minimal wrapper holding the engine-agnostic Database handle. */
 export interface SqlJsHandle {
-  database: SqlJsDatabase;
+  database: MofloDbHandle;
   close(): Promise<void>;
 }
 

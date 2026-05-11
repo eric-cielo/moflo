@@ -23,11 +23,11 @@
  * agents/hive workers.
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync } from 'fs';
 import { errorDetail } from '../shared/utils/error-detail.js';
-import { mofloImport } from '../services/moflo-require.js';
 import { memoryDbPath } from '../services/moflo-paths.js';
 import { findProjectRoot } from '../services/project-root.js';
+import { openDaemonDatabase } from '../memory/daemon-backend.js';
 import { type HealthCheck } from './doctor-checks-deep.js';
 import {
   type FunctionalCheckDetail,
@@ -278,23 +278,25 @@ async function probeMemoryGetNeighbors(
   const chunkKeys = [`${prefix}-0`, `${prefix}-1`, `${prefix}-2`];
   const middleKey = chunkKeys[1];
 
-  // Seed three chunks via DIRECT sql.js write (skipping memory_store).
+  // Seed three chunks via DIRECT node:sqlite write (skipping memory_store).
   // Going through memory_store would warm the bridge's TieredCache with
   // metadata='{}', and a follow-up direct UPDATE would race the bridge's
-  // writeback (sql.js dump-on-flush hazard, see
-  // feedback_sqljs_writeback_clobber.md). Writing straight to disk before
-  // the bridge ever sees these keys means memory_get_neighbors → getEntry
-  // hits fresh disk state and our injected metadata is what comes back.
+  // writeback. Writing straight to disk before the bridge ever sees these
+  // keys means memory_get_neighbors → getEntry hits fresh disk state and
+  // our injected metadata is what comes back.
+  //
+  // Phase 4 (#1083) flipped the engine to node:sqlite + WAL. The pre-Phase-4
+  // path opened sql.js, mutated in-memory, and `writeFileSync(...export())`d
+  // the whole buffer back — which would have CLOBBERED any concurrent WAL
+  // writes from the daemon's bridge (#1088, the consumer-smoke Windows
+  // failure that drove Phase 5). Going through openDaemonDatabase keeps
+  // the write coherent with every other node:sqlite reader on the same DB.
   //
   // Use the unified findProjectRoot so the seed writes to the SAME
   // `.moflo/moflo.db` the bridge reads from. Earlier versions used
   // `process.cwd()` (#844) and then `CLAUDE_PROJECT_DIR ?? process.cwd()`
   // (#1058) — both diverged from the bridge whenever the bridge's walk
-  // resolved to a parent dir (e.g. consumer-smoke nested under moflo-repo,
-  // where the bridge's high-priority pass hits the repo's CLAUDE.md +
-  // package.json marker pair before reaching cwd). With daemon-routed
-  // reads (#1058/#1076), the seed's row was invisible to the daemon and
-  // memory_get_neighbors returned not-found (#1088).
+  // resolved to a parent dir.
   const dbPath = memoryDbPath(findProjectRoot());
   if (!existsSync(dbPath)) {
     details.push({
@@ -308,43 +310,44 @@ async function probeMemoryGetNeighbors(
     return { key: middleKey, namespace, chunkKeys };
   }
   try {
-    const initSqlJs = (await mofloImport('sql.js') as { default: () => Promise<unknown> }).default;
-    const SQL = await initSqlJs() as { Database: new (buf: Buffer) => { prepare: (sql: string) => { run: (args: unknown[]) => void; free: () => void }; export: () => Uint8Array; close: () => void } };
-    const db = new SQL.Database(readFileSync(dbPath));
-    const insert = db.prepare(
-      `INSERT OR REPLACE INTO memory_entries
-        (id, key, namespace, content, type, tags, metadata, created_at, updated_at, status)
-       VALUES (?, ?, ?, ?, 'semantic', '[]', ?, ?, ?, 'active')`,
-    );
-    const now = Date.now();
-    for (let i = 0; i < chunkKeys.length; i++) {
-      const meta = {
-        type: 'chunk',
-        parentDoc: 'doc-doctor-neighbors',
-        parentPath: '/doctor-neighbors.md',
-        chunkIndex: i,
-        totalChunks: chunkKeys.length,
-        prevChunk: i > 0 ? chunkKeys[i - 1] : null,
-        nextChunk: i < chunkKeys.length - 1 ? chunkKeys[i + 1] : null,
-        siblings: chunkKeys,
-        hierarchicalParent: null,
-        hierarchicalChildren: null,
-        chunkTitle: `Doctor Probe Chunk ${i}`,
-        headerLevel: 2,
-        docContentHash: stamp,
-      };
-      insert.run([
-        `memprobe-neighbors-${stamp}-${i}`,
-        chunkKeys[i],
-        namespace,
-        `chunk body ${i}`,
-        JSON.stringify(meta),
-        now, now,
-      ]);
+    const db = openDaemonDatabase(dbPath);
+    try {
+      const insert = db.prepare(
+        `INSERT OR REPLACE INTO memory_entries
+          (id, key, namespace, content, type, tags, metadata, created_at, updated_at, status)
+         VALUES (?, ?, ?, ?, 'semantic', '[]', ?, ?, ?, 'active')`,
+      );
+      const now = Date.now();
+      for (let i = 0; i < chunkKeys.length; i++) {
+        const meta = {
+          type: 'chunk',
+          parentDoc: 'doc-doctor-neighbors',
+          parentPath: '/doctor-neighbors.md',
+          chunkIndex: i,
+          totalChunks: chunkKeys.length,
+          prevChunk: i > 0 ? chunkKeys[i - 1] : null,
+          nextChunk: i < chunkKeys.length - 1 ? chunkKeys[i + 1] : null,
+          siblings: chunkKeys,
+          hierarchicalParent: null,
+          hierarchicalChildren: null,
+          chunkTitle: `Doctor Probe Chunk ${i}`,
+          headerLevel: 2,
+          docContentHash: stamp,
+        };
+        insert.run([
+          `memprobe-neighbors-${stamp}-${i}`,
+          chunkKeys[i],
+          namespace,
+          `chunk body ${i}`,
+          JSON.stringify(meta),
+          now, now,
+        ]);
+      }
+      insert.free();
+      // node:sqlite persists incrementally through WAL — no whole-file dump.
+    } finally {
+      db.close();
     }
-    insert.free();
-    writeFileSync(dbPath, Buffer.from(db.export()));
-    db.close();
   } catch (err) {
     const msg = errorDetail(err, { firstLineOnly: true });
     details.push({
@@ -440,15 +443,31 @@ export async function checkMemoryAccessFunctional(): Promise<FunctionalHealthChe
   let hiveInitialized = false;
 
   try {
+    // ── Probe 1: subagent context ─────────────────────────────────────────
+    // The "subagent" path is what Claude's Task tool ends up calling: direct
+    // MCP tools with no surrounding coordinator state. Failures here indicate
+    // the memory subsystem itself is broken before we even get to coordinator
+    // interactions. Runs first so the bridge initializes `.moflo/moflo.db`
+    // (schema + first WAL commit) before the neighbors probe seeds chunks.
+    //
+    // Phase 4 (#1083) flipped the engine to node:sqlite + WAL: every
+    // node:sqlite connection on the same DB shares the WAL coherently, so
+    // the legacy "neighbors first or sql.js snapshot clobbers it" ordering
+    // is obsolete. Subagent first means moflo.db exists by the time the
+    // neighbors seed's `existsSync` gate runs (probe degraded to warn in
+    // the temp-dir test fixture before this reorder).
+    {
+      const { key, namespace } = await runMemoryRoundTrip({
+        persona: 'subagent', idPrefix: 'subagent', memoryTools, details,
+      });
+      cleanups.push(() => safeDelete(memoryTools, key, namespace));
+    }
+
     // ── Probe 0: memory_get_neighbors (#1053 S2) ──────────────────────────
-    // MUST RUN FIRST — before any memory_store call warms the bridge's
-    // in-memory sql.js snapshot. The probe injects chunk metadata via a
-    // direct file write to .moflo/moflo.db; once the bridge has loaded the
-    // DB into memory and done its first persist, external file writes are
-    // clobbered (sql.js dump-on-flush hazard, see
-    // feedback_sqljs_writeback_clobber.md). Running this probe first means
-    // the bridge instantiates AFTER our seed lands — its initial disk read
-    // sees our rows.
+    // Seeds three chunk rows directly via the node:sqlite factory and asserts
+    // memory_get_neighbors returns the prev+next pair. Cross-engine clobber
+    // is no longer a concern under Phase 4 (#1083) — every writer on
+    // .moflo/moflo.db goes through node:sqlite + WAL.
     {
       const probeResult = await probeMemoryGetNeighbors(memoryTools, details);
       if (probeResult) {
@@ -457,18 +476,6 @@ export async function checkMemoryAccessFunctional(): Promise<FunctionalHealthChe
           cleanups.push(() => safeDelete(memoryTools, key, namespace));
         }
       }
-    }
-
-    // ── Probe 1: subagent context ─────────────────────────────────────────
-    // The "subagent" path is what Claude's Task tool ends up calling: direct
-    // MCP tools with no surrounding coordinator state. Failures here indicate
-    // the memory subsystem itself is broken before we even get to coordinator
-    // interactions.
-    {
-      const { key, namespace } = await runMemoryRoundTrip({
-        persona: 'subagent', idPrefix: 'subagent', memoryTools, details,
-      });
-      cleanups.push(() => safeDelete(memoryTools, key, namespace));
     }
 
     // ── Probe 2: swarm-agent context ──────────────────────────────────────

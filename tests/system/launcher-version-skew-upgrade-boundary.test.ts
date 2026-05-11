@@ -31,14 +31,6 @@ import * as path from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 
-// Sleep helper backed by Atomics.wait so the test thread yields to the OS
-// instead of busy-spinning a subprocess per tick (#1083 reviewer feedback).
-const SLEEP_BUFFER = new SharedArrayBuffer(4);
-const SLEEP_VIEW = new Int32Array(SLEEP_BUFFER);
-function sleepMs(ms: number): void {
-  Atomics.wait(SLEEP_VIEW, 0, 0, ms);
-}
-
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const LAUNCHER_PATH = path.join(REPO_ROOT, 'bin', 'session-start-launcher.mjs');
 
@@ -53,15 +45,23 @@ function makeRoot(): string {
  * puts it in its own process group so a test-runner crash doesn't orphan
  * it into the parent group.
  */
-function spawnDaemonSentinel(): { pid: number; child: ChildProcess } {
+function spawnDaemonSentinel(): { pid: number; child: ChildProcess; exited: Promise<void> } {
   const child = spawn(
     process.execPath,
     ['-e', `process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 60_000);`],
     { stdio: 'ignore', detached: true },
   );
   if (!child.pid) throw new Error('failed to spawn daemon sentinel');
+  // Resolve on the child's actual 'exit' event. `process.kill(pid, 0)` is
+  // unreliable on Linux: after SIGTERM the sentinel becomes a zombie because
+  // its parent (this test process) hasn't reaped it, and `kill -0 zombie`
+  // still reports "alive". Windows has no zombie semantics, which is why the
+  // earlier kill-0 poll passed locally but failed in Linux CI (#1083).
+  const exited = new Promise<void>((resolve) => {
+    child.once('exit', () => resolve());
+  });
   child.unref();
-  return { pid: child.pid, child };
+  return { pid: child.pid, child, exited };
 }
 
 function isAlive(pid: number): boolean {
@@ -73,13 +73,20 @@ function isAlive(pid: number): boolean {
   }
 }
 
-function waitForExit(pid: number, timeoutMs: number): boolean {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (!isAlive(pid)) return true;
-    sleepMs(50);
+async function waitForExit(
+  sentinel: { exited: Promise<void> },
+  timeoutMs: number,
+): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  try {
+    const result = await Promise.race([sentinel.exited.then(() => true as const), timeout]);
+    return result === true;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  return !isAlive(pid);
 }
 
 interface SeedOptions {
@@ -133,7 +140,7 @@ function runLauncher(root: string): LauncherResult {
 
 describe('launcher version-skew kill at upgrade boundary (#1056 / #1083 Phase 4)', () => {
   let root: string;
-  let sentinel: { pid: number; child: ChildProcess } | null = null;
+  let sentinel: { pid: number; child: ChildProcess; exited: Promise<void> } | null = null;
 
   beforeEach(() => {
     root = makeRoot();
@@ -147,7 +154,7 @@ describe('launcher version-skew kill at upgrade boundary (#1056 / #1083 Phase 4)
     try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* best-effort */ }
   });
 
-  it('upgrade boundary (section 3): stops daemon before any node:sqlite writer touches the DB', () => {
+  it('upgrade boundary (section 3): stops daemon before any node:sqlite writer touches the DB', async () => {
     // First-session-post-upgrade case: no version stamp on disk yet, so
     // the launcher's upgrade-detection block fires. Even before #1056's
     // explicit version-skew check runs, the upgrade block must SIGTERM the
@@ -164,14 +171,14 @@ describe('launcher version-skew kill at upgrade boundary (#1056 / #1083 Phase 4)
 
     const result = runLauncher(root);
 
-    expect(waitForExit(sentinel.pid, 5_000)).toBe(true);
+    expect(await waitForExit(sentinel, 5_000)).toBe(true);
     expect(fs.existsSync(path.join(root, '.moflo', 'daemon.lock'))).toBe(false);
     // Section 3 emits its own user-visible message — pin it so we know
     // the launcher's upgrade path (not the safety-net path) was the killer.
     expect(result.stdout).toMatch(/stopped daemon for upgrade/);
   });
 
-  it('safety net (section 3a-pre): kills stale daemon when stamp matches but lock disagrees', () => {
+  it('safety net (section 3a-pre): kills stale daemon when stamp matches but lock disagrees', async () => {
     // Stamp matches installed, so section 3 (upgrade detection) skips. The
     // backup version-skew check at section 3a-pre is the only thing left
     // standing between an old daemon and the new node:sqlite writers.
@@ -185,7 +192,7 @@ describe('launcher version-skew kill at upgrade boundary (#1056 / #1083 Phase 4)
 
     const result = runLauncher(root);
 
-    expect(waitForExit(sentinel.pid, 5_000)).toBe(true);
+    expect(await waitForExit(sentinel, 5_000)).toBe(true);
     expect(fs.existsSync(path.join(root, '.moflo', 'daemon.lock'))).toBe(false);
     expect(result.stdout).toMatch(/recycled stale daemon/);
     expect(result.stdout).toMatch(/version skew/);
@@ -193,7 +200,7 @@ describe('launcher version-skew kill at upgrade boundary (#1056 / #1083 Phase 4)
     expect(result.stdout).toMatch(/daemon 4\.9\.99/);
   });
 
-  it('safety net handles pre-#1054 daemon (no version field) — recycles via fallback diagnosis', () => {
+  it('safety net handles pre-#1054 daemon (no version field) — recycles via fallback diagnosis', async () => {
     sentinel = spawnDaemonSentinel();
     seedConsumerLayout(root, {
       daemonPid: sentinel.pid,
@@ -204,7 +211,7 @@ describe('launcher version-skew kill at upgrade boundary (#1056 / #1083 Phase 4)
 
     const result = runLauncher(root);
 
-    expect(waitForExit(sentinel.pid, 5_000)).toBe(true);
+    expect(await waitForExit(sentinel, 5_000)).toBe(true);
     expect(fs.existsSync(path.join(root, '.moflo', 'daemon.lock'))).toBe(false);
     expect(result.stdout).toMatch(/recycled stale daemon/);
     // The fallback label is the load-bearing one — pin it so doctor's
