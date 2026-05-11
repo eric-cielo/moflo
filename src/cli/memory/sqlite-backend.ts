@@ -121,9 +121,13 @@ export class SqliteBackend extends EventEmitter implements IMemoryBackend {
         // WAL is required for the multi-process serialization invariant proven
         // in the Phase 0 spike. The spike verified the .db-wal/.db-shm sidecars
         // appear on first write.
+        //
+        // busy_timeout BEFORE journal_mode = WAL: the WAL pragma briefly takes
+        // an EXCLUSIVE lock, and concurrent openers otherwise hit "database is
+        // locked" with no retry budget (#1097).
+        db.exec('PRAGMA busy_timeout = 5000');
         db.exec('PRAGMA journal_mode = WAL');
         db.exec('PRAGMA synchronous = NORMAL');
-        db.exec('PRAGMA busy_timeout = 5000');
       }
 
       this.db = db;

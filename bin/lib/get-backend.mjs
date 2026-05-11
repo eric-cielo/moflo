@@ -97,9 +97,13 @@ async function openNodeSqlite(dbPath, opts) {
     // (visible on Windows as EPERM on subsequent rmdir of the parent).
     try {
       // WAL trinity validated by Phase 0 spike (#1079) and Phase 1 backend.
+      // busy_timeout MUST be set BEFORE journal_mode=WAL — the WAL pragma
+      // briefly takes an EXCLUSIVE lock, and concurrent openers (parallel
+      // doctor probes, indexer subprocess, daemon bridge init) otherwise hit
+      // "database is locked" with no retry budget. See #1097.
+      db.exec('PRAGMA busy_timeout = 5000');
       db.exec('PRAGMA journal_mode = WAL');
       db.exec('PRAGMA synchronous = NORMAL');
-      db.exec('PRAGMA busy_timeout = 5000');
       // Phase 4 / #1083 — network-FS detection. SQLite's POSIX advisory locks
       // and WAL shared-memory both fail silently on NFS/SMB; the engine falls
       // back to a non-WAL journal mode rather than erroring. Read journal_mode

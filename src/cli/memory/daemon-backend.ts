@@ -282,9 +282,17 @@ export function openDaemonDatabase(dbPath: string): SqlJsLikeDatabase {
   const db = new DatabaseSync(dbPath);
   if (dbPath !== ':memory:') {
     try {
+      // busy_timeout MUST be set BEFORE journal_mode=WAL, because the WAL
+      // pragma briefly takes an EXCLUSIVE lock and concurrent openers race
+      // on it. Without busy_timeout in place, parallel doctor probes /
+      // bridge initializations / indexer subprocess opens hit "database is
+      // locked" and the bridge tears down (CI #1097). Order matters:
+      //   1. busy_timeout — gives every subsequent pragma a retry budget
+      //   2. journal_mode = WAL — needs the budget on contention
+      //   3. synchronous — purely advisory, can come anytime
+      db.exec('PRAGMA busy_timeout = 5000');
       db.exec('PRAGMA journal_mode = WAL');
       db.exec('PRAGMA synchronous = NORMAL');
-      db.exec('PRAGMA busy_timeout = 5000');
       // The daemon is the process most exposed to network-FS edge cases
       // (long-lived MCP server, ~30s of writes per indexer pass). NFS/SMB
       // mounts silently fall back from WAL to a rollback journal — surface

@@ -1179,9 +1179,12 @@ if (!existsSync(dbPath)) {
 
 const db = new DatabaseSync(dbPath);
 try {
+  // busy_timeout BEFORE journal_mode=WAL — daemon may hold the lock briefly
+  // during checkpoint and we'd otherwise hit "database is locked" with no
+  // retry budget (#1097).
+  db.exec('PRAGMA busy_timeout = 5000');
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA synchronous = NORMAL');
-  db.exec('PRAGMA busy_timeout = 5000');
   const insert = db.prepare(
     "INSERT OR REPLACE INTO memory_entries (id, key, namespace, content, type, tags, metadata, created_at, updated_at, status) VALUES (?, ?, ?, ?, 'semantic', '[]', ?, ?, ?, 'active')"
   );
