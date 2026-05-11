@@ -173,6 +173,70 @@ export function installConsumer({ workDir, tarballPath }) {
   return consumerDir;
 }
 
+/**
+ * #1088 broken-window gate. The bug class: any moflo writer that resolves
+ * paths via `findProjectRoot()` will walk past the consumer dir and land
+ * on whatever moflo-shaped ancestor is above it. That ancestor used to be
+ * the moflo source repo (workDir under `harness/consumer-smoke/.work`),
+ * which produced #1088 + cousins #1054/#1057/#1058. The structural fix is
+ * to put the consumer in `os.tmpdir()` — but a sane place + a future
+ * accidental nesting (e.g. someone runs the harness from inside another
+ * moflo repo, or `tmpdir()` itself ever grows a `.moflo/`) would silently
+ * re-introduce the mismatch.
+ *
+ * This gate runs early and asserts `findProjectRoot()` from inside the
+ * consumer dir returns the consumer dir itself. If anything above the
+ * consumer has a `.moflo/moflo.db`, `.swarm/memory.db`, or
+ * `CLAUDE.md + package.json` marker pair, the resolver picks it up first
+ * and we hard-fail HERE — at a single, named gate — instead of a probe
+ * 30 checks downstream returning a confusing `not found` error.
+ */
+export function verifyConsumerIsProjectRoot(consumerDir) {
+  section('Verify findProjectRoot resolves to the consumer dir (#1088)');
+  const probe = join(consumerDir, '_project-root-gate.mjs');
+  const mofloPathsPath = join(consumerDir, 'node_modules', 'moflo', 'bin', 'lib', 'moflo-paths.mjs');
+  if (!existsSync(mofloPathsPath)) {
+    record('project-root-gate', 'fail', `bin/lib/moflo-paths.mjs missing from install: ${mofloPathsPath}`);
+    return;
+  }
+  writeFileSync(probe, `
+import { pathToFileURL } from 'node:url';
+const mod = await import(pathToFileURL(${JSON.stringify(mofloPathsPath)}).href);
+console.log(JSON.stringify({
+  cwd: process.cwd(),
+  resolved: mod.findProjectRoot({ honorEnv: false }),
+}));
+`);
+  const r = runNode(probe, [], { cwd: consumerDir, timeout: 15_000 });
+  try { rmSync(probe, { force: true }); } catch { /* ok */ }
+  if (r.code !== 0) {
+    record('project-root-gate', 'fail', `probe exit ${r.code}: ${(r.stderr || r.stdout).trim().slice(0, 200)}`);
+    throw new Error('project-root gate failed');
+  }
+  let parsed;
+  // Split on /\r?\n/ so a Windows CRLF line ending doesn't leave a trailing
+  // '\r' on the popped value and trip JSON.parse (cf. fix(1054) in launcher).
+  try { parsed = JSON.parse(r.stdout.trim().split(/\r?\n/).pop()); } catch {
+    record('project-root-gate', 'fail', `probe stdout not JSON: ${r.stdout.trim().slice(0, 200)}`);
+    throw new Error('project-root gate failed');
+  }
+  // Normalize for case-insensitive Windows paths + trailing-slash differences.
+  const norm = (p) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  if (norm(parsed.resolved) !== norm(consumerDir)) {
+    record(
+      'project-root-gate',
+      'fail',
+      `findProjectRoot resolved to "${parsed.resolved}", expected "${consumerDir}". ` +
+      `An ancestor of the consumer dir has a moflo marker (.moflo/moflo.db, .swarm/memory.db, ` +
+      `or CLAUDE.md+package.json) — every downstream daemon/bridge/probe will read/write the ` +
+      `wrong file. Run the harness from a workDir that has no moflo-shaped ancestors ` +
+      `(default: os.tmpdir()/moflo-consumer-smoke).`,
+    );
+    throw new Error('project-root gate failed');
+  }
+  record('project-root-gate', 'pass', `consumer is its own project root (${norm(consumerDir)})`);
+}
+
 export function verifyForbiddenDeps(consumerDir) {
   section('Verify forbidden transitive deps absent');
   const nm = join(consumerDir, 'node_modules');
@@ -449,6 +513,9 @@ const SMOKE_ALLOWED_DOCTOR_WARNINGS = [
   'Hook Block Drift', // settings.json not found in fresh fixture (warn since #888)
   'Semantic Quality', // empty DB, no patterns yet
   'Disk Space',       // macOS GitHub runner is constantly >80% used (warn threshold)
+  'TypeScript',       // a fresh consumer fixture in os.tmpdir() has no tsc on PATH
+                      // (pre-#1088 the fixture lived inside the moflo repo and
+                      // inherited the repo's node_modules/.bin/tsc via npx walk-up)
 ];
 
 export function doctor(consumerDir) {
@@ -1078,8 +1145,12 @@ const meta = (i, total) => JSON.stringify({
 });
 
 // Use the same DB path memory_store would use. The bridge resolves it via
-// memoryDbPath(process.cwd()); for the smoke harness, the consumer is
-// already at process.cwd() with .moflo/ initialized by memory init.
+// memoryDbPath(findProjectRoot()); the smoke harness runs this probe with
+// cwd = consumer dir AND the consumer dir lives outside the moflo source
+// repo (see harness/consumer-smoke/run.mjs workDir = os.tmpdir()), so the
+// walk-up resolves to the consumer naturally. Using a bare '.moflo/moflo.db'
+// is therefore equivalent to memoryDbPath(findProjectRoot()) and matches
+// what every other in-consumer writer hits.
 mkdirSync('.moflo', { recursive: true });
 const dbPath = '.moflo/moflo.db';
 const { default: initSqlJs } = await import('sql.js');

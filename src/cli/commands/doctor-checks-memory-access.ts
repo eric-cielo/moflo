@@ -27,6 +27,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { mofloImport } from '../services/moflo-require.js';
 import { memoryDbPath } from '../services/moflo-paths.js';
+import { findProjectRoot } from '../services/project-root.js';
 import { type HealthCheck } from './doctor-checks-deep.js';
 import {
   type FunctionalCheckDetail,
@@ -285,14 +286,16 @@ async function probeMemoryGetNeighbors(
   // the bridge ever sees these keys means memory_get_neighbors → getEntry
   // hits fresh disk state and our injected metadata is what comes back.
   //
-  // Match the bridge's project-root resolution (`bridge-core.ts:getProjectRoot`)
-  // so the seed writes to the SAME `.moflo/moflo.db` the bridge reads from.
-  // Pre-#1058 this used `process.cwd()` unconditionally, which broke the
-  // doctor test under vitest where `CLAUDE_PROJECT_DIR` redirects the bridge
-  // to a temp dir while cwd stays at the repo root — the seed wrote to the
-  // wrong file and the read found nothing.
-  const seedRoot = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-  const dbPath = memoryDbPath(seedRoot);
+  // Use the unified findProjectRoot so the seed writes to the SAME
+  // `.moflo/moflo.db` the bridge reads from. Earlier versions used
+  // `process.cwd()` (#844) and then `CLAUDE_PROJECT_DIR ?? process.cwd()`
+  // (#1058) — both diverged from the bridge whenever the bridge's walk
+  // resolved to a parent dir (e.g. consumer-smoke nested under moflo-repo,
+  // where the bridge's high-priority pass hits the repo's CLAUDE.md +
+  // package.json marker pair before reaching cwd). With daemon-routed
+  // reads (#1058/#1076), the seed's row was invisible to the daemon and
+  // memory_get_neighbors returned not-found (#1088).
+  const dbPath = memoryDbPath(findProjectRoot());
   if (!existsSync(dbPath)) {
     details.push({
       id: 'neighbors.seed',
