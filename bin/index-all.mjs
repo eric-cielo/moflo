@@ -26,6 +26,8 @@ import {
   cleanupLegacyFingerprint,
 } from './lib/index-fingerprint.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
+import { acquireIndexerLock, releaseIndexerLock } from './lib/indexer-lock.mjs';
+import { shouldDaemonAutoStart } from './lib/daemon-config.mjs';
 
 // Cap fastembed/ONNX thread count when spawning the heavy steps. Without
 // this, ONNX defaults to one thread per CPU core (22+ on a modern dev box),
@@ -224,8 +226,64 @@ function buildStepPlan() {
   return plan;
 }
 
+// After the indexer chain finishes (success OR fail), the daemon needs to
+// come up against the now-stable on-disk DB. hooks.mjs session-start no
+// longer races us in — daemon-start checks isIndexerLockHeld() and defers
+// while we hold the lock (#1061), so we own the wakeup. Idempotent: the
+// daemon CLI itself is a no-op when a live daemon lock is already held.
+function spawnDaemonAfterChain() {
+  // Honor the same opt-out hooks.mjs's runDaemonStartBackground checks —
+  // .claude/settings.json claudeFlow.daemon.autoStart. Without this gate,
+  // moving the daemon spawn from hooks.mjs into here would silently
+  // override the user's daemon-disabled preference.
+  if (!shouldDaemonAutoStart(projectRoot)) {
+    log('SKIP  daemon-start (claudeFlow.daemon.autoStart=false)');
+    return;
+  }
+  const localCli = getLocalCliPath();
+  if (!localCli) {
+    log('SKIP  daemon-start (CLI not found)');
+    return;
+  }
+  try {
+    const child = spawn('node', [localCli, 'daemon', 'start', '--quiet'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+      windowsHide: true,
+      detached: platform() !== 'win32',
+      env: process.env,
+    });
+    if (platform() !== 'win32') child.unref();
+    log(`DONE  daemon-start (pid=${child.pid ?? 'n/a'})`);
+  } catch (err) {
+    const msg = (err && err.message) ? err.message.split('\n')[0] : 'unknown';
+    log(`FAIL  daemon-start: ${msg}`);
+  }
+}
+
 async function main() {
   const startTime = Date.now();
+
+  // #1061 — hold the lock across the whole chain so daemon-start defers
+  // until our writes have landed. Stale-aware (dead pid OR mtime > 10 min).
+  const acquired = acquireIndexerLock(projectRoot);
+  if (!acquired) {
+    log('SKIP  another indexer chain holds the lock — exiting');
+    return;
+  }
+  // Release on every exit path. The `exit` listener catches normal returns;
+  // signal handlers cover ctrl+C / SIGTERM from the parent (#744 tree-kill
+  // path applies to OUR children, not to us — these handlers cover us).
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    try { releaseIndexerLock(projectRoot); } catch { /* non-fatal */ }
+  };
+  process.on('exit', release);
+  process.on('SIGINT', () => { release(); process.exit(130); });
+  process.on('SIGTERM', () => { release(); process.exit(143); });
+
   const plan = buildStepPlan();
 
   let ranAny = false;
@@ -283,10 +341,19 @@ async function main() {
     ? `Sequential indexing chain complete (${totalElapsed}s)`
     : `Sequential indexing chain skipped — all steps gated unchanged (${totalElapsed}s)`);
 
+  // Release the lock BEFORE spawning the daemon so the daemon's own
+  // isIndexerLockHeld() probe (#1061) sees the cleared state.
+  release();
+  spawnDaemonAfterChain();
+
   if (!hnswOk) process.exit(1);
 }
 
 main().catch(err => {
   log(`FATAL: ${err.message}`);
+  // Best-effort release on fatal path — the exit listener will catch it
+  // anyway, but explicit release here ensures the daemon spawn that
+  // follows isn't blocked by our own lock if we ever add one.
+  try { releaseIndexerLock(projectRoot); } catch { /* non-fatal */ }
   process.exit(1);
 });

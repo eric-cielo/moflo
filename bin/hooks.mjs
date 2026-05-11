@@ -27,6 +27,7 @@ import { createProcessManager } from './lib/process-manager.mjs';
 import { shouldDaemonAutoStart } from './lib/daemon-config.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { findProjectRoot } from './lib/moflo-paths.mjs';
+import { isIndexerLockHeld } from './lib/indexer-lock.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -266,8 +267,6 @@ async function main() {
       }
 
       case 'session-start': {
-        // Start daemon quietly in background (no DB writes)
-        runDaemonStartBackground();
         // Run all DB-writing indexers SEQUENTIALLY in a single background process.
         // This avoids sql.js last-write-wins concurrency (#78) and ensures
         // HNSW rebuild runs after all indexers finish (#81).
@@ -289,11 +288,21 @@ async function main() {
         // middle of overwriting during an upgrade. resolveBinOrLocal's
         // bin-first ordering guarantees the spawned chain matches the
         // installed package even when the mirror is mid-sync.
+        //
+        // #1061 — Daemon-start is the LAST step of the indexer chain, not a
+        // parallel spawn here. Forking the daemon at the same instant as the
+        // chain lets the daemon's stale sql.js snapshot clobber the chain's
+        // on-disk writes on its next flush. By letting index-all.mjs spawn
+        // the daemon AFTER it releases the indexer lock, the daemon comes up
+        // against the stable post-chain state. If the chain script is
+        // missing, fall back to the direct daemon start so a missing-bin
+        // failure doesn't also lose the daemon.
         const indexAllScript = resolveBinOrLocal('flo-index-all', 'index-all.mjs');
         if (indexAllScript) {
           spawnWindowless('node', [indexAllScript], 'sequential indexing chain');
         } else {
-          log('warn', 'index-all.mjs not found (checked npm bin + .claude/scripts/)');
+          log('warn', 'index-all.mjs not found (checked npm bin + .claude/scripts/) — direct daemon start fallback');
+          runDaemonStartBackground();
         }
         // Neural patterns now loaded by moflo core routing — no external patching.
         break;
@@ -335,6 +344,9 @@ async function main() {
       case 'daemon-start': {
         if (isDaemonLockHeld()) {
           log('info', 'Daemon already running (lock held), skipping start');
+        } else if (isIndexerLockHeld(projectRoot)) {
+          // #1061 — indexer chain owns the daemon wakeup at its end.
+          log('info', 'Indexer chain in progress, deferring daemon start (#1061)');
         } else if (isDaemonSpawnRecent()) {
           log('info', 'Daemon spawn debounced (recent attempt), skipping');
         } else {
@@ -574,7 +586,16 @@ function runDaemonStartBackground() {
     return;
   }
 
-  // 3. Debounce: skip if we spawned recently (prevents thundering herd)
+  // 3. #1061 — indexer chain in progress. The chain spawns the daemon at
+  //    its end against the post-chain stable state. Starting in parallel
+  //    lets the daemon's stale sql.js snapshot clobber the chain's writes
+  //    on its next flush.
+  if (isIndexerLockHeld(projectRoot)) {
+    log('info', 'Indexer chain in progress, deferring daemon start (#1061)');
+    return;
+  }
+
+  // 4. Debounce: skip if we spawned recently (prevents thundering herd)
   if (isDaemonSpawnRecent()) {
     log('info', 'Daemon spawn debounced (recent attempt), skipping');
     return;
@@ -586,7 +607,7 @@ function runDaemonStartBackground() {
     return;
   }
 
-  // 4. Write stamp BEFORE spawning so concurrent callers see it immediately
+  // 5. Write stamp BEFORE spawning so concurrent callers see it immediately
   touchSpawnStamp();
 
   spawnWindowless('node', [localCli, 'daemon', 'start', '--quiet'], 'daemon');
