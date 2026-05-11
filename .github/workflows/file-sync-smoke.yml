@@ -27,7 +27,7 @@ name: File-sync smoke (#976)
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'epic/*']
     paths:
       - 'bin/lib/file-sync.mjs'
       - 'bin/session-start-launcher.mjs'
@@ -37,7 +37,7 @@ on:
       - 'src/cli/__tests__/bootstrap-sentinel-promotion.test.ts'
       - '.github/workflows/file-sync-smoke.yml'
   push:
-    branches: [main]
+    branches: [main, 'epic/*']
     paths:
       - 'bin/lib/file-sync.mjs'
       - 'bin/session-start-launcher.mjs'
