@@ -28,22 +28,12 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 
 import { resolve, dirname, relative, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
-import { mofloResolveURL } from './lib/moflo-resolve.mjs';
-import { memoryDbPath, MOFLO_DIR } from './lib/moflo-paths.mjs';
+import { memoryDbPath, MOFLO_DIR, findProjectRoot } from './lib/moflo-paths.mjs';
+import { openBackend } from './lib/get-backend.mjs';
 import { applyIncrementalChunks, computeContentListHash } from './lib/incremental-write.mjs';
 import { createProcessManager } from './lib/process-manager.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
 
 const projectRoot = findProjectRoot();
 const NAMESPACE = 'patterns';
@@ -76,16 +66,9 @@ function ensureDbDir() {
 async function getDb() {
   ensureDbDir();
   // Lazy: hash-cache-match and no-source-files early-exits in main() never
-  // reach this, and the sql.js wasm cold-load is ~400ms otherwise wasted.
-  const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
-  const SQL = await initSqlJs();
-  let db;
-  if (existsSync(DB_PATH)) {
-    const buffer = readFileSync(DB_PATH);
-    db = new SQL.Database(buffer);
-  } else {
-    db = new SQL.Database();
-  }
+  // reach this, and the backend cold-load (sql.js wasm ~400ms, node:sqlite
+  // WAL init ~20ms) is otherwise wasted on the no-op path.
+  const db = await openBackend(projectRoot, { create: true });
   db.run(`
     CREATE TABLE IF NOT EXISTS memory_entries (
       id TEXT PRIMARY KEY,
@@ -114,8 +97,7 @@ async function getDb() {
 }
 
 function saveDb(db) {
-  const data = db.export();
-  writeFileSync(DB_PATH, Buffer.from(data));
+  db.save();
 }
 
 function countNamespace(db) {

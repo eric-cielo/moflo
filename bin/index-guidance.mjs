@@ -25,12 +25,11 @@
 import { existsSync, readdirSync, readFileSync, statSync, mkdirSync, writeFileSync } from 'fs';
 import { resolve, relative, dirname, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
-import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, findProjectRoot } from './lib/moflo-paths.mjs';
+import { openBackend } from './lib/get-backend.mjs';
 import { applyIncrementalChunks } from './lib/incremental-write.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { createProcessManager } from './lib/process-manager.mjs';
-const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -172,14 +171,7 @@ function ensureDbDir() {
 
 async function getDb() {
   ensureDbDir();
-  const SQL = await initSqlJs();
-  let db;
-  if (existsSync(DB_PATH)) {
-    const buffer = readFileSync(DB_PATH);
-    db = new SQL.Database(buffer);
-  } else {
-    db = new SQL.Database();
-  }
+  const db = await openBackend(projectRoot, { create: true });
 
   // Ensure table exists with unique constraint
   db.run(`
@@ -212,8 +204,7 @@ async function getDb() {
 }
 
 function saveDb(db) {
-  const data = db.export();
-  writeFileSync(DB_PATH, Buffer.from(data));
+  db.save();
 }
 
 function hashContent(content) {

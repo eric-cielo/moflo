@@ -17,10 +17,10 @@
  *   flo-search "query" --threshold 0.3
  */
 
-import { existsSync, readFileSync } from 'fs';
-import { mofloResolveURL, mofloInternalURL } from './lib/moflo-resolve.mjs';
+import { existsSync } from 'fs';
+import { mofloInternalURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, findProjectRoot } from './lib/moflo-paths.mjs';
-const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
+import { openBackend } from './lib/get-backend.mjs';
 const FASTEMBED_INLINE = 'dist/src/cli/embeddings/fastembed-inline/index.js';
 
 const projectRoot = findProjectRoot();
@@ -97,9 +97,9 @@ async function getDb() {
   if (!existsSync(DB_PATH)) {
     throw new Error(`Database not found: ${DB_PATH}`);
   }
-  const SQL = await initSqlJs();
-  const buffer = readFileSync(DB_PATH);
-  return new SQL.Database(buffer);
+  // Read-only: search must never trigger WAL creation in a freshly-cloned
+  // consumer repo, and the factory guarantees the same shape across engines.
+  return openBackend(projectRoot, { create: false, readOnly: true });
 }
 
 async function semanticSearch(queryText, options = {}) {

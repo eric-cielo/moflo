@@ -16,26 +16,15 @@
  *   flo-embeddings --namespace guidance                       # scope to one namespace
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { mofloResolveURL, mofloInternalURL } from './lib/moflo-resolve.mjs';
-import { memoryDbPath, hnswIndexPath } from './lib/moflo-paths.mjs';
-const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
+import { existsSync, readFileSync } from 'fs';
+import { mofloInternalURL } from './lib/moflo-resolve.mjs';
+import { memoryDbPath, hnswIndexPath, findProjectRoot } from './lib/moflo-paths.mjs';
+import { openBackend } from './lib/get-backend.mjs';
 const FASTEMBED_INLINE = 'dist/src/cli/embeddings/fastembed-inline/index.js';
 const BRIDGE_CORE = 'dist/src/cli/memory/bridge-core.js';
 const HNSW_PERSISTENCE = 'dist/src/cli/memory/hnsw-persistence.js';
 const { writeVectorStatsJson } = await import(mofloInternalURL(BRIDGE_CORE));
 const { buildAndWriteHnswSidecar } = await import(mofloInternalURL(HNSW_PERSISTENCE));
-
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
 
 const projectRoot = findProjectRoot();
 const DB_PATH = memoryDbPath(projectRoot);
@@ -100,14 +89,11 @@ async function getDb() {
   if (!existsSync(DB_PATH)) {
     throw new Error(`Database not found: ${DB_PATH}`);
   }
-  const SQL = await initSqlJs();
-  const buffer = readFileSync(DB_PATH);
-  return new SQL.Database(buffer);
+  return openBackend(projectRoot, { create: false });
 }
 
 function saveDb(db) {
-  const data = db.export();
-  writeFileSync(DB_PATH, Buffer.from(data));
+  db.save();
 }
 
 function getEntriesNeedingEmbeddings(db, namespace, forceAll) {

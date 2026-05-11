@@ -24,20 +24,9 @@
  * the DB and BEFORE the embeddings migration / soft-delete purge / ephemeral
  * purge — those all swallow corruption errors and silently no-op.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { memoryDbPath } from './moflo-paths.mjs';
-
-let _initSqlJs = null;
-
-async function loadSqlJs() {
-  if (_initSqlJs) return _initSqlJs;
-  // sql.js is a hard dependency of moflo (see top-level package.json);
-  // resolving it from the consumer's node_modules works because the launcher
-  // runs from the consumer cwd.
-  const mod = await import('sql.js');
-  _initSqlJs = mod.default || mod;
-  return _initSqlJs;
-}
+import { openBackend } from './get-backend.mjs';
 
 function isOk(execResult) {
   const rows = execResult?.[0]?.values ?? [];
@@ -63,18 +52,9 @@ export async function repairMemoryDbIfCorrupt(projectRoot) {
   const dbPath = memoryDbPath(projectRoot);
   if (!existsSync(dbPath)) return { repaired: false, errors: 0 };
 
-  let initSql;
-  try {
-    initSql = await loadSqlJs();
-  } catch {
-    return { repaired: false, errors: 0 };
-  }
-
   let db = null;
   try {
-    const SQL = await initSql();
-    const data = readFileSync(dbPath);
-    db = new SQL.Database(data);
+    db = await openBackend(projectRoot, { create: false });
 
     const before = db.exec('PRAGMA integrity_check');
     if (isOk(before)) {
@@ -89,8 +69,7 @@ export async function repairMemoryDbIfCorrupt(projectRoot) {
       return { repaired: false, errors, persistent: true };
     }
 
-    const out = Buffer.from(db.export());
-    writeFileSync(dbPath, out);
+    db.save();
     return { repaired: true, errors };
   } catch {
     return { repaired: false, errors: 0 };

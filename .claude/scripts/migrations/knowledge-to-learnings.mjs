@@ -10,11 +10,10 @@
  * @module bin/migrations/knowledge-to-learnings
  */
 
-import { existsSync, readFileSync } from 'fs';
-import { writeFileSync } from 'fs';
+import { existsSync } from 'fs';
 import { randomBytes } from 'crypto';
-import { mofloResolveURL } from '../lib/moflo-resolve.mjs';
 import { memoryDbPath } from '../lib/moflo-paths.mjs';
+import { openBackend } from '../lib/get-backend.mjs';
 import { MIGRATED_FROM_KNOWLEDGE } from './lib/markers.mjs';
 
 export const name = 'knowledge-to-learnings';
@@ -45,11 +44,10 @@ export async function run(projectRoot) {
   const dbPath = memoryDbPath(projectRoot);
   if (!existsSync(dbPath)) return { rowsMigrated: 0, rowsSkipped: 0 };
 
-  // Lazy-load sql.js — top-level await would pay ~30ms WASM init even on the
-  // no-op fast-path where the manifest already records this migration as done.
-  const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
-  const SQL = await initSqlJs();
-  const db = new SQL.Database(readFileSync(dbPath));
+  // Lazy-load via the backend factory — top-level await would pay the engine
+  // init cost even on the no-op fast-path where the manifest already records
+  // this migration as done.
+  const db = await openBackend(projectRoot, { create: false });
 
   const sourceStmt = db.prepare(
     `SELECT id, key, content, type, metadata, tags, embedding, embedding_dimensions,
@@ -119,7 +117,7 @@ export async function run(projectRoot) {
     insertStmt.free();
   }
 
-  if (migrated > 0) writeFileSync(dbPath, Buffer.from(db.export()));
+  if (migrated > 0) db.save();
   db.close();
   return { rowsMigrated: migrated, rowsSkipped: skipped };
 }
