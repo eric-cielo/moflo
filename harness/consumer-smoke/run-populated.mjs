@@ -23,6 +23,7 @@
 
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 
 import * as report from './lib/report.mjs';
 import * as proc from './lib/proc.mjs';
@@ -31,7 +32,10 @@ import { runPopulatedConsumerProfile } from './lib/populated.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..', '..');
-const workDir = join(__dirname, '.work');
+// #1088: workDir lives in os.tmpdir() so the consumer dir has NO moflo-repo
+// ancestor with markers that findProjectRoot would resolve to instead of
+// the consumer itself. See run.mjs for the full rationale.
+const workDir = join(tmpdir(), 'moflo-consumer-smoke-populated');
 
 const argv = process.argv.slice(2);
 const opts = {

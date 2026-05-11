@@ -35,6 +35,7 @@
 
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 
 import * as report from './lib/report.mjs';
 import * as proc from './lib/proc.mjs';
@@ -42,7 +43,16 @@ import * as check from './lib/checks.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..', '..');
-const workDir = join(__dirname, '.work');
+// #1088: workDir lives in os.tmpdir() so the consumer dir has NO moflo-repo
+// ancestor with `CLAUDE.md+package.json` or `.moflo/moflo.db`. Without this,
+// every walk-up resolver inside the consumer (findProjectRoot, the daemon's
+// bridge, every bin/ script) lands on the moflo source repo and writes to
+// the wrong DB. Nesting under `harness/consumer-smoke/.work` produced a
+// recurring bug class — #1054 single-writer epic, #1057 unified resolver,
+// #1058 daemon-routed reads, #1088 — each exposed the same path mismatch in
+// a different code path. The fix is structural: put the consumer somewhere
+// the resolver can't accidentally walk up out of.
+const workDir = join(tmpdir(), 'moflo-consumer-smoke');
 
 const argv = process.argv.slice(2);
 const opts = {
@@ -72,6 +82,12 @@ async function main() {
     consumerDir = check.installConsumer({ workDir, tarballPath: tarball });
 
     const checks = [
+      // #1088 broken-window gate — must run FIRST. If the consumer dir isn't
+      // its own project root, every downstream daemon/bridge/probe quietly
+      // reads/writes the wrong DB and individual probe failures look like
+      // unrelated bugs (we've debugged that pattern 3+ times). Fail here
+      // with a single named error instead.
+      () => check.verifyConsumerIsProjectRoot(consumerDir),
       () => check.verifyForbiddenDeps(consumerDir),
       () => check.verifyRequiredDeps(consumerDir),
       () => check.verifyNoBannedEmbeddings(consumerDir),
