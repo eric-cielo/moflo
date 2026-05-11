@@ -162,16 +162,26 @@ function wrapNodeSqlite(db, dbPath) {
     const row = changesStmt.get();
     return Number(row?.c ?? 0);
   };
+
+  // Per-connection prepare cache for `db.run(sql, params)` calls — without
+  // this the indexer's bulk-DELETE loop (index-guidance:698,699,717) allocates
+  // a fresh StatementSync per row, churning the engine's compile cache.
+  const runStmtCache = new Map();
+  const runWithParams = (sql, params) => {
+    let s = runStmtCache.get(sql);
+    if (!s) {
+      s = db.prepare(sql);
+      runStmtCache.set(sql, s);
+    }
+    s.run(...params);
+  };
+
   return {
     kind: BACKEND_NODE_SQLITE,
     prepare: (sql) => wrapNodeSqliteStmt(db.prepare(sql)),
     run: (sql, params) => {
-      if (params && params.length > 0) {
-        const s = db.prepare(sql);
-        s.run(...params);
-      } else {
-        db.exec(sql);
-      }
+      if (params && params.length > 0) runWithParams(sql, params);
+      else db.exec(sql);
     },
     exec: (sql) => execAsRowsNodeSqlite(db, sql),
     getRowsModified: getChanges,
@@ -182,6 +192,7 @@ function wrapNodeSqlite(db, dbPath) {
     },
     close: () => {
       changesStmt = null;
+      runStmtCache.clear();
       db.close();
     },
     _raw: db,
@@ -192,23 +203,29 @@ function wrapNodeSqlite(db, dbPath) {
  * Adapt node:sqlite to sql.js's `db.exec(sql)` return shape:
  * `[{ columns: string[], values: any[][] }]`. The bin scripts use this for
  * single-statement queries that return rows (`PRAGMA integrity_check` in
- * `db-repair.mjs`). Multi-statement DDL falls through to `db.exec()` and
- * returns `[]` — matches sql.js's behaviour for the same input.
+ * `db-repair.mjs`, `SELECT COUNT(*)` in `index-guidance.mjs`).
+ *
+ * The catch ONLY wraps `db.prepare()` — multi-statement SQL is the one shape
+ * that fails preparation but is accepted by `db.exec()`. Errors thrown by
+ * `stmt.all()` (constraint violations, runtime SQL errors) propagate up so
+ * the caller never silently swallows them OR re-executes side-effecting DDL.
  */
 function execAsRowsNodeSqlite(db, sql) {
+  let stmt;
   try {
-    const stmt = db.prepare(sql);
-    const rows = stmt.all();
-    if (rows.length === 0) return [];
-    const columns = Object.keys(rows[0]);
-    const values = rows.map((r) => columns.map((c) => r[c]));
-    return [{ columns, values }];
+    stmt = db.prepare(sql);
   } catch {
-    // Multi-statement SQL or DDL — node:sqlite's prepare rejects it; fall
-    // back to the row-discarding exec path.
+    // Multi-statement SQL — node:sqlite's prepare rejects it. Fall back to
+    // exec which discards rows (caller of multi-statement exec doesn't read
+    // the return value; matches sql.js for DDL).
     db.exec(sql);
     return [];
   }
+  const rows = stmt.all();
+  if (rows.length === 0) return [];
+  const columns = Object.keys(rows[0]);
+  const values = rows.map((r) => columns.map((c) => r[c]));
+  return [{ columns, values }];
 }
 
 function wrapNodeSqliteStmt(stmt) {
@@ -244,11 +261,15 @@ function wrapNodeSqliteStmt(stmt) {
       else stmt.run();
     },
     free: () => {
+      // sql.js's `Statement.free()` finalises the underlying statement;
+      // node:sqlite has no per-statement finalize (StatementSync is GC'd
+      // when the Database closes). The wrapper's `free()` instead resets
+      // the iteration state so the next `bind()`+`step()` cycle starts
+      // cleanly. Functional parity with sql.js callers despite the
+      // different underlying lifecycle.
       iter = null;
       currentRow = null;
       pendingParams = null;
-      // node:sqlite releases prepared statements when the underlying db
-      // closes; an explicit per-stmt free is unnecessary.
     },
   };
 }
