@@ -4,7 +4,7 @@
  * prerequisites) is handled by the caller via re-thrown errors.
  */
 
-import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync, statSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync, statSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync, spawn } from 'node:child_process';
@@ -220,8 +220,16 @@ console.log(JSON.stringify({
     record('project-root-gate', 'fail', `probe stdout not JSON: ${r.stdout.trim().slice(0, 200)}`);
     throw new Error('project-root gate failed');
   }
-  // Normalize for case-insensitive Windows paths + trailing-slash differences.
-  const norm = (p) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  // Normalize for:
+  //   - Windows case-insensitivity + backslash separators
+  //   - macOS /var → /private/var symlink (os.tmpdir() returns /var/...;
+  //     process.cwd() inside the subprocess returns the realpath
+  //     /private/var/... — string compare without realpath divergence FPs).
+  const norm = (p) => {
+    let r = p;
+    try { r = realpathSync(p); } catch { /* path may not exist on either side; fall through */ }
+    return r.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  };
   if (norm(parsed.resolved) !== norm(consumerDir)) {
     record(
       'project-root-gate',
