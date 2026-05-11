@@ -24,8 +24,8 @@ export async function run(projectRoot) {
   if (!existsSync(dbPath)) return { purged: 0 };
 
   // Lazy-load via the backend factory — keeps the manifest-stamped no-op
-  // path off the WASM init cost (~30ms cold) and lets the engine swap via
-  // MOFLO_DB_BACKEND.
+  // path off the WASM init cost (~30ms cold). Engine selection lives in
+  // openBackend() (default: node:sqlite as of #1083 Phase 4).
   const db = await openBackend(projectRoot, { create: false });
 
   // Scope: every namespace, since both `flo memory index-guidance` and

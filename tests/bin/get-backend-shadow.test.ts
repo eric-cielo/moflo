@@ -122,7 +122,9 @@ describe('shadow off (default) — zero overhead path', () => {
   it('reports kind without a shadowKind property', async () => {
     const db = await openBackend(root, { create: true });
     try {
-      expect(db.kind).toBe(BACKEND_SQLJS);
+      // Phase 4 (#1083) flipped the default to node-sqlite; shadow-off path
+      // surfaces the bare primary without a shadowKind annotation.
+      expect(db.kind).toBe(BACKEND_NODE_SQLITE);
       expect((db as { shadowKind?: string }).shadowKind).toBeUndefined();
     } finally {
       db.close();

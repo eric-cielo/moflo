@@ -19,8 +19,10 @@ import { sync as globSync } from 'glob';
 import {
   openBackend,
   resolveBackend,
+  warnIfNotWal,
   BACKEND_SQLJS,
   BACKEND_NODE_SQLITE,
+  _resetNetworkFsWarnings,
 } from '../../bin/lib/get-backend.mjs';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -40,6 +42,9 @@ function cleanupRoot(root: string): void {
 }
 
 describe('get-backend factory — engine selection', () => {
+  // Phase 4 (#1083) removed MOFLO_DB_BACKEND as a selection mechanism. We
+  // still strip any stray value from the test env so a parent process
+  // that exports the variable can't sneak it back in.
   const original = process.env.MOFLO_DB_BACKEND;
   beforeEach(() => {
     delete process.env.MOFLO_DB_BACKEND;
@@ -49,33 +54,30 @@ describe('get-backend factory — engine selection', () => {
     else delete process.env.MOFLO_DB_BACKEND;
   });
 
-  it('defaults to sql.js when no override is set', () => {
-    expect(resolveBackend()).toBe(BACKEND_SQLJS);
-  });
-
-  it('honours MOFLO_DB_BACKEND=node-sqlite', () => {
-    process.env.MOFLO_DB_BACKEND = 'node-sqlite';
+  it('defaults to node-sqlite (Phase 4 flip, #1083)', () => {
     expect(resolveBackend()).toBe(BACKEND_NODE_SQLITE);
   });
 
-  it('honours MOFLO_DB_BACKEND=sql.js', () => {
-    process.env.MOFLO_DB_BACKEND = 'sql.js';
-    expect(resolveBackend()).toBe(BACKEND_SQLJS);
-  });
-
-  it('ignores unrecognised env values and falls back to default', () => {
-    process.env.MOFLO_DB_BACKEND = 'mongodb';
-    expect(resolveBackend()).toBe(BACKEND_SQLJS);
-  });
-
-  it('explicit opts.backend wins over env var', () => {
-    process.env.MOFLO_DB_BACKEND = 'node-sqlite';
+  it('explicit opts.backend = "sql.js" still works (shadow-read wrapper relies on it)', () => {
     expect(resolveBackend({ backend: 'sql.js' })).toBe(BACKEND_SQLJS);
   });
 
-  it('trims whitespace around the env var', () => {
-    process.env.MOFLO_DB_BACKEND = '  node-sqlite  ';
+  it('explicit opts.backend = "node-sqlite" returns node-sqlite', () => {
+    expect(resolveBackend({ backend: 'node-sqlite' })).toBe(BACKEND_NODE_SQLITE);
+  });
+
+  it('ignores MOFLO_DB_BACKEND env var entirely (Phase 4 removed the escape hatch)', () => {
+    process.env.MOFLO_DB_BACKEND = 'sql.js';
     expect(resolveBackend()).toBe(BACKEND_NODE_SQLITE);
+    process.env.MOFLO_DB_BACKEND = 'sqljs';
+    expect(resolveBackend()).toBe(BACKEND_NODE_SQLITE);
+    process.env.MOFLO_DB_BACKEND = 'anything';
+    expect(resolveBackend()).toBe(BACKEND_NODE_SQLITE);
+  });
+
+  it('opts.backend wins over the (now-ignored) env var', () => {
+    process.env.MOFLO_DB_BACKEND = 'node-sqlite';
+    expect(resolveBackend({ backend: 'sql.js' })).toBe(BACKEND_SQLJS);
   });
 });
 
@@ -190,6 +192,73 @@ describe('get-backend adapter — node:sqlite specifics', () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe('get-backend — network-FS warning probe (Phase 4 / #1083)', () => {
+  let root: string;
+  let stderrWrites: string[];
+  let originalWrite: typeof process.stderr.write;
+
+  beforeEach(() => {
+    root = makeTempProjectRoot('netfs');
+    _resetNetworkFsWarnings();
+    stderrWrites = [];
+    originalWrite = process.stderr.write.bind(process.stderr);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (process.stderr.write as any) = ((chunk: string | Uint8Array) => {
+      stderrWrites.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString());
+      return true;
+    }) as typeof process.stderr.write;
+  });
+  afterEach(() => {
+    process.stderr.write = originalWrite;
+    cleanupRoot(root);
+  });
+
+  it('no warning fires on a local disk (WAL succeeds)', async () => {
+    const db = await openBackend(root, { backend: 'node-sqlite', create: true });
+    try {
+      db.run('CREATE TABLE t (id INTEGER PRIMARY KEY)');
+    } finally {
+      db.close();
+    }
+    const warning = stderrWrites.join('').includes('SQLite journal_mode=');
+    expect(warning).toBe(false);
+  });
+
+  it('emits the network-FS warning when journal_mode reads back as non-WAL', async () => {
+    // Local disks always activate WAL, so we drive `warnIfNotWal` directly
+    // against a handle whose journal_mode was forced to DELETE. This is the
+    // shape NFS/SMB mounts surface: the WAL pragma silently falls back
+    // because shared-memory sidecars don't work over network FS.
+    const { DatabaseSync } = await import('node:sqlite');
+    const dbPath = path.join(root, '.moflo', 'sim.db');
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const handle = new DatabaseSync(dbPath);
+    handle.exec('PRAGMA journal_mode = DELETE');
+    warnIfNotWal(handle, dbPath);
+    handle.close();
+
+    const stderr = stderrWrites.join('');
+    expect(stderr).toContain('WARNING: SQLite journal_mode=delete');
+    expect(stderr).toContain(dbPath);
+    expect(stderr).toContain('NFS/SMB');
+  });
+
+  it('dedupes the warning so subsequent opens of the same path stay quiet', async () => {
+    const { DatabaseSync } = await import('node:sqlite');
+    const dbPath = path.join(root, '.moflo', 'sim.db');
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const handle = new DatabaseSync(dbPath);
+    handle.exec('PRAGMA journal_mode = DELETE');
+    warnIfNotWal(handle, dbPath);
+    warnIfNotWal(handle, dbPath);
+    warnIfNotWal(handle, dbPath);
+    handle.close();
+
+    const matches = stderrWrites.join('').match(/WARNING: SQLite journal_mode/g);
+    expect(matches?.length ?? 0).toBe(1);
   });
 });
 

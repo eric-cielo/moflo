@@ -3,8 +3,8 @@
  *
  * Drop-in replacement for {@link SqlJsBackend} (same IMemoryBackend surface,
  * same schema, same event emissions) backed by the Node 22+ built-in
- * `node:sqlite` engine instead of WASM. Selected at runtime by
- * `MOFLO_DB_BACKEND=node-sqlite` (default OFF — sql.js remains the default).
+ * `node:sqlite` engine instead of WASM. Phase 4 (#1083) made this the
+ * default; Phase 5 (#1084) deletes the sql.js backend + npm dep.
  *
  * Why this exists: epic #1078 / Phase 0 spike (#1079, PR #1085) confirmed
  * `node:sqlite` parity against shipped sql.js DBs. The structural sql.js

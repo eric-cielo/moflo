@@ -29,6 +29,16 @@ function mkRoot(): string {
 }
 
 /**
+ * Windows cleanup helper. node:sqlite leaves brief OS-level locks on the
+ * `.db-wal` / `.db-shm` sidecars after close; a naive `rmSync` races those
+ * and trips `EPERM`. The launcher's own session-start sequence already
+ * has plenty of slack for this; tests just need the retry loop.
+ */
+function rmRootWithRetries(root: string): void {
+  rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+}
+
+/**
  * Build a small SQLite DB with a unique-key index and seed it with rows.
  * Mirrors the memory_entries shape just enough that REINDEX has work to do.
  */
@@ -75,21 +85,35 @@ describe('repairMemoryDbIfCorrupt (#743)', () => {
       const result = await repairMemoryDbIfCorrupt(root);
       expect(result).toEqual({ repaired: false, errors: 0 });
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmRootWithRetries(root);
     }
   });
 
   it('leaves a healthy DB untouched and reports no repair', async () => {
     const root = mkRoot();
     try {
-      await makeSeededDb(root, 50);
-      const before = readFileSync(dbPath(root));
+      const rowCount = 50;
+      await makeSeededDb(root, rowCount);
       const result = await repairMemoryDbIfCorrupt(root);
       expect(result).toEqual({ repaired: false, errors: 0 });
-      const after = readFileSync(dbPath(root));
-      expect(after.equals(before)).toBe(true);
+
+      // Phase 4 (#1083) flipped the SQLite engine to node:sqlite + WAL, so
+      // opening the file (even just for an integrity probe) writes
+      // journal-mode metadata and may produce .db-wal / .db-shm sidecars.
+      // The byte-identical assertion this test used to make doesn't survive
+      // that. What we actually care about: data round-trips intact through
+      // the probe — re-open and verify the seeded rows are still there.
+      const SQL = await initSqlJs();
+      const db = new SQL.Database(readFileSync(dbPath(root)));
+      try {
+        const probe = db.exec('SELECT COUNT(*) FROM memory_entries');
+        const count = Number(probe[0]?.values?.[0]?.[0] ?? 0);
+        expect(count).toBe(rowCount);
+      } finally {
+        db.close();
+      }
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmRootWithRetries(root);
     }
   });
 
@@ -119,7 +143,7 @@ describe('repairMemoryDbIfCorrupt (#743)', () => {
         expect(result.persistent).toBe(true);
       }
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmRootWithRetries(root);
     }
   });
 
@@ -133,7 +157,7 @@ describe('repairMemoryDbIfCorrupt (#743)', () => {
       // — what matters is no exception escapes.
       expect(result.repaired).toBe(false);
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmRootWithRetries(root);
     }
   });
 });

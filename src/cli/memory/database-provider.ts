@@ -79,8 +79,9 @@ function detectPlatform(): PlatformInfo {
   const isMacOS = os === 'darwin';
   const isLinux = os === 'linux';
 
-  // Recommend better-sqlite3 for Unix-like systems, sql.js for Windows
-  const recommendedProvider: DatabaseProvider = 'sql.js';
+  // Phase 4 (#1083) flipped the default to node:sqlite (built into Node 22+,
+  // moflo's minimum). Phase 5 (#1084) deletes the sql.js backend + dep.
+  const recommendedProvider: DatabaseProvider = 'node-sqlite';
 
   return {
     os,
@@ -99,8 +100,9 @@ async function testRvf(): Promise<boolean> {
 }
 
 /**
- * Test if the built-in node:sqlite engine is available (Node 22+). Phase 1
- * of epic #1078 — gated by `MOFLO_DB_BACKEND=node-sqlite`, default OFF.
+ * Test if the built-in node:sqlite engine is available (Node 22+).
+ * Phase 4 (#1083) made this the default; Phase 5 (#1084) deletes the
+ * sql.js fallback path entirely.
  */
 async function testNodeSqlite(): Promise<boolean> {
   try {
@@ -129,9 +131,12 @@ async function testSqlJs(): Promise<boolean> {
 }
 
 /**
- * Select best available provider. The `MOFLO_DB_BACKEND` env var lets ops
- * opt into the node:sqlite backend ahead of the Phase 4 default flip
- * (epic #1078). Explicit `options.provider` still wins over the env var.
+ * Select best available provider. Phase 4 (#1083) flipped the SQLite default
+ * from sql.js to node:sqlite (built into Node 22+, moflo's minimum). Explicit
+ * `options.provider` still wins; there is no env-var escape hatch — the
+ * rollback path is pinning the previous moflo version. sql.js is NOT a
+ * silent fallback so a broken node:sqlite install surfaces rather than
+ * regressing silently to the engine Phase 5 deletes.
  */
 async function selectProvider(
   preferred?: DatabaseProvider,
@@ -144,45 +149,27 @@ async function selectProvider(
     return preferred;
   }
 
-  const envBackend = process.env.MOFLO_DB_BACKEND?.trim();
-  if (envBackend === 'node-sqlite') {
-    if (await testNodeSqlite()) {
-      if (verbose) {
-        console.log('[DatabaseProvider] MOFLO_DB_BACKEND=node-sqlite — using node:sqlite');
-      }
-      return 'node-sqlite';
-    }
+  if (await testNodeSqlite()) {
     if (verbose) {
-      console.warn('[DatabaseProvider] MOFLO_DB_BACKEND=node-sqlite requested but node:sqlite unavailable; falling back to default selection');
+      console.log('[DatabaseProvider] node:sqlite available — using new default');
     }
+    return 'node-sqlite';
   }
 
-  const platformInfo = detectPlatform();
-
+  // node:sqlite missing is the "broken install" signal — surface it whenever
+  // verbose is on so the fallback chain doesn't silently regress consumers
+  // to a slower backend without anyone noticing.
   if (verbose) {
-    console.log(`[DatabaseProvider] Platform detected: ${platformInfo.os}`);
-    console.log(`[DatabaseProvider] Recommended provider: ${platformInfo.recommendedProvider}`);
+    console.warn('[DatabaseProvider] node:sqlite unavailable — check Node version (22+ required); falling back to RVF');
   }
 
-  // Try RVF first (always available via pure-TS fallback)
   if (await testRvf()) {
-    if (verbose) {
-      console.log('[DatabaseProvider] RVF backend available');
-    }
     return 'rvf';
   }
 
-  // Try sql.js (moflo: sql.js is the only SQLite backend)
-  if (await testSqlJs()) {
-    if (verbose) {
-      console.log('[DatabaseProvider] sql.js available and working');
-    }
-    return 'sql.js';
-  } else if (verbose) {
-    console.log('[DatabaseProvider] sql.js not available, using JSON fallback');
+  if (verbose) {
+    console.warn('[DatabaseProvider] node:sqlite + RVF unavailable — falling back to JSON');
   }
-
-  // Final fallback to JSON
   return 'json';
 }
 

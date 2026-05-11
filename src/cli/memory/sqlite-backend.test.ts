@@ -337,14 +337,16 @@ describe('SqliteBackend ↔ SqlJsBackend parity', () => {
 
 // ─── DatabaseProvider integration ─────────────────────────────────────────
 
-describe('DatabaseProvider with MOFLO_DB_BACKEND=node-sqlite', () => {
+describe('DatabaseProvider — node:sqlite is the default (#1083 Phase 4)', () => {
   let savedEnv: string | undefined;
   let workDir: string;
 
   beforeEach(() => {
-    // Capture inside beforeEach so an earlier-running test that pollutes the
-    // env var doesn't get its pollution perpetuated by the afterEach restore.
+    // MOFLO_DB_BACKEND is no longer respected (Phase 4 removed the escape
+    // hatch). We still capture+restore so a parent process that exports the
+    // variable can't leak into the test run.
     savedEnv = process.env.MOFLO_DB_BACKEND;
+    delete process.env.MOFLO_DB_BACKEND;
     workDir = mkdtempSync(join(tmpdir(), 'moflo-dbprovider-nodesqlite-'));
   });
   afterEach(() => {
@@ -358,28 +360,32 @@ describe('DatabaseProvider with MOFLO_DB_BACKEND=node-sqlite', () => {
     expect(avail.nodeSqlite).toBe(true);
   });
 
-  it('default selection ignores the flag and does not pick node-sqlite', async () => {
-    delete process.env.MOFLO_DB_BACKEND;
-    const db = await createDatabase(':memory:');
-    expect(db).not.toBeInstanceOf(SqliteBackend);
-    await db.shutdown();
-  });
-
-  it('MOFLO_DB_BACKEND=node-sqlite selects SqliteBackend', async () => {
-    process.env.MOFLO_DB_BACKEND = 'node-sqlite';
-    const db = await createDatabase(join(workDir, 'flagged.db'));
+  it('default selection picks SqliteBackend (node:sqlite) without any flag', async () => {
+    const db = await createDatabase(join(workDir, 'default.db'));
     expect(db).toBeInstanceOf(SqliteBackend);
-    const e = createDefaultEntry({ key: 'flag-test', content: 'hi' });
+    const e = createDefaultEntry({ key: 'default-test', content: 'hi' });
     await db.store(e);
     const got = await db.get(e.id);
-    expect(got?.key).toBe('flag-test');
+    expect(got?.key).toBe('default-test');
     await db.shutdown();
   });
 
-  it('explicit provider: "node-sqlite" works regardless of env', async () => {
-    delete process.env.MOFLO_DB_BACKEND;
+  it('ignores MOFLO_DB_BACKEND=sql.js — env var is no longer the selection mechanism', async () => {
+    process.env.MOFLO_DB_BACKEND = 'sql.js';
+    const db = await createDatabase(join(workDir, 'ignored-env.db'));
+    expect(db).toBeInstanceOf(SqliteBackend);
+    await db.shutdown();
+  });
+
+  it('explicit provider: "node-sqlite" works', async () => {
     const db = await createDatabase(':memory:', { provider: 'node-sqlite' });
     expect(db).toBeInstanceOf(SqliteBackend);
+    await db.shutdown();
+  });
+
+  it('explicit provider: "sql.js" still routes through SqlJsBackend (shadow-read uses it)', async () => {
+    const db = await createDatabase(':memory:', { provider: 'sql.js' });
+    expect(db).not.toBeInstanceOf(SqliteBackend);
     await db.shutdown();
   });
 });

@@ -40,12 +40,9 @@ describe('DatabaseProvider', () => {
       expect(info).toHaveProperty('isLinux');
       expect(info).toHaveProperty('recommendedProvider');
 
-      // Should recommend sql.js on Windows, better-sqlite3 on Unix
-      if (info.isWindows) {
-        expect(info.recommendedProvider).toBe('sql.js');
-      } else {
-        expect(info.recommendedProvider).toBe('sql.js');
-      }
+      // Phase 4 (#1083) flipped the default to node:sqlite (built into Node
+      // 22+, moflo's minimum). All platforms recommend the same engine now.
+      expect(info.recommendedProvider).toBe('node-sqlite');
     });
   });
 

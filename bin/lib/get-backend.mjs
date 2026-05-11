@@ -5,9 +5,13 @@
  * can be swapped in one place (epic #1078 Phase 2 / issue #1081).
  *
  * Engine selection priority:
- *   1. `opts.backend` — explicit override (used by tests + the TS factory)
- *   2. `MOFLO_DB_BACKEND` env var — `'node-sqlite'` or `'sql.js'`
- *   3. Default: `'sql.js'` (Phase 4 will flip to `'node-sqlite'`)
+ *   1. `opts.backend` — explicit override (used by tests + internal shadow-read wrapper)
+ *   2. Default: `'node-sqlite'` (Phase 4 flip / issue #1083)
+ *
+ * No env-var escape hatch: if node:sqlite surfaces a regression in production,
+ * the rollback path is `npm install moflo@<previous>` rather than carrying a
+ * `MOFLO_DB_BACKEND` env var we'd have to sunset in Phase 5. Phase 5 (#1084)
+ * deletes the sql.js adapter and dep entirely.
  *
  * The handle exposes the **sql.js low-level Statement API** because that's
  * what every existing bin/ caller already uses (db.prepare/stmt.bind/step/
@@ -43,9 +47,10 @@ export const BACKEND_SQLJS = 'sql.js';
 export const BACKEND_NODE_SQLITE = 'node-sqlite';
 
 /**
- * Resolve the configured backend. Honours the explicit `opts.backend`
- * override first, then `MOFLO_DB_BACKEND`, then defaults to `sql.js`. Pure
- * function — callers can use it directly to log the selected engine.
+ * Resolve the configured backend. Defaults to `node-sqlite` (Phase 4 / #1083).
+ * The only override is `opts.backend` — used by the shadow-read wrapper to
+ * open the off-engine sibling and by tests. There is no env-var escape hatch;
+ * rolling back means installing the previous moflo version.
  *
  * @param {{ backend?: string }} [opts]
  * @returns {'sql.js'|'node-sqlite'}
@@ -54,9 +59,7 @@ export function resolveBackend(opts = {}) {
   if (opts.backend === BACKEND_SQLJS || opts.backend === BACKEND_NODE_SQLITE) {
     return opts.backend;
   }
-  const env = (process.env.MOFLO_DB_BACKEND || '').trim();
-  if (env === BACKEND_NODE_SQLITE) return BACKEND_NODE_SQLITE;
-  return BACKEND_SQLJS;
+  return BACKEND_NODE_SQLITE;
 }
 
 function ensureDir(filePath) {
@@ -114,7 +117,8 @@ async function openWithShadow(projectRoot, primaryKind, primaryPath, opts) {
 }
 
 // ---------------------------------------------------------------------------
-// sql.js adapter — current default
+// sql.js adapter — kept for shadow-read pairing + opt-in via opts.backend
+// (Phase 5 / #1084 deletes this adapter and the npm dep together).
 // ---------------------------------------------------------------------------
 
 let _initSqlJsCached = null;
@@ -170,20 +174,85 @@ function wrapSqlJsStmt(stmt) {
 }
 
 // ---------------------------------------------------------------------------
-// node:sqlite adapter — Phase 1 backend behind MOFLO_DB_BACKEND=node-sqlite
+// node:sqlite adapter — default backend as of Phase 4 (#1083)
 // ---------------------------------------------------------------------------
+
+// Module-scope guard so we only fire the network-FS warning once per path
+// per process — the indexer + daemon + bin/ scripts all open the same DB and
+// we don't want N copies of the same message in one session.
+const _networkFsWarnedPaths = new Set();
 
 async function openNodeSqlite(dbPath, opts) {
   const { DatabaseSync } = await import('node:sqlite');
   const readOnly = opts.readOnly === true;
   const db = new DatabaseSync(dbPath, { readOnly });
   if (!readOnly) {
-    // WAL trinity validated by Phase 0 spike (#1079) and Phase 1 backend.
-    db.exec('PRAGMA journal_mode = WAL');
-    db.exec('PRAGMA synchronous = NORMAL');
-    db.exec('PRAGMA busy_timeout = 5000');
+    // Close the handle on any PRAGMA failure — node:sqlite opens forgivingly
+    // (even non-SQLite files succeed in the constructor) and a PRAGMA that
+    // throws later would otherwise leak the file handle across processes
+    // (visible on Windows as EPERM on subsequent rmdir of the parent).
+    try {
+      // WAL trinity validated by Phase 0 spike (#1079) and Phase 1 backend.
+      db.exec('PRAGMA journal_mode = WAL');
+      db.exec('PRAGMA synchronous = NORMAL');
+      db.exec('PRAGMA busy_timeout = 5000');
+      // Phase 4 / #1083 — network-FS detection. SQLite's POSIX advisory locks
+      // and WAL shared-memory both fail silently on NFS/SMB; the engine falls
+      // back to a non-WAL journal mode rather than erroring. sql.js never had
+      // this problem because it didn't take file locks at all, so consumers
+      // running moflo on network-mounted home dirs would silently lose
+      // multi-process safety after the default flip. Read journal_mode back
+      // and warn if it isn't `wal`.
+      if (dbPath !== ':memory:') warnIfNotWal(db, dbPath);
+    } catch (err) {
+      try { db.close(); } catch { /* already-dead handle */ }
+      throw err;
+    }
   }
   return wrapNodeSqlite(db, dbPath);
+}
+
+/**
+ * Read `journal_mode` back after we requested WAL. If the engine returned a
+ * different mode (`delete`, `truncate`, `persist`, `memory`, `off`), the
+ * underlying filesystem doesn't support WAL's shared-memory sidecar — a
+ * strong signal that POSIX advisory locks are also unreliable. Surface a
+ * one-line stderr warning naming the path so the user knows to move the
+ * project off the network mount. Deduped per (path, process).
+ *
+ * Exported so the test in `tests/bin/get-backend.test.ts` can drive a real
+ * non-WAL handle through the same probe (a local-disk DB will always come
+ * back as WAL, so we can't trigger the warning by simply opening a DB).
+ *
+ * @param {object} db node:sqlite DatabaseSync handle
+ * @param {string} dbPath
+ */
+export function warnIfNotWal(db, dbPath) {
+  if (_networkFsWarnedPaths.has(dbPath)) return;
+  let mode;
+  try {
+    const stmt = db.prepare('PRAGMA journal_mode');
+    const row = stmt.get();
+    mode = String(row?.journal_mode ?? '').toLowerCase();
+  } catch {
+    // Probe must never break the open path — silent failure is acceptable
+    // because the WAL pragma above already either took effect or didn't.
+    return;
+  }
+  if (mode && mode !== 'wal') {
+    _networkFsWarnedPaths.add(dbPath);
+    process.stderr.write(
+      `[moflo] WARNING: SQLite journal_mode=${mode} on ${dbPath} (WAL not active). ` +
+      `If this directory is on NFS/SMB or another network filesystem, POSIX ` +
+      `advisory locks are unreliable and concurrent moflo processes can corrupt ` +
+      `the database. Move the project to a local disk to restore multi-process safety.\n`
+    );
+  }
+}
+
+/** @internal — test hook only (resets the dedupe set). */
+export function _resetNetworkFsWarnings() {
+  _networkFsWarnedPaths.clear();
 }
 
 function wrapNodeSqlite(db, dbPath) {
