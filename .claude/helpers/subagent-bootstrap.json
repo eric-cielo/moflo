@@ -1,3 +1,3 @@
 {
-  "directive": "MANDATORY FIRST ACTION: Your very first tool call MUST be mcp__moflo__memory_search (any query, any namespace). The memory-first gate WILL BLOCK all Glob, Grep, and Read calls until you do this. After memory search, follow `.claude/guidance/moflo-subagents.md` protocol. When search returns chunk hits, traverse via mcp__moflo__memory_get_neighbors before retrieving — see `.claude/guidance/moflo-memory-protocol.md`."
+  "directive": "MANDATORY FIRST ACTION: Your very first tool call MUST be mcp__moflo__memory_search (any query, any namespace). The memory-first gate WILL BLOCK all Glob, Grep, and Read calls until you do this. After memory search, follow `.claude/guidance/moflo-subagents.md` protocol. When a search hit carries `navigation`, you MUST call mcp__moflo__memory_get_neighbors to traverse — calling mcp__moflo__memory_retrieve on every hit is a protocol violation. See `.claude/guidance/moflo-memory-protocol.md`."
 }
