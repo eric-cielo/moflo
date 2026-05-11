@@ -80,6 +80,7 @@ async function main() {
       () => check.doctor(consumerDir),
       () => check.memoryInit(consumerDir),
       () => check.memoryCrud(consumerDir),
+      () => check.crossProcessNoClobber(consumerDir),
       () => check.spellList(consumerDir),
       () => check.spellScheduleStrictCron(consumerDir),
       () => check.mcpTools(consumerDir),
@@ -100,7 +101,11 @@ async function main() {
       () => check.verifyNoPathResolutionErrors(),
     ];
     for (const fn of checks) {
-      try { fn(); } catch (err) {
+      // Most checks are sync; #1060's crossProcessNoClobber is async. Await
+      // every result so a thrown error OR a rejected Promise becomes a
+      // recorded fail rather than an unhandled rejection that walks past the
+      // reporter.
+      try { await fn(); } catch (err) {
         report.record(fn.name || 'check', 'fail', `unexpected error: ${err.message}`);
       }
     }

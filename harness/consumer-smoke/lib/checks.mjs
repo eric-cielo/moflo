@@ -7,7 +7,9 @@
 import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync, statSync, readFileSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import * as http from 'node:http';
 
 import { run, runNode, flo, NPM_CMD, getStderrSamples } from './proc.mjs';
 import { section, record, recordExit, log } from './report.mjs';
@@ -572,6 +574,315 @@ export function memoryCrud(consumerDir) {
       catch { /* benign — file may have been removed by a subprocess */ }
     }
   }
+}
+
+/**
+ * Cross-process moflo.db single-writer invariant (#1054.S6 / #1060).
+ *
+ * Starts the consumer's real daemon, then spawns two parallel Node
+ * subprocesses that each `POST /api/memory/store` directly to the daemon —
+ * the daemon's single sql.js handle is the only writer that touches
+ * `.moflo/moflo.db`. A third process (the harness itself) reads both keys
+ * back via the daemon's `/api/memory/get` — proves no clobber and proves
+ * visibility is cross-process, not just same-process cache.
+ *
+ * Why the writer subprocesses bypass `tryDaemonStore` and hit the HTTP
+ * endpoint themselves: the client's first-call health probe has a 100ms
+ * timeout and silently falls back to direct write on miss. That fallback IS
+ * the bug class — it's what produced the writeback-clobber pattern this
+ * gate exists to detect. Driving the daemon RPC directly isolates the
+ * cross-process invariant from the client-side probe race.
+ *
+ * Pre-fix: any second writer holding its own sql.js snapshot would clobber
+ * the first writer's row on flush. Post-fix: both writes survive because the
+ * daemon owns the only sql.js handle and serialises the RPC stream.
+ *
+ * Hard-fail. Per #1054 acceptance criteria and `feedback_broken_window_theory`,
+ * a regression here ships the writeback-clobber bug class to consumers.
+ */
+export async function crossProcessNoClobber(consumerDir) {
+  section('Cross-process moflo.db single-writer invariant (#1060)');
+
+  // memoryCrud's finally restored its own yaml writes; make sure the daemon
+  // is enabled for this check by clearing any leftover yaml. Restore prior
+  // state on exit so downstream checks see what they expect.
+  const yamlPath = join(consumerDir, 'moflo.yaml');
+  const priorYaml = existsSync(yamlPath) ? readFileSync(yamlPath, 'utf8') : null;
+  if (priorYaml !== null) {
+    try { rmSync(yamlPath); } catch { /* ok */ }
+  }
+
+  const scriptPaths = [];
+  try {
+    // 1) Start the real consumer daemon and wait until its HTTP endpoint is
+    //    reachable. Bound the wait so a stuck daemon can't hold up the matrix.
+    const startRes = flo(consumerDir, ['daemon', 'start', '--quiet'], { timeout: 30_000 });
+    if (startRes.code !== 0) {
+      record('cross-process-no-clobber:daemon-start', 'fail',
+        `flo daemon start exit ${startRes.code}: ${(startRes.stderr || startRes.stdout).trim().slice(0, 200)}`);
+      return;
+    }
+
+    const port = parseInt(process.env.MOFLO_DAEMON_PORT || '3117', 10);
+    const ready = await waitForDaemon(port, 15_000);
+    if (!ready) {
+      record('cross-process-no-clobber:daemon-start', 'fail',
+        `daemon did not become reachable at 127.0.0.1:${port} within 15s`);
+      return;
+    }
+    record('cross-process-no-clobber:daemon-start', 'pass', `daemon reachable on 127.0.0.1:${port}`);
+
+    // 2) Spawn two parallel writers. Both import the shipped dist initializer
+    //    so they exercise the exact code path consumers run.
+    const ns = 'smoke-1060';
+    const tag = randomBytes(6).toString('hex');
+    const keyA = `A:smoke-${tag}`;
+    const valueA = `A-value-${tag}`;
+    const keyB = `B:smoke-${tag}`;
+    const valueB = `B-value-${tag}`;
+
+    const [resA, resB] = await Promise.all([
+      spawnNoClobberWriter(consumerDir, port, { key: keyA, value: valueA, namespace: ns }, scriptPaths),
+      spawnNoClobberWriter(consumerDir, port, { key: keyB, value: valueB, namespace: ns }, scriptPaths),
+    ]);
+
+    if (!resA.ok || !resB.ok) {
+      const detail = [
+        resA.ok ? null : `writer-A: ${resA.error}`,
+        resB.ok ? null : `writer-B: ${resB.error}`,
+      ].filter(Boolean).join(' | ');
+      record('cross-process-no-clobber:parallel-writes', 'fail', detail);
+      return;
+    }
+    record('cross-process-no-clobber:parallel-writes', 'pass', 'both writers reported success');
+
+    // 3) Read both keys back from a third process (the harness) via the
+    //    daemon's HTTP RPC. If either is missing, the second writer's flush
+    //    clobbered the first.
+    const [gotA, gotB] = await Promise.all([
+      daemonGetEntry(port, ns, keyA),
+      daemonGetEntry(port, ns, keyB),
+    ]);
+
+    const missing = [];
+    if (!gotA.found) missing.push(keyA);
+    if (!gotB.found) missing.push(keyB);
+    if (missing.length > 0) {
+      const listed = await daemonListNamespace(port, ns);
+      record('cross-process-no-clobber:visibility', 'fail',
+        `clobber detected — missing: ${missing.join(', ')}; daemon /list ns=${ns}: ${JSON.stringify(listed)}; gotA=${JSON.stringify(gotA)}; gotB=${JSON.stringify(gotB)}`);
+      return;
+    }
+    if (gotA.content !== valueA || gotB.content !== valueB) {
+      record('cross-process-no-clobber:visibility', 'fail',
+        `value mismatch — A.content=${JSON.stringify(gotA.content)}, B.content=${JSON.stringify(gotB.content)}`);
+      return;
+    }
+    record('cross-process-no-clobber:visibility', 'pass',
+      'both keys readable from a third process — single-writer invariant holds');
+
+    // 4) Cleanup the smoke namespace so we don't leak rows into later checks.
+    await Promise.all([
+      daemonDeleteEntry(port, ns, keyA),
+      daemonDeleteEntry(port, ns, keyB),
+    ]);
+  } finally {
+    for (const p of scriptPaths) {
+      try { rmSync(p, { force: true }); } catch { /* ok */ }
+    }
+    stopConsumerDaemon(consumerDir);
+    if (priorYaml !== null) writeFileSync(yamlPath, priorYaml);
+  }
+}
+
+function waitForDaemon(port, timeoutMs) {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    const tick = () => {
+      probeDaemonStatus(port).then((ok) => {
+        if (ok) return resolve(true);
+        if (Date.now() >= deadline) return resolve(false);
+        setTimeout(tick, 250);
+      });
+    };
+    tick();
+  });
+}
+
+function probeDaemonStatus(port) {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { host: '127.0.0.1', port, path: '/api/status', timeout: 1_000 },
+      (res) => { res.resume(); resolve(res.statusCode === 200); },
+    );
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
+
+function spawnNoClobberWriter(consumerDir, port, { key, value, namespace }, scriptPaths) {
+  return new Promise((resolve) => {
+    const scriptPath = join(consumerDir, `writer-${randomBytes(6).toString('hex')}.mjs`);
+    scriptPaths.push(scriptPath);
+
+    // Drive the daemon RPC directly via HTTP. The #1060 invariant is about
+    // the cross-process write path itself — does the daemon serialize two
+    // concurrent stores without clobber? Going through tryDaemonStore would
+    // let a slow first-call /api/status probe silently fall back to direct
+    // write (the bug class), masking the very regression this gate exists
+    // to detect. Daemon-write-client's contract is tested elsewhere; this
+    // fixture isolates the cross-process invariant.
+    const script = `
+import * as http from 'node:http';
+
+function postJson(path, body) {
+  return new Promise((resolve) => {
+    const payload = JSON.stringify(body);
+    const req = http.request({
+      host: '127.0.0.1',
+      port: ${JSON.stringify(port)},
+      path,
+      method: 'POST',
+      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+      },
+    }, (res) => {
+      let buf = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { buf += c; });
+      res.on('end', () => {
+        let parsed = null;
+        try { parsed = JSON.parse(buf); } catch { /* ignore */ }
+        resolve({ status: res.statusCode, body: parsed });
+      });
+      res.on('error', () => resolve({ status: 0, body: null, error: 'response-error' }));
+    });
+    req.on('error', (err) => resolve({ status: 0, body: null, error: err.message }));
+    req.on('timeout', () => { req.destroy(); resolve({ status: 0, body: null, error: 'timeout' }); });
+    req.write(payload);
+    req.end();
+  });
+}
+
+try {
+  const r = await postJson('/api/memory/store', {
+    key: ${JSON.stringify(key)},
+    value: ${JSON.stringify(value)},
+    namespace: ${JSON.stringify(namespace)},
+  });
+  process.stdout.write(JSON.stringify(r));
+  process.exit(0);
+} catch (err) {
+  process.stderr.write(String(err && err.stack || err));
+  process.exit(2);
+}
+`;
+    writeFileSync(scriptPath, script);
+
+    const proc = spawn(process.execPath, [scriptPath], {
+      cwd: consumerDir,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: false,
+      windowsHide: true,
+      env: { ...process.env },
+    });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
+    proc.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+    proc.on('error', (err) => {
+      resolve({ ok: false, error: `spawn failed: ${err.message}` });
+    });
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        resolve({ ok: false, error: `exit ${code}: ${(stderr || stdout).trim().slice(0, 200)}` });
+        return;
+      }
+      let parsed;
+      try { parsed = JSON.parse(stdout); }
+      catch {
+        resolve({ ok: false, error: `unparsable stdout: ${stdout.trim().slice(0, 200)}` });
+        return;
+      }
+      const status = parsed?.status;
+      if (typeof status !== 'number' || status < 200 || status >= 300) {
+        resolve({
+          ok: false,
+          error: `daemon HTTP store rejected — status=${status} body=${JSON.stringify(parsed?.body)} err=${parsed?.error ?? ''}`,
+        });
+        return;
+      }
+      if (parsed?.body?.ok !== true || parsed?.body?.stored !== true) {
+        resolve({ ok: false, error: `daemon body not ok/stored: ${JSON.stringify(parsed?.body)}` });
+        return;
+      }
+      resolve({ ok: true });
+    });
+  });
+}
+
+function daemonGetEntry(port, namespace, key) {
+  return postDaemonJson(port, '/api/memory/get', { namespace, key }).then((res) => {
+    if (!res.ok) return { found: false, content: null, _diag: { status: res.status } };
+    return {
+      found: !!res.data?.found,
+      content: res.data?.entry?.content ?? null,
+    };
+  });
+}
+
+function daemonListNamespace(port, namespace) {
+  return postDaemonJson(port, '/api/memory/list', { namespace, limit: 50 }).then((res) => {
+    if (!res.ok) return { _status: res.status };
+    return {
+      total: res.data?.total,
+      keys: Array.isArray(res.data?.entries) ? res.data.entries.map((e) => e.key) : null,
+    };
+  });
+}
+
+function daemonDeleteEntry(port, namespace, key) {
+  return postDaemonJson(port, '/api/memory/delete', { namespace, key });
+}
+
+function postDaemonJson(port, path, body) {
+  return new Promise((resolve) => {
+    const payload = JSON.stringify(body);
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port,
+        path,
+        method: 'POST',
+        timeout: 5_000,
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+      },
+      (res) => {
+        let buf = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { buf += chunk; });
+        res.on('end', () => {
+          const status = res.statusCode ?? 0;
+          if (status < 200 || status >= 300) {
+            resolve({ ok: false, status });
+            return;
+          }
+          try { resolve({ ok: true, data: JSON.parse(buf) }); }
+          catch { resolve({ ok: false, status }); }
+        });
+        res.on('error', () => resolve({ ok: false }));
+      },
+    );
+    req.on('error', () => resolve({ ok: false }));
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false }); });
+    req.write(payload);
+    req.end();
+  });
 }
 
 /**
