@@ -385,7 +385,9 @@ async function checkBridgeCoherence(dbPath: string | undefined): Promise<void> {
  *
  * Bridge coherence (#1058): every entry through this gate checks whether the
  * dbPath's mtime has advanced past our last-known value; if so, the bridge is
- * torn down so the next op reads fresh disk state. Daemon process is exempt.
+ * torn down so the next op reads fresh disk state. Daemon participates in the
+ * check; its own writes anchor `lastSeenMtimeMs` via `persistBridgeDb` so
+ * self-fire is suppressed.
  */
 export async function withDb<T>(
   dbPath: string | undefined,
