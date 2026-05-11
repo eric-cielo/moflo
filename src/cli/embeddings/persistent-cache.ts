@@ -363,9 +363,13 @@ export class PersistentEmbeddingCache {
 /**
  * Check if persistent cache is available. node:sqlite is built into Node 22+
  * (moflo's minimum) so this always succeeds; kept for API compatibility.
+ *
+ * Loads the warning-suppression side-effect BEFORE the probe import so the
+ * once-per-process ExperimentalWarning doesn't leak to stderr (#1098).
  */
 export async function isPersistentCacheAvailable(): Promise<boolean> {
   try {
+    await import('../memory/suppress-sqlite-warning.js');
     await import('node:sqlite');
     return true;
   } catch {

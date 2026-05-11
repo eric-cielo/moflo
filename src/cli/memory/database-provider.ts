@@ -105,9 +105,15 @@ async function testRvf(): Promise<boolean> {
 
 /**
  * Test if the built-in node:sqlite engine is available (Node 22+).
+ *
+ * Loads the suppress-sqlite-warning side-effect BEFORE the probe import so
+ * the once-per-process ExperimentalWarning never fires (#1098). A probe
+ * that prints the warning to stderr defeats every consumer's "clean
+ * startup" expectation even when the rest of the run is healthy.
  */
 async function testNodeSqlite(): Promise<boolean> {
   try {
+    await import('./suppress-sqlite-warning.js');
     await import('node:sqlite');
     return true;
   } catch {

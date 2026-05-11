@@ -1114,6 +1114,16 @@ export function memoryTraversalProtocol(consumerDir) {
   const memToolsPath = join(consumerDir, 'node_modules', 'moflo', 'dist', 'src', 'cli', 'mcp-tools', 'memory-tools.js')
     .replace(/\\/g, '/');
   writeFileSync(probe, `
+// Filter the once-per-process \`SQLite is an experimental feature\` warning
+// before the \`node:sqlite\` import below fires it (#1098).
+{
+  const originalEmitWarning = process.emitWarning;
+  process.emitWarning = function (warning, ...args) {
+    const msg = typeof warning === 'string' ? warning : (warning && warning.message) || '';
+    if (msg.includes('SQLite is an experimental feature')) return;
+    return originalEmitWarning.apply(this, [warning, ...args]);
+  };
+}
 import { pathToFileURL } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';

@@ -25,6 +25,11 @@
  * @module bin/lib/get-backend
  */
 
+// MUST come before any direct/transitive `node:sqlite` import below — the
+// node:sqlite module fires ExperimentalWarning exactly once per process on
+// first load, and once it fires there's no way to scrub it from stderr.
+import './suppress-sqlite-warning.mjs';
+
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { memoryDbPath } from './moflo-paths.mjs';

@@ -16,6 +16,9 @@
  * @module v3/memory/sqlite-backend
  */
 
+// MUST come before `import 'node:sqlite'` below — see suppress-sqlite-warning
+// header for rationale (#1098).
+import './suppress-sqlite-warning.js';
 import { EventEmitter } from 'node:events';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import { cosineSimilarity } from './hnsw-lite.js';

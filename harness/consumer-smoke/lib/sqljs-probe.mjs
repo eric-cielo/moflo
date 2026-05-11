@@ -26,6 +26,18 @@ import { record } from './report.mjs';
 // `StatementSync`. Mirrors src/cli/memory/daemon-backend.ts:wrapStatement
 // — keep behavioural parity if either side moves.
 const PROBE_HARNESS = `
+// Filter Node's once-per-process \`SQLite is an experimental feature\`
+// warning BEFORE the \`node:sqlite\` import below fires it. The smoke
+// harness scans subprocess stderr for failures, and the warning prefix
+// otherwise fills the truncated tail and hides real errors (#1098).
+{
+  const originalEmitWarning = process.emitWarning;
+  process.emitWarning = function (warning, ...args) {
+    const msg = typeof warning === 'string' ? warning : (warning && warning.message) || '';
+    if (msg.includes('SQLite is an experimental feature')) return;
+    return originalEmitWarning.apply(this, [warning, ...args]);
+  };
+}
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

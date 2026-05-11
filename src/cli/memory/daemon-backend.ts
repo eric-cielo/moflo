@@ -27,6 +27,12 @@
  * @module v3/memory/daemon-backend
  */
 
+// MUST come before `import 'node:sqlite'` below — that module fires
+// `ExperimentalWarning: SQLite is an experimental feature` exactly once per
+// process on first load. Once it fires, there's no way to scrub it from
+// stderr, and consumer-smoke's 200-char stderr tails get filled with it
+// (hiding the real error message; #1098).
+import './suppress-sqlite-warning.js';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync, type SQLInputValue } from 'node:sqlite';

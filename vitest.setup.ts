@@ -17,6 +17,12 @@
 
 import { beforeEach } from 'vitest';
 
+// Install the node:sqlite ExperimentalWarning filter BEFORE any test file
+// imports anything that touches `node:sqlite`. The warning fires once per
+// worker process on first load and pollutes the noise budget for tests
+// that snapshot or assert on stderr. (#1098)
+import './src/cli/memory/suppress-sqlite-warning.js';
+
 // Set once at module load (every test file imports this setup).
 process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
 

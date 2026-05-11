@@ -13,6 +13,11 @@
 // already ships with correct .js extensions — the patch is unnecessary.
 process.env.SKIP_AGENTDB_PATCH ??= '1';
 
+// MUST run before any `node:sqlite` import in the process tree so the
+// once-per-process ExperimentalWarning never fires. See module header for
+// why we filter rather than `--no-warnings`-style broadly suppressing.
+import './lib/suppress-sqlite-warning.mjs';
+
 import { randomUUID } from 'crypto';
 
 // Check if we should run in MCP server mode
