@@ -15,9 +15,9 @@
  * @module bin/migrations/knowledge-purge
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { mofloResolveURL } from '../lib/moflo-resolve.mjs';
+import { existsSync } from 'fs';
 import { memoryDbPath } from '../lib/moflo-paths.mjs';
+import { openBackend } from '../lib/get-backend.mjs';
 import { hasMigrationRun } from '../lib/migrations.mjs';
 import { MIGRATED_FROM_KNOWLEDGE } from './lib/markers.mjs';
 
@@ -44,11 +44,10 @@ export async function run(projectRoot) {
   const dbPath = memoryDbPath(projectRoot);
   if (!existsSync(dbPath)) return { purged: 0, skipped: 0 };
 
-  // Lazy-load sql.js — keeps the manifest-stamped no-op path off the WASM
-  // init cost (~30ms cold).
-  const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
-  const SQL = await initSqlJs();
-  const db = new SQL.Database(readFileSync(dbPath));
+  // Lazy-load via the backend factory — keeps the manifest-stamped no-op
+  // path off the WASM init cost (~30ms cold) and lets the engine swap via
+  // MOFLO_DB_BACKEND.
+  const db = await openBackend(projectRoot, { create: false });
 
   const knowledgeStmt = db.prepare(
     `SELECT id, key, status FROM memory_entries
@@ -101,7 +100,7 @@ export async function run(projectRoot) {
     deleteStmt.free();
   }
 
-  if (purged > 0) writeFileSync(dbPath, Buffer.from(db.export()));
+  if (purged > 0) db.save();
   db.close();
   return { purged, skipped };
 }

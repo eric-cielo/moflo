@@ -17,22 +17,11 @@
  *   flo-search "query" --threshold 0.3
  */
 
-import { existsSync, readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { mofloResolveURL, mofloInternalURL } from './lib/moflo-resolve.mjs';
-import { memoryDbPath } from './lib/moflo-paths.mjs';
-const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
+import { existsSync } from 'fs';
+import { mofloInternalURL } from './lib/moflo-resolve.mjs';
+import { memoryDbPath, findProjectRoot } from './lib/moflo-paths.mjs';
+import { openBackend } from './lib/get-backend.mjs';
 const FASTEMBED_INLINE = 'dist/src/cli/embeddings/fastembed-inline/index.js';
-
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
 
 const projectRoot = findProjectRoot();
 const DB_PATH = memoryDbPath(projectRoot);
@@ -108,9 +97,9 @@ async function getDb() {
   if (!existsSync(DB_PATH)) {
     throw new Error(`Database not found: ${DB_PATH}`);
   }
-  const SQL = await initSqlJs();
-  const buffer = readFileSync(DB_PATH);
-  return new SQL.Database(buffer);
+  // Read-only: search must never trigger WAL creation in a freshly-cloned
+  // consumer repo, and the factory guarantees the same shape across engines.
+  return openBackend(projectRoot, { create: false, readOnly: true });
 }
 
 async function semanticSearch(queryText, options = {}) {
@@ -164,6 +153,7 @@ async function semanticSearch(queryText, options = {}) {
         preview: entry.content.substring(0, 150).replace(/\n/g, ' '),
         type: metadata.type || 'unknown',
         parentDoc: metadata.parentDoc || null,
+        parentPath: metadata.parentPath || null,
         chunkTitle: metadata.chunkTitle || null,
       });
     } catch (err) {
@@ -262,7 +252,9 @@ async function main() {
     console.log(`  Key: ${top.key}`);
     console.log(`  Score: ${top.score.toFixed(4)}`);
     if (top.chunkTitle) console.log(`  Section: ${top.chunkTitle}`);
-    if (top.parentDoc) console.log(`  Parent: ${top.parentDoc}`);
+    // #1053 S4: doc-* retired — parentPath is the actionable source location.
+    if (top.parentPath) console.log(`  Parent: ${top.parentPath}`);
+    else if (top.parentDoc) console.log(`  Parent: ${top.parentDoc}`);
     console.log(`  Preview: ${top.preview}...`);
   } catch (err) {
     console.error(`[semantic-search] Error: ${err.message}`);

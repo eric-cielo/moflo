@@ -26,11 +26,10 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 
 import { resolve, dirname, relative, basename, extname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync, execFileSync, spawn } from 'child_process';
-import { mofloResolveURL } from './lib/moflo-resolve.mjs';
 import { memoryDbPath, MOFLO_DIR, findProjectRoot } from './lib/moflo-paths.mjs';
+import { openBackend } from './lib/get-backend.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyIncrementalChunks, computeContentListHash } from './lib/incremental-write.mjs';
-const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -77,14 +76,7 @@ function ensureDbDir() {
 
 async function getDb() {
   ensureDbDir();
-  const SQL = await initSqlJs();
-  let db;
-  if (existsSync(DB_PATH)) {
-    const buffer = readFileSync(DB_PATH);
-    db = new SQL.Database(buffer);
-  } else {
-    db = new SQL.Database();
-  }
+  const db = await openBackend(projectRoot, { create: true });
 
   db.run(`
     CREATE TABLE IF NOT EXISTS memory_entries (
@@ -114,8 +106,7 @@ async function getDb() {
 }
 
 function saveDb(db) {
-  const data = db.export();
-  writeFileSync(DB_PATH, Buffer.from(data));
+  db.save();
 }
 
 function countNamespace(db) {

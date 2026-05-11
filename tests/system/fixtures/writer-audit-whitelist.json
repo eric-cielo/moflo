@@ -267,6 +267,11 @@
       "file": "bin/lib/incremental-write.mjs",
       "classification": "daemon-offline",
       "notes": "Helper used by indexers — content-diff already implemented (#745)"
+    },
+    {
+      "file": "bin/lib/get-backend.mjs",
+      "classification": "daemon-offline",
+      "notes": "Phase 2 (#1081) JS-twin factory — every bin/ writer routes through openBackend(); selects sql.js vs node:sqlite via MOFLO_DB_BACKEND env var"
     }
   ]
 }

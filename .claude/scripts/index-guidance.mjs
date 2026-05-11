@@ -25,24 +25,14 @@
 import { existsSync, readdirSync, readFileSync, statSync, mkdirSync, writeFileSync } from 'fs';
 import { resolve, relative, dirname, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
-import { mofloResolveURL } from './lib/moflo-resolve.mjs';
-import { memoryDbPath } from './lib/moflo-paths.mjs';
+import { memoryDbPath, findProjectRoot } from './lib/moflo-paths.mjs';
+import { openBackend } from './lib/get-backend.mjs';
+import { applyIncrementalChunks } from './lib/incremental-write.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { createProcessManager } from './lib/process-manager.mjs';
-const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
 
 const projectRoot = findProjectRoot();
 
@@ -131,6 +121,18 @@ function loadGuidanceDirs() {
   // 3. CLAUDE.md files are NOT indexed — Claude loads them into context automatically.
   //    Indexing them wastes vectors and creates duplicate keys across subprojects.
 
+  // 4. Project skills — index .claude/skills/<name>/SKILL.md
+  const projectSkillsDir = resolve(projectRoot, '.claude/skills');
+  if (existsSync(projectSkillsDir)) {
+    dirs.push({ path: '.claude/skills', prefix: 'skill', fileFilter: ['SKILL.md'], kind: 'skill' });
+  }
+
+  // 5. Bundled moflo skills — gated by isSelfRef to prevent double-indexing
+  const bundledSkillsDir = resolve(mofloRoot, '.claude/skills');
+  if (!isSelfRef && existsSync(bundledSkillsDir) && resolve(bundledSkillsDir) !== resolve(projectSkillsDir)) {
+    dirs.push({ path: bundledSkillsDir, prefix: 'skill-bundled', fileFilter: ['SKILL.md'], kind: 'skill', absolute: true });
+  }
+
   return dirs;
 }
 
@@ -169,14 +171,7 @@ function ensureDbDir() {
 
 async function getDb() {
   ensureDbDir();
-  const SQL = await initSqlJs();
-  let db;
-  if (existsSync(DB_PATH)) {
-    const buffer = readFileSync(DB_PATH);
-    db = new SQL.Database(buffer);
-  } else {
-    db = new SQL.Database();
-  }
+  const db = await openBackend(projectRoot, { create: true });
 
   // Ensure table exists with unique constraint
   db.run(`
@@ -209,12 +204,7 @@ async function getDb() {
 }
 
 function saveDb(db) {
-  const data = db.export();
-  writeFileSync(DB_PATH, Buffer.from(data));
-}
-
-function generateId() {
-  return `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  db.save();
 }
 
 function hashContent(content) {
@@ -227,34 +217,17 @@ function hashContent(content) {
   return hash.toString(16);
 }
 
-function storeEntry(db, key, content, metadata = {}, tags = []) {
-  const now = Date.now();
-  const id = generateId();
-  const metaJson = JSON.stringify(metadata);
-  const tagsJson = JSON.stringify(tags);
-
-  db.run(`
-    INSERT OR REPLACE INTO memory_entries
-    (id, key, namespace, content, metadata, tags, created_at, updated_at, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
-  `, [id, key, NAMESPACE, content, metaJson, tagsJson, now, now]);
-
-  return true;
-}
-
-function deleteByPrefix(db, prefix) {
-  db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key LIKE ?`, [NAMESPACE, `${prefix}%`]);
-}
-
-function getEntryHash(db, key) {
+// #1053 S4: doc-* entries retired. Doc-level skip check now reads
+// docContentHash off chunk-0 (every chunk carries it).
+function getDocHashFromChunkZero(db, chunkPrefix) {
   const stmt = db.prepare('SELECT metadata FROM memory_entries WHERE key = ? AND namespace = ?');
-  stmt.bind([key, NAMESPACE]);
+  stmt.bind([`${chunkPrefix}-0`, NAMESPACE]);
   const entry = stmt.step() ? stmt.getAsObject() : null;
   stmt.free();
   if (entry?.metadata) {
     try {
       const meta = JSON.parse(entry.metadata);
-      return meta.contentHash;
+      return meta.docContentHash;
     } catch { /* ignore */ }
   }
   return null;
@@ -513,18 +486,21 @@ function buildHierarchy(chunks, chunkPrefix) {
   return hierarchy;
 }
 
-function indexFile(db, filePath, keyPrefix) {
-  const fileName = basename(filePath, extname(filePath));
+function indexFile(db, filePath, keyPrefix, options = {}) {
+  const fileName = options.nameOverride || basename(filePath, extname(filePath));
   const docKey = `doc-${keyPrefix}-${fileName}`;
   const chunkPrefix = `chunk-${keyPrefix}-${fileName}`;
+  const extraMetadata = options.extraMetadata || {};
+  const extraTags = options.extraTags || [];
 
   try {
     const content = readFileSync(filePath, 'utf-8');
     const contentHash = hashContent(content);
 
-    // Check if content changed (skip if same hash unless --force)
+    // Check if content changed (skip if same hash unless --force).
+    // #1053 S4: doc-* retired — read docContentHash off chunk-0 instead.
     if (!force) {
-      const existingHash = getEntryHash(db, docKey);
+      const existingHash = getDocHashFromChunkZero(db, chunkPrefix);
       if (existingHash === contentHash) {
         return { docKey, status: 'unchanged', chunks: 0 };
       }
@@ -533,27 +509,23 @@ function indexFile(db, filePath, keyPrefix) {
     const stats = statSync(filePath);
     const relativePath = '/' + relative(projectRoot, filePath).replace(/\\/g, '/');
 
-    // Delete old chunks for this file before re-indexing
-    deleteByPrefix(db, chunkPrefix);
+    // #1053 S4: drop any legacy doc-* row left over from a pre-S4 install.
+    // The chunker stopped emitting these and the audit found zero production
+    // readers; safe one-time cleanup as part of the per-doc re-index.
+    db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key = ?`, [NAMESPACE, docKey]);
 
-    // 1. Store full document
-    const docMetadata = {
-      type: 'document',
-      filePath: relativePath,
-      fileSize: stats.size,
-      lastModified: stats.mtime.toISOString(),
-      contentHash,
-      indexedAt: new Date().toISOString(),
-      ragVersion: '2.0',  // Mark as full RAG indexed
-    };
+    // #1053 S4: Chunker no longer writes doc-* entries. Audit found zero
+    // production readers — they duplicated chunk semantic territory and
+    // ate ~13% of search slots without unique signal. parentDoc on chunks
+    // remains as an identifier/grouping label; callers needing the source
+    // file Read parentPath, per shipped/moflo-memory-protocol.md.
 
-    storeEntry(db, docKey, content, docMetadata, [keyPrefix, 'document']);
-    debug(`Stored document: ${docKey}`);
-
-    // 2. Chunk and store semantic pieces with full RAG linking
+    // Chunk and store semantic pieces with full RAG linking
     const chunks = chunkMarkdown(content, fileName);
 
     if (chunks.length === 0) {
+      // No chunks generated → sweep any stragglers from a prior run and exit.
+      db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key LIKE ?`, [NAMESPACE, `${chunkPrefix}-%`]);
       return { docKey, status: 'indexed', chunks: 0 };
     }
 
@@ -561,40 +533,31 @@ function indexFile(db, filePath, keyPrefix) {
     const hierarchy = buildHierarchy(chunks, chunkPrefix);
     const siblings = chunks.map((_, i) => `${chunkPrefix}-${i}`);
 
-    // Update document with children references
-    const docChildrenMeta = {
-      ...docMetadata,
-      children: siblings,
-      chunkCount: chunks.length,
-    };
-    storeEntry(db, docKey, content, docChildrenMeta, [keyPrefix, 'document']);
-
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
+    // #1057: route chunk writes through applyIncrementalChunks so an
+    // unchanged chunk (~95% of the time when only one section of a doc
+    // edited) keeps its embedding column. Pre-#1057 this loop used raw
+    // INSERT OR REPLACE after a blanket deleteByPrefix — every re-index
+    // wiped every chunk's embedding and forced build-embeddings to
+    // re-vectorise the whole doc on every save. See
+    // feedback_indexer_preserve_embeddings.md.
+    const chunkRows = chunks.map((chunk, i) => {
       const chunkKey = `${chunkPrefix}-${i}`;
-
-      // Build prev/next links
       const prevChunk = i > 0 ? `${chunkPrefix}-${i - 1}` : null;
       const nextChunk = i < chunks.length - 1 ? `${chunkPrefix}-${i + 1}` : null;
-
-      // Extract overlapping context from adjacent chunks
-      const contextBefore = i > 0
-        ? extractOverlapContext(chunks[i - 1].content, overlapPercent, 'end')
-        : null;
-      const contextAfter = i < chunks.length - 1
-        ? extractOverlapContext(chunks[i + 1].content, overlapPercent, 'start')
-        : null;
-
-      // Get hierarchical relationships
       const hierInfo = hierarchy[chunkKey];
 
       const chunkMetadata = {
+        ...extraMetadata,
         type: 'chunk',
         ragVersion: '2.0',
 
-        // Document relationship
+        // Document relationship — parentDoc is an identifier/grouping label
+        // only after #1053 S4; the actual source doc is at parentPath.
+        // docContentHash is the file-level hash, used by the skip-if-unchanged
+        // check (the chunker reads it off chunk-0 to decide whether to re-index).
         parentDoc: docKey,
         parentPath: relativePath,
+        docContentHash: contentHash,
 
         // Sequential navigation (forward/backward links)
         chunkIndex: i,
@@ -616,41 +579,34 @@ function indexFile(db, filePath, keyPrefix) {
         isPart: chunk.isPart || false,
         partNum: chunk.partNum || null,
 
-        // Overlapping context for continuity
-        contextOverlapPercent: overlapPercent,
-        hasContextBefore: !!contextBefore,
-        hasContextAfter: !!contextAfter,
-
         // Content metadata
         contentLength: chunk.content.length,
         contentHash: hashContent(chunk.content),
         indexedAt: new Date().toISOString(),
       };
 
-      // Build searchable content with title context
-      // Include overlap context for better retrieval
-      let searchableContent = `# ${chunk.title}\n\n`;
+      // #1053 S5: title heading + chunk body. No prev/next preamble.
+      const searchableContent = `# ${chunk.title}\n\n${chunk.content}`;
 
-      if (contextBefore) {
-        searchableContent += `[Context from previous section:]\n${contextBefore}\n\n---\n\n`;
-      }
+      return {
+        key: chunkKey,
+        content: searchableContent,
+        metadata: chunkMetadata,
+        tags: [
+          keyPrefix,
+          'chunk',
+          `level-${chunk.level}`,
+          chunk.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          ...extraTags,
+        ],
+      };
+    });
 
-      searchableContent += chunk.content;
-
-      if (contextAfter) {
-        searchableContent += `\n\n---\n\n[Context from next section:]\n${contextAfter}`;
-      }
-
-      // Store chunk with full metadata
-      storeEntry(
-        db,
-        chunkKey,
-        searchableContent,
-        chunkMetadata,
-        [keyPrefix, 'chunk', `level-${chunk.level}`, chunk.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')]
-      );
-
-      debug(`  Stored chunk ${i}: ${chunk.title} (${chunk.content.length} chars, prev=${!!prevChunk}, next=${!!nextChunk})`);
+    const counts = applyIncrementalChunks(db, NAMESPACE, chunkRows, {
+      keyPrefix: `${chunkPrefix}-`,
+    });
+    if (verbose) {
+      debug(`  Doc ${docKey}: inserted=${counts.inserted} updated=${counts.updated} unchanged=${counts.unchanged} removed=${counts.removed}`);
     }
 
     return { docKey, status: 'indexed', chunks: chunks.length };
@@ -699,7 +655,17 @@ function indexDirectory(db, dirConfig) {
     : allMdFiles;
 
   for (const filePath of filtered) {
-    const result = indexFile(db, filePath, dirConfig.prefix);
+    let options = {};
+    if (dirConfig.kind === 'skill') {
+      // kind: 'skill' — key by parent dir name (skill folder), not SKILL.md
+      const skillName = basename(dirname(filePath));
+      options = {
+        nameOverride: skillName,
+        extraMetadata: { kind: 'skill', skill_name: skillName },
+        extraTags: ['skill', `skill-${skillName}`],
+      };
+    }
+    const result = indexFile(db, filePath, dirConfig.prefix, options);
     results.push(result);
   }
 
