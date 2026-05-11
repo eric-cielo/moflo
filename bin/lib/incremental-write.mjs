@@ -66,16 +66,30 @@ export function computeContentListHash(files) {
 }
 
 /**
- * Load `key → content` for every active row in the namespace.
+ * Load `key → content` for every active row in the namespace, optionally
+ * scoped to keys starting with `keyPrefix` (one doc's chunks at a time —
+ * lets per-file indexers like `index-guidance.mjs` content-diff without
+ * loading every chunk across every file).
+ *
  * @param {object} db - sql.js Database
  * @param {string} namespace
+ * @param {string} [keyPrefix] — when set, restricts the scan to `key LIKE '<prefix>%'`.
+ *   The same prefix scopes the orphan sweep in {@link applyIncrementalChunks}.
  * @returns {Map<string,string>}
  */
-export function loadExistingContent(db, namespace) {
-  const stmt = db.prepare(
-    `SELECT key, content FROM memory_entries WHERE namespace = ? AND status = 'active'`,
-  );
-  stmt.bind([namespace]);
+export function loadExistingContent(db, namespace, keyPrefix) {
+  const stmt = keyPrefix
+    ? db.prepare(
+        `SELECT key, content FROM memory_entries WHERE namespace = ? AND key LIKE ? AND status = 'active'`,
+      )
+    : db.prepare(
+        `SELECT key, content FROM memory_entries WHERE namespace = ? AND status = 'active'`,
+      );
+  if (keyPrefix) {
+    stmt.bind([namespace, `${keyPrefix}%`]);
+  } else {
+    stmt.bind([namespace]);
+  }
   const map = new Map();
   while (stmt.step()) {
     const row = stmt.getAsObject();
@@ -95,11 +109,17 @@ export function loadExistingContent(db, namespace) {
  * @param {object} [opts]
  * @param {boolean} [opts.serialize=true] - JSON.stringify metadata/tags before
  *   writing. Set false when callers already pass strings.
+ * @param {string} [opts.keyPrefix] — when set, the existing-content load AND
+ *   the orphan sweep are restricted to keys matching `<prefix>%`. Use this
+ *   when processing a single file's chunks at a time (e.g. index-guidance.mjs
+ *   iterates files independently) — without it the sweep would delete every
+ *   chunk from every OTHER file as an orphan on each call.
  * @returns {{inserted:number, updated:number, unchanged:number, removed:number}}
  */
 export function applyIncrementalChunks(db, namespace, chunks, opts = {}) {
   const serialize = opts.serialize !== false;
-  const existing = loadExistingContent(db, namespace);
+  const keyPrefix = opts.keyPrefix;
+  const existing = loadExistingContent(db, namespace, keyPrefix);
   const newKeys = new Set();
   let inserted = 0;
   let updated = 0;

@@ -1488,6 +1488,75 @@ try {
   } catch { /* writing the failure itself must not throw */ }
 }
 
+// ── 3e-1057. Run unmet schema migrations BEFORE daemon spawn ────────────────
+// run-migrations.mjs walks `bin/migrations/*.mjs` and invokes each that has
+// not been recorded in `.moflo/migrations.json`. Each migration opens sql.js
+// directly and persists with atomicWriteFileSync. They MUST run before the
+// daemon spawns or the daemon's in-RAM snapshot races their on-disk writes
+// — the bug class S2 detects (#1056 version-skew kill) and S3 (#1057)
+// closes for good. Pre-#1057 this ran in Section 4 AFTER `hooks session-
+// start` fired off the daemon, which is exactly the race fixed here.
+//
+// Synchronous on purpose: blocking by ≤30s on a one-time migration is the
+// right trade vs. an inconsistent post-upgrade DB. The runner short-circuits
+// to a no-op when nothing is pending, so steady-state cost is just the node
+// startup + ESM graph (~80ms on a warm fs).
+const runMigrations = resolveMofloBin(projectRoot, null, 'run-migrations.mjs');
+if (runMigrations) {
+  runMigrationsAndAnnounce(runMigrations);
+}
+
+function runMigrationsAndAnnounce(runnerPath) {
+  let raw;
+  try {
+    raw = execFileSync('node', [runnerPath], {
+      cwd: projectRoot,
+      timeout: 30_000,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'inherit'],
+    });
+  } catch (err) {
+    // Migrations are best-effort — a failure here must never block session
+    // start. But silent swallowing hides hangs (30s timeout) and corrupted
+    // DBs from the user, so leave a stderr crumb.
+    process.stderr.write(`moflo: migration runner failed (${err.code || err.message}); will retry next session\n`);
+    return;
+  }
+
+  const labels = {
+    'knowledge-to-learnings': 'consolidated knowledge → learnings',
+    'knowledge-purge': 'removed legacy knowledge namespace rows',
+    'purge-doc-entries': 'pruned legacy doc-* rows (chunk-only RAG, #1053)',
+    'strip-context-preambles': 'stripped chunk preambles; embeddings will rebuild on next index pass (#1053)',
+  };
+
+  for (const line of raw.split('\n')) {
+    const m = line.match(/^\[migrations\]\s+([\w-]+):\s+done\s+in\s+\d+ms\s*(.*)$/);
+    if (!m) continue;
+    const migrationName = m[1];
+    let parsed = null;
+    try { parsed = m[2] ? JSON.parse(m[2]) : null; } catch { parsed = null; }
+
+    // Silent fast-path: don't announce zero-work runs (no point telling the
+    // user the launcher did nothing). If every numeric detail field is 0,
+    // skip the emit. Stamped migrations don't even reach this loop because
+    // the runner short-circuits via the manifest.
+    if (parsed) {
+      const nums = Object.values(parsed).filter((v) => typeof v === 'number');
+      if (nums.length > 0 && nums.every((v) => v === 0)) continue;
+    }
+
+    let detail = '';
+    if (parsed) {
+      if (typeof parsed.purged === 'number') detail = `${parsed.purged} ${parsed.purged === 1 ? 'row' : 'rows'}`;
+      else if (typeof parsed.rowsMigrated === 'number') detail = `${parsed.rowsMigrated} ${parsed.rowsMigrated === 1 ? 'entry' : 'entries'}`;
+    }
+
+    const label = labels[migrationName] || `migration ${migrationName}`;
+    emitMutation(label, detail);
+  }
+}
+
 // ── 3f. Flip the upgrade notice to "completed" (#636, #738) ─────────────────
 // See the TTL rationale at the constants above for why we switch to a
 // short-TTL completed badge instead of clearing the file.
@@ -1565,73 +1634,6 @@ if (mutationCount > 0) {
 const hooksScript = resolveMofloBin(projectRoot, null, 'hooks.mjs');
 if (hooksScript) {
   fireAndForget('node', [hooksScript, 'session-start'], 'hooks session-start');
-}
-
-// Migration runner — consults `.moflo/migrations.json` and runs only
-// migrations that haven't been recorded. Fast-paths to a no-op when the
-// manifest is current; the runner module loads with lazy sql.js init in
-// each migration, so a stamped session pays only node startup + ESM graph.
-//
-// Prefer the npm-package path so first-install consumers run unmet
-// migrations without waiting for a script-sync round-trip.
-//
-// Run synchronously (capture stdout) so each completed migration surfaces
-// through emitMutation — Claude's session-start hook captures launcher
-// stdout and that's the only channel that reaches the user.
-const runMigrations = resolveMofloBin(projectRoot, null, 'run-migrations.mjs');
-if (runMigrations) {
-  runMigrationsAndAnnounce(runMigrations);
-}
-
-function runMigrationsAndAnnounce(runnerPath) {
-  let raw;
-  try {
-    raw = execFileSync('node', [runnerPath], {
-      cwd: projectRoot,
-      timeout: 30_000,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'inherit'],
-    });
-  } catch (err) {
-    // Migrations are best-effort — a failure here must never block session
-    // start. But silent swallowing hides hangs (30s timeout) and corrupted
-    // DBs from the user, so leave a stderr crumb.
-    process.stderr.write(`moflo: migration runner failed (${err.code || err.message}); will retry next session\n`);
-    return;
-  }
-
-  const labels = {
-    'knowledge-to-learnings': 'consolidated knowledge → learnings',
-    'knowledge-purge': 'removed legacy knowledge namespace rows',
-    'purge-doc-entries': 'pruned legacy doc-* rows (chunk-only RAG, #1053)',
-    'strip-context-preambles': 'stripped chunk preambles; embeddings will rebuild on next index pass (#1053)',
-  };
-
-  for (const line of raw.split('\n')) {
-    const m = line.match(/^\[migrations\]\s+([\w-]+):\s+done\s+in\s+\d+ms\s*(.*)$/);
-    if (!m) continue;
-    const migrationName = m[1];
-    let parsed = null;
-    try { parsed = m[2] ? JSON.parse(m[2]) : null; } catch { parsed = null; }
-
-    // Silent fast-path: don't announce zero-work runs (no point telling the
-    // user the launcher did nothing). If every numeric detail field is 0,
-    // skip the emit. Stamped migrations don't even reach this loop because
-    // the runner short-circuits via the manifest.
-    if (parsed) {
-      const nums = Object.values(parsed).filter((v) => typeof v === 'number');
-      if (nums.length > 0 && nums.every((v) => v === 0)) continue;
-    }
-
-    let detail = '';
-    if (parsed) {
-      if (typeof parsed.purged === 'number') detail = `${parsed.purged} ${parsed.purged === 1 ? 'row' : 'rows'}`;
-      else if (typeof parsed.rowsMigrated === 'number') detail = `${parsed.rowsMigrated} ${parsed.rowsMigrated === 1 ? 'entry' : 'entries'}`;
-    }
-
-    const label = labels[migrationName] || `migration ${migrationName}`;
-    emitMutation(label, detail);
-  }
 }
 
 // Patches are now baked into moflo@4.0.0 source — no runtime patching needed.

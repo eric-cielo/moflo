@@ -43,15 +43,15 @@ Subprocess writers that operate on the on-disk DB. Per #1054, these MUST run wit
 
 | File:Line | Trigger | Current state |
 |-----------|---------|---------------|
-| `bin/migrations/strip-context-preambles.mjs:94` | Launcher pre-boot | Currently no daemon-stop wrapper — needs S3 |
-| `bin/migrations/purge-doc-entries.mjs:50` | Launcher pre-boot | Currently no daemon-stop wrapper — needs S3 |
-| `bin/migrations/knowledge-purge.mjs:104` | Launcher pre-boot | Currently no daemon-stop wrapper — needs S3 |
-| `bin/migrations/knowledge-to-learnings.mjs:122` | Launcher pre-boot | Currently no daemon-stop wrapper — needs S3 |
-| `bin/build-embeddings.mjs:109,136` | Launcher or healer | Currently no daemon-stop wrapper — needs S3 |
-| `bin/index-guidance.mjs:224` | Daemon worker spawn | Needs content-diff per `feedback_indexer_preserve_embeddings` |
-| `bin/index-tests.mjs:127` | Daemon worker spawn | Needs content-diff |
-| `bin/index-patterns.mjs:117` | Daemon worker spawn | Needs content-diff |
-| `bin/generate-code-map.mjs:150` | Daemon worker spawn | Needs content-diff |
+| `bin/migrations/strip-context-preambles.mjs:94` | Launcher pre-boot (§3e-1057) | ✓ Daemon-offline by ordering — runs before §4 daemon spawn (#1057) |
+| `bin/migrations/purge-doc-entries.mjs:50` | Launcher pre-boot (§3e-1057) | ✓ Daemon-offline by ordering (#1057) |
+| `bin/migrations/knowledge-purge.mjs:104` | Launcher pre-boot (§3e-1057) | ✓ Daemon-offline by ordering (#1057) |
+| `bin/migrations/knowledge-to-learnings.mjs:122` | Launcher pre-boot (§3e-1057) | ✓ Daemon-offline by ordering (#1057) |
+| `bin/build-embeddings.mjs:109,136` | Daemon worker spawn (`index-all`) | Mostly safe: indexer chain is sequential (#78 internal); cross-process race with daemon remains for follow-up |
+| `bin/index-guidance.mjs:224` | Daemon worker spawn | ✓ Content-diff via `applyIncrementalChunks` (#1057, embedding-preserving) |
+| `bin/index-tests.mjs:127` | Daemon worker spawn | ✓ Content-diff via `applyIncrementalChunks` |
+| `bin/index-patterns.mjs:117` | Daemon worker spawn | ✓ Content-diff via `applyIncrementalChunks` |
+| `bin/generate-code-map.mjs:150` | Daemon worker spawn | ✓ Content-diff via `applyIncrementalChunks` |
 | `bin/lib/db-repair.mjs:92` | Launcher repair path | Needs daemon-stop verification |
 | `src/cli/services/embeddings-migration.ts:152` | Launcher pre-boot (`runEmbeddingsMigrationIfNeeded`) | OK if pre-boot — needs S3 to verify daemon-offline guarantee post-upgrade |
 | `src/cli/services/ephemeral-namespace-purge.ts:139` | Launcher pre-boot (#727 / #968) | OK if pre-boot — needs S3 verify |
