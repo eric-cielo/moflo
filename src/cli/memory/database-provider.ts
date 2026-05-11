@@ -23,11 +23,12 @@ import {
   MemoryEntryUpdate,
 } from './types.js';
 import { SqlJsBackend, SqlJsBackendConfig } from './sqljs-backend.js';
+import { SqliteBackend, SqliteBackendConfig } from './sqlite-backend.js';
 
 /**
  * Available database provider types
  */
-export type DatabaseProvider = 'sql.js' | 'json' | 'rvf' | 'auto';
+export type DatabaseProvider = 'sql.js' | 'node-sqlite' | 'json' | 'rvf' | 'auto';
 
 /**
  * Database creation options
@@ -97,6 +98,19 @@ async function testRvf(): Promise<boolean> {
   return true;
 }
 
+/**
+ * Test if the built-in node:sqlite engine is available (Node 22+). Phase 1
+ * of epic #1078 — gated by `MOFLO_DB_BACKEND=node-sqlite`, default OFF.
+ */
+async function testNodeSqlite(): Promise<boolean> {
+  try {
+    await import('node:sqlite');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** better-sqlite3 removed — sql.js is the only SQLite backend */
 
 /**
@@ -115,7 +129,9 @@ async function testSqlJs(): Promise<boolean> {
 }
 
 /**
- * Select best available provider
+ * Select best available provider. The `MOFLO_DB_BACKEND` env var lets ops
+ * opt into the node:sqlite backend ahead of the Phase 4 default flip
+ * (epic #1078). Explicit `options.provider` still wins over the env var.
  */
 async function selectProvider(
   preferred?: DatabaseProvider,
@@ -126,6 +142,19 @@ async function selectProvider(
       console.log(`[DatabaseProvider] Using explicitly specified provider: ${preferred}`);
     }
     return preferred;
+  }
+
+  const envBackend = process.env.MOFLO_DB_BACKEND?.trim();
+  if (envBackend === 'node-sqlite') {
+    if (await testNodeSqlite()) {
+      if (verbose) {
+        console.log('[DatabaseProvider] MOFLO_DB_BACKEND=node-sqlite — using node:sqlite');
+      }
+      return 'node-sqlite';
+    }
+    if (verbose) {
+      console.warn('[DatabaseProvider] MOFLO_DB_BACKEND=node-sqlite requested but node:sqlite unavailable; falling back to default selection');
+    }
   }
 
   const platformInfo = detectPlatform();
@@ -223,6 +252,20 @@ export async function createDatabase(
       break;
     }
 
+    case 'node-sqlite': {
+      const config: Partial<SqliteBackendConfig> = {
+        databasePath: path,
+        optimize,
+        defaultNamespace,
+        maxEntries,
+        verbose,
+        autoPersistInterval,
+      };
+
+      backend = new SqliteBackend(config);
+      break;
+    }
+
     case 'rvf': {
       const { RvfBackend } = await import('./rvf-backend.js');
       backend = new RvfBackend({
@@ -269,12 +312,14 @@ export async function getAvailableProviders(): Promise<{
   rvf: boolean;
   betterSqlite3: boolean;
   sqlJs: boolean;
+  nodeSqlite: boolean;
   json: boolean;
 }> {
   return {
     rvf: true,
     betterSqlite3: false, // Removed — sql.js is the only SQLite backend
     sqlJs: await testSqlJs(),
+    nodeSqlite: await testNodeSqlite(),
     json: true,
   };
 }
