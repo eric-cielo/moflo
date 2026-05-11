@@ -31,7 +31,7 @@ describe('Memory traversal protocol — 6-touchpoint drift guards (#1053 S3)', (
   // #1068: protocol must be stated as a non-optional MUST when `navigation`
   // is present on a search hit. Soft "consider traversing" language was the
   // failure mode — Claude treated traversal as optional and bulk-retrieved.
-  it('Touchpoint #0 — protocol doc states traversal as MUST when navigation is present (#1068)', () => {
+  it('Touchpoint #0b — protocol doc states traversal as MUST when navigation is present (#1068)', () => {
     const text = readFileSync(resolve(ROOT, CANONICAL), 'utf-8');
     expect(text, 'protocol doc must contain an explicit MUST').toMatch(/MUST/);
     expect(text, 'MUST must be tied to the navigation field').toMatch(/MUST[^.]*navigation|navigation[^.]*MUST/);
@@ -45,7 +45,7 @@ describe('Memory traversal protocol — 6-touchpoint drift guards (#1053 S3)', (
 
   // #1068: bootstrap directive must also carry the explicit MUST language so
   // every subagent gets the non-optional rule in its first context injection.
-  it('Touchpoint #1 — subagent-bootstrap.json states traversal as MUST (#1068)', () => {
+  it('Touchpoint #1b — subagent-bootstrap.json states traversal as MUST (#1068)', () => {
     const json = JSON.parse(readFileSync(resolve(ROOT, '.claude/helpers/subagent-bootstrap.json'), 'utf-8')) as { directive: string };
     expect(json.directive, 'directive must contain a second MUST for traversal').toMatch(/MUST[\s\S]+MUST/);
     expect(json.directive).toMatch(/MUST[^.]*navigation|navigation[^.]*MUST/);
@@ -98,17 +98,22 @@ describe('Memory traversal protocol — 6-touchpoint drift guards (#1053 S3)', (
   // without reading guidance docs) need the imperative in the description
   // itself, not just a doc reference. Both descriptions must carry MUST +
   // a pointer back to the protocol doc.
-  it('Touchpoint #6 — memory-tools.ts descriptions state the rule as MUST + cite the protocol doc (#1068)', async () => {
+  it('Touchpoint #6b — memory-tools.ts descriptions state the rule as MUST + cite the protocol doc (#1068)', async () => {
     const { memoryTools } = await import('../mcp-tools/memory-tools.js');
     const get = (name: string): string => {
       const t = (memoryTools as Array<{ name: string; description: string }>).find(x => x.name === name);
       if (!t) throw new Error(`${name} not registered`);
       return t.description;
     };
+    // memory_search carries the affirmative MUST (the producer of the
+    // navigation hits); memory_retrieve carries the prohibition
+    // ("protocol violation"). Per-tool wording is asserted explicitly so a
+    // future regression that drops the imperative from one side can't slip
+    // through a permissive OR.
+    expect(get('memory_search'), 'memory_search must say MUST').toContain('MUST');
+    expect(get('memory_retrieve'), 'memory_retrieve must call bulk-retrieve a protocol violation').toContain('protocol violation');
     for (const name of ['memory_search', 'memory_retrieve']) {
-      const desc = get(name);
-      expect(desc, `${name} description must contain MUST or "violation"`).toMatch(/MUST|protocol violation/);
-      expect(desc, `${name} description must cite moflo-memory-protocol.md`).toContain('moflo-memory-protocol.md');
+      expect(get(name), `${name} description must cite moflo-memory-protocol.md`).toContain('moflo-memory-protocol.md');
     }
   });
 });
