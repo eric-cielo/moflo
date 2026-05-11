@@ -8,30 +8,18 @@
  * Each test seeds a fresh memory.db with one specific failure mode and
  * asserts the check both flags it and lets a clean DB pass.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 import { checkEmbeddingHygiene } from '../../commands/doctor-embedding-hygiene.js';
 import { CANONICAL_EMBEDDING_MODEL } from '../../embeddings/migration/types.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
 
-type SqlJsDb = {
-  run(sql: string, params?: unknown[]): void;
-  export(): Uint8Array;
-  close(): void;
-};
-type SqlJsStatic = { Database: new (data?: Uint8Array) => SqlJsDb };
-
-let SQL: SqlJsStatic;
 let originalCwd: string;
 let tmpDir: string;
-
-beforeAll(async () => {
-  const initSqlJs = (await import('sql.js')).default;
-  SQL = (await initSqlJs()) as SqlJsStatic;
-});
 
 beforeEach(() => {
   originalCwd = process.cwd();
@@ -43,39 +31,39 @@ beforeEach(() => {
 afterEach(() => {
   process.chdir(originalCwd);
   try {
-    rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   } catch { /* ignore */ }
 });
 
-function seedDb(setup: (db: SqlJsDb) => void): void {
-  const db = new SQL.Database();
-  db.run(MEMORY_SCHEMA_V3);
-  setup(db);
-  const bytes = db.export();
-  db.close();
+function seedDb(setup: (db: DatabaseSync) => void): void {
   const swarmDir = join(tmpDir, '.swarm');
   mkdirSync(swarmDir, { recursive: true });
-  writeFileSync(join(swarmDir, 'memory.db'), Buffer.from(bytes));
+  const dbPath = join(swarmDir, 'memory.db');
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.exec(MEMORY_SCHEMA_V3);
+    setup(db);
+  } finally {
+    db.close();
+  }
 }
 
 function insert(
-  db: SqlJsDb,
+  db: DatabaseSync,
   id: string,
   model: string | null,
   hasEmbedding: boolean,
 ): void {
   const embedding = hasEmbedding ? JSON.stringify([0.1, 0.2]) : null;
   if (model === null) {
-    db.run(
+    db.prepare(
       `INSERT INTO memory_entries (id, key, content, embedding) VALUES (?, ?, ?, ?)`,
-      [id, `k-${id}`, `content-${id}`, embedding],
-    );
+    ).run(id, `k-${id}`, `content-${id}`, embedding);
   } else {
-    db.run(
+    db.prepare(
       `INSERT INTO memory_entries (id, key, content, embedding, embedding_model)
        VALUES (?, ?, ?, ?, ?)`,
-      [id, `k-${id}`, `content-${id}`, embedding, model],
-    );
+    ).run(id, `k-${id}`, `content-${id}`, embedding, model);
   }
 }
 
@@ -175,11 +163,10 @@ describe('checkEmbeddingHygiene (#651)', () => {
       // Banned row, but archived — should not trigger warning. (Soft-delete
       // 'deleted' status was retired in #728; 'archived' is the remaining
       // non-active status that hygiene must skip.)
-      db.run(
+      db.prepare(
         `INSERT INTO memory_entries (id, key, content, embedding, embedding_model, status)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        ['banned-archived', 'k-banned', 'c', JSON.stringify([0.1]), 'domain-aware-hash-v1', 'archived'],
-      );
+      ).run('banned-archived', 'k-banned', 'c', JSON.stringify([0.1]), 'domain-aware-hash-v1', 'archived');
     });
 
     const result = await checkEmbeddingHygiene();

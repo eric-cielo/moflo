@@ -35,14 +35,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { mofloImport } from './moflo-require.js';
-import { atomicWriteFileSync } from './atomic-file-write.js';
 import {
   legacyMemoryDbBakPath,
   memoryDbCandidatePaths,
   memoryDbPath,
 } from './moflo-paths.js';
 import { MEMORY_SCHEMA_V3 } from '../memory/memory-initializer.js';
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../memory/daemon-backend.js';
 
 /** Namespaces preserved across upgrades. Everything else is derived. */
 export const DURABLE_NAMESPACES = ['learnings', 'knowledge'] as const;
@@ -128,16 +127,37 @@ export async function cherryPickLearningsFromLegacy(
     target,
   };
 
-  const initSqlJs = (await mofloImport('sql.js'))?.default;
-  if (!initSqlJs) return result;
+  // Fast-path: skip target materialization entirely if no legacy source is
+  // even on disk. A fresh install has no .swarm/memory.db etc. — opening
+  // targetDb would create an empty .moflo/moflo.db that the regular memory
+  // initializer should create lazily on first MCP write. Saves an unnecessary
+  // atomic-write per fresh-install upgrade and keeps the existsSync(target)
+  // contract that the launcher relies on.
+  const presentSources = legacyPaths.filter(
+    (p) => p !== target && fs.existsSync(p),
+  );
+  if (presentSources.length === 0) {
+    // Still emit a self-reference report if the canonical was in the list,
+    // for symmetry with the multi-source path.
+    for (const sourcePath of legacyPaths) {
+      if (sourcePath === target) {
+        result.sources.push({
+          path: sourcePath,
+          rowsRead: 0,
+          rowsInserted: 0,
+          reason: CHERRY_PICK_SKIP_REASONS.SELF_REFERENCE,
+        });
+      }
+    }
+    return result;
+  }
 
-  const SQL = (await initSqlJs()) as any;
-
+  // node:sqlite via the unified factory (Phase 5 / #1084). openDaemonDatabase
+  // creates parent dirs + applies WAL pragma; the WAL-incremental persistence
+  // model means no atomicWriteFileSync at the end — every INSERT below
+  // commits to disk through the WAL.
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  const targetExists = fs.existsSync(target);
-  const targetDb = targetExists
-    ? new SQL.Database(fs.readFileSync(target))
-    : new SQL.Database();
+  const targetDb = openDaemonDatabase(target);
 
   let insertStmt: any = null;
   try {
@@ -148,8 +168,8 @@ export async function cherryPickLearningsFromLegacy(
       `SELECT id, key, namespace, content, type, embedding, embedding_model, ` +
       `embedding_dimensions, tags, metadata, owner_id, created_at, updated_at, status ` +
       `FROM memory_entries WHERE namespace IN (${placeholders})`;
-    // Hoisted prepare — avoids re-parsing the SQL inside sql.js for every
-    // INSERT. Matters for legacy DBs with hundreds of learnings rows.
+    // Hoisted prepare — avoids re-parsing the SQL for every INSERT. Matters
+    // for legacy DBs with hundreds of learnings rows.
     insertStmt = targetDb.prepare(
       `INSERT OR IGNORE INTO memory_entries ` +
         `(id, key, namespace, content, type, embedding, embedding_model, ` +
@@ -169,18 +189,10 @@ export async function cherryPickLearningsFromLegacy(
       }
       if (!fs.existsSync(sourcePath)) continue;
 
-      const report = readAndInsert(SQL, sourcePath, targetDb, insertStmt, selectSql, namespaces);
+      const report = readAndInsert(sourcePath, targetDb, insertStmt, selectSql, namespaces);
       result.sources.push(report);
       result.copied += report.rowsInserted;
       result.considered += report.rowsRead;
-    }
-
-    // Skip the atomic write when there's nothing to persist:
-    //  - copied=0 + target didn't exist → don't materialize an empty DB
-    //    (the regular initializer creates it on first real write).
-    //  - copied=0 + target already existed → no diff, nothing to flush.
-    if (result.copied > 0) {
-      atomicWriteFileSync(target, Buffer.from(targetDb.export()));
     }
   } finally {
     if (insertStmt) {
@@ -193,16 +205,15 @@ export async function cherryPickLearningsFromLegacy(
 }
 
 function readAndInsert(
-  SQL: any,
   sourcePath: string,
-  targetDb: any,
+  targetDb: SqlJsLikeDatabase,
   insertStmt: any,
   selectSql: string,
   namespaces: readonly string[],
 ): CherryPickSourceReport {
-  let sourceDb: any;
+  let sourceDb: SqlJsLikeDatabase;
   try {
-    sourceDb = new SQL.Database(fs.readFileSync(sourcePath));
+    sourceDb = openDaemonDatabase(sourcePath);
   } catch {
     return {
       path: sourcePath,

@@ -11,8 +11,7 @@ import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
 import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
-import { mofloImport } from '../services/moflo-require.js';
-import { atomicWriteFileSync } from '../services/atomic-file-write.js';
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../memory/daemon-backend.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 
 // Memory backends
@@ -1473,25 +1472,11 @@ const initMemoryCommand: Command = {
 const DB_FILENAME = 'memory.db';
 const SWARM_DIR = '.swarm';
 
-async function openDb(cwd: string): Promise<{ db: any; dbPath: string; SQL: any }> {
-  const fs = await import('fs');
+async function openDb(cwd: string): Promise<{ db: SqlJsLikeDatabase; dbPath: string }> {
   const path = await import('path');
-  const initSqlJs = (await mofloImport('sql.js')).default;
-  const SQL = await initSqlJs();
-
   const dbPath = path.join(cwd, SWARM_DIR, DB_FILENAME);
-  const dir = path.dirname(dbPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
-  let db: any;
-  if (fs.existsSync(dbPath)) {
-    const buffer = fs.readFileSync(dbPath);
-    db = new SQL.Database(buffer);
-  } else {
-    db = new SQL.Database();
-  }
+  // openDaemonDatabase ensures the parent directory exists and applies WAL.
+  const db = openDaemonDatabase(dbPath);
 
   // Ensure table exists
   db.run(`
@@ -1519,11 +1504,15 @@ async function openDb(cwd: string): Promise<{ db: any; dbPath: string; SQL: any 
   db.run(`CREATE INDEX IF NOT EXISTS idx_memory_key_ns ON memory_entries(key, namespace)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_memory_namespace ON memory_entries(namespace)`);
 
-  return { db, dbPath, SQL };
+  return { db, dbPath };
 }
 
-function saveAndCloseDb(db: any, dbPath: string): void {
-  atomicWriteFileSync(dbPath, db.export());
+/**
+ * Close the DB handle. node:sqlite + WAL has already persisted every prior
+ * `db.run` incrementally — the explicit atomicWriteFileSync sql.js used to
+ * need is gone (Phase 5 / #1084).
+ */
+function saveAndCloseDb(db: SqlJsLikeDatabase, _dbPath: string): void {
   db.close();
 }
 
@@ -2229,9 +2218,9 @@ const rebuildIndexCommand: Command = {
         failed++;
       }
 
-      if ((i + 1) % BATCH_SIZE === 0) {
-        atomicWriteFileSync(dbPath, db.export());
-      }
+      // node:sqlite + WAL persists each db.run incrementally — the
+      // periodic batch flush sql.js needed here was the export-+-rewrite
+      // pattern Phase 5 (#1084) killed. No flush needed.
     }
 
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);

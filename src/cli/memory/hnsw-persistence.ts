@@ -17,11 +17,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { mofloImport } from '../services/moflo-require.js';
 import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 import { HnswLite } from './hnsw-lite.js';
 import { parseEmbeddingJson } from './controllers/_shared.js';
 import { hnswIndexPath } from '../services/moflo-paths.js';
+import { openDaemonDatabase } from './daemon-backend.js';
 
 export interface HnswBuildOptions {
   /** Override embedding dimensions. Defaults to 384 (matches fast-all-MiniLM-L6-v2). */
@@ -65,16 +65,11 @@ export async function buildAndWriteHnswSidecar(
     throw new Error(`buildAndWriteHnswSidecar: db not found at ${dbPath}`);
   }
 
-  const sqlJsModule = await mofloImport('sql.js');
-  if (!sqlJsModule) {
-    throw new Error(`buildAndWriteHnswSidecar: sql.js not available`);
-  }
-  const SQL = await sqlJsModule.default();
-  const buf = fs.readFileSync(dbPath);
-  const db = new SQL.Database(buf) as {
-    exec: (sql: string) => Array<{ values: unknown[][] }>;
-    close: () => void;
-  };
+  // node:sqlite via the unified factory — Phase 5 (#1084) replaced the
+  // sql.js readFileSync + new SQL.Database round-trip with a direct open
+  // through openDaemonDatabase. WAL writes incrementally so there's nothing
+  // to flush back here; the sidecar persistence below is unaffected.
+  const db = openDaemonDatabase(dbPath);
 
   const hnsw = new HnswLite(dimensions, m, efConstruction, metric);
   let skipped = 0;

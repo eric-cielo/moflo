@@ -1,12 +1,13 @@
 /**
  * RVF Migration Utility — bidirectional migration between RVF and legacy
- * formats (JSON files, sql.js / better-sqlite3 databases).
+ * formats (JSON files, node:sqlite databases).
  * @module moflo/cli/memory/rvf-migration
  */
 import { readFile, writeFile, rename, unlink, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { RvfBackend } from './rvf-backend.js';
+import { openDaemonDatabase } from './daemon-backend.js';
 import type { MemoryEntry, MemoryType, AccessLevel } from './types.js';
 import { generateMemoryId } from './types.js';
 
@@ -125,21 +126,35 @@ function normalizeSqliteRow(row: Record<string, unknown>): Record<string, unknow
   return out;
 }
 
-// -- SQLite reader (better-sqlite3 first, then sql.js) ----------------------
+// -- SQLite reader (node:sqlite via the unified factory) -------------------
 
 interface SqliteRow { [key: string]: unknown }
 
+/**
+ * Read `memory_entries` rows out of a legacy SQLite file via the unified
+ * `openDaemonDatabase` factory. node:sqlite's built-in WAL handling means
+ * the read is non-destructive to any concurrent writer.
+ */
 async function readSqliteRows(dbPath: string): Promise<SqliteRow[]> {
-  // Use sql.js (WASM) for SQLite reading
+  const db = openDaemonDatabase(dbPath);
   try {
-    const { initSqlJsForNode } = await import('./sqljs-backend.js');
-    const SQL = await initSqlJsForNode();
-    const fs = await import('node:fs');
-    const buf = fs.readFileSync(dbPath);
-    const db = new SQL.Database(buf);
-    return { exec: (sql: string) => db.exec(sql), close: () => db.close() } as any;
-  } catch {
-    throw new Error('Cannot read SQLite: install sql.js');
+    const result = db.exec(
+      `SELECT id, key, namespace, content, type, embedding, embedding_model,
+              embedding_dimensions, tags, metadata, owner_id, created_at,
+              updated_at, expires_at, last_accessed_at, access_count, status
+       FROM memory_entries`,
+    );
+    if (!result[0]?.values?.length) return [];
+    const columns = result[0].columns;
+    return result[0].values.map((row) => {
+      const obj: SqliteRow = {};
+      for (let i = 0; i < columns.length; i++) {
+        obj[columns[i]] = row[i];
+      }
+      return obj;
+    });
+  } finally {
+    db.close();
   }
 }
 
@@ -194,7 +209,7 @@ export class RvfMigrator {
     return mkResult(errors.length === 0, migrated, 'json', 'rvf', start, errors);
   }
 
-  /** Migrate a SQLite (better-sqlite3 / sql.js) database to RVF. */
+  /** Migrate a SQLite (node:sqlite) database to RVF. */
   static async fromSqlite(
     dbPath: string, rvfPath: string, options: RvfMigrationOptions = {},
   ): Promise<RvfMigrationResult> {

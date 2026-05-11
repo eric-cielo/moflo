@@ -1,63 +1,52 @@
 /**
- * Pure-JS factory for moflo.db low-level SQL handles — JS twin of the engine
- * selection in `src/cli/memory/database-provider.ts`. Every `bin/` script that
- * opens `.moflo/moflo.db` MUST go through {@link openBackend} so the engine
- * can be swapped in one place (epic #1078 Phase 2 / issue #1081).
+ * Pure-JS factory for moflo.db low-level SQL handles — JS twin of the
+ * `openDaemonDatabase` factory in `src/cli/memory/daemon-backend.ts`. Every
+ * `bin/` script that opens `.moflo/moflo.db` MUST go through {@link openBackend}
+ * so the engine choice stays consistent with the rest of the runtime.
  *
- * Engine selection priority:
- *   1. `opts.backend` — explicit override (used by tests + internal shadow-read wrapper)
- *   2. Default: `'node-sqlite'` (Phase 4 flip / issue #1083)
+ * Backend selection: always `node:sqlite` (Phase 5 / #1084 — sql.js has been
+ * deleted from the package). The `resolveBackend()` shim is retained because
+ * a handful of tests still pass an explicit `backend` option; it now validates
+ * the value but only honours `'node-sqlite'`.
  *
- * No env-var escape hatch: if node:sqlite surfaces a regression in production,
- * the rollback path is `npm install moflo@<previous>` rather than carrying a
- * `MOFLO_DB_BACKEND` env var we'd have to sunset in Phase 5. Phase 5 (#1084)
- * deletes the sql.js adapter and dep entirely.
- *
- * The handle exposes the **sql.js low-level Statement API** because that's
- * what every existing bin/ caller already uses (db.prepare/stmt.bind/step/
- * getAsObject/free/run, db.run/exec, db.export-via-save, db.close). For
- * `node:sqlite`, the adapter emulates `stmt.bind()/step()/getAsObject()` via
- * `StatementSync.iterate()` so callers don't refactor their loops.
+ * Engine surface — the handle exposes the **sql.js low-level Statement API**
+ * because every existing bin/ caller was written against it (db.prepare/
+ * stmt.bind/step/getAsObject/free/run, db.run/exec, db.export-via-save,
+ * db.close). For `node:sqlite`, the adapter emulates `stmt.bind()/step()/
+ * getAsObject()` via `StatementSync.iterate()` so callers don't refactor
+ * their loops.
  *
  * Persistence semantics:
- *   - sql.js — in-memory snapshot; `backend.save()` writes the full buffer to
- *     disk via `writeFileSync(path, Buffer.from(db.export()))`.
  *   - node:sqlite — writes through the OS file handle under WAL; `save()` is
- *     a no-op. WAL pragmas (`journal_mode=WAL`, `synchronous=NORMAL`,
- *     `busy_timeout=5000`) are set on first open per Phase 0 spike (#1079)
- *     and Phase 1 backend (#1080).
+ *     a no-op kept for API parity. WAL pragmas (`journal_mode=WAL`,
+ *     `synchronous=NORMAL`, `busy_timeout=5000`) are set on first open per
+ *     Phase 0 spike (#1079) and Phase 1 backend (#1080).
  *
  * @module bin/lib/get-backend
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { Buffer } from 'node:buffer';
-import { mofloResolveURL } from './moflo-resolve.mjs';
 import { memoryDbPath } from './moflo-paths.mjs';
-import {
-  resolveShadow,
-  shadowDbPath,
-  seedShadowFile,
-  shadowStrictMode,
-  wrapShadow,
-} from './shadow-backend.mjs';
 
-export const BACKEND_SQLJS = 'sql.js';
 export const BACKEND_NODE_SQLITE = 'node-sqlite';
 
 /**
- * Resolve the configured backend. Defaults to `node-sqlite` (Phase 4 / #1083).
- * The only override is `opts.backend` — used by the shadow-read wrapper to
- * open the off-engine sibling and by tests. There is no env-var escape hatch;
- * rolling back means installing the previous moflo version.
+ * Resolve the configured backend. Phase 5 (#1084) deleted the sql.js path,
+ * so this always returns `node-sqlite`. The `opts.backend` parameter is kept
+ * for API compatibility — anything else throws so a stale caller asking for
+ * sql.js surfaces a clear error rather than silently dropping to the wrong
+ * engine.
  *
  * @param {{ backend?: string }} [opts]
- * @returns {'sql.js'|'node-sqlite'}
+ * @returns {'node-sqlite'}
  */
 export function resolveBackend(opts = {}) {
-  if (opts.backend === BACKEND_SQLJS || opts.backend === BACKEND_NODE_SQLITE) {
-    return opts.backend;
+  if (opts.backend && opts.backend !== BACKEND_NODE_SQLITE) {
+    throw new Error(
+      `Unknown backend "${opts.backend}". moflo only supports "node-sqlite"; ` +
+      `sql.js was retired in Phase 5 (#1084).`,
+    );
   }
   return BACKEND_NODE_SQLITE;
 }
@@ -72,109 +61,24 @@ function ensureDir(filePath) {
  * `projectRoot`; pass `opts.dbPath` to point at a different file (used by
  * migrations that touch sibling DBs).
  *
- * When shadow-read is on (epic #1078 Phase 3 / issue #1082) the primary
- * engine opens normally and the shadow engine (the other one) opens
- * against a sibling `.moflo/moflo.shadow.db` seeded from the primary at
- * open time. The returned handle mirrors every write to both engines and
- * compares results on reads — see `bin/lib/shadow-backend.mjs`.
- *
  * @param {string} projectRoot
  * @param {{
- *   backend?: 'sql.js'|'node-sqlite',
+ *   backend?: 'node-sqlite',
  *   create?: boolean,
  *   readOnly?: boolean,
  *   dbPath?: string,
- *   shadow?: boolean,
  * }} [opts]
  * @returns {Promise<object>} backend handle (see module doc)
  */
 export async function openBackend(projectRoot, opts = {}) {
   const dbPath = opts.dbPath || memoryDbPath(projectRoot);
-  const kind = resolveBackend(opts);
+  resolveBackend(opts); // throws on stale sql.js callers
   ensureDir(dbPath);
-  if (resolveShadow(projectRoot, opts) && !opts.dbPath) {
-    return openWithShadow(projectRoot, kind, dbPath, opts);
-  }
-  return openOne(kind, dbPath, opts);
-}
-
-async function openOne(kind, dbPath, opts) {
-  if (kind === BACKEND_NODE_SQLITE) return openNodeSqlite(dbPath, opts);
-  return openSqlJs(dbPath, opts);
-}
-
-async function openWithShadow(projectRoot, primaryKind, primaryPath, opts) {
-  const shadowKind = primaryKind === BACKEND_SQLJS ? BACKEND_NODE_SQLITE : BACKEND_SQLJS;
-  const shadowPath = shadowDbPath(projectRoot);
-  ensureDir(shadowPath);
-  seedShadowFile(primaryPath, shadowPath);
-  const primary = await openOne(primaryKind, primaryPath, opts);
-  const shadow = await openOne(shadowKind, shadowPath, opts);
-  return wrapShadow(primary, shadow, {
-    projectRoot,
-    strict: shadowStrictMode(),
-  });
+  return openNodeSqlite(dbPath, opts);
 }
 
 // ---------------------------------------------------------------------------
-// sql.js adapter — kept for shadow-read pairing + opt-in via opts.backend
-// (Phase 5 / #1084 deletes this adapter and the npm dep together).
-// ---------------------------------------------------------------------------
-
-let _initSqlJsCached = null;
-
-async function loadSqlJs() {
-  if (_initSqlJsCached) return _initSqlJsCached;
-  const mod = await import(mofloResolveURL('sql.js'));
-  _initSqlJsCached = mod.default || mod;
-  return _initSqlJsCached;
-}
-
-async function openSqlJs(dbPath, opts) {
-  const initSqlJs = await loadSqlJs();
-  const SQL = await initSqlJs();
-  let db;
-  if (existsSync(dbPath)) {
-    db = new SQL.Database(readFileSync(dbPath));
-  } else if (opts.create !== false && opts.readOnly !== true) {
-    db = new SQL.Database();
-  } else {
-    throw new Error(`Database not found: ${dbPath}`);
-  }
-  return wrapSqlJs(db, dbPath);
-}
-
-function wrapSqlJs(db, dbPath) {
-  return {
-    kind: BACKEND_SQLJS,
-    prepare: (sql) => wrapSqlJsStmt(db.prepare(sql)),
-    run: (sql, params) => {
-      if (params && params.length > 0) db.run(sql, params);
-      else db.run(sql);
-    },
-    exec: (sql) => db.exec(sql),
-    getRowsModified: () => db.getRowsModified(),
-    save: () => writeFileSync(dbPath, Buffer.from(db.export())),
-    close: () => db.close(),
-    _raw: db,
-  };
-}
-
-function wrapSqlJsStmt(stmt) {
-  return {
-    bind: (params) => stmt.bind(params || []),
-    step: () => stmt.step(),
-    getAsObject: () => stmt.getAsObject(),
-    run: (params) => {
-      if (params && params.length > 0) stmt.run(params);
-      else stmt.run();
-    },
-    free: () => stmt.free(),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// node:sqlite adapter — default backend as of Phase 4 (#1083)
+// node:sqlite adapter — the only backend as of Phase 5 (#1084)
 // ---------------------------------------------------------------------------
 
 // Module-scope guard so we only fire the network-FS warning once per path
@@ -198,11 +102,8 @@ async function openNodeSqlite(dbPath, opts) {
       db.exec('PRAGMA busy_timeout = 5000');
       // Phase 4 / #1083 — network-FS detection. SQLite's POSIX advisory locks
       // and WAL shared-memory both fail silently on NFS/SMB; the engine falls
-      // back to a non-WAL journal mode rather than erroring. sql.js never had
-      // this problem because it didn't take file locks at all, so consumers
-      // running moflo on network-mounted home dirs would silently lose
-      // multi-process safety after the default flip. Read journal_mode back
-      // and warn if it isn't `wal`.
+      // back to a non-WAL journal mode rather than erroring. Read journal_mode
+      // back and warn if it isn't `wal`.
       if (dbPath !== ':memory:') warnIfNotWal(db, dbPath);
     } catch (err) {
       try { db.close(); } catch { /* already-dead handle */ }

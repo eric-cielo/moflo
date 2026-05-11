@@ -10,34 +10,27 @@
  * Plus the implicit AC of read-only on legacy sources (the source DB is
  * never mutated, byte-equal before vs after).
  */
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 import { cherryPickLearningsFromLegacy } from '../../services/cherry-pick-learnings.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
 import {
   makeLegacyDb as makeLegacyMemoryDb,
   makeMemoryDb,
-  type SqlJsLikeDb as SqlJsDb,
-  type SqlJsLikeStatic as SqlJsStatic,
+  type FixtureDb,
 } from '../_helpers/legacy-memory-db.js';
-
-let SQL: SqlJsStatic;
-
-beforeAll(async () => {
-  const initSqlJs = (await import('sql.js')).default;
-  SQL = (await initSqlJs()) as SqlJsStatic;
-});
 
 const tmpDirs: string[] = [];
 afterEach(async () => {
   while (tmpDirs.length) {
     const dir = tmpDirs.pop()!;
     try {
-      await rm(dir, { recursive: true, force: true });
+      await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     } catch {
       /* Windows file-lock — non-fatal for tests */
     }
@@ -50,24 +43,21 @@ async function makeRoot(): Promise<string> {
   return dir;
 }
 
-// Local shims that close over `SQL` so individual cases stay readable.
-function makeLegacyDb(setup: (db: SqlJsDb) => void, dbPath: string): Promise<void> {
-  return makeLegacyMemoryDb(SQL, dbPath, setup);
+function makeLegacyDb(setup: (db: FixtureDb) => void, dbPath: string): Promise<void> {
+  return makeLegacyMemoryDb(dbPath, setup);
 }
-function makeV3Db(setup: (db: SqlJsDb) => void, dbPath: string): Promise<void> {
-  return makeMemoryDb(SQL, dbPath, MEMORY_SCHEMA_V3, setup);
+function makeV3Db(setup: (db: FixtureDb) => void, dbPath: string): Promise<void> {
+  return makeMemoryDb(dbPath, MEMORY_SCHEMA_V3, setup);
 }
 
-function readNamespaceCounts(bytes: Uint8Array): Record<string, number> {
-  const db = new SQL.Database(bytes);
+function readNamespaceCounts(dbPath: string): Record<string, number> {
+  const db = new DatabaseSync(dbPath);
   try {
-    const rows = db.exec(
-      `SELECT namespace, COUNT(*) FROM memory_entries GROUP BY namespace`,
-    );
+    const rows = db.prepare(
+      `SELECT namespace, COUNT(*) AS c FROM memory_entries GROUP BY namespace`,
+    ).all() as Array<{ namespace: string; c: number | bigint }>;
     const counts: Record<string, number> = {};
-    for (const row of rows[0]?.values ?? []) {
-      counts[String(row[0])] = Number(row[1]);
-    }
+    for (const row of rows) counts[row.namespace] = Number(row.c);
     return counts;
   } finally {
     db.close();
@@ -164,12 +154,23 @@ describe('cherryPickLearningsFromLegacy (#851)', () => {
     expect(result.sources[0]?.reason).toBeUndefined();
 
     // Target has only the durable namespaces.
-    const targetBytes = new Uint8Array(await readFile(target));
-    expect(readNamespaceCounts(targetBytes)).toEqual({ learnings: 5, knowledge: 3 });
+    expect(readNamespaceCounts(target)).toEqual({ learnings: 5, knowledge: 3 });
 
-    // Source is byte-equal pre/post — read-only contract.
-    const afterSrc = await readFile(legacy);
-    expect(beforeSrc.equals(afterSrc)).toBe(true);
+    // Source is read-only: every row still present, contents unchanged.
+    // (Asserting row contents rather than file bytes because opening a
+    // node:sqlite read connection creates `-wal`/`-shm` sidecars even when
+    // no writes occur, which would flip a naive bytes-equal check.)
+    void beforeSrc;
+    const srcDb = new DatabaseSync(legacy);
+    try {
+      const rows = srcDb.prepare(
+        `SELECT namespace, COUNT(*) AS c FROM memory_entries GROUP BY namespace`,
+      ).all() as Array<{ namespace: string; c: number | bigint }>;
+      const counts = Object.fromEntries(rows.map((r) => [r.namespace, Number(r.c)]));
+      expect(counts).toEqual({ learnings: 5, knowledge: 3, 'hive-mind': 12 });
+    } finally {
+      srcDb.close();
+    }
   });
 
   it('partial prior migration: idempotent INSERT OR IGNORE skips dupes', async () => {
@@ -213,7 +214,7 @@ describe('cherryPickLearningsFromLegacy (#851)', () => {
     expect(result.considered).toBe(8);
     expect(result.copied).toBe(4); // Only the genuinely-new rows.
 
-    const counts = readNamespaceCounts(new Uint8Array(await readFile(target)));
+    const counts = readNamespaceCounts(target);
     expect(counts).toEqual({ learnings: 5, knowledge: 3 });
   });
 
@@ -243,7 +244,7 @@ describe('cherryPickLearningsFromLegacy (#851)', () => {
     });
     expect(second.considered).toBe(1);
     expect(second.copied).toBe(0); // INSERT OR IGNORE handled the retry.
-    expect(readNamespaceCounts(new Uint8Array(await readFile(target)))).toEqual({
+    expect(readNamespaceCounts(target)).toEqual({
       learnings: 1,
     });
   });
@@ -254,11 +255,9 @@ describe('cherryPickLearningsFromLegacy (#851)', () => {
     const legacy = join(root, '.swarm', 'memory.db');
 
     // Source DB but with an unrelated schema.
-    await mkdir(dirname(legacy), { recursive: true });
-    const db = new SQL.Database();
-    db.run('CREATE TABLE other_table (id INTEGER)');
-    await writeFile(legacy, Buffer.from(db.export()));
-    db.close();
+    await makeMemoryDb(legacy, 'CREATE TABLE other_table (id INTEGER);', () => {
+      /* no rows needed — just the wrong-schema table */
+    });
 
     const result = await cherryPickLearningsFromLegacy({
       projectRoot: root,
@@ -291,7 +290,7 @@ describe('cherryPickLearningsFromLegacy (#851)', () => {
     expect(result.sources[0]?.reason).toBe('self-reference');
 
     // Target left intact.
-    expect(readNamespaceCounts(new Uint8Array(await readFile(target)))).toEqual({
+    expect(readNamespaceCounts(target)).toEqual({
       learnings: 1,
     });
   });

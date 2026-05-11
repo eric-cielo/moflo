@@ -136,20 +136,28 @@ function wrapStatement(stmt: StatementSync): SqlJsLikeStatement {
       return currentRow ?? {};
     },
     get(params?: unknown): unknown[] {
-      // sql.js `Statement.get()` returns positional values. We emulate by
-      // reading the row object via getAsObject() and projecting to positional
-      // via the column-name list. Callers that pass params re-bind first.
+      // sql.js `Statement.get()` semantics:
+      //   - With params: one-shot bind+step, returns positional values of the
+      //     first row (or [] if no rows).
+      //   - Without params: returns positional values of the CURRENT row —
+      //     the row that the most-recent `step()` landed on. Callers use it
+      //     in a `while (stmt.step()) { const row = stmt.get(); ... }` loop;
+      //     calling iter.next() again here would skip every other row.
       if (params !== undefined) {
         pendingParams = toParamsArray(params);
         iter = null;
+        ensureIter();
+        const next = iter!.next();
+        if (next.done) {
+          currentRow = null;
+          return [];
+        }
+        currentRow = next.value as Record<string, unknown>;
       }
-      ensureIter();
-      const next = iter!.next();
-      if (next.done) return [];
-      const row = next.value as Record<string, unknown>;
-      const cols = columnNamesCache ?? Object.keys(row);
+      if (!currentRow) return [];
+      const cols = columnNamesCache ?? Object.keys(currentRow);
       columnNamesCache = cols;
-      return cols.map((c) => row[c]);
+      return cols.map((c) => currentRow![c]);
     },
     getColumnNames(): string[] {
       if (columnNamesCache) return columnNamesCache;

@@ -15,10 +15,10 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
-import { mofloImport } from '../services/moflo-require.js';
 import { runEmbeddingsMigrationIfNeeded } from '../services/embeddings-migration.js';
 import { memoryDbPath, MEMORY_DB_FILE, MOFLO_DIR } from '../services/moflo-paths.js';
 import * as embeddings from '../embeddings/index.js';
+import { openDaemonDatabase } from '../memory/daemon-backend.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 
 const DEFAULT_DB_PATH_FLAG = `${MOFLO_DIR}/${MEMORY_DB_FILE}`;
@@ -105,7 +105,7 @@ const generateCommand: Command = {
   },
 };
 
-// Search subcommand - REAL implementation using sql.js
+// Search subcommand - REAL implementation using node:sqlite via openDaemonDatabase
 const searchCommand: Command = {
   name: 'search',
   description: 'Semantic similarity search',
@@ -152,12 +152,8 @@ const searchCommand: Command = {
         return { success: false, exitCode: 1 };
       }
 
-      // Load sql.js
-      const initSqlJs = (await mofloImport('sql.js')).default;
-      const SQL = await initSqlJs();
-
-      const fileBuffer = fs.readFileSync(fullDbPath);
-      const db = new SQL.Database(fileBuffer);
+      // node:sqlite via the unified factory (Phase 5 / #1084).
+      const db = openDaemonDatabase(fullDbPath);
 
       const startTime = Date.now();
 
@@ -396,7 +392,7 @@ const compareCommand: Command = {
   },
 };
 
-// Collections subcommand - REAL implementation using sql.js
+// Collections subcommand - REAL implementation using node:sqlite via openDaemonDatabase
 const collectionsCommand: Command = {
   name: 'collections',
   description: 'Manage embedding collections (namespaces)',
@@ -431,12 +427,8 @@ const collectionsCommand: Command = {
         return { success: true, data: [] };
       }
 
-      // Load sql.js and query real data
-      const initSqlJs = (await mofloImport('sql.js')).default;
-      const SQL = await initSqlJs();
-
-      const fileBuffer = fs.readFileSync(fullDbPath);
-      const db = new SQL.Database(fileBuffer);
+      // node:sqlite via the unified factory (Phase 5 / #1084).
+      const db = openDaemonDatabase(fullDbPath);
 
       // Get collection stats from database
       const statsQuery = db.exec(`
@@ -1304,17 +1296,17 @@ const cacheCommand: Command = {
           sqliteSize = `${sizeBytes} B`;
         }
 
-        // Try to count real entries via sql.js
+        // Try to count real entries via node:sqlite
         try {
-          const initSqlJs = (await mofloImport('sql.js')).default;
-          const SQL = await initSqlJs();
-          const fileBuffer = fs.readFileSync(resolvedDbPath);
-          const db = new SQL.Database(fileBuffer);
-          const result = db.exec('SELECT COUNT(*) as count FROM embeddings');
-          if (result.length > 0 && result[0].values.length > 0) {
-            sqliteEntries = result[0].values[0][0] as number;
+          const db = openDaemonDatabase(resolvedDbPath);
+          try {
+            const result = db.exec('SELECT COUNT(*) as count FROM embeddings');
+            if (result.length > 0 && result[0].values.length > 0) {
+              sqliteEntries = result[0].values[0][0] as number;
+            }
+          } finally {
+            db.close();
           }
-          db.close();
         } catch {
           // Estimate entries from file size (~1600 bytes per entry for 384-dim embeddings)
           sqliteEntries = Math.floor(stats.size / 1600);

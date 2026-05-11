@@ -335,11 +335,9 @@ describe('session-start-launcher — visible mutation reporter (#716)', () => {
     //   3. emit `moflo: copied learnings forward (2 ...)`,
     //   4. leave .swarm/memory.db untouched (recovery source),
     //   5. emit a "legacy ... left in place" hint.
-    const initSqlJs = (await import('sql.js')).default;
-    const SQL = await initSqlJs();
     const { makeLegacyDb } = await import('../../src/cli/__tests__/_helpers/legacy-memory-db.js');
     mkdirSync(join(root, '.swarm'), { recursive: true });
-    await makeLegacyDb(SQL, join(root, '.swarm', 'memory.db'), (db) => {
+    await makeLegacyDb(join(root, '.swarm', 'memory.db'), (db) => {
       db.run(
         `INSERT INTO memory_entries (id, key, namespace, content) VALUES (?, ?, ?, ?)`,
         ['l1', 'k1', 'learnings', 'first learning'],

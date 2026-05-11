@@ -33,11 +33,6 @@
       "notes": "Chokepoint (storeEntry/deleteEntry/storeEntries) — #981/#985"
     },
     {
-      "file": "src/cli/memory/sqljs-backend.ts",
-      "classification": "in-daemon",
-      "notes": "Underlying sql.js backend used by chokepoint"
-    },
-    {
       "file": "src/cli/memory/sqlite-backend.ts",
       "classification": "in-daemon",
       "notes": "node:sqlite backend — default as of Phase 4 (#1083); sqljs-backend.ts deleted in Phase 5 (#1084)"

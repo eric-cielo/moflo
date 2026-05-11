@@ -26,8 +26,8 @@
 import { existsSync } from 'fs';
 
 import { CANONICAL_EMBEDDING_MODEL } from '../embeddings/migration/types.js';
-import { mofloImport } from '../services/moflo-require.js';
 import { memoryDbCandidatePaths } from '../services/moflo-paths.js';
+import { openDaemonDatabase } from '../memory/daemon-backend.js';
 
 export interface HealthCheck {
   name: string;
@@ -78,7 +78,7 @@ export async function checkEmbeddingHygiene(): Promise<HealthCheck> {
     return {
       name: 'Embedding hygiene',
       status: 'pass',
-      message: 'Cannot inspect memory DB (sql.js not available)',
+      message: 'Cannot inspect memory DB (open failed)',
     };
   }
   if (groups.length === 0) {
@@ -159,20 +159,9 @@ function resolveMemoryDb(): string | null {
 }
 
 async function loadModelGroups(dbPath: string): Promise<ModelGroup[] | null> {
-  const fs = await import('fs');
-  let initSqlJs: any;
-  try {
-    initSqlJs = (await mofloImport('sql.js'))?.default;
-  } catch {
-    return null;
-  }
-  if (!initSqlJs) return null;
-
   let db: any;
   try {
-    const SQL = await initSqlJs();
-    const buffer = fs.readFileSync(dbPath);
-    db = new SQL.Database(buffer);
+    db = openDaemonDatabase(dbPath);
   } catch {
     return null;
   }

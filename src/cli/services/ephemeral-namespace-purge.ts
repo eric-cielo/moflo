@@ -33,9 +33,8 @@ import {
   PURGE_ON_SESSION_START_NAMESPACES,
   TASKLIST_RETENTION_CAP,
 } from '../memory/bridge-embedder.js';
-import { mofloImport } from './moflo-require.js';
-import { atomicWriteFileSync } from './atomic-file-write.js';
 import { memoryDbPath } from './moflo-paths.js';
+import { openDaemonDatabase } from '../memory/daemon-backend.js';
 
 export interface PurgeEphemeralNamespacesOptions {
   /** Path to the memory DB. Defaults to `<cwd>/.moflo/moflo.db`. */
@@ -72,12 +71,9 @@ export async function purgeEphemeralNamespaces(
   const dbPath = path.resolve(options.dbPath ?? memoryDbPath(process.cwd()));
   if (!fs.existsSync(dbPath)) return { purged: 0, trimmed: 0 };
 
-  const initSqlJs = (await mofloImport('sql.js'))?.default;
-  if (!initSqlJs) return { purged: 0, trimmed: 0 };
-
-  const SQL = await initSqlJs();
-  const buffer = fs.readFileSync(dbPath);
-  const db = new SQL.Database(buffer);
+  // node:sqlite via the unified factory (Phase 5 / #1084). WAL persists each
+  // DELETE/VACUUM incrementally; no atomicWriteFileSync needed.
+  const db = openDaemonDatabase(dbPath);
 
   try {
     // Probe: schema must carry `memory_entries`. Older / non-moflo DBs are
@@ -132,11 +128,10 @@ export async function purgeEphemeralNamespaces(
 
     if (purged === 0 && trimmed === 0) return { purged: 0, trimmed: 0 };
 
-    // VACUUM has to run outside any open transaction; sql.js auto-commits
-    // each `db.run`, so this is safe to chain.
+    // VACUUM has to run outside any open transaction; node:sqlite/sql.js
+    // both auto-commit each `db.run`, so this is safe to chain.
     db.run('VACUUM');
 
-    atomicWriteFileSync(dbPath, db.export());
     return { purged, trimmed };
   } finally {
     db.close();
