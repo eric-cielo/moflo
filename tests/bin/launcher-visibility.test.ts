@@ -48,10 +48,16 @@ function cleanTempRoot(root: string) {
 }
 
 function runLauncher(cwd: string): { stdout: string; stderr: string; status: number | null } {
+  // Set CLAUDE_PROJECT_DIR explicitly so the unified findProjectRoot (#1057)
+  // anchors on the temp root. Without this, the walk-up would skip past the
+  // temp root's bare package.json (no .moflo / no CLAUDE.md) and land on the
+  // moflo repo's own .moflo/moflo.db. Production Claude Code always sets this
+  // env var when invoking the launcher.
   const result = spawnSync('node', [LAUNCHER], {
     cwd,
     encoding: 'utf-8',
     timeout: 30_000,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: cwd },
   });
   return { stdout: result.stdout || '', stderr: result.stderr || '', status: result.status };
 }

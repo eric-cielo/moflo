@@ -26,23 +26,14 @@ import { existsSync, readdirSync, readFileSync, statSync, mkdirSync, writeFileSy
 import { resolve, relative, dirname, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
-import { memoryDbPath } from './lib/moflo-paths.mjs';
+import { memoryDbPath, findProjectRoot } from './lib/moflo-paths.mjs';
+import { applyIncrementalChunks } from './lib/incremental-write.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { createProcessManager } from './lib/process-manager.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
 
 const projectRoot = findProjectRoot();
 
@@ -225,10 +216,6 @@ function saveDb(db) {
   writeFileSync(DB_PATH, Buffer.from(data));
 }
 
-function generateId() {
-  return `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
-
 function hashContent(content) {
   let hash = 0;
   for (let i = 0; i < content.length; i++) {
@@ -237,39 +224,6 @@ function hashContent(content) {
     hash = hash & hash;
   }
   return hash.toString(16);
-}
-
-function storeEntry(db, key, content, metadata = {}, tags = []) {
-  const now = Date.now();
-  const id = generateId();
-  const metaJson = JSON.stringify(metadata);
-  const tagsJson = JSON.stringify(tags);
-
-  db.run(`
-    INSERT OR REPLACE INTO memory_entries
-    (id, key, namespace, content, metadata, tags, created_at, updated_at, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
-  `, [id, key, NAMESPACE, content, metaJson, tagsJson, now, now]);
-
-  return true;
-}
-
-function deleteByPrefix(db, prefix) {
-  db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key LIKE ?`, [NAMESPACE, `${prefix}%`]);
-}
-
-function getEntryHash(db, key) {
-  const stmt = db.prepare('SELECT metadata FROM memory_entries WHERE key = ? AND namespace = ?');
-  stmt.bind([key, NAMESPACE]);
-  const entry = stmt.step() ? stmt.getAsObject() : null;
-  stmt.free();
-  if (entry?.metadata) {
-    try {
-      const meta = JSON.parse(entry.metadata);
-      return meta.contentHash;
-    } catch { /* ignore */ }
-  }
-  return null;
 }
 
 // #1053 S4: doc-* entries retired. Doc-level skip check now reads
@@ -564,10 +518,9 @@ function indexFile(db, filePath, keyPrefix, options = {}) {
     const stats = statSync(filePath);
     const relativePath = '/' + relative(projectRoot, filePath).replace(/\\/g, '/');
 
-    // Delete old chunks for this file before re-indexing.
-    // #1053 S4: also delete any legacy doc-* row (one-time cleanup if a
-    // pre-S4 install left one behind for this prefix).
-    deleteByPrefix(db, chunkPrefix);
+    // #1053 S4: drop any legacy doc-* row left over from a pre-S4 install.
+    // The chunker stopped emitting these and the audit found zero production
+    // readers; safe one-time cleanup as part of the per-doc re-index.
     db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key = ?`, [NAMESPACE, docKey]);
 
     // #1053 S4: Chunker no longer writes doc-* entries. Audit found zero
@@ -580,6 +533,8 @@ function indexFile(db, filePath, keyPrefix, options = {}) {
     const chunks = chunkMarkdown(content, fileName);
 
     if (chunks.length === 0) {
+      // No chunks generated → sweep any stragglers from a prior run and exit.
+      db.run(`DELETE FROM memory_entries WHERE namespace = ? AND key LIKE ?`, [NAMESPACE, `${chunkPrefix}-%`]);
       return { docKey, status: 'indexed', chunks: 0 };
     }
 
@@ -587,21 +542,17 @@ function indexFile(db, filePath, keyPrefix, options = {}) {
     const hierarchy = buildHierarchy(chunks, chunkPrefix);
     const siblings = chunks.map((_, i) => `${chunkPrefix}-${i}`);
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
+    // #1057: route chunk writes through applyIncrementalChunks so an
+    // unchanged chunk (~95% of the time when only one section of a doc
+    // edited) keeps its embedding column. Pre-#1057 this loop used raw
+    // INSERT OR REPLACE after a blanket deleteByPrefix — every re-index
+    // wiped every chunk's embedding and forced build-embeddings to
+    // re-vectorise the whole doc on every save. See
+    // feedback_indexer_preserve_embeddings.md.
+    const chunkRows = chunks.map((chunk, i) => {
       const chunkKey = `${chunkPrefix}-${i}`;
-
-      // Build prev/next links
       const prevChunk = i > 0 ? `${chunkPrefix}-${i - 1}` : null;
       const nextChunk = i < chunks.length - 1 ? `${chunkPrefix}-${i + 1}` : null;
-
-      // #1053 S5: dropped extractOverlapContext + preamble wrapping. The
-      // preambles were a workaround for missing traversal — once memory_get_neighbors
-      // is wired (S2), prevChunk/nextChunk metadata + a real call is the
-      // alternative path. Saved ~25-30% bloat per chunk on disk and in
-      // embeddings.
-
-      // Get hierarchical relationships
       const hierInfo = hierarchy[chunkKey];
 
       const chunkMetadata = {
@@ -646,16 +597,25 @@ function indexFile(db, filePath, keyPrefix, options = {}) {
       // #1053 S5: title heading + chunk body. No prev/next preamble.
       const searchableContent = `# ${chunk.title}\n\n${chunk.content}`;
 
-      // Store chunk with full metadata
-      storeEntry(
-        db,
-        chunkKey,
-        searchableContent,
-        chunkMetadata,
-        [keyPrefix, 'chunk', `level-${chunk.level}`, chunk.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'), ...extraTags]
-      );
+      return {
+        key: chunkKey,
+        content: searchableContent,
+        metadata: chunkMetadata,
+        tags: [
+          keyPrefix,
+          'chunk',
+          `level-${chunk.level}`,
+          chunk.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          ...extraTags,
+        ],
+      };
+    });
 
-      debug(`  Stored chunk ${i}: ${chunk.title} (${chunk.content.length} chars, prev=${!!prevChunk}, next=${!!nextChunk})`);
+    const counts = applyIncrementalChunks(db, NAMESPACE, chunkRows, {
+      keyPrefix: `${chunkPrefix}-`,
+    });
+    if (verbose) {
+      debug(`  Doc ${docKey}: inserted=${counts.inserted} updated=${counts.updated} unchanged=${counts.unchanged} removed=${counts.removed}`);
     }
 
     return { docKey, status: 'indexed', chunks: chunks.length };

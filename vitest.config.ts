@@ -90,6 +90,10 @@ export const isolationTests = [
   // file shells out to ../helpers/statusline.cjs and waits on its stdout. All
   // ten tests pass alone in <4 s total.
   'src/cli/__tests__/statusline-upgrade-notice.test.ts',
+  // Same spawn(statusline.cjs) profile as statusline-upgrade-notice; the new
+  // #1059 reconciliation tests check JSON output for `reconciled` + the
+  // compact render for the `?` fallback.
+  'src/cli/__tests__/statusline-vector-reconciliation.test.ts',
   // Issue #844 — same dynamic-import + real-coordinator load profile as
   // doctor-checks-deep / doctor-checks-swarm (already on this list). Spawns
   // swarm + hive-mind workers and runs three memory round-trips against the

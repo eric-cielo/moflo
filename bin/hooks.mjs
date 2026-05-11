@@ -26,24 +26,15 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { createProcessManager } from './lib/process-manager.mjs';
 import { shouldDaemonAutoStart } from './lib/daemon-config.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
+import { findProjectRoot } from './lib/moflo-paths.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Detect project root by walking up from cwd to find package.json.
 // IMPORTANT: Do NOT use resolve(__dirname, '..') or '../..' — this script lives
 // in bin/ during development but gets synced to .claude/scripts/ in consumer
-// projects, so __dirname-relative paths break. findProjectRoot() works everywhere.
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
-
+// projects, so __dirname-relative paths break. findProjectRoot() works
+// everywhere and resolves identically to the TS bridge (see lib/moflo-paths.mjs).
 const projectRoot = findProjectRoot();
 const logFile = resolve(projectRoot, '.swarm/hooks.log');
 const pm = createProcessManager(projectRoot);

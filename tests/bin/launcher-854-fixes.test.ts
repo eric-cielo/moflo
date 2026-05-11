@@ -201,7 +201,15 @@ function cleanRoot(root: string) {
 }
 
 function runLauncher(cwd: string) {
-  return spawnSync('node', [LAUNCHER], { cwd, encoding: 'utf-8', timeout: 30_000 });
+  // CLAUDE_PROJECT_DIR anchors the unified findProjectRoot (#1057); without
+  // it the walk-up would skip the temp root's bare package.json (no .moflo)
+  // and land on the moflo repo's own .moflo/moflo.db.
+  return spawnSync('node', [LAUNCHER], {
+    cwd,
+    encoding: 'utf-8',
+    timeout: 30_000,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: cwd },
+  });
 }
 
 describe('bin/session-start-launcher.mjs — manifest v2 size-aware drift (#854)', () => {

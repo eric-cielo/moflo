@@ -15,7 +15,9 @@ import {
   acquireDaemonLock,
   releaseDaemonLock,
   getDaemonLockHolder,
+  getDaemonLockPayload,
   lockPath,
+  readOwnMofloVersion,
 } from '../../services/daemon-lock.js';
 
 describe('daemon-lock', () => {
@@ -311,5 +313,47 @@ describe('daemon-lock', () => {
       expect(winners.length).toBe(1);
       expect(losers.length).toBe(1);
     }, 15000);
+  });
+
+  // =========================================================================
+  // Version publishing (epic #1054 — story #1056)
+  // =========================================================================
+  describe('version field in lock payload', () => {
+    it('writes the moflo version into the lock payload on acquire', () => {
+      acquireDaemonLock(tempDir);
+      const raw = readFileSync(lockPath(tempDir), 'utf-8');
+      const payload = JSON.parse(raw);
+
+      // Version is sourced from moflo's own package.json — the daemon is
+      // running INSIDE this test process so the value matches what
+      // readOwnMofloVersion() resolves.
+      const expectedVersion = readOwnMofloVersion();
+      expect(expectedVersion).toBeTruthy();
+      expect(payload.version).toBe(expectedVersion);
+    });
+
+    it('readOwnMofloVersion finds the moflo package.json by walking up', () => {
+      const version = readOwnMofloVersion();
+      expect(version).toBeTruthy();
+      expect(version).toMatch(/^\d+\.\d+\.\d+/);
+    });
+
+    it('getDaemonLockPayload returns the full payload including version', () => {
+      acquireDaemonLock(tempDir);
+      const payload = getDaemonLockPayload(tempDir);
+      expect(payload).not.toBeNull();
+      expect(payload!.pid).toBe(process.pid);
+      expect(payload!.version).toBe(readOwnMofloVersion());
+    });
+
+    it('getDaemonLockPayload returns null when no daemon is running', () => {
+      expect(getDaemonLockPayload(tempDir)).toBeNull();
+    });
+
+    it('getDaemonLockPayload returns null + unlinks corrupt locks', () => {
+      writeFileSync(lockPath(tempDir), 'not-json-at-all');
+      expect(getDaemonLockPayload(tempDir)).toBeNull();
+      expect(existsSync(lockPath(tempDir))).toBe(false);
+    });
   });
 });

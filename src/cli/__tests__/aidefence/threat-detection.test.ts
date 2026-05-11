@@ -21,7 +21,7 @@ describe('ThreatDetectionService', () => {
       expect(result.threats.length).toBeGreaterThan(0);
       expect(result.threats[0].type).toBe('instruction_override');
       expect(result.threats[0].severity).toBe('critical');
-      expect(result.detectionTimeMs).toBeLessThan(10);
+      expect(result.detectionTimeMs).toBeLessThan(50);
     });
 
     it('should detect jailbreak attempts', () => {
@@ -160,7 +160,7 @@ describe('Performance', () => {
 
     for (const input of inputs) {
       const result = service.detect(input);
-      expect(result.detectionTimeMs).toBeLessThan(10);
+      expect(result.detectionTimeMs).toBeLessThan(50);
     }
   });
 

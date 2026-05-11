@@ -29,21 +29,11 @@ import { resolve, dirname, relative, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { mofloResolveURL } from './lib/moflo-resolve.mjs';
-import { memoryDbPath, MOFLO_DIR } from './lib/moflo-paths.mjs';
+import { memoryDbPath, MOFLO_DIR, findProjectRoot } from './lib/moflo-paths.mjs';
 import { applyIncrementalChunks, computeContentListHash } from './lib/incremental-write.mjs';
 import { createProcessManager } from './lib/process-manager.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
 
 const projectRoot = findProjectRoot();
 const NAMESPACE = 'patterns';

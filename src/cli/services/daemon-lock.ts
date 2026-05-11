@@ -10,13 +10,22 @@
  */
 
 import * as fs from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 
 export interface DaemonLockPayload {
   pid: number;
   startedAt: number;
   label: string;
+  /**
+   * Moflo package version the daemon was launched from. Added in epic #1054
+   * to detect daemons that survived an `npm install moflo@<new>` and are now
+   * running pre-upgrade code against post-upgrade on-disk state. Missing on
+   * locks written by pre-#1054 daemons; the launcher treats absent version
+   * the same as a mismatch (recycle).
+   */
+  version?: string;
 }
 
 const LOCK_FILENAME = 'daemon.lock';
@@ -25,6 +34,30 @@ const LOCK_LABEL = 'moflo-daemon';
 /** Resolve the lock file path for a project root. */
 export function lockPath(projectRoot: string): string {
   return join(projectRoot, '.moflo', LOCK_FILENAME);
+}
+
+/**
+ * Read this daemon's own moflo package version by walking up from the
+ * compiled module location until a `package.json` with `"name": "moflo"`
+ * is found. Mirrors the pattern in `mcp-server.ts:260-279`. Returns
+ * `undefined` if the package.json can't be located — the launcher treats
+ * an undefined version the same as a mismatch, so this stays safe.
+ */
+export function readOwnMofloVersion(): string | undefined {
+  try {
+    let dir = dirname(fileURLToPath(import.meta.url));
+    for (;;) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(join(dir, 'package.json'), 'utf8'));
+        if (pkg.name === 'moflo' && typeof pkg.version === 'string') return pkg.version;
+      } catch { /* ignore — keep walking */ }
+      const parent = dirname(dir);
+      if (parent === dir) return undefined;
+      dir = parent;
+    }
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -49,6 +82,7 @@ export function acquireDaemonLock(
     pid,
     startedAt: Date.now(),
     label: LOCK_LABEL,
+    version: readOwnMofloVersion(),
   };
 
   // Attempt 1: atomic exclusive create
@@ -124,6 +158,7 @@ export function transferDaemonLock(
     pid: newPid,
     startedAt: Date.now(),
     label: LOCK_LABEL,
+    version: existing.version ?? readOwnMofloVersion(),
   };
 
   try {
@@ -133,6 +168,30 @@ export function transferDaemonLock(
   } catch {
     return false;
   }
+}
+
+/**
+ * Read the full daemon-lock payload (or null if no daemon, corrupt lock,
+ * or the holder is dead). Used by the launcher to compare the daemon's
+ * reported moflo version against the installed package.json version
+ * (epic #1054 — kill stale daemons that survived `npm install moflo@new`).
+ */
+export function getDaemonLockPayload(projectRoot: string): DaemonLockPayload | null {
+  const lock = lockPath(projectRoot);
+  if (!fs.existsSync(lock)) return null;
+
+  const existing = readLockPayload(lock);
+  if (!existing) {
+    safeUnlink(lock);
+    return null;
+  }
+
+  if (isProcessAlive(existing.pid) && isDaemonProcess(existing.pid)) {
+    return existing;
+  }
+
+  safeUnlink(lock);
+  return null;
 }
 
 /**

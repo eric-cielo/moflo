@@ -13,14 +13,17 @@ import http from 'node:http';
 // Mock memory-initializer surface used by the RPC handlers
 const mockStoreEntry = vi.fn();
 const mockDeleteEntry = vi.fn();
+const mockGetEntry = vi.fn();
+const mockSearchEntries = vi.fn();
+const mockListEntries = vi.fn();
 vi.mock('../../memory/memory-initializer.js', () => ({
   storeEntry: mockStoreEntry,
   deleteEntry: mockDeleteEntry,
+  getEntry: mockGetEntry,
+  searchEntries: mockSearchEntries,
+  listEntries: mockListEntries,
   // Other surface used by daemon-dashboard.ts itself (handleMemoryStats)
   getNamespaceCounts: vi.fn().mockResolvedValue({ namespaces: {}, total: 0 }),
-  searchEntries: vi.fn().mockResolvedValue({ success: true, results: [], searchTime: 0 }),
-  getEntry: vi.fn().mockResolvedValue({ success: true, found: false }),
-  listEntries: vi.fn().mockResolvedValue({ success: true, entries: [], total: 0 }),
   initializeMemoryDatabase: vi.fn(),
   checkMemoryInitialization: vi.fn(),
 }));
@@ -102,9 +105,15 @@ describe('daemon-memory-rpc', () => {
     testPort = 30000 + Math.floor(Math.random() * 10000);
     mockStoreEntry.mockReset();
     mockDeleteEntry.mockReset();
+    mockGetEntry.mockReset();
+    mockSearchEntries.mockReset();
+    mockListEntries.mockReset();
     // Default success
     mockStoreEntry.mockResolvedValue({ success: true, id: 'entry_test_id' });
     mockDeleteEntry.mockResolvedValue({ success: true, deleted: true, key: '', namespace: '', remainingEntries: 0 });
+    mockGetEntry.mockResolvedValue({ success: true, found: false });
+    mockSearchEntries.mockResolvedValue({ success: true, results: [], searchTime: 0 });
+    mockListEntries.mockResolvedValue({ success: true, entries: [], total: 0 });
   });
 
   afterEach(async () => {
@@ -357,5 +366,184 @@ describe('daemon-memory-rpc', () => {
     const results = await Promise.all(reqs);
     expect(results.every(r => r.status === 200)).toBe(true);
     expect(mockStoreEntry).toHaveBeenCalledTimes(10);
+  });
+
+  // ── get (#1058) ────────────────────────────────────────────────────────
+
+  it('POST /api/memory/get returns the daemon-served entry when found', async () => {
+    mockGetEntry.mockResolvedValueOnce({
+      success: true,
+      found: true,
+      entry: {
+        id: 'entry_abc',
+        key: 'k',
+        namespace: 'ns',
+        content: 'hello',
+        accessCount: 3,
+        createdAt: '2026-01-01',
+        updatedAt: '2026-01-02',
+        hasEmbedding: true,
+        tags: ['t1'],
+      },
+    });
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/get', { namespace: 'ns', key: 'k' });
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data.ok).toBe(true);
+    expect(data.found).toBe(true);
+    expect(data.entry.id).toBe('entry_abc');
+    expect(data.entry.content).toBe('hello');
+    expect(mockGetEntry).toHaveBeenCalledWith({ key: 'k', namespace: 'ns' });
+  });
+
+  it('POST /api/memory/get returns ok:true, found:false on miss', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/get', { namespace: 'ns', key: 'absent' });
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data.ok).toBe(true);
+    expect(data.found).toBe(false);
+    expect(data.entry).toBeUndefined();
+  });
+
+  it('POST /api/memory/get rejects invalid namespace with 400', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/get', { namespace: 'bad ns!', key: 'k' });
+    expect(res.status).toBe(400);
+    expect(mockGetEntry).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/memory/get surfaces getEntry failure as 500', async () => {
+    mockGetEntry.mockResolvedValueOnce({ success: false, found: false, error: 'db read failed' });
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/get', { namespace: 'ns', key: 'k' });
+    expect(res.status).toBe(500);
+    expect(JSON.parse(res.body).message).toContain('db read failed');
+  });
+
+  it('POST /api/memory/get returns 503 without memory accessor', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort });
+    const res = await postJson(testPort, '/api/memory/get', { namespace: 'ns', key: 'k' });
+    expect(res.status).toBe(503);
+  });
+
+  // ── search (#1058) ─────────────────────────────────────────────────────
+
+  it('POST /api/memory/search returns daemon-served results', async () => {
+    mockSearchEntries.mockResolvedValueOnce({
+      success: true,
+      results: [
+        { id: 'a', key: 'k1', content: 'c1', score: 0.9, namespace: 'ns' },
+        { id: 'b', key: 'k2', content: 'c2', score: 0.7, namespace: 'ns' },
+      ],
+      searchTime: 12,
+    });
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/search', {
+      query: 'hello world',
+      namespace: 'ns',
+      limit: 5,
+      threshold: 0.5,
+    });
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data.ok).toBe(true);
+    expect(data.results).toHaveLength(2);
+    expect(data.results[0].score).toBe(0.9);
+    expect(data.searchTime).toBe(12);
+    expect(mockSearchEntries).toHaveBeenCalledWith({
+      query: 'hello world', namespace: 'ns', limit: 5, threshold: 0.5,
+    });
+  });
+
+  it('POST /api/memory/search accepts namespace:"all" (cross-namespace)', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/search', { query: 'q', namespace: 'all' });
+    expect(res.status).toBe(200);
+    expect(mockSearchEntries.mock.calls[0][0].namespace).toBe('all');
+  });
+
+  it('POST /api/memory/search rejects empty query with 400', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/search', { query: '' });
+    expect(res.status).toBe(400);
+    expect(mockSearchEntries).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/memory/search rejects out-of-range threshold with 400', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/search', { query: 'q', threshold: 1.5 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/memory/search returns 503 without memory accessor', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort });
+    const res = await postJson(testPort, '/api/memory/search', { query: 'q' });
+    expect(res.status).toBe(503);
+  });
+
+  // ── list (#1058) ───────────────────────────────────────────────────────
+
+  it('POST /api/memory/list returns daemon-served entries', async () => {
+    mockListEntries.mockResolvedValueOnce({
+      success: true,
+      entries: [
+        { id: 'a', key: 'k1', namespace: 'ns', size: 10, accessCount: 1, createdAt: '', updatedAt: '', hasEmbedding: false },
+      ],
+      total: 1,
+    });
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/list', { namespace: 'ns', limit: 10, offset: 0 });
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data.ok).toBe(true);
+    expect(data.entries).toHaveLength(1);
+    expect(data.total).toBe(1);
+  });
+
+  it('POST /api/memory/list with empty body lists all (no params)', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/list', undefined);
+    expect(res.status).toBe(200);
+    expect(mockListEntries).toHaveBeenCalled();
+  });
+
+  it('POST /api/memory/list rejects negative offset with 400', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/list', { offset: -1 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/memory/list rejects oversized limit with 400', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/list', { limit: 50_000 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/memory/list returns 503 without memory accessor', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort });
+    const res = await postJson(testPort, '/api/memory/list', {});
+    expect(res.status).toBe(503);
+  });
+
+  // ── method check for new endpoints ─────────────────────────────────────
+
+  it('GET /api/memory/get returns 405', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await getRequest(testPort, '/api/memory/get');
+    expect(res.status).toBe(405);
+  });
+
+  it('GET /api/memory/search returns 405', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await getRequest(testPort, '/api/memory/search');
+    expect(res.status).toBe(405);
+  });
+
+  it('GET /api/memory/list returns 405', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await getRequest(testPort, '/api/memory/list');
+    expect(res.status).toBe(405);
   });
 });

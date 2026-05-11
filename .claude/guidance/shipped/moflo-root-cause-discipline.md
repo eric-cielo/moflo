@@ -91,6 +91,35 @@ When you find that the test is the actual problem: change the test, document why
 
 ---
 
+## Never Mask a Production Bug with Test-Side Workarounds
+
+**When a test catches a real bug, fix the bug — never the test.** A test that passes by avoiding the broken path is a lie about coverage.
+
+| Symptom test exposed | Right move | Wrong move (firing-offense pattern) |
+|---------------------|-----------|-------------------------------------|
+| Race between writers | Coordinate the writers | Reorder test so the race window closes before the assertion |
+| Data corruption from a known writer | Find and fix the writer | Pre-seed the corrupted state so the assertion no longer fires |
+| Stale cache served to readers | Invalidate the cache properly | Add `sleep` / `refresh()` in test to mask staleness |
+| Cross-process clobber on a shared file | Single-writer ownership or atomic write | Order the test so only one writer runs |
+| Missing precondition guard in prod | Add the guard | Have test setup satisfy the guard's precondition |
+
+**Smell test:** read the test setup as a description of production behavior. If steps appear that production code does not perform, the test is mocking around a real bug.
+
+### Case Study: #1053 Memory Traversal
+
+> "Healer: probeMemoryGetNeighbors() runs first in checkMemoryAccessFunctional so the bridge instantiates after the seed lands (sql.js whole-DB writeback clobbers external file writes once the in-memory snapshot warms)." — PR #1053 commit
+
+Diagnosis correct; fix wrong. The clobber stayed in production. `moflo@4.9.37` shipped two regressions to every consumer (migration-induced embedding loss + `memory_store` silent drop) because the suite was engineered around the failure it had just detected.
+
+### Self-Check Before Merging Any Test-Only Change
+
+1. **Did the test fail first?** Name the production bug it caught.
+2. **Did my fix change only the test?** If yes, the runtime contract must be the bug — document why in the commit message.
+3. **Would a real user still hit this in production?** If yes, fix the bug, not the test.
+4. **Does test code comment *why* it sleeps / reorders / mocks?** That comment usually names a production bug — move the fix to production.
+
+---
+
 ## Concrete Example: #1017 Hive-Mind Shutdown
 
 This is the canonical case study for this guidance — and it has a second-order lesson that makes it even more useful.
@@ -141,8 +170,26 @@ Reviewers should reject — not just question — PRs that show patch-on-patch s
 | New fix adds a layer without removing one | Ask: "what was wrong with the prior layer? why does it stay?" |
 | Comment in new code says "for safety" or "just in case" | Ask: "what specific failure is this preventing? cite the line that produces it" |
 | The PR description says "this should fix the flake" without a deterministic repro | Ask: "what was the actual root cause? the writeup doesn't name it" |
+| Commit message names a production bug, then describes test setup that avoids it | **Reject.** The bug stays live in production. Demand a fix at the production-code locus, not at the test. |
 
 These questions are not pedantic. They are the difference between fixing a bug and growing the surface area of bugs.
+
+---
+
+## Scoping a Fix Issue — Kill the Class, Not the Instance
+
+**When you file an issue for a bug, scope it to eliminate the bug class, not patch the visible instance.** Partial scope guarantees a follow-up epic.
+
+| Posture | Right | Wrong |
+|---------|-------|-------|
+| Scope | Name the bug class; list every writer / caller / consumer that can produce it | Name only the surface where the symptom showed |
+| Strategy | Commit to one approach in the body — "we will do X" | "Pick one of: option A or option B" |
+| Audit | Enumerate every member of the class (every writer, every caller, every migration) | Patch the one path that broke today |
+| Acceptance | Every original failure mode reproduces today and is gone after the epic; a new violator triggers a loud test | Symptom no longer reproduces |
+| Tests | Mirror the production failure shape (multi-process, cross-writer, time-coupled) | In-process unit tests only |
+| Follow-ups | None — anything that would be a follow-up is added to scope now | "We'll address this in a separate issue" |
+
+If the epic body says "we'll figure out X in a follow-up", the scope is wrong — fold X in or explain why it cannot be in scope (e.g., depends on a release boundary).
 
 ---
 

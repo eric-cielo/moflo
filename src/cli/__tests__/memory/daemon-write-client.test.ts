@@ -20,6 +20,9 @@ import {
   isDaemonAvailable,
   tryDaemonStore,
   tryDaemonDelete,
+  tryDaemonGet,
+  tryDaemonSearch,
+  tryDaemonList,
   _resetForTest,
 } from '../../memory/daemon-write-client.js';
 
@@ -329,6 +332,161 @@ describe('daemon-write-client', () => {
   it('tryDaemonDelete returns routed:false when daemon is down', async () => {
     process.env.MOFLO_DAEMON_PORT = String(40000 + Math.floor(Math.random() * 10000));
     const r = await tryDaemonDelete({ namespace: 'ns', key: 'k' });
+    expect(r.routed).toBe(false);
+  });
+
+  // ── tryDaemonGet (#1058) ──────────────────────────────────────────────
+
+  it('tryDaemonGet returns routed:true with entry on hit', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: true,
+        found: true,
+        entry: {
+          id: 'e1', key: 'k', namespace: 'ns', content: 'hello',
+          accessCount: 1, createdAt: '', updatedAt: '', hasEmbedding: true, tags: [],
+        },
+      }));
+    });
+
+    const r = await tryDaemonGet({ namespace: 'ns', key: 'k' });
+    expect(r.routed).toBe(true);
+    expect(r.data?.found).toBe(true);
+    expect(r.data?.entry?.content).toBe('hello');
+    const writeReq = fake.requests.find(r => r.url === '/api/memory/get');
+    expect(writeReq).toBeDefined();
+    expect(JSON.parse(writeReq!.body)).toEqual({ namespace: 'ns', key: 'k' });
+  });
+
+  it('tryDaemonGet returns routed:true,found:false on miss', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, found: false }));
+    });
+
+    const r = await tryDaemonGet({ namespace: 'ns', key: 'absent' });
+    expect(r.routed).toBe(true);
+    expect(r.data?.found).toBe(false);
+    expect(r.data?.entry).toBeUndefined();
+  });
+
+  it('tryDaemonGet returns routed:false when daemon is down', async () => {
+    process.env.MOFLO_DAEMON_PORT = String(40000 + Math.floor(Math.random() * 10000));
+    const r = await tryDaemonGet({ namespace: 'ns', key: 'k' });
+    expect(r.routed).toBe(false);
+  });
+
+  it('tryDaemonGet returns routed:false when MOFLO_IS_DAEMON=1', async () => {
+    process.env.MOFLO_IS_DAEMON = '1';
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+
+    const r = await tryDaemonGet({ namespace: 'ns', key: 'k' });
+    expect(r.routed).toBe(false);
+    expect(fake.requests.length).toBe(0);
+  });
+
+  it('tryDaemonGet returns routed:false on 500', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(500); res.end('{"error":"db error"}');
+    });
+
+    const r = await tryDaemonGet({ namespace: 'ns', key: 'k' });
+    expect(r.routed).toBe(false);
+  });
+
+  // ── tryDaemonSearch (#1058) ───────────────────────────────────────────
+
+  it('tryDaemonSearch returns routed:true with results array', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: true,
+        results: [
+          { id: 'a', key: 'k1', content: 'c1', score: 0.9, namespace: 'ns' },
+        ],
+        searchTime: 15,
+      }));
+    });
+
+    const r = await tryDaemonSearch({ query: 'hello', namespace: 'ns', limit: 5 });
+    expect(r.routed).toBe(true);
+    expect(r.data?.results).toHaveLength(1);
+    expect(r.data?.results[0].score).toBe(0.9);
+    expect(r.data?.searchTime).toBe(15);
+  });
+
+  it('tryDaemonSearch returns routed:true with empty results array', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, results: [] }));
+    });
+
+    const r = await tryDaemonSearch({ query: 'nope' });
+    expect(r.routed).toBe(true);
+    expect(r.data?.results).toEqual([]);
+  });
+
+  it('tryDaemonSearch returns routed:false when daemon is down', async () => {
+    process.env.MOFLO_DAEMON_PORT = String(40000 + Math.floor(Math.random() * 10000));
+    const r = await tryDaemonSearch({ query: 'q' });
+    expect(r.routed).toBe(false);
+  });
+
+  // ── tryDaemonList (#1058) ─────────────────────────────────────────────
+
+  it('tryDaemonList returns routed:true with entries + total', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: true,
+        entries: [
+          { id: 'a', key: 'k1', namespace: 'ns', size: 12, accessCount: 0, createdAt: '', updatedAt: '', hasEmbedding: false },
+        ],
+        total: 42,
+      }));
+    });
+
+    const r = await tryDaemonList({ namespace: 'ns', limit: 10, offset: 0 });
+    expect(r.routed).toBe(true);
+    expect(r.data?.entries).toHaveLength(1);
+    expect(r.data?.total).toBe(42);
+  });
+
+  it('tryDaemonList passes pagination params through', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    await tryDaemonList({ namespace: 'ns', limit: 25, offset: 50 });
+    const writeReq = fake.requests.find(r => r.url === '/api/memory/list');
+    expect(writeReq).toBeDefined();
+    const body = JSON.parse(writeReq!.body);
+    expect(body.namespace).toBe('ns');
+    expect(body.limit).toBe(25);
+    expect(body.offset).toBe(50);
+  });
+
+  it('tryDaemonList returns routed:false when daemon is down', async () => {
+    process.env.MOFLO_DAEMON_PORT = String(40000 + Math.floor(Math.random() * 10000));
+    const r = await tryDaemonList({});
     expect(r.routed).toBe(false);
   });
 

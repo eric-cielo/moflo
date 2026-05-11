@@ -23,6 +23,9 @@ import {
   handleMemoryStore,
   handleMemoryDelete,
   handleMemoryBatch,
+  handleMemoryGet,
+  handleMemorySearch,
+  handleMemoryList,
   matchMemoryRpcRoute,
 } from './daemon-memory-rpc.js';
 import { aggregateClaudeStats, emptyClaudeStatsShape } from './claude-stats.js';
@@ -461,6 +464,9 @@ async function handleRequest(
       if (memoryRoute === 'store') { await handleMemoryStore(req, res, opts.memory); return; }
       if (memoryRoute === 'delete') { await handleMemoryDelete(req, res, opts.memory); return; }
       if (memoryRoute === 'batch') { await handleMemoryBatch(req, res, opts.memory); return; }
+      if (memoryRoute === 'get') { await handleMemoryGet(req, res, opts.memory); return; }
+      if (memoryRoute === 'search') { await handleMemorySearch(req, res, opts.memory); return; }
+      if (memoryRoute === 'list') { await handleMemoryList(req, res, opts.memory); return; }
     }
 
     if (method !== 'GET') {

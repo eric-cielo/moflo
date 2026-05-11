@@ -17,25 +17,14 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { resolve, dirname } from 'path';
 import { mofloResolveURL, mofloInternalURL } from './lib/moflo-resolve.mjs';
-import { memoryDbPath, hnswIndexPath } from './lib/moflo-paths.mjs';
+import { memoryDbPath, hnswIndexPath, findProjectRoot } from './lib/moflo-paths.mjs';
 const initSqlJs = (await import(mofloResolveURL('sql.js'))).default;
 const FASTEMBED_INLINE = 'dist/src/cli/embeddings/fastembed-inline/index.js';
 const BRIDGE_CORE = 'dist/src/cli/memory/bridge-core.js';
 const HNSW_PERSISTENCE = 'dist/src/cli/memory/hnsw-persistence.js';
 const { writeVectorStatsJson } = await import(mofloInternalURL(BRIDGE_CORE));
 const { buildAndWriteHnswSidecar } = await import(mofloInternalURL(HNSW_PERSISTENCE));
-
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
 
 const projectRoot = findProjectRoot();
 const DB_PATH = memoryDbPath(projectRoot);

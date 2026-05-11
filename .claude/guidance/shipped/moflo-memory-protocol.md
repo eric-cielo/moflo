@@ -4,6 +4,10 @@
 
 ---
 
+## Rule (MUST)
+
+When a search hit carries a non-null `navigation`, you MUST call `mcp__moflo__memory_get_neighbors` to traverse — not `mcp__moflo__memory_retrieve`. `memory_retrieve` is for fetching one specific chunk in full, or for non-chunk entries where `navigation` is null. Bulk-retrieving search hits defeats the chunking architecture.
+
 ## Decision Table
 
 | You want | Use | Why |
@@ -18,7 +22,7 @@
 
 | Don't | Do instead |
 |-------|-----------|
-| Retrieve every search hit blindly | Read the search snippet + `navigation`; retrieve or traverse only the chunks you need |
+| Retrieve every search hit blindly | Traverse via `memory_get_neighbors` when `navigation` is present — bulk `memory_retrieve` per hit is a protocol violation |
 | Open the source file when a chunk would do | Stay in the chunk graph; `Read` `parentPath` only for the rare full-doc case |
 | Search again for a key you already have | `memory_retrieve` or `memory_get_neighbors` directly |
 

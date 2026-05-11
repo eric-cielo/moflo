@@ -49,10 +49,13 @@ function cleanTempRoot(root: string) {
 }
 
 function runLauncher(cwd: string): { stdout: string; stderr: string; status: number | null } {
+  // CLAUDE_PROJECT_DIR anchors the unified findProjectRoot (#1057) on the
+  // temp root; without it the walk-up would land on the moflo repo itself.
   const result = spawnSync('node', [LAUNCHER], {
     cwd,
     encoding: 'utf-8',
     timeout: 30_000,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: cwd },
   });
   return { stdout: result.stdout || '', stderr: result.stderr || '', status: result.status };
 }

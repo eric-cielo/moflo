@@ -164,6 +164,29 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       } catch { /* best effort */ }
       return runFixCommand('npx moflo daemon start');
     },
+    // Epic #1054.S5 / #1059 — SIGTERM the stale daemon and let the launcher's
+    // existing respawn path (mirrored as `npx moflo daemon start`) pick up the
+    // installed-version code. Mirrors `recycleDaemon` in
+    // bin/session-start-launcher.mjs so the auto-fix matches the launcher's
+    // behavior exactly.
+    'Daemon Version Skew': async () => {
+      const cwd = process.cwd();
+      const { getDaemonLockPayload } = await import('../services/daemon-lock.js');
+      const payload = getDaemonLockPayload(cwd);
+      if (payload?.pid && payload.pid > 0) {
+        try { process.kill(payload.pid, 'SIGTERM'); } catch { /* already dead */ }
+      }
+      const lockFile = join(cwd, '.moflo', 'daemon.lock');
+      try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
+      return runFixCommand('npx moflo daemon start');
+    },
+    'Embedding Coverage Truth': async () => {
+      // Same as the existing Embeddings fix — rebuild the cache by re-running
+      // the embeddings pipeline. Routes through `npx moflo` so the consumer
+      // CLI resolution stays consistent across platforms (see
+      // feedback_cross_platform_mandatory).
+      return runFixCommand('npx moflo embeddings init --force');
+    },
     'MCP Servers': async () => {
       return runFixCommand('claude mcp add moflo -- npx -y moflo mcp start');
     },

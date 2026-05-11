@@ -73,7 +73,14 @@ describe('bin/session-start-launcher.mjs §0d — clear notice when version matc
   });
 
   function runLauncher(): { stdout: string; stderr: string } {
-    const result = spawnSync('node', [LAUNCHER], { cwd: root, encoding: 'utf-8', timeout: 30_000 });
+    // CLAUDE_PROJECT_DIR anchors the unified findProjectRoot (#1057) on the
+    // temp root; without it the walk-up would land on the moflo repo itself.
+    const result = spawnSync('node', [LAUNCHER], {
+      cwd: root,
+      encoding: 'utf-8',
+      timeout: 30_000,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: root },
+    });
     return { stdout: result.stdout || '', stderr: result.stderr || '' };
   }
 

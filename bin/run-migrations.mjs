@@ -23,18 +23,9 @@ import { existsSync, readdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { hasMigrationRun, markMigrationDone, listMigrations, clearMigration } from './lib/migrations.mjs';
+import { findProjectRoot } from './lib/moflo-paths.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
 
 const projectRoot = findProjectRoot();
 const args = process.argv.slice(2);

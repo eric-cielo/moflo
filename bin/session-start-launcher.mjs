@@ -11,7 +11,7 @@ import { spawn, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { mofloDir } from './lib/moflo-paths.mjs';
+import { mofloDir, findProjectRoot } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
 import { applyRetiredPrune } from './lib/retired-files.mjs';
@@ -39,20 +39,13 @@ function sessionStartMirrorHeader(file) {
   return `${SESSION_START_MIRROR_MARKER} Do not edit — changes will be overwritten. -->\n<!-- Source: node_modules/moflo/.claude/guidance/shipped/${file} -->\n\n`;
 }
 
-// Detect project root by walking up from cwd to find package.json.
 // IMPORTANT: Do NOT use resolve(__dirname, '..') or '../..' — this script lives
 // in bin/ during development but gets synced to .claude/scripts/ in consumer
-// projects, so __dirname-relative paths break. findProjectRoot() works everywhere.
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
-
+// projects, so __dirname-relative paths break. findProjectRoot() (lib/moflo-
+// paths.mjs) resolves identically to the TS bridge (#1057): CLAUDE_PROJECT_DIR
+// first, then walk up for .moflo/moflo.db / .swarm/memory.db / CLAUDE.md+pkg /
+// package.json / .git. Inline walks here have caused N writers to land on
+// different DBs than the bridge reads from — never reintroduce one.
 const projectRoot = findProjectRoot();
 
 // Dogfood guard (#928). When this launcher runs inside the moflo repo itself,
@@ -884,37 +877,42 @@ try {
 // longer exists in source, calling a require helper that prints the warning
 // every time `neural_predict` / `neural_patterns` fires.
 //
-// Fix: compare the daemon-lock's `startedAt` against `node_modules/moflo/`'s
-// install mtime. If the daemon predates the current install, recycle it. The
-// install mtime is a stable proxy because npm rewrites the package.json on
-// every `npm install`, even when the resolved version is unchanged.
+// Fix (epic #1054): compare the daemon-lock's reported moflo `version` against
+// the installed `node_modules/moflo/package.json` version. If they differ —
+// or the lock predates #1054 and has no `version` field at all — recycle the
+// daemon. This is exact (not a heuristic margin like the prior mtime-based
+// check) and named explicitly so the doctor's Daemon Version Skew check
+// (#1059) can share the diagnosis.
 //
-// Margin absorbs clock skew between npm's mtime write and the daemon-lock
-// `startedAt` clock — within this window the daemon is likely the post-install
-// daemon, not a stale predecessor.
-const STALE_DAEMON_MTIME_SKEW_MS = 5_000;
+// Pre-#1054 daemons have no `version` in their lock payload — treated as a
+// mismatch by definition because by construction they were launched before
+// version publishing existed.
 try {
   const mofloPkgPathForRecycle = resolve(projectRoot, 'node_modules/moflo/package.json');
   const lockFile = resolve(projectRoot, '.moflo', 'daemon.lock');
-  // Cheap stat first — if the daemon-lock or package.json is gone we're done.
-  // statSync throws ENOENT on a missing file; the outer catch absorbs it.
-  const installedAt = statSync(mofloPkgPathForRecycle).mtimeMs;
-  const lockMtime = statSync(lockFile).mtimeMs;
-  // Quick reject: if the lock file itself is younger than the install, the
-  // daemon was started after install — no read of lock contents needed.
-  if (installedAt - lockMtime > STALE_DAEMON_MTIME_SKEW_MS) {
-    let daemonStartedAt = 0;
+  // Cheap stat first — if either file is gone, no skew check is possible.
+  if (existsSync(mofloPkgPathForRecycle) && existsSync(lockFile)) {
+    const installedVersion = JSON.parse(readFileSync(mofloPkgPathForRecycle, 'utf-8')).version;
+    let daemonVersion;
     try {
       const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
-      if (typeof lock?.startedAt === 'number') daemonStartedAt = lock.startedAt;
-    } catch { /* corrupt lock — fall through, recycleDaemon will unlink it */ }
-    if (daemonStartedAt > 0 && (installedAt - daemonStartedAt) > STALE_DAEMON_MTIME_SKEW_MS) {
-      if (recycleDaemon(lockFile, 'daemon-stale-recycle')) {
-        emitMutation('recycled stale daemon', 'predates current install');
+      if (typeof lock?.version === 'string') daemonVersion = lock.version;
+    } catch { /* corrupt lock — recycleDaemon will unlink it */ }
+    if (daemonVersion !== installedVersion) {
+      if (recycleDaemon(lockFile, 'daemon-version-skew')) {
+        const observed = daemonVersion ?? '<pre-1054 / unknown>';
+        emitMutation(
+          'recycled stale daemon',
+          `version skew: installed ${installedVersion}, daemon ${observed}`,
+        );
       }
     }
   }
-} catch { /* non-fatal — best-effort stale-daemon detection */ }
+} catch (err) {
+  // Non-fatal; surface via emitWarning per feedback_no_layered_workarounds —
+  // no silent catch on the upgrade path (#854).
+  emitWarning(`daemon version-skew check failed: ${errMessage(err)}`);
+}
 
 // ── 3a. Auto-migrate settings.json (npx flo → node helpers, PATH setup) ────
 // Existing users may have stale settings.json with `npx flo` hooks that break
@@ -1490,6 +1488,75 @@ try {
   } catch { /* writing the failure itself must not throw */ }
 }
 
+// ── 3e-1057. Run unmet schema migrations BEFORE daemon spawn ────────────────
+// run-migrations.mjs walks `bin/migrations/*.mjs` and invokes each that has
+// not been recorded in `.moflo/migrations.json`. Each migration opens sql.js
+// directly and persists with atomicWriteFileSync. They MUST run before the
+// daemon spawns or the daemon's in-RAM snapshot races their on-disk writes
+// — the bug class S2 detects (#1056 version-skew kill) and S3 (#1057)
+// closes for good. Pre-#1057 this ran in Section 4 AFTER `hooks session-
+// start` fired off the daemon, which is exactly the race fixed here.
+//
+// Synchronous on purpose: blocking by ≤30s on a one-time migration is the
+// right trade vs. an inconsistent post-upgrade DB. The runner short-circuits
+// to a no-op when nothing is pending, so steady-state cost is just the node
+// startup + ESM graph (~80ms on a warm fs).
+const runMigrations = resolveMofloBin(projectRoot, null, 'run-migrations.mjs');
+if (runMigrations) {
+  runMigrationsAndAnnounce(runMigrations);
+}
+
+function runMigrationsAndAnnounce(runnerPath) {
+  let raw;
+  try {
+    raw = execFileSync('node', [runnerPath], {
+      cwd: projectRoot,
+      timeout: 30_000,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'inherit'],
+    });
+  } catch (err) {
+    // Migrations are best-effort — a failure here must never block session
+    // start. But silent swallowing hides hangs (30s timeout) and corrupted
+    // DBs from the user, so leave a stderr crumb.
+    process.stderr.write(`moflo: migration runner failed (${err.code || err.message}); will retry next session\n`);
+    return;
+  }
+
+  const labels = {
+    'knowledge-to-learnings': 'consolidated knowledge → learnings',
+    'knowledge-purge': 'removed legacy knowledge namespace rows',
+    'purge-doc-entries': 'pruned legacy doc-* rows (chunk-only RAG, #1053)',
+    'strip-context-preambles': 'stripped chunk preambles; embeddings will rebuild on next index pass (#1053)',
+  };
+
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(/^\[migrations\]\s+([\w-]+):\s+done\s+in\s+\d+ms\s*(.*)$/);
+    if (!m) continue;
+    const migrationName = m[1];
+    let parsed = null;
+    try { parsed = m[2] ? JSON.parse(m[2]) : null; } catch { parsed = null; }
+
+    // Silent fast-path: don't announce zero-work runs (no point telling the
+    // user the launcher did nothing). If every numeric detail field is 0,
+    // skip the emit. Stamped migrations don't even reach this loop because
+    // the runner short-circuits via the manifest.
+    if (parsed) {
+      const nums = Object.values(parsed).filter((v) => typeof v === 'number');
+      if (nums.length > 0 && nums.every((v) => v === 0)) continue;
+    }
+
+    let detail = '';
+    if (parsed) {
+      if (typeof parsed.purged === 'number') detail = `${parsed.purged} ${parsed.purged === 1 ? 'row' : 'rows'}`;
+      else if (typeof parsed.rowsMigrated === 'number') detail = `${parsed.rowsMigrated} ${parsed.rowsMigrated === 1 ? 'entry' : 'entries'}`;
+    }
+
+    const label = labels[migrationName] || `migration ${migrationName}`;
+    emitMutation(label, detail);
+  }
+}
+
 // ── 3f. Flip the upgrade notice to "completed" (#636, #738) ─────────────────
 // See the TTL rationale at the constants above for why we switch to a
 // short-TTL completed badge instead of clearing the file.
@@ -1567,73 +1634,6 @@ if (mutationCount > 0) {
 const hooksScript = resolveMofloBin(projectRoot, null, 'hooks.mjs');
 if (hooksScript) {
   fireAndForget('node', [hooksScript, 'session-start'], 'hooks session-start');
-}
-
-// Migration runner — consults `.moflo/migrations.json` and runs only
-// migrations that haven't been recorded. Fast-paths to a no-op when the
-// manifest is current; the runner module loads with lazy sql.js init in
-// each migration, so a stamped session pays only node startup + ESM graph.
-//
-// Prefer the npm-package path so first-install consumers run unmet
-// migrations without waiting for a script-sync round-trip.
-//
-// Run synchronously (capture stdout) so each completed migration surfaces
-// through emitMutation — Claude's session-start hook captures launcher
-// stdout and that's the only channel that reaches the user.
-const runMigrations = resolveMofloBin(projectRoot, null, 'run-migrations.mjs');
-if (runMigrations) {
-  runMigrationsAndAnnounce(runMigrations);
-}
-
-function runMigrationsAndAnnounce(runnerPath) {
-  let raw;
-  try {
-    raw = execFileSync('node', [runnerPath], {
-      cwd: projectRoot,
-      timeout: 30_000,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'inherit'],
-    });
-  } catch (err) {
-    // Migrations are best-effort — a failure here must never block session
-    // start. But silent swallowing hides hangs (30s timeout) and corrupted
-    // DBs from the user, so leave a stderr crumb.
-    process.stderr.write(`moflo: migration runner failed (${err.code || err.message}); will retry next session\n`);
-    return;
-  }
-
-  const labels = {
-    'knowledge-to-learnings': 'consolidated knowledge → learnings',
-    'knowledge-purge': 'removed legacy knowledge namespace rows',
-    'purge-doc-entries': 'pruned legacy doc-* rows (chunk-only RAG, #1053)',
-    'strip-context-preambles': 'stripped chunk preambles; embeddings will rebuild on next index pass (#1053)',
-  };
-
-  for (const line of raw.split('\n')) {
-    const m = line.match(/^\[migrations\]\s+([\w-]+):\s+done\s+in\s+\d+ms\s*(.*)$/);
-    if (!m) continue;
-    const migrationName = m[1];
-    let parsed = null;
-    try { parsed = m[2] ? JSON.parse(m[2]) : null; } catch { parsed = null; }
-
-    // Silent fast-path: don't announce zero-work runs (no point telling the
-    // user the launcher did nothing). If every numeric detail field is 0,
-    // skip the emit. Stamped migrations don't even reach this loop because
-    // the runner short-circuits via the manifest.
-    if (parsed) {
-      const nums = Object.values(parsed).filter((v) => typeof v === 'number');
-      if (nums.length > 0 && nums.every((v) => v === 0)) continue;
-    }
-
-    let detail = '';
-    if (parsed) {
-      if (typeof parsed.purged === 'number') detail = `${parsed.purged} ${parsed.purged === 1 ? 'row' : 'rows'}`;
-      else if (typeof parsed.rowsMigrated === 'number') detail = `${parsed.rowsMigrated} ${parsed.rowsMigrated === 1 ? 'entry' : 'entries'}`;
-    }
-
-    const label = labels[migrationName] || `migration ${migrationName}`;
-    emitMutation(label, detail);
-  }
 }
 
 // Patches are now baked into moflo@4.0.0 source — no runtime patching needed.

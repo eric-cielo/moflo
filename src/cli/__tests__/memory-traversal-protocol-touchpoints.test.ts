@@ -28,10 +28,27 @@ describe('Memory traversal protocol — 6-touchpoint drift guards (#1053 S3)', (
     expect(lineCount, `protocol doc grew past 40-line cap (${lineCount}); compress before adding`).toBeLessThanOrEqual(40);
   });
 
+  // #1068: protocol must be stated as a non-optional MUST when `navigation`
+  // is present on a search hit. Soft "consider traversing" language was the
+  // failure mode — Claude treated traversal as optional and bulk-retrieved.
+  it('Touchpoint #0b — protocol doc states traversal as MUST when navigation is present (#1068)', () => {
+    const text = readFileSync(resolve(ROOT, CANONICAL), 'utf-8');
+    expect(text, 'protocol doc must contain an explicit MUST').toMatch(/MUST/);
+    expect(text, 'MUST must be tied to the navigation field').toMatch(/MUST[^.]*navigation|navigation[^.]*MUST/);
+  });
+
   it('Touchpoint #1 — subagent-bootstrap.json directive references neighbors + protocol doc', () => {
     const json = JSON.parse(readFileSync(resolve(ROOT, '.claude/helpers/subagent-bootstrap.json'), 'utf-8')) as { directive: string };
     expect(json.directive).toContain(NEIGHBORS_TOOL);
     expect(json.directive).toContain('moflo-memory-protocol.md');
+  });
+
+  // #1068: bootstrap directive must also carry the explicit MUST language so
+  // every subagent gets the non-optional rule in its first context injection.
+  it('Touchpoint #1b — subagent-bootstrap.json states traversal as MUST (#1068)', () => {
+    const json = JSON.parse(readFileSync(resolve(ROOT, '.claude/helpers/subagent-bootstrap.json'), 'utf-8')) as { directive: string };
+    expect(json.directive, 'directive must contain a second MUST for traversal').toMatch(/MUST[\s\S]+MUST/);
+    expect(json.directive).toMatch(/MUST[^.]*navigation|navigation[^.]*MUST/);
   });
 
   it('Touchpoint #2 — moflo-agent-rules.md cites the protocol doc and neighbors tool', () => {
@@ -75,5 +92,28 @@ describe('Memory traversal protocol — 6-touchpoint drift guards (#1053 S3)', (
     expect(get('memory_retrieve')).toContain(NEIGHBORS_TOOL);
     // The neighbors tool itself must be registered.
     expect(() => get('memory_get_neighbors')).not.toThrow();
+  });
+
+  // #1068: schema-only MCP callers (the ones that load tool descriptions
+  // without reading guidance docs) need the imperative in the description
+  // itself, not just a doc reference. Both descriptions must carry MUST +
+  // a pointer back to the protocol doc.
+  it('Touchpoint #6b — memory-tools.ts descriptions state the rule as MUST + cite the protocol doc (#1068)', async () => {
+    const { memoryTools } = await import('../mcp-tools/memory-tools.js');
+    const get = (name: string): string => {
+      const t = (memoryTools as Array<{ name: string; description: string }>).find(x => x.name === name);
+      if (!t) throw new Error(`${name} not registered`);
+      return t.description;
+    };
+    // memory_search carries the affirmative MUST (the producer of the
+    // navigation hits); memory_retrieve carries the prohibition
+    // ("protocol violation"). Per-tool wording is asserted explicitly so a
+    // future regression that drops the imperative from one side can't slip
+    // through a permissive OR.
+    expect(get('memory_search'), 'memory_search must say MUST').toContain('MUST');
+    expect(get('memory_retrieve'), 'memory_retrieve must call bulk-retrieve a protocol violation').toContain('protocol violation');
+    for (const name of ['memory_search', 'memory_retrieve']) {
+      expect(get(name), `${name} description must cite moflo-memory-protocol.md`).toContain('moflo-memory-protocol.md');
+    }
   });
 });
