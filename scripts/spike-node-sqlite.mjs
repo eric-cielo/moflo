@@ -364,23 +364,37 @@ async function multiProcessClobberSmoke(workDir, populatedSrc) {
   const scriptPath = join(workDir, 'child-writer.mjs');
   writeFileSync(scriptPath, CHILD_WRITER);
 
+  // Distinct-rows clobber: the structural sql.js failure mode — two processes
+  // each hold their own whole-file snapshot, so whichever flushes last wipes
+  // the other's row even though there's no key contention.
   const id1 = `mp-${randomBytes(6).toString('hex')}-A`;
   const id2 = `mp-${randomBytes(6).toString('hex')}-B`;
-
   await Promise.all([
     spawnWriter(scriptPath, dbPath, id1, 'content-A', 50),
     spawnWriter(scriptPath, dbPath, id2, 'content-B', 0),
   ]);
-
   const db = new DatabaseSync(dbPath, { readOnly: true });
   const a = db.prepare('SELECT content FROM memory_entries WHERE id = ?').get(id1);
   const b = db.prepare('SELECT content FROM memory_entries WHERE id = ?').get(id2);
   db.close();
 
+  // Same-key serialization: two processes INSERT OR REPLACE the same id with
+  // different content. WAL must serialize — final content equals exactly one
+  // of the two writes, never null/garbage.
+  const sharedId = `mp-${randomBytes(6).toString('hex')}-SHARED`;
+  await Promise.all([
+    spawnWriter(scriptPath, dbPath, sharedId, 'content-X', 30),
+    spawnWriter(scriptPath, dbPath, sharedId, 'content-Y', 0),
+  ]);
+  const db2 = new DatabaseSync(dbPath, { readOnly: true });
+  const shared = db2.prepare('SELECT content FROM memory_entries WHERE id = ?').get(sharedId);
+  db2.close();
+  const sharedOk = shared?.content === 'content-X' || shared?.content === 'content-Y';
+
   return {
-    ok: a?.content === 'content-A' && b?.content === 'content-B',
-    rowA: a?.content ?? null,
-    rowB: b?.content ?? null,
+    ok: a?.content === 'content-A' && b?.content === 'content-B' && sharedOk,
+    distinctRows: { rowA: a?.content ?? null, rowB: b?.content ?? null },
+    sameKeySerialization: { winner: shared?.content ?? null, ok: sharedOk },
   };
 }
 
@@ -460,7 +474,7 @@ function printHuman(r) {
     line('');
     line('── multi-process clobber smoke ──');
     const m = r.multiProcessClobber;
-    line(`  ${m.ok ? 'PASS' : 'FAIL'}  rowA=${m.rowA} rowB=${m.rowB}`);
+    line(`  ${m.ok ? 'PASS' : 'FAIL'}  distinct=${JSON.stringify(m.distinctRows)} sameKey=${JSON.stringify(m.sameKeySerialization)}`);
   }
   line('');
   line(`DECISION: ${r.engineRecommendation}`);
