@@ -38,6 +38,11 @@
       "notes": "Underlying sql.js backend used by chokepoint"
     },
     {
+      "file": "src/cli/memory/sqlite-backend.ts",
+      "classification": "in-daemon",
+      "notes": "Phase 1 (#1080) node:sqlite backend — drop-in for sqljs-backend, gated by MOFLO_DB_BACKEND env var"
+    },
+    {
       "file": "src/cli/memory/bridge-core.ts",
       "classification": "in-daemon",
       "notes": "Bridge-internal atomic write; single-process by construction"
