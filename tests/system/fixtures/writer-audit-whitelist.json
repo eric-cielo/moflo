@@ -84,6 +84,11 @@
       "notes": "Doctor embedding hygiene check; routes via chokepoint when mutating"
     },
     {
+      "file": "src/cli/commands/doctor-checks-coverage-truth.ts",
+      "classification": "in-daemon",
+      "notes": "Coverage Truth doctor check (#1059) — read-only SELECT COUNT(*); classified for completeness"
+    },
+    {
       "file": "src/cli/commands/embeddings.ts",
       "classification": "daemon-rpc",
       "notes": "flo embeddings CLI subprocess funnels via chokepoint"

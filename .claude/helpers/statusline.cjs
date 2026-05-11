@@ -485,58 +485,81 @@ function getHooksStatus() {
 }
 
 // Embeddings stats — reads from cache file written by embedding/memory ops.
-// No subprocess spawning. Falls back to DB file size estimate if cache is missing.
+// No subprocess spawning.
+//
+// Reconciliation (epic #1054.S5 / #1059): the cached vectorCount is only
+// trusted when (a) the daemon owns the lock and (b) the daemon's reported
+// `version` matches the installed package version. Either failing means the
+// cache may have been written by a clobbered or pre-upgrade writer, so the
+// number is flagged `reconciled: false` and the render path shows `?` instead
+// of a value that can't be vouched for. The prior `dbSize / 2` heuristic
+// fallback was exactly the unreconciled fabrication the story prohibits, so
+// it's removed.
 function getEmbeddingsStats() {
   let vectorCount = 0;
   let dbSizeKB = 0;
   let namespaces = 0;
   let hasHnsw = false;
+  let reconciled = false;
+  let staleReason = null;
 
-  // Read cached stats (written by memory store/embed/rebuild commands).
-  // `.moflo/` is the canonical location post-#699; the `.swarm/` parallel
-  // write was retired in #714 because every writer (bridge-core,
-  // memory-initializer, build-embeddings) now writes here, so the legacy
-  // fallback can only ever be stale — exactly the divergence trap that
-  // produced #639.
   const cached = readJSON(path.join(CWD, '.moflo', 'vector-stats.json'));
   if (cached && typeof cached.vectorCount === 'number') {
     vectorCount = cached.vectorCount;
     dbSizeKB = cached.dbSizeKB || 0;
     namespaces = cached.namespaces || 0;
     hasHnsw = cached.hasHnsw || false;
-    return { vectorCount, dbSizeKB, namespaces, hasHnsw };
-  }
 
-  // Fallback: estimate from DB file size (no subprocess). Same probe order
-  // as `getLearningStats` above — see comment there.
-  const dbFiles = [
-    path.join(CWD, '.moflo', 'moflo.db'),
-    path.join(CWD, '.swarm', 'memory.db'),
-    path.join(CWD, 'data', 'memory.db'),
-    path.join(CWD, '.claude', 'memory.db'),
-  ];
-  for (const f of dbFiles) {
-    const stat = safeStat(f);
-    if (stat) {
-      dbSizeKB = Math.floor(stat.size / 1024);
-      vectorCount = Math.floor(dbSizeKB / 2);
-      namespaces = 1;
-      break;
+    // Reconciliation against the daemon (single-writer authority post-#1054).
+    const daemonLock = readJSON(path.join(CWD, '.moflo', 'daemon.lock'));
+    const installedPkg = readJSON(path.join(CWD, 'node_modules', 'moflo', 'package.json'))
+                      || readJSON(path.join(CWD, 'package.json'));
+    if (!daemonLock || typeof daemonLock.pid !== 'number') {
+      staleReason = 'daemon-down';
+    } else if (!installedPkg || typeof installedPkg.version !== 'string') {
+      staleReason = 'pkg-unknown';
+    } else if (daemonLock.version !== installedPkg.version) {
+      staleReason = 'version-skew';
+    } else {
+      reconciled = true;
     }
+  } else {
+    staleReason = 'cache-missing';
   }
 
   const hnswPaths = [
     path.join(CWD, '.moflo', 'hnsw.index'),
     path.join(CWD, '.swarm', 'hnsw.index'), // legacy pre-#727
   ];
-  for (const p of hnswPaths) {
-    if (safeStat(p)) {
-      hasHnsw = true;
-      break;
+  if (!hasHnsw) {
+    for (const p of hnswPaths) {
+      if (safeStat(p)) {
+        hasHnsw = true;
+        break;
+      }
     }
   }
 
-  return { vectorCount, dbSizeKB, namespaces, hasHnsw };
+  // Fall back to a DB-size probe ONLY for the size display (which has no truth
+  // claim); vectorCount remains 0 when cache is missing rather than fabricating
+  // a divide-by-2 heuristic.
+  if (dbSizeKB === 0) {
+    const dbFiles = [
+      path.join(CWD, '.moflo', 'moflo.db'),
+      path.join(CWD, '.swarm', 'memory.db'),
+      path.join(CWD, 'data', 'memory.db'),
+      path.join(CWD, '.claude', 'memory.db'),
+    ];
+    for (const f of dbFiles) {
+      const stat = safeStat(f);
+      if (stat) {
+        dbSizeKB = Math.floor(stat.size / 1024);
+        break;
+      }
+    }
+  }
+
+  return { vectorCount, dbSizeKB, namespaces, hasHnsw, reconciled, staleReason };
 }
 
 // Test stats (count files only — NO reading file contents)
@@ -798,13 +821,20 @@ function generateDashboard() {
   // Embeddings line \u2014 vector store stats from .moflo/vector-stats.json.
   // Reuses `system.embeddings` (already computed by getSystemMetrics()) instead
   // of re-probing the cache file on every render.
+  //
+  // Reconciliation (#1054.S5 / #1059): when `vec.reconciled` is false, render
+  // the count as `?` and tag the reason \u2014 the underlying cache could have been
+  // written by a stale daemon and we refuse to display an unverified number.
   {
     const vec = system.embeddings;
-    if (vec.vectorCount > 0) {
+    if (vec.vectorCount > 0 || !vec.reconciled) {
       const hnswInd = vec.hasHnsw ? `${c.brightGreen}\u26A1${c.reset}` : '';
       const sizeDisp = vec.dbSizeKB >= 1024 ? `${(vec.dbSizeKB / 1024).toFixed(1)}MB` : `${vec.dbSizeKB}KB`;
+      const countDisp = vec.reconciled
+        ? `${c.brightGreen}\u25CF${vec.vectorCount}${c.reset}${hnswInd}`
+        : `${c.brightYellow}?${c.reset} ${c.dim}(${vec.staleReason || 'unreconciled'})${c.reset}`;
       const eParts = [
-        `${c.cyan}Vectors${c.reset} ${c.brightGreen}\u25CF${vec.vectorCount}${c.reset}${hnswInd}`,
+        `${c.cyan}Vectors${c.reset} ${countDisp}`,
         `${c.cyan}Size${c.reset} ${c.brightWhite}${sizeDisp}${c.reset}`,
       ];
       if (vec.namespaces > 0) {
@@ -877,13 +907,19 @@ function generateCompactDashboard() {
   }
   // Embeddings \u2014 always-on when vectorCount > 0; self-hides on a fresh install.
   // Compact doesn't call getSystemMetrics() so this is the only probe per render.
+  // Reconciliation: when the count is unreconciled (#1054.S5 / #1059), render
+  // `?` rather than displaying a value that can't be verified across the
+  // cache + daemon-reported state.
   {
     const vec = getEmbeddingsStats();
-    if (vec.vectorCount > 0) {
+    if (vec.vectorCount > 0 || !vec.reconciled) {
       const hnswInd = vec.hasHnsw ? '\u26A1' : '';
       const sizeDisp = vec.dbSizeKB >= 1024 ? `${(vec.dbSizeKB / 1024).toFixed(1)}MB` : `${vec.dbSizeKB}KB`;
+      const countDisp = vec.reconciled
+        ? `${c.brightGreen}${vec.vectorCount}${hnswInd}${c.reset}`
+        : `${c.brightYellow}?${c.reset}`;
       segments.push(
-        `${c.brightCyan}\uD83D\uDCCA${c.reset} ${c.brightGreen}${vec.vectorCount}${hnswInd}${c.reset} ${c.dim}(${sizeDisp})${c.reset}`
+        `${c.brightCyan}\uD83D\uDCCA${c.reset} ${countDisp} ${c.dim}(${sizeDisp})${c.reset}`
       );
     }
   }

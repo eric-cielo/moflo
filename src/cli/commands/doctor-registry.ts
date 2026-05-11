@@ -16,6 +16,9 @@ import {
   checkMofloDbBridge,
 } from './doctor-checks-deep.js';
 import { checkEmbeddingHygiene } from './doctor-embedding-hygiene.js';
+import { checkDaemonVersionSkew } from './doctor-checks-version-skew.js';
+import { checkEmbeddingCoverageTruth } from './doctor-checks-coverage-truth.js';
+import { checkWritersAudit } from './doctor-checks-writers-audit.js';
 import {
   checkSwarmFunctional,
   checkHiveMindFunctional,
@@ -70,10 +73,13 @@ export const allChecks: CheckFn[] = [
   checkMofloYamlCompliance,
   checkStatusLine,
   checkDaemonStatus,
+  checkDaemonVersionSkew,
   checkDaemonWriteRouting,
+  checkWritersAudit,
   checkMemoryDatabase,
   checkEmbeddings,
   checkEmbeddingHygiene,
+  checkEmbeddingCoverageTruth,
   checkTestDirs,
   checkMcpServers,
   checkDiskSpace,
@@ -116,11 +122,19 @@ export const componentMap: Record<string, CheckFn> = {
   'statusline': checkStatusLine,
   'status-line': checkStatusLine,
   'daemon': checkDaemonStatus,
+  'daemon-version-skew': checkDaemonVersionSkew,
+  'version-skew': checkDaemonVersionSkew,
+  'skew': checkDaemonVersionSkew,
   'daemon-write-routing': checkDaemonWriteRouting,
   'write-routing': checkDaemonWriteRouting,
+  'writers-audit': checkWritersAudit,
+  'writers': checkWritersAudit,
   'memory': checkMemoryDatabase,
   'embeddings': checkEmbeddings,
   'embedding-hygiene': checkEmbeddingHygiene,
+  'embedding-coverage': checkEmbeddingCoverageTruth,
+  'coverage': checkEmbeddingCoverageTruth,
+  'coverage-truth': checkEmbeddingCoverageTruth,
   'hygiene': checkEmbeddingHygiene,
   'git': checkGit,
   'mcp': checkMcpServers,

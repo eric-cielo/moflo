@@ -55,7 +55,7 @@ export const doctorCommand: Command = {
     {
       name: 'component',
       short: 'c',
-      description: 'Check specific component (version, node, npm, config, daemon, memory, embeddings, git, mcp, claude, disk, typescript, semantic, intelligence, swarm, hive-mind)',
+      description: 'Check specific component (version, version-skew, node, npm, config, daemon, writers-audit, memory, embeddings, coverage-truth, git, mcp, claude, disk, typescript, semantic, intelligence, swarm, hive-mind)',
       type: 'string',
     },
     {
