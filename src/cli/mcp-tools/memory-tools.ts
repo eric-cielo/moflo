@@ -384,7 +384,7 @@ export const memoryTools: MCPTool[] = [
   },
   {
     name: 'memory_retrieve',
-    description: 'Retrieve a value from memory by key. Chunk entries also return a full `navigation` object — use it with memory_get_neighbors for traversal instead of bulk-retrieving every search hit.',
+    description: 'Retrieve the full value for a SPECIFIC key. For chunk entries, prefer `memory_get_neighbors` for traversal — bulk-retrieving search hits is a protocol violation. The returned `navigation` object lets you keep traversing. See `.claude/guidance/moflo-memory-protocol.md`.',
     category: 'memory',
     inputSchema: {
       type: 'object',
@@ -429,7 +429,7 @@ export const memoryTools: MCPTool[] = [
   },
   {
     name: 'memory_search',
-    description: 'Semantic vector search using HNSW index (150x-12,500x faster than keyword search). Results include a compact `navigation` crumb on chunk hits — traverse via memory_get_neighbors rather than retrieving every hit.',
+    description: 'Semantic vector search using HNSW index (150x-12,500x faster than keyword search). When a result has a non-null `navigation` crumb, you MUST traverse via `memory_get_neighbors` — bulk `memory_retrieve` per hit is a protocol violation. See `.claude/guidance/moflo-memory-protocol.md`.',
     category: 'memory',
     inputSchema: {
       type: 'object',

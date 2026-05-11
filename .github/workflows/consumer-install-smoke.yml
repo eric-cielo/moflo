@@ -13,9 +13,9 @@ name: Consumer install smoke
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'epic/*']
   push:
-    branches: [main]
+    branches: [main, 'epic/*']
 
 env:
   NODE_VERSION: '22'

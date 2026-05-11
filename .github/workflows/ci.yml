@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'epic/*']
 
 env:
   NODE_VERSION: '22'
