@@ -1249,12 +1249,18 @@ export async function initializeMemoryDatabase(options: {
 
     // Force a clean slate so the new file gets fresh WAL state too.
     if (fs.existsSync(dbPath) && force) {
-      // Windows EBUSY guard (#1098): if the consumer's background daemon
-      // still has moflo.db open from the prior session, `unlinkSync`
-      // throws EBUSY. Retry on a short backoff to ride out the OS-level
-      // handle release race — by the time we hit memory init --force,
-      // the daemon has either been killed or is mid-shutdown. POSIX
-      // platforms ignore the retry because the unlink succeeds first try.
+      // Windows EBUSY guard (#1098): the consumer's background daemon
+      // (spawned by session-start during `npm install`) holds an open
+      // file handle on moflo.db. `unlinkSync` would otherwise throw EBUSY
+      // immediately — and the OS-level handle release race only resolves
+      // after the daemon process actually exits, so a tight retry loop
+      // can't outwait it. Stop the daemon first (graceful SIGTERM +
+      // 1s grace + SIGKILL via `killBackgroundDaemon`), THEN retry the
+      // unlink to ride out any residual handle-release lag.
+      const projectRoot = path.dirname(path.dirname(dbPath));
+      const { killBackgroundDaemon } = await import('../commands/daemon.js');
+      try { await killBackgroundDaemon(projectRoot); }
+      catch { /* best-effort; the retry below still gives us a budget */ }
       unlinkWithRetry(dbPath);
       // Also drop any sidecar WAL files so the next open doesn't replay
       // stale uncommitted transactions from the previous DB.
