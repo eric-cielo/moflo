@@ -110,6 +110,60 @@ export function logBridgeError(context: string, err: unknown, opts?: { alwaysLog
 }
 
 /**
+ * Treats an error as a SQLITE_BUSY lock-contention failure if either the
+ * error code or message indicates it. Belt-and-suspenders around node:sqlite,
+ * whose surface intermittently surfaces busy-conflicts as either `code:
+ * 'SQLITE_BUSY'` or a plain `Error: database is locked`. We match both.
+ */
+function isBusyError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { message?: unknown; code?: unknown };
+  if (e.code === 'SQLITE_BUSY' || e.code === 'SQLITE_BUSY_SNAPSHOT' || e.code === 'SQLITE_BUSY_RECOVERY') return true;
+  return typeof e.message === 'string' && /database is locked|SQLITE_BUSY/i.test(e.message);
+}
+
+// Exponential backoff with jitter. Total ceiling ≈ 1.55s of waiting (50 +
+// 100 + 200 + 400 + 800), plus the work itself. Sized so a typical short
+// indexer write (a few rows in auto-commit) finishes before we give up,
+// without ballooning bridge latency on a really stuck DB. See #1098.
+const BRIDGE_BUSY_RETRY_DELAYS_MS = [50, 100, 200, 400, 800];
+
+/**
+ * Run `fn` with a jittered exponential-backoff retry on SQLITE_BUSY errors.
+ *
+ * Why this exists: in CI the bridge's parallel doctor-subcheck workload hit
+ * "database is locked" 5–7 times in a 5ms window while the configured
+ * `busy_timeout=15000ms` should have been retrying for full seconds (#1098).
+ * The hypothesis-in-flight is that `node:sqlite`'s `db.prepare()` bypasses
+ * the engine-level `busy_handler`, so the busy_timeout pragma never engages
+ * for the bridge's prepare-heavy call patterns. Until that's confirmed
+ * (#1098 follow-up — local repro), an explicit retry here is the only
+ * guard between the consumer and a hard fail.
+ *
+ * Jitter scatters parallel retries so the workload doesn't thunder back
+ * onto the same lock at the same instant.
+ */
+async function withBusyRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt <= BRIDGE_BUSY_RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) {
+      const base = BRIDGE_BUSY_RETRY_DELAYS_MS[attempt - 1]!;
+      const jitter = base * (Math.random() * 0.5 - 0.25); // ±25%
+      const delay = Math.max(0, Math.round(base + jitter));
+      await new Promise<void>((resolve) => setTimeout(resolve, delay));
+    }
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!isBusyError(err)) throw err;
+      // Loop continues — backoff applied at top of next iteration.
+    }
+  }
+  throw lastErr;
+}
+
+/**
  * Resolve the on-disk DB path the bridge should read/write.
  *
  * Default to `.moflo/moflo.db`, but during the post-#727 migration window —
@@ -420,7 +474,7 @@ export async function withDb<T>(
     }
   }
   try {
-    return await fn(ctx, registry);
+    return await withBusyRetry(() => fn(ctx, registry));
   } catch (err) {
     logBridgeError('bridge operation failed', err);
     return null;
