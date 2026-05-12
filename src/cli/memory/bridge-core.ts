@@ -487,21 +487,40 @@ export async function withDb<T>(
   // that were on disk when `openSqlJsDatabase` ran; pin the matching mtime so
   // a subsequent unrelated process write triggers reload, not a self-fire.
   // Include `-wal` since WAL writes don't bump the main file mtime (#1098).
-  if (lastSeenMtimeMs == null) {
-    const target = dbPath ? path.resolve(dbPath) : getDbPath();
+  const target = dbPath ? path.resolve(dbPath) : getDbPath();
+  if (lastSeenMtimeMs == null && target !== ':memory:') {
+    try {
+      let anchor = fs.statSync(target).mtimeMs;
+      try {
+        const walStat = fs.statSync(`${target}-wal`);
+        if (walStat.mtimeMs > anchor) anchor = walStat.mtimeMs;
+      } catch { /* no WAL sidecar — main mtime is authoritative */ }
+      lastSeenMtimeMs = anchor;
+    } catch { /* file may not exist yet — first persist will anchor */ }
+  }
+  try {
+    const result = await withBusyRetry(() => fn(ctx, registry));
+    // Re-anchor the coherence cursor to the post-op mtime so internal
+    // bridge writes that happen AFTER persistBridgeDb (attestation log,
+    // bumpAccessCounts, cache invalidation row updates, etc.) don't
+    // look like external writes on the next withDb call. Without this
+    // re-anchor, the next call's checkBridgeCoherence sees the
+    // attestation-advanced -wal mtime, tears down the registry, and
+    // any test-injected stubs (cache.set, etc.) get reset — exactly
+    // the failure mode in `bridge-entries.test.ts` #994 after the
+    // WAL-coherence fix (49f91a01a). External writes still get
+    // detected at the START of the next withDb call.
     if (target !== ':memory:') {
       try {
         let anchor = fs.statSync(target).mtimeMs;
         try {
           const walStat = fs.statSync(`${target}-wal`);
           if (walStat.mtimeMs > anchor) anchor = walStat.mtimeMs;
-        } catch { /* no WAL sidecar — main mtime is authoritative */ }
+        } catch { /* no WAL sidecar */ }
         lastSeenMtimeMs = anchor;
-      } catch { /* file may not exist yet — first persist will anchor */ }
+      } catch { /* tolerate; coherence check re-anchors on next read */ }
     }
-  }
-  try {
-    return await withBusyRetry(() => fn(ctx, registry));
+    return result;
   } catch (err) {
     logBridgeError('bridge operation failed', err);
     return null;
