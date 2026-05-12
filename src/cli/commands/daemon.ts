@@ -484,9 +484,13 @@ const stopCommand: Command = {
 };
 
 /**
- * Kill background daemon process using lock file
+ * Kill background daemon process using lock file.
+ *
+ * Exported so `memory init --force` can stop the daemon before unlinking
+ * moflo.db — on Windows the daemon's open file handle otherwise blocks
+ * unlinkSync with EBUSY (#1098).
  */
-async function killBackgroundDaemon(projectRoot: string): Promise<boolean> {
+export async function killBackgroundDaemon(projectRoot: string): Promise<boolean> {
   const holderPid = getDaemonLockHolder(projectRoot);
 
   if (!holderPid) {

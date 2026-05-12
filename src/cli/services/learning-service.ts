@@ -1,23 +1,22 @@
 /**
  * Learning Service
  *
- * Persistent pattern learning with HNSW indexing and sql.js backend.
+ * Persistent pattern learning with HNSW indexing and node:sqlite backend.
  * Manages short-term and long-term pattern storage with automatic
  * promotion, deduplication, and consolidation.
  *
  * Features:
- * - Pattern storage/search with sql.js backend (.moflo/moflo.db)
+ * - Pattern storage/search with node:sqlite backend (.moflo/moflo.db)
  * - Short-term -> long-term pattern promotion (promote after 3 uses)
  * - Quality thresholds: minimum quality 0.6, dedup threshold 0.95
  * - Consolidation: max 500 short-term, 2000 long-term, prune after 30 days
  * - HNSW indexing for fast similarity search
  */
 
-import { existsSync, mkdirSync, readFileSync } from 'fs';
-import { dirname, join } from 'path';
-import { mofloImport } from './moflo-require.js';
-import { atomicWriteFileSync } from './atomic-file-write.js';
+import { existsSync, mkdirSync } from 'fs';
+import { dirname } from 'path';
 import { memoryDbPath } from './moflo-paths.js';
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../memory/daemon-backend.js';
 import {
   createNeuralEmbeddingProvider,
   type NeuralEmbeddingProvider,
@@ -301,19 +300,15 @@ interface LearningStats {
 }
 
 // ============================================================================
-// sql.js helpers
+// DB helpers (node:sqlite via openDaemonDatabase — sql.js-shape adapter)
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SqlJsDatabase = any;
+// Alias for the daemon-backend adapter shape — the helpers below use the
+// sql.js Statement API (prepare/bind/step/getAsObject/free) which the adapter
+// implements identically.
+type LearningDb = SqlJsLikeDatabase;
 
-async function loadSqlJs(): Promise<{ Database: new (data?: ArrayLike<number>) => SqlJsDatabase }> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const initSqlJs = (await mofloImport('sql.js')).default as any;
-  return initSqlJs();
-}
-
-function dbAll(db: SqlJsDatabase, sql: string, params: unknown[] = []): Record<string, unknown>[] {
+function dbAll(db: LearningDb, sql: string, params: unknown[] = []): Record<string, unknown>[] {
   const stmt = db.prepare(sql);
   if (params.length) stmt.bind(params);
   const rows: Record<string, unknown>[] = [];
@@ -324,7 +319,7 @@ function dbAll(db: SqlJsDatabase, sql: string, params: unknown[] = []): Record<s
   return rows;
 }
 
-function dbGet(db: SqlJsDatabase, sql: string, params: unknown[] = []): Record<string, unknown> | null {
+function dbGet(db: LearningDb, sql: string, params: unknown[] = []): Record<string, unknown> | null {
   const stmt = db.prepare(sql);
   if (params.length) stmt.bind(params);
   let row: Record<string, unknown> | null = null;
@@ -335,7 +330,7 @@ function dbGet(db: SqlJsDatabase, sql: string, params: unknown[] = []): Record<s
   return row;
 }
 
-function dbRun(db: SqlJsDatabase, sql: string, params: unknown[] = []): { changes: number } {
+function dbRun(db: LearningDb, sql: string, params: unknown[] = []): { changes: number } {
   db.run(sql, params);
   return { changes: db.getRowsModified() as number };
 }
@@ -358,7 +353,7 @@ function cosineSimilarity(a: Float32Array, b: Float32Array): number {
 // ============================================================================
 
 export class LearningService {
-  private db: SqlJsDatabase | null = null;
+  private db: LearningDb | null = null;
   private shortTermIndex = new HNSWIndex();
   private longTermIndex = new HNSWIndex();
   private dirty = false;
@@ -386,14 +381,10 @@ export class LearningService {
       mkdirSync(dataDir, { recursive: true });
     }
 
-    const SQL = await loadSqlJs();
-
-    if (existsSync(this.dbPath)) {
-      const buffer = readFileSync(this.dbPath);
-      this.db = new SQL.Database(buffer);
-    } else {
-      this.db = new SQL.Database();
-    }
+    // node:sqlite via the unified factory (Phase 5 / #1084). The factory
+    // creates the file lazily and applies WAL pragma so every UPDATE below
+    // persists incrementally — no whole-file dumps via export().
+    this.db = openDaemonDatabase(this.dbPath);
 
     this.ensureSchema();
     this.loadIndexes();
@@ -624,11 +615,13 @@ export class LearningService {
   }
 
   /**
-   * Save DB to disk.
+   * Persist any in-memory changes. node:sqlite + WAL writes incrementally
+   * on every `db.run`, so this is just a state-clear — the actual data hit
+   * disk when the mutations ran. Phase 5 (#1084) removed the explicit
+   * `db.export()` + atomicWriteFileSync (sql.js whole-file dump).
    */
   save(): void {
     if (!this.db) return;
-    atomicWriteFileSync(this.dbPath, this.db.export());
     this.dirty = false;
   }
 

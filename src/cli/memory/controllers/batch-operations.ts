@@ -50,7 +50,11 @@ export class BatchOperations {
     }
     const ids: string[] = [];
     const now = Date.now();
-    this.db.run('BEGIN TRANSACTION');
+    // BEGIN IMMEDIATE acquires RESERVED upfront — busy_handler is consulted
+    // for the lock acquisition, so concurrent writers wait out PRAGMA
+    // busy_timeout instead of fail-fasting on the SHARED→RESERVED upgrade
+    // (#1099: the deferred-BEGIN trap surfaced in #1098 CI).
+    this.db.run('BEGIN IMMEDIATE');
     try {
       const stmt = this.db.prepare(
         `INSERT INTO ${EPISODES_TABLE} (id, key, content, metadata, embedding, ts)

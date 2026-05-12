@@ -99,16 +99,44 @@ async function cacheInvalidate(registry: any, cacheKey: string): Promise<void> {
   cache.delete(cacheKey);
 }
 
+/**
+ * Opaque handle returned by {@link guardValidate} when the mutation passes
+ * MutationGuard's checks. Callers commit it via {@link guardCommit} AFTER
+ * the corresponding write succeeds; on failure the handle is discarded and
+ * MutationGuard's dedupe buffer stays clean — critical for withDb's
+ * SQLITE_BUSY retry path (#1098), where a failed write must not leave a
+ * stale recording that rejects the retry as a "duplicate".
+ */
+type GuardCommit = { guard: any; token: any } | null;
+
 async function guardValidate(
   registry: any,
   operation: string,
   params: Record<string, unknown>,
   options?: { bypassDedupe?: boolean },
-): Promise<{ allowed: boolean; reason?: string }> {
+): Promise<{ allowed: boolean; reason?: string; commit: GuardCommit }> {
   const guard = registry.get('mutationGuard');
-  if (!guard) return { allowed: true };
+  if (!guard) return { allowed: true, commit: null };
   const result = guard.validate({ operation, params, timestamp: Date.now(), bypassDedupe: options?.bypassDedupe });
-  return { allowed: result?.allowed === true, reason: result?.reason };
+  const allowed = result?.allowed === true;
+  return {
+    allowed,
+    reason: result?.reason,
+    commit: allowed && result?.token ? { guard, token: result.token } : null,
+  };
+}
+
+/**
+ * Confirm a previously-validated mutation. Idempotent and null-safe so
+ * call sites can fire it from a `finally`-style success branch without
+ * extra null checking. After commit, the mutation lands in MutationGuard's
+ * dedupe buffer so subsequent identical writes within the window are
+ * correctly rejected.
+ */
+function guardCommit(handle: GuardCommit): void {
+  if (!handle) return;
+  try { handle.guard.commit(handle.token); }
+  catch { /* commit failure is non-fatal — recording is observability-grade */ }
 }
 
 async function logAttestation(
@@ -301,6 +329,12 @@ export async function bridgeStoreEntry(options: {
       catch (err) { logBridgeError('post-persist stats refresh failed', err); }
     }
 
+    // Commit the MutationGuard recording NOW that the row is durable on
+    // disk + cache + attestation log. Order: persist before commit so a
+    // SQLITE_BUSY mid-write doesn't leave a stale dedupe entry that would
+    // reject the withDb retry as a "duplicate" (#1098).
+    guardCommit(guardResult.commit);
+
     return {
       success: true,
       id,
@@ -464,6 +498,12 @@ export async function bridgeStoreEntries(items: Array<{
       try { refreshVectorStatsCache(); }
       catch (err) { logBridgeError('post-persist stats refresh failed', err); }
     }
+
+    // Commit the bulk-store mutation in the dedupe buffer (#1098). At least
+    // one row reached disk, which is sufficient to record the bulk op —
+    // partial-batch persist failure is already reflected per-item via the
+    // results array.
+    guardCommit(guardResult.commit);
 
     return results;
   });
@@ -851,6 +891,12 @@ export async function bridgeDeleteEntry(options: {
     }
 
     refreshVectorStatsCache();
+
+    // Commit the delete mutation in the dedupe buffer (#1098). The row is
+    // gone from disk and the cache is invalidated, so this is the safe
+    // point to record — a SQLITE_BUSY mid-DELETE earlier would have caught
+    // in the try/catch above and never reached here.
+    guardCommit(guardResult.commit);
 
     return {
       success: true,

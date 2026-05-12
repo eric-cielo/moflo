@@ -8,7 +8,16 @@
  * @module moflo/cli/memory/controller-spec
  */
 
-import type { Database as SqlJsDatabase } from 'sql.js';
+import type { SqlJsLikeDatabase } from './daemon-backend.js';
+
+/**
+ * Phase 5 (#1084) deleted the sql.js dep entirely. The handle is now just
+ * the daemon-backend's `SqlJsLikeDatabase` (which is sql.js-shape compatible
+ * because every controller already used that surface). Kept as a type alias
+ * — not a union — so existing controller signatures don't need a follow-up
+ * rename pass.
+ */
+export type MofloDbHandle = SqlJsLikeDatabase;
 import type {
   IMemoryBackend,
   EmbeddingGenerator,
@@ -18,7 +27,7 @@ import type {
 import type { LearningBridgeConfig } from './learning-bridge.js';
 import type { MemoryGraphConfig } from './memory-graph.js';
 
-/** Controllers that bind to the shared sql.js Database handle. */
+/** Controllers that bind to the shared moflo DB handle (node:sqlite). */
 export type MofloDbControllerName =
   | 'skills'
   | 'reflexion'
@@ -46,9 +55,9 @@ export type ControllerName = MofloDbControllerName | CLIControllerName;
 /** Registry-owned resource a spec can declare as a prerequisite. */
 export type ResourceName = 'sqljs' | 'backend';
 
-/** Minimal wrapper holding the sql.js Database handle. */
+/** Minimal wrapper holding the engine-agnostic Database handle. */
 export interface SqlJsHandle {
-  database: SqlJsDatabase;
+  database: MofloDbHandle;
   close(): Promise<void>;
 }
 

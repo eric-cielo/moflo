@@ -8,12 +8,14 @@
  * fighting the live schema. Centralizing the DDL here keeps the schema in
  * one place — the next purge/migration test reuses it instead of pasting a
  * fourth copy.
+ *
+ * Phase 5 (#1084): node:sqlite-only. The sql.js-shaped `SQL.Database` API
+ * was removed; tests now pass the `DatabaseSync` constructor directly.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 export const LEGACY_MEMORY_SCHEMA = `
   CREATE TABLE memory_entries (
@@ -35,41 +37,72 @@ export const LEGACY_MEMORY_SCHEMA = `
   );
 `;
 
-export interface SqlJsLikeDb {
+/**
+ * Minimal db-callback shape exposed to setup functions. Matches the surface
+ * each test fixture actually uses (run for DDL, prepare for parameterised
+ * INSERTs). Intentionally narrow so swapping the engine again doesn't
+ * cascade through every test.
+ */
+export interface FixtureDb {
   run(sql: string, params?: unknown[]): void;
-  exec(sql: string): Array<{ values: unknown[][] }>;
-  export(): Uint8Array;
-  close(): void;
+  prepare(sql: string): FixtureStatement;
 }
 
-export interface SqlJsLikeStatic {
-  Database: new (data?: Uint8Array) => SqlJsLikeDb;
+export interface FixtureStatement {
+  run(params?: unknown[]): void;
+  free(): void;
+}
+
+function wrap(db: DatabaseSync): FixtureDb {
+  return {
+    run(sql: string, params?: unknown[]) {
+      if (params && params.length > 0) {
+        const s = db.prepare(sql);
+        try {
+          s.run(...(params as unknown[]));
+        } finally {
+          // node:sqlite StatementSync has no explicit free; GC handles it.
+        }
+      } else {
+        db.exec(sql);
+      }
+    },
+    prepare(sql: string) {
+      const s = db.prepare(sql);
+      return {
+        run(params?: unknown[]) {
+          if (params && params.length > 0) s.run(...(params as unknown[]));
+          else s.run();
+        },
+        free() { /* no-op under node:sqlite */ },
+      };
+    },
+  };
 }
 
 /**
- * Build an in-memory DB with `schema`, run `setup` against it, and write
- * the bytes to `dbPath`. Creates parent dirs as needed.
+ * Build a node:sqlite DB at `dbPath` with `schema`, run `setup` against it,
+ * close. Creates parent dirs as needed.
  */
 export async function makeMemoryDb(
-  SQL: SqlJsLikeStatic,
   dbPath: string,
   schema: string,
-  setup: (db: SqlJsLikeDb) => void,
+  setup: (db: FixtureDb) => void,
 ): Promise<void> {
   await mkdir(dirname(dbPath), { recursive: true });
-  const db = new SQL.Database();
-  db.run(schema);
-  setup(db);
-  const bytes = db.export();
-  db.close();
-  await writeFile(dbPath, Buffer.from(bytes));
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.exec(schema);
+    setup(wrap(db));
+  } finally {
+    db.close();
+  }
 }
 
 /** Convenience wrapper using the legacy CHECK schema. */
 export function makeLegacyDb(
-  SQL: SqlJsLikeStatic,
   dbPath: string,
-  setup: (db: SqlJsLikeDb) => void,
+  setup: (db: FixtureDb) => void,
 ): Promise<void> {
-  return makeMemoryDb(SQL, dbPath, LEGACY_MEMORY_SCHEMA, setup);
+  return makeMemoryDb(dbPath, LEGACY_MEMORY_SCHEMA, setup);
 }

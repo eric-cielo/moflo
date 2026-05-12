@@ -1,18 +1,23 @@
 /**
  * V3 Memory Initializer
- * Properly initializes the memory database with sql.js (WASM SQLite)
- * Includes pattern tables, vector embeddings, migration state tracking
+ * Properly initializes the memory database with node:sqlite via the
+ * unified `openDaemonDatabase` factory.
+ * Includes pattern tables, vector embeddings, migration state tracking.
  *
  * ADR-053: Routes through ControllerRegistry → AgentDB v3 when available,
- * falls back to raw sql.js for backwards compatibility.
+ * falls back to a direct node:sqlite write for backwards compatibility.
+ *
+ * Phase 5 (#1084): every `mofloImport('sql.js') + new SQL.Database(buffer)`
+ * triplet (and the matching `atomicWriteFileSync(path, db.export())`) was
+ * replaced with `openDaemonDatabase(path)`. node:sqlite + WAL persists each
+ * mutation incrementally; the explicit whole-file-dump that sql.js needed
+ * was the multi-writer clobber vector epic #1078 killed structurally.
  *
  * @module v3/cli/memory-initializer
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { mofloImport } from '../services/moflo-require.js';
-import { atomicWriteFileSync } from '../services/atomic-file-write.js';
 import { formatEmbeddingError } from './embedding-errors.js';
 import { HnswLite } from './hnsw-lite.js';
 import { tryLoadHnswSidecar } from './hnsw-persistence.js';
@@ -27,6 +32,7 @@ import {
   memoryDbPath,
 } from '../services/moflo-paths.js';
 import { tryDaemonStore, tryDaemonDelete, tryDaemonGet, tryDaemonSearch, tryDaemonList } from './daemon-write-client.js';
+import { openDaemonDatabase } from './daemon-backend.js';
 
 // #981 — daemon-write-client throws are a contract violation (it's documented
 // as never-throw). When a throw escapes anyway, log to stderr ONCE per process
@@ -43,8 +49,8 @@ function logRoutingFault(err: unknown): void {
 
 /**
  * Write vector-stats.json cache for the statusline (no subprocess needed).
- * Called after memory store in the raw-sql.js fallback path. The bridge path
- * goes through refreshVectorStatsCache() in bridge-core.ts instead.
+ * Called after memory store in the direct-write fallback path. The bridge
+ * path goes through refreshVectorStatsCache() in bridge-core.ts instead.
  * @param dbPath - path to the SQLite database file
  * @param stats  - exact counts from a db query already in progress (required —
  *                 making this optional caused issue #639 by silently writing 0)
@@ -474,10 +480,7 @@ export async function getHNSWIndex(options?: {
 
     if (fs.existsSync(dbPath)) {
       try {
-        const initSqlJs = (await mofloImport('sql.js')).default;
-        const SQL = await initSqlJs();
-        const fileBuffer = fs.readFileSync(dbPath);
-        const sqlDb = new SQL.Database(fileBuffer);
+        const sqlDb = openDaemonDatabase(dbPath);
 
         const cols = sidecarLoaded ? SELECT_METADATA_ONLY : SELECT_WITH_EMBEDDING;
         const result = sqlDb.exec(`
@@ -995,11 +998,7 @@ export async function ensureSchemaColumns(dbPath: string): Promise<{
       return { success: true, columnsAdded: [] };
     }
 
-    const initSqlJs = (await mofloImport('sql.js')).default;
-    const SQL = await initSqlJs();
-
-    const fileBuffer = fs.readFileSync(dbPath);
-    const db = new SQL.Database(fileBuffer);
+    const db = openDaemonDatabase(dbPath);
 
     // Get current columns in memory_entries
     const tableInfo = db.exec("PRAGMA table_info(memory_entries)");
@@ -1024,21 +1023,15 @@ export async function ensureSchemaColumns(dbPath: string): Promise<{
       { name: 'status', definition: "status TEXT DEFAULT 'active'" }
     ];
 
-    let modified = false;
     for (const col of requiredColumns) {
       if (!existingColumns.has(col.name)) {
         try {
           db.run(`ALTER TABLE memory_entries ADD COLUMN ${col.definition}`);
           columnsAdded.push(col.name);
-          modified = true;
         } catch (e) {
           // Column might already exist or other error - continue
         }
       }
-    }
-
-    if (modified) {
-      atomicWriteFileSync(dbPath, db.export());
     }
 
     db.close();
@@ -1083,11 +1076,7 @@ export async function checkAndMigrateLegacy(options: {
   for (const legacyPath of legacyPaths) {
     if (fs.existsSync(legacyPath) && legacyPath !== dbPath) {
       try {
-        const initSqlJs = (await mofloImport('sql.js')).default;
-        const SQL = await initSqlJs();
-
-        const legacyBuffer = fs.readFileSync(legacyPath);
-        const legacyDb = new SQL.Database(legacyBuffer);
+        const legacyDb = openDaemonDatabase(legacyPath);
 
         // Check if it has data
         const countResult = legacyDb.exec('SELECT COUNT(*) FROM memory_entries');
@@ -1171,7 +1160,40 @@ async function activateControllerRegistry(
 }
 
 /**
- * Initialize the memory database properly using sql.js
+ * Cross-platform safe unlink with a short EBUSY/EPERM retry loop. Windows
+ * holds file handles briefly after process exit (and the consumer's
+ * background daemon may still own the moflo.db handle when `memory init
+ * --force` runs); on POSIX the first attempt always succeeds. Total wait
+ * is bounded at ~750ms so we never paper over a real long-held handle.
+ *
+ * Used by `initializeMemoryDatabase` to ride out the daemon's brief handle
+ * release race after `flo healer --kill-zombies`. See #1098 for the smoke
+ * harness incident that drove this — the daemon's WAL+SHM file handles
+ * weren't released by Windows for ~200ms after SIGKILL.
+ */
+function unlinkWithRetry(filePath: string): void {
+  const delays = [0, 50, 100, 100, 100, 100, 100, 100, 50, 50]; // ~750ms total
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delays[attempt]);
+    try {
+      fs.unlinkSync(filePath);
+      return;
+    } catch (err) {
+      lastErr = err;
+      const code = (err as NodeJS.ErrnoException)?.code;
+      // Only retry on the handle-release race codes. ENOENT means we've
+      // already won (or the file was never there); EACCES could be a real
+      // permission issue worth surfacing immediately.
+      if (code === 'ENOENT') return;
+      if (code !== 'EBUSY' && code !== 'EPERM') throw err;
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Initialize the memory database via the unified node:sqlite factory.
  */
 export async function initializeMemoryDatabase(options: {
   backend?: string;
@@ -1225,142 +1247,89 @@ export async function initializeMemoryDatabase(options: {
       };
     }
 
-    // Try to use sql.js (WASM SQLite)
-    let db: any;
-    let usedSqlJs = false;
-
-    try {
-      // Dynamic import of sql.js
-      const initSqlJs = (await mofloImport('sql.js')).default;
-      const SQL = await initSqlJs();
-
-      // Load existing database or create new
-      if (fs.existsSync(dbPath) && force) {
-        fs.unlinkSync(dbPath);
-      }
-
-      db = new SQL.Database();
-      usedSqlJs = true;
-    } catch (e) {
-      // sql.js not available, fall back to writing schema file
-      if (verbose) {
-        console.log('sql.js not available, writing schema file for later initialization');
+    // Force a clean slate so the new file gets fresh WAL state too.
+    if (fs.existsSync(dbPath) && force) {
+      // Windows EBUSY guard (#1098): the consumer's background daemon
+      // (spawned by session-start during `npm install`) holds an open
+      // file handle on moflo.db. `unlinkSync` would otherwise throw EBUSY
+      // immediately — and the OS-level handle release race only resolves
+      // after the daemon process actually exits, so a tight retry loop
+      // can't outwait it. Stop the daemon first (graceful SIGTERM +
+      // 1s grace + SIGKILL via `killBackgroundDaemon`), THEN retry the
+      // unlink to ride out any residual handle-release lag.
+      const projectRoot = path.dirname(path.dirname(dbPath));
+      const { killBackgroundDaemon } = await import('../commands/daemon.js');
+      try { await killBackgroundDaemon(projectRoot); }
+      catch { /* best-effort; the retry below still gives us a budget */ }
+      unlinkWithRetry(dbPath);
+      // Also drop any sidecar WAL files so the next open doesn't replay
+      // stale uncommitted transactions from the previous DB.
+      for (const suffix of ['-wal', '-shm']) {
+        const sidecar = dbPath + suffix;
+        if (fs.existsSync(sidecar)) {
+          try { unlinkWithRetry(sidecar); } catch { /* best-effort */ }
+        }
       }
     }
 
-    if (usedSqlJs && db) {
+    const db = openDaemonDatabase(dbPath);
+    try {
       // Execute schema
       db.run(MEMORY_SCHEMA_V3);
-
       // Insert initial metadata
       db.run(getInitialMetadata(backend));
-
-      // Save to file
-      const data = db.export();
-      const buffer = Buffer.from(data);
-      fs.writeFileSync(dbPath, buffer);
-
-      // Close database
+    } finally {
       db.close();
-
-      // Also create schema file for reference
-      const schemaPath = path.join(dbDir, 'schema.sql');
-      fs.writeFileSync(schemaPath, MEMORY_SCHEMA_V3 + '\n' + getInitialMetadata(backend));
-
-      // ADR-053: Activate ControllerRegistry so controllers (ReasoningBank,
-      // SkillLibrary, ExplainableRecall, etc.) are instantiated during init
-      const controllerResult = await activateControllerRegistry(dbPath, verbose);
-
-      return {
-        success: true,
-        backend,
-        dbPath,
-        schemaVersion: '3.0.0',
-        tablesCreated: [
-          'memory_entries',
-          'patterns',
-          'pattern_history',
-          'trajectories',
-          'trajectory_steps',
-          'migration_state',
-          'sessions',
-          'vector_indexes',
-          'metadata'
-        ],
-        indexesCreated: [
-          'idx_memory_namespace',
-          'idx_memory_key',
-          'idx_memory_type',
-          'idx_memory_status',
-          'idx_memory_created',
-          'idx_memory_accessed',
-          'idx_memory_owner',
-          'idx_patterns_type',
-          'idx_patterns_confidence',
-          'idx_patterns_status',
-          'idx_patterns_last_matched',
-          'idx_pattern_history_pattern',
-          'idx_steps_trajectory'
-        ],
-        features: {
-          vectorEmbeddings: true,
-          patternLearning: true,
-          temporalDecay: true,
-          hnswIndexing: true,
-          migrationTracking: true
-        },
-        controllers: controllerResult,
-      };
-    } else {
-      // Fall back to schema file approach
-      const schemaPath = path.join(dbDir, 'schema.sql');
-      fs.writeFileSync(schemaPath, MEMORY_SCHEMA_V3 + '\n' + getInitialMetadata(backend));
-
-      // Create minimal valid SQLite file
-      const sqliteHeader = Buffer.alloc(4096, 0);
-      // SQLite format 3 header
-      Buffer.from('SQLite format 3\0').copy(sqliteHeader, 0);
-      sqliteHeader[16] = 0x10; // page size high byte (4096)
-      sqliteHeader[17] = 0x00; // page size low byte
-      sqliteHeader[18] = 0x01; // file format write version
-      sqliteHeader[19] = 0x01; // file format read version
-      sqliteHeader[24] = 0x00; // max embedded payload
-      sqliteHeader[25] = 0x40;
-      sqliteHeader[26] = 0x20; // min embedded payload
-      sqliteHeader[27] = 0x20; // leaf payload
-
-      fs.writeFileSync(dbPath, sqliteHeader);
-
-      // ADR-053: Activate ControllerRegistry even on fallback path
-      const controllerResult = await activateControllerRegistry(dbPath, verbose);
-
-      return {
-        success: true,
-        backend,
-        dbPath,
-        schemaVersion: '3.0.0',
-        tablesCreated: [
-          'memory_entries (pending)',
-          'patterns (pending)',
-          'pattern_history (pending)',
-          'trajectories (pending)',
-          'trajectory_steps (pending)',
-          'migration_state (pending)',
-          'sessions (pending)',
-          'vector_indexes (pending)',
-          'metadata (pending)'
-        ],
-        indexesCreated: [],
-        features: {
-          vectorEmbeddings: true,
-          patternLearning: true,
-          temporalDecay: true,
-          hnswIndexing: true,
-          migrationTracking: true
-        },
-        controllers: controllerResult,
-      };
     }
+
+    // Also create schema file for reference
+    const schemaPath = path.join(dbDir, 'schema.sql');
+    fs.writeFileSync(schemaPath, MEMORY_SCHEMA_V3 + '\n' + getInitialMetadata(backend));
+
+    // ADR-053: Activate ControllerRegistry so controllers (ReasoningBank,
+    // SkillLibrary, ExplainableRecall, etc.) are instantiated during init
+    const controllerResult = await activateControllerRegistry(dbPath, verbose);
+
+    return {
+      success: true,
+      backend,
+      dbPath,
+      schemaVersion: '3.0.0',
+      tablesCreated: [
+        'memory_entries',
+        'patterns',
+        'pattern_history',
+        'trajectories',
+        'trajectory_steps',
+        'migration_state',
+        'sessions',
+        'vector_indexes',
+        'metadata'
+      ],
+      indexesCreated: [
+        'idx_memory_namespace',
+        'idx_memory_key',
+        'idx_memory_type',
+        'idx_memory_status',
+        'idx_memory_created',
+        'idx_memory_accessed',
+        'idx_memory_owner',
+        'idx_patterns_type',
+        'idx_patterns_confidence',
+        'idx_patterns_status',
+        'idx_patterns_last_matched',
+        'idx_pattern_history_pattern',
+        'idx_steps_trajectory'
+      ],
+      features: {
+        vectorEmbeddings: true,
+        patternLearning: true,
+        temporalDecay: true,
+        hnswIndexing: true,
+        migrationTracking: true
+      },
+      controllers: controllerResult,
+    };
   } catch (error) {
     return {
       success: false,
@@ -1402,12 +1371,7 @@ export async function checkMemoryInitialization(dbPath?: string): Promise<{
   }
 
   try {
-    // Try to load with sql.js
-    const initSqlJs = (await mofloImport('sql.js')).default;
-    const SQL = await initSqlJs();
-
-    const fileBuffer = fs.readFileSync(path_);
-    const db = new SQL.Database(fileBuffer);
+    const db = openDaemonDatabase(path_);
 
     // Check for metadata table
     const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
@@ -1457,11 +1421,7 @@ export async function applyTemporalDecay(dbPath?: string): Promise<{
   const path_ = dbPath || memoryDbPath(process.cwd());
 
   try {
-    const initSqlJs = (await mofloImport('sql.js')).default;
-    const SQL = await initSqlJs();
-
-    const fileBuffer = fs.readFileSync(path_);
-    const db = new SQL.Database(fileBuffer);
+    const db = openDaemonDatabase(path_);
 
     // Apply decay: confidence *= exp(-decay_rate * days_since_last_use)
     const now = Date.now();
@@ -1478,8 +1438,6 @@ export async function applyTemporalDecay(dbPath?: string): Promise<{
     db.run(decayQuery, [now, now, now]);
 
     const changes = db.getRowsModified();
-
-    atomicWriteFileSync(path_, db.export());
     db.close();
 
     return {
@@ -1728,13 +1686,7 @@ export async function verifyMemoryInit(dbPath: string, options?: {
   const tests: { name: string; passed: boolean; details?: string; duration?: number }[] = [];
 
   try {
-    const initSqlJs = (await mofloImport('sql.js')).default;
-    const SQL = await initSqlJs();
-    const fs = await import('fs');
-
-    // Load database
-    const fileBuffer = fs.readFileSync(dbPath);
-    const db = new SQL.Database(fileBuffer);
+    const db = openDaemonDatabase(dbPath);
 
     // Test 1: Schema verification
     const schemaStart = Date.now();
@@ -1873,10 +1825,10 @@ export async function verifyMemoryInit(dbPath: string, options?: {
       });
     }
 
-    // Cleanup test entry
+    // Cleanup test entry — WAL persists this DELETE incrementally; no
+    // export+rewrite needed (the sql.js whole-file dump that lived here
+    // was the multi-writer clobber vector epic #1078 killed).
     db.run(`DELETE FROM memory_entries WHERE id = ?`, [testId]);
-
-    atomicWriteFileSync(dbPath, db.export());
     db.close();
 
     const passed = tests.filter(t => t.passed).length;
@@ -1905,8 +1857,8 @@ export async function verifyMemoryInit(dbPath: string, options?: {
 }
 
 /**
- * Store an entry directly using sql.js
- * This bypasses MCP and writes directly to the database
+ * Store an entry directly via node:sqlite.
+ * This bypasses MCP and writes directly to the database.
  */
 export async function storeEntry(options: {
   key: string;
@@ -1939,9 +1891,9 @@ export async function storeEntry(options: {
 
   // #981 — single-writer routing. When an external daemon is reachable AND
   // we're not the daemon ourselves AND no custom dbPath was supplied, route
-  // the write through the daemon's HTTP RPC so its in-memory sql.js handle
-  // stays authoritative. Any failure path falls through to the existing
-  // bridge / raw-sql.js logic below — byte-identical behaviour to today.
+  // the write through the daemon's HTTP RPC so its in-memory handle stays
+  // authoritative. Any failure path falls through to the existing bridge /
+  // direct-write logic below — byte-identical behaviour to today.
   if (
     !options.dbPath
     && process.env.MOFLO_IS_DAEMON !== '1'
@@ -1973,7 +1925,7 @@ export async function storeEntry(options: {
     if (bridgeResult) return bridgeResult;
   }
 
-  // Fallback: raw sql.js
+  // Fallback: direct node:sqlite write via the unified factory.
   const {
     key,
     value,
@@ -1995,11 +1947,7 @@ export async function storeEntry(options: {
     // Ensure schema has all required columns (migration for older DBs)
     await ensureSchemaColumns(dbPath);
 
-    const initSqlJs = (await mofloImport('sql.js')).default;
-    const SQL = await initSqlJs();
-
-    const fileBuffer = fs.readFileSync(dbPath);
-    const db = new SQL.Database(fileBuffer);
+    const db = openDaemonDatabase(dbPath);
 
     const id = `entry_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const now = Date.now();
@@ -2032,7 +1980,7 @@ export async function storeEntry(options: {
       }
     }
 
-    // Idempotency guard. By the time we reach the raw-sql.js fallback, an
+    // Idempotency guard. By the time we reach the direct-write fallback, an
     // earlier write attempt — daemon route via `tryDaemonStore`, or bridge
     // via `bridgeStoreEntry` — may have already persisted this exact row to
     // disk. If a post-persist throw escaped the bridge's inner guards (#994,
@@ -2098,7 +2046,9 @@ export async function storeEntry(options: {
       ttl ? now + (ttl * 1000) : null
     ]);
 
-    atomicWriteFileSync(dbPath, db.export());
+    // node:sqlite + WAL persisted that INSERT on commit — the sql.js
+    // whole-file `db.export()` + atomicWriteFileSync that lived here was
+    // the multi-writer clobber vector epic #1078 killed structurally.
 
     // Query exact stats while DB is still open. `missing` is the active-rows-
     // with-NULL-embedding count, surfaced via vector-stats.json so the
@@ -2178,8 +2128,8 @@ export async function storeEntries(items: Array<{
 }
 
 /**
- * Search entries using sql.js with vector similarity
- * Uses HNSW index for 150x faster search when available
+ * Search entries via node:sqlite with vector similarity.
+ * Uses HNSW index for 150x faster search when available.
  */
 export async function searchEntries(options: {
   query: string;
@@ -2237,7 +2187,7 @@ export async function searchEntries(options: {
     if (bridgeResult) return bridgeResult;
   }
 
-  // Fallback: raw sql.js
+  // Fallback: direct node:sqlite write via the unified factory.
   const {
     query,
     namespace = 'default',
@@ -2273,12 +2223,8 @@ export async function searchEntries(options: {
       };
     }
 
-    // Fall back to brute-force SQLite search
-    const initSqlJs = (await mofloImport('sql.js')).default;
-    const SQL = await initSqlJs();
-
-    const fileBuffer = fs.readFileSync(dbPath);
-    const db = new SQL.Database(fileBuffer);
+    // Fall back to brute-force SQLite search via the unified factory.
+    const db = openDaemonDatabase(dbPath);
 
     // Get entries with embeddings
     const entries = db.exec(`
@@ -2422,7 +2368,7 @@ export async function listEntries(options: {
     if (bridgeResult) return bridgeResult;
   }
 
-  // Fallback: raw sql.js
+  // Fallback: direct node:sqlite write via the unified factory.
   const {
     namespace,
     limit = 20,
@@ -2440,11 +2386,7 @@ export async function listEntries(options: {
     // Ensure schema has all required columns (migration for older DBs)
     await ensureSchemaColumns(dbPath);
 
-    const initSqlJs = (await mofloImport('sql.js')).default;
-    const SQL = await initSqlJs();
-
-    const fileBuffer = fs.readFileSync(dbPath);
-    const db = new SQL.Database(fileBuffer);
+    const db = openDaemonDatabase(dbPath);
 
     // Get total count
     const countQuery = namespace
@@ -2557,7 +2499,7 @@ export async function getEntry(options: {
     if (bridgeResult) return bridgeResult;
   }
 
-  // Fallback: raw sql.js
+  // Fallback: direct node:sqlite write via the unified factory.
   const {
     key,
     namespace = 'default',
@@ -2574,11 +2516,7 @@ export async function getEntry(options: {
     // Ensure schema has all required columns (migration for older DBs)
     await ensureSchemaColumns(dbPath);
 
-    const initSqlJs = (await mofloImport('sql.js')).default;
-    const SQL = await initSqlJs();
-
-    const fileBuffer = fs.readFileSync(dbPath);
-    const db = new SQL.Database(fileBuffer);
+    const db = openDaemonDatabase(dbPath);
 
     // Find entry by key
     const result = db.exec(`
@@ -2663,7 +2601,7 @@ export async function deleteEntry(options: {
 }> {
   // #981 — single-writer routing for deletes. Same gates as storeEntry:
   // not the daemon, no custom dbPath, routing not opted out. Failure paths
-  // fall through to the existing bridge / raw-sql.js logic below.
+  // fall through to the existing bridge / direct-write logic below.
   if (
     !options.dbPath
     && process.env.MOFLO_IS_DAEMON !== '1'
@@ -2698,7 +2636,7 @@ export async function deleteEntry(options: {
     if (bridgeResult) return bridgeResult;
   }
 
-  // Fallback: raw sql.js
+  // Fallback: direct node:sqlite write via the unified factory.
   const {
     key,
     namespace = 'default',
@@ -2722,11 +2660,7 @@ export async function deleteEntry(options: {
     // Ensure schema has all required columns (migration for older DBs)
     await ensureSchemaColumns(dbPath);
 
-    const initSqlJs = (await mofloImport('sql.js')).default;
-    const SQL = await initSqlJs();
-
-    const fileBuffer = fs.readFileSync(dbPath);
-    const db = new SQL.Database(fileBuffer);
+    const db = openDaemonDatabase(dbPath);
 
     // Check if entry exists first
     const checkResult = db.exec(`
@@ -2764,8 +2698,7 @@ export async function deleteEntry(options: {
     const countResult = db.exec(`SELECT COUNT(*) FROM memory_entries WHERE status = 'active'`);
     const remainingEntries = countResult[0]?.values?.[0]?.[0] as number || 0;
 
-    atomicWriteFileSync(dbPath, db.export());
-
+    // WAL persisted the DELETE incrementally — no whole-file dump needed.
     db.close();
 
     return {
@@ -2801,10 +2734,7 @@ export async function getNamespaceCounts(dbPath?: string): Promise<{
     if (!fs.existsSync(resolvedPath)) {
       return { namespaces: {}, total: 0 };
     }
-    const initSqlJs = (await mofloImport('sql.js')).default;
-    const SQL = await initSqlJs();
-    const fileBuffer = fs.readFileSync(resolvedPath);
-    const db = new SQL.Database(fileBuffer);
+    const db = openDaemonDatabase(resolvedPath);
 
     const result = db.exec(
       "SELECT namespace, COUNT(*) as cnt FROM memory_entries WHERE status = 'active' GROUP BY namespace ORDER BY cnt DESC"

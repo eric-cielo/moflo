@@ -189,8 +189,6 @@ export type {
 // ===== Core Components =====
 export { MofloDbAdapter } from './moflo-db-adapter.js';
 export type { MofloDbAdapterConfig } from './moflo-db-adapter.js';
-export { SqlJsBackend } from './sqljs-backend.js';
-export type { SqlJsBackendConfig } from './sqljs-backend.js';
 export { RvfBackend } from './rvf-backend.js';
 export type { RvfBackendConfig } from './rvf-backend.js';
 export { HnswLite, cosineSimilarity } from './hnsw-lite.js';

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
-import initSqlJs, { Database } from 'sql.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../daemon-backend.js';
 import {
   HierarchicalMemory,
   HierarchicalMemoryStub,
@@ -8,18 +8,12 @@ import {
 } from './hierarchical-memory.js';
 import { deterministicTestEmbedder } from './_test-embedder.js';
 
-let SQL: any;
-
-beforeAll(async () => {
-  SQL = await initSqlJs();
-});
-
 describe('HierarchicalMemory', () => {
-  let db: Database;
+  let db: SqlJsLikeDatabase;
   let hm: HierarchicalMemory;
 
   beforeEach(() => {
-    db = new SQL.Database();
+    db = openDaemonDatabase(':memory:');
     hm = new HierarchicalMemory(db as any, { embedder: deterministicTestEmbedder });
   });
 
@@ -101,7 +95,7 @@ describe('HierarchicalMemory', () => {
   });
 
   it('enforces per-tier capacity', async () => {
-    const small = new HierarchicalMemory(new SQL.Database() as any, {
+    const small = new HierarchicalMemory(openDaemonDatabase(':memory:') as any, {
       embedder: deterministicTestEmbedder,
       capacities: { working: 3 } as any,
     });

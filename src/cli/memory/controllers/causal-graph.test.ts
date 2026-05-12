@@ -1,19 +1,13 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
-import initSqlJs, { Database } from 'sql.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../daemon-backend.js';
 import { CausalGraph } from './causal-graph.js';
 
-let SQL: any;
-
-beforeAll(async () => {
-  SQL = await initSqlJs();
-});
-
 describe('CausalGraph', () => {
-  let db: Database;
+  let db: SqlJsLikeDatabase;
   let graph: CausalGraph;
 
   beforeEach(() => {
-    db = new SQL.Database();
+    db = openDaemonDatabase(':memory:');
     graph = new CausalGraph(db as any);
   });
 

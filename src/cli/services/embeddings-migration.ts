@@ -17,9 +17,8 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { mofloImport } from './moflo-require.js';
-import { atomicWriteFileSync } from './atomic-file-write.js';
 import { memoryDbPath } from './moflo-paths.js';
+import { openDaemonDatabase } from '../memory/daemon-backend.js';
 // EMBEDDINGS_VERSION is a number constant in a leaf types module — pulling it
 // eagerly is cheap. The heavy imports (fastembed wrapper, upgrade renderer,
 // etc.) stay deferred behind the early returns so session-start stays fast.
@@ -69,12 +68,11 @@ export async function runEmbeddingsMigrationIfNeeded(
   const dbPath = path.resolve(options.dbPath ?? memoryDbPath(process.cwd()));
   if (!fs.existsSync(dbPath)) return false;
 
-  const initSqlJs = (await mofloImport('sql.js'))?.default;
-  if (!initSqlJs) return false;
-
-  const SQL = await initSqlJs();
-  const buffer = fs.readFileSync(dbPath);
-  const db = new SQL.Database(buffer);
+  // node:sqlite via the unified factory (Phase 5 / #1084). The migration
+  // store runs UPDATE statements via the SAME handle, so WAL persists each
+  // re-embed incrementally — no need for the old atomicWriteFileSync at the
+  // end (which was the sql.js whole-file-dump that motivated #1078).
+  const db = openDaemonDatabase(dbPath);
 
   try {
     // Probe: only migrate DBs that carry the v3 memory_entries schema. The
@@ -146,10 +144,9 @@ export async function runEmbeddingsMigrationIfNeeded(
     });
 
     if (summary.status === 'completed') {
-      // `db.export()` returns a Uint8Array; `writeFileSync` accepts it directly,
-      // so no Buffer.from() copy. Atomic temp-file + rename so SIGINT mid-write
-      // cannot truncate moflo.db — see atomic-file-write.ts.
-      atomicWriteFileSync(dbPath, db.export());
+      // node:sqlite + WAL persists each UPDATE incrementally — no whole-file
+      // dump at the end. Phase 5 (#1084) deleted the atomicWriteFileSync that
+      // used to live here; that pattern was the sql.js clobber vector.
       options.onMigrationComplete?.(summary.totalItemsMigrated);
       return true;
     }

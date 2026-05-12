@@ -3,8 +3,8 @@
  *
  * Drop-in replacement for {@link SqlJsBackend} (same IMemoryBackend surface,
  * same schema, same event emissions) backed by the Node 22+ built-in
- * `node:sqlite` engine instead of WASM. Selected at runtime by
- * `MOFLO_DB_BACKEND=node-sqlite` (default OFF — sql.js remains the default).
+ * `node:sqlite` engine instead of WASM. Phase 4 (#1083) made this the
+ * default; Phase 5 (#1084) deletes the sql.js backend + npm dep.
  *
  * Why this exists: epic #1078 / Phase 0 spike (#1079, PR #1085) confirmed
  * `node:sqlite` parity against shipped sql.js DBs. The structural sql.js
@@ -16,6 +16,9 @@
  * @module v3/memory/sqlite-backend
  */
 
+// MUST come before `import 'node:sqlite'` below — see suppress-sqlite-warning
+// header for rationale (#1098).
+import './suppress-sqlite-warning.js';
 import { EventEmitter } from 'node:events';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import { cosineSimilarity } from './hnsw-lite.js';
@@ -121,9 +124,15 @@ export class SqliteBackend extends EventEmitter implements IMemoryBackend {
         // WAL is required for the multi-process serialization invariant proven
         // in the Phase 0 spike. The spike verified the .db-wal/.db-shm sidecars
         // appear on first write.
+        //
+        // busy_timeout BEFORE journal_mode = WAL: the WAL pragma briefly takes
+        // an EXCLUSIVE lock, and concurrent openers otherwise hit "database is
+        // locked" with no retry budget (#1097).
+        // 15000ms matches daemon-backend.ts (#1098 — the harness's first-pass
+        // indexer can hold a write lock for 5–8s after npm install).
+        db.exec('PRAGMA busy_timeout = 15000');
         db.exec('PRAGMA journal_mode = WAL');
         db.exec('PRAGMA synchronous = NORMAL');
-        db.exec('PRAGMA busy_timeout = 5000');
       }
 
       this.db = db;
@@ -462,7 +471,9 @@ export class SqliteBackend extends EventEmitter implements IMemoryBackend {
    */
   private async runInTransaction(fn: () => Promise<void>): Promise<void> {
     const owns = !this.db!.isTransaction;
-    if (owns) this.db!.exec('BEGIN');
+    // BEGIN IMMEDIATE so busy_handler engages on multi-process contention
+    // (#1099 — plain BEGIN's read→write upgrade fails fast under WAL).
+    if (owns) this.db!.exec('BEGIN IMMEDIATE');
     try {
       await fn();
       if (owns) this.db!.exec('COMMIT');

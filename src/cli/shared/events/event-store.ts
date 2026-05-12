@@ -10,15 +10,19 @@
  * - Event filtering and queries
  * - Snapshot support for performance
  * - Event replay for projections
- * - Cross-platform SQLite (sql.js fallback)
+ * - node:sqlite (Node 22+) via the unified openDaemonDatabase factory
+ *
+ * Phase 5 (#1084) migrated this from sql.js to node:sqlite. The sql.js
+ * whole-file-export persistence model was the structural failure mode that
+ * #1078 killed; node:sqlite writes through WAL so explicit `persist()` calls
+ * become no-ops and concurrent writers no longer clobber each other.
  *
  * @module v3/shared/events/event-store
  */
 
 import { EventEmitter } from 'node:events';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
-import { DomainEvent, AllDomainEvents } from './domain-events.js';
+import { DomainEvent } from './domain-events.js';
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../../memory/daemon-backend.js';
 
 // =============================================================================
 // Event Store Configuration
@@ -37,7 +41,7 @@ export interface EventStoreConfig {
   /** Maximum events before snapshot recommendation */
   snapshotThreshold: number;
 
-  /** Path to sql.js WASM file (optional) */
+  /** Reserved — sql.js wasm path was used by the retired adapter. Kept for API compatibility. */
   wasmPath?: string;
 }
 
@@ -110,10 +114,9 @@ export interface EventStoreStats {
 
 export class EventStore extends EventEmitter {
   private config: EventStoreConfig;
-  private db: SqlJsDatabase | null = null;
+  private db: SqlJsLikeDatabase | null = null;
   private initialized: boolean = false;
   private persistTimer: NodeJS.Timeout | null = null;
-  private SQL: any = null;
 
   // Version tracking per aggregate
   private aggregateVersions: Map<string, number> = new Map();
@@ -124,41 +127,20 @@ export class EventStore extends EventEmitter {
   }
 
   /**
-   * Initialize the event store
+   * Initialize the event store.
+   *
+   * Phase 5 (#1084): swapped sql.js's WASM init + new SQL.Database round-trip
+   * for openDaemonDatabase(path). WAL persists each INSERT incrementally so
+   * the auto-persist timer is no longer needed (kept zeroed-out for callers
+   * that pass autoPersistInterval > 0).
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    // Load sql.js WASM — prefer local node_modules copy over remote URL
-    this.SQL = await initSqlJs({
-      locateFile: this.config.wasmPath
-        ? () => this.config.wasmPath!
-        : (file: string) => {
-            // Try to resolve from node_modules first (works in Node.js)
-            try {
-              const sqlJsDir = require.resolve('sql.js');
-              const { dirname, join } = require('node:path');
-              const localPath = join(dirname(sqlJsDir), file);
-              if (require('node:fs').existsSync(localPath)) return localPath;
-            } catch { /* fallback below */ }
-            return `https://sql.js.org/dist/${file}`;
-          },
-    });
+    this.db = openDaemonDatabase(this.config.databasePath);
 
-    // Load existing database if exists
-    if (this.config.databasePath !== ':memory:' && existsSync(this.config.databasePath)) {
-      const buffer = readFileSync(this.config.databasePath);
-      this.db = new this.SQL.Database(new Uint8Array(buffer));
-
-      if (this.config.verbose) {
-        console.log(`[EventStore] Loaded database from ${this.config.databasePath}`);
-      }
-    } else {
-      this.db = new this.SQL.Database();
-
-      if (this.config.verbose) {
-        console.log('[EventStore] Created new event store database');
-      }
+    if (this.config.verbose) {
+      console.log(`[EventStore] Opened database at ${this.config.databasePath}`);
     }
 
     // Create schema
@@ -167,34 +149,24 @@ export class EventStore extends EventEmitter {
     // Load aggregate versions
     this.loadAggregateVersions();
 
-    // Set up auto-persist
-    if (this.config.autoPersistInterval > 0 && this.config.databasePath !== ':memory:') {
-      this.persistTimer = setInterval(() => {
-        this.persist().catch((err) => {
-          this.emit('error', { operation: 'auto-persist', error: err });
-        });
-      }, this.config.autoPersistInterval);
-    }
+    // node:sqlite + WAL persists every write — explicit auto-persist would
+    // be a redundant no-op. The persistTimer field is retained so anything
+    // poking at .initialize() shape stays compatible.
 
     this.initialized = true;
     this.emit('initialized');
   }
 
   /**
-   * Shutdown the event store
+   * Shutdown the event store. node:sqlite + WAL persists writes immediately;
+   * the only thing close() owes us is releasing the file handle.
    */
   async shutdown(): Promise<void> {
     if (!this.initialized || !this.db) return;
 
-    // Stop auto-persist
     if (this.persistTimer) {
       clearInterval(this.persistTimer);
       this.persistTimer = null;
-    }
-
-    // Final persist
-    if (this.config.databasePath !== ':memory:') {
-      await this.persist();
     }
 
     this.db.close();
@@ -496,23 +468,20 @@ export class EventStore extends EventEmitter {
   }
 
   /**
-   * Persist to disk
+   * Persist to disk. node:sqlite + WAL writes through on each `db.run`, so
+   * this is a no-op kept for API compatibility with the old sql.js shape.
+   * The `persisted` event still fires so callers driven off it keep working.
    */
   async persist(): Promise<void> {
     if (!this.db || this.config.databasePath === ':memory:') {
       return;
     }
 
-    const data = this.db.export();
-    const buffer = Buffer.from(data);
-
-    writeFileSync(this.config.databasePath, buffer);
-
     if (this.config.verbose) {
-      console.log(`[EventStore] Persisted ${buffer.length} bytes to ${this.config.databasePath}`);
+      console.log(`[EventStore] persist() is a no-op under node:sqlite WAL (${this.config.databasePath})`);
     }
 
-    this.emit('persisted', { size: buffer.length, path: this.config.databasePath });
+    this.emit('persisted', { size: 0, path: this.config.databasePath });
   }
 
   // ===== Private Methods =====

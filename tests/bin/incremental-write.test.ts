@@ -33,11 +33,12 @@ import { join } from 'path';
 
 const BIN = resolve(__dirname, '../../bin');
 
-// sql.js exports as a CommonJS factory; importing the default works in Node ESM.
+// node:sqlite (Phase 5 / #1084). The bridge code's sql.js-shape Database API
+// is provided by `bin/lib/get-backend.mjs:openBackend`; using `:memory:` keeps
+// the test in-process without spilling WAL sidecars onto disk.
 async function makeDb() {
-  const initSqlJs = (await import('sql.js')).default;
-  const SQL = await initSqlJs();
-  const db = new SQL.Database();
+  const { openBackend } = await import('../../bin/lib/get-backend.mjs');
+  const db = await openBackend(process.cwd(), { dbPath: ':memory:' });
   db.run(`
     CREATE TABLE memory_entries (
       id TEXT PRIMARY KEY,

@@ -1,22 +1,31 @@
 /**
- * Bridge mtime-coherence tests (story #1058 / epic #1054).
+ * Bridge cross-process coherence tests (story #1058 / epic #1054).
  *
- * The bridge holds an in-memory sql.js snapshot per process and never re-reads
- * disk after init. In a multi-process scenario without the daemon (e.g.
- * `daemon.auto_start: false`) a long-lived MCP server returns stale rows
- * because another writer's persist is invisible to its snapshot. The mtime-
- * coherence guard in `bridge-core.ts:withDb` detects that disk has advanced
- * past our last-known value and tears the bridge down so the next op reloads
- * fresh from disk.
+ * History:
+ *   Pre-Phase-4 (#1083) the bridge held an in-memory sql.js snapshot per
+ *   process and never re-read disk after init. The mtime-coherence guard in
+ *   `bridge-core.ts:withDb` stat-ed the file before every op and tore down
+ *   the bridge when another process bumped mtime.
  *
- * These tests exercise the guard end-to-end through the bridge surface.
+ *   Phase 4 flipped the daemon's engine to node:sqlite + WAL. Two node:sqlite
+ *   connections on the same WAL DB are coherent by construction — the WAL
+ *   sidecar carries pending writes, and every reader's queries see committed
+ *   writes from every other writer immediately. The mtime guard is kept as
+ *   a belt-and-braces fallback (no harm under WAL) but the load-bearing
+ *   property is now WAL coherence itself.
+ *
+ *   These tests pin the user-observable invariant: an external writer's
+ *   committed rows show up in the next bridge read. They no longer assert
+ *   the specific mtime-cursor advance — that's an implementation detail and
+ *   WAL writes don't always touch the main file's mtime (the sidecar is the
+ *   carrier between checkpoints).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { tmpdir } from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 
 import {
   _resetProjectRootForTest,
@@ -28,7 +37,7 @@ import {
   getEntry,
 } from '../../memory/memory-initializer.js';
 
-describe('bridge mtime-coherence (#1058)', () => {
+describe('bridge cross-process coherence (#1058 / Phase 4)', () => {
   let tempDir: string;
   let projectRoot: string;
   let dbPath: string;
@@ -36,11 +45,6 @@ describe('bridge mtime-coherence (#1058)', () => {
   let originalProjectDir: string | undefined;
 
   beforeEach(async () => {
-    // Each test gets its own project root with its own .moflo/moflo.db so the
-    // bridge's process-singleton state can be re-anchored cleanly. The bridge
-    // singleton is shared across tests in the same process — we reset it and
-    // re-anchor here. Tests that mutate the disk between bridge ops are the
-    // whole point of this suite, so coherence is checked here, not faked.
     tempDir = fs.mkdtempSync(path.join(tmpdir(), 'moflo-1058-coh-'));
     projectRoot = tempDir;
     fs.mkdirSync(path.join(projectRoot, '.moflo'), { recursive: true });
@@ -49,7 +53,6 @@ describe('bridge mtime-coherence (#1058)', () => {
     originalCwd = process.cwd();
     originalProjectDir = process.env.CLAUDE_PROJECT_DIR;
     process.env.CLAUDE_PROJECT_DIR = projectRoot;
-    // Take routing out of the picture — we exercise the bridge directly.
     process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
 
     await shutdownBridge();
@@ -73,144 +76,138 @@ describe('bridge mtime-coherence (#1058)', () => {
     expect(_getBridgeCoherenceCursorForTest()).not.toBeNull();
   });
 
-  it('own persist updates the cursor (no self-invalidation)', async () => {
+  it('own persist leaves the bridge loaded (no self-invalidation)', async () => {
     await storeEntry({ key: 'k1', value: 'v1', namespace: 'ns' });
     const after1 = _getBridgeCoherenceCursorForTest();
     expect(after1).not.toBeNull();
 
-    // Force a real mtime delta by sleeping past filesystem mtime resolution
-    // (Windows = 1s, ext4 = 1ns, macOS varies). 1100ms is generous.
+    // Force a real mtime delta on the main file (Windows = 1s).
     await new Promise(r => setTimeout(r, 1100));
 
     await storeEntry({ key: 'k2', value: 'v2', namespace: 'ns' });
-    const after2 = _getBridgeCoherenceCursorForTest();
-    // Our own writes move the cursor forward, but they MUST NOT trip the
-    // invalidation path — the bridge stays loaded between writes.
-    expect(after2).not.toBeNull();
-    expect(after2!).toBeGreaterThanOrEqual(after1!);
 
-    // Both rows still retrievable via the same bridge → no reinit needed
-    // for own writes.
+    // Both rows still retrievable from the same bridge — own writes never
+    // cause the bridge to drop its handle.
     const g1 = await getEntry({ key: 'k1', namespace: 'ns' });
     const g2 = await getEntry({ key: 'k2', namespace: 'ns' });
     expect(g1.found).toBe(true);
     expect(g2.found).toBe(true);
   });
 
-  it('another writer\'s mtime bump invalidates and forces fresh disk read', async () => {
-    // Phase 1: this process writes a row. Bridge has it; cursor anchored.
+  it('an external node:sqlite writer\'s row is visible to the bridge', async () => {
+    // Phase 1: bridge writes a row so the DB + WAL exist.
     await storeEntry({ key: 'first', value: 'first-value', namespace: 'ns' });
-    const cursorAfterOwn = _getBridgeCoherenceCursorForTest();
-    expect(cursorAfterOwn).not.toBeNull();
 
-    // Phase 2: simulate another process writing the SAME dbPath with an
-    // entirely different snapshot. We open a fresh sql.js, insert a row the
-    // current process's bridge does not know about, persist, and bump mtime.
-    const initSqlJs = (await import('sql.js')).default;
-    const SQL = await initSqlJs();
-    const buf = fs.readFileSync(dbPath);
-    const otherDb = new SQL.Database(new Uint8Array(buf));
-    // Insert a row the current bridge's snapshot lacks.
-    const otherId = `entry_other_${Date.now()}`;
-    otherDb.run(
-      `INSERT INTO memory_entries (id, key, namespace, content, type, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'semantic', 'active', ?, ?)`,
-      [otherId, 'injected-by-other-writer', 'ns', 'remote-value', Date.now(), Date.now()],
-    );
-    // Wait past filesystem mtime granularity so the persist bumps mtime
-    // beyond the cursor (Windows 1s, macOS HFS+ 1s, ext4 ns).
-    await new Promise(r => setTimeout(r, 1100));
-    fs.writeFileSync(dbPath, Buffer.from(otherDb.export()));
-    otherDb.close();
+    // Phase 2: simulate another process writing the SAME dbPath via
+    // node:sqlite + WAL — the supported cross-process pattern under Phase 4.
+    // Sql.js + writeFileSync would clobber the WAL sidecar (the catastrophic
+    // case the migration explicitly kills); we no longer test that path.
+    const otherDb = new DatabaseSync(dbPath);
+    try {
+      otherDb.exec('PRAGMA journal_mode = WAL');
+      otherDb.exec('PRAGMA synchronous = NORMAL');
+      const otherId = `entry_other_${Date.now()}`;
+      const insert = otherDb.prepare(
+        `INSERT INTO memory_entries (id, key, namespace, content, type, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'semantic', 'active', ?, ?)`,
+      );
+      insert.run(otherId, 'injected-by-other-writer', 'ns', 'remote-value', Date.now(), Date.now());
+    } finally {
+      otherDb.close();
+    }
 
-    // Phase 3: this process reads the injected row. The mtime check on the
-    // next withDb call must invalidate the stale bridge and reload.
+    // Phase 3: the bridge's next read sees the externally-injected row.
+    // Under WAL this works through SQLite's built-in cross-connection
+    // coherence, not the mtime guard — the cursor may or may not advance
+    // depending on whether SQLite checkpointed back to the main file.
     const result = await getEntry({ key: 'injected-by-other-writer', namespace: 'ns' });
     expect(result.success).toBe(true);
     expect(result.found).toBe(true);
     expect(result.entry?.content).toBe('remote-value');
-
-    // The cursor must have moved past the original anchor — the reload
-    // re-anchored to the new disk mtime.
-    const cursorAfterReload = _getBridgeCoherenceCursorForTest();
-    expect(cursorAfterReload).not.toBeNull();
-    expect(cursorAfterReload!).toBeGreaterThan(cursorAfterOwn!);
   });
 
-  it('search reflects external writes after coherence-driven reload', async () => {
-    // Seed via our bridge.
+  it('search reflects external writes from another node:sqlite connection', async () => {
     await storeEntry({ key: 'in-process', value: 'in-process-content', namespace: 'ns' });
 
-    // External writer injects a semantically related row.
-    const initSqlJs = (await import('sql.js')).default;
-    const SQL = await initSqlJs();
-    const buf = fs.readFileSync(dbPath);
-    const otherDb = new SQL.Database(new Uint8Array(buf));
-    otherDb.run(
-      `INSERT INTO memory_entries (id, key, namespace, content, type, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'semantic', 'active', ?, ?)`,
-      [`entry_search_${Date.now()}`, 'external-key', 'ns', 'external-content', Date.now(), Date.now()],
-    );
-    await new Promise(r => setTimeout(r, 1100));
-    fs.writeFileSync(dbPath, Buffer.from(otherDb.export()));
-    otherDb.close();
+    const otherDb = new DatabaseSync(dbPath);
+    try {
+      otherDb.exec('PRAGMA journal_mode = WAL');
+      otherDb.exec('PRAGMA synchronous = NORMAL');
+      const insert = otherDb.prepare(
+        `INSERT INTO memory_entries (id, key, namespace, content, type, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'semantic', 'active', ?, ?)`,
+      );
+      insert.run(
+        `entry_search_${Date.now()}`,
+        'external-key',
+        'ns',
+        'external-content',
+        Date.now(),
+        Date.now(),
+      );
+    } finally {
+      otherDb.close();
+    }
 
-    // Bridge must reload → list (via the bridge) sees the external row.
     const result = await getEntry({ key: 'external-key', namespace: 'ns' });
     expect(result.found).toBe(true);
     expect(result.entry?.content).toBe('external-content');
   });
 
-  it('does NOT invalidate the bridge when mtime is unchanged', async () => {
+  it('does NOT invalidate the bridge on in-process read of own write', async () => {
+    // Behavioural invariant: an in-process getEntry following an in-process
+    // storeEntry returns the value it just wrote, without the coherence
+    // guard tearing down the bridge between them. Under WAL the cursor
+    // tracks -wal sidecar mtime (#1098), and bridgeGetEntry bumps
+    // access_count via UPDATE — so the cursor *can* advance between the
+    // two reads. The user-visible promise is "read sees own write", not
+    // "cursor never moves". Pre-#1098 this asserted strict cursor
+    // stability, which doesn't survive the WAL-aware coherence semantic
+    // and conflates implementation detail with behaviour.
     await storeEntry({ key: 'k1', value: 'v1', namespace: 'ns' });
-    const cursor1 = _getBridgeCoherenceCursorForTest();
-    expect(cursor1).not.toBeNull();
+    expect(_getBridgeCoherenceCursorForTest()).not.toBeNull();
 
-    // Read without any disk mutation between writes.
-    await getEntry({ key: 'k1', namespace: 'ns' });
-    const cursor2 = _getBridgeCoherenceCursorForTest();
-
-    // No mtime change → no reload → cursor stays put.
-    expect(cursor2).toBe(cursor1);
+    const read = await getEntry({ key: 'k1', namespace: 'ns' });
+    expect(read.found).toBe(true);
+    expect(read.entry?.content).toBe('v1');
   });
 
-  // #1073 / smoke regression gate. Pre-fix, the daemon was exempted from
-  // mtime-coherence under "daemon is sole writer", but `bin/index-guidance.mjs`
-  // and the consumer-smoke memory-protocol probe both write directly to disk
-  // while the daemon is up. With the exemption in place, daemon-routed reads
-  // returned the pre-init snapshot indefinitely. This test pins the daemon
-  // path through the same coherence guard the non-daemon case uses.
-  it('daemon process (MOFLO_IS_DAEMON=1) also detects external writes', async () => {
+  // #1073 regression gate. Pre-fix, the daemon was exempted from the coherence
+  // guard under "daemon is sole writer", but `bin/index-guidance.mjs` and the
+  // consumer-smoke memory-protocol probe write directly to disk while the
+  // daemon is up. Under Phase 4, the indexer's node:sqlite writes are visible
+  // to the daemon via WAL — but pinning the daemon through the same coherence
+  // surface as everyone else keeps the failure-mode bounded if WAL ever falls
+  // back (e.g. network FS where WAL is disabled).
+  it('daemon process (MOFLO_IS_DAEMON=1) sees external writes', async () => {
     const originalIsDaemon = process.env.MOFLO_IS_DAEMON;
     process.env.MOFLO_IS_DAEMON = '1';
     try {
-      // Anchor the daemon's bridge against its own first op.
       await storeEntry({ key: 'daemon-own', value: 'own-content', namespace: 'ns' });
-      const cursorAfterOwn = _getBridgeCoherenceCursorForTest();
-      expect(cursorAfterOwn).not.toBeNull();
 
-      // External writer (simulating the indexer) bumps mtime past the anchor.
-      const initSqlJs = (await import('sql.js')).default;
-      const SQL = await initSqlJs();
-      const buf = fs.readFileSync(dbPath);
-      const otherDb = new SQL.Database(new Uint8Array(buf));
-      otherDb.run(
-        `INSERT INTO memory_entries (id, key, namespace, content, type, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'semantic', 'active', ?, ?)`,
-        [`entry_indexer_${Date.now()}`, 'indexer-written-key', 'ns', 'indexer-content', Date.now(), Date.now()],
-      );
-      await new Promise(r => setTimeout(r, 1100));
-      fs.writeFileSync(dbPath, Buffer.from(otherDb.export()));
-      otherDb.close();
+      const otherDb = new DatabaseSync(dbPath);
+      try {
+        otherDb.exec('PRAGMA journal_mode = WAL');
+        otherDb.exec('PRAGMA synchronous = NORMAL');
+        const insert = otherDb.prepare(
+          `INSERT INTO memory_entries (id, key, namespace, content, type, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'semantic', 'active', ?, ?)`,
+        );
+        insert.run(
+          `entry_indexer_${Date.now()}`,
+          'indexer-written-key',
+          'ns',
+          'indexer-content',
+          Date.now(),
+          Date.now(),
+        );
+      } finally {
+        otherDb.close();
+      }
 
-      // Daemon's next read must reload from disk and see the external row.
       const result = await getEntry({ key: 'indexer-written-key', namespace: 'ns' });
       expect(result.found).toBe(true);
       expect(result.entry?.content).toBe('indexer-content');
-
-      const cursorAfterReload = _getBridgeCoherenceCursorForTest();
-      expect(cursorAfterReload).not.toBeNull();
-      expect(cursorAfterReload!).toBeGreaterThan(cursorAfterOwn!);
     } finally {
       if (originalIsDaemon === undefined) delete process.env.MOFLO_IS_DAEMON;
       else process.env.MOFLO_IS_DAEMON = originalIsDaemon;

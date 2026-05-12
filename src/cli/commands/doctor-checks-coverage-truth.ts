@@ -15,6 +15,7 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { memoryDbCandidatePaths } from '../services/moflo-paths.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { openDaemonDatabase } from '../memory/daemon-backend.js';
 import type { HealthCheck } from './doctor-types.js';
 
 interface CoverageReading {
@@ -24,13 +25,10 @@ interface CoverageReading {
 }
 
 async function liveEmbeddedRowCount(dbPath: string): Promise<number | null> {
+  // Read-only COUNT(*) — open via the unified factory so the engine choice
+  // is consistent with every other writer (Phase 5 / #1084).
   try {
-    const { mofloImport } = await import('../services/moflo-require.js');
-    const initSqlJs = (await mofloImport('sql.js'))?.default;
-    if (!initSqlJs) return null;
-    const SQL = await initSqlJs();
-    const buffer = readFileSync(dbPath);
-    const db = new SQL.Database(buffer);
+    const db = openDaemonDatabase(dbPath);
     try {
       const res = db.exec(
         "SELECT COUNT(*) FROM memory_entries WHERE status = 'active' AND embedding IS NOT NULL AND embedding != ''",
@@ -95,12 +93,12 @@ export async function checkEmbeddingCoverageTruth(cwd: string = process.cwd()): 
 
     if (cached !== null && live === null) {
       // Cache exists but live count unreadable — checkEmbeddings owns the
-      // "sql.js unavailable" diagnosis; this check stays neutral so we don't
+      // "DB unreadable" diagnosis; this check stays neutral so we don't
       // double-warn.
       return {
         name,
         status: 'pass',
-        message: `Cache reports ${cached} vectors (live count unverified — sql.js unavailable)`,
+        message: `Cache reports ${cached} vectors (live count unverified — DB unreadable)`,
       };
     }
 

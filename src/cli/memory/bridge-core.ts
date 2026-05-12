@@ -110,6 +110,60 @@ export function logBridgeError(context: string, err: unknown, opts?: { alwaysLog
 }
 
 /**
+ * Treats an error as a SQLITE_BUSY lock-contention failure if either the
+ * error code or message indicates it. Belt-and-suspenders around node:sqlite,
+ * whose surface intermittently surfaces busy-conflicts as either `code:
+ * 'SQLITE_BUSY'` or a plain `Error: database is locked`. We match both.
+ */
+function isBusyError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { message?: unknown; code?: unknown };
+  if (e.code === 'SQLITE_BUSY' || e.code === 'SQLITE_BUSY_SNAPSHOT' || e.code === 'SQLITE_BUSY_RECOVERY') return true;
+  return typeof e.message === 'string' && /database is locked|SQLITE_BUSY/i.test(e.message);
+}
+
+// Exponential backoff with jitter. Total ceiling ≈ 1.55s of waiting (50 +
+// 100 + 200 + 400 + 800), plus the work itself. Sized so a typical short
+// indexer write (a few rows in auto-commit) finishes before we give up,
+// without ballooning bridge latency on a really stuck DB. See #1098.
+const BRIDGE_BUSY_RETRY_DELAYS_MS = [50, 100, 200, 400, 800];
+
+/**
+ * Run `fn` with a jittered exponential-backoff retry on SQLITE_BUSY errors.
+ *
+ * Why this exists: in CI the bridge's parallel doctor-subcheck workload hit
+ * "database is locked" 5–7 times in a 5ms window while the configured
+ * `busy_timeout=15000ms` should have been retrying for full seconds (#1098).
+ * The hypothesis-in-flight is that `node:sqlite`'s `db.prepare()` bypasses
+ * the engine-level `busy_handler`, so the busy_timeout pragma never engages
+ * for the bridge's prepare-heavy call patterns. Until that's confirmed
+ * (#1098 follow-up — local repro), an explicit retry here is the only
+ * guard between the consumer and a hard fail.
+ *
+ * Jitter scatters parallel retries so the workload doesn't thunder back
+ * onto the same lock at the same instant.
+ */
+async function withBusyRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt <= BRIDGE_BUSY_RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) {
+      const base = BRIDGE_BUSY_RETRY_DELAYS_MS[attempt - 1]!;
+      const jitter = base * (Math.random() * 0.5 - 0.25); // ±25%
+      const delay = Math.max(0, Math.round(base + jitter));
+      await new Promise<void>((resolve) => setTimeout(resolve, delay));
+    }
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!isBusyError(err)) throw err;
+      // Loop continues — backoff applied at top of next iteration.
+    }
+  }
+  throw lastErr;
+}
+
+/**
  * Resolve the on-disk DB path the bridge should read/write.
  *
  * Default to `.moflo/moflo.db`, but during the post-#727 migration window —
@@ -250,12 +304,30 @@ export function persistBridgeDb(db: any, dbPath?: string): void {
   if (target === ':memory:') return;
   try {
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    atomicWriteFileSync(target, db.export());
+    // Phase 4 (#1083) — node:sqlite-backed handles persist incrementally via
+    // WAL; `save()` on the factory adapter is a no-op for them. Doing the
+    // sql.js-style `export()` + `atomicWriteFileSync` against a node:sqlite
+    // handle would CLOBBER the WAL writes (the catastrophic case the epic
+    // was killing). Route through `save()` when the handle is the factory
+    // shape; only fall back to the legacy export-and-write for raw sql.js.
+    if (db && db.kind === 'node-sqlite' && typeof db.save === 'function') {
+      db.save();
+    } else {
+      atomicWriteFileSync(target, db.export());
+    }
     // Anchor the bridge-coherence cursor to the post-persist mtime so our own
     // write doesn't trigger a self-invalidation on the next withDb call.
-    // Best-effort: if the stat fails, the worst case is one redundant reload.
-    try { lastSeenMtimeMs = fs.statSync(target).mtimeMs; }
-    catch { /* tolerate; coherence check re-anchors on next read */ }
+    // Under WAL the write lands in `-wal` (not the main file), so include
+    // its mtime — must match the read side of checkBridgeCoherence or self-
+    // writes self-invalidate (#1098).
+    try {
+      let anchored = fs.statSync(target).mtimeMs;
+      try {
+        const walStat = fs.statSync(`${target}-wal`);
+        if (walStat.mtimeMs > anchored) anchored = walStat.mtimeMs;
+      } catch { /* no WAL sidecar — main mtime is authoritative */ }
+      lastSeenMtimeMs = anchored;
+    } catch { /* tolerate; coherence check re-anchors on next read */ }
   } catch (err) {
     logBridgeError('bridge persist failed', err, { alwaysLog: true });
     throw err;
@@ -356,7 +428,15 @@ async function checkBridgeCoherence(dbPath: string | undefined): Promise<void> {
   if (!registryPromise) return;
   const target = dbPath ? path.resolve(dbPath) : getDbPath();
   if (target === ':memory:') return;
-  let mtimeMs: number;
+  // Under WAL (Phase 5 / #1083), commits land in the `-wal` sidecar first —
+  // the main DB file's mtime ONLY advances on checkpoint, which may be many
+  // writes apart. Statting just the main file misses every external WAL
+  // write between checkpoints, leaving the bridge with a stale in-memory
+  // snapshot indefinitely. That's the failure mode in #1098 / #1073 smoke
+  // where doctor's seed-via-openDaemonDatabase then bridge-via-MCP couldn't
+  // see its own freshly-written rows. Stat both files and use whichever is
+  // most recent. Mirrors the same fix in `refreshVectorStatsCache`.
+  let mtimeMs = 0;
   try {
     mtimeMs = fs.statSync(target).mtimeMs;
   } catch {
@@ -364,6 +444,10 @@ async function checkBridgeCoherence(dbPath: string | undefined): Promise<void> {
     // the error; we don't synthesize a coherence event from a stat failure.
     return;
   }
+  try {
+    const walStat = fs.statSync(`${target}-wal`);
+    if (walStat.mtimeMs > mtimeMs) mtimeMs = walStat.mtimeMs;
+  } catch { /* no WAL sidecar yet — main mtime is authoritative */ }
   if (lastSeenMtimeMs == null) {
     // First op after init — anchor and proceed.
     lastSeenMtimeMs = mtimeMs;
@@ -402,15 +486,41 @@ export async function withDb<T>(
   // resolved. The post-init read of `mofloDb.database` reflects the bytes
   // that were on disk when `openSqlJsDatabase` ran; pin the matching mtime so
   // a subsequent unrelated process write triggers reload, not a self-fire.
-  if (lastSeenMtimeMs == null) {
-    const target = dbPath ? path.resolve(dbPath) : getDbPath();
-    if (target !== ':memory:') {
-      try { lastSeenMtimeMs = fs.statSync(target).mtimeMs; }
-      catch { /* file may not exist yet — first persist will anchor */ }
-    }
+  // Include `-wal` since WAL writes don't bump the main file mtime (#1098).
+  const target = dbPath ? path.resolve(dbPath) : getDbPath();
+  if (lastSeenMtimeMs == null && target !== ':memory:') {
+    try {
+      let anchor = fs.statSync(target).mtimeMs;
+      try {
+        const walStat = fs.statSync(`${target}-wal`);
+        if (walStat.mtimeMs > anchor) anchor = walStat.mtimeMs;
+      } catch { /* no WAL sidecar — main mtime is authoritative */ }
+      lastSeenMtimeMs = anchor;
+    } catch { /* file may not exist yet — first persist will anchor */ }
   }
   try {
-    return await fn(ctx, registry);
+    const result = await withBusyRetry(() => fn(ctx, registry));
+    // Re-anchor the coherence cursor to the post-op mtime so internal
+    // bridge writes that happen AFTER persistBridgeDb (attestation log,
+    // bumpAccessCounts, cache invalidation row updates, etc.) don't
+    // look like external writes on the next withDb call. Without this
+    // re-anchor, the next call's checkBridgeCoherence sees the
+    // attestation-advanced -wal mtime, tears down the registry, and
+    // any test-injected stubs (cache.set, etc.) get reset — exactly
+    // the failure mode in `bridge-entries.test.ts` #994 after the
+    // WAL-coherence fix (49f91a01a). External writes still get
+    // detected at the START of the next withDb call.
+    if (target !== ':memory:') {
+      try {
+        let anchor = fs.statSync(target).mtimeMs;
+        try {
+          const walStat = fs.statSync(`${target}-wal`);
+          if (walStat.mtimeMs > anchor) anchor = walStat.mtimeMs;
+        } catch { /* no WAL sidecar */ }
+        lastSeenMtimeMs = anchor;
+      } catch { /* tolerate; coherence check re-anchors on next read */ }
+    }
+    return result;
   } catch (err) {
     logBridgeError('bridge operation failed', err);
     return null;
@@ -519,9 +629,12 @@ export function refreshVectorStatsCache(dbPathOverride?: string): void {
 
     // Mtime short-circuit (#639 perf): refreshVectorStatsCache fires on every
     // bridge store/delete. When the on-disk DB hasn't changed since we last
-    // wrote the cache (the common case mid-session — bridge writes don't
-    // touch the file until persist), running 3 COUNT queries is wasted work.
-    // Skip the rest entirely.
+    // wrote the cache, running 3 COUNT queries is wasted work — skip the rest.
+    //
+    // Phase 4 (#1083) flipped the engine to node:sqlite + WAL: every commit
+    // lands in the `-wal` sidecar (mtime advances there), not the main file.
+    // Stat both so a write to either invalidates the cache. The `-shm` file
+    // is not load-bearing — it tracks WAL readers, not committed writes.
     let dbMtimeMs = 0;
     let dbSizeKB = 0;
     try {
@@ -529,6 +642,10 @@ export function refreshVectorStatsCache(dbPathOverride?: string): void {
       dbMtimeMs = stat.mtimeMs;
       dbSizeKB = Math.floor(stat.size / 1024);
     } catch { /* file may not exist */ }
+    try {
+      const walStat = fs.statSync(`${dbFile}-wal`);
+      if (walStat.mtimeMs > dbMtimeMs) dbMtimeMs = walStat.mtimeMs;
+    } catch { /* no WAL sidecar — fine, dbMtimeMs already covers it */ }
     if (
       existing &&
       typeof existing.updatedAt === 'number' &&

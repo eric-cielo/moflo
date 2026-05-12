@@ -4,17 +4,16 @@
  * re-run.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import initSqlJs from 'sql.js';
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../memory/daemon-backend.js';
 
 let tmpRoot: string;
 let dbPath: string;
 
-async function makeDb() {
-  const SQL = await initSqlJs();
-  const db = new SQL.Database();
+function makeDb(): SqlJsLikeDatabase {
+  const db = openDaemonDatabase(dbPath);
   db.run(`CREATE TABLE memory_entries (
     id TEXT PRIMARY KEY,
     key TEXT,
@@ -23,10 +22,10 @@ async function makeDb() {
     metadata TEXT,
     status TEXT DEFAULT 'active'
   )`);
-  return { SQL, db };
+  return db;
 }
 
-function insert(db: any, id: string, key: string, namespace: string) {
+function insert(db: SqlJsLikeDatabase, id: string, key: string, namespace: string) {
   db.run(`INSERT INTO memory_entries (id, key, namespace, content, metadata, status) VALUES (?, ?, ?, '', '{}', 'active')`, [id, key, namespace]);
 }
 
@@ -42,14 +41,13 @@ afterEach(() => {
 
 describe('purge-doc-entries migration (#1053 S4)', () => {
   it('removes every doc-* row, leaves chunk-* and other rows alone', async () => {
-    const { db } = await makeDb();
+    const db = makeDb();
     insert(db, '1', 'doc-guidance-foo', 'guidance');
     insert(db, '2', 'doc-guidance-bar', 'guidance');
     insert(db, '3', 'chunk-guidance-foo-0', 'guidance');
     insert(db, '4', 'chunk-guidance-foo-1', 'guidance');
     insert(db, '5', 'pattern-foo', 'patterns');
     insert(db, '6', 'doc-something', 'default');
-    writeFileSync(dbPath, Buffer.from(db.export()));
     db.close();
 
     const migration = await import('../../../bin/migrations/purge-doc-entries.mjs');
@@ -57,21 +55,22 @@ describe('purge-doc-entries migration (#1053 S4)', () => {
     expect(result.purged).toBe(3); // doc-guidance-foo, doc-guidance-bar, doc-something
 
     // Re-open to verify
-    const SQL = await initSqlJs();
-    const db2 = new SQL.Database(readFileSync(dbPath));
-    const docCount = db2.exec(`SELECT COUNT(*) FROM memory_entries WHERE key LIKE 'doc-%'`)[0]!.values[0]![0];
-    const chunkCount = db2.exec(`SELECT COUNT(*) FROM memory_entries WHERE key LIKE 'chunk-%'`)[0]!.values[0]![0];
-    const patternCount = db2.exec(`SELECT COUNT(*) FROM memory_entries WHERE key = 'pattern-foo'`)[0]!.values[0]![0];
-    expect(docCount).toBe(0);
-    expect(chunkCount).toBe(2);
-    expect(patternCount).toBe(1);
-    db2.close();
+    const db2 = openDaemonDatabase(dbPath);
+    try {
+      const docCount = db2.exec(`SELECT COUNT(*) FROM memory_entries WHERE key LIKE 'doc-%'`)[0]!.values[0]![0];
+      const chunkCount = db2.exec(`SELECT COUNT(*) FROM memory_entries WHERE key LIKE 'chunk-%'`)[0]!.values[0]![0];
+      const patternCount = db2.exec(`SELECT COUNT(*) FROM memory_entries WHERE key = 'pattern-foo'`)[0]!.values[0]![0];
+      expect(docCount).toBe(0);
+      expect(chunkCount).toBe(2);
+      expect(patternCount).toBe(1);
+    } finally {
+      db2.close();
+    }
   });
 
   it('is idempotent — re-runs return purged:0', async () => {
-    const { db } = await makeDb();
+    const db = makeDb();
     insert(db, '1', 'doc-guidance-foo', 'guidance');
-    writeFileSync(dbPath, Buffer.from(db.export()));
     db.close();
 
     const migration = await import('../../../bin/migrations/purge-doc-entries.mjs');

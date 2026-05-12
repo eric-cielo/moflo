@@ -1,10 +1,10 @@
 /**
- * DatabaseProvider - Platform-aware database selection
+ * DatabaseProvider — moflo's IMemoryBackend factory.
  *
- * Automatically selects best backend:
- * - All platforms: sql.js (WASM, no native deps)
- * - Windows: sql.js (WASM, universal) when native fails
- * - Fallback: JSON file storage
+ * Phase 5 (#1084) removed the sql.js backend. Selection now collapses to:
+ * - `node-sqlite` (Node 22+ built-in, the only SQLite backend)
+ * - `rvf` (pure-TS fallback when node:sqlite is somehow unavailable)
+ * - `json` (last-resort file storage when nothing else works)
  *
  * @module v3/memory/database-provider
  */
@@ -22,11 +22,14 @@ import {
   HealthCheckResult,
   MemoryEntryUpdate,
 } from './types.js';
-import { SqlJsBackend, SqlJsBackendConfig } from './sqljs-backend.js';
 import { SqliteBackend, SqliteBackendConfig } from './sqlite-backend.js';
 
 /**
- * Available database provider types
+ * Available database provider types.
+ *
+ * `sql.js` is retained as a literal-only value (no backend) so existing
+ * callers can be migrated incrementally — passing it now throws, surfacing
+ * the stale dependency at the call site rather than silently dropping back.
  */
 export type DatabaseProvider = 'sql.js' | 'node-sqlite' | 'json' | 'rvf' | 'auto';
 
@@ -40,7 +43,7 @@ export interface DatabaseOptions {
   /** Enable verbose logging */
   verbose?: boolean;
 
-  /** Enable WAL mode (not applicable for sql.js) */
+  /** Enable WAL mode (applied by node:sqlite). */
   walMode?: boolean;
 
   /** Enable query optimization */
@@ -52,10 +55,11 @@ export interface DatabaseOptions {
   /** Maximum entries before auto-cleanup */
   maxEntries?: number;
 
-  /** Auto-persist interval for sql.js (milliseconds) */
+  /** Auto-persist interval — retained for API compatibility; node:sqlite
+   *  persists incrementally via WAL so this is effectively a no-op. */
   autoPersistInterval?: number;
 
-  /** Path to sql.js WASM file */
+  /** Retained for API compatibility — sql.js wasm path is no longer honoured. */
   wasmPath?: string;
 }
 
@@ -79,8 +83,9 @@ function detectPlatform(): PlatformInfo {
   const isMacOS = os === 'darwin';
   const isLinux = os === 'linux';
 
-  // Recommend better-sqlite3 for Unix-like systems, sql.js for Windows
-  const recommendedProvider: DatabaseProvider = 'sql.js';
+  // Phase 4 (#1083) flipped the default to node:sqlite (built into Node 22+,
+  // moflo's minimum). Phase 5 (#1084) deletes the sql.js backend + dep.
+  const recommendedProvider: DatabaseProvider = 'node-sqlite';
 
   return {
     os,
@@ -99,11 +104,16 @@ async function testRvf(): Promise<boolean> {
 }
 
 /**
- * Test if the built-in node:sqlite engine is available (Node 22+). Phase 1
- * of epic #1078 — gated by `MOFLO_DB_BACKEND=node-sqlite`, default OFF.
+ * Test if the built-in node:sqlite engine is available (Node 22+).
+ *
+ * Loads the suppress-sqlite-warning side-effect BEFORE the probe import so
+ * the once-per-process ExperimentalWarning never fires (#1098). A probe
+ * that prints the warning to stderr defeats every consumer's "clean
+ * startup" expectation even when the rest of the run is healthy.
  */
 async function testNodeSqlite(): Promise<boolean> {
   try {
+    await import('./suppress-sqlite-warning.js');
     await import('node:sqlite');
     return true;
   } catch {
@@ -111,32 +121,23 @@ async function testNodeSqlite(): Promise<boolean> {
   }
 }
 
-/** better-sqlite3 removed — sql.js is the only SQLite backend */
-
 /**
- * Test if sql.js is available and working
- */
-async function testSqlJs(): Promise<boolean> {
-  try {
-    const { initSqlJsForNode } = await import('./sqljs-backend.js');
-    const SQL = await initSqlJsForNode();
-    const testDb = new SQL.Database();
-    testDb.close();
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
-
-/**
- * Select best available provider. The `MOFLO_DB_BACKEND` env var lets ops
- * opt into the node:sqlite backend ahead of the Phase 4 default flip
- * (epic #1078). Explicit `options.provider` still wins over the env var.
+ * Select best available provider.
+ *
+ * Phase 5 (#1084) collapsed the chain — sql.js is gone, so the order is
+ * just: explicit override → node:sqlite → RVF → JSON. Passing `'sql.js'`
+ * explicitly is a hard error.
  */
 async function selectProvider(
   preferred?: DatabaseProvider,
   verbose: boolean = false
 ): Promise<DatabaseProvider> {
+  if (preferred === 'sql.js') {
+    throw new Error(
+      `DatabaseProvider: sql.js was removed in Phase 5 (#1084). ` +
+      `Use 'node-sqlite' (the new default) or omit the provider entirely.`,
+    );
+  }
   if (preferred && preferred !== 'auto') {
     if (verbose) {
       console.log(`[DatabaseProvider] Using explicitly specified provider: ${preferred}`);
@@ -144,45 +145,27 @@ async function selectProvider(
     return preferred;
   }
 
-  const envBackend = process.env.MOFLO_DB_BACKEND?.trim();
-  if (envBackend === 'node-sqlite') {
-    if (await testNodeSqlite()) {
-      if (verbose) {
-        console.log('[DatabaseProvider] MOFLO_DB_BACKEND=node-sqlite — using node:sqlite');
-      }
-      return 'node-sqlite';
-    }
+  if (await testNodeSqlite()) {
     if (verbose) {
-      console.warn('[DatabaseProvider] MOFLO_DB_BACKEND=node-sqlite requested but node:sqlite unavailable; falling back to default selection');
+      console.log('[DatabaseProvider] node:sqlite available — using new default');
     }
+    return 'node-sqlite';
   }
 
-  const platformInfo = detectPlatform();
-
+  // node:sqlite missing is the "broken install" signal — surface it whenever
+  // verbose is on so the fallback chain doesn't silently regress consumers
+  // to a slower backend without anyone noticing.
   if (verbose) {
-    console.log(`[DatabaseProvider] Platform detected: ${platformInfo.os}`);
-    console.log(`[DatabaseProvider] Recommended provider: ${platformInfo.recommendedProvider}`);
+    console.warn('[DatabaseProvider] node:sqlite unavailable — check Node version (22+ required); falling back to RVF');
   }
 
-  // Try RVF first (always available via pure-TS fallback)
   if (await testRvf()) {
-    if (verbose) {
-      console.log('[DatabaseProvider] RVF backend available');
-    }
     return 'rvf';
   }
 
-  // Try sql.js (moflo: sql.js is the only SQLite backend)
-  if (await testSqlJs()) {
-    if (verbose) {
-      console.log('[DatabaseProvider] sql.js available and working');
-    }
-    return 'sql.js';
-  } else if (verbose) {
-    console.log('[DatabaseProvider] sql.js not available, using JSON fallback');
+  if (verbose) {
+    console.warn('[DatabaseProvider] node:sqlite + RVF unavailable — falling back to JSON');
   }
-
-  // Final fallback to JSON
   return 'json';
 }
 
@@ -218,12 +201,12 @@ export async function createDatabase(
   const {
     provider = 'auto',
     verbose = false,
-    walMode = true,
+    walMode: _walMode = true,
     optimize = true,
     defaultNamespace = 'default',
     maxEntries = 1000000,
     autoPersistInterval = 5000,
-    wasmPath,
+    wasmPath: _wasmPath,
   } = options;
 
   // Select provider
@@ -238,18 +221,13 @@ export async function createDatabase(
 
   switch (selectedProvider) {
     case 'sql.js': {
-      const config: Partial<SqlJsBackendConfig> = {
-        databasePath: path,
-        optimize,
-        defaultNamespace,
-        maxEntries,
-        verbose,
-        autoPersistInterval,
-        wasmPath,
-      };
-
-      backend = new SqlJsBackend(config);
-      break;
+      // selectProvider() guards against 'sql.js' as an explicit preference,
+      // but a stale caller could still land here if `auto` resolution drifted
+      // (it can't — left only for exhaustive-check safety).
+      throw new Error(
+        `DatabaseProvider: sql.js was removed in Phase 5 (#1084). ` +
+        `This case is unreachable; if you see this error, file a bug.`,
+      );
     }
 
     case 'node-sqlite': {
@@ -306,7 +284,11 @@ export function getPlatformInfo(): PlatformInfo {
 }
 
 /**
- * Check which providers are available
+ * Check which providers are available.
+ *
+ * `sqlJs` / `betterSqlite3` are retained for API stability but always
+ * report `false` — Phase 5 (#1084) deleted the sql.js backend and
+ * better-sqlite3 was never wired.
  */
 export async function getAvailableProviders(): Promise<{
   rvf: boolean;
@@ -317,8 +299,8 @@ export async function getAvailableProviders(): Promise<{
 }> {
   return {
     rvf: true,
-    betterSqlite3: false, // Removed — sql.js is the only SQLite backend
-    sqlJs: await testSqlJs(),
+    betterSqlite3: false,
+    sqlJs: false,
     nodeSqlite: await testNodeSqlite(),
     json: true,
   };

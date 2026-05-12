@@ -1114,6 +1114,16 @@ export function memoryTraversalProtocol(consumerDir) {
   const memToolsPath = join(consumerDir, 'node_modules', 'moflo', 'dist', 'src', 'cli', 'mcp-tools', 'memory-tools.js')
     .replace(/\\/g, '/');
   writeFileSync(probe, `
+// Filter the once-per-process \`SQLite is an experimental feature\` warning
+// before the \`node:sqlite\` import below fires it (#1098).
+{
+  const originalEmitWarning = process.emitWarning;
+  process.emitWarning = function (warning, ...args) {
+    const msg = typeof warning === 'string' ? warning : (warning && warning.message) || '';
+    if (msg.includes('SQLite is an experimental feature')) return;
+    return originalEmitWarning.apply(this, [warning, ...args]);
+  };
+}
 import { pathToFileURL } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
@@ -1129,11 +1139,18 @@ if (!neighbors || !del) {
   process.exit(0);
 }
 
-// Seed three chunks via DIRECT sql.js write (no memory_store call). Going
+// Seed three chunks via DIRECT node:sqlite write (no memory_store call). Going
 // through memory_store would warm the bridge cache with metadata='{}', and
 // a subsequent direct UPDATE would race the bridge's writeback. Writing
-// straight to disk before the bridge sees these keys means the bridge's
-// first read (memory_get_neighbors → getEntry) hits fresh disk state.
+// straight to the DB before the bridge sees these keys means the bridge's
+// first read (memory_get_neighbors → getEntry) hits fresh state via WAL.
+//
+// Phase 4 (#1083) flipped the default to node:sqlite + WAL: every writer on
+// .moflo/moflo.db MUST use node:sqlite. The pre-Phase-4 seed used
+// sql.js + writeFileSync(...export()) — that pattern is exactly the WAL
+// clobber the migration kills (the catastrophic case where the whole-file
+// dump overwrites the bridge's WAL sidecar between commits).
+import { DatabaseSync } from 'node:sqlite';
 const ns = 'smoke-1053';
 const keys = ['chunk-smoke-foo-0', 'chunk-smoke-foo-1', 'chunk-smoke-foo-2'];
 const meta = (i, total) => JSON.stringify({
@@ -1161,8 +1178,6 @@ const meta = (i, total) => JSON.stringify({
 // what every other in-consumer writer hits.
 mkdirSync('.moflo', { recursive: true });
 const dbPath = '.moflo/moflo.db';
-const { default: initSqlJs } = await import('sql.js');
-const SQL = await initSqlJs();
 
 // If the DB doesn't exist yet (memory init hasn't run before our probe),
 // give up gracefully — the smoke harness runs memoryInit BEFORE this check
@@ -1172,24 +1187,33 @@ if (!existsSync(dbPath)) {
   process.exit(0);
 }
 
-const db = new SQL.Database(readFileSync(dbPath));
-const insert = db.prepare(
-  'INSERT OR REPLACE INTO memory_entries (id, key, namespace, content, type, tags, metadata, created_at, updated_at, status) VALUES (?, ?, ?, ?, \\'semantic\\', \\'[]\\', ?, ?, ?, \\'active\\')'
-);
-const now = Date.now();
-for (let i = 0; i < keys.length; i++) {
-  insert.run([
-    'memprobe-' + randomBytes(8).toString('hex'),
-    keys[i],
-    ns,
-    \`chunk body \${i}\`,
-    meta(i, keys.length),
-    now, now,
-  ]);
+const db = new DatabaseSync(dbPath);
+try {
+  // busy_timeout BEFORE journal_mode=WAL — daemon may hold the lock briefly
+  // during checkpoint and we'd otherwise hit "database is locked" with no
+  // retry budget (#1097).
+  // 15000ms — matches daemon-backend.ts; see #1098 for the rationale.
+  db.exec('PRAGMA busy_timeout = 15000');
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA synchronous = NORMAL');
+  const insert = db.prepare(
+    "INSERT OR REPLACE INTO memory_entries (id, key, namespace, content, type, tags, metadata, created_at, updated_at, status) VALUES (?, ?, ?, ?, 'semantic', '[]', ?, ?, ?, 'active')"
+  );
+  const now = Date.now();
+  for (let i = 0; i < keys.length; i++) {
+    insert.run(
+      'memprobe-' + randomBytes(8).toString('hex'),
+      keys[i],
+      ns,
+      \`chunk body \${i}\`,
+      meta(i, keys.length),
+      now, now,
+    );
+  }
+  // node:sqlite WAL commits incrementally; no whole-file dump needed.
+} finally {
+  db.close();
 }
-insert.free();
-writeFileSync(dbPath, Buffer.from(db.export()));
-db.close();
 
 const result = await neighbors.handler({ key: 'chunk-smoke-foo-1', namespace: ns });
 

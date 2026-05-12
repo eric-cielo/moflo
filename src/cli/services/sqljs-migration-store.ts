@@ -303,7 +303,10 @@ export class SqlJsMemoryEntriesStore {
 
   async beginTransaction(): Promise<void> {
     if (this.inTransaction) return;
-    this.db.run('BEGIN');
+    // BEGIN IMMEDIATE — busy_handler engages on RESERVED acquisition under
+    // contention (#1099). Plain `BEGIN` (= deferred) would race the
+    // SHARED→RESERVED upgrade and fail fast against concurrent writers.
+    this.db.run('BEGIN IMMEDIATE');
     this.inTransaction = true;
   }
 

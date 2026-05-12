@@ -3,7 +3,7 @@
  * store adapter uses. Runs against an in-memory sql.js database so it
  * exercises the actual SQL, not a mock.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import {
   EMBEDDINGS_VERSION_KEY,
@@ -16,18 +16,12 @@ import {
   writeEmbeddingsVersion,
   type SqlJsDatabase,
 } from '../../../embeddings/migration/index.js';
-
-// Shared sql.js module, loaded once.
-type SqlJsStatic = { Database: new () => SqlJsDatabase };
-let SQL: SqlJsStatic;
-
-beforeAll(async () => {
-  const initSqlJs = (await import('sql.js')).default;
-  SQL = (await initSqlJs()) as SqlJsStatic;
-});
+import { openDaemonDatabase } from '../../../memory/daemon-backend.js';
 
 function freshDb(): SqlJsDatabase {
-  return new SQL.Database();
+  // node:sqlite via daemon-backend factory (Phase 5 / #1084) — shape-compatible
+  // with the SqlJsDatabase interface the migration helpers consume.
+  return openDaemonDatabase(':memory:') as unknown as SqlJsDatabase;
 }
 
 describe('version marker helpers', () => {

@@ -15,20 +15,14 @@
  *      the consumer hot path.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
-import initSqlJs from 'sql.js';
+import { describe, it, expect } from 'vitest';
+import { openDaemonDatabase } from '../daemon-backend.js';
 import { Reflexion } from './reflexion.js';
 import { deterministicTestEmbedder } from './_test-embedder.js';
 
-let SQL: any;
-
-beforeAll(async () => {
-  SQL = await initSqlJs();
-});
-
 describe('Reflexion benchmark @ N=1000', () => {
   it('recall@10 ≥ 0.85 and p95 latency < 500ms', async () => {
-    const db = new SQL.Database();
+    const db = openDaemonDatabase(':memory:');
     const reflexion = new Reflexion(db as any, { embedder: deterministicTestEmbedder });
 
     const N = 1000;

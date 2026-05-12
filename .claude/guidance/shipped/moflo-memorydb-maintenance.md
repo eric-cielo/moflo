@@ -7,9 +7,25 @@
 ## Database Location
 
 - **Path:** `.moflo/moflo.db` — canonical location
-- **Engine:** sql.js (WASM-based SQLite — no native binaries needed)
+- **Engine:** `node:sqlite` (built into Node 22+) running in WAL mode — multi-process safe via POSIX/Windows file locks. The sql.js (WASM) backend is no longer used and the npm dep is being removed.
 - **Single table:** `memory_entries` — stores content, embeddings, and metadata in one table
+- **WAL sidecars:** `.moflo/moflo.db-wal` + `.moflo/moflo.db-shm` appear next to `moflo.db` after the first write. Don't commit them; don't manually delete them while moflo is running.
 - **Legacy path:** `.swarm/memory.db` — older consumers may still have this. The launcher migrates it to `.moflo/moflo.db` automatically on session start. After migration the legacy file is renamed `.swarm/memory.db.bak` and is safe to delete once you've verified the canonical DB is healthy (`flo doctor`).
+
+## Network filesystem caveat
+
+SQLite's multi-process safety relies on POSIX/Windows file locking and on shared-memory WAL sidecars. **Neither works reliably on network-mounted filesystems** — NFS, SMB/CIFS, sshfs, and some FUSE mounts silently break advisory locks and refuse to map the `.db-shm` shared-memory region. If `.moflo/moflo.db` lives on a network mount, two moflo processes can clobber each other's writes and you may see partial-row corruption.
+
+On first open against a non-WAL-capable filesystem moflo emits a one-line stderr warning naming the path:
+
+```
+[moflo] WARNING: SQLite journal_mode=delete on /mnt/network/proj/.moflo/moflo.db (WAL not active).
+If this directory is on NFS/SMB or another network filesystem, POSIX advisory locks are unreliable
+and concurrent moflo processes can corrupt the database. Move the project to a local disk to
+restore multi-process safety.
+```
+
+The warning is deduplicated per path per process. If you see it: move the project (or just the `.moflo/` directory) onto a local disk. There is no in-product workaround — single-machine SQLite cannot be made safe over a remote filesystem.
 
 ## Schema
 
@@ -73,33 +89,28 @@ node bin/build-embeddings.mjs
 
 ## Purging a Namespace
 
-Use sql.js directly (no sqlite3 binary required):
+Use the backend factory so you get the same engine + WAL semantics every other writer uses:
 
 ```js
 node --input-type=module -e "
-import initSqlJs from 'sql.js';
-import { readFileSync, writeFileSync } from 'fs';
+import { openBackend } from 'moflo/bin/lib/get-backend.mjs';
 
-const SQL = await initSqlJs();
-const buf = readFileSync('.moflo/moflo.db');
-const db = new SQL.Database(buf);
+const db = await openBackend(process.cwd(), { create: false });
 
-// Check counts before
 const before = db.exec('SELECT namespace, COUNT(*) FROM memory_entries GROUP BY namespace');
 console.log('BEFORE:', JSON.stringify(before[0]?.values));
 
-// Purge a namespace (embeddings are inline — no separate table to clean)
 db.run(\"DELETE FROM memory_entries WHERE namespace = 'code-map'\");
 
 const after = db.exec('SELECT namespace, COUNT(*) FROM memory_entries GROUP BY namespace');
 console.log('AFTER:', JSON.stringify(after[0]?.values));
 
-writeFileSync('.moflo/moflo.db', Buffer.from(db.export()));
+db.save();
 db.close();
 "
 ```
 
-> **Important — sql.js write-back clobbers manual edits.** Long-lived processes (the moflo daemon, MCP servers) read the DB once on startup and dump the entire in-memory state on every flush. Direct `node -e` writes against `.moflo/moflo.db` while the daemon is running will be overwritten the next time it flushes. Run `flo daemon stop` (or stop your editor's MCP session) before purging, then restart afterwards.
+Under node:sqlite the `db.save()` call is a no-op (WAL persists incrementally), but the factory keeps the API parity so the same snippet works against any backend the factory currently knows about. Concurrent writers serialize through WAL — running this while the daemon is up no longer clobbers anything — but if you want to be defensive, `flo daemon stop` before purging is still the cleanest sequence.
 
 After purging, reindex the namespace and rebuild embeddings:
 ```bash

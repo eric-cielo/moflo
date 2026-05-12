@@ -15,7 +15,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 
 const REPO_ROOT = resolve(__dirname, '../..');
@@ -117,10 +117,9 @@ interface DbRow {
 }
 
 async function readMemoryRows(dbPath: string, keyLike: string): Promise<DbRow[]> {
-  const initSqlJs = (await import('sql.js')).default;
-  const SQL = await initSqlJs();
-  const buffer = readFileSync(dbPath);
-  const db = new SQL.Database(buffer);
+  // Phase 5 / #1084: read via the same node:sqlite factory the indexers use.
+  const { openBackend } = await import('../../bin/lib/get-backend.mjs');
+  const db = await openBackend(process.cwd(), { dbPath });
   try {
     const stmt = db.prepare(
       `SELECT id, key, namespace, content, metadata

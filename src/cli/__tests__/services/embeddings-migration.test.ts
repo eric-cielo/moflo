@@ -7,28 +7,15 @@
  * `embedding_dimensions` used to pass the old probe and then throw mid-run.
  */
 
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { runEmbeddingsMigrationIfNeeded } from '../../services/embeddings-migration.js';
 import { CANONICAL_EMBEDDING_MODEL } from '../../embeddings/migration/types.js';
-
-type SqlJsDb = {
-  run(sql: string, params?: unknown[]): void;
-  export(): Uint8Array;
-  close(): void;
-};
-type SqlJsStatic = { Database: new (data?: Uint8Array) => SqlJsDb };
-
-let SQL: SqlJsStatic;
-
-beforeAll(async () => {
-  const initSqlJs = (await import('sql.js')).default;
-  SQL = (await initSqlJs()) as SqlJsStatic;
-});
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../../memory/daemon-backend.js';
 
 const tmpDirs: string[] = [];
 afterEach(async () => {
@@ -46,11 +33,9 @@ async function makeTmpDb(schema: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'moflo-migration-'));
   tmpDirs.push(dir);
   const dbPath = join(dir, 'memory.db');
-  const db = new SQL.Database();
+  const db = openDaemonDatabase(dbPath);
   db.run(schema);
-  const bytes = db.export();
   db.close();
-  await writeFile(dbPath, Buffer.from(bytes));
   return dbPath;
 }
 
@@ -109,27 +94,21 @@ describe('runEmbeddingsMigrationIfNeeded', () => {
 // behavior is covered at the store layer in sqljs-migration-store-v3.test.ts.
 
 describe('runEmbeddingsMigrationIfNeeded — eligibility short-circuit (#650)', () => {
-  /** Apply MEMORY_SCHEMA_V3 to a fresh in-memory DB, then export to disk. */
-  async function makeV3Db(setup?: (db: SqlJsDb & { exec(sql: string): unknown }) => void): Promise<string> {
+  /** Apply MEMORY_SCHEMA_V3 to a fresh DB at a temp path. */
+  async function makeV3Db(setup?: (db: SqlJsLikeDatabase) => void): Promise<string> {
     const { MEMORY_SCHEMA_V3 } = await import('../../memory/memory-initializer.js');
     const dir = await mkdtemp(join(tmpdir(), 'moflo-migration-elig-'));
     tmpDirs.push(dir);
     const dbPath = join(dir, 'memory.db');
-    const db = new SQL.Database() as SqlJsDb & { exec(sql: string): unknown };
+    const db = openDaemonDatabase(dbPath);
     db.run(MEMORY_SCHEMA_V3);
     if (setup) setup(db);
-    const bytes = db.export();
     db.close();
-    await writeFile(dbPath, Buffer.from(bytes));
     return dbPath;
   }
 
   async function readVersion(dbPath: string): Promise<number | null> {
-    const { readFile } = await import('node:fs/promises');
-    const bytes = await readFile(dbPath);
-    const db = new SQL.Database(bytes) as SqlJsDb & {
-      exec(sql: string): Array<{ columns: string[]; values: unknown[][] }>;
-    };
+    const db = openDaemonDatabase(dbPath);
     try {
       const res = db.exec(`SELECT value FROM metadata WHERE key='embeddings_version'`);
       const row = res[0]?.values[0];

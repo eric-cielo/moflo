@@ -14,7 +14,7 @@
 import { EventEmitter } from 'node:events';
 import * as path from 'node:path';
 import type { IMemoryBackend } from './types.js';
-import { openSqlJsDatabase } from './sqljs-backend.js';
+import { openDaemonDatabase } from './daemon-backend.js';
 import { CONTROLLER_SPECS } from './controller-specs.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import type {
@@ -289,7 +289,12 @@ export class ControllerRegistry extends EventEmitter implements RegistryView {
           return;
         }
       }
-      const database = await openSqlJsDatabase(dbPath, config.wasmPath);
+      // Phase 4 (#1083) — open via the node:sqlite-backed adapter (shape-
+      // compatible with sql.js Statement API). Eliminates the cross-process
+      // clobber between `bin/` writers (node:sqlite + WAL) and the daemon's
+      // bridge (was sql.js readFileSync). `config.wasmPath` is now unused —
+      // node:sqlite is built into Node 22+; Phase 5 removes the field.
+      const database = openDaemonDatabase(dbPath);
       this.mofloDb = { database, close: async () => database.close() };
       this.emit('mofloDb:initialized');
     } catch (error) {

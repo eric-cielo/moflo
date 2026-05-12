@@ -1,23 +1,22 @@
 /**
- * SQLite-backed Persistent Cache for Embeddings (sql.js)
+ * SQLite-backed Persistent Cache for Embeddings (node:sqlite)
  *
  * Features:
- * - Cross-platform support (pure JavaScript/WASM, no native compilation)
- * - Disk persistence across sessions
+ * - Built-in node:sqlite (Node 22+) — no native compile, no WASM
+ * - Disk persistence via WAL — writes are incremental, no whole-file dumps
  * - LRU eviction with configurable max size
  * - Automatic schema creation
  * - TTL support for cache entries
  * - Lazy initialization (no startup cost if not used)
+ *
+ * Phase 5 (#1084) migrated this from sql.js to node:sqlite via the unified
+ * `openDaemonDatabase` factory. The sql.js whole-file-export pattern was the
+ * source of the multi-writer clobber class fixed in epic #1078.
  */
 
-import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, statSync } from 'fs';
 import { dirname } from 'path';
-import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
-
-// Use 'any' for sql.js types to avoid complex typing issues
-// sql.js has its own types but they don't always match perfectly
-type SqlJsDatabase = any;
-type SqlJsStatic = any;
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../memory/daemon-backend.js';
 
 /**
  * Configuration for persistent cache
@@ -48,16 +47,15 @@ export interface PersistentCacheStats {
 }
 
 /**
- * SQLite-backed persistent embedding cache using sql.js (pure JS/WASM)
+ * SQLite-backed persistent embedding cache using node:sqlite via the
+ * unified daemon-backend factory.
  */
 export class PersistentEmbeddingCache {
-  private db: SqlJsDatabase | null = null;
-  private SQL: SqlJsStatic | null = null;
+  private db: SqlJsLikeDatabase | null = null;
   private initialized = false;
   private dirty = false;
   private hits = 0;
   private misses = 0;
-  private autoSaveTimer: ReturnType<typeof setInterval> | null = null;
 
   private readonly dbPath: string;
   private readonly maxSize: number;
@@ -68,36 +66,31 @@ export class PersistentEmbeddingCache {
     this.dbPath = config.dbPath;
     this.maxSize = config.maxSize ?? 10000;
     this.ttlMs = config.ttlMs ?? 7 * 24 * 60 * 60 * 1000; // 7 days
-    this.autoSaveInterval = config.autoSaveInterval ?? 30000; // 30 seconds
+    // Kept for API compatibility; node:sqlite WAL persists incrementally so
+    // there's no auto-save timer to drive any more.
+    this.autoSaveInterval = config.autoSaveInterval ?? 30000;
   }
 
   /**
-   * Lazily initialize database connection
+   * Lazily initialize database connection.
+   *
+   * Phase 5 (#1084): swapped the sql.js readFileSync + new SQL.Database
+   * round-trip for openDaemonDatabase(dbPath). WAL writes incrementally so
+   * the auto-save timer + saveToFile() that used to live here are gone.
    */
   private async ensureInitialized(): Promise<void> {
     if (this.initialized) return;
 
     try {
-      // Dynamically import sql.js
-      const initSqlJs = (await import('sql.js')).default;
-
-      // Initialize sql.js (loads WASM)
-      this.SQL = await initSqlJs();
-
-      // Ensure directory exists
+      // Ensure directory exists (openDaemonDatabase also does this, but the
+      // dbExisted probe below needs the path to be stable first).
       const dir = dirname(this.dbPath);
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
       }
 
-      // Load existing database or create new
       const dbExisted = existsSync(this.dbPath);
-      if (dbExisted) {
-        const fileBuffer = readFileSync(this.dbPath);
-        this.db = new this.SQL.Database(fileBuffer);
-      } else {
-        this.db = new this.SQL.Database();
-      }
+      this.db = openDaemonDatabase(this.dbPath);
 
       // Create schema
       this.db.run(`
@@ -134,55 +127,14 @@ export class PersistentEmbeddingCache {
       // Clean expired entries on startup
       this.cleanExpired();
 
-      // Save after initialization to persist schema
-      this.saveToFile();
-
-      // Start auto-save timer
-      this.startAutoSave();
-
       this.initialized = true;
     } catch (error) {
-      // If sql.js not available, fall back gracefully
-      console.warn('[persistent-cache] sql.js not available, cache disabled:',
+      // node:sqlite is built into Node 22+, so failure here is a real fault
+      // (corrupt DB, permission error, etc.) rather than missing dep. Surface
+      // and disable the cache so the embedding pipeline keeps working.
+      console.warn('[persistent-cache] disabled:',
         error instanceof Error ? error.message : error);
       this.initialized = true; // Mark as initialized to prevent retry
-    }
-  }
-
-  /**
-   * Start auto-save timer
-   */
-  private startAutoSave(): void {
-    if (this.autoSaveTimer) return;
-
-    this.autoSaveTimer = setInterval(() => {
-      if (this.dirty && this.db) {
-        this.saveToFile();
-      }
-    }, this.autoSaveInterval);
-  }
-
-  /**
-   * Stop auto-save timer
-   */
-  private stopAutoSave(): void {
-    if (this.autoSaveTimer) {
-      clearInterval(this.autoSaveTimer);
-      this.autoSaveTimer = null;
-    }
-  }
-
-  /**
-   * Save database to file
-   */
-  private saveToFile(): void {
-    if (!this.db) return;
-
-    try {
-      atomicWriteFileSync(this.dbPath, this.db.export());
-      this.dirty = false;
-    } catch (error) {
-      console.error('[persistent-cache] Save error:', error);
     }
   }
 
@@ -357,11 +309,12 @@ export class PersistentEmbeddingCache {
       const result = this.db.exec('SELECT COUNT(*) as count FROM embeddings');
       stats.size = result[0]?.values[0]?.[0] as number ?? 0;
 
-      // Get file size if exists
+      // Get file size if exists. node:sqlite leaves the file on disk via WAL
+      // so statSync is enough — no whole-file read needed (sql.js used to
+      // readFileSync the entire DB to compute size).
       if (existsSync(this.dbPath)) {
         try {
-          const buffer = readFileSync(this.dbPath);
-          stats.dbSizeBytes = buffer.length;
+          stats.dbSizeBytes = statSync(this.dbPath).size;
         } catch {
           // Ignore
         }
@@ -372,55 +325,52 @@ export class PersistentEmbeddingCache {
   }
 
   /**
-   * Clear all cached entries
+   * Clear all cached entries. WAL persists the DELETE incrementally so
+   * there's no explicit flush — Phase 5 (#1084) removed the sql.js
+   * whole-file save here.
    */
   async clear(): Promise<void> {
     await this.ensureInitialized();
     if (!this.db) return;
 
     this.db.run('DELETE FROM embeddings');
-    this.dirty = true;
     this.hits = 0;
     this.misses = 0;
-    this.saveToFile();
+    this.dirty = false;
   }
 
   /**
-   * Force save to disk
+   * Force save to disk. node:sqlite + WAL persists each `db.run` immediately,
+   * so flush is a no-op kept for API compatibility.
    */
   async flush(): Promise<void> {
     await this.ensureInitialized();
-    if (this.db && this.dirty) {
-      this.saveToFile();
-    }
+    this.dirty = false;
   }
 
   /**
    * Close database connection
    */
   async close(): Promise<void> {
-    this.stopAutoSave();
-
     if (this.db) {
-      // Save before closing
-      if (this.dirty) {
-        this.saveToFile();
-      }
       this.db.close();
       this.db = null;
-      this.SQL = null;
       this.initialized = false;
     }
   }
 }
 
 /**
- * Check if persistent cache is available (sql.js installed)
+ * Check if persistent cache is available. node:sqlite is built into Node 22+
+ * (moflo's minimum) so this always succeeds; kept for API compatibility.
+ *
+ * Loads the warning-suppression side-effect BEFORE the probe import so the
+ * once-per-process ExperimentalWarning doesn't leak to stderr (#1098).
  */
 export async function isPersistentCacheAvailable(): Promise<boolean> {
   try {
-    const initSqlJs = (await import('sql.js')).default;
-    await initSqlJs();
+    await import('../memory/suppress-sqlite-warning.js');
+    await import('node:sqlite');
     return true;
   } catch {
     return false;

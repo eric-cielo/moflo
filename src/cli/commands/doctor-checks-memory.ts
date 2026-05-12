@@ -9,26 +9,22 @@ import { existsSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { memoryDbCandidatePaths } from '../services/moflo-paths.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { openDaemonDatabase } from '../memory/daemon-backend.js';
 import type { HealthCheck } from './doctor-types.js';
 
 /** Skew (cached / live count delta) above which the cache is treated as stale. */
 const VECTOR_STATS_SKEW_WARN_THRESHOLD = 0.2;
 
 /**
- * Open `dbPath` via moflo's bundled sql.js and return the count of memory_entries
- * rows that have an embedding. Returns null if sql.js can't be loaded, the file
- * isn't a v3 schema, or the query fails — every error is treated as "unknown
- * truth", letting the caller fall back to the cached stats rather than masking
- * a healthy DB as broken.
+ * Open `dbPath` via the unified node:sqlite factory and return the count of
+ * memory_entries rows that have an embedding. Returns null on any error
+ * (corrupt DB, missing column, schema mismatch) — every error is treated as
+ * "unknown truth", letting the caller fall back to the cached stats rather
+ * than masking a healthy DB as broken.
  */
 async function countEmbeddedRowsFromDb(dbPath: string): Promise<number | null> {
   try {
-    const { mofloImport } = await import('../services/moflo-require.js');
-    const initSqlJs = (await mofloImport('sql.js'))?.default;
-    if (!initSqlJs) return null;
-    const SQL = await initSqlJs();
-    const buffer = readFileSync(dbPath);
-    const db = new SQL.Database(buffer);
+    const db = openDaemonDatabase(dbPath);
     try {
       const res = db.exec(
         "SELECT COUNT(*) FROM memory_entries WHERE embedding IS NOT NULL AND embedding != ''",
@@ -143,20 +139,20 @@ export async function checkEmbeddings(): Promise<HealthCheck> {
       status: 'pass',
       message: `Memory DB initialized (v${info.version}, vectors enabled)`,
     };
-  } catch (sqlJsError) {
-    // sql.js not available — fall back to file-size heuristic
-    const sqlDetail = errorDetail(sqlJsError);
+  } catch (sqliteError) {
+    // node:sqlite open / introspection failed — fall back to file-size heuristic.
+    const sqlDetail = errorDetail(sqliteError);
     try {
       const stats = statSync(foundDbPath);
       const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
       return {
         name: 'Embeddings',
         status: 'warn',
-        message: `Memory DB exists (${sizeMB} MB) — cannot verify vectors (sql.js not available: ${sqlDetail})`,
-        fix: 'npm install sql.js && npx moflo embeddings init',
+        message: `Memory DB exists (${sizeMB} MB) — cannot verify vectors (DB unreadable: ${sqlDetail})`,
+        fix: 'npx moflo embeddings init',
       };
     } catch (statError) {
-      return { name: 'Embeddings', status: 'warn', message: `Unable to check: sql.js failed (${sqlDetail}), stat failed (${errorDetail(statError)})` };
+      return { name: 'Embeddings', status: 'warn', message: `Unable to check: DB read failed (${sqlDetail}), stat failed (${errorDetail(statError)})` };
     }
   }
 }

@@ -19,9 +19,8 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { mofloImport } from './moflo-require.js';
-import { atomicWriteFileSync } from './atomic-file-write.js';
 import { memoryDbPath } from './moflo-paths.js';
+import { openDaemonDatabase } from '../memory/daemon-backend.js';
 
 export interface PurgeSoftDeletedOptions {
   /** Path to the memory DB. Defaults to `<cwd>/.moflo/moflo.db`. */
@@ -50,12 +49,9 @@ export async function purgeSoftDeletedEntries(
   const dbPath = path.resolve(options.dbPath ?? memoryDbPath(process.cwd()));
   if (!fs.existsSync(dbPath)) return { purged: 0 };
 
-  const initSqlJs = (await mofloImport('sql.js'))?.default;
-  if (!initSqlJs) return { purged: 0 };
-
-  const SQL = await initSqlJs();
-  const buffer = fs.readFileSync(dbPath);
-  const db = new SQL.Database(buffer);
+  // node:sqlite via the unified factory (Phase 5 / #1084). WAL persists each
+  // DELETE/VACUUM incrementally; no atomicWriteFileSync needed.
+  const db = openDaemonDatabase(dbPath);
 
   try {
     // Probe: schema must carry `memory_entries`. Older / non-moflo DBs are
@@ -74,11 +70,10 @@ export async function purgeSoftDeletedEntries(
     if (purged === 0) return { purged: 0 };
 
     db.run(`DELETE FROM memory_entries WHERE status = 'deleted'`);
-    // VACUUM has to run outside any open transaction; sql.js auto-commits
-    // each `db.run`, so this is safe to chain.
+    // VACUUM has to run outside any open transaction; node:sqlite/sql.js
+    // both auto-commit each `db.run`, so this is safe to chain.
     db.run('VACUUM');
 
-    atomicWriteFileSync(dbPath, db.export());
     return { purged };
   } finally {
     db.close();

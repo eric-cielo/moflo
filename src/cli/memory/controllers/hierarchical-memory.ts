@@ -178,7 +178,10 @@ export class HierarchicalMemory {
    * transaction. Rolls back on exception and rethrows.
    */
   transaction<T>(fn: () => T | Promise<T>): Promise<T> {
-    this.db.run('BEGIN TRANSACTION');
+    // BEGIN IMMEDIATE — busy_handler engages on lock acquisition. Plain
+    // `BEGIN` (= deferred) would fail-fast if the inner fn reads-then-
+    // writes while another process holds RESERVED (#1099 / #1098 trap).
+    this.db.run('BEGIN IMMEDIATE');
     return Promise.resolve()
       .then(() => fn())
       .then(
@@ -260,7 +263,9 @@ export class HierarchicalMemory {
   private bumpAccessCounts(ids: string[]): void {
     if (ids.length === 0) return;
     const now = Date.now();
-    this.db.run('BEGIN TRANSACTION');
+    // BEGIN IMMEDIATE — pure write batch. See transaction() above for the
+    // #1099 rationale; converting consistently keeps the policy uniform.
+    this.db.run('BEGIN IMMEDIATE');
     try {
       for (const id of ids) {
         this.db.run(

@@ -13,9 +13,8 @@
  * pipeline — verifying purge alone is brittle without the upstream copy.
  */
 
-import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
-import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -24,21 +23,7 @@ import { run as knowledgeToLearningsRun, name as knowledgeToLearningsName }
 import { markMigrationDone } from '../../../../bin/lib/migrations.mjs';
 import { MIGRATED_FROM_KNOWLEDGE } from '../../../../bin/migrations/lib/markers.mjs';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
-
-type SqlJsDb = {
-  run(sql: string, params?: unknown[]): void;
-  exec(sql: string): Array<{ values: unknown[][]; columns: string[] }>;
-  export(): Uint8Array;
-  close(): void;
-};
-type SqlJsStatic = { Database: new (data?: Uint8Array) => SqlJsDb };
-
-let SQL: SqlJsStatic;
-
-beforeAll(async () => {
-  const initSqlJs = (await import('sql.js')).default;
-  SQL = (await initSqlJs()) as SqlJsStatic;
-});
+import { openDaemonDatabase, type SqlJsLikeDatabase } from '../../memory/daemon-backend.js';
 
 const tmpDirs: string[] = [];
 afterEach(async () => {
@@ -67,7 +52,8 @@ async function makeProject(rows: SeedRow[]): Promise<string> {
   tmpDirs.push(dir);
   await mkdir(join(dir, '.moflo'), { recursive: true });
 
-  const db = new SQL.Database();
+  const dbPath = join(dir, '.moflo', 'moflo.db');
+  const db = openDaemonDatabase(dbPath);
   // Production schema — drift here is caught loud rather than silently
   // letting the migration pass against a stale fixture.
   db.run(MEMORY_SCHEMA_V3);
@@ -87,15 +73,12 @@ async function makeProject(rows: SeedRow[]): Promise<string> {
       ],
     );
   }
-  const buf = Buffer.from(db.export());
   db.close();
-  writeFileSync(join(dir, '.moflo', 'moflo.db'), buf);
   return dir;
 }
 
-function readDb(dir: string): SqlJsDb {
-  const buf = readFileSync(join(dir, '.moflo', 'moflo.db'));
-  return new SQL.Database(buf);
+function readDb(dir: string): SqlJsLikeDatabase {
+  return openDaemonDatabase(join(dir, '.moflo', 'moflo.db'));
 }
 
 function rowsByNamespaceStatus(dir: string): Record<string, number> {
@@ -182,7 +165,6 @@ describe('knowledge-purge migration', () => {
        VALUES ('l1', 'has-counterpart', 'learnings', 'x', 'active', ?)`,
       [JSON.stringify([MIGRATED_FROM_KNOWLEDGE, 'source:user', 'locked'])],
     );
-    writeFileSync(join(dir, '.moflo', 'moflo.db'), Buffer.from(db.export()));
     db.close();
     markMigrationDone(dir, knowledgeToLearningsName);
 
