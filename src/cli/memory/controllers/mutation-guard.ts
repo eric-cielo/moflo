@@ -19,9 +19,33 @@ export interface ValidateInput {
   bypassDedupe?: boolean;
 }
 
+/**
+ * Pending mutation token. Returned by {@link MutationGuard.validate} when
+ * a mutation is allowed but not yet recorded. The caller MUST call
+ * {@link MutationGuard.commit} after the write succeeds, OR let the token
+ * fall out of scope on failure — un-committed tokens don't pollute the
+ * dedupe buffer. See `bridge-entries.ts:bridgeStoreEntry` for the canonical
+ * usage; #1098 motivated this pattern (the prior fire-and-forget
+ * `record-on-validate` broke under withDb retries because a failed write
+ * still left an entry in the dedupe buffer, causing the retry to be
+ * rejected as a "duplicate").
+ */
+export interface MutationToken {
+  readonly op: string;
+  readonly hash: string;
+  readonly ts: number;
+}
+
 export interface ValidateResult {
   allowed: boolean;
   reason?: string;
+  /**
+   * Present iff `allowed` is true AND the operation is watched. Pass to
+   * {@link MutationGuard.commit} after the write succeeds to record the
+   * mutation in the dedupe buffer. Unwatched operations don't need a
+   * token because they bypass dedupe anyway.
+   */
+  token?: MutationToken;
 }
 
 export interface MutationGuardOptions {
@@ -89,8 +113,27 @@ export class MutationGuard {
       return { allowed: false, reason: 'duplicate mutation within dedupe window' };
     }
 
-    this.record(op, entries, hash, ts);
-    return { allowed: true };
+    // #1098: defer the recording — return a token instead of fire-and-
+    // forget recording at validate-time. Callers commit() after the
+    // write succeeds; failed writes leave the buffer clean so retries
+    // can re-validate without seeing themselves as duplicates.
+    return { allowed: true, token: { op, hash, ts } };
+  }
+
+  /**
+   * Record a previously-validated mutation in the dedupe buffer. Call
+   * exactly once per token, only after the corresponding write has
+   * succeeded. No-op for tokens that don't match a watched op — those
+   * never produce a real recording in the first place.
+   *
+   * Silent no-op if `token` is null/undefined so callers can do
+   * `guard.commit(result.token)` without a null check.
+   */
+  commit(token: MutationToken | null | undefined): void {
+    if (!token) return;
+    if (!this.isWatched(token.op)) return;
+    const entries = this.pruneAndFetch(token.op, token.ts);
+    this.record(token.op, entries, token.hash, token.ts);
   }
 
   reset(): void {
