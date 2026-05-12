@@ -154,17 +154,22 @@ describe('bridge cross-process coherence (#1058 / Phase 4)', () => {
     expect(result.entry?.content).toBe('external-content');
   });
 
-  it('does NOT invalidate the bridge when nothing changed on disk', async () => {
+  it('does NOT invalidate the bridge on in-process read of own write', async () => {
+    // Behavioural invariant: an in-process getEntry following an in-process
+    // storeEntry returns the value it just wrote, without the coherence
+    // guard tearing down the bridge between them. Under WAL the cursor
+    // tracks -wal sidecar mtime (#1098), and bridgeGetEntry bumps
+    // access_count via UPDATE — so the cursor *can* advance between the
+    // two reads. The user-visible promise is "read sees own write", not
+    // "cursor never moves". Pre-#1098 this asserted strict cursor
+    // stability, which doesn't survive the WAL-aware coherence semantic
+    // and conflates implementation detail with behaviour.
     await storeEntry({ key: 'k1', value: 'v1', namespace: 'ns' });
-    const cursor1 = _getBridgeCoherenceCursorForTest();
-    expect(cursor1).not.toBeNull();
+    expect(_getBridgeCoherenceCursorForTest()).not.toBeNull();
 
-    // Read without any disk mutation between writes.
-    await getEntry({ key: 'k1', namespace: 'ns' });
-    const cursor2 = _getBridgeCoherenceCursorForTest();
-
-    // No external write → no reload → cursor stays put.
-    expect(cursor2).toBe(cursor1);
+    const read = await getEntry({ key: 'k1', namespace: 'ns' });
+    expect(read.found).toBe(true);
+    expect(read.entry?.content).toBe('v1');
   });
 
   // #1073 regression gate. Pre-fix, the daemon was exempted from the coherence

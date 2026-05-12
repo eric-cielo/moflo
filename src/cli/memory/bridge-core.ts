@@ -317,9 +317,17 @@ export function persistBridgeDb(db: any, dbPath?: string): void {
     }
     // Anchor the bridge-coherence cursor to the post-persist mtime so our own
     // write doesn't trigger a self-invalidation on the next withDb call.
-    // Best-effort: if the stat fails, the worst case is one redundant reload.
-    try { lastSeenMtimeMs = fs.statSync(target).mtimeMs; }
-    catch { /* tolerate; coherence check re-anchors on next read */ }
+    // Under WAL the write lands in `-wal` (not the main file), so include
+    // its mtime — must match the read side of checkBridgeCoherence or self-
+    // writes self-invalidate (#1098).
+    try {
+      let anchored = fs.statSync(target).mtimeMs;
+      try {
+        const walStat = fs.statSync(`${target}-wal`);
+        if (walStat.mtimeMs > anchored) anchored = walStat.mtimeMs;
+      } catch { /* no WAL sidecar — main mtime is authoritative */ }
+      lastSeenMtimeMs = anchored;
+    } catch { /* tolerate; coherence check re-anchors on next read */ }
   } catch (err) {
     logBridgeError('bridge persist failed', err, { alwaysLog: true });
     throw err;
@@ -420,7 +428,15 @@ async function checkBridgeCoherence(dbPath: string | undefined): Promise<void> {
   if (!registryPromise) return;
   const target = dbPath ? path.resolve(dbPath) : getDbPath();
   if (target === ':memory:') return;
-  let mtimeMs: number;
+  // Under WAL (Phase 5 / #1083), commits land in the `-wal` sidecar first —
+  // the main DB file's mtime ONLY advances on checkpoint, which may be many
+  // writes apart. Statting just the main file misses every external WAL
+  // write between checkpoints, leaving the bridge with a stale in-memory
+  // snapshot indefinitely. That's the failure mode in #1098 / #1073 smoke
+  // where doctor's seed-via-openDaemonDatabase then bridge-via-MCP couldn't
+  // see its own freshly-written rows. Stat both files and use whichever is
+  // most recent. Mirrors the same fix in `refreshVectorStatsCache`.
+  let mtimeMs = 0;
   try {
     mtimeMs = fs.statSync(target).mtimeMs;
   } catch {
@@ -428,6 +444,10 @@ async function checkBridgeCoherence(dbPath: string | undefined): Promise<void> {
     // the error; we don't synthesize a coherence event from a stat failure.
     return;
   }
+  try {
+    const walStat = fs.statSync(`${target}-wal`);
+    if (walStat.mtimeMs > mtimeMs) mtimeMs = walStat.mtimeMs;
+  } catch { /* no WAL sidecar yet — main mtime is authoritative */ }
   if (lastSeenMtimeMs == null) {
     // First op after init — anchor and proceed.
     lastSeenMtimeMs = mtimeMs;
@@ -466,11 +486,18 @@ export async function withDb<T>(
   // resolved. The post-init read of `mofloDb.database` reflects the bytes
   // that were on disk when `openSqlJsDatabase` ran; pin the matching mtime so
   // a subsequent unrelated process write triggers reload, not a self-fire.
+  // Include `-wal` since WAL writes don't bump the main file mtime (#1098).
   if (lastSeenMtimeMs == null) {
     const target = dbPath ? path.resolve(dbPath) : getDbPath();
     if (target !== ':memory:') {
-      try { lastSeenMtimeMs = fs.statSync(target).mtimeMs; }
-      catch { /* file may not exist yet — first persist will anchor */ }
+      try {
+        let anchor = fs.statSync(target).mtimeMs;
+        try {
+          const walStat = fs.statSync(`${target}-wal`);
+          if (walStat.mtimeMs > anchor) anchor = walStat.mtimeMs;
+        } catch { /* no WAL sidecar — main mtime is authoritative */ }
+        lastSeenMtimeMs = anchor;
+      } catch { /* file may not exist yet — first persist will anchor */ }
     }
   }
   try {
