@@ -471,7 +471,9 @@ export class SqliteBackend extends EventEmitter implements IMemoryBackend {
    */
   private async runInTransaction(fn: () => Promise<void>): Promise<void> {
     const owns = !this.db!.isTransaction;
-    if (owns) this.db!.exec('BEGIN');
+    // BEGIN IMMEDIATE so busy_handler engages on multi-process contention
+    // (#1099 — plain BEGIN's read→write upgrade fails fast under WAL).
+    if (owns) this.db!.exec('BEGIN IMMEDIATE');
     try {
       await fn();
       if (owns) this.db!.exec('COMMIT');
