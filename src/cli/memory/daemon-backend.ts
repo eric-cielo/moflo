@@ -322,7 +322,18 @@ export function openDaemonDatabase(dbPath: string): SqlJsLikeDatabase {
       //   1. busy_timeout — gives every subsequent pragma a retry budget
       //   2. journal_mode = WAL — needs the budget on contention
       //   3. synchronous — purely advisory, can come anytime
-      db.exec('PRAGMA busy_timeout = 5000');
+      //
+      // Budget: 15000ms. The consumer-smoke harness exposes the realistic
+      // worst case — a background indexer subprocess opens its own write
+      // connection right after `npm install` and walks the entire consumer
+      // tree (hundreds of guidance/skill files). The whole-tree first-pass
+      // can hold a RESERVED/EXCLUSIVE lock for 5–8s while the doctor
+      // foreground probe races against it. 5000ms was the original Phase 4
+      // value and ran the budget out under that exact load on Windows CI
+      // (#1098); 15000ms gives the indexer's full first-pass time to finish
+      // before doctor's probe gives up. The price of being wrong-high here
+      // is one slow probe per session, not lost data.
+      db.exec('PRAGMA busy_timeout = 15000');
       db.exec('PRAGMA journal_mode = WAL');
       db.exec('PRAGMA synchronous = NORMAL');
       // The daemon is the process most exposed to network-FS edge cases

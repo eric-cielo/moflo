@@ -1160,6 +1160,39 @@ async function activateControllerRegistry(
 }
 
 /**
+ * Cross-platform safe unlink with a short EBUSY/EPERM retry loop. Windows
+ * holds file handles briefly after process exit (and the consumer's
+ * background daemon may still own the moflo.db handle when `memory init
+ * --force` runs); on POSIX the first attempt always succeeds. Total wait
+ * is bounded at ~750ms so we never paper over a real long-held handle.
+ *
+ * Used by `initializeMemoryDatabase` to ride out the daemon's brief handle
+ * release race after `flo healer --kill-zombies`. See #1098 for the smoke
+ * harness incident that drove this — the daemon's WAL+SHM file handles
+ * weren't released by Windows for ~200ms after SIGKILL.
+ */
+function unlinkWithRetry(filePath: string): void {
+  const delays = [0, 50, 100, 100, 100, 100, 100, 100, 50, 50]; // ~750ms total
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delays[attempt]);
+    try {
+      fs.unlinkSync(filePath);
+      return;
+    } catch (err) {
+      lastErr = err;
+      const code = (err as NodeJS.ErrnoException)?.code;
+      // Only retry on the handle-release race codes. ENOENT means we've
+      // already won (or the file was never there); EACCES could be a real
+      // permission issue worth surfacing immediately.
+      if (code === 'ENOENT') return;
+      if (code !== 'EBUSY' && code !== 'EPERM') throw err;
+    }
+  }
+  throw lastErr;
+}
+
+/**
  * Initialize the memory database via the unified node:sqlite factory.
  */
 export async function initializeMemoryDatabase(options: {
@@ -1216,13 +1249,19 @@ export async function initializeMemoryDatabase(options: {
 
     // Force a clean slate so the new file gets fresh WAL state too.
     if (fs.existsSync(dbPath) && force) {
-      fs.unlinkSync(dbPath);
+      // Windows EBUSY guard (#1098): if the consumer's background daemon
+      // still has moflo.db open from the prior session, `unlinkSync`
+      // throws EBUSY. Retry on a short backoff to ride out the OS-level
+      // handle release race — by the time we hit memory init --force,
+      // the daemon has either been killed or is mid-shutdown. POSIX
+      // platforms ignore the retry because the unlink succeeds first try.
+      unlinkWithRetry(dbPath);
       // Also drop any sidecar WAL files so the next open doesn't replay
       // stale uncommitted transactions from the previous DB.
       for (const suffix of ['-wal', '-shm']) {
         const sidecar = dbPath + suffix;
         if (fs.existsSync(sidecar)) {
-          try { fs.unlinkSync(sidecar); } catch { /* best-effort */ }
+          try { unlinkWithRetry(sidecar); } catch { /* best-effort */ }
         }
       }
     }

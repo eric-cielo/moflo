@@ -19,7 +19,7 @@
  * Persistence semantics:
  *   - node:sqlite — writes through the OS file handle under WAL; `save()` is
  *     a no-op kept for API parity. WAL pragmas (`journal_mode=WAL`,
- *     `synchronous=NORMAL`, `busy_timeout=5000`) are set on first open per
+ *     `synchronous=NORMAL`, `busy_timeout=15000`) are set on first open per
  *     Phase 0 spike (#1079) and Phase 1 backend (#1080).
  *
  * @module bin/lib/get-backend
@@ -106,7 +106,11 @@ async function openNodeSqlite(dbPath, opts) {
       // briefly takes an EXCLUSIVE lock, and concurrent openers (parallel
       // doctor probes, indexer subprocess, daemon bridge init) otherwise hit
       // "database is locked" with no retry budget. See #1097.
-      db.exec('PRAGMA busy_timeout = 5000');
+      // 15000ms — sized for the consumer-smoke worst case where a
+      // background indexer holds a write lock for 5–8s during its first
+      // full-tree pass after `npm install`. See daemon-backend.ts twin for
+      // the full rationale (#1098).
+      db.exec('PRAGMA busy_timeout = 15000');
       db.exec('PRAGMA journal_mode = WAL');
       db.exec('PRAGMA synchronous = NORMAL');
       // Phase 4 / #1083 — network-FS detection. SQLite's POSIX advisory locks

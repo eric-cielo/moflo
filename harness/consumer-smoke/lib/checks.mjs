@@ -1192,7 +1192,8 @@ try {
   // busy_timeout BEFORE journal_mode=WAL — daemon may hold the lock briefly
   // during checkpoint and we'd otherwise hit "database is locked" with no
   // retry budget (#1097).
-  db.exec('PRAGMA busy_timeout = 5000');
+  // 15000ms — matches daemon-backend.ts; see #1098 for the rationale.
+  db.exec('PRAGMA busy_timeout = 15000');
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA synchronous = NORMAL');
   const insert = db.prepare(

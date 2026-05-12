@@ -128,7 +128,9 @@ export class SqliteBackend extends EventEmitter implements IMemoryBackend {
         // busy_timeout BEFORE journal_mode = WAL: the WAL pragma briefly takes
         // an EXCLUSIVE lock, and concurrent openers otherwise hit "database is
         // locked" with no retry budget (#1097).
-        db.exec('PRAGMA busy_timeout = 5000');
+        // 15000ms matches daemon-backend.ts (#1098 — the harness's first-pass
+        // indexer can hold a write lock for 5–8s after npm install).
+        db.exec('PRAGMA busy_timeout = 15000');
         db.exec('PRAGMA journal_mode = WAL');
         db.exec('PRAGMA synchronous = NORMAL');
       }
