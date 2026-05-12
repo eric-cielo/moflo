@@ -197,7 +197,7 @@ for (const r of rows) {
   stmt.run([r.id, r.key, r.namespace, r.content, r.embedding, r.embedding ? ${EMBEDDING_DIMS} : null, r.status]);
 }
 stmt.free();
-const { writeFileSync } = await import('node:fs');
+// writeFileSync / readFileSync are provided by the probe harness now (#1098).
 const buf = Buffer.from(db.export());
 db.close();
 writeFileSync(${JSON.stringify(dbPath)}, buf);
@@ -292,7 +292,7 @@ for (const r of rows) {
   stmt.run([r.id, r.key, r.namespace, r.content, r.status]);
 }
 stmt.free();
-const { writeFileSync } = await import('node:fs');
+// writeFileSync / readFileSync are provided by the probe harness now (#1098).
 const buf = Buffer.from(db.export());
 db.close();
 writeFileSync(${JSON.stringify(dbPath)}, buf);
@@ -376,7 +376,7 @@ function inspectPostStateDb(consumerDir) {
   if (!existsSync(dbPath)) return null;
 
   return runSqlJsProbe(consumerDir, 'inspect-moflo-db', `
-const { readFileSync } = await import('node:fs');
+// readFileSync is provided by the probe harness (#1098).
 const SQL = await sqlInit();
 const db = new SQL.Database(readFileSync(${JSON.stringify(dbPath)}));
 const out = { byNamespaceStatus: {}, integrity: null, ids: [], hasEmbedding: 0, migratedLearnings: { byStatus: {}, withEmbedding: 0, sampleKeys: [] }, epic1053: { docCount: 0, preambleChunkCount: 0 } };
@@ -746,7 +746,9 @@ async function runMcpClobberCheck(consumerDir, seedRows) {
   const markerPath = join(consumerDir, '__clobber-marker.log');
   rmSync(markerPath, { force: true });
   const longLivedPath = writeStandaloneProbe(consumerDir, 'mcp-clobber-longlived', `
-const { readFileSync, writeFileSync, appendFileSync } = await import('node:fs');
+// readFileSync / writeFileSync are provided by the probe harness (#1098).
+// appendFileSync isn't in the harness baseline; import it on its own.
+const { appendFileSync } = await import('node:fs');
 const legacyPath = ${JSON.stringify(legacyMemoryDbPath(consumerDir))};
 const markerPath = ${JSON.stringify(markerPath)};
 function mark(stage) { try { appendFileSync(markerPath, stage + '\\n'); } catch {} }
