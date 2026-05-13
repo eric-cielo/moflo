@@ -190,11 +190,10 @@ describe('published-package drift guard (issue #585)', () => {
   });
 
   it('no `.claude-flow` paths re-enter source, scripts, bin, or shipped guidance (#699)', () => {
-    // Issue #699: moflo owns its runtime state under `.moflo/`. The upstream
-    // Ruflo `.claude-flow/` path is migration-only — every reintroduction in
+    // Issue #699: moflo owns its runtime state under `.moflo/`. The legacy
+    // `.claude-flow/` path is migration-only — every reintroduction in
     // production code is a regression that would split state between two
-    // dirs on consumer machines. Catches mechanical sweeps that miss spots
-    // and resurrected copy-paste from upstream.
+    // dirs on consumer machines. Catches mechanical sweeps that miss spots.
     //
     // Scope: production-relevant trees only. Test fixtures inside __tests__/
     // are excluded — those create temp dirs and don't ship.
@@ -216,7 +215,7 @@ describe('published-package drift guard (issue #585)', () => {
     // legacy-fallback reasons must carry one of these explicit markers. Vague
     // word-soup ("legacy" alone, "migration") is intentionally NOT allowed —
     // exemption must be a deliberate token an author types on purpose.
-    const ALLOWED_MARKERS = /\bLEGACY(?:-CONFIG|-V2|:)?\b|pre-#699|upstream Ruflo|claude-flow-backup-/;
+    const ALLOWED_MARKERS = /\bLEGACY(?:-CONFIG|-V2|:)?\b|pre-#699|claude-flow-backup-/;
     // The migration helpers themselves must talk about `.claude-flow` —
     // that's their entire purpose. Skip the files outright so we don't have
     // to sprinkle markers on every line.
@@ -253,8 +252,8 @@ describe('published-package drift guard (issue #585)', () => {
       `Stale .claude-flow paths detected (issue #699 migrated runtime state to .moflo).\n` +
         `If a reference is intentional (legacy fallback, migration code), add one of these\n` +
         `explicit markers to the same line: LEGACY, LEGACY-CONFIG, LEGACY-V2, pre-#699,\n` +
-        `"upstream Ruflo", or "claude-flow-backup-". For migration helpers, add the\n` +
-        `path to MIGRATION_FILES in this file.\n` +
+        `or "claude-flow-backup-". For migration helpers, add the path to\n` +
+        `MIGRATION_FILES in this file.\n` +
         `Offenders:\n  ${offenders.join('\n  ')}`,
     ).toEqual([]);
   });

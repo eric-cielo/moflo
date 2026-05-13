@@ -85,8 +85,8 @@ const COMMANDS_MAP: Record<string, string[]> = {};
  * Agents to copy based on configuration. Exported for integrity tests.
  *
  * Each value is a directory name under `.claude/agents/` that ships in the
- * moflo package. After #932 retired ~50 ruflo-aspirational agents, the set
- * is narrowed to actual development specialties Claude is likely to invoke.
+ * moflo package. After #932 retired ~50 aspirational agents, the set is
+ * narrowed to actual development specialties Claude is likely to invoke.
  */
 export const AGENTS_MAP: Record<string, string[]> = {
   core: ['core'],

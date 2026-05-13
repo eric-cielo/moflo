@@ -32,7 +32,7 @@ function readCurrentVersion(): string {
           if (
             pkg.version &&
             typeof pkg.name === 'string' &&
-            (pkg.name === 'moflo' || pkg.name === 'claude-flow' || pkg.name === 'ruflo')
+            (pkg.name === 'moflo' || pkg.name === 'claude-flow')
           ) {
             return pkg.version;
           }

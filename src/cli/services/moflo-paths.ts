@@ -1,8 +1,8 @@
 /**
  * MoFlo runtime state directory constants.
  *
- * MoFlo owns its state under `.moflo/` at the project root. The upstream Ruflo
- * fork used `.claude-flow/`; both legacy locations are still recognized as
+ * MoFlo owns its state under `.moflo/` at the project root. Pre-#699 builds
+ * used `.claude-flow/`; both legacy locations are still recognized as
  * read-only sources for the version-bump-gated cherry-pick (#851) but are
  * never relocated or renamed automatically — leaving them in place gives
  * consumers a recovery source and avoids the failure modes that motivated
@@ -29,11 +29,12 @@ export const MEMORY_DB_FILE = 'moflo.db';
 export const HNSW_INDEX_FILE = 'hnsw.index';
 
 /**
- * Legacy runtime directory inherited from upstream Ruflo. Only referenced from
- * migration code paths — production code should use {@link MOFLO_DIR}.
+ * Legacy `.claude-flow/` runtime directory used by pre-#699 moflo builds.
+ * Only referenced from migration code paths — production code should use
+ * {@link MOFLO_DIR}.
  */
 export const LEGACY_CLAUDE_FLOW_DIR = '.claude-flow';
-/** Legacy `.swarm/` directory used by Ruflo + pre-#727 moflo for the memory DB. */
+/** Legacy `.swarm/` directory used by pre-#727 moflo builds for the memory DB. */
 export const LEGACY_SWARM_DIR = '.swarm';
 /** Legacy memory DB filename — only ever inside `.swarm/`. Pre-#727. */
 export const LEGACY_MEMORY_DB_FILE = 'memory.db';

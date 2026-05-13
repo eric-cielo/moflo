@@ -133,8 +133,6 @@ export default defineConfig({
       // duplicate test files and they fail dist-resolution because each
       // worktree has its own out-of-tree compiled output.
       '.claude/worktrees/**',
-      // Appliance tests — require native GGUF/RVFA bindings not installed
-      'src/__tests__/appliance/**',
       // Context persistence hook — missing deps
       'tests/context-persistence-hook.test.mjs',
       // Embeddings .mjs tests — collection failures

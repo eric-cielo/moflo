@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Ruflo project (formerly Claude Flow) are documented here.
+All notable changes to MoFlo are documented here. Pre-2026-03 entries below describe Claude Flow → Ruflo releases from before MoFlo forked off; they're preserved for historical context.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).

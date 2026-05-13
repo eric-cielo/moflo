@@ -20,7 +20,7 @@ import type { HealthCheck } from './doctor-types.js';
 export async function checkConfigFile(): Promise<HealthCheck> {
   // JSON configs (parse-validated). LEGACY-CONFIG: `.claude-flow.json` and
   // `claude-flow.config.json` filenames are still recognised so consumers
-  // upgrading from pre-#699 moflo builds (upstream Ruflo) keep working
+  // upgrading from pre-#699 moflo builds keep working
   // without manual rename. Drift guard exempts these via LEGACY-CONFIG marker.
   const jsonPaths = [
     '.moflo/config.json',
@@ -247,18 +247,18 @@ export async function checkMcpServers(): Promise<HealthCheck> {
         const content = JSON.parse(readFileSync(configPath, 'utf8'));
         const servers = content.mcpServers || content.servers || {};
         const count = Object.keys(servers).length;
-        const hasClaudeFlow = 'moflo' in servers || 'claude-flow' in servers || 'claude-flow_alpha' in servers || 'ruflo' in servers || 'ruflo_alpha' in servers;
+        const hasClaudeFlow = 'moflo' in servers || 'claude-flow' in servers || 'claude-flow_alpha' in servers;
         if (hasClaudeFlow) {
           return { name: 'MCP Servers', status: 'pass', message: `${count} servers (flo configured)` };
         }
-        return { name: 'MCP Servers', status: 'warn', message: `${count} servers (flo not found)`, fix: 'claude mcp add ruflo -- npx -y ruflo@latest mcp start' };
+        return { name: 'MCP Servers', status: 'warn', message: `${count} servers (flo not found)`, fix: 'claude mcp add moflo -- npx -y moflo mcp start' };
       } catch {
         // continue to next path
       }
     }
   }
 
-  return { name: 'MCP Servers', status: 'warn', message: 'No MCP config found', fix: 'claude mcp add moflo npx moflo mcp start' };
+  return { name: 'MCP Servers', status: 'warn', message: 'No MCP config found', fix: 'claude mcp add moflo -- npx -y moflo mcp start' };
 }
 
 // Catches three failure modes (#895):

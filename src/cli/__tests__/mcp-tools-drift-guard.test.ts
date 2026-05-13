@@ -94,7 +94,7 @@ const ALLOWLIST: Record<string, string> = {
   'task_orchestrate': 'exercised by src/cli/__tests__/mcp-tools/task-orchestrate.test.ts and tests/system/swarm-restoration-e2e.test.ts',
 
   // Tools whose agent-side consumers were retired by #932/#945 (the
-  // ruflo-aspirational agent purge) but whose handlers remain real,
+  // aspirational-agent purge) but whose handlers remain real,
   // exercised infrastructure callable directly from Claude Code via
   // `mcp__moflo__<name>` user-facing tool calls. The MCP registration IS
   // the public surface — users invoke these from their own prompts/skills,

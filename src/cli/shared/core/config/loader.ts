@@ -29,8 +29,8 @@ export interface LoadedConfig {
 /**
  * Configuration file names to search for. Canonical names come first;
  * `claude-flow.*` names are kept as legacy fallback so consumers upgrading
- * from older moflo builds (which inherited the upstream Ruflo filenames)
- * keep loading their existing config without a manual rename.
+ * from pre-#699 moflo builds keep loading their existing config without a
+ * manual rename.
  */
 const CONFIG_FILE_NAMES = [
   'moflo.config.json',

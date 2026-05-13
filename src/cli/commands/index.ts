@@ -71,8 +71,6 @@ const commandLoaders: Record<string, CommandLoader> = {
   benchmark: () => import('./benchmark.js'),
   // Guidance Control Plane
   guidance: () => import('./guidance.js'),
-  // RVFA Appliance Management
-  appliance: () => import('./appliance.js'),
   // MoFlo Spell Gates
   gate: () => import('./gate.js'),
   // Feature Orchestrator
@@ -153,7 +151,6 @@ import { issuesCommand } from './issues.js';
 import updateCommand from './update.js';
 import { processCommand } from './process.js';
 import { guidanceCommand } from './guidance.js';
-import { applianceCommand } from './appliance.js';
 import { diagnoseCommand } from './diagnose.js';
 import { githubCommand } from './github.js';
 
@@ -203,7 +200,6 @@ export { performanceCommand } from './performance.js';
 export { securityCommand } from './security.js';
 export { hiveMindCommand } from './hive-mind.js';
 export { guidanceCommand } from './guidance.js';
-export { applianceCommand } from './appliance.js';
 export { diagnoseCommand } from './diagnose.js';
 export { githubCommand } from './github.js';
 
@@ -229,7 +225,6 @@ export async function getRouteCommand() { return loadCommand('route'); }
 export async function getProgressCommand() { return loadCommand('progress'); }
 export async function getIssuesCommand() { return loadCommand('issues'); }
 export async function getGuidanceCommand() { return loadCommand('guidance'); }
-export async function getApplianceCommand() { return loadCommand('appliance'); }
 
 /**
  * Core commands loaded synchronously (available immediately)
@@ -307,7 +302,6 @@ export const commandsByCategory = {
     issuesCommand,
     updateCommand,
     processCommand,
-    applianceCommand,
     githubCommand,
   ],
 };

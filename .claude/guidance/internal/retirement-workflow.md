@@ -15,9 +15,9 @@ Whenever a PR DELETES one of:
 
 Examples that triggered this workflow:
 
-- #932 retired 49 ruflo-aspirational agents
+- #932 retired 49 aspirational agents
 - #945 retired `skill-builder` and others
-- #938 retired ruflo skill cruft
+- #938 retired upstream-origin skill cruft
 
 Renaming a file counts as deletion-plus-creation — record the old path as retired even though new content ships under a different path.
 

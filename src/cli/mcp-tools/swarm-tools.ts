@@ -28,7 +28,7 @@ import type {
   CoordinatorConfig,
 } from '../swarm/types.js';
 
-// Inputs accepted by the MCP layer (covers Ruflo aliases). The coordinator's
+// Inputs accepted by the MCP layer (covers legacy aliases). The coordinator's
 // TopologyType is narrower: 'mesh' | 'hierarchical' | 'centralized' | 'hybrid'.
 const TOPOLOGY_MAP: Record<string, TopologyType> = {
   hierarchical: 'hierarchical',
@@ -45,9 +45,8 @@ interface ConsensusMapping {
   threshold: number;
 }
 
-// Ported from Ruflo v3/mcp/tools/swarm-tools.ts. `unanimous`/`weighted`/
-// `majority` are the user-facing aliases; the coordinator only speaks
-// `byzantine`/`raft`/`gossip`/`paxos`.
+// `unanimous`/`weighted`/`majority` are the user-facing aliases; the
+// coordinator only speaks `byzantine`/`raft`/`gossip`/`paxos`.
 const CONSENSUS_MAP: Record<string, ConsensusMapping> = {
   unanimous: { algorithm: 'byzantine', threshold: 1.0 },
   byzantine: { algorithm: 'byzantine', threshold: 1.0 },

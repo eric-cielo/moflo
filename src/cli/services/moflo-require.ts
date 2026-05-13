@@ -141,8 +141,8 @@ export type MofloInternalPackage = 'cli';
 const MAX_WALK_DEPTH = 12;
 
 // Names a package.json may carry while still being "us" — covers the moflo
-// rename and the upstream forks we tolerate during version migration.
-const MOFLO_PACKAGE_NAMES = new Set(['moflo', 'claude-flow', 'ruflo']);
+// rename from the pre-collapse claude-flow workspace.
+const MOFLO_PACKAGE_NAMES = new Set(['moflo', 'claude-flow']);
 
 // Walk up from this file's dir, returning the first non-null `test(dir)` result.
 function walkUpFromSelf<T>(test: (dir: string) => T | null): T | null {

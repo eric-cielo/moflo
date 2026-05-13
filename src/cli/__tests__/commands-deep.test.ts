@@ -92,7 +92,6 @@ import { routeCommand } from '../commands/route.js';
 import { progressCommand } from '../commands/progress.js';
 import { issuesCommand } from '../commands/issues.js';
 import { guidanceCommand } from '../commands/guidance.js';
-import { applianceCommand } from '../commands/appliance.js';
 import updateCommand from '../commands/update.js';
 
 import type { Command } from '../types.js';
@@ -437,16 +436,6 @@ describe('Command Definitions', () => {
     });
   });
 
-  describe('appliance command', () => {
-    it('should have correct name', () => {
-      expectValidCommand(applianceCommand, 'appliance');
-    });
-
-    it('should have subcommands including build, inspect, verify', () => {
-      expectHasSubcommands(applianceCommand, 3);
-    });
-  });
-
 });
 
 // All commands array for bulk tests
@@ -483,7 +472,6 @@ const allCommands: { cmd: Command; name: string }[] = [
   { cmd: issuesCommand, name: 'issues' },
   { cmd: updateCommand, name: 'update' },
   { cmd: guidanceCommand, name: 'guidance' },
-  { cmd: applianceCommand, name: 'appliance' },
 ];
 
 describe('Bulk Command Structure Validation', () => {
@@ -551,7 +539,6 @@ describe('Command Registry (commands/index.ts)', () => {
     expect(indexModule.securityCommand).toBeDefined();
     expect(indexModule.hiveMindCommand).toBeDefined();
     expect(indexModule.guidanceCommand).toBeDefined();
-    expect(indexModule.applianceCommand).toBeDefined();
   });
 
   it('should export commandsByCategory with all categories', async () => {
