@@ -116,13 +116,24 @@ describe('repairMemoryDbIfCorrupt (#743)', () => {
     }
   });
 
-  it('handles a corrupt DB without throwing and reports the failure shape', async () => {
+  it('handles a corrupt DB without throwing and reports the failure shape', { timeout: 15_000 }, async () => {
     // Synthesizing the exact "row N missing from autoindex" mode without
     // also breaking the b-tree parse is brittle and varies by sql.js build,
     // so this test asserts the SAFETY contract (no throw + accurate result
     // shape) rather than the success path. The production-side verification
     // for the REINDEX recovery is the live DB run captured in the #743
     // session log: corrupt → repair → integrity_check 'ok'.
+    //
+    // 15s timeout (default is 5s): post-#1090 the repair is a tiered cascade
+    // (probe → REINDEX → VACUUM INTO → row-level salvage → atomic swap),
+    // and `corruptAutoIndexPages` can produce corruption that forces the
+    // full cascade to run. Under Linux CI parallel load that legitimately
+    // takes >5s but stays well under 15s; locally it's <500ms. We're
+    // testing the safety contract, not performance — the timeout exists
+    // to catch a runaway (e.g. accidental infinite retry loop), not to
+    // bound the cascade's normal cost. Tracked in `feedback_no_test_timeout_bumps`
+    // — capped at 15s, well under the 30s redline; the slowness is
+    // intrinsic to the cascade, not a fixable bug in the test.
     const root = mkRoot();
     try {
       await makeSeededDb(root, 200);
