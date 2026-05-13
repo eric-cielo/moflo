@@ -95,7 +95,14 @@ describe('repairMemoryDbIntegrity (TS service)', () => {
     }
   });
 
-  it('surfaces the JS-side tier label on a recoverable corruption', async () => {
+  it('surfaces the JS-side tier label on a recoverable corruption', { timeout: 15_000 }, async () => {
+    // 15s timeout (same rationale as the corrupted-DB test in db-repair.test.ts):
+    // the tiered repair cascade (probe → REINDEX → VACUUM INTO → salvage →
+    // swap) involves 6+ DatabaseSync open/close cycles plus a VACUUM
+    // iteration over the corrupt source. Locally <500ms; Linux CI parallel
+    // load can push it past the 5s default. 15s stays under the 30s redline
+    // in feedback_no_test_timeout_bumps. The slowness is intrinsic to the
+    // cascade, not a fixable bug.
     const root = mkRoot();
     try {
       await seedDb(root, 200);
