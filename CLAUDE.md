@@ -21,9 +21,19 @@ See `feedback_consumer_blast_radius.md` (auto-memory) for the full posture.
 
 ---
 
-## ⚠ Diagnosing runtime symptoms — read this first
+## ⚠ Dogfooding & local-vs-installed delivery — mandatory reading
 
-Before opening any issue or "fixing" anything observable in the editor (statusline, daemon, hooks, indexer, upgrade UI), MUST read `.claude/guidance/internal/dogfooding.md` § Runtime Symptom Diagnosis. MoFlo dogfoods itself; runtime symptoms come from `node_modules/moflo/...`, not source. Skip this and you'll waste a session debugging code that isn't even running.
+MoFlo dogfoods itself: the daemon, hooks, statusline, MCP server, and embeddings indexer ALL run from `node_modules/moflo/...` (NOT from the source tree). Source edits don't take effect for those runtime layers until publish + reinstall + Claude Code restart. Resolving paths between the source tree and the installed package has dist-vs-source depth pitfalls that bite every consumer if you get them wrong.
+
+**Before** any of the following, you MUST read `.claude/guidance/internal/dogfooding.md`:
+
+- Diagnosing any "X is broken" symptom visible in the editor (statusline, daemon, hooks, indexer, upgrade UI) — see § Runtime Symptom Diagnosis
+- Adding a new file in `bin/`, `bin/lib/`, `src/cli/`, `dist/`, or anything synced to `.claude/scripts/` — see § Delivering Changes That Work Both Local AND Installed (manifest scope + sync layers)
+- Resolving any path between TS code and `bin/*.mjs` (e.g. `dist/src/cli/services/...` → `bin/lib/...`) — see § Delivering Changes That Work Both Local AND Installed § 2 (the `../../../../` anti-pattern that broke #1126's first iteration)
+- Adding cross-process daemon coordination, atomic file swaps, or any platform-sensitive primitive — see § Delivering Changes That Work Both Local AND Installed § 6
+- Touching the smoke harness or chasing local-vs-CI smoke divergence — see § Smoke Harness Reality
+
+Skip this and you'll either waste a session debugging code that isn't running, ship a change that works in dogfood but breaks every consumer install, or break a consumer's `.moflo/` state in a way that takes a full publish-rollback-cycle to recover from.
 
 ---
 

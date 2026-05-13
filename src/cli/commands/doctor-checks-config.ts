@@ -190,10 +190,17 @@ export async function checkMemoryDbIntegrity(cwd: string = process.cwd()): Promi
       fix: 'flo healer --fix -c memory-db-integrity',
     };
   } catch (e) {
+    // The probe itself maps "readonly open failed" to `openFailed: true`
+    // and we surface that as `fail` above. Reaching the catch means the
+    // probe *module* couldn't be loaded — `findMofloPackageRoot()` returned
+    // null (broken install / wrong cwd) or the dynamic import threw. Both
+    // are first-class diagnostic failures — a broken install must not be
+    // silently downgraded to `warn` and hidden from the healer summary.
     return {
       name: 'Memory DB Integrity',
-      status: 'warn',
+      status: 'fail',
       message: `Integrity probe unavailable: ${errorDetail(e)}`,
+      fix: 'flo healer --fix -c memory-db-integrity',
     };
   }
 }
