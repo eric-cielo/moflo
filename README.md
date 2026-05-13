@@ -8,7 +8,7 @@
 
 ## TL;DR
 
-MoFlo makes your AI coding assistant remember what it learns, check what it knows before exploring files, and get smarter over time — all automatically. Install it, run `flo init`, restart your AI client, and everything just works: your docs and code are indexed on session start so the AI can search them instantly, gates prevent the AI from wasting tokens on blind exploration, task outcomes feed back into routing so it picks the right agent type next time, and context depletion warnings tell you when to start a fresh session. No configuration, no API keys, no cloud services — it all runs locally on your machine.
+MoFlo makes Claude Code remember what it learns, check what it knows before exploring files, and get smarter over time — all automatically. Install it, run `flo init`, restart Claude Code, and everything just works: your docs and code are indexed on session start so Claude can search them instantly, gates prevent Claude from wasting tokens on blind exploration, task outcomes feed back into routing so it picks the right agent type next time, and context depletion warnings tell you when to start a fresh session. No configuration, no API keys, no cloud services — it all runs locally on your machine.
 
 ## Quickstart
 
@@ -17,7 +17,7 @@ npm install --save-dev moflo
 flo init
 ```
 
-Restart Claude Code (or your MCP client). That's it — memory, indexing, gates, and routing are all active.
+Restart Claude Code. That's it — memory, indexing, gates, and routing are all active.
 
 Or — just ask Claude to install MoFlo into your project and initialize it!
 
@@ -44,7 +44,7 @@ MoFlo makes deliberate choices so you don't have to:
 - **Task registration before agents** — Sub-agents can't spawn until work is tracked. Prevents runaway agent proliferation.
 - **Learned routing** — Task outcomes feed back into the routing system automatically. No manual configuration needed — it gets smarter with use.
 - **Incremental indexing** — Guidance and code map indexes run on every session start but skip unchanged files. Fast after the first run.
-- **Built for Claude Code, works with others** — We develop and test exclusively with Claude Code. The MCP tools, memory system, and hooks are client-independent and should work with any MCP-capable AI client, but Claude Code is the only tested target.
+- **Claude Code is the only target** — MoFlo is built and shipped for Anthropic's Claude Code (CLI, IDE extensions, web). It is **not** a Claude Desktop integration: nothing reads from or writes to `~/.claude/claude_desktop_config.json` or `%APPDATA%/Claude/`, and adding paths there is always a bug. The MCP tools, memory system, and hooks could in principle work with any MCP-capable client, but Claude Code is the *only* surface we author for, test against, or accept bug reports on.
 - **GitHub-oriented** — The `/flo` skill, PR automation, and issue tracking are built around GitHub. With Claude's help, you can adapt them to your own issue tracker and source control system.
 - **Cross-platform** — Works identically on macOS, Linux, and Windows.
 
@@ -185,7 +185,7 @@ MoFlo automatically indexes three types of content on every session start, so yo
 
 ### How it works
 
-1. **Session start hook** — When your AI client starts a new session, MoFlo's `SessionStart` hook launches the indexers sequentially in a single background process. This runs silently — you can start working immediately.
+1. **Session start hook** — When Claude Code starts a new session, MoFlo's `SessionStart` hook launches the indexers sequentially in a single background process. This runs silently — you can start working immediately.
 2. **Incremental** — Each indexer tracks file modification times. Only files that changed since the last index run are re-processed. The first run on a large codebase may take a minute or two; subsequent runs typically finish in under a second.
 3. **Embedding generation** — Guidance chunks are embedded using MiniLM-L6-v2 (384 dimensions, WASM). These vectors are stored in the SQLite memory database and used for semantic search.
 4. **No blocking** — The indexers run in the background and don't block your session from starting. You can begin working immediately.
@@ -211,9 +211,9 @@ flo memory refresh           # Reindex everything + rebuild embeddings + vacuum
 
 ### Why this matters
 
-Without auto-indexing, your AI assistant starts every session with a blank slate — it doesn't know what documentation exists, where code lives, or what tests cover which files. It resorts to Glob/Grep exploration, which burns tokens and context window on rediscovery.
+Without auto-indexing, Claude Code starts every session with a blank slate — it doesn't know what documentation exists, where code lives, or what tests cover which files. It resorts to Glob/Grep exploration, which burns tokens and context window on rediscovery.
 
-With auto-indexing, the AI can search semantically ("how does auth work?") and get relevant documentation chunks ranked by similarity, or ask "where is the user model defined?" and get a direct answer from the code map — all without touching the filesystem.
+With auto-indexing, Claude can search semantically ("how does auth work?") and get relevant documentation chunks ranked by similarity, or ask "where is the user model defined?" and get a direct answer from the code map — all without touching the filesystem.
 
 ## The Gate System
 
@@ -261,7 +261,7 @@ You can also disable individual hooks in `.claude/settings.json` by removing the
 
 ## The `/flo` Skill
 
-Inside your AI client, the `/flo` (or `/fl`) slash command drives GitHub issue execution:
+Inside Claude Code, the `/flo` (or `/fl`) slash command drives GitHub issue execution:
 
 ```
 /flo <issue>                  # Full process (research → implement → test → PR)
@@ -272,7 +272,7 @@ Inside your AI client, the `/flo` (or `/fl`) slash command drives GitHub issue e
 /flo -n <issue>               # Normal mode (default, single agent, no swarm)
 ```
 
-For full options and details, type `/flo` with no arguments — your AI client will display the complete skill documentation. Also available as `/fl`.
+For full options and details, type `/flo` with no arguments — Claude Code will display the complete skill documentation. Also available as `/fl`.
 
 ### Epic handling
 
@@ -313,7 +313,7 @@ flo epic reset 42                          # Reset state for re-run
 
 ### What are spells?
 
-Spells are declarative YAML automations composed of pluggable step commands. They exist because shell scripts drift, ad-hoc prompts aren't reproducible, and CI/CD pipelines are the wrong tool for local automation. A spell is **deterministic** (same inputs → same steps), **reviewable** (a YAML file you read like a recipe), and **replayable** (re-cast it tomorrow and it behaves the same). Spells run from the CLI (`flo spell cast`), from an MCP tool call inside your AI client, or on a schedule.
+Spells are declarative YAML automations composed of pluggable step commands. They exist because shell scripts drift, ad-hoc prompts aren't reproducible, and CI/CD pipelines are the wrong tool for local automation. A spell is **deterministic** (same inputs → same steps), **reviewable** (a YAML file you read like a recipe), and **replayable** (re-cast it tomorrow and it behaves the same). Spells run from the CLI (`flo spell cast`), from an MCP tool call inside Claude Code, or on a schedule.
 
 ### How do they work?
 
@@ -425,7 +425,7 @@ For full configuration (`scheduler:` block in `moflo.yaml`), event types, and th
 
 ### Building spells with the `/spell-builder` skill
 
-Inside your AI client, use the `/spell-builder` skill to create, edit, and validate spell definitions interactively. The skill understands the full spell schema and available step commands, so you can describe what you want in natural language and it will generate the YAML:
+Inside Claude Code, use the `/spell-builder` skill to create, edit, and validate spell definitions interactively. The skill understands the full spell schema and available step commands, so you can describe what you want in natural language and it will generate the YAML:
 
 ```
 /spell-builder                           # Start the spell builder
@@ -507,7 +507,7 @@ flo diagnose --json              # JSON output for CI/automation
 
 #### `flo healer` — Health Check
 
-`flo healer` runs 28 parallel health checks against your environment and reports pass/warn/fail for each:
+`flo healer` runs 38 parallel health checks against your environment and reports pass/warn/fail for each:
 
 | Check | What it verifies |
 |-------|-----------------|
@@ -549,7 +549,8 @@ flo diagnose --json              # JSON output for CI/automation
 | Missing config file | Runs `config init` to generate defaults |
 | Status line not wired | Adds `statusLine` config block to `.claude/settings.json` |
 | Stale daemon lock | Removes stale `.moflo/daemon.lock` and restarts daemon |
-| MCP server not configured | Runs `claude mcp add moflo` to register the server |
+| Malformed `.mcp.json` (e.g. unescaped Windows paths) | Backs up the broken file as `.mcp.json.malformed-<ts>`, regenerates a clean one, verifies it parses (#1126) |
+| MCP server missing from a valid `.mcp.json` | Runs `claude mcp add moflo` to register the server |
 | Claude Code CLI missing | Installs `@anthropic-ai/claude-code` globally |
 | Zombie processes | Kills orphaned MoFlo processes (tracked + OS-level scan) |
 
@@ -658,7 +659,7 @@ These are the backend systems that hooks and commands interact with.
 | **EWC++ Consolidation** | Elastic Weight Consolidation that prevents catastrophic forgetting | New learning doesn't overwrite patterns from earlier sessions | Yes |
 | **Session Persistence** | Stop hook exports session metrics; SessionStart hook restores prior state | Patterns learned on Monday are available on Friday | Yes |
 | **Status Line** | Live dashboard showing git branch, session state, memory stats, MCP status | At-a-glance visibility into what MoFlo is doing | Yes |
-| **MCP Tool Server** | 100+ MCP tools for memory, hooks, coordination, spells, swarm, etc. (schemas deferred by default) | Enables AI clients to interact with MoFlo programmatically | Yes (deferred) |
+| **MCP Tool Server** | 80+ MCP tools for memory, hooks, coordination, spells, swarm, etc. (schemas deferred by default) | Lets Claude Code call MoFlo functionality directly | Yes (deferred) |
 
 ### Systems (available but off by default)
 
@@ -670,11 +671,11 @@ These are the backend systems that hooks and commands interact with.
 
 ## The Two-Layer Task System
 
-MoFlo doesn't replace your AI client's task system — it wraps it. Your client (Claude Code, Cursor, or any MCP-capable tool) handles spawning agents and running code. MoFlo adds a coordination layer on top that handles memory, routing, and learning.
+MoFlo doesn't replace Claude Code's task system — it wraps it. Claude Code handles spawning agents and running code. MoFlo adds a coordination layer on top that handles memory, routing, and learning.
 
 ```
 ┌──────────────────────────────────────────────────┐
-│  YOUR AI CLIENT (Execution Layer)                │
+│  CLAUDE CODE (Execution Layer)                   │
 │  Spawns agents, runs code, streams output        │
 │  TaskCreate → Agent → TaskUpdate → results       │
 ├──────────────────────────────────────────────────┤
@@ -688,14 +689,14 @@ Here's how a typical task flows through both layers:
 
 1. **MoFlo routes** — Before work starts, MoFlo analyzes the prompt and recommends an agent type and model tier via hook or MCP tool.
 2. **MoFlo gates** — Before an agent can spawn, MoFlo verifies that memory was searched and a task was registered. This prevents blind exploration.
-3. **Your client executes** — The actual agent runs through your client's native task system. MoFlo doesn't manage the agent — your client handles execution, output, and completion.
+3. **Claude Code executes** — The actual agent runs through Claude Code's native task system. MoFlo doesn't manage the agent — Claude Code handles execution, output, and completion.
 4. **MoFlo learns** — After the agent finishes, MoFlo records what worked (or didn't) in its memory database. Successful patterns feed into future routing.
 
-The key insight: **your client handles execution, MoFlo handles knowledge.** Your client is good at spawning agents and running code. MoFlo is good at remembering what happened, routing to the right agent, and ensuring prior knowledge is checked before exploring from scratch.
+The key insight: **Claude Code handles execution, MoFlo handles knowledge.** Claude Code is good at spawning agents and running code. MoFlo is good at remembering what happened, routing to the right agent, and ensuring prior knowledge is checked before exploring from scratch.
 
-For complex work, MoFlo structures tasks into waves — a research wave discovers context, then an implementation wave acts on it — with dependencies tracked through both the client's task system and MoFlo's coordination layer. The full integration pattern is documented in `.claude/guidance/moflo-claude-swarm-cohesion.md`.
+For complex work, MoFlo structures tasks into waves — a research wave discovers context, then an implementation wave acts on it — with dependencies tracked through both Claude Code's task system and MoFlo's coordination layer. The full integration pattern is documented in `.claude/guidance/moflo-claude-swarm-cohesion.md`.
 
-The `/flo` skill ties both systems together for GitHub issues — driving the full process (research → enhance → implement → test → simplify → PR) with your client's agents for execution and MoFlo's memory for continuity.
+The `/flo` skill ties both systems together for GitHub issues — driving the full process (research → enhance → implement → test → simplify → PR) with Claude Code's agents for execution and MoFlo's memory for continuity.
 
 ### Intelligent Agent Routing
 

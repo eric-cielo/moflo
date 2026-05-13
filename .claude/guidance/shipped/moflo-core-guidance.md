@@ -6,6 +6,22 @@
 
 ---
 
+## Runtime Target: Claude Code Only
+
+**MoFlo targets Anthropic's Claude Code exclusively** — the CLI, IDE extensions (VS Code, JetBrains), and the web app at claude.ai/code. It is not a Claude Desktop integration and is never installed into Claude Desktop's config tree.
+
+| Tool | Status | Config paths moflo touches |
+|------|--------|----------------------------|
+| Claude Code (CLI, IDE extensions, web) | Sole supported target | `<project>/.mcp.json`, `<project>/.claude/settings.json`, `<project>/.moflo/`, `<project>/moflo.yaml` |
+| Claude Desktop (the macOS/Windows app) | **Out of scope — never** | None — moflo neither reads nor writes Claude Desktop config |
+| Other MCP-capable clients (Cline, Continue, etc.) | Unsupported, may incidentally work | None — bug reports require Claude Code reproduction |
+
+**Never** introduce a code path, search list, fixture, or doc that reads from or writes to `~/.claude/claude_desktop_config.json`, `~/Library/Application Support/Claude/`, or `%APPDATA%/Claude/`. Those are Claude **Desktop** paths. Including them in moflo's MCP-config search list caused issue #1126: a parseable Claude Desktop preferences file outranked a malformed project `.mcp.json`, masking the real failure and routing the auto-fixer down a no-op branch.
+
+The one ambiguous-looking path is Claude Code's user-level config at `~/.claude.json` (where `claude mcp add` writes). MoFlo doesn't author or rewrite that file either; the project-local `.mcp.json` written by `flo init` is the canonical surface moflo owns end-to-end.
+
+---
+
 ## Getting Started
 
 ### Installation
