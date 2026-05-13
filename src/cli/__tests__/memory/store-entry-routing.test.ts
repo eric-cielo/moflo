@@ -54,6 +54,8 @@ interface FakeDaemon {
   setGetResponse(body: Record<string, unknown>): void;
   setSearchResponse(body: Record<string, unknown>): void;
   setListResponse(body: Record<string, unknown>): void;
+  /** Override the store response so #1065 tests don't need to monkey-patch the request listener. */
+  setStoreResponse(body: Record<string, unknown>): void;
   stop(): Promise<void>;
 }
 
@@ -66,6 +68,7 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
   let getResponse: Record<string, unknown> = { ok: true, found: false };
   let searchResponse: Record<string, unknown> = { ok: true, results: [], searchTime: 0 };
   let listResponse: Record<string, unknown> = { ok: true, entries: [], total: 0 };
+  let storeResponse: Record<string, unknown> = { ok: true, stored: true, id: 'fake_routed_id' };
 
   const server = http.createServer((req, res) => {
     let buf = '';
@@ -79,7 +82,7 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
       if (req.url === '/api/memory/store' && req.method === 'POST') {
         try { storeRequests.push(JSON.parse(buf)); } catch { /* malformed */ }
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, stored: true, id: 'fake_routed_id' }));
+        res.end(JSON.stringify(storeResponse));
         return;
       }
       if (req.url === '/api/memory/delete' && req.method === 'POST') {
@@ -128,6 +131,7 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
     setGetResponse(body) { getResponse = body; },
     setSearchResponse(body) { searchResponse = body; },
     setListResponse(body) { listResponse = body; },
+    setStoreResponse(body) { storeResponse = body; },
     async stop() {
       server.closeAllConnections?.();
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -186,6 +190,65 @@ describe('memory-initializer routing preamble (#985)', () => {
     const req = fake.storeRequests[0];
     expect(req.namespace).toBe('tasklist');
     expect(req.key).toBe('flo-run-981');
+  });
+
+  // #1065 — the daemon now echoes `embedding: { dimensions, model }` so the
+  // routed return shape matches bridge-direct. Without this, MCP memory_store
+  // reports hasEmbedding:false on daemon-routed writes and the doctor Memory
+  // Access check fails.
+  it('storeEntry surfaces embedding metadata from the daemon-routed response (#1065)', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setStoreResponse({
+      ok: true,
+      stored: true,
+      id: 'routed_with_emb',
+      embedding: { dimensions: 384, model: 'fastembed-bge-small-en-v1.5' },
+    });
+
+    const result = await storeEntry({ key: 'k', value: 'v', namespace: 'ns' });
+    expect(result.success).toBe(true);
+    expect(result.id).toBe('routed_with_emb');
+    expect(result.embedding).toEqual({ dimensions: 384, model: 'fastembed-bge-small-en-v1.5' });
+  });
+
+  // #1065 — daemon-route and bridge-direct paths must produce the same
+  // user-visible shape for storeEntry. Without this, MCP `memory_store`
+  // reports hasEmbedding inconsistently depending on which path served the
+  // call — invisible to integration tests that exercise only one path.
+  it('storeEntry shape parity: daemon-route and bridge-direct both yield {success,id,embedding}', async () => {
+    // (a) Daemon-routed path with the new echo-embedding shape.
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setStoreResponse({
+      ok: true, stored: true, id: 'routed_id',
+      embedding: { dimensions: 384, model: 'fastembed-bge-small-en-v1.5' },
+    });
+    const routed = await storeEntry({ key: 'k-routed', value: 'v', namespace: 'ns' });
+
+    // (b) Bridge-direct path with precomputed embedding so fastembed never runs.
+    process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
+    const direct = await storeEntry({
+      key: 'k-direct',
+      value: 'v',
+      namespace: 'ns',
+      precomputedEmbedding: new Float32Array(384).fill(0.1),
+      dbPath: tempDbPath(),
+    });
+
+    // Both paths advertise the same caller-visible keys.
+    expect(routed.success).toBe(true);
+    expect(direct.success).toBe(true);
+    expect(typeof routed.id).toBe('string');
+    expect(typeof direct.id).toBe('string');
+    // Both paths surface embedding with dimensions + model. The model string
+    // may differ (mock vs real bridge embedder) but the shape must match.
+    expect(routed.embedding).toBeDefined();
+    expect(direct.embedding).toBeDefined();
+    expect(typeof routed.embedding!.dimensions).toBe('number');
+    expect(typeof direct.embedding!.dimensions).toBe('number');
+    expect(typeof routed.embedding!.model).toBe('string');
+    expect(typeof direct.embedding!.model).toBe('string');
   });
 
   it('storeEntry skips routing when MOFLO_IS_DAEMON=1', async () => {

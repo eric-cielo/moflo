@@ -377,7 +377,11 @@ export async function handleMemoryStore(
       sendJson(res, 500, { error: 'Store failed', message: result.error ?? 'unknown' });
       return;
     }
-    sendJson(res, 200, { ok: true, stored: true, id: result.id });
+    // #1065 — preserve the bridge's `embedding: { dimensions, model }` shape
+    // through the wire boundary. Without this, MCP `memory_store` reports
+    // `hasEmbedding: false` on every daemon-routed write that actually
+    // succeeded, and the doctor Memory Access check fails.
+    sendJson(res, 200, { ok: true, stored: true, id: result.id, embedding: result.embedding });
   } catch (err) {
     sendJson(res, 500, { error: 'Internal error', message: errorDetail(err) });
   }
@@ -451,7 +455,7 @@ export async function handleMemoryBatch(
     return;
   }
   const { storeEntry, deleteEntry } = await getMemoryFns();
-  const results: Array<{ ok: boolean; id?: string; deleted?: boolean; error?: string }> = [];
+  const results: Array<{ ok: boolean; id?: string; deleted?: boolean; embedding?: { dimensions: number; model: string }; error?: string }> = [];
   let anyFailed = false;
   for (const op of v.ops) {
     try {
@@ -466,7 +470,9 @@ export async function handleMemoryBatch(
           upsert: true,
         });
         if (r.success) {
-          results.push({ ok: true, id: r.id });
+          // #1065 — same shape carry-through as /store: include embedding
+          // so batch callers can report hasEmbedding accurately.
+          results.push({ ok: true, id: r.id, embedding: r.embedding });
         } else {
           results.push({ ok: false, error: r.error ?? 'unknown' });
           anyFailed = true;

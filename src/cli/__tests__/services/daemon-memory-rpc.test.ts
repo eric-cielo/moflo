@@ -294,6 +294,35 @@ describe('daemon-memory-rpc', () => {
     expect(JSON.parse(res.body).error).toMatch(/not attached/i);
   });
 
+  // #1065 — embedding metadata must round-trip from storeEntry through the
+  // HTTP boundary; without it, the MCP memory_store handler reports
+  // hasEmbedding:false on every daemon-routed write that actually succeeded
+  // and the doctor Memory Access check fails.
+  it('POST /api/memory/store includes embedding in response when storeEntry produced one (#1065)', async () => {
+    mockStoreEntry.mockResolvedValueOnce({
+      success: true,
+      id: 'entry_with_emb',
+      embedding: { dimensions: 384, model: 'fastembed-bge-small-en-v1.5' },
+    });
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/store', { namespace: 'ns', key: 'k', value: 'v' });
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data.ok).toBe(true);
+    expect(data.id).toBe('entry_with_emb');
+    expect(data.embedding).toEqual({ dimensions: 384, model: 'fastembed-bge-small-en-v1.5' });
+  });
+
+  it('POST /api/memory/store omits embedding when storeEntry did not produce one (opt-out path)', async () => {
+    mockStoreEntry.mockResolvedValueOnce({ success: true, id: 'entry_no_emb' });
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/store', { namespace: 'ns', key: 'k', value: 'v' });
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data.ok).toBe(true);
+    expect(data.embedding).toBeUndefined();
+  });
+
   it('POST /api/memory/store surfaces storeEntry failure as 500', async () => {
     mockStoreEntry.mockResolvedValueOnce({ success: false, id: '', error: 'disk full' });
     dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
@@ -353,6 +382,30 @@ describe('daemon-memory-rpc', () => {
     expect(data.results.every((r: { ok: boolean }) => r.ok)).toBe(true);
     expect(mockStoreEntry).toHaveBeenCalledTimes(2);
     expect(mockDeleteEntry).toHaveBeenCalledTimes(1);
+  });
+
+  // #1065 — batch endpoint must propagate embedding per-store the same way
+  // the single /store endpoint does, so batch callers can report
+  // hasEmbedding correctly per result without a separate read round-trip.
+  it('POST /api/memory/batch propagates embedding per store result (#1065)', async () => {
+    mockStoreEntry
+      .mockResolvedValueOnce({ success: true, id: 'b1', embedding: { dimensions: 384, model: 'fastembed-bge-small-en-v1.5' } })
+      .mockResolvedValueOnce({ success: true, id: 'b2' }); // opt-out / ephemeral path
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/batch', {
+      ops: [
+        { op: 'store', namespace: 'ns', key: 'k1', value: 'v1' },
+        { op: 'store', namespace: 'ephemeral', key: 'k2', value: 'v2' },
+        { op: 'delete', namespace: 'ns', key: 'k0' },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data.results[0].embedding).toEqual({ dimensions: 384, model: 'fastembed-bge-small-en-v1.5' });
+    expect(data.results[1].embedding).toBeUndefined();
+    // Delete results never carry embedding.
+    expect(data.results[2].embedding).toBeUndefined();
+    expect(data.results[2].deleted).toBe(true);
   });
 
   it('POST /api/memory/batch fails-all on any invalid op (no partial application)', async () => {
