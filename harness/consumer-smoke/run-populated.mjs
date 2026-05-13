@@ -37,6 +37,11 @@ const repoRoot = resolve(__dirname, '..', '..');
 // the consumer itself. See run.mjs for the full rationale.
 const workDir = join(tmpdir(), 'moflo-consumer-smoke-populated');
 
+// #1067 — pin env vars so local-dev (where Claude Code sets CLAUDE_PROJECT_DIR
+// and the dev daemon binds 3117) matches CI. See run.mjs for the full
+// rationale; CLAUDE_PROJECT_DIR is pinned in main() once consumerDir resolves.
+process.env.MOFLO_DAEMON_PORT = process.env.MOFLO_DAEMON_PORT || '3217';
+
 const argv = process.argv.slice(2);
 const opts = {
   skipPack: argv.includes('--skip-pack'),
@@ -61,6 +66,9 @@ async function main() {
       skipPack: opts.skipPack,
     });
     consumerDir = check.installConsumer({ workDir, tarballPath: tarball });
+
+    // #1067 — pin CLAUDE_PROJECT_DIR; see run.mjs for rationale.
+    process.env.CLAUDE_PROJECT_DIR = consumerDir;
 
     await runPopulatedConsumerProfile(consumerDir);
   } catch (err) {

@@ -54,6 +54,30 @@ const repoRoot = resolve(__dirname, '..', '..');
 // the resolver can't accidentally walk up out of.
 const workDir = join(tmpdir(), 'moflo-consumer-smoke');
 
+// #1067 — pin two env vars BEFORE any subprocess spawns. Both flow through
+// `proc.mjs`'s `env: { ...process.env, ...(runOpts.env || {}) }` merge, so
+// every flo()/runNode() call (and the detached daemons they fork) inherits
+// the pinned values. Without these, local dev and CI diverge:
+//
+//   * CLAUDE_PROJECT_DIR is set by Claude Code sessions to the moflo repo
+//     root. findProjectRoot() honors it, so consumer subprocesses resolve
+//     project-root to the moflo repo instead of the tmpdir consumer dir.
+//     CI doesn't set the var, so the divergence is invisible until a local
+//     smoke run silently writes to the wrong DB.
+//
+//   * MOFLO_DAEMON_PORT defaults to 3117 in daemon-write-client.ts. Locally,
+//     the SessionStart-spawned dev daemon already binds 3117, so the
+//     consumer's `flo daemon start` falls back to 3118 while clients still
+//     POST to 3117 → wrong-DB writes. Pinning an isolated port (3217 — well
+//     outside the dev daemon's fallback range) makes the consumer daemon
+//     bind there (daemon.ts honors this env post-#1067) AND makes clients
+//     route there. One env contract, no asymmetry.
+//
+// Values are set on this process's env so the existing env-merge in proc.mjs
+// propagates them — no per-callsite plumbing required. CLAUDE_PROJECT_DIR is
+// pinned in main() once installConsumer() returns the resolved path.
+process.env.MOFLO_DAEMON_PORT = process.env.MOFLO_DAEMON_PORT || '3217';
+
 const argv = process.argv.slice(2);
 const opts = {
   skipPack: argv.includes('--skip-pack'),
@@ -80,6 +104,12 @@ async function main() {
       skipPack: opts.skipPack,
     });
     consumerDir = check.installConsumer({ workDir, tarballPath: tarball });
+
+    // #1067 — pin CLAUDE_PROJECT_DIR to the consumer dir. findProjectRoot()
+    // honors this env var ahead of the marker walk, so without pinning, a
+    // Claude Code session's CLAUDE_PROJECT_DIR=<moflo-repo> leaks into every
+    // consumer subprocess and resolves project-root to the moflo source repo.
+    process.env.CLAUDE_PROJECT_DIR = consumerDir;
 
     const checks = [
       // #1088 broken-window gate — must run FIRST. If the consumer dir isn't

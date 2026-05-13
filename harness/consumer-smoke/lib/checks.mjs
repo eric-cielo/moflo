@@ -1185,6 +1185,12 @@ console.log(JSON.stringify({
   keys: (result.neighbors || []).map(n => n.key).sort(),
   hasNavigation: (result.neighbors || []).length > 0
     && (result.neighbors || []).every(n => n.navigation && typeof n.navigation === 'object'),
+  // Per-neighbor diagnostic — a future regression surfaces *which* neighbor
+  // is missing nav, not just "some neighbor is missing nav" (#1067 lesson).
+  neighborDiag: (result.neighbors || []).map(n => ({
+    key: n.key,
+    hasNav: !!(n.navigation && typeof n.navigation === 'object'),
+  })),
   error: result.error || null,
 }));
 `);
@@ -1214,7 +1220,8 @@ console.log(JSON.stringify({
     return;
   }
   if (!parsed.hasNavigation) {
-    record('memory-protocol:get-neighbors', 'fail', 'returned neighbors without navigation field (S1 passthrough broken)');
+    record('memory-protocol:get-neighbors', 'fail',
+      `returned neighbors without navigation field (S1 passthrough broken); diag=${JSON.stringify(parsed.neighborDiag)}`);
     return;
   }
   record('memory-protocol:get-neighbors', 'pass', '2 neighbors with navigation, shape matches memory_retrieve');
