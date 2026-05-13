@@ -191,12 +191,41 @@ async function runMemoryRoundTrip(ctx: RoundTripContext): Promise<{ key: string;
     });
   } else {
     const top = searchOut.results?.find(r => r.key === key);
-    pushDetail(
-      ctx.details,
-      { id: `${ctx.idPrefix}.search-finds-key`, mcpTool: 'memory_search', expected: `result containing key=${key}` },
-      top ? { topKey: top.key, similarity: top.similarity } : { allKeys: searchOut.results?.map(r => r.key) },
-      top ? null : `stored key ${key} not in results (got: ${searchOut?.results?.map(r => r.key).join(', ') ?? 'none'})`,
-    );
+    if (top) {
+      pushDetail(
+        ctx.details,
+        { id: `${ctx.idPrefix}.search-finds-key`, mcpTool: 'memory_search', expected: `result containing key=${key}` },
+        { topKey: top.key, similarity: top.similarity },
+        null,
+      );
+    } else {
+      // #1120: search returned results but our just-stored key wasn't among
+      // them. Mirrors the #1111 empty-HNSW fallback for the non-zero case:
+      // if the row IS reachable by literal key, demote to warn — memory
+      // access works, the HNSW index just hasn't propagated the new write
+      // yet (stale-neighbor race when healer runs 2+ times in one session
+      // against accumulated probe rows). If literal retrieve also fails,
+      // surface the original fail unchanged.
+      const otherKeys = searchOut?.results?.map(r => r.key).join(', ') ?? 'none';
+      const retrievable = await literalKeyReachable(ctx.memoryTools, key, namespace);
+      if (retrievable) {
+        ctx.details.push({
+          id: `${ctx.idPrefix}.search-finds-key`,
+          mcpTool: 'memory_search',
+          status: 'warn',
+          observed: { topKeys: searchOut?.results?.map(r => r.key), retrievable: true },
+          expected: `result containing key=${key}`,
+          message: `search returned results but our key was not among them (got: ${otherKeys}); row IS reachable by literal retrieve — HNSW stale-neighbor race (newly-written row not yet propagated to the index). Memory access path works.`,
+        });
+      } else {
+        pushDetail(
+          ctx.details,
+          { id: `${ctx.idPrefix}.search-finds-key`, mcpTool: 'memory_search', expected: `result containing key=${key}` },
+          { allKeys: searchOut.results?.map(r => r.key) },
+          `stored key ${key} not in results (got: ${otherKeys})`,
+        );
+      }
+    }
   }
 
   // 4. memory_retrieve returns the full value (search content is truncated
