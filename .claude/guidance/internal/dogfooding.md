@@ -85,6 +85,46 @@ Features must work from the installed location (consumer perspective), not from 
 
 ---
 
+## Smoke Harness Reality
+
+`harness/consumer-smoke/` packs the working tree, installs it into a temp consumer dir, and exercises the Claude-Code-facing surface. The harness is the single source of truth for whether a change is consumer-safe — but the dogfood loop makes it diverge from CI in two specific ways unless we pin them.
+
+### Two contexts running at once (local dev only)
+
+When the smoke runs inside a Claude Code session on the moflo repo, two moflo contexts coexist:
+
+| Context | Origin | What it owns |
+|---------|--------|--------------|
+| **Dev daemon** | `SessionStart` hook auto-started moflo for the dev session | Port 3117, the moflo repo's `.moflo/moflo.db`, the dev session's `CLAUDE_PROJECT_DIR=<moflo-repo>` |
+| **Consumer install** | `npm install` from packed tarball into `os.tmpdir()/moflo-consumer-smoke/consumer-N/` | Its own `.moflo/moflo.db`, its own daemon (would-be port 3117) |
+
+CI runs the consumer install only — there's no dev daemon, no Claude Code session, no `CLAUDE_PROJECT_DIR` in env. Same code, different environment. Without pinning, two divergences leak through:
+
+1. **Project-root resolution** — `findProjectRoot()` honors `CLAUDE_PROJECT_DIR` ahead of the marker walk. The dev session's value points at the moflo repo, so every consumer subprocess that inherits env resolves project-root to the source tree and writes to the *dev* DB instead of the consumer DB.
+2. **Daemon port collision** — the dev daemon already binds 3117. The consumer's `flo daemon start` walks the fallback range (3118, 3119, …) but client subprocesses (writers via `daemon-write-client.ts`) still default to 3117, so they POST to the dev daemon.
+
+### How the harness pins both (#1067)
+
+`harness/consumer-smoke/run.mjs` mutates `process.env` before any subprocess spawns. The existing env merge in `lib/proc.mjs` (`{ ...process.env, ...(runOpts.env || {}) }`) propagates the pinned values to every `flo()` / `runNode()` call and to the daemons they fork:
+
+```js
+process.env.MOFLO_DAEMON_PORT = process.env.MOFLO_DAEMON_PORT || '3217';
+// …after installConsumer():
+process.env.CLAUDE_PROJECT_DIR = consumerDir;
+```
+
+`src/cli/commands/daemon.ts#resolveDashboardPort` honors `MOFLO_DAEMON_PORT` env (post-#1067) so the consumer daemon binds the pinned port, matching the client. Port 3217 is outside the dev daemon's fallback range, so a parallel local smoke can't collide.
+
+### Symptoms of unpinned context
+
+If you ever see a smoke check report `found=false` for a key that was just written, OR a probe writing to a `.moflo/moflo.db` that isn't under `consumerDir`, OR the harness times out waiting for the daemon while `flo daemon start` reported success — check that both env pins are still in place at the top of `run.mjs` / `run-populated.mjs`. The `verifyConsumerIsProjectRoot` gate runs `findProjectRoot({ honorEnv: false })`, so it passes even when downstream probes silently divergence-fail.
+
+### Acceptance: local smoke matches CI
+
+The contract: running `npm run test:smoke` while the moflo dev daemon is up on 3117 must produce identical pass/fail status to a fresh CI checkout. Any divergence between local and CI smoke is a bug in the harness's context pinning, not in the code under test.
+
+---
+
 ## See Also
 
 - `.claude/guidance/internal/upgrade-contract.md` — The "user never re-runs init" invariant that dogfooding stress-tests on every dev session

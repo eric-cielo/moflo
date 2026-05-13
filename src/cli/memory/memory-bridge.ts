@@ -194,17 +194,50 @@ export async function bridgeAddToHNSW(
     // Bridge-produced vectors come from getBridgeEmbedder() (fastembed, 384-dim).
     // Pre-#648 this column was hardcoded to 'Xenova/all-MiniLM-L6-v2' which
     // misrepresented the producing model — fixed to the canonical bridge label.
-    ctx.db.prepare(`
-      INSERT OR REPLACE INTO memory_entries (
-        id, key, namespace, content, type,
-        embedding, embedding_dimensions, embedding_model,
-        created_at, updated_at, status
-      ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, 'active')
+    //
+    // Pre-#1067: this issued `INSERT OR REPLACE INTO memory_entries (...)` with
+    // only the embedding-related columns. When `storeEntry`'s direct-write
+    // fallback first inserted a row carrying `metadata`/`tags`/`expires_at`
+    // and then called `addToHNSWIndex(...)` for the same id, REPLACE clobbered
+    // the row — wiping the metadata column to NULL and re-introducing the
+    // "first chunk has no navigation" smoke failure even though serialiseMetadata
+    // produced the right JSON one statement earlier. UPDATE-by-id preserves the
+    // pre-existing row's metadata/tags/expires_at/access_count while still
+    // back-filling embedding columns for callers that supplied them.
+    const updated = ctx.db.prepare(`
+      UPDATE memory_entries
+         SET embedding = ?,
+             embedding_dimensions = ?,
+             embedding_model = ?,
+             updated_at = ?
+       WHERE id = ?
     `).run([
-      id, entry.key, entry.namespace, entry.content,
       embeddingJson, embedding.length, BRIDGE_EMBEDDING_MODEL,
-      now, now,
+      now, id,
     ]);
+
+    // If no row was matched by id (rare: a rebuild path passing an embedding
+    // for a key that never went through storeEntry first) fall back to an
+    // INSERT carrying every column the bridge can populate, so the row still
+    // becomes searchable. Metadata/tags/expires_at stay NULL because the
+    // caller didn't supply them — same shape `bridgeStoreEntry` would write
+    // for a no-metadata caller.
+    const rowCount = typeof (updated as { changes?: number }).changes === 'number'
+      ? (updated as { changes: number }).changes
+      : ((ctx.db as { getRowsModified?: () => number }).getRowsModified?.() ?? 0);
+    if (rowCount === 0) {
+      ctx.db.prepare(`
+        INSERT INTO memory_entries (
+          id, key, namespace, content, type,
+          embedding, embedding_dimensions, embedding_model,
+          created_at, updated_at, status
+        ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, 'active')
+      `).run([
+        id, entry.key, entry.namespace, entry.content,
+        embeddingJson, embedding.length, BRIDGE_EMBEDDING_MODEL,
+        now, now,
+      ]);
+    }
     persistBridgeDb(ctx.db, dbPath);
     return true;
   });

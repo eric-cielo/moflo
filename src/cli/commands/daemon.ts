@@ -19,6 +19,35 @@ import { join, resolve, isAbsolute } from 'path';
 import * as fs from 'fs';
 import { errorDetail } from '../shared/utils/error-detail.js';
 
+/**
+ * Resolve the dashboard port from CLI flag and env, in that precedence order.
+ *
+ * Precedence (highest first):
+ *   1. `--dashboard-port` flag (explicit caller intent)
+ *   2. `MOFLO_DAEMON_PORT` env (shared contract with `daemon-write-client.ts`)
+ *   3. `DEFAULT_DASHBOARD_PORT` (3117)
+ *
+ * The env fallback (#1067) eliminates the client/server asymmetry: prior to
+ * this, the client honored `MOFLO_DAEMON_PORT` but the server only read
+ * `--dashboard-port`. A consumer pinning the env (e.g. the smoke harness)
+ * would point clients at one port while the server bound the default.
+ *
+ * Exported for unit testing — the command handler calls this once per start.
+ */
+export function resolveDashboardPort(
+  flagValue: string | undefined,
+  envValue: string | undefined,
+): { ok: true; port: number } | { ok: false; error: string } {
+  const source = flagValue ?? envValue;
+  if (!source) return { ok: true, port: DEFAULT_DASHBOARD_PORT };
+  const parsed = parseInt(source, 10);
+  if (isNaN(parsed) || parsed < 1 || parsed > 65535) {
+    const label = flagValue ? 'dashboard port' : 'MOFLO_DAEMON_PORT';
+    return { ok: false, error: `Invalid ${label}: ${source} (must be 1-65535)` };
+  }
+  return { ok: true, port: parsed };
+}
+
 // Start daemon subcommand
 const startCommand: Command = {
   name: 'start',
@@ -49,16 +78,13 @@ const startCommand: Command = {
     const projectRoot = process.cwd();
     const isDaemonProcess = process.env.CLAUDE_FLOW_DAEMON === '1';
 
-    // Parse dashboard port
-    let dashboardPort = DEFAULT_DASHBOARD_PORT;
-    if (rawDashboardPort) {
-      const parsed = parseInt(rawDashboardPort, 10);
-      if (isNaN(parsed) || parsed < 1 || parsed > 65535) {
-        output.printError(`Invalid dashboard port: ${rawDashboardPort} (must be 1-65535)`);
-        return { success: false, exitCode: 1 };
-      }
-      dashboardPort = parsed;
+    // Resolve dashboard port; see `resolveDashboardPort` for precedence.
+    const portResult = resolveDashboardPort(rawDashboardPort, process.env.MOFLO_DAEMON_PORT);
+    if (!portResult.ok) {
+      output.printError(portResult.error);
+      return { success: false, exitCode: 1 };
     }
+    const dashboardPort = portResult.port;
 
     // Parse resource threshold overrides from CLI flags
     const config: Partial<DaemonConfig> = {};

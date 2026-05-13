@@ -214,6 +214,32 @@ npx vitest run path/to/the/failing.test.ts
 
 ---
 
+## 13. Measure Twice, Cut Once — Diagnose Before You Fix
+
+**Don't guess at a bug. Pinpoint it with a test or diagnostic that proves what's wrong, then fix only what the evidence indicts.** Guess-and-patch produces layered workarounds (see `feedback_no_layered_workarounds.md`); it ships fixes for the wrong root cause; and it leaves the *next* engineer to debug the same symptom from scratch because no diagnostic remained in the tree.
+
+Before writing a fix, ask: *what evidence would tell me exactly which layer is broken?* Then produce that evidence. Concretely:
+
+| Symptom shape | First diagnostic |
+|---------------|------------------|
+| Failing assertion (smoke probe, integration test, system test) | Add per-row / per-case diagnostic to the **existing failure record** so it surfaces which specific input failed — not just "some neighbor missing nav" but `{"key":"chunk-foo-0","hasNav":false}` |
+| "Sometimes wrong, sometimes right" | Bisect: add diagnostics that distinguish first-call vs N-th-call, fresh-DB vs warm-cache, daemon-routed vs direct-write |
+| "Output doesn't match expectation" but you can't tell which layer is lying | Probe each layer directly — raw DB read alongside the API/handler read; cache state alongside disk state — to localize where the divergence enters |
+| "Race / timing / 'works on my machine'" | Add diagnostics that capture the order of operations and the state of shared resources at each step |
+
+Once a write-then-read smoke fails, **don't change the writer until you know what the reader saw on disk**. A 5-line `db.prepare('SELECT ... WHERE key = ?')` probe alongside the API read settles in seconds whether the bug is on the write side (data never landed) or the read side (data landed but the shaping layer dropped it).
+
+The diagnostic is part of the fix. Either:
+
+- **Keep it in the production codepath as a structured failure detail** (e.g. include per-row hash/length/presence flags in the assertion's failure record). Next time this regression hits, the message points the future engineer at the bad row instead of the bad assertion.
+- **Bake it into a unit / integration test** that asserts the round-trip directly (write metadata → read raw column → assert it parses to the expected shape). The diagnostic becomes a regression gate.
+
+Throwing away a diagnostic the moment the fix lands is the anti-pattern: the next regression has nothing to land on, and we re-diagnose from zero. Either generalize the probe into a test or fold it into the existing assertion's failure-detail string.
+
+> Worked example (#1067): a smoke check reported "neighbors without navigation field". A naive guess would have edited `parseNavigation`. Instead, three layered probes — per-neighbor breakdown → per-key `memory_retrieve` → raw `SELECT metadata` — localized the bug to **the first write only** and showed disk held the literal string `"null"`, not the JSON object the writer fed in. That pointed straight at `bridgeAddToHNSW`'s post-insert `INSERT OR REPLACE` (which stripped non-listed columns including metadata). The per-neighbor diagnostic is now part of the smoke check's failure message so the next regression surfaces the offending key, not a generic "something is missing" string.
+
+---
+
 ## See Also
 
 - `.claude/guidance/internal/testing-performance.md` — Parallelism, fork contention, and per-test perf budgets
