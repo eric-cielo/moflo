@@ -14,7 +14,7 @@ The unified memory service backed by sql.js + HNSW indexing (150x-12,500x faster
 | HNSW (pure-TS) | `src/cli/memory/hnsw-lite.ts` |
 | HNSW (libffi) | `src/cli/memory/hnsw-index.ts` |
 | Controllers | `src/cli/memory/controllers/` |
-| Backends | `src/cli/memory/sqljs-backend.ts`, `rvf-backend.ts`, `database-provider.ts` |
+| Backends | `src/cli/memory/sqlite-backend.ts` (default, node:sqlite — Phase 4 #1083), `rvf-backend.ts`, `database-provider.ts` |
 | RVF persistence | `src/cli/memory/rvf-learning-store.ts`, `persistent-sona.ts`, `rvf-migration.ts` |
 | Knowledge graph | `src/cli/memory/memory-graph.ts` |
 | Learning bridge | `src/cli/memory/learning-bridge.ts` |

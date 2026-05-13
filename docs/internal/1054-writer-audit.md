@@ -18,7 +18,7 @@ Writes from inside the daemon process. The `MOFLO_IS_DAEMON=1` env var short-cir
 | File:Line | Function | Notes |
 |-----------|----------|-------|
 | `src/cli/memory/memory-initializer.ts:1041,1259,1482,1879,2101,2540,2697` | Inner sql.js flush paths | Underlying writes used by chokepoint when running in-daemon |
-| `src/cli/memory/sqljs-backend.ts:734,807` | sql.js backend save | Underlying impl |
+| `src/cli/memory/sqlite-backend.ts:293,360,584` | node:sqlite backend write/persist | Underlying impl (replaced sqljs-backend in #1084; node:sqlite writes through the OS file handle so `persist()` is a no-op) |
 | `src/cli/memory/bridge-core.ts:237` | Bridge atomic write | Bridge-internal, single-process |
 
 ### Daemon-RPC (cross-process writers route via `daemon-write-client`)
