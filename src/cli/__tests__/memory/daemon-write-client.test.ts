@@ -239,17 +239,67 @@ describe('daemon-write-client', () => {
     expect(r.routed).toBe(false);
   });
 
-  it('tryDaemonStore returns routed:false when daemon returns 400 (validation reject)', async () => {
+  it('tryDaemonStore returns routed:true,ok:false,error on 400 (#1101 — propagate, no fallback)', async () => {
     fake = await startFakeDaemon();
     process.env.MOFLO_DAEMON_PORT = String(fake.port);
     fake.setHandler((req, res) => {
       if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
-      res.writeHead(400); res.end('{"error":"bad"}');
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end('{"error":"Invalid store request","message":"invalid namespace (must match /^[a-zA-Z0-9._-]{1,64}$/, ≤64 chars)"}');
     });
 
     const r = await tryDaemonStore({ namespace: 'ns', key: 'k', value: 'v' });
-    // 400 → routed:false so caller falls back to direct write rather than
-    // silently losing the entry
+    // 4xx is a deterministic payload reject — the bridge has the same
+    // validation and would fail the same way. Surface the daemon's error
+    // instead of silently falling back.
+    expect(r.routed).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/invalid namespace/);
+  });
+
+  it('tryDaemonStore returns routed:true,ok:false,error on 413 (oversized body)', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end('{"error":"Payload too large"}');
+    });
+
+    const r = await tryDaemonStore({ namespace: 'ns', key: 'k', value: 'v' });
+    expect(r.routed).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/payload too large/i);
+  });
+
+  it('tryDaemonStore surfaces a generic message when 4xx body is not JSON', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.end('not json');
+    });
+
+    const r = await tryDaemonStore({ namespace: 'ns', key: 'k', value: 'v' });
+    expect(r.routed).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/daemon returned 400/);
+  });
+
+  it('tryDaemonStore returns routed:false on socket destroyed mid-stream', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    // Warm the health cache so the probe doesn't tank — we want to test
+    // the WRITE-side socket destroy.
+    expect(await isDaemonAvailable()).toBe(true);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      // Kill the socket without sending any response.
+      req.socket.destroy();
+    });
+
+    const r = await tryDaemonStore({ namespace: 'ns', key: 'k', value: 'v' });
     expect(r.routed).toBe(false);
   });
 
@@ -403,6 +453,36 @@ describe('daemon-write-client', () => {
 
     const r = await tryDaemonGet({ namespace: 'ns', key: 'k' });
     expect(r.routed).toBe(false);
+  });
+
+  it('tryDaemonGet returns routed:true,error on 400 (#1101)', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end('{"error":"Invalid get request","message":"invalid namespace"}');
+    });
+
+    const r = await tryDaemonGet({ namespace: 'bad ns', key: 'k' });
+    expect(r.routed).toBe(true);
+    expect(r.data).toBeUndefined();
+    expect(r.error).toMatch(/invalid namespace/);
+  });
+
+  it('tryDaemonSearch returns routed:true,error on 400 (#1101)', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end('{"error":"Invalid search request","message":"limit must be a positive integer ≤1000"}');
+    });
+
+    const r = await tryDaemonSearch({ query: 'q', limit: 9999 });
+    expect(r.routed).toBe(true);
+    expect(r.data).toBeUndefined();
+    expect(r.error).toMatch(/limit must be a positive integer/);
   });
 
   // ── tryDaemonSearch (#1058) ───────────────────────────────────────────

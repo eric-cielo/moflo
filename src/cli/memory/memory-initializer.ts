@@ -1910,6 +1910,12 @@ export async function storeEntry(options: {
       if (routed.routed && routed.ok) {
         return { success: true, id: routed.id ?? '' };
       }
+      // #1101 — daemon validated and rejected (4xx). Bridge-direct would
+      // fail the same way; surface the daemon's error instead of silently
+      // falling back.
+      if (routed.routed && routed.ok === false) {
+        return { success: false, id: '', error: routed.error ?? 'Daemon rejected store request' };
+      }
     } catch (err) {
       logRoutingFault(err);
     }
@@ -2175,6 +2181,10 @@ export async function searchEntries(options: {
           searchTime: routed.data.searchTime ?? 0,
         };
       }
+      // #1101 — daemon rejected query (4xx); propagate instead of falling back.
+      if (routed.routed && routed.error) {
+        return { success: false, results: [], searchTime: 0, error: routed.error };
+      }
     } catch (err) {
       logRoutingFault(err);
     }
@@ -2356,6 +2366,10 @@ export async function listEntries(options: {
       if (routed.routed && routed.data) {
         return { success: true, entries: routed.data.entries, total: routed.data.total };
       }
+      // #1101 — daemon rejected list args (4xx); propagate.
+      if (routed.routed && routed.error) {
+        return { success: false, entries: [], total: 0, error: routed.error };
+      }
     } catch (err) {
       logRoutingFault(err);
     }
@@ -2486,6 +2500,10 @@ export async function getEntry(options: {
       });
       if (routed.routed && routed.data) {
         return { success: true, found: routed.data.found, entry: routed.data.entry };
+      }
+      // #1101 — daemon rejected get args (4xx); propagate.
+      if (routed.routed && routed.error) {
+        return { success: false, found: false, error: routed.error };
       }
     } catch (err) {
       logRoutingFault(err);
@@ -2622,6 +2640,17 @@ export async function deleteEntry(options: {
           // this value (the `flo memory delete` CLI) read it from a
           // subsequent stat query, not this return shape.
           remainingEntries: 0,
+        };
+      }
+      // #1101 — daemon rejected delete args (4xx); propagate.
+      if (routed.routed && routed.ok === false) {
+        return {
+          success: false,
+          deleted: false,
+          key: options.key,
+          namespace: options.namespace ?? 'default',
+          remainingEntries: 0,
+          error: routed.error ?? 'Daemon rejected delete request',
         };
       }
     } catch (err) {

@@ -10,12 +10,26 @@
  * #1058 (sql.js never re-reads disk after init).
  *
  * Contract — every function in this module:
- *   - Never throws. Any error path returns `{ routed: false }`.
+ *   - Never throws. Outcomes are reported via the result envelope.
  *   - Returns within ≤100ms even if the daemon is dead/slow (HTTP timeout).
  *   - Caches daemon health for 5s to keep the hot path cheap.
  *   - Short-circuits without HTTP when:
  *       (a) `process.env.MOFLO_IS_DAEMON === '1'` (daemon's own process)
  *       (b) `moflo.yaml` has `daemon.auto_start: false`
+ *
+ * Failure-shape contract (#1101 — surface 4xx as a real error):
+ *   - 4xx response                 → `routed: true, ok: false, error: <msg>` (writes)
+ *                                  → `routed: true, error: <msg>` (reads)
+ *                                  → caller PROPAGATES the error; does NOT fall back.
+ *   - 5xx, 503, timeout,           → `routed: false`
+ *     ECONNREFUSED, malformed JSON,  → caller falls back to bridge-direct.
+ *     socket destroyed mid-stream
+ *
+ * The 4xx codes only fire on daemon-side payload validation (see
+ * daemon-memory-rpc.ts). Bridge-direct has the same validation and would
+ * fail the same way — falling back silently loses the daemon's actionable
+ * error message. 5xx and transport faults are transient/daemon-side bugs;
+ * bridge-direct is the right next step.
  *
  * Naming note: the module is named `daemon-write-client` for compat with
  * existing importers, but as of #1058 it also covers reads.
@@ -43,28 +57,40 @@ const HEALTH_CACHE_TTL_MS = 5_000;
 // ============================================================================
 
 /**
- * Result of a daemon-routed write. `routed: false` means the caller MUST
- * fall back to its direct-write path (the daemon is unavailable or
- * disabled, OR we are inside the daemon process itself).
+ * Result of a daemon-routed write.
+ *
+ *   - `routed: false`                → daemon unreachable / transport fault /
+ *                                      5xx / daemon-process short-circuit.
+ *                                      Caller MUST fall back to direct write.
+ *   - `routed: true,  ok: true`      → daemon accepted; `id` carries the entry id.
+ *   - `routed: true,  ok: false`     → daemon REJECTED the payload (4xx
+ *                                      validation). Caller MUST propagate
+ *                                      `error` to the user and NOT fall back —
+ *                                      bridge-direct has the same validation
+ *                                      and will fail the same way (#1101).
  */
 export interface DaemonWriteResult {
-  /** True iff the write was successfully delivered to the daemon (regardless of daemon's outcome). */
+  /** True iff the daemon answered with a structured payload (2xx or 4xx). */
   routed: boolean;
-  /** Set when routed=true: the daemon's response status. */
+  /** True on 2xx; false on 4xx (validation reject). Undefined when routed=false. */
   ok?: boolean;
   /** Set on a successful store: the entry id the daemon assigned. */
   id?: string;
   /** Set on a successful delete: whether the row existed. */
   deleted?: boolean;
-  /** Set on routed-but-failed: the daemon's error message. */
+  /** Set on routed-but-failed (4xx): the daemon's error message. */
   error?: string;
 }
 
 /**
- * Result of a daemon-routed read (#1058). `routed: false` means fall back to
- * the local bridge / raw-sql.js path; `routed: true` means HTTP succeeded
- * and `data` carries the daemon's response payload (or `error` if the daemon
- * itself returned a 5xx with a structured error).
+ * Result of a daemon-routed read (#1058).
+ *
+ *   - `routed: false`                → daemon unreachable / transport fault /
+ *                                      5xx / daemon-process short-circuit.
+ *                                      Caller falls back to bridge / direct.
+ *   - `routed: true,  data: ...`     → daemon answered 2xx; use `data`.
+ *   - `routed: true,  error: ...`    → daemon REJECTED (4xx). Caller MUST
+ *     (no `data`)                      propagate `error`, NOT fall back (#1101).
  */
 export interface DaemonReadResult<T> {
   routed: boolean;
@@ -358,12 +384,34 @@ function postJson(path: string, body: unknown): Promise<DaemonWriteResult> {
         res.setEncoding('utf8');
         res.on('data', (chunk: string) => { buf += chunk; });
         res.on('end', () => {
-          // Status >=500 is a daemon-side fault; treat as unrouted so the
-          // caller falls back. Status 4xx (validation) is ALSO unrouted —
-          // we don't want a malformed payload silently lost just because
-          // the HTTP delivery succeeded.
+          // #1101 — per-shape failure contract:
+          //   2xx  → routed:true,  ok:true   (caller uses data)
+          //   4xx  → routed:true,  ok:false  (caller propagates daemon error)
+          //   5xx  → routed:false           (caller falls back to bridge)
+          //   parse fail / non-classified → routed:false (fall back)
           const status = res.statusCode ?? 0;
-          if (status < 200 || status >= 300) {
+          if (status >= 500) {
+            finish({ routed: false });
+            return;
+          }
+          if (status >= 400) {
+            // Daemon validated the payload and rejected it. Bridge-direct
+            // has the same validation; falling back loses the actionable
+            // error. Surface it to the caller instead.
+            let errorMsg = `daemon returned ${status}`;
+            try {
+              const data = JSON.parse(buf);
+              const detail = typeof data?.message === 'string' ? data.message
+                : typeof data?.error === 'string' ? data.error
+                : undefined;
+              if (detail) errorMsg = detail;
+            } catch {
+              // Non-JSON 4xx body — keep the generic status-code message.
+            }
+            finish({ routed: true, ok: false, error: errorMsg });
+            return;
+          }
+          if (status < 200) {
             finish({ routed: false });
             return;
           }
@@ -431,8 +479,30 @@ function postReadJson<T>(
         res.setEncoding('utf8');
         res.on('data', (chunk: string) => { buf += chunk; });
         res.on('end', () => {
+          // #1101 — mirror postJson contract for reads:
+          //   2xx  → routed:true with shaped data
+          //   4xx  → routed:true with error (no data) — caller propagates
+          //   5xx  → routed:false (caller falls back)
           const status = res.statusCode ?? 0;
-          if (status < 200 || status >= 300) {
+          if (status >= 500) {
+            finish({ routed: false });
+            return;
+          }
+          if (status >= 400) {
+            let errorMsg = `daemon returned ${status}`;
+            try {
+              const data = JSON.parse(buf);
+              const detail = typeof data?.message === 'string' ? data.message
+                : typeof data?.error === 'string' ? data.error
+                : undefined;
+              if (detail) errorMsg = detail;
+            } catch {
+              // Non-JSON 4xx body — keep the generic message.
+            }
+            finish({ routed: true, error: errorMsg });
+            return;
+          }
+          if (status < 200) {
             finish({ routed: false });
             return;
           }
