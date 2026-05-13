@@ -582,10 +582,48 @@ function syncScripts(root: string, force?: boolean): MofloInitResult['steps'][0]
     }
   }
 
+  // Sync bin/lib/ and bin/migrations/ recursively. The top-level scripts
+  // import `./lib/moflo-resolve.mjs` etc., so omitting these subtrees leaves
+  // every synced script unable to load (#1090). The upgrade path in
+  // executor.ts and the post-install bootstrap both sync these trees — init
+  // had drifted out of step.
+  copied += syncTree(path.join(binDir, 'lib'), path.join(scriptsDir, 'lib'), force);
+  copied += syncTree(path.join(binDir, 'migrations'), path.join(scriptsDir, 'migrations'), force);
+
   if (copied === 0) {
     return { name: '.claude/scripts/', status: 'skipped', detail: 'Scripts already up to date' };
   }
   return { name: '.claude/scripts/', status: 'updated', detail: `${copied} scripts synced from moflo` };
+}
+
+function syncTree(srcRoot: string, destRoot: string, force?: boolean): number {
+  if (!fs.existsSync(srcRoot)) return 0;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(srcRoot, { recursive: true, withFileTypes: true }) as fs.Dirent[];
+  } catch {
+    return 0;
+  }
+  let copied = 0;
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const parent = (entry as fs.Dirent & { parentPath?: string }).parentPath
+      ?? (entry as fs.Dirent & { path?: string }).path
+      ?? srcRoot;
+    const absSrc = path.join(parent, entry.name);
+    const rel = path.relative(srcRoot, absSrc).split(path.sep).join('/');
+    const absDest = path.join(destRoot, rel);
+    try {
+      fs.mkdirSync(path.dirname(absDest), { recursive: true });
+      if (!fs.existsSync(absDest) || force || isStale(absSrc, absDest)) {
+        fs.copyFileSync(absSrc, absDest);
+        copied++;
+      }
+    } catch {
+      // Non-fatal — skip individual file on error
+    }
+  }
+  return copied;
 }
 
 function isStale(srcPath: string, destPath: string): boolean {
