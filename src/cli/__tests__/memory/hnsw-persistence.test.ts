@@ -19,22 +19,17 @@ import {
   tryLoadHnswSidecar,
 } from '../../memory/hnsw-persistence.js';
 import { hnswIndexPath, MOFLO_DIR, MEMORY_DB_FILE } from '../../services/moflo-paths.js';
-import { mofloImport } from '../../services/moflo-require.js';
+import { openDaemonDatabase } from '../../memory/daemon-backend.js';
 
 const DIM = 8;
 const ROW_COUNT = 12;
 
-async function seedDb(dbPath: string): Promise<string[]> {
-  const sqlJsModule = await mofloImport('sql.js');
-  if (!sqlJsModule) throw new Error('sql.js not available');
-  const SQL = await (sqlJsModule as { default: () => Promise<unknown> }).default() as {
-    Database: new () => {
-      run: (sql: string, params?: unknown[]) => void;
-      export: () => Uint8Array;
-      close: () => void;
-    };
-  };
-  const db = new SQL.Database();
+// Seeds a real on-disk SQLite DB via the unified `openDaemonDatabase` factory
+// (Phase 5 / #1084). Pre-#1084 this used sql.js + `db.export()`, but sql.js was
+// retired across the codebase; `node:sqlite` writes a standard SQLite file
+// that `buildAndWriteHnswSidecar` reads via the same factory.
+function seedDb(dbPath: string): string[] {
+  const db = openDaemonDatabase(dbPath);
 
   db.run(`CREATE TABLE memory_entries (
     id TEXT PRIMARY KEY,
@@ -64,7 +59,6 @@ async function seedDb(dbPath: string): Promise<string[]> {
     ['row-no-embedding', 'no-embed', 'patterns', 'skipped', null, 'active'],
   );
 
-  fs.writeFileSync(dbPath, Buffer.from(db.export()));
   db.close();
   return ids;
 }
@@ -84,7 +78,7 @@ describe('hnsw-persistence — buildAndWriteHnswSidecar', () => {
   });
 
   it('writes a sidecar at .moflo/hnsw.index containing every embedded row', async () => {
-    await seedDb(dbPath);
+    seedDb(dbPath);
 
     const result = await buildAndWriteHnswSidecar(dbPath, tmp, { dimensions: DIM });
 
@@ -95,7 +89,7 @@ describe('hnsw-persistence — buildAndWriteHnswSidecar', () => {
   });
 
   it('round-trips: tryLoadHnswSidecar returns a populated HnswLite that searches correctly', async () => {
-    const ids = await seedDb(dbPath);
+    const ids = seedDb(dbPath);
     await buildAndWriteHnswSidecar(dbPath, tmp, { dimensions: DIM });
 
     const loaded = tryLoadHnswSidecar(tmp);
@@ -133,7 +127,7 @@ describe('hnsw-persistence — buildAndWriteHnswSidecar', () => {
   });
 
   it('atomic rename: a fresh write replaces an older sidecar without leaving a tmp file', async () => {
-    await seedDb(dbPath);
+    seedDb(dbPath);
     fs.writeFileSync(hnswIndexPath(tmp), Buffer.from('stale'));
     await buildAndWriteHnswSidecar(dbPath, tmp, { dimensions: DIM });
 

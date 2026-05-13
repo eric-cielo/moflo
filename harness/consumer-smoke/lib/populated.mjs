@@ -80,6 +80,11 @@ const EPHEMERAL_NAMESPACES = ['hive-mind', 'tasklist', 'epic-state', 'test-bridg
 // is in EPHEMERAL_NAMESPACES (skip-embed) but NOT here — those rows back the
 // dashboard Flo Runs tab and survive across session restarts.
 const PURGED_NAMESPACES = ['hive-mind', 'epic-state', 'test-bridge-fix'];
+// Hard-purge *prefixes* (matches PURGE_ON_SESSION_START_PREFIXES). Note:
+// these namespaces are auto-purged on session start but are NOT skip-embed —
+// they get embeddings like any other namespace. See bridge-embedder.ts's
+// EPHEMERAL_NAMESPACE_PREFIXES docstring for why the two concepts diverge.
+const PURGED_NAMESPACE_PREFIXES = ['doctor-memprobe-', 'doctor-neighbors-'];
 const ROWS_PER_ACTIVE_NAMESPACE = 20;
 const ROWS_PER_EPHEMERAL_NAMESPACE = 5;
 const ARCHIVED_ROW_COUNT = 3;
@@ -128,6 +133,22 @@ function buildSeedPlan() {
         key: `eph-${ns}-${i}`,
         namespace: ns,
         content: `ephemeral fixture row ${ns}/${i}`,
+        status: 'active',
+        embedding: null,
+      });
+    }
+  }
+
+  // Prefix-purgeables: seed `<prefix>sample` rows so the launcher's
+  // prefix-purge path is exercised end-to-end in the smoke harness.
+  for (const prefix of PURGED_NAMESPACE_PREFIXES) {
+    const ns = `${prefix}sample`;
+    for (let i = 0; i < ROWS_PER_EPHEMERAL_NAMESPACE; i++) {
+      rows.push({
+        id: `ephemeral-${ns}-${i}`,
+        key: `eph-${ns}-${i}`,
+        namespace: ns,
+        content: `ephemeral prefix fixture row ${ns}/${i}`,
         status: 'active',
         embedding: null,
       });
@@ -471,6 +492,7 @@ function inspectInstalledEphemeralNamespaces(consumerDir) {
   const missing = [
     ...EPHEMERAL_NAMESPACES.filter(ns => !source.includes(`'${ns}'`)),
     ...PURGED_NAMESPACES.filter(ns => !source.includes(`'${ns}'`)),
+    ...PURGED_NAMESPACE_PREFIXES.filter(p => !source.includes(`'${p}'`)),
   ];
   if (missing.length === 0) {
     record('populated:ephemeral-namespace-parity', 'pass', `harness list matches installed dist`);
@@ -598,6 +620,19 @@ function assertEphemeralRowsPurged(snapshot) {
   for (const ns of PURGED_NAMESPACES) {
     const active = snapshot.byNamespaceStatus[`${ns}/active`] ?? 0;
     if (active > 0) offenders.push(`${ns}=${active}`);
+  }
+  // Prefix-purgeables: any active row whose namespace begins with a
+  // PURGED_NAMESPACE_PREFIXES entry should also be gone after the launcher.
+  for (const key of Object.keys(snapshot.byNamespaceStatus)) {
+    if (!key.endsWith('/active')) continue;
+    const ns = key.slice(0, -'/active'.length);
+    for (const prefix of PURGED_NAMESPACE_PREFIXES) {
+      if (ns.startsWith(prefix)) {
+        const active = snapshot.byNamespaceStatus[key] ?? 0;
+        if (active > 0) offenders.push(`${ns}=${active}`);
+        break;
+      }
+    }
   }
   if (offenders.length === 0) {
     record('populated:ephemeral-purged', 'pass', 'no purgeable namespace rows remain (#729)');

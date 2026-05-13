@@ -234,6 +234,71 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
         return false;
       }
     },
+    // Tiered recovery for `.moflo/moflo.db` corruption (REINDEX → VACUUM
+    // INTO → row-level salvage). The TS service stops the daemon
+    // automatically (cross-platform via `process.kill('SIGTERM')`) so the
+    // atomic swap doesn't race a live writer; we restart it via the
+    // existing `npx moflo daemon start` shorthand after. The MCP server,
+    // started by Claude Code outside our process tree, isn't stopped here —
+    // explicit user guidance covers that case at the end.
+    'Memory DB Integrity': async () => {
+      try {
+        const { repairMemoryDbIntegrity } = await import('../services/memory-db-integrity-repair.js');
+        const result = await repairMemoryDbIntegrity(process.cwd());
+        if (result.repaired) {
+          const tierLabel =
+            result.tier === 'reindex' ? 'REINDEX (index rebuild)'
+            : result.tier === 'vacuum' ? 'VACUUM INTO (fresh-file rebuild)'
+            : result.tier === 'salvage' ? 'row-level salvage'
+            : 'repaired';
+          output.writeln(output.dim(`  Recovered via ${tierLabel}.`));
+          if (result.corruptBackup) {
+            output.writeln(output.dim(`  Pre-repair backup retained: ${result.corruptBackup}`));
+          }
+          if (result.lossStats) {
+            for (const [tbl, s] of Object.entries(result.lossStats)) {
+              if (s.read > 0) {
+                const lost = Math.max(0, s.read - s.written);
+                if (lost > 0) {
+                  output.writeln(output.warning(
+                    `  ${tbl}: ${s.written}/${s.read} rows preserved (lost ${lost} across ${s.errors} unreadable chunk(s))`,
+                  ));
+                }
+              }
+            }
+            output.writeln(output.dim(
+              '  Embeddings for lost rows will be regenerated on next index pass — run `npx moflo embeddings init` to force.',
+            ));
+          }
+          // Restart the daemon if we stopped it. The launcher's own
+          // section-4 spawn handles this on next session-start, but a
+          // mid-session healer call shouldn't leave the daemon down.
+          if (result.daemonStopped) {
+            output.writeln(output.dim('  Restarting daemon...'));
+            await runFixCommand('npx moflo daemon start');
+          }
+          // Cross-platform note for the MCP server (out-of-tree, can't
+          // SIGTERM). On Windows the swap would have failed if MCP was
+          // holding the file; on POSIX the swap succeeds but MCP keeps
+          // reading the stale inode until restart. Either way: restart
+          // Claude Code to fully apply.
+          output.writeln(output.dim(
+            '  Restart Claude Code so the MCP server re-opens the recovered DB.',
+          ));
+          return true;
+        }
+        if (result.persistent) {
+          output.writeln(output.warning(
+            '  Corruption survived every recovery tier. Manual options: ' +
+            '`npx moflo memory rebuild-index` (destructive) or restore from a known-good backup.',
+          ));
+        }
+        return false;
+      } catch (e) {
+        output.writeln(output.warning(`  Repair failed: ${errorDetail(e)}`));
+        return false;
+      }
+    },
     'Status Line': async () => {
       const settingsPath = join(process.cwd(), '.claude', 'settings.json');
       if (!existsSync(settingsPath)) return false;

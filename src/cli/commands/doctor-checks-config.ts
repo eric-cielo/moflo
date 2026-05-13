@@ -13,6 +13,7 @@ import {
   memoryDbCandidatePaths,
   memoryDbPath,
 } from '../services/moflo-paths.js';
+import { probeDbIntegrity } from '../services/memory-db-integrity-repair.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import type { HealthCheck } from './doctor-types.js';
 
@@ -143,6 +144,65 @@ export async function checkMemoryDatabase(): Promise<HealthCheck> {
   }
 
   return { name: 'Memory Database', status: 'warn', message: 'Not initialized', fix: 'claude-flow memory configure --backend hybrid' };
+}
+
+/**
+ * Tier-1 corruption probe for `.moflo/moflo.db`. Runs `PRAGMA integrity_check`
+ * via a raw node:sqlite readonly handle — bypasses `openBackend` because that
+ * path sets WAL pragmas on open and those throw on deeply-corrupt files,
+ * masking the real failure as a generic "Check" error (doctor.ts:214).
+ *
+ * Owns the corruption signal so downstream checks (Embeddings, Semantic
+ * Quality, Memory Access Functional, etc.) don't end up doing it implicitly
+ * via their own swallow-all error paths. The companion fix in
+ * doctor-fixes.ts coordinates daemon stop + tiered repair via the JS-side
+ * `repairMemoryDbIfCorrupt` (bin/lib/db-repair.mjs).
+ *
+ * Status semantics:
+ *  - `pass` — DB absent OR `integrity_check` returns 'ok'.
+ *  - `fail` — corruption detected. `fix` field points at the healer's
+ *    auto-recovery path (which runs REINDEX → VACUUM INTO → row-level
+ *    salvage in order of escalation).
+ *  - `warn` — probe itself crashed (rare; surfaces the diagnostic rather
+ *    than masking it).
+ */
+export async function checkMemoryDbIntegrity(cwd: string = process.cwd()): Promise<HealthCheck> {
+  const dbPath = memoryDbPath(cwd);
+  if (!existsSync(dbPath)) {
+    return { name: 'Memory DB Integrity', status: 'pass', message: 'DB absent (no integrity probe needed)' };
+  }
+  // Delegate to the single readonly-no-PRAGMAs probe in
+  // `bin/lib/db-repair.mjs` (via the TS service bridge). Avoids re-deriving
+  // the same DatabaseSync({ readOnly: true }) + integrity_check sequence in
+  // two places and keeps the "what counts as healthy" semantics in one file.
+  try {
+    const probe = await probeDbIntegrity(dbPath);
+    if (probe.ok) {
+      return { name: 'Memory DB Integrity', status: 'pass', message: 'PRAGMA integrity_check: ok' };
+    }
+    const message = probe.openFailed
+      ? 'Unable to probe DB (readonly open failed — likely deep corruption)'
+      : `${probe.errors} integrity violation(s) detected`;
+    return {
+      name: 'Memory DB Integrity',
+      status: 'fail',
+      message,
+      fix: 'flo healer --fix -c memory-db-integrity',
+    };
+  } catch (e) {
+    // The probe itself maps "readonly open failed" to `openFailed: true`
+    // and we surface that as `fail` above. Reaching the catch means the
+    // probe *module* couldn't be loaded — `findMofloPackageRoot()` returned
+    // null (broken install / wrong cwd) or the dynamic import threw. Both
+    // are first-class diagnostic failures — a broken install must not be
+    // silently downgraded to `warn` and hidden from the healer summary.
+    return {
+      name: 'Memory DB Integrity',
+      status: 'fail',
+      message: `Integrity probe unavailable: ${errorDetail(e)}`,
+      fix: 'flo healer --fix -c memory-db-integrity',
+    };
+  }
 }
 
 /**

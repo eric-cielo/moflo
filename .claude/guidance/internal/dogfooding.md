@@ -85,7 +85,101 @@ Features must work from the installed location (consumer perspective), not from 
 
 ---
 
-## Smoke Harness Reality
+## Delivering Changes That Work Both Local AND Installed
+
+Every non-trivial change has to clear three resolution problems that recur in this codebase because of the dogfood loop. Each has a canonical pattern; getting the pattern wrong produces "works locally, broken in `node_modules/moflo/`" bugs or vice versa.
+
+### 1. Three distinct "roots" — pick the right one, use the right resolver
+
+| What you want | Resolver | Use when |
+|---|---|---|
+| Consumer's project root (where the user's `.moflo/`, `package.json`, source tree live) | `findProjectRoot()` — JS: `bin/lib/moflo-paths.mjs`; TS: `services/project-root.ts` | bin/*.mjs scripts or TS code that needs to write to the *consumer's* state |
+| MoFlo *package* root (where moflo's own `bin/`, `dist/`, `package.json` live — in dogfood that's the repo; in a consumer install that's `node_modules/moflo/`) | `findMofloPackageRoot()` from `src/cli/services/moflo-require.ts` | TS code that needs to load a moflo-shipped file (e.g. importing a `bin/lib/*.mjs` module from a TS module under `dist/src/cli/...`) |
+| Sibling script in the same `bin/` directory | Candidate list across `__dirname`, `<projectRoot>/node_modules/moflo/bin/`, `<projectRoot>/.claude/scripts/` — see `consumer-project-paths.md` | bin/*.mjs scripts that spawn other bin/*.mjs scripts |
+
+The three are distinct because they answer different questions: "where is the user's work?" vs "where is MY code installed?" vs "where is my sibling on disk?" Conflating them is the source of most install-vs-local breakage.
+
+### 2. Anti-pattern: hardcoded `../../../../` paths in TS that crosses into `bin/`
+
+```ts
+// ❌ WRONG — depth differs between TS source and compiled dist
+const repairUrl = new URL('../../../../bin/lib/db-repair.mjs', import.meta.url);
+
+// ✅ CORRECT — works in all three contexts (dogfood TS / dist / consumer install)
+const root = findMofloPackageRoot();
+if (!root) throw new Error('moflo package root not found');
+const repairUrl = pathToFileURL(join(root, 'bin', 'lib', 'db-repair.mjs')).href;
+```
+
+The depths don't match between source and dist:
+
+| Context | `import.meta.url` for `services/foo.ts` | Up 4 levels |
+|---|---|---|
+| Dogfood TS source (vitest) | `<repo>/src/cli/services/foo.ts` | `<repo>/..` ← **wrong**, overshoots |
+| Compiled dist (CLI runtime) | `<repo>/dist/src/cli/services/foo.js` | `<repo>` ← correct |
+| Consumer install | `node_modules/moflo/dist/src/cli/services/foo.js` | `node_modules/moflo` ← correct |
+
+The TS source tree is one level shallower than dist (`src/cli/services/` vs `dist/src/cli/services/`), so any fixed-depth `../` walk that's tuned for dist hits a different parent in vitest. Test suites that don't actually invoke the loader (e.g. tests that just check return shape, accepting both success and failure outcomes) silently pass over this bug — it surfaces only when a new test checks the *outcome* of the actual load. This bit us in #1126 — caught by the doctor-integrity test that explicitly required a healthy DB to report `pass`.
+
+**Always use `findMofloPackageRoot()`** when a `.ts` module needs to locate any `.mjs` / `.js` file outside the same compile unit.
+
+### 3. Three sync layers — match the new file's layer, no manual list
+
+When adding a new file, check which layer it falls into:
+
+| File location | Ships via | Sync requirement |
+|---|---|---|
+| `src/cli/**/*.ts` | `dist/src/cli/**/*.js` (auto, after `tsc`) | None — `package.json` `files` glob covers it |
+| `bin/*.mjs` (top level) | `bin/**` glob | **YES — add to `scriptFiles[]` in three places** (`bin/session-start-launcher.mjs` + `.claude/scripts/session-start-launcher.mjs` + `auto-update.test.ts`) — see `feedback_scriptfiles_sync.md` |
+| `bin/lib/*.mjs` | `bin/**` glob | None — launcher's §3 sync recursively `readdirSync(libSrcDir)` picks it up automatically |
+| `bin/migrations/**` | `bin/**` glob | None — recursive sync |
+| `.claude/skills/**/*.md` | `.claude/skills/**/*.md` glob | None |
+| `.claude/guidance/shipped/**` | `.claude/guidance/shipped/**` glob | None (internal/ does NOT ship) |
+| `.claude/helpers/**` | `.claude/helpers/**` glob | None |
+
+The `scriptFiles[]` array hazard is the most common foot-gun because it's the only layer with a hand-maintained list. Everything else uses globs or `readdirSync`.
+
+### 4. Round-trip cost — does the change need publish+reinstall to take effect locally?
+
+| Change touches | Visible to dogfood after |
+|---|---|
+| Tests, internal helpers (anything not in the listed surfaces) | `npm test` / file save |
+| Build tooling (`tsc` config, `package.json` scripts) | `npm run build` |
+| `dist/src/cli/**` consumed by `flo` CLI subprocess (`npx moflo ...`) | `npm run build` — the subprocess loads fresh dist |
+| `bin/*.mjs` consumed by `flo` CLI subprocess | Source edit — subprocess re-resolves from disk |
+| `bin/session-start-launcher.mjs` / hook handlers / MCP server / daemon | **publish + `npm install`** — Claude Code only re-loads these at session start, and our dev daemon was spawned at *previous* session start from `node_modules/moflo/` |
+| `.claude/skills/**/*.md` (the skill itself) | Reload the skill / next `Skill` tool invocation |
+
+Two consequences:
+
+- **Mid-session you and the daemon disagree on the code.** A `flo healer --fix` you just edited will use the new source via the subprocess CLI — but the MCP server the same session is talking to was loaded from `node_modules/moflo/` and still has the old code. If a fix depends on both, you have to publish + reinstall + restart Claude Code before you can test the integrated behavior. (See `feedback_dogfood_install_vs_source.md` and `feedback_moflo_dogfood_dual_context.md` in auto-memory.)
+- **"Works on my machine after edit" doesn't prove consumer-safety.** Until you `npm pack` + install into a temp consumer dir (or just `/publish` to npm and reinstall), you've only verified that source-tree-resolution worked. The consumer-install resolution is a separate test the smoke harness performs.
+
+### 5. Test isolation: writes through cached project root
+
+The bridge module caches the project root at first import. If a vitest test exercises `memory_store` while `CLAUDE_PROJECT_DIR` still points at the real moflo repo, the test's writes to its temp DB land correctly *but* the cache-sidecar writers (`writeVectorStatsCache` in `memory-initializer.ts:2093`, `refreshVectorStatsCache` in `bridge-core.ts`) write to the *real* `.moflo/vector-stats.json` with the test's row count (often 1).
+
+Symptom: statusline briefly flashes a tiny embedding count (e.g. `Vectors ●1` instead of `●3576`) during a test run, then self-heals as the daemon's next `memory_store` rewrites the cache to truth.
+
+Consumer impact: zero — consumers don't run our vitest suite. But locally it's confusing and can make a stable statusline look broken. The fix isn't in code; it's in test isolation:
+
+- Tests that touch `memory_store` MUST redirect `CLAUDE_PROJECT_DIR` to a temp dir AND reset the bridge module's cached root (see `doctor-checks-memory-access.test.ts:42-53` `resetDistBridgeState()` pattern).
+- The anti-clobber guard in `bridge-core.ts:703` only short-circuits *all-zero* writes. Single-row test writes sail through. Tightening that guard is a real follow-up but out of scope for individual feature PRs.
+
+### 6. Cross-platform primitives — established conventions
+
+Match existing patterns rather than reinventing:
+
+- **Cross-process daemon stop**: `process.kill(pid, 'SIGTERM')`. Node maps `SIGTERM` to `TerminateProcess` on Windows; same effective behavior as POSIX. Used by `Daemon Version Skew` fix and `memory-db-integrity-repair.ts`.
+- **Atomic file swap**: `renameSync(src, dst)`. POSIX-atomic; on Windows it maps to `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`. Used by `atomic-file-write.ts` and `db-repair.mjs:atomicSwap()`.
+- **Filesystem-safe timestamps**: `new Date().toISOString().replace(/[:.]/g, '-').replace(/Z$/, '')` — strips `:` (illegal on Windows) and trailing `Z`.
+- **No POSIX-only shell-outs**: no `lsof`, `kill`, `chmod` — everything routes through `node:fs`, `node:sqlite`, `process.kill`.
+
+Before merging, audit any new code that opens files, spawns processes, or stops daemons against these primitives.
+
+---
+
+
 
 `harness/consumer-smoke/` packs the working tree, installs it into a temp consumer dir, and exercises the Claude-Code-facing surface. The harness is the single source of truth for whether a change is consumer-safe — but the dogfood loop makes it diverge from CI in two specific ways unless we pin them.
 

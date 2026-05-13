@@ -268,15 +268,51 @@ try {
 try {
   const repair = await repairMemoryDbIfCorrupt(projectRoot);
   if (repair?.repaired) {
-    emitMutation(
-      'repaired memory db index',
-      `${plural(repair.errors, 'index error')} fixed via REINDEX`,
-    );
+    // Three recovery tiers, three messages. Tier surfaces what level of
+    // damage the DB had so the user (and any downstream telemetry) knows
+    // whether row data was lost. See bin/lib/db-repair.mjs for the cascade.
+    if (repair.tier === 'reindex') {
+      emitMutation(
+        'repaired memory db index',
+        `${plural(repair.errors, 'index error')} fixed via REINDEX`,
+      );
+    } else if (repair.tier === 'vacuum') {
+      emitMutation(
+        'rebuilt memory db',
+        `${plural(repair.errors, 'integrity violation')} fixed via VACUUM INTO; corrupt original kept at ${repair.corruptBackup ?? '.moflo/moflo.db.corrupt.*'}`,
+      );
+    } else if (repair.tier === 'salvage') {
+      // Row-level salvage may have dropped rows; summarise loss so the
+      // user sees what's gone before downstream consumers (indexer,
+      // embeddings) re-process the survivors.
+      let lossSummary = '';
+      if (repair.lossStats) {
+        const losses = Object.entries(repair.lossStats)
+          .map(([tbl, s]) => {
+            const lost = Math.max(0, s.read - s.written);
+            return lost > 0 ? `${tbl} ${s.written}/${s.read}` : null;
+          })
+          .filter(Boolean);
+        if (losses.length > 0) lossSummary = ` (rows preserved: ${losses.join(', ')})`;
+      }
+      emitMutation(
+        'salvaged memory db',
+        `${plural(repair.errors, 'integrity violation')} recovered via row-level salvage${lossSummary}; corrupt original kept at ${repair.corruptBackup ?? '.moflo/moflo.db.corrupt.*'}`,
+      );
+    } else {
+      // Older db-repair without a `tier` field — fall back to legacy text.
+      emitMutation(
+        'repaired memory db',
+        `${plural(repair.errors, 'integrity violation')} fixed`,
+      );
+    }
   } else if (repair?.persistent) {
     // Surface to stderr — Claude additionalContext + the user both see this.
-    // Manual `flo memory rebuild-index` is the next step.
+    // Every recovery tier exhausted; user options are destructive only.
     process.stderr.write(
-      `moflo: memory db has ${plural(repair.errors, 'index error')} REINDEX could not fix — run 'flo memory rebuild-index'\n`,
+      `moflo: memory db has ${plural(repair.errors, 'integrity violation')} ` +
+      `that REINDEX / VACUUM INTO / row-level salvage could not fix — ` +
+      `run 'flo memory rebuild-index' (destructive) or restore from backup\n`,
     );
   }
 } catch {

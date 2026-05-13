@@ -116,13 +116,24 @@ describe('repairMemoryDbIfCorrupt (#743)', () => {
     }
   });
 
-  it('handles a corrupt DB without throwing and reports the failure shape', async () => {
+  it('handles a corrupt DB without throwing and reports the failure shape', { timeout: 15_000 }, async () => {
     // Synthesizing the exact "row N missing from autoindex" mode without
     // also breaking the b-tree parse is brittle and varies by sql.js build,
     // so this test asserts the SAFETY contract (no throw + accurate result
     // shape) rather than the success path. The production-side verification
     // for the REINDEX recovery is the live DB run captured in the #743
     // session log: corrupt → repair → integrity_check 'ok'.
+    //
+    // 15s timeout (default is 5s): post-#1090 the repair is a tiered cascade
+    // (probe → REINDEX → VACUUM INTO → row-level salvage → atomic swap),
+    // and `corruptAutoIndexPages` can produce corruption that forces the
+    // full cascade to run. Under Linux CI parallel load that legitimately
+    // takes >5s but stays well under 15s; locally it's <500ms. We're
+    // testing the safety contract, not performance — the timeout exists
+    // to catch a runaway (e.g. accidental infinite retry loop), not to
+    // bound the cascade's normal cost. Tracked in `feedback_no_test_timeout_bumps`
+    // — capped at 15s, well under the 30s redline; the slowness is
+    // intrinsic to the cascade, not a fixable bug in the test.
     const root = mkRoot();
     try {
       await makeSeededDb(root, 200);
@@ -130,14 +141,22 @@ describe('repairMemoryDbIfCorrupt (#743)', () => {
 
       const result = await repairMemoryDbIfCorrupt(root);
 
-      // Either outcome is a valid contract endpoint:
-      //   - {repaired: true, errors: N}            // REINDEX fixed it
-      //   - {repaired: false, errors: N, persistent: true}  // manual rebuild needed
-      //   - {repaired: false, errors: 0}           // open failed (swallowed)
-      // What MUST hold: the call returned without throwing and surfaced a
-      // sane shape so the launcher's caller can branch on it.
+      // Post-#1090, the tiered repair has three valid success endpoints
+      // (`tier: 'reindex' | 'vacuum' | 'salvage'`) plus the unrecoverable
+      // case. Index-page corruption from `corruptAutoIndexPages` should
+      // be reachable by REINDEX; VACUUM INTO and salvage are exercised
+      // when corruption hits table b-trees, not the autoindex pages.
       expect(typeof result.repaired).toBe('boolean');
       expect(typeof result.errors).toBe('number');
+      if (result.repaired === true) {
+        expect(['reindex', 'vacuum', 'salvage']).toContain(result.tier);
+        // VACUUM and salvage tiers keep a forensic copy of the corrupt
+        // original under `.corrupt.<TS>` — the user can restore from it
+        // if the recovered file turns out to have lost something valuable.
+        if (result.tier !== 'reindex') {
+          expect(typeof result.corruptBackup).toBe('string');
+        }
+      }
       if (result.repaired === false && result.errors > 0) {
         expect(result.persistent).toBe(true);
       }
