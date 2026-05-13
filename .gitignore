@@ -30,6 +30,7 @@
 *$py.class
 *.db
 *.db-journal
+*.db-shm
 *.db-wal
 *.egg
 *.egg-info/
@@ -43,6 +44,7 @@
 *.so
 *.sqlite
 *.sqlite-journal
+*.sqlite-shm
 *.sqlite-wal
 *.swo
 *.swp
@@ -142,9 +144,11 @@ claude-flow.config.json
 /coordination/orchestration/*
 *.db
 *.db-journal
+*.db-shm
 *.db-wal
 *.sqlite
 *.sqlite-journal
+*.sqlite-shm
 *.sqlite-wal
 claude-flow
 # Removed Windows wrapper files per user request
