@@ -53,18 +53,17 @@ function insert(
   id: string,
   model: string | null,
   hasEmbedding: boolean,
+  namespace = 'default',
 ): void {
+  // Explicitly pass NULL when model is null — omitting the column would let
+  // the schema default ('local') kick in, which is a different code path.
+  // The bridge writes intentional ephemeral rows with NULL bound, so the
+  // test must mirror that.
   const embedding = hasEmbedding ? JSON.stringify([0.1, 0.2]) : null;
-  if (model === null) {
-    db.prepare(
-      `INSERT INTO memory_entries (id, key, content, embedding) VALUES (?, ?, ?, ?)`,
-    ).run(id, `k-${id}`, `content-${id}`, embedding);
-  } else {
-    db.prepare(
-      `INSERT INTO memory_entries (id, key, content, embedding, embedding_model)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).run(id, `k-${id}`, `content-${id}`, embedding, model);
-  }
+  db.prepare(
+    `INSERT INTO memory_entries (id, key, namespace, content, embedding, embedding_model)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(id, `k-${id}`, namespace, `content-${id}`, embedding, model);
 }
 
 describe('checkEmbeddingHygiene (#651)', () => {
@@ -155,6 +154,39 @@ describe('checkEmbeddingHygiene (#651)', () => {
 
     const result = await checkEmbeddingHygiene();
     expect(result.status).toBe('pass');
+  });
+
+  it('ignores intentional ephemeral-namespace NULL rows (#729 carve-out)', async () => {
+    // Per bridge-embedder.ts, ephemeral namespaces (tasklist, hive-mind,
+    // epic-state, test-bridge-fix) skip embedding generation and land with
+    // both `embedding` and `embedding_model` NULL. The hygiene check
+    // must not flag them as "unrecognised embedding_model" — otherwise
+    // every spell run re-trips the warning on the next publish.
+    seedDb((db) => {
+      insert(db, 'a', CANONICAL_EMBEDDING_MODEL, true, 'default');
+      insert(db, 'b', null, false, 'tasklist');
+      insert(db, 'c', null, false, 'hive-mind');
+      insert(db, 'd', null, false, 'epic-state');
+    });
+
+    const result = await checkEmbeddingHygiene();
+    expect(result.status).toBe('pass');
+    expect(result.message).not.toContain('unrecognised');
+  });
+
+  it('still warns on NULL embedding_model in non-ephemeral namespaces', async () => {
+    // Carve-out is scoped: NULL embedding_model in a regular namespace
+    // remains "unrecognised" because it's a write-path bug, not the
+    // intentional #729 marker.
+    seedDb((db) => {
+      insert(db, 'a', CANONICAL_EMBEDDING_MODEL, true, 'default');
+      insert(db, 'b', null, false, 'learnings');
+    });
+
+    const result = await checkEmbeddingHygiene();
+    expect(result.status).toBe('warn');
+    expect(result.message).toContain('unrecognised embedding_model');
+    expect(result.message).toContain('NULL=1');
   });
 
   it('ignores archived rows (status != active)', async () => {

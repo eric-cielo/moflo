@@ -16,6 +16,13 @@
  *      vectors. The Story-2 self-healing migration converges every active
  *      row on the canonical label; this check verifies it actually did.
  *
+ * Story #729 carve-out: ephemeral-namespace rows (tasklist, hive-mind,
+ * epic-state, test-bridge-fix, plus EPHEMERAL_NAMESPACE_PREFIXES) are
+ * intentionally written with `embedding IS NULL AND embedding_model IS
+ * NULL`. They are excluded from the count so they don't trip branch (4)
+ * "unrecognised embedding_model" on every publish — see bridge-embedder.ts
+ * for the writer-side rationale.
+ *
  * Lives next to the doctor command rather than in `doctor.ts` to keep that
  * file under the 500-line decomposition target.
  *
@@ -28,6 +35,10 @@ import { existsSync } from 'fs';
 import { CANONICAL_EMBEDDING_MODEL } from '../embeddings/migration/types.js';
 import { memoryDbCandidatePaths } from '../services/moflo-paths.js';
 import { openDaemonDatabase } from '../memory/daemon-backend.js';
+import {
+  EPHEMERAL_NAMESPACES,
+  EPHEMERAL_NAMESPACE_PREFIXES,
+} from '../memory/bridge-embedder.js';
 
 export interface HealthCheck {
   name: string;
@@ -185,24 +196,52 @@ async function loadModelGroups(dbPath: string): Promise<ModelGroup[] | null> {
     }
     if (!hasSchema) return [];
 
-    const groups: ModelGroup[] = [];
-    const result = db.exec(
-      `SELECT
+    // Story #729: ephemeral-namespace rows (tasklist, hive-mind, epic-state,
+    // …) are intentionally written with `embedding IS NULL AND
+    // embedding_model IS NULL`. Without this exclusion every spell run that
+    // logs to `tasklist` re-trips branch (4) "unrecognised embedding_model"
+    // on the next publish, even though the writer is doing the right thing.
+    const ephemeralNames = [...EPHEMERAL_NAMESPACES];
+    const ephemeralPrefixes = [...EPHEMERAL_NAMESPACE_PREFIXES];
+    const matchClauses: string[] = [];
+    const params: unknown[] = [];
+    if (ephemeralNames.length > 0) {
+      matchClauses.push(`namespace IN (${ephemeralNames.map(() => '?').join(', ')})`);
+      params.push(...ephemeralNames);
+    }
+    for (const prefix of ephemeralPrefixes) {
+      matchClauses.push(`namespace LIKE ?`);
+      params.push(`${prefix}%`);
+    }
+    const ephemeralExclusion = matchClauses.length > 0
+      ? `AND NOT (embedding IS NULL AND embedding_model IS NULL AND (${matchClauses.join(' OR ')}))`
+      : '';
+
+    const sql = `SELECT
          COALESCE(embedding_model, 'NULL') AS model,
          COUNT(*) AS n,
          SUM(CASE WHEN embedding IS NULL THEN 1 ELSE 0 END) AS null_count
        FROM memory_entries
        WHERE status = 'active'
-       GROUP BY model`,
-    );
-    if (!result || result.length === 0) return [];
-    const rows = result[0]?.values ?? [];
-    for (const row of rows) {
-      groups.push({
-        model: String(row[0]),
-        count: Number(row[1]),
-        hasNullEmbedding: Number(row[2]) > 0,
-      });
+       ${ephemeralExclusion}
+       GROUP BY model`;
+
+    const groups: ModelGroup[] = [];
+    const stmt = db.prepare(sql);
+    try {
+      stmt.bind(params);
+      while (stmt.step()) {
+        const row = stmt.get();
+        if (Array.isArray(row)) {
+          groups.push({
+            model: String(row[0]),
+            count: Number(row[1]),
+            hasNullEmbedding: Number(row[2]) > 0,
+          });
+        }
+      }
+    } finally {
+      stmt.free();
     }
     return groups;
   } finally {
