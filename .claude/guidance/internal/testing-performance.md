@@ -50,6 +50,38 @@ We don't have "known flaky tests" in moflo. Either a test is fixed or it's not i
 
 ---
 
+## 5. Daemon-routing test contract (post-#1078)
+
+**`vitest.setup.ts` defaults `MOFLO_DISABLE_DAEMON_ROUTING=1` for the suite. Tests that need to exercise the routing preamble opt in explicitly inside `beforeEach`.** This is the contract — never invert it.
+
+Post-#1078 (sql.js → node:sqlite + WAL), the daemon-routing chokepoint is **architecturally optional**: SQLite's page-level locks + WAL make concurrent direct writes safe, so routing is no longer load-bearing for durability. The global default exists for one reason only: the routing preamble's 5 s health cache + 100 ms HTTP probe creates timing variance that flakes unrelated tests (e.g. `doctor-checks-memory-access` on Linux CI). Issue #1066 evaluated this and confirmed coverage is adequate — closed not by deletion of the preamble or the flag, but by the opt-in contract codified below.
+
+### Routing test ownership
+
+Every `tryDaemon{Store,Delete,Get,Search,List}` call site in `src/cli/memory/memory-initializer.ts` is covered by a dedicated test. If you add a new routing call site, add the matching cases in `store-entry-routing.test.ts` before merging.
+
+| Test file | Layer | Scope |
+|-----------|-------|-------|
+| `src/cli/__tests__/memory/store-entry-routing.test.ts` | unit | All 5 routing functions × all 4 skip conditions (`MOFLO_IS_DAEMON`, `MOFLO_DISABLE_DAEMON_ROUTING`, custom `dbPath`, daemon unreachable) + success path + idempotency guard against a fake HTTP daemon |
+| `tests/system/daemon-fallback-cross-process-1063.test.ts` | system | Real subprocesses + fault-injected daemon; `always-fail` and `mixed-persist` modes — proves bridge-direct fallback is durable under concurrency |
+| `tests/system/multi-process-write-visibility.test.ts` | system | Cross-process write E2E against fake daemon; spawns dist-loaded subprocesses |
+| `tests/system/mcp-memory-roundtrip.test.ts` | system | Cross-process read+write round-trip; configurable per-spawn `disableRouting` |
+| `src/cli/__tests__/memory/bridge-mtime-coherence.test.ts` | unit | Explicitly toggles routing OFF to test the bridge mtime-coherence layer in isolation |
+
+### How a routing-aware test opts in
+
+```ts
+beforeEach(() => {
+  delete process.env.MOFLO_DISABLE_DAEMON_ROUTING; // opt INTO routing
+  delete process.env.MOFLO_IS_DAEMON;
+  process.env.MOFLO_DAEMON_PORT = String(fakeDaemonPort);
+});
+```
+
+For subprocess writers, pass `MOFLO_DISABLE_DAEMON_ROUTING: ''` and `MOFLO_IS_DAEMON: ''` in the spawn `env` to override the parent's defaults (see `daemon-fallback-cross-process-1063.test.ts:237–238` for the canonical pattern).
+
+---
+
 ## See Also
 
 - `.claude/guidance/internal/testing-sandboxing.md` — Sibling test-discipline doc: sandbox tests have their own three-layer verification rule. Same posture: unit tests are not enough.
