@@ -11,8 +11,40 @@ import {
   findZombieProcesses,
   formatZombieDetail,
   killTrackedProcesses,
+  type ZombieDetail,
 } from './doctor-zombies.js';
 import type { CheckFn, HealthCheck } from './doctor-types.js';
+
+/**
+ * Issue #1122: action flags (`--fix`, `--install`, `--kill-zombies`) must
+ * honor the JSON-output contract. These types describe the post-fix payload
+ * the JSON document carries so automation (e.g. the shipped `/healer` skill)
+ * can tell what changed without re-parsing prose.
+ */
+export interface FixOutcome {
+  name: string;
+  applied: boolean;
+  error?: string;
+}
+
+export interface AutoFixResult {
+  fixesApplied: FixOutcome[];
+  /** Re-evaluated checks when at least one fix succeeded; null when nothing was applied. */
+  reEvaluated: HealthCheck[] | null;
+}
+
+export interface KillZombiesResult {
+  registryKilled: number;
+  found: number;
+  killed: number;
+  details: ZombieDetail[];
+}
+
+export interface ClaudeCodeInstallResult {
+  attempted: boolean;
+  installed: boolean;
+  postCheck?: HealthCheck;
+}
 
 export function formatCheck(check: HealthCheck): string {
   const icon = check.status === 'pass' ? output.success('✓') :
@@ -31,12 +63,21 @@ function tally(results: HealthCheck[]): SummaryCounts {
   };
 }
 
-export async function runKillZombiesBanner(): Promise<void> {
-  output.writeln(output.bold('Zombie Process Scan'));
-  output.writeln();
+/**
+ * Run the kill-zombies scan, with optional rendering. Issue #1122: in JSON
+ * mode the prose banner would corrupt the single-document contract, so the
+ * caller passes `silent: true` and surfaces the structured result inside the
+ * JSON payload instead.
+ */
+export async function runKillZombies(opts: { silent?: boolean } = {}): Promise<KillZombiesResult> {
+  const silent = !!opts.silent;
+  if (!silent) {
+    output.writeln(output.bold('Zombie Process Scan'));
+    output.writeln();
+  }
 
   const registryKilled = killTrackedProcesses();
-  if (registryKilled > 0) {
+  if (!silent && registryKilled > 0) {
     output.writeln(output.success(`  Killed ${registryKilled} tracked background process(es) from registry`));
   }
 
@@ -44,42 +85,62 @@ export async function runKillZombiesBanner(): Promise<void> {
   const result = await findZombieProcesses(true);
   const found = result.details.length;
 
-  if (found === 0) {
-    if (registryKilled === 0) {
-      output.writeln(output.success('  No orphaned moflo processes found'));
+  if (!silent) {
+    if (found === 0) {
+      if (registryKilled === 0) {
+        output.writeln(output.success('  No orphaned moflo processes found'));
+      }
+    } else {
+      output.writeln(output.warning(`  Found ${found} additional orphaned process(es):`));
+      for (const d of result.details) {
+        output.writeln(output.dim(`    ${formatZombieDetail(d)}`));
+      }
+      if (result.killed > 0) {
+        output.writeln(output.success(`  Killed ${result.killed} zombie process(es)`));
+      }
+      if (result.killed < found) {
+        output.writeln(output.warning(`  ${found - result.killed} process(es) could not be killed`));
+      }
     }
-  } else {
-    output.writeln(output.warning(`  Found ${found} additional orphaned process(es):`));
-    for (const d of result.details) {
-      output.writeln(output.dim(`    ${formatZombieDetail(d)}`));
-    }
-    if (result.killed > 0) {
-      output.writeln(output.success(`  Killed ${result.killed} zombie process(es)`));
-    }
-    if (result.killed < found) {
-      output.writeln(output.warning(`  ${found - result.killed} process(es) could not be killed`));
-    }
+
+    output.writeln();
+    output.writeln(output.dim('─'.repeat(50)));
+    output.writeln();
   }
 
-  output.writeln();
-  output.writeln(output.dim('─'.repeat(50)));
-  output.writeln();
+  return { registryKilled, found, killed: result.killed, details: result.details };
 }
 
 interface JsonOutputOpts {
   results: HealthCheck[];
   strict: boolean;
   allowWarnList: string[];
+  /** Issue #1122: per-fix outcomes when --fix ran on the JSON path. */
+  fixesApplied?: FixOutcome[];
+  /** Issue #1122: --kill-zombies scan summary when that flag was passed. */
+  zombieScan?: KillZombiesResult;
+  /** Issue #1122: --install outcome when that flag was passed. */
+  claudeCodeInstall?: ClaudeCodeInstallResult;
 }
 
 /**
  * Issue #818: machine-readable output. Emits a single JSON document with
  * per-check fields (and any FunctionalCheckDetail entries from the swarm/
- * hive checks) and exits with the right code. Skips auto-fix entirely —
- * --json is read-only by intent so CI gates can consume it without
- * mutating the working tree.
+ * hive checks) and exits with the right code.
+ *
+ * Issue #1122: action flags (`--fix`, `--install`, `--kill-zombies`) now run
+ * before this is called and their outcomes are passed in so automation can
+ * tell what changed without re-parsing prose. `results` reflects post-fix
+ * state when `fixesApplied` includes any successful fix.
  */
-export function emitJsonOutput({ results, strict, allowWarnList }: JsonOutputOpts): CommandResult {
+export function emitJsonOutput({
+  results,
+  strict,
+  allowWarnList,
+  fixesApplied,
+  zombieScan,
+  claudeCodeInstall,
+}: JsonOutputOpts): CommandResult {
   const { passed, warnings, failed } = tally(results);
 
   const allowSet = new Set(allowWarnList);
@@ -89,24 +150,46 @@ export function emitJsonOutput({ results, strict, allowWarnList }: JsonOutputOpt
 
   const exitCode = failed > 0 || strictWarningFailures.length > 0 ? 1 : 0;
 
-  process.stdout.write(JSON.stringify({
+  const payload: {
+    summary: SummaryCounts;
+    strict: { strictMode: true; warningsTriggeringFail: string[] } | { strictMode: false };
+    results: HealthCheck[];
+    fixesApplied?: FixOutcome[];
+    zombieScan?: KillZombiesResult;
+    claudeCodeInstall?: ClaudeCodeInstallResult;
+  } = {
     summary: { passed, warnings, failed },
     strict: strict ? { strictMode: true, warningsTriggeringFail: strictWarningFailures } : { strictMode: false },
     results,
-  }, null, 2) + '\n');
+  };
+  if (fixesApplied !== undefined) payload.fixesApplied = fixesApplied;
+  if (zombieScan !== undefined) payload.zombieScan = zombieScan;
+  if (claudeCodeInstall !== undefined) payload.claudeCodeInstall = claudeCodeInstall;
+
+  process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
 
   return { success: exitCode === 0, exitCode, data: { passed, warnings, failed, results } };
 }
 
-/** Re-runs Claude Code CLI install + check if --install was passed and the prior result wasn't pass. */
+/**
+ * Re-runs Claude Code CLI install + check if --install was passed and the
+ * prior result wasn't pass. Issue #1122: accepts `{silent}` so the JSON path
+ * runs the install without writing prose to the corrupted stdout, and
+ * returns a structured outcome for inclusion in the JSON document.
+ */
 export async function maybeAutoInstallClaudeCode(
   results: HealthCheck[],
   fixes: string[],
-): Promise<void> {
+  opts: { silent?: boolean } = {},
+): Promise<ClaudeCodeInstallResult> {
+  const silent = !!opts.silent;
   const claudeCodeResult = results.find(r => r.name === 'Claude Code CLI');
-  if (!claudeCodeResult || claudeCodeResult.status === 'pass') return;
+  if (!claudeCodeResult || claudeCodeResult.status === 'pass') {
+    return { attempted: false, installed: false };
+  }
   const installed = await installClaudeCode();
-  if (!installed) return;
+  if (!installed) return { attempted: true, installed: false };
+
   const newCheck = await checkClaudeCode();
   const idx = results.findIndex(r => r.name === 'Claude Code CLI');
   if (idx !== -1) {
@@ -116,7 +199,8 @@ export async function maybeAutoInstallClaudeCode(
       fixes.splice(fixIdx, 1);
     }
   }
-  output.writeln(formatCheck(newCheck));
+  if (!silent) output.writeln(formatCheck(newCheck));
+  return { attempted: true, installed: true, postCheck: newCheck };
 }
 
 export function renderSummary(results: HealthCheck[]): SummaryCounts {
@@ -135,66 +219,86 @@ export function renderSummary(results: HealthCheck[]): SummaryCounts {
   return counts;
 }
 
-/** Auto-fix loop, including the post-fix re-run. Mutates `results` and `fixes` in place when fixes succeed. */
+/**
+ * Auto-fix loop, including the post-fix re-run. Mutates `results` and `fixes`
+ * in place when fixes succeed and returns a structured outcome.
+ *
+ * Issue #1122: accepts `{silent}` so the JSON path can run the same fix work
+ * without writing prose to a stubbed stdout, and emit `fixesApplied` +
+ * post-fix `results` from the returned data.
+ */
 export async function runAutoFix(
   results: HealthCheck[],
   fixes: string[],
   checksToRun: CheckFn[],
-): Promise<void> {
-  if (fixes.length === 0) return;
+  opts: { silent?: boolean } = {},
+): Promise<AutoFixResult> {
+  const silent = !!opts.silent;
+  if (fixes.length === 0) return { fixesApplied: [], reEvaluated: null };
 
-  output.writeln();
-  output.writeln(output.bold('Auto-fixing issues...'));
-  output.writeln();
+  if (!silent) {
+    output.writeln();
+    output.writeln(output.bold('Auto-fixing issues...'));
+    output.writeln();
+  }
 
   const fixableResults = results.filter(r => r.fix && (r.status === 'fail' || r.status === 'warn'));
-  let fixed = 0;
-  const unfixed: string[] = [];
+  const fixesApplied: FixOutcome[] = [];
 
   for (const check of fixableResults) {
     const success = await autoFixCheck(check);
-    if (success) {
-      fixed++;
-    } else {
-      unfixed.push(`${check.name}: ${check.fix}`);
+    fixesApplied.push({ name: check.name, applied: success });
+  }
+
+  const fixed = fixesApplied.filter(f => f.applied).length;
+  const unfixed = fixesApplied.filter(f => !f.applied);
+
+  if (!silent) {
+    if (fixed > 0) {
+      output.writeln();
+      output.writeln(output.success(`Auto-fixed ${fixed} issue${fixed > 1 ? 's' : ''}`));
+    }
+    if (unfixed.length > 0) {
+      output.writeln();
+      output.writeln(output.bold('Manual fixes needed:'));
+      for (const f of unfixed) {
+        const check = results.find(r => r.name === f.name);
+        output.writeln(output.dim(`  ${f.name}: ${check?.fix ?? ''}`));
+      }
     }
   }
 
-  if (fixed > 0) {
-    output.writeln();
-    output.writeln(output.success(`Auto-fixed ${fixed} issue${fixed > 1 ? 's' : ''}`));
-  }
-  if (unfixed.length > 0) {
-    output.writeln();
-    output.writeln(output.bold('Manual fixes needed:'));
-    for (const fix of unfixed) {
-      output.writeln(output.dim(`  ${fix}`));
-    }
-  }
+  if (fixed === 0) return { fixesApplied, reEvaluated: null };
 
-  if (fixed === 0) return;
+  const reSettled = await Promise.allSettled(checksToRun.map(check => check()));
+  const reEvaluated: HealthCheck[] = reSettled.map((sr) =>
+    sr.status === 'fulfilled'
+      ? sr.value
+      : { name: 'Check', status: 'fail' as const, message: (sr.reason as { message?: string } | undefined)?.message ?? 'Unknown error' },
+  );
 
-  output.writeln();
-  output.writeln(output.dim('Re-checking...'));
-  output.writeln();
-  const reResults = await Promise.allSettled(checksToRun.map(check => check()));
-  let rePassed = 0, reWarnings = 0, reFailed = 0;
-  for (const sr of reResults) {
-    if (sr.status === 'fulfilled') {
-      output.writeln(formatCheck(sr.value));
-      if (sr.value.status === 'pass') rePassed++;
-      else if (sr.value.status === 'warn') reWarnings++;
+  if (!silent) {
+    output.writeln();
+    output.writeln(output.dim('Re-checking...'));
+    output.writeln();
+    let rePassed = 0, reWarnings = 0, reFailed = 0;
+    for (const r of reEvaluated) {
+      output.writeln(formatCheck(r));
+      if (r.status === 'pass') rePassed++;
+      else if (r.status === 'warn') reWarnings++;
       else reFailed++;
     }
+    output.writeln();
+    output.writeln(output.dim('─'.repeat(50)));
+    const reSummary = [
+      output.success(`${rePassed} passed`),
+      reWarnings > 0 ? output.warning(`${reWarnings} warnings`) : null,
+      reFailed > 0 ? output.error(`${reFailed} failed`) : null,
+    ].filter(Boolean);
+    output.writeln(`After fix: ${reSummary.join(', ')}`);
   }
-  output.writeln();
-  output.writeln(output.dim('─'.repeat(50)));
-  const reSummary = [
-    output.success(`${rePassed} passed`),
-    reWarnings > 0 ? output.warning(`${reWarnings} warnings`) : null,
-    reFailed > 0 ? output.error(`${reFailed} failed`) : null,
-  ].filter(Boolean);
-  output.writeln(`After fix: ${reSummary.join(', ')}`);
+
+  return { fixesApplied, reEvaluated };
 }
 
 interface FinalizeOpts {
