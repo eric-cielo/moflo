@@ -18,7 +18,7 @@
  *   4. Confirm declined: original failure carried forward, store untouched.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -99,23 +99,47 @@ function spellWithGraphPrereq(): SpellDefinition {
 
 // Reusable env-restore guard so a failed assertion doesn't leak GRAPH_ACCESS_TOKEN
 // into other tests.
+//
+// #1093: hoist the tmpdir + CredentialStore to beforeAll. CredentialStore.unlock
+// runs PBKDF2 with 100k iterations synchronously; doing that 5x per test file in
+// `beforeEach` adds ~0.5–2 s of CPU per file under fork contention, pushing
+// individual tests past vitest's per-test ceiling. State is still scoped per
+// test — each test clears the stored credential in `afterEach`.
 let savedToken: string | undefined;
 let tmpDir: string;
 let store: CredentialStore;
 
-beforeEach(() => {
-  savedToken = process.env.GRAPH_ACCESS_TOKEN;
-  delete process.env.GRAPH_ACCESS_TOKEN;
+let originalDelete: CredentialStore['delete'];
+let originalStore: CredentialStore['store'];
+
+beforeAll(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'moflo-auth-e2e-'));
   store = new CredentialStore({
     filePath: join(tmpDir, 'credentials.json'),
     passphrase: 'test-passphrase-1234',
   });
+  originalDelete = store.delete.bind(store);
+  originalStore = store.store.bind(store);
 });
 
-afterEach(() => {
+beforeEach(() => {
+  savedToken = process.env.GRAPH_ACCESS_TOKEN;
+  delete process.env.GRAPH_ACCESS_TOKEN;
+});
+
+afterEach(async () => {
   if (savedToken === undefined) delete process.env.GRAPH_ACCESS_TOKEN;
   else process.env.GRAPH_ACCESS_TOKEN = savedToken;
+  // Restore any monkey-patched methods from the test body (the headline test
+  // wraps `delete` to simulate the user pasting a fresh token at the prompt).
+  store.delete = originalDelete;
+  store.store = originalStore;
+  // Per-test state: clear any credentials this test stored so the next test
+  // starts from an empty store. delete() is a no-op when the key isn't present.
+  try { await store.delete('GRAPH_ACCESS_TOKEN'); } catch { /* fine — may not exist */ }
+});
+
+afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 

@@ -45,34 +45,55 @@ const SECURITY_PATHS = [
   /(?:^|[\\\/])\.claude[\\\/]helpers[\\\/]gate/i,
 ];
 
-function safeExec(cmd) {
-  try { return execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }); }
-  catch { return ''; }
+function safeExec(cmd, opts) {
+  try {
+    return execSync(cmd, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      ...(opts && opts.cwd ? { cwd: opts.cwd } : {}),
+    });
+  } catch { return ''; }
 }
 
 // Detect the consumer's default branch. Hardcoding 'main' silently miscalibrates
 // classification on repos that use 'master', 'develop', etc. — empty diff →
 // TRIVIAL → gate stamps clean without any real review.
 let _cachedDefaultBranch = null;
-function detectDefaultBranch() {
-  if (_cachedDefaultBranch !== null) return _cachedDefaultBranch;
+function detectDefaultBranch(cwd) {
+  // Cache by cwd so tests probing multiple repos in-process don't return a
+  // single stale value; CLI use passes no cwd and benefits from the cache.
+  if (cwd === undefined && _cachedDefaultBranch !== null) return _cachedDefaultBranch;
+  const opts = cwd ? { cwd } : undefined;
 
   // Preferred: origin/HEAD points to whatever the remote considers default.
-  const symbolic = safeExec('git symbolic-ref --short refs/remotes/origin/HEAD').trim();
-  if (symbolic.startsWith('origin/')) return (_cachedDefaultBranch = symbolic.slice('origin/'.length));
+  const symbolic = safeExec('git symbolic-ref --short refs/remotes/origin/HEAD', opts).trim();
+  if (symbolic.startsWith('origin/')) {
+    const v = symbolic.slice('origin/'.length);
+    if (cwd === undefined) _cachedDefaultBranch = v;
+    return v;
+  }
 
   // Fallback: local init.defaultBranch (set by `git init -b <name>` or config).
-  const configured = safeExec('git config --get init.defaultBranch').trim();
-  if (configured) return (_cachedDefaultBranch = configured);
+  const configured = safeExec('git config --get init.defaultBranch', opts).trim();
+  if (configured) {
+    if (cwd === undefined) _cachedDefaultBranch = configured;
+    return configured;
+  }
 
   // Last resort: 'main' (most common modern default).
-  return (_cachedDefaultBranch = 'main');
+  if (cwd === undefined) _cachedDefaultBranch = 'main';
+  return 'main';
 }
 
-function readDiffFromGit(base) {
+function _resetCacheForTest() {
+  _cachedDefaultBranch = null;
+}
+
+function readDiffFromGit(base, cwd) {
+  const opts = cwd ? { cwd } : undefined;
   // Combined diff: committed-since-base + working-tree
-  const committed = safeExec(`git diff ${base}...HEAD`);
-  const working = safeExec('git diff HEAD');
+  const committed = safeExec(`git diff ${base}...HEAD`, opts);
+  const working = safeExec('git diff HEAD', opts);
   return committed + (working ? '\n' + working : '');
 }
 
@@ -206,9 +227,9 @@ function classifyDiff(diffText) {
   return decide(parseDiff(diffText));
 }
 
-function classifyFromGit(base) {
-  const resolved = base || detectDefaultBranch();
-  return classifyDiff(readDiffFromGit(resolved));
+function classifyFromGit(base, cwd) {
+  const resolved = base || detectDefaultBranch(cwd);
+  return classifyDiff(readDiffFromGit(resolved, cwd));
 }
 
 if (require.main === module) {
@@ -232,4 +253,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { parseDiff, decide, classifyDiff, classifyFromGit, detectDefaultBranch };
+module.exports = { parseDiff, decide, classifyDiff, classifyFromGit, detectDefaultBranch, _resetCacheForTest };

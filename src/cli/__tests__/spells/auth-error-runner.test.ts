@@ -16,7 +16,7 @@
  * test/host hook added alongside the recovery code.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { SpellCaster } from '../../spells/core/runner.js';
 import { StepCommandRegistry } from '../../spells/core/step-command-registry.js';
 import type {
@@ -124,10 +124,35 @@ function spellWithoutCredPrereq(stepType: string): SpellDefinition {
 // Setup
 // ============================================================================
 
+// #1093: hoist the registry AND warm the runner pipeline in beforeAll. The
+// first SpellCaster.run() in a fresh process pays a ~500 ms cold-start tax —
+// platform-sandbox detection, validator, prereq-checker, step-executor, etc.
+// all wake up. Those caches (_cachedDetection in platform-sandbox.ts) persist
+// for the rest of the file, so subsequent tests run in <2 ms. The warm-up
+// pays that tax inside beforeAll (default 10 s ceiling) instead of inside the
+// first test (5 s ceiling), which under fork contention is what tipped the
+// first test over the line.
 let registry: StepCommandRegistry;
 
-beforeEach(() => {
+beforeAll(async () => {
   registry = new StepCommandRegistry();
+
+  const warmCmd: StepCommand = {
+    type: '__warmup__',
+    description: 'pre-warm sandbox detection + runner pipeline',
+    configSchema: { type: 'object' as const },
+    validate: () => ({ valid: true, errors: [] }),
+    async execute() { return { success: true, data: {}, duration: 0 }; },
+    describeOutputs: () => [],
+  };
+  registry.register(warmCmd);
+  const warmRunner = new SpellCaster(registry, makeMockCredentials(), makeMemory());
+  await warmRunner.run({ name: 'warmup', steps: [{ id: 'w', type: '__warmup__', config: {} }] }, {});
+  registry.clear();
+});
+
+afterEach(() => {
+  registry.clear();
 });
 
 // ============================================================================
