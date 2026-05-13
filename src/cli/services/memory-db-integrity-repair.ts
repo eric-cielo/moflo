@@ -25,7 +25,9 @@
  */
 import { existsSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { getDaemonLockHolder, getDaemonLockPayload } from './daemon-lock.js';
+import { findMofloPackageRoot } from './moflo-require.js';
 
 export interface IntegrityRepairResult {
   /** True when the post-repair DB passes `PRAGMA integrity_check`. */
@@ -53,13 +55,57 @@ type JsRepairFn = (projectRoot: string) => Promise<{
   lossStats?: Record<string, { read: number; written: number; errors: number }>;
 }>;
 
-async function loadJsRepair(): Promise<JsRepairFn> {
-  // Compiled location: dist/src/cli/services/this.js → up 4 → package root,
-  // then bin/lib/db-repair.mjs. Identical relative layout in dogfood and
-  // node_modules/moflo/ installs.
-  const repairUrl = new URL('../../../../bin/lib/db-repair.mjs', import.meta.url);
-  const mod = (await import(repairUrl.href)) as { repairMemoryDbIfCorrupt: JsRepairFn };
-  return mod.repairMemoryDbIfCorrupt;
+type JsProbeFn = (dbPath: string) => Promise<{
+  ok: boolean;
+  errors: number;
+  openFailed?: boolean;
+}>;
+
+interface JsDbRepairModule {
+  repairMemoryDbIfCorrupt: JsRepairFn;
+  probeIntegrityRaw: JsProbeFn;
+}
+
+async function loadJsDbRepairModule(): Promise<JsDbRepairModule> {
+  // Resolve the JS module via the moflo package root walk so the path
+  // works identically in three contexts:
+  //   - Dogfood TS source (vitest): walks up from the .ts location to the
+  //     repo's package.json → joins `bin/lib/db-repair.mjs`
+  //   - Compiled dist (CLI runtime): walks up from dist/src/cli/services/
+  //     to package root → joins `bin/lib/db-repair.mjs`
+  //   - Consumer install: walks up from
+  //     node_modules/moflo/dist/src/cli/services/ to
+  //     node_modules/moflo/ → joins `bin/lib/db-repair.mjs`
+  // The previous `new URL('../../../../bin/lib/...', import.meta.url)` only
+  // worked in the dist context — source-tree depth is one level shallower
+  // so vitest hit "Cannot find module" on the wrong path.
+  const root = findMofloPackageRoot();
+  if (!root) {
+    throw new Error('moflo package root not found — cannot locate bin/lib/db-repair.mjs');
+  }
+  const repairPath = join(root, 'bin', 'lib', 'db-repair.mjs');
+  const repairUrl = pathToFileURL(repairPath).href;
+  return (await import(repairUrl)) as JsDbRepairModule;
+}
+
+/**
+ * Probe `.moflo/moflo.db` for corruption without WAL pragmas — the readonly
+ * raw-DatabaseSync open that bypasses the openBackend code path which itself
+ * throws on corrupt files (pre-#1090's silent-"healthy"-reporting bug).
+ *
+ * Single source of truth: delegates to {@link
+ * "../../../bin/lib/db-repair.mjs".probeIntegrityRaw}. Callers in the TS tree
+ * (currently `checkMemoryDbIntegrity` doctor check) should use this rather
+ * than re-deriving the readonly+no-PRAGMAs probe so the implementation
+ * stays in one place.
+ */
+export async function probeDbIntegrity(dbPath: string): Promise<{
+  ok: boolean;
+  errors: number;
+  openFailed?: boolean;
+}> {
+  const mod = await loadJsDbRepairModule();
+  return mod.probeIntegrityRaw(dbPath);
 }
 
 /**
@@ -111,8 +157,8 @@ export async function repairMemoryDbIntegrity(
   }
 
   try {
-    const repair = await loadJsRepair();
-    const result = await repair(root);
+    const mod = await loadJsDbRepairModule();
+    const result = await mod.repairMemoryDbIfCorrupt(root);
     return { ...(result as IntegrityRepairResult), daemonStopped };
   } catch {
     return { repaired: false, errors: 0, persistent: true, daemonStopped };

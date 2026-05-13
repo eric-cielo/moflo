@@ -11,7 +11,7 @@
  * here we focus on shape + cross-platform daemon coordination.
  */
 import { describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -103,7 +103,7 @@ describe('repairMemoryDbIntegrity (TS service)', () => {
       // is the expected tier; we don't *require* it (the cascade may
       // escalate on some SQLite builds), but if any repair succeeds the
       // tier label must be one of the documented values.
-      const buf = require('node:fs').readFileSync(dbPath(root)) as Buffer;
+      const buf = readFileSync(dbPath(root));
       for (let page = 4; page < 7; page++) {
         const start = page * 4096;
         if (start + 4096 > buf.length) break;

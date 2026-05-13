@@ -13,6 +13,7 @@ import {
   memoryDbCandidatePaths,
   memoryDbPath,
 } from '../services/moflo-paths.js';
+import { probeDbIntegrity } from '../services/memory-db-integrity-repair.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import type { HealthCheck } from './doctor-types.js';
 
@@ -170,40 +171,30 @@ export async function checkMemoryDbIntegrity(cwd: string = process.cwd()): Promi
   if (!existsSync(dbPath)) {
     return { name: 'Memory DB Integrity', status: 'pass', message: 'DB absent (no integrity probe needed)' };
   }
-  let DatabaseSync: typeof import('node:sqlite').DatabaseSync;
+  // Delegate to the single readonly-no-PRAGMAs probe in
+  // `bin/lib/db-repair.mjs` (via the TS service bridge). Avoids re-deriving
+  // the same DatabaseSync({ readOnly: true }) + integrity_check sequence in
+  // two places and keeps the "what counts as healthy" semantics in one file.
   try {
-    ({ DatabaseSync } = await import('node:sqlite'));
+    const probe = await probeDbIntegrity(dbPath);
+    if (probe.ok) {
+      return { name: 'Memory DB Integrity', status: 'pass', message: 'PRAGMA integrity_check: ok' };
+    }
+    const message = probe.openFailed
+      ? 'Unable to probe DB (readonly open failed — likely deep corruption)'
+      : `${probe.errors} integrity violation(s) detected`;
+    return {
+      name: 'Memory DB Integrity',
+      status: 'fail',
+      message,
+      fix: 'flo healer --fix -c memory-db-integrity',
+    };
   } catch (e) {
     return {
       name: 'Memory DB Integrity',
       status: 'warn',
-      message: `node:sqlite unavailable: ${errorDetail(e)}`,
+      message: `Integrity probe unavailable: ${errorDetail(e)}`,
     };
-  }
-  let db: InstanceType<typeof DatabaseSync> | null = null;
-  try {
-    db = new DatabaseSync(dbPath, { readOnly: true });
-    const rows = db.prepare('PRAGMA integrity_check').all() as Array<{ integrity_check?: string }>;
-    if (rows.length === 1 && String(rows[0]?.integrity_check ?? '').toLowerCase() === 'ok') {
-      return { name: 'Memory DB Integrity', status: 'pass', message: 'PRAGMA integrity_check: ok' };
-    }
-    const violationCount = rows.length;
-    const firstIssue = String(rows[0]?.integrity_check ?? 'unknown').split('\n')[0].slice(0, 120);
-    return {
-      name: 'Memory DB Integrity',
-      status: 'fail',
-      message: `${violationCount} integrity violation(s) — first: ${firstIssue}`,
-      fix: 'flo healer --fix -c memory-db-integrity',
-    };
-  } catch (e) {
-    return {
-      name: 'Memory DB Integrity',
-      status: 'fail',
-      message: `Unable to probe DB: ${errorDetail(e)}`,
-      fix: 'flo healer --fix -c memory-db-integrity',
-    };
-  } finally {
-    if (db) try { db.close(); } catch { /* */ }
   }
 }
 

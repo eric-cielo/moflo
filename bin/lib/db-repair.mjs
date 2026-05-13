@@ -44,6 +44,11 @@ import { existsSync, renameSync, unlinkSync } from 'node:fs';
 import { memoryDbPath } from './moflo-paths.mjs';
 import { openBackend } from './get-backend.mjs';
 import './suppress-sqlite-warning.mjs';
+// Resolve node:sqlite once at module load — get-backend.mjs has already
+// loaded it by this point, so the dynamic import is a cache hit. Avoids
+// three independent `await import('node:sqlite')` calls inside the repair
+// functions (style cleanup; was producing no functional difference).
+const { DatabaseSync } = await import('node:sqlite');
 
 function isOk(execResult) {
   const rows = execResult?.[0]?.values ?? [];
@@ -63,11 +68,14 @@ function corruptionCount(execResult) {
  * as healthy. Readonly + no PRAGMAs = the probe always reaches the
  * `integrity_check` call regardless of file health.
  *
+ * Exported so the TS doctor check (`checkMemoryDbIntegrity` in
+ * `src/cli/commands/doctor-checks-config.ts`) can call into the same
+ * implementation instead of re-deriving the readonly-no-PRAGMAs probe.
+ *
  * @param {string} dbPath
  * @returns {Promise<{ ok: boolean, errors: number, openFailed?: boolean }>}
  */
-async function probeIntegrityRaw(dbPath) {
-  const { DatabaseSync } = await import('node:sqlite');
+export async function probeIntegrityRaw(dbPath) {
   let db;
   try {
     db = new DatabaseSync(dbPath, { readOnly: true });
@@ -98,7 +106,6 @@ async function probeIntegrityRaw(dbPath) {
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
 async function tryVacuumInto(srcPath, dstPath) {
-  const { DatabaseSync } = await import('node:sqlite');
   try { if (existsSync(dstPath)) unlinkSync(dstPath); } catch { /* best effort */ }
   let db;
   try {
@@ -139,7 +146,6 @@ async function tryVacuumInto(srcPath, dstPath) {
  * }>}
  */
 async function trySalvageRowByRow(srcPath, dstPath) {
-  const { DatabaseSync } = await import('node:sqlite');
   try { if (existsSync(dstPath)) unlinkSync(dstPath); } catch { /* */ }
 
   let src;
@@ -149,7 +155,20 @@ async function trySalvageRowByRow(srcPath, dstPath) {
     return { ok: false, error: err?.message ?? 'src open failed' };
   }
 
-  const dst = new DatabaseSync(dstPath);
+  // Open dst defensively. If this throws (e.g. permissions, dst path in a
+  // dir we can't create, or a concurrent lock on dstPath), keep the
+  // "never throws" contract by returning the failure shape — otherwise the
+  // open exception would escape past `repairMemoryDbIfCorrupt` and block
+  // session start, which is the failure mode this whole module exists to
+  // prevent.
+  let dst;
+  try {
+    dst = new DatabaseSync(dstPath);
+  } catch (err) {
+    try { src.close(); } catch { /* */ }
+    return { ok: false, error: err?.message ?? 'dst open failed' };
+  }
+
   const lossStats = {};
   const CHUNK = 500;
 
