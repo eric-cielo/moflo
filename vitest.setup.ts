@@ -26,10 +26,22 @@ import './src/cli/memory/suppress-sqlite-warning.js';
 // Set once at module load (every test file imports this setup).
 process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
 
+// #1086 — skip the Windows tasklist/powershell daemon-introspection chain
+// in tests. The two execSync calls (3s + 5s timeouts) inside isDaemonProcess
+// can starve under parallel-suite contention and push daemon-lock-reading
+// tests past vitest's 5s per-test budget. Tests that write `process.pid`
+// into a synthetic `daemon.lock` rely on this trust to verify the
+// version-skew / payload-read logic without depending on OS introspection
+// surviving load. Production never sets this env var.
+process.env.MOFLO_TEST_TRUST_DAEMON_PID = '1';
+
 // Re-set in `beforeEach` so a test that intentionally cleared it for a
 // routing scenario doesn't bleed into the next test.
 beforeEach(() => {
   if (process.env.MOFLO_DISABLE_DAEMON_ROUTING !== '1') {
     process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
+  }
+  if (process.env.MOFLO_TEST_TRUST_DAEMON_PID !== '1') {
+    process.env.MOFLO_TEST_TRUST_DAEMON_PID = '1';
   }
 });

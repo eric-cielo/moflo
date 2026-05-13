@@ -276,6 +276,12 @@ function isProcessAlive(pid: number): boolean {
  * to avoid accidentally allowing duplicates on exotic platforms.
  */
 export function isDaemonProcess(pid: number): boolean {
+  // #1086: Windows execSync introspection (8s worst-case: tasklist 3s +
+  // powershell 5s) starves under parallel vitest workers and pushes tests
+  // past the 5s budget. Production never sets this env var.
+  if (process.env.MOFLO_TEST_TRUST_DAEMON_PID === '1') {
+    return true;
+  }
   try {
     if (process.platform === 'win32') {
       return isDaemonProcessWindows(pid);
