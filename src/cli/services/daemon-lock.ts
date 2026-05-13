@@ -276,13 +276,9 @@ function isProcessAlive(pid: number): boolean {
  * to avoid accidentally allowing duplicates on exotic platforms.
  */
 export function isDaemonProcess(pid: number): boolean {
-  // #1086: in test mode, skip OS-introspection (Windows runs `tasklist`
-  // 3s timeout + `powershell Get-CimInstance` 5s timeout — combined worst
-  // case 8s, which exceeds vitest's 5s per-test budget under parallel-suite
-  // contention). Liveness is already verified separately by callers via
-  // `process.kill(pid, 0)`; this function only filters non-daemon processes
-  // that happen to share the PID, and tests write `process.pid` into the
-  // lock so trusting it is correct. Production never sets this env var.
+  // #1086: Windows execSync introspection (8s worst-case: tasklist 3s +
+  // powershell 5s) starves under parallel vitest workers and pushes tests
+  // past the 5s budget. Production never sets this env var.
   if (process.env.MOFLO_TEST_TRUST_DAEMON_PID === '1') {
     return true;
   }
