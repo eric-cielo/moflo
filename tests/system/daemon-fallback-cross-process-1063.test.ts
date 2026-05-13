@@ -78,16 +78,27 @@ type FaultMode =
 
 /**
  * In-test HTTP daemon that mimics the real moflo daemon's RPC surface enough
- * to exercise `storeEntry`'s fallback path. The fake opens/writes/closes
- * `.moflo/moflo.db` via `openDaemonDatabase` per request — the same factory
- * the real daemon uses — so concurrent persists from the fake AND from the
- * subprocess writers' bridge-direct fallback both go through node:sqlite +
- * WAL, exactly as production.
+ * to exercise `storeEntry`'s fallback path. The fake holds a single long-
+ * lived `openDaemonDatabase` handle for its lifetime — the same shape the
+ * real daemon uses (single in-process writer, commits land in WAL
+ * incrementally). Subprocess writers open their own short-lived handles via
+ * `storeEntry`'s bridge-direct fallback. Concurrent writes from those two
+ * shapes are the production contention the original issue worried about.
  */
 async function startFakeDaemon(projectRoot: string, mode: FaultMode): Promise<FakeDaemon> {
   const stats: FaultStats = { storeOk: 0, store5xx: 0 };
   let requestIdx = 0;
   const dbPath = path.join(projectRoot, '.moflo', 'moflo.db');
+  // Long-lived writer handle — models the daemon's actual persistence shape.
+  // Closed in `stop()` after the HTTP server stops accepting requests.
+  const db = openDaemonDatabase(dbPath);
+  const insertStmt = db.prepare(
+    `INSERT INTO memory_entries (
+       id, key, namespace, content, type,
+       embedding, embedding_dimensions, embedding_model,
+       tags, metadata, created_at, updated_at, expires_at, status
+     ) VALUES (?, ?, ?, ?, 'semantic', NULL, NULL, NULL, NULL, '{}', ?, ?, NULL, 'active')`,
+  );
 
   const server = http.createServer((req, res) => {
     let buf = '';
@@ -125,23 +136,11 @@ async function startFakeDaemon(projectRoot: string, mode: FaultMode): Promise<Fa
           return;
         }
         const id = 'daemon_' + randomUUID();
-        const db = openDaemonDatabase(dbPath);
-        try {
-          const now = Date.now();
-          // Same column shape `storeEntry`'s direct path writes. For
-          // ephemeral namespaces (`tasklist`) both paths set embedding_model
-          // = NULL, so the rows are indistinguishable in shape.
-          db.run(
-            `INSERT INTO memory_entries (
-               id, key, namespace, content, type,
-               embedding, embedding_dimensions, embedding_model,
-               tags, metadata, created_at, updated_at, expires_at, status
-             ) VALUES (?, ?, ?, ?, 'semantic', NULL, NULL, NULL, NULL, '{}', ?, ?, NULL, 'active')`,
-            [id, payload.key, payload.namespace, String(payload.value), now, now],
-          );
-        } finally {
-          db.close();
-        }
+        const now = Date.now();
+        // Same column shape `storeEntry`'s direct path writes. For ephemeral
+        // namespaces (`tasklist`) both paths set embedding_model = NULL, so
+        // the rows are indistinguishable downstream.
+        insertStmt.run([id, payload.key, payload.namespace, String(payload.value), now, now]);
         stats.storeOk++;
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, stored: true, id }));
@@ -168,6 +167,8 @@ async function startFakeDaemon(projectRoot: string, mode: FaultMode): Promise<Fa
     async stop() {
       server.closeAllConnections?.();
       await new Promise<void>((resolve) => server.close(() => resolve()));
+      insertStmt.free();
+      db.close();
     },
   };
 }
