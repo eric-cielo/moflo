@@ -75,8 +75,7 @@
     {
       "file": "src/cli/commands/doctor-checks-memory-access.ts",
       "classification": "daemon-rpc",
-      "notes": "POST-S3: probe seed routes via daemon-write-client (eliminates #1053/#1054 raw db.export() bypass)",
-      "pending_fix": "S3 #1057"
+      "notes": "Probe seed routes via memory_store with chunk metadata in-band (#1064); chokepoint accepts metadata so no direct DB handle remains"
     },
     {
       "file": "src/cli/commands/doctor-checks-memory.ts",

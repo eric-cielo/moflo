@@ -171,6 +171,75 @@ describe('daemon-memory-rpc', () => {
     expect(args.ttl).toBe(3600);
   });
 
+  // ── metadata (#1064) ──────────────────────────────────────────────────
+
+  it('POST /api/memory/store forwards a plain-object metadata payload to storeEntry (pre-serialised)', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const meta = {
+      type: 'chunk',
+      parentDoc: 'doc-1064',
+      chunkIndex: 1,
+      totalChunks: 3,
+      prevChunk: 'k0',
+      nextChunk: 'k2',
+      siblings: ['k0', 'k1', 'k2'],
+    };
+    const res = await postJson(testPort, '/api/memory/store', {
+      namespace: 'rpc-meta', key: 'k1', value: 'v', metadata: meta,
+    });
+    expect(res.status).toBe(200);
+    // validateMetadata pre-serialises so the INSERT site doesn't re-stringify.
+    const got = mockStoreEntry.mock.calls[0][0].metadata;
+    expect(typeof got).toBe('string');
+    expect(JSON.parse(got)).toEqual(meta);
+  });
+
+  it('POST /api/memory/store forwards a stringified metadata blob unchanged', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const raw = JSON.stringify({ type: 'chunk', parentDoc: 'd' });
+    const res = await postJson(testPort, '/api/memory/store', {
+      namespace: 'rpc-meta', key: 'k1', value: 'v', metadata: raw,
+    });
+    expect(res.status).toBe(200);
+    expect(mockStoreEntry.mock.calls[0][0].metadata).toBe(raw);
+  });
+
+  it('POST /api/memory/store leaves metadata undefined when omitted', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    await postJson(testPort, '/api/memory/store', { namespace: 'rpc-meta', key: 'k1', value: 'v' });
+    expect(mockStoreEntry.mock.calls[0][0].metadata).toBeUndefined();
+  });
+
+  it('POST /api/memory/store rejects non-object metadata with 400', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/store', {
+      namespace: 'rpc-meta', key: 'k1', value: 'v', metadata: 42,
+    });
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body).message).toMatch(/metadata must be/i);
+    expect(mockStoreEntry).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/memory/store rejects an unparseable metadata string with 400', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    const res = await postJson(testPort, '/api/memory/store', {
+      namespace: 'rpc-meta', key: 'k1', value: 'v', metadata: '{not json',
+    });
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body).message).toMatch(/not valid json/i);
+  });
+
+  it('POST /api/memory/store rejects oversized metadata with 400', async () => {
+    dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
+    // 64 KB cap — pad a string field past it.
+    const fat = { type: 'chunk', pad: 'a'.repeat(70 * 1024) };
+    const res = await postJson(testPort, '/api/memory/store', {
+      namespace: 'rpc-meta', key: 'k1', value: 'v', metadata: fat,
+    });
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body).message).toMatch(/exceeds/i);
+  });
+
   it('POST /api/memory/store rejects invalid namespace with 400', async () => {
     dashboard = await startDashboard(makeMockDaemon(), { port: testPort, memory: makeMockMemory() });
     const res = await postJson(testPort, '/api/memory/store', {

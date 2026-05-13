@@ -27,7 +27,6 @@ import { existsSync } from 'fs';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import { memoryDbPath } from '../services/moflo-paths.js';
 import { findProjectRoot } from '../services/project-root.js';
-import { openDaemonDatabase } from '../memory/daemon-backend.js';
 import { type HealthCheck } from './doctor-checks-deep.js';
 import {
   type FunctionalCheckDetail,
@@ -240,13 +239,11 @@ interface NeighborsResult {
  * the metadata-passthrough plumbing in S1), this probe fails BEFORE the
  * stub ships to consumers.
  *
- * Three chunks are stored via memory_store, then their `metadata` columns
- * are written directly via sql.js to inject chunk-shaped nav fields
- * (memory_store always sets metadata to '{}', so the chunker write path is
- * the only producer in steady state — bypass it here for an in-process
- * probe). The middle chunk's neighbors are then fetched and verified to
- * carry navigation back, proving S1 + S2 + the metadata column passthrough
- * survive end-to-end.
+ * Three chunks are stored via `memory_store` with the chunk-shaped metadata
+ * passed in-band (#1064 — the chokepoint now accepts `metadata` so producers
+ * no longer have to open their own DB handle). The middle chunk's neighbors
+ * are then fetched and verified to carry navigation back, proving S1 + S2 +
+ * the metadata column passthrough survive end-to-end.
  */
 async function probeMemoryGetNeighbors(
   memoryTools: ToolHandler[],
@@ -278,25 +275,10 @@ async function probeMemoryGetNeighbors(
   const chunkKeys = [`${prefix}-0`, `${prefix}-1`, `${prefix}-2`];
   const middleKey = chunkKeys[1];
 
-  // Seed three chunks via DIRECT node:sqlite write (skipping memory_store).
-  // Going through memory_store would warm the bridge's TieredCache with
-  // metadata='{}', and a follow-up direct UPDATE would race the bridge's
-  // writeback. Writing straight to disk before the bridge ever sees these
-  // keys means memory_get_neighbors → getEntry hits fresh disk state and
-  // our injected metadata is what comes back.
-  //
-  // Phase 4 (#1083) flipped the engine to node:sqlite + WAL. The pre-Phase-4
-  // path opened sql.js, mutated in-memory, and `writeFileSync(...export())`d
-  // the whole buffer back — which would have CLOBBERED any concurrent WAL
-  // writes from the daemon's bridge (#1088, the consumer-smoke Windows
-  // failure that drove Phase 5). Going through openDaemonDatabase keeps
-  // the write coherent with every other node:sqlite reader on the same DB.
-  //
-  // Use the unified findProjectRoot so the seed writes to the SAME
-  // `.moflo/moflo.db` the bridge reads from. Earlier versions used
-  // `process.cwd()` (#844) and then `CLAUDE_PROJECT_DIR ?? process.cwd()`
-  // (#1058) — both diverged from the bridge whenever the bridge's walk
-  // resolved to a parent dir.
+  // Seed three chunks through `memory_store` with metadata in-band (#1064).
+  // The chokepoint now accepts `metadata`, so we no longer open our own
+  // node:sqlite handle here — the bridge's TieredCache stays consistent with
+  // disk, and the writer-audit no longer has to whitelist a probe-only bypass.
   const dbPath = memoryDbPath(findProjectRoot());
   if (!existsSync(dbPath)) {
     details.push({
@@ -309,56 +291,52 @@ async function probeMemoryGetNeighbors(
     });
     return { key: middleKey, namespace, chunkKeys };
   }
-  try {
-    const db = openDaemonDatabase(dbPath);
+  for (let i = 0; i < chunkKeys.length; i++) {
+    const meta = {
+      type: 'chunk',
+      parentDoc: 'doc-doctor-neighbors',
+      parentPath: '/doctor-neighbors.md',
+      chunkIndex: i,
+      totalChunks: chunkKeys.length,
+      prevChunk: i > 0 ? chunkKeys[i - 1] : null,
+      nextChunk: i < chunkKeys.length - 1 ? chunkKeys[i + 1] : null,
+      siblings: chunkKeys,
+      hierarchicalParent: null,
+      hierarchicalChildren: null,
+      chunkTitle: `Doctor Probe Chunk ${i}`,
+      headerLevel: 2,
+      docContentHash: stamp,
+    };
     try {
-      const insert = db.prepare(
-        `INSERT OR REPLACE INTO memory_entries
-          (id, key, namespace, content, type, tags, metadata, created_at, updated_at, status)
-         VALUES (?, ?, ?, ?, 'semantic', '[]', ?, ?, ?, 'active')`,
-      );
-      const now = Date.now();
-      for (let i = 0; i < chunkKeys.length; i++) {
-        const meta = {
-          type: 'chunk',
-          parentDoc: 'doc-doctor-neighbors',
-          parentPath: '/doctor-neighbors.md',
-          chunkIndex: i,
-          totalChunks: chunkKeys.length,
-          prevChunk: i > 0 ? chunkKeys[i - 1] : null,
-          nextChunk: i < chunkKeys.length - 1 ? chunkKeys[i + 1] : null,
-          siblings: chunkKeys,
-          hierarchicalParent: null,
-          hierarchicalChildren: null,
-          chunkTitle: `Doctor Probe Chunk ${i}`,
-          headerLevel: 2,
-          docContentHash: stamp,
-        };
-        insert.run([
-          `memprobe-neighbors-${stamp}-${i}`,
-          chunkKeys[i],
-          namespace,
-          `chunk body ${i}`,
-          JSON.stringify(meta),
-          now, now,
-        ]);
+      const out = (await invokeOrThrow(memoryTools, 'memory_store', {
+        key: chunkKeys[i],
+        value: `chunk body ${i}`,
+        namespace,
+        metadata: meta,
+      })) as StoreOut;
+      if (!out?.success) {
+        details.push({
+          id: 'neighbors.seed',
+          mcpTool: 'memory_get_neighbors',
+          status: 'fail',
+          observed: { chunk: chunkKeys[i], error: out?.error ?? 'unknown' },
+          expected: 'memory_store accepts chunk-shaped metadata in-band',
+          message: `seed failed at chunk ${i}: ${out?.error ?? 'unknown'}`,
+        });
+        return { key: middleKey, namespace, chunkKeys };
       }
-      insert.free();
-      // node:sqlite persists incrementally through WAL — no whole-file dump.
-    } finally {
-      db.close();
+    } catch (err) {
+      const msg = errorDetail(err, { firstLineOnly: true });
+      details.push({
+        id: 'neighbors.seed',
+        mcpTool: 'memory_get_neighbors',
+        status: 'fail',
+        observed: { error: msg },
+        expected: 'three chunk rows seeded via memory_store with chunk-shaped metadata',
+        message: `seed failed: ${msg}`,
+      });
+      return { key: middleKey, namespace, chunkKeys };
     }
-  } catch (err) {
-    const msg = errorDetail(err, { firstLineOnly: true });
-    details.push({
-      id: 'neighbors.seed',
-      mcpTool: 'memory_get_neighbors',
-      status: 'fail',
-      observed: { error: msg },
-      expected: 'three chunk rows seeded with chunk-shaped metadata',
-      message: `seed failed: ${msg}`,
-    });
-    return { key: middleKey, namespace, chunkKeys };
   }
 
   // 3. The probe itself — fetch prev + next of the middle chunk.

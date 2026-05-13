@@ -1114,46 +1114,27 @@ export function memoryTraversalProtocol(consumerDir) {
   const memToolsPath = join(consumerDir, 'node_modules', 'moflo', 'dist', 'src', 'cli', 'mcp-tools', 'memory-tools.js')
     .replace(/\\/g, '/');
   writeFileSync(probe, `
-// Filter the once-per-process \`SQLite is an experimental feature\` warning
-// before the \`node:sqlite\` import below fires it (#1098).
-{
-  const originalEmitWarning = process.emitWarning;
-  process.emitWarning = function (warning, ...args) {
-    const msg = typeof warning === 'string' ? warning : (warning && warning.message) || '';
-    if (msg.includes('SQLite is an experimental feature')) return;
-    return originalEmitWarning.apply(this, [warning, ...args]);
-  };
-}
 import { pathToFileURL } from 'node:url';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync } from 'node:fs';
 const mod = await import(pathToFileURL(${JSON.stringify(memToolsPath)}).href);
 const tools = mod.memoryTools;
 const get = name => tools.find(t => t.name === name);
 
+const store = get('memory_store');
 const neighbors = get('memory_get_neighbors');
 const del = get('memory_delete');
 
-if (!neighbors || !del) {
+if (!store || !neighbors || !del) {
   console.log(JSON.stringify({ ok: false, reason: 'tools missing', tools: tools.map(t => t.name) }));
   process.exit(0);
 }
 
-// Seed three chunks via DIRECT node:sqlite write (no memory_store call). Going
-// through memory_store would warm the bridge cache with metadata='{}', and
-// a subsequent direct UPDATE would race the bridge's writeback. Writing
-// straight to the DB before the bridge sees these keys means the bridge's
-// first read (memory_get_neighbors → getEntry) hits fresh state via WAL.
-//
-// Phase 4 (#1083) flipped the default to node:sqlite + WAL: every writer on
-// .moflo/moflo.db MUST use node:sqlite. The pre-Phase-4 seed used
-// sql.js + writeFileSync(...export()) — that pattern is exactly the WAL
-// clobber the migration kills (the catastrophic case where the whole-file
-// dump overwrites the bridge's WAL sidecar between commits).
-import { DatabaseSync } from 'node:sqlite';
+// Seed three chunks via memory_store with chunk-shaped metadata in-band
+// (#1064 — the chokepoint now accepts the navigation fields directly, so
+// this probe matches the same code path every real producer hits).
 const ns = 'smoke-1053';
 const keys = ['chunk-smoke-foo-0', 'chunk-smoke-foo-1', 'chunk-smoke-foo-2'];
-const meta = (i, total) => JSON.stringify({
+const meta = (i, total) => ({
   type: 'chunk',
   parentDoc: 'doc-smoke-foo',
   parentPath: '/foo.md',
@@ -1169,50 +1150,26 @@ const meta = (i, total) => JSON.stringify({
   docContentHash: 'smoke-1053-hash',
 });
 
-// Use the same DB path memory_store would use. The bridge resolves it via
-// memoryDbPath(findProjectRoot()); the smoke harness runs this probe with
-// cwd = consumer dir AND the consumer dir lives outside the moflo source
-// repo (see harness/consumer-smoke/run.mjs workDir = os.tmpdir()), so the
-// walk-up resolves to the consumer naturally. Using a bare '.moflo/moflo.db'
-// is therefore equivalent to memoryDbPath(findProjectRoot()) and matches
-// what every other in-consumer writer hits.
+// memory_store resolves the DB path itself; just make sure the directory
+// is in place so a freshly-initialised consumer can write the first row.
 mkdirSync('.moflo', { recursive: true });
 const dbPath = '.moflo/moflo.db';
-
-// If the DB doesn't exist yet (memory init hasn't run before our probe),
-// give up gracefully — the smoke harness runs memoryInit BEFORE this check
-// per the order in run.mjs, so this should not happen in practice.
 if (!existsSync(dbPath)) {
   console.log(JSON.stringify({ ok: false, reason: \`memory.db not at \${dbPath}\` }));
   process.exit(0);
 }
 
-const db = new DatabaseSync(dbPath);
-try {
-  // busy_timeout BEFORE journal_mode=WAL — daemon may hold the lock briefly
-  // during checkpoint and we'd otherwise hit "database is locked" with no
-  // retry budget (#1097).
-  // 15000ms — matches daemon-backend.ts; see #1098 for the rationale.
-  db.exec('PRAGMA busy_timeout = 15000');
-  db.exec('PRAGMA journal_mode = WAL');
-  db.exec('PRAGMA synchronous = NORMAL');
-  const insert = db.prepare(
-    "INSERT OR REPLACE INTO memory_entries (id, key, namespace, content, type, tags, metadata, created_at, updated_at, status) VALUES (?, ?, ?, ?, 'semantic', '[]', ?, ?, ?, 'active')"
-  );
-  const now = Date.now();
-  for (let i = 0; i < keys.length; i++) {
-    insert.run(
-      'memprobe-' + randomBytes(8).toString('hex'),
-      keys[i],
-      ns,
-      \`chunk body \${i}\`,
-      meta(i, keys.length),
-      now, now,
-    );
+for (let i = 0; i < keys.length; i++) {
+  const out = await store.handler({
+    key: keys[i],
+    value: \`chunk body \${i}\`,
+    namespace: ns,
+    metadata: meta(i, keys.length),
+  });
+  if (!out || out.success !== true) {
+    console.log(JSON.stringify({ ok: false, reason: 'seed failed', chunk: keys[i], error: out && out.error }));
+    process.exit(0);
   }
-  // node:sqlite WAL commits incrementally; no whole-file dump needed.
-} finally {
-  db.close();
 }
 
 const result = await neighbors.handler({ key: 'chunk-smoke-foo-1', namespace: ns });

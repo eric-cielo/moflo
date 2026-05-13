@@ -24,6 +24,7 @@ import { tryLoadHnswSidecar } from './hnsw-persistence.js';
 import { EMBEDDING_MODEL_OPT_OUT, EPHEMERAL_NAMESPACES, getBridgeEmbedder } from './bridge-embedder.js';
 import { parseEmbeddingJson, toFloat32 } from './controllers/_shared.js';
 import { writeVectorStatsJson } from './bridge-core.js';
+import { serialiseMetadata } from './bridge-entries.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import {
   MOFLO_DIR,
@@ -1870,6 +1871,8 @@ export async function storeEntry(options: {
   ttl?: number;
   dbPath?: string;
   upsert?: boolean;
+  /** Per-row JSON for the `metadata` TEXT column; defaults to `'{}'` when omitted (#1064). */
+  metadata?: Record<string, unknown> | string;
 }): Promise<{
   success: boolean;
   id: string;
@@ -1906,6 +1909,7 @@ export async function storeEntry(options: {
         value: options.value,
         tags: options.tags,
         ttl: options.ttl,
+        metadata: options.metadata,
       });
       if (routed.routed && routed.ok) {
         return { success: true, id: routed.id ?? '' };
@@ -2046,7 +2050,7 @@ export async function storeEntry(options: {
       embeddingDimensions,
       embeddingModel,
       tags.length > 0 ? JSON.stringify(tags) : null,
-      '{}',
+      serialiseMetadata(options.metadata),
       now,
       now,
       ttl ? now + (ttl * 1000) : null
@@ -2113,6 +2117,8 @@ export async function storeEntries(items: Array<{
   tags?: string[];
   ttl?: number;
   upsert?: boolean;
+  /** See {@link storeEntry} for the metadata contract (#1064). */
+  metadata?: Record<string, unknown> | string;
 }>, dbPath?: string): Promise<Array<{
   success: boolean;
   id: string;

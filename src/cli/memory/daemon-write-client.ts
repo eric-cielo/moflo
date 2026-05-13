@@ -254,6 +254,8 @@ export async function tryDaemonStore(opts: {
   value: unknown;
   tags?: string[];
   ttl?: number;
+  /** Per-row metadata forwarded to the daemon's `metadata` column (#1064). */
+  metadata?: Record<string, unknown> | string;
 }): Promise<DaemonWriteResult> {
   if (!(await isDaemonAvailable())) return { routed: false };
   return postJson('/api/memory/store', {
@@ -262,6 +264,7 @@ export async function tryDaemonStore(opts: {
     value: opts.value,
     tags: opts.tags,
     ttl: opts.ttl,
+    metadata: opts.metadata,
   });
 }
 
