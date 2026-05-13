@@ -1,5 +1,5 @@
 /**
- * Deep Tests for Plugins, Transfer, Production, Runtime, Update, Config, and Appliance modules.
+ * Deep Tests for Plugins, Transfer, Production, Runtime, Update, and Config modules.
  *
  * Covers:
  *  - Plugin discovery, search, install/uninstall lifecycle

@@ -1,6 +1,6 @@
 /**
  * Tests for CLI commands with zero prior coverage:
- *   appliance-advanced, benchmark, diagnose, gate, epic, transfer-store
+ *   benchmark, diagnose, gate, epic, transfer-store
  *
  * Structural + basic smoke tests following the commands-deep.test.ts pattern.
  */
@@ -129,7 +129,6 @@ vi.mock('../output.js', () => {
 // Imports
 // ---------------------------------------------------------------------------
 
-import { signCommand, publishCommand, updateAppCommand } from '../commands/appliance-advanced.js';
 import { benchmarkCommand } from '../commands/benchmark.js';
 import { diagnoseCommand } from '../commands/diagnose.js';
 import gateCommand from '../commands/gate.js';
@@ -167,79 +166,7 @@ function makeCtx(overrides: Partial<CommandContext> = {}): CommandContext {
 }
 
 // ============================================================================
-// 1. appliance-advanced
-// ============================================================================
-
-describe('appliance-advanced commands', () => {
-  describe('signCommand', () => {
-    it('should have correct name and description', () => {
-      expectValidCommand(signCommand, 'sign');
-    });
-
-    it('should expose options including --file and --key', () => {
-      expect(signCommand.options).toBeDefined();
-      const names = signCommand.options!.map(o => o.name);
-      expect(names).toContain('file');
-      expect(names).toContain('key');
-    });
-
-    it('should have an action function', () => {
-      expect(typeof signCommand.action).toBe('function');
-    });
-
-    it('action returns failure when --file is missing', async () => {
-      const result = await signCommand.action!(makeCtx({ flags: { _: [] } }));
-      expect(result).toBeDefined();
-      expect(result!.success).toBe(false);
-    });
-  });
-
-  describe('publishCommand', () => {
-    it('should have correct name and description', () => {
-      expectValidCommand(publishCommand, 'publish');
-    });
-
-    it('should expose options including --file', () => {
-      const names = publishCommand.options!.map(o => o.name);
-      expect(names).toContain('file');
-    });
-
-    it('should have an action function', () => {
-      expect(typeof publishCommand.action).toBe('function');
-    });
-
-    it('action returns failure when --file is missing', async () => {
-      const result = await publishCommand.action!(makeCtx({ flags: { _: [] } }));
-      expect(result).toBeDefined();
-      expect(result!.success).toBe(false);
-    });
-  });
-
-  describe('updateAppCommand', () => {
-    it('should have correct name and description', () => {
-      expectValidCommand(updateAppCommand, 'update');
-    });
-
-    it('should expose options including --file and --section', () => {
-      const names = updateAppCommand.options!.map(o => o.name);
-      expect(names).toContain('file');
-      expect(names).toContain('section');
-    });
-
-    it('should have an action function', () => {
-      expect(typeof updateAppCommand.action).toBe('function');
-    });
-
-    it('action returns failure when required flags are missing', async () => {
-      const result = await updateAppCommand.action!(makeCtx({ flags: { _: [] } }));
-      expect(result).toBeDefined();
-      expect(result!.success).toBe(false);
-    });
-  });
-});
-
-// ============================================================================
-// 2. benchmark
+// 1. benchmark
 // ============================================================================
 
 describe('benchmark command', () => {
@@ -289,7 +216,7 @@ describe('benchmark command', () => {
 });
 
 // ============================================================================
-// 3. diagnose
+// 2. diagnose
 // ============================================================================
 
 describe('diagnose command', () => {
@@ -329,7 +256,7 @@ describe('diagnose command', () => {
 });
 
 // ============================================================================
-// 4. gate
+// 3. gate
 // ============================================================================
 
 describe('gate command', () => {
@@ -363,7 +290,7 @@ describe('gate command', () => {
 });
 
 // ============================================================================
-// 5. epic
+// 4. epic
 // ============================================================================
 
 describe('epic command', () => {
@@ -412,7 +339,7 @@ describe('epic command', () => {
 });
 
 // ============================================================================
-// 6. transfer-store
+// 5. transfer-store
 // ============================================================================
 
 describe('transfer-store commands', () => {
