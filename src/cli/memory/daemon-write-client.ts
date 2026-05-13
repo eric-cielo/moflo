@@ -353,6 +353,25 @@ export async function tryDaemonList(opts: {
 // Internal HTTP poster — never throws, bounded timeout
 // ============================================================================
 
+/**
+ * Extract a human-readable error message from a daemon 4xx response body.
+ * Prefers `message` (the daemon's specific reason — e.g. "invalid namespace"),
+ * falls back to `error` (the daemon's error category), then to a generic
+ * status-code string when the body is non-JSON.
+ */
+function parse4xxError(buf: string, status: number): string {
+  try {
+    const data = JSON.parse(buf);
+    const detail = typeof data?.message === 'string' ? data.message
+      : typeof data?.error === 'string' ? data.error
+      : undefined;
+    if (detail) return detail;
+  } catch {
+    // Non-JSON 4xx body — fall through to the generic message.
+  }
+  return `daemon returned ${status}`;
+}
+
 function postJson(path: string, body: unknown): Promise<DaemonWriteResult> {
   return new Promise((resolve) => {
     let done = false;
@@ -388,9 +407,9 @@ function postJson(path: string, body: unknown): Promise<DaemonWriteResult> {
           //   2xx  → routed:true,  ok:true   (caller uses data)
           //   4xx  → routed:true,  ok:false  (caller propagates daemon error)
           //   5xx  → routed:false           (caller falls back to bridge)
-          //   parse fail / non-classified → routed:false (fall back)
+          //   parse fail → routed:false (fall back)
           const status = res.statusCode ?? 0;
-          if (status >= 500) {
+          if (status >= 500 || status < 200) {
             finish({ routed: false });
             return;
           }
@@ -398,21 +417,7 @@ function postJson(path: string, body: unknown): Promise<DaemonWriteResult> {
             // Daemon validated the payload and rejected it. Bridge-direct
             // has the same validation; falling back loses the actionable
             // error. Surface it to the caller instead.
-            let errorMsg = `daemon returned ${status}`;
-            try {
-              const data = JSON.parse(buf);
-              const detail = typeof data?.message === 'string' ? data.message
-                : typeof data?.error === 'string' ? data.error
-                : undefined;
-              if (detail) errorMsg = detail;
-            } catch {
-              // Non-JSON 4xx body — keep the generic status-code message.
-            }
-            finish({ routed: true, ok: false, error: errorMsg });
-            return;
-          }
-          if (status < 200) {
-            finish({ routed: false });
+            finish({ routed: true, ok: false, error: parse4xxError(buf, status) });
             return;
           }
           try {
@@ -484,26 +489,12 @@ function postReadJson<T>(
           //   4xx  → routed:true with error (no data) — caller propagates
           //   5xx  → routed:false (caller falls back)
           const status = res.statusCode ?? 0;
-          if (status >= 500) {
+          if (status >= 500 || status < 200) {
             finish({ routed: false });
             return;
           }
           if (status >= 400) {
-            let errorMsg = `daemon returned ${status}`;
-            try {
-              const data = JSON.parse(buf);
-              const detail = typeof data?.message === 'string' ? data.message
-                : typeof data?.error === 'string' ? data.error
-                : undefined;
-              if (detail) errorMsg = detail;
-            } catch {
-              // Non-JSON 4xx body — keep the generic message.
-            }
-            finish({ routed: true, error: errorMsg });
-            return;
-          }
-          if (status < 200) {
-            finish({ routed: false });
+            finish({ routed: true, error: parse4xxError(buf, status) });
             return;
           }
           try {
