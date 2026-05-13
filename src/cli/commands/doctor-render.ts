@@ -261,9 +261,9 @@ export async function runAutoFix(
     if (unfixed.length > 0) {
       output.writeln();
       output.writeln(output.bold('Manual fixes needed:'));
+      const fixByName = new Map(fixableResults.map(r => [r.name, r.fix ?? '']));
       for (const f of unfixed) {
-        const check = results.find(r => r.name === f.name);
-        output.writeln(output.dim(`  ${f.name}: ${check?.fix ?? ''}`));
+        output.writeln(output.dim(`  ${f.name}: ${fixByName.get(f.name) ?? ''}`));
       }
     }
   }

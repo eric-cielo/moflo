@@ -245,10 +245,25 @@ export const doctorCommand: Command = {
         const outcome = await runAutoFix(results, fixes, checksToRun, { silent: jsonOutput });
         fixesApplied = outcome.fixesApplied;
         // Replace `results` with post-fix state so JSON consumers see the
-        // re-evaluated truth, not the pre-fix snapshot.
+        // re-evaluated truth, not the pre-fix snapshot. Mirror the #992
+        // post-parallel zombie-scan append so the post-fix shape matches
+        // pre-fix shape (otherwise `--json --fix` silently drops the
+        // Zombie Processes entry from the JSON `results[]`).
         if (outcome.reEvaluated) {
+          const finalChecks = [...outcome.reEvaluated];
+          if (!component) {
+            try {
+              finalChecks.push(await zombieScanCheck());
+            } catch (reason) {
+              finalChecks.push({
+                name: 'Zombie Processes',
+                status: 'fail',
+                message: (reason as { message?: string } | undefined)?.message ?? 'Unknown error',
+              });
+            }
+          }
           results.length = 0;
-          results.push(...outcome.reEvaluated);
+          results.push(...finalChecks);
         }
       } else if (fixes.length > 0 && !showFix && !jsonOutput) {
         output.writeln();
