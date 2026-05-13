@@ -30,7 +30,9 @@ Thin wrapper around the `flo healer` CLI. All check + fix logic lives in the CLI
    - `✓ N passing` (count only)
    - `⚠ warnings` — list `name: message`; flag with `[auto-fixable]` when the result has a `fix` field
    - `✗ failures` — same
-   - If `--fix` mode, also list which fixes were applied vs which need manual action.
+   - If `--fix` mode, read `fixesApplied[]` from the JSON payload and list `{name, applied}` per entry — applied=true → "fixed", applied=false → "needs manual action". The `results[]` array is post-fix state (re-evaluated), so report the final status.
+   - If `--install` was passed, surface `claudeCodeInstall.installed` from the payload.
+   - If `--kill-zombies` was passed, surface `zombieScan.killed` / `zombieScan.found` from the payload.
 
 4. **Nudge based on what changed.** Only mention next steps for state that *actually* changed:
    - Daemon restarted → `Statusline should refresh within ~5s.`

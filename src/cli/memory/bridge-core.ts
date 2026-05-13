@@ -110,6 +110,26 @@ export function logBridgeError(context: string, err: unknown, opts?: { alwaysLog
 }
 
 /**
+ * Recognises the node:sqlite "operation on closed handle" error shape.
+ *
+ * #1123 — A concurrent `withDb` call's `checkBridgeCoherence` can fire
+ * `shutdownBridge()` between our `getDb(registry)` and `fn(ctx, registry)`,
+ * closing the underlying `DatabaseSync`. Our previously-captured `ctx.db`
+ * then throws `ERR_INVALID_STATE: database is not open` on the next op.
+ *
+ * The operation hadn't started its mutation yet, so a single retry against a
+ * fresh registry is safe (matches the `withBusyRetry` shape for SQLITE_BUSY).
+ * Bounded to one retry so a *genuinely* broken DB still surfaces — we don't
+ * want to mask a registry that can't be re-acquired.
+ */
+function isStaleHandleError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { message?: unknown; code?: unknown };
+  if (e.code === 'ERR_INVALID_STATE') return true;
+  return typeof e.message === 'string' && /database is not open/i.test(e.message);
+}
+
+/**
  * Treats an error as a SQLITE_BUSY lock-contention failure if either the
  * error code or message indicates it. Belt-and-suspenders around node:sqlite,
  * whose surface intermittently surfaces busy-conflicts as either `code:
@@ -477,6 +497,14 @@ export async function withDb<T>(
   dbPath: string | undefined,
   fn: (ctx: BridgeDbContext, registry: any) => Promise<T | null>,
 ): Promise<T | null> {
+  return withDbInner(dbPath, fn, 0);
+}
+
+async function withDbInner<T>(
+  dbPath: string | undefined,
+  fn: (ctx: BridgeDbContext, registry: any) => Promise<T | null>,
+  attempt: number,
+): Promise<T | null> {
   await checkBridgeCoherence(dbPath);
   const registry = await getRegistry(dbPath);
   if (!registry) return null;
@@ -522,6 +550,18 @@ export async function withDb<T>(
     }
     return result;
   } catch (err) {
+    // #1123 — stale-handle race: a concurrent withDb's coherence check tore
+    // the registry down between our getDb() and fn() execution, closing the
+    // underlying DatabaseSync. Drop the dead handle and retry once against a
+    // freshly-acquired registry. The first attempt threw BEFORE its mutation
+    // landed (node:sqlite errors at prepare/exec time, not mid-statement), so
+    // a retry is idempotent. Bounded to one retry so a genuinely-unrecoverable
+    // bridge (e.g. corrupt file, missing module) still surfaces as a null
+    // return + logged error, not an infinite loop.
+    if (attempt === 0 && isStaleHandleError(err)) {
+      await shutdownBridge();
+      return await withDbInner(dbPath, fn, attempt + 1);
+    }
     logBridgeError('bridge operation failed', err);
     return null;
   }

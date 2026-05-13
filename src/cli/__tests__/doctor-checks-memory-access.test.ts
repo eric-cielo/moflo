@@ -326,3 +326,125 @@ describe('doctor-checks-memory-access — #1111 HNSW-empty fallback', () => {
     expect(searchDetail!.status).toBe('fail');
   });
 });
+
+/**
+ * #1120 regression: same bug class as #1111, but the search returns a
+ * non-empty result set that doesn't include the just-stored key — typical
+ * when the doctor probe runs 2+ times in the same session and the namespace
+ * still has rows from previous runs (safeDelete is best-effort). The new
+ * write hasn't propagated to the HNSW index yet, so search returns a stale
+ * neighbor as the top hit. #1111's fallback only fired on `total === 0`, so
+ * this case slipped through as `fail` — even though the row IS in the DB
+ * and the memory access path is working.
+ *
+ * Fix: extend the literal-key fallback to the non-zero-results case. If our
+ * key isn't in the search results AND literal retrieve finds it, demote
+ * `search-finds-key` to warn (matching the spirit of #1111: distinguish
+ * stack-broken from stack-working-but-state-not-yet-ready). `memory_search`
+ * itself stays pass — total>=1 with HNSW backend is a healthy search.
+ */
+describe('doctor-checks-memory-access — #1120 stale-neighbor fallback', () => {
+  function buildStaleNeighborTools(opts: { retrieveFinds: boolean }): ToolHandler[] {
+    const stored = new Map<string, { value: unknown }>();
+    const stalePriorKey = 'doctor-memprobe-unit-OLD-stale-row';
+    return [
+      {
+        name: 'memory_store',
+        handler: async (input) => {
+          const k = `${(input.namespace as string) ?? 'default'}::${input.key as string}`;
+          stored.set(k, { value: input.value });
+          return {
+            success: true,
+            key: input.key,
+            namespace: input.namespace,
+            hasEmbedding: true,
+            embeddingDimensions: 384,
+            backend: 'sql.js + HNSW',
+          };
+        },
+      },
+      {
+        name: 'memory_search',
+        // The race: store succeeded, but HNSW returns a stale neighbor from
+        // a prior probe run and not the just-written row. Matches the
+        // production failure mode in #1120.
+        handler: async (input) => ({
+          results: [{
+            key: stalePriorKey,
+            namespace: (input.namespace as string) ?? 'default',
+            value: 'stale prior probe value',
+            similarity: 0.3,
+          }],
+          total: 1,
+          backend: 'HNSW + sql.js',
+        }),
+      },
+      {
+        name: 'memory_retrieve',
+        handler: async (input) => {
+          if (!opts.retrieveFinds) return { key: input.key, namespace: input.namespace, value: null, found: false };
+          const k = `${(input.namespace as string) ?? 'default'}::${input.key as string}`;
+          const row = stored.get(k);
+          if (!row) return { key: input.key, namespace: input.namespace, value: null, found: false };
+          return { key: input.key, namespace: input.namespace, value: row.value, found: true };
+        },
+      },
+      {
+        name: 'memory_delete',
+        handler: async () => ({ success: true }),
+      },
+    ];
+  }
+
+  it('demotes search-finds-key to warn when search returned wrong rows but literal retrieve finds our key', async () => {
+    const details: FunctionalCheckDetail[] = [];
+    await _runMemoryRoundTripForTest({
+      persona: 'unit', idPrefix: 'unit',
+      memoryTools: buildStaleNeighborTools({ retrieveFinds: true }),
+      details,
+    });
+
+    // memory_search subcheck stays pass — total>=1, HNSW backend, threshold
+    // honored. The bug only manifests at the search-finds-key subcheck.
+    const searchDetail = details.find(d => d.id === 'unit.memory_search');
+    expect(searchDetail, 'memory_search subcheck must be recorded').toBeDefined();
+    expect(
+      searchDetail!.status,
+      `expected pass, got ${searchDetail!.status}: ${searchDetail!.message}`,
+    ).toBe('pass');
+
+    // search-finds-key demoted to warn (the new #1120 fallback path).
+    const findsKeyDetail = details.find(d => d.id === 'unit.search-finds-key');
+    expect(findsKeyDetail, 'search-finds-key subcheck must be recorded').toBeDefined();
+    expect(
+      findsKeyDetail!.status,
+      `expected warn, got ${findsKeyDetail!.status}: ${findsKeyDetail!.message}`,
+    ).toBe('warn');
+    expect(findsKeyDetail!.message).toMatch(/stale-neighbor|literal retrieve|not yet propagated/i);
+
+    // retrieve-roundtrip still passes — proof memory access works even when
+    // the HNSW index is racing the new write.
+    const retrieveDetail = details.find(d => d.id === 'unit.retrieve-roundtrip');
+    expect(retrieveDetail).toBeDefined();
+    expect(retrieveDetail!.status).toBe('pass');
+
+    // No fail rows — the whole point of the fix.
+    expect(details.filter(d => d.status === 'fail')).toHaveLength(0);
+  });
+
+  it('keeps search-finds-key as fail when neither search nor literal retrieve find our key', async () => {
+    const details: FunctionalCheckDetail[] = [];
+    await _runMemoryRoundTripForTest({
+      persona: 'unit', idPrefix: 'unit',
+      memoryTools: buildStaleNeighborTools({ retrieveFinds: false }),
+      details,
+    });
+
+    // Real memory-access regression: row was supposedly stored but neither
+    // semantic nor literal access can find our specific key. Must still fail.
+    const findsKeyDetail = details.find(d => d.id === 'unit.search-finds-key');
+    expect(findsKeyDetail).toBeDefined();
+    expect(findsKeyDetail!.status).toBe('fail');
+    expect(findsKeyDetail!.message).toMatch(/not in results/i);
+  });
+});
