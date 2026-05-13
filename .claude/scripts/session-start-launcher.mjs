@@ -358,10 +358,44 @@ function fireAndForget(cmd, args, label) {
   }
 }
 
+// Cross-platform sync sleep — Atomics.wait parks the thread at the OS level
+// without burning CPU (same primitive as src/cli/shared/utils/atomic-file-
+// write.ts:131). Used by stopDaemon's liveness polling between graceful and
+// forced termination so we never unlink the lockfile while the daemon is
+// still running.
+const STOP_SLEEP_BUF = new Int32Array(new SharedArrayBuffer(4));
+function sleepSyncMs(ms) {
+  Atomics.wait(STOP_SLEEP_BUF, 0, 0, ms);
+}
+
+// PID liveness check. EPERM means the process exists but is owned by another
+// user — treat as alive (matches the canonical isAlive in process-manager.mjs
+// after #1061; the prior `catch { return false; }` falsely reported foreign-
+// owned daemons as dead and let the lockfile be unlinked under them).
+function isDaemonPidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err && err.code === 'EPERM';
+  }
+}
+
 // Stop the daemon recorded in `lockFile` (if any) without restarting. Used by
 // the upgrade flow before any DB work — the daemon must not be holding old
 // path resolution in memory, and a concurrent sql.js flush would clobber the
-// cherry-picked rows. Returns true when a live PID was actually killed.
+// cherry-picked rows. Returns true when a live PID was confirmed dead (or the
+// PID was already gone when we read the lockfile).
+//
+// Escalation mirrors src/cli/commands/daemon.ts:killBackgroundDaemon so the
+// launcher's upgrade path and `flo daemon stop` behave identically: graceful
+// signal → wait → liveness check → force kill. The prior implementation sent
+// bare `process.kill(pid, 'SIGTERM')` on every platform, which on Windows
+// either silently force-kills or fails entirely depending on the process; in
+// either case the catch swallowed the outcome and the lockfile was unlinked.
+// The daemon (if it survived) then re-wrote the lockfile with its stale PID +
+// pre-upgrade version, defeating the section-3a-pre version-skew recovery and
+// leaving the statusline stuck on `📊 ?` until manual `flo daemon restart`.
 //
 // Section 4's `hooks.mjs session-start` spawn is responsible for starting a
 // fresh daemon under the current code; this function intentionally does not.
@@ -372,11 +406,61 @@ function stopDaemon(lockFile) {
     const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
     if (typeof lock?.pid === 'number' && lock.pid > 0) stalePid = lock.pid;
   } catch { /* malformed lock — fall through to unlink */ }
-  if (stalePid !== null) {
-    try { process.kill(stalePid, 'SIGTERM'); } catch { /* already dead */ }
+
+  let killed = false;
+  if (stalePid !== null && isDaemonPidAlive(stalePid)) {
+    // Graceful signal — platform-aware. On Windows, `process.kill(pid, 'SIGTERM')`
+    // silently force-kills (skipping the daemon's shutdown handlers that flush
+    // sql.js + release lock cleanly), so use bare `taskkill` (no /F) for a
+    // close-event signal.
+    try {
+      if (process.platform === 'win32') {
+        execFileSync('taskkill', ['/PID', String(stalePid)], { windowsHide: true, timeout: 5000 });
+      } else {
+        process.kill(stalePid, 'SIGTERM');
+      }
+    } catch { /* signal/spawn failed — fall through to liveness poll + force */ }
+
+    // Poll for death up to 3s. The daemon's shutdown handler does a final
+    // sql.js dump + lock release, which under load can take ~1s.
+    const gracefulDeadline = Date.now() + 3000;
+    while (Date.now() < gracefulDeadline) {
+      if (!isDaemonPidAlive(stalePid)) { killed = true; break; }
+      sleepSyncMs(100);
+    }
+
+    // Force-kill if still alive.
+    if (!killed) {
+      try {
+        if (process.platform === 'win32') {
+          execFileSync('taskkill', ['/F', '/T', '/PID', String(stalePid)], { windowsHide: true, timeout: 5000 });
+        } else {
+          process.kill(stalePid, 'SIGKILL');
+        }
+      } catch { /* dead or unreachable */ }
+      // Short grace period for OS reap.
+      const forceDeadline = Date.now() + 1000;
+      while (Date.now() < forceDeadline) {
+        if (!isDaemonPidAlive(stalePid)) { killed = true; break; }
+        sleepSyncMs(100);
+      }
+    }
+
+    if (!killed) {
+      // Daemon survived both signals. Leave the lockfile in place so the next
+      // session can see the stale PID and retry — unlinking now would let the
+      // surviving daemon re-write the lockfile with its stale PID + version,
+      // perpetuating the loop this fix exists to break.
+      emitWarning(`stopDaemon: PID ${stalePid} did not exit after SIGTERM+force-kill; lockfile preserved`);
+      return false;
+    }
+  } else if (stalePid !== null) {
+    // PID was in the lockfile but the process is already gone — clean unlink.
+    killed = true;
   }
+
   try { unlinkSync(lockFile); } catch { /* non-fatal */ }
-  return stalePid !== null;
+  return killed;
 }
 
 // Stop-and-restart helper for the stale-daemon branch (section 3a-pre). The
@@ -720,7 +804,7 @@ try {
 
       // ── Sync .claude/agents/ + .claude/skills/ recursively (#948) ──────
       // Pre-#948, agents and skills weren't manifest-tracked at all, so any
-      // file moflo retired (e.g. the 49 ruflo-aspirational agents in #932 or
+      // file moflo retired (e.g. the 49 aspirational agents in #932 or
       // skill-builder in #945) would linger forever in consumer projects —
       // Claude Code kept loading them on every prompt, paying the per-prompt
       // roster tokens we just spent #932 fixing. Walking these dirs through
