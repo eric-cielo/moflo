@@ -78,6 +78,12 @@ export interface DaemonWriteResult {
   id?: string;
   /** Set on a successful delete: whether the row existed. */
   deleted?: boolean;
+  /**
+   * Set on a successful store when the bridge embedded the row (#1065).
+   * Mirrors `bridgeStoreEntry`'s return shape so the daemon-routed path
+   * and the bridge-direct fallback are indistinguishable to callers.
+   */
+  embedding?: { dimensions: number; model: string };
   /** Set on routed-but-failed (4xx): the daemon's error message. */
   error?: string;
 }
@@ -375,6 +381,20 @@ function parse4xxError(buf: string, status: number): string {
   return `daemon returned ${status}`;
 }
 
+/**
+ * Narrow a parsed JSON value to the `{ dimensions, model }` embedding-response
+ * shape (#1065). Returns `undefined` when the field is missing or malformed —
+ * a malformed field is treated as "no embedding info" rather than failing the
+ * whole response, so an older daemon that hasn't been updated still works.
+ */
+function parseEmbeddingField(value: unknown): { dimensions: number; model: string } | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const v = value as { dimensions?: unknown; model?: unknown };
+  if (typeof v.dimensions !== 'number' || !Number.isFinite(v.dimensions)) return undefined;
+  if (typeof v.model !== 'string' || v.model.length === 0) return undefined;
+  return { dimensions: v.dimensions, model: v.model };
+}
+
 function postJson(path: string, body: unknown): Promise<DaemonWriteResult> {
   return new Promise((resolve) => {
     let done = false;
@@ -430,6 +450,7 @@ function postJson(path: string, body: unknown): Promise<DaemonWriteResult> {
               ok: !!data?.ok,
               id: typeof data?.id === 'string' ? data.id : undefined,
               deleted: typeof data?.deleted === 'boolean' ? data.deleted : undefined,
+              embedding: parseEmbeddingField(data?.embedding),
               error: typeof data?.error === 'string' ? data.error : undefined,
             });
           } catch {

@@ -1912,7 +1912,10 @@ export async function storeEntry(options: {
         metadata: options.metadata,
       });
       if (routed.routed && routed.ok) {
-        return { success: true, id: routed.id ?? '' };
+        // #1065 — surface the daemon's embedding metadata so the MCP
+        // memory_store handler reports `hasEmbedding: true` on
+        // daemon-routed writes (matching the bridge-direct shape).
+        return { success: true, id: routed.id ?? '', embedding: routed.embedding };
       }
       // #1101 — daemon validated and rejected (4xx). Bridge-direct would
       // fail the same way; surface the daemon's error instead of silently

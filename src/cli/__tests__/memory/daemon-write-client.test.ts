@@ -211,6 +211,53 @@ describe('daemon-write-client', () => {
     expect(body.value).toEqual({ x: 1 });
   });
 
+  // #1065 — the daemon's POST /api/memory/store response carries the
+  // bridge's `embedding: { dimensions, model }`. The client must surface
+  // it so callers can preserve the bridge-direct shape end-to-end.
+  it('tryDaemonStore surfaces embedding when the daemon includes it (#1065)', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: true,
+        stored: true,
+        id: 'entry_with_emb',
+        embedding: { dimensions: 384, model: 'fastembed-bge-small-en-v1.5' },
+      }));
+    });
+
+    const r = await tryDaemonStore({ namespace: 'ns', key: 'k', value: 'v' });
+    expect(r.routed).toBe(true);
+    expect(r.ok).toBe(true);
+    expect(r.embedding).toEqual({ dimensions: 384, model: 'fastembed-bge-small-en-v1.5' });
+  });
+
+  it('tryDaemonStore leaves embedding undefined when an older daemon omits it', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    // Default handler returns the pre-#1065 shape (no embedding field).
+    const r = await tryDaemonStore({ namespace: 'ns', key: 'k', value: 'v' });
+    expect(r.routed).toBe(true);
+    expect(r.ok).toBe(true);
+    expect(r.embedding).toBeUndefined();
+  });
+
+  it('tryDaemonStore drops a malformed embedding field instead of failing the response', async () => {
+    fake = await startFakeDaemon();
+    process.env.MOFLO_DAEMON_PORT = String(fake.port);
+    fake.setHandler((req, res) => {
+      if (req.url === '/api/status') { res.writeHead(200); res.end('{}'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, stored: true, id: 'e', embedding: { dimensions: 'bad', model: 42 } }));
+    });
+    const r = await tryDaemonStore({ namespace: 'ns', key: 'k', value: 'v' });
+    expect(r.routed).toBe(true);
+    expect(r.ok).toBe(true);
+    expect(r.embedding).toBeUndefined();
+  });
+
   it('tryDaemonStore returns routed:false when daemon is down', async () => {
     process.env.MOFLO_DAEMON_PORT = String(40000 + Math.floor(Math.random() * 10000));
     const r = await tryDaemonStore({ namespace: 'ns', key: 'k', value: 'v' });
