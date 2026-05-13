@@ -66,7 +66,7 @@ interface SearchOut {
   error?: string;
 }
 
-interface RoundTripContext {
+export interface RoundTripContext {
   /** Persona label, e.g. "subagent". */
   persona: string;
   /** Sub-check id prefix for FunctionalCheckDetail rows. */
@@ -81,7 +81,15 @@ interface RoundTripContext {
  * Run a memory_store + memory_search round-trip and append three details
  * (store, search, value-match). Returns the unique key/namespace used so the
  * caller can clean up. Never throws — assertion failures land in `details`.
+ *
+ * Exported (under `_` prefix) for the #1111 regression test that simulates
+ * the empty-HNSW race with a synthetic `memoryTools` array. Not part of the
+ * public doctor surface; use `checkMemoryAccessFunctional` from real callers.
  */
+export async function _runMemoryRoundTripForTest(ctx: RoundTripContext): Promise<{ key: string; namespace: string }> {
+  return runMemoryRoundTrip(ctx);
+}
+
 async function runMemoryRoundTrip(ctx: RoundTripContext): Promise<{ key: string; namespace: string }> {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const key = `doctor-memprobe-${ctx.persona}-${stamp}`;
@@ -115,12 +123,21 @@ async function runMemoryRoundTrip(ctx: RoundTripContext): Promise<{ key: string;
   // 2. memory_search with threshold=0 — must find the row we just stored.
   // threshold=0 is the explicit "no threshold" value (#837); regressions
   // there silently filter out matches even when the row is in the index.
+  //
+  // #1111: when search returns 0 results we do a literal-key fallback via
+  // memory_retrieve. On a fresh consumer install pretrain is still computing
+  // embeddings async, so the HNSW index can be empty (`0 vectors indexed`)
+  // even when the row IS in the DB. The check tests memory access, not
+  // embedding-index readiness — a successful literal retrieve demotes the
+  // search fail to a warn so the doctor surfaces the race without misreporting
+  // it as broken memory access.
   const searchMeta = {
     id: `${ctx.idPrefix}.memory_search`,
     mcpTool: 'memory_search',
-    expected: 'total>=1 with backend including HNSW',
+    expected: 'total>=1 via semantic search, OR row retrievable by key when HNSW is unpopulated',
   };
   let searchOut: SearchOut | undefined;
+  let hnswIndexEmpty = false;
   try {
     searchOut = (await invokeOrThrow(ctx.memoryTools, 'memory_search', {
       query: sentinel,
@@ -129,12 +146,27 @@ async function runMemoryRoundTrip(ctx: RoundTripContext): Promise<{ key: string;
       limit: 5,
     })) as SearchOut;
     const failReason = assertSearch(searchOut);
-    pushDetail(
-      ctx.details,
-      searchMeta,
-      failReason ? searchOut : { total: searchOut?.total, backend: searchOut?.backend, topKey: searchOut?.results?.[0]?.key },
-      failReason,
-    );
+
+    if (failReason && searchOut?.total === 0) {
+      const retrievable = await literalKeyReachable(ctx.memoryTools, key, namespace);
+      if (retrievable) {
+        hnswIndexEmpty = true;
+        ctx.details.push({
+          ...searchMeta, status: 'warn',
+          observed: { total: 0, backend: searchOut.backend, literalRetrieve: 'found' },
+          message: 'search returned 0 results despite threshold=0, but row IS reachable by key — HNSW index not yet populated (likely pretrain/embeddings race on fresh install; memory access path works, only the vector index is empty)',
+        });
+      } else {
+        pushDetail(ctx.details, searchMeta, searchOut, failReason);
+      }
+    } else {
+      pushDetail(
+        ctx.details,
+        searchMeta,
+        failReason ? searchOut : { total: searchOut?.total, backend: searchOut?.backend, topKey: searchOut?.results?.[0]?.key },
+        failReason,
+      );
+    }
   } catch (err) {
     const detail = errorDetail(err, { firstLineOnly: true });
     ctx.details.push({
@@ -147,13 +179,25 @@ async function runMemoryRoundTrip(ctx: RoundTripContext): Promise<{ key: string;
   // 3. The just-stored row must come back from search so callers can find
   // what they wrote. memory_search returns a 60-char content snippet, so
   // full-value verification belongs in the retrieve subcheck below.
-  const top = searchOut.results?.find(r => r.key === key);
-  pushDetail(
-    ctx.details,
-    { id: `${ctx.idPrefix}.search-finds-key`, mcpTool: 'memory_search', expected: `result containing key=${key}` },
-    top ? { topKey: top.key, similarity: top.similarity } : { allKeys: searchOut.results?.map(r => r.key) },
-    top ? null : `stored key ${key} not in results (got: ${searchOut?.results?.map(r => r.key).join(', ') ?? 'none'})`,
-  );
+  // When step 2 already observed the HNSW index as empty, the literal retrieve
+  // in step 4 covers reachability; mark this subcheck warn instead of double-
+  // failing on the same root cause.
+  if (hnswIndexEmpty) {
+    ctx.details.push({
+      id: `${ctx.idPrefix}.search-finds-key`, mcpTool: 'memory_search', status: 'warn',
+      observed: { hnswEmpty: true },
+      expected: `result containing key=${key} via semantic search`,
+      message: 'skipped semantic match — HNSW index empty (see memory_search subcheck); literal-key retrieve below covers reachability',
+    });
+  } else {
+    const top = searchOut.results?.find(r => r.key === key);
+    pushDetail(
+      ctx.details,
+      { id: `${ctx.idPrefix}.search-finds-key`, mcpTool: 'memory_search', expected: `result containing key=${key}` },
+      top ? { topKey: top.key, similarity: top.similarity } : { allKeys: searchOut.results?.map(r => r.key) },
+      top ? null : `stored key ${key} not in results (got: ${searchOut?.results?.map(r => r.key).join(', ') ?? 'none'})`,
+    );
+  }
 
   // 4. memory_retrieve returns the full value (search content is truncated
   // to a 60-char snippet). Catches write clobber and namespace bleed — we
@@ -222,6 +266,23 @@ function assertRetrieve(
 
 async function safeDelete(memoryTools: ToolHandler[], key: string, namespace: string): Promise<void> {
   try { await invokeOrThrow(memoryTools, 'memory_delete', { key, namespace }); } catch { /* best-effort */ }
+}
+
+/**
+ * #1111: Probe whether a row is reachable via literal-key lookup. Used to
+ * distinguish a real memory-access failure (row missing) from the HNSW-empty
+ * race (row written, but vector index not yet populated by pretrain).
+ *
+ * Best-effort: a thrown handler or missing tool returns false rather than
+ * propagating, so the caller still reports the original search failure.
+ */
+async function literalKeyReachable(memoryTools: ToolHandler[], key: string, namespace: string): Promise<boolean> {
+  try {
+    const out = (await invokeOrThrow(memoryTools, 'memory_retrieve', { key, namespace })) as { found?: boolean };
+    return out?.found === true;
+  } catch {
+    return false;
+  }
 }
 
 interface NeighborsResult {

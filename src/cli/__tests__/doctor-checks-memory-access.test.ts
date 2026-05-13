@@ -22,9 +22,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
+  _runMemoryRoundTripForTest,
   checkMemoryAccessFunctional,
 } from '../commands/doctor-checks-memory-access.js';
-import type { FunctionalHealthCheck } from '../commands/doctor-checks-swarm.js';
+import type { FunctionalCheckDetail, FunctionalHealthCheck, ToolHandler } from '../commands/doctor-checks-functional-shared.js';
 import { findMofloPackageRoot } from '../services/moflo-require.js';
 
 let tempProjectDir: string | undefined;
@@ -221,5 +222,107 @@ describe('doctor-checks-memory-access', () => {
         `${ns} has ${remaining.length} stragglers after cleanup: ${remaining.map(e => e.key).join(', ')}`,
       ).toBe(0);
     }
+  });
+});
+
+/**
+ * #1111 regression: on a fresh consumer install, pretrain seeds the DB
+ * asynchronously and the HNSW index can be empty (`0 vectors indexed`) when
+ * `flo doctor` runs. The probe's `memory_store` returns hasEmbedding=true,
+ * but `memory_search` returns 0 results — historically that failed the
+ * Memory Access Functional check ~2/3 of the time on the smoke harness.
+ *
+ * Fix (a) from the issue: when search returns 0, do a literal-key fallback
+ * via `memory_retrieve`. If the row is reachable, demote the search subcheck
+ * to `warn` (memory access works; only the vector index is unpopulated).
+ *
+ * The behavior is tested with a synthetic memoryTools array so the test
+ * doesn't depend on a real fresh-install timing window.
+ */
+describe('doctor-checks-memory-access — #1111 HNSW-empty fallback', () => {
+  function buildEmptyHnswTools(opts: { retrieveFinds: boolean }): ToolHandler[] {
+    const stored = new Map<string, { value: unknown }>();
+    return [
+      {
+        name: 'memory_store',
+        handler: async (input) => {
+          const k = `${(input.namespace as string) ?? 'default'}::${input.key as string}`;
+          stored.set(k, { value: input.value });
+          return {
+            success: true,
+            key: input.key,
+            namespace: input.namespace,
+            hasEmbedding: true,
+            embeddingDimensions: 384,
+            backend: 'sql.js + HNSW',
+          };
+        },
+      },
+      {
+        name: 'memory_search',
+        // The race: store succeeded, but HNSW has 0 vectors so search
+        // returns empty. Matches the production failure mode in #1111.
+        handler: async () => ({ results: [], total: 0, backend: 'HNSW + sql.js' }),
+      },
+      {
+        name: 'memory_retrieve',
+        handler: async (input) => {
+          if (!opts.retrieveFinds) return { key: input.key, namespace: input.namespace, value: null, found: false };
+          const k = `${(input.namespace as string) ?? 'default'}::${input.key as string}`;
+          const row = stored.get(k);
+          if (!row) return { key: input.key, namespace: input.namespace, value: null, found: false };
+          // Echo the same shape the probe expects (sentinel-bearing object).
+          return { key: input.key, namespace: input.namespace, value: row.value, found: true };
+        },
+      },
+      {
+        name: 'memory_delete',
+        handler: async () => ({ success: true }),
+      },
+    ];
+  }
+
+  it('demotes memory_search to warn when search is empty but literal retrieve finds the row', async () => {
+    const details: FunctionalCheckDetail[] = [];
+    await _runMemoryRoundTripForTest({
+      persona: 'unit', idPrefix: 'unit',
+      memoryTools: buildEmptyHnswTools({ retrieveFinds: true }),
+      details,
+    });
+
+    const searchDetail = details.find(d => d.id === 'unit.memory_search');
+    expect(searchDetail, 'memory_search subcheck must be recorded').toBeDefined();
+    expect(searchDetail!.status, `expected warn, got ${searchDetail!.status}: ${searchDetail!.message}`).toBe('warn');
+    expect(searchDetail!.message).toMatch(/HNSW index not yet populated|pretrain/i);
+
+    // search-finds-key must NOT fail when the race has been detected — it
+    // would be a redundant fail on the same root cause. Demote to warn.
+    const findsKeyDetail = details.find(d => d.id === 'unit.search-finds-key');
+    expect(findsKeyDetail, 'search-finds-key subcheck must be recorded').toBeDefined();
+    expect(findsKeyDetail!.status).toBe('warn');
+
+    // The literal retrieve subcheck must still pass — that's the proof
+    // memory access works even when HNSW is empty.
+    const retrieveDetail = details.find(d => d.id === 'unit.retrieve-roundtrip');
+    expect(retrieveDetail).toBeDefined();
+    expect(retrieveDetail!.status).toBe('pass');
+
+    // No fail rows — the whole point of the fix.
+    expect(details.filter(d => d.status === 'fail')).toHaveLength(0);
+  });
+
+  it('keeps memory_search as fail when both search AND retrieve come back empty', async () => {
+    const details: FunctionalCheckDetail[] = [];
+    await _runMemoryRoundTripForTest({
+      persona: 'unit', idPrefix: 'unit',
+      memoryTools: buildEmptyHnswTools({ retrieveFinds: false }),
+      details,
+    });
+
+    // Real memory-access regression: row was supposedly stored but neither
+    // semantic nor literal access can find it. Must still fail.
+    const searchDetail = details.find(d => d.id === 'unit.memory_search');
+    expect(searchDetail).toBeDefined();
+    expect(searchDetail!.status).toBe('fail');
   });
 });
