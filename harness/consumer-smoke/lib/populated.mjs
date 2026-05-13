@@ -14,7 +14,7 @@ import { spawn, execFileSync } from 'node:child_process';
 
 import { runNode, flo, IS_WIN, recordSample } from './proc.mjs';
 import { section, record, recordExit } from './report.mjs';
-import { runSqlJsProbe, writeStandaloneProbe } from './sqljs-probe.mjs';
+import { runSqliteProbe, writeStandaloneProbe } from './sqlite-probe.mjs';
 import {
   MOFLO_DIR,
   LEGACY_CLAUDE_FLOW_DIR,
@@ -166,7 +166,7 @@ function seedSwarmDb(consumerDir, rows) {
 
   // Pre-#728 schema: status CHECK still permits 'deleted' so we can carry
   // soft-delete tombstones into the fixture for the launcher's purge to clean up.
-  const result = runSqlJsProbe(consumerDir, 'seed-swarm-db', `
+  const result = runSqliteProbe(consumerDir, 'seed-swarm-db', `
 const SQL = await sqlInit();
 const db = new SQL.Database();
 db.exec(\`CREATE TABLE memory_entries (
@@ -261,7 +261,7 @@ function seedMofloDb(consumerDir, tasklistRows) {
   // doc-*/chunk-w-preamble fixtures the new migrations should clean up.
   const allRows = [...tasklistRows, ...buildLegacyEpic1053Rows()];
 
-  const result = runSqlJsProbe(consumerDir, 'seed-moflo-db', `
+  const result = runSqliteProbe(consumerDir, 'seed-moflo-db', `
 const SQL = await sqlInit();
 const db = new SQL.Database();
 db.exec(\`CREATE TABLE memory_entries (
@@ -375,11 +375,26 @@ function inspectPostStateDb(consumerDir) {
   const dbPath = memoryDbPath(consumerDir);
   if (!existsSync(dbPath)) return null;
 
-  return runSqlJsProbe(consumerDir, 'inspect-moflo-db', `
+  return runSqliteProbe(consumerDir, 'inspect-moflo-db', `
 // readFileSync is provided by the probe harness (#1098).
+//
+// #1067: the launcher writes \`.moflo/moflo.db\` in WAL journal mode, so a
+// raw \`readFileSync(dbPath)\` snapshot of the main file alone is inconsistent
+// with the WAL-resident pending pages — opening those bytes in a fresh
+// DatabaseSync flags PRAGMA integrity_check with duplicate-page refs
+// ("Rowid out of order"). Open the live file briefly, force a TRUNCATE
+// checkpoint to flush WAL → main, close, then readFileSync sees a coherent
+// snapshot. (Pre-#1067 the seed wrote 0 bytes, the launcher rebuilt the DB
+// from scratch in DELETE mode, and this hazard was hidden.)
+{
+  const { DatabaseSync: _Sync } = await import('node:sqlite');
+  const _db = new _Sync(${JSON.stringify(dbPath)});
+  try { _db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch { /* DELETE mode → no-op */ }
+  _db.close();
+}
 const SQL = await sqlInit();
 const db = new SQL.Database(readFileSync(${JSON.stringify(dbPath)}));
-const out = { byNamespaceStatus: {}, integrity: null, ids: [], hasEmbedding: 0, migratedLearnings: { byStatus: {}, withEmbedding: 0, sampleKeys: [] }, epic1053: { docCount: 0, preambleChunkCount: 0 } };
+const out = { byNamespaceStatus: {}, integrity: null, ids: [], hasEmbedding: 0, migratedLearnings: { byStatus: {}, withEmbedding: 0, sampleKeys: [] }, epic1053: { docCount: 0, preambleChunkCount: 0 }, derivedSeedLeaks: {} };
 const res = db.exec("SELECT namespace, status, COUNT(*) FROM memory_entries GROUP BY namespace, status");
 if (res[0]) {
   for (const row of res[0].values) out.byNamespaceStatus[row[0]+'/'+row[1]] = row[2];
@@ -404,6 +419,17 @@ const docRes = db.exec("SELECT COUNT(*) FROM memory_entries WHERE key LIKE 'doc-
 if (docRes[0]) out.epic1053.docCount = docRes[0].values[0][0];
 const preambleRes = db.exec("SELECT COUNT(*) FROM memory_entries WHERE key LIKE 'chunk-%' AND (content LIKE '%[Context from previous section:]%' OR content LIKE '%[Context from next section:]%')");
 if (preambleRes[0]) out.epic1053.preambleChunkCount = preambleRes[0].values[0][0];
+// #1067: derived-namespace cherry-pick leak detection — count ONLY rows
+// whose ids carry the legacy seed prefix (\`populated-\${ns}-\${i}\`). The
+// launcher's pretrain pipeline legitimately writes its OWN pattern-* keys
+// into the patterns namespace post-upgrade (independent of auto_index),
+// so a raw "patterns is non-empty" check was unsound. Cherry-pick leaks
+// would surface as ids that match the seed pattern AND landed in
+// .moflo/moflo.db.
+const seedLeakRes = db.exec("SELECT substr(id, 11, instr(substr(id, 11), '-') - 1) AS ns, COUNT(*) FROM memory_entries WHERE id LIKE 'populated-%' AND namespace IN ('guidance','patterns','code-map','tests') GROUP BY ns");
+if (seedLeakRes[0]) {
+  for (const row of seedLeakRes[0].values) out.derivedSeedLeaks[row[0]] = row[1];
+}
 db.close();
 emit(out);
 `);
@@ -473,15 +499,25 @@ function assertDurableRowsPreserved(snapshot, expectedRows) {
 
 function assertDerivedRowsRegenerable(snapshot) {
   // #851 contract: derived namespaces (guidance, patterns, code-map, tests)
-  // do NOT survive cherry-pick, they regenerate from indexers. The harness
-  // disables auto_index for the populated profile (line ~244), so the post-
-  // launcher DB should have ZERO of these rows. Their absence is the
-  // positive signal that the cherry-pick is selective, not byte-copy.
+  // do NOT survive cherry-pick — they regenerate from indexers. moflo.yaml's
+  // auto_index gate skip-spawns the four script-based indexers, but the
+  // launcher's pretrain pipeline (NOT covered by auto_index) writes its own
+  // `pattern-*` keys into the patterns namespace based on the consumer's
+  // actual code surface. Those rows are legitimate post-upgrade output, not
+  // a cherry-pick leak.
+  //
+  // Pre-#1067 this asserted "namespace count == 0" and was masked by a sql.js-
+  // probe bug that left the seed DB empty: cherry-pick had nothing to copy,
+  // pretrain wrote zero rows on an empty corpus, and the assertion saw 0.
+  // Once the probe was fixed, pretrain produced its real output and the
+  // assertion fired a false positive. Re-scope: assert ONLY that rows with
+  // the legacy seed-key prefix (`populated-${ns}-${i}`) did NOT land in the
+  // post-state DB. Those would be the actual cherry-pick leak signal.
   const DERIVED_NAMESPACES = ['guidance', 'patterns', 'code-map', 'tests'];
   const offenders = [];
   for (const ns of DERIVED_NAMESPACES) {
-    const count = snapshot.byNamespaceStatus[`${ns}/active`] ?? 0;
-    if (count > 0) offenders.push(`${ns}=${count}`);
+    const seedLeak = snapshot.derivedSeedLeaks?.[ns] ?? 0;
+    if (seedLeak > 0) offenders.push(`${ns}=${seedLeak}`);
   }
   if (offenders.length === 0) {
     record('populated:derived-rows-not-cherry-picked', 'pass',

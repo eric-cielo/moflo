@@ -4,11 +4,12 @@
  * dir, runs it via `runNode`, parses the JSON its first stdout line emits,
  * and cleans up — this helper collapses that pattern.
  *
- * Phase 5 (#1084) — sql.js was removed from moflo's runtime; probes now use
- * Node's built-in `node:sqlite`. The PROBE_HARNESS preamble injects a thin
- * sql.js-shape adapter (`sqlInit()` resolves to a `SQL` object with
- * `Database`, `export()`, statement API) so existing probe bodies continue
- * to work without per-call rewrites.
+ * Engine is `node:sqlite` (Node ≥22; #1084 removed sql.js). The
+ * PROBE_HARNESS preamble below still exposes a thin sql.js-shape adapter
+ * (`sqlInit()` resolves to a `SQL` object with `Database`, `export()`,
+ * statement API) so existing probe bodies continue to work without
+ * per-call rewrites. File was named `sqljs-probe.mjs` prior to #1067 when
+ * the sql.js shimming was dropped from the moflo runtime.
  *
  * Probes write a single JSON line on the FIRST stdout line — the helper
  * tolerates loader chatter on later lines by parsing only the first.
@@ -128,44 +129,63 @@ function wrapDb(db, opts = {}) {
     },
     exec: (sql, params) => execAsRows(db, sql, params),
     export: () => {
-      // sql.js parity: serialise the whole DB as a Uint8Array. node:sqlite's
-      // \`DatabaseSync.prototype.serialize()\` (Node 22+) returns the same
-      // shape; if the path is known we can also just \`readFileSync\` it.
+      // sql.js parity: serialise the whole DB as a Uint8Array. Three strategies
+      // in priority order:
+      //   1. node:sqlite's \`DatabaseSync.prototype.serialize()\` — added in
+      //      Node v23.10. Returns Uint8Array directly. Node v22 (still the
+      //      CI baseline) lacks it.
+      //   2. File-backed probe — every Database() call (in-memory or load-
+      //      from-bytes) is now backed by a temp file (see sqlInit below).
+      //      Force a WAL checkpoint so any uncommitted pages flush to the
+      //      main file, then read it.
+      //   3. (Removed) The pre-#1067 fallback created an EMPTY DatabaseSync
+      //      at a new path and read it back, returning 0 bytes — silently
+      //      truncating every probe's export. That made the populated smoke
+      //      flag "0 rows lost" failures on Node v22 (no serialize()).
       const ser = db.serialize?.();
       if (ser instanceof Uint8Array) return ser;
       if (ser && typeof ser === 'object' && 'buffer' in ser) return new Uint8Array(ser);
-      if (path) return new Uint8Array(readFileSync(path));
-      // Last resort: dump to a temp file then read back.
-      const dir = mkdtempSync(join(tmpdir(), 'moflo-probe-'));
-      const tmp = join(dir, 'export.db');
-      const fileDb = new DatabaseSync(tmp);
-      // No clean way to copy across handles; fall back to backup pragma via SQL.
-      fileDb.close();
-      const bytes = new Uint8Array(readFileSync(tmp));
-      try { rmSync(dir, { recursive: true, force: true }); } catch {}
-      return bytes;
+      if (!path) {
+        throw new Error('export() requires a file-backed DatabaseSync — sqlInit() must always provide a path');
+      }
+      // Flush WAL pages back to the main file before readFileSync sees stale
+      // bytes. \`PASSIVE\` returns immediately if another connection holds
+      // a write transaction (none here — probes are single-process), and
+      // \`TRUNCATE\` resets the WAL file. \`FULL\` is the strongest checkpoint
+      // short of \`RESTART\` and is enough for the read-then-close sequence
+      // probe bodies use.
+      try { db.exec('PRAGMA wal_checkpoint(FULL)'); } catch { /* DELETE mode — no WAL */ }
+      return new Uint8Array(readFileSync(path));
     },
     close: () => db.close(),
   };
 }
 
 // sql.js-shape factory. Probes call \`await sqlInit()\` then \`new SQL.Database()\`
-// (in-memory) or \`new SQL.Database(bytes)\` (open from bytes). Match both forms.
+// (fresh DB) or \`new SQL.Database(bytes)\` (open from bytes). BOTH forms now
+// back the database with a temp file so \`export()\` always has somewhere
+// reliable to read from on Node versions that lack \`DatabaseSync.serialize()\`.
 async function sqlInit() {
   return {
     Database: function (bytes) {
+      const dir = mkdtempSync(join(tmpdir(), 'moflo-probe-'));
+      const path = join(dir, 'probe.db');
       if (bytes && bytes.length > 0) {
-        // sql.js's "load from bytes" path. node:sqlite needs a file path —
-        // dump the bytes to a temp file, open it, then keep the path so
-        // \`export()\` can re-read the file (incl. any subsequent writes).
-        const dir = mkdtempSync(join(tmpdir(), 'moflo-probe-load-'));
-        const path = join(dir, 'load.db');
+        // load-from-bytes path: drop the source bytes at \`path\` first, then
+        // open. Subsequent writes mutate the same file so \`export()\` sees
+        // both the original rows and any inserts.
         writeFileSync(path, Buffer.from(bytes));
-        const db = new DatabaseSync(path);
-        return wrapDb(db, { path });
       }
-      // In-memory probe — \`export()\` falls back to the temp-file shuffle.
-      return wrapDb(new DatabaseSync(':memory:'));
+      // For the fresh-DB path, DatabaseSync creates the file on open. Force
+      // DELETE journal mode so every commit syncs straight to the main file
+      // — WAL mode would leave inserts in \`probe.db-wal\` and \`readFileSync\`
+      // would dump a partial snapshot whose pages disagree with the WAL,
+      // failing downstream \`PRAGMA integrity_check\` runs ("2nd reference to
+      // page N", "Rowid out of order"). DELETE has no perf cost for these
+      // single-process write-then-read fixtures.
+      const db = new DatabaseSync(path);
+      try { db.exec('PRAGMA journal_mode = DELETE'); } catch { /* probe still functional in WAL */ }
+      return wrapDb(db, { path });
     },
   };
 }
@@ -176,14 +196,14 @@ function emit(value) {
 `;
 
 /**
- * Run a SQLite probe inline. The body has access to: `sqlInit` (the default
- * export from sql.js, an async initializer) and `emit(value)` which writes
- * the result as a single JSON line.
+ * Run a SQLite probe inline. The body has access to: `sqlInit` (an async
+ * initializer returning a sql.js-shape `SQL` object, backed by `node:sqlite`)
+ * and `emit(value)` which writes the result as a single JSON line.
  *
  * Returns the parsed JSON, or null on failure (failure is recorded under
  * `<label>:probe`).
  */
-export function runSqlJsProbe(consumerDir, label, body, runOpts = {}) {
+export function runSqliteProbe(consumerDir, label, body, runOpts = {}) {
   const probePath = join(consumerDir, `__${label}-probe.mjs`);
   writeFileSync(probePath, `${PROBE_HARNESS}\n${body}\n`);
   let result;
