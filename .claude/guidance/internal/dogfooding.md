@@ -37,9 +37,9 @@ Both directories are indexed locally during moflo development because the indexe
 
 ---
 
-## Upstream Sync
+## Upstream Boundary
 
-MoFlo is a diverged fork of Ruflo/Claude Flow. See `UPSTREAM_SYNC.md` for the cherry-pick log. Never push to or create PRs against `ruvnet/ruflo`.
+MoFlo started as a fork of Ruflo/Claude Flow but is now an independent project — no active sync, no cherry-picks, no upstream remote. Never push to or create PRs against `ruvnet/ruflo`. If you find yourself reading code there, you've gone the wrong direction — the source of truth lives in this repo.
 
 ---
 

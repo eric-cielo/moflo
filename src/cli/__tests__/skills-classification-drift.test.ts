@@ -14,7 +14,7 @@
  * silently miss `flo init` (consumers never get it — the failure mode that
  * caused #938 follow-up — `eldar` and `guidance` shipped to noone for months)
  * or silently install upstream cruft into every consumer (the failure mode
- * that fileted 13 ruflo-leftover skills, all telling consumers to run
+ * that filtered out 13 leftover skills, all telling consumers to run
  * `npx claude-flow` / `npx agentic-flow` CLIs they don't have).
  *
  * If this test fails, the new directory was added without a classification

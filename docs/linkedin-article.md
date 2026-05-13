@@ -116,7 +116,7 @@ A big part of the work was cutting things out. Ruflo is an ambitious project wit
 
 Why not just patch upstream? I have, actually — I've submitted several fixes, and so have plenty of others. But what I wanted wasn't a patched version of someone else's vision. I wanted a more refined and curated experience, one that baked in all the practices I'd been layering on top across my own projects via patch scripts and a fair amount of hackery. At some point, wrapping duct tape around something is less productive than building the thing you actually want.
 
-Will I keep pulling from Ruflo? Yes — it's an active project and good work continues to land there. But MoFlo has diverged significantly in many places, so upstream changes get analyzed and integrated individually, not wholesale merged. Cherry-picks, not rebases. And MoFlo has its own roadmap — I plan to keep adding features that reflect what I need in my own workflows, whether or not they align with upstream direction.
+Early on I cherry-picked from Ruflo when good fixes landed there. That's no longer the case — MoFlo has diverged far enough that wholesale merging doesn't make sense, and the projects have very different priorities at this point. MoFlo has its own roadmap, driven by what I need in my own workflows.
 
 It's open source, it's free, and it runs entirely on your machine. If you use Claude Code and the cold-start problem bugs you as much as it bugged me, give it a try.
 
