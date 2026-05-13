@@ -11,6 +11,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Command, CommandContext } from '../../types.js';
 import { CredentialStore } from '../../spells/credentials/credential-store.js';
+// Hoisted to module scope (#1107): importing `spell.js` inside an `it()` body
+// triggers `mcp-client.ts` to register 15 MCP tool packages, which exceeds the
+// per-test 5s budget under full-suite contention. Module-scope load pays the
+// cold-start once during file setup, outside the per-test timer.
 import { spellCredentialsCommand } from '../../commands/spell-credentials.js';
 import { spellCommand } from '../../commands/spell.js';
 
@@ -195,10 +199,6 @@ describe('spell credentials passphrase', () => {
 });
 
 describe('parent spell credentials command', () => {
-  // Imports are hoisted to module scope (#1107) so the MCP-tool registry
-  // cold-start (15 packages registered in mcp-client.ts) is paid once during
-  // file setup, not inside the per-test 5s timer.
-
   it('lists subcommands', () => {
     expect(spellCredentialsCommand.name).toBe('credentials');
     const subnames = spellCredentialsCommand.subcommands!.map(s => s.name).sort();
