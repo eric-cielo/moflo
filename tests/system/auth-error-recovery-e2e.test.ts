@@ -32,6 +32,7 @@ import type {
   MemoryAccessor,
 } from '../../src/cli/spells/types/step-command.types.js';
 import type { SpellDefinition } from '../../src/cli/spells/types/spell-definition.types.js';
+import { warmRunnerPipeline } from '../../src/cli/__tests__/spells/helpers/warm-runner.js';
 
 // ============================================================================
 // Test scaffolding
@@ -105,6 +106,11 @@ function spellWithGraphPrereq(): SpellDefinition {
 // `beforeEach` adds ~0.5–2 s of CPU per file under fork contention, pushing
 // individual tests past vitest's per-test ceiling. State is still scoped per
 // test — each test clears the stored credential in `afterEach`.
+//
+// #1102: also warm the SpellCaster pipeline (platform-sandbox detection,
+// validator, prereq-checker — see helpers/warm-runner.ts) here in beforeAll.
+// Without this, the headline test ate the ~500 ms cold-start inline and tipped
+// past the 5 s per-test ceiling ~1/3 of the time under full-suite fork load.
 let savedToken: string | undefined;
 let tmpDir: string;
 let store: CredentialStore;
@@ -112,7 +118,7 @@ let store: CredentialStore;
 let originalDelete: CredentialStore['delete'];
 let originalStore: CredentialStore['store'];
 
-beforeAll(() => {
+beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), 'moflo-auth-e2e-'));
   store = new CredentialStore({
     filePath: join(tmpDir, 'credentials.json'),
@@ -120,6 +126,7 @@ beforeAll(() => {
   });
   originalDelete = store.delete.bind(store);
   originalStore = store.store.bind(store);
+  await warmRunnerPipeline(store, makeMemory());
 });
 
 beforeEach(() => {

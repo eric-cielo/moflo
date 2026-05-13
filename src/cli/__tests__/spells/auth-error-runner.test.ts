@@ -26,6 +26,7 @@ import type {
 } from '../../spells/types/step-command.types.js';
 import type { SpellDefinition } from '../../spells/types/spell-definition.types.js';
 import { withEnvVars } from './helpers/prereq-fixtures.js';
+import { warmRunnerPipeline } from './helpers/warm-runner.js';
 
 // ============================================================================
 // Mocks
@@ -124,31 +125,17 @@ function spellWithoutCredPrereq(stepType: string): SpellDefinition {
 // Setup
 // ============================================================================
 
-// #1093: hoist the registry AND warm the runner pipeline in beforeAll. The
-// first SpellCaster.run() in a fresh process pays a ~500 ms cold-start tax —
-// platform-sandbox detection, validator, prereq-checker, step-executor, etc.
-// all wake up. Those caches (_cachedDetection in platform-sandbox.ts) persist
-// for the rest of the file, so subsequent tests run in <2 ms. The warm-up
-// pays that tax inside beforeAll (default 10 s ceiling) instead of inside the
-// first test (5 s ceiling), which under fork contention is what tipped the
-// first test over the line.
+// #1093: hoist the registry AND warm the runner pipeline in beforeAll via the
+// shared `warmRunnerPipeline` helper. The first SpellCaster.run() in a fresh
+// worker pays a ~500 ms cold-start tax (platform-sandbox detection cache in
+// platform-sandbox.ts:_cachedDetection, validator, prereq-checker, etc.); the
+// helper pays it against beforeAll's 10 s ceiling instead of the 5 s per-test
+// ceiling that tipped over under fork contention.
 let registry: StepCommandRegistry;
 
 beforeAll(async () => {
   registry = new StepCommandRegistry();
-
-  const warmCmd: StepCommand = {
-    type: '__warmup__',
-    description: 'pre-warm sandbox detection + runner pipeline',
-    configSchema: { type: 'object' as const },
-    validate: () => ({ valid: true, errors: [] }),
-    async execute() { return { success: true, data: {}, duration: 0 }; },
-    describeOutputs: () => [],
-  };
-  registry.register(warmCmd);
-  const warmRunner = new SpellCaster(registry, makeMockCredentials(), makeMemory());
-  await warmRunner.run({ name: 'warmup', steps: [{ id: 'w', type: '__warmup__', config: {} }] }, {});
-  registry.clear();
+  await warmRunnerPipeline(makeMockCredentials(), makeMemory());
 });
 
 afterEach(() => {
