@@ -42,8 +42,9 @@ const FACTORY_PATH = path.join(REPO_ROOT, 'bin', 'lib', 'get-backend.mjs');
 interface WriterResult {
   role: string;
   written: number;
-  durationMs: number;
 }
+
+type WriteShape = 'autocommit' | 'transaction';
 
 function makeTempRoot(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `moflo-1061-${prefix}-`));
@@ -62,15 +63,24 @@ function cleanupRoot(root: string): void {
  * bin/* scripts use (the path consumers exercise), opens .moflo/moflo.db, and
  * writes `rowCount` rows tagged with `role`. Returns parsed result JSON.
  *
- * Inline script body is kept short — it's the minimum surface needed to
- * exercise openBackend + a prepared INSERT loop, matching how
- * bin/index-guidance.mjs, bin/index-tests.mjs, etc. write.
+ * `shape` controls the transaction wrapping:
+ *   - 'autocommit' — one implicit transaction per INSERT. Matches the
+ *     bin/index-*.mjs indexer chain.
+ *   - 'transaction' — single explicit `BEGIN IMMEDIATE` … `COMMIT` around
+ *     the loop. Matches src/cli/memory/sqlite-backend.ts:withTransaction
+ *     and controllers/batch-operations.ts (the daemon's actual write path).
+ *
+ * Mixing shapes is deliberate: #1061's failure scenario is specifically the
+ * indexer (autocommit) competing with the daemon (BEGIN IMMEDIATE batch),
+ * which is the contention pattern that surfaced the busy_handler trap fixed
+ * in #1099. Uniform autocommit would weaken the verification.
  */
 function spawnWriter(
   projectRoot: string,
   scriptDir: string,
   role: string,
   rowCount: number,
+  shape: WriteShape,
 ): Promise<WriterResult> {
   const factoryUrl = 'file://' + FACTORY_PATH.replace(/\\/g, '/');
   const scriptPath = path.join(scriptDir, `writer-${role}.mjs`);
@@ -80,19 +90,28 @@ function spawnWriter(
     const projectRoot = ${JSON.stringify(projectRoot)};
     const role = ${JSON.stringify(role)};
     const rowCount = ${rowCount};
-    const startedAt = Date.now();
+    const shape = ${JSON.stringify(shape)};
     const db = await openBackend(projectRoot);
     try {
       const ins = db.prepare('INSERT INTO cross_writes (role, idx) VALUES (?, ?)');
-      for (let i = 0; i < rowCount; i++) {
-        ins.run([role, i]);
+      if (shape === 'transaction') db.run('BEGIN IMMEDIATE');
+      try {
+        for (let i = 0; i < rowCount; i++) {
+          ins.run([role, i]);
+        }
+        if (shape === 'transaction') db.run('COMMIT');
+      } catch (err) {
+        if (shape === 'transaction') {
+          try { db.run('ROLLBACK'); } catch { /* already closed */ }
+        }
+        throw err;
+      } finally {
+        ins.free();
       }
-      ins.free();
     } finally {
       db.close();
     }
-    const durationMs = Date.now() - startedAt;
-    process.stdout.write(JSON.stringify({ role, written: rowCount, durationMs }));
+    process.stdout.write(JSON.stringify({ role, written: rowCount }));
   `;
   fs.writeFileSync(scriptPath, script);
 
@@ -101,6 +120,15 @@ function spawnWriter(
       cwd: REPO_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: false,
+      env: {
+        ...process.env,
+        // Pin the subprocess's project-root resolver to the temp DB. Today
+        // openBackend takes projectRoot explicitly so this is belt-and-braces;
+        // if the resolver ever becomes load-bearing for a sub-helper, this
+        // prevents the subprocess from walking up into the moflo repo and
+        // corrupting the real .moflo/moflo.db. See feedback_unified_project_root_resolver.
+        CLAUDE_PROJECT_DIR: projectRoot,
+      },
     });
 
     let stdout = '';
@@ -185,11 +213,11 @@ describe('System verification — cross-process writer race (#1061)', () => {
     cleanupRoot(scriptDir);
   });
 
-  it('two concurrent writers (indexer + daemon shape) lose no rows', async () => {
+  it('two concurrent writers (indexer autocommit + daemon BEGIN IMMEDIATE) lose no rows', async () => {
     const ROWS_PER_WRITER = 200;
     const [a, b] = await Promise.all([
-      spawnWriter(projectRoot, scriptDir, 'indexer', ROWS_PER_WRITER),
-      spawnWriter(projectRoot, scriptDir, 'daemon', ROWS_PER_WRITER),
+      spawnWriter(projectRoot, scriptDir, 'indexer', ROWS_PER_WRITER, 'autocommit'),
+      spawnWriter(projectRoot, scriptDir, 'daemon', ROWS_PER_WRITER, 'transaction'),
     ]);
 
     expect(a.written).toBe(ROWS_PER_WRITER);
@@ -201,37 +229,41 @@ describe('System verification — cross-process writer race (#1061)', () => {
     expect(counts.perRole.get('daemon')).toBe(ROWS_PER_WRITER);
   }, 60_000);
 
-  it('four concurrent writers (overload — indexer chain steps + daemon) lose no rows', async () => {
+  it('four concurrent writers (full indexer chain + daemon batch) lose no rows', async () => {
     // The original repro's worst case: index-guidance, index-tests,
     // index-patterns, and the daemon's memory_store burst can all hit the file
     // in the same window if the user invokes MCP tools while the chain is
     // mid-flight. Under sql.js this multiplied the clobber probability; under
-    // WAL all four serialize.
+    // WAL the indexers serialize via page locks and the daemon's transaction
+    // exercises busy_timeout (#1099 path).
     const ROWS_PER_WRITER = 100;
-    const roles = ['index-guidance', 'index-tests', 'index-patterns', 'daemon'];
+    const writers: Array<{ role: string; shape: WriteShape }> = [
+      { role: 'index-guidance', shape: 'autocommit' },
+      { role: 'index-tests',    shape: 'autocommit' },
+      { role: 'index-patterns', shape: 'autocommit' },
+      { role: 'daemon',         shape: 'transaction' },
+    ];
     const results = await Promise.all(
-      roles.map((r) => spawnWriter(projectRoot, scriptDir, r, ROWS_PER_WRITER)),
+      writers.map((w) => spawnWriter(projectRoot, scriptDir, w.role, ROWS_PER_WRITER, w.shape)),
     );
     for (const r of results) {
       expect(r.written).toBe(ROWS_PER_WRITER);
     }
 
     const counts = await countRows(projectRoot);
-    expect(counts.total).toBe(ROWS_PER_WRITER * roles.length);
-    for (const role of roles) {
-      expect(counts.perRole.get(role)).toBe(ROWS_PER_WRITER);
+    expect(counts.total).toBe(ROWS_PER_WRITER * writers.length);
+    for (const w of writers) {
+      expect(counts.perRole.get(w.role)).toBe(ROWS_PER_WRITER);
     }
   }, 90_000);
 
   it('journal_mode reports WAL — proves the page-level serialization mechanism is engaged', async () => {
     // If WAL ever silently regressed (e.g. journal_mode left at delete due to
-    // a network-FS open), the two-writer test could still pass via OS-level
+    // a network-FS open), the row-count tests could still pass via OS-level
     // exclusive locking but degrade severely in real traffic.
     //
-    // Reading PRAGMA journal_mode is the structural proof — and unlike the
-    // -wal sidecar file (which may be checkpointed-and-removed after writers
-    // close), the pragma value is stable as long as a handle is open.
-    await spawnWriter(projectRoot, scriptDir, 'wal-probe', 5);
+    // The PRAGMA value is stable across opens; the seed already wrote rows,
+    // so no further activity is needed before reading it back.
     const db = await openBackend(projectRoot, { readOnly: true });
     try {
       const result = db.exec('PRAGMA journal_mode');
@@ -239,5 +271,5 @@ describe('System verification — cross-process writer race (#1061)', () => {
     } finally {
       db.close();
     }
-  }, 30_000);
+  }, 10_000);
 });
