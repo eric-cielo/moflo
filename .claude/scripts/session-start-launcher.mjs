@@ -372,13 +372,36 @@ function sleepSyncMs(ms) {
 // user — treat as alive (matches the canonical isAlive in process-manager.mjs
 // after #1061; the prior `catch { return false; }` falsely reported foreign-
 // owned daemons as dead and let the lockfile be unlinked under them).
+//
+// Linux zombie handling: on Linux, `kill(pid, 0)` returns success for zombie
+// processes (exited but not yet reaped by their parent). A zombie can't write
+// to the DB, hold locks, or do anything else stopDaemon cares about — treating
+// it as alive exhausts the kill budget polling a corpse, then preserves the
+// lockfile under a dead process. Production never hits this (the daemon is
+// detached and reaped by init/systemd within ~ms), but a misbehaving parent
+// can keep a daemon zombified, and the launcher's vitest harness reproduces
+// the case deterministically (#1083 CI failure on ubuntu-latest). Read
+// /proc/<pid>/stat (fixed-format, cheap) and treat 'Z' as dead.
 function isDaemonPidAlive(pid) {
   try {
     process.kill(pid, 0);
-    return true;
   } catch (err) {
     return err && err.code === 'EPERM';
   }
+  if (process.platform === 'linux') {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, 'utf-8');
+      // Format: "pid (comm) state ..." — comm can contain spaces/parens, so
+      // parse from the LAST ')' to skip it safely.
+      const lastParen = stat.lastIndexOf(')');
+      if (lastParen !== -1 && stat.charAt(lastParen + 2) === 'Z') return false;
+    } catch (err) {
+      // ENOENT = pid vanished between kill(0) and the read — already dead.
+      if (err && err.code === 'ENOENT') return false;
+      // Anything else (e.g. /proc unavailable) — keep the kill(0) verdict.
+    }
+  }
+  return true;
 }
 
 // Stop the daemon recorded in `lockFile` (if any) without restarting. Used by
