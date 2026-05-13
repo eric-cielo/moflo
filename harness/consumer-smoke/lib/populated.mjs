@@ -773,6 +773,14 @@ function forceKill(child) {
 async function runMcpClobberCheck(consumerDir, seedRows) {
   section('Populated: MCP-clobber regression check');
 
+  // Quiesce the prior phase's daemon + indexer chain before deleting
+  // .moflo. On Windows the daemon holds moflo.db exclusively, so unlink
+  // throws EBUSY and the harness aborts before any MCP-clobber assertion
+  // runs (#1067). The launcher's second run leaves these processes alive
+  // for the post-state probes — we own the cleanup.
+  flo(consumerDir, ['daemon', 'stop'], { timeout: 15_000 });
+  quiesceLauncherBackground(consumerDir);
+
   rmSync(join(consumerDir, MOFLO_DIR), { recursive: true, force: true });
   rmSync(legacyMemoryDbPath(consumerDir), { force: true });
   rmSync(legacyMemoryDbBakPath(consumerDir), { force: true });
