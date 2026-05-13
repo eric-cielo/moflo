@@ -65,9 +65,14 @@ export const EMBEDDING_MODEL_LEGACY_DEFAULT = 'local';
  * - `epic-state`    — Epic progress (epic-N, story-M) written by commands/epic.ts
  * - `test-bridge-fix` — Single 2026-04-23 row left over from a one-off test
  *
+ * Membership is also extended by {@link EPHEMERAL_NAMESPACE_PREFIXES} for
+ * dynamic-name namespaces (e.g. `doctor-memprobe-<persona>`). Most callers
+ * should use {@link isEphemeralNamespace} which checks both sets.
+ *
  * See story #729 for the source-trace and rationale. The session-start
- * launcher only purges {@link PURGE_ON_SESSION_START_NAMESPACES} — a strict
- * subset that *excludes* `tasklist`, because the dashboard's Flo Runs tab
+ * launcher only purges {@link PURGE_ON_SESSION_START_NAMESPACES} +
+ * {@link PURGE_ON_SESSION_START_PREFIXES} — a strict subset that *excludes*
+ * `tasklist`, because the dashboard's Flo Runs tab
  * (`daemon-dashboard.ts handleSpells`) reads tasklist; purging it on every
  * session would empty the tab between sessions (#968).
  */
@@ -77,6 +82,27 @@ export const EPHEMERAL_NAMESPACES: ReadonlySet<string> = new Set([
   'epic-state',
   'test-bridge-fix',
 ]);
+
+/**
+ * Prefix patterns that extend {@link EPHEMERAL_NAMESPACES} for namespaces
+ * whose suffix is generated at runtime. Any namespace beginning with one of
+ * these prefixes is treated as ephemeral (skips embedding).
+ *
+ * NOTE — design distinction from {@link PURGE_ON_SESSION_START_PREFIXES}:
+ * a namespace can be auto-purgeable WITHOUT being skip-embed. For example,
+ * `doctor-memprobe-<persona>` rows are intentionally purged on every
+ * session start (the cleanup is best-effort and accumulates across
+ * sessions) but MUST still get embeddings — the probe's whole purpose is
+ * to validate the embedder is wired (`Memory Access Functional` check
+ * asserts `hasEmbedding=true`). Skipping embedding for those rows breaks
+ * the doctor check. Put a prefix here only when both properties apply.
+ *
+ * Currently empty — there's no namespace today that needs both skip-embed
+ * AND prefix-match. Kept as an explicit export so the bridge embedder's
+ * call site is uniform and future skip-embed prefixes have an obvious
+ * home.
+ */
+export const EPHEMERAL_NAMESPACE_PREFIXES: ReadonlySet<string> = new Set([]);
 
 /**
  * Subset of {@link EPHEMERAL_NAMESPACES} that the session-start launcher
@@ -89,6 +115,61 @@ export const PURGE_ON_SESSION_START_NAMESPACES: ReadonlySet<string> = new Set([
   'epic-state',
   'test-bridge-fix',
 ]);
+
+/**
+ * Prefix patterns purged alongside {@link PURGE_ON_SESSION_START_NAMESPACES}
+ * by the session-start launcher.
+ *
+ * Members:
+ * - `doctor-memprobe-` — `flo healer`'s `Memory Access` round-trip probe
+ *   writes a sentinel into `doctor-memprobe-<persona>` (persona is one of
+ *   `subagent`, `swarm-agent`, `hive-mind-worker`, plus test variants).
+ * - `doctor-neighbors-` — `flo healer`'s neighbor-traversal probe creates a
+ *   fresh `doctor-neighbors-<timestamp>` namespace for each run and seeds
+ *   three chunk rows. Unlike memprobe (fixed personas), every healer run
+ *   spawns a NEW namespace, so namespace pollution grows linearly with
+ *   healer-run count if cleanup races fail.
+ *
+ * Both probes register an explicit cleanup via `safeDelete`, but the
+ * cleanup is best-effort and silently swallows failures (e.g. daemon
+ * races, MCP transport errors) — so rows accumulate across consumer
+ * sessions. Auto-purging matches the pattern for
+ * `hive-mind`/`epic-state`/`test-bridge-fix`. These rows MUST still get
+ * embeddings (see {@link EPHEMERAL_NAMESPACE_PREFIXES} for why) — only
+ * their persistence across sessions is curtailed.
+ */
+export const PURGE_ON_SESSION_START_PREFIXES: ReadonlySet<string> = new Set([
+  'doctor-memprobe-',
+  'doctor-neighbors-',
+]);
+
+/**
+ * Return `true` if a namespace is ephemeral — either an exact member of
+ * {@link EPHEMERAL_NAMESPACES} or one whose name begins with a prefix in
+ * {@link EPHEMERAL_NAMESPACE_PREFIXES}. Callers checking embedding-skip
+ * behavior should use this helper rather than `.has()` on the Set directly.
+ */
+export function isEphemeralNamespace(namespace: string): boolean {
+  if (EPHEMERAL_NAMESPACES.has(namespace)) return true;
+  for (const prefix of EPHEMERAL_NAMESPACE_PREFIXES) {
+    if (namespace.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
+/**
+ * Return `true` if a namespace should be hard-purged on session start —
+ * either an exact member of {@link PURGE_ON_SESSION_START_NAMESPACES} or one
+ * whose name begins with a prefix in
+ * {@link PURGE_ON_SESSION_START_PREFIXES}.
+ */
+export function shouldPurgeOnSessionStart(namespace: string): boolean {
+  if (PURGE_ON_SESSION_START_NAMESPACES.has(namespace)) return true;
+  for (const prefix of PURGE_ON_SESSION_START_PREFIXES) {
+    if (namespace.startsWith(prefix)) return true;
+  }
+  return false;
+}
 
 /**
  * Maximum number of `tasklist` rows kept across session restarts. The
@@ -197,7 +278,7 @@ export async function resolveBridgeEmbedding(
   // Ephemeral namespaces (run-tracking, never user knowledge) skip embeddings
   // unconditionally — even precomputed vectors are dropped. Result row has
   // `embedding IS NULL` and `embedding_model IS NULL`. See #729.
-  if (namespace && EPHEMERAL_NAMESPACES.has(namespace)) {
+  if (namespace && isEphemeralNamespace(namespace)) {
     return { ok: true, json: null, dimensions: 0, model: null };
   }
   const wantsEmbedding = generateEmbeddingFlag !== false && value.length > 0;

@@ -146,6 +146,68 @@ export async function checkMemoryDatabase(): Promise<HealthCheck> {
 }
 
 /**
+ * Tier-1 corruption probe for `.moflo/moflo.db`. Runs `PRAGMA integrity_check`
+ * via a raw node:sqlite readonly handle — bypasses `openBackend` because that
+ * path sets WAL pragmas on open and those throw on deeply-corrupt files,
+ * masking the real failure as a generic "Check" error (doctor.ts:214).
+ *
+ * Owns the corruption signal so downstream checks (Embeddings, Semantic
+ * Quality, Memory Access Functional, etc.) don't end up doing it implicitly
+ * via their own swallow-all error paths. The companion fix in
+ * doctor-fixes.ts coordinates daemon stop + tiered repair via the JS-side
+ * `repairMemoryDbIfCorrupt` (bin/lib/db-repair.mjs).
+ *
+ * Status semantics:
+ *  - `pass` — DB absent OR `integrity_check` returns 'ok'.
+ *  - `fail` — corruption detected. `fix` field points at the healer's
+ *    auto-recovery path (which runs REINDEX → VACUUM INTO → row-level
+ *    salvage in order of escalation).
+ *  - `warn` — probe itself crashed (rare; surfaces the diagnostic rather
+ *    than masking it).
+ */
+export async function checkMemoryDbIntegrity(cwd: string = process.cwd()): Promise<HealthCheck> {
+  const dbPath = memoryDbPath(cwd);
+  if (!existsSync(dbPath)) {
+    return { name: 'Memory DB Integrity', status: 'pass', message: 'DB absent (no integrity probe needed)' };
+  }
+  let DatabaseSync: typeof import('node:sqlite').DatabaseSync;
+  try {
+    ({ DatabaseSync } = await import('node:sqlite'));
+  } catch (e) {
+    return {
+      name: 'Memory DB Integrity',
+      status: 'warn',
+      message: `node:sqlite unavailable: ${errorDetail(e)}`,
+    };
+  }
+  let db: InstanceType<typeof DatabaseSync> | null = null;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    const rows = db.prepare('PRAGMA integrity_check').all() as Array<{ integrity_check?: string }>;
+    if (rows.length === 1 && String(rows[0]?.integrity_check ?? '').toLowerCase() === 'ok') {
+      return { name: 'Memory DB Integrity', status: 'pass', message: 'PRAGMA integrity_check: ok' };
+    }
+    const violationCount = rows.length;
+    const firstIssue = String(rows[0]?.integrity_check ?? 'unknown').split('\n')[0].slice(0, 120);
+    return {
+      name: 'Memory DB Integrity',
+      status: 'fail',
+      message: `${violationCount} integrity violation(s) — first: ${firstIssue}`,
+      fix: 'flo healer --fix -c memory-db-integrity',
+    };
+  } catch (e) {
+    return {
+      name: 'Memory DB Integrity',
+      status: 'fail',
+      message: `Unable to probe DB: ${errorDetail(e)}`,
+      fix: 'flo healer --fix -c memory-db-integrity',
+    };
+  } finally {
+    if (db) try { db.close(); } catch { /* */ }
+  }
+}
+
+/**
  * Standard MCP-config search paths: home (Claude Desktop on macOS/Linux),
  * XDG config dir, project-local `.mcp.json`, and APPDATA on Windows.
  *

@@ -21,7 +21,7 @@ import * as path from 'path';
 import { formatEmbeddingError } from './embedding-errors.js';
 import { HnswLite } from './hnsw-lite.js';
 import { tryLoadHnswSidecar } from './hnsw-persistence.js';
-import { EMBEDDING_MODEL_OPT_OUT, EPHEMERAL_NAMESPACES, getBridgeEmbedder } from './bridge-embedder.js';
+import { EMBEDDING_MODEL_OPT_OUT, getBridgeEmbedder, isEphemeralNamespace } from './bridge-embedder.js';
 import { parseEmbeddingJson, toFloat32 } from './controllers/_shared.js';
 import { writeVectorStatsJson } from './bridge-core.js';
 import { serialiseMetadata } from './bridge-entries.js';
@@ -1974,7 +1974,7 @@ export async function storeEntry(options: {
     let embeddingDimensions: number | null = null;
     let embeddingModel: string | null = EMBEDDING_MODEL_OPT_OUT;
 
-    const isEphemeralNs = EPHEMERAL_NAMESPACES.has(namespace);
+    const isEphemeralNs = isEphemeralNamespace(namespace);
     if (isEphemeralNs) {
       embeddingModel = null;
     } else if (generateEmbeddingFlag && value.length > 0) {

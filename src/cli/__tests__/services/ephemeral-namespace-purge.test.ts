@@ -4,6 +4,9 @@
  * Covers:
  *  - Hard-purges rows from PURGE_ON_SESSION_START_NAMESPACES
  *    (hive-mind, epic-state, test-bridge-fix)
+ *  - Hard-purges rows whose namespace matches PURGE_ON_SESSION_START_PREFIXES
+ *    (doctor-memprobe-<persona>) — added post-#1090 to stop healer probe
+ *    residue accumulating across consumer sessions
  *  - Preserves tasklist rows up to retention cap (#968 fix)
  *  - Trims tasklist beyond retention cap, keeping the most recent entries
  *  - Preserves rows in unrelated namespaces (knowledge, patterns, etc.)
@@ -20,8 +23,12 @@ import { join } from 'node:path';
 import { purgeEphemeralNamespaces } from '../../services/ephemeral-namespace-purge.js';
 import {
   EPHEMERAL_NAMESPACES,
+  EPHEMERAL_NAMESPACE_PREFIXES,
   PURGE_ON_SESSION_START_NAMESPACES,
+  PURGE_ON_SESSION_START_PREFIXES,
   TASKLIST_RETENTION_CAP,
+  isEphemeralNamespace,
+  shouldPurgeOnSessionStart,
 } from '../../memory/bridge-embedder.js';
 import { MEMORY_SCHEMA_V3 } from '../../memory/memory-initializer.js';
 import { openDaemonDatabase, type SqlJsLikeDatabase } from '../../memory/daemon-backend.js';
@@ -185,6 +192,87 @@ describe('purgeEphemeralNamespaces (#729, #968)', () => {
     const result = await purgeEphemeralNamespaces({ dbPath });
     expect(result).toEqual({ purged: 0, trimmed: 0 });
   });
+
+  it('hard-purges prefix-match namespaces (doctor-memprobe-*) alongside exact-match', async () => {
+    // Mirrors the production failure pattern: `flo healer`'s round-trip probe
+    // writes a sentinel row in `doctor-memprobe-<persona>` and registers a
+    // best-effort cleanup. When the cleanup fails silently (daemon race,
+    // EPERM, MCP transport error), rows accumulate across sessions. The
+    // session-start launcher must purge them via the prefix match.
+    const dbPath = await makeTmpDb((db) => {
+      // Exact-match purgeable rows (existing contract)
+      db.run(
+        `INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?, ?, ?, ?, 'active')`,
+        ['exact-1', 'k-exact-1', 'hive-mind', 'msg-foo'],
+      );
+      // Prefix-match purgeable rows — every known healer persona variant
+      const personas = ['subagent', 'swarm-agent', 'hive-mind-worker', 'iter', 'test'];
+      let i = 0;
+      for (const p of personas) {
+        db.run(
+          `INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?, ?, ?, ?, 'active')`,
+          [`probe-${++i}`, `k-probe-${i}`, `doctor-memprobe-${p}`, `sentinel-${p}`],
+        );
+      }
+      // Decoy: a namespace that *contains* but doesn't *start with* the prefix
+      db.run(
+        `INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?, ?, ?, ?, 'active')`,
+        ['decoy', 'k-decoy', 'my-doctor-memprobe-fake', 'should-survive'],
+      );
+      // Untouchable user row
+      db.run(
+        `INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?, ?, ?, ?, 'active')`,
+        ['keep', 'k-keep', 'learnings', 'real learning'],
+      );
+    });
+
+    const result = await purgeEphemeralNamespaces({ dbPath });
+    expect(result.purged).toBe(6); // 1 exact + 5 prefix-match
+    expect(result.trimmed).toBe(0);
+
+    // Exact-match cleared
+    expect(countByNamespace(dbPath, 'hive-mind')).toBe(0);
+    // All prefix-match cleared
+    expect(countByNamespace(dbPath, 'doctor-memprobe-subagent')).toBe(0);
+    expect(countByNamespace(dbPath, 'doctor-memprobe-swarm-agent')).toBe(0);
+    expect(countByNamespace(dbPath, 'doctor-memprobe-hive-mind-worker')).toBe(0);
+    expect(countByNamespace(dbPath, 'doctor-memprobe-iter')).toBe(0);
+    expect(countByNamespace(dbPath, 'doctor-memprobe-test')).toBe(0);
+    // Decoy and user row survive — LIKE must anchor at the start
+    expect(countByNamespace(dbPath, 'my-doctor-memprobe-fake')).toBe(1);
+    expect(countByNamespace(dbPath, 'learnings')).toBe(1);
+  });
+
+  it('hard-purges doctor-neighbors-* timestamped namespaces', async () => {
+    // Unlike memprobe (fixed persona set), the neighbors probe creates a
+    // brand-new namespace on every healer run. Without auto-purge, a heavy
+    // healer user accumulates one fresh namespace per run.
+    const dbPath = await makeTmpDb((db) => {
+      // Three timestamp-suffixed neighbor probe namespaces, 3 chunks each
+      const stamps = ['1778702104739-nw6tcl', '1778701810936-zmnzzp', '1778700000000-aaaaaa'];
+      let id = 0;
+      for (const stamp of stamps) {
+        for (let i = 0; i < 3; i++) {
+          db.run(
+            `INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?, ?, ?, ?, 'active')`,
+            [`n-${++id}`, `chunk-doctor-neighbors-${stamp}-${i}`, `doctor-neighbors-${stamp}`, `chunk ${i}`],
+          );
+        }
+      }
+      // User row that must survive
+      db.run(
+        `INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?, ?, ?, ?, 'active')`,
+        ['keep', 'k-keep', 'learnings', 'real learning'],
+      );
+    });
+
+    const result = await purgeEphemeralNamespaces({ dbPath });
+    expect(result.purged).toBe(9); // 3 namespaces × 3 chunks
+    expect(countByNamespace(dbPath, 'doctor-neighbors-1778702104739-nw6tcl')).toBe(0);
+    expect(countByNamespace(dbPath, 'doctor-neighbors-1778701810936-zmnzzp')).toBe(0);
+    expect(countByNamespace(dbPath, 'doctor-neighbors-1778700000000-aaaaaa')).toBe(0);
+    expect(countByNamespace(dbPath, 'learnings')).toBe(1);
+  });
 });
 
 describe('namespace constants (#729, #968)', () => {
@@ -207,5 +295,86 @@ describe('namespace constants (#729, #968)', () => {
   it('TASKLIST_RETENTION_CAP is set to a sensible default', () => {
     expect(TASKLIST_RETENTION_CAP).toBeGreaterThan(0);
     expect(TASKLIST_RETENTION_CAP).toBeLessThanOrEqual(1000);
+  });
+
+  it('EPHEMERAL_NAMESPACE_PREFIXES is empty by design (post-#1090)', () => {
+    // doctor-memprobe-<persona> is purgeable but NOT skip-embed: the
+    // `Memory Access Functional` doctor check writes there specifically to
+    // validate the embedder is wired (asserts hasEmbedding=true). Putting it
+    // in EPHEMERAL_NAMESPACE_PREFIXES would skip embedding generation and
+    // break the doctor check. Kept as an explicit empty export so any
+    // future skip-embed prefix has an obvious home.
+    expect(Array.from(EPHEMERAL_NAMESPACE_PREFIXES)).toEqual([]);
+  });
+
+  it('PURGE_ON_SESSION_START_PREFIXES contains the doctor probe prefixes (post-#1090)', () => {
+    expect(Array.from(PURGE_ON_SESSION_START_PREFIXES).sort()).toEqual([
+      'doctor-memprobe-',
+      'doctor-neighbors-',
+    ]);
+  });
+
+  it('every purge-prefix-match namespace either gets embeddings or is also in EPHEMERAL_NAMESPACE_PREFIXES', () => {
+    // Cross-check invariant: a namespace must not be auto-purged without
+    // *also* being skip-embed UNLESS the caller has a deliberate reason
+    // (like `doctor-memprobe-*` / `doctor-neighbors-*` needing embeddings
+    // for the doctor check). This test documents the exception explicitly
+    // so future prefix additions get a deliberate review.
+    const purgeOnly = Array.from(PURGE_ON_SESSION_START_PREFIXES)
+      .filter(p => !EPHEMERAL_NAMESPACE_PREFIXES.has(p));
+    expect(purgeOnly.sort()).toEqual(['doctor-memprobe-', 'doctor-neighbors-']);
+  });
+});
+
+describe('isEphemeralNamespace / shouldPurgeOnSessionStart helpers (#1090)', () => {
+  it('isEphemeralNamespace returns true for exact-match members', () => {
+    expect(isEphemeralNamespace('hive-mind')).toBe(true);
+    expect(isEphemeralNamespace('tasklist')).toBe(true);
+    expect(isEphemeralNamespace('epic-state')).toBe(true);
+    expect(isEphemeralNamespace('test-bridge-fix')).toBe(true);
+  });
+
+  it('isEphemeralNamespace returns false for doctor-memprobe namespaces (they need embeddings)', () => {
+    // The doctor `Memory Access Functional` probe writes to
+    // doctor-memprobe-<persona> and asserts hasEmbedding=true. The bridge
+    // embedder must therefore NOT skip embedding generation for them, even
+    // though they auto-purge on session start.
+    expect(isEphemeralNamespace('doctor-memprobe-subagent')).toBe(false);
+    expect(isEphemeralNamespace('doctor-memprobe-swarm-agent')).toBe(false);
+    expect(isEphemeralNamespace('doctor-memprobe-hive-mind-worker')).toBe(false);
+  });
+
+  it('isEphemeralNamespace returns false for non-ephemeral namespaces', () => {
+    expect(isEphemeralNamespace('learnings')).toBe(false);
+    expect(isEphemeralNamespace('knowledge')).toBe(false);
+    expect(isEphemeralNamespace('guidance')).toBe(false);
+    expect(isEphemeralNamespace('patterns')).toBe(false);
+    expect(isEphemeralNamespace('')).toBe(false);
+  });
+
+  it('shouldPurgeOnSessionStart returns true for both exact-match and prefix-match purgeable namespaces', () => {
+    // Exact matches
+    expect(shouldPurgeOnSessionStart('hive-mind')).toBe(true);
+    expect(shouldPurgeOnSessionStart('epic-state')).toBe(true);
+    expect(shouldPurgeOnSessionStart('test-bridge-fix')).toBe(true);
+    // Prefix matches (memprobe)
+    expect(shouldPurgeOnSessionStart('doctor-memprobe-subagent')).toBe(true);
+    expect(shouldPurgeOnSessionStart('doctor-memprobe-')).toBe(true);
+    expect(shouldPurgeOnSessionStart('doctor-memprobe-anything-arbitrary')).toBe(true);
+    // Prefix matches (neighbors)
+    expect(shouldPurgeOnSessionStart('doctor-neighbors-1778702104739-nw6tcl')).toBe(true);
+    expect(shouldPurgeOnSessionStart('doctor-neighbors-')).toBe(true);
+
+    // tasklist is ephemeral (skip-embed) but NOT purged — see #968.
+    expect(shouldPurgeOnSessionStart('tasklist')).toBe(false);
+    expect(isEphemeralNamespace('tasklist')).toBe(true);
+
+    // Non-ephemeral, non-purgeable namespaces
+    expect(shouldPurgeOnSessionStart('learnings')).toBe(false);
+    expect(shouldPurgeOnSessionStart('hive-mind-memory')).toBe(false); // production runtime, not a probe
+    // Anchored at the start: a namespace containing but not starting with
+    // the prefix must not match.
+    expect(shouldPurgeOnSessionStart('my-doctor-memprobe-suffix')).toBe(false);
+    expect(shouldPurgeOnSessionStart('my-doctor-neighbors-suffix')).toBe(false);
   });
 });

@@ -130,14 +130,22 @@ describe('repairMemoryDbIfCorrupt (#743)', () => {
 
       const result = await repairMemoryDbIfCorrupt(root);
 
-      // Either outcome is a valid contract endpoint:
-      //   - {repaired: true, errors: N}            // REINDEX fixed it
-      //   - {repaired: false, errors: N, persistent: true}  // manual rebuild needed
-      //   - {repaired: false, errors: 0}           // open failed (swallowed)
-      // What MUST hold: the call returned without throwing and surfaced a
-      // sane shape so the launcher's caller can branch on it.
+      // Post-#1090, the tiered repair has three valid success endpoints
+      // (`tier: 'reindex' | 'vacuum' | 'salvage'`) plus the unrecoverable
+      // case. Index-page corruption from `corruptAutoIndexPages` should
+      // be reachable by REINDEX; VACUUM INTO and salvage are exercised
+      // when corruption hits table b-trees, not the autoindex pages.
       expect(typeof result.repaired).toBe('boolean');
       expect(typeof result.errors).toBe('number');
+      if (result.repaired === true) {
+        expect(['reindex', 'vacuum', 'salvage']).toContain(result.tier);
+        // VACUUM and salvage tiers keep a forensic copy of the corrupt
+        // original under `.corrupt.<TS>` — the user can restore from it
+        // if the recovered file turns out to have lost something valuable.
+        if (result.tier !== 'reindex') {
+          expect(typeof result.corruptBackup).toBe('string');
+        }
+      }
       if (result.repaired === false && result.errors > 0) {
         expect(result.persistent).toBe(true);
       }

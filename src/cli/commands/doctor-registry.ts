@@ -39,6 +39,7 @@ import {
   checkDaemonWriteRouting,
   checkMcpServers,
   checkMemoryDatabase,
+  checkMemoryDbIntegrity,
   checkMofloYamlCompliance,
   checkStatusLine,
   checkTestDirs,
@@ -77,6 +78,12 @@ export const allChecks: CheckFn[] = [
   checkDaemonWriteRouting,
   checkWritersAudit,
   checkMemoryDatabase,
+  // Owns the corruption signal so downstream checks (Embeddings, Semantic
+  // Quality, Memory Access Functional) don't surface it as the synthetic
+  // "Check" failure (doctor.ts:214). MUST run after checkMemoryDatabase
+  // (which confirms the file exists) and before any check that opens the
+  // DB via openBackend.
+  checkMemoryDbIntegrity,
   checkEmbeddings,
   checkEmbeddingHygiene,
   checkEmbeddingCoverageTruth,
@@ -130,6 +137,9 @@ export const componentMap: Record<string, CheckFn> = {
   'writers-audit': checkWritersAudit,
   'writers': checkWritersAudit,
   'memory': checkMemoryDatabase,
+  'memory-db-integrity': checkMemoryDbIntegrity,
+  'integrity': checkMemoryDbIntegrity,
+  'memory-integrity': checkMemoryDbIntegrity,
   'embeddings': checkEmbeddings,
   'embedding-hygiene': checkEmbeddingHygiene,
   'embedding-coverage': checkEmbeddingCoverageTruth,

@@ -8,12 +8,14 @@
  */
 
 import { spawn, execFileSync } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { mofloDir } from './lib/moflo-paths.mjs';
+import { mofloDir, findProjectRoot } from './lib/moflo-paths.mjs';
 import { repairMemoryDbIfCorrupt } from './lib/db-repair.mjs';
 import { resolveMofloBin } from './lib/resolve-bin.mjs';
+import { applyRetiredPrune } from './lib/retired-files.mjs';
+import { makeSyncer, contentEqual } from './lib/file-sync.mjs';
 
 // Headless skip (#860). The daemon's headless workers spawn `claude --print`
 // with CLAUDE_CODE_HEADLESS=true (see src/cli/services/headless-worker-
@@ -37,20 +39,13 @@ function sessionStartMirrorHeader(file) {
   return `${SESSION_START_MIRROR_MARKER} Do not edit — changes will be overwritten. -->\n<!-- Source: node_modules/moflo/.claude/guidance/shipped/${file} -->\n\n`;
 }
 
-// Detect project root by walking up from cwd to find package.json.
 // IMPORTANT: Do NOT use resolve(__dirname, '..') or '../..' — this script lives
 // in bin/ during development but gets synced to .claude/scripts/ in consumer
-// projects, so __dirname-relative paths break. findProjectRoot() works everywhere.
-function findProjectRoot() {
-  let dir = process.cwd();
-  const root = resolve(dir, '/');
-  while (dir !== root) {
-    if (existsSync(resolve(dir, 'package.json'))) return dir;
-    dir = dirname(dir);
-  }
-  return process.cwd();
-}
-
+// projects, so __dirname-relative paths break. findProjectRoot() (lib/moflo-
+// paths.mjs) resolves identically to the TS bridge (#1057): CLAUDE_PROJECT_DIR
+// first, then walk up for .moflo/moflo.db / .swarm/memory.db / CLAUDE.md+pkg /
+// package.json / .git. Inline walks here have caused N writers to land on
+// different DBs than the bridge reads from — never reintroduce one.
 const projectRoot = findProjectRoot();
 
 // Dogfood guard (#928). When this launcher runs inside the moflo repo itself,
@@ -165,8 +160,12 @@ const UPGRADE_NOTICE_INPROGRESS_TTL_MS = 5 * 60 * 1000;
 const UPGRADE_NOTICE_COMPLETED_TTL_MS = 2 * 60 * 1000;
 const UPGRADE_NOTICE_PATH = () => join(mofloDir(projectRoot), 'upgrade-notice.json');
 
-function writeUpgradeNotice(status) {
-  if (!upgradeNoticeContext) return;
+// Single-source-of-truth notice writer. Reused by writeUpgradeNotice (the
+// version-bump / drift-heal path) and the §0-bootstrap-sentinel + §3h paths
+// (#975 statusline-channel promotion). Keeps the JSON shape colocated with
+// the TTL constants instead of letting it drift across two inline copies.
+function buildAndWriteNotice(context, status) {
+  if (!context) return;
   const ttlMs = status === 'completed'
     ? UPGRADE_NOTICE_COMPLETED_TTL_MS
     : UPGRADE_NOTICE_INPROGRESS_TTL_MS;
@@ -175,15 +174,19 @@ function writeUpgradeNotice(status) {
     const now = Date.now();
     const notice = {
       status,
-      kind: upgradeNoticeContext.kind,
-      from: upgradeNoticeContext.from,
-      to: upgradeNoticeContext.to,
+      kind: context.kind,
+      from: context.from,
+      to: context.to,
       at: new Date(now).toISOString(),
       expiresAt: new Date(now + ttlMs).toISOString(),
       changes: 0,
     };
     writeFileSync(UPGRADE_NOTICE_PATH(), JSON.stringify(notice, null, 2));
   } catch { /* non-fatal — statusline just won't show the segment */ }
+}
+
+function writeUpgradeNotice(status) {
+  buildAndWriteNotice(upgradeNoticeContext, status);
 }
 
 // ── 0-pre. Drop any stale upgrade notice (#738, #743) ───────────────────────
@@ -199,6 +202,39 @@ function writeUpgradeNotice(status) {
 try {
   unlinkSync(join(mofloDir(projectRoot), 'upgrade-notice.json'));
 } catch { /* non-fatal — file usually doesn't exist */ }
+
+// ── 0-bootstrap-sentinel. Surface partial-bootstrap failures (#975) ─────────
+// `scripts/post-install-bootstrap.mjs` writes `.moflo/bootstrap-failed.json`
+// when its file-sync left some helpers unwritten (WSL DrvFs lock, EBUSY race,
+// breaker open, …). Without this block the user has no in-session signal
+// that the upgrade was incomplete — the launcher itself ran fine, but it's
+// running from STALE files. Emit a high-visibility line pointing them at
+// the healer so the silent failure mode that produced #975 can't recur.
+// Section 3h below clears the sentinel after a clean re-sync.
+//
+// Also write a `kind: 'repair'` upgrade-notice so the statusline surfaces
+// the prompt persistently — emitWarning lands on stderr only and Claude Code
+// relays it once on session start; the statusline keeps the indicator in
+// front of the user until §3h flips it to `completed` (sync resolved) or
+// the 5-min in-progress TTL expires (visibility cap, statusline tests).
+let bootstrapSentinelData = null;
+const BOOTSTRAP_SENTINEL_PATH = resolve(mofloDir(projectRoot), 'bootstrap-failed.json');
+let bootstrapNoticeContext = null;
+try {
+  if (existsSync(BOOTSTRAP_SENTINEL_PATH)) {
+    bootstrapSentinelData = JSON.parse(readFileSync(BOOTSTRAP_SENTINEL_PATH, 'utf-8'));
+    const count = Array.isArray(bootstrapSentinelData?.failures) ? bootstrapSentinelData.failures.length : 0;
+    const sentinelVersion = bootstrapSentinelData?.mofloVersion || 'unknown';
+    emitWarning(
+      `Upgrade detected ${count} unfinished install step(s) from npm install (moflo@${sentinelVersion}). Run /healer --fix to repair.`,
+    );
+    bootstrapNoticeContext = { kind: 'repair', from: sentinelVersion, to: sentinelVersion };
+    buildAndWriteNotice(bootstrapNoticeContext, 'in-progress');
+  }
+} catch (err) {
+  // Unreadable sentinel — leave it; healer will catch the underlying issue.
+  emitWarning(`bootstrap sentinel read skipped (${errMessage(err)})`);
+}
 
 // ── 0. Legacy whole-DB / directory migrations have been retired (#851) ─────
 // LEGACY-V2: Pre-#851 the launcher renamed `.claude-flow/` → `.moflo/` and
@@ -232,15 +268,51 @@ try {
 try {
   const repair = await repairMemoryDbIfCorrupt(projectRoot);
   if (repair?.repaired) {
-    emitMutation(
-      'repaired memory db index',
-      `${plural(repair.errors, 'index error')} fixed via REINDEX`,
-    );
+    // Three recovery tiers, three messages. Tier surfaces what level of
+    // damage the DB had so the user (and any downstream telemetry) knows
+    // whether row data was lost. See bin/lib/db-repair.mjs for the cascade.
+    if (repair.tier === 'reindex') {
+      emitMutation(
+        'repaired memory db index',
+        `${plural(repair.errors, 'index error')} fixed via REINDEX`,
+      );
+    } else if (repair.tier === 'vacuum') {
+      emitMutation(
+        'rebuilt memory db',
+        `${plural(repair.errors, 'integrity violation')} fixed via VACUUM INTO; corrupt original kept at ${repair.corruptBackup ?? '.moflo/moflo.db.corrupt.*'}`,
+      );
+    } else if (repair.tier === 'salvage') {
+      // Row-level salvage may have dropped rows; summarise loss so the
+      // user sees what's gone before downstream consumers (indexer,
+      // embeddings) re-process the survivors.
+      let lossSummary = '';
+      if (repair.lossStats) {
+        const losses = Object.entries(repair.lossStats)
+          .map(([tbl, s]) => {
+            const lost = Math.max(0, s.read - s.written);
+            return lost > 0 ? `${tbl} ${s.written}/${s.read}` : null;
+          })
+          .filter(Boolean);
+        if (losses.length > 0) lossSummary = ` (rows preserved: ${losses.join(', ')})`;
+      }
+      emitMutation(
+        'salvaged memory db',
+        `${plural(repair.errors, 'integrity violation')} recovered via row-level salvage${lossSummary}; corrupt original kept at ${repair.corruptBackup ?? '.moflo/moflo.db.corrupt.*'}`,
+      );
+    } else {
+      // Older db-repair without a `tier` field — fall back to legacy text.
+      emitMutation(
+        'repaired memory db',
+        `${plural(repair.errors, 'integrity violation')} fixed`,
+      );
+    }
   } else if (repair?.persistent) {
     // Surface to stderr — Claude additionalContext + the user both see this.
-    // Manual `flo memory rebuild-index` is the next step.
+    // Every recovery tier exhausted; user options are destructive only.
     process.stderr.write(
-      `moflo: memory db has ${plural(repair.errors, 'index error')} REINDEX could not fix — run 'flo memory rebuild-index'\n`,
+      `moflo: memory db has ${plural(repair.errors, 'integrity violation')} ` +
+      `that REINDEX / VACUUM INTO / row-level salvage could not fix — ` +
+      `run 'flo memory rebuild-index' (destructive) or restore from backup\n`,
     );
   }
 } catch {
@@ -404,6 +476,24 @@ try {
           'upgraded',
           cachedVersion ? `${cachedVersion} → ${installedVersion}` : `installed ${installedVersion}`,
         );
+        // #981 / #987 — one-time architecture notice. Single-writer routing
+        // means daemon must be running for safe multi-process writes. Sentinel
+        // file ensures the notice fires once per consumer (across upgrades),
+        // not on every version bump. `flo doctor` surfaces the runtime warning
+        // when the daemon is disabled with MCP configured.
+        try {
+          const noticeSentinel = join(mofloDir(projectRoot), 'single-writer-notice-shown');
+          if (cachedVersion && !existsSync(noticeSentinel)) {
+            emitMutation(
+              'single-writer write architecture active',
+              'memory writes route through the daemon (#981) — keep daemon.auto_start: true to prevent multi-process clobber',
+            );
+            try {
+              mkdirSync(mofloDir(projectRoot), { recursive: true });
+              writeFileSync(noticeSentinel, new Date().toISOString());
+            } catch { /* sentinel best-effort — re-emit next session if write fails */ }
+          }
+        } catch { /* never block the upgrade flow on the notice */ }
       } else {
         upgradeNoticeContext = {
           kind: 'repair',
@@ -517,65 +607,21 @@ try {
       // pre-upgrade content forever because it was never recorded in the
       // manifest. Surface failures on stderr — Claude Code captures
       // session-start stderr as additionalContext so the user sees them too.
-      const syncFailures = [];
-
-      // Standard retry with exponential backoff + circuit breaker for the
-      // transient error class (EBUSY / EPERM / EACCES — Windows file lock,
-      // AV real-time scan, concurrent helper invocation). Hard errors
-      // (ENOENT, etc.) fall through immediately. Once 5 distinct files have
-      // exhausted retries the circuit opens and the tail of the sync runs
-      // with maxAttempts=1 so a sick host (AV mid-scan over node_modules)
-      // doesn't compound the wall-clock cost. Async setTimeout — never
-      // busy-wait in a session-start hook (CPU pinning during EBUSY backoff
-      // is the worst possible response when the OS is the bottleneck).
-      const TRANSIENT_CODES = new Set(['EBUSY', 'EPERM', 'EACCES']);
-      const RETRY_BACKOFF_MS = [50, 200, 800];
-      const CIRCUIT_BREAK_THRESHOLD = 5;
-      let circuitOpen = false;
-      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-      async function syncWithRetry(operation) {
-        const maxAttempts = circuitOpen ? 1 : RETRY_BACKOFF_MS.length + 1;
-        let lastErr = null;
-        let lastCode = null;
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          if (attempt > 0) await sleep(RETRY_BACKOFF_MS[attempt - 1]);
-          try {
-            operation();
-            return { ok: true };
-          } catch (err) {
-            lastErr = err;
-            lastCode = err && err.code ? err.code : null;
-            if (!TRANSIENT_CODES.has(lastCode)) break;
-          }
-        }
-        if (!circuitOpen && syncFailures.length + 1 >= CIRCUIT_BREAK_THRESHOLD) {
-          circuitOpen = true;
-        }
-        return { ok: false, err: lastErr, code: lastCode };
-      }
-
-      /** Copy src → dest if src exists, record `{path, size}` in manifest.
-       * Retries the transient error class with backoff (#854); failures land
-       * in syncFailures for the post-block stderr summary. The recorded size
-       * is read from the just-written destination so a subsequent launcher
-       * can detect content drift via size mismatch. */
+      //
+      // Retry/breaker semantics (#854) + hash-skip + atomic tmp+rename + post-
+      // write verify (#975) live in `./lib/file-sync.mjs`, shared with
+      // `scripts/post-install-bootstrap.mjs` so the npm-install path and the
+      // session-start path can't drift. The launcher records manifest entries
+      // on success via the onSuccess callback so currentManifest stays the
+      // single source of truth for next-session retired-file cleanup.
       function recordManifestEntry(manifestKey, dest) {
         let size = null;
         try { size = statSync(dest).size; } catch { /* size left null — drift check still works on file-existence */ }
         currentManifest.push({ path: manifestKey, size });
       }
-      async function syncFile(src, dest, manifestKey) {
-        if (!existsSync(src)) return;
-        const result = await syncWithRetry(() => copyFileSync(src, dest));
-        if (result.ok) {
-          recordManifestEntry(manifestKey, dest);
-          return;
-        }
-        const tail = TRANSIENT_CODES.has(result.code)
-          ? ` (retried ${RETRY_BACKOFF_MS.length}× after ${result.code}${circuitOpen ? '; circuit open' : ''})`
-          : '';
-        syncFailures.push({ key: manifestKey, message: `${errMessage(result.err)}${tail}` });
-      }
+      const { syncFile, failures: syncFailures } = makeSyncer({
+        onSuccess: (key, dest) => recordManifestEntry(key, dest),
+      });
 
       // Version changed — sync scripts from bin/
       if (autoUpdateConfig.scripts) {
@@ -662,24 +708,65 @@ try {
           for (const srcDir of helperSources) {
             const src = resolve(srcDir, file);
             if (existsSync(src)) {
-              const inlineResult = await syncWithRetry(() => copyFileSync(src, dest));
-              if (inlineResult.ok) {
-                recordManifestEntry(`.claude/helpers/${file}`, dest);
-              } else {
-                const code = inlineResult.code;
-                const tail = TRANSIENT_CODES.has(code)
-                  ? ` (retried ${RETRY_BACKOFF_MS.length}× after ${code}${circuitOpen ? '; circuit open' : ''})`
-                  : '';
-                syncFailures.push({
-                  key: `.claude/helpers/${file}`,
-                  message: `${errMessage(inlineResult.err)}${tail}`,
-                });
-              }
-              break; // first source wins
+              // First existing source wins — same semantics as before. The
+              // shared syncFile records manifest + collects failures the
+              // same way the rest of section 3 does.
+              await syncFile(src, dest, `.claude/helpers/${file}`);
+              break;
             }
           }
         }
       }
+
+      // ── Sync .claude/agents/ + .claude/skills/ recursively (#948) ──────
+      // Pre-#948, agents and skills weren't manifest-tracked at all, so any
+      // file moflo retired (e.g. the 49 ruflo-aspirational agents in #932 or
+      // skill-builder in #945) would linger forever in consumer projects —
+      // Claude Code kept loading them on every prompt, paying the per-prompt
+      // roster tokens we just spent #932 fixing. Walking these dirs through
+      // syncFile() puts every shipped file in `currentManifest`, which lets
+      // the cleanup loop below auto-prune retired files going forward.
+      //
+      // Limitation: this only catches retirements that happen AFTER #948.
+      // For files retired BEFORE #948 (#932 + #945), see the retired-files.json
+      // hash-gated prune block further down — it ships a static list with
+      // content hashes so we only delete files the consumer didn't customize.
+      //
+      // User-authored files at custom paths (.claude/agents/custom/foo.md,
+      // .claude/skills/<custom>/SKILL.md) are NEVER passed through syncFile()
+      // because they don't exist in node_modules/moflo/, so they never enter
+      // the manifest and never get pruned — same proven safety story as
+      // scripts/helpers above.
+      async function syncDirRecursive(srcDir, destPrefix) {
+        if (!existsSync(srcDir)) return;
+        let entries;
+        try {
+          entries = readdirSync(srcDir, { recursive: true, withFileTypes: true });
+        } catch (err) {
+          emitWarning(`${destPrefix} readdir failed (${errMessage(err)})`);
+          return;
+        }
+        for (const entry of entries) {
+          if (!entry.isFile()) continue;
+          if (!entry.name.toLowerCase().endsWith('.md')) continue;
+          const parent = entry.parentPath || entry.path || srcDir;
+          const absSrc = resolve(parent, entry.name);
+          const rel = absSrc.slice(srcDir.length + 1).split(/[\\/]/).join('/');
+          const absDest = resolve(projectRoot, destPrefix, rel);
+          try { mkdirSync(dirname(absDest), { recursive: true }); } catch (err) {
+            emitWarning(`${destPrefix} subdir mkdir failed for ${rel} (${errMessage(err)})`);
+          }
+          await syncFile(absSrc, absDest, `${destPrefix}/${rel}`);
+        }
+      }
+      await syncDirRecursive(
+        resolve(projectRoot, 'node_modules/moflo/.claude/agents'),
+        '.claude/agents',
+      );
+      await syncDirRecursive(
+        resolve(projectRoot, 'node_modules/moflo/.claude/skills'),
+        '.claude/skills',
+      );
 
       // Sync all shipped guidance files from node_modules/moflo/.claude/guidance/shipped/
       const guidanceDir = resolve(projectRoot, '.claude/guidance');
@@ -723,6 +810,56 @@ try {
       }
       if (removedFiles > 0) {
         emitMutation('cleaned up retired files', `${removedFiles} removed`);
+      }
+
+      // ── Hash-gated prune of pre-#948 retirements (Mechanism B) ─────────
+      // The manifest cleanup above only knows about files moflo previously
+      // synced. Agents and skills retired BEFORE #948 (#932's 49 agents and
+      // #945's skill-builder, plus older retirements) were never in any
+      // manifest — they exist on disk in consumer projects only because
+      // earlier moflo versions shipped them via the npm tarball + flo init.
+      // `retired-files.json` is the explicit, reviewable static list that
+      // closes that gap. Each entry pairs a path with the sha256 hashes of
+      // every content version moflo previously shipped, so we only auto-
+      // prune when the consumer's file matches a known-shipped hash —
+      // customized files (different hash) get preserved with a one-line
+      // notice the user can act on.
+      try {
+        const retiredManifestPath = resolve(
+          projectRoot,
+          'node_modules/moflo/retired-files.json',
+        );
+        const report = applyRetiredPrune(projectRoot, retiredManifestPath);
+        if (report.pruned.length > 0) {
+          emitMutation(
+            'pruned retired shipped files',
+            `${plural(report.pruned.length, 'file')} matching known-shipped content removed`,
+          );
+        }
+        if (report.preserved.length > 0) {
+          // stdout (not stderr) so Claude sees this in `additionalContext`
+          // and can surface to the user — these aren't failures, just
+          // consumer-customized files we deliberately left alone.
+          const sample = report.preserved.slice(0, 5).map((p) => `  - ${p}`).join('\n');
+          const more = report.preserved.length > 5
+            ? `\n  …and ${report.preserved.length - 5} more`
+            : '';
+          try {
+            process.stdout.write(
+              `moflo: retained ${plural(report.preserved.length, 'customized retired file')} (delete manually if unwanted):\n${sample}${more}\n`,
+            );
+          } catch { /* non-fatal */ }
+        }
+        if (report.failed.length > 0) {
+          const sample = report.failed.slice(0, 3)
+            .map((f) => `  - ${f.path}: ${f.message}`).join('\n');
+          emitWarning(`${plural(report.failed.length, 'retired file')} failed to prune:\n${sample}`);
+        }
+      } catch (err) {
+        // Non-fatal — the consumer just doesn't get the prune this session.
+        // Next session retries; manifest-cleanup above still works for
+        // future retirements regardless.
+        emitWarning(`retired-files prune skipped (${errMessage(err)})`);
       }
 
       // The daemon was already stopped above so the lock file is gone and
@@ -776,37 +913,42 @@ try {
 // longer exists in source, calling a require helper that prints the warning
 // every time `neural_predict` / `neural_patterns` fires.
 //
-// Fix: compare the daemon-lock's `startedAt` against `node_modules/moflo/`'s
-// install mtime. If the daemon predates the current install, recycle it. The
-// install mtime is a stable proxy because npm rewrites the package.json on
-// every `npm install`, even when the resolved version is unchanged.
+// Fix (epic #1054): compare the daemon-lock's reported moflo `version` against
+// the installed `node_modules/moflo/package.json` version. If they differ —
+// or the lock predates #1054 and has no `version` field at all — recycle the
+// daemon. This is exact (not a heuristic margin like the prior mtime-based
+// check) and named explicitly so the doctor's Daemon Version Skew check
+// (#1059) can share the diagnosis.
 //
-// Margin absorbs clock skew between npm's mtime write and the daemon-lock
-// `startedAt` clock — within this window the daemon is likely the post-install
-// daemon, not a stale predecessor.
-const STALE_DAEMON_MTIME_SKEW_MS = 5_000;
+// Pre-#1054 daemons have no `version` in their lock payload — treated as a
+// mismatch by definition because by construction they were launched before
+// version publishing existed.
 try {
   const mofloPkgPathForRecycle = resolve(projectRoot, 'node_modules/moflo/package.json');
   const lockFile = resolve(projectRoot, '.moflo', 'daemon.lock');
-  // Cheap stat first — if the daemon-lock or package.json is gone we're done.
-  // statSync throws ENOENT on a missing file; the outer catch absorbs it.
-  const installedAt = statSync(mofloPkgPathForRecycle).mtimeMs;
-  const lockMtime = statSync(lockFile).mtimeMs;
-  // Quick reject: if the lock file itself is younger than the install, the
-  // daemon was started after install — no read of lock contents needed.
-  if (installedAt - lockMtime > STALE_DAEMON_MTIME_SKEW_MS) {
-    let daemonStartedAt = 0;
+  // Cheap stat first — if either file is gone, no skew check is possible.
+  if (existsSync(mofloPkgPathForRecycle) && existsSync(lockFile)) {
+    const installedVersion = JSON.parse(readFileSync(mofloPkgPathForRecycle, 'utf-8')).version;
+    let daemonVersion;
     try {
       const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
-      if (typeof lock?.startedAt === 'number') daemonStartedAt = lock.startedAt;
-    } catch { /* corrupt lock — fall through, recycleDaemon will unlink it */ }
-    if (daemonStartedAt > 0 && (installedAt - daemonStartedAt) > STALE_DAEMON_MTIME_SKEW_MS) {
-      if (recycleDaemon(lockFile, 'daemon-stale-recycle')) {
-        emitMutation('recycled stale daemon', 'predates current install');
+      if (typeof lock?.version === 'string') daemonVersion = lock.version;
+    } catch { /* corrupt lock — recycleDaemon will unlink it */ }
+    if (daemonVersion !== installedVersion) {
+      if (recycleDaemon(lockFile, 'daemon-version-skew')) {
+        const observed = daemonVersion ?? '<pre-1054 / unknown>';
+        emitMutation(
+          'recycled stale daemon',
+          `version skew: installed ${installedVersion}, daemon ${observed}`,
+        );
       }
     }
   }
-} catch { /* non-fatal — best-effort stale-daemon detection */ }
+} catch (err) {
+  // Non-fatal; surface via emitWarning per feedback_no_layered_workarounds —
+  // no silent catch on the upgrade path (#854).
+  emitWarning(`daemon version-skew check failed: ${errMessage(err)}`);
+}
 
 // ── 3a. Auto-migrate settings.json (npx flo → node helpers, PATH setup) ────
 // Existing users may have stale settings.json with `npx flo` hooks that break
@@ -1093,7 +1235,7 @@ try {
 // Also prunes top-level mirrors whose source no longer exists in shipped/
 // (#839): pre-manifest-tracking mirrors never appeared in installed-files.json
 // so the section-3 manifest-diff cleanup can't reach them. The marker gate
-// protects user files and `moflo-bootstrap.md` (distinct `moflo init` marker).
+// protects user-authored files; pre-#939 moflo-bootstrap.md is handled by 3c-939.
 try {
   const guidanceDir = resolve(projectRoot, '.claude/guidance');
   const shippedDir = resolve(projectRoot, 'node_modules/moflo/.claude/guidance/shipped');
@@ -1169,6 +1311,24 @@ try {
   }
 } catch { /* non-fatal */ }
 
+// ── 3c-939. Remove pre-#939 moflo-bootstrap.md duplicate ────────────────────
+// Before #939, `flo init` Step 7 (and `flo-setup`) renamed moflo-subagents.md
+// to moflo-bootstrap.md while the launcher's stage-3 ALSO synced the original
+// name — consumers ended up with two copies of the same content on disk. The
+// rename is gone; this prunes any leftover from older installs. Marker-gated
+// so we never delete a homonymous user-authored file.
+try {
+  const legacyBootstrap = resolve(projectRoot, '.claude/guidance/moflo-bootstrap.md');
+  if (existsSync(legacyBootstrap)) {
+    const head = readFileSync(legacyBootstrap, 'utf-8').slice(0, 200);
+    const ours = head.includes('AUTO-GENERATED by moflo init') || head.includes('AUTO-GENERATED by flo-setup');
+    if (ours) {
+      unlinkSync(legacyBootstrap);
+      emitMutation('removed legacy moflo-bootstrap.md', 'duplicate of moflo-subagents.md (#939)');
+    }
+  }
+} catch { /* non-fatal */ }
+
 // ── 3d-yaml-create. Create moflo.yaml if missing (#895) ────────────────────
 // Sibling self-heal to 3d-yaml: that block APPENDS new sections to existing
 // yaml; this block CREATES the file from the canonical template when no yaml
@@ -1195,6 +1355,15 @@ try {
           'review defaults — model routing, sandbox, gates, hooks',
         );
       }
+    } else {
+      // Previously a silent skip — masked the actual reason consumers didn't
+      // get a yaml after upgrading from pre-#895 versions. If neither template
+      // path resolves the install is incomplete (partial extract, prune ate
+      // the file, dogfood without a built dist/). Surface a healer hint so
+      // the user can repair instead of staring at a missing yaml.
+      emitWarning(
+        `moflo.yaml create skipped — template not found at ${tplPaths.join(' or ')}; run 'flo doctor --fix' to repair`,
+      );
     }
   }
 } catch (err) {
@@ -1355,61 +1524,19 @@ try {
   } catch { /* writing the failure itself must not throw */ }
 }
 
-// ── 3f. Flip the upgrade notice to "completed" (#636, #738) ─────────────────
-// See the TTL rationale at the constants above for why we switch to a
-// short-TTL completed badge instead of clearing the file.
-if (upgradeNoticeContext) {
-  writeUpgradeNotice('completed');
-}
-
-// ── 3g. Commit deferred version stamp (#730) ────────────────────────────────
-// Written LAST so an abort above leaves the stamp unchanged and the next
-// launcher re-detects the upgrade. Failure here is surfaced (#854) so a
-// permanently-broken stamp write (filesystem permissions, AV holds) doesn't
-// silently strand consumers in re-detect-on-every-session loops.
-if (pendingVersionStampWrite) {
-  try {
-    writeFileSync(pendingVersionStampWrite.path, pendingVersionStampWrite.version);
-  } catch (err) {
-    emitWarning(`version stamp write failed (${errMessage(err)}) — next launcher will re-detect the upgrade`);
-  }
-}
-
-// Bypasses emitMutation — framing, not a mutation, so it must not inflate the count.
-if (mutationCount > 0) {
-  try {
-    process.stdout.write(
-      'moflo: starting background tasks (daemon, indexer, pretrain — CPU may briefly spike)\n',
-    );
-  } catch { /* non-fatal */ }
-}
-
-// ── 4. Spawn background tasks ───────────────────────────────────────────────
-
-// hooks.mjs session-start (daemon, indexer, pretrain, HNSW, neural patterns).
-// Bin-first ordering via resolveMofloBin — prefers the npm-package copy over
-// the `.claude/scripts/` mirror (#866). The mirror is a derived sync that
-// races the launcher's section-3 file copies during the very upgrade session;
-// spawning the still-stale mirror produces an orphan running pre-upgrade argv
-// (e.g. `rebuild-index --force` after #859 had already dropped it). The pkg
-// copy is updated atomically by `npm install moflo`, so spawning from there
-// guarantees the running hook code matches the installed package.
-const hooksScript = resolveMofloBin(projectRoot, null, 'hooks.mjs');
-if (hooksScript) {
-  fireAndForget('node', [hooksScript, 'session-start'], 'hooks session-start');
-}
-
-// Migration runner — consults `.moflo/migrations.json` and runs only
-// migrations that haven't been recorded. Fast-paths to a no-op when the
-// manifest is current; the runner module loads with lazy sql.js init in
-// each migration, so a stamped session pays only node startup + ESM graph.
+// ── 3e-1057. Run unmet schema migrations BEFORE daemon spawn ────────────────
+// run-migrations.mjs walks `bin/migrations/*.mjs` and invokes each that has
+// not been recorded in `.moflo/migrations.json`. Each migration opens sql.js
+// directly and persists with atomicWriteFileSync. They MUST run before the
+// daemon spawns or the daemon's in-RAM snapshot races their on-disk writes
+// — the bug class S2 detects (#1056 version-skew kill) and S3 (#1057)
+// closes for good. Pre-#1057 this ran in Section 4 AFTER `hooks session-
+// start` fired off the daemon, which is exactly the race fixed here.
 //
-// Prefer the npm-package path so first-install consumers run unmet
-// migrations without waiting for a script-sync round-trip.
-//
-// Run synchronously (capture stdout) so each completed migration surfaces
-// through emitMutation — Claude's session-start hook captures launcher
-// stdout and that's the only channel that reaches the user.
+// Synchronous on purpose: blocking by ≤30s on a one-time migration is the
+// right trade vs. an inconsistent post-upgrade DB. The runner short-circuits
+// to a no-op when nothing is pending, so steady-state cost is just the node
+// startup + ESM graph (~80ms on a warm fs).
 const runMigrations = resolveMofloBin(projectRoot, null, 'run-migrations.mjs');
 if (runMigrations) {
   runMigrationsAndAnnounce(runMigrations);
@@ -1435,9 +1562,11 @@ function runMigrationsAndAnnounce(runnerPath) {
   const labels = {
     'knowledge-to-learnings': 'consolidated knowledge → learnings',
     'knowledge-purge': 'removed legacy knowledge namespace rows',
+    'purge-doc-entries': 'pruned legacy doc-* rows (chunk-only RAG, #1053)',
+    'strip-context-preambles': 'stripped chunk preambles; embeddings will rebuild on next index pass (#1053)',
   };
 
-  for (const line of raw.split('\n')) {
+  for (const line of raw.split(/\r?\n/)) {
     const m = line.match(/^\[migrations\]\s+([\w-]+):\s+done\s+in\s+\d+ms\s*(.*)$/);
     if (!m) continue;
     const migrationName = m[1];
@@ -1462,6 +1591,85 @@ function runMigrationsAndAnnounce(runnerPath) {
     const label = labels[migrationName] || `migration ${migrationName}`;
     emitMutation(label, detail);
   }
+}
+
+// ── 3f. Flip the upgrade notice to "completed" (#636, #738) ─────────────────
+// See the TTL rationale at the constants above for why we switch to a
+// short-TTL completed badge instead of clearing the file.
+if (upgradeNoticeContext) {
+  writeUpgradeNotice('completed');
+}
+
+// ── 3g. Commit deferred version stamp (#730) ────────────────────────────────
+// Written LAST so an abort above leaves the stamp unchanged and the next
+// launcher re-detects the upgrade. Failure here is surfaced (#854) so a
+// permanently-broken stamp write (filesystem permissions, AV holds) doesn't
+// silently strand consumers in re-detect-on-every-session loops.
+if (pendingVersionStampWrite) {
+  try {
+    writeFileSync(pendingVersionStampWrite.path, pendingVersionStampWrite.version);
+  } catch (err) {
+    emitWarning(`version stamp write failed (${errMessage(err)}) — next launcher will re-detect the upgrade`);
+  }
+}
+
+// ── 3h. Clear bootstrap sentinel if section-3 sync resolved it (#975) ───────
+// Section 3 above re-attempts the same file copies the bootstrap was supposed
+// to do, with the launcher's own retry logic. If after section 3 every file
+// the bootstrap reported as failed is now byte-identical to its source, the
+// previously-unfinished work is done — drop the sentinel so the warning at
+// section 0-bootstrap-sentinel doesn't fire on the next session. If anything
+// is still mismatched, leave the sentinel in place; healer / next session
+// will re-attempt.
+if (bootstrapSentinelData?.failures?.length > 0) {
+  try {
+    const allRepaired = bootstrapSentinelData.failures.every((f) => {
+      if (!f?.src || !f?.dest) return false;
+      // contentEqual already does the size short-circuit + SHA-1 hash and
+      // is the same predicate the §3 sync used to decide whether to skip
+      // the copy in the first place — reusing it here keeps "the sentinel
+      // is clearable when bytes match" consistent across both code paths.
+      return contentEqual(f.src, f.dest);
+    });
+    if (allRepaired) {
+      unlinkSync(BOOTSTRAP_SENTINEL_PATH);
+      emitMutation('cleared bootstrap-failed sentinel', 'previously-failed copies are now in sync');
+      // Flip the §0-bootstrap-sentinel "in-progress" repair notice to
+      // "completed" so the statusline shows the post-repair badge. Skip when
+      // §3 already wrote its own upgradeNoticeContext (version bump / drift)
+      // — that path runs the §3f writer with its own kind/version and we
+      // shouldn't clobber it from here.
+      if (bootstrapNoticeContext && !upgradeNoticeContext) {
+        buildAndWriteNotice(bootstrapNoticeContext, 'completed');
+      }
+    }
+  } catch (err) {
+    emitWarning(`bootstrap sentinel verify skipped (${errMessage(err)})`);
+  }
+}
+
+// Bypasses emitMutation — framing, not a mutation, so it must not inflate the count.
+if (mutationCount > 0) {
+  try {
+    process.stdout.write(
+      'moflo: starting background tasks (daemon, indexer, pretrain — CPU may briefly spike)\n',
+    );
+  } catch { /* non-fatal */ }
+}
+
+// ── 4. Spawn background tasks ───────────────────────────────────────────────
+
+// hooks.mjs session-start (daemon, indexer, pretrain, HNSW, neural patterns).
+// Bin-first ordering via resolveMofloBin — prefers the npm-package copy over
+// the `.claude/scripts/` mirror (#866). The mirror is a derived sync that
+// races the launcher's section-3 file copies during the very upgrade session;
+// spawning the still-stale mirror produces an orphan running pre-upgrade argv
+// (e.g. `rebuild-index --force` after #859 had already dropped it). The pkg
+// copy is updated atomically by `npm install moflo`, so spawning from there
+// guarantees the running hook code matches the installed package.
+const hooksScript = resolveMofloBin(projectRoot, null, 'hooks.mjs');
+if (hooksScript) {
+  fireAndForget('node', [hooksScript, 'session-start'], 'hooks session-start');
 }
 
 // Patches are now baked into moflo@4.0.0 source — no runtime patching needed.

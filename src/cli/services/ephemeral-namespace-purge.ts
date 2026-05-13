@@ -31,6 +31,7 @@
 
 import {
   PURGE_ON_SESSION_START_NAMESPACES,
+  PURGE_ON_SESSION_START_PREFIXES,
   TASKLIST_RETENTION_CAP,
 } from '../memory/bridge-embedder.js';
 import { memoryDbPath } from './moflo-paths.js';
@@ -86,14 +87,26 @@ export async function purgeEphemeralNamespaces(
     // Single COUNT pass to gate both DELETEs — a clean DB is the steady
     // state and we don't want two no-op DELETEs (with their query-planner
     // overhead) on every session start.
+    //
+    // Match shape: exact namespace IN (...) OR namespace LIKE 'prefix-%'.
+    // The prefix clause covers runtime-suffixed namespaces like
+    // `doctor-memprobe-<persona>` whose set of suffixes isn't known upfront.
     const namespaces = Array.from(PURGE_ON_SESSION_START_NAMESPACES);
+    const prefixes = Array.from(PURGE_ON_SESSION_START_PREFIXES);
     const cap = options.tasklistRetentionCap ?? TASKLIST_RETENTION_CAP;
-    const placeholders = namespaces.map(() => '?').join(', ');
+
+    const exactClause = namespaces.length
+      ? `namespace IN (${namespaces.map(() => '?').join(', ')})`
+      : '0';
+    const prefixClause = prefixes.map(() => 'namespace LIKE ?').join(' OR ');
+    const purgeWhere = prefixClause ? `(${exactClause} OR ${prefixClause})` : exactClause;
+    const purgeBindings = [...namespaces, ...prefixes.map((p) => `${p}%`)];
+
     const countRows = db.exec(
       `SELECT
-         (SELECT COUNT(*) FROM memory_entries WHERE namespace IN (${placeholders})) AS purgeable,
+         (SELECT COUNT(*) FROM memory_entries WHERE ${purgeWhere}) AS purgeable,
          (SELECT COUNT(*) FROM memory_entries WHERE namespace = 'tasklist') AS tasklistTotal`,
-      namespaces,
+      purgeBindings,
     );
     const counts = countRows[0]?.values?.[0] ?? [0, 0];
     const purgeable = Number(counts[0] ?? 0);
@@ -102,8 +115,8 @@ export async function purgeEphemeralNamespaces(
     let purged = 0;
     if (purgeable > 0) {
       db.run(
-        `DELETE FROM memory_entries WHERE namespace IN (${placeholders})`,
-        namespaces,
+        `DELETE FROM memory_entries WHERE ${purgeWhere}`,
+        purgeBindings,
       );
       purged = db.getRowsModified?.() ?? 0;
     }
