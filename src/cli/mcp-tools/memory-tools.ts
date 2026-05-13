@@ -313,7 +313,7 @@ async function ensureInitialized(): Promise<void> {
 export const memoryTools: MCPTool[] = [
   {
     name: 'memory_store',
-    description: 'Store a value in memory with vector embedding for semantic search (sql.js + HNSW backend). Upserts by default — pass upsert:false to fail on duplicate keys.',
+    description: 'Store a value in memory with vector embedding for semantic search (sql.js + HNSW backend). Upserts by default — pass upsert:false to fail on duplicate keys. Optional `metadata` lets chunk-row producers set the navigation fields (parentDoc, prevChunk, nextChunk, siblings, …) that `memory_get_neighbors` reads.',
     category: 'memory',
     inputSchema: {
       type: 'object',
@@ -328,6 +328,11 @@ export const memoryTools: MCPTool[] = [
         },
         ttl: { type: 'number', description: 'Time-to-live in seconds (optional)' },
         upsert: { type: 'boolean', description: 'If false, fail on duplicate keys instead of replacing (default: true)' },
+        metadata: {
+          type: 'object',
+          additionalProperties: true,
+          description: 'Optional per-row metadata persisted to the `metadata` TEXT column. For chunk entries, include `type: "chunk"` plus the navigation fields (parentDoc, parentPath, chunkIndex, totalChunks, prevChunk, nextChunk, siblings, hierarchicalParent, hierarchicalChildren, chunkTitle, headerLevel) so `memory_get_neighbors` can traverse. Capped at 64KB serialised.',
+        },
       },
       required: ['key', 'value'],
     },
@@ -340,6 +345,7 @@ export const memoryTools: MCPTool[] = [
       const value = typeof input.value === 'string' ? input.value : JSON.stringify(input.value);
       const tags = (input.tags as string[]) || [];
       const ttl = input.ttl as number | undefined;
+      const metadata = input.metadata as Record<string, unknown> | string | undefined;
       // #962: default upsert=true — silent UNIQUE-constraint failures on update
       // were dropping schedule cancels and similar updates on the floor.
       const upsert = input.upsert === false ? false : true;
@@ -356,6 +362,7 @@ export const memoryTools: MCPTool[] = [
           generateEmbeddingFlag: true,
           tags,
           ttl,
+          metadata,
           upsert,
         });
 

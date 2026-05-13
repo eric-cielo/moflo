@@ -33,6 +33,14 @@ function makeEntryCacheKey(namespace: string, key: string): string {
   return `entry:${safeNs}:${safeKey}`;
 }
 
+/** Normalise `metadata` for the `metadata` TEXT column; `undefined` → `'{}'` (#1064). */
+export function serialiseMetadata(metadata: Record<string, unknown> | string | undefined): string {
+  if (metadata == null) return '{}';
+  if (typeof metadata === 'string') return metadata;
+  try { return JSON.stringify(metadata); }
+  catch { return '{}'; }
+}
+
 function bm25Score(
   queryTerms: string[],
   docContent: string,
@@ -171,6 +179,8 @@ export async function bridgeStoreEntry(options: {
   ttl?: number;
   dbPath?: string;
   upsert?: boolean;
+  /** Per-row JSON for the `metadata` TEXT column; chunk-shaped rows need this so #1064 producers stop bypassing the chokepoint. */
+  metadata?: Record<string, unknown> | string;
 }): Promise<{
   success: boolean;
   id: string;
@@ -279,12 +289,13 @@ export async function bridgeStoreEntry(options: {
         ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, ?, ?, ?, 'active')`;
 
     // sql.js Statement.run takes an array of bindings — not varargs.
+    const metadataJson = serialiseMetadata(options.metadata);
     const stmt = ctx.db.prepare(insertSql);
     stmt.run([
       id, key, namespace, value,
       embeddingJson, dimensions || null, model,
       tags.length > 0 ? JSON.stringify(tags) : null,
-      '{}',
+      metadataJson,
       now, now,
       ttl ? now + (ttl * 1000) : null,
     ]);
@@ -309,7 +320,16 @@ export async function bridgeStoreEntry(options: {
     const cacheKey = makeEntryCacheKey(namespace, key);
     let cached = true;
     try {
-      await cacheSet(registry, cacheKey, { id, key, namespace, content: value, embedding: embeddingJson });
+      // #1064 — include metadata in the cache value so a subsequent
+      // bridgeGetEntry cache-hit returns the same shape as a fresh disk read.
+      // Without this, chunk-row producers writing through the chokepoint would
+      // get `{}` back from cache and the full metadata from disk — exactly the
+      // divergence the cache is supposed to mask.
+      await cacheSet(registry, cacheKey, {
+        id, key, namespace, content: value,
+        embedding: embeddingJson,
+        metadata: metadataJson,
+      });
     } catch (err) {
       cached = false;
       logBridgeError('post-persist cache set failed', err);
@@ -360,6 +380,8 @@ export async function bridgeStoreEntries(items: Array<{
   tags?: string[];
   ttl?: number;
   upsert?: boolean;
+  /** Per-item metadata. See {@link bridgeStoreEntry} for the shape contract. */
+  metadata?: Record<string, unknown> | string;
 }>, dbPath?: string): Promise<Array<{
   success: boolean;
   id: string;
@@ -426,13 +448,14 @@ export async function bridgeStoreEntries(items: Array<{
             tags, metadata, created_at, updated_at, expires_at, status
           ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, ?, ?, ?, 'active')`;
 
+      const metadataJson = serialiseMetadata(opts.metadata);
       try {
         const stmt = ctx.db.prepare(insertSql);
         stmt.run([
           id, key, namespace, value,
           embeddingJson, dimensions || null, model,
           tags.length > 0 ? JSON.stringify(tags) : null,
-          '{}',
+          metadataJson,
           now, now,
           ttl ? now + (ttl * 1000) : null,
         ]);
@@ -446,7 +469,12 @@ export async function bridgeStoreEntries(items: Array<{
 
       deferredBookkeeping.push({
         cacheKey: makeEntryCacheKey(namespace, key),
-        cacheValue: { id, key, namespace, content: value, embedding: embeddingJson },
+        // #1064 — keep cache shape in sync with disk (see single-store path).
+        cacheValue: {
+          id, key, namespace, content: value,
+          embedding: embeddingJson,
+          metadata: metadataJson,
+        },
         entryId: id,
         entryKey: key,
         namespace,

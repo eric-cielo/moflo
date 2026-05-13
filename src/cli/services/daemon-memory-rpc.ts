@@ -43,6 +43,9 @@ const KEY_MAX_LENGTH = 256;
 /** Max ops per batch. Bounds memory + write time per request. */
 export const BATCH_MAX_OPS = 100;
 
+/** Cap on serialised `metadata` per op (#1064); 64 KB leaves room for a 100-op batch under {@link MEMORY_RPC_MAX_BODY_BYTES}. */
+const METADATA_MAX_BYTES = 64 * 1024;
+
 // ============================================================================
 // Op shapes (validated; not exported as the wire-format contract is HTTP)
 // ============================================================================
@@ -54,6 +57,8 @@ interface StoreOp {
   value: unknown;
   tags?: string[];
   ttl?: number;
+  /** Pre-serialised JSON for the `metadata` TEXT column; capped at METADATA_MAX_BYTES (#1064). */
+  metadata?: string;
 }
 
 interface DeleteOp {
@@ -145,6 +150,29 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(v => typeof v === 'string');
 }
 
+/** Validate optional `metadata` and return the already-serialised string so the INSERT site doesn't re-stringify (#1064). */
+function validateMetadata(value: unknown): { ok: true; metadata: string | undefined } | { ok: false; error: string } {
+  if (value === undefined) return { ok: true, metadata: undefined };
+  if (typeof value === 'string') {
+    if (Buffer.byteLength(value, 'utf8') > METADATA_MAX_BYTES) {
+      return { ok: false, error: `metadata exceeds ${METADATA_MAX_BYTES} bytes` };
+    }
+    try { JSON.parse(value); }
+    catch { return { ok: false, error: 'metadata string is not valid JSON' }; }
+    return { ok: true, metadata: value };
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return { ok: false, error: 'metadata must be a JSON object or stringified JSON' };
+  }
+  let serialised: string;
+  try { serialised = JSON.stringify(value); }
+  catch { return { ok: false, error: 'metadata is not serialisable' }; }
+  if (Buffer.byteLength(serialised, 'utf8') > METADATA_MAX_BYTES) {
+    return { ok: false, error: `metadata exceeds ${METADATA_MAX_BYTES} bytes` };
+  }
+  return { ok: true, metadata: serialised };
+}
+
 function validateStorePayload(body: unknown): { ok: true; op: StoreOp } | { ok: false; error: string } {
   if (typeof body !== 'object' || body === null) return { ok: false, error: 'body must be a JSON object' };
   const b = body as Record<string, unknown>;
@@ -155,6 +183,8 @@ function validateStorePayload(body: unknown): { ok: true; op: StoreOp } | { ok: 
   if (b.ttl !== undefined && (typeof b.ttl !== 'number' || !Number.isFinite(b.ttl) || b.ttl <= 0)) {
     return { ok: false, error: 'ttl must be a positive finite number (seconds)' };
   }
+  const metaResult = validateMetadata(b.metadata);
+  if (!metaResult.ok) return { ok: false, error: metaResult.error };
   return {
     ok: true,
     op: {
@@ -163,6 +193,7 @@ function validateStorePayload(body: unknown): { ok: true; op: StoreOp } | { ok: 
       value: b.value,
       tags: b.tags as string[] | undefined,
       ttl: b.ttl as number | undefined,
+      metadata: metaResult.metadata,
     },
   };
 }
@@ -339,6 +370,7 @@ export async function handleMemoryStore(
       namespace: v.op.namespace,
       tags: v.op.tags,
       ttl: v.op.ttl,
+      metadata: v.op.metadata,
       upsert: true,
     });
     if (!result.success) {
@@ -430,6 +462,7 @@ export async function handleMemoryBatch(
           namespace: op.namespace,
           tags: op.tags,
           ttl: op.ttl,
+          metadata: op.metadata,
           upsert: true,
         });
         if (r.success) {

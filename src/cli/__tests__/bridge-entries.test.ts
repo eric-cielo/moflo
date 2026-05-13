@@ -770,3 +770,111 @@ describe('bridgeGetEntry — no-row detection (#998)', () => {
     expect(result?.entry?.id).not.toBe('undefined');
   });
 });
+
+describe('bridgeStoreEntry — metadata column round-trip (#1064)', () => {
+  it('persists a plain-object metadata blob to the metadata column', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    const meta = {
+      type: 'chunk',
+      parentDoc: 'doc-1064',
+      chunkIndex: 1,
+      totalChunks: 3,
+      prevChunk: 'k0',
+      nextChunk: 'k2',
+      siblings: ['k0', 'k1', 'k2'],
+    };
+
+    const store = await bridgeStoreEntry({
+      key: 'k1',
+      value: 'chunk body',
+      namespace: 'meta-test',
+      metadata: meta,
+      dbPath,
+    });
+    expect(store?.success).toBe(true);
+
+    const rows = await readRows(
+      `SELECT metadata FROM memory_entries WHERE namespace = ? AND key = ?`,
+      ['meta-test', 'k1'],
+    );
+    expect(rows.length).toBe(1);
+    expect(JSON.parse(String(rows[0].metadata))).toMatchObject(meta);
+  });
+
+  it('accepts a pre-stringified JSON blob and stores it verbatim', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    const raw = JSON.stringify({ type: 'chunk', parentDoc: 'd', chunkIndex: 0 });
+    await bridgeStoreEntry({
+      key: 'k-raw',
+      value: 'v',
+      namespace: 'meta-test',
+      metadata: raw,
+      dbPath,
+    });
+
+    const rows = await readRows(
+      `SELECT metadata FROM memory_entries WHERE namespace = ? AND key = ?`,
+      ['meta-test', 'k-raw'],
+    );
+    expect(String(rows[0].metadata)).toBe(raw);
+  });
+
+  it('defaults to {} when metadata is omitted (matches pre-#1064 shape)', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    await bridgeStoreEntry({
+      key: 'k-omit',
+      value: 'v',
+      namespace: 'meta-test',
+      dbPath,
+    });
+
+    const rows = await readRows(
+      `SELECT metadata FROM memory_entries WHERE namespace = ? AND key = ?`,
+      ['meta-test', 'k-omit'],
+    );
+    expect(String(rows[0].metadata)).toBe('{}');
+  });
+
+  it('surfaces metadata through bridgeGetEntry on the same row', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    const meta = { type: 'chunk', parentDoc: 'd', chunkTitle: 'T' };
+    await bridgeStoreEntry({
+      key: 'k-get',
+      value: 'v',
+      namespace: 'meta-test',
+      metadata: meta,
+      dbPath,
+    });
+
+    const got = await bridgeGetEntry({ key: 'k-get', namespace: 'meta-test', dbPath });
+    expect(got?.success).toBe(true);
+    expect(got?.found).toBe(true);
+    expect(got?.entry?.metadata).toBeDefined();
+    expect(JSON.parse(String(got?.entry?.metadata))).toMatchObject(meta);
+  });
+
+  it('persists per-item metadata through bridgeStoreEntries (batch)', async () => {
+    setBridgeEmbedderForTest(new StubEmbedder({ model: 'm', dimensions: 384 }));
+
+    const items = [
+      { key: 'b0', value: 'v0', namespace: 'meta-test', metadata: { type: 'chunk', chunkIndex: 0 } },
+      { key: 'b1', value: 'v1', namespace: 'meta-test', metadata: { type: 'chunk', chunkIndex: 1 } },
+      { key: 'b2', value: 'v2', namespace: 'meta-test' /* defaults to '{}' */ },
+    ];
+    const results = await bridgeStoreEntries(items, dbPath);
+    expect(results?.every(r => r.success)).toBe(true);
+
+    const rows = await readRows(
+      `SELECT key, metadata FROM memory_entries WHERE namespace = ? ORDER BY key`,
+      ['meta-test'],
+    );
+    expect(rows.length).toBe(3);
+    expect(JSON.parse(String(rows[0].metadata))).toMatchObject({ type: 'chunk', chunkIndex: 0 });
+    expect(JSON.parse(String(rows[1].metadata))).toMatchObject({ type: 'chunk', chunkIndex: 1 });
+    expect(String(rows[2].metadata)).toBe('{}');
+  });
+});
