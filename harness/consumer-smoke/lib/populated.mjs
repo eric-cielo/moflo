@@ -367,6 +367,16 @@ function runLauncher(consumerDir) {
   // build-embeddings / hnsw-rebuild still run sequentially after them and
   // write to `.moflo/moflo.db`; if those land between assertion captures
   // the byte-stability checks flap.
+  //
+  // `quiesceLauncherBackground` kills entries in background-pids.json
+  // (indexer/pretrain/etc.) but NOT the daemon — the launcher spawns
+  // the daemon via `fireAndForget` which doesn't register it there.
+  // The daemon holds an open `node:sqlite` connection to moflo.db with
+  // pending WAL pages; `inspectPostStateDb`'s `readFileSync` would then
+  // see a main-file snapshot inconsistent with the WAL ("2nd reference
+  // to page N" + "Rowid out of order" in PRAGMA integrity_check — the
+  // Linux signature, #1067).
+  flo(consumerDir, ['daemon', 'stop'], { timeout: 15_000 });
   quiesceLauncherBackground(consumerDir);
   return r;
 }
