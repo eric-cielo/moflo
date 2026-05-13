@@ -184,20 +184,10 @@ describe('AIDefence Integration', () => {
       expect(duration).toBeLessThan(10); // Should be very fast
     });
 
-    it('should be faster than full detect', () => {
-      const aidefence = createAIDefence();
-      const input = 'Test injection pattern';
-
-      const quickStart = performance.now();
-      aidefence.quickScan(input);
-      const quickTime = performance.now() - quickStart;
-
-      const fullStart = performance.now();
-      aidefence.detect(input);
-      const fullTime = performance.now() - fullStart;
-
-      expect(quickTime).toBeLessThanOrEqual(fullTime + 2); // Allow small margin
-    });
+    // #1089: the prior `should be faster than full detect` wall-clock test
+    // was removed — its "lighter than detect" invariant is now proven
+    // deterministically by the two structural tests on the underlying service
+    // (threat-detection.test.ts: PII-skip + critical early-exit).
   });
 
   describe('PII Detection', () => {
