@@ -26,12 +26,14 @@ Use these icons in `subject` and `activeForm` when creating tasks so the user ca
 | 💻 | coder | 💻 Writing code |
 | 🧪 | tester | 🧪 Writing tests |
 | 👀 | reviewer | 👀 Reviewing code |
-| 🛡️ | security-architect | 🛡️ Security audit |
-| ⚡ | performance-engineer | ⚡ Optimizing performance |
+| 🛡️ | security-auditor | 🛡️ Security audit |
+| 🔬 | analyst / code-analyzer | 🔬 Analyzing performance hotspots |
 | 📚 | api-docs | 📚 Documenting API |
 | 📋 | planner | 📋 Planning tasks |
+| ⚙️ | backend-dev | ⚙️ Building REST endpoints |
+| 🎨 | frontend-dev | 🎨 Building UI components |
+| 🗄️ | database-dev | 🗄️ Designing schema |
 | 🤝 | consensus (hive-mind) | 🤝 Evaluating tradeoffs |
-| 🔬 | analyzer | 🔬 Analyzing code |
 
 See `.claude/guidance/moflo-task-icons.md` for the full ICON + [Role] format and how it applies to the `Agent` tool's `description` field.
 

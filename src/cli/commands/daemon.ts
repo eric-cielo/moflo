@@ -528,7 +528,7 @@ export async function killBackgroundDaemon(projectRoot: string): Promise<boolean
   try {
     // Platform-split shutdown. On Linux/macOS we try SIGTERM first so the
     // daemon's shutdown handlers (sql.js flush, lock release) can run; force-
-    // kill only if it doesn't exit within ~1s.
+    // kill only if it doesn't exit within the graceful window.
     //
     // On Windows there is no SIGTERM equivalent for our headless detached
     // Node daemon — `taskkill /PID` (no /F) sends a window-close message
@@ -537,22 +537,40 @@ export async function killBackgroundDaemon(projectRoot: string): Promise<boolean
     // implementation invoked it anyway, ate the error in a bare catch, then
     // slept 1s before escalating to /F. Skip the dead step: go straight to
     // /F /T (tree-kill, in case a worker child outlived its parent) on Win.
+    //
+    // #1136: previously this used `setTimeout(1000)` after SIGTERM and
+    // skipped post-SIGKILL verification. Under load on a populated DB the
+    // daemon's shutdown handler (worker-daemon.ts:582 → scheduler.stop +
+    // saveState) can exceed 1s — SIGKILL hit mid-sql.js-dump and left
+    // torn pages in `.moflo/moflo.db` (the page-ref / rowid-order
+    // signature seen in the populated-consumer smoke). Bring the kill
+    // window in line with the launcher's stopDaemon
+    // (bin/session-start-launcher.mjs:425): 3s graceful poll + 1s force
+    // poll, both verifying liveness before returning.
     if (process.platform === 'win32') {
       try {
         execFileSync('taskkill', ['/F', '/T', '/PID', String(holderPid)], { windowsHide: true });
       } catch {
-        // Already exiting / unreachable — process.kill(pid, 0) below verifies.
+        // Already exiting / unreachable — verified via poll below.
+      }
+      const forceDeadline = Date.now() + 1000;
+      while (Date.now() < forceDeadline && isProcessRunning(holderPid)) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     } else {
-      process.kill(holderPid, 'SIGTERM');
-      // Wait briefly so SIGTERM has a chance to land before checking liveness.
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      try {
-        process.kill(holderPid, 0);
-        // Still alive — force kill.
-        process.kill(holderPid, 'SIGKILL');
-      } catch {
-        // Process terminated
+      try { process.kill(holderPid, 'SIGTERM'); } catch { /* already dead */ }
+
+      const gracefulDeadline = Date.now() + 3000;
+      while (Date.now() < gracefulDeadline && isProcessRunning(holderPid)) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      if (isProcessRunning(holderPid)) {
+        try { process.kill(holderPid, 'SIGKILL'); } catch { /* already dead */ }
+        const forceDeadline = Date.now() + 1000;
+        while (Date.now() < forceDeadline && isProcessRunning(holderPid)) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
     }
 
