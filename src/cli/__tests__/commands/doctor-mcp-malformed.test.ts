@@ -89,15 +89,17 @@ describe('inspectMcpConfigs', () => {
 
   it('returns malformed when .mcp.json has unescaped Windows backslashes', () => {
     // The exact shape that caused #1126 — produced by an older writer that
-    // string-concatenated instead of JSON.stringify-ing.
-    const bad = `{
+    // string-concatenated instead of JSON.stringify-ing. `String.raw` keeps
+    // every backslash literal so the on-disk bytes match what motailz had:
+    // `"C:\Users\..."` inside a JSON string is unescaped → JSON.parse throws.
+    const bad = String.raw`{
   "mcpServers": {
     "moflo": {
       "command": "cmd",
-      "args": ["/c", "node", "C:\\Users\\eric\\app.js"]
+      "args": ["/c", "node", "C:\Users\eric\app.js"]
     }
   }
-}`.replace(/\\\\/g, '\\'); // collapse to single backslashes — invalid JSON
+}`;
     writeFileSync(join(tmpDir, '.mcp.json'), bad);
     const result = inspectMcpConfigs(tmpDir);
     expect(result.status).toBe('malformed');

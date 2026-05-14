@@ -10,9 +10,12 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { join } from 'path';
 import { output } from '../output.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 import { getDaemonLockHolder } from '../services/daemon-lock.js';
+import { findProjectRoot } from '../services/project-root.js';
 import { findZombieProcesses } from './doctor-zombies.js';
+import { inspectMcpConfigs } from './doctor-checks-config.js';
 import { installClaudeCode, runCommand } from './doctor-checks-runtime.js';
 import type { HealthCheck } from './doctor-types.js';
 
@@ -192,24 +195,19 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       // config". The previous fix always ran `claude mcp add` — a no-op when
       // the project-local `.mcp.json` was unparseable, because the command
       // doesn't touch malformed project files.
-      const { inspectMcpConfigs } = await import('./doctor-checks-config.js');
-      const { findProjectRoot } = await import('../services/project-root.js');
       const projectRoot = findProjectRoot();
       const inspection = inspectMcpConfigs(projectRoot);
 
       if (inspection.status === 'malformed' && inspection.path) {
         try {
-          const malformedPath = inspection.path;
-          const original = readFileSync(malformedPath, 'utf8');
           // Filesystem-safe timestamp: Date.now() is a digit-only integer so
           // no `:` escape needed (per dogfooding.md § 6 cross-platform primitives).
-          const backupPath = `${malformedPath}.malformed-${Date.now()}`;
-
-          const { atomicWriteFileSync } = await import('../shared/utils/atomic-file-write.js');
-          // Atomic write so an interrupted backup doesn't leave a half-written
-          // file on disk — the broken original is the user's only forensic
-          // record of what corrupted their config.
-          atomicWriteFileSync(backupPath, original);
+          const backupPath = `${inspection.path}.malformed-${Date.now()}`;
+          // The backup is a brand-new file at a unique timestamped path with
+          // no concurrent readers — a plain writeFileSync is enough; the
+          // atomic ceremony is only worth its cost when replacing a file a
+          // running process might re-open mid-write.
+          writeFileSync(backupPath, readFileSync(inspection.path, 'utf8'), 'utf-8');
 
           const { generateMCPJson } = await import('../init/mcp-generator.js');
           const { DEFAULT_INIT_OPTIONS } = await import('../init/types.js');
@@ -224,9 +222,9 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
           // .mcp.json during the fix) never sees a truncated file. The
           // Windows-AV-lock verify window inside atomicWriteFileSync (#1015)
           // gates the rename until the new bytes are readable.
-          atomicWriteFileSync(malformedPath, regenerated);
+          atomicWriteFileSync(inspection.path, regenerated);
 
-          output.writeln(output.dim(`  Regenerated ${malformedPath}; backup at ${backupPath}.`));
+          output.writeln(output.dim(`  Regenerated ${inspection.path}; backup at ${backupPath}.`));
           return true;
         } catch (e) {
           output.writeln(output.warning(`  Regeneration failed: ${errorDetail(e)}`));

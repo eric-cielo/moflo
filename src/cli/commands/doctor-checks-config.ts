@@ -267,31 +267,39 @@ function countMcpServers(cwd: string): number {
  * `findProjectRoot()` so a consumer running `flo healer` from a
  * subdirectory still discovers the project file.
  */
-export function inspectMcpConfigs(cwd: string = findProjectRoot()): {
+export function inspectMcpConfigs(cwd: string = process.cwd()): {
   status: 'valid_with_moflo' | 'valid_no_moflo' | 'malformed' | 'not_found';
   path?: string;
   count?: number;
   parseError?: string;
 } {
+  // Callers wanting project-root resolution pass it in (see `checkMcpServers`
+  // below). Defaulting to `process.cwd()` matches the established pattern in
+  // sibling checks (`checkMemoryDbIntegrity`, `countMcpServers`) and avoids a
+  // redundant FS walk on every doctor pass.
   const configPath = join(cwd, '.mcp.json');
-  if (!existsSync(configPath)) {
-    return { status: 'not_found' };
-  }
+  // Single read with the existence/parse branches handled by the catch —
+  // dropping the pre-`existsSync` guard closes a TOCTOU window where the
+  // file is deleted between the check and the read.
+  let content: Record<string, unknown>;
   try {
-    const content = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
-    const serversValue = content.mcpServers ?? content.servers;
-    const servers = (serversValue && typeof serversValue === 'object')
-      ? (serversValue as Record<string, unknown>)
-      : {};
-    const count = Object.keys(servers).length;
-    const hasMoflo = 'moflo' in servers || 'claude-flow' in servers || 'claude-flow_alpha' in servers;
-    if (hasMoflo) {
-      return { status: 'valid_with_moflo', path: configPath, count };
-    }
-    return { status: 'valid_no_moflo', path: configPath, count };
+    content = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
   } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { status: 'not_found' };
+    }
     return { status: 'malformed', path: configPath, parseError: errorDetail(e) };
   }
+  const serversValue = content.mcpServers ?? content.servers;
+  const servers = (serversValue && typeof serversValue === 'object')
+    ? (serversValue as Record<string, unknown>)
+    : {};
+  const count = Object.keys(servers).length;
+  const hasMoflo = 'moflo' in servers || 'claude-flow' in servers || 'claude-flow_alpha' in servers;
+  if (hasMoflo) {
+    return { status: 'valid_with_moflo', path: configPath, count };
+  }
+  return { status: 'valid_no_moflo', path: configPath, count };
 }
 
 export async function checkMcpServers(cwd: string = findProjectRoot()): Promise<HealthCheck> {
@@ -324,7 +332,6 @@ export async function checkMcpServers(cwd: string = findProjectRoot()): Promise<
       };
 
     case 'not_found':
-    default:
       return {
         name: 'MCP Servers',
         status: 'warn',
@@ -332,6 +339,13 @@ export async function checkMcpServers(cwd: string = findProjectRoot()): Promise<
         fix: 'claude mcp add moflo -- npx -y moflo mcp start',
       };
   }
+  // Compile-time exhaustiveness guard: if a future status variant is added to
+  // `inspectMcpConfigs`'s return type without a matching case above, this
+  // assignment fails to compile (`string` is not assignable to `never`),
+  // forcing a corresponding update here. Better than a silent `default:`
+  // branch swallowing the new case as if it were `not_found`.
+  const _exhaustive: never = result.status;
+  return _exhaustive;
 }
 
 // Catches three failure modes (#895):
