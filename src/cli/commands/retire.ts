@@ -44,7 +44,7 @@ function findMofloRepoRoot(start: string): string | null {
 
 export const retireCommand: Command = {
   name: 'retire',
-  description: 'Record a retired shipped file in retired-files.json (moflo dev only) — usage: flo retire <path> [--retired-by #nnn]',
+  description: 'Record a retired shipped file in retired-files.json (moflo dev only) — usage: flo retire <path> [--retired-by #nnn] | flo retire --rebuild-hashes',
   hidden: true,
   options: [
     {
@@ -58,15 +58,16 @@ export const retireCommand: Command = {
       type: 'string',
     },
     {
-      name: 'hashes',
-      description: 'Maximum number of historical content hashes to record (default 3)',
-      type: 'number',
-      default: 3,
+      name: 'rebuild-hashes',
+      description: 'Recompute knownContentHashes[] for every existing entry from full git history (#1133 backfill)',
+      type: 'boolean',
+      default: false,
     },
   ],
   examples: [
     { command: 'flo retire .claude/agents/v3/performance-engineer.md --retired-by #932', description: 'Record a retirement' },
     { command: 'flo retire .claude/skills/skill-builder/SKILL.md --retired-by #945 --retired-in 4.9.21', description: 'Pin retiredIn' },
+    { command: 'flo retire --rebuild-hashes', description: 'Backfill every entry from full git history' },
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const repoRoot = findMofloRepoRoot(__filename) || findMofloRepoRoot(ctx.cwd);
@@ -74,12 +75,6 @@ export const retireCommand: Command = {
       output.printError('flo retire must be run inside the moflo source repo');
       output.printInfo('retired-files.json lives at the moflo package root and does not ship to consumer projects');
       return { success: false, message: 'not in moflo repo', exitCode: 1 };
-    }
-
-    const path = ctx.args[0];
-    if (!path) {
-      output.printError('Missing required argument: <path>');
-      return { success: false, message: 'missing path', exitCode: 2 };
     }
 
     const scriptPath = resolve(repoRoot, 'scripts', 'build-retired-files.mjs');
@@ -91,10 +86,19 @@ export const retireCommand: Command = {
     // Parser normalises kebab-case flag names to camelCase before storing
     // (#787). Read as ctx.flags.<camelCase> — bracket-with-kebab is always
     // undefined and ESLint blocks that pattern.
-    const args = ['--add', path];
-    if (ctx.flags.retiredBy) args.push('--retired-by', String(ctx.flags.retiredBy));
-    if (ctx.flags.retiredIn) args.push('--retired-in', String(ctx.flags.retiredIn));
-    if (ctx.flags.hashes) args.push('--hashes', String(ctx.flags.hashes));
+    let args: string[];
+    if (ctx.flags.rebuildHashes) {
+      args = ['--rebuild-hashes'];
+    } else {
+      const path = ctx.args[0];
+      if (!path) {
+        output.printError('Missing required argument: <path> (or pass --rebuild-hashes)');
+        return { success: false, message: 'missing path', exitCode: 2 };
+      }
+      args = ['--add', path];
+      if (ctx.flags.retiredBy) args.push('--retired-by', String(ctx.flags.retiredBy));
+      if (ctx.flags.retiredIn) args.push('--retired-in', String(ctx.flags.retiredIn));
+    }
 
     const result = spawnSync('node', [scriptPath, ...args], {
       cwd: repoRoot,

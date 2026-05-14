@@ -218,6 +218,61 @@ describe('retired-files helper (#948)', () => {
       expect(report.failed).toEqual([]);
     });
 
+    it('prunes when consumer hash matches the 4th-or-later historic shipped version (#1133)', () => {
+      // Reproduces the motailz-style stale-install case the 3-hash cap missed:
+      // consumer installed an older moflo, file content matches a hash that
+      // was sliced off the manifest under the legacy 3-cap. With the widened
+      // window the manifest carries every historic hash, so the prune fires.
+      const oldest = '# moflo 4.6 shipped this\n';
+      const middle = '# moflo 4.7 shipped this\n';
+      const newer  = '# moflo 4.8 shipped this\n';
+      const newest = '# moflo 4.9 shipped this\n';
+      const consumer = oldest; // motailz-equivalent — frozen on 4.6 content
+
+      writeAt(root, '.claude/agents/v3/stale.md', consumer);
+      const manifestPath = writeManifest([
+        {
+          path: '.claude/agents/v3/stale.md',
+          // 4 known hashes — pre-#1133 the slice cap would have dropped `oldest`.
+          knownContentHashes: [
+            sha256Of(newest),
+            sha256Of(newer),
+            sha256Of(middle),
+            sha256Of(oldest),
+          ],
+        },
+      ]);
+
+      const report = applyRetiredPrune(root, manifestPath);
+      expect(report.pruned).toContain('.claude/agents/v3/stale.md');
+      expect(existsSync(join(root, '.claude/agents/v3/stale.md'))).toBe(false);
+    });
+
+    it('preserves a genuinely customized file even with a widened hash window', () => {
+      // Customization safety: the widened-window fix MUST NOT prune content
+      // that never appeared in moflo's history, regardless of how many
+      // historic hashes the entry carries.
+      writeAt(root, '.claude/agents/v3/customized.md', '# I edited this myself\n');
+      const manifestPath = writeManifest([
+        {
+          path: '.claude/agents/v3/customized.md',
+          knownContentHashes: [
+            sha256Of('# moflo v1\n'),
+            sha256Of('# moflo v2\n'),
+            sha256Of('# moflo v3\n'),
+            sha256Of('# moflo v4\n'),
+            sha256Of('# moflo v5\n'),
+            sha256Of('# moflo v6\n'),
+            sha256Of('# moflo v7\n'),
+          ],
+        },
+      ]);
+
+      const report = applyRetiredPrune(root, manifestPath);
+      expect(report.preserved).toContain('.claude/agents/v3/customized.md');
+      expect(existsSync(join(root, '.claude/agents/v3/customized.md'))).toBe(true);
+    });
+
     it('cross-platform: paths in the manifest use forward slashes regardless of OS', () => {
       // The launcher always writes the manifest with forward-slash paths
       // (matching the way the section-3 cleanup loop and currentManifest use
