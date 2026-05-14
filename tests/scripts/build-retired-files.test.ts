@@ -35,6 +35,24 @@ function loadManifest(): RetiredManifest {
 }
 
 describe('build-retired-files.mjs (#1133)', () => {
+  // These tests walk git history for paths that were deleted commits ago.
+  // A shallow clone (`actions/checkout@v5` without `fetch-depth: 0`) returns
+  // empty for `git log --diff-filter=D` against those deletions, producing
+  // cryptic test failures. Fail fast at the suite boundary with an
+  // actionable message instead.
+  const isShallow = spawnSync(
+    'git',
+    ['rev-parse', '--is-shallow-repository'],
+    { cwd: repoRoot, encoding: 'utf-8' },
+  ).stdout.trim() === 'true';
+  if (isShallow) {
+    throw new Error(
+      'This test suite walks git history for retired paths and cannot run in a ' +
+      'shallow clone. CI: set `fetch-depth: 0` on actions/checkout. Local: run ' +
+      '`git fetch --unshallow` (or clone without --depth).',
+    );
+  }
+
   describe('hashesForPath', () => {
     it('returns every unique historical content hash for a path with >3 revisions', () => {
       // `.claude/agents/sona/sona-learning-optimizer.md` is a known retired
