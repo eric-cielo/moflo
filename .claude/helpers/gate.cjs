@@ -82,6 +82,51 @@ var command = process.argv[2];
 
 var EXEMPT = ['.claude/', '.claude\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state', 'node_modules', 'moflo.yaml'];
 var DANGEROUS = ['rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
+
+// #1132 — Bash memory-first gate.
+//
+// CREDIT: the legacy detector that marks the gate satisfied when Claude
+// manually invokes a memory-search CLI (flo-search, the moflo MCP search via
+// shell, etc.). Preserved verbatim from the pre-#1132 behaviour so existing
+// recipes keep crediting the gate.
+var CREDIT_MEMORY_SEARCH_RE = /semantic-search|memory search|memory retrieve|memory-search/;
+// BLOCK: read-like Bash commands that bypass the existing check-before-read /
+// check-before-scan gates by going through the shell. Anchored to the start of
+// the line so subcommands inside pipelines or `npm install grep` don't trip.
+// Covers POSIX read/search tools, Windows cmd `type`, and PowerShell readers.
+var READ_LIKE_BASH_RE = new RegExp([
+  '^\\s*(?:cat|head|tail|less|more|bat|xxd|od|hexdump)\\b',
+  '^\\s*(?:grep|rg|ag|fgrep|egrep|find|fd)\\b',
+  '^\\s*sed\\s+-n\\b',
+  '^\\s*awk\\s+(?!.*<<)',
+  // `type <path>` on Windows. No `$` anchor so a piped form
+  // (`type src\foo.ts | grep x`) still matches and gets blocked. Requires at
+  // least one non-space argument so shell-builtin usage like `type ls` (which
+  // would still false-positive but is an acceptable trade) is differentiated
+  // from "no argument" forms.
+  '^\\s*type\\s+\\S',
+  '^\\s*(?:Get-Content|gc|Select-String|sls)\\b',
+].join('|'), 'i');
+// CARVE-OUT: commands that LOOK read-like but are operational. Anchored to the
+// LEADING command — the pipe-filter case (`npm test | grep FAIL`) is already
+// handled by READ_LIKE's `^\s*` anchor never matching the leading `npm`, so
+// there is intentionally no pipe arm here: catching the leading command lets
+// `grep -r TODO src/ | head -5` reach the BLOCK exit (which it must, that's
+// the gap the ticket exists to close). #1132.
+var BASH_CARVE_OUT_RE = new RegExp([
+  '^\\s*(npm|npx|pnpm|yarn|bun|node|deno|tsx|ts-node)\\s',
+  '^\\s*(git|gh|hub)\\s',
+  '^\\s*(docker|kubectl|helm|terraform)\\s',
+  '^\\s*(curl|wget|http|fetch)\\s',
+  '^\\s*(jq|yq|xq)\\s',
+  '^\\s*(echo|printf|true|false|sleep|test|\\[)\\s',
+  '^\\s*cat\\s+(<<|<<<)',
+  '^\\s*cat\\s+[^|]*\\s*>',
+  '^\\s*tee\\b',
+  // Lazy `.+?` instead of `.+\s` to avoid catastrophic backtracking on long
+  // `find` commands that lack a `-delete` / `-exec rm` suffix.
+  '^\\s*find\\s+.+?-(delete|exec\\s+rm)\\b',
+].join('|'));
 var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\b/i;
 var TASK_RE = /\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\b/i;
 
@@ -402,11 +447,35 @@ switch (command) {
     break;
   }
   case 'check-bash-memory': {
+    // #1132 — preserve CREDIT side-effect AND add a BLOCK arm for read-like
+    // Bash commands. Wired as PreToolUse[Bash] (was PostToolUse before #1132)
+    // so process.exit(2) actually prevents the read from reaching the shell.
     var cmd = process.env.TOOL_INPUT_command || '';
-    if (/semantic-search|memory search|memory retrieve|memory-search/.test(cmd)) {
+
+    // 1) CREDIT — preserved behavior. A real memory-search invocation flips
+    // the gate flag so subsequent Read/Grep/Glob within this prompt pass.
+    if (CREDIT_MEMORY_SEARCH_RE.test(cmd)) {
       var s = readState();
       if (markMemorySearched(s)) writeState(s);
+      break;
     }
+
+    // 2) BLOCK — new behavior. Cheap regex checks come BEFORE readState() so
+    // the overwhelming majority of Bash invocations (git/npm/curl/echo/etc.)
+    // never touch the filesystem. Order: config flag → command-shape regexes
+    // → state read → memory gate.
+    if (!config.memory_first) break;
+    if (!READ_LIKE_BASH_RE.test(cmd)) break;
+    if (BASH_CARVE_OUT_RE.test(cmd)) break;
+    var s2 = readState();
+    if (!s2.memoryRequired || isMemorySearchedFor(s2)) break;
+    process.stderr.write(
+      'BLOCKED: Search memory before reading files via Bash. ' +
+      'Use mcp__moflo__memory_search. On chunk hits, traverse via ' +
+      'mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n' +
+      'Disable per-gate via moflo.yaml: gates: memory_first: false\n'
+    );
+    process.exit(2);
     break;
   }
   case 'check-task-transition': {

@@ -527,11 +527,144 @@ describe('gate.cjs: check-bash-memory', () => {
     expect(readState(tmpDir).memorySearched).toBe(false);
   });
 
-  it('always exits 0 (never blocks)', () => {
+  it('does not block non-read operational commands when memory is unsatisfied', () => {
+    // #1132 — `rm -rf /` is caught by check-dangerous-command, not check-bash-memory.
+    // The Bash-memory gate only blocks read-like commands (cat/grep/find/etc.).
+    writeState(tmpDir, { memorySearched: false, memoryRequired: true });
     const env = baseEnv(tmpDir);
     env.TOOL_INPUT_command = 'rm -rf /';
     const r = runGate('check-bash-memory', env);
     expect(r.exitCode).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// gate.cjs — check-bash-memory BLOCK behavior (#1132)
+// Reads via Bash were the documented escape hatch from the memory-first gate.
+// These tests pin the BLOCK matrix from the issue so regressions surface
+// instead of silently re-opening the gap.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('gate.cjs: check-bash-memory BLOCK (#1132)', () => {
+  const block: Array<[string, string]> = [
+    ['cat src/foo.ts', 'POSIX cat'],
+    ['cat file1 file2 file3', 'multi-arg cat'],
+    ['head -50 README.md', 'head'],
+    ['tail -f app.log', 'tail -f'],
+    ['grep -r "TODO" src/', 'grep recursive'],
+    ['grep "TODO" src/foo.ts | head -5', 'grep at start of pipeline still blocks'],
+    ['rg "TODO" src/', 'ripgrep'],
+    ['type src\\foo.ts | grep x', 'Windows type piped'],
+    ['cat src/foo.ts | head -20', 'cat at start of pipeline still blocks'],
+    ['find . -name "*.test.ts"', 'find -name'],
+    ["sed -n '1,20p' file.ts", 'sed -n'],
+    ["awk '/TODO/' file.ts", 'awk with pattern'],
+    ["awk '{print $1}' file.ts", 'awk without pattern'],
+    ['type src\\foo.ts', 'Windows cmd type'],
+    ['Get-Content src\\foo.ts', 'PowerShell Get-Content'],
+    ['gc src\\foo.ts', 'PowerShell gc alias'],
+    ['Select-String "pattern" src\\', 'PowerShell Select-String'],
+  ];
+
+  for (const [cmd, label] of block) {
+    it(`blocks: ${label} — ${cmd}`, () => {
+      writeState(tmpDir, { memorySearched: false, memoryRequired: true });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_command = cmd;
+      const r = runGate('check-bash-memory', env);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('BLOCKED');
+      expect(r.stderr).toContain('memory_search');
+    });
+  }
+
+  const pass: Array<[string, string]> = [
+    ['cat > out.txt', 'cat redirect (write)'],
+    ['cat <<EOF', 'cat heredoc'],
+    ['tee output.log', 'tee'],
+    ['find . -name foo -delete', 'find -delete'],
+    ['find . -name foo -exec rm {} \\;', 'find -exec rm'],
+    ['npm install grep', 'npm install with grep arg'],
+    ['npm test', 'npm test'],
+    ['git log --grep="fix"', 'git --grep'],
+    ['gh pr list', 'gh'],
+    ['curl https://example.com', 'curl'],
+    ['docker ps', 'docker'],
+    ['echo "hello"', 'echo'],
+    ['npm test 2>&1 | grep FAIL', 'pipe-grep filter'],
+    ['ls src/ | head -5', 'pipe-head filter'],
+    ['curl https://x | jq .', 'curl piped to jq'],
+  ];
+
+  for (const [cmd, label] of pass) {
+    it(`passes: ${label} — ${cmd}`, () => {
+      writeState(tmpDir, { memorySearched: false, memoryRequired: true });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_command = cmd;
+      const r = runGate('check-bash-memory', env);
+      expect(r.exitCode).toBe(0);
+    });
+  }
+
+  it('does NOT block when memoryRequired is false (e.g. directive prompt)', () => {
+    writeState(tmpDir, { memorySearched: false, memoryRequired: false });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = 'cat src/foo.ts';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('does NOT block when the actor has already searched memory', () => {
+    writeState(tmpDir, { memorySearched: true, memoryRequired: true });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = 'grep -r "TODO" src/';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('honors per-actor memorySearchedBy when HOOK_SESSION_ID is set', () => {
+    writeState(tmpDir, {
+      memorySearched: false,
+      memoryRequired: true,
+      memorySearchedBy: { 'subagent-A': true },
+    });
+    const env = baseEnv(tmpDir);
+    env.HOOK_SESSION_ID = 'subagent-A';
+    env.TOOL_INPUT_command = 'cat src/foo.ts';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('blocks a different actor even when one actor has searched', () => {
+    writeState(tmpDir, {
+      memorySearched: false,
+      memoryRequired: true,
+      memorySearchedBy: { 'subagent-A': true },
+    });
+    const env = baseEnv(tmpDir);
+    env.HOOK_SESSION_ID = 'subagent-B';
+    env.TOOL_INPUT_command = 'cat src/foo.ts';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(2);
+  });
+
+  it('respects moflo.yaml gates.memory_first: false', () => {
+    writeFileSync(join(tmpDir, 'moflo.yaml'), 'gates:\n  memory_first: false\n');
+    writeState(tmpDir, { memorySearched: false, memoryRequired: true });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = 'cat src/foo.ts';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(0);
+    rmSync(join(tmpDir, 'moflo.yaml'));
+  });
+
+  it('still credits real memory-search invocations and lets them pass', () => {
+    writeState(tmpDir, { memorySearched: false, memoryRequired: true });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = 'npx flo-search semantic-search "auth"';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(0);
+    expect(readState(tmpDir).memorySearched).toBe(true);
   });
 });
 
@@ -1860,11 +1993,25 @@ describe('settings.json: PostToolUse matcher coverage', () => {
     expect(cmd).not.toMatch(/gate\.cjs"\s+record-memory-searched/);
   });
 
-  it('check-bash-memory is wired through gate-hook.mjs (#879)', () => {
+  it('check-bash-memory is NOT in PostToolUse[Bash] anymore (#1132)', () => {
+    // #1132 — moved to PreToolUse so process.exit(2) can actually block.
     const cmd = commandFor('Bash', 'check-bash-memory');
-    expect(cmd).toBeDefined();
-    expect(cmd).toContain('gate-hook.mjs');
-    expect(cmd).not.toMatch(/gate\.cjs"\s+check-bash-memory/);
+    expect(cmd).toBeUndefined();
+  });
+
+  it('check-bash-memory is wired into PreToolUse[Bash] via gate-hook.mjs (#1132)', () => {
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    const preToolUse = (settings.hooks?.PreToolUse ?? []) as Array<{
+      matcher: string;
+      hooks: Array<{ command: string }>;
+    }>;
+    const bashEntry = preToolUse.find(e => 'Bash'.match(new RegExp(e.matcher))?.[0] === 'Bash');
+    expect(bashEntry, 'no PreToolUse entry matches Bash').toBeDefined();
+    const cmd = bashEntry!.hooks.find(h => h.command.includes('check-bash-memory'));
+    expect(cmd, 'check-bash-memory not present in PreToolUse[Bash]').toBeDefined();
+    expect(cmd!.command).toContain('gate-hook.mjs');
+    // #879 — must NOT call gate.cjs directly (session_id forwarding).
+    expect(cmd!.command).not.toMatch(/gate\.cjs"\s+check-bash-memory/);
   });
 });
 

@@ -255,6 +255,9 @@ function generateHooksConfig(config: HooksConfig): object {
         hooks: [
           { type: 'command', command: gateHookCmd('check-dangerous-command'), timeout: 2000 },
           { type: 'command', command: gateHookCmd('check-before-pr'), timeout: 2000 },
+          // #1132 — moved from PostToolUse so process.exit(2) actually blocks
+          // read-like Bash that bypasses the Read/Glob/Grep gates via the shell.
+          { type: 'command', command: gateHookCmd('check-bash-memory'), timeout: 2000 },
         ],
       },
       // #931 — TaskCreate REMINDER + namespace hint moved here from
@@ -295,7 +298,7 @@ function generateHooksConfig(config: HooksConfig): object {
       {
         matcher: '^Bash$',
         hooks: [
-          { type: 'command', command: gateHookCmd('check-bash-memory'), timeout: 2000 },
+          // #1132 — check-bash-memory moved to PreToolUse (above).
           { type: 'command', command: gateHookCmd('record-test-run'), timeout: 2000 },
         ],
       },

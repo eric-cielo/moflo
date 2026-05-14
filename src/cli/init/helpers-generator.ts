@@ -287,6 +287,10 @@ var command = process.argv[2];
 
 var EXEMPT = ['.claude/', '.claude\\\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state', 'node_modules', 'moflo.yaml'];
 var DANGEROUS = ['rm -rf /', 'format c:', 'del /s /q c:\\\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
+// #1132 — Bash memory-first gate regexes. See bin/gate.cjs for documentation.
+var CREDIT_MEMORY_SEARCH_RE = /semantic-search|memory search|memory retrieve|memory-search/;
+var READ_LIKE_BASH_RE = /^\\s*(?:cat|head|tail|less|more|bat|xxd|od|hexdump)\\b|^\\s*(?:grep|rg|ag|fgrep|egrep|find|fd)\\b|^\\s*sed\\s+-n\\b|^\\s*awk\\s+(?!.*<<)|^\\s*type\\s+\\S|^\\s*(?:Get-Content|gc|Select-String|sls)\\b/i;
+var BASH_CARVE_OUT_RE = /^\\s*(npm|npx|pnpm|yarn|bun|node|deno|tsx|ts-node)\\s|^\\s*(git|gh|hub)\\s|^\\s*(docker|kubectl|helm|terraform)\\s|^\\s*(curl|wget|http|fetch)\\s|^\\s*(jq|yq|xq)\\s|^\\s*(echo|printf|true|false|sleep|test|\\[)\\s|^\\s*cat\\s+(<<|<<<)|^\\s*cat\\s+[^|]*\\s*>|^\\s*tee\\b|^\\s*find\\s+.+?-(delete|exec\\s+rm)\\b/;
 var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\\b/i;
 var TASK_RE = /\\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\\b/i;
 
@@ -477,11 +481,20 @@ switch (command) {
     break;
   }
   case 'check-bash-memory': {
+    // #1132 — credit + block. See bin/gate.cjs for full documentation.
     var cmd = process.env.TOOL_INPUT_command || '';
-    if (/semantic-search|memory search|memory retrieve|memory-search/.test(cmd)) {
+    if (CREDIT_MEMORY_SEARCH_RE.test(cmd)) {
       var s = readState();
       if (markMemorySearched(s)) writeState(s);
+      break;
     }
+    if (!config.memory_first) break;
+    if (!READ_LIKE_BASH_RE.test(cmd)) break;
+    if (BASH_CARVE_OUT_RE.test(cmd)) break;
+    var s2 = readState();
+    if (!s2.memoryRequired || isMemorySearchedFor(s2)) break;
+    process.stderr.write('BLOCKED: Search memory before reading files via Bash. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\\nDisable per-gate via moflo.yaml: gates: memory_first: false\\n');
+    process.exit(2);
     break;
   }
   case 'check-task-transition': {
