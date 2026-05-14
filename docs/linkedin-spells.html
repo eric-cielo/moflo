@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>All wizards have a library of spells. What are yours?</title>
+  <title>All wizards have a book of spells. What are yours?</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -127,9 +127,9 @@
 </head>
 <body>
 
-<p><img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/moflo_spells.png" alt="MoFlo — a wizard's library of spells, ready to cast" /></p>
+<p><img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/moflo_spells.png" alt="MoFlo — a wizard's book of spells, ready to cast" /></p>
 
-<h1>All wizards have a library of spells. What are yours?</h1>
+<h1>All wizards have a book of spells. What are yours?</h1>
 
 <p><em>An update on what's new in <a href="https://github.com/eric-cielo/moflo">MoFlo</a> — the open-source npm package that upgrades Claude Code with full project knowledge, persistent memory,
   sandboxed automation, and a swarm of agents that actually stay wired together.</em></p>
@@ -143,7 +143,7 @@
 
 <hr/>
 
-<p>Every wizard worth their staff carries a grimoire — a personal library of spells, tested and refined, ready to cast on demand. The spells aren't the wizard's <em>power</em>;
+<p>Every wizard worth their staff carries a grimoire — a personal book of spells, tested and refined, ready to cast on demand. The spells aren't the wizard's <em>power</em>;
   they're how that power gets <em>aimed</em>. Without them, every incantation is improvised, every result a coin flip.</p>
 
 <p>MoFlo gives Claude that grimoire. A <strong>spell</strong> in MoFlo is a YAML or JSON file that composes typed steps —
@@ -241,7 +241,7 @@
 </ul>
 
 <p>The win is composition. The Slack <em>connector</em> handles auth and rate-limit; the Slack <em>step command</em> exposes <code>slack.post</code> and <code>slack.thread.reply</code>;
-  ten different spells share the same connector instance and the same credential. When the Slack API changes, you fix one file. When you want a new behavior — say, posting to a thread instead of a channel — you extend one step command, and every spell in your library inherits it.</p>
+  ten different spells share the same connector instance and the same credential. When the Slack API changes, you fix one file. When you want a new behavior — say, posting to a thread instead of a channel — you extend one step command, and every spell in your book inherits it.</p>
 
 <p>That's the difference between scripting and engineering: a script is a one-off, a spell is a piece of a system. Your <code>/flo</code> spell, your IMAP-to-Slack spell,
   your nightly deploy spell — they all draw from the same shelf.</p>
@@ -260,9 +260,9 @@
     next-run preview, and tear-down, so "run this every weekday at 9 a.m." takes one prompt instead of a config-file expedition.</li>
 </ul>
 
-<p>The skills are first-class moflo product, not prompt templates. They run the same engine, respect the same capability gates, and produce spells that drop straight into your library.</p>
+<p>The skills are first-class moflo product, not prompt templates. They run the same engine, respect the same capability gates, and produce spells that drop straight into your book.</p>
 
-<h2>Start a library</h2>
+<h2>Start your book</h2>
 
 <pre><code>npm install --save-dev moflo
 flo init</code></pre>
@@ -270,10 +270,10 @@ flo init</code></pre>
 <p>Then, in any Claude Code session, type <code>/spell-builder</code> and describe the workflow you want. The skill will walk you through the steps, the capabilities,
   the schedule if you want one, and the safety review before first cast. Your first spell will be in your grimoire in under five minutes.</p>
 
-<p>The biggest unlock isn't any one spell — it's having a library of them. Every workflow you used to half-remember, paste from a README, or hold together with shell aliases
+<p>The biggest unlock isn't any one spell — it's having a book of them. Every workflow you used to half-remember, paste from a README, or hold together with shell aliases
   becomes a tested, sandboxed, version-controlled artifact your team can read, share, and trust.</p>
 
-<p><strong>All wizards have a library of spells. What are yours?</strong></p>
+<p><strong>All wizards have a book of spells. What are yours?</strong></p>
 
 <ul>
   <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
