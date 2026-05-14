@@ -59,45 +59,31 @@ npx flo daemon start
 
 ---
 
-## Available Agents (60+ Types)
+## Available Agents
+
+The shipped agent roster — each is invoked via the `Agent` tool with `subagent_type: <name>`. The canonical handle is the `name:` frontmatter inside `.claude/agents/**/*.md` (filename may differ from agent name). Aspirational agents that never shipped were retired in #932 — `retired-files.json` enforces auto-prune on consumer upgrade.
 
 ### Core Development
-`coder`, `reviewer`, `tester`, `planner`, `researcher`
-
-### Specialized Agents
-`security-architect`, `security-auditor`, `memory-specialist`, `performance-engineer`
-
-### Swarm Coordination
-`hierarchical-coordinator`, `mesh-coordinator`, `adaptive-coordinator`, `collective-intelligence-coordinator`, `swarm-memory-manager`
-
-### Consensus & Distributed
-`byzantine-coordinator`, `raft-manager`, `gossip-coordinator`, `consensus-builder`, `crdt-synchronizer`, `quorum-manager`, `security-manager`
-
-### Performance & Optimization
-`perf-analyzer`, `performance-benchmarker`, `task-orchestrator`, `memory-coordinator`, `smart-agent`
-
-### GitHub & Repository
-`github-modes`, `pr-manager`, `code-review-swarm`, `issue-tracker`, `release-manager`, `workflow-automation`, `project-board-sync`, `repo-architect`, `multi-repo-swarm`
-
-### SPARC Methodology
-`sparc-coord`, `sparc-coder`, `specification`, `pseudocode`, `architecture`, `refinement`
+`coder`, `reviewer`, `tester`, `planner`, `researcher`, `analyst`
 
 ### Specialized Development
-`backend-dev`, `mobile-dev`, `ml-developer`, `cicd-engineer`, `api-docs`, `system-architect`, `code-analyzer`, `base-template-generator`
+`backend-dev`, `frontend-dev`, `database-dev`, `cicd-engineer`, `api-docs`, `system-architect`, `code-analyzer`, `base-template-generator`
 
-### Testing & Validation
-`tdd-london-swarm`, `production-validator`
+### Quality & Security
+`security-auditor`, `test-long-runner`
 
 ### Agent Routing (Anti-Drift)
 
-| Code | Task        | Agents                                          |
-|------|-------------|-------------------------------------------------|
-| 1    | Bug Fix     | coordinator, researcher, coder, tester          |
-| 3    | Feature     | coordinator, architect, coder, tester, reviewer |
-| 5    | Refactor    | coordinator, architect, coder, reviewer         |
-| 7    | Performance | coordinator, perf-engineer, coder               |
-| 9    | Security    | coordinator, security-architect, auditor        |
-| 11   | Docs        | researcher, api-docs                            |
+The orchestrator is the calling Claude, not a named agent. Pick specialists from the roster above.
+
+| Code | Task        | Agents                                            |
+|------|-------------|---------------------------------------------------|
+| 1    | Bug Fix     | researcher, coder, tester                         |
+| 3    | Feature     | system-architect, coder, tester, reviewer         |
+| 5    | Refactor    | analyst, coder, reviewer                          |
+| 7    | Performance | analyst, coder                                    |
+| 9    | Security    | security-auditor, code-analyzer                   |
+| 11   | Docs        | researcher, api-docs                              |
 
 **Codes 1-9: hierarchical/specialized (anti-drift). Code 11: mesh/balanced.**
 

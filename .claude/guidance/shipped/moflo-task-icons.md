@@ -29,16 +29,20 @@ description: "ICON [Role] Brief description"
 | Agent Type | Icon | Example subject |
 |------------|------|----------------|
 | Explore | 🔍 | `🔍 [Explorer] Find entity files` |
-| coder / sparc-coder | 💻 | `💻 [Coder] Implement auth service` |
-| tester | 🧪 | `🧪 [Tester] Run unit test suite` |
+| coder | 💻 | `💻 [Coder] Implement auth service` |
+| tester / test-long-runner | 🧪 | `🧪 [Tester] Run unit test suite` |
 | reviewer | 📋 | `📋 [Reviewer] Review PR changes` |
 | researcher | 🔬 | `🔬 [Researcher] Analyze dependencies` |
 | planner / Plan | 📐 | `📐 [Planner] Design migration plan` |
-| security-architect / security-* | 🛡️ | `🛡️ [Security] Audit auth middleware` |
-| architect / system-architect | 🏗️ | `🏗️ [Architect] Design API structure` |
+| security-auditor | 🛡️ | `🛡️ [Security] Audit auth middleware` |
+| system-architect | 🏗️ | `🏗️ [Architect] Design API structure` |
 | backend-dev | ⚙️ | `⚙️ [Backend] Build REST endpoints` |
-| mobile-dev | 📱 | `📱 [Mobile] Fix React Native layout` |
-| performance-* | ⚡ | `⚡ [Perf] Profile query bottleneck` |
+| frontend-dev | 🎨 | `🎨 [Frontend] Build login component` |
+| database-dev | 🗄️ | `🗄️ [Database] Design schema migration` |
+| analyst / code-analyzer | 🔬 | `🔬 [Analyst] Profile query bottleneck` |
+| api-docs | 📚 | `📚 [Docs] Write OpenAPI spec` |
+| cicd-engineer | 🚦 | `🚦 [CICD] Wire GitHub Actions matrix` |
+| base-template-generator | 🧱 | `🧱 [Template] Scaffold new component` |
 | general-purpose | 🤖 | `🤖 [Agent] Execute multi-step task` |
 
 ## Wrong vs Right Examples

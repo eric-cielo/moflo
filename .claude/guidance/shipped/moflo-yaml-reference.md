@@ -77,7 +77,7 @@ model_routing:
   cost_optimization: true         # Prefer cheaper models when confident
   circuit_breaker: true           # Penalize models that fail repeatedly
   # agent_overrides:
-  #   security-architect: opus
+  #   security-auditor: opus
   #   researcher: sonnet
 
 # Status line display
