@@ -384,7 +384,7 @@ function generateHooksConfig(config: HooksConfig): object {
           {
             type: 'command',
             command: 'node "$CLAUDE_PROJECT_DIR/.claude/scripts/session-start-launcher.mjs"',
-            timeout: 3000,
+            timeout: 5000,
           },
           {
             type: 'command',

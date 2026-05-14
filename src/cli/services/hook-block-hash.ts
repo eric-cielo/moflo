@@ -143,7 +143,7 @@ export function getReferenceHookBlock(): HooksTree {
     ],
     SessionStart: [
       {
-        hooks: [scriptHook('session-start-launcher.mjs', 3000), autoMemory('import', 8000)],
+        hooks: [scriptHook('session-start-launcher.mjs', 5000), autoMemory('import', 8000)],
       },
     ],
     Stop: [

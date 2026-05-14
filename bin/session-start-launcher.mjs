@@ -432,40 +432,48 @@ function stopDaemon(lockFile) {
 
   let killed = false;
   if (stalePid !== null && isDaemonPidAlive(stalePid)) {
-    // Graceful signal — platform-aware. On Windows, `process.kill(pid, 'SIGTERM')`
-    // silently force-kills (skipping the daemon's shutdown handlers that flush
-    // sql.js + release lock cleanly), so use bare `taskkill` (no /F) for a
-    // close-event signal.
-    try {
-      if (process.platform === 'win32') {
-        execFileSync('taskkill', ['/PID', String(stalePid)], { windowsHide: true, timeout: 5000 });
-      } else {
-        process.kill(stalePid, 'SIGTERM');
-      }
-    } catch { /* signal/spawn failed — fall through to liveness poll + force */ }
-
-    // Poll for death up to 3s. The daemon's shutdown handler does a final
-    // sql.js dump + lock release, which under load can take ~1s.
-    const gracefulDeadline = Date.now() + 3000;
-    while (Date.now() < gracefulDeadline) {
-      if (!isDaemonPidAlive(stalePid)) { killed = true; break; }
-      sleepSyncMs(100);
-    }
-
-    // Force-kill if still alive.
-    if (!killed) {
+    // Platform-split shutdown. On Linux/macOS, SIGTERM lets the daemon's
+    // shutdown handler run a final sql.js dump + lock release before we
+    // escalate.
+    //
+    // On Windows there is no SIGTERM equivalent for our headless detached
+    // Node daemon — `taskkill /PID` (no /F) sends a window-close message
+    // that a non-GUI process can't receive and always fails with the visible
+    // error 'process can only be terminated forcefully'. The prior
+    // implementation invoked it anyway, swallowed the error, then polled
+    // alive for 3s before escalating — exactly the time-waste that pushed
+    // §3's stopDaemon past the 3000ms SessionStart hook timeout. Go
+    // straight to /F /T (tree-kill, in case a worker child outlived its
+    // parent) on Win.
+    if (process.platform === 'win32') {
       try {
-        if (process.platform === 'win32') {
-          execFileSync('taskkill', ['/F', '/T', '/PID', String(stalePid)], { windowsHide: true, timeout: 5000 });
-        } else {
-          process.kill(stalePid, 'SIGKILL');
-        }
-      } catch { /* dead or unreachable */ }
-      // Short grace period for OS reap.
+        execFileSync('taskkill', ['/F', '/T', '/PID', String(stalePid)], { windowsHide: true, timeout: 5000 });
+      } catch { /* dead or unreachable — liveness poll below confirms */ }
+      // Short grace period for OS reap (typically ~ms).
       const forceDeadline = Date.now() + 1000;
       while (Date.now() < forceDeadline) {
         if (!isDaemonPidAlive(stalePid)) { killed = true; break; }
         sleepSyncMs(100);
+      }
+    } else {
+      try { process.kill(stalePid, 'SIGTERM'); } catch { /* signal failed — escalate below */ }
+
+      // Poll for death up to 3s. The daemon's shutdown handler does a final
+      // sql.js dump + lock release, which under load can take ~1s.
+      const gracefulDeadline = Date.now() + 3000;
+      while (Date.now() < gracefulDeadline) {
+        if (!isDaemonPidAlive(stalePid)) { killed = true; break; }
+        sleepSyncMs(100);
+      }
+
+      // Force-kill if still alive.
+      if (!killed) {
+        try { process.kill(stalePid, 'SIGKILL'); } catch { /* dead or unreachable */ }
+        const forceDeadline = Date.now() + 1000;
+        while (Date.now() < forceDeadline) {
+          if (!isDaemonPidAlive(stalePid)) { killed = true; break; }
+          sleepSyncMs(100);
+        }
       }
     }
 
@@ -499,6 +507,42 @@ function recycleDaemon(lockFile, label) {
   return true;
 }
 
+// Numeric semver compare. Returns -1 / 0 / +1 for a vs b. Treats missing
+// segments as 0 so '4.10' < '4.10.4'. Strips pre-release tags ('1.2.3-beta'
+// compares as '1.2.3') — close enough for "is the daemon's version behind
+// the installed package's version", which is all §2a needs.
+function compareVersionsSemver(a, b) {
+  const norm = (v) => String(v || '').split('-')[0].split('.').map((s) => {
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? n : 0;
+  });
+  const aa = norm(a);
+  const bb = norm(b);
+  const len = Math.max(aa.length, bb.length);
+  for (let i = 0; i < len; i++) {
+    const av = aa[i] ?? 0;
+    const bv = bb[i] ?? 0;
+    if (av < bv) return -1;
+    if (av > bv) return 1;
+  }
+  return 0;
+}
+
+// Resolve `bin/lib/daemon-recycler.mjs` across the three places it can live:
+//   1. node_modules/moflo/bin/lib/  (consumer install, always present)
+//   2. .claude/scripts/lib/         (synced copy in consumer/dogfood projects)
+//   3. bin/lib/                     (dogfood source tree)
+// Returns null when not found — §2a falls back to inline force-kill in that
+// case, which is the pre-recycler behavior.
+function resolveDaemonRecyclerPath() {
+  const candidates = [
+    resolve(projectRoot, 'node_modules/moflo/bin/lib/daemon-recycler.mjs'),
+    resolve(projectRoot, '.claude/scripts/lib/daemon-recycler.mjs'),
+    resolve(projectRoot, 'bin/lib/daemon-recycler.mjs'),
+  ];
+  return candidates.find((p) => existsSync(p)) || null;
+}
+
 // ── 2. Reset workflow state for new session ──────────────────────────────────
 const stateDir = resolve(projectRoot, '.claude');
 const stateFile = resolve(stateDir, 'workflow-state.json');
@@ -512,6 +556,84 @@ try {
   }, null, 2));
 } catch {
   // Non-fatal - workflow gate will use defaults
+}
+
+// ── 2a. Recycle daemon when behind installed version (#1054 follow-up) ──────
+// Promoted from §3a-pre to run BEFORE §3's file-sync work. The launcher has
+// a 3000ms SessionStart hook timeout (src/cli/services/hook-block-hash.ts);
+// §0c (DB repair) + §3 (file-sync, manifest, cherry-pick) + stopDaemon's
+// up-to-4s graceful poll routinely exceeds it on upgrade sessions, killing
+// the launcher mid-§3. Result: §3a-pre never ran on the very sessions that
+// needed it, leaving a stale-version daemon alive after `npm install moflo`
+// + Claude restart — `📊 ?` in the statusline (this bug's tell).
+//
+// Semver-BEHIND only — a downgrade-test daemon ahead of installed is left
+// alone. Pre-#1054 daemons (no `version` field in the lock) are treated as
+// behind because by construction they predate version publishing.
+//
+// Force-kill skips the graceful poll: a stale-code daemon's flush handlers
+// are themselves stale, and losing one in-flight flush beats running past
+// the hook timeout. fireAndForget the fresh `daemon start` so spawn returns
+// immediately and the launcher can move on to §3.
+try {
+  const mofloPkgPath = resolve(projectRoot, 'node_modules/moflo/package.json');
+  const lockFile = resolve(projectRoot, '.moflo', 'daemon.lock');
+  // Single readFileSync each (try/catch instead of existsSync + readFileSync)
+  // — halves the syscalls in the hot path and closes the TOCTOU window where
+  // the file existed for existsSync but was unlinked before readFileSync.
+  let installedVersion;
+  let daemonVersion;
+  let daemonPid;
+  try {
+    installedVersion = JSON.parse(readFileSync(mofloPkgPath, 'utf-8')).version;
+  } catch { /* node_modules/moflo absent — fresh consumer or fatal, nothing §2a can do */ }
+  let lockReadOk = false;
+  try {
+    const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
+    lockReadOk = true;
+    if (typeof lock?.version === 'string') daemonVersion = lock.version;
+    if (typeof lock?.pid === 'number' && lock.pid > 0) daemonPid = lock.pid;
+  } catch { /* no lock or corrupt — no daemon to recycle, skip the block below */ }
+
+  if (installedVersion && lockReadOk) {
+    const isBehind = !daemonVersion || compareVersionsSemver(daemonVersion, installedVersion) < 0;
+    if (isBehind) {
+      const observed = daemonVersion ?? '<pre-1054 / unknown>';
+      const recyclerPath = resolveDaemonRecyclerPath();
+      if (recyclerPath && daemonPid && daemonPid > 0) {
+        // Fire-and-forget the detached recycler. Per the launcher's contract
+        // ("spawns background tasks ... and exits immediately"), the
+        // kill+wait+restart sequence runs in a separate process so §2a's
+        // foreground cost is ~ms instead of up-to-5s. The recycler writes
+        // .moflo/daemon-recycle.last.json on completion for doctor to read.
+        fireAndForget(
+          'node',
+          [recyclerPath, projectRoot, String(daemonPid), installedVersion],
+          'daemon-behind-recycle',
+        );
+        emitMutation(
+          'recycled stale daemon',
+          `behind: daemon v${observed} → installed v${installedVersion}`,
+        );
+      } else if (!recyclerPath) {
+        // Recycler script missing — happens during the transition release
+        // where the launcher upgraded but bin/lib/daemon-recycler.mjs hasn't
+        // synced yet. Surface so /healer can flag; §3 below will sync the
+        // recycler on this session and §2a covers it on the next.
+        emitWarning(
+          `daemon-behind recycle: bin/lib/daemon-recycler.mjs not resolvable — ` +
+          `daemon v${observed} stays alive this session, will recycle on the next`,
+        );
+      } else {
+        // No PID — lockfile is corrupt or malformed. Unlink it so a fresh
+        // daemon can start cleanly on the next worker request.
+        try { unlinkSync(lockFile); } catch { /* non-fatal */ }
+        emitMutation('cleared malformed daemon lock', `version field: ${observed}`);
+      }
+    }
+  }
+} catch (err) {
+  emitWarning(`daemon-behind check failed: ${errMessage(err)}`);
 }
 
 // ── 3. Auto-sync scripts and helpers on version change ───────────────────────
@@ -1009,53 +1131,12 @@ try {
   emitWarning(`upgrade section failed (${errMessage(err)})`);
 }
 
-// ── 3a-pre. Recycle daemons started before the current moflo install ────────
-// The version-bump block above only fires when `installedVersion !== cachedVersion`.
-// That misses the common case where a user upgraded moflo, ran ONE session
-// (which bumped the stamp + recycled the daemon), then on a subsequent session
-// the version stamp matches but the daemon they started long-ago is still
-// holding stale module cache from a pre-collapse moflo image. The
-// `[neural-tools] @moflo/embeddings not resolvable` spam (#639) is the
-// observable symptom of exactly this: a daemon running pre-#592 code that no
-// longer exists in source, calling a require helper that prints the warning
-// every time `neural_predict` / `neural_patterns` fires.
-//
-// Fix (epic #1054): compare the daemon-lock's reported moflo `version` against
-// the installed `node_modules/moflo/package.json` version. If they differ —
-// or the lock predates #1054 and has no `version` field at all — recycle the
-// daemon. This is exact (not a heuristic margin like the prior mtime-based
-// check) and named explicitly so the doctor's Daemon Version Skew check
-// (#1059) can share the diagnosis.
-//
-// Pre-#1054 daemons have no `version` in their lock payload — treated as a
-// mismatch by definition because by construction they were launched before
-// version publishing existed.
-try {
-  const mofloPkgPathForRecycle = resolve(projectRoot, 'node_modules/moflo/package.json');
-  const lockFile = resolve(projectRoot, '.moflo', 'daemon.lock');
-  // Cheap stat first — if either file is gone, no skew check is possible.
-  if (existsSync(mofloPkgPathForRecycle) && existsSync(lockFile)) {
-    const installedVersion = JSON.parse(readFileSync(mofloPkgPathForRecycle, 'utf-8')).version;
-    let daemonVersion;
-    try {
-      const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
-      if (typeof lock?.version === 'string') daemonVersion = lock.version;
-    } catch { /* corrupt lock — recycleDaemon will unlink it */ }
-    if (daemonVersion !== installedVersion) {
-      if (recycleDaemon(lockFile, 'daemon-version-skew')) {
-        const observed = daemonVersion ?? '<pre-1054 / unknown>';
-        emitMutation(
-          'recycled stale daemon',
-          `version skew: installed ${installedVersion}, daemon ${observed}`,
-        );
-      }
-    }
-  }
-} catch (err) {
-  // Non-fatal; surface via emitWarning per feedback_no_layered_workarounds —
-  // no silent catch on the upgrade path (#854).
-  emitWarning(`daemon version-skew check failed: ${errMessage(err)}`);
-}
+// ── 3a-pre. (removed) Daemon-version-skew recycle moved to §2a. ─────────────
+// The previous version of this block ran AFTER §3's heavy file-sync work,
+// which routinely exceeded the 3000ms SessionStart hook timeout and was
+// killed before reaching this point. §2a now runs early and force-kills the
+// stale daemon before §3 can starve out. Don't restore §3a-pre — keep the
+// recycle in one place so the two paths can't drift.
 
 // ── 3a. Auto-migrate settings.json (npx flo → node helpers, PATH setup) ────
 // Existing users may have stale settings.json with `npx flo` hooks that break

@@ -68,22 +68,32 @@ for (const launcherPath of LAUNCHER_PATHS) {
       expect(stopBlock).toMatch(/isDaemonPidAlive\(\s*stalePid\s*\)/);
     });
 
-    it('sends a graceful signal first — Windows uses bare taskkill, Unix uses SIGTERM', () => {
-      // Bare `process.kill(pid, 'SIGTERM')` on Windows silently force-kills,
-      // bypassing the daemon's shutdown handler (sql.js dump + lock release).
-      // Use `taskkill` without /F for a close-event signal so the daemon
-      // gets a chance to flush cleanly.
+    it('platform-split shutdown — Windows goes straight to /F /T (no graceful), Unix uses SIGTERM first', () => {
+      // Pre-fix this test enforced a "Windows bare taskkill /PID first" step,
+      // but `taskkill /PID` (no /F) on a headless Node daemon sends a window-
+      // close message that a non-GUI process can't receive and always fails
+      // with the visible 'process can only be terminated forcefully' error.
+      // The graceful step was dead code that wasted up to 3s polling for
+      // death-that-couldn't-happen — exactly what blew the 3000ms SessionStart
+      // hook timeout and starved §3a-pre. Windows now goes straight to /F /T.
+      //
+      // Linux/macOS still get the graceful SIGTERM step because SIGTERM is a
+      // real signal the daemon's shutdown handler can trap for a clean sql.js
+      // flush before SIGKILL escalation.
       expect(stopBlock).toMatch(/process\.platform\s*===\s*['"]win32['"]/);
-      // Graceful Windows call: taskkill without /F flag
-      expect(stopBlock).toMatch(/execFileSync\(\s*['"]taskkill['"]\s*,\s*\[\s*['"]\/PID['"]/);
-      // Graceful Unix call: SIGTERM
+      // Windows: /F /T present, bare /PID (without /F) absent.
+      expect(stopBlock).toMatch(/['"]\/F['"]\s*,\s*['"]\/T['"]\s*,\s*['"]\/PID['"]/);
+      expect(stopBlock).not.toMatch(/execFileSync\(\s*['"]taskkill['"]\s*,\s*\[\s*['"]\/PID['"]/);
+      // Unix: SIGTERM graceful step preserved.
       expect(stopBlock).toMatch(/process\.kill\(\s*stalePid\s*,\s*['"]SIGTERM['"]\s*\)/);
     });
 
-    it('polls for death up to 3s after the graceful signal', () => {
+    it('polls for death up to 3s after the Unix SIGTERM graceful signal', () => {
       // The daemon's shutdown handler does a final sql.js dump which under
-      // load can take ~1s. 3s is the canonical budget (mirrors
-      // killBackgroundDaemon's 1s + retry cycle).
+      // load can take ~1s. 3s is the canonical budget on Unix where the
+      // graceful signal actually works (mirrors killBackgroundDaemon's
+      // 1s + retry cycle). Windows skips this poll entirely since there is
+      // no graceful path.
       expect(stopBlock).toMatch(/Date\.now\(\)\s*\+\s*3000/);
       expect(stopBlock).toMatch(/while\s*\(\s*Date\.now\(\)\s*<\s*gracefulDeadline\s*\)/);
       expect(stopBlock).toMatch(/sleepSyncMs\(\s*100\s*\)/);

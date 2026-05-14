@@ -24,53 +24,84 @@ import { resolve } from 'path';
 
 const BIN = resolve(__dirname, '../../bin');
 
-describe('bin/session-start-launcher.mjs — daemon version-skew detection (#1056)', () => {
+describe('bin/session-start-launcher.mjs — daemon version-skew detection (#1056, promoted to §2a)', () => {
   const file = resolve(BIN, 'session-start-launcher.mjs');
   const src = readFileSync(file, 'utf-8');
 
   it('compares installed moflo version against the daemon-lock version field', () => {
-    // The version-skew block reads version from both sides and compares them.
-    expect(src).toMatch(/JSON\.parse\(readFileSync\(mofloPkgPathForRecycle[\s\S]{0,80}\)\.version/);
+    // The §2a block reads installed version from node_modules/moflo/package.json
+    // and daemon version from the lock, then uses semver-BEHIND comparison
+    // (not just !==, so downgrade-test daemons ahead of installed are left
+    // alone).
+    expect(src).toMatch(/node_modules\/moflo\/package\.json/);
+    // readFileSync takes (path, encoding) — outer JSON.parse(...).version.
+    // The regex needs to tolerate the inner readFileSync close-paren before
+    // matching the JSON.parse close + .version. Use [\s\S]*? to span the
+    // nested calls non-greedily.
+    expect(src).toMatch(/JSON\.parse\(\s*readFileSync\([\s\S]*?\)\s*\)\s*\.version/);
     expect(src).toMatch(/lock\?\.\s*version|lock\.version/);
-    expect(src).toMatch(/daemonVersion\s*!==\s*installedVersion/);
+    expect(src).toMatch(/compareVersionsSemver\(\s*daemonVersion\s*,\s*installedVersion\s*\)\s*<\s*0/);
   });
 
-  it('recycles the daemon with a "daemon-version-skew" label on mismatch', () => {
-    // The label is the named diagnosis — doctor's Daemon Version Skew check
-    // (#1059) will consume the same name so users can correlate.
-    expect(src).toMatch(/recycleDaemon\(\s*lockFile,\s*['"]daemon-version-skew['"]/);
+  it('fires the detached recycler on BEHIND via fireAndForget with a "daemon-behind-recycle" label', () => {
+    // The §2a block hands the kill+wait+restart to bin/lib/daemon-recycler.mjs
+    // detached so the launcher's foreground cost stays ~ms (within the 5000ms
+    // SessionStart hook budget). The label is the named diagnosis doctor reads
+    // via daemon-recycle.last.json.
+    expect(src).toMatch(/fireAndForget\(\s*['"]node['"]\s*,\s*\[\s*recyclerPath/);
+    expect(src).toMatch(/['"]daemon-behind-recycle['"]/);
   });
 
   it('emits a user-visible mutation message naming both versions', () => {
     // Per feedback_no_layered_workarounds — no silent catches. The emitMutation
     // call surfaces what changed via the launcher's stdout protocol to Claude.
     expect(src).toMatch(/emitMutation\(\s*['"]recycled stale daemon['"]/);
-    expect(src).toMatch(/version skew/);
-    expect(src).toMatch(/installed.*\$\{installedVersion\}/);
+    expect(src).toMatch(/behind:\s*daemon\s+v\$\{observed\}/);
+    expect(src).toMatch(/installed\s+v\$\{installedVersion\}/);
   });
 
-  it('treats a missing version field as a mismatch (pre-#1054 daemon)', () => {
+  it('treats a missing version field as behind (pre-#1054 daemon)', () => {
     // Lock payloads written by daemons pre-version-publishing have no
-    // version field. The launcher must treat undefined !== installedVersion
-    // as a mismatch (it naturally does — `undefined !== 'x.y.z'` is true).
-    // Pin the fallback diagnosis text so it stays user-comprehensible.
+    // version field. The §2a block treats `!daemonVersion` as behind
+    // by construction, so they get recycled. Pin the fallback diagnosis
+    // text so it stays user-comprehensible.
+    expect(src).toMatch(/!daemonVersion\s*\|\|\s*compareVersionsSemver/);
     expect(src).toMatch(/<pre-1054 \/ unknown>/);
   });
 
   it('removes the pre-#1054 mtime-margin heuristic', () => {
     // The old check was a 5-second mtime margin — now eliminated by the
-    // exact version comparison. Per root-cause-discipline, no
+    // exact semver comparison. Per root-cause-discipline, no
     // belt-and-suspenders: the version check supersedes the margin.
     expect(src).not.toMatch(/STALE_DAEMON_MTIME_SKEW_MS/);
     expect(src).not.toMatch(/predates current install/);
   });
 
+  it('uses semver-BEHIND (not !==) so ahead-of-installed daemons are left alone', () => {
+    // Downgrade-testing scenario: developer pins moflo to an older version
+    // while the running daemon is at a newer one. The recycle must be
+    // one-way (BEHIND only) so the test daemon isn't killed.
+    expect(src).toMatch(/compareVersionsSemver/);
+    expect(src).not.toMatch(/daemonVersion\s*!==\s*installedVersion/);
+  });
+
   it('surfaces version-check errors via emitWarning instead of silent catch', () => {
-    // The entire version-skew block is wrapped in try/catch; the catch must
-    // route through emitWarning so a parse/I/O failure shows up in the
-    // launcher's user-visible output (per #854 / feedback_no_layered_workarounds).
+    // The §2a block is wrapped in try/catch; the catch must route through
+    // emitWarning so a parse/I/O failure shows up in the launcher's
+    // user-visible output (per #854 / feedback_no_layered_workarounds).
     expect(src).toMatch(
-      /daemon version-skew check failed[\s\S]{0,80}emitWarning|emitWarning[\s\S]{0,80}daemon version-skew check failed/,
+      /daemon-behind check failed[\s\S]{0,80}emitWarning|emitWarning[\s\S]{0,80}daemon-behind check failed/,
     );
+  });
+
+  it('§2a runs BEFORE §3 (placement invariant)', () => {
+    // The whole point of the §2a promotion (#1054 follow-up) is to run the
+    // version-skew check early so §3's heavy file-sync work can't starve
+    // it out under the SessionStart hook timeout. Pin the source ordering.
+    const s2aIdx = src.search(/daemon-behind-recycle/);
+    const s3Idx = src.indexOf('// ── 3. Auto-sync scripts');
+    expect(s2aIdx).toBeGreaterThan(-1);
+    expect(s3Idx).toBeGreaterThan(-1);
+    expect(s2aIdx).toBeLessThan(s3Idx);
   });
 });
