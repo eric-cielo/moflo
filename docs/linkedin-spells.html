@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>All wizards have a library of spells. What are yours?</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --fg: #1f2328;
+      --fg-muted: #57606a;
+      --bg: #faf9f6;
+      --accent: #b91c1c;
+      --accent-hover: #7f1d1d;
+      --code-bg: #f1ece4;
+      --code-fg: #1f2328;
+      --rule: #e3dfd8;
+      --shadow: 0 1px 2px rgba(20, 20, 20, 0.04), 0 4px 16px rgba(20, 20, 20, 0.06);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.65;
+      color: var(--fg);
+      max-width: 740px;
+      margin: 3rem auto;
+      padding: 0 1.5rem 4rem;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    h1, h2, h3 {
+      font-weight: 700;
+      letter-spacing: -0.018em;
+      line-height: 1.22;
+      color: var(--fg);
+    }
+    h1 {
+      font-size: 2.25rem;
+      margin: 1.25rem 0 1rem;
+    }
+    h2 {
+      font-size: 1.45rem;
+      margin: 2.5rem 0 0.75rem;
+      padding-top: 0.25rem;
+    }
+    p {
+      margin: 0.95rem 0;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(185, 28, 28, 0.35);
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    a:hover {
+      color: var(--accent-hover);
+      border-bottom-color: var(--accent-hover);
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+    code {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      box-shadow: inset 0 0 0 1px rgba(31, 35, 40, 0.04);
+      margin: 1.25rem 0;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+    ul, ol {
+      padding-left: 1.5rem;
+      margin: 0.75rem 0;
+    }
+    li {
+      margin: 0.4rem 0;
+    }
+    li::marker {
+      color: var(--fg-muted);
+    }
+    em {
+      font-style: italic;
+      color: var(--fg);
+    }
+    strong {
+      font-weight: 600;
+      color: var(--fg);
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--rule);
+      margin: 2rem 0;
+    }
+    h1 + p em {
+      color: var(--fg-muted);
+    }
+    @media (max-width: 600px) {
+      body { font-size: 16px; margin: 1.5rem auto; }
+      h1 { font-size: 1.75rem; }
+      h2 { font-size: 1.25rem; }
+    }
+  </style>
+</head>
+<body>
+
+<p><img src="https://raw.githubusercontent.com/eric-cielo/moflo/main/docs/moflo_spells.png" alt="MoFlo — a wizard's library of spells, ready to cast" /></p>
+
+<h1>All wizards have a library of spells. What are yours?</h1>
+
+<p><em>An update on what's new in <a href="https://github.com/eric-cielo/moflo">MoFlo</a> — the open-source npm package that upgrades Claude Code with full project knowledge, persistent memory,
+  sandboxed automation, and a swarm of agents that actually stay wired together.</em></p>
+
+<hr />
+
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+
+<hr/>
+
+<p>Every wizard worth their staff carries a grimoire — a personal library of spells, tested and refined, ready to cast on demand. The spells aren't the wizard's <em>power</em>;
+  they're how that power gets <em>aimed</em>. Without them, every incantation is improvised, every result a coin flip.</p>
+
+<p>MoFlo gives Claude that grimoire. A <strong>spell</strong> in MoFlo is a YAML or JSON file that composes typed steps —
+  shell commands, browser automation, agent spawns, conditions, loops, parallel branches, IMAP, Slack, MCP calls, GitHub operations — into a single runnable workflow.
+  It runs the same way every time. It can be triggered by <code>/flo</code>, scheduled by cron, or invoked from any other spell as a sub-step. And every step in it is sandboxed.</p>
+
+<h2>"Wait, can it…?"</h2>
+
+<p>Probably, yes. Consider a real one: <em>"Listen to my Gmail inbox, and when an attachment lands from our supplier, save it to the filesystem and post a message in Slack with a link."</em></p>
+
+<p>That's a four-line spell:</p>
+
+<pre><code>steps:
+  - id: watch
+    type: imap
+    config: { mailbox: INBOX, from: "supplier@vendor.com", hasAttachment: true }
+
+  - id: save
+    type: bash
+    config: { command: "node -e 'fs.writeFileSync(\"./inbox/{watch.attachmentName}\", Buffer.from(\"{watch.attachmentBase64}\",\"base64\"))'" }
+
+  - id: announce
+    type: slack
+    config: { channel: "#ops", text: "New supplier doc saved: {watch.attachmentName}" }
+</code></pre>
+
+<p>That's it. Schedule it once, and your inbox-to-filesystem-to-Slack pipeline runs forever, the same way, every time, with audit logs you can read.</p>
+
+<p>The same primitives compose into anything else you'd otherwise hand-script:</p>
+
+<ul>
+  <li>Pull the latest <strong>GitHub PRs</strong>, summarize them with an agent, and post the digest to a Notion page each morning.</li>
+  <li>Watch an <strong>Outlook</strong> calendar for new client meetings, drop a research brief into <code>./prep/</code>, and ping the account exec.</li>
+  <li>Hit a <strong>web app</strong> with Playwright, fill a form, capture the confirmation screenshot, and file it under <code>./evidence/{date}/</code>.</li>
+  <li>Walk a directory, run a code generator with a <strong>subagent</strong>, validate the output, and open a PR if the diff is non-trivial.</li>
+  <li>Scrape an <strong>HTTP</strong> endpoint on a schedule, branch on the response, and cancel itself cleanly when the underlying ticket closes.</li>
+</ul>
+
+<p>If you can describe the workflow in steps, you can write a spell for it. The engine handles the boring parts — sequencing, variable interpolation between steps, retries,
+  rollback on failure, structured per-step results — so the spell file stays focused on intent.</p>
+
+<h2>The /flo command is itself a spell</h2>
+
+<p>This is the part developers usually don't realize: MoFlo's flagship <code>/flo &lt;issue&gt;</code> command — the one that picks up a GitHub issue, plans it, spawns specialist agents,
+  writes code, runs tests, opens a PR — is <strong>just a spell</strong>. It lives as a YAML definition, composed from the same step commands available to you. No special path, no hidden engine.</p>
+
+<p>The same applies to <code>/flo epic</code>, the multi-issue orchestrator. It's a spell that loops over child stories, dispatches sub-spells in parallel, gathers their results,
+  and consolidates them into one merged epic PR. We dogfood the spell engine for our own flagship workflow precisely because <em>if it isn't good enough for us, it isn't good enough to ship</em>.</p>
+
+<p>Practically, that means anything <code>/flo</code> can do, your own spells can do too. The IMAP-to-Slack pipeline above runs through the exact same runner, sandbox tiers,
+  capability gates, and credential store as the command that wrote this paragraph's tests.</p>
+
+<h2>Safety, with the sandbox tier picked for your OS</h2>
+
+<p>An automation layer is only useful if you can trust it to run unattended. MoFlo treats safety as a layered contract, not a single switch.</p>
+
+<p><strong>Permission disclosure before you cast.</strong> Before any spell runs for the first time, MoFlo analyzes its steps and shows you exactly what permissions it needs —
+  filesystem read/write, network access, shell execution, credentials, browser, agent spawning — with a per-step risk grade (low / medium / elevated / dangerous).
+  You accept once; the acceptance is recorded so the next cast doesn't re-prompt unless the spell changes. No surprises, no opaque "trust me" buttons.</p>
+
+<p><strong>OS-level process isolation, picked for your platform.</strong> Bash steps don't just run; they're wrapped in the most efficient sandbox each operating system actually supports:</p>
+
+<ul>
+  <li><strong>Linux</strong> — <code>bwrap</code> (Bubblewrap). Read-only root, network namespaced off unless declared, PID isolation, writable mounts only on paths the step asked for. Native, fast, no daemon.</li>
+  <li><strong>macOS</strong> — <code>sandbox-exec</code> with a generated <code>.sb</code> profile. Same posture: deny-by-default filesystem, network gated by capability, kernel-enforced.</li>
+  <li><strong>Windows</strong> — Docker with a hardened minimal image. Same posture, same capability checks, with a bind-mount only for the writable paths the step requested.</li>
+</ul>
+
+<p>Same spell file, same capability declarations, same observable behavior — the runner picks the right primitive for the host. You don't write OS-specific spells.</p>
+
+<p><strong>Capability gateway in front of every step.</strong> Every step command declares the capabilities it needs (<code>fs:read</code>, <code>fs:write</code>, <code>net</code>,
+  <code>shell</code>, <code>memory</code>, <code>credentials</code>, <code>browser</code>, <code>agent</code>). The runner blocks any I/O the step didn't declare.
+  Spell authors can <em>narrow</em> a default — <code>fs:read</code> restricted to <code>./config/</code>, <code>shell</code> restricted to <code>["cat", "jq"]</code> — but never expand it.
+  A <code>CAPABILITY_DENIED</code> error is intentional, not a problem to engineer around.</p>
+
+<p><strong>Catastrophic-pattern denylist.</strong> Before any sandbox decision happens, an unconditional denylist blocks the things nobody ever wants:
+  <code>rm -rf /</code>, <code>git push --force main</code>, <code>chmod -R 777</code>, fork bombs, <code>curl | sh</code>. Cross-platform, non-overridable, runs first.</p>
+
+<p><strong>Encrypted credential store.</strong> Spells that need an API token, an OAuth refresh token, or a database password reference them as
+  <code>{credentials.SLACK_TOKEN}</code>. The values live in an encrypted store — never in the spell file, never in environment variables checked into git, never echoed in logs.
+  The <code>credentials</code> capability has to be explicitly granted, and steps that use it are flagged in the permission disclosure.</p>
+
+<p>The contract for an agent running inside a spell is brutally simple: <em>do what the step says, nothing more.</em> That's what makes a scheduled spell safe to deploy at 3 a.m.</p>
+
+<h2>Connectors and steps: components, not copy-paste</h2>
+
+<p>Spells aren't monolithic scripts. They're compositions of two reusable primitive types:</p>
+
+<ul>
+  <li><strong>Step commands</strong> — the verbs. <code>bash</code>, <code>github</code>, <code>browser</code>, <code>memory</code>, <code>agent</code>, <code>condition</code>,
+    <code>loop</code>, <code>parallel</code>, <code>prompt</code>, <code>wait</code>, <code>imap</code>, <code>outlook</code>, <code>slack</code>, <code>mcp</code>, <code>graph</code>.
+    Each one is a typed module with declared capabilities, a config schema, and validate / execute / rollback hooks.</li>
+  <li><strong>Connectors</strong> — the transports. <code>http-tool</code>, <code>github-cli</code>, <code>playwright</code>, <code>imap</code>, <code>local-outlook</code>,
+    <code>slack</code>, <code>graph</code> (Microsoft), <code>mcp-client</code>. A connector handles one I/O surface — auth, retries, rate-limit, response parsing — so step commands don't reinvent it.</li>
+</ul>
+
+<p>The win is composition. The Slack <em>connector</em> handles auth and rate-limit; the Slack <em>step command</em> exposes <code>slack.post</code> and <code>slack.thread.reply</code>;
+  ten different spells share the same connector instance and the same credential. When the Slack API changes, you fix one file. When you want a new behavior — say, posting to a thread instead of a channel — you extend one step command, and every spell in your library inherits it.</p>
+
+<p>That's the difference between scripting and engineering: a script is a one-off, a spell is a piece of a system. Your <code>/flo</code> spell, your IMAP-to-Slack spell,
+  your nightly deploy spell — they all draw from the same shelf.</p>
+
+<h2>Spell-creation skills: walked through, not stared at</h2>
+
+<p>You don't have to learn the spell schema to write spells. MoFlo ships three Claude Code skills that handle the structural parts so you can focus on intent:</p>
+
+<ul>
+  <li><strong><code>/spell-builder</code></strong> — the primary author. Walks you through creating a new spell from scratch or editing an existing one: arguments,
+    step composition, capability declarations, variable wiring between steps, validation, and a dry-run before first cast. It knows what step commands and connectors exist
+    and proposes the right composition based on what you're trying to do.</li>
+  <li><strong><code>/connector-builder</code></strong> — the components author. When you need a brand-new step command or connector — a new I/O transport, a new platform integration —
+    this skill scaffolds it: capability declarations, config schema, validate/execute/rollback skeleton, registry wiring, and a tests stub. New verbs that everything else can then compose with.</li>
+  <li><strong><code>/spell-schedule</code></strong> — the operator. Schedules a spell on the local moflo daemon: cron, fixed interval, or one-off. Handles the daemon registration,
+    next-run preview, and tear-down, so "run this every weekday at 9 a.m." takes one prompt instead of a config-file expedition.</li>
+</ul>
+
+<p>The skills are first-class moflo product, not prompt templates. They run the same engine, respect the same capability gates, and produce spells that drop straight into your library.</p>
+
+<h2>Start a library</h2>
+
+<pre><code>npm install --save-dev moflo
+flo init</code></pre>
+
+<p>Then, in any Claude Code session, type <code>/spell-builder</code> and describe the workflow you want. The skill will walk you through the steps, the capabilities,
+  the schedule if you want one, and the safety review before first cast. Your first spell will be in your grimoire in under five minutes.</p>
+
+<p>The biggest unlock isn't any one spell — it's having a library of them. Every workflow you used to half-remember, paste from a README, or hold together with shell aliases
+  becomes a tested, sandboxed, version-controlled artifact your team can read, share, and trust.</p>
+
+<p><strong>All wizards have a library of spells. What are yours?</strong></p>
+
+<ul>
+  <li><strong>GitHub:</strong> <a href="https://github.com/eric-cielo/moflo">github.com/eric-cielo/moflo</a></li>
+  <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/moflo">npmjs.com/package/moflo</a> — <code>npm install --save-dev moflo</code></li>
+</ul>
+
+</body>
+</html>
