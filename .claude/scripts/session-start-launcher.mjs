@@ -578,16 +578,24 @@ try {
 try {
   const mofloPkgPath = resolve(projectRoot, 'node_modules/moflo/package.json');
   const lockFile = resolve(projectRoot, '.moflo', 'daemon.lock');
-  if (existsSync(mofloPkgPath) && existsSync(lockFile)) {
-    const installedVersion = JSON.parse(readFileSync(mofloPkgPath, 'utf-8')).version;
-    let daemonVersion;
-    let daemonPid;
-    try {
-      const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
-      if (typeof lock?.version === 'string') daemonVersion = lock.version;
-      if (typeof lock?.pid === 'number' && lock.pid > 0) daemonPid = lock.pid;
-    } catch { /* corrupt lock — fall through; unlink + restart still safe */ }
+  // Single readFileSync each (try/catch instead of existsSync + readFileSync)
+  // — halves the syscalls in the hot path and closes the TOCTOU window where
+  // the file existed for existsSync but was unlinked before readFileSync.
+  let installedVersion;
+  let daemonVersion;
+  let daemonPid;
+  try {
+    installedVersion = JSON.parse(readFileSync(mofloPkgPath, 'utf-8')).version;
+  } catch { /* node_modules/moflo absent — fresh consumer or fatal, nothing §2a can do */ }
+  let lockReadOk = false;
+  try {
+    const lock = JSON.parse(readFileSync(lockFile, 'utf-8'));
+    lockReadOk = true;
+    if (typeof lock?.version === 'string') daemonVersion = lock.version;
+    if (typeof lock?.pid === 'number' && lock.pid > 0) daemonPid = lock.pid;
+  } catch { /* no lock or corrupt — no daemon to recycle, skip the block below */ }
 
+  if (installedVersion && lockReadOk) {
     const isBehind = !daemonVersion || compareVersionsSemver(daemonVersion, installedVersion) < 0;
     if (isBehind) {
       const observed = daemonVersion ?? '<pre-1054 / unknown>';
