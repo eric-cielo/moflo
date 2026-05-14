@@ -82,6 +82,53 @@ var command = process.argv[2];
 
 var EXEMPT = ['.claude/', '.claude\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-state', 'node_modules', 'moflo.yaml'];
 var DANGEROUS = ['rm -rf /', 'format c:', 'del /s /q c:\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
+
+// #1132 — Bash memory-first gate.
+//
+// CREDIT: the legacy detector that marks the gate satisfied when Claude
+// manually invokes a memory-search CLI (flo-search, the moflo MCP search via
+// shell, etc.). Preserved verbatim from the pre-#1132 behaviour so existing
+// recipes keep crediting the gate.
+var CREDIT_MEMORY_SEARCH_RE = /semantic-search|memory search|memory retrieve|memory-search/;
+// BLOCK: read-like Bash commands that bypass the existing check-before-read /
+// check-before-scan gates by going through the shell. Anchored to the start of
+// the line so subcommands inside pipelines or `npm install grep` don't trip.
+// Covers POSIX read/search tools, Windows cmd `type`, and PowerShell readers.
+var READ_LIKE_BASH_RE = new RegExp([
+  '^\\s*(?:cat|head|tail|less|more|bat|xxd|od|hexdump)\\b',
+  '^\\s*(?:grep|rg|ag|fgrep|egrep|find|fd)\\b',
+  '^\\s*sed\\s+-n\\b',
+  '^\\s*awk\\s+(?!.*<<)',
+  // `type <path>` on Windows. No `$` anchor so a piped form
+  // (`type src\foo.ts | grep x`) still matches and gets blocked. The argument
+  // must contain a slash, backslash, or dot — otherwise it's the shell-builtin
+  // command-lookup form (`type ls`, `type cd`) which the gate has no business
+  // blocking. False-negative trade: extension-less filenames like `type Makefile`
+  // pass through. Acceptable — source files all have extensions, and the
+  // primary risk pattern is leaking past the gate via `type src\foo.ts`.
+  '^\\s*type\\s+\\S*[\\\\/.]',
+  '^\\s*(?:Get-Content|gc|Select-String|sls)\\b',
+].join('|'), 'i');
+// CARVE-OUT: commands that LOOK read-like but are operational. Anchored to the
+// LEADING command — the pipe-filter case (`npm test | grep FAIL`) is already
+// handled by READ_LIKE's `^\s*` anchor never matching the leading `npm`, so
+// there is intentionally no pipe arm here: catching the leading command lets
+// `grep -r TODO src/ | head -5` reach the BLOCK exit (which it must, that's
+// the gap the ticket exists to close). #1132.
+var BASH_CARVE_OUT_RE = new RegExp([
+  '^\\s*(npm|npx|pnpm|yarn|bun|node|deno|tsx|ts-node)\\s',
+  '^\\s*(git|gh|hub)\\s',
+  '^\\s*(docker|kubectl|helm|terraform)\\s',
+  '^\\s*(curl|wget|http|fetch)\\s',
+  '^\\s*(jq|yq|xq)\\s',
+  '^\\s*(echo|printf|true|false|sleep|test|\\[)\\s',
+  '^\\s*cat\\s+(<<|<<<)',
+  '^\\s*cat\\s+[^|]*\\s*>',
+  '^\\s*tee\\b',
+  // Lazy `.+?` instead of `.+\s` to avoid catastrophic backtracking on long
+  // `find` commands that lack a `-delete` / `-exec rm` suffix.
+  '^\\s*find\\s+.+?-(delete|exec\\s+rm)\\b',
+].join('|'));
 var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\b/i;
 var TASK_RE = /\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\b/i;
 
@@ -142,6 +189,29 @@ function classifyNamespaceHint(promptText) {
   }
   for (var m = 0; m < NS_NAV_RES.length; m++) {
     if (NS_NAV_RES[m].test(lower)) return 'Memory namespace hint: use "code-map" for codebase navigation.';
+  }
+  return '';
+}
+
+// #1132 — command-shape namespace classifier for the bash-BLOCK message.
+// Used when the prompt-derived `lastNamespaceHint` is empty (e.g. subagents,
+// which never see the user prompt) so the block message still routes to a
+// useful namespace rather than the generic "pick one of five" list. Returns a
+// full sentence in the same shape as classifyNamespaceHint so the BLOCK arm
+// can write either source's hint without branching on format.
+//
+// SYNC: duplicated verbatim in src/cli/init/helpers-generator.ts.
+function classifyBashNamespaceHint(cmd) {
+  // Search-like tools — the user is hunting for a symbol/file, code-map wins.
+  if (/^\s*(?:grep|rg|ag|fgrep|egrep|find|fd|Select-String|sls)\b/i.test(cmd)) {
+    return 'Memory namespace hint: use "code-map" for codebase navigation.';
+  }
+  // Reading a .md / RST / TXT, or a well-known doc file — guidance/learnings win.
+  // `.*` (not `\S*`) so flag-prefixed forms like `head -50 README.md` match.
+  // Anchored on the leading reader so a piped `cmd | grep foo.md` doesn't trip.
+  if (/^\s*(?:cat|head|tail|less|more|bat|type|Get-Content|gc)\b.*\.(?:md|mdx|rst|txt)\b/i.test(cmd)
+   || /^\s*(?:cat|head|tail|less|more|bat|type|Get-Content|gc)\b.*\b(?:README|CLAUDE|CHANGELOG|CONTRIBUTING|LICENSE)\b/i.test(cmd)) {
+    return 'Memory namespace hint: search "guidance" and "learnings" for project rules and decisions.';
   }
   return '';
 }
@@ -402,11 +472,41 @@ switch (command) {
     break;
   }
   case 'check-bash-memory': {
+    // #1132 — preserve CREDIT side-effect AND add a BLOCK arm for read-like
+    // Bash commands. Wired as PreToolUse[Bash] (was PostToolUse before #1132)
+    // so process.exit(2) actually prevents the read from reaching the shell.
     var cmd = process.env.TOOL_INPUT_command || '';
-    if (/semantic-search|memory search|memory retrieve|memory-search/.test(cmd)) {
+
+    // 1) CREDIT — preserved behavior. A real memory-search invocation flips
+    // the gate flag so subsequent Read/Grep/Glob within this prompt pass.
+    if (CREDIT_MEMORY_SEARCH_RE.test(cmd)) {
       var s = readState();
       if (markMemorySearched(s)) writeState(s);
+      break;
     }
+
+    // 2) BLOCK — new behavior. Cheap regex checks come BEFORE readState() so
+    // the overwhelming majority of Bash invocations (git/npm/curl/echo/etc.)
+    // never touch the filesystem. Order: config flag → command-shape regexes
+    // → state read → memory gate.
+    if (!config.memory_first) break;
+    if (!READ_LIKE_BASH_RE.test(cmd)) break;
+    if (BASH_CARVE_OUT_RE.test(cmd)) break;
+    var s2 = readState();
+    if (!s2.memoryRequired || isMemorySearchedFor(s2)) break;
+    // Hint precedence: prompt-derived classification (set by applyPromptStateReset
+    // from the user prompt text) → command-shape classification (works for
+    // subagents that never saw the user prompt). Either source returns a full
+    // "Memory namespace hint: ..." sentence so the BLOCK message stays uniform.
+    var hint = s2.lastNamespaceHint || classifyBashNamespaceHint(cmd) || '';
+    process.stderr.write(
+      'BLOCKED: Search memory before reading files via Bash.\n' +
+      'Example: mcp__moflo__memory_search { query: "<topic>", namespace: "<one of: guidance | code-map | patterns | learnings | tests>" }\n' +
+      (hint ? hint + '\n' : '') +
+      'On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n' +
+      'Disable per-gate via moflo.yaml: gates: memory_first: false\n'
+    );
+    process.exit(2);
     break;
   }
   case 'check-task-transition': {

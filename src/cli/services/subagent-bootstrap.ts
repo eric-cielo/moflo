@@ -23,7 +23,7 @@ const BOOTSTRAP_JSON_REL = '.claude/helpers/subagent-bootstrap.json';
 // Defense-in-depth copy of the canonical directive in subagent-bootstrap.json.
 // Kept as a single-line literal so the parity test can verify it matches the
 // JSON via plain substring containment.
-const FALLBACK_DIRECTIVE = 'MANDATORY FIRST ACTION: Your very first tool call MUST be mcp__moflo__memory_search (any query, any namespace). The memory-first gate WILL BLOCK all Glob, Grep, and Read calls until you do this. After memory search, follow `.claude/guidance/moflo-subagents.md` protocol. When a search hit carries `navigation`, you MUST call mcp__moflo__memory_get_neighbors to traverse — calling mcp__moflo__memory_retrieve on every hit is a protocol violation. See `.claude/guidance/moflo-memory-protocol.md`.';
+const FALLBACK_DIRECTIVE = 'MANDATORY FIRST ACTION: Your very first tool call MUST be mcp__moflo__memory_search (any query, any namespace). The memory-first gate WILL BLOCK all Glob, Grep, Read, and read-like Bash (cat/head/tail/grep/find/sed/awk and the Windows/PowerShell equivalents) calls until you do this. Pick the namespace by task: `guidance` for rules and conventions, `code-map` for file structure, `patterns` for proven solutions, `learnings` for past corrections, `tests` for test inventory. After memory search, follow `.claude/guidance/moflo-subagents.md` protocol. When a search hit carries `navigation`, you MUST call mcp__moflo__memory_get_neighbors to traverse — calling mcp__moflo__memory_retrieve on every hit is a protocol violation. See `.claude/guidance/moflo-memory-protocol.md`.';
 
 function loadDirective(): string {
   const jsonPath = locateMofloRootPath(BOOTSTRAP_JSON_REL);

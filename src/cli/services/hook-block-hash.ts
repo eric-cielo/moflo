@@ -106,7 +106,12 @@ export function getReferenceHookBlock(): HooksTree {
       { matcher: '^Read$',                    hooks: [gateHook('check-before-read', 3000)] },
       {
         matcher: '^Bash$',
-        hooks: [gateHook('check-dangerous-command', 2000), gateHook('check-before-pr', 2000)],
+        hooks: [
+          gateHook('check-dangerous-command', 2000),
+          gateHook('check-before-pr', 2000),
+          // #1132 — moved from PostToolUse so process.exit(2) actually blocks.
+          gateHook('check-bash-memory', 2000),
+        ],
       },
       // #931 — TaskCreate REMINDER + namespace hint advisory at Agent-spawn time.
       // Routed via gate-hook.mjs so HOOK_SESSION_ID is forwarded for per-actor
@@ -121,8 +126,9 @@ export function getReferenceHookBlock(): HooksTree {
       { matcher: '^Agent$',                       hooks: [handler('post-task', 5000)] },
       { matcher: '^TaskCreate$',                  hooks: [gateCjs('record-task-created', 2000)] },
       {
+        // #1132 — check-bash-memory moved to PreToolUse (above).
         matcher: '^Bash$',
-        hooks: [gateHook('check-bash-memory', 2000), gateHook('record-test-run', 2000)],
+        hooks: [gateHook('record-test-run', 2000)],
       },
       { matcher: '^Skill$',                       hooks: [gateHook('record-skill-run', 2000)] },
       { matcher: '^mcp__moflo__memory_(search|retrieve|list|stats|store)$', hooks: [gateHook('record-memory-searched', 3000)] },

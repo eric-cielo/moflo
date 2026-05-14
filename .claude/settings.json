@@ -43,6 +43,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" check-before-pr",
             "timeout": 2000
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" check-bash-memory",
+            "timeout": 2000
           }
         ]
       },
@@ -96,11 +101,6 @@
       {
         "matcher": "^Bash$",
         "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" check-bash-memory",
-            "timeout": 2000
-          },
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/helpers/gate-hook.mjs\" record-test-run",
