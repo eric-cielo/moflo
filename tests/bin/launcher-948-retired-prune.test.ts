@@ -273,6 +273,46 @@ describe('retired-files helper (#948)', () => {
       expect(existsSync(join(root, '.claude/agents/v3/customized.md'))).toBe(true);
     });
 
+    it('paths returned in report.pruned must be excluded from installed-files.json (#1133)', () => {
+      // Regression: launcher §3 builds `currentManifest` BEFORE applyRetiredPrune
+      // runs, then writes it as `installed-files.json` AFTER the prune. If the
+      // launcher persists the unfiltered manifest, the next launcher's drift
+      // detection iterates the recorded paths, finds the pruned files missing,
+      // flips `manifestDrifted = true`, and spuriously re-fires the cherry-pick
+      // → reimports legacy rows the migration just deleted (#1133 smoke regression
+      // surfaced this on every consumer install). The fix filters out pruned
+      // paths before persisting; this test pins the invariant.
+      const shipped = 'shipped content\n';
+      writeAt(root, '.claude/agents/v3/will-be-pruned.md', shipped);
+      writeAt(root, '.claude/agents/v3/will-be-kept.md', 'survives the prune\n');
+
+      const manifestPath = writeManifest([
+        {
+          path: '.claude/agents/v3/will-be-pruned.md',
+          knownContentHashes: [sha256Of(shipped)],
+        },
+      ]);
+
+      const currentManifest = [
+        { path: '.claude/agents/v3/will-be-pruned.md', size: shipped.length },
+        { path: '.claude/agents/v3/will-be-kept.md', size: 19 },
+      ];
+
+      const report = applyRetiredPrune(root, manifestPath);
+      expect(report.pruned).toEqual(['.claude/agents/v3/will-be-pruned.md']);
+
+      // Launcher's persistence filter — mirrors bin/session-start-launcher.mjs
+      const prunedSet = new Set(report.pruned);
+      const persistedManifest = prunedSet.size > 0
+        ? currentManifest.filter((e) => !prunedSet.has(e.path))
+        : currentManifest;
+
+      expect(persistedManifest.map((e) => e.path)).toEqual(['.claude/agents/v3/will-be-kept.md']);
+      // The pruned path must NOT appear in the persisted manifest — its
+      // presence is what produces the false drift on the next launcher run.
+      expect(persistedManifest.find((e) => e.path === '.claude/agents/v3/will-be-pruned.md')).toBeUndefined();
+    });
+
     it('cross-platform: paths in the manifest use forward slashes regardless of OS', () => {
       // The launcher always writes the manifest with forward-slash paths
       // (matching the way the section-3 cleanup loop and currentManifest use
