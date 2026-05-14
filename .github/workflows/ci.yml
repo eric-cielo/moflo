@@ -48,6 +48,13 @@ jobs:
     needs: [build]
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Several tests exercise git-history-walking behaviour (e.g.
+          # tests/scripts/build-retired-files.test.ts verifies the retirement
+          # hash-window walks full history for paths deleted commits ago).
+          # The default shallow clone returns empty for `git log
+          # --diff-filter=D` against an older deletion and fails those tests.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:

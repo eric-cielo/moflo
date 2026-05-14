@@ -11,8 +11,8 @@
     {
       "path": ".claude/agents/analysis/code-review/analyze-code-quality.md",
       "knownContentHashes": [
-        "sha256:b865110a1694598fcfa9c1eb319014eb87461df35aaaaa6c820a41a5535346ad",
-        "sha256:468851022f67047982c5abb8a2a74a5fb0fe330fe0821f7c91c859697d72162e"
+        "sha256:468851022f67047982c5abb8a2a74a5fb0fe330fe0821f7c91c859697d72162e",
+        "sha256:b865110a1694598fcfa9c1eb319014eb87461df35aaaaa6c820a41a5535346ad"
       ],
       "retiredIn": "4.8.12"
     },
@@ -26,6 +26,7 @@
     {
       "path": ".claude/agents/base-template-generator.md",
       "knownContentHashes": [
+        "sha256:1bea126c6853067e650e432b1e5cedf588f3161c4995eb1e2e97d04733e24d83",
         "sha256:4b957343021823020828d6d213126243bad177f29984fc09545814b88fcfa87a"
       ],
       "retiredIn": "2.0.0-alpha.121"
@@ -133,9 +134,9 @@
     {
       "path": ".claude/agents/data/ml/data-ml-model.md",
       "knownContentHashes": [
+        "sha256:dfcd3745237c80daa26a9f819cc58f2396e3863c1add36da727e1a526097b014",
         "sha256:8c1fb32efa0398db5eb760f777f681b37aeb1eff4f1d8bf4878d3510688dff37",
-        "sha256:ff626fee1a53fce1c58187a44c4e0f3c2c664d74f4c61626ddfe3852532ac8cf",
-        "sha256:dfcd3745237c80daa26a9f819cc58f2396e3863c1add36da727e1a526097b014"
+        "sha256:ff626fee1a53fce1c58187a44c4e0f3c2c664d74f4c61626ddfe3852532ac8cf"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -143,8 +144,8 @@
     {
       "path": ".claude/agents/development/backend/dev-backend-api.md",
       "knownContentHashes": [
-        "sha256:3f537db3650f3916c31b124d5c5acab9dedc92eecc051093a7c6995536eac53f",
         "sha256:7d29d81a99cead6b28c81971ec3f6abb3b8f1d93aec8539b116e56382a8f661e",
+        "sha256:3f537db3650f3916c31b124d5c5acab9dedc92eecc051093a7c6995536eac53f",
         "sha256:c636bb38b48e714c12d00c7869b11ce8e39a21db8e1aa451c2f5013638fdedab"
       ],
       "retiredIn": "4.8.12"
@@ -159,8 +160,8 @@
     {
       "path": ".claude/agents/documentation/api-docs/docs-api-openapi.md",
       "knownContentHashes": [
-        "sha256:0cec8892de681a157cb3d56af8e336020dae58ec4a51c0e1dcaf6cfd90c61cd7",
-        "sha256:0a24f98cd97229b746a2f89f2cdfe09fac0ee8dcd757073017fee91e951b7f7f"
+        "sha256:0a24f98cd97229b746a2f89f2cdfe09fac0ee8dcd757073017fee91e951b7f7f",
+        "sha256:0cec8892de681a157cb3d56af8e336020dae58ec4a51c0e1dcaf6cfd90c61cd7"
       ],
       "retiredIn": "3.0.0-alpha.1"
     },
@@ -269,9 +270,9 @@
     {
       "path": ".claude/agents/github/code-review-swarm.md",
       "knownContentHashes": [
-        "sha256:67e5d852bd6e697181e8a8005b79aeea6a9134719205ea5a5f1db871301fcf38",
         "sha256:70ec07b51620e1f5e4e0bf2387da156aabea180b5311b7db452d9ba08e0dfc2e",
-        "sha256:01f64a4f7c9f1ddeb66ac5a3ecd0c3e1442543a33359e4a6414e8bd3c5bf418e"
+        "sha256:01f64a4f7c9f1ddeb66ac5a3ecd0c3e1442543a33359e4a6414e8bd3c5bf418e",
+        "sha256:67e5d852bd6e697181e8a8005b79aeea6a9134719205ea5a5f1db871301fcf38"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -279,9 +280,9 @@
     {
       "path": ".claude/agents/github/github-modes.md",
       "knownContentHashes": [
-        "sha256:2640c10081fbcf319851b6c21fe017c9dcd1e91927e186d78ce529ef3378af53",
         "sha256:5c844867cad1bbcbe740755874b88addc4c5ccd365c482a0952af0f299763d3b",
-        "sha256:f2773710f476d949ee6ce84f6d24608b23246973f4f6f89e8b19d23cf6c9c2ed"
+        "sha256:f2773710f476d949ee6ce84f6d24608b23246973f4f6f89e8b19d23cf6c9c2ed",
+        "sha256:2640c10081fbcf319851b6c21fe017c9dcd1e91927e186d78ce529ef3378af53"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -289,9 +290,9 @@
     {
       "path": ".claude/agents/github/issue-tracker.md",
       "knownContentHashes": [
-        "sha256:4f0aafcc24b782609f1ed884b3f11e67f56b4330b11c9261a81ca36024f6ad93",
         "sha256:afa40d32dbf9007578efd60379adb6648d7e2636f3383939f4f975dd014f36ed",
-        "sha256:023029df2961b7ff44561fbee2edd93d12fb515e40cc15748c7ac72d0295f791"
+        "sha256:023029df2961b7ff44561fbee2edd93d12fb515e40cc15748c7ac72d0295f791",
+        "sha256:4f0aafcc24b782609f1ed884b3f11e67f56b4330b11c9261a81ca36024f6ad93"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -299,9 +300,9 @@
     {
       "path": ".claude/agents/github/multi-repo-swarm.md",
       "knownContentHashes": [
-        "sha256:ad97b07503626a5d18a2b501654a6861bcea32e6a4f3420b793b0515256f56ab",
         "sha256:c4f89cb2acc2408ac5ec4dbaedf15d23def290b0b4c1919d49d55dff9eef9638",
-        "sha256:12794b13e45f8e7993f8aaf8cfc21bcc4fa5c9677d01d145e04e2f672348a61e"
+        "sha256:12794b13e45f8e7993f8aaf8cfc21bcc4fa5c9677d01d145e04e2f672348a61e",
+        "sha256:ad97b07503626a5d18a2b501654a6861bcea32e6a4f3420b793b0515256f56ab"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -309,9 +310,9 @@
     {
       "path": ".claude/agents/github/pr-manager.md",
       "knownContentHashes": [
-        "sha256:76cbd4516ad348be7d5858069742609b02181f87ca61e3d0dba10c2b1e86ed31",
         "sha256:00f024a5e80a22bea9d3b7935ebca6842f04ce819d285daa419811ef9c16ed9e",
-        "sha256:e3263adeedfa410288d9e017843e208dc4b0a0a4a6f6cd2d4a6424db2e1de933"
+        "sha256:e3263adeedfa410288d9e017843e208dc4b0a0a4a6f6cd2d4a6424db2e1de933",
+        "sha256:76cbd4516ad348be7d5858069742609b02181f87ca61e3d0dba10c2b1e86ed31"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -319,9 +320,10 @@
     {
       "path": ".claude/agents/github/project-board-sync.md",
       "knownContentHashes": [
-        "sha256:11bddc3cf40ea4ad31aa143af76fd1e33aad29fdfe6f322db85da95209bdb156",
         "sha256:30521905f9214d1eeef22a1706b9b33d3616e8264d4c1f1d6f003eb096c82362",
-        "sha256:8c193dfc5ba49833e60be8ba73dd989358aafe5eda0084dda6ab3ecb308e4975"
+        "sha256:8c193dfc5ba49833e60be8ba73dd989358aafe5eda0084dda6ab3ecb308e4975",
+        "sha256:516088f8804f00e0abbe1ff126e8b85ea9c9db9db0d3377252482742870c9a7d",
+        "sha256:11bddc3cf40ea4ad31aa143af76fd1e33aad29fdfe6f322db85da95209bdb156"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -329,9 +331,9 @@
     {
       "path": ".claude/agents/github/release-manager.md",
       "knownContentHashes": [
-        "sha256:ad58b0baa5d1afa0cad030d4c41ade44bb5068352912caedd2d4af411151c4ea",
         "sha256:2525519dd022c9bfbfc64a4ba52aa3a2ed4157ee4c09731a8b029422bc5cf4f8",
-        "sha256:b37341dc6cbe756a3f48b633bc672a0cb9513cdc6e5dd6a07e93e27d5d15b9e8"
+        "sha256:b37341dc6cbe756a3f48b633bc672a0cb9513cdc6e5dd6a07e93e27d5d15b9e8",
+        "sha256:ad58b0baa5d1afa0cad030d4c41ade44bb5068352912caedd2d4af411151c4ea"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -339,9 +341,9 @@
     {
       "path": ".claude/agents/github/release-swarm.md",
       "knownContentHashes": [
-        "sha256:465ac946bf8e29af35231180389c6a1b5f0ada36328d53cbe1ed92718726cb4b",
         "sha256:adfcbee204c328f591942bf0d66ead1d95d1f2e52be76a1b1f380d580c8dc40e",
-        "sha256:1d2c900bb67910eff050c0e1f9035a9b1bb4b22c6153fb0a12c0f9908896ab1c"
+        "sha256:1d2c900bb67910eff050c0e1f9035a9b1bb4b22c6153fb0a12c0f9908896ab1c",
+        "sha256:465ac946bf8e29af35231180389c6a1b5f0ada36328d53cbe1ed92718726cb4b"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -349,9 +351,9 @@
     {
       "path": ".claude/agents/github/repo-architect.md",
       "knownContentHashes": [
-        "sha256:6dfbf90adda13ffe1cdde9e51cce765ed0ac0cad47e7060345e1b77d2dec93dd",
         "sha256:dddd7b6d7700f6bf1e8b308deb5e11f15e064dec53fcde5dabc1743b45127f9c",
-        "sha256:73aec6626468ade107328bb564d6ab6a75f322beba917159d0bc4e780932290a"
+        "sha256:73aec6626468ade107328bb564d6ab6a75f322beba917159d0bc4e780932290a",
+        "sha256:6dfbf90adda13ffe1cdde9e51cce765ed0ac0cad47e7060345e1b77d2dec93dd"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -359,9 +361,9 @@
     {
       "path": ".claude/agents/github/swarm-issue.md",
       "knownContentHashes": [
-        "sha256:8ffcffce17a6010df2837c6672698d7181c71fafb5b03233d981a6d4d9f87a3f",
         "sha256:0ce4472558470af59054bc8da7a9045eba3506d974d6a35fea1392e32fb8475e",
-        "sha256:bab0ac6581db887166a6cfc919973d5d965fa644d03df2d9bc7c8110b270156c"
+        "sha256:bab0ac6581db887166a6cfc919973d5d965fa644d03df2d9bc7c8110b270156c",
+        "sha256:8ffcffce17a6010df2837c6672698d7181c71fafb5b03233d981a6d4d9f87a3f"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -369,9 +371,9 @@
     {
       "path": ".claude/agents/github/swarm-pr.md",
       "knownContentHashes": [
-        "sha256:43f699ef0cf9fec369b4a1fb323a0476b6847034d515e6f75c51d656cd302c2a",
         "sha256:5a7096fbfe9d910cef1e7f3a972ee4ced4242ef589c27fa40a9a19abd1781bd7",
-        "sha256:9d3a755f3db0c3d3c3e7a0e35e2cb412b7552a68d1512868a46a1d44978692d9"
+        "sha256:9d3a755f3db0c3d3c3e7a0e35e2cb412b7552a68d1512868a46a1d44978692d9",
+        "sha256:43f699ef0cf9fec369b4a1fb323a0476b6847034d515e6f75c51d656cd302c2a"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -379,9 +381,9 @@
     {
       "path": ".claude/agents/github/sync-coordinator.md",
       "knownContentHashes": [
-        "sha256:36bc5d88b80311ff797c49fa19f2c99fd57b0e60fde49a7da759a6a8fe118f37",
         "sha256:d8c4cf3a1b679393710d2cfa587a0a28fccdc4e121ae3c1314471575893dc3af",
-        "sha256:695a258db94bc3ec25093fe41a4815f33e610e12ad571747a75d4808e5fb913c"
+        "sha256:695a258db94bc3ec25093fe41a4815f33e610e12ad571747a75d4808e5fb913c",
+        "sha256:36bc5d88b80311ff797c49fa19f2c99fd57b0e60fde49a7da759a6a8fe118f37"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -389,9 +391,11 @@
     {
       "path": ".claude/agents/github/workflow-automation.md",
       "knownContentHashes": [
-        "sha256:682564eb0893e54a1f8c01ddd611f408ac6e747c2fc9b5b3d86570617bf7f674",
         "sha256:b1a214fbd5c949829033bc66233ee5b8c538b59f014ff17589eb732cb2b8b3c7",
-        "sha256:f4845edf977ddc1f0f0a448df86e9b70969ce93853618173b6a634f52f294b32"
+        "sha256:f4845edf977ddc1f0f0a448df86e9b70969ce93853618173b6a634f52f294b32",
+        "sha256:38abd9e1208441579eeff18451530e4e04aaad5e5cdf7d4b3050314a22bd016c",
+        "sha256:5464eee017888e4063f6c9a44ca02585aec1d432652de773e8ce233cf8f31163",
+        "sha256:682564eb0893e54a1f8c01ddd611f408ac6e747c2fc9b5b3d86570617bf7f674"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -410,7 +414,8 @@
       "knownContentHashes": [
         "sha256:90b05b3acd76eb5bca0e50ea26f408f0a2b4be0f0c4c8a1f9361ef85d1eca364",
         "sha256:ec1872af996bad470435dead96015c3e2f523c8e820639b4bede89e3d12486fe",
-        "sha256:6923711f4630073b9de7314f2aa9a94993c4f40bf29dfa728995e7dc14a497ac"
+        "sha256:6923711f4630073b9de7314f2aa9a94993c4f40bf29dfa728995e7dc14a497ac",
+        "sha256:5e3621f350f6c564ab72ae6bee8aceaa2ce6621b2b2f6b253c2abf08c86b3558"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -418,8 +423,8 @@
     {
       "path": ".claude/agents/goal/goal-planner.md",
       "knownContentHashes": [
-        "sha256:d075440c59a499e568f08e70a4e082df49ac964d0429f5f85351cb12b8f6c8b4",
-        "sha256:00704c3a39d72536933e76c2fe13a8194abd2643d22e10f2282343ef755bdb36"
+        "sha256:00704c3a39d72536933e76c2fe13a8194abd2643d22e10f2282343ef755bdb36",
+        "sha256:d075440c59a499e568f08e70a4e082df49ac964d0429f5f85351cb12b8f6c8b4"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -427,9 +432,10 @@
     {
       "path": ".claude/agents/hive-mind/collective-intelligence-coordinator.md",
       "knownContentHashes": [
-        "sha256:1986cc1c6d77f2828002fd153640bbfafceca8cab5046d579a942c5b6efd36d3",
         "sha256:ce0f72fc796a703e408034de49b834028723acf47b33d34413f14ca7cc41bda4",
-        "sha256:69847acd12863a46c659a25ae0c39fd9c39e72a2732cec79da262ff52d5e6610"
+        "sha256:69847acd12863a46c659a25ae0c39fd9c39e72a2732cec79da262ff52d5e6610",
+        "sha256:a1b66e263999e123f0324a9dda2fbf2b44532e39be4839297a50cd2a3d52044a",
+        "sha256:1986cc1c6d77f2828002fd153640bbfafceca8cab5046d579a942c5b6efd36d3"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -464,9 +470,10 @@
     {
       "path": ".claude/agents/hive-mind/swarm-memory-manager.md",
       "knownContentHashes": [
-        "sha256:c2dc50176fb1b484dd2b4490094a2e5c52949fdc93e62bb0ee6560ef6b3c0c9c",
         "sha256:17f6832ea4d73c004232c562c7394105673a08382dab3e706acb5192032213c9",
-        "sha256:892051cdbba5cd4a3cb3ab5c26638a2396ee3b8a800da343cb307e7f23ac5277"
+        "sha256:892051cdbba5cd4a3cb3ab5c26638a2396ee3b8a800da343cb307e7f23ac5277",
+        "sha256:9d50e9c95ad48e8031a7cb5dfc00587ced94aa1e8c3b183308bda73ed44221fe",
+        "sha256:c2dc50176fb1b484dd2b4490094a2e5c52949fdc93e62bb0ee6560ef6b3c0c9c"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -500,9 +507,9 @@
     {
       "path": ".claude/agents/neural/safla-neural.md",
       "knownContentHashes": [
-        "sha256:f712f0f3225f7c9a1c341c5454b7dc2376679686329dce97eda47672a9a8d647",
         "sha256:aff2f640346db7f6f2b51cbc112886d27bec590e48e6c4259cf75f193d31bb66",
-        "sha256:2806af6f9ae819c48668e30d3cb3ed75c9237d6d01b363df3c5c98bc9ece6ea1"
+        "sha256:2806af6f9ae819c48668e30d3cb3ed75c9237d6d01b363df3c5c98bc9ece6ea1",
+        "sha256:f712f0f3225f7c9a1c341c5454b7dc2376679686329dce97eda47672a9a8d647"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -604,9 +611,13 @@
     {
       "path": ".claude/agents/sona/sona-learning-optimizer.md",
       "knownContentHashes": [
+        "sha256:38d9c69f99c5732fb11720f7b5eeccbb387c5aeba5916bedee2937bc997643bc",
+        "sha256:53ff08523eac6bdda66292b9c5b22522e6c192b18010474ea04e3bca073bb1d6",
+        "sha256:cc7e6d851b67545c240497c6423672f422c3a6a8dcfe94a78e0775c741294cf2",
         "sha256:3b51506956b66b834dc09adff0e245bc8aada778831a45a22f6ad524cc2e48dd",
         "sha256:5a6a19e697026a73f033a6ea780faf4d18749505091f1ceaf810a10deda2f606",
-        "sha256:8af5871c91d2563f8aa7dbc09d77161396feb97e3638bd93710ef6d36367778a"
+        "sha256:8af5871c91d2563f8aa7dbc09d77161396feb97e3638bd93710ef6d36367778a",
+        "sha256:663d239a73641bf0ae0586e940c1d71a89d7e61ccbf2965dd5dc60e6b140baef"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -622,8 +633,8 @@
     {
       "path": ".claude/agents/sparc/pseudocode.md",
       "knownContentHashes": [
-        "sha256:428447d6a67d396f704e8ba7fdbba3c719f7c5840052b54dccb5763022a2953a",
-        "sha256:ff270cf431c0f062fb053fdaaab612aa612772c0970f7d3fec257d3b490a376d"
+        "sha256:ff270cf431c0f062fb053fdaaab612aa612772c0970f7d3fec257d3b490a376d",
+        "sha256:428447d6a67d396f704e8ba7fdbba3c719f7c5840052b54dccb5763022a2953a"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -647,8 +658,8 @@
     {
       "path": ".claude/agents/specialized/mobile/spec-mobile-react-native.md",
       "knownContentHashes": [
-        "sha256:42ff01c39ef5eed2d99ce98400e412897f31e02291bd7cf363703bdc96f7565f",
-        "sha256:5cc5d5e6c9cb1279c32cdfb2daa32c06ee7171e82032ee887a9b4aa521747d99"
+        "sha256:5cc5d5e6c9cb1279c32cdfb2daa32c06ee7171e82032ee887a9b4aa521747d99",
+        "sha256:42ff01c39ef5eed2d99ce98400e412897f31e02291bd7cf363703bdc96f7565f"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -747,9 +758,9 @@
     {
       "path": ".claude/agents/swarm/adaptive-coordinator.md",
       "knownContentHashes": [
-        "sha256:66a0e018b528c166df319782c191930da9b27c5346dbcf1e92782d7765f8488b",
         "sha256:b11cd043043bfe140c724cf34c3612eb9f743fa1906dc6f33cc1caf1d908707a",
-        "sha256:5af255cfb3b1df29d8072dbf539f3d186333ecbd27d548cd5222d3330f314db0"
+        "sha256:5af255cfb3b1df29d8072dbf539f3d186333ecbd27d548cd5222d3330f314db0",
+        "sha256:66a0e018b528c166df319782c191930da9b27c5346dbcf1e92782d7765f8488b"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -757,9 +768,11 @@
     {
       "path": ".claude/agents/swarm/hierarchical-coordinator.md",
       "knownContentHashes": [
-        "sha256:92a0ae205f0fe06ce1ef0beabb9a2d4f4aa3fc5aa6f3f7c7a23f3807c8a17052",
         "sha256:69404f429b94ed3a78e21ef2265b36885f6ed4980c76394094c3482e9fff2d25",
-        "sha256:43fd50c3eb2c2ff17d26744a948dbd111fcbea53e083d71045872007a8d62ee3"
+        "sha256:43fd50c3eb2c2ff17d26744a948dbd111fcbea53e083d71045872007a8d62ee3",
+        "sha256:5ff7ed568325129d1db0ecca8391af9433e210bbcac87dc029237d20d05e2fa2",
+        "sha256:5cc84f455f4f930a992189a1050f02f645878fd480093323b504689b3a6d1368",
+        "sha256:92a0ae205f0fe06ce1ef0beabb9a2d4f4aa3fc5aa6f3f7c7a23f3807c8a17052"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -767,9 +780,9 @@
     {
       "path": ".claude/agents/swarm/mesh-coordinator.md",
       "knownContentHashes": [
-        "sha256:70207b48ac6df8fcd3c9a0b5f62e87f382e5fd9fc1d15ae984ae426cc760b7b1",
         "sha256:f188dedb6a0e1d499fb214f4e557258631712cf6b8e44b46f02ebf26dccf8f99",
-        "sha256:02c2b797aff9717da48ba377ea0e98efab7e0ae411af6509bf906f87ea3944ae"
+        "sha256:02c2b797aff9717da48ba377ea0e98efab7e0ae411af6509bf906f87ea3944ae",
+        "sha256:70207b48ac6df8fcd3c9a0b5f62e87f382e5fd9fc1d15ae984ae426cc760b7b1"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -793,9 +806,10 @@
     {
       "path": ".claude/agents/templates/coordinator-swarm-init.md",
       "knownContentHashes": [
-        "sha256:421637362dff0cb718b59789d034abbecab885b9748991f37f717a2ba4e7effe",
         "sha256:ab58b07178243eb099e14eb9e2ab2f8d42b7887819c3aa8b9a350fa6874b14a0",
-        "sha256:6b28e224c3ed520eb911e3cf54101a9cf91e81411215c041cca16b7334aca770"
+        "sha256:6b28e224c3ed520eb911e3cf54101a9cf91e81411215c041cca16b7334aca770",
+        "sha256:eb597394ec516d67d87bc863e25e4157c33e87221d95b961d3413ef2594c2ef5",
+        "sha256:421637362dff0cb718b59789d034abbecab885b9748991f37f717a2ba4e7effe"
       ],
       "retiredIn": "4.8.50"
     },
@@ -823,8 +837,8 @@
     {
       "path": ".claude/agents/templates/migration-plan.md",
       "knownContentHashes": [
-        "sha256:4e7bbd95b2685f79388d8d1a589da20159270ce7473b2b77fae79c50ad19ecb3",
-        "sha256:1e618f2c87a5c3ffe8d381786d7844382359e22f232a5d8d3299ac8d59464a4b"
+        "sha256:1e618f2c87a5c3ffe8d381786d7844382359e22f232a5d8d3299ac8d59464a4b",
+        "sha256:4e7bbd95b2685f79388d8d1a589da20159270ce7473b2b77fae79c50ad19ecb3"
       ],
       "retiredIn": "4.8.50"
     },
@@ -900,7 +914,8 @@
       "knownContentHashes": [
         "sha256:af55732985dc4090dd187ee8449c31936f5d38144ceac177bb76432ba02cc027",
         "sha256:ec1a05db48500d8b5817e1981ed538e618926a9cbc2879d8ccbe82924d4ebad2",
-        "sha256:0fa27c783880ea059594ba7ba52671f8574cb10d62bdea731fe96dc29a661582"
+        "sha256:0fa27c783880ea059594ba7ba52671f8574cb10d62bdea731fe96dc29a661582",
+        "sha256:1f11cf042eaa9475ef8964e5db033643d5c2ca69e1ba5c985869969ceae8c1f5"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -965,7 +980,8 @@
       "knownContentHashes": [
         "sha256:7ca2a2c525280523c89133fae34848f83c964b3c8ab3d425f28e87860d268740",
         "sha256:e1a8c17318b275ee1e56524e98a50564ebab2e0e8aa5b4da3a95acc98648280d",
-        "sha256:59fc86325c14cd6878f1a691bfeec3a4ce26808168024e2502947fa8771578ac"
+        "sha256:59fc86325c14cd6878f1a691bfeec3a4ce26808168024e2502947fa8771578ac",
+        "sha256:faa849b31718c34d5bc31625f573f45e9f7d7630c2a9e88e6994a3f5cd2c05b1"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -1026,9 +1042,9 @@
     {
       "path": ".claude/agents/v3/v3-integration-architect.md",
       "knownContentHashes": [
-        "sha256:291d18522db18b962ca54b43563658c69bed054d4a46ba2c7d0126555b376342",
         "sha256:0b07e8c29f0622299e8f620f93829fb1b8b5d69eae07e479d932bebc810354cc",
-        "sha256:840f06394149fe2695656bc35f96bab31a6ccbdc72f3f869775543466bec4c67"
+        "sha256:840f06394149fe2695656bc35f96bab31a6ccbdc72f3f869775543466bec4c67",
+        "sha256:291d18522db18b962ca54b43563658c69bed054d4a46ba2c7d0126555b376342"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#932"
@@ -1064,6 +1080,8 @@
     {
       "path": ".claude/commands/claude-flow-help.md",
       "knownContentHashes": [
+        "sha256:5cdb4185715461f75d10f65051e6227e0464228f2be9b64d7caa1020163a6f66",
+        "sha256:c809baa408eacad3279b65e960dc1323711cb30b36b6561949dde578d838016f",
         "sha256:8aec600952cb0bac9855e766c69c1af5ccef56dc877f81536306b7aefc479375",
         "sha256:c25c9650b3cd752dd5c92fe078e6132bb48269f6c72edb5a29d4f963dd8e9eb5"
       ],
@@ -1073,6 +1091,7 @@
     {
       "path": ".claude/commands/claude-flow-memory.md",
       "knownContentHashes": [
+        "sha256:0cbeed7c94dc2f5417d1ed2749d52197953fd9a6a8933b8121c0b812d69abd74",
         "sha256:b327dbf88290be3cf1370f6b6a9b3617f37855f9c8b97fb3bb66404fbfaf08be",
         "sha256:fc117a3dee82c429d5b3a52de49e1ddf0f8c41cc8a483341c53209e292050527"
       ],
@@ -1082,6 +1101,7 @@
     {
       "path": ".claude/commands/claude-flow-swarm.md",
       "knownContentHashes": [
+        "sha256:14778c8413d94b8dc36382073968da5aa4dbd08cd60d46ceeef3818936a1469c",
         "sha256:2119249384887c8fd90be203304114757177356bb8ddbe8e8bebcb1b8c4f9d43",
         "sha256:88ea9327172b5c9ea5ae3297dfc11f9f0de009ebeb4882f6221fd097efb15b0c"
       ],
@@ -1116,6 +1136,8 @@
     {
       "path": ".claude/commands/github/github-modes.md",
       "knownContentHashes": [
+        "sha256:9d8ad0c3092678e2399efc32b635871d3b0611f4f8abb0811b032d712fae1f59",
+        "sha256:49d9fa2208c90217bde3fbb7e11a4ad75714634e873237f00311386d7b4c695d",
         "sha256:622955b84aa0784980fa2d97fe6494f46fe7b4dd7c3515d1e164be9ed6d999aa",
         "sha256:dfd656675b15c6f2eb0687896c071e868e5ed3353ed3287f09fd233232a39a6f",
         "sha256:764da5769b73f25db125ab2ef6dcb2367628c0f34e6739551eccd5150991f0a8"
@@ -1126,7 +1148,9 @@
     {
       "path": ".claude/commands/github/github-swarm.md",
       "knownContentHashes": [
-        "sha256:70c3f0f6feaed900fd7c19338dbc5b3fd254e72853ffcbac90aa1eba09ebe4f3"
+        "sha256:70c3f0f6feaed900fd7c19338dbc5b3fd254e72853ffcbac90aa1eba09ebe4f3",
+        "sha256:bf4609aa6f6678d3e0783c5a58466fce3b1489d0aaa30f4e813c593d1db820ca",
+        "sha256:8af56205449b4c82e546901c6ffca10f122619757bf50aaed7b70bf43a6b8bca"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1134,6 +1158,8 @@
     {
       "path": ".claude/commands/github/issue-tracker.md",
       "knownContentHashes": [
+        "sha256:4ec7d9a2dbd9f472ce91a53960776534dfd622e7582064eb77a6ac0b57871c6f",
+        "sha256:dacf6fbb07e87c2a6c9fd7ed6d52458eac60c590de608db39b707fd89f375028",
         "sha256:e703cc1b48242262dec4f16ff032f70b320b1ca930252c4027ed6b42856cbb3e",
         "sha256:edd19819fc486b19095c664be60fb8ff79e5b09829561266c32ef8c845429f03",
         "sha256:c2ae3f91e77ff8f64f991a30bd538a6a22c2d33281e1daba1aaf737d75d94d40"
@@ -1169,6 +1195,8 @@
     {
       "path": ".claude/commands/github/pr-manager.md",
       "knownContentHashes": [
+        "sha256:f2760f043d56702cf4e60f0d6d9ad8bc2a8275df21603c747701c1cab613ec9c",
+        "sha256:b0ced9bebef7588be1674afd1a10da84981c0a082a9f840b9762fa89c0a81814",
         "sha256:2857dfbb9a47ff573edbbcca3838ced824a9d0122d675a6b0cc4659175f9aee1",
         "sha256:b4e5236851e52460804dca161d87fc6fb2caa1541d47173eb28e56697673c4f2",
         "sha256:d3ab6b4e577607f1eee992caec3508dd7deef7bd06c30aeff279f683be12110b"
@@ -1196,6 +1224,8 @@
     {
       "path": ".claude/commands/github/release-manager.md",
       "knownContentHashes": [
+        "sha256:90aeb0c8190d027e44da9123d0d747eeb21a93d09cd42d4ade243273f2a98a03",
+        "sha256:acde2d1a28f8d9f133e3778f8c2f7b71a6173bed010ed64bbd22f7eeb9e55b17",
         "sha256:33420566fedc1ba07a72727c56962f34e24f101aa4571be04251f9a843b48209",
         "sha256:4324c9e132a6be3a0e8d95f61e723d68d8f1a202a7b95222a9a3ab950d218287",
         "sha256:f8a4201155da7be10a3ebf1f600f073ac074d4ac8653faaf3196e89966b0e28c"
@@ -1223,6 +1253,9 @@
     {
       "path": ".claude/commands/github/repo-architect.md",
       "knownContentHashes": [
+        "sha256:b0098fba703af49c159e6c5e0837a539f3710aff10c30f5b43d3f146504bb6ac",
+        "sha256:6d47e5c5355124b7c4714f49bdfc96c392b2aee6b063a38c08473d26102c3fb7",
+        "sha256:2f1f40d196ac217a03cfeb4931347490e067d328d5a2f9154cd75fad11d2ef89",
         "sha256:9a16e5515f5c66a5d6a75ec5518b8bdc9242334237cc7074330bf5211054f8e2",
         "sha256:c7508266ae896b33a0caa3b5f44ef3e9968e6a5dffe80863322152e273ff2ae8",
         "sha256:8c6bb22bfdaba4b9970e800dd1789df3c2da8be403ea9d2f399056c694616d6c"
@@ -1251,6 +1284,8 @@
     {
       "path": ".claude/commands/github/sync-coordinator.md",
       "knownContentHashes": [
+        "sha256:ce207786a10cf046e283cba2b41707fe68f5288f5d011a224a163600163d5c2a",
+        "sha256:70fc4df8817e3ab83f4b43c3ac438918c935c57380695b03301800bd204c6355",
         "sha256:197e5b633bd2d8163e2ad70c53f3a32cfab7ed4185d6d1f1ad60d9902ef62732",
         "sha256:9eb218475d8eccf76cce68adb3d24a68e700f52987f5a920faa38dcf915855b0",
         "sha256:1dffdbc1a537427065a0b93389cfb093d696dd2b2c60ec48f71b6703e8ad9b14"
@@ -1270,9 +1305,10 @@
     {
       "path": ".claude/commands/hooks/overview.md",
       "knownContentHashes": [
+        "sha256:756650fe0751e8976f5efcf027a02cd79361924c8df147c882c9687374fddb65",
         "sha256:d2343edebcb3b785c25bb82e8ca12042d0726c73e1a16fe099cdc16d1754c138",
         "sha256:cd211de3589a0ad3d5b472cb333a87ae22e1faf29b3f705eddad699e3f9152db",
-        "sha256:756650fe0751e8976f5efcf027a02cd79361924c8df147c882c9687374fddb65"
+        "sha256:ca6e4b3816a0435606eb71d55b1b955be08c5d40c91787eec3c7434856fdd027"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1328,7 +1364,8 @@
     {
       "path": ".claude/commands/hooks/setup.md",
       "knownContentHashes": [
-        "sha256:d24b951e66c23cfb3d3ec230b1c80983f093d84eb80a5bff89ebaedb148ce90c"
+        "sha256:d24b951e66c23cfb3d3ec230b1c80983f093d84eb80a5bff89ebaedb148ce90c",
+        "sha256:9147b73294a4c409155da3e53296979374534f344f85317e7025441b969cf2a4"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1336,6 +1373,9 @@
     {
       "path": ".claude/commands/sparc.md",
       "knownContentHashes": [
+        "sha256:6625c69712fbd7c08d50251f6cec2291c26ab46a9ac0b1911ae23bd8da007215",
+        "sha256:bff3e7ab0e6b8e5fb7beecda563171093733138e6a1ee05f0a2f80d256555663",
+        "sha256:19769d769c8ccc803206b5459b2ae5660e321a6564c42953d42f30e547e94339",
         "sha256:aded34ee83b9e3a6391bad19143cd4a63cd4e5f70ae3b04d0adb73cee0be992f",
         "sha256:2f92b6b7cd113b9c54ad2c65e3ed44dcd36d6b0c65887535a65ccd6f050b5050"
       ],
@@ -1345,7 +1385,12 @@
     {
       "path": ".claude/commands/sparc/analyzer.md",
       "knownContentHashes": [
-        "sha256:f298c877f96c16a7c0cbc69e9242f19e2fbc00d6b7ca33d66d6527e9cbf995d7"
+        "sha256:f298c877f96c16a7c0cbc69e9242f19e2fbc00d6b7ca33d66d6527e9cbf995d7",
+        "sha256:2ec6b4cc4c4761359e2454b30b2c8a517f0de727903ad810273e02e167013ff3",
+        "sha256:bd6a184d3fcf7c200c1a62c06eb428095d08ab8c80c92fe19f48d756878ca831",
+        "sha256:c07daf27f38aa24b20e0c9a1188ed1328f8a0f83f887238841a0890e9b131373",
+        "sha256:82a90e1d06ea6fa6e778a5906e674635cded0a1c47eb557bd2a153163f9704ac",
+        "sha256:50f4f5af7ef3098919f9f8fe00152dfea4d5ad0cf803ca8a57e549656ea9c109"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1353,7 +1398,14 @@
     {
       "path": ".claude/commands/sparc/architect.md",
       "knownContentHashes": [
-        "sha256:3f8cffbd46c65e4f3f47c16f86e7f0160593661f1abcb2b6e8b203d00c45dc92"
+        "sha256:3f8cffbd46c65e4f3f47c16f86e7f0160593661f1abcb2b6e8b203d00c45dc92",
+        "sha256:8f0d28d7c69fff36e4eed9998533edbee061a97e0262c7fd7d48a2541a72fc81",
+        "sha256:ada362c7e25abeeb836bd7a4e0c4ff33d7b748085ed9a6a8549ebed046bff593",
+        "sha256:0260b59de561cabf6ccfe25ce238200dca687e8e5951fe152fb1fea3d80f3077",
+        "sha256:bbd1d6ed63c05e6a24ab5815582b67777ffd80f86b9769c6f711f61656427afe",
+        "sha256:600c4023edb0228a675a205e3edcbf856f8594c922edac1b5c436fbd2838abd3",
+        "sha256:8a74d45d2fb0755c605e143259614776a2d885a11184ac4c38b9bd1d916cbbe6",
+        "sha256:0bc04a9f89d46e9eaa4a2094ce3f900bf0fe3d6b8d211e7570f47b2c52a86fa3"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1361,6 +1413,9 @@
     {
       "path": ".claude/commands/sparc/ask.md",
       "knownContentHashes": [
+        "sha256:112fdda95d4fa94d70ce23c809926892a4f1a3bbd3331a2cdfb4711f0b66e22d",
+        "sha256:c67d9f4be0a291f8045e5d4a10bf916f9dbc5cafa1a9dec5328730136cf574de",
+        "sha256:2d785fada820f6ebfbfc276c6315deea64ab63435890ab93ea050f486151802a",
         "sha256:10679f2203d68268f962b5bcb949b6519d38c0a022251f59d8427c3a7e3b8701",
         "sha256:d1c0b7d91c3208aeeeadd6604aa7029b250c23ae6bf6523e7f80c7fa306b4ad1"
       ],
@@ -1370,7 +1425,12 @@
     {
       "path": ".claude/commands/sparc/batch-executor.md",
       "knownContentHashes": [
-        "sha256:2ca99433401bed3e84cae09f22732f329385d2f364f9163289a003967e61af55"
+        "sha256:2ca99433401bed3e84cae09f22732f329385d2f364f9163289a003967e61af55",
+        "sha256:7b1afa381dee47417c471da8c3575274bc06ca153462606e2fb669129b2ae3af",
+        "sha256:5c731f6062a8ca7db069e6b124e44ea2378cab1a01e9dc25b867f73da90bd452",
+        "sha256:c1fd7fbf20903175255562ddfe948ea83090f5a2c864c23e11d802fd3adee4db",
+        "sha256:aa1f29fcc54d6f4f0c18fabb30bb6fda4876c191a47fbafc8f999dd5f8809896",
+        "sha256:46d9dcf2c951a95a48fc7fc42654bd3a5bdefec57f71b7cce7e1e29b73f2c4d9"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1378,6 +1438,9 @@
     {
       "path": ".claude/commands/sparc/code.md",
       "knownContentHashes": [
+        "sha256:aee92282f67ada3fc859218c0325cbd0945a6398be62a78e2274265dbc7ac4a4",
+        "sha256:4b55dc4ef24b8072fdd6da1fac422160bfe58541e957ec228f315abe84c1a429",
+        "sha256:9e97586f1a5f7226c5586457aa4151576561105009cf2d39ded69ca43496bdcd",
         "sha256:27cf408075e4b996c8e2d31cfe112f533d7741eb3989a505a75ed5ad817b6bef",
         "sha256:0fe06bd975385fb84b4f38f1e475667ece1ab002e974be27657ce28654404632"
       ],
@@ -1387,7 +1450,13 @@
     {
       "path": ".claude/commands/sparc/coder.md",
       "knownContentHashes": [
-        "sha256:0a8106daaa7c1e38db03dcc8bbbb80fedc8123a88ce88cec6943871990e3df43"
+        "sha256:0a8106daaa7c1e38db03dcc8bbbb80fedc8123a88ce88cec6943871990e3df43",
+        "sha256:67efb7545ba893d454173228dd52775792b06009d33aa2d076713b1f3fa90c46",
+        "sha256:5dca05da59289dc3d710f6ea8dd5ece84ea002b861336ae39a4e7c67c75d191e",
+        "sha256:7ed102afb730749539e0ab482424db09548916d0fa92797a77c1adbf0b308c9f",
+        "sha256:1e6e9592948bd7e01f3949f54ce3c3453a5474dc5ea5b508af2e6d0f32885a8c",
+        "sha256:0d942eb9967cf006a981478d668a464a5b9b870dc8dac7a4907afae770e65aa3",
+        "sha256:de23c825c648bfce1ff855b6a1d73d27b0f7df0d3e18f9fcf95d573612efb3ca"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1395,6 +1464,9 @@
     {
       "path": ".claude/commands/sparc/debug.md",
       "knownContentHashes": [
+        "sha256:9bd302067a187d012e9ce2dbe8f01e2c2af83add7f8889e772b2fbf7b3283a25",
+        "sha256:161234dd342672da751f4c93bd6ae10ca6fb120bcd8b21692c2e002cfa7fe97f",
+        "sha256:b5d5309737df69217bfd35768f44f13e69b0ff99ad1abbe400ceb3769024b11f",
         "sha256:0b1c50bd42a9e81a7a5dccdd7b840277682a1facae791879eae2b400fc1bd356",
         "sha256:41807356b4bb9cc5d267054dc23bdb66ef41b4de51e0002643b61bad05d36adc"
       ],
@@ -1404,7 +1476,12 @@
     {
       "path": ".claude/commands/sparc/debugger.md",
       "knownContentHashes": [
-        "sha256:5ff93b9c01cd02bf18544dded5c6cacd83ae3aeff6176312370ed5acedee7737"
+        "sha256:5ff93b9c01cd02bf18544dded5c6cacd83ae3aeff6176312370ed5acedee7737",
+        "sha256:ca8df90d798ce282d70895249332316de21d83eed15691c76d42af079d23dd21",
+        "sha256:e028c64afcaf788044c71469d2f0b1d597314b83639d48e182a68a84bbfd02b6",
+        "sha256:caad22b6ff1c277fbd95404324c141f6877052706523c6000810d43e5b9baf81",
+        "sha256:02c18e5dab12e4ca6d9afa223ac5ea0eed7133f05247c7712ea5743b486c00a1",
+        "sha256:7cff263128d4684d8fd6679712f7a6aa774265ebdc0b41abef68e00747c18538"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1412,7 +1489,12 @@
     {
       "path": ".claude/commands/sparc/designer.md",
       "knownContentHashes": [
-        "sha256:eb28eecf8ff1acc3ad1a01250eb4e92c2af3d0c7fe02685d7324480334e21fb9"
+        "sha256:eb28eecf8ff1acc3ad1a01250eb4e92c2af3d0c7fe02685d7324480334e21fb9",
+        "sha256:d7539ad32841fa0166eb4c83798a77789350943027c0465fe901109433bdb043",
+        "sha256:37989336870a61deb0c92f62b4d19a69d4495fbce59b4f151447610d5c740dab",
+        "sha256:d3c130e1109662720664064a03c19c247c299a051edc98171137702fa1f4ee9f",
+        "sha256:d710f9cdd161dccf60bf6d55e1ba200db400800f4374b70bfc2500843e31d265",
+        "sha256:0c81cf0bacc285bca12bf8879e3418bcc47872a71a8c78d5cd750f66583ab92d"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1420,6 +1502,9 @@
     {
       "path": ".claude/commands/sparc/devops.md",
       "knownContentHashes": [
+        "sha256:2607b9acfe9e28a73e69f832e015198f5035ed6d6bb9419ee564b04c65ab39db",
+        "sha256:270887a5bb68b170f6225940e3e8a0ca77e2492e0575d235a42279aadf793656",
+        "sha256:53f0b8e21e44ad36d949b519202a91d588fd98880e0cf6b2a9bfcf3d640d11a5",
         "sha256:ccf99931a7b26415c77368e325ea033e4f90d3daeee1fd88ed51a646c426d26e",
         "sha256:8cf8dd5e21e046f733e2be704fdecfda667ac0240189fa9591b6e81f559e5a9a"
       ],
@@ -1429,6 +1514,9 @@
     {
       "path": ".claude/commands/sparc/docs-writer.md",
       "knownContentHashes": [
+        "sha256:ea5c1dadbb57f7298ad822921ad0a8ba9b10f880a48924b76f122e907f949d4b",
+        "sha256:013195f278490000fd91e0e1af5ffeda3678aa0555c0159cf2d901aa0214b4a5",
+        "sha256:564dfa75728e5c2810dc206a682eb5c81c82f10cbffb85dbf9b98b27c7dabdee",
         "sha256:ad60af959149a625ca4c30e750e3b69da623f3364c54e0e0ddc5564e58aee2d3",
         "sha256:3084023de13ea063e304093fa191aad703249f919cbf5f724317875bf457875a"
       ],
@@ -1438,7 +1526,12 @@
     {
       "path": ".claude/commands/sparc/documenter.md",
       "knownContentHashes": [
-        "sha256:99a99a92bcb08da5eae745f04c0f92adeaf0ebe4a0bb0984f63675381ee98dd6"
+        "sha256:99a99a92bcb08da5eae745f04c0f92adeaf0ebe4a0bb0984f63675381ee98dd6",
+        "sha256:54f62352eb01e0313bb17cb0dd9f81fed55f63948c8972d5952db76b7c17850c",
+        "sha256:5c6671c9624a42d71ad040847330275ce345a0efc126fe8f1b2395ff70b93894",
+        "sha256:e97c15a32647b57dab4e08e8a91e4b3736dd1e60a017139e33421d2f36581937",
+        "sha256:6785581f605b20f24059e3efa1a9afc49d8ff37df4be23f6fe3bce1a12cdf91a",
+        "sha256:9b6455566ffb3bccc51552634a82f0cf40be36911af940bb125f735fb725f6c8"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1446,7 +1539,12 @@
     {
       "path": ".claude/commands/sparc/innovator.md",
       "knownContentHashes": [
-        "sha256:c14926cb93c01efb4729a66d5beea568d4fc5ddfb6bb89a03aff2c0307fa4b49"
+        "sha256:c14926cb93c01efb4729a66d5beea568d4fc5ddfb6bb89a03aff2c0307fa4b49",
+        "sha256:ed5a296a3b1a0ec6ab4c031a952e14b7d783953f90d1523e213e1b4e08e79b1b",
+        "sha256:88f93f66387b53c0fd86c93e09c76a8da1276a520361c479509024c59f666133",
+        "sha256:190c5a329f21edb494da0d379ea1850c0ac771196977c4029d5cdc13edd73155",
+        "sha256:9cdd42dc779aadfd09324b4ccc987e76afea8c577b9b4795b122361f3277ccfa",
+        "sha256:869d1e2a7fba8eb75b8978442ee81f4b23431665dc29916f8de68cf0ef50ca56"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1454,6 +1552,9 @@
     {
       "path": ".claude/commands/sparc/integration.md",
       "knownContentHashes": [
+        "sha256:03151d01b5afe1f5f40bf0de7bf90a81207d938ccb6fee9f3ce65de84b29ebb6",
+        "sha256:3a9c9a8dee2302ce90b0084ead690d271bf6aaa2c07eaec47fd2fea77f04918e",
+        "sha256:dc08bda49831d7bf7ca6069bebe24ea278436a2f08aa7fb07311a2d174c116cc",
         "sha256:cc2d296b5697e5856609a9c9f49af9c64337df4c9a9b4449b15cce8850821b13",
         "sha256:454c452af3f047cc3ee59df6332c9c431ea4e3256f94107eb11360cae53ccb3a"
       ],
@@ -1463,6 +1564,9 @@
     {
       "path": ".claude/commands/sparc/mcp.md",
       "knownContentHashes": [
+        "sha256:3d41bc3c75c00e4c5e3c0cc13a949089674fe9fb131147c7b58ce54ed434c03b",
+        "sha256:5cf2dff2d572dc0926d13326af0879e382a9d0754ddd7dfc6ddb89b17b9198f3",
+        "sha256:c0a68234d8cd14ee6e8e29c44560ed1dcdeeb592a51e3f101abc53495e1b7b0c",
         "sha256:d223c67c374b5e5e64b5bb9b9982744d53e94ac8197f9ecdabf9bf729308ce21",
         "sha256:595bf2a5750fcdf0afb57a5c1a4b454dbe44a44d84b86272dd29617ec53eaa14"
       ],
@@ -1472,7 +1576,12 @@
     {
       "path": ".claude/commands/sparc/memory-manager.md",
       "knownContentHashes": [
-        "sha256:6988dfe36ab12c7eccc15e6db3e7ab84baa563c56ce114b24df170d43ef96f32"
+        "sha256:6988dfe36ab12c7eccc15e6db3e7ab84baa563c56ce114b24df170d43ef96f32",
+        "sha256:ddf6b54920f7eb76cb3b3b33ba7efaef85784032547048097a60f9ae4c302e24",
+        "sha256:94608382b51c78b50042dfc21d6445f08cd4066875a22e86c0988ef144c02875",
+        "sha256:5ea513ca6bf81b22a6597c7122219c3194b17d69e124260e07864a86e39aeca5",
+        "sha256:ac92f68d4b91f77d44df662eadbb05b85b609655a6ec2816b06904faa6c6a598",
+        "sha256:2f3cb261d8ec13f1597b9f5123094f5d2c56483554c47a9c5deb3cf4e689243e"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1480,7 +1589,12 @@
     {
       "path": ".claude/commands/sparc/optimizer.md",
       "knownContentHashes": [
-        "sha256:be2faedd089f40d02c323e7967cccefe69859ed84105b7bbc01258a029598053"
+        "sha256:be2faedd089f40d02c323e7967cccefe69859ed84105b7bbc01258a029598053",
+        "sha256:6dc520711c9345ec65ddd78f2b1a60e0ac2388638d84da9e2270bed58e046723",
+        "sha256:5f5c2ab6e0f7248512a3819013983c7bbc1a604b3f6043eea37885b6981a2137",
+        "sha256:67cb36ac14824b53febd7f4183f6476fb9b1c351b41aeaec96e500c564475536",
+        "sha256:460771389b69b5dc5ad98c81c2a088b0e13bc7b0fcf3b4083381a15dd0c84249",
+        "sha256:723240e88e7d67105e668b9f504a36ba7e481e8fb3226e942a8a0f8f0d22a1d7"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1488,9 +1602,15 @@
     {
       "path": ".claude/commands/sparc/orchestrator.md",
       "knownContentHashes": [
+        "sha256:bda3ec409aed348c56e2b0083c89cca5c4a08f6463ff140fca45349d4fcdbdbc",
+        "sha256:fb1cf64eaae308d57a041fbfc767078ab037cec4b6072060b36ad558f8ea7887",
+        "sha256:cbc0442e67a814b3468da62f901b8e3baee9c46c0b3d651b3f836d4ac0165b50",
+        "sha256:77d54f7a2085084e6d1dfd2fffbbb7fbfa46bccdc0f7fbbe50cc856810ae4169",
         "sha256:29fab62338b6172e5d42f51918b1abfee89afbcf909668190c767521ed82f9ef",
         "sha256:77b6be60207087df541ccdff83604eee6a11b7fef1090cd7241a6e6d25dc2a82",
-        "sha256:c119e6bb44452bdb20e21e5f521deb42f0d229a92e5d290c5d2b525313ddd5fa"
+        "sha256:c119e6bb44452bdb20e21e5f521deb42f0d229a92e5d290c5d2b525313ddd5fa",
+        "sha256:09c9ce34e8e73fa945dab6c954f439ed47c69a4ee0fa052109d523fb4b884148",
+        "sha256:ecb3c522b7ff26bf218131d24938ed386391379090642c3912c66f68ad5d08a8"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1498,6 +1618,9 @@
     {
       "path": ".claude/commands/sparc/post-deployment-monitoring-mode.md",
       "knownContentHashes": [
+        "sha256:0f424d6547ce76b5218dbabc49b59332f55cca982a8373a8ca474d188b8b3f91",
+        "sha256:8504c2fb0a85d10a7438b8fdd09c7874a819b1d74bba260857e2f5d39bc32f95",
+        "sha256:f112e0fd1d1b9705e0e0a302329799ba4b80d7f3f666d4cb7910b6655309cdc7",
         "sha256:779f6c07030f3ba4ec8eaf22a00e0071c39f1ce3f4fb423ffa452f0750b247f5",
         "sha256:f5203da206529af2e6dff3cf4fab82456dd4ca1779405934013f912e3f3d48e9"
       ],
@@ -1507,6 +1630,9 @@
     {
       "path": ".claude/commands/sparc/refinement-optimization-mode.md",
       "knownContentHashes": [
+        "sha256:9dd6fc1b759138d0766b8063fb8bd3dde03f8eea524666b9a031b9a15f05f494",
+        "sha256:f7f8050466f9e78f6d03f6eeb011d08279733a40813249954eacdbab6caaced0",
+        "sha256:aaef74635728ca063af5e738ae7247af38d3f5015617568735e2804682b3ba78",
         "sha256:91493e6125f5bea9678947e32309914c637f321b72e1377b283e35b155b8ef71",
         "sha256:2a3a04f8a31058a74cc33acca217a9157411fbcc2ef1a69bb279fd55536e2c4e"
       ],
@@ -1516,7 +1642,12 @@
     {
       "path": ".claude/commands/sparc/researcher.md",
       "knownContentHashes": [
-        "sha256:98c4701808fda2dfa4ccb8ed54dfe0a6f6ac69c267fc2bcd9e06ab559234a94b"
+        "sha256:98c4701808fda2dfa4ccb8ed54dfe0a6f6ac69c267fc2bcd9e06ab559234a94b",
+        "sha256:8d9f1742c283d59003572a26f009070ff91ede1a7ad698bb7532d6de0435bb02",
+        "sha256:ec6c5c30269db2066ce65869faa398fc0357f48073f75de097e43653a1e9cc23",
+        "sha256:2bee16632577af2657f6d04d96e547c5fa8d731f64c6186532ee57153e22ac66",
+        "sha256:53b9dc2e9a3d95a2de213651ba2605b52521d277a5f72195ed3b86922408ccde",
+        "sha256:29a5aa1fb095bf0ebf71a844704b9ca7adae0994c45d78874eeab43e4629dfe0"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1524,7 +1655,12 @@
     {
       "path": ".claude/commands/sparc/reviewer.md",
       "knownContentHashes": [
-        "sha256:ba9fe9274e4520b372b087a3b17b3fd866b62b81a80efda384fd628b658a0b49"
+        "sha256:ba9fe9274e4520b372b087a3b17b3fd866b62b81a80efda384fd628b658a0b49",
+        "sha256:8ee4e085dd7b3ae8638e5ba676a632666b441854e12d98318cb0b5fec85d5e29",
+        "sha256:f81d581bc6ceeb8319e01439030f905f8f49a677614021f177eb91ef23b05d6b",
+        "sha256:d46bca18961758c7f772d65131c4178a028819b60837e9e2b778570af5d53a59",
+        "sha256:433faea040fe7981ab2c2cdf5168900ffb336cb1a535d57d98e3c710754df4e7",
+        "sha256:5e4bd574197b127a8ed082c46ca4e38c450098363209b229bbbe12249966dd4f"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1532,6 +1668,9 @@
     {
       "path": ".claude/commands/sparc/security-review.md",
       "knownContentHashes": [
+        "sha256:3717b8b3316467ddf47665f253086fa650a88faf3322b0d6b5d66a11587f8c7d",
+        "sha256:8ca322e153902fa40d4e5bddd383c824af0a7bbf21d29219602b5b4be41b4052",
+        "sha256:c9029a10c045fbcb99c9f69ddc5d1b036197006c2f846823c4098976d092eece",
         "sha256:bca82aa4869935cacc1f8d3d5d9026895d1e1ef17fd18e40c9bd0bda71d40452",
         "sha256:52a56bda29eead4590d44acb00c4eeed939e6498c33da8da5e515005be48b406"
       ],
@@ -1541,9 +1680,13 @@
     {
       "path": ".claude/commands/sparc/sparc-modes.md",
       "knownContentHashes": [
+        "sha256:c788a8e2020a38af6b42f1ac6a83830a1ab002e0f6c4955911f1b29337b70899",
+        "sha256:8b17b1ae8e8b1c0edd9b9756bc1244da908ad279a2d59deb4021165d19c38f35",
+        "sha256:767ddf606c9e747af149c0c56d08aed0c7446e99dc720266c52726c495533fb8",
         "sha256:2c740231aeed49a427b2695629e437cd7fd980ddb25b3a4411820f9888ac24de",
         "sha256:d7d90b3c478aa4fbbdeabceeed6435144b379b46ab216eb55d1683a1b1025a79",
-        "sha256:c447a4ecdf4055d982da2bc07cf96207c2c94c9ec19155d5d5e4d20a87c23541"
+        "sha256:c447a4ecdf4055d982da2bc07cf96207c2c94c9ec19155d5d5e4d20a87c23541",
+        "sha256:04bcc31c48da9d12215a04360a34b0c4c1494e16aab7a28c742152e2a729947b"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1551,6 +1694,9 @@
     {
       "path": ".claude/commands/sparc/sparc.md",
       "knownContentHashes": [
+        "sha256:007fe52301b0b37e567230f3dbdaf2b0af4f87099b47ccf25a5be05f73ab0fc9",
+        "sha256:396e2e8123a27dc51a1a05d91901c85460516908b3dee082f76e4f3fc10d6d7c",
+        "sha256:9e54e553a2ba6d8f249ed05ec1fbdcdb5e7affada7871063e062d988e9cd4abc",
         "sha256:21458b6efb8c25d33c06f1112ce7098f7bb9c28b1f5b96d1d350e8e09a794691",
         "sha256:6e65a8e9a20693e01d3a1e8ca8faadb6493ad6baee0fe7e79f82cc71cf94ae36"
       ],
@@ -1560,6 +1706,9 @@
     {
       "path": ".claude/commands/sparc/spec-pseudocode.md",
       "knownContentHashes": [
+        "sha256:97972fb69601a1404ece15fc9e8e7b82e560303ffe1a940382e9b97d96f24785",
+        "sha256:9a120d335bc4e036ae08624b0fcae2d8adc17e476bebd2ab8acedf5514ec0f71",
+        "sha256:d60a693ba51f6a34fb9d12aadd8debebdb541e094b90388114603918e681459e",
         "sha256:ab68f3add86100bc743627c2614bb85222542f158363ac58ddbe739c42e08b5c",
         "sha256:f77df57e245587769b255fec73c720a0a7f53bda765aa3887f8cb39afee965ce"
       ],
@@ -1569,7 +1718,8 @@
     {
       "path": ".claude/commands/sparc/spell-manager.md",
       "knownContentHashes": [
-        "sha256:791cd3f0d27e6f0d91ebf5aa624e4c2554fa2d20fcfcab5a93a79ced7adeb677"
+        "sha256:791cd3f0d27e6f0d91ebf5aa624e4c2554fa2d20fcfcab5a93a79ced7adeb677",
+        "sha256:51bb4585b76cfdf2240232d24f39caf942eff772d4cdc1d5073ad3782ae64bc8"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1577,6 +1727,9 @@
     {
       "path": ".claude/commands/sparc/supabase-admin.md",
       "knownContentHashes": [
+        "sha256:3ad5bb6244920e6ec97c983c14d9017c231483e23b14f37bbb3a66d5c064c2e9",
+        "sha256:f76cf4358e8c35826f36bedaa8f3f52a62f57fd7beb74cd4b8c876870f1ee2e0",
+        "sha256:25b952c5e90d3c30d158d91e80e07954609eb7e080e8996d1a49c7756c7cfdb9",
         "sha256:fe2ade97ec48383966f096326b5943826cd03359b0c0c7689df8971fc7a65f70",
         "sha256:26fc79426d0a63d088120012256abed1ece6406b68172455dff7ea931c140c96"
       ],
@@ -1586,7 +1739,12 @@
     {
       "path": ".claude/commands/sparc/swarm-coordinator.md",
       "knownContentHashes": [
-        "sha256:2bdaf09720259efe69950dc54923a03d30eeb5ddac7169bd3f18bf4e20b35893"
+        "sha256:2bdaf09720259efe69950dc54923a03d30eeb5ddac7169bd3f18bf4e20b35893",
+        "sha256:99eccafd7625e62802f0bb3a584f454d624ed11bd2c185c9a25284e2236a6049",
+        "sha256:b28f6d742652146f4ec7363e3438a03ec671c3fefea42d81650f1abe5ac3b278",
+        "sha256:81a25db7b345103e47c47158b33c94e2359777694b7c49bb80b8ab3db45a1adf",
+        "sha256:9179f1fc11ac3222c5fce48bab37bae3d9b886c66ba5a4d8ec6e902efcbf4ce3",
+        "sha256:da8c086e179417546733a1b1e918b39428525cda307d46a8b4dcbea5abae0a5c"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1594,7 +1752,14 @@
     {
       "path": ".claude/commands/sparc/tdd.md",
       "knownContentHashes": [
-        "sha256:a6985a7ce321abc2389de4bc03e80270c76fb778b90fe3cf481681f4a8ce4d49"
+        "sha256:a6985a7ce321abc2389de4bc03e80270c76fb778b90fe3cf481681f4a8ce4d49",
+        "sha256:1e9fad3a82e0b04b00e6a5a38fdc05107a05be4173ff3cf6000d411dbd3ebc6b",
+        "sha256:fd48e2e179000f322fd2297244ae87e81382f53f3d8919c961648f606aacabcb",
+        "sha256:04a0dce4d30a9c0e2a711945faa3867e1ca3d3acdb379d994476260bf515d265",
+        "sha256:baeb4d688e99b64b553a11a11635a9245c9157dc57ca82211a0a6795d180cf2f",
+        "sha256:4d19e349a758361ff3e08727117a95006a84f6f7ee87cb45edf0885217b6f0f1",
+        "sha256:07e07935f4fbbab0c68f2b7f48291b78f230d79172622ea7dedb9e0c86273ee7",
+        "sha256:8d8b2a592f643d2a487d2df3211bf6a4103774bb35a0163e7ffa00e56bbad8b7"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1602,7 +1767,12 @@
     {
       "path": ".claude/commands/sparc/tester.md",
       "knownContentHashes": [
-        "sha256:1538ec27c9570dc1ab812e0bb37e385f04ea5b1d000941dbdd04014706bc38b1"
+        "sha256:1538ec27c9570dc1ab812e0bb37e385f04ea5b1d000941dbdd04014706bc38b1",
+        "sha256:7994ac6e7bda77ddfe52fc6eda2c306fd3ec4a567502ebacb5c1f20e134e944d",
+        "sha256:5938dfcb7e80fc13547f999b10d8ca9ee275fbf6242090e0bcb078af5a8f1c2d",
+        "sha256:38a65e59fef0bd22a507876541a4f74ed9380b798d28bc6a2d2524fd38940ba4",
+        "sha256:c85f2032bf2ad7741f3f71d0ea021fb9b8e63b01796511fb3e31ce962734500a",
+        "sha256:308cd41d2b20e733aef3f708aee5200f40cafe359a8121f3e4c5aa6e6514e967"
       ],
       "retiredIn": "4.9.21",
       "retiredBy": "#949"
@@ -1610,6 +1780,9 @@
     {
       "path": ".claude/commands/sparc/tutorial.md",
       "knownContentHashes": [
+        "sha256:4c3eb7fd908c04408173ed3dfe647d94eb03e6400e60beb749a261d6c3983c0a",
+        "sha256:0c17da098a8d12fbdb988952ca2bec464a5dbfc90dbbfbd86b92d29d9a5111b8",
+        "sha256:bf36c571c221a7a4aba29bacc48de4714edc4cab90e276543a30a546c78004ea",
         "sha256:418a3d07198bcfd6a2df57704274706c4cc8ee58254b6ad19815a6cfbd4b29c2",
         "sha256:e8f7541bdfc1df027ab8392d9f37428f404294b9cd9800c953ed5ca023e02de5"
       ],
@@ -1735,7 +1908,8 @@
       "knownContentHashes": [
         "sha256:e1da663bd23908bdf8bdf142a38751a6734fc9188f6d868dbf6835a65bb8414d",
         "sha256:8a11934efa1a95f6677f6f50af1e32d846e6d7bac95fa04170a55fbbd9573c16",
-        "sha256:3b8cad151d42cb825bd2659a53278bd14eafa996cf5e62e2c57ab0985225c1b1"
+        "sha256:3b8cad151d42cb825bd2659a53278bd14eafa996cf5e62e2c57ab0985225c1b1",
+        "sha256:6ed59c79ed710368e9eefa57bc9ca054f36b1f9339ade5fd65a8ee72303ea663"
       ],
       "retiredIn": "4.9.20",
       "retiredBy": "#938"
@@ -1745,7 +1919,9 @@
       "knownContentHashes": [
         "sha256:ca393938fdf2ab9b2bd67488fa98e74d4f8ecfecb1bc5d208e17a24f1d3a9355",
         "sha256:5dd8ac82d911e80efd20d5c673bfec79911560653910235d47579f72ba82ae99",
-        "sha256:e4ae9caba61215cb36db6642092c3bb2b9631f8fa7e3de72f1b14be690f52c89"
+        "sha256:e4ae9caba61215cb36db6642092c3bb2b9631f8fa7e3de72f1b14be690f52c89",
+        "sha256:30a5a8f4599330bd9ac5e63d8196dc70c0090ea32ac9b826296dbc9b8a6537d7",
+        "sha256:ab86c4e0b303d47886e119371d407afb7f6da0437ce8fd8eec3734a863d7bb78"
       ],
       "retiredIn": "4.9.20",
       "retiredBy": "#938"
@@ -1755,7 +1931,9 @@
       "knownContentHashes": [
         "sha256:1dbaf3454479374451f7feb149b56e17b36cbaf9c32983927930b521f298957a",
         "sha256:3df3e9a822fa0024553ca8b09e5bac95f1d4cc6dba6e78a5bb8658df3a266a1b",
-        "sha256:1d5724bc579a91567eb35e107d075f9749ab4f4a85278e725071207a603afd7d"
+        "sha256:1d5724bc579a91567eb35e107d075f9749ab4f4a85278e725071207a603afd7d",
+        "sha256:8c93bbd7c400c7532fd1461fd1f58d0558fa27312877bb49dd651ecacd6883eb",
+        "sha256:914aa3cb28e4bf239d2e18a1c02dda6de0326236767262ec6cb0166e3f9a6217"
       ],
       "retiredIn": "4.9.20",
       "retiredBy": "#938"
@@ -1765,7 +1943,9 @@
       "knownContentHashes": [
         "sha256:03a9d40f749281cc99bcf7f256398a4e5ab77bd42af614659053638edb79b2bd",
         "sha256:ad403bce6aa1ea88125f7fe2062cfa8f9cd1e0becf37d22022e4902a44da72ae",
-        "sha256:320c66c14e39c82f0211254842509195951fe00f2d7f3b1b0c7aceb5e8b07efa"
+        "sha256:320c66c14e39c82f0211254842509195951fe00f2d7f3b1b0c7aceb5e8b07efa",
+        "sha256:b8950f185650faee8918da15e269081f575375a8a764d8b4cc0c45807732e2e0",
+        "sha256:54f05b96e4e21ba24009a61d9a12dfdbf04f608a2f8a646e22b7cabbfe498239"
       ],
       "retiredIn": "4.9.20",
       "retiredBy": "#938"
@@ -1775,7 +1955,9 @@
       "knownContentHashes": [
         "sha256:02d2ebf8b55cea17d1068c0768a5389af42826f1df3f72bce1bc88b12842c8ce",
         "sha256:6eeeb7b56d3e307b9ff2bd249e6e8ea124c653aae4fa219c675132511c5c0eb1",
-        "sha256:1748ced9ee3bf55f1d5945e2b49af7ebf010c2fa1f0d259fbe3da8ddf927c8dc"
+        "sha256:1748ced9ee3bf55f1d5945e2b49af7ebf010c2fa1f0d259fbe3da8ddf927c8dc",
+        "sha256:7018549c2783a87ada7ea19d0b501d8fbbec47b14c02210f53725a9ad03a8b5d",
+        "sha256:d01274c166a93e2bc72063828fc238057021d03b9b232ff753e78bbe185d4c54"
       ],
       "retiredIn": "4.9.20",
       "retiredBy": "#938"
@@ -1795,7 +1977,8 @@
       "knownContentHashes": [
         "sha256:fd298069779428a3f1891f3b533991438eee3a03cba1cbe8ac9b70a77c0de01a",
         "sha256:85c9c1aa4ae6a462db1fa68eb3bab0a280145e163840f07c38610c11d71064fa",
-        "sha256:5efc6a54f41847e805f68dc773a5024f32e3928223b7df5e9d89bdf25db323e2"
+        "sha256:5efc6a54f41847e805f68dc773a5024f32e3928223b7df5e9d89bdf25db323e2",
+        "sha256:748868e06e46fd98c2c219d9e2cc05bcd4109d86c768c2e819c150e1c45020bd"
       ],
       "retiredIn": "4.9.20",
       "retiredBy": "#938"
@@ -1803,8 +1986,8 @@
     {
       "path": ".claude/skills/pair-programming/SKILL.md",
       "knownContentHashes": [
-        "sha256:32ef344d86f63817fefbadc949ecafee891fc91ab1de97c21031e7540bb61108",
-        "sha256:0a7c511edf28f4319c1dd4570e018f0f1b89505a9d5a2c2133731d5b7e3a5339"
+        "sha256:0a7c511edf28f4319c1dd4570e018f0f1b89505a9d5a2c2133731d5b7e3a5339",
+        "sha256:32ef344d86f63817fefbadc949ecafee891fc91ab1de97c21031e7540bb61108"
       ],
       "retiredIn": "4.9.20",
       "retiredBy": "#938"
@@ -1842,7 +2025,11 @@
       "knownContentHashes": [
         "sha256:c322cfefb05ea854d80286a4c146bb5629daf53cbbbfdf68a43ee87002b57ef1",
         "sha256:ee0c7b5d62d5412488fb35002054e6705afc1521a8791e8fa7e978ff9e98d985",
-        "sha256:6a451cf41530dc6db89fe6c65b4b2367e94a13bddcb658888361b830e1d8d986"
+        "sha256:6a451cf41530dc6db89fe6c65b4b2367e94a13bddcb658888361b830e1d8d986",
+        "sha256:9773141ec3c654fd458c370bea8dd20982e7f6c20fc7af973e4fbccc3a08daee",
+        "sha256:15d7e060c176dcb74b1d97a64e79c4ace5bc408c9c070ec9fb7eff91b9ac1cb6",
+        "sha256:526eaf75e79331832ab75bcd63603cb02064c58cd20704f7af37ba7a9c992fac",
+        "sha256:1f0c7e6e84053f5cbfa40970002abc8cfcd9226f7340d756b1b7d4244f95cae5"
       ],
       "retiredIn": "4.9.20",
       "retiredBy": "#938"
@@ -1850,9 +2037,9 @@
     {
       "path": ".claude/skills/stream-chain/SKILL.md",
       "knownContentHashes": [
-        "sha256:e99eba73905765f99b65fc743f748bf1b279ca40c2e33c6f3dfef2604ce81aaf",
         "sha256:371ab7c109816051874de908e9a971209db31a7285e24d01c84e55cd210165de",
-        "sha256:e13ae734425a98330a01439f2c56b99da5a7bfb352de12bfa057725f23991c32"
+        "sha256:e13ae734425a98330a01439f2c56b99da5a7bfb352de12bfa057725f23991c32",
+        "sha256:e99eba73905765f99b65fc743f748bf1b279ca40c2e33c6f3dfef2604ce81aaf"
       ],
       "retiredIn": "4.9.20",
       "retiredBy": "#938"
@@ -1862,7 +2049,13 @@
       "knownContentHashes": [
         "sha256:7cf6214ab46da1489b25c65ddf887f56e039577626aea742cdff2acc3e793c54",
         "sha256:16d46e3e1481079f4e9c6492271a3df346b762935831559b74fb676e15c60621",
-        "sha256:c382a589148141a97747b78b391870413657c39917557c23d762f4245c389467"
+        "sha256:c382a589148141a97747b78b391870413657c39917557c23d762f4245c389467",
+        "sha256:76f45da795eb5e443b9b829c47de846943c644fad0db49e75e67bbcd6d3e9bdb",
+        "sha256:30bab3c53c40d38ada119f05a11a40d3b241e31b59c504398210a2ce0150d88a",
+        "sha256:22b825c1ab768b659f19a9fbb0d34f99c00a64fe1ee938ea9cc31e56138f68c5",
+        "sha256:3c4a98f25252f96c95c1721b14d529110e498e48ec97dffe2cb6dbb4633e8d90",
+        "sha256:71d9eceb54e13f90b19a33eab32833080ee57d213706939cca4435693896135d",
+        "sha256:c96f5b22bdcb9cd528203ad71626f65af0fe683494efa6fb471613b32736fc9d"
       ],
       "retiredIn": "4.9.20",
       "retiredBy": "#938"
@@ -1879,9 +2072,9 @@
     {
       "path": ".claude/skills/v3-cli-modernization/SKILL.md",
       "knownContentHashes": [
-        "sha256:73d3fff016626ecd675a7ae6b87ad87193c396cbe6440885683b675089f873fc",
         "sha256:48421bd61a8aff27e0b217e7136a3e410ab0842b42cb4a588d23f279cc755956",
-        "sha256:dd0f0ee4cd6f6a4ce621df5abf511274a37c9b3b5ce54bef2626a84fa0807c87"
+        "sha256:dd0f0ee4cd6f6a4ce621df5abf511274a37c9b3b5ce54bef2626a84fa0807c87",
+        "sha256:73d3fff016626ecd675a7ae6b87ad87193c396cbe6440885683b675089f873fc"
       ],
       "retiredIn": "4.8.87",
       "retiredBy": "#692"
@@ -1889,8 +2082,8 @@
     {
       "path": ".claude/skills/v3-core-implementation/SKILL.md",
       "knownContentHashes": [
-        "sha256:9eb11363e80417b89daf3926b906ab2078e65530ab43538f40fae9c3fded9f31",
-        "sha256:c4d6622a7d7def892334af71c0daeed027544b006d621e7b3972b2ab7ec5c0b8"
+        "sha256:c4d6622a7d7def892334af71c0daeed027544b006d621e7b3972b2ab7ec5c0b8",
+        "sha256:9eb11363e80417b89daf3926b906ab2078e65530ab43538f40fae9c3fded9f31"
       ],
       "retiredIn": "4.8.87",
       "retiredBy": "#692"
@@ -1898,8 +2091,8 @@
     {
       "path": ".claude/skills/v3-ddd-architecture/SKILL.md",
       "knownContentHashes": [
-        "sha256:da84eb1ab34910fd93aba575b44717151f1b78427af53488c18f034eb1fa4b5a",
-        "sha256:130d6b67a9df61fabfad7de57a1ef91a4537285c1fa9916f2819ee28777412fc"
+        "sha256:130d6b67a9df61fabfad7de57a1ef91a4537285c1fa9916f2819ee28777412fc",
+        "sha256:da84eb1ab34910fd93aba575b44717151f1b78427af53488c18f034eb1fa4b5a"
       ],
       "retiredIn": "4.8.87",
       "retiredBy": "#692"
@@ -1907,8 +2100,8 @@
     {
       "path": ".claude/skills/v3-integration-deep/SKILL.md",
       "knownContentHashes": [
-        "sha256:4e835f83bae334ce91966216ff82a7dfc82e91534c4e104f0870c93150c7aaf7",
-        "sha256:0eee4cdbd46799ca2924a47ad409b4b0215e5b33011dc6ba3fb9503ed6ede6ac"
+        "sha256:0eee4cdbd46799ca2924a47ad409b4b0215e5b33011dc6ba3fb9503ed6ede6ac",
+        "sha256:4e835f83bae334ce91966216ff82a7dfc82e91534c4e104f0870c93150c7aaf7"
       ],
       "retiredIn": "4.8.87",
       "retiredBy": "#692"
@@ -1916,8 +2109,8 @@
     {
       "path": ".claude/skills/v3-mcp-optimization/SKILL.md",
       "knownContentHashes": [
-        "sha256:309969c33ee3a256e03159d064c0ddcca4de7d83bab0715a5eee8eb96f29ef49",
-        "sha256:ef1e0461bc7c733afc92543cdc6eb00a63a6774d9b1fdc038e537710fe2bf216"
+        "sha256:ef1e0461bc7c733afc92543cdc6eb00a63a6774d9b1fdc038e537710fe2bf216",
+        "sha256:309969c33ee3a256e03159d064c0ddcca4de7d83bab0715a5eee8eb96f29ef49"
       ],
       "retiredIn": "4.8.87",
       "retiredBy": "#692"
@@ -1925,8 +2118,8 @@
     {
       "path": ".claude/skills/v3-memory-unification/SKILL.md",
       "knownContentHashes": [
-        "sha256:4853ec2fec84a07772f804f7eb53599df347d2325fdf0b221392548791ca61f5",
-        "sha256:00e74685fdd49c4e7ebe57117716ca2abbf5b355813c299164eb70a493d23f5f"
+        "sha256:00e74685fdd49c4e7ebe57117716ca2abbf5b355813c299164eb70a493d23f5f",
+        "sha256:4853ec2fec84a07772f804f7eb53599df347d2325fdf0b221392548791ca61f5"
       ],
       "retiredIn": "4.8.87",
       "retiredBy": "#692"
@@ -1934,8 +2127,8 @@
     {
       "path": ".claude/skills/v3-performance-optimization/SKILL.md",
       "knownContentHashes": [
-        "sha256:25858e4c4325f0d3db1227c657ff81ba62281566301c03ed4b4238e18a3aa177",
-        "sha256:627c607788b8e87a4b57875fecb03f7e87bbe5a94d3d45b0f9a22a95a0f58678"
+        "sha256:627c607788b8e87a4b57875fecb03f7e87bbe5a94d3d45b0f9a22a95a0f58678",
+        "sha256:25858e4c4325f0d3db1227c657ff81ba62281566301c03ed4b4238e18a3aa177"
       ],
       "retiredIn": "4.8.87",
       "retiredBy": "#692"
@@ -1943,9 +2136,9 @@
     {
       "path": ".claude/skills/v3-security-overhaul/SKILL.md",
       "knownContentHashes": [
-        "sha256:4123b78d5a2d68ae912991a56f18a058806db68a01f42d0872b0188fc74dcdca",
         "sha256:952f82f07c0c42d267b1a31363685d51cece4151e6a54fb91522730f443b8275",
-        "sha256:98598fef0bf16ce435a52a0a6ddae20d17df570402f0803623fd75690daa9d95"
+        "sha256:98598fef0bf16ce435a52a0a6ddae20d17df570402f0803623fd75690daa9d95",
+        "sha256:4123b78d5a2d68ae912991a56f18a058806db68a01f42d0872b0188fc74dcdca"
       ],
       "retiredIn": "4.8.87",
       "retiredBy": "#692"
@@ -1953,8 +2146,8 @@
     {
       "path": ".claude/skills/v3-swarm-coordination/SKILL.md",
       "knownContentHashes": [
-        "sha256:5edfd5e1e6755ef437832e0457e166856546146e991a6f411722909a80bb1c60",
-        "sha256:5110a6317d0d9348345360274f768c4b32d0d1df6b0cd82269073e8e6ba063e5"
+        "sha256:5110a6317d0d9348345360274f768c4b32d0d1df6b0cd82269073e8e6ba063e5",
+        "sha256:5edfd5e1e6755ef437832e0457e166856546146e991a6f411722909a80bb1c60"
       ],
       "retiredIn": "4.8.87",
       "retiredBy": "#692"

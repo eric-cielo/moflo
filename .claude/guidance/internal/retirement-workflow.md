@@ -54,11 +54,13 @@ flo retire .claude/skills/skill-builder/SKILL.md --retired-by '#945'
 `flo retire`:
 
 - Validates you are inside the moflo source repo (refuses to run elsewhere).
-- Walks git history for the path, computing sha256 of the last 3 unique content versions before deletion.
+- Walks every commit reachable from the deletion (or HEAD, if the file is still tracked) that touched the path, computing sha256 of each unique content version.
 - Appends or updates the entry in `retired-files.json` with `retiredIn` (current package.json version), `retiredBy` (the `--retired-by` flag), and `knownContentHashes[]`.
 - Sorts entries by path so the diff is reviewable in PRs.
 
 If you forget `--retired-by`, the entry is still valid — only `path` and `knownContentHashes` are load-bearing; `retiredBy` is metadata for humans reading the file later.
+
+**Full-history hash window (#1133):** The original implementation recorded only the most-recent 3 unique content versions. Consumer installs older than the 3-version window landed on a 4th-or-older hash on disk and were treated as user-customized (`preserve`) — silently lingering forever. The current implementation records every unique blob hash reachable from the deletion commit. Typical entries carry 1–9 hashes; size impact on `retired-files.json` stays under 1MB even with the entire history.
 
 ### 3. Commit `retired-files.json`
 
@@ -93,6 +95,17 @@ node scripts/build-retired-files.mjs --seed
 
 This walks every commit that deleted a `.claude/agents/**/*.md` or `.claude/skills/**/*.md` and reconciles `retired-files.json` against git. Existing entries are preserved (and merged with any newly-discovered hashes); missing entries are appended. Run, review the diff, commit.
 
+### 6. Rebuild every entry's hashes from full history
+
+If a prior retirement recorded a narrow hash window (pre-#1133, when the cap was 3) and you suspect consumer files at older content versions are not being pruned:
+
+```sh
+flo retire --rebuild-hashes
+# or directly: node scripts/build-retired-files.mjs --rebuild-hashes
+```
+
+Walks each existing entry's path, re-derives `knownContentHashes[]` from every reachable commit, and unions with the prior list. Idempotent — re-runs produce no diff once the manifest is saturated. Commit the regenerated file.
+
 ---
 
 ## What NOT To Do
@@ -108,8 +121,9 @@ This walks every commit that deleted a `.claude/agents/**/*.md` or `.claude/skil
 
 - `bin/session-start-launcher.mjs` — section 3 manifest sync (Mechanism A) + retired-files prune block (Mechanism B)
 - `bin/lib/retired-files.mjs` — `loadRetiredManifest`, `classifyRetiredFile`, `applyRetiredPrune`
-- `scripts/build-retired-files.mjs` — `--seed` (bulk) and `--add` (single-path) entry points
-- `src/cli/commands/retire.ts` — `flo retire <path>` thin wrapper that calls the seed script with `--add`
+- `scripts/build-retired-files.mjs` — `--seed` (bulk), `--add` (single-path), `--rebuild-hashes` (full-history backfill)
+- `src/cli/commands/retire.ts` — `flo retire <path>` and `flo retire --rebuild-hashes` thin wrappers that call the build script
 - `tests/bin/launcher-948-retired-prune.test.ts` — unit tests for the prune helper
+- `tests/scripts/build-retired-files.test.ts` — unit tests for `hashesForPath` + rebuild invariants (#1133)
 - `tests/bin/install-manifest.test.ts` — Mechanism A coverage (agents/skills walk + cleanup loop)
 - `internal/consumer-bound-references.md` — why we ship `retired-files.json` at the package root, not under `dist/`

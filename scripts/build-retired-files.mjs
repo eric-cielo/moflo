@@ -2,18 +2,23 @@
 /**
  * Build / regenerate `retired-files.json` from git history.
  *
- * Two modes:
+ * Three modes:
  *
  *   --seed
  *     Walk git log for every commit that deleted a `.claude/agents/**\/*.md`
  *     or `.claude/skills/**\/*.md` file, and emit one entry per deleted path
- *     with up to N content hashes from the immediate-pre-deletion versions.
+ *     with every unique content hash from the path's pre-deletion history.
  *     Used once to bootstrap the file from the `#932` and `#945` retirements
  *     called out in issue #948, plus older retirements still on consumer disk.
  *
- *   --add <path> --retired-by <#nnn> [--retired-in <ver>] [--hashes <n>]
+ *   --add <path> --retired-by <#nnn> [--retired-in <ver>]
  *     Append (or update) one entry. Used by `flo retire`. Resolves the
  *     `retiredIn` from the current `package.json` version when not provided.
+ *
+ *   --rebuild-hashes
+ *     Re-derive `knownContentHashes[]` for every existing entry from full
+ *     git history. Used to backfill entries written under the legacy 3-hash
+ *     cap that left pre-cutoff consumer installs un-prunable (#1133).
  *
  * The `version: 1` schema lives at the moflo package root and ships to
  * consumers via package.json `files`. Launcher reads it on every upgrade
@@ -25,7 +30,7 @@
 
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { execFileSync } from 'child_process';
 import { createHash } from 'crypto';
 
@@ -34,7 +39,6 @@ const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, '..');
 const manifestPath = resolve(repoRoot, 'retired-files.json');
 
-const MAX_HASHES_DEFAULT = 3;
 const TARGET_PREFIXES = ['.claude/agents/', '.claude/skills/', '.claude/commands/'];
 
 function gitOk(args) {
@@ -52,6 +56,25 @@ function gitOkOrEmpty(args) {
 
 function sha256(buf) {
   return 'sha256:' + createHash('sha256').update(buf).digest('hex');
+}
+
+/**
+ * Set-union of two ordered hash lists, preserving the first occurrence of
+ * each hash (so the caller can put newly-discovered hashes first). Used in
+ * every merge site so the de-dup invariant lives in one place.
+ */
+function unionHashes(a, b) {
+  return Array.from(new Set([...a, ...b]));
+}
+
+/**
+ * Most recent commit that DELETED `path`, or `null` if the path is still
+ * tracked. Returned as a raw commit sha — callers fall back to `HEAD` when
+ * preparing an entry for a file that hasn't been committed-deleted yet.
+ */
+function findDeletionCommit(path) {
+  const log = gitOkOrEmpty(['log', '--diff-filter=D', '--pretty=format:%H', '-n', '1', '--', path]);
+  return log.trim() || null;
 }
 
 /**
@@ -101,14 +124,16 @@ function findDeletionCommits() {
 }
 
 /**
- * Get the last N unique content hashes for a path before its deletion at
- * `deletionCommit`. Walks commits-that-touched-the-file backwards from the
- * deletion's parent.
+ * Get every unique content hash for `path` reachable from `sinceRef`, newest
+ * first. No commit cap — narrow hash windows produced silent prune-misses on
+ * consumers whose installed moflo predated the cap (#1133). Pass the deletion
+ * commit when the path is gone, or `HEAD` when it still exists.
+ *
+ * Commits where the file was deleted (or did not yet exist) raise `git show`
+ * errors that we swallow — `gitOkOrEmpty` already routes those to /dev/null.
  */
-function hashesForPath(path, deletionCommit, maxHashes) {
-  const parent = `${deletionCommit}^`;
-  // List up to 10 commits that touched the file, newest first
-  const log = gitOkOrEmpty(['log', '--pretty=format:%H', '-n', '10', parent, '--', path]);
+function hashesForPath(path, sinceRef) {
+  const log = gitOkOrEmpty(['log', '--pretty=format:%H', sinceRef, '--', path]);
   const commits = log.split('\n').map((c) => c.trim()).filter(Boolean);
   const hashes = [];
   const seen = new Set();
@@ -125,7 +150,6 @@ function hashesForPath(path, deletionCommit, maxHashes) {
     if (seen.has(h)) continue;
     seen.add(h);
     hashes.push(h);
-    if (hashes.length >= maxHashes) break;
   }
   return hashes;
 }
@@ -157,25 +181,20 @@ function seed() {
     const retiredIn = versionAtCommit(commit);
     const retiredBy = findRetirementPrFromCommitMessage(commit);
     for (const path of deletedPaths) {
-      const hashes = hashesForPath(path, commit, MAX_HASHES_DEFAULT);
+      // Walk from the deletion commit itself — `git show <deletion>:<path>`
+      // raises (path absent at deletion) and is skipped, while every prior
+      // touch of the file is enumerated. Full history, no cap (#1133).
+      const hashes = hashesForPath(path, commit);
       if (hashes.length === 0) continue;
       const prior = existing.get(path);
       if (prior) {
-        // Merge with newest-first ordering. The slice() cap at the end
-        // discards the OLDEST hashes when the union exceeds the limit —
-        // most consumers run a moflo within the last few releases of the
-        // retirement, so the most-recent shipped versions are the most
-        // useful matches. Putting `hashes` (this run's discoveries) first
-        // ensures they win over prior cached hashes when the cap bites.
-        const merged = Array.from(new Set([...hashes, ...prior.knownContentHashes]));
-        const capped = merged.slice(0, MAX_HASHES_DEFAULT);
-        // Bump `updated` only when the on-disk set actually changes —
-        // a no-op merge (same hashes, same order) shouldn't lie to the
-        // summary line.
-        const sameAsPrior = capped.length === prior.knownContentHashes.length &&
-          capped.every((h, i) => h === prior.knownContentHashes[i]);
+        // Merge: keep newly-discovered hashes (newest-first) and union with
+        // anything prior runs recorded that this walk didn't surface.
+        const merged = unionHashes(hashes, prior.knownContentHashes);
+        const sameAsPrior = merged.length === prior.knownContentHashes.length &&
+          merged.every((h, i) => h === prior.knownContentHashes[i]);
         if (!sameAsPrior) {
-          prior.knownContentHashes = capped;
+          prior.knownContentHashes = merged;
           updated++;
         }
         continue;
@@ -199,22 +218,20 @@ function addOne(args) {
     throw new Error(`--add <path> must start with one of: ${TARGET_PREFIXES.join(', ')}`);
   }
   const manifest = loadManifest();
-  // Find the deletion commit (most recent commit that DELETED the path).
-  // Falls back to HEAD if the path is still present (the user is preparing
-  // the entry while the deletion is still uncommitted on a branch).
-  const deletionLog = gitOkOrEmpty(['log', '--diff-filter=D', '--pretty=format:%H', '-n', '1', '--', path]);
-  const deletionCommit = deletionLog.trim() || 'HEAD';
-  const maxHashes = Number(args.hashes) > 0 ? Number(args.hashes) : MAX_HASHES_DEFAULT;
-  let hashes;
-  if (deletionCommit === 'HEAD') {
-    // File still tracked — current content is the only known-shipped hash
+  // Walk from the deletion commit (the file is gone) or from HEAD (file
+  // still tracked because the user is preparing the entry on a branch where
+  // the deletion isn't committed yet).
+  const sinceRef = findDeletionCommit(path) || 'HEAD';
+  // Full reachable history of the path — every unique content hash that
+  // ever shipped, not a 3-deep window that misses pre-cutoff installs (#1133).
+  const hashes = hashesForPath(path, sinceRef);
+  if (hashes.length === 0 && sinceRef === 'HEAD') {
+    // Working-tree fallback for the brand-new-uncommitted-file case: file
+    // exists on disk but `git log HEAD -- <path>` returned nothing (path was
+    // never committed). Keeps `flo retire` usable on an in-progress branch
+    // where creation and retirement land in the same PR.
     const abs = resolve(repoRoot, path);
-    if (!existsSync(abs)) {
-      throw new Error(`path not found and no deletion commit: ${path}`);
-    }
-    hashes = [sha256(readFileSync(abs))];
-  } else {
-    hashes = hashesForPath(path, deletionCommit, maxHashes);
+    if (existsSync(abs)) hashes.push(sha256(readFileSync(abs)));
   }
   if (hashes.length === 0) {
     throw new Error(`no content hashes resolvable for ${path}`);
@@ -226,10 +243,9 @@ function addOne(args) {
   const retiredBy = args['retired-by'] || null;
   const existing = manifest.retired.find((e) => e.path === path);
   if (existing) {
-    // Newest-first merge — see seed() for rationale.
-    existing.knownContentHashes = Array.from(
-      new Set([...hashes, ...existing.knownContentHashes]),
-    ).slice(0, maxHashes);
+    // Union with prior — keep newly-discovered hashes newest-first, then
+    // anything the prior run recorded that this walk didn't surface.
+    existing.knownContentHashes = unionHashes(hashes, existing.knownContentHashes);
     if (retiredBy) existing.retiredBy = retiredBy;
     if (retiredIn) existing.retiredIn = retiredIn;
   } else {
@@ -240,6 +256,50 @@ function addOne(args) {
   }
   writeManifest(manifest);
   process.stdout.write(`retired-files.json: ${existing ? 'updated' : 'added'} ${path} (${hashes.length} hash${hashes.length === 1 ? '' : 'es'})\n`);
+}
+
+/**
+ * Recompute `knownContentHashes[]` for every existing entry from full git
+ * history. Used once to backfill entries written under the legacy 3-hash cap
+ * that left pre-cutoff consumer installs un-prunable (#1133).
+ *
+ * Entries with no resolvable git history are reported but left alone — the
+ * existing hashes may still be load-bearing for some consumer.
+ */
+function rebuild() {
+  const manifest = loadManifest();
+  let updated = 0;
+  let unchanged = 0;
+  let orphaned = 0;
+  let totalHashesBefore = 0;
+  let totalHashesAfter = 0;
+  for (const entry of manifest.retired) {
+    const prior = entry.knownContentHashes || [];
+    totalHashesBefore += prior.length;
+    const sinceRef = findDeletionCommit(entry.path) || 'HEAD';
+    const fresh = hashesForPath(entry.path, sinceRef);
+    // Union: never narrow the set — a prior-recorded hash might pre-date a
+    // history rewrite (shallow clone, filter-branch) we can't replay here.
+    const merged = unionHashes(fresh, prior);
+    totalHashesAfter += merged.length;
+    if (merged.length === 0) {
+      orphaned++;
+      continue;
+    }
+    const sameAsPrior = merged.length === prior.length &&
+      merged.every((h, i) => h === prior[i]);
+    if (sameAsPrior) {
+      unchanged++;
+      continue;
+    }
+    entry.knownContentHashes = merged;
+    updated++;
+  }
+  writeManifest(manifest);
+  process.stdout.write(
+    `retired-files.json: ${updated} updated, ${unchanged} unchanged, ${orphaned} no-resolvable-history, ` +
+    `${manifest.retired.length} total entries; hashes ${totalHashesBefore} → ${totalHashesAfter}\n`,
+  );
 }
 
 function parseArgs(argv) {
@@ -258,16 +318,32 @@ function parseArgs(argv) {
   return out;
 }
 
-const args = parseArgs(process.argv.slice(2));
-if (args.seed) {
-  seed();
-} else if (args.add) {
-  addOne({ path: args.add, ...args });
-} else {
-  process.stderr.write(
-    'Usage:\n' +
-    '  node scripts/build-retired-files.mjs --seed\n' +
-    '  node scripts/build-retired-files.mjs --add <path> --retired-by <#nnn> [--retired-in <ver>] [--hashes <n>]\n',
-  );
-  process.exit(1);
+// Exports kept narrow — tests need to exercise hash walking and the rebuild
+// loop, but seed()/addOne() drive end-user side effects (writing the manifest)
+// that tests cover via subprocess spawn rather than direct call.
+export { hashesForPath, sha256, loadManifest, manifestPath, repoRoot };
+
+// CLI dispatch fires only when invoked directly, not when imported by tests.
+// Empty argv[1] (no script path on the command line — e.g. `node -e ...`)
+// must NOT match: `pathToFileURL('')` resolves to the cwd URL, which would
+// false-positive in some embed paths. Guard explicitly.
+const isMain = !!process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.seed) {
+    seed();
+  } else if (args.add) {
+    addOne({ path: args.add, ...args });
+  } else if (args['rebuild-hashes']) {
+    rebuild();
+  } else {
+    process.stderr.write(
+      'Usage:\n' +
+      '  node scripts/build-retired-files.mjs --seed\n' +
+      '  node scripts/build-retired-files.mjs --add <path> --retired-by <#nnn> [--retired-in <ver>]\n' +
+      '  node scripts/build-retired-files.mjs --rebuild-hashes\n',
+    );
+    process.exit(1);
+  }
 }

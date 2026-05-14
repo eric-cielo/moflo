@@ -1053,12 +1053,14 @@ try {
       // prune when the consumer's file matches a known-shipped hash —
       // customized files (different hash) get preserved with a one-line
       // notice the user can act on.
+      let prunedRetiredPaths = new Set();
       try {
         const retiredManifestPath = resolve(
           projectRoot,
           'node_modules/moflo/retired-files.json',
         );
         const report = applyRetiredPrune(projectRoot, retiredManifestPath);
+        prunedRetiredPaths = new Set(report.pruned);
         if (report.pruned.length > 0) {
           emitMutation(
             'pruned retired shipped files',
@@ -1110,10 +1112,23 @@ try {
 
       // Manifest reflects synced files immediately; version stamp is deferred
       // to 3g so an aborted launcher re-runs upgrade detection (#730).
+      //
+      // Exclude paths that `applyRetiredPrune` just deleted from disk —
+      // recording a non-existent file in `installed-files.json` triggers
+      // false drift detection on the next launcher run (`manifestDrifted`
+      // flips true because the recorded path doesn't exist), which spuriously
+      // re-fires the cherry-pick + manifest-sync pipeline. Widening
+      // `retired-files.json`'s hash window in #1133 exposed this — more
+      // legitimate matches → more pruned files → guaranteed false drift on
+      // the next launcher and re-imported legacy rows (knowledge namespace
+      // came back even though the migration deleted it).
+      const persistedManifest = prunedRetiredPaths.size > 0
+        ? currentManifest.filter((e) => !prunedRetiredPaths.has(e.path))
+        : currentManifest;
       try {
         const cfDir = resolve(projectRoot, '.moflo');
         if (!existsSync(cfDir)) mkdirSync(cfDir, { recursive: true });
-        writeFileSync(manifestPath, JSON.stringify(currentManifest, null, 2));
+        writeFileSync(manifestPath, JSON.stringify(persistedManifest, null, 2));
         pendingVersionStampWrite = { path: versionStampPath, version: installedVersion };
       } catch (err) {
         // #854: manifest write must surface — without it the next launcher

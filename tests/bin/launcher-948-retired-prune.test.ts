@@ -218,6 +218,101 @@ describe('retired-files helper (#948)', () => {
       expect(report.failed).toEqual([]);
     });
 
+    it('prunes when consumer hash matches the 4th-or-later historic shipped version (#1133)', () => {
+      // Reproduces the motailz-style stale-install case the 3-hash cap missed:
+      // consumer installed an older moflo, file content matches a hash that
+      // was sliced off the manifest under the legacy 3-cap. With the widened
+      // window the manifest carries every historic hash, so the prune fires.
+      const oldest = '# moflo 4.6 shipped this\n';
+      const middle = '# moflo 4.7 shipped this\n';
+      const newer  = '# moflo 4.8 shipped this\n';
+      const newest = '# moflo 4.9 shipped this\n';
+      const consumer = oldest; // motailz-equivalent — frozen on 4.6 content
+
+      writeAt(root, '.claude/agents/v3/stale.md', consumer);
+      const manifestPath = writeManifest([
+        {
+          path: '.claude/agents/v3/stale.md',
+          // 4 known hashes — pre-#1133 the slice cap would have dropped `oldest`.
+          knownContentHashes: [
+            sha256Of(newest),
+            sha256Of(newer),
+            sha256Of(middle),
+            sha256Of(oldest),
+          ],
+        },
+      ]);
+
+      const report = applyRetiredPrune(root, manifestPath);
+      expect(report.pruned).toContain('.claude/agents/v3/stale.md');
+      expect(existsSync(join(root, '.claude/agents/v3/stale.md'))).toBe(false);
+    });
+
+    it('preserves a genuinely customized file even with a widened hash window', () => {
+      // Customization safety: the widened-window fix MUST NOT prune content
+      // that never appeared in moflo's history, regardless of how many
+      // historic hashes the entry carries.
+      writeAt(root, '.claude/agents/v3/customized.md', '# I edited this myself\n');
+      const manifestPath = writeManifest([
+        {
+          path: '.claude/agents/v3/customized.md',
+          knownContentHashes: [
+            sha256Of('# moflo v1\n'),
+            sha256Of('# moflo v2\n'),
+            sha256Of('# moflo v3\n'),
+            sha256Of('# moflo v4\n'),
+            sha256Of('# moflo v5\n'),
+            sha256Of('# moflo v6\n'),
+            sha256Of('# moflo v7\n'),
+          ],
+        },
+      ]);
+
+      const report = applyRetiredPrune(root, manifestPath);
+      expect(report.preserved).toContain('.claude/agents/v3/customized.md');
+      expect(existsSync(join(root, '.claude/agents/v3/customized.md'))).toBe(true);
+    });
+
+    it('paths returned in report.pruned must be excluded from installed-files.json (#1133)', () => {
+      // Regression: launcher §3 builds `currentManifest` BEFORE applyRetiredPrune
+      // runs, then writes it as `installed-files.json` AFTER the prune. If the
+      // launcher persists the unfiltered manifest, the next launcher's drift
+      // detection iterates the recorded paths, finds the pruned files missing,
+      // flips `manifestDrifted = true`, and spuriously re-fires the cherry-pick
+      // → reimports legacy rows the migration just deleted (#1133 smoke regression
+      // surfaced this on every consumer install). The fix filters out pruned
+      // paths before persisting; this test pins the invariant.
+      const shipped = 'shipped content\n';
+      writeAt(root, '.claude/agents/v3/will-be-pruned.md', shipped);
+      writeAt(root, '.claude/agents/v3/will-be-kept.md', 'survives the prune\n');
+
+      const manifestPath = writeManifest([
+        {
+          path: '.claude/agents/v3/will-be-pruned.md',
+          knownContentHashes: [sha256Of(shipped)],
+        },
+      ]);
+
+      const currentManifest = [
+        { path: '.claude/agents/v3/will-be-pruned.md', size: shipped.length },
+        { path: '.claude/agents/v3/will-be-kept.md', size: 19 },
+      ];
+
+      const report = applyRetiredPrune(root, manifestPath);
+      expect(report.pruned).toEqual(['.claude/agents/v3/will-be-pruned.md']);
+
+      // Launcher's persistence filter — mirrors bin/session-start-launcher.mjs
+      const prunedSet = new Set(report.pruned);
+      const persistedManifest = prunedSet.size > 0
+        ? currentManifest.filter((e) => !prunedSet.has(e.path))
+        : currentManifest;
+
+      expect(persistedManifest.map((e) => e.path)).toEqual(['.claude/agents/v3/will-be-kept.md']);
+      // The pruned path must NOT appear in the persisted manifest — its
+      // presence is what produces the false drift on the next launcher run.
+      expect(persistedManifest.find((e) => e.path === '.claude/agents/v3/will-be-pruned.md')).toBeUndefined();
+    });
+
     it('cross-platform: paths in the manifest use forward slashes regardless of OS', () => {
       // The launcher always writes the manifest with forward-slash paths
       // (matching the way the section-3 cleanup loop and currentManifest use
