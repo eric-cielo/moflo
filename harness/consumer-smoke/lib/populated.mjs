@@ -399,7 +399,37 @@ function runLauncher(consumerDir) {
   // Linux signature, #1067).
   flo(consumerDir, ['daemon', 'stop'], { timeout: 15_000 });
   quiesceLauncherBackground(consumerDir);
+  // Belt-and-suspenders for #1136: even after `flo daemon stop` returns,
+  // verify the daemon actually released its lock before moving on. The CLI
+  // path (commands/daemon.ts:killBackgroundDaemon) now polls liveness after
+  // SIGKILL, but a torn write from the previous version's narrow kill window
+  // would corrupt `.moflo/moflo.db` and the resulting integrity_check failure
+  // is exactly what triggered #1136. Wait up to 5s for `.moflo/daemon.lock`
+  // to disappear — if it sticks, surface a warning rather than continuing
+  // to inspect a DB that may still be racing the daemon.
+  waitForDaemonStopped(consumerDir);
   return r;
+}
+
+/**
+ * Block until the launcher daemon has fully released its lockfile, or warn
+ * and fall through on timeout. Pairs with the post-SIGKILL verification in
+ * `killBackgroundDaemon` to close the kill-window race that produced #1136.
+ */
+function waitForDaemonStopped(consumerDir, maxWaitMs = 5000) {
+  const lockFile = join(consumerDir, MOFLO_DIR, 'daemon.lock');
+  const deadline = Date.now() + maxWaitMs;
+  const sleepBuf = new Int32Array(new SharedArrayBuffer(4));
+  while (Date.now() < deadline) {
+    if (!existsSync(lockFile)) return true;
+    Atomics.wait(sleepBuf, 0, 0, 100);
+  }
+  if (existsSync(lockFile)) {
+    record('populated:daemon-stopped', 'warn',
+      `.moflo/daemon.lock still present after ${maxWaitMs}ms — inspect may race the daemon (#1136)`);
+    return false;
+  }
+  return true;
 }
 
 function inspectPostStateDb(consumerDir) {
