@@ -14,6 +14,7 @@ import {
   memoryDbPath,
 } from '../services/moflo-paths.js';
 import { probeDbIntegrity } from '../services/memory-db-integrity-repair.js';
+import { findProjectRoot } from '../services/project-root.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
 import type { HealthCheck } from './doctor-types.js';
 
@@ -209,9 +210,9 @@ export async function checkMemoryDbIntegrity(cwd: string = process.cwd()): Promi
  * Standard MCP-config search paths: home (Claude Desktop on macOS/Linux),
  * XDG config dir, project-local `.mcp.json`, and APPDATA on Windows.
  *
- * Shared by `checkMcpServers` (which inspects the FIRST config it finds and
- * reports on flo presence) and `checkDaemonWriteRouting` (which COUNTS
- * servers across all paths to detect the multi-process-clobber hazard).
+ * Shared by `checkMcpServers` (which inspects configs and reports on moflo
+ * presence) and `checkDaemonWriteRouting` (which COUNTS servers across all
+ * paths to detect the multi-process-clobber hazard).
  */
 function mcpConfigSearchPaths(cwd: string): string[] {
   return [
@@ -240,25 +241,111 @@ function countMcpServers(cwd: string): number {
   return total;
 }
 
-export async function checkMcpServers(): Promise<HealthCheck> {
-  for (const configPath of mcpConfigSearchPaths(process.cwd())) {
-    if (existsSync(configPath)) {
-      try {
-        const content = JSON.parse(readFileSync(configPath, 'utf8'));
-        const servers = content.mcpServers || content.servers || {};
-        const count = Object.keys(servers).length;
-        const hasClaudeFlow = 'moflo' in servers || 'claude-flow' in servers || 'claude-flow_alpha' in servers;
-        if (hasClaudeFlow) {
-          return { name: 'MCP Servers', status: 'pass', message: `${count} servers (flo configured)` };
-        }
-        return { name: 'MCP Servers', status: 'warn', message: `${count} servers (flo not found)`, fix: 'claude mcp add moflo -- npx -y moflo mcp start' };
-      } catch {
-        // continue to next path
-      }
+/**
+ * Inspect the project's `.mcp.json` (the file `flo init` writes and Claude
+ * Code reads at the project level) and report whether moflo is present,
+ * absent, or the file is malformed.
+ *
+ * Scope: deliberately project-only. We previously also scanned
+ * `~/.claude/claude_desktop_config.json` and `%APPDATA%/Claude/...` — Claude
+ * **Desktop** paths — which is a separate Anthropic product that doesn't
+ * host moflo's MCP server. The old wide scan caused #1126: a Claude
+ * Desktop preferences-only APPDATA file outranked a malformed project
+ * `.mcp.json`, surfacing "0 servers (flo not found)" while the actually
+ * broken project file went unrepaired. Claude Code stores user-level MCP
+ * registrations under `~/.claude.json` `projects[<path>].mcpServers`, but
+ * that's Claude Code internal state we don't author or rewrite; the
+ * project file is the canonical surface moflo owns end-to-end.
+ *
+ * Multi-writer / cross-ecosystem MCP-process counting still uses the wider
+ * `mcpConfigSearchPaths` via `countMcpServers` in
+ * `checkDaemonWriteRouting` — that check has a legitimate reason to see
+ * Claude Desktop processes.
+ *
+ * Exported so the auto-fixer (doctor-fixes.ts) can detect a malformed
+ * `.mcp.json` and regenerate it. Project root resolves via
+ * `findProjectRoot()` so a consumer running `flo healer` from a
+ * subdirectory still discovers the project file.
+ */
+export function inspectMcpConfigs(cwd: string = process.cwd()): {
+  status: 'valid_with_moflo' | 'valid_no_moflo' | 'malformed' | 'not_found';
+  path?: string;
+  count?: number;
+  parseError?: string;
+} {
+  // Callers wanting project-root resolution pass it in (see `checkMcpServers`
+  // below). Defaulting to `process.cwd()` matches the established pattern in
+  // sibling checks (`checkMemoryDbIntegrity`, `countMcpServers`) and avoids a
+  // redundant FS walk on every doctor pass.
+  const configPath = join(cwd, '.mcp.json');
+  // Single read with the existence/parse branches handled by the catch —
+  // dropping the pre-`existsSync` guard closes a TOCTOU window where the
+  // file is deleted between the check and the read.
+  let content: Record<string, unknown>;
+  try {
+    content = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { status: 'not_found' };
     }
+    return { status: 'malformed', path: configPath, parseError: errorDetail(e) };
   }
+  const serversValue = content.mcpServers ?? content.servers;
+  const servers = (serversValue && typeof serversValue === 'object')
+    ? (serversValue as Record<string, unknown>)
+    : {};
+  const count = Object.keys(servers).length;
+  const hasMoflo = 'moflo' in servers || 'claude-flow' in servers || 'claude-flow_alpha' in servers;
+  if (hasMoflo) {
+    return { status: 'valid_with_moflo', path: configPath, count };
+  }
+  return { status: 'valid_no_moflo', path: configPath, count };
+}
 
-  return { name: 'MCP Servers', status: 'warn', message: 'No MCP config found', fix: 'claude mcp add moflo -- npx -y moflo mcp start' };
+export async function checkMcpServers(cwd: string = findProjectRoot()): Promise<HealthCheck> {
+  const result = inspectMcpConfigs(cwd);
+
+  switch (result.status) {
+    case 'valid_with_moflo':
+      return { name: 'MCP Servers', status: 'pass', message: `${result.count} servers (moflo configured)` };
+
+    case 'valid_no_moflo':
+      return {
+        name: 'MCP Servers',
+        status: 'warn',
+        message: `${result.count} servers (moflo not registered)`,
+        fix: 'claude mcp add moflo -- npx -y moflo mcp start',
+      };
+
+    case 'malformed':
+      // #1126: distinguish "config malformed" from "moflo missing". Previously
+      // the loop silently caught the JSON.parse error and fell through,
+      // reporting "0 servers (flo not found)" — which led users to run
+      // `claude mcp add` against a still-broken file that would never parse.
+      // Now we surface the parse error and direct them at the auto-fixer
+      // that regenerates the file from `generateMCPJson`.
+      return {
+        name: 'MCP Servers',
+        status: 'warn',
+        message: `malformed JSON at ${result.path}: ${result.parseError}`,
+        fix: 'flo healer --fix -c mcp-servers',
+      };
+
+    case 'not_found':
+      return {
+        name: 'MCP Servers',
+        status: 'warn',
+        message: 'No MCP config found',
+        fix: 'claude mcp add moflo -- npx -y moflo mcp start',
+      };
+  }
+  // Compile-time exhaustiveness guard: if a future status variant is added to
+  // `inspectMcpConfigs`'s return type without a matching case above, this
+  // assignment fails to compile (`string` is not assignable to `never`),
+  // forcing a corresponding update here. Better than a silent `default:`
+  // branch swallowing the new case as if it were `not_found`.
+  const _exhaustive: never = result.status;
+  return _exhaustive;
 }
 
 // Catches three failure modes (#895):

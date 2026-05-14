@@ -10,9 +10,12 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { join } from 'path';
 import { output } from '../output.js';
 import { errorDetail } from '../shared/utils/error-detail.js';
+import { atomicWriteFileSync } from '../shared/utils/atomic-file-write.js';
 import { repairHookWiring } from '../services/hook-wiring.js';
 import { getDaemonLockHolder } from '../services/daemon-lock.js';
+import { findProjectRoot } from '../services/project-root.js';
 import { findZombieProcesses } from './doctor-zombies.js';
+import { inspectMcpConfigs } from './doctor-checks-config.js';
 import { installClaudeCode, runCommand } from './doctor-checks-runtime.js';
 import type { HealthCheck } from './doctor-types.js';
 
@@ -188,6 +191,50 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       return runFixCommand('npx moflo embeddings init --force');
     },
     'MCP Servers': async () => {
+      // #1126: distinguish "malformed JSON" from "moflo missing from valid
+      // config". The previous fix always ran `claude mcp add` — a no-op when
+      // the project-local `.mcp.json` was unparseable, because the command
+      // doesn't touch malformed project files.
+      const projectRoot = findProjectRoot();
+      const inspection = inspectMcpConfigs(projectRoot);
+
+      if (inspection.status === 'malformed' && inspection.path) {
+        try {
+          // Filesystem-safe timestamp: Date.now() is a digit-only integer so
+          // no `:` escape needed (per dogfooding.md § 6 cross-platform primitives).
+          const backupPath = `${inspection.path}.malformed-${Date.now()}`;
+          // The backup is a brand-new file at a unique timestamped path with
+          // no concurrent readers — a plain writeFileSync is enough; the
+          // atomic ceremony is only worth its cost when replacing a file a
+          // running process might re-open mid-write.
+          writeFileSync(backupPath, readFileSync(inspection.path, 'utf8'), 'utf-8');
+
+          const { generateMCPJson } = await import('../init/mcp-generator.js');
+          const { DEFAULT_INIT_OPTIONS } = await import('../init/types.js');
+          const regenerated = generateMCPJson({ ...DEFAULT_INIT_OPTIONS, targetDir: projectRoot });
+
+          // Confirm the regenerated content parses before clobbering the
+          // (broken) original — refuse to repair if our own generator emits
+          // unparseable JSON for any reason (defense in depth against a future
+          // generator regression silently emitting bad escapes again).
+          JSON.parse(regenerated);
+          // Atomic swap so a concurrent reader (e.g. Claude Code re-scanning
+          // .mcp.json during the fix) never sees a truncated file. The
+          // Windows-AV-lock verify window inside atomicWriteFileSync (#1015)
+          // gates the rename until the new bytes are readable.
+          atomicWriteFileSync(inspection.path, regenerated);
+
+          output.writeln(output.dim(`  Regenerated ${inspection.path}; backup at ${backupPath}.`));
+          return true;
+        } catch (e) {
+          output.writeln(output.warning(`  Regeneration failed: ${errorDetail(e)}`));
+          return false;
+        }
+      }
+
+      // Valid config exists but moflo isn't registered — fall back to the
+      // claude-cli flow. This is the original behavior for the
+      // valid_no_moflo / not_found states.
       return runFixCommand('claude mcp add moflo -- npx -y moflo mcp start');
     },
     'Claude Code CLI': async () => {
