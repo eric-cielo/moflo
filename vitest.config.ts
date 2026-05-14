@@ -133,11 +133,6 @@ export default defineConfig({
       // duplicate test files and they fail dist-resolution because each
       // worktree has its own out-of-tree compiled output.
       '.claude/worktrees/**',
-      // Context persistence hook — missing deps
-      'tests/context-persistence-hook.test.mjs',
-      // Embeddings .mjs tests — collection failures
-      'src/cli/__tests__/embeddings/simple.test.mjs',
-      'src/cli/__tests__/embeddings/minimal.test.mjs',
       // Guidance tests with 0 tests (collection failures)
       'src/cli/__tests__/guidance/integration.test.ts',
       // Isolation tests — run sequentially in second pass (see isolationTests above)
