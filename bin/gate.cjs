@@ -100,11 +100,13 @@ var READ_LIKE_BASH_RE = new RegExp([
   '^\\s*sed\\s+-n\\b',
   '^\\s*awk\\s+(?!.*<<)',
   // `type <path>` on Windows. No `$` anchor so a piped form
-  // (`type src\foo.ts | grep x`) still matches and gets blocked. Requires at
-  // least one non-space argument so shell-builtin usage like `type ls` (which
-  // would still false-positive but is an acceptable trade) is differentiated
-  // from "no argument" forms.
-  '^\\s*type\\s+\\S',
+  // (`type src\foo.ts | grep x`) still matches and gets blocked. The argument
+  // must contain a slash, backslash, or dot — otherwise it's the shell-builtin
+  // command-lookup form (`type ls`, `type cd`) which the gate has no business
+  // blocking. False-negative trade: extension-less filenames like `type Makefile`
+  // pass through. Acceptable — source files all have extensions, and the
+  // primary risk pattern is leaking past the gate via `type src\foo.ts`.
+  '^\\s*type\\s+\\S*[\\\\/.]',
   '^\\s*(?:Get-Content|gc|Select-String|sls)\\b',
 ].join('|'), 'i');
 // CARVE-OUT: commands that LOOK read-like but are operational. Anchored to the
@@ -187,6 +189,29 @@ function classifyNamespaceHint(promptText) {
   }
   for (var m = 0; m < NS_NAV_RES.length; m++) {
     if (NS_NAV_RES[m].test(lower)) return 'Memory namespace hint: use "code-map" for codebase navigation.';
+  }
+  return '';
+}
+
+// #1132 — command-shape namespace classifier for the bash-BLOCK message.
+// Used when the prompt-derived `lastNamespaceHint` is empty (e.g. subagents,
+// which never see the user prompt) so the block message still routes to a
+// useful namespace rather than the generic "pick one of five" list. Returns a
+// full sentence in the same shape as classifyNamespaceHint so the BLOCK arm
+// can write either source's hint without branching on format.
+//
+// SYNC: duplicated verbatim in src/cli/init/helpers-generator.ts.
+function classifyBashNamespaceHint(cmd) {
+  // Search-like tools — the user is hunting for a symbol/file, code-map wins.
+  if (/^\s*(?:grep|rg|ag|fgrep|egrep|find|fd|Select-String|sls)\b/i.test(cmd)) {
+    return 'Memory namespace hint: use "code-map" for codebase navigation.';
+  }
+  // Reading a .md / RST / TXT, or a well-known doc file — guidance/learnings win.
+  // `.*` (not `\S*`) so flag-prefixed forms like `head -50 README.md` match.
+  // Anchored on the leading reader so a piped `cmd | grep foo.md` doesn't trip.
+  if (/^\s*(?:cat|head|tail|less|more|bat|type|Get-Content|gc)\b.*\.(?:md|mdx|rst|txt)\b/i.test(cmd)
+   || /^\s*(?:cat|head|tail|less|more|bat|type|Get-Content|gc)\b.*\b(?:README|CLAUDE|CHANGELOG|CONTRIBUTING|LICENSE)\b/i.test(cmd)) {
+    return 'Memory namespace hint: search "guidance" and "learnings" for project rules and decisions.';
   }
   return '';
 }
@@ -469,10 +494,16 @@ switch (command) {
     if (BASH_CARVE_OUT_RE.test(cmd)) break;
     var s2 = readState();
     if (!s2.memoryRequired || isMemorySearchedFor(s2)) break;
+    // Hint precedence: prompt-derived classification (set by applyPromptStateReset
+    // from the user prompt text) → command-shape classification (works for
+    // subagents that never saw the user prompt). Either source returns a full
+    // "Memory namespace hint: ..." sentence so the BLOCK message stays uniform.
+    var hint = s2.lastNamespaceHint || classifyBashNamespaceHint(cmd) || '';
     process.stderr.write(
-      'BLOCKED: Search memory before reading files via Bash. ' +
-      'Use mcp__moflo__memory_search. On chunk hits, traverse via ' +
-      'mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n' +
+      'BLOCKED: Search memory before reading files via Bash.\n' +
+      'Example: mcp__moflo__memory_search { query: "<topic>", namespace: "<one of: guidance | code-map | patterns | learnings | tests>" }\n' +
+      (hint ? hint + '\n' : '') +
+      'On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\n' +
       'Disable per-gate via moflo.yaml: gates: memory_first: false\n'
     );
     process.exit(2);

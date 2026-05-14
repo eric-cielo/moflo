@@ -289,7 +289,7 @@ var EXEMPT = ['.claude/', '.claude\\\\', 'CLAUDE.md', 'MEMORY.md', 'workflow-sta
 var DANGEROUS = ['rm -rf /', 'format c:', 'del /s /q c:\\\\', ':(){:|:&};:', 'mkfs.', '> /dev/sda'];
 // #1132 — Bash memory-first gate regexes. See bin/gate.cjs for documentation.
 var CREDIT_MEMORY_SEARCH_RE = /semantic-search|memory search|memory retrieve|memory-search/;
-var READ_LIKE_BASH_RE = /^\\s*(?:cat|head|tail|less|more|bat|xxd|od|hexdump)\\b|^\\s*(?:grep|rg|ag|fgrep|egrep|find|fd)\\b|^\\s*sed\\s+-n\\b|^\\s*awk\\s+(?!.*<<)|^\\s*type\\s+\\S|^\\s*(?:Get-Content|gc|Select-String|sls)\\b/i;
+var READ_LIKE_BASH_RE = /^\\s*(?:cat|head|tail|less|more|bat|xxd|od|hexdump)\\b|^\\s*(?:grep|rg|ag|fgrep|egrep|find|fd)\\b|^\\s*sed\\s+-n\\b|^\\s*awk\\s+(?!.*<<)|^\\s*type\\s+\\S*[\\\\/.]|^\\s*(?:Get-Content|gc|Select-String|sls)\\b/i;
 var BASH_CARVE_OUT_RE = /^\\s*(npm|npx|pnpm|yarn|bun|node|deno|tsx|ts-node)\\s|^\\s*(git|gh|hub)\\s|^\\s*(docker|kubectl|helm|terraform)\\s|^\\s*(curl|wget|http|fetch)\\s|^\\s*(jq|yq|xq)\\s|^\\s*(echo|printf|true|false|sleep|test|\\[)\\s|^\\s*cat\\s+(<<|<<<)|^\\s*cat\\s+[^|]*\\s*>|^\\s*tee\\b|^\\s*find\\s+.+?-(delete|exec\\s+rm)\\b/;
 var DIRECTIVE_RE = /^(yes|no|yeah|yep|nope|sure|ok|okay|correct|right|exactly|perfect)\\b/i;
 var TASK_RE = /\\b(fix|bug|error|implement|add|create|build|write|refactor|debug|test|feature|issue|security|optimi)\\b/i;
@@ -350,6 +350,19 @@ function classifyNamespaceHint(promptText) {
   }
   for (var m = 0; m < NS_NAV_RES.length; m++) {
     if (NS_NAV_RES[m].test(lower)) return 'Memory namespace hint: use "code-map" for codebase navigation.';
+  }
+  return '';
+}
+
+// #1132 — command-shape namespace classifier for the bash-BLOCK message.
+// SYNC: duplicated verbatim in bin/gate.cjs. See that file for rationale.
+function classifyBashNamespaceHint(cmd) {
+  if (/^\\s*(?:grep|rg|ag|fgrep|egrep|find|fd|Select-String|sls)\\b/i.test(cmd)) {
+    return 'Memory namespace hint: use "code-map" for codebase navigation.';
+  }
+  if (/^\\s*(?:cat|head|tail|less|more|bat|type|Get-Content|gc)\\b.*\\.(?:md|mdx|rst|txt)\\b/i.test(cmd)
+   || /^\\s*(?:cat|head|tail|less|more|bat|type|Get-Content|gc)\\b.*\\b(?:README|CLAUDE|CHANGELOG|CONTRIBUTING|LICENSE)\\b/i.test(cmd)) {
+    return 'Memory namespace hint: search "guidance" and "learnings" for project rules and decisions.';
   }
   return '';
 }
@@ -493,7 +506,16 @@ switch (command) {
     if (BASH_CARVE_OUT_RE.test(cmd)) break;
     var s2 = readState();
     if (!s2.memoryRequired || isMemorySearchedFor(s2)) break;
-    process.stderr.write('BLOCKED: Search memory before reading files via Bash. Use mcp__moflo__memory_search. On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\\nDisable per-gate via moflo.yaml: gates: memory_first: false\\n');
+    // Hint precedence: prompt classification → command-shape classification.
+    // See bin/gate.cjs check-bash-memory for full rationale.
+    var hint = s2.lastNamespaceHint || classifyBashNamespaceHint(cmd) || '';
+    process.stderr.write(
+      'BLOCKED: Search memory before reading files via Bash.\\n' +
+      'Example: mcp__moflo__memory_search { query: "<topic>", namespace: "<one of: guidance | code-map | patterns | learnings | tests>" }\\n' +
+      (hint ? hint + '\\n' : '') +
+      'On chunk hits, traverse via mcp__moflo__memory_get_neighbors — see .claude/guidance/moflo-memory-protocol.md\\n' +
+      'Disable per-gate via moflo.yaml: gates: memory_first: false\\n'
+    );
     process.exit(2);
     break;
   }

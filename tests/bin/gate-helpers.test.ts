@@ -669,6 +669,120 @@ describe('gate.cjs: check-bash-memory BLOCK (#1132)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// gate.cjs — check-bash-memory BLOCK message enrichment (#1132 follow-up)
+// The block message must surface a namespace hint so the agent can route its
+// search instead of stamping the gate with an arbitrary query. Two sources:
+// (1) `lastNamespaceHint` from prompt classification (parent agents);
+// (2) command-shape classification (subagents that never saw the prompt).
+// Plus the inline example showing the canonical tool-call shape.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('gate.cjs: check-bash-memory BLOCK message enrichment (#1132)', () => {
+  it('includes the inline mcp__moflo__memory_search example', () => {
+    writeState(tmpDir, { memorySearched: false, memoryRequired: true });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = 'cat src/foo.ts';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('Example: mcp__moflo__memory_search');
+    expect(r.stderr).toContain('namespace');
+  });
+
+  it('echoes lastNamespaceHint when set (prompt-derived precedence)', () => {
+    writeState(tmpDir, {
+      memorySearched: false,
+      memoryRequired: true,
+      lastNamespaceHint: 'Memory namespace hint: use "tests" for test inventory and coverage lookups.',
+    });
+    const env = baseEnv(tmpDir);
+    // Use a command whose shape would say code-map — prompt hint must win.
+    env.TOOL_INPUT_command = 'grep -r foo src/';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('"tests"');
+    expect(r.stderr).not.toContain('"code-map"');
+  });
+
+  it('falls back to command-shape hint for search-like commands → code-map', () => {
+    writeState(tmpDir, { memorySearched: false, memoryRequired: true, lastNamespaceHint: '' });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = 'grep -r foo src/';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('"code-map"');
+  });
+
+  it('falls back to command-shape hint for doc reads → guidance', () => {
+    writeState(tmpDir, { memorySearched: false, memoryRequired: true, lastNamespaceHint: '' });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = 'cat README.md';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('"guidance"');
+  });
+
+  it('handles flag-prefixed doc reads (head -50 CLAUDE.md)', () => {
+    writeState(tmpDir, { memorySearched: false, memoryRequired: true, lastNamespaceHint: '' });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = 'head -50 CLAUDE.md';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('"guidance"');
+  });
+
+  it('emits no specific hint for ambiguous reads (cat package.json)', () => {
+    writeState(tmpDir, { memorySearched: false, memoryRequired: true, lastNamespaceHint: '' });
+    const env = baseEnv(tmpDir);
+    env.TOOL_INPUT_command = 'cat package.json';
+    const r = runGate('check-bash-memory', env);
+    expect(r.exitCode).toBe(2);
+    // Block message still appears; just no "Memory namespace hint:" line.
+    expect(r.stderr).toContain('BLOCKED');
+    expect(r.stderr).not.toMatch(/Memory namespace hint:/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// gate.cjs — `type` regex tightening (#1132 follow-up)
+// Shell-builtin lookups like `type ls` and `type cd` are not file reads and
+// have no business being blocked. Tighten the regex to require a path-ish
+// argument (slash, backslash, or dot) before BLOCK fires.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('gate.cjs: type regex tightening (#1132)', () => {
+  const builtinPass: Array<[string, string]> = [
+    ['type ls', 'builtin lookup, single token'],
+    ['type cd', 'builtin lookup, builtin name'],
+    ['type my-command', 'custom command, no path char'],
+  ];
+  for (const [cmd, label] of builtinPass) {
+    it(`type passes (${label}): ${cmd}`, () => {
+      writeState(tmpDir, { memorySearched: false, memoryRequired: true });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_command = cmd;
+      const r = runGate('check-bash-memory', env);
+      expect(r.exitCode).toBe(0);
+    });
+  }
+
+  const fileBlock: Array<[string, string]> = [
+    ['type src\\foo.ts', 'backslash path'],
+    ['type ./config', 'slash path'],
+    ['type README.md', 'dot in extension'],
+    ['type C:\\Users\\eric\\file', 'absolute Windows path'],
+  ];
+  for (const [cmd, label] of fileBlock) {
+    it(`type blocks (${label}): ${cmd}`, () => {
+      writeState(tmpDir, { memorySearched: false, memoryRequired: true });
+      const env = baseEnv(tmpDir);
+      env.TOOL_INPUT_command = cmd;
+      const r = runGate('check-bash-memory', env);
+      expect(r.exitCode).toBe(2);
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // gate.cjs — prompt-reminder
 // ─────────────────────────────────────────────────────────────────────────────
 
