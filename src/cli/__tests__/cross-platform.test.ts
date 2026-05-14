@@ -20,25 +20,32 @@ import { execFileSync } from 'child_process';
 
 describe('platform-aware process killing', () => {
   describe('daemon killBackgroundDaemon', () => {
-    it('should use taskkill on win32 instead of SIGKILL/SIGTERM', async () => {
-      // Read the compiled daemon source to verify platform branching
+    it('should use taskkill /F /T on win32 (no graceful step — Windows headless daemons cannot receive close events)', async () => {
+      // Read the daemon source to verify platform branching.
       const daemonSrc = readFileSync(
         join(__dirname, '..', 'commands', 'daemon.ts'),
         'utf-8'
       );
 
-      // Verify SIGKILL is wrapped in platform check
+      // Platform branch still in place.
       expect(daemonSrc).toContain("process.platform === 'win32'");
       expect(daemonSrc).toContain("execFileSync('taskkill'");
 
-      // Verify graceful kill uses taskkill without /F first
-      const gracefulMatch = daemonSrc.match(/taskkill.*?\/PID.*?holderPid/s);
-      expect(gracefulMatch).toBeTruthy();
+      // Force + tree kill — /F to bypass the "process can only be terminated
+      // forcefully" error a headless Node daemon emits for `taskkill /PID`,
+      // /T to clean up any worker children that outlived their parent.
+      expect(daemonSrc).toContain("'/F', '/T', '/PID'");
 
-      // Verify force kill uses /F flag
-      expect(daemonSrc).toContain("'/F', '/PID'");
+      // No graceful Windows step. The prior implementation invoked
+      // `taskkill /PID` (no /F) first, which always failed on a headless
+      // daemon with visible error output and wasted ~1s before escalating.
+      // Assert the dead-code pattern is gone: a taskkill arg array that
+      // contains '/PID' but NOT '/F' would be the graceful form.
+      const gracefulCallPattern = /execFileSync\('taskkill',\s*\[\s*'\/PID'/;
+      expect(daemonSrc).not.toMatch(gracefulCallPattern);
 
-      // Verify Unix path still uses SIGTERM and SIGKILL
+      // Unix path still uses SIGTERM → SIGKILL escalation (where graceful
+      // shutdown actually works).
       expect(daemonSrc).toContain("process.kill(holderPid, 'SIGTERM')");
       expect(daemonSrc).toContain("process.kill(holderPid, 'SIGKILL')");
     });

@@ -526,31 +526,34 @@ export async function killBackgroundDaemon(projectRoot: string): Promise<boolean
   }
 
   try {
-    // Graceful kill — platform-aware
+    // Platform-split shutdown. On Linux/macOS we try SIGTERM first so the
+    // daemon's shutdown handlers (sql.js flush, lock release) can run; force-
+    // kill only if it doesn't exit within ~1s.
+    //
+    // On Windows there is no SIGTERM equivalent for our headless detached
+    // Node daemon — `taskkill /PID` (no /F) sends a window-close message
+    // that a non-GUI process can't receive, so it always fails with the
+    // visible error 'process can only be terminated forcefully'. The prior
+    // implementation invoked it anyway, ate the error in a bare catch, then
+    // slept 1s before escalating to /F. Skip the dead step: go straight to
+    // /F /T (tree-kill, in case a worker child outlived its parent) on Win.
     if (process.platform === 'win32') {
-      // SIGTERM silently force-kills on Windows; use taskkill for clean shutdown
       try {
-        execFileSync('taskkill', ['/PID', String(holderPid)], { windowsHide: true });
+        execFileSync('taskkill', ['/F', '/T', '/PID', String(holderPid)], { windowsHide: true });
       } catch {
-        // taskkill may fail if process already exiting
+        // Already exiting / unreachable — process.kill(pid, 0) below verifies.
       }
     } else {
       process.kill(holderPid, 'SIGTERM');
-    }
-
-    // Wait a moment then force kill if needed
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    try {
-      process.kill(holderPid, 0);
-      // Still alive, force kill
-      if (process.platform === 'win32') {
-        execFileSync('taskkill', ['/F', '/PID', String(holderPid)], { windowsHide: true });
-      } else {
+      // Wait briefly so SIGTERM has a chance to land before checking liveness.
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      try {
+        process.kill(holderPid, 0);
+        // Still alive — force kill.
         process.kill(holderPid, 'SIGKILL');
+      } catch {
+        // Process terminated
       }
-    } catch {
-      // Process terminated
     }
 
     // Release lock
