@@ -748,3 +748,114 @@ export async function checkHookBlockDrift(): Promise<HealthCheck> {
     fix: 'set auto_update.hook_block_drift: regenerate in moflo.yaml, or claudeFlow.hooks.locked: true to suppress',
   };
 }
+
+// ============================================================================
+// 12. CLAUDE.md Injection Drift Check
+// ============================================================================
+
+/**
+ * Detect when the consumer's `<root>/CLAUDE.md` MoFlo-injected block has
+ * drifted from the canonical block the current `claudemd-generator` produces.
+ * Analogue of `Hook Block Drift` for CLAUDE.md content.
+ *
+ * The session-start launcher refreshes shipped guidance files on every
+ * version change, but the CLAUDE.md injection is only rewritten by explicit
+ * `flo init` / `flo-setup`. Without this check, consumers carry stale
+ * injection content (and stale guidance pointers) indefinitely.
+ *
+ * Five states map to four reportable statuses:
+ *   no-file       → warn  (run `flo init`)
+ *   no-marker     → warn  (run `flo init` / `flo-setup`)
+ *   legacy-marker → warn  (auto-fixable — replace legacy block)
+ *   in-sync       → pass
+ *   drifted       → warn  (auto-fixable — refresh block)
+ */
+export async function checkClaudeMdInjectionDrift(): Promise<HealthCheck> {
+  const projectDir = findConsumerProjectDir();
+  const claudeMdPath = join(projectDir, 'CLAUDE.md');
+
+  // Respect `auto_update.claudemd_injection_drift: off` for consumers who
+  // explicitly opt out (mirrors the launcher's behaviour and the Hook Block
+  // Drift check). Read the config first so the off-mode skip is cheap.
+  try {
+    const { loadMofloConfig } = await import('../config/moflo-config.js');
+    const cfg = loadMofloConfig(projectDir);
+    if (cfg.auto_update.claudemd_injection_drift === 'off') {
+      return {
+        name: 'CLAUDE.md Injection Drift',
+        status: 'pass',
+        message: 'drift check skipped — auto_update.claudemd_injection_drift: off',
+      };
+    }
+  } catch { /* config read failure — fall through to drift check */ }
+
+  if (!existsSync(claudeMdPath)) {
+    return {
+      name: 'CLAUDE.md Injection Drift',
+      status: 'warn',
+      message: 'CLAUDE.md not found',
+      fix: 'npx moflo init',
+    };
+  }
+
+  let contents: string;
+  try {
+    contents = readFileSync(claudeMdPath, 'utf-8');
+  } catch (e) {
+    return {
+      name: 'CLAUDE.md Injection Drift',
+      status: 'warn',
+      message: `cannot read CLAUDE.md: ${errorDetail(e)}`,
+    };
+  }
+
+  // Dynamic-import the generator + drift detector so the dist-vs-source
+  // path resolution stays consistent with the launcher.
+  const { generateClaudeMd } = await import('../init/claudemd-generator.js');
+  const { computeInjectionDrift } = await import('../services/claudemd-injection.js');
+
+  // Use `{}` (not DEFAULT_INIT_OPTIONS) to match the launcher's call —
+  // the generator ignores the argument, but matching call shape removes the
+  // possibility of a future generator change diverging the two surfaces.
+  const canonical = generateClaudeMd({});
+  const report = computeInjectionDrift(contents, canonical);
+
+  switch (report.state) {
+    case 'in-sync':
+      return {
+        name: 'CLAUDE.md Injection Drift',
+        status: 'pass',
+        message: 'CLAUDE.md injection block matches reference',
+      };
+    case 'no-marker':
+      return {
+        name: 'CLAUDE.md Injection Drift',
+        status: 'warn',
+        message: 'CLAUDE.md has no MOFLO:INJECTED:START block',
+        fix: 'npx flo-setup',
+      };
+    case 'legacy-marker':
+      return {
+        name: 'CLAUDE.md Injection Drift',
+        status: 'warn',
+        message: 'CLAUDE.md uses a legacy moflo marker pair (pre-MOFLO:INJECTED) — auto-fix replaces with current block',
+        fix: 'npx flo-setup --update',
+      };
+    case 'drifted':
+      return {
+        name: 'CLAUDE.md Injection Drift',
+        status: 'warn',
+        message: 'CLAUDE.md injection block has drifted from reference',
+        fix: 'npx flo-setup --update',
+      };
+    case 'no-file':
+      // Defensive — `existsSync` returned true above, so this branch is
+      // unreachable in practice. Return a sane status anyway.
+      return {
+        name: 'CLAUDE.md Injection Drift',
+        status: 'warn',
+        message: 'CLAUDE.md not found',
+        fix: 'npx moflo init',
+      };
+  }
+}

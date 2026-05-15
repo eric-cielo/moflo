@@ -68,10 +68,14 @@ export { MARKER_START, MARKER_END, LEGACY_MARKER_STARTS, LEGACY_MARKER_ENDS };
 
 /**
  * Generate the MoFlo section to inject into CLAUDE.md.
- * Template parameter is accepted for backward compatibility but ignored —
- * all templates now produce the same minimal injection.
+ *
+ * Both parameters are accepted for backward compatibility but ignored — all
+ * templates produce the same minimal injection and the options shape is no
+ * longer consulted. Optional so callers from both the dev tree (TS) and the
+ * dogfood launcher (plain JS) can invoke as `generateClaudeMd()` /
+ * `generateClaudeMd({})` interchangeably.
  */
-export function generateClaudeMd(_options: InitOptions, _template?: ClaudeMdTemplate): string {
+export function generateClaudeMd(_options?: Partial<InitOptions>, _template?: ClaudeMdTemplate): string {
   return mofloSection() + '\n';
 }
 

@@ -37,16 +37,14 @@ import { mofloInternalURL } from './lib/moflo-resolve.mjs';
 // works identically from bin/ (canonical) or from .claude/scripts/ (synced copy).
 const mofloRoot = dirname(fileURLToPath(mofloInternalURL('package.json')));
 
-// Single source of truth: claudemd-generator.ts owns the section content.
-// Use the shared mofloInternalURL helper so the script works identically when
-// invoked from bin/ (canonical) or from .claude/scripts/ (synced copy).
-const {
-  generateClaudeMd,
-  MARKER_START,
-  MARKER_END,
-  LEGACY_MARKER_STARTS,
-  LEGACY_MARKER_ENDS,
-} = await import(mofloInternalURL('dist/src/cli/init/claudemd-generator.js'));
+// Single source of truth: claudemd-generator.ts owns the section content,
+// claudemd-injection.ts owns the marker-replace logic. Use the shared
+// mofloInternalURL helper so the script works identically when invoked
+// from bin/ (canonical) or from .claude/scripts/ (synced copy).
+const { generateClaudeMd } = await import(mofloInternalURL('dist/src/cli/init/claudemd-generator.js'));
+const { applyInjectionReplacement, computeInjectionDrift } = await import(
+  mofloInternalURL('dist/src/cli/services/claudemd-injection.js')
+);
 
 const args = process.argv.slice(2);
 const updateOnly = args.includes('--update');
@@ -150,65 +148,47 @@ function cleanupLegacyBootstrap(projectRoot) {
 
 function updateClaudeMd(projectRoot) {
   const claudeMdPath = join(projectRoot, 'CLAUDE.md');
+  const existed = existsSync(claudeMdPath);
+  const content = existed ? readFileSync(claudeMdPath, 'utf-8') : null;
 
-  if (!existsSync(claudeMdPath)) {
-    if (checkOnly) {
-      log('⚠️  No CLAUDE.md found');
-      return false;
-    }
-    log('📝 Creating CLAUDE.md with subagent protocol section');
-    writeFileSync(claudeMdPath, `# Project Configuration\n\n${CLAUDE_MD_SECTION}\n`, 'utf-8');
+  // Single source of truth for the marker-replace logic lives in
+  // src/cli/services/claudemd-injection.ts. Classify state for logging,
+  // then apply (or report) the replacement.
+  const report = computeInjectionDrift(content, CLAUDE_MD_SECTION);
+
+  if (report.state === 'in-sync') {
+    log('✅ CLAUDE.md moflo section is current');
     return true;
   }
 
-  const content = readFileSync(claudeMdPath, 'utf-8');
-
-  // Check for current or legacy markers and replace
-  const allStarts = [MARKER_START, ...LEGACY_MARKER_STARTS];
-  const allEnds = [MARKER_END, ...LEGACY_MARKER_ENDS];
-
-  for (let i = 0; i < allStarts.length; i++) {
-    if (content.includes(allStarts[i])) {
-      const startIdx = content.indexOf(allStarts[i]);
-      const endIdx = content.indexOf(allEnds[i]);
-
-      if (endIdx > startIdx) {
-        // If current markers and content matches, we're up to date
-        if (i === 0) {
-          const existingSection = content.substring(startIdx, endIdx + allEnds[i].length);
-          if (existingSection === CLAUDE_MD_SECTION) {
-            log('✅ CLAUDE.md moflo section is current');
-            return true;
-          }
-        }
-
-        // Replace (current or legacy) with new section
-        if (!checkOnly) {
-          const updated = content.substring(0, startIdx) + CLAUDE_MD_SECTION + content.substring(endIdx + allEnds[i].length);
-          writeFileSync(claudeMdPath, updated, 'utf-8');
-          log(i === 0 ? '📝 Updated CLAUDE.md moflo section' : '📝 Replaced legacy CLAUDE.md section with minimal moflo injection');
-        } else {
-          log('⚠️  CLAUDE.md moflo section needs update');
-        }
-        return true;
-      }
-    }
-  }
-
+  // `updateOnly` is informational — refresh the bootstrap mirror file but
+  // leave CLAUDE.md alone unless an inject already exists.
   if (updateOnly) {
-    log('⚠️  CLAUDE.md has no moflo section (run without --update to add)');
-    return false;
+    if (!existed) { log('⚠️  No CLAUDE.md found'); return false; }
+    if (report.state === 'no-marker') {
+      log('⚠️  CLAUDE.md has no moflo section (run without --update to add)');
+      return false;
+    }
+    // Existing block (current or legacy) + drift → fall through to write.
   }
 
   if (checkOnly) {
-    log('⚠️  CLAUDE.md missing subagent protocol section');
+    if (!existed) { log('⚠️  No CLAUDE.md found'); return false; }
+    if (report.state === 'no-marker') { log('⚠️  CLAUDE.md missing subagent protocol section'); return false; }
+    log('⚠️  CLAUDE.md moflo section needs update');
     return false;
   }
 
-  // Append section to end of CLAUDE.md
-  const separator = content.endsWith('\n') ? '\n' : '\n\n';
-  writeFileSync(claudeMdPath, content + separator + CLAUDE_MD_SECTION + '\n', 'utf-8');
-  log('📝 Added subagent protocol section to CLAUDE.md');
+  const result = applyInjectionReplacement(content, CLAUDE_MD_SECTION);
+  if (!result.changed) return true;
+  writeFileSync(claudeMdPath, result.contents, 'utf-8');
+
+  switch (report.state) {
+    case 'no-file':       log('📝 Creating CLAUDE.md with subagent protocol section'); break;
+    case 'no-marker':     log('📝 Added subagent protocol section to CLAUDE.md'); break;
+    case 'legacy-marker': log('📝 Replaced legacy CLAUDE.md section with minimal moflo injection'); break;
+    case 'drifted':       log('📝 Updated CLAUDE.md moflo section'); break;
+  }
   return true;
 }
 

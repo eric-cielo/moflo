@@ -247,6 +247,28 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
     'Gate Health': async () => {
       return fixGateHealthHooks();
     },
+    // Refresh the consumer's CLAUDE.md MoFlo block in place using the
+    // shared `applyInjectionReplacement` service. Idempotent: a re-run sees
+    // `state === 'in-sync'` and the autoFix dispatcher skips this entry.
+    'CLAUDE.md Injection Drift': async () => {
+      const projectRoot = findProjectRoot();
+      const claudeMdPath = join(projectRoot, 'CLAUDE.md');
+      try {
+        const { generateClaudeMd } = await import('../init/claudemd-generator.js');
+        const { applyInjectionReplacement } = await import('../services/claudemd-injection.js');
+        const canonical = generateClaudeMd({});
+        const existing = existsSync(claudeMdPath) ? readFileSync(claudeMdPath, 'utf-8') : null;
+        const result = applyInjectionReplacement(existing, canonical);
+        if (!result.changed || !result.contents) return false;
+        // atomicWriteFileSync guards against a concurrent reader (Claude Code
+        // re-scanning CLAUDE.md mid-fix) seeing a truncated file.
+        atomicWriteFileSync(claudeMdPath, result.contents);
+        return true;
+      } catch (e) {
+        output.writeln(output.warning(`  CLAUDE.md repair failed: ${errorDetail(e)}`));
+        return false;
+      }
+    },
     'Embedding hygiene': async () => {
       // The session-start launcher already runs the same migration BEFORE
       // daemon/MCP boot — that's where consumer autoheal happens. Running

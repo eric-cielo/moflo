@@ -640,7 +640,16 @@ try {
 // Controlled by `auto_update.enabled` in moflo.yaml (default: true).
 // When moflo is upgraded (npm install), scripts and helpers may be stale.
 // Detect version change and sync from source before running hooks.
-let autoUpdateConfig = { enabled: true, scripts: true, helpers: true, hookBlockDrift: 'warn' };
+let autoUpdateConfig = {
+  enabled: true,
+  scripts: true,
+  helpers: true,
+  hookBlockDrift: 'warn',
+  // #1142 — CLAUDE.md injection drift refresh mode (warn | regenerate | off,
+  // default regenerate). Defaults to regenerate because the consumer cannot
+  // refresh CLAUDE.md on their own — there is no other auto-refresh path.
+  claudemdInjectionDrift: 'regenerate',
+};
 try {
   const mofloYaml = resolve(projectRoot, 'moflo.yaml');
   if (existsSync(mofloYaml)) {
@@ -651,10 +660,13 @@ try {
     const helpersMatch = yamlContent.match(/auto_update:\s*\n(?:\s+\w+:.*\n)*?\s+helpers:\s*(true|false)/);
     // #881: hook-block drift detector (warn | regenerate | off; default warn)
     const driftMatch = yamlContent.match(/auto_update:\s*\n(?:\s+\w+:.*\n)*?\s+hook_block_drift:\s*(warn|regenerate|off)/);
+    // #1142: CLAUDE.md injection drift detector (warn | regenerate | off; default regenerate)
+    const claudemdMatch = yamlContent.match(/auto_update:\s*\n(?:\s+\w+:.*\n)*?\s+claudemd_injection_drift:\s*(warn|regenerate|off)/);
     if (enabledMatch) autoUpdateConfig.enabled = enabledMatch[1] === 'true';
     if (scriptsMatch) autoUpdateConfig.scripts = scriptsMatch[1] === 'true';
     if (helpersMatch) autoUpdateConfig.helpers = helpersMatch[1] === 'true';
     if (driftMatch) autoUpdateConfig.hookBlockDrift = driftMatch[1];
+    if (claudemdMatch) autoUpdateConfig.claudemdInjectionDrift = claudemdMatch[1];
   }
 } catch (err) {
   // Defaults (all true) keep the upgrade flow alive but the user should
@@ -1414,23 +1426,185 @@ async function runHookBlockDriftCheck() {
   };
 }
 
-try {
-  if (autoUpdateConfig.enabled && autoUpdateConfig.hookBlockDrift !== 'off') {
-    const result = await runHookBlockDriftCheck();
-    if (result) {
+// ── 3a-vii. CLAUDE.md injection drift detection (#1142) ──────────────────
+// Refresh the consumer's `<root>/CLAUDE.md` MoFlo block when it has drifted
+// from what `claudemd-generator.ts` currently produces. The launcher's
+// stages 3/3b refresh shipped guidance files on every version change, but
+// CLAUDE.md was only rewritten by explicit `flo init` / `flo-setup` — so
+// consumers carried stale injection content (with the legacy `shipped/`
+// guidance paths, for example) for as long as they didn't re-run init.
+//
+// Modes (`auto_update.claudemd_injection_drift` in moflo.yaml):
+//   regenerate  — replace the drifted block in place (default; the consumer
+//                 has no other path to refresh CLAUDE.md)
+//   warn        — print a one-line drift summary to stdout
+//   off         — skip detection entirely
+//
+// Fast-path: `.moflo/claudemd-injection-cache.json` records the last clean
+// run. If CLAUDE.md + the generator module both still match the cached
+// mtimes, skip the readFile + dynamic import.
+async function runClaudeMdInjectionDriftCheck() {
+  const claudeMdPath = resolve(projectRoot, 'CLAUDE.md');
+  let claudeMdStat;
+  try { claudeMdStat = statSync(claudeMdPath); } catch { return null; }
+
+  // Locate the generator and the drift service. Both must be present —
+  // generator owns the canonical content, drift service owns the marker
+  // logic. Use bin/lib/moflo-resolve.mjs path resolution semantics
+  // (covers consumer node_modules + dev source tree). Two candidates each.
+  const generatorCandidates = [
+    resolve(projectRoot, 'node_modules/moflo/dist/src/cli/init/claudemd-generator.js'),
+    resolve(projectRoot, 'dist/src/cli/init/claudemd-generator.js'),
+  ];
+  const driftCandidates = [
+    resolve(projectRoot, 'node_modules/moflo/dist/src/cli/services/claudemd-injection.js'),
+    resolve(projectRoot, 'dist/src/cli/services/claudemd-injection.js'),
+  ];
+  let generatorPath = null, generatorStat = null;
+  for (const p of generatorCandidates) {
+    try { generatorStat = statSync(p); generatorPath = p; break; } catch { /* try next */ }
+  }
+  let driftPath = null, driftStat = null;
+  for (const p of driftCandidates) {
+    try { driftStat = statSync(p); driftPath = p; break; } catch { /* try next */ }
+  }
+  if (!generatorPath || !driftPath) return null;
+
+  // Use the max mtime of the two modules so any update to either invalidates
+  // the cache. Both are co-bumped on publish so this is normally one mtime.
+  const moduleMtimeMs = Math.max(generatorStat.mtimeMs, driftStat.mtimeMs);
+
+  // Cache short-circuits any (claudeMdMtime, moduleMtime, state) triple
+  // match — not just 'in-sync'. A drifted consumer in warn mode still emits
+  // the nudge once on first detection, then stays silent until something
+  // actually changes (CLAUDE.md mtime bumps from a user edit, or moflo
+  // upgrade bumps moduleMtimeMs). Without this, every session re-does the
+  // full slow path (3 statSync + readFile + 2 dynamic imports + generator
+  // call) for non-in-sync consumers in perpetuity.
+  const cachePath = join(mofloDir(projectRoot), 'claudemd-injection-cache.json');
+  let cached = null;
+  try { cached = JSON.parse(readFileSync(cachePath, 'utf-8')); } catch { /* missing or corrupt */ }
+  if (
+    cached &&
+    cached.claudeMdMtimeMs === claudeMdStat.mtimeMs &&
+    cached.moduleMtimeMs === moduleMtimeMs &&
+    typeof cached.state === 'string'
+  ) return null;
+
+  // Try-catch around the dynamic imports handles the file disappearing
+  // between statSync and import (TOCTOU); other load errors surface as
+  // an emitWarning so a transitive dependency failure isn't invisible
+  // (mirrors the silent-catch lesson — see feedback_consumer_blast_radius).
+  let genMod = null, driftMod = null;
+  try {
+    genMod = await import(pathToFileURL(generatorPath).href);
+    driftMod = await import(pathToFileURL(driftPath).href);
+  } catch (err) {
+    emitWarning(`CLAUDE.md drift check skipped (${errMessage(err)})`);
+    return null;
+  }
+  if (typeof genMod.generateClaudeMd !== 'function') return null;
+  if (typeof driftMod.computeInjectionDrift !== 'function') return null;
+  if (typeof driftMod.applyInjectionReplacement !== 'function') return null;
+
+  const claudeMdContents = readFileSync(claudeMdPath, 'utf-8');
+  const canonical = genMod.generateClaudeMd({});
+  const report = driftMod.computeInjectionDrift(claudeMdContents, canonical);
+
+  let finalState = report.state;
+  let finalMtime = claudeMdStat.mtimeMs;
+
+  // Treat both 'drifted' and 'legacy-marker' as repairable in regenerate mode.
+  // 'no-marker' means the user removed the inject deliberately — don't re-add
+  // it on every session start; that's a re-init operation, not a drift fix.
+  // 'no-file' is unreachable here because statSync already succeeded.
+  const repairable = report.state === 'drifted' || report.state === 'legacy-marker';
+  if (repairable) {
+    const wantRegenerate = autoUpdateConfig.claudemdInjectionDrift === 'regenerate';
+    if (wantRegenerate) {
+      const result = driftMod.applyInjectionReplacement(claudeMdContents, canonical);
+      if (result.changed && typeof result.contents === 'string') {
+        writeFileSync(claudeMdPath, result.contents);
+        finalState = 'in-sync';
+        try { finalMtime = statSync(claudeMdPath).mtimeMs; } catch { /* keep prior */ }
+        emitMutation(
+          'refreshed CLAUDE.md MoFlo block',
+          `replaced ${report.state} block with current generator output`,
+        );
+      }
+    } else {
+      // warn mode — surface a one-line summary on stdout for Claude/user.
       try {
-        mkdirSync(mofloDir(projectRoot), { recursive: true });
-        writeFileSync(result.cachePath, JSON.stringify({
-          settingsMtimeMs: result.settingsMtimeMs,
-          moduleMtimeMs: result.moduleMtimeMs,
-          consumerHash: result.consumerHash,
-          referenceHash: result.referenceHash,
-        }));
-      } catch { /* cache is opportunistic — non-fatal */ }
+        process.stdout.write(
+          `moflo: CLAUDE.md injection ${report.state}; run \`flo doctor claudemd-drift\` or set auto_update.claudemd_injection_drift: regenerate in moflo.yaml\n`,
+        );
+      } catch { /* broken stdout — non-fatal */ }
+    }
+  } else if (report.state === 'no-marker') {
+    // Distinct from the drift cases — surface once via warn channel so a
+    // user who didn't run init still sees a nudge, but never auto-mutate.
+    if (autoUpdateConfig.claudemdInjectionDrift !== 'off') {
+      try {
+        process.stdout.write(
+          `moflo: CLAUDE.md has no MoFlo injection block; run \`npx flo-setup\` to add one\n`,
+        );
+      } catch { /* broken stdout — non-fatal */ }
     }
   }
-} catch (err) {
-  emitWarning(`hook-block drift check skipped (${errMessage(err)})`);
+
+  return {
+    cachePath,
+    claudeMdMtimeMs: finalMtime,
+    moduleMtimeMs,
+    state: finalState,
+  };
+}
+
+// Run the two drift detectors (settings.json hook block + CLAUDE.md
+// injection) in parallel. Both do their own statSync → cache compare →
+// dynamic import dance; the work is independent and the file targets are
+// different, so Promise.all halves cold-path latency on every session start.
+// Cache-hit fast paths return null with no work — Promise.all is still
+// trivially correct there.
+{
+  const hookEnabled = autoUpdateConfig.enabled && autoUpdateConfig.hookBlockDrift !== 'off';
+  const claudemdEnabled = autoUpdateConfig.enabled && autoUpdateConfig.claudemdInjectionDrift !== 'off';
+  const [hookResult, claudemdResult] = await Promise.all([
+    hookEnabled
+      ? runHookBlockDriftCheck().catch((err) => {
+          emitWarning(`hook-block drift check skipped (${errMessage(err)})`);
+          return null;
+        })
+      : Promise.resolve(null),
+    claudemdEnabled
+      ? runClaudeMdInjectionDriftCheck().catch((err) => {
+          emitWarning(`CLAUDE.md injection drift check skipped (${errMessage(err)})`);
+          return null;
+        })
+      : Promise.resolve(null),
+  ]);
+
+  if (hookResult) {
+    try {
+      mkdirSync(mofloDir(projectRoot), { recursive: true });
+      writeFileSync(hookResult.cachePath, JSON.stringify({
+        settingsMtimeMs: hookResult.settingsMtimeMs,
+        moduleMtimeMs: hookResult.moduleMtimeMs,
+        consumerHash: hookResult.consumerHash,
+        referenceHash: hookResult.referenceHash,
+      }));
+    } catch { /* cache is opportunistic — non-fatal */ }
+  }
+  if (claudemdResult) {
+    try {
+      mkdirSync(mofloDir(projectRoot), { recursive: true });
+      writeFileSync(claudemdResult.cachePath, JSON.stringify({
+        claudeMdMtimeMs: claudemdResult.claudeMdMtimeMs,
+        moduleMtimeMs: claudemdResult.moduleMtimeMs,
+        state: claudemdResult.state,
+      }));
+    } catch { /* cache is opportunistic — non-fatal */ }
+  }
 }
 
 // ── 3b. Ensure shipped guidance files exist (even without version change) ──

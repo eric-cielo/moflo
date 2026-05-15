@@ -22,13 +22,8 @@ import {
   renderMofloYaml,
   type MofloYamlConfig,
 } from './moflo-yaml-template.js';
-import {
-  generateClaudeMd as generateMofloSection,
-  MARKER_START,
-  MARKER_END,
-  LEGACY_MARKER_STARTS,
-  LEGACY_MARKER_ENDS,
-} from './claudemd-generator.js';
+import { generateClaudeMd as generateMofloSection } from './claudemd-generator.js';
+import { applyInjectionReplacement } from '../services/claudemd-injection.js';
 import { DEFAULT_INIT_OPTIONS } from './types.js';
 
 export { discoverTestDirs };
@@ -494,34 +489,22 @@ function generateSkill(root: string, force?: boolean): MofloInitResult['steps'][
 
 function generateClaudeMd(root: string, _force?: boolean): MofloInitResult['steps'][0] {
   const claudeMdPath = path.join(root, 'CLAUDE.md');
-  let existing = '';
+  const existed = fs.existsSync(claudeMdPath);
+  const existing = existed ? fs.readFileSync(claudeMdPath, 'utf-8') : null;
 
-  if (fs.existsSync(claudeMdPath)) {
-    existing = fs.readFileSync(claudeMdPath, 'utf-8');
-
-    // Strip current or legacy MoFlo block so we can re-inject the latest content.
-    const allStartMarkers = [MARKER_START, ...LEGACY_MARKER_STARTS];
-    const allEndMarkers = [MARKER_END, ...LEGACY_MARKER_ENDS];
-
-    for (let i = 0; i < allStartMarkers.length; i++) {
-      if (existing.includes(allStartMarkers[i])) {
-        const startIdx = existing.indexOf(allStartMarkers[i]);
-        const endIdx = existing.indexOf(allEndMarkers[i]);
-        if (endIdx > startIdx) {
-          existing = existing.substring(0, startIdx) + existing.substring(endIdx + allEndMarkers[i].length);
-        }
-      }
-    }
-  }
-
-  // Single source of truth: claudemd-generator.ts owns the section content.
+  // Single source of truth: claudemd-generator.ts owns the section content,
+  // claudemd-injection.ts owns the marker-replace logic. Replaces in place
+  // when a marker pair (current or legacy) already exists; otherwise creates
+  // a fresh CLAUDE.md or appends to a non-moflo one.
   const canonical = generateMofloSection(DEFAULT_INIT_OPTIONS);
-  const finalContent = existing.trimEnd() + '\n\n' + canonical;
-  fs.writeFileSync(claudeMdPath, finalContent, 'utf-8');
+  const result = applyInjectionReplacement(existing, canonical);
+  if (result.contents !== null && (result.changed || !existed)) {
+    fs.writeFileSync(claudeMdPath, result.contents, 'utf-8');
+  }
 
   return {
     name: 'CLAUDE.md',
-    status: existing ? 'updated' : 'created',
+    status: existed ? 'updated' : 'created',
     detail: 'MoFlo section injected (~22 lines)',
   };
 }

@@ -13,6 +13,7 @@ import {
   checkMcpSpellIntegration,
   checkGateHealth,
   checkHookBlockDrift,
+  checkClaudeMdInjectionDrift,
   checkMofloDbBridge,
 } from './doctor-checks-deep.js';
 import { checkEmbeddingHygiene } from './doctor-embedding-hygiene.js';
@@ -101,6 +102,7 @@ export const allChecks: CheckFn[] = [
   checkHookExecution,
   checkGateHealth,
   checkHookBlockDrift,
+  checkClaudeMdInjectionDrift,
   checkMofloDbBridge,
   // Issue #818 / epic #798 — coordinator-path tripwires. They share the
   // singleton coordinator with checkSubagentHealth above and assert by
@@ -167,6 +169,9 @@ export const componentMap: Record<string, CheckFn> = {
   'gate': checkGateHealth,
   'hook-drift': checkHookBlockDrift,
   'drift': checkHookBlockDrift,
+  'claudemd-drift': checkClaudeMdInjectionDrift,
+  'claudemd': checkClaudeMdInjectionDrift,
+  'injection-drift': checkClaudeMdInjectionDrift,
   'sandbox': checkSandboxTier,
   'sandbox-tier': checkSandboxTier,
   'moflodb': checkMofloDbBridge,
