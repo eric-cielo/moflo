@@ -5,7 +5,8 @@
  * Created with ❤️ by motailz.com
  */
 
-import type { Command, CommandContext, CommandResult, V3Config, CLIError } from './types.js';
+import type { Command, CommandContext, CommandResult, CLIError } from './types.js';
+import type { MofloConfig } from './config/moflo-config.js';
 import { CommandParser, commandParser } from './parser.js';
 import { OutputFormatter, output } from './output.js';
 import { commands, commandsByCategory, commandRegistry, getCommand, getCommandAsync, getCommandNames, hasCommand } from './commands/index.js';
@@ -586,33 +587,30 @@ export class CLI {
   }
 
   /**
-   * Load configuration file
+   * Load moflo project configuration.
+   *
+   * Returns the user's `moflo.yaml` merged with defaults so command actions
+   * can read project settings directly. Prior versions invoked a v2→v3
+   * SystemConfig adapter — collapsed in #1144 because nothing actually read
+   * `ctx.config.*` and the parallel schema was a silent-drift bug class.
+   *
+   * `configPath` (the global `--config` flag) used to point at a
+   * claude-flow SystemConfig file. With the adapter gone, the flag has no
+   * runtime effect; we surface a one-line warning when a consumer passes
+   * it so the silent-no-op is visible rather than mysterious. A future
+   * flag-driven override can plumb a directory through to
+   * `loadMofloConfig()` without touching callers.
    */
-  private async loadConfig(configPath?: string): Promise<V3Config | undefined> {
+  private async loadConfig(configPath?: string): Promise<MofloConfig | undefined> {
+    if (configPath) {
+      this.output.printWarning(
+        `--config "${configPath}" is no longer honoured — moflo loads moflo.yaml ` +
+        `from the project root directly (#1144).`,
+      );
+    }
     try {
-      // Import config utilities
-      const { loadConfig: loadSystemConfig } = await import('./shared/index.js');
-      const { systemConfigToV3Config } = await import('./config-adapter.js');
-
-      // Load configuration
-      const loaded = await loadSystemConfig({
-        file: configPath,
-        paths: configPath ? undefined : [process.cwd()],
-      });
-
-      // Convert to V3Config format
-      const v3Config = systemConfigToV3Config(loaded.config);
-
-      // Log warnings if any
-      if (loaded.warnings && loaded.warnings.length > 0) {
-        for (const warning of loaded.warnings) {
-          this.output.printWarning(warning);
-        }
-      }
-
-      return v3Config;
+      return loadMofloConfig();
     } catch (error) {
-      // Config loading is optional - don't fail if it doesn't exist
       if (process.env.DEBUG) {
         this.output.writeln(
           this.output.dim(`Config loading failed: ${(error as Error).message}`)

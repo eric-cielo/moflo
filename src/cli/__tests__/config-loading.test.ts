@@ -82,8 +82,10 @@ describe('Config Loading', () => {
     // Create CLI instance and verify config loading works
     const cli = new CLI();
 
-    // The config loading is tested indirectly through the CLI's run method
-    // but we've already tested the adapter functions in config-adapter.test.ts
+    // The config loading is tested indirectly through the CLI's run method.
+    // Post-#1144 the v2→v3 adapter is gone; CLI.loadConfig() now returns a
+    // MofloConfig direct from `moflo.yaml`. Direct-unit coverage for the
+    // backend value lives in `moflo-config-backend.test.ts`.
     expect(cli).toBeDefined();
   });
 

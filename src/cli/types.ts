@@ -3,6 +3,8 @@
  * Type system for the MoFlo CLI
  */
 
+import type { MofloConfig } from './config/moflo-config.js';
+
 // ============================================
 // Core Command Types
 // ============================================
@@ -10,7 +12,14 @@
 export interface CommandContext {
   args: string[];
   flags: ParsedFlags;
-  config?: V3Config;
+  /**
+   * Project configuration loaded from `moflo.yaml`. Optional because the
+   * CLI runs from arbitrary directories — a command that needs config
+   * should call `loadMofloConfig()` directly with a verified project root
+   * rather than relying on this being populated. Prior versions exposed a
+   * separate `V3Config` adapter object here; collapsed in #1144.
+   */
+  config?: MofloConfig;
   cwd: string;
   interactive: boolean;
 }
@@ -54,94 +63,6 @@ export interface CommandResult {
   message?: string;
   data?: unknown;
   exitCode?: number;
-}
-
-// ============================================
-// Configuration Types
-// ============================================
-
-export interface V3Config {
-  version: string;
-  projectRoot: string;
-
-  // Agent configuration
-  agents: AgentConfig;
-
-  // Swarm configuration
-  swarm: SwarmConfig;
-
-  // Memory configuration
-  memory: MemoryConfig;
-
-  // MCP configuration
-  mcp: MCPConfig;
-
-  // CLI preferences
-  cli: CLIPreferences;
-
-  // Hooks configuration
-  hooks: HooksConfig;
-}
-
-export interface AgentConfig {
-  defaultType: string;
-  autoSpawn: boolean;
-  maxConcurrent: number;
-  timeout: number;
-  providers: ProviderConfig[];
-}
-
-export interface ProviderConfig {
-  name: string;
-  apiKey?: string;
-  baseUrl?: string;
-  model?: string;
-  priority: number;
-  enabled: boolean;
-}
-
-export interface SwarmConfig {
-  topology: 'hierarchical' | 'mesh' | 'ring' | 'star' | 'hybrid' | 'hierarchical-mesh';
-  maxAgents: number;
-  autoScale: boolean;
-  coordinationStrategy: 'consensus' | 'leader' | 'distributed';
-  healthCheckInterval: number;
-}
-
-export interface MemoryConfig {
-  backend: 'agentdb' | 'sqlite' | 'memory' | 'hybrid';
-  persistPath: string;
-  cacheSize: number;
-  enableHNSW: boolean;
-  vectorDimension: number;
-}
-
-export interface MCPConfig {
-  autoStart: boolean;
-  transportType: 'stdio';
-  tools: string[];
-}
-
-export interface CLIPreferences {
-  colorOutput: boolean;
-  interactive: boolean;
-  verbosity: 'quiet' | 'normal' | 'verbose' | 'debug';
-  outputFormat: 'text' | 'json' | 'table';
-  progressStyle: 'bar' | 'spinner' | 'dots' | 'none';
-}
-
-export interface HooksConfig {
-  enabled: boolean;
-  autoExecute: boolean;
-  hooks: HookDefinition[];
-}
-
-export interface HookDefinition {
-  name: string;
-  event: string;
-  handler: string;
-  priority: number;
-  enabled: boolean;
 }
 
 // ============================================

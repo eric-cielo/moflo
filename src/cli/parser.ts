@@ -3,7 +3,7 @@
  * Advanced argument parsing with validation and type coercion
  */
 
-import type { Command, CommandOption, ParsedFlags, CommandContext, V3Config } from './types.js';
+import type { Command, CommandOption, ParsedFlags, CommandContext } from './types.js';
 
 export interface ParseResult {
   command: string[];

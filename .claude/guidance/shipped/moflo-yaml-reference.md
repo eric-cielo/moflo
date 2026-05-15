@@ -47,7 +47,7 @@ auto_index:
 
 # Memory backend
 memory:
-  backend: node-sqlite            # node:sqlite (Node 22+ built-in) | json — runtime always uses node:sqlite (Phase 5 #1084); this knob is informational only
+  backend: node-sqlite            # node-sqlite (default) | rvf (pure-TS fallback) | json (last resort). Passed to createDatabase() as the preferred provider (#1144).
   embedding_model: Xenova/all-MiniLM-L6-v2   # 384-dim neural embeddings
   namespace: default              # Default namespace for memory operations
 
@@ -156,9 +156,9 @@ CLAUDE_FLOW_LOG_LEVEL=info               # debug | info | warn | error
 # MCP Server (stdio transport — no port)
 CLAUDE_FLOW_MCP_TRANSPORT=stdio
 
-# Memory backend
-CLAUDE_FLOW_MEMORY_BACKEND=hybrid        # hybrid | sqlite | agentdb (legacy)
-CLAUDE_FLOW_MEMORY_TYPE=sqlite           # storage type override
+# Memory backend (legacy SystemConfig env vars — moflo.yaml `memory.backend` is the modern surface)
+CLAUDE_FLOW_MEMORY_BACKEND=sqlite        # informational only; not consumed by selectProvider
+CLAUDE_FLOW_MEMORY_TYPE=sqlite           # SystemConfig override (legacy)
 ```
 
 Variable names retain the `CLAUDE_FLOW_` prefix for backward compatibility with consumers upgraded from claude-flow.
