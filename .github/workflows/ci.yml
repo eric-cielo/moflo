@@ -3,6 +3,17 @@ name: CI
 on:
   pull_request:
     branches: [main, 'epic/*']
+    # Skip CI on PRs that only touch documentation — saves runner minutes
+    # on typo/wording PRs without losing signal. Code-touching PRs always
+    # run; doc-touching paths added to a code PR don't filter out (any
+    # non-ignored path triggers the workflow).
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE/**'
+      - 'LICENSE'
+      - 'CODE_OF_CONDUCT.md'
 
 env:
   NODE_VERSION: '22'
