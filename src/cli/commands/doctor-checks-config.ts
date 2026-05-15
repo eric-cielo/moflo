@@ -15,7 +15,7 @@ import {
 import {
   resolveClientPort,
   LEGACY_DEFAULT_PORT,
-  probeDaemonHealth as probeDaemonHealthIdentity,
+  probeDaemonHealthWithRetry as probeDaemonHealthIdentity,
   normalizeProjectRoot,
 } from '../services/daemon-port.js';
 import {
