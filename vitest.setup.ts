@@ -35,6 +35,13 @@ process.env.MOFLO_DISABLE_DAEMON_ROUTING = '1';
 // surviving load. Production never sets this env var.
 process.env.MOFLO_TEST_TRUST_DAEMON_PID = '1';
 
+// #1150 — skip the same-project orphan scan in `acquireDaemonLock` for the
+// same reasons as TRUST_DAEMON_PID above: the PowerShell/CIM enumeration on
+// Windows is expensive and tests using synthetic tempDir-rooted "daemons"
+// don't need it. Tests for the orphan scan itself clear this env-var in
+// their own `beforeEach` blocks and re-set it after.
+process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN = '1';
+
 // Re-set in `beforeEach` so a test that intentionally cleared it for a
 // routing scenario doesn't bleed into the next test.
 beforeEach(() => {
@@ -43,5 +50,8 @@ beforeEach(() => {
   }
   if (process.env.MOFLO_TEST_TRUST_DAEMON_PID !== '1') {
     process.env.MOFLO_TEST_TRUST_DAEMON_PID = '1';
+  }
+  if (process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN !== '1') {
+    process.env.MOFLO_TEST_SKIP_ORPHAN_SCAN = '1';
   }
 });

@@ -158,9 +158,26 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
         return false;
       }
     },
+    // #1150 — SIGTERM the lock-holder BEFORE unlinking the lock. The old
+    // shape (`unlink lock; daemon start`) is the bug that produced orphan
+    // daemon accumulation: if the lock-holder PID was still alive, the
+    // unlink left it running and the respawn produced a second same-project
+    // daemon. Mirrors the 'Daemon Version Skew' / 'Daemon Identity Match'
+    // shape which got this right.
+    //
+    // Also reaps any same-project orphans whose PIDs aren't recorded in the
+    // lock — those are the daemons that survived prior buggy fixes.
     'Daemon Status': async () => {
-      const lockFile = join(process.cwd(), '.moflo', 'daemon.lock');
-      const pidFile = join(process.cwd(), '.moflo', 'daemon.pid');
+      const cwd = process.cwd();
+      const { getDaemonLockPayload, reapSameProjectOrphans } = await import('../services/daemon-lock.js');
+      const payload = getDaemonLockPayload(cwd);
+      if (payload?.pid && payload.pid > 0) {
+        try { process.kill(payload.pid, 'SIGTERM'); } catch { /* already dead */ }
+      }
+      // Wipe other same-project daemons that the lock doesn't account for.
+      reapSameProjectOrphans(cwd);
+      const lockFile = join(cwd, '.moflo', 'daemon.lock');
+      const pidFile = join(cwd, '.moflo', 'daemon.pid');
       try {
         if (existsSync(lockFile)) unlinkSync(lockFile);
         if (existsSync(pidFile)) unlinkSync(pidFile);
@@ -181,6 +198,33 @@ export async function autoFixCheck(check: HealthCheck): Promise<boolean> {
       }
       const lockFile = join(cwd, '.moflo', 'daemon.lock');
       try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
+      return runFixCommand('npx moflo daemon start');
+    },
+    // #1150 — terminate same-project orphan daemons. Keep the lock-holder
+    // alive if it shows up in the scan (it's the canonical daemon). If the
+    // lock-holder is missing/stale, kill all candidates and let the next
+    // session-start respawn a clean one. The pre-computed `pids` list is
+    // threaded into `reapSameProjectOrphans` so we don't re-run the
+    // OS process scan inside it.
+    'Daemon Orphan': async () => {
+      const cwd = process.cwd();
+      const { findProjectDaemonPids, getDaemonLockHolder, reapSameProjectOrphans } =
+        await import('../services/daemon-lock.js');
+      const pids = findProjectDaemonPids(cwd);
+      if (pids.length <= 1) return true; // already healthy
+
+      const lockHolder = getDaemonLockHolder(cwd);
+      if (lockHolder != null && pids.includes(lockHolder)) {
+        const { survived } = reapSameProjectOrphans(cwd, process.pid, lockHolder, pids);
+        return survived.length === 0;
+      }
+
+      // No identifiable canonical daemon — kill them all, clear the lock,
+      // respawn fresh.
+      const { survived } = reapSameProjectOrphans(cwd, process.pid, undefined, pids);
+      const lockFile = join(cwd, '.moflo', 'daemon.lock');
+      try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch { /* ok */ }
+      if (survived.length > 0) return false;
       return runFixCommand('npx moflo daemon start');
     },
     // #1145 — daemon claims a different projectRoot than ours (or has no
